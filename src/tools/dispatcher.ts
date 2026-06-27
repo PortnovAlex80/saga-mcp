@@ -164,14 +164,26 @@ function handleWorkerNext(args: Record<string, unknown>): {
   const workerId = args.worker_id as string;
 
   // project_id REQUIRED — иначе в общей БД агенту подсовывается чужая задача.
-  // Явная ошибка вместо молчаливой пустой очереди: неверная конфигурация видна сразу.
+  // Бросаем actionable-ошибку (НЕ через required inputSchema): так агент
+  // получает полное решение, что делать, а не generic "validation failed".
   const projectId = args.project_id as number | undefined;
   if (projectId == null) {
-    throw new Error('project_id is required (read ./projectname.txt, then project_resolve_by_name)');
+    throw new Error(
+      [
+        'project_id is missing — cannot dispatch work without knowing the project.',
+        'HOW TO GET project_id (do this ONCE, then retry worker_next):',
+        '1. Read ./projectname.txt.',
+        '2. If it exists: call project_resolve_by_name({ name: "<file contents>" }) and use its project_id.',
+        '3. If it does NOT exist: ask the user "What is the saga project name for this folder?",',
+        '   create ./projectname.txt with that single line as its only contents,',
+        '   then call project_resolve_by_name({ name: "<that name>" }).',
+        'Then retry: worker_next({ worker_id, project_id }).',
+      ].join('\n'),
+    );
   }
   const exists = db.prepare('SELECT 1 FROM projects WHERE id=?').get(projectId);
   if (!exists) {
-    throw new Error(`project_id ${projectId} not found`);
+    throw new Error(`project_id ${projectId} not found. Run project_list to see valid IDs, or project_resolve_by_name to (re)create by name from ./projectname.txt.`);
   }
 
   // BEGIN IMMEDIATE — write-lock всей БД с старта транзакции
@@ -313,7 +325,12 @@ export const definitions: Tool[] = [
             'ID of the project to claim work from (REQUIRED). Get it once via project_resolve_by_name from the name in ./projectname.txt. Tasks from other projects are never returned.',
         },
       },
-      required: ['worker_id', 'project_id'],
+      required: ['worker_id'],
+      // NOTE: project_id is intentionally NOT in `required`. If it were, the
+      // MCP SDK would reject the call with a generic "inputSchema validation"
+      // error BEFORE the handler runs, leaving the agent with no clue what to
+      // do. Instead we let the call reach the handler, which throws an
+      // actionable English error with the full resolution steps.
     },
   },
   {
