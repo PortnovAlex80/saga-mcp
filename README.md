@@ -162,6 +162,33 @@ npm run build
 # restart ZCode
 ```
 
+### 🖥️ Tracker view (auto-started kanban)
+
+The fork bundles a read-only web kanban (`tracker-view/`) that reads the **same** shared `DB_PATH` and shows all saga-projects as switchable boards. It **starts automatically** when the saga-MCP server launches (one less thing to run).
+
+- After restarting ZCode (or running `npm start`), open **http://localhost:4321** — the browser should pop up on its own.
+- `/` → index of all projects (`lottery_solver`, `femdriver`, …) with task counts and a live heartbeat.
+- `/?project=<id>` → kanban board of one project (Backlog / In Progress / Review / Done / Blocked), filter chips by epic, per-card assignee + age indicator.
+- `/api/heartbeat` → `{ "last": "<ts>" }` of the latest `activity_log` row (drives the green/yellow/red pulse dot).
+
+Environment variables (set in the ZCode MCP server `env`, or when running by hand):
+
+| Variable | Default | Effect |
+|---|---|---|
+| `TRACKER_AUTOSTART` | `1` | Set to `0` to disable the auto-spawn (headless/CI). |
+| `TRACKER_PORT` / `PORT` | `4321` | HTTP port the kanban listens on. |
+| `RELOAD_SEC` | `5` | Auto-refresh interval (seconds). |
+| `DB_PATH` | (required) | The shared saga DB — must match the saga-MCP server's. |
+
+Run it manually without the MCP server:
+
+```bash
+npm run tracker            # uses DB_PATH from your shell, or:
+DB_PATH=C:/Users/<you>/.zcode/saga.db npm run tracker
+```
+
+The tracker is spawned `detached` with `stdio: 'ignore'` so its output never interferes with the MCP protocol on stdio. If port 4321 is taken, it kills the previous tracker by its PID file and rebinds — it never touches the saga-MCP process.
+
 ---
 
 

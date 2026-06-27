@@ -6,6 +6,10 @@ import {
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
+import { spawn } from 'node:child_process';
+import { existsSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { definitions as projectDefs, handlers as projectHandlers } from './tools/projects.js';
 import { definitions as epicDefs, handlers as epicHandlers } from './tools/epics.js';
@@ -20,6 +24,9 @@ import { definitions as templateDefs, handlers as templateHandlers } from './too
 import { definitions as exportImportDefs, handlers as exportImportHandlers } from './tools/export-import.js';
 import { definitions as dispatcherDefs, handlers as dispatcherHandlers } from './tools/dispatcher.js';
 import { closeDb } from './db.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const ALL_TOOLS: Tool[] = [
   ...projectDefs,
@@ -109,6 +116,34 @@ async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
   console.error('Tracker MCP Server running on stdio');
+
+  // Автозапуск веб-канбана tracker-view как detached child-процесса.
+  // stdio:'ignore' — КРИТИЧНО: MCP-протокол saga идёт по stdio родителя,
+  // любой вывод child'а сюда сломал бы протокол. detached + unref — child
+  // живёт независимо и не держит родительский процесс при выходе.
+  // TRACKER_AUTOSTART=0 → не запускать (headless/CI/тихий режим).
+  if (process.env.TRACKER_AUTOSTART !== '0' && process.env.DB_PATH) {
+    try {
+      const trackerPath = path.join(__dirname, '..', 'tracker-view', 'tracker-view.mjs');
+      if (existsSync(trackerPath)) {
+        const trackerPort = process.env.TRACKER_PORT || '4321';
+        const child = spawn('node', [trackerPath], {
+          detached: true,
+          stdio: 'ignore',
+          env: {
+            ...process.env,
+            PORT: trackerPort,
+            DB_PATH: process.env.DB_PATH,
+          },
+        });
+        child.unref();
+        console.error(`Tracker view → http://localhost:${trackerPort} (set TRACKER_AUTOSTART=0 to disable)`);
+      }
+    } catch (err) {
+      // Tracker view не критичен для MCP-сервера — логируем и продолжаем.
+      console.error('Tracker view failed to start (non-fatal):', err instanceof Error ? err.message : err);
+    }
+  }
 }
 
 process.on('SIGINT', () => {
