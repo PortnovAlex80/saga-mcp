@@ -18,6 +18,7 @@ import { definitions as activityDefs, handlers as activityHandlers } from './too
 import { definitions as commentDefs, handlers as commentHandlers } from './tools/comments.js';
 import { definitions as templateDefs, handlers as templateHandlers } from './tools/templates.js';
 import { definitions as exportImportDefs, handlers as exportImportHandlers } from './tools/export-import.js';
+import { definitions as dispatcherDefs, handlers as dispatcherHandlers } from './tools/dispatcher.js';
 import { closeDb } from './db.js';
 
 const ALL_TOOLS: Tool[] = [
@@ -32,6 +33,7 @@ const ALL_TOOLS: Tool[] = [
   ...searchDefs,
   ...activityDefs,
   ...exportImportDefs,
+  ...dispatcherDefs,
 ];
 
 const ALL_HANDLERS: Record<string, (args: Record<string, unknown>) => unknown> = {
@@ -46,6 +48,7 @@ const ALL_HANDLERS: Record<string, (args: Record<string, unknown>) => unknown> =
   ...searchHandlers,
   ...activityHandlers,
   ...exportImportHandlers,
+  ...dispatcherHandlers,
 };
 
 const server = new Server(

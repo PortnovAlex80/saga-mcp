@@ -1,10 +1,20 @@
 # saga-mcp
 
-[![IdeaCred](https://ideacred.com/api/badge/spranab/saga-mcp)](https://ideacred.com/profile/spranab)
+[![IdeaCred](https://ideacred.com/api/badge/spranab/saga-mcp)](https://ideacred.com/profile/spranab/saga-mcp)
 
 A Jira-like project tracker MCP server for AI agents. SQLite-backed, per-project scoped, with full hierarchy and activity logging — so LLMs never lose track.
 
 **No more scattered markdown files.** saga-mcp gives your AI assistant a structured database to track projects, epics, tasks, subtasks, notes, and decisions across sessions.
+
+---
+
+> ## 🍴 This is a fork
+>
+> Fork of [spranab/saga-mcp](https://github.com/spranab/saga-mcp) at **`PortnovAlex80/saga-mcp`**. The base 31 tools are **unchanged**. This fork adds a **dispatcher** — two extra MCP tools (`worker_next`, `worker_done`) that let saga itself **hand out tasks to AI agents** instead of an agent polling. It ships with three ZCode skills that teach agents how to work the queue.
+>
+> **If you just want vanilla saga-mcp**, use [the upstream](https://github.com/spranab/saga-mcp) (`npx -y saga-mcp`). Everything below the line is upstream docs.
+
+---
 
 ## Features
 
@@ -23,7 +33,119 @@ A Jira-like project tracker MCP server for AI agents. SQLite-backed, per-project
 - **Auto time tracking**: Hours computed automatically from activity log
 - **Cross-platform**: Works on macOS, Windows, and Linux
 
-## Quick Start
+## 🚀 Fork: install from scratch (new machine)
+
+This fork runs **from a local build** (not via `npx`), so your edits to `src/` take effect on the next `npm run build` + restart. Total setup ≈ 5 minutes.
+
+### Prerequisites
+
+- **Node.js 18+** (for `better-sqlite3` native build) and **npm**
+- **Git**
+- **ZCode** (or any MCP-capable client) — for the skills to apply, you'll be running agents in it
+
+### Step 1 — clone & build
+
+```bash
+git clone https://github.com/PortnovAlex80/saga-mcp.git
+cd saga-mcp
+npm install        # builds better-sqlite3 native module
+npm run build      # tsc -> dist/
+```
+
+Verify the build:
+```bash
+ls dist/index.js dist/tools/dispatcher.js    # both must exist
+DB_PATH=./smoke.db node dist/index.js        # should print: Tracker MCP Server running on stdio
+```
+(Ctrl-C to stop; delete `smoke.db*` after.)
+
+### Step 2 — register in ZCode
+
+Edit `~/.zcode/cli/config.json` and point the `saga` server at the **local build** (not `npx`):
+
+```json
+{
+  "mcp": {
+    "servers": {
+      "saga": {
+        "type": "stdio",
+        "command": "node",
+        "args": ["D:/Development/saga-mcp/dist/index.js"],
+        "env": { "DB_PATH": "C:/Users/<you>/.zcode/saga.db" }
+      }
+    }
+  }
+}
+```
+
+> **Path note:** use your real clone path in `args`. `DB_PATH` is the SQLite file — pick **one** location and keep it; all projects live in this single DB (see "Multi-project" in the tracker skill). The file + schema auto-create on first run.
+
+Restart ZCode. After restart, `worker_next` / `worker_done` appear alongside the 31 base tools.
+
+### Step 3 — install the skills
+
+Copy the three skills from this repo into ZCode's skills directory so agents pick them up:
+
+```bash
+# Windows / Git Bash
+cp -r skills/* ~/.zcode/skills/
+
+# macOS / Linux
+cp -r skills/* ~/.zcode/skills/
+```
+
+The skills:
+| Skill | When the agent uses it |
+|---|---|
+| **saga-tracker** | Working with tasks/projects/epics directly (planning, triage, resuming). The base skill for any saga work. |
+| **saga-developer** | The dispatcher returned `skill: "saga-developer"` — agent is the **implementer** on a task taken from `todo`. |
+| **saga-reviewer** | The dispatcher returned `skill: "saga-reviewer"` — agent is the **reviewer** on a task taken from `review`. |
+
+Restart ZCode again so it sees the new skills.
+
+### Step 4 — smoke test the dispatcher
+
+In any ZCode window, run a throwaway claim and release it:
+```
+mcp__saga__worker_next({ worker_id: "smoke" })
+# → returns a task (or {task: null} if the queue is empty) + skill
+```
+To undo the claim (don't leave a smoke task assigned):
+```
+mcp__saga__task_update({ id: <returned id>, status: "todo", assigned_to: "" })
+```
+
+If you got a task back, you're done. ✅
+
+### Running the worker fleet (the actual use case)
+
+Open **N agent windows** in ZCode (e.g. 3), and give each the same prompt with its own id:
+
+```
+You are a saga worker. Your worker_id is "agent-1".
+Loop:
+1. Call mcp__saga__worker_next({ worker_id: "agent-1" }).
+2. If task is null → say "queue empty" and stop.
+3. Otherwise: apply the skill named in the response (saga-developer or saga-reviewer),
+   do the work, then call mcp__saga__worker_done({ task_id, worker_id: "agent-1", result: "..." }).
+4. The response carries the next task — repeat from step 2.
+```
+
+Watch the board (your `saga.db` via any viewer) from your phone. The dispatcher guarantees no two agents grab the same task (see `tests/dispatcher-race/`).
+
+### Updating the fork later
+
+```bash
+cd saga-mcp
+git pull
+npm install        # if deps changed
+npm run build
+# restart ZCode
+```
+
+---
+
+
 
 ### With Claude Code
 
@@ -153,6 +275,24 @@ No API keys, no accounts, no external services. Everything is stored locally in 
 | `tracker_search` | Cross-entity search (projects, epics, tasks, notes) | `readOnly: true` |
 | `activity_log` | View change history with filters | `readOnly: true` |
 | `tracker_session_diff` | Show what changed since a given timestamp — call at session start | `readOnly: true` |
+
+### Dispatcher (fork only)
+
+| Tool | Description | Annotations |
+|------|-------------|-------------|
+| `worker_next` | Claim the next free task (`todo` or `review`, unassigned, deps met) atomically; returns the task + the skill the agent should use | `readOnly: false` |
+| `worker_done` | Complete the held task (`in_progress`→`review`, `review`→`done`, frees the assignment, records `result` as a comment, auto-unblocks downstream on `done`) and return the next task | `readOnly: false` |
+
+**How the dispatcher hands out work** (fork only):
+
+```
+worker_next({worker_id})          →  { task, skill: "saga-developer" | "saga-reviewer" }   (or { task: null })
+worker_done({task_id, worker_id, result})  →  { completed, completed_new_status, next_task, next_skill }
+```
+
+- `assigned_to` (native saga field) is the occupancy flag — a task is in the queue only if `status IN ('todo','review') AND assigned_to IS NULL`.
+- The **review cycle never enters `in_progress`**: a task taken from `review` keeps its status and only gets `assigned_to` set, so `worker_done` knows which cycle it's in by the current status.
+- Race-safety: each call runs under an explicit `BEGIN IMMEDIATE` transaction plus a conditional `UPDATE ... WHERE status=? AND assigned_to IS NULL` checked via `info.changes === 1`. Multi-process stress test in `tests/dispatcher-race/`.
 
 ### Import / Export
 
