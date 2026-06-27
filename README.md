@@ -84,22 +84,25 @@ Restart ZCode. After restart, `worker_next` / `worker_done` appear alongside the
 
 ### Step 3 — install the skills
 
-Copy the three skills from this repo into ZCode's skills directory so agents pick them up:
+Copy the two skills from this repo into ZCode's skills directory so agents pick them up:
 
 ```bash
-# Windows / Git Bash
-cp -r skills/* ~/.zcode/skills/
-
-# macOS / Linux
+# Windows / Git Bash  /  macOS / Linux  — same command
 cp -r skills/* ~/.zcode/skills/
 ```
+
+> If upgrading from an older fork that shipped `saga-developer` / `saga-reviewer`, remove them first — they were merged into `saga-worker`:
+> ```bash
+> rm -rf ~/.zcode/skills/saga-developer ~/.zcode/skills/saga-reviewer
+> ```
 
 The skills:
 | Skill | When the agent uses it |
 |---|---|
-| **saga-tracker** | Working with tasks/projects/epics directly (planning, triage, resuming). The base skill for any saga work. |
-| **saga-developer** | The dispatcher returned `skill: "saga-developer"` — agent is the **implementer** on a task taken from `todo`. |
-| **saga-reviewer** | The dispatcher returned `skill: "saga-reviewer"` — agent is the **reviewer** on a task taken from `review`. |
+| **saga-tracker** | Bootstrap + the rule "workers go through the dispatcher". Load first in any saga session. Also the entry point for the planning/triage role (creating projects/tasks directly). |
+| **saga-worker** | The autonomous worker loop: resolve project once → `worker_next` → do the work → `worker_done` → repeat. Branches on the dispatcher's returned `skill` (`saga-developer` = implement a `todo` task, `saga-reviewer` = verify a `review` task). This is the skill that drives the fleet. |
+
+The skills ship with the npm package too (`skills/` is in `files`), so `npx`-based installs can copy them the same way.
 
 Restart ZCode again so it sees the new skills.
 
@@ -137,17 +140,16 @@ Because one shared saga DB holds many projects, a worker must know which project
 Open **N agent windows** in ZCode (e.g. 3) — all in the same project folder — and give each the same prompt with its own id:
 
 ```
-You are a saga worker. Your worker_id is "agent-1".
+You are a saga worker. Your worker_id is "agent-1". Load the saga-worker skill and follow it exactly.
 Project identity lives in ./projectname.txt — do not trust your memory for the project.
 1. Read ./projectname.txt, then call
    mcp__saga__project_resolve_by_name({ name: "<contents>" })  →  note project_id.
-2. Loop:
+2. Loop (do NOT ask permission to continue between tasks — work autonomously):
    a. mcp__saga__worker_next({ worker_id: "agent-1", project_id: <from step 1> }).
-   b. If task is null → say "queue empty" and stop.
-   c. Otherwise: apply the skill named in the response (saga-developer or saga-reviewer),
-      do the work, then call
+   b. If task is null → verify via task_list that the project genuinely has no claimable work, then say "queue empty" and stop.
+   c. Otherwise: apply the saga-worker skill — implement (skill 'saga-developer') or review (skill 'saga-reviewer') per the dispatcher's 'skill' field — then call
       mcp__saga__worker_done({ task_id, worker_id: "agent-1", result: "..." }).
-   d. The response carries the next task — repeat from 2b.
+   d. The response carries the next task — immediately repeat from 2c (do not ask).
 ```
 
 Watch the board (your `saga.db` via any viewer) from your phone. The dispatcher guarantees no two agents grab the same task (see `tests/dispatcher-race/`), and `project_id` scoping guarantees they only touch this project.
@@ -332,8 +334,10 @@ No API keys, no accounts, no external services. Everything is stored locally in 
 **How the dispatcher hands out work** (fork only):
 
 ```
-worker_next({worker_id})          →  { task, skill: "saga-developer" | "saga-reviewer" }   (or { task: null })
-worker_done({task_id, worker_id, result})  →  { completed, completed_new_status, next_task, next_skill }
+worker_next({worker_id, project_id})          →  { task, skill: "saga-developer" | "saga-reviewer" }   (or { task: null })
+worker_done({task_id, worker_id, result})     →  { completed, completed_new_status, next_task, next_skill }
+worker_ask_need({task_id, worker_id, reason?}) →  { task_id, blocking: true }   (flags needs-human; task stays with the agent)
+worker_ask_done({task_id, worker_id})         →  { task_id, blocking: false }   (clears the flag after the human answers)
 ```
 
 - `assigned_to` (native saga field) is the occupancy flag — a task is in the queue only if `status IN ('todo','review') AND assigned_to IS NULL`.
