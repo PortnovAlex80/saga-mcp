@@ -377,6 +377,22 @@ function handleTaskUpdate(args: Record<string, unknown>) {
     args.assigned_to = null;
   }
 
+  // 3) РАЗДЕЛЕНИЕ ЗОН: статус задачи управляет ТОЛЬКО dispatcher (worker_next/worker_done).
+  //    task_update не имеет права двигать status — это ловушка (воркер сам перевёл задачу
+  //    в review, обойдя worker_done: assigned_to не чистится, result-комментарий не
+  //    пишется, цикл рвётся). Поле status молча ОТБРАСЫВАЕМ — задача не двигается.
+  //    Другие поля (title/priority/tags/depends_on/...) меняются свободно — агенты могут
+  //    редактировать метаданные, но не поток статусов.
+  //    dispatcher.ts пишет статусы напрямую через SQL (не через этот handler), так что
+  //    запрет его не затрагивает. evaluateAndUpdateDependencies (auto-blocked/todo) тоже
+  //    пишет напрямую.
+  //    Escape hatch: env SAGA_ALLOW_MANUAL_STATUS=1 — для человека/CI (агенты о нём не знают).
+  let statusIgnored = false;
+  if (args.status !== undefined && process.env.SAGA_ALLOW_MANUAL_STATUS !== '1') {
+    delete args.status;
+    statusIgnored = true;
+  }
+
   const update = buildUpdate('tasks', id, args, [
     'title', 'description', 'status', 'priority', 'assigned_to',
     'estimated_hours', 'actual_hours', 'due_date', 'source_ref', 'sort_order', 'tags',
@@ -392,6 +408,17 @@ function handleTaskUpdate(args: Record<string, unknown>) {
   } else if (args.depends_on !== undefined) {
     // Only depends_on changed, no column updates
     newRow = oldRow;
+  } else if (statusIgnored) {
+    // Агент прислал ТОЛЬКО status (других полей нет) — buildUpdate вернул null.
+    // Вместо cryptic "No fields to update" возвращаем задачу как есть + понятное
+    // сообщение, что status — зона dispatcher'а.
+    return {
+      ...(oldRow as object),
+      _warning:
+        "task_update ignored the 'status' field — only the dispatcher (worker_next / worker_done) may change a task's status. " +
+        'No other fields were provided, so nothing changed. ' +
+        'To move this task, use worker_done({task_id, worker_id, result}).',
+    };
   } else {
     throw new Error('No fields to update');
   }
@@ -431,9 +458,22 @@ function handleTaskUpdate(args: Record<string, unknown>) {
     }
   }
 
-  // Re-evaluate downstream tasks when this task is marked done
+  // Re-evaluate downstream tasks when this task is marked done.
+  // (Через task_update это больше недостижимо — status отброшен выше. Остаётся для
+  //  случая SAGA_ALLOW_MANUAL_STATUS=1, где человек может двинуть done вручную.)
   if (statusChanged && args.status === 'done') {
     reevaluateDownstream(db, id);
+  }
+
+  // Если agent прислал status, но мы его отбросили (зона dispatcher'а) — возвращаем
+  // явное сообщение, чтобы это не прошло незамеченным. newRow — реальное состояние.
+  if (statusIgnored) {
+    return {
+      ...newRow,
+      _warning:
+        "task_update ignored the 'status' field — only the dispatcher (worker_next / worker_done) may change a task's status. " +
+        'Other fields were applied. To move this task, use worker_done({task_id, worker_id, result}).',
+    };
   }
 
   return newRow;
