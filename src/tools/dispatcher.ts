@@ -212,12 +212,26 @@ function handleWorkerDone(args: Record<string, unknown>): {
   const result = args.result as string;
 
   const completeAndNext = (): ReturnType<typeof handleWorkerDone> => {
-    // 1. Это моя задача? (assigned_to = worker_id)
+    // 1. Чья задача закрывается?
+    //    Случай А (нормальный): assigned_to = worker_id — моя активная работа.
+    //    Случай Б (review-вердикт): status='review' AND assigned_to IS NULL — задача
+    //    ушла в review (dev-цикл снял assigned_to), и теперь ЛЮБОЙ воркер закрывает её
+    //    своим вердиктом. Это чинит «последняя задача застряла в review»: тот же агент,
+    //    что сдал dev-цикл, вызывает worker_done ещё раз с вердиктом ревьюера — и
+    //    диспетчер переводит review→done. in_progress-задачи по-прежнему требуют
+    //    assigned_to=worker_id (защита от кражи активной работы не ослаблена).
     const task = db
-      .prepare('SELECT * FROM tasks WHERE id=? AND assigned_to=?')
+      .prepare(
+        `SELECT * FROM tasks WHERE id=? AND (assigned_to=? OR (status='review' AND assigned_to IS NULL))`,
+      )
       .get(taskId, workerId) as Task | undefined;
     if (!task) {
-      throw new Error(`Task ${taskId} not assigned to ${workerId}`);
+      throw new Error(
+        `Task ${taskId} not assigned to ${workerId}` +
+          (db.prepare('SELECT 1 FROM tasks WHERE id=? AND status=\'review\' AND assigned_to IS NULL').get(taskId)
+            ? ' (task is in review and free — but you must hold it first via worker_next to close it)'
+            : ''),
+      );
     }
 
     // 2. Следующий статус по ТЕКУЩЕМУ статусу (он сам = флаг цикла).
@@ -234,10 +248,11 @@ function handleWorkerDone(args: Record<string, unknown>): {
 
     // 3. Перевод статуса + очистка assigned_to — атомарно, одной командой.
     //    Так флаг занятости не «забудем» снять (риск из обсуждения).
+    //    Условие зеркалит SELECT: моя (assigned_to=?) ИЛИ свободная review-задача.
     const completeInfo = db
       .prepare(
         `UPDATE tasks SET status=?, assigned_to=NULL, updated_at=datetime('now')
-         WHERE id=? AND assigned_to=?`,
+         WHERE id=? AND (assigned_to=? OR (status='review' AND assigned_to IS NULL))`,
       )
       .run(newStatus, taskId, workerId);
 
