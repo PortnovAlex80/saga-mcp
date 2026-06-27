@@ -38,8 +38,17 @@ gets you another project's work.
 
 1. Read `./projectname.txt`.
 2. If it exists → `project_resolve_by_name({ name: "<contents>" })` → keep `project_id`.
-3. If it does NOT exist → ask the user ONCE: *"What is the saga project name for this folder?"*.
-   Write that single line to `./projectname.txt`, then call `project_resolve_by_name`.
+3. **If `./projectname.txt` does NOT exist → HARD STOP.** This is non-negotiable:
+   - Ask the user ONCE: *"What is the saga project name for this folder?"*
+   - **Do NOT create anything.** Do NOT call `project_create`, `project_resolve_by_name`,
+     `epic_create`, `task_create`, or any other mutation. Without a confirmed project
+     name you have NO idea which project is yours — fabricating one creates work in
+     the wrong place (a real failure: an agent spun up a duplicate "Lottery Solver"
+     in an empty DB because projectname.txt was missing).
+   - Wait for the user's answer. Write that single line to `./projectname.txt`.
+   - ONLY THEN call `project_resolve_by_name({ name: "<that name>" })`.
+   - The user's answer is the ONLY legitimate source of the project name — never
+     infer it from the folder name, AGENTS.md, or any other file.
 4. **Immediately proceed to THE LOOP** — call `worker_next({ worker_id, project_id })` right away.
    Do NOT report the resolved project_id back and wait for confirmation. Do NOT ask
    "ready to start?". Resolving the project IS the start — the next action is `worker_next`.
@@ -192,9 +201,10 @@ Use this **sparingly** — it idles you while waiting. Prefer the 80% rule
 
 ## Hard rules
 
+- **`./projectname.txt` is the ONLY source of your project identity.** No file → HARD STOP, ask the user, create NOTHING until they answer. Never infer the project from the folder name, AGENTS.md, or any other signal.
 - **worker_id**: use exactly the id you were given (e.g. `agent-1`). It is how the board shows who does what.
 - **One task at a time.** Only the task whose `assigned_to` == your `worker_id` is yours.
 - **Never call `worker_next` to "get ahead"** while holding a task — the next task comes from `worker_done`.
-- **Never create projects/epics/tasks** (`project_create`, `epic_create`, `task_create`) — that is the planner role, not yours. If the project is empty, say so and stop.
+- **Never create projects/epics/tasks** (`project_create`, `epic_create`, `task_create`) — that is the planner role, not yours. This applies ALWAYS, including when the project looks empty or you "want to have something to do". Empty project → report and stop.
 - **Never move status yourself** (`task_update({status})`) — it's ignored; use `worker_done`.
 - **You may** `task_get` (read), `comment_add` (breadcrumb), `note_save` (decision) on tasks — these are side-effects on owned work or read-only, not work-stealing.
