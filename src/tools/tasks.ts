@@ -154,11 +154,15 @@ function evaluateAndUpdateDependencies(db: Database.Database, taskId: number): v
   const unmet = getUnmetDependencies(db, taskId);
 
   if (unmet.length > 0 && task.status !== 'blocked' && task.status !== 'done') {
-    db.prepare("UPDATE tasks SET status = 'blocked', updated_at = datetime('now') WHERE id = ?").run(taskId);
+    // Инвариант: blocked ⇒ assigned_to=NULL (см. handleTaskUpdate). Авто-blocked от deps —
+    // не исключение: задача не может быть в работе, пока её зависимости не готовы.
+    db.prepare("UPDATE tasks SET status = 'blocked', assigned_to = NULL, updated_at = datetime('now') WHERE id = ?").run(taskId);
     logActivity(db, 'task', taskId, 'status_changed', 'status', task.status, 'blocked',
       `Task '${task.title}' auto-blocked: depends on ${unmet.map(u => `#${u.id}`).join(', ')}`);
   } else if (unmet.length === 0 && task.status === 'blocked') {
-    db.prepare("UPDATE tasks SET status = 'todo', updated_at = datetime('now') WHERE id = ?").run(taskId);
+    // Инвариант: todo ⇒ assigned_to=NULL. Авто-разблокировка возвращает задачу в очередь
+    // свободной (кто-то из воркеров её потом заберёт).
+    db.prepare("UPDATE tasks SET status = 'todo', assigned_to = NULL, updated_at = datetime('now') WHERE id = ?").run(taskId);
     logActivity(db, 'task', taskId, 'status_changed', 'status', 'blocked', 'todo',
       `Task '${task.title}' auto-unblocked: all dependencies met`);
   }
@@ -183,7 +187,14 @@ function handleTaskCreate(args: Record<string, unknown>) {
   const description = (args.description as string) ?? null;
   const status = (args.status as string) ?? 'todo';
   const priority = (args.priority as string) ?? 'medium';
-  const assignedTo = (args.assigned_to as string) ?? null;
+  // Инвариант (см. handleTaskUpdate): todo/done/blocked ⇒ assigned_to всегда NULL.
+  // При создании задача либо сразу в работе (in_progress/review + assigned), либо
+  // свободна в очереди/завершена/заблокирована — без исполнителя.
+  let assignedTo: string | null = (args.assigned_to as string) ?? null;
+  if (assignedTo === '') assignedTo = null; // нормализация '' → NULL
+  if (status === 'todo' || status === 'done' || status === 'blocked') {
+    assignedTo = null;
+  }
   const estimatedHours = (args.estimated_hours as number) ?? null;
   const dueDate = (args.due_date as string) ?? null;
   const sourceRef = args.source_ref ? JSON.stringify(args.source_ref) : null;
@@ -351,16 +362,18 @@ function handleTaskUpdate(args: Record<string, unknown>) {
   const oldRow = db.prepare('SELECT * FROM tasks WHERE id = ?').get(id) as Record<string, unknown> | undefined;
   if (!oldRow) throw new Error(`Task ${id} not found`);
 
-  // Инвариант: задача в todo/done НИКОГДА не назначена — assigned_to всегда NULL.
-  // Assigned имеет смысл только в активной работе (in_progress/review/blocked).
+  // Инвариант: задача в todo/done/blocked НИКОГДА не назначена — assigned_to всегда NULL.
+  // Assigned имеет смысл только в активной работе (in_progress/review). blocked входит в
+  // правило тоже: авто-blocked (deps) и ручной 'ждёт QA' оба освобождают исполнителя;
+  // QA-wait трекается через тег stage:qa-wait + комментарий, не через assigned_to.
   // 1) Нормализуем '' → NULL (saga-API принимает пустую строку как "снять исполнителя").
   if (args.assigned_to !== undefined && args.assigned_to === '') {
     args.assigned_to = null;
   }
-  // 2) Если статус меняется на todo|done — форсим assigned_to=NULL, даже если
+  // 2) Если статус меняется на todo|done|blocked — форсим assigned_to=NULL, даже если
   //    вызывающий не передавал assigned_to явно (как saga форсит actual_hours при done).
   const targetStatus = args.status as string | undefined;
-  if (targetStatus === 'todo' || targetStatus === 'done') {
+  if (targetStatus === 'todo' || targetStatus === 'done' || targetStatus === 'blocked') {
     args.assigned_to = null;
   }
 
