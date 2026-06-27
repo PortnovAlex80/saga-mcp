@@ -212,26 +212,32 @@ function handleWorkerDone(args: Record<string, unknown>): {
   const result = args.result as string;
 
   const completeAndNext = (): ReturnType<typeof handleWorkerDone> => {
-    // 1. Чья задача закрывается?
-    //    Случай А (нормальный): assigned_to = worker_id — моя активная работа.
-    //    Случай Б (review-вердикт): status='review' AND assigned_to IS NULL — задача
-    //    ушла в review (dev-цикл снял assigned_to), и теперь ЛЮБОЙ воркер закрывает её
-    //    своим вердиктом. Это чинит «последняя задача застряла в review»: тот же агент,
-    //    что сдал dev-цикл, вызывает worker_done ещё раз с вердиктом ревьюера — и
-    //    диспетчер переводит review→done. in_progress-задачи по-прежнему требуют
-    //    assigned_to=worker_id (защита от кражи активной работы не ослаблена).
-    const task = db
-      .prepare(
-        `SELECT * FROM tasks WHERE id=? AND (assigned_to=? OR (status='review' AND assigned_to IS NULL))`,
-      )
-      .get(taskId, workerId) as Task | undefined;
-    if (!task) {
-      throw new Error(
-        `Task ${taskId} not assigned to ${workerId}` +
-          (db.prepare('SELECT 1 FROM tasks WHERE id=? AND status=\'review\' AND assigned_to IS NULL').get(taskId)
-            ? ' (task is in review and free — but you must hold it first via worker_next to close it)'
-            : ''),
-      );
+    // Чья задача закрывается — зависит от фазы:
+    //  - in_progress: замок владельца. Только assigned_to = worker_id может закрыть
+    //    активную работу (защита от кражи часов чужого кодинга).
+    //  - review: вердикт от ЛЮБОГО воркера. assigned_to в review — это просто запись
+    //    «раздали кому-то», не замок. Любой воркер, доставивший вердикт (APPROVED /
+    //    CHANGES REQUESTED в result), продвигает задачу review → done. Это чинит
+    //    «последняя задача застряла в review»: тот же агент, что сдал dev-цикл,
+    //    вызывает worker_done ещё раз с вердиктом ревьюера — и диспетчер переводит
+    //    review → done, без нужды ждать второго воркера.
+    let task: Task | undefined;
+    if (true) {
+      // Сначала пробуем как владельца (для in_progress и review с моим assigned_to).
+      task = db
+        .prepare('SELECT * FROM tasks WHERE id=? AND assigned_to=?')
+        .get(taskId, workerId) as Task | undefined;
+      // Не мой, но в review? Любой воркер может закрыть review-задачу вердиктом.
+      if (!task) {
+        const reviewTask = db
+          .prepare("SELECT * FROM tasks WHERE id=? AND status='review'")
+          .get(taskId) as Task | undefined;
+        if (reviewTask) {
+          task = reviewTask;
+        } else {
+          throw new Error(`Task ${taskId} not assigned to ${workerId}`);
+        }
+      }
     }
 
     // 2. Следующий статус по ТЕКУЩЕМУ статусу (он сам = флаг цикла).
@@ -247,12 +253,12 @@ function handleWorkerDone(args: Record<string, unknown>): {
     }
 
     // 3. Перевод статуса + очистка assigned_to — атомарно, одной командой.
-    //    Так флаг занятости не «забудем» снять (риск из обсуждения).
-    //    Условие зеркалит SELECT: моя (assigned_to=?) ИЛИ свободная review-задача.
+    //    in_progress: замок владельца (assigned_to=?). review: любой воркер
+    //    (status='review'). Гонок нет: BEGIN IMMEDIATE + info.changes===1.
     const completeInfo = db
       .prepare(
         `UPDATE tasks SET status=?, assigned_to=NULL, updated_at=datetime('now')
-         WHERE id=? AND (assigned_to=? OR (status='review' AND assigned_to IS NULL))`,
+         WHERE id=? AND (assigned_to=? OR status='review')`,
       )
       .run(newStatus, taskId, workerId);
 

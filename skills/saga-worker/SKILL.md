@@ -105,30 +105,43 @@ Every task goes through **two** `worker_done` calls:
    more work, go do it; you'll come back to review.
 
 2. **Review phase** (task is now `review`, assigned_to NULL): **someone** must
-   review it and deliver a verdict. That someone can be YOU (recommended for the
-   solo-worker case) or another worker.
-   - To deliver the verdict, call `worker_done({ task_id, worker_id, result })`
-     **a second time** on the same task — saga allows closing a free review task
-     from any worker (assigned_to is NULL during review, that's expected).
-   - `result` is the verdict: `"APPROVED — <why>"` or
-     `"CHANGES REQUESTED — <file:line — issue — fix>; see comment"`.
-   - saga moves it `review → done` and frees downstream deps.
+   review it and deliver a verdict. That someone can be YOU (the solo-worker
+   case) or another worker. In review, `assigned_to` is just a record that the
+   task was handed out — NOT a lock. Any worker can deliver the verdict.
+
+   **How to deliver the review verdict** (two working paths — pick either):
+   - **Path A — take it fresh via worker_next** (most robust; works on every build):
+     call `worker_next({ worker_id, project_id })` again — the dispatcher hands
+     you the review task with `skill: "saga-reviewer"` — then
+     `worker_done({ task_id, worker_id, result })` with the verdict.
+   - **Path B — direct second worker_done** (works on builds with the #59 fix):
+     call `worker_done({ task_id, worker_id, result })` a second time on the
+     same task. A free review task can be closed by any worker.
+
+   If Path A is available, prefer it — it re-establishes assignment explicitly.
+   If you've already called `worker_done` (review) and the queue is otherwise
+   empty, use Path B (or Path A) to close it; do NOT leave it sitting in review.
+
+   `result` is the verdict: `"APPROVED — <why>"` or
+   `"CHANGES REQUESTED — <file:line — issue — fix>; see comment"`.
+   saga moves it `review → done` and frees downstream deps.
 
 **Solo worker pattern (you are the only agent):** after your dev-phase
-`worker_done`, when the queue is otherwise empty, immediately call
-`worker_done` again on the same task with your self-review verdict. Do NOT let
-a task sit in `review` — there is no other worker coming. This is the MVP
-trade-off (self-review beats stuck); a separate reviewer pool is a future concern.
+`worker_done` puts the task in `review`, do NOT let it sit there — there is no
+other worker coming. Immediately close the review (Path A or B above) with your
+self-review verdict. This is the MVP trade-off (self-review beats stuck); a
+separate reviewer pool is a future concern.
 
 **Multi-worker pattern:** the developer's `worker_done` puts the task in
 `review`; another worker's `worker_next` will hand it out with
-`skill: "saga-reviewer"`; that worker reviews and calls `worker_done` with the
-verdict.
+`skill: "saga-reviewer"`; that worker reviews and delivers the verdict via
+`worker_done`.
 
 > Real failure this prevents: an agent called `worker_done` (→ review), then
 > tried `task_update({status:"done"})` (ignored) and a second `worker_done`
-> (rejected under old code). The task hung in review. The fix lets the second
-> `worker_done` through on a free review task — so just call it.
+> (rejected under old code). The task hung in review. The fix (#59) lets the
+> second `worker_done` through on a free review task; and Path A (worker_next
+> → reviewer) works regardless. Either way, close the review — don't stall.
 
 ## AUTONOMY — do not ask to continue
 
