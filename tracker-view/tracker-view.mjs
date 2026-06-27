@@ -372,33 +372,63 @@ const server = http.createServer((req, res) => {
   }
 });
 
-server.listen(PORT, () => {
-  try { writeFileSync(PID_FILE, String(process.pid)); } catch {}
-  const u = `http://localhost:${PORT}`;
-  console.log(`saga tracker → ${u}  (DB: ${DB_PATH})`);
-  console.log(`PID: ${process.pid}`);
-  const open = process.platform === 'win32' ? `start ${u}` : process.platform === 'darwin' ? `open ${u}` : `xdg-open ${u}`;
-  try { require('node:child_process').exec(open); } catch {}
-});
+// Pre-check: занят ли уже порт? Если да и мы spawn'уты saga-MCP (TRACKER_SPAWNED=1) —
+// значит другой tracker-view уже бежит и браузер открыт. Тихо выходим, не открываем
+// второе окно и не трогаем рабочий процесс. Это чинит «3 окна ZCode = 3 браузера».
+// Ручной запуск (npm run tracker, без маркера) доходит до EADDRINUSE-блока ниже —
+// там старое поведение (убить stale PID, перезапуститься, открыть браузер).
+function isPortTaken(port) {
+  const net = require('node:net');
+  return new Promise((resolve) => {
+    const tester = net.createServer();
+    tester.once('error', () => resolve(true));   // порт занят
+    tester.once('listening', () => { tester.close(() => resolve(false)); }); // свободен
+    tester.listen(port);
+  });
+}
 
-// EADDRINUSE: убиваем старый процесс по PID-файлу и перезапускаем listen.
-// ВАЖНО: не трогаем saga-MCP (он сидит на stdio, не на этом порту).
-server.on('error', (err) => {
-  if (err.code === 'EADDRINUSE' && existsSync(PID_FILE)) {
-    try {
-      const oldPid = readFileSync(PID_FILE, 'utf8').trim();
-      if (oldPid && oldPid !== String(process.pid)) {
-        const { execSync } = require('node:child_process');
-        try { execSync(`taskkill /PID ${oldPid} /F`, { stdio: 'ignore' }); console.log(`Убит старый tracker-view PID ${oldPid}`); } catch {}
-      }
-      unlinkSync(PID_FILE);
-    } catch {}
-    setTimeout(() => server.listen(PORT), 500);
-  } else {
-    console.error('tracker-view error:', err.message);
-    process.exit(1);
+const SPAWNED = process.env.TRACKER_SPAWNED === '1';
+
+(async () => {
+  if (SPAWNED) {
+    const taken = await isPortTaken(PORT);
+    if (taken) {
+      console.log(`tracker-view: port ${PORT} already in use — another instance is running. Exiting quietly (no browser, no kill).`);
+      process.exit(0);
+    }
   }
-});
+
+  server.listen(PORT, () => {
+    try { writeFileSync(PID_FILE, String(process.pid)); } catch {}
+    const u = `http://localhost:${PORT}`;
+    console.log(`saga tracker → ${u}  (DB: ${DB_PATH})`);
+    console.log(`PID: ${process.pid}`);
+    // Открываем браузер ТОЛЬКО если мы реально забиндились (порт был свободен).
+    // В spawn-режиме pre-check выше гарантировал, что мы первые; в ручном режиме
+    // EADDRINUSE-блок убил stale процесс, и этот listen — свежий, открываем.
+    const open = process.platform === 'win32' ? `start ${u}` : process.platform === 'darwin' ? `open ${u}` : `xdg-open ${u}`;
+    try { require('node:child_process').exec(open); } catch {}
+  });
+
+  // EADDRINUSE: только ручной запуск (без TRACKER_SPAWNED). Убиваем stale PID и
+  // перезапускаем listen. saga-MCP spawn'ы сюда не доходят — они выходят в pre-check.
+  server.on('error', (err) => {
+    if (err.code === 'EADDRINUSE' && existsSync(PID_FILE)) {
+      try {
+        const oldPid = readFileSync(PID_FILE, 'utf8').trim();
+        if (oldPid && oldPid !== String(process.pid)) {
+          const { execSync } = require('node:child_process');
+          try { execSync(`taskkill /PID ${oldPid} /F`, { stdio: 'ignore' }); console.log(`Убит старый tracker-view PID ${oldPid}`); } catch {}
+        }
+        unlinkSync(PID_FILE);
+      } catch {}
+      setTimeout(() => server.listen(PORT), 500);
+    } else {
+      console.error('tracker-view error:', err.message);
+      process.exit(1);
+    }
+  });
+})();
 
 process.on('exit',  () => { try { unlinkSync(PID_FILE); } catch {} });
 process.on('SIGINT', () => { try { unlinkSync(PID_FILE); } catch {} process.exit(0); });

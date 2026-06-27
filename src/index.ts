@@ -134,6 +134,12 @@ async function main() {
             ...process.env,
             PORT: trackerPort,
             DB_PATH: process.env.DB_PATH,
+            // Маркер: «я spawn'ут saga-MCP». В этом режиме tracker-view при
+            // занятом порту ТИХО выходит (уже бежит другой — браузер открыт),
+            // не убивает старый процесс и не открывает второе окно.
+            // Ручной `npm run tracker` (без маркера) сохраняет старое поведение
+            // — перезапуск + открытие браузера.
+            TRACKER_SPAWNED: '1',
           },
         });
         child.unref();
