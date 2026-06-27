@@ -49,6 +49,8 @@ The dispatcher picks the next free task (`todo` or `review`, unassigned, deps me
 
 **`project_id` is REQUIRED on `worker_next`** — without it, the shared multi-project DB would hand the worker a task from some other project. Always resolve it from `./projectname.txt` first (see "Identity & projectname.txt" below). `worker_done` does not take project_id — it derives it from the task it just completed.
 
+**Low-priority tasks are NOT dispatched.** `worker_next` only returns `critical` / `high` / `medium`. A `low` task stays in `todo` and waits for a human to raise its priority (then it enters the queue) or to take it manually. Don't be surprised when a `low` task never comes out of `worker_next`.
+
 Outside the worker loop (planning, triage, one-off edits), use the normal task_*/note_*/comment_* tools below.
 
 ## Identity & projectname.txt

@@ -130,6 +130,7 @@ Because one shared saga DB holds many projects, a worker must know which project
 - Agents read it once, resolve via `project_resolve_by_name`, and pass the resulting `project_id` to `worker_next`.
 - Multiple agents in the same folder read the same file → same project. Restarts and context loss don't matter.
 - `worker_next` requires `project_id` (with existence validation) — a worker literally cannot be handed another project's task.
+- **Low-priority tasks are not dispatched.** `worker_next` only returns `critical`/`high`/`medium`. A `low` task sits in `todo` until a human raises its priority (then it enters the queue) or it's picked up manually. This keeps the worker fleet on work that matters.
 
 ### Running the worker fleet (the actual use case)
 
@@ -298,7 +299,7 @@ No API keys, no accounts, no external services. Everything is stored locally in 
 
 | Tool | Description | Annotations |
 |------|-------------|-------------|
-| `worker_next` | Claim the next free task (`todo` or `review`, unassigned, deps met) atomically; returns the task + the skill the agent should use | `readOnly: false` |
+| `worker_next` | Claim the next free task (`todo` or `review`, unassigned, deps met, **priority medium+**) atomically; returns the task + the skill the agent should use. **Low-priority tasks are NOT handed out** — raise their priority to medium+ to make them claimable | `readOnly: false` |
 | `worker_done` | Complete the held task (`in_progress`→`review`, `review`→`done`, frees the assignment, records `result` as a comment, auto-unblocks downstream on `done`) and return the next task | `readOnly: false` |
 
 **How the dispatcher hands out work** (fork only):

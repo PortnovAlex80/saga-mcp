@@ -81,11 +81,14 @@ function findNextClaimable(
   //    Шаблон NOT EXISTS сверен с tasks.ts:139-145 и blocked_by_count (tasks.ts:279-281).
   //    project-фильтр через tasks.epic_id → epics.project_id (precedent в dashboard.ts).
   //    Готовые индексы: idx_tasks_epic_id, idx_epics_project_id.
+  //    low-приоритет НЕ раздаётся автоматически — ждёт ручного решения (повысить
+  //    приоритет / взять вручную). Применяется к todo И review единообразно.
   const excludeClause = excludeTaskId !== undefined ? 'AND t.id != ?' : '';
   const selectSql = `
     SELECT t.* FROM tasks t
     WHERE t.status IN ('todo', 'review')
       AND t.assigned_to IS NULL
+      AND t.priority IN ('critical', 'high', 'medium')
       AND t.epic_id IN (SELECT id FROM epics WHERE project_id = ?)
       ${excludeClause}
       AND NOT EXISTS (
@@ -288,7 +291,7 @@ export const definitions: Tool[] = [
   {
     name: 'worker_next',
     description:
-      'Claim the next available task for a worker WITHIN A PROJECT. Finds a free task (status todo or review, unassigned, no unmet dependencies) in the given project only, atomically assigns it to the worker, and returns the task plus the skill the agent should use. Other projects in the shared DB are never touched. project_id is REQUIRED — resolve it once from ./projectname.txt via project_resolve_by_name, then pass it on every call. Returns {task: null} when the project queue is empty.',
+      'Claim the next available task for a worker WITHIN A PROJECT. Finds a free task (status todo or review, unassigned, no unmet dependencies, priority medium or above) in the given project only, atomically assigns it to the worker, and returns the task plus the skill the agent should use. Low-priority tasks are NOT handed out automatically (raise their priority to medium+ to make them claimable). Other projects in the shared DB are never touched. project_id is REQUIRED — resolve it once from ./projectname.txt via project_resolve_by_name, then pass it on every call. Returns {task: null} when the project queue is empty.',
     annotations: {
       title: 'Worker: Next Task',
       readOnlyHint: false,
