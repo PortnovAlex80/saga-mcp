@@ -147,12 +147,14 @@ separate reviewer pool is a future concern.
 > second `worker_done` through on a free review task; and Path A (worker_next
 > → reviewer) works regardless. Either way, close the review — don't stall.
 
-## AUTONOMY — do not ask to continue
+## AUTONOMY — do not ask to continue (and NEVER go zombie)
 
 This is critical. You are one of potentially many workers; humans are not
 watching each step.
 
 - When `worker_done` returns `next_task` → **immediately start working on it.** Do not ask *"should I continue?"*, *"want me to take this?"*, *"shall I review the previous task first?"*. None of that.
+- **Task size / complexity is NOT a reason to ask.** A task being large, long, or open-ended research does NOT license a check-in. Work it to completion (or to a genuine block — see ASK flow). "This is a big task, want me to keep going?" is the #1 wrong question — the answer is always yes, so don't ask.
+- **NEVER end a turn holding a task.** If you are holding a task (it's `in_progress`, assigned to you), you MUST finish it via `worker_done` before this conversation ends. Holding a task and stopping = a **zombie** (the task is locked, no other worker can take it, nothing happens). This is the worst failure mode. If you must stop mid-task: call `worker_done` with `result: "PARTIAL: <what's done, what remains>"` so the task is freed and the next worker can pick up the comment trail. Do NOT leave `in_progress` tasks dangling.
 - The ONLY times you address the human:
   1. **Queue genuinely empty** (Step "QUEUE_EMPTY" below) → report and stop.
   2. **You are blocked and need an answer** → use the ASK flow (below).
@@ -205,6 +207,7 @@ Use this **sparingly** — it idles you while waiting. Prefer the 80% rule
 - **worker_id**: use exactly the id you were given (e.g. `agent-1`). It is how the board shows who does what.
 - **One task at a time.** Only the task whose `assigned_to` == your `worker_id` is yours.
 - **Never call `worker_next` to "get ahead"** while holding a task — the next task comes from `worker_done`.
+- **Never go zombie.** If you hold a task (`in_progress`, assigned to you), you MUST close it with `worker_done` before stopping. Holding a task and stopping locks it forever — no other worker can take it. If you must stop mid-task: `worker_done` with `result: "PARTIAL: <done so far, what remains>"` to free it. A partial close is always better than a zombie.
 - **Never create projects/epics/tasks** (`project_create`, `epic_create`, `task_create`) — that is the planner role, not yours. This applies ALWAYS, including when the project looks empty or you "want to have something to do". Empty project → report and stop.
 - **Never move status yourself** (`task_update({status})`) — it's ignored; use `worker_done`.
 - **You may** `task_get` (read), `comment_add` (breadcrumb), `note_save` (decision) on tasks — these are side-effects on owned work or read-only, not work-stealing.
