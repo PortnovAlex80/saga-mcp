@@ -299,6 +299,96 @@ function handleWorkerDone(args: Record<string, unknown>): {
 }
 
 // ============================================================================
+// worker_ask_need / worker_ask_done — сигнал «жду ответа от человека».
+// Агент упёрся в реальный блокер (нужна инфа/решение от человека), но контекст
+// задачи дорогой (часы понимания кода) — дешевле ответить на вопрос, чем
+// перезапускать задачу с нуля. Поэтому:
+//   - assigned_to НЕ трогаем (агент держит задачу, не уходит на другую)
+//   - статус НЕ трогаем (задача остаётся in_progress — визуально «в работе, но ждёт»)
+//   - тег needs-human → мигает красным ⚠️ на канбане
+// Workflow агента: worker_ask_need → AskUserQuestion (в UI ZCode) → worker_ask_done → continue.
+// Редкие случаи; agent-idle терпим.
+// ============================================================================
+
+const NEEDS_HUMAN_TAG = 'needs-human';
+
+/** Разобрать JSON-массив тегов задачи в Set. */
+function parseTags(raw: string | null | undefined): Set<string> {
+  if (!raw) return new Set();
+  try {
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? new Set(arr.filter((t) => typeof t === 'string')) : new Set();
+  } catch {
+    return new Set();
+  }
+}
+
+function handleWorkerAskNeed(args: Record<string, unknown>): {
+  task_id: number;
+  blocking: true;
+} {
+  const db = getDb();
+  const taskId = args.task_id as number;
+  const workerId = args.worker_id as string;
+  const reason = (args.reason as string | undefined) ?? null;
+
+  // Это моя задача? (assigned_to = worker_id) — нельзя мигать чужой.
+  const task = db
+    .prepare('SELECT id, title, tags FROM tasks WHERE id=? AND assigned_to=?')
+    .get(taskId, workerId) as { id: number; title: string; tags: string } | undefined;
+  if (!task) {
+    throw new Error(`Task ${taskId} not assigned to ${workerId} (cannot flag a task you don't hold)`);
+  }
+
+  const tags = parseTags(task.tags);
+  const alreadyBlocking = tags.has(NEEDS_HUMAN_TAG);
+  if (!alreadyBlocking) {
+    tags.add(NEEDS_HUMAN_TAG);
+    db.prepare('UPDATE tasks SET tags=?, updated_at=datetime(\'now\') WHERE id=?')
+      .run(JSON.stringify([...tags]), taskId);
+  }
+
+  // Опциональный reason → comment (человек видит ЧТО спрашивают, не только что мигает).
+  if (reason) {
+    db.prepare('INSERT INTO comments (task_id, author, content) VALUES (?, ?, ?)')
+      .run(taskId, workerId, `ASK: ${reason}`);
+  }
+
+  logActivity(db, 'task', taskId, 'updated', 'ask_need', null, NEEDS_HUMAN_TAG,
+    `Task '${task.title}' flagged needs-human by ${workerId}${reason ? `: ${reason}` : ''}`);
+
+  return { task_id: taskId, blocking: true };
+}
+
+function handleWorkerAskDone(args: Record<string, unknown>): {
+  task_id: number;
+  blocking: false;
+} {
+  const db = getDb();
+  const taskId = args.task_id as number;
+  const workerId = args.worker_id as string;
+
+  const task = db
+    .prepare('SELECT id, title, tags FROM tasks WHERE id=? AND assigned_to=?')
+    .get(taskId, workerId) as { id: number; title: string; tags: string } | undefined;
+  if (!task) {
+    throw new Error(`Task ${taskId} not assigned to ${workerId}`);
+  }
+
+  const tags = parseTags(task.tags);
+  if (tags.has(NEEDS_HUMAN_TAG)) {
+    tags.delete(NEEDS_HUMAN_TAG);
+    db.prepare('UPDATE tasks SET tags=?, updated_at=datetime(\'now\') WHERE id=?')
+      .run(JSON.stringify([...tags]), taskId);
+  }
+
+  logActivity(db, 'task', taskId, 'updated', 'ask_done', NEEDS_HUMAN_TAG, null,
+    `Task '${task.title}' needs-human cleared by ${workerId}`);
+
+  return { task_id: taskId, blocking: false };
+}
+
+// ============================================================================
 // Definitions
 // ============================================================================
 
@@ -364,9 +454,55 @@ export const definitions: Tool[] = [
       required: ['task_id', 'worker_id', 'result'],
     },
   },
+  {
+    name: 'worker_ask_need',
+    description:
+      "Signal that you are blocked on a task and need a human answer BEFORE continuing. Use this RIGHT BEFORE calling the host's AskUserQuestion tool. Flags the task with the 'needs-human' tag so it pulses red (⚠) on the kanban board — the human sees which task is waiting. The task STAYS with you (assigned_to unchanged, status unchanged) — do NOT release it, do NOT take another task; your in-task context is expensive to rebuild. Pass an optional 'reason' to record what you're asking as a comment. After the human answers, call worker_ask_done to clear the flag and continue.",
+    annotations: {
+      title: 'Worker: Ask Human (block)',
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: false,
+    },
+    inputSchema: {
+      type: 'object',
+      properties: {
+        task_id: { type: 'integer', description: 'ID of the task you hold and are blocked on.' },
+        worker_id: { type: 'string', description: 'Your worker_id (must match task.assigned_to).' },
+        reason: {
+          type: 'string',
+          description: 'Optional: the question you are about to ask the human. Recorded as a comment (prefix "ASK:") so it is visible on the task, not only in the AskUserQuestion UI.',
+        },
+      },
+      required: ['task_id', 'worker_id'],
+    },
+  },
+  {
+    name: 'worker_ask_done',
+    description:
+      "Clear the 'needs-human' flag after the human answered your question. Call this RIGHT AFTER receiving the answer (before resuming work). The task was never released — you keep working on it. After this, finish the task normally with worker_done.",
+    annotations: {
+      title: 'Worker: Ask Human (clear)',
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+    inputSchema: {
+      type: 'object',
+      properties: {
+        task_id: { type: 'integer', description: 'ID of the task you hold.' },
+        worker_id: { type: 'string', description: 'Your worker_id (must match task.assigned_to).' },
+      },
+      required: ['task_id', 'worker_id'],
+    },
+  },
 ];
 
 export const handlers: Record<string, ToolHandler> = {
   worker_next: handleWorkerNext,
   worker_done: handleWorkerDone,
+  worker_ask_need: handleWorkerAskNeed,
+  worker_ask_done: handleWorkerAskDone,
 };

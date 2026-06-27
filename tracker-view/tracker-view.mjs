@@ -178,11 +178,15 @@ function renderBoard(projectId, allProjects) {
 
   const cards = tasks.map(t => {
     const e = epicById[t.epic_id];
+    // needs-human флаг — задача ждёт ответа человека, мигает красным
+    let needsHuman = false;
+    try { needsHuman = JSON.parse(t.tags || '[]').includes('needs-human'); } catch {}
     return {
       t, e,
       epicName: e ? e.name : '?',
       epicId: t.epic_id,
       prio: PRIO[t.priority] || '#95a5a6',
+      needsHuman,
     };
   });
   const byStatus = {};
@@ -191,10 +195,11 @@ function renderBoard(projectId, allProjects) {
   const columnsHtml = COLS.map(col => {
     const items = byStatus[col.key] || [];
     const cardsHtml = items.map(c => `
-      <div class="card" data-epic="${c.epicId}" style="border-left:6px solid ${proj.color}">
+      <div class="card${c.needsHuman ? ' needs-human' : ''}" data-epic="${c.epicId}" style="border-left:6px solid ${proj.color}">
         <div class="card-head">
           <span class="prio" style="background:${c.prio}">${esc(c.t.priority)}</span>
           ${c.t.assigned_to ? `<span class="assigned" title="assigned_to">${esc(c.t.assigned_to)}</span>` : ''}
+          ${c.needsHuman ? '<span class="ask-flag" title="needs human answer">⚠ needs human</span>' : ''}
           <span style="flex:1"></span>
           <span class="hb-dot ${ageClass(c.t.updated_at)}" title="${ageText(c.t.updated_at)} назад"></span>
         </div>
@@ -287,6 +292,9 @@ function page(title, body) {
     .count{background:#21262d;color:#8b949e;border-radius:10px;padding:1px 8px;font-size:11px}
     .col-body{padding:10px;display:flex;flex-direction:column;gap:8px;overflow-y:auto} .col-empty{color:#30363d;text-align:center;padding:20px;font-size:20px}
     .card{background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:10px}
+    .card.needs-human{border-color:#e74c3c;animation:card-pulse 1.2s infinite;box-shadow:0 0 0 1px #e74c3c}
+    @keyframes card-pulse{0%,100%{box-shadow:0 0 0 1px #e74c3c,0 0 6px rgba(231,76,60,.4)}50%{box-shadow:0 0 0 2px #e74c3c,0 0 14px rgba(231,76,60,.7)}}
+    .ask-flag{font-size:10px;color:#e74c3c;font-weight:700;background:rgba(231,76,60,.12);border:1px solid #e74c3c;padding:1px 6px;border-radius:3px}
     .card-head{display:flex;justify-content:space-between;align-items:center;gap:6px;margin-bottom:6px}
     .prio{font-size:10px;text-transform:uppercase;font-weight:700;padding:2px 6px;border-radius:3px;color:#0d1117}
     .assigned{font-size:10px;background:#21262d;border:1px solid #30363d;color:#8b949e;padding:1px 6px;border-radius:3px;font-family:monospace}
