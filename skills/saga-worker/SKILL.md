@@ -40,30 +40,25 @@ gets you another project's work.
 2. If it exists → `project_resolve_by_name({ name: "<contents>" })` → keep `project_id`.
 3. If it does NOT exist → ask the user ONCE: *"What is the saga project name for this folder?"*.
    Write that single line to `./projectname.txt`, then call `project_resolve_by_name`.
-4. Pass that `project_id` to **every** `worker_next` call.
+4. **Immediately proceed to THE LOOP** — call `worker_next({ worker_id, project_id })` right away.
+   Do NOT report the resolved project_id back and wait for confirmation. Do NOT ask
+   "ready to start?". Resolving the project IS the start — the next action is `worker_next`.
 
 If you skip Step 0 and call `worker_next` without `project_id`, it throws — the
 error gives these exact steps; follow them.
 
-### Sanity check: is the project set up?
+**Do NOT pre-check the dashboard.** Do not call `tracker_dashboard` /
+`project_list` / `task_list` "to see what's there" before entering the loop.
+The dispatcher is the source of truth about available work — call `worker_next`
+immediately after Step 0. If the queue is empty, it returns `{task: null}` and
+the QUEUE_EMPTY probe (below) handles that. Pre-checking the board wastes a
+turn and tempts you to stop and ask "should I proceed?" — don't. Just call
+`worker_next`.
 
-Before entering the loop, run **one read-only call** to confirm the project is
-real and has work:
-
-```
-tracker_dashboard({ project_id })   # or task_list({ epic_id of any epic in the project })
-```
-
-If the project is empty (no epics, no tasks), it means the **planner role**
-hasn't seeded it yet. **You do NOT create tasks/projects yourself** — that is
-not your job. Tell the user: *"Project '<name>' (id=<id>) exists but has no
-tasks. Seed it (planner role) or pick a different project."* and stop. Do NOT
-fall into the trap of `task_create`-ing things to "have something to do".
-
-> Real failure this prevents: an agent declared "Saga is empty" and started
-> `project_create` + `task_create` for work that already existed in another
-> project. `project_list` / `tracker_dashboard` would have shown it. Always
-> read first; never fabricate work.
+You also do NOT create projects, epics, or tasks (`project_create`,
+`epic_create`, `task_create`) — that is the planner role. If `worker_next`
+returns null and the QUEUE_EMPTY probe confirms the project genuinely has no
+claimable work, report that in one sentence and stop. Do not fabricate work.
 
 ## What "do the work" means — branch on the returned `skill`
 
