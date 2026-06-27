@@ -87,7 +87,7 @@ function findNextClaimable(
   const selectSql = `
     SELECT t.* FROM tasks t
     WHERE t.status IN ('todo', 'review')
-      AND t.assigned_to IS NULL
+      AND (t.assigned_to IS NULL OR t.assigned_to = '')
       AND t.priority IN ('critical', 'high', 'medium')
       AND t.epic_id IN (SELECT id FROM epics WHERE project_id = ?)
       ${excludeClause}
@@ -109,14 +109,17 @@ function findNextClaimable(
 
   // 2. Conditional-UPDATE — защита от гонок (defence in depth):
   //    даже если SELECT вернул кандидата, другой процесс мог занять его
-  //    между SELECT и UPDATE. WHERE ... AND assigned_to IS NULL это отсечёт.
+  //    между SELECT и UPDATE. WHERE ... AND assigned_to IS NULL|'' это отсечёт.
+  //    Tolerant к пустой строке (saga-API может записать '' вместо NULL при
+  //    ручном обновлении; инвариант todo/done ⇒ NULL ловит основную массу,
+  //    это — страховка на случай stale-данных).
   let info: Database.RunResult;
   if (task.status === 'todo') {
     // Цикл разработки: задача уходит в работу.
     info = db
       .prepare(
         `UPDATE tasks SET status='in_progress', assigned_to=?, updated_at=datetime('now')
-         WHERE id=? AND status='todo' AND assigned_to IS NULL`,
+         WHERE id=? AND status='todo' AND (assigned_to IS NULL OR assigned_to = '')`,
       )
       .run(workerId, task.id);
   } else {
@@ -124,7 +127,7 @@ function findNextClaimable(
     info = db
       .prepare(
         `UPDATE tasks SET assigned_to=?, updated_at=datetime('now')
-         WHERE id=? AND status='review' AND assigned_to IS NULL`,
+         WHERE id=? AND status='review' AND (assigned_to IS NULL OR assigned_to = '')`,
       )
       .run(workerId, task.id);
   }

@@ -351,6 +351,19 @@ function handleTaskUpdate(args: Record<string, unknown>) {
   const oldRow = db.prepare('SELECT * FROM tasks WHERE id = ?').get(id) as Record<string, unknown> | undefined;
   if (!oldRow) throw new Error(`Task ${id} not found`);
 
+  // Инвариант: задача в todo/done НИКОГДА не назначена — assigned_to всегда NULL.
+  // Assigned имеет смысл только в активной работе (in_progress/review/blocked).
+  // 1) Нормализуем '' → NULL (saga-API принимает пустую строку как "снять исполнителя").
+  if (args.assigned_to !== undefined && args.assigned_to === '') {
+    args.assigned_to = null;
+  }
+  // 2) Если статус меняется на todo|done — форсим assigned_to=NULL, даже если
+  //    вызывающий не передавал assigned_to явно (как saga форсит actual_hours при done).
+  const targetStatus = args.status as string | undefined;
+  if (targetStatus === 'todo' || targetStatus === 'done') {
+    args.assigned_to = null;
+  }
+
   const update = buildUpdate('tasks', id, args, [
     'title', 'description', 'status', 'priority', 'assigned_to',
     'estimated_hours', 'actual_hours', 'due_date', 'source_ref', 'sort_order', 'tags',
