@@ -70,6 +70,7 @@ function skillForStatus(sourceStatus: string): WorkerSkill {
 function findNextClaimable(
   db: Database.Database,
   workerId: string,
+  projectId: number,
   excludeTaskId?: number,
   attempt: number = 0,
 ): Task | null {
@@ -78,11 +79,14 @@ function findNextClaimable(
   if (attempt >= MAX_CLAIM_ATTEMPTS) return null;
   // 1. SELECT кандидата: статус todo/review, свободна, без невыполненных deps.
   //    Шаблон NOT EXISTS сверен с tasks.ts:139-145 и blocked_by_count (tasks.ts:279-281).
+  //    project-фильтр через tasks.epic_id → epics.project_id (precedent в dashboard.ts).
+  //    Готовые индексы: idx_tasks_epic_id, idx_epics_project_id.
   const excludeClause = excludeTaskId !== undefined ? 'AND t.id != ?' : '';
   const selectSql = `
     SELECT t.* FROM tasks t
     WHERE t.status IN ('todo', 'review')
       AND t.assigned_to IS NULL
+      AND t.epic_id IN (SELECT id FROM epics WHERE project_id = ?)
       ${excludeClause}
       AND NOT EXISTS (
         SELECT 1 FROM task_dependencies d
@@ -94,8 +98,8 @@ function findNextClaimable(
   `;
   const task = (
     excludeTaskId !== undefined
-      ? db.prepare(selectSql).get(excludeTaskId)
-      : db.prepare(selectSql).get()
+      ? db.prepare(selectSql).get(projectId, excludeTaskId)
+      : db.prepare(selectSql).get(projectId)
   ) as Task | undefined;
 
   if (!task) return null;
@@ -123,9 +127,9 @@ function findNextClaimable(
   }
 
   // 3. Кто-то успел занять под носом — ищем следующего кандидата,
-  //    с ограничением попыток (см. MAX_CLAIM_ATTEMPTS выше).
+  //    с ограничением попыток (см. MAX_CLAIM_ATTEMPTS выше). projectId пробрасываем.
   if (info.changes !== 1) {
-    return findNextClaimable(db, workerId, excludeTaskId, attempt + 1);
+    return findNextClaimable(db, workerId, projectId, excludeTaskId, attempt + 1);
   }
 
   // logActivity на назначение (вне цикла: статус/исполнитель сменились)
@@ -156,10 +160,23 @@ function handleWorkerNext(args: Record<string, unknown>): {
   const db = getDb();
   const workerId = args.worker_id as string;
 
+  // project_id REQUIRED — иначе в общей БД агенту подсовывается чужая задача.
+  // Явная ошибка вместо молчаливой пустой очереди: неверная конфигурация видна сразу.
+  const projectId = args.project_id as number | undefined;
+  if (projectId == null) {
+    throw new Error('project_id is required (read ./projectname.txt, then project_resolve_by_name)');
+  }
+  const exists = db.prepare('SELECT 1 FROM projects WHERE id=?').get(projectId);
+  if (!exists) {
+    throw new Error(`project_id ${projectId} not found`);
+  }
+
   // BEGIN IMMEDIATE — write-lock всей БД с старта транзакции
   // (аналог SELECT FOR UPDATE, которого нет в SQLite). busy_timeout=5000 в db.ts.
   // db.transaction(fn) тут только DEFERRED, поэтому оборачиваем явно.
-  const task = withImmediateTransaction(db, () => findNextClaimable(db, workerId));
+  const task = withImmediateTransaction(db, () =>
+    findNextClaimable(db, workerId, projectId),
+  );
 
   if (!task) return { task: null, skill: null, reason: 'очередь пуста' };
   return { task, skill: skillForStatus(task.status) };
@@ -239,7 +256,16 @@ function handleWorkerDone(args: Record<string, unknown>): {
     );
 
     // 7. Сразу следующая задача — с excludeTaskId=taskId (anti-self-review).
-    const next = findNextClaimable(db, workerId, taskId);
+    //    projectId выводим из epic_id текущей задачи (worker_done не принимает
+  //    project_id параметром — он знает task_id, и проект тот же).
+    const projectIdRow = db
+      .prepare('SELECT project_id FROM epics WHERE id=?')
+      .get(task.epic_id) as { project_id: number } | undefined;
+    const projectId = projectIdRow?.project_id;
+    const next =
+      projectId != null
+        ? findNextClaimable(db, workerId, projectId, taskId)
+        : null;
 
     return {
       completed: taskId,
@@ -262,7 +288,7 @@ export const definitions: Tool[] = [
   {
     name: 'worker_next',
     description:
-      'Claim the next available task for a worker. Finds a free task (status todo or review, unassigned, no unmet dependencies), atomically assigns it to the worker, and returns the task plus the skill the agent should use. Returns {task: null} when the queue is empty. Use this in a worker loop: call worker_next -> do the work -> call worker_done -> repeat.',
+      'Claim the next available task for a worker WITHIN A PROJECT. Finds a free task (status todo or review, unassigned, no unmet dependencies) in the given project only, atomically assigns it to the worker, and returns the task plus the skill the agent should use. Other projects in the shared DB are never touched. project_id is REQUIRED — resolve it once from ./projectname.txt via project_resolve_by_name, then pass it on every call. Returns {task: null} when the project queue is empty.',
     annotations: {
       title: 'Worker: Next Task',
       readOnlyHint: false,
@@ -278,8 +304,13 @@ export const definitions: Tool[] = [
           description:
             'Worker identifier (e.g. "agent-1"). Stored in task.assigned_to so the board shows who is working on what.',
         },
+        project_id: {
+          type: 'integer',
+          description:
+            'ID of the project to claim work from (REQUIRED). Get it once via project_resolve_by_name from the name in ./projectname.txt. Tasks from other projects are never returned.',
+        },
       },
-      required: ['worker_id'],
+      required: ['worker_id', 'project_id'],
     },
   },
   {

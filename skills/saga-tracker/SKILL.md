@@ -39,14 +39,29 @@ saga statuses are **fixed and coarse** (5 for tasks). Our detailed stage lives i
 On setups where the dispatcher tools are present (`worker_next` / `worker_done`), an AI worker does NOT call task_*/project_* directly to pull work — it loops:
 
 ```
-worker_next({worker_id})  →  work (saga-developer or saga-reviewer skill)  →  worker_done(...)  →  repeat
+[bootstrap once] read ./projectname.txt → project_resolve_by_name → project_id
+worker_next({worker_id, project_id})  →  work (saga-developer or saga-reviewer skill)  →  worker_done(...)  →  repeat
 ```
 
-The dispatcher picks the next free task (`todo` or `review`, unassigned, deps met), atomically assigns it, and returns a `skill` telling the worker how to approach it:
+The dispatcher picks the next free task (`todo` or `review`, unassigned, deps met) **within the given project only**, atomically assigns it, and returns a `skill` telling the worker how to approach it:
 - `saga-developer` — task was in `todo`, implement it.
 - `saga-reviewer` — task was in `review`, verify it.
 
+**`project_id` is REQUIRED on `worker_next`** — without it, the shared multi-project DB would hand the worker a task from some other project. Always resolve it from `./projectname.txt` first (see "Identity & projectname.txt" below). `worker_done` does not take project_id — it derives it from the task it just completed.
+
 Outside the worker loop (planning, triage, one-off edits), use the normal task_*/note_*/comment_* tools below.
+
+## Identity & projectname.txt
+
+The shared saga DB holds MANY projects. A worker must know WHICH project is its. We do not trust the agent's memory for this — the identity lives in a file:
+
+- `./projectname.txt` in the project root — **one line**, the exact saga project name.
+- Read it once at session start, resolve with `project_resolve_by_name({ name: <from file> })` → `{ project_id, created }`.
+- Pass that `project_id` to every `worker_next` call.
+- Survives restarts; shared by every agent in the same folder (3 agents on one project all read the same file → same project_id).
+- `project_resolve_by_name` is atomic (lookup-or-create under a write lock), so multiple cold agents starting at once do not create duplicate projects (name is not unique in saga).
+
+If `projectname.txt` is missing, ask the human what saga project name this folder maps to, then create the file with that one line.
 
 ## Kanban stages (Harmess process)
 

@@ -1,4 +1,5 @@
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
+import type Database from 'better-sqlite3';
 import { getDb } from '../db.js';
 import { buildUpdate } from '../helpers/sql-builder.js';
 import { logActivity, logEntityUpdate } from '../helpers/activity-logger.js';
@@ -60,6 +61,26 @@ export const definitions: Tool[] = [
         tags: { type: 'array', items: { type: 'string' } },
       },
       required: ['id'],
+    },
+  },
+  {
+    name: 'project_resolve_by_name',
+    description:
+      'Get-or-create a project by its exact name, atomically. Returns {project_id, created, project}. created:true if a new project was inserted, false if an existing name matched. Use this when a worker needs a stable project_id from a project name (e.g. read from ./projectname.txt) — guarantees no duplicate projects are created when multiple agents start cold at once (name is not unique in saga, so the atomic lookup-or-insert under a write lock is what prevents duplicates).',
+    annotations: { title: 'Resolve Project by Name', readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    inputSchema: {
+      type: 'object',
+      properties: {
+        name: {
+          type: 'string',
+          description: 'Exact project name to resolve (matches an existing name, or creates a project with that name).',
+        },
+        description: {
+          type: 'string',
+          description: 'Description to set IF creating (ignored if a project with this name already exists).',
+        },
+      },
+      required: ['name'],
     },
   },
 ];
@@ -127,8 +148,68 @@ function handleProjectUpdate(args: Record<string, unknown>) {
   return newRow;
 }
 
+function handleProjectResolveByName(args: Record<string, unknown>): {
+  project_id: number;
+  created: boolean;
+  project: Record<string, unknown>;
+} {
+  const db = getDb();
+  const name = args.name as string;
+  const description = (args.description as string) ?? null;
+
+  if (!name || typeof name !== 'string' || !name.trim()) {
+    throw new Error('name is required and must be a non-empty string');
+  }
+
+  // BEGIN IMMEDIATE — сериализация писателей. Имя проекта НЕ unique в saga,
+  // поэтому lookup-or-create под одним локом — единственный способ избежать
+  // гонки «3 холодных агента одновременно создают 3 дубликата».
+  // db.transaction(fn) тут только DEFERRED (см. @types/better-sqlite3),
+  // поэтому оборачиваем явно в BEGIN IMMEDIATE / COMMIT / ROLLBACK.
+  const run = (db: Database.Database) => {
+    const found = db
+      .prepare('SELECT * FROM projects WHERE name = ?')
+      .get(name) as Record<string, unknown> | undefined;
+    if (found) {
+      return { project_id: found.id as number, created: false, project: found };
+    }
+    const created = db
+      .prepare(
+        'INSERT INTO projects (name, description, status, tags) VALUES (?, ?, ?, ?) RETURNING *',
+      )
+      .get(name, description, 'active', '[]') as Record<string, unknown>;
+    const createdId = created.id as number;
+    logActivity(
+      db,
+      'project',
+      createdId,
+      'created',
+      null,
+      null,
+      null,
+      `Project '${name}' auto-created by project_resolve_by_name`,
+    );
+    return { project_id: createdId, created: true, project: created };
+  };
+
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    const result = run(db);
+    db.exec('COMMIT');
+    return result;
+  } catch (err) {
+    try {
+      db.exec('ROLLBACK');
+    } catch {
+      /* ignore — tx could not be active */
+    }
+    throw err;
+  }
+}
+
 export const handlers: Record<string, ToolHandler> = {
   project_create: handleProjectCreate,
   project_list: handleProjectList,
   project_update: handleProjectUpdate,
+  project_resolve_by_name: handleProjectResolveByName,
 };

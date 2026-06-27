@@ -105,10 +105,15 @@ Restart ZCode again so it sees the new skills.
 
 ### Step 4 — smoke test the dispatcher
 
-In any ZCode window, run a throwaway claim and release it:
+The dispatcher scopes work by **project**. Each project folder carries its identity in a `projectname.txt` file at its root (one line = the exact saga project name). The worker resolves that name to a `project_id` once, then uses it on every call.
+
+In any ZCode window, from a folder that has a `projectname.txt`:
 ```
-mcp__saga__worker_next({ worker_id: "smoke" })
-# → returns a task (or {task: null} if the queue is empty) + skill
+mcp__saga__project_resolve_by_name({ name: "<contents of ./projectname.txt>" })
+  # → { project_id: 2, created: false, project: {...} }
+
+mcp__saga__worker_next({ worker_id: "smoke", project_id: 2 })
+  # → returns a task (or {task: null} if the project queue is empty) + skill
 ```
 To undo the claim (don't leave a smoke task assigned):
 ```
@@ -117,21 +122,34 @@ mcp__saga__task_update({ id: <returned id>, status: "todo", assigned_to: "" })
 
 If you got a task back, you're done. ✅
 
+### `projectname.txt` (project identity convention)
+
+Because one shared saga DB holds many projects, a worker must know which project is "its" — without relying on agent memory. The convention:
+
+- Create `./projectname.txt` in each project root, containing one line: the exact saga project name.
+- Agents read it once, resolve via `project_resolve_by_name`, and pass the resulting `project_id` to `worker_next`.
+- Multiple agents in the same folder read the same file → same project. Restarts and context loss don't matter.
+- `worker_next` requires `project_id` (with existence validation) — a worker literally cannot be handed another project's task.
+
 ### Running the worker fleet (the actual use case)
 
-Open **N agent windows** in ZCode (e.g. 3), and give each the same prompt with its own id:
+Open **N agent windows** in ZCode (e.g. 3) — all in the same project folder — and give each the same prompt with its own id:
 
 ```
 You are a saga worker. Your worker_id is "agent-1".
-Loop:
-1. Call mcp__saga__worker_next({ worker_id: "agent-1" }).
-2. If task is null → say "queue empty" and stop.
-3. Otherwise: apply the skill named in the response (saga-developer or saga-reviewer),
-   do the work, then call mcp__saga__worker_done({ task_id, worker_id: "agent-1", result: "..." }).
-4. The response carries the next task — repeat from step 2.
+Project identity lives in ./projectname.txt — do not trust your memory for the project.
+1. Read ./projectname.txt, then call
+   mcp__saga__project_resolve_by_name({ name: "<contents>" })  →  note project_id.
+2. Loop:
+   a. mcp__saga__worker_next({ worker_id: "agent-1", project_id: <from step 1> }).
+   b. If task is null → say "queue empty" and stop.
+   c. Otherwise: apply the skill named in the response (saga-developer or saga-reviewer),
+      do the work, then call
+      mcp__saga__worker_done({ task_id, worker_id: "agent-1", result: "..." }).
+   d. The response carries the next task — repeat from 2b.
 ```
 
-Watch the board (your `saga.db` via any viewer) from your phone. The dispatcher guarantees no two agents grab the same task (see `tests/dispatcher-race/`).
+Watch the board (your `saga.db` via any viewer) from your phone. The dispatcher guarantees no two agents grab the same task (see `tests/dispatcher-race/`), and `project_id` scoping guarantees they only touch this project.
 
 ### Updating the fork later
 

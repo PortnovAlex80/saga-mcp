@@ -7,18 +7,31 @@ description: "You are a saga worker in REVIEWER mode. The dispatcher handed you 
 
 You received a task from the saga dispatcher via `worker_next`. The task was in `review` (developer finished it); saga atomically set `assigned_to = <your worker_id>` and **left the status as `review`** (that is how you know you are the reviewer, not the developer). Your job is to **verify** the work.
 
-The dispatcher response looked like:
-```json
-{ "task": { "id": 42, ..., "status": "review" }, "skill": "saga-reviewer" }
+## Identity & bootstrap (ONCE, before the loop)
+
+Your project identity lives in `./projectname.txt` in the project root (one line = exact saga project name) — NOT in your memory. Read it once and resolve it to a `project_id`:
+
 ```
+1. Read ./projectname.txt → "<project name>"
+2. project_resolve_by_name({ name: "<project name>" })
+     → { project_id, created, project }    // created:true means it was just created
+3. Hold onto project_id — pass it to every worker_next call
+```
+
+This is what makes you work on THIS project and not get handed another project's task (the shared DB holds many). See the tracker skill's "Identity & projectname.txt" section.
 
 ## The loop
 
 ```
-worker_next({worker_id})          ← already done; you have the task in review
+worker_next({worker_id, project_id})        ← already done; you have the task in review
   → review the work (this skill)
 worker_done({task_id, worker_id, result})   ← hand back; saga moves to done + gives next
   → repeat with the returned next_task
+```
+
+The dispatcher response looked like:
+```json
+{ "task": { "id": 42, ..., "status": "review" }, "skill": "saga-reviewer" }
 ```
 
 Stop only when `worker_done` returns `next_task: null` (queue empty) — then say so and wait.
