@@ -92,8 +92,43 @@ worker_done({ task_id, worker_id, result: "<what you did / your verdict>" })
 ```
 
 - `result` is **honest**: failed tests, skipped steps, "couldn't verify X" included. The reviewer/human read it, not your confidence.
-- saga moves the task (`in_progress→review` or `review→done`) and returns `next_task` + `next_skill`.
+- saga moves the task and returns `next_task` + `next_skill`.
 - **Do NOT call `task_update({status:...})` to move a task.** Status is the dispatcher's exclusive zone; `task_update` will silently ignore it and warn you. Only `worker_done` advances status.
+
+### Two-phase completion (IMPORTANT — this is how review works)
+
+Every task goes through **two** `worker_done` calls:
+
+1. **Dev phase** (task was `todo`, now `in_progress`): you implement, then
+   `worker_done({ task_id, worker_id, result: "what I did" })`. saga moves it to
+   `review` (assigned_to cleared). The response carries `next_task` — if there is
+   more work, go do it; you'll come back to review.
+
+2. **Review phase** (task is now `review`, assigned_to NULL): **someone** must
+   review it and deliver a verdict. That someone can be YOU (recommended for the
+   solo-worker case) or another worker.
+   - To deliver the verdict, call `worker_done({ task_id, worker_id, result })`
+     **a second time** on the same task — saga allows closing a free review task
+     from any worker (assigned_to is NULL during review, that's expected).
+   - `result` is the verdict: `"APPROVED — <why>"` or
+     `"CHANGES REQUESTED — <file:line — issue — fix>; see comment"`.
+   - saga moves it `review → done` and frees downstream deps.
+
+**Solo worker pattern (you are the only agent):** after your dev-phase
+`worker_done`, when the queue is otherwise empty, immediately call
+`worker_done` again on the same task with your self-review verdict. Do NOT let
+a task sit in `review` — there is no other worker coming. This is the MVP
+trade-off (self-review beats stuck); a separate reviewer pool is a future concern.
+
+**Multi-worker pattern:** the developer's `worker_done` puts the task in
+`review`; another worker's `worker_next` will hand it out with
+`skill: "saga-reviewer"`; that worker reviews and calls `worker_done` with the
+verdict.
+
+> Real failure this prevents: an agent called `worker_done` (→ review), then
+> tried `task_update({status:"done"})` (ignored) and a second `worker_done`
+> (rejected under old code). The task hung in review. The fix lets the second
+> `worker_done` through on a free review task — so just call it.
 
 ## AUTONOMY — do not ask to continue
 
