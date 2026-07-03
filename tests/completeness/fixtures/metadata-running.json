@@ -1,0 +1,5 @@
+[
+  { "status": "completed", "parentSessionId": "old-0001", "agentId": "saga-kickstart" },
+  { "status": "running", "parentSessionId": "sess-parent-abc-123", "agentId": "saga-kickstart", "startedAt": 1780000000000 },
+  { "status": "pending", "parentSessionId": "sess-future-zzz" }
+]
