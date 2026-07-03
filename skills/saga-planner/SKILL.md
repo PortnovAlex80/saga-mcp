@@ -88,3 +88,72 @@ do NOT call worker_next — that's the orchestrator's job after you finish.
   `implements` traces (via `trace_list({ source_id, link_type:'implements' })`)
   and skip ACs that already have a dev-task. Don't create duplicate tasks.
 - **Coverage is your exit criterion**, not "I think I did all of them".
+
+## Planning for parallel dev — avoid integration conflicts
+
+When multiple ACs of an episode touch the **same file / module / API surface**,
+naive "one dev-task per AC, all parallel" produces merge conflicts — because
+each worker independently invents the shared structure (API contract, module
+layout). The conflict is NOT a worker failure; it's a planning failure. Two
+patterns prevent it. Pick based on how much the ACs share:
+
+### Pattern A — Sequence (small overlap: 2-3 ACs share one file)
+
+If ACs share a file but are few, chain them with `depends_on`. Each task
+inherits the previous task's merged result, so no parallel writes to the same
+file. Slower (no parallelism), but zero integration risk.
+
+```
+AC-1 (add)  ─depends_on─▶  AC-2 (div)  ─depends_on─▶  AC-3 (sub)
+```
+
+Use when: 2-3 ACs, same file, the work per AC is small. Parallelism gain is
+marginal anyway.
+
+### Pattern B — Scaffold + parallel bodies + integrate (large overlap: 4+ ACs share a module)
+
+For larger overlap, separate the **shared structure** from the **per-AC bodies**:
+
+1. **SCAFFOLD task** (no AC trace — it's infrastructure): create the module with
+   the API contract fixed — function signatures, class skeletons, stub returns.
+   The SRS's API contract section (which saga-architect MUST produce for any
+   module touched by >1 parallel task) is the source. This task must reach
+   `done` before the body tasks start (they `depends_on` it).
+2. **Body tasks** (one per AC, all parallel, all `depends_on` the scaffold):
+   each worker fills ONE function/body. Because the scaffold fixed the API,
+   workers don't invent the structure — they implement inside it. Different
+   functions → no file conflict on bodies.
+3. **INTEGRATE task** (`depends_on` ALL body tasks): one task that merges every
+   body branch into `dev`, resolves any residual conflict (now mechanical, since
+   the API is shared), and produces the final merge commit. This is a deliberate
+   integration step, not an accident inside each worker's dev-phase.
+
+```
+SCAFFOLD (create module + API contract) ─▶ done
+   ├── AC-1 body (depends_on SCAFFOLD) ──┐
+   ├── AC-2 body (depends_on SCAFFOLD) ──┤  all parallel, different functions
+   ├── AC-3 body (depends_on SCAFFOLD) ──┤
+   ├── AC-4 body (depends_on SCAFFOLD) ──┘
+   │ all done
+   ▼
+INTEGRATE (depends_on all bodies): merge all branches → final dev merge
+```
+
+Use when: 4+ ACs share a module, or the API contract is non-trivial. The
+SCAFFOLD removes the architectural ambiguity that caused REQ-001's conflicts;
+the INTEGRATE task owns the merge instead of each worker racing for merge-lock.
+
+### When to deviate from one-task-per-AC
+
+- If two ACs are truly inseparable (same function, same lines), group them into
+  one task — but trace BOTH ACs to it.
+- If an AC maps to multiple files/modules, split by module, not by AC — each
+  task's `source_ref` still points to the AC, and the AC has multiple
+  `implements` traces.
+
+### The core principle
+
+**If two parallel workers would touch the same lines, the plan is wrong — not
+the workers.** Fix it at planning time: scaffold the shared contract, sequence
+the overlap, or split by module. Merge conflicts that arise from genuinely
+shared code are a planning defect, not an execution one.
