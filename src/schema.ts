@@ -125,6 +125,47 @@ CREATE TABLE IF NOT EXISTS activity_log (
   created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Requirements & design artifacts (PRD, SRS, use cases, AC, FR, NFR, decisions).
+-- Each artifact lives in a project (scope) and an epic (REQ-NNN episode),
+-- carries a path to its .md doc, a code for queryability (AC-1, FR-3), and a
+-- status mirroring the doc's Status header. parent_artifact_id forms the
+-- within-episode hierarchy (AC → UC, FR → PRD, etc.).
+
+CREATE TABLE IF NOT EXISTS artifacts (
+  id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+  project_id          INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  epic_id             INTEGER NOT NULL REFERENCES epics(id) ON DELETE CASCADE,
+  type                TEXT NOT NULL
+                        CHECK (type IN ('PRD','SRS','UC','AC','FR','NFR','decision')),
+  code                TEXT,
+  title               TEXT NOT NULL,
+  path                TEXT NOT NULL,
+  status              TEXT NOT NULL DEFAULT 'draft'
+                        CHECK (status IN ('draft','in_review','accepted','superseded')),
+  parent_artifact_id  INTEGER REFERENCES artifacts(id) ON DELETE SET NULL,
+  tags                TEXT NOT NULL DEFAULT '[]',
+  metadata            TEXT NOT NULL DEFAULT '{}',
+  created_at          TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at          TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Traceability graph. Polymorphic target: another artifact OR a task in any
+-- project. link_type names the relationship (covers / implements / derived_from
+-- / depends_on / verified_by). This is the bridge between the requirements
+-- project and the builders' kanban: an AC artifact (source) is 'implemented by'
+-- a dev task (target_type='task').
+
+CREATE TABLE IF NOT EXISTS artifact_traces (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  source_id     INTEGER NOT NULL REFERENCES artifacts(id) ON DELETE CASCADE,
+  target_type   TEXT NOT NULL CHECK (target_type IN ('artifact','task')),
+  target_id     INTEGER NOT NULL,
+  link_type     TEXT NOT NULL
+                  CHECK (link_type IN ('covers','implements','derived_from','depends_on','verified_by','superseded_by')),
+  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (source_id, target_type, target_id, link_type)
+);
+
 -- Indexes
 
 CREATE INDEX IF NOT EXISTS idx_epics_project_id ON epics(project_id);
@@ -137,6 +178,15 @@ CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
 CREATE INDEX IF NOT EXISTS idx_subtasks_status ON subtasks(status);
 
 CREATE INDEX IF NOT EXISTS idx_epics_priority ON epics(priority);
+CREATE INDEX IF NOT EXISTS idx_artifacts_project ON artifacts(project_id);
+CREATE INDEX IF NOT EXISTS idx_artifacts_epic ON artifacts(epic_id);
+CREATE INDEX IF NOT EXISTS idx_artifacts_type ON artifacts(type);
+CREATE INDEX IF NOT EXISTS idx_artifacts_status ON artifacts(status);
+CREATE INDEX IF NOT EXISTS idx_artifacts_parent ON artifacts(parent_artifact_id);
+CREATE INDEX IF NOT EXISTS idx_artifacts_code ON artifacts(code);
+CREATE INDEX IF NOT EXISTS idx_traces_source ON artifact_traces(source_id);
+CREATE INDEX IF NOT EXISTS idx_traces_target ON artifact_traces(target_type, target_id);
+CREATE INDEX IF NOT EXISTS idx_traces_link ON artifact_traces(link_type);
 CREATE INDEX IF NOT EXISTS idx_tasks_priority ON tasks(priority);
 
 CREATE INDEX IF NOT EXISTS idx_epics_sort ON epics(project_id, sort_order);

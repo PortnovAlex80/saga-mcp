@@ -23,6 +23,7 @@ import { definitions as commentDefs, handlers as commentHandlers } from './tools
 import { definitions as templateDefs, handlers as templateHandlers } from './tools/templates.js';
 import { definitions as exportImportDefs, handlers as exportImportHandlers } from './tools/export-import.js';
 import { definitions as dispatcherDefs, handlers as dispatcherHandlers } from './tools/dispatcher.js';
+import { definitions as artifactDefs, handlers as artifactHandlers } from './tools/artifacts.js';
 import { closeDb } from './db.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -41,6 +42,7 @@ const ALL_TOOLS: Tool[] = [
   ...activityDefs,
   ...exportImportDefs,
   ...dispatcherDefs,
+  ...artifactDefs,
 ];
 
 const ALL_HANDLERS: Record<string, (args: Record<string, unknown>) => unknown> = {
@@ -56,6 +58,7 @@ const ALL_HANDLERS: Record<string, (args: Record<string, unknown>) => unknown> =
   ...activityHandlers,
   ...exportImportHandlers,
   ...dispatcherHandlers,
+  ...artifactHandlers,
 };
 
 const server = new Server(

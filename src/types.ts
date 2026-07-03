@@ -84,3 +84,33 @@ export interface ToolDefinition {
 }
 
 export type ToolHandler = (args: Record<string, unknown>) => unknown;
+
+// Requirements & design artifacts (PRD/SRS/UC/AC/FR/NFR/decision).
+// One artifact = one .md doc + its status + optional parent (within-episode
+// hierarchy) + code for querying (AC-1, FR-3).
+export interface Artifact {
+  id: number;
+  project_id: number;
+  epic_id: number;
+  type: 'PRD' | 'SRS' | 'UC' | 'AC' | 'FR' | 'NFR' | 'decision';
+  code: string | null;
+  title: string;
+  path: string;
+  status: 'draft' | 'in_review' | 'accepted' | 'superseded';
+  parent_artifact_id: number | null;
+  tags: string;
+  metadata: string;
+  created_at: string;
+  updated_at: string;
+}
+
+// Traceability edge. source = artifact; target = artifact OR task (polymorphic).
+// link_type names the relation (covers/implements/derived_from/...).
+export interface ArtifactTrace {
+  id: number;
+  source_id: number;
+  target_type: 'artifact' | 'task';
+  target_id: number;
+  link_type: 'covers' | 'implements' | 'derived_from' | 'depends_on' | 'verified_by' | 'superseded_by';
+  created_at: string;
+}

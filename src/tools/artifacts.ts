@@ -1,0 +1,476 @@
+import type { Tool } from '@modelcontextprotocol/sdk/types.js';
+import { getDb } from '../db.js';
+import { logActivity } from '../helpers/activity-logger.js';
+import type { Artifact, ArtifactTrace, ToolHandler } from '../types.js';
+
+// ============================================================================
+// Requirements & design artifacts + traceability graph.
+//
+// Two tables:
+//   artifacts       — PRD/SRS/UC/AC/FR/NFR/decision, with path to .md doc,
+//                     status (draft/in_review/accepted/superseded), code (AC-1),
+//                     parent_artifact_id (within-episode hierarchy).
+//   artifact_traces — directed edges source→{artifact|task} with link_type
+//                     (covers/implements/derived_from/...). The bridge between
+//                     the requirements project and the builders' kanban: an AC
+//                     artifact is 'implemented by' a dev task.
+//
+// Artifacts are scoped to a project (requirements project lives alongside
+// builders' project in the same DB). Epic = one REQ-NNN episode.
+// ============================================================================
+
+const ARTIFACT_TYPES = ['PRD', 'SRS', 'UC', 'AC', 'FR', 'NFR', 'decision'] as const;
+const ARTIFACT_STATUSES = ['draft', 'in_review', 'accepted', 'superseded'] as const;
+const LINK_TYPES = ['covers', 'implements', 'derived_from', 'depends_on', 'verified_by', 'superseded_by'] as const;
+
+// ============================================================================
+// Handlers
+// ============================================================================
+
+function handleArtifactCreate(args: Record<string, unknown>): Artifact {
+  const db = getDb();
+  const projectId = args.project_id as number;
+  const epicId = args.epic_id as number;
+  const type = args.type as typeof ARTIFACT_TYPES[number];
+  const title = args.title as string;
+  const path = args.path as string;
+  const code = (args.code as string | undefined) ?? null;
+  const status = (args.status as typeof ARTIFACT_STATUSES[number] | undefined) ?? 'draft';
+  const parentArtifactId = (args.parent_artifact_id as number | undefined) ?? null;
+  const tags = (args.tags as string[] | undefined) ?? [];
+  const metadata = (args.metadata as Record<string, unknown> | undefined) ?? {};
+
+  if (!ARTIFACT_TYPES.includes(type)) {
+    throw new Error(`type must be one of ${ARTIFACT_TYPES.join(', ')}, got '${type}'`);
+  }
+  if (!ARTIFACT_STATUSES.includes(status)) {
+    throw new Error(`status must be one of ${ARTIFACT_STATUSES.join(', ')}, got '${status}'`);
+  }
+  if (!title || !path) {
+    throw new Error('title and path are required');
+  }
+
+  const info = db.prepare(
+    `INSERT INTO artifacts (project_id, epic_id, type, code, title, path, status, parent_artifact_id, tags, metadata)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(
+    projectId, epicId, type, code, title, path, status, parentArtifactId,
+    JSON.stringify(tags), JSON.stringify(metadata),
+  );
+
+  const artifact = db.prepare('SELECT * FROM artifacts WHERE id=?').get(info.lastInsertRowid) as Artifact;
+  logActivity(db, 'artifact', artifact.id, 'created', null, null, type,
+    `Artifact ${artifact.type}${code ? ` ${code}` : ''} '${title}' created`);
+  return artifact;
+}
+
+function handleArtifactGet(args: Record<string, unknown>): {
+  artifact: Artifact;
+  parents: Artifact[];
+  children: Artifact[];
+  traces_out: Array<ArtifactTrace & { target_title: string | null }>;
+  traces_in: Array<ArtifactTrace & { source: { id: number; type: string; code: string | null; title: string } }>;
+} {
+  const db = getDb();
+  const id = args.id as number;
+  const artifact = db.prepare('SELECT * FROM artifacts WHERE id=?').get(id) as Artifact | undefined;
+  if (!artifact) throw new Error(`Artifact ${id} not found`);
+
+  // parents up the hierarchy
+  const parents: Artifact[] = [];
+  let cur = artifact.parent_artifact_id;
+  const seen = new Set<number>([id]);
+  while (cur != null && !seen.has(cur)) {
+    seen.add(cur);
+    const p = db.prepare('SELECT * FROM artifacts WHERE id=?').get(cur) as Artifact | undefined;
+    if (!p) break;
+    parents.push(p);
+    cur = p.parent_artifact_id;
+  }
+
+  // direct children
+  const children = db.prepare('SELECT * FROM artifacts WHERE parent_artifact_id=? ORDER BY type, code').all(id) as Artifact[];
+
+  // outgoing traces (this artifact → something)
+  const tracesOut = db.prepare(
+    `SELECT t.*, CASE WHEN t.target_type='artifact'
+        THEN (SELECT title FROM artifacts WHERE id=t.target_id)
+        ELSE (SELECT title FROM tasks WHERE id=t.target_id) END AS target_title
+     FROM artifact_traces t WHERE t.source_id=? ORDER BY t.link_type, t.target_type`,
+  ).all(id) as Array<ArtifactTrace & { target_title: string | null }>;
+
+  // incoming traces (something → this artifact)
+  const tracesIn = db.prepare(
+    `SELECT t.*,
+        (SELECT a.id FROM artifacts a WHERE a.id=t.source_id) AS _src_art,
+        (SELECT a.type FROM artifacts a WHERE a.id=t.source_id) AS src_type,
+        (SELECT a.code FROM artifacts a WHERE a.id=t.source_id) AS src_code,
+        (SELECT a.title FROM artifacts a WHERE a.id=t.source_id) AS src_title
+     FROM artifact_traces t
+     WHERE t.target_type='artifact' AND t.target_id=?
+     ORDER BY t.link_type`,
+  ).all(id) as Array<ArtifactTrace & {
+    src_type: string; src_code: string | null; src_title: string;
+  }>;
+  const traces_in = tracesIn.map((r) => ({
+    id: r.id, source_id: r.source_id, target_type: r.target_type, target_id: r.target_id,
+    link_type: r.link_type, created_at: r.created_at,
+    source: { id: r.source_id, type: r.src_type, code: r.src_code, title: r.src_title },
+  }));
+
+  return { artifact, parents, children, traces_out: tracesOut, traces_in };
+}
+
+function handleArtifactList(args: Record<string, unknown>): {
+  artifacts: Array<Artifact & { epic_name: string }>;
+  count: number;
+} {
+  const db = getDb();
+  const projectId = args.project_id as number | undefined;
+  const epicId = args.epic_id as number | undefined;
+  const type = args.type as string | undefined;
+  const status = args.status as string | undefined;
+  const parentArtifactId = args.parent_artifact_id as number | undefined;
+
+  const where: string[] = [];
+  const params: unknown[] = [];
+  if (projectId != null) { where.push('a.project_id=?'); params.push(projectId); }
+  if (epicId != null) { where.push('a.epic_id=?'); params.push(epicId); }
+  if (type) { where.push('a.type=?'); params.push(type); }
+  if (status) { where.push('a.status=?'); params.push(status); }
+  if (parentArtifactId != null) { where.push('a.parent_artifact_id=?'); params.push(parentArtifactId); }
+
+  const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : '';
+  const rows = db.prepare(
+    `SELECT a.*, e.name AS epic_name FROM artifacts a
+     JOIN epics e ON e.id=a.epic_id
+     ${whereClause}
+     ORDER BY a.epic_id, a.type, a.code`,
+  ).all(...params) as Array<Artifact & { epic_name: string }>;
+
+  return { artifacts: rows, count: rows.length };
+}
+
+function handleArtifactUpdate(args: Record<string, unknown>): Artifact {
+  const db = getDb();
+  const id = args.id as number;
+  const existing = db.prepare('SELECT * FROM artifacts WHERE id=?').get(id) as Artifact | undefined;
+  if (!existing) throw new Error(`Artifact ${id} not found`);
+
+  const fields: string[] = [];
+  const params: unknown[] = [];
+  const trackedFields: Array<[string, string]> = [];
+
+  const title = args.title as string | undefined;
+  if (title !== undefined) { fields.push('title=?'); params.push(title); trackedFields.push(['title', 'title']); }
+
+  const path = args.path as string | undefined;
+  if (path !== undefined) { fields.push('path=?'); params.push(path); trackedFields.push(['path', 'path']); }
+
+  const code = args.code as string | undefined;
+  if (code !== undefined) { fields.push('code=?'); params.push(code); trackedFields.push(['code', 'code']); }
+
+  const status = args.status as typeof ARTIFACT_STATUSES[number] | undefined;
+  if (status !== undefined) {
+    if (!ARTIFACT_STATUSES.includes(status)) {
+      throw new Error(`status must be one of ${ARTIFACT_STATUSES.join(', ')}, got '${status}'`);
+    }
+    fields.push('status=?'); params.push(status); trackedFields.push(['status', 'status']);
+  }
+
+  const parentArtifactId = args.parent_artifact_id as number | null | undefined;
+  if (parentArtifactId !== undefined) {
+    fields.push('parent_artifact_id=?'); params.push(parentArtifactId); trackedFields.push(['parent_artifact_id', 'parent']);
+  }
+
+  const tags = args.tags as string[] | undefined;
+  if (tags !== undefined) { fields.push('tags=?'); params.push(JSON.stringify(tags)); }
+
+  const metadata = args.metadata as Record<string, unknown> | undefined;
+  if (metadata !== undefined) { fields.push('metadata=?'); params.push(JSON.stringify(metadata)); }
+
+  if (fields.length === 0) {
+    return existing; // nothing to update
+  }
+  fields.push("updated_at=datetime('now')");
+  params.push(id);
+
+  db.prepare(`UPDATE artifacts SET ${fields.join(', ')} WHERE id=?`).run(...params);
+  const updated = db.prepare('SELECT * FROM artifacts WHERE id=?').get(id) as Artifact;
+
+  // logActivity: one summary line; status change is the most interesting
+  const statusChanged = trackedFields.some(([f]) => f === 'status');
+  logActivity(db, 'artifact', id, statusChanged ? 'status_changed' : 'updated',
+    statusChanged ? 'status' : null,
+    statusChanged ? existing.status : null,
+    statusChanged ? (args.status as string) : null,
+    `Artifact ${updated.type}${updated.code ? ` ${updated.code}` : ''} '${updated.title}' updated`);
+  return updated;
+}
+
+// ============================================================================
+// Traces
+// ============================================================================
+
+function handleTraceAdd(args: Record<string, unknown>): ArtifactTrace {
+  const db = getDb();
+  const sourceId = args.source_id as number;
+  const targetType = args.target_type as 'artifact' | 'task';
+  const targetId = args.target_id as number;
+  const linkType = args.link_type as typeof LINK_TYPES[number];
+
+  if (!['artifact', 'task'].includes(targetType)) {
+    throw new Error(`target_type must be 'artifact' or 'task', got '${targetType}'`);
+  }
+  if (!LINK_TYPES.includes(linkType)) {
+    throw new Error(`link_type must be one of ${LINK_TYPES.join(', ')}, got '${linkType}'`);
+  }
+
+  // source must exist
+  const src = db.prepare('SELECT 1 FROM artifacts WHERE id=?').get(sourceId);
+  if (!src) throw new Error(`source artifact ${sourceId} not found`);
+
+  // target must exist
+  if (targetType === 'artifact') {
+    const t = db.prepare('SELECT 1 FROM artifacts WHERE id=?').get(targetId);
+    if (!t) throw new Error(`target artifact ${targetId} not found`);
+  } else {
+    const t = db.prepare('SELECT 1 FROM tasks WHERE id=?').get(targetId);
+    if (!t) throw new Error(`target task ${targetId} not found`);
+  }
+
+  const info = db.prepare(
+    `INSERT OR IGNORE INTO artifact_traces (source_id, target_type, target_id, link_type) VALUES (?, ?, ?, ?)`,
+  ).run(sourceId, targetType, targetId, linkType);
+
+  const trace = db.prepare(
+    'SELECT * FROM artifact_traces WHERE source_id=? AND target_type=? AND target_id=? AND link_type=?',
+  ).get(sourceId, targetType, targetId, linkType) as ArtifactTrace;
+
+  logActivity(db, 'artifact', sourceId, 'updated', 'trace', null, `${linkType}→${targetType}:${targetId}`,
+    `Trace ${linkType} added: artifact ${sourceId} → ${targetType} ${targetId}${info.changes === 0 ? ' (already existed)' : ''}`);
+  return trace;
+}
+
+function handleTraceList(args: Record<string, unknown>): {
+  traces: Array<ArtifactTrace & {
+    source_type: string | null; source_code: string | null; source_title: string | null;
+    target_title: string | null; target_status: string | null;
+  }>;
+  count: number;
+} {
+  const db = getDb();
+  const sourceId = args.source_id as number | undefined;
+  const targetType = args.target_type as string | undefined;
+  const targetId = args.target_id as number | undefined;
+  const linkType = args.link_type as string | undefined;
+
+  const where: string[] = [];
+  const params: unknown[] = [];
+  if (sourceId != null) { where.push('t.source_id=?'); params.push(sourceId); }
+  if (targetType) { where.push('t.target_type=?'); params.push(targetType); }
+  if (targetId != null) { where.push('t.target_id=?'); params.push(targetId); }
+  if (linkType) { where.push('t.link_type=?'); params.push(linkType); }
+
+  const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : '';
+  const rows = db.prepare(
+    `SELECT t.*,
+        (SELECT a.type  FROM artifacts a WHERE a.id=t.source_id) AS source_type,
+        (SELECT a.code  FROM artifacts a WHERE a.id=t.source_id) AS source_code,
+        (SELECT a.title FROM artifacts a WHERE a.id=t.source_id) AS source_title,
+        CASE WHEN t.target_type='artifact'
+             THEN (SELECT a.title  FROM artifacts a WHERE a.id=t.target_id)
+             ELSE (SELECT tk.title FROM tasks tk WHERE tk.id=t.target_id)
+        END AS target_title,
+        CASE WHEN t.target_type='artifact'
+             THEN (SELECT a.status FROM artifacts a WHERE a.id=t.target_id)
+             ELSE (SELECT tk.status FROM tasks tk WHERE tk.id=t.target_id)
+        END AS target_status
+     FROM artifact_traces t
+     ${whereClause}
+     ORDER BY t.source_id, t.link_type, t.target_type`,
+  ).all(...params) as Array<ArtifactTrace & {
+    source_type: string | null; source_code: string | null; source_title: string | null;
+    target_title: string | null; target_status: string | null;
+  }>;
+
+  return { traces: rows, count: rows.length };
+}
+
+// Coverage matrix: for an epic (REQ-NNN episode), which artifacts of `type`
+// (typically AC or FR) are covered by `link_type` (typically 'implements')
+// pointing at tasks, and which are gaps.
+function handleArtifactCoverage(args: Record<string, unknown>): {
+  epic_id: number;
+  type: string;
+  link_type: string;
+  total: number;
+  covered: number;
+  gaps: Array<{ artifact_id: number; code: string | null; title: string; path: string; status: string }>;
+  covered_list: Array<{ artifact_id: number; code: string | null; title: string; task_ids: number[] }>;
+} {
+  const db = getDb();
+  const epicId = args.epic_id as number;
+  const type = (args.type as string | undefined) ?? 'AC';
+  const linkType = (args.link_type as string | undefined) ?? 'implements';
+
+  const artifacts = db.prepare(
+    'SELECT * FROM artifacts WHERE epic_id=? AND type=? ORDER BY code',
+  ).all(epicId, type) as Artifact[];
+
+  const gaps: Array<{ artifact_id: number; code: string | null; title: string; path: string; status: string }> = [];
+  const coveredList: Array<{ artifact_id: number; code: string | null; title: string; task_ids: number[] }> = [];
+
+  for (const a of artifacts) {
+    const links = db.prepare(
+      `SELECT target_id FROM artifact_traces WHERE source_id=? AND target_type='task' AND link_type=?`,
+    ).all(a.id, linkType) as Array<{ target_id: number }>;
+    if (links.length === 0) {
+      gaps.push({ artifact_id: a.id, code: a.code, title: a.title, path: a.path, status: a.status });
+    } else {
+      coveredList.push({ artifact_id: a.id, code: a.code, title: a.title, task_ids: links.map((l) => l.target_id) });
+    }
+  }
+
+  return {
+    epic_id: epicId,
+    type,
+    link_type: linkType,
+    total: artifacts.length,
+    covered: coveredList.length,
+    gaps,
+    covered_list: coveredList,
+  };
+}
+
+// ============================================================================
+// Definitions
+// ============================================================================
+
+export const definitions: Tool[] = [
+  {
+    name: 'artifact_create',
+    description:
+      "Create a requirements/design artifact (PRD, SRS, UC, AC, FR, NFR, or decision) tied to a .md doc on disk. Scoped to a project and an epic (the epic = one REQ-NNN episode). Carries a code for queryability (e.g. 'AC-1', 'FR-3'), a status (draft/in_review/accepted/superseded) mirroring the doc's Status header, and an optional parent_artifact_id to build the within-episode hierarchy (AC→UC, FR→PRD).",
+    annotations: { title: 'Artifact: Create', readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    inputSchema: {
+      type: 'object',
+      properties: {
+        project_id: { type: 'integer', description: 'Project ID (typically the requirements project).' },
+        epic_id: { type: 'integer', description: 'Epic ID — one REQ-NNN episode.' },
+        type: { type: 'string', enum: [...ARTIFACT_TYPES], description: "Artifact type: PRD, SRS, UC (use case), AC (acceptance criterion), FR (functional req), NFR (non-functional), decision." },
+        title: { type: 'string', description: 'Human-readable title.' },
+        path: { type: 'string', description: "Path to the .md doc (e.g. 'docs/requirements/REQ-001-auth/03-acceptance-criteria.md#AC-1')." },
+        code: { type: 'string', description: "Optional code for querying: 'AC-1', 'FR-3', 'UC-2'. Unique within the epic is recommended." },
+        status: { type: 'string', enum: [...ARTIFACT_STATUSES], default: 'draft' },
+        parent_artifact_id: { type: 'integer', description: 'Optional parent artifact (builds hierarchy: AC→UC, FR→PRD).' },
+        tags: { type: 'array', items: { type: 'string' }, default: [] },
+        metadata: { type: 'object', default: {} },
+      },
+      required: ['project_id', 'epic_id', 'type', 'title', 'path'],
+    },
+  },
+  {
+    name: 'artifact_get',
+    description:
+      'Get one artifact with its full context: parents up the hierarchy, direct children, outgoing traces (this artifact → others/tasks), and incoming traces (others → this artifact). Use this to understand an AC: which UC/FR it derives from, and which dev-tasks implement it.',
+    annotations: { title: 'Artifact: Get', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    inputSchema: {
+      type: 'object',
+      properties: { id: { type: 'integer', description: 'Artifact ID.' } },
+      required: ['id'],
+    },
+  },
+  {
+    name: 'artifact_list',
+    description:
+      'List artifacts with optional filters (project, epic, type, status, parent). Ordered by epic, type, code. Use type:"AC" + epic to get all acceptance criteria of a REQ episode.',
+    annotations: { title: 'Artifact: List', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    inputSchema: {
+      type: 'object',
+      properties: {
+        project_id: { type: 'integer' },
+        epic_id: { type: 'integer' },
+        type: { type: 'string', enum: [...ARTIFACT_TYPES] },
+        status: { type: 'string', enum: [...ARTIFACT_STATUSES] },
+        parent_artifact_id: { type: 'integer', description: 'Filter to direct children of this artifact.' },
+      },
+    },
+  },
+  {
+    name: 'artifact_update',
+    description:
+      "Update an artifact's mutable fields (title, path, code, status, parent_artifact_id, tags, metadata). Status transitions (draft→in_review→accepted→superseded) are logged. Use this when a doc's Status header changes.",
+    annotations: { title: 'Artifact: Update', readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    inputSchema: {
+      type: 'object',
+      properties: {
+        id: { type: 'integer' },
+        title: { type: 'string' },
+        path: { type: 'string' },
+        code: { type: 'string' },
+        status: { type: 'string', enum: [...ARTIFACT_STATUSES] },
+        parent_artifact_id: { type: 'integer', description: 'Pass null to detach from parent.' },
+        tags: { type: 'array', items: { type: 'string' } },
+        metadata: { type: 'object' },
+      },
+      required: ['id'],
+    },
+  },
+  {
+    name: 'trace_add',
+    description:
+      "Add a directed trace edge from an artifact (source) to another artifact or a task (target). link_type names the relation: 'covers' (FR covered by UC), 'implements' (AC implemented by a dev task — the bridge to the builders' kanban), 'derived_from' (AC derived from UC), 'depends_on', 'verified_by', 'superseded_by'. This is what builds the traceability graph.",
+    annotations: { title: 'Trace: Add', readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    inputSchema: {
+      type: 'object',
+      properties: {
+        source_id: { type: 'integer', description: 'Source artifact ID.' },
+        target_type: { type: 'string', enum: ['artifact', 'task'] },
+        target_id: { type: 'integer', description: 'Target artifact or task ID.' },
+        link_type: { type: 'string', enum: [...LINK_TYPES] },
+      },
+      required: ['source_id', 'target_type', 'target_id', 'link_type'],
+    },
+  },
+  {
+    name: 'trace_list',
+    description:
+      "List traces with optional filters (source, target_type, target_id, link_type). Returns source/target titles and the target's current status, so you can see e.g. which AC are implemented by done tasks vs in_progress tasks.",
+    annotations: { title: 'Trace: List', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    inputSchema: {
+      type: 'object',
+      properties: {
+        source_id: { type: 'integer' },
+        target_type: { type: 'string', enum: ['artifact', 'task'] },
+        target_id: { type: 'integer' },
+        link_type: { type: 'string', enum: [...LINK_TYPES] },
+      },
+    },
+  },
+  {
+    name: 'artifact_coverage',
+    description:
+      "Coverage matrix for an epic (REQ-NNN episode): of the artifacts of a given type (default AC), which are linked via a given link_type (default 'implements') to tasks, and which are gaps (not yet implemented). The core traceability query — use it to see 'AC-3 is not yet implemented by any dev task'.",
+    annotations: { title: 'Artifact: Coverage', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    inputSchema: {
+      type: 'object',
+      properties: {
+        epic_id: { type: 'integer', description: 'The REQ-NNN epic.' },
+        type: { type: 'string', enum: [...ARTIFACT_TYPES], default: 'AC' },
+        link_type: { type: 'string', enum: [...LINK_TYPES], default: 'implements' },
+      },
+      required: ['epic_id'],
+    },
+  },
+];
+
+export const handlers: Record<string, ToolHandler> = {
+  artifact_create: handleArtifactCreate,
+  artifact_get: handleArtifactGet,
+  artifact_list: handleArtifactList,
+  artifact_update: handleArtifactUpdate,
+  trace_add: handleTraceAdd,
+  trace_list: handleTraceList,
+  artifact_coverage: handleArtifactCoverage,
+};

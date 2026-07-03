@@ -64,8 +64,10 @@ Project  ─ top container (ONE shared saga DB holds MANY projects)
             └─ metadata.worktree  ─ {branch:"task/<id>", merged_into: pending|dev|conflict}
 ```
 
-saga statuses are **fixed and coarse** (5 for tasks): `todo / in_progress /
-review / done / blocked`. Detailed stage lives in a `stage:<name>` tag.
+saga statuses are **fixed and coarse** (6 for tasks): `todo / in_progress /
+review / review_in_progress / done / blocked`. `review` is the buffer (waits for
+a reviewer, no assignee); `review_in_progress` means a reviewer claimed it and
+is working. Detailed stage lives in a `stage:<name>` tag.
 
 **Workers share one repo but each task runs in its OWN git worktree**
 (branch `task/<id>`, path `.worktrees/task-<id>`), so concurrent agents don't
@@ -74,6 +76,27 @@ the merge back into the integration branch (`dev`) is gated behind review
 (APPROVED → `worker_merge_acquire` → merge → `worker_merge_release`). Every
 `worker_next` / `worker_done` response also carries `active_tasks[]` so a
 worker can see what its siblings are doing. Full lifecycle in `saga-worker`.
+
+### "Development complete" — the dispatcher-decides rule
+
+A project (or a single epic / REQ episode) is **done only when the dispatcher
+says so** — never when an agent or human "feels finished". Concretely:
+
+- Keep calling `worker_next({ project_id, role? })` per role. The dispatcher
+  hands out any task in `todo` / `review` (and tracks the in-flight
+  `in_progress` / `review_in_progress` ones).
+- A role's queue is exhausted when `worker_next` returns `{ task: null }` for it.
+- The project/episode is complete only when **every role** you dispatch returns
+  `{ task: null }` AND no task is left in `todo` / `in_progress` / `review` /
+  `review_in_progress`. (`blocked` tasks are a separate problem — investigate,
+  don't ignore.)
+
+Corollary: a task sitting in `review` is **not finished**. Some reviewer must
+claim it (`worker_next` → `review_in_progress`), deliver a verdict
+(`worker_done` → `done` or back to `in_progress` on changes_requested). Until
+that loop closes, the work is open. Do not declare the episode ready for the
+downstream stage (e.g. requirements → builders' kanban) on the dispatcher's
+silent output — verify `{ task: null }` for every role first.
 
 ## Deep reference (operational content)
 

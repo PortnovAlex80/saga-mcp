@@ -178,6 +178,7 @@ function findNextClaimable(
   projectId: number,
   excludeTaskId?: number,
   attempt: number = 0,
+  role?: string,
 ): Task | null {
   // Стоп через MAX_CLAIM_ATTEMPTS: под IMMEDIATE-локом контентция редка, но
   // бесконечная рекурсия могла бы livelock'нуть глобальный write-lock.
@@ -188,7 +189,12 @@ function findNextClaimable(
   //    Готовые индексы: idx_tasks_epic_id, idx_epics_project_id.
   //    low-приоритет НЕ раздаётся автоматически — ждёт ручного решения (повысить
   //    приоритет / взять вручную). Применяется к todo И review единообразно.
+  //
+  //    role (опционально): фильтр по тегу `role:<name>` (например role:analyst).
+  //    Теги хранятся JSON-массивом; json_each разворачивает, EXISTS проверяет.
+  //    Без role — обратная совместимость: любой тег подходит.
   const excludeClause = excludeTaskId !== undefined ? 'AND t.id != ?' : '';
+  const roleClause = role ? `AND EXISTS (SELECT 1 FROM json_each(t.tags) WHERE json_each.value = ?)` : '';
   const selectSql = `
     SELECT t.* FROM tasks t
     WHERE t.status IN ('todo', 'review')
@@ -196,6 +202,7 @@ function findNextClaimable(
       AND t.priority IN ('critical', 'high', 'medium')
       AND t.epic_id IN (SELECT id FROM epics WHERE project_id = ?)
       ${excludeClause}
+      ${roleClause}
       AND NOT EXISTS (
         SELECT 1 FROM task_dependencies d
         JOIN tasks dep ON dep.id = d.depends_on_task_id
@@ -204,11 +211,11 @@ function findNextClaimable(
     ORDER BY ${PRIORITY_ORDER}, t.created_at
     LIMIT 1
   `;
-  const task = (
-    excludeTaskId !== undefined
-      ? db.prepare(selectSql).get(projectId, excludeTaskId)
-      : db.prepare(selectSql).get(projectId)
-  ) as Task | undefined;
+  // Сбор параметров в порядке появления ? в SQL.
+  const params: unknown[] = [projectId];
+  if (excludeTaskId !== undefined) params.push(excludeTaskId);
+  if (role) params.push(`role:${role}`);
+  const task = db.prepare(selectSql).get(...params) as Task | undefined;
 
   if (!task) return null;
 
@@ -240,9 +247,9 @@ function findNextClaimable(
   }
 
   // 3. Кто-то успел занять под носом — ищем следующего кандидата,
-  //    с ограничением попыток (см. MAX_CLAIM_ATTEMPTS выше). projectId пробрасываем.
+  //    с ограничением попыток (см. MAX_CLAIM_ATTEMPTS выше). projectId и role пробрасываем.
   if (info.changes !== 1) {
-    return findNextClaimable(db, workerId, projectId, excludeTaskId, attempt + 1);
+    return findNextClaimable(db, workerId, projectId, excludeTaskId, attempt + 1, role);
   }
 
   // logActivity на назначение. Оба цикла (dev: todo→in_progress, review:
@@ -305,11 +312,16 @@ function handleWorkerNext(args: Record<string, unknown>): {
     throw new Error(`project_id ${projectId} not found. Run project_list to see valid IDs, or project_resolve_by_name to (re)create by name from ./projectname.txt.`);
   }
 
+  // role (опционально): фильтрует очередь по тегу `role:<name>` на задаче.
+  // Применение: проект требований, где задачи тегированы role:product / role:analyst
+  // / role:architect — каждый агент получает только свои задачи. Без role — любое.
+  const role = args.role as string | undefined;
+
   // BEGIN IMMEDIATE — write-lock всей БД с старта транзакции
   // (аналог SELECT FOR UPDATE, которого нет в SQLite). busy_timeout=5000 в db.ts.
   // db.transaction(fn) тут только DEFERRED, поэтому оборачиваем явно.
   const task = withImmediateTransaction(db, () =>
-    findNextClaimable(db, workerId, projectId),
+    findNextClaimable(db, workerId, projectId, undefined, 0, role),
   );
 
   // active_tasks — read-only снапшот параллельной работы. Берём ПОСЛЕ транзакции,
@@ -827,7 +839,7 @@ export const definitions: Tool[] = [
   {
     name: 'worker_next',
     description:
-      'Claim the next available task for a worker WITHIN A PROJECT. Finds a free task (status todo or review, unassigned, no unmet dependencies, priority medium or above) in the given project only, atomically assigns it to the worker, and returns the task plus the skill the agent should use. Low-priority tasks are NOT handed out automatically (raise their priority to medium+ to make them claimable). Other projects in the shared DB are never touched. project_id is REQUIRED — resolve it once from ./projectname.txt via project_resolve_by_name, then pass it on every call. Returns {task: null} when the project queue is empty.',
+      'Claim the next available task for a worker WITHIN A PROJECT. Finds a free task (status todo or review, unassigned, no unmet dependencies, priority medium or above) in the given project only, atomically assigns it to the worker, and returns the task plus the skill the agent should use. Low-priority tasks are NOT handed out automatically (raise their priority to medium+ to make them claimable). Other projects in the shared DB are never touched. project_id is REQUIRED — resolve it once from ./projectname.txt via project_resolve_by_name, then pass it on every call. Optional `role` filters the queue to tasks tagged `role:<name>` (e.g. role:"analyst") — used in the requirements project to split work between saga-product / saga-analyst / saga-architect. Returns {task: null} when the project queue is empty.',
     annotations: {
       title: 'Worker: Next Task',
       readOnlyHint: false,
@@ -847,6 +859,11 @@ export const definitions: Tool[] = [
           type: 'integer',
           description:
             'ID of the project to claim work from (REQUIRED). Get it once via project_resolve_by_name from the name in ./projectname.txt. Tasks from other projects are never returned.',
+        },
+        role: {
+          type: 'string',
+          description:
+            'Optional role filter — only return tasks carrying the tag `role:<value>` (e.g. pass "analyst" to match tag "role:analyst"). Used in the requirements project to dispatch to specialized agents (product/analyst/architect). Omit for any-tag (builders project default).',
         },
       },
       required: ['worker_id'],
