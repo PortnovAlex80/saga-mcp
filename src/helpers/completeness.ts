@@ -234,11 +234,15 @@ function readRolloutLastInput(rolloutPath: string): string | null {
  * Determinism / idempotency (AC-2 Then-3 / NFR-2): given the same db.sqlite
  * contents + parentSessionId, two calls return byte-identical `inputs[]` —
  * same order (ORDER BY created_at), same `i_id` (positional), same
- * `fingerprint` (sha1(text[:100]+timestamp), pure). `covered_count` is 0 here
- * (coverage is computed downstream by the gate that maps inputs→sections; this
- * helper only extracts), so `gate_passed` is true iff source is db.sqlite AND
- * at least one input was found (coverage of the extract step = 1.0 means
- * "extraction complete", not "every section covered").
+ * `fingerprint` (sha1(text[:100]+timestamp), pure).
+ *
+ * IMPORTANT (BUG FIX after smoke-test): `covered_count` is always 0 and
+ * `coverage` is always 0 here — this helper extracts inputs but does NOT
+ * compute brief-section coverage. `gate_passed` is therefore `false` even
+ * when inputs are successfully extracted from db.sqlite. The CALLER (kickstart
+ * skill) maps each InputRow to a brief section and recomputes
+ * covered_count / coverage / gate_passed. Do NOT trust gate_passed from this
+ * helper alone.
  *
  * @param parentSessionId parent session id (obtained via readSelfSessionId,
  *   NOT passed in from outside the subagent — see src/helpers/selfid.ts).
@@ -273,16 +277,21 @@ export async function extractInputs(
       );
 
       if (inputs.length > 0) {
-        // Extraction complete from the authoritative source → gate (of the
-        // extract step) passes. Section-level coverage is computed downstream.
-        // AC-7: authoritative source → completeness=high, degraded=false.
+        // Inputs extracted from the authoritative source. Coverage is NOT
+        // computed here — this helper does not know the brief, so it cannot
+        // know how many inputs are actually covered. The caller (kickstart
+        // skill) maps each InputRow to a brief section (Covers=<anchor>) and
+        // then recomputes covered_count / coverage / gate_passed.
+        // AC-7: authoritative source → completeness='high', degraded=false.
+        // FIX (BUG from smoke-test): do NOT return coverage=1.0/gate_passed=true
+        // when covered_count=0 — that was a silent-pass (NFR-1 violation).
         return {
           source: 'db.sqlite',
           inputs,
           covered_count: 0,
           total_count: inputs.length,
-          coverage: 1.0,
-          gate_passed: true,
+          coverage: 0,
+          gate_passed: false,
           completeness: 'high',
           degraded: false,
         };

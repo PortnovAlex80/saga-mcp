@@ -161,7 +161,13 @@ describe('extractInputs (SRS §2b.4)', () => {
       // ordered by created_at ascending
       assert.equal(res.inputs[0].timestamp, '1000');
       assert.equal(res.inputs[1].timestamp, '1200');
-      assert.equal(res.gate_passed, true);
+      // BUG FIX (smoke-test): gate_passed is false here — this helper extracts
+      // inputs but does NOT compute brief-section coverage. The caller maps
+      // each InputRow to a brief section and recomputes coverage/gate_passed.
+      // Do NOT trust gate_passed from extractInputs alone.
+      assert.equal(res.covered_count, 0, 'covered_count is 0: helper does not compute coverage');
+      assert.equal(res.coverage, 0, 'coverage is 0: helper does not compute coverage');
+      assert.equal(res.gate_passed, false, 'gate_passed is false until caller computes coverage');
       // AC-7: authoritative source → high completeness, not degraded.
       assert.equal(res.completeness, 'high');
       assert.equal(res.degraded, false);
