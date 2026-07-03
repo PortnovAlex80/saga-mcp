@@ -82,6 +82,7 @@ function handleDashboard(args: Record<string, unknown>) {
         SUM(CASE WHEN status = 'blocked' THEN 1 ELSE 0 END) as tasks_blocked,
         SUM(CASE WHEN status = 'todo' THEN 1 ELSE 0 END) as tasks_todo,
         SUM(CASE WHEN status = 'review' THEN 1 ELSE 0 END) as tasks_review,
+        SUM(CASE WHEN status = 'review_in_progress' THEN 1 ELSE 0 END) as tasks_review_in_progress,
         COALESCE(SUM(estimated_hours), 0) as total_estimated_hours,
         COALESCE(SUM(actual_hours), 0) as total_actual_hours
       FROM tasks WHERE epic_id IN (SELECT id FROM epic_ids)

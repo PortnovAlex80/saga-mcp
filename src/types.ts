@@ -28,7 +28,7 @@ export interface Task {
   epic_id: number;
   title: string;
   description: string | null;
-  status: 'todo' | 'in_progress' | 'review' | 'done' | 'blocked';
+  status: 'todo' | 'in_progress' | 'review' | 'review_in_progress' | 'done' | 'blocked';
   priority: 'low' | 'medium' | 'high' | 'critical';
   sort_order: number;
   assigned_to: string | null;

@@ -35,7 +35,7 @@ setup.prepare("INSERT INTO projects (name) VALUES ('verdict-race')").run();
 const pid = setup.prepare("SELECT id FROM projects WHERE name='verdict-race'").get().id;
 setup.prepare("INSERT INTO epics (project_id, name) VALUES (?, 'e')").run(pid);
 const eid = setup.prepare("SELECT id FROM epics WHERE name='e'").get().id;
-setup.prepare("INSERT INTO tasks (epic_id, title, status, assigned_to) VALUES (?, 'T', 'review', NULL)").run(eid);
+setup.prepare("INSERT INTO tasks (epic_id, title, status, assigned_to) VALUES (?, 'T', 'review_in_progress', NULL)").run(eid);
 setup.close();
 
 const taskId = 1;

@@ -58,7 +58,7 @@ export const definitions: Tool[] = [
           items: { type: 'integer' },
           description: 'Task IDs to update',
         },
-        status: { type: 'string', enum: ['todo', 'in_progress', 'review', 'done', 'blocked'] },
+        status: { type: 'string', enum: ['todo', 'in_progress', 'review', 'review_in_progress', 'done', 'blocked'] },
         priority: { type: 'string', enum: ['low', 'medium', 'high', 'critical'] },
         assigned_to: { type: 'string' },
       },

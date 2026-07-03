@@ -149,7 +149,7 @@ Project identity lives in ./projectname.txt — do not trust your memory for the
    b. If task is null → verify via task_list that the project genuinely has no claimable work, then say "queue empty" and stop.
    c. Otherwise: apply the saga-worker skill — implement (skill 'saga-developer') or review (skill 'saga-reviewer') per the dispatcher's 'skill' field — then call
       mcp__saga__worker_done({ task_id, worker_id: "agent-1", result: "..." }).
-   d. The response carries the next task — immediately repeat from 2c (do not ask).
+   d. The response confirms completion; it does NOT carry a next task. Call `worker_next` again (step 2a) to get the next task — immediately repeat from 2c (do not ask).
 ```
 
 Watch the board (your `saga.db` via any viewer) from your phone. The dispatcher guarantees no two agents grab the same task (see `tests/dispatcher-race/`), and `project_id` scoping guarantees they only touch this project.
@@ -329,13 +329,13 @@ No API keys, no accounts, no external services. Everything is stored locally in 
 | Tool | Description | Annotations |
 |------|-------------|-------------|
 | `worker_next` | Claim the next free task (`todo` or `review`, unassigned, deps met, **priority medium+**) atomically; returns the task + the skill the agent should use. **Low-priority tasks are NOT handed out** — raise their priority to medium+ to make them claimable | `readOnly: false` |
-| `worker_done` | Complete the held task (`in_progress`→`review`, `review`→`done`, frees the assignment, records `result` as a comment, auto-unblocks downstream on `done`) and return the next task | `readOnly: false` |
+| `worker_done` | Complete the held task (`in_progress`→`review`, `review`→`done`, frees the assignment, records `result` as a comment, auto-unblocks downstream on `done`). Does NOT return the next task — call `worker_next` to get it | `readOnly: false` |
 
 **How the dispatcher hands out work** (fork only):
 
 ```
 worker_next({worker_id, project_id})          →  { task, skill: "saga-developer" | "saga-reviewer" }   (or { task: null })
-worker_done({task_id, worker_id, result})     →  { completed, completed_new_status, next_task, next_skill }
+worker_done({task_id, worker_id, result})     →  { completed, completed_new_status, active_tasks[] }   (no next task — call worker_next)
 worker_ask_need({task_id, worker_id, reason?}) →  { task_id, blocking: true }   (flags needs-human; task stays with the agent)
 worker_ask_done({task_id, worker_id})         →  { task_id, blocking: false }   (clears the flag after the human answers)
 ```
@@ -481,6 +481,88 @@ saga-mcp is a fully local, offline tool. It does **not**:
 All data is stored exclusively in the local SQLite file specified by `DB_PATH`. You own your data completely. Uninstalling saga-mcp and deleting the `.tracker.db` file removes all traces.
 
 For questions about privacy, open an issue at https://github.com/spranab/saga-mcp/issues.
+
+## ZCode adaptation (this fork)
+
+This fork (`PortnovAlex80/saga-mcp`) is **adapted for [ZCode](https://zcode.z.ai)** —
+the GLM-5.2 harness by Z.ai. The upstream `spranab/saga-mcp` is a generic
+Jira-like MCP tracker; this fork adds a **dispatcher layer** that turns saga into
+a work queue for parallel ZCode subagents.
+
+### What the fork adds on top of upstream
+
+- **Dispatcher tools** (`worker_next`, `worker_done`, `worker_ask_need/done`,
+  `worker_merge_acquire/release`, `worker_health`) — see `src/tools/dispatcher.ts`.
+  Atomic task distribution across many workers via SQLite `BEGIN IMMEDIATE`.
+- **Asymmetric status model tuned for two roles**: the `skill` returned by
+  `worker_next` (`saga-developer` / `saga-reviewer`) maps 1:1 to ZCode's
+  `subagent_type`, so a saga task hands the worker the right ZCode subagent role
+  automatically.
+- **`review_in_progress` status** — a mirror of `in_progress` for the review
+  phase. `review` is now a pure buffer (waiting for a reviewer), and claiming it
+  moves the task to `review_in_progress`. This removes the semantic overload of
+  `review` (which previously meant both "queued for review" and "reviewer
+  working"). The full symmetric cycle:
+  `todo → in_progress → review → review_in_progress → done`.
+- **`stop: true` signal in `worker_done`** — saga explicitly tells the worker to
+  end its launch after completing a task. No more "the worker went into a 4-task
+  loop because it didn't know it was done."
+- **One task per launch** — the dispatcher no longer auto-claims the next task
+  inside `worker_done`. The orchestrator (the main ZCode session) spawns the
+  worker again for the next task. This eliminates the zombie problem in ZCode's
+  foreground-execution model.
+- **Worktree isolation + merge-lock** — each task runs in its own
+  `.worktrees/task-<id>` on branch `task/<id>`, off the `dev` integration branch.
+  A per-project merge-lock serializes merges into `dev`.
+- **Bundled `saga-worker` skill** (`skills/saga-worker/SKILL.md`) — the full
+  contract a ZCode subagent follows: worktree lifecycle, two-phase completion
+  (dev → review), merge-back, zombie recovery, autonomy rules.
+- **Auto-migration on startup** — existing DBs are migrated in place when saga
+  starts (e.g., `review` rows with an `assigned_to` become `review_in_progress`).
+
+### How to use with ZCode
+
+1. Install saga-mcp as an MCP server in ZCode (`~/.zcode/cli/config.json`):
+   ```json
+   "mcp": {
+     "servers": {
+       "saga": {
+         "type": "stdio",
+         "command": "node",
+         "args": ["<path-to>/saga-mcp/dist/index.js"],
+         "env": { "DB_PATH": "<path-to>/.tracker.db" }
+       }
+     }
+   }
+   ```
+2. Drop the bundled skill where ZCode loads user skills:
+   `~/.zcode/skills/saga-worker/SKILL.md` (copy from `skills/saga-worker/`).
+3. (Optional) Add a `saga-worker` subagent profile in
+   `~/.zcode/agents/saga-worker.md` so the orchestrator can spawn workers by
+   `subagent_type: "saga-worker"`.
+4. In your main ZCode session, spawn workers in parallel:
+   ```
+   Agent(subagent_type="saga-worker", prompt="worker_id=w1, project_id=<N>")
+   ```
+   Each worker claims one task via `worker_next`, does the work in its worktree,
+   completes it via `worker_done`, sees `stop: true`, and ends. The orchestrator
+   spawns it again for the next task.
+
+### Differences from upstream at a glance
+
+| Area | Upstream `spranab/saga-mcp` | This fork (ZCode-adapted) |
+|---|---|---|
+| Worker tools | none | `worker_next` / `worker_done` / `worker_ask_*` / `worker_merge_*` / `worker_health` |
+| Status set | `todo` / `in_progress` / `review` / `done` / `blocked` | adds `review_in_progress` |
+| `worker_done` | n/a | completes the task only; returns `stop: true`; does NOT auto-claim next |
+| Subagent binding | n/a | `worker_next` returns `skill` = ZCode `subagent_type` |
+| Git integration | none | per-task worktree on `task/<id>`, merge-lock into `dev` |
+| Skill | none | bundled `saga-worker` skill (worktree lifecycle, two-phase, recovery) |
+| DB schema | base | base + `review_in_progress` in CHECK (auto-migrated) |
+
+Upstream features (project/epic/task hierarchy, comments, notes, templates,
+dashboard, export/import, activity log) are **unchanged** — the fork is a strict
+superset.
 
 ## Development
 

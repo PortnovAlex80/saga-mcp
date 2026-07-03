@@ -36,7 +36,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   title           TEXT NOT NULL,
   description     TEXT,
   status          TEXT NOT NULL DEFAULT 'todo'
-                    CHECK (status IN ('todo', 'in_progress', 'review', 'done', 'blocked')),
+                    CHECK (status IN ('todo', 'in_progress', 'review', 'review_in_progress', 'done', 'blocked')),
   priority        TEXT NOT NULL DEFAULT 'medium'
                     CHECK (priority IN ('low', 'medium', 'high', 'critical')),
   sort_order      INTEGER NOT NULL DEFAULT 0,

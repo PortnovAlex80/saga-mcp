@@ -19,7 +19,7 @@ export const definitions: Tool[] = [
         description: { type: 'string', description: 'Task description' },
         status: {
           type: 'string',
-          enum: ['todo', 'in_progress', 'review', 'done', 'blocked'],
+          enum: ['todo', 'in_progress', 'review', 'review_in_progress', 'done', 'blocked'],
           default: 'todo',
         },
         priority: {
@@ -57,7 +57,7 @@ export const definitions: Tool[] = [
       type: 'object',
       properties: {
         epic_id: { type: 'integer', description: 'Filter by epic (omit for all tasks)' },
-        status: { type: 'string', enum: ['todo', 'in_progress', 'review', 'done', 'blocked'] },
+        status: { type: 'string', enum: ['todo', 'in_progress', 'review', 'review_in_progress', 'done', 'blocked'] },
         priority: { type: 'string', enum: ['low', 'medium', 'high', 'critical'] },
         assigned_to: { type: 'string', description: 'Filter by assignee' },
         tag: { type: 'string', description: 'Filter by tag' },
@@ -98,7 +98,7 @@ export const definitions: Tool[] = [
         id: { type: 'integer', description: 'Task ID' },
         title: { type: 'string' },
         description: { type: 'string' },
-        status: { type: 'string', enum: ['todo', 'in_progress', 'review', 'done', 'blocked'] },
+        status: { type: 'string', enum: ['todo', 'in_progress', 'review', 'review_in_progress', 'done', 'blocked'] },
         priority: { type: 'string', enum: ['low', 'medium', 'high', 'critical'] },
         assigned_to: { type: 'string' },
         estimated_hours: { type: 'number' },
@@ -192,7 +192,7 @@ function handleTaskCreate(args: Record<string, unknown>) {
   // свободна в очереди/завершена/заблокирована — без исполнителя.
   let assignedTo: string | null = (args.assigned_to as string) ?? null;
   if (assignedTo === '') assignedTo = null; // нормализация '' → NULL
-  if (status === 'todo' || status === 'done' || status === 'blocked') {
+  if (status === 'todo' || status === 'review' || status === 'done' || status === 'blocked') {
     assignedTo = null;
   }
   const estimatedHours = (args.estimated_hours as number) ?? null;
@@ -223,7 +223,7 @@ function handleTaskCreate(args: Record<string, unknown>) {
 }
 
 const PRIORITY_ORDER = "CASE t.priority WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 END";
-const STATUS_ORDER = "CASE t.status WHEN 'blocked' THEN 0 WHEN 'in_progress' THEN 1 WHEN 'review' THEN 2 WHEN 'todo' THEN 3 WHEN 'done' THEN 4 END";
+const STATUS_ORDER = "CASE t.status WHEN 'blocked' THEN 0 WHEN 'in_progress' THEN 1 WHEN 'review_in_progress' THEN 2 WHEN 'review' THEN 3 WHEN 'todo' THEN 4 WHEN 'done' THEN 5 END";
 
 function getTaskOrderClause(sortBy: string): string {
   switch (sortBy) {
@@ -373,7 +373,7 @@ function handleTaskUpdate(args: Record<string, unknown>) {
   // 2) Если статус меняется на todo|done|blocked — форсим assigned_to=NULL, даже если
   //    вызывающий не передавал assigned_to явно (как saga форсит actual_hours при done).
   const targetStatus = args.status as string | undefined;
-  if (targetStatus === 'todo' || targetStatus === 'done' || targetStatus === 'blocked') {
+  if (targetStatus === 'todo' || targetStatus === 'review' || targetStatus === 'done' || targetStatus === 'blocked') {
     args.assigned_to = null;
   }
 

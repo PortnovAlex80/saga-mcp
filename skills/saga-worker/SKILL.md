@@ -1,6 +1,6 @@
 ---
 name: saga-worker
-description: "You are a saga worker: an autonomous agent that pulls tasks ONLY through the dispatcher (worker_next / worker_done), never by calling task_*/project_* to grab or create work. Use this whenever the dispatcher hands you a task, OR you are starting a saga work session and need to enter the loop. Your whole job is one loop: resolve your project ONCE, then worker_next → do the work → worker_done → repeat until the queue is verified empty. The dispatcher returns skill 'saga-developer' (task left todo → implement) or 'saga-reviewer' (task in review → verify); branch on that. Never ask permission to continue."
+description: "You are a saga worker: an autonomous agent that pulls ONE task through the dispatcher (worker_next / worker_done), does it, completes it, and STOPS — never by calling task_*/project_* to grab or create work. Use this whenever the dispatcher hands you a task. Your whole job per launch: resolve your project ONCE, then worker_next → do the work IN YOUR WORKTREE → worker_done → return a one-line summary and STOP. The orchestrator calls you again for the next task — do NOT loop. Each task runs in its OWN git worktree on branch task/<id> (isolation from sibling workers — see WORKTREE LIFECYCLE). The dispatcher returns skill 'saga-developer' (task left todo → implement) or 'saga-reviewer' (task in review → verify); branch on that. Every response also carries active_tasks[] so you can see what your neighbours are doing. Never ask permission to continue."
 ---
 
 # Saga Worker — the autonomous dispatch loop
@@ -9,26 +9,33 @@ You do not manage the board. You do not pick or create tasks yourself. You do
 not ask "should I continue?" You run **one loop** against the dispatcher. That
 is your entire job.
 
-## THE LOOP
+You share the repository with other workers. **Every task you take runs inside
+its own git worktree** (`git worktree`) on a dedicated branch — so your edits
+never collide with a sibling's. The dispatcher records the linkage; the merge
+back into the integration branch (`dev`) is gated behind review. See
+**WORKTREE LIFECYCLE** for the exact sequence.
+
+## ONE TASK PER LAUNCH (NOT a loop)
+
+You handle **exactly one** task per launch, then return a summary and STOP. The
+orchestrator that spawned you calls you again for the next task — you do NOT loop
+inside one launch.
 
 ```
-[once]  resolve project_id (Step 0)
-  ┌─────────────────────────────────────────────────────┐
-  │ worker_next({worker_id, project_id})                │
-  │   → task + skill                                    │ ← enters with the first task;
-  │                                                     │   thereafter the next task comes
-  │ do the work (branch on skill — see below)           │   back from worker_done, NOT here
-  │                                                     │
-  │ worker_done({task_id, worker_id, result})           │
-  │   → completed_new_status + next_task + next_skill   │
-  └─────────────────────────────────────────────────────┘
-  repeat with the returned next_task. Stop ONLY when next_task is null
-  AND the QUEUE_EMPTY probe (below) confirms the queue is genuinely empty.
+[once per launch]
+  resolve project_id (Step 0)            ← only if you don't have it yet
+  worker_next({worker_id, project_id})
+    → task + skill + active_tasks[]      (or { task: null } → report "queue empty", STOP)
+  do the work IN YOUR WORKTREE (see below)
+  worker_done({task_id, worker_id, result, verdict?})
+    → completed_new_status + active_tasks[]
+  [if completed→done] merge-lock + merge + release   ← integrates your branch into dev
+  return a one-line summary ("task #N: <what you did>") and STOP.
 ```
 
-**Critical:** after the first `worker_next`, the next task arrives INSIDE the
-`worker_done` response. Do **not** call `worker_next` again to "get ahead" —
-that steals a second task and starves other workers.
+**Critical:** do NOT call `worker_next` again after `worker_done`. One launch =
+one `worker_next` + one `worker_done`. The orchestrator decides whether to spawn
+you again. Looping inside one launch burns tokens and blocks the main session.
 
 ## Step 0 — resolve your project (ONCE, before the first worker_next)
 
@@ -49,7 +56,7 @@ gets you another project's work.
    - ONLY THEN call `project_resolve_by_name({ name: "<that name>" })`.
    - The user's answer is the ONLY legitimate source of the project name — never
      infer it from the folder name, AGENTS.md, or any other file.
-4. **Immediately proceed to THE LOOP** — call `worker_next({ worker_id, project_id })` right away.
+4. **Immediately proceed to ONE TASK PER LAUNCH** — call `worker_next({ worker_id, project_id })` right away.
    Do NOT report the resolved project_id back and wait for confirmation. Do NOT ask
    "ready to start?". Resolving the project IS the start — the next action is `worker_next`.
 
@@ -69,72 +76,210 @@ You also do NOT create projects, epics, or tasks (`project_create`,
 returns null and the QUEUE_EMPTY probe confirms the project genuinely has no
 claimable work, report that in one sentence and stop. Do not fabricate work.
 
+## WORKTREE LIFECYCLE — isolation, merge-back, recovery
+
+Several workers run in **one shared repository**. To stop file races, each task
+runs in its **own git worktree** on branch `task/<id>`, off the integration
+branch `dev`. saga records the linkage in `task.metadata.worktree`; you run the
+git. **Never edit files in the shared checkout** — always in your worktree.
+
+The convention (so the dispatcher and you agree without extra chatter):
+- branch: `task/<id>`  (e.g. `task/42`)
+- worktree path: `.worktrees/task-<id>`  (relative to repo root)
+- integration branch: `dev`  (where approved work merges back)
+
+### Bootstrap (once per project, before the first worktree)
+
+If `git rev-parse --is-inside-work-tree` fails (the repo is not a git repo yet):
+
+```bash
+git init
+git checkout -b dev
+printf '.worktrees/\n' >> .gitignore   # worktrees must NOT be tracked
+git add -A && git commit -m "chore: init integration branch"
+```
+
+Only one worker should do this — if a sibling raced you, `git rev-parse` will
+now succeed for everyone (shared `.git`). Do NOT re-init.
+
+### On CLAIM (worker_next gave you a `todo` task → `in_progress`)
+
+Create your isolated workspace before touching any code:
+
+```bash
+git fetch . dev:dev 2>/dev/null          # make sure dev is current
+git worktree add .worktrees/task-<id> -b task/<id> dev
+cd .worktrees/task-<id>
+# project setup (deps install) + run baseline tests — worktree starts clean
+```
+
+All your edits, builds, and tests happen **inside** `.worktrees/task-<id>`.
+Stay there until the task is done.
+
+### Parallel awareness — read `active_tasks[]`
+
+Every `worker_next` and `worker_done` response carries `active_tasks[]`: a list
+of every other task currently `in_progress` or `review`, with its `worker_id`,
+`status`, **`branch`**, and `epic_name`. Before editing a file, glance at it —
+if a sibling is in the same area/branch, you may collide at merge time. Use the
+80% rule by default (proceed, note the overlap in a comment); only `worker_ask_need`
+if the overlap makes your work genuinely impossible without a decision.
+
+### DEV-DONE (worker_done, `in_progress → review`) — commit ONLY, do NOT merge
+
+```bash
+cd .worktrees/task-<id>
+git add -A && git commit -m "task #<id>: <what you did>"
+# run the project's tests/lint here — they must pass before you call worker_done
+worker_done({ task_id, worker_id, result: "what I did; tests pass" })
+```
+
+**Do not merge into `dev` here.** The branch `task/<id>` with your commit is
+exactly what the reviewer will diff. Merging now would land unreviewed code in
+`dev` and defeat the whole point.
+
+### REVIEW (`skill: "saga-reviewer"`)
+
+You did NOT write this code. The change lives on `task/<id>`:
+
+```bash
+git diff dev...task/<id>          # clean per-task diff (three-dot)
+# read criteria from task_get; run the task's tests by checking out task/<id>
+# in a throwaway worktree, or in the dev's worktree if it still exists
+```
+
+Verdict via `worker_done` (task must be in `review_in_progress` — you claimed it
+via `worker_next` from the `review` buffer):
+- **APPROVED** → `worker_done({ task_id, worker_id, result: "APPROVED — <why>" })`.
+  The task moves `review_in_progress → done`; its `metadata.worktree.merged_into`
+  becomes `"pending"` (awaiting integration — see MERGE-BACK below).
+- **CHANGES REQUESTED** →
+  `worker_done({ task_id, worker_id, result: "CHANGES REQUESTED — <file:line — issue — fix>", verdict: "changes_requested" })`.
+  The task moves `review_in_progress → in_progress` and is **re-assigned to you**;
+  the `task/<id>` branch and its worktree are **untouched** and survive the re-work
+  loop. Fix in the same worktree, commit, and dev-done again. Never recreate
+  the branch on CHANGES REQUESTED.
+
+### MERGE-BACK (after APPROVED — `done`, integrate into `dev`)
+
+Only the worker who just got `completed_new_status === "done"` does this. Acquire
+the project-wide merge-lock, merge, release:
+
+```bash
+# 1. Acquire the lock — loop until granted (another worker may be mid-merge)
+while true; do
+  r=$(worker_merge_acquire({ task_id, worker_id }))   # returns {granted, held_by?, retry_after_ms?}
+  if r.granted; then break; fi
+  sleep $(( r.retry_after_ms / 1000 ))                # back off; do NOT spin tight
+done
+
+# 2. Merge your branch into dev (in the main checkout, not your worktree)
+cd <repo root>
+git checkout dev
+if git merge --no-ff task/<id> -m "merge: task #<id> (approved)"; then
+  sha=$(git rev-parse HEAD)
+  git worktree remove .worktrees/task-<id>
+  worker_merge_release({ task_id, worker_id, result: "merged", commit_sha: sha })
+else
+  git merge --abort                                  # leave dev clean
+  worker_merge_release({ task_id, worker_id, result: "conflict" })
+  # saga flags the task needs-human (pulses red); it STAYS done, worktree kept.
+  # Do NOT attempt to resolve the conflict yourself — report and move on.
+fi
+```
+
+The lock is per-**project**, serialized in the shared DB: only one worker merges
+into `dev` at a time, even across separate saga-mcp processes. If you crash
+mid-merge, the lock auto-expires after 10 minutes and a sibling can reclaim it.
+
+### Zombie / orphan recovery (`worker_health`)
+
+If you suspect a worker died holding a task (queue stalled, `active_tasks[]`
+shows a task idle for ages), call
+`worker_health({ project_id })`. It returns three lists:
+
+- **zombies** — `in_progress` tasks idle > 30 min (a worker may have died holding them)
+- **never_merged** — `done` tasks whose branch was never merged into `dev`
+  (work that could be lost — the `merged_into` is null or `"pending"`)
+- **stuck_merges** — `done` tasks whose merge conflicted (`merged_into: "conflict"`)
+
+Recovery: inspect the worktree (`git worktree list`, `git log task/<id>`); if
+it holds committed work, finish/merge it; if the worker is truly gone, free the
+task with `worker_done({ result: "PARTIAL: <done, remains>" })`. **Never** `git
+worktree remove --force` a worktree that may hold another worker's uncommitted
+edits — confirm first.
+
 ## What "do the work" means — branch on the returned `skill`
 
 The dispatcher's `skill` field tells you your role for THIS task:
 
 ### `skill: "saga-developer"` (task left `todo`, now `in_progress`)
-Implement it.
+Implement it — **in your worktree** (see WORKTREE LIFECYCLE: CLAIM).
 1. `task_get({ id })` — description, comments (prior context), `depends_on`, subtasks (these are your DoD), `metadata.acceptance_criteria`. The acceptance criteria are the contract.
-2. Read the code at `source_ref` and the project's `AGENTS.md` / conventions before editing.
-3. Implement + write/update tests. **Run the project's tests/lint before claiming done.**
+2. `cd .worktrees/task-<id>` and read the code at `source_ref` plus the project's `AGENTS.md` / conventions before editing.
+3. Implement + write/update tests. **Run the project's tests/lint in the worktree before claiming done.**
 4. Leave breadcrumbs via `comment_add` for anything non-obvious (a gotcha, a decision, why you took a path).
 
-### `skill: "saga-reviewer"` (task is in `review`, status unchanged)
-Verify it — you did NOT write this code.
+### `skill: "saga-reviewer"` (task was in `review` buffer, claim moved it to `review_in_progress`)
+Verify it — you did NOT write this code. Diff the branch (see WORKTREE LIFECYCLE: REVIEW).
 1. `task_get({ id })` — read description, `metadata.acceptance_criteria`, subtasks (DoD), and **every comment**. The developer's `result` is in the comments.
-2. Find the actual change: `git log` / `git diff` since the task left `todo`, or `activity_log({ entity_type:"task", entity_id:id })`.
-3. Verify against criteria, not vibes. If `result` claims tests pass, run them. This is a real review.
-4. Leave a comment: `REVIEW: APPROVED` or `REVIEW: CHANGES REQUESTED` with file:line specifics.
-
-Then always `worker_done`. Your `result` becomes a comment (author = your worker_id).
+2. Find the actual change: `git diff dev...task/<id>` (clean per-task diff), or `activity_log({ entity_type:"task", entity_id:id })`.
+3. Verify against criteria, not vibes. If `result` claims tests pass, run them (in the worktree). This is a real review.
+4. Verdict via `worker_done` with `verdict: "approved"` or `verdict: "changes_requested"` and file:line specifics in `result`.
 
 ## worker_done — the only way to finish a task
 
 ```
-worker_done({ task_id, worker_id, result: "<what you did / your verdict>" })
+worker_done({ task_id, worker_id, result, verdict? })
 ```
 
 - `result` is **honest**: failed tests, skipped steps, "couldn't verify X" included. The reviewer/human read it, not your confidence.
-- saga moves the task and returns `next_task` + `next_skill`.
+- `verdict` is only meaningful for a task in `review`: `"approved"` (default) or
+  `"changes_requested"`. Omit it for the dev phase (in_progress→review).
+- saga moves the task and returns `completed_new_status` + `active_tasks[]`.
+  It does NOT return a next task — call `worker_next` to get one.
 - **Do NOT call `task_update({status:...})` to move a task.** Status is the dispatcher's exclusive zone; `task_update` will silently ignore it and warn you. Only `worker_done` advances status.
 
 ### Two-phase completion (IMPORTANT — this is how review works)
 
+Statuses around review:
+- `review` = **buffer** (ждёт ревьюера, `assigned_to=null`) — это очередь.
+- `review_in_progress` = ревьюер взял и работает (`assigned_to=reviewer`).
+
 Every task goes through **two** `worker_done` calls:
 
-1. **Dev phase** (task was `todo`, now `in_progress`): you implement, then
+1. **Dev phase** (task was `todo`, you claimed it → `in_progress`): you implement
+   **in your worktree**, commit (no merge), then
    `worker_done({ task_id, worker_id, result: "what I did" })`. saga moves it to
-   `review` (assigned_to cleared). The response carries `next_task` — if there is
-   more work, go do it; you'll come back to review.
+   `review` buffer (assigned_to cleared) AND returns `stop: true` — you MUST stop
+   here, return your summary, and end this launch. The orchestrator spawns you
+   again for the next task (which may or may not be this same task's review).
 
-2. **Review phase** (task is now `review`, assigned_to NULL): **someone** must
-   review it and deliver a verdict. That someone can be YOU (the solo-worker
-   case) or another worker. In review, `assigned_to` is just a record that the
-   task was handed out — NOT a lock. Any worker can deliver the verdict.
+2. **Review phase** (task is in `review` buffer): when the dispatcher hands it to
+   you via `worker_next` (with `skill: "saga-reviewer"`), claiming it moves the
+   task from `review` → `review_in_progress` (`assigned_to=you`). Then you review
+   and deliver a verdict via `worker_done`.
 
-   **How to deliver the review verdict** (two working paths — pick either):
-   - **Path A — take it fresh via worker_next** (most robust; works on every build):
-     call `worker_next({ worker_id, project_id })` again — the dispatcher hands
-     you the review task with `skill: "saga-reviewer"` — then
-     `worker_done({ task_id, worker_id, result })` with the verdict.
-   - **Path B — direct second worker_done** (works on builds with the #59 fix):
-     call `worker_done({ task_id, worker_id, result })` a second time on the
-     same task. A free review task can be closed by any worker.
+   **You can ONLY deliver a verdict on a task you claimed** — `worker_done`
+   expects status `review_in_progress`. There is no "direct close a free review
+   task" path anymore: you must `worker_next` it first. (Old Path B was removed
+   when `review` became a pure buffer.)
 
-   If Path A is available, prefer it — it re-establishes assignment explicitly.
-   If you've already called `worker_done` (review) and the queue is otherwise
-   empty, use Path B (or Path A) to close it; do NOT leave it sitting in review.
+   `result` is the verdict text; `verdict` selects what happens next:
 
-   `result` is the verdict: `"APPROVED — <why>"` or
-   `"CHANGES REQUESTED — <file:line — issue — fix>; see comment"`.
-   saga moves it `review → done` and frees downstream deps.
+   | verdict | status change | branch/worktree | then |
+   |---|---|---|---|
+   | `"approved"` (default) | `review_in_progress → done` | kept (merged later) | **MERGE-BACK** (see WORKTREE LIFECYCLE): acquire merge-lock, merge `task/<id>` into `dev`, release. `merged_into` → `dev` (or `conflict` → `needs-human`). Downstream deps auto-unblock. |
+   | `"changes_requested"` | `review_in_progress → in_progress` | **untouched — survives** | you are now the dev again: fix in the SAME worktree (`task/<id>`), commit, dev-done again. Do NOT recreate the branch. |
+
+   Either verdict returns `stop: true` — end the launch after the merge-back (or
+   directly on changes_requested).
 
 **Solo worker pattern (you are the only agent):** after your dev-phase
-`worker_done` puts the task in `review`, do NOT let it sit there — there is no
-other worker coming. Immediately close the review (Path A or B above) with your
-self-review verdict. This is the MVP trade-off (self-review beats stuck); a
-separate reviewer pool is a future concern.
+`worker_done` puts the task in `review` buffer, you MUST stop (the response says
+so). On the next launch, `worker_next` will hand the same task back to you with
+`skill: "saga-reviewer"` (FIFO) — claim it, self-review, deliver verdict. Do not
+try to close it from the same launch as the dev-phase.
 
 **Multi-worker pattern:** the developer's `worker_done` puts the task in
 `review`; another worker's `worker_next` will hand it out with
@@ -152,7 +297,7 @@ separate reviewer pool is a future concern.
 This is critical. You are one of potentially many workers; humans are not
 watching each step.
 
-- When `worker_done` returns `next_task` → **immediately start working on it.** Do not ask *"should I continue?"*, *"want me to take this?"*, *"shall I review the previous task first?"*. None of that.
+- After `worker_done` completes a task, **return your one-line summary and STOP.** Do NOT call `worker_next` again in this launch — the orchestrator spawns you again for the next task. Do not ask *"should I continue?"*, *"want me to take this?"*, *"shall I review the previous task first?"*. None of that. One launch = one task.
 - **Task size / complexity is NOT a reason to ask.** A task being large, long, or open-ended research does NOT license a check-in. Work it to completion (or to a genuine block — see ASK flow). "This is a big task, want me to keep going?" is the #1 wrong question — the answer is always yes, so don't ask.
 - **NEVER end a turn holding a task.** If you are holding a task (it's `in_progress`, assigned to you), you MUST finish it via `worker_done` before this conversation ends. Holding a task and stopping = a **zombie** (the task is locked, no other worker can take it, nothing happens). This is the worst failure mode. If you must stop mid-task: call `worker_done` with `result: "PARTIAL: <what's done, what remains>"` so the task is freed and the next worker can pick up the comment trail. Do NOT leave `in_progress` tasks dangling.
 - The ONLY times you address the human:
@@ -167,7 +312,7 @@ Most "clarifications" are laziness, not real doubt. Default to action:
 
 ## QUEUE_EMPTY — verify before you declare "done"
 
-When `worker_next` returns `{task: null}` OR `worker_done` returns `next_task: null`:
+When `worker_next` returns `{task: null}`:
 
 **Do NOT immediately announce "all done".** An empty result has multiple causes —
 all tasks done, all blocked, all `low` priority, OR you resolved the wrong
@@ -206,8 +351,12 @@ Use this **sparingly** — it idles you while waiting. Prefer the 80% rule
 - **`./projectname.txt` is the ONLY source of your project identity.** No file → HARD STOP, ask the user, create NOTHING until they answer. Never infer the project from the folder name, AGENTS.md, or any other signal.
 - **worker_id**: use exactly the id you were given (e.g. `agent-1`). It is how the board shows who does what.
 - **One task at a time.** Only the task whose `assigned_to` == your `worker_id` is yours.
-- **Never call `worker_next` to "get ahead"** while holding a task — the next task comes from `worker_done`.
+- **Never hold two tasks at once.** You get a task via `worker_next`, finish it via `worker_done`, then STOP — return your summary. The next task comes from a fresh `worker_next` on your next launch (the orchestrator spawns you again), never from `worker_done` (it no longer returns one).
 - **Never go zombie.** If you hold a task (`in_progress`, assigned to you), you MUST close it with `worker_done` before stopping. Holding a task and stopping locks it forever — no other worker can take it. If you must stop mid-task: `worker_done` with `result: "PARTIAL: <done so far, what remains>"` to free it. A partial close is always better than a zombie.
 - **Never create projects/epics/tasks** (`project_create`, `epic_create`, `task_create`) — that is the planner role, not yours. This applies ALWAYS, including when the project looks empty or you "want to have something to do". Empty project → report and stop.
 - **Never move status yourself** (`task_update({status})`) — it's ignored; use `worker_done`.
+- **Every task runs in its own worktree** (`.worktrees/task-<id>`, branch `task/<id>`). Do NOT edit files in the shared checkout — that races siblings. Bootstrap git once if the repo isn't initialized yet (see WORKTREE LIFECYCLE: Bootstrap).
+- **Merge only after APPROVED.** `dev` receives `task/<id>` exclusively at the `review→done` transition, through the merge-lock (`worker_merge_acquire`/`release`). Never merge unreviewed code; never merge without holding the lock.
+- **Never recreate the branch on CHANGES REQUESTED.** The `task/<id>` worktree survives — fix in place and commit again.
+- **Never `git worktree remove --force`** a worktree that may hold another worker's uncommitted work. Use `worker_health` to find orphans and confirm before cleanup.
 - **You may** `task_get` (read), `comment_add` (breadcrumb), `note_save` (decision) on tasks — these are side-effects on owned work or read-only, not work-stealing.
