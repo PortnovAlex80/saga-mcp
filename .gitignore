@@ -8,3 +8,6 @@ dist/
 # tracker-view runtime artifacts
 .tracker-view.pid
 tracker-view/.tracker-view.pid
+
+# git worktrees (saga task isolation: .worktrees/task-<id>)
+.worktrees/

@@ -85,14 +85,24 @@ export interface ToolDefinition {
 
 export type ToolHandler = (args: Record<string, unknown>) => unknown;
 
-// Requirements & design artifacts (PRD/SRS/UC/AC/FR/NFR/decision).
+// Requirements & design artifacts (PRD/SRS/UC/AC/FR/NFR/decision + theme/brief).
 // One artifact = one .md doc + its status + optional parent (within-episode
 // hierarchy) + code for querying (AC-1, FR-3).
+//
+// ArtifactType is the canonical union of artifact `type` literals. SRS-004 §2b.1.
+// MUST stay in lock-step with `ArtifactTypeSchema` (src/schema.ts) and the SQL
+// CHECK clause in SCHEMA_SQL. Additive only — never rename/remove existing
+// literals (SRS §5 compatibility).
+export type ArtifactType =
+  | 'PRD' | 'SRS' | 'UC' | 'AC' | 'FR' | 'NFR' | 'decision'
+  | 'theme'    // NEW — top-level business board
+  | 'brief';   // NEW — discovery-phase output
+
 export interface Artifact {
   id: number;
   project_id: number;
   epic_id: number;
-  type: 'PRD' | 'SRS' | 'UC' | 'AC' | 'FR' | 'NFR' | 'decision';
+  type: ArtifactType;
   code: string | null;
   title: string;
   path: string;

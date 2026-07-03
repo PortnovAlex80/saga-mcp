@@ -136,7 +136,7 @@ CREATE TABLE IF NOT EXISTS artifacts (
   project_id          INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
   epic_id             INTEGER NOT NULL REFERENCES epics(id) ON DELETE CASCADE,
   type                TEXT NOT NULL
-                        CHECK (type IN ('PRD','SRS','UC','AC','FR','NFR','decision')),
+                        CHECK (type IN ('PRD','SRS','UC','AC','FR','NFR','decision','theme','brief')),
   code                TEXT,
   title               TEXT NOT NULL,
   path                TEXT NOT NULL,
@@ -207,3 +207,23 @@ CREATE INDEX IF NOT EXISTS idx_tasks_due ON tasks(due_date);
 CREATE INDEX IF NOT EXISTS idx_task_deps_depends ON task_dependencies(depends_on_task_id);
 CREATE INDEX IF NOT EXISTS idx_comments_task ON comments(task_id);
 `;
+
+// ----------------------------------------------------------------------------
+// Runtime validation schemas (Zod).
+//
+// SRS-004 §2b.1 — ArtifactTypeSchema is the canonical, machine-checked list of
+// artifact `type` literals. It MUST stay in lock-step with:
+//   - the `ArtifactType` union in src/types.ts
+//   - the `type ... CHECK (type IN (...))` clause in SCHEMA_SQL above
+// Extension point (SRS §2b.1): to add a new artifact type, append the literal
+// in ALL THREE places (this z.enum, the TS union, and the SQL CHECK).
+// Additive only — never rename/remove existing literals (SRS §5 compatibility).
+// ----------------------------------------------------------------------------
+import { z } from 'zod';
+
+export const ArtifactTypeSchema = z.enum([
+  'PRD', 'SRS', 'UC', 'AC', 'FR', 'NFR', 'decision',
+  'theme',   // NEW — top-level business board
+  'brief',   // NEW — discovery-phase output
+]);
+
