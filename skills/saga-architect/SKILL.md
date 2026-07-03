@@ -25,9 +25,54 @@ If none → the episode isn't ready. Report and stop (do not draft a PRD yoursel
 
 1. Read the PRD (path from the artifact, or read the .md).
 2. Copy `docs/requirements/templates/SRS.md` → `docs/requirements/REQ-NNN-<slug>/01-SRS.md`.
-3. Fill: functional requirements (FR-N), structural design, interfaces, NFRs
-   (with metrics), constraints, risks, traceability to PRD.
+3. Fill: functional requirements (FR-N), **API contract** (see below), structural
+   design, interfaces, NFRs (with metrics), constraints, risks, traceability to PRD.
 4. Set `Status: Draft`.
+
+## API contract section (REQUIRED when >1 parallel task touches a module)
+
+If two or more dev-tasks will touch the same module / file / API surface (the
+planner detects this from FRs that share a file), the SRS MUST contain an
+**"API contract" section** that fixes the canonical interface BEFORE workers
+start. Without it, parallel workers independently invent the structure
+(pure functions vs dispatcher, class vs free functions, naming) and the
+merge-lock catches an architectural conflict, not a line conflict. This is a
+planning failure traceable to a missing SRS section — the workers did nothing
+wrong.
+
+The API contract section must specify, for each shared module:
+- **Public surface**: function signatures (names, parameters, return types),
+  class skeletons, exported names. No implementation bodies — just the contract.
+- **Module layout**: file paths, what each file owns.
+- **Extension points**: how a new operation/case is added (e.g. "add a branch to
+  the `calculate(op)` dispatcher" or "add a new free function `op_<name>(a,b)`").
+  This tells every worker the SAME way to fit their piece in.
+
+The contract becomes the source for the planner's SCAFFOLD task (see
+saga-planner skill, Pattern B), which materializes these signatures as stubs
+before body tasks run.
+
+Example (calculator module, 4 ops):
+```
+## API contract — src/calc.py
+
+Public functions (one per operation, pure, stateless):
+  def add(a: float, b: float) -> float
+  def sub(a: float, b: float) -> float
+  def mul(a: float, b: float) -> float
+  def div(a: float, b: float) -> float   # raises DivisionByZeroError on b==0
+
+Class:
+  class DivisionByZeroError(Exception)   # domain error, NOT ValueError/Inf
+
+Extension point: add a new `def <op>(a, b)` function. Do NOT add a dispatcher
+on top — each operation is a standalone function.
+
+Exceptions: DivisionByZeroError (div by zero); TypeError for non-numeric input.
+```
+
+If you omit this section for a shared module, the planner cannot build a safe
+SCAFFOLD, and parallel workers WILL diverge — that's on the architect.
 
 ## Registering artifacts (IMPORTANT — this is the graph)
 
@@ -63,6 +108,11 @@ FR/NFR `code` is the query key — AC will later be `derived_from` an FR code.
 - Each FR/NFR must be **testable** — a reader must be able to say how to verify it.
 - NFRs need metrics (latency, throughput, %, count). "Fast" is not a requirement.
 - One SRS per REQ episode. If the system is large, split the episode.
+- **API contract section is REQUIRED when >1 parallel task touches a module.**
+  Without it, workers invent the structure independently and the merge fails on
+  architecture, not on lines. See "API contract section" above. This is the
+  single most common preventable integration failure — it lives in the SRS, not
+  in the worker.
 - Do not write ACs — those are saga-analyst's job. But each AC must trace to one
   of your FRs; structure FRs so they are individually addressable.
 - Never `worker_next` again after `worker_done`.
