@@ -162,6 +162,9 @@ describe('extractInputs (SRS §2b.4)', () => {
       assert.equal(res.inputs[0].timestamp, '1000');
       assert.equal(res.inputs[1].timestamp, '1200');
       assert.equal(res.gate_passed, true);
+      // AC-7: authoritative source → high completeness, not degraded.
+      assert.equal(res.completeness, 'high');
+      assert.equal(res.degraded, false);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -214,6 +217,9 @@ describe('extractInputs (SRS §2b.4)', () => {
       assert.equal(res.gate_passed, false);
       assert.equal(res.inputs[0].text, 'latest user input from rollout');
       assert.equal(res.total_count, 1);
+      // AC-7: fallback must leave the degraded marker (no silent low pass).
+      assert.equal(res.completeness, 'low');
+      assert.equal(res.degraded, true);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -271,5 +277,96 @@ describe('INPUTS_SQL contract (SRS §2b.4)', () => {
     assert.match(QUERY_SQL_ZCODE, /m\.session_id\s*=\s*\?/i);
     // exactly one placeholder in the realized query
     assert.equal((QUERY_SQL_ZCODE.match(/\?/g) || []).length, 1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// AC-7 (#223) — degraded/fallback observability markers.
+//
+// DoD:
+//   #1 extractInputs(dbPath='nonexistent.db') → source='rollout-jsonl',
+//      gate_passed=false.
+//   #3 (grep-test) every fallback run leaves a marker completeness=low /
+//      degraded=true in the (serialized) output — jointly with AC-10/NFR-5.
+//
+// The fallback BRANCH itself was implemented by AC-2 (#218); AC-7 adds the
+// observable marker fields on CompletenessResult (completeness, degraded) so
+// the degraded path is grep-assertable and maps onto BriefPayload (SRS §2b.2).
+// ---------------------------------------------------------------------------
+describe('AC-7 degraded/fallback markers (SRS §2b.2 / §2b.4)', () => {
+  it('DoD#1: nonexistent db → source=rollout-jsonl, gate_passed=false', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ac7-'));
+    try {
+      const rolloutPath = join(dir, 'model-io-sess_orphan.jsonl');
+      writeFileSync(rolloutPath, JSON.stringify({ text: 'degraded user input' }) + '\n');
+      const res = await extractInputs('orphan', {
+        dbPath: join(dir, 'nonexistent.db'),
+        rolloutPath,
+      });
+      assert.equal(res.source, 'rollout-jsonl');
+      assert.equal(res.gate_passed, false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('DoD#3: a fallback run serializes with the completeness=low / degraded=true markers (grep-anchor)', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ac7-'));
+    try {
+      const rolloutPath = join(dir, 'model-io-sess_orphan.jsonl');
+      writeFileSync(rolloutPath, JSON.stringify({ text: 'degraded user input' }) + '\n');
+      const res = await extractInputs('orphan', {
+        dbPath: join(dir, 'nonexistent.db'),
+        rolloutPath,
+      });
+      // The serialized CompletenessResult must carry both markers verbatim so a
+      // downstream brief (and the AC-10 grep audit) can find them.
+      const serialized = JSON.stringify(res);
+      assert.match(serialized, /"completeness":"low"/);
+      assert.match(serialized, /"degraded":true/);
+      // and the inverted markers are NEVER present on the fallback path
+      assert.doesNotMatch(serialized, /"completeness":"high"/);
+      assert.doesNotMatch(serialized, /"degraded":false/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('no silent low pass: authoritative db source never reports completeness=low/degraded=true', async () => {
+    const { dbPath, dir } = makeZcodeDb(PARENT, FIXTURE_ROWS);
+    try {
+      const res = await extractInputs(PARENT, { dbPath });
+      assert.equal(res.source, 'db.sqlite');
+      assert.equal(res.completeness, 'high');
+      assert.equal(res.degraded, false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('empty authoritative db (0 rows, no rollout) stays high/false — not a degraded source', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ac7-'));
+    try {
+      // a real but empty DB
+      const emptyDbPath = join(dir, 'empty.sqlite');
+      const db = new Database(emptyDbPath);
+      db.exec(`
+        CREATE TABLE message (id TEXT PRIMARY KEY, session_id TEXT, time_created INTEGER, time_updated INTEGER, data TEXT);
+        CREATE TABLE part (id TEXT PRIMARY KEY, message_id TEXT, session_id TEXT, time_created INTEGER, time_updated INTEGER, data TEXT);
+      `);
+      db.close();
+      const res = await extractInputs(PARENT, {
+        dbPath: emptyDbPath,
+        rolloutPath: join(dir, 'no-such.jsonl'),
+      });
+      assert.equal(res.source, 'db.sqlite');
+      assert.equal(res.total_count, 0);
+      assert.equal(res.gate_passed, false);
+      // readable-but-empty is authoritative, not degraded
+      assert.equal(res.completeness, 'high');
+      assert.equal(res.degraded, false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

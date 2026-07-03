@@ -10,6 +10,12 @@
 //
 // ============================================================================
 // Implemented by body-task AC-2 (#218 — deterministic / fingerprint-idempotent).
+// Extended by body-task AC-7 (#223 — degraded/fallback observability markers:
+//   every fallback run leaves completeness='low' / degraded=true so no degraded
+//   pass is silent, NFR-1 / NFR-5). The fallback BRANCH (rollout-jsonl) was
+//   already implemented by AC-2; AC-7 adds the observable marker fields on
+//   CompletenessResult so the degraded path is grep-assertable and maps onto
+//   BriefPayload (SRS §2b.2). Additive — no existing return shape changes shape.
 // ============================================================================
 //
 // Extension point (SRS §2b.4): a new input source = a new branch in
@@ -56,6 +62,15 @@ export interface InputRow {
 
 /**
  * Result of extractInputs — the inputs + coverage summary (SRS §2b.4).
+ *
+ * `completeness` and `degraded` are the observability markers required by
+ * AC-7 (DoD: "каждый fallback-прогон оставляет маркер completeness=low /
+ * degraded=true в output"). They mirror the BriefPayload literals (SRS §2b.2)
+ * so a degraded extract maps one-for-one onto a degraded brief:
+ *   - source 'db.sqlite' (authoritative)  → completeness 'high', degraded false
+ *   - source 'rollout-jsonl' (fallback)    → completeness 'low',  degraded true
+ * The fields are ADDITIVE — existing callers read `source`/`gate_passed` and
+ * ignore these; only the AC-7 grep marker and brief-mapping consume them.
  */
 export interface CompletenessResult {
   source: 'db.sqlite' | 'rollout-jsonl';
@@ -64,6 +79,19 @@ export interface CompletenessResult {
   total_count: number;
   coverage: number; // covered_count / total_count, 0..1
   gate_passed: boolean; // coverage === 1.0 AND source==='db.sqlite'
+  /**
+   * AC-7 observability: `'high'` for the authoritative db.sqlite source,
+   * `'low'` for the degraded rollout-jsonl fallback. Maps onto
+   * `BriefPayload.completeness` (SRS §2b.2). A fallback run is NEVER silently
+   * `'high'` — the whole point of the marker (NFR-1 / no silent pass).
+   */
+  completeness: 'high' | 'low';
+  /**
+   * AC-7 observability: `true` iff the result came from the degraded fallback
+   * source. Maps onto `BriefPayload.degraded` (SRS §2b.2). `degraded=true` is
+   * the grep-anchor every fallback run must leave (NFR-5).
+   */
+  degraded: boolean;
 }
 
 /**
@@ -247,6 +275,7 @@ export async function extractInputs(
       if (inputs.length > 0) {
         // Extraction complete from the authoritative source → gate (of the
         // extract step) passes. Section-level coverage is computed downstream.
+        // AC-7: authoritative source → completeness=high, degraded=false.
         return {
           source: 'db.sqlite',
           inputs,
@@ -254,6 +283,8 @@ export async function extractInputs(
           total_count: inputs.length,
           coverage: 1.0,
           gate_passed: true,
+          completeness: 'high',
+          degraded: false,
         };
       }
       // db open but 0 rows for this session → fall through to rollout fallback.
@@ -265,6 +296,13 @@ export async function extractInputs(
   }
 
   // --- Fallback source: rollout-jsonl (degraded) ----------------------------
+  // AC-7: db.sqlite open failure / 0 rows → read the last line of the rollout
+  // jsonl, mark the result degraded. This is the canonical completeness=low
+  // path: gate_passed forced false (NFR-1 no silent pass) AND the observable
+  // markers completeness='low' / degraded=true are set so a downstream brief
+  // can map them onto BriefPayload (SRS §2b.2) and the run leaves a grep-anchor
+  // (NFR-5). DoD: extractInputs(dbPath='nonexistent.db') → source='rollout-jsonl',
+  // gate_passed=false.
   const text = readRolloutLastInput(rolloutPath);
   if (text !== null) {
     const ts = String(Date.now());
@@ -275,12 +313,16 @@ export async function extractInputs(
       total_count: 1,
       coverage: 0,
       gate_passed: false, // SRS §2b.4: degraded source → gate never passes
+      completeness: 'low', // AC-7 marker
+      degraded: true, // AC-7 marker
     };
   }
 
   // Neither source yielded anything. Return an empty db.sqlite result with the
   // gate closed — the caller decides whether to fail loudly (consistent with
-  // readSelfSessionId's "null → caller fails explicitly" contract).
+  // readSelfSessionId's "null → caller fails explicitly" contract). This is the
+  // authoritative-but-empty branch, NOT the degraded fallback, so markers stay
+  // high/false (an empty readable DB is not a degraded source).
   return {
     source: 'db.sqlite',
     inputs: [],
@@ -288,6 +330,8 @@ export async function extractInputs(
     total_count: 0,
     coverage: 0,
     gate_passed: false,
+    completeness: 'high',
+    degraded: false,
   };
 }
 
