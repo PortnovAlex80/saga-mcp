@@ -7,12 +7,11 @@
 // discovery phase) and returns human-readable, per-field errors.
 //
 // ============================================================================
-// SCAFFOLD ONLY (Pattern B, task #215).
+// Implemented by body-task AC-1 (#217).
 // ============================================================================
-// This file fixes the API CONTRACT (types + function signature) BEFORE the
-// body-task lands. The function body is a permissive stub. The full validation
-// rules live in SRS-004 §2b.2 and are implemented by the body-task AC-1
-// (artifact_create(type:'brief'/'theme') + validateBrief, task #217):
+// The API CONTRACT (types + function signature) was fixed by SCAFFOLD #215
+// (Pattern B). This file now implements the full validation rule set from
+// SRS-004 §2b.2:
 //
 //   - decision must be one of 4 literals, else errors.push('decision: invalid').
 //   - affected_projects.length > 1 AND topology_hint === 'parallel-independent'
@@ -60,18 +59,81 @@ export interface BriefValidationResult {
   errors: string[]; // human-readable, per-field
 }
 
+const DECISION_LITERALS = ['go', 'fast-track', 'clarify', 'reject'] as const;
+const TOPOLOGY_LITERALS = ['parallel-independent', 'sequence', 'scaffold-then-parallel'] as const;
+const COMPLETENESS_LITERALS = ['high', 'low'] as const;
+
 /**
  * Validate a brief payload (SRS §2b.2).
  *
- * SCAFFOLD stub: returns a permissive {ok:true, errors:[]} so that dependent
- * body-tasks can wire artifact_create(type:'brief') before the real validation
- * rules ship in body-task AC-1 (#217). The body-task replaces this stub with
- * the full rule set documented above.
+ * Pure, stateless — never touches the DB. Collects ALL applicable errors in a
+ * single pass (does not short-circuit on the first), so a caller sees every
+ * problem at once. Each error string is human-readable and field-scoped, and
+ * uses the exact wording fixed by the SRS contract (the unit tests assert on
+ * those literals — keep them stable).
+ *
+ * Rules (SRS §2b.2):
+ *   1. `decision` must be one of {go, fast-track, clarify, reject}.
+ *   2. `affected_projects.length > 1` AND `topology_hint === 'parallel-independent'`
+ *      → multi-project work cannot be parallel-independent.
+ *   3. `completeness === 'low'` AND `decision === 'go'` → a low-completeness
+ *      brief must not commit to go; use 'clarify'.
+ *   4. `reasoning` must be a non-empty (non-blank) string.
+ *
+ * The payload is typed `unknown` (callers pass `metadata.brief_payload` straight
+ * from the tool args, which is untyped JSON), so every field is read defensively.
+ * Missing/wrong-typed optional fields are not errors; missing/wrong-typed
+ * REQUIRED fields (decision, reasoning) are.
  *
  * @see SRS-004 §2b.2
- * @see body-task AC-1 (#217) — implements the validation rules
  */
-export function validateBrief(_payload: unknown): BriefValidationResult {
-  // SCAFFOLD stub — body-task AC-1 (#217) implements the real rules.
-  return { ok: true, errors: [] };
+export function validateBrief(payload: unknown): BriefValidationResult {
+  const errors: string[] = [];
+
+  if (payload == null || typeof payload !== 'object') {
+    // Nothing structural to check against the rules — report the root shape.
+    return { ok: false, errors: ['brief_payload: must be an object'] };
+  }
+
+  const p = payload as Record<string, unknown>;
+
+  // Rule 1 — decision literal. This is the contract's keystone: a brief with a
+  // missing/invalid decision stays in `draft` (AC-1). Missing counts as invalid.
+  const decision = p.decision;
+  if (
+    typeof decision !== 'string' ||
+    !(DECISION_LITERALS as readonly string[]).includes(decision)
+  ) {
+    errors.push('decision: invalid');
+  }
+
+  // Rule 4 — reasoning non-empty. `reasoning` is a required string field; a
+  // blank/whitespace-only value carries no rationale and fails the brief.
+  const reasoning = p.reasoning;
+  if (typeof reasoning !== 'string' || reasoning.trim() === '') {
+    errors.push('reasoning: must be a non-empty string');
+  }
+
+  // Rule 2 — multi-project topology. Only meaningful when the caller actually
+  // supplied affected_projects; a missing/malformed array is left for a stricter
+  // schema validator — here we only enforce the cross-field invariant.
+  const affectedProjects = p.affected_projects;
+  const topologyHint = p.topology_hint;
+  if (
+    Array.isArray(affectedProjects) && affectedProjects.length > 1 &&
+    topologyHint === 'parallel-independent'
+  ) {
+    errors.push(
+      'topology_hint: multi-project requires sequence or scaffold-then-parallel',
+    );
+  }
+
+  // Rule 3 — low completeness forbids a 'go' decision. (If decision was invalid,
+  // it cannot equal 'go', so this rule simply does not fire — the invalidity is
+  // already reported by rule 1.)
+  if (p.completeness === 'low' && decision === 'go') {
+    errors.push('completeness=low blocks decision=go; use clarify');
+  }
+
+  return { ok: errors.length === 0, errors };
 }

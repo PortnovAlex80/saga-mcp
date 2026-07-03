@@ -1,6 +1,7 @@
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import { getDb } from '../db.js';
 import { logActivity } from '../helpers/activity-logger.js';
+import { validateBrief } from '../validators/brief.js';
 import type { Artifact, ArtifactTrace, ToolHandler } from '../types.js';
 
 // ============================================================================
@@ -19,9 +20,23 @@ import type { Artifact, ArtifactTrace, ToolHandler } from '../types.js';
 // builders' project in the same DB). Epic = one REQ-NNN episode.
 // ============================================================================
 
-const ARTIFACT_TYPES = ['PRD', 'SRS', 'UC', 'AC', 'FR', 'NFR', 'decision'] as const;
+// SRS-004 §2b.1 — 'brief' (discovery output) and 'theme' (top-level business
+// board) extend the original 7 artifact types. This array MUST stay in lock-step
+// with the ArtifactType union (src/types.ts), ArtifactTypeSchema (src/schema.ts)
+// and the artifacts.type SQL CHECK constraint — all four are the canonical list.
+const ARTIFACT_TYPES = ['PRD', 'SRS', 'UC', 'AC', 'FR', 'NFR', 'decision', 'brief', 'theme'] as const;
 const ARTIFACT_STATUSES = ['draft', 'in_review', 'accepted', 'superseded'] as const;
 const LINK_TYPES = ['covers', 'implements', 'derived_from', 'depends_on', 'verified_by', 'superseded_by'] as const;
+
+// The business board project is identified by its exact name (SRS §2b.3). There
+// is no project `kind` column, so the contract's `projectExists(id,'business')`
+// is realized as a name match against the canonical 'business' project.
+const BUSINESS_PROJECT_NAME = 'business';
+
+// A brief that fails validation is persisted in `draft` (AC-1: "Отсутствие /
+// невалидность decision → brief остаётся в статусе draft"). This constant names
+// the metadata key under which the validated BriefPayload is stored.
+const BRIEF_PAYLOAD_KEY = 'brief_payload';
 
 // ============================================================================
 // Handlers
@@ -46,21 +61,90 @@ function handleArtifactCreate(args: Record<string, unknown>): Artifact {
   if (!ARTIFACT_STATUSES.includes(status)) {
     throw new Error(`status must be one of ${ARTIFACT_STATUSES.join(', ')}, got '${status}'`);
   }
-  if (!title || !path) {
+  if (title === undefined || title === null || title === '') {
+    throw new Error('title and path are required');
+  }
+  if (path === undefined || path === null || path === '') {
     throw new Error('title and path are required');
   }
 
-  const info = db.prepare(
-    `INSERT INTO artifacts (project_id, epic_id, type, code, title, path, status, parent_artifact_id, tags, metadata)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  ).run(
-    projectId, epicId, type, code, title, path, status, parentArtifactId,
-    JSON.stringify(tags), JSON.stringify(metadata),
-  );
+  // --- type-specific guards + payload prep (SRS §2b.3) ---
+  //
+  // `brief`: validate the BriefPayload BEFORE persisting. On failure we throw
+  // (the index.ts marshalling layer turns any throw into an MCP isError
+  // response), which keeps the error path uniform with every other tool. On
+  // success the validated payload is persisted at metadata.brief_payload so
+  // artifact_get(type:'brief') returns all 12 sections.
+  // `theme`: a theme is the top-level business board and MUST live in the
+  // 'business' project. Without a project `kind` column the contract's
+  // `projectExists(id,'business')` is a name match.
+  let metadataToPersist = metadata;
 
-  const artifact = db.prepare('SELECT * FROM artifacts WHERE id=?').get(info.lastInsertRowid) as Artifact;
-  logActivity(db, 'artifact', artifact.id, 'created', null, null, type,
-    `Artifact ${artifact.type}${code ? ` ${code}` : ''} '${title}' created`);
+  if (type === 'brief') {
+    const briefPayload = (args.metadata as Record<string, unknown> | undefined)?.[BRIEF_PAYLOAD_KEY];
+    const validation = validateBrief(briefPayload);
+    if (!validation.ok) {
+      // AC-1: a brief with a missing/invalid decision is not persisted as
+      // accepted. We reject the whole payload (the index.ts marshalling turns
+      // any throw into an MCP isError response) and surface the per-field errors
+      // so the agent can correct and retry. Only a validated payload lands — at
+      // the caller-supplied status, which is 'draft' until the gate passes.
+      throw new Error(`brief validation failed:\n${validation.errors.join('\n')}`);
+    }
+    metadataToPersist = { ...metadata, [BRIEF_PAYLOAD_KEY]: briefPayload };
+  }
+
+  if (type === 'theme') {
+    const proj = db.prepare('SELECT name FROM projects WHERE id=?').get(projectId) as { name: string } | undefined;
+    if (!proj) {
+      throw new Error(`theme requires project_id=${BUSINESS_PROJECT_NAME}: project ${projectId} not found`);
+    }
+    if (proj.name !== BUSINESS_PROJECT_NAME) {
+      throw new Error(`theme requires project_id=${BUSINESS_PROJECT_NAME}, got project '${proj.name}' (id ${projectId})`);
+    }
+  }
+
+  // --- upsert by (epic_id, code, type) (FR-1: idempotent re-create) ---
+  //
+  // A repeat artifact_create with the same code within an episode updates the
+  // existing row instead of duplicating. code is nullable; when it is null we
+  // always insert (there is nothing to match on). The match is scoped to the
+  // epic + type so AC-1 in two different episodes never collide.
+  let artifactId: number | undefined;
+  let updatedExisting = false;
+
+  if (code !== null) {
+    const existing = db.prepare(
+      'SELECT id FROM artifacts WHERE epic_id=? AND type=? AND code=?',
+    ).get(epicId, type, code) as { id: number } | undefined;
+    if (existing) {
+      db.prepare(
+        `UPDATE artifacts SET project_id=?, title=?, path=?, status=?, parent_artifact_id=?,
+                              tags=?, metadata=?, updated_at=datetime('now')
+         WHERE id=?`,
+      ).run(
+        projectId, title, path, status, parentArtifactId,
+        JSON.stringify(tags), JSON.stringify(metadataToPersist), existing.id,
+      );
+      artifactId = existing.id;
+      updatedExisting = true;
+    }
+  }
+
+  if (artifactId === undefined) {
+    const info = db.prepare(
+      `INSERT INTO artifacts (project_id, epic_id, type, code, title, path, status, parent_artifact_id, tags, metadata)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      projectId, epicId, type, code, title, path, status, parentArtifactId,
+      JSON.stringify(tags), JSON.stringify(metadataToPersist),
+    );
+    artifactId = info.lastInsertRowid as number;
+  }
+
+  const artifact = db.prepare('SELECT * FROM artifacts WHERE id=?').get(artifactId) as Artifact;
+  logActivity(db, 'artifact', artifact.id, updatedExisting ? 'updated' : 'created', null, null, type,
+    `Artifact ${artifact.type}${code ? ` ${code}` : ''} '${title}' ${updatedExisting ? 'updated (upsert)' : 'created'}`);
   return artifact;
 }
 
