@@ -402,6 +402,7 @@ function renderBoard(projectId, allProjects) {
         <a class="tab active" href="?project=${projectId}">Канбан</a>
         <a class="tab" href="?project=${projectId}&tab=artifacts">Артефакты</a>
         <a class="tab" href="?project=${projectId}&tab=coverage">Покрытие</a>
+        <a class="tab" href="?project=${projectId}&tab=acceptance">Приёмка</a>
       </div>
       <span style="flex:1"></span>
       <div class="heartbeat"><span id="hb-dot" class="hb-dot red"></span><span id="hb-txt">…</span></div>
@@ -523,6 +524,7 @@ function renderArtifacts(projectId, allProjects) {
         <a class="tab" href="?project=${projectId}">Канбан</a>
         <a class="tab active" href="?project=${projectId}&tab=artifacts">Артефакты</a>
         <a class="tab" href="?project=${projectId}&tab=coverage">Покрытие</a>
+        <a class="tab" href="?project=${projectId}&tab=acceptance">Приёмка</a>
       </div>
       <span style="flex:1"></span>
       <div class="heartbeat"><span id="hb-dot" class="hb-dot red"></span><span id="hb-txt">…</span></div>
@@ -1313,6 +1315,15 @@ function page(title, body) {
     .cov-legend{padding:10px 20px 30px;font-size:11px;color:#8b949e}
     .cov-gap-sample{background:rgba(231,76,60,.06);padding:1px 6px;border-radius:3px}
 
+    /* реестр приёмочных испытаний (?project=N&tab=acceptance) */
+    .acc-table .acc-title{max-width:340px}
+    .acc-verdict{font-size:12px;white-space:nowrap;font-weight:600}
+    .acc-icon{font-size:14px}
+    .ac-parent{font-family:ui-monospace,Consolas,monospace;font-size:11px;color:#3fb950}
+    .ac-parent:hover{text-decoration:underline}
+    .ac-note{font-size:11px;color:#8b949e;display:block;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .acc-note-cell{max-width:240px}
+
     /* страница администрирования (создание проекта/эпика) */
     .admin-link{border-color:#484f58;color:#484f58;font-size:11px}
     .admin-link:hover{border-color:#f39c12;color:#f39c12}
@@ -1605,6 +1616,7 @@ function renderCoverage(projectId, allProjects) {
         <a class="tab" href="?project=${projectId}">Канбан</a>
         <a class="tab" href="?project=${projectId}&tab=artifacts">Артефакты</a>
         <a class="tab active" href="?project=${projectId}&tab=coverage">Покрытие</a>
+        <a class="tab" href="?project=${projectId}&tab=acceptance">Приёмка</a>
       </div>
       <span style="flex:1"></span>
       <div class="heartbeat"><span id="hb-dot" class="hb-dot red"></span><span id="hb-txt">…</span></div>
@@ -1705,6 +1717,251 @@ function renderCoverage(projectId, allProjects) {
       <span style="color:#a371f7">review</span> ·
       <span style="color:#e74c3c">blocked</span>
     </div>`);
+}
+
+// --- HTML: реестр приёмочных испытаний (?project=N&tab=acceptance) ---
+// ФИЧА D — аналог Almirah/StrictDoc test registry, интегрированный с saga-задачами.
+// Каждая AC = строка приёмочного испытания. Вычисляем результат приёмки по статусам
+// связанных задач (implements=DEV, verified_by=VERIFY) и merge-статусу worktree.
+//   ✅ passed   = DEV done И (VERIFY done ИЛИ нет VERIFY)
+//   ⏳ running  = DEV в работе (in_progress/review*)
+//   ❌ failed   = DEV blocked ИЛИ merge_conflict в metadata.worktree
+//   ⚪ unverified = нет implements (AC не реализована)
+// Сводка сверху: N из M прошли (X%) + progress-bar. Фильтр по статусу (JS, client-side).
+function loadAcceptanceRegistry(projectId) {
+  return withDb(db => {
+    let hasTable;
+    try {
+      hasTable = db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='artifacts'").get();
+    } catch { return { unavailable: true }; }
+    if (!hasTable) return { unavailable: true };
+
+    // Все AC проекта + parent UC (если есть) для контекста.
+    const acs = db.prepare(`
+      SELECT a.id, a.code, a.title, a.status, a.epic_id, a.parent_artifact_id,
+             e.name AS epic_name,
+             pa.code AS parent_code, pa.type AS parent_type, pa.title AS parent_title
+        FROM artifacts a
+        JOIN epics e ON e.id = a.epic_id
+        LEFT JOIN artifacts pa ON pa.id = a.parent_artifact_id
+       WHERE e.project_id = ? AND a.type = 'AC'
+       ORDER BY a.epic_id, a.code`).all(projectId);
+
+    if (acs.length === 0) return { empty: true, reason: 'no-ac' };
+
+    const acIds = acs.map(a => a.id);
+    // implements + verified_by трассы к задачам + полная информация о задаче
+    // (status, title, metadata для проверки merge_conflict).
+    const traces = db.prepare(`
+      SELECT t.source_id AS ac_id, t.link_type, t.target_id AS task_id,
+             tk.title AS task_title, tk.status AS task_status, tk.metadata AS task_metadata
+        FROM artifact_traces t
+        LEFT JOIN tasks tk ON tk.id = t.target_id AND t.target_type = 'task'
+       WHERE t.source_id IN (${acIds.map(() => '?').join(',')})
+         AND t.target_type = 'task'
+         AND t.link_type IN ('implements','verified_by')
+       ORDER BY t.source_id, t.link_type`).all(...acIds);
+
+    // Последний комментарий к DEV-задаче (примечание приёмки) — опционально.
+    const devTaskIds = [...new Set(traces.filter(t => t.link_type === 'implements' && t.task_id).map(t => t.task_id))];
+    const lastCommentByTask = {};
+    if (devTaskIds.length) {
+      const rows = db.prepare(`
+        SELECT task_id, content, author, created_at FROM comments
+         WHERE task_id IN (${devTaskIds.map(() => '?').join(',')})
+         ORDER BY task_id, created_at DESC`).all(...devTaskIds);
+      for (const r of rows) {
+        if (!lastCommentByTask[r.task_id]) lastCommentByTask[r.task_id] = r;
+      }
+    }
+
+    const tracesByAc = {};
+    for (const t of traces) (tracesByAc[t.ac_id] ||= []).push(t);
+
+    return { acs, tracesByAc, lastCommentByTask };
+  });
+}
+
+// Вычислить результат приёмки для одной AC по её трассам.
+// Возвращает { status, label, icon, color }.
+function computeAcceptance(traces) {
+  const impl = traces.filter(t => t.link_type === 'implements');
+  const verify = traces.filter(t => t.link_type === 'verified_by');
+  if (impl.length === 0) {
+    return { status: 'unverified', label: 'не верифицирована', icon: '⚪', color: '#8b949e' };
+  }
+  // проверка merge_conflict в metadata.worktree любой DEV-задачи
+  for (const t of impl) {
+    let conflict = false;
+    try { const m = JSON.parse(t.task_metadata || '{}'); conflict = m?.worktree?.merge_conflict || m?.worktree?.merged_into === 'conflict'; } catch {}
+    if (conflict) return { status: 'failed', label: 'конфликт мержа', icon: '❌', color: '#e74c3c' };
+  }
+  const devBlocked = impl.some(t => t.task_status === 'blocked');
+  if (devBlocked) return { status: 'failed', label: 'заблокирована', icon: '❌', color: '#e74c3c' };
+  const devDone = impl.every(t => t.task_status === 'done');
+  if (devDone) {
+    // VERIFY: если есть, должна быть done; если нет — passed.
+    if (verify.length === 0) return { status: 'passed', label: 'пройдена', icon: '✅', color: '#3fb950' };
+    const verifyDone = verify.every(t => t.task_status === 'done');
+    if (verifyDone) return { status: 'passed', label: 'пройдена + верифицирована', icon: '✅', color: '#3fb950' };
+    return { status: 'running', label: 'на верификации', icon: '⏳', color: '#f1c40f' };
+  }
+  const devRunning = impl.some(t => ['in_progress', 'review', 'review_in_progress'].includes(t.task_status));
+  if (devRunning) return { status: 'running', label: 'в разработке', icon: '⏳', color: '#f1c40f' };
+  // DEV существует, но не done и не running (todo) — ожидание
+  return { status: 'running', label: 'запланирована', icon: '⏳', color: '#f39c12' };
+}
+
+function renderAcceptance(projectId, allProjects) {
+  const proj = allProjects.find(p => String(p.id) === String(projectId));
+  if (!proj) return page('Проект не найден', '<div class="empty-box"><h2>Проект не найден</h2></div>');
+
+  const data = loadAcceptanceRegistry(projectId);
+  const opts = allProjects.map(p => `<option value="${p.id}"${String(p.id)===String(projectId)?' selected':''}>${esc(p.name)}</option>`).join('');
+
+  const header = `
+    <div class="board-head">
+      <a href="/" class="back">← Все проекты</a>
+      <select id="psel" onchange="location='?project='+this.value+'&tab=acceptance'">${opts}</select>
+      <span class="cur-proj" style="color:${proj.color}">${esc(proj.name)}</span>
+      <div class="tabs">
+        <a class="tab" href="?project=${projectId}">Канбан</a>
+        <a class="tab" href="?project=${projectId}&tab=artifacts">Артефакты</a>
+        <a class="tab" href="?project=${projectId}&tab=coverage">Покрытие</a>
+        <a class="tab active" href="?project=${projectId}&tab=acceptance">Приёмка</a>
+      </div>
+      <span style="flex:1"></span>
+      <div class="heartbeat"><span id="hb-dot" class="hb-dot red"></span><span id="hb-txt">…</span></div>
+    </div>`;
+
+  if (data.unavailable) {
+    return page(proj.name + ' · Приёмка', `${header}
+      <div class="empty-box"><div class="empty-icon">🧪</div>
+        <h2>Артефакты недоступны</h2>
+        <p>В этой БД нет таблицы <code>artifacts</code> (старая версия saga-mcp).</p></div>`);
+  }
+  if (data.empty) {
+    return page(proj.name + ' · Приёмка', `${header}
+      <div class="empty-box"><div class="empty-icon">🧪</div>
+        <h2>В проекте нет AC</h2>
+        <p>Acceptance criteria создаются через saga-mcp (artifact_create type:'AC').<br>
+        Реестр приёмки показывает статус прохождения каждой AC.</p></div>`);
+  }
+
+  const { acs, tracesByAc, lastCommentByTask } = data;
+
+  // вычисляем результат приёмки для каждой AC + сводку
+  const rows = acs.map(ac => {
+    const ts = tracesByAc[ac.id] || [];
+    const verdict = computeAcceptance(ts);
+    const dev = ts.filter(t => t.link_type === 'implements');
+    const verify = ts.filter(t => t.link_type === 'verified_by');
+    const lastCom = dev[0] && lastCommentByTask[dev[0].task_id];
+    return { ac, dev, verify, verdict, lastCom };
+  });
+
+  const counts = { passed: 0, running: 0, failed: 0, unverified: 0 };
+  for (const r of rows) counts[r.verdict.status]++;
+  const total = rows.length;
+  const passed = counts.passed;
+  const pct = total ? Math.round((passed / total) * 100) : 0;
+  const barColor = pct >= 80 ? '#3fb950' : pct >= 50 ? '#f1c40f' : '#e74c3c';
+
+  const taskColor = (s) => s === 'done' ? '#3fb950'
+    : s === 'in_progress' ? '#f1c40f'
+    : (s === 'review' || s === 'review_in_progress') ? '#a371f7'
+    : s === 'blocked' ? '#e74c3c' : '#8b949e';
+
+  // группировка по эпизодам (REQ-NNN)
+  const byEpic = {};
+  for (const r of rows) (byEpic[r.ac.epic_id] ||= []).push(r);
+
+  const renderTaskCell = (tasks) => {
+    if (!tasks.length) return `<span class="cov-no">—</span>`;
+    return tasks.map(t => `<a class="cov-task" href="/?task=${t.task_id}" title="${esc(t.task_title||'')}" style="color:${taskColor(t.task_status)}">#${t.task_id} <span class="cov-st">${esc(t.task_status||'?')}</span></a>`).join(' ');
+  };
+
+  const rowsHtml = Object.entries(byEpic).map(([eid, epicRows]) => {
+    const epicName = epicRows[0].ac.epic_name || ('epic #' + eid);
+    const acRows = epicRows.map(r => {
+      const v = r.verdict;
+      const stColor = STATUS_COLOR[r.ac.status] || '#8b949e';
+      const parentHtml = r.ac.parent_type === 'UC' && r.ac.parent_code
+        ? `<a class="ac-parent" href="/?artifact=${r.ac.parent_artifact_id}" title="${esc(r.ac.parent_title||'')}">${esc(r.ac.parent_code)}</a>`
+        : '<span class="muted">—</span>';
+      const noteHtml = r.lastCom
+        ? `<span class="ac-note" title="${esc((r.lastCom.created_at||'').slice(0,10))}">${esc((r.lastCom.content||'').slice(0, 80))}${(r.lastCom.content||'').length > 80 ? '…' : ''}</span>`
+        : '<span class="muted">—</span>';
+      return `<tr class="acc-row" data-verdict="${v.status}">
+        <td><a class="reg-code" href="/?artifact=${r.ac.id}">${esc(r.ac.code||'—')}</a></td>
+        <td class="acc-title">${esc(r.ac.title)}</td>
+        <td>${parentHtml}</td>
+        <td class="cov-tasks">${renderTaskCell(r.dev)}</td>
+        <td class="cov-tasks">${renderTaskCell(r.verify)}</td>
+        <td class="acc-verdict"><span class="acc-icon">${v.icon}</span> <span style="color:${v.color}">${esc(v.label)}</span></td>
+        <td class="acc-note-cell">${noteHtml}</td>
+      </tr>`;
+    }).join('');
+    return `<tbody>
+      <tr class="cov-epic-row"><td colspan="7">${esc(epicName)} <span class="ep-count">${epicRows.length}</span></td></tr>
+      ${acRows}
+    </tbody>`;
+  }).join('');
+
+  // фильтр-чипы по статусу приёмки (client-side JS фильтрация строк)
+  const filterChips = [
+    { k: '__all__', label: 'Все', n: total },
+    { k: 'passed', label: '✅ Пройдено', n: counts.passed },
+    { k: 'running', label: '⏳ В работе', n: counts.running },
+    { k: 'failed', label: '❌ Провал/блок', n: counts.failed },
+    { k: 'unverified', label: '⚪ Не реализ.', n: counts.unverified },
+  ].map(c => `<button class="chip${c.k==='__all__'?' active':''}" data-verdict="${c.k}">${esc(c.label)} <span class="count">${c.n}</span></button>`).join('');
+
+  return page(proj.name + ' · Приёмка', `${header}
+    <div class="cov-summary">
+      <div class="cov-stats">
+        <span><b>${total}</b> AC всего</span>
+        <span class="cov-ok"><b>${passed}</b> прошли приёмку</span>
+        <span class="cov-bad"><b>${counts.failed}</b> провал/блок</span>
+        <span><b>${counts.running}</b> в работе</span>
+        <span><b>${counts.unverified}</b> не реализованы</span>
+      </div>
+      <div class="cov-bar-wrap">
+        <div class="cov-bar-label">Приёмка: ${pct}%</div>
+        <div class="cov-bar"><div class="cov-bar-fill" style="width:${pct}%;background:${barColor}"></div></div>
+      </div>
+    </div>
+    <div class="filter-bar">${filterChips}</div>
+    <div class="cov-table-wrap">
+      <table class="cov-table acc-table">
+        <thead><tr>
+          <th>AC</th><th>Критерий приёмки</th><th>UC</th><th>DEV (implements)</th><th>VERIFY</th><th>Результат</th><th>Примечание</th>
+        </tr></thead>
+        ${rowsHtml}
+      </table>
+    </div>
+    <div class="cov-legend">
+      <b>Легенда:</b>
+      ✅ passed = DEV done (и VERIFY done если есть) ·
+      ⏳ = DEV в работе / на верификации ·
+      ❌ = DEV blocked или merge_conflict ·
+      ⚪ = нет implements (AC не реализована).
+      Аналог Almirah / StrictDoc / OSRMT test-registry, но интегрирован с saga-mcp задачами.
+    </div>
+    <script>
+    // client-side фильтрация строк по статусу приёмки (data-verdict).
+    let vFilter = '__all__';
+    document.querySelectorAll('.filter-bar .chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        document.querySelectorAll('.filter-bar .chip').forEach(c => c.classList.remove('active'));
+        chip.classList.add('active');
+        vFilter = chip.dataset.verdict;
+        document.querySelectorAll('.acc-row').forEach(row => {
+          row.style.display = (vFilter === '__all__' || row.dataset.verdict === vFilter) ? '' : 'none';
+        });
+      });
+    });
+    </script>`);
 }
 
 // --- HTML: страница администрирования (создание проекта/эпика) ---
@@ -1924,6 +2181,8 @@ const server = http.createServer((req, res) => {
     html = renderArtifacts(projectId, projects);
   } else if (projectId && tab === 'coverage') {
     html = renderCoverage(projectId, projects);
+  } else if (projectId && tab === 'acceptance') {
+    html = renderAcceptance(projectId, projects);
   } else if (projectId) {
     html = renderBoard(projectId, projects);
   } else {
