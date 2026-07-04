@@ -37,6 +37,29 @@ const COLS = [
 const PROJECT_COLORS = ['#4f8cff','#16a085','#e67e22','#9b59b6','#e74c3c','#1abc9c','#f39c12','#34495e','#2ecc71','#e84393'];
 const PRIO = { critical:'#c0392b', high:'#e67e22', medium:'#f1c40f', low:'#95a5a6' };
 
+// --- Артефакты (REQ-NNN episode): типы, статусы, link_type ---
+// type: PRD/SRS/UC/AC/FR/NFR/decision/theme/brief (9 литералов schema.ts).
+// У decision-артефактов code обычно BRIEF-NNN — показываем как «BRIEF».
+const TYPE_COLORS = {
+  PRD:'#58a6ff', SRS:'#a371f7', UC:'#3fb950', AC:'#f1c40f',
+  FR:'#e67e22', NFR:'#1abc9c', decision:'#9b59b6', theme:'#e84393', brief:'#f39c12'
+};
+const TYPE_LABEL = {
+  PRD:'PRD', SRS:'SRS', UC:'UC', AC:'AC', FR:'FR', NFR:'NFR',
+  decision:'BRIEF', theme:'ТЕМА', brief:'BRIEF'
+};
+const STATUS_LABEL = { draft:'draft', in_review:'review', accepted:'✓', superseded:'устарел' };
+const STATUS_COLOR = { draft:'#8b949e', in_review:'#f39c12', accepted:'#3fb950', superseded:'#484f58' };
+// link_type: covers/implements/derived_from/depends_on/verified_by/superseded_by
+const LINK_COLORS = {
+  implements:'#3fb950', verified_by:'#1abc9c', derived_from:'#8b949e',
+  covers:'#a371f7', depends_on:'#f39c12', superseded_by:'#e74c3c'
+};
+const LINK_GLYPH = {
+  implements:'↳ impl', verified_by:'↳ verify', derived_from:'↳ from',
+  covers:'↳ covers', depends_on:'↳ dep', superseded_by:'↳ super'
+};
+
 // --- DB helpers (одна общая БД, read-only, открываем на каждый запрос —
 //     overhead минимален, зато всегда свежие данные и нет гонок с saga-MCP) ---
 function withDb(fn) {
@@ -107,6 +130,91 @@ function loadBoard(projectId) {
 
 function esc(s){ return String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 
+// Извлечь первый <div class="<cls>">…</div> по балансу тегов (надёжнее regex при
+// глубокой вложенности — .episodes содержит много вложенных </div>).
+// Возвращает подстроку включая открывающий/закрывающий тег, или '' если не найден.
+function extractDiv(html, cls) {
+  const open = html.indexOf(`<div class="${cls}">`);
+  if (open < 0) return '';
+  let depth = 0, i = open;
+  const re = /<div\b|<\/div>/g;
+  re.lastIndex = open;
+  let m;
+  while ((m = re.exec(html)) !== null) {
+    depth += m[0] === '</div>' ? -1 : 1;
+    if (depth === 0) return html.slice(open, m.index + m[0].length);
+  }
+  return '';
+}
+
+// Загрузка всех артефактов проекта + их исходящих трасс (для вкладки Артефакты).
+// Структура данных (по exploration):
+//   parent_artifact_id = «позвоночник» дерева, max depth 3:
+//     decision(BRIEF) → PRD → {SRS, UC, FR, NFR}; AC → UC (иногда → PRD).
+//   artifact_traces = кросс-режущие рёбра, НЕ часть дерева:
+//     implements (AC→DEV-таск), verified_by, derived_from (AC→FR), covers (UC→FR).
+//   28 трасс кросс-проектные (AC в requirements → DEV-таск в builders-проекте).
+// Возвращает { unavailable } если таблицы artifacts нет в БД (старая saga-mcp).
+function loadArtifactsTree(projectId) {
+  return withDb(db => {
+    // Guard: старые БД (как Harmess .tracker.db) не имеют таблицы artifacts.
+    let hasTable;
+    try {
+      hasTable = db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='artifacts'").get();
+    } catch { return { unavailable: true }; }
+    if (!hasTable) return { unavailable: true };
+
+    const artifacts = db.prepare(`
+      SELECT a.id, a.epic_id, a.type, a.code, a.title, a.status,
+             a.parent_artifact_id, a.tags, a.updated_at, e.name AS epic_name
+        FROM artifacts a
+        JOIN epics e ON e.id = a.epic_id
+       WHERE e.project_id = ?
+       ORDER BY a.epic_id, a.parent_artifact_id NULLS FIRST, a.type, a.code
+    `).all(projectId);
+
+    if (artifacts.length === 0) return { empty: true, reason: 'no-artifacts' };
+
+    const artIds = artifacts.map(a => a.id);
+    // Исходящие трассы + статус/код цели. Колонки tasks.project_id нет —
+    // проект таска получаем отдельным запросом ниже через tasks.epic_id.
+    const traces = db.prepare(`
+      SELECT t.source_id, t.target_type, t.target_id, t.link_type,
+        CASE WHEN t.target_type='artifact'
+             THEN (SELECT a.status FROM artifacts a WHERE a.id=t.target_id)
+             ELSE (SELECT tk.status FROM tasks tk WHERE tk.id=t.target_id) END AS target_status,
+        CASE WHEN t.target_type='artifact'
+             THEN (SELECT a.code FROM artifacts a WHERE a.id=t.target_id)
+             ELSE NULL END AS target_code
+        FROM artifact_traces t
+       WHERE t.source_id IN (${artIds.map(() => '?').join(',')})
+       ORDER BY t.source_id, t.link_type
+    `).all(...artIds);
+
+    // Таски-цели (для implements/verified_by) — название, статус, проект-владелец.
+    const taskTargets = traces.filter(t => t.target_type === 'task').map(t => t.target_id);
+    const tasksById = {};
+    const projectById = {};
+    if (taskTargets.length) {
+      const uniq = [...new Set(taskTargets)];
+      const taskRows = db.prepare(`
+        SELECT tk.id, tk.title, tk.status, tk.epic_id, e.project_id
+          FROM tasks tk JOIN epics e ON e.id = tk.epic_id
+         WHERE tk.id IN (${uniq.map(() => '?').join(',')})
+      `).all(...uniq);
+      // Имена проектов для кросс-проектных бейджей.
+      const projIds = [...new Set(taskRows.map(r => r.project_id))];
+      if (projIds.length) {
+        const projRows = db.prepare(`SELECT id, name FROM projects WHERE id IN (${projIds.map(()=>'?').join(',')})`).all(...projIds);
+        for (const p of projRows) projectById[p.id] = p.name;
+      }
+      for (const r of taskRows) tasksById[r.id] = r;
+    }
+
+    return { artifacts, traces, tasksById, projectById };
+  });
+}
+
 // --- HTML: индекс всех saga-проектов ---
 function renderIndex(projects) {
   const withData = projects.filter(p => p.total > 0);
@@ -159,6 +267,10 @@ function renderBoard(projectId, allProjects) {
       <a href="/" class="back">← Все проекты</a>
       <select id="psel" onchange="location='?project='+this.value">${opts}</select>
       <span class="cur-proj" style="color:${proj.color}">${esc(proj.name)}</span>
+      <div class="tabs">
+        <a class="tab active" href="?project=${projectId}">Канбан</a>
+        <a class="tab" href="?project=${projectId}&tab=artifacts">Артефакты</a>
+      </div>
       <span style="flex:1"></span>
       <div class="heartbeat"><span id="hb-dot" class="hb-dot red"></span><span id="hb-txt">…</span></div>
     </div>`;
@@ -258,7 +370,202 @@ function renderBoard(projectId, allProjects) {
     </script>`);
 }
 
-// --- общий каркас страницы ---
+// --- HTML: дерево артефактов одного проекта (вкладка Артефакты) ---
+// Header переиспользуется из renderBoard + переключатель табов.
+// Тело: сводка по типам → дерево по эпикам (parent_artifact_id) → бейджи трасс
+// под листьями (implements/verified_by/derived_from) → секция «Несвязанные».
+function renderArtifacts(projectId, allProjects) {
+  const proj = allProjects.find(p => String(p.id) === String(projectId));
+  if (!proj) return page('Проект не найден', '<div class="empty-box"><h2>Проект не найден</h2></div>');
+
+  const data = loadArtifactsTree(projectId);
+  const opts = allProjects.map(p => `<option value="${p.id}"${String(p.id)===String(projectId)?' selected':''}>${esc(p.name)}</option>`).join('');
+
+  // Header с переключателем табов. Текущий таб — artifacts.
+  const header = `
+    <div class="board-head">
+      <a href="/" class="back">← Все проекты</a>
+      <select id="psel" onchange="location='?project='+this.value+'&tab=artifacts'">${opts}</select>
+      <span class="cur-proj" style="color:${proj.color}">${esc(proj.name)}</span>
+      <div class="tabs">
+        <a class="tab" href="?project=${projectId}">Канбан</a>
+        <a class="tab active" href="?project=${projectId}&tab=artifacts">Артефакты</a>
+      </div>
+      <span style="flex:1"></span>
+      <div class="heartbeat"><span id="hb-dot" class="hb-dot red"></span><span id="hb-txt">…</span></div>
+    </div>`;
+
+  if (data.unavailable) {
+    return page(proj.name + ' · Артефакты', `${header}
+      <div class="empty-box">
+        <div class="empty-icon">📐</div>
+        <h2>Артефакты недоступны</h2>
+        <p>В этой БД нет таблицы <code>artifacts</code> (старая версия saga-mcp).</p>
+        <p>Запусти saga-mcp сервер против этой БД — он применит миграцию.</p>
+      </div>`);
+  }
+  if (data.empty) {
+    return page(proj.name + ' · Артефакты', `${header}
+      <div class="empty-box">
+        <div class="empty-icon">📐</div>
+        <h2>В проекте нет артефактов</h2>
+        <p>Артефакты (PRD/SRS/UC/AC/FR/NFR) создаются через saga-mcp<br>в эпизодах REQ-NNN (artifact_create).</p>
+      </div>`);
+  }
+
+  const { artifacts, traces, tasksById, projectById } = data;
+
+  // Индексы: дети по parent_artifact_id, трассы по source_id.
+  const byParent = {};
+  const tracesBySource = {};
+  for (const a of artifacts) {
+    const pid = a.parent_artifact_id;
+    if (pid != null) (byParent[pid] ||= []).push(a);
+    else (byParent['__root__'] ||= []).push(a);
+  }
+  for (const t of traces) (tracesBySource[t.source_id] ||= []).push(t);
+
+  // Сводка по типам (chips).
+  const byType = {};
+  for (const a of artifacts) byType[a.type] = (byType[a.type] || 0) + 1;
+  const typeOrder = ['PRD','SRS','UC','AC','FR','NFR','decision','theme','brief'];
+  const summaryChips = typeOrder
+    .filter(t => byType[t])
+    .map(t => `<span class="tchip" style="border-color:${TYPE_COLORS[t]};color:${TYPE_COLORS[t]}">${TYPE_LABEL[t]||t}: ${byType[t]}</span>`)
+    .join('');
+
+  // Сироты: нет родителя И нет исходящих трасс И не являются чьим-то родителем.
+  const parentIds = new Set(artifacts.filter(a => a.parent_artifact_id != null).map(a => a.parent_artifact_id));
+  const isParent = new Set(parentIds);
+  const orphans = artifacts.filter(a => a.parent_artifact_id == null && !isParent.has(a.id) && !tracesBySource[a.id]);
+  const treeArts = artifacts.filter(a => !orphans.includes(a));
+
+  // Группировка дерева по эпикам (REQ-NNN episode). Корни — без parent_artifact_id.
+  const treeByEpic = {};
+  for (const a of treeArts) (treeByEpic[a.epic_id] ||= []).push(a);
+  const epicOrder = [...new Set(treeArts.map(a => a.epic_id))].sort((x, y) => x - y);
+
+  function renderNode(art, depth) {
+    const children = byParent[art.id] || [];
+    const isLeaf = children.length === 0;
+    const typeColor = TYPE_COLORS[art.type] || '#8b949e';
+    const typeLabel = TYPE_LABEL[art.type] || art.type;
+    const stColor = STATUS_COLOR[art.status] || '#8b949e';
+    const stLabel = STATUS_LABEL[art.status] || art.status;
+    const code = art.code ? esc(art.code) : '—';
+    const tracesHtml = isLeaf ? renderTraces(art.id, tracesBySource, tasksById, projectById, projectId) : '';
+    const childrenHtml = children.length
+      ? `<div class="children">${children.map(c => renderNode(c, depth + 1)).join('')}</div>`
+      : '';
+    return `<div class="anode" data-depth="${depth}">
+      <div class="anode-head">
+        <span class="atype" style="background:${typeColor}">${typeLabel}</span>
+        <span class="acode">${code}</span>
+        <span class="atitle">${esc(art.title)}</span>
+        <span class="astatus" style="color:${stColor}" title="${esc(art.status)}">${stLabel}</span>
+      </div>
+      ${tracesHtml}
+      ${childrenHtml}
+    </div>`;
+  }
+
+  function renderTraces(artId, bySrc, tasks, projs, currentProjectId) {
+    const ts = bySrc[artId];
+    if (!ts || !ts.length) return '';
+    // Группируем по link_type, внутри — по target (артефакт-code или таск-id).
+    const byLink = {};
+    for (const t of ts) (byLink[t.link_type] ||= []).push(t);
+    const badges = Object.keys(byLink).map(link => {
+      const color = LINK_COLORS[link] || '#8b949e';
+      const glyph = LINK_GLYPH[link] || link;
+      const targets = byLink[link].map(t => {
+        if (t.target_type === 'artifact') {
+          return `<span class="tg">${esc(t.target_code || ('#'+t.target_id))}</span>`;
+        }
+        // task
+        const task = tasks[t.target_id];
+        if (!task) return `<span class="tg">#${t.target_id}?</span>`;
+        const tcolor = task.status === 'done' ? '#3fb950'
+          : task.status === 'in_progress' ? '#f1c40f'
+          : task.status === 'review' || task.status === 'review_in_progress' ? '#a371f7'
+          : task.status === 'blocked' ? '#e74c3c'
+          : '#8b949e';
+        // Кросс-проектный бейдж (AC → DEV-таск в другом проекте).
+        const projBadge = String(task.project_id) !== String(currentProjectId) && projs[task.project_id]
+          ? `<span class="tg-proj" title="задача в проекте ${esc(projs[task.project_id])}">↤ ${esc(projs[task.project_id])}</span>`
+          : '';
+        return `${projBadge}<span class="tg" style="color:${tcolor}">#${task.id}<span class="tg-st"> ${esc(task.status)}</span></span>`;
+      }).join(' ');
+      return `<span class="trace-badge" style="border-color:${color};color:${color}">${glyph}: ${targets}</span>`;
+    }).join(' ');
+    return `<div class="traces">${badges}</div>`;
+  }
+
+  // Эпизоды (REQ-NNN) — верхний уровень дерева, разворачиваются по умолчанию.
+  const epicByName = {};
+  for (const a of artifacts) if (a.epic_name) epicByName[a.epic_id] = a.epic_name;
+  const episodesHtml = epicOrder.map(eid => {
+    const roots = (treeByEpic[eid] || []).filter(a => a.parent_artifact_id == null);
+    if (!roots.length) return '';
+    const name = epicByName[eid] || ('epic #' + eid);
+    const nodes = roots.map(r => renderNode(r, 0)).join('');
+    return `<details class="episode" open>
+      <summary><span class="ep-name">${esc(name)}</span> <span class="ep-count">${(treeByEpic[eid]||[]).length}</span></summary>
+      <div class="tree-root">${nodes}</div>
+    </details>`;
+  }).join('');
+
+  // Сироты — отдельная секция внизу.
+  const orphansByType = {};
+  for (const o of orphans) (orphansByType[o.type] ||= []).push(o);
+  const orphansHtml = orphans.length ? `<details class="episode orphans">
+    <summary><span class="ep-name">Несвязанные</span> <span class="ep-count">${orphans.length}</span></summary>
+    <div class="tree-root orphan-grid">
+      ${typeOrder.filter(t => orphansByType[t]).map(t =>
+        `<div class="orphan-group"><div class="orphan-type" style="color:${TYPE_COLORS[t]}">${TYPE_LABEL[t]||t}</div>${
+          orphansByType[t].map(o => `<div class="anode shallow"><div class="anode-head">
+            <span class="atype" style="background:${TYPE_COLORS[t]}">${TYPE_LABEL[t]||t}</span>
+            <span class="acode">${o.code?esc(o.code):'—'}</span>
+            <span class="atitle">${esc(o.title)}</span>
+          </div></div>`).join('')
+        }</div>`).join('')}
+    </div>
+  </details>` : '';
+
+  return page(proj.name + ' · Артефакты', `${header}
+    <div class="tree-summary">
+      <div class="ts-stats">
+        <span><b>${artifacts.length}</b> артефактов</span>
+        <span><b>${traces.length}</b> трасс</span>
+        <span><b>${epicOrder.length}</b> эпизодов</span>
+      </div>
+      <div class="ts-types">${summaryChips}</div>
+    </div>
+    <div class="episodes">${episodesHtml}${orphansHtml}</div>
+    <script>
+    // Auto-refresh дерева через ?partial=2 (только .episodes).
+    async function refreshTree() {
+      try {
+        const r = await fetch('?project=${projectId}&tab=artifacts&partial=2');
+        if (!r.ok) return;
+        const html = await r.text();
+        const tmp = document.createElement('div'); tmp.innerHTML = html;
+        const oldE = document.querySelector('.episodes');
+        const newE = tmp.querySelector('.episodes');
+        if (oldE && newE) {
+          // Сохраняем состояние <details open> по первому summary тексту.
+          const openKeys = new Set([...oldE.querySelectorAll('details[open]')].map(d => d.querySelector('summary')?.textContent?.trim()));
+          oldE.replaceWith(newE);
+          newE.querySelectorAll('details').forEach(d => {
+            const k = d.querySelector('summary')?.textContent?.trim();
+            if (openKeys.has(k)) d.open = true;
+          });
+        }
+      } catch {}
+    }
+    setInterval(refreshTree, ${RELOAD_SEC * 1000});
+    </script>`);
+}
 function page(title, body) {
   return `<!doctype html><html lang="ru"><head><meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -321,6 +628,51 @@ function page(title, body) {
     .hb-dot.yellow{background:#f1c40f}
     .hb-dot.red{background:#e74c3c}
     @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+
+    /* переключатель табов Канбан/Артефакты */
+    .tabs{display:flex;gap:4px;margin-left:12px}
+    .tab{background:#21262d;border:1px solid #30363d;color:#8b949e;border-radius:6px;padding:6px 14px;font-size:12px;cursor:pointer;transition:all .15s}
+    .tab:hover{border-color:#8b949e;color:#e6edf3}
+    .tab.active{border-color:#58a6ff;color:#58a6ff;background:#0d1117;font-weight:600}
+
+    /* вкладка Артефакты — сводка + дерево */
+    .tree-summary{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px 20px;background:#161b22;border-bottom:1px solid #30363d;flex-wrap:wrap}
+    .ts-stats{display:flex;gap:18px;font-size:13px;color:#8b949e} .ts-stats b{color:#e6edf3;font-size:15px}
+    .ts-types{display:flex;gap:6px;flex-wrap:wrap}
+    .tchip{font-size:11px;border:1px solid;border-radius:10px;padding:2px 9px;font-weight:600}
+
+    .episodes{padding:14px 20px 40px;display:flex;flex-direction:column;gap:12px}
+    .episode{background:#161b22;border:1px solid #30363d;border-radius:8px;overflow:hidden}
+    .episode > summary{cursor:pointer;padding:12px 14px;background:#21262d;font-size:13px;font-weight:600;display:flex;align-items:center;gap:10px;list-style:none}
+    .episode > summary::-webkit-details-marker{display:none}
+    .episode > summary::before{content:'▸';color:#8b949e;transition:transform .15s;font-size:10px;width:10px;display:inline-block}
+    .episode[open] > summary::before{transform:rotate(90deg)}
+    .ep-name{flex:1;color:#e6edf3}
+    .ep-count{background:#0d1117;border:1px solid #30363d;color:#8b949e;border-radius:10px;padding:1px 8px;font-size:11px}
+    .episode.orphans{border-style:dashed;border-color:#484f58} .episode.orphans > summary{color:#8b949e}
+
+    .tree-root{padding:10px 14px}
+    .anode{padding:6px 0;border-left:2px solid transparent}
+    .anode[data-depth="0"]{border-left-color:#30363d}
+    .children{margin-left:16px;padding-left:14px;border-left:1px solid #30363d}
+    .anode-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+    .atype{font-size:10px;font-weight:700;color:#0d1117;padding:2px 6px;border-radius:3px;letter-spacing:.3px}
+    .acode{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:12px;color:#58a6ff;font-weight:600;min-width:42px}
+    .atitle{flex:1;font-size:13px;color:#e6edf3;line-height:1.35}
+    .astatus{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.3px}
+    .anode.shallow{padding:4px 0} .anode.shallow .atitle{font-size:12px;color:#8b949e}
+
+    /* бейджи трасс под листом AC */
+    .traces{margin:4px 0 4px 22px;display:flex;flex-direction:column;gap:3px}
+    .trace-badge{font-size:11px;border:1px solid;border-radius:4px;padding:2px 7px;display:inline-flex;align-items:center;gap:4px;background:rgba(255,255,255,.02);width:fit-content}
+    .tg{font-family:ui-monospace,Consolas,monospace;font-size:11px}
+    .tg-st{font-size:9px;opacity:.7;text-transform:uppercase}
+    .tg-proj{font-size:10px;background:rgba(88,166,255,.12);border:1px solid #58a6ff;color:#58a6ff;border-radius:3px;padding:0 4px;margin-right:3px}
+
+    /* сироты — сетка по типам */
+    .orphan-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}
+    .orphan-group{display:flex;flex-direction:column;gap:4px}
+    .orphan-type{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;padding-bottom:4px;border-bottom:1px solid #30363d}
   </style></head>
   <body>${body}
   <script>
@@ -357,18 +709,26 @@ const server = http.createServer((req, res) => {
   }
 
   const projectId = url.searchParams.get('project');
+  const tab = url.searchParams.get('tab');
+  const partial = url.searchParams.get('partial');
   const projects = listProjects();
   let html;
-  if (projectId) {
+  if (projectId && tab === 'artifacts') {
+    html = renderArtifacts(projectId, projects);
+  } else if (projectId) {
     html = renderBoard(projectId, projects);
   } else {
     html = renderIndex(projects);
   }
   res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-  // partial=1: отдаём только .board (для AJAX-обновления без перезагрузки)
-  if (url.searchParams.get('partial') === '1' && projectId) {
-    const boardMatch = html.match(/<div class="board">[\s\S]*<\/div>\s*<\/div>/);
-    res.end(boardMatch ? boardMatch[0] : html);
+  // partial=1: только .board (AJAX-рефреш канбана).
+  if (partial === '1' && projectId) {
+    const frag = extractDiv(html, 'board');
+    res.end(frag || html);
+  // partial=2: только .episodes (AJAX-рефреш дерева артефактов).
+  } else if (partial === '2' && projectId && tab === 'artifacts') {
+    const frag = extractDiv(html, 'episodes');
+    res.end(frag || html);
   } else {
     res.end(html);
   }
