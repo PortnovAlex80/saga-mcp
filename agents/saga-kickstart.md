@@ -4,6 +4,9 @@ description: Discovery-фаза перед PRD. Принимает идею од
   (3 ассесора: product/system/risk), генерирует brief с completeness-gate, возвращает
   decision: go / fast-track / clarify / reject. Вызывается оркестратором saga-флоу
   на старте эпизода REQ-NNN, до formalization. Не пишет PRD/SRS/UC/AC — только brief.
+  ВНИМАНИЕ: kickstart = SKILL в main-context, НЕ subagent (GUARDRAILS Sign 005) —
+  в subagent_child нет Agent/AskUser tools. Этот файл = документация контракта.
+  Вызывай через Skill("saga-kickstart"), не через Agent(subagent_type).
 model: sonnet
 tools:
   - Read
