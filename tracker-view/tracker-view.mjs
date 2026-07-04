@@ -401,6 +401,7 @@ function renderBoard(projectId, allProjects) {
       <div class="tabs">
         <a class="tab active" href="?project=${projectId}">Канбан</a>
         <a class="tab" href="?project=${projectId}&tab=artifacts">Артефакты</a>
+        <a class="tab" href="?project=${projectId}&tab=coverage">Покрытие</a>
       </div>
       <span style="flex:1"></span>
       <div class="heartbeat"><span id="hb-dot" class="hb-dot red"></span><span id="hb-txt">…</span></div>
@@ -521,6 +522,7 @@ function renderArtifacts(projectId, allProjects) {
       <div class="tabs">
         <a class="tab" href="?project=${projectId}">Канбан</a>
         <a class="tab active" href="?project=${projectId}&tab=artifacts">Артефакты</a>
+        <a class="tab" href="?project=${projectId}&tab=coverage">Покрытие</a>
       </div>
       <span style="flex:1"></span>
       <div class="heartbeat"><span id="hb-dot" class="hb-dot red"></span><span id="hb-txt">…</span></div>
@@ -1060,6 +1062,32 @@ function page(title, body) {
     .ed-actions{display:flex;gap:10px}
     .small{font-size:11px} .warn{color:#f39c12}
 
+    /* вкладка Coverage (матрица покрытия AC) */
+    .cov-summary{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:14px 20px;background:#161b22;border-bottom:1px solid #30363d;flex-wrap:wrap}
+    .cov-stats{display:flex;gap:20px;font-size:13px;color:#8b949e;flex-wrap:wrap}
+    .cov-stats b{color:#e6edf3;font-size:15px}
+    .cov-ok b{color:#3fb950} .cov-bad b{color:#e74c3c}
+    .cov-bar-wrap{display:flex;align-items:center;gap:10px;min-width:200px}
+    .cov-bar-label{font-size:12px;color:#8b949e;white-space:nowrap}
+    .cov-bar{flex:1;height:10px;background:#21262d;border:1px solid #30363d;border-radius:5px;overflow:hidden;min-width:120px}
+    .cov-bar-fill{height:100%;transition:width .3s,background .3s;border-radius:4px}
+    .cov-table-wrap{padding:0 20px 20px;overflow-x:auto}
+    .cov-table{width:100%;border-collapse:collapse;font-size:13px}
+    .cov-table th{text-align:left;background:#21262d;color:#8b949e;font-size:11px;text-transform:uppercase;letter-spacing:.3px;padding:9px 10px;border-bottom:1px solid #30363d}
+    .cov-table td{padding:8px 10px;border-bottom:1px solid #21262d;vertical-align:middle}
+    .cov-table tr:hover td{background:#161b22}
+    .cov-gap td{background:rgba(231,76,60,.06)}
+    .cov-gap:hover td{background:rgba(231,76,60,.1)}
+    .cov-epic-row td{background:#0d1117!important;font-weight:600;color:#58a6ff;font-size:12px;border-bottom:1px solid #30363d}
+    .cov-epic-row .ep-count{background:#21262d;border:1px solid #30363d;color:#8b949e;border-radius:10px;padding:0 7px;font-size:10px;margin-left:6px;font-weight:400}
+    .cov-tasks{display:flex;flex-wrap:wrap;gap:4px}
+    .cov-task{font-family:ui-monospace,Consolas,monospace;font-size:11px;background:#21262d;border:1px solid #30363d;border-radius:3px;padding:1px 6px;text-decoration:none}
+    .cov-task:hover{border-color:currentColor;text-decoration:underline}
+    .cov-st{font-size:9px;opacity:.7;text-transform:uppercase}
+    .cov-no{color:#484f58;font-style:italic;font-size:12px}
+    .cov-legend{padding:10px 20px 30px;font-size:11px;color:#8b949e}
+    .cov-gap-sample{background:rgba(231,76,60,.06);padding:1px 6px;border-radius:3px}
+
     /* страница администрирования (создание проекта/эпика) */
     .admin-link{border-color:#484f58;color:#484f58;font-size:11px}
     .admin-link:hover{border-color:#f39c12;color:#f39c12}
@@ -1236,6 +1264,171 @@ function renderRegistry(type, allProjects) {
       ${arts.length ? `<table class="registry"><thead><tr>
         <th>Code</th><th>Проект</th><th>Эпизод</th><th>Заголовок</th><th>Статус</th><th>Обновлён</th>
       </tr></thead><tbody>${rows}</tbody></table>` : '<div class="empty-box"><h2>Нет документов типа '+T+'</h2></div>'}
+    </div>`);
+}
+
+// --- Загрузка coverage-матрицы для проекта ---
+// Read-only запрос: все AC проекта + для каждой — есть ли implements/verified_by
+// трассы к dev-задачам. Переиспользует логику handleArtifactCoverage (src/tools/
+// artifacts.ts:387), но расширяет: показывает implements + verified_by + статус
+// связанных задач. Возвращает { unavailable } если таблицы artifacts нет.
+function loadCoverageMatrix(projectId) {
+  return withDb(db => {
+    let hasTable;
+    try {
+      hasTable = db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='artifacts'").get();
+    } catch { return { unavailable: true }; }
+    if (!hasTable) return { unavailable: true };
+
+    // Все AC проекта (упорядочены по эпизоду, затем по коду).
+    const acs = db.prepare(`
+      SELECT a.id, a.code, a.title, a.status, a.epic_id, e.name AS epic_name
+        FROM artifacts a JOIN epics e ON e.id = a.epic_id
+       WHERE e.project_id = ? AND a.type = 'AC'
+       ORDER BY a.epic_id, a.code`).all(projectId);
+
+    if (acs.length === 0) return { empty: true, reason: 'no-ac' };
+
+    const acIds = acs.map(a => a.id);
+    // implements + verified_by трассы к задачам, со статусом задачи.
+    const traces = db.prepare(`
+      SELECT t.source_id, t.link_type, t.target_id AS task_id,
+             tk.title AS task_title, tk.status AS task_status, tk.epic_id AS task_epic_id
+        FROM artifact_traces t
+        LEFT JOIN tasks tk ON tk.id = t.target_id AND t.target_type = 'task'
+       WHERE t.source_id IN (${acIds.map(() => '?').join(',')})
+         AND t.target_type = 'task'
+         AND t.link_type IN ('implements','verified_by')
+       ORDER BY t.source_id, t.link_type`).all(...acIds);
+
+    // Группируем трассы по source_id.
+    const tracesBySrc = {};
+    for (const t of traces) (tracesBySrc[t.source_id] ||= []).push(t);
+
+    return { acs, tracesBySrc };
+  });
+}
+
+// --- HTML: вкладка Coverage (матрица покрытия AC × implements/verified_by) ---
+// Маршрут: /?project=<id>&tab=coverage. Read-only таблица: каждая строка = одна AC,
+// колонки: код, заголовок, эпизод, implements (есть/нет + статусы задач),
+// verified_by (есть/нет). AC без implements — красная строка (gap в реализации).
+// Решает боль «какие AC не реализованы» (backlog идея #2, паттерн P4).
+function renderCoverage(projectId, allProjects) {
+  const proj = allProjects.find(p => String(p.id) === String(projectId));
+  if (!proj) return page('Проект не найден', '<div class="empty-box"><h2>Проект не найден</h2></div>');
+
+  const data = loadCoverageMatrix(projectId);
+  const opts = allProjects.map(p => `<option value="${p.id}"${String(p.id)===String(projectId)?' selected':''}>${esc(p.name)}</option>`).join('');
+
+  const header = `
+    <div class="board-head">
+      <a href="/" class="back">← Все проекты</a>
+      <select id="psel" onchange="location='?project='+this.value+'&tab=coverage'">${opts}</select>
+      <span class="cur-proj" style="color:${proj.color}">${esc(proj.name)}</span>
+      <div class="tabs">
+        <a class="tab" href="?project=${projectId}">Канбан</a>
+        <a class="tab" href="?project=${projectId}&tab=artifacts">Артефакты</a>
+        <a class="tab active" href="?project=${projectId}&tab=coverage">Покрытие</a>
+      </div>
+      <span style="flex:1"></span>
+      <div class="heartbeat"><span id="hb-dot" class="hb-dot red"></span><span id="hb-txt">…</span></div>
+    </div>`;
+
+  if (data.unavailable) {
+    return page(proj.name + ' · Покрытие', `${header}
+      <div class="empty-box"><div class="empty-icon">📐</div>
+        <h2>Артефакты недоступны</h2>
+        <p>В этой БД нет таблицы <code>artifacts</code> (старая версия saga-mcp).</p></div>`);
+  }
+  if (data.empty) {
+    return page(proj.name + ' · Покрытие', `${header}
+      <div class="empty-box"><div class="empty-icon">📐</div>
+        <h2>В проекте нет AC</h2>
+        <p>Acceptance criteria создаются через saga-mcp (artifact_create type:'AC').<br>
+        Coverage-matrix показывает реализованы ли AC dev-задачами.</p></div>`);
+  }
+
+  const { acs, tracesBySrc } = data;
+
+  // Сводка покрытия.
+  let withImpl = 0, withoutImpl = 0, withVerify = 0;
+  for (const ac of acs) {
+    const ts = tracesBySrc[ac.id] || [];
+    const hasImpl = ts.some(t => t.link_type === 'implements');
+    const hasVerify = ts.some(t => t.link_type === 'verified_by');
+    if (hasImpl) withImpl++; else withoutImpl++;
+    if (hasVerify) withVerify++;
+  }
+  const pct = acs.length ? Math.round((withImpl / acs.length) * 100) : 0;
+  const barColor = pct >= 80 ? '#3fb950' : pct >= 50 ? '#f1c40f' : '#e74c3c';
+
+  // Группировка AC по эпизодам.
+  const byEpic = {};
+  for (const ac of acs) (byEpic[ac.epic_id] ||= []).push(ac);
+
+  function renderTaskBadges(traces, linkType) {
+    const filtered = traces.filter(t => t.link_type === linkType);
+    if (!filtered.length) return `<span class="cov-no">— нет —</span>`;
+    return filtered.map(t => {
+      const color = t.task_status === 'done' ? '#3fb950'
+        : t.task_status === 'in_progress' ? '#f1c40f'
+        : (t.task_status === 'review' || t.task_status === 'review_in_progress') ? '#a371f7'
+        : t.task_status === 'blocked' ? '#e74c3c'
+        : '#8b949e';
+      return `<a class="cov-task" href="?project=${projectId}" title="${esc(t.task_title||'')}" style="color:${color}">#${t.task_id} <span class="cov-st">${esc(t.task_status||'?')}</span></a>`;
+    }).join(' ');
+  }
+
+  const rowsHtml = Object.entries(byEpic).map(([eid, epicAcs]) => {
+    const epicName = epicAcs[0].epic_name || ('epic #' + eid);
+    const acRows = epicAcs.map(ac => {
+      const ts = tracesBySrc[ac.id] || [];
+      const hasImpl = ts.some(t => t.link_type === 'implements');
+      const gap = !hasImpl;
+      const stColor = STATUS_COLOR[ac.status] || '#8b949e';
+      return `<tr class="${gap ? 'cov-gap' : ''}">
+        <td><a class="reg-code" href="/?artifact=${ac.id}">${esc(ac.code||'—')}</a></td>
+        <td>${esc(ac.title)}</td>
+        <td><span class="astatus" style="color:${stColor}">${STATUS_LABEL[ac.status]||ac.status}</span></td>
+        <td class="cov-tasks">${renderTaskBadges(ts, 'implements')}</td>
+        <td class="cov-tasks">${renderTaskBadges(ts, 'verified_by')}</td>
+      </tr>`;
+    }).join('');
+    return `<tbody>
+      <tr class="cov-epic-row"><td colspan="5">${esc(epicName)} <span class="ep-count">${epicAcs.length}</span></td></tr>
+      ${acRows}
+    </tbody>`;
+  }).join('');
+
+  return page(proj.name + ' · Покрытие', `${header}
+    <div class="cov-summary">
+      <div class="cov-stats">
+        <span><b>${acs.length}</b> AC всего</span>
+        <span class="cov-ok"><b>${withImpl}</b> реализовано (implements)</span>
+        <span class="cov-bad"><b>${withoutImpl}</b> без implements ${withoutImpl ? '⚠' : ''}</span>
+        <span><b>${withVerify}</b> верифицировано</span>
+      </div>
+      <div class="cov-bar-wrap">
+        <div class="cov-bar-label">Покрытие: ${pct}%</div>
+        <div class="cov-bar"><div class="cov-bar-fill" style="width:${pct}%;background:${barColor}"></div></div>
+      </div>
+    </div>
+    <div class="cov-table-wrap">
+      <table class="cov-table">
+        <thead><tr>
+          <th>AC</th><th>Заголовок</th><th>Статус</th><th>Implements (dev-задачи)</th><th>Verified by</th>
+        </tr></thead>
+        ${rowsHtml}
+      </table>
+    </div>
+    <div class="cov-legend">
+      <span class="cov-no">— нет —</span> = нет трассы (gap) ·
+      строка <span class="cov-gap-sample">подсвечена</span> = AC без implements ·
+      цвета задач: <span style="color:#3fb950">done</span> ·
+      <span style="color:#f1c40f">in_progress</span> ·
+      <span style="color:#a371f7">review</span> ·
+      <span style="color:#e74c3c">blocked</span>
     </div>`);
 }
 
@@ -1447,6 +1640,8 @@ const server = http.createServer((req, res) => {
   let html;
   if (projectId && tab === 'artifacts') {
     html = renderArtifacts(projectId, projects);
+  } else if (projectId && tab === 'coverage') {
+    html = renderCoverage(projectId, projects);
   } else if (projectId) {
     html = renderBoard(projectId, projects);
   } else {
