@@ -1,7 +1,26 @@
 # saga-flow — установка в новый проект
 
-**Портабельный пакет saga-flow:** 8 skills + 6 agents + install-инструкция.
+**Портабельный пакет saga-flow:** 9 skills + 6 agents + install-инструкция.
 Копируешь этот раздел → `~/.zcode/` → saga-flow работает в новом проекте.
+
+---
+
+## Как запустить (коротко)
+
+**Одна точка входа — saga-orchestrator:**
+
+```
+Пользователь: «давай сделаем депозитный калькулятор» (идея одной фразой)
+Ты:           Skill("saga-orchestrator")
+Результат:    working product (от brief до Docker)
+```
+
+**saga-orchestrator сам вызывает все роли в правильном порядке:**
+discovery (kickstart) → formalization (product/architect/analyst) → planning
+(planner) → execution (worker рой) → AC-verification → integration.
+
+**Запоминать кто и когда вызывает — НЕ НАДО.** Достаточно одной точки входа.
+Подробности цепочки — в `skills/saga-orchestrator/SKILL.md`.
 
 ---
 
@@ -9,14 +28,15 @@
 
 ```
 saga-mcp/                        ← этот репозиторий (форк)
-├── skills/                      ← 8 skills (процедуры для ролей)
+├── skills/                      ← 9 skills (процедуры для ролей)
+│   ├── saga-orchestrator/       ← ЕДИНАЯ ТОЧКА ВХОДА: весь флоу одним скиллом
 │   ├── saga-kickstart/          ← discovery: идея → brief → decision
 │   ├── saga-product/            ← formalization: PRD
 │   ├── saga-architect/          ← formalization: SRS + API contract
 │   ├── saga-analyst/            ← formalization: UC + AC
-│   ├── saga-planner/            ← bridge: AC → dev-задачи (Pattern A/B)
-│   ├── saga-worker/             ← execution: claim → worktree → merge
-│   ├── saga-dispatch/           ← execution: цикл диспетчеризации
+│   ├── saga-planner/            ← bridge: AC → dev-задачи (Pattern A/B) + AC-verify
+│   ├── saga-worker/             ← execution: claim → worktree → merge + AC-verify role
+│   ├── saga-dispatch/           ← execution: цикл диспетчеризации (для execution-фазы)
 │   └── saga-tracker/            ← bootstrap: resolve project, dashboard
 ├── agents/                      ← 6 subagent profiles (ZCode frontmatter)
 │   ├── saga-kickstart.md
@@ -113,8 +133,8 @@ echo "<project-name>" > projectname.txt
 1. **MCP подключен:** `/mcp list` → saga: connected, tools ≥ 40
 2. **Skills загружены:** `/skill` → видны saga-kickstart, saga-product, ...
 3. **Agents загружены:** Settings → Subagents → 6 saga-* профилей
-4. **Smoke-test:** вызови `@saga-kickstart` или `Skill("saga-kickstart")`
-   с идеей одной фразой → должен начать discovery
+4. **Smoke-test:** вызови `Skill("saga-orchestrator")` с идеей одной фразой
+   → должен начаться полный saga-flow (discovery → formalization → execution)
 
 ---
 
