@@ -371,6 +371,8 @@ function renderIndex(projects) {
       <a class="chip" href="?registry=FR">FR</a>
       <a class="chip" href="?registry=NFR">NFR</a>
       <a class="chip" href="?registry=decision">BRIEF</a>
+      <span style="flex:1"></span>
+      <a class="chip admin-link" href="/admin" title="Создать проект/эпик из GUI">⚙ Администрирование</a>
     </div>
     <div class="section-title">Активные</div>
     <div class="plist" id="active">${active || '<div class="empty-hint">Нет проектов с задачами.</div>'}</div>
@@ -1058,6 +1060,17 @@ function page(title, body) {
     .ed-actions{display:flex;gap:10px}
     .small{font-size:11px} .warn{color:#f39c12}
 
+    /* страница администрирования (создание проекта/эпика) */
+    .admin-link{border-color:#484f58;color:#484f58;font-size:11px}
+    .admin-link:hover{border-color:#f39c12;color:#f39c12}
+    .admin-wrap{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px;padding:20px;max-width:1100px}
+    .admin-form{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:18px;display:flex;flex-direction:column;gap:12px}
+    .admin-card-head{display:flex;align-items:center;gap:8px;font-size:15px;font-weight:600;color:#e6edf3;padding-bottom:8px;border-bottom:1px solid #30363d}
+    .admin-ic{font-size:18px}
+    .admin-hint{font-size:11px;color:#8b949e;background:#0d1117;border:1px solid #21262d;border-radius:4px;padding:6px 10px}
+    .admin-form .ed-field{flex-direction:column}
+    .admin-form .ed-field input,.admin-form .ed-field select{width:100%}
+
     /* реестр документов */
     .registry-wrap{padding:14px 20px}
     .reg-summary{font-size:13px;color:#8b949e;margin-bottom:12px} .reg-summary b{color:#e6edf3}
@@ -1226,13 +1239,168 @@ function renderRegistry(type, allProjects) {
     </div>`);
 }
 
+// --- HTML: страница администрирования (создание проекта/эпика) ---
+// GET /admin — две формы: «Создать проект» и «Создать эпик».
+// POST сабмитится через fetch → /api/project/create | /api/epic/create.
+// Только INSERT в projects/epics (schema НЕ трогается) — безопасно, обратимо.
+// На ошибку UNIQUE name / неверный project_id → flash без краша.
+function renderAdmin(projects, flash) {
+  const opts = projects.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('');
+  const header = `
+    <div class="board-head">
+      <a href="/" class="back">← Все проекты</a>
+      <span class="cur-proj">⚙ Администрирование</span>
+      <span style="flex:1"></span>
+      <div class="heartbeat"><span id="hb-dot" class="hb-dot red"></span><span id="hb-txt">…</span></div>
+    </div>`;
+  return page('Администрирование', `
+    ${header}
+    ${flash ? `<div class="flash ${flash.kind||'ok'}">${esc(flash.msg)}</div>` : ''}
+    <div class="admin-wrap">
+      <form class="admin-form" id="proj-form">
+        <input type="hidden" name="action" value="project">
+        <div class="admin-card-head"><span class="admin-ic">📦</span> Создать проект</div>
+        <label class="ed-field"><span>Имя проекта *</span><input type="text" name="name" required placeholder="напр. my-new-product" autocomplete="off"></label>
+        <label class="ed-field"><span>Описание</span><input type="text" name="description" placeholder="короткое описание (опц.)" autocomplete="off"></label>
+        <div class="admin-hint">Статус по умолчанию: <code>active</code>. Имя должно быть уникальным среди всех проектов.</div>
+        <button type="submit" class="btn primary">➕ Создать проект</button>
+      </form>
+      <form class="admin-form" id="epic-form">
+        <input type="hidden" name="action" value="epic">
+        <div class="admin-card-head"><span class="admin-ic">🎯</span> Создать эпик</div>
+        <label class="ed-field"><span>Проект *</span><select name="project_id" required>${opts}</select></label>
+        <label class="ed-field"><span>Имя эпика *</span><input type="text" name="name" required placeholder="напр. REQ-001-feature" autocomplete="off"></label>
+        <label class="ed-field"><span>Описание</span><input type="text" name="description" placeholder="опц." autocomplete="off"></label>
+        <label class="ed-field"><span>Ветка (branch, опц.)</span><input type="text" name="branch" placeholder="напр. feature/x" autocomplete="off"></label>
+        <div class="admin-hint">Статус: <code>planned</code>, приоритет <code>medium</code>.</div>
+        <button type="submit" class="btn primary">➕ Создать эпик</button>
+      </form>
+    </div>
+    <script>
+    async function postForm(form) {
+      const data = new URLSearchParams(new FormData(form));
+      const btn = form.querySelector('button[type=submit]');
+      const action = data.get('action');
+      const endpoint = action === 'project' ? '/api/project/create' : '/api/epic/create';
+      btn.disabled = true; const oldTxt = btn.textContent; btn.textContent = 'Создание…';
+      try {
+        const r = await fetch(endpoint, { method:'POST', body:data });
+        const j = await r.json();
+        if (j.ok) {
+          if (action === 'project') location.href = '/?created=' + encodeURIComponent('проект «'+(j.name||'')+'»');
+          else location.href = '?project=' + j.project_id + '&created=' + encodeURIComponent('эпик «'+(j.name||'')+'»');
+        } else {
+          btn.disabled = false; btn.textContent = oldTxt;
+          alert('Ошибка: ' + (j.error || 'неизвестная'));
+        }
+      } catch (err) {
+        btn.disabled = false; btn.textContent = oldTxt;
+        alert('Сеть: ' + err.message);
+      }
+    }
+    document.getElementById('proj-form').addEventListener('submit', e => { e.preventDefault(); postForm(e.target); });
+    document.getElementById('epic-form').addEventListener('submit', e => { e.preventDefault(); postForm(e.target); });
+    </script>`);
+}
+
+// --- POST /api/project/create: INSERT нового saga-проекта ---
+// Тело: application/x-www-form-urlencoded (форма) или JSON. Поля: name (обяз.),
+// description (опц.). Только INSERT в projects (status='active'). Валидация:
+// name непустой + уникальный (БД не форсирует UNIQUE — проверяем запросом).
+// activity_log: фиксируем создание, как project_create в saga-mcp.
+function handleProjectCreate(req, res) {
+  let chunks = [];
+  req.on('data', c => chunks.push(c));
+  req.on('end', () => {
+    const raw = Buffer.concat(chunks).toString('utf8');
+    let fields;
+    const ct = req.headers['content-type'] || '';
+    if (ct.includes('application/json')) {
+      try { fields = JSON.parse(raw); } catch { fields = {}; }
+    } else {
+      fields = Object.fromEntries(new URLSearchParams(raw));
+    }
+    const name = (fields.name || '').toString().trim();
+    const description = (fields.description || '').toString().trim();
+    if (!name) return respondJson(res, 400, { ok:false, error: 'name обязательное поле' });
+
+    try {
+      const result = withDbWrite(db => {
+        const dup = db.prepare('SELECT id FROM projects WHERE name = ? COLLATE NOCASE').get(name);
+        if (dup) return { dup: true };
+        const info = db.prepare(
+          "INSERT INTO projects (name, description, status) VALUES (?, ?, 'active')"
+        ).run(name, description || null);
+        const newId = Number(info.lastInsertRowid);
+        db.prepare(
+          "INSERT INTO activity_log (entity_type, entity_id, action, summary) VALUES ('project', ?, 'created', ?)"
+        ).run(newId, `Создан проект «${name}» через tracker-view admin`);
+        return { id: newId };
+      });
+      if (result.dup) return respondJson(res, 409, { ok:false, error: `Проект «${name}» уже существует` });
+      respondJson(res, 200, { ok:true, id: result.id, name });
+    } catch (e) {
+      respondJson(res, 500, { ok:false, error: 'db: ' + e.message });
+    }
+  });
+}
+
+// --- POST /api/epic/create: INSERT нового эпика ---
+// Поля: project_id (обяз.), name (обяз.), description (опц.), branch (опц.).
+// INSERT в epics (status='planned', priority='medium'). FK project_id проверяется.
+function handleEpicCreate(req, res) {
+  let chunks = [];
+  req.on('data', c => chunks.push(c));
+  req.on('end', () => {
+    const raw = Buffer.concat(chunks).toString('utf8');
+    let fields;
+    const ct = req.headers['content-type'] || '';
+    if (ct.includes('application/json')) {
+      try { fields = JSON.parse(raw); } catch { fields = {}; }
+    } else {
+      fields = Object.fromEntries(new URLSearchParams(raw));
+    }
+    const projectId = Number(fields.project_id);
+    const name = (fields.name || '').toString().trim();
+    const description = (fields.description || '').toString().trim();
+    const branch = (fields.branch || '').toString().trim();
+    if (!projectId) return respondJson(res, 400, { ok:false, error: 'project_id обязательное поле' });
+    if (!name) return respondJson(res, 400, { ok:false, error: 'name обязательное поле' });
+
+    try {
+      const result = withDbWrite(db => {
+        const proj = db.prepare('SELECT id, name FROM projects WHERE id=?').get(projectId);
+        if (!proj) return { missing: true };
+        const info = db.prepare(
+          "INSERT INTO epics (project_id, name, description, branch, status, priority) VALUES (?, ?, ?, ?, 'planned', 'medium')"
+        ).run(projectId, name, description || null, branch || null);
+        const newId = Number(info.lastInsertRowid);
+        db.prepare(
+          "INSERT INTO activity_log (entity_type, entity_id, action, summary) VALUES ('epic', ?, 'created', ?)"
+        ).run(newId, `Создан эпик «${name}» в проекте «${proj.name}» через tracker-view admin`);
+        return { id: newId };
+      });
+      if (result.missing) return respondJson(res, 404, { ok:false, error: `Проект #${projectId} не найден` });
+      respondJson(res, 200, { ok:true, id: result.id, project_id: projectId, name });
+    } catch (e) {
+      respondJson(res, 500, { ok:false, error: 'db: ' + e.message });
+    }
+  });
+}
+
 // --- роутинг ---
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://localhost');
 
-  // POST-маршруты (запись): /api/artifact/save
+  // POST-маршруты (запись): /api/artifact/save, /api/project/create, /api/epic/create
   if (req.method === 'POST' && url.pathname === '/api/artifact/save') {
     return handleArtifactSave(req, res);
+  }
+  if (req.method === 'POST' && url.pathname === '/api/project/create') {
+    return handleProjectCreate(req, res);
+  }
+  if (req.method === 'POST' && url.pathname === '/api/epic/create') {
+    return handleEpicCreate(req, res);
   }
 
   if (url.pathname === '/api/heartbeat') {
@@ -1265,6 +1433,12 @@ const server = http.createServer((req, res) => {
   if (registryType) {
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
     return res.end(renderRegistry(registryType, projects));
+  }
+
+  // /admin — страница администрирования (создание проекта/эпика из GUI)
+  if (url.pathname === '/admin') {
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    return res.end(renderAdmin(projects, null));
   }
 
   const projectId = url.searchParams.get('project');
