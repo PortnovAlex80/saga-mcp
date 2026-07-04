@@ -157,3 +157,70 @@ the INTEGRATE task owns the merge instead of each worker racing for merge-lock.
 the workers.** Fix it at planning time: scaffold the shared contract, sequence
 the overlap, or split by module. Merge conflicts that arise from genuinely
 shared code are a planning defect, not an execution one.
+
+---
+
+## AC-verification задачи (ОБЯЗАТЕЛЬНО после dev-задач)
+
+> **GUARDRAILS Sign 006.** `implements` (структурный coverage) ≠ `verified_by`
+> (содержательная проверка). Dev-задача может быть APPROVED по «тесты green»,
+> но если тесты не покрывают AC содержательно — AC НЕ удовлетворён.
+> Подробно: `docs/ac-verification.md`.
+
+После создания всех dev-задач (`implements` traces), planner ОБЯЗАН создать
+**отдельную AC-verification задачу для каждого AC** в эпизоде.
+
+### Что делает AC-verification задача
+
+Задача `role:reviewer tag:ac-verification tag:ac:<code>`:
+1. Берёт конкретный AC (Given/When/Then с эталоном из AC-документа)
+2. Находит соответствующий тест-кейс в коде (grep AC-кода в тестах)
+3. Прогоняет его
+4. **Сверяет результат с эталоном** (например AC-1: `100000@12%/12m → 112682.50`)
+5. `trace_add(AC → verification-task, link_type:'verified_by')`
+6. Если не совпадает → `changes_requested`, dev-задача возвращается
+
+### Структура
+
+```
+dev-task #N (implements AC-1) → done → merge в dev
+                                        ↓
+                AC-1 verification (depends_on [N], verified_by AC-1)
+                                        ↓
+                                    APPROVED  ← содержательная сверка
+                                        ↓
+                                   INTEGRATE
+```
+
+### Правила planner'а
+
+1. **Создать после dev-задач.** AC-verification не идёт параллельно с dev —
+   depends_on все dev-задачи, которые `implements` этот AC.
+2. **tags:** `["role:reviewer", "ac-verification", "ac:<AC-code>"]`.
+3. **priority:** high — блокирует INTEGRATE.
+4. **depends_on:** dev-задачи этого AC.
+5. **Описание:** цитата Given/When/Then + эталон + способ проверки (test name
+   или прямой вызов с эталонными входами).
+6. **Trace:** `trace_add(source_id:<AC-artifact>, target_type:'task',
+   target_id:<verification-task-id>, link_type:'verified_by')`.
+
+### Двойной coverage-gate перед INTEGRATE
+
+```
+artifact_coverage(type:'AC', link_type:'implements')  → 0 gaps  ← структурно
+artifact_coverage(type:'AC', link_type:'verified_by') → 0 gaps  ← содержательно
+```
+
+Оба должны показать 0 gaps перед стартом INTEGRATE. `implements` без
+`verified_by` — это coverage gap, эпизод НЕ готов к integration.
+
+### Метрика эпизода
+
+- `verified_by gaps > 0` → эпизод НЕ готов (AC не проверены содержательно)
+- `verified_by gaps == 0` AND `implements gaps == 0` → INTEGRATE может стартовать
+
+### Связь с solo-worker review
+
+Solo-worker review dev-задачи APPROVE'ит по «тесты green». AC-verification
+задача — **отдельная**, после review всех dev-задач, перед INTEGRATE. Она
+сверяет содержательно, а не «тесты green». Это закрывает Sign 006.

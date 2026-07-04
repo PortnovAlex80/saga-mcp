@@ -225,7 +225,41 @@ Verify it — you did NOT write this code. Diff the branch (see WORKTREE LIFECYC
 1. `task_get({ id })` — read description, `metadata.acceptance_criteria`, subtasks (DoD), and **every comment**. The developer's `result` is in the comments.
 2. Find the actual change: `git diff dev...task/<id>` (clean per-task diff), or `activity_log({ entity_type:"task", entity_id:id })`.
 3. Verify against criteria, not vibes. If `result` claims tests pass, run them (in the worktree). This is a real review.
-4. Verdict via `worker_done` with `verdict: "approved"` or `verdict: "changes_requested"` and file:line specifics in `result`.
+4. **AC-assertion check (GUARDRAILS Sign 006):** If the task `implements` an AC
+   (check via `trace_list({ target_type:'task', target_id:<id> })`), find that AC
+   in the AC-document, identify the Given/When/Then with the **etalon numbers**,
+   and verify the test **asserts exactly that** — not just "tests green", but
+   "this test case asserts the AC's expected values". If the etalon is missing or
+   the test asserts different values, that's `changes_requested` even if green.
+   Example: AC-1 says `100000@12%/12m → 112682.50` — the test must `expect(...).toBe(112682.50)`
+   or `toBeCloseTo(112682.50, 2)`, not just `>100000`.
+5. Verdict via `worker_done` with `verdict: "approved"` or `verdict: "changes_requested"` and file:line specifics in `result`.
+
+### AC-verification задачи (отдельная роль, после dev-review)
+
+> GUARDRAILS Sign 006, `docs/ac-verification.md`. Planner создаёт эти задачи
+> ПОСЛЕ dev-задач (см. saga-planner SKILL — "AC-verification задачи").
+
+Когда `worker_next` выдаёт задачу с тегом `ac-verification` и `role:reviewer`,
+это **содержательная** сверка AC (не обычная dev-review). Делай:
+
+1. Прочитай AC из описания задачи (или через `artifact_get(<AC-id>)`) — там
+   Given/When/Then с **эталоном** (например "100000@12%/12m → 112682.50").
+2. Найди соответствующий тест в коде: grep AC-кода в тестах (`// AC-1` или test
+   name содержит `AC-1`), или прямой вызов с эталонными входами.
+3. **Прогон** — запусти конкретный test-case (или `node -e` с эталонным input).
+4. **Сверка** — сравни фактический результат с эталоном. Числа должны совпадать
+   (или `toBeCloseTo` в пределах precision из AC).
+5. **Verdict:**
+   - СОВПАЛО → `approved`, `trace_add(AC → this-task, verified_by)`, в result:
+     "AC-<N> verified: <эталон> = <фактически> (test: <file>:<line>)".
+   - НЕ СОВПАЛО → `changes_requested`, в result: "AC-<N> FAIL: expected <эталон>,
+     got <фактически> (test: <file>:<line>) — dev-задача должна быть возвращена".
+6. Если тест, на который ссылается AC, не найден → это тоже FAIL: AC не покрыт.
+
+**Важно:** AC-verification задача не пишет код, не меняет тесты. Она только
+**проверяет** соответствие. Если FAIL — возвращается dev-задача (через её
+`changes_requested`), а не AC-verification задача.
 
 ## worker_done — the only way to finish a task
 
