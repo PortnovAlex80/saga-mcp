@@ -583,6 +583,10 @@ function renderArtifacts(projectId, allProjects) {
     const stLabel = STATUS_LABEL[art.status] || art.status;
     const code = art.code ? esc(art.code) : '—';
     const tracesHtml = isLeaf ? renderTraces(art.id, tracesBySource, tasksById, projectById, projectId) : '';
+    // ✎-карандаш → прямой переход в /artifact/<id>/edit (wiki-редактор).
+    // Дублируется в обе ветки (узел с детьми + лист), чтобы редактор был
+    // доступен из любого узла дерева без промежуточной страницы просмотра.
+    const editLink = `<a class="aedit" href="/artifact/${art.id}/edit" title="Редактировать .md">✎</a>`;
     // collapse: узлы с детьми сворачиваются через <details>. Иконка-чип типа —
     // всегда видна (даже свёрнуто), title кликабелен → wiki-просмотр.
     const toggle = children.length
@@ -591,6 +595,7 @@ function renderArtifacts(projectId, allProjects) {
            <span class="acode">${code}</span>
            <a class="atitle" href="/?artifact=${art.id}">${esc(art.title)}</a>
            <span class="astatus" style="color:${stColor}" title="${esc(art.status)}">${stLabel}</span>
+           ${editLink}
            <span class="collapse-hint">${children.length}↓</span>
          </summary>`
       : `<div class="anode-head leaf">
@@ -598,6 +603,7 @@ function renderArtifacts(projectId, allProjects) {
            <span class="acode">${code}</span>
            <a class="atitle" href="/?artifact=${art.id}">${esc(art.title)}</a>
            <span class="astatus" style="color:${stColor}" title="${esc(art.status)}">${stLabel}</span>
+           ${editLink}
          </div>`;
     const childrenHtml = children.length
       ? `<div class="children">${children.map(c => renderNode(c, depth + 1)).join('')}</div></details>`
@@ -681,8 +687,24 @@ function renderArtifacts(projectId, allProjects) {
       </div>
       <div class="ts-types">${summaryChips}</div>
     </div>
+    <div class="tree-toolbar">
+      <span class="tt-label">Дерево:</span>
+      <button class="chip" id="expand-all" title="Развернуть все узлы">▸ Развернуть всё</button>
+      <button class="chip" id="collapse-all" title="Свернуть все узлы (кроме эпизодов)">▾ Свернуть всё</button>
+    </div>
     <div class="episodes">${episodesHtml}${orphansHtml}</div>
     <script>
+    // Expand/collapse-all: переключает open у всех <details> внутри .episodes.
+    // Эпизоды (REQ-NNN) при «свернуть всё» остаются открытыми — иначе дерево
+    // превратится в набор невидимых заголовков; пользователь сворачивает узлы-артефакты.
+    function detailsAll(open) {
+      document.querySelectorAll('.episodes details').forEach(d => {
+        if (open) d.open = true;
+        else if (!d.classList.contains('episode')) d.open = false;
+      });
+    }
+    document.getElementById('expand-all').addEventListener('click', () => detailsAll(true));
+    document.getElementById('collapse-all').addEventListener('click', () => detailsAll(false));
     // Auto-refresh дерева через ?partial=2 (только .episodes).
     async function refreshTree() {
       try {
@@ -969,6 +991,12 @@ function page(title, body) {
     .anode-det > summary::before{content:'▸';color:#8b949e;font-size:10px;width:12px;display:inline-block;transition:transform .15s}
     .anode-det[open] > summary::before{transform:rotate(90deg)}
     .collapse-hint{font-size:10px;color:#484f58;background:#21262d;border:1px solid #30363d;border-radius:8px;padding:0 5px;flex-shrink:0}
+    /* ✎-карандаш — прямой переход в wiki-редактор из любого узла дерева */
+    .aedit{font-size:13px;color:#484f58;text-decoration:none;padding:0 3px;flex-shrink:0;line-height:1;cursor:pointer;transition:color .15s}
+    .aedit:hover{color:#58a6ff}
+    /* тулбар «развернуть/свернуть всё» над деревом */
+    .tree-toolbar{display:flex;align-items:center;gap:6px;padding:8px 20px;background:#161b22;border-bottom:1px solid #30363d}
+    .tt-label{font-size:11px;color:#8b949e;text-transform:uppercase;letter-spacing:.4px;margin-right:4px}
     .anode.shallow{padding:4px 0} .anode.shallow .atitle{font-size:12px;color:#8b949e}
 
     /* бейджи трасс под листом AC */
