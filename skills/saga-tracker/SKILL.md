@@ -5,6 +5,15 @@ description: "Bootstrap + the one rule for any saga session. Two things: (1) res
 
 # Saga tracker — bootstrap + the one rule that matters
 
+## Flow position (saga-flow)
+
+- **Stage:** 0-Bootstrap (до всего, утилитарный)
+- **Precondition:** saga-mcp MCP подключен. `projectname.txt` в корне репозитория.
+- **Postcondition:** project_id resolved (для всех остальных ролей)
+- **Called by:** любой скилл/агент при старте (через project_resolve_by_name)
+- **Next enables:** любая роль (им нужен project_id)
+- **Это не фаза флоу** — это bootstrap-утилита. Загружай первой в любой сессии.
+
 saga-mcp is a local SQLite task tracker over MCP, holding **many projects in one
 shared DB**. This skill covers only what every saga session needs; the worker
 loop is in `saga-worker`, and the operational reference (kanban stages, tag

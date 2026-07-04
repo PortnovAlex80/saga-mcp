@@ -5,6 +5,16 @@ description: "The bridge between requirements and the builders' kanban. Reads th
 
 # saga-planner — requirements → builders bridge
 
+## Flow position (saga-flow)
+
+- **Stage:** 5-Planning (после formalization, перед execution)
+- **Precondition:** AC artifact accepted. Проверь: `artifact_list({type:'AC', epic_id})` → status=accepted.
+- **Postcondition:** dev-задачи созданы (implements traces) + AC-verification задачи созданы (verified_by traces). Coverage: `artifact_coverage({type:'AC', link_type:'implements'})` → 0 gaps.
+- **Called by:** saga-orchestrator (Этап 5)
+- **Next enables:** saga-dispatch / saga-worker (execution рой)
+- **Проверь precondition:** если AC не accepted → STOP. Нет AC → нечего планировать.
+- **ОБЯЗАТЕЛЬНО:** после dev-задач создай AC-verification задачи (Sign 006, docs/ac-verification.md).
+
 You read **accepted acceptance criteria** from a requirements episode and turn
 each into a dev-task in the builders' project, traced back to its AC. After your
 run, the builders' kanban has a fresh batch of `todo` tasks, and

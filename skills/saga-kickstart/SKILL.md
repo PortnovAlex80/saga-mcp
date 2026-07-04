@@ -14,6 +14,22 @@ description: |
 > Discovery-фаза saga-флоу. Принимает идею одной фразой, возвращает decision.
 > Все секции ниже заполнены body-задачами REQ-004 (#219-224).
 
+## Flow position (saga-flow)
+
+- **Stage:** 1-Discovery (первая фаза, входная точка)
+- **Precondition:** Идея от пользователя (одной фразой). Saga-mcp DB доступна.
+  Epic REQ-NNN создан (или будет создан в процессе).
+- **Postcondition:** Brief artifact accepted, decision ∈ {go, fast-track, clarify, reject}
+- **Called by:** saga-orchestrator (Этап 1), либо напрямую пользователем
+- **Next enables:**
+  - decision=go → saga-product (PRD, Этап 2)
+  - decision=fast-track → saga-planner (минуя formalization)
+  - decision=clarify → стоп, вопросы пользователю
+  - decision=reject → эпик закрыт
+- **Проверь precondition:** если saga-mcp DB недоступна → STOP (Sign F3, failover)
+- **ВНИМАНИЕ (Sign 005):** это SKILL в main-context, НЕ subagent. В subagent_child
+  нет Agent/AskUser tools.
+
 **Source of truth:**
 - SRS-004 §2b.7 (artifact 79) — section list + saga-mcp tool calls.
 - BRIEF-004 §2 (artifact 77) — 12-section brief layout.
