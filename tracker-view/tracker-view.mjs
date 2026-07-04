@@ -1,11 +1,15 @@
-// saga tracker viewer — мультипроектный канбан для ОДНОЙ общей БД saga-mcp.
-// Читает process.env.DB_PATH (ту же БД, что и сам saga-MCP) и показывает
-// все saga-проекты как пункты навигации. Read-only.
+// saga tracker viewer — мультипроектный канбан + мини-вики артефактов saga-mcp.
+// Читает/пишет process.env.DB_PATH (ту же БД, что и сам saga-MCP; WAL → безопасно).
 //   /                       → индекс всех проектов со счётчиками
 //   /?project=<id>          → канбан конкретного saga-проекта
+//   /?project=<id>&tab=artifacts → дерево артефактов с трассами
+//   /?artifact=<id>         → wiki-просмотр артефакта (rendered markdown)
+//   /artifact/<id>/edit     → wiki-редактор (.md + metadata)
+//   /?registry=<TYPE>       → кросс-проектный реестр однотипных документов
 //   /api/heartbeat          → JSON { last } — timestamp последней активности
+//   POST /api/artifact/save → сохранить .md + metadata (JSON body)
 import http from 'node:http';
-import { existsSync, writeFileSync, readFileSync, unlinkSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
@@ -71,6 +75,18 @@ function withDb(fn) {
   }
 }
 
+// Read-write соединение для save-handler. WAL-режим БД saga-mcp позволяет
+// конкурентную запись (один писатель + много читателей) — безопасно с saga-MCP.
+function withDbWrite(fn) {
+  const db = new Database(DB_PATH, { timeout: 5000 });
+  db.pragma('journal_mode = WAL');
+  try {
+    return fn(db);
+  } finally {
+    db.close();
+  }
+}
+
 // Возраст timestamp'а → класс кружка (green/yellow/red)
 function ageClass(iso) {
   if (!iso) return 'red';
@@ -129,6 +145,109 @@ function loadBoard(projectId) {
 }
 
 function esc(s){ return String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+// --- Repo-root resolver: проект saga → физический репо, где лежат .md файлы ---
+// Конвенция folder:тега ненадёжна (проекты с артефактами его не имеют),
+// поэтому map строим по факту где docs/requirements/<epic> реально существует.
+// PROJECT_REPO_MAP — hardcoded приоритеты; resolveRepoFile обходит кандидатов.
+const DEV_ROOT = 'D:/Development';
+const PROJECT_REPO_MAP = {
+  granite: ['Stone'],
+  Geosophia: ['geosophia'],
+  TestLasGPU: ['TestLasGPU'],
+  'kickstart-impl': ['Harmess', 'saga-mcp'],
+  'deposit-calc-simple': ['Harmess', 'deposit-calc-simple'],
+  requirements: ['Harmess'],
+  'ODN-MVP': ['GDesign', 'Harmess'],
+  harmess: ['Harmess'],
+  femdriver: ['femdriver'],
+  GazPenetration: ['GazPenetration'],
+};
+
+// Найти физический путь к .md файлу артефакта.
+// path в БД может быть 'docs/.../01-SRS.md#FR-1' — якорь отбрасываем.
+// Возвращает { abs, projectRoot } или null если файл не существует.
+function resolveArtifactFile(artifactPath, projectName) {
+  const cleanPath = artifactPath.split('#')[0];
+  const candidates = [];
+  const map = PROJECT_REPO_MAP[projectName] || [];
+  for (const sub of map) candidates.push(path.join(DEV_ROOT, sub));
+  // Fallback: если проекта нет в map, ищем по имени в DEV_ROOT
+  if (!map.length) candidates.push(path.join(DEV_ROOT, projectName));
+  for (const root of candidates) {
+    const abs = path.join(root, cleanPath);
+    if (existsSync(abs)) return { abs, projectRoot: root };
+  }
+  return null;
+}
+
+// --- Markdown → HTML (минимальный рендер, без зависимостей) ---
+// Поддержка: заголовки #..####, списки -/*, код ```, параграфы, жирный **,
+// таблицы | a | b |. Этого достаточно для PRD/SRS/UC/AC артефактов saga.
+function renderMarkdown(md) {
+  if (!md) return '<p class="muted">пусто</p>';
+  const lines = String(md).replace(/\r\n/g, '\n').split('\n');
+  let html = '', inCode = false, inList = false, inTable = false, para = [];
+  const flushPara = () => {
+    if (para.length) {
+      let t = para.join(' ');
+      t = t.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+           .replace(/`([^`]+)`/g, '<code>$1</code>');
+      html += `<p>${t}</p>`;
+      para = [];
+    }
+  };
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    // code fence
+    if (/^```/.test(line)) {
+      if (inList) { html += '</ul>'; inList = false; }
+      if (inTable) { html += '</table>'; inTable = false; }
+      if (para.length) flushPara();
+      if (inCode) { html += '</code></pre>'; inCode = false; }
+      else { html += '<pre><code>'; inCode = true; }
+      continue;
+    }
+    if (inCode) { html += esc(line) + '\n'; continue; }
+    // таблица
+    if (line.trim().startsWith('|') && line.trim().endsWith('|')) {
+      if (para.length) flushPara();
+      if (inList) { html += '</ul>'; inList = false; }
+      if (!inTable) { html += '<table>'; inTable = true; }
+      const cells = line.trim().replace(/^\||\|$/g, '').split('|').map(c => c.trim());
+      // separator row |---|---|
+      if (cells.every(c => /^:?-+:?$/.test(c))) continue;
+      const tag = (i > 0 && lines[i-1].trim().startsWith('|')) && !inTableHasHeader(html) ? 'td' : 'td';
+      html += '<tr>' + cells.map(c => `<${tag}>${esc(c)}</${tag}>`).join('') + '</tr>';
+      continue;
+    } else if (inTable) { html += '</table>'; inTable = false; }
+    // заголовки
+    const hm = line.match(/^(#{1,6})\s+(.*)$/);
+    if (hm) {
+      if (para.length) flushPara();
+      if (inList) { html += '</ul>'; inList = false; }
+      const lvl = hm[1].length;
+      html += `<h${lvl}>${esc(hm[2])}</h${lvl}>`;
+      continue;
+    }
+    // список
+    if (/^\s*[-*]\s+/.test(line)) {
+      if (para.length) flushPara();
+      if (!inList) { html += '<ul>'; inList = true; }
+      html += `<li>${esc(line.replace(/^\s*[-*]\s+/, ''))}</li>`;
+      continue;
+    } else if (inList && line.trim() === '') { html += '</ul>'; inList = false; }
+    // пустая строка → конец параграфа
+    if (line.trim() === '') { flushPara(); continue; }
+    para.push(esc(line));
+  }
+  if (inCode) html += '</code></pre>';
+  if (inList) html += '</ul>';
+  if (inTable) html += '</table>';
+  flushPara();
+  return html;
+}
+function inTableHasHeader(htmlTail) { return /<\/th>/.test(htmlTail.slice(-200)); }
 
 // Извлечь первый <div class="<cls>">…</div> по балансу тегов (надёжнее regex при
 // глубокой вложенности — .episodes содержит много вложенных </div>).
@@ -242,6 +361,16 @@ function renderIndex(projects) {
     </div>
     <div class="searchbar">
       <input id="q" placeholder="🔍 поиск проекта по имени..." autocomplete="off">
+    </div>
+    <div class="nav-regs">
+      <span class="muted small">Реестры документов:</span>
+      <a class="chip" href="?registry=PRD">PRD</a>
+      <a class="chip" href="?registry=SRS">SRS</a>
+      <a class="chip" href="?registry=AC">AC</a>
+      <a class="chip" href="?registry=UC">UC</a>
+      <a class="chip" href="?registry=FR">FR</a>
+      <a class="chip" href="?registry=NFR">NFR</a>
+      <a class="chip" href="?registry=decision">BRIEF</a>
     </div>
     <div class="section-title">Активные</div>
     <div class="plist" id="active">${active || '<div class="empty-hint">Нет проектов с задачами.</div>'}</div>
@@ -454,16 +583,27 @@ function renderArtifacts(projectId, allProjects) {
     const stLabel = STATUS_LABEL[art.status] || art.status;
     const code = art.code ? esc(art.code) : '—';
     const tracesHtml = isLeaf ? renderTraces(art.id, tracesBySource, tasksById, projectById, projectId) : '';
+    // collapse: узлы с детьми сворачиваются через <details>. Иконка-чип типа —
+    // всегда видна (даже свёрнуто), title кликабелен → wiki-просмотр.
+    const toggle = children.length
+      ? `<details class="anode-det" data-id="${art.id}"><summary class="anode-head">
+           <span class="atype" style="background:${typeColor}">${typeLabel}</span>
+           <span class="acode">${code}</span>
+           <a class="atitle" href="/?artifact=${art.id}">${esc(art.title)}</a>
+           <span class="astatus" style="color:${stColor}" title="${esc(art.status)}">${stLabel}</span>
+           <span class="collapse-hint">${children.length}↓</span>
+         </summary>`
+      : `<div class="anode-head leaf">
+           <span class="atype" style="background:${typeColor}">${typeLabel}</span>
+           <span class="acode">${code}</span>
+           <a class="atitle" href="/?artifact=${art.id}">${esc(art.title)}</a>
+           <span class="astatus" style="color:${stColor}" title="${esc(art.status)}">${stLabel}</span>
+         </div>`;
     const childrenHtml = children.length
-      ? `<div class="children">${children.map(c => renderNode(c, depth + 1)).join('')}</div>`
+      ? `<div class="children">${children.map(c => renderNode(c, depth + 1)).join('')}</div></details>`
       : '';
     return `<div class="anode" data-depth="${depth}">
-      <div class="anode-head">
-        <span class="atype" style="background:${typeColor}">${typeLabel}</span>
-        <span class="acode">${code}</span>
-        <span class="atitle">${esc(art.title)}</span>
-        <span class="astatus" style="color:${stColor}" title="${esc(art.status)}">${stLabel}</span>
-      </div>
+      ${toggle}
       ${tracesHtml}
       ${childrenHtml}
     </div>`;
@@ -566,6 +706,166 @@ function renderArtifacts(projectId, allProjects) {
     setInterval(refreshTree, ${RELOAD_SEC * 1000});
     </script>`);
 }
+
+// --- HTML: wiki-просмотр артефакта (один документ) ---
+// Маршрут: /?artifact=<id>. Рендерит .md файл артефакта + metadata (title/status/
+// tags) + трассы. Кнопка «Редактировать» → /artifact/<id>/edit.
+function renderArtifactView(artifactId, allProjects) {
+  let art;
+  try {
+    art = withDb(db => db.prepare(`
+      SELECT a.*, e.name AS epic_name, p.name AS project_name, p.id AS project_id
+        FROM artifacts a
+        JOIN epics e ON e.id = a.epic_id
+        JOIN projects p ON p.id = e.project_id
+       WHERE a.id = ?`).get(artifactId));
+  } catch { art = null; }
+  if (!art) return page('Артефакт не найден', '<div class="empty-box"><h2>Артефакт не найден</h2></div>');
+
+  const proj = allProjects.find(p => String(p.id) === String(art.project_id));
+  const projColor = proj?.color || '#8b949e';
+  const resolved = resolveArtifactFile(art.path, art.project_name);
+  let md = '', mdError = '';
+  if (resolved) {
+    try { md = readFileSync(resolved.abs, 'utf8'); }
+    catch (e) { mdError = `Ошибка чтения файла: ${e.message}`; }
+  } else {
+    mdError = `Файл не найден в репо проекта «${esc(art.project_name)}». Путь в БД: <code>${esc(art.path)}</code>`;
+  }
+
+  // Трассы (входящие + исходящие) для этого артефакта
+  let tracesHtml = '';
+  try {
+    tracesHtml = withDb(db => {
+      const out = db.prepare(`
+        SELECT t.link_type, t.target_type, t.target_id,
+          CASE WHEN t.target_type='artifact' THEN (SELECT a.code FROM artifacts a WHERE a.id=t.target_id) END AS target_code
+          FROM artifact_traces t WHERE t.source_id=? ORDER BY t.link_type`).all(artifactId);
+      const inc = db.prepare(`
+        SELECT t.link_type, t.source_id,
+          (SELECT a.code FROM artifacts a WHERE a.id=t.source_id) AS src_code,
+          (SELECT a.type FROM artifacts a WHERE a.id=t.source_id) AS src_type
+          FROM artifact_traces t WHERE t.target_type='artifact' AND t.target_id=? ORDER BY t.link_type`).all(artifactId);
+      const parts = [];
+      if (out.length) parts.push('<div class="tr-sec"><b>Исходящие:</b> ' + out.map(t =>
+        `<span class="trace-badge" style="border-color:${LINK_COLORS[t.link_type]||'#8b949e'};color:${LINK_COLORS[t.link_type]||'#8b949e'}">${LINK_GLYPH[t.link_type]||t.link_type}: ${esc(t.target_code||('#'+t.target_id))}</span>`).join(' ') + '</div>');
+      if (inc.length) parts.push('<div class="tr-sec"><b>Входящие:</b> ' + inc.map(t =>
+        `<a class="trace-badge" href="?artifact=${t.source_id}" style="border-color:${LINK_COLORS[t.link_type]||'#8b949e'};color:${LINK_COLORS[t.link_type]||'#8b949e'}">${LINK_GLYPH[t.link_type]||t.link_type} ← ${esc(t.src_code||('#'+t.source_id))}</a>`).join(' ') + '</div>');
+      return parts.join('');
+    });
+  } catch {}
+
+  const statusOpts = ['draft','in_review','accepted','superseded']
+    .map(s => `<option value="${s}"${s===art.status?' selected':''}>${s}</option>`).join('');
+  const typeColor = TYPE_COLORS[art.type] || '#8b949e';
+
+  const header = `
+    <div class="board-head">
+      <a href="/?project=${art.project_id}&tab=artifacts" class="back">← Дерево</a>
+      <a href="/?project=${art.project_id}" class="back" style="margin-left:-4px">Канбан</a>
+      <span class="atype" style="background:${typeColor}">${TYPE_LABEL[art.type]||art.type}</span>
+      <span class="acode">${esc(art.code || '—')}</span>
+      <span class="atitle-top">${esc(art.title)}</span>
+      <span style="flex:1"></span>
+      <div class="heartbeat"><span id="hb-dot" class="hb-dot red"></span><span id="hb-txt">…</span></div>
+    </div>`;
+
+  const bodyHtml = `
+    <div class="wiki-meta">
+      <div class="wm-row"><span class="wm-label">Проект</span><span class="wm-val" style="color:${projColor}">${esc(art.project_name)}</span></div>
+      <div class="wm-row"><span class="wm-label">Эпизод</span><span class="wm-val">${esc(art.epic_name||'—')}</span></div>
+      <div class="wm-row"><span class="wm-label">Статус</span><span class="wm-val"><span class="astatus" style="color:${STATUS_COLOR[art.status]||'#8b949e'}">${STATUS_LABEL[art.status]||art.status}</span></span></div>
+      <div class="wm-row"><span class="wm-label">Файл</span><span class="wm-val mono">${resolved ? esc(resolved.abs) : '<span class="muted">'+mdError+'</span>'}</span></div>
+      <div class="wm-row"><span class="wm-label">Обновлён</span><span class="wm-val">${esc(art.updated_at)}</span></div>
+      <div class="wm-actions">
+        <a class="btn" href="/artifact/${artifactId}/edit">✎ Редактировать</a>
+      </div>
+    </div>
+    ${tracesHtml ? `<div class="wiki-traces">${tracesHtml}</div>` : ''}
+    <div class="wiki-content">
+      ${mdError && !resolved ? `<div class="md-error">${mdError}</div>` : renderMarkdown(md)}
+    </div>`;
+
+  return page(`${art.code || art.type} · ${art.title}`, header + bodyHtml);
+}
+
+// --- HTML: wiki-редактор артефакта ---
+// GET /artifact/<id>/edit — форма (textarea + поля metadata).
+// POST /api/artifact/save — сохранение (см. роутинг).
+function renderArtifactEdit(artifactId, allProjects, flash) {
+  let art;
+  try {
+    art = withDb(db => db.prepare(`
+      SELECT a.*, p.name AS project_name, p.id AS project_id
+        FROM artifacts a JOIN epics e ON e.id=a.epic_id JOIN projects p ON p.id=e.project_id
+       WHERE a.id = ?`).get(artifactId));
+  } catch { art = null; }
+  if (!art) return page('Артефакт не найден', '<div class="empty-box"><h2>Артефакт не найден</h2></div>');
+
+  const resolved = resolveArtifactFile(art.path, art.project_name);
+  let md = '';
+  if (resolved) { try { md = readFileSync(resolved.abs, 'utf8'); } catch {} }
+  const typeColor = TYPE_COLORS[art.type] || '#8b949e';
+  const statusOpts = ['draft','in_review','accepted','superseded']
+    .map(s => `<option value="${s}"${s===art.status?' selected':''}>${s}</option>`).join('');
+  // tags хранится как JSON-массив строк
+  let tagsArr = [];
+  try { tagsArr = JSON.parse(art.tags || '[]'); } catch {}
+  const tagsStr = tagsArr.join(', ');
+
+  const header = `
+    <div class="board-head">
+      <a href="/?artifact=${artifactId}" class="back">← Просмотр</a>
+      <span class="atype" style="background:${typeColor}">${TYPE_LABEL[art.type]||art.type}</span>
+      <span class="acode">${esc(art.code || '—')}</span>
+      <span class="atitle-top">Редактирование</span>
+    </div>`;
+
+  return page(`Edit · ${art.code || art.type}`, `
+    ${header}
+    ${flash ? `<div class="flash ${flash.kind||'ok'}">${esc(flash.msg)}</div>` : ''}
+    <form class="editor" method="POST" action="/api/artifact/save">
+      <input type="hidden" name="id" value="${artifactId}">
+      <div class="ed-meta">
+        <label class="ed-field"><span>Заголовок</span><input type="text" name="title" value="${esc(art.title)}"></label>
+        <label class="ed-field ed-status"><span>Статус</span><select name="status">${statusOpts}</select></label>
+        <label class="ed-field ed-tags"><span>Теги (через запятую)</span><input type="text" name="tags" value="${esc(tagsStr)}"></label>
+      </div>
+      <div class="ed-md-wrap">
+        <label class="ed-md-label">Содержимое документа (.md)
+          ${resolved ? `<span class="muted mono small">→ ${esc(resolved.abs)}</span>` : `<span class="warn">файл не существует — будет создан</span>`}
+        </label>
+        <textarea name="markdown" class="ed-md" spellcheck="false">${esc(md)}</textarea>
+      </div>
+      <div class="ed-actions">
+        <button type="submit" class="btn primary">💾 Сохранить</button>
+        <a class="btn" href="/?artifact=${artifactId}">Отмена</a>
+      </div>
+    </form>
+    <script>
+    // Progressive enhancement: форма сабмитится через fetch → JSON.
+    // Успех → редирект на просмотр. Ошибка → flash-сообщение.
+    document.querySelector('form.editor').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const f = e.target;
+      const data = new URLSearchParams(new FormData(f));
+      const btn = f.querySelector('button[type=submit]');
+      btn.disabled = true; btn.textContent = 'Сохранение…';
+      try {
+        const r = await fetch('/api/artifact/save', { method:'POST', body:data });
+        const j = await r.json();
+        if (j.ok) { location.href = '/?artifact=${artifactId}'; }
+        else {
+          btn.disabled = false; btn.textContent = '💾 Сохранить';
+          alert('Ошибка сохранения: ' + (j.error || 'неизвестная'));
+        }
+      } catch (err) {
+        btn.disabled = false; btn.textContent = '💾 Сохранить';
+        alert('Сеть: ' + err.message);
+      }
+    });
+    </script>`);
+}
 function page(title, body) {
   return `<!doctype html><html lang="ru"><head><meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -579,6 +879,7 @@ function page(title, body) {
     .sum-item{flex:1;background:#21262d;border:1px solid #30363d;border-radius:8px;padding:12px;text-align:center}
     .sum-item b{display:block;font-size:22px;color:#58a6ff} .sum-item span{font-size:11px;color:#8b949e}
     .searchbar{padding:14px 20px} .searchbar input{width:100%;background:#161b22;border:1px solid #30363d;color:#e6edf3;border-radius:8px;padding:12px 14px;font-size:14px}
+    .nav-regs{padding:0 20px 12px;display:flex;gap:6px;flex-wrap:wrap;align-items:center}
     .section-title{padding:8px 20px;font-size:12px;color:#8b949e;text-transform:uppercase;letter-spacing:.5px}
     .plist{padding:0 20px 20px;display:flex;flex-direction:column;gap:6px}
     .prow{display:flex;align-items:center;gap:12px;background:#161b22;border:1px solid #30363d;border-radius:8px;padding:12px 14px;transition:border-color .15s}
@@ -656,10 +957,18 @@ function page(title, body) {
     .anode[data-depth="0"]{border-left-color:#30363d}
     .children{margin-left:16px;padding-left:14px;border-left:1px solid #30363d}
     .anode-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-    .atype{font-size:10px;font-weight:700;color:#0d1117;padding:2px 6px;border-radius:3px;letter-spacing:.3px}
-    .acode{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:12px;color:#58a6ff;font-weight:600;min-width:42px}
-    .atitle{flex:1;font-size:13px;color:#e6edf3;line-height:1.35}
-    .astatus{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.3px}
+    .anode-head.leaf{padding-left:18px}
+    .atype{font-size:10px;font-weight:700;color:#0d1117;padding:2px 6px;border-radius:3px;letter-spacing:.3px;flex-shrink:0}
+    .acode{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:12px;color:#58a6ff;font-weight:600;min-width:42px;flex-shrink:0}
+    .atitle{flex:1;font-size:13px;color:#e6edf3;line-height:1.35;text-decoration:none;cursor:pointer}
+    .atitle:hover{color:#58a6ff;text-decoration:underline}
+    .astatus{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.3px;flex-shrink:0}
+    /* collapse <details> для узлов с детьми */
+    .anode-det > summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+    .anode-det > summary::-webkit-details-marker{display:none}
+    .anode-det > summary::before{content:'▸';color:#8b949e;font-size:10px;width:12px;display:inline-block;transition:transform .15s}
+    .anode-det[open] > summary::before{transform:rotate(90deg)}
+    .collapse-hint{font-size:10px;color:#484f58;background:#21262d;border:1px solid #30363d;border-radius:8px;padding:0 5px;flex-shrink:0}
     .anode.shallow{padding:4px 0} .anode.shallow .atitle{font-size:12px;color:#8b949e}
 
     /* бейджи трасс под листом AC */
@@ -673,6 +982,63 @@ function page(title, body) {
     .orphan-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}
     .orphan-group{display:flex;flex-direction:column;gap:4px}
     .orphan-type{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;padding-bottom:4px;border-bottom:1px solid #30363d}
+
+    /* wiki-просмотр артефакта */
+    .atitle-top{font-weight:700;font-size:15px;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .wiki-meta{display:flex;flex-wrap:wrap;gap:8px 18px;padding:12px 20px;background:#161b22;border-bottom:1px solid #30363d;align-items:center}
+    .wm-row{display:flex;gap:6px;align-items:center;font-size:12px}
+    .wm-label{color:#8b949e;text-transform:uppercase;font-size:10px;letter-spacing:.4px}
+    .wm-val{color:#e6edf3} .wm-val.mono{font-family:ui-monospace,Consolas,monospace;font-size:11px;color:#8b949e}
+    .wm-actions{margin-left:auto}
+    .wiki-traces{padding:8px 20px;background:#161b22;border-bottom:1px solid #30363d;display:flex;flex-direction:column;gap:6px}
+    .tr-sec{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+    .wiki-content{padding:24px 28px;max-width:900px;line-height:1.6}
+    .wiki-content h1{font-size:22px;margin:18px 0 8px;border-bottom:1px solid #30363d;padding-bottom:6px}
+    .wiki-content h2{font-size:18px;margin:16px 0 6px;color:#58a6ff}
+    .wiki-content h3{font-size:15px;margin:14px 0 4px;color:#a371f7}
+    .wiki-content p{margin:8px 0}
+    .wiki-content ul{margin:8px 0;padding-left:24px}
+    .wiki-content li{margin:3px 0}
+    .wiki-content code{background:#21262d;padding:1px 5px;border-radius:3px;font-family:ui-monospace,Consolas,monospace;font-size:12px}
+    .wiki-content pre{background:#161b22;border:1px solid #30363d;border-radius:6px;padding:12px;overflow-x:auto;margin:10px 0}
+    .wiki-content pre code{background:none;padding:0}
+    .wiki-content table{border-collapse:collapse;margin:10px 0;font-size:12px}
+    .wiki-content th,.wiki-content td{border:1px solid #30363d;padding:5px 9px;text-align:left}
+    .wiki-content th{background:#21262d;font-weight:600}
+    .md-error{background:rgba(231,76,60,.1);border:1px solid #e74c3c;color:#e74c3c;padding:12px;border-radius:6px;font-size:13px}
+    .flash{padding:10px 20px;font-size:13px}
+    .flash.ok{background:rgba(63,185,80,.1);color:#3fb950} .flash.err{background:rgba(231,76,60,.1);color:#e74c3c}
+
+    /* кнопки */
+    .btn{display:inline-block;background:#21262d;border:1px solid #30363d;color:#e6edf3;border-radius:6px;padding:7px 14px;font-size:12px;cursor:pointer;text-decoration:none;transition:all .15s}
+    .btn:hover{border-color:#58a6ff;color:#58a6ff}
+    .btn.primary{background:#238636;border-color:#238636;color:#fff;font-weight:600}
+    .btn.primary:hover{background:#2ea043;border-color:#2ea043;color:#fff}
+    .btn:disabled{opacity:.6;cursor:wait}
+
+    /* wiki-редактор */
+    .editor{padding:16px 20px 40px;max-width:1000px}
+    .ed-meta{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+    .ed-field{display:flex;flex-direction:column;gap:4px;flex:1;min-width:180px}
+    .ed-field > span{font-size:11px;color:#8b949e;text-transform:uppercase;letter-spacing:.3px}
+    .ed-field input,.ed-field select{background:#161b22;border:1px solid #30363d;color:#e6edf3;border-radius:6px;padding:8px 10px;font-size:13px}
+    .ed-status{flex:0 0 140px} .ed-tags{flex:2}
+    .ed-md-wrap{display:flex;flex-direction:column;gap:6px;margin-bottom:14px}
+    .ed-md-label{display:flex;gap:8px;align-items:baseline;font-size:12px;color:#8b949e}
+    .ed-md{width:100%;min-height:420px;background:#161b22;border:1px solid #30363d;color:#e6edf3;border-radius:6px;padding:12px;font-family:ui-monospace,Consolas,monospace;font-size:13px;line-height:1.5;resize:vertical}
+    .ed-md:focus{outline:none;border-color:#58a6ff}
+    .ed-actions{display:flex;gap:10px}
+    .small{font-size:11px} .warn{color:#f39c12}
+
+    /* реестр документов */
+    .registry-wrap{padding:14px 20px}
+    .reg-summary{font-size:13px;color:#8b949e;margin-bottom:12px} .reg-summary b{color:#e6edf3}
+    .registry{width:100%;border-collapse:collapse;font-size:13px}
+    .registry th{text-align:left;background:#21262d;color:#8b949e;font-size:11px;text-transform:uppercase;letter-spacing:.3px;padding:8px 10px;border-bottom:1px solid #30363d}
+    .registry td{padding:7px 10px;border-bottom:1px solid #21262d;vertical-align:middle}
+    .registry tr:hover td{background:#161b22}
+    .reg-code{font-family:ui-monospace,Consolas,monospace;color:#58a6ff;font-weight:600}
+    .reg-epic{color:#8b949e;font-size:12px} .reg-link:hover .reg-code{text-decoration:underline}
   </style></head>
   <body>${body}
   <script>
@@ -695,9 +1061,151 @@ function page(title, body) {
   </script></body></html>`;
 }
 
+// --- POST /api/artifact/save: сохранение .md + metadata артефакта ---
+// Тело: application/x-www-form-urlencoded (из формы) или JSON.
+// Записывает файл (создаёт родительские директории) + UPDATE artifacts.
+function handleArtifactSave(req, res) {
+  let chunks = [];
+  req.on('data', c => chunks.push(c));
+  req.on('end', () => {
+    const raw = Buffer.concat(chunks).toString('utf8');
+    let fields;
+    const ct = req.headers['content-type'] || '';
+    if (ct.includes('application/json')) {
+      try { fields = JSON.parse(raw); } catch { fields = {}; }
+    } else {
+      fields = Object.fromEntries(new URLSearchParams(raw));
+    }
+    const id = Number(fields.id);
+    if (!id) return respondJson(res, 400, { error: 'id required' });
+
+    // Загрузим артефакт, чтобы знать path и project_name.
+    let art;
+    try {
+      art = withDb(db => db.prepare(`
+        SELECT a.*, p.name AS project_name FROM artifacts a
+          JOIN epics e ON e.id=a.epic_id JOIN projects p ON p.id=e.project_id
+         WHERE a.id=?`).get(id));
+    } catch (e) { return respondJson(res, 500, { error: 'db: ' + e.message }); }
+    if (!art) return respondJson(res, 404, { error: 'artifact not found' });
+
+    const result = { ok: true, id, warnings: [] };
+
+    // 1. Сохранение .md файла
+    if (typeof fields.markdown === 'string') {
+      const resolved = resolveArtifactFile(art.path, art.project_name);
+      let absPath = resolved?.abs;
+      if (!absPath) {
+        // Файла нет — создадим по первому кандидату из PROJECT_REPO_MAP.
+        const cleanPath = art.path.split('#')[0];
+        const map = PROJECT_REPO_MAP[art.project_name] || [art.project_name];
+        absPath = path.join(DEV_ROOT, map[0], cleanPath);
+        result.warnings.push(`файл создан: ${absPath}`);
+      }
+      try {
+        mkdirSync(path.dirname(absPath), { recursive: true });
+        writeFileSync(absPath, fields.markdown, 'utf8');
+        result.file = absPath;
+      } catch (e) {
+        result.ok = false;
+        result.error = 'file write: ' + e.message;
+        return respondJson(res, 500, result);
+      }
+    }
+
+    // 2. Обновление metadata в БД (title/status/tags). updated_at — ручная.
+    try {
+      withDbWrite(db => {
+        const sets = [];
+        const vals = [];
+        if (typeof fields.title === 'string' && fields.title.trim()) {
+          sets.push('title = ?'); vals.push(fields.title.trim());
+        }
+        if (['draft','in_review','accepted','superseded'].includes(fields.status)) {
+          sets.push('status = ?'); vals.push(fields.status);
+        }
+        if (typeof fields.tags === 'string') {
+          const tags = fields.tags.split(',').map(s => s.trim()).filter(Boolean);
+          sets.push('tags = ?'); vals.push(JSON.stringify(tags));
+        }
+        if (sets.length) {
+          sets.push("updated_at = datetime('now')");
+          vals.push(id);
+          db.prepare(`UPDATE artifacts SET ${sets.join(', ')} WHERE id=?`).run(...vals);
+        }
+      });
+      result.metadata = true;
+    } catch (e) {
+      result.ok = false;
+      result.error = 'db update: ' + e.message;
+      return respondJson(res, 500, result);
+    }
+
+    respondJson(res, 200, result);
+  });
+}
+
+function respondJson(res, code, obj) {
+  res.writeHead(code, { 'Content-Type': 'application/json' });
+  res.end(JSON.stringify(obj));
+}
+
+// --- HTML: кросс-проектный реестр однотипных документов (?registry=PRD) ---
+// Показывает все артефакты выбранного типа по всем проектам — таблицей.
+// Цель: «все PRD», «все AC», «все SRS» — быстрый поиск однотипных документов.
+function renderRegistry(type, allProjects) {
+  const T = (type || 'PRD').toUpperCase();
+  let arts = [];
+  try {
+    arts = withDb(db => db.prepare(`
+      SELECT a.id, a.code, a.title, a.status, a.updated_at,
+             e.name AS epic_name, p.name AS project_name, p.id AS project_id
+        FROM artifacts a JOIN epics e ON e.id=a.epic_id JOIN projects p ON p.id=e.project_id
+       WHERE a.type = ?
+       ORDER BY p.name, a.code`).all(T));
+  } catch { arts = []; }
+
+  const types = ['PRD','SRS','UC','AC','FR','NFR','decision'];
+  const typeChips = types.map(t =>
+    `<a class="chip${t===T?' active':''}" href="?registry=${t}">${TYPE_LABEL[t]||t}</a>`).join('');
+  const projColor = (pid) => {
+    const p = allProjects.find(x => String(x.id) === String(pid));
+    return p?.color || '#8b949e';
+  };
+
+  const rows = arts.map(a => `<tr>
+    <td><a class="reg-link" href="/?artifact=${a.id}"><span class="reg-code">${esc(a.code||'—')}</span></a></td>
+    <td><span class="pdot" style="background:${projColor(a.project_id)}"></span>${esc(a.project_name)}</td>
+    <td class="reg-epic">${esc(a.epic_name||'—')}</td>
+    <td>${esc(a.title)}</td>
+    <td><span class="astatus" style="color:${STATUS_COLOR[a.status]||'#8b949e'}">${STATUS_LABEL[a.status]||a.status}</span></td>
+    <td class="muted small">${esc((a.updated_at||'').slice(0,16))}</td>
+  </tr>`).join('');
+
+  return page(`Реестр · ${T}`, `
+    <div class="board-head">
+      <a href="/" class="back">← Все проекты</a>
+      <span class="cur-proj">📚 Реестр: ${T}</span>
+      <span style="flex:1"></span>
+      <div class="heartbeat"><span id="hb-dot" class="hb-dot red"></span><span id="hb-txt">…</span></div>
+    </div>
+    <div class="filter-bar">${typeChips}</div>
+    <div class="registry-wrap">
+      <div class="reg-summary"><b>${arts.length}</b> документов типа <b>${T}</b> по всем проектам</div>
+      ${arts.length ? `<table class="registry"><thead><tr>
+        <th>Code</th><th>Проект</th><th>Эпизод</th><th>Заголовок</th><th>Статус</th><th>Обновлён</th>
+      </tr></thead><tbody>${rows}</tbody></table>` : '<div class="empty-box"><h2>Нет документов типа '+T+'</h2></div>'}
+    </div>`);
+}
+
 // --- роутинг ---
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://localhost');
+
+  // POST-маршруты (запись): /api/artifact/save
+  if (req.method === 'POST' && url.pathname === '/api/artifact/save') {
+    return handleArtifactSave(req, res);
+  }
 
   if (url.pathname === '/api/heartbeat') {
     let last = null;
@@ -708,10 +1216,32 @@ const server = http.createServer((req, res) => {
     return res.end(JSON.stringify({ last }));
   }
 
+  const projects = listProjects();
+
+  // /artifact/<id>/edit — wiki-редактор
+  const editMatch = url.pathname.match(/^\/artifact\/(\d+)\/edit$/);
+  if (editMatch) {
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    return res.end(renderArtifactEdit(editMatch[1], projects, null));
+  }
+
+  // ?artifact=<id> — wiki-просмотр
+  const artifactId = url.searchParams.get('artifact');
+  if (artifactId) {
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    return res.end(renderArtifactView(artifactId, projects));
+  }
+
+  // ?registry=<TYPE> — кросс-проектный реестр
+  const registryType = url.searchParams.get('registry');
+  if (registryType) {
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    return res.end(renderRegistry(registryType, projects));
+  }
+
   const projectId = url.searchParams.get('project');
   const tab = url.searchParams.get('tab');
   const partial = url.searchParams.get('partial');
-  const projects = listProjects();
   let html;
   if (projectId && tab === 'artifacts') {
     html = renderArtifacts(projectId, projects);
