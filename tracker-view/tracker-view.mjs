@@ -892,6 +892,213 @@ function renderArtifactEdit(artifactId, allProjects, flash) {
     });
     </script>`);
 }
+// --- HTML: карточка задачи (Jira-style detail view) ---
+// Маршрут: /?task=<id>. Полная карточка одной saga-задачи: описание (markdown),
+// метаданные, worktree-статус ветки/мержа, комментарии (read-only), subtasks,
+// зависимости (depends_on / blocks), обратные traces к артефактам (AC/FR).
+// Замыкает цикл «задача → док»: каждая implements trace кликабельна → /?artifact=N,
+// каждая зависимость — → /?task=N. source_ref парсится; если есть обратная trace
+// implements, показываем кликабельную ссылку прямо на wiki AC-документа.
+function renderTaskView(taskId, allProjects) {
+  let task;
+  try {
+    task = withDb(db => db.prepare(`
+      SELECT t.*, e.name AS epic_name, e.project_id, p.name AS project_name
+        FROM tasks t
+        JOIN epics e ON e.id = t.epic_id
+        JOIN projects p ON p.id = e.project_id
+       WHERE t.id = ?`).get(taskId));
+  } catch { task = null; }
+  if (!task) return page('Задача не найдена', '<div class="empty-box"><h2>Задача не найдена</h2></div>');
+
+  const proj = allProjects.find(p => String(p.id) === String(task.project_id));
+  const projColor = proj?.color || '#8b949e';
+
+  // парсинг JSON-колонок tasks (metadata, source_ref, tags)
+  let meta = {}, sourceRef = null, worktree = null, tagsArr = [];
+  try { meta = JSON.parse(task.metadata || '{}'); } catch {}
+  try { sourceRef = JSON.parse(task.source_ref || 'null'); } catch {}
+  worktree = meta && meta.worktree ? meta.worktree : null;
+  try { tagsArr = JSON.parse(task.tags || '[]'); } catch {}
+
+  // один проход по БД: comments + subtasks + зависимости + обратные traces.
+  const extra = withDb(db => {
+    let comments = [], subtasks = [], dependsOn = [], blocks = [], reverseTraces = [];
+    try { comments = db.prepare('SELECT * FROM comments WHERE task_id=? ORDER BY created_at').all(taskId); } catch {}
+    try { subtasks = db.prepare('SELECT * FROM subtasks WHERE task_id=? ORDER BY sort_order, id').all(taskId); } catch {}
+    // task_dependencies(task_id, depends_on_task_id): task_id=N → «зависит от»,
+    // depends_on_task_id=N → «блокирует».
+    try {
+      dependsOn = db.prepare(`
+        SELECT d.depends_on_task_id AS id, tk.title, tk.status
+          FROM task_dependencies d JOIN tasks tk ON tk.id = d.depends_on_task_id
+         WHERE d.task_id = ? ORDER BY d.depends_on_task_id`).all(taskId);
+      blocks = db.prepare(`
+        SELECT d.task_id AS id, tk.title, tk.status
+          FROM task_dependencies d JOIN tasks tk ON tk.id = d.task_id
+         WHERE d.depends_on_task_id = ? ORDER BY d.task_id`).all(taskId);
+    } catch {}
+    // обратные traces: артефакты (AC/FR/...), ссылающиеся на эту задачу через
+    // implements/verified_by. Каждая — кликабельная ссылка на /?artifact=N.
+    try {
+      reverseTraces = db.prepare(`
+        SELECT t.link_type, a.id, a.code, a.type, a.title
+          FROM artifact_traces t JOIN artifacts a ON a.id = t.source_id
+         WHERE t.target_type='task' AND t.target_id = ?
+         ORDER BY t.link_type, a.code`).all(taskId);
+    } catch {}
+    return { comments, subtasks, dependsOn, blocks, reverseTraces };
+  });
+
+  const statusColor = (s) => s === 'done' ? '#3fb950'
+    : s === 'in_progress' ? '#f1c40f'
+    : (s === 'review' || s === 'review_in_progress') ? '#a371f7'
+    : s === 'blocked' ? '#e74c3c'
+    : '#8b949e';
+  const prioColor = PRIO[task.priority] || '#95a5a6';
+  const sColor = statusColor(task.status);
+
+  // source_ref → путь к AC-документу. Если есть обратная trace implements,
+  // делаем кликабельную ссылку на wiki этого AC.
+  const implTrace = extra.reverseTraces.find(t => t.link_type === 'implements');
+  let sourceRefHtml = '';
+  if (sourceRef && sourceRef.file) {
+    if (implTrace) {
+      sourceRefHtml = `<a class="tc-sref" href="/?artifact=${implTrace.id}" title="${esc(implTrace.title)}">${esc(sourceRef.file)} → ${esc(implTrace.code || ('#'+implTrace.id))}</a>`;
+    } else {
+      sourceRefHtml = `<span class="tc-sref mono">${esc(sourceRef.file)}</span>`;
+    }
+  }
+
+  // worktree-блок — для dev-задач показывает слита ли ветка / есть ли конфликт.
+  let worktreeHtml = '';
+  if (worktree) {
+    const conflict = worktree.merge_conflict || worktree.merged_into === 'conflict';
+    const merged = worktree.merged_into && worktree.merged_into !== 'conflict' && worktree.merged_into !== 'pending';
+    const wtColor = conflict ? '#e74c3c' : merged ? '#3fb950' : '#f39c12';
+    const wtState = conflict ? '⚠ конфликт мержа'
+      : merged ? `✓ слит в ${esc(worktree.merged_into || '')}`
+      : (worktree.merged_into === 'pending' ? '⏳ ждёт интеграции' : '⏳ не слит');
+    worktreeHtml = `<div class="tc-wt" style="border-color:${wtColor}">
+      <div class="tc-wt-head" style="color:${wtColor}">🌳 Worktree · ${wtState}</div>
+      <div class="tc-wt-grid">
+        ${worktree.branch ? `<div><span class="wm-label">ветка</span><span class="tc-wt-val mono">${esc(worktree.branch)}</span></div>` : ''}
+        ${worktree.path ? `<div><span class="wm-label">путь</span><span class="tc-wt-val mono">${esc(worktree.path)}</span></div>` : ''}
+        ${worktree.merge_target ? `<div><span class="wm-label">merge target</span><span class="tc-wt-val mono">${esc(worktree.merge_target)}</span></div>` : ''}
+        ${worktree.merged_into ? `<div><span class="wm-label">merged into</span><span class="tc-wt-val mono">${esc(worktree.merged_into)}</span></div>` : ''}
+      </div>
+    </div>`;
+  }
+
+  // комментарии (read-only — форма добавления в этой итерации не делается).
+  const commentsHtml = extra.comments.length ? extra.comments.map(c => `
+    <div class="tc-comment">
+      <div class="tc-com-head">
+        <span class="tc-com-author">${esc(c.author || 'аноним')}</span>
+        <span class="tc-com-date muted small">${esc((c.created_at||'').slice(0,16))}</span>
+      </div>
+      <div class="tc-com-body">${renderMarkdown(c.content)}</div>
+    </div>`).join('') : '<div class="muted small">нет комментариев</div>';
+
+  // subtasks — чек-лист (галочка/кружок по status done/todo/in_progress).
+  const subtasksHtml = extra.subtasks.length ? extra.subtasks.map(s => `
+    <div class="tc-subtask">
+      <span class="tc-check ${s.status === 'done' ? 'done' : (s.status === 'in_progress' ? 'wip' : '')}">${s.status === 'done' ? '✓' : (s.status === 'in_progress' ? '◐' : '○')}</span>
+      <span class="tc-sub-title ${s.status === 'done' ? 'done' : ''}">${esc(s.title)}</span>
+    </div>`).join('') : '<div class="muted small">нет подзадач</div>';
+
+  // зависимости: depends_on + blocks, каждая кликабельна → /?task=N.
+  const depHtml = (label, items, emptyMsg) => {
+    if (!items.length) return `<div class="tc-dep-group"><span class="wm-label">${label}</span><span class="muted small">${emptyMsg}</span></div>`;
+    return `<div class="tc-dep-group"><span class="wm-label">${label}</span>${
+      items.map(d => `<a class="tc-dep-link" href="/?task=${d.id}" style="color:${statusColor(d.status)}">#${d.id} <span class="tc-dep-title">${esc(d.title)}</span></a>`).join('')
+    }</div>`;
+  };
+
+  // обратные traces → артефакты (AC/FR), кликабельны → /?artifact=N.
+  let tracesHtml;
+  if (extra.reverseTraces.length) {
+    const byLink = {};
+    for (const t of extra.reverseTraces) (byLink[t.link_type] ||= []).push(t);
+    tracesHtml = Object.entries(byLink).map(([link, items]) => {
+      const color = LINK_COLORS[link] || '#8b949e';
+      return `<div class="tc-trace-group">
+        <span class="tc-trace-label" style="color:${color}">${LINK_GLYPH[link] || link}</span>
+        ${items.map(a => `<a class="tc-trace-link" href="/?artifact=${a.id}">
+          <span class="tc-trace-type" style="background:${TYPE_COLORS[a.type]||'#8b949e'}">${TYPE_LABEL[a.type]||a.type}</span>
+          <span class="tc-trace-code">${esc(a.code || '—')}</span>
+          <span class="tc-trace-title">${esc(a.title)}</span>
+        </a>`).join('')}
+      </div>`;
+    }).join('');
+  } else {
+    tracesHtml = '<div class="muted small">нет связанных артефактов</div>';
+  }
+
+  const header = `
+    <div class="board-head">
+      <a href="/?project=${task.project_id}" class="back">← ${esc(task.project_name)}</a>
+      <span class="tc-id">#${task.id}</span>
+      <span class="atitle-top">${esc(task.title)}</span>
+      <span style="flex:1"></span>
+      <div class="heartbeat"><span id="hb-dot" class="hb-dot red"></span><span id="hb-txt">…</span></div>
+    </div>`;
+
+  const bodyHtml = `
+    <div class="task-card">
+      <div class="tc-main">
+        <div class="tc-header-row">
+          <span class="tc-status-chip" style="background:${sColor}22;border-color:${sColor};color:${sColor}">${esc(task.status)}</span>
+          <span class="prio" style="background:${prioColor}">${esc(task.priority)}</span>
+          ${task.assigned_to ? `<span class="assigned" title="assigned_to">@${esc(task.assigned_to)}</span>` : ''}
+          ${tagsArr.includes('needs-human') ? '<span class="ask-flag">⚠ needs human</span>' : ''}
+        </div>
+        <div class="tc-section">
+          <div class="tc-sec-title">Описание</div>
+          <div class="tc-description wiki-content">${renderMarkdown(task.description)}</div>
+        </div>
+        ${sourceRefHtml ? `<div class="tc-section"><div class="tc-sec-title">Source ref</div>${sourceRefHtml}</div>` : ''}
+        ${worktreeHtml}
+      </div>
+      <div class="tc-sidebar">
+        <div class="tc-section">
+          <div class="tc-sec-title">Метаданные</div>
+          <div class="tc-meta-grid">
+            <div class="tc-meta-row"><span class="wm-label">Проект</span><a href="/?project=${task.project_id}" style="color:${projColor}">${esc(task.project_name)}</a></div>
+            <div class="tc-meta-row"><span class="wm-label">Эпик</span><span>${esc(task.epic_name || '—')}</span></div>
+            <div class="tc-meta-row"><span class="wm-label">Создана</span><span>${esc((task.created_at||'').slice(0,16))}</span></div>
+            <div class="tc-meta-row"><span class="wm-label">Обновлена</span><span>${esc((task.updated_at||'').slice(0,16))}</span></div>
+            ${task.due_date ? `<div class="tc-meta-row"><span class="wm-label">Дедлайн</span><span>${esc(task.due_date)}</span></div>` : ''}
+            ${task.estimated_hours != null ? `<div class="tc-meta-row"><span class="wm-label">Оценка</span><span>${task.estimated_hours}ч</span></div>` : ''}
+            ${task.actual_hours != null ? `<div class="tc-meta-row"><span class="wm-label">Фактически</span><span>${task.actual_hours}ч</span></div>` : ''}
+            ${tagsArr.length ? `<div class="tc-meta-row"><span class="wm-label">Теги</span><span class="tc-tags">${tagsArr.map(t=>`<span class="tc-tag">${esc(t)}</span>`).join('')}</span></div>` : ''}
+          </div>
+        </div>
+        <div class="tc-section">
+          <div class="tc-sec-title">Связанные артефакты</div>
+          ${tracesHtml}
+        </div>
+        <div class="tc-section">
+          <div class="tc-sec-title">Зависимости</div>
+          ${depHtml('зависит от', extra.dependsOn, 'нет')}
+          ${depHtml('блокирует', extra.blocks, 'никого')}
+        </div>
+      </div>
+    </div>
+    <div class="task-card-lower">
+      <div class="tc-section tc-half">
+        <div class="tc-sec-title">Подзадачи</div>
+        ${subtasksHtml}
+      </div>
+      <div class="tc-section tc-half">
+        <div class="tc-sec-title">Комментарии (${extra.comments.length})</div>
+        ${commentsHtml}
+      </div>
+    </div>`;
+
+  return page(`#${task.id} · ${task.title}`, header + bodyHtml);
+}
+
 function page(title, body) {
   return `<!doctype html><html lang="ru"><head><meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -1108,6 +1315,56 @@ function page(title, body) {
     .registry tr:hover td{background:#161b22}
     .reg-code{font-family:ui-monospace,Consolas,monospace;color:#58a6ff;font-weight:600}
     .reg-epic{color:#8b949e;font-size:12px} .reg-link:hover .reg-code{text-decoration:underline}
+
+    /* карточка задачи (Jira-style detail view /?task=N) */
+    .task-card{display:grid;grid-template-columns:1fr 320px;gap:16px;padding:16px 20px;max-width:1400px}
+    .task-card-lower{display:grid;grid-template-columns:1fr 1fr;gap:16px;padding:0 20px 40px;max-width:1400px}
+    @media(max-width:980px){ .task-card,.task-card-lower{grid-template-columns:1fr} }
+    .tc-main,.tc-sidebar,.task-card-lower .tc-section{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:16px}
+    .tc-header-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid #30363d}
+    .tc-id{font-family:ui-monospace,Consolas,monospace;color:#8b949e;font-size:13px;font-weight:600}
+    .tc-status-chip{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.3px;border:1px solid;border-radius:4px;padding:2px 8px}
+    .tc-section{margin-bottom:16px} .tc-section:last-child{margin-bottom:0}
+    .tc-sec-title{font-size:11px;color:#8b949e;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;font-weight:600}
+    .tc-description{font-size:14px} .tc-description.wiki-content{padding:0;max-width:none}
+    .tc-sref{font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#58a6ff;background:#0d1117;border:1px solid #30363d;border-radius:4px;padding:4px 8px;display:inline-block}
+    .tc-sref:hover{text-decoration:underline;border-color:#58a6ff}
+    /* worktree-блок */
+    .tc-wt{background:#0d1117;border:1px solid;border-radius:6px;padding:10px 12px;margin-top:4px}
+    .tc-wt-head{font-size:12px;font-weight:600;margin-bottom:8px}
+    .tc-wt-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px 14px}
+    .tc-wt-val{font-size:11px;color:#e6edf3}
+    /* метаданные */
+    .tc-meta-grid{display:flex;flex-direction:column;gap:8px}
+    .tc-meta-row{display:flex;justify-content:space-between;gap:8px;font-size:12px;align-items:baseline}
+    .tc-meta-row > span:last-child{color:#e6edf3;text-align:right}
+    .tc-tags{display:flex;flex-wrap:wrap;gap:3px;justify-content:flex-end}
+    .tc-tag{font-size:10px;background:#21262d;border:1px solid #30363d;color:#8b949e;border-radius:3px;padding:1px 6px}
+    /* подзадачи */
+    .tc-subtask{display:flex;align-items:flex-start;gap:8px;padding:5px 0;font-size:13px}
+    .tc-check{width:16px;height:16px;display:inline-flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0;line-height:1}
+    .tc-check.done{color:#3fb950} .tc-check.wip{color:#f1c40f}
+    .tc-sub-title.done{text-decoration:line-through;color:#8b949e}
+    /* комментарии */
+    .tc-comment{background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:10px 12px;margin-bottom:8px}
+    .tc-com-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+    .tc-com-author{font-size:12px;font-weight:600;color:#58a6ff;font-family:ui-monospace,Consolas,monospace}
+    .tc-com-date{font-size:11px}
+    .tc-com-body{font-size:13px;line-height:1.5} .tc-com-body p{margin:5px 0} .tc-com-body code{background:#21262d;padding:1px 4px;border-radius:3px;font-family:ui-monospace,Consolas,monospace;font-size:12px}
+    /* зависимости */
+    .tc-dep-group{display:flex;flex-direction:column;gap:4px;margin-bottom:8px}
+    .tc-dep-link{font-size:12px;text-decoration:none;display:flex;gap:6px;align-items:baseline}
+    .tc-dep-link:hover{text-decoration:underline}
+    .tc-dep-title{color:#8b949e;font-size:11px}
+    /* обратные traces → артефакты */
+    .tc-trace-group{display:flex;flex-direction:column;gap:5px;margin-bottom:10px}
+    .tc-trace-label{font-size:11px;font-weight:600;margin-bottom:2px}
+    .tc-trace-link{display:flex;align-items:center;gap:6px;font-size:12px;text-decoration:none;padding:4px 6px;background:#0d1117;border:1px solid #30363d;border-radius:4px}
+    .tc-trace-link:hover{border-color:#58a6ff}
+    .tc-trace-type{font-size:9px;font-weight:700;color:#0d1117;padding:1px 5px;border-radius:3px}
+    .tc-trace-code{font-family:ui-monospace,Consolas,monospace;color:#58a6ff;font-weight:600;font-size:11px}
+    .tc-trace-title{color:#e6edf3;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .tc-half{align-self:start}
   </style></head>
   <body>${body}
   <script>
@@ -1619,6 +1876,13 @@ const server = http.createServer((req, res) => {
   if (artifactId) {
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
     return res.end(renderArtifactView(artifactId, projects));
+  }
+
+  // ?task=<id> — карточка задачи (Jira-style detail view)
+  const taskId = url.searchParams.get('task');
+  if (taskId) {
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    return res.end(renderTaskView(taskId, projects));
   }
 
   // ?registry=<TYPE> — кросс-проектный реестр
