@@ -27,11 +27,12 @@ const PID_FILE = path.join(__dirname, '.tracker-view.pid');
 const RELOAD_SEC = Number(process.env.RELOAD_SEC) || 5;
 
 const COLS = [
-  { key: 'todo',        label: 'Backlog' },
-  { key: 'in_progress', label: 'In Progress' },
-  { key: 'review',      label: 'Review' },
-  { key: 'done',        label: 'Done' },
-  { key: 'blocked',     label: 'Blocked' },
+  { key: 'todo',               label: 'Backlog' },
+  { key: 'in_progress',        label: 'In Progress' },
+  { key: 'review',             label: 'Review (queue)' },
+  { key: 'review_in_progress', label: 'Reviewing' },
+  { key: 'done',               label: 'Done' },
+  { key: 'blocked',            label: 'Blocked' },
 ];
 const PROJECT_COLORS = ['#4f8cff','#16a085','#e67e22','#9b59b6','#e74c3c','#1abc9c','#f39c12','#34495e','#2ecc71','#e84393'];
 const PRIO = { critical:'#c0392b', high:'#e67e22', medium:'#f1c40f', low:'#95a5a6' };
@@ -70,7 +71,8 @@ function listProjects() {
     const rows = db.prepare(`
       SELECT p.id, p.name, p.status,
         COUNT(t.id) AS total,
-        SUM(CASE WHEN t.status='in_progress' THEN 1 ELSE 0 END) AS in_progress
+        SUM(CASE WHEN t.status='in_progress' THEN 1 ELSE 0 END) AS in_progress,
+        SUM(CASE WHEN t.status='review_in_progress' THEN 1 ELSE 0 END) AS reviewing
       FROM projects p
       LEFT JOIN epics e ON e.project_id = p.id
       LEFT JOIN tasks t ON t.epic_id = e.id
@@ -116,7 +118,7 @@ function renderIndex(projects) {
   const rowHtml = (p) => `<a class="prow${!p.total?' empty':''}" href="?project=${p.id}">
     <span class="pdot" style="background:${p.color}"></span>
     <span class="pname">${esc(p.name)}</span>
-    <span class="pstats">${p.total ? `<b>${p.total}</b> задач · <span class="ip">${p.in_progress} in progress</span>` : '<span class="muted">пусто</span>'}</span>
+    <span class="pstats">${p.total ? `<b>${p.total}</b> задач · <span class="ip">${p.in_progress} in progress</span>${p.reviewing ? ` · <span class="ip">${p.reviewing} reviewing</span>` : ''}` : '<span class="muted">пусто</span>'}</span>
     <span class="arrow">→</span>
   </a>`;
 
