@@ -644,7 +644,8 @@ function renderArtifacts(projectId, allProjects) {
         const projBadge = String(task.project_id) !== String(currentProjectId) && projs[task.project_id]
           ? `<span class="tg-proj" title="задача в проекте ${esc(projs[task.project_id])}">↤ ${esc(projs[task.project_id])}</span>`
           : '';
-        return `${projBadge}<span class="tg" style="color:${tcolor}">#${task.id}<span class="tg-st"> ${esc(task.status)}</span></span>`;
+        // ФИЧА C: #id → кликабельная ссылка на /?task=N (был текст).
+        return `${projBadge}<a class="tg tg-link" href="/?task=${task.id}" style="color:${tcolor}">#${task.id}<span class="tg-st"> ${esc(task.status)}</span></a>`;
       }).join(' ');
       return `<span class="trace-badge" style="border-color:${color};color:${color}">${glyph}: ${targets}</span>`;
     }).join(' ');
@@ -765,7 +766,8 @@ function renderArtifactView(artifactId, allProjects) {
     tracesHtml = withDb(db => {
       const out = db.prepare(`
         SELECT t.link_type, t.target_type, t.target_id,
-          CASE WHEN t.target_type='artifact' THEN (SELECT a.code FROM artifacts a WHERE a.id=t.target_id) END AS target_code
+          CASE WHEN t.target_type='artifact' THEN (SELECT a.code FROM artifacts a WHERE a.id=t.target_id) END AS target_code,
+          CASE WHEN t.target_type='task' THEN (SELECT tk.status FROM tasks tk WHERE tk.id=t.target_id) END AS target_status
           FROM artifact_traces t WHERE t.source_id=? ORDER BY t.link_type`).all(artifactId);
       const inc = db.prepare(`
         SELECT t.link_type, t.source_id,
@@ -773,8 +775,22 @@ function renderArtifactView(artifactId, allProjects) {
           (SELECT a.type FROM artifacts a WHERE a.id=t.source_id) AS src_type
           FROM artifact_traces t WHERE t.target_type='artifact' AND t.target_id=? ORDER BY t.link_type`).all(artifactId);
       const parts = [];
-      if (out.length) parts.push('<div class="tr-sec"><b>Исходящие:</b> ' + out.map(t =>
-        `<span class="trace-badge" style="border-color:${LINK_COLORS[t.link_type]||'#8b949e'};color:${LINK_COLORS[t.link_type]||'#8b949e'}">${LINK_GLYPH[t.link_type]||t.link_type}: ${esc(t.target_code||('#'+t.target_id))}</span>`).join(' ') + '</div>');
+      // Исходящие traces. Для task-целей #id → кликабельная ссылка на /?task=N
+      // (ФИЧА B): замыкаем цикл «док → задача»). Цвет ссылки по статусу задачи.
+      if (out.length) parts.push('<div class="tr-sec"><b>Исходящие:</b> ' + out.map(t => {
+        const lc = LINK_COLORS[t.link_type] || '#8b949e';
+        let inner;
+        if (t.target_type === 'task') {
+          const tsc = t.target_status === 'done' ? '#3fb950'
+            : t.target_status === 'in_progress' ? '#f1c40f'
+            : (t.target_status === 'review' || t.target_status === 'review_in_progress') ? '#a371f7'
+            : t.target_status === 'blocked' ? '#e74c3c' : '#8b949e';
+          inner = `<a class="tg-link" href="/?task=${t.target_id}" style="color:${tsc}">#${t.target_id}${t.target_status ? `<span class="tg-st"> ${esc(t.target_status)}</span>` : ''}</a>`;
+        } else {
+          inner = esc(t.target_code || ('#'+t.target_id));
+        }
+        return `<span class="trace-badge" style="border-color:${lc};color:${lc}">${LINK_GLYPH[t.link_type]||t.link_type}: ${inner}</span>`;
+      }).join(' ') + '</div>');
       if (inc.length) parts.push('<div class="tr-sec"><b>Входящие:</b> ' + inc.map(t =>
         `<a class="trace-badge" href="?artifact=${t.source_id}" style="border-color:${LINK_COLORS[t.link_type]||'#8b949e'};color:${LINK_COLORS[t.link_type]||'#8b949e'}">${LINK_GLYPH[t.link_type]||t.link_type} ← ${esc(t.src_code||('#'+t.source_id))}</a>`).join(' ') + '</div>');
       return parts.join('');
@@ -1215,6 +1231,8 @@ function page(title, body) {
     .trace-badge{font-size:11px;border:1px solid;border-radius:4px;padding:2px 7px;display:inline-flex;align-items:center;gap:4px;background:rgba(255,255,255,.02);width:fit-content}
     .tg{font-family:ui-monospace,Consolas,monospace;font-size:11px}
     .tg-st{font-size:9px;opacity:.7;text-transform:uppercase}
+    .tg-link{text-decoration:none;cursor:pointer}
+    .tg-link:hover{text-decoration:underline}
     .tg-proj{font-size:10px;background:rgba(88,166,255,.12);border:1px solid #58a6ff;color:#58a6ff;border-radius:3px;padding:0 4px;margin-right:3px}
 
     /* сироты — сетка по типам */
