@@ -442,16 +442,17 @@ function renderBoard(projectId, allProjects) {
   const columnsHtml = COLS.map(col => {
     const items = byStatus[col.key] || [];
     const cardsHtml = items.map(c => `
-      <div class="card${c.needsHuman ? ' needs-human' : ''}" data-epic="${c.epicId}" style="border-left:6px solid ${proj.color}">
+      <div class="card${c.needsHuman ? ' needs-human' : ''}" data-epic="${c.epicId}" data-task="${c.t.id}" style="border-left:6px solid ${proj.color}">
         <div class="card-head">
           <span class="prio" style="background:${c.prio}">${esc(c.t.priority)}</span>
           ${c.t.assigned_to ? `<span class="assigned" title="assigned_to">${esc(c.t.assigned_to)}</span>` : ''}
           ${c.needsHuman ? '<span class="ask-flag" title="needs human answer">⚠ needs human</span>' : ''}
           <span style="flex:1"></span>
+          <span class="card-id">#${c.t.id}</span>
           <span class="hb-dot ${ageClass(c.t.updated_at)}" title="${ageText(c.t.updated_at)} назад"></span>
         </div>
-        <div class="card-title">${esc(c.t.title)}</div>
-        <div class="card-meta">${esc(c.epicName)} · #${c.t.id}</div>
+        <a class="card-title" href="/?task=${c.t.id}" title="Открыть карточку задачи">${esc(c.t.title)}</a>
+        <div class="card-meta">${esc(c.epicName)}</div>
       </div>`).join('');
     return `<div class="col">
       <div class="col-head"><span>${col.label}</span><span class="count">${items.length}</span></div>
@@ -1159,7 +1160,9 @@ function page(title, body) {
     .card-head{display:flex;justify-content:space-between;align-items:center;gap:6px;margin-bottom:6px}
     .prio{font-size:10px;text-transform:uppercase;font-weight:700;padding:2px 6px;border-radius:3px;color:#0d1117}
     .assigned{font-size:10px;background:#21262d;border:1px solid #30363d;color:#8b949e;padding:1px 6px;border-radius:3px;font-family:monospace}
-    .card-title{font-size:13px;line-height:1.35}
+    .card-title{font-size:13px;line-height:1.35;display:block;text-decoration:none;color:#e6edf3;cursor:pointer}
+    .card-title:hover{color:#58a6ff;text-decoration:underline}
+    .card-id{font-size:10px;color:#484f58;font-family:ui-monospace,Consolas,monospace}
     .card-meta{font-size:11px;color:#8b949e;margin-top:6px}
 
     /* фильтр-бар */
