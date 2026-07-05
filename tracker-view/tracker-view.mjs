@@ -149,7 +149,10 @@ function loadBoard(projectId) {
     if (epicRows.length === 0) return { empty: true, reason: 'no-epics' };
     const epicIds = epicRows.map(e => e.id);
     const tasks = db.prepare(`
-      SELECT * FROM tasks WHERE epic_id IN (${epicIds.map(() => '?').join(',')})
+      SELECT t.*,
+        (SELECT r.name FROM project_repositories pr JOIN repositories r ON r.id=pr.repository_id
+          WHERE pr.id=t.project_repository_id) AS repository_name
+      FROM tasks t WHERE epic_id IN (${epicIds.map(() => '?').join(',')})
       ORDER BY sort_order, id
     `).all(...epicIds);
     const epicById = Object.fromEntries(epicRows.map(e => [e.id, e]));
@@ -211,7 +214,7 @@ function resolveProjectWorkspace(project) {
 
 function getRunnerTaskState(taskId) {
   return withDb(db =>
-    db.prepare('SELECT id, status, assigned_to, tags FROM tasks WHERE id=?').get(taskId),
+    db.prepare('SELECT id, status, assigned_to, tags, integration_state FROM tasks WHERE id=?').get(taskId),
   );
 }
 
@@ -253,9 +256,10 @@ const boardRunner = createClaudeBoardRunner({
 // Найти физический путь к .md файлу артефакта.
 // path в БД может быть 'docs/.../01-SRS.md#FR-1' — якорь отбрасываем.
 // Возвращает { abs, projectRoot } или null если файл не существует.
-function resolveArtifactFile(artifactPath, projectName) {
+function resolveArtifactFile(artifactPath, projectName, repositoryPath = null) {
   const cleanPath = artifactPath.split('#')[0];
   const candidates = [];
+  if (repositoryPath) candidates.push(repositoryPath);
   const map = PROJECT_REPO_MAP[projectName] || [];
   for (const sub of map) candidates.push(path.join(DEV_ROOT, sub));
   // Fallback: если проекта нет в map, ищем по имени в DEV_ROOT
@@ -517,6 +521,11 @@ function renderBoard(projectId, allProjects) {
   const epicChips = Object.values(epicById).map(e =>
     `<button class="chip active" data-filter="${e.id}">${esc(e.name)}</button>`
   ).join('');
+  const repositoryOptions = [...new Map(
+    tasks.filter(t => t.project_repository_id).map(t => [t.project_repository_id, t.repository_name || `repo #${t.project_repository_id}`]),
+  )].map(([id, name]) => `<option value="${id}">${esc(name)}</option>`).join('');
+  const stageOptions = [...new Set(tasks.map(t => t.workflow_stage).filter(Boolean))]
+    .sort().map(stage => `<option value="${esc(stage)}">${esc(stage)}</option>`).join('');
 
   const cards = tasks.map(t => {
     const e = epicById[t.epic_id];
@@ -537,7 +546,7 @@ function renderBoard(projectId, allProjects) {
   const columnsHtml = COLS.map(col => {
     const items = byStatus[col.key] || [];
     const cardsHtml = items.map(c => `
-      <div class="card${c.needsHuman ? ' needs-human' : ''}" data-epic="${c.epicId}" data-task="${c.t.id}" style="border-left:6px solid ${proj.color}">
+      <div class="card${c.needsHuman ? ' needs-human' : ''}" data-epic="${c.epicId}" data-task="${c.t.id}" data-repo="${c.t.project_repository_id || ''}" data-stage="${esc(c.t.workflow_stage || '')}" style="border-left:6px solid ${proj.color}">
         <div class="card-head">
           <span class="prio" style="background:${c.prio}">${esc(c.t.priority)}</span>
           ${c.t.assigned_to ? `<span class="assigned" title="assigned_to">${esc(c.t.assigned_to)}</span>` : ''}
@@ -547,6 +556,11 @@ function renderBoard(projectId, allProjects) {
           <span class="hb-dot ${ageClass(c.t.updated_at)}" title="${ageText(c.t.updated_at)} назад"></span>
         </div>
         <a class="card-title" href="/?task=${c.t.id}" title="Открыть карточку задачи">${esc(c.t.title)}</a>
+        <div class="task-badges">
+          ${c.t.repository_name ? `<span class="task-badge repo">${esc(c.t.repository_name)}</span>` : ''}
+          ${c.t.workflow_stage ? `<span class="task-badge stage">${esc(c.t.workflow_stage)}</span>` : ''}
+          ${c.t.task_kind ? `<span class="task-badge kind">${esc(c.t.task_kind)}</span>` : ''}
+        </div>
         <div class="card-meta">${esc(c.epicName)}</div>
       </div>`).join('');
     return `<div class="col">
@@ -560,13 +574,22 @@ function renderBoard(projectId, allProjects) {
       <span class="filter-label">Эпики:</span>
       <button class="chip active" data-filter="__all__">Все</button>
       ${epicChips}
+      <span class="filter-label">Репо:</span>
+      <select id="repo-filter"><option value="__all__">Все</option>${repositoryOptions}</select>
+      <span class="filter-label">Стадия:</span>
+      <select id="stage-filter"><option value="__all__">Все</option>${stageOptions}</select>
     </div>
     <div class="board">${columnsHtml}</div>
     <script>
     let activeFilter = '__all__';
+    let activeRepo = '__all__';
+    let activeStage = '__all__';
     function applyFilter() {
       document.querySelectorAll('.card').forEach(card => {
-        card.style.display = (activeFilter === '__all__' || card.dataset.epic === activeFilter) ? '' : 'none';
+        const epicOk = activeFilter === '__all__' || card.dataset.epic === activeFilter;
+        const repoOk = activeRepo === '__all__' || card.dataset.repo === activeRepo;
+        const stageOk = activeStage === '__all__' || card.dataset.stage === activeStage;
+        card.style.display = epicOk && repoOk && stageOk ? '' : 'none';
       });
       document.querySelectorAll('.col').forEach(col => {
         const visible = col.querySelectorAll('.card:not([style*="display: none"])').length;
@@ -582,6 +605,8 @@ function renderBoard(projectId, allProjects) {
         applyFilter();
       });
     });
+    document.getElementById('repo-filter').addEventListener('change', e => { activeRepo=e.target.value; applyFilter(); });
+    document.getElementById('stage-filter').addEventListener('change', e => { activeStage=e.target.value; applyFilter(); });
     const runnerStart = document.getElementById('agent-start');
     const runnerStop = document.getElementById('agent-stop');
     const runnerConcurrency = document.getElementById('agent-concurrency');
@@ -902,7 +927,8 @@ function renderArtifactView(artifactId, allProjects) {
   let art;
   try {
     art = withDb(db => db.prepare(`
-      SELECT a.*, e.name AS epic_name, p.name AS project_name, p.id AS project_id
+      SELECT a.*, e.name AS epic_name, p.name AS project_name, p.id AS project_id,
+        (SELECT pr.local_path FROM project_repositories pr WHERE pr.id=a.project_repository_id) AS repository_path
         FROM artifacts a
         JOIN epics e ON e.id = a.epic_id
         JOIN projects p ON p.id = e.project_id
@@ -912,7 +938,7 @@ function renderArtifactView(artifactId, allProjects) {
 
   const proj = allProjects.find(p => String(p.id) === String(art.project_id));
   const projColor = proj?.color || '#8b949e';
-  const resolved = resolveArtifactFile(art.path, art.project_name);
+  const resolved = resolveArtifactFile(art.path, art.project_name, art.repository_path);
   let md = '', mdError = '';
   if (resolved) {
     try { md = readFileSync(resolved.abs, 'utf8'); }
@@ -999,13 +1025,14 @@ function renderArtifactEdit(artifactId, allProjects, flash) {
   let art;
   try {
     art = withDb(db => db.prepare(`
-      SELECT a.*, p.name AS project_name, p.id AS project_id
+      SELECT a.*, p.name AS project_name, p.id AS project_id,
+        (SELECT pr.local_path FROM project_repositories pr WHERE pr.id=a.project_repository_id) AS repository_path
         FROM artifacts a JOIN epics e ON e.id=a.epic_id JOIN projects p ON p.id=e.project_id
        WHERE a.id = ?`).get(artifactId));
   } catch { art = null; }
   if (!art) return page('Артефакт не найден', '<div class="empty-box"><h2>Артефакт не найден</h2></div>');
 
-  const resolved = resolveArtifactFile(art.path, art.project_name);
+  const resolved = resolveArtifactFile(art.path, art.project_name, art.repository_path);
   let md = '';
   if (resolved) { try { md = readFileSync(resolved.abs, 'utf8'); } catch {} }
   const typeColor = TYPE_COLORS[art.type] || '#8b949e';
@@ -1329,6 +1356,10 @@ function page(title, body) {
     .card-title:hover{color:#58a6ff;text-decoration:underline}
     .card-id{font-size:10px;color:#484f58;font-family:ui-monospace,Consolas,monospace}
     .card-meta{font-size:11px;color:#8b949e;margin-top:6px}
+    .task-badges{display:flex;flex-wrap:wrap;gap:4px;margin-top:7px}
+    .task-badge{font-size:9px;padding:2px 5px;border-radius:8px;background:#21262d;color:#8b949e;border:1px solid #30363d}
+    .task-badge.repo{color:#58a6ff}.task-badge.stage{color:#a371f7}.task-badge.kind{color:#3fb950}
+    .filter-bar select{background:#21262d;border:1px solid #30363d;color:#c9d1d9;border-radius:5px;padding:4px 7px;font-size:11px}
 
     /* фильтр-бар */
     .filter-bar{display:flex;align-items:center;gap:6px;padding:10px 20px;background:#161b22;border-bottom:1px solid #30363d;flex-wrap:wrap}
@@ -1619,7 +1650,9 @@ function handleArtifactSave(req, res) {
     let art;
     try {
       art = withDb(db => db.prepare(`
-        SELECT a.*, p.name AS project_name FROM artifacts a
+        SELECT a.*, p.name AS project_name,
+          (SELECT pr.local_path FROM project_repositories pr WHERE pr.id=a.project_repository_id) AS repository_path
+          FROM artifacts a
           JOIN epics e ON e.id=a.epic_id JOIN projects p ON p.id=e.project_id
          WHERE a.id=?`).get(id));
     } catch (e) { return respondJson(res, 500, { error: 'db: ' + e.message }); }
@@ -1629,13 +1662,15 @@ function handleArtifactSave(req, res) {
 
     // 1. Сохранение .md файла
     if (typeof fields.markdown === 'string') {
-      const resolved = resolveArtifactFile(art.path, art.project_name);
+      const resolved = resolveArtifactFile(art.path, art.project_name, art.repository_path);
       let absPath = resolved?.abs;
       if (!absPath) {
         // Файла нет — создадим по первому кандидату из PROJECT_REPO_MAP.
         const cleanPath = art.path.split('#')[0];
         const map = PROJECT_REPO_MAP[art.project_name] || [art.project_name];
-        absPath = path.join(DEV_ROOT, map[0], cleanPath);
+        absPath = art.repository_path
+          ? path.join(art.repository_path, cleanPath)
+          : path.join(DEV_ROOT, map[0], cleanPath);
         result.warnings.push(`файл создан: ${absPath}`);
       }
       try {

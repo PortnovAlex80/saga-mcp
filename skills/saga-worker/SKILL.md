@@ -126,6 +126,23 @@ cd .worktrees/task-<id>
 All your edits, builds, and tests happen **inside** `.worktrees/task-<id>`.
 Stay there until the task is done.
 
+**Heartbeat — отметься, что принял задачу** (для наблюдения за запущенными воркерами).
+Сразу после `worker_next`, одной командой:
+
+```bash
+echo "$(date -u +%FT%TZ) pid=$$ worker=$SAGA_WORKER_ID project=$SAGA_PROJECT_ID task=$SAGA_TASK_ID CLAIMED начал работу в $(pwd)" >> ~/.zcode/cli/worker-heartbeat.log
+```
+
+Переменные `SAGA_*` выставляет saga-runner в окружении процесса воркера. Если их
+нет (запуск не через board-runner), подставь `worker_id`/`task.id`/`project_id`
+из ответа `worker_next` вручную. Лог читают через `tail -f`.
+
+Дополнительно, на ключевых шагах (опционально, не чаще раза в минуту):
+
+```bash
+echo "$(date -u +%FT%TZ) pid=$$ worker=$SAGA_WORKER_ID project=$SAGA_PROJECT_ID task=$SAGA_TASK_ID STEP пишу rub.py — exact_lower_cvar" >> ~/.zcode/cli/worker-heartbeat.log
+```
+
 ### Parallel awareness — read `active_tasks[]`
 
 Every `worker_next` and `worker_done` response carries `active_tasks[]`: a list
@@ -172,8 +189,10 @@ via `worker_next` from the `review` buffer):
 
 ### MERGE-BACK (after APPROVED — `done`, integrate into `dev`)
 
-Only the worker who just got `completed_new_status === "done"` does this. Acquire
-the project-wide merge-lock, merge, release:
+Only the worker who just got `completed_new_status === "done"` does this.
+`stop:true` means **do not claim another task**; it does not skip this terminal
+integration protocol. Acquire the repository-scoped merge-lock, merge to the
+`integration_branch` returned with the assignment, release, and only then exit:
 
 ```bash
 # 1. Acquire the lock — loop until granted (another worker may be mid-merge)
@@ -198,9 +217,10 @@ else
 fi
 ```
 
-The lock is per-**project**, serialized in the shared DB: only one worker merges
-into `dev` at a time, even across separate saga-mcp processes. If you crash
-mid-merge, the lock auto-expires after 10 minutes and a sibling can reclaim it.
+For typed tasks the lock is per **product repository**, serialized in the shared
+DB, so different repositories may merge concurrently. Legacy tasks retain the
+project-level `dev` lock. If you crash mid-merge, the lock auto-expires after
+10 minutes and a sibling can reclaim it.
 
 ### Zombie / orphan recovery (`worker_health`)
 
