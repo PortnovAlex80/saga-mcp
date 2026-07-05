@@ -1308,8 +1308,17 @@ function page(title, body) {
     .cov-table tr:hover td{background:#161b22}
     .cov-gap td{background:rgba(231,76,60,.06)}
     .cov-gap:hover td{background:rgba(231,76,60,.1)}
-    .cov-epic-row td{background:#0d1117!important;font-weight:600;color:#58a6ff;font-size:12px;border-bottom:1px solid #30363d}
+    .cov-epic-row td{background:#0d1117!important;font-weight:600;color:#58a6ff;font-size:12px;border-bottom:1px solid #30363d;cursor:pointer;user-select:none}
+    .cov-epic-row:hover td{color:#79c0ff}
+    .cov-epic-row .ep-toggle{display:inline-block;width:12px;color:#8b949e;transition:transform .15s;font-size:10px}
+    .cov-epic-row.collapsed .ep-toggle{transform:rotate(-90deg)}
     .cov-epic-row .ep-count{background:#21262d;border:1px solid #30363d;color:#8b949e;border-radius:10px;padding:0 7px;font-size:10px;margin-left:6px;font-weight:400}
+    /* строка скрыта, если её родительская эпик-строка свёрнута */
+    .cov-table tr.ac-hidden{display:none}
+    .cov-toolbar{display:flex;align-items:center;gap:8px;padding:8px 20px;background:#161b22;border-bottom:1px solid #30363d}
+    .cov-toolbar .tt-btn{background:#21262d;border:1px solid #30363d;color:#8b949e;border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer}
+    .cov-toolbar .tt-btn:hover{border-color:#58a6ff;color:#58a6ff}
+    .cov-toolbar .tt-label{font-size:11px;color:#484f58}
     .cov-tasks{display:flex;flex-wrap:wrap;gap:4px}
     .cov-task{font-family:ui-monospace,Consolas,monospace;font-size:11px;background:#21262d;border:1px solid #30363d;border-radius:3px;padding:1px 6px;text-decoration:none}
     .cov-task:hover{border-color:currentColor;text-decoration:underline}
@@ -1686,7 +1695,7 @@ function renderCoverage(projectId, allProjects) {
       </tr>`;
     }).join('');
     return `<tbody>
-      <tr class="cov-epic-row"><td colspan="5">${esc(epicName)} <span class="ep-count">${epicAcs.length}</span></td></tr>
+      <tr class="cov-epic-row" data-epic="${eid}"><td colspan="5"><span class="ep-toggle">▼</span> ${esc(epicName)} <span class="ep-count">${epicAcs.length}</span></td></tr>
       ${acRows}
     </tbody>`;
   }).join('');
@@ -1704,8 +1713,13 @@ function renderCoverage(projectId, allProjects) {
         <div class="cov-bar"><div class="cov-bar-fill" style="width:${pct}%;background:${barColor}"></div></div>
       </div>
     </div>
+    <div class="cov-toolbar">
+      <span class="tt-label">Эпизоды:</span>
+      <button class="tt-btn" id="expand-all">▼ Развернуть всё</button>
+      <button class="tt-btn" id="collapse-all">▲ Свернуть всё</button>
+    </div>
     <div class="cov-table-wrap">
-      <table class="cov-table">
+      <table class="cov-table" id="cov-matrix">
         <thead><tr>
           <th>AC</th><th>Заголовок</th><th>Статус</th><th>Implements (dev-задачи)</th><th>Verified by</th>
         </tr></thead>
@@ -1719,7 +1733,25 @@ function renderCoverage(projectId, allProjects) {
       <span style="color:#f1c40f">in_progress</span> ·
       <span style="color:#a371f7">review</span> ·
       <span style="color:#e74c3c">blocked</span>
-    </div>`);
+    </div>
+    <script>
+    (function(){
+      const tbl = document.getElementById('cov-matrix');
+      if (!tbl) return;
+      // Каждая эпик-строка управляет видимостью следующих за ней строк до след. эпик-строки.
+      const epicRows = [...tbl.querySelectorAll('tr.cov-epic-row')];
+      function rowsAfter(epicRow){
+        let r = epicRow.nextElementSibling, out = [];
+        while (r && !r.classList.contains('cov-epic-row')) { out.push(r); r = r.nextElementSibling; }
+        return out;
+      }
+      function collapse(epicRow){ epicRow.classList.add('collapsed'); rowsAfter(epicRow).forEach(r => r.classList.add('ac-hidden')); }
+      function expand(epicRow){ epicRow.classList.remove('collapsed'); rowsAfter(epicRow).forEach(r => r.classList.remove('ac-hidden')); }
+      epicRows.forEach(er => er.addEventListener('click', () => er.classList.contains('collapsed') ? expand(er) : collapse(er)));
+      document.getElementById('collapse-all').addEventListener('click', () => epicRows.forEach(collapse));
+      document.getElementById('expand-all').addEventListener('click', () => epicRows.forEach(expand));
+    })();
+    </script>`);
 }
 
 // --- HTML: реестр приёмочных испытаний (?project=N&tab=acceptance) ---
@@ -1906,7 +1938,7 @@ function renderAcceptance(projectId, allProjects) {
       </tr>`;
     }).join('');
     return `<tbody>
-      <tr class="cov-epic-row"><td colspan="7">${esc(epicName)} <span class="ep-count">${epicRows.length}</span></td></tr>
+      <tr class="cov-epic-row" data-epic="${eid}"><td colspan="7"><span class="ep-toggle">▼</span> ${esc(epicName)} <span class="ep-count">${epicRows.length}</span></td></tr>
       ${acRows}
     </tbody>`;
   }).join('');
@@ -1935,8 +1967,13 @@ function renderAcceptance(projectId, allProjects) {
       </div>
     </div>
     <div class="filter-bar">${filterChips}</div>
+    <div class="cov-toolbar">
+      <span class="tt-label">Эпизоды:</span>
+      <button class="tt-btn" id="expand-all">▼ Развернуть всё</button>
+      <button class="tt-btn" id="collapse-all">▲ Свернуть всё</button>
+    </div>
     <div class="cov-table-wrap">
-      <table class="cov-table acc-table">
+      <table class="cov-table acc-table" id="acc-table">
         <thead><tr>
           <th>AC</th><th>Критерий приёмки</th><th>UC</th><th>DEV (implements)</th><th>VERIFY</th><th>Результат</th><th>Примечание</th>
         </tr></thead>
@@ -1952,18 +1989,41 @@ function renderAcceptance(projectId, allProjects) {
       Аналог Almirah / StrictDoc / OSRMT test-registry, но интегрирован с saga-mcp задачами.
     </div>
     <script>
-    // client-side фильтрация строк по статусу приёмки (data-verdict).
+    // Две ортогональные механики скрытия строк:
+    //  (1) collapse по эпизоду — добавляет класс .ac-hidden (через CSS display:none).
+    //  (2) фильтр по verdict — ставит row.style.display напрямую.
+    // Применяем обе: строка видна только если не ac-hidden И фильтр разрешает.
     let vFilter = '__all__';
+    function rowPassesFilter(row){
+      return vFilter === '__all__' || row.dataset.verdict === vFilter;
+    }
+    function applyVisibility(){
+      document.querySelectorAll('#acc-table .acc-row').forEach(row => {
+        const hidden = row.classList.contains('ac-hidden');
+        row.style.display = (!hidden && rowPassesFilter(row)) ? '' : 'none';
+      });
+    }
     document.querySelectorAll('.filter-bar .chip').forEach(chip => {
       chip.addEventListener('click', () => {
         document.querySelectorAll('.filter-bar .chip').forEach(c => c.classList.remove('active'));
         chip.classList.add('active');
         vFilter = chip.dataset.verdict;
-        document.querySelectorAll('.acc-row').forEach(row => {
-          row.style.display = (vFilter === '__all__' || row.dataset.verdict === vFilter) ? '' : 'none';
-        });
+        applyVisibility();
       });
     });
+    // collapse эпизодов (как в coverage)
+    const tbl = document.getElementById('acc-table');
+    const epicRows = [...tbl.querySelectorAll('tr.cov-epic-row')];
+    function rowsAfter(epicRow){
+      let r = epicRow.nextElementSibling, out = [];
+      while (r && !r.classList.contains('cov-epic-row')) { out.push(r); r = r.nextElementSibling; }
+      return out;
+    }
+    function collapse(epicRow){ epicRow.classList.add('collapsed'); rowsAfter(epicRow).forEach(r => r.classList.add('ac-hidden')); applyVisibility(); }
+    function expand(epicRow){ epicRow.classList.remove('collapsed'); rowsAfter(epicRow).forEach(r => r.classList.remove('ac-hidden')); applyVisibility(); }
+    epicRows.forEach(er => er.addEventListener('click', () => er.classList.contains('collapsed') ? expand(er) : collapse(er)));
+    document.getElementById('collapse-all').addEventListener('click', () => epicRows.forEach(collapse));
+    document.getElementById('expand-all').addEventListener('click', () => epicRows.forEach(expand));
     </script>`);
 }
 
