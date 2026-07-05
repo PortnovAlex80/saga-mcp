@@ -46,6 +46,8 @@ function buildPrompt({ assignment, project, workerId, workspaceRoot, sagaSkillRo
     `workspace_root=${workspaceRoot}`,
     '',
     'Hard rules:',
+    '0. IMMEDIATELY on startup, before any other action, run this heartbeat command exactly once (it marks you as alive for the operator):',
+    `   bash -c 'echo "$(date -u +%FT%TZ) pid=$$ worker=${workerId} project=${project.id} task=${task.id} CLAIMED started" >> ~/.zcode/cli/worker-heartbeat.log'`,
     `1. Work only on task_id=${task.id}.`,
     '2. Never call worker_next; it is explicitly disabled for this process.',
     '3. Read the assigned task and its context through Saga MCP as needed.',

@@ -25,6 +25,26 @@ never collide with a sibling's. The dispatcher records the linkage; the merge
 back into the integration branch (`dev`) is gated behind review. See
 **WORKTREE LIFECYCLE** for the exact sequence.
 
+## Heartbeat — отметься при старте (ОБЯЗАТЕЛЬНО)
+
+Сразу после запуска процесса, перед любой другой работой — одной командой:
+
+```bash
+echo "$(date -u +%FT%TZ) pid=$$ worker=$SAGA_WORKER_ID project=$SAGA_PROJECT_ID task=$SAGA_TASK_ID CLAIMED начал работу" >> ~/.zcode/cli/worker-heartbeat.log
+```
+
+Это **не запрос задачи** (задача уже назначена диспатчером). Это маркер «я жив и
+работаю» — оператор смотрит через `tail -f ~/.zcode/cli/worker-heartbeat.log`.
+Переменные `SAGA_*` выставляет saga-runner в окружении процесса. Если их нет
+(запуск не через board-runner), подставь `worker_id`/`task.id`/`project_id`
+вручную из ответа `worker_next`.
+
+Дополнительно, на ключевых шагах (опционально, не чаще раза в минуту):
+
+```bash
+echo "$(date -u +%FT%TZ) pid=$$ worker=$SAGA_WORKER_ID project=$SAGA_PROJECT_ID task=$SAGA_TASK_ID STEP пишу rub.py — exact_lower_cvar" >> ~/.zcode/cli/worker-heartbeat.log
+```
+
 ## ONE TASK PER LAUNCH (NOT a loop)
 
 You handle **exactly one** task per launch, then return a summary and STOP. The
@@ -125,23 +145,6 @@ cd .worktrees/task-<id>
 
 All your edits, builds, and tests happen **inside** `.worktrees/task-<id>`.
 Stay there until the task is done.
-
-**Heartbeat — отметься, что принял задачу** (для наблюдения за запущенными воркерами).
-Сразу после `worker_next`, одной командой:
-
-```bash
-echo "$(date -u +%FT%TZ) pid=$$ worker=$SAGA_WORKER_ID project=$SAGA_PROJECT_ID task=$SAGA_TASK_ID CLAIMED начал работу в $(pwd)" >> ~/.zcode/cli/worker-heartbeat.log
-```
-
-Переменные `SAGA_*` выставляет saga-runner в окружении процесса воркера. Если их
-нет (запуск не через board-runner), подставь `worker_id`/`task.id`/`project_id`
-из ответа `worker_next` вручную. Лог читают через `tail -f`.
-
-Дополнительно, на ключевых шагах (опционально, не чаще раза в минуту):
-
-```bash
-echo "$(date -u +%FT%TZ) pid=$$ worker=$SAGA_WORKER_ID project=$SAGA_PROJECT_ID task=$SAGA_TASK_ID STEP пишу rub.py — exact_lower_cvar" >> ~/.zcode/cli/worker-heartbeat.log
-```
 
 ### Parallel awareness — read `active_tasks[]`
 
