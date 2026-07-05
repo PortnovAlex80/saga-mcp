@@ -9,10 +9,12 @@
 //   /api/heartbeat          → JSON { last } — timestamp последней активности
 //   POST /api/artifact/save → сохранить .md + metadata (JSON body)
 import http from 'node:http';
-import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync, unlinkSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import { handlers as dispatcherHandlers } from '../dist/tools/dispatcher.js';
+import { createClaudeBoardRunner } from './claude-runner.mjs';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const require = createRequire(import.meta.url);
@@ -87,17 +89,28 @@ function withDbWrite(fn) {
   }
 }
 
+// Парсинг timestamp из БД saga. saga-mcp пишет created_at/updated_at как ЛОКАЛЬНОЕ
+// время (UTC+03) — старый формат 'YYYY-MM-DD HH:MM:SS' (SQLite datetime('now'), UTC без T)
+// и новый 'YYYY-MM-DDTHH:MM:SS' (ISO без Z, локальное). НЕ добавляем 'Z' — иначе дата
+// уезжает на 3 часа в будущее и heartbeat всегда красный.
+function parseTs(iso) {
+  if (!iso) return null;
+  const d = new Date(String(iso).replace(' ', 'T'));
+  return isNaN(d.getTime()) ? null : d.getTime();
+}
 // Возраст timestamp'а → класс кружка (green/yellow/red)
 function ageClass(iso) {
-  if (!iso) return 'red';
-  const ago = Math.floor((Date.now() - new Date(iso + 'Z').getTime()) / 1000);
+  const t = parseTs(iso);
+  if (t === null) return 'red';
+  const ago = Math.floor((Date.now() - t) / 1000);
   if (ago < 15) return 'green';
   if (ago < 60) return 'yellow';
   return 'red';
 }
 function ageText(iso) {
-  if (!iso) return '?';
-  const ago = Math.floor((Date.now() - new Date(iso + 'Z').getTime()) / 1000);
+  const t = parseTs(iso);
+  if (t === null) return '?';
+  const ago = Math.floor((Date.now() - t) / 1000);
   if (ago < 60) return ago + 'с';
   if (ago < 3600) return Math.floor(ago / 60) + 'м';
   return Math.floor(ago / 3600) + 'ч';
@@ -163,6 +176,79 @@ const PROJECT_REPO_MAP = {
   femdriver: ['femdriver'],
   GazPenetration: ['GazPenetration'],
 };
+
+function projectFolderTag(project) {
+  try {
+    const tags = JSON.parse(project.tags || '[]');
+    const tag = tags.find(value => typeof value === 'string' && value.startsWith('folder:'));
+    return tag ? tag.slice('folder:'.length) : null;
+  } catch {
+    return null;
+  }
+}
+
+function resolveProjectWorkspace(project) {
+  const candidates = [];
+  const folderTag = projectFolderTag(project);
+  if (folderTag) candidates.push(path.join(DEV_ROOT, folderTag));
+  for (const folder of PROJECT_REPO_MAP[project.name] || []) {
+    candidates.push(path.join(DEV_ROOT, folder));
+  }
+  candidates.push(path.join(DEV_ROOT, project.name));
+
+  try {
+    for (const entry of readdirSync(DEV_ROOT, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      const root = path.join(DEV_ROOT, entry.name);
+      const marker = path.join(root, 'projectname.txt');
+      if (!existsSync(marker)) continue;
+      if (readFileSync(marker, 'utf8').trim() === project.name) candidates.push(root);
+    }
+  } catch {}
+
+  return candidates.find(candidate => existsSync(candidate)) || null;
+}
+
+function getRunnerTaskState(taskId) {
+  return withDb(db =>
+    db.prepare('SELECT id, status, assigned_to, tags FROM tasks WHERE id=?').get(taskId),
+  );
+}
+
+function recoverRunnerAssignment({ taskId, workerId, originalStatus, reason }) {
+  return withDbWrite(db => {
+    const task = db.prepare('SELECT id, title, status, assigned_to, tags FROM tasks WHERE id=?').get(taskId);
+    if (!task || task.assigned_to !== workerId) return false;
+    let tags = [];
+    try { tags = JSON.parse(task.tags || '[]'); } catch {}
+    if (tags.includes('needs-human')) return false;
+
+    let restoredStatus = originalStatus === 'review' ? 'review' : 'todo';
+    if (originalStatus === 'review' && task.status === 'in_progress') restoredStatus = 'todo';
+    const info = db.prepare(
+      'UPDATE tasks SET status=?, assigned_to=NULL, updated_at=datetime(\'now\') WHERE id=? AND assigned_to=?',
+    ).run(restoredStatus, taskId, workerId);
+    if (info.changes === 1) {
+      db.prepare(
+        `INSERT INTO activity_log
+          (entity_type, entity_id, action, field, old_value, new_value, summary)
+         VALUES ('task', ?, 'status_changed', 'status', ?, ?, ?)`,
+      ).run(taskId, task.status, restoredStatus, `Board runner recovered task '${task.title}': ${reason}`);
+    }
+    return info.changes === 1;
+  });
+}
+
+const boardRunner = createClaudeBoardRunner({
+  claimTask: args => dispatcherHandlers.worker_next(args),
+  getProject: projectId => withDb(db => db.prepare('SELECT * FROM projects WHERE id=?').get(projectId)),
+  getTaskState: getRunnerTaskState,
+  recoverAssignment: recoverRunnerAssignment,
+  resolveWorkspace: resolveProjectWorkspace,
+  dbPath: DB_PATH,
+  sagaEntry: path.join(__dirname, '..', 'dist', 'index.js'),
+  sagaSkillRoot: path.join(__dirname, '..', 'skills'),
+});
 
 // Найти физический путь к .md файлу артефакта.
 // path в БД может быть 'docs/.../01-SRS.md#FR-1' — якорь отбрасываем.
@@ -405,6 +491,15 @@ function renderBoard(projectId, allProjects) {
         <a class="tab" href="?project=${projectId}&tab=acceptance">Приёмка</a>
       </div>
       <span style="flex:1"></span>
+      <div class="agent-runner" id="agent-runner" title="Запустить разбор доски через Claude Code CLI">
+        <span class="agent-icon">🤖</span>
+        <select id="agent-concurrency" aria-label="Количество одновременных агентов">
+          ${Array.from({ length: 10 }, (_, i) => `<option value="${i + 1}"${i === 4 ? ' selected' : ''}>${i + 1}</option>`).join('')}
+        </select>
+        <button type="button" id="agent-start" class="agent-run-btn" title="Запустить разбор доски">▶</button>
+        <button type="button" id="agent-stop" class="agent-stop-btn" title="Остановить запуск" hidden>■</button>
+        <span id="agent-run-status" class="agent-run-status">готов</span>
+      </div>
       <div class="heartbeat"><span id="hb-dot" class="hb-dot red"></span><span id="hb-txt">…</span></div>
     </div>`;
 
@@ -487,6 +582,69 @@ function renderBoard(projectId, allProjects) {
         applyFilter();
       });
     });
+    const runnerStart = document.getElementById('agent-start');
+    const runnerStop = document.getElementById('agent-stop');
+    const runnerConcurrency = document.getElementById('agent-concurrency');
+    const runnerStatus = document.getElementById('agent-run-status');
+    function applyRunnerState(run) {
+      const active = run?.active?.length || 0;
+      const running = run && (run.status === 'running' || run.status === 'stopping');
+      runnerStart.hidden = !!running;
+      runnerStop.hidden = !running;
+      runnerConcurrency.disabled = !!running;
+      if (!run) runnerStatus.textContent = 'готов';
+      else if (run.status === 'running') runnerStatus.textContent = active + '/' + run.concurrency + ' · ✓' + run.completed + (run.failed ? ' · ✕' + run.failed : '');
+      else if (run.status === 'stopping') runnerStatus.textContent = 'остановка · ' + active;
+      else if (run.status === 'completed') runnerStatus.textContent = 'готово · ✓' + run.completed + (run.failed ? ' · ✕' + run.failed : '');
+      else if (run.status === 'stopped') runnerStatus.textContent = 'остановлено';
+      else runnerStatus.textContent = 'ошибка · ' + (run.last_error || run.status);
+      if (run?.last_error) runnerStatus.title = run.last_error;
+    }
+    async function fetchRunnerStatus() {
+      try {
+        const r = await fetch('/api/board-run/status?project_id=${projectId}');
+        if (r.ok) applyRunnerState((await r.json()).run);
+      } catch {}
+    }
+    runnerStart.addEventListener('click', async () => {
+      runnerStart.disabled = true;
+      runnerStatus.textContent = 'запуск…';
+      try {
+        const r = await fetch('/api/board-run/start', {
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({project_id:${Number(projectId)}, concurrency:Number(runnerConcurrency.value)})
+        });
+        const data = await r.json();
+        if (!r.ok || !data.ok) throw new Error(data.error || 'Не удалось запустить');
+        applyRunnerState(data.run);
+      } catch (error) {
+        runnerStatus.textContent = 'ошибка';
+        runnerStatus.title = error.message;
+        alert('Запуск агентов: ' + error.message);
+      } finally {
+        runnerStart.disabled = false;
+      }
+    });
+    runnerStop.addEventListener('click', async () => {
+      runnerStop.disabled = true;
+      try {
+        const r = await fetch('/api/board-run/stop', {
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({project_id:${Number(projectId)}})
+        });
+        const data = await r.json();
+        if (!r.ok || !data.ok) throw new Error(data.error || 'Не удалось остановить');
+        applyRunnerState(data.run);
+      } catch (error) {
+        alert('Остановка агентов: ' + error.message);
+      } finally {
+        runnerStop.disabled = false;
+      }
+    });
+    fetchRunnerStatus();
+    setInterval(fetchRunnerStatus, 2000);
     async function refreshBoard() {
       try {
         const r = await fetch('?project=${projectId}&partial=1');
@@ -1145,6 +1303,13 @@ function page(title, body) {
 
     /* доска */
     .board-head{display:flex;align-items:center;gap:12px;padding:14px 20px;background:#161b22;border-bottom:1px solid #30363d}
+    .agent-runner{display:flex;align-items:center;gap:5px;padding:3px 6px;background:#21262d;border:1px solid #30363d;border-radius:8px;min-height:28px}
+    .agent-icon{font-size:16px;line-height:1}
+    .agent-runner select{width:42px;padding:3px 4px;background:#0d1117;color:#c9d1d9;border:1px solid #30363d;border-radius:5px;font-size:12px}
+    .agent-run-btn,.agent-stop-btn{width:27px;height:25px;padding:0;border:1px solid #3d4855;border-radius:5px;background:#238636;color:white;cursor:pointer;font-size:11px}
+    .agent-run-btn:hover{background:#2ea043}.agent-stop-btn{background:#b62324}.agent-stop-btn:hover{background:#da3633}
+    .agent-run-btn:disabled,.agent-stop-btn:disabled{opacity:.5;cursor:default}
+    .agent-run-status{max-width:150px;color:#8b949e;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .back{color:#58a6ff;font-size:13px} .back:hover{text-decoration:underline}
     #psel{background:#21262d;border:1px solid #30363d;color:#e6edf3;border-radius:6px;padding:8px 12px;font-size:13px;max-width:260px}
     .cur-proj{font-weight:700;font-size:15px}
@@ -1417,7 +1582,11 @@ function page(title, body) {
     function update(){
       fetch('/api/heartbeat').then(r=>r.json()).then(d=>{
         if(!d.last){ dot.className='hb-dot red'; txt.textContent='нет данных'; return; }
-        const ago=Math.floor((Date.now()-new Date(d.last+'Z').getTime())/1000);
+        // saga-mcp пишет created_at как ЛОКАЛЬНОЕ время (UTC+03) в ISO без Z.
+        // НЕ добавляем Z — иначе уезжает на 3 часа в будущее и точка всегда красная.
+        const ts=new Date(String(d.last).replace(' ','T')).getTime();
+        if(isNaN(ts)){ dot.className='hb-dot red'; txt.textContent='?'; return; }
+        const ago=Math.floor((Date.now()-ts)/1000);
         if(ago<15){ dot.className='hb-dot green'; txt.textContent=ago+'с назад'; }
         else if(ago<60){ dot.className='hb-dot yellow'; txt.textContent=ago+'с назад'; }
         else{ dot.className='hb-dot red'; txt.textContent=Math.floor(ago/60)+'м назад'; }
@@ -1515,6 +1684,53 @@ function handleArtifactSave(req, res) {
 function respondJson(res, code, obj) {
   res.writeHead(code, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify(obj));
+}
+
+function readRequestFields(req, callback) {
+  const chunks = [];
+  req.on('data', chunk => chunks.push(chunk));
+  req.on('end', () => {
+    const raw = Buffer.concat(chunks).toString('utf8');
+    const contentType = req.headers['content-type'] || '';
+    try {
+      const fields = contentType.includes('application/json')
+        ? JSON.parse(raw || '{}')
+        : Object.fromEntries(new URLSearchParams(raw));
+      callback(null, fields);
+    } catch (error) {
+      callback(error);
+    }
+  });
+}
+
+function handleBoardRunStart(req, res) {
+  readRequestFields(req, (parseError, fields) => {
+    if (parseError) return respondJson(res, 400, { ok:false, error:'invalid request body' });
+    const projectId = Number(fields.project_id);
+    const concurrency = Number(fields.concurrency);
+    if (!Number.isInteger(projectId) || projectId < 1) {
+      return respondJson(res, 400, { ok:false, error:'project_id must be a positive integer' });
+    }
+    if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 10) {
+      return respondJson(res, 400, { ok:false, error:'concurrency must be an integer from 1 to 10' });
+    }
+    try {
+      const run = boardRunner.start({ projectId, concurrency });
+      respondJson(res, 200, { ok:true, run });
+    } catch (error) {
+      respondJson(res, 409, { ok:false, error:error instanceof Error ? error.message : String(error) });
+    }
+  });
+}
+
+function handleBoardRunStop(req, res) {
+  readRequestFields(req, (parseError, fields) => {
+    if (parseError) return respondJson(res, 400, { ok:false, error:'invalid request body' });
+    const projectId = Number(fields.project_id);
+    const run = boardRunner.stop(projectId);
+    if (!run) return respondJson(res, 404, { ok:false, error:`No board run for project ${projectId}` });
+    respondJson(res, 200, { ok:true, run });
+  });
 }
 
 // --- HTML: кросс-проектный реестр однотипных документов (?registry=PRD) ---
@@ -2190,6 +2406,16 @@ const server = http.createServer((req, res) => {
   if (req.method === 'POST' && url.pathname === '/api/epic/create') {
     return handleEpicCreate(req, res);
   }
+  if (req.method === 'POST' && url.pathname === '/api/board-run/start') {
+    return handleBoardRunStart(req, res);
+  }
+  if (req.method === 'POST' && url.pathname === '/api/board-run/stop') {
+    return handleBoardRunStop(req, res);
+  }
+  if (req.method === 'GET' && url.pathname === '/api/board-run/status') {
+    const projectId = Number(url.searchParams.get('project_id'));
+    return respondJson(res, 200, { ok:true, run:boardRunner.status(projectId) });
+  }
 
   if (url.pathname === '/api/heartbeat') {
     let last = null;
@@ -2299,8 +2525,10 @@ const SPAWNED = process.env.TRACKER_SPAWNED === '1';
     // Открываем браузер ТОЛЬКО если мы реально забиндились (порт был свободен).
     // В spawn-режиме pre-check выше гарантировал, что мы первые; в ручном режиме
     // EADDRINUSE-блок убил stale процесс, и этот listen — свежий, открываем.
-    const open = process.platform === 'win32' ? `start ${u}` : process.platform === 'darwin' ? `open ${u}` : `xdg-open ${u}`;
-    try { require('node:child_process').exec(open); } catch {}
+    if (process.env.TRACKER_NO_BROWSER !== '1') {
+      const open = process.platform === 'win32' ? `start ${u}` : process.platform === 'darwin' ? `open ${u}` : `xdg-open ${u}`;
+      try { require('node:child_process').exec(open); } catch {}
+    }
   });
 
   // EADDRINUSE: только ручной запуск (без TRACKER_SPAWNED). Убиваем stale PID и
@@ -2323,6 +2551,6 @@ const SPAWNED = process.env.TRACKER_SPAWNED === '1';
   });
 })();
 
-process.on('exit',  () => { try { unlinkSync(PID_FILE); } catch {} });
-process.on('SIGINT', () => { try { unlinkSync(PID_FILE); } catch {} process.exit(0); });
-process.on('SIGTERM',() => { try { unlinkSync(PID_FILE); } catch {} process.exit(0); });
+process.on('exit',  () => { boardRunner.dispose(); try { unlinkSync(PID_FILE); } catch {} });
+process.on('SIGINT', () => { boardRunner.dispose(); try { unlinkSync(PID_FILE); } catch {} process.exit(0); });
+process.on('SIGTERM',() => { boardRunner.dispose(); try { unlinkSync(PID_FILE); } catch {} process.exit(0); });
