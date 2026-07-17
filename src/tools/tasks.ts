@@ -4,6 +4,7 @@ import { getDb } from '../db.js';
 import { buildUpdate, addTagFilter } from '../helpers/sql-builder.js';
 import { logActivity, logEntityUpdate } from '../helpers/activity-logger.js';
 import { resolveBranch } from '../helpers/git.js';
+import { withImmediateTransaction } from './dispatcher.js';
 import type { ToolHandler } from '../types.js';
 
 // REQ-009 / CGAD §11 — RiskClass computation.
@@ -15,6 +16,19 @@ import type { ToolHandler } from '../types.js';
 // explicitly written below the computed max).
 const RISK_ORDER: Record<string, number> = { low: 0, medium: 1, high: 2, critical: 3 };
 const RISK_BY_RANK = ['low', 'medium', 'high', 'critical'] as const;
+
+/**
+ * Map a risk level (or null/undefined) to its severity rank. null/undefined
+ * return -1, so "unset" is treated as below 'low' — this is what makes the
+ * P15 monotonicity check raise-on-lower work for tasks whose old value was
+ * null (e.g. a plain task being constrained to derived_risk='low' from null
+ * is NOT a lowering, but 'high' -> 'low' is).
+ */
+function riskRank(v: string | null | undefined): number {
+  if (v == null) return -1;
+  const r = RISK_ORDER[v];
+  return typeof r === 'number' ? r : -1;
+}
 
 /**
  * Compute final_risk = max(declared, derived, policy_minimum).
@@ -33,6 +47,39 @@ export function computeFinalRisk(
   if (candidates.length === 0) return null;
   const maxRank = Math.max(...candidates.map(v => RISK_ORDER[v]));
   return RISK_BY_RANK[maxRank];
+}
+
+/**
+ * CGAD P15 monotonicity guard. The agent (Builder) cannot self-lower
+ * `derived_risk` or `policy_minimum` — these are floor-raised by the system
+ * (security/data signals, project policy). `declared_risk` is the Builder's
+ * own proposal and MAY be lowered freely; `final_risk = max(declared, derived,
+ * policy)` is recomputed, so lowering declared alone can never drop final
+ * below the derived/policy floor.
+ *
+ * Throws if the new effective value is strictly below the old persisted value
+ * by severity rank (low < medium < high < critical, null = -1). Call BEFORE the
+ * risk UPDATE so the throw + transaction ROLLBACK leaves the row untouched.
+ */
+function enforceP15Monotonicity(
+  oldRow: { derived_risk: string | null; policy_minimum: string | null },
+  newDerived: string | null,
+  newPolicy: string | null,
+): void {
+  const oldDerivedRank = riskRank(oldRow.derived_risk);
+  const newDerivedRank = riskRank(newDerived);
+  if (newDerivedRank < oldDerivedRank) {
+    throw new Error(
+      `CGAD P15 violation: cannot lower derived_risk from '${oldRow.derived_risk}' to '${newDerived}'`,
+    );
+  }
+  const oldPolicyRank = riskRank(oldRow.policy_minimum);
+  const newPolicyRank = riskRank(newPolicy);
+  if (newPolicyRank < oldPolicyRank) {
+    throw new Error(
+      `CGAD P15 violation: cannot lower policy_minimum from '${oldRow.policy_minimum}' to '${newPolicy}'`,
+    );
+  }
 }
 
 /**
@@ -684,46 +731,79 @@ function handleTaskUpdate(args: Record<string, unknown>) {
   // `final_risk` arg is ignored with a warning, because P15 forbids
   // self-lowering. To raise final_risk, raise one of declared/derived/policy.
   if (update) {
-    newRow = db.prepare(update.sql).get(...update.params) as Record<string, unknown>;
-    // Re-read fresh values post-update to compute final_risk consistently.
-    const fresh = db.prepare(
-      'SELECT declared_risk, derived_risk, policy_minimum, tags, task_kind FROM tasks WHERE id=?',
-    ).get(id) as {
-      declared_risk: string | null; derived_risk: string | null;
-      policy_minimum: string | null; tags: string; task_kind: string | null;
-    };
-    // If derived_risk / policy_minimum were not explicitly written, auto-derive
-    // them from the (possibly updated) tags + task_kind. declared_risk follows
-    // priority when not set, to keep the legacy column authoritative.
-    let effectiveDerived = fresh.derived_risk;
-    let effectivePolicy = fresh.policy_minimum;
-    let effectiveDeclared = fresh.declared_risk;
-    const tagsParsed = (() => { try { return JSON.parse(fresh.tags || '[]') as string[]; } catch { return []; } })();
-    if (effectiveDerived == null) effectiveDerived = deriveRiskFromTags(tagsParsed, fresh.task_kind);
-    if (effectivePolicy == null) effectivePolicy = derivePolicyMinimum(tagsParsed, fresh.task_kind);
-    if (effectiveDeclared == null) {
-      // Fall back to legacy priority column if declared_risk never set.
-      const legacyPriority = db.prepare('SELECT priority FROM tasks WHERE id=?').get(id) as { priority: string };
-      effectiveDeclared = legacyPriority.priority || null;
-    }
-    const computedFinal = computeFinalRisk(effectiveDeclared, effectiveDerived, effectivePolicy);
-    // If the new computed final differs from the row's current final_risk,
-    // OR derived/policy were auto-derived and differ from what's stored, persist.
-    const needsUpdate =
-      newRow.final_risk !== computedFinal
-      || fresh.derived_risk !== effectiveDerived
-      || fresh.policy_minimum !== effectivePolicy
-      || fresh.declared_risk !== effectiveDeclared;
-    if (needsUpdate) {
-      db.prepare(
-        `UPDATE tasks SET declared_risk=?, derived_risk=?, policy_minimum=?, final_risk=?,
-         updated_at=datetime('now') WHERE id=?`,
-      ).run(effectiveDeclared, effectiveDerived, effectivePolicy, computedFinal, id);
-      newRow = db.prepare('SELECT * FROM tasks WHERE id=?').get(id) as Record<string, unknown>;
-    }
-    logEntityUpdate(db, 'task', id, newRow.title as string, oldRow, newRow, [
-      'status', 'priority', 'assigned_to', 'title', 'final_risk',
-    ]);
+    // CGAD P15 + RMW atomicity: the read-modify-write sequence
+    //   (SELECT oldRow) → UPDATE columns → SELECT fresh → UPDATE risk
+    // must be atomic. BEGIN IMMEDIATE takes the DB write-lock up-front so a
+    // concurrent writer cannot change the risk columns between our read of
+    // oldRow and our UPDATE. The P15 monotonicity check below compares the
+    // NEW effective values against the authoritative oldRow fetched inside
+    // this transaction; if it throws, ROLLBACK reverts the column UPDATE too,
+    // so no partial (lowered) state ever persists.
+    newRow = withImmediateTransaction(db, () => {
+      // Authoritative pre-update snapshot — fetched UNDER the write-lock, so
+      // it is consistent with the UPDATEs below. The outer `oldRow` may be
+      // microseconds stale; this one is the source of truth for P15.
+      const oldRowTx = db.prepare(
+        'SELECT declared_risk, derived_risk, policy_minimum, title FROM tasks WHERE id=?',
+      ).get(id) as {
+        declared_risk: string | null; derived_risk: string | null;
+        policy_minimum: string | null; title: string;
+      } | undefined;
+      if (!oldRowTx) throw new Error(`Task ${id} not found`);
+
+      // (1) UPDATE the requested columns.
+      let r = db.prepare(update.sql).get(...update.params) as Record<string, unknown>;
+      // (2) SELECT fresh values post-update to compute final_risk consistently.
+      const fresh = db.prepare(
+        'SELECT declared_risk, derived_risk, policy_minimum, tags, task_kind FROM tasks WHERE id=?',
+      ).get(id) as {
+        declared_risk: string | null; derived_risk: string | null;
+        policy_minimum: string | null; tags: string; task_kind: string | null;
+      };
+      // If derived_risk / policy_minimum were not explicitly written, auto-derive
+      // them from the (possibly updated) tags + task_kind. declared_risk follows
+      // priority when not set, to keep the legacy column authoritative.
+      let effectiveDerived = fresh.derived_risk;
+      let effectivePolicy = fresh.policy_minimum;
+      let effectiveDeclared = fresh.declared_risk;
+      const tagsParsed = (() => { try { return JSON.parse(fresh.tags || '[]') as string[]; } catch { return []; } })();
+      if (effectiveDerived == null) effectiveDerived = deriveRiskFromTags(tagsParsed, fresh.task_kind);
+      if (effectivePolicy == null) effectivePolicy = derivePolicyMinimum(tagsParsed, fresh.task_kind);
+      if (effectiveDeclared == null) {
+        // Fall back to legacy priority column if declared_risk never set.
+        const legacyPriority = db.prepare('SELECT priority FROM tasks WHERE id=?').get(id) as { priority: string };
+        effectiveDeclared = legacyPriority.priority || null;
+      }
+      const computedFinal = computeFinalRisk(effectiveDeclared, effectiveDerived, effectivePolicy);
+
+      // CGAD P15 monotonicity guard (BEFORE the risk UPDATE).
+      // derived_risk and policy_minimum are floor-raised by the system; the
+      // agent (Builder) cannot self-lower them. declared_risk CAN be lowered
+      // (it's the Builder's proposal), but final_risk = max(declared, derived,
+      // policy) is computed, so lowering declared alone can never drop final
+      // below the derived/policy floor. null ranks -1 (below low): a null old
+      // value imposes no floor, so going null -> 'low' is allowed (not a lowering).
+      enforceP15Monotonicity(oldRowTx, effectiveDerived, effectivePolicy);
+
+      // If the new computed final differs from the row's current final_risk,
+      // OR derived/policy were auto-derived and differ from what's stored, persist.
+      const needsUpdate =
+        r.final_risk !== computedFinal
+        || fresh.derived_risk !== effectiveDerived
+        || fresh.policy_minimum !== effectivePolicy
+        || fresh.declared_risk !== effectiveDeclared;
+      if (needsUpdate) {
+        db.prepare(
+          `UPDATE tasks SET declared_risk=?, derived_risk=?, policy_minimum=?, final_risk=?,
+           updated_at=datetime('now') WHERE id=?`,
+        ).run(effectiveDeclared, effectiveDerived, effectivePolicy, computedFinal, id);
+        r = db.prepare('SELECT * FROM tasks WHERE id=?').get(id) as Record<string, unknown>;
+      }
+      logEntityUpdate(db, 'task', id, r.title as string, oldRow, r, [
+        'status', 'priority', 'assigned_to', 'title', 'final_risk',
+      ]);
+      return r;
+    });
   } else if (args.depends_on !== undefined) {
     // Only depends_on changed, no column updates
     newRow = oldRow;

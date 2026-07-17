@@ -289,7 +289,8 @@ function migrateVerificationOutcome(db: Database.Database): void {
 // New tasks SHOULD write declared_risk/derived_risk/policy_minimum explicitly;
 // task_create / task_update computes final_risk = max(declared, derived, policy)
 // in TS (see tasks.ts) to keep the rule testable and explicit.
-function migrateRiskClass(db: Database.Database): void {
+// Exported for targeted migration tests (backfill behaviour on legacy rows).
+export function migrateRiskClass(db: Database.Database): void {
   for (const col of ['declared_risk', 'derived_risk', 'policy_minimum', 'final_risk']) {
     try {
       db.exec(`ALTER TABLE tasks ADD COLUMN ${col} TEXT CHECK (${col} IN ('low','medium','high','critical') OR ${col} IS NULL)`);

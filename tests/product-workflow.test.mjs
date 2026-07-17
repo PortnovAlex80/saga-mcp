@@ -1259,3 +1259,153 @@ test('REQ-010 noise-fix: file_path collision ALWAYS shows regardless of depends_
     [scaffold.id, b1.id, b2.id],
   );
 });
+
+// ============================================================================
+// CGAD P15 — risk monotonicity. The agent (Builder) cannot self-lower
+// derived_risk or policy_minimum (system floor-raised). declared_risk CAN be
+// lowered; final_risk = max(declared, derived, policy) is computed and so
+// cannot drop below the floor. Enforced in handleTaskUpdate BEFORE the risk
+// UPDATE, inside the RMW transaction (ROLLBACK on throw).
+// ============================================================================
+
+test('CGAD P15: task_update derived_risk=low on security-tagged task THROWS', () => {
+  // security tag forces derived_risk=critical at create time (persisted).
+  // Attempting to lower derived_risk to 'low' must throw /P15/.
+  const product = projects.project_create({ name: 'P15 Lower Product' });
+  const epic = epics.epic_create({ project_id: product.id, name: 'REQ-p15-lower' });
+  const task = tasks.task_create({
+    epic_id: epic.id, title: 'Secure task', tags: ['security'], priority: 'low',
+  });
+  assert.equal(task.derived_risk, 'critical', 'security tag auto-derives critical');
+  assert.equal(task.final_risk, 'critical');
+  assert.throws(
+    () => tasks.task_update({ id: task.id, derived_risk: 'low' }),
+    /P15/,
+    'lowering derived_risk from critical to low must throw a P15 violation',
+  );
+});
+
+test('CGAD P15: task_update declared_risk=low on security task SUCCEEDS (final stays high via derived)', () => {
+  // declared_risk is the Builder's proposal and MAY be lowered freely.
+  // final_risk must remain pinned at critical by derived_risk/policy_minimum.
+  const product = projects.project_create({ name: 'P15 Declared Product' });
+  const epic = epics.epic_create({ project_id: product.id, name: 'REQ-p15-declared' });
+  const task = tasks.task_create({
+    epic_id: epic.id, title: 'Secure task 2', tags: ['security'], priority: 'high',
+  });
+  assert.equal(task.derived_risk, 'critical');
+  // Lowering declared_risk is allowed — it's the Builder's own proposal.
+  const updated = tasks.task_update({ id: task.id, declared_risk: 'low' });
+  assert.equal(updated.declared_risk, 'low', 'declared_risk lowered by Builder');
+  // final_risk = max(low, critical, high) = critical — cannot drop below floor.
+  assert.equal(updated.final_risk, 'critical',
+    'final_risk pinned by derived/policy even when declared is lowered');
+  assert.equal(updated.derived_risk, 'critical');
+  assert.equal(updated.policy_minimum, 'high');
+});
+
+test('CGAD P15: raising derived_risk on a plain (null-risk) task SUCCEEDS', () => {
+  // A plain task has derived_risk=null (rank -1). Raising to 'high' is
+  // monotonically non-decreasing — must be allowed.
+  const product = projects.project_create({ name: 'P15 Raise Product' });
+  const epic = epics.epic_create({ project_id: product.id, name: 'REQ-p15-raise' });
+  const task = tasks.task_create({
+    epic_id: epic.id, title: 'Plain task', priority: 'low', tags: [],
+  });
+  assert.equal(task.derived_risk, null, 'no risk signals initially');
+  assert.equal(task.final_risk, 'low');
+  const updated = tasks.task_update({ id: task.id, derived_risk: 'high' });
+  assert.equal(updated.derived_risk, 'high', 'derived raised to high');
+  assert.equal(updated.final_risk, 'high', 'final recomputed = max(low, high, null)');
+});
+
+test('CGAD P15: lowering policy_minimum THROWS (same floor rule as derived)', () => {
+  // security tag → policy_minimum='high'. Lowering to 'low' must throw /P15/.
+  const product = projects.project_create({ name: 'P15 Policy Product' });
+  const epic = epics.epic_create({ project_id: product.id, name: 'REQ-p15-policy' });
+  const task = tasks.task_create({
+    epic_id: epic.id, title: 'Secure task 3', tags: ['security'], priority: 'low',
+  });
+  assert.equal(task.policy_minimum, 'high');
+  assert.throws(
+    () => tasks.task_update({ id: task.id, policy_minimum: 'low' }),
+    /P15/,
+    'lowering policy_minimum from high to low must throw a P15 violation',
+  );
+});
+
+test('CGAD P15: failed monotonicity check leaves the row UNCHANGED (transaction rollback)', () => {
+  // The P15 guard fires inside the RMW transaction; a throw must ROLLBACK the
+  // column UPDATE too, so no partially-lowered state persists.
+  const product = projects.project_create({ name: 'P15 Rollback Product' });
+  const epic = epics.epic_create({ project_id: product.id, name: 'REQ-p15-rollback' });
+  const task = tasks.task_create({
+    epic_id: epic.id, title: 'Secure task 4', tags: ['security'], priority: 'low',
+    description: 'original',
+  });
+  // Attempt an update that bundles a legitimate column change with an illegal
+  // derived_risk lowering. The whole transaction must roll back — the
+  // description change must NOT persist.
+  assert.throws(
+    () => tasks.task_update({
+      id: task.id, derived_risk: 'low', description: 'should-not-stick',
+    }),
+    /P15/,
+  );
+  const reread = tasks.task_get({ id: task.id });
+  assert.equal(reread.derived_risk, 'critical', 'derived_risk unchanged after rollback');
+  assert.equal(reread.final_risk, 'critical', 'final_risk unchanged after rollback');
+  assert.equal(reread.description, 'original', 'description update rolled back with the tx');
+});
+
+// ============================================================================
+// Fix 3 — final_risk backfill for legacy rows in migrateRiskClass.
+// Old-schema DBs (no risk columns) with a legacy priority get declared_risk
+// AND final_risk stamped by the migration. Tested by spinning up a private
+// Database with an old-style tasks table and invoking the exported migration.
+// ============================================================================
+
+test('migrateRiskClass backfills final_risk = declared_risk for legacy rows', async () => {
+  // Build a private old-schema DB: tasks table with legacy columns only
+  // (no risk columns), seeded with rows that have priority set.
+  const migrateMod = await import('../dist/db.js');
+  const Database = (await import('better-sqlite3')).default;
+  const backfillTmp = mkdtempSync(path.join(os.tmpdir(), 'saga-backfill-'));
+  const oldDbPath = path.join(backfillTmp, 'old.db');
+  const old = new Database(oldDbPath);
+  old.exec(`
+    CREATE TABLE tasks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL,
+      priority TEXT CHECK (priority IN ('low','medium','high','critical') OR priority IS NULL)
+    );
+    INSERT INTO tasks (title, priority) VALUES ('legacy high', 'high');
+    INSERT INTO tasks (title, priority) VALUES ('legacy low', 'low');
+    INSERT INTO tasks (title, priority) VALUES ('legacy null', NULL);
+  `);
+  // Run the migration directly against this old-schema DB.
+  migrateMod.migrateRiskClass(old);
+  const rows = old.prepare('SELECT title, priority, declared_risk, final_risk FROM tasks ORDER BY id').all();
+  // Legacy rows with priority set must have BOTH declared_risk and final_risk
+  // stamped (final_risk = declared_risk = priority for these, since derived
+  // and policy were NULL at migration time).
+  assert.deepEqual(
+    rows.map(r => ({ title: r.title, declared_risk: r.declared_risk, final_risk: r.final_risk })),
+    [
+      { title: 'legacy high', declared_risk: 'high', final_risk: 'high' },
+      { title: 'legacy low', declared_risk: 'low', final_risk: 'low' },
+      { title: 'legacy null', declared_risk: null, final_risk: null },
+    ],
+    'priority -> declared_risk -> final_risk backfill chain; null priority stays null',
+  );
+  // Idempotency: running the migration again must not change anything.
+  migrateMod.migrateRiskClass(old);
+  const rows2 = old.prepare('SELECT title, declared_risk, final_risk FROM tasks ORDER BY id').all();
+  assert.deepEqual(
+    rows2.map(r => r.final_risk),
+    ['high', 'low', null],
+    'migration is idempotent',
+  );
+  old.close();
+  rmSync(backfillTmp, { recursive: true, force: true });
+});
