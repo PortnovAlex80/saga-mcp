@@ -60,8 +60,6 @@ export interface BriefValidationResult {
 }
 
 const DECISION_LITERALS = ['go', 'fast-track', 'clarify', 'reject'] as const;
-const TOPOLOGY_LITERALS = ['parallel-independent', 'sequence', 'scaffold-then-parallel'] as const;
-const COMPLETENESS_LITERALS = ['high', 'low'] as const;
 
 /**
  * Validate a brief payload (SRS §2b.2).
