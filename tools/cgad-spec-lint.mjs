@@ -474,11 +474,11 @@ function ruleR5(db, projectId) {
              GROUP_CONCAT(k.task_id) AS task_ids_csv,
              COUNT(DISTINCT k.task_id) AS n_tasks,
              SUM(CASE WHEN t.status IN ('in_progress','review_in_progress') THEN 1 ELSE 0 END) AS n_active_running,
-             SUM(CASE WHEN t.status IN ('todo','in_progress','review','review_in_progress') THEN 1 ELSE 0 END) AS n_active
+             SUM(CASE WHEN t.status IN ('todo','in_progress','review','review_in_progress','blocked') THEN 1 ELSE 0 END) AS n_active
       FROM task_conflict_keys k
       JOIN tasks t ON t.id = k.task_id
       JOIN epics e ON e.id = t.epic_id
-      WHERE t.status IN ('todo','in_progress','review','review_in_progress')
+      WHERE t.status IN ('todo','in_progress','review','review_in_progress','blocked')
       ${pj}
       GROUP BY e.id, k.key_type, k.key_value
       HAVING n_active >= 2
@@ -661,14 +661,17 @@ function ruleR9(db, projectId) {
 // insert, but a corrupted DB or a future bug could create it). We also flag
 // cycles: A.generated_from_task_id = B AND B.generated_from_task_id = A.
 function ruleR10(db, projectId) {
-  const pj = projectId !== undefined
-    ? `AND t.epic_id IN (SELECT id FROM epics WHERE project_id = ${Number(projectId)})`
+  const pjSelf = projectId !== undefined
+    ? `AND epic_id IN (SELECT id FROM epics WHERE project_id = ${Number(projectId)})`
+    : '';
+  const pjCycle = projectId !== undefined
+    ? `AND a.epic_id IN (SELECT id FROM epics WHERE project_id = ${Number(projectId)})`
     : '';
   const findings = [];
   // Self-loop.
   const selfLoops = db.prepare(`
     SELECT id, title, generated_from_task_id FROM tasks
-    WHERE generated_from_task_id = id ${pj}`).all();
+    WHERE generated_from_task_id = id ${pjSelf}`).all();
   for (const r of selfLoops) {
     findings.push({
       rule: 'CGAD-R10',
@@ -684,7 +687,7 @@ function ruleR10(db, projectId) {
            b.id AS b_id, b.title AS b_title
     FROM tasks a JOIN tasks b
       ON a.generated_from_task_id = b.id AND b.generated_from_task_id = a.id
-    WHERE a.id < b.id ${pj.replace('t.', 'a.')}`).all();
+    WHERE a.id < b.id ${pjCycle}`).all();
   for (const r of twoCycles) {
     findings.push({
       rule: 'CGAD-R10',
