@@ -32,7 +32,9 @@ const MAX_CLAIM_ATTEMPTS = 10;
 // нужен BEGIN IMMEDIATE — write-lock всей БД с старта транзакции (аналог
 // SELECT FOR UPDATE, которого нет в SQLite), чтобы сериализовать писателей.
 // Поэтому оборачиваем логику в явные BEGIN IMMEDIATE / COMMIT / ROLLBACK.
-function withImmediateTransaction<T>(db: Database.Database, fn: () => T): T {
+// Exported so other handlers (e.g. task_update RMW sequence) can wrap their
+// own read-modify-write critical sections in the same atomic boundary.
+export function withImmediateTransaction<T>(db: Database.Database, fn: () => T): T {
   db.exec('BEGIN IMMEDIATE');
   try {
     const result = fn();
