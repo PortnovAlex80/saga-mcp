@@ -201,16 +201,12 @@ describe('routeFastTrack — fast-track routing into kanban (AC-6 DoD 1)', () =>
     );
   });
 
-  it('is idempotent on the trace edge (re-routing the same dev task)', () => {
-    // routeFastTrack always creates a NEW dev task (different id), so the
-    // derived_from edge is per dev-task. But the INSERT uses ON CONFLICT DO
-    // NOTHING, so re-inserting the same (source,target,link) is safe. Verify a
-    // second routing creates a distinct dev task + distinct trace.
+  it('is idempotent for the brief route', () => {
     const db = getDb();
     const r1 = routeFastTrack(1, 1, clone(fastBase), db);
     const r2 = routeFastTrack(1, 1, clone(fastBase), db);
-    assert.notEqual(r1.dev_task_id, r2.dev_task_id);
-    assert.notEqual(r1.trace_id, r2.trace_id);
+    assert.equal(r1.dev_task_id, r2.dev_task_id);
+    assert.equal(r1.trace_id, r2.trace_id);
   });
 });
 
