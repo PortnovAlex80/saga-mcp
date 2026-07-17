@@ -205,3 +205,149 @@ test('R4 fires: episode without repo binding is treated as greenfield (conservat
   const findings = ruleR4OnTestDb(db);
   assert.equal(findings.length, 1, 'no repo binding → greenfield by default → R4 fires');
 });
+
+// ----------------------------------------------------------------------------
+// R14 — FR Forbidden Content (BABOK/Wiegers). Unit tests the forbidden-content
+// scanner contract: which patterns the linter treats as implementation-detail
+// leaks in an accepted FR's .md body. The linter's ruleR14 / scanFrForbiddenContent
+// are not exported (matching ruleR4's test approach), so we re-implement the
+// regex set inline and assert on its output. Keeping the two in sync is the
+// same maintenance contract as the R4 test above.
+// ----------------------------------------------------------------------------
+
+const FR_FORBIDDEN_PATTERNS = [
+  { label: 'HTTP verb', regex: /\b(?:GET|POST|PUT|DELETE|PATCH)\b/ },
+  { label: 'database schema', regex: /CREATE\s+TABLE|`[a-z][a-z0-9_]*`/i },
+  { label: 'JSON field', regex: /"[a-z_][a-z0-9_]*"\s*:/i },
+  { label: 'class or method name',
+    regex: /\b[A-Z]\w+\.[a-z]\w+\s*\(|\bdef\s+[a-z_]\w+\s*\(|\bfunction\s+[a-z_$]\w*\s*\(/ },
+  { label: 'framework name',
+    regex: /\b(?:React|Vue|Angular|Django|Flask|FastAPI|Spring|Express|Rails|Laravel|Next\.js|Nest\.js|Svelte|Ember|Symfony|ASP\.NET)\b/ },
+  { label: 'HTTP status code', regex: /\b(?:401|403|404|405|418|422|429|500|502|503|504)\b/ },
+  { label: 'algorithm name',
+    regex: /\b(?:SHA-1|SHA-256|SHA-512|SHA-3|HMAC|AES|RSA|bcrypt|scrypt|Argon2|MD5|BLAKE2?|PBKDF2)\b/ },
+];
+
+function scanFrForbiddenContent(body) {
+  const hits = [];
+  for (const p of FR_FORBIDDEN_PATTERNS) {
+    const m = p.regex.exec(body);
+    if (m) hits.push({ label: p.label, example: m[0] });
+  }
+  return hits;
+}
+
+test('R14: clean FR body (pure WHAT, no implementation detail) yields zero hits', () => {
+  const body = [
+    '# FR-1 User authentication',
+    '',
+    'The system SHALL authenticate a user before granting access to protected resources.',
+    'When authentication fails, the system SHALL refuse access and notify the user.',
+    '',
+    'Acceptance: a valid user gains access; an invalid user is refused.',
+  ].join('\n');
+  assert.equal(scanFrForbiddenContent(body).length, 0,
+    'a clean FR leaks no implementation detail');
+});
+
+test('R14: HTTP verb leak (POST) is detected', () => {
+  const body = 'The client SHALL POST credentials to the login endpoint.';
+  const hits = scanFrForbiddenContent(body);
+  assert.ok(hits.some(h => h.label === 'HTTP verb' && h.example === 'POST'),
+    'uppercase HTTP verb must be flagged');
+});
+
+test('R14: lowercase http-verb prose is NOT flagged (avoid false positive)', () => {
+  // Well-written FRs use ordinary verbs: "get", "put", "post a message".
+  // The regex matches uppercase only — lower-case forms are legitimate prose.
+  const body = 'The user shall get a confirmation and post it to their profile.';
+  const hits = scanFrForbiddenContent(body);
+  assert.ok(!hits.some(h => h.label === 'HTTP verb'),
+    'lowercase get/post must not fire (English-prose false positive avoided)');
+});
+
+test('R14: CREATE TABLE DDL leak is detected', () => {
+  const body = 'The system shall store users in CREATE TABLE users (id INTEGER).';
+  const hits = scanFrForbiddenContent(body);
+  assert.ok(hits.some(h => h.label === 'database schema'),
+    'CREATE TABLE DDL must be flagged');
+});
+
+test('R14: backtick-quoted DB identifier leak is detected', () => {
+  const body = 'Rows in the `users` table shall be unique by email.';
+  const hits = scanFrForbiddenContent(body);
+  assert.ok(hits.some(h => h.label === 'database schema' && h.example.includes('users')),
+    'backtick-quoted snake_case identifier must be flagged');
+});
+
+test('R14: JSON field leak is detected', () => {
+  const body = 'The response shall include {"user_id": 42, "role": "admin"}.';
+  const hits = scanFrForbiddenContent(body);
+  assert.ok(hits.some(h => h.label === 'JSON field'),
+    'JSON object-literal field syntax must be flagged');
+});
+
+test('R14: class.method() leak is detected', () => {
+  const body = 'The system shall invoke AuthService.verify() before login.';
+  const hits = scanFrForbiddenContent(body);
+  assert.ok(hits.some(h => h.label === 'class or method name'),
+    'ClassName.method() syntax must be flagged');
+});
+
+test('R14: Python def leak is detected', () => {
+  const body = 'Implemented by def authenticate(token): ...';
+  const hits = scanFrForbiddenContent(body);
+  assert.ok(hits.some(h => h.label === 'class or method name'),
+    'def function_name() syntax must be flagged');
+});
+
+test('R14: framework name leak (React) is detected', () => {
+  const body = 'The UI shall be built with React components.';
+  const hits = scanFrForbiddenContent(body);
+  assert.ok(hits.some(h => h.label === 'framework name' && h.example === 'React'),
+    'explicit framework name must be flagged');
+});
+
+test('R14: framework name leak (Django) is detected', () => {
+  const body = 'The server shall use Django ORM for persistence.';
+  const hits = scanFrForbiddenContent(body);
+  assert.ok(hits.some(h => h.label === 'framework name' && h.example === 'Django'),
+    'explicit framework name must be flagged');
+});
+
+test('R14: HTTP status code leak (404, 500) is detected', () => {
+  const body = 'Unknown resources shall return 404; server errors shall return 500.';
+  const hits = scanFrForbiddenContent(body);
+  const codes = hits.filter(h => h.label === 'HTTP status code').map(h => h.example);
+  // One finding per distinct pattern (the regex exec returns the first match
+  // per pattern; 404 and 500 are both under the same pattern so only the first
+  // appears in `example`). We assert the pattern fired at all.
+  assert.ok(hits.some(h => h.label === 'HTTP status code'),
+    'curated HTTP status codes must be flagged');
+});
+
+test('R14: algorithm name leak (SHA-256, HMAC) is detected', () => {
+  const body = 'Passwords shall be hashed with SHA-256 and requests signed with HMAC.';
+  const hits = scanFrForbiddenContent(body);
+  assert.ok(hits.some(h => h.label === 'algorithm name'),
+    'concrete algorithm/crypto primitive names must be flagged');
+});
+
+test('R14: multiple distinct leak categories produce multiple findings', () => {
+  // One FR leaking HTTP verb + framework + status code → 3 distinct findings,
+  // one per pattern category, so the human sees each leak separately.
+  const body = 'The React client SHALL POST to /api and expect 404 on miss.';
+  const hits = scanFrForbiddenContent(body);
+  const labels = hits.map(h => h.label).sort();
+  assert.deepEqual(labels, ['HTTP status code', 'HTTP verb', 'framework name'],
+    'each distinct leak category produces its own finding');
+});
+
+test('R14: three-digit numbers outside the curated set are NOT flagged', () => {
+  // 200/201/301 are HTTP codes too, but the curated set is intentionally small
+  // to keep false positives near zero. Years, counts, IDs must never fire.
+  const body = 'The system shall serve 200 users since 2019, returning 301 items per page.';
+  const hits = scanFrForbiddenContent(body);
+  assert.ok(!hits.some(h => h.label === 'HTTP status code'),
+    'non-curated 3-digit numbers (years/counts) must not fire');
+});

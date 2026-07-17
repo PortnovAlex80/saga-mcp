@@ -41,6 +41,7 @@ export function getDb(): Database.Database {
   try { db.exec('ALTER TABLE artifacts ADD COLUMN accepted_hash TEXT'); } catch { /* column already exists */ }
   try { db.exec("ALTER TABLE artifacts ADD COLUMN drift_state TEXT NOT NULL DEFAULT 'unknown' CHECK (drift_state IN ('unknown','clean','drifted'))"); } catch { /* column already exists */ }
   migrateArtifactTypes(db);
+  try { db.exec("ALTER TABLE artifacts ADD COLUMN evidence_status TEXT CHECK (evidence_status IN ('confirmed','proposed','assumed','open','rejected','superseded') OR evidence_status IS NULL)"); } catch { /* column already exists */ }
   migrateVerificationOutcome(db);
   migrateRiskClass(db);
   try { db.exec('CREATE INDEX IF NOT EXISTS idx_epics_branch ON epics(branch)'); } catch { /* index already exists */ }
@@ -173,7 +174,7 @@ function migrateArtifactTypes(db: Database.Database): void {
   const row = db.prepare(
     "SELECT sql FROM sqlite_schema WHERE type='table' AND name='artifacts'",
   ).get() as { sql: string } | undefined;
-  if (!row?.sql || row.sql.includes("'brief'")) return;
+  if (!row?.sql || row.sql.includes("'OQ'")) return;
 
   db.pragma('foreign_keys = OFF');
   try {
@@ -183,7 +184,7 @@ function migrateArtifactTypes(db: Database.Database): void {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
         epic_id INTEGER NOT NULL REFERENCES epics(id) ON DELETE CASCADE,
-        type TEXT NOT NULL CHECK (type IN ('PRD','SRS','UC','AC','FR','NFR','decision','theme','brief')),
+        type TEXT NOT NULL CHECK (type IN ('PRD','SRS','UC','AC','FR','NFR','decision','theme','brief','RULE','OQ')),
         code TEXT,
         title TEXT NOT NULL,
         path TEXT NOT NULL,
