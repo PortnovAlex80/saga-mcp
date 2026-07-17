@@ -224,14 +224,21 @@ CREATE TABLE IF NOT EXISTS artifacts (
 
 -- A planned verification task is not proof. Evidence is an immutable,
 -- independently queryable result linked to both the verification task and AC.
+-- outcome uses CGAD's 4-valued guard verdict (REQ-008):
+--   passed   — Deterministic evidence confirmed the claim.
+--   failed   — Deterministic evidence refuted the claim.
+--   unknown  — Inputs insufficient; treat as denial (CGAD P14 deny-by-default).
+--   error    — Provider or check crashed; denial AND an Incident must be filed.
+-- Only 'passed' admits a transition (see assertVerificationPassed in lifecycle.ts).
 CREATE TABLE IF NOT EXISTS verification_evidence (
   id             INTEGER PRIMARY KEY AUTOINCREMENT,
   task_id        INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
   artifact_id    INTEGER NOT NULL REFERENCES artifacts(id) ON DELETE CASCADE,
-  outcome        TEXT NOT NULL CHECK (outcome IN ('passed','failed')),
+  outcome        TEXT NOT NULL CHECK (outcome IN ('passed','failed','unknown','error')),
   evidence       TEXT NOT NULL,
   content_hash   TEXT,
   recorded_by    TEXT,
+  provider       TEXT,
   created_at     TEXT NOT NULL DEFAULT (datetime('now')),
   UNIQUE (task_id, artifact_id, content_hash)
 );

@@ -483,3 +483,128 @@ test('project export/import 1.4 preserves repository bindings and typed task fie
   assert.ok(generated);
   assert.ok(importedTasks.some(t => t.id === generated.generated_from_task_id));
 });
+
+// ============================================================================
+// REQ-008 — CGAD 4-valued guard verdict (passed/failed/unknown/error).
+// Only 'passed' admits a transition; 'unknown' and 'error' are denials per
+// CGAD P14 (deny-by-default). 'error' additionally signals an Incident.
+// ============================================================================
+
+test('REQ-008: outcome unknown is accepted by verification_record but does NOT create verified_by trace', () => {
+  const product = projects.project_create({ name: 'R008 Unknown Product' });
+  const epic = epics.epic_create({ project_id: product.id, name: 'REQ-r008-unknown' });
+  const ac = artifacts.artifact_create({
+    project_id: product.id, epic_id: epic.id, type: 'AC', code: 'AC-U',
+    title: 'Unknown criterion', path: 'docs/r008-u.md', status: 'accepted', content_hash: 'u-hash',
+  });
+  const verify = tasks.task_create({
+    epic_id: epic.id, title: 'Verify AC-U', task_kind: 'verification.ac',
+    workflow_stage: 'verification', execution_mode: 'read_only_evidence',
+  });
+  dispatcher.worker_next({ project_id: product.id, worker_id: 'verifier-u' });
+  // UNKNOWN must be storable (caller reports insufficient inputs).
+  lifecycle.verification_record({
+    task_id: verify.id, artifact_id: ac.id, outcome: 'unknown',
+    evidence: 'test runner could not load fixture', recorded_by: 'verifier-u',
+    provider: 'test_runner',
+  });
+  const evidence = getDb().prepare(
+    'SELECT outcome, provider FROM verification_evidence WHERE task_id=? AND artifact_id=?',
+  ).get(verify.id, ac.id);
+  assert.equal(evidence.outcome, 'unknown');
+  assert.equal(evidence.provider, 'test_runner');
+  // Critical: NO verified_by trace created (only 'passed' creates one).
+  assert.equal(artifacts.trace_list({
+    source_id: ac.id, target_type: 'task', target_id: verify.id, link_type: 'verified_by',
+  }).count, 0);
+});
+
+test('REQ-008: outcome error is accepted and does NOT admit the integration gate', () => {
+  const product = projects.project_create({ name: 'R008 Error Product' });
+  const epic = epics.epic_create({ project_id: product.id, name: 'REQ-r008-error' });
+  const ac = artifacts.artifact_create({
+    project_id: product.id, epic_id: epic.id, type: 'AC', code: 'AC-E',
+    title: 'Error criterion', path: 'docs/r008-e.md', status: 'accepted', content_hash: 'e-hash',
+  });
+  const verify = tasks.task_create({
+    epic_id: epic.id, title: 'Verify AC-E', task_kind: 'verification.ac',
+    workflow_stage: 'verification', execution_mode: 'read_only_evidence',
+  });
+  dispatcher.worker_next({ project_id: product.id, worker_id: 'verifier-e' });
+  lifecycle.verification_record({
+    task_id: verify.id, artifact_id: ac.id, outcome: 'error',
+    evidence: 'provider crashed: TypeError during run', recorded_by: 'verifier-e',
+    provider: 'test_runner',
+  });
+  // ERROR evidence must not satisfy assertVerificationPassed — the gate that
+  // guards verification -> integration. We confirm by checking that no
+  // verified_by trace was created (the gate's precondition).
+  assert.equal(artifacts.trace_list({
+    source_id: ac.id, target_type: 'task', target_id: verify.id, link_type: 'verified_by',
+  }).count, 0);
+});
+
+test('REQ-008: invalid outcome literal is rejected with explicit error', () => {
+  const product = projects.project_create({ name: 'R008 Invalid Product' });
+  const epic = epics.epic_create({ project_id: product.id, name: 'REQ-r008-invalid' });
+  const ac = artifacts.artifact_create({
+    project_id: product.id, epic_id: epic.id, type: 'AC', code: 'AC-I',
+    title: 'Invalid criterion', path: 'docs/r008-i.md', status: 'accepted', content_hash: 'i-hash',
+  });
+  const verify = tasks.task_create({
+    epic_id: epic.id, title: 'Verify AC-I', task_kind: 'verification.ac',
+    workflow_stage: 'verification', execution_mode: 'read_only_evidence',
+  });
+  dispatcher.worker_next({ project_id: product.id, worker_id: 'verifier-i' });
+  assert.throws(
+    () => lifecycle.verification_record({
+      task_id: verify.id, artifact_id: ac.id, outcome: 'maybe',
+      evidence: 'x', recorded_by: 'verifier-i',
+    }),
+    /Invalid verification outcome 'maybe' \(expected passed\/failed\/unknown\/error\)/,
+  );
+});
+
+test('REQ-008: outcome failed blocks verified_by (regression — failed was already supported)', () => {
+  const product = projects.project_create({ name: 'R008 Failed Product' });
+  const epic = epics.epic_create({ project_id: product.id, name: 'REQ-r008-failed' });
+  const ac = artifacts.artifact_create({
+    project_id: product.id, epic_id: epic.id, type: 'AC', code: 'AC-F',
+    title: 'Failed criterion', path: 'docs/r008-f.md', status: 'accepted', content_hash: 'f-hash',
+  });
+  const verify = tasks.task_create({
+    epic_id: epic.id, title: 'Verify AC-F', task_kind: 'verification.ac',
+    workflow_stage: 'verification', execution_mode: 'read_only_evidence',
+  });
+  dispatcher.worker_next({ project_id: product.id, worker_id: 'verifier-f' });
+  lifecycle.verification_record({
+    task_id: verify.id, artifact_id: ac.id, outcome: 'failed',
+    evidence: 'test assertions did not match', recorded_by: 'verifier-f',
+  });
+  assert.equal(artifacts.trace_list({
+    source_id: ac.id, target_type: 'task', target_id: verify.id, link_type: 'verified_by',
+  }).count, 0, 'failed outcome must not create verified_by');
+});
+
+test('REQ-008: provider column is optional and defaults to NULL for backward compatibility', () => {
+  const product = projects.project_create({ name: 'R008 NoProvider Product' });
+  const epic = epics.epic_create({ project_id: product.id, name: 'REQ-r008-noprovider' });
+  const ac = artifacts.artifact_create({
+    project_id: product.id, epic_id: epic.id, type: 'AC', code: 'AC-NP',
+    title: 'No-provider criterion', path: 'docs/r008-np.md', status: 'accepted', content_hash: 'np-hash',
+  });
+  const verify = tasks.task_create({
+    epic_id: epic.id, title: 'Verify AC-NP', task_kind: 'verification.ac',
+    workflow_stage: 'verification', execution_mode: 'read_only_evidence',
+  });
+  dispatcher.worker_next({ project_id: product.id, worker_id: 'verifier-np' });
+  // No provider passed — backward-compatible with existing callers.
+  lifecycle.verification_record({
+    task_id: verify.id, artifact_id: ac.id, outcome: 'passed',
+    evidence: 'ok', recorded_by: 'verifier-np',
+  });
+  const evidence = getDb().prepare(
+    'SELECT provider FROM verification_evidence WHERE task_id=? AND artifact_id=?',
+  ).get(verify.id, ac.id);
+  assert.equal(evidence.provider, null);
+});

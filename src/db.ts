@@ -41,6 +41,7 @@ export function getDb(): Database.Database {
   try { db.exec('ALTER TABLE artifacts ADD COLUMN accepted_hash TEXT'); } catch { /* column already exists */ }
   try { db.exec("ALTER TABLE artifacts ADD COLUMN drift_state TEXT NOT NULL DEFAULT 'unknown' CHECK (drift_state IN ('unknown','clean','drifted'))"); } catch { /* column already exists */ }
   migrateArtifactTypes(db);
+  migrateVerificationOutcome(db);
   try { db.exec('CREATE INDEX IF NOT EXISTS idx_epics_branch ON epics(branch)'); } catch { /* index already exists */ }
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_project_repositories_project ON project_repositories(project_id, status);
@@ -225,4 +226,57 @@ function migrateArtifactTypes(db: Database.Database): void {
   }
   const violation = db.prepare('PRAGMA foreign_key_check').get();
   if (violation) throw new Error(`Migration artifact types produced foreign key violations`);
+}
+
+// REQ-008 — widen verification_evidence.outcome CHECK to CGAD's 4-valued guard
+// verdict (passed/failed/unknown/error) and add a nullable `provider` column.
+// SQLite cannot ALTER a column's CHECK in place, so we rebuild the table when
+// the existing CHECK lacks 'unknown'. Existing rows are preserved verbatim
+// (their outcome is already in {passed, failed} which is a subset of the new
+// enum). Idempotent: if the new CHECK is already in place, returns immediately.
+function migrateVerificationOutcome(db: Database.Database): void {
+  const row = db.prepare(
+    "SELECT sql FROM sqlite_schema WHERE type='table' AND name='verification_evidence'",
+  ).get() as { sql: string } | undefined;
+  if (!row?.sql) return; // table doesn't exist yet — SCHEMA_SQL will create it correctly.
+  if (row.sql.includes("'unknown'")) return; // already migrated.
+
+  db.pragma('foreign_keys = OFF');
+  try {
+    db.exec('BEGIN IMMEDIATE');
+    db.exec(`
+      CREATE TABLE verification_evidence_new (
+        id             INTEGER PRIMARY KEY AUTOINCREMENT,
+        task_id        INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+        artifact_id    INTEGER NOT NULL REFERENCES artifacts(id) ON DELETE CASCADE,
+        outcome        TEXT NOT NULL CHECK (outcome IN ('passed','failed','unknown','error')),
+        evidence       TEXT NOT NULL,
+        content_hash   TEXT,
+        recorded_by    TEXT,
+        provider       TEXT,
+        created_at     TEXT NOT NULL DEFAULT (datetime('now')),
+        UNIQUE (task_id, artifact_id, content_hash)
+      )
+    `);
+    // Preserve every existing row; existing outcomes are {passed, failed} ⊂ new enum.
+    // provider is NULL for legacy rows — REQ-008 leaves backfill to callers.
+    db.exec(`
+      INSERT INTO verification_evidence_new
+        (id, task_id, artifact_id, outcome, evidence, content_hash, recorded_by, created_at)
+      SELECT id, task_id, artifact_id, outcome, evidence, content_hash, recorded_by, created_at
+      FROM verification_evidence
+    `);
+    db.exec('DROP TABLE verification_evidence');
+    db.exec('ALTER TABLE verification_evidence_new RENAME TO verification_evidence');
+    // Recreate indexes (IF NOT EXISTS — they were dropped with the table).
+    db.exec('CREATE INDEX IF NOT EXISTS idx_verification_evidence_artifact ON verification_evidence(artifact_id, outcome)');
+    db.exec('COMMIT');
+  } catch (error) {
+    try { db.exec('ROLLBACK'); } catch { /* no active transaction */ }
+    throw new Error(`Migration verification_evidence outcome widen failed: ${(error as Error).message}`);
+  } finally {
+    db.pragma('foreign_keys = ON');
+  }
+  const violation = db.prepare('PRAGMA foreign_key_check').get();
+  if (violation) throw new Error(`Migration verification_evidence produced foreign key violations`);
 }
