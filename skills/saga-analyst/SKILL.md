@@ -57,11 +57,22 @@ the source of a dev task's DoD.
 
 ## Producing acceptance criteria (03-acceptance-criteria.md)
 
-1. Read PRD + SRS (FRs/NFRs) + UC.
+1. Read PRD + SRS (FRs/NFRs) + UC. Also read SRS §2.3 (Invariant Registry) —
+   every invariant the architect declared MUST have at least one AC that
+   verifies it.
 2. Copy `docs/requirements/templates/acceptance-criteria.md` → `...03-acceptance-criteria.md`.
 3. Write each AC in **Given/When/Then** form, verifiable. Number them (AC-N).
-4. Build the traceability matrix in the doc (AC ↔ UC ↔ FR).
-5. Register artifacts and links:
+4. **For algorithmic ACs** (formulas, calculations, invariants): include a
+   `properties` block (YAML fenced code). This is contract-as-data — the
+   Verifier generates L3 property tests from it, independently of the
+   Builder's L2 example tests. Without `properties`, the AC is incomplete
+   for algorithmic logic. Derive properties from the SRS Invariant Registry:
+   - monotonicity (if X increases, Y must not decrease)
+   - positivity / bounds (result >= 0, result <= limit)
+   - identity (at zero/neutral input, output = input)
+   - idempotency (applying twice = applying once)
+5. Build the traceability matrix in the doc (AC ↔ UC ↔ FR ↔ test layer L0-L4).
+6. Register artifacts and links:
    ```
    for each AC-N:
      ac_id = artifact_create({ project_id, epic_id, type:'AC', code:'AC-1',
@@ -87,6 +98,13 @@ which ACs are still un-implemented.
 
 - ACs must be **verifiable** — Given/When/Then, with an observable outcome and a
   concrete check (unit/integration/manual). "Works correctly" is not an AC.
+- **Algorithmic ACs MUST include a `properties` block** (YAML). Without it, the
+  Verifier has no contract to generate independent L3 property tests from, and
+  falls back to re-running the Builder's L2 examples — which is not independent
+  verification (CGAD P7). Properties: monotonicity, positivity, identity,
+  idempotency — derived from the SRS Invariant Registry.
+- **Every SRS invariant MUST have at least one AC** that verifies it. If the
+  architect declared an invariant in §2.3 and no AC covers it, that's a gap.
 - Every AC traces to at least one FR (else it's an orphan — fix or drop it).
 - Every UC traces (covers) to at least one FR.
 - Don't write code, don't pick stack — that's saga-architect / builders.
