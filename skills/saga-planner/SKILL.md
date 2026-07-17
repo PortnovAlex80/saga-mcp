@@ -291,3 +291,13 @@ artifact_coverage(type:'AC', link_type:'verified_by') → 0 gaps  ← содер
 Solo-worker review dev-задачи APPROVE'ит по «тесты green». AC-verification
 задача — **отдельная**, после review всех dev-задач, перед INTEGRATE. Она
 сверяет содержательно, а не «тесты green». Это закрывает Sign 006.
+
+### Routing: saga-verifier for L3 property tests
+
+When a verification.ac task needs **L3 property tests** generated independently
+from the frozen AC contract (CGAD §9 — monotonicity, positivity, identity,
+idempotency), set `execution_skill: 'saga-verifier'` instead of `saga-worker`.
+The Verifier reads the AC's YAML properties block, generates its own tests in
+`tests/verifier/`, and records L3 evidence — it never re-runs the Builder's L2
+tests. Use `saga-worker` only for L2 re-run verification (when the AC has no
+properties block, or when only an etalon re-run is meaningful).
