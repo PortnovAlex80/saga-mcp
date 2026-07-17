@@ -127,6 +127,15 @@ each worker independently invents the shared structure (API contract, module
 layout). The conflict is NOT a worker failure; it's a planning failure. Two
 patterns prevent it. Pick based on how much the ACs share:
 
+> **⚠ CGAD-R4 enforcement (REQ-013 / ADR-006).** The cgad-spec-lint rule CGAD-R4
+> now fails episodes reaching `development` with ≥2 parallel `git_change` tasks
+> on a greenfield repository when no scaffold task exists. If your episode is
+> greenfield (no prior merged tasks in the `project_repository`) and ≥2 body
+> tasks share a module, you MUST pick Pattern B below — the lint will block the
+> episode_transition to `development` otherwise. To waive with justification,
+> tag every body task `['cgad-r4-waived']` AND document the reason in a comment
+> on the planning task. Waivers are audited.
+
 ### Pattern A — Sequence (small overlap: 2-3 ACs share one file)
 
 If ACs share a file but are few, chain them with `depends_on`. Each task
@@ -149,6 +158,8 @@ For larger overlap, separate the **shared structure** from the **per-AC bodies**
    The SRS's API contract section (which saga-architect MUST produce for any
    module touched by >1 parallel task) is the source. This task must reach
    `done` before the body tasks start (they `depends_on` it).
+   **Tag the scaffold task** `['scaffold']` and/or prefix its title with
+   `SCAFFOLD:` — cgad-spec-lint R4 looks for both markers.
 2. **Body tasks** (one per AC, all parallel, all `depends_on` the scaffold):
    each worker fills ONE function/body. Because the scaffold fixed the API,
    workers don't invent the structure — they implement inside it. Different
