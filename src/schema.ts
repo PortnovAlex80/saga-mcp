@@ -234,6 +234,31 @@ CREATE TABLE IF NOT EXISTS artifacts (
   updated_at          TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- REQ-011 — CGAD §4 third truth axis + §17 Runtime Observation Store.
+-- Immutable observations of actual runtime/integration behaviour. Distinct
+-- from verification_evidence (which is test-runner output against the AC
+-- baseline) and from artifacts.accepted_hash (the Declared oracle).
+-- CGAD P17: runtime observation CANNOT mutate the acceptance oracle. This
+-- table is append-only by convention — there is no UPDATE path in the tools.
+-- Linkage to artifacts/tasks is optional: a free-floating observation (e.g.
+-- "prod error rate spike 2026-07-17") may have no task yet.
+CREATE TABLE IF NOT EXISTS runtime_observations (
+  id               INTEGER PRIMARY KEY AUTOINCREMENT,
+  epic_id          INTEGER REFERENCES epics(id) ON DELETE CASCADE,
+  task_id          INTEGER REFERENCES tasks(id) ON DELETE SET NULL,
+  artifact_id      INTEGER REFERENCES artifacts(id) ON DELETE SET NULL,
+  observation_type TEXT NOT NULL CHECK (observation_type IN (
+                       'benchmark','canary','shadow','incident',
+                       'runtime_metric','integration_output','other')),
+  observed_value   TEXT NOT NULL,
+  baseline_value   TEXT,
+  observed_at      TEXT NOT NULL DEFAULT (datetime('now')),
+  content_hash     TEXT,
+  observed_by      TEXT,
+  metadata         TEXT NOT NULL DEFAULT '{}',
+  created_at       TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 -- A planned verification task is not proof. Evidence is an immutable,
 -- independently queryable result linked to both the verification task and AC.
 -- outcome uses CGAD's 4-valued guard verdict (REQ-008):
@@ -293,6 +318,10 @@ CREATE INDEX IF NOT EXISTS idx_artifacts_status ON artifacts(status);
 CREATE INDEX IF NOT EXISTS idx_artifacts_parent ON artifacts(parent_artifact_id);
 CREATE INDEX IF NOT EXISTS idx_artifacts_code ON artifacts(code);
 CREATE INDEX IF NOT EXISTS idx_verification_evidence_artifact ON verification_evidence(artifact_id, outcome);
+CREATE INDEX IF NOT EXISTS idx_runtime_observations_epic ON runtime_observations(epic_id);
+CREATE INDEX IF NOT EXISTS idx_runtime_observations_task ON runtime_observations(task_id);
+CREATE INDEX IF NOT EXISTS idx_runtime_observations_artifact ON runtime_observations(artifact_id);
+CREATE INDEX IF NOT EXISTS idx_runtime_observations_type ON runtime_observations(observation_type);
 CREATE INDEX IF NOT EXISTS idx_traces_source ON artifact_traces(source_id);
 CREATE INDEX IF NOT EXISTS idx_traces_target ON artifact_traces(target_type, target_id);
 CREATE INDEX IF NOT EXISTS idx_traces_link ON artifact_traces(link_type);
