@@ -171,8 +171,23 @@ VERIFY:
   artifact_coverage(type:'AC', link_type:'implements')  → 0 gaps (структурно)
   tasks созданы с depends_on (Pattern A/B)
   AC-verification задачи созданы (tags: ac-verification)
+
+  # REQ-010 — semantic conflict detection (после planner, до development)
+  for each dev task: conflict_keys_auto_derive({task_id})
+  conflict_check({epic_id})  → collision_count должен быть 0, либо каждый
+                                collision разрулен (scaffold / depends_on /
+                                scope split). R5 в lint потом это проверит.
 CALL: episode_transition({epic_id,to_stage:"development"})
 ```
+
+> **REQ-013 / CGAD-R4.** Если эпизод greenfield с ≥2 параллельными
+> dev-задачами, разделяющими модуль, и нет scaffold-задачи — R4 заблокирует
+> переход в development. Planner должен использовать Pattern B. См.
+> saga-planner SKILL.md «Pattern B».
+
+> **REQ-010 / CGAD-R5.** Если ≥2 активные задачи делят conflict-key —
+> collision обнаруживается здесь, до запуска воркеров. 3+ коллизующихся
+> задач или любая коллизия с ≥2 in-flight → error (scaffold обязателен).
 
 ### Этап 6 — Execution (рой saga-worker через saga-dispatch)
 
@@ -215,12 +230,32 @@ CALL: episode_transition({epic_id,to_stage:"completed"})
 Discovery:    brief (artifact N), decision=go
 Formalization: PRD(N) → SRS(N) + 5 FR + 3 NFR + UC(N) → AC(N)
 Planning:     N dev-задач (Pattern X), 0 coverage gaps
+              conflict_check: 0 collisions (или N разруленных вручную)
+              final_risk: max(declared, derived, policy) per task
 Execution:    N задач done, 0 конфликтов
-AC-verify:    all verified_by пройдены
+AC-verify:    all verified_by пройдены (4-valued: passed, иначе unknown/error блокирует)
+Integration:  merged в dev
+Runtime obs:  (если есть) observation_record benchmark/canary/incident
 Product:      <путь/URL> — working
 
 Аудит: artifact_get(AC-id) → полная цепочка до brief
+       cgad-spec-lint v1.0: 12 rules, 0 error-severity findings на этом эпизоде
 ```
+
+### REQ-009 — RiskClass aware orchestration
+
+`task_create` и `task_update` автоматически вычисляют `final_risk = max(declared,
+derived, policy_minimum)`. Оркестратору не нужно ничего считать — но нужно:
+
+1. **Не понижать risk чтобы пропустить проверки.** CGAD P15. Если задача
+   security-tagged, её `final_risk` автоматически поднимется до critical;
+   попытка поставить `declared_risk='low'` не поможет (max() всё равно
+   даст critical). Lint R2 это ловит.
+2. **Human gate на critical.** Если episode достиг стадии development с
+   critical-risk задачей без human approval — это блокер. Подними вопрос
+   пользователю до запуска роя.
+3. **High-blast-radius задачи** (data, migration, public API) получают
+   `derived_risk='high'` автоматически через теги или task_kind.
 
 ## Правила оркестратора (GUARDRAILS)
 

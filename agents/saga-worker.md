@@ -22,6 +22,11 @@ tools:
   - mcp__saga__task_get
   - mcp__saga__task_list
   - mcp__saga__comment_add
+  # REQ-008 — 4-valued guard verdict for AC-verification tasks
+  - mcp__saga__verification_record
+  # REQ-011 — Runtime Observation Store (3rd truth axis, CGAD §17)
+  - mcp__saga__observation_record
+  - mcp__saga__observation_list
 ---
 
 Ты — универсальный воркер saga. Тебя вызывает оркестратор; ты обрабатываешь

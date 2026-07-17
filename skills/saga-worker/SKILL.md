@@ -292,6 +292,31 @@ Verify it — you did NOT write this code. Diff the branch (see WORKTREE LIFECYC
      got <фактически> (test: <file>:<line>) — dev-задача должна быть возвращена".
 6. Если тест, на который ссылается AC, не найден → это тоже FAIL: AC не покрыт.
 
+### REQ-008 — 4-valued guard verdict для verification_record
+
+Когда записываешь evidence через `verification_record`, выбирай `outcome` по
+четырёхзначной шкале CGAD §7 (не бинарь passed/failed):
+
+| outcome | Когда ставить | Provider field |
+|---|---|---|
+| `passed` | Deterministic test подтвердил AC. **Только** этот outcome создаёт `verified_by` trace и пропускает transition. | `provider: 'test_runner'` (или имя реального runner'а: `cargo test`, `node --test`, и т.д.) |
+| `failed` | Deterministic test ОПРОГЕРЖИРОВАЛ AC (запустился, но assertion не совпал). Блокирует transition. | `provider: 'test_runner'` |
+| `unknown` | Входов недостаточно для verdict: нет fixture, нет эталона, AC сформулирован неоднозначно. Deny-by-default (CGAD P14). Блокирует transition. | `provider` обязателен — кто сообщил о нехватке входов (например `'human'`, `'test_runner'`). |
+| `error` | Provider упал (TypeError в тесте, runner не запустился, fixture не подгрузилась). Блокирует transition **И** создаёт Incident — человек должен разобраться. | `provider` обязателен — что именно упало. |
+
+`provider` поле опциональное в schema, но **обязательно по CGAD §6** для
+новых evidence. CGAD-R1 в lint flag'ает missing provider.legacy data без
+provider будет Backfill'иться постепенно.
+
+**Критично: не подменяй `unknown` на `failed`.** Unknown = "я не смог
+проверить" (deny), failed = "я проверил, не сошлось" (deny + конкретная
+причина). Рефлексивно ставить failed когда не хватило входов — это
+легитимация отсутствия проверки как «проверка не прошла».
+
+Для `error`-исходов обязательно поднять Incident: либо комментарий на задаче
+с тегом `incident`, либо `observation_record({observation_type:'incident',
+observed_value:'…'})`. CGAD P8 требует visibility.
+
 **Важно:** AC-verification задача не пишет код, не меняет тесты. Она только
 **проверяет** соответствие. Если FAIL — возвращается dev-задача (через её
 `changes_requested`), а не AC-verification задача.
