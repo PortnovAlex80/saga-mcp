@@ -359,7 +359,15 @@ function handleTaskCreate(args: Record<string, unknown>) {
   );
   const provenanceRequired = episodeInitialized
     && ['development', 'verification', 'integration'].includes(workflowStage ?? '');
-  if (provenanceRequired && generatedFromTaskId == null && sourceArtifactIds.length === 0) {
+  // Scaffold is infrastructure that materializes stubs for ALL accepted ACs in the
+  // episode — it is not a per-AC implementation, so it is exempt from the per-AC
+  // provenance gate. A scaffold CAN still carry source_artifact_ids if the caller
+  // provides them (backward compatible), in which case they are validated below.
+  const isInfrastructureScaffold = taskKind === 'development.scaffold';
+  if (
+    provenanceRequired && !isInfrastructureScaffold
+    && generatedFromTaskId == null && sourceArtifactIds.length === 0
+  ) {
     throw new Error(
       `Typed ${workflowStage} task requires generated_from_task_id or source_artifact_ids`,
     );

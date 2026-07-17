@@ -375,6 +375,39 @@ test('initialized episodes enforce downstream provenance and auto-advance ready 
   assert.equal(lifecycle.episode_status({ epic_id: epic.id }).workflow.stage, 'development');
 });
 
+test('development.scaffold is exempt from per-AC provenance gate (infrastructure)', () => {
+  const product = projects.project_create({ name: 'Scaffold Provenance Product' });
+  const epic = epics.epic_create({ project_id: product.id, name: 'REQ-scaffold-provenance' });
+  lifecycle.episode_status({ epic_id: epic.id });
+  lifecycle.episode_transition({ epic_id: epic.id, to_stage: 'formalization' });
+  artifacts.artifact_create({
+    project_id: product.id, epic_id: epic.id, type: 'AC', code: 'AC-S',
+    title: 'Scaffold criterion', path: 'ac-s.md', status: 'accepted', content_hash: 's-hash',
+  });
+  lifecycle.episode_transition({ epic_id: epic.id, to_stage: 'planning' });
+  tasks.task_create({
+    epic_id: epic.id, title: 'Plan', status: 'done',
+    task_kind: 'planning.decomposition', workflow_stage: 'planning',
+    execution_mode: 'tracker_only',
+  });
+  // Scaffold is infrastructure that materializes stubs for ALL ACs — no
+  // source_artifact_ids required. It must SUCCEED even though it's a typed
+  // development task with empty provenance.
+  const scaffold = tasks.task_create({
+    epic_id: epic.id, title: 'Scaffold stubs', task_kind: 'development.scaffold',
+    workflow_stage: 'development',
+  });
+  assert.ok(scaffold.id, 'scaffold task should be created without source_artifact_ids');
+  // The gate is still enforced for non-scaffold development tasks.
+  assert.throws(
+    () => tasks.task_create({
+      epic_id: epic.id, title: 'Untraced code', task_kind: 'development.code',
+      workflow_stage: 'development',
+    }),
+    /requires generated_from_task_id or source_artifact_ids/,
+  );
+});
+
 test('verified_by is backed by immutable passing evidence for the accepted AC revision', () => {
   const product = projects.project_create({ name: 'Evidence Product' });
   const epic = epics.epic_create({ project_id: product.id, name: 'REQ-evidence' });
