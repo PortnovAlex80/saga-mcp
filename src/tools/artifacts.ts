@@ -160,6 +160,26 @@ function handleArtifactCreate(args: Record<string, unknown>): Artifact {
     artifactId = info.lastInsertRowid as number;
   }
 
+  // After the row lands, treat the file on disk as the source of truth for
+  // content_hash and drift_state. This does three things the inline pre-insert
+  // computation cannot:
+  //   1. Bug-2 fix: when the caller omitted content_hash, the SHA-256 of the
+  //      file at `path` (resolved against project_repository_id) is computed
+  //      and stamped. artifactDiskHash inside refreshArtifactHash already does
+  //      exactly this read+hash+update.
+  //   2. Bug-1 fix: when status==='accepted', the inline block above set
+  //      accepted_hash = contentHash and drift_state='clean'. refreshArtifactHash
+  //      re-reads the disk hash and confirms it matches accepted_hash, leaving
+  //      drift_state='clean' (or flipping to 'drifted' if the file was mutated
+  //      between the inline read and now — a defensive no-op in practice).
+  //   3. Point-3: every artifact with a path that resolves to a real file gets
+  //      its hash reconciled with the disk, regardless of caller-supplied
+  //      content_hash. If there is no resolvable file, the function is a no-op
+  //      and the inline values stand.
+  if (path) {
+    refreshArtifactHash(db, artifactId);
+  }
+
   const artifact = db.prepare('SELECT * FROM artifacts WHERE id=?').get(artifactId) as Artifact;
   logActivity(db, 'artifact', artifact.id, updatedExisting ? 'updated' : 'created', null, null, type,
     `Artifact ${artifact.type}${code ? ` ${code}` : ''} '${title}' ${updatedExisting ? 'updated (upsert)' : 'created'}`);
