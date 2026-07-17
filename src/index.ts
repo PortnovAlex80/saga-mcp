@@ -28,6 +28,7 @@ import { definitions as repositoryDefs, handlers as repositoryHandlers } from '.
 import { definitions as workflowDefs, handlers as workflowHandlers } from './tools/workflow.js';
 import { definitions as lifecycleDefs, handlers as lifecycleHandlers } from './tools/lifecycle.js';
 import { definitions as observationDefs, handlers as observationHandlers } from './tools/observations.js';
+import { definitions as conflictDefs, handlers as conflictHandlers } from './tools/conflicts.js';
 import { closeDb } from './db.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -51,6 +52,7 @@ const ALL_TOOLS: Tool[] = [
   ...workflowDefs,
   ...lifecycleDefs,
   ...observationDefs,
+  ...conflictDefs,
 ];
 
 const ALL_HANDLERS: Record<string, (args: Record<string, unknown>) => unknown> = {
@@ -71,6 +73,7 @@ const ALL_HANDLERS: Record<string, (args: Record<string, unknown>) => unknown> =
   ...workflowHandlers,
   ...lifecycleHandlers,
   ...observationHandlers,
+  ...conflictHandlers,
 };
 
 const server = new Server(

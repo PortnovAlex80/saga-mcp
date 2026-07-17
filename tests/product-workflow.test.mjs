@@ -837,3 +837,163 @@ test('REQ-011: incident observation with no task/artifact (free-floating)', () =
   assert.equal(obs.task_id, null);
   assert.equal(obs.artifact_id, null);
 });
+
+// ============================================================================
+// REQ-010 — CGAD §7 Phase 7 Semantic Conflict Model.
+// Typed conflict keys detect SEMANTIC overlap at planning time, before any
+// worker starts. CGAD §22 §34: git conflict must not be the only detector.
+// ============================================================================
+
+const { handlers: conflicts } = await import('../dist/tools/conflicts.js');
+
+test('REQ-010: conflict_keys_set tags a task with file_path key', () => {
+  const product = projects.project_create({ name: 'R010 Set Product' });
+  const epic = epics.epic_create({ project_id: product.id, name: 'REQ-r010-set' });
+  const task = tasks.task_create({ epic_id: epic.id, title: 't' });
+  const result = conflicts.conflict_keys_set({
+    task_id: task.id,
+    keys: [
+      { key_type: 'file_path', key_value: 'src/calc.ts' },
+      { key_type: 'schema', key_value: 'tasks.priority enum' },
+    ],
+  });
+  assert.equal(result.added, 2);
+  const list = conflicts.conflict_keys_list({ task_id: task.id });
+  assert.equal(list.keys.length, 2);
+});
+
+test('REQ-010: conflict_keys_set rejects invalid key_type', () => {
+  const product = projects.project_create({ name: 'R010 Invalid Product' });
+  const epic = epics.epic_create({ project_id: product.id, name: 'REQ-r010-invalid' });
+  const task = tasks.task_create({ epic_id: epic.id, title: 't' });
+  assert.throws(
+    () => conflicts.conflict_keys_set({
+      task_id: task.id,
+      keys: [{ key_type: 'vibe', key_value: 'whatever' }],
+    }),
+    /Invalid key_type 'vibe'/,
+  );
+});
+
+test('REQ-010: conflict_check detects two ACTIVE tasks sharing file_path', () => {
+  const product = projects.project_create({ name: 'R010 Collide Product' });
+  const epic = epics.epic_create({ project_id: product.id, name: 'REQ-r010-collide' });
+  const t1 = tasks.task_create({ epic_id: epic.id, title: 't1', status: 'todo' });
+  const t2 = tasks.task_create({ epic_id: epic.id, title: 't2', status: 'todo' });
+  const t3 = tasks.task_create({ epic_id: epic.id, title: 't3', status: 'todo' });
+  conflicts.conflict_keys_set({
+    task_id: t1.id,
+    keys: [{ key_type: 'file_path', key_value: 'src/shared.ts' }],
+  });
+  conflicts.conflict_keys_set({
+    task_id: t2.id,
+    keys: [{ key_type: 'file_path', key_value: 'src/shared.ts' }],
+  });
+  conflicts.conflict_keys_set({
+    task_id: t3.id,
+    keys: [{ key_type: 'file_path', key_value: 'src/other.ts' }],
+  });
+  const result = conflicts.conflict_check({ epic_id: epic.id });
+  assert.equal(result.collision_count, 1);
+  assert.deepEqual(result.collisions[0].task_ids.sort((a, b) => a - b), [t1.id, t2.id]);
+  assert.equal(result.collisions[0].key_type, 'file_path');
+  assert.equal(result.collisions[0].key_value, 'src/shared.ts');
+});
+
+test('REQ-010: conflict_check EXCLUDES done tasks from collision set', () => {
+  const product = projects.project_create({ name: 'R010 Done Product' });
+  const epic = epics.epic_create({ project_id: product.id, name: 'REQ-r010-done' });
+  // Use SAGA_ALLOW_MANUAL_STATUS to set status directly for test setup.
+  process.env.SAGA_ALLOW_MANUAL_STATUS = '1';
+  const t1 = tasks.task_create({ epic_id: epic.id, title: 't1', status: 'todo' });
+  const t2 = tasks.task_create({ epic_id: epic.id, title: 't2', status: 'done' });
+  delete process.env.SAGA_ALLOW_MANUAL_STATUS;
+  conflicts.conflict_keys_set({
+    task_id: t1.id,
+    keys: [{ key_type: 'schema', key_value: 'public API X' }],
+  });
+  conflicts.conflict_keys_set({
+    task_id: t2.id,
+    keys: [{ key_type: 'schema', key_value: 'public API X' }],
+  });
+  const result = conflicts.conflict_check({ epic_id: epic.id });
+  assert.equal(result.collision_count, 0, 'done task does not collide with active');
+});
+
+test('REQ-010: conflict_check works on repository scope, not just epic', () => {
+  const product = projects.project_create({ name: 'R010 Repo Product' });
+  const epic = epics.epic_create({ project_id: product.id, name: 'REQ-r010-repo' });
+  const repo = repositories.repository_register({ project_id: product.id, name: 'r010-repo' });
+  const binding = repositories.repository_register({
+    project_id: product.id, repository_id: repo.repository_id, name: 'r010-repo',
+  });
+  const t1 = tasks.task_create({
+    epic_id: epic.id, title: 't1', project_repository_id: binding.id,
+  });
+  const t2 = tasks.task_create({
+    epic_id: epic.id, title: 't2', project_repository_id: binding.id,
+  });
+  conflicts.conflict_keys_set({
+    task_id: t1.id,
+    keys: [{ key_type: 'integration_branch', key_value: 'dev' }],
+  });
+  conflicts.conflict_keys_set({
+    task_id: t2.id,
+    keys: [{ key_type: 'integration_branch', key_value: 'dev' }],
+  });
+  const result = conflicts.conflict_check({ project_repository_id: binding.id });
+  assert.equal(result.collision_count, 1);
+});
+
+test('REQ-010: conflict_keys_auto_derive picks up source_ref and metadata.schema', () => {
+  const product = projects.project_create({ name: 'R010 Auto Product' });
+  const epic = epics.epic_create({ project_id: product.id, name: 'REQ-r010-auto' });
+  const task = tasks.task_create({
+    epic_id: epic.id, title: 't',
+    source_ref: { file: 'src/auto.ts', line_start: 10, line_end: 50 },
+    metadata: { schema: 'tasks.outcome enum', public_protocol: 'MCP tool signature' },
+  });
+  const result = conflicts.conflict_keys_auto_derive({ task_id: task.id });
+  assert.ok(result.added >= 3, `expected at least 3 derived keys, got ${result.added}`);
+  const list = conflicts.conflict_keys_list({ task_id: task.id });
+  const types = list.keys.map((k) => k.key_type).sort();
+  assert.ok(types.includes('file_path'));
+  assert.ok(types.includes('schema'));
+  assert.ok(types.includes('public_protocol'));
+});
+
+test('REQ-010: conflict_keys_clear removes all keys from a task', () => {
+  const product = projects.project_create({ name: 'R010 Clear Product' });
+  const epic = epics.epic_create({ project_id: product.id, name: 'REQ-r010-clear' });
+  const task = tasks.task_create({ epic_id: epic.id, title: 't' });
+  conflicts.conflict_keys_set({
+    task_id: task.id,
+    keys: [{ key_type: 'file_path', key_value: 'x' }],
+  });
+  const result = conflicts.conflict_keys_clear({ task_id: task.id });
+  assert.equal(result.removed, 1);
+  const list = conflicts.conflict_keys_list({ task_id: task.id });
+  assert.equal(list.keys.length, 0);
+});
+
+test('REQ-010: manual keys preserved across auto_derive (no overwrite)', () => {
+  const product = projects.project_create({ name: 'R010 Preserve Product' });
+  const epic = epics.epic_create({ project_id: product.id, name: 'REQ-r010-preserve' });
+  const task = tasks.task_create({
+    epic_id: epic.id, title: 't',
+    source_ref: { file: 'src/a.ts' },
+  });
+  // Manual key first.
+  conflicts.conflict_keys_set({
+    task_id: task.id,
+    keys: [{ key_type: 'file_path', key_value: 'MANUAL_PATH' }],
+  });
+  // Auto-derive — should ADD src/a.ts but NOT remove MANUAL_PATH.
+  conflicts.conflict_keys_auto_derive({ task_id: task.id });
+  const list = conflicts.conflict_keys_list({ task_id: task.id });
+  const filePaths = list.keys
+    .filter((k) => k.key_type === 'file_path')
+    .map((k) => k.key_value);
+  assert.ok(filePaths.includes('MANUAL_PATH'));
+  assert.ok(filePaths.includes('src/a.ts'));
+});
