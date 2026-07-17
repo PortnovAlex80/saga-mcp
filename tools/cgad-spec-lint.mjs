@@ -16,7 +16,7 @@ import process from "node:process";
 import { readFileSync, existsSync } from "node:fs";
 import path from "node:path";
 
-const LINTER_VERSION = "cgad-spec-lint/1.3.0";
+const LINTER_VERSION = "cgad-spec-lint/1.4.0";
 
 // ---------- CLI ----------
 
@@ -124,6 +124,13 @@ function usage() {
     "  CGAD-R16 Product cycle gap. Accepted 'hypothesis' artifact whose episode",
     "           has ZERO runtime observations. Product cycle incomplete — measure",
     "           the metric before declaring the hypothesis validated or refuted.",
+    "  CGAD-R17 AC references test fixture/framework names. Acceptance criteria",
+    "           are frozen contracts — FakeClock, stub, mock, pytest, Hypothesis",
+    "           belong in the Verifier skill or SPEC, not in the AC the Builder",
+    "           reads.",
+    "  CGAD-R18 NFR mixes determinism/reproducibility with real-clock timing.",
+    "           These are two concerns: (a) pure-core determinism (L3, FakeClock)",
+    "           and (b) real-clock reproducibility (L4, best-effort). Split.",
     "",
     "Exit codes:",
     "  0  no findings (or only warnings)",
@@ -1024,6 +1031,124 @@ function ruleR16(db, projectId) {
   return findings;
 }
 
+// R17 — AC references test fixture / test implementation names.
+// Acceptance criteria are contracts, not test plans. They must not name
+// FakeClock, stub, mock, test double, or any test-only artefact. That
+// information belongs in the Verifier skill or a SPEC, not in the AC
+// that the Builder reads as the frozen contract.
+function ruleR17(db, projectId) {
+  const pj = projectId !== undefined
+    ? `AND a.project_id = ${Number(projectId)}`
+    : '';
+  const findings = [];
+
+  let acRows;
+  try {
+    acRows = db.prepare(`
+      SELECT a.id AS ac_id, a.code, a.path, a.project_repository_id
+      FROM artifacts a
+      WHERE a.type = 'AC' AND a.status = 'accepted'
+      ${pj}`).all();
+  } catch {
+    return findings;
+  }
+
+  let repoPaths = [];
+  try {
+    repoPaths = db.prepare(
+      `SELECT pr.id AS repo_id, pr.local_path FROM project_repositories pr`
+    ).all().filter(r => r.local_path);
+  } catch { repoPaths = []; }
+  const repoById = new Map(repoPaths.map(r => [r.repo_id, r.local_path]));
+
+  const TEST_FIXTURE_PATTERNS = [
+    { label: 'test fixture name', regex: /\b(?:Fake[A-Z]\w*|Stub[A-Z]\w*|Mock[A-Z]\w*|TestDouble|fake_[a-z]|stub_[a-z]|mock_[a-z])\b/ },
+    { label: 'test framework reference in contract', regex: /\b(?:pytest\.|unittest\.|Hypothesis|hypothesis|QuickCheck|jest\.|describe\(|it\(|test\()\b/ },
+  ];
+
+  for (const ac of acRows) {
+    const resolved = resolveArtifactFile(ac, repoById, repoPaths);
+    if (!resolved) continue;
+    let body;
+    try { body = readFileSync(resolved, 'utf8'); } catch { continue; }
+
+    for (const p of TEST_FIXTURE_PATTERNS) {
+      const m = p.regex.exec(body);
+      if (m) {
+        findings.push({
+          rule: 'CGAD-R17',
+          severity: 'warning',
+          message: `accepted AC ${ac.code || '#' + ac.ac_id} references test fixture/framework: "${m[0]}" (${p.label}). AC is a frozen contract — test implementation details belong in the Verifier skill or SPEC, not in the AC the Builder reads.`,
+          location: `artifacts.id=${ac.ac_id}`,
+          provenance: `pattern=${p.label}, match=${m[0]}, file=${resolved}`,
+        });
+      }
+    }
+  }
+  return findings;
+}
+
+// R18 — NFR mixes pure-core and real-clock concerns.
+// Determinism / reproducibility NFRs often conflate two separate properties:
+// (a) pure-core determinism (testable at L3 with FakeClock — INV-6 territory)
+// (b) real-clock reproducibility (best-effort at L4 — wall-clock jitter breaks it)
+// This rule flags NFRs containing 'determinism' or 'reproducibility' or 'identical'
+// alongside clock/timing language, suggesting they should be split.
+function ruleR18(db, projectId) {
+  const pj = projectId !== undefined
+    ? `AND a.project_id = ${Number(projectId)}`
+    : '';
+  const findings = [];
+
+  let nfrRows;
+  try {
+    nfrRows = db.prepare(`
+      SELECT a.id AS nfr_id, a.code, a.path, a.project_repository_id
+      FROM artifacts a
+      WHERE a.type = 'NFR' AND a.status = 'accepted'
+      ${pj}`).all();
+  } catch {
+    return findings;
+  }
+
+  let repoPaths = [];
+  try {
+    repoPaths = db.prepare(
+      `SELECT pr.id AS repo_id, pr.local_path FROM project_repositories pr`
+    ).all().filter(r => r.local_path);
+  } catch { repoPaths = []; }
+  const repoById = new Map(repoPaths.map(r => [r.repo_id, r.local_path]));
+
+  const DETERMINISM_RE = /\b(?:determinis|reproducib|identical\s+(?:run|sequence|result))\b/i;
+  const CLOCK_RE = /\b(?:wall.?clock|real.?time|real.?clock|frame.?time|jitter|60\s*Hz|60\s*fps)\b/i;
+
+  for (const nfr of nfrRows) {
+    const resolved = resolveArtifactFile(nfr, repoById, repoPaths);
+    if (!resolved) continue;
+    let body;
+    try { body = readFileSync(resolved, 'utf8'); } catch { continue; }
+
+    // Read just the NFR's section (from code anchor to next code or EOF)
+    const sectionRegex = new RegExp(
+      `(?:${nfr.code || 'NFR-\\d+'}[^\n]*\n)([\\s\\S]*?)(?=\n(?:NFR|##|\Z))`,
+      'i'
+    );
+    const sectionMatch = body.match(sectionRegex);
+    const section = sectionMatch ? sectionMatch[1] : body.slice(0, 500);
+
+    if (DETERMINISM_RE.test(section) && CLOCK_RE.test(section)) {
+      findings.push({
+        rule: 'CGAD-R18',
+        severity: 'warning',
+        message: `NFR ${nfr.code || '#' + nfr.nfr_id} mixes determinism/reproducibility with real-clock timing language. These are two separate concerns: (a) pure-core determinism (L3, testable with FakeClock) and (b) real-clock reproducibility (L4, best-effort). Split into two NFRs to avoid an unvervable requirement.`,
+        location: `artifacts.id=${nfr.nfr_id}`,
+        provenance: `determinism+clock in same section, file=${resolved}`,
+      });
+    }
+  }
+  return findings;
+}
+
 // Forbidden-content patterns for FR artifacts. Each entry: { label, regex }.
 // `label` is the short human-readable category shown in the finding; `regex`
 // is applied to the .md body. Patterns are kept tight to avoid English-prose
@@ -1157,10 +1282,11 @@ function emitJson(findings, dbPath, projectId) {
     linter: LINTER_VERSION,
     db: dbPath,
     project_id: projectId ?? null,
-    rule_set: "cgad-v1.3",
+    rule_set: "cgad-v1.4",
     rules: ["CGAD-R1", "CGAD-R2", "CGAD-R3", "CGAD-R4", "CGAD-R5",
             "CGAD-R6", "CGAD-R7", "CGAD-R8", "CGAD-R9", "CGAD-R10",
-            "CGAD-R11", "CGAD-R12", "CGAD-R13", "CGAD-R14", "CGAD-R15", "CGAD-R16"],
+            "CGAD-R11", "CGAD-R12", "CGAD-R13", "CGAD-R14", "CGAD-R15", "CGAD-R16",
+            "CGAD-R17", "CGAD-R18"],
     findings,
     summary: {
       errors: findings.filter(f => f.severity === "error").length,
@@ -1230,6 +1356,8 @@ function main() {
       ...ruleR14(db, args.projectId),
       ...ruleR15(db, args.projectId),
       ...ruleR16(db, args.projectId),
+      ...ruleR17(db, args.projectId),
+      ...ruleR18(db, args.projectId),
     ];
   } catch (e) {
     process.stderr.write(`error: rule evaluation failed: ${e.message}\n`);
