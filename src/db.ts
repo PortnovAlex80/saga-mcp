@@ -42,6 +42,7 @@ export function getDb(): Database.Database {
   try { db.exec("ALTER TABLE artifacts ADD COLUMN drift_state TEXT NOT NULL DEFAULT 'unknown' CHECK (drift_state IN ('unknown','clean','drifted'))"); } catch { /* column already exists */ }
   migrateArtifactTypes(db);
   migrateVerificationOutcome(db);
+  migrateRiskClass(db);
   try { db.exec('CREATE INDEX IF NOT EXISTS idx_epics_branch ON epics(branch)'); } catch { /* index already exists */ }
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_project_repositories_project ON project_repositories(project_id, status);
@@ -280,3 +281,26 @@ function migrateVerificationOutcome(db: Database.Database): void {
   const violation = db.prepare('PRAGMA foreign_key_check').get();
   if (violation) throw new Error(`Migration verification_evidence produced foreign key violations`);
 }
+
+// REQ-009 — CGAD §11 RiskClass. Adds four nullable risk columns to tasks.
+// Idempotent: ALTER TABLE ADD COLUMN wrapped in try/catch. No data migration:
+// legacy tasks keep NULL risk columns; the existing `priority` column remains
+// the source of truth for declared risk on those rows (back-compat alias).
+// New tasks SHOULD write declared_risk/derived_risk/policy_minimum explicitly;
+// task_create / task_update computes final_risk = max(declared, derived, policy)
+// in TS (see tasks.ts) to keep the rule testable and explicit.
+function migrateRiskClass(db: Database.Database): void {
+  for (const col of ['declared_risk', 'derived_risk', 'policy_minimum', 'final_risk']) {
+    try {
+      db.exec(`ALTER TABLE tasks ADD COLUMN ${col} TEXT CHECK (${col} IN ('low','medium','high','critical') OR ${col} IS NULL)`);
+    } catch { /* column already exists */ }
+  }
+  // Back-compat: backfill declared_risk from legacy priority for rows that
+  // have priority set but declared_risk NULL. One-shot UPDATE, idempotent.
+  try {
+    db.exec(`UPDATE tasks SET declared_risk = priority WHERE declared_risk IS NULL AND priority IS NOT NULL`);
+  } catch { /* priority column missing — pre-migration DB, skip */ }
+  // Index for "find tasks by risk class" queries.
+  db.exec('CREATE INDEX IF NOT EXISTS idx_tasks_final_risk ON tasks(final_risk)');
+}
+

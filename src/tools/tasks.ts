@@ -6,6 +6,70 @@ import { logActivity, logEntityUpdate } from '../helpers/activity-logger.js';
 import { resolveBranch } from '../helpers/git.js';
 import type { ToolHandler } from '../types.js';
 
+// REQ-009 / CGAD §11 — RiskClass computation.
+// final_risk = max(declared_risk, derived_risk, policy_minimum) by severity
+// order low < medium < high < critical. CGAD P15: the agent (Builder) may
+// propose declared_risk but cannot self-lower final_risk below derived_risk
+// or policy_minimum. Raising is automatic; lowering high/critical requires a
+// human gate (not enforced here — enforced at task_update when final_risk is
+// explicitly written below the computed max).
+const RISK_ORDER: Record<string, number> = { low: 0, medium: 1, high: 2, critical: 3 };
+const RISK_BY_RANK = ['low', 'medium', 'high', 'critical'] as const;
+
+/**
+ * Compute final_risk = max(declared, derived, policy_minimum).
+ * Null inputs are skipped (treated as not-contributing). Returns null only
+ * when all three inputs are null.
+ *
+ * Deterministic. Pure. Tested.
+ */
+export function computeFinalRisk(
+  declared: string | null | undefined,
+  derived: string | null | undefined,
+  policyMinimum: string | null | undefined,
+): 'low' | 'medium' | 'high' | 'critical' | null {
+  const candidates = [declared, derived, policyMinimum]
+    .filter((v): v is string => v != null && v in RISK_ORDER);
+  if (candidates.length === 0) return null;
+  const maxRank = Math.max(...candidates.map(v => RISK_ORDER[v]));
+  return RISK_BY_RANK[maxRank];
+}
+
+/**
+ * Derive `derived_risk` from the task's touched surface, per CGAD §11 policy:
+ *   - tag includes 'security' → critical
+ *   - tag includes 'critical' → critical
+ *   - tag includes 'data' or 'migration' → high
+ *   - public API / contract touched (task_kind includes 'formalization') → high
+ *   - otherwise → low (default; no signal)
+ *
+ * This is a heuristic. The caller MAY override derived_risk explicitly via
+ * task_create / task_update; the explicit value wins.
+ */
+function deriveRiskFromTags(tags: string[], taskKind: string | null): 'low' | 'medium' | 'high' | 'critical' | null {
+  const tagsStr = tags.join(' ').toLowerCase();
+  if (/\bsecurity\b/.test(tagsStr) || /\bcritical\b/.test(tagsStr)) return 'critical';
+  if (/\bdata\b/.test(tagsStr) || /\bmigration\b/.test(tagsStr)) return 'high';
+  if (taskKind && /formalization|architecture/.test(taskKind)) return 'high';
+  return null; // no signal
+}
+
+/**
+ * Policy minimum derived from tags + project conventions. Today's policy:
+ *   - 'security' or 'critical' tagged → policy_minimum='high'
+ *   - public API / contract work → policy_minimum='medium'
+ *   - otherwise → null (no policy floor)
+ *
+ * Future REQ-012 will make policy explicit (per-project config), not inferred.
+ */
+function derivePolicyMinimum(tags: string[], taskKind: string | null): 'low' | 'medium' | 'high' | 'critical' | null {
+  const tagsStr = tags.join(' ').toLowerCase();
+  if (/\bsecurity\b/.test(tagsStr) || /\bcritical\b/.test(tagsStr)) return 'high';
+  if (taskKind && /formalization|architecture/.test(taskKind)) return 'medium';
+  return null;
+}
+
+
 export const definitions: Tool[] = [
   {
     name: 'task_create',
@@ -26,6 +90,21 @@ export const definitions: Tool[] = [
           type: 'string',
           enum: ['low', 'medium', 'high', 'critical'],
           default: 'medium',
+        },
+        declared_risk: {
+          type: 'string',
+          enum: ['low', 'medium', 'high', 'critical'],
+          description: 'REQ-009 / CGAD §11 — risk proposed by the change author (Builder). Defaults to legacy `priority` if omitted. The agent cannot lower final_risk below derived_risk or policy_minimum (CGAD P15).',
+        },
+        derived_risk: {
+          type: 'string',
+          enum: ['low', 'medium', 'high', 'critical'],
+          description: 'REQ-009 — risk computed from the touched surface (security/data/migration/API). If omitted, auto-derived from tags + task_kind.',
+        },
+        policy_minimum: {
+          type: 'string',
+          enum: ['low', 'medium', 'high', 'critical'],
+          description: 'REQ-009 — minimum risk set by project policy. security/critical tagged tasks have policy_minimum=high. If omitted, auto-derived.',
         },
         assigned_to: { type: 'string', description: 'Assignee name' },
         estimated_hours: { type: 'number', description: 'Estimated hours' },
@@ -113,6 +192,9 @@ export const definitions: Tool[] = [
         description: { type: 'string' },
         status: { type: 'string', enum: ['todo', 'in_progress', 'review', 'review_in_progress', 'done', 'blocked'] },
         priority: { type: 'string', enum: ['low', 'medium', 'high', 'critical'] },
+        declared_risk: { type: 'string', enum: ['low', 'medium', 'high', 'critical'], description: 'REQ-009 — see task_create. final_risk is recomputed on update; cannot be self-lowered (P15).' },
+        derived_risk: { type: 'string', enum: ['low', 'medium', 'high', 'critical'] },
+        policy_minimum: { type: 'string', enum: ['low', 'medium', 'high', 'critical'] },
         assigned_to: { type: 'string' },
         estimated_hours: { type: 'number' },
         actual_hours: { type: 'number' },
@@ -240,6 +322,20 @@ function handleTaskCreate(args: Record<string, unknown>) {
   const generationKey = (args.generation_key as string | undefined) ?? null;
   const sourceArtifactIds = (args.source_artifact_ids as number[] | undefined) ?? [];
 
+  // REQ-009 / CGAD §11 — RiskClass. declared_risk defaults to legacy `priority`
+  // for backward compatibility. derived_risk and policy_minimum can be passed
+  // explicitly or auto-derived from tags + task_kind. final_risk is always
+  // computed = max(declared, derived, policy_minimum) — the agent cannot
+  // self-lower it (P15).
+  const tagsArray = (args.tags as string[]) ?? [];
+  const declaredRiskRaw = (args.declared_risk as string | undefined) ?? priority;
+  const derivedRisk = (args.derived_risk as string | undefined)
+    ?? deriveRiskFromTags(tagsArray, taskKind);
+  const policyMinimum = (args.policy_minimum as string | undefined)
+    ?? derivePolicyMinimum(tagsArray, taskKind);
+  const declaredRisk = declaredRiskRaw || null;
+  const finalRisk = computeFinalRisk(declaredRisk, derivedRisk, policyMinimum);
+
   if (!['git_change', 'tracker_only', 'read_only_evidence', 'interactive'].includes(executionMode)) {
     throw new Error(`execution_mode '${executionMode}' is invalid`);
   }
@@ -304,13 +400,15 @@ function handleTaskCreate(args: Record<string, unknown>) {
       `INSERT INTO tasks
         (epic_id,title,description,status,priority,assigned_to,estimated_hours,due_date,source_ref,
          task_kind,workflow_stage,execution_skill,review_skill,execution_mode,
-         project_repository_id,generated_from_task_id,generation_key,tags,metadata)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING *`
+         project_repository_id,generated_from_task_id,generation_key,tags,metadata,
+         declared_risk,derived_risk,policy_minimum,final_risk)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING *`
     )
     .get(
       epicId, title, description, status, priority, assignedTo, estimatedHours, dueDate, sourceRef,
       taskKind, workflowStage, executionSkill, reviewSkill, executionMode,
       projectRepositoryId, generatedFromTaskId, generationKey, tags, metadata,
+      declaredRisk, derivedRisk, policyMinimum, finalRisk,
     );
 
   const row = task as Record<string, unknown>;
@@ -547,19 +645,61 @@ function handleTaskUpdate(args: Record<string, unknown>) {
     statusIgnored = true;
   }
 
+  let newRow: Record<string, unknown>;
+
   const update = buildUpdate('tasks', id, args, [
     'title', 'description', 'status', 'priority', 'assigned_to',
     'estimated_hours', 'actual_hours', 'due_date', 'source_ref', 'sort_order', 'tags', 'metadata',
     'task_kind', 'workflow_stage', 'execution_skill', 'review_skill', 'execution_mode',
     'project_repository_id', 'generated_from_task_id', 'generation_key',
+    'declared_risk', 'derived_risk', 'policy_minimum',
   ]);
 
-  let newRow: Record<string, unknown>;
-
+  // REQ-009 — recompute final_risk after the column update, using whichever of
+  // declared/derived/policy were changed (or the existing row values). The
+  // agent cannot write final_risk directly here (it's computed); an explicit
+  // `final_risk` arg is ignored with a warning, because P15 forbids
+  // self-lowering. To raise final_risk, raise one of declared/derived/policy.
   if (update) {
     newRow = db.prepare(update.sql).get(...update.params) as Record<string, unknown>;
+    // Re-read fresh values post-update to compute final_risk consistently.
+    const fresh = db.prepare(
+      'SELECT declared_risk, derived_risk, policy_minimum, tags, task_kind FROM tasks WHERE id=?',
+    ).get(id) as {
+      declared_risk: string | null; derived_risk: string | null;
+      policy_minimum: string | null; tags: string; task_kind: string | null;
+    };
+    // If derived_risk / policy_minimum were not explicitly written, auto-derive
+    // them from the (possibly updated) tags + task_kind. declared_risk follows
+    // priority when not set, to keep the legacy column authoritative.
+    let effectiveDerived = fresh.derived_risk;
+    let effectivePolicy = fresh.policy_minimum;
+    let effectiveDeclared = fresh.declared_risk;
+    const tagsParsed = (() => { try { return JSON.parse(fresh.tags || '[]') as string[]; } catch { return []; } })();
+    if (effectiveDerived == null) effectiveDerived = deriveRiskFromTags(tagsParsed, fresh.task_kind);
+    if (effectivePolicy == null) effectivePolicy = derivePolicyMinimum(tagsParsed, fresh.task_kind);
+    if (effectiveDeclared == null) {
+      // Fall back to legacy priority column if declared_risk never set.
+      const legacyPriority = db.prepare('SELECT priority FROM tasks WHERE id=?').get(id) as { priority: string };
+      effectiveDeclared = legacyPriority.priority || null;
+    }
+    const computedFinal = computeFinalRisk(effectiveDeclared, effectiveDerived, effectivePolicy);
+    // If the new computed final differs from the row's current final_risk,
+    // OR derived/policy were auto-derived and differ from what's stored, persist.
+    const needsUpdate =
+      newRow.final_risk !== computedFinal
+      || fresh.derived_risk !== effectiveDerived
+      || fresh.policy_minimum !== effectivePolicy
+      || fresh.declared_risk !== effectiveDeclared;
+    if (needsUpdate) {
+      db.prepare(
+        `UPDATE tasks SET declared_risk=?, derived_risk=?, policy_minimum=?, final_risk=?,
+         updated_at=datetime('now') WHERE id=?`,
+      ).run(effectiveDeclared, effectiveDerived, effectivePolicy, computedFinal, id);
+      newRow = db.prepare('SELECT * FROM tasks WHERE id=?').get(id) as Record<string, unknown>;
+    }
     logEntityUpdate(db, 'task', id, newRow.title as string, oldRow, newRow, [
-      'status', 'priority', 'assigned_to', 'title',
+      'status', 'priority', 'assigned_to', 'title', 'final_risk',
     ]);
   } else if (args.depends_on !== undefined) {
     // Only depends_on changed, no column updates
