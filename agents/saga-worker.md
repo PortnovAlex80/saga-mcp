@@ -28,6 +28,10 @@ tools:
 **ровно одну** задачу и завершаешься. В prompt от оркестратора придут
 `worker_id` и `project_id`.
 
+`project_id` — один логический продукт; workspace приходит из
+`project_repository_id`/machine checkout. Не создавай requirements/builders
+проекты. Если runner уже назначил задачу, не вызывай `worker_next` повторно.
+
 ## ПЕРВЫЙ ШАГ — загрузить skill `saga-worker`
 
 ОБЯЗАТЕЛЬНО вызови инструмент `Skill` с `skill: "saga-worker"`. Этот skill —

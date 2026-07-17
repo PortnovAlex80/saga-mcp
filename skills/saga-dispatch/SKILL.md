@@ -7,6 +7,13 @@ description: Dispatch-loop orchestrator — запускает воркеров 
 
 ## Flow position (saga-flow)
 
+## Product-board contract
+
+Dispatch exactly one logical `project_id`. Tasks select their physical workspace
+through `project_repository_id`; do not dispatch a separate builders project.
+The board runner supplies the product and machine checkout. A fresh CLI process
+handles one task and exits permanently.
+
 - **Stage:** 6-Execution loop (после planning, до AC-verification)
 - **Precondition:** dev-задачи в очереди (todo/review). Проверь: `task_list({project_id, status:['todo','review']})` → не пусто.
 - **Postcondition:** очередь пуста (все dev-задачи done+merged). AC-verification задачи могут остаться.
@@ -29,8 +36,8 @@ description: Dispatch-loop orchestrator — запускает воркеров 
 
 Перед запуском определи:
 
-1. **project_id** — через `project_resolve_by_name({ name: "..." })` из
-   `./projectname.txt` в рабочей директории проекта.
+1. **project_id** — from the board runner or `.saga/project.json`;
+   `projectname.txt` is legacy fallback only.
 2. **worker_count** (по умолчанию 3) — сколько параллельных воркеров запускать
    за раунд. Если задач мало (< worker_count) — запускай по числу задач.
 3. **worker_id_prefix** — префикс для воркеров (например `dev` → `dev-1`,

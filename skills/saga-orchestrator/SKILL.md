@@ -1,13 +1,62 @@
 ---
 name: saga-orchestrator
-description: Единый launch saga-flow от идеи до working product. Один скилл — весь
-  конвейер: Discovery → Formalization → Planning → Execution → AC-verification →
-  Integration. Сам вызывает все остальные saga-роли в правильном порядке. Использовать
-  когда пользователь говорит «запусти флоу», «давай сделаем», дал идею одной фразой.
-  НЕ делать работу сам — только оркестрировать роли.
+description: "Orchestrate one logical product from Discovery through formalization, planning, repository-scoped execution, verification, and integration. Use when the user asks to start or continue the complete Saga flow."
 ---
 
 # saga-orchestrator — единый запуск saga-flow
+
+## Typed product workflow (REQ-007)
+
+For new products, first use `saga-start`. A Saga project is the whole product;
+the current and additional physical repositories are registered through
+`repository_register`.
+
+Every orchestration task MUST carry explicit workflow fields. The first task is:
+
+```text
+task_kind: formalization.prd
+workflow_stage: formalization
+execution_skill: saga-product
+review_skill: saga-requirements-reviewer
+execution_mode: git_change
+project_repository_id: <control/docs repository>
+generation_key: <REQ>:prd
+```
+
+`.saga/project.json` is canonical for new products. `projectname.txt` is only a
+legacy fallback. Use the manifest's `project_id` and repository binding; never
+create another Saga project merely because the current repository has a
+different directory name.
+
+Initialize every new REQ epic with `episode_status`. After Discovery returns
+`go`, transition it to `formalization`.
+
+Do not independently create the right-side SRS/UC tasks. For typed
+`git_change` work, review approval produces `integration_state=pending`; only
+`worker_merge_release(result:"merged")` releases dependencies and triggers
+idempotent downstream generation. `done` without merge is not accepted input
+for the next stage.
+
+Use explicit checkpoints:
+
+```text
+formalization -> planning: accepted, hash-pinned, drift-free AC baseline
+planning -> development: completed planning tasks
+development -> verification: completed and integrated development tasks
+verification -> integration: completed verification tasks plus passing
+                            evidence for every accepted AC revision
+integration -> completed: completed and integrated final integration tasks
+```
+
+Call `episode_transition` for every checkpoint. A rejected transition is the
+authoritative reason not to dispatch the next stage.
+
+`artifact_coverage(link_type:"verified_by")` is a structural report, not proof
+by itself. Verification agents must call `verification_record`; only passing
+evidence matching `accepted_hash` may create `verified_by`.
+
+The older role-by-role instructions below describe role intent. Where they
+conflict with this typed workflow section, this section is authoritative.
 
 ## Flow position (saga-flow)
 
@@ -48,9 +97,10 @@ working product.** Между ними — вызовы ролей. Каждая
 ### Подготовка
 
 ```
-1. project_id = project_resolve_by_name({ name: <из projectname.txt> })
+1. project_id = <from .saga/project.json; legacy fallback uses projectname.txt>
 2. epic_id = epic_create({ project_id, name: "REQ-NNN-<slug>" })  ← если нет
-3. Запомни project_id, epic_id — они нужны всем ролям
+3. episode_status({epic_id}); after decision=go transition to formalization
+4. Запомни project_id, epic_id — они нужны всем ролям
 ```
 
 ### Этап 1 — Discovery (kickstart = SKILL, не subagent)
@@ -79,7 +129,7 @@ WAIT until decision ∈ {go, fast-track, clarify, reject}
 ```
 create task role:product (PRD)
 spawn Agent(subagent_type:"saga-product", prompt с brief artifact_id + project_id + epic_id)
-WAIT until PRD done
+WAIT until PRD is done and, for git_change, integration_state=merged
 ```
 
 ### Этап 3 — SRS + UC (параллельно!)
@@ -92,7 +142,7 @@ spawn ОБА параллельно (одним сообщением, два Age
   Agent(subagent_type:"saga-architect", SRS + API contract)
   Agent(subagent_type:"saga-analyst", UC)
 
-WAIT until ОБА done (parallel completion)
+WAIT until ОБА done and all git_change outputs are integrated
 ```
 
 **Контрольная точка (checkpoint):** после SRS+UC проверь, что FR готовы
@@ -106,6 +156,8 @@ spawn Agent(subagent_type:"saga-analyst", UC+SRS → AC)
 WAIT until AC done
 
 VERIFY: artifact_coverage(type:'AC', epic_id) → 0 gaps на traces covers/derived_from
+VERIFY: every AC is accepted, hash-pinned and drift_state=clean
+CALL: episode_transition({epic_id,to_stage:"planning"})
 ```
 
 ### Этап 5 — Planning (saga-planner)
@@ -119,6 +171,7 @@ VERIFY:
   artifact_coverage(type:'AC', link_type:'implements')  → 0 gaps (структурно)
   tasks созданы с depends_on (Pattern A/B)
   AC-verification задачи созданы (tags: ac-verification)
+CALL: episode_transition({epic_id,to_stage:"development"})
 ```
 
 ### Этап 6 — Execution (рой saga-worker через saga-dispatch)
@@ -131,6 +184,7 @@ Skill("saga-dispatch")  ← цикл диспетчеризации
     - solo-worker review + merge в каждом раунде
 
 WAIT until queue empty (task_list todo+review = 0)
+CALL: episode_transition({epic_id,to_stage:"verification"})
 ```
 
 ### Этап 7 — AC-verification (через тот же dispatch)
@@ -140,7 +194,9 @@ WAIT until queue empty (task_list todo+review = 0)
 выполняются автоматически в следующих раундах.
 
 VERIFY after:
-  artifact_coverage(type:'AC', link_type:'verified_by') → 0 gaps (содержательно)
+  verification_record contains passing evidence for each accepted AC hash
+  artifact_coverage(type:'AC', link_type:'verified_by') → 0 gaps
+CALL: episode_transition({epic_id,to_stage:"integration"})
 ```
 
 ### Этап 8 — Integration (финальный)
@@ -148,6 +204,7 @@ VERIFY after:
 ```
 Если есть INTEGRATE задача (Pattern B) → выполнить через dispatch
 VERIFY: post-merge build green, все задачи done
+CALL: episode_transition({epic_id,to_stage:"completed"})
 ```
 
 ### Финальный отчёт пользователю

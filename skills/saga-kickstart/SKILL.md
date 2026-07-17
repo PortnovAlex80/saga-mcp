@@ -11,6 +11,15 @@ description: |
 
 # saga-kickstart
 
+## Product-board contract
+
+Discovery creates one REQ epic and `type:'brief'` artifact inside the current
+logical product. Bind the artifact to the repository containing its document.
+Never create a requirements or builders project. For `fast-track`, call the
+typed `routeFastTrack` path in the same epic; it creates an idempotent
+repository-scoped development task and `derived_from` trace. For `go`, move the
+same episode to formalization.
+
 > Discovery-фаза saga-флоу. Принимает идею одной фразой, возвращает decision.
 > Все секции ниже заполнены body-задачами REQ-004 (#219-224).
 
@@ -23,7 +32,7 @@ description: |
 - **Called by:** saga-orchestrator (Этап 1), либо напрямую пользователем
 - **Next enables:**
   - decision=go → saga-product (PRD, Этап 2)
-  - decision=fast-track → saga-planner (минуя formalization)
+  - decision=fast-track → typed `routeFastTrack` in the same product/epic
   - decision=clarify → стоп, вопросы пользователю
   - decision=reject → эпик закрыт
 - **Проверь precondition:** если saga-mcp DB недоступна → STOP (Sign F3, failover)

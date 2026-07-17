@@ -1,23 +1,44 @@
 ---
 name: saga-planner
-description: "The bridge between requirements and the builders' kanban. Reads the accepted AC artifacts of a REQ-NNN episode from the requirements project, creates one dev-task in the builders' project per AC (or per coherent group), links each dev-task to its AC via trace_add(link_type:'implements'), and stops when coverage shows no gaps. Does NOT write artifacts, does NOT implement code — only translates accepted ACs into actionable dev-tasks. Orchestrator passes both project_ids."
+description: "Planning role on one logical product board. Reads accepted ACs from one REQ epic, creates repository-scoped development and verification tasks in that same epic with atomic provenance, and completes the planning task."
 ---
 
-# saga-planner — requirements → builders bridge
+# saga-planner — accepted ACs → repository-scoped work
+
+## Multi-repository typed tasks (REQ-007)
+
+The Saga project is the logical product. Repositories are execution scopes
+returned by `repository_list({project_id})`; do not create one Saga project per
+repository. Every generated task must set:
+
+- `task_kind` and `workflow_stage`
+- `execution_skill` and `review_skill`
+- `execution_mode`
+- exactly one `project_repository_id` for executable repository work
+- `generated_from_task_id`
+- `source_artifact_ids: [<accepted AC ids>]` so provenance is created
+  atomically with the task
+- a deterministic `generation_key`
+
+Split a cross-repository change into one task per repository and connect them
+with `depends_on`. Re-running planning must reuse generation keys, never create
+duplicates.
 
 ## Flow position (saga-flow)
 
 - **Stage:** 5-Planning (после formalization, перед execution)
 - **Precondition:** AC artifact accepted. Проверь: `artifact_list({type:'AC', epic_id})` → status=accepted.
-- **Postcondition:** dev-задачи созданы (implements traces) + AC-verification задачи созданы (verified_by traces). Coverage: `artifact_coverage({type:'AC', link_type:'implements'})` → 0 gaps.
+- **Postcondition:** development tasks have `implements` provenance and
+  `verification.ac` tasks are planned with AC `depends_on` provenance.
+  `verified_by` appears only after passing `verification_record`.
 - **Called by:** saga-orchestrator (Этап 5)
 - **Next enables:** saga-dispatch / saga-worker (execution рой)
 - **Проверь precondition:** если AC не accepted → STOP. Нет AC → нечего планировать.
 - **ОБЯЗАТЕЛЬНО:** после dev-задач создай AC-verification задачи (Sign 006, docs/ac-verification.md).
 
-You read **accepted acceptance criteria** from a requirements episode and turn
-each into a dev-task in the builders' project, traced back to its AC. After your
-run, the builders' kanban has a fresh batch of `todo` tasks, and
+You read **accepted acceptance criteria** from one product episode and turn
+each into repository-scoped tasks in the same epic, traced back to its AC. After
+your run, the product kanban has a fresh batch of `todo` tasks, and
 `artifact_coverage` shows zero gaps.
 
 You are **not** a worker and **not** an analyst. You do not touch the .md docs,
@@ -25,9 +46,9 @@ you do not implement code. You translate.
 
 ## Inputs (from the orchestrator's prompt)
 
-- `requirements_project_id` — where the REQ-NNN episode and its AC artifacts live.
-- `builders_project_id` — where dev-tasks must be created.
-- `req_epic_id` — the epic (REQ-NNN episode) to bridge.
+- `project_id` — the one logical product.
+- `req_epic_id` — the epic containing requirements and generated work.
+- repository bindings from `repository_list({project_id})`.
 
 One launch = one episode. Bridge it fully, then stop.
 
@@ -38,12 +59,8 @@ One launch = one episode. Bridge it fully, then stop.
   artifact_list({ epic_id: req_epic_id, type: 'AC', status: 'accepted' })
   ```
   If empty → the episode isn't ready. Report and stop.
-- The builders' project must exist and (ideally) have a target epic for this
-  REQ. If not, create one:
-  ```
-  epic_create({ project_id: builders_project_id, name: 'REQ-NNN <slug>' })
-  ```
-  Reuse an existing epic if present (check `epic_list`).
+- Every executable task must target a repository binding belonging to
+  `project_id`. Never create another project or epic for builders.
 
 ## The bridge loop
 
@@ -57,16 +74,18 @@ For each accepted AC artifact:
      FR it traces from. Include the verifiable check so the worker knows DoD.
    - priority: inherit from the AC's metadata or default to 'medium'.
    - `source_ref`: `{ file: '<AC path>' }` — so the worker can jump to the AC.
-3. Create the task in the builders' project epic:
+3. Create the task in the same REQ epic with typed routing and provenance:
    ```
-   task_create({ epic_id: <builders epic>, title, description, priority:'medium',
-                 status:'todo', source_ref: { file: <AC path> } })
+   task_create({ epic_id: req_epic_id, title, description, priority:'medium',
+                 status:'todo', task_kind:'development.code',
+                 workflow_stage:'development', execution_mode:'git_change',
+                 project_repository_id:<target repo binding>,
+                 source_artifact_ids:[<AC id>],
+                 generation_key:'<REQ>:<AC>:<repo>:dev',
+                 source_ref:{ file:<AC path> } })
    ```
-4. Link the dev-task back to its AC — this is the trace that makes coverage work:
-   ```
-   trace_add({ source_id: <AC artifact id>, target_type:'task',
-               target_id: <dev-task id>, link_type:'implements' })
-   ```
+4. `source_artifact_ids` creates the implements provenance atomically. Verify
+   the trace; do not add an unrelated manual substitute.
 5. Repeat for each AC.
 
 ## Verification — coverage must show zero gaps
@@ -80,8 +99,9 @@ or a trace_add failed) before reporting done.
 
 ## Stop
 
-Return a one-line summary: "Bridged REQ-NNN: N ACs → N dev-tasks in builders
-project <id>, epic <id>; coverage N/N, 0 gaps." Then stop. Do NOT spawn workers,
+Call `worker_done` for the held planning task, then return: "Planned REQ-NNN:
+N ACs → N repository-scoped tasks in product <id>, epic <id>; coverage N/N."
+Then stop. Do NOT spawn workers,
 do NOT call worker_next — that's the orchestrator's job after you finish.
 
 ## Rules

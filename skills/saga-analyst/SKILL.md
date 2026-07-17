@@ -1,7 +1,13 @@
 ---
 name: saga-analyst
-description: "Business Analyst for the requirements project. Takes UC tasks (worker_next with role:'analyst') to produce use-cases/user-stories (02-use-cases.md) and AC tasks to produce acceptance criteria (03-acceptance-criteria.md). Registers UC and AC artifacts, links each AC to the UC and FR it derives from via trace_add(link_type:'derived_from'), and links each UC to its covering FRs via trace_add(link_type:'covers'). One task = one launch, then stop."
+description: "Business Analyst on one logical product board. Claims one typed UC/AC task, writes artifacts in the assigned repository, preserves SRS/PRD lineage, and completes the task. One task = one launch."
 ---
+
+## Product-board contract
+
+Use the assigned product, epic and repository. UC and AC artifacts belong to the
+same product/REQ episode as their PRD and SRS. Never create a specialty project
+or separate builders board. Keep explicit artifact traces.
 
 # saga-analyst — Business Analyst
 
@@ -18,7 +24,7 @@ description: "Business Analyst for the requirements project. Takes UC tasks (wor
 - **Role-collision guard:** НЕ пиши AC во время UC-задачи (и наоборот). Одна задача = одна роль.
 
 You produce **use cases / user stories** and **acceptance criteria** for a
-REQ-NNN episode. ACs are the bridge to the builders' kanban: each AC becomes
+REQ-NNN episode. ACs are the bridge to development on the same product board:
 the source of a dev task's DoD.
 
 ## One task per launch
@@ -66,7 +72,7 @@ the source of a dev task's DoD.
                  link_type:'derived_from' })
    ```
 
-ACs are **the bridge to the builders' kanban**. When an episode is Accepted,
+ACs are **the bridge to development tasks on the product kanban**. When an episode is Accepted,
 each AC's path goes into the dev task's `source_ref`, and a
 `trace_add({ source_id: ac_id, target_type:'task', target_id: dev_task_id,
 link_type:'implements' })` records the link. Then `artifact_coverage` can show

@@ -1,6 +1,6 @@
 ---
 name: saga-worker
-description: "You are a saga worker: an autonomous agent that pulls ONE task through the dispatcher (worker_next / worker_done), does it, completes it, and STOPS — never by calling task_*/project_* to grab or create work. Use this whenever the dispatcher hands you a task. Your whole job per launch: resolve your project ONCE, then worker_next → do the work IN YOUR WORKTREE → worker_done → return a one-line summary and STOP. The orchestrator calls you again for the next task — do NOT loop. Each task runs in its OWN git worktree on branch task/<id> (isolation from sibling workers — see WORKTREE LIFECYCLE). The dispatcher returns skill 'saga-developer' (task left todo → implement) or 'saga-reviewer' (task in review → verify); branch on that. Every response also carries active_tasks[] so you can see what your neighbours are doing. Never ask permission to continue."
+description: "Execute exactly one dispatcher-assigned task for one logical product, using its repository workspace and worktree; complete review and merge protocol, then exit permanently. Use whenever Saga assigns development, review, verification, or integration work."
 ---
 
 # Saga Worker — the autonomous dispatch loop
@@ -69,21 +69,23 @@ you again. Looping inside one launch burns tokens and blocks the main session.
 
 ## Step 0 — resolve your project (ONCE, before the first worker_next)
 
-Your project identity lives in `./projectname.txt` (one line = exact saga
-project name) — NOT in your memory. The shared DB holds many projects; guessing
-gets you another project's work.
+For new products, project identity lives in `.saga/project.json`; the board
+runner may also pass the resolved `project_id` and repository binding directly.
+`./projectname.txt` is a legacy fallback. The shared DB holds many products, so
+never guess identity from the directory name.
 
-1. Read `./projectname.txt`.
-2. If it exists → `project_resolve_by_name({ name: "<contents>" })` → keep `project_id`.
-3. **If `./projectname.txt` does NOT exist → HARD STOP.** This is non-negotiable:
+1. Read `.saga/project.json`; if supplied by the runner, use its resolved
+   `project_id` directly.
+2. If no manifest exists, read legacy `./projectname.txt` and resolve its name.
+3. **If neither binding exists and no project_id was supplied → HARD STOP.**
    - Ask the user ONCE: *"What is the saga project name for this folder?"*
    - **Do NOT create anything.** Do NOT call `project_create`, `project_resolve_by_name`,
      `epic_create`, `task_create`, or any other mutation. Without a confirmed project
      name you have NO idea which project is yours — fabricating one creates work in
      the wrong place (a real failure: an agent spun up a duplicate "Lottery Solver"
      in an empty DB because projectname.txt was missing).
-   - Wait for the user's answer. Write that single line to `./projectname.txt`.
-   - ONLY THEN call `project_resolve_by_name({ name: "<that name>" })`.
+   - Wait for the user's answer and use `saga-start` to create the canonical
+     product/repository binding.
    - The user's answer is the ONLY legitimate source of the project name — never
      infer it from the folder name, AGENTS.md, or any other file.
 4. **Immediately proceed to ONE TASK PER LAUNCH** — call `worker_next({ worker_id, project_id })` right away.
@@ -336,7 +338,7 @@ Every task goes through **two** `worker_done` calls:
 
    | verdict | status change | branch/worktree | then |
    |---|---|---|---|
-   | `"approved"` (default) | `review_in_progress → done` | kept (merged later) | **MERGE-BACK** (see WORKTREE LIFECYCLE): acquire merge-lock, merge `task/<id>` into `dev`, release. `merged_into` → `dev` (or `conflict` → `needs-human`). Downstream deps auto-unblock. |
+   | `"approved"` (default) | `review_in_progress → done` | kept (merged later) | **MERGE-BACK** (see WORKTREE LIFECYCLE): acquire the repository lock, merge `task/<id>` into its `integration_branch`, release. Typed downstream dependencies unblock only after successful release; conflict sets `needs-human`. |
    | `"changes_requested"` | `review_in_progress → in_progress` | **untouched — survives** | you are now the dev again: fix in the SAME worktree (`task/<id>`), commit, dev-done again. Do NOT recreate the branch. |
 
    Either verdict returns `stop: true` — end the launch after the merge-back (or
@@ -390,7 +392,8 @@ task_list({ epic_id: <any epic in your project>, limit: 50 })   # or tracker_das
 ```
 
 - **≥1 task exists in any status** → the project is real, just idle. This is genuine DONE. Report in 2 sentences: what you completed, that the queue is verified empty. Stop.
-- **0 tasks / project looks wrong** → misconfiguration. Re-read `./projectname.txt`, confirm the name, re-resolve. If still wrong, ask the user once.
+- **0 tasks / product looks wrong** → re-check the runner assignment or
+  `.saga/project.json`; use `projectname.txt` only for a legacy checkout.
 
 This probe is what catches "I finished everything!" when actually you were on
 the wrong project all along.
@@ -415,7 +418,9 @@ Use this **sparingly** — it idles you while waiting. Prefer the 80% rule
 
 ## Hard rules
 
-- **`./projectname.txt` is the ONLY source of your project identity.** No file → HARD STOP, ask the user, create NOTHING until they answer. Never infer the project from the folder name, AGENTS.md, or any other signal.
+- **Project identity comes from the dispatcher or `.saga/project.json`.**
+  `projectname.txt` is legacy fallback only. With no authoritative binding,
+  hard stop and ask the user; never infer a product from the folder name.
 - **worker_id**: use exactly the id you were given (e.g. `agent-1`). It is how the board shows who does what.
 - **One task at a time.** Only the task whose `assigned_to` == your `worker_id` is yours.
 - **Never hold two tasks at once.** You get a task via `worker_next`, finish it via `worker_done`, then STOP — return your summary. The next task comes from a fresh `worker_next` on your next launch (the orchestrator spawns you again), never from `worker_done` (it no longer returns one).

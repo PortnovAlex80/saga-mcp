@@ -1,6 +1,6 @@
 ---
 name: saga-tracker
-description: "Bootstrap + the one rule for any saga session. Two things: (1) resolve your project once from ./projectname.txt; (2) if you are a WORKER, the ONLY way to get/return a task is the dispatcher (worker_next / worker_done) — never task_*/project_*. Load this FIRST. For the worker loop, load saga-worker. For planning/triage (creating projects, writing tasks, moving the board), you DO use task_*/project_* directly — but that is a different role, not the worker loop."
+description: "Bootstrap and dispatcher contract for one logical product board. Resolve `.saga/project.json` or a runner-supplied project binding, then use worker_next/worker_done for exactly one assigned task. `projectname.txt` is legacy fallback."
 ---
 
 # Saga tracker — bootstrap + the one rule that matters
@@ -8,7 +8,8 @@ description: "Bootstrap + the one rule for any saga session. Two things: (1) res
 ## Flow position (saga-flow)
 
 - **Stage:** 0-Bootstrap (до всего, утилитарный)
-- **Precondition:** saga-mcp MCP подключен. `projectname.txt` в корне репозитория.
+- **Precondition:** saga-mcp MCP подключен. `.saga/project.json` or a
+  runner-supplied `project_id` is available.
 - **Postcondition:** project_id resolved (для всех остальных ролей)
 - **Called by:** любой скилл/агент при старте (через project_resolve_by_name)
 - **Next enables:** любая роль (им нужен project_id)
@@ -21,21 +22,19 @@ taxonomy, DoD, multi-project conventions) is linked at the bottom.
 
 ## 1. Resolve your project (ONCE per session)
 
-Identity does NOT live in your memory — it lives in a file, because the shared
-DB holds many projects and guessing gets you another project's work.
+Identity comes from the dispatcher or `.saga/project.json`. Never infer a
+product from a repository directory; one product may contain many repositories.
 
 ```
-1. Read ./projectname.txt (one line = exact saga project name).
-   Missing? Ask the human ONCE "What is the saga project name for this folder?",
-   write that single line to ./projectname.txt, then continue.
-2. project_resolve_by_name({ name: "<line from file>" })
-     → { project_id, created, project }   // atomic lookup-or-create; safe under concurrent cold starts
-3. Hold project_id. Pass it to every worker_next call. worker_done derives it itself.
+1. Use the `project_id` supplied by the board runner, or read
+   `.saga/project.json`.
+2. Validate its project/repository IDs. If absent, use `saga-start`.
+3. Only for legacy repositories, resolve the exact name from `projectname.txt`.
+4. Hold project_id. Pass it to every worker_next call.
 ```
 
-This is the ONLY safe way to scope work to your project. If `worker_next`
-throws the "project_id is missing" error, it is telling you to do exactly
-steps 1-3.
+Never create a second project for another repository, specialty, requirements,
+or builders.
 
 ## 2. The one rule — workers go through the dispatcher
 
@@ -104,7 +103,7 @@ Corollary: a task sitting in `review` is **not finished**. Some reviewer must
 claim it (`worker_next` → `review_in_progress`), deliver a verdict
 (`worker_done` → `done` or back to `in_progress` on changes_requested). Until
 that loop closes, the work is open. Do not declare the episode ready for the
-downstream stage (e.g. requirements → builders' kanban) on the dispatcher's
+downstream stage (e.g. requirements → development tasks) on the dispatcher's
 silent output — verify `{ task: null }` for every role first.
 
 ## Deep reference (operational content)
