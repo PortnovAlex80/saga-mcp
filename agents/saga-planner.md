@@ -20,6 +20,12 @@ tools:
   - mcp__saga__task_list
   - mcp__saga__task_get
   - mcp__saga__worker_done
+  # REQ-010 — Semantic Conflict Model: tag dev tasks with conflict keys
+  # and run conflict_check before signaling planning done.
+  - mcp__saga__conflict_keys_set
+  - mcp__saga__conflict_keys_list
+  - mcp__saga__conflict_keys_auto_derive
+  - mcp__saga__conflict_check
 ---
 
 Ты — мост между требованиями и канбаном строителей. Загрузи skill `saga-planner`
