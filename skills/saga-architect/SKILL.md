@@ -42,54 +42,137 @@ If none → the episode isn't ready. Report and stop (do not draft a PRD yoursel
 
 1. Read the PRD (path from the artifact, or read the .md).
 2. Copy `docs/requirements/templates/SRS.md` → `docs/requirements/REQ-NNN-<slug>/01-SRS.md`.
-3. Fill: functional requirements (FR-N), **API contract** (see below), structural
-   design, interfaces, NFRs (with metrics), constraints, risks, traceability to PRD.
+3. Fill ALL sections per the template instructions — especially the new sections
+   below (Architectural Style, Module Manifest, Invariant Registry, Port Registry,
+   Test Strategy L0-L4, NFR Capacity Targets, UL Glossary, Out-of-scope).
 4. Set `Status: Draft`.
 
-## API contract section (REQUIRED when >1 parallel task touches a module)
+## Architectural Style Declaration (REQUIRED)
 
-If two or more dev-tasks will touch the same module / file / API surface (the
-planner detects this from FRs that share a file), the SRS MUST contain an
-**"API contract" section** that fixes the canonical interface BEFORE workers
-start. Without it, parallel workers independently invent the structure
-(pure functions vs dispatcher, class vs free functions, naming) and the
-merge-lock catches an architectural conflict, not a line conflict. This is a
-planning failure traceable to a missing SRS section — the workers did nothing
-wrong.
+You MUST explicitly declare the architectural style in SRS §2.1. This is not
+aesthetic preference — it determines how the planner will decompose work and
+which conflict keys will be set.
 
-The API contract section must specify, for each shared module:
-- **Public surface**: function signatures (names, parameters, return types),
-  class skeletons, exported names. No implementation bodies — just the contract.
-- **Module layout**: file paths, what each file owns.
-- **Extension points**: how a new operation/case is added (e.g. "add a branch to
-  the `calculate(op)` dispatcher" or "add a new free function `op_<name>(a,b)`").
-  This tells every worker the SAME way to fit their piece in.
+Choose ONE primary style (or a documented combination):
+- **Hexagonal / Ports & Adapters** (Cockburn) — ports = contracts, adapters = parallel units
+- **Clean Architecture** (Martin) — Dependency Rule, layering
+- **DDD** (Evans) — Bounded Contexts, Aggregates, Domain Events
+- **Modular Monolith** — modules with explicit contracts, one process
+- **Functional / Procedural** — pure functions, no state
 
-The contract becomes the source for the planner's SCAFFOLD task (see
-saga-planner skill, Pattern B), which materializes these signatures as stubs
-before body tasks run.
+**Why this matters:** saga-planner needs to know whether to create adapter-tasks
+(Hexagonal), aggregate-tasks (DDD), or module-tasks (Modular Monolith). Without
+a declared style, the planner guesses, and parallel workers diverge.
 
-Example (calculator module, 4 ops):
+## Module Manifest (REQUIRED)
+
+SRS §2.2 must list every module/component with its conflict-key surface. This is
+not optional documentation — the planner consumes this table to set
+`conflict_keys_set` on each dev-task. Two tasks that share a conflict-key collide
+at planning time (REQ-010, cgad-spec-lint R5), preventing architectural merge
+conflicts before any worker starts.
+
+For each module declare:
+- **Responsibility** (one sentence)
+- **Files** (file_path conflict keys)
+- **Schema** (persisted data shapes — schema conflict keys)
+- **Public protocol** (APIs consumed by other modules — public_protocol keys)
+
+If modules have inter-dependencies, declare the **context relationship**
+(DDD Context Mapping vocabulary):
+- **Shared Kernel** → one scaffold task materializes the shared contract (Pattern B)
+- **Customer-Supplier** → downstream task `depends_on` upstream (generation chain)
+- **Anticorruption Layer** → adapter module that translates foreign model
+
+## Invariant Registry (REQUIRED — the enforcement layer)
+
+SRS §2.3 MUST list every invariant each module protects. This is the single most
+important section you produce. Classical architecture (Hexagonal, DDD, Clean)
+talks about invariants constantly but enforces them almost never — they live in
+comments, review checklists, and human memory. For agent-runtime, invariants
+must become **machine-checkable artifacts**.
+
+Each invariant MUST have:
+- **Predicate** (formal, testable — e.g., `refund.amount <= charge.amount`)
+- **Check type** (L3 property test / L4 benchmark / L0 type constraint)
+
+If an invariant cannot be tested, it is a wish, not an invariant. Remove it or
+reformulate until it is testable.
+
+These invariants flow downstream to:
+1. `INVARIANTS.md` per module (human-authored, ~10 lines)
+2. Property test stubs (Verifier generates L3 tests from these)
+3. CGAD Step 1 intercept ("which invariant does this task touch?")
+4. cgad-spec-lint (future: R-new checks every declared invariant has a property test)
+
+## Port Registry (REQUIRED when Hexagonal/Clean, recommended for any modular design)
+
+SRS §2b MUST contain a structured Port Registry (not prose) when more than one
+parallel task touches a shared module. Each port declares:
+- Name, direction (driving/driven), signature
+- Consumes (upstream ports it depends on)
+- Invariant (what it protects — links to Invariant Registry)
+- Implementations (adapters, each = one dev-task)
+- Conflict keys
+
+The scaffold task (Pattern B) materializes this registry as stub-code before any
+body-task runs. Body-tasks implement against the frozen port; conflict_keys
+prevent collision.
+
+**Extension points:** for each port, document how a new case is added. This tells
+every worker the SAME way to fit their piece in.
+
+Example:
 ```
-## API contract — src/calc.py
-
-Public functions (one per operation, pure, stateless):
-  def add(a: float, b: float) -> float
-  def sub(a: float, b: float) -> float
-  def mul(a: float, b: float) -> float
-  def div(a: float, b: float) -> float   # raises DivisionByZeroError on b==0
-
-Class:
-  class DivisionByZeroError(Exception)   # domain error, NOT ValueError/Inf
-
-Extension point: add a new `def <op>(a, b)` function. Do NOT add a dispatcher
-on top — each operation is a standalone function.
-
-Exceptions: DivisionByZeroError (div by zero); TypeError for non-numeric input.
+Port: PaymentStrategy
+Direction: driven
+Signature:
+  charge(amount: Decimal, token: str) → ChargeResult
+Invariant: refund.amount <= charge.amount
+Extension point: add a new adapter module under adapters/. Do NOT add a dispatcher.
+Implementations:
+  - StripeAdapter (task implements PaymentStrategy, adapters/stripe.py)
+  - CryptoAdapter (task implements PaymentStrategy, adapters/crypto.py)
 ```
 
-If you omit this section for a shared module, the planner cannot build a safe
-SCAFFOLD, and parallel workers WILL diverge — that's on the architect.
+## Test Strategy L0-L4 (REQUIRED)
+
+SRS §2.5 MUST declare which contract levels (CGAD §14) apply:
+
+| Level | What | Example tools |
+|---|---|---|
+| L0 Compilation | types, visibility, cycles | `tsc --noEmit`, `cargo check`, `mypy` |
+| L1 Structural | schemas, formats, versions | JSON Schema, OpenAPI, `ajv` |
+| L2 Behavioral | examples, Given/When/Then | pytest, jest, cargo test |
+| L3 Property | invariants, monotonicity, idempotence | Hypothesis, QuickCheck, proptest |
+| L4 Operational | latency, throughput, security | pytest-benchmark, locust, Semgrep |
+
+**Rule:** Every algorithmic AC must have at least L2 (Builder writes examples) +
+L3 (Verifier writes property tests from the Invariant Registry). UI/structural
+ACs stay at L2 with independently-chosen inputs.
+
+## NFR Capacity Targets (REQUIRED)
+
+"Fast" is not a requirement. "Secure" is not a requirement. Each performance or
+reliability NFR MUST carry a **quantitative capacity target**:
+- "p99 latency < 200ms at 1000 QPS sustained" — not "fast"
+- "SAST clean (Semgrep zero high-severity)" — not "secure"
+- "cold start < 3s wall-clock" — not "quick"
+
+The target becomes the `baseline_value` for runtime observations (REQ-011) and
+the oracle for verification evidence.
+
+## Ubiquitous Language Glossary (REQUIRED when DDD)
+
+If the episode uses DDD or has domain-specific terminology, SRS §7 MUST contain
+a glossary mapping each domain term to its defining artifact and code symbol.
+This prevents two parallel workers from using the same word for different concepts.
+
+## Out-of-scope (REQUIRED)
+
+SRS §8 MUST explicitly list what this episode does NOT cover. This is scope
+discipline (TOGAF Phase A "Statement of Architecture Work") — without it, the
+planner creates tasks for FRs that belong to a future episode.
 
 ## Registering artifacts (IMPORTANT — this is the graph)
 
@@ -123,13 +206,46 @@ FR/NFR `code` is the query key — AC will later be `derived_from` an FR code.
 - SRS fixes the **system**, not the user flows (that's saga-analyst's UC) and not
   the business intent (PRD).
 - Each FR/NFR must be **testable** — a reader must be able to say how to verify it.
-- NFRs need metrics (latency, throughput, %, count). "Fast" is not a requirement.
+- NFRs need capacity targets (latency, throughput, %, count). "Fast" is not a requirement.
 - One SRS per REQ episode. If the system is large, split the episode.
-- **API contract section is REQUIRED when >1 parallel task touches a module.**
-  Without it, workers invent the structure independently and the merge fails on
-  architecture, not on lines. See "API contract section" above. This is the
-  single most common preventable integration failure — it lives in the SRS, not
-  in the worker.
+- **Architectural style MUST be declared.** Without it, the planner cannot
+  decompose safely.
+- **Module Manifest with conflict-key surface MUST be present.** This is what
+  enables planning-time conflict detection (REQ-010, R5).
+- **Invariant Registry MUST be present.** Invariants that cannot be tested are
+  wishes, not invariants. These flow to property tests and CGAD enforcement.
+- **Port Registry MUST be structured** when >1 parallel task touches a module.
+  Prose §2b is insufficient; the planner extracts ports from structure.
+- **NFRs MUST carry quantitative targets.** A target without a number is unverifiable.
+- **Test strategy MUST declare L0-L4 levels** per AC type.
 - Do not write ACs — those are saga-analyst's job. But each AC must trace to one
   of your FRs; structure FRs so they are individually addressable.
 - Never `worker_next` again after `worker_done`.
+
+## Architectural guidance (soft recommendations, not hard gates)
+
+Based on research (7 reports + 6 adversarial critics):
+
+- **Prefer small cohesive files** (150-500 LOC). Industry consensus (Cursor,
+  r/cursor, Simon Willison): agents work better on small files than large ones.
+  Context rot (Lost-in-the-Middle, Liu et al. TACL 2024) degrades recall in
+  the middle of large contexts.
+- **Prefer composition over inheritance.** Deep hierarchies confuse agents;
+  flat composition (Class A GoF patterns: Adapter, Bridge, Composite, Facade)
+  parallelizes cleanly.
+- **Avoid Singleton, Visitor, Mediator, Memento** (Class C GoF patterns). They
+  break under parallel-agent implementation. Use Port + Composition Root
+  (Singleton replacement), Closed-Set Decision (Visitor replacement), Event
+  Log (Observer/Memento replacement).
+- **Avoid dynamic metaprogramming** (decorators that rewrite ASTs, monkey-patching,
+  runtime class modification). Behavior must be readable from the file the agent
+  edits, not from runtime-resolved indirection.
+- **Prefer explicit imports.** No magic loaders, no plugin autodiscovery. Every
+  dependency visible in the import statement.
+- **Event log over Observer pattern.** When components need to communicate across
+  module boundaries, model it as declared emit/consume contracts + recorded
+  observations (REQ-011), not as in-process subscriber registries.
+- **Pattern B (scaffold-then-parallel) when >1 task touches a shared module.**
+  The scaffold materializes the Port Registry as stubs; body-tasks fill in;
+  conflict_keys prevent collision. This is the agent-runtime equivalent of
+  Cockburn's Shared Kernel.
