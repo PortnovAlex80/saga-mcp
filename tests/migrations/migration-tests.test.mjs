@@ -20,7 +20,8 @@
 // To test ONE migration's contract cleanly, each seed puts the OTHER tables in
 // their ALREADY-MIGRATED shape so the rest of the chain short-circuits:
 //   - Test 1 (verification_evidence): tasks already have the new status CHECK
-//     AND the risk columns; artifacts CHECK already includes 'brief'. Only
+//     AND the risk columns; artifacts CHECK already includes 'RULE'/'OQ'
+//     (the post-widening shape) and the evidence_status column. Only
 //     verification_evidence is in its old (2-valued, no-provider) form.
 //   - Test 2 (risk class): tasks already have the new status CHECK but lack
 //     the four risk columns. migrateReviewInProgress skips; migrateRiskClass
@@ -38,6 +39,10 @@
 //   Test 3 — migrateReviewInProgress: old status CHECK lacks
 //           'review_in_progress' → table rebuilt, review+assigned_to rows
 //           become 'review_in_progress'.
+//   Test 4 — migrateArtifactTypes + evidence_status (REQ-requirements-types):
+//           artifacts CHECK lacks 'RULE'/'OQ' and the evidence_status column →
+//           table rebuilt with widened CHECK, rows preserved; evidence_status
+//           ALTER TABLE adds the nullable column.
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import os from 'node:os';
@@ -223,17 +228,28 @@ test('migrateVerificationOutcome rebuilds table with widened outcome CHECK, adds
   seedSkeleton(seed);
   seed.exec(TASKS_NEW_STATUS_WITH_RISK);
   // Artifacts at ALREADY-MIGRATED state so migrateArtifactTypes skips.
+  // The widened type CHECK includes 'RULE'/'OQ' so migrateArtifactTypes detects
+  // 'OQ' and short-circuits. NOTE: the project_repository_id column is omitted
+  // (with its FK reference) because the test skeleton does not create the
+  // project_repositories parent table — and migrateArtifactTypes will not run
+  // its rebuild here, so the column is not needed. Including the FK would make
+  // PRAGMA foreign_key_check (run at the end of migrateVerificationOutcome)
+  // error on the missing parent. This mirrors the pre-widening test shape.
   seed.exec(`
     CREATE TABLE artifacts (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
       epic_id INTEGER NOT NULL REFERENCES epics(id) ON DELETE CASCADE,
-      type TEXT NOT NULL CHECK (type IN ('PRD','SRS','UC','AC','FR','NFR','decision','theme','brief')),
+      type TEXT NOT NULL CHECK (type IN ('PRD','SRS','UC','AC','FR','NFR','decision','theme','brief','RULE','OQ')),
       code TEXT,
       title TEXT NOT NULL,
       path TEXT NOT NULL,
       status TEXT NOT NULL DEFAULT 'draft',
       parent_artifact_id INTEGER REFERENCES artifacts(id) ON DELETE SET NULL,
+      content_hash TEXT,
+      accepted_hash TEXT,
+      drift_state TEXT NOT NULL DEFAULT 'unknown' CHECK (drift_state IN ('unknown','clean','drifted')),
+      evidence_status TEXT CHECK (evidence_status IN ('confirmed','proposed','assumed','open','rejected','superseded') OR evidence_status IS NULL),
       tags TEXT NOT NULL DEFAULT '[]',
       metadata TEXT NOT NULL DEFAULT '{}',
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -432,4 +448,122 @@ test('migrateReviewInProgress rebuilds tasks with widened status CHECK and flips
   const db2 = getDb();
   const ripCount = db2.prepare("SELECT COUNT(*) AS n FROM tasks WHERE status='review_in_progress'").get().n;
   assert.equal(ripCount, 2, 'one seeded flip + one direct insert = 2; re-migration must not duplicate');
+});
+
+// ----------------------------------------------------------------------------
+// Test 4 — migrateArtifactTypes widens CHECK to include RULE/OQ and
+// evidence_status ALTER TABLE adds the nullable column (REQ-requirements-types)
+// ----------------------------------------------------------------------------
+// OLD artifacts table: type CHECK has 'brief' (last-widened catalog) but NOT
+// 'RULE'/'OQ'. migrateArtifactTypes detects the absence of 'OQ' and rebuilds.
+// evidence_status column is absent; the ALTER TABLE migration adds it as
+// nullable. Verifies that:
+//   (a) the rebuild preserves every row (including its type/title/path/status)
+//   (b) the widened CHECK now accepts 'RULE' and 'OQ'
+//   (c) evidence_status column exists post-migration, is nullable, and legacy
+//       rows carry NULL (unspecified)
+//   (d) the migration is idempotent on re-entry.
+test('migrateArtifactTypes widens CHECK to include RULE/OQ and preserves rows; evidence_status added nullable', () => {
+  const dbPath = path.join(temp, 'artifact-types-old.db');
+  const seed = new Database(dbPath);
+  seed.pragma('journal_mode = WAL');
+  seed.pragma('foreign_keys = ON');
+  seedSkeleton(seed);
+  seed.exec(TASKS_NEW_STATUS_WITH_RISK);
+  // OLD artifacts: CHECK has 'brief' but NOT 'RULE'/'OQ'; no evidence_status.
+  // project_repository_id is included as a plain INTEGER (no FK reference) so
+  // the rebuild's INSERT INTO ... SELECT (which names the column) succeeds AND
+  // the post-migration PRAGMA foreign_key_check (which validates all FK refs)
+  // does not error on a missing project_repositories parent — the test
+  // skeleton does not create that table.
+  seed.exec(`
+    CREATE TABLE artifacts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      epic_id INTEGER NOT NULL REFERENCES epics(id) ON DELETE CASCADE,
+      type TEXT NOT NULL CHECK (type IN ('PRD','SRS','UC','AC','FR','NFR','decision','theme','brief')),
+      code TEXT,
+      title TEXT NOT NULL,
+      path TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'draft'
+        CHECK (status IN ('draft','in_review','accepted','superseded')),
+      parent_artifact_id INTEGER REFERENCES artifacts(id) ON DELETE SET NULL,
+      project_repository_id INTEGER,
+      content_hash TEXT,
+      accepted_hash TEXT,
+      drift_state TEXT NOT NULL DEFAULT 'unknown' CHECK (drift_state IN ('unknown','clean','drifted')),
+      tags TEXT NOT NULL DEFAULT '[]',
+      metadata TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+  `);
+  const insArt = seed.prepare(
+    `INSERT INTO artifacts (project_id, epic_id, type, code, title, path, status)
+     VALUES (1, 1, ?, ?, ?, ?, 'draft')`,
+  );
+  insArt.run('FR', 'FR-1', 'Functional Req 1', 'docs/FR-1.md');
+  // A legacy 'brief' row proves existing literals survive the rebuild.
+  insArt.run('brief', 'BRIEF-X', 'legacy brief', 'docs/brief.md');
+  // A 'theme' row exercises the second-most-recent literal.
+  insArt.run('theme', null, 'legacy theme', 'docs/theme.md');
+  seed.close();
+
+  closeDb();
+  process.env.DB_PATH = dbPath;
+  const db = getDb();
+
+  // Schema assertions: widened CHECK now in place.
+  const tableSql = db.prepare(
+    "SELECT sql FROM sqlite_schema WHERE type='table' AND name='artifacts'"
+  ).get().sql;
+  assert.ok(tableSql.includes("'RULE'"), "widened CHECK must include 'RULE'");
+  assert.ok(tableSql.includes("'OQ'"), "widened CHECK must include 'OQ'");
+  // Detection predicate ('OQ') guarantees the migration short-circuits next time.
+  assert.ok(tableSql.includes("'OQ'"), "post-migration DDL must contain 'OQ' so re-detection skips");
+
+  // evidence_status column exists, is nullable (no NOT NULL).
+  const cols = db.prepare("PRAGMA table_info('artifacts')").all().map(c => c.name);
+  assert.ok(cols.includes('evidence_status'), 'evidence_status column must exist after migration');
+
+  // Widened catalog is now insertable.
+  db.prepare(
+    `INSERT INTO artifacts (project_id, epic_id, type, code, title, path)
+     VALUES (1, 1, 'OQ', 'OQ-1', 'open question', 'docs/oq-1.md')`,
+  ).run();
+  db.prepare(
+    `INSERT INTO artifacts (project_id, epic_id, type, title, path, evidence_status)
+     VALUES (1, 1, 'RULE', 'rule with status', 'docs/rule-2.md', 'confirmed')`,
+  ).run();
+
+  // Data preserved: the three seeded rows (FR-1, BRIEF-X, theme) survived;
+  // legacy rows have NULL evidence_status ("unspecified").
+  const rows = db.prepare(
+    `SELECT code, title, type, evidence_status FROM artifacts ORDER BY id`,
+  ).all();
+  const byCode = Object.fromEntries(rows.filter(r => r.code).map(r => [r.code, r]));
+  assert.ok(byCode['FR-1'], 'FR-1 row preserved through rebuild');
+  assert.equal(byCode['FR-1'].type, 'FR');
+  assert.equal(byCode['FR-1'].evidence_status, null, 'legacy row has NULL evidence_status');
+  assert.ok(byCode['BRIEF-X'], 'brief row preserved through rebuild');
+  assert.equal(byCode['BRIEF-X'].type, 'brief');
+  const legacyTheme = rows.find(r => r.title === 'legacy theme');
+  assert.ok(legacyTheme, 'theme row preserved through rebuild');
+  assert.equal(legacyTheme.type, 'theme');
+
+  // New evidence_status value is queryable.
+  const confirmed = db.prepare(
+    `SELECT title FROM artifacts WHERE evidence_status = 'confirmed'`,
+  ).get();
+  assert.equal(confirmed.title, 'rule with status');
+
+  // FK integrity.
+  const fkViolation = db.prepare('PRAGMA foreign_key_check').get();
+  assert.equal(fkViolation, undefined, 'no foreign-key violations after rebuild');
+
+  // Idempotency: re-entering getDb must not re-migrate / not drop rows.
+  closeDb();
+  const db2 = getDb();
+  const afterReenter = db2.prepare('SELECT COUNT(*) AS n FROM artifacts').get().n;
+  assert.equal(afterReenter, 5, '3 seeded + 2 inserted = 5; idempotent re-entry must not duplicate or lose rows');
 });

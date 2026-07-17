@@ -156,7 +156,9 @@ export type ToolHandler = (args: Record<string, unknown>) => unknown;
 export type ArtifactType =
   | 'PRD' | 'SRS' | 'UC' | 'AC' | 'FR' | 'NFR' | 'decision'
   | 'theme'    // NEW — top-level business board
-  | 'brief';   // NEW — discovery-phase output
+  | 'brief'    // NEW — discovery-phase output
+  | 'RULE'     // NEW — business rule / policy artifact
+  | 'OQ';      // NEW — open question / unresolved issue
 
 export interface Artifact {
   id: number;
@@ -172,6 +174,7 @@ export interface Artifact {
   content_hash: string | null;
   accepted_hash: string | null;
   drift_state: 'unknown' | 'clean' | 'drifted';
+  evidence_status: 'confirmed' | 'proposed' | 'assumed' | 'open' | 'rejected' | 'superseded' | null;
   tags: string;
   metadata: string;
   created_at: string;

@@ -13,8 +13,10 @@
 
 import sqlite3 from "node:sqlite";
 import process from "node:process";
+import { readFileSync, existsSync } from "node:fs";
+import path from "node:path";
 
-const LINTER_VERSION = "cgad-spec-lint/1.1.0";
+const LINTER_VERSION = "cgad-spec-lint/1.2.0";
 
 // ---------- CLI ----------
 
@@ -103,6 +105,15 @@ function usage() {
     "           tasks in its episode. If SRS §2.3 declares invariants, they have",
     "           no enforcement path — no Independent Verifier will generate",
     "           property tests. Warning (not error) — invariants may be absent.",
+    "  CGAD-R14 FR Forbidden Content (BABOK/Wiegers). Accepted FR artifact whose",
+    "           .md doc leaks implementation detail: HTTP verbs (GET/POST/PUT/",
+    "           DELETE/PATCH), DB table/column names, JSON field names, class or",
+    "           method names, framework names (React/Django/Spring/Express), HTTP",
+    "           status codes (401/403/404/500/...), or algorithm names",
+    "           (SHA-256/HMAC/AES). Functional Requirements describe WHAT, not HOW.",
+    "           Reads the artifact's .md from disk (path column or resolved via the",
+    "           project_repository.local_path). Warning severity — FRs may",
+    "           reference downstream SPECs by link without leaking their text.",
     "",
     "Exit codes:",
     "  0  no findings (or only warnings)",
@@ -812,6 +823,193 @@ function ruleR13(db, projectId) {
   return findings;
 }
 
+// R14 — FR Forbidden Content (BABOK/Wiegers-aligned requirements engineering).
+//
+// A Functional Requirement (FR) describes WHAT the system must do, not HOW.
+// When an accepted FR's .md doc contains implementation detail (HTTP verbs,
+// DB schema, JSON fields, class/method names, framework names, HTTP status
+// codes, or algorithm names) the requirement has leaked design. Such FRs:
+//   - prematurely constrain the solution space (the SRS/architecture work);
+//   - couple the requirement to one implementation, so swapping it later
+//     looks like a requirements change (CGAD §32 frozen-contract pain);
+//   - bypass review of the actual design choice (it hides in the FR text).
+//
+// Severity is WARNING (not error): an FR may legitimately REFERENCE a SPEC by
+// link, embed an illustrative example in a fenced block, or quote an external
+// protocol. The human reviews each finding and either rewrites the FR to keep
+// the WHAT/WHAT-HOW boundary clean or accepts the exception.
+//
+// Unlike R1–R13, R14 must READ the artifact .md from disk (the DB stores only
+// the path + content_hash, not the body). Resolution order:
+//   1. the artifact's `path` verbatim (absolute, or relative to cwd);
+//   2. path joined with the bound project_repository.local_path;
+//   3. path joined with each project_repository.local_path in scope (when no
+//      artifact-level binding).
+// Files that cannot be resolved are skipped silently (linter stays read-only
+// and must not crash on a stale path).
+//
+// The forbidden-pattern set is intentionally short (5 groups, ~6 regexes). It
+// catches the most common leaks; it is not exhaustive. Each finding names the
+// pattern and one example match so the human can locate it in the doc.
+function ruleR14(db, projectId) {
+  const pj = projectId !== undefined
+    ? `AND a.project_id = ${Number(projectId)}`
+    : '';
+  const findings = [];
+
+  let frRows;
+  try {
+    frRows = db.prepare(`
+      SELECT a.id AS fr_id, a.code, a.path, a.project_repository_id,
+             a.project_id
+      FROM artifacts a
+      WHERE a.type = 'FR' AND a.status = 'accepted'
+      ${pj}
+      ORDER BY a.id`).all();
+  } catch {
+    // Pre-FR DB without the artifacts table — skip silently.
+    return findings;
+  }
+
+  // Cache repository local_paths so we resolve each FR's .md once per repo.
+  let repoPaths = [];
+  try {
+    repoPaths = db.prepare(
+      `SELECT pr.id AS repo_id, pr.local_path
+       FROM project_repositories pr`
+    ).all().filter(r => r.local_path);
+  } catch {
+    repoPaths = [];
+  }
+  const repoById = new Map(repoPaths.map(r => [r.repo_id, r.local_path]));
+
+  for (const fr of frRows) {
+    const resolved = resolveArtifactFile(fr, repoById, repoPaths);
+    if (!resolved) continue; // file not on disk — skip silently (read-only linter)
+    let body;
+    try {
+      body = readFileSync(resolved, 'utf8');
+    } catch {
+      continue; // unreadable — skip
+    }
+
+    const hits = scanFrForbiddenContent(body);
+    for (const h of hits) {
+      findings.push({
+        rule: 'CGAD-R14',
+        severity: 'warning',
+        message: `accepted FR ${fr.code || '#' + fr.fr_id} (${fr.path}) leaks implementation detail — ${h.label}: matched "${h.example}". BABOK/Wiegers: a Functional Requirement states WHAT; design choice belongs in the SRS/architecture. Rewrite to remove the leak, or move it to a SPEC and reference by link.`,
+        location: `artifacts.id=${fr.fr_id}`,
+        provenance: `pattern=${h.label}, file=${resolved}`,
+      });
+    }
+  }
+
+  return findings;
+}
+
+// Forbidden-content patterns for FR artifacts. Each entry: { label, regex }.
+// `label` is the short human-readable category shown in the finding; `regex`
+// is applied to the .md body. Patterns are kept tight to avoid English-prose
+// false positives (e.g. HTTP verbs match uppercase only, since lower-case
+// "get"/"put"/"post" are common verbs in well-written requirements). NO `g`
+// flag: we only need the first match per pattern, and a stateful `g` regex
+// shared across calls would advance lastIndex between invocations.
+const FR_FORBIDDEN_PATTERNS = [
+  // 1. HTTP verbs — uppercase only (English prose uses lowercase forms freely).
+  {
+    label: 'HTTP verb',
+    regex: /\b(?:GET|POST|PUT|DELETE|PATCH)\b/,
+  },
+  // 2. Database schema — CREATE TABLE DDL, or backtick-quoted snake_case
+  //    identifiers (the classic leak: `users`, `order_id`).
+  {
+    label: 'database schema',
+    regex: /CREATE\s+TABLE|`[a-z][a-z0-9_]*`/i,
+  },
+  // 3. JSON / object field syntax — `"field":` or `"field_name" :`. Matches
+  //    JSON/YAML/object-literal leaks; plain `field:` on a markdown line is
+  //    too common in prose to flag reliably.
+  {
+    label: 'JSON field',
+    regex: /"[a-z_][a-z0-9_]*"\s*:/i,
+  },
+  // 4. Class/method/function definitions — `ClassName.method(...)`,
+  //    `def name(...)`, `function name(...)`. These are unambiguous code.
+  {
+    label: 'class or method name',
+    regex: /\b[A-Z]\w+\.[a-z]\w+\s*\(|\bdef\s+[a-z_]\w+\s*\(|\bfunction\s+[a-z_$]\w*\s*\(/,
+  },
+  // 5. Framework names — explicit allowlist of common web/app frameworks.
+  {
+    label: 'framework name',
+    regex: /\b(?:React|Vue|Angular|Django|Flask|FastAPI|Spring|Express|Rails|Laravel|Next\.js|Nest\.js|Svelte|Ember|Symfony|ASP\.NET)\b/,
+  },
+  // 6. HTTP status codes — curated common set (401/403/404/418/429/500/502/503).
+  //    Bare 3-digit numbers would over-match (years, counts); the curated set
+  //    keeps false positives near zero.
+  {
+    label: 'HTTP status code',
+    regex: /\b(?:401|403|404|405|418|422|429|500|502|503|504)\b/,
+  },
+  // 7. Algorithm / crypto primitive names — concrete HOW for security-related
+  //    FRs (e.g. "passwords must be SHA-256 hashed" couples the FR to a
+  //    specific primitive; the choice belongs in the SRS).
+  {
+    label: 'algorithm name',
+    regex: /\b(?:SHA-1|SHA-256|SHA-512|SHA-3|HMAC|AES|RSA|bcrypt|scrypt|Argon2|MD5|BLAKE2?|PBKDF2)\b/,
+  },
+];
+
+// Apply every forbidden pattern to the body; return one entry per pattern that
+// matched (with the first match as the example). Multiple distinct patterns
+// produce multiple findings so the human sees each leak category separately.
+function scanFrForbiddenContent(body) {
+  const hits = [];
+  for (const p of FR_FORBIDDEN_PATTERNS) {
+    const m = p.regex.exec(body);
+    if (m) {
+      hits.push({ label: p.label, example: truncateMatch(m[0]) });
+    }
+  }
+  return hits;
+}
+
+function truncateMatch(s) {
+  const MAX = 60;
+  return s.length > MAX ? s.slice(0, MAX) + '…' : s;
+}
+
+// Resolve an artifact's path to a file on disk. Tries the path verbatim, then
+// joins it with the bound repository's local_path (if any), then with every
+// other in-scope repository local_path. Returns the first existing file, or
+// null if none can be read. Used by R14 to read FR .md docs from disk.
+function resolveArtifactFile(artifact, repoById, repoPaths) {
+  const p = String(artifact.path || '');
+  if (!p) return null;
+
+  // 1. Verbatim (absolute path or relative to cwd).
+  if (existsSync(p)) return p;
+
+  // 2. Bound repository local_path.
+  if (artifact.project_repository_id != null) {
+    const local = repoById.get(artifact.project_repository_id);
+    if (local) {
+      const joined = path.join(local, p);
+      if (existsSync(joined)) return joined;
+    }
+  }
+
+  // 3. Any other in-scope repository local_path (artifacts without a binding
+  //    may still live under one of the registered repo roots).
+  for (const r of repoPaths) {
+    const joined = path.join(r.local_path, p);
+    if (existsSync(joined)) return joined;
+  }
+
+  return null;
+}
+
 // ---------- Output formatting ----------
 
 function severityRank(s) { return { error: 0, warning: 1, info: 2 }[s] ?? 3; }
@@ -843,10 +1041,10 @@ function emitJson(findings, dbPath, projectId) {
     linter: LINTER_VERSION,
     db: dbPath,
     project_id: projectId ?? null,
-    rule_set: "cgad-v1.1",
+    rule_set: "cgad-v1.2",
     rules: ["CGAD-R1", "CGAD-R2", "CGAD-R3", "CGAD-R4", "CGAD-R5",
             "CGAD-R6", "CGAD-R7", "CGAD-R8", "CGAD-R9", "CGAD-R10",
-            "CGAD-R11", "CGAD-R12", "CGAD-R13"],
+            "CGAD-R11", "CGAD-R12", "CGAD-R13", "CGAD-R14"],
     findings,
     summary: {
       errors: findings.filter(f => f.severity === "error").length,
@@ -862,7 +1060,7 @@ function emitSarif(findings, dbPath) {
     version: "2.1.0",
     runs: [{
       tool: {
-        driver: { name: "cgad-spec-lint", version: "0.1.0", informationUri: "ADR-005" },
+        driver: { name: "cgad-spec-lint", version: "1.2.0", informationUri: "ADR-005" },
       },
       results: findings.map(f => ({
         ruleId: f.rule,
@@ -913,6 +1111,7 @@ function main() {
       ...ruleR11(db, args.projectId),
       ...ruleR12(db, args.projectId),
       ...ruleR13(db, args.projectId),
+      ...ruleR14(db, args.projectId),
     ];
   } catch (e) {
     process.stderr.write(`error: rule evaluation failed: ${e.message}\n`);
