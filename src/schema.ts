@@ -13,6 +13,48 @@ CREATE TABLE IF NOT EXISTS projects (
   updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Physical repositories attached to a logical product. A project is the
+-- aggregate product board; repositories are task execution scopes.
+CREATE TABLE IF NOT EXISTS repositories (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  name            TEXT NOT NULL,
+  remote_url      TEXT,
+  default_branch  TEXT NOT NULL DEFAULT 'main',
+  metadata        TEXT NOT NULL DEFAULT '{}',
+  created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS project_repositories (
+  id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+  project_id          INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  repository_id       INTEGER NOT NULL REFERENCES repositories(id) ON DELETE CASCADE,
+  role                TEXT NOT NULL DEFAULT 'component',
+  local_path          TEXT,
+  integration_branch  TEXT NOT NULL DEFAULT 'dev',
+  docs_root           TEXT,
+  status              TEXT NOT NULL DEFAULT 'active'
+                        CHECK (status IN ('planned','active','on_hold','archived')),
+  metadata            TEXT NOT NULL DEFAULT '{}',
+  created_at          TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at          TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (project_id, repository_id)
+);
+
+CREATE TABLE IF NOT EXISTS repository_checkouts (
+  id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+  project_repository_id INTEGER NOT NULL REFERENCES project_repositories(id) ON DELETE CASCADE,
+  machine_id            TEXT NOT NULL,
+  local_path            TEXT NOT NULL,
+  status                TEXT NOT NULL DEFAULT 'active'
+                          CHECK (status IN ('active','missing','on_hold')),
+  metadata              TEXT NOT NULL DEFAULT '{}',
+  last_seen_at          TEXT NOT NULL DEFAULT (datetime('now')),
+  created_at            TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at            TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (project_repository_id, machine_id)
+);
+
 CREATE TABLE IF NOT EXISTS epics (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
   project_id    INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
@@ -30,6 +72,19 @@ CREATE TABLE IF NOT EXISTS epics (
   updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Executable state machine for one REQ/product episode. Kept separate from
+-- epics.status so legacy boards retain their coarse lifecycle unchanged.
+CREATE TABLE IF NOT EXISTS episode_workflows (
+  epic_id              INTEGER PRIMARY KEY REFERENCES epics(id) ON DELETE CASCADE,
+  stage                TEXT NOT NULL DEFAULT 'discovery'
+                         CHECK (stage IN ('discovery','formalization','planning','development','verification','integration','completed','cancelled')),
+  baseline_artifact_id INTEGER REFERENCES artifacts(id) ON DELETE SET NULL,
+  baseline_hash        TEXT,
+  metadata             TEXT NOT NULL DEFAULT '{}',
+  created_at           TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at           TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS tasks (
   id              INTEGER PRIMARY KEY AUTOINCREMENT,
   epic_id         INTEGER NOT NULL REFERENCES epics(id) ON DELETE CASCADE,
@@ -45,6 +100,19 @@ CREATE TABLE IF NOT EXISTS tasks (
   actual_hours    REAL,
   due_date        TEXT,
   source_ref      TEXT,
+  task_kind       TEXT,
+  workflow_stage  TEXT,
+  execution_skill TEXT,
+  review_skill    TEXT,
+  execution_mode  TEXT NOT NULL DEFAULT 'git_change'
+                    CHECK (execution_mode IN ('git_change','tracker_only','read_only_evidence','interactive')),
+  project_repository_id INTEGER REFERENCES project_repositories(id) ON DELETE SET NULL,
+  integration_state TEXT NOT NULL DEFAULT 'not_required'
+                      CHECK (integration_state IN ('not_required','pending','merged','conflict')),
+  integrated_at     TEXT,
+  integrated_commit TEXT,
+  generated_from_task_id INTEGER REFERENCES tasks(id) ON DELETE SET NULL,
+  generation_key  TEXT,
   tags            TEXT NOT NULL DEFAULT '[]',
   metadata        TEXT NOT NULL DEFAULT '{}',
   created_at      TEXT NOT NULL DEFAULT (datetime('now')),
@@ -143,10 +211,29 @@ CREATE TABLE IF NOT EXISTS artifacts (
   status              TEXT NOT NULL DEFAULT 'draft'
                         CHECK (status IN ('draft','in_review','accepted','superseded')),
   parent_artifact_id  INTEGER REFERENCES artifacts(id) ON DELETE SET NULL,
+  project_repository_id INTEGER REFERENCES project_repositories(id) ON DELETE SET NULL,
+  content_hash        TEXT,
+  accepted_hash       TEXT,
+  drift_state         TEXT NOT NULL DEFAULT 'unknown'
+                        CHECK (drift_state IN ('unknown','clean','drifted')),
   tags                TEXT NOT NULL DEFAULT '[]',
   metadata            TEXT NOT NULL DEFAULT '{}',
   created_at          TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at          TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- A planned verification task is not proof. Evidence is an immutable,
+-- independently queryable result linked to both the verification task and AC.
+CREATE TABLE IF NOT EXISTS verification_evidence (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  task_id        INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  artifact_id    INTEGER NOT NULL REFERENCES artifacts(id) ON DELETE CASCADE,
+  outcome        TEXT NOT NULL CHECK (outcome IN ('passed','failed')),
+  evidence       TEXT NOT NULL,
+  content_hash   TEXT,
+  recorded_by    TEXT,
+  created_at     TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (task_id, artifact_id, content_hash)
 );
 
 -- Traceability graph. Polymorphic target: another artifact OR a task in any
@@ -169,6 +256,8 @@ CREATE TABLE IF NOT EXISTS artifact_traces (
 -- Indexes
 
 CREATE INDEX IF NOT EXISTS idx_epics_project_id ON epics(project_id);
+CREATE INDEX IF NOT EXISTS idx_episode_workflows_stage ON episode_workflows(stage);
+CREATE INDEX IF NOT EXISTS idx_repository_checkouts_machine ON repository_checkouts(machine_id,status);
 CREATE INDEX IF NOT EXISTS idx_tasks_epic_id ON tasks(epic_id);
 CREATE INDEX IF NOT EXISTS idx_subtasks_task_id ON subtasks(task_id);
 
@@ -184,6 +273,7 @@ CREATE INDEX IF NOT EXISTS idx_artifacts_type ON artifacts(type);
 CREATE INDEX IF NOT EXISTS idx_artifacts_status ON artifacts(status);
 CREATE INDEX IF NOT EXISTS idx_artifacts_parent ON artifacts(parent_artifact_id);
 CREATE INDEX IF NOT EXISTS idx_artifacts_code ON artifacts(code);
+CREATE INDEX IF NOT EXISTS idx_verification_evidence_artifact ON verification_evidence(artifact_id, outcome);
 CREATE INDEX IF NOT EXISTS idx_traces_source ON artifact_traces(source_id);
 CREATE INDEX IF NOT EXISTS idx_traces_target ON artifact_traces(target_type, target_id);
 CREATE INDEX IF NOT EXISTS idx_traces_link ON artifact_traces(link_type);

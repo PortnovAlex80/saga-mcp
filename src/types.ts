@@ -36,8 +36,55 @@ export interface Task {
   actual_hours: number | null;
   due_date: string | null;
   source_ref: string | null;
+  task_kind: string | null;
+  workflow_stage: string | null;
+  execution_skill: string | null;
+  review_skill: string | null;
+  execution_mode: 'git_change' | 'tracker_only' | 'read_only_evidence' | 'interactive';
+  project_repository_id: number | null;
+  integration_state: 'not_required' | 'pending' | 'merged' | 'conflict';
+  integrated_at: string | null;
+  integrated_commit: string | null;
+  generated_from_task_id: number | null;
+  generation_key: string | null;
   tags: string;
   metadata: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Repository {
+  id: number;
+  name: string;
+  remote_url: string | null;
+  default_branch: string;
+  metadata: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProjectRepository {
+  id: number;
+  project_id: number;
+  repository_id: number;
+  role: string;
+  local_path: string | null;
+  integration_branch: string;
+  docs_root: string | null;
+  status: 'planned' | 'active' | 'on_hold' | 'archived';
+  metadata: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface RepositoryCheckout {
+  id: number;
+  project_repository_id: number;
+  machine_id: string;
+  local_path: string;
+  status: 'active' | 'missing' | 'on_hold';
+  metadata: string;
+  last_seen_at: string;
   created_at: string;
   updated_at: string;
 }
@@ -108,6 +155,10 @@ export interface Artifact {
   path: string;
   status: 'draft' | 'in_review' | 'accepted' | 'superseded';
   parent_artifact_id: number | null;
+  project_repository_id: number | null;
+  content_hash: string | null;
+  accepted_hash: string | null;
+  drift_state: 'unknown' | 'clean' | 'drifted';
   tags: string;
   metadata: string;
   created_at: string;
