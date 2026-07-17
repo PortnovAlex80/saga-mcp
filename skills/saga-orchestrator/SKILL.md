@@ -128,6 +128,32 @@ WAIT until decision ∈ {go, fast-track, clarify, reject}
 - `clarify` → STOP, вопросы пользователю. Ждём ответа → повтор Этапа 1
 - `reject` → STOP, эпик закрыт
 
+### Этап 1.5 — Complexity Gate (saga-orchestrator main-context)
+
+After Discovery (brief accepted), BEFORE Formalization:
+
+1. Load `Skill("senior-analyst")` reference into main context.
+2. Read brief: complexity.tshirt, risk_triggers, affected_projects, classification.
+3. Classify: thin / modular / regulated / research.
+4. Decide artifact set: which types does THIS project need?
+5. Create a `decision` artifact recording the artifact set:
+   ```
+   artifact_create({ type:'decision', title:'Artifact set for REQ-NNN',
+     path:'docs/.../artifact-set.md', status:'accepted',
+     metadata: { complexity_class: 'modular', artifacts: ['PRD','SRS','FR','NFR','RULE','UC','AC','SPEC','hypothesis'] } })
+   ```
+6. Pass artifact set to downstream skills:
+   - saga-product: "create PRD with Hypotheses section (complexity=modular)"
+   - saga-architect: "create SRS with Invariant Registry + Port Registry (modular)"
+   - saga-analyst: "create UC + AC with properties blocks for algorithmic ACs"
+
+Rules:
+- For thin (XS-S, no risk triggers): skip hypothesis, skip RULE, minimal SRS.
+- For modular: full set — hypothesis + RULE + SPEC + Invariant Registry.
+- For regulated: add DR + IR + CONSTRAINT + RISK (create as artifacts).
+- For research: brief → decision → OQ only. No PRD/SRS/AC.
+- The decision artifact IS the authority — downstream skills read it and know their scope.
+
 ### Этап 2 — PRD (saga-product)
 
 ```
