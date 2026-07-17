@@ -30,6 +30,19 @@ export interface Task {
   description: string | null;
   status: 'todo' | 'in_progress' | 'review' | 'review_in_progress' | 'done' | 'blocked';
   priority: 'low' | 'medium' | 'high' | 'critical';
+  // REQ-009 / CGAD §11 — RiskClass. declared_risk is proposed by the Builder;
+  // derived_risk + policy_minimum are auto-derived from tags/task_kind (or set
+  // explicitly); final_risk = max(declared, derived, policy_minimum) and is
+  // always computed server-side. Any of these may be NULL in the DB row (e.g. a
+  // plain task with no security/contract surface auto-derives derived_risk and
+  // policy_minimum to null, and final_risk is then driven by declared_risk /
+  // legacy priority). The runtime (src/tools/tasks.ts) may persist null when
+  // auto-derivation yields no level — keep these nullable here to match the
+  // schema, even though the user-facing input schemas use a non-null enum.
+  declared_risk: 'low' | 'medium' | 'high' | 'critical' | null;
+  derived_risk: 'low' | 'medium' | 'high' | 'critical' | null;
+  policy_minimum: 'low' | 'medium' | 'high' | 'critical' | null;
+  final_risk: 'low' | 'medium' | 'high' | 'critical' | null;
   sort_order: number;
   assigned_to: string | null;
   estimated_hours: number | null;
