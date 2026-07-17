@@ -23,8 +23,10 @@
     "start": "node dist/index.js",
     "dev": "tsc && node dist/index.js",
     "tracker": "node tracker-view/tracker-view.mjs",
+    "cgad-lint": "node tools/cgad-spec-lint.mjs",
+    "cgad-lint:test": "node --test tools/cgad-spec-lint.test.mjs",
     "prepublishOnly": "npm run build",
-    "test": "tsc && node --test tests/**/*.test.mjs"
+    "test": "tsc && node --test tests/**/*.test.mjs tools/**/*.test.mjs"
   },
   "keywords": [
     "mcp",
