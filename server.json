@@ -1,17 +1,17 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "name": "io.github.spranab/saga-mcp",
-  "description": "Jira-like project tracker for AI agents with SQLite, full task hierarchy, and dashboard",
+  "name": "io.github.PortnovAlex80/saga-mcp",
+  "description": "Governance platform for parallel LLM coding agents — contract-driven episode lifecycle, CGAD enforcement (18 lint rules), product discovery cycle, 12 role skills, 66 MCP tools",
   "repository": {
-    "url": "https://github.com/spranab/saga-mcp",
+    "url": "https://github.com/PortnovAlex80/saga-mcp",
     "source": "github"
   },
-  "version": "1.6.0",
+  "version": "2.0.0",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "saga-mcp",
-      "version": "1.6.0",
+      "version": "2.0.0",
       "transport": {
         "type": "stdio"
       },

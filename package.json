@@ -1,8 +1,8 @@
 {
   "name": "saga-mcp",
-  "mcpName": "io.github.spranab/saga-mcp",
-  "version": "1.6.0",
-  "description": "A Jira-like project tracker MCP server for AI agents. SQLite-backed, per-project scoped, with full hierarchy (Projects > Epics > Tasks > Subtasks), activity logging, and a dashboard — so LLMs never lose track.",
+  "mcpName": "io.github.PortnovAlex80/saga-mcp",
+  "version": "2.0.0",
+  "description": "Governance platform for parallel LLM coding agents. SQLite-backed, MCP-native, with contract-governed episode lifecycle, CGAD enforcement layer (18 lint rules), product discovery cycle (hypothesis → metric → observation → hit/kill), and 12 role skills.",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
@@ -11,8 +11,12 @@
   "files": [
     "dist",
     "skills",
+    "tools",
     "tracker-view",
+    "docs",
+    "GUARDRAILS.md",
     "README.md",
+    "README.ru.md",
     "manifest.json",
     "glama.json",
     "LICENSE"
@@ -25,29 +29,31 @@
     "tracker": "node tracker-view/tracker-view.mjs",
     "cgad-lint": "node tools/cgad-spec-lint.mjs",
     "cgad-lint:test": "node --test tools/cgad-spec-lint.test.mjs",
+    "lint": "eslint src/",
     "prepublishOnly": "npm run build",
     "test": "tsc && node --test tests/**/*.test.mjs tools/**/*.test.mjs"
   },
   "keywords": [
     "mcp",
     "model-context-protocol",
-    "project-tracker",
-    "task-manager",
-    "claude",
-    "ai-agent",
+    "agent-governance",
+    "cgad",
+    "parallel-agents",
+    "contract-driven-development",
+    "episode-lifecycle",
+    "llm-tools",
     "sqlite",
-    "jira-alternative",
-    "llm-tools"
+    "ai-agent"
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/spranab/saga-mcp.git"
+    "url": "git+https://github.com/PortnovAlex80/saga-mcp.git"
   },
-  "homepage": "https://github.com/spranab/saga-mcp#readme",
+  "homepage": "https://github.com/PortnovAlex80/saga-mcp#readme",
   "bugs": {
-    "url": "https://github.com/spranab/saga-mcp/issues"
+    "url": "https://github.com/PortnovAlex80/saga-mcp/issues"
   },
-  "author": "spranab",
+  "author": "PortnovAlex80",
   "license": "MIT",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.26.0",
