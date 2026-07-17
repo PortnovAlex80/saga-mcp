@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
@@ -273,6 +274,73 @@ test('artifact hash is read from repository file and out-of-band edits produce d
   writeFileSync(file, 'version two');
   lifecycle.episode_status({ epic_id: epic.id });
   assert.equal(artifacts.artifact_get({ id: ac.id }).artifact.drift_state, 'drifted');
+});
+
+// Regression for two related bugs in handleArtifactCreate:
+//   Bug 1: artifact_create({status:'accepted'}) did not stamp accepted_hash
+//          or set drift_state='clean'. The planning gate (acceptedBaseline in
+//          lifecycle.ts) then failed forever with "AC baseline is not accepted
+//          and clean" despite status reading 'accepted'. Users had to cycle
+//          accepted→in_review→accepted to stamp the hash.
+//   Bug 2: artifact_create did not compute content_hash from the file at
+//          `path` when content_hash was omitted — the caller had to sha256sum
+//          the file manually. Now auto-computed when path exists on disk and
+//          project_repository_id resolves the file.
+test('artifact_create stamps accepted_hash + clean drift AND computes content_hash from file', () => {
+  const product = projects.project_create({ name: 'Hash Stamp Product' });
+  const repo = repositories.repository_register({
+    project_id: product.id, name: 'stamp-repo', local_path: repoBPath,
+  });
+  const epic = epics.epic_create({ project_id: product.id, name: 'REQ-hash-stamp' });
+  const file = path.join(repoBPath, 'stamp-ac.md');
+  writeFileSync(file, 'accepted content');
+  const expectedHash = createHash('sha256').update('accepted content').digest('hex');
+
+  // Bug 1 + Bug 2 together: status=accepted, NO content_hash passed.
+  // The handler must (a) compute content_hash from the file on disk, and
+  // (b) stamp accepted_hash = that hash with drift_state='clean' so the
+  // planning gate admits the episode without a status cycle.
+  const ac = artifacts.artifact_create({
+    project_id: product.id, epic_id: epic.id, project_repository_id: repo.id,
+    type: 'AC', code: 'AC-STAMP', title: 'Stamp criterion',
+    path: 'stamp-ac.md', status: 'accepted',
+  });
+
+  // Bug 2: content_hash was computed from the file.
+  assert.ok(ac.content_hash, 'content_hash must be auto-computed when omitted');
+  assert.equal(ac.content_hash, expectedHash,
+    'content_hash must equal SHA-256 of the file at path');
+
+  // Bug 1: accepted_hash is stamped and drift_state is clean.
+  assert.ok(ac.accepted_hash, 'accepted_hash must NOT be null when status=accepted');
+  assert.equal(ac.accepted_hash, ac.content_hash,
+    'accepted_hash must equal content_hash at acceptance time');
+  assert.equal(ac.drift_state, 'clean',
+    'drift_state must be "clean" immediately after accepted creation');
+
+  // The planning gate should admit the episode without any status cycling.
+  lifecycle.episode_transition({ epic_id: epic.id, to_stage: 'formalization' });
+  assert.doesNotThrow(() => {
+    lifecycle.episode_transition({
+      epic_id: epic.id, to_stage: 'planning', baseline_artifact_id: ac.id,
+    });
+  }, 'planning gate must accept an accepted+clean AC created in one step');
+
+  // Bug 2 in isolation: a draft artifact with a path but no content_hash must
+  // still get its content_hash computed from disk (accepted_hash stays null,
+  // drift_state stays 'unknown' because there is no accepted baseline yet).
+  const draftFile = path.join(repoBPath, 'draft-ac.md');
+  writeFileSync(draftFile, 'draft content');
+  const draftExpected = createHash('sha256').update('draft content').digest('hex');
+  const draft = artifacts.artifact_create({
+    project_id: product.id, epic_id: epic.id, project_repository_id: repo.id,
+    type: 'AC', code: 'AC-DRAFT', title: 'Draft criterion',
+    path: 'draft-ac.md', // status omitted -> draft, content_hash omitted
+  });
+  assert.ok(draft.content_hash, 'draft content_hash must be computed from file');
+  assert.equal(draft.content_hash, draftExpected);
+  assert.equal(draft.accepted_hash, null, 'draft must not stamp accepted_hash');
+  assert.equal(draft.drift_state, 'unknown', 'draft with no accepted baseline is unknown');
 });
 
 test('initialized episodes enforce downstream provenance and auto-advance ready stages', () => {
@@ -1062,4 +1130,99 @@ test('smoke-fix: conflict_keys_auto_derive USES metadata.target_file when source
   const filePaths = list.keys.filter(k => k.key_type === 'file_path').map(k => k.key_value);
   assert.ok(filePaths.includes('src/calc.ts'),
     'metadata.target_file should be used as the code file_path; got: ' + JSON.stringify(filePaths));
+});
+
+// ============================================================================
+// REQ-010 noise reduction: integration_branch collisions are SUPPRESSED when
+// the colliding tasks form a single dependency component (scaffold → bodies
+// → integrate all share the repo's integration_branch because they all
+// target the same repo). file_path / schema / public_protocol collisions
+// are NEVER suppressed, even when sequenced.
+// ============================================================================
+
+test('REQ-010 noise-fix: integration_branch collision SUPPRESSED when tasks are sequenced via depends_on', () => {
+  // scaffold + 3 body tasks all depends_on scaffold, all share
+  // integration_branch="dev". This is the canonical single-repo episode
+  // shape: the branch collision is expected and benign.
+  const product = projects.project_create({ name: 'R010 Sequenced Product' });
+  const epic = epics.epic_create({ project_id: product.id, name: 'REQ-r010-sequenced' });
+  const scaffold = tasks.task_create({
+    epic_id: epic.id, title: 'SCAFFOLD', status: 'todo',
+  });
+  const b1 = tasks.task_create({
+    epic_id: epic.id, title: 'body 1', status: 'todo', depends_on: [scaffold.id],
+  });
+  const b2 = tasks.task_create({
+    epic_id: epic.id, title: 'body 2', status: 'todo', depends_on: [scaffold.id],
+  });
+  const b3 = tasks.task_create({
+    epic_id: epic.id, title: 'body 3', status: 'todo', depends_on: [scaffold.id],
+  });
+  for (const t of [scaffold, b1, b2, b3]) {
+    conflicts.conflict_keys_set({
+      task_id: t.id,
+      keys: [{ key_type: 'integration_branch', key_value: 'dev' }],
+    });
+  }
+  const result = conflicts.conflict_check({ epic_id: epic.id });
+  assert.equal(result.collision_count, 0,
+    'integration_branch collision among depends_on-linked tasks must be suppressed');
+});
+
+test('REQ-010 noise-fix: integration_branch collision STILL SHOWS when tasks race in parallel (no depends_on)', () => {
+  // Two tasks sharing integration_branch but NOT connected by depends_on.
+  // This is a genuine parallel race on the same branch — keep it.
+  const product = projects.project_create({ name: 'R010 Race Product' });
+  const epic = epics.epic_create({ project_id: product.id, name: 'REQ-r010-race' });
+  const t1 = tasks.task_create({ epic_id: epic.id, title: 'racer 1', status: 'todo' });
+  const t2 = tasks.task_create({ epic_id: epic.id, title: 'racer 2', status: 'todo' });
+  conflicts.conflict_keys_set({
+    task_id: t1.id,
+    keys: [{ key_type: 'integration_branch', key_value: 'dev' }],
+  });
+  conflicts.conflict_keys_set({
+    task_id: t2.id,
+    keys: [{ key_type: 'integration_branch', key_value: 'dev' }],
+  });
+  const result = conflicts.conflict_check({ epic_id: epic.id });
+  assert.equal(result.collision_count, 1,
+    'integration_branch collision between unrelated tasks is a genuine race');
+  assert.equal(result.collisions[0].key_type, 'integration_branch');
+});
+
+test('REQ-010 noise-fix: file_path collision ALWAYS shows regardless of depends_on', () => {
+  // Even when tasks are sequenced via depends_on, a file_path overlap is a
+  // concrete semantic conflict that git may not catch — never suppress it.
+  const product = projects.project_create({ name: 'R010 FilePath Product' });
+  const epic = epics.epic_create({ project_id: product.id, name: 'REQ-r010-filepath' });
+  const scaffold = tasks.task_create({
+    epic_id: epic.id, title: 'SCAFFOLD', status: 'todo',
+  });
+  const b1 = tasks.task_create({
+    epic_id: epic.id, title: 'body 1', status: 'todo', depends_on: [scaffold.id],
+  });
+  const b2 = tasks.task_create({
+    epic_id: epic.id, title: 'body 2', status: 'todo', depends_on: [scaffold.id],
+  });
+  // All three share BOTH integration_branch (would be suppressed alone) and
+  // file_path (must NOT be suppressed).
+  for (const t of [scaffold, b1, b2]) {
+    conflicts.conflict_keys_set({
+      task_id: t.id,
+      keys: [
+        { key_type: 'integration_branch', key_value: 'dev' },
+        { key_type: 'file_path', key_value: 'src/shared.ts' },
+      ],
+    });
+  }
+  const result = conflicts.conflict_check({ epic_id: epic.id });
+  // Only the file_path collision should remain.
+  assert.equal(result.collision_count, 1,
+    'file_path collision must show even when tasks are sequenced');
+  assert.equal(result.collisions[0].key_type, 'file_path');
+  assert.equal(result.collisions[0].key_value, 'src/shared.ts');
+  assert.deepEqual(
+    result.collisions[0].task_ids.sort((a, b) => a - b),
+    [scaffold.id, b1.id, b2.id],
+  );
 });
