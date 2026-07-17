@@ -92,16 +92,26 @@ export const definitions: Tool[] = [
           default: 'medium',
         },
         declared_risk: {
+          // Enum intentionally omits null: user input MUST pick a level.
+          // NOTE: the persisted column (and the Task interface in src/types.ts)
+          // allows null, because runtime auto-derivation may yield no level
+          // (e.g. a plain task with no security/contract surface). The schema's
+          // non-null enum constrains what callers may SEND, not what the row
+          // may STORE.
           type: 'string',
           enum: ['low', 'medium', 'high', 'critical'],
           description: 'REQ-009 / CGAD §11 — risk proposed by the change author (Builder). Defaults to legacy `priority` if omitted. The agent cannot lower final_risk below derived_risk or policy_minimum (CGAD P15).',
         },
         derived_risk: {
+          // See declared_risk: enum constrains user input; the stored value may
+          // be null when auto-derivation (deriveRiskFromTags) returns null.
           type: 'string',
           enum: ['low', 'medium', 'high', 'critical'],
           description: 'REQ-009 — risk computed from the touched surface (security/data/migration/API). If omitted, auto-derived from tags + task_kind.',
         },
         policy_minimum: {
+          // See declared_risk: enum constrains user input; the stored value may
+          // be null when auto-derivation returns null.
           type: 'string',
           enum: ['low', 'medium', 'high', 'critical'],
           description: 'REQ-009 — minimum risk set by project policy. security/critical tagged tasks have policy_minimum=high. If omitted, auto-derived.',
@@ -192,6 +202,11 @@ export const definitions: Tool[] = [
         description: { type: 'string' },
         status: { type: 'string', enum: ['todo', 'in_progress', 'review', 'review_in_progress', 'done', 'blocked'] },
         priority: { type: 'string', enum: ['low', 'medium', 'high', 'critical'] },
+        // NOTE: the enums below omit null on purpose — they constrain what
+        // callers may SEND. The persisted columns (and the Task interface in
+        // src/types.ts) are nullable, because runtime auto-derivation
+        // (deriveRiskFromTags) may yield no level and persist null. See the
+        // matching note on task_create's declared_risk field.
         declared_risk: { type: 'string', enum: ['low', 'medium', 'high', 'critical'], description: 'REQ-009 — see task_create. final_risk is recomputed on update; cannot be self-lowered (P15).' },
         derived_risk: { type: 'string', enum: ['low', 'medium', 'high', 'critical'] },
         policy_minimum: { type: 'string', enum: ['low', 'medium', 'high', 'critical'] },
