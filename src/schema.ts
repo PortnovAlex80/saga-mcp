@@ -307,6 +307,39 @@ CREATE TABLE IF NOT EXISTS verification_evidence (
   UNIQUE (task_id, artifact_id, content_hash)
 );
 
+-- REQ-012 — Trusted Provider Registry.
+-- Catalogues the Trusted Guard Input Providers that are allowed to feed
+-- evidence/state/decisions into a project's acceptance oracle. A provider is
+-- either global (project_id IS NULL — applies to every project) or scoped to
+-- one project. The three categories mirror the CGAD trust tiers:
+--   deterministic_evidence — fully deterministic verifiers (tsc, eslint, jest).
+--                            determinism='full'. These feed verification_evidence.
+--   authoritative_state    — stateful systems of record (CI run status, git
+--                            merge result, a release manager). determinism is
+--                            'partial' (the result is reproducible only given
+--                            the same external state).
+--   authorized_decision    — a human-in-the-loop or policy decision (release
+--                            approval, security sign-off). determinism='none'.
+-- 'layer' is the optional CGAD L0..L4 stack layer the provider belongs to
+-- (L0 toolchain, L1 language, L2 framework, L3 app, L4 ops) — lets callers
+-- ask "which L0 providers are registered for this project?".
+CREATE TABLE IF NOT EXISTS trusted_providers (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  project_id      INTEGER REFERENCES projects(id) ON DELETE CASCADE,
+  category        TEXT NOT NULL CHECK (category IN (
+                    'deterministic_evidence','authoritative_state','authorized_decision')),
+  name            TEXT NOT NULL,
+  trust_basis     TEXT NOT NULL,
+  determinism     TEXT NOT NULL CHECK (determinism IN ('full','partial','none')),
+  scope           TEXT NOT NULL,
+  layer           TEXT CHECK (layer IN ('L0','L1','L2','L3','L4') OR layer IS NULL),
+  version         TEXT,
+  config_path     TEXT,
+  status          TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','disabled','deprecated')),
+  registered_at   TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (project_id, name)
+);
+
 -- Traceability graph. Polymorphic target: another artifact OR a task in any
 -- project. link_type names the relationship (covers / implements / derived_from
 -- / depends_on / verified_by). This is the bridge between the requirements
@@ -373,6 +406,8 @@ CREATE INDEX IF NOT EXISTS idx_tasks_due ON tasks(due_date);
 
 CREATE INDEX IF NOT EXISTS idx_task_deps_depends ON task_dependencies(depends_on_task_id);
 CREATE INDEX IF NOT EXISTS idx_comments_task ON comments(task_id);
+
+CREATE INDEX IF NOT EXISTS idx_trusted_providers_project ON trusted_providers(project_id, status);
 `;
 
 // ----------------------------------------------------------------------------

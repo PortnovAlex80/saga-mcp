@@ -191,3 +191,24 @@ export interface ArtifactTrace {
   link_type: 'covers' | 'implements' | 'derived_from' | 'depends_on' | 'verified_by' | 'superseded_by';
   created_at: string;
 }
+
+// REQ-012 — Trusted Provider Registry. A Trusted Guard Input Provider that is
+// allowed to feed evidence/state/decisions into a project's acceptance oracle.
+// project_id is NULL for global providers (apply to every project). The three
+// categories mirror the CGAD trust tiers; determinism is the reproducibility
+// class (full = bit-for-bit deterministic, partial = depends on external state,
+// none = human/policy decision). layer is the optional L0..L4 stack layer.
+export interface TrustedProvider {
+  id: number;
+  project_id: number | null; // null = global
+  category: 'deterministic_evidence' | 'authoritative_state' | 'authorized_decision';
+  name: string;
+  trust_basis: string;
+  determinism: 'full' | 'partial' | 'none';
+  scope: string;
+  layer: 'L0' | 'L1' | 'L2' | 'L3' | 'L4' | null;
+  version: string | null;
+  config_path: string | null;
+  status: 'active' | 'disabled' | 'deprecated';
+  registered_at: string;
+}
