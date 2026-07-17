@@ -16,7 +16,7 @@ import process from "node:process";
 import { readFileSync, existsSync } from "node:fs";
 import path from "node:path";
 
-const LINTER_VERSION = "cgad-spec-lint/1.2.0";
+const LINTER_VERSION = "cgad-spec-lint/1.3.1";
 
 // ---------- CLI ----------
 
@@ -114,6 +114,15 @@ function usage() {
     "           Reads the artifact's .md from disk (path column or resolved via the",
     "           project_repository.local_path). Warning severity — FRs may",
     "           reference downstream SPECs by link without leaking their text.",
+    "  CGAD-R15 RESERVED (not implemented in this build).",
+    "  CGAD-R16 Wave-1 Product Discovery Cycle — hypothesis without observation.",
+    "           For each accepted artifact of type 'hypothesis', check that the",
+    "           epic containing it has at least one row in runtime_observations.",
+    "           A hypothesis with zero observations is an open product bet — the",
+    "           BR→hypothesis→metric→observation loop never closed. Warning",
+    "           severity — the bet may legitimately still be in flight (the",
+    "           feature has not shipped yet), but the debt is visible at lint",
+    "           time so it cannot be silently forgotten.",
     "",
     "Exit codes:",
     "  0  no findings (or only warnings)",
@@ -1010,6 +1019,84 @@ function resolveArtifactFile(artifact, repoById, repoPaths) {
   return null;
 }
 
+// R16 — Wave-1 Product Discovery Cycle: hypothesis without observation.
+//
+// saga's engineering cycle (FR→AC→code→evidence) is closed by R3 (verified_by).
+// The product cycle (BR→hypothesis→metric→observation→hit/kill) has no such
+// closer: observation_record (REQ-011) can store business metrics, but nothing
+// in the flow *forces* a hypothesis to be measured. R16 surfaces the open bet.
+//
+// For each accepted artifact of type 'hypothesis': check whether the epic
+// containing it has AT LEAST ONE row in runtime_observations. If zero
+// observations exist for the epic, the BR→hypothesis→metric→observation loop
+// never closed — the product bet was declared but never measured. Emit a
+// warning per hypothesis.
+//
+// Scope is the EPIC, not the hypothesis artifact itself: a runtime observation
+// may legitimately be recorded against a business_metric artifact, a task, or
+// free-floating (epic-scoped only). Counting observations at epic scope keeps
+// R16 from firing on a hypothesis whose metric is observed under a different
+// artifact_id — which is the normal case (the metric artifact carries the
+// observation, not the hypothesis artifact).
+//
+// Severity is WARNING (not error): a hypothesis with zero observations may
+// legitimately still be in flight — the feature has not shipped yet, the
+// canary has not finished, the analytics pipeline is not wired. The point is
+// to make the debt VISIBLE at lint time, so it cannot be silently forgotten
+// for quarters. If/when a hypothesis has passed its `valid_by` date and still
+// has zero observations, that graduates to an error in a future rule (R17).
+//
+// Backward compatibility: pre-wave-1 DBs have no hypothesis artifacts, so R16
+// runs zero iterations and returns no findings. The try/catch around the
+// query is a belt-and-braces guard against a DB that somehow lacks the
+// artifacts or runtime_observations tables — R16 must never crash the linter.
+function ruleR16(db, projectId) {
+  const pj = projectId !== undefined
+    ? `AND a.project_id = ${Number(projectId)}`
+    : '';
+  const findings = [];
+
+  let hypos;
+  try {
+    hypos = db.prepare(`
+      SELECT a.id AS hyp_id, a.code, a.title, a.path, a.epic_id, a.project_id
+      FROM artifacts a
+      WHERE a.type = 'hypothesis' AND a.status = 'accepted'
+      ${pj}
+      ORDER BY a.id`).all();
+  } catch {
+    // Pre-wave-1 DB without the hypothesis type, or artifacts table missing
+    // entirely — skip silently. R16 is a product-cycle lint, not a schema lint.
+    return findings;
+  }
+
+  for (const h of hypos) {
+    // Count observations at epic scope (see function comment for rationale).
+    let obsCount;
+    try {
+      obsCount = db.prepare(
+        `SELECT COUNT(*) AS n FROM runtime_observations WHERE epic_id = ?`,
+      ).get(h.epic_id);
+    } catch {
+      // runtime_observations table missing — treat as zero observations and
+      // surface the finding (the product cycle cannot close without the table).
+      obsCount = { n: 0 };
+    }
+
+    if (obsCount.n === 0) {
+      findings.push({
+        rule: 'CGAD-R16',
+        severity: 'warning',
+        message: `accepted hypothesis ${h.code || '#' + h.hyp_id} "${h.title}" (${h.path}) in episode #${h.epic_id} has ZERO runtime_observations recorded. Product cycle incomplete — the BR→hypothesis→metric→observation loop never closed. Measure the metric via observation_record({epic_id, observation_type:'runtime_metric', ...}). If the feature has not shipped yet, this warning is informational; if it has, the bet is unmeasured product-cycle debt.`,
+        location: `artifacts.id=${h.hyp_id}`,
+        provenance: `epic=${h.epic_id}, runtime_observations=0`,
+      });
+    }
+  }
+
+  return findings;
+}
+
 // ---------- Output formatting ----------
 
 function severityRank(s) { return { error: 0, warning: 1, info: 2 }[s] ?? 3; }
@@ -1041,10 +1128,11 @@ function emitJson(findings, dbPath, projectId) {
     linter: LINTER_VERSION,
     db: dbPath,
     project_id: projectId ?? null,
-    rule_set: "cgad-v1.2",
+    rule_set: "cgad-v1.3",
     rules: ["CGAD-R1", "CGAD-R2", "CGAD-R3", "CGAD-R4", "CGAD-R5",
             "CGAD-R6", "CGAD-R7", "CGAD-R8", "CGAD-R9", "CGAD-R10",
-            "CGAD-R11", "CGAD-R12", "CGAD-R13", "CGAD-R14"],
+            "CGAD-R11", "CGAD-R12", "CGAD-R13", "CGAD-R14",
+            "CGAD-R15", "CGAD-R16"],
     findings,
     summary: {
       errors: findings.filter(f => f.severity === "error").length,
@@ -1060,7 +1148,7 @@ function emitSarif(findings, dbPath) {
     version: "2.1.0",
     runs: [{
       tool: {
-        driver: { name: "cgad-spec-lint", version: "1.2.0", informationUri: "ADR-005" },
+        driver: { name: "cgad-spec-lint", version: "1.3.1", informationUri: "ADR-005" },
       },
       results: findings.map(f => ({
         ruleId: f.rule,
@@ -1112,6 +1200,7 @@ function main() {
       ...ruleR12(db, args.projectId),
       ...ruleR13(db, args.projectId),
       ...ruleR14(db, args.projectId),
+      ...ruleR16(db, args.projectId),
     ];
   } catch (e) {
     process.stderr.write(`error: rule evaluation failed: ${e.message}\n`);

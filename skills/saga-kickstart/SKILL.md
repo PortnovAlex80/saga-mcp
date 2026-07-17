@@ -290,6 +290,132 @@ testing with the real helper happens at INTEGRATE (#t227).
 `covered_count === total_count`, because the gate forces `gate_passed=false` off
 the degraded source; this is the NFR-1 no-silent-pass check.)
 
+<a id="product-hypothesis-gate"></a>
+## Product hypothesis gate
+
+> **Implements:** Wave-1 Product Discovery Cycle — close the BR→hypothesis→
+> metric→observation gap. The completeness-gate above ensures no input replica
+> is dropped; this gate ensures product-classified briefs carry a measurable
+> bet. Together they make Discovery refuse to ship product work that cannot be
+> measured — the precondition for the product cycle to close at all.
+
+**Purpose.** saga builds an excellent engineering cycle (FR→AC→code→evidence)
+but the product cycle (BR→hypothesis→metric→hit/kill) only closes when each
+product bet is paired with a metric and a target. Without that pairing,
+downstream formalization (PRD/SRS/UC/AC) and dev tasks run to completion with
+no way to know whether the work was worth doing — an engineering exercise, not
+product discovery. This gate is a **hard fork**: a product brief without a
+measurable hypothesis does NOT proceed to `decision=go`, regardless of
+completeness-gate outcome or decision-fork recommendation.
+
+**Rule (deterministic, single rule).**
+
+```
+gate_hypothesis_passed  iff
+    brief.classification != 'product'
+  OR brief.hypotheses contains >= 1 hypothesis
+      where each hypothesis has BOTH
+          metric   : non-empty string  (names a business_metric)
+          target   : non-empty value   (number + window, or explicit date)
+```
+
+- `brief.classification` is the existing field already validated by
+  `validateBrief` (SRS §2b.2). The values that matter here are `'product'`
+  (this gate fires) vs. everything else (`'tech-task'`, `'system'`, etc. — this
+  gate is skipped, because tech-task work has no business bet to measure).
+- A "measurable hypothesis" requires BOTH a `metric` and a `target`. A
+  hypothesis that says "users will love it" with no metric, or "we will measure
+  engagement" with no target, is **not** measurable and does not pass the gate.
+  The two-field minimum is what makes the bet falsifiable: with no metric you
+  cannot observe it, with no target you cannot declare hit/kill.
+- The gate fires ONLY for `classification='product'`. `tech-task` briefs
+  legitimately have no business metric — their value is structural (a refactor,
+  a fix, an infra change). Requiring a hypothesis there would be cargo-cult.
+
+**Procedure.**
+
+1. **Read classification + hypotheses.** After the completeness-gate passes,
+   read `brief.classification` and `brief.hypotheses` from the validated
+   `BriefPayload`. If `classification != 'product'`, emit
+   `HYP-GATE: skipped (classification=<…>, not product)` and continue to the
+   decision-fork / verdict — this gate does not apply.
+2. **Compute the gate.** Apply the single rule above →
+   `gate_hypothesis_passed`.
+3. **Branch:**
+   - **`gate_hypothesis_passed === true`** → continue to the decision-fork /
+     verdict. Emit `HYP-GATE: passed (classification=product, n_hypotheses=<…>)`
+     so the success path is grep-observable (NFR-5).
+   - **`gate_hypothesis_passed === false`** → **emit
+     `decision='clarify'` IMMEDIATELY.** Do NOT proceed to the decision-fork,
+     do NOT ask the verdict block to confirm a `go`. This is a hard fork:
+     product work without a measurable hypothesis is engineering exercise, not
+     product discovery, and downstream formalization without a metric is the
+     product-cycle debt R16 surfaces later.
+
+**Mandatory AskUser on gate failure.**
+
+When the gate fails, the skill emits `decision='clarify'` with this exact
+question body (canonical wording, so the sponsor and the gate refer to the
+same prompt):
+
+```
+PRODUCT-HYPOTHESIS-GATE: not passed
+classification = product
+The brief declares this is product work, but it carries NO measurable
+hypothesis (a metric + a target).
+
+Question: What business hypothesis are we testing? How will we measure
+success?
+
+Provide at least one hypothesis with:
+  - metric : the name of the metric that proves the bet (e.g.
+             daily_active_users, conversion_rate, p99_latency)
+  - target : the value that means HIT, plus a window
+             (e.g. ">= 100 DAU after 30 days", "conversion >= 5% in Q3")
+  - kill_criteria (recommended) : the value that means KILL
+  - valid_by (recommended) : ISO date by which the bet is decided
+
+Until at least one measurable hypothesis is present, this product episode
+cannot proceed to formalization — there is nothing to measure, so the work
+cannot be declared a success or a failure.
+```
+
+The question is structured so the sponsor's answer flows directly into the
+brief's `hypotheses` field and into the PRD `## Hypotheses (REQUIRED for
+product episodes)` section the saga-product role will populate.
+
+**Relation to the other gates.**
+
+This gate runs AFTER the completeness-gate (it reads a brief that already
+covers 100% of input replicas) and BEFORE the decision-fork / verdict block.
+It is one of the conditions that fixes whether a `go` is even available: a
+product brief with `gate_hypothesis_passed === false` may not exit Discovery
+as `go` or `fast-track`. The only exits are:
+- the sponsor provides a measurable hypothesis → gate re-passes → continue;
+- escalation to `decision='clarify'` (this is the default branch above).
+
+It is forbidden to reach `decision=go` (or `fast-track`) on a `product`-classified
+brief with `gate_hypothesis_passed === false`.
+
+**Re-evaluation loop.** The sponsor's answer mutates the brief draft (adds
+hypothesis rows), then the gate is recomputed. Loop until
+`gate_hypothesis_passed === true` OR an escalation fires. Bound the loop at
+the same small fixed iteration count as the completeness-gate (default 3) so
+the two gates share one ping-pong budget.
+
+**Grep markers (NFR-5 observability).**
+- `HYP-GATE: skipped (classification=<…>, not product)` — gate not applicable.
+- `HYP-GATE: passed (classification=product, n_hypotheses=<…>)` — success.
+- `HYP-GATE: blocked → decision=clarify (no measurable hypothesis)` — failure.
+
+**Проверка (DoD).** Two observable cases gate this behaviour:
+
+| # | Setup | Assert |
+|---|---|---|
+| 1 | `classification='product'`, brief has zero hypotheses OR a hypothesis missing `metric` OR a hypothesis missing `target` | `decision='clarify'` is emitted, the canonical question body above is in `output`, flow does **not** reach `decision=go` / `fast-track`. |
+| 2 | `classification='product'`, brief has ≥1 hypothesis with both `metric` and `target` | `gate_hypothesis_passed === true`, flow proceeds to the decision-fork / verdict, **no** hypothesis AskUser is issued. |
+| 3 | `classification='tech-task'` (or any non-product) | gate is skipped; `HYP-GATE: skipped` marker present; flow proceeds regardless of whether hypotheses are present. |
+
 <a id="verdict-override"></a>
 ## Verdict + override
 

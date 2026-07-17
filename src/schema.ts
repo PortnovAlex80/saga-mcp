@@ -216,7 +216,7 @@ CREATE TABLE IF NOT EXISTS artifacts (
   project_id          INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
   epic_id             INTEGER NOT NULL REFERENCES epics(id) ON DELETE CASCADE,
   type                TEXT NOT NULL
-                        CHECK (type IN ('PRD','SRS','UC','AC','FR','NFR','decision','theme','brief','RULE','OQ')),
+                        CHECK (type IN ('PRD','SRS','UC','AC','FR','NFR','decision','theme','brief','RULE','OQ','hypothesis','business_metric')),
   code                TEXT,
   title               TEXT NOT NULL,
   path                TEXT NOT NULL,
@@ -429,5 +429,7 @@ export const ArtifactTypeSchema = z.enum([
   'brief',   // NEW — discovery-phase output
   'RULE',    // NEW — business rule / policy artifact
   'OQ',      // NEW — open question / unresolved issue
+  'hypothesis',      // NEW — product discovery hypothesis (BR→HYP→metric)
+  'business_metric', // NEW — metric definition referenced by a hypothesis
 ]);
 

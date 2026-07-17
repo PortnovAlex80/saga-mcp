@@ -52,6 +52,110 @@ intent; everything downstream (SRS, UC, AC) derives from it.
    Remember the returned `artifact.id` — child artifacts (FRs) will reference it
    via `parent_artifact_id`.
 
+## Hypotheses section (REQUIRED for product episodes)
+
+> **Implements:** Wave-1 Product Discovery Cycle. saga-kickstart's
+> product-hypothesis-gate refuses to ship a `product`-classified brief without
+> a measurable hypothesis; saga-product materialises that hypothesis as
+> artifacts the rest of the cycle can query, observe, and lint.
+
+**When the section is required.** The PRD MUST contain a `## Hypotheses`
+section when the parent brief's classification is `product`. It is NOT
+required for `tech-task` classification — those episodes have no business bet
+to measure, and adding a fake hypothesis would be cargo-cult.
+
+**Section contents.** Each hypothesis is a row in the template table with:
+`HYP-N`, `Hypothesis`, `Metric`, `Baseline`, `Target`, `Kill criteria`,
+`Valid by` (see `docs/requirements/templates/PRD.md` for the table and column
+semantics). Every column must be non-empty for every row — a hypothesis
+without a metric or without a target is the same as no hypothesis, and
+saga-kickstart's gate would have blocked the brief at Discovery.
+
+**Register two artifacts per hypothesis.** After the PRD artifact is created,
+iterate the `## Hypotheses` table and register, for each `HYP-N` row:
+
+1. **A `hypothesis` artifact** — one per row. This is the persistent,
+   queryable handle for the product bet. R16 (cgad-spec-lint) finds hypotheses
+   via `type='hypothesis'`, so a hypothesis that lives only in the PRD's
+   markdown is invisible to the product-cycle lint.
+   ```
+   artifact_create({
+     project_id, epic_id,
+     type: 'hypothesis',
+     code: 'HYP-N',                     // matches the table row code
+     title: '<Hypothesis column text>',
+     path: 'docs/requirements/REQ-NNN-<slug>/00-PRD.md#HYP-N',
+     status: 'draft',
+     parent_artifact_id: <PRD artifact id>,
+     tags: ['product-cycle']
+   })
+   ```
+
+2. **A `business_metric` artifact** — one per distinct `Metric` column value
+   (de-dupe across hypotheses that share a metric; one metric artifact is
+   referenced by many hypotheses). The metric artifact's `path` points to a
+   YAML block (typically an anchor inside the PRD, or a sibling
+   `00-metrics.md` doc) containing the metric definition. The YAML block
+   carries: `name`, `source` (where the value comes from — an event stream, a
+   query, a manual count), `aggregation` (count / sum / avg / p99 / ...),
+   `unit` (users / seconds / ratio / ...). Storing the definition as a
+   queryable artifact — not just as PRD prose — is what lets the verifier or
+   an analytics worker record observations against it via `observation_record`.
+   ```
+   artifact_create({
+     project_id, epic_id,
+     type: 'business_metric',
+     code: null,                        // name is the stable handle, not code
+     title: '<Metric column text>',
+     path: 'docs/requirements/REQ-NNN-<slug>/00-metrics.md#daily_active_users',
+     status: 'draft',
+     parent_artifact_id: <PRD artifact id>,
+     tags: ['product-cycle']
+   })
+   ```
+
+**Example metric YAML block** (lives at the path the business_metric artifact
+points to):
+
+```yaml
+# docs/requirements/REQ-NNN-<slug>/00-metrics.md#daily_active_users
+name: daily_active_users
+description: Distinct users with ≥1 active session in the last 24h
+source: sessions_event_stream
+aggregation: count_distinct
+unit: users
+window: 24h
+```
+
+**Link hypothesis → business_metric.** Add a `derived_from` trace from each
+hypothesis to the business_metric it measures, so the traceability graph
+carries the product cycle alongside the engineering cycle:
+```
+trace_add({
+  source_id: <hypothesis artifact id>,
+  target_type: 'artifact',
+  target_id: <business_metric artifact id>,
+  link_type: 'derived_from'
+})
+```
+
+**Observation is recorded downstream, not here.** saga-product does NOT record
+observations — it only defines the metric. Once the feature ships, an
+analytics worker, canary runner, or human records the measured value via:
+```
+observation_record({
+  epic_id,
+  artifact_id: <business_metric artifact id>,
+  observation_type: 'runtime_metric',     // or 'canary' / 'benchmark'
+  observed_value: '...',
+  baseline_value: '<Baseline column from the table>'
+})
+```
+This is the close of the product cycle: BR → hypothesis → metric →
+observation → hit/kill. cgad-spec-lint R16 surfaces any hypothesis whose epic
+has zero runtime observations, so an unmeasured product bet is visible at
+lint time.
+
 ## Finishing
 
 - `worker_done({ task_id, worker_id, result: "PRD drafted at <path>; artifact #N created" })`.
@@ -68,3 +172,6 @@ intent; everything downstream (SRS, UC, AC) derives from it.
 - One PRD per REQ episode. If scope grew, split the episode into two REQs.
 - Never create downstream artifacts (SRS/UC/AC) — those are other roles' jobs.
 - Never use `worker_next` again after `worker_done` in the same launch.
+- For `product`-classified episodes, the `## Hypotheses` section is REQUIRED
+  and every row MUST materialise as a `hypothesis` artifact + a
+  `business_metric` artifact. For `tech-task` episodes the section is omitted.
