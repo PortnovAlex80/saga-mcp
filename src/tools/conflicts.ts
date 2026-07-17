@@ -105,23 +105,51 @@ function handleConflictKeysAutoDerive(args: Record<string, unknown>) {
 
   // file_path from source_ref — saga stores source_ref as JSON stringified
   // (object with file/line_start/line_end/repo) or as a plain path.
+  // IMPORTANT: only emit a file_path conflict key for CODE files, not for
+  // requirements .md documents. Dev tasks created by saga-planner often carry
+  // a source_ref pointing at the AC .md anchor (traceability), but the
+  // conflict we care about is the code file the worker will actually mutate.
+  // Source-ref-as-.md produces false positives (every task for the same AC
+  // collides on the AC document). Skip .md/.markdown/.rst/.txt.
+  const isCodeFile = (p: string): boolean => {
+    const lower = p.toLowerCase();
+    // Reject docs (with or without anchor fragments like 'foo.md#AC-1').
+    if (/\.md([#?].*)?$/.test(lower)) return false;
+    if (/\.markdown([#?].*)?$/.test(lower)) return false;
+    if (/\.rst([#?].*)?$/.test(lower)) return false;
+    if (/\.txt([#?].*)?$/.test(lower)) return false;
+    return true;
+  };
   if (task.source_ref) {
     try {
       const parsed = JSON.parse(task.source_ref);
       if (parsed && typeof parsed === 'object' && 'file' in parsed && typeof (parsed as { file: unknown }).file === 'string') {
-        derived.push({ key_type: 'file_path', key_value: (parsed as { file: string }).file });
-      } else if (typeof parsed === 'string') {
+        const f = (parsed as { file: string }).file;
+        if (isCodeFile(f)) derived.push({ key_type: 'file_path', key_value: f });
+      } else if (typeof parsed === 'string' && isCodeFile(parsed)) {
         derived.push({ key_type: 'file_path', key_value: parsed });
       }
     } catch {
-      // Not JSON — treat as plain path.
-      derived.push({ key_type: 'file_path', key_value: task.source_ref });
+      // Not JSON — treat as plain path, only if code.
+      if (isCodeFile(task.source_ref)) {
+        derived.push({ key_type: 'file_path', key_value: task.source_ref });
+      }
     }
   }
-
   // schema + public_protocol from metadata.
   let meta: Record<string, unknown> = {};
   try { meta = JSON.parse(task.metadata || '{}') as Record<string, unknown>; } catch { /* ignore */ }
+
+  // Code-file fallback: dev tasks that did not set source_ref to a code path
+  // often carry metadata.target_file (planner convention) — prefer it when
+  // source_ref did not yield a code key.
+  const targetFile = typeof meta.target_file === 'string' && isCodeFile(meta.target_file)
+    ? meta.target_file
+    : null;
+  if (targetFile && !derived.some(k => k.key_type === 'file_path')) {
+    derived.push({ key_type: 'file_path', key_value: targetFile });
+  }
+
   const pushMetaKey = (metaKey: string, keyType: KeyType) => {
     const v = meta[metaKey];
     if (typeof v === 'string' && v.trim()) {
@@ -155,9 +183,20 @@ function handleConflictKeysAutoDerive(args: Record<string, unknown>) {
 }
 
 // The headline tool. Given an epic (or repository scope), find every
-// (key_type, key_value) pair that ≥2 ACTIVE tasks (todo/in_progress/review/
-// review_in_progress) share. Each collision is a SEMANTIC conflict that git
-// might or might not catch — this tool guarantees detection at planning time.
+// (key_type, key_value) pair that ≥2 ACTIVE-or-PENDING tasks share. Each
+// collision is a SEMANTIC conflict that git might or might not catch — this
+// tool guarantees detection at planning time.
+//
+// "Active or pending" = NOT done, NOT cancelled. Crucially this INCLUDES
+// `blocked` tasks: a blocked task is waiting on a dependency but will become
+// active when the dependency lands. Excluding blocked tasks from collision
+// detection defeats the entire point of planning-time detection — at
+// planning time, body tasks are typically blocked on a scaffold, and that is
+// exactly the collision we need to see.
+//
+// Only tasks whose lifecycle is OVER (done) are excluded — they cannot
+// mutate the workspace anymore. (saga has no `cancelled` status on tasks;
+// episodes have it, tasks do not.)
 function handleConflictCheck(args: Record<string, unknown>) {
   const db = getDb();
   const epicId = args.epic_id as number | undefined;
@@ -166,8 +205,9 @@ function handleConflictCheck(args: Record<string, unknown>) {
     throw new Error('Either epic_id or project_repository_id is required');
   }
 
-  // Active statuses — done/blocked tasks do not collide (they are not in flight).
-  const ACTIVE = "('todo','in_progress','review','review_in_progress')";
+  // In-flight-or-pending statuses. Done is excluded (lifecycle over).
+  // Blocked, todo, in_progress, review, review_in_progress — all included.
+  const IN_PIPELINE = "('todo','in_progress','review','review_in_progress','blocked')";
 
   // Build the task filter: either epic or repository scope.
   let taskFilter: string;
@@ -187,7 +227,7 @@ function handleConflictCheck(args: Record<string, unknown>) {
        COUNT(DISTINCT k.task_id) AS n_tasks
      FROM task_conflict_keys k
      JOIN tasks t ON t.id = k.task_id
-     WHERE t.status IN ${ACTIVE}
+     WHERE t.status IN ${IN_PIPELINE}
        AND ${taskFilter}
      GROUP BY k.key_type, k.key_value
      HAVING n_tasks >= 2
