@@ -1,67 +1,173 @@
 # saga-mcp
 
-[![IdeaCred](https://ideacred.com/api/badge/spranab/saga-mcp)](https://ideacred.com/profile/spranab/saga-mcp)
+A governance platform for parallel LLM coding agents. SQLite-backed, MCP-native, with contract-governed episode lifecycle, enforcement layer, and product discovery cycle.
 
-A Jira-like project tracker MCP server for AI agents. SQLite-backed, per-project scoped, with full hierarchy and activity logging — so LLMs never lose track.
-
-**No more scattered markdown files.** saga-mcp gives your AI assistant a structured database to track projects, epics, tasks, subtasks, notes, and decisions across sessions.
+**Not a Jira clone.** saga-mcp does not just track tasks — it governs the full lifecycle: from business hypothesis through architecture, requirements, parallel development, independent verification, to runtime observation and product decision (hit/kill).
 
 ---
 
-> ## 🍴 This is a fork
+> ## Fork origin
 >
-> Fork of [spranab/saga-mcp](https://github.com/spranab/saga-mcp) at **`PortnovAlex80/saga-mcp`**. The base 31 tools are **unchanged**. This fork adds a **dispatcher** — two extra MCP tools (`worker_next`, `worker_done`) that let saga itself **hand out tasks to AI agents** instead of an agent polling. It ships with three ZCode skills that teach agents how to work the queue.
+> Forked from [spranab/saga-mcp](https://github.com/spranab/saga-mcp) (v1.6.0). The upstream is a Jira-like MCP tracker. This fork adds:
+> - **Dispatcher** (worker_next/worker_done/merge-lock) for parallel agent orchestration
+> - **Episode state machine** (7 stages with hard gates: discovery→formalization→planning→development→verification→integration→completed)
+> - **CGAD enforcement layer** (Contract-Governed Agentic Development): 16 lint rules, 4-valued verdict, RiskClass computation, semantic conflict detection, runtime observations
+> - **12 skills** (saga-start, saga-kickstart, saga-product, saga-architect, saga-analyst, saga-planner, saga-worker, saga-verifier, saga-orchestrator, saga-dispatch, saga-tracker, senior-analyst)
+> - **14 artifact types**, **7 trace link types**, **trusted provider registry**
+> - **Product discovery cycle**: hypothesis → metric → observation → hit/kill
 >
-> **If you just want vanilla saga-mcp**, use [the upstream](https://github.com/spranab/saga-mcp) (`npx -y saga-mcp`). Everything below the line is upstream docs.
+> Full history: [docs/saga-mcp-history.md](docs/saga-mcp-history.md)
 
 ---
 
-## Features
+## What saga-mcp does
 
-- **Full hierarchy**: Projects > Epics > Tasks > Subtasks
-- **Task dependencies**: Express sequencing with auto-block/unblock when deps are met
-- **Comments**: Threaded discussions on tasks — leave breadcrumbs across sessions
-- **Templates**: Reusable task sets with `{variable}` substitution
-- **Dashboard**: One tool call gives full overview with natural language summary
-- **SQLite**: Self-contained `.tracker.db` file per project — zero setup, no external database
-- **Activity log**: Every mutation is automatically tracked with old/new values
-- **Notes system**: Decisions, context, meeting notes, blockers — all searchable
-- **Batch operations**: Create multiple subtasks or update multiple tasks in one call
-- **31 focused tools**: With MCP safety annotations on every tool
-- **Import/export**: Full project backup and migration as JSON (with dependencies and comments)
-- **Source references**: Link tasks to specific code locations
-- **Auto time tracking**: Hours computed automatically from activity log
-- **Cross-platform**: Works on macOS, Windows, and Linux
+### Problem it solves
 
-## 🚀 Fork: install from scratch (new machine)
+When multiple LLM agents work in parallel on the same project, they break each other:
+- Two workers independently invent incompatible scaffolds → merge conflicts at architecture level
+- Agent declares "done" prematurely — tests green but don't cover the AC
+- Nobody tracks which hypothesis we're testing or whether the metric was measured
+- Worker changes a frozen contract mid-work → downstream breaks silently
 
-This fork runs **from a local build** (not via `npx`), so your edits to `src/` take effect on the next `npm run build` + restart. Total setup ≈ 5 minutes.
+saga-mcp prevents all four through **mechanisms, not discipline**.
+
+### How it works
+
+```
+IDEA (one phrase)
+   │
+   ▼
+1. DISCOVERY (saga-kickstart: 3 assessors, completeness-gate, decision-fork)
+   │ → brief artifact, decision ∈ {go, fast-track, clarify, reject}
+   │ → Complexity Gate (senior-analyst: thin/modular/regulated/research → artifact set)
+   ▼
+2. FORMALIZATION (saga-product → saga-architect → saga-analyst)
+   │ → PRD (with Hypotheses: metric, baseline, target, kill criteria)
+   │ → SRS (Architectural Style, Module Manifest, Invariant Registry, Port Registry, NFR Targets)
+   │ → UC + AC (properties blocks: YAML contract-as-data for L3 property tests)
+   │ → RULE (business logic, enforced-by trace) + SPEC (implementation mechanism)
+   │ → Frozen Contract Snapshot (accepted_hash, drift detection)
+   ▼
+3. PLANNING (saga-planner)
+   │ → Pattern B scaffold (frozen contract materialized as stubs)
+   │ → conflict_keys_set + conflict_check (planning-time semantic collision detection)
+   │ → dev tasks (implements AC) + verification.ac tasks (saga-verifier)
+   ▼
+4. DEVELOPMENT (saga-worker fleet, parallel in worktrees)
+   │ → Each worker: claim → worktree → code + L2 tests → merge-lock → done
+   │ → RiskClass = max(declared, derived, policy) — agent cannot self-lower (P15)
+   ▼
+5. VERIFICATION (saga-verifier: independent L3 property tests)
+   │ → Reads frozen AC contract (NOT Builder's tests)
+   │ → Generates Hypothesis/QuickCheck property tests from YAML properties block
+   │ → verification_record({outcome: passed/failed/unknown/error, provider, test_layer})
+   ▼
+6. INTEGRATION (merge-lock, post-merge build check)
+   │ → assertVerificationPassed: every AC must have passing evidence matching hash
+   │ → Deny by default (P14): missing evidence = no transition
+   ▼
+7. COMPLETED → post-launch observation
+   │ → observation_record (benchmark/canary/incident/runtime_metric)
+   │ → R16 lint: hypothesis must have observation (product cycle closed)
+   │ → hit/kill decision based on metric vs target
+```
+
+### Enforcement layer (cgad-spec-lint v1.3.0)
+
+16 deterministic rules, covering 12 of 25 CGAD forbidden constructs:
+
+| Rule | What it catches |
+|---|---|
+| R1 | Deny-by-default: evidence without provider, UNKNOWN/ERROR treated as PASS |
+| R2 | P15 risk floor: final_risk < max(declared, derived, policy) |
+| R3 | AC with implements but no verified_by evidence |
+| R4 | Greenfield episode without scaffold (Pattern B enforcement) |
+| R5 | Semantic collision: ≥2 tasks sharing conflict key |
+| R6 | Agent self-set state without activity_log |
+| R7 | Non-atomic episode transition |
+| R8 | Frozen contract edited in place (drift_state='drifted') |
+| R9 | Self-approval: verifier == builder |
+| R10 | Work package self-decomposition |
+| R11 | Hidden exception without owner |
+| R12 | Human approval as proof of correctness |
+| R13 | Accepted SRS without verification.ac tasks (invariant enforcement gap) |
+| R14 | FR contains forbidden implementation detail (endpoints, DB, algorithms) |
+| R15 | RULE artifact without enforced-by trace |
+| R16 | Hypothesis without runtime observation (product cycle gap) |
+
+### Key primitives
+
+| Primitive | Purpose |
+|---|---|
+| Episode state machine | 7 stages with hard gates, no skipping |
+| Frozen Contract Snapshot | accepted_hash + drift_state — no mid-work contract changes |
+| 4-valued guard verdict | passed / failed / unknown / error (deny-by-default) |
+| RiskClass | max(declared, derived, policy) — agent cannot self-lower |
+| Semantic conflict keys | file_path / schema / public_protocol / integration_branch |
+| Runtime observations | Append-only, immutable, 3rd truth axis (Declared / Implemented / Observed) |
+| Trusted Provider Registry | Deterministic Evidence / Authoritative State / Authorized Decision |
+| Artifact types (14) | PRD, SRS, UC, AC, FR, NFR, RULE, SPEC, decision, brief, theme, OQ, hypothesis, business_metric |
+| Trace link types (7) | covers, implements, implements_spec, derived_from, depends_on, verified_by, superseded_by |
+
+---
+
+## Architecture
+
+saga-mcp does NOT replace classical architecture (SRP, Clean, Hexagonal, DDD).
+It builds an **enforcement layer** above it: what human teams do through code
+review and conversation, saga does through deterministic guards and hard gates.
+
+### Classical principles that survive (validated through 6 adversarial critics)
+
+- Small cohesive files (150-500 LOC)
+- SRP (Parnas change-propagation, not Miller 7±2)
+- Hexagonal / Ports & Adapters
+- Composition over inheritance
+- Explicit imports, no dynamic metaprogramming
+
+### What changes for agent-runtime
+
+| Human team enforcement | saga-mcp enforcement |
+|---|---|
+| Code review catches invariant violations | INVARIANTS.md + property tests (L3) + R13 lint |
+| "I remember where things are" | Artifact graph (saga DB), queryable, drift-detected |
+| Standup coordination | Frozen contract snapshot + conflict_keys (planning-time) |
+| "Tests green = works" | Independent Verifier: L3 property tests from frozen AC |
+| "Seems fine" | 4-valued verdict + deny-by-default |
+
+See [Research Charter](docs/research/00-research-charter-v1-final.md) for the full
+thesis (7 research reports + 6 adversarial critics).
+
+---
+
+## Install
 
 ### Prerequisites
 
-- **Node.js 18+** (for `better-sqlite3` native build) and **npm**
-- **Git**
-- **ZCode** (or any MCP-capable client) — for the skills to apply, you'll be running agents in it
+- Node.js 18+ (for better-sqlite3 native build)
+- npm
+- Git
+- ZCode (or any MCP-capable client)
 
 ### Step 1 — clone & build
 
 ```bash
 git clone https://github.com/PortnovAlex80/saga-mcp.git
 cd saga-mcp
-npm install        # builds better-sqlite3 native module
-npm run build      # tsc -> dist/
+npm install
+npm run build
 ```
 
-Verify the build:
+Verify:
 ```bash
-ls dist/index.js dist/tools/dispatcher.js    # both must exist
-DB_PATH=./smoke.db node dist/index.js        # should print: Tracker MCP Server running on stdio
+DB_PATH=./smoke.db node dist/index.js
+# Should print: Tracker MCP Server running on stdio
 ```
-(Ctrl-C to stop; delete `smoke.db*` after.)
 
 ### Step 2 — register in ZCode
 
-Edit `~/.zcode/cli/config.json` and point the `saga` server at the **local build** (not `npx`):
+Edit `~/.zcode/cli/config.json`:
 
 ```json
 {
@@ -78,506 +184,73 @@ Edit `~/.zcode/cli/config.json` and point the `saga` server at the **local build
 }
 ```
 
-> **Path note:** use your real clone path in `args`. `DB_PATH` is the SQLite file — pick **one** location and keep it; all projects live in this single DB (see "Multi-project" in the tracker skill). The file + schema auto-create on first run.
+Restart ZCode.
 
-Restart ZCode. After restart, `worker_next` / `worker_done` appear alongside the 31 base tools.
-
-### Step 3 — install the skills
-
-Copy the two skills from this repo into ZCode's skills directory so agents pick them up:
+### Step 3 — install skills
 
 ```bash
-# Windows / Git Bash  /  macOS / Linux  — same command
 cp -r skills/* ~/.zcode/skills/
 ```
 
-> If upgrading from an older fork that shipped `saga-developer` / `saga-reviewer`, remove them first — they were merged into `saga-worker`:
-> ```bash
-> rm -rf ~/.zcode/skills/saga-developer ~/.zcode/skills/saga-reviewer
-> ```
+Restart ZCode again.
 
-The skills:
-| Skill | When the agent uses it |
-|---|---|
-| **saga-tracker** | Bootstrap + the rule "workers go through the dispatcher". Load first in any saga session. Also the entry point for the planning/triage role (creating projects/tasks directly). |
-| **saga-worker** | The autonomous worker loop: resolve project once → `worker_next` → do the work → `worker_done` → repeat. Branches on the dispatcher's returned `skill` (`saga-developer` = implement a `todo` task, `saga-reviewer` = verify a `review` task). This is the skill that drives the fleet. |
+### Step 4 — smoke test
 
-The skills ship with the npm package too (`skills/` is in `files`), so `npx`-based installs can copy them the same way.
-
-Restart ZCode again so it sees the new skills.
-
-### Step 4 — smoke test the dispatcher
-
-The dispatcher scopes work by **project**. Each project folder carries its identity in a `projectname.txt` file at its root (one line = the exact saga project name). The worker resolves that name to a `project_id` once, then uses it on every call.
-
-In any ZCode window, from a folder that has a `projectname.txt`:
+From any project folder:
 ```
-mcp__saga__project_resolve_by_name({ name: "<contents of ./projectname.txt>" })
-  # → { project_id: 2, created: false, project: {...} }
-
-mcp__saga__worker_next({ worker_id: "smoke", project_id: 2 })
-  # → returns a task (or {task: null} if the project queue is empty) + skill
-```
-To undo the claim (don't leave a smoke task assigned):
-```
-mcp__saga__task_update({ id: <returned id>, status: "todo", assigned_to: "" })
+Skill("saga-start")
 ```
 
-If you got a task back, you're done. ✅
-
-### `projectname.txt` (project identity convention)
-
-Because one shared saga DB holds many projects, a worker must know which project is "its" — without relying on agent memory. The convention:
-
-- Create `./projectname.txt` in each project root, containing one line: the exact saga project name.
-- Agents read it once, resolve via `project_resolve_by_name`, and pass the resulting `project_id` to `worker_next`.
-- Multiple agents in the same folder read the same file → same project. Restarts and context loss don't matter.
-- `worker_next` requires `project_id` (with existence validation) — a worker literally cannot be handed another project's task.
-- **Low-priority tasks are not dispatched.** `worker_next` only returns `critical`/`high`/`medium`. A `low` task sits in `todo` until a human raises its priority (then it enters the queue) or it's picked up manually. This keeps the worker fleet on work that matters.
-
-### Running the worker fleet (the actual use case)
-
-Open **N agent windows** in ZCode (e.g. 3) — all in the same project folder — and give each the same prompt with its own id:
-
+Or manually:
 ```
-You are a saga worker. Your worker_id is "agent-1". Load the saga-worker skill and follow it exactly.
-Project identity lives in ./projectname.txt — do not trust your memory for the project.
-1. Read ./projectname.txt, then call
-   mcp__saga__project_resolve_by_name({ name: "<contents>" })  →  note project_id.
-2. Loop (do NOT ask permission to continue between tasks — work autonomously):
-   a. mcp__saga__worker_next({ worker_id: "agent-1", project_id: <from step 1> }).
-   b. If task is null → verify via task_list that the project genuinely has no claimable work, then say "queue empty" and stop.
-   c. Otherwise: apply the saga-worker skill — implement (skill 'saga-developer') or review (skill 'saga-reviewer') per the dispatcher's 'skill' field — then call
-      mcp__saga__worker_done({ task_id, worker_id: "agent-1", result: "..." }).
-   d. The response confirms completion; it does NOT carry a next task. Call `worker_next` again (step 2a) to get the next task — immediately repeat from 2c (do not ask).
+mcp__saga__project_resolve_by_name({ name: "test-project" })
+mcp__saga__worker_next({ worker_id: "smoke", project_id: 1 })
 ```
-
-Watch the board (your `saga.db` via any viewer) from your phone. The dispatcher guarantees no two agents grab the same task (see `tests/dispatcher-race/`), and `project_id` scoping guarantees they only touch this project.
-
-### Updating the fork later
-
-```bash
-cd saga-mcp
-git pull
-npm install        # if deps changed
-npm run build
-# restart ZCode
-```
-
-### 🖥️ Tracker view (auto-started kanban)
-
-The fork bundles a read-only web kanban (`tracker-view/`) that reads the **same** shared `DB_PATH` and shows all saga-projects as switchable boards. It **starts automatically** when the saga-MCP server launches (one less thing to run).
-
-- After restarting ZCode (or running `npm start`), open **http://localhost:4321** — the browser should pop up on its own.
-- `/` → index of all projects (`lottery_solver`, `femdriver`, …) with task counts and a live heartbeat.
-- `/?project=<id>` → kanban board of one project (Backlog / In Progress / Review / Done / Blocked), filter chips by epic, per-card assignee + age indicator.
-- `/api/heartbeat` → `{ "last": "<ts>" }` of the latest `activity_log` row (drives the green/yellow/red pulse dot).
-
-Environment variables (set in the ZCode MCP server `env`, or when running by hand):
-
-| Variable | Default | Effect |
-|---|---|---|
-| `TRACKER_AUTOSTART` | `1` | Set to `0` to disable the auto-spawn (headless/CI). |
-| `TRACKER_PORT` / `PORT` | `4321` | HTTP port the kanban listens on. |
-| `RELOAD_SEC` | `5` | Auto-refresh interval (seconds). |
-| `DB_PATH` | (required) | The shared saga DB — must match the saga-MCP server's. |
-
-Run it manually without the MCP server:
-
-```bash
-npm run tracker            # uses DB_PATH from your shell, or:
-DB_PATH=C:/Users/<you>/.zcode/saga.db npm run tracker
-```
-
-The tracker is spawned `detached` with `stdio: 'ignore'` so its output never interferes with the MCP protocol on stdio. If port 4321 is taken, it kills the previous tracker by its PID file and rebinds — it never touches the saga-MCP process.
 
 ---
 
+## Skills
 
-
-### With Claude Code
-
-Add to your project's `.mcp.json`:
-
-```json
-{
-  "mcpServers": {
-    "saga": {
-      "command": "npx",
-      "args": ["-y", "saga-mcp"],
-      "env": {
-        "DB_PATH": "/absolute/path/to/your/project/.tracker.db"
-      }
-    }
-  }
-}
-```
-
-### With Claude Desktop
-
-Add to your Claude Desktop config (`claude_desktop_config.json`):
-
-```json
-{
-  "mcpServers": {
-    "saga": {
-      "command": "npx",
-      "args": ["-y", "saga-mcp"],
-      "env": {
-        "DB_PATH": "/absolute/path/to/your/project/.tracker.db"
-      }
-    }
-  }
-}
-```
-
-### Manual install
-
-```bash
-npm install -g saga-mcp
-DB_PATH=./my-project/.tracker.db saga-mcp
-```
-
-## Configuration
-
-saga-mcp requires a single environment variable:
-
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `DB_PATH` | Yes | Absolute path to the `.tracker.db` SQLite file. The file and schema are auto-created on first use. |
-
-No API keys, no accounts, no external services. Everything is stored locally in the SQLite file you specify.
-
-## Tools
-
-### Getting Started
-
-| Tool | Description | Annotations |
-|------|-------------|-------------|
-| `tracker_init` | Initialize tracker and create first project | `readOnly: false`, `idempotent: true` |
-| `tracker_dashboard` | Full project overview with natural language summary | `readOnly: true` |
-
-### Projects
-
-| Tool | Description | Annotations |
-|------|-------------|-------------|
-| `project_create` | Create a new project | `readOnly: false` |
-| `project_list` | List projects with completion stats | `readOnly: true` |
-| `project_update` | Update project (archive to soft-delete) | `readOnly: false`, `idempotent: true` |
-
-### Epics
-
-| Tool | Description | Annotations |
-|------|-------------|-------------|
-| `epic_create` | Create an epic within a project | `readOnly: false` |
-| `epic_list` | List epics with task counts | `readOnly: true` |
-| `epic_update` | Update an epic | `readOnly: false`, `idempotent: true` |
-
-### Tasks
-
-| Tool | Description | Annotations |
-|------|-------------|-------------|
-| `task_create` | Create a task with optional dependencies | `readOnly: false` |
-| `task_list` | List/filter tasks with dependency info | `readOnly: true` |
-| `task_get` | Get task with subtasks, notes, comments, and dependencies | `readOnly: true` |
-| `task_update` | Update task (auto-logs, auto-blocks/unblocks) | `readOnly: false`, `idempotent: true` |
-| `task_batch_update` | Update multiple tasks at once | `readOnly: false`, `idempotent: true` |
-
-### Subtasks
-
-| Tool | Description | Annotations |
-|------|-------------|-------------|
-| `subtask_create` | Create subtask(s) — supports batch | `readOnly: false` |
-| `subtask_update` | Update subtask title/status | `readOnly: false`, `idempotent: true` |
-| `subtask_delete` | Delete subtask(s) — supports batch | `destructive: true`, `idempotent: true` |
-
-### Comments
-
-| Tool | Description | Annotations |
-|------|-------------|-------------|
-| `comment_add` | Add a comment to a task (threaded discussion) | `readOnly: false` |
-| `comment_list` | List all comments on a task | `readOnly: true` |
-
-### Templates
-
-| Tool | Description | Annotations |
-|------|-------------|-------------|
-| `template_create` | Create a reusable task template with `{variable}` placeholders | `readOnly: false` |
-| `template_list` | List available templates | `readOnly: true` |
-| `template_apply` | Apply template to create tasks with variable substitution | `readOnly: false` |
-| `template_delete` | Delete a template | `destructive: true`, `idempotent: true` |
-
-### Notes
-
-| Tool | Description | Annotations |
-|------|-------------|-------------|
-| `note_save` | Create or update a note (upsert) | `readOnly: false` |
-| `note_list` | List notes with filters | `readOnly: true` |
-| `note_search` | Full-text search across notes | `readOnly: true` |
-| `note_delete` | Delete a note | `destructive: true`, `idempotent: true` |
-
-### Intelligence
-
-| Tool | Description | Annotations |
-|------|-------------|-------------|
-| `tracker_search` | Cross-entity search (projects, epics, tasks, notes) | `readOnly: true` |
-| `activity_log` | View change history with filters | `readOnly: true` |
-| `tracker_session_diff` | Show what changed since a given timestamp — call at session start | `readOnly: true` |
-
-### Dispatcher (fork only)
-
-| Tool | Description | Annotations |
-|------|-------------|-------------|
-| `worker_next` | Claim the next free task (`todo` or `review`, unassigned, deps met, **priority medium+**) atomically; returns the task + the skill the agent should use. **Low-priority tasks are NOT handed out** — raise their priority to medium+ to make them claimable | `readOnly: false` |
-| `worker_done` | Complete the held task (`in_progress`→`review`, `review`→`done`, frees the assignment, records `result` as a comment, auto-unblocks downstream on `done`). Does NOT return the next task — call `worker_next` to get it | `readOnly: false` |
-
-**How the dispatcher hands out work** (fork only):
-
-```
-worker_next({worker_id, project_id})          →  { task, skill: "saga-developer" | "saga-reviewer" }   (or { task: null })
-worker_done({task_id, worker_id, result})     →  { completed, completed_new_status, active_tasks[] }   (no next task — call worker_next)
-worker_ask_need({task_id, worker_id, reason?}) →  { task_id, blocking: true }   (flags needs-human; task stays with the agent)
-worker_ask_done({task_id, worker_id})         →  { task_id, blocking: false }   (clears the flag after the human answers)
-```
-
-- `assigned_to` (native saga field) is the occupancy flag — a task is in the queue only if `status IN ('todo','review') AND assigned_to IS NULL`.
-- The **review cycle never enters `in_progress`**: a task taken from `review` keeps its status and only gets `assigned_to` set, so `worker_done` knows which cycle it's in by the current status.
-- Race-safety: each call runs under an explicit `BEGIN IMMEDIATE` transaction plus a conditional `UPDATE ... WHERE status=? AND assigned_to IS NULL` checked via `info.changes === 1`. Multi-process stress test in `tests/dispatcher-race/`.
-
-### Import / Export
-
-| Tool | Description | Annotations |
-|------|-------------|-------------|
-| `tracker_export` | Export full project as nested JSON (includes dependencies and comments) | `readOnly: true` |
-| `tracker_import` | Import project from JSON (matching export format) | `readOnly: false` |
-
-## Usage Examples
-
-### Example 1: Starting a project with dependencies
-
-**User prompt:** "Set up tracking for my new e-commerce API project"
-
-**Tool calls:**
-```
-tracker_init({ project_name: "E-Commerce API", project_description: "REST API for online store" })
-epic_create({ project_id: 1, name: "Authentication", priority: "high" })
-task_create({ epic_id: 1, title: "Design auth schema", priority: "critical" })
-task_create({ epic_id: 1, title: "Implement JWT auth", priority: "high", depends_on: [1] })
-task_create({ epic_id: 1, title: "Add OAuth2 Google login", priority: "medium", depends_on: [2] })
-```
-
-**Result:** Task 2 and 3 are auto-blocked because their dependencies aren't done yet. When task 1 is marked done, task 2 auto-unblocks.
-
-### Example 2: Resuming work with dashboard summary
-
-**Tool calls:**
-```
-tracker_dashboard({})
-```
-
-**Response includes a natural language summary:**
-```
-"E-Commerce API: 5 tasks across 2 epics. 40% complete. Active: Authentication (2/3 done). Next up: Product Catalog (2 tasks). 1 blocked task(s)."
-```
-
-Plus the full structured data (stats, epics, blocked tasks, overdue tasks, activity, notes).
-
-### Example 3: Using templates for repeated workflows
-
-**Create a template:**
-```
-template_create({
-  name: "feature_workflow",
-  description: "Standard feature implementation",
-  tasks: [
-    { "title": "Design {feature} API", "priority": "critical", "estimated_hours": 2 },
-    { "title": "Implement {feature}", "priority": "high", "estimated_hours": 8 },
-    { "title": "Write tests for {feature}", "priority": "high", "estimated_hours": 4 },
-    { "title": "Document {feature}", "priority": "medium", "estimated_hours": 1 }
-  ]
-})
-```
-
-**Apply it:**
-```
-template_apply({ template_id: 1, epic_id: 2, variables: { "feature": "user auth" } })
-```
-
-Creates 4 tasks: "Design user auth API", "Implement user auth", "Write tests for user auth", "Document user auth".
-
-### Example 4: Task comments as decision trail
-
-```
-comment_add({ task_id: 5, content: "Investigated root cause: CORS headers missing on preflight" })
-comment_add({ task_id: 5, content: "Fixed by adding OPTIONS handler. Tested with curl." })
-task_update({ id: 5, status: "done" })
-```
-
-Comments persist across sessions — next time an agent calls `task_get(5)`, it sees the full discussion thread.
-
-## How It Works
-
-saga-mcp stores everything in a single SQLite file (`.tracker.db`) per project. The database is auto-created on first use with all tables and indexes — no migration step needed.
-
-### Hierarchy
-
-```
-Project
-  └── Epic (feature/workstream)
-        └── Task (unit of work)
-              ├── Subtask (checklist item)
-              ├── Comment (discussion thread)
-              └── Dependencies (blocked by other tasks)
-```
-
-### Task Dependencies
-
-Tasks can depend on other tasks. When you set `depends_on: [2, 3]` on a task:
-- The task is auto-blocked if any dependency isn't `done`
-- When a dependency is marked `done`, downstream tasks are re-evaluated
-- If all dependencies are met, the blocked task auto-unblocks to `todo`
-
-### Note Types
-
-Notes replace scattered markdown files. Each note has a type:
-
-| Type | Use case |
-|------|----------|
-| `general` | Free-form notes |
-| `decision` | Architecture/design decisions |
-| `context` | Conversation context for future sessions |
-| `meeting` | Meeting notes |
-| `technical` | Technical details, specs |
-| `blocker` | Blockers and issues |
-| `progress` | Progress updates |
-| `release` | Release notes |
-
-### Activity Log
-
-Every create, update, and delete is automatically recorded:
-
-```json
-{
-  "summary": "Task 'Fix CORS issue' status: blocked -> done",
-  "action": "status_changed",
-  "entity_type": "task",
-  "entity_id": 15,
-  "field_name": "status",
-  "old_value": "blocked",
-  "new_value": "done",
-  "created_at": "2026-02-21T18:30:00"
-}
-```
-
-## Privacy Policy
-
-saga-mcp is a fully local, offline tool. It does **not**:
-
-- Collect any user data
-- Send any data to external servers
-- Require internet access after installation
-- Use analytics, telemetry, or tracking of any kind
-
-All data is stored exclusively in the local SQLite file specified by `DB_PATH`. You own your data completely. Uninstalling saga-mcp and deleting the `.tracker.db` file removes all traces.
-
-For questions about privacy, open an issue at https://github.com/spranab/saga-mcp/issues.
-
-## ZCode adaptation (this fork)
-
-This fork (`PortnovAlex80/saga-mcp`) is **adapted for [ZCode](https://zcode.z.ai)** —
-the GLM-5.2 harness by Z.ai. The upstream `spranab/saga-mcp` is a generic
-Jira-like MCP tracker; this fork adds a **dispatcher layer** that turns saga into
-a work queue for parallel ZCode subagents.
-
-### What the fork adds on top of upstream
-
-- **Dispatcher tools** (`worker_next`, `worker_done`, `worker_ask_need/done`,
-  `worker_merge_acquire/release`, `worker_health`) — see `src/tools/dispatcher.ts`.
-  Atomic task distribution across many workers via SQLite `BEGIN IMMEDIATE`.
-- **Asymmetric status model tuned for two roles**: the `skill` returned by
-  `worker_next` (`saga-developer` / `saga-reviewer`) maps 1:1 to ZCode's
-  `subagent_type`, so a saga task hands the worker the right ZCode subagent role
-  automatically.
-- **`review_in_progress` status** — a mirror of `in_progress` for the review
-  phase. `review` is now a pure buffer (waiting for a reviewer), and claiming it
-  moves the task to `review_in_progress`. This removes the semantic overload of
-  `review` (which previously meant both "queued for review" and "reviewer
-  working"). The full symmetric cycle:
-  `todo → in_progress → review → review_in_progress → done`.
-- **`stop: true` signal in `worker_done`** — saga explicitly tells the worker to
-  end its launch after completing a task. No more "the worker went into a 4-task
-  loop because it didn't know it was done."
-- **One task per launch** — the dispatcher no longer auto-claims the next task
-  inside `worker_done`. The orchestrator (the main ZCode session) spawns the
-  worker again for the next task. This eliminates the zombie problem in ZCode's
-  foreground-execution model.
-- **Worktree isolation + merge-lock** — each task runs in its own
-  `.worktrees/task-<id>` on branch `task/<id>`, off the `dev` integration branch.
-  A per-project merge-lock serializes merges into `dev`.
-- **Bundled `saga-worker` skill** (`skills/saga-worker/SKILL.md`) — the full
-  contract a ZCode subagent follows: worktree lifecycle, two-phase completion
-  (dev → review), merge-back, zombie recovery, autonomy rules.
-- **Auto-migration on startup** — existing DBs are migrated in place when saga
-  starts (e.g., `review` rows with an `assigned_to` become `review_in_progress`).
-
-### How to use with ZCode
-
-1. Install saga-mcp as an MCP server in ZCode (`~/.zcode/cli/config.json`):
-   ```json
-   "mcp": {
-     "servers": {
-       "saga": {
-         "type": "stdio",
-         "command": "node",
-         "args": ["<path-to>/saga-mcp/dist/index.js"],
-         "env": { "DB_PATH": "<path-to>/.tracker.db" }
-       }
-     }
-   }
-   ```
-2. Drop the bundled skill where ZCode loads user skills:
-   `~/.zcode/skills/saga-worker/SKILL.md` (copy from `skills/saga-worker/`).
-3. (Optional) Add a `saga-worker` subagent profile in
-   `~/.zcode/agents/saga-worker.md` so the orchestrator can spawn workers by
-   `subagent_type: "saga-worker"`.
-4. In your main ZCode session, spawn workers in parallel:
-   ```
-   Agent(subagent_type="saga-worker", prompt="worker_id=w1, project_id=<N>")
-   ```
-   Each worker claims one task via `worker_next`, does the work in its worktree,
-   completes it via `worker_done`, sees `stop: true`, and ends. The orchestrator
-   spawns it again for the next task.
-
-### Differences from upstream at a glance
-
-| Area | Upstream `spranab/saga-mcp` | This fork (ZCode-adapted) |
+| Skill | Role | When |
 |---|---|---|
-| Worker tools | none | `worker_next` / `worker_done` / `worker_ask_*` / `worker_merge_*` / `worker_health` |
-| Status set | `todo` / `in_progress` / `review` / `done` / `blocked` | adds `review_in_progress` |
-| `worker_done` | n/a | completes the task only; returns `stop: true`; does NOT auto-claim next |
-| Subagent binding | n/a | `worker_next` returns `skill` = ZCode `subagent_type` |
-| Git integration | none | per-task worktree on `task/<id>`, merge-lock into `dev` |
-| Skill | none | bundled `saga-worker` skill (worktree lifecycle, two-phase, recovery) |
-| DB schema | base | base + `review_in_progress` in CHECK (auto-migrated) |
+| **saga-start** | Bootstrap project + repository binding | First launch in a workspace |
+| **saga-kickstart** | Discovery: idea → brief → decision | Complexity gate, 3 assessors, completeness-gate |
+| **saga-product** | PRD with hypotheses | Formalization (product episodes) |
+| **saga-architect** | SRS with Invariant Registry, Port Registry, conflict-key surface | Formalization |
+| **saga-analyst** | UC + AC with properties blocks (contract-as-data) | Formalization |
+| **saga-planner** | Pattern B scaffold, dev tasks, conflict_keys, verification.ac routing | Planning |
+| **saga-worker** | Code + L2 example tests, merge-lock | Development |
+| **saga-verifier** | Independent L3 property tests from frozen AC contract | Verification |
+| **saga-orchestrator** | Drives full episode flow, Complexity Gate (Stage 1.5) | Main context |
+| **saga-dispatch** | Dispatch loop (orchestrator helper) | Development fleet |
+| **saga-tracker** | Bootstrap + worker queue rules | Entry point |
+| **senior-analyst** | Requirements engineering reference (BABOK/Wiegers distilled) | Loaded by orchestrator at Complexity Gate |
 
-Upstream features (project/epic/task hierarchy, comments, notes, templates,
-dashboard, export/import, activity log) are **unchanged** — the fork is a strict
-superset.
+---
 
-## Development
+## Testing
 
 ```bash
-git clone https://github.com/spranab/saga-mcp.git
-cd saga-mcp
-npm install
-npm run build
-DB_PATH=./test.db npm start
+npm test                    # 163 tests (tsc + node --test)
+npm run cgad-lint -- <db>   # Run cgad-spec-lint v1.3.0 (16 rules)
 ```
 
-## Support
+---
 
-- **Issues**: https://github.com/spranab/saga-mcp/issues
-- **Repository**: https://github.com/spranab/saga-mcp
+## Documentation
+
+- [History](docs/saga-mcp-history.md) — full evolution from fork to CGAD convergence
+- [CGAD spec](docs/architecture/cgad-v2-spec.md) — 1619-line target-state reference
+- [Research Charter](docs/research/00-research-charter-v1-final.md) — agent-oriented SE thesis
+- [Blog post](docs/research/blog-post-agent-oriented-se.md) — popularized research
+- [ADRs](docs/architecture/decisions/) — 005 (CGAD adoption), 006 (Pattern B), 007 (convergence retrospective)
+- [GUARDRAILS](GUARDRAILS.md) — Signs 001-009 (informal constitution)
+- [cgad-spec-lint](tools/cgad-spec-lint.mjs) — 16 deterministic enforcement rules
+- [SRS template](docs/requirements/templates/SRS.md) — 8 required sections
+- [AC template](docs/requirements/templates/acceptance-criteria.md) — contract-as-data format
+- [INVARIANTS template](docs/requirements/templates/INVARIANTS.md) — per-module invariant declaration
+
+---
 
 ## License
 
