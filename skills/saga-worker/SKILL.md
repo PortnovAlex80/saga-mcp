@@ -321,6 +321,8 @@ observed_value:'…'})`. CGAD P8 требует visibility.
 **проверяет** соответствие. Если FAIL — возвращается dev-задача (через её
 `changes_requested`), а не AC-verification задача.
 
+For true independent verification (CGAD §9), use saga-verifier skill instead of re-running Builder's tests. The Verifier generates L3 property tests from the frozen AC contract, not from the test file the Builder wrote.
+
 ## worker_done — the only way to finish a task
 
 ```
