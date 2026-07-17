@@ -23,11 +23,13 @@ import type { Artifact, ArtifactTrace, ToolHandler } from '../types.js';
 
 // SRS-004 §2b.1 — 'brief' (discovery output) and 'theme' (top-level business
 // board) extend the original 7 artifact types. 'RULE' (business rule / policy)
-// and 'OQ' (open question / unresolved issue) widen the catalog further. This
-// array MUST stay in lock-step with the ArtifactType union (src/types.ts),
+// and 'OQ' (open question / unresolved issue) widen the catalog further.
+// 'hypothesis' (product discovery hypothesis) and 'business_metric' (its metric
+// definition) close the BR→HYP→metric→observation product cycle. This array
+// MUST stay in lock-step with the ArtifactType union (src/types.ts),
 // ArtifactTypeSchema (src/schema.ts) and the artifacts.type SQL CHECK
 // constraint — all four are the canonical list.
-const ARTIFACT_TYPES = ['PRD', 'SRS', 'UC', 'AC', 'FR', 'NFR', 'decision', 'brief', 'theme', 'RULE', 'OQ'] as const;
+const ARTIFACT_TYPES = ['PRD', 'SRS', 'UC', 'AC', 'FR', 'NFR', 'decision', 'brief', 'theme', 'RULE', 'OQ', 'hypothesis', 'business_metric'] as const;
 const ARTIFACT_STATUSES = ['draft', 'in_review', 'accepted', 'superseded'] as const;
 const LINK_TYPES = ['covers', 'implements', 'derived_from', 'depends_on', 'verified_by', 'superseded_by'] as const;
 

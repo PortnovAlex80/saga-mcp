@@ -174,7 +174,7 @@ function migrateArtifactTypes(db: Database.Database): void {
   const row = db.prepare(
     "SELECT sql FROM sqlite_schema WHERE type='table' AND name='artifacts'",
   ).get() as { sql: string } | undefined;
-  if (!row?.sql || row.sql.includes("'OQ'")) return;
+  if (!row?.sql || row.sql.includes("'business_metric'")) return;
 
   db.pragma('foreign_keys = OFF');
   try {
@@ -184,7 +184,7 @@ function migrateArtifactTypes(db: Database.Database): void {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
         epic_id INTEGER NOT NULL REFERENCES epics(id) ON DELETE CASCADE,
-        type TEXT NOT NULL CHECK (type IN ('PRD','SRS','UC','AC','FR','NFR','decision','theme','brief','RULE','OQ')),
+        type TEXT NOT NULL CHECK (type IN ('PRD','SRS','UC','AC','FR','NFR','decision','theme','brief','RULE','OQ','hypothesis','business_metric')),
         code TEXT,
         title TEXT NOT NULL,
         path TEXT NOT NULL,

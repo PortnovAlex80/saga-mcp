@@ -158,7 +158,9 @@ export type ArtifactType =
   | 'theme'    // NEW — top-level business board
   | 'brief'    // NEW — discovery-phase output
   | 'RULE'     // NEW — business rule / policy artifact
-  | 'OQ';      // NEW — open question / unresolved issue
+  | 'OQ'       // NEW — open question / unresolved issue
+  | 'hypothesis'      // NEW — product discovery hypothesis (BR→HYP→metric)
+  | 'business_metric'; // NEW — metric definition referenced by a hypothesis
 
 export interface Artifact {
   id: number;
