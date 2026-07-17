@@ -997,3 +997,69 @@ test('REQ-010: manual keys preserved across auto_derive (no overwrite)', () => {
   assert.ok(filePaths.includes('MANUAL_PATH'));
   assert.ok(filePaths.includes('src/a.ts'));
 });
+
+// ============================================================================
+// Smoke-test-driven fixes (subagent run on water-cannon, 2026-07-17)
+// Fixes: (1) conflict_check includes blocked tasks, (2) auto_derive skips .md
+// source_ref, (3) R10 SQL project-filter bug.
+// ============================================================================
+
+test('smoke-fix: conflict_check detects collision among BLOCKED tasks', () => {
+  // At planning time, body tasks are typically 'blocked' on a scaffold.
+  // Excluding blocked tasks from collision detection defeats the planning-time
+  // purpose (this was a real bug found by the subagent smoke-test).
+  const product = projects.project_create({ name: 'SmokeFix Blocked Product' });
+  const epic = epics.epic_create({ project_id: product.id, name: 'REQ-smokefix-blocked' });
+  const scaffold = tasks.task_create({
+    epic_id: epic.id, title: 'SCAFFOLD: module', status: 'todo',
+    tags: ['scaffold'],
+  });
+  // 3 body tasks, all blocked on scaffold.
+  process.env.SAGA_ALLOW_MANUAL_STATUS = '1';
+  const t1 = tasks.task_create({ epic_id: epic.id, title: 'body 1', status: 'blocked' });
+  const t2 = tasks.task_create({ epic_id: epic.id, title: 'body 2', status: 'blocked' });
+  const t3 = tasks.task_create({ epic_id: epic.id, title: 'body 3', status: 'blocked' });
+  delete process.env.SAGA_ALLOW_MANUAL_STATUS;
+  // All three share main.py.
+  for (const tid of [t1.id, t2.id, t3.id]) {
+    conflicts.conflict_keys_set({
+      task_id: tid,
+      keys: [{ key_type: 'file_path', key_value: 'main.py' }],
+    });
+  }
+  const result = conflicts.conflict_check({ epic_id: epic.id });
+  assert.equal(result.collision_count, 1, 'blocked tasks must collide at planning time');
+  assert.equal(result.collisions[0].n_tasks, 3);
+});
+
+test('smoke-fix: conflict_keys_auto_derive SKIPS .md source_ref (false positive)', () => {
+  // Dev tasks created by saga-planner carry source_ref pointing at the AC .md
+  // anchor for traceability. Treating the .md as a code conflict key produces
+  // false positives (every task for the same AC collides on the AC document).
+  const product = projects.project_create({ name: 'SmokeFix MdRef Product' });
+  const epic = epics.epic_create({ project_id: product.id, name: 'REQ-smokefix-mdref' });
+  const task = tasks.task_create({
+    epic_id: epic.id, title: 'dev task',
+    source_ref: { file: 'docs/requirements/REQ-X/03-acceptance-criteria.md#AC-1' },
+  });
+  conflicts.conflict_keys_auto_derive({ task_id: task.id });
+  const list = conflicts.conflict_keys_list({ task_id: task.id });
+  const filePaths = list.keys.filter(k => k.key_type === 'file_path').map(k => k.key_value);
+  assert.ok(!filePaths.some(p => p.endsWith('.md')),
+    '.md source_ref must NOT become a file_path conflict key; got: ' + JSON.stringify(filePaths));
+});
+
+test('smoke-fix: conflict_keys_auto_derive USES metadata.target_file when source_ref is .md', () => {
+  const product = projects.project_create({ name: 'SmokeFix TargetFile Product' });
+  const epic = epics.epic_create({ project_id: product.id, name: 'REQ-smokefix-target' });
+  const task = tasks.task_create({
+    epic_id: epic.id, title: 'dev task',
+    source_ref: { file: 'docs/REQ-X/03-acceptance-criteria.md#AC-2' },
+    metadata: { target_file: 'src/calc.ts' },
+  });
+  conflicts.conflict_keys_auto_derive({ task_id: task.id });
+  const list = conflicts.conflict_keys_list({ task_id: task.id });
+  const filePaths = list.keys.filter(k => k.key_type === 'file_path').map(k => k.key_value);
+  assert.ok(filePaths.includes('src/calc.ts'),
+    'metadata.target_file should be used as the code file_path; got: ' + JSON.stringify(filePaths));
+});
