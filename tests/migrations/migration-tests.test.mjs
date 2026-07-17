@@ -13,16 +13,19 @@
 // and calls closeDb() before re-entering getDb() on a different file.
 //
 // ISOLATION: the migrations run as a chain inside getDb()
-//   migrateArtifactTypes → migrateVerificationOutcome → migrateRiskClass
-//     → migrateReviewInProgress
+//   migrateArtifactTypes → migrateTracesLinkType → migrateVerificationOutcome
+//     → migrateRiskClass → migrateReviewInProgress
 // and migrateReviewInProgress hard-codes its rebuild DDL (it does NOT include
 // the REQ-009 risk columns) and does not disable FKs during DROP TABLE tasks.
 // To test ONE migration's contract cleanly, each seed puts the OTHER tables in
 // their ALREADY-MIGRATED shape so the rest of the chain short-circuits:
 //   - Test 1 (verification_evidence): tasks already have the new status CHECK
-//     AND the risk columns; artifacts CHECK already includes 'RULE'/'OQ'
-//     (the post-widening shape) and the evidence_status column. Only
-//     verification_evidence is in its old (2-valued, no-provider) form.
+//     AND the risk columns; artifacts CHECK includes 'RULE'/'OQ' AND the
+//     evidence_status column but lacks 'SPEC' (and lacks project_repository_id).
+//     The 'SPEC'-gated migrateArtifactTypes fires and rebuilds defensively
+//     (preserving evidence_status, omitting project_repository_id); the test
+//     does not assert on the artifacts table, so this side-effect is benign.
+//     Only verification_evidence is in its old (2-valued, no-provider) form.
 //   - Test 2 (risk class): tasks already have the new status CHECK but lack
 //     the four risk columns. migrateReviewInProgress skips; migrateRiskClass
 //     adds + backfills.
@@ -566,4 +569,220 @@ test('migrateArtifactTypes widens CHECK to include RULE/OQ and preserves rows; e
   const db2 = getDb();
   const afterReenter = db2.prepare('SELECT COUNT(*) AS n FROM artifacts').get().n;
   assert.equal(afterReenter, 5, '3 seeded + 2 inserted = 5; idempotent re-entry must not duplicate or lose rows');
+});
+
+// ----------------------------------------------------------------------------
+// Test 5 — migrateArtifactTypes widens CHECK to include SPEC (detection predicate
+// changed from 'OQ' to 'SPEC'). The migration must also PRESERVE the
+// evidence_status column when the source table already has it (the original
+// RULE/OQ rebuild omitted it; the 'SPEC'-gated rebuild must not regress).
+// ----------------------------------------------------------------------------
+// OLD artifacts table: type CHECK has RULE/OQ (last-widened catalog) but NOT
+// 'SPEC', AND has the evidence_status column. migrateArtifactTypes detects the
+// absence of 'SPEC' and rebuilds. The rebuild must:
+//   (a) widen CHECK to include 'SPEC'
+//   (b) preserve evidence_status values from the source rows
+//   (c) preserve all other rows verbatim
+//   (d) be idempotent on re-entry
+test('migrateArtifactTypes widens CHECK to include SPEC and preserves evidence_status values', () => {
+  const dbPath = path.join(temp, 'artifact-types-spec.db');
+  const seed = new Database(dbPath);
+  seed.pragma('journal_mode = WAL');
+  seed.pragma('foreign_keys = ON');
+  seedSkeleton(seed);
+  seed.exec(TASKS_NEW_STATUS_WITH_RISK);
+  // Source: CHECK includes RULE/OQ (so the OLD 'OQ' predicate would have
+  // skipped); evidence_status column present with non-trivial values.
+  seed.exec(`
+    CREATE TABLE artifacts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      epic_id INTEGER NOT NULL REFERENCES epics(id) ON DELETE CASCADE,
+      type TEXT NOT NULL CHECK (type IN ('PRD','SRS','UC','AC','FR','NFR','decision','theme','brief','RULE','OQ')),
+      code TEXT,
+      title TEXT NOT NULL,
+      path TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'draft'
+        CHECK (status IN ('draft','in_review','accepted','superseded')),
+      parent_artifact_id INTEGER REFERENCES artifacts(id) ON DELETE SET NULL,
+      project_repository_id INTEGER,
+      content_hash TEXT,
+      accepted_hash TEXT,
+      drift_state TEXT NOT NULL DEFAULT 'unknown' CHECK (drift_state IN ('unknown','clean','drifted')),
+      evidence_status TEXT CHECK (evidence_status IN ('confirmed','proposed','assumed','open','rejected','superseded') OR evidence_status IS NULL),
+      tags TEXT NOT NULL DEFAULT '[]',
+      metadata TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+  `);
+  const insArt = seed.prepare(
+    `INSERT INTO artifacts (project_id, epic_id, type, code, title, path, status, evidence_status)
+     VALUES (1, 1, ?, ?, ?, ?, 'accepted', ?)`,
+  );
+  insArt.run('RULE', 'RULE-1', 'policy rule', 'docs/rule-1.md', 'confirmed');
+  insArt.run('RULE', 'RULE-2', 'draft rule', 'docs/rule-2.md', 'proposed');
+  insArt.run('OQ', 'OQ-1', 'open question', 'docs/oq-1.md', 'open');
+  insArt.run('FR', 'FR-1', 'functional req', 'docs/fr-1.md', null);
+  seed.close();
+
+  closeDb();
+  process.env.DB_PATH = dbPath;
+  const db = getDb();
+
+  // Schema: widened CHECK now includes SPEC.
+  const tableSql = db.prepare(
+    "SELECT sql FROM sqlite_schema WHERE type='table' AND name='artifacts'"
+  ).get().sql;
+  assert.ok(tableSql.includes("'SPEC'"), "widened CHECK must include 'SPEC'");
+  // Old literals retained (additive — never drop).
+  assert.ok(tableSql.includes("'RULE'"), "widened CHECK must still include 'RULE'");
+  assert.ok(tableSql.includes("'OQ'"), "widened CHECK must still include 'OQ'");
+
+  // evidence_status preserved through the rebuild (this is the regression guard
+  // for the original RULE/OQ rebuild omitting the column).
+  const rows = db.prepare(
+    `SELECT code, evidence_status FROM artifacts ORDER BY id`,
+  ).all();
+  const byCode = Object.fromEntries(rows.map(r => [r.code, r]));
+  assert.equal(byCode['RULE-1'].evidence_status, 'confirmed',
+    'evidence_status must survive the rebuild verbatim');
+  assert.equal(byCode['RULE-2'].evidence_status, 'proposed',
+    'proposed value must survive the rebuild');
+  assert.equal(byCode['OQ-1'].evidence_status, 'open',
+    'open value must survive the rebuild');
+  assert.equal(byCode['FR-1'].evidence_status, null,
+    'NULL evidence_status must survive the rebuild');
+
+  // Widened catalog is now insertable.
+  db.prepare(
+    `INSERT INTO artifacts (project_id, epic_id, type, code, title, path)
+     VALUES (1, 1, 'SPEC', 'SPEC-1', 'spec contract', 'docs/spec-1.md')`,
+  ).run();
+
+  // FK integrity.
+  const fkViolation = db.prepare('PRAGMA foreign_key_check').get();
+  assert.equal(fkViolation, undefined, 'no foreign-key violations after rebuild');
+
+  // Idempotency: re-entering getDb must not re-migrate / not drop rows or values.
+  closeDb();
+  const db2 = getDb();
+  const stillConfirmed = db2.prepare(
+    "SELECT evidence_status FROM artifacts WHERE code='RULE-1'",
+  ).get();
+  assert.equal(stillConfirmed.evidence_status, 'confirmed',
+    're-running migration must not clobber evidence_status');
+  const afterReenter = db2.prepare('SELECT COUNT(*) AS n FROM artifacts').get().n;
+  assert.equal(afterReenter, 5, '4 seeded + 1 inserted = 5; idempotent re-entry must not duplicate or lose rows');
+});
+
+// ----------------------------------------------------------------------------
+// Test 6 — migrateTracesLinkType widens artifact_traces.link_type CHECK to
+// include 'implements_spec' (FR/RULE → SPEC enforcement). SQLite cannot ALTER
+// a CHECK in place, so the table is rebuilt. Existing rows (any of the 6
+// original link_types) must be preserved verbatim.
+// ----------------------------------------------------------------------------
+test('migrateTracesLinkType widens CHECK to include implements_spec and preserves existing traces', () => {
+  const dbPath = path.join(temp, 'traces-link-type.db');
+  const seed = new Database(dbPath);
+  seed.pragma('journal_mode = WAL');
+  seed.pragma('foreign_keys = ON');
+  seedSkeleton(seed);
+  seed.exec(TASKS_NEW_STATUS_WITH_RISK);
+  // Source: artifacts at ALREADY-MIGRATED shape (includes 'SPEC') so
+  // migrateArtifactTypes short-circuits and we isolate migrateTracesLinkType.
+  seed.exec(`
+    CREATE TABLE artifacts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      epic_id INTEGER NOT NULL REFERENCES epics(id) ON DELETE CASCADE,
+      type TEXT NOT NULL CHECK (type IN ('PRD','SRS','UC','AC','FR','NFR','decision','theme','brief','RULE','OQ','SPEC')),
+      code TEXT,
+      title TEXT NOT NULL,
+      path TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'draft'
+        CHECK (status IN ('draft','in_review','accepted','superseded')),
+      parent_artifact_id INTEGER REFERENCES artifacts(id) ON DELETE SET NULL,
+      project_repository_id INTEGER,
+      content_hash TEXT,
+      accepted_hash TEXT,
+      drift_state TEXT NOT NULL DEFAULT 'unknown' CHECK (drift_state IN ('unknown','clean','drifted')),
+      evidence_status TEXT CHECK (evidence_status IN ('confirmed','proposed','assumed','open','rejected','superseded') OR evidence_status IS NULL),
+      tags TEXT NOT NULL DEFAULT '[]',
+      metadata TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    -- OLD artifact_traces: CHECK lacks 'implements_spec'.
+    CREATE TABLE artifact_traces (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      source_id INTEGER NOT NULL REFERENCES artifacts(id) ON DELETE CASCADE,
+      target_type TEXT NOT NULL CHECK (target_type IN ('artifact','task')),
+      target_id INTEGER NOT NULL,
+      link_type TEXT NOT NULL
+        CHECK (link_type IN ('covers','implements','derived_from','depends_on','verified_by','superseded_by')),
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE (source_id, target_type, target_id, link_type)
+    );
+  `);
+  const insArt = seed.prepare(
+    `INSERT INTO artifacts (project_id, epic_id, type, code, title, path) VALUES (1, 1, ?, ?, ?, ?)`,
+  );
+  insArt.run('RULE', 'RULE-1', 'policy rule', 'docs/rule-1.md');
+  insArt.run('FR', 'FR-1', 'functional req', 'docs/fr-1.md');
+  insArt.run('SPEC', 'SPEC-1', 'spec contract', 'docs/spec-1.md');
+  insArt.run('AC', 'AC-1', 'acceptance criterion', 'docs/ac-1.md');
+  const insTrace = seed.prepare(
+    `INSERT INTO artifact_traces (source_id, target_type, target_id, link_type) VALUES (?, 'artifact', ?, ?)`,
+  );
+  insTrace.run(1, 2, 'implements');      // RULE-1 → FR-1 (implements)
+  insTrace.run(2, 3, 'derived_from');    // FR-1 → SPEC-1 (derived_from)
+  insTrace.run(4, 2, 'covers');          // AC-1 → FR-1 (covers)
+  seed.close();
+
+  closeDb();
+  process.env.DB_PATH = dbPath;
+  const db = getDb();
+
+  // Schema: widened CHECK now includes 'implements_spec'.
+  const tableSql = db.prepare(
+    "SELECT sql FROM sqlite_schema WHERE type='table' AND name='artifact_traces'"
+  ).get().sql;
+  assert.ok(tableSql.includes("'implements_spec'"),
+    "widened CHECK must include 'implements_spec'");
+  // Old link_types retained (additive).
+  for (const lt of ["'covers'","'implements'","'derived_from'","'depends_on'","'verified_by'","'superseded_by'"]) {
+    assert.ok(tableSql.includes(lt), `widened CHECK must still include ${lt}`);
+  }
+
+  // Data preserved: 3 traces survive verbatim with their original link_type.
+  const traces = db.prepare(
+    `SELECT source_id, target_id, link_type FROM artifact_traces ORDER BY id`,
+  ).all();
+  assert.equal(traces.length, 3, 'all 3 traces must be preserved through the rebuild');
+  assert.deepEqual(
+    traces.map(t => ({ source_id: t.source_id, target_id: t.target_id, link_type: t.link_type })),
+    [
+      { source_id: 1, target_id: 2, link_type: 'implements' },
+      { source_id: 2, target_id: 3, link_type: 'derived_from' },
+      { source_id: 4, target_id: 2, link_type: 'covers' },
+    ],
+    'trace data must be preserved verbatim through the rebuild',
+  );
+
+  // The new link_type is now insertable (proves the widened CHECK is in effect).
+  db.prepare(
+    `INSERT INTO artifact_traces (source_id, target_type, target_id, link_type)
+     VALUES (1, 'artifact', 3, 'implements_spec')`,
+  ).run();
+
+  // FK integrity.
+  const fkViolation = db.prepare('PRAGMA foreign_key_check').get();
+  assert.equal(fkViolation, undefined, 'no foreign-key violations after rebuild');
+
+  // Idempotency: re-entering getDb must not re-migrate / not drop rows.
+  closeDb();
+  const db2 = getDb();
+  const afterReenter = db2.prepare('SELECT COUNT(*) AS n FROM artifact_traces').get().n;
+  assert.equal(afterReenter, 4, '3 seeded + 1 inserted = 4; idempotent re-entry must not duplicate or lose rows');
 });

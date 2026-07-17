@@ -351,3 +351,146 @@ test('R14: three-digit numbers outside the curated set are NOT flagged', () => {
   assert.ok(!hits.some(h => h.label === 'HTTP status code'),
     'non-curated 3-digit numbers (years/counts) must not fire');
 });
+
+// ----------------------------------------------------------------------------
+// R15 — RULE artifact without enforcement path (CGAD §9). Unit tests the SQL
+// contract the linter implements: for each accepted RULE artifact, count
+// outgoing traces with link_type IN ('implements','implements_spec'). If 0 →
+// finding. The linter's ruleR15 is not exported (matching the ruleR4 / R14
+// test approach), so we re-implement the SQL inline against a controlled
+// fixture. Keeping the two in sync is the same maintenance contract as above.
+// ----------------------------------------------------------------------------
+
+const R15_SCHEMA = `
+PRAGMA foreign_keys = OFF;
+
+CREATE TABLE projects (id INTEGER PRIMARY KEY, name TEXT, status TEXT DEFAULT 'active');
+CREATE TABLE artifacts (
+  id INTEGER PRIMARY KEY, project_id INTEGER, type TEXT, code TEXT, path TEXT,
+  status TEXT DEFAULT 'draft'
+);
+CREATE TABLE artifact_traces (
+  id INTEGER PRIMARY KEY, source_id INTEGER, target_type TEXT, target_id INTEGER,
+  link_type TEXT
+);
+`;
+
+function makeR15Db() {
+  const db = new sqlite3.DatabaseSync(':memory:');
+  db.exec(R15_SCHEMA);
+  return db;
+}
+
+function insertRule(db, id, opts = {}) {
+  const o = {
+    type: 'RULE',
+    code: `RULE-${id}`,
+    path: `docs/rule-${id}.md`,
+    status: 'accepted',
+    ...opts,
+  };
+  db.prepare(`INSERT INTO artifacts (id, project_id, type, code, path, status)
+    VALUES (?,?,?,?,?,?)`).run(id, 1, o.type, o.code, o.path, o.status);
+}
+
+function insertTrace(db, sourceId, linkType, targetId = 900) {
+  db.prepare(`INSERT INTO artifact_traces (source_id, target_type, target_id, link_type)
+    VALUES (?,?,?,?)`).run(sourceId, 'artifact', targetId, linkType);
+}
+
+// Re-implementation of the linter's ruleR15 SQL contract (see ruleR15 in the
+// .mjs). Returns the same finding shape so the tests are transportable.
+function ruleR15OnTestDb(db) {
+  const findings = [];
+  const ruleRows = db.prepare(`
+    SELECT id AS rule_id, code, path FROM artifacts
+    WHERE type = 'RULE' AND status = 'accepted'
+    ORDER BY id`).all();
+  for (const r of ruleRows) {
+    const enforcement = db.prepare(`
+      SELECT COUNT(*) AS n FROM artifact_traces
+      WHERE source_id = ? AND link_type IN ('implements','implements_spec')`).get(r.rule_id);
+    if (enforcement.n === 0) {
+      findings.push({
+        rule: 'CGAD-R15',
+        rule_id: r.rule_id,
+        code: r.code,
+        severity: 'warning',
+      });
+    }
+  }
+  return findings;
+}
+
+test('R15 fires: accepted RULE with no outgoing trace is an orphan', () => {
+  const db = makeR15Db();
+  insertRule(db, 1); // accepted RULE, no traces
+  const findings = ruleR15OnTestDb(db);
+  assert.equal(findings.length, 1);
+  assert.equal(findings[0].rule_id, 1);
+  assert.equal(findings[0].severity, 'warning');
+});
+
+test('R15 passes: accepted RULE with implements trace to an FR is enforced', () => {
+  const db = makeR15Db();
+  insertRule(db, 1);
+  insertTrace(db, 1, 'implements');
+  const findings = ruleR15OnTestDb(db);
+  assert.equal(findings.length, 0, 'implements trace suppresses R15');
+});
+
+test('R15 passes: accepted RULE with implements_spec trace to a SPEC is enforced', () => {
+  const db = makeR15Db();
+  insertRule(db, 1);
+  insertTrace(db, 1, 'implements_spec');
+  const findings = ruleR15OnTestDb(db);
+  assert.equal(findings.length, 0, 'implements_spec trace suppresses R15');
+});
+
+test('R15 fires: other link_types do NOT count as enforcement (verified_by/derived_from)', () => {
+  // Only implements/implements_spec operationalize a RULE. Other trace kinds
+  // (verified_by, derived_from, covers, depends_on, superseded_by) carry
+  // different semantics and must NOT be treated as enforcement.
+  const db = makeR15Db();
+  insertRule(db, 1);
+  insertTrace(db, 1, 'verified_by');
+  insertTrace(db, 1, 'derived_from');
+  insertTrace(db, 1, 'covers');
+  const findings = ruleR15OnTestDb(db);
+  assert.equal(findings.length, 1, 'non-implements link types do not suppress R15');
+});
+
+test('R15 passes: non-accepted RULEs are ignored (draft/in_review/superseded)', () => {
+  // R15 only audits ACCEPTED RULEs. A draft RULE has not been committed as
+  // policy yet, so it cannot be an orphan by CGAD §9.
+  const db = makeR15Db();
+  insertRule(db, 1, { status: 'draft' });
+  insertRule(db, 2, { status: 'in_review' });
+  insertRule(db, 3, { status: 'superseded' });
+  const findings = ruleR15OnTestDb(db);
+  assert.equal(findings.length, 0, 'non-accepted RULEs are out of R15 scope');
+});
+
+test('R15 fires once per orphan: three accepted RULEs, one enforced, two orphan', () => {
+  const db = makeR15Db();
+  insertRule(db, 1); insertRule(db, 2); insertRule(db, 3);
+  insertTrace(db, 2, 'implements'); // only RULE-2 has enforcement
+  const findings = ruleR15OnTestDb(db);
+  assert.equal(findings.length, 2);
+  assert.deepEqual(findings.map(f => f.rule_id).sort(), [1, 3]);
+});
+
+test('R15 ignores non-RULE artifacts: FR/AC/SRS orphans do not fire R15', () => {
+  // R15 is scoped to RULE artifacts by CGAD §9 (RULE = business rule / policy).
+  // An accepted FR with no implementer is an AC-coverage gap (R3), not an R15
+  // finding; an accepted SRS with no verification is an R13 finding.
+  const db = makeR15Db();
+  db.prepare(`INSERT INTO artifacts (id, project_id, type, code, path, status)
+    VALUES (1,1,'FR','FR-1','docs/fr-1.md','accepted')`).run();
+  db.prepare(`INSERT INTO artifacts (id, project_id, type, code, path, status)
+    VALUES (2,1,'AC','AC-1','docs/ac-1.md','accepted')`).run();
+  db.prepare(`INSERT INTO artifacts (id, project_id, type, code, path, status)
+    VALUES (3,1,'SPEC','SPEC-1','docs/spec-1.md','accepted')`).run();
+  const findings = ruleR15OnTestDb(db);
+  assert.equal(findings.length, 0, 'R15 is RULE-scoped only');
+});

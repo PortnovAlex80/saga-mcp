@@ -16,7 +16,7 @@ import process from "node:process";
 import { readFileSync, existsSync } from "node:fs";
 import path from "node:path";
 
-const LINTER_VERSION = "cgad-spec-lint/1.2.0";
+const LINTER_VERSION = "cgad-spec-lint/1.3.0";
 
 // ---------- CLI ----------
 
@@ -114,6 +114,13 @@ function usage() {
     "           Reads the artifact's .md from disk (path column or resolved via the",
     "           project_repository.local_path). Warning severity — FRs may",
     "           reference downstream SPECs by link without leaking their text.",
+    "  CGAD-R15 RULE without enforcement (CGAD §9). Accepted artifact of type",
+    "           'RULE' MUST have at least one outgoing trace with link_type",
+    "           'implements' or 'implements_spec' (an FR or SPEC that operationalizes",
+    "           the rule). A RULE with no enforcement path is an orphan — CGAD §9",
+    "           requires every non-informational RULE to have an enforcement",
+    "           mechanism. Warning severity — informational/policy RULEs may",
+    "           legitimately have no implementer; the human reviews each finding.",
     "",
     "Exit codes:",
     "  0  no findings (or only warnings)",
@@ -908,6 +915,74 @@ function ruleR14(db, projectId) {
   return findings;
 }
 
+// R15 — RULE artifact without enforcement path (CGAD §9).
+//
+// A RULE artifact is a business rule / policy artifact (type='RULE'). CGAD §9
+// requires every non-informational RULE to have an enforcement mechanism: an
+// operationalization that turns the rule into something the system does. In
+// the traceability graph that means at least one outgoing trace with
+// link_type 'implements' (an FR that operationalizes the rule) OR
+// 'implements_spec' (a SPEC design contract that implements the rule). A RULE
+// with neither is an orphan — it states a policy but nothing in the system
+// enforces it.
+//
+// Severity is WARNING (not error): a RULE may be intentionally informational
+// (e.g. an org-wide compliance statement, a North-Star principle) and have no
+// implementer by design. The human reviews each finding and either adds the
+// missing trace or accepts the rule as informational.
+//
+// Detection is DB-only (no disk read): count outgoing traces from each accepted
+// RULE with link_type IN ('implements','implements_spec'). If the count is 0,
+// emit a finding.
+function ruleR15(db, projectId) {
+  const pj = projectId !== undefined
+    ? `AND a.project_id = ${Number(projectId)}`
+    : '';
+  const findings = [];
+
+  let ruleRows;
+  try {
+    ruleRows = db.prepare(`
+      SELECT a.id AS rule_id, a.code, a.path
+      FROM artifacts a
+      WHERE a.type = 'RULE' AND a.status = 'accepted'
+      ${pj}
+      ORDER BY a.id`).all();
+  } catch {
+    // Pre-RULE DB without the 'RULE' type — skip silently.
+    return findings;
+  }
+
+  for (const r of ruleRows) {
+    // Outgoing traces with link_type 'implements' or 'implements_spec' = an
+    // FR/SPEC that operationalizes this rule. Either link counts as enforcement.
+    let enforcement;
+    try {
+      enforcement = db.prepare(`
+        SELECT COUNT(*) AS n FROM artifact_traces
+        WHERE source_id = ?
+          AND link_type IN ('implements','implements_spec')`).get(r.rule_id);
+    } catch {
+      // Pre-migration DB where 'implements_spec' is not yet in the CHECK — fall
+      // back to 'implements' only so R15 still runs on unmigrated DBs.
+      enforcement = db.prepare(`
+        SELECT COUNT(*) AS n FROM artifact_traces
+        WHERE source_id = ? AND link_type = 'implements'`).get(r.rule_id);
+    }
+    if (enforcement.n === 0) {
+      findings.push({
+        rule: 'CGAD-R15',
+        severity: 'warning',
+        message: `accepted RULE ${r.code || '#' + r.rule_id} (${r.path}) has no enforcement path (no implements/implements_spec trace). Orphan rule — CGAD §9 requires every non-informational RULE to have an enforcement mechanism. Add an 'implements' trace to an operationalizing FR, or an 'implements_spec' trace to a SPEC design contract. If the RULE is intentionally informational, accept this warning.`,
+        location: `artifacts.id=${r.rule_id}`,
+        provenance: `implements=0, implements_spec=0`,
+      });
+    }
+  }
+
+  return findings;
+}
+
 // Forbidden-content patterns for FR artifacts. Each entry: { label, regex }.
 // `label` is the short human-readable category shown in the finding; `regex`
 // is applied to the .md body. Patterns are kept tight to avoid English-prose
@@ -1041,10 +1116,10 @@ function emitJson(findings, dbPath, projectId) {
     linter: LINTER_VERSION,
     db: dbPath,
     project_id: projectId ?? null,
-    rule_set: "cgad-v1.2",
+    rule_set: "cgad-v1.3",
     rules: ["CGAD-R1", "CGAD-R2", "CGAD-R3", "CGAD-R4", "CGAD-R5",
             "CGAD-R6", "CGAD-R7", "CGAD-R8", "CGAD-R9", "CGAD-R10",
-            "CGAD-R11", "CGAD-R12", "CGAD-R13", "CGAD-R14"],
+            "CGAD-R11", "CGAD-R12", "CGAD-R13", "CGAD-R14", "CGAD-R15"],
     findings,
     summary: {
       errors: findings.filter(f => f.severity === "error").length,
@@ -1060,7 +1135,7 @@ function emitSarif(findings, dbPath) {
     version: "2.1.0",
     runs: [{
       tool: {
-        driver: { name: "cgad-spec-lint", version: "1.2.0", informationUri: "ADR-005" },
+        driver: { name: "cgad-spec-lint", version: "1.3.0", informationUri: "ADR-005" },
       },
       results: findings.map(f => ({
         ruleId: f.rule,
@@ -1112,6 +1187,7 @@ function main() {
       ...ruleR12(db, args.projectId),
       ...ruleR13(db, args.projectId),
       ...ruleR14(db, args.projectId),
+      ...ruleR15(db, args.projectId),
     ];
   } catch (e) {
     process.stderr.write(`error: rule evaluation failed: ${e.message}\n`);

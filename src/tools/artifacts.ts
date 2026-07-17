@@ -23,13 +23,16 @@ import type { Artifact, ArtifactTrace, ToolHandler } from '../types.js';
 
 // SRS-004 §2b.1 — 'brief' (discovery output) and 'theme' (top-level business
 // board) extend the original 7 artifact types. 'RULE' (business rule / policy)
-// and 'OQ' (open question / unresolved issue) widen the catalog further. This
-// array MUST stay in lock-step with the ArtifactType union (src/types.ts),
-// ArtifactTypeSchema (src/schema.ts) and the artifacts.type SQL CHECK
-// constraint — all four are the canonical list.
-const ARTIFACT_TYPES = ['PRD', 'SRS', 'UC', 'AC', 'FR', 'NFR', 'decision', 'brief', 'theme', 'RULE', 'OQ'] as const;
+// and 'OQ' (open question / unresolved issue) widen the catalog further. 'SPEC'
+// (technical specification / design contract referenced by FRs) widens it again
+// so an FR can `implements_spec` a SPEC without leaking the design into the FR
+// text (CGAD R14 / BABOK WHAT-vs-HOW separation). This array MUST stay in
+// lock-step with the ArtifactType union (src/types.ts), ArtifactTypeSchema
+// (src/schema.ts) and the artifacts.type SQL CHECK constraint — all four are
+// the canonical list.
+const ARTIFACT_TYPES = ['PRD', 'SRS', 'UC', 'AC', 'FR', 'NFR', 'decision', 'brief', 'theme', 'RULE', 'OQ', 'SPEC'] as const;
 const ARTIFACT_STATUSES = ['draft', 'in_review', 'accepted', 'superseded'] as const;
-const LINK_TYPES = ['covers', 'implements', 'derived_from', 'depends_on', 'verified_by', 'superseded_by'] as const;
+const LINK_TYPES = ['covers', 'implements', 'implements_spec', 'derived_from', 'depends_on', 'verified_by', 'superseded_by'] as const;
 
 // The business board project is identified by its exact name (SRS §2b.3). There
 // is no project `kind` column, so the contract's `projectExists(id,'business')`
@@ -594,7 +597,7 @@ export const definitions: Tool[] = [
   {
     name: 'trace_add',
     description:
-      "Add a directed trace edge from an artifact (source) to another artifact or a task (target). link_type names the relation: 'covers' (FR covered by UC), 'implements' (AC implemented by a dev task — the bridge to the builders' kanban), 'derived_from' (AC derived from UC), 'depends_on', 'verified_by', 'superseded_by'. This is what builds the traceability graph.",
+      "Add a directed trace edge from an artifact (source) to another artifact or a task (target). link_type names the relation: 'covers' (FR covered by UC), 'implements' (AC implemented by a dev task — the bridge to the builders' kanban), 'implements_spec' (FR or RULE implemented by a SPEC design contract), 'derived_from' (AC derived from UC), 'depends_on', 'verified_by', 'superseded_by'. This is what builds the traceability graph.",
     annotations: { title: 'Trace: Add', readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: 'object',

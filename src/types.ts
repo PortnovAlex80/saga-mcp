@@ -158,7 +158,8 @@ export type ArtifactType =
   | 'theme'    // NEW — top-level business board
   | 'brief'    // NEW — discovery-phase output
   | 'RULE'     // NEW — business rule / policy artifact
-  | 'OQ';      // NEW — open question / unresolved issue
+  | 'OQ'       // NEW — open question / unresolved issue
+  | 'SPEC';    // NEW — technical specification / design contract referenced by FRs
 
 export interface Artifact {
   id: number;
@@ -188,6 +189,6 @@ export interface ArtifactTrace {
   source_id: number;
   target_type: 'artifact' | 'task';
   target_id: number;
-  link_type: 'covers' | 'implements' | 'derived_from' | 'depends_on' | 'verified_by' | 'superseded_by';
+  link_type: 'covers' | 'implements' | 'derived_from' | 'depends_on' | 'verified_by' | 'superseded_by' | 'implements_spec';
   created_at: string;
 }
