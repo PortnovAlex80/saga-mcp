@@ -97,6 +97,10 @@ working product.** Между ними — вызовы ролей. Каждая
 ### Подготовка
 
 ```
+0. BEFORE spawning any subagent, check if the Agent tool / subagent_type
+   spawning is available in this harness. If it is NOT available, switch to
+   inline mode for the whole flow (see "Inline mode" below). Decide once,
+   up front — do not improvise per-role.
 1. project_id = <from .saga/project.json; legacy fallback uses projectname.txt>
 2. epic_id = epic_create({ project_id, name: "REQ-NNN-<slug>" })  ← если нет
 3. episode_status({epic_id}); after decision=go transition to formalization
@@ -257,6 +261,62 @@ derived, policy_minimum)`. Оркестратору не нужно ничего
 3. **High-blast-radius задачи** (data, migration, public API) получают
    `derived_risk='high'` автоматически через теги или task_kind.
 
+## Inline mode (when subagent spawning is unavailable)
+
+**Detection (step 0 of Подготовка).** Before spawning any subagent, check
+whether the `Agent` tool / `subagent_type` spawning is actually available in
+the current harness. In ZCode's harness only the read-only `Explore` subagent
+typically exists; writable `saga-*` subagent types usually do **not**. If
+`Agent(subagent_type:"saga-*")` is unavailable (or would be read-only and
+therefore unable to write artifacts/PRD/SRS/UC/AC), switch the **entire** flow
+to inline mode. Decide this once, up front — never improvise a mixed mode.
+
+**Inline execution.** In inline mode you invoke each role skill **inline in the
+main context** via the `Skill` tool — the same role skills, in the same order,
+just sequentially rather than in parallel subagents:
+
+```text
+Skill("saga-kickstart")    → decision
+Skill("saga-product")      → PRD
+Skill("saga-architect")    → SRS + FR/NFR + API contract   } Этап 3 pair — no longer
+Skill("saga-analyst")      → UC                             } parallel: run architect
+Skill("saga-analyst")      → AC                             } first, then UC, then AC
+Skill("saga-planner")      → dev + AC-verification tasks
+Skill("saga-dispatch")     → worker loop, review, merge
+```
+
+The roles are **sequential** — the Этап 3 SRS+UC pair is no longer concurrent:
+run `saga-architect` first, then `saga-analyst` (UC), then `saga-analyst` (AC).
+Everything else (checkpoints, `episode_transition`, `artifact_coverage` gates,
+`conflict_check`, merge protocol) is identical to the parallel algorithm above.
+
+**Flag the degradation.** Inline mode is non-parallel, so it is a degraded
+run and must be marked, not silent (NFR-5 of saga-kickstart: "no silent
+degraded pass"). Do one of:
+
+- record a note via `note_save({ note_type: "context", title: "orchestration: inline mode", content: "subagent spawning unavailable; roles ran sequentially in main context", related_entity_type: "epic", related_entity_id: <epic_id> })`, **and/or**
+- when the upstream `saga-kickstart` brief carries `degraded: true` (its own
+  F1 failover for the decision-fork's 3 assessors — see saga-kickstart
+  "Decision-fork §(b)" and Failover-table row F1), propagate the flag by
+  noting it alongside this epic.
+
+Every inline run must be grep-observable for `degraded` / `inline mode` so an
+auditor can tell parallel and sequential orchestrations apart.
+
+**Relationship to saga-kickstart degraded mode.** The kickstart skill already
+handles its own no-subagent case for the decision-fork's three assessors
+(Decision-fork §(b) "Субагенты недоступны → degraded-режим" + Failover-table
+row F1, marker `FAILOVER: assessors unavailable → degraded=true`). This
+orchestrator inline mode is the analogous fallback for the **formalization,
+planning, and execution roles**. The two compose cleanly: if the harness has no
+subagents at all, kickstart runs its assessor fallback AND the orchestrator
+runs every downstream role inline — the whole flow stays in one main context.
+
+**Do not** attempt `Agent(subagent_type:"saga-*")` calls once you have switched
+to inline mode for the flow — that is exactly the fragile improvisation this
+section replaces. Conversely, if subagent spawning becomes available
+mid-session, finish the current epic inline rather than mixing modes.
+
 ## Правила оркестратора (GUARDRAILS)
 
 1. **НЕ предсказывай ID задач** в промптах воркерам. Пиши «worker_next даст задачу».
@@ -264,7 +324,7 @@ derived, policy_minimum)`. Оркестратору не нужно ничего
 3. **После merge — comment_add(task_id, "merged: <sha>").** Audit trail в трекере.
 4. **Main-context-coordination-only.** Не пишешь код, не редактируешь исходники — делегируешь.
 5. **Проверка (checkpoint) после каждой фазы** — coverage / gaps / status перед следующей.
-6. **SRS+UC параллельны** (одним сообщением, два Agent-вызова). AC — после обоих.
+6. **SRS+UC параллельны** (одним сообщением, два Agent-вызова). AC — после обоих. In inline mode (see "Inline mode" above) they are sequential instead — architect then UC then AC — and the run is flagged `degraded`.
 7. **Decision-fork / verdict / override — внутри kickstart skill** (Sign 005), не оркестратором.
 
 ## Что НЕ делать
