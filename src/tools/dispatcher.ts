@@ -4,6 +4,8 @@ import { getDb } from '../db.js';
 import { logActivity } from '../helpers/activity-logger.js';
 import { reevaluateDownstream } from './tasks.js';
 import type { Task, ToolHandler } from '../types.js';
+import { generateNextForCompletedTask } from './workflow.js';
+import { advanceReadyEpisodes } from './lifecycle.js';
 
 // ============================================================================
 // Dispatcher: saga раздаёт задачи агентам.
@@ -48,13 +50,26 @@ function withImmediateTransaction<T>(db: Database.Database, fn: () => T): T {
   }
 }
 
-type WorkerSkill = 'saga-developer' | 'saga-reviewer';
+type WorkerSkill = string;
 
-/** Скилл, который агент должен применить для задачи с этим исходным статусом. */
-function skillForStatus(sourceStatus: string): WorkerSkill {
-  return (sourceStatus === 'review' || sourceStatus === 'review_in_progress')
-    ? 'saga-reviewer'
-    : 'saga-developer';
+/** Central workflow routing with a strict legacy fallback. */
+function skillForTask(task: Task, sourceStatus: string): WorkerSkill {
+  const review = sourceStatus === 'review' || sourceStatus === 'review_in_progress';
+  if (review && task.review_skill) return task.review_skill;
+  if (!review && task.execution_skill) return task.execution_skill;
+
+  let tags: string[] = [];
+  try {
+    const parsed = JSON.parse(task.tags || '[]');
+    if (Array.isArray(parsed)) tags = parsed.filter((value): value is string => typeof value === 'string');
+  } catch { /* malformed legacy tags: use status fallback */ }
+  const explicit = tags.find(tag => tag.startsWith(review ? 'review-skill:' : 'skill:'));
+  if (explicit) return explicit.slice(explicit.indexOf(':') + 1);
+  if (!review) {
+    const role = tags.find(tag => tag.startsWith('role:'))?.slice('role:'.length);
+    if (role) return `saga-${role}`;
+  }
+  return review ? 'saga-reviewer' : 'saga-developer';
 }
 
 // ============================================================================
@@ -201,12 +216,27 @@ function findNextClaimable(
       AND (t.assigned_to IS NULL OR t.assigned_to = '')
       AND t.priority IN ('critical', 'high', 'medium')
       AND t.epic_id IN (SELECT id FROM epics WHERE project_id = ?)
+      AND (
+        t.workflow_stage IS NULL
+        OR NOT EXISTS (SELECT 1 FROM episode_workflows ew WHERE ew.epic_id=t.epic_id)
+        OR EXISTS (
+          SELECT 1 FROM episode_workflows ew
+          WHERE ew.epic_id=t.epic_id AND ew.stage=t.workflow_stage
+        )
+      )
       ${excludeClause}
       ${roleClause}
       AND NOT EXISTS (
         SELECT 1 FROM task_dependencies d
         JOIN tasks dep ON dep.id = d.depends_on_task_id
-        WHERE d.task_id = t.id AND dep.status != 'done'
+        WHERE d.task_id = t.id AND (
+          dep.status != 'done'
+          OR (
+            dep.task_kind IS NOT NULL
+            AND dep.execution_mode = 'git_change'
+            AND dep.integration_state != 'merged'
+          )
+        )
       )
     ORDER BY ${PRIORITY_ORDER}, t.created_at
     LIMIT 1
@@ -276,6 +306,15 @@ function findNextClaimable(
 function handleWorkerNext(args: Record<string, unknown>): {
   task: Task | null;
   skill: WorkerSkill | null;
+  repository?: {
+    id: number;
+    repository_id: number;
+    name: string;
+    local_path: string | null;
+    role: string;
+    integration_branch: string;
+    default_branch: string;
+  } | null;
   active_tasks?: Array<{
     task_id: number;
     title: string;
@@ -288,6 +327,7 @@ function handleWorkerNext(args: Record<string, unknown>): {
 } {
   const db = getDb();
   const workerId = args.worker_id as string;
+  const machineId = args.machine_id == null ? null : String(args.machine_id);
 
   // project_id REQUIRED — иначе в общей БД агенту подсовывается чужая задача.
   // Бросаем actionable-ошибку (НЕ через required inputSchema): так агент
@@ -311,6 +351,7 @@ function handleWorkerNext(args: Record<string, unknown>): {
   if (!exists) {
     throw new Error(`project_id ${projectId} not found. Run project_list to see valid IDs, or project_resolve_by_name to (re)create by name from ./projectname.txt.`);
   }
+  advanceReadyEpisodes(projectId);
 
   // role (опционально): фильтрует очередь по тегу `role:<name>` на задаче.
   // Применение: проект требований, где задачи тегированы role:product / role:analyst
@@ -329,8 +370,24 @@ function handleWorkerNext(args: Record<string, unknown>): {
   // minor staleness приемлем.
   const active_tasks = getActiveTasks(db, projectId);
 
-  if (!task) return { task: null, skill: null, active_tasks, reason: 'очередь пуста' };
-  return { task, skill: skillForStatus(task.status), active_tasks };
+  if (!task) return { task: null, skill: null, repository: null, active_tasks, reason: 'очередь пуста' };
+  const repository = task.project_repository_id == null ? null : db.prepare(`
+    SELECT pr.id, pr.repository_id, r.name,
+           COALESCE(rc.local_path,pr.local_path) AS local_path, pr.role,
+           pr.integration_branch, r.default_branch
+      FROM project_repositories pr
+      JOIN repositories r ON r.id=pr.repository_id
+      LEFT JOIN repository_checkouts rc
+        ON rc.project_repository_id=pr.id AND rc.machine_id=? AND rc.status='active'
+     WHERE pr.id=? AND pr.project_id=?
+  `).get(machineId, task.project_repository_id, projectId) as {
+    id: number; repository_id: number; name: string; local_path: string | null;
+    role: string; integration_branch: string; default_branch: string;
+  } | undefined;
+  if (task.project_repository_id != null && !repository) {
+    throw new Error(`Task ${task.id} targets missing or foreign project_repository_id=${task.project_repository_id}`);
+  }
+  return { task, skill: skillForTask(task, task.status), repository: repository ?? null, active_tasks };
 }
 
 function handleWorkerDone(args: Record<string, unknown>): {
@@ -349,6 +406,8 @@ function handleWorkerDone(args: Record<string, unknown>): {
   // что делать дальше — saga явно говорит ему остановиться.
   stop: true;
   stop_reason: string;
+  workflow_generation?: unknown;
+  workflow_generation_error?: string;
 } {
   const db = getDb();
   const taskId = args.task_id as number;
@@ -417,6 +476,29 @@ function handleWorkerDone(args: Record<string, unknown>): {
     //    - review_in_progress→done:      любой воркер (status='review_in_progress'), assigned→NULL.
     //    - review_in_progress→in_progress: любой воркер (status='review_in_progress'), assigned→workerId.
     //    Гонок нет: BEGIN IMMEDIATE + info.changes===1.
+    if (newStatus === 'done' && task.task_kind === 'verification.ac') {
+      const traced = db.prepare(
+        `SELECT count(*) AS n FROM artifact_traces
+         WHERE target_type='task' AND target_id=? AND link_type='depends_on'`,
+      ).get(taskId) as { n: number };
+      const missing = db.prepare(
+        `SELECT a.id
+         FROM artifact_traces tr JOIN artifacts a ON a.id=tr.source_id
+         WHERE tr.target_type='task' AND tr.target_id=? AND tr.link_type='depends_on'
+           AND a.type='AC'
+           AND NOT EXISTS (
+             SELECT 1 FROM verification_evidence v
+             WHERE v.task_id=? AND v.artifact_id=a.id AND v.outcome='passed'
+               AND v.content_hash=a.accepted_hash
+           )`,
+      ).all(taskId, taskId) as Array<{ id: number }>;
+      if (traced.n === 0 || missing.length > 0) {
+        throw new Error(
+          `Verification task ${taskId} cannot be approved without passing evidence for every traced AC`,
+        );
+      }
+    }
+
     const completeInfo = db
       .prepare(
         `UPDATE tasks SET status=?, assigned_to=?, updated_at=datetime('now')
@@ -447,14 +529,31 @@ function handleWorkerDone(args: Record<string, unknown>): {
       // (или →conflict). worker_health отличит «done но не слито» по этому полю.
       // Для изменений цикла CHANGES_REQUESTED (review→in_progress) НЕ трогаем —
       // worktree живёт, метка не нужна.
-      patchWorktreeMeta(db, taskId, {
-        branch: worktreeBranch(taskId),
-        path: worktreePath(taskId),
-        merge_target: INTEGRATION_BRANCH_DEFAULT,
-        merged_into: 'pending',
-        merged_commit: null,
-        merge_conflict: false,
-      });
+      if (task.task_kind && task.execution_mode === 'git_change') {
+        const repository = task.project_repository_id == null ? undefined : db.prepare(
+          'SELECT integration_branch FROM project_repositories WHERE id=?',
+        ).get(task.project_repository_id) as { integration_branch: string } | undefined;
+        const mergeTarget = repository?.integration_branch ?? INTEGRATION_BRANCH_DEFAULT;
+        db.prepare(
+          `UPDATE tasks
+           SET integration_state='pending', integrated_at=NULL, integrated_commit=NULL,
+               updated_at=datetime('now')
+           WHERE id=?`,
+        ).run(taskId);
+        patchWorktreeMeta(db, taskId, {
+          branch: worktreeBranch(taskId),
+          path: worktreePath(taskId),
+          merge_target: mergeTarget,
+          merged_into: 'pending',
+          merged_commit: null,
+          merge_conflict: false,
+        });
+      } else {
+        // Legacy and non-git tasks keep the historical done-is-ready behavior.
+        db.prepare(
+          `UPDATE tasks SET integration_state='not_required', updated_at=datetime('now') WHERE id=?`,
+        ).run(taskId);
+      }
       reevaluateDownstream(db, taskId); // tasks.ts:167
     }
 
@@ -500,7 +599,24 @@ function handleWorkerDone(args: Record<string, unknown>): {
 
   // BEGIN IMMEDIATE — сериализация писателей (db.transaction тут DEFERRED,
   // поэтому оборачиваем явно).
-  return withImmediateTransaction(db, completeTask);
+  const completed = withImmediateTransaction(db, completeTask);
+  const completedTask = db.prepare(
+    'SELECT task_kind, execution_mode, integration_state FROM tasks WHERE id=?',
+  ).get(taskId) as { task_kind: string | null; execution_mode: string; integration_state: string } | undefined;
+  if (
+    completed.completed_new_status === 'done'
+    && (!completedTask?.task_kind || completedTask.execution_mode !== 'git_change')
+  ) {
+    try {
+      const generated = generateNextForCompletedTask(taskId);
+      if (generated) completed.workflow_generation = generated;
+    } catch (error) {
+      completed.workflow_generation_error = error instanceof Error ? error.message : String(error);
+      logActivity(db, 'task', taskId, 'updated', 'workflow_generation', null, 'failed',
+        `Automatic downstream generation failed: ${completed.workflow_generation_error}`);
+    }
+  }
+  return completed;
 }
 
 // ============================================================================
@@ -616,6 +732,19 @@ function readProjectMetadata(db: Database.Database, projectId: number): Record<s
   }
 }
 
+function readRepositoryMetadata(db: Database.Database, bindingId: number): Record<string, unknown> {
+  const row = db.prepare('SELECT metadata FROM project_repositories WHERE id=?').get(bindingId) as
+    | { metadata?: string }
+    | undefined;
+  if (!row?.metadata) return {};
+  try {
+    const parsed = JSON.parse(row.metadata);
+    return parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : {};
+  } catch {
+    return {};
+  }
+}
+
 function handleWorkerMergeAcquire(args: Record<string, unknown>): {
   granted: boolean;
   held_by?: { task_id: number; worker_id: string; age_min: number };
@@ -626,8 +755,14 @@ function handleWorkerMergeAcquire(args: Record<string, unknown>): {
   const workerId = args.worker_id as string;
 
   const grant = withImmediateTransaction(db, () => {
-    const task = db.prepare('SELECT id, title, status FROM tasks WHERE id=?').get(taskId) as
-      | { id: number; title: string; status: string }
+    const task = db.prepare(
+      `SELECT t.id, t.title, t.status, t.task_kind, t.project_repository_id,
+              pr.integration_branch
+       FROM tasks t
+       LEFT JOIN project_repositories pr ON pr.id=t.project_repository_id
+       WHERE t.id=?`,
+    ).get(taskId) as
+      | { id: number; title: string; status: string; task_kind: string | null; project_repository_id: number | null; integration_branch: string | null }
       | undefined;
     if (!task) throw new Error(`Task ${taskId} not found`);
     if (task.status !== 'done') {
@@ -642,7 +777,10 @@ function handleWorkerMergeAcquire(args: Record<string, unknown>): {
     const projectId = projectIdRow?.project_id;
     if (projectId == null) throw new Error(`Task ${taskId} has no project (epic missing)`);
 
-    const meta = readProjectMetadata(db, projectId);
+    const repositoryScoped = task.task_kind != null && task.project_repository_id != null;
+    const meta = repositoryScoped
+      ? readRepositoryMetadata(db, task.project_repository_id!)
+      : readProjectMetadata(db, projectId);
     const lock = meta.merge_lock as
       | { task_id: number; worker_id: string; acquired_at: string }
       | null
@@ -660,8 +798,13 @@ function handleWorkerMergeAcquire(args: Record<string, unknown>): {
     if (!lock || isStale) {
       const acquiredAt = new Date(now).toISOString().replace('T', ' ').slice(0, 19);
       meta.merge_lock = { task_id: taskId, worker_id: workerId, acquired_at: acquiredAt };
-      db.prepare('UPDATE projects SET metadata=?, updated_at=datetime(\'now\') WHERE id=?')
-        .run(JSON.stringify(meta), projectId);
+      if (repositoryScoped) {
+        db.prepare('UPDATE project_repositories SET metadata=?, updated_at=datetime(\'now\') WHERE id=?')
+          .run(JSON.stringify(meta), task.project_repository_id);
+      } else {
+        db.prepare('UPDATE projects SET metadata=?, updated_at=datetime(\'now\') WHERE id=?')
+          .run(JSON.stringify(meta), projectId);
+      }
       logActivity(db, 'task', taskId, 'updated', 'merge_lock', lock ? 'stale' : null, workerId,
         `Merge lock ${lock ? 'reclaimed from stale' : 'acquired by'} ${workerId} for task '${task.title}'`);
       return { granted: true as const };
@@ -696,8 +839,14 @@ function handleWorkerMergeRelease(args: Record<string, unknown>): {
   const commitSha = (args.commit_sha as string | undefined) ?? null;
 
   withImmediateTransaction(db, () => {
-    const task = db.prepare('SELECT id, title, status, tags FROM tasks WHERE id=?').get(taskId) as
-      | { id: number; title: string; status: string; tags: string }
+    const task = db.prepare(
+      `SELECT t.id, t.title, t.status, t.tags, t.task_kind, t.project_repository_id,
+              pr.integration_branch
+       FROM tasks t
+       LEFT JOIN project_repositories pr ON pr.id=t.project_repository_id
+       WHERE t.id=?`,
+    ).get(taskId) as
+      | { id: number; title: string; status: string; tags: string; task_kind: string | null; project_repository_id: number | null; integration_branch: string | null }
       | undefined;
     if (!task) throw new Error(`Task ${taskId} not found`);
 
@@ -709,7 +858,10 @@ function handleWorkerMergeRelease(args: Record<string, unknown>): {
 
     // Снять merge_lock, но ТОЛЬКО если он мой. Иначе чужой lock мог быть уже
     // отобран stale-логикой и передан другому — я не должен его трогать.
-    const meta = readProjectMetadata(db, projectId);
+    const repositoryScoped = task.task_kind != null && task.project_repository_id != null;
+    const meta = repositoryScoped
+      ? readRepositoryMetadata(db, task.project_repository_id!)
+      : readProjectMetadata(db, projectId);
     const lock = meta.merge_lock as
       | { task_id: number; worker_id: string; acquired_at: string }
       | null
@@ -720,12 +872,24 @@ function handleWorkerMergeRelease(args: Record<string, unknown>): {
       );
     }
     meta.merge_lock = null;
-    db.prepare('UPDATE projects SET metadata=?, updated_at=datetime(\'now\') WHERE id=?')
-      .run(JSON.stringify(meta), projectId);
+    if (repositoryScoped) {
+      db.prepare('UPDATE project_repositories SET metadata=?, updated_at=datetime(\'now\') WHERE id=?')
+        .run(JSON.stringify(meta), task.project_repository_id);
+    } else {
+      db.prepare('UPDATE projects SET metadata=?, updated_at=datetime(\'now\') WHERE id=?')
+        .run(JSON.stringify(meta), projectId);
+    }
 
     // Резолвим merged_into и (при конфликте) флагаем needs-human.
     if (outcome === 'merged') {
-      patchWorktreeMeta(db, taskId, { merged_into: INTEGRATION_BRANCH_DEFAULT, merged_commit: commitSha, merge_conflict: false });
+      const mergeTarget = task.integration_branch ?? INTEGRATION_BRANCH_DEFAULT;
+      patchWorktreeMeta(db, taskId, { merged_into: mergeTarget, merged_commit: commitSha, merge_conflict: false });
+      db.prepare(
+        `UPDATE tasks
+         SET integration_state='merged', integrated_at=datetime('now'), integrated_commit=?,
+             updated_at=datetime('now')
+         WHERE id=?`,
+      ).run(commitSha, taskId);
       // Если раньше был conflict (тег needs-human висит) — теперь всё слито,
       // человек больше не нужен. Снимаем тег (mirror of worker_ask_done).
       const tags = parseTags(task.tags);
@@ -736,6 +900,12 @@ function handleWorkerMergeRelease(args: Record<string, unknown>): {
       }
     } else {
       patchWorktreeMeta(db, taskId, { merged_into: 'conflict', merged_commit: null, merge_conflict: true });
+      db.prepare(
+        `UPDATE tasks
+         SET integration_state='conflict', integrated_at=NULL, integrated_commit=NULL,
+             updated_at=datetime('now')
+         WHERE id=?`,
+      ).run(taskId);
       // needs-human (как в worker_ask_need): задача остаётся done, но пульсирует
       // красным на канбане — человек разруливает мерж-конфликт руками.
       addTag(db, taskId, NEEDS_HUMAN_TAG);
@@ -743,8 +913,19 @@ function handleWorkerMergeRelease(args: Record<string, unknown>): {
 
     logActivity(db, 'task', taskId, 'updated', 'merge_release', null, outcome,
       `Merge ${outcome === 'merged' ? `completed${commitSha ? ` (${commitSha.slice(0, 7)})` : ''}` : 'CONFLICT (flagged needs-human)'} by ${workerId} for task '${task.title}'`);
+    if (outcome === 'merged') {
+      reevaluateDownstream(db, taskId);
+    }
   });
 
+  if (outcome === 'merged') {
+    try {
+      generateNextForCompletedTask(taskId);
+    } catch (error) {
+      logActivity(db, 'task', taskId, 'updated', 'workflow_generation', null, 'failed',
+        `Automatic downstream generation after merge failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
   return { task_id: taskId, result: outcome, merged_commit: outcome === 'merged' ? commitSha : null };
 }
 
@@ -865,6 +1046,10 @@ export const definitions: Tool[] = [
           description:
             'Optional role filter — only return tasks carrying the tag `role:<value>` (e.g. pass "analyst" to match tag "role:analyst"). Used in the requirements project to dispatch to specialized agents (product/analyst/architect). Omit for any-tag (builders project default).',
         },
+        machine_id: {
+          type: 'string',
+          description: 'Optional machine identifier used to resolve a machine-specific repository checkout.',
+        },
       },
       required: ['worker_id'],
       // NOTE: project_id is intentionally NOT in `required`. If it were, the
@@ -877,7 +1062,7 @@ export const definitions: Tool[] = [
   {
     name: 'worker_done',
     description:
-      'Complete the held task and free its assignment. Marks the task done by this worker (in_progress->review buffer, or review_in_progress->done on APPROVED), records the result as a comment, and clears assigned_to. Does NOT claim or return the next task — the response carries stop:true, a signal to stop work immediately. When the task reaches done, downstream dependencies are auto-unblocked and metadata.worktree.merged_into is set to "pending" (awaiting integration — the agent should then acquire the merge-lock via worker_merge_acquire, merge the task/<id> branch into the integration branch, and call worker_merge_release). For a task in review_in_progress, pass verdict="changes_requested" to return it to in_progress (the branch and its worktree stay in place for re-work) instead of approving it. Response includes active_tasks[]: a read-only snapshot of every other task currently in_progress or review, with its worker_id and worktree branch, so you know what your neighbours are doing.',
+      'Complete the held task and free its assignment. Marks the task done by this worker (in_progress->review buffer, or review_in_progress->done on APPROVED), records the result as a comment, and clears assigned_to. Does NOT claim or return the next task — the response carries stop:true. For typed git_change tasks, approval records integration_state=pending: dependencies and downstream generation remain gated until worker_merge_release(result="merged"). Legacy and non-git tasks retain done-is-ready behavior. For a task in review_in_progress, pass verdict="changes_requested" to return it to in_progress.',
     annotations: {
       title: 'Worker: Complete',
       readOnlyHint: false,
@@ -955,7 +1140,7 @@ export const definitions: Tool[] = [
   {
     name: 'worker_merge_acquire',
     description:
-      'Acquire the global merge-lock for this project so you can merge a task\'s task/<id> branch into the integration branch (dev) without colliding with another worker merging at the same time. Call this AFTER worker_done returns completed_new_status="done" (APPROVED) and BEFORE running git merge. Only ONE worker per project holds the lock at a time; if it is busy, returns granted:false with held_by (who holds it and for how long) and retry_after_ms — loop with a small sleep until granted. The lock auto-expires after 10 minutes (reclaimable if a worker died holding it). Saga itself does NOT run git — you run the merge in your own process once granted.',
+      'Acquire the merge-lock before integrating task/<id>. Typed repository tasks lock only their project_repository and use its integration_branch, so different repositories may merge concurrently. Legacy tasks retain the project-level dev lock. The lock auto-expires after 10 minutes.',
     annotations: {
       title: 'Worker: Merge Lock (acquire)',
       readOnlyHint: false,

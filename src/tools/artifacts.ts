@@ -2,6 +2,7 @@ import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import { getDb } from '../db.js';
 import { logActivity } from '../helpers/activity-logger.js';
 import { validateBrief } from '../validators/brief.js';
+import { artifactDiskHash, refreshArtifactHash } from '../helpers/artifact-file.js';
 import type { Artifact, ArtifactTrace, ToolHandler } from '../types.js';
 
 // ============================================================================
@@ -52,6 +53,9 @@ function handleArtifactCreate(args: Record<string, unknown>): Artifact {
   const code = (args.code as string | undefined) ?? null;
   const status = (args.status as typeof ARTIFACT_STATUSES[number] | undefined) ?? 'draft';
   const parentArtifactId = (args.parent_artifact_id as number | undefined) ?? null;
+  const projectRepositoryId = (args.project_repository_id as number | undefined) ?? null;
+  const contentHash = artifactDiskHash(db, path, projectRepositoryId)
+    ?? (args.content_hash as string | undefined) ?? null;
   const tags = (args.tags as string[] | undefined) ?? [];
   const metadata = (args.metadata as Record<string, unknown> | undefined) ?? {};
 
@@ -67,6 +71,13 @@ function handleArtifactCreate(args: Record<string, unknown>): Artifact {
   if (path === undefined || path === null || path === '') {
     throw new Error('title and path are required');
   }
+  if (projectRepositoryId != null) {
+    const binding = db.prepare('SELECT project_id FROM project_repositories WHERE id=?').get(projectRepositoryId) as { project_id: number } | undefined;
+    if (!binding) throw new Error(`Project repository ${projectRepositoryId} not found`);
+    if (binding.project_id !== projectId) {
+      throw new Error(`Project repository ${projectRepositoryId} does not belong to product project ${projectId}`);
+    }
+  }
 
   // --- type-specific guards + payload prep (SRS §2b.3) ---
   //
@@ -79,6 +90,8 @@ function handleArtifactCreate(args: Record<string, unknown>): Artifact {
   // 'business' project. Without a project `kind` column the contract's
   // `projectExists(id,'business')` is a name match.
   let metadataToPersist = metadata;
+  const acceptedHash = status === 'accepted' ? contentHash : null;
+  const driftState = acceptedHash ? 'clean' : 'unknown';
 
   if (type === 'brief') {
     const briefPayload = (args.metadata as Record<string, unknown> | undefined)?.[BRIEF_PAYLOAD_KEY];
@@ -120,10 +133,12 @@ function handleArtifactCreate(args: Record<string, unknown>): Artifact {
     if (existing) {
       db.prepare(
         `UPDATE artifacts SET project_id=?, title=?, path=?, status=?, parent_artifact_id=?,
-                              tags=?, metadata=?, updated_at=datetime('now')
+                              project_repository_id=?, content_hash=?, accepted_hash=?,
+                              drift_state=?, tags=?, metadata=?, updated_at=datetime('now')
          WHERE id=?`,
       ).run(
-        projectId, title, path, status, parentArtifactId,
+        projectId, title, path, status, parentArtifactId, projectRepositoryId,
+        contentHash, acceptedHash, driftState,
         JSON.stringify(tags), JSON.stringify(metadataToPersist), existing.id,
       );
       artifactId = existing.id;
@@ -133,10 +148,13 @@ function handleArtifactCreate(args: Record<string, unknown>): Artifact {
 
   if (artifactId === undefined) {
     const info = db.prepare(
-      `INSERT INTO artifacts (project_id, epic_id, type, code, title, path, status, parent_artifact_id, tags, metadata)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO artifacts (project_id, epic_id, type, code, title, path, status,
+                              parent_artifact_id, project_repository_id,
+                              content_hash, accepted_hash, drift_state, tags, metadata)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
-      projectId, epicId, type, code, title, path, status, parentArtifactId,
+      projectId, epicId, type, code, title, path, status, parentArtifactId, projectRepositoryId,
+      contentHash, acceptedHash, driftState,
       JSON.stringify(tags), JSON.stringify(metadataToPersist),
     );
     artifactId = info.lastInsertRowid as number;
@@ -157,6 +175,7 @@ function handleArtifactGet(args: Record<string, unknown>): {
 } {
   const db = getDb();
   const id = args.id as number;
+  refreshArtifactHash(db, id);
   const artifact = db.prepare('SELECT * FROM artifacts WHERE id=?').get(id) as Artifact | undefined;
   if (!artifact) throw new Error(`Artifact ${id} not found`);
 
@@ -267,6 +286,39 @@ function handleArtifactUpdate(args: Record<string, unknown>): Artifact {
     fields.push('parent_artifact_id=?'); params.push(parentArtifactId); trackedFields.push(['parent_artifact_id', 'parent']);
   }
 
+  const projectRepositoryId = args.project_repository_id as number | null | undefined;
+  const effectivePath = path ?? existing.path;
+  const effectiveRepositoryId = projectRepositoryId !== undefined
+    ? projectRepositoryId : existing.project_repository_id;
+  const diskHash = artifactDiskHash(db, effectivePath, effectiveRepositoryId);
+  const contentHash = diskHash ?? (args.content_hash as string | null | undefined);
+  if (contentHash !== undefined) {
+    fields.push('content_hash=?'); params.push(contentHash);
+    const acceptedHash = status === 'accepted'
+      ? contentHash
+      : existing.accepted_hash;
+    const driftState = acceptedHash == null || contentHash == null
+      ? 'unknown'
+      : acceptedHash === contentHash ? 'clean' : 'drifted';
+    if (status !== 'accepted') {
+      fields.push('drift_state=?'); params.push(driftState);
+    }
+  }
+  if (status === 'accepted') {
+    const hashAtAcceptance = contentHash !== undefined ? contentHash : existing.content_hash;
+    fields.push('accepted_hash=?'); params.push(hashAtAcceptance);
+    fields.push('drift_state=?'); params.push(hashAtAcceptance ? 'clean' : 'unknown');
+  }
+  if (projectRepositoryId !== undefined) {
+    if (projectRepositoryId != null) {
+      const binding = db.prepare('SELECT project_id FROM project_repositories WHERE id=?').get(projectRepositoryId) as { project_id: number } | undefined;
+      if (!binding || binding.project_id !== existing.project_id) {
+        throw new Error(`Project repository ${projectRepositoryId} does not belong to artifact ${id}'s product`);
+      }
+    }
+    fields.push('project_repository_id=?'); params.push(projectRepositoryId);
+  }
+
   const tags = args.tags as string[] | undefined;
   if (tags !== undefined) { fields.push('tags=?'); params.push(JSON.stringify(tags)); }
 
@@ -321,6 +373,18 @@ function handleTraceAdd(args: Record<string, unknown>): ArtifactTrace {
   } else {
     const t = db.prepare('SELECT 1 FROM tasks WHERE id=?').get(targetId);
     if (!t) throw new Error(`target task ${targetId} not found`);
+  }
+  if (linkType === 'verified_by') {
+    if (targetType !== 'task') {
+      throw new Error('verified_by must target a verification task');
+    }
+    const evidence = db.prepare(
+      `SELECT 1 FROM verification_evidence
+       WHERE artifact_id=? AND task_id=? AND outcome='passed'`,
+    ).get(sourceId, targetId);
+    if (!evidence) {
+      throw new Error('verified_by requires passing verification_evidence; use verification_record');
+    }
   }
 
   const info = db.prepare(
@@ -448,6 +512,8 @@ export const definitions: Tool[] = [
         code: { type: 'string', description: "Optional code for querying: 'AC-1', 'FR-3', 'UC-2'. Unique within the epic is recommended." },
         status: { type: 'string', enum: [...ARTIFACT_STATUSES], default: 'draft' },
         parent_artifact_id: { type: 'integer', description: 'Optional parent artifact (builds hierarchy: AC→UC, FR→PRD).' },
+        project_repository_id: { type: 'integer', description: 'Optional physical product repository containing the artifact document.' },
+        content_hash: { type: 'string', description: 'SHA-256 (or equivalent stable digest) of the current document revision.' },
         tags: { type: 'array', items: { type: 'string' }, default: [] },
         metadata: { type: 'object', default: {} },
       },
@@ -495,6 +561,8 @@ export const definitions: Tool[] = [
         code: { type: 'string' },
         status: { type: 'string', enum: [...ARTIFACT_STATUSES] },
         parent_artifact_id: { type: 'integer', description: 'Pass null to detach from parent.' },
+        project_repository_id: { type: ['integer', 'null'] },
+        content_hash: { type: ['string', 'null'], description: 'Current document digest; changing it after acceptance marks drift.' },
         tags: { type: 'array', items: { type: 'string' } },
         metadata: { type: 'object' },
       },

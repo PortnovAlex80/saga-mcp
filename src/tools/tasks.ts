@@ -44,6 +44,16 @@ export const definitions: Tool[] = [
         },
         depends_on: { type: 'array', items: { type: 'integer' }, description: 'Task IDs this task depends on' },
         tags: { type: 'array', items: { type: 'string' } },
+        metadata: { type: 'object' },
+        task_kind: { type: 'string', description: 'Semantic work type, e.g. formalization.ac or development.code' },
+        workflow_stage: { type: 'string', description: 'Episode stage that owns this task' },
+        execution_skill: { type: 'string', description: 'Skill used while the task is todo/in_progress' },
+        review_skill: { type: 'string', description: 'Skill used while the task is in review' },
+        execution_mode: { type: 'string', enum: ['git_change', 'tracker_only', 'read_only_evidence', 'interactive'], default: 'git_change' },
+        project_repository_id: { type: 'integer', description: 'Physical repository binding targeted by this task' },
+        generated_from_task_id: { type: 'integer', description: 'Immediate upstream task that generated this task' },
+        source_artifact_ids: { type: 'array', items: { type: 'integer' }, description: 'Accepted upstream artifacts proving provenance for typed downstream work' },
+        generation_key: { type: 'string', description: 'Stable idempotency key unique within the epic' },
       },
       required: ['epic_id', 'title'],
     },
@@ -61,6 +71,9 @@ export const definitions: Tool[] = [
         priority: { type: 'string', enum: ['low', 'medium', 'high', 'critical'] },
         assigned_to: { type: 'string', description: 'Filter by assignee' },
         tag: { type: 'string', description: 'Filter by tag' },
+        task_kind: { type: 'string', description: 'Filter by semantic task kind' },
+        workflow_stage: { type: 'string', description: 'Filter by workflow stage' },
+        project_repository_id: { type: 'integer', description: 'Filter by product repository binding' },
         branch: {
           type: 'string',
           description: 'Filter by the git branch of the task\'s epic. Pass "current" to auto-detect; pass empty string to restrict to branch-agnostic epics. Omit to list all.',
@@ -119,6 +132,15 @@ export const definitions: Tool[] = [
         depends_on: { type: 'array', items: { type: 'integer' }, description: 'Task IDs this task depends on (replaces existing)' },
         sort_order: { type: 'integer' },
         tags: { type: 'array', items: { type: 'string' } },
+        metadata: { type: 'object' },
+        task_kind: { type: 'string' },
+        workflow_stage: { type: 'string' },
+        execution_skill: { type: 'string' },
+        review_skill: { type: 'string' },
+        execution_mode: { type: 'string', enum: ['git_change', 'tracker_only', 'read_only_evidence', 'interactive'] },
+        project_repository_id: { type: ['integer', 'null'] },
+        generated_from_task_id: { type: ['integer', 'null'] },
+        generation_key: { type: ['string', 'null'] },
       },
       required: ['id'],
     },
@@ -140,7 +162,14 @@ function getUnmetDependencies(db: Database.Database, taskId: number): Array<{ id
   return db.prepare(
     `SELECT t.id, t.title, t.status FROM task_dependencies d
      JOIN tasks t ON t.id = d.depends_on_task_id
-     WHERE d.task_id = ? AND t.status != 'done'`
+     WHERE d.task_id = ? AND (
+       t.status != 'done'
+       OR (
+         t.task_kind IS NOT NULL
+         AND t.execution_mode = 'git_change'
+         AND t.integration_state != 'merged'
+       )
+     )`
   ).all(taskId) as Array<{ id: number; title: string; status: string }>;
 }
 
@@ -199,18 +228,101 @@ function handleTaskCreate(args: Record<string, unknown>) {
   const dueDate = (args.due_date as string) ?? null;
   const sourceRef = args.source_ref ? JSON.stringify(args.source_ref) : null;
   const tags = JSON.stringify((args.tags as string[]) ?? []);
+  const metadata = JSON.stringify((args.metadata as Record<string, unknown>) ?? {});
   const dependsOn = (args.depends_on as number[]) ?? [];
+  const taskKind = (args.task_kind as string | undefined) ?? null;
+  const workflowStage = (args.workflow_stage as string | undefined) ?? null;
+  const executionSkill = (args.execution_skill as string | undefined) ?? null;
+  const reviewSkill = (args.review_skill as string | undefined) ?? null;
+  const executionMode = (args.execution_mode as string | undefined) ?? 'git_change';
+  const projectRepositoryId = (args.project_repository_id as number | undefined) ?? null;
+  const generatedFromTaskId = (args.generated_from_task_id as number | undefined) ?? null;
+  const generationKey = (args.generation_key as string | undefined) ?? null;
+  const sourceArtifactIds = (args.source_artifact_ids as number[] | undefined) ?? [];
+
+  if (!['git_change', 'tracker_only', 'read_only_evidence', 'interactive'].includes(executionMode)) {
+    throw new Error(`execution_mode '${executionMode}' is invalid`);
+  }
+  const epicProject = db.prepare('SELECT project_id FROM epics WHERE id=?').get(epicId) as { project_id: number } | undefined;
+  if (!epicProject) throw new Error(`Epic ${epicId} not found`);
+  if (projectRepositoryId != null) {
+    const binding = db.prepare('SELECT project_id FROM project_repositories WHERE id=?').get(projectRepositoryId) as { project_id: number } | undefined;
+    if (!binding) throw new Error(`Project repository ${projectRepositoryId} not found`);
+    if (binding.project_id !== epicProject.project_id) {
+      throw new Error(`Project repository ${projectRepositoryId} does not belong to epic ${epicId}'s product`);
+    }
+  }
+  if (generatedFromTaskId != null) {
+    const source = db.prepare('SELECT epic_id FROM tasks WHERE id=?').get(generatedFromTaskId) as { epic_id: number } | undefined;
+    if (!source || source.epic_id !== epicId) {
+      throw new Error(`generated_from_task_id ${generatedFromTaskId} must belong to epic ${epicId}`);
+    }
+  }
+  const episodeInitialized = Boolean(
+    db.prepare('SELECT 1 FROM episode_workflows WHERE epic_id=?').get(epicId),
+  );
+  const provenanceRequired = episodeInitialized
+    && ['development', 'verification', 'integration'].includes(workflowStage ?? '');
+  if (provenanceRequired && generatedFromTaskId == null && sourceArtifactIds.length === 0) {
+    throw new Error(
+      `Typed ${workflowStage} task requires generated_from_task_id or source_artifact_ids`,
+    );
+  }
+  for (const artifactId of sourceArtifactIds) {
+    const artifact = db.prepare(
+      'SELECT epic_id,status,type FROM artifacts WHERE id=?',
+    ).get(artifactId) as { epic_id: number; status: string; type: string } | undefined;
+    if (!artifact || artifact.epic_id !== epicId || artifact.status !== 'accepted') {
+      throw new Error(`source artifact ${artifactId} must be accepted and belong to epic ${epicId}`);
+    }
+    if (['development', 'verification'].includes(workflowStage ?? '') && artifact.type !== 'AC') {
+      throw new Error(`Typed ${workflowStage} task provenance must reference accepted AC artifacts`);
+    }
+  }
+  if (provenanceRequired && sourceArtifactIds.length === 0 && generatedFromTaskId != null) {
+    const source = db.prepare(
+      `SELECT workflow_stage,status,execution_mode,integration_state
+       FROM tasks WHERE id=?`,
+    ).get(generatedFromTaskId) as {
+      workflow_stage: string | null; status: string;
+      execution_mode: string; integration_state: string;
+    };
+    const order = ['discovery','formalization','planning','development','verification','integration'];
+    const sourceIndex = order.indexOf(source.workflow_stage ?? '');
+    const targetIndex = order.indexOf(workflowStage ?? '');
+    const ready = source.status === 'done'
+      && (source.execution_mode !== 'git_change' || source.integration_state === 'merged');
+    if (sourceIndex < 0 || targetIndex < 0 || sourceIndex >= targetIndex || !ready) {
+      throw new Error(
+        `generated_from_task_id ${generatedFromTaskId} must be completed/integrated work from an earlier stage`,
+      );
+    }
+  }
 
   const task = db
     .prepare(
-      `INSERT INTO tasks (epic_id, title, description, status, priority, assigned_to, estimated_hours, due_date, source_ref, tags)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING *`
+      `INSERT INTO tasks
+        (epic_id,title,description,status,priority,assigned_to,estimated_hours,due_date,source_ref,
+         task_kind,workflow_stage,execution_skill,review_skill,execution_mode,
+         project_repository_id,generated_from_task_id,generation_key,tags,metadata)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING *`
     )
-    .get(epicId, title, description, status, priority, assignedTo, estimatedHours, dueDate, sourceRef, tags);
+    .get(
+      epicId, title, description, status, priority, assignedTo, estimatedHours, dueDate, sourceRef,
+      taskKind, workflowStage, executionSkill, reviewSkill, executionMode,
+      projectRepositoryId, generatedFromTaskId, generationKey, tags, metadata,
+    );
 
   const row = task as Record<string, unknown>;
   const taskId = row.id as number;
   logActivity(db, 'task', taskId, 'created', null, null, null, `Task '${title}' created`);
+  const traceType = workflowStage === 'development' ? 'implements' : 'depends_on';
+  for (const artifactId of sourceArtifactIds) {
+    db.prepare(
+      `INSERT OR IGNORE INTO artifact_traces (source_id,target_type,target_id,link_type)
+       VALUES (?,'task',?,?)`,
+    ).run(artifactId, taskId, traceType);
+  }
 
   if (dependsOn.length > 0) {
     setDependencies(db, taskId, dependsOn);
@@ -247,6 +359,9 @@ function handleTaskList(args: Record<string, unknown>) {
   const priority = args.priority as string | undefined;
   const assignedTo = args.assigned_to as string | undefined;
   const tag = args.tag as string | undefined;
+  const taskKind = args.task_kind as string | undefined;
+  const workflowStage = args.workflow_stage as string | undefined;
+  const projectRepositoryId = args.project_repository_id as number | undefined;
   const branchFilter = resolveBranch(args.branch);
   const sortBy = (args.sort_by as string) ?? 'priority';
   const limit = (args.limit as number) ?? 50;
@@ -273,6 +388,18 @@ function handleTaskList(args: Record<string, unknown>) {
   if (tag) {
     addTagFilter(whereClauses, params, tag, 't');
   }
+  if (taskKind) {
+    whereClauses.push('t.task_kind = ?');
+    params.push(taskKind);
+  }
+  if (workflowStage) {
+    whereClauses.push('t.workflow_stage = ?');
+    params.push(workflowStage);
+  }
+  if (projectRepositoryId != null) {
+    whereClauses.push('t.project_repository_id = ?');
+    params.push(projectRepositoryId);
+  }
   if (branchFilter === null) {
     whereClauses.push('e.branch IS NULL');
   } else if (branchFilter !== undefined) {
@@ -285,6 +412,8 @@ function handleTaskList(args: Record<string, unknown>) {
   const sql = `
     SELECT t.*,
       e.name as epic_name,
+      (SELECT r.name FROM project_repositories pr JOIN repositories r ON r.id=pr.repository_id
+        WHERE pr.id=t.project_repository_id) as repository_name,
       COUNT(DISTINCT s.id) as subtask_count,
       SUM(CASE WHEN s.status = 'done' THEN 1 ELSE 0 END) as subtask_done_count,
       (SELECT COUNT(*) FROM task_dependencies d
@@ -309,7 +438,9 @@ function handleTaskGet(args: Record<string, unknown>) {
 
   const task = db
     .prepare(
-      `SELECT t.*, e.name as epic_name
+      `SELECT t.*, e.name as epic_name,
+        (SELECT r.name FROM project_repositories pr JOIN repositories r ON r.id=pr.repository_id
+          WHERE pr.id=t.project_repository_id) as repository_name
        FROM tasks t
        JOIN epics e ON e.id = t.epic_id
        WHERE t.id = ?`
@@ -361,6 +492,29 @@ function handleTaskUpdate(args: Record<string, unknown>) {
 
   const oldRow = db.prepare('SELECT * FROM tasks WHERE id = ?').get(id) as Record<string, unknown> | undefined;
   if (!oldRow) throw new Error(`Task ${id} not found`);
+  if (args.execution_mode !== undefined &&
+      !['git_change', 'tracker_only', 'read_only_evidence', 'interactive'].includes(String(args.execution_mode))) {
+    throw new Error(`execution_mode '${args.execution_mode}' is invalid`);
+  }
+  if (args.project_repository_id != null) {
+    const binding = db.prepare(`
+      SELECT pr.project_id
+        FROM project_repositories pr
+       WHERE pr.id=?
+    `).get(args.project_repository_id) as { project_id: number } | undefined;
+    const taskProject = db.prepare(`
+      SELECT e.project_id FROM tasks t JOIN epics e ON e.id=t.epic_id WHERE t.id=?
+    `).get(id) as { project_id: number };
+    if (!binding || binding.project_id !== taskProject.project_id) {
+      throw new Error(`Project repository ${args.project_repository_id} does not belong to this task's product`);
+    }
+  }
+  if (args.generated_from_task_id != null) {
+    const source = db.prepare('SELECT epic_id FROM tasks WHERE id=?').get(args.generated_from_task_id) as { epic_id: number } | undefined;
+    if (!source || source.epic_id !== oldRow.epic_id) {
+      throw new Error(`generated_from_task_id ${args.generated_from_task_id} must belong to epic ${oldRow.epic_id}`);
+    }
+  }
 
   // Инвариант: задача в todo/done/blocked НИКОГДА не назначена — assigned_to всегда NULL.
   // Assigned имеет смысл только в активной работе (in_progress/review). blocked входит в
@@ -395,7 +549,9 @@ function handleTaskUpdate(args: Record<string, unknown>) {
 
   const update = buildUpdate('tasks', id, args, [
     'title', 'description', 'status', 'priority', 'assigned_to',
-    'estimated_hours', 'actual_hours', 'due_date', 'source_ref', 'sort_order', 'tags',
+    'estimated_hours', 'actual_hours', 'due_date', 'source_ref', 'sort_order', 'tags', 'metadata',
+    'task_kind', 'workflow_stage', 'execution_skill', 'review_skill', 'execution_mode',
+    'project_repository_id', 'generated_from_task_id', 'generation_key',
   ]);
 
   let newRow: Record<string, unknown>;

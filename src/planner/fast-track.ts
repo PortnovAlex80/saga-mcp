@@ -22,6 +22,7 @@
 // ============================================================================
 
 import type Database from 'better-sqlite3';
+import { createHash } from 'node:crypto';
 import { getDb } from '../db.js';
 import type { BriefPayload } from '../validators/brief.js';
 
@@ -122,8 +123,8 @@ export function routeFastTrack(
 
   // The brief artifact must exist (source of the derived_from edge).
   const briefRow = conn
-    .prepare('SELECT id, type, project_id FROM artifacts WHERE id = ?')
-    .get(briefArtifactId) as { id: number; type: string; project_id: number } | undefined;
+    .prepare('SELECT id, type, project_id, project_repository_id FROM artifacts WHERE id = ?')
+    .get(briefArtifactId) as { id: number; type: string; project_id: number; project_repository_id: number | null } | undefined;
   if (!briefRow) {
     throw new Error(`routeFastTrack: brief artifact ${briefArtifactId} not found`);
   }
@@ -139,6 +140,28 @@ export function routeFastTrack(
     | undefined;
   if (!epicRow) {
     throw new Error(`routeFastTrack: epic ${epicId} not found`);
+  }
+  if (epicRow.project_id !== briefRow.project_id) {
+    throw new Error(`routeFastTrack: brief ${briefArtifactId} and epic ${epicId} must belong to the same product`);
+  }
+  const projectRepositoryId = briefRow.project_repository_id ?? (
+    conn.prepare(
+      `SELECT id FROM project_repositories
+       WHERE project_id=? AND status='active'
+       ORDER BY CASE role WHEN 'control' THEN 0 ELSE 1 END,id LIMIT 1`,
+    ).get(epicRow.project_id) as { id: number } | undefined
+  )?.id ?? null;
+  const revisionKey = createHash('sha256').update(JSON.stringify(brief)).digest('hex').slice(0, 16);
+  const generationKey = `fast-track:brief:${briefArtifactId}:${revisionKey}:dev`;
+  const existing = conn.prepare(
+    'SELECT id FROM tasks WHERE epic_id=? AND generation_key=?',
+  ).get(epicId, generationKey) as { id: number } | undefined;
+  if (existing) {
+    const trace = conn.prepare(
+      `SELECT id FROM artifact_traces
+       WHERE source_id=? AND target_type='task' AND target_id=? AND link_type='derived_from'`,
+    ).get(briefArtifactId, existing.id) as { id: number };
+    return { dev_task_id: existing.id, brief_artifact_id: briefArtifactId, trace_id: trace.id };
   }
 
   // Impact tags: stamp impact:<pid> for every affected project so the caution
@@ -167,12 +190,26 @@ export function routeFastTrack(
 
   const inserted = conn
     .prepare(
-      `INSERT INTO tasks (epic_id, title, description, status, priority, source_ref, tags)
-       VALUES (?, ?, ?, 'todo', 'medium', ?, ?)
+      `INSERT INTO tasks
+       (epic_id,title,description,status,priority,source_ref,tags,
+        task_kind,workflow_stage,execution_skill,review_skill,execution_mode,
+        project_repository_id,generation_key)
+       VALUES (?, ?, ?, 'todo', 'medium', ?, ?,
+         'development.code','development','saga-developer','saga-reviewer',
+         'git_change',?,?)
        RETURNING id`,
     )
-    .get(epicId, title, description, sourceRef, JSON.stringify(tags)) as { id: number };
+    .get(epicId, title, description, sourceRef, JSON.stringify(tags),
+      projectRepositoryId, generationKey) as { id: number };
   const devTaskId = inserted.id;
+  conn.prepare(
+    `INSERT INTO episode_workflows (epic_id,stage,metadata)
+     VALUES (?,'development',json_object('fast_track',1,'brief_artifact_id',?))
+     ON CONFLICT(epic_id) DO UPDATE SET
+       stage='development',
+       metadata=json_set(episode_workflows.metadata,'$.fast_track',1,'$.brief_artifact_id',json_extract(excluded.metadata,'$.brief_artifact_id')),
+       updated_at=datetime('now')`,
+  ).run(epicId, briefArtifactId);
 
   // Trace edge: brief ← derived_from ← dev-task. In artifact_traces the source
   // is the artifact (brief) and the target is the task, mirroring how an AC
