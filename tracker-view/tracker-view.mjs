@@ -13,7 +13,11 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync, unlink
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
+import os from 'node:os';
 import { handlers as dispatcherHandlers } from '../dist/tools/dispatcher.js';
+import { handlers as repositoryHandlers } from '../dist/tools/repositories.js';
+import { handlers as lifecycleHandlers } from '../dist/tools/lifecycle.js';
 import { createClaudeBoardRunner } from './claude-runner.mjs';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -144,14 +148,27 @@ function getProject(id) {
 function loadBoard(projectId) {
   return withDb(db => {
     const epicRows = db.prepare(`
-      SELECT id, name, project_id FROM epics WHERE project_id=? ORDER BY id
+      SELECT e.id, e.name, e.project_id, ew.stage AS episode_stage,
+        json_extract(ew.metadata,'$.last_gate_error') AS gate_error,
+        (SELECT count(*) FROM artifacts a WHERE a.epic_id=e.id AND a.status='accepted' AND a.drift_state='drifted') AS drift_count,
+        (SELECT count(*) FROM verification_evidence v JOIN artifacts a ON a.id=v.artifact_id
+          WHERE a.epic_id=e.id AND v.outcome='passed') AS evidence_count
+      FROM epics e LEFT JOIN episode_workflows ew ON ew.epic_id=e.id
+      WHERE e.project_id=? ORDER BY e.id
     `).all(projectId);
     if (epicRows.length === 0) return { empty: true, reason: 'no-epics' };
     const epicIds = epicRows.map(e => e.id);
     const tasks = db.prepare(`
       SELECT t.*,
         (SELECT r.name FROM project_repositories pr JOIN repositories r ON r.id=pr.repository_id
-          WHERE pr.id=t.project_repository_id) AS repository_name
+          WHERE pr.id=t.project_repository_id) AS repository_name,
+        (SELECT group_concat('#' || dep.id || ' ' ||
+          CASE WHEN dep.status!='done' THEN dep.status ELSE dep.integration_state END, ', ')
+         FROM task_dependencies d JOIN tasks dep ON dep.id=d.depends_on_task_id
+         WHERE d.task_id=t.id AND (
+           dep.status!='done' OR
+           (dep.task_kind IS NOT NULL AND dep.execution_mode='git_change' AND dep.integration_state!='merged')
+         )) AS blocked_reason
       FROM tasks t WHERE epic_id IN (${epicIds.map(() => '?').join(',')})
       ORDER BY sort_order, id
     `).all(...epicIds);
@@ -526,6 +543,32 @@ function renderBoard(projectId, allProjects) {
   )].map(([id, name]) => `<option value="${id}">${esc(name)}</option>`).join('');
   const stageOptions = [...new Set(tasks.map(t => t.workflow_stage).filter(Boolean))]
     .sort().map(stage => `<option value="${esc(stage)}">${esc(stage)}</option>`).join('');
+  const kindOptions = [...new Set(tasks.map(t => t.task_kind).filter(Boolean))]
+    .sort().map(kind => `<option value="${esc(kind)}">${esc(kind)}</option>`).join('');
+  const episodeProgress = Object.values(epicById).map(e => `
+    <div class="episode-progress"><b>${esc(e.name)}</b>
+      <span class="task-badge stage">${esc(e.episode_stage || 'legacy')}</span>
+      ${e.drift_count ? `<span class="task-badge" style="color:#f85149">drift ${e.drift_count}</span>` : ''}
+      ${e.evidence_count ? `<span class="task-badge" style="color:#3fb950">evidence ${e.evidence_count}</span>` : ''}
+      ${e.gate_error ? `<span class="task-badge" style="color:#f85149" title="${esc(e.gate_error)}">gate blocked</span>` : ''}
+    </div>`).join('');
+  const repoBindings = withDb(db => db.prepare(`
+    SELECT pr.id,r.name,pr.status FROM project_repositories pr
+    JOIN repositories r ON r.id=pr.repository_id
+    WHERE pr.project_id=? ORDER BY r.name
+  `).all(projectId));
+  const bootstrapOptions = repoBindings.map(r =>
+    `<option value="${r.id}">${esc(r.name)} (${esc(r.status)})</option>`).join('');
+  const nextStage = {
+    formalization:'planning', planning:'development',
+    development:'verification', verification:'integration', integration:'completed',
+  };
+  const transitionButtons = Object.values(epicById).map(e => {
+    const next = nextStage[e.episode_stage];
+    return next
+      ? `<button type="button" class="episode-advance btn" data-epic="${e.id}" data-to="${next}">${esc(e.name)}: ${esc(e.episode_stage)} → ${next}</button>`
+      : '';
+  }).join('');
 
   const cards = tasks.map(t => {
     const e = epicById[t.epic_id];
@@ -546,7 +589,7 @@ function renderBoard(projectId, allProjects) {
   const columnsHtml = COLS.map(col => {
     const items = byStatus[col.key] || [];
     const cardsHtml = items.map(c => `
-      <div class="card${c.needsHuman ? ' needs-human' : ''}" data-epic="${c.epicId}" data-task="${c.t.id}" data-repo="${c.t.project_repository_id || ''}" data-stage="${esc(c.t.workflow_stage || '')}" style="border-left:6px solid ${proj.color}">
+      <div class="card${c.needsHuman ? ' needs-human' : ''}" data-epic="${c.epicId}" data-task="${c.t.id}" data-repo="${c.t.project_repository_id || ''}" data-stage="${esc(c.t.workflow_stage || '')}" data-kind="${esc(c.t.task_kind || '')}" style="border-left:6px solid ${proj.color}">
         <div class="card-head">
           <span class="prio" style="background:${c.prio}">${esc(c.t.priority)}</span>
           ${c.t.assigned_to ? `<span class="assigned" title="assigned_to">${esc(c.t.assigned_to)}</span>` : ''}
@@ -560,8 +603,11 @@ function renderBoard(projectId, allProjects) {
           ${c.t.repository_name ? `<span class="task-badge repo">${esc(c.t.repository_name)}</span>` : ''}
           ${c.t.workflow_stage ? `<span class="task-badge stage">${esc(c.t.workflow_stage)}</span>` : ''}
           ${c.t.task_kind ? `<span class="task-badge kind">${esc(c.t.task_kind)}</span>` : ''}
+          ${c.t.generated_from_task_id ? `<a class="task-badge" href="/?task=${c.t.generated_from_task_id}">from #${c.t.generated_from_task_id}</a>` : ''}
+          ${c.t.integration_state && c.t.integration_state !== 'not_required' ? `<span class="task-badge">${esc(c.t.integration_state)}</span>` : ''}
         </div>
         <div class="card-meta">${esc(c.epicName)}</div>
+        ${c.t.blocked_reason ? `<div class="card-meta" style="color:#f85149">blocked by ${esc(c.t.blocked_reason)}</div>` : ''}
       </div>`).join('');
     return `<div class="col">
       <div class="col-head"><span>${col.label}</span><span class="count">${items.length}</span></div>
@@ -570,6 +616,26 @@ function renderBoard(projectId, allProjects) {
   }).join('');
 
   return page(proj.name, `${header}
+    <div class="episode-progress-bar">${episodeProgress}</div>
+    <details class="board-ops">
+      <summary>Repository and episode operations</summary>
+      <div class="board-ops-grid">
+        <form id="repo-register-form" class="inline-op">
+          <input type="text" name="name" required placeholder="repository name">
+          <input type="text" name="local_path" placeholder="local path (optional)">
+          <input type="text" name="remote_url" placeholder="remote URL (optional)">
+          <select name="status"><option value="active">active</option><option value="planned">planned</option></select>
+          <button class="btn" type="submit">Register repository</button>
+        </form>
+        <form id="repo-bootstrap-form" class="inline-op">
+          <select name="project_repository_id" required>${bootstrapOptions}</select>
+          <input type="text" name="machine_id" required value="${esc(os.hostname())}" placeholder="machine id">
+          <input type="text" name="local_path" required placeholder="empty clone destination">
+          <button class="btn" type="submit">Clone & register checkout</button>
+        </form>
+        <div class="inline-op episode-ops">${transitionButtons || '<span class="muted">No manual transition available</span>'}</div>
+      </div>
+    </details>
     <div class="filter-bar">
       <span class="filter-label">Эпики:</span>
       <button class="chip active" data-filter="__all__">Все</button>
@@ -578,18 +644,22 @@ function renderBoard(projectId, allProjects) {
       <select id="repo-filter"><option value="__all__">Все</option>${repositoryOptions}</select>
       <span class="filter-label">Стадия:</span>
       <select id="stage-filter"><option value="__all__">Все</option>${stageOptions}</select>
+      <span class="filter-label">Kind:</span>
+      <select id="kind-filter"><option value="__all__">All</option>${kindOptions}</select>
     </div>
     <div class="board">${columnsHtml}</div>
     <script>
     let activeFilter = '__all__';
     let activeRepo = '__all__';
     let activeStage = '__all__';
+    let activeKind = '__all__';
     function applyFilter() {
       document.querySelectorAll('.card').forEach(card => {
         const epicOk = activeFilter === '__all__' || card.dataset.epic === activeFilter;
         const repoOk = activeRepo === '__all__' || card.dataset.repo === activeRepo;
         const stageOk = activeStage === '__all__' || card.dataset.stage === activeStage;
-        card.style.display = epicOk && repoOk && stageOk ? '' : 'none';
+        const kindOk = activeKind === '__all__' || card.dataset.kind === activeKind;
+        card.style.display = epicOk && repoOk && stageOk && kindOk ? '' : 'none';
       });
       document.querySelectorAll('.col').forEach(col => {
         const visible = col.querySelectorAll('.card:not([style*="display: none"])').length;
@@ -607,6 +677,36 @@ function renderBoard(projectId, allProjects) {
     });
     document.getElementById('repo-filter').addEventListener('change', e => { activeRepo=e.target.value; applyFilter(); });
     document.getElementById('stage-filter').addEventListener('change', e => { activeStage=e.target.value; applyFilter(); });
+    document.getElementById('kind-filter').addEventListener('change', e => { activeKind=e.target.value; applyFilter(); });
+    async function postOperation(endpoint, payload, confirmText) {
+      if (confirmText && !confirm(confirmText)) return;
+      const response = await fetch(endpoint, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body:JSON.stringify(payload),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.ok) throw new Error(result.error || 'operation failed');
+      location.reload();
+    }
+    document.getElementById('repo-register-form').addEventListener('submit', async e => {
+      e.preventDefault();
+      const p=Object.fromEntries(new FormData(e.target)); p.project_id=${Number(projectId)};
+      if (!p.local_path) delete p.local_path; if (!p.remote_url) delete p.remote_url;
+      try { await postOperation('/api/repository/register',p); } catch(err){ alert(err.message); }
+    });
+    document.getElementById('repo-bootstrap-form').addEventListener('submit', async e => {
+      e.preventDefault();
+      const p=Object.fromEntries(new FormData(e.target));
+      p.project_repository_id=Number(p.project_repository_id);
+      try { await postOperation('/api/repository/bootstrap',p,'This will run git clone into the explicit destination. Continue?'); } catch(err){ alert(err.message); }
+    });
+    document.querySelectorAll('.episode-advance').forEach(button => button.addEventListener('click', async () => {
+      try {
+        await postOperation('/api/episode/transition',{
+          epic_id:Number(button.dataset.epic),to_stage:button.dataset.to,
+        },'Advance this episode through its hard gate?');
+      } catch(err) { alert('Gate rejected: '+err.message); }
+    }));
     const runnerStart = document.getElementById('agent-start');
     const runnerStop = document.getElementById('agent-stop');
     const runnerConcurrency = document.getElementById('agent-concurrency');
@@ -1363,6 +1463,13 @@ function page(title, body) {
 
     /* фильтр-бар */
     .filter-bar{display:flex;align-items:center;gap:6px;padding:10px 20px;background:#161b22;border-bottom:1px solid #30363d;flex-wrap:wrap}
+    .episode-progress-bar{display:flex;gap:8px;overflow:auto;padding:8px 20px;background:#0d1117;border-bottom:1px solid #21262d}
+    .episode-progress{display:flex;align-items:center;gap:6px;white-space:nowrap;font-size:11px;color:#c9d1d9}
+    .board-ops{padding:8px 20px;background:#0d1117;border-bottom:1px solid #30363d}
+    .board-ops>summary{cursor:pointer;color:#8b949e;font-size:12px}
+    .board-ops-grid{display:grid;gap:8px;margin-top:8px}
+    .inline-op{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+    .inline-op input,.inline-op select{background:#161b22;border:1px solid #30363d;color:#c9d1d9;border-radius:5px;padding:6px}
     .filter-label{font-size:12px;color:#8b949e;margin-right:4px}
     .chip{background:#21262d;border:1px solid #30363d;color:#8b949e;border-radius:14px;padding:4px 12px;font-size:12px;cursor:pointer;transition:all .15s}
     .chip:hover{border-color:#8b949e;color:#e6edf3}
@@ -1677,6 +1784,7 @@ function handleArtifactSave(req, res) {
         mkdirSync(path.dirname(absPath), { recursive: true });
         writeFileSync(absPath, fields.markdown, 'utf8');
         result.file = absPath;
+        result.content_hash = createHash('sha256').update(Buffer.from(fields.markdown, 'utf8')).digest('hex');
       } catch (e) {
         result.ok = false;
         result.error = 'file write: ' + e.message;
@@ -1698,6 +1806,16 @@ function handleArtifactSave(req, res) {
         if (typeof fields.tags === 'string') {
           const tags = fields.tags.split(',').map(s => s.trim()).filter(Boolean);
           sets.push('tags = ?'); vals.push(JSON.stringify(tags));
+        }
+        if (result.content_hash) {
+          sets.push('content_hash = ?'); vals.push(result.content_hash);
+          if (fields.status === 'accepted') {
+            sets.push('accepted_hash = ?'); vals.push(result.content_hash);
+            sets.push("drift_state = 'clean'");
+          } else if (art.accepted_hash) {
+            sets.push('drift_state = ?');
+            vals.push(art.accepted_hash === result.content_hash ? 'clean' : 'drifted');
+          }
         }
         if (sets.length) {
           sets.push("updated_at = datetime('now')");
@@ -1765,6 +1883,36 @@ function handleBoardRunStop(req, res) {
     const run = boardRunner.stop(projectId);
     if (!run) return respondJson(res, 404, { ok:false, error:`No board run for project ${projectId}` });
     respondJson(res, 200, { ok:true, run });
+  });
+}
+
+function handleSagaOperation(req, res, operation) {
+  readRequestFields(req, (parseError, fields) => {
+    if (parseError) return respondJson(res, 400, { ok:false, error:'invalid request body' });
+    try {
+      let result;
+      if (operation === 'repository_register') {
+        result = repositoryHandlers.repository_register({
+          ...fields,
+          project_id: Number(fields.project_id),
+        });
+      } else if (operation === 'repository_bootstrap') {
+        result = repositoryHandlers.repository_checkout_bootstrap({
+          ...fields,
+          project_repository_id: Number(fields.project_repository_id),
+        });
+      } else if (operation === 'episode_transition') {
+        result = lifecycleHandlers.episode_transition({
+          epic_id: Number(fields.epic_id),
+          to_stage: fields.to_stage,
+        });
+      } else {
+        throw new Error(`Unknown operation ${operation}`);
+      }
+      respondJson(res, 200, { ok:true, result });
+    } catch (error) {
+      respondJson(res, 409, { ok:false, error:error instanceof Error ? error.message : String(error) });
+    }
   });
 }
 
@@ -2446,6 +2594,15 @@ const server = http.createServer((req, res) => {
   }
   if (req.method === 'POST' && url.pathname === '/api/board-run/stop') {
     return handleBoardRunStop(req, res);
+  }
+  if (req.method === 'POST' && url.pathname === '/api/repository/register') {
+    return handleSagaOperation(req, res, 'repository_register');
+  }
+  if (req.method === 'POST' && url.pathname === '/api/repository/bootstrap') {
+    return handleSagaOperation(req, res, 'repository_bootstrap');
+  }
+  if (req.method === 'POST' && url.pathname === '/api/episode/transition') {
+    return handleSagaOperation(req, res, 'episode_transition');
   }
   if (req.method === 'GET' && url.pathname === '/api/board-run/status') {
     const projectId = Number(url.searchParams.get('project_id'));

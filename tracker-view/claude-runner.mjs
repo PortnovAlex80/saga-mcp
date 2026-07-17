@@ -62,6 +62,9 @@ function buildPrompt({ assignment, project, workerId, workspaceRoot, sagaSkillRo
       ? '7. If APPROVED reaches done, stop:true means do not claim another task: first acquire the repository merge lock, merge into the assigned integration branch, call worker_merge_release, then summarize and exit.'
       : '7. After worker_done returns stop:true, do not claim another task; finish any required terminal protocol, then return a concise summary and exit.',
     '8. Do not start, select, or accept another task. Do not spawn nested agents.',
+    task.task_kind === 'verification.ac'
+      ? `9. Before worker_done, call verification_record for every assigned AC with recorded_by="${workerId}" and truthful pass/fail evidence.`
+      : '9. Preserve the task provenance and do not create unrelated downstream work.',
     '',
     'Assigned task payload:',
     JSON.stringify(task, null, 2),
@@ -230,6 +233,7 @@ export class ClaudeBoardRunner {
         assignment = this.claimTask({
           worker_id: workerId,
           project_id: run.projectId,
+          machine_id: os.hostname(),
         });
       } catch (error) {
         run.lastError = error instanceof Error ? error.message : String(error);
