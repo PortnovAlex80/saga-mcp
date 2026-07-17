@@ -107,6 +107,18 @@ CREATE TABLE IF NOT EXISTS tasks (
   execution_mode  TEXT NOT NULL DEFAULT 'git_change'
                     CHECK (execution_mode IN ('git_change','tracker_only','read_only_evidence','interactive')),
   project_repository_id INTEGER REFERENCES project_repositories(id) ON DELETE SET NULL,
+  -- REQ-009 / CGAD 11 RiskClass. final_risk = max(declared_risk, derived_risk,
+  -- policy_minimum). The legacy priority column is kept as the declared risk
+  -- label for backward compatibility; new callers should write declared_risk.
+  -- derived_risk is computed from the touched surface (security boundary
+  -- implies high; data ownership implies critical). policy_minimum is set by
+  -- project policy (e.g. all security-tagged tasks have policy_minimum='high').
+  -- The agent (Builder) may propose declared_risk but cannot self-lower
+  -- final_risk below derived_risk or policy_minimum (CGAD P15).
+  declared_risk   TEXT CHECK (declared_risk IN ('low','medium','high','critical') OR declared_risk IS NULL),
+  derived_risk    TEXT CHECK (derived_risk IN ('low','medium','high','critical') OR derived_risk IS NULL),
+  policy_minimum  TEXT CHECK (policy_minimum IN ('low','medium','high','critical') OR policy_minimum IS NULL),
+  final_risk      TEXT CHECK (final_risk IN ('low','medium','high','critical') OR final_risk IS NULL),
   integration_state TEXT NOT NULL DEFAULT 'not_required'
                       CHECK (integration_state IN ('not_required','pending','merged','conflict')),
   integrated_at     TEXT,

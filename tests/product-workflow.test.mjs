@@ -608,3 +608,88 @@ test('REQ-008: provider column is optional and defaults to NULL for backward com
   ).get(verify.id, ac.id);
   assert.equal(evidence.provider, null);
 });
+
+// ============================================================================
+// REQ-009 — CGAD §11 RiskClass. final_risk = max(declared, derived, policy).
+// CGAD P15: agent cannot self-lower final_risk below derived or policy_minimum.
+// ============================================================================
+
+test('REQ-009: final_risk = max(declared, derived, policy_minimum) on task_create', () => {
+  const product = projects.project_create({ name: 'R009 Risk Product' });
+  const epic = epics.epic_create({ project_id: product.id, name: 'REQ-r009-risk' });
+  // declared=low, derived=high (security tag), policy_minimum=high (security).
+  // final must be high — agent cannot self-lower.
+  const task = tasks.task_create({
+    epic_id: epic.id, title: 'Secure task',
+    priority: 'low', tags: ['security'],
+  });
+  assert.equal(task.final_risk, 'critical', 'security tag forces derived=critical, policy_minimum=high, final=critical');
+  assert.equal(task.derived_risk, 'critical');
+  assert.equal(task.policy_minimum, 'high');
+});
+
+test('REQ-009: explicit declared_risk overrides legacy priority', () => {
+  const product = projects.project_create({ name: 'R009 Declared Product' });
+  const epic = epics.epic_create({ project_id: product.id, name: 'REQ-r009-declared' });
+  const task = tasks.task_create({
+    epic_id: epic.id, title: 'Explicit risk',
+    priority: 'low', declared_risk: 'high',
+  });
+  assert.equal(task.declared_risk, 'high');
+  assert.equal(task.final_risk, 'high');
+});
+
+test('REQ-009: data tag forces derived_risk=high, policy_minimum=null', () => {
+  const product = projects.project_create({ name: 'R009 Data Product' });
+  const epic = epics.epic_create({ project_id: product.id, name: 'REQ-r009-data' });
+  const task = tasks.task_create({
+    epic_id: epic.id, title: 'Data task',
+    tags: ['data', 'migration'],
+  });
+  assert.equal(task.derived_risk, 'high');
+  assert.equal(task.policy_minimum, null);
+  // declared defaults to priority='medium' → final = max(medium, high, null) = high
+  assert.equal(task.final_risk, 'high');
+});
+
+test('REQ-009: formalization task_kind gets derived=high, policy=medium', () => {
+  const product = projects.project_create({ name: 'R009 Formalization Product' });
+  const epic = epics.epic_create({ project_id: product.id, name: 'REQ-r009-formalization' });
+  const task = tasks.task_create({
+    epic_id: epic.id, title: 'SRS task',
+    task_kind: 'formalization.srs', tags: [],
+  });
+  assert.equal(task.derived_risk, 'high');
+  assert.equal(task.policy_minimum, 'medium');
+  assert.equal(task.final_risk, 'high');
+});
+
+test('REQ-009: task_update re-computes final_risk when tags change', () => {
+  const product = projects.project_create({ name: 'R009 Update Product' });
+  const epic = epics.epic_create({ project_id: product.id, name: 'REQ-r009-update' });
+  const task = tasks.task_create({
+    epic_id: epic.id, title: 'Becomes secure',
+    priority: 'low', tags: [],
+  });
+  assert.equal(task.final_risk, 'low', 'no risk signals initially');
+  // Now tag it security — derived_risk + policy_minimum should kick in.
+  const updated = tasks.task_update({
+    id: task.id, tags: ['security'],
+  });
+  assert.equal(updated.final_risk, 'critical', 'security tag triggers derived=critical, policy=high');
+  assert.equal(updated.derived_risk, 'critical');
+  assert.equal(updated.policy_minimum, 'high');
+});
+
+test('REQ-009: low-risk plain task stays low across the board', () => {
+  const product = projects.project_create({ name: 'R009 Plain Product' });
+  const epic = epics.epic_create({ project_id: product.id, name: 'REQ-r009-plain' });
+  const task = tasks.task_create({
+    epic_id: epic.id, title: 'Plain task',
+    priority: 'low', tags: [],
+  });
+  assert.equal(task.declared_risk, 'low');
+  assert.equal(task.derived_risk, null);
+  assert.equal(task.policy_minimum, null);
+  assert.equal(task.final_risk, 'low');
+});
