@@ -234,6 +234,32 @@ CREATE TABLE IF NOT EXISTS artifacts (
   updated_at          TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- REQ-010 — CGAD §7 Phase 7 Semantic Conflict Model.
+-- Typed conflict keys per task. Two tasks sharing a (key_type, key_value)
+-- pair write-conflict SEMANTICALLY, not just at git-merge line level.
+-- CGAD §22 forbidden construct §34: git conflict must not be the only
+-- conflict detector. Key types in v1:
+--   file_path        — two tasks touching the same file (git would catch this
+--                       too, but having it typed lets us detect EARLIER, at
+--                       planning time, before any worker starts).
+--   schema           — two tasks touching the same DB schema / type definition.
+--                       git might miss it (different files, same invariant).
+--   public_protocol  — two tasks changing the same public API / RPC / message.
+--   integration_branch — two tasks targeting the same integration branch
+--                       (write-conflict at merge time).
+-- Future v2 (out of scope): capability, invariant, aggregate, data_owner,
+-- migration, security_boundary, benchmark_env, runtime_resource.
+CREATE TABLE IF NOT EXISTS task_conflict_keys (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  task_id     INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  key_type    TEXT NOT NULL CHECK (key_type IN (
+                'file_path','schema','public_protocol','integration_branch'
+              )),
+  key_value   TEXT NOT NULL,
+  created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (task_id, key_type, key_value)
+);
+
 -- REQ-011 — CGAD §4 third truth axis + §17 Runtime Observation Store.
 -- Immutable observations of actual runtime/integration behaviour. Distinct
 -- from verification_evidence (which is test-runner output against the AC
@@ -322,6 +348,8 @@ CREATE INDEX IF NOT EXISTS idx_runtime_observations_epic ON runtime_observations
 CREATE INDEX IF NOT EXISTS idx_runtime_observations_task ON runtime_observations(task_id);
 CREATE INDEX IF NOT EXISTS idx_runtime_observations_artifact ON runtime_observations(artifact_id);
 CREATE INDEX IF NOT EXISTS idx_runtime_observations_type ON runtime_observations(observation_type);
+CREATE INDEX IF NOT EXISTS idx_task_conflict_keys_task ON task_conflict_keys(task_id);
+CREATE INDEX IF NOT EXISTS idx_task_conflict_keys_kv ON task_conflict_keys(key_type, key_value);
 CREATE INDEX IF NOT EXISTS idx_traces_source ON artifact_traces(source_id);
 CREATE INDEX IF NOT EXISTS idx_traces_target ON artifact_traces(target_type, target_id);
 CREATE INDEX IF NOT EXISTS idx_traces_link ON artifact_traces(link_type);
