@@ -301,6 +301,11 @@ export function migrateRiskClass(db: Database.Database): void {
   try {
     db.exec(`UPDATE tasks SET declared_risk = priority WHERE declared_risk IS NULL AND priority IS NOT NULL`);
   } catch { /* priority column missing — pre-migration DB, skip */ }
+  // CGAD P15 backfill: legacy rows that just got declared_risk stamped must
+  // also get final_risk so lint R2b and risk queries see them.
+  try {
+    db.exec(`UPDATE tasks SET final_risk = declared_risk WHERE final_risk IS NULL AND declared_risk IS NOT NULL`);
+  } catch { /* columns missing — pre-migration DB, skip */ }
   // Index for "find tasks by risk class" queries.
   db.exec('CREATE INDEX IF NOT EXISTS idx_tasks_final_risk ON tasks(final_risk)');
 }

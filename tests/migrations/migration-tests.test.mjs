@@ -349,22 +349,19 @@ test('migrateRiskClass adds risk columns and backfills declared_risk from priori
   assert.equal(byTitle['medium-task'].declared_risk, 'medium', 'declared_risk backfilled from priority=medium');
   assert.equal(byTitle['high-task'].declared_risk, 'high', 'declared_risk backfilled from priority=high');
 
-  // final_risk is intentionally NOT backfilled by migrateRiskClass: the
-  // migration only adds the columns + backfills declared_risk. final_risk is
-  // computed in TS (task_create/task_update) via final_risk =
-  // max(declared, derived, policy). So legacy rows keep final_risk = NULL until
-  // a subsequent update recomputes it. This is the documented contract; we
-  // assert it explicitly so a future change to backfill final_risk here does
-  // not silently alter the migration semantics.
-  for (const r of rows) {
-    assert.equal(r.final_risk, null, 'final_risk must remain NULL after migration (computed on next write)');
-  }
+  // final_risk IS backfilled by migrateRiskClass (critique A fix):
+  // final_risk = declared_risk for legacy rows. Before this fix, 626 NULL
+  // final_risk rows caused 72% lint noise in R2b. Now backfilled.
+  assert.equal(byTitle['low-task'].final_risk, 'low', 'final_risk backfilled from declared_risk=low');
+  assert.equal(byTitle['medium-task'].final_risk, 'medium', 'final_risk backfilled from declared_risk=medium');
+  assert.equal(byTitle['high-task'].final_risk, 'high', 'final_risk backfilled from declared_risk=high');
 
   // Idempotency: re-entering getDb must not clobber the backfill.
   closeDb();
   const db2 = getDb();
-  const stillLow = db2.prepare("SELECT declared_risk FROM tasks WHERE title='low-task'").get().declared_risk;
-  assert.equal(stillLow, 'low', 're-running migration must not clobber declared_risk');
+  const stillLow = db2.prepare("SELECT declared_risk, final_risk FROM tasks WHERE title='low-task'").get();
+  assert.equal(stillLow.declared_risk, 'low', 're-running migration must not clobber declared_risk');
+  assert.equal(stillLow.final_risk, 'low', 're-running migration must not clobber final_risk backfill');
 });
 
 // ----------------------------------------------------------------------------
