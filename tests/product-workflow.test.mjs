@@ -1409,3 +1409,109 @@ test('migrateRiskClass backfills final_risk = declared_risk for legacy rows', as
   old.close();
   rmSync(backfillTmp, { recursive: true, force: true });
 });
+
+// ============================================================================
+// REQ-012 — Trusted Provider Registry.
+// Catalogues the Trusted Guard Input Providers that may feed evidence/state/
+// decisions into a project's acceptance oracle. Three categories mirror the
+// CGAD trust tiers (deterministic_evidence / authoritative_state /
+// authorized_decision). project_id IS NULL means a GLOBAL provider (inherited
+// by every project).
+// ============================================================================
+
+const { handlers: providers } = await import('../dist/tools/providers.js');
+
+test('REQ-012: register a deterministic provider (tsc, L0) succeeds', () => {
+  const product = projects.project_create({ name: 'R012 TSC Product' });
+  const provider = providers.provider_register({
+    project_id: product.id,
+    category: 'deterministic_evidence',
+    name: 'tsc',
+    trust_basis: 'deterministic type-checker (Microsoft)',
+    determinism: 'full',
+    scope: 'TypeScript type errors',
+    layer: 'L0',
+    version: '5.4',
+    config_path: 'tsconfig.json',
+  });
+  assert.ok(provider.id, 'registered provider must get an id');
+  assert.equal(provider.created, true, 'first registration reports created=true');
+  assert.equal(provider.project_id, product.id);
+  assert.equal(provider.category, 'deterministic_evidence');
+  assert.equal(provider.name, 'tsc');
+  assert.equal(provider.determinism, 'full');
+  assert.equal(provider.layer, 'L0');
+  assert.equal(provider.version, '5.4');
+  assert.equal(provider.config_path, 'tsconfig.json');
+  assert.equal(provider.status, 'active', 'default status is active');
+  assert.ok(provider.registered_at, 'registered_at is stamped');
+});
+
+test('REQ-012: registering the same (project_id, name) twice is idempotent', () => {
+  const product = projects.project_create({ name: 'R012 Idempotent Product' });
+  const first = providers.provider_register({
+    project_id: product.id,
+    category: 'deterministic_evidence',
+    name: 'eslint',
+    trust_basis: 'deterministic linter',
+    determinism: 'full',
+    scope: 'lint rules',
+    layer: 'L0',
+  });
+  const second = providers.provider_register({
+    project_id: product.id,
+    category: 'deterministic_evidence',
+    name: 'eslint',
+    trust_basis: 'deterministic linter',
+    determinism: 'full',
+    scope: 'lint rules',
+    layer: 'L0',
+  });
+  // INSERT OR IGNORE — the second call returns the existing row, same id,
+  // and reports created=false so callers can tell the difference.
+  assert.equal(second.id, first.id, 'idempotent re-register returns the same row id');
+  assert.equal(second.created, false, 'idempotent re-register reports created=false');
+  assert.equal(first.created, true);
+  // Confirm only ONE row exists for (project_id, name).
+  const rows = getDb().prepare(
+    'SELECT COUNT(*) AS n FROM trusted_providers WHERE project_id=? AND name=?',
+  ).get(product.id, 'eslint');
+  assert.equal(rows.n, 1, 'exactly one row per (project_id, name)');
+});
+
+test('REQ-012: list providers by project returns BOTH project-scoped and global', () => {
+  // Register a GLOBAL provider first (project_id omitted).
+  const globalProvider = providers.provider_register({
+    category: 'authoritative_state',
+    name: 'github-actions-ci',
+    trust_basis: 'CI run status is system of record for build state',
+    determinism: 'partial',
+    scope: 'CI workflow runs on push',
+    layer: 'L4',
+  });
+  assert.equal(globalProvider.project_id, null, 'global provider has project_id IS NULL');
+
+  // Register a project-scoped provider.
+  const product = projects.project_create({ name: 'R012 List Product' });
+  const projectProvider = providers.provider_register({
+    project_id: product.id,
+    category: 'deterministic_evidence',
+    name: 'jest',
+    trust_basis: 'deterministic test runner',
+    determinism: 'full',
+    scope: 'unit tests',
+    layer: 'L1',
+  });
+  assert.equal(projectProvider.project_id, product.id);
+
+  const list = providers.provider_list({ project_id: product.id });
+  assert.equal(list.count, 2, 'list returns both global and project-scoped providers');
+  const names = list.providers.map(p => p.name).sort();
+  assert.deepEqual(names, ['github-actions-ci', 'jest']);
+  // Global must appear even though project_id filter was set.
+  assert.ok(list.providers.some(p => p.project_id === null && p.name === 'github-actions-ci'),
+    'global provider inherited by the project');
+  assert.ok(list.providers.some(p => p.project_id === product.id && p.name === 'jest'),
+    'project-scoped provider present');
+});
+
