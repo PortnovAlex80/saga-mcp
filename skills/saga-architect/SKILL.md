@@ -218,6 +218,21 @@ FR/NFR `code` is the query key — AC will later be `derived_from` an FR code.
   Prose §2b is insufficient; the planner extracts ports from structure.
 - **NFRs MUST carry quantitative targets.** A target without a number is unverifiable.
 - **Test strategy MUST declare L0-L4 levels** per AC type.
+- **FR artifacts must NOT contain implementation detail** (endpoints, JSON
+  fields, DB tables, algorithms, class names, HTTP verbs). Such content belongs
+  in linked SPEC artifacts (ALGORITHM-SPEC, API-SPEC, DATA-SPEC). An FR that
+  reads like a design doc is misclassified — it leaks mechanism into the
+  requirement layer and breaks TEST 2 (remove-technology) at AC time.
+- **When a formula or algorithm is mandatory**, capture the business/legal
+  intent in a **RULE artifact** and the mechanism in a linked **SPEC artifact**.
+  Link both via `trace_add(derived_from)`. Do not inline formulas into FR — the
+  FR states "the system shall calculate X per RULE-N using the approved method
+  (see ALGORITHM-SPEC-N)". This keeps the requirement stable while the mechanism
+  evolves.
+- **The SRS §2b API contract IS a SPEC** — it describes implementation
+  mechanism (port signatures, adapter protocols), not business requirement.
+  FRs reference it but don't contain its signatures. A reader of an FR alone
+  should never need to know an endpoint shape.
 - Do not write ACs — those are saga-analyst's job. But each AC must trace to one
   of your FRs; structure FRs so they are individually addressable.
 - Never `worker_next` again after `worker_done`.

@@ -89,6 +89,44 @@ each AC's path goes into the dev task's `source_ref`, and a
 link_type:'implements' })` records the link. Then `artifact_coverage` can show
 which ACs are still un-implemented.
 
+## Classification Engine (run before writing ACs)
+
+Before drafting any AC, classify each candidate requirement through this
+4-test engine (BABOK/Wiegers-aligned). The goal: place the statement on the
+correct level of the requirements pyramid (BR/CAP/BUC at business level →
+FR/SPEC at system level) and split business rules out of functional
+requirements. Run all 4 tests on each requirement BEFORE writing it into the
+AC document. If a test fails, restructure the requirement.
+
+**TEST 1 — SYSTEM BOUNDARY.** Is the System of Interest known? Who acts —
+business, stakeholder, system, external party? If the actor is ambiguous, the
+requirement is not yet ready: name the System of Interest and the acting party
+first. Business/stakeholder actions belong at the BR/CAP/BUC level; system
+actions belong at the FR/SPEC level.
+
+**TEST 2 — REMOVE-TECHNOLOGY.** Remove all system names, endpoints, databases,
+protocols, and algorithms from the requirement. If it still makes sense →
+business-level (BR/CAP/BUC). If it collapses (the sentence becomes meaningless
+without the technology) → system-level (FR/SPEC). Business intent must survive
+the removal of every implementation choice.
+
+**TEST 3 — OBSERVABLE-BEHAVIOR.** Can a black-box observer verify this without
+knowing the implementation? If yes → FR (Functional Requirement). If no — the
+statement depends on internal mechanism, signature, or data layout → SPEC
+(API-SPEC / DATA-SPEC / ALGORITHM-SPEC). ACs verify FRs (observable outcomes);
+SPECs are validated structurally, not by an external observer.
+
+**TEST 4 — RULE-VS-FR.** Does the statement contain business decision logic
+(if X then Y, calculate Z, route to W, threshold comparisons)? Extract that
+logic into a RULE artifact. The FR should say "the system evaluates and
+enforces applicable rules" — not duplicate the logic. A single RULE may be
+referenced by many FRs and may evolve independently of them.
+
+**Rule:** run all 4 tests on each requirement BEFORE writing it into the AC
+document. If a test fails, restructure the requirement (promote to
+business-level, demote to SPEC, split RULE out) until every test passes. Only
+then write the AC and register the traces.
+
 ## Finishing
 
 - `worker_done({ task_id, worker_id, result: "<UC|AC> drafted; N artifacts, M traces" })`.
