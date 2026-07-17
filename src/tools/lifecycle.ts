@@ -202,10 +202,17 @@ function handleVerificationRecord(args: Record<string, unknown>) {
   const db = getDb();
   const taskId = args.task_id as number;
   const artifactId = args.artifact_id as number;
-  const outcome = args.outcome as 'passed' | 'failed';
+  // REQ-008 — CGAD 4-valued guard verdict. Only 'passed' admits a transition
+  // (see assertVerificationPassed: WHERE outcome='passed'). 'failed' blocks.
+  // 'unknown' = inputs insufficient, deny-by-default (P14). 'error' = provider
+  // or check crashed, deny AND the caller should file an Incident (P8 visibility).
+  const outcome = args.outcome as 'passed' | 'failed' | 'unknown' | 'error';
   const evidence = args.evidence as string;
   const recordedBy = (args.recorded_by as string | undefined) ?? null;
-  if (!['passed', 'failed'].includes(outcome)) throw new Error(`Invalid verification outcome '${outcome}'`);
+  const provider = (args.provider as string | undefined) ?? null;
+  if (!['passed', 'failed', 'unknown', 'error'].includes(outcome)) {
+    throw new Error(`Invalid verification outcome '${outcome}' (expected passed/failed/unknown/error)`);
+  }
   if (!evidence?.trim()) throw new Error('Verification evidence is required');
 
   const task = db.prepare('SELECT id, epic_id, task_kind, status, assigned_to FROM tasks WHERE id=?').get(taskId) as
@@ -232,9 +239,9 @@ function handleVerificationRecord(args: Record<string, unknown>) {
   }
   const info = db.prepare(
     `INSERT OR IGNORE INTO verification_evidence
-       (task_id, artifact_id, outcome, evidence, content_hash, recorded_by)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-  ).run(taskId, artifactId, outcome, evidence, contentHash, recordedBy);
+       (task_id, artifact_id, outcome, evidence, content_hash, recorded_by, provider)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+  ).run(taskId, artifactId, outcome, evidence, contentHash, recordedBy, provider);
   const row = db.prepare(
     `SELECT * FROM verification_evidence
      WHERE task_id=? AND artifact_id=? AND content_hash=?`,
@@ -273,17 +280,18 @@ export const definitions: Tool[] = [
   },
   {
     name: 'verification_record',
-    description: 'Record immutable pass/fail evidence for an accepted AC baseline. Only passing evidence creates verified_by.',
+    description: 'Record immutable evidence for an accepted AC baseline using CGAD 4-valued verdict (passed/failed/unknown/error). Only passing evidence creates verified_by; unknown and error are denials (CGAD P14).',
     annotations: { title: 'Verification: Record Evidence', readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: 'object',
       properties: {
         task_id: { type: 'integer' },
         artifact_id: { type: 'integer' },
-        outcome: { type: 'string', enum: ['passed', 'failed'] },
+        outcome: { type: 'string', enum: ['passed', 'failed', 'unknown', 'error'] },
         evidence: { type: 'string' },
         content_hash: { type: 'string' },
         recorded_by: { type: 'string' },
+        provider: { type: 'string', description: 'CGAD Trusted Guard Input Provider identity (e.g. "test_runner", "cgad-spec-lint", "human_approval"). Optional in v1; required once provider registry (REQ-012) is wired.' },
       },
       required: ['task_id', 'artifact_id', 'outcome', 'evidence'],
     },
