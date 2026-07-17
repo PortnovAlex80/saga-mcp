@@ -184,6 +184,32 @@ Use when: 4+ ACs share a module, or the API contract is non-trivial. The
 SCAFFOLD removes the architectural ambiguity that caused REQ-001's conflicts;
 the INTEGRATE task owns the merge instead of each worker racing for merge-lock.
 
+### Semantic conflict keys (REQ-010, REQUIRED after scaffold)
+
+After creating dev tasks (and after any task that touches code), tag each
+task with semantic conflict keys so the lint rule CGAD-R5 can detect
+collisions BEFORE workers start:
+
+```
+conflict_keys_auto_derive({ task_id })   # picks up source_ref, metadata.schema,
+                                         # metadata.public_protocol, repo branch
+```
+
+For shared surfaces the auto-derive misses, set keys manually:
+
+```
+conflict_keys_set({ task_id, keys: [
+  { key_type: 'schema', key_value: 'tasks.priority enum' },
+  { key_type: 'public_protocol', key_value: 'MCP tool: episode_transition' },
+]})
+```
+
+Then run `conflict_check({ epic_id })` before transitioning to development.
+If R5 reports a collision you missed, either add a scaffold (Pattern B),
+sequence the tasks (`depends_on`), or split the scope. Two tasks colliding
+is a warning; three or more, or any collision with ≥2 in-flight tasks, is
+an error — the episode should not advance.
+
 ### When to deviate from one-task-per-AC
 
 - If two ACs are truly inseparable (same function, same lines), group them into
