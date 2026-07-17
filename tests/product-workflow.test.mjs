@@ -693,3 +693,147 @@ test('REQ-009: low-risk plain task stays low across the board', () => {
   assert.equal(task.policy_minimum, null);
   assert.equal(task.final_risk, 'low');
 });
+
+// ============================================================================
+// REQ-011 — CGAD §4 third truth axis + §17 Runtime Observation Store.
+// Append-only observations of actual runtime/integration behaviour. Cannot
+// mutate the acceptance oracle (CGAD P17).
+// ============================================================================
+
+const { handlers: observations } = await import('../dist/tools/observations.js');
+
+test('REQ-011: observation_record stores benchmark observation against an artifact', () => {
+  const product = projects.project_create({ name: 'R011 Bench Product' });
+  const epic = epics.epic_create({ project_id: product.id, name: 'REQ-r011-bench' });
+  const ac = artifacts.artifact_create({
+    project_id: product.id, epic_id: epic.id, type: 'AC', code: 'AC-B',
+    title: 'Bench criterion', path: 'docs/r011-b.md', status: 'accepted',
+    content_hash: 'bench-hash',
+  });
+  const obs = observations.observation_record({
+    epic_id: epic.id, artifact_id: ac.id,
+    observation_type: 'benchmark',
+    observed_value: 'p99_latency_ms=142',
+    baseline_value: 'p99_latency_ms=120',
+    observed_by: 'benchmark-runner',
+    metadata: { run_id: 'abc123' },
+  });
+  assert.ok(obs.id);
+  assert.equal(obs.observation_type, 'benchmark');
+  assert.equal(obs.observed_value, 'p99_latency_ms=142');
+  assert.equal(obs.baseline_value, 'p99_latency_ms=120');
+  assert.equal(obs.metadata, JSON.stringify({ run_id: 'abc123' }));
+});
+
+test('REQ-011: observation_record rejects missing scope (epic/task/artifact all NULL)', () => {
+  assert.throws(
+    () => observations.observation_record({
+      observation_type: 'incident',
+      observed_value: 'something happened',
+    }),
+    /At least one of epic_id, task_id, artifact_id/,
+  );
+});
+
+test('REQ-011: observation_record rejects invalid observation_type', () => {
+  const product = projects.project_create({ name: 'R011 Type Product' });
+  const epic = epics.epic_create({ project_id: product.id, name: 'REQ-r011-type' });
+  assert.throws(
+    () => observations.observation_record({
+      epic_id: epic.id,
+      observation_type: 'speedrun',
+      observed_value: 'fast',
+    }),
+    /Invalid observation_type 'speedrun'/,
+  );
+});
+
+test('REQ-011: observation_record rejects empty observed_value', () => {
+  const product = projects.project_create({ name: 'R011 Empty Product' });
+  const epic = epics.epic_create({ project_id: product.id, name: 'REQ-r011-empty' });
+  assert.throws(
+    () => observations.observation_record({
+      epic_id: epic.id,
+      observation_type: 'incident',
+      observed_value: '   ',
+    }),
+    /observed_value is required/,
+  );
+});
+
+test('REQ-011: observation_record cross-validates task belongs to epic', () => {
+  const product = projects.project_create({ name: 'R011 XVal Product' });
+  const epic1 = epics.epic_create({ project_id: product.id, name: 'ep1' });
+  const epic2 = epics.epic_create({ project_id: product.id, name: 'ep2' });
+  const task = tasks.task_create({ epic_id: epic1.id, title: 't' });
+  assert.throws(
+    () => observations.observation_record({
+      epic_id: epic2.id, task_id: task.id,
+      observation_type: 'runtime_metric',
+      observed_value: 'x',
+    }),
+    new RegExp(`Task ${task.id} belongs to epic ${epic1.id}, not ${epic2.id}`),
+  );
+});
+
+test('REQ-011: CGAD P17 — observation_record does NOT mutate artifact accepted_hash', () => {
+  const product = projects.project_create({ name: 'R011 P17 Product' });
+  const epic = epics.epic_create({ project_id: product.id, name: 'REQ-r011-p17' });
+  const ac = artifacts.artifact_create({
+    project_id: product.id, epic_id: epic.id, type: 'AC', code: 'AC-P17',
+    title: 'P17 criterion', path: 'docs/r011-p17.md', status: 'accepted',
+    content_hash: 'oracle-hash-v1',
+  });
+  const hashBefore = getDb().prepare(
+    'SELECT accepted_hash, content_hash, status FROM artifacts WHERE id=?',
+  ).get(ac.id);
+  // Record a contradicting observation.
+  observations.observation_record({
+    epic_id: epic.id, artifact_id: ac.id,
+    observation_type: 'canary',
+    observed_value: 'canary error rate 12% (oracle predicts <1%)',
+    observed_by: 'canary-job',
+  });
+  const hashAfter = getDb().prepare(
+    'SELECT accepted_hash, content_hash, status FROM artifacts WHERE id=?',
+  ).get(ac.id);
+  // Critical P17 invariant: oracle unchanged.
+  assert.equal(hashAfter.accepted_hash, hashBefore.accepted_hash);
+  assert.equal(hashAfter.content_hash, hashBefore.content_hash);
+  assert.equal(hashAfter.status, 'accepted');
+});
+
+test('REQ-011: observation_list filters by epic and type', () => {
+  const product = projects.project_create({ name: 'R011 List Product' });
+  const epic = epics.epic_create({ project_id: product.id, name: 'REQ-r011-list' });
+  observations.observation_record({
+    epic_id: epic.id, observation_type: 'benchmark', observed_value: 'a',
+  });
+  observations.observation_record({
+    epic_id: epic.id, observation_type: 'incident', observed_value: 'b',
+  });
+  observations.observation_record({
+    epic_id: epic.id, observation_type: 'benchmark', observed_value: 'c',
+  });
+  const all = observations.observation_list({ epic_id: epic.id });
+  assert.equal(all.count, 3);
+  const benches = observations.observation_list({ epic_id: epic.id, observation_type: 'benchmark' });
+  assert.equal(benches.count, 2);
+});
+
+test('REQ-011: incident observation with no task/artifact (free-floating)', () => {
+  // CGAD §17: an observation may have no task yet — e.g. a prod incident
+  // that will be triaged into a task later. epic_id is enough scope.
+  const product = projects.project_create({ name: 'R011 Float Product' });
+  const epic = epics.epic_create({ project_id: product.id, name: 'REQ-r011-float' });
+  const obs = observations.observation_record({
+    epic_id: epic.id,
+    observation_type: 'incident',
+    observed_value: 'prod 5xx spike 14:32-14:47 UTC',
+    observed_by: 'pagerduty',
+    metadata: { severity: 'SEV-2' },
+  });
+  assert.ok(obs.id);
+  assert.equal(obs.task_id, null);
+  assert.equal(obs.artifact_id, null);
+});
