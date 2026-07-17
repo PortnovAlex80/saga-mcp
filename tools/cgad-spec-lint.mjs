@@ -16,7 +16,7 @@ import process from "node:process";
 import { readFileSync, existsSync } from "node:fs";
 import path from "node:path";
 
-const LINTER_VERSION = "cgad-spec-lint/1.3.1";
+const LINTER_VERSION = "cgad-spec-lint/1.3.0";
 
 // ---------- CLI ----------
 
@@ -114,15 +114,16 @@ function usage() {
     "           Reads the artifact's .md from disk (path column or resolved via the",
     "           project_repository.local_path). Warning severity — FRs may",
     "           reference downstream SPECs by link without leaking their text.",
-    "  CGAD-R15 RESERVED (not implemented in this build).",
-    "  CGAD-R16 Wave-1 Product Discovery Cycle — hypothesis without observation.",
-    "           For each accepted artifact of type 'hypothesis', check that the",
-    "           epic containing it has at least one row in runtime_observations.",
-    "           A hypothesis with zero observations is an open product bet — the",
-    "           BR→hypothesis→metric→observation loop never closed. Warning",
-    "           severity — the bet may legitimately still be in flight (the",
-    "           feature has not shipped yet), but the debt is visible at lint",
-    "           time so it cannot be silently forgotten.",
+    "  CGAD-R15 RULE without enforcement (CGAD §9). Accepted artifact of type",
+    "           'RULE' MUST have at least one outgoing trace with link_type",
+    "           'implements' or 'implements_spec' (an FR or SPEC that operationalizes",
+    "           the rule). A RULE with no enforcement path is an orphan — CGAD §9",
+    "           requires every non-informational RULE to have an enforcement",
+    "           mechanism. Warning severity — informational/policy RULEs may",
+    "           legitimately have no implementer; the human reviews each finding.",
+    "  CGAD-R16 Product cycle gap. Accepted 'hypothesis' artifact whose episode",
+    "           has ZERO runtime observations. Product cycle incomplete — measure",
+    "           the metric before declaring the hypothesis validated or refuted.",
     "",
     "Exit codes:",
     "  0  no findings (or only warnings)",
@@ -917,6 +918,112 @@ function ruleR14(db, projectId) {
   return findings;
 }
 
+// R15 — RULE artifact without enforcement path (CGAD §9).
+//
+// A RULE artifact is a business rule / policy artifact (type='RULE'). CGAD §9
+// requires every non-informational RULE to have an enforcement mechanism: an
+// operationalization that turns the rule into something the system does. In
+// the traceability graph that means at least one outgoing trace with
+// link_type 'implements' (an FR that operationalizes the rule) OR
+// 'implements_spec' (a SPEC design contract that implements the rule). A RULE
+// with neither is an orphan — it states a policy but nothing in the system
+// enforces it.
+//
+// Severity is WARNING (not error): a RULE may be intentionally informational
+// (e.g. an org-wide compliance statement, a North-Star principle) and have no
+// implementer by design. The human reviews each finding and either adds the
+// missing trace or accepts the rule as informational.
+//
+// Detection is DB-only (no disk read): count outgoing traces from each accepted
+// RULE with link_type IN ('implements','implements_spec'). If the count is 0,
+// emit a finding.
+function ruleR15(db, projectId) {
+  const pj = projectId !== undefined
+    ? `AND a.project_id = ${Number(projectId)}`
+    : '';
+  const findings = [];
+
+  let ruleRows;
+  try {
+    ruleRows = db.prepare(`
+      SELECT a.id AS rule_id, a.code, a.path
+      FROM artifacts a
+      WHERE a.type = 'RULE' AND a.status = 'accepted'
+      ${pj}
+      ORDER BY a.id`).all();
+  } catch {
+    // Pre-RULE DB without the 'RULE' type — skip silently.
+    return findings;
+  }
+
+  for (const r of ruleRows) {
+    // Outgoing traces with link_type 'implements' or 'implements_spec' = an
+    // FR/SPEC that operationalizes this rule. Either link counts as enforcement.
+    let enforcement;
+    try {
+      enforcement = db.prepare(`
+        SELECT COUNT(*) AS n FROM artifact_traces
+        WHERE source_id = ?
+          AND link_type IN ('implements','implements_spec')`).get(r.rule_id);
+    } catch {
+      // Pre-migration DB where 'implements_spec' is not yet in the CHECK — fall
+      // back to 'implements' only so R15 still runs on unmigrated DBs.
+      enforcement = db.prepare(`
+        SELECT COUNT(*) AS n FROM artifact_traces
+        WHERE source_id = ? AND link_type = 'implements'`).get(r.rule_id);
+    }
+    if (enforcement.n === 0) {
+      findings.push({
+        rule: 'CGAD-R15',
+        severity: 'warning',
+        message: `accepted RULE ${r.code || '#' + r.rule_id} (${r.path}) has no enforcement path (no implements/implements_spec trace). Orphan rule — CGAD §9 requires every non-informational RULE to have an enforcement mechanism. Add an 'implements' trace to an operationalizing FR, or an 'implements_spec' trace to a SPEC design contract. If the RULE is intentionally informational, accept this warning.`,
+        location: `artifacts.id=${r.rule_id}`,
+        provenance: `implements=0, implements_spec=0`,
+      });
+    }
+  }
+
+  return findings;
+}
+
+// R16 — Product cycle gap: hypothesis without observation.
+// For each accepted 'hypothesis' artifact: check if its epic has any
+// runtime_observations. If zero → warning: product cycle incomplete.
+function ruleR16(db, projectId) {
+  const pj = projectId !== undefined
+    ? `AND a.project_id = ${Number(projectId)}`
+    : '';
+  const findings = [];
+  let hypRows;
+  try {
+    hypRows = db.prepare(`
+      SELECT a.id AS hyp_id, a.code, a.epic_id
+      FROM artifacts a
+      WHERE a.type = 'hypothesis' AND a.status = 'accepted'
+      ${pj}`).all();
+  } catch {
+    return findings; // pre-hypothesis-type DB
+  }
+  for (const h of hypRows) {
+    let obsCount;
+    try {
+      obsCount = db.prepare('SELECT COUNT(*) AS n FROM runtime_observations WHERE epic_id=?').get(h.epic_id).n;
+    } catch {
+      obsCount = 0; // pre-observation table
+    }
+    if (obsCount === 0) {
+      findings.push({
+        rule: 'CGAD-R16',
+        severity: 'warning',
+        message: `accepted hypothesis ${h.code || '#' + h.hyp_id} in episode #${h.epic_id} has ZERO runtime observations. Product cycle incomplete — measure the metric before declaring the hypothesis validated or refuted.`,
+        location: `artifacts.id=${h.hyp_id}`,
+        provenance: `epic=${h.epic_id}, observations=0`,
+      });
+    }
+  }
+  return findings;
+}
+
 // Forbidden-content patterns for FR artifacts. Each entry: { label, regex }.
 // `label` is the short human-readable category shown in the finding; `regex`
 // is applied to the .md body. Patterns are kept tight to avoid English-prose
@@ -1019,84 +1126,6 @@ function resolveArtifactFile(artifact, repoById, repoPaths) {
   return null;
 }
 
-// R16 — Wave-1 Product Discovery Cycle: hypothesis without observation.
-//
-// saga's engineering cycle (FR→AC→code→evidence) is closed by R3 (verified_by).
-// The product cycle (BR→hypothesis→metric→observation→hit/kill) has no such
-// closer: observation_record (REQ-011) can store business metrics, but nothing
-// in the flow *forces* a hypothesis to be measured. R16 surfaces the open bet.
-//
-// For each accepted artifact of type 'hypothesis': check whether the epic
-// containing it has AT LEAST ONE row in runtime_observations. If zero
-// observations exist for the epic, the BR→hypothesis→metric→observation loop
-// never closed — the product bet was declared but never measured. Emit a
-// warning per hypothesis.
-//
-// Scope is the EPIC, not the hypothesis artifact itself: a runtime observation
-// may legitimately be recorded against a business_metric artifact, a task, or
-// free-floating (epic-scoped only). Counting observations at epic scope keeps
-// R16 from firing on a hypothesis whose metric is observed under a different
-// artifact_id — which is the normal case (the metric artifact carries the
-// observation, not the hypothesis artifact).
-//
-// Severity is WARNING (not error): a hypothesis with zero observations may
-// legitimately still be in flight — the feature has not shipped yet, the
-// canary has not finished, the analytics pipeline is not wired. The point is
-// to make the debt VISIBLE at lint time, so it cannot be silently forgotten
-// for quarters. If/when a hypothesis has passed its `valid_by` date and still
-// has zero observations, that graduates to an error in a future rule (R17).
-//
-// Backward compatibility: pre-wave-1 DBs have no hypothesis artifacts, so R16
-// runs zero iterations and returns no findings. The try/catch around the
-// query is a belt-and-braces guard against a DB that somehow lacks the
-// artifacts or runtime_observations tables — R16 must never crash the linter.
-function ruleR16(db, projectId) {
-  const pj = projectId !== undefined
-    ? `AND a.project_id = ${Number(projectId)}`
-    : '';
-  const findings = [];
-
-  let hypos;
-  try {
-    hypos = db.prepare(`
-      SELECT a.id AS hyp_id, a.code, a.title, a.path, a.epic_id, a.project_id
-      FROM artifacts a
-      WHERE a.type = 'hypothesis' AND a.status = 'accepted'
-      ${pj}
-      ORDER BY a.id`).all();
-  } catch {
-    // Pre-wave-1 DB without the hypothesis type, or artifacts table missing
-    // entirely — skip silently. R16 is a product-cycle lint, not a schema lint.
-    return findings;
-  }
-
-  for (const h of hypos) {
-    // Count observations at epic scope (see function comment for rationale).
-    let obsCount;
-    try {
-      obsCount = db.prepare(
-        `SELECT COUNT(*) AS n FROM runtime_observations WHERE epic_id = ?`,
-      ).get(h.epic_id);
-    } catch {
-      // runtime_observations table missing — treat as zero observations and
-      // surface the finding (the product cycle cannot close without the table).
-      obsCount = { n: 0 };
-    }
-
-    if (obsCount.n === 0) {
-      findings.push({
-        rule: 'CGAD-R16',
-        severity: 'warning',
-        message: `accepted hypothesis ${h.code || '#' + h.hyp_id} "${h.title}" (${h.path}) in episode #${h.epic_id} has ZERO runtime_observations recorded. Product cycle incomplete — the BR→hypothesis→metric→observation loop never closed. Measure the metric via observation_record({epic_id, observation_type:'runtime_metric', ...}). If the feature has not shipped yet, this warning is informational; if it has, the bet is unmeasured product-cycle debt.`,
-        location: `artifacts.id=${h.hyp_id}`,
-        provenance: `epic=${h.epic_id}, runtime_observations=0`,
-      });
-    }
-  }
-
-  return findings;
-}
-
 // ---------- Output formatting ----------
 
 function severityRank(s) { return { error: 0, warning: 1, info: 2 }[s] ?? 3; }
@@ -1131,8 +1160,7 @@ function emitJson(findings, dbPath, projectId) {
     rule_set: "cgad-v1.3",
     rules: ["CGAD-R1", "CGAD-R2", "CGAD-R3", "CGAD-R4", "CGAD-R5",
             "CGAD-R6", "CGAD-R7", "CGAD-R8", "CGAD-R9", "CGAD-R10",
-            "CGAD-R11", "CGAD-R12", "CGAD-R13", "CGAD-R14",
-            "CGAD-R15", "CGAD-R16"],
+            "CGAD-R11", "CGAD-R12", "CGAD-R13", "CGAD-R14", "CGAD-R15", "CGAD-R16"],
     findings,
     summary: {
       errors: findings.filter(f => f.severity === "error").length,
@@ -1148,7 +1176,7 @@ function emitSarif(findings, dbPath) {
     version: "2.1.0",
     runs: [{
       tool: {
-        driver: { name: "cgad-spec-lint", version: "1.3.1", informationUri: "ADR-005" },
+        driver: { name: "cgad-spec-lint", version: "1.3.0", informationUri: "ADR-005" },
       },
       results: findings.map(f => ({
         ruleId: f.rule,
@@ -1200,6 +1228,7 @@ function main() {
       ...ruleR12(db, args.projectId),
       ...ruleR13(db, args.projectId),
       ...ruleR14(db, args.projectId),
+      ...ruleR15(db, args.projectId),
       ...ruleR16(db, args.projectId),
     ];
   } catch (e) {

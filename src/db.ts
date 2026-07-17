@@ -42,6 +42,7 @@ export function getDb(): Database.Database {
   try { db.exec("ALTER TABLE artifacts ADD COLUMN drift_state TEXT NOT NULL DEFAULT 'unknown' CHECK (drift_state IN ('unknown','clean','drifted'))"); } catch { /* column already exists */ }
   migrateArtifactTypes(db);
   try { db.exec("ALTER TABLE artifacts ADD COLUMN evidence_status TEXT CHECK (evidence_status IN ('confirmed','proposed','assumed','open','rejected','superseded') OR evidence_status IS NULL)"); } catch { /* column already exists */ }
+  migrateTracesLinkType(db);
   migrateVerificationOutcome(db);
   migrateRiskClass(db);
   try { db.exec('CREATE INDEX IF NOT EXISTS idx_epics_branch ON epics(branch)'); } catch { /* index already exists */ }
@@ -174,7 +175,33 @@ function migrateArtifactTypes(db: Database.Database): void {
   const row = db.prepare(
     "SELECT sql FROM sqlite_schema WHERE type='table' AND name='artifacts'",
   ).get() as { sql: string } | undefined;
+  // Detection predicate: the newest artifact type is 'business_metric'. If the
+  // live DDL already includes it, the catalog is up-to-date and the migration is
+  // a no-op. Older DBs (CHECK ends at 'SPEC', 'OQ', or earlier) need the rebuild.
   if (!row?.sql || row.sql.includes("'business_metric'")) return;
+
+  // The rebuild must preserve every optional column the source table has. With
+  // 'SPEC' detection the migration can now fire on DBs at any prior schema
+  // version (pre-evidence_status, pre-project_repository_id, etc.). We read
+  // PRAGMA table_info to detect which optional columns exist and branch the DDL
+  // accordingly so values are never lost. project_repository_id and
+  // evidence_status are the two columns the historical migrations added out of
+  // band via ALTER TABLE; both may or may not be present.
+  const sourceCols = db.prepare("PRAGMA table_info('artifacts')").all() as Array<{ name: string }>;
+  const sourceColSet = new Set(sourceCols.map(c => c.name));
+  const hasProjRepo = sourceColSet.has('project_repository_id');
+  const hasEvidenceStatus = sourceColSet.has('evidence_status');
+
+  const projRepoCol = hasProjRepo
+    ? `project_repository_id INTEGER REFERENCES project_repositories(id) ON DELETE SET NULL,`
+    : '';
+  const projRepoIns = hasProjRepo ? `project_repository_id,` : '';
+  const projRepoSel = hasProjRepo ? `project_repository_id,` : '';
+  const evidenceStatusCol = hasEvidenceStatus
+    ? `evidence_status TEXT CHECK (evidence_status IN ('confirmed','proposed','assumed','open','rejected','superseded') OR evidence_status IS NULL),`
+    : '';
+  const evidenceStatusIns = hasEvidenceStatus ? `evidence_status,` : '';
+  const evidenceStatusSel = hasEvidenceStatus ? `evidence_status,` : '';
 
   db.pragma('foreign_keys = OFF');
   try {
@@ -184,18 +211,19 @@ function migrateArtifactTypes(db: Database.Database): void {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
         epic_id INTEGER NOT NULL REFERENCES epics(id) ON DELETE CASCADE,
-        type TEXT NOT NULL CHECK (type IN ('PRD','SRS','UC','AC','FR','NFR','decision','theme','brief','RULE','OQ','hypothesis','business_metric')),
+        type TEXT NOT NULL CHECK (type IN ('PRD','SRS','UC','AC','FR','NFR','decision','theme','brief','RULE','OQ','SPEC','hypothesis','business_metric')),
         code TEXT,
         title TEXT NOT NULL,
         path TEXT NOT NULL,
         status TEXT NOT NULL DEFAULT 'draft'
           CHECK (status IN ('draft','in_review','accepted','superseded')),
         parent_artifact_id INTEGER REFERENCES artifacts(id) ON DELETE SET NULL,
-        project_repository_id INTEGER REFERENCES project_repositories(id) ON DELETE SET NULL,
+        ${projRepoCol}
         content_hash TEXT,
         accepted_hash TEXT,
         drift_state TEXT NOT NULL DEFAULT 'unknown'
           CHECK (drift_state IN ('unknown','clean','drifted')),
+        ${evidenceStatusCol}
         tags TEXT NOT NULL DEFAULT '[]',
         metadata TEXT NOT NULL DEFAULT '{}',
         created_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -203,10 +231,10 @@ function migrateArtifactTypes(db: Database.Database): void {
       );
       INSERT INTO artifacts_new
         (id,project_id,epic_id,type,code,title,path,status,parent_artifact_id,
-         project_repository_id,content_hash,accepted_hash,drift_state,tags,metadata,
+         ${projRepoIns}content_hash,accepted_hash,drift_state,${evidenceStatusIns}tags,metadata,
          created_at,updated_at)
       SELECT id,project_id,epic_id,type,code,title,path,status,parent_artifact_id,
-             project_repository_id,content_hash,accepted_hash,drift_state,tags,metadata,
+             ${projRepoSel}content_hash,accepted_hash,drift_state,${evidenceStatusSel}tags,metadata,
              created_at,updated_at
       FROM artifacts;
       DROP TABLE artifacts;
@@ -228,6 +256,57 @@ function migrateArtifactTypes(db: Database.Database): void {
   }
   const violation = db.prepare('PRAGMA foreign_key_check').get();
   if (violation) throw new Error(`Migration artifact types produced foreign key violations`);
+}
+
+// Widen artifact_traces.link_type CHECK to include 'implements_spec' (FR/RULE
+// implemented by a SPEC design contract). SQLite cannot ALTER a column's CHECK
+// in place, so we rebuild the table when the existing CHECK lacks
+// 'implements_spec'. Existing rows are preserved verbatim — every existing
+// link_type is a subset of the widened enum. Idempotent: if the new CHECK is
+// already in place, returns immediately.
+function migrateTracesLinkType(db: Database.Database): void {
+  const row = db.prepare(
+    "SELECT sql FROM sqlite_schema WHERE type='table' AND name='artifact_traces'",
+  ).get() as { sql: string } | undefined;
+  if (!row?.sql) return; // table doesn't exist yet — SCHEMA_SQL will create it correctly.
+  if (row.sql.includes("'implements_spec'")) return; // already migrated.
+
+  db.pragma('foreign_keys = OFF');
+  try {
+    db.exec('BEGIN IMMEDIATE');
+    db.exec(`
+      CREATE TABLE artifact_traces_new (
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        source_id     INTEGER NOT NULL REFERENCES artifacts(id) ON DELETE CASCADE,
+        target_type   TEXT NOT NULL CHECK (target_type IN ('artifact','task')),
+        target_id     INTEGER NOT NULL,
+        link_type     TEXT NOT NULL
+                        CHECK (link_type IN ('covers','implements','derived_from','depends_on','verified_by','superseded_by','implements_spec')),
+        created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+        UNIQUE (source_id, target_type, target_id, link_type)
+      )
+    `);
+    db.exec(`
+      INSERT INTO artifact_traces_new
+        (id, source_id, target_type, target_id, link_type, created_at)
+      SELECT id, source_id, target_type, target_id, link_type, created_at
+      FROM artifact_traces
+    `);
+    db.exec('DROP TABLE artifact_traces');
+    db.exec('ALTER TABLE artifact_traces_new RENAME TO artifact_traces');
+    // Recreate indexes (IF NOT EXISTS — they were dropped with the table).
+    db.exec('CREATE INDEX IF NOT EXISTS idx_traces_source ON artifact_traces(source_id)');
+    db.exec('CREATE INDEX IF NOT EXISTS idx_traces_target ON artifact_traces(target_type, target_id)');
+    db.exec('CREATE INDEX IF NOT EXISTS idx_traces_link ON artifact_traces(link_type)');
+    db.exec('COMMIT');
+  } catch (error) {
+    try { db.exec('ROLLBACK'); } catch { /* no active transaction */ }
+    throw new Error(`Migration artifact_traces link_type widen failed: ${(error as Error).message}`);
+  } finally {
+    db.pragma('foreign_keys = ON');
+  }
+  const violation = db.prepare('PRAGMA foreign_key_check').get();
+  if (violation) throw new Error(`Migration artifact_traces link_type produced foreign key violations`);
 }
 
 // REQ-008 — widen verification_evidence.outcome CHECK to CGAD's 4-valued guard

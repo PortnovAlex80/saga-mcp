@@ -216,7 +216,7 @@ CREATE TABLE IF NOT EXISTS artifacts (
   project_id          INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
   epic_id             INTEGER NOT NULL REFERENCES epics(id) ON DELETE CASCADE,
   type                TEXT NOT NULL
-                        CHECK (type IN ('PRD','SRS','UC','AC','FR','NFR','decision','theme','brief','RULE','OQ','hypothesis','business_metric')),
+                        CHECK (type IN ('PRD','SRS','UC','AC','FR','NFR','decision','theme','brief','RULE','OQ','SPEC','hypothesis','business_metric')),
   code                TEXT,
   title               TEXT NOT NULL,
   path                TEXT NOT NULL,
@@ -352,7 +352,7 @@ CREATE TABLE IF NOT EXISTS artifact_traces (
   target_type   TEXT NOT NULL CHECK (target_type IN ('artifact','task')),
   target_id     INTEGER NOT NULL,
   link_type     TEXT NOT NULL
-                  CHECK (link_type IN ('covers','implements','derived_from','depends_on','verified_by','superseded_by')),
+                  CHECK (link_type IN ('covers','implements','derived_from','depends_on','verified_by','superseded_by','implements_spec')),
   created_at    TEXT NOT NULL DEFAULT (datetime('now')),
   UNIQUE (source_id, target_type, target_id, link_type)
 );
@@ -431,5 +431,6 @@ export const ArtifactTypeSchema = z.enum([
   'OQ',      // NEW — open question / unresolved issue
   'hypothesis',      // NEW — product discovery hypothesis (BR→HYP→metric)
   'business_metric', // NEW — metric definition referenced by a hypothesis
+  'SPEC',    // NEW — technical specification / design contract referenced by FRs
 ]);
 

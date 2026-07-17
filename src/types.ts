@@ -159,8 +159,9 @@ export type ArtifactType =
   | 'brief'    // NEW — discovery-phase output
   | 'RULE'     // NEW — business rule / policy artifact
   | 'OQ'       // NEW — open question / unresolved issue
-  | 'hypothesis'      // NEW — product discovery hypothesis (BR→HYP→metric)
-  | 'business_metric'; // NEW — metric definition referenced by a hypothesis
+  | 'SPEC'     // NEW — technical specification / design contract referenced by FRs
+  | 'hypothesis'       // NEW — product discovery hypothesis
+  | 'business_metric'; // NEW — metric definition referenced by hypothesis
 
 export interface Artifact {
   id: number;
@@ -190,19 +191,13 @@ export interface ArtifactTrace {
   source_id: number;
   target_type: 'artifact' | 'task';
   target_id: number;
-  link_type: 'covers' | 'implements' | 'derived_from' | 'depends_on' | 'verified_by' | 'superseded_by';
+  link_type: 'covers' | 'implements' | 'derived_from' | 'depends_on' | 'verified_by' | 'superseded_by' | 'implements_spec';
   created_at: string;
 }
 
-// REQ-012 — Trusted Provider Registry. A Trusted Guard Input Provider that is
-// allowed to feed evidence/state/decisions into a project's acceptance oracle.
-// project_id is NULL for global providers (apply to every project). The three
-// categories mirror the CGAD trust tiers; determinism is the reproducibility
-// class (full = bit-for-bit deterministic, partial = depends on external state,
-// none = human/policy decision). layer is the optional L0..L4 stack layer.
 export interface TrustedProvider {
   id: number;
-  project_id: number | null; // null = global
+  project_id: number | null;
   category: 'deterministic_evidence' | 'authoritative_state' | 'authorized_decision';
   name: string;
   trust_basis: string;
