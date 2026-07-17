@@ -24,6 +24,9 @@ import { definitions as templateDefs, handlers as templateHandlers } from './too
 import { definitions as exportImportDefs, handlers as exportImportHandlers } from './tools/export-import.js';
 import { definitions as dispatcherDefs, handlers as dispatcherHandlers } from './tools/dispatcher.js';
 import { definitions as artifactDefs, handlers as artifactHandlers } from './tools/artifacts.js';
+import { definitions as repositoryDefs, handlers as repositoryHandlers } from './tools/repositories.js';
+import { definitions as workflowDefs, handlers as workflowHandlers } from './tools/workflow.js';
+import { definitions as lifecycleDefs, handlers as lifecycleHandlers } from './tools/lifecycle.js';
 import { closeDb } from './db.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -43,6 +46,9 @@ const ALL_TOOLS: Tool[] = [
   ...exportImportDefs,
   ...dispatcherDefs,
   ...artifactDefs,
+  ...repositoryDefs,
+  ...workflowDefs,
+  ...lifecycleDefs,
 ];
 
 const ALL_HANDLERS: Record<string, (args: Record<string, unknown>) => unknown> = {
@@ -59,6 +65,9 @@ const ALL_HANDLERS: Record<string, (args: Record<string, unknown>) => unknown> =
   ...exportImportHandlers,
   ...dispatcherHandlers,
   ...artifactHandlers,
+  ...repositoryHandlers,
+  ...workflowHandlers,
+  ...lifecycleHandlers,
 };
 
 const server = new Server(
