@@ -237,18 +237,92 @@ function handleConflictCheck(args: Record<string, unknown>) {
     task_ids_csv: string; n_tasks: number;
   }>;
 
-  const result = collisions.map(c => ({
+  const mapped = collisions.map(c => ({
     key_type: c.key_type,
     key_value: c.key_value,
     task_ids: c.task_ids_csv.split(',').map((s) => Number(s)),
     n_tasks: c.n_tasks,
   }));
 
+  // REQ-010 noise reduction: integration_branch collisions are expected and
+  // benign when the colliding tasks are SEQUENCED via task_dependencies
+  // (scaffold → bodies → integrate all share the repo's integration_branch
+  // because they all target the same repo). Without this filter, every
+  // single-repo episode reports a noisy integration_branch collision that
+  // obscures real collisions (file_path / schema / public_protocol).
+  //
+  // Rule: an integration_branch collision is SUPPRESSED when all colliding
+  // tasks form a single connected component in the dependency graph (edges
+  // treated as undirected, traversed transitively through ANY task —
+  // including ancestors outside the collision set, e.g. a scaffold that is
+  // done or that does not itself carry the integration_branch key). If they
+  // are sequenced they cannot parallel-race the branch. If they are NOT
+  // connected, they are a genuine parallel race on the same branch and the
+  // collision is kept.
+  //
+  // Only integration_branch is filtered — file_path / schema / public_protocol
+  // collisions ALWAYS remain, even when the tasks are sequenced, because
+  // those represent concrete semantic overlap that git may not catch.
+  const filtered = mapped.filter(c => {
+    if (c.key_type !== 'integration_branch') return true;
+    return !integrationBranchCollisionIsSequenced(db, c.task_ids);
+  });
+
   return {
     scope: epicId != null ? { epic_id: epicId } : { project_repository_id: repositoryId },
-    collisions: result,
-    collision_count: result.length,
+    collisions: filtered,
+    collision_count: filtered.length,
   };
+}
+
+// Returns true when every colliding task is reachable from every other
+// through task_dependencies (undirected transitive closure). When true,
+// the integration_branch collision is sequenced (not a parallel race)
+// and should be suppressed.
+function integrationBranchCollisionIsSequenced(
+  db: ReturnType<typeof getDb>,
+  taskIds: number[],
+): boolean {
+  if (taskIds.length < 2) return true; // trivially sequenced
+  const placeholders = taskIds.map(() => '?').join(',');
+  // Load every dependency edge that touches the colliding set in either
+  // direction. We traverse transitively through any task (ancestors outside
+  // the collision set included) — the question is lineage connectivity,
+  // not whether the mediator is itself colliding.
+  const edges = db.prepare(
+    `SELECT task_id, depends_on_task_id FROM task_dependencies
+     WHERE task_id IN (${placeholders})
+        OR depends_on_task_id IN (${placeholders})`,
+  ).all(...taskIds, ...taskIds) as Array<{ task_id: number; depends_on_task_id: number }>;
+
+  // Build undirected adjacency over every node mentioned by any loaded edge.
+  const adj = new Map<number, Set<number>>();
+  const link = (a: number, b: number) => {
+    if (!adj.has(a)) adj.set(a, new Set());
+    if (!adj.has(b)) adj.set(b, new Set());
+    adj.get(a)!.add(b);
+    adj.get(b)!.add(a);
+  };
+  for (const e of edges) link(e.task_id, e.depends_on_task_id);
+
+  // BFS from the first colliding task. Seed visited with it so a task with
+  // no edges still counts as its own (singleton) component.
+  const start = taskIds[0];
+  const visited = new Set<number>([start]);
+  const queue: number[] = [start];
+  while (queue.length > 0) {
+    const cur = queue.shift()!;
+    const neighbors = adj.get(cur);
+    if (!neighbors) continue;
+    for (const n of neighbors) {
+      if (!visited.has(n)) {
+        visited.add(n);
+        queue.push(n);
+      }
+    }
+  }
+  // All colliding tasks must sit inside the one component we just traversed.
+  return taskIds.every(id => visited.has(id));
 }
 
 export const definitions: Tool[] = [
