@@ -574,7 +574,7 @@ function renderBoard(projectId, allProjects) {
             return `<option value="${i + 1}"${i + 1 === conc ? ' selected' : ''}>${i + 1}</option>`;
           }).join('')}
         </select>
-        <select id="agent-model-select" title="Модель для воркеров. Смена рестартит движок и auto-настраивает concurrency под лимит модели.">
+        <select id="agent-model-select" title="Модель для НОВЫХ воркеров. Активные доработают на старой. Лимит модели — потолок concurrency для pump-loop движка.">
           ${MODELS.map(m => `<option value="${m.id}" data-limit="${m.limit}"${m.id === WORKER_MODEL ? ' selected' : ''}>${m.id} (×${m.limit})</option>`).join('')}
         </select>
         <span id="agent-run-status" class="agent-run-status">движок: …</span>
@@ -1018,68 +1018,132 @@ function renderBoard(projectId, allProjects) {
       } catch {}
     }
     // --- Stage detail overlay (clickable pipeline) ---
-    // Shows a structured per-stage summary fetched from
-    // /api/episode/stage-summary?epic_id=N&stage=X. Returns nothing for stages
-    // with no data (renders a friendly "no data yet" message instead).
+    // Shows a stage SUMMARY (markdown) generated on demand by a summary.stage
+    // worker task. First click for a stage spawns the task; subsequent clicks
+    // either show the accepted summary or poll until the worker finishes.
+    // Backend: GET /api/episode/stage-summary?epic_id=N&stage=X returns one of:
+    //   { ok, status:'ready',     artifact_id, content, generated_at }
+    //   { ok, status:'generating', task_id }
+    //   { ok, status:'queued',     task_id }
     const sdoOverlay = document.getElementById('stage-detail-overlay');
     const sdoTitle = document.getElementById('sdo-title');
     const sdoDur = document.getElementById('sdo-dur');
     const sdoDesc = document.getElementById('sdo-desc');
     const sdoBody = document.getElementById('sdo-body');
     const sdoClose = document.getElementById('sdo-close');
-    function hideStageDetail() { if (sdoOverlay) sdoOverlay.classList.remove('visible'); }
+    // One poller at a time per overlay. We tag the poll with a token so a
+    // rapid click on a different stage (or closing the panel) cancels the
+    // previous poll cleanly.
+    let sdoPollToken = 0;
+    function hideStageDetail() {
+      if (sdoOverlay) sdoOverlay.classList.remove('visible');
+      sdoPollToken++; // invalidate any in-flight poller
+    }
     async function openStageDetail(stage) {
       if (!sdoOverlay) return;
       const epicId = window.__sagaEpicId;
       if (!epicId || !stage) return;
       // Render shell immediately so the user sees the panel slide in while the
-      // fetch is in flight. Title/description are known client-side.
+      // fetch is in flight. Title is known client-side.
       const titleMap = { discovery:'Discovery', formalization:'Formalization', planning:'Planning', development:'Development', verification:'Verification', integration:'Integration', completed:'Completed' };
       if (sdoTitle) sdoTitle.textContent = titleMap[stage] || stage;
       if (sdoDur) sdoDur.textContent = '';
-      if (sdoDesc) sdoDesc.textContent = '';
+      if (sdoDesc) sdoDesc.textContent = 'Stage summary — generated on demand by a worker task.';
       if (sdoBody) sdoBody.innerHTML = '<div class="sdo-loading">loading…</div>';
       sdoOverlay.classList.add('visible');
-      try {
-        const r = await fetch('/api/episode/stage-summary?epic_id=' + encodeURIComponent(epicId) + '&stage=' + encodeURIComponent(stage));
-        const j = await r.json();
+      const myToken = ++sdoPollToken;
+      await pollStageSummary(epicId, stage, myToken);
+    }
+    // Poll loop: fetch the endpoint; if status is 'ready' render and stop; if
+    // 'queued' or 'generating' show the progress message and retry in 3s.
+    // The token cancels the loop if the user closed the overlay or opened a
+    // different stage.
+    async function pollStageSummary(epicId, stage, token) {
+      while (true) {
+        if (token !== sdoPollToken) return; // cancelled
+        let j;
+        try {
+          const r = await fetch('/api/episode/stage-summary?epic_id=' + encodeURIComponent(epicId) + '&stage=' + encodeURIComponent(stage));
+          j = await r.json();
+        } catch (e) {
+          if (sdoBody && token === sdoPollToken) sdoBody.innerHTML = '<div class="sdo-err">' + esc(String(e && e.message || e)) + '</div>';
+          return;
+        }
+        if (token !== sdoPollToken) return; // cancelled mid-fetch
         if (!j.ok) {
           if (sdoBody) sdoBody.innerHTML = '<div class="sdo-err">' + esc(j.error || 'failed to load') + '</div>';
           return;
         }
-        renderStageDetail(j);
-      } catch (e) {
-        if (sdoBody) sdoBody.innerHTML = '<div class="sdo-err">' + esc(String(e && e.message || e)) + '</div>';
+        if (j.status === 'ready') {
+          renderStageSummary(stage, j);
+          return;
+        }
+        // queued or generating — show progress, schedule next poll.
+        const label = j.status === 'generating' ? 'догенерируется' : 'в очереди';
+        const taskId = j.task_id != null ? (' (task #' + esc(j.task_id) + ')') : '';
+        if (sdoBody) sdoBody.innerHTML = '<div class="sdo-loading">Резюме ' + esc(label) + taskId + '…</div>';
+        await new Promise(r => setTimeout(r, 3000));
       }
     }
-    function renderStageDetail(j) {
-      // j = { ok, epic_id, stage, duration_s, started_at, completed_at, summary:{title,description,sections} }
-      const s = j.summary || {};
-      if (sdoTitle) sdoTitle.textContent = s.title || j.stage || 'Stage';
-      // Duration line: duration (and timing window if we have it).
-      const bits = [];
-      if (j.duration_s != null) bits.push(formatDur(j.duration_s));
-      if (j.started_at) bits.push(esc(j.started_at) + (j.completed_at ? ' → ' + esc(j.completed_at) : ' → …'));
-      if (sdoDur) sdoDur.innerHTML = bits.join(' · ');
-      if (sdoDesc) sdoDesc.textContent = s.description || '';
-      // Sections table: label → value → optional status badge.
-      const sections = Array.isArray(s.sections) ? s.sections : [];
-      if (sections.length === 0) {
-        if (sdoBody) sdoBody.innerHTML = '<div class="sdo-empty">no data recorded for this stage yet</div>';
+    // Render the accepted summary: minimal markdown -> HTML. No external lib:
+    // split on blank lines into paragraphs; **bold** -> <strong>; lines
+    // starting with - or * become <ul><li>. Headings (#) get <strong> too.
+    function renderStageSummary(stage, j) {
+      if (sdoDur && j.generated_at) {
+        sdoDur.textContent = 'generated ' + j.generated_at;
+      } else if (sdoDur) {
+        sdoDur.textContent = '';
+      }
+      const md = String(j.content || '').trim();
+      if (!md) {
+        if (sdoBody) sdoBody.innerHTML = '<div class="sdo-empty">summary artifact is empty</div>';
         return;
       }
-      const html = sections.map(sec => {
-        const label = esc(sec.label || '');
-        const value = esc(sec.value != null ? sec.value : '');
-        let badge = '';
-        if (sec.status) badge = '<span class="sdo-badge ' + esc(sec.status) + '">' + esc(sec.status) + '</span>';
-        return '<div class="sdo-section">' +
-          '<div class="sdo-label">' + label + '</div>' +
-          '<div class="sdo-value">' + value + '</div>' +
-          badge +
-        '</div>';
-      }).join('');
-      if (sdoBody) sdoBody.innerHTML = html;
+      if (sdoBody) sdoBody.innerHTML = renderSummaryMarkdown(md);
+    }
+    // Minimal markdown renderer for stage summaries. Supports:
+    //   - blank-line separated paragraphs
+    //   - "- " / "* " bulleted lists (consecutive lines grouped into <ul>)
+    //   - **bold** inline
+    //   - "# heading" / "## heading" -> <strong> (single line)
+    // Anything else is escaped and treated as a paragraph. No HTML is passed
+    // through raw — every text node goes through esc().
+    function renderSummaryMarkdown(md) {
+      const blocks = String(md).replace(/\r\n/g, '\n').split(/\n{2,}/);
+      const out = [];
+      for (let block of blocks) {
+        block = block.replace(/^\n+|\n+$/g, '');
+        if (!block) continue;
+        const lines = block.split('\n');
+        // Heading block (single line starting with #).
+        if (lines.length === 1 && /^#{1,4}\s+/.test(lines[0])) {
+          const text = lines[0].replace(/^#{1,4}\s+/, '');
+          out.push('<p class="sdo-md-h">' + renderSummaryInline(text) + '</p>');
+          continue;
+        }
+        // List block: every line starts with - or *.
+        if (lines.length > 0 && lines.every(l => /^\s*[-*]\s+/.test(l))) {
+          const items = lines.map(l => '<li>' + renderSummaryInline(l.replace(/^\s*[-*]\s+/, '')) + '</li>').join('');
+          out.push('<ul class="sdo-md-ul">' + items + '</ul>');
+          continue;
+        }
+        // Default: paragraph (join wrapped lines with a space).
+        const para = lines.map(l => l.trim()).filter(Boolean).join(' ');
+        out.push('<p class="sdo-md-p">' + renderSummaryInline(para) + '</p>');
+      }
+      return out.join('');
+    }
+    // Inline formatter: escape first, then re-apply **bold** and inline code.
+    // The inline-code regex uses \\u0060 (backtick) to avoid putting a literal
+    // backtick in this source — this whole JS lives inside an outer template
+    // literal, where a stray backtick would prematurely terminate the string.
+    function renderSummaryInline(text) {
+      const esc2 = window.esc(text);
+      const BT = String.fromCharCode(96);
+      const reCode = new RegExp(BT + '([^' + BT + ']+)' + BT, 'g');
+      return esc2
+        .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+        .replace(reCode, '<code>$1</code>');
     }
     // Close handlers: close button, click on backdrop (not on panel itself),
     // and Esc key. The panel stops propagation so clicks inside it don't close.
@@ -1134,15 +1198,18 @@ function renderBoard(projectId, allProjects) {
       }
     });
     // Model selector: change the worker model. PATCHes ~/.claude/settings.json
-    // via /api/model/set, which also restarts the engine with concurrency
-    // auto-synced to the model's API limit (no more 429 storms).
+    // so NEW workers (spawned after this call) read the new model. Active
+    // workers keep the old model — they have already started claude -p. NO
+    // engine restart, NO worker kill. The model limit is a CEILING for the
+    // engine pump loop (min(concurrency, active_model_limit)); old workers
+    // die naturally, new ones spawn on the new model, concurrency converges.
     const modelSelect = document.getElementById('agent-model-select');
     if (modelSelect) {
       modelSelect.addEventListener('change', async () => {
         const modelId = modelSelect.value;
-        const limit = modelSelect.options[modelSelect.selectedIndex].dataset.limit;
-        if (!confirm('Сменить модель на ' + modelId + '? Concurrency будет auto-настроена до ' + limit + ' (лимит API). Движок перезапустится.')) {
-          // Revert
+        const limit = Number(modelSelect.options[modelSelect.selectedIndex].dataset.limit);
+        if (!confirm('Сменить модель на ' + modelId + '? Активные воркеры доработают на старой модели. Новые воркеры пойдут на ' + modelId + '.')) {
+          // Revert dropdown to whatever the status line says is current.
           return;
         }
         runnerStatus.textContent = 'смена модели…';
@@ -1155,9 +1222,14 @@ function renderBoard(projectId, allProjects) {
           });
           const data = await r.json();
           if (!r.ok || !data.ok) throw new Error(data.error || 'смена не удалась');
-          runnerStatus.textContent = data.model + ' ×' + data.concurrency;
-          // Sync concurrency selector to the auto-set value
-          if (runnerConcurrency) runnerConcurrency.value = String(data.concurrency);
+          // The model limit is a CEILING, not a forced value — only clamp the
+          // concurrency selector down if the user's current pick exceeds the
+          // new model's limit. Otherwise leave it alone.
+          if (runnerConcurrency) {
+            const cur = Number(runnerConcurrency.value) || 1;
+            if (cur > limit) runnerConcurrency.value = String(limit);
+          }
+          runnerStatus.textContent = data.model + ' ×' + data.limit;
         } catch (e) {
           alert('Смена модели: ' + e.message);
           runnerStatus.textContent = 'ошибка';
@@ -1921,6 +1993,7 @@ function page(title, body) {
     .agent-runner{display:flex;align-items:center;gap:5px;padding:3px 6px;background:#21262d;border:1px solid #30363d;border-radius:8px;min-height:28px}
     .agent-icon{font-size:16px;line-height:1}
     .agent-runner select{width:42px;padding:3px 4px;background:#0d1117;color:#c9d1d9;border:1px solid #30363d;border-radius:5px;font-size:12px}
+    .agent-runner select#agent-model-select{width:auto;min-width:130px;max-width:200px;font-size:10px}
     .agent-run-btn,.agent-stop-btn{width:27px;height:25px;padding:0;border:1px solid #3d4855;border-radius:5px;background:#238636;color:white;cursor:pointer;font-size:11px}
     .agent-run-btn:hover{background:#2ea043}.agent-stop-btn{background:#b62324}.agent-stop-btn:hover{background:#da3633}
     .agent-run-btn:disabled,.agent-stop-btn:disabled{opacity:.5;cursor:default}
@@ -2273,6 +2346,14 @@ function page(title, body) {
     .stage-detail-panel .sdo-badge.draft{background:rgba(139,148,158,.12);color:#8b949e;border:1px solid rgba(139,148,158,.3)}
     .stage-detail-panel .sdo-badge.in_review{background:rgba(243,156,18,.12);color:#f39c12;border:1px solid rgba(243,156,18,.3)}
     .stage-detail-panel .sdo-badge.failed{background:rgba(248,81,73,.12);color:#f85149;border:1px solid rgba(248,81,73,.3)}
+    /* markdown summary content (rendered from accepted summary artifact) */
+    .stage-detail-panel .sdo-md-h{font-size:13px;font-weight:600;color:#e6edf3;margin:14px 0 6px}
+    .stage-detail-panel .sdo-md-h:first-child{margin-top:0}
+    .stage-detail-panel .sdo-md-p{font-size:12px;color:#c9d1d9;line-height:1.55;margin:6px 0}
+    .stage-detail-panel .sdo-md-p strong{color:#e6edf3}
+    .stage-detail-panel .sdo-md-ul{margin:6px 0;padding-left:20px;font-size:12px;color:#c9d1d9;line-height:1.55}
+    .stage-detail-panel .sdo-md-ul li{margin:2px 0}
+    .stage-detail-panel .sdo-md-p code,.stage-detail-panel .sdo-md-ul code{background:#21262d;padding:1px 4px;border-radius:3px;font-size:11px}
     @media (max-width:1200px){.stage-detail-overlay{justify-content:center}.stage-detail-panel{margin:20px}}
 
     /* worker mini-rows */
@@ -3492,34 +3573,22 @@ function handleEpisodePipeline(req, res, url) {
 }
 
 // --- GET /api/episode/stage-summary?epic_id=N&stage=formalization ---
-// Structured per-stage summary for the clickable pipeline overlay. Reads ONLY
-// from the DB (no file system access for artifact .md content — just titles,
-// statuses and counts). Returns { ok, epic_id, stage, duration_s, started_at,
-// completed_at, summary:{title,description,sections:[{label,value,status}]} }.
+// Stage-summary-via-task-spawn: when the user clicks a pipeline stage, this
+// endpoint returns the markdown body of an accepted `summary` artifact for
+// that stage; if no such artifact exists yet, it spawns a `summary.stage`
+// worker task that writes one. Duplicate clicks return the existing task_id
+// (the INSERT is idempotent on generation_key).
 //
-// Stage duration/enter/exit uses the same activity_log transition logic as
-// handleEpisodePipeline: enter = first new_value=<stage>, exit = first
-// old_value=<stage>. For the initial stage with no enter record, we fall back
-// to episode_workflows.created_at. For a still-running current stage, exit is
-// null and duration_s reflects elapsed-since-enter.
-const STAGE_SUMMARY_TITLES = {
-  discovery: 'Discovery',
-  formalization: 'Formalization',
-  planning: 'Planning',
-  development: 'Development',
-  verification: 'Verification',
-  integration: 'Integration',
-  completed: 'Completed',
-};
-const STAGE_SUMMARY_DESCRIPTIONS = {
-  discovery: 'Idea triage — brief, open questions and the kickstart decision that admitted the episode into formalization.',
-  formalization: 'Requirements & design artifacts were written and accepted: PRD, SRS, use cases, acceptance criteria, decisions and rules.',
-  planning: 'Accepted baseline decomposed into repository-scoped dev + verification tasks with implements coverage and conflict-check.',
-  development: 'Dev tasks executed against the frozen baseline; branches merged into the integration branch; healer runs if conflicts arose.',
-  verification: 'Independent AC verification — L2/L3 evidence recorded against each accepted AC; gaps block the integration gate.',
-  integration: 'Final multi-branch merge into the integration branch + L0 gate; episode closed.',
-  completed: 'Episode finished — terminal state. Totals across the whole REQ-NNN episode.',
-};
+// Three response shapes:
+//   - { ok:true, status:'ready',     artifact_id, content, generated_at }
+//   - { ok:true, status:'generating', task_id }   // summary artifact exists but is draft/in_review
+//   - { ok:true, status:'queued',     task_id }   // no artifact yet; task created OR reused
+//
+// The summary task's workflow_stage is the episode's CURRENT stage so that
+// worker_next can claim it from the live queue. The task is tracker_only
+// (no git worktree), critical priority (immediate pickup), and is NOT a gate
+// task — episode transitions are unaffected.
+const STAGE_SUMMARY_CODE = (stage) => 'STAGE-' + String(stage).toUpperCase() + '-SUMMARY';
 function handleStageSummary(req, res, url) {
   const epicId = Number(url.searchParams.get('epic_id'));
   const stage = String(url.searchParams.get('stage') || '');
@@ -3528,289 +3597,166 @@ function handleStageSummary(req, res, url) {
   if (!STAGES.includes(stage)) {
     return respondJson(res, 400, { ok:false, error:'unknown stage: ' + stage });
   }
+  const code = STAGE_SUMMARY_CODE(stage);
   try {
-    const ew = withDb(db => db.prepare('SELECT stage, metadata, created_at FROM episode_workflows WHERE epic_id=?').get(epicId));
-    if (!ew) return respondJson(res, 404, { ok:false, error:'episode not found' });
+    // Resolve epic -> project_id + name + current_stage (needed to build the
+    // artifact path and to give the worker the right workflow_stage).
+    const epicRow = withDb(db => db.prepare(
+      `SELECT e.id, e.project_id, e.name, ew.stage AS current_stage
+         FROM epics e LEFT JOIN episode_workflows ew ON ew.epic_id=e.id
+        WHERE e.id=?`
+    ).get(epicId));
+    if (!epicRow) return respondJson(res, 404, { ok:false, error:'epic not found' });
 
-    // --- Stage timing: same transition logic as handleEpisodePipeline. ---
-    const transitions = withDb(db => db.prepare(
-      `SELECT old_value, new_value, created_at FROM activity_log
-       WHERE entity_type='epic' AND entity_id=? AND field_name='episode_stage'
-       ORDER BY created_at ASC`
-    ).all(epicId));
-    const enter = transitions.find(t => t.new_value === stage)
-      || (stage === STAGES[0] ? { created_at: ew.created_at } : null);
-    const exit = transitions.find(t => t.old_value === stage);
-    const enterMs = enter ? parseTs(enter.created_at) : null;
-    const exitMs = exit ? parseTs(exit.created_at) : null;
-    let duration_s = null;
-    if (enterMs != null && exitMs != null) {
-      duration_s = Math.max(0, Math.round((exitMs - enterMs) / 1000));
-    } else if (enterMs != null) {
-      // Still running OR completed with no transition record (e.g. an epic at
-      // 'completed' stage whose activity_log already rotated). Show live
-      // elapsed for the current stage, otherwise fall back to "—" in UI.
-      const currentIdx = STAGES.indexOf(ew.stage);
-      if (STAGES.indexOf(stage) === currentIdx) {
-        duration_s = Math.round((Date.now() - enterMs) / 1000);
+    // --- 1) Existing summary artifact for this stage? ---
+    // Match by code (STAGE-<STAGE>-SUMMARY), not by type — the saga artifact
+    // type catalog doesn't include 'summary' yet, so the worker may have
+    // fallen back to 'decision' or another type. The code is unique per
+    // stage-summary, so it's the reliable identifier.
+    const existing = withDb(db => db.prepare(
+      `SELECT a.id, a.status, a.path, a.project_repository_id, a.updated_at,
+              p.name AS project_name
+         FROM artifacts a JOIN projects p ON p.id=a.project_id
+        WHERE a.epic_id=? AND a.code=?`
+    ).get(epicId, code));
+
+    if (existing) {
+      if (existing.status === 'accepted') {
+        const content = readSummaryMarkdown(existing.path, existing.project_name, existing.project_repository_id);
+        return respondJson(res, 200, {
+          ok: true, status: 'ready',
+          artifact_id: existing.id,
+          content,
+          generated_at: existing.updated_at,
+        });
       }
+      // draft / in_review — recover the in-flight task id if we can.
+      const inflight = findSummaryTask(epicId, stage);
+      return respondJson(res, 200, {
+        ok: true, status: 'generating',
+        task_id: inflight?.id || null,
+      });
     }
 
-    const sections = buildStageSections(epicId, stage, ew);
-    respondJson(res, 200, {
-      ok: true,
-      epic_id: epicId,
-      stage,
-      duration_s,
-      started_at: enter?.created_at || null,
-      completed_at: exit?.created_at || null,
-      summary: {
-        title: STAGE_SUMMARY_TITLES[stage] || stage,
-        description: STAGE_SUMMARY_DESCRIPTIONS[stage] || '',
-        sections,
-      },
-    });
+    // --- 2) No artifact yet. Already a queued/running task? ---
+    const queued = findSummaryTask(epicId, stage);
+    if (queued) {
+      return respondJson(res, 200, { ok:true, status:'queued', task_id: queued.id });
+    }
+
+    // --- 3) Spawn a fresh task (idempotent on generation_key). ---
+    const taskRow = createSummaryTask(epicRow, stage, code);
+    return respondJson(res, 200, { ok:true, status:'queued', task_id: taskRow.id });
   } catch (e) {
-    respondJson(res, 500, { ok:false, error: 'db: ' + e.message });
+    respondJson(res, 500, { ok:false, error: 'stage-summary: ' + e.message });
   }
 }
 
-// Build per-stage sections. Each section is { label, value, status } where
-// status is one of: 'accepted' (green), 'draft'/'in_review' (orange/gray),
-// 'failed' (red), or null (no badge). All values come from DB only.
-function buildStageSections(epicId, stage, ew) {
-  const sections = [];
-  if (stage === 'discovery') {
-    const brief = withDb(db => db.prepare(
-      "SELECT title, status, code FROM artifacts WHERE epic_id=? AND type='brief' ORDER BY id LIMIT 1"
-    ).get(epicId)) || null;
-    if (brief) {
-      sections.push({ label:'Brief', value: brief.title, status: brief.status });
-    } else {
-      sections.push({ label:'Brief', value: 'not created', status: null });
-    }
-    // OQs raised during discovery (typed OQ artifacts).
-    const oqs = withDb(db => db.prepare(
-      "SELECT code, title FROM artifacts WHERE epic_id=? AND type='OQ' ORDER BY id"
-    ).all(epicId));
-    sections.push({
-      label: 'Open Questions',
-      value: oqs.length ? (oqs.length + ' OQ' + (oqs.length === 1 ? '' : 's')) : 'none',
-      status: oqs.length ? 'draft' : null,
-    });
-    // Discovery kickstart task + its verdict/decision comment.
-    const kickTask = withDb(db => db.prepare(
-      "SELECT id, title, status FROM tasks WHERE epic_id=? AND task_kind='discovery.kickstart' ORDER BY id LIMIT 1"
-    ).get(epicId)) || null;
-    if (kickTask) {
-      const verdictComment = withDb(db => db.prepare(
-        'SELECT content FROM comments WHERE task_id=? ORDER BY created_at DESC LIMIT 1'
-      ).get(kickTask.id)) || null;
-      let decision = '—';
-      if (verdictComment?.content) {
-        // Pull a single line of decision signal: the APPROVED/REJECTED prefix
-        // or first ~120 chars. Keeps the overlay concise — no walls of text.
-        const firstLine = verdictComment.content.split('\n').find(l => l.trim()) || '';
-        decision = truncate(firstLine, 120);
-      }
-      sections.push({ label: 'Decision', value: decision, status: kickTask.status === 'done' ? 'accepted' : 'draft' });
-      sections.push({ label: 'Kickstart task', value: '#' + kickTask.id + ' ' + truncate(kickTask.title, 60), status: null });
-    }
-  } else if (stage === 'formalization') {
-    const prd = withDb(db => db.prepare(
-      "SELECT title, status FROM artifacts WHERE epic_id=? AND type='PRD' ORDER BY id LIMIT 1"
-    ).get(epicId)) || null;
-    if (prd) {
-      sections.push({ label:'PRD', value: truncate(prd.title, 100), status: prd.status });
-    }
-    const srs = withDb(db => db.prepare(
-      "SELECT title, status FROM artifacts WHERE epic_id=? AND type='SRS' ORDER BY id LIMIT 1"
-    ).get(epicId)) || null;
-    if (srs) {
-      const frCount = withDb(db => db.prepare(
-        "SELECT COUNT(*) c FROM artifacts WHERE epic_id=? AND type='FR'"
-      ).get(epicId)).c;
-      const nfrCount = withDb(db => db.prepare(
-        "SELECT COUNT(*) c FROM artifacts WHERE epic_id=? AND type='NFR'"
-      ).get(epicId)).c;
-      sections.push({ label:'SRS', value: frCount + ' FR, ' + nfrCount + ' NFR', status: srs.status });
-    }
-    // UCs.
-    const ucs = withDb(db => db.prepare(
-      "SELECT title FROM artifacts WHERE epic_id=? AND type='UC' ORDER BY id"
-    ).all(epicId));
-    if (ucs.length) {
-      sections.push({ label:'Use Cases', value: ucs.length + ' UC' + (ucs.length === 1 ? '' : 's'), status: 'accepted' });
-    }
-    // ACs — count accepted vs total (the formalization deliverable).
-    const acStats = withDb(db => db.prepare(
-      "SELECT COUNT(*) total, SUM(CASE WHEN status='accepted' THEN 1 ELSE 0 END) accepted FROM artifacts WHERE epic_id=? AND type='AC'"
-    ).get(epicId));
-    if (acStats && Number(acStats.total) > 0) {
-      const val = acStats.accepted + '/' + acStats.total + ' accepted';
-      sections.push({ label:'Acceptance Criteria', value: val, status: Number(acStats.accepted) === Number(acStats.total) ? 'accepted' : 'draft' });
-    }
-    // Open questions.
-    const oqCount = withDb(db => db.prepare(
-      "SELECT COUNT(*) c FROM artifacts WHERE epic_id=? AND type='OQ'"
-    ).get(epicId)).c;
-    if (oqCount) {
-      sections.push({ label:'Open Questions', value: oqCount + ' OQ' + (oqCount === 1 ? '' : 's'), status: 'draft' });
-    }
-    // Decisions / rules / specs (ADR-style governance artifacts).
-    const decStats = withDb(db => db.prepare(
-      "SELECT type, COUNT(*) c FROM artifacts WHERE epic_id=? AND type IN ('decision','RULE','SPEC') GROUP BY type"
-    ).all(epicId));
-    if (decStats.length) {
-      const parts = decStats.map(d => d.c + ' ' + (d.type === 'decision' ? 'ADR' : d.type + (d.c === 1 ? '' : 's')));
-      sections.push({ label:'Decisions', value: parts.join(', '), status: 'draft' });
-    }
-  } else if (stage === 'planning') {
-    const planTask = withDb(db => db.prepare(
-      "SELECT id, title, status FROM tasks WHERE epic_id=? AND task_kind IN ('planning','planning.decomposition','planning.ac') ORDER BY id DESC LIMIT 1"
-    ).get(epicId)) || null;
-    if (planTask) {
-      const verdictComment = withDb(db => db.prepare(
-        'SELECT content FROM comments WHERE task_id=? ORDER BY created_at DESC LIMIT 1'
-      ).get(planTask.id)) || null;
-      sections.push({ label:'Plan', value: '#' + planTask.id + ' ' + truncate(planTask.title, 70), status: planTask.status === 'done' ? 'accepted' : 'draft' });
-      if (verdictComment?.content) {
-        // Sniff Pattern A/B/C from the comment text (saga-planner convention).
-        const m = verdictComment.content.match(/PATTERN\s+([A-Z])/i);
-        if (m) {
-          sections.push({ label:'Pattern', value: 'Pattern ' + m[1].toUpperCase(), status: 'accepted' });
-        }
-        const firstLine = verdictComment.content.split('\n').find(l => l.trim()) || '';
-        sections.push({ label:'Verdict', value: truncate(firstLine, 140), status: null });
-      }
-    }
-    // Dev/verification tasks produced by the planner.
-    const kindStats = withDb(db => db.prepare(
-      "SELECT task_kind, COUNT(*) c FROM tasks WHERE epic_id=? AND task_kind IN ('development.code','verification.ac') GROUP BY task_kind"
-    ).all(epicId));
-    for (const k of kindStats) {
-      const label = k.task_kind === 'development.code' ? 'Dev tasks' : (k.task_kind === 'verification.ac' ? 'Verify tasks' : k.task_kind);
-      sections.push({ label, value: String(k.c), status: null });
-    }
-    // implements coverage: ACs that have at least one implements trace to a task.
-    const coverage = withDb(db => {
-      const totalAc = db.prepare(
-        "SELECT COUNT(*) c FROM artifacts WHERE epic_id=? AND type='AC' AND status='accepted'"
-      ).get(epicId).c;
-      const implementedAc = db.prepare(
-        `SELECT COUNT(DISTINCT a.id) c FROM artifacts a
-         JOIN artifact_traces tr ON tr.source_id=a.id
-         WHERE a.epic_id=? AND a.type='AC' AND tr.link_type='implements' AND tr.target_type='task'`
-      ).get(epicId).c;
-      return { totalAc, implementedAc };
-    });
-    if (coverage.totalAc > 0) {
-      const ok = coverage.implementedAc === coverage.totalAc;
-      sections.push({ label:'AC coverage', value: coverage.implementedAc + '/' + coverage.totalAc + ' implemented', status: ok ? 'accepted' : 'draft' });
-    }
-    // Conflict check (CGAD §34): collisions detected by Pattern topology.
-    const conflicts = withDb(db => db.prepare(
-      `SELECT COUNT(*) c FROM task_conflict_keys k
-       JOIN tasks t ON t.id=k.task_id
-       WHERE t.epic_id=?`
-    ).get(epicId)).c;
-    sections.push({ label:'Conflict keys', value: conflicts + ' typed', status: conflicts ? 'draft' : 'accepted' });
-  } else if (stage === 'development') {
-    const devStats = withDb(db => db.prepare(
-      `SELECT
-         COUNT(*) total,
-         SUM(CASE WHEN status='done' THEN 1 ELSE 0 END) done,
-         SUM(CASE WHEN integration_state='merged' THEN 1 ELSE 0 END) merged,
-         SUM(CASE WHEN integration_state='conflict' THEN 1 ELSE 0 END) conflicted
-       FROM tasks WHERE epic_id=? AND task_kind='development.code'`
-    ).get(epicId));
-    if (devStats && Number(devStats.total) > 0) {
-      sections.push({ label:'Dev tasks', value: devStats.done + '/' + devStats.total + ' done', status: Number(devStats.done) === Number(devStats.total) ? 'accepted' : 'draft' });
-      sections.push({ label:'Merged', value: devStats.merged + ' merged' + (Number(devStats.conflicted) ? ' · ' + devStats.conflicted + ' conflicted' : ''), status: Number(devStats.conflicted) ? 'failed' : 'accepted' });
-    } else {
-      sections.push({ label:'Dev tasks', value: 'none', status: null });
-    }
-    // Healer (recovery.heal) runs — surface conflicts they fixed.
-    const healers = withDb(db => db.prepare(
-      "SELECT id, title, status FROM tasks WHERE epic_id=? AND task_kind='recovery.heal' ORDER BY id"
-    ).all(epicId));
-    if (healers.length) {
-      sections.push({ label:'Healer runs', value: healers.length + ' recovery task' + (healers.length === 1 ? '' : 's'), status: 'accepted' });
-    }
-    // Key files touched (distinct file_path conflict keys — module surfaces).
-    const files = withDb(db => db.prepare(
-      `SELECT DISTINCT k.key_value FROM task_conflict_keys k
-       JOIN tasks t ON t.id=k.task_id
-       WHERE t.epic_id=? AND k.key_type='file_path'
-       ORDER BY k.key_value`
-    ).all(epicId).map(r => r.key_value));
-    if (files.length) {
-      // Cap at 5 to keep the row tidy.
-      sections.push({ label:'Key files', value: files.slice(0, 5).join(', ') + (files.length > 5 ? ' +' + (files.length - 5) : ''), status: null });
-    }
-  } else if (stage === 'verification') {
-    const verStats = withDb(db => db.prepare(
-      `SELECT
-         COUNT(*) total,
-         SUM(CASE WHEN status='done' THEN 1 ELSE 0 END) done
-       FROM tasks WHERE epic_id=? AND task_kind='verification.ac'`
-    ).get(epicId));
-    if (verStats && Number(verStats.total) > 0) {
-      sections.push({ label:'Verify tasks', value: verStats.done + '/' + verStats.total + ' done', status: Number(verStats.done) === Number(verStats.total) ? 'accepted' : 'draft' });
-    } else {
-      sections.push({ label:'Verify tasks', value: 'none', status: null });
-    }
-    // Evidence outcomes (4-valued CGAD verdicts).
-    const evStats = withDb(db => db.prepare(
-      `SELECT v.outcome, COUNT(*) c FROM verification_evidence v
-       JOIN artifacts a ON a.id=v.artifact_id
-       WHERE a.epic_id=?
-       GROUP BY v.outcome`
-    ).all(epicId));
-    const byOutcome = Object.fromEntries(evStats.map(r => [r.outcome, r.c]));
-    const passed = byOutcome.passed || 0;
-    const failed = (byOutcome.failed || 0) + (byOutcome.error || 0);
-    if (passed || failed) {
-      sections.push({ label:'Evidence', value: passed + ' passed' + (failed ? ' · ' + failed + ' failed/error' : ''), status: failed ? 'failed' : 'accepted' });
-    }
-    // ACs with passing evidence vs total accepted ACs.
-    const acCoverage = withDb(db => db.prepare(
-      `SELECT
-         (SELECT COUNT(*) FROM artifacts WHERE epic_id=? AND type='AC' AND status='accepted') total,
-         (SELECT COUNT(DISTINCT v.artifact_id) FROM verification_evidence v
-          JOIN artifacts a ON a.id=v.artifact_id
-          WHERE a.epic_id=? AND a.type='AC' AND v.outcome='passed') verified`
-    ).get(epicId, epicId));
-    if (acCoverage && Number(acCoverage.total) > 0) {
-      sections.push({ label:'ACs verified', value: acCoverage.verified + '/' + acCoverage.total + ' passed', status: Number(acCoverage.verified) === Number(acCoverage.total) ? 'accepted' : 'draft' });
-    }
-  } else if (stage === 'integration') {
-    const integTask = withDb(db => db.prepare(
-      "SELECT id, title, status, integration_state, integrated_commit FROM tasks WHERE epic_id=? AND task_kind LIKE 'integration%' ORDER BY id DESC LIMIT 1"
-    ).get(epicId)) || null;
-    if (integTask) {
-      sections.push({ label:'Integrate task', value: '#' + integTask.id + ' ' + truncate(integTask.title, 70), status: integTask.status === 'done' && integTask.integration_state === 'merged' ? 'accepted' : (integTask.integration_state === 'conflict' ? 'failed' : 'draft') });
-      if (integTask.integrated_commit) {
-        sections.push({ label:'Final commit', value: integTask.integrated_commit, status: 'accepted' });
-      }
-    } else {
-      sections.push({ label:'Integrate task', value: 'not created', status: null });
-    }
-  } else if (stage === 'completed') {
-    const totals = withDb(db => db.prepare(
-      `SELECT
-         (SELECT COUNT(*) FROM artifacts WHERE epic_id=?) artifacts,
-         (SELECT COUNT(*) FROM tasks WHERE epic_id=?) tasks,
-         (SELECT COUNT(*) FROM tasks WHERE epic_id=? AND status='done') done,
-         (SELECT COUNT(*) FROM verification_evidence v JOIN artifacts a ON a.id=v.artifact_id WHERE a.epic_id=? AND v.outcome='passed') evidence
-       `
-    ).get(epicId, epicId, epicId, epicId));
-    sections.push({ label:'Artifacts', value: String(totals.artifacts || 0), status: null });
-    sections.push({ label:'Tasks', value: (totals.done || 0) + '/' + (totals.tasks || 0) + ' done', status: Number(totals.done) === Number(totals.tasks) ? 'accepted' : 'draft' });
-    sections.push({ label:'Passing evidence', value: String(totals.evidence || 0), status: null });
-    sections.push({ label:'Final state', value: ew.stage === 'completed' ? 'episode closed' : ('current stage: ' + ew.stage), status: ew.stage === 'completed' ? 'accepted' : 'draft' });
+// Find an existing summary.stage task for one epic+stage (any non-done status,
+// so we don't duplicate-spawn on rapid clicks). Done tasks are ignored — a
+// completed summary task with no accepted artifact means the worker failed,
+// and we want a fresh task rather than a dead reference.
+function findSummaryTask(epicId, stage) {
+  return withDb(db => db.prepare(
+    `SELECT id, status, metadata FROM tasks
+      WHERE epic_id=? AND task_kind='summary.stage'
+        AND status IN ('todo','in_progress','review','review_in_progress','blocked')
+        AND json_extract(metadata,'$.stage')=?`
+  ).get(epicId, stage)) || null;
+}
+
+// Read the .md body of a summary artifact off disk. Returns the raw markdown
+// (the frontend renders it minimally — paragraphs, bold, lists). Falls back to
+// an empty string if the file is not yet present (worker still writing).
+function readSummaryMarkdown(artifactPath, projectName, projectRepositoryId) {
+  let repositoryPath = null;
+  if (projectRepositoryId) {
+    const row = withDb(db => db.prepare(
+      'SELECT local_path FROM project_repositories WHERE id=?'
+    ).get(projectRepositoryId));
+    repositoryPath = row?.local_path || null;
   }
-  return sections;
+  const resolved = resolveArtifactFile(artifactPath, projectName, repositoryPath);
+  if (!resolved) return '';
+  try { return readFileSync(resolved.abs, 'utf8'); }
+  catch { return ''; }
+}
+
+// INSERT a summary.stage task. The description is the inline prompt the worker
+// follows verbatim. workflow_stage = episode's CURRENT stage (so worker_next
+// claims it from the live queue). generation_key makes the INSERT idempotent
+// per (epic, stage) — concurrent calls collapse onto the existing row via the
+// UNIQUE(epic_id, generation_key) index declared in src/schema.ts.
+function createSummaryTask(epicRow, stage, code) {
+  const epicId = epicRow.id;
+  const projectId = epicRow.project_id;
+  const epicName = String(epicRow.name || ('REQ-' + epicId));
+  const currentStage = epicRow.current_stage || stage;
+  const slug = epicName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || ('req-' + epicId);
+  const artifactPath = 'docs/requirements/' + slug + '/stage-' + stage + '-summary.md';
+  const titleCase = stage.charAt(0).toUpperCase() + stage.slice(1);
+
+  const prompt = [
+    'STAGE SUMMARY TASK. Stage: ' + stage + '. Epic: ' + epicId + '.',
+    '',
+    'Read all artifacts and tasks from this stage using mcp__saga__ tools:',
+    '- artifact_list({epic_id, type:\'PRD\'}), artifact_list({epic_id, type:\'SRS\'}), etc.',
+    '- task_list({epic_id}) — filter by workflow_stage.',
+    '',
+    'Write a concise human-readable summary (3-5 paragraphs) covering:',
+    '1. What was the goal of this stage',
+    '2. What artifacts were produced (titles, key decisions)',
+    '3. What tasks ran and their outcomes',
+    '4. Notable decisions, conflicts, or trade-offs',
+    '5. What this stage enables for the next stage',
+    '',
+    'Save the summary as an artifact:',
+    '  artifact_create({',
+    '    project_id: ' + projectId + ', epic_id: ' + epicId + ', type:\'summary\',',
+    '    code:\'' + code + '\', title:\'' + titleCase + ' Summary\',',
+    '    path:\'' + artifactPath + '\',',
+    '    status:\'accepted\'',
+    '  })',
+    'Also write the .md file to disk at the path you declared.',
+    '',
+    'Call worker_done when complete.',
+  ].join('\n');
+
+  const genKey = 'summary.stage:' + stage;
+  const tagsJson = JSON.stringify(['role:summary', 'stage:' + stage]);
+  const metaJson = JSON.stringify({ stage, target: 'artifact', spawned_for: stage });
+
+  // INSERT — then re-SELECT by (epic_id, generation_key) so a concurrent click
+  // that hit the UNIQUE constraint still recovers the original task_id.
+  let insertErr = null;
+  try {
+    withDbWrite(db => db.prepare(
+      `INSERT INTO tasks (epic_id, title, description, status, priority, task_kind,
+                          workflow_stage, execution_skill, execution_mode,
+                          tags, metadata, generation_key)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`
+    ).run(
+      epicId,
+      'Summary: ' + stage,
+      prompt,
+      'todo',
+      'critical',
+      'summary.stage',
+      currentStage,
+      'saga-worker',
+      'tracker_only',
+      tagsJson,
+      metaJson,
+      genKey,
+    ));
+  } catch (e) {
+    insertErr = e; // Expected on race; fall through to SELECT below.
+  }
+  const created = withDb(db => db.prepare(
+    'SELECT id FROM tasks WHERE epic_id=? AND generation_key=? ORDER BY id DESC LIMIT 1'
+  ).get(epicId, genKey));
+  if (!created) throw new Error('failed to create summary task: ' + (insertErr?.message || 'unknown'));
+  return created;
 }
 
 // --- GET /api/worker/tail?log_path=<path>&lines=8 ---
@@ -4208,6 +4154,13 @@ function handleModelsList(req, res) {
 }
 
 // --- POST /api/model/set ---
+// Patch ~/.claude/settings.json so NEW workers (spawned after this call) read
+// the new model. Active workers keep the old model — they've already started
+// `claude -p` and won't re-read settings.json. NO engine kill, NO spawn, NO
+// restart. We only persist the model info into episode_workflows.metadata; the
+// engine's pump loop reads `active_model_limit` and uses min(concurrency, limit)
+// as the effective ceiling, so concurrency naturally converges to the new
+// model's limit as old workers finish and new ones spawn.
 function handleModelSet(req, res) {
   let chunks = [];
   req.on('data', c => chunks.push(c));
@@ -4221,6 +4174,8 @@ function handleModelSet(req, res) {
     const model = MODELS.find(m => m.id === modelId);
     if (!model) return respondJson(res, 400, { ok:false, error:'unknown model: ' + modelId });
 
+    // 1. Patch ~/.claude/settings.json. `claude -p` reads this at EVERY spawn,
+    //    so workers spawned AFTER this call pick up the new model automatically.
     try {
       const fs = require('node:fs');
       const os2 = require('node:os');
@@ -4236,58 +4191,30 @@ function handleModelSet(req, res) {
       return respondJson(res, 500, { ok:false, error:'settings.json patch failed: ' + e.message });
     }
 
-    const newConcurrency = model.limit;
-    let enginePid = null;
+    // 2. Persist model info into episode_workflows.metadata. The engine's pump
+    //    loop reads $.active_model_limit on every cycle and uses
+    //    min(opts.concurrency, active_model_limit) as the effective ceiling —
+    //    active workers keep running on the old model, but no NEW workers spawn
+    //    until the active count drops below the new limit.
     if (epicId) {
-      const epic = withDb(db => db.prepare('SELECT project_id FROM epics WHERE id=?').get(epicId));
-      if (epic) {
-        const projectId = epic.project_id;
-        try {
-          require('child_process').spawnSync(
-            'powershell',
-            ['-Command',
-             `function Get-Descendants(\$processId) { ` +
-             `  \$kids = Get-CimInstance Win32_Process -Filter "ParentProcessId=\$processId"; ` +
-             `  foreach (\$k in \$kids) { ,(\$k.ProcessId); Get-Descendants \$k.ProcessId } ` +
-             `} ; ` +
-             `\$toKill = @(); ` +
-             `\$engines = Get-CimInstance Win32_Process -Filter "name='node.exe'" | ` +
-             `  Where-Object { \$_.CommandLine -like '*orchestrate-cli.js ${projectId} ${epicId}*' }; ` +
-             `foreach (\$e in \$engines) { ` +
-             `  \$toKill += \$e.ProcessId; ` +
-             `  \$toKill += Get-Descendants \$e.ProcessId ` +
-             `} ; ` +
-             `\$orphans = Get-CimInstance Win32_Process -Filter "name='claude.exe'" | ` +
-             `  Where-Object { \$_.CommandLine -like '*project_id=${projectId}*' } ; ` +
-             `foreach (\$o in \$orphans) { \$toKill += \$o.ProcessId } ; ` +
-             `\$toKill = \$toKill | Sort-Object -Unique; ` +
-             `foreach (\$p in \$toKill) { taskkill /F /PID \$p 2>\$null }`],
-            { encoding: 'utf8' }
-          );
-          try { require('child_process').spawnSync('timeout', ['/T', '1', '/NOBREAK'], { encoding: 'utf8', stdio: 'ignore' }); } catch {}
-        } catch (e) { console.error('[model-set] kill failed:', e.message); }
-        try {
-          const cliPath = path.join(__dirname, '..', 'dist', 'orchestrate-cli.js');
-          const child = spawn('node', [cliPath, String(projectId), String(epicId), `--concurrency=${newConcurrency}`], {
-            detached: true, stdio: 'ignore',
-            env: { ...process.env, DB_PATH: process.env.DB_PATH, SAGA_ORCHESTRATION_MODE: 'v3' },
-          });
-          child.unref();
-          enginePid = child.pid;
-          withDbWrite(db => db.prepare(
-            `UPDATE episode_workflows SET metadata=json_set(COALESCE(metadata,'{}'),
-              '$.engine_concurrency', ?, '$.engine_started_at', datetime('now')),
-              updated_at=datetime('now') WHERE epic_id=?`
-          ).run(newConcurrency, epicId));
-        } catch (e) {
-          return respondJson(res, 500, { ok:false, error:'engine spawn failed: ' + e.message });
-        }
+      try {
+        withDbWrite(db => db.prepare(
+          `UPDATE episode_workflows
+             SET metadata=json_set(COALESCE(metadata,'{}'),
+                   '$.active_model', ?,
+                   '$.active_model_limit', ?,
+                   '$.model_changed_at', datetime('now')),
+                 updated_at=datetime('now')
+             WHERE epic_id=?`
+        ).run(modelId, model.limit, epicId));
+      } catch (e) {
+        return respondJson(res, 500, { ok:false, error:'metadata write failed: ' + e.message });
       }
     }
 
     respondJson(res, 200, {
-      ok: true, model: modelId, concurrency: newConcurrency, engine_pid: enginePid,
-      note: `Concurrency auto-set to ${newConcurrency} (model limit). Engine restarted.`,
+      ok: true, model: modelId, limit: model.limit,
+      note: 'Settings patched. New workers will use this model. Active workers keep the old one.',
     });
   });
 }
