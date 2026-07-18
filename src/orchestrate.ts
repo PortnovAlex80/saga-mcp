@@ -20,7 +20,7 @@
  */
 
 import { spawn as nodeSpawn } from 'node:child_process';
-import { existsSync, appendFileSync } from 'node:fs';
+import { existsSync, appendFileSync, readFileSync, writeFileSync, unlinkSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -849,6 +849,43 @@ export async function orchestrate(opts: OrchestrateOptions): Promise<Orchestrate
   const now = opts.now ?? Date.now;
   const sleep = opts.sleep ?? defaultSleep;
 
+  // === SINGLETON GUARD (PID-lock) ===
+  // Only ONE engine per epic. Without this, every /api/engine/restart and
+  // /api/model/set spawned a fresh engine without killing the old one —
+  // producing 6+ engines, 10+ claude workers, rate-limit storms.
+  // The lock is a file: ~/.zcode/cli/engine-<projectId>-<epicId>.pid
+  // containing the engine's PID. On start: check if existing engine is alive.
+  // If yes → exit immediately (duplicate engine). If no → claim the lock.
+  const lockFile = path.join(os.homedir(), '.zcode', 'cli', `engine-${projectId}-${epicId}.pid`);
+  try {
+    if (existsSync(lockFile)) {
+      const existingPid = parseInt(readFileSync(lockFile, 'utf8').trim(), 10);
+      if (existingPid && !Number.isNaN(existingPid)) {
+        // Check if process is alive: process.kill(pid, 0) throws if dead.
+        try {
+          process.kill(existingPid, 0);
+          // Process is alive — this is a DUPLICATE engine. Exit.
+          engineHeartbeat(opts, 'DUPLICATE_EXIT',
+            `engine PID ${existingPid} already running for project=${projectId} epic=${epicId} — exiting`);
+          writeEpisodeMeta(epicId, { engine_rejected: true, engine_rejected_reason: `PID ${existingPid} already running` });
+          return {
+            projectId, epicId, finalStage: currentStage(epicId) ?? 'unknown',
+            endedAt: new Date(now()).toISOString(),
+            reason: 'failed', cycles: 0,
+            lastError: `duplicate engine — PID ${existingPid} already running`,
+          };
+        } catch {
+          // Process is dead — stale lock. Remove and claim.
+          try { unlinkSync(lockFile); } catch { /* ignore */ }
+        }
+      }
+    }
+    // Claim the lock with our PID.
+    writeFileSync(lockFile, String(process.pid), 'utf8');
+  } catch (e) {
+    engineHeartbeat(opts, 'LOCK_WARN', `PID-lock failed: ${e instanceof Error ? e.message : String(e)}`);
+  }
+
   // Resolve the project's workspace (where `claude -p` will run).
   const projects = projectHandlers.project_list({}) as unknown as Array<{ id: number }>;
   const project = projects.find(p => p.id === projectId);
@@ -1125,6 +1162,12 @@ export async function orchestrate(opts: OrchestrateOptions): Promise<Orchestrate
     }
   } finally {
     try { runner.dispose(); } catch { /* best effort */ }
+    // Release PID-lock so the next engine can start.
+    try {
+      if (typeof lockFile !== 'undefined' && existsSync(lockFile)) {
+        require('node:fs').unlinkSync(lockFile);
+      }
+    } catch { /* stale lock, ignore */ }
     engineHeartbeat(opts, 'ENGINE_EXIT', `cycles=${cycles} lastError=${lastError ?? 'null'}`);
   }
 
