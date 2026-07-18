@@ -78,6 +78,8 @@ CREATE TABLE IF NOT EXISTS episode_workflows (
   epic_id              INTEGER PRIMARY KEY REFERENCES epics(id) ON DELETE CASCADE,
   stage                TEXT NOT NULL DEFAULT 'discovery'
                          CHECK (stage IN ('discovery','formalization','planning','development','verification','integration','completed','cancelled')),
+  track                TEXT NOT NULL DEFAULT 'formal'
+                         CHECK (track IN ('formal','fast-track')),
   baseline_artifact_id INTEGER REFERENCES artifacts(id) ON DELETE SET NULL,
   baseline_hash        TEXT,
   metadata             TEXT NOT NULL DEFAULT '{}',

@@ -3921,7 +3921,17 @@ function handleEpisodePipeline(req, res, url) {
       // time elapsed since enter so the user sees live progress.
       let status = 'pending';
       if (i < currentIdx) status = 'completed';
-      else if (i === currentIdx) status = needsHuman ? 'needs_human' : 'in_progress';
+      else if (i === currentIdx) {
+        // 'completed' and 'cancelled' are terminal stages — once entered,
+        // they ARE the end state, not "in progress". Without this exception
+        // the pipeline bar shows the final stage as a pulsing blue ● forever,
+        // because there is no next stage for it to advance to.
+        if (ew.stage === 'completed' || ew.stage === 'cancelled') {
+          status = needsHuman ? 'needs_human' : 'completed';
+        } else {
+          status = needsHuman ? 'needs_human' : 'in_progress';
+        }
+      }
       // cancelled stage is mutually exclusive; treat as terminal-pending unless stage===cancelled
       let duration_s = null;
       if (enter && exit) {

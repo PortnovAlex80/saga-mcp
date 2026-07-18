@@ -2,6 +2,8 @@ import type Database from 'better-sqlite3';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import { getDb } from '../db.js';
 import { logActivity } from '../helpers/activity-logger.js';
+import { routeFastTrack } from '../planner/fast-track.js';
+import type { BriefPayload } from '../validators/brief.js';
 import type { Task, ToolHandler } from '../types.js';
 
 type GeneratedResult = {
@@ -112,29 +114,70 @@ function specsForTransition(db: Database.Database, source: Task, transition: str
       );
     }
     let decision: string | undefined;
+    let briefPayload: BriefPayload | undefined;
     try {
       const meta = JSON.parse(brief.metadata ?? '{}');
-      decision = meta?.brief_payload?.decision;
-    } catch { /* malformed metadata → decision stays undefined, falls to guard below */ }
-    if (decision !== 'go') {
-      // Not an error: clarify/reject deliberately do not seed formalization.
-      // routeFastTrack handles fast-track. Return empty specs — workflow_generate_next
-      // will report created:0 and the engine will see no downstream work (correct).
-      return [];
+      briefPayload = meta?.brief_payload;
+      decision = briefPayload?.decision;
+    } catch { /* malformed metadata → decision stays undefined, falls to default */ }
+
+    // ADR-012 — 4-way decision switch. Previously all non-'go' decisions
+    // returned [] silently, leaving the engine to wander into formalization
+    // with no tasks and hit a gate failure. Now each decision takes its
+    // own path. 'clarify' and 'reject' still return [] because the engine
+    // itself is responsible for the pause/cancel side-effects — a tool
+    // handler must stay a pure DB op, not a control-flow side-effect.
+    switch (decision) {
+      case 'go': {
+        const prdRepo = brief.project_repository_id ?? repo;
+        return [{
+          key: `brief:${source.id}:prd`,
+          title: `PRD: ${source.title.replace(/^Discovery:\s*/i, '')}`,
+          kind: 'formalization.prd',
+          stage: 'formalization',
+          executionSkill: 'saga-product',
+          reviewSkill: 'saga-requirements-reviewer',
+          mode: 'git_change',
+          repositoryId: prdRepo,
+          sourceTaskId: source.id,
+          dependencies: [source.id],
+        }];
+      }
+      case 'fast-track': {
+        // routeFastTrack is the planner's fast-channel router (AC-6). It
+        // creates the dev task directly, sets episode_workflows.stage=
+        // 'development' via SQL (bypassing episode_transition, which would
+        // reject the jump), and writes metadata.fast_track=1. We stamp
+        // episode_workflows.track='fast-track' so downstream code knows
+        // which pipeline this episode is on.
+        if (!briefPayload) {
+          throw new Error(
+            `brief_accepted fast-track for task ${source.id}: brief metadata has no brief_payload`,
+          );
+        }
+        const routing = routeFastTrack(brief.id, source.epic_id, briefPayload, db);
+        db.prepare(
+          `UPDATE episode_workflows SET track='fast-track' WHERE epic_id=? AND track='formal'`,
+        ).run(source.epic_id);
+        logActivity(db, 'task', source.id, 'created', 'fast_track_dev_task', null, String(routing.dev_task_id),
+          `brief_accepted(fast-track) routed dev task #${routing.dev_task_id} directly into development (track='fast-track')`);
+        // Return [] — routeFastTrack already created the dev task; the
+        // engine will observe stage='development' on the next cycle and
+        // proceed from there. No formalization tasks to insert here.
+        return [];
+      }
+      case 'clarify':
+      case 'reject':
+        // Engine-side responsibility. Return [] and let the engine's
+        // main loop inspect the brief decision when generateNextIfReady
+        // produces no work (orchestrate.ts: ~line 1080, ADR-012 branch).
+        return [];
+      default:
+        // Unknown/missing decision — behave like 'clarify' (halt). The
+        // engine will surface the situation for human review rather than
+        // silently wandering into formalization.
+        return [];
     }
-    const prdRepo = brief.project_repository_id ?? repo;
-    return [{
-      key: `brief:${source.id}:prd`,
-      title: `PRD: ${source.title.replace(/^Discovery:\s*/i, '')}`,
-      kind: 'formalization.prd',
-      stage: 'formalization',
-      executionSkill: 'saga-product',
-      reviewSkill: 'saga-requirements-reviewer',
-      mode: 'git_change',
-      repositoryId: prdRepo,
-      sourceTaskId: source.id,
-      dependencies: [source.id],
-    }];
   }
 
   if (transition === 'prd_accepted') {
