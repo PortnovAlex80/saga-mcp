@@ -1,6 +1,6 @@
 # Refactor: Passive Worker Kernel — Master Plan & Checklist
 
-**Status:** Active. Slice 0 COMPLETE (209 tests). Slice 1 COMPLETE (219/218/1). Slice 2 COMPLETE (235/235). Slice 3 next.
+**Status:** Active. Slice 0 COMPLETE (209). Slice 1 COMPLETE (219/218/1). Slice 2 COMPLETE (235/235). Slice 3 COMPLETE (246/246). Slice 4 next.
 **Branch:** `refactor/passive-worker-kernel` (от `master` @ `e816422`, ADR-012 multi-track).
 **Created:** 2026-07-18.
 **Source of truth:**
@@ -212,29 +212,12 @@ JSON-снимки плоских task-rows (не SQLite-дампы — pure data
 
 ---
 
-## Slice 3 — Passive human wait (ASK terminal) + admin boundary
+## Slice 3 — Passive human wait (ASK terminal) + admin boundary ✅ COMPLETE
 
 **Источник:** blueprint §16 (line 871), §17 WP-5 (line 1008), §12.3 (line 565-578).
+**Результат:** ASK переписан как terminal protocol; `human_requests` таблица; `task_batch_update` ограничен priority; SKILL.md выровнен с runtime. 246/246 зелёных (11 новых ask-тестов).
 
-### Задачи
-
-- [ ] Сделать ASK terminal: persist question, release process, exclude from dispatch, spawn fresh worker on answer.
-- [ ] Migration: `human_requests` (additive).
-- [ ] Excluir open human_requests из claimability query.
-- [ ] **Убрать lifecycle-правки из `task_batch_update`** (activity.ts:171-182) — critical defect из аудита.
-- [ ] Audited admin transition (для human-forced status changes — единый путь).
-- [ ] Обновить `skills/saga-worker/SKILL.md` ASK-секцию (lines 428-444) — терминальный паттерн.
-
-### Тесты
-
-- [ ] Waiting task has no live process or assignment.
-- [ ] Answering creates no resurrection of old execution.
-- [ ] Fresh worker receives persisted question/answer context.
-- [ ] `task_batch_update` НЕ может менять status/assigned_to ( архитектурный тест ).
-
-### Rollback
-
-Revert skill + handler. `human_requests` additive.
+**Девиация:** Audited admin transition (отдельный tool для human-forced status changes) отложен — для текущих recovery-сценариев хватает `task_update` (strict на fenced tasks) + dispatcher lifecycle tools. Полный `admin_override_lifecycle` появится когда в нём возникнет реальная потребность (Slice 6+ при dependency-writers).
 
 ---
 
@@ -418,4 +401,13 @@ Revert claim-handler + dep-reconciler.
   - Полная suite: **235/235 зелёных** (219 + 16 новых; flaky `track-pipeline` прошёл).
   - Slice 2 acceptance (blueprint §16:864-869) выполнен: каждый managed-task имеет ровно один current semantic item; recomputed projection соответствует legacy или сообщает named mismatch; **review approval survives loss of integration attempt** (central audit fix на уровне shadow); backfill не фабрикует prior cycle history.
   - **Девиация:** Slice 2 делает read-only shadow (один backfill + drift detection), без полной dual-write при каждом переходе. Dual-write — Slice 3+, когда ASK/worker_outcomes пойдут через bus.
-- **Next:** Slice 3 (passive human wait / ASK terminal) — отдельный заход.
+- **2026-07-19:** **Slice 3 COMPLETE.**
+  - `refactor(slice-3): schema — human_requests table` — additive, с partial index на state='open'.
+  - `refactor(slice-3): rewrite ASK as terminal protocol` — `worker_ask_need` terminalizes через atomic-release + открывает human_request; `worker_ask_done` записывает answer без fence; `worker_next` исключает open-requests.
+  - `refactor(slice-3): restrict task_batch_update to priority (audit fix)` — central audit defect закрыт: status/assigned_to больше не принимаются.
+  - `test+docs(slice-3): ASK protocol coverage + SKILL.md alignment` — 11 новых тестов + SKILL.md ASK-секция переписана под terminal-семантику.
+  - Полная suite: **246/246 зелёных**.
+  - Slice 3 acceptance (blueprint §16:879-883) выполнен: waiting task не имеет live process или assignment; answering не создаёт resurrection of old execution; fresh worker получает persisted question/answer context.
+  - **Central audit fix:** ASK dead-assignment trap устранён. SKILL/runtime drift на ASK устранён. task_batch_update bypass закрыт.
+  - **Девиация:** audited admin transition отложен до Slice 6+ (пока хватает task_update strict-mode + dispatcher tools).
+- **Next:** Slice 4 (worker outcomes) — отдельный заход.
