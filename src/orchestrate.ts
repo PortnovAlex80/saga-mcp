@@ -56,6 +56,27 @@ const MAX_EMPTY_CYCLES = 3;
 const PUMP_TICK_MS = 5_000;
 
 /**
+ * Zombie worker detection: a worker is considered stalled when its JSONL log
+ * (claude-runner stream-json output) has not grown for ZOMBIE_STALL_TICKS
+ * consecutive pump cycles. The check is cheap (one statSync per active task).
+ * On threshold reached: kill the worker PID (saved in task.metadata.worker_pid
+ * by claude-runner.mjs on spawn) and release the task back to the queue so a
+ * fresh worker can pick it up.
+ *
+ * Why log-size and not activity_log polling: stream-json writes to disk on
+ * every assistant token / tool_use / tool_result / system event. A worker
+ * that is genuinely working ALWAYS produces output within 30-90s (network
+ * retries emit system/api_retry events even when the model is silent). No
+ * output = stuck (deadlocked, network drop, OOM-caused crash without close
+ * event firing, etc.).
+ */
+const ZOMBIE_STALL_TICKS = 6;        // 6 × PUMP_TICK_MS(5s) = 30s of zero growth
+const ZOMBIE_CHECK_TICKS = 6;        // run the scan every 6 cycles (30s), not every 5s
+/** cycle counter → per-task stalled-counter and last seen log signature */
+const zombieWatch = new Map<number, { signature: string; stalled: number; lastKilledAt?: number }>();
+let zombieCheckCounter = 0;
+
+/**
  * RECOVERY TREE — lookup table for self-healing on gate failures.
  *
  * When episode_transition fails (hard gate throws), the engine consults this
@@ -541,6 +562,122 @@ function attemptHeal(epicId: number, stage: string, gateError: string): {
 }
 
 /**
+ * Resolve the JSONL log path for an active worker task. claude-runner writes
+ * to <logRoot>/board-<projectId>-<ts>/task-<taskId>-<workerId>.jsonl. We find
+ * it by scanning the newest matching file (worker IDs are unique per spawn).
+ */
+function resolveWorkerLogPath(taskId: number, workerId: string, projectId: number): string | null {
+  const logRoot = path.join(os.homedir(), '.zcode', 'cli', 'board-runs');
+  const safeWorker = workerId.replace(/[^a-zA-Z0-9._-]+/g, '-');
+  const fileName = `task-${taskId}-${safeWorker}.jsonl`;
+  try {
+    const dir = require('node:fs').readdirSync(logRoot)
+      .filter((d: string) => d.startsWith(`board-${projectId}-`))
+      .map((d: string) => ({ d, full: path.join(logRoot, d), mtime: require('node:fs').statSync(path.join(logRoot, d)).mtimeMs }))
+      .sort((a: { mtime: number }, b: { mtime: number }) => b.mtime - a.mtime);
+    for (const r of dir) {
+      const candidate = path.join(r.full, fileName);
+      if (existsSync(candidate)) return candidate;
+    }
+  } catch { /* logRoot missing */ }
+  return null;
+}
+
+/**
+ * Kill a zombie worker subprocess by PID, then release its task back to the
+ * queue so a fresh worker can pick it up.
+ *
+ * PID source: task.metadata.worker_pid (written by claude-runner.mjs on spawn).
+ * Task release: flip status back to 'todo' (for in_progress) or 'review' (for
+ * review_in_progress), clear assigned_to. NOT 'done' — the task is NOT
+ * finished, we are abandoning the worker that was stuck on it.
+ */
+function killZombieWorker(taskId: number, reason: string, opts: OrchestrateOptions): void {
+  const db = getDb();
+  const task = db.prepare(
+    `SELECT id, status, assigned_to, metadata FROM tasks WHERE id=?`,
+  ).get(taskId) as { id: number; status: string; assigned_to: string; metadata: string } | undefined;
+  if (!task || !task.assigned_to) return;
+
+  // Kill the worker subprocess by PID.
+  let pid: number | null = null;
+  try {
+    const meta = JSON.parse(task.metadata || '{}');
+    pid = meta.worker_pid ?? null;
+  } catch { /* malformed metadata */ }
+  if (pid) {
+    try {
+      require('node:child_process').spawnSync('taskkill', ['/F', '/T', '/PID', String(pid)], { encoding: 'utf8' });
+    } catch { /* process already gone */ }
+  }
+
+  // Release the task: in_progress → todo, review_in_progress → review.
+  const restoredStatus = task.status === 'review_in_progress' ? 'review' : 'todo';
+  db.prepare(
+    `UPDATE tasks SET status=?, assigned_to=NULL, updated_at=datetime('now') WHERE id=?`,
+  ).run(restoredStatus, taskId);
+  logActivity(db, 'task', taskId, 'status_changed', 'status', task.status, restoredStatus,
+    `Zombie worker recovery: ${reason}. Worker PID ${pid ?? '?'} killed, task released back to queue.`);
+  engineHeartbeat(opts, 'ZOMBIE_KILLED', `task #${taskId} (pid ${pid ?? '?'}) — ${reason.slice(0, 120)}`);
+}
+
+/**
+ * Scan active tasks for stalled workers. Called every ZOMBIE_CHECK_TICKS pump
+ * cycles (~30s). For each in_progress/review_in_progress task with an
+ * assigned_to worker, find its JSONL log and check whether (size, mtime)
+ * has changed since last scan. If signature identical for ZOMBIE_STALL_TICKS
+ * consecutive scans → kill the worker + release the task.
+ *
+ * Returns count of zombies killed this scan.
+ */
+function detectAndKillZombies(epicId: number, projectId: number, opts: OrchestrateOptions): number {
+  const db = getDb();
+  const tasks = db.prepare(
+    `SELECT id, assigned_to, status, updated_at FROM tasks
+     WHERE epic_id=? AND status IN ('in_progress','review_in_progress')
+       AND assigned_to IS NOT NULL`,
+  ).all(epicId) as Array<{ id: number; assigned_to: string; status: string; updated_at: string }>;
+
+  let killed = 0;
+  for (const t of tasks) {
+    const logPath = resolveWorkerLogPath(t.id, t.assigned_to, projectId);
+    if (!logPath) {
+      // No log file at all — either just spawned (skip this round) or truly
+      // missing. Treat missing-after-first-seen as zombie after threshold.
+    }
+    let signature = 'nopath';
+    if (logPath && existsSync(logPath)) {
+      try {
+        const st = require('node:fs').statSync(logPath);
+        signature = `${st.size}:${st.mtimeMs}`;
+      } catch { /* stat failed */ }
+    }
+    const prev = zombieWatch.get(t.id);
+    if (!prev) {
+      zombieWatch.set(t.id, { signature, stalled: 0 });
+      continue;
+    }
+    if (prev.signature === signature) {
+      const stalled = prev.stalled + 1;
+      zombieWatch.set(t.id, { signature, stalled });
+      if (stalled >= ZOMBIE_STALL_TICKS) {
+        killZombieWorker(t.id, `log unchanged for ${stalled} scans (~${stalled * ZOMBIE_CHECK_TICKS * PUMP_TICK_MS / 1000}s)`, opts);
+        zombieWatch.delete(t.id);
+        killed += 1;
+      }
+    } else {
+      zombieWatch.set(t.id, { signature, stalled: 0 });
+    }
+  }
+  // Clean up watch entries for tasks that are no longer active.
+  const activeIds = new Set(tasks.map(t => t.id));
+  for (const id of [...zombieWatch.keys()]) {
+    if (!activeIds.has(id)) zombieWatch.delete(id);
+  }
+  return killed;
+}
+
+/**
  * Run the orchestration loop. Resolves when:
  *  - episode reaches 'completed' (success), OR
  *  - needs-human pause exceeds MAX_PAUSE_MIN (timeout exit), OR
@@ -673,6 +810,17 @@ export async function orchestrate(opts: OrchestrateOptions): Promise<Orchestrate
         `SELECT id FROM tasks WHERE epic_id=? AND status='done'`,
       ).all(epicId) as Array<{ id: number }>;
       for (const d of doneTasks) reevaluateDownstream(getDb(), d.id);
+
+      // Zombie worker detection: every ZOMBIE_CHECK_TICKS cycles (~30s),
+      // scan active tasks for stalled workers. If a worker's JSONL log
+      // hasn't grown for ZOMBIE_STALL_TICKS scans → kill the worker + release
+      // its task back to the queue. Cheap and self-healing.
+      zombieCheckCounter += 1;
+      if (zombieCheckCounter >= ZOMBIE_CHECK_TICKS) {
+        zombieCheckCounter = 0;
+        const killed = detectAndKillZombies(epicId, projectId, opts);
+        if (killed > 0) emptyCycles = 0;
+      }
 
       const counts = countActiveTasks(epicId);
       const workersBusy = (run?.active?.length ?? 0) > 0;

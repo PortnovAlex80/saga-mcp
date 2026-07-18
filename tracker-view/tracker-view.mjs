@@ -3349,15 +3349,27 @@ function handleEngineRestart(req, res) {
     const projectId = epic.project_id;
 
     // Kill existing engine for this project (matched by command line).
+    // CRITICAL: also kill its claude.exe children — they are the active workers
+    // spawned via claude-runner.launch(). Without killing them they keep
+    // burning tokens after the parent engine dies (Windows detached children
+    // survive parent kill). We use CIM_Process ParentProcessId to trace the
+    // tree: engine PID → claude.exe workers (+ any saga MCP server node.exe
+    // spawned per worker via --mcp-config).
     try {
-      require('child_process').spawnSync(
+      const killOutput = require('child_process').spawnSync(
         'powershell',
         ['-Command',
-         `Get-CimInstance Win32_Process -Filter "name='node.exe'" | ` +
-         `Where-Object { $_.CommandLine -like '*orchestrate-cli.js ${projectId} ${epicId}*' } | ` +
-         `ForEach-Object { taskkill /F /PID $_.ProcessId }`],
+         `$engines = Get-CimInstance Win32_Process -Filter "name='node.exe'" | ` +
+         `Where-Object { $_.CommandLine -like '*orchestrate-cli.js ${projectId} ${epicId}*' }; ` +
+         `foreach ($e in $engines) { ` +
+         `  # Kill the whole process subtree rooted at $e.ProcessId. /T makes ` +
+         `  # taskkill walk parent->child relationships and terminate all. ` +
+         `  taskkill /F /T /PID $e.ProcessId 2>$null ` +
+         `}`],
         { encoding: 'utf8' }
       );
+      // Brief pause for OS to release resources / ports before respawn.
+      setTimeout(() => {}, 500);
     } catch (e) {
       console.error('[engine-restart] kill failed:', e.message);
     }
