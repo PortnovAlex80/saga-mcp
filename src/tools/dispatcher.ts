@@ -8,6 +8,13 @@ import type { Task, ToolHandler } from '../types.js';
 import { generateNextForCompletedTask } from './workflow.js';
 import { advanceReadyEpisodes } from './lifecycle.js';
 import { releaseExecutionAtomically } from '../lifecycle/atomic-release.js';
+import {
+  checkReceipt,
+  storeReceipt,
+  workerDoneCommandId,
+  workerDonePayload,
+  hashPayload,
+} from '../lifecycle/idempotency.js';
 
 // ============================================================================
 // Dispatcher: saga раздаёт задачи агентам.
@@ -496,6 +503,32 @@ function handleWorkerDone(args: Record<string, unknown>): {
   }
 
   const completeTask = (): ReturnType<typeof handleWorkerDone> => {
+    // Slice 4 (blueprint §10, §16:894-898): idempotency FIRST. A retry of a
+    // previously-accepted worker_done (same command_id + payload) must return
+    // the stored reply WITHOUT touching the task row. We check this BEFORE
+    // the owner-check, because a previous successful call already released
+    // the assignment — the owner-check would otherwise reject the retry as
+    // "not assigned to you", masking the replay.
+    //
+    // The command_id is derived from execution_id + verdict (or, for legacy
+    // unfenced tasks, from task+worker+verdict+result-identity). We use the
+    // CALLER-SUPPLIED execution_id, not task.current_execution_id (which may
+    // already be null after the first call cleared the fence).
+    const commandId = workerDoneCommandId(args.execution_id as string | undefined, verdict, taskId, workerId, result);
+    const payload = workerDonePayload(taskId, workerId, result, verdict);
+    const payloadHash = hashPayload(payload);
+    const prior = checkReceipt(db, commandId, payloadHash);
+    if (prior.kind === 'replay') {
+      return JSON.parse(prior.receipt.reply_json) as ReturnType<typeof handleWorkerDone>;
+    }
+    if (prior.kind === 'idempotency_key_reused') {
+      throw new Error(
+        `IDEMPOTENCY_KEY_REUSED: command_id ${commandId} was already used with a different ` +
+        `payload. The same execution+verdict pair cannot be reused for a different result. ` +
+        `Stored hash ${prior.receipt.payload_hash} ≠ this hash ${payloadHash}.`,
+      );
+    }
+
     // Чья задача закрывается — зависит от фазы:
     //  - in_progress: замок владельца. Только assigned_to = worker_id может закрыть
     //    активную разработку (защита от кражи часов чужого кодинга).
@@ -664,7 +697,7 @@ function handleWorkerDone(args: Record<string, unknown>): {
     const projectId = projectIdRow?.project_id;
     const active_tasks = projectId != null ? getActiveTasks(db, projectId) : [];
 
-    return {
+    const reply: ReturnType<typeof handleWorkerDone> = {
       completed: taskId,
       completed_new_status: newStatus,
       active_tasks,
@@ -674,6 +707,22 @@ function handleWorkerDone(args: Record<string, unknown>): {
       stop: true,
       stop_reason: 'task completed — stop now and return your summary',
     };
+
+    // Slice 4: record the receipt inside this transaction so the side effects
+    // and the receipt commit together. A future retry with the same command_id
+    // + payload will short-circuit above and return this reply verbatim.
+    storeReceipt(db, {
+      commandId,
+      commandKind: 'worker_done',
+      actorKind: 'managed_execution',
+      actorId: workerId,
+      executionId: task.current_execution_id,
+      taskId,
+      payload,
+      reply,
+    });
+
+    return reply;
   }; // end completeTask
 
   // BEGIN IMMEDIATE — сериализация писателей (db.transaction тут DEFERRED,
