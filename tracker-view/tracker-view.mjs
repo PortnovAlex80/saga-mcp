@@ -808,7 +808,11 @@ function renderBoard(projectId, allProjects) {
       if (banner && bannerText) {
         if (healers.length > 0) {
           const h = healers[0];
-          const ageMin = Math.max(0, Math.round((Date.now() - new Date(h.started_at + 'Z').getTime()) / 60000));
+          // Date.parse handles both SQLite format (no tz, treated as local)
+          // and ISO Z (from worker_started_at). Avoid string concat with 'Z'
+          // which produces Invalid Date for already-Z-terminated ISO strings.
+          const startedMs = Date.parse(h.started_at);
+          const ageMin = Number.isNaN(startedMs) ? 0 : Math.max(0, Math.round((Date.now() - startedMs) / 60000));
           bannerText.textContent = 'recovery #' + h.task_id + ' · ' + ageMin + 'm' + (healers.length > 1 ? ' +' + (healers.length - 1) : '');
           banner.style.display = 'flex';
         } else {
@@ -829,7 +833,10 @@ function renderBoard(projectId, allProjects) {
       const seen = new Set();
       for (const w of active) {
         seen.add(w.worker_id);
-        const ageMin = Math.max(0, Math.round((Date.now() - new Date(w.started_at + 'Z').getTime()) / 60000));
+        // Date.parse handles both formats: SQLite 'YYYY-MM-DD HH:MM:SS' (local
+        // tz, from updated_at fallback) and ISO '...Z' (from worker_started_at).
+        const wStartedMs = Date.parse(w.started_at);
+        const ageMin = Number.isNaN(wStartedMs) ? 0 : Math.max(0, Math.round((Date.now() - wStartedMs) / 60000));
         let row = existing.get(w.worker_id);
         if (!row) {
           row = document.createElement('div');
@@ -3334,6 +3341,7 @@ function handleWorkersActive(req, res, url) {
     const logRoot = path.join(os.homedir(), '.zcode', 'cli', 'board-runs');
     const rows = withDb(db => db.prepare(
       `SELECT t.id, t.title, t.status, t.task_kind, t.assigned_to, t.updated_at,
+              json_extract(t.metadata,'$.worker_started_at') AS worker_started_at,
               e.name AS epic_name
        FROM tasks t JOIN epics e ON e.id=t.epic_id
        WHERE e.project_id=? AND t.status IN ('in_progress','review_in_progress')
@@ -3362,7 +3370,10 @@ function handleWorkersActive(req, res, url) {
         task_kind: r.task_kind,
         worker_id: r.assigned_to,
         epic_name: r.epic_name,
-        started_at: r.updated_at,
+        // Prefer worker_started_at (written by claude-runner.mjs on spawn)
+        // over updated_at — the latter bumps on any status/metadata change
+        // and doesn't reflect when the current worker subprocess started.
+        started_at: r.worker_started_at || r.updated_at,
         log_path: logPath,
       };
     });
