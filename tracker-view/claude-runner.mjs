@@ -2,6 +2,11 @@ import { createWriteStream, existsSync, mkdirSync, rmSync, writeFileSync } from 
 import os from 'node:os';
 import path from 'node:path';
 import { spawn as nodeSpawn } from 'node:child_process';
+import { createRequire } from 'node:module';
+
+// ESM .mjs files don't have `require` — use createRequire to load CJS
+// modules (better-sqlite3 is CJS). Used for worker_pid persistence.
+const require = createRequire(import.meta.url);
 
 const TERMINAL_RUN_STATES = new Set(['completed', 'stopped', 'failed']);
 

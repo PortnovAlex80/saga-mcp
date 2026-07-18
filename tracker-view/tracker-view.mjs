@@ -3361,6 +3361,328 @@ function handleEpisodePipeline(req, res, url) {
   }
 }
 
+// --- GET /api/episode/stage-summary?epic_id=N&stage=formalization ---
+// Structured per-stage summary for the clickable pipeline overlay. Reads ONLY
+// from the DB (no file system access for artifact .md content — just titles,
+// statuses and counts). Returns { ok, epic_id, stage, duration_s, started_at,
+// completed_at, summary:{title,description,sections:[{label,value,status}]} }.
+//
+// Stage duration/enter/exit uses the same activity_log transition logic as
+// handleEpisodePipeline: enter = first new_value=<stage>, exit = first
+// old_value=<stage>. For the initial stage with no enter record, we fall back
+// to episode_workflows.created_at. For a still-running current stage, exit is
+// null and duration_s reflects elapsed-since-enter.
+const STAGE_SUMMARY_TITLES = {
+  discovery: 'Discovery',
+  formalization: 'Formalization',
+  planning: 'Planning',
+  development: 'Development',
+  verification: 'Verification',
+  integration: 'Integration',
+  completed: 'Completed',
+};
+const STAGE_SUMMARY_DESCRIPTIONS = {
+  discovery: 'Idea triage — brief, open questions and the kickstart decision that admitted the episode into formalization.',
+  formalization: 'Requirements & design artifacts were written and accepted: PRD, SRS, use cases, acceptance criteria, decisions and rules.',
+  planning: 'Accepted baseline decomposed into repository-scoped dev + verification tasks with implements coverage and conflict-check.',
+  development: 'Dev tasks executed against the frozen baseline; branches merged into the integration branch; healer runs if conflicts arose.',
+  verification: 'Independent AC verification — L2/L3 evidence recorded against each accepted AC; gaps block the integration gate.',
+  integration: 'Final multi-branch merge into the integration branch + L0 gate; episode closed.',
+  completed: 'Episode finished — terminal state. Totals across the whole REQ-NNN episode.',
+};
+function handleStageSummary(req, res, url) {
+  const epicId = Number(url.searchParams.get('epic_id'));
+  const stage = String(url.searchParams.get('stage') || '');
+  if (!epicId) return respondJson(res, 400, { ok:false, error:'epic_id required' });
+  const STAGES = ['discovery','formalization','planning','development','verification','integration','completed'];
+  if (!STAGES.includes(stage)) {
+    return respondJson(res, 400, { ok:false, error:'unknown stage: ' + stage });
+  }
+  try {
+    const ew = withDb(db => db.prepare('SELECT stage, metadata, created_at FROM episode_workflows WHERE epic_id=?').get(epicId));
+    if (!ew) return respondJson(res, 404, { ok:false, error:'episode not found' });
+
+    // --- Stage timing: same transition logic as handleEpisodePipeline. ---
+    const transitions = withDb(db => db.prepare(
+      `SELECT old_value, new_value, created_at FROM activity_log
+       WHERE entity_type='epic' AND entity_id=? AND field_name='episode_stage'
+       ORDER BY created_at ASC`
+    ).all(epicId));
+    const enter = transitions.find(t => t.new_value === stage)
+      || (stage === STAGES[0] ? { created_at: ew.created_at } : null);
+    const exit = transitions.find(t => t.old_value === stage);
+    const enterMs = enter ? parseTs(enter.created_at) : null;
+    const exitMs = exit ? parseTs(exit.created_at) : null;
+    let duration_s = null;
+    if (enterMs != null && exitMs != null) {
+      duration_s = Math.max(0, Math.round((exitMs - enterMs) / 1000));
+    } else if (enterMs != null) {
+      // Still running OR completed with no transition record (e.g. an epic at
+      // 'completed' stage whose activity_log already rotated). Show live
+      // elapsed for the current stage, otherwise fall back to "—" in UI.
+      const currentIdx = STAGES.indexOf(ew.stage);
+      if (STAGES.indexOf(stage) === currentIdx) {
+        duration_s = Math.round((Date.now() - enterMs) / 1000);
+      }
+    }
+
+    const sections = buildStageSections(epicId, stage, ew);
+    respondJson(res, 200, {
+      ok: true,
+      epic_id: epicId,
+      stage,
+      duration_s,
+      started_at: enter?.created_at || null,
+      completed_at: exit?.created_at || null,
+      summary: {
+        title: STAGE_SUMMARY_TITLES[stage] || stage,
+        description: STAGE_SUMMARY_DESCRIPTIONS[stage] || '',
+        sections,
+      },
+    });
+  } catch (e) {
+    respondJson(res, 500, { ok:false, error: 'db: ' + e.message });
+  }
+}
+
+// Build per-stage sections. Each section is { label, value, status } where
+// status is one of: 'accepted' (green), 'draft'/'in_review' (orange/gray),
+// 'failed' (red), or null (no badge). All values come from DB only.
+function buildStageSections(epicId, stage, ew) {
+  const sections = [];
+  if (stage === 'discovery') {
+    const brief = withDb(db => db.prepare(
+      "SELECT title, status, code FROM artifacts WHERE epic_id=? AND type='brief' ORDER BY id LIMIT 1"
+    ).get(epicId)) || null;
+    if (brief) {
+      sections.push({ label:'Brief', value: brief.title, status: brief.status });
+    } else {
+      sections.push({ label:'Brief', value: 'not created', status: null });
+    }
+    // OQs raised during discovery (typed OQ artifacts).
+    const oqs = withDb(db => db.prepare(
+      "SELECT code, title FROM artifacts WHERE epic_id=? AND type='OQ' ORDER BY id"
+    ).all(epicId));
+    sections.push({
+      label: 'Open Questions',
+      value: oqs.length ? (oqs.length + ' OQ' + (oqs.length === 1 ? '' : 's')) : 'none',
+      status: oqs.length ? 'draft' : null,
+    });
+    // Discovery kickstart task + its verdict/decision comment.
+    const kickTask = withDb(db => db.prepare(
+      "SELECT id, title, status FROM tasks WHERE epic_id=? AND task_kind='discovery.kickstart' ORDER BY id LIMIT 1"
+    ).get(epicId)) || null;
+    if (kickTask) {
+      const verdictComment = withDb(db => db.prepare(
+        'SELECT content FROM comments WHERE task_id=? ORDER BY created_at DESC LIMIT 1'
+      ).get(kickTask.id)) || null;
+      let decision = '—';
+      if (verdictComment?.content) {
+        // Pull a single line of decision signal: the APPROVED/REJECTED prefix
+        // or first ~120 chars. Keeps the overlay concise — no walls of text.
+        const firstLine = verdictComment.content.split('\n').find(l => l.trim()) || '';
+        decision = truncate(firstLine, 120);
+      }
+      sections.push({ label: 'Decision', value: decision, status: kickTask.status === 'done' ? 'accepted' : 'draft' });
+      sections.push({ label: 'Kickstart task', value: '#' + kickTask.id + ' ' + truncate(kickTask.title, 60), status: null });
+    }
+  } else if (stage === 'formalization') {
+    const prd = withDb(db => db.prepare(
+      "SELECT title, status FROM artifacts WHERE epic_id=? AND type='PRD' ORDER BY id LIMIT 1"
+    ).get(epicId)) || null;
+    if (prd) {
+      sections.push({ label:'PRD', value: truncate(prd.title, 100), status: prd.status });
+    }
+    const srs = withDb(db => db.prepare(
+      "SELECT title, status FROM artifacts WHERE epic_id=? AND type='SRS' ORDER BY id LIMIT 1"
+    ).get(epicId)) || null;
+    if (srs) {
+      const frCount = withDb(db => db.prepare(
+        "SELECT COUNT(*) c FROM artifacts WHERE epic_id=? AND type='FR'"
+      ).get(epicId)).c;
+      const nfrCount = withDb(db => db.prepare(
+        "SELECT COUNT(*) c FROM artifacts WHERE epic_id=? AND type='NFR'"
+      ).get(epicId)).c;
+      sections.push({ label:'SRS', value: frCount + ' FR, ' + nfrCount + ' NFR', status: srs.status });
+    }
+    // UCs.
+    const ucs = withDb(db => db.prepare(
+      "SELECT title FROM artifacts WHERE epic_id=? AND type='UC' ORDER BY id"
+    ).all(epicId));
+    if (ucs.length) {
+      sections.push({ label:'Use Cases', value: ucs.length + ' UC' + (ucs.length === 1 ? '' : 's'), status: 'accepted' });
+    }
+    // ACs — count accepted vs total (the formalization deliverable).
+    const acStats = withDb(db => db.prepare(
+      "SELECT COUNT(*) total, SUM(CASE WHEN status='accepted' THEN 1 ELSE 0 END) accepted FROM artifacts WHERE epic_id=? AND type='AC'"
+    ).get(epicId));
+    if (acStats && Number(acStats.total) > 0) {
+      const val = acStats.accepted + '/' + acStats.total + ' accepted';
+      sections.push({ label:'Acceptance Criteria', value: val, status: Number(acStats.accepted) === Number(acStats.total) ? 'accepted' : 'draft' });
+    }
+    // Open questions.
+    const oqCount = withDb(db => db.prepare(
+      "SELECT COUNT(*) c FROM artifacts WHERE epic_id=? AND type='OQ'"
+    ).get(epicId)).c;
+    if (oqCount) {
+      sections.push({ label:'Open Questions', value: oqCount + ' OQ' + (oqCount === 1 ? '' : 's'), status: 'draft' });
+    }
+    // Decisions / rules / specs (ADR-style governance artifacts).
+    const decStats = withDb(db => db.prepare(
+      "SELECT type, COUNT(*) c FROM artifacts WHERE epic_id=? AND type IN ('decision','RULE','SPEC') GROUP BY type"
+    ).all(epicId));
+    if (decStats.length) {
+      const parts = decStats.map(d => d.c + ' ' + (d.type === 'decision' ? 'ADR' : d.type + (d.c === 1 ? '' : 's')));
+      sections.push({ label:'Decisions', value: parts.join(', '), status: 'draft' });
+    }
+  } else if (stage === 'planning') {
+    const planTask = withDb(db => db.prepare(
+      "SELECT id, title, status FROM tasks WHERE epic_id=? AND task_kind IN ('planning','planning.decomposition','planning.ac') ORDER BY id DESC LIMIT 1"
+    ).get(epicId)) || null;
+    if (planTask) {
+      const verdictComment = withDb(db => db.prepare(
+        'SELECT content FROM comments WHERE task_id=? ORDER BY created_at DESC LIMIT 1'
+      ).get(planTask.id)) || null;
+      sections.push({ label:'Plan', value: '#' + planTask.id + ' ' + truncate(planTask.title, 70), status: planTask.status === 'done' ? 'accepted' : 'draft' });
+      if (verdictComment?.content) {
+        // Sniff Pattern A/B/C from the comment text (saga-planner convention).
+        const m = verdictComment.content.match(/PATTERN\s+([A-Z])/i);
+        if (m) {
+          sections.push({ label:'Pattern', value: 'Pattern ' + m[1].toUpperCase(), status: 'accepted' });
+        }
+        const firstLine = verdictComment.content.split('\n').find(l => l.trim()) || '';
+        sections.push({ label:'Verdict', value: truncate(firstLine, 140), status: null });
+      }
+    }
+    // Dev/verification tasks produced by the planner.
+    const kindStats = withDb(db => db.prepare(
+      "SELECT task_kind, COUNT(*) c FROM tasks WHERE epic_id=? AND task_kind IN ('development.code','verification.ac') GROUP BY task_kind"
+    ).all(epicId));
+    for (const k of kindStats) {
+      const label = k.task_kind === 'development.code' ? 'Dev tasks' : (k.task_kind === 'verification.ac' ? 'Verify tasks' : k.task_kind);
+      sections.push({ label, value: String(k.c), status: null });
+    }
+    // implements coverage: ACs that have at least one implements trace to a task.
+    const coverage = withDb(db => {
+      const totalAc = db.prepare(
+        "SELECT COUNT(*) c FROM artifacts WHERE epic_id=? AND type='AC' AND status='accepted'"
+      ).get(epicId).c;
+      const implementedAc = db.prepare(
+        `SELECT COUNT(DISTINCT a.id) c FROM artifacts a
+         JOIN artifact_traces tr ON tr.source_id=a.id
+         WHERE a.epic_id=? AND a.type='AC' AND tr.link_type='implements' AND tr.target_type='task'`
+      ).get(epicId).c;
+      return { totalAc, implementedAc };
+    });
+    if (coverage.totalAc > 0) {
+      const ok = coverage.implementedAc === coverage.totalAc;
+      sections.push({ label:'AC coverage', value: coverage.implementedAc + '/' + coverage.totalAc + ' implemented', status: ok ? 'accepted' : 'draft' });
+    }
+    // Conflict check (CGAD §34): collisions detected by Pattern topology.
+    const conflicts = withDb(db => db.prepare(
+      `SELECT COUNT(*) c FROM task_conflict_keys k
+       JOIN tasks t ON t.id=k.task_id
+       WHERE t.epic_id=?`
+    ).get(epicId)).c;
+    sections.push({ label:'Conflict keys', value: conflicts + ' typed', status: conflicts ? 'draft' : 'accepted' });
+  } else if (stage === 'development') {
+    const devStats = withDb(db => db.prepare(
+      `SELECT
+         COUNT(*) total,
+         SUM(CASE WHEN status='done' THEN 1 ELSE 0 END) done,
+         SUM(CASE WHEN integration_state='merged' THEN 1 ELSE 0 END) merged,
+         SUM(CASE WHEN integration_state='conflict' THEN 1 ELSE 0 END) conflicted
+       FROM tasks WHERE epic_id=? AND task_kind='development.code'`
+    ).get(epicId));
+    if (devStats && Number(devStats.total) > 0) {
+      sections.push({ label:'Dev tasks', value: devStats.done + '/' + devStats.total + ' done', status: Number(devStats.done) === Number(devStats.total) ? 'accepted' : 'draft' });
+      sections.push({ label:'Merged', value: devStats.merged + ' merged' + (Number(devStats.conflicted) ? ' · ' + devStats.conflicted + ' conflicted' : ''), status: Number(devStats.conflicted) ? 'failed' : 'accepted' });
+    } else {
+      sections.push({ label:'Dev tasks', value: 'none', status: null });
+    }
+    // Healer (recovery.heal) runs — surface conflicts they fixed.
+    const healers = withDb(db => db.prepare(
+      "SELECT id, title, status FROM tasks WHERE epic_id=? AND task_kind='recovery.heal' ORDER BY id"
+    ).all(epicId));
+    if (healers.length) {
+      sections.push({ label:'Healer runs', value: healers.length + ' recovery task' + (healers.length === 1 ? '' : 's'), status: 'accepted' });
+    }
+    // Key files touched (distinct file_path conflict keys — module surfaces).
+    const files = withDb(db => db.prepare(
+      `SELECT DISTINCT k.key_value FROM task_conflict_keys k
+       JOIN tasks t ON t.id=k.task_id
+       WHERE t.epic_id=? AND k.key_type='file_path'
+       ORDER BY k.key_value`
+    ).all(epicId).map(r => r.key_value));
+    if (files.length) {
+      // Cap at 5 to keep the row tidy.
+      sections.push({ label:'Key files', value: files.slice(0, 5).join(', ') + (files.length > 5 ? ' +' + (files.length - 5) : ''), status: null });
+    }
+  } else if (stage === 'verification') {
+    const verStats = withDb(db => db.prepare(
+      `SELECT
+         COUNT(*) total,
+         SUM(CASE WHEN status='done' THEN 1 ELSE 0 END) done
+       FROM tasks WHERE epic_id=? AND task_kind='verification.ac'`
+    ).get(epicId));
+    if (verStats && Number(verStats.total) > 0) {
+      sections.push({ label:'Verify tasks', value: verStats.done + '/' + verStats.total + ' done', status: Number(verStats.done) === Number(verStats.total) ? 'accepted' : 'draft' });
+    } else {
+      sections.push({ label:'Verify tasks', value: 'none', status: null });
+    }
+    // Evidence outcomes (4-valued CGAD verdicts).
+    const evStats = withDb(db => db.prepare(
+      `SELECT v.outcome, COUNT(*) c FROM verification_evidence v
+       JOIN artifacts a ON a.id=v.artifact_id
+       WHERE a.epic_id=?
+       GROUP BY v.outcome`
+    ).all(epicId));
+    const byOutcome = Object.fromEntries(evStats.map(r => [r.outcome, r.c]));
+    const passed = byOutcome.passed || 0;
+    const failed = (byOutcome.failed || 0) + (byOutcome.error || 0);
+    if (passed || failed) {
+      sections.push({ label:'Evidence', value: passed + ' passed' + (failed ? ' · ' + failed + ' failed/error' : ''), status: failed ? 'failed' : 'accepted' });
+    }
+    // ACs with passing evidence vs total accepted ACs.
+    const acCoverage = withDb(db => db.prepare(
+      `SELECT
+         (SELECT COUNT(*) FROM artifacts WHERE epic_id=? AND type='AC' AND status='accepted') total,
+         (SELECT COUNT(DISTINCT v.artifact_id) FROM verification_evidence v
+          JOIN artifacts a ON a.id=v.artifact_id
+          WHERE a.epic_id=? AND a.type='AC' AND v.outcome='passed') verified`
+    ).get(epicId, epicId));
+    if (acCoverage && Number(acCoverage.total) > 0) {
+      sections.push({ label:'ACs verified', value: acCoverage.verified + '/' + acCoverage.total + ' passed', status: Number(acCoverage.verified) === Number(acCoverage.total) ? 'accepted' : 'draft' });
+    }
+  } else if (stage === 'integration') {
+    const integTask = withDb(db => db.prepare(
+      "SELECT id, title, status, integration_state, integrated_commit FROM tasks WHERE epic_id=? AND task_kind LIKE 'integration%' ORDER BY id DESC LIMIT 1"
+    ).get(epicId)) || null;
+    if (integTask) {
+      sections.push({ label:'Integrate task', value: '#' + integTask.id + ' ' + truncate(integTask.title, 70), status: integTask.status === 'done' && integTask.integration_state === 'merged' ? 'accepted' : (integTask.integration_state === 'conflict' ? 'failed' : 'draft') });
+      if (integTask.integrated_commit) {
+        sections.push({ label:'Final commit', value: integTask.integrated_commit, status: 'accepted' });
+      }
+    } else {
+      sections.push({ label:'Integrate task', value: 'not created', status: null });
+    }
+  } else if (stage === 'completed') {
+    const totals = withDb(db => db.prepare(
+      `SELECT
+         (SELECT COUNT(*) FROM artifacts WHERE epic_id=?) artifacts,
+         (SELECT COUNT(*) FROM tasks WHERE epic_id=?) tasks,
+         (SELECT COUNT(*) FROM tasks WHERE epic_id=? AND status='done') done,
+         (SELECT COUNT(*) FROM verification_evidence v JOIN artifacts a ON a.id=v.artifact_id WHERE a.epic_id=? AND v.outcome='passed') evidence
+       `
+    ).get(epicId, epicId, epicId, epicId));
+    sections.push({ label:'Artifacts', value: String(totals.artifacts || 0), status: null });
+    sections.push({ label:'Tasks', value: (totals.done || 0) + '/' + (totals.tasks || 0) + ' done', status: Number(totals.done) === Number(totals.tasks) ? 'accepted' : 'draft' });
+    sections.push({ label:'Passing evidence', value: String(totals.evidence || 0), status: null });
+    sections.push({ label:'Final state', value: ew.stage === 'completed' ? 'episode closed' : ('current stage: ' + ew.stage), status: ew.stage === 'completed' ? 'accepted' : 'draft' });
+  }
+  return sections;
+}
+
 // --- GET /api/worker/tail?log_path=<path>&lines=8 ---
 // Returns the last N events from a worker's stream-json JSONL log.
 // SECURITY: log_path must resolve inside the board-runs root (path traversal
@@ -3407,10 +3729,15 @@ function handleWorkerTail(req, res, url) {
       const raw = allLines[i];
       try {
         const evt = JSON.parse(raw);
+        // Skip noise events that clutter the tail view.
         if (evt.type === 'system' && evt.subtype === 'thinking_tokens') continue;
+        if (evt.type === 'system' && (evt.subtype === 'hook_started' || evt.subtype === 'hook_progress' || evt.subtype === 'hook_response')) continue;
         collected.unshift({ raw, evt });
       } catch {
-        collected.unshift({ raw, evt: null });
+        // Non-JSON line — skip raw stderr noise (connectors warnings etc).
+        if (raw.length > 5 && !raw.startsWith('⚠') && !raw.includes('connectors are disabled')) {
+          collected.unshift({ raw, evt: null });
+        }
       }
     }
     const lastLines = collected.map(c => c.raw);
@@ -3448,9 +3775,11 @@ function handleWorkerTail(req, res, url) {
         }
         if (type === 'system') {
           // Skip thinking_tokens noise: stream-json emits one event per token
-          // increment (thousands per turn). Surface only meaningful system
-          // events: init, api_retry, plugin_install.
+          // increment (thousands per turn). Also skip hook lifecycle events
+          // (hook_started/hook_progress/hook_response) — internal plumbing.
+          // Surface only meaningful system events: init, api_retry, plugin_install.
           if (evt.subtype === 'thinking_tokens') return null;
+          if (evt.subtype === 'hook_started' || evt.subtype === 'hook_progress' || evt.subtype === 'hook_response') return null;
           return { type, kind: 'system', subtype: evt.subtype || null };
         }
         if (type === 'result') {
@@ -3867,6 +4196,9 @@ const server = http.createServer((req, res) => {
   }
   if (req.method === 'GET' && url.pathname === '/api/episode/pipeline') {
     return handleEpisodePipeline(req, res, url);
+  }
+  if (req.method === 'GET' && url.pathname === '/api/episode/stage-summary') {
+    return handleStageSummary(req, res, url);
   }
   if (req.method === 'GET' && url.pathname === '/api/worker/tail') {
     return handleWorkerTail(req, res, url);
