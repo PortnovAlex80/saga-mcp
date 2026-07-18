@@ -505,6 +505,70 @@ CREATE INDEX IF NOT EXISTS idx_command_receipts_execution ON command_receipts(ex
 CREATE INDEX IF NOT EXISTS idx_command_receipts_kind_accepted ON command_receipts(command_kind, accepted);
 CREATE INDEX IF NOT EXISTS idx_lifecycle_events_task ON lifecycle_events(task_id);
 CREATE INDEX IF NOT EXISTS idx_lifecycle_events_kind ON lifecycle_events(event_kind);
+
+-- ---------------------------------------------------------------------------
+-- Work-item shadow model (ADR-011, blueprint §14 line 685-726).
+-- Added in Slice 2. Purely additive: existing rows untouched; the new tables
+-- start populated by the Slice 2 backfill migration (one synthetic current
+-- pipeline per task). Old task columns remain authoritative in Slice 2;
+-- work items are shadow-written and compared for equivalence.
+--
+-- Naming note: blueprint §14 also defines lifecycle_command_receipts,
+-- lifecycle_outbox, and a versioned lifecycle_events. Slice 1 already
+-- shipped command_receipts + a simpler lifecycle_events. Those are the
+-- current implementation; the blueprint names remain the target. We do NOT
+-- rename Slice 1's tables here — doing so would break every DB already
+-- migrated. Reconciliation is deferred to a later slice.
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS task_work_items (
+  work_item_id TEXT PRIMARY KEY,
+  task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL
+    CHECK (kind IN ('implementation','review','verification',
+                    'integration','human_decision','cleanup')),
+  cycle_no INTEGER NOT NULL,
+  item_no INTEGER NOT NULL DEFAULT 1,
+  state TEXT NOT NULL
+    CHECK (state IN ('pending','ready','active','waiting',
+                     'completed','cancelled')),
+  outcome TEXT,
+  predecessor_item_id TEXT REFERENCES task_work_items(work_item_id),
+  required INTEGER NOT NULL DEFAULT 1,
+  input_snapshot_json TEXT NOT NULL DEFAULT '{}',
+  result_json TEXT,
+  version INTEGER NOT NULL DEFAULT 0,
+  history_complete INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  completed_at TEXT,
+  UNIQUE (task_id, kind, cycle_no, item_no)
+);
+
+CREATE TABLE IF NOT EXISTS work_attempts (
+  attempt_id TEXT PRIMARY KEY,
+  work_item_id TEXT NOT NULL
+    REFERENCES task_work_items(work_item_id) ON DELETE CASCADE,
+  ordinal INTEGER NOT NULL,
+  state TEXT NOT NULL
+    CHECK (state IN ('reserved','running','succeeded','failed',
+                     'lost','cancelled')),
+  worker_id TEXT,
+  execution_id TEXT REFERENCES worker_executions(execution_id),
+  command_id TEXT,
+  outcome TEXT,
+  result_json TEXT,
+  reserved_at TEXT NOT NULL DEFAULT (datetime('now')),
+  started_at TEXT,
+  finished_at TEXT,
+  last_error TEXT,
+  UNIQUE (work_item_id, ordinal)
+);
+
+CREATE INDEX IF NOT EXISTS idx_task_work_items_task ON task_work_items(task_id);
+CREATE INDEX IF NOT EXISTS idx_task_work_items_task_state ON task_work_items(task_id, state);
+CREATE INDEX IF NOT EXISTS idx_task_work_items_kind ON task_work_items(kind, cycle_no);
+CREATE INDEX IF NOT EXISTS idx_work_attempts_item ON work_attempts(work_item_id);
+CREATE INDEX IF NOT EXISTS idx_work_attempts_execution ON work_attempts(execution_id);
 `;
 
 // ----------------------------------------------------------------------------
