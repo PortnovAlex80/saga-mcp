@@ -1,0 +1,21 @@
+{
+  "name": "terminal-merged",
+  "description": "Terminal completed task. status=done, integration_state=merged. Review approved, integration observed merged. The canonical happy-path end.",
+  "expected": "valid_managed",
+  "expectedStateKind": "completed",
+  "snapshot": {
+    "task": {
+      "id": 1005,
+      "status": "done",
+      "assigned_to": null,
+      "current_execution_id": null,
+      "integration_state": "merged",
+      "tags": [],
+      "task_kind": "development.code",
+      "execution_mode": "git_change"
+    },
+    "execution": null,
+    "integration": null,
+    "humanRequest": null
+  }
+}

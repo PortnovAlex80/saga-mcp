@@ -1,0 +1,21 @@
+{
+  "name": "violation-buffer-with-owner",
+  "description": "BUFFER_WITH_OWNER. Task in a buffer status (todo/review/done/blocked) but assigned_to is set. Ownership lives on the execution, not on a queued task. This pattern appears after crashes where assigned_to was not cleared, or when task_batch_update (the bypass flagged in the audit) reassigned a queued task manually.",
+  "expected": "named_violation",
+  "expectedCode": "BUFFER_WITH_OWNER",
+  "snapshot": {
+    "task": {
+      "id": 2006,
+      "status": "todo",
+      "assigned_to": "worker-stale",
+      "current_execution_id": null,
+      "integration_state": null,
+      "tags": [],
+      "task_kind": "development.code",
+      "execution_mode": "git_change"
+    },
+    "execution": null,
+    "integration": null,
+    "humanRequest": null
+  }
+}

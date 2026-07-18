@@ -1,0 +1,21 @@
+{
+  "name": "clean-queued-review",
+  "description": "Valid managed task in queued review phase. status=review, no fence, no owner. Implementation item completed; review item ready.",
+  "expected": "valid_managed",
+  "expectedStateKind": "queued",
+  "snapshot": {
+    "task": {
+      "id": 1003,
+      "status": "review",
+      "assigned_to": null,
+      "current_execution_id": null,
+      "integration_state": null,
+      "tags": [],
+      "task_kind": "development.code",
+      "execution_mode": "git_change"
+    },
+    "execution": null,
+    "integration": null,
+    "humanRequest": null
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "name": "violation-done-pending-without-integration",
+  "description": "DONE_PENDING_WITHOUT_INTEGRATION_INTENT. Review approved (status=done) but integration_state=pending with no integration intent row. This is the critical post-approval seam the audit identified: a crash between review approval and integration intent creation leaves the task in an unclaimable state. Before Slice 5 introduces the integration_rows table, this is also the state when a reviewer process dies immediately after worker_done(verdict=approved) on a git_change task.",
+  "expected": "named_violation",
+  "expectedCode": "DONE_PENDING_WITHOUT_INTEGRATION_INTENT",
+  "snapshot": {
+    "task": {
+      "id": 2004,
+      "status": "done",
+      "assigned_to": null,
+      "current_execution_id": null,
+      "integration_state": "pending",
+      "tags": [],
+      "task_kind": "development.code",
+      "execution_mode": "git_change"
+    },
+    "execution": null,
+    "integration": null,
+    "humanRequest": null
+  }
+}

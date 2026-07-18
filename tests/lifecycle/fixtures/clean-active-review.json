@@ -1,0 +1,27 @@
+{
+  "name": "clean-active-review",
+  "description": "Valid managed task in active review. status=review_in_progress, assigned_to set, matching active execution.",
+  "expected": "valid_managed",
+  "expectedStateKind": "active",
+  "snapshot": {
+    "task": {
+      "id": 1004,
+      "status": "review_in_progress",
+      "assigned_to": "reviewer-1",
+      "current_execution_id": "exec-rev-1004",
+      "integration_state": null,
+      "tags": [],
+      "task_kind": "review.code",
+      "execution_mode": "git_change"
+    },
+    "execution": {
+      "execution_id": "exec-rev-1004",
+      "task_id": 1004,
+      "state": "running",
+      "phase": null,
+      "worker_id": "reviewer-1"
+    },
+    "integration": null,
+    "humanRequest": null
+  }
+}

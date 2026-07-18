@@ -1,0 +1,23 @@
+{
+  "name": "legacy-unfenced-in-progress",
+  "description": "Legacy pre-ADR-009 assignment. status=in_progress, assigned_to set, current_execution_id null, worker_pid in metadata (simulated). The scanner reclassifies this as valid_legacy; the pure decoder reports ACTIVE_WITHOUT_EXECUTION because it does not consult metadata.",
+  "expected": "valid_legacy",
+  "expectedStateKind": null,
+  "expectedDecoderCode": "ACTIVE_WITHOUT_EXECUTION",
+  "snapshot": {
+    "task": {
+      "id": 3001,
+      "status": "in_progress",
+      "assigned_to": "worker-legacy",
+      "current_execution_id": null,
+      "integration_state": null,
+      "tags": [],
+      "task_kind": "development.code",
+      "execution_mode": "git_change",
+      "_metadata_worker_pid": 12345
+    },
+    "execution": null,
+    "integration": null,
+    "humanRequest": null
+  }
+}

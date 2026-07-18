@@ -1,0 +1,21 @@
+{
+  "name": "clean-queued-todo",
+  "description": "Valid managed task in queued implementation phase. status=todo, no fence, no owner. This is the entry state for every new managed task.",
+  "expected": "valid_managed",
+  "expectedStateKind": "queued",
+  "snapshot": {
+    "task": {
+      "id": 1001,
+      "status": "todo",
+      "assigned_to": null,
+      "current_execution_id": null,
+      "integration_state": null,
+      "tags": [],
+      "task_kind": "development.code",
+      "execution_mode": "git_change"
+    },
+    "execution": null,
+    "integration": null,
+    "humanRequest": null
+  }
+}

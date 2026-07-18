@@ -1,0 +1,21 @@
+{
+  "name": "blocked-dependencies",
+  "description": "Task blocked by unmet dependencies. status=blocked, no fence, no owner. Dependency reconciliation moved a queued task here.",
+  "expected": "valid_managed",
+  "expectedStateKind": "blocked_dependencies",
+  "snapshot": {
+    "task": {
+      "id": 1007,
+      "status": "blocked",
+      "assigned_to": null,
+      "current_execution_id": null,
+      "integration_state": null,
+      "tags": [],
+      "task_kind": "development.code",
+      "execution_mode": "git_change"
+    },
+    "execution": null,
+    "integration": null,
+    "humanRequest": null
+  }
+}

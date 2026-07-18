@@ -1,0 +1,21 @@
+{
+  "name": "violation-active-without-execution",
+  "description": "ACTIVE_WITHOUT_EXECUTION. Task in active status (in_progress) but current_execution_id is null. The decoder must NOT fail open here (blueprint §6.2:307-308). This is the legacy pre-ADR-009 signature for active tasks; the scanner reclassifies these as valid_legacy, but the pure decoder reports the violation.",
+  "expected": "named_violation",
+  "expectedCode": "ACTIVE_WITHOUT_EXECUTION",
+  "snapshot": {
+    "task": {
+      "id": 2001,
+      "status": "in_progress",
+      "assigned_to": "worker-legacy",
+      "current_execution_id": null,
+      "integration_state": null,
+      "tags": [],
+      "task_kind": "development.code",
+      "execution_mode": "git_change"
+    },
+    "execution": null,
+    "integration": null,
+    "humanRequest": null
+  }
+}
