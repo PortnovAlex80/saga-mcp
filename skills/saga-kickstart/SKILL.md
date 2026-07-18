@@ -11,7 +11,7 @@ description: |
 
 # saga-kickstart
 
-## Product-board contract
+## Product-board contract (контракт продуктовой доски)
 
 Discovery creates one REQ epic and `type:'brief'` artifact inside the current
 logical product. Bind the artifact to the repository containing its document.
@@ -20,24 +20,24 @@ typed `routeFastTrack` path in the same epic; it creates an idempotent
 repository-scoped development task and `derived_from` trace. For `go`, move the
 same episode to formalization.
 
-> Discovery-фаза saga-флоу. Принимает идею одной фразой, возвращает decision.
-> Все секции ниже заполнены body-задачами REQ-004 (#219-224).
+> Discovery-фаза saga-флоу. Принимает идею одной фразой, возвращает decision (решение).
+> Все секции ниже заполнены body-задачами (задачами-телами) REQ-004 (#219-224).
 
-## Flow position (saga-flow)
+## Flow position (saga-flow — позиция в потоке)
 
-- **Stage:** 1-Discovery (первая фаза, входная точка)
-- **Precondition:** Идея от пользователя (одной фразой). Saga-mcp DB доступна.
+- **Stage (этап):** 1-Discovery (первая фаза, входная точка)
+- **Precondition (предусловие):** Идея от пользователя (одной фразой). Saga-mcp DB доступна.
   Epic REQ-NNN создан (или будет создан в процессе).
-- **Postcondition:** Brief artifact accepted, decision ∈ {go, fast-track, clarify, reject}
-- **Called by:** saga-orchestrator (Этап 1), либо напрямую пользователем
-- **Next enables:**
+- **Postcondition (постусловие):** Brief artifact accepted (принят), decision ∈ {go, fast-track, clarify, reject}
+- **Called by (вызывается):** saga-orchestrator (Этап 1), либо напрямую пользователем
+- **Next enables (что разблокирует):**
   - decision=go → saga-product (PRD, Этап 2)
   - decision=fast-track → typed `routeFastTrack` in the same product/epic
   - decision=clarify → стоп, вопросы пользователю
   - decision=reject → эпик закрыт
-- **Проверь precondition:** если saga-mcp DB недоступна → STOP (Sign F3, failover)
-- **ВНИМАНИЕ (Sign 005):** это SKILL в main-context, НЕ subagent. В subagent_child
-  нет Agent/AskUser tools.
+- **Проверь precondition:** если saga-mcp DB недоступна → STOP (Sign F3, failover — аварийный переход)
+- **ВНИМАНИЕ (Sign 005):** это SKILL в main-context (главном контексте), НЕ subagent (под-агент). В subagent_child
+  нет Agent/AskUser tools (инструментов).
 
 **Source of truth:**
 - SRS-004 §2b.7 (artifact 79) — section list + saga-mcp tool calls.

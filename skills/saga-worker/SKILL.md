@@ -3,17 +3,17 @@ name: saga-worker
 description: "Execute exactly one dispatcher-assigned task for one logical product, using its repository workspace and worktree; complete review and merge protocol, then exit permanently. Use whenever Saga assigns development, review, verification, or integration work."
 ---
 
-# Saga Worker — the autonomous dispatch loop
+# Saga Worker — the autonomous dispatch loop (автономный цикл диспетчера)
 
-## Flow position (saga-flow)
+## Flow position (saga-flow — позиция в потоке)
 
-- **Stage:** 6-Execution (рой, после planning) ИЛИ 7-AC-verification (role:reviewer, tag:ac-verification)
-- **Precondition:** dev-задачи в статусе todo (созданы planner'ом). Проверь: `task_list({status:'todo', epic_id})` → не пусто.
-- **Postcondition:** задача done + merged в dev (для dev-задачи) ИЛИ verified_by trace (для AC-verification)
-- **Called by:** saga-dispatch (execution loop) ИЛИ saga-orchestrator напрямую (одна задача)
-- **Next enables:** следующая задача в очереди (через worker_next). AC-verification → INTEGRATE.
-- **Проверь precondition:** если очередь пуста → сообщи "no tasks", не выдумывай работу.
-- **Solo-worker:** один launch = одна задача (claim → work → done → stop). Цикл = saga-dispatch.
+- **Stage (этап):** 6-Execution (рой, после planning) ИЛИ 7-AC-verification (role:reviewer, tag:ac-verification)
+- **Precondition (предусловие):** dev-задачи в статусе todo (созданы planner'ом). Проверь: `task_list({status:'todo', epic_id})` → не пусто.
+- **Postcondition (постусловие):** задача done + merged в dev (для dev-задачи) ИЛИ verified_by trace (для AC-verification)
+- **Called by (вызывается):** saga-dispatch (execution loop — цикл выполнения) ИЛИ saga-orchestrator напрямую (одна задача)
+- **Next enables (что разблокирует):** следующая задача в очереди (через worker_next). AC-verification → INTEGRATE.
+- **Проверь precondition:** если очередь пуста → сообщи "no tasks" (нет задач), не выдумывай работу.
+- **Solo-worker (соло-воркер):** один launch (запуск) = одна задача (claim → work → done → stop). Цикл = saga-dispatch.
 
 You do not manage the board. You do not pick or create tasks yourself. You do
 not ask "should I continue?" You run **one loop** against the dispatcher. That
@@ -45,7 +45,7 @@ echo "$(date -u +%FT%TZ) pid=$$ worker=$SAGA_WORKER_ID project=$SAGA_PROJECT_ID 
 echo "$(date -u +%FT%TZ) pid=$$ worker=$SAGA_WORKER_ID project=$SAGA_PROJECT_ID task=$SAGA_TASK_ID STEP пишу rub.py — exact_lower_cvar" >> ~/.zcode/cli/worker-heartbeat.log
 ```
 
-## ONE TASK PER LAUNCH (NOT a loop)
+## ONE TASK PER LAUNCH (одна задача за запуск; NOT a loop — не цикл)
 
 You handle **exactly one** task per launch, then return a summary and STOP. The
 orchestrator that spawned you calls you again for the next task — you do NOT loop
@@ -67,7 +67,7 @@ inside one launch.
 one `worker_next` + one `worker_done`. The orchestrator decides whether to spawn
 you again. Looping inside one launch burns tokens and blocks the main session.
 
-## Step 0 — resolve your project (ONCE, before the first worker_next)
+## Step 0 — resolve your project (разреши свой проект; ONCE, before the first worker_next — один раз, перед первым worker_next)
 
 For new products, project identity lives in `.saga/project.json`; the board
 runner may also pass the resolved `project_id` and repository binding directly.
@@ -108,7 +108,7 @@ You also do NOT create projects, epics, or tasks (`project_create`,
 returns null and the QUEUE_EMPTY probe confirms the project genuinely has no
 claimable work, report that in one sentence and stop. Do not fabricate work.
 
-## WORKTREE LIFECYCLE — isolation, merge-back, recovery
+## WORKTREE LIFECYCLE (жизненный цикл рабочей копии) — изоляция, слияние обратно, восстановление
 
 Several workers run in **one shared repository**. To stop file races, each task
 runs in its **own git worktree** on branch `task/<id>`, off the integration
@@ -244,7 +244,7 @@ task with `worker_done({ result: "PARTIAL: <done, remains>" })`. **Never** `git
 worktree remove --force` a worktree that may hold another worker's uncommitted
 edits — confirm first.
 
-## What "do the work" means — branch on the returned `skill`
+## What "do the work" means (что значит «сделать работу») — branch on the returned `skill` (ветвись на возвращённом `skill`)
 
 The dispatcher's `skill` field tells you your role for THIS task:
 
@@ -323,7 +323,7 @@ observed_value:'…'})`. CGAD P8 требует visibility.
 
 For true independent verification (CGAD §9), use saga-verifier skill instead of re-running Builder's tests. The Verifier generates L3 property tests from the frozen AC contract, not from the test file the Builder wrote.
 
-## worker_done — the only way to finish a task
+## worker_done — the only way to finish a task (единственный способ завершить задачу)
 
 ```
 worker_done({ task_id, worker_id, result, verdict? })
@@ -388,7 +388,7 @@ try to close it from the same launch as the dev-phase.
 > second `worker_done` through on a free review task; and Path A (worker_next
 > → reviewer) works regardless. Either way, close the review — don't stall.
 
-## AUTONOMY — do not ask to continue (and NEVER go zombie)
+## AUTONOMY (автономность) — do not ask to continue (не спрашивай разрешения продолжать; and NEVER go zombie — и НИКОГДА не зависай)
 
 This is critical. You are one of potentially many workers; humans are not
 watching each step.
@@ -406,7 +406,7 @@ Most "clarifications" are laziness, not real doubt. Default to action:
 - If **~80%+ clear** → do the most reasonable interpretation, **record your assumption in a `comment_add`** ("Assumed X because Y; revert if wrong"), and proceed. Stopping to ask costs more than a reversible assumption.
 - Only if **genuinely 0 usable information** (e.g. task references a file that doesn't exist and no interpretation makes sense) → use the ASK flow.
 
-## QUEUE_EMPTY — verify before you declare "done"
+## QUEUE_EMPTY (очередь пуста) — verify before you declare "done" (проверь прежде чем объявить «готово»)
 
 When `worker_next` returns `{task: null}`:
 
@@ -425,7 +425,7 @@ task_list({ epic_id: <any epic in your project>, limit: 50 })   # or tracker_das
 This probe is what catches "I finished everything!" when actually you were on
 the wrong project all along.
 
-## ASK flow — when you genuinely need a human answer
+## ASK flow (поток вопроса) — when you genuinely need a human answer (когда действительно нужен ответ человека)
 
 If you hit a real blocker where a human answer unblocks you (and rebuilding
 your context on another agent would cost more than answering — e.g. you've spent
@@ -443,7 +443,7 @@ worker_ask_done({ task_id, worker_id })
 Use this **sparingly** — it idles you while waiting. Prefer the 80% rule
 (assume + comment) for anything reversible. Reserve ASK for genuine need.
 
-## Hard rules
+## Hard rules (жёсткие правила)
 
 - **Project identity comes from the dispatcher or `.saga/project.json`.**
   `projectname.txt` is legacy fallback only. With no authoritative binding,

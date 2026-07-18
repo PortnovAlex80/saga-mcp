@@ -3,24 +3,30 @@ name: saga-dispatch
 description: Dispatch-loop orchestrator — запускает воркеров в цикле до пустой очереди. Использовать когда нужно прогнать эпик/проект от начала до конца.
 ---
 
-# Saga Dispatch — orchestrator loop
+# Saga Dispatch — orchestrator loop (цикл оркестратора)
 
-## Flow position (saga-flow)
+## Flow position (saga-flow — позиция в потоке)
 
-## Product-board contract
+## Product-board contract (контракт продуктовой доски)
 
 Dispatch exactly one logical `project_id`. Tasks select their physical workspace
 through `project_repository_id`; do not dispatch a separate builders project.
 The board runner supplies the product and machine checkout. A fresh CLI process
 handles one task and exits permanently.
 
-- **Stage:** 6-Execution loop (после planning, до AC-verification)
-- **Precondition:** dev-задачи в очереди (todo/review). Проверь: `task_list({project_id, status:['todo','review']})` → не пусто.
-- **Postcondition:** очередь пуста (все dev-задачи done+merged). AC-verification задачи могут остаться.
-- **Called by:** saga-orchestrator (Этап 6)
-- **Next enables:** AC-verification задачи (продолжение dispatch loop), затем INTEGRATE
-- **Проверь precondition:** если очередь пуста → сообщи "queue empty", не запускай воркеров впустую.
-- **Это SUB-loop оркестратора** — покрывает только execution-фазу, не весь флоу (для всего = saga-orchestrator).
+(Диспетчеризируй ровно один логический `project_id`. Задачи выбирают своё
+физическое рабочее пространство через `project_repository_id`; не запускай
+отдельный проект сборщиков. Runner доски предоставляет продукт и машинную
+checkout-копию. Свежий CLI-процесс обрабатывает одну задачу и завершается
+навсегда.)
+
+- **Stage (этап):** 6-Execution loop (цикл выполнения; после planning, до AC-verification)
+- **Precondition (предусловие):** dev-задачи в очереди (todo/review). Проверь: `task_list({project_id, status:['todo','review']})` → не пусто.
+- **Postcondition (постусловие):** очередь пуста (все dev-задачи done+merged). AC-verification задачи могут остаться.
+- **Called by (вызывается):** saga-orchestrator (Этап 6)
+- **Next enables (что разблокирует):** AC-verification задачи (продолжение dispatch loop), затем INTEGRATE
+- **Проверь precondition:** если очередь пуста → сообщи "queue empty" (очередь пуста), не запускай воркеров впустую.
+- **Это SUB-loop (под-цикл) оркестратора** — покрывает только execution-фазу (фазу выполнения), не весь флоу (для всего = saga-orchestrator).
 
 Ты — оркестратор. Твоя единственная работа: **запускать saga-worker агентов
 циклично, пока очередь не пуста**. Ты НЕ делаешь работу сам, ты НЕ пишешь код,
@@ -92,7 +98,7 @@ while true:
 Подожди и проверь ещё раз (это может быть merge conflict с `needs-human` —
 тогда остановись и сообщи пользователю).
 
-## Parallel awareness
+## Parallel awareness (параллельное выполнение)
 
 - При запуске N воркеров — запускай их **одним сообщением** с несколькими
   Agent-вызовами. Это настоящая параллельность.
@@ -100,7 +106,7 @@ while true:
 - Воркеры сами разбирают кто что делает через `worker_next` — оркестратор НЕ
   назначает задачи вручную.
 
-## Статус-отчёт
+## Статус-отчёт (статусный отчёт)
 
 Каждый раунд — краткий отчёт пользователю:
 
