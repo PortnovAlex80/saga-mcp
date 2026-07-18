@@ -29,6 +29,7 @@ import { getDb, closeDb } from './db.js';
 import { generateNextForCompletedTask } from './tools/workflow.js';
 import { handlers as lifecycleHandlers } from './tools/lifecycle.js';
 import { handlers as dispatcherHandlers } from './tools/dispatcher.js';
+import { reevaluateDownstream } from './tools/tasks.js';
 import { handlers as projectHandlers } from './tools/projects.js';
 import { logActivity } from './helpers/activity-logger.js';
 
@@ -662,6 +663,17 @@ export async function orchestrate(opts: OrchestrateOptions): Promise<Orchestrate
         continue;
       }
 
+      // Re-evaluate downstream deps for every done task in the epic. saga's
+      // worker_done / worker_merge_release handlers call reevaluateDownstream
+      // themselves, but if anything modified task state outside that path
+      // (recovery healer, manual DB fix, engine restart mid-cycle), blocked
+      // tasks may remain blocked even though their deps are now done+merged.
+      // Calling it here is idempotent and cheap (one UPDATE per ready task).
+      const doneTasks = getDb().prepare(
+        `SELECT id FROM tasks WHERE epic_id=? AND status='done'`,
+      ).all(epicId) as Array<{ id: number }>;
+      for (const d of doneTasks) reevaluateDownstream(getDb(), d.id);
+
       const counts = countActiveTasks(epicId);
       const workersBusy = (run?.active?.length ?? 0) > 0;
 
@@ -704,8 +716,10 @@ export async function orchestrate(opts: OrchestrateOptions): Promise<Orchestrate
           // wait; if it's a substantive gate failure, try self-heal first.
           const isTasksReady = /gate failed: tasks not completed/i.test(advance.error)
             || /gate failed: no .* tasks exist/i.test(advance.error);
-          if (isTasksReady && counts.inFlight > 0) {
-            // Workers still finishing — wait for them.
+          if (isTasksReady && (counts.inFlight > 0 || counts.claimable > 0)) {
+            // Workers still finishing OR tasks still waiting to be claimed —
+            // this is NOT a gate failure, it's normal "work in progress".
+            // Wait silently. Do NOT escalate to healer or human.
             await sleep(PUMP_TICK_MS);
             continue;
           }

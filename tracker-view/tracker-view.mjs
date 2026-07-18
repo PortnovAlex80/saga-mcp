@@ -985,9 +985,34 @@ function renderBoard(projectId, allProjects) {
         const html = await r.text();
         const tmp = document.createElement('div');
         tmp.innerHTML = html;
+        // Swap the kanban columns...
         const oldBoard = document.querySelector('.board');
         const newBoard = tmp.querySelector('.board');
         if (oldBoard && newBoard) oldBoard.replaceWith(newBoard);
+        // ...and the episode-progress-bar (so Resume button / needs-human
+        // badge / gate-blocked badge update without a full page reload).
+        const oldBar = document.querySelector('.episode-progress-bar');
+        const newBar = tmp.querySelector('.episode-progress-bar');
+        if (oldBar && newBar) {
+          oldBar.replaceWith(newBar);
+          // Re-bind click handlers on the freshly inserted Resume buttons
+          // (replaceWith drops any listeners attached to the old nodes).
+          document.querySelectorAll('.episode-resume').forEach(button => button.addEventListener('click', async () => {
+            try {
+              const epicId = Number(button.dataset.epic);
+              const r2 = await fetch('/api/episode/resume', {
+                method: 'POST', headers: {'Content-Type':'application/json'},
+                body: JSON.stringify({epic_id: epicId}),
+              });
+              const j2 = await r2.json();
+              if (j2.ok) {
+                alert(j2.was_paused
+                  ? 'Флаг needs-human снят. Движок продолжит в течение 10 сек.'
+                  : 'Флаг уже снят.');
+              } else { alert('Ошибка: ' + (j2.error||'?')); }
+            } catch (err) { alert('Сеть: ' + err.message); }
+          }));
+        }
         applyFilter();
       } catch {}
     }
@@ -3479,10 +3504,14 @@ const server = http.createServer((req, res) => {
     html = renderIndex(projects);
   }
   res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-  // partial=1: только .board (AJAX-рефреш канбана).
+  // partial=1: episode-progress-bar + .board (AJAX-рефреш).
+  // episode-progress-bar включён чтобы кнопка Resume / needs-human badge /
+  // gate-blocked badge обновлялись без F5. frontend (refreshBoard) находит
+  // оба элемента в ответе и replaceWith'ит их по отдельности.
   if (partial === '1' && projectId) {
-    const frag = extractDiv(html, 'board');
-    res.end(frag || html);
+    const bar = extractDiv(html, 'episode-progress-bar');
+    const board = extractDiv(html, 'board');
+    res.end((bar || '') + (board || '') || html);
   // partial=2: только .episodes (AJAX-рефреш дерева артефактов).
   } else if (partial === '2' && projectId && tab === 'artifacts') {
     const frag = extractDiv(html, 'episodes');
