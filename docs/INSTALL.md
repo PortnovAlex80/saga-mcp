@@ -1,70 +1,28 @@
-# saga-flow — установка в новый проект
+# saga-mcp — Установка и запуск
 
-**Портабельный пакет saga-flow:** 9 skills + 6 agents + install-инструкция.
-Копируешь этот раздел → `~/.zcode/` → saga-flow работает в новом проекте.
+## Что это
 
----
+**saga-mcp** — платформа управления параллельными LLM-агентами. Не трекер задач —
+governance-слой: от бизнес-гипотезы через архитектуру, требования, параллельную
+разработку, независимую верификацию, до наблюдения за runtime и решения
+(продолжать / закрыть).
 
-## Как запустить (коротко)
+**Цель:** недопустимое действие невозможно провести как допустимый переход.
 
-**Одна точка входа — saga-orchestrator:**
-
-```
-Пользователь: «давай сделаем депозитный калькулятор» (идея одной фразой)
-Ты:           Skill("saga-orchestrator")
-Результат:    working product (от brief до Docker)
-```
-
-**saga-orchestrator сам вызывает все роли в правильном порядке:**
-discovery (kickstart) → formalization (product/architect/analyst) → planning
-(planner) → execution (worker рой) → AC-verification → integration.
-
-**Запоминать кто и когда вызывает — НЕ НАДО.** Достаточно одной точки входа.
-Подробности цепочки — в `skills/saga-orchestrator/SKILL.md`.
-
----
-
-## Что входит в saga-flow
-
-```
-saga-mcp/                        ← этот репозиторий (форк)
-├── skills/                      ← 9 skills (процедуры для ролей)
-│   ├── saga-orchestrator/       ← ЕДИНАЯ ТОЧКА ВХОДА: весь флоу одним скиллом
-│   ├── saga-kickstart/          ← discovery: идея → brief → decision
-│   ├── saga-product/            ← formalization: PRD
-│   ├── saga-architect/          ← formalization: SRS + API contract
-│   ├── saga-analyst/            ← formalization: UC + AC
-│   ├── saga-planner/            ← bridge: AC → dev-задачи (Pattern A/B) + AC-verify
-│   ├── saga-worker/             ← execution: claim → worktree → merge + AC-verify role
-│   ├── saga-dispatch/           ← execution: цикл диспетчеризации (для execution-фазы)
-│   └── saga-tracker/            ← bootstrap: resolve project, dashboard
-├── agents/                      ← 6 subagent profiles (ZCode frontmatter)
-│   ├── saga-kickstart.md
-│   ├── saga-product.md
-│   ├── saga-architect.md
-│   ├── saga-analyst.md
-│   ├── saga-planner.md
-│   └── saga-worker.md
-└── docs/
-    ├── INSTALL.md               ← этот файл
-    ├── ac-verification.md       ← AC-gate дизайн (Sign 006)
-    └── saga-flow-overview.md    ← архитектура saga-flow
-```
-
----
-
-## Быстрая установка (3 шага)
-
-### Шаг 1: установить saga-mcp как MCP-сервер
+## Быстрый старт (3 команды)
 
 ```bash
-cd /path/to/saga-mcp
-npm install
-npm run build    # → dist/index.js
+# 1. Установить
+git clone https://github.com/PortnovAlex80/saga-mcp.git
+cd saga-mcp && npm install && npm run build
+
+# 2. Скопировать скиллы
+cp -r skills/* ~/.zcode/skills/
+
+# 3. Зарегистрировать MCP-сервер (редактировать ~/.zcode/cli/config.json)
 ```
 
-Добавить в ZCode MCP config (`~/.zcode/cli/config.json`):
-
+`config.json`:
 ```json
 {
   "mcp": {
@@ -72,150 +30,99 @@ npm run build    # → dist/index.js
       "saga": {
         "type": "stdio",
         "command": "node",
-        "args": ["/absolute/path/to/saga-mcp/dist/index.js"],
-        "env": {
-          "DB_PATH": "/absolute/path/to/.tracker.db"
-        }
+        "args": ["D:/Development/saga-mcp/dist/index.js"],
+        "env": { "DB_PATH": "C:/Users/<вы>/.zcode/saga.db" }
       }
     }
   }
 }
 ```
 
-`DB_PATH` — где хранить saga-БД проекта. Может быть:
-- `~/.zcode/saga.db` — глобальная (все проекты в одной БД, saga изолирует по project_id)
-- `<project>/.tracker.db` — per-project (каждый проект своя БД)
+Перезапустить ZCode.
 
-### Шаг 2: скопировать skills и agents в ~/.zcode/
+## Запуск продукта
+
+**Одна команда для пользователя:**
+
+```
+Skill("saga-start")
+```
+
+Из любой пустой папки. Дальше — диалог:
+
+```
+Вы:     Skill("saga-start")
+Saga:   Какой продукт делаем? (одной фразой)
+Вы:     Депозитный калькулятор для сайта банка
+Saga:   [Discovery: 3 ассесора → brief → decision=go]
+Saga:   [Complexity Gate: класс=modular, артефакты определены]
+Saga:   [Formalization: PRD с гипотезой → SRS с инвариантами → AC с properties]
+Saga:   [Planning: scaffold + dev tasks + verification tasks]
+Saga:   [Development: рой воркеров в worktrees]
+Saga:   [Verification: независимые L3 property-тесты]
+Saga:   [Integration: merge + hard gate]
+Saga:   ✅ Продукт готов
+```
+
+## Что saga делает автоматически
+
+| Этап | Что происходит | Кто |
+|---|---|---|
+| Discovery | Идея → измеримая гипотеза (metric, target, kill criteria) | saga-kickstart |
+| Complexity Gate | Оценка: thin/modular/regulated/research → набор артефактов | senior-analyst |
+| Formalization | PRD + SRS (стиль, инварианты, порты) + UC/AC (contract-as-data) | product/architect/analyst |
+| Planning | Pattern B scaffold, conflict_keys, verification.ac tasks | saga-planner |
+| Development | Параллельные воркеры в worktrees, merge-lock | saga-worker |
+| Verification | Независимые property-тесты из frozen AC (не Builder'овские) | saga-verifier |
+| Integration | Hard gate: каждый AC имеет passing evidence | episode_transition |
+| Observation | Runtime метрики → hit/kill решение | observation_record |
+
+## Что saga НЕ даёт сделать
+
+- Перейти в development без принятых AC (hard gate)
+- Объявить done без passing evidence (deny-by-default)
+- Изменить замороженный контракт mid-work (drift detection)
+- Двум воркерам ломать один файл (conflict_keys на planning time)
+- Агенту понизить risk чтобы обойти gate (P15 monotonicity)
+- Записать UNKNOWN/ERROR как PASS (4-valued verdict)
+- Создать гипотезу без измерения (R16: observation required)
+
+## Проверка после установки
 
 ```bash
-# Skills (8 штук)
-cp -r skills/saga-* ~/.zcode/skills/
-
-# Agents (6 штук)
-cp agents/saga-*.md ~/.zcode/agents/
+npm test                              # 163 теста green
+node tools/cgad-spec-lint.mjs <db>    # 18 правил, read-only
+ls ~/.zcode/skills/ | grep saga       # 13 skills
 ```
 
-**Важно:** ZCode 3.2.x грузит agents из `~/.zcode/agents/` (user-level).
-Workspace-level (`<repo>/.zcode/agents/`) тоже валидируется, но в Settings
-не виден. Копируй в user-level для надёжности.
+## Системные требования
 
-### Шаг 3: перезапустить ZCode
+- Node.js 18+
+- npm
+- Git
+- ZCode (или любой MCP-клиент)
+- SQLite (встроен через better-sqlite3, не нужен отдельно)
 
-```bash
-# Через supervisor (если есть):
-curl -s -X POST http://127.0.0.1:7878/restart
+## Управление версиями
 
-# Или вручную: закрыть и открыть ZCode
+Перед релизом новой версии saga-mcp:
+
+```
+Skill("saga-release")
 ```
 
-После рестарта проверить: **Settings → Subagents** — должны быть видны
-`saga-kickstart`, `saga-product`, `saga-architect`, `saga-analyst`,
-`saga-planner`, `saga-worker`.
+Release skill проверит: тесты, lint, skills, agents, метаданные, документацию,
+CI/CD, schema, git hygiene — 10 секций чеклиста.
 
-### Шаг 4 (опционально): создать saga-проекты
+## Документация
 
-```bash
-# В MCP (через ZCode чат или CLI):
-project_create(name: "requirements", description: "...")
-project_create(name: "<project>-builders", description: "...")
-```
-
-В корне каждого рабочего репозитория:
-```bash
-echo "<project-name>" > projectname.txt
-```
+- [README.md](../README.md) — English overview
+- [README.ru.md](../README.ru.md) — Русский обзор
+- [История](saga-mcp-history.md) — полная эволюция (7 актов)
+- [Research Charter](research/00-research-charter-v1-final.md) — agent-oriented SE тезис
+- [ADR](architecture/decisions/) — архитектурные решения
+- [GUARDRAILS](../GUARDRAILS.md) — конституция (Signs 001-009)
 
 ---
 
-## Проверка установки
-
-1. **MCP подключен:** `/mcp list` → saga: connected, tools ≥ 40
-2. **Skills загружены:** `/skill` → видны saga-kickstart, saga-product, ...
-3. **Agents загружены:** Settings → Subagents → 6 saga-* профилей
-4. **Smoke-test:** вызови `Skill("saga-orchestrator")` с идеей одной фразой
-   → должен начаться полный saga-flow (discovery → formalization → execution)
-
----
-
-## Архитектура saga-flow (кратко)
-
-```
-Идея (1 фраза)
-  │
-  ▼
-Discovery (saga-kickstart — SKILL в main-context, НЕ subagent)
-  │  3 ассесора → decision-fork → completeness-gate → verdict → brief
-  ▼
-Formalization (цепь ролей)
-  │  saga-product (PRD) → saga-architect+SRS+FR/NFR || saga-analyst+UC
-  │  → saga-analyst+AC
-  ▼
-Planning (saga-planner)
-  │  AC → dev-задачи (Pattern A: sequence / Pattern B: scaffold+parallel)
-  │  + AC-verification задачи (verified_by gate)
-  ▼
-Execution (рой saga-worker)
-  │  scaffold (critical) → bodies (parallel) → review → merge
-  ▼
-AC-verification (saga-worker role:reviewer)
-  │  сверка эталонов AC с реальным выводом
-  ▼
-INTEGRATE → working product
-```
-
----
-
-## Ключевые правила (GUARDRAILS)
-
-Подробно: `GUARDRAILS.md` в harmess, Sign 001-006. Кратко:
-
-1. **Sign 001:** `extractInputs` не считает coverage — caller делает это
-2. **Sign 002:** Pattern B (scaffold+parallel) для shared_mutation_risk=true
-3. **Sign 003:** dispatcher role-filter bug (known-issue)
-4. **Sign 004:** saga-planner skill запрещает worker_done (known-issue)
-5. **Sign 005:** kickstart = SKILL в main-context, НЕ subagent (нет Agent/AskUser tools)
-6. **Sign 006:** AC coverage (`implements`) ≠ AC satisfaction (`verified_by`)
-
----
-
-## Устранение неполадок
-
-### Профиль не появился в Settings → Subagents
-
-1. Проверь путь: `~/.zcode/agents/<name>.md` (НЕ workspace-level)
-2. Frontmatter валиден: `---\nname: ...\ndescription: ...\n---`
-3. Имя файла совпадает с `name` во frontmatter
-4. Перезапусти ZCode (профили грузятся только на старте)
-5. Логи: `~/.zcode/cli/log/zcode-YYYY-MM-DD.jsonl` → grep `bootstrap.subagents`
-
-### MCP saga не подключается
-
-1. `npm run build` в saga-mcp → `dist/index.js` существует
-2. Путь в config.json абсолютный, с правильными слешами (Windows: `D:/...` или `D:\\...`)
-3. DB_PATH существует и доступен для записи
-4. Логи: `~/.zcode/cli/log/` → grep `mcp.server.connected` или `mcp.server.error`
-
-### saga-worker не может заклеймить задачу
-
-1. `projectname.txt` в корне репозитория (содержимое = saga project name)
-2. `worker_next({ project_id: <N> })` — project_id ОБЯЗАТЕЕЛЕН
-3. Задача в `todo` или `review` статусе, `assigned_to: null`, без unmet deps
-
----
-
-## Перенос в новый проект (чек-лист)
-
-```
-[ ] saga-mcp fork склонирован/скопирован
-[ ] npm install && npm run build в saga-mcp
-[ ] MCP config добавлен (DB_PATH, args → dist/index.js)
-[ ] skills/saga-* скопированы в ~/.zcode/skills/
-[ ] agents/saga-*.md скопированы в ~/.zcode/agents/
-[ ] ZCode перезапущен
-[ ] Settings → Subagents: 6 saga-* видны
-[ ] /mcp list: saga connected
-[ ] projectname.txt в корне рабочего репозитория
-[ ] saga-проект создан (project_create)
-[ ] Smoke-test: @saga-kickstart с тестовой идеей
-```
+*Начни с `Skill("saga-start")` из пустой папки. Saga проведёт через весь цикл.*
