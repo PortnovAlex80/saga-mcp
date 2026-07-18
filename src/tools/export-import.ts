@@ -91,6 +91,7 @@ function handleExport(args: Record<string, unknown>) {
         integrated_at: task.integrated_at,
         integrated_commit: task.integrated_commit,
         _original_generated_from_task_id: task.generated_from_task_id,
+        _original_verification_target_artifact_id: task.verification_target_artifact_id,
         generation_key: task.generation_key,
         tags: task.tags,
         metadata: task.metadata,
@@ -282,6 +283,10 @@ function handleImport(args: Record<string, unknown>) {
     // Collect deferred dependencies (need all tasks created first)
     const deferredDeps: Array<{ newTaskId: number; originalDeps: number[] }> = [];
     const deferredGeneratedFrom: Array<{ newTaskId: number; originalTaskId: number }> = [];
+    const deferredVerificationTargets: Array<{
+      newTaskId: number;
+      originalArtifactId: number;
+    }> = [];
 
     for (const epicData of epics) {
       const epic = db.prepare(
@@ -360,6 +365,15 @@ function handleImport(args: Record<string, unknown>) {
           deferredGeneratedFrom.push({
             newTaskId,
             originalTaskId: taskData._original_generated_from_task_id as number,
+          });
+        }
+        if (
+          taskData._original_verification_target_artifact_id !== null
+          && taskData._original_verification_target_artifact_id !== undefined
+        ) {
+          deferredVerificationTargets.push({
+            newTaskId,
+            originalArtifactId: taskData._original_verification_target_artifact_id as number,
           });
         }
 
@@ -444,6 +458,14 @@ function handleImport(args: Record<string, unknown>) {
       const mapped = artifactIdMap.get(parent.parent);
       if (mapped) db.prepare('UPDATE artifacts SET parent_artifact_id=? WHERE id=?').run(mapped, parent.id);
     }
+    for (const target of deferredVerificationTargets) {
+      const mapped = artifactIdMap.get(target.originalArtifactId);
+      if (mapped !== undefined) {
+        db.prepare(
+          'UPDATE tasks SET verification_target_artifact_id=? WHERE id=?',
+        ).run(mapped, target.newTaskId);
+      }
+    }
     for (const trace of (projectData.artifact_traces as Array<Record<string, unknown>>) ?? []) {
       const source = artifactIdMap.get(trace.source_id as number);
       const target = trace.target_type === 'artifact'
@@ -462,10 +484,11 @@ function handleImport(args: Record<string, unknown>) {
       if (task && artifact) {
         db.prepare(
           `INSERT INTO verification_evidence
-           (task_id,artifact_id,outcome,evidence,content_hash,recorded_by,created_at)
-           VALUES (?,?,?,?,?,?,?)`,
+           (task_id,artifact_id,outcome,evidence,content_hash,recorded_by,provider,execution_id,created_at)
+           VALUES (?,?,?,?,?,?,?,?,?)`,
         ).run(task, artifact, evidence.outcome, evidence.evidence, evidence.content_hash ?? null,
-          evidence.recorded_by ?? null, evidence.created_at ?? new Date().toISOString());
+          evidence.recorded_by ?? null, evidence.provider ?? null, evidence.execution_id ?? null,
+          evidence.created_at ?? new Date().toISOString());
       }
     }
     for (const epicData of epics) {

@@ -23,6 +23,7 @@ const { handlers: exportImport } = await import('../dist/tools/export-import.js'
 const { handlers: lifecycle } = await import('../dist/tools/lifecycle.js');
 const { handlers: artifacts } = await import('../dist/tools/artifacts.js');
 const { closeDb, getDb } = await import('../dist/db.js');
+const { reconcileWorkerExecutions } = await import('../dist/worker-executions.js');
 
 after(() => {
   closeDb();
@@ -569,12 +570,28 @@ test('verified_by is backed by immutable passing evidence for the accepted AC re
     project_id: product.id, epic_id: epic.id, type: 'AC', code: 'AC-E',
     title: 'Evidence criterion', path: 'docs/evidence.md', status: 'accepted', content_hash: 'evidence-hash',
   });
+  const otherAc = artifacts.artifact_create({
+    project_id: product.id, epic_id: epic.id, type: 'AC', code: 'AC-OTHER',
+    title: 'Different criterion', path: 'docs/other.md', status: 'accepted',
+    content_hash: 'other-hash',
+  });
   const verify = tasks.task_create({
     epic_id: epic.id, title: 'Verify AC-E', task_kind: 'verification.ac',
     workflow_stage: 'verification', execution_mode: 'read_only_evidence',
+    source_artifact_ids: [ac.id],
   });
   const held = dispatcher.worker_next({ project_id: product.id, worker_id: 'verifier' });
   assert.equal(held.task.id, verify.id);
+  assert.throws(
+    () => lifecycle.verification_record({
+      task_id: verify.id, artifact_id: otherAc.id, outcome: 'passed',
+      evidence: 'unrelated evidence', recorded_by: 'verifier',
+    }),
+    /targets AC .* cross-verification is forbidden/,
+  );
+  assert.equal(artifacts.trace_list({
+    source_id: otherAc.id, target_type: 'task', target_id: verify.id, link_type: 'verified_by',
+  }).count, 0);
   assert.throws(
     () => artifacts.trace_add({
       source_id: ac.id, target_type: 'task', target_id: verify.id, link_type: 'verified_by',
@@ -601,6 +618,177 @@ test('verified_by is backed by immutable passing evidence for the accepted AC re
   }).count, 1);
 });
 
+test('verification evidence is immutable per fenced execution, so a new holder can retry', () => {
+  const product = projects.project_create({ name: 'Evidence Retry Product' });
+  const epic = epics.epic_create({ project_id: product.id, name: 'REQ-evidence-retry' });
+  const ac = artifacts.artifact_create({
+    project_id: product.id, epic_id: epic.id, type: 'AC', code: 'AC-RETRY',
+    title: 'Retry criterion', path: 'docs/retry.md', status: 'accepted',
+    content_hash: 'retry-hash',
+  });
+  const verify = tasks.task_create({
+    epic_id: epic.id, title: 'Verify AC-RETRY', task_kind: 'verification.ac',
+    workflow_stage: 'verification', execution_mode: 'read_only_evidence',
+    source_artifact_ids: [ac.id],
+  });
+  const common = {
+    project_id: product.id,
+    epic_id: epic.id,
+    worker_id: 'retry-verifier',
+    machine_id: os.hostname(),
+    run_id: 'retry-run',
+  };
+  dispatcher.worker_next({ ...common, execution_id: 'retry-execution-1' });
+  lifecycle.verification_record({
+    task_id: verify.id, artifact_id: ac.id, outcome: 'passed',
+    evidence: 'first attempt', recorded_by: common.worker_id,
+    execution_id: 'retry-execution-1',
+  });
+
+  getDb().transaction(() => {
+    getDb().prepare(
+      `UPDATE worker_executions SET state='lost', finished_at=datetime('now')
+       WHERE execution_id='retry-execution-1'`,
+    ).run();
+    getDb().prepare(
+      `UPDATE tasks SET status='todo', assigned_to=NULL, current_execution_id=NULL
+       WHERE id=?`,
+    ).run(verify.id);
+  })();
+
+  dispatcher.worker_next({ ...common, execution_id: 'retry-execution-2' });
+  assert.throws(
+    () => tasks.task_update({ id: verify.id, assigned_to: 'stolen-holder' }),
+    /assigned_to may only change through dispatcher lifecycle tools/,
+  );
+  lifecycle.verification_record({
+    task_id: verify.id, artifact_id: ac.id, outcome: 'passed',
+    evidence: 'second attempt', recorded_by: common.worker_id,
+    execution_id: 'retry-execution-2',
+  });
+
+  const evidenceCount = getDb().prepare(
+    'SELECT COUNT(*) AS n FROM verification_evidence WHERE task_id=? AND artifact_id=?',
+  ).get(verify.id, ac.id).n;
+  assert.equal(evidenceCount, 2);
+  assert.throws(
+    () => dispatcher.worker_done({
+      task_id: verify.id, worker_id: common.worker_id, result: 'stale',
+      execution_id: 'retry-execution-1',
+    }),
+    /fenced by execution retry-execution-2/,
+  );
+  dispatcher.worker_done({
+    task_id: verify.id, worker_id: common.worker_id, result: 'current',
+    execution_id: 'retry-execution-2',
+  });
+});
+
+test('startup repair removes legacy verified_by edges that disagree with canonical provenance', () => {
+  const product = projects.project_create({ name: 'Trace Repair Product' });
+  const epic = epics.epic_create({ project_id: product.id, name: 'REQ-trace-repair' });
+  const canonical = artifacts.artifact_create({
+    project_id: product.id, epic_id: epic.id, type: 'AC', code: 'AC-CANON',
+    title: 'Canonical criterion', path: 'docs/canonical.md',
+    status: 'accepted', content_hash: 'canonical-hash',
+  });
+  const stray = artifacts.artifact_create({
+    project_id: product.id, epic_id: epic.id, type: 'AC', code: 'AC-STRAY',
+    title: 'Stray criterion', path: 'docs/stray.md',
+    status: 'accepted', content_hash: 'stray-hash',
+  });
+  const verify = tasks.task_create({
+    epic_id: epic.id, title: 'Verify AC-CANON', task_kind: 'verification.ac',
+    workflow_stage: 'verification', execution_mode: 'read_only_evidence',
+    source_artifact_ids: [canonical.id],
+  });
+  getDb().prepare(
+    `INSERT INTO artifact_traces(source_id,target_type,target_id,link_type)
+     VALUES (?,'task',?,'verified_by')`,
+  ).run(stray.id, verify.id);
+  getDb().prepare(
+    'UPDATE tasks SET verification_target_artifact_id=NULL WHERE id=?',
+  ).run(verify.id);
+  getDb().prepare(
+    `DELETE FROM artifact_traces
+      WHERE source_id=? AND target_type='task' AND target_id=? AND link_type='depends_on'`,
+  ).run(canonical.id, verify.id);
+
+  closeDb();
+  const reopened = getDb();
+  assert.equal(reopened.prepare(
+    `SELECT COUNT(*) AS n FROM artifact_traces
+      WHERE source_id=? AND target_type='task' AND target_id=? AND link_type='verified_by'`,
+  ).get(stray.id, verify.id).n, 0);
+  assert.equal(reopened.prepare(
+    'SELECT verification_target_artifact_id FROM tasks WHERE id=?',
+  ).get(verify.id).verification_target_artifact_id, canonical.id);
+});
+
+test('worker reconciliation uses OS liveness, not silent logs or task-status guesses', () => {
+  const product = projects.project_create({ name: 'Execution Liveness Product' });
+  const epic = epics.epic_create({ project_id: product.id, name: 'REQ-execution-live' });
+  const task = tasks.task_create({
+    epic_id: epic.id, title: 'Long silent verification work', priority: 'high',
+  });
+  dispatcher.worker_next({
+    project_id: product.id, epic_id: epic.id, worker_id: 'silent-worker',
+    machine_id: os.hostname(), execution_id: 'silent-execution', run_id: 'silent-run',
+  });
+  getDb().prepare(
+    `UPDATE worker_executions
+        SET state='running', pid=?, phase_updated_at='2000-01-01 00:00:00'
+      WHERE execution_id='silent-execution'`,
+  ).run(process.pid);
+
+  const live = reconcileWorkerExecutions(getDb(), product.id, epic.id);
+  assert.equal(live.length, 1);
+  assert.equal(live[0].action, 'kept');
+  assert.match(live[0].reason, /allowed lifecycle phase/);
+  assert.equal(
+    getDb().prepare('SELECT status FROM tasks WHERE id=?').get(task.id).status,
+    'in_progress',
+  );
+
+  getDb().prepare(
+    `UPDATE worker_executions SET pid=2147483647 WHERE execution_id='silent-execution'`,
+  ).run();
+  const dead = reconcileWorkerExecutions(getDb(), product.id, epic.id);
+  assert.equal(dead[0].action, 'lost');
+  const released = getDb().prepare(
+    'SELECT status,assigned_to,current_execution_id FROM tasks WHERE id=?',
+  ).get(task.id);
+  assert.deepEqual(released, {
+    status: 'todo', assigned_to: null, current_execution_id: null,
+  });
+
+  const legacy = tasks.task_create({
+    epic_id: epic.id, title: 'Pre-fencing worker', priority: 'high',
+  });
+  getDb().prepare(
+    `UPDATE tasks
+        SET status='in_progress', assigned_to='legacy-worker',
+            metadata=json_set(metadata,'$.worker_pid',?)
+      WHERE id=?`,
+  ).run(process.pid, legacy.id);
+  const legacyLive = reconcileWorkerExecutions(getDb(), product.id, epic.id)
+    .find(result => result.taskId === legacy.id);
+  assert.equal(legacyLive.action, 'kept');
+  assert.match(legacyLive.reason, /legacy assignment has a live PID/);
+
+  getDb().prepare(
+    `UPDATE tasks SET metadata=json_set(metadata,'$.worker_pid',2147483647)
+      WHERE id=?`,
+  ).run(legacy.id);
+  const legacyDead = reconcileWorkerExecutions(getDb(), product.id, epic.id)
+    .find(result => result.taskId === legacy.id);
+  assert.equal(legacyDead.action, 'lost');
+  assert.equal(
+    getDb().prepare('SELECT status FROM tasks WHERE id=?').get(legacy.id).status,
+    'todo',
+  );
+});
+
 test('verification review cannot approve before passing evidence exists', () => {
   const product = projects.project_create({ name: 'Verification Approval Product' });
   const epic = epics.epic_create({ project_id: product.id, name: 'REQ-verify-approval' });
@@ -612,6 +800,7 @@ test('verification review cannot approve before passing evidence exists', () => 
     epic_id: epic.id, title: 'Review verification', status: 'review', priority: 'critical',
     task_kind: 'verification.ac', workflow_stage: 'verification',
     execution_mode: 'read_only_evidence', source_artifact_ids: [ac.id],
+    tags: ['needs-human'],
   });
   dispatcher.worker_next({ project_id: product.id, worker_id: 'verification-reviewer' });
   assert.throws(
@@ -627,6 +816,11 @@ test('verification review cannot approve before passing evidence exists', () => 
   assert.equal(dispatcher.worker_done({
     task_id: verify.id, worker_id: 'verification-reviewer', result: 'approved', verdict: 'approved',
   }).completed_new_status, 'done');
+  assert.equal(
+    JSON.parse(getDb().prepare('SELECT tags FROM tasks WHERE id=?').get(verify.id).tags)
+      .includes('needs-human'),
+    false,
+  );
 });
 
 test('typed dependencies wait for merge and repository merge locks do not block other repositories', () => {
@@ -737,6 +931,13 @@ test('project export/import 1.4 preserves repository bindings and typed task fie
   const generated = importedTasks.find(t => t.generated_from_task_id != null);
   assert.ok(generated);
   assert.ok(importedTasks.some(t => t.id === generated.generated_from_task_id));
+  for (const verification of importedTasks.filter(t => t.task_kind === 'verification.ac')) {
+    assert.ok(verification.verification_target_artifact_id != null);
+    assert.ok(getDb().prepare(
+      `SELECT 1 FROM artifacts
+        WHERE id=? AND project_id=? AND type='AC'`,
+    ).get(verification.verification_target_artifact_id, imported.project_id));
+  }
 });
 
 // ============================================================================
@@ -755,6 +956,7 @@ test('REQ-008: outcome unknown is accepted by verification_record but does NOT c
   const verify = tasks.task_create({
     epic_id: epic.id, title: 'Verify AC-U', task_kind: 'verification.ac',
     workflow_stage: 'verification', execution_mode: 'read_only_evidence',
+    source_artifact_ids: [ac.id],
   });
   dispatcher.worker_next({ project_id: product.id, worker_id: 'verifier-u' });
   // UNKNOWN must be storable (caller reports insufficient inputs).
@@ -784,6 +986,7 @@ test('REQ-008: outcome error is accepted and does NOT admit the integration gate
   const verify = tasks.task_create({
     epic_id: epic.id, title: 'Verify AC-E', task_kind: 'verification.ac',
     workflow_stage: 'verification', execution_mode: 'read_only_evidence',
+    source_artifact_ids: [ac.id],
   });
   dispatcher.worker_next({ project_id: product.id, worker_id: 'verifier-e' });
   lifecycle.verification_record({
@@ -809,6 +1012,7 @@ test('REQ-008: invalid outcome literal is rejected with explicit error', () => {
   const verify = tasks.task_create({
     epic_id: epic.id, title: 'Verify AC-I', task_kind: 'verification.ac',
     workflow_stage: 'verification', execution_mode: 'read_only_evidence',
+    source_artifact_ids: [ac.id],
   });
   dispatcher.worker_next({ project_id: product.id, worker_id: 'verifier-i' });
   assert.throws(
@@ -830,6 +1034,7 @@ test('REQ-008: outcome failed blocks verified_by (regression — failed was alre
   const verify = tasks.task_create({
     epic_id: epic.id, title: 'Verify AC-F', task_kind: 'verification.ac',
     workflow_stage: 'verification', execution_mode: 'read_only_evidence',
+    source_artifact_ids: [ac.id],
   });
   dispatcher.worker_next({ project_id: product.id, worker_id: 'verifier-f' });
   lifecycle.verification_record({
@@ -851,6 +1056,7 @@ test('REQ-008: provider column is optional and defaults to NULL for backward com
   const verify = tasks.task_create({
     epic_id: epic.id, title: 'Verify AC-NP', task_kind: 'verification.ac',
     workflow_stage: 'verification', execution_mode: 'read_only_evidence',
+    source_artifact_ids: [ac.id],
   });
   dispatcher.worker_next({ project_id: product.id, worker_id: 'verifier-np' });
   // No provider passed — backward-compatible with existing callers.

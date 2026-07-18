@@ -2,6 +2,7 @@ import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type Database from 'better-sqlite3';
 import { getDb } from '../db.js';
 import { logActivity } from '../helpers/activity-logger.js';
+import { assertExecutionFence, updateExecutionPhase } from '../worker-executions.js';
 import { reevaluateDownstream } from './tasks.js';
 import type { Task, ToolHandler } from '../types.js';
 import { generateNextForCompletedTask } from './workflow.js';
@@ -142,7 +143,8 @@ function getActiveTasks(db: Database.Database, projectId: number): Array<{
     .prepare(
       `SELECT t.id, t.title, t.assigned_to, t.status, e.name AS epic_name
        FROM tasks t JOIN epics e ON e.id = t.epic_id
-       WHERE e.project_id=? AND t.status IN ('in_progress','review') AND t.assigned_to IS NOT NULL
+       WHERE e.project_id=? AND t.status IN ('in_progress','review_in_progress')
+         AND t.assigned_to IS NOT NULL
        ORDER BY t.id`,
     )
     .all(projectId) as Array<{
@@ -196,6 +198,12 @@ function findNextClaimable(
   excludeTaskId?: number,
   attempt: number = 0,
   role?: string,
+  epicId?: number,
+  reservation?: {
+    executionId: string;
+    runId: string;
+    machineId: string;
+  },
 ): Task | null {
   // Стоп через MAX_CLAIM_ATTEMPTS: под IMMEDIATE-локом контентция редка, но
   // бесконечная рекурсия могла бы livelock'нуть глобальный write-lock.
@@ -212,12 +220,14 @@ function findNextClaimable(
   //    Без role — обратная совместимость: любой тег подходит.
   const excludeClause = excludeTaskId !== undefined ? 'AND t.id != ?' : '';
   const roleClause = role ? `AND EXISTS (SELECT 1 FROM json_each(t.tags) WHERE json_each.value = ?)` : '';
+  const epicClause = epicId !== undefined ? 'AND t.epic_id = ?' : '';
   const selectSql = `
     SELECT t.* FROM tasks t
     WHERE t.status IN ('todo', 'review')
       AND (t.assigned_to IS NULL OR t.assigned_to = '')
       AND t.priority IN ('critical', 'high', 'medium')
       AND t.epic_id IN (SELECT id FROM epics WHERE project_id = ?)
+      ${epicClause}
       AND (
         t.workflow_stage IS NULL
         OR NOT EXISTS (SELECT 1 FROM episode_workflows ew WHERE ew.epic_id=t.epic_id)
@@ -228,6 +238,11 @@ function findNextClaimable(
       )
       ${excludeClause}
       ${roleClause}
+      AND t.current_execution_id IS NULL
+      AND NOT EXISTS (
+        SELECT 1 FROM worker_executions we
+        WHERE we.task_id=t.id AND we.state IN ('reserved','running','cancel_requested')
+      )
       AND NOT EXISTS (
         SELECT 1 FROM task_dependencies d
         JOIN tasks dep ON dep.id = d.depends_on_task_id
@@ -245,6 +260,7 @@ function findNextClaimable(
   `;
   // Сбор параметров в порядке появления ? в SQL.
   const params: unknown[] = [projectId];
+  if (epicId !== undefined) params.push(epicId);
   if (excludeTaskId !== undefined) params.push(excludeTaskId);
   if (role) params.push(`role:${role}`);
   const task = db.prepare(selectSql).get(...params) as Task | undefined;
@@ -262,26 +278,47 @@ function findNextClaimable(
     // Цикл разработки: задача уходит в работу.
     info = db
       .prepare(
-        `UPDATE tasks SET status='in_progress', assigned_to=?, updated_at=datetime('now')
-         WHERE id=? AND status='todo' AND (assigned_to IS NULL OR assigned_to = '')`,
-      )
-      .run(workerId, task.id);
+         `UPDATE tasks SET status='in_progress', assigned_to=?, current_execution_id=?,
+                           updated_at=datetime('now')
+          WHERE id=? AND status='todo' AND (assigned_to IS NULL OR assigned_to = '')`,
+       )
+      .run(workerId, reservation?.executionId ?? null, task.id);
   } else {
     // Цикл ревью: задача из буфера review (ждёт ревьюера) переходит в
     // review_in_progress (ревьюер работает). Зеркало todo→in_progress для
     // ревью-фазы. assigned_to = reviewer.
     info = db
       .prepare(
-        `UPDATE tasks SET status='review_in_progress', assigned_to=?, updated_at=datetime('now')
-         WHERE id=? AND status='review' AND (assigned_to IS NULL OR assigned_to = '')`,
-      )
-      .run(workerId, task.id);
+         `UPDATE tasks SET status='review_in_progress', assigned_to=?, current_execution_id=?,
+                           updated_at=datetime('now')
+          WHERE id=? AND status='review' AND (assigned_to IS NULL OR assigned_to = '')`,
+       )
+      .run(workerId, reservation?.executionId ?? null, task.id);
   }
 
   // 3. Кто-то успел занять под носом — ищем следующего кандидата,
   //    с ограничением попыток (см. MAX_CLAIM_ATTEMPTS выше). projectId и role пробрасываем.
   if (info.changes !== 1) {
-    return findNextClaimable(db, workerId, projectId, excludeTaskId, attempt + 1, role);
+    return findNextClaimable(
+      db, workerId, projectId, excludeTaskId, attempt + 1, role, epicId, reservation,
+    );
+  }
+
+  if (reservation) {
+    db.prepare(
+      `INSERT INTO worker_executions
+        (execution_id,run_id,project_id,epic_id,task_id,worker_id,machine_id,phase)
+       VALUES (?,?,?,?,?,?,?,?)`,
+    ).run(
+      reservation.executionId,
+      reservation.runId,
+      projectId,
+      task.epic_id,
+      task.id,
+      workerId,
+      reservation.machineId,
+      task.status === 'review' ? 'reviewing' : 'executing',
+    );
   }
 
   // logActivity на назначение. Оба цикла (dev: todo→in_progress, review:
@@ -326,6 +363,7 @@ function handleWorkerNext(args: Record<string, unknown>): {
     epic_name: string;
   }>;
   reason?: string;
+  execution_id?: string;
 } {
   const db = getDb();
   const workerId = args.worker_id as string;
@@ -359,12 +397,33 @@ function handleWorkerNext(args: Record<string, unknown>): {
   // Применение: проект требований, где задачи тегированы role:product / role:analyst
   // / role:architect — каждый агент получает только свои задачи. Без role — любое.
   const role = args.role as string | undefined;
+  const epicId = args.epic_id as number | undefined;
+  if (epicId !== undefined) {
+    const epic = db.prepare('SELECT project_id FROM epics WHERE id=?').get(epicId) as
+      | { project_id: number }
+      | undefined;
+    if (!epic || epic.project_id !== projectId) {
+      throw new Error(`epic_id ${epicId} does not belong to project ${projectId}`);
+    }
+  }
+  const executionId = args.execution_id as string | undefined;
+  const runId = args.run_id as string | undefined;
+  if (executionId && !machineId) {
+    throw new Error('machine_id is required when execution_id is provided');
+  }
+  const reservation = executionId
+    ? {
+        executionId,
+        runId: runId ?? executionId,
+        machineId: machineId ?? 'unknown',
+      }
+    : undefined;
 
   // BEGIN IMMEDIATE — write-lock всей БД с старта транзакции
   // (аналог SELECT FOR UPDATE, которого нет в SQLite). busy_timeout=5000 в db.ts.
   // db.transaction(fn) тут только DEFERRED, поэтому оборачиваем явно.
   const task = withImmediateTransaction(db, () =>
-    findNextClaimable(db, workerId, projectId, undefined, 0, role),
+    findNextClaimable(db, workerId, projectId, undefined, 0, role, epicId, reservation),
   );
 
   // active_tasks — read-only снапшот параллельной работы. Берём ПОСЛЕ транзакции,
@@ -389,12 +448,18 @@ function handleWorkerNext(args: Record<string, unknown>): {
   if (task.project_repository_id != null && !repository) {
     throw new Error(`Task ${task.id} targets missing or foreign project_repository_id=${task.project_repository_id}`);
   }
-  return { task, skill: skillForTask(task, task.status), repository: repository ?? null, active_tasks };
+  return {
+    task,
+    skill: skillForTask(task, task.status),
+    repository: repository ?? null,
+    active_tasks,
+    execution_id: executionId,
+  };
 }
 
 function handleWorkerDone(args: Record<string, unknown>): {
   completed: number;
-  completed_new_status: 'review' | 'done' | 'in_progress';
+  completed_new_status: 'review' | 'done' | 'todo';
   active_tasks?: Array<{
     task_id: number;
     title: string;
@@ -435,33 +500,28 @@ function handleWorkerDone(args: Record<string, unknown>): {
     //    продвигает задачу. APPROVED → done, CHANGES REQUESTED → обратно в
     //    in_progress (та же ветка/worktree живут дальше).
     //  - review (без assigned_to, буфер): НЕТ — сначала claim через worker_next.
-    let task: Task | undefined;
-    // Сначала пробуем как владельца (для in_progress и review_in_progress с моим assigned_to).
-    task = db
+    const task = db
       .prepare('SELECT * FROM tasks WHERE id=? AND assigned_to=?')
       .get(taskId, workerId) as Task | undefined;
-    // Не мой, но в review_in_progress? Любой воркер может закрыть вердиктом.
     if (!task) {
-      const reviewTask = db
-        .prepare("SELECT * FROM tasks WHERE id=? AND status='review_in_progress'")
-        .get(taskId) as Task | undefined;
-      if (reviewTask) {
-        task = reviewTask;
-      } else {
-        throw new Error(`Task ${taskId} not assigned to ${workerId}`);
-      }
+      throw new Error(`Task ${taskId} not assigned to ${workerId}`);
     }
+    assertExecutionFence(
+      db,
+      task as Task & { current_execution_id?: string | null },
+      args.execution_id,
+    );
 
     // 2. Следующий статус по ТЕКУЩЕМУ статусу (он сам = флаг цикла) + verdict.
-    let newStatus: 'review' | 'done' | 'in_progress';
+    let newStatus: 'review' | 'done' | 'todo';
     let newAssignedTo: string | null; // кому уходит задача после перевода
     if (task.status === 'in_progress') {
       newStatus = 'review';            // цикл разработки завершён → буфер ревью
       newAssignedTo = null;            // в очереди на ревью (без исполнителя)
     } else if (task.status === 'review_in_progress') {
       if (verdict === 'changes_requested') {
-        newStatus = 'in_progress';     // обратно в работу
-        newAssignedTo = workerId;      // замок возвращается ревьюеру (он теперь дев)
+        newStatus = 'todo';            // single-use reviewer exits; a developer reclaims it
+        newAssignedTo = null;
       } else {
         newStatus = 'done';            // цикл ревью завершён (APPROVED)
         newAssignedTo = null;
@@ -479,24 +539,18 @@ function handleWorkerDone(args: Record<string, unknown>): {
     //    - review_in_progress→in_progress: любой воркер (status='review_in_progress'), assigned→workerId.
     //    Гонок нет: BEGIN IMMEDIATE + info.changes===1.
     if (newStatus === 'done' && task.task_kind === 'verification.ac') {
-      const traced = db.prepare(
-        `SELECT count(*) AS n FROM artifact_traces
-         WHERE target_type='task' AND target_id=? AND link_type='depends_on'`,
-      ).get(taskId) as { n: number };
-      const missing = db.prepare(
-        `SELECT a.id
-         FROM artifact_traces tr JOIN artifacts a ON a.id=tr.source_id
-         WHERE tr.target_type='task' AND tr.target_id=? AND tr.link_type='depends_on'
-           AND a.type='AC'
-           AND NOT EXISTS (
-             SELECT 1 FROM verification_evidence v
-             WHERE v.task_id=? AND v.artifact_id=a.id AND v.outcome='passed'
-               AND v.content_hash=a.accepted_hash
-           )`,
-      ).all(taskId, taskId) as Array<{ id: number }>;
-      if (traced.n === 0 || missing.length > 0) {
+      const target = db.prepare(
+        `SELECT a.id, a.accepted_hash
+         FROM tasks t JOIN artifacts a ON a.id=t.verification_target_artifact_id
+         WHERE t.id=? AND a.type='AC' AND a.status='accepted'`,
+      ).get(taskId) as { id: number; accepted_hash: string | null } | undefined;
+      const passed = target && db.prepare(
+        `SELECT 1 FROM verification_evidence
+         WHERE task_id=? AND artifact_id=? AND outcome='passed' AND content_hash=?`,
+      ).get(taskId, target.id, target.accepted_hash);
+      if (!target || !passed) {
         throw new Error(
-          `Verification task ${taskId} cannot be approved without passing evidence for every traced AC`,
+          `Verification task ${taskId} cannot be approved without passing evidence for its canonical AC`,
         );
       }
     }
@@ -504,9 +558,10 @@ function handleWorkerDone(args: Record<string, unknown>): {
     const completeInfo = db
       .prepare(
         `UPDATE tasks SET status=?, assigned_to=?, updated_at=datetime('now')
-         WHERE id=? AND (assigned_to=? OR status='review_in_progress')`,
+         WHERE id=? AND assigned_to=? AND
+               (current_execution_id IS NULL OR current_execution_id=?)`,
       )
-      .run(newStatus, newAssignedTo, taskId, workerId);
+      .run(newStatus, newAssignedTo, taskId, workerId, args.execution_id ?? null);
 
     // Если ни одна строка не обновлена — assigned_to изменился между SELECT и
     // UPDATE. Не продолжать: иначе вставим comment для чужой задачи и вернём
@@ -516,6 +571,23 @@ function handleWorkerDone(args: Record<string, unknown>): {
         `Task ${taskId} assignment changed before completion (expected owner ${workerId})`,
       );
     }
+    if (newStatus === 'done') {
+      let taskTags: string[] = [];
+      try { taskTags = JSON.parse(task.tags || '[]') as string[]; } catch { taskTags = []; }
+      if (taskTags.includes('needs-human')) {
+        db.prepare('UPDATE tasks SET tags=? WHERE id=?')
+          .run(JSON.stringify(taskTags.filter(tag => tag !== 'needs-human')), taskId);
+      }
+    }
+    updateExecutionPhase(
+      db,
+      taskId,
+      workerId,
+      args.execution_id,
+      newStatus === 'done' && task.task_kind && task.execution_mode === 'git_change'
+        ? 'integrating'
+        : 'finishing',
+    );
 
     // 4. Comment с результатом воркера (author = worker_id).
     //    created_at авто из DEFAULT в schema (как в comments.ts:47).
@@ -657,11 +729,14 @@ function handleWorkerAskNeed(args: Record<string, unknown>): {
 
   // Это моя задача? (assigned_to = worker_id) — нельзя мигать чужой.
   const task = db
-    .prepare('SELECT id, title, tags FROM tasks WHERE id=? AND assigned_to=?')
-    .get(taskId, workerId) as { id: number; title: string; tags: string } | undefined;
+    .prepare('SELECT id, title, tags, current_execution_id FROM tasks WHERE id=? AND assigned_to=?')
+    .get(taskId, workerId) as
+      | { id: number; title: string; tags: string; current_execution_id: string | null }
+      | undefined;
   if (!task) {
     throw new Error(`Task ${taskId} not assigned to ${workerId} (cannot flag a task you don't hold)`);
   }
+  assertExecutionFence(db, task, args.execution_id);
 
   const tags = parseTags(task.tags);
   const alreadyBlocking = tags.has(NEEDS_HUMAN_TAG);
@@ -692,11 +767,14 @@ function handleWorkerAskDone(args: Record<string, unknown>): {
   const workerId = args.worker_id as string;
 
   const task = db
-    .prepare('SELECT id, title, tags FROM tasks WHERE id=? AND assigned_to=?')
-    .get(taskId, workerId) as { id: number; title: string; tags: string } | undefined;
+    .prepare('SELECT id, title, tags, current_execution_id FROM tasks WHERE id=? AND assigned_to=?')
+    .get(taskId, workerId) as
+      | { id: number; title: string; tags: string; current_execution_id: string | null }
+      | undefined;
   if (!task) {
     throw new Error(`Task ${taskId} not assigned to ${workerId}`);
   }
+  assertExecutionFence(db, task, args.execution_id);
 
   const tags = parseTags(task.tags);
   if (tags.has(NEEDS_HUMAN_TAG)) {
@@ -759,12 +837,13 @@ function handleWorkerMergeAcquire(args: Record<string, unknown>): {
   const grant = withImmediateTransaction(db, () => {
     const task = db.prepare(
       `SELECT t.id, t.title, t.status, t.task_kind, t.project_repository_id,
+              t.current_execution_id,
               pr.integration_branch
        FROM tasks t
        LEFT JOIN project_repositories pr ON pr.id=t.project_repository_id
        WHERE t.id=?`,
     ).get(taskId) as
-      | { id: number; title: string; status: string; task_kind: string | null; project_repository_id: number | null; integration_branch: string | null }
+      | { id: number; title: string; status: string; task_kind: string | null; project_repository_id: number | null; integration_branch: string | null; current_execution_id: string | null }
       | undefined;
     if (!task) throw new Error(`Task ${taskId} not found`);
     if (task.status !== 'done') {
@@ -772,6 +851,7 @@ function handleWorkerMergeAcquire(args: Record<string, unknown>): {
         `Task ${taskId} status is '${task.status}' — merge-lock is only for tasks that reached 'done' (APPROVED). Wait until review is complete.`,
       );
     }
+    assertExecutionFence(db, task, args.execution_id);
 
     const projectIdRow = db
       .prepare('SELECT project_id FROM epics e JOIN tasks t ON t.epic_id=e.id WHERE t.id=?')
@@ -843,14 +923,16 @@ function handleWorkerMergeRelease(args: Record<string, unknown>): {
   withImmediateTransaction(db, () => {
     const task = db.prepare(
       `SELECT t.id, t.title, t.status, t.tags, t.task_kind, t.project_repository_id,
+              t.current_execution_id,
               pr.integration_branch
        FROM tasks t
        LEFT JOIN project_repositories pr ON pr.id=t.project_repository_id
        WHERE t.id=?`,
     ).get(taskId) as
-      | { id: number; title: string; status: string; tags: string; task_kind: string | null; project_repository_id: number | null; integration_branch: string | null }
+      | { id: number; title: string; status: string; tags: string; task_kind: string | null; project_repository_id: number | null; integration_branch: string | null; current_execution_id: string | null }
       | undefined;
     if (!task) throw new Error(`Task ${taskId} not found`);
+    assertExecutionFence(db, task, args.execution_id);
 
     const projectIdRow = db
       .prepare('SELECT project_id FROM epics e JOIN tasks t ON t.epic_id=e.id WHERE t.id=?')
@@ -915,6 +997,7 @@ function handleWorkerMergeRelease(args: Record<string, unknown>): {
 
     logActivity(db, 'task', taskId, 'updated', 'merge_release', null, outcome,
       `Merge ${outcome === 'merged' ? `completed${commitSha ? ` (${commitSha.slice(0, 7)})` : ''}` : 'CONFLICT (flagged needs-human)'} by ${workerId} for task '${task.title}'`);
+    updateExecutionPhase(db, taskId, workerId, args.execution_id, 'finishing');
     if (outcome === 'merged') {
       reevaluateDownstream(db, taskId);
     }
@@ -1052,6 +1135,9 @@ export const definitions: Tool[] = [
           type: 'string',
           description: 'Optional machine identifier used to resolve a machine-specific repository checkout.',
         },
+        epic_id: { type: 'integer', description: 'Optional epic scope for an orchestration engine.' },
+        execution_id: { type: 'string', description: 'Managed-runner execution fencing token.' },
+        run_id: { type: 'string', description: 'Managed board-run identifier.' },
       },
       required: ['worker_id'],
       // NOTE: project_id is intentionally NOT in `required`. If it were, the
@@ -1064,7 +1150,7 @@ export const definitions: Tool[] = [
   {
     name: 'worker_done',
     description:
-      'Complete the held task and free its assignment. Marks the task done by this worker (in_progress->review buffer, or review_in_progress->done on APPROVED), records the result as a comment, and clears assigned_to. Does NOT claim or return the next task — the response carries stop:true. For typed git_change tasks, approval records integration_state=pending: dependencies and downstream generation remain gated until worker_merge_release(result="merged"). Legacy and non-git tasks retain done-is-ready behavior. For a task in review_in_progress, pass verdict="changes_requested" to return it to in_progress.',
+      'Complete the held task and free its assignment. Marks the task done by this worker (in_progress->review buffer, or review_in_progress->done on APPROVED), records the result as a comment, and clears assigned_to. Does NOT claim or return the next task — the response carries stop:true. For typed git_change tasks, approval records integration_state=pending: dependencies and downstream generation remain gated until worker_merge_release(result="merged"). Legacy and non-git tasks retain done-is-ready behavior. For a task in review_in_progress, verdict="changes_requested" returns it to the unassigned todo queue for a fresh developer execution.',
     annotations: {
       title: 'Worker: Complete',
       readOnlyHint: false,
@@ -1089,8 +1175,9 @@ export const definitions: Tool[] = [
           type: 'string',
           enum: ['approved', 'changes_requested'],
           description:
-            "Only relevant when the task is in review. 'approved' (default) advances it to done. 'changes_requested' returns it to in_progress — the reviewer becomes the developer; the task/<id> branch and its worktree are NOT touched and survive the re-work loop. For an in_progress task this param is ignored.",
+            "Only relevant when the task is in review. 'approved' (default) advances it to done. 'changes_requested' returns it to unassigned todo for a fresh developer execution; the task/<id> branch and worktree survive the re-work loop. For an in_progress task this param is ignored.",
         },
+        execution_id: { type: 'string', description: 'Required fencing token for managed CLI tasks.' },
       },
       required: ['task_id', 'worker_id', 'result'],
     },
@@ -1115,6 +1202,7 @@ export const definitions: Tool[] = [
           type: 'string',
           description: 'Optional: the question you are about to ask the human. Recorded as a comment (prefix "ASK:") so it is visible on the task, not only in the AskUserQuestion UI.',
         },
+        execution_id: { type: 'string', description: 'Required fencing token for managed CLI tasks.' },
       },
       required: ['task_id', 'worker_id'],
     },
@@ -1135,6 +1223,7 @@ export const definitions: Tool[] = [
       properties: {
         task_id: { type: 'integer', description: 'ID of the task you hold.' },
         worker_id: { type: 'string', description: 'Your worker_id (must match task.assigned_to).' },
+        execution_id: { type: 'string', description: 'Required fencing token for managed CLI tasks.' },
       },
       required: ['task_id', 'worker_id'],
     },
@@ -1155,6 +1244,7 @@ export const definitions: Tool[] = [
       properties: {
         task_id: { type: 'integer', description: 'ID of the done task whose branch you are about to merge.' },
         worker_id: { type: 'string', description: 'Your worker_id.' },
+        execution_id: { type: 'string', description: 'Required fencing token for managed CLI tasks.' },
       },
       required: ['task_id', 'worker_id'],
     },
@@ -1177,6 +1267,7 @@ export const definitions: Tool[] = [
         worker_id: { type: 'string', description: 'Your worker_id (must match the merge-lock holder).' },
         result: { type: 'string', enum: ['merged', 'conflict'], description: 'Outcome of the git merge.' },
         commit_sha: { type: 'string', description: 'Optional: the merge commit sha when result="merged" (recorded for audit).' },
+        execution_id: { type: 'string', description: 'Required fencing token for managed CLI tasks.' },
       },
       required: ['task_id', 'worker_id', 'result'],
     },

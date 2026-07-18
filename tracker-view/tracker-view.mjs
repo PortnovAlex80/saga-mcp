@@ -20,6 +20,7 @@ import { handlers as dispatcherHandlers } from '../dist/tools/dispatcher.js';
 import { handlers as repositoryHandlers } from '../dist/tools/repositories.js';
 import { handlers as lifecycleHandlers } from '../dist/tools/lifecycle.js';
 import { createClaudeBoardRunner } from './claude-runner.mjs';
+import { isProcessAlive } from '../dist/worker-executions.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const require = createRequire(import.meta.url);
@@ -243,9 +244,11 @@ function getRunnerTaskState(taskId) {
   );
 }
 
-function recoverRunnerAssignment({ taskId, workerId, originalStatus, reason }) {
+function recoverRunnerAssignment({ taskId, workerId, originalStatus, executionId, reason }) {
   return withDbWrite(db => {
-    const task = db.prepare('SELECT id, title, status, assigned_to, tags FROM tasks WHERE id=?').get(taskId);
+    const task = db.prepare(
+      'SELECT id, title, status, assigned_to, tags, current_execution_id FROM tasks WHERE id=?',
+    ).get(taskId);
     if (!task || task.assigned_to !== workerId) return false;
     let tags = [];
     try { tags = JSON.parse(task.tags || '[]'); } catch {}
@@ -254,12 +257,15 @@ function recoverRunnerAssignment({ taskId, workerId, originalStatus, reason }) {
     let restoredStatus = originalStatus === 'review' ? 'review' : 'todo';
     if (originalStatus === 'review' && task.status === 'in_progress') restoredStatus = 'todo';
     const info = db.prepare(
-      'UPDATE tasks SET status=?, assigned_to=NULL, updated_at=datetime(\'now\') WHERE id=? AND assigned_to=?',
-    ).run(restoredStatus, taskId, workerId);
+      `UPDATE tasks SET status=?, assigned_to=NULL, current_execution_id=NULL,
+         updated_at=datetime('now')
+       WHERE id=? AND assigned_to=?
+         AND (current_execution_id IS NULL OR current_execution_id=?)`,
+    ).run(restoredStatus, taskId, workerId, executionId ?? null);
     if (info.changes === 1) {
       db.prepare(
         `INSERT INTO activity_log
-          (entity_type, entity_id, action, field, old_value, new_value, summary)
+          (entity_type, entity_id, action, field_name, old_value, new_value, summary)
          VALUES ('task', ?, 'status_changed', 'status', ?, ?, ?)`,
       ).run(taskId, task.status, restoredStatus, `Board runner recovered task '${task.title}': ${reason}`);
     }
@@ -4291,19 +4297,43 @@ function handleWorkersActive(req, res, url) {
   try {
     const logRoot = path.join(os.homedir(), '.zcode', 'cli', 'board-runs');
     const rows = withDb(db => db.prepare(
-      `SELECT t.id, t.title, t.status, t.task_kind, t.assigned_to, t.updated_at,
-              json_extract(t.metadata,'$.worker_started_at') AS worker_started_at,
+      `SELECT we.execution_id, we.task_id AS id, we.worker_id AS assigned_to,
+              we.pid, we.machine_id, we.phase, we.started_at AS worker_started_at,
+              we.log_path, t.title, t.status, t.task_kind, t.updated_at,
               e.name AS epic_name
-       FROM tasks t JOIN epics e ON e.id=t.epic_id
-       WHERE e.project_id=? AND t.status IN ('in_progress','review_in_progress')
-         AND t.assigned_to IS NOT NULL AND t.assigned_to != ''
-       ORDER BY t.id`,
-    ).all(projectId));
+       FROM worker_executions we
+       LEFT JOIN tasks t ON t.id=we.task_id
+       LEFT JOIN epics e ON e.id=we.epic_id
+       WHERE we.project_id=? AND we.state IN ('running','cancel_requested')
+       UNION ALL
+       SELECT 'legacy-task-' || t.id AS execution_id, t.id,
+              COALESCE(t.assigned_to,'legacy-orphan-' || t.id) AS assigned_to,
+              json_extract(t.metadata,'$.worker_pid') AS pid,
+              ? AS machine_id, 'legacy' AS phase,
+              json_extract(t.metadata,'$.worker_started_at') AS worker_started_at,
+              NULL AS log_path, t.title, t.status, t.task_kind, t.updated_at,
+              e.name AS epic_name
+         FROM tasks t
+         JOIN epics e ON e.id=t.epic_id
+        WHERE e.project_id=?
+          AND (
+            t.status IN ('in_progress','review_in_progress')
+            OR (t.status='review' AND t.assigned_to IS NOT NULL AND t.assigned_to!='')
+          )
+          AND t.current_execution_id IS NULL
+          AND NOT EXISTS (
+            SELECT 1 FROM worker_executions active
+             WHERE active.task_id=t.id
+               AND active.state IN ('reserved','running','cancel_requested')
+          )
+       ORDER BY worker_started_at`,
+    ).all(projectId, os.hostname(), projectId))
+      .filter(r => r.machine_id === os.hostname() && isProcessAlive(r.pid));
     // Resolve JSONL log path by scanning board-runs for a matching filename.
     // The newest matching file wins (workers reuse IDs across runs).
     const workers = rows.map(r => {
       const taskFilePattern = `task-${r.id}-${r.assigned_to.replace(/[^a-zA-Z0-9._-]+/g, '-')}.jsonl`;
-      let logPath = null;
+      let logPath = r.log_path || null;
       try {
         const runDirs = readdirSync(logRoot)
           .filter(d => d.startsWith(`board-${projectId}-`))
@@ -4337,8 +4367,8 @@ function handleWorkersActive(req, res, url) {
       // kill -9) and the task is stranded in in_progress/review_in_progress.
       // Frontend shows this as instant red (no pulse) — clearer signal than
       // waiting for the age-based yellow→red gradient to reach 60s.
-      const STALE_AFTER_MS = 30 * 1000;
-      const is_stale = log_mtime_ms != null && (Date.now() - log_mtime_ms) > STALE_AFTER_MS;
+      const QUIET_AFTER_MS = 30 * 1000;
+      const is_quiet = log_mtime_ms != null && (Date.now() - log_mtime_ms) > QUIET_AFTER_MS;
 
       // Token speed: scan the last ~32KB of JSONL for thinking_tokens events
       // (stream-json emits them per-token with estimated_tokens_delta). Count
@@ -4346,7 +4376,7 @@ function handleWorkersActive(req, res, url) {
       // This is a live throughput indicator — how fast the model is producing.
       let tokens_per_sec = null;
       let total_tokens = null;
-      if (logPath && !is_stale) {
+      if (logPath) {
         try {
           const fs2 = require('node:fs');
           const st2 = fs2.statSync(logPath);
@@ -4399,10 +4429,14 @@ function handleWorkersActive(req, res, url) {
         status: r.status,
         task_kind: r.task_kind,
         worker_id: r.assigned_to,
+        execution_id: r.execution_id,
+        pid: r.pid,
+        process_phase: r.phase,
         epic_name: r.epic_name,
         started_at: startedIso,
         log_mtime_ms,
-        is_stale,
+        is_stale: false,
+        is_quiet,
         tokens_per_sec,
         total_tokens,
         log_path: logPath,

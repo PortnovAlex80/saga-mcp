@@ -20,7 +20,19 @@
  */
 
 import { spawn as nodeSpawn } from 'node:child_process';
-import { existsSync, appendFileSync, readFileSync, writeFileSync, unlinkSync } from 'node:fs';
+import {
+  existsSync,
+  appendFileSync,
+  readFileSync,
+  writeFileSync,
+  unlinkSync,
+  mkdirSync,
+  statSync,
+  readdirSync,
+  openSync,
+  readSync,
+  closeSync,
+} from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -32,6 +44,7 @@ import { handlers as dispatcherHandlers } from './tools/dispatcher.js';
 import { reevaluateDownstream } from './tools/tasks.js';
 import { handlers as projectHandlers } from './tools/projects.js';
 import { logActivity } from './helpers/activity-logger.js';
+import { reconcileWorkerExecutions } from './worker-executions.js';
 
 /**
  * Episode stage → next stage (mirror of lifecycle.ts NEXT, kept local to avoid
@@ -55,25 +68,8 @@ const MAX_EMPTY_CYCLES = 3;
 /** Wait between pump cycles when workers are still active. */
 const PUMP_TICK_MS = 5_000;
 
-/**
- * Zombie worker detection: a worker is considered stalled when its JSONL log
- * (claude-runner stream-json output) has not grown for ZOMBIE_STALL_TICKS
- * consecutive pump cycles. The check is cheap (one statSync per active task).
- * On threshold reached: kill the worker PID (saved in task.metadata.worker_pid
- * by claude-runner.mjs on spawn) and release the task back to the queue so a
- * fresh worker can pick it up.
- *
- * Why log-size and not activity_log polling: stream-json writes to disk on
- * every assistant token / tool_use / tool_result / system event. A worker
- * that is genuinely working ALWAYS produces output within 30-90s (network
- * retries emit system/api_retry events even when the model is silent). No
- * output = stuck (deadlocked, network drop, OOM-caused crash without close
- * event firing, etc.).
- */
-const ZOMBIE_STALL_TICKS = 6;        // 6 × PUMP_TICK_MS(5s) = 30s of zero growth
-const ZOMBIE_CHECK_TICKS = 6;        // run the scan every 6 cycles (30s), not every 5s
-/** cycle counter → per-task stalled-counter and last seen log signature */
-const zombieWatch = new Map<number, { signature: string; stalled: number; lastKilledAt?: number }>();
+/** Reconcile durable worker executions every 6 cycles (30s). */
+const ZOMBIE_CHECK_TICKS = 6;
 let zombieCheckCounter = 0;
 
 /**
@@ -353,18 +349,45 @@ function countActiveTasks(epicId: number): {
   const db = getDb();
   const stage = currentStage(epicId);
   if (!stage) return { claimable: 0, inFlight: 0, doneInCurrentStage: 0 };
-  const rows = db.prepare(
-    `SELECT status, count(*) AS n FROM tasks
-     WHERE epic_id=? AND workflow_stage=?
-     GROUP BY status`,
-  ).all(epicId, stage) as Array<{ status: string; n: number }>;
-  let claimable = 0, inFlight = 0, done = 0;
-  for (const r of rows) {
-    if (r.status === 'todo' || r.status === 'review') claimable += r.n;
-    else if (r.status === 'in_progress' || r.status === 'review_in_progress') inFlight += r.n;
-    else if (r.status === 'done') done += r.n;
-  }
-  return { claimable, inFlight, doneInCurrentStage: done };
+  const row = db.prepare(
+    `SELECT
+       SUM(CASE WHEN t.status IN ('todo','review')
+                     AND (t.assigned_to IS NULL OR t.assigned_to='')
+                     AND t.current_execution_id IS NULL
+                     AND t.priority IN ('critical','high','medium')
+                     AND NOT EXISTS (
+                       SELECT 1 FROM worker_executions we
+                       WHERE we.task_id=t.id AND we.state IN ('reserved','running','cancel_requested')
+                     )
+                     AND NOT EXISTS (
+                       SELECT 1 FROM task_dependencies d
+                       JOIN tasks dep ON dep.id=d.depends_on_task_id
+                       WHERE d.task_id=t.id AND (
+                         dep.status!='done' OR (
+                           dep.task_kind IS NOT NULL AND dep.execution_mode='git_change'
+                           AND dep.integration_state!='merged'
+                         )
+                       )
+                     )
+                THEN 1 ELSE 0 END) AS claimable,
+       SUM(CASE WHEN t.status IN ('in_progress','review_in_progress')
+                      OR (t.status='review' AND t.assigned_to IS NOT NULL AND t.assigned_to!='')
+                      OR EXISTS (
+                        SELECT 1 FROM worker_executions live
+                         WHERE live.task_id=t.id
+                           AND live.state IN ('reserved','running','cancel_requested')
+                      )
+                THEN 1 ELSE 0 END) AS in_flight,
+       SUM(CASE WHEN t.status='done' THEN 1 ELSE 0 END) AS done_count
+     FROM tasks t WHERE t.epic_id=? AND t.workflow_stage=?`,
+  ).get(epicId, stage) as {
+    claimable: number | null; in_flight: number | null; done_count: number | null;
+  };
+  return {
+    claimable: row.claimable ?? 0,
+    inFlight: row.in_flight ?? 0,
+    doneInCurrentStage: row.done_count ?? 0,
+  };
 }
 
 /**
@@ -640,9 +663,9 @@ function resolveWorkerLogPath(taskId: number, workerId: string, projectId: numbe
   const safeWorker = workerId.replace(/[^a-zA-Z0-9._-]+/g, '-');
   const fileName = `task-${taskId}-${safeWorker}.jsonl`;
   try {
-    const dir = require('node:fs').readdirSync(logRoot)
+    const dir = readdirSync(logRoot)
       .filter((d: string) => d.startsWith(`board-${projectId}-`))
-      .map((d: string) => ({ d, full: path.join(logRoot, d), mtime: require('node:fs').statSync(path.join(logRoot, d)).mtimeMs }))
+      .map((d: string) => ({ d, full: path.join(logRoot, d), mtime: statSync(path.join(logRoot, d)).mtimeMs }))
       .sort((a: { mtime: number }, b: { mtime: number }) => b.mtime - a.mtime);
     for (const r of dir) {
       const candidate = path.join(r.full, fileName);
@@ -653,97 +676,26 @@ function resolveWorkerLogPath(taskId: number, workerId: string, projectId: numbe
 }
 
 /**
- * Kill a zombie worker subprocess by PID, then release its task back to the
- * queue so a fresh worker can pick it up.
- *
- * PID source: task.metadata.worker_pid (written by claude-runner.mjs on spawn).
- * Task release: flip status back to 'todo' (for in_progress) or 'review' (for
- * review_in_progress), clear assigned_to. NOT 'done' — the task is NOT
- * finished, we are abandoning the worker that was stuck on it.
- */
-function killZombieWorker(taskId: number, reason: string, opts: OrchestrateOptions): void {
-  const db = getDb();
-  const task = db.prepare(
-    `SELECT id, status, assigned_to, metadata FROM tasks WHERE id=?`,
-  ).get(taskId) as { id: number; status: string; assigned_to: string; metadata: string } | undefined;
-  if (!task || !task.assigned_to) return;
-
-  // Kill the worker subprocess by PID.
-  let pid: number | null = null;
-  try {
-    const meta = JSON.parse(task.metadata || '{}');
-    pid = meta.worker_pid ?? null;
-  } catch { /* malformed metadata */ }
-  if (pid) {
-    try {
-      require('node:child_process').spawnSync('taskkill', ['/F', '/T', '/PID', String(pid)], { encoding: 'utf8' });
-    } catch { /* process already gone */ }
-  }
-
-  // Release the task: in_progress → todo, review_in_progress → review.
-  const restoredStatus = task.status === 'review_in_progress' ? 'review' : 'todo';
-  db.prepare(
-    `UPDATE tasks SET status=?, assigned_to=NULL, updated_at=datetime('now') WHERE id=?`,
-  ).run(restoredStatus, taskId);
-  logActivity(db, 'task', taskId, 'status_changed', 'status', task.status, restoredStatus,
-    `Zombie worker recovery: ${reason}. Worker PID ${pid ?? '?'} killed, task released back to queue.`);
-  engineHeartbeat(opts, 'ZOMBIE_KILLED', `task #${taskId} (pid ${pid ?? '?'}) — ${reason.slice(0, 120)}`);
-}
-
-/**
- * Scan active tasks for stalled workers. Called every ZOMBIE_CHECK_TICKS pump
- * cycles (~30s). For each in_progress/review_in_progress task with an
- * assigned_to worker, find its JSONL log and check whether (size, mtime)
- * has changed since last scan. If signature identical for ZOMBIE_STALL_TICKS
- * consecutive scans → kill the worker + release the task.
- *
- * Returns count of zombies killed this scan.
+ * Reconcile process truth independently from task status. Log output is not a
+ * liveness signal; only dead local PIDs or invalid fenced phases are revoked.
  */
 function detectAndKillZombies(epicId: number, projectId: number, opts: OrchestrateOptions): number {
-  const db = getDb();
-  const tasks = db.prepare(
-    `SELECT id, assigned_to, status, updated_at FROM tasks
-     WHERE epic_id=? AND status IN ('in_progress','review_in_progress')
-       AND assigned_to IS NOT NULL`,
-  ).all(epicId) as Array<{ id: number; assigned_to: string; status: string; updated_at: string }>;
-
-  let killed = 0;
-  for (const t of tasks) {
-    const logPath = resolveWorkerLogPath(t.id, t.assigned_to, projectId);
-    if (!logPath) {
-      // No log file at all — either just spawned (skip this round) or truly
-      // missing. Treat missing-after-first-seen as zombie after threshold.
-    }
-    let signature = 'nopath';
-    if (logPath && existsSync(logPath)) {
-      try {
-        const st = require('node:fs').statSync(logPath);
-        signature = `${st.size}:${st.mtimeMs}`;
-      } catch { /* stat failed */ }
-    }
-    const prev = zombieWatch.get(t.id);
-    if (!prev) {
-      zombieWatch.set(t.id, { signature, stalled: 0 });
-      continue;
-    }
-    if (prev.signature === signature) {
-      const stalled = prev.stalled + 1;
-      zombieWatch.set(t.id, { signature, stalled });
-      if (stalled >= ZOMBIE_STALL_TICKS) {
-        killZombieWorker(t.id, `log unchanged for ${stalled} scans (~${stalled * ZOMBIE_CHECK_TICKS * PUMP_TICK_MS / 1000}s)`, opts);
-        zombieWatch.delete(t.id);
-        killed += 1;
-      }
-    } else {
-      zombieWatch.set(t.id, { signature, stalled: 0 });
-    }
+  // Log silence is progress telemetry, not liveness. Verification workers may
+  // legitimately spend several minutes in cargo/vitest or contract reading.
+  // The durable execution reconciler revokes only a dead host-local PID or a
+  // fenced execution that no longer owns an allowed lifecycle phase.
+  const reconciled = reconcileWorkerExecutions(getDb(), projectId, epicId);
+  const recovered = reconciled.filter(result =>
+    result.action === 'lost' || result.action === 'terminated',
+  );
+  for (const result of recovered) {
+    engineHeartbeat(
+      opts,
+      result.action === 'lost' ? 'WORKER_LOST' : 'WORKER_TERMINATED',
+      `task #${result.taskId} execution=${result.executionId} released=${result.released} ${result.reason}`,
+    );
   }
-  // Clean up watch entries for tasks that are no longer active.
-  const activeIds = new Set(tasks.map(t => t.id));
-  for (const id of [...zombieWatch.keys()]) {
-    if (!activeIds.has(id)) zombieWatch.delete(id);
-  }
-  return killed;
+  return recovered.length;
 }
 
 /**
@@ -784,12 +736,12 @@ function detectRateLimits(epicId: number, projectId: number, opts: OrchestrateOp
     const logPath = resolveWorkerLogPath(t.id, t.assigned_to, projectId);
     if (!logPath || !existsSync(logPath)) continue;
     try {
-      const st = require('node:fs').statSync(logPath);
+      const st = statSync(logPath);
       const tailBytes = Math.min(st.size, RATE_LIMIT_LOG_TAIL_BYTES);
-      const fd = require('node:fs').openSync(logPath, 'r');
+      const fd = openSync(logPath, 'r');
       const buf = Buffer.alloc(tailBytes);
-      require('node:fs').readSync(fd, buf, 0, tailBytes, Math.max(0, st.size - tailBytes));
-      require('node:fs').closeSync(fd);
+      readSync(fd, buf, 0, tailBytes, Math.max(0, st.size - tailBytes));
+      closeSync(fd);
       const tail = buf.toString('utf8');
       if (RATE_LIMIT_PATTERN.test(tail)) {
         rateLimited += 1;
@@ -881,8 +833,20 @@ export async function orchestrate(opts: OrchestrateOptions): Promise<Orchestrate
       }
     }
     // Claim the lock with our PID.
-    writeFileSync(lockFile, String(process.pid), 'utf8');
+    mkdirSync(path.dirname(lockFile), { recursive: true });
+    writeFileSync(lockFile, String(process.pid), { encoding: 'utf8', flag: 'wx' });
   } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === 'EEXIST') {
+      const winnerPid = parseInt(readFileSync(lockFile, 'utf8').trim(), 10);
+      engineHeartbeat(opts, 'DUPLICATE_EXIT',
+        `engine PID ${winnerPid || '?'} won atomic lock for project=${projectId} epic=${epicId}`);
+      return {
+        projectId, epicId, finalStage: currentStage(epicId) ?? 'unknown',
+        endedAt: new Date(now()).toISOString(),
+        reason: 'failed', cycles: 0,
+        lastError: `duplicate engine — PID ${winnerPid || '?'} owns atomic lock`,
+      };
+    }
     engineHeartbeat(opts, 'LOCK_WARN', `PID-lock failed: ${e instanceof Error ? e.message : String(e)}`);
   }
 
@@ -904,7 +868,10 @@ export async function orchestrate(opts: OrchestrateOptions): Promise<Orchestrate
     // dispatcherHandlers.worker_next returns `unknown` (ToolHandler signature);
     // claude-runner.mjs consumes assignment.task / assignment.skill but does
     // not type-check them at runtime. Cast through unknown to satisfy tsc.
-    claimTask: (args: { worker_id: string; project_id: number; machine_id?: string }) =>
+    claimTask: (args: {
+      worker_id: string; project_id: number; machine_id?: string; epic_id?: number;
+      execution_id?: string; run_id?: string;
+    }) =>
       dispatcherHandlers.worker_next(args) as ReturnType<typeof dispatcherHandlers.worker_next> as never,
     getProject: (id: number) => getDb().prepare('SELECT * FROM projects WHERE id=?').get(id),
     getTaskState: (taskId: number) => {
@@ -913,22 +880,30 @@ export async function orchestrate(opts: OrchestrateOptions): Promise<Orchestrate
       ).get(taskId);
       return row as { id: number; status: string; assigned_to: string | null; tags: string; integration_state: string | null } | undefined;
     },
-    recoverAssignment: ({ taskId, workerId, originalStatus }: {
+    recoverAssignment: ({ taskId, workerId, originalStatus, executionId }: {
       taskId: number; workerId: string; originalStatus: string; reason: string;
+      executionId?: string | null;
     }) => {
       const db = getDb();
       const task = db.prepare(
-        'SELECT id, title, status, assigned_to, tags FROM tasks WHERE id=?',
-      ).get(taskId) as { id: number; title: string; status: string; assigned_to: string; tags: string } | undefined;
+        `SELECT id, title, status, assigned_to, tags, current_execution_id
+         FROM tasks WHERE id=?`,
+      ).get(taskId) as {
+        id: number; title: string; status: string; assigned_to: string;
+        tags: string; current_execution_id: string | null;
+      } | undefined;
       if (!task || task.assigned_to !== workerId) return false;
       let tags: string[] = [];
       try { tags = JSON.parse(task.tags || '[]'); } catch { tags = []; }
       if (tags.includes('needs-human')) return false;
-      const restoredStatus = originalStatus === 'review' ? 'review' : 'todo';
+      const restoredStatus =
+        originalStatus === 'review' && task.status !== 'in_progress' ? 'review' : 'todo';
       const info = db.prepare(
-        `UPDATE tasks SET status=?, assigned_to=NULL, updated_at=datetime('now')
-         WHERE id=? AND assigned_to=?`,
-      ).run(restoredStatus, taskId, workerId);
+        `UPDATE tasks
+         SET status=?, assigned_to=NULL, current_execution_id=NULL, updated_at=datetime('now')
+         WHERE id=? AND assigned_to=?
+           AND (current_execution_id IS NULL OR current_execution_id=?)`,
+      ).run(restoredStatus, taskId, workerId, executionId ?? null);
       return info.changes === 1;
     },
     resolveWorkspace: () => workspaceRoot,
@@ -982,7 +957,7 @@ export async function orchestrate(opts: OrchestrateOptions): Promise<Orchestrate
         // Idempotent start: if a run is already active for this project,
         // start() throws — we treat that as "workers are already pumping".
         try {
-          runner.start({ projectId, concurrency: effectiveConcurrency });
+          runner.start({ projectId, epicId, concurrency: effectiveConcurrency });
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
           if (!/already has an active board run/.test(msg)) throw err;
@@ -1007,10 +982,7 @@ export async function orchestrate(opts: OrchestrateOptions): Promise<Orchestrate
       ).all(epicId) as Array<{ id: number }>;
       for (const d of doneTasks) reevaluateDownstream(getDb(), d.id);
 
-      // Zombie worker detection: every ZOMBIE_CHECK_TICKS cycles (~30s),
-      // scan active tasks for stalled workers. If a worker's JSONL log
-      // hasn't grown for ZOMBIE_STALL_TICKS scans → kill the worker + release
-      // its task back to the queue. Cheap and self-healing.
+      // Reconcile durable process state every ~30s. Quiet logs are ignored.
       zombieCheckCounter += 1;
       if (zombieCheckCounter >= ZOMBIE_CHECK_TICKS) {
         zombieCheckCounter = 0;
@@ -1165,7 +1137,8 @@ export async function orchestrate(opts: OrchestrateOptions): Promise<Orchestrate
     // Release PID-lock so the next engine can start.
     try {
       if (typeof lockFile !== 'undefined' && existsSync(lockFile)) {
-        require('node:fs').unlinkSync(lockFile);
+        const ownerPid = parseInt(readFileSync(lockFile, 'utf8').trim(), 10);
+        if (ownerPid === process.pid) unlinkSync(lockFile);
       }
     } catch { /* stale lock, ignore */ }
     engineHeartbeat(opts, 'ENGINE_EXIT', `cycles=${cycles} lastError=${lastError ?? 'null'}`);

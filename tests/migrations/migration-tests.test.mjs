@@ -15,8 +15,6 @@
 // ISOLATION: the migrations run as a chain inside getDb()
 //   migrateArtifactTypes → migrateTracesLinkType → migrateVerificationOutcome
 //     → migrateRiskClass → migrateReviewInProgress
-// and migrateReviewInProgress hard-codes its rebuild DDL (it does NOT include
-// the REQ-009 risk columns) and does not disable FKs during DROP TABLE tasks.
 // To test ONE migration's contract cleanly, each seed puts the OTHER tables in
 // their ALREADY-MIGRATED shape so the rest of the chain short-circuits:
 //   - Test 1 (verification_evidence): tasks already have the new status CHECK
@@ -31,8 +29,7 @@
 //     adds + backfills.
 //   - Test 3 (review_in_progress): tasks have the OLD status CHECK but already
 //     carry the risk columns. migrateRiskClass skips; migrateReviewInProgress
-//     rebuilds. (Its rebuild DDL omits risk columns — see KNOWN-LIMITATION
-//     below; Test 3 does not assert on them.)
+//     rebuilds and preserves them.
 //
 // Covers:
 //   Test 1 — migrateVerificationOutcome (REQ-008): old CHECK lacks 'unknown'/
@@ -386,17 +383,6 @@ test('migrateRiskClass adds risk columns and backfills declared_risk from priori
 // ----------------------------------------------------------------------------
 // Test 3 — migrateReviewInProgress on old-schema DB
 // ----------------------------------------------------------------------------
-// KNOWN-LIMITATION: migrateReviewInProgress's rebuild DDL (db.ts lines 102-135)
-// is hard-coded and does NOT include the REQ-009 risk columns
-// (declared_risk/derived_risk/policy_minimum/final_risk). On a DB where
-// migrateRiskClass has already run, a subsequent migrateReviewInProgress rebuild
-// would DROP those columns. This is masked in production because on a fresh DB
-// the table is created by SCHEMA_SQL (modern, with risk columns) and
-// migrateReviewInProgress's `row.sql.includes('review_in_progress')` check
-// short-circuits. We isolate this test by seeding tasks WITH risk columns but
-// OLD status CHECK, then assert ONLY the status/CHECK contract. The risk-column
-// interaction between the two migrations is out of scope for this test and
-// noted here for whoever hardens the migration chain next.
 test('migrateReviewInProgress rebuilds tasks with widened status CHECK and flips review+assigned rows', () => {
   const dbPath = path.join(temp, 'review-old.db');
   const seed = new Database(dbPath);
@@ -413,6 +399,12 @@ test('migrateReviewInProgress rebuilds tasks with widened status CHECK and flips
   addTask.run('review-empty-reviewer', 'review', '');
   // Row 4: in_progress → untouched.
   addTask.run('in-progress-task', 'in_progress', 'worker-9');
+  seed.prepare(
+    `UPDATE tasks
+        SET declared_risk='high', derived_risk='medium',
+            policy_minimum='low', final_risk='high'
+      WHERE title='review-with-reviewer'`,
+  ).run();
   seed.close();
 
   closeDb();
@@ -438,6 +430,16 @@ test('migrateReviewInProgress rebuilds tasks with widened status CHECK and flips
     'non-review rows must be untouched');
   // assigned_to preserved through the rebuild.
   assert.equal(byTitle['review-with-reviewer'].assigned_to, 'reviewer-1');
+  const risk = db.prepare(
+    `SELECT declared_risk,derived_risk,policy_minimum,final_risk
+       FROM tasks WHERE title='review-with-reviewer'`,
+  ).get();
+  assert.deepEqual(risk, {
+    declared_risk: 'high',
+    derived_risk: 'medium',
+    policy_minimum: 'low',
+    final_risk: 'high',
+  }, 'risk columns must survive the status-table rebuild');
 
   // The new value must be insertable post-migration.
   db.prepare("INSERT INTO tasks (epic_id, title, status) VALUES (1, 'new-rip', 'review_in_progress')").run();

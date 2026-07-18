@@ -388,7 +388,9 @@ function handleTraceAdd(args: Record<string, unknown>): ArtifactTrace {
   }
 
   // source must exist
-  const src = db.prepare('SELECT 1 FROM artifacts WHERE id=?').get(sourceId);
+  const src = db.prepare('SELECT id,epic_id,type,status FROM artifacts WHERE id=?').get(sourceId) as
+    | { id: number; epic_id: number; type: string; status: string }
+    | undefined;
   if (!src) throw new Error(`source artifact ${sourceId} not found`);
 
   // target must exist
@@ -396,8 +398,42 @@ function handleTraceAdd(args: Record<string, unknown>): ArtifactTrace {
     const t = db.prepare('SELECT 1 FROM artifacts WHERE id=?').get(targetId);
     if (!t) throw new Error(`target artifact ${targetId} not found`);
   } else {
-    const t = db.prepare('SELECT 1 FROM tasks WHERE id=?').get(targetId);
+    const t = db.prepare(
+      'SELECT id,epic_id,task_kind,verification_target_artifact_id FROM tasks WHERE id=?',
+    ).get(targetId) as
+      | {
+          id: number;
+          epic_id: number;
+          task_kind: string | null;
+          verification_target_artifact_id: number | null;
+        }
+      | undefined;
     if (!t) throw new Error(`target task ${targetId} not found`);
+    if (t.task_kind === 'verification.ac' && (linkType === 'depends_on' || linkType === 'verified_by')) {
+      if (src.type !== 'AC' || src.status !== 'accepted') {
+        throw new Error(`${linkType} on verification.ac must originate from an accepted AC`);
+      }
+      if (src.epic_id !== t.epic_id) {
+        throw new Error(`${linkType} on verification.ac must use an AC from the same episode`);
+      }
+      if (t.verification_target_artifact_id !== null && t.verification_target_artifact_id !== sourceId) {
+        throw new Error(
+          `Verification task ${targetId} targets AC ${t.verification_target_artifact_id}; ` +
+          `cannot attach AC ${sourceId}`,
+        );
+      }
+      if (linkType === 'verified_by' && t.verification_target_artifact_id === null) {
+        throw new Error(
+          `Verification task ${targetId} has no canonical AC; add its depends_on provenance first`,
+        );
+      }
+      if (t.verification_target_artifact_id === null && linkType === 'depends_on') {
+        db.prepare(
+          `UPDATE tasks SET verification_target_artifact_id=?, updated_at=datetime('now')
+           WHERE id=? AND verification_target_artifact_id IS NULL`,
+        ).run(sourceId, targetId);
+      }
+    }
   }
   if (linkType === 'verified_by') {
     if (targetType !== 'task') {

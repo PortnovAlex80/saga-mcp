@@ -189,6 +189,7 @@ export const definitions: Tool[] = [
         project_repository_id: { type: 'integer', description: 'Physical repository binding targeted by this task' },
         generated_from_task_id: { type: 'integer', description: 'Immediate upstream task that generated this task' },
         source_artifact_ids: { type: 'array', items: { type: 'integer' }, description: 'Accepted upstream artifacts proving provenance for typed downstream work' },
+        verification_target_artifact_id: { type: 'integer', description: 'Canonical accepted AC owned by a verification.ac task. Usually inferred from the single source_artifact_id.' },
         generation_key: { type: 'string', description: 'Stable idempotency key unique within the epic' },
       },
       required: ['epic_id', 'title'],
@@ -383,6 +384,7 @@ function handleTaskCreate(args: Record<string, unknown>) {
   const generatedFromTaskId = (args.generated_from_task_id as number | undefined) ?? null;
   const generationKey = (args.generation_key as string | undefined) ?? null;
   const sourceArtifactIds = (args.source_artifact_ids as number[] | undefined) ?? [];
+  const explicitVerificationTarget = (args.verification_target_artifact_id as number | undefined) ?? null;
 
   // REQ-009 / CGAD §11 — RiskClass. declared_risk defaults to legacy `priority`
   // for backward compatibility. derived_risk and policy_minimum can be passed
@@ -445,6 +447,32 @@ function handleTaskCreate(args: Record<string, unknown>) {
       throw new Error(`Typed ${workflowStage} task provenance must reference accepted AC artifacts`);
     }
   }
+  let verificationTargetArtifactId: number | null = null;
+  if (taskKind === 'verification.ac') {
+    const candidates = [...new Set([
+      ...sourceArtifactIds,
+      ...(explicitVerificationTarget === null ? [] : [explicitVerificationTarget]),
+    ])];
+    if (candidates.length !== 1) {
+      throw new Error(
+        'verification.ac requires exactly one canonical AC via source_artifact_ids ' +
+        'or verification_target_artifact_id',
+      );
+    }
+    verificationTargetArtifactId = candidates[0]!;
+    const target = db.prepare(
+      `SELECT epic_id,type,status FROM artifacts WHERE id=?`,
+    ).get(verificationTargetArtifactId) as
+      | { epic_id: number; type: string; status: string }
+      | undefined;
+    if (!target || target.epic_id !== epicId || target.type !== 'AC' || target.status !== 'accepted') {
+      throw new Error(
+        `verification_target_artifact_id ${verificationTargetArtifactId} must be an accepted AC in epic ${epicId}`,
+      );
+    }
+  } else if (explicitVerificationTarget !== null) {
+    throw new Error('verification_target_artifact_id is only valid for verification.ac tasks');
+  }
   if (provenanceRequired && sourceArtifactIds.length === 0 && generatedFromTaskId != null) {
     const source = db.prepare(
       `SELECT workflow_stage,status,execution_mode,integration_state
@@ -471,14 +499,15 @@ function handleTaskCreate(args: Record<string, unknown>) {
         (epic_id,title,description,status,priority,assigned_to,estimated_hours,due_date,source_ref,
          task_kind,workflow_stage,execution_skill,review_skill,execution_mode,
          project_repository_id,generated_from_task_id,generation_key,tags,metadata,
-         declared_risk,derived_risk,policy_minimum,final_risk)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING *`
+         declared_risk,derived_risk,policy_minimum,final_risk,verification_target_artifact_id)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING *`
     )
     .get(
       epicId, title, description, status, priority, assignedTo, estimatedHours, dueDate, sourceRef,
       taskKind, workflowStage, executionSkill, reviewSkill, executionMode,
       projectRepositoryId, generatedFromTaskId, generationKey, tags, metadata,
       declaredRisk, derivedRisk, policyMinimum, finalRisk,
+      verificationTargetArtifactId,
     );
 
   const row = task as Record<string, unknown>;
@@ -691,6 +720,16 @@ function handleTaskUpdate(args: Record<string, unknown>) {
   // 1) Нормализуем '' → NULL (saga-API принимает пустую строку как "снять исполнителя").
   if (args.assigned_to !== undefined && args.assigned_to === '') {
     args.assigned_to = null;
+  }
+  if (
+    args.assigned_to !== undefined
+    && oldRow.current_execution_id
+    && process.env.SAGA_ALLOW_MANUAL_STATUS !== '1'
+  ) {
+    throw new Error(
+      `Task ${id} is fenced by execution ${oldRow.current_execution_id}; ` +
+      'assigned_to may only change through dispatcher lifecycle tools',
+    );
   }
   // 2) Если статус меняется на todo|done|blocked — форсим assigned_to=NULL, даже если
   //    вызывающий не передавал assigned_to явно (как saga форсит actual_hours при done).
