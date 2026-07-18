@@ -780,6 +780,10 @@ function renderBoard(projectId, allProjects) {
         list.innerHTML = '<div class="worker-empty">нет активных воркеров</div>';
         return;
       }
+      // Remove the empty placeholder if present (initial server-rendered HTML
+      // and the 0-workers branch above both leave .worker-empty in DOM;
+      // adding rows on top without removing it shows both at once).
+      list.querySelectorAll('.worker-empty').forEach(el => el.remove());
       // Preserve expansion + tail content across re-render by reusing DOM nodes.
       const existing = new Map();
       list.querySelectorAll('.worker-row').forEach(el => existing.set(el.dataset.worker, el));
@@ -1026,10 +1030,13 @@ function renderArtifacts(projectId, allProjects) {
     .map(t => `<span class="tchip" style="border-color:${TYPE_COLORS[t]};color:${TYPE_COLORS[t]}">${TYPE_LABEL[t]||t}: ${byType[t]}</span>`)
     .join('');
 
-  // Сироты: нет родителя И нет исходящих трасс И не являются чьим-то родителем.
+  // Сироты: нет родителя И нет исходящих трасс И не являются чьим-то родителем
+  // И не являются target ни одной trace (например BRIEF — корень discovery,
+  // не имеет parent_artifact_id, но PRD→BRIEF derived_from связывает его).
   const parentIds = new Set(artifacts.filter(a => a.parent_artifact_id != null).map(a => a.parent_artifact_id));
   const isParent = new Set(parentIds);
-  const orphans = artifacts.filter(a => a.parent_artifact_id == null && !isParent.has(a.id) && !tracesBySource[a.id]);
+  const tracesByTarget = new Set(traces.filter(t => t.target_type === 'artifact').map(t => t.target_id));
+  const orphans = artifacts.filter(a => a.parent_artifact_id == null && !isParent.has(a.id) && !tracesBySource[a.id] && !tracesByTarget.has(a.id));
   const treeArts = artifacts.filter(a => !orphans.includes(a));
 
   // Группировка дерева по эпикам (REQ-NNN episode). Корни — без parent_artifact_id.
@@ -3033,7 +3040,7 @@ function handleEpisodePipeline(req, res, url) {
   if (!epicId) return respondJson(res, 400, { ok:false, error:'epic_id required' });
   try {
     const STAGES = ['discovery','formalization','planning','development','verification','integration','completed'];
-    const ew = withDb(db => db.prepare('SELECT stage, metadata FROM episode_workflows WHERE epic_id=?').get(epicId));
+    const ew = withDb(db => db.prepare('SELECT stage, metadata, created_at FROM episode_workflows WHERE epic_id=?').get(epicId));
     if (!ew) return respondJson(res, 404, { ok:false, error:'episode not found' });
 
     // Find all stage transitions from activity_log, oldest first.
@@ -3050,16 +3057,26 @@ function handleEpisodePipeline(req, res, url) {
     const currentIdx = STAGES.indexOf(ew.stage);
     const stages = STAGES.map((name, i) => {
       // Entry transition: first time activity_log shows new_value=<name>.
-      const enter = transitions.find(t => t.new_value === name);
+      // For the initial stage (no enter record — episode_workflows was
+      // INSERT-OR-IGNORE'd at creation, no activity_log entry), fall back
+      // to episode_workflows.created_at as the enter timestamp.
+      const enter = transitions.find(t => t.new_value === name)
+        || (name === STAGES[0] ? { created_at: ew.created_at } : null);
       // Exit transition: first time activity_log shows old_value=<name>.
       const exit = transitions.find(t => t.old_value === name);
+      // For the current stage with no exit yet, duration is "running" — show
+      // time elapsed since enter so the user sees live progress.
       let status = 'pending';
       if (i < currentIdx) status = 'completed';
       else if (i === currentIdx) status = needsHuman ? 'needs_human' : 'in_progress';
       // cancelled stage is mutually exclusive; treat as terminal-pending unless stage===cancelled
-      const duration_s = enter && exit
-        ? Math.round((new Date(exit.created_at + 'Z') - new Date(enter.created_at + 'Z')) / 1000)
-        : null;
+      let duration_s = null;
+      if (enter && exit) {
+        duration_s = Math.round((new Date(exit.created_at + 'Z') - new Date(enter.created_at + 'Z')) / 1000);
+      } else if (enter && i === currentIdx) {
+        // Live duration for current stage (time since enter until now).
+        duration_s = Math.round((Date.now() - new Date(enter.created_at + 'Z').getTime()) / 1000);
+      }
       return {
         name,
         status,

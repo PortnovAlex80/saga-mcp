@@ -54,6 +54,161 @@ const MAX_EMPTY_CYCLES = 3;
 /** Wait between pump cycles when workers are still active. */
 const PUMP_TICK_MS = 5_000;
 
+/**
+ * RECOVERY TREE — lookup table for self-healing on gate failures.
+ *
+ * When episode_transition fails (hard gate throws), the engine consults this
+ * tree keyed by current stage. Each rule has:
+ *   - match: RegExp tested against the gate error message
+ *   - diagnosis: one-line root cause (for activity_log + UI)
+ *   - action_prompt: full instructions for the recovery worker (inline prompt,
+ *     no separate skill file — saga MCP tools are the surface)
+ *   - max_retries: how many times engine may auto-heal this exact (stage, rule)
+ *     before escalating to human. 0 = never auto-heal (semantic failures).
+ *
+ * The tree is the entire recovery logic. To add coverage for a new failure
+ * mode → push a rule. No code restructuring needed.
+ *
+ * Worker spawned by attemptHeal() is a regular claude-runner worker with an
+ * inline prompt (same MCP config, --disallowedTools worker_next). When done,
+ * engine retries the gate; if it still fails, retry count increments; on
+ * max_retries → escalate to human via needs-human.
+ */
+interface RecoveryRule {
+  match: RegExp;
+  diagnosis: string;
+  action_prompt: string;
+  max_retries: number;
+}
+
+const RECOVERY_TREE: Record<string, RecoveryRule[]> = {
+  formalization: [
+    {
+      match: /episode has no AC artifacts/i,
+      diagnosis: 'saga-analyst never generated ACs after UC done. Workflow has no uc_accepted→ac generation transition; saga-analyst skill expects to write AC in a second task that never got created.',
+      action_prompt: [
+        'You are a saga recovery engineer. Episode is stuck in formalization because no AC (acceptance criteria) artifacts exist.',
+        '',
+        'ROOT CAUSE: saga-analyst wrote UCs but no ACs. The uc_accepted workflow transition does not generate a formalization.ac task.',
+        '',
+        'ACTIONS (use only mcp__saga__ tools; do NOT call worker_next):',
+        '1. Read the episode: epic_id=<EPIC_ID>. Call artifact_list({epic_id, type:"UC"}) and artifact_list({epic_id, type:"SRS"}) and artifact_list({epic_id, type:"FR"}).',
+        '2. Read each UC document at its path. Read the SRS for FR/NFR context.',
+        '3. For EACH UC, derive ≥1 acceptance criterion. For each AC:',
+        '   - artifact_create({project_id, epic_id, type:"AC", code:"AC-N", title:"<short>", path:"docs/.../03-acceptance-criteria.md#AC-N", status:"draft"})',
+        '   - trace_add({source_id: <AC id>, target_type:"artifact", target_id: <UC id>, link_type:"derived_from"})',
+        '   - trace_add({source_id: <AC id>, target_type:"artifact", target_id: <FR id it tests>, link_type:"depends_on"})',
+        '4. After all ACs written, write the AC document to disk at the .md path you declared. Each AC MUST have: Given/When/Then + a measurable property block (per saga AC template).',
+        '5. Accept upstream artifacts that are still in "draft" but have a real document on disk:',
+        '   - artifact_list for PRD, SRS, UC. For each with status="draft": refresh hash via artifact_save with the current file content, then artifact_update to status="accepted".',
+        '   - SKIP if the .md file does not exist or is empty — that is a real gap, escalate via worker_ask_need.',
+        '6. Accept each AC: artifact_update to status:"accepted". AC MUST have content_hash matching accepted_hash (refreshArtifactHash via artifact_save if needed).',
+        '7. Call worker_done({task_id, worker_id, result:"Recovery: created N AC artifacts, accepted PRD/SRS/UC/AC baseline"}).',
+        '',
+        'DO NOT touch PRD content. DO NOT change requirements — only formalize them as ACs.',
+        'DO NOT call episode_transition — the engine will retry the gate after you finish.',
+      ].join('\n'),
+      max_retries: 2,
+    },
+    {
+      match: /AC baseline is not accepted and clean/i,
+      diagnosis: 'ACs exist but not accepted, or drifted from disk.',
+      action_prompt: [
+        'You are a saga recovery engineer. AC baseline is not accepted/clean.',
+        '',
+        'ACTIONS:',
+        '1. artifact_list({epic_id:<EPIC_ID>, type:"AC"}) — list all ACs.',
+        '2. For each AC with status != "accepted": verify the .md file at its path exists and is non-empty. If yes → artifact_save to refresh content_hash, then artifact_update to status:"accepted".',
+        '3. For each AC with drift_state="drifted": artifact_save to rehash from disk. If hash now matches accepted_hash → drift clears. If not → escalate via worker_ask_need (someone is editing AC docs out-of-band).',
+        '4. worker_done with summary.',
+      ].join('\n'),
+      max_retries: 1,
+    },
+    {
+      match: /no PRD artifacts|no SRS artifacts|no UC artifacts/i,
+      diagnosis: 'Upstream formalization artifact missing — earlier worker crashed or skipped.',
+      action_prompt: [
+        'You are a saga recovery engineer. A formalization artifact is missing.',
+        '',
+        'Diagnose by querying artifact_list for type PRD, SRS, UC. Whichever is missing, recreate:',
+        '- Missing PRD: read brief, use saga-product procedure to write 00-PRD.md, register artifact with parent_artifact_id=<brief id>.',
+        '- Missing SRS: read PRD, use saga-architect procedure to write SRS.md, register with parent_artifact_id=<PRD id>.',
+        '- Missing UC: read PRD+SRS, use saga-analyst procedure to write UC.md, register with parent_artifact_id=<PRD id>.',
+        '',
+        'After creating missing artifact, also create any sibling artifacts the workflow would normally generate (e.g. creating UC also needs SRS to exist for reconciliation).',
+        'Call worker_done with summary listing what was created.',
+      ].join('\n'),
+      max_retries: 1,
+    },
+  ],
+  planning: [
+    {
+      match: /no planning tasks exist/i,
+      diagnosis: 'saga-planner never ran or crashed.',
+      action_prompt: [
+        'You are a saga recovery engineer. Planning decomposition task is missing.',
+        '',
+        'ACTIONS:',
+        '1. Verify AC baseline is accepted: artifact_list({epic_id:<EPIC_ID>, type:"AC"}). All must be status:"accepted" with content_hash.',
+        '2. If baseline not accepted → do NOT proceed; escalate via worker_ask_need.',
+        '3. If baseline OK → task_create({epic_id, title:"Decompose accepted baseline", task_kind:"planning.decomposition", workflow_stage:"planning", execution_skill:"saga-planner", execution_mode:"tracker_only", priority:"high"}).',
+        '4. worker_done summary.',
+      ].join('\n'),
+      max_retries: 1,
+    },
+  ],
+  development: [
+    {
+      match: /no development tasks exist/i,
+      diagnosis: 'saga-planner did not decompose into dev tasks.',
+      action_prompt: [
+        'You are a saga recovery engineer. No development tasks exist after planning.',
+        'This means saga-planner failed to decompose. Escalate: this requires re-running planning with possibly-fixable root cause.',
+        'Call worker_ask_need({reason:"planner did not generate dev tasks — needs human to inspect planning.decomposition task output"}) ',
+        'Then worker_done.',
+      ].join('\n'),
+      max_retries: 0, // planner failures usually semantic — do not auto-retry blindly
+    },
+  ],
+  verification: [
+    {
+      match: /no passing baseline evidence for ([AC-]+\d+(?:,\s*[AC-]+\d+)*)/i,
+      diagnosis: 'verifier missed some ACs — they have no passing evidence at baseline hash.',
+      action_prompt: [
+        'You are a saga recovery engineer. Some accepted ACs have no passing verification evidence at their baseline hash.',
+        '',
+        'ACTIONS:',
+        '1. Parse the error for the AC codes that lack evidence.',
+        '2. For each: artifact_get to find its id and accepted_hash.',
+        '3. task_create({epic_id, title:"Verify <AC code>", task_kind:"verification.ac", workflow_stage:"verification", execution_skill:"saga-verifier", execution_mode:"git_change", source_artifact_ids:[<AC id>], priority:"high"}) for each missing one.',
+        '4. trace_add({source_id: <AC id>, target_type:"task", target_id:<verify task id>, link_type:"depends_on"}) so the verifier knows what to verify.',
+        '5. worker_done summary.',
+        '',
+        'The engine will dispatch verifier workers; once they record passing evidence, the gate will pass on retry.',
+      ].join('\n'),
+      max_retries: 2,
+    },
+    // Verification gate also catches real test failures via outcome=failed, but those
+    // surface as "no passing evidence" too. Healer cannot fix a real failure — but it
+    // will try to re-spawn verifier once, and if it still fails, escalate.
+  ],
+  integration: [
+    {
+      match: /no integration tasks exist/i,
+      diagnosis: 'workflow did not generate integration task.',
+      action_prompt: [
+        'You are a saga recovery engineer. No integration task exists.',
+        'ACTIONS: task_create({epic_id, title:"Integrate verified baseline", task_kind:"integration.merge", workflow_stage:"integration", execution_skill:"saga-worker", execution_mode:"git_change", priority:"high"}). worker_done.',
+      ].join('\n'),
+      max_retries: 1,
+    },
+    // Merge conflicts at integration → always escalate (semantic).
+  ],
+};
+
+/** Track heal attempts per (epic, stage, diagnosis) to enforce max_retries. */
+const healRetries = new Map<string, number>();
+
 // ESM does not define __dirname; derive it once from import.meta.url.
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -207,6 +362,37 @@ function clearNeedsHuman(epicId: number): void {
   ).run(epicId);
 }
 
+/** Read select metadata fields for the recovery loop's bookkeeping. */
+function readEpisodeMeta(epicId: number): { lastHealError: string | null; lastHealAttempt: string | null } {
+  const row = getDb().prepare(
+    `SELECT json_extract(metadata, '$.lastHealError') AS e,
+            json_extract(metadata, '$.lastHealAttempt') AS a
+     FROM episode_workflows WHERE epic_id=?`,
+  ).get(epicId) as { e: string | null; a: string | null } | undefined;
+  return { lastHealError: row?.e ?? null, lastHealAttempt: row?.a ?? null };
+}
+
+/** Persist recovery bookkeeping fields into episode metadata (merge). */
+function writeEpisodeMeta(epicId: number, patch: Record<string, unknown>): void {
+  const db = getDb();
+  let sql = 'UPDATE episode_workflows SET metadata=json_set(COALESCE(metadata,\'{}\')';
+  const params: unknown[] = [];
+  for (const [k, v] of Object.entries(patch)) {
+    sql += `,'$.${k}',?`;
+    params.push(v);
+  }
+  sql += '), updated_at=datetime(\'now\') WHERE epic_id=?';
+  params.push(epicId);
+  db.prepare(sql).run(...params);
+}
+
+/** Wipe retry counters for one epic (used on human-resume or on new diagnosis). */
+function resetHealRetriesForEpic(epicId: number): void {
+  for (const key of [...healRetries.keys()]) {
+    if (key.startsWith(`${epicId}:`)) healRetries.delete(key);
+  }
+}
+
 async function waitForResume(
   epicId: number,
   opts: OrchestrateOptions,
@@ -252,6 +438,88 @@ function tryAdvanceStage(epicId: number): { advanced: boolean; error: string | n
   } catch (err) {
     return { advanced: false, error: err instanceof Error ? err.message : String(err) };
   }
+}
+
+/**
+ * Match the gate error against RECOVERY_TREE and spawn a recovery worker if
+ * a rule matches and retry budget allows. Returns applied:true if a healer
+ * task was created — the engine pump loop will pick it up via worker_next,
+ * the healer runs, calls worker_done, and on the next cycle the engine
+ * retries the gate (which now may pass).
+ *
+ * Returns escalate:true when:
+ *   - no rule matches the error (unknown failure mode), OR
+ *   - retry budget for this (stage, rule) is exhausted, OR
+ *   - RECOVERY_TREE has no entry for this stage.
+ *
+ * In those cases the caller pauses for human attention.
+ *
+ * The healer task is a regular task with task_kind:"recovery.heal" so the
+ * kanban / activity log can distinguish it from regular work. Its
+ * execution_skill is null — the prompt is fully inline (rendered from the
+ * RECOVERY_TREE rule). claude-runner's buildPrompt falls back to saga-worker
+ * skill when execution_skill is unset, which is fine: the inline prompt
+ * overrides the skill body in practice (worker reads task description).
+ *
+ * NOTE: buildPrompt expects a prompt POSITIONAL ARG, not from task.description.
+ * The runner builds the prompt from task payload. To pass our inline recovery
+ * prompt, we put it in task.description — and also extend buildPrompt via the
+ * runner? Simpler: write the prompt into task.metadata.recovery_prompt and
+ * extend the runner's prompt builder to prefer it. To avoid touching the
+ * runner, we instead create the task with execution_skill:"saga-worker" and
+ * put the full recovery prompt in task.description — saga-worker reads task
+ * description as part of its standard context. The prompt is loud enough to
+ * override the skill body.
+ */
+function attemptHeal(epicId: number, stage: string, gateError: string): {
+  applied: boolean;
+  escalate: boolean;
+  reason: string;
+  taskId: number | null;
+} {
+  const rules = RECOVERY_TREE[stage];
+  if (!rules || rules.length === 0) {
+    return { applied: false, escalate: true, reason: `no recovery rules for stage '${stage}'`, taskId: null };
+  }
+  const rule = rules.find(r => r.match.test(gateError));
+  if (!rule) {
+    return { applied: false, escalate: true, reason: `unmatched gate error for stage '${stage}': ${gateError.slice(0, 120)}`, taskId: null };
+  }
+  const healKey = `${epicId}:${stage}:${rule.diagnosis}`;
+  const retries = healRetries.get(healKey) ?? 0;
+  if (retries >= rule.max_retries) {
+    return { applied: false, escalate: true, reason: `max_retries (${rule.max_retries}) reached for: ${rule.diagnosis}`, taskId: null };
+  }
+  healRetries.set(healKey, retries + 1);
+
+  // Render prompt with epic_id substituted (other placeholders deliberately
+  // absent — the healer discovers project_id, artifact ids via saga MCP).
+  const prompt = rule.action_prompt.replace(/<EPIC_ID>/g, String(epicId));
+  const db = getDb();
+  const projectIdRow = db.prepare('SELECT project_id FROM epics WHERE id=?').get(epicId) as { project_id: number } | undefined;
+  if (!projectIdRow) {
+    return { applied: false, escalate: true, reason: `epic ${epicId} has no project`, taskId: null };
+  }
+  // Insert the recovery task. We put the full prompt in description because
+  // claude-runner's buildPrompt includes the task payload (description among
+  // it) in the worker prompt — the worker reads it and acts.
+  const info = db.prepare(
+    `INSERT INTO tasks
+       (epic_id, title, description, status, priority, task_kind, workflow_stage,
+        execution_skill, review_skill, execution_mode, tags, metadata)
+     VALUES (?, ?, ?, 'todo', 'critical', 'recovery.heal', ?,
+             'saga-worker', 'saga-reviewer', 'tracker_only', ?, '{}')`,
+  ).run(
+    epicId,
+    `Recovery: ${rule.diagnosis.slice(0, 80)}`,
+    `RECOVERY TASK (auto-spawned by engine).\n\nStage: ${stage}\nGate error: ${gateError}\nDiagnosis: ${rule.diagnosis}\n\n${prompt}`,
+    stage,
+    JSON.stringify([`stage:${stage}`, 'kind:recovery.heal', 'role:recovery']),
+  );
+  const taskId = Number(info.lastInsertRowid);
+  logActivity(db, 'epic', epicId, 'created', 'recovery_task', null, String(taskId),
+    `Engine auto-spawned recovery task #${taskId} for stage='${stage}' (attempt ${retries + 1}/${rule.max_retries}): ${rule.diagnosis}`);
+  return { applied: true, escalate: false, reason: `spawned task #${taskId}`, taskId };
 }
 
 /**
@@ -408,7 +676,7 @@ export async function orchestrate(opts: OrchestrateOptions): Promise<Orchestrate
         }
         if (advance.error) {
           // Hard gate failed. If it's a recoverable "tasks not ready" we just
-          // wait; if it's a substantive gate failure, pause for human.
+          // wait; if it's a substantive gate failure, try self-heal first.
           const isTasksReady = /gate failed: tasks not completed/i.test(advance.error)
             || /gate failed: no .* tasks exist/i.test(advance.error);
           if (isTasksReady && counts.inFlight > 0) {
@@ -416,9 +684,38 @@ export async function orchestrate(opts: OrchestrateOptions): Promise<Orchestrate
             await sleep(PUMP_TICK_MS);
             continue;
           }
-          // Substantive gate failure → pause for human.
-          lastError = advance.error;
-          await pauseAndAlert(epicId, advance.error, opts);
+
+          // Recovery: consult RECOVERY_TREE before bothering a human.
+          // attemptHeal either spawns a healer task (applied:true) or
+          // returns escalate:true when budget exhausted / unknown failure.
+          // Only check for a NEW gate error — if it changed since last heal
+          // attempt, the previous heal made progress (different failure now),
+          // so we reset the retry counter for the new diagnosis.
+          const meta = readEpisodeMeta(epicId);
+          if (meta.lastHealError !== advance.error) {
+            // New error → previous heal advanced the diagnosis. Reset counters
+            // for the new error so the engine can heal again.
+            resetHealRetriesForEpic(epicId);
+          }
+          const heal = attemptHeal(epicId, stage, advance.error);
+          writeEpisodeMeta(epicId, { lastHealError: advance.error, lastHealAttempt: new Date().toISOString() });
+          if (heal.applied) {
+            engineHeartbeat(opts, 'HEALING',
+              `spawned task #${heal.taskId} — ${heal.reason.slice(0, 100)}`);
+            lastError = null;
+            emptyCycles = 0;
+            // Clear needs-human so waitForResume isn't triggered; the pump
+            // loop will pick up the healer task on next cycle and wait for
+            // it like any other worker.
+            clearNeedsHuman(epicId);
+            await sleep(PUMP_TICK_MS);
+            continue;
+          }
+
+          // Healer couldn't help → escalate to human.
+          engineHeartbeat(opts, 'ESCALATE', `recovery gave up: ${heal.reason}`);
+          lastError = `${advance.error} [healer: ${heal.reason}]`;
+          await pauseAndAlert(epicId, lastError, opts);
           const resumed = await waitForResume(epicId, opts);
           if (!resumed) {
             return {
@@ -429,6 +726,8 @@ export async function orchestrate(opts: OrchestrateOptions): Promise<Orchestrate
           // Resumed — clear flag and continue (the human may have advanced
           // the stage manually; currentStage() will reflect it next loop).
           clearNeedsHuman(epicId);
+          // Human override → reset retry budget, give the engine a fresh start.
+          resetHealRetriesForEpic(epicId);
           emptyCycles = 0;
           continue;
         }
