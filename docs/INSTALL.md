@@ -64,6 +64,22 @@ Saga:   [Integration: merge + hard gate]
 Saga:   ✅ Продукт готов
 ```
 
+## Канбан-доска (автозапуск)
+
+После запуска saga-mcp автоматически стартует веб-канбан на `http://localhost:4321`.
+
+Показывает все проекты, эпизоды и задачи из saga DB:
+- Доски: Backlog / In Progress / Review / Done / Blocked
+- Матрица покрытия AC (implements / verified_by)
+- Реестр приёмки (verification status)
+- Кликабельные карточки задач
+- Live heartbeat (агенты работают / простаивают / упали)
+
+Запуск вручную:
+```bash
+DB_PATH=C:/Users/<вы>/.zcode/saga.db npm run tracker
+```
+
 ## Что saga делает автоматически
 
 | Этап | Что происходит | Кто |

@@ -35,6 +35,20 @@ Skill("saga-start")
 
 Full install guide: [docs/INSTALL.md](docs/INSTALL.md)
 
+## Kanban Board (auto-started)
+
+saga-mcp bundles a read-only web kanban (`tracker-view/`) that auto-starts when
+the MCP server launches. It reads the **same** saga DB and shows:
+
+- All projects as switchable boards (Backlog / In Progress / Review / Done / Blocked)
+- Per-card assignee, age, epic, task type, live heartbeat
+- Coverage matrix: which ACs are implemented vs verified
+- Acceptance registry: verification status per episode
+- Clickable cards → task detail view
+- Activity feed with heartbeat pulse (green/yellow/red)
+
+Open **http://localhost:4321** after starting saga-mcp (or run `npm run tracker` manually).
+
 ---
 
 ## What is saga-mcp
