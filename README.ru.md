@@ -1,3 +1,5 @@
+**[English](README.md)** | **[Русский](README.ru.md)**
+
 # saga-mcp
 
 ## Быстрый старт (3 команды)

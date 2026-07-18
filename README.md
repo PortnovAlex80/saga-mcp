@@ -1,3 +1,5 @@
+**[English](README.md)** | **[Русский](README.ru.md)**
+
 # saga-mcp
 
 ## Quick Start (3 commands)
