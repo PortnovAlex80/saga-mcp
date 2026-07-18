@@ -1,7 +1,6 @@
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import { getDb } from '../db.js';
 import { logActivity } from '../helpers/activity-logger.js';
-import { reevaluateDownstream } from './tasks.js';
 import type { ToolHandler } from '../types.js';
 
 export const definitions: Tool[] = [
@@ -48,8 +47,8 @@ export const definitions: Tool[] = [
   {
     name: 'task_batch_update',
     description:
-      'Update multiple tasks at once. Useful for changing status of several tasks (e.g., mark 3 tasks as done) or reassigning tasks.',
-    annotations: { title: 'Batch Update Tasks', readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+      'Update the PRIORITY of multiple tasks at once. This is a bulk convenience for triage/reprioritization. As of Slice 3 (ADR-011 audit fix), this tool NO LONGER accepts `status` or `assigned_to` — those fields bypass the dispatcher fence, review-verdict flow, verification gates, and integration_state projection, which produced structurally invalid rows (TERMINAL_EXECUTION_OWNS_TASK, BUFFER_WITH_OWNER, etc.). To change lifecycle state, route through the regulated tools: worker_next (claim), worker_done (advance/review), worker_ask_need (park for human), or worker_merge_release (integration). To reassign, use task_update only on unfenced tasks or admin_override_lifecycle for audited recovery.',
+    annotations: { title: 'Batch Update Task Priority', readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: 'object',
       properties: {
@@ -58,11 +57,9 @@ export const definitions: Tool[] = [
           items: { type: 'integer' },
           description: 'Task IDs to update',
         },
-        status: { type: 'string', enum: ['todo', 'in_progress', 'review', 'review_in_progress', 'done', 'blocked'] },
         priority: { type: 'string', enum: ['low', 'medium', 'high', 'critical'] },
-        assigned_to: { type: 'string' },
       },
-      required: ['ids'],
+      required: ['ids', 'priority'],
     },
   },
 ];
@@ -148,14 +145,25 @@ function handleSessionDiff(args: Record<string, unknown>) {
 }
 
 function handleTaskBatchUpdate(args: Record<string, unknown>) {
+  // Slice 3 audit fix (ADR-011): this tool previously accepted status and
+  // assigned_to, which let any caller bypass the dispatcher fence, the
+  // review-verdict flow, the verification gates, and the integration_state
+  // projection. That produced structurally invalid rows
+  // (TERMINAL_EXECUTION_OWNS_TASK, BUFFER_WITH_OWNER, etc.) — the exact
+  // invariant violations the Slice 0 scanner detects. Lifecycle state now
+  // flows only through the regulated tools (worker_next, worker_done,
+  // worker_ask_need, worker_merge_release, admin_override_lifecycle).
+  //
+  // This handler is restricted to PRIORITY only.
   const db = getDb();
   const ids = args.ids as number[];
-  const status = args.status as string | undefined;
   const priority = args.priority as string | undefined;
-  const assignedTo = args.assigned_to as string | undefined;
 
-  if (!status && !priority && assignedTo === undefined) {
-    throw new Error('Provide at least one field to update: status, priority, or assigned_to');
+  if (!priority) {
+    throw new Error(
+      'task_batch_update now accepts only `priority`. Status and assigned_to were removed in Slice 3 ' +
+      '(they bypassed the dispatcher fence and verification gates — use worker_next/worker_done/worker_ask_need/admin_override_lifecycle instead).',
+    );
   }
 
   const getStmt = db.prepare('SELECT * FROM tasks WHERE id = ?');
@@ -165,70 +173,18 @@ function handleTaskBatchUpdate(args: Record<string, unknown>) {
       const oldRow = getStmt.get(id) as Record<string, unknown> | undefined;
       if (!oldRow) throw new Error(`Task ${id} not found`);
 
-      const updates: string[] = [];
-      const params: unknown[] = [];
-
-      if (status) {
-        updates.push('status = ?');
-        params.push(status);
-      }
-      if (priority) {
-        updates.push('priority = ?');
-        params.push(priority);
-      }
-      if (assignedTo !== undefined) {
-        updates.push('assigned_to = ?');
-        params.push(assignedTo);
-      }
-
-      updates.push("updated_at = datetime('now')");
-      params.push(id);
-
       const newRow = db
-        .prepare(`UPDATE tasks SET ${updates.join(', ')} WHERE id = ? RETURNING *`)
-        .get(...params) as Record<string, unknown>;
+        .prepare(
+          `UPDATE tasks SET priority = ?, updated_at = datetime('now') WHERE id = ? RETURNING *`,
+        )
+        .get(priority, id) as Record<string, unknown>;
 
-      // Log status changes
-      if (status && oldRow.status !== status) {
-        logActivity(
-          db, 'task', id, 'status_changed', 'status',
-          oldRow.status as string, status,
-          `Task '${newRow.title}' status: ${oldRow.status} -> ${status}`
-        );
-      }
-      if (priority && oldRow.priority !== priority) {
+      if (oldRow.priority !== priority) {
         logActivity(
           db, 'task', id, 'updated', 'priority',
           oldRow.priority as string, priority,
-          `Task '${newRow.title}' priority: ${oldRow.priority} -> ${priority}`
+          `Task '${newRow.title}' priority: ${oldRow.priority} -> ${priority}`,
         );
-      }
-
-      // Auto time tracking
-      if (status === 'done' && oldRow.status !== 'done' && !newRow.actual_hours) {
-        const startEntry = db.prepare(
-          `SELECT created_at FROM activity_log
-           WHERE entity_type = 'task' AND entity_id = ? AND action = 'status_changed'
-             AND field_name = 'status' AND new_value = 'in_progress'
-           ORDER BY created_at DESC LIMIT 1`
-        ).get(id) as { created_at: string } | undefined;
-
-        if (startEntry) {
-          const startMs = new Date(startEntry.created_at + 'Z').getTime();
-          const nowMs = Date.now();
-          const hours = Math.round(((nowMs - startMs) / 3_600_000) * 10) / 10;
-          if (hours > 0) {
-            db.prepare('UPDATE tasks SET actual_hours = ? WHERE id = ?').run(hours, id);
-            newRow.actual_hours = hours;
-            logActivity(db, 'task', id, 'updated', 'actual_hours', null, String(hours),
-              `Task '${newRow.title}' auto-tracked: ${hours}h`);
-          }
-        }
-      }
-
-      // Re-evaluate downstream dependencies when task marked done
-      if (status === 'done' && oldRow.status !== 'done') {
-        reevaluateDownstream(db, id);
       }
 
       return newRow;
