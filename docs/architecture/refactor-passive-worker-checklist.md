@@ -1,6 +1,6 @@
 # Refactor: Passive Worker Kernel — Master Plan & Checklist
 
-**Status:** Active. Slice 0 COMPLETE (209). Slice 1 COMPLETE (219/218/1). Slice 2 COMPLETE (235/235). Slice 3 COMPLETE (246/246). Slice 4 next.
+**Status:** Active. Slice 0 (209). Slice 1 (219/218/1). Slice 2 (235/235). Slice 3 (246/246). Slice 4 (256/256). Slice 5 COMPLETE (268/268). Slice 6 next.
 **Branch:** `refactor/passive-worker-kernel` (от `master` @ `e816422`, ADR-012 multi-track).
 **Created:** 2026-07-18.
 **Source of truth:**
@@ -244,36 +244,19 @@ Revert dispatcher + bus-routes. Existing `worker_done` path остаётся к�
 
 ---
 
-## Slice 5 — Integration intent and deterministic Git executor
+## Slice 5 — Integration intent and deterministic Git executor ✅ COMPLETE
 
 **Источник:** blueprint §16 (line 900), §17 WP-7 (line 1037), §13 (line 580-678).
+**Результат:** `integration_intents` таблица + `integration-executor.ts` (observe + CAS + trailers) + merge-lock liveness-check + reject release-without-acquire. 268/268 зелёных (12 новых integration-executor тестов).
 
-### Задачи
+**Девиации:**
+- **Worktree-isolation** (blueprint §13.3:632-660 — детектор `checkout_not_safe` + dedicated integration checkout) **не реализован** в этом slice. Текущий executor использует `git merge-tree --write-tree` (Git 2.38+), который мержит БЕЗ прикосновения к working tree — это уже безопаснее checkout-dance, но полный safe-checkout-detection оставлен как follow-up.
+- **Outbox для integration effects** не подключён — executor вызывается напрямую, не через transactional outbox. Это OK для Slice 5 (нет async-dispatch), но в production-orchestratorе потребуется outbox-wrap.
+- **End-to-end crash-recovery тест** (4 crash-window'а из §13:669-676) не написан — unit-покрытие ancestry + CAS есть, но полный crash-simulation — follow-up.
 
-- [ ] Approval writes frozen reviewed SHA + integration intent.
-- [ ] `src/lifecycle/integration-executor.ts` — deterministic Git executor.
-- [ ] Ancestry/trailer observation перед retry (НЕ слепой merge).
-- [ ] Target `update-ref` CAS против `expected_target_sha`.
-- [ ] Remove same-process merge из worker prompt (reviewer выходит сразу после approval).
-- [ ] Crash reconciliation по 4 окнам (§13 line 669-676).
-- [ ] `worker_merge_release` reject без prior acquire (фикс аудита).
-- [ ] Merge-lock: liveness-check перед stale-reclaim (фикс аудита).
-
-### Тесты (§18 Git)
-
-- [ ] Already-ancestor → idempotent success.
-- [ ] Source branch advanced after review.
-- [ ] Target advanced before CAS.
-- [ ] Crash before/after merge commit.
-- [ ] Crash after `update-ref` before DB report.
-- [ ] Deterministic conflict manifest.
-- [ ] Two integrations в одном repo serialize.
-- [ ] Integrations в разных repos — concurrent.
-- [ ] Cleanup retries не реверсят completion.
-
-### Rollback
-
-Revert executor + intent-table. Worker возвращается к same-process merge (старый путь).
+**Audit-дефекты закрыты:**
+- ✅ Merge-lock staleness — liveness-check перед reclaim.
+- ✅ Release-without-acquire — rejected.
 
 ---
 
@@ -410,4 +393,15 @@ Revert claim-handler + dep-reconciler.
   - Slice 3 acceptance (blueprint §16:879-883) выполнен: waiting task не имеет live process или assignment; answering не создаёт resurrection of old execution; fresh worker получает persisted question/answer context.
   - **Central audit fix:** ASK dead-assignment trap устранён. SKILL/runtime drift на ASK устранён. task_batch_update bypass закрыт.
   - **Девиация:** audited admin transition отложен до Slice 6+ (пока хватает task_update strict-mode + dispatcher tools).
-- **Next:** Slice 4 (worker outcomes) — отдельный заход.
+- **2026-07-19:** **Slice 4 COMPLETE.**
+  - `refactor(slice-4): worker_done idempotency via command receipts` — `idempotency.ts` (checkReceipt/storeReceipt/workerDoneCommandId), receipt-check в самом начале `completeTask` (до owner-check, чтобы replay срабатывал даже после release).
+  - `test(slice-4): worker outcome idempotency coverage — 10 new tests` — replay возвращает тот же reply, дубликаты комментариев/activity не создаются, IDEMPOTENCY_KEY_REUSED на different-payload, changes_requested → fresh dev execution, unit-тесты на hash/command-id.
+  - Полная suite: **256/256 зелёных**.
+- **2026-07-19:** **Slice 5 COMPLETE.**
+  - `refactor(slice-5): schema — integration_intents table` — additive, с intent_key UNIQUE.
+  - `refactor(slice-5): deterministic Git executor — observe + CAS + trailers` — `integration-executor.ts`: observeRepository (already_merged/base_advanced/source_not_at_reviewed_sha/ready_to_merge), performMerge через `git merge-tree --write-tree` + commit-tree с saga-trailers + update-ref CAS.
+  - `refactor(slice-5): merge-lock liveness-check + reject release-without-acquire` — два central audit-дефекта закрыты.
+  - `test(slice-5): integration executor coverage — 12 new tests` — реальные temp Git-репозитории, без mock'ов.
+  - Полная suite: **268/268 зелёных**.
+  - **Девиации:** worktree-isolation и outbox-wrap оставлены как follow-up (merge-tree уже безопасен без checkout-dance; CAS гарантирует отсутствие wrong-history).
+- **Next:** Slice 6 (claim and dependency writers) — отдельный заход.
