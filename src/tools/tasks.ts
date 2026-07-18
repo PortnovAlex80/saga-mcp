@@ -319,7 +319,7 @@ function getUnmetDependencies(db: Database.Database, taskId: number): Array<{ id
 }
 
 function evaluateAndUpdateDependencies(db: Database.Database, taskId: number): void {
-  const task = db.prepare('SELECT id, status, title FROM tasks WHERE id = ?').get(taskId) as { id: number; status: string; title: string } | undefined;
+  const task = db.prepare('SELECT id, status, title, current_execution_id, assigned_to FROM tasks WHERE id = ?').get(taskId) as { id: number; status: string; title: string; current_execution_id: string | null; assigned_to: string | null } | undefined;
   if (!task) return;
 
   const deps = db.prepare('SELECT depends_on_task_id FROM task_dependencies WHERE task_id = ?').all(taskId) as Array<{ depends_on_task_id: number }>;
@@ -327,7 +327,28 @@ function evaluateAndUpdateDependencies(db: Database.Database, taskId: number): v
 
   const unmet = getUnmetDependencies(db, taskId);
 
+  // Slice 6 audit fix (blueprint §16:921-922): a fenced active task MUST NOT
+  // be directly flipped to 'blocked'. The previous code would null assigned_to
+  // and current_execution_id underneath a running worker when a dependency
+  // became unmet (e.g. an upstream task was re-opened). That stranded the
+  // worker — it kept running against a task it no longer owned. Now: if the
+  // task is fenced OR has a live assignment, we do not auto-block. The
+  // worker is responsible for finishing its execution; the next claim will
+  // re-evaluate dependencies and the task will land in 'blocked' then if
+  // its dependencies are still unmet.
+  const isActive = task.status === 'in_progress' || task.status === 'review_in_progress';
+  const isFencedOrAssigned = task.current_execution_id !== null
+    || (task.assigned_to !== null && task.assigned_to !== '');
+
   if (unmet.length > 0 && task.status !== 'blocked' && task.status !== 'done') {
+    if (isActive && isFencedOrAssigned) {
+      // Do NOT disturb a running worker. Log the decision for observability;
+      // the engine's reconciler will later release this task if its worker
+      // dies, and the next claim will block it then.
+      logActivity(db, 'task', taskId, 'updated', 'dependency_check', null, 'skipped',
+        `Task '${task.title}' has unmet dependencies but is actively fenced (execution=${task.current_execution_id}, worker=${task.assigned_to}); deferring auto-block until the worker releases.`);
+      return;
+    }
     // Инвариант: blocked ⇒ assigned_to=NULL (см. handleTaskUpdate). Авто-blocked от deps —
     // не исключение: задача не может быть в работе, пока её зависимости не готовы.
     db.prepare("UPDATE tasks SET status = 'blocked', assigned_to = NULL, updated_at = datetime('now') WHERE id = ?").run(taskId);
