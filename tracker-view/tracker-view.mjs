@@ -1063,10 +1063,18 @@ function renderBoard(projectId, allProjects) {
         if (!dot) return;
         if (w.log_mtime_ms == null) return;
         const ageS = Math.max(0, Math.floor((now - w.log_mtime_ms) / 1000));
-        // Same thresholds as ageClass(): <15s green, <60s yellow, else red.
-        const cls = ageS < 15 ? 'green' : ageS < 60 ? 'yellow' : 'red';
-        dot.classList.remove('green', 'yellow', 'red', 'streaming');
+        // Colour by age (same thresholds as ageClass): <15s green, <60s yellow, else red.
+        // Pulse tempo inversely proportional to age: very fresh = fast blink,
+        // older = slow, stale (>60s) = static red (no animation).
+        let cls, pulse;
+        if (ageS < 5) { cls = 'green'; pulse = 'pulse-fast'; }
+        else if (ageS < 15) { cls = 'green'; pulse = 'pulse-med'; }
+        else if (ageS < 30) { cls = 'yellow'; pulse = 'pulse-med'; }
+        else if (ageS < 60) { cls = 'yellow'; pulse = 'pulse-slow'; }
+        else { cls = 'red'; pulse = ''; }
+        dot.classList.remove('green', 'yellow', 'red', 'streaming', 'pulse-fast', 'pulse-med', 'pulse-slow');
         dot.classList.add(cls);
+        if (pulse) dot.classList.add(pulse);
         dot.title = ageS + 's ago (' + (w.worker_id || '?') + ')';
       });
     }
@@ -1813,9 +1821,16 @@ function page(title, body) {
     /* heartbeat-индикатор активности */
     .heartbeat{display:flex;align-items:center;gap:6px;font-size:12px;color:#8b949e}
     .hb-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;transition:background .3s}
-    .hb-dot.green{background:#3fb950;animation:pulse 1s infinite}
-    .hb-dot.yellow{background:#f1c40f}
+    .hb-dot.green{background:#3fb950;animation:hb-pulse 1.2s infinite}
+    .hb-dot.yellow{background:#f1c40f;animation:hb-pulse 2.5s infinite}
     .hb-dot.red{background:#e74c3c}
+    /* Pulse tempo tied to freshness: faster blink = newer event.
+       applyStreamingDots adds .pulse-fast/.pulse-med/.pulse-slow alongside
+       the colour class so the dot 'breathes' at a rate proportional to the
+       worker's last activity. No pulse class on red (stalled = static red). */
+    .hb-dot.pulse-fast{animation:hb-pulse 0.6s infinite !important}
+    .hb-dot.pulse-med{animation:hb-pulse 1.5s infinite !important}
+    .hb-dot.pulse-slow{animation:hb-pulse 3s infinite !important}
     /* streaming: worker subprocess is actively writing to its JSONL log.
        Slow blue pulse (3s) — calmer than the 1s green "DB just touched"
        pulse, so the two states stay visually distinct and the streaming
@@ -1823,6 +1838,7 @@ function page(title, body) {
     // (streaming dot CSS removed — kept the 3-colour ageClass scheme the user
     // is used to, just rebound to worker log_mtime_ms; see applyStreamingDots)
     @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+    @keyframes hb-pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(.85)}}
 
     /* переключатель табов Канбан/Артефакты */
     .tabs{display:flex;gap:4px;margin-left:12px}
