@@ -3,8 +3,8 @@
 ## Что это
 
 **saga-mcp** — платформа управления параллельными LLM-агентами. Не трекер задач —
-governance-слой: от бизнес-гипотезы через архитектуру, требования, параллельную
-разработку, независимую верификацию, до наблюдения за runtime и решения
+governance-слой (слой управления): от бизнес-гипотезы через архитектуру, требования, параллельную
+разработку, независимую верификацию, до наблюдения за runtime (работающей системой) и решения
 (продолжать / закрыть).
 
 **Цель:** недопустимое действие невозможно провести как допустимый переход.
@@ -55,12 +55,12 @@ Skill("saga-start")
 Saga:   Какой продукт делаем? (одной фразой)
 Вы:     Депозитный калькулятор для сайта банка
 Saga:   [Discovery: 3 ассесора → brief → decision=go]
-Saga:   [Complexity Gate: класс=modular, артефакты определены]
+Saga:   [Complexity Gate (шлюз сложности): класс=modular, артефакты определены]
 Saga:   [Formalization: PRD с гипотезой → SRS с инвариантами → AC с properties]
-Saga:   [Planning: scaffold + dev tasks + verification tasks]
-Saga:   [Development: рой воркеров в worktrees]
-Saga:   [Verification: независимые L3 property-тесты]
-Saga:   [Integration: merge + hard gate]
+Saga:   [Planning: scaffold (каркас) + dev tasks + verification tasks]
+Saga:   [Development: рой воркеров в worktrees (рабочих копиях)]
+Saga:   [Verification: независимые L3 property-тесты (тесты-свойства)]
+Saga:   [Integration: merge (слияние) + hard gate (жёсткий шлюз)]
 Saga:   ✅ Продукт готов
 ```
 
@@ -68,31 +68,31 @@ Saga:   ✅ Продукт готов
 
 | Этап | Что происходит | Кто |
 |---|---|---|
-| Discovery | Идея → измеримая гипотеза (metric, target, kill criteria) | saga-kickstart |
-| Complexity Gate | Оценка: thin/modular/regulated/research → набор артефактов | senior-analyst |
-| Formalization | PRD + SRS (стиль, инварианты, порты) + UC/AC (contract-as-data) | product/architect/analyst |
-| Planning | Pattern B scaffold, conflict_keys, verification.ac tasks | saga-planner |
-| Development | Параллельные воркеры в worktrees, merge-lock | saga-worker |
-| Verification | Независимые property-тесты из frozen AC (не Builder'овские) | saga-verifier |
-| Integration | Hard gate: каждый AC имеет passing evidence | episode_transition |
-| Observation | Runtime метрики → hit/kill решение | observation_record |
+| Discovery (исследование) | Идея → измеримая гипотеза (metric, target, kill criteria) | saga-kickstart |
+| Complexity Gate (шлюз сложности) | Оценка: thin/modular/regulated/research → набор артефактов | senior-analyst |
+| Formalization (формализация) | PRD + SRS (стиль, инварианты, порты) + UC/AC (contract-as-data) | product/architect/analyst |
+| Planning (планирование) | Pattern B scaffold, conflict_keys, verification.ac tasks | saga-planner |
+| Development (разработка) | Параллельные воркеры в worktrees (рабочих копиях), merge-lock (мьютекс слияния) | saga-worker |
+| Verification (проверка) | Независимые property-тесты (тесты-свойства) из frozen AC (не Builder'овские) | saga-verifier |
+| Integration (интеграция) | Hard gate (жёсткий шлюз): каждый AC имеет passing evidence | episode_transition |
+| Observation (наблюдение) | Runtime-метрики → hit/kill решение | observation_record |
 
 ## Что saga НЕ даёт сделать
 
-- Перейти в development без принятых AC (hard gate)
-- Объявить done без passing evidence (deny-by-default)
-- Изменить замороженный контракт mid-work (drift detection)
-- Двум воркерам ломать один файл (conflict_keys на planning time)
-- Агенту понизить risk чтобы обойти gate (P15 monotonicity)
-- Записать UNKNOWN/ERROR как PASS (4-valued verdict)
-- Создать гипотезу без измерения (R16: observation required)
+- Перейти в development без принятых AC (hard gate — жёсткий шлюз)
+- Объявить done без passing evidence (deny-by-default — отказ по умолчанию)
+- Изменить замороженный контракт mid-work (drift detection — детекция дрейфа)
+- Двум воркерам ломать один файл (conflict_keys на planning time — этапе планирования)
+- Агенту понизить risk чтобы обойти gate (P15 monotonicity — монотонность)
+- Записать UNKNOWN/ERROR как PASS (4-valued verdict — 4-значный вердикт)
+- Создать гипотезу без измерения (R16: observation required — требуется наблюдение)
 
 ## Проверка после установки
 
 ```bash
-npm test                              # 163 теста green
-node tools/cgad-spec-lint.mjs <db>    # 18 правил, read-only
-ls ~/.zcode/skills/ | grep saga       # 13 skills
+npm test                              # 163 теста green (зелёные)
+node tools/cgad-spec-lint.mjs <db>    # 18 правил, read-only (только чтение)
+ls ~/.zcode/skills/ | grep saga       # 13 skills (скиллов)
 ```
 
 ## Системные требования
@@ -116,12 +116,12 @@ CI/CD, schema, git hygiene — 10 секций чеклиста.
 
 ## Документация
 
-- [README.md](../README.md) — English overview
+- [README.md](../README.md) — English overview (обзор на английском)
 - [README.ru.md](../README.ru.md) — Русский обзор
 - [История](saga-mcp-history.md) — полная эволюция (7 актов)
-- [Research Charter](research/00-research-charter-v1-final.md) — agent-oriented SE тезис
-- [ADR](architecture/decisions/) — архитектурные решения
-- [GUARDRAILS](../GUARDRAILS.md) — конституция (Signs 001-009)
+- [Research Charter](research/00-research-charter-v1-final.md) — тезис agent-oriented SE (агентно-ориентированной разработки)
+- [ADR](architecture/decisions/) — архитектурные решения (Architecture Decision Records)
+- [GUARDRAILS](../GUARDRAILS.md) — конституция (ограничения; Signs 001-009)
 
 ---
 
