@@ -343,9 +343,31 @@ export class ClaudeBoardRunner {
     };
     run.active.set(workerId, execution);
 
+    // Persist worker PID into task.metadata so external observers (engine
+    // zombie-detector, manual kill via /api/engine/restart, debug tooling)
+    // can locate and terminate the worker subprocess by PID without needing
+    // access to this runner's in-memory state. Cheap UPDATE, runs once per
+    // worker spawn.
+    try {
+      const pid = child.pid;
+      const db = require('better-sqlite3')(this.dbPath);
+      db.prepare(
+        `UPDATE tasks SET metadata=json_set(COALESCE(metadata,'{}'),
+            '$.worker_pid', ?,
+            '$.worker_started_at', ?),
+            updated_at=datetime('now')
+         WHERE id=?`,
+      ).run(pid, execution.startedAt, task.id);
+      db.close();
+    } catch (e) {
+      // Non-critical: if the DB write fails the worker still runs, we just
+      // lose the ability to kill it by PID later. Log to board-run JSONL.
+      try { execution.log.write(`[runner] worker_pid persist failed: ${e.message}\n`); } catch {}
+    }
+
     // Heartbeat: воркер стартовал (spawn завершён, процесс жив).
     this.heartbeat(run, execution, 'STARTED',
-      `claude -p task_id=${task.id} role=${roleFromTask(task, assignment.skill)}`);
+      `claude -p task_id=${task.id} role=${roleFromTask(task, assignment.skill)} pid=${child.pid}`);
 
     child.once('error', error => {
       run.lastError = error instanceof Error ? error.message : String(error);
