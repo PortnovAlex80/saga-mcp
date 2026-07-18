@@ -94,13 +94,18 @@ function withDbWrite(fn) {
   }
 }
 
-// Парсинг timestamp из БД saga. saga-mcp пишет created_at/updated_at как ЛОКАЛЬНОЕ
-// время (UTC+03) — старый формат 'YYYY-MM-DD HH:MM:SS' (SQLite datetime('now'), UTC без T)
-// и новый 'YYYY-MM-DDTHH:MM:SS' (ISO без Z, локальное). НЕ добавляем 'Z' — иначе дата
-// уезжает на 3 часа в будущее и heartbeat всегда красный.
+// Парсинг timestamp из БД saga. SQLite `datetime('now')` возвращает **UTC** в
+// формате 'YYYY-MM-DD HH:MM:SS' (без T, без Z). Старый комментарий утверждал,
+// что это локальное время — НЕВЕРНО; именно это заблуждение и плодит tz-баги
+// (на UTC+3 распарсенный timestamp уезжает на -3ч, возрасты растут на 180 мин).
+// Поэтому нормализуем в ISO с Z и парсим как UTC. Уже-ISO значения (с T/Z)
+// проходят как есть.
 function parseTs(iso) {
   if (!iso) return null;
-  const d = new Date(String(iso).replace(' ', 'T'));
+  let s = String(iso);
+  if (s.indexOf('T') < 0) s = s.replace(' ', 'T');
+  if (s.indexOf('Z') < 0 && /[+-]\d\d:?\d\d$/.test(s) === false) s += 'Z';
+  const d = new Date(s);
   return isNaN(d.getTime()) ? null : d.getTime();
 }
 // Возраст timestamp'а → класс кружка (green/yellow/red)
@@ -630,7 +635,9 @@ function renderBoard(projectId, allProjects) {
           ${c.needsHuman ? '<span class="ask-flag" title="needs human answer">⚠ needs human</span>' : ''}
           <span style="flex:1"></span>
           <span class="card-id">#${c.t.id}</span>
-          <span class="hb-dot ${ageClass(c.t.updated_at)}" title="${ageText(c.t.updated_at)} назад"></span>
+          ${(c.t.status === 'done' || c.t.status === 'blocked')
+            ? ''
+            : `<span class="hb-dot ${ageClass(c.t.updated_at)}" title="${ageText(c.t.updated_at)} назад"></span>`}
         </div>
         <a class="card-title" href="/?task=${c.t.id}" title="Открыть карточку задачи">${esc(c.t.title)}</a>
         <div class="task-badges">
@@ -793,12 +800,31 @@ function renderBoard(projectId, allProjects) {
     // === Monitor panel: live workers + pipeline ===
     // Tracks expanded worker rows across refreshes (worker_id → true).
     const expandedWorkers = new Set();
-    // Render worker rows from a list of {task_id,title,worker_id,log_path,started_at}.
+    // task_id → { log_mtime_ms, worker_id }: shared between the sidebar
+    // (renderWorkersList) and the kanban cards (applyStreamingDots). The
+    // kanban is re-rendered server-side every RELOAD_SEC and replaceWith'd,
+    // so the dots need a stable place to read "is this card's worker
+    // streaming right now?" — a window global survives the swap.
+    if (!window.__activeWorkers) window.__activeWorkers = new Map();
+    // Render worker rows from a list of {task_id,title,worker_id,log_path,started_at,log_mtime_ms}.
     function renderWorkersList(active) {
       const list = document.getElementById('workers-list');
       const countEl = document.getElementById('worker-count');
       if (!list || !countEl) return;
       countEl.textContent = active.length;
+      // Refresh the task_id → streaming-state map used by the kanban dot.
+      // Rebuilt from scratch each tick: workers come and go, and a stale
+      // entry would keep a dead worker's dot pulsing forever.
+      const next = new Map();
+      for (const w of active) {
+        if (w.task_id == null) continue;
+        next.set(Number(w.task_id), {
+          log_mtime_ms: w.log_mtime_ms || null,
+          worker_id: w.worker_id || '',
+        });
+      }
+      window.__activeWorkers = next;
+      applyStreamingDots();
       // Recovery banner: show only when at least one recovery.heal worker is
       // active. Hidden otherwise. Single line at the bottom of sidebar — no
       // separate section, no modal, no new color in the main UI.
@@ -1014,6 +1040,36 @@ function renderBoard(projectId, allProjects) {
     runnerStatus.textContent = 'concurrency=2 (running)';
     fetchRunnerStatus();
     setInterval(fetchRunnerStatus, 2000);
+    // Apply the streaming pulse to kanban cards whose worker is actively
+    // writing to its JSONL log. Called (a) from renderWorkersList whenever
+    // /api/workers/active returns fresh data, and (b) from refreshBoard
+    // after the .board DOM was swapped — because replaceWith drops the
+    // classes we previously added to the old .hb-dot nodes. A dot is
+    // streaming when the worker's log mtime is within STREAMING_WINDOW_MS.
+    // Otherwise the server-rendered ageClass(updated_at) (green/yellow/red)
+    // is left untouched.
+    const STREAMING_WINDOW_MS = 15000;
+    function applyStreamingDots() {
+      const map = window.__activeWorkers;
+      if (!map || map.size === 0) return;
+      const now = Date.now();
+      document.querySelectorAll('.card').forEach(card => {
+        const taskId = Number(card.dataset.task);
+        if (!taskId) return;
+        const w = map.get(taskId);
+        if (!w) return;
+        const dot = card.querySelector('.hb-dot');
+        if (!dot) return;
+        if (w.log_mtime_ms == null) return;
+        const ageS = Math.max(0, Math.floor((now - w.log_mtime_ms) / 1000));
+        // Only pulse when the log is actually growing. A long-stalled worker
+        // (mtime minutes ago) keeps its DB-derived ageClass.
+        if (now - w.log_mtime_ms > STREAMING_WINDOW_MS) return;
+        dot.classList.remove('green', 'yellow', 'red');
+        dot.classList.add('streaming');
+        dot.title = 'streaming ' + ageS + 's ago (' + (w.worker_id || '?') + ')';
+      });
+    }
     async function refreshBoard() {
       try {
         const r = await fetch('?project=${projectId}&partial=1');
@@ -1050,6 +1106,9 @@ function renderBoard(projectId, allProjects) {
           }));
         }
         applyFilter();
+        // .board was just swapped — re-stamp streaming dots on the fresh
+        // .hb-dot nodes (their classes were lost with the old DOM).
+        applyStreamingDots();
       } catch {}
     }
     setInterval(refreshBoard, ${RELOAD_SEC * 1000});
@@ -1757,6 +1816,12 @@ function page(title, body) {
     .hb-dot.green{background:#3fb950;animation:pulse 1s infinite}
     .hb-dot.yellow{background:#f1c40f}
     .hb-dot.red{background:#e74c3c}
+    /* streaming: worker subprocess is actively writing to its JSONL log.
+       Slow blue pulse (3s) — calmer than the 1s green "DB just touched"
+       pulse, so the two states stay visually distinct and the streaming
+       one doesn't fight for attention. */
+    .hb-dot.streaming{background:#58a6ff;animation:hb-stream-pulse 3s infinite}
+    @keyframes hb-stream-pulse{0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(88,166,255,.6)}50%{opacity:.55;box-shadow:0 0 0 4px rgba(88,166,255,0)}}
     @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
 
     /* переключатель табов Канбан/Артефакты */
@@ -2064,10 +2129,11 @@ function page(title, body) {
     function update(){
       fetch('/api/heartbeat').then(r=>r.json()).then(d=>{
         if(!d.last){ dot.className='hb-dot red'; txt.textContent='нет данных'; return; }
-        // saga-mcp пишет created_at как ЛОКАЛЬНОЕ время (UTC+03) в ISO без Z.
-        // НЕ добавляем Z — иначе уезжает на 3 часа в будущее и точка всегда красная.
-        const ts=new Date(String(d.last).replace(' ','T')).getTime();
-        if(isNaN(ts)){ dot.className='hb-dot red'; txt.textContent='?'; return; }
+        // SQLite datetime('now') returns UTC; normalise to ISO Z before parsing
+        // so the browser treats it as UTC (otherwise local-tz interpretation
+        // shifts the timestamp by the tz offset, inflating 'ago' values).
+        const ts=parseTs(d.last);
+        if(ts===null){ dot.className='hb-dot red'; txt.textContent='?'; return; }
         const ago=Math.floor((Date.now()-ts)/1000);
         if(ago<15){ dot.className='hb-dot green'; txt.textContent=ago+'с назад'; }
         else if(ago<60){ dot.className='hb-dot yellow'; txt.textContent=ago+'с назад'; }
@@ -3374,6 +3440,13 @@ function handleWorkersActive(req, res, url) {
       const startedIso = startedRaw && startedRaw.indexOf('T') < 0
         ? startedRaw.replace(' ', 'T') + 'Z'
         : startedRaw;
+      // mtime of the JSONL log — drives the streaming pulse on the kanban
+      // dot. If the log grew within the last few seconds, the worker is
+      // actively streaming regardless of when the DB row was last touched.
+      let log_mtime_ms = null;
+      if (logPath) {
+        try { log_mtime_ms = statSync(logPath).mtimeMs; } catch { /* gone */ }
+      }
       return {
         task_id: r.id,
         title: r.title,
@@ -3382,6 +3455,7 @@ function handleWorkersActive(req, res, url) {
         worker_id: r.assigned_to,
         epic_name: r.epic_name,
         started_at: startedIso,
+        log_mtime_ms,
         log_path: logPath,
       };
     });
