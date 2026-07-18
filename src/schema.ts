@@ -569,6 +569,49 @@ CREATE INDEX IF NOT EXISTS idx_task_work_items_task_state ON task_work_items(tas
 CREATE INDEX IF NOT EXISTS idx_task_work_items_kind ON task_work_items(kind, cycle_no);
 CREATE INDEX IF NOT EXISTS idx_work_attempts_item ON work_attempts(work_item_id);
 CREATE INDEX IF NOT EXISTS idx_work_attempts_execution ON work_attempts(execution_id);
+
+-- ---------------------------------------------------------------------------
+-- Human requests (ADR-011, blueprint §12.3 line 565-578, §16 Slice 3 line 871-883).
+-- Added in Slice 3. Purely additive. ASK is terminal: when a worker calls
+-- worker_ask_need, the execution is released and an open human_request row
+-- is inserted. worker_next excludes tasks with an open request. A fresh
+-- worker later claims the task and receives the persisted question/answer
+-- context. This kills the ASK dead-assignment trap the audit identified.
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS human_requests (
+  request_id TEXT PRIMARY KEY,
+  task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  -- The execution that asked the question. Terminalized when the request
+  -- was opened; recorded here so a replay or duplicate answer cannot
+  -- resurrect it.
+  requesting_execution_id TEXT,
+  -- 'implementation' | 'review' | 'integration' — the phase a fresh worker
+  -- must resume in once the human answers.
+  resume_phase TEXT NOT NULL
+    CHECK (resume_phase IN ('implementation','review','integration')),
+  -- The question the worker asked, verbatim. Fresh workers read this to
+  -- know what to ask the human.
+  question TEXT NOT NULL,
+  -- Free-form context the worker saved (file:line references, checkpoint,
+  -- source/worktree SHAs). Blueprint §12.3 step 1.
+  context_json TEXT NOT NULL DEFAULT '{}',
+  -- The human's answer, recorded by worker_ask_done. NULL while open.
+  answer TEXT,
+  answered_by TEXT,
+  answered_at TEXT,
+  state TEXT NOT NULL DEFAULT 'open'
+    CHECK (state IN ('open','answered','cancelled')),
+  -- The execution that processed the answer (the fresh worker). NULL until
+  -- a worker claims the answered task.
+  resuming_execution_id TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_human_requests_task_state ON human_requests(task_id, state);
+CREATE INDEX IF NOT EXISTS idx_human_requests_open ON human_requests(state) WHERE state = 'open';
+CREATE INDEX IF NOT EXISTS idx_human_requests_requesting_exec ON human_requests(requesting_execution_id);
 `;
 
 // ----------------------------------------------------------------------------
