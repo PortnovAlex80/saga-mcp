@@ -2973,6 +2973,70 @@ function renderStageDetailPage(epicId, stageName, allProjects) {
       }
       update(); setInterval(update,3000);
     })();
+    // Minimal client-side markdown -> HTML renderer for stage summaries.
+    // Supports: # / ## headings, **bold**, backtick-code, "- "/ "* " lists,
+    // blank-line separated paragraphs. ALL regex use new RegExp() — never
+    // literal /.../ syntax — because this JS block lives inside page()'s
+    // template literal (backtick string), where \\r and \\n would become
+    // actual CR/LF chars and produce "Invalid regular expression" in the
+    // browser. NOTE: literal backticks are avoided in comments/code because
+    // they would terminate the template literal; String.fromCharCode(96) is
+    // used instead.
+    function renderMd(md) {
+      var reCRLF = new RegExp('\\\\r\\\\n', 'g');
+      var reSplitBlocks = new RegExp('\\\\n{2,}');
+      var reTrimNl = new RegExp('^\\\\n+|\\\\n+$', 'g');
+      var reHeading = new RegExp('^(#{1,6})\\\\s+(.*)$');
+      var reListLine = new RegExp('^\\\\s*[-*]\\\\s+');
+      var reStripList = new RegExp('^\\\\s*[-*]\\\\s+');
+      var text = String(md || '').replace(reCRLF, '\\n').trim();
+      if (!text) return '<p class="sdo-md-p" style="color:#8b949e">summary artifact is empty</p>';
+      var blocks = text.split(reSplitBlocks);
+      var out = [];
+      for (var bi = 0; bi < blocks.length; bi++) {
+        var block = blocks[bi].replace(reTrimNl, '');
+        if (!block) continue;
+        var lines = block.split('\\n');
+        // Heading: single line starting with one-or-more # then a space.
+        if (lines.length === 1) {
+          var hm = reHeading.exec(lines[0]);
+          if (hm) {
+            var level = Math.min(hm[1].length, 4) + 1; // # -> h2, ## -> h3, ...
+            out.push('<h' + level + ' class="sdo-md-h">' + renderMdInline(hm[2]) + '</h' + level + '>');
+            continue;
+          }
+        }
+        // List: every non-empty line starts with "- " or "* ".
+        var allList = lines.length > 0;
+        for (var li = 0; li < lines.length; li++) {
+          if (!lines[li]) continue;
+          if (!reListLine.test(lines[li])) { allList = false; break; }
+        }
+        if (allList) {
+          var items = lines.map(function(l) {
+            return '<li>' + renderMdInline(l.replace(reStripList, '')) + '</li>';
+          }).join('');
+          out.push('<ul class="sdo-md-ul">' + items + '</ul>');
+          continue;
+        }
+        // Otherwise: paragraph (join wrapped lines with a space).
+        var para = lines.map(function(l) { return l.trim(); }).filter(Boolean).join(' ');
+        if (para) out.push('<p class="sdo-md-p">' + renderMdInline(para) + '</p>');
+      }
+      return out.join('\\n');
+    }
+    // Inline markdown: escape first, then re-insert <strong> and <code>. The
+    // esc() pass protects against any HTML in the source; the replacements
+    // only see literal punctuation that survived escaping.
+    function renderMdInline(text) {
+      var esc2 = window.esc(text);
+      var BT = String.fromCharCode(96);
+      var reCode = new RegExp(BT + '([^' + BT + ']+)' + BT, 'g');
+      var reBold = new RegExp('\\\\*\\\\*([^*]+)\\\\*\\\\*', 'g');
+      return esc2
+        .replace(reBold, '<strong>$1</strong>')
+        .replace(reCode, '<code>$1</code>');
+    }
     // Stage summary fetch + poll
     async function loadStage() {
       const el = document.getElementById('stage-content');
@@ -2986,10 +3050,11 @@ function renderStageDetailPage(epicId, stageName, allProjects) {
           return;
         }
         if (j.status === 'ready') {
-          // Render markdown content
+          // Render markdown content as HTML (was: raw escaped text via
+          // white-space:pre-wrap, which showed literal # / ** / - on the page).
           const md = j.content || '(empty)';
           el.innerHTML = '<div style="color:#8b949e;font-size:11px;margin-bottom:6px">Сгенерировано: ' + window.esc(j.generated_at || '?') + '</div>' +
-            '<div style="color:#e6edf3;line-height:1.6;white-space:pre-wrap;font-size:14px">' + window.esc(md) + '</div>';
+            '<div class="stage-md" style="color:#e6edf3;line-height:1.6;font-size:14px">' + renderMd(md) + '</div>';
         } else if (j.status === 'queued') {
           el.innerHTML = '<div style="color:#d2a822;font-size:14px">⏳ Резюме в очереди (task #' + j.task_id + '). Воркер подберёт задачу и напишет резюме.</div>' +
             '<div style="color:#8b949e;font-size:11px;margin-top:8px">Страница обновится автоматически.</div>';
