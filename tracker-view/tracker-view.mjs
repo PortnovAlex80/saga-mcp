@@ -2988,11 +2988,13 @@ function renderStageDetailPage(epicId, stageName, allProjects) {
       var NL = String.fromCharCode(10);
       var CR = String.fromCharCode(13);
       var S = String.fromCharCode(92, 115); // backslash-s (whitespace in regex)
+      var DASH = String.fromCharCode(45);   // dash for --- (horizontal rule)
       var text = String(md || '').replace(new RegExp(CR + NL, 'g'), NL).trim();
       if (!text) return '<p style="color:#8b949e">empty</p>';
       var blocks = text.split(new RegExp(NL + '{2,}'));
       var out = [];
       var reHeading = new RegExp('^(#{1,6})[ ]+(.*)$');
+      var reHr = new RegExp('^' + DASH + '{3,}[ ]*$');
       var reListTest = new RegExp('^[' + S + ']*[-*][ ]+');
       var reListStrip = new RegExp('^[' + S + ']*[-*][ ]+');
       for (var bi = 0; bi < blocks.length; bi++) {
@@ -3000,27 +3002,49 @@ function renderStageDetailPage(epicId, stageName, allProjects) {
         if (!block) continue;
         var lines = block.split(NL);
         var nonEmpty = lines.filter(function(l) { return l.trim(); });
-        if (nonEmpty.length === 1) {
-          var hm = reHeading.exec(nonEmpty[0]);
-          if (hm) {
-            var level = Math.min(hm[1].length, 4) + 1;
-            out.push('<h' + level + ' style="color:#58a6ff;margin:12px 0 6px">' + renderMdInline(hm[2]) + '</h' + level + '>');
-            continue;
+        // Process line-by-line: headings and horizontal rules can appear
+        // anywhere in a block, not just as single-line blocks.
+        var lineHtml = [];
+        var pendingPara = [];
+        function flushPara() {
+          if (pendingPara.length > 0) {
+            var p = pendingPara.map(function(l) { return l.trim(); }).join(' ');
+            if (p) lineHtml.push('<p style="margin:6px 0;line-height:1.6">' + renderMdInline(p) + '</p>');
+            pendingPara = [];
           }
         }
         var allList = nonEmpty.length > 0;
         for (var li = 0; li < nonEmpty.length; li++) {
           if (!reListTest.test(nonEmpty[li])) { allList = false; break; }
         }
+        // Check headings/hr per line
+        for (var li2 = 0; li2 < lines.length; li2++) {
+          var line = lines[li2];
+          if (!line.trim()) continue;
+          // Horizontal rule (---)
+          if (reHr.test(line.trim())) { flushPara(); lineHtml.push('<hr style="border:0;border-top:1px solid #30363d;margin:12px 0">'); continue; }
+          // Heading (any level)
+          var hm = reHeading.exec(line.trim());
+          if (hm) {
+            flushPara();
+            var level = Math.min(hm[1].length, 4) + 1;
+            lineHtml.push('<h' + level + ' style="color:#58a6ff;margin:12px 0 6px">' + renderMdInline(hm[2]) + '</h' + level + '>');
+            continue;
+          }
+          pendingPara.push(line);
+        }
+        flushPara();
         if (allList) {
+          // Override: entire block is a list
+          lineHtml = [];
           var items = nonEmpty.map(function(l) {
             return '<li>' + renderMdInline(l.replace(reListStrip, '')) + '</li>';
           }).join('');
-          out.push('<ul style="margin:6px 0;padding-left:20px">' + items + '</ul>');
-          continue;
+          lineHtml.push('<ul style="margin:6px 0;padding-left:20px">' + items + '</ul>');
         }
-        var para = nonEmpty.map(function(l) { return l.trim(); }).join(' ');
-        if (para) out.push('<p style="margin:6px 0;line-height:1.6">' + renderMdInline(para) + '</p>');
+        if (lineHtml.length > 0) {
+          out.push(lineHtml.join(NL));
+        }
       }
       return out.join(NL);
     }
