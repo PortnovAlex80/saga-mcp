@@ -1842,7 +1842,7 @@ function page(title, body) {
     .agent-run-btn,.agent-stop-btn{width:27px;height:25px;padding:0;border:1px solid #3d4855;border-radius:5px;background:#238636;color:white;cursor:pointer;font-size:11px}
     .agent-run-btn:hover{background:#2ea043}.agent-stop-btn{background:#b62324}.agent-stop-btn:hover{background:#da3633}
     .agent-run-btn:disabled,.agent-stop-btn:disabled{opacity:.5;cursor:default}
-    .agent-run-status{max-width:150px;color:#8b949e;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .agent-run-status{color:#8b949e;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex-shrink:1;min-width:0}
     .agent-model{color:#d2a8ff;font-size:10px;white-space:nowrap;font-family:ui-monospace,Consolas,monospace;padding:0 4px}
     .back{color:#58a6ff;font-size:13px} .back:hover{text-decoration:underline}
     #psel{background:#21262d;border:1px solid #30363d;color:#e6edf3;border-radius:6px;padding:8px 12px;font-size:13px;max-width:260px}
