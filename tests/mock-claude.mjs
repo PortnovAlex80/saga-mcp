@@ -192,13 +192,76 @@ async function loadHandlers(dbPath) {
   const dispatcher = await import('../dist/tools/dispatcher.js');
   const lifecycle = await import('../dist/tools/lifecycle.js');
   const tasks = await import('../dist/tools/tasks.js');
-  return { dispatcher, lifecycle, tasks, dbMod };
+  const artifacts = await import('../dist/tools/artifacts.js');
+  return { dispatcher, lifecycle, tasks, artifacts, dbMod };
+}
+
+// ---------------------------------------------------------------------------
+// Helpers for kickstart brief emission (ADR-012 track tests)
+// ---------------------------------------------------------------------------
+
+function getEpicIdFromTask(handlers, taskId) {
+  const db = handlers.dbMod.getDb();
+  const row = db.prepare('SELECT epic_id FROM tasks WHERE id=?').get(taskId);
+  if (!row) throw new Error(`task ${taskId} not found`);
+  return row.epic_id;
+}
+
+// Build a BriefPayload (validators/brief.ts:31-52) for the given decision.
+// For 'fast-track' the payload is eligible per canFastTrack (fast-track.ts:67-82):
+// classification=tech-task, complexity.tshirt=S, affected_projects.length<=1,
+// complexity.risk_triggers=[]. For other decisions eligibility doesn't matter.
+function briefPayloadFor(decision, ctx) {
+  const base = {
+    classification: 'tech-task',
+    complexity: { tshirt: 'S', risk_triggers: [] },
+    decision,
+    reasoning: `mock brief reasoning for task ${ctx.task_id} (${decision})`,
+    affected_projects: [ctx.project_id],
+    topology_hint: 'parallel-independent',
+    scaffold_artifacts: [],
+    shared_mutation_risk: false,
+    completeness: 'high',
+    degraded: false,
+  };
+  return base;
 }
 
 async function driveWorkerLifecycle(handlers, ctx) {
-  const { dispatcher, lifecycle } = handlers;
+  const { dispatcher, lifecycle, artifacts } = handlers;
   const { task_id, worker_id, execution_id, task_kind, execution_mode, role } = ctx;
   const execArg = execution_id ? { execution_id } : {};
+
+  // 0. For discovery.kickstart tasks: register a brief artifact with a
+  //    brief_payload whose `decision` is controlled by the
+  //    SAGA_MOCK_DECISION env var. The engine's brief_accepted transition
+  //    (workflow.ts) reads this decision to pick a track. Without this
+  //    branch the mock would just call worker_done on a kickstart task that
+  //    never emitted a brief — brief_accepted would throw "no brief artifact".
+  if (task_kind === 'discovery.kickstart') {
+    try {
+      const decision = process.env.SAGA_MOCK_DECISION || 'go';
+      const payload = briefPayloadFor(decision, ctx);
+      const { createHash } = await import('node:crypto');
+      const contentHash = createHash('sha256')
+        .update(JSON.stringify(payload)).digest('hex');
+      artifacts.handlers.artifact_create({
+        project_id: ctx.project_id,
+        epic_id: getEpicIdFromTask(handlers, task_id),
+        type: 'brief',
+        code: 'BRIEF-1',
+        title: `Mock brief: ${ctx.task_title || 'discovery'} (${decision})`,
+        path: `docs/mock-brief-${task_id}.md`,
+        status: 'accepted',
+        content_hash: contentHash,
+        metadata: { brief_payload: payload },
+      });
+      emitAssistantText(`mock: brief artifact registered (decision='${decision}')`);
+    } catch (e) {
+      emitAssistantText(`mock: brief registration failed: ${e.message}`);
+    }
+    // Fall through to worker_done below.
+  }
 
   // 1. For verification.ac tasks: record passing evidence for the canonical AC
   //    before worker_done. The canonical target is stored on the task row

@@ -456,6 +456,28 @@ function clearNeedsHuman(epicId: number): void {
   ).run(epicId);
 }
 
+/**
+ * ADR-012 — Read the decision from the most recent brief artifact in the
+ * epic. Used by the engine's main loop to route discovery-stage episodes
+ * after their kickstart worker completes. Returns one of 'go', 'fast-track',
+ * 'clarify', 'reject' — or null if no brief exists / metadata is malformed
+ * / decision is absent. The caller treats null as 'go' (formal pipeline).
+ */
+function readLatestBriefDecision(epicId: number): string | null {
+  const row = getDb().prepare(
+    `SELECT metadata FROM artifacts
+     WHERE epic_id=? AND type='brief' ORDER BY id DESC LIMIT 1`,
+  ).get(epicId) as { metadata: string | null } | undefined;
+  if (!row?.metadata) return null;
+  try {
+    const decision = JSON.parse(row.metadata)?.brief_payload?.decision;
+    if (typeof decision === 'string' && ['go', 'fast-track', 'clarify', 'reject'].includes(decision)) {
+      return decision;
+    }
+  } catch { /* malformed metadata */ }
+  return null;
+}
+
 /** Read select metadata fields for the recovery loop's bookkeeping. */
 function readEpisodeMeta(epicId: number): { lastHealError: string | null; lastHealAttempt: string | null } {
   const row = getDb().prepare(
@@ -1079,6 +1101,61 @@ export async function orchestrate(opts: OrchestrateOptions): Promise<Orchestrate
           engineHeartbeat(opts, 'GENERATED', `tasks=${gen.created}`);
           emptyCycles = 0;
           continue; // new tasks appeared — pump them next cycle
+        }
+
+        // ADR-012 — Multi-track pipeline. When generateNextIfReady returns
+        // created:0 from a discovery.kickstart brief_accepted transition,
+        // consult the brief's decision. workflow.ts has already done the
+        // side-effects it can (routeFastTrack for fast-track); the engine
+        // handles the remaining control flow:
+        //   - 'go' → fall through to tryAdvanceStage (formal pipeline).
+        //   - 'fast-track' → routeFastTrack already wrote stage='development'
+        //     directly; just continue and the next cycle will see the new stage.
+        //   - 'clarify' → pause with needs-human; await resume or timeout.
+        //   - 'reject' → episode_transition(cancelled).
+        // Only consult the brief when we're still in discovery — once we've
+        // advanced, the decision has been honoured and re-reading it would
+        // re-enter the branch every cycle.
+        if (stage === 'discovery') {
+          const decision = readLatestBriefDecision(epicId);
+          if (decision === 'fast-track') {
+            engineHeartbeat(opts, 'FAST_TRACK',
+              `brief decision='fast-track' → routeFastTrack jumped stage; continuing`);
+            emptyCycles = 0;
+            continue;
+          }
+          if (decision === 'clarify') {
+            engineHeartbeat(opts, 'CLARIFY',
+              `brief decision='clarify' → pausing for human input`);
+            await pauseAndAlert(epicId,
+              `Brief decision='clarify': discovery could not reach a verdict. ` +
+              `Read the latest brief artifact and answer the open question via ` +
+              `POST /api/episode/resume after updating the brief.`,
+              opts);
+            const resumed = await waitForResume(epicId, opts);
+            if (!resumed) {
+              return {
+                projectId, epicId, finalStage: stage, endedAt: new Date(now()).toISOString(),
+                reason: 'paused_timeout', cycles, lastError: 'clarify pause timed out',
+              };
+            }
+            emptyCycles = 0;
+            continue;
+          }
+          if (decision === 'reject') {
+            try {
+              lifecycleHandlers.episode_transition({ epic_id: epicId, to_stage: 'cancelled' });
+              engineHeartbeat(opts, 'REJECT',
+                `brief decision='reject' → episode cancelled`);
+            } catch (e) {
+              engineHeartbeat(opts, 'REJECT_FAILED',
+                `reject transition failed: ${e instanceof Error ? e.message : String(e)}`);
+            }
+            emptyCycles = 0;
+            continue;
+          }
+          // decision === 'go' OR undefined/unknown — fall through to
+          // tryAdvanceStage below.
         }
 
         // Step 3: nothing left to generate. Try to advance the stage.

@@ -48,6 +48,7 @@ export function getDb(): Database.Database {
   migrateVerificationOutcome(db);
   migrateVerificationExecution(db);
   migrateRiskClass(db);
+  migrateEpisodeTrack(db);
   try { db.exec('CREATE INDEX IF NOT EXISTS idx_epics_branch ON epics(branch)'); } catch { /* index already exists */ }
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_project_repositories_project ON project_repositories(project_id, status);
@@ -543,5 +544,32 @@ export function migrateRiskClass(db: Database.Database): void {
   } catch { /* columns missing — pre-migration DB, skip */ }
   // Index for "find tasks by risk class" queries.
   db.exec('CREATE INDEX IF NOT EXISTS idx_tasks_final_risk ON tasks(final_risk)');
+}
+
+/**
+ * ADR-012 — Multi-track pipeline. Adds an explicit `track` column to
+ * episode_workflows so the engine can route episodes by their discovery
+ * decision: 'formal' (decision='go') walks the full pipeline; 'fast-track'
+ * (decision='fast-track') skips formalization+planning. The 'clarify' and
+ * 'reject' decisions are terminal-pause/cancel states, not tracks.
+ *
+ * Backfill: episodes whose metadata carries `fast_track:1` (written by
+ * routeFastTrack at src/planner/fast-track.ts:206-212 before this column
+ * existed) get track='fast-track'. Everything else defaults to 'formal'.
+ */
+export function migrateEpisodeTrack(db: Database.Database): void {
+  try {
+    db.exec(
+      "ALTER TABLE episode_workflows ADD COLUMN track TEXT NOT NULL DEFAULT 'formal' CHECK (track IN ('formal','fast-track'))",
+    );
+  } catch { /* column already exists */ }
+  // Backfill from the legacy metadata flag. Idempotent.
+  try {
+    db.exec(
+      `UPDATE episode_workflows SET track='fast-track'
+       WHERE track='formal' AND json_extract(metadata,'$.fast_track')=1`,
+    );
+  } catch { /* metadata column missing — pre-migration DB, skip */ }
+  db.exec('CREATE INDEX IF NOT EXISTS idx_episode_workflows_track ON episode_workflows(track)');
 }
 

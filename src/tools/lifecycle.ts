@@ -31,7 +31,8 @@ function getOrCreate(epicId: number) {
   ensureEpic(epicId);
   db.prepare('INSERT OR IGNORE INTO episode_workflows (epic_id) VALUES (?)').run(epicId);
   return db.prepare('SELECT * FROM episode_workflows WHERE epic_id=?').get(epicId) as {
-    epic_id: number; stage: Stage; baseline_artifact_id: number | null;
+    epic_id: number; stage: Stage; track: 'formal' | 'fast-track';
+    baseline_artifact_id: number | null;
     baseline_hash: string | null; metadata: string; created_at: string; updated_at: string;
   };
 }
