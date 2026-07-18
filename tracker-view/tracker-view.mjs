@@ -917,7 +917,16 @@ function renderBoard(projectId, allProjects) {
         row.classList.toggle('is-recovery', w.task_kind === 'recovery.heal');
         row.querySelector('.wr-title').textContent = '#' + w.task_id + ' ' + (w.title || '').slice(0, 60);
         row.querySelector('.wr-age').textContent = ageMin + 'm';
-        row.querySelector('.wr-sub').textContent = w.worker_id;
+        // Worker subtitle: show token speed (tok/s) if available, else worker_id.
+        // tok/s = total thinking_tokens / elapsed_seconds — a live throughput
+        // indicator. Helps spot slow models vs fast ones at a glance.
+        const tps = w.tokens_per_sec;
+        const tt = w.total_tokens;
+        if (tps != null && tt != null) {
+          row.querySelector('.wr-sub').textContent = tps + ' tok/s · ' + (tt > 1000 ? (tt / 1000).toFixed(1) + 'k' : tt) + ' total';
+        } else {
+          row.querySelector('.wr-sub').textContent = w.worker_id;
+        }
         if (expandedWorkers.has(w.worker_id)) row.classList.add('expanded');
       }
       // Remove rows for workers no longer active.
@@ -3536,6 +3545,48 @@ function handleWorkersActive(req, res, url) {
       // waiting for the age-based yellow→red gradient to reach 60s.
       const STALE_AFTER_MS = 30 * 1000;
       const is_stale = log_mtime_ms != null && (Date.now() - log_mtime_ms) > STALE_AFTER_MS;
+
+      // Token speed: scan the last ~32KB of JSONL for thinking_tokens events
+      // (stream-json emits them per-token with estimated_tokens_delta). Count
+      // deltas within the last 10 seconds of log mtime → tokens/sec.
+      // This is a live throughput indicator — how fast the model is producing.
+      let tokens_per_sec = null;
+      let total_tokens = null;
+      if (logPath && !is_stale) {
+        try {
+          const fs2 = require('node:fs');
+          const st2 = fs2.statSync(logPath);
+          const tailBytes2 = Math.min(st2.size, 128 * 1024);
+          const fd2 = fs2.openSync(logPath, 'r');
+          const buf2 = Buffer.alloc(tailBytes2);
+          fs2.readSync(fd2, buf2, 0, tailBytes2, Math.max(0, st2.size - tailBytes2));
+          fs2.closeSync(fd2);
+          const lines = buf2.toString('utf8').split('\n').filter(Boolean);
+          // Find the latest thinking_tokens with highest estimated_tokens — that's total so far.
+          let lastTotal = 0;
+          let firstTs = null, lastTs = null, tokensInWindow = 0;
+          const tenSecAgoMs = (log_mtime_ms || Date.now()) - 10_000;
+          for (const line of lines) {
+            try {
+              const evt = JSON.parse(line);
+              if (evt.type === 'system' && evt.subtype === 'thinking_tokens') {
+                lastTotal = Math.max(lastTotal, evt.estimated_tokens || 0);
+                // We don't have timestamps per-event in stream-json (no per-line ts),
+                // so approximate: count tokens in last N% of the log (assume uniform time).
+                tokensInWindow += (evt.estimated_tokens_delta || 0);
+              }
+            } catch { /* non-JSON */ }
+          }
+          total_tokens = lastTotal > 0 ? lastTotal : null;
+          // tokens_per_sec: divide total tokens by the worker's running time.
+          // The worker started at worker_started_at or updated_at.
+          const startMs = startedRaw ? new Date(startedIso).getTime() : null;
+          if (startMs && lastTotal > 0) {
+            const elapsedSec = Math.max(1, (Date.now() - startMs) / 1000);
+            tokens_per_sec = Math.round(lastTotal / elapsedSec * 10) / 10;
+          }
+        } catch { /* stat/read fail */ }
+      }
       return {
         task_id: r.id,
         title: r.title,
@@ -3546,6 +3597,8 @@ function handleWorkersActive(req, res, url) {
         started_at: startedIso,
         log_mtime_ms,
         is_stale,
+        tokens_per_sec,
+        total_tokens,
         log_path: logPath,
       };
     });
