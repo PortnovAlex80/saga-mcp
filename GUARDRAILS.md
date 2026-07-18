@@ -89,3 +89,17 @@ Append-only log of learned constraints from real bugs. **Never delete a sign.** 
 **Fix:** After convergence, the qualified claim is: "saga-mcp implements 6 of 7 CGAD gaps from the ADR-005 Roadmap (gap #5 permanently out of scope). cgad-spec-lint v1.0 covers 12 of 25 CGAD §22 forbidden constructs deterministically. The remaining gaps are catalogued in ADR-007 §'What remains descriptive or out of scope'." Do NOT claim full CGAD compliance. Per Sign 008, every CGAD reference must still qualify what-shipped vs what-is-descriptive.
 **Date:** 2026-07-17
 **Related:** ADR-007 (cgad-convergence-retrospective), ADR-005, ADR-006, GUARDRAILS Signs 001-008, REQ-008 through REQ-013
+
+### 010 - Log silence is not worker death
+**Symptom:** Verification tasks are released and re-dispatched while their Claude CLI processes are still running cargo/vitest or reading contracts; late `worker_done` calls fail and the old processes become orphans.
+**Cause:** Task status, assignment ownership, log activity, and OS process liveness were treated as one state machine. A short no-output timeout was used as a death detector.
+**Fix:** Track each managed process in `worker_executions`, fence mutations with `current_execution_id`, and reconcile local liveness by host/PID/process-birth identity. Logs are progress telemetry only.
+**Date:** 2026-07-18
+**Related:** ADR-009, `src/worker-executions.ts`, `tracker-view/claude-runner.mjs`
+
+### 011 - Verification ownership must precede evidence
+**Symptom:** One verification worker records several neighboring ACs; each passed record creates another `verified_by` edge, so the approval gate later requires unrelated or unreplayable evidence.
+**Cause:** Evidence was allowed to create the task-to-AC relationship that the evidence itself was supposed to prove. No canonical target existed.
+**Fix:** Every `verification.ac` task stores one accepted `verification_target_artifact_id` from planning provenance. Reject cross-AC records and treat `verified_by` as derived output. Evidence uniqueness includes the fenced execution attempt so a new holder can retry.
+**Date:** 2026-07-18
+**Related:** ADR-009, `src/tools/lifecycle.ts`, `src/tools/tasks.ts`

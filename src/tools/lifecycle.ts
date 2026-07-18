@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import { getDb } from '../db.js';
 import { logActivity } from '../helpers/activity-logger.js';
+import { assertExecutionFence } from '../worker-executions.js';
 import type { ToolHandler } from '../types.js';
 import { refreshArtifactHash } from '../helpers/artifact-file.js';
 
@@ -222,8 +223,16 @@ function handleVerificationRecord(args: Record<string, unknown>) {
   }
   if (!evidence?.trim()) throw new Error('Verification evidence is required');
 
-  const task = db.prepare('SELECT id, epic_id, task_kind, status, assigned_to FROM tasks WHERE id=?').get(taskId) as
-    | { id: number; epic_id: number; task_kind: string | null; status: string; assigned_to: string | null }
+  const task = db.prepare(
+    `SELECT id, epic_id, task_kind, status, assigned_to, current_execution_id,
+            verification_target_artifact_id
+     FROM tasks WHERE id=?`,
+  ).get(taskId) as
+    | {
+        id: number; epic_id: number; task_kind: string | null; status: string;
+        assigned_to: string | null; current_execution_id: string | null;
+        verification_target_artifact_id: number | null;
+      }
     | undefined;
   const artifact = db.prepare(
     `SELECT id, epic_id, type, accepted_hash, status FROM artifacts WHERE id=?`,
@@ -231,11 +240,39 @@ function handleVerificationRecord(args: Record<string, unknown>) {
     | { id: number; epic_id: number; type: string; accepted_hash: string | null; status: string }
     | undefined;
   if (!task || task.task_kind !== 'verification.ac') throw new Error(`Task ${taskId} is not a verification.ac task`);
+  assertExecutionFence(db, task, args.execution_id);
   if (!recordedBy || task.assigned_to !== recordedBy || !['in_progress', 'review_in_progress'].includes(task.status)) {
     throw new Error(`Verification evidence requires recorded_by to hold active task ${taskId}`);
   }
   if (!artifact || artifact.type !== 'AC' || artifact.epic_id !== task.epic_id) {
     throw new Error(`Artifact ${artifactId} is not an AC in task ${taskId}'s episode`);
+  }
+  let targetArtifactId = task.verification_target_artifact_id;
+  if (targetArtifactId === null) {
+    const legacyTargets = db.prepare(
+      `SELECT tr.source_id
+       FROM artifact_traces tr JOIN artifacts a ON a.id=tr.source_id
+       WHERE tr.target_type='task' AND tr.target_id=? AND tr.link_type='depends_on'
+         AND a.type='AC'`,
+    ).all(taskId) as Array<{ source_id: number }>;
+    if (legacyTargets.length === 1) {
+      targetArtifactId = legacyTargets[0]!.source_id;
+      db.prepare(
+        `UPDATE tasks SET verification_target_artifact_id=?, updated_at=datetime('now')
+         WHERE id=? AND verification_target_artifact_id IS NULL`,
+      ).run(targetArtifactId, taskId);
+    }
+  }
+  if (targetArtifactId === null) {
+    throw new Error(
+      `Verification task ${taskId} has no canonical AC target; recreate it with exactly one source_artifact_id`,
+    );
+  }
+  if (artifactId !== targetArtifactId) {
+    throw new Error(
+      `Verification task ${taskId} targets AC ${targetArtifactId}, not AC ${artifactId}; ` +
+      'cross-verification is forbidden',
+    );
   }
   if (artifact.status !== 'accepted' || !artifact.accepted_hash) {
     throw new Error(`AC ${artifactId} has no accepted baseline hash`);
@@ -246,13 +283,16 @@ function handleVerificationRecord(args: Record<string, unknown>) {
   }
   const info = db.prepare(
     `INSERT OR IGNORE INTO verification_evidence
-       (task_id, artifact_id, outcome, evidence, content_hash, recorded_by, provider)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
-  ).run(taskId, artifactId, outcome, evidence, contentHash, recordedBy, provider);
+       (task_id, artifact_id, outcome, evidence, content_hash, recorded_by, provider, execution_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(
+    taskId, artifactId, outcome, evidence, contentHash, recordedBy, provider,
+    (args.execution_id as string | undefined) ?? null,
+  );
   const row = db.prepare(
     `SELECT * FROM verification_evidence
-     WHERE task_id=? AND artifact_id=? AND content_hash=?`,
-  ).get(taskId, artifactId, contentHash);
+     WHERE task_id=? AND artifact_id=? AND content_hash=? AND execution_id IS ?`,
+  ).get(taskId, artifactId, contentHash, (args.execution_id as string | undefined) ?? null);
   if (outcome === 'passed') {
     db.prepare(
       `INSERT OR IGNORE INTO artifact_traces (source_id,target_type,target_id,link_type)
@@ -299,6 +339,7 @@ export const definitions: Tool[] = [
         content_hash: { type: 'string' },
         recorded_by: { type: 'string' },
         provider: { type: 'string', description: 'CGAD Trusted Guard Input Provider identity (e.g. "test_runner", "cgad-spec-lint", "human_approval"). Optional in v1; required once provider registry (REQ-012) is wired.' },
+        execution_id: { type: 'string', description: 'Required fencing token for managed CLI tasks.' },
       },
       required: ['task_id', 'artifact_id', 'outcome', 'evidence'],
     },

@@ -1,6 +1,6 @@
 // Functional test for the worktree-isolation additions:
-//   1. worker_done({ verdict: 'changes_requested' }) → review→in_progress,
-//      assigned_to returns to the reviewer, branch/worktree meta untouched.
+//   1. worker_done({ verdict: 'changes_requested' }) → review→todo,
+//      assignment is released for a fresh developer; branch/worktree survives.
 //   2. active_tasks[] appears in worker_next & worker_done responses
 //      (parallel-work visibility) and lists siblings with their branch.
 //   3. worker_merge_acquire: first caller granted, second denied (held_by).
@@ -68,7 +68,7 @@ check('active_tasks entries carry branch="task/<id>"',
   (next2.active_tasks ?? []).every(a => /^task\/\d+$/.test(a.branch)),
   JSON.stringify(next2.active_tasks));
 
-console.log('\n=== TEST 3: CHANGES REQUESTED → review→in_progress, re-assign ===');
+console.log('\n=== TEST 3: CHANGES REQUESTED → review→todo, release reviewer ===');
 // agent-A finishes dev: in_progress → review.
 const devDone = handlers.worker_done({ task_id: next1.task.id, worker_id: 'agent-A', result: 'impl done' });
 check('dev-done moved task-A to review', devDone.completed_new_status === 'review', `got ${devDone.completed_new_status}`);
@@ -78,15 +78,16 @@ check('reviewer got a review task', reviewPick.task?.status === 'review', `statu
 const reviewTaskId = reviewPick.task?.id;
 // CHANGES REQUESTED verdict.
 const cr = handlers.worker_done({ task_id: reviewTaskId, worker_id: 'agent-R', result: 'needs fixes', verdict: 'changes_requested' });
-check('changes_requested moved task back to in_progress', cr.completed_new_status === 'in_progress', `got ${cr.completed_new_status}`);
+check('changes_requested moved task back to todo', cr.completed_new_status === 'todo', `got ${cr.completed_new_status}`);
 // assigned_to must return to the reviewer (they are now the dev).
 const afterCr = handlers.task_get?.({ id: reviewTaskId }) ?? null;
 // task_get lives in tasks.ts, not exported here — read directly from DB to verify.
 const row = getDb().prepare('SELECT assigned_to, status FROM tasks WHERE id=?').get(reviewTaskId);
-check('task re-assigned to the reviewer (agent-R)', row.assigned_to === 'agent-R', `assigned_to=${row.assigned_to}`);
-check('task status is in_progress', row.status === 'in_progress', `status=${row.status}`);
+check('task is unassigned after review', row.assigned_to === null, `assigned_to=${row.assigned_to}`);
+check('task status is todo', row.status === 'todo', `status=${row.status}`);
+getDb().prepare("UPDATE tasks SET priority='low' WHERE id=?").run(reviewTaskId);
 
-console.log('\n=== TEST 4: APPROVED → done + merged_into=pending; merge-lock serializes ===');
+console.log('\n=== TEST 4: APPROVED → done; merge-lock serializes ===');
 // Finish task-B fully to APPROVED so we can exercise the merge-lock.
 const devDoneB = handlers.worker_done({ task_id: next2.task.id, worker_id: 'agent-B', result: 'impl B' });
 check('task-B dev-done → review', devDoneB.completed_new_status === 'review', `got ${devDoneB.completed_new_status}`);
@@ -96,9 +97,12 @@ check('task-B APPROVED → done', approvedB.completed_new_status === 'done', `go
 // worker_done response carries active_tasks too.
 check('worker_done response includes active_tasks', Array.isArray(approvedB.active_tasks), 'missing');
 
-// merged_into should be "pending".
-const metaB = JSON.parse(getDb().prepare('SELECT metadata FROM tasks WHERE id=?').get(reviewPickB.task.id).metadata);
-check('metadata.worktree.merged_into === "pending" after APPROVED', metaB.worktree?.merged_into === 'pending', JSON.stringify(metaB.worktree));
+// These fixtures are legacy untyped tasks, so no typed integration gate is
+// required even though the explicit merge-lock API remains available.
+const integrationB = getDb().prepare(
+  'SELECT integration_state FROM tasks WHERE id=?',
+).get(reviewPickB.task.id).integration_state;
+check('legacy task integration_state stays "not_required"', integrationB === 'not_required', integrationB);
 
 // First acquirer wins.
 const acq1 = handlers.worker_merge_acquire({ task_id: reviewPickB.task.id, worker_id: 'agent-B' });

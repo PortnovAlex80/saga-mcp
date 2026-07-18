@@ -60,6 +60,8 @@ export interface Task {
   integrated_commit: string | null;
   generated_from_task_id: number | null;
   generation_key: string | null;
+  current_execution_id: string | null;
+  verification_target_artifact_id: number | null;
   tags: string;
   metadata: string;
   created_at: string;

@@ -96,6 +96,12 @@ CREATE TABLE IF NOT EXISTS tasks (
                     CHECK (priority IN ('low', 'medium', 'high', 'critical')),
   sort_order      INTEGER NOT NULL DEFAULT 0,
   assigned_to     TEXT,
+  -- Fencing token for managed CLI executions. NULL means legacy/manual claim.
+  -- Every worker-side mutation of a managed task must present this exact id.
+  current_execution_id TEXT,
+  -- Canonical AC owned by a verification.ac task. Evidence for any other AC
+  -- is rejected; verified_by is derived output, never the assignment source.
+  verification_target_artifact_id INTEGER REFERENCES artifacts(id) ON DELETE SET NULL,
   estimated_hours REAL,
   actual_hours    REAL,
   due_date        TEXT,
@@ -129,6 +135,35 @@ CREATE TABLE IF NOT EXISTS tasks (
   metadata        TEXT NOT NULL DEFAULT '{}',
   created_at      TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Process truth is deliberately separate from task workflow truth. A task may
+-- already be in review/done while its single-use CLI process is finishing or
+-- integrating. Rows are retained as an execution audit trail.
+CREATE TABLE IF NOT EXISTS worker_executions (
+  execution_id    TEXT PRIMARY KEY,
+  run_id          TEXT NOT NULL,
+  project_id      INTEGER NOT NULL,
+  epic_id         INTEGER NOT NULL,
+  task_id         INTEGER NOT NULL,
+  worker_id       TEXT NOT NULL,
+  machine_id      TEXT NOT NULL,
+  launcher        TEXT NOT NULL DEFAULT 'claude_cli',
+  state           TEXT NOT NULL DEFAULT 'reserved'
+                    CHECK (state IN ('reserved','running','cancel_requested',
+                                     'exited','spawn_failed','lost','terminated')),
+  phase           TEXT NOT NULL
+                    CHECK (phase IN ('executing','reviewing','finishing','integrating')),
+  pid             INTEGER,
+  process_birth_token TEXT,
+  log_path        TEXT,
+  reserved_at     TEXT NOT NULL DEFAULT (datetime('now')),
+  started_at      TEXT,
+  phase_updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  finished_at     TEXT,
+  exit_code       INTEGER,
+  last_error      TEXT,
+  metadata        TEXT NOT NULL DEFAULT '{}'
 );
 
 CREATE TABLE IF NOT EXISTS subtasks (
@@ -303,8 +338,9 @@ CREATE TABLE IF NOT EXISTS verification_evidence (
   content_hash   TEXT,
   recorded_by    TEXT,
   provider       TEXT,
+  execution_id   TEXT,
   created_at     TEXT NOT NULL DEFAULT (datetime('now')),
-  UNIQUE (task_id, artifact_id, content_hash)
+  UNIQUE (task_id, artifact_id, content_hash, execution_id)
 );
 
 -- REQ-012 — Trusted Provider Registry.
@@ -403,6 +439,18 @@ CREATE INDEX IF NOT EXISTS idx_activity_action ON activity_log(action);
 
 CREATE INDEX IF NOT EXISTS idx_tasks_assigned ON tasks(assigned_to);
 CREATE INDEX IF NOT EXISTS idx_tasks_due ON tasks(due_date);
+CREATE INDEX IF NOT EXISTS idx_worker_executions_project_state
+  ON worker_executions(project_id, state);
+CREATE INDEX IF NOT EXISTS idx_worker_executions_epic_state
+  ON worker_executions(epic_id, state);
+CREATE INDEX IF NOT EXISTS idx_worker_executions_task
+  ON worker_executions(task_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_worker_executions_one_active_task
+  ON worker_executions(task_id)
+  WHERE state IN ('reserved','running','cancel_requested');
+CREATE UNIQUE INDEX IF NOT EXISTS idx_worker_executions_one_active_worker
+  ON worker_executions(worker_id)
+  WHERE state IN ('reserved','running','cancel_requested');
 
 CREATE INDEX IF NOT EXISTS idx_task_deps_depends ON task_dependencies(depends_on_task_id);
 CREATE INDEX IF NOT EXISTS idx_comments_task ON comments(task_id);

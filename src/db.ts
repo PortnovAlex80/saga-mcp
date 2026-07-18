@@ -36,6 +36,8 @@ export function getDb(): Database.Database {
   try { db.exec('ALTER TABLE tasks ADD COLUMN integrated_commit TEXT'); } catch { /* column already exists */ }
   try { db.exec('ALTER TABLE tasks ADD COLUMN generated_from_task_id INTEGER REFERENCES tasks(id) ON DELETE SET NULL'); } catch { /* column already exists */ }
   try { db.exec('ALTER TABLE tasks ADD COLUMN generation_key TEXT'); } catch { /* column already exists */ }
+  try { db.exec('ALTER TABLE tasks ADD COLUMN current_execution_id TEXT'); } catch { /* column already exists */ }
+  try { db.exec('ALTER TABLE tasks ADD COLUMN verification_target_artifact_id INTEGER REFERENCES artifacts(id) ON DELETE SET NULL'); } catch { /* column already exists */ }
   try { db.exec('ALTER TABLE artifacts ADD COLUMN project_repository_id INTEGER REFERENCES project_repositories(id) ON DELETE SET NULL'); } catch { /* column already exists */ }
   try { db.exec('ALTER TABLE artifacts ADD COLUMN content_hash TEXT'); } catch { /* column already exists */ }
   try { db.exec('ALTER TABLE artifacts ADD COLUMN accepted_hash TEXT'); } catch { /* column already exists */ }
@@ -44,6 +46,7 @@ export function getDb(): Database.Database {
   try { db.exec("ALTER TABLE artifacts ADD COLUMN evidence_status TEXT CHECK (evidence_status IN ('confirmed','proposed','assumed','open','rejected','superseded') OR evidence_status IS NULL)"); } catch { /* column already exists */ }
   migrateTracesLinkType(db);
   migrateVerificationOutcome(db);
+  migrateVerificationExecution(db);
   migrateRiskClass(db);
   try { db.exec('CREATE INDEX IF NOT EXISTS idx_epics_branch ON epics(branch)'); } catch { /* index already exists */ }
   db.exec(`
@@ -53,6 +56,8 @@ export function getDb(): Database.Database {
     CREATE INDEX IF NOT EXISTS idx_tasks_stage ON tasks(workflow_stage);
     CREATE INDEX IF NOT EXISTS idx_tasks_kind ON tasks(task_kind);
     CREATE INDEX IF NOT EXISTS idx_tasks_generated_from ON tasks(generated_from_task_id);
+    CREATE INDEX IF NOT EXISTS idx_tasks_current_execution ON tasks(current_execution_id);
+    CREATE INDEX IF NOT EXISTS idx_tasks_verification_target ON tasks(verification_target_artifact_id);
     CREATE INDEX IF NOT EXISTS idx_artifacts_drift ON artifacts(epic_id, drift_state);
     CREATE UNIQUE INDEX IF NOT EXISTS idx_tasks_generation_key
       ON tasks(epic_id, generation_key) WHERE generation_key IS NOT NULL;
@@ -64,6 +69,7 @@ export function getDb(): Database.Database {
   // single-writer assumption at startup. Existing rows with status='review' AND
   // assigned_to NOT NULL (reviewer was working) become 'review_in_progress'.
   migrateReviewInProgress(db);
+  migrateVerificationTargets(db);
 
   return db;
 }
@@ -96,8 +102,9 @@ function migrateReviewInProgress(db: Database.Database): void {
 
   // Old schema detected. Rebuild tasks with updated CHECK.
   // NOTE: SQLite table rebuild — preserve all columns, indexes are recreated by SCHEMA_SQL IF NOT EXISTS.
-  db.exec('BEGIN IMMEDIATE');
+  db.pragma('foreign_keys = OFF');
   try {
+    db.exec('BEGIN IMMEDIATE');
     // Snapshot original DDL columns by reading pragma table_info — we rebuild
     // with explicit columns matching the current schema.ts definition.
     db.exec(`
@@ -112,6 +119,8 @@ function migrateReviewInProgress(db: Database.Database): void {
               CHECK (priority IN ('low', 'medium', 'high', 'critical')),
         sort_order INTEGER NOT NULL DEFAULT 0,
         assigned_to TEXT,
+        current_execution_id TEXT,
+        verification_target_artifact_id INTEGER REFERENCES artifacts(id) ON DELETE SET NULL,
         estimated_hours REAL,
         actual_hours REAL,
         due_date TEXT,
@@ -129,6 +138,10 @@ function migrateReviewInProgress(db: Database.Database): void {
         integrated_commit TEXT,
         generated_from_task_id INTEGER REFERENCES tasks(id) ON DELETE SET NULL,
         generation_key TEXT,
+        declared_risk TEXT CHECK (declared_risk IN ('low','medium','high','critical') OR declared_risk IS NULL),
+        derived_risk TEXT CHECK (derived_risk IN ('low','medium','high','critical') OR derived_risk IS NULL),
+        policy_minimum TEXT CHECK (policy_minimum IN ('low','medium','high','critical') OR policy_minimum IS NULL),
+        final_risk TEXT CHECK (final_risk IN ('low','medium','high','critical') OR final_risk IS NULL),
         tags TEXT NOT NULL DEFAULT '[]',
         metadata TEXT NOT NULL DEFAULT '{}',
         created_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -138,18 +151,22 @@ function migrateReviewInProgress(db: Database.Database): void {
     // Copy rows; flip review+assigned_to -> review_in_progress.
     db.exec(`
       INSERT INTO tasks_new (id, epic_id, title, description, status, priority, sort_order,
-                             assigned_to, estimated_hours, actual_hours, due_date, source_ref,
+                             assigned_to, current_execution_id, verification_target_artifact_id,
+                             estimated_hours, actual_hours, due_date, source_ref,
                              task_kind, workflow_stage, execution_skill, review_skill,
                              execution_mode, project_repository_id, generated_from_task_id,
                              integration_state, integrated_at, integrated_commit,
-                             generation_key, tags, metadata, created_at, updated_at)
+                             generation_key, declared_risk, derived_risk, policy_minimum, final_risk,
+                             tags, metadata, created_at, updated_at)
       SELECT id, epic_id, title, description,
              CASE WHEN status='review' AND assigned_to IS NOT NULL AND assigned_to != ''
                   THEN 'review_in_progress' ELSE status END,
-             priority, sort_order, assigned_to, estimated_hours, actual_hours, due_date, source_ref,
+             priority, sort_order, assigned_to, current_execution_id, verification_target_artifact_id,
+             estimated_hours, actual_hours, due_date, source_ref,
              task_kind, workflow_stage, execution_skill, review_skill, execution_mode,
              project_repository_id, generated_from_task_id,
              integration_state, integrated_at, integrated_commit, generation_key,
+             declared_risk, derived_risk, policy_minimum, final_risk,
              tags, metadata, created_at, updated_at
       FROM tasks
     `);
@@ -161,6 +178,8 @@ function migrateReviewInProgress(db: Database.Database): void {
     db.exec('CREATE INDEX IF NOT EXISTS idx_tasks_epic_id ON tasks(epic_id)');
     db.exec('CREATE INDEX IF NOT EXISTS idx_tasks_priority ON tasks(priority)');
     db.exec('CREATE INDEX IF NOT EXISTS idx_tasks_assigned ON tasks(assigned_to)');
+    db.exec('CREATE INDEX IF NOT EXISTS idx_tasks_current_execution ON tasks(current_execution_id)');
+    db.exec('CREATE INDEX IF NOT EXISTS idx_tasks_verification_target ON tasks(verification_target_artifact_id)');
     db.exec('CREATE INDEX IF NOT EXISTS idx_tasks_due ON tasks(due_date)');
     db.exec('CREATE INDEX IF NOT EXISTS idx_tasks_sort ON tasks(epic_id, sort_order)');
     db.exec('COMMIT');
@@ -168,7 +187,11 @@ function migrateReviewInProgress(db: Database.Database): void {
     try { db.exec('ROLLBACK'); } catch { /* tx not active */ }
     // Re-throw: failing to migrate is a hard stop — better than silent corruption.
     throw new Error(`Migration 'review_in_progress' failed: ${(err as Error).message}`);
+  } finally {
+    db.pragma('foreign_keys = ON');
   }
+  const violation = db.prepare('PRAGMA foreign_key_check').get();
+  if (violation) throw new Error(`Migration 'review_in_progress' produced foreign key violations`);
 }
 
 function migrateArtifactTypes(db: Database.Database): void {
@@ -360,6 +383,138 @@ function migrateVerificationOutcome(db: Database.Database): void {
   }
   const violation = db.prepare('PRAGMA foreign_key_check').get();
   if (violation) throw new Error(`Migration verification_evidence produced foreign key violations`);
+}
+
+/**
+ * Evidence is immutable per execution attempt, not forever per task/AC/hash.
+ * A dead verifier may have recorded failed/unknown evidence; a later fenced
+ * execution must be able to append its own result without overwriting history.
+ */
+function migrateVerificationExecution(db: Database.Database): void {
+  const columns = db.prepare("PRAGMA table_info('verification_evidence')").all() as Array<{ name: string }>;
+  if (columns.some(column => column.name === 'execution_id')) {
+    db.exec(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_verification_evidence_attempt
+        ON verification_evidence(
+          task_id, artifact_id, COALESCE(content_hash,''),
+          COALESCE(execution_id,'')
+        )
+    `);
+    return;
+  }
+  db.pragma('foreign_keys = OFF');
+  try {
+    db.exec('BEGIN IMMEDIATE');
+    db.exec(`
+      CREATE TABLE verification_evidence_new (
+        id             INTEGER PRIMARY KEY AUTOINCREMENT,
+        task_id        INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+        artifact_id    INTEGER NOT NULL REFERENCES artifacts(id) ON DELETE CASCADE,
+        outcome        TEXT NOT NULL CHECK (outcome IN ('passed','failed','unknown','error')),
+        evidence       TEXT NOT NULL,
+        content_hash   TEXT,
+        recorded_by    TEXT,
+        provider       TEXT,
+        execution_id   TEXT,
+        created_at     TEXT NOT NULL DEFAULT (datetime('now')),
+        UNIQUE (task_id, artifact_id, content_hash, execution_id)
+      );
+      INSERT INTO verification_evidence_new
+        (id,task_id,artifact_id,outcome,evidence,content_hash,recorded_by,provider,created_at)
+      SELECT id,task_id,artifact_id,outcome,evidence,content_hash,recorded_by,provider,created_at
+      FROM verification_evidence;
+      DROP TABLE verification_evidence;
+      ALTER TABLE verification_evidence_new RENAME TO verification_evidence;
+      CREATE INDEX IF NOT EXISTS idx_verification_evidence_artifact
+        ON verification_evidence(artifact_id,outcome);
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_verification_evidence_attempt
+        ON verification_evidence(
+          task_id, artifact_id, COALESCE(content_hash,''),
+          COALESCE(execution_id,'')
+        );
+      COMMIT;
+    `);
+  } catch (error) {
+    try { db.exec('ROLLBACK'); } catch { /* no active transaction */ }
+    throw new Error(`Migration verification execution identity failed: ${(error as Error).message}`);
+  } finally {
+    db.pragma('foreign_keys = ON');
+  }
+  const violation = db.prepare('PRAGMA foreign_key_check').get();
+  if (violation) throw new Error('Migration verification execution identity produced foreign key violations');
+}
+
+/**
+ * Restore canonical verification ownership from planning provenance. A
+ * verified_by edge is derived output, so it must not define which AC a task
+ * owns. Mismatched legacy edges are safe to remove; evidence stays immutable.
+ */
+function migrateVerificationTargets(db: Database.Database): void {
+  db.transaction(() => {
+    db.exec(`
+      UPDATE tasks
+         SET verification_target_artifact_id = (
+           SELECT MIN(tr.source_id)
+             FROM artifact_traces tr
+             JOIN artifacts a ON a.id=tr.source_id
+            WHERE tr.target_type='task'
+              AND tr.target_id=tasks.id
+              AND tr.link_type='depends_on'
+              AND a.type='AC'
+              AND a.status='accepted'
+         )
+       WHERE task_kind='verification.ac'
+         AND verification_target_artifact_id IS NULL
+         AND 1 = (
+           SELECT COUNT(DISTINCT tr.source_id)
+             FROM artifact_traces tr
+             JOIN artifacts a ON a.id=tr.source_id
+            WHERE tr.target_type='task'
+              AND tr.target_id=tasks.id
+              AND tr.link_type='depends_on'
+              AND a.type='AC'
+              AND a.status='accepted'
+         );
+
+    `);
+
+    const unresolved = db.prepare(
+      `SELECT id,epic_id,title FROM tasks
+        WHERE task_kind='verification.ac'
+          AND verification_target_artifact_id IS NULL`,
+    ).all() as Array<{ id: number; epic_id: number; title: string }>;
+    const acceptedAcs = db.prepare(
+      `SELECT id,code FROM artifacts
+        WHERE epic_id=? AND type='AC' AND status='accepted' AND code IS NOT NULL`,
+    );
+    const setTarget = db.prepare(
+      `UPDATE tasks SET verification_target_artifact_id=?
+        WHERE id=? AND verification_target_artifact_id IS NULL`,
+    );
+    for (const task of unresolved) {
+      const matches = (acceptedAcs.all(task.epic_id) as Array<{ id: number; code: string }>)
+        .filter(artifact => {
+          const escaped = artifact.code.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          return new RegExp(`(^|[^A-Za-z0-9_-])${escaped}(?=$|[^A-Za-z0-9_-])`, 'i')
+            .test(task.title);
+        });
+      if (matches.length === 1) setTarget.run(matches[0]!.id, task.id);
+    }
+
+    db.exec(`
+      DELETE FROM artifact_traces
+       WHERE link_type='verified_by'
+         AND target_type='task'
+         AND EXISTS (
+           SELECT 1
+             FROM tasks t
+            WHERE t.id=artifact_traces.target_id
+              AND t.task_kind='verification.ac'
+              AND t.verification_target_artifact_id IS NOT NULL
+              AND t.verification_target_artifact_id != artifact_traces.source_id
+         );
+    `);
+  })();
 }
 
 // REQ-009 — CGAD §11 RiskClass. Adds four nullable risk columns to tasks.

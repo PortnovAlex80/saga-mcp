@@ -7,6 +7,7 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { rmSync, writeFileSync } from 'node:fs';
+import os from 'node:os';
 import Database from 'file:///D:/Development/saga-mcp/node_modules/better-sqlite3/lib/index.js';
 
 const thisDir = dirname(fileURLToPath(import.meta.url));
@@ -35,16 +36,29 @@ setup.prepare("INSERT INTO projects (name) VALUES ('verdict-race')").run();
 const pid = setup.prepare("SELECT id FROM projects WHERE name='verdict-race'").get().id;
 setup.prepare("INSERT INTO epics (project_id, name) VALUES (?, 'e')").run(pid);
 const eid = setup.prepare("SELECT id FROM epics WHERE name='e'").get().id;
-setup.prepare("INSERT INTO tasks (epic_id, title, status, assigned_to) VALUES (?, 'T', 'review_in_progress', NULL)").run(eid);
+setup.prepare("INSERT INTO tasks (epic_id, title, status, assigned_to) VALUES (?, 'T', 'review', NULL)").run(eid);
 setup.close();
 
 const taskId = 1;
 const numWorkers = Number(process.argv[2] ?? 8);
-console.log(`\n=== RACE: ${numWorkers} workers ALL worker_done on the SAME review task #${taskId} ===\n`);
+const owner = 'verdict-owner';
+const executionId = 'verdict-race-execution';
+process.env.DB_PATH = dbPath;
+const { handlers } = await import('../../dist/tools/dispatcher.js');
+const { closeDb } = await import('../../dist/db.js');
+handlers.worker_next({
+  worker_id: owner,
+  project_id: pid,
+  machine_id: os.hostname(),
+  execution_id: executionId,
+  run_id: 'verdict-race',
+});
+closeDb();
+console.log(`\n=== RACE: ${numWorkers} calls from ONE fenced holder on review task #${taskId} ===\n`);
 
 const results = await Promise.all(
   Array.from({ length: numWorkers }, (_, i) =>
-    runWorker(`verdict-agent-${i + 1}`, taskId)
+    runWorker(owner, taskId, executionId)
   )
 );
 
@@ -77,12 +91,14 @@ console.log(allPass ? '\n✅✅✅ NO DOUBLE-DONE — exactly one verdict wins, 
                    : '\n❌❌❌ RACE BUG.\n');
 process.exit(allPass ? 0 : 1);
 
-function runWorker(workerId, taskId) {
+function runWorker(workerId, taskId, executionId) {
   return new Promise((resolve) => {
     const env = { ...process.env, DB_PATH: dbPath };
-    const child = spawn('node', [join(thisDir, 'verdict.mjs'), workerId, String(taskId)], {
-      cwd: repoRoot, env, stdio: ['ignore', 'pipe', 'pipe'],
-    });
+    const child = spawn(
+      'node',
+      [join(thisDir, 'verdict.mjs'), workerId, String(taskId), executionId],
+      { cwd: repoRoot, env, stdio: ['ignore', 'pipe', 'pipe'] },
+    );
     let stdout = '', stderr = '';
     child.stdout.on('data', d => stdout += d);
     child.stderr.on('data', d => stderr += d);

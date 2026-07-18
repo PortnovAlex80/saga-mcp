@@ -19,6 +19,7 @@ export interface RunnerAssignment {
     workflow_stage?: string | null;
   };
   skill: string | null;
+  execution_id?: string;
   repository?: {
     id: number;
     name: string;
@@ -51,13 +52,14 @@ export interface RunnerRunSnapshot {
 }
 
 export interface ClaudeBoardRunnerOptions {
-  claimTask: (args: { worker_id: string; project_id: number; machine_id?: string }) => RunnerAssignment | null;
+  claimTask: (args: { worker_id: string; project_id: number; machine_id?: string; epic_id?: number; execution_id?: string; run_id?: string }) => RunnerAssignment | null;
   getProject: (projectId: number) => unknown;
   getTaskState: (taskId: number) => unknown;
   recoverAssignment: (args: {
     taskId: number;
     workerId: string;
     originalStatus: string;
+    executionId?: string | null;
     reason: string;
   }) => boolean;
   resolveWorkspace: (project: unknown) => string | null;
@@ -71,7 +73,7 @@ export interface ClaudeBoardRunnerOptions {
 }
 
 export interface ClaudeBoardRunner {
-  start(args: { projectId: number; concurrency: number }): RunnerRunSnapshot;
+  start(args: { projectId: number; epicId?: number; concurrency: number }): RunnerRunSnapshot;
   stop(projectId: number): RunnerRunSnapshot | null;
   status(projectId: number): RunnerRunSnapshot | null;
   setConcurrency(projectId: number, concurrency: number): void;

@@ -3,6 +3,12 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawn as nodeSpawn } from 'node:child_process';
 import { createRequire } from 'node:module';
+import {
+  markExecutionExited,
+  markExecutionRunning,
+  markExecutionSpawnFailed,
+  readProcessBirthToken,
+} from '../dist/worker-executions.js';
 
 // ESM .mjs files don't have `require` — use createRequire to load CJS
 // modules (better-sqlite3 is CJS). Used for worker_pid persistence.
@@ -42,6 +48,7 @@ function buildPrompt({ assignment, project, workerId, workspaceRoot, sagaSkillRo
     `project_name=${project.name}`,
     `task_id=${task.id}`,
     `worker_id=${workerId}`,
+    `execution_id=${assignment.execution_id || 'legacy'}`,
     `role=${role}`,
     `dispatcher_skill=${assignment.skill}`,
     `task_kind=${task.task_kind || 'legacy'}`,
@@ -61,14 +68,17 @@ function buildPrompt({ assignment, project, workerId, workspaceRoot, sagaSkillRo
       ? '5. Use the existing task worktree/branch conventions from the skill.'
       : '5. This task is not a git-change task. Do not create a worktree or merge unless the assigned skill explicitly requires one.',
     isReview
-      ? '6. Review the assigned implementation and call worker_done exactly once with verdict approved or changes_requested.'
-      : '6. Complete the assigned task according to its selected skill, verify its output, and call worker_done exactly once with a truthful result.',
+      ? `6. Review the assigned implementation and call worker_done exactly once with verdict approved or changes_requested${assignment.execution_id ? ` and execution_id="${assignment.execution_id}"` : ''}.`
+      : `6. Complete the assigned task according to its selected skill, verify its output, and call worker_done exactly once with a truthful result${assignment.execution_id ? ` and execution_id="${assignment.execution_id}"` : ''}.`,
     task.execution_mode === 'git_change' && isReview
       ? '7. If APPROVED reaches done, stop:true means do not claim another task: first acquire the repository merge lock, merge into the assigned integration branch, call worker_merge_release, then summarize and exit.'
       : '7. After worker_done returns stop:true, do not claim another task; finish any required terminal protocol, then return a concise summary and exit.',
     '8. Do not start, select, or accept another task. Do not spawn nested agents.',
+    assignment.execution_id
+      ? `8a. Include execution_id="${assignment.execution_id}" in worker_done, verification_record, worker_ask_need, worker_ask_done, worker_merge_acquire, and worker_merge_release.`
+      : '8a. This is a legacy unfenced assignment.',
     task.task_kind === 'verification.ac'
-      ? `9. Before worker_done, call verification_record for every assigned AC with recorded_by="${workerId}" and truthful pass/fail evidence.`
+      ? `9. Before worker_done, call verification_record only for the task's canonical AC with recorded_by="${workerId}"${assignment.execution_id ? `, execution_id="${assignment.execution_id}"` : ''}, and truthful pass/fail evidence.`
       : '9. Preserve the task provenance and do not create unrelated downstream work.',
     '',
     'Assigned task payload:',
@@ -141,7 +151,7 @@ export class ClaudeBoardRunner {
     try { rmSync(this.mcpConfigPath, { force: true }); } catch {}
   }
 
-  start({ projectId, concurrency }) {
+  start({ projectId, epicId, concurrency }) {
     const existing = this.runs.get(projectId);
     if (existing && !TERMINAL_RUN_STATES.has(existing.status)) {
       throw new Error(`Project ${projectId} already has an active board run`);
@@ -154,10 +164,11 @@ export class ClaudeBoardRunner {
     if (!project) throw new Error(`Project ${projectId} not found`);
     const workspaceRoot = this.resolveWorkspace(project);
 
-    const runId = `board-${projectId}-${Date.now()}`;
+    const runId = `board-${projectId}-${process.pid}-${Date.now()}`;
     const run = {
       id: runId,
       projectId,
+      epicId: epicId ?? null,
       projectName: project.name,
       workspaceRoot,
       concurrency,
@@ -252,12 +263,16 @@ export class ClaudeBoardRunner {
     let claimedAny = false;
     while (run.active.size < run.concurrency && run.status === 'running') {
       const workerId = `board-${run.projectId}-${Date.now()}-${++this.sequence}`;
+      const executionId = `exec-${run.projectId}-${process.pid}-${Date.now()}-${this.sequence}`;
       let assignment;
       try {
         assignment = this.claimTask({
           worker_id: workerId,
           project_id: run.projectId,
           machine_id: os.hostname(),
+          epic_id: run.epicId ?? undefined,
+          execution_id: executionId,
+          run_id: run.id,
         });
       } catch (error) {
         run.lastError = error instanceof Error ? error.message : String(error);
@@ -278,8 +293,12 @@ export class ClaudeBoardRunner {
           taskId: assignment.task.id,
           workerId,
           originalStatus: assignment.task.status,
+          executionId: assignment.execution_id || null,
           reason: `Claude spawn failed: ${run.lastError}`,
         });
+        if (assignment.execution_id) {
+          markExecutionSpawnFailed(this.dbPath, assignment.execution_id, run.lastError);
+        }
       }
     }
 
@@ -303,6 +322,7 @@ export class ClaudeBoardRunner {
       assignment,
       project: { id: run.projectId, name: run.projectName },
       workerId,
+      executionId: assignment.execution_id || null,
       workspaceRoot,
       sagaSkillRoot: this.sagaSkillRoot,
     });
@@ -336,6 +356,7 @@ export class ClaudeBoardRunner {
         ...process.env,
         SAGA_RUN_ID: run.id,
         SAGA_WORKER_ID: workerId,
+        SAGA_EXECUTION_ID: assignment.execution_id || '',
         SAGA_TASK_ID: String(task.id),
         // Для heartbeat-лога из скилла воркера (см. saga-worker/SKILL.md):
         SAGA_PROJECT_ID: String(run.projectId),
@@ -354,6 +375,7 @@ export class ClaudeBoardRunner {
       taskId: task.id,
       title: task.title,
       workerId,
+      executionId: assignment.execution_id || null,
       originalStatus: task.status,
       child,
       log,
@@ -364,28 +386,6 @@ export class ClaudeBoardRunner {
     };
     run.active.set(workerId, execution);
 
-    // Persist worker PID into task.metadata so external observers (engine
-    // zombie-detector, manual kill via /api/engine/restart, debug tooling)
-    // can locate and terminate the worker subprocess by PID without needing
-    // access to this runner's in-memory state. Cheap UPDATE, runs once per
-    // worker spawn.
-    try {
-      const pid = child.pid;
-      const db = require('better-sqlite3')(this.dbPath);
-      db.prepare(
-        `UPDATE tasks SET metadata=json_set(COALESCE(metadata,'{}'),
-            '$.worker_pid', ?,
-            '$.worker_started_at', ?),
-            updated_at=datetime('now')
-         WHERE id=?`,
-      ).run(pid, execution.startedAt, task.id);
-      db.close();
-    } catch (e) {
-      // Non-critical: if the DB write fails the worker still runs, we just
-      // lose the ability to kill it by PID later. Log to board-run JSONL.
-      try { execution.log.write(`[runner] worker_pid persist failed: ${e.message}\n`); } catch {}
-    }
-
     // Heartbeat: воркер стартовал (spawn завершён, процесс жив).
     this.heartbeat(run, execution, 'STARTED',
       `claude -p task_id=${task.id} role=${roleFromTask(task, assignment.skill)} pid=${child.pid}`);
@@ -395,7 +395,9 @@ export class ClaudeBoardRunner {
       this.heartbeat(run, execution, 'ERROR', `spawn error: ${run.lastError}`);
     });
     child.once('close', code => {
-      try { log.end(); } catch {}
+      child.stdout?.unpipe(log);
+      child.stderr?.unpipe(log);
+      const finalize = () => {
       run.active.delete(workerId);
       const taskState = this.getTaskState(task.id);
       const integrationComplete = !(
@@ -409,20 +411,14 @@ export class ClaudeBoardRunner {
         integrationComplete;
       const changesRequested = code === 0 &&
         task.status === 'review' &&
-        taskState?.status === 'in_progress' &&
-        taskState.assigned_to === workerId;
+        taskState?.status === 'todo' &&
+        !taskState.assigned_to;
 
       if (completed && code === 0) {
         run.completed += 1;
         this.heartbeat(run, execution, 'CLOSED',
           `exit=0 completed status=${taskState?.status || '?'}`);
       } else if (changesRequested) {
-        this.recoverAssignment({
-          taskId: task.id,
-          workerId,
-          originalStatus: task.status,
-          reason: 'Review completed with changes_requested; returning task to the development queue',
-        });
         run.completed += 1;
         this.heartbeat(run, execution, 'CLOSED',
           `exit=0 changes_requested → returned to dev queue`);
@@ -435,8 +431,21 @@ export class ClaudeBoardRunner {
           taskId: task.id,
           workerId,
           originalStatus: task.status,
+          executionId: execution.executionId,
           reason: run.lastError,
         });
+      }
+      if (execution.executionId) {
+        try {
+          markExecutionExited(
+            this.dbPath,
+            execution.executionId,
+            code ?? null,
+            execution.terminationRequested ? 'terminated' : 'exited',
+          );
+        } catch (error) {
+          run.lastError = `execution close persistence failed: ${error.message}`;
+        }
       }
 
       if (run.stopRequested) {
@@ -444,7 +453,29 @@ export class ClaudeBoardRunner {
       } else {
         queueMicrotask(() => this.pump(run));
       }
+      };
+      try { log.end(finalize); } catch { finalize(); }
     });
+
+    // Listener registration MUST precede synchronous DB/OS inspection: a very
+    // short-lived child can otherwise close while its PID birth token is read.
+    try {
+      const pid = child.pid;
+      if (execution.executionId) {
+        markExecutionRunning(
+          this.dbPath,
+          execution.executionId,
+          pid ?? null,
+          readProcessBirthToken(pid ?? null),
+          logPath,
+          execution.startedAt,
+        );
+      }
+    } catch (e) {
+      run.lastError = `worker execution registration failed: ${e.message}`;
+      try { execution.log.write(`[runner] ${run.lastError}\n`); } catch {}
+      try { child.kill('SIGKILL'); } catch {}
+    }
   }
 }
 
