@@ -1045,10 +1045,11 @@ function renderBoard(projectId, allProjects) {
     // /api/workers/active returns fresh data, and (b) from refreshBoard
     // after the .board DOM was swapped — because replaceWith drops the
     // classes we previously added to the old .hb-dot nodes. A dot is
-    // streaming when the worker's log mtime is within STREAMING_WINDOW_MS.
-    // Otherwise the server-rendered ageClass(updated_at) (green/yellow/red)
-    // is left untouched.
-    const STREAMING_WINDOW_MS = 15000;
+    // Card status dot recoloured from REAL worker activity, not DB row mtimes.
+    // Same 3-colour scheme the user is used to (green/yellow/red by age), but
+    // the age is measured from the worker's last JSONL write (log_mtime_ms),
+    // so an actively-streaming worker stays green even when task.updated_at
+    // hasn't moved for minutes.
     function applyStreamingDots() {
       const map = window.__activeWorkers;
       if (!map || map.size === 0) return;
@@ -1062,12 +1063,11 @@ function renderBoard(projectId, allProjects) {
         if (!dot) return;
         if (w.log_mtime_ms == null) return;
         const ageS = Math.max(0, Math.floor((now - w.log_mtime_ms) / 1000));
-        // Only pulse when the log is actually growing. A long-stalled worker
-        // (mtime minutes ago) keeps its DB-derived ageClass.
-        if (now - w.log_mtime_ms > STREAMING_WINDOW_MS) return;
-        dot.classList.remove('green', 'yellow', 'red');
-        dot.classList.add('streaming');
-        dot.title = 'streaming ' + ageS + 's ago (' + (w.worker_id || '?') + ')';
+        // Same thresholds as ageClass(): <15s green, <60s yellow, else red.
+        const cls = ageS < 15 ? 'green' : ageS < 60 ? 'yellow' : 'red';
+        dot.classList.remove('green', 'yellow', 'red', 'streaming');
+        dot.classList.add(cls);
+        dot.title = ageS + 's ago (' + (w.worker_id || '?') + ')';
       });
     }
     async function refreshBoard() {
@@ -1820,8 +1820,8 @@ function page(title, body) {
        Slow blue pulse (3s) — calmer than the 1s green "DB just touched"
        pulse, so the two states stay visually distinct and the streaming
        one doesn't fight for attention. */
-    .hb-dot.streaming{background:#58a6ff;animation:hb-stream-pulse 3s infinite}
-    @keyframes hb-stream-pulse{0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(88,166,255,.6)}50%{opacity:.55;box-shadow:0 0 0 4px rgba(88,166,255,0)}}
+    // (streaming dot CSS removed — kept the 3-colour ageClass scheme the user
+    // is used to, just rebound to worker log_mtime_ms; see applyStreamingDots)
     @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
 
     /* переключатель табов Канбан/Артефакты */
