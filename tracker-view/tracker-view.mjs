@@ -3562,28 +3562,40 @@ function handleWorkersActive(req, res, url) {
           fs2.readSync(fd2, buf2, 0, tailBytes2, Math.max(0, st2.size - tailBytes2));
           fs2.closeSync(fd2);
           const lines = buf2.toString('utf8').split('\n').filter(Boolean);
-          // Find the latest thinking_tokens with highest estimated_tokens — that's total so far.
+          // Try thinking_tokens first (smart models stream real token counts).
+          // If they're all 1 (z.ai proxy for flash models), fall back to
+          // counting assistant output characters as a throughput proxy.
           let lastTotal = 0;
-          let firstTs = null, lastTs = null, tokensInWindow = 0;
-          const tenSecAgoMs = (log_mtime_ms || Date.now()) - 10_000;
+          let totalChars = 0;
+          let assistantBlocks = 0;
           for (const line of lines) {
             try {
               const evt = JSON.parse(line);
               if (evt.type === 'system' && evt.subtype === 'thinking_tokens') {
                 lastTotal = Math.max(lastTotal, evt.estimated_tokens || 0);
-                // We don't have timestamps per-event in stream-json (no per-line ts),
-                // so approximate: count tokens in last N% of the log (assume uniform time).
-                tokensInWindow += (evt.estimated_tokens_delta || 0);
+              }
+              if (evt.type === 'assistant' && evt.message?.content) {
+                for (const b of evt.message.content) {
+                  if (b.type === 'text' && b.text) { totalChars += b.text.length; assistantBlocks++; }
+                  if (b.type === 'tool_use') { totalChars += JSON.stringify(b.input || {}).length; assistantBlocks++; }
+                }
               }
             } catch { /* non-JSON */ }
           }
-          total_tokens = lastTotal > 0 ? lastTotal : null;
+          // Use thinking_tokens if they're real (> 1). Otherwise use assistant
+          // output chars / 4 as rough token estimate (~4 chars per token).
+          if (lastTotal > 1) {
+            total_tokens = lastTotal;
+          } else if (totalChars > 0) {
+            total_tokens = Math.round(totalChars / 4);
+          } else {
+            total_tokens = null;
+          }
           // tokens_per_sec: divide total tokens by the worker's running time.
-          // The worker started at worker_started_at or updated_at.
           const startMs = startedRaw ? new Date(startedIso).getTime() : null;
-          if (startMs && lastTotal > 0) {
+          if (startMs && total_tokens != null && total_tokens > 0) {
             const elapsedSec = Math.max(1, (Date.now() - startMs) / 1000);
-            tokens_per_sec = Math.round(lastTotal / elapsedSec * 10) / 10;
+            tokens_per_sec = Math.round(total_tokens / elapsedSec * 10) / 10;
           }
         } catch { /* stat/read fail */ }
       }
