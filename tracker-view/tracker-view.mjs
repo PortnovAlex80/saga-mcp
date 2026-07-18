@@ -574,8 +574,10 @@ function renderBoard(projectId, allProjects) {
             return `<option value="${i + 1}"${i + 1 === conc ? ' selected' : ''}>${i + 1}</option>`;
           }).join('')}
         </select>
+        <select id="agent-model-select" title="Модель для воркеров. Смена рестартит движок и auto-настраивает concurrency под лимит модели.">
+          ${MODELS.map(m => `<option value="${m.id}" data-limit="${m.limit}"${m.id === WORKER_MODEL ? ' selected' : ''}>${m.id} (×${m.limit})</option>`).join('')}
+        </select>
         <span id="agent-run-status" class="agent-run-status">движок: …</span>
-        <span class="agent-model" title="Реальная модель под claude alias (z.ai remap)">🧠 ${esc(WORKER_MODEL)}</span>
       </div>
       <div class="heartbeat"><span id="hb-dot" class="hb-dot red"></span><span id="hb-txt">…</span></div>
     </div>`;
@@ -1040,6 +1042,39 @@ function renderBoard(projectId, allProjects) {
         runnerConcurrency.disabled = false;
       }
     });
+    // Model selector: change the worker model. PATCHes ~/.claude/settings.json
+    // via /api/model/set, which also restarts the engine with concurrency
+    // auto-synced to the model's API limit (no more 429 storms).
+    const modelSelect = document.getElementById('agent-model-select');
+    if (modelSelect) {
+      modelSelect.addEventListener('change', async () => {
+        const modelId = modelSelect.value;
+        const limit = modelSelect.options[modelSelect.selectedIndex].dataset.limit;
+        if (!confirm('Сменить модель на ' + modelId + '? Concurrency будет auto-настроена до ' + limit + ' (лимит API). Движок перезапустится.')) {
+          // Revert
+          return;
+        }
+        runnerStatus.textContent = 'смена модели…';
+        modelSelect.disabled = true;
+        try {
+          const r = await fetch('/api/model/set', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({model: modelId, epic_id: window.__sagaEpicId}),
+          });
+          const data = await r.json();
+          if (!r.ok || !data.ok) throw new Error(data.error || 'смена не удалась');
+          runnerStatus.textContent = data.model + ' ×' + data.concurrency;
+          // Sync concurrency selector to the auto-set value
+          if (runnerConcurrency) runnerConcurrency.value = String(data.concurrency);
+        } catch (e) {
+          alert('Смена модели: ' + e.message);
+          runnerStatus.textContent = 'ошибка';
+        } finally {
+          modelSelect.disabled = false;
+        }
+      });
+    }
     // Sync selector + status from engine state in episode_workflows.metadata.
     async function syncConcurrencyFromEngine() {
       try {
@@ -3623,6 +3658,108 @@ function handleEngineRestart(req, res) {
   });
 }
 
+// --- Known models catalog with concurrency limits ---
+const MODELS = [
+  { id: 'glm-5.2',         limit: 10, tier: 'flagship' },
+  { id: 'glm-5.1',         limit: 10, tier: 'flagship' },
+  { id: 'glm-4.5',         limit: 10, tier: 'smart' },
+  { id: 'glm-4-plus',      limit: 20, tier: 'smart' },
+  { id: 'glm-4.5-air',     limit: 5,  tier: 'fast' },
+  { id: 'glm-4.5-flash',   limit: 2,  tier: 'cheap' },
+  { id: 'glm-4.7-flash',   limit: 1,  tier: 'cheap' },
+  { id: 'glm-4.7-flashx',  limit: 3,  tier: 'cheap' },
+];
+
+// --- GET /api/models ---
+function handleModelsList(req, res) {
+  respondJson(res, 200, { ok: true, current: WORKER_MODEL, models: MODELS });
+}
+
+// --- POST /api/model/set ---
+function handleModelSet(req, res) {
+  let chunks = [];
+  req.on('data', c => chunks.push(c));
+  req.on('end', () => {
+    const raw = Buffer.concat(chunks).toString('utf8');
+    let fields;
+    try { fields = JSON.parse(raw); } catch { fields = {}; }
+    const modelId = (fields.model || '').toString().trim();
+    const epicId = Number(fields.epic_id);
+    if (!modelId) return respondJson(res, 400, { ok:false, error:'model required' });
+    const model = MODELS.find(m => m.id === modelId);
+    if (!model) return respondJson(res, 400, { ok:false, error:'unknown model: ' + modelId });
+
+    try {
+      const fs = require('node:fs');
+      const os2 = require('node:os');
+      const path2 = require('node:path');
+      const settingsPath = path2.join(os2.homedir(), '.claude', 'settings.json');
+      const s = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+      s.env = s.env || {};
+      s.env.ANTHROPIC_DEFAULT_OPUS_MODEL = modelId;
+      s.env.ANTHROPIC_DEFAULT_SONNET_MODEL = modelId;
+      s.env.ANTHROPIC_DEFAULT_HAIKU_MODEL = modelId;
+      fs.writeFileSync(settingsPath, JSON.stringify(s, null, 2), 'utf8');
+    } catch (e) {
+      return respondJson(res, 500, { ok:false, error:'settings.json patch failed: ' + e.message });
+    }
+
+    const newConcurrency = model.limit;
+    let enginePid = null;
+    if (epicId) {
+      const epic = withDb(db => db.prepare('SELECT project_id FROM epics WHERE id=?').get(epicId));
+      if (epic) {
+        const projectId = epic.project_id;
+        try {
+          require('child_process').spawnSync(
+            'powershell',
+            ['-Command',
+             `function Get-Descendants(\$processId) { ` +
+             `  \$kids = Get-CimInstance Win32_Process -Filter "ParentProcessId=\$processId"; ` +
+             `  foreach (\$k in \$kids) { ,(\$k.ProcessId); Get-Descendants \$k.ProcessId } ` +
+             `} ; ` +
+             `\$toKill = @(); ` +
+             `\$engines = Get-CimInstance Win32_Process -Filter "name='node.exe'" | ` +
+             `  Where-Object { \$_.CommandLine -like '*orchestrate-cli.js ${projectId} ${epicId}*' }; ` +
+             `foreach (\$e in \$engines) { ` +
+             `  \$toKill += \$e.ProcessId; ` +
+             `  \$toKill += Get-Descendants \$e.ProcessId ` +
+             `} ; ` +
+             `\$orphans = Get-CimInstance Win32_Process -Filter "name='claude.exe'" | ` +
+             `  Where-Object { \$_.CommandLine -like '*project_id=${projectId}*' } ; ` +
+             `foreach (\$o in \$orphans) { \$toKill += \$o.ProcessId } ; ` +
+             `\$toKill = \$toKill | Sort-Object -Unique; ` +
+             `foreach (\$p in \$toKill) { taskkill /F /PID \$p 2>\$null }`],
+            { encoding: 'utf8' }
+          );
+          try { require('child_process').spawnSync('timeout', ['/T', '1', '/NOBREAK'], { encoding: 'utf8', stdio: 'ignore' }); } catch {}
+        } catch (e) { console.error('[model-set] kill failed:', e.message); }
+        try {
+          const cliPath = path.join(__dirname, '..', 'dist', 'orchestrate-cli.js');
+          const child = spawn('node', [cliPath, String(projectId), String(epicId), `--concurrency=${newConcurrency}`], {
+            detached: true, stdio: 'ignore',
+            env: { ...process.env, DB_PATH: process.env.DB_PATH, SAGA_ORCHESTRATION_MODE: 'v3' },
+          });
+          child.unref();
+          enginePid = child.pid;
+          withDbWrite(db => db.prepare(
+            `UPDATE episode_workflows SET metadata=json_set(COALESCE(metadata,'{}'),
+              '$.engine_concurrency', ?, '$.engine_started_at', datetime('now')),
+              updated_at=datetime('now') WHERE epic_id=?`
+          ).run(newConcurrency, epicId));
+        } catch (e) {
+          return respondJson(res, 500, { ok:false, error:'engine spawn failed: ' + e.message });
+        }
+      }
+    }
+
+    respondJson(res, 200, {
+      ok: true, model: modelId, concurrency: newConcurrency, engine_pid: enginePid,
+      note: `Concurrency auto-set to ${newConcurrency} (model limit). Engine restarted.`,
+    });
+  });
+}
+
 
 // --- роутинг ---
 const server = http.createServer((req, res) => {
@@ -3674,6 +3811,12 @@ const server = http.createServer((req, res) => {
   }
   if (req.method === 'POST' && url.pathname === '/api/engine/restart') {
     return handleEngineRestart(req, res);
+  }
+  if (req.method === 'GET' && url.pathname === '/api/models') {
+    return handleModelsList(req, res);
+  }
+  if (req.method === 'POST' && url.pathname === '/api/model/set') {
+    return handleModelSet(req, res);
   }
 
   if (url.pathname === '/api/heartbeat') {
