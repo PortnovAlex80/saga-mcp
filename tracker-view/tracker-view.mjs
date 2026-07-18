@@ -3586,8 +3586,11 @@ function handleEngineRestart(req, res) {
          `foreach ($p in $toKill) { taskkill /F /PID $p 2>$null }`],
         { encoding: 'utf8' }
       );
-      // Brief pause for OS to release resources / ports before respawn.
-      setTimeout(() => {}, 800);
+      // SYNCHRONOUS pause — setTimeout was a no-op here (it schedules but
+      // doesn't block). Without this wait the fresh engine spawns while OS
+      // is still terminating the old one, leaving both alive in a race.
+      // Use a sync sleep via 'timeout /T' (Windows) or 'sleep' (Unix).
+      try { require('child_process').spawnSync('timeout', ['/T', '1', '/NOBREAK'], { encoding: 'utf8', stdio: 'ignore' }); } catch {}
     } catch (e) {
       console.error('[engine-restart] kill failed:', e.message);
     }
