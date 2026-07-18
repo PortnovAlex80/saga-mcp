@@ -992,12 +992,16 @@ function renderBoard(projectId, allProjects) {
         const j = await r.json();
         if (!j.ok) { stagesEl.innerHTML = '<span class="worker-empty">' + esc(j.error || 'err') + '</span>'; return; }
         const icons = { completed:'✓', in_progress:'●', needs_human:'⚠', pending:'○' };
+        // Clickable stages: completed / in_progress / needs_human.
+        // Pending is muted and not clickable (no data-stage, no click handler).
         stagesEl.innerHTML = j.stages.map((s, i) => {
           const cls = s.status;
           const icon = icons[s.status] || '?';
           const name = s.name.charAt(0).toUpperCase() + s.name.slice(1);
           const dur = s.duration_s != null ? formatDur(s.duration_s) : '';
-          const stage = '<div class="pipeline-stage ' + cls + '">' +
+          const clickable = s.status !== 'pending';
+          const attrs = clickable ? (' data-stage="' + esc(s.name) + '" title="Click for stage detail"') : '';
+          const stage = '<div class="pipeline-stage ' + cls + '"' + attrs + '>' +
             '<span class="ps-icon">' + icon + '</span>' +
             '<span class="ps-name">' + name + '</span>' +
             '<span class="ps-dur">' + dur + '</span>' +
@@ -1005,8 +1009,86 @@ function renderBoard(projectId, allProjects) {
           const arrow = (i < j.stages.length - 1) ? '<div class="pipeline-arrow">→</div>' : '';
           return stage + arrow;
         }).join('');
+        // Wire click handlers on clickable stages (event delegation would also
+        // work, but attaching once per refresh is cheap and survives the
+        // innerHTML swap cleanly).
+        stagesEl.querySelectorAll('.pipeline-stage[data-stage]').forEach(el => {
+          el.addEventListener('click', () => openStageDetail(el.dataset.stage));
+        });
       } catch {}
     }
+    // --- Stage detail overlay (clickable pipeline) ---
+    // Shows a structured per-stage summary fetched from
+    // /api/episode/stage-summary?epic_id=N&stage=X. Returns nothing for stages
+    // with no data (renders a friendly "no data yet" message instead).
+    const sdoOverlay = document.getElementById('stage-detail-overlay');
+    const sdoTitle = document.getElementById('sdo-title');
+    const sdoDur = document.getElementById('sdo-dur');
+    const sdoDesc = document.getElementById('sdo-desc');
+    const sdoBody = document.getElementById('sdo-body');
+    const sdoClose = document.getElementById('sdo-close');
+    function hideStageDetail() { if (sdoOverlay) sdoOverlay.classList.remove('visible'); }
+    async function openStageDetail(stage) {
+      if (!sdoOverlay) return;
+      const epicId = window.__sagaEpicId;
+      if (!epicId || !stage) return;
+      // Render shell immediately so the user sees the panel slide in while the
+      // fetch is in flight. Title/description are known client-side.
+      const titleMap = { discovery:'Discovery', formalization:'Formalization', planning:'Planning', development:'Development', verification:'Verification', integration:'Integration', completed:'Completed' };
+      if (sdoTitle) sdoTitle.textContent = titleMap[stage] || stage;
+      if (sdoDur) sdoDur.textContent = '';
+      if (sdoDesc) sdoDesc.textContent = '';
+      if (sdoBody) sdoBody.innerHTML = '<div class="sdo-loading">loading…</div>';
+      sdoOverlay.classList.add('visible');
+      try {
+        const r = await fetch('/api/episode/stage-summary?epic_id=' + encodeURIComponent(epicId) + '&stage=' + encodeURIComponent(stage));
+        const j = await r.json();
+        if (!j.ok) {
+          if (sdoBody) sdoBody.innerHTML = '<div class="sdo-err">' + esc(j.error || 'failed to load') + '</div>';
+          return;
+        }
+        renderStageDetail(j);
+      } catch (e) {
+        if (sdoBody) sdoBody.innerHTML = '<div class="sdo-err">' + esc(String(e && e.message || e)) + '</div>';
+      }
+    }
+    function renderStageDetail(j) {
+      // j = { ok, epic_id, stage, duration_s, started_at, completed_at, summary:{title,description,sections} }
+      const s = j.summary || {};
+      if (sdoTitle) sdoTitle.textContent = s.title || j.stage || 'Stage';
+      // Duration line: duration (and timing window if we have it).
+      const bits = [];
+      if (j.duration_s != null) bits.push(formatDur(j.duration_s));
+      if (j.started_at) bits.push(esc(j.started_at) + (j.completed_at ? ' → ' + esc(j.completed_at) : ' → …'));
+      if (sdoDur) sdoDur.innerHTML = bits.join(' · ');
+      if (sdoDesc) sdoDesc.textContent = s.description || '';
+      // Sections table: label → value → optional status badge.
+      const sections = Array.isArray(s.sections) ? s.sections : [];
+      if (sections.length === 0) {
+        if (sdoBody) sdoBody.innerHTML = '<div class="sdo-empty">no data recorded for this stage yet</div>';
+        return;
+      }
+      const html = sections.map(sec => {
+        const label = esc(sec.label || '');
+        const value = esc(sec.value != null ? sec.value : '');
+        let badge = '';
+        if (sec.status) badge = '<span class="sdo-badge ' + esc(sec.status) + '">' + esc(sec.status) + '</span>';
+        return '<div class="sdo-section">' +
+          '<div class="sdo-label">' + label + '</div>' +
+          '<div class="sdo-value">' + value + '</div>' +
+          badge +
+        '</div>';
+      }).join('');
+      if (sdoBody) sdoBody.innerHTML = html;
+    }
+    // Close handlers: close button, click on backdrop (not on panel itself),
+    // and Esc key. The panel stops propagation so clicks inside it don't close.
+    if (sdoClose) sdoClose.addEventListener('click', hideStageDetail);
+    if (sdoOverlay) {
+      sdoOverlay.addEventListener('click', e => { if (e.target === sdoOverlay) hideStageDetail(); });
+      sdoOverlay.querySelector('.stage-detail-panel')?.addEventListener('click', e => e.stopPropagation());
+    }
+    document.addEventListener('keydown', e => { if (e.key === 'Escape' && sdoOverlay && sdoOverlay.classList.contains('visible')) hideStageDetail(); });
     function formatDur(sec) {
       if (sec < 60) return sec + 's';
       const m = Math.floor(sec / 60); const s = sec % 60;
@@ -2154,9 +2236,44 @@ function page(title, body) {
     .pipeline-stage.needs_human{color:#f85149}
     .pipeline-stage.needs_human .ps-icon{animation:mp-pulse-red 1s infinite}
     .pipeline-stage.pending{opacity:.35}
+    /* Clickable stages: completed / in_progress / needs_human are interactive;
+       pending is muted and not clickable. Subtle hover bg signals clickability. */
+    .pipeline-stage.completed,.pipeline-stage.in_progress,.pipeline-stage.needs_human{cursor:pointer;transition:background .12s}
+    .pipeline-stage.completed:hover,.pipeline-stage.in_progress:hover,.pipeline-stage.needs_human:hover{background:rgba(88,166,255,.10)}
     .pipeline-arrow{color:#30363d;flex-shrink:0;padding:0 1px;font-size:11px;align-self:center;margin-top:-7px}
     @keyframes mp-pulse-blue{0%,100%{opacity:1}50%{opacity:.4}}
     @keyframes mp-pulse-red{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(1.15)}}
+
+    /* === Stage detail overlay (clickable pipeline) ===
+       Fixed full-viewport overlay with a semi-transparent backdrop so the
+       kanban remains visible. Panel sits on the right under the monitor sidebar
+       (z-index:200 — above monitor-panel's 100). Scrollable if the section list
+       overflows. */
+    .stage-detail-overlay{position:fixed;inset:0;background:rgba(1,4,9,.55);z-index:200;display:none;align-items:flex-start;justify-content:flex-end}
+    .stage-detail-overlay.visible{display:flex;animation:sdo-fade .12s ease-out}
+    @keyframes sdo-fade{from{opacity:0}to{opacity:1}}
+    .stage-detail-panel{width:440px;max-width:90vw;max-height:calc(100vh - 40px);margin:20px 20px 20px 0;background:#161b22;border:1px solid #30363d;border-radius:10px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 8px 24px rgba(0,0,0,.4)}
+    .stage-detail-panel .sdo-head{padding:14px 18px;border-bottom:1px solid #30363d;display:flex;align-items:flex-start;gap:10px}
+    .stage-detail-panel .sdo-titlewrap{flex:1;min-width:0}
+    .stage-detail-panel .sdo-title{font-size:15px;font-weight:600;color:#e6edf3}
+    .stage-detail-panel .sdo-dur{font-size:11px;color:#8b949e;margin-top:2px}
+    .stage-detail-panel .sdo-desc{font-size:12px;color:#8b949e;padding:10px 18px 0;line-height:1.5}
+    .stage-detail-panel .sdo-close{flex-shrink:0;background:#21262d;border:1px solid #30363d;color:#8b949e;border-radius:6px;padding:3px 9px;font-size:14px;line-height:1;cursor:pointer}
+    .stage-detail-panel .sdo-close:hover{background:#30363d;color:#e6edf3}
+    .stage-detail-panel .sdo-body{overflow-y:auto;padding:8px 18px 18px}
+    .stage-detail-panel .sdo-loading{color:#8b949e;font-size:12px;padding:18px 0;text-align:center}
+    .stage-detail-panel .sdo-err{color:#f85149;font-size:12px;padding:14px 0}
+    .stage-detail-panel .sdo-empty{color:#8b949e;font-size:12px;padding:14px 0;text-align:center}
+    .stage-detail-panel .sdo-section{display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid rgba(48,54,61,.4)}
+    .stage-detail-panel .sdo-section:last-child{border-bottom:none}
+    .stage-detail-panel .sdo-label{flex-shrink:0;width:120px;color:#8b949e;font-size:11px;text-transform:uppercase;letter-spacing:.3px;font-weight:600;padding-top:1px;word-break:break-word}
+    .stage-detail-panel .sdo-value{flex:1;color:#e6edf3;font-size:12px;line-height:1.45;word-break:break-word;min-width:0}
+    .stage-detail-panel .sdo-badge{flex-shrink:0;font-size:9px;font-weight:700;padding:2px 6px;border-radius:3px;text-transform:uppercase;letter-spacing:.3px;margin-top:1px}
+    .stage-detail-panel .sdo-badge.accepted{background:rgba(63,185,80,.15);color:#3fb950;border:1px solid rgba(63,185,80,.3)}
+    .stage-detail-panel .sdo-badge.draft{background:rgba(139,148,158,.12);color:#8b949e;border:1px solid rgba(139,148,158,.3)}
+    .stage-detail-panel .sdo-badge.in_review{background:rgba(243,156,18,.12);color:#f39c12;border:1px solid rgba(243,156,18,.3)}
+    .stage-detail-panel .sdo-badge.failed{background:rgba(248,81,73,.12);color:#f85149;border:1px solid rgba(248,81,73,.3)}
+    @media (max-width:1200px){.stage-detail-overlay{justify-content:center}.stage-detail-panel{margin:20px}}
 
     /* worker mini-rows */
     .worker-row{padding:7px 9px;border-radius:6px;cursor:pointer;border:1px solid transparent;transition:background .15s,border-color .15s}
@@ -2203,6 +2320,19 @@ function page(title, body) {
       <span id="recovery-text">recovery</span>
     </div>
   </aside>
+  <div class="stage-detail-overlay" id="stage-detail-overlay">
+    <div class="stage-detail-panel" role="dialog" aria-modal="true">
+      <div class="sdo-head">
+        <div class="sdo-titlewrap">
+          <div class="sdo-title" id="sdo-title">Stage</div>
+          <div class="sdo-dur" id="sdo-dur"></div>
+        </div>
+        <button class="sdo-close" id="sdo-close" aria-label="Close stage detail">×</button>
+      </div>
+      <div class="sdo-desc" id="sdo-desc"></div>
+      <div class="sdo-body" id="sdo-body"><div class="sdo-loading">loading…</div></div>
+    </div>
+  </div>
   <script>
   // Global HTML-escape helper for inline JS (e.g. monitor panel rendering).
   // The server-side esc() at l.183 is not available in browser context.
@@ -3780,6 +3910,14 @@ function handleWorkerTail(req, res, url) {
           // Surface only meaningful system events: init, api_retry, plugin_install.
           if (evt.subtype === 'thinking_tokens') return null;
           if (evt.subtype === 'hook_started' || evt.subtype === 'hook_progress' || evt.subtype === 'hook_response') return null;
+          if (evt.subtype === 'api_retry') {
+            const attempt = evt.attempt || '?';
+            const status = evt.error_status || '?';
+            const err = evt.error || '?';
+            const delay = evt.retry_delay_ms ? Math.round(evt.retry_delay_ms / 1000) + 's' : '?';
+            return { type, kind: 'system', subtype: 'api_retry',
+              snippet: `retry ${attempt}/${evt.max_retries||'?'} ${status} ${err} wait ${delay}` };
+          }
           return { type, kind: 'system', subtype: evt.subtype || null };
         }
         if (type === 'result') {
