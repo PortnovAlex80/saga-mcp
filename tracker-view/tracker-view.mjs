@@ -522,6 +522,26 @@ function engineConcurrencyForProject(projectId) {
   } catch { return null; }
 }
 
+/**
+ * Resolve the REAL model running under claude's --model alias. z.ai and other
+ * proxies remap the Anthropic alias ('opus', 'sonnet', 'haiku') to their own
+ * backend models via ~/.claude/settings.json env vars
+ * (ANTHROPIC_DEFAULT_*_MODEL). Without this the UI would say 'opus' while the
+ * real model is glm-5.2[1m]. Returns a short label like 'glm-5.2[1m]'.
+ */
+function resolveWorkerModel() {
+  try {
+    const home = os.homedir();
+    const raw = readFileSync(path.join(home, '.claude', 'settings.json'), 'utf8');
+    const s = JSON.parse(raw);
+    const alias = s.model || 'opus';
+    const envKey = `ANTHROPIC_DEFAULT_${alias.toUpperCase()}_MODEL`;
+    const real = s.env && s.env[envKey];
+    return real ? real : alias;
+  } catch { return 'opus'; }
+}
+const WORKER_MODEL = resolveWorkerModel();
+
 function renderBoard(projectId, allProjects) {
   const proj = allProjects.find(p => String(p.id) === String(projectId));
   if (!proj) return page('Проект не найден', '<div class="empty-box"><h2>Проект не найден</h2></div>');
@@ -555,6 +575,7 @@ function renderBoard(projectId, allProjects) {
           }).join('')}
         </select>
         <span id="agent-run-status" class="agent-run-status">движок: …</span>
+        <span class="agent-model" title="Реальная модель под claude alias (z.ai remap)">🧠 ${esc(WORKER_MODEL)}</span>
       </div>
       <div class="heartbeat"><span id="hb-dot" class="hb-dot red"></span><span id="hb-txt">…</span></div>
     </div>`;
@@ -1778,6 +1799,7 @@ function page(title, body) {
     .agent-run-btn:hover{background:#2ea043}.agent-stop-btn{background:#b62324}.agent-stop-btn:hover{background:#da3633}
     .agent-run-btn:disabled,.agent-stop-btn:disabled{opacity:.5;cursor:default}
     .agent-run-status{max-width:150px;color:#8b949e;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .agent-model{color:#d2a8ff;font-size:10px;white-space:nowrap;font-family:ui-monospace,Consolas,monospace;padding:0 4px}
     .back{color:#58a6ff;font-size:13px} .back:hover{text-decoration:underline}
     #psel{background:#21262d;border:1px solid #30363d;color:#e6edf3;border-radius:6px;padding:8px 12px;font-size:13px;max-width:260px}
     .cur-proj{font-weight:700;font-size:15px}
