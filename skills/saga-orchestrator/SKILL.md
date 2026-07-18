@@ -5,7 +5,7 @@ description: "Orchestrate one logical product from Discovery through formalizati
 
 # saga-orchestrator — единый запуск saga-flow
 
-## Typed product workflow (REQ-007)
+## Typed product workflow (типизированный продуктовый рабочий процесс; REQ-007)
 
 For new products, first use `saga-start`. A Saga project is the whole product;
 the current and additional physical repositories are registered through
@@ -58,15 +58,15 @@ evidence matching `accepted_hash` may create `verified_by`.
 The older role-by-role instructions below describe role intent. Where they
 conflict with this typed workflow section, this section is authoritative.
 
-## Flow position (saga-flow)
+## Flow position (saga-flow — позиция в потоке)
 
-- **Stage:** ЕДИНАЯ ТОЧКА ВХОДА (весь флоу, от идеи до working product)
-- **Precondition:** Идея от пользователя одной фразой. saga-mcp подключен. skills/agents установлены.
-- **Postcondition:** Working product (Docker/код) + все artifacts accepted + 0 coverage gaps (implements + verified_by)
-- **Called by:** Пользователь напрямую (`Skill("saga-orchestrator")`)
-- **Next enables:** ничего (терминальная роль — отдаёт результат пользователю)
+- **Stage (этап):** ЕДИНАЯ ТОЧКА ВХОДА (весь флоу, от идеи до working product — работающего продукта)
+- **Precondition (предусловие):** Идея от пользователя одной фразой. saga-mcp подключен. skills/agents установлены.
+- **Postcondition (постусловие):** Working product (Docker/код) + все artifacts accepted (приняты) + 0 coverage gaps (пробелов покрытия: implements + verified_by)
+- **Called by (вызывается):** Пользователь напрямую (`Skill("saga-orchestrator")`)
+- **Next enables (что разблокирует):** ничего (терминальная роль — отдаёт результат пользователю)
 - **Вызывает:** saga-kickstart (Skill) → saga-product → saga-architect+saga-analyst (параллельно) → saga-analyst (AC) → saga-planner → saga-dispatch (с роем saga-worker) → AC-verification → INTEGRATE
-- **Main-context-coordination-only:** НЕ пишет код/PRD/SRS — только оркестрирует роли.
+- **Main-context-coordination-only (только координация в главном контексте):** НЕ пишет код/PRD/SRS — только оркестрирует роли.
 
 Ты — оркестратор saga-flow. **Твоя единственная работа — запускать роли в
 правильном порядке и ждать результаты.** Ты НЕ пишешь код, НЕ пишешь PRD/SRS,
@@ -287,7 +287,7 @@ derived, policy_minimum)`. Оркестратору не нужно ничего
 3. **High-blast-radius задачи** (data, migration, public API) получают
    `derived_risk='high'` автоматически через теги или task_kind.
 
-## Inline mode (when subagent spawning is unavailable)
+## Inline mode (инлайн-режим: когда subagent spawning недоступен)
 
 **Detection (step 0 of Подготовка).** Before spawning any subagent, check
 whether the `Agent` tool / `subagent_type` spawning is actually available in

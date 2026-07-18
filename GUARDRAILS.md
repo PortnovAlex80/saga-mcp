@@ -27,17 +27,17 @@ Append-only log of learned constraints from real bugs. **Never delete a sign.** 
 **Related:** GUARDRAILS rule #N, ADR-NNN, docs/specs/foo.md
 -->
 
-### 001 - extractInputs silent-pass (NFR-1 violation)
-**Symptom:** `extractInputs(parentSessionId)` возвращал `coverage: 1.0, gate_passed: true` при `covered_count: 0, total_count: 113`. Completeness-gate молча пропускал непокрытые реплики — ровно то, что NFR-1 должен предотвращать.
+### 001 - extractInputs silent-pass (нарушение NFR-1)
+**Symptom:** `extractInputs(parentSessionId)` возвращал `coverage: 1.0, gate_passed: true` при `covered_count: 0, total_count: 113`. Completeness-gate (шлюз полноты) молча пропускал непокрытые реплики — ровно то, что NFR-1 должен предотвращать.
 **Cause:** Helper не знает про brief — он только извлекает inputs. Воркер истолковал "extract complete = gate passed", но coverage = covered/total требует знания какие InputRow покрыты brief'ом. Возврат `coverage=1.0` был дефолтной ложью.
 **Fix:** `extractInputs` возвращает `coverage: 0, gate_passed: false` (нейтрально). Caller (kickstart skill в main-context) маппит InputRow→brief section и считает coverage/gate_passed. Контракт обновлён в JSDoc: "Do NOT trust gate_passed from this helper alone".
 **Date:** 2026-07-03
 **Related:** saga-mcp commit `9d2c1a9`, smoke-test REQ-003 v1, kickstart-design.md §6 (completeness-gate)
 
 ### 002 - Scaffold-conflict при параллельных greenfield-воркерах
-**Symptom:** N воркеров стартуют одновременно на пустом репо. Каждый создаёт свой scaffold (package.json, tsconfig, App.tsx). Merge → `add/add` конфликт на всех общих файлах. REQ-001: 3/4 задач в conflict. REQ-003: 3/11 в conflict.
+**Symptom:** N воркеров стартуют одновременно на пустом репо. Каждый создаёт свой scaffold (каркас: package.json, tsconfig, App.tsx). Merge (слияние) → `add/add` конфликт на всех общих файлах. REQ-001: 3/4 задач в conflict. REQ-003: 3/11 в conflict.
 **Cause:** Без зафиксированного API contract ДО тел, каждый воркер независимо изобретает архитектуру. Git не может auto-merge `add/add` — это не line-level, а архитектурный конфликт.
-**Fix:** Pattern B (scaffold-then-parallel): scaffold-задача (priority:critical) первой материализует сигнатуры как stubs. Все body-задачи depends_on [scaffold_task_id]. Воркеры пишут под зафиксированный контракт. REQ-002 и REQ-004: **0 конфликтов** при 3 и 9 параллельных телах.
+**Fix:** Pattern B (scaffold-then-parallel): scaffold-задача (priority:critical) первой материализует сигнатуры как stubs (заглушки). Все body-задачи depends_on [scaffold_task_id]. Воркеры пишут под зафиксированный контракт. REQ-002 и REQ-004: **0 конфликтов** при 3 и 9 параллельных телах.
 **Date:** 2026-07-03
 **Related:** saga-planner skill (Pattern A/B), kickstart-design.md §16, REQ-001 3/4 conflicts vs REQ-004 0/9 conflicts
 
@@ -49,7 +49,7 @@ Append-only log of learned constraints from real bugs. **Never delete a sign.** 
 **Related:** smoke-test REQ-003 formalization, dispatcher.ts findNextClaimable, known-issue для REQ-006+
 
 ### 004 - saga-planner skill запрещает worker_done → задача зависает
-**Symptom:** saga-planner создал dev-задачи, вернул summary, остановился. Его собственная задача осталась в `in_progress` навсегда — skill предписывает "Return a one-line summary, then stop. Do NOT call worker_next — that's the orchestrator's job". Но stop без worker_done = zombie.
+**Symptom:** saga-planner создал dev-задачи, вернул summary, остановился. Его собственная задача осталась в `in_progress` навсегда — skill предписывает "Return a one-line summary, then stop. Do NOT call worker_next — that's the orchestrator's job". Но stop без worker_done = zombie (висящая задача).
 **Cause:** Конфликт правил в SKILL.md: "stop, don't call worker_next" vs обязанность закрыть свою задачу через worker_done. Planner — bridge-роль, его работа создать задачи и вернуть summary, но закрыть себя он обязан.
 **Fix:** (НЕ ЧИНИТЬ ПУТЕМ УГАДЫВАНИЯ). SKILL.md должен говорить "stop after worker_done", не "stop". Записан как known-issue для saga-orchestrator (REQ-006+).
 **Date:** 2026-07-03
