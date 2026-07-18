@@ -2,7 +2,7 @@ import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type Database from 'better-sqlite3';
 import { getDb } from '../db.js';
 import { logActivity } from '../helpers/activity-logger.js';
-import { assertExecutionFence, updateExecutionPhase } from '../worker-executions.js';
+import { assertExecutionFence, updateExecutionPhase, isProcessAlive } from '../worker-executions.js';
 import { reevaluateDownstream } from './tasks.js';
 import type { Task, ToolHandler } from '../types.js';
 import { generateNextForCompletedTask } from './workflow.js';
@@ -1058,15 +1058,32 @@ function handleWorkerMergeAcquire(args: Record<string, unknown>): {
       | undefined;
 
     const now = Date.now();
-    // Stale-safe: lock протух MERGE_LOCK_STALE_MIN назад — отбираем (zombie
-    // воркер acquire'нул и умер). Иначе никто не смержит, пока человек не придёт.
+    // Stale-safe + liveness-checked (Slice 5 audit fix, blueprint §13.2:613-620):
+    // the lock may be reclaimed after MERGE_LOCK_STALE_MIN, BUT ONLY if the
+    // previous holder's process is verifiably dead. The previous design
+    // reclaimed on wall-clock alone — a live executor doing a slow (but
+    // legitimate) merge could lose its claim to a zombie timer, mid-merge.
+    // Now we pair wall-clock staleness with `isProcessAlive`: if the holder
+    // is still alive, the lock is NOT reclaimable regardless of age.
     const isStale = (() => {
       if (!lock?.acquired_at) return true;
       const ageMs = now - new Date(lock.acquired_at + 'Z').getTime();
       return ageMs > MERGE_LOCK_STALE_MIN * 60_000;
     })();
+    const holderAlive = (() => {
+      if (!lock) return false;
+      // Look up the holder's execution to get its PID.
+      if (!lock.worker_id) return false;
+      const exec = db.prepare(
+        `SELECT pid FROM worker_executions
+          WHERE worker_id=? AND state IN ('reserved','running','cancel_requested')
+          ORDER BY reserved_at DESC LIMIT 1`,
+      ).get(lock.worker_id) as { pid: number | null } | undefined;
+      if (!exec?.pid) return false;
+      return isProcessAlive(exec.pid);
+    })();
 
-    if (!lock || isStale) {
+    if (!lock || (isStale && !holderAlive)) {
       const acquiredAt = new Date(now).toISOString().replace('T', ' ').slice(0, 19);
       meta.merge_lock = { task_id: taskId, worker_id: workerId, acquired_at: acquiredAt };
       if (repositoryScoped) {
@@ -1129,8 +1146,12 @@ function handleWorkerMergeRelease(args: Record<string, unknown>): {
     const projectId = projectIdRow?.project_id;
     if (projectId == null) throw new Error(`Task ${taskId} has no project`);
 
-    // Снять merge_lock, но ТОЛЬКО если он мой. Иначе чужой lock мог быть уже
-    // отобран stale-логикой и передан другому — я не должен его трогать.
+    // Slice 5 audit fix (blueprint §13.2:613-620, §16 Slice 5:911): reject
+    // release-without-prior-acquire. The previous design silently accepted a
+    // release when no lock existed (the `lock && mismatch` check skipped the
+    // null branch). That let a caller record a 'merged' result without ever
+    // having held the lock — masking concurrency bugs and letting two
+    // integrations race on the same repository. Now: no lock → reject.
     const repositoryScoped = task.task_kind != null && task.project_repository_id != null;
     const meta = repositoryScoped
       ? readRepositoryMetadata(db, task.project_repository_id!)
@@ -1139,7 +1160,14 @@ function handleWorkerMergeRelease(args: Record<string, unknown>): {
       | { task_id: number; worker_id: string; acquired_at: string }
       | null
       | undefined;
-    if (lock && (lock.task_id !== taskId || lock.worker_id !== workerId)) {
+    if (!lock) {
+      throw new Error(
+        `Merge lock for task ${taskId} does not exist. worker_merge_release requires a prior ` +
+        `successful worker_merge_acquire for the same (task, worker). Calling release without ` +
+        `acquire is a concurrency bug — two integrations would race on the same repository.`,
+      );
+    }
+    if (lock.task_id !== taskId || lock.worker_id !== workerId) {
       throw new Error(
         `Merge lock for task ${taskId} is held by ${lock.worker_id} (task ${lock.task_id}), not by ${workerId}. Only the holder may release.`,
       );
