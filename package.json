@@ -31,7 +31,7 @@
     "cgad-lint:test": "node --test tools/cgad-spec-lint.test.mjs",
     "lint": "eslint src/",
     "prepublishOnly": "npm run build",
-    "test": "tsc && node --test \"tests/**/*.test.mjs\" \"tools/**/*.test.mjs\""
+    "test": "tsc && node --test"
   },
   "keywords": [
     "mcp",
