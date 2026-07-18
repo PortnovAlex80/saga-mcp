@@ -7,6 +7,7 @@ import { reevaluateDownstream } from './tasks.js';
 import type { Task, ToolHandler } from '../types.js';
 import { generateNextForCompletedTask } from './workflow.js';
 import { advanceReadyEpisodes } from './lifecycle.js';
+import { releaseExecutionAtomically } from '../lifecycle/atomic-release.js';
 
 // ============================================================================
 // Dispatcher: saga раздаёт задачи агентам.
@@ -242,6 +243,10 @@ function findNextClaimable(
       AND NOT EXISTS (
         SELECT 1 FROM worker_executions we
         WHERE we.task_id=t.id AND we.state IN ('reserved','running','cancel_requested')
+      )
+      AND NOT EXISTS (
+        SELECT 1 FROM human_requests hr
+        WHERE hr.task_id = t.id AND hr.state = 'open'
       )
       AND NOT EXISTS (
         SELECT 1 FROM task_dependencies d
@@ -694,15 +699,34 @@ function handleWorkerDone(args: Record<string, unknown>): {
 }
 
 // ============================================================================
-// worker_ask_need / worker_ask_done — сигнал «жду ответа от человека».
-// Агент упёрся в реальный блокер (нужна инфа/решение от человека), но контекст
-// задачи дорогой (часы понимания кода) — дешевле ответить на вопрос, чем
-// перезапускать задачу с нуля. Поэтому:
-//   - assigned_to НЕ трогаем (агент держит задачу, не уходит на другую)
-//   - статус НЕ трогаем (задача остаётся in_progress — визуально «в работе, но ждёт»)
-//   - тег needs-human → мигает красным ⚠️ на канбане
-// Workflow агента: worker_ask_need → AskUserQuestion (в UI ZCode) → worker_ask_done → continue.
-// Редкие случаи; agent-idle терпим.
+// worker_ask_need / worker_ask_done — terminal ASK protocol.
+//
+// Slice 3 (ADR-011, blueprint §12.3 line 565-578, §16 line 871-883):
+// ASK is now TERMINAL. The audit identified a dead-assignment trap in the
+// previous design: worker_ask_need set a tag but kept assigned_to and the
+// execution fence live, expecting the same managed `claude -p` process to
+// receive the answer inline. With stdin disabled that is impossible — the
+// worker exits, the tag survives, the reconciler either refuses to release
+// (dead assignment) or silently re-dispatches without the question context.
+//
+// New contract (blueprint §12.3):
+//   1. worker_ask_need persists the question + context + resume_phase.
+//   2. Inserts a human_requests row with state='open'.
+//   3. Releases the execution and clears the task fence via the atomic
+//      release primitive (so the task returns to a claimable queue once
+//      answered). The requesting execution is terminalized.
+//   4. Adds the needs-human tag for the kanban visual.
+//   5. Returns stop:true — the worker process exits cleanly.
+//
+//   Later, the human's answer is recorded (via the UI or any caller):
+//   worker_ask_done looks up the OPEN request by task_id, records the answer,
+//   flips state to 'answered', and clears the needs-human tag. The task is
+//   now claimable; a fresh worker picks it up and reads the question and
+//   answer from human_requests.
+//
+// worker_ask_done no longer requires the same execution_id — the requesting
+// execution is gone. It matches on (task_id, state='open'). This kills the
+// "resurrection of an old execution" failure mode the audit named.
 // ============================================================================
 
 const NEEDS_HUMAN_TAG = 'needs-human';
@@ -721,72 +745,188 @@ function parseTags(raw: string | null | undefined): Set<string> {
 function handleWorkerAskNeed(args: Record<string, unknown>): {
   task_id: number;
   blocking: true;
+  request_id: string;
+  stop: true;
+  released_execution: boolean;
 } {
   const db = getDb();
   const taskId = args.task_id as number;
   const workerId = args.worker_id as string;
   const reason = (args.reason as string | undefined) ?? null;
 
-  // Это моя задача? (assigned_to = worker_id) — нельзя мигать чужой.
+  // This must be my task (assigned_to = worker_id) — cannot flag a task you
+  // don't hold.
   const task = db
-    .prepare('SELECT id, title, tags, current_execution_id FROM tasks WHERE id=? AND assigned_to=?')
+    .prepare('SELECT id, title, tags, current_execution_id, status FROM tasks WHERE id=? AND assigned_to=?')
     .get(taskId, workerId) as
-      | { id: number; title: string; tags: string; current_execution_id: string | null }
+      | {
+          id: number;
+          title: string;
+          tags: string;
+          current_execution_id: string | null;
+          status: string;
+        }
       | undefined;
   if (!task) {
     throw new Error(`Task ${taskId} not assigned to ${workerId} (cannot flag a task you don't hold)`);
   }
   assertExecutionFence(db, task, args.execution_id);
 
-  const tags = parseTags(task.tags);
-  const alreadyBlocking = tags.has(NEEDS_HUMAN_TAG);
-  if (!alreadyBlocking) {
-    tags.add(NEEDS_HUMAN_TAG);
-    db.prepare('UPDATE tasks SET tags=?, updated_at=datetime(\'now\') WHERE id=?')
-      .run(JSON.stringify([...tags]), taskId);
-  }
+  // Compute resume_phase from the current task status. in_progress →
+  // implementation, review_in_progress → review, done+pending → integration.
+  const resumePhase = taskStatusToResumePhase(task.status);
 
-  // Опциональный reason → comment (человек видит ЧТО спрашивают, не только что мигает).
+  // Persist the question and the requesting execution identity BEFORE
+  // releasing anything. If the release below fails, the human_requests row
+  // stays 'open' and surfaces as a warning (task will not be claimable until
+  // it is resolved, which is the correct conservative behaviour).
+  const requestId = `hr-${taskId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const contextJson = JSON.stringify({
+    worker_id: workerId,
+    execution_id: task.current_execution_id,
+    task_status_at_ask: task.status,
+    asked_at: new Date().toISOString(),
+  });
+
+  // Optional reason → comment (so the human sees WHAT is being asked, not
+  // only that the kanban is pulsing red).
   if (reason) {
     db.prepare('INSERT INTO comments (task_id, author, content) VALUES (?, ?, ?)')
       .run(taskId, workerId, `ASK: ${reason}`);
   }
 
-  logActivity(db, 'task', taskId, 'updated', 'ask_need', null, NEEDS_HUMAN_TAG,
-    `Task '${task.title}' flagged needs-human by ${workerId}${reason ? `: ${reason}` : ''}`);
+  // Add the needs-human tag (kanban visual; also queried by some legacy paths).
+  const tags = parseTags(task.tags);
+  if (!tags.has(NEEDS_HUMAN_TAG)) {
+    tags.add(NEEDS_HUMAN_TAG);
+  }
 
-  return { task_id: taskId, blocking: true };
+  // Terminal release: clear assigned_to + current_execution_id and return
+  // the task to its resume queue. The execution is terminalized via the
+  // atomic-release primitive so terminalization + task release occur in one
+  // transaction (no split-write window for the reconciler to race with).
+  let releasedExecution = false;
+  if (task.current_execution_id) {
+    const outcome = releaseExecutionAtomically(db, {
+      executionId: task.current_execution_id,
+      terminalState: 'exited',
+      exitCode: 0,
+      reason: `worker_ask_need: ${reason ?? 'question for human'}`,
+    });
+    releasedExecution = outcome.taskReleased;
+  } else {
+    // Legacy unfenced task — just clear assigned_to.
+    db.prepare(
+      `UPDATE tasks SET assigned_to=NULL, updated_at=datetime('now') WHERE id=?`,
+    ).run(taskId);
+  }
+
+  // Update tags on the (now released) task.
+  db.prepare('UPDATE tasks SET tags=?, updated_at=datetime(\'now\') WHERE id=?')
+    .run(JSON.stringify([...tags]), taskId);
+
+  // Finally, open the human_requests row.
+  db.prepare(
+    `INSERT INTO human_requests
+       (request_id, task_id, requesting_execution_id, resume_phase,
+        question, context_json, state)
+     VALUES (?, ?, ?, ?, ?, ?, 'open')`,
+  ).run(
+    requestId,
+    taskId,
+    task.current_execution_id,
+    resumePhase,
+    reason ?? '(no question text provided)',
+    contextJson,
+  );
+
+  logActivity(db, 'task', taskId, 'updated', 'ask_need', null, NEEDS_HUMAN_TAG,
+    `Task '${task.title}' parked for human (terminal ASK) by ${workerId}${reason ? `: ${reason}` : ''}`);
+
+  return {
+    task_id: taskId,
+    blocking: true,
+    request_id: requestId,
+    stop: true as const,
+    released_execution: releasedExecution,
+  };
 }
 
 function handleWorkerAskDone(args: Record<string, unknown>): {
   task_id: number;
   blocking: false;
+  request_id: string | null;
+  state: 'answered' | 'no_open_request';
 } {
   const db = getDb();
   const taskId = args.task_id as number;
   const workerId = args.worker_id as string;
+  const answer = (args.answer as string | undefined) ?? null;
 
-  const task = db
-    .prepare('SELECT id, title, tags, current_execution_id FROM tasks WHERE id=? AND assigned_to=?')
-    .get(taskId, workerId) as
-      | { id: number; title: string; tags: string; current_execution_id: string | null }
+  // Look up the OPEN human request for this task. We match on (task_id,
+  // state='open'); the requesting execution is long gone, so no fence.
+  const req = db
+    .prepare(
+      `SELECT request_id, question, resume_phase FROM human_requests
+        WHERE task_id=? AND state='open'
+        ORDER BY created_at DESC LIMIT 1`,
+    )
+    .get(taskId) as
+      | { request_id: string; question: string; resume_phase: string }
       | undefined;
-  if (!task) {
-    throw new Error(`Task ${taskId} not assigned to ${workerId}`);
-  }
-  assertExecutionFence(db, task, args.execution_id);
 
-  const tags = parseTags(task.tags);
-  if (tags.has(NEEDS_HUMAN_TAG)) {
-    tags.delete(NEEDS_HUMAN_TAG);
-    db.prepare('UPDATE tasks SET tags=?, updated_at=datetime(\'now\') WHERE id=?')
-      .run(JSON.stringify([...tags]), taskId);
+  if (!req) {
+    // No open request — clear any stale needs-human tag and report.
+    const task = db
+      .prepare('SELECT id, title, tags FROM tasks WHERE id=?')
+      .get(taskId) as { id: number; title: string; tags: string } | undefined;
+    if (task) {
+      const tags = parseTags(task.tags);
+      if (tags.has(NEEDS_HUMAN_TAG)) {
+        tags.delete(NEEDS_HUMAN_TAG);
+        db.prepare('UPDATE tasks SET tags=?, updated_at=datetime(\'now\') WHERE id=?')
+          .run(JSON.stringify([...tags]), taskId);
+      }
+    }
+    return { task_id: taskId, blocking: false, request_id: null, state: 'no_open_request' };
+  }
+
+  // Record the answer. The task is now claimable; the next worker_next will
+  // hand it to a fresh worker that reads the answer from human_requests.
+  db.prepare(
+    `UPDATE human_requests
+        SET state='answered',
+            answer=?,
+            answered_by=?,
+            answered_at=datetime('now'),
+            updated_at=datetime('now')
+      WHERE request_id=? AND state='open'`,
+  ).run(answer ?? '(answered without text)', workerId, req.request_id);
+
+  // Clear the needs-human tag — the question has been answered.
+  const task = db
+    .prepare('SELECT id, title, tags FROM tasks WHERE id=?')
+    .get(taskId) as { id: number; title: string; tags: string } | undefined;
+  if (task) {
+    const tags = parseTags(task.tags);
+    if (tags.has(NEEDS_HUMAN_TAG)) {
+      tags.delete(NEEDS_HUMAN_TAG);
+      db.prepare('UPDATE tasks SET tags=?, updated_at=datetime(\'now\') WHERE id=?')
+        .run(JSON.stringify([...tags]), taskId);
+    }
   }
 
   logActivity(db, 'task', taskId, 'updated', 'ask_done', NEEDS_HUMAN_TAG, null,
-    `Task '${task.title}' needs-human cleared by ${workerId}`);
+    `Task '${task?.title ?? taskId}' needs-human answered by ${workerId}: "${answer ?? ''}"`);
 
-  return { task_id: taskId, blocking: false };
+  return { task_id: taskId, blocking: false, request_id: req.request_id, state: 'answered' };
+}
+
+/** Map a managed-task status at ASK time to the phase a fresh worker resumes in. */
+function taskStatusToResumePhase(status: string): 'implementation' | 'review' | 'integration' {
+  if (status === 'review_in_progress') return 'review';
+  if (status === 'done') return 'integration';
+  return 'implementation';
 }
 
 // ============================================================================
@@ -1185,9 +1325,9 @@ export const definitions: Tool[] = [
   {
     name: 'worker_ask_need',
     description:
-      "Signal that you are blocked on a task and need a human answer BEFORE continuing. Use this RIGHT BEFORE calling the host's AskUserQuestion tool. Flags the task with the 'needs-human' tag so it pulses red (⚠) on the kanban board — the human sees which task is waiting. The task STAYS with you (assigned_to unchanged, status unchanged) — do NOT release it, do NOT take another task; your in-task context is expensive to rebuild. Pass an optional 'reason' to record what you're asking as a comment. After the human answers, call worker_ask_done to clear the flag and continue.",
+      "TERMINAL park for human input (Slice 3, ADR-011, blueprint §12.3). Use this when you are blocked on a task and need a human answer that genuinely cannot be assumed or deferred. The call persists the question and resume context, opens a human_request, releases your execution (terminalized atomically), and clears your assignment so the task returns to its queue once answered. The 'needs-human' tag pulses red (⚠) on the kanban. The response carries stop:true — your process exits cleanly; do NOT plan to continue in this session. A fresh worker later claims the answered task and reads the question and answer from human_requests. This replaces the previous in-session ASK protocol, which was incompatible with headless `claude -p` (stdin disabled). Pass 'reason' with the question text. Reserved for genuine blockers — prefer the 80% rule (assume + comment) for reversible decisions.",
     annotations: {
-      title: 'Worker: Ask Human (block)',
+      title: 'Worker: Ask Human (terminal park)',
       readOnlyHint: false,
       destructiveHint: false,
       idempotentHint: false,
@@ -1200,19 +1340,19 @@ export const definitions: Tool[] = [
         worker_id: { type: 'string', description: 'Your worker_id (must match task.assigned_to).' },
         reason: {
           type: 'string',
-          description: 'Optional: the question you are about to ask the human. Recorded as a comment (prefix "ASK:") so it is visible on the task, not only in the AskUserQuestion UI.',
+          description: 'The question you are asking the human. Recorded as a comment (prefix "ASK:") and persisted in human_requests.question so a fresh worker can re-ask it later.',
         },
         execution_id: { type: 'string', description: 'Required fencing token for managed CLI tasks.' },
       },
-      required: ['task_id', 'worker_id'],
+      required: ['task_id', 'worker_id', 'reason'],
     },
   },
   {
     name: 'worker_ask_done',
     description:
-      "Clear the 'needs-human' flag after the human answered your question. Call this RIGHT AFTER receiving the answer (before resuming work). The task was never released — you keep working on it. After this, finish the task normally with worker_done.",
+      "Record the human's answer to an open needs-human request on a task. Looks up the most recent OPEN human_requests row for this task, stores the answer, flips state to 'answered', and clears the needs-human tag. The task becomes claimable again; a fresh worker will pick it up and read the persisted question and answer. Does NOT require the original execution_id — that execution was terminalized by worker_ask_need and is gone. Any authorized caller (UI, human, fresh worker) may invoke this. If there is no open request, clears any stale needs-human tag and returns state='no_open_request'.",
     annotations: {
-      title: 'Worker: Ask Human (clear)',
+      title: 'Worker: Ask Human (record answer)',
       readOnlyHint: false,
       destructiveHint: false,
       idempotentHint: true,
@@ -1221,11 +1361,14 @@ export const definitions: Tool[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        task_id: { type: 'integer', description: 'ID of the task you hold.' },
-        worker_id: { type: 'string', description: 'Your worker_id (must match task.assigned_to).' },
-        execution_id: { type: 'string', description: 'Required fencing token for managed CLI tasks.' },
+        task_id: { type: 'integer', description: 'ID of the task whose open human request is being answered.' },
+        worker_id: { type: 'string', description: 'Caller identity (recorded as answered_by). Need not be the original worker — the original execution is gone.' },
+        answer: {
+          type: 'string',
+          description: "The human's answer text. Persisted in human_requests.answer for the fresh worker to read.",
+        },
       },
-      required: ['task_id', 'worker_id'],
+      required: ['task_id', 'worker_id', 'answer'],
     },
   },
   {
