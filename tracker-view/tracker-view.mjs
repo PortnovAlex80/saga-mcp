@@ -2983,56 +2983,51 @@ function renderStageDetailPage(epicId, stageName, allProjects) {
     // they would terminate the template literal; String.fromCharCode(96) is
     // used instead.
     function renderMd(md) {
-      var reCRLF = new RegExp('\\\\r\\\\n', 'g');
-      var reSplitBlocks = new RegExp('\\\\n{2,}');
-      var reTrimNl = new RegExp('^\\\\n+|\\\\n+$', 'g');
-      var reHeading = new RegExp('^(#{1,6})\\\\s+(.*)$');
-      var reListLine = new RegExp('^\\\\s*[-*]\\\\s+');
-      var reStripList = new RegExp('^\\\\s*[-*]\\\\s+');
-      var text = String(md || '').replace(reCRLF, '\\n').trim();
-      if (!text) return '<p class="sdo-md-p" style="color:#8b949e">summary artifact is empty</p>';
-      var blocks = text.split(reSplitBlocks);
+      // This code lives INSIDE a template literal (backtick string). Control
+      // char escapes (newline, carriage return, etc.) become literal characters
+      // and break regex. Use String.fromCharCode instead.
+      var NL = String.fromCharCode(10);
+      var CR = String.fromCharCode(13);
+      var text = String(md || '').replace(new RegExp(CR + NL, 'g'), NL).trim();
+      if (!text) return '<p style="color:#8b949e">резюме пустое</p>';
+      var blocks = text.split(new RegExp(NL + '{2,}'));
       var out = [];
       for (var bi = 0; bi < blocks.length; bi++) {
-        var block = blocks[bi].replace(reTrimNl, '');
+        var block = blocks[bi].replace(new RegExp('^' + NL + '+|' + NL + '+$', 'g'), '');
         if (!block) continue;
-        var lines = block.split('\\n');
-        // Heading: single line starting with one-or-more # then a space.
-        if (lines.length === 1) {
-          var hm = reHeading.exec(lines[0]);
+        var lines = block.split(NL);
+        var nonEmpty = lines.filter(function(l) { return l.trim(); });
+        // Heading: single non-empty line starting with #
+        if (nonEmpty.length === 1) {
+          var hm = nonEmpty[0].match(/^(#{1,6})[ ]+(.*)$/);
           if (hm) {
-            var level = Math.min(hm[1].length, 4) + 1; // # -> h2, ## -> h3, ...
-            out.push('<h' + level + ' class="sdo-md-h">' + renderMdInline(hm[2]) + '</h' + level + '>');
+            var level = Math.min(hm[1].length, 4) + 1;
+            out.push('<h' + level + ' style="color:#58a6ff;margin:12px 0 6px">' + renderMdInline(hm[2]) + '</h' + level + '>');
             continue;
           }
         }
-        // List: every non-empty line starts with "- " or "* ".
-        var allList = lines.length > 0;
-        for (var li = 0; li < lines.length; li++) {
-          if (!lines[li]) continue;
-          if (!reListLine.test(lines[li])) { allList = false; break; }
+        // List: every non-empty line starts with "- " or "* "
+        var allList = nonEmpty.length > 0;
+        for (var li = 0; li < nonEmpty.length; li++) {
+          if (!/^[\s]*[-*][ ]+/.test(nonEmpty[li])) { allList = false; break; }
         }
         if (allList) {
-          var items = lines.map(function(l) {
-            return '<li>' + renderMdInline(l.replace(reStripList, '')) + '</li>';
+          var items = nonEmpty.map(function(l) {
+            return '<li>' + renderMdInline(l.replace(/^[\s]*[-*][ ]+/, '')) + '</li>';
           }).join('');
-          out.push('<ul class="sdo-md-ul">' + items + '</ul>');
+          out.push('<ul style="margin:6px 0;padding-left:20px">' + items + '</ul>');
           continue;
         }
-        // Otherwise: paragraph (join wrapped lines with a space).
-        var para = lines.map(function(l) { return l.trim(); }).filter(Boolean).join(' ');
-        if (para) out.push('<p class="sdo-md-p">' + renderMdInline(para) + '</p>');
+        var para = nonEmpty.map(function(l) { return l.trim(); }).join(' ');
+        if (para) out.push('<p style="margin:6px 0;line-height:1.6">' + renderMdInline(para) + '</p>');
       }
-      return out.join('\\n');
+      return out.join(NL);
     }
-    // Inline markdown: escape first, then re-insert <strong> and <code>. The
-    // esc() pass protects against any HTML in the source; the replacements
-    // only see literal punctuation that survived escaping.
     function renderMdInline(text) {
       var esc2 = window.esc(text);
       var BT = String.fromCharCode(96);
       var reCode = new RegExp(BT + '([^' + BT + ']+)' + BT, 'g');
-      var reBold = new RegExp('\\\\*\\\\*([^*]+)\\\\*\\\\*', 'g');
+      var reBold = /\*\*([^*]+)\*\*/g;
       return esc2
         .replace(reBold, '<strong>$1</strong>')
         .replace(reCode, '<code>$1</code>');
