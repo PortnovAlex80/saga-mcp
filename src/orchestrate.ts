@@ -944,11 +944,42 @@ export async function orchestrate(opts: OrchestrateOptions): Promise<Orchestrate
         break;
       }
       if (stage === 'completed' || stage === 'cancelled') {
-        engineHeartbeat(opts, 'DONE', `stage=${stage} cycles=${cycles}`);
-        return {
-          projectId, epicId, finalStage: stage, endedAt: new Date(now()).toISOString(),
-          reason: 'completed', cycles, lastError: null,
-        };
+        // Before exiting, check whether any bookkeeping tasks (summary.stage,
+        // recovery.heal) in this terminal stage are still claimable or
+        // in-flight. These tasks are spawned by the engine itself (e.g. the
+        // auto-spawn summary at stage transition) and must complete before
+        // the engine exits — otherwise they stay stranded in todo with no
+        // pump to claim them. assertTasksReady excludes them from the
+        // transition gate (lifecycle.ts), which is correct for advancing the
+        // episode, but the engine must still drain them. Gate-level tasks
+        // (development.code, verification.ac, etc.) cannot exist here: the
+        // episode would not have transitioned to 'completed' otherwise.
+        const drainable = getDb().prepare(
+          `SELECT
+             SUM(CASE WHEN status IN ('todo','review')
+                       AND (assigned_to IS NULL OR assigned_to='')
+                       AND current_execution_id IS NULL THEN 1 ELSE 0 END) AS claimable,
+             SUM(CASE WHEN status IN ('in_progress','review_in_progress')
+                       OR (status='review' AND assigned_to IS NOT NULL AND assigned_to!='')
+                       THEN 1 ELSE 0 END) AS in_flight
+           FROM tasks
+           WHERE epic_id=? AND workflow_stage=?
+             AND task_kind IN ('summary.stage','recovery.heal')`,
+        ).get(epicId, stage) as { claimable: number | null; in_flight: number | null };
+        const claimable = drainable?.claimable ?? 0;
+        const inFlight = drainable?.in_flight ?? 0;
+        if (claimable === 0 && inFlight === 0) {
+          engineHeartbeat(opts, 'DONE', `stage=${stage} cycles=${cycles}`);
+          return {
+            projectId, epicId, finalStage: stage, endedAt: new Date(now()).toISOString(),
+            reason: 'completed', cycles, lastError: null,
+          };
+        }
+        // Else: fall through to the normal pump path. The engine will keep
+        // cycling until every summary/recovery task in this terminal stage
+        // is done, then exit on the next cycle.
+        engineHeartbeat(opts, 'DRAINING',
+          `stage=${stage} claimable=${claimable} in_flight=${inFlight} (summary/recovery bookkeeping)`);
       }
 
       // Step 1: pump workers for any claimable tasks in the current stage.

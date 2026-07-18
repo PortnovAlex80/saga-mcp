@@ -31,7 +31,9 @@
     "cgad-lint:test": "node --test tools/cgad-spec-lint.test.mjs",
     "lint": "eslint src/",
     "prepublishOnly": "npm run build",
-    "test": "tsc && node --test"
+    "test": "tsc && node --test",
+    "test:e2e": "tsc && node --test tests/e2e-pipeline.test.mjs",
+    "mock:run": "SAGA_CLAUDE_PATH=\"node tests/mock-claude.mjs\" node dist/orchestrate-cli.js"
   },
   "keywords": [
     "mcp",
