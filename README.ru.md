@@ -1,8 +1,70 @@
 # saga-mcp
 
+## Быстрый старт (3 команды)
+
+```bash
+git clone https://github.com/PortnovAlex80/saga-mcp.git
+cd saga-mcp && npm install && npm run build
+cp -r skills/* ~/.zcode/skills/
+```
+
+Зарегистрировать в `~/.zcode/cli/config.json`:
+```json
+{
+  "mcp": {
+    "servers": {
+      "saga": {
+        "type": "stdio",
+        "command": "node",
+        "args": ["<путь-к>/saga-mcp/dist/index.js"],
+        "env": { "DB_PATH": "<путь-к>/.zcode/saga.db" }
+      }
+    }
+  }
+}
+```
+
+Перезапустить ZCode. Затем из любой пустой папки:
+```
+Skill("saga-start")
+```
+
+**Это всё.** Saga спросит идею, проведёт Discovery (3 ассессора), оценит сложность, создаст PRD с гипотезой → SRS с инвариантами → AC с property-тестами → запланирует параллельную разработку → независимо верифицирует → интегрирует → замерит runtime метрики → примет решение (hit/kill).
+
+Полная инструкция: [docs/INSTALL.md](docs/INSTALL.md)
+
+---
+
+## Что такое saga-mcp
+
 Платформа управления параллельными LLM-агентами. SQLite, MCP-native, контракт-управляемый жизненный цикл эпизодов, enforcement-слой и продуктовый цикл (discovery → hit/kill).
 
-**Не клон Jira.** saga-mcp не просто跟踪ивает задачи — она управляет полным циклом: от бизнес-гипотезы через архитектуру, требования, параллельную разработку, независимую верификацию, до наблюдения за runtime и решения (продолжать / закрыть).
+**Не клон Jira.** saga-mcp не просто отслеживает задачи — она управляет полным циклом: от бизнес-гипотезы через архитектуру, требования, параллельную разработку, независимую верификацию, до наблюдения за runtime и решения (продолжать / закрыть).
+
+**Цель:** недопустимое действие невозможно провести как допустимый переход.
+
+### Что saga делает автоматически
+
+| Этап | Что происходит | Кто |
+|---|---|---|
+| **Discovery** | Идея → измеримая гипотеза (метрика, target, kill criteria) | saga-kickstart |
+| **Complexity Gate** | thin / modular / regulated / research → набор артефактов | senior-analyst |
+| **Formalization** | PRD (гипотеза) → SRS (стиль, инварианты, порты) → UC/AC (contract-as-data) | product / architect / analyst |
+| **Planning** | Pattern B scaffold, conflict keys, verification routing | saga-planner |
+| **Development** | Параллельные воркеры в worktrees, merge-lock, RiskClass | saga-worker |
+| **Verification** | Независимые L3 property-тесты из frozen AC (НЕ Builder'овские) | saga-verifier |
+| **Integration** | Hard gate: каждый AC имеет passing evidence | episode_transition |
+| **Observation** | Runtime метрики → решение hit/kill | observation_record |
+
+### Что saga НЕ даёт сделать
+
+- Перейти в development без принятых AC (hard gate)
+- Объявить done без passing evidence (deny-by-default)
+- Изменить замороженный контракт mid-work (drift detection)
+- Двум воркерам ломать один файл (conflict_keys на planning time)
+- Агенту понизить risk чтобы обойти gate (P15 monotonicity)
+- Записать UNKNOWN/ERROR как PASS (4-valued verdict)
+- Создать гипотезу без измерения (R16: observation required)
 
 ---
 

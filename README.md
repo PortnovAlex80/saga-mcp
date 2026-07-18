@@ -1,8 +1,70 @@
 # saga-mcp
 
+## Quick Start (3 commands)
+
+```bash
+git clone https://github.com/PortnovAlex80/saga-mcp.git
+cd saga-mcp && npm install && npm run build
+cp -r skills/* ~/.zcode/skills/
+```
+
+Register in `~/.zcode/cli/config.json`:
+```json
+{
+  "mcp": {
+    "servers": {
+      "saga": {
+        "type": "stdio",
+        "command": "node",
+        "args": ["<path-to>/saga-mcp/dist/index.js"],
+        "env": { "DB_PATH": "<path-to>/.zcode/saga.db" }
+      }
+    }
+  }
+}
+```
+
+Restart ZCode. Then from any empty folder:
+```
+Skill("saga-start")
+```
+
+**That's it.** Saga asks for your idea, runs Discovery (3 assessors), classifies complexity, produces PRD with hypothesis → SRS with invariants → AC with property tests → plans parallel development → verifies independently → integrates → observes runtime metrics → hit/kill decision.
+
+Full install guide: [docs/INSTALL.md](docs/INSTALL.md)
+
+---
+
+## What is saga-mcp
+
 A governance platform for parallel LLM coding agents. SQLite-backed, MCP-native, with contract-governed episode lifecycle, enforcement layer, and product discovery cycle.
 
 **Not a Jira clone.** saga-mcp does not just track tasks — it governs the full lifecycle: from business hypothesis through architecture, requirements, parallel development, independent verification, to runtime observation and product decision (hit/kill).
+
+**Goal:** make it impossible to pass an invalid action as a valid transition.
+
+### What saga does for you
+
+| Stage | What happens | Who |
+|---|---|---|
+| **Discovery** | Idea → measurable hypothesis (metric, target, kill criteria) | saga-kickstart |
+| **Complexity Gate** | thin / modular / regulated / research → artifact set | senior-analyst |
+| **Formalization** | PRD (hypothesis) → SRS (style, invariants, ports) → UC/AC (contract-as-data) | product / architect / analyst |
+| **Planning** | Pattern B scaffold, conflict keys, verification routing | saga-planner |
+| **Development** | Parallel workers in worktrees, merge-lock, RiskClass | saga-worker |
+| **Verification** | Independent L3 property tests from frozen AC (NOT Builder's tests) | saga-verifier |
+| **Integration** | Hard gate: every AC has passing evidence | episode_transition |
+| **Observation** | Runtime metrics → hit/kill decision | observation_record |
+
+### What saga prevents
+
+- Development without accepted ACs (hard gate)
+- "Done" without passing evidence (deny-by-default)
+- Mid-work contract changes (drift detection)
+- Workers breaking each other (semantic conflict keys at planning time)
+- Agent lowering risk to skip gates (P15 monotonicity)
+- UNKNOWN/ERROR treated as PASS (4-valued verdict)
+- Hypothesis without measurement (R16: observation required)
 
 ---
 
@@ -11,8 +73,8 @@ A governance platform for parallel LLM coding agents. SQLite-backed, MCP-native,
 > Forked from [spranab/saga-mcp](https://github.com/spranab/saga-mcp) (v1.6.0). The upstream is a Jira-like MCP tracker. This fork adds:
 > - **Dispatcher** (worker_next/worker_done/merge-lock) for parallel agent orchestration
 > - **Episode state machine** (7 stages with hard gates: discovery→formalization→planning→development→verification→integration→completed)
-> - **CGAD enforcement layer** (Contract-Governed Agentic Development): 16 lint rules, 4-valued verdict, RiskClass computation, semantic conflict detection, runtime observations
-> - **12 skills** (saga-start, saga-kickstart, saga-product, saga-architect, saga-analyst, saga-planner, saga-worker, saga-verifier, saga-orchestrator, saga-dispatch, saga-tracker, senior-analyst)
+> - **CGAD enforcement layer** (Contract-Governed Agentic Development): 18 lint rules, 4-valued verdict, RiskClass computation, semantic conflict detection, runtime observations
+> - **13 skills** (saga-start, saga-kickstart, saga-product, saga-architect, saga-analyst, saga-planner, saga-worker, saga-verifier, saga-orchestrator, saga-dispatch, saga-tracker, saga-release, senior-analyst)
 > - **14 artifact types**, **7 trace link types**, **trusted provider registry**
 > - **Product discovery cycle**: hypothesis → metric → observation → hit/kill
 >
