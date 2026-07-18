@@ -3190,16 +3190,37 @@ function handleWorkerTail(req, res, url) {
   }
 
   try {
-    // Read last ~32KB to find N complete lines. JSONL lines can be long
-    // (assistant messages with full text), so byte-tail is safer than line count.
+    // Read tail of file, but scan DEEP enough to find `lines` MEANINGFUL
+    // events (non-thinking_tokens). Workers in deep reasoning can emit
+    // thousands of thinking_tokens events consecutively — taking the last
+    // N lines naively returns only thinking noise after filtering.
+    //
+    // Strategy: read backwards in 256KB chunks, parse all lines, filter out
+    // thinking_tokens, until we collect `lines` meaningful events or hit
+    // start of file. Cap at 2MB to bound work.
     const stat = statSync(resolved);
-    const tailBytes = Math.min(stat.size, 64 * 1024);
+    const CHUNK = 256 * 1024;
+    const MAX_BYTES = 2 * 1024 * 1024;
+    const readBytes = Math.min(stat.size, MAX_BYTES);
     const fd = openSync(resolved, 'r');
-    const buf = Buffer.alloc(tailBytes);
-    readSync(fd, buf, 0, tailBytes, Math.max(0, stat.size - tailBytes));
+    const buf = Buffer.alloc(readBytes);
+    readSync(fd, buf, 0, readBytes, Math.max(0, stat.size - readBytes));
     closeSync(fd);
     const allLines = buf.toString('utf8').split('\n').filter(Boolean);
-    const lastLines = allLines.slice(-lines);
+    // Walk from the end, parse, keep only meaningful events, stop when we
+    // have `lines` of them (or run out of buffer).
+    const collected = [];
+    for (let i = allLines.length - 1; i >= 0 && collected.length < lines; i -= 1) {
+      const raw = allLines[i];
+      try {
+        const evt = JSON.parse(raw);
+        if (evt.type === 'system' && evt.subtype === 'thinking_tokens') continue;
+        collected.unshift({ raw, evt });
+      } catch {
+        collected.unshift({ raw, evt: null });
+      }
+    }
+    const lastLines = collected.map(c => c.raw);
 
     const events = lastLines.map(raw => {
       try {
