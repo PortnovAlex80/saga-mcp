@@ -821,6 +821,7 @@ function renderBoard(projectId, allProjects) {
         next.set(Number(w.task_id), {
           log_mtime_ms: w.log_mtime_ms || null,
           worker_id: w.worker_id || '',
+          is_stale: w.is_stale === true,
         });
       }
       window.__activeWorkers = next;
@@ -1063,19 +1064,20 @@ function renderBoard(projectId, allProjects) {
         if (!dot) return;
         if (w.log_mtime_ms == null) return;
         const ageS = Math.max(0, Math.floor((now - w.log_mtime_ms) / 1000));
-        // Colour by age (same thresholds as ageClass): <15s green, <60s yellow, else red.
-        // Pulse tempo inversely proportional to age: very fresh = fast blink,
-        // older = slow, stale (>60s) = static red (no animation).
+        // Backend flags the worker as stale when log hasn't grown for >30s —
+        // likely a dead subprocess without a fired close event. Show instant
+        // red (no pulse, no yellow transition) so the user sees the death
+        // immediately instead of watching yellow for 30 seconds.
         let cls, pulse;
-        if (ageS < 5) { cls = 'green'; pulse = 'pulse-fast'; }
+        if (w.is_stale) { cls = 'red'; pulse = ''; }
+        else if (ageS < 5) { cls = 'green'; pulse = 'pulse-fast'; }
         else if (ageS < 15) { cls = 'green'; pulse = 'pulse-med'; }
         else if (ageS < 30) { cls = 'yellow'; pulse = 'pulse-med'; }
-        else if (ageS < 60) { cls = 'yellow'; pulse = 'pulse-slow'; }
-        else { cls = 'red'; pulse = ''; }
+        else { cls = 'yellow'; pulse = 'pulse-slow'; }
         dot.classList.remove('green', 'yellow', 'red', 'streaming', 'pulse-fast', 'pulse-med', 'pulse-slow');
         dot.classList.add(cls);
         if (pulse) dot.classList.add(pulse);
-        dot.title = ageS + 's ago (' + (w.worker_id || '?') + ')';
+        dot.title = (w.is_stale ? 'STALE ' : '') + ageS + 's ago (' + (w.worker_id || '?') + ')';
       });
     }
     async function refreshBoard() {
@@ -3470,6 +3472,13 @@ function handleWorkersActive(req, res, url) {
       if (logPath) {
         try { log_mtime_ms = statSync(logPath).mtimeMs; } catch { /* gone */ }
       }
+      // Worker is 'stale' if its log hasn't grown for >30s. Most likely the
+      // subprocess died without firing a close event (OOM, network drop,
+      // kill -9) and the task is stranded in in_progress/review_in_progress.
+      // Frontend shows this as instant red (no pulse) — clearer signal than
+      // waiting for the age-based yellow→red gradient to reach 60s.
+      const STALE_AFTER_MS = 30 * 1000;
+      const is_stale = log_mtime_ms != null && (Date.now() - log_mtime_ms) > STALE_AFTER_MS;
       return {
         task_id: r.id,
         title: r.title,
@@ -3479,6 +3488,7 @@ function handleWorkersActive(req, res, url) {
         epic_name: r.epic_name,
         started_at: startedIso,
         log_mtime_ms,
+        is_stale,
         log_path: logPath,
       };
     });
