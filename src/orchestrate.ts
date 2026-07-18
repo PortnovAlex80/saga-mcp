@@ -443,6 +443,26 @@ function readEpisodeMeta(epicId: number): { lastHealError: string | null; lastHe
   return { lastHealError: row?.e ?? null, lastHealAttempt: row?.a ?? null };
 }
 
+/**
+ * Read the active model's concurrency limit (ceiling) from episode metadata.
+ * Written by /api/model/set when the user switches models mid-run. The pump
+ * loop uses min(opts.concurrency, active_model_limit) as its target so that:
+ *   - Active workers (already on the OLD model) finish their cycle untouched.
+ *   - The engine stops spawning NEW workers until the active count drops below
+ *     the new limit, then spawns fresh workers that read the patched
+ *     ~/.claude/settings.json and run on the new model.
+ * Returns null when no model limit has been recorded — caller falls back to
+ * opts.concurrency unchanged.
+ */
+function readActiveModelLimit(epicId: number): number | null {
+  const row = getDb().prepare(
+    `SELECT json_extract(metadata, '$.active_model_limit') AS lim
+     FROM episode_workflows WHERE epic_id=?`,
+  ).get(epicId) as { lim: number | null } | undefined;
+  const lim = row?.lim;
+  return typeof lim === 'number' && lim >= 1 ? lim : null;
+}
+
 /** Persist recovery bookkeeping fields into episode metadata (merge). */
 function writeEpisodeMeta(epicId: number, patch: Record<string, unknown>): void {
   const db = getDb();
@@ -811,10 +831,22 @@ export async function orchestrate(opts: OrchestrateOptions): Promise<Orchestrate
   const projectId = opts.projectId;
   const epicId = opts.epicId;
   const concurrency = opts.concurrency ?? 4;
+  // Model-limit ceiling: if /api/model/set wrote $.active_model_limit into
+  // episode_workflows.metadata (because the user switched models mid-run), the
+  // effective target is min(concurrency, limit). Active workers stay on the
+  // old model; this ceiling only prevents spawning NEW workers above the new
+  // model's API limit. As old workers finish, fresh spawns read the patched
+  // ~/.claude/settings.json and run on the new model.
+  // Re-read every RATE_LIMIT_SCAN_TICKS cycle (see pump loop) so a model switch
+  // takes effect WITHOUT an engine restart.
+  let targetConcurrency = (() => {
+    const lim = readActiveModelLimit(epicId);
+    return lim !== null ? Math.min(concurrency, lim) : concurrency;
+  })();
   // Effective concurrency may be lower than the target when the API is
   // rate-limiting (429). Starts at target, drops by 1 per rate-limit hit,
   // recovers by 1 per RATE_LIMIT_COOLDOWN_SEC of clean running.
-  let effectiveConcurrency = concurrency;
+  let effectiveConcurrency = targetConcurrency;
   const now = opts.now ?? Date.now;
   const sleep = opts.sleep ?? defaultSleep;
 
@@ -957,13 +989,19 @@ export async function orchestrate(opts: OrchestrateOptions): Promise<Orchestrate
       rateLimitCheckCounter += 1;
       if (rateLimitCheckCounter >= RATE_LIMIT_SCAN_TICKS) {
         rateLimitCheckCounter = 0;
+        // Re-read the model-limit ceiling so a mid-run /api/model/set is
+        // honored WITHOUT an engine restart. The new model's limit may be
+        // lower (cap target → stop spawning, let active workers finish) or
+        // higher (raise target → engine spawns fresh workers on new model).
+        const lim = readActiveModelLimit(epicId);
+        targetConcurrency = lim !== null ? Math.min(concurrency, lim) : concurrency;
         const rlKilled = detectRateLimits(epicId, projectId, opts);
         if (rlKilled > 0) {
           effectiveConcurrency = Math.max(1, effectiveConcurrency - rlKilled);
           emptyCycles = 0;
         }
         // Recovery: if no 429 for cooldown window, climb back toward target.
-        effectiveConcurrency = computeEffectiveConcurrency(concurrency, effectiveConcurrency);
+        effectiveConcurrency = computeEffectiveConcurrency(targetConcurrency, effectiveConcurrency);
       }
 
       const counts = countActiveTasks(epicId);
