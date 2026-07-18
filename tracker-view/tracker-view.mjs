@@ -2983,37 +2983,38 @@ function renderStageDetailPage(epicId, stageName, allProjects) {
     // they would terminate the template literal; String.fromCharCode(96) is
     // used instead.
     function renderMd(md) {
-      // This code lives INSIDE a template literal (backtick string). Control
-      // char escapes (newline, carriage return, etc.) become literal characters
-      // and break regex. Use String.fromCharCode instead.
+      // ALL regex here use new RegExp + String.fromCharCode because this code
+      // lives inside a template literal where backslash escapes break.
       var NL = String.fromCharCode(10);
       var CR = String.fromCharCode(13);
+      var S = String.fromCharCode(92, 115); // backslash-s (whitespace in regex)
       var text = String(md || '').replace(new RegExp(CR + NL, 'g'), NL).trim();
-      if (!text) return '<p style="color:#8b949e">резюме пустое</p>';
+      if (!text) return '<p style="color:#8b949e">empty</p>';
       var blocks = text.split(new RegExp(NL + '{2,}'));
       var out = [];
+      var reHeading = new RegExp('^(#{1,6})[ ]+(.*)$');
+      var reListTest = new RegExp('^[' + S + ']*[-*][ ]+');
+      var reListStrip = new RegExp('^[' + S + ']*[-*][ ]+');
       for (var bi = 0; bi < blocks.length; bi++) {
         var block = blocks[bi].replace(new RegExp('^' + NL + '+|' + NL + '+$', 'g'), '');
         if (!block) continue;
         var lines = block.split(NL);
         var nonEmpty = lines.filter(function(l) { return l.trim(); });
-        // Heading: single non-empty line starting with #
         if (nonEmpty.length === 1) {
-          var hm = nonEmpty[0].match(/^(#{1,6})[ ]+(.*)$/);
+          var hm = reHeading.exec(nonEmpty[0]);
           if (hm) {
             var level = Math.min(hm[1].length, 4) + 1;
             out.push('<h' + level + ' style="color:#58a6ff;margin:12px 0 6px">' + renderMdInline(hm[2]) + '</h' + level + '>');
             continue;
           }
         }
-        // List: every non-empty line starts with "- " or "* "
         var allList = nonEmpty.length > 0;
         for (var li = 0; li < nonEmpty.length; li++) {
-          if (!/^[\s]*[-*][ ]+/.test(nonEmpty[li])) { allList = false; break; }
+          if (!reListTest.test(nonEmpty[li])) { allList = false; break; }
         }
         if (allList) {
           var items = nonEmpty.map(function(l) {
-            return '<li>' + renderMdInline(l.replace(/^[\s]*[-*][ ]+/, '')) + '</li>';
+            return '<li>' + renderMdInline(l.replace(reListStrip, '')) + '</li>';
           }).join('');
           out.push('<ul style="margin:6px 0;padding-left:20px">' + items + '</ul>');
           continue;
@@ -3026,8 +3027,9 @@ function renderStageDetailPage(epicId, stageName, allProjects) {
     function renderMdInline(text) {
       var esc2 = window.esc(text);
       var BT = String.fromCharCode(96);
+      var ST = String.fromCharCode(42); // asterisk
       var reCode = new RegExp(BT + '([^' + BT + ']+)' + BT, 'g');
-      var reBold = /\*\*([^*]+)\*\*/g;
+      var reBold = new RegExp(ST + ST + '([^' + ST + ']+)' + ST + ST, 'g');
       return esc2
         .replace(reBold, '<strong>$1</strong>')
         .replace(reCode, '<code>$1</code>');
