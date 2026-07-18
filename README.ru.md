@@ -31,42 +31,81 @@ cp -r skills/* ~/.zcode/skills/
 Skill("saga-start")
 ```
 
-**Это всё.** Saga спросит идею, проведёт Discovery (3 ассессора), оценит сложность, создаст PRD с гипотезой → SRS с инвариантами → AC с property-тестами → запланирует параллельную разработку → независимо верифицирует → интегрирует → замерит runtime метрики → примет решение (hit/kill).
+**Это всё.** Saga спросит идею, проведёт Discovery (оценку идеи тремя независимыми ассесорами), определит сложность, создаст PRD с гипотезой → SRS с инвариантами → критерии приёмки с тестами-свойствами → запланирует параллельную разработку → независимо проверит → интегрирует → замерит runtime-метрики → примет решение (гипотеза подтвердилась / опровергнулась).
 
 Полная инструкция: [docs/INSTALL.md](docs/INSTALL.md)
+
+## Канбан-доска (автозапуск)
+
+saga-mcp включает веб-канбан (`tracker-view/`), который запускается автоматически
+вместе с MCP-сервером. Читает **ту же** saga DB и показывает:
+
+- Все проекты как переключаемые доски (Backlog / В работе / Ревью / Готово / Заблокировано)
+- По каждой карточке: исполнитель, возраст, эпик, тип задачи, живой индикатор активности
+- Матрицу покрытия: какие критерии приёмки реализованы и проверены
+- Реестр приёмочных испытаний: статус верификации по эпизодам
+- Кликабельные карточки → детали задачи
+- Лента активности с пульсом (зелёный — работает, жёлтый — простаивает, красный — упал)
+
+Открой **http://localhost:4321** после запуска saga-mcp (или `npm run tracker` вручную).
 
 ---
 
 ## Что такое saga-mcp
 
-Платформа управления параллельными LLM-агентами. SQLite, MCP-native, контракт-управляемый жизненный цикл эпизодов, enforcement-слой и продуктовый цикл (discovery → hit/kill).
+Платформа для управления параллельными LLM-агентами. На базе SQLite и MCP (Model Context Protocol). Управляет полным жизненным циклом разработки: от бизнес-гипотезы через архитектуру, требования, параллельную разработку, независимую проверку, до наблюдения за работающей системой и решения — продолжать или закрыть.
 
-**Не клон Jira.** saga-mcp не просто отслеживает задачи — она управляет полным циклом: от бизнес-гипотезы через архитектуру, требования, параллельную разработку, независимую верификацию, до наблюдения за runtime и решения (продолжать / закрыть).
-
-**Цель:** недопустимое действие невозможно провести как допустимый переход.
+**Не клон Jira.** saga-mcp не просто отслеживает задачи — она **управляет переходами** между этапами. Невозможно сделать недопустимое действие и провести его как допустимый переход.
 
 ### Что saga делает автоматически
 
-| Этап | Что происходит | Кто |
+| Этап | Что происходит | Кто выполняет |
 |---|---|---|
-| **Discovery** | Идея → измеримая гипотеза (метрика, target, kill criteria) | saga-kickstart |
-| **Complexity Gate** | thin / modular / regulated / research → набор артефактов | senior-analyst |
-| **Formalization** | PRD (гипотеза) → SRS (стиль, инварианты, порты) → UC/AC (contract-as-data) | product / architect / analyst |
-| **Planning** | Pattern B scaffold, conflict keys, verification routing | saga-planner |
-| **Development** | Параллельные воркеры в worktrees, merge-lock, RiskClass | saga-worker |
-| **Verification** | Независимые L3 property-тесты из frozen AC (НЕ Builder'овские) | saga-verifier |
-| **Integration** | Hard gate: каждый AC имеет passing evidence | episode_transition |
-| **Observation** | Runtime метрики → решение hit/kill | observation_record |
+| **Discovery** (исследование идеи) | Идея → измеримая гипотеза (метрика, цель, критерий провала) | saga-kickstart (скилл оценки идеи) |
+| **Complexity Gate** (шлюз сложности) | Оценка: простая / модульная / регулируемая / исследовательская → выбор набора артефактов | senior-analyst (референс-методология) |
+| **Formalization** (формализация) | PRD с гипотезой → SRS (архитектурный стиль, реестр инвариантов, реестр портов) → Use Cases + критерии приёмки | product / architect / analyst |
+| **Planning** (планирование) | Pattern B: сначала каркас-заглушки, потом параллельные тела. Ключи конфликтов. Маршрутизация задач проверки | saga-planner |
+| **Development** (разработка) | Параллельные воркеры в изолированных git-worktree. Блокировка слияния (merge-lock). Автоматический расчёт класса риска | saga-worker |
+| **Verification** (проверка) | Независимые тесты-свойства из замороженного контракта приёмки — НЕ из тестов разработчика | saga-verifier |
+| **Integration** (интеграция) | Жёсткий шлюз: каждый критерий приёмки имеет подтверждённое доказательство с совпадающим хэшем | episode_transition |
+| **Observation** (наблюдение) | Runtime-метрики → решение: гипотеза подтвердилась / опровергнулась | observation_record |
 
 ### Что saga НЕ даёт сделать
 
-- Перейти в development без принятых AC (hard gate)
-- Объявить done без passing evidence (deny-by-default)
-- Изменить замороженный контракт mid-work (drift detection)
-- Двум воркерам ломать один файл (conflict_keys на planning time)
-- Агенту понизить risk чтобы обойти gate (P15 monotonicity)
-- Записать UNKNOWN/ERROR как PASS (4-valued verdict)
-- Создать гипотезу без измерения (R16: observation required)
+- Начать разработку без принятых критериев приёмки (жёсткий шлюз)
+- Объявить задачу готовой без доказательства прохождения проверки (отказ по умолчанию — нет доказательства, нет перехода)
+- Изменить замороженный контракт в процессе работы (детекция дрейфа: хэш не совпадает → блокировка)
+- Двум воркерам ломать один файл (семантические ключи конфликтов обнаруживаются на этапе планирования, до запуска воркеров)
+- Агенту понизить класс риска, чтобы обойти шлюз (P15: класс риска = максимум из заявленного, вычисленного и минимального по политике)
+- Записать «не знаю» или «ошибка» как «прошло» (4-значный вердикт: passed / failed / unknown / error)
+- Сформулировать гипотезу без измерения (R16: гипотеза без наблюдения → предупреждение)
+
+---
+
+## Слой контроля (Enforcement Layer)
+
+saga-mcp **не заменяет** классическую архитектуру (SRP — принцип единственной ответственности, Clean Architecture, Hexagonal — порты и адаптеры, DDD — предметно-ориентированное проектирование). Код организован как обычно: малые файлы, явные импорты, порты и адаптеры.
+
+Что меняется — **слой контроля над кодом**. То, что человеческие команды делают через code review, разговоры и «я помню где что лежит», saga делает через детерминированные проверки и жёсткие шлюзы.
+
+**Главный тезис** (выдержал проверку 6 независимых критиков с разными идеологическими позициями):
+
+> Классическая архитектура постоянно говорит об инвариантах (правилах, которые
+> система обязана соблюдать), но почти никогда их не проверяет автоматически.
+> Инварианты живут в комментариях, wiki и голове разработчика.
+>
+> saga-mcp закрывает этот разрыв: каждый инвариант объявляется в реестре,
+> превращается в property-тест (тест свойства — проверяет правило для
+> произвольных входов, а не только для заранее заготовленных примеров),
+> и проходит через жёсткий шлюз перед интеграцией.
+
+| Что человеческая команда делает через общение | Что saga делает через механизм |
+|---|---|
+| Code review ловит нарушение инварианта | Реестр инвариантов + property-тесты + правило R13 |
+| «Я помню где что лежит» | Граф артефактов в БД — запрашиваемый, с детекцией дрейфа |
+| Договорились на standup | Замороженный снимок контракта + семантические ключи конфликтов |
+| «Тесты зелёные — значит работает» | Независимый проверяющий: генерирует свои тесты из контракта, не из тестов разработчика |
+| «Вроде нормально» | 4-значный вердикт + отказ по умолчанию |
 
 ---
 
@@ -74,198 +113,12 @@ Skill("saga-start")
 >
 > Форк [spranab/saga-mcp](https://github.com/spranab/saga-mcp) (v1.6.0). Upstream — Jira-like MCP трекер. Этот форк добавляет:
 > - **Диспетчер** (worker_next / worker_done / merge-lock) для оркестрации параллельных агентов
-> - **Машина состояний эпизода** (7 стадий с hard gates: discovery→formalization→planning→development→verification→integration→completed)
-> - **CGAD enforcement-слой** (Contract-Governed Agentic Development): 18 lint-правил, 4-значный вердикт, вычисление RiskClass, семантическая детекция конфликтов, runtime-наблюдения
-> - **12 скиллов** (saga-start, saga-kickstart, saga-product, saga-architect, saga-analyst, saga-planner, saga-worker, saga-verifier, saga-orchestrator, saga-dispatch, saga-tracker, senior-analyst)
-> - **14 типов артефактов**, **7 типов trace-связей**, **реестр Trusted Providers**
-> - **Продуктовый цикл**: гипотеза → метрика → наблюдение → hit/kill
+> - **Машина состояний эпизода** (7 стадий с жёсткими шлюзами)
+> - **Слой контроля CGAD** (Contract-Governed Agentic Development — управление разработкой через контракты): 18 детерминированных правил, 4-значный вердикт, расчёт класса риска, обнаружение семантических конфликтов, хранилище runtime-наблюдений
+> - **13 скиллов**, **14 типов артефактов**, **7 типов trace-связей**, **реестр доверенных провайдеров**
+> - **Продуктовый цикл**: гипотеза → метрика → наблюдение → подтвердилась/опровергнулась
 >
 > Полная история: [docs/saga-mcp-history.md](docs/saga-mcp-history.md)
-
----
-
-## Что делает saga-mcp
-
-### Какую боль решает
-
-Когда несколько LLM-агентов работают параллельно над одним проектом, они ломают друг друга:
-- Два воркера независимо изобретают несовместимую архитектуру → merge-конфликт на архитектурном уровне
-- Агент объявляет «готово» — тесты зелёные, но не покрывают критерий приёмки (AC)
-- Никто не знает, на каком этапе проект
-- Меняется замороженный контракт mid-work → downstream ломается молча
-
-saga-mcp предотвращает всё это **механизмами, не дисциплиной**.
-
-### Как это работает
-
-```
-ИДЕЯ (одна фраза)
-   │
-   ▼
-1. DISCOVERY (saga-kickstart: 3 асессора, completeness-gate, decision-fork)
-   │ → артефакт brief, решение ∈ {go, fast-track, clarify, reject}
-   │ → Complexity Gate (senior-analyst: thin/modular/regulated/research → набор артефактов)
-   ▼
-2. FORMALIZATION (saga-product → saga-architect → saga-analyst)
-   │ → PRD (с Гипотезами: метрика, baseline, target, kill-критерий)
-   │ → SRS (Архитектурный стиль, Module Manifest, Invariant Registry, Port Registry, NFR Targets)
-   │ → UC + AC (properties-блоки: YAML contract-as-data для L3 property-тестов)
-   │ → RULE (бизнес-логика, enforced-by trace) + SPEC (механизм реализации)
-   │ → Frozen Contract Snapshot (accepted_hash, drift detection)
-   ▼
-3. PLANNING (saga-planner)
-   │ → Pattern B scaffold (замороженный контракт как заглушки)
-   │ → conflict_keys_set + conflict_check (планирование-time детекция коллизий)
-   │ → dev-задачи (implements AC) + verification.ac задачи (saga-verifier)
-   ▼
-4. DEVELOPMENT (рой saga-worker, параллельно в worktrees)
-   │ → Каждый: claim → worktree → код + L2 тесты → merge-lock → done
-   │ → RiskClass = max(declared, derived, policy) — агент не может сам понизить (P15)
-   ▼
-5. VERIFICATION (saga-verifier: независимые L3 property-тесты)
-   │ → Читает замороженный AC-контракт (НЕ тесты Builder'а)
-   │ → Генерирует Hypothesis/QuickCheck property-тесты из YAML properties-блока
-   │ → verification_record({outcome, provider, test_layer})
-   ▼
-6. INTEGRATION (merge-lock, post-merge build check)
-   │ → assertVerificationPassed: каждый AC должен иметь passing evidence с matching hash
-   │ → Deny by default (P14): нет evidence = нет transition
-   ▼
-7. COMPLETED → post-launch observation
-   │ → observation_record (benchmark/canary/incident/runtime_metric)
-   │ → R16 lint: hypothesis должна иметь observation (продуктовый цикл замкнут)
-   │ → hit/kill решение по метрике vs target
-```
-
-### Enforcement-слой (cgad-spec-lint v1.4.0)
-
-18 детерминированных правил:
-
-| Правило | Что ловит |
-|---|---|
-| R1 | Deny-by-default: evidence без provider, UNKNOWN/ERROR как PASS |
-| R2 | P15 risk floor: final_risk < max(declared, derived, policy) |
-| R3 | AC с implements, но без verified_by evidence |
-| R4 | Greenfield эпизод без scaffold (Pattern B) |
-| R5 | Семантическая коллизия: ≥2 задачи делят conflict key |
-| R6 | Агент сам установил состояние без activity_log |
-| R7 | Неатомарный переход эпизода |
-| R8 | Замороженный контракт изменён (drift_state='drifted') |
-| R9 | Self-approval: verifier == builder |
-| R10 | Work package самодекомпозиция |
-| R11 | Скрытое исключение без owner |
-| R12 | Human approval как proof of correctness |
-| R13 | SRS без verification.ac задач (invariant enforcement gap) |
-| R14 | FR содержит forbidden implementation detail |
-| R15 | RULE без enforced-by trace |
-| R16 | Hypothesis без runtime observation (продуктовый gap) |
-| R17 | AC ссылается на test fixture/framework (контракт загрязнён) |
-| R18 | NFR смешивает determinism + real-clock timing |
-
-### Ключевые примитивы
-
-| Примитив | Назначение |
-|---|---|
-| Машина состояний эпизода | 7 стадий с hard gates, без пропусков |
-| Frozen Contract Snapshot | accepted_hash + drift_state — никаких mid-work изменений контракта |
-| 4-значный вердикт | passed / failed / unknown / error (deny-by-default) |
-| RiskClass | max(declared, derived, policy) — агент не может сам понизить |
-| Семантические conflict keys | file_path / schema / public_protocol / integration_branch |
-| Runtime observations | Append-only, immutable, 3-я ось истины (Declared / Implemented / Observed) |
-| Trusted Provider Registry | Deterministic Evidence / Authoritative State / Authorized Decision |
-| Artifact types (14) | PRD, SRS, UC, AC, FR, NFR, RULE, SPEC, decision, brief, theme, OQ, hypothesis, business_metric |
-| Trace link types (7) | covers, implements, implements_spec, derived_from, depends_on, verified_by, superseded_by |
-
----
-
-## Архитектура
-
-saga-mcp **НЕ заменяет** классическую архитектуру (SRP, Clean, Hexagonal, DDD).
-Она строит **enforcement-слой** над ней: то, что человеческие команды делают через
-code review и разговоры, saga делает через детерминированные guards и hard gates.
-
-### Что выжило (подтверждено 6 adversarial critics)
-
-- Малые cohesive файлы (150-500 LOC)
-- SRP (Parnas change-propagation, не Miller 7±2)
-- Hexagonal / Ports & Adapters
-- Composition over inheritance
-- Явные импорты, без dynamic metaprogramming
-
-### Что меняется для agent-runtime
-
-| Человеческая команда | saga-mcp enforcement |
-|---|---|
-| Code review ловит нарушения инвариантов | INVARIANCES.md + property-тесты (L3) + R13 lint |
-| «Я помню где что лежит» | Artifact graph (saga DB), queryable, drift-detected |
-| Standup координация | Frozen contract snapshot + conflict_keys (planning-time) |
-| «Тесты зелёные = работает» | Independent Verifier: L3 property-тесты из frozen AC |
-| «Вроде нормально» | 4-значный вердикт + deny-by-default |
-
-См. [Research Charter](docs/research/00-research-charter-v1-final.md) — полный тезис
-(7 research reports + 6 adversarial critics).
-
----
-
-## Установка
-
-### Требования
-
-- Node.js 18+ (для better-sqlite3 native build)
-- npm
-- Git
-- ZCode (или любой MCP-клиент)
-
-### Шаг 1 — клонировать и собрать
-
-```bash
-git clone https://github.com/PortnovAlex80/saga-mcp.git
-cd saga-mcp
-npm install
-npm run build
-```
-
-Проверка:
-```bash
-DB_PATH=./smoke.db node dist/index.js
-# Должно вывести: Tracker MCP Server running on stdio
-```
-
-### Шаг 2 — зарегистрировать в ZCode
-
-Редактировать `~/.zcode/cli/config.json`:
-
-```json
-{
-  "mcp": {
-    "servers": {
-      "saga": {
-        "type": "stdio",
-        "command": "node",
-        "args": ["D:/Development/saga-mcp/dist/index.js"],
-        "env": { "DB_PATH": "C:/Users/<вы>/.zcode/saga.db" }
-      }
-    }
-  }
-}
-```
-
-Перезапустить ZCode.
-
-### Шаг 3 — установить скиллы
-
-```bash
-cp -r skills/* ~/.zcode/skills/
-```
-
-Перезапустить ZCode снова.
-
-### Шаг 4 — smoke-тест
-
-Из любой папки проекта:
-```
-Skill("saga-start")
-```
 
 ---
 
@@ -273,52 +126,50 @@ Skill("saga-start")
 
 | Скилл | Роль | Когда |
 |---|---|---|
-| **saga-start** | Bootstrap проекта + repository binding | Первый запуск |
-| **saga-kickstart** | Discovery: идея → brief → решение | Complexity gate, 3 асессора |
-| **saga-product** | PRD с гипотезами | Formalization |
-| **saga-architect** | SRS с Invariant Registry, Port Registry | Formalization |
-| **saga-analyst** | UC + AC с properties-блоками | Formalization |
-| **saga-planner** | Pattern B scaffold, dev-задачи, conflict_keys | Planning |
-| **saga-worker** | Код + L2 тесты, merge-lock | Development |
-| **saga-verifier** | Независимые L3 property-тесты из frozen AC | Verification |
-| **saga-orchestrator** | Полный episode flow, Complexity Gate | Main context |
-| **saga-dispatch** | Dispatch loop | Development fleet |
-| **saga-tracker** | Bootstrap + правила очереди | Entry point |
-| **senior-analyst** | Reference-методология (BABOK/Wiegers) | Загружается orchestrator'ом |
+| **saga-start** | Создание проекта + привязка репозитория | Первый запуск |
+| **saga-kickstart** | Discovery: идея → brief → решение | Оценка тремя ассесорами |
+| **saga-product** | PRD с гипотезами | Формализация |
+| **saga-architect** | SRS: стиль, реестр инвариантов, реестр портов, выбор стека | Формализация |
+| **saga-analyst** | Use Cases + критерии приёмки (с YAML properties) | Формализация |
+| **saga-planner** | Каркас Pattern B, задачи, семантические ключи конфликтов | Планирование |
+| **saga-worker** | Код + тесты-примеры, блокировка слияния | Разработка |
+| **saga-verifier** | Независимые тесты-свойства из замороженного контракта | Проверка |
+| **saga-orchestrator** | Полный цикл, шлюз сложности | Главный контекст |
+| **saga-dispatch** | Цикл диспетчера | Флот разработки |
+| **saga-tracker** | Начальная загрузка + правила очереди | Точка входа |
+| **saga-release** | Чеклист релиза (10 секций) | Подготовка релиза |
+| **senior-analyst** | Референс-методология (BABOK/Wiegers) | Загружается оркестратором |
 
 ---
 
 ## Тестирование
 
 ```bash
-npm test                    # 163 теста (tsc + node --test)
-npm run cgad-lint -- <db>   # cgad-spec-lint v1.4.0 (18 правил)
+npm test                    # 163 теста
+npm run cgad-lint -- <db>   # 18 правил контроля (cgad-spec-lint v1.4.0)
 ```
 
 ## CI/CD
 
-```bash
-npx tsc --noEmit            # TypeScript strict (noUnusedLocals, noImplicitReturns)
-npx eslint src/             # ESLint с @typescript-eslint
-node tools/cgad-spec-lint.mjs <db>  # 18 детерминированных правил
-```
+GitHub Actions: TypeScript strict + ESLint + npm test на каждый push/PR.
 
-GitHub Actions CI (`.github/workflows/ci.yml`): tsc strict + ESLint + npm test на каждый push/PR.
+Перед релизом: `Skill("saga-release")` — 10-секционный чеклист.
 
 ---
 
 ## Документация
 
-- [История](docs/saga-mcp-history.md) — полная эволюция от форка до CGAD
-- [CGAD spec](docs/architecture/cgad-v2-spec.md) — 1619-строчный target-state reference
+- [Быстрая установка](docs/INSTALL.md) — 3 команды до работающей saga
+- [История](docs/saga-mcp-history.md) — эволюция от форка до CGAD
+- [CGAD spec](docs/architecture/cgad-v2-spec.md) — эталон (1619 строк)
 - [Research Charter](docs/research/00-research-charter-v1-final.md) — тезис agent-oriented SE
-- [Блог-пост](docs/blog-saga-mcp-agent-governance.md) — популяризация для обсуждения
-- [ADR](docs/architecture/decisions/) — 005 (CGAD), 006 (Pattern B), 007 (convergence)
-- [GUARDRAILS](GUARDRAILS.md) — Signs 001-009 (неформальная конституция)
-- [cgad-spec-lint](tools/cgad-spec-lint.mjs) — 18 правил enforcement
-- [SRS template](docs/requirements/templates/SRS.md) — 8 обязательных секций
-- [AC template](docs/requirements/templates/acceptance-criteria.md) — contract-as-data
-- [INVARIANCES template](docs/requirements/templates/INVARIANTS.md) — per-module инварианты
+- [Блог-пост](docs/blog-saga-mcp-agent-governance.md) — для обсуждения
+- [ADR](docs/architecture/decisions/) — архитектурные решения
+- [GUARDRAILS](GUARDRAILS.md) — конституция (Signs 001-009)
+- [cgad-spec-lint](tools/cgad-spec-lint.mjs) — 18 правил
+- [SRS template](docs/requirements/templates/SRS.md) — 8 секций
+- [AC template](docs/requirements/templates/acceptance-criteria.md) — контракт в виде данных
+- [INVARIANTS template](docs/requirements/templates/INVARIANTS.md) — инварианты по модулю
 
 ---
 
