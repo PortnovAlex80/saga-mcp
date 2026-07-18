@@ -56,6 +56,7 @@ A governance platform for parallel LLM coding agents. SQLite-backed, MCP-native,
 | **Development** | Parallel workers in worktrees, merge-lock, RiskClass | saga-worker |
 | **Verification** | Independent L3 property tests from frozen AC (NOT Builder's tests) | saga-verifier |
 | **Integration** | Hard gate: every AC has passing evidence | episode_transition |
+| **Post-integration** | Product README + INSTALL + project skills (`<product>-release`, `<product>-qa`) | saga-orchestrator |
 | **Observation** | Runtime metrics → hit/kill decision | observation_record |
 
 ### What saga prevents
