@@ -174,6 +174,51 @@ SRS §8 MUST explicitly list what this episode does NOT cover. This is scope
 discipline (TOGAF Phase A "Statement of Architecture Work") — without it, the
 planner creates tasks for FRs that belong to a future episode.
 
+## Technology Stack Selection (REQUIRED — SRS §9)
+
+You MUST select the technology stack in SRS §9, justified by NFRs and Constraints.
+The stack is chosen HERE, not earlier — because NFRs and Constraints (which
+determine the choice) are not known until the SRS is being written.
+
+The stack is NOT just "the language". It includes: language, runtime version,
+frameworks, test framework, property test framework, linter, formatter, type
+checker, build tool. Each component MUST be justified by a specific NFR or
+Constraint.
+
+### How to choose
+
+Read the NFRs (§4) and Constraints (§3) and answer:
+
+| NFR/Constraint type | What it determines |
+|---|---|
+| Performance (latency, FPS, throughput) | Language: compiled (Rust/C) vs interpreted (Python/TS) |
+| Safety/regulatory | Language: Ada/SPARK, Rust (safe subset), certified compiler |
+| Existing codebase (brownfield) | Language already chosen — document it |
+| Deployment target (browser, embedded, server) | Language: TS/WASM, C/Rust, any server |
+| Invariant count (L3 property tests) | Property test framework availability |
+| Team expertise | LLM knows all — not a factor for agent-runtime |
+
+### What to create
+
+1. **SRS §9** — structured YAML stack declaration (see template)
+2. **ADR artifact** — `artifact_create({type:'decision', title:'Technology Stack for REQ-NNN'})`
+   with context (NFRs considered), decision (chosen stack), alternatives (rejected options),
+   consequences. Link to SRS via `derived_from`.
+3. **Auto-register providers** based on stack:
+   ```
+   provider_register({project_id, name: 'pytest', category: 'deterministic_evidence',
+     trust_basis: 'test runner exit code', determinism: 'full', layer: 'L2'})
+   provider_register({project_id, name: 'hypothesis', category: 'deterministic_evidence',
+     trust_basis: 'property test exit code', determinism: 'full', layer: 'L3'})
+   ```
+
+### After SRS accepted — downstream wiring
+
+Downstream skills read §9 to know their tooling:
+- **saga-planner**: test_framework → creates correct verification.ac task format
+- **saga-verifier**: property_test_framework → generates correct L3 tests (Hypothesis/QuickCheck/proptest)
+- **cgad-spec-lint**: may run language-specific checks (future)
+
 ## Registering artifacts (IMPORTANT — this is the graph)
 
 The SRS doc is one artifact; each FR and each NFR is also an artifact, parented

@@ -164,3 +164,37 @@ no "returns JSON field Z").
   Phase A "Statement of Architecture Work"). Without it, the planner creates
   tasks for FRs that belong to a future episode.
 -->
+
+## §9 Technology Stack (REQUIRED — selected by architect, justified by NFR/Constraints)
+
+<!--
+  The stack is chosen HERE, not earlier (not in brief, not in PRD).
+  Why: NFRs (§4) determine what performance/safety/capabilities are needed.
+  Constraints (§3) determine what's available. The architect reads both and decides.
+
+  Every choice MUST be justified by a specific NFR or Constraint.
+  The justification links to an ADR (Architecture Decision Record) artifact.
+
+  After SRS accepted, downstream skills read this section:
+  - saga-planner: knows test_framework → creates correct verification.ac tasks
+  - saga-verifier: knows property_test_framework → generates correct L3 tests
+  - trusted_providers: auto-register language-specific tools
+-->
+
+```yaml
+language: <python | typescript | rust | go | java | c# | other>
+runtime: '<version requirement>'
+frameworks: [<primary framework(s)>]
+test_framework: <pytest | jest | cargo-test | go-test | other>
+property_test_framework: <hypothesis | fast-check | proptest | quickcheck | none>
+linter: <eslint | pylint | clippy | golangci-lint | mypy | other>
+formatter: <prettier | black | rustfmt | gofmt | other>
+type_checker: <tsc | mypy | rustc | none>
+build_tool: <npm | cargo | go | pip | maven | other>
+justification: |
+  NFR-<n> (...): <why this language satisfies the NFR>
+  Constraint (...): <why this framework is required/available>
+  INV-<n> (...): <why this test framework supports the invariant verification>
+  Alternative considered: <X> — rejected because <reason>
+adr: <ADR-NNN artifact reference>
+```
