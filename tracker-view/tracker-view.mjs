@@ -1109,40 +1109,50 @@ function renderBoard(projectId, allProjects) {
     // Anything else is escaped and treated as a paragraph. No HTML is passed
     // through raw — every text node goes through esc().
     function renderSummaryMarkdown(md) {
-      const blocks = String(md).replace(/\r\n/g, '\n').split(/\n{2,}/);
-      const out = [];
-      for (let block of blocks) {
-        block = block.replace(/^\n+|\n+$/g, '');
+      // All regex here use new RegExp() instead of literal /.../ syntax because
+      // this entire JS block lives inside a template literal (backtick string).
+      // In a template literal, backslash-r and backslash-n are interpreted as
+      // actual CR/LF characters, not as regex escape sequences — which produces
+      // "Invalid regular expression: missing /" in the browser.
+      var reCRLF = new RegExp('\\\\r\\\\n', 'g');
+      var reSplitBlocks = new RegExp('\\\\n{2,}');
+      var reTrimNl = new RegExp('^\\\\n+|\\\\n+$', 'g');
+      var reHeading = new RegExp('^#{1,4}\\\\s+');
+      var reListLine = new RegExp('^\\\\s*[-*]\\\\s+');
+      var reStripList = new RegExp('^\\\\s*[-*]\\\\s+');
+      var reStripHash = new RegExp('^#{1,4}\\\\s+');
+      var blocks = String(md).replace(reCRLF, '\\n').split(reSplitBlocks);
+      var out = [];
+      for (var bi = 0; bi < blocks.length; bi++) {
+        var block = blocks[bi].replace(reTrimNl, '');
         if (!block) continue;
-        const lines = block.split('\n');
-        // Heading block (single line starting with #).
-        if (lines.length === 1 && /^#{1,4}\s+/.test(lines[0])) {
-          const text = lines[0].replace(/^#{1,4}\s+/, '');
+        var lines = block.split('\\n');
+        if (lines.length === 1 && reHeading.test(lines[0])) {
+          var text = lines[0].replace(reStripHash, '');
           out.push('<p class="sdo-md-h">' + renderSummaryInline(text) + '</p>');
           continue;
         }
-        // List block: every line starts with - or *.
-        if (lines.length > 0 && lines.every(l => /^\s*[-*]\s+/.test(l))) {
-          const items = lines.map(l => '<li>' + renderSummaryInline(l.replace(/^\s*[-*]\s+/, '')) + '</li>').join('');
+        var allList = true;
+        for (var li = 0; li < lines.length; li++) {
+          if (!reListLine.test(lines[li])) { allList = false; break; }
+        }
+        if (lines.length > 0 && allList) {
+          var items = lines.map(function(l) { return '<li>' + renderSummaryInline(l.replace(reStripList, '')) + '</li>'; }).join('');
           out.push('<ul class="sdo-md-ul">' + items + '</ul>');
           continue;
         }
-        // Default: paragraph (join wrapped lines with a space).
-        const para = lines.map(l => l.trim()).filter(Boolean).join(' ');
+        var para = lines.map(function(l) { return l.trim(); }).filter(Boolean).join(' ');
         out.push('<p class="sdo-md-p">' + renderSummaryInline(para) + '</p>');
       }
       return out.join('');
     }
-    // Inline formatter: escape first, then re-apply **bold** and inline code.
-    // The inline-code regex uses \\u0060 (backtick) to avoid putting a literal
-    // backtick in this source — this whole JS lives inside an outer template
-    // literal, where a stray backtick would prematurely terminate the string.
     function renderSummaryInline(text) {
-      const esc2 = window.esc(text);
-      const BT = String.fromCharCode(96);
-      const reCode = new RegExp(BT + '([^' + BT + ']+)' + BT, 'g');
+      var esc2 = window.esc(text);
+      var BT = String.fromCharCode(96);
+      var reCode = new RegExp(BT + '([^' + BT + ']+)' + BT, 'g');
+      var reBold = new RegExp('\\\\*\\\\*([^*]+)\\\\*\\\\*', 'g');
       return esc2
-        .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+        .replace(reBold, '<strong>$1</strong>')
         .replace(reCode, '<code>$1</code>');
     }
     // Close handlers: close button, click on backdrop (not on panel itself),
