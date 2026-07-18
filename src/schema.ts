@@ -612,6 +612,57 @@ CREATE TABLE IF NOT EXISTS human_requests (
 CREATE INDEX IF NOT EXISTS idx_human_requests_task_state ON human_requests(task_id, state);
 CREATE INDEX IF NOT EXISTS idx_human_requests_open ON human_requests(state) WHERE state = 'open';
 CREATE INDEX IF NOT EXISTS idx_human_requests_requesting_exec ON human_requests(requesting_execution_id);
+
+-- ---------------------------------------------------------------------------
+-- Integration intents (ADR-011, blueprint §13.1 line 584-611, §16 Slice 5
+-- line 900-912). Added in Slice 5. Purely additive.
+--
+-- An integration intent is a durable record that "review approved merging
+-- <source-sha> into <target>". The deterministic Git executor consults it
+-- before merging and updates it after observing the result. The intent
+-- survives process death — a crashed executor is recovered by observing
+-- repository ancestry, not by LLM-guessing.
+--
+-- Crash recovery (blueprint §13 line 669-676):
+--   - before update-ref: the temp merge commit/worktree may be discarded;
+--   - after update-ref, before DB ack: ancestry observation recovers success;
+--   - after DB ack, before outbox completion: same command_id replays stored
+--     response.
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS integration_intents (
+  integration_id          TEXT PRIMARY KEY,
+  -- Idempotency key per blueprint §13.1:607-611. One intent per
+  -- (repo, task, review-cycle, reviewed-source-sha, target-branch) — a
+  -- replay with the same values returns the existing intent.
+  intent_key              TEXT NOT NULL UNIQUE,
+  originating_command_id  TEXT,
+  task_id                 INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  project_repository_id   INTEGER,
+  source_branch           TEXT NOT NULL,
+  -- The exact commit review approved. If source_branch has advanced since,
+  -- the executor emits SOURCE_ADVANCED_AFTER_REVIEW (blueprint §13.3:625).
+  reviewed_source_sha     TEXT NOT NULL,
+  target_branch           TEXT NOT NULL,
+  -- The target head observed at intent-creation. The executor's update-ref
+  -- uses this as the CAS expected-old value (blueprint §13.3:648-654).
+  expected_target_sha     TEXT NOT NULL,
+  state                   TEXT NOT NULL DEFAULT 'pending'
+                            CHECK (state IN ('pending','running','merged','conflict',
+                                             'base_advanced','retryable','dead')),
+  executor_execution_id   TEXT,
+  attempt_count           INTEGER NOT NULL DEFAULT 0,
+  available_at            TEXT NOT NULL DEFAULT (datetime('now')),
+  result_commit           TEXT,
+  conflict_files          TEXT,   -- JSON array of paths
+  last_error              TEXT,
+  created_at              TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at              TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_integration_intents_task ON integration_intents(task_id);
+CREATE INDEX IF NOT EXISTS idx_integration_intents_repo_state ON integration_intents(project_repository_id, state);
+CREATE INDEX IF NOT EXISTS idx_integration_intents_state ON integration_intents(state);
 `;
 
 // ----------------------------------------------------------------------------
