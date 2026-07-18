@@ -496,6 +496,27 @@ function renderIndex(projects) {
 }
 
 // --- HTML: канбан одного проекта ---
+
+/**
+ * Read engine_concurrency from any of the project's episode_workflows rows.
+ * The engine writes this on start (orchestrate.ts writeEpisodeMeta), so the
+ * UI selector can pre-select the actual current value. Falls back to null
+ * (caller defaults) when the engine has never run for this project.
+ */
+function engineConcurrencyForProject(projectId) {
+  try {
+    const row = withDb(db => db.prepare(
+      `SELECT json_extract(ew.metadata, '$.engine_concurrency') AS c
+       FROM episode_workflows ew
+       JOIN epics e ON e.id=ew.epic_id
+       WHERE e.project_id=?
+       ORDER BY ew.updated_at DESC LIMIT 1`,
+    ).get(projectId));
+    const c = row?.c;
+    return (typeof c === 'number' && c >= 1 && c <= 10) ? c : null;
+  } catch { return null; }
+}
+
 function renderBoard(projectId, allProjects) {
   const proj = allProjects.find(p => String(p.id) === String(projectId));
   if (!proj) return page('Проект не найден', '<div class="empty-box"><h2>Проект не найден</h2></div>');
@@ -518,7 +539,15 @@ function renderBoard(projectId, allProjects) {
       <div class="agent-runner" id="agent-runner" title="Concurrency движка. Смена значения рестартит движок.">
         <span class="agent-icon">🤖</span>
         <select id="agent-concurrency" aria-label="Количество одновременных воркеров движка">
-          ${Array.from({ length: 10 }, (_, i) => `<option value="${i + 1}">${i + 1}</option>`).join('')}
+          ${Array.from({ length: 10 }, (_, i) => {
+            // Pre-select the option matching the engine's current concurrency,
+            // read from episode_workflows.metadata.engine_concurrency. Without
+            // this, hot-reload of tracker-view loses the user's last choice —
+            // selector defaults to 1, and any change would restart the engine
+            // at concurrency=1, killing the parallel cohort mid-flight.
+            const conc = engineConcurrencyForProject(projectId) || 4;
+            return `<option value="${i + 1}"${i + 1 === conc ? ' selected' : ''}>${i + 1}</option>`;
+          }).join('')}
         </select>
         <span id="agent-run-status" class="agent-run-status">движок: …</span>
       </div>
