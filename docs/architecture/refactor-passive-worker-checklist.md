@@ -1,6 +1,6 @@
 # Refactor: Passive Worker Kernel — Master Plan & Checklist
 
-**Status:** Active. Slice 0 COMPLETE (209/209 green). Slice 1 next.
+**Status:** Active. Slice 0 COMPLETE (209 tests). Slice 1 COMPLETE (219/218/1). Slice 2 next.
 **Branch:** `refactor/passive-worker-kernel` (от `master` @ `e816422`, ADR-012 multi-track).
 **Created:** 2026-07-18.
 **Source of truth:**
@@ -136,10 +136,13 @@ JSON-снимки плоских task-rows (не SQLite-дампы — pure data
 
 ---
 
-## Slice 1 — Terminal execution kernel
+## Slice 1 — Terminal execution kernel ✅ COMPLETE
 
 **Источник:** blueprint §16 (line 829), §17 WP-2+WP-3, §22 brief (line 1193-1199).
 **Цель:** заменить дублированное recovery-поведение в `worker-executions.ts` и `orchestrate.ts` одним command-bus путём. Terminalization + task release в ОДНОЙ `BEGIN IMMEDIATE` транзакции.
+**Результат:** Один atomic-primitive `releaseExecutionAtomically` заменяет три дублированных recovery-пути. 4 production-файла изменены (schema + 3 caller'а), 3 новых файла (atomic-release, payload-hash, test). 219/218/1 (тот же pre-existing flaky).
+
+**Девиация от плана:** Вместо полноценного command-bus (with receipts/outbox) Slice 1 вводит **только** atomic-release primitive + schema для будущих receipts. Полный command-bus с receipt-replay вынесен в Slice 1.C-followup, потому что acceptance Slice 1 («терминализация и релиз в одной tx» + «убрать дубликат recovery SQL») достигается без него. Это прагматичный шаг: меньше риск, меньше public-behavior изменений, но фундамент (single-writer atomic path) заложен.
 
 ### Задачи
 
@@ -396,4 +399,12 @@ Revert claim-handler + dep-reconciler.
   - Полная suite: **209/209 зелёных** (174 baseline + 35 новых; pre-existing flaky `track-pipeline` прошёл на этом запуске).
   - `git diff master -- src/` пустой — production-код не тронут.
   - Slice 0 acceptance из blueprint §16:825-827 выполнен полностью.
-- **Next:** Slice 1 (terminal execution kernel) — отдельный заход.
+- **2026-07-19:** **Slice 1 COMPLETE.**
+  - `refactor(slice-1): additive schema — command_receipts + lifecycle_events` — 2 новые таблицы (additive, CREATE IF NOT EXISTS).
+  - `refactor(slice-1): atomic terminalization + release primitive` — `src/lifecycle/atomic-release.ts` + `src/lifecycle/payload-hash.ts`.
+  - `refactor(slice-1): route fenced-task recovery through atomic-release` — `worker-executions.ts` (releaseOwnedTask удалён, reconcileWorkerExecutions через atomic-release), `orchestrate.ts` recoverAssignment, `tracker-view.mjs` recoverRunnerAssignment. Все три сохраняют legacy-ветку для pre-ADR-009 unfenced assignments.
+  - `test(slice-1): atomic-release coverage — 10 new tests` — `atomic-release.test.mjs`: race, idempotency, needs-human, stale-after-reassignment, done+pending→review.
+  - Полная suite: **219/218/1** (1 pre-existing flaky `track-pipeline:247`).
+  - 4 production-файла изменены, 3 новых. Slice 1 acceptance (blueprint §16:841-845) выполнен: terminalization+release в одной tx; close/reconciler race idempotent; ни одна terminal execution не остаётся task-fence.
+  - **Девиация:** полный command-bus с receipt-replay вынесен в отдельный follow-up — acceptance Slice 1 достигается atomic-release primitive без него. Меньше риск, фундамент (single-writer atomic path) заложен.
+- **Next:** Slice 2 (work-item shadow model) — отдельный заход.
