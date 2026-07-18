@@ -3547,27 +3547,47 @@ function handleEngineRestart(req, res) {
     const projectId = epic.project_id;
 
     // Kill existing engine for this project (matched by command line).
-    // CRITICAL: also kill its claude.exe children — they are the active workers
-    // spawned via claude-runner.launch(). Without killing them they keep
-    // burning tokens after the parent engine dies (Windows detached children
-    // survive parent kill). We use CIM_Process ParentProcessId to trace the
-    // tree: engine PID → claude.exe workers (+ any saga MCP server node.exe
-    // spawned per worker via --mcp-config).
+    // CRITICAL: kill the whole engine process tree, recursively, AND any
+    // orphaned claude.exe workers matching this project's epic id (they may
+    // have survived a previous engine kill because Windows 'taskkill /T'
+    // relies on ParentProcessId linkage that breaks for detached spawns).
+    //
+    // Two-pass strategy:
+    //   1. Find all orchestrate-cli.js engines for this project+epic.
+    //   2. For each engine, recursively walk CIM_Process ParentProcessId and
+    //      collect every descendant PID (claude.exe workers + their MCP
+    //      node.exe children + conhost.exe).
+    //   3. Also catch orphan claude.exe processes whose command line mentions
+    //      this epic_id (e.g. via task_id=N where N is in this epic's task
+    //      range) — these survived from a prior engine kill.
+    //   4. Kill every collected PID with /F (no /T needed, we already walked
+    //      the tree ourselves).
     try {
-      const killOutput = require('child_process').spawnSync(
+      require('child_process').spawnSync(
         'powershell',
         ['-Command',
+         `function Get-Descendants(\$pid) { ` +
+         `  $kids = Get-CimInstance Win32_Process -Filter "ParentProcessId=$pid"; ` +
+         `  foreach ($k in $kids) { ,($k.ProcessId); Get-Descendants $k.ProcessId } ` +
+         `} ; ` +
+         `$toKill = @(); ` +
          `$engines = Get-CimInstance Win32_Process -Filter "name='node.exe'" | ` +
-         `Where-Object { $_.CommandLine -like '*orchestrate-cli.js ${projectId} ${epicId}*' }; ` +
+         `  Where-Object { $_.CommandLine -like '*orchestrate-cli.js ${projectId} ${epicId}*' }; ` +
          `foreach ($e in $engines) { ` +
-         `  # Kill the whole process subtree rooted at $e.ProcessId. /T makes ` +
-         `  # taskkill walk parent->child relationships and terminate all. ` +
-         `  taskkill /F /T /PID $e.ProcessId 2>$null ` +
-         `}`],
+         `  $toKill += $e.ProcessId; ` +
+         `  $toKill += Get-Descendants $e.ProcessId ` +
+         `} ; ` +
+         `# Also catch orphan claude.exe workers for this project (survived prior kills). ` +
+         `$orphans = Get-CimInstance Win32_Process -Filter "name='claude.exe'" | ` +
+         `  Where-Object { $_.CommandLine -like '*project_id=${projectId}*' } ; ` +
+         `foreach ($o in $orphans) { $toKill += $o.ProcessId } ; ` +
+         `# Dedup and kill. ` +
+         `$toKill = $toKill | Sort-Object -Unique; ` +
+         `foreach ($p in $toKill) { taskkill /F /PID $p 2>$null }`],
         { encoding: 'utf8' }
       );
       // Brief pause for OS to release resources / ports before respawn.
-      setTimeout(() => {}, 500);
+      setTimeout(() => {}, 800);
     } catch (e) {
       console.error('[engine-restart] kill failed:', e.message);
     }
