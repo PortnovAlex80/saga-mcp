@@ -427,6 +427,23 @@ function tryAdvanceStage(epicId: number): { advanced: boolean; error: string | n
   if (stage === 'completed' || stage === 'cancelled') {
     return { advanced: false, error: null };
   }
+
+  // RECOVERY HOLD: if any recovery.heal task is still active (not done), the
+  // episode MUST NOT advance. Recovery is a monopoly mode — pump loop keeps
+  // spawning workers (including the recovery task's reviewer), but episode
+  // transition is blocked until every recovery task in the epic reaches done.
+  // Without this, episode can race ahead (e.g. formalization→planning) while
+  // a healer's review is still in flight, leaving the review task stranded
+  // with a stale workflow_stage that no worker can claim.
+  const activeRecovery = getDb().prepare(
+    `SELECT id FROM tasks
+     WHERE epic_id=? AND task_kind='recovery.heal'
+       AND status IN ('todo','in_progress','review','review_in_progress')`,
+  ).get(epicId) as { id: number } | undefined;
+  if (activeRecovery) {
+    return { advanced: false, error: null };
+  }
+
   const to = NEXT_STAGE[stage];
   if (!to) return { advanced: false, error: `no NEXT stage for '${stage}'` };
   try {
