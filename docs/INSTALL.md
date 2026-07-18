@@ -91,6 +91,7 @@ DB_PATH=C:/Users/<вы>/.zcode/saga.db npm run tracker
 | Development (разработка) | Параллельные воркеры в worktrees (рабочих копиях), merge-lock (мьютекс слияния) | saga-worker |
 | Verification (проверка) | Независимые property-тесты (тесты-свойства) из frozen AC (не Builder'овские) | saga-verifier |
 | Integration (интеграция) | Hard gate (жёсткий шлюз): каждый AC имеет passing evidence | episode_transition |
+| Post-integration (пост-интеграция) | README продукта + инструкция + проектные скиллы (release, QA) | saga-orchestrator |
 | Observation (наблюдение) | Runtime-метрики → hit/kill решение | observation_record |
 
 ## Что saga НЕ даёт сделать

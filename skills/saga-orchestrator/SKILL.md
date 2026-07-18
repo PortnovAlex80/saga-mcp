@@ -252,24 +252,91 @@ VERIFY: post-merge build green, все задачи done
 CALL: episode_transition({epic_id,to_stage:"completed"})
 ```
 
+### Этап 8.5 — Post-integration: документация и продуктовые скиллы
+
+После Integration, ДО объявления финального отчёта — оркестратор создаёт
+продуктовую документацию и проектные скиллы. Это делает продукт
+**поставляемым**, а не просто «код слит в dev».
+
+#### 8.5a — README продукта
+
+Создать `README.md` в корне продукта. Содержание:
+- **Быстрый старт** — одна команда запуска (из SRS §9 technology_stack)
+- **Что это** — один абзац (из PRD §1 problem & value)
+- **Установка** — зависимости, команды сборки (из SRS §9)
+- **Тестирование** — как запустить тесты (из SRS §2.5 test strategy)
+- **Архитектура** — стиль, модули, инварианты (из SRS §2.1-2.3)
+- **Метрика гипотезы** — что измеряем, target, kill criteria (из PRD §4)
+- **Стек технологий** — язык, фреймворки, инструменты (из SRS §9)
+
+Если продукт многоязычный — создать также `README.ru.md`.
+
+#### 8.5b — Продуктовые скиллы
+
+Создать проектные скиллы в `.saga/skills/` продукта:
+
+**`.saga/skills/<product>-release/SKILL.md`** — чеклист релиза продукта:
+- Все тесты green
+- Lint проходит (из SRS §9: mypy/eslint/clippy)
+- Build successful
+- README актуален
+- Метрика гипотезы может быть измерена (observation infra готова)
+- Version bump + tag
+
+**`.saga/skills/<product>-qa/SKILL.md`** — процедура QA продукта:
+- Как запустить (из README)
+- Что проверить вручную (UI, edge cases не покрытые AC)
+- Как записать observation (observation_record)
+- Критерии приёмки релиза (из AC документа)
+
+#### 8.5c — Инструкция запуска
+
+Создать `INSTALL.md` или секцию в README:
+```bash
+# Минимальный запуск (из SRS §9)
+<install_deps_command>
+<build_command>
+<run_command>
+```
+
+Конкретные команды берутся из SRS §9 technology_stack:
+- `language: python` → `pip install -r requirements.txt && python main.py`
+- `language: typescript` → `npm install && npm run build && npm start`
+- `language: rust` → `cargo build --release && ./target/release/<binary>`
+
+#### 8.5d — Регистрация в saga DB
+
+Создать artifacts для документации:
+```
+artifact_create({ type:'decision', title:'Product README + skills for REQ-NNN',
+  path:'README.md', status:'accepted',
+  metadata: { deliverables: ['README.md', 'INSTALL.md', '.saga/skills/<product>-release', '.saga/skills/<product>-qa'] } })
+```
+
 ### Финальный отчёт пользователю
 
 ```
 ✅ saga-flow завершён для REQ-NNN
 
 Discovery:    brief (artifact N), decision=go
-Formalization: PRD(N) → SRS(N) + 5 FR + 3 NFR + UC(N) → AC(N)
+Formalization: PRD(N) → SRS(N) + N FR + N NFR + UC(N) → AC(N)
+              Hypothesis: HYP-1 metric=X target=Y kill=Z
 Planning:     N dev-задач (Pattern X), 0 coverage gaps
               conflict_check: 0 collisions (или N разруленных вручную)
               final_risk: max(declared, derived, policy) per task
 Execution:    N задач done, 0 конфликтов
-AC-verify:    all verified_by пройдены (4-valued: passed, иначе unknown/error блокирует)
+AC-verify:    all verified_by пройдены (4-valued: passed)
 Integration:  merged в dev
+Post-integration:
+              README.md создан (быстрый старт, стек, метрика)
+              INSTALL.md создан (команды запуска из SRS §9)
+              .saga/skills/<product>-release/SKILL.md (чеклист релиза)
+              .saga/skills/<product>-qa/SKILL.md (процедура QA)
 Runtime obs:  (если есть) observation_record benchmark/canary/incident
-Product:      <путь/URL> — working
+Product:      <путь/URL> — working, документирован, имеет релизный чеклист
 
 Аудит: artifact_get(AC-id) → полная цепочка до brief
-       cgad-spec-lint v1.0: 12 rules, 0 error-severity findings на этом эпизоде
+       cgad-spec-lint: N rules, 0 error-severity findings на этом эпизоде
 ```
 
 ### REQ-009 — RiskClass aware orchestration
