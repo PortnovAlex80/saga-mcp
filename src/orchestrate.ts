@@ -45,6 +45,7 @@ import { reevaluateDownstream } from './tools/tasks.js';
 import { handlers as projectHandlers } from './tools/projects.js';
 import { logActivity } from './helpers/activity-logger.js';
 import { reconcileWorkerExecutions } from './worker-executions.js';
+import { releaseExecutionAtomically } from './lifecycle/atomic-release.js';
 
 /**
  * Episode stage → next stage (mirror of lifecycle.ts NEXT, kept local to avoid
@@ -902,10 +903,18 @@ export async function orchestrate(opts: OrchestrateOptions): Promise<Orchestrate
       ).get(taskId);
       return row as { id: number; status: string; assigned_to: string | null; tags: string; integration_state: string | null } | undefined;
     },
-    recoverAssignment: ({ taskId, workerId, originalStatus, executionId }: {
+    recoverAssignment: ({ taskId, workerId, originalStatus, executionId, reason }: {
       taskId: number; workerId: string; originalStatus: string; reason: string;
       executionId?: string | null;
     }) => {
+      // Slice 1 (ADR-010/011, blueprint §16:829-845): fenced-task recovery
+      // delegates to the single atomic terminalization+release function in
+      // src/lifecycle/atomic-release.ts. This removes the duplicate recovery
+      // SQL between orchestrate.ts and tracker-view (blueprint §22:1199) and
+      // collapses the close/reconciler race: the function's fence CAS means
+      // only one of the two callers wins; the other no-ops.
+      //
+      // Legacy (pre-ADR-009, unfenced) assignments still need the old code path.
       const db = getDb();
       const task = db.prepare(
         `SELECT id, title, status, assigned_to, tags, current_execution_id
@@ -918,6 +927,23 @@ export async function orchestrate(opts: OrchestrateOptions): Promise<Orchestrate
       let tags: string[] = [];
       try { tags = JSON.parse(task.tags || '[]'); } catch { tags = []; }
       if (tags.includes('needs-human')) return false;
+
+      // Fenced task: delegate to atomic-release.
+      if (executionId && task.current_execution_id === executionId) {
+        const outcome = releaseExecutionAtomically(db, {
+          executionId,
+          terminalState: 'lost',
+          reason: `engine recovery: ${reason ?? 'process exited before terminal worker_done'}`,
+        });
+        if (outcome.taskReleased) {
+          logActivity(db, 'task', taskId, 'status_changed', 'status',
+            task.status, outcome.restoredStatus,
+            `Engine recovered task '${task.title}' (atomic): ${reason ?? ''}`);
+        }
+        return outcome.taskReleased;
+      }
+
+      // Legacy path: pre-ADR-009 unfenced assignment.
       const restoredStatus =
         originalStatus === 'review' && task.status !== 'in_progress' ? 'review' : 'todo';
       const info = db.prepare(

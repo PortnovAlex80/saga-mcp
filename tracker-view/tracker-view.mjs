@@ -21,6 +21,7 @@ import { handlers as repositoryHandlers } from '../dist/tools/repositories.js';
 import { handlers as lifecycleHandlers } from '../dist/tools/lifecycle.js';
 import { createClaudeBoardRunner } from './claude-runner.mjs';
 import { isProcessAlive } from '../dist/worker-executions.js';
+import { releaseExecutionAtomically } from '../dist/lifecycle/atomic-release.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const require = createRequire(import.meta.url);
@@ -245,6 +246,17 @@ function getRunnerTaskState(taskId) {
 }
 
 function recoverRunnerAssignment({ taskId, workerId, originalStatus, executionId, reason }) {
+  // Slice 1 (ADR-010/011, blueprint §16:829-845): the recovery path now
+  // delegates fenced releases to the single atomic terminalization+release
+  // function in src/lifecycle/atomic-release.ts. This removes the duplicate
+  // recovery SQL that existed between tracker-view and orchestrate.ts
+  // (blueprint §22:1199) and collapses the close/reconciler race
+  // (blueprint §16:844): the function's fence CAS means only one of the two
+  // callers wins; the other no-ops.
+  //
+  // Legacy (pre-ADR-009, unfenced) assignments still need the old code path
+  // because there is no execution row to terminalize — only a stale
+  // assigned_to to clear.
   return withDbWrite(db => {
     const task = db.prepare(
       'SELECT id, title, status, assigned_to, tags, current_execution_id FROM tasks WHERE id=?',
@@ -254,6 +266,31 @@ function recoverRunnerAssignment({ taskId, workerId, originalStatus, executionId
     try { tags = JSON.parse(task.tags || '[]'); } catch {}
     if (tags.includes('needs-human')) return false;
 
+    // Fenced task: delegate to the atomic release path. The fence CAS inside
+    // protects against the close/reconciler race — if orchestrate.ts already
+    // released, this call no-ops on the task row (still terminalizes nothing
+    // because execution is already terminal).
+    if (executionId && task.current_execution_id === executionId) {
+      const terminalState = reason && /exit\s*code/i.test(String(reason)) ? 'exited' : 'lost';
+      const outcome = releaseExecutionAtomically(db, {
+        executionId,
+        terminalState,
+        exitCode: null,
+        reason: `runner recovery: ${reason}`,
+      });
+      if (outcome.taskReleased) {
+        db.prepare(
+          `INSERT INTO activity_log
+            (entity_type, entity_id, action, field_name, old_value, new_value, summary)
+           VALUES ('task', ?, 'status_changed', 'status', ?, ?, ?)`,
+        ).run(taskId, task.status, outcome.restoredStatus,
+          `Board runner recovered task '${task.title}' (atomic): ${reason}`);
+      }
+      return outcome.taskReleased;
+    }
+
+    // Legacy path: pre-ADR-009 unfenced assignment. Keep the old SQL — there
+    // is no execution to terminalize.
     let restoredStatus = originalStatus === 'review' ? 'review' : 'todo';
     if (originalStatus === 'review' && task.status === 'in_progress') restoredStatus = 'todo';
     const info = db.prepare(
