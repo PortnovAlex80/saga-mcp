@@ -1013,7 +1013,12 @@ function renderBoard(projectId, allProjects) {
         // work, but attaching once per refresh is cheap and survives the
         // innerHTML swap cleanly).
         stagesEl.querySelectorAll('.pipeline-stage[data-stage]').forEach(el => {
-          el.addEventListener('click', () => openStageDetail(el.dataset.stage));
+          el.addEventListener('click', () => {
+            // Open stage detail as a separate page (new tab). More reliable
+            // than overlay — no z-index/DOM timing issues.
+            const epicId = window.__sagaEpicId;
+            if (epicId) window.open('/stage?epic=' + epicId + '&stage=' + el.dataset.stage, '_blank');
+          });
         });
       } catch {}
     }
@@ -2730,6 +2735,84 @@ function loadCoverageMatrix(projectId) {
 
 // --- HTML: вкладка Coverage (матрица покрытия AC × implements/verified_by) ---
 // Маршрут: /?project=<id>&tab=coverage. Read-only таблица: каждая строка = одна AC,
+// --- HTML: страница stage detail (/stage?epic=N&stage=X) ---
+// Отдельная страница (не overlay) — надёжнее, можно открыть в новой вкладке.
+// Polling: если summary ещё не готов (queued/generating) — обновляем каждые 3 сек.
+function renderStageDetailPage(epicId, stageName, allProjects) {
+  const epic = withDb(db => db.prepare('SELECT id, name, project_id FROM epics WHERE id=?').get(Number(epicId)));
+  const projName = epic ? (allProjects.find(p => String(p.id) === String(epic.project_id)) || {}).name : '?';
+  const stageTitle = stageName.charAt(0).toUpperCase() + stageName.slice(1);
+  const header = `
+    <div class="board-head">
+      <a href="/?project=${epic ? epic.project_id : ''}" class="back">← ${esc(projName)}</a>
+      <span class="cur-proj">📋 ${esc(stageTitle)} — Stage Detail</span>
+      <span style="flex:1"></span>
+      <div class="heartbeat"><span id="hb-dot" class="hb-dot red"></span><span id="hb-txt">…</span></div>
+    </div>`;
+  return page(stageTitle + ' — Stage Detail', `
+    ${header}
+    <div style="max-width:900px;margin:0 auto;padding:20px">
+      <div id="stage-content" style="background:#161b22;border:1px solid #30363d;border-radius:12px;padding:24px;min-height:400px">
+        <div style="color:#8b949e;font-size:14px">Загрузка…</div>
+      </div>
+    </div>
+    <script>
+    window.esc = function(s){ return String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); };
+    (function(){
+      const dot=document.getElementById('hb-dot');
+      const txt=document.getElementById('hb-txt');
+      if(!dot) return;
+      function update(){
+        fetch('/api/heartbeat').then(r=>r.json()).then(d=>{
+          if(!d.last){ dot.className='hb-dot red'; txt.textContent='нет данных'; return; }
+          let hs = String(d.last);
+          if (hs.indexOf('T') < 0) hs = hs.replace(' ', 'T');
+          if (hs.indexOf('Z') < 0) hs += 'Z';
+          const ts = new Date(hs).getTime();
+          if(isNaN(ts)){ dot.className='hb-dot red'; txt.textContent='?'; return; }
+          const ago=Math.floor((Date.now()-ts)/1000);
+          if(ago<15){ dot.className='hb-dot green'; txt.textContent=ago+'с назад'; }
+          else if(ago<60){ dot.className='hb-dot yellow'; txt.textContent=ago+'с назад'; }
+          else{ dot.className='hb-dot red'; txt.textContent=Math.floor(ago/60)+'м назад'; }
+        }).catch(()=>{ dot.className='hb-dot red'; txt.textContent='ошибка'; });
+      }
+      update(); setInterval(update,3000);
+    })();
+    // Stage summary fetch + poll
+    async function loadStage() {
+      const el = document.getElementById('stage-content');
+      const epicId = ${Number(epicId)};
+      const stage = '${esc(stageName)}';
+      try {
+        const r = await fetch('/api/episode/stage-summary?epic_id=' + epicId + '&stage=' + stage);
+        const j = await r.json();
+        if (!j.ok) {
+          el.innerHTML = '<div style="color:#f85149">Ошибка: ' + window.esc(j.error || '?') + '</div>';
+          return;
+        }
+        if (j.status === 'ready') {
+          // Render markdown content
+          const md = j.content || '(empty)';
+          el.innerHTML = '<h2 style="color:#58a6ff;margin-bottom:8px">' + window.esc(j.title || stage) + '</h2>' +
+            '<div style="color:#8b949e;font-size:11px;margin-bottom:16px">Generated: ' + window.esc(j.generated_at || '?') + '</div>' +
+            '<div style="color:#e6edf3;line-height:1.6;white-space:pre-wrap;font-size:14px">' + window.esc(md) + '</div>';
+        } else if (j.status === 'queued') {
+          el.innerHTML = '<div style="color:#d2a822;font-size:14px">⏳ Резюме в очереди (task #' + j.task_id + '). Воркер подберёт задачу и напишет резюме.</div>' +
+            '<div style="color:#8b949e;font-size:11px;margin-top:8px">Страница обновится автоматически.</div>';
+          setTimeout(loadStage, 3000);
+        } else if (j.status === 'generating') {
+          el.innerHTML = '<div style="color:#58a6ff;font-size:14px">🔄 Резюме генерируется (task #' + j.task_id + ')…</div>' +
+            '<div style="color:#8b949e;font-size:11px;margin-top:8px">Страница обновится автоматически.</div>';
+          setTimeout(loadStage, 3000);
+        }
+      } catch (e) {
+        el.innerHTML = '<div style="color:#f85149">Сеть: ' + window.esc(e.message) + '</div>';
+      }
+    }
+    loadStage();
+    </script>`);
+}
+
 // колонки: код, заголовок, эпизод, implements (есть/нет + статусы задач),
 // verified_by (есть/нет). AC без implements — красная строка (gap в реализации).
 // Решает боль «какие AC не реализованы» (backlog идея #2, паттерн P4).
@@ -4314,6 +4397,14 @@ const server = http.createServer((req, res) => {
   if (artifactId) {
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
     return res.end(renderArtifactView(artifactId, projects));
+  }
+
+  // /stage?epic=N&stage=X — stage detail page (separate page, not overlay)
+  const stageEpic = url.searchParams.get('epic');
+  const stageName = url.searchParams.get('stage');
+  if (stageEpic && stageName) {
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    return res.end(renderStageDetailPage(stageEpic, stageName, projects));
   }
 
   // ?task=<id> — карточка задачи (Jira-style detail view)
