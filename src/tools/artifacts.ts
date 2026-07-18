@@ -30,7 +30,7 @@ import type { Artifact, ArtifactTrace, ToolHandler } from '../types.js';
 // lock-step with the ArtifactType union (src/types.ts), ArtifactTypeSchema
 // (src/schema.ts) and the artifacts.type SQL CHECK constraint — all four are
 // the canonical list.
-const ARTIFACT_TYPES = ['PRD', 'SRS', 'UC', 'AC', 'FR', 'NFR', 'decision', 'brief', 'theme', 'RULE', 'OQ', 'SPEC', 'hypothesis', 'business_metric'] as const;
+const ARTIFACT_TYPES = ['PRD', 'SRS', 'UC', 'AC', 'FR', 'NFR', 'decision', 'brief', 'theme', 'RULE', 'OQ', 'SPEC', 'hypothesis', 'business_metric', 'summary'] as const;
 const ARTIFACT_STATUSES = ['draft', 'in_review', 'accepted', 'superseded'] as const;
 const LINK_TYPES = ['covers', 'implements', 'implements_spec', 'derived_from', 'depends_on', 'verified_by', 'superseded_by'] as const;
 

@@ -63,13 +63,20 @@ function acceptedBaseline(epicId: number) {
 
 function assertTasksReady(epicId: number, stage: string): void {
   const rows = getDb().prepare(
-    `SELECT id, execution_mode, status, integration_state
+    `SELECT id, execution_mode, status, integration_state, task_kind
      FROM tasks WHERE epic_id=? AND workflow_stage=?`,
   ).all(epicId, stage) as Array<{
-    id: number; execution_mode: string; status: string; integration_state: string;
+    id: number; execution_mode: string; status: string; integration_state: string; task_kind: string | null;
   }>;
   if (rows.length === 0) throw new Error(`${stage} gate failed: no ${stage} tasks exist`);
-  const invalid = rows.filter(t =>
+  // Exclude summary.stage and recovery.heal tasks — they are bookkeeping,
+  // not pipeline deliverables. They should NOT block episode transitions.
+  const gateable = rows.filter(t =>
+    t.task_kind !== 'summary.stage' && t.task_kind !== 'recovery.heal');
+  if (gateable.length === 0) {
+    throw new Error(`${stage} gate failed: no ${stage} tasks exist (excluding summary/recovery)`);
+  }
+  const invalid = gateable.filter(t =>
     t.status !== 'done'
     || (t.execution_mode === 'git_change' && t.integration_state !== 'merged'));
   if (invalid.length) {
