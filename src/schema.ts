@@ -458,6 +458,53 @@ CREATE INDEX IF NOT EXISTS idx_task_deps_depends ON task_dependencies(depends_on
 CREATE INDEX IF NOT EXISTS idx_comments_task ON comments(task_id);
 
 CREATE INDEX IF NOT EXISTS idx_trusted_providers_project ON trusted_providers(project_id, status);
+
+-- ---------------------------------------------------------------------------
+-- Lifecycle command kernel (ADR-010/ADR-011, blueprint §10).
+-- Added in Slice 1 (terminal execution kernel). Purely additive: existing
+-- rows are untouched; the new tables start empty and are written only by the
+-- command bus (src/lifecycle/command-bus.ts).
+-- ---------------------------------------------------------------------------
+
+-- Idempotent receipts. One row per submitted command, whether accepted or
+-- deterministically rejected (blueprint §10:477-478). A retry with the same
+-- command_id AND the same payload_hash replays the stored reply without
+-- re-running effects; a retry with the same command_id but a different
+-- payload_hash is rejected as IDEMPOTENCY_KEY_REUSED.
+CREATE TABLE IF NOT EXISTS command_receipts (
+  command_id      TEXT PRIMARY KEY,
+  command_kind    TEXT NOT NULL,
+  actor_kind      TEXT NOT NULL CHECK (actor_kind IN ('controller','managed_execution','integration_executor','human','admin')),
+  actor_id        TEXT,          -- controller/admin/human id; NULL for managed_execution (use execution_id below)
+  execution_id    TEXT,          -- set when actor_kind='managed_execution' or 'integration_executor'
+  task_id         INTEGER,       -- target task, if any
+  payload_hash    TEXT NOT NULL, -- SHA-256 of canonical command payload
+  accepted        INTEGER NOT NULL CHECK (accepted IN (0,1)),
+  rejection_code  TEXT,          -- DomainRejectionCode when accepted=0
+  result_json     TEXT,          -- decision.result when accepted=1
+  accepted_at     TEXT NOT NULL DEFAULT (datetime('now')),
+  reply_json      TEXT NOT NULL  -- the byte-equivalent reply to return on replay
+);
+
+-- Lifecycle event log. Audit trail + projection input. NOT the source of
+-- truth (blueprint §1 non-goals; ADR-011 keeps tasks/worker_executions
+-- authoritative during the Slice 1-7 rollout). Append-only.
+CREATE TABLE IF NOT EXISTS lifecycle_events (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  command_id      TEXT NOT NULL REFERENCES command_receipts(command_id) ON DELETE CASCADE,
+  seq             INTEGER NOT NULL,        -- position within this command's events (0,1,2,…)
+  event_kind      TEXT NOT NULL,
+  task_id         INTEGER,
+  payload_json    TEXT NOT NULL,           -- full DomainEvent object
+  occurred_at     TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (command_id, seq)
+);
+
+CREATE INDEX IF NOT EXISTS idx_command_receipts_task ON command_receipts(task_id);
+CREATE INDEX IF NOT EXISTS idx_command_receipts_execution ON command_receipts(execution_id);
+CREATE INDEX IF NOT EXISTS idx_command_receipts_kind_accepted ON command_receipts(command_kind, accepted);
+CREATE INDEX IF NOT EXISTS idx_lifecycle_events_task ON lifecycle_events(task_id);
+CREATE INDEX IF NOT EXISTS idx_lifecycle_events_kind ON lifecycle_events(event_kind);
 `;
 
 // ----------------------------------------------------------------------------
