@@ -760,49 +760,48 @@ function detectAndKillZombies(epicId: number, projectId: number, opts: Orchestra
  *
  * Returns the count of rate-limited workers killed this scan.
  */
+/**
+ * Rate-limit detector — NATURAL ROTATION. Scans active workers' JSONL tails
+ * for 429 rate_limit events. When detected, does NOT kill the worker —
+ * claude's own exponential backoff will eventually succeed (or the task
+ * finishes naturally). Instead, signals the pump loop to lower the
+ * effective concurrency ceiling by 1, so the NEXT worker death does NOT
+ * trigger a replacement spawn. Convergence is gradual:
+ *
+ *   5 workers, limit 2 → 3 hit 429 → effectiveConcurrency drops to 4, 3, 2
+ *   → workers die naturally → no replacements spawned → stabilizes at 2
+ *
+ * Recovery: 60s without 429 → effectiveConcurrency climbs by 1 per scan.
+ */
 function detectRateLimits(epicId: number, projectId: number, opts: OrchestrateOptions): number {
-  const db = getDb();
-  const tasks = db.prepare(
-    `SELECT id, assigned_to, metadata FROM tasks
+  const tasks = getDb().prepare(
+    `SELECT id, assigned_to FROM tasks
      WHERE epic_id=? AND status='in_progress' AND assigned_to IS NOT NULL`,
-  ).all(epicId) as Array<{ id: number; assigned_to: string; metadata: string }>;
+  ).all(epicId) as Array<{ id: number; assigned_to: string }>;
 
-  let killed = 0;
+  let rateLimited = 0;
   for (const t of tasks) {
     const logPath = resolveWorkerLogPath(t.id, t.assigned_to, projectId);
     if (!logPath || !existsSync(logPath)) continue;
     try {
       const st = require('node:fs').statSync(logPath);
-      // Only look at the tail — if 429 happened long ago and the worker
-      // recovered, we don't want to act on stale signals.
       const tailBytes = Math.min(st.size, RATE_LIMIT_LOG_TAIL_BYTES);
       const fd = require('node:fs').openSync(logPath, 'r');
       const buf = Buffer.alloc(tailBytes);
       require('node:fs').readSync(fd, buf, 0, tailBytes, Math.max(0, st.size - tailBytes));
       require('node:fs').closeSync(fd);
       const tail = buf.toString('utf8');
-      if (!RATE_LIMIT_PATTERN.test(tail)) continue;
-
-      // 429 detected. Kill the worker, return task to todo.
-      let pid: number | null = null;
-      try {
-        const meta = JSON.parse(t.metadata || '{}');
-        pid = meta.worker_pid ?? null;
-      } catch { /* malformed */ }
-      if (pid) {
-        try { require('node:child_process').spawnSync('taskkill', ['/F', '/T', '/PID', String(pid)], { encoding: 'utf8' }); } catch { /* gone */ }
+      if (RATE_LIMIT_PATTERN.test(tail)) {
+        rateLimited += 1;
+        lastRateLimitAt = Date.now();
       }
-      db.prepare(
-        `UPDATE tasks SET status='todo', assigned_to=NULL, updated_at=datetime('now') WHERE id=?`,
-      ).run(t.id);
-      logActivity(db, 'task', t.id, 'status_changed', 'status', 'in_progress', 'todo',
-        `Rate-limit (429) detected in worker log. Worker killed, task returned to queue. PID ${pid ?? '?'}.`);
-      engineHeartbeat(opts, 'RATE_LIMIT', `task #${t.id} (pid ${pid ?? '?'}) hit 429 → killed, task → todo`);
-      killed += 1;
-      lastRateLimitAt = Date.now();
     } catch { /* stat/read failed */ }
   }
-  return killed;
+  if (rateLimited > 0) {
+    engineHeartbeat(opts, 'RATE_LIMIT',
+      `${rateLimited} worker(s) hit 429 — lowering concurrency ceiling`);
+  }
+  return rateLimited;
 }
 
 /**
@@ -984,24 +983,32 @@ export async function orchestrate(opts: OrchestrateOptions): Promise<Orchestrate
 
       // Rate-limit scanner: every RATE_LIMIT_SCAN_TICKS cycles, check active
       // workers' JSONL tails for 429 rate_limit events. When detected, kill
-      // the worker, return task to todo, and lower effectiveConcurrency.
-      // Recovery happens automatically after RATE_LIMIT_COOLDOWN_SEC without 429.
+      // NATURAL ROTATION: rate-limit scan + model-limit ceiling.
+      //
+      // Every RATE_LIMIT_SCAN_TICKS cycles (~10s):
+      // 1. Re-read active_model_limit from metadata (mid-run model switch)
+      // 2. Scan workers for 429 → lower effectiveConcurrency (ceiling)
+      // 3. If 60s without 429 → recover toward target
+      // 4. Apply via runner.setConcurrency — no kill, no spawn, just ceiling
+      //    Workers that hit 429 keep running (claude backoff); when they die
+      //    naturally, pump() won't spawn a replacement if below ceiling.
       rateLimitCheckCounter += 1;
       if (rateLimitCheckCounter >= RATE_LIMIT_SCAN_TICKS) {
         rateLimitCheckCounter = 0;
-        // Re-read the model-limit ceiling so a mid-run /api/model/set is
-        // honored WITHOUT an engine restart. The new model's limit may be
-        // lower (cap target → stop spawning, let active workers finish) or
-        // higher (raise target → engine spawns fresh workers on new model).
         const lim = readActiveModelLimit(epicId);
         targetConcurrency = lim !== null ? Math.min(concurrency, lim) : concurrency;
-        const rlKilled = detectRateLimits(epicId, projectId, opts);
-        if (rlKilled > 0) {
-          effectiveConcurrency = Math.max(1, effectiveConcurrency - rlKilled);
+        const rlDetected = detectRateLimits(epicId, projectId, opts);
+        if (rlDetected > 0) {
+          // Drop ceiling by 1 per rate-limited worker (min 1). Old workers
+          // keep running and eventually die; no replacements spawn until
+          // active count drops below the new ceiling.
+          effectiveConcurrency = Math.max(1, effectiveConcurrency - rlDetected);
           emptyCycles = 0;
         }
         // Recovery: if no 429 for cooldown window, climb back toward target.
         effectiveConcurrency = computeEffectiveConcurrency(targetConcurrency, effectiveConcurrency);
+        // Apply ceiling to runner — live, no restart needed.
+        runner.setConcurrency(projectId, effectiveConcurrency);
       }
 
       const counts = countActiveTasks(epicId);

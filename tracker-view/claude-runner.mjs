@@ -195,6 +195,22 @@ export class ClaudeBoardRunner {
     return run ? this.snapshot(run) : null;
   }
 
+  // Live concurrency adjustment — the "natural rotation" mechanism. Calling
+  // this does NOT kill or spawn anything. It only changes the ceiling that
+  // pump() checks on every close event: `run.active.size < run.concurrency`.
+  // When an active worker finishes naturally → pump decides whether to spawn
+  // a replacement based on the new ceiling.
+  //
+  // Used by: model change (lower ceiling when switching to a smaller model),
+  // rate-limit recovery (drop ceiling on 429, climb back after cooldown),
+  // concurrency selector (user-initiated change via /api/engine/restart).
+  setConcurrency(projectId, concurrency) {
+    const run = this.runs.get(projectId);
+    if (!run) return;
+    if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 10) return;
+    run.concurrency = concurrency;
+  }
+
   snapshot(run) {
     return {
       id: run.id,
