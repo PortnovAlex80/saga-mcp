@@ -1,6 +1,6 @@
 # Refactor: Passive Worker Kernel — Master Plan & Checklist
 
-**Status:** Active. Slice 0 in progress.
+**Status:** Active. Slice 0 COMPLETE (209/209 green). Slice 1 next.
 **Branch:** `refactor/passive-worker-kernel` (от `master` @ `e816422`, ADR-012 multi-track).
 **Created:** 2026-07-18.
 **Source of truth:**
@@ -47,10 +47,11 @@
 
 ---
 
-## Slice 0 — Characterization and invariant oracle
+## Slice 0 — Characterization and invariant oracle ✅ COMPLETE
 
 **Источник:** blueprint §16 (line 815), §17 WP-1 (line 945), §22 (line 1184).
 **Цель:** заморозить текущую модель в виде pure-TS oracle + read-only scanner, без правок production-кода. Всё, что Slice 1+ будет переписывать, должно быть сначала описано и протестировано здесь.
+**Результат:** 9 новых domain-файлов + 1 scanner + 12 fixtures + 2 тест-файла (35 новых тестов) + 1 vocabulary-документ. 209/209 тестов зелёные. Production-код не тронут (`git diff master -- src/` пустой).
 
 ### 0.1 Pure domain oracle — `src/lifecycle/domain/`
 
@@ -386,3 +387,13 @@ Revert claim-handler + dep-reconciler.
 ## Журнал прогресса
 
 - **2026-07-18:** Pre-flight завершён. Baseline зафиксирован (174/173/1). Cleanup зомби-worktrees выполнен. Ветка `refactor/passive-worker-kernel` создана от master @ `e816422`. Файл-план создан. Приступаю к Slice 0.
+- **2026-07-18:** **Slice 0 COMPLETE.**
+  - `refactor(slice-0): pure lifecycle domain oracle` — 8 файлов в `src/lifecycle/domain/` (ids, state, commands, events, effects, decode, evolve, invariants, index).
+  - `refactor(slice-0): read-only invariant scanner` — `src/lifecycle/invariant-scanner.ts`.
+  - `refactor(slice-0): characterization fixtures` — 12 JSON-снимков в `tests/lifecycle/fixtures/`.
+  - `refactor(slice-0): characterization tests` — `oracle.test.mjs` (26) + `invariant-scanner.test.mjs` (9) = 35 новых тестов.
+  - `refactor(slice-0): freeze command/event vocabulary` — `docs/architecture/lifecycle-command-event-vocabulary.md`.
+  - Полная suite: **209/209 зелёных** (174 baseline + 35 новых; pre-existing flaky `track-pipeline` прошёл на этом запуске).
+  - `git diff master -- src/` пустой — production-код не тронут.
+  - Slice 0 acceptance из blueprint §16:825-827 выполнен полностью.
+- **Next:** Slice 1 (terminal execution kernel) — отдельный заход.
