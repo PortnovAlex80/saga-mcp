@@ -2132,8 +2132,13 @@ function page(title, body) {
         // SQLite datetime('now') returns UTC; normalise to ISO Z before parsing
         // so the browser treats it as UTC (otherwise local-tz interpretation
         // shifts the timestamp by the tz offset, inflating 'ago' values).
-        const ts=parseTs(d.last);
-        if(ts===null){ dot.className='hb-dot red'; txt.textContent='?'; return; }
+        // Inline the parseTs logic — the server-side parseTs is not available
+        // in browser context.
+        let hs = String(d.last);
+        if (hs.indexOf('T') < 0) hs = hs.replace(' ', 'T');
+        if (hs.indexOf('Z') < 0) hs += 'Z';
+        const ts = new Date(hs).getTime();
+        if(isNaN(ts)){ dot.className='hb-dot red'; txt.textContent='?'; return; }
         const ago=Math.floor((Date.now()-ts)/1000);
         if(ago<15){ dot.className='hb-dot green'; txt.textContent=ago+'с назад'; }
         else if(ago<60){ dot.className='hb-dot yellow'; txt.textContent=ago+'с назад'; }
