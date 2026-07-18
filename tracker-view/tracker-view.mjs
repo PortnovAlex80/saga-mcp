@@ -776,6 +776,22 @@ function renderBoard(projectId, allProjects) {
       const countEl = document.getElementById('worker-count');
       if (!list || !countEl) return;
       countEl.textContent = active.length;
+      // Recovery banner: show only when at least one recovery.heal worker is
+      // active. Hidden otherwise. Single line at the bottom of sidebar — no
+      // separate section, no modal, no new color in the main UI.
+      const banner = document.getElementById('recovery-banner');
+      const bannerText = document.getElementById('recovery-text');
+      const healers = active.filter(w => w.task_kind === 'recovery.heal');
+      if (banner && bannerText) {
+        if (healers.length > 0) {
+          const h = healers[0];
+          const ageMin = Math.max(0, Math.round((Date.now() - new Date(h.started_at + 'Z').getTime()) / 60000));
+          bannerText.textContent = 'recovery #' + h.task_id + ' · ' + ageMin + 'm' + (healers.length > 1 ? ' +' + (healers.length - 1) : '');
+          banner.style.display = 'flex';
+        } else {
+          banner.style.display = 'none';
+        }
+      }
       if (active.length === 0) {
         list.innerHTML = '<div class="worker-empty">нет активных воркеров</div>';
         return;
@@ -797,9 +813,13 @@ function renderBoard(projectId, allProjects) {
           row.className = 'worker-row';
           row.dataset.worker = w.worker_id;
           row.dataset.logPath = w.log_path || '';
+          // Icon by task_kind: recovery tasks get a wrench to distinguish
+          // self-healing from normal work. Avoids a separate UI lane.
+          const icon = (w.task_kind === 'recovery.heal') ? '🔧' : '🤖';
+          if (w.task_kind === 'recovery.heal') row.classList.add('is-recovery');
           row.innerHTML =
             '<div class="wr-head">' +
-              '<span class="wr-icon">🤖</span>' +
+              '<span class="wr-icon">' + icon + '</span>' +
               '<span class="wr-title"></span>' +
               '<span class="wr-age"></span>' +
             '</div>' +
@@ -809,6 +829,12 @@ function renderBoard(projectId, allProjects) {
           list.appendChild(row);
         }
         row.dataset.logPath = w.log_path || '';
+        // Update icon if task_kind changed across renders (shouldn't happen
+        // for a given task_id, but cheap to keep consistent).
+        const iconNow = (w.task_kind === 'recovery.heal') ? '🔧' : '🤖';
+        const iconEl = row.querySelector('.wr-icon');
+        if (iconEl && iconEl.textContent !== iconNow) iconEl.textContent = iconNow;
+        row.classList.toggle('is-recovery', w.task_kind === 'recovery.heal');
         row.querySelector('.wr-title').textContent = '#' + w.task_id + ' ' + (w.title || '').slice(0, 60);
         row.querySelector('.wr-age').textContent = ageMin + 'm';
         row.querySelector('.wr-sub').textContent = w.worker_id;
@@ -1919,6 +1945,15 @@ function page(title, body) {
     .worker-row{padding:7px 9px;border-radius:6px;cursor:pointer;border:1px solid transparent;transition:background .15s,border-color .15s}
     .worker-row:hover{background:#21262d}
     .worker-row.expanded{background:#21262d;border-color:#30363d}
+    /* Recovery worker: subtle amber left-border to flag self-healing without
+       a separate UI lane. Pipelines with active healing pulse softly. */
+    .worker-row.is-recovery{border-left:3px solid #d29922;padding-left:6px}
+    .recovery-banner{padding:6px 12px;background:rgba(210,153,34,.08);
+      border-top:1px solid rgba(210,153,34,.3);color:#d29922;font-size:11px;
+      display:flex;align-items:center;gap:6px}
+    .recovery-banner .rb-pulse{width:7px;height:7px;border-radius:50%;
+      background:#d29922;animation:rb-pulse 1.5s infinite}
+    @keyframes rb-pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(1.3)}}
     .worker-row .wr-head{display:flex;align-items:center;gap:6px}
     .worker-row .wr-icon{font-size:13px}
     .worker-row .wr-title{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#e6edf3}
@@ -1945,6 +1980,10 @@ function page(title, body) {
     <div class="mp-section mp-workers">
       <div class="mp-section-title">Workers (<span id="worker-count">0</span>)</div>
       <div id="workers-list"><div class="worker-empty">нет активных воркеров</div></div>
+    </div>
+    <div class="recovery-banner" id="recovery-banner" style="display:none">
+      <span class="rb-pulse"></span>
+      <span id="recovery-text">recovery</span>
     </div>
   </aside>
   <script>
