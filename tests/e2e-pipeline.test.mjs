@@ -96,13 +96,19 @@ function seedEpisode() {
   // One verification task targeting AC-1. Source artifact linkage is what
   // the migration uses to populate verification_target_artifact_id; we set
   // the target explicitly to skip the migration path.
+  //
+  // execution_mode='tracker_only': the verification gate requires
+  // integration_state='merged' for git_change tasks. Real verification.ac
+  // tasks carry git_change (they create witness test files in a worktree),
+  // but in this smoke test we have no worktree/merge infrastructure.
+  // tracker_only bypasses the merge gate so the episode can advance.
   const verify = tasks.task_create({
     epic_id: epic.id,
     title: 'VERIFY AC-1: mock worker exits 0',
     task_kind: 'verification.ac',
     workflow_stage: 'verification',
     execution_skill: 'saga-verifier',
-    execution_mode: 'git_change',
+    execution_mode: 'tracker_only',
     project_repository_id: repo.id,
     priority: 'high',
     source_artifact_ids: [ac.id],
@@ -110,13 +116,17 @@ function seedEpisode() {
   db.prepare(`UPDATE tasks SET verification_target_artifact_id=? WHERE id=?`).run(ac.id, verify.id);
 
   // Add the integration task for the integration stage. Blocked by verify.
+  // tracker_only: same reason as the verification task — the smoke test has
+  // no worktree/merge plumbing for the integration task's body branch. The
+  // engine's pump loop, close-handler, gate logic, and stage transitions are
+  // all exercised regardless of the execution_mode.
   const integrate = tasks.task_create({
     epic_id: epic.id,
     title: 'INTEGRATE: merge mock-branch into dev',
     task_kind: 'integration.merge',
     workflow_stage: 'integration',
     execution_skill: 'saga-worker',
-    execution_mode: 'git_change',
+    execution_mode: 'tracker_only',
     project_repository_id: repo.id,
     priority: 'high',
     depends_on: [verify.id],
@@ -136,10 +146,17 @@ test('e2e: engine drives verification → integration → completed with mock-cl
   // Run the orchestrate engine with mock-claude as the worker subprocess.
   // Sleep is real (not faked) because the mock needs ~1s per worker, and
   // we want the close-handler to observe real DB transitions.
+  //
+  // concurrency=1: with concurrency>1 the runner can spawn two workers for
+  // the same single-task episode before the first close-handler runs (the
+  // mock's 1s sleep is long enough to race). The second worker then sees
+  // status=done and the close-handler classifies it as FAILED, which
+  // triggers recoverAssignment → infinite respawn loop. With a single
+  // claimable task per stage, concurrency=1 is the only stable choice.
   const result = await orchestrate({
     projectId: project.id,
     epicId: epic.id,
-    concurrency: 2,
+    concurrency: 1,
     claudePath: process.execPath,            // node
     // argv[0]=node, argv[1]=script, argv[2..]=claude flags. claude-runner
     // invokes spawn(claudePath, args, opts) where args[0]='-p'. We need
