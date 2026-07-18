@@ -3027,7 +3027,8 @@ function renderStageDetailPage(epicId, stageName, allProjects) {
     function renderMdInline(text) {
       var esc2 = window.esc(text);
       var BT = String.fromCharCode(96);
-      var ST = String.fromCharCode(42); // asterisk
+      var BS = String.fromCharCode(92); // backslash for regex escape
+      var ST = BS + String.fromCharCode(42); // escaped asterisk: \*
       var reCode = new RegExp(BT + '([^' + BT + ']+)' + BT, 'g');
       var reBold = new RegExp(ST + ST + '([^' + ST + ']+)' + ST + ST, 'g');
       return esc2
