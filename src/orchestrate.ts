@@ -596,6 +596,14 @@ export async function orchestrate(opts: OrchestrateOptions): Promise<Orchestrate
   // Ensure the episode has a workflow row (lifecycle.getOrCreate-style).
   getDb().prepare('INSERT OR IGNORE INTO episode_workflows (epic_id) VALUES (?)').run(epicId);
 
+  // Persist engine state for UI consumption (concurrency selector reads this).
+  // Updated on every engine start; cleared in engineHeartbeat on ENGINE_EXIT.
+  writeEpisodeMeta(epicId, {
+    engine_concurrency: concurrency,
+    engine_pid: process.pid,
+    engine_started_at: new Date().toISOString(),
+  });
+
   let cycles = 0;
   let emptyCycles = 0;
   let lastError: string | null = null;
