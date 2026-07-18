@@ -3363,6 +3363,17 @@ function handleWorkersActive(req, res, url) {
           if (existsSync(candidate)) { logPath = candidate; break; }
         }
       } catch { /* logRoot missing or unreadable */ }
+      // Prefer worker_started_at (written by claude-runner.mjs on spawn)
+      // over updated_at — the latter bumps on any status/metadata change
+      // and doesn't reflect when the current worker subprocess started.
+      // Normalise to ISO Z so the frontend Date.parse() doesn't mis-treat
+      // the SQLite 'YYYY-MM-DD HH:MM:SS' format as local time (browser
+      // timezone shifts the parsed timestamp by ±hours, making ages drift
+      // by the timezone offset — e.g. 200m instead of 20m at UTC+3).
+      const startedRaw = r.worker_started_at || r.updated_at;
+      const startedIso = startedRaw && startedRaw.indexOf('T') < 0
+        ? startedRaw.replace(' ', 'T') + 'Z'
+        : startedRaw;
       return {
         task_id: r.id,
         title: r.title,
@@ -3370,10 +3381,7 @@ function handleWorkersActive(req, res, url) {
         task_kind: r.task_kind,
         worker_id: r.assigned_to,
         epic_name: r.epic_name,
-        // Prefer worker_started_at (written by claude-runner.mjs on spawn)
-        // over updated_at — the latter bumps on any status/metadata change
-        // and doesn't reflect when the current worker subprocess started.
-        started_at: r.worker_started_at || r.updated_at,
+        started_at: startedIso,
         log_path: logPath,
       };
     });
