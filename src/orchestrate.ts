@@ -185,11 +185,39 @@ const RECOVERY_TREE: Record<string, RecoveryRule[]> = {
       diagnosis: 'saga-planner did not decompose into dev tasks.',
       action_prompt: [
         'You are a saga recovery engineer. No development tasks exist after planning.',
-        'This means saga-planner failed to decompose. Escalate: this requires re-running planning with possibly-fixable root cause.',
+        'This means saga-planner failed to decompose. Escalate: this requires re-running planning with possibly-fixifyable root cause.',
         'Call worker_ask_need({reason:"planner did not generate dev tasks — needs human to inspect planning.decomposition task output"}) ',
         'Then worker_done.',
       ].join('\n'),
       max_retries: 0, // planner failures usually semantic — do not auto-retry blindly
+    },
+    {
+      // Merge conflicts block the development→verification gate. The task is
+      // done (worker finished, APPROVED) but its branch conflicted with dev.
+      // Healer investigates: reads the task's worktree metadata, looks at the
+      // conflicting files, either resolves the conflict (mechanical: both
+      // sides add disjoint code) or escalates (semantic: two tasks changed
+      // the same logic differently).
+      match: /tasks not completed\/integrated:.*#(\d+(?:,\s*#\d+)*)/i,
+      diagnosis: 'Some development tasks are done but their branches have merge conflicts or are still pending integration.',
+      action_prompt: [
+        'You are a saga recovery engineer. The development→verification gate failed because some tasks are not fully integrated.',
+        '',
+        'ACTIONS (use mcp__saga__ tools; do NOT call worker_next):',
+        '1. Read task_list for the epic. Identify tasks with status=\'done\' but integration_state IN (\'conflict\', \'pending\').',
+        '2. For each such task:',
+        '   a. Read its metadata.worktree (branch, path, merge_target, merge_conflict).',
+        '   b. cd into the project repo. Check git status, git log --oneline -5, the task branch vs integration branch.',
+        '   c. For integration_state=\'conflict\': examine the conflicting files (git diff --name-only --diff-filter=U).',
+        '   d. If the conflict is mechanical (two tasks touched different parts of the same file, or different files with no logical overlap): resolve by keeping both sides. git add, git commit, then git merge.',
+        '   e. If the conflict is semantic (two tasks changed the same function/logic differently): DO NOT guess. Call worker_ask_need with a description of the conflict.',
+        '   f. After resolving: call worker_merge_release({task_id, worker_id, result:\'merged\', commit_sha}).',
+        '3. For tasks still status=\'in_progress\' or \'review_in_progress\': they are genuinely still running — do NOT touch them. Skip.',
+        '4. Call worker_done with a summary of what you resolved.',
+        '',
+        'Your worker_id is in the task payload. The worktree path is in metadata.worktree.path.',
+      ].join('\n'),
+      max_retries: 2,
     },
   ],
   verification: [
