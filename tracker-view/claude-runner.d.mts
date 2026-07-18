@@ -74,6 +74,7 @@ export interface ClaudeBoardRunner {
   start(args: { projectId: number; concurrency: number }): RunnerRunSnapshot;
   stop(projectId: number): RunnerRunSnapshot | null;
   status(projectId: number): RunnerRunSnapshot | null;
+  setConcurrency(projectId: number, concurrency: number): void;
   dispose(): void;
 }
 
