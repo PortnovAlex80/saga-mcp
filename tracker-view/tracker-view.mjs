@@ -1050,7 +1050,7 @@ function renderBoard(projectId, allProjects) {
       if (!epicId || !stage) return;
       // Render shell immediately so the user sees the panel slide in while the
       // fetch is in flight. Title is known client-side.
-      const titleMap = { discovery:'Discovery', formalization:'Formalization', planning:'Planning', development:'Development', verification:'Verification', integration:'Integration', completed:'Completed' };
+      const titleMap = { discovery:'Открытие', formalization:'Формализация', planning:'Планирование', development:'Разработка', verification:'Верификация', integration:'Интеграция', completed:'Завершено' };
       if (sdoTitle) sdoTitle.textContent = titleMap[stage] || stage;
       if (sdoDur) sdoDur.textContent = '';
       if (sdoDesc) sdoDesc.textContent = 'Stage summary — generated on demand by a worker task.';
@@ -2738,21 +2738,216 @@ function loadCoverageMatrix(projectId) {
 // --- HTML: страница stage detail (/stage?epic=N&stage=X) ---
 // Отдельная страница (не overlay) — надёжнее, можно открыть в новой вкладке.
 // Polling: если summary ещё не готов (queued/generating) — обновляем каждые 3 сек.
+
+// Статические описания стадий пайплайна (на русском).
+// Цель: чтобы читатель страницы понимал суть этапа — за что отвечает, что
+// принимает на вход, что делает внутри, что отдаёт и кто работает — даже до
+// того, как worker сгенерирует summary.
+const STAGE_DESCRIPTIONS = {
+  discovery: {
+    name: 'Открытие',
+    responsibility: 'Первая стадия пайплайна: превращает сырую идею пользователя в принятый бриф с обоснованным решением о дальнейшей судьбе эпизода. Проводит триаж идеи тремя независимыми ассесорами (продукт / система / риск), проверяет полноту входных данных через completeness-gate и выбирает ветку решения на decision-fork.',
+    inputs: [
+      'Идея пользователя одной фразой',
+      'Прикреплённые документы (брифы, ссылки, контекст)',
+      'Контрольная БД saga-mcp для completeness-gate'
+    ],
+    does: [
+      'Триаж тремя ассесорами: product / system / risk',
+      'Completeness-gate: проверка достаточности входа',
+      'Decision-fork: выбор ветки решения',
+      'Формирование brief-артефакта с обоснованным вердиктом'
+    ],
+    outputs: [
+      'Brief artifact с decision ∈ {go, fast-track, clarify, reject}',
+      'Обоснование решения (rationale) для последующих стадий'
+    ],
+    roles: ['saga-kickstart']
+  },
+  formalization: {
+    name: 'Формализация',
+    responsibility: 'Превращает принятый бриф в формальные требования и приёмочные критерии. Параллельно пишет PRD (что делать), SRS (как архитектурно) и UC (сценарии использования), затем сверяет их на reconciliation и сводит к принятому baseline приёмочных критериев (AC).',
+    inputs: [
+      'Принятый brief с decision=go из стадии Discovery',
+      'Документы и контекст пользователя'
+    ],
+    does: [
+      'Параллельная генерация PRD, SRS и Use Cases',
+      'Reconciliation: сверка соответствия PRD ↔ SRS ↔ UC',
+      'Формирование и приёмка AC (acceptance criteria)',
+      'Фиксация baseline артефактов для планирования'
+    ],
+    outputs: [
+      'Accepted AC artifacts — baseline для стадии Planning',
+      'Связная иерархия PRD → SRS → UC → AC с трассами'
+    ],
+    roles: ['saga-product (PRD)', 'saga-architect (SRS)', 'saga-analyst (UC+AC)', 'saga-reconciler']
+  },
+  planning: {
+    name: 'Планирование',
+    responsibility: 'Раскладывает принятый baseline AC на конкретные задачи разработки и верификации. Для каждой AC создаёт development-задачи (с трассой implements) и verification-задачи, проверяет конфликтные ключи (file_path / schema / public_protocol / integration_branch) и при необходимости генерирует scaffold-задачу (Pattern B).',
+    inputs: [
+      'Принятый baseline AC из стадии Formalization',
+      'Трассы между AC и UC/FR для контекста'
+    ],
+    does: [
+      'Декомпозиция AC в development tasks',
+      'Создание verification tasks с трассами verified_by',
+      'Вычисление conflict keys и проверка коллизий',
+      'Генерация scaffold task (Pattern B) при конфликтах'
+    ],
+    outputs: [
+      'Scaffold task (Pattern B) — если требуется',
+      'Body tasks — задачи реализации',
+      'Verify tasks — задачи верификации'
+    ],
+    roles: ['saga-planner']
+  },
+  development: {
+    name: 'Разработка',
+    responsibility: 'Реализует запланированные задачи в коде. Воркеры работают в изолированных worktree-ветках, проходят цикл написания кода → ревью → merge в dev-ветку репозитория. Каждая задача оставляет трассы implements к AC.',
+    inputs: [
+      'Scaffold + body tasks из стадии Planning',
+      'Принятые AC как контракт реализации',
+      'Worktree репозитория проекта'
+    ],
+    does: [
+      'Воркеры пишут код в изолированных worktrees',
+      'Проходят ревью и протокол merge в dev',
+      'Поддерживают трассы implements AC → task',
+      'Self-healing при сбоях (recovery-воркеры)'
+    ],
+    outputs: [
+      'Merged dev branch с реализацией всех AC',
+      'Обновлённые metadata.worktree.merged_into="dev"'
+    ],
+    roles: ['saga-worker (development.code)']
+  },
+  verification: {
+    name: 'Верификация',
+    responsibility: 'Независимо проверяет реализацию каждой AC через property/behavioral тесты, сгенерированные из замороженного контракта AC (НЕ из тестов разработчика). Для каждого passed-вердикта создаётся verification_evidence с outcome=passed, что прокидывает трассу verified_by.',
+    inputs: [
+      'Merged code из стадии Development',
+      'Accepted ACs как замороженный контракт',
+      'Трассы implements для поиска соответствующих задач'
+    ],
+    does: [
+      'Генерация L3 property tests из AC-контракта',
+      'Behavioral checks против замороженного AC',
+      'Запись verification_evidence с 4-значным вердиктом',
+      'Прокидывание verified_by трассы AC → evidence'
+    ],
+    outputs: [
+      'verification_evidence (outcome=passed) для каждого AC',
+      'Failed / unknown вердикты возвращают эпизод на доработку'
+    ],
+    roles: ['saga-verifier (verification.ac)']
+  },
+  integration: {
+    name: 'Интеграция',
+    responsibility: 'Финальная сборка эпизода: после того как все verification evidence прошли, проверяет L0 gate (базовая целостность) и завершает merge в основную ветку продукта. Переводит эпизод в статус completed.',
+    inputs: [
+      'Все verification evidence с outcome=passed',
+      'Merged dev branch из Development',
+      'L0 gate: контракты типов / сборки'
+    ],
+    does: [
+      'Финальная проверка L0 gate',
+      'Полный merge эпизода в основную ветку',
+      'Закрытие эпизода и переход в completed'
+    ],
+    outputs: [
+      'Completed episode с интегрированным кодом',
+      'Готовность к стадии Completed'
+    ],
+    roles: ['saga-worker (integration.merge)']
+  },
+  completed: {
+    name: 'Завершено',
+    responsibility: 'Пост-интеграционная стадия: обновление документации продукта, финализация проектных skills, артефактов и заметок. Эпизод полностью закрыт, продукт готов к использованию.',
+    inputs: [
+      'Интегрированный кодбейз из стадии Integration',
+      'Все AC приняты и верифицированы'
+    ],
+    does: [
+      'Обновление post-integration documentation',
+      'Финализация project skills',
+      'Архивирование заметок и решений'
+    ],
+    outputs: [
+      'Готовый продукт с закрытым эпизодом',
+      'Актуальная документация'
+    ],
+    roles: ['(post-integration)']
+  }
+};
+
+// Отрисовать статический блок описания стадии (на русском) — отображается
+// ВЫШЕ динамического summary, генерируемого воркером. Блок живёт в отдельном
+// div и не перетирается polling-циклом #stage-content.
+function renderStageDescriptionBlock(stageName) {
+  const d = STAGE_DESCRIPTIONS[stageName];
+  if (!d) return '';
+  const li = (arr) => arr.map(x => `<li>${esc(x)}</li>`).join('');
+  return `
+    <style>
+      .stage-desc{background:#161b22;border:1px solid #30363d;border-radius:12px;padding:22px 24px;margin-bottom:16px}
+      .stage-desc-title{margin:0 0 6px;font-size:20px;font-weight:600;color:#e6edf3;display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+      .stage-desc-key{font-size:12px;color:#8b949e;font-weight:400;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+      .stage-desc-resp{margin:0 0 16px;color:#c9d1d9;font-size:14px;line-height:1.6}
+      .stage-desc-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px 22px}
+      @media (max-width:720px){.stage-desc-grid{grid-template-columns:1fr}}
+      .stage-desc-section{background:#0d1117;border:1px solid #21262d;border-radius:8px;padding:12px 14px}
+      .stage-desc-h{font-size:11px;color:#58a6ff;text-transform:uppercase;letter-spacing:.5px;font-weight:600;margin-bottom:8px}
+      .stage-desc-ul{margin:0;padding-left:18px;color:#c9d1d9;font-size:13px;line-height:1.55}
+      .stage-desc-ul li{margin:3px 0}
+      .stage-desc-ul.stage-desc-roles{padding-left:0;list-style:none}
+      .stage-desc-ul.stage-desc-roles li{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;color:#7ee787}
+    </style>
+    <div class="stage-desc">
+      <h2 class="stage-desc-title">${esc(d.name)} <span class="stage-desc-key">${esc(stageName)}</span></h2>
+      <p class="stage-desc-resp">${esc(d.responsibility)}</p>
+      <div class="stage-desc-grid">
+        <div class="stage-desc-section">
+          <div class="stage-desc-h">Что принимает на вход</div>
+          <ul class="stage-desc-ul">${li(d.inputs)}</ul>
+        </div>
+        <div class="stage-desc-section">
+          <div class="stage-desc-h">Что делает внутри</div>
+          <ul class="stage-desc-ul">${li(d.does)}</ul>
+        </div>
+        <div class="stage-desc-section">
+          <div class="stage-desc-h">Что отдаёт</div>
+          <ul class="stage-desc-ul">${li(d.outputs)}</ul>
+        </div>
+        <div class="stage-desc-section">
+          <div class="stage-desc-h">Кто работает</div>
+          <ul class="stage-desc-ul stage-desc-roles">${li(d.roles)}</ul>
+        </div>
+      </div>
+    </div>`;
+}
+
 function renderStageDetailPage(epicId, stageName, allProjects) {
   const epic = withDb(db => db.prepare('SELECT id, name, project_id FROM epics WHERE id=?').get(Number(epicId)));
   const projName = epic ? (allProjects.find(p => String(p.id) === String(epic.project_id)) || {}).name : '?';
-  const stageTitle = stageName.charAt(0).toUpperCase() + stageName.slice(1);
+  const stageDesc = STAGE_DESCRIPTIONS[stageName];
+  // Русское название стадии для шапки/заголовка; fallback — capitalize(key).
+  const stageRuName = stageDesc ? stageDesc.name : (stageName.charAt(0).toUpperCase() + stageName.slice(1));
+  const stageTitle = stageRuName;
   const header = `
     <div class="board-head">
       <a href="/?project=${epic ? epic.project_id : ''}" class="back">← ${esc(projName)}</a>
-      <span class="cur-proj">📋 ${esc(stageTitle)} — Stage Detail</span>
+      <span class="cur-proj">📋 ${esc(stageRuName)} — этап пайплайна</span>
       <span style="flex:1"></span>
       <div class="heartbeat"><span id="hb-dot" class="hb-dot red"></span><span id="hb-txt">…</span></div>
     </div>`;
-  return page(stageTitle + ' — Stage Detail', `
+  return page(stageTitle + ' — этап пайплайна', `
     ${header}
     <div style="max-width:900px;margin:0 auto;padding:20px">
-      <div id="stage-content" style="background:#161b22;border:1px solid #30363d;border-radius:12px;padding:24px;min-height:400px">
+      ${renderStageDescriptionBlock(stageName)}
+      <div style="font-size:11px;color:#8b949e;text-transform:uppercase;letter-spacing:.5px;font-weight:600;margin:4px 0 8px;padding:0 4px">Резюме стадии (генерируется воркером)</div>
+      <div id="stage-content" style="background:#161b22;border:1px solid #30363d;border-radius:12px;padding:24px;min-height:120px">
         <div style="color:#8b949e;font-size:14px">Загрузка…</div>
       </div>
     </div>
@@ -2793,8 +2988,7 @@ function renderStageDetailPage(epicId, stageName, allProjects) {
         if (j.status === 'ready') {
           // Render markdown content
           const md = j.content || '(empty)';
-          el.innerHTML = '<h2 style="color:#58a6ff;margin-bottom:8px">' + window.esc(j.title || stage) + '</h2>' +
-            '<div style="color:#8b949e;font-size:11px;margin-bottom:16px">Generated: ' + window.esc(j.generated_at || '?') + '</div>' +
+          el.innerHTML = '<div style="color:#8b949e;font-size:11px;margin-bottom:6px">Сгенерировано: ' + window.esc(j.generated_at || '?') + '</div>' +
             '<div style="color:#e6edf3;line-height:1.6;white-space:pre-wrap;font-size:14px">' + window.esc(md) + '</div>';
         } else if (j.status === 'queued') {
           el.innerHTML = '<div style="color:#d2a822;font-size:14px">⏳ Резюме в очереди (task #' + j.task_id + '). Воркер подберёт задачу и напишет резюме.</div>' +
