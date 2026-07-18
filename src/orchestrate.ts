@@ -77,6 +77,27 @@ const zombieWatch = new Map<number, { signature: string; stalled: number; lastKi
 let zombieCheckCounter = 0;
 
 /**
+ * Rate-limit aware concurrency. When API returns 429 (rate_limit), the engine
+ * kills the affected worker, returns its task to the queue, and lowers the
+ * effective concurrency by 1. This stops burning tokens on claude's own
+ * exponential-backoff retries (4.7s → 8.5s → 17.5s per cycle) and lets the
+ * remaining workers proceed without contention.
+ *
+ * Recovery: after RATE_LIMIT_COOLDOWN_SEC without any 429, effective
+ * concurrency climbs back by 1 per cooldown window until it reaches the
+ * target (opts.concurrency).
+ *
+ * The rate-limit scanner reads JSONL tails (same path as zombie detector)
+ * and pattern-matches /api_retry.*429.*rate_limit/.
+ */
+const RATE_LIMIT_SCAN_TICKS = 2;         // every 10s
+const RATE_LIMIT_COOLDOWN_SEC = 60;      // 60s without 429 → +1 concurrency
+const RATE_LIMIT_LOG_TAIL_BYTES = 8192;  // scan last 8KB of JSONL for 429
+const RATE_LIMIT_PATTERN = /api_retry[^\n]*"error_status":429[^\n]*"error":"rate_limit"/;
+let rateLimitCheckCounter = 0;
+let lastRateLimitAt = 0;                  // ms epoch of last 429 detection
+
+/**
  * RECOVERY TREE — lookup table for self-healing on gate failures.
  *
  * When episode_transition fails (hard gate throws), the engine consults this
@@ -706,6 +727,81 @@ function detectAndKillZombies(epicId: number, projectId: number, opts: Orchestra
 }
 
 /**
+ * Rate-limit detector. Scans active workers' JSONL tails for 429 rate_limit
+ * events from the API. When found, kills the affected worker (it's stuck in
+ * claude's exponential backoff, burning time without producing useful work),
+ * returns its task to the queue, and signals the pump loop to lower effective
+ * concurrency by 1. The task will be re-claimed later when the API recovers.
+ *
+ * Only rolls back tasks where the 429 happened early in the worker's session
+ * (within the last RATE_LIMIT_LOG_TAIL_BYTES of the log). A worker that did
+ * substantial work before hitting 429 is left alone — claude's own retry
+ * will likely succeed, and killing it would waste the context it built.
+ *
+ * Returns the count of rate-limited workers killed this scan.
+ */
+function detectRateLimits(epicId: number, projectId: number, opts: OrchestrateOptions): number {
+  const db = getDb();
+  const tasks = db.prepare(
+    `SELECT id, assigned_to, metadata FROM tasks
+     WHERE epic_id=? AND status='in_progress' AND assigned_to IS NOT NULL`,
+  ).all(epicId) as Array<{ id: number; assigned_to: string; metadata: string }>;
+
+  let killed = 0;
+  for (const t of tasks) {
+    const logPath = resolveWorkerLogPath(t.id, t.assigned_to, projectId);
+    if (!logPath || !existsSync(logPath)) continue;
+    try {
+      const st = require('node:fs').statSync(logPath);
+      // Only look at the tail — if 429 happened long ago and the worker
+      // recovered, we don't want to act on stale signals.
+      const tailBytes = Math.min(st.size, RATE_LIMIT_LOG_TAIL_BYTES);
+      const fd = require('node:fs').openSync(logPath, 'r');
+      const buf = Buffer.alloc(tailBytes);
+      require('node:fs').readSync(fd, buf, 0, tailBytes, Math.max(0, st.size - tailBytes));
+      require('node:fs').closeSync(fd);
+      const tail = buf.toString('utf8');
+      if (!RATE_LIMIT_PATTERN.test(tail)) continue;
+
+      // 429 detected. Kill the worker, return task to todo.
+      let pid: number | null = null;
+      try {
+        const meta = JSON.parse(t.metadata || '{}');
+        pid = meta.worker_pid ?? null;
+      } catch { /* malformed */ }
+      if (pid) {
+        try { require('node:child_process').spawnSync('taskkill', ['/F', '/T', '/PID', String(pid)], { encoding: 'utf8' }); } catch { /* gone */ }
+      }
+      db.prepare(
+        `UPDATE tasks SET status='todo', assigned_to=NULL, updated_at=datetime('now') WHERE id=?`,
+      ).run(t.id);
+      logActivity(db, 'task', t.id, 'status_changed', 'status', 'in_progress', 'todo',
+        `Rate-limit (429) detected in worker log. Worker killed, task returned to queue. PID ${pid ?? '?'}.`);
+      engineHeartbeat(opts, 'RATE_LIMIT', `task #${t.id} (pid ${pid ?? '?'}) hit 429 → killed, task → todo`);
+      killed += 1;
+      lastRateLimitAt = Date.now();
+    } catch { /* stat/read failed */ }
+  }
+  return killed;
+}
+
+/**
+ * Compute the effective concurrency for this pump cycle. If we've seen 429s
+ * recently, throttle down. If the cooldown window passed without new 429s,
+ * recover toward the target.
+ */
+function computeEffectiveConcurrency(target: number, current: number): number {
+  if (lastRateLimitAt === 0) return target;
+  const sinceLimit = (Date.now() - lastRateLimitAt) / 1000;
+  if (sinceLimit < RATE_LIMIT_COOLDOWN_SEC) {
+    // Still in cooldown — hold current (don't increase).
+    return Math.min(current, target);
+  }
+  // Cooldown elapsed — recover by 1 per call (caller runs this every RATE_LIMIT_SCAN_TICKS).
+  return Math.min(current + 1, target);
+}
+
+/**
  * Run the orchestration loop. Resolves when:
  *  - episode reaches 'completed' (success), OR
  *  - needs-human pause exceeds MAX_PAUSE_MIN (timeout exit), OR
@@ -715,6 +811,10 @@ export async function orchestrate(opts: OrchestrateOptions): Promise<Orchestrate
   const projectId = opts.projectId;
   const epicId = opts.epicId;
   const concurrency = opts.concurrency ?? 4;
+  // Effective concurrency may be lower than the target when the API is
+  // rate-limiting (429). Starts at target, drops by 1 per rate-limit hit,
+  // recovers by 1 per RATE_LIMIT_COOLDOWN_SEC of clean running.
+  let effectiveConcurrency = concurrency;
   const now = opts.now ?? Date.now;
   const sleep = opts.sleep ?? defaultSleep;
 
@@ -814,7 +914,7 @@ export async function orchestrate(opts: OrchestrateOptions): Promise<Orchestrate
         // Idempotent start: if a run is already active for this project,
         // start() throws — we treat that as "workers are already pumping".
         try {
-          runner.start({ projectId, concurrency });
+          runner.start({ projectId, concurrency: effectiveConcurrency });
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
           if (!/already has an active board run/.test(msg)) throw err;
@@ -848,6 +948,22 @@ export async function orchestrate(opts: OrchestrateOptions): Promise<Orchestrate
         zombieCheckCounter = 0;
         const killed = detectAndKillZombies(epicId, projectId, opts);
         if (killed > 0) emptyCycles = 0;
+      }
+
+      // Rate-limit scanner: every RATE_LIMIT_SCAN_TICKS cycles, check active
+      // workers' JSONL tails for 429 rate_limit events. When detected, kill
+      // the worker, return task to todo, and lower effectiveConcurrency.
+      // Recovery happens automatically after RATE_LIMIT_COOLDOWN_SEC without 429.
+      rateLimitCheckCounter += 1;
+      if (rateLimitCheckCounter >= RATE_LIMIT_SCAN_TICKS) {
+        rateLimitCheckCounter = 0;
+        const rlKilled = detectRateLimits(epicId, projectId, opts);
+        if (rlKilled > 0) {
+          effectiveConcurrency = Math.max(1, effectiveConcurrency - rlKilled);
+          emptyCycles = 0;
+        }
+        // Recovery: if no 429 for cooldown window, climb back toward target.
+        effectiveConcurrency = computeEffectiveConcurrency(concurrency, effectiveConcurrency);
       }
 
       const counts = countActiveTasks(epicId);
