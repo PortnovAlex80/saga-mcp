@@ -1,6 +1,6 @@
 # Refactor: Passive Worker Kernel — Master Plan & Checklist
 
-**Status:** Active. Slice 0 COMPLETE (209 tests). Slice 1 COMPLETE (219/218/1). Slice 2 next.
+**Status:** Active. Slice 0 COMPLETE (209 tests). Slice 1 COMPLETE (219/218/1). Slice 2 COMPLETE (235/235). Slice 3 next.
 **Branch:** `refactor/passive-worker-kernel` (от `master` @ `e816422`, ADR-012 multi-track).
 **Created:** 2026-07-18.
 **Source of truth:**
@@ -181,10 +181,13 @@ JSON-снимки плоских task-rows (не SQLite-дампы — pure data
 
 ---
 
-## Slice 2 — Work-item shadow model
+## Slice 2 — Work-item shadow model ✅ COMPLETE
 
 **Источник:** blueprint §16 (line 847), §17 WP-4 (line 993).
 **Цель:** 3 новые таблицы (`task_work_items`, `work_attempts` + существующая `worker_executions`) + compatibility projector. Old task columns остаются authoritative в этом slice; new таблицы — shadow.
+**Результат:** 4 новых модуля (schema, repository, projector, backfill) + 16 новых тестов. 235/235 зелёных. Backfill идемпотентен, запускается один раз при открытии БД. Central audit-fix тест (review approval survives integration loss) проходит.
+
+**Девиация от плана:** Вместо полной dual-write (projector обновляет legacy + work-items синхронно при каждом переходе) Slice 2 делает **read-only shadow**: backfill один раз строит pipeline из legacy, equivalence-checker умеет находить drift. Dual-write — Slice 3+, когда ASK и worker_outcomes пойдут через bus. Shadow уже сейчас полезен: он документирует target-состояние иерархии Task→Item→Attempt→Execution и позволяет верифицировать любой legacy-row на структурную корректность.
 
 ### Задачи
 
@@ -407,4 +410,12 @@ Revert claim-handler + dep-reconciler.
   - Полная suite: **219/218/1** (1 pre-existing flaky `track-pipeline:247`).
   - 4 production-файла изменены, 3 новых. Slice 1 acceptance (blueprint §16:841-845) выполнен: terminalization+release в одной tx; close/reconciler race idempotent; ни одна terminal execution не остаётся task-fence.
   - **Девиация:** полный command-bus с receipt-replay вынесен в отдельный follow-up — acceptance Slice 1 достигается atomic-release primitive без него. Меньше риск, фундамент (single-writer atomic path) заложен.
-- **Next:** Slice 2 (work-item shadow model) — отдельный заход.
+- **2026-07-19:** **Slice 2 COMPLETE.**
+  - `refactor(slice-2): additive schema — task_work_items + work_attempts` — DDL из blueprint §14, additive (CREATE IF NOT EXISTS).
+  - `refactor(slice-2): work-item repository + compatibility projector` — CRUD + `projectToLegacy`/`checkEquivalence`/`computeExpectedPipeline` (pure logic, no DB).
+  - `refactor(slice-2): honest synthetic backfill wired into db.ts` — backfill бежит один раз при открытии БД, идемпотентен, history_complete=0 на каждом synthesized-row.
+  - `test(slice-2): work-item shadow model coverage — 16 new tests` — 5 backfill-mapping + 2 properties + 5 equivalence + 1 audit-fix (integration-retry) + 3 unit.
+  - Полная suite: **235/235 зелёных** (219 + 16 новых; flaky `track-pipeline` прошёл).
+  - Slice 2 acceptance (blueprint §16:864-869) выполнен: каждый managed-task имеет ровно один current semantic item; recomputed projection соответствует legacy или сообщает named mismatch; **review approval survives loss of integration attempt** (central audit fix на уровне shadow); backfill не фабрикует prior cycle history.
+  - **Девиация:** Slice 2 делает read-only shadow (один backfill + drift detection), без полной dual-write при каждом переходе. Dual-write — Slice 3+, когда ASK/worker_outcomes пойдут через bus.
+- **Next:** Slice 3 (passive human wait / ASK terminal) — отдельный заход.
