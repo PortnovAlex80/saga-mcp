@@ -1,5 +1,160 @@
 # saga-mcp 3.0 — Changelog
 
+## Hotfix: saga-mcp 3.0.1 — Worker Execution Fencing + Markdown + Russian UX (2026-07-18)
+
+**11 commits** from `f865570` to `3ee4e66`. End-to-end verified by completing the
+4D_Las_viewer pipeline (epic 126): after these fixes the integration stage advanced
+to `completed`, while a board without them was stuck in verification for 3+ hours
+with 12+ orphan `claude.exe` workers and 6 spurious `verified_by` traces.
+
+---
+
+### 🔒 ADR-009: Durable Worker Executions + Canonical Verification Targets
+
+The 3.0 liveness model (log-silence ≈ death, `tasks.status` ≈ process truth)
+broke on `verification.ac`: cargo/vitest runs are silent for 3–7 minutes, so the
+zombie watcher killed live workers mid-build, leaving orphans. Two related
+defects in verification compounded the deadlock.
+
+**`docs/architecture/decisions/009-worker-execution-fencing.md`** — full ADR
+with MCDA (option B: durable registry + fence scored 455/500) and 6 pre-mortems.
+
+#### P1 — Canonical verification target
+
+- `tasks.verification_target_artifact_id` stores the single AC each
+  `verification.ac` task owns.
+- `verification_record` rejects cross-AC evidence (`artifactId !== target` throws).
+- Gate checks passing evidence only for the canonical AC revision.
+- **Migration** (`migrateVerificationTargets`): backfills the canonical target
+  from `depends_on` provenance, falls back to one unambiguous AC-code match in
+  the title, then deletes mismatched legacy `verified_by` edges while keeping
+  evidence rows immutable for audit.
+- In production: cleaned 6 spurious traces on epic 126 (AC-1→#741, AC-3→#743,
+  AC-4→#742, AC-6/AC-7/AC-8→#744) that had kept `worker_done(approved)` failing
+  in a ~25-cycle zombie loop for ~3 hours.
+
+#### P2 — Per-execution evidence retry
+
+- `verification_evidence.execution_id` column added. New UNIQUE index
+  `idx_verification_evidence_attempt` over `(task_id, artifact_id, content_hash, execution_id)`.
+- A later holder can append its own evidence without overwriting the prior
+  attempt's history.
+- Operator one-shot in production: deduped 4 legacy duplicate evidence rows so
+  the migration could install the new UNIQUE index.
+
+#### P3 — Worker execution registry + fence
+
+- New `worker_executions` table — durable per-attempt record of host, PID,
+  process-birth token, log path, phase, state.
+- `worker_next` reserves an execution ID atomically with the task claim.
+- Spawned process moves its row `reserved → running` and records process-birth
+  identity (Windows: CIM `CreationDate`; Linux: `/proc/<pid>/stat` field 22).
+- **All managed worker mutations are fenced** by `tasks.current_execution_id`:
+  `worker_done`, `verification_record`, `worker_ask_*`, `worker_merge_*` all
+  enforce the fence via `assertExecutionFence`. A late response from a
+  superseded process is rejected.
+- **Liveness = OS PID, not log mtime.** `reconcileWorkerExecutions` walks
+  active executions every cycle: a live PID that still owns an allowed phase
+  (executing / reviewing / finishing / integrating) is **kept**, even if its
+  JSONL log has been silent for minutes. Long cargo/vitest runs no longer die.
+- **Termination requires matching PID + birth token.** PID reuse cannot kill
+  an unrelated process; mismatched birth identity falls back to "kept" instead
+  of "terminated".
+- **Legacy compatibility:** assignments created before ADR-009 (no
+  `execution_id`) are observed. A live legacy PID is preserved; a dead legacy
+  PID releases the task back to the queue via exact compare-and-swap.
+- **Frontend truth source** switched from `tasks.status` to `worker_executions`.
+  `/api/workers/active` returns rows with `execution_id`, `pid`, `process_phase`,
+  `is_stale`, `is_quiet`, `tokens_per_sec`. Bug "frontend shows `workers: []`
+  while 3 `claude.exe` are running" fixed.
+
+#### Operator recovery playbook (proven on epic 126)
+
+1. `npm run build` — the new `dist/worker-executions.js` must exist or every
+   `claude.exe` spawn dies on `markExecutionRunning` with `ERR_MODULE_NOT_FOUND`.
+2. Clear stale `engine-<pid>-<eid>.pid` lock, kill orphan engines and orphan
+   claude children, then `POST /api/engine/restart`.
+3. If `node orchestrate-cli.js` fails with `UNIQUE constraint failed:
+   idx_verification_evidence_attempt`, the live DB has pre-ADR-009 duplicates —
+   dedupe with `DELETE … WHERE id NOT IN (SELECT MAX(id) … GROUP BY …)`.
+4. Migration runs on the next saga-MCP start; no manual trace cleanup needed.
+
+#### Files touched by ADR-009
+
+- `src/worker-executions.ts` (+398 lines) — registry, fence, reconciliation, birth token
+- `src/db.ts` (+163) — `verification_target_artifact_id`, migrations
+- `src/tools/dispatcher.ts` (+201) — claim reserves execution, target enforcement
+- `src/tools/lifecycle.ts` (+55) — `verification_record` cross-AC rejection + fence
+- `src/tools/artifacts.ts` (+40) — `depends_on` backfill for canonical target
+- `src/tools/tasks.ts` (+43) — `assertExecutionFence` integration
+- `src/orchestrate.ts` — `reconcileWorkerExecutions` replaces log-mtime zombie scan
+- `src/schema.ts` — `worker_executions` table + indexes
+- `tracker-view/claude-runner.mjs` — reservation, `markExecutionRunning`, fenced close
+- `tracker-view/tracker-view.mjs` — `/api/workers/active` reads registry, not `tasks.status`
+- `tests/product-workflow.test.mjs` (+206) — fence race, target rejection, retry evidence
+
+---
+
+### 🔒 PID-lock singleton guard (one engine per epic)
+
+- `~/.zcode/cli/engine-<projectId>-<epicId>.pid` written at engine startup.
+- A second engine for the same (project, epic) exits immediately with
+  `DUPLICATE_EXIT` if the recorded PID is still alive.
+- Mitigates (does not yet eliminate) the duplicate-engine storm: when
+  `POST /api/engine/restart` or `POST /api/project/create-from-idea` spawns
+  multiple engines in quick succession, only the first survives.
+- **Known gap** (not yet closed): spawn sites in `tracker-view.mjs` do not check
+  the lock *before* spawning — they rely on the CLI's exit-on-duplicate. A
+  short overlap window (~1s) can still produce two engines.
+
+### 📝 Markdown renderer (stage detail page)
+
+Five-iteration fix. The renderer lives inside a JS template literal; regex
+literals with `\n`, `\r`, `\s`, `**` collapse to literal control characters and
+either silently mis-render or throw `Invalid regular expression: Nothing to
+repeat`.
+
+- **`4e4ba1d`** — All control chars built via `String.fromCharCode(N)`.
+  `var NL = String.fromCharCode(10)` instead of `\n` in the regex source.
+- **`91767b4`** — Per-line heading/`---` hr parsing: any line within a block,
+  not only single-line blocks.
+- **`f2c8e81`** — Asterisk escape. `String.fromCharCode(42)` is the `*`
+  quantifier; `new RegExp('**...')` throws. Use `String.fromCharCode(92, 42)`
+  to emit `\*`.
+- **`ddcca66`** — Per-line `###` and `---` detection inside multi-line blocks.
+- **`0065d1e`** — Initial markdown rendering on stage detail page.
+
+### 🇷🇺 Russian UX
+
+- **`0dd1e83`** — Summary task prompt rewritten in clean Russian without
+  anglicisms. English terms (PRD, SRS, baseline, reconciliation, scaffold) are
+  explained parenthetically, e.g. «baseline (зафиксированная базовая версия
+  требований)».
+- **`59a9fc7`** — Russian stage descriptions on the pipeline detail page.
+
+### 🧹 Gate and API hygiene
+
+- **`d571940`** — `type:'summary'` added to the artifact catalog so
+  `summary.stage` workers can persist their output as an artifact.
+  `summary.stage` and `recovery.heal` tasks are excluded from the transition
+  gate (`assertTasksReady`) so bookkeeping tasks cannot block episode advance.
+- **`dc9a98a`** — Stage detail moved from overlay to a dedicated page.
+
+---
+
+### 🧪 Testing after 3.0.1
+
+- `npm test`: **169/169 pass** (was 137 at 3.0 release; +32 for ADR-009).
+- Claim race: PASS.
+- Fenced verdict race, 8 parallel processes: PASS — exactly one winner.
+- Worktree/review/merge lifecycle: 35/35 PASS.
+- `tsc --noEmit`: clean. `npm run lint` shows only pre-existing `eqeqeq`
+  violations in legacy modules; new execution/orchestration modules are clean.
+- End-to-end: 4D_Las_viewer epic 126 advanced from stuck verification to
+  integration within ~10 minutes after the hotfix landed.
+
+---
+
 ## Release: saga-mcp 3.0 — Autonomous Orchestration Engine (2026-07-18)
 
 **32 commits** from `f678d43` to `378ec65`. End-to-end verified on 4D_Las_viewer
