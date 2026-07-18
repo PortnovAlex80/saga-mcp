@@ -205,6 +205,9 @@ export class ClaudeBoardRunner {
         worker_id: execution.workerId,
         pid: execution.child.pid ?? null,
         started_at: execution.startedAt,
+        // Exposed so the live-workers panel can fetch /api/worker/tail
+        // and show the worker's real-time stream-json events.
+        log_path: execution.logPath,
       })),
       completed: run.completed,
       failed: run.failed,
@@ -291,7 +294,18 @@ export class ClaudeBoardRunner {
       '--disallowedTools', 'mcp__saga__worker_next',
       '--permission-mode', 'bypassPermissions',
       '--dangerously-skip-permissions',
-      '--output-format', 'json',
+      // stream-json: one JSON event per line in real time (system/init,
+      // assistant text, tool_use, tool_result, system/api_retry, result).
+      // --verbose is required by stream-json (docs pair them in every example).
+      // --forward-subagent-text (2.1.211+, we run 2.1.212): surfaces subagent
+      // text+thinking so kickstart's 3 parallel assessors are visible in the
+      // JSONL log, not just their tool calls.
+      // SAFE: close handler reads task status from DB (getTaskState, l.343),
+      // not from stdout — so changing output format has zero effect on runner
+      // control flow. JSONL file is write-only (no in-repo consumer).
+      '--output-format', 'stream-json',
+      '--verbose',
+      '--forward-subagent-text',
       '--no-session-persistence',
       prompt,
     ];

@@ -81,6 +81,62 @@ function sibling(db: Database.Database, epicId: number, sourceParentId: number |
 
 function specsForTransition(db: Database.Database, source: Task, transition: string): TaskSpec[] {
   const repo = source.project_repository_id;
+  // brief_accepted — seeds formalization from Discovery (ADR-008).
+  //
+  // When the `discovery.kickstart` task completes, the v3 engine needs a
+  // PRD task to appear so the existing chain (prd_accepted → SRS+UC →
+  // reconciliation → baseline_accepted → planning) can proceed. This branch
+  // creates EXACTLY ONE formalization.prd task — NOT PRD+SRS as the original
+  // 3.0 plan draft said. The "parallel SRS" wording was a simplification
+  // that would break the sibling() lineage lookup in srs_accepted
+  // (workflow.ts:108); see docs/architecture/decisions/008-brief-accepted-prd-only.md.
+  //
+  // Decision guard: only seed PRD when brief decision === 'go'. Other
+  // outcomes have their own paths (clarify/reject stop; fast-track goes
+  // through routeFastTrack in src/planner/fast-track.ts).
+  if (transition === 'brief_accepted') {
+    if (source.task_kind !== 'discovery.kickstart') {
+      throw new Error(`Transition brief_accepted requires task_kind=discovery.kickstart, got '${source.task_kind}'`);
+    }
+    // Read the brief artifact to check decision and inherit its repository binding.
+    const brief = db.prepare(
+      `SELECT id, project_repository_id, metadata FROM artifacts
+       WHERE epic_id=? AND type='brief' ORDER BY id DESC LIMIT 1`,
+    ).get(source.epic_id) as
+      | { id: number; project_repository_id: number | null; metadata: string | null }
+      | undefined;
+    if (!brief) {
+      throw new Error(
+        `brief_accepted for task ${source.id}: no brief artifact in epic ${source.epic_id}. ` +
+        `Kickstart must register a brief via artifact_create({type:'brief'}) before completing.`,
+      );
+    }
+    let decision: string | undefined;
+    try {
+      const meta = JSON.parse(brief.metadata ?? '{}');
+      decision = meta?.brief_payload?.decision;
+    } catch { /* malformed metadata → decision stays undefined, falls to guard below */ }
+    if (decision !== 'go') {
+      // Not an error: clarify/reject deliberately do not seed formalization.
+      // routeFastTrack handles fast-track. Return empty specs — workflow_generate_next
+      // will report created:0 and the engine will see no downstream work (correct).
+      return [];
+    }
+    const prdRepo = brief.project_repository_id ?? repo;
+    return [{
+      key: `brief:${source.id}:prd`,
+      title: `PRD: ${source.title.replace(/^Discovery:\s*/i, '')}`,
+      kind: 'formalization.prd',
+      stage: 'formalization',
+      executionSkill: 'saga-product',
+      reviewSkill: 'saga-requirements-reviewer',
+      mode: 'git_change',
+      repositoryId: prdRepo,
+      sourceTaskId: source.id,
+      dependencies: [source.id],
+    }];
+  }
+
   if (transition === 'prd_accepted') {
     if (source.task_kind !== 'formalization.prd') {
       throw new Error(`Transition prd_accepted requires task_kind=formalization.prd, got '${source.task_kind}'`);
@@ -178,7 +234,8 @@ export function generateNextForCompletedTask(taskId: number): GeneratedResult | 
     | { id: number; epic_id: number; task_kind: string | null; status: string }
     | undefined;
   if (!task || task.status !== 'done') return null;
-  const transition = task.task_kind === 'formalization.prd' ? 'prd_accepted'
+  const transition = task.task_kind === 'discovery.kickstart' ? 'brief_accepted'
+    : task.task_kind === 'formalization.prd' ? 'prd_accepted'
     : task.task_kind === 'formalization.srs' ? 'srs_accepted'
     : task.task_kind === 'formalization.uc' ? 'uc_accepted'
     : task.task_kind === 'formalization.reconciliation' ? 'baseline_accepted'
@@ -193,14 +250,14 @@ export function generateNextForCompletedTask(taskId: number): GeneratedResult | 
 
 export const definitions: Tool[] = [{
   name: 'workflow_generate_next',
-  description: 'Idempotently generate the next typed workflow tasks from one completed upstream task. Supported foundation transitions: prd_accepted, srs_accepted, uc_accepted, baseline_accepted.',
+  description: 'Idempotently generate the next typed workflow tasks from one completed upstream task. Supported transitions: brief_accepted (kickstart→PRD only, ADR-008), prd_accepted (→SRS+UC), srs_accepted/uc_accepted (→reconciliation), baseline_accepted (→planning).',
   annotations: { title: 'Workflow: Generate Next', readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   inputSchema: {
     type: 'object',
     properties: {
       epic_id: { type: 'integer' },
       source_task_id: { type: 'integer' },
-      transition: { type: 'string', enum: ['prd_accepted', 'srs_accepted', 'uc_accepted', 'baseline_accepted'] },
+      transition: { type: 'string', enum: ['brief_accepted', 'prd_accepted', 'srs_accepted', 'uc_accepted', 'baseline_accepted'] },
     },
     required: ['epic_id', 'source_task_id', 'transition'],
   },

@@ -9,7 +9,8 @@
 //   /api/heartbeat          → JSON { last } — timestamp последней активности
 //   POST /api/artifact/save → сохранить .md + metadata (JSON body)
 import http from 'node:http';
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync, unlinkSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync, unlinkSync, statSync, openSync, readSync, closeSync } from 'node:fs';
+import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
@@ -150,6 +151,8 @@ function loadBoard(projectId) {
     const epicRows = db.prepare(`
       SELECT e.id, e.name, e.project_id, ew.stage AS episode_stage,
         json_extract(ew.metadata,'$.last_gate_error') AS gate_error,
+        json_extract(ew.metadata,'$.needs-human') AS needs_human,
+        json_extract(ew.metadata,'$.pause_reason') AS pause_reason,
         (SELECT count(*) FROM artifacts a WHERE a.epic_id=e.id AND a.status='accepted' AND a.drift_state='drifted') AS drift_count,
         (SELECT count(*) FROM verification_evidence v JOIN artifacts a ON a.id=v.artifact_id
           WHERE a.epic_id=e.id AND v.outcome='passed') AS evidence_count
@@ -551,6 +554,10 @@ function renderBoard(projectId, allProjects) {
       ${e.drift_count ? `<span class="task-badge" style="color:#f85149">drift ${e.drift_count}</span>` : ''}
       ${e.evidence_count ? `<span class="task-badge" style="color:#3fb950">evidence ${e.evidence_count}</span>` : ''}
       ${e.gate_error ? `<span class="task-badge" style="color:#f85149" title="${esc(e.gate_error)}">gate blocked</span>` : ''}
+      ${e.needs_human === 1 ? `
+        <span class="task-badge" style="color:#f85149;background:rgba(231,76,60,.15)" title="${esc(e.pause_reason || 'engine paused')}">⚠ engine paused</span>
+        <button type="button" class="btn episode-resume" data-epic="${e.id}" title="Снять needs-human — движок продолжит">▶ Resume</button>
+      ` : ''}
     </div>`).join('');
   const repoBindings = withDb(db => db.prepare(`
     SELECT pr.id,r.name,pr.status FROM project_repositories pr
@@ -649,6 +656,7 @@ function renderBoard(projectId, allProjects) {
     </div>
     <div class="board">${columnsHtml}</div>
     <script>
+    window.__sagaEpicId = ${Object.values(epicById)[0]?.id || 'null'};
     let activeFilter = '__all__';
     let activeRepo = '__all__';
     let activeStage = '__all__';
@@ -707,6 +715,27 @@ function renderBoard(projectId, allProjects) {
         },'Advance this episode through its hard gate?');
       } catch(err) { alert('Gate rejected: '+err.message); }
     }));
+    document.querySelectorAll('.episode-resume').forEach(button => button.addEventListener('click', async () => {
+      try {
+        const epicId = Number(button.dataset.epic);
+        const r = await fetch('/api/episode/resume', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ epic_id: epicId }),
+        });
+        const j = await r.json();
+        if (j.ok) {
+          if (j.was_paused) {
+            alert('Флаг needs-human снят. Если движок запущен — он продолжит в течение 10 сек.');
+          } else {
+            alert('Флаг needs-human уже был снят. Если движок не запущен — запусти orchestrate-cli вручную.');
+          }
+          location.reload();
+        } else {
+          alert('Ошибка: ' + (j.error || 'неизвестная'));
+        }
+      } catch (err) { alert('Сеть: ' + err.message); }
+    }));
     const runnerStart = document.getElementById('agent-start');
     const runnerStop = document.getElementById('agent-stop');
     const runnerConcurrency = document.getElementById('agent-concurrency');
@@ -724,7 +753,155 @@ function renderBoard(projectId, allProjects) {
       else if (run.status === 'stopped') runnerStatus.textContent = 'остановлено';
       else runnerStatus.textContent = 'ошибка · ' + (run.last_error || run.status);
       if (run?.last_error) runnerStatus.title = run.last_error;
+      // In-process runner workers (legacy path when tracker-view started the
+      // run itself). Cross-process workers come via refreshDbWorkers() below.
+      if (run && run.active && run.active.length > 0) renderWorkersList(run.active);
     }
+    async function refreshDbWorkers() {
+      try {
+        const r = await fetch('/api/workers/active?project_id=${projectId}');
+        const j = await r.json();
+        if (j.ok && j.workers) renderWorkersList(j.workers);
+      } catch {}
+    }
+    refreshDbWorkers();
+    setInterval(refreshDbWorkers, 2000);
+
+    // === Monitor panel: live workers + pipeline ===
+    // Tracks expanded worker rows across refreshes (worker_id → true).
+    const expandedWorkers = new Set();
+    // Render worker rows from a list of {task_id,title,worker_id,log_path,started_at}.
+    function renderWorkersList(active) {
+      const list = document.getElementById('workers-list');
+      const countEl = document.getElementById('worker-count');
+      if (!list || !countEl) return;
+      countEl.textContent = active.length;
+      if (active.length === 0) {
+        list.innerHTML = '<div class="worker-empty">нет активных воркеров</div>';
+        return;
+      }
+      // Remove the empty placeholder if present (initial server-rendered HTML
+      // and the 0-workers branch above both leave .worker-empty in DOM;
+      // adding rows on top without removing it shows both at once).
+      list.querySelectorAll('.worker-empty').forEach(el => el.remove());
+      // Preserve expansion + tail content across re-render by reusing DOM nodes.
+      const existing = new Map();
+      list.querySelectorAll('.worker-row').forEach(el => existing.set(el.dataset.worker, el));
+      const seen = new Set();
+      for (const w of active) {
+        seen.add(w.worker_id);
+        const ageMin = Math.max(0, Math.round((Date.now() - new Date(w.started_at + 'Z').getTime()) / 60000));
+        let row = existing.get(w.worker_id);
+        if (!row) {
+          row = document.createElement('div');
+          row.className = 'worker-row';
+          row.dataset.worker = w.worker_id;
+          row.dataset.logPath = w.log_path || '';
+          row.innerHTML =
+            '<div class="wr-head">' +
+              '<span class="wr-icon">🤖</span>' +
+              '<span class="wr-title"></span>' +
+              '<span class="wr-age"></span>' +
+            '</div>' +
+            '<div class="wr-sub"></div>' +
+            '<div class="worker-tail"></div>';
+          row.addEventListener('click', () => toggleWorker(row));
+          list.appendChild(row);
+        }
+        row.dataset.logPath = w.log_path || '';
+        row.querySelector('.wr-title').textContent = '#' + w.task_id + ' ' + (w.title || '').slice(0, 60);
+        row.querySelector('.wr-age').textContent = ageMin + 'm';
+        row.querySelector('.wr-sub').textContent = w.worker_id;
+        if (expandedWorkers.has(w.worker_id)) row.classList.add('expanded');
+      }
+      // Remove rows for workers no longer active.
+      for (const [wid, el] of existing) {
+        if (!seen.has(wid)) { el.remove(); expandedWorkers.delete(wid); }
+      }
+    }
+    async function toggleWorker(row) {
+      const wid = row.dataset.worker;
+      const isExpanded = expandedWorkers.has(wid);
+      if (isExpanded) {
+        expandedWorkers.delete(wid);
+        row.classList.remove('expanded');
+      } else {
+        expandedWorkers.add(wid);
+        row.classList.add('expanded');
+        await loadWorkerTail(row);
+      }
+    }
+    async function loadWorkerTail(row) {
+      const logPath = row.dataset.logPath;
+      const tailEl = row.querySelector('.worker-tail');
+      if (!logPath || !tailEl) return;
+      tailEl.innerHTML = '<div class="evt">загрузка…</div>';
+      try {
+        const r = await fetch('/api/worker/tail?log_path=' + encodeURIComponent(logPath) + '&lines=10');
+        const j = await r.json();
+        if (!j.ok) { tailEl.innerHTML = '<div class="evt system"><span class="evt-tag">err</span>' + esc(j.error || 'failed') + '</div>'; return; }
+        if (!j.events || j.events.length === 0) {
+          tailEl.innerHTML = '<div class="evt"><span class="evt-tag">empty</span>воркер ещё не писал</div>';
+          return;
+        }
+        tailEl.innerHTML = j.events.map(e => {
+          const cls = e.kind || e.type || 'raw';
+          let tag = e.type || 'raw';
+          let body = '';
+          if (e.kind === 'tool') body = (e.tool || '') + ' ' + (e.snippet || '');
+          else if (e.kind === 'text') body = e.snippet || '';
+          else if (e.kind === 'tool_result') body = '→ ' + (e.snippet || '');
+          else if (e.kind === 'result') body = 'turns=' + (e.num_turns||'?') + ' cost=$' + (e.cost_usd||0).toFixed(4) + ' ' + (e.subtype||'');
+          else if (e.kind === 'system') body = 'subtype=' + (e.subtype||'?');
+          else body = e.snippet || '';
+          const sub = e.subagent ? '<span class="evt-sub">subagent</span>' : '';
+          return '<div class="evt ' + cls + '"><span class="evt-tag">' + tag + '</span>' + esc(body).slice(0, 200) + sub + '</div>';
+        }).join('');
+      } catch (err) {
+        tailEl.innerHTML = '<div class="evt system"><span class="evt-tag">net</span>' + esc(err.message) + '</div>';
+      }
+    }
+    // Auto-refresh expanded worker tails every 3s.
+    setInterval(() => {
+      document.querySelectorAll('.worker-row.expanded').forEach(row => loadWorkerTail(row));
+    }, 3000);
+
+    // Pipeline bar — refresh every RELOAD_SEC.
+    async function refreshPipeline() {
+      const stagesEl = document.getElementById('pipeline-stages');
+      if (!stagesEl) return;
+      const epicId = window.__sagaEpicId;
+      if (!epicId) return;
+      try {
+        const r = await fetch('/api/episode/pipeline?epic_id=' + epicId);
+        const j = await r.json();
+        if (!j.ok) { stagesEl.innerHTML = '<span class="worker-empty">' + esc(j.error || 'err') + '</span>'; return; }
+        const icons = { completed:'✓', in_progress:'●', needs_human:'⚠', pending:'○' };
+        stagesEl.innerHTML = j.stages.map((s, i) => {
+          const cls = s.status;
+          const icon = icons[s.status] || '?';
+          const name = s.name.charAt(0).toUpperCase() + s.name.slice(1);
+          const dur = s.duration_s != null ? formatDur(s.duration_s) : '';
+          const stage = '<div class="pipeline-stage ' + cls + '">' +
+            '<span class="ps-icon">' + icon + '</span>' +
+            '<span class="ps-name">' + name + '</span>' +
+            '<span class="ps-dur">' + dur + '</span>' +
+          '</div>';
+          const arrow = (i < j.stages.length - 1) ? '<div class="pipeline-arrow">→</div>' : '';
+          return stage + arrow;
+        }).join('');
+      } catch {}
+    }
+    function formatDur(sec) {
+      if (sec < 60) return sec + 's';
+      const m = Math.floor(sec / 60); const s = sec % 60;
+      if (m < 60) return m + 'm' + (s ? ' ' + s + 's' : '');
+      const h = Math.floor(m / 60);
+      return h + 'h' + (m % 60) + 'm';
+    }
+    setInterval(refreshPipeline, ${RELOAD_SEC * 1000});
+    refreshPipeline();
+
     async function fetchRunnerStatus() {
       try {
         const r = await fetch('/api/board-run/status?project_id=${projectId}');
@@ -853,10 +1030,13 @@ function renderArtifacts(projectId, allProjects) {
     .map(t => `<span class="tchip" style="border-color:${TYPE_COLORS[t]};color:${TYPE_COLORS[t]}">${TYPE_LABEL[t]||t}: ${byType[t]}</span>`)
     .join('');
 
-  // Сироты: нет родителя И нет исходящих трасс И не являются чьим-то родителем.
+  // Сироты: нет родителя И нет исходящих трасс И не являются чьим-то родителем
+  // И не являются target ни одной trace (например BRIEF — корень discovery,
+  // не имеет parent_artifact_id, но PRD→BRIEF derived_from связывает его).
   const parentIds = new Set(artifacts.filter(a => a.parent_artifact_id != null).map(a => a.parent_artifact_id));
   const isParent = new Set(parentIds);
-  const orphans = artifacts.filter(a => a.parent_artifact_id == null && !isParent.has(a.id) && !tracesBySource[a.id]);
+  const tracesByTarget = new Set(traces.filter(t => t.target_type === 'artifact').map(t => t.target_id));
+  const orphans = artifacts.filter(a => a.parent_artifact_id == null && !isParent.has(a.id) && !tracesBySource[a.id] && !tracesByTarget.has(a.id));
   const treeArts = artifacts.filter(a => !orphans.includes(a));
 
   // Группировка дерева по эпикам (REQ-NNN episode). Корни — без parent_artifact_id.
@@ -1709,9 +1889,68 @@ function page(title, body) {
     .tc-trace-code{font-family:ui-monospace,Consolas,monospace;color:#58a6ff;font-weight:600;font-size:11px}
     .tc-trace-title{color:#e6edf3;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
     .tc-half{align-self:start}
+
+    /* === Monitor panel (right sidebar) — pipeline + live workers === */
+    .monitor-panel{position:fixed;top:0;right:0;width:360px;height:100vh;background:#161b22;border-left:1px solid #30363d;display:flex;flex-direction:column;z-index:100;font-size:12px}
+    body.with-monitor{padding-right:360px}
+    @media (max-width:1200px){.monitor-panel{display:none}body.with-monitor{padding-right:0}}
+    .monitor-panel .mp-section{padding:10px 14px;border-bottom:1px solid #30363d}
+    .monitor-panel .mp-section-title{color:#8b949e;text-transform:uppercase;font-size:10px;letter-spacing:.5px;margin-bottom:8px;font-weight:600}
+    .monitor-panel .mp-pipeline{flex-shrink:0}
+    .monitor-panel .mp-workers{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:4px}
+
+    /* pipeline bar */
+    .pipeline-bar{display:flex;align-items:center;gap:0;overflow-x:auto;padding:2px 0}
+    .pipeline-stage{display:flex;flex-direction:column;align-items:center;padding:5px 6px;border-radius:6px;min-width:54px;font-size:10px;color:#8b949e;flex-shrink:0;text-align:center}
+    .pipeline-stage .ps-icon{font-size:13px;line-height:1}
+    .pipeline-stage .ps-name{margin-top:2px;font-weight:500}
+    .pipeline-stage .ps-dur{margin-top:1px;font-size:9px;opacity:.7}
+    .pipeline-stage.completed{color:#3fb950}
+    .pipeline-stage.in_progress{color:#58a6ff}
+    .pipeline-stage.in_progress .ps-icon{animation:mp-pulse-blue 2s infinite}
+    .pipeline-stage.needs_human{color:#f85149}
+    .pipeline-stage.needs_human .ps-icon{animation:mp-pulse-red 1s infinite}
+    .pipeline-stage.pending{opacity:.35}
+    .pipeline-arrow{color:#30363d;flex-shrink:0;padding:0 1px;font-size:11px;align-self:center;margin-top:-7px}
+    @keyframes mp-pulse-blue{0%,100%{opacity:1}50%{opacity:.4}}
+    @keyframes mp-pulse-red{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(1.15)}}
+
+    /* worker mini-rows */
+    .worker-row{padding:7px 9px;border-radius:6px;cursor:pointer;border:1px solid transparent;transition:background .15s,border-color .15s}
+    .worker-row:hover{background:#21262d}
+    .worker-row.expanded{background:#21262d;border-color:#30363d}
+    .worker-row .wr-head{display:flex;align-items:center;gap:6px}
+    .worker-row .wr-icon{font-size:13px}
+    .worker-row .wr-title{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#e6edf3}
+    .worker-row .wr-age{color:#8b949e;font-size:10px;flex-shrink:0}
+    .worker-row .wr-sub{font-size:10px;color:#8b949e;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .worker-tail{display:none;margin-top:6px;max-height:200px;overflow-y:auto;background:#0d1117;padding:6px 8px;border-radius:4px;font-family:ui-monospace,Consolas,monospace;font-size:10px;line-height:1.4}
+    .worker-row.expanded .worker-tail{display:block}
+    .worker-tail .evt{padding:1px 0;color:#8b949e;border-bottom:1px solid rgba(48,54,61,.3)}
+    .worker-tail .evt:last-child{border-bottom:none}
+    .worker-tail .evt-tag{display:inline-block;min-width:54px;color:#58a6ff;font-weight:600}
+    .worker-tail .evt.tool .evt-tag{color:#d2a8ff}
+    .worker-tail .evt.text .evt-tag{color:#a5d6ff}
+    .worker-tail .evt.result .evt-tag{color:#3fb950}
+    .worker-tail .evt.system .evt-tag{color:#f85149}
+    .worker-tail .evt-sub{font-size:9px;color:#f85149;margin-left:6px}
+    .worker-empty{color:#8b949e;font-size:11px;padding:8px 0;text-align:center}
   </style></head>
-  <body>${body}
+  <body class="with-monitor">${body}
+  <aside class="monitor-panel" id="monitor-panel">
+    <div class="mp-section mp-pipeline">
+      <div class="mp-section-title">Pipeline</div>
+      <div id="pipeline-stages" class="pipeline-bar"><span class="worker-empty">выбери эпик</span></div>
+    </div>
+    <div class="mp-section mp-workers">
+      <div class="mp-section-title">Workers (<span id="worker-count">0</span>)</div>
+      <div id="workers-list"><div class="worker-empty">нет активных воркеров</div></div>
+    </div>
+  </aside>
   <script>
+  // Global HTML-escape helper for inline JS (e.g. monitor panel rendering).
+  // The server-side esc() at l.183 is not available in browser context.
+  window.esc = function(s){ return String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); };
   // Heartbeat — индикатор активности агентов (по activity_log общей БД)
   (function(){
     const dot=document.getElementById('hb-dot');
@@ -2462,19 +2701,43 @@ function renderAdmin(projects, flash) {
         <div class="admin-hint">Статус: <code>planned</code>, приоритет <code>medium</code>.</div>
         <button type="submit" class="btn primary">➕ Создать эпик</button>
       </form>
+      <form class="admin-form" id="idea-form">
+        <input type="hidden" name="action" value="idea">
+        <div class="admin-card-head"><span class="admin-ic">🚀</span> Idea → Engine (3.0)</div>
+        <label class="ed-field"><span>Имя проекта *</span><input type="text" name="name" required placeholder="напр. water-cannon" autocomplete="off"></label>
+        <label class="ed-field"><span>Идея (одной фразой) *</span><textarea name="idea" required rows="3" placeholder="напр. мини автокад 3д для прототипирования" autocomplete="off"></textarea></label>
+        <label class="ed-field"><span>Локальный путь (опц.)</span><input type="text" name="local_path" placeholder="по умолч. D:/Development/&lt;name&gt;" autocomplete="off"></label>
+        <div class="admin-hint">
+          Создаёт project + repo + epic + discovery.kickstart задачу одной транзакцией.
+          При <code>SAGA_ORCHESTRATION_MODE=v3</code> запускает автономный движок в background
+          (он сам прогонит kickstart → PRD → SRS/UC → planning → dev → verify → integration).
+          При <code>v2</code> движок не стартует — воркеры запускаются вручную через board-run.
+        </div>
+        <button type="submit" class="btn primary">🚀 Создать и запустить</button>
+      </form>
     </div>
     <script>
     async function postForm(form) {
       const data = new URLSearchParams(new FormData(form));
       const btn = form.querySelector('button[type=submit]');
       const action = data.get('action');
-      const endpoint = action === 'project' ? '/api/project/create' : '/api/epic/create';
+      const endpoint = action === 'project' ? '/api/project/create'
+        : action === 'idea' ? '/api/project/create-from-idea'
+        : '/api/epic/create';
       btn.disabled = true; const oldTxt = btn.textContent; btn.textContent = 'Создание…';
       try {
         const r = await fetch(endpoint, { method:'POST', body:data });
         const j = await r.json();
         if (j.ok) {
           if (action === 'project') location.href = '/?created=' + encodeURIComponent('проект «'+(j.name||'')+'»');
+          else if (action === 'idea') {
+            const mode = j.orchestration_mode || 'v2';
+            const engineMsg = mode === 'v3'
+              ? (j.engine_spawned ? 'движок запущен (pid=' + j.engine_pid + ')' : 'движок НЕ запущен — проверь лог')
+              : 'движок не стартует в v2 режиме — запусти board-run вручную';
+            alert('Проект создан. project=' + j.project_id + ' epic=' + j.epic_id + ' task=' + j.task_id + '\\n' + engineMsg);
+            location.href = '?project=' + j.project_id + '&created=' + encodeURIComponent('idea → ' + engineMsg);
+          }
           else location.href = '?project=' + j.project_id + '&created=' + encodeURIComponent('эпик «'+(j.name||'')+'»');
         } else {
           btn.disabled = false; btn.textContent = oldTxt;
@@ -2487,6 +2750,7 @@ function renderAdmin(projects, flash) {
     }
     document.getElementById('proj-form').addEventListener('submit', e => { e.preventDefault(); postForm(e.target); });
     document.getElementById('epic-form').addEventListener('submit', e => { e.preventDefault(); postForm(e.target); });
+    document.getElementById('idea-form').addEventListener('submit', e => { e.preventDefault(); postForm(e.target); });
     </script>`);
 }
 
@@ -2575,6 +2839,420 @@ function handleEpicCreate(req, res) {
   });
 }
 
+// --- POST /api/project/create-from-idea: one-shot bootstrap для 3.0 engine ---
+// Поля: name (обяз.), idea (обяз.), local_path (опц., по умолчанию DEV_ROOT/<name>).
+//
+// Атомарно (одна withDbWrite транзакция) создаёт:
+//   1. project (status=active)
+//   2. repository_register (control repo, local_path, default_branch=main, integration_branch=dev)
+//   3. epic (REQ-001-<name>, status=planned, priority=high)
+//   4. episode_workflows row (stage=discovery) — INSERT OR IGNORE
+//   5. discovery.kickstart task (workflow_stage=discovery, exec=saga-kickstart,
+//      tracker_only, priority=critical)
+// Затем, если SAGA_ORCHESTRATION_MODE !== 'v2', spawn'ит orchestrate-cli.js
+// как detached background process. v2 режим — движок не запускается (поведение
+// v2 не меняется, ADR-008/plan §Feature flag).
+//
+// Git init НЕ делается здесь — saga-kickstart воркер сам создаст коммит после
+// регистрации brief artifact (см. saga-kickstart SKILL). Это сознательное
+// упрощение: идея может быть уточнена/отклонена на discovery, тогда git init
+// не нужен.
+function handleProjectCreateFromIdea(req, res) {
+  let chunks = [];
+  req.on('data', c => chunks.push(c));
+  req.on('end', () => {
+    const raw = Buffer.concat(chunks).toString('utf8');
+    let fields;
+    const ct = req.headers['content-type'] || '';
+    if (ct.includes('application/json')) {
+      try { fields = JSON.parse(raw); } catch { fields = {}; }
+    } else {
+      fields = Object.fromEntries(new URLSearchParams(raw));
+    }
+    const name = (fields.name || '').toString().trim();
+    const idea = (fields.idea || '').toString().trim();
+    if (!name) return respondJson(res, 400, { ok:false, error: 'name обязательное поле' });
+    if (!idea) return respondJson(res, 400, { ok:false, error: 'idea обязательное поле' });
+    const localPath = (fields.local_path || '').toString().trim()
+      || path.join(DEV_ROOT, name);
+
+    try {
+      const result = withDbWrite(db => {
+        const dup = db.prepare('SELECT id FROM projects WHERE name = ? COLLATE NOCASE').get(name);
+        if (dup) return { dup: true };
+
+        // 1. project
+        const projInfo = db.prepare(
+          "INSERT INTO projects (name, description, status) VALUES (?, ?, 'active')"
+        ).run(name, idea);
+        const projectId = Number(projInfo.lastInsertRowid);
+
+        // 2. repository — register control repo. Two INSERTs matching
+        //    repository_register in src/tools/repositories.ts (repositories +
+        //    project_repositories). project_repositories has no `name` column —
+        //    name lives on `repositories`. We inline so the whole bootstrap is
+        //    one atomic transaction (no half-created project on partial failure).
+        const repoInfo = db.prepare(
+          `INSERT INTO repositories (name, default_branch) VALUES (?, 'main')`,
+        ).run(name);
+        const repoId = Number(repoInfo.lastInsertRowid);
+        db.prepare(
+          `INSERT INTO project_repositories
+             (project_id, repository_id, role, local_path,
+              integration_branch, status)
+           VALUES (?, ?, 'control', ?, 'dev', 'active')`,
+        ).run(projectId, repoId, localPath);
+
+        // 3. epic
+        const epicInfo = db.prepare(
+          "INSERT INTO epics (project_id, name, description, status, priority) VALUES (?, ?, ?, 'planned', 'high')"
+        ).run(projectId, `REQ-001-${name}`, `Discovery: ${idea}`);
+        const epicId = Number(epicInfo.lastInsertRowid);
+
+        // 4. episode_workflows — discovery stage
+        db.prepare('INSERT OR IGNORE INTO episode_workflows (epic_id) VALUES (?)').run(epicId);
+
+        // 5. kickstart task — tracker_only so worker_done auto-fires brief_accepted
+        //    (dispatcher.ts:608-611 gates generation on execution_mode !== git_change).
+        const taskInfo = db.prepare(
+          `INSERT INTO tasks
+             (epic_id, title, description, status, priority, task_kind, workflow_stage,
+              execution_skill, review_skill, execution_mode, tags, metadata)
+           VALUES (?, ?, ?, 'todo', 'critical', 'discovery.kickstart', 'discovery',
+                   'saga-kickstart', 'saga-requirements-reviewer', 'tracker_only', ?, '{}')`,
+        ).run(
+          epicId,
+          `Discovery: ${idea}`,
+          JSON.stringify({ idea }),
+          JSON.stringify(['stage:discovery', 'kind:discovery.kickstart', 'role:discovery']),
+        );
+        const taskId = Number(taskInfo.lastInsertRowid);
+
+        db.prepare(
+          "INSERT INTO activity_log (entity_type, entity_id, action, summary) VALUES ('project', ?, 'created', ?)"
+        ).run(projectId, `Создан проект «${name}» через веб-форму idea → engine`);
+
+        return { projectId, repoId, epicId, taskId };
+      });
+
+      if (result.dup) {
+        return respondJson(res, 409, { ok:false, error: `Проект «${name}» уже существует` });
+      }
+
+      // Создаём директорию репозитория (если её нет) — без git init.
+      try {
+        if (!existsSync(localPath)) mkdirSync(localPath, { recursive: true });
+      } catch (e) {
+        // Не блокируем ответ — ворер kickstart получит осмысленную ошибку при старте.
+        console.error(`[create-from-idea] mkdir ${localPath} failed: ${e.message}`);
+      }
+
+      // Spawn движка, если включён v3 режим.
+      const mode = (process.env.SAGA_ORCHESTRATION_MODE || 'v2').toLowerCase();
+      let engineSpawned = false;
+      let enginePid = null;
+      if (mode === 'v3') {
+        try {
+          const cliPath = path.join(__dirname, '..', 'dist', 'orchestrate-cli.js');
+          const child = spawn('node', [cliPath, String(result.projectId), String(result.epicId)], {
+            detached: true,
+            stdio: 'ignore',
+            env: {
+              ...process.env,
+              DB_PATH: process.env.DB_PATH,
+              SAGA_ORCHESTRATION_MODE: 'v3',
+            },
+          });
+          child.unref();
+          engineSpawned = true;
+          enginePid = child.pid;
+        } catch (e) {
+          console.error(`[create-from-idea] engine spawn failed: ${e.message}`);
+        }
+      }
+
+      respondJson(res, 200, {
+        ok: true,
+        project_id: result.projectId,
+        repo_id: result.repoId,
+        epic_id: result.epicId,
+        task_id: result.taskId,
+        orchestration_mode: mode,
+        engine_spawned: engineSpawned,
+        engine_pid: enginePid,
+        local_path: localPath,
+      });
+    } catch (e) {
+      respondJson(res, 500, { ok:false, error: 'db: ' + e.message });
+    }
+  });
+}
+
+// --- POST /api/episode/resume: снять needs-human флаг эпизода ---
+// Плане §4 (Risks): когда episode_workflows.metadata.needs-human === true,
+// движок остановился и ждёт. Эта ручка снимает флаг — движок (если запущен)
+// на следующем poll'е (10 сек) увидит изменение и продолжит.
+// Если движок не запущен (paused_timeout / процесс убит), endpoint НЕ
+// перезапускает его — пользователь должен запустить orchestrate-cli вручную
+// или пересоздать через веб-форму.
+function handleEpisodeResume(req, res) {
+  let chunks = [];
+  req.on('data', c => chunks.push(c));
+  req.on('end', () => {
+    const raw = Buffer.concat(chunks).toString('utf8');
+    let fields;
+    const ct = req.headers['content-type'] || '';
+    if (ct.includes('application/json')) {
+      try { fields = JSON.parse(raw); } catch { fields = {}; }
+    } else {
+      fields = Object.fromEntries(new URLSearchParams(raw));
+    }
+    const epicId = Number(fields.epic_id);
+    if (!epicId) return respondJson(res, 400, { ok:false, error: 'epic_id обязательное поле' });
+
+    try {
+      const changes = withDbWrite(db => {
+        const before = db.prepare(
+          `SELECT json_extract(metadata,'$.needs-human') AS nh FROM episode_workflows WHERE epic_id=?`,
+        ).get(epicId);
+        db.prepare(
+          `UPDATE episode_workflows
+             SET metadata=json_remove(metadata, '$.needs-human', '$.pause_reason', '$.paused_at'),
+                 updated_at=datetime('now')
+           WHERE epic_id=?`,
+        ).run(epicId);
+        return { was_paused: before?.nh === 1 };
+      });
+      respondJson(res, 200, { ok:true, epic_id: epicId, ...changes });
+    } catch (e) {
+      respondJson(res, 500, { ok:false, error: 'db: ' + e.message });
+    }
+  });
+}
+
+// --- GET /api/episode/pipeline?epic_id=N ---
+// Pipeline progress data per docs/saga-mcp-3.0-pipeline-ui-spec.md.
+// Computes per-stage status + timestamps FROM activity_log (no new tables).
+// activity_log rows are written by lifecycle.ts:150 on every episode_transition
+// (field_name='episode_stage', old_value=<from>, new_value=<to>).
+function handleEpisodePipeline(req, res, url) {
+  const epicId = Number(url.searchParams.get('epic_id'));
+  if (!epicId) return respondJson(res, 400, { ok:false, error:'epic_id required' });
+  try {
+    const STAGES = ['discovery','formalization','planning','development','verification','integration','completed'];
+    const ew = withDb(db => db.prepare('SELECT stage, metadata, created_at FROM episode_workflows WHERE epic_id=?').get(epicId));
+    if (!ew) return respondJson(res, 404, { ok:false, error:'episode not found' });
+
+    // Find all stage transitions from activity_log, oldest first.
+    const transitions = withDb(db => db.prepare(
+      `SELECT old_value, new_value, created_at FROM activity_log
+       WHERE entity_type='epic' AND entity_id=? AND field_name='episode_stage'
+       ORDER BY created_at ASC`
+    ).all(epicId));
+
+    const meta = (() => { try { return JSON.parse(ew.metadata || '{}'); } catch { return {}; } })();
+    const needsHuman = meta['needs-human'] === true || meta['needs-human'] === 1;
+    const gateError = meta.last_gate_error || null;
+
+    const currentIdx = STAGES.indexOf(ew.stage);
+    const stages = STAGES.map((name, i) => {
+      // Entry transition: first time activity_log shows new_value=<name>.
+      // For the initial stage (no enter record — episode_workflows was
+      // INSERT-OR-IGNORE'd at creation, no activity_log entry), fall back
+      // to episode_workflows.created_at as the enter timestamp.
+      const enter = transitions.find(t => t.new_value === name)
+        || (name === STAGES[0] ? { created_at: ew.created_at } : null);
+      // Exit transition: first time activity_log shows old_value=<name>.
+      const exit = transitions.find(t => t.old_value === name);
+      // For the current stage with no exit yet, duration is "running" — show
+      // time elapsed since enter so the user sees live progress.
+      let status = 'pending';
+      if (i < currentIdx) status = 'completed';
+      else if (i === currentIdx) status = needsHuman ? 'needs_human' : 'in_progress';
+      // cancelled stage is mutually exclusive; treat as terminal-pending unless stage===cancelled
+      let duration_s = null;
+      if (enter && exit) {
+        duration_s = Math.round((new Date(exit.created_at + 'Z') - new Date(enter.created_at + 'Z')) / 1000);
+      } else if (enter && i === currentIdx) {
+        // Live duration for current stage (time since enter until now).
+        duration_s = Math.round((Date.now() - new Date(enter.created_at + 'Z').getTime()) / 1000);
+      }
+      return {
+        name,
+        status,
+        started_at: enter?.created_at || null,
+        completed_at: exit?.created_at || null,
+        duration_s,
+      };
+    });
+
+    respondJson(res, 200, {
+      ok: true,
+      epic_id: epicId,
+      stage: ew.stage,
+      stages,
+      needs_human: needsHuman,
+      last_gate_error: gateError,
+    });
+  } catch (e) {
+    respondJson(res, 500, { ok:false, error: 'db: ' + e.message });
+  }
+}
+
+// --- GET /api/worker/tail?log_path=<path>&lines=8 ---
+// Returns the last N events from a worker's stream-json JSONL log.
+// SECURITY: log_path must resolve inside the board-runs root (path traversal
+// guard). Each JSONL line is parsed minimally — we surface type, tool name
+// (for tool_use), and a short text snippet. Never return raw content.
+function handleWorkerTail(req, res, url) {
+  const logRoot = path.join(os.homedir(), '.zcode', 'cli', 'board-runs');
+  const requestedPath = url.searchParams.get('log_path');
+  const lines = Math.min(Math.max(Number(url.searchParams.get('lines')) || 8, 1), 50);
+  if (!requestedPath) return respondJson(res, 400, { ok:false, error:'log_path required' });
+
+  // Resolve and verify the path is contained under logRoot.
+  const resolved = path.resolve(requestedPath);
+  const resolvedRoot = path.resolve(logRoot);
+  if (!resolved.startsWith(resolvedRoot + path.sep) && resolved !== resolvedRoot) {
+    return respondJson(res, 403, { ok:false, error:'log_path outside board-runs root' });
+  }
+  if (!existsSync(resolved)) {
+    return respondJson(res, 404, { ok:false, error:'log file not found (worker may not have written yet)' });
+  }
+
+  try {
+    // Read last ~32KB to find N complete lines. JSONL lines can be long
+    // (assistant messages with full text), so byte-tail is safer than line count.
+    const stat = statSync(resolved);
+    const tailBytes = Math.min(stat.size, 64 * 1024);
+    const fd = openSync(resolved, 'r');
+    const buf = Buffer.alloc(tailBytes);
+    readSync(fd, buf, 0, tailBytes, Math.max(0, stat.size - tailBytes));
+    closeSync(fd);
+    const allLines = buf.toString('utf8').split('\n').filter(Boolean);
+    const lastLines = allLines.slice(-lines);
+
+    const events = lastLines.map(raw => {
+      try {
+        const evt = JSON.parse(raw);
+        const type = evt.type || 'unknown';
+        // Extract a short label depending on event type.
+        if (type === 'assistant' && evt.message?.content) {
+          const blocks = evt.message.content;
+          if (Array.isArray(blocks)) {
+            for (const b of blocks) {
+              if (b.type === 'tool_use') {
+                return { type, kind: 'tool', tool: b.name, snippet: truncate(JSON.stringify(b.input || {}), 80), subagent: !!evt.parent_tool_use_id };
+              }
+              if (b.type === 'text' && typeof b.text === 'string') {
+                return { type, kind: 'text', snippet: truncate(b.text, 100), subagent: !!evt.parent_tool_use_id };
+              }
+            }
+          }
+          return { type, kind: 'empty' };
+        }
+        if (type === 'user' && evt.message?.content) {
+          const blocks = evt.message.content;
+          if (Array.isArray(blocks)) {
+            for (const b of blocks) {
+              if (b.type === 'tool_result') {
+                const c = typeof b.content === 'string' ? b.content : JSON.stringify(b.content || '');
+                return { type, kind: 'tool_result', snippet: truncate(c, 80) };
+              }
+            }
+          }
+          return { type, kind: 'user_msg' };
+        }
+        if (type === 'system') {
+          // Skip thinking_tokens noise: stream-json emits one event per token
+          // increment (thousands per turn). Surface only meaningful system
+          // events: init, api_retry, plugin_install.
+          if (evt.subtype === 'thinking_tokens') return null;
+          return { type, kind: 'system', subtype: evt.subtype || null };
+        }
+        if (type === 'result') {
+          return {
+            type, kind: 'result',
+            cost_usd: evt.total_cost_usd ?? null,
+            duration_ms: evt.duration_ms ?? null,
+            num_turns: evt.num_turns ?? null,
+            subtype: evt.subtype || null,
+          };
+        }
+        return { type };
+      } catch {
+        // Non-JSON line (e.g. stray stderr output) — surface as raw snippet.
+        return { type: 'raw', snippet: truncate(raw, 100) };
+      }
+    });
+
+    respondJson(res, 200, { ok:true, log_path: resolved, events: events.filter(Boolean) });
+  } catch (e) {
+    respondJson(res, 500, { ok:false, error: 'read: ' + e.message });
+  }
+}
+
+function truncate(s, n) {
+  s = String(s).replace(/\s+/g, ' ').trim();
+  return s.length > n ? s.slice(0, n - 1) + '…' : s;
+}
+
+// --- GET /api/workers/active?project_id=N ---
+// Returns live workers for a project, sourced from the DB (NOT from the
+// in-memory boardRunner singleton). This works across processes: the engine
+// (orchestrate-cli.js) spawns workers into its own runner instance, which
+// tracker-view cannot see. But both share the SQLite DB — so we read
+// active tasks (status in_progress/review_in_progress with assigned_to),
+// and resolve each worker's JSONL log path by convention.
+//
+// Log path convention (claude-runner.mjs:313):
+//   <logRoot>/board-<projectId>-<timestamp>/task-<taskId>-<workerId>.jsonl
+// logRoot default: ~/.zcode/cli/board-runs
+function handleWorkersActive(req, res, url) {
+  const projectId = Number(url.searchParams.get('project_id'));
+  if (!projectId) return respondJson(res, 400, { ok:false, error:'project_id required' });
+  try {
+    const logRoot = path.join(os.homedir(), '.zcode', 'cli', 'board-runs');
+    const rows = withDb(db => db.prepare(
+      `SELECT t.id, t.title, t.status, t.task_kind, t.assigned_to, t.updated_at,
+              e.name AS epic_name
+       FROM tasks t JOIN epics e ON e.id=t.epic_id
+       WHERE e.project_id=? AND t.status IN ('in_progress','review_in_progress')
+         AND t.assigned_to IS NOT NULL AND t.assigned_to != ''
+       ORDER BY t.id`,
+    ).all(projectId));
+    // Resolve JSONL log path by scanning board-runs for a matching filename.
+    // The newest matching file wins (workers reuse IDs across runs).
+    const workers = rows.map(r => {
+      const taskFilePattern = `task-${r.id}-${r.assigned_to.replace(/[^a-zA-Z0-9._-]+/g, '-')}.jsonl`;
+      let logPath = null;
+      try {
+        const runDirs = readdirSync(logRoot)
+          .filter(d => d.startsWith(`board-${projectId}-`))
+          .map(d => ({ d, full: path.join(logRoot, d), mtime: statSync(path.join(logRoot, d)).mtimeMs }))
+          .sort((a, b) => b.mtime - a.mtime);
+        for (const rd of runDirs) {
+          const candidate = path.join(rd.full, taskFilePattern);
+          if (existsSync(candidate)) { logPath = candidate; break; }
+        }
+      } catch { /* logRoot missing or unreadable */ }
+      return {
+        task_id: r.id,
+        title: r.title,
+        status: r.status,
+        task_kind: r.task_kind,
+        worker_id: r.assigned_to,
+        epic_name: r.epic_name,
+        started_at: r.updated_at,
+        log_path: logPath,
+      };
+    });
+    respondJson(res, 200, { ok:true, project_id: projectId, workers });
+  } catch (e) {
+    respondJson(res, 500, { ok:false, error: 'db: ' + e.message });
+  }
+}
+
 // --- роутинг ---
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://localhost');
@@ -2588,6 +3266,12 @@ const server = http.createServer((req, res) => {
   }
   if (req.method === 'POST' && url.pathname === '/api/epic/create') {
     return handleEpicCreate(req, res);
+  }
+  if (req.method === 'POST' && url.pathname === '/api/project/create-from-idea') {
+    return handleProjectCreateFromIdea(req, res);
+  }
+  if (req.method === 'POST' && url.pathname === '/api/episode/resume') {
+    return handleEpisodeResume(req, res);
   }
   if (req.method === 'POST' && url.pathname === '/api/board-run/start') {
     return handleBoardRunStart(req, res);
@@ -2607,6 +3291,15 @@ const server = http.createServer((req, res) => {
   if (req.method === 'GET' && url.pathname === '/api/board-run/status') {
     const projectId = Number(url.searchParams.get('project_id'));
     return respondJson(res, 200, { ok:true, run:boardRunner.status(projectId) });
+  }
+  if (req.method === 'GET' && url.pathname === '/api/episode/pipeline') {
+    return handleEpisodePipeline(req, res, url);
+  }
+  if (req.method === 'GET' && url.pathname === '/api/worker/tail') {
+    return handleWorkerTail(req, res, url);
+  }
+  if (req.method === 'GET' && url.pathname === '/api/workers/active') {
+    return handleWorkersActive(req, res, url);
   }
 
   if (url.pathname === '/api/heartbeat') {

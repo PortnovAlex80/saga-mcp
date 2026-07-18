@@ -156,6 +156,160 @@ test('typed PRD generates SRS and UC exactly once and preserves lineage', () => 
   assert.equal(planning.tasks[0].execution_mode, 'tracker_only');
 });
 
+test('ADR-008: brief_accepted seeds EXACTLY ONE formalization.prd (not PRD+SRS parallel)', () => {
+  // The 3.0 plan draft said "brief → PRD+SRS parallel". That breaks the
+  // sibling() lookup in srs_accepted (workflow.ts:108), so ADR-008 reduced
+  // brief_accepted to seed only the PRD; prd_accepted then creates SRS+UC
+  // as children of that PRD, preserving lineage. This test pins the contract.
+  const product = projects.project_list({}).find(p => p.name === 'Workflow Product');
+  const repo = repositories.repository_list({ project_id: product.id }).repositories[0];
+  const epic = epics.epic_create({ project_id: product.id, name: 'REQ-brief-accepted' });
+
+  // Kickstart task (tracker_only — discovery produces a brief artifact, not code).
+  const kickstart = tasks.task_create({
+    epic_id: epic.id,
+    title: 'Discovery: brief-accepted test',
+    status: 'done',
+    priority: 'critical',
+    task_kind: 'discovery.kickstart',
+    workflow_stage: 'discovery',
+    execution_skill: 'saga-kickstart',
+    execution_mode: 'tracker_only',
+  });
+
+  // Brief artifact with decision='go' — the green light for formalization.
+  artifacts.artifact_create({
+    project_id: product.id,
+    epic_id: epic.id,
+    type: 'brief',
+    title: 'Brief: brief-accepted test',
+    path: `docs/req-brief-accepted/brief.md`,
+    status: 'accepted',
+    project_repository_id: repo.id,
+    metadata: {
+      brief_payload: {
+        classification: 'product',
+        complexity: { tshirt: 'M', risk_triggers: [] },
+        decision: 'go',
+        reasoning: 'Test reasoning for brief_accepted.',
+        affected_projects: [product.id],
+        topology_hint: 'sequence',
+        scaffold_artifacts: [],
+        shared_mutation_risk: false,
+        completeness: 'high',
+        degraded: false,
+      },
+    },
+  });
+
+  const result = workflow.workflow_generate_next({
+    epic_id: epic.id, source_task_id: kickstart.id, transition: 'brief_accepted',
+  });
+  // ADR-008 contract: exactly ONE PRD task, not PRD+SRS.
+  assert.equal(result.created.length, 1);
+  assert.equal(result.tasks[0].task_kind, 'formalization.prd');
+  assert.equal(result.tasks[0].execution_skill, 'saga-product');
+  assert.equal(result.tasks[0].execution_mode, 'git_change');
+  assert.equal(result.tasks[0].workflow_stage, 'formalization');
+  assert.equal(result.tasks[0].generated_from_task_id, kickstart.id);
+  // Repository inherited from the brief artifact (kickstart task has none).
+  assert.equal(result.tasks[0].project_repository_id, repo.id);
+
+  // Idempotency: re-running returns the same task, created=0.
+  const again = workflow.workflow_generate_next({
+    epic_id: epic.id, source_task_id: kickstart.id, transition: 'brief_accepted',
+  });
+  assert.equal(again.created.length, 0);
+  assert.deepEqual(again.reused, result.created);
+
+  // The downstream chain is NOT broken: completing the seeded PRD fires
+  // prd_accepted, which creates SRS+UC as children of the PRD (not of kickstart).
+  process.env.SAGA_ALLOW_MANUAL_STATUS = '1';
+  tasks.task_update({ id: result.tasks[0].id, status: 'done' });
+  delete process.env.SAGA_ALLOW_MANUAL_STATUS;
+  // generateNextForCompletedTask is the production entry point (called from
+  // worker_done); exercise it directly to verify the kind→transition ladder.
+  const prdId = result.tasks[0].id;
+  // Re-import to pick up the exported helper — it's not on `workflow` handlers.
+  // Use the public tool surface instead: workflow_generate_next with the right transition.
+  const downstream = workflow.workflow_generate_next({
+    epic_id: epic.id, source_task_id: prdId, transition: 'prd_accepted',
+  });
+  assert.equal(downstream.created.length, 2);
+  assert.deepEqual(downstream.tasks.map(t => t.task_kind).sort(), ['formalization.srs', 'formalization.uc']);
+  // CRITICAL lineage invariant: SRS and UC share the PRD as their parent
+  // (this is what sibling() at workflow.ts:108 relies on for reconciliation).
+  assert.ok(downstream.tasks.every(t => t.generated_from_task_id === prdId));
+});
+
+test('ADR-008: brief_accepted decision-guard — non-go decisions seed NO PRD', () => {
+  const product = projects.project_list({}).find(p => p.name === 'Workflow Product');
+  const repo = repositories.repository_list({ project_id: product.id }).repositories[0];
+
+  // clarify: questions must be answered before formalization can start.
+  const epicClarify = epics.epic_create({ project_id: product.id, name: 'REQ-brief-clarify' });
+  const kickClarify = tasks.task_create({
+    epic_id: epicClarify.id, title: 'Discovery: clarify case', status: 'done',
+    priority: 'critical', task_kind: 'discovery.kickstart',
+    workflow_stage: 'discovery', execution_skill: 'saga-kickstart', execution_mode: 'tracker_only',
+  });
+  artifacts.artifact_create({
+    project_id: product.id, epic_id: epicClarify.id, type: 'brief',
+    title: 'Brief: clarify', path: 'docs/clarify/brief.md', status: 'draft',
+    project_repository_id: repo.id,
+    metadata: { brief_payload: {
+      classification: 'product', complexity: { tshirt: 'S', risk_triggers: [] },
+      decision: 'clarify', reasoning: 'Need user input.', affected_projects: [product.id],
+      topology_hint: 'sequence', scaffold_artifacts: [], shared_mutation_risk: false,
+      completeness: 'low', degraded: false,
+    } },
+  });
+  const clarifyResult = workflow.workflow_generate_next({
+    epic_id: epicClarify.id, source_task_id: kickClarify.id, transition: 'brief_accepted',
+  });
+  assert.equal(clarifyResult.created.length, 0);
+  assert.equal(clarifyResult.tasks.length, 0);
+
+  // reject: epic is closed, no formalization.
+  const epicReject = epics.epic_create({ project_id: product.id, name: 'REQ-brief-reject' });
+  const kickReject = tasks.task_create({
+    epic_id: epicReject.id, title: 'Discovery: reject case', status: 'done',
+    priority: 'critical', task_kind: 'discovery.kickstart',
+    workflow_stage: 'discovery', execution_skill: 'saga-kickstart', execution_mode: 'tracker_only',
+  });
+  artifacts.artifact_create({
+    project_id: product.id, epic_id: epicReject.id, type: 'brief',
+    title: 'Brief: reject', path: 'docs/reject/brief.md', status: 'draft',
+    project_repository_id: repo.id,
+    metadata: { brief_payload: {
+      classification: 'product', complexity: { tshirt: 'XS', risk_triggers: [] },
+      decision: 'reject', reasoning: 'Out of scope.', affected_projects: [product.id],
+      topology_hint: 'sequence', scaffold_artifacts: [], shared_mutation_risk: false,
+      completeness: 'high', degraded: false,
+    } },
+  });
+  const rejectResult = workflow.workflow_generate_next({
+    epic_id: epicReject.id, source_task_id: kickReject.id, transition: 'brief_accepted',
+  });
+  assert.equal(rejectResult.created.length, 0);
+  assert.equal(rejectResult.tasks.length, 0);
+});
+
+test('ADR-008: brief_accepted throws when source task_kind is not discovery.kickstart', () => {
+  const product = projects.project_list({}).find(p => p.name === 'Workflow Product');
+  const epic = epics.epic_create({ project_id: product.id, name: 'REQ-brief-wrongkind' });
+  const notKickstart = tasks.task_create({
+    epic_id: epic.id, title: 'Not a kickstart', status: 'done',
+    priority: 'medium', task_kind: 'formalization.prd', workflow_stage: 'formalization',
+  });
+  assert.throws(
+    () => workflow.workflow_generate_next({
+      epic_id: epic.id, source_task_id: notKickstart.id, transition: 'brief_accepted',
+    }),
+    /requires task_kind=discovery.kickstart/,
+  );
+});
+
 test('dispatcher returns typed skill and task repository workspace', () => {
   const product = projects.project_create({ name: 'Routing Product' });
   const repo = repositories.repository_register({

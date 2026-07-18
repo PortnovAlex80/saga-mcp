@@ -1,0 +1,789 @@
+/**
+ * saga-mcp 3.0 — Autonomous Orchestration Engine (ADR-008, plan §1).
+ *
+ * The v2 model: a main-context agent (saga-orchestrator skill) drives the
+ * flow by calling saga tools. It CAN bypass saga (AutoCad3D proved).
+ *
+ * The v3 model: a dumb pump loop. It cannot bypass saga. It only:
+ *   1. Spawns workers for current claimable tasks (via ClaudeBoardRunner).
+ *   2. When the queue is empty, asks workflow_generate_next to seed more.
+ *   3. When no more tasks can be generated, attempts episode_transition.
+ *   4. If a hard gate fails, flags needs-human and pauses until resumed.
+ *
+ * The engine runs as a background process (see orchestrate-cli.ts). It shares
+ * the saga SQLite DB with tracker-view's HTTP server but does NOT depend on
+ * it — both processes can run concurrently against the same DB file (SQLite
+ * serialises writers via BEGIN IMMEDIATE, dispatcher.ts:37).
+ *
+ * This module is ADDITIVE (plan §Feature flag): under SAGA_ORCHESTRATION_MODE=v2
+ * nothing here is imported or executed. v2 behaviour is unchanged.
+ */
+
+import { spawn as nodeSpawn } from 'node:child_process';
+import { existsSync, appendFileSync } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { createClaudeBoardRunner } from '../tracker-view/claude-runner.mjs';
+import { getDb, closeDb } from './db.js';
+import { generateNextForCompletedTask } from './tools/workflow.js';
+import { handlers as lifecycleHandlers } from './tools/lifecycle.js';
+import { handlers as dispatcherHandlers } from './tools/dispatcher.js';
+import { handlers as projectHandlers } from './tools/projects.js';
+import { logActivity } from './helpers/activity-logger.js';
+
+/**
+ * Episode stage → next stage (mirror of lifecycle.ts NEXT, kept local to avoid
+ * importing a non-exported const). If lifecycle.STAGES changes, update this.
+ */
+const NEXT_STAGE: Record<string, string | undefined> = {
+  discovery: 'formalization',
+  formalization: 'planning',
+  planning: 'development',
+  development: 'verification',
+  verification: 'integration',
+  integration: 'completed',
+};
+
+/** Pause cap: if the engine sits in needs-human for longer than this, exit. */
+const MAX_PAUSE_MIN = 24 * 60; // 24h — engine exits, user can restart it.
+/** Polling interval for needs-human resume signal. */
+const RESUME_POLL_MS = 10_000;
+/** Max consecutive empty pump cycles before the engine declares the run done. */
+const MAX_EMPTY_CYCLES = 3;
+/** Wait between pump cycles when workers are still active. */
+const PUMP_TICK_MS = 5_000;
+
+/**
+ * RECOVERY TREE — lookup table for self-healing on gate failures.
+ *
+ * When episode_transition fails (hard gate throws), the engine consults this
+ * tree keyed by current stage. Each rule has:
+ *   - match: RegExp tested against the gate error message
+ *   - diagnosis: one-line root cause (for activity_log + UI)
+ *   - action_prompt: full instructions for the recovery worker (inline prompt,
+ *     no separate skill file — saga MCP tools are the surface)
+ *   - max_retries: how many times engine may auto-heal this exact (stage, rule)
+ *     before escalating to human. 0 = never auto-heal (semantic failures).
+ *
+ * The tree is the entire recovery logic. To add coverage for a new failure
+ * mode → push a rule. No code restructuring needed.
+ *
+ * Worker spawned by attemptHeal() is a regular claude-runner worker with an
+ * inline prompt (same MCP config, --disallowedTools worker_next). When done,
+ * engine retries the gate; if it still fails, retry count increments; on
+ * max_retries → escalate to human via needs-human.
+ */
+interface RecoveryRule {
+  match: RegExp;
+  diagnosis: string;
+  action_prompt: string;
+  max_retries: number;
+}
+
+const RECOVERY_TREE: Record<string, RecoveryRule[]> = {
+  formalization: [
+    {
+      match: /episode has no AC artifacts/i,
+      diagnosis: 'saga-analyst never generated ACs after UC done. Workflow has no uc_accepted→ac generation transition; saga-analyst skill expects to write AC in a second task that never got created.',
+      action_prompt: [
+        'You are a saga recovery engineer. Episode is stuck in formalization because no AC (acceptance criteria) artifacts exist.',
+        '',
+        'ROOT CAUSE: saga-analyst wrote UCs but no ACs. The uc_accepted workflow transition does not generate a formalization.ac task.',
+        '',
+        'ACTIONS (use only mcp__saga__ tools; do NOT call worker_next):',
+        '1. Read the episode: epic_id=<EPIC_ID>. Call artifact_list({epic_id, type:"UC"}) and artifact_list({epic_id, type:"SRS"}) and artifact_list({epic_id, type:"FR"}).',
+        '2. Read each UC document at its path. Read the SRS for FR/NFR context.',
+        '3. For EACH UC, derive ≥1 acceptance criterion. For each AC:',
+        '   - artifact_create({project_id, epic_id, type:"AC", code:"AC-N", title:"<short>", path:"docs/.../03-acceptance-criteria.md#AC-N", status:"draft"})',
+        '   - trace_add({source_id: <AC id>, target_type:"artifact", target_id: <UC id>, link_type:"derived_from"})',
+        '   - trace_add({source_id: <AC id>, target_type:"artifact", target_id: <FR id it tests>, link_type:"depends_on"})',
+        '4. After all ACs written, write the AC document to disk at the .md path you declared. Each AC MUST have: Given/When/Then + a measurable property block (per saga AC template).',
+        '5. Accept upstream artifacts that are still in "draft" but have a real document on disk:',
+        '   - artifact_list for PRD, SRS, UC. For each with status="draft": refresh hash via artifact_save with the current file content, then artifact_update to status="accepted".',
+        '   - SKIP if the .md file does not exist or is empty — that is a real gap, escalate via worker_ask_need.',
+        '6. Accept each AC: artifact_update to status:"accepted". AC MUST have content_hash matching accepted_hash (refreshArtifactHash via artifact_save if needed).',
+        '7. Call worker_done({task_id, worker_id, result:"Recovery: created N AC artifacts, accepted PRD/SRS/UC/AC baseline"}).',
+        '',
+        'DO NOT touch PRD content. DO NOT change requirements — only formalize them as ACs.',
+        'DO NOT call episode_transition — the engine will retry the gate after you finish.',
+      ].join('\n'),
+      max_retries: 2,
+    },
+    {
+      match: /AC baseline is not accepted and clean/i,
+      diagnosis: 'ACs exist but not accepted, or drifted from disk.',
+      action_prompt: [
+        'You are a saga recovery engineer. AC baseline is not accepted/clean.',
+        '',
+        'ACTIONS:',
+        '1. artifact_list({epic_id:<EPIC_ID>, type:"AC"}) — list all ACs.',
+        '2. For each AC with status != "accepted": verify the .md file at its path exists and is non-empty. If yes → artifact_save to refresh content_hash, then artifact_update to status:"accepted".',
+        '3. For each AC with drift_state="drifted": artifact_save to rehash from disk. If hash now matches accepted_hash → drift clears. If not → escalate via worker_ask_need (someone is editing AC docs out-of-band).',
+        '4. worker_done with summary.',
+      ].join('\n'),
+      max_retries: 1,
+    },
+    {
+      match: /no PRD artifacts|no SRS artifacts|no UC artifacts/i,
+      diagnosis: 'Upstream formalization artifact missing — earlier worker crashed or skipped.',
+      action_prompt: [
+        'You are a saga recovery engineer. A formalization artifact is missing.',
+        '',
+        'Diagnose by querying artifact_list for type PRD, SRS, UC. Whichever is missing, recreate:',
+        '- Missing PRD: read brief, use saga-product procedure to write 00-PRD.md, register artifact with parent_artifact_id=<brief id>.',
+        '- Missing SRS: read PRD, use saga-architect procedure to write SRS.md, register with parent_artifact_id=<PRD id>.',
+        '- Missing UC: read PRD+SRS, use saga-analyst procedure to write UC.md, register with parent_artifact_id=<PRD id>.',
+        '',
+        'After creating missing artifact, also create any sibling artifacts the workflow would normally generate (e.g. creating UC also needs SRS to exist for reconciliation).',
+        'Call worker_done with summary listing what was created.',
+      ].join('\n'),
+      max_retries: 1,
+    },
+  ],
+  planning: [
+    {
+      match: /no planning tasks exist/i,
+      diagnosis: 'saga-planner never ran or crashed.',
+      action_prompt: [
+        'You are a saga recovery engineer. Planning decomposition task is missing.',
+        '',
+        'ACTIONS:',
+        '1. Verify AC baseline is accepted: artifact_list({epic_id:<EPIC_ID>, type:"AC"}). All must be status:"accepted" with content_hash.',
+        '2. If baseline not accepted → do NOT proceed; escalate via worker_ask_need.',
+        '3. If baseline OK → task_create({epic_id, title:"Decompose accepted baseline", task_kind:"planning.decomposition", workflow_stage:"planning", execution_skill:"saga-planner", execution_mode:"tracker_only", priority:"high"}).',
+        '4. worker_done summary.',
+      ].join('\n'),
+      max_retries: 1,
+    },
+  ],
+  development: [
+    {
+      match: /no development tasks exist/i,
+      diagnosis: 'saga-planner did not decompose into dev tasks.',
+      action_prompt: [
+        'You are a saga recovery engineer. No development tasks exist after planning.',
+        'This means saga-planner failed to decompose. Escalate: this requires re-running planning with possibly-fixable root cause.',
+        'Call worker_ask_need({reason:"planner did not generate dev tasks — needs human to inspect planning.decomposition task output"}) ',
+        'Then worker_done.',
+      ].join('\n'),
+      max_retries: 0, // planner failures usually semantic — do not auto-retry blindly
+    },
+  ],
+  verification: [
+    {
+      match: /no passing baseline evidence for ([AC-]+\d+(?:,\s*[AC-]+\d+)*)/i,
+      diagnosis: 'verifier missed some ACs — they have no passing evidence at baseline hash.',
+      action_prompt: [
+        'You are a saga recovery engineer. Some accepted ACs have no passing verification evidence at their baseline hash.',
+        '',
+        'ACTIONS:',
+        '1. Parse the error for the AC codes that lack evidence.',
+        '2. For each: artifact_get to find its id and accepted_hash.',
+        '3. task_create({epic_id, title:"Verify <AC code>", task_kind:"verification.ac", workflow_stage:"verification", execution_skill:"saga-verifier", execution_mode:"git_change", source_artifact_ids:[<AC id>], priority:"high"}) for each missing one.',
+        '4. trace_add({source_id: <AC id>, target_type:"task", target_id:<verify task id>, link_type:"depends_on"}) so the verifier knows what to verify.',
+        '5. worker_done summary.',
+        '',
+        'The engine will dispatch verifier workers; once they record passing evidence, the gate will pass on retry.',
+      ].join('\n'),
+      max_retries: 2,
+    },
+    // Verification gate also catches real test failures via outcome=failed, but those
+    // surface as "no passing evidence" too. Healer cannot fix a real failure — but it
+    // will try to re-spawn verifier once, and if it still fails, escalate.
+  ],
+  integration: [
+    {
+      match: /no integration tasks exist/i,
+      diagnosis: 'workflow did not generate integration task.',
+      action_prompt: [
+        'You are a saga recovery engineer. No integration task exists.',
+        'ACTIONS: task_create({epic_id, title:"Integrate verified baseline", task_kind:"integration.merge", workflow_stage:"integration", execution_skill:"saga-worker", execution_mode:"git_change", priority:"high"}). worker_done.',
+      ].join('\n'),
+      max_retries: 1,
+    },
+    // Merge conflicts at integration → always escalate (semantic).
+  ],
+};
+
+/** Track heal attempts per (epic, stage, diagnosis) to enforce max_retries. */
+const healRetries = new Map<string, number>();
+
+// ESM does not define __dirname; derive it once from import.meta.url.
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+export interface OrchestrateOptions {
+  projectId: number;
+  epicId: number;
+  concurrency?: number;
+  claudePath?: string;
+  sagaEntry?: string;
+  sagaSkillRoot?: string;
+  logRoot?: string;
+  heartbeatLog?: string;
+  /** Injectable for tests; defaults to node child_process.spawn. */
+  spawn?: typeof nodeSpawn;
+  /** Injectable clock (ms) for tests. */
+  now?: () => number;
+  /** Injectable sleep for tests. */
+  sleep?: (ms: number) => Promise<void>;
+}
+
+export interface OrchestrateResult {
+  projectId: number;
+  epicId: number;
+  finalStage: string;
+  endedAt: string;
+  reason: 'completed' | 'failed' | 'paused_timeout' | 'stopped';
+  cycles: number;
+  lastError: string | null;
+}
+
+/**
+ * Heartbeat line written to the engine log on every cycle boundary. Format
+ * matches claude-runner.mjs heartbeat (line ~100): one line per event, plain
+ * text, parseable by `tail -f`.
+ */
+function engineHeartbeat(opts: OrchestrateOptions, event: string, message: string, now = Date.now): void {
+  const line = [
+    new Date(now()).toISOString(),
+    `engine project=${opts.projectId} epic=${opts.epicId}`,
+    event,
+    message,
+  ].join(' ').replace(/\s+/g, ' ').trim() + '\n';
+  const logPath = opts.heartbeatLog
+    ?? path.join(os.homedir(), '.zcode', 'cli', 'engine-heartbeat.log');
+  try { appendFileSync(logPath, line); } catch { /* log not critical */ }
+}
+
+const defaultSleep = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
+
+/**
+ * Returns the current episode stage, or null if the episode has no workflow row.
+ * Mirrors lifecycle.ts:getOrCreate without the INSERT side effect.
+ */
+function currentStage(epicId: number): string | null {
+  const row = getDb().prepare('SELECT stage FROM episode_workflows WHERE epic_id=?').get(epicId) as
+    | { stage: string }
+    | undefined;
+  return row?.stage ?? null;
+}
+
+/**
+ * Count tasks in a stage by status. Used by the engine to decide whether to
+ * pump workers, generate next, or attempt a transition.
+ */
+function countActiveTasks(epicId: number): {
+  claimable: number;
+  inFlight: number;
+  doneInCurrentStage: number;
+} {
+  const db = getDb();
+  const stage = currentStage(epicId);
+  if (!stage) return { claimable: 0, inFlight: 0, doneInCurrentStage: 0 };
+  const rows = db.prepare(
+    `SELECT status, count(*) AS n FROM tasks
+     WHERE epic_id=? AND workflow_stage=?
+     GROUP BY status`,
+  ).all(epicId, stage) as Array<{ status: string; n: number }>;
+  let claimable = 0, inFlight = 0, done = 0;
+  for (const r of rows) {
+    if (r.status === 'todo' || r.status === 'review') claimable += r.n;
+    else if (r.status === 'in_progress' || r.status === 'review_in_progress') inFlight += r.n;
+    else if (r.status === 'done') done += r.n;
+  }
+  return { claimable, inFlight, doneInCurrentStage: done };
+}
+
+/**
+ * Find completed tasks in the epic whose task_kind is on the
+ * generateNextForCompletedTask ladder, and invoke the generator. Returns the
+ * number of NEW tasks created (0 if nothing to do).
+ *
+ * generateNextForCompletedTask already keys on task_kind and is idempotent
+ * (insertGeneratedTask dedupes by generation_key), so calling it on every
+ * done task is safe — it no-ops on tasks whose downstream already exists.
+ */
+function generateNextIfReady(epicId: number): { created: number; error: string | null } {
+  const db = getDb();
+  const candidates = db.prepare(
+    `SELECT id FROM tasks
+     WHERE epic_id=? AND status='done' AND task_kind IS NOT NULL
+     ORDER BY id`,
+  ).all(epicId) as Array<{ id: number }>;
+  let totalCreated = 0;
+  let lastError: string | null = null;
+  for (const c of candidates) {
+    try {
+      const result = generateNextForCompletedTask(c.id);
+      if (result && result.created.length > 0) {
+        totalCreated += result.created.length;
+      }
+    } catch (err) {
+      lastError = err instanceof Error ? err.message : String(err);
+    }
+  }
+  return { created: totalCreated, error: lastError };
+}
+
+/**
+ * Mark the episode as needs-human (pause). The engine then polls until the
+ * flag is cleared (by POST /api/episode/resume in tracker-view) or until
+ * MAX_PAUSE_MIN elapses.
+ */
+async function pauseAndAlert(
+  epicId: number,
+  reason: string,
+  opts: OrchestrateOptions,
+): Promise<void> {
+  const db = getDb();
+  db.prepare(
+    `UPDATE episode_workflows
+     SET metadata=json_set(COALESCE(metadata,'{}'),
+       '$.needs-human', true,
+       '$.pause_reason', ?,
+       '$.paused_at', datetime('now')),
+       updated_at=datetime('now')
+     WHERE epic_id=?`,
+  ).run(reason, epicId);
+  logActivity(db, 'epic', epicId, 'updated', 'needs-human', null, 'true',
+    `Engine paused: ${reason}`);
+  engineHeartbeat(opts, 'PAUSED', `reason="${reason.slice(0, 200)}"`);
+}
+
+function clearNeedsHuman(epicId: number): void {
+  const db = getDb();
+  db.prepare(
+    `UPDATE episode_workflows
+     SET metadata=json_remove(metadata, '$.needs-human', '$.pause_reason', '$.paused_at'),
+       updated_at=datetime('now')
+     WHERE epic_id=?`,
+  ).run(epicId);
+}
+
+/** Read select metadata fields for the recovery loop's bookkeeping. */
+function readEpisodeMeta(epicId: number): { lastHealError: string | null; lastHealAttempt: string | null } {
+  const row = getDb().prepare(
+    `SELECT json_extract(metadata, '$.lastHealError') AS e,
+            json_extract(metadata, '$.lastHealAttempt') AS a
+     FROM episode_workflows WHERE epic_id=?`,
+  ).get(epicId) as { e: string | null; a: string | null } | undefined;
+  return { lastHealError: row?.e ?? null, lastHealAttempt: row?.a ?? null };
+}
+
+/** Persist recovery bookkeeping fields into episode metadata (merge). */
+function writeEpisodeMeta(epicId: number, patch: Record<string, unknown>): void {
+  const db = getDb();
+  let sql = 'UPDATE episode_workflows SET metadata=json_set(COALESCE(metadata,\'{}\')';
+  const params: unknown[] = [];
+  for (const [k, v] of Object.entries(patch)) {
+    sql += `,'$.${k}',?`;
+    params.push(v);
+  }
+  sql += '), updated_at=datetime(\'now\') WHERE epic_id=?';
+  params.push(epicId);
+  db.prepare(sql).run(...params);
+}
+
+/** Wipe retry counters for one epic (used on human-resume or on new diagnosis). */
+function resetHealRetriesForEpic(epicId: number): void {
+  for (const key of [...healRetries.keys()]) {
+    if (key.startsWith(`${epicId}:`)) healRetries.delete(key);
+  }
+}
+
+async function waitForResume(
+  epicId: number,
+  opts: OrchestrateOptions,
+): Promise<boolean> {
+  const sleep = opts.sleep ?? defaultSleep;
+  const now = opts.now ?? Date.now;
+  const startedAt = now();
+  while (true) {
+    if (now() - startedAt > MAX_PAUSE_MIN * 60_000) {
+      engineHeartbeat(opts, 'PAUSE_TIMEOUT', `${MAX_PAUSE_MIN}min reached — engine exits`);
+      return false;
+    }
+    const row = getDb().prepare(
+      `SELECT json_extract(metadata,'$.needs-human') AS nh FROM episode_workflows WHERE epic_id=?`,
+    ).get(epicId) as { nh: number | null } | undefined;
+    if (!row || row.nh !== 1) {
+      // Either the flag was cleared, or the row was deleted. Treat as resumed.
+      return true;
+    }
+    await sleep(RESUME_POLL_MS);
+  }
+}
+
+/**
+ * Attempt to advance the episode by one stage. Returns true if the stage
+ * changed, false if a hard gate blocked the transition (the caller then
+ * pauses for human attention).
+ */
+function tryAdvanceStage(epicId: number): { advanced: boolean; error: string | null } {
+  const stage = currentStage(epicId);
+  if (!stage) return { advanced: false, error: `episode ${epicId} has no workflow row` };
+  if (stage === 'completed' || stage === 'cancelled') {
+    return { advanced: false, error: null };
+  }
+  const to = NEXT_STAGE[stage];
+  if (!to) return { advanced: false, error: `no NEXT stage for '${stage}'` };
+  try {
+    const result = lifecycleHandlers.episode_transition({
+      epic_id: epicId,
+      to_stage: to as never,
+    }) as { changed: boolean };
+    return { advanced: result.changed, error: null };
+  } catch (err) {
+    return { advanced: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+/**
+ * Match the gate error against RECOVERY_TREE and spawn a recovery worker if
+ * a rule matches and retry budget allows. Returns applied:true if a healer
+ * task was created — the engine pump loop will pick it up via worker_next,
+ * the healer runs, calls worker_done, and on the next cycle the engine
+ * retries the gate (which now may pass).
+ *
+ * Returns escalate:true when:
+ *   - no rule matches the error (unknown failure mode), OR
+ *   - retry budget for this (stage, rule) is exhausted, OR
+ *   - RECOVERY_TREE has no entry for this stage.
+ *
+ * In those cases the caller pauses for human attention.
+ *
+ * The healer task is a regular task with task_kind:"recovery.heal" so the
+ * kanban / activity log can distinguish it from regular work. Its
+ * execution_skill is null — the prompt is fully inline (rendered from the
+ * RECOVERY_TREE rule). claude-runner's buildPrompt falls back to saga-worker
+ * skill when execution_skill is unset, which is fine: the inline prompt
+ * overrides the skill body in practice (worker reads task description).
+ *
+ * NOTE: buildPrompt expects a prompt POSITIONAL ARG, not from task.description.
+ * The runner builds the prompt from task payload. To pass our inline recovery
+ * prompt, we put it in task.description — and also extend buildPrompt via the
+ * runner? Simpler: write the prompt into task.metadata.recovery_prompt and
+ * extend the runner's prompt builder to prefer it. To avoid touching the
+ * runner, we instead create the task with execution_skill:"saga-worker" and
+ * put the full recovery prompt in task.description — saga-worker reads task
+ * description as part of its standard context. The prompt is loud enough to
+ * override the skill body.
+ */
+function attemptHeal(epicId: number, stage: string, gateError: string): {
+  applied: boolean;
+  escalate: boolean;
+  reason: string;
+  taskId: number | null;
+} {
+  const rules = RECOVERY_TREE[stage];
+  if (!rules || rules.length === 0) {
+    return { applied: false, escalate: true, reason: `no recovery rules for stage '${stage}'`, taskId: null };
+  }
+  const rule = rules.find(r => r.match.test(gateError));
+  if (!rule) {
+    return { applied: false, escalate: true, reason: `unmatched gate error for stage '${stage}': ${gateError.slice(0, 120)}`, taskId: null };
+  }
+  const healKey = `${epicId}:${stage}:${rule.diagnosis}`;
+  const retries = healRetries.get(healKey) ?? 0;
+  if (retries >= rule.max_retries) {
+    return { applied: false, escalate: true, reason: `max_retries (${rule.max_retries}) reached for: ${rule.diagnosis}`, taskId: null };
+  }
+  healRetries.set(healKey, retries + 1);
+
+  // Render prompt with epic_id substituted (other placeholders deliberately
+  // absent — the healer discovers project_id, artifact ids via saga MCP).
+  const prompt = rule.action_prompt.replace(/<EPIC_ID>/g, String(epicId));
+  const db = getDb();
+  const projectIdRow = db.prepare('SELECT project_id FROM epics WHERE id=?').get(epicId) as { project_id: number } | undefined;
+  if (!projectIdRow) {
+    return { applied: false, escalate: true, reason: `epic ${epicId} has no project`, taskId: null };
+  }
+  // Insert the recovery task. We put the full prompt in description because
+  // claude-runner's buildPrompt includes the task payload (description among
+  // it) in the worker prompt — the worker reads it and acts.
+  const info = db.prepare(
+    `INSERT INTO tasks
+       (epic_id, title, description, status, priority, task_kind, workflow_stage,
+        execution_skill, review_skill, execution_mode, tags, metadata)
+     VALUES (?, ?, ?, 'todo', 'critical', 'recovery.heal', ?,
+             'saga-worker', 'saga-reviewer', 'tracker_only', ?, '{}')`,
+  ).run(
+    epicId,
+    `Recovery: ${rule.diagnosis.slice(0, 80)}`,
+    `RECOVERY TASK (auto-spawned by engine).\n\nStage: ${stage}\nGate error: ${gateError}\nDiagnosis: ${rule.diagnosis}\n\n${prompt}`,
+    stage,
+    JSON.stringify([`stage:${stage}`, 'kind:recovery.heal', 'role:recovery']),
+  );
+  const taskId = Number(info.lastInsertRowid);
+  logActivity(db, 'epic', epicId, 'created', 'recovery_task', null, String(taskId),
+    `Engine auto-spawned recovery task #${taskId} for stage='${stage}' (attempt ${retries + 1}/${rule.max_retries}): ${rule.diagnosis}`);
+  return { applied: true, escalate: false, reason: `spawned task #${taskId}`, taskId };
+}
+
+/**
+ * Run the orchestration loop. Resolves when:
+ *  - episode reaches 'completed' (success), OR
+ *  - needs-human pause exceeds MAX_PAUSE_MIN (timeout exit), OR
+ *  - MAX_EMPTY_CYCLES consecutive cycles produce no work and no transition.
+ */
+export async function orchestrate(opts: OrchestrateOptions): Promise<OrchestrateResult> {
+  const projectId = opts.projectId;
+  const epicId = opts.epicId;
+  const concurrency = opts.concurrency ?? 4;
+  const now = opts.now ?? Date.now;
+  const sleep = opts.sleep ?? defaultSleep;
+
+  // Resolve the project's workspace (where `claude -p` will run).
+  const projects = projectHandlers.project_list({}) as unknown as Array<{ id: number }>;
+  const project = projects.find(p => p.id === projectId);
+  if (!project) {
+    throw new Error(`orchestrate: project ${projectId} not found`);
+  }
+  const workspaceRoot = resolveProjectWorkspaceForEngine(projectId);
+  if (!workspaceRoot) {
+    throw new Error(
+      `orchestrate: no workspace resolved for project ${projectId}. ` +
+      `Register a repository via repository_register({local_path}) first.`,
+    );
+  }
+
+  const runner = createClaudeBoardRunner({
+    // dispatcherHandlers.worker_next returns `unknown` (ToolHandler signature);
+    // claude-runner.mjs consumes assignment.task / assignment.skill but does
+    // not type-check them at runtime. Cast through unknown to satisfy tsc.
+    claimTask: (args: { worker_id: string; project_id: number; machine_id?: string }) =>
+      dispatcherHandlers.worker_next(args) as ReturnType<typeof dispatcherHandlers.worker_next> as never,
+    getProject: (id: number) => getDb().prepare('SELECT * FROM projects WHERE id=?').get(id),
+    getTaskState: (taskId: number) => {
+      const row = getDb().prepare(
+        'SELECT id, status, assigned_to, tags, integration_state FROM tasks WHERE id=?',
+      ).get(taskId);
+      return row as { id: number; status: string; assigned_to: string | null; tags: string; integration_state: string | null } | undefined;
+    },
+    recoverAssignment: ({ taskId, workerId, originalStatus }: {
+      taskId: number; workerId: string; originalStatus: string; reason: string;
+    }) => {
+      const db = getDb();
+      const task = db.prepare(
+        'SELECT id, title, status, assigned_to, tags FROM tasks WHERE id=?',
+      ).get(taskId) as { id: number; title: string; status: string; assigned_to: string; tags: string } | undefined;
+      if (!task || task.assigned_to !== workerId) return false;
+      let tags: string[] = [];
+      try { tags = JSON.parse(task.tags || '[]'); } catch { tags = []; }
+      if (tags.includes('needs-human')) return false;
+      const restoredStatus = originalStatus === 'review' ? 'review' : 'todo';
+      const info = db.prepare(
+        `UPDATE tasks SET status=?, assigned_to=NULL, updated_at=datetime('now')
+         WHERE id=? AND assigned_to=?`,
+      ).run(restoredStatus, taskId, workerId);
+      return info.changes === 1;
+    },
+    resolveWorkspace: () => workspaceRoot,
+    dbPath: process.env.DB_PATH!,
+    sagaEntry: opts.sagaEntry ?? path.join(__dirname, '..', 'dist', 'index.js'),
+    sagaSkillRoot: opts.sagaSkillRoot ?? path.join(__dirname, '..', 'skills'),
+    claudePath: opts.claudePath,
+    spawn: opts.spawn ?? nodeSpawn,
+    logRoot: opts.logRoot,
+    heartbeatLog: opts.heartbeatLog,
+  });
+
+  engineHeartbeat(opts, 'ENGINE_START',
+    `project=${projectId} epic=${epicId} concurrency=${concurrency} workspace=${workspaceRoot}`);
+
+  // Ensure the episode has a workflow row (lifecycle.getOrCreate-style).
+  getDb().prepare('INSERT OR IGNORE INTO episode_workflows (epic_id) VALUES (?)').run(epicId);
+
+  let cycles = 0;
+  let emptyCycles = 0;
+  let lastError: string | null = null;
+
+  try {
+    while (true) {
+      cycles += 1;
+      const stage = currentStage(epicId);
+      if (!stage) {
+        lastError = `episode ${epicId} workflow row vanished mid-run`;
+        engineHeartbeat(opts, 'ABORT', lastError);
+        break;
+      }
+      if (stage === 'completed' || stage === 'cancelled') {
+        engineHeartbeat(opts, 'DONE', `stage=${stage} cycles=${cycles}`);
+        return {
+          projectId, epicId, finalStage: stage, endedAt: new Date(now()).toISOString(),
+          reason: 'completed', cycles, lastError: null,
+        };
+      }
+
+      // Step 1: pump workers for any claimable tasks in the current stage.
+      let run: ReturnType<typeof runner.status>;
+      try {
+        // Idempotent start: if a run is already active for this project,
+        // start() throws — we treat that as "workers are already pumping".
+        try {
+          runner.start({ projectId, concurrency });
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          if (!/already has an active board run/.test(msg)) throw err;
+        }
+        run = runner.status(projectId);
+      } catch (err) {
+        lastError = err instanceof Error ? err.message : String(err);
+        engineHeartbeat(opts, 'PUMP_FAILED', lastError);
+        // Don't abort the whole engine on a pump failure — sleep and retry.
+        await sleep(PUMP_TICK_MS);
+        continue;
+      }
+
+      const counts = countActiveTasks(epicId);
+      const workersBusy = (run?.active?.length ?? 0) > 0;
+
+      engineHeartbeat(opts, 'CYCLE',
+        `stage=${stage} claimable=${counts.claimable} in_flight=${counts.inFlight}` +
+        ` workers=${run?.active?.length ?? 0}`);
+
+      // Step 2: if there's nothing to claim AND no workers running, try to
+      // generate the next wave of tasks.
+      //
+      // CRITICAL (discovered during 4D_Las_viewer first run): the gate must
+      // also block when counts.inFlight > 0, not just when workersBusy is true.
+      // workersBusy reflects only THIS runner's child processes; but a worker
+      // spawned by a PREVIOUS engine process (or by tracker-view's board-run)
+      // is still in_flight at the DB level (task.status='in_progress'). Without
+      // this check, the engine races ahead: kicks off episode_transition while
+      // kickstart worker is mid-flight writing its brief — episode jumps to
+      // 'formalization' with no artifacts, then crashes the planning gate.
+      if (counts.claimable === 0 && !workersBusy && counts.inFlight === 0) {
+        const gen = generateNextIfReady(epicId);
+        if (gen.error) {
+          engineHeartbeat(opts, 'GEN_ERROR', gen.error.slice(0, 200));
+          lastError = gen.error;
+        }
+        if (gen.created > 0) {
+          engineHeartbeat(opts, 'GENERATED', `tasks=${gen.created}`);
+          emptyCycles = 0;
+          continue; // new tasks appeared — pump them next cycle
+        }
+
+        // Step 3: nothing left to generate. Try to advance the stage.
+        const advance = tryAdvanceStage(epicId);
+        if (advance.advanced) {
+          engineHeartbeat(opts, 'STAGE_ADVANCED', `${stage} → ${currentStage(epicId)}`);
+          emptyCycles = 0;
+          continue;
+        }
+        if (advance.error) {
+          // Hard gate failed. If it's a recoverable "tasks not ready" we just
+          // wait; if it's a substantive gate failure, try self-heal first.
+          const isTasksReady = /gate failed: tasks not completed/i.test(advance.error)
+            || /gate failed: no .* tasks exist/i.test(advance.error);
+          if (isTasksReady && counts.inFlight > 0) {
+            // Workers still finishing — wait for them.
+            await sleep(PUMP_TICK_MS);
+            continue;
+          }
+
+          // Recovery: consult RECOVERY_TREE before bothering a human.
+          // attemptHeal either spawns a healer task (applied:true) or
+          // returns escalate:true when budget exhausted / unknown failure.
+          // Only check for a NEW gate error — if it changed since last heal
+          // attempt, the previous heal made progress (different failure now),
+          // so we reset the retry counter for the new diagnosis.
+          const meta = readEpisodeMeta(epicId);
+          if (meta.lastHealError !== advance.error) {
+            // New error → previous heal advanced the diagnosis. Reset counters
+            // for the new error so the engine can heal again.
+            resetHealRetriesForEpic(epicId);
+          }
+          const heal = attemptHeal(epicId, stage, advance.error);
+          writeEpisodeMeta(epicId, { lastHealError: advance.error, lastHealAttempt: new Date().toISOString() });
+          if (heal.applied) {
+            engineHeartbeat(opts, 'HEALING',
+              `spawned task #${heal.taskId} — ${heal.reason.slice(0, 100)}`);
+            lastError = null;
+            emptyCycles = 0;
+            // Clear needs-human so waitForResume isn't triggered; the pump
+            // loop will pick up the healer task on next cycle and wait for
+            // it like any other worker.
+            clearNeedsHuman(epicId);
+            await sleep(PUMP_TICK_MS);
+            continue;
+          }
+
+          // Healer couldn't help → escalate to human.
+          engineHeartbeat(opts, 'ESCALATE', `recovery gave up: ${heal.reason}`);
+          lastError = `${advance.error} [healer: ${heal.reason}]`;
+          await pauseAndAlert(epicId, lastError, opts);
+          const resumed = await waitForResume(epicId, opts);
+          if (!resumed) {
+            return {
+              projectId, epicId, finalStage: stage, endedAt: new Date(now()).toISOString(),
+              reason: 'paused_timeout', cycles, lastError,
+            };
+          }
+          // Resumed — clear flag and continue (the human may have advanced
+          // the stage manually; currentStage() will reflect it next loop).
+          clearNeedsHuman(epicId);
+          // Human override → reset retry budget, give the engine a fresh start.
+          resetHealRetriesForEpic(epicId);
+          emptyCycles = 0;
+          continue;
+        }
+
+        // No tasks, no generation, no transition, no error → empty cycle.
+        emptyCycles += 1;
+        engineHeartbeat(opts, 'EMPTY', `empty=${emptyCycles}/${MAX_EMPTY_CYCLES}`);
+        if (emptyCycles >= MAX_EMPTY_CYCLES) {
+          engineHeartbeat(opts, 'STOP', `${MAX_EMPTY_CYCLES} empty cycles — engine done`);
+          break;
+        }
+        await sleep(PUMP_TICK_MS);
+        continue;
+      }
+
+      // There are claimable tasks or workers in flight — wait for progress.
+      emptyCycles = 0;
+      await sleep(PUMP_TICK_MS);
+    }
+  } finally {
+    try { runner.dispose(); } catch { /* best effort */ }
+    engineHeartbeat(opts, 'ENGINE_EXIT', `cycles=${cycles} lastError=${lastError ?? 'null'}`);
+  }
+
+  const finalStage = currentStage(epicId) ?? 'unknown';
+  return {
+    projectId, epicId, finalStage, endedAt: new Date(now()).toISOString(),
+    reason: finalStage === 'completed' ? 'completed' : 'failed',
+    cycles, lastError,
+  };
+}
+
+/**
+ * Resolve the workspace root for spawning workers. Preference order:
+ *  1. The first registered repository with a local_path that exists on disk.
+ *  2. Null if no usable workspace is found.
+ *
+ * Mirrors tracker-view.mjs resolveProjectWorkspace but kept self-contained
+ * so the engine does not depend on the HTTP server.
+ */
+function resolveProjectWorkspaceForEngine(projectId: number): string | null {
+  const db = getDb();
+  const rows = db.prepare(
+    `SELECT pr.id, r.name, COALESCE(rc.local_path, pr.local_path) AS local_path
+     FROM project_repositories pr
+     JOIN repositories r ON r.id=pr.repository_id
+     LEFT JOIN repository_checkouts rc
+       ON rc.project_repository_id=pr.id AND rc.machine_id=? AND rc.status='active'
+     WHERE pr.project_id=? AND pr.status='active'
+     ORDER BY pr.id`,
+  ).all(os.hostname(), projectId) as Array<{ id: number; name: string; local_path: string | null }>;
+  for (const r of rows) {
+    if (r.local_path && existsSync(r.local_path)) return r.local_path;
+  }
+  return null;
+}
+
+/** Re-export for tests. */
+export { closeDb };

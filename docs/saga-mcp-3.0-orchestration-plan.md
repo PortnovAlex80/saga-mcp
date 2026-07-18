@@ -71,32 +71,54 @@ export async function orchestrate(projectId, epicId, options) {
 - `pauseAndAlert()` — ставит epic metadata `needs-human`, пишет в activity_log, heartbeat
 - `waitForResume()` — polling saga DB каждые 10 сек на изменение metadata (resume signal)
 
-### 2. `workflow_generate_next` — добавить 3 перехода (~60 строк в workflow.ts)
+### 2. `workflow_generate_next` — добавить `brief_accepted` (~30 строк в workflow.ts)
+
+> **Исправлено ADR-008** ([008-brief-accepted-prd-only.md](architecture/decisions/008-brief-accepted-prd-only.md)).
+> Изначальный набросок этого раздела говорил «brief → PRD + SRS параллельно».
+> При чтении кода выяснилось: существующий `prd_accepted` (workflow.ts:84-100)
+> уже создаёт SRS+UC как children of PRD, а `srs_accepted`/`uc_accepted`
+> (workflow.ts:102-125) ищут свою пару через `sibling(...)` по
+> `generated_from_task_id`. Если бы `brief_accepted` создал SRS как child of
+> kickstart, а `prd_accepted` создал бы UC как child of PRD — `sibling()`
+> упал бы с `"matching formalization.uc task was not found"` и заблокировал
+> весь downstream. Поэтому переход создаёт **только PRD**.
 
 Сейчас есть: `prd_accepted`, `srs_accepted`, `uc_accepted`, `baseline_accepted`.
 
 Добавить:
 
 ```typescript
-// brief_accepted: brief done → создать PRD + SRS tasks
+// brief_accepted: kickstart done → создать ОДНУ formalization.prd задачу.
+// SRS+UC создаст существующий prd_accepted (workflow.ts:84-100) — оставляем
+// эту цепочку нетронутой (battle-tested, покрыта tests/product-workflow.test.mjs).
 'brief_accepted': (db, epic, source) => {
-  // Создаёт formalization.prd (exec: saga-product)
-  // + formalization.srs (exec: saga-architect)
-  // Параллельны, depends_on kickstart task
+  // 1. Validation: source.task_kind === 'discovery.kickstart'
+  // 2. Найти brief artifact (type='brief' в эпизоде). Если нет → throw.
+  // 3. Decision-guard: прочитать metadata.brief_payload.decision. Если !== 'go'
+  //    → return [] (clarify/reject/fast-track имеют свои пути, PRD не нужен).
+  // 4. Создать formalization.prd (exec: saga-product, review:
+  //    saga-requirements-reviewer, mode: git_change, stage: formalization,
+  //    dependencies: [kickstart.id], project_repository_id inherited из brief).
 }
-
-// planning_done: planner done → НИЧЕГО (планнер сам создаёт dev tasks)
-// Уже работает — planner через task_create создаёт scaffold + bodies
-
-// development_all_done: все dev tasks done → автоматически переходит
-// через episode_transition (hard gate проверяет tasks done + merged)
-// НЕ создаёт задачи — verification tasks уже созданы planner'ом
-
-// verification_done: verifier done → workflow_generate_next уже не нужен
-// episode_transition → integration (hard gate проверяет evidence)
 ```
 
-Дополнительно: `generateNextForCompletedTask` (в dispatcher.ts) — добавить `discovery.kickstart → brief_accepted`.
+Дополнительно:
+- `generateNextForCompletedTask` (workflow.ts) — добавить в ladder:
+  `discovery.kickstart → 'brief_accepted'` (первая ветка в ternary).
+- Tool enum и описание — добавить `brief_accepted`.
+- **Stage transition (discovery → formalization) НЕ делает `brief_accepted`.**
+  Этим занимается движок `orchestrate.ts` (шаг 2): после того как
+  `workflow_generate_next` создал PRD, движок вызывает `episode_transition`.
+  Это разделение ответственности: `workflow.ts` не мутирует episode stage,
+  `lifecycle.ts` (вызванный движком) — мутирует. (См. ADR-008 §Decision п.4.)
+
+Параллельные/позже переходы из изначального наброска:
+- `planning_done`: planner done → НИЧЕГО (планнер сам создаёт dev tasks через task_create)
+- `development_all_done`: проверяется `episode_transition` hard gate (development → verification)
+- `verification_done`: проверяется `episode_transition` hard gate (verification → integration)
+
+Эти три не требуют новых `workflow_generate_next` переходов — они уже работают
+через существующую машину состояний `episode_transition`.
 
 ### 3. Web UI — форма "New Project" (~80 строк в tracker-view.mjs)
 
@@ -179,11 +201,22 @@ HTML: кнопка «+ Новый проект» → модальная форм
 
 ## Порядок реализации
 
-1. `workflow_generate_next` — добавить `brief_accepted` transition (~1h)
-   - В `src/tools/workflow.ts`: новый transition в `specsForTransition`
-   - В `src/tools/dispatcher.ts` `generateNextForCompletedTask`: добавить `discovery.kickstart → 'brief_accepted'`
+> **Статус: реализовано (2026-07-18).** Все 6 шагов выполнены. См. ADR-008 для
+> ключевого архитектурного решения по `brief_accepted`. Smoke-test пройден:
+> `POST /api/project/create-from-idea` в `SAGA_ORCHESTRATION_MODE=v3` создаёт
+> полную цепочку project+repo+epic+task и spawn'ит движок; движок pump'ает
+> задачу в `worker_next`, spawn'ит воркера, пишет heartbeat. Полный end-to-end
+> цикл (до `completed`) требует реального `claude` CLI и не покрыт автотестом.
 
-2. `src/orchestrate.ts` — цикл pumpAndWait + transition + pause/resume (~3h)
+1. `workflow_generate_next` — добавить `brief_accepted` transition ✅
+   - В `src/tools/workflow.ts`: новый transition в `specsForTransition`
+     (создаёт **одну** formalization.prd задачу, не PRD+SRS — см. ADR-008)
+   - Decision-guard: читает brief artifact, skip если `decision !== 'go'`
+   - В `src/tools/workflow.ts` `generateNextForCompletedTask`: добавлен
+     `discovery.kickstart → 'brief_accepted'` в ladder
+   - Покрыто 3 новыми тестами в `tests/product-workflow.test.mjs`
+
+2. `src/orchestrate.ts` — цикл pumpAndWait + transition + pause/resume ✅
    - Импортирует ClaudeBoardRunner (или inline pump loop)
    - Импортирует episode_status, episode_transition, workflow_generate_next
    - `pumpAndWait()` — spawn workers, ждать все close events
