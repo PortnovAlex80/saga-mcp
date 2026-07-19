@@ -27,6 +27,7 @@
     "start": "node dist/index.js",
     "dev": "tsc && node dist/index.js",
     "tracker": "node tracker-view/tracker-view.mjs",
+    "docs-graph": "node tracker-view/docs-graph/server.mjs",
     "cgad-lint": "node tools/cgad-spec-lint.mjs",
     "cgad-lint:test": "node --test tools/cgad-spec-lint.test.mjs",
     "lint": "eslint src/",

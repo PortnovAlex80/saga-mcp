@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Docs Graph — saga</title>
+  <link rel="stylesheet" href="/style.css" />
+  <!--
+    Frontend deps vendored via CDN (unpkg) to keep this subpackage zero-install.
+    cytoscape + cytoscape-dagre together render the DAG layout; marked is the
+    markdown preview renderer used by the side panel.
+
+    For offline use, replace these <script> tags with locally vendored copies
+    in public/vendor/ — the API surface used is stable across recent versions.
+  -->
+  <script src="https://unpkg.com/cytoscape@3.28.1/dist/cytoscape.min.js"></script>
+  <script src="https://unpkg.com/dagre@0.8.5/dist/dagre.min.js"></script>
+  <script src="https://unpkg.com/cytoscape-dagre@2.5.0/cytoscape-dagre.js"></script>
+  <script src="https://unpkg.com/marked@12.0.2/marked.min.js"></script>
+</head>
+<body>
+  <div class="toolbar">
+    <h1>📄 Docs Graph</h1>
+    <label>
+      Project:
+      <select id="project-select"></select>
+    </label>
+    <button id="refresh-btn" title="Перестроить граф">↻ Refresh</button>
+    <button id="branches-btn" title="Активные docs-ветки">🌿 Branches</button>
+    <label>
+      Layout:
+      <select id="layout-select">
+        <option value="dagre" selected>DAG (tree)</option>
+        <option value="breadthfirst">Breadth-first</option>
+        <option value="cose">Force</option>
+        <option value="circle">Circle</option>
+        <option value="concentric">Concentric</option>
+      </select>
+    </label>
+    <label title="Скрыть рёбра implements/depends_on для читаемости">
+      <input type="checkbox" id="hide-task-edges" /> hide task edges
+    </label>
+    <div class="spacer"></div>
+    <span class="stat" id="stats">—</span>
+  </div>
+
+  <div class="main">
+    <div id="cy"></div>
+    <aside class="side-panel empty" id="side-panel">
+      Кликните на узел, чтобы увидеть детали.
+    </aside>
+  </div>
+
+  <!-- Branches drawer (Phase B): shows active docs branches, switch to editor. -->
+  <div id="branches-drawer" class="drawer hidden">
+    <div class="drawer-header">
+      <span>🌿 Docs branches</span>
+      <button id="branches-close" class="icon-btn">×</button>
+    </div>
+    <div id="branches-list" class="drawer-body"></div>
+  </div>
+
+  <!-- Merge modal (Phase C): PR-like diff preview + merge into integration branch. -->
+  <div id="merge-modal" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="modal-card">
+      <div class="modal-header">
+        <span id="merge-title">Merge docs branch</span>
+        <button id="merge-close" class="icon-btn">×</button>
+      </div>
+      <div class="modal-body">
+        <div id="merge-info" class="merge-info"></div>
+        <div class="merge-files">
+          <div class="section-title">Files changed (<span id="merge-files-count">0</span>)</div>
+          <div id="merge-files-list"></div>
+        </div>
+        <details class="merge-patch-details">
+          <summary>Show full diff</summary>
+          <pre id="merge-patch" class="merge-patch"></pre>
+        </details>
+        <div class="editor-actions">
+          <span id="merge-status" class="merge-status"></span>
+          <button id="merge-confirm">Merge into <span id="merge-target">dev</span></button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Editor modal (Phase B): write .md inside a docs branch. -->
+  <div id="editor-modal" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="modal-card">
+      <div class="modal-header">
+        <span id="editor-title">Edit</span>
+        <button id="editor-close" class="icon-btn">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="editor-meta">
+          <label>Path:
+            <input id="editor-path" type="text" placeholder="docs/foo.md" />
+          </label>
+          <label>Branch:
+            <select id="editor-branch-select">
+              <option value="">(create new)</option>
+            </select>
+          </label>
+          <label class="new-branch" hidden>
+            New change id:
+            <input id="editor-new-branch" type="text" placeholder="my-change" />
+          </label>
+        </div>
+        <div class="editor-split">
+          <textarea id="editor-textarea" spellcheck="false"></textarea>
+          <div id="editor-preview" class="markdown-preview"></div>
+        </div>
+        <div class="editor-actions">
+          <input id="editor-message" type="text" placeholder="commit message" />
+          <button id="editor-save">Save (commit)</button>
+          <button id="editor-discard" class="danger">Discard branch</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/graph.js"></script>
+  <script src="/editor.js"></script>
+</body>
+</html>

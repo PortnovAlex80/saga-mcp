@@ -1,0 +1,12 @@
+{
+  "name": "saga-docs-graph-viewer",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Docs Graph Viewer for saga-mcp — renders a unified graph of saga artifacts (PRD/SRS/UC/AC/...) and all .md documents in a repository, with PR-like branch editing.",
+  "type": "module",
+  "main": "server.mjs",
+  "scripts": {
+    "start": "node server.mjs"
+  },
+  "dependencies": {}
+}

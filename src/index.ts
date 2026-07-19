@@ -171,6 +171,32 @@ async function main() {
       console.error('Tracker view failed to start (non-fatal):', err instanceof Error ? err.message : err);
     }
   }
+
+  // Автозапуск docs-graph viewer (унифицированный граф артефактов + .md).
+  // Тот же паттерн, что и tracker-view: detached + stdio:'ignore' (MCP-протокол
+  // родителя нельзя трогать), unref — child живёт независимо. Порт 4322 по
+  // умолчанию. DOCS_GRAPH_AUTOSTART=0 → не запускать.
+  if (process.env.DOCS_GRAPH_AUTOSTART !== '0' && process.env.DB_PATH) {
+    try {
+      const docsGraphPath = path.join(__dirname, '..', 'tracker-view', 'docs-graph', 'server.mjs');
+      if (existsSync(docsGraphPath)) {
+        const docsPort = process.env.DOCS_GRAPH_PORT || '4322';
+        const child = spawn('node', [docsGraphPath], {
+          detached: true,
+          stdio: 'ignore',
+          env: {
+            ...process.env,
+            DOCS_GRAPH_PORT: docsPort,
+            DB_PATH: process.env.DB_PATH,
+          },
+        });
+        child.unref();
+        console.error(`Docs graph   → http://localhost:${docsPort} (set DOCS_GRAPH_AUTOSTART=0 to disable)`);
+      }
+    } catch (err) {
+      console.error('Docs graph failed to start (non-fatal):', err instanceof Error ? err.message : err);
+    }
+  }
 }
 
 process.on('SIGINT', () => {

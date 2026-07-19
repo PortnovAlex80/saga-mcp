@@ -11,3 +11,9 @@ tracker-view/.tracker-view.pid
 
 # git worktrees (saga task isolation: .worktrees/task-<id>)
 .worktrees/
+
+# ZCode client session artifacts (local plans, not part of the repo)
+.zcode/
+
+# temp test/build logs
+*.log
