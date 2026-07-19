@@ -509,6 +509,41 @@ function readActiveModelLimit(epicId: number): number | null {
   return typeof lim === 'number' && lim >= 1 ? lim : null;
 }
 
+/**
+ * Read the user's chosen concurrency from episode metadata. Written by the
+ * kanban UI (POST /api/engine/concurrency — a pure metadata write, NO kill,
+ * NO spawn). The pump loop re-reads this every RATE_LIMIT_SCAN_TICKS cycle
+ * so a concurrency change takes effect WITHOUT an engine restart — active
+ * workers finish their cycle; the engine converges to the new target as the
+ * active count drops.
+ *
+ * Falls back to null when no value has been recorded; caller uses the
+ * engine's startup opts.concurrency.
+ */
+function readEngineConcurrency(epicId: number): number | null {
+  const row = getDb().prepare(
+    `SELECT json_extract(metadata, '$.engine_concurrency') AS c
+     FROM episode_workflows WHERE epic_id=?`,
+  ).get(epicId) as { c: number | null } | undefined;
+  const c = row?.c;
+  return typeof c === 'number' && c >= 1 && c <= 10 ? c : null;
+}
+
+/**
+ * Compute the target concurrency for this pump cycle from the latest metadata:
+ *   target = min(engine_concurrency_metadata, active_model_limit)
+ * Both fields can be changed mid-run via the kanban UI; both are re-read on
+ * every RATE_LIMIT_SCAN_TICKS cycle so changes converge without an engine
+ * restart. Falls back to the startup value when neither field is set.
+ */
+function readTargetConcurrency(epicId: number, fallbackConcurrency: number): number {
+  const engineConc = readEngineConcurrency(epicId);
+  const modelLimit = readActiveModelLimit(epicId);
+  let target = engineConc ?? fallbackConcurrency;
+  if (modelLimit !== null) target = Math.min(target, modelLimit);
+  return target;
+}
+
 /** Persist recovery bookkeeping fields into episode metadata (merge). */
 function writeEpisodeMeta(epicId: number, patch: Record<string, unknown>): void {
   const db = getDb();
@@ -814,8 +849,12 @@ export async function orchestrate(opts: OrchestrateOptions): Promise<Orchestrate
   // Re-read every RATE_LIMIT_SCAN_TICKS cycle (see pump loop) so a model switch
   // takes effect WITHOUT an engine restart.
   let targetConcurrency = (() => {
-    const lim = readActiveModelLimit(epicId);
-    return lim !== null ? Math.min(concurrency, lim) : concurrency;
+    // Re-read EVERY RATE_LIMIT_SCAN_TICKS cycle (see pump loop) so BOTH:
+    //   - a model switch (/api/model/set → $.active_model_limit), AND
+    //   - a concurrency switch (/api/engine/concurrency → $.engine_concurrency)
+    // take effect WITHOUT an engine restart. Active workers finish; the
+    // engine converges to the new target as the active count drops.
+    return readTargetConcurrency(epicId, concurrency);
   })();
   // Effective concurrency may be lower than the target when the API is
   // rate-limiting (429). Starts at target, drops by 1 per rate-limit hit,
@@ -1083,8 +1122,10 @@ export async function orchestrate(opts: OrchestrateOptions): Promise<Orchestrate
       rateLimitCheckCounter += 1;
       if (rateLimitCheckCounter >= RATE_LIMIT_SCAN_TICKS) {
         rateLimitCheckCounter = 0;
-        const lim = readActiveModelLimit(epicId);
-        targetConcurrency = lim !== null ? Math.min(concurrency, lim) : concurrency;
+        // Re-read BOTH concurrency and model-limit from metadata. Either can
+        // change mid-run via the kanban UI; both take effect without an
+        // engine restart.
+        targetConcurrency = readTargetConcurrency(epicId, concurrency);
         const rlDetected = detectRateLimits(epicId, projectId, opts);
         if (rlDetected > 0) {
           // Drop ceiling by 1 per rate-limited worker (min 1). Old workers
