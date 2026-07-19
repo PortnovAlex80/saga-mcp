@@ -22,6 +22,7 @@ import { handlers as lifecycleHandlers } from '../dist/tools/lifecycle.js';
 import { createClaudeBoardRunner } from './claude-runner.mjs';
 import { isProcessAlive } from '../dist/worker-executions.js';
 import { releaseExecutionAtomically } from '../dist/lifecycle/atomic-release.js';
+import { getDb as ensureSagaDb, closeDb as closeSagaDb } from '../dist/db.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const require = createRequire(import.meta.url);
@@ -31,9 +32,28 @@ const Database = require(path.join(__dirname, '..', 'node_modules', 'better-sqli
 
 // ОДИН источник данных — общая БД saga-mcp. Та же, что saga-MCP-сервер.
 const DB_PATH = process.env.DB_PATH;
-if (!DB_PATH || !existsSync(DB_PATH)) {
-  console.error('DB_PATH не задан или не существует. Saga-MCP должен запустить tracker-view с правильным DB_PATH.');
+if (!DB_PATH) {
+  console.error('DB_PATH не задан. Укажите путь к saga.db (например, DB_PATH=C:/Users/<вы>/.zcode/saga.db).');
   process.exit(1);
+}
+// Файл saga.db создаётся лениво MCP-сервером при первом вызове инструмента.
+// Если tracker-view запускается первым (свежая установка, ручной `npm run tracker`,
+// или ZCode открыт до первого MCP-вызова) — файла ещё нет, и старый guard валил
+// процесс, оставляя пустой фронт. Здесь мы инициализируем БД тем же путём, что и
+// MCP-сервер (getDb из dist/db.js): полный SCHEMA_SQL + миграции + индексы, чтобы
+// viewer и server видели идентичную схему. Идемпотентно — если файл есть, getDb
+// просто открывает его.
+if (!existsSync(DB_PATH)) {
+  try {
+    const dir = path.dirname(DB_PATH);
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+    ensureSagaDb();
+    closeSagaDb();
+    console.log(`saga.db не существовал — инициализирован: ${DB_PATH}`);
+  } catch (e) {
+    console.error(`Не удалось инициализировать saga.db по пути ${DB_PATH}: ${e.message}`);
+    process.exit(1);
+  }
 }
 const PORT = Number(process.env.PORT) || 4321;
 const PID_FILE = path.join(__dirname, '.tracker-view.pid');
@@ -5194,7 +5214,31 @@ const ZAI_MODELS = [
 // lazily from GET <LMSTUDIO_URL>/models (Anthropic+OpenAI-compatible server
 // built into LM Studio on port 1234). Empty until first probe — the UI shows
 // "LM Studio (офлайн)" while LMSTUDIO_ONLINE is false.
+// NOTE: this URL keeps the /v1 suffix for the /models PROBE (LM Studio's
+// OpenAI-compatible list endpoint). The settings.json ANTHROPIC_BASE_URL we
+// write for claude v2 is derived by stripping /v1 (see handleModelSet) —
+// claude v2 appends /v1 itself, so keeping it here would yield /v1/v1.
 const LMSTUDIO_URL = (process.env.SAGA_LMSTUDIO_URL || 'http://localhost:1234/v1').replace(/\/+$/, '');
+// Snapshot of the user's original cloud settings.json — captured BEFORE the
+// first LM Studio activation, restored when switching back to zai. Path next
+// to settings.json so it travels with the user profile.
+const CLAUDE_SETTINGS_PATH = path.join(os.homedir(), '.claude', 'settings.json');
+// Two-state switching (no in-place patching of settings.json, no one-shot
+// backups): keep TWO permanent canonical templates alongside settings.json
+// and switch = copy a template onto settings.json atomically. The templates
+// are write-once: cloud is captured the first time we see a real cloud
+// settings.json, lmstudio is a generated constant. Neither is ever rewritten
+// by saga afterwards, so the cloud AUTH_TOKEN (the secret) cannot be lost to
+// a botched toggle. This replaces the old in-place patch + lazy-backup model
+// which silently corrupted tokens when settings.json was already on localhost
+// at snapshot time.
+const CLAUDE_SETTINGS_CLOUD_TPL    = path.join(os.homedir(), '.claude', 'settings.cloud.json');
+const CLAUDE_SETTINGS_LMSTUDIO_TPL = path.join(os.homedir(), '.claude', 'settings.lmstudio.json');
+// Z.ai cloud endpoint (subscription). Used as a fallback when no cloud
+// template exists yet (saga started on LM Studio config or the user never
+// had a cloud session). The endpoint is a Z.ai-wide constant; only the
+// AUTH_TOKEN is user-specific.
+const ZAI_DEFAULT_BASE_URL = process.env.SAGA_ZAI_BASE_URL || 'https://api.z.ai/api/anthropic';
 // Local models have no cloud rate limit, so allow a generous concurrency.
 const LMSTUDIO_DEFAULT_LIMIT = 4;
 let LMSTUDIO_MODELS = [];     // [{ id, limit, tier:'local', provider:'lmstudio' }]
@@ -5240,13 +5284,129 @@ async function handleLmstudioModelsList(req, res) {
 
 // --- GET /api/models ---
 function handleModelsList(req, res) {
+  // current: the most recently chosen model across all episodes, read live from
+  // saga.db. Falls back to the process-wide WORKER_MODEL (resolved from
+  // ~/.claude/settings.json at startup) when no episode has a chosen model.
+  // Without this live read the selector would show a stale start-of-process
+  // value after the user switches models, since WORKER_MODEL is a const.
+  let current = WORKER_MODEL;
+  try {
+    const row = withDb(db => db.prepare(
+      `SELECT json_extract(metadata, '$.active_model') AS m
+       FROM episode_workflows
+       WHERE json_extract(metadata, '$.active_model') IS NOT NULL
+       ORDER BY updated_at DESC LIMIT 1`,
+    ).get());
+    if (typeof row?.m === 'string' && row.m.length > 0) current = row.m;
+  } catch { /* DB busy / no row → keep fallback */ }
   respondJson(res, 200, {
     ok: true,
-    current: WORKER_MODEL,
+    current,
     models: allModels(),
     lmstudio_online: LMSTUDIO_ONLINE,
     lmstudio_url: LMSTUDIO_URL,
   });
+}
+
+/**
+ * Atomically write ~/.claude/settings.json and WAIT until the bytes are
+ * durably on disk and re-readable. Returns true on success, throws on failure.
+ *
+ * Why this exists: the spawned claude CLI reads settings.json immediately on
+ * startup, and on Windows the default fs.writeFile can return before the OS
+ * has flushed the file — the next process then reads a half-written or stale
+ * version and fails with 401 / unknown-model errors. The sequence below is
+ * the canonical "write → fsync → readback verify" pattern:
+ *
+ *   1. open(path, 'w')            — truncate, get fd
+ *   2. fd.write(json)             — stage bytes
+ *   3. fd.sync (fsync)            — force kernel → disk
+ *   4. fd.close
+ *   5. read back, JSON.parse, assert the auth-relevant key matches what we
+ *      wrote. If not → throw (caller surfaces 500).
+ *
+ * The verify step is the contract: by the time this returns, ANY process that
+ * opens settings.json will see exactly what we wrote.
+ */
+function atomicSettingsWrite(payload) {
+  const fs = require('node:fs');
+  const json = JSON.stringify(payload, null, 2);
+  // Step 1-4: write + fsync + close. Synchronous file ops are fine here — the
+  // file is small (~2 KB) and the worker pump only fires one model/set at a
+  // time. The whole point is to block until durable.
+  const fd = fs.openSync(CLAUDE_SETTINGS_PATH, 'w');
+  try {
+    fs.writeFileSync(fd, json, 'utf8');
+    fs.fsyncSync(fd);  // kernel → disk
+  } finally {
+    fs.closeSync(fd);
+  }
+  // Step 5: readback verify — the auth-relevant env values must round-trip
+  // exactly. This catches torn writes and partial flushes.
+  const readBack = JSON.parse(fs.readFileSync(CLAUDE_SETTINGS_PATH, 'utf8'));
+  const rb = readBack?.env || {};
+  const pv = payload?.env || {};
+  const keys = ['ANTHROPIC_BASE_URL', 'ANTHROPIC_AUTH_TOKEN', 'ANTHROPIC_API_KEY',
+                'CLAUDE_CODE_ATTRIBUTION_HEADER', 'ANTHROPIC_DEFAULT_OPUS_MODEL'];
+  for (const k of keys) {
+    const a = rb[k], b = pv[k];
+    // Treat present-but-undefined and absent as equal (both → undefined).
+    if ((a ?? undefined) !== (b ?? undefined)) {
+      throw new Error(`settings.json verify failed for ${k}: wrote ${JSON.stringify(b)}, read ${JSON.stringify(a)}`);
+    }
+  }
+  return true;
+}
+
+/**
+ * Get the canonical cloud template (settings.cloud.json). Creates it on first
+ * call from the LIVE settings.json — but ONLY if that live settings.json is
+ * actually a cloud config (BASE_URL not pointing at localhost). This is the
+ * single moment in saga's lifetime when the user's real cloud AUTH_TOKEN is
+ * captured into a permanent template; thereafter the template is never
+ * overwritten, so the token cannot be lost to a later bad toggle.
+ *
+ * If the live settings.json is already on localhost and no cloud template
+ * exists, returns null — caller decides what to do (typically: refuse to
+ * switch to cloud until the user provides a token, or fall back to
+ * ZAI_DEFAULT_BASE_URL with no token).
+ */
+function getOrCreateCloudTemplate() {
+  const fs = require('node:fs');
+  if (fs.existsSync(CLAUDE_SETTINGS_CLOUD_TPL)) {
+    try { return JSON.parse(fs.readFileSync(CLAUDE_SETTINGS_CLOUD_TPL, 'utf8')); }
+    catch { /* corrupt template — fall through and try to recreate */ }
+  }
+  // Capture from live settings.json — but only if it's a cloud config.
+  const live = JSON.parse(fs.readFileSync(CLAUDE_SETTINGS_PATH, 'utf8'));
+  const base = (live?.env?.ANTHROPIC_BASE_URL || '').toLowerCase();
+  const isLocal = base.startsWith('http://127.') || base.startsWith('http://localhost') || base.startsWith('http://[');
+  if (isLocal) return null;  // can't capture a cloud template from a localhost config
+  // Persist the template ONCE. Future calls short-circuit at the top.
+  fs.writeFileSync(CLAUDE_SETTINGS_CLOUD_TPL, JSON.stringify(live, null, 2), 'utf8');
+  return live;
+}
+
+/**
+ * Get the canonical LM Studio template (settings.lmstudio.json). Always
+ * available — it's a generated constant, derived from LMSTUDIO_URL + the
+ * fixed lm-studio placeholder token. Regenerated each call so changes to
+ * SAGA_LMSTUDIO_URL (e.g. remote LM Studio box) take effect immediately.
+ */
+function getOrCreateLmstudioTemplate() {
+  const fs = require('node:fs');
+  // Build from the current live settings.json so we preserve the user's
+  // non-env keys (model, permissions, enabledPlugins, etc.) — we only swap
+  // the env values that route to LM Studio.
+  const base = JSON.parse(fs.readFileSync(CLAUDE_SETTINGS_PATH, 'utf8'));
+  base.env = base.env || {};
+  // Strip /v1 — claude v2 appends it itself; a leftover /v1 here would yield
+  // /v1/v1/messages which LM Studio rejects with an empty 200.
+  base.env.ANTHROPIC_BASE_URL = LMSTUDIO_URL.replace(/\/v\d+\/?$/, '').replace(/\/+$/, '');
+  base.env.ANTHROPIC_AUTH_TOKEN = 'lm-studio';
+  base.env.ANTHROPIC_API_KEY = 'lm-studio';
+  base.env.CLAUDE_CODE_ATTRIBUTION_HEADER = '0';
+  return base;
 }
 
 // --- POST /api/model/set ---
@@ -5271,30 +5431,67 @@ function handleModelSet(req, res) {
     if (!model) return respondJson(res, 400, { ok:false, error:'unknown model: ' + modelId });
     const provider = model.provider || 'zai';
 
-    // 1a. For the z.ai cloud provider: patch ~/.claude/settings.json so NEW
-    //     workers (spawned after this call) read the new model. Active workers
-    //     keep the old model. Also wipe any LM Studio env leak from settings
-    //     (defensive — we never set them there, but a prior manual edit could
-    //     reroute the global claude to localhost).
-    // 1b. For the lmstudio local provider: do NOT touch settings.json. The
-    //     worker's claude is redirected to LM Studio via spawn env (env has
-    //     priority over settings.json), so the global z.ai config stays intact
-    //     for the main interactive ZCode agent and any non-lmstudio episode.
-    if (provider === 'zai') {
-      try {
-        const fs = require('node:fs');
-        const os2 = require('node:os');
-        const path2 = require('node:path');
-        const settingsPath = path2.join(os2.homedir(), '.claude', 'settings.json');
-        const s = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
-        s.env = s.env || {};
-        s.env.ANTHROPIC_DEFAULT_OPUS_MODEL = modelId;
-        s.env.ANTHROPIC_DEFAULT_SONNET_MODEL = modelId;
-        s.env.ANTHROPIC_DEFAULT_HAIKU_MODEL = modelId;
-        fs.writeFileSync(settingsPath, JSON.stringify(s, null, 2), 'utf8');
-      } catch (e) {
-        return respondJson(res, 500, { ok:false, error:'settings.json patch failed: ' + e.message });
+    // 1. Switch ~/.claude/settings.json between the two canonical templates so
+    //    NEW workers (spawned after this call) read the new model/provider.
+    //    Active workers keep the old config.
+    //
+    //    Two-state model: settings.cloud.json and settings.lmstudio.json are
+    //    PERMANENT templates, written once and never overwritten by saga. A
+    //    switch = atomicSettingsWrite(template → settings.json) with fsync +
+    //    readback verify. This replaces the old in-place-patch + lazy-backup
+    //    design, which silently corrupted the cloud AUTH_TOKEN when
+    //    settings.json was already on localhost at snapshot time. The cloud
+    //    template captures the user's real token the first time we see a real
+    //    cloud settings.json and then freezes it forever.
+    //
+    //    NOTE on claude CLI v2.x (regression, anthropics/claude-code#8500):
+    //    spawn-env ANTHROPIC_BASE_URL no longer overrides settings.json, and
+    //    claude v2 appends '/v1' itself — so the LM Studio base URL must be
+    //    WITHOUT /v1. This makes the main interactive ZCode agent follow the
+    //    same provider as the episode while it runs — known side effect, no
+    //    isolation possible in v2.
+    try {
+      let payload;
+      if (provider === 'lmstudio') {
+        // Before we destroy the live cloud config, freeze it into the cloud
+        // template (no-op if already frozen). This is the ONLY capture point.
+        getOrCreateCloudTemplate();
+        payload = getOrCreateLmstudioTemplate();
+      } else {
+        // zai: switch back to the canonical cloud template. If it exists,
+        // apply the chosen cloud model alias on top. If it doesn't (saga
+        // started on a localhost settings.json and no cloud session ever ran),
+        // fall back to ZAI_DEFAULT_BASE_URL with no token — workers will 401
+        // and the user has to populate the cloud template manually.
+        const cloudTpl = getOrCreateCloudTemplate();
+        if (cloudTpl) {
+          payload = cloudTpl;
+          payload.env = payload.env || {};
+          payload.env.ANTHROPIC_DEFAULT_OPUS_MODEL = modelId;
+          payload.env.ANTHROPIC_DEFAULT_SONNET_MODEL = modelId;
+          payload.env.ANTHROPIC_DEFAULT_HAIKU_MODEL = modelId;
+          delete payload.env.ANTHROPIC_API_KEY;
+          delete payload.env.CLAUDE_CODE_ATTRIBUTION_HEADER;
+        } else {
+          // No cloud template and live settings.json is on localhost — desync.
+          // Build a minimal cloud config so the user isn't stranded; the AUTH
+          // token will be missing and must be set in settings.cloud.json.
+          const fs = require('node:fs');
+          payload = JSON.parse(fs.readFileSync(CLAUDE_SETTINGS_PATH, 'utf8'));
+          payload.env = payload.env || {};
+          payload.env.ANTHROPIC_BASE_URL = ZAI_DEFAULT_BASE_URL;
+          payload.env.ANTHROPIC_DEFAULT_OPUS_MODEL = modelId;
+          payload.env.ANTHROPIC_DEFAULT_SONNET_MODEL = modelId;
+          payload.env.ANTHROPIC_DEFAULT_HAIKU_MODEL = modelId;
+          if (payload.env.ANTHROPIC_AUTH_TOKEN === 'lm-studio') delete payload.env.ANTHROPIC_AUTH_TOKEN;
+          delete payload.env.ANTHROPIC_API_KEY;
+          delete payload.env.CLAUDE_CODE_ATTRIBUTION_HEADER;
+        }
       }
+      // Block until durable + verified. Throws on torn write → 500 to caller.
+      atomicSettingsWrite(payload);
+    } catch (e) {
+      return respondJson(res, 500, { ok:false, error:'settings.json switch failed: ' + e.message });
     }
 
     // 2. Persist model info into episode_workflows.metadata. The engine's pump
@@ -5322,8 +5519,8 @@ function handleModelSet(req, res) {
     }
 
     const note = provider === 'lmstudio'
-      ? `LM Studio (${LMSTUDIO_URL}). New workers go local; main ZCode agent stays on z.ai.`
-      : 'Settings patched. New workers will use this model. Active workers keep the old one.';
+      ? `LM Studio (${LMSTUDIO_URL}). settings.json switched to the LM Studio template (atomic + fsync). Cloud config frozen in settings.cloud.json. The whole machine routes to LM Studio until you switch back to a cloud model.`
+      : 'settings.json switched to the cloud template (atomic + fsync). New workers will use this model. Active workers keep the old one.';
     respondJson(res, 200, { ok: true, model: modelId, provider, limit: model.limit, note });
   });
 }

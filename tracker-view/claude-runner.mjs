@@ -101,7 +101,14 @@ export class ClaudeBoardRunner {
     // LM Studio provider: reads { model, provider } from episode_workflows.metadata
     // (active_model / active_provider). Returns {provider:'zai', model:null} when
     // unset → spawn uses the legacy `--model opus` + ~/.claude/settings.json path.
-    // Env overrides (used ONLY when provider==='lmstudio'):
+    // LM Studio routing lives primarily in ~/.claude/settings.json (patched by
+    // POST /api/model/set). The spawn-env override below is a defensive belt-
+    // and-suspenders for claude CLI versions where env DOES take priority over
+    // settings.json (pre-v2 regression, anthropics/claude-code#8500). In v2.x
+    // settings.json wins, so this env is effectively inert — but it stays so
+    // the moment Anthropic restores env-priority, saga keeps working unchanged.
+    // NOTE: the URL here keeps /v1 for direct /models probes; the settings.json
+    // write strips it (claude v2 appends /v1 itself → /v1/v1/messages otherwise).
     this.getActiveModel = options.getActiveModel;
     this.lmstudioBaseUrl = options.lmstudioBaseUrl
       ?? process.env.SAGA_LMSTUDIO_URL
