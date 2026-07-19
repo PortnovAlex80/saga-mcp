@@ -128,26 +128,6 @@ function assertTraceability(epicId: number): void {
     return !!row;
   };
 
-  // Helper: does artifact `srcId` have an outgoing edge with given link_type
-  // to ≥1 artifact of ANY of the given target_types?
-  const hasEdgeToAny = (
-    srcId: number, linkType: 'derived_from' | 'covers',
-    targetTypes: Array<'UC' | 'FR' | 'NFR'>,
-  ): boolean => {
-    if (targetTypes.length === 0) return false;
-    const placeholders = targetTypes.map(() => '?').join(',');
-    const row = db.prepare(
-      `SELECT 1 FROM artifact_traces at
-        JOIN artifacts t ON t.id = at.target_id
-       WHERE at.source_id = ?
-         AND at.link_type = ?
-         AND t.epic_id = ?
-         AND t.type IN (${placeholders})
-       LIMIT 1`,
-    ).get(srcId, linkType, epicId, ...targetTypes);
-    return !!row;
-  };
-
   // 1. PRD → brief (derived_from)
   const prd = db.prepare(
     `SELECT id FROM artifacts WHERE epic_id=? AND type='PRD' ORDER BY id LIMIT 1`,
@@ -189,21 +169,36 @@ function assertTraceability(epicId: number): void {
     }
   }
 
-  // 4. Each AC → ≥1 UC (derived_from) AND ≥1 FR/NFR (derived_from)
+  // 4. Each AC → ≥1 FR/NFR (derived_from, REQUIRED) AND ≥1 UC (derived_from,
+  //    REQUIRED for behavioural ACs, OPTIONAL for NFR-only ACs).
+  //    NFR-only ACs (performance, security, code quality, etc.) are cross-
+  //    cutting and do not map to a single UC — they apply to the whole product.
+  //    Requiring a UC trace for them creates false gaps (epic 129 AC-10, epic
+  //    135 AC-13..17 all hit this). Contract: every AC must trace to ≥1 FR or
+  //    NFR (the technical contract being verified); UC trace is required only
+  //    when the AC verifies a behavioural scenario (FR-derived).
   const acs = db.prepare(
     `SELECT id, code FROM artifacts WHERE epic_id=? AND type='AC' ORDER BY id`,
   ).all(epicId) as Array<{ id: number; code: string | null }>;
   for (const ac of acs) {
-    if (!hasEdge(ac.id, 'derived_from', 'UC')) {
-      throw new Error(
-        `Traceability gate failed: AC ${ac.code ?? `#${ac.id}`} has no 'derived_from' trace to any UC. ` +
-        `saga-analyst must call trace_add(AC → UC, 'derived_from') at artifact creation.`,
-      );
-    }
-    if (!hasEdgeToAny(ac.id, 'derived_from', ['FR', 'NFR'])) {
+    const hasFr = hasEdge(ac.id, 'derived_from', 'FR');
+    const hasNfr = hasEdge(ac.id, 'derived_from', 'NFR');
+    const hasUc = hasEdge(ac.id, 'derived_from', 'UC');
+    // Every AC must derive from at least one FR or NFR.
+    if (!hasFr && !hasNfr) {
       throw new Error(
         `Traceability gate failed: AC ${ac.code ?? `#${ac.id}`} has no 'derived_from' trace to any FR or NFR. ` +
         `Every AC must derive from at least one FR or NFR (trace_add(AC → FR/NFR, 'derived_from')).`,
+      );
+    }
+    // FR-derived ACs MUST also trace to a UC (the behavioural scenario).
+    // NFR-only ACs are exempt — they are cross-cutting (performance, security,
+    // code quality) and do not map to a single use case.
+    if (hasFr && !hasUc) {
+      throw new Error(
+        `Traceability gate failed: AC ${ac.code ?? `#${ac.id}`} traces to FR but has no 'derived_from' trace to any UC. ` +
+        `FR-derived ACs must also trace to a UC (the behavioural scenario being verified). ` +
+        `Call trace_add(AC → UC, 'derived_from'). (NFR-only ACs are exempt from this UC requirement.)`,
       );
     }
   }

@@ -134,51 +134,82 @@ const RECOVERY_TREE: Record<string, RecoveryRule[]> = {
       match: /no AC artifacts/i,
       diagnosis: 'Episode has no AC artifacts. Either formalization.ac task has not run, or saga-analyst did not register AC artifacts.',
       action_prompt: [
-        'You are a saga recovery engineer. Episode is stuck in formalization because no AC (acceptance criteria) artifacts exist.',
+        'Load skill "autonomous-recovery" and run its 6-step recovery loop.',
         '',
-        'ACTIONS (use only mcp__saga__ tools; do NOT call worker_next):',
-        '1. Read the episode: epic_id=<EPIC_ID>. Call artifact_list({epic_id, type:"UC"}) and artifact_list({epic_id, type:"SRS"}).',
-        '2. Read each UC document at its path. Read the SRS for FR/NFR context.',
-        '3. For EACH UC, derive ≥1 acceptance criterion. For each AC:',
-        '   - artifact_create({project_id, epic_id, type:"AC", code:"AC-N", title:"<short>", path:"docs/.../03-acceptance-criteria.md#AC-N", status:"draft"})',
-        '   - trace_add({source_id: <AC id>, target_type:"artifact", target_id: <UC id>, link_type:"derived_from"})',
-        '4. Write the AC document to disk at the .md path you declared. Each AC MUST have: Given/When/Then + a measurable property block.',
-        '5. Accept each AC: artifact_update to status:"accepted". AC MUST have content_hash matching accepted_hash.',
-        '6. Call worker_done({task_id, worker_id, result:"Recovery: created N AC artifacts"}).',
+        'CONTEXT: episode is stuck in formalization because no AC (acceptance criteria) artifacts exist.',
+        'epic_id=<EPIC_ID>',
         '',
-        'DO NOT touch PRD content. DO NOT change requirements — only formalize them as ACs.',
+        'You have full authority to fix this yourself. DO NOT call worker_ask_need unless Cynefin triage in the skill returns "genuine human-only" (rare for this scenario).',
+        '',
+        'DIAGNOSTIC QUERIES (Step 1 of the loop):',
+        '- artifact_list({epic_id, type:"UC"}) and artifact_list({epic_id, type:"SRS"}) to see what exists.',
+        '- artifact_list({epic_id, type:"FR"}) and type:"NFR" for the technical contract.',
+        '',
+        'FIX OPTIONS (Step 3 — generate 3 candidates, score, pick):',
+        'A. If saga-analyst task exists but is in_review or in_progress: wait is not an option — move it forward via task_update or finish the work yourself by registering the ACs.',
+        'B. Create the ACs yourself using saga-analyst semantics (Given/When/Then, properties block, derived_from → UC + FR). This is usually the right call — you have the UCs and FRs.',
+        'C. task_create a new formalization.ac task to redrive the pipeline.',
+        '',
+        'Most likely answer: B. The agent has more context about the system than the human sponsor; asking the human to write ACs is an anti-pattern.',
       ].join('\n'),
-      max_retries: 1,
+      max_retries: 2,
     },
     {
       match: /AC baseline is not accepted and clean/i,
       diagnosis: 'ACs exist but not accepted, or drifted from disk.',
       action_prompt: [
-        'You are a saga recovery engineer. AC baseline is not accepted/clean.',
+        'Load skill "autonomous-recovery" and run its 6-step recovery loop.',
         '',
-        'ACTIONS:',
-        '1. artifact_list({epic_id:<EPIC_ID>, type:"AC"}) — list all ACs.',
-        '2. For each AC with status != "accepted": verify the .md file at its path exists and is non-empty. If yes → artifact_save to refresh content_hash, then artifact_update to status:"accepted".',
-        '3. For each AC with drift_state="drifted": artifact_save to rehash from disk. If hash now matches accepted_hash → drift clears. If not → escalate via worker_ask_need (someone is editing AC docs out-of-band).',
-        '4. worker_done with summary.',
+        'CONTEXT: AC baseline gate failed — ACs are not all accepted+clean.',
+        'epic_id=<EPIC_ID>',
+        '',
+        'You have full authority to fix this yourself. Common fixes (apply via MCDA in the skill):',
+        '- artifact_save to refresh content_hash from the on-disk .md file, then artifact_update({status:"accepted"}).',
+        '- If accepted_hash is missing (reconciler forgot to stamp it): artifact_save will set content_hash, then artifact_update({status:"accepted"}) will set accepted_hash = content_hash.',
+        '- If the .md file is empty or missing: that is a real defect — consider moving the formalization.ac task back to todo via task_update({status:"todo"}) so saga-analyst rewrites it.',
+        '',
+        'DO NOT call worker_ask_need for stale hashes or missing accepted_hash — those are mechanical fixes the agent should do directly.',
       ].join('\n'),
-      max_retries: 1,
+      max_retries: 2,
+    },
+    {
+      match: /Traceability gate failed:.*/i,
+      diagnosis: 'A canonical lineage edge is missing in artifact_traces (PRD→brief, SRS→PRD, UC→PRD, AC→UC, etc.).',
+      action_prompt: [
+        'Load skill "autonomous-recovery" and run its 6-step recovery loop.',
+        '',
+        'CONTEXT: assertTraceability gate rejected the formalization→planning transition.',
+        'epic_id=<EPIC_ID>',
+        '',
+        'The gate error names the exact missing edge (e.g. "AC AC-5 has no derived_from trace to any UC"). Diagnose via trace_list({source_id:<X>}), then add the edge via trace_add.',
+        '',
+        'COMMON CASES (decide via MCDA in the skill):',
+        '- Missing edge with an obvious parent (PRD→brief, SRS→PRD, UC→PRD): just trace_add it. Clear case.',
+        '- AC missing UC trace but has FR trace: usually means saga-analyst forgot the UC link. Read the AC body, find the matching UC, trace_add.',
+        '- AC has only NFR trace (no UC, no FR): this is a cross-cutting AC (performance, code quality). The gate EXEMPTS these — if the AC has only NFR, the gate does not require UC. If the gate still complains, that is a gate bug — note it in the comment and proceed (move the AC to add a token UC trace as a workaround).',
+        '- Wrong parent (e.g. AC traces to wrong UC): move the producer task back to todo via task_update({status:"todo"}) so saga-analyst re-runs.',
+        '',
+        'DO NOT call worker_ask_need for missing traces — the agent can read the artifacts and decide the correct edge.',
+      ].join('\n'),
+      max_retries: 3,
     },
     {
       match: /no PRD artifacts|no SRS artifacts|no UC artifacts/i,
       diagnosis: 'Upstream formalization artifact missing — earlier worker crashed or skipped.',
       action_prompt: [
-        'You are a saga recovery engineer. A formalization artifact is missing.',
+        'Load skill "autonomous-recovery" and run its 6-step recovery loop.',
         '',
-        'Diagnose by querying artifact_list for type PRD, SRS, UC. Whichever is missing, recreate:',
-        '- Missing PRD: read brief, use saga-product procedure to write 00-PRD.md, register artifact with parent_artifact_id=<brief id>.',
-        '- Missing SRS: read PRD, use saga-architect procedure to write SRS.md, register with parent_artifact_id=<PRD id>.',
-        '- Missing UC: read PRD+SRS, use saga-analyst procedure to write UC.md, register with parent_artifact_id=<PRD id>.',
+        'CONTEXT: a formalization artifact (PRD/SRS/UC) is missing entirely.',
+        'epic_id=<EPIC_ID>',
         '',
-        'After creating missing artifact, also create any sibling artifacts the workflow would normally generate (e.g. creating UC also needs SRS to exist for reconciliation).',
-        'Call worker_done with summary listing what was created.',
+        'Decide via MCDA in the skill:',
+        'A. Recreate the artifact yourself by reading the upstream and applying the corresponding producer skill (saga-product/architect/analyst).',
+        'B. task_create a new formalization.<kind> task to redrive the pipeline, with a comment explaining what went wrong.',
+        'C. If the upstream itself is missing (no brief → no PRD), recurse: diagnose the brief, etc.',
+        '',
+        'DO NOT call worker_ask_need — missing artifacts are an engineering defect the agent can repair.',
       ].join('\n'),
-      max_retries: 1,
+      max_retries: 2,
     },
   ],
   planning: [
@@ -186,15 +217,15 @@ const RECOVERY_TREE: Record<string, RecoveryRule[]> = {
       match: /no planning tasks exist/i,
       diagnosis: 'saga-planner never ran or crashed.',
       action_prompt: [
-        'You are a saga recovery engineer. Planning decomposition task is missing.',
+        'Load skill "autonomous-recovery" and run its 6-step recovery loop.',
         '',
-        'ACTIONS:',
-        '1. Verify AC baseline is accepted: artifact_list({epic_id:<EPIC_ID>, type:"AC"}). All must be status:"accepted" with content_hash.',
-        '2. If baseline not accepted → do NOT proceed; escalate via worker_ask_need.',
-        '3. If baseline OK → task_create({epic_id, title:"Decompose accepted baseline", task_kind:"planning.decomposition", workflow_stage:"planning", execution_skill:"saga-planner", execution_mode:"tracker_only", priority:"high"}).',
-        '4. worker_done summary.',
+        'CONTEXT: planning decomposition task is missing.',
+        'epic_id=<EPIC_ID>',
+        '',
+        'Likely fix: task_create({epic_id, title:"Decompose accepted baseline", task_kind:"planning.decomposition", workflow_stage:"planning", execution_skill:"saga-planner", execution_mode:"tracker_only", priority:"high"}).',
+        'Verify the AC baseline is accepted first; if not, you are in the wrong recovery branch — fix that first.',
       ].join('\n'),
-      max_retries: 1,
+      max_retries: 2,
     },
   ],
   development: [
@@ -202,40 +233,43 @@ const RECOVERY_TREE: Record<string, RecoveryRule[]> = {
       match: /no development tasks exist/i,
       diagnosis: 'saga-planner did not decompose into dev tasks.',
       action_prompt: [
-        'You are a saga recovery engineer. No development tasks exist after planning.',
-        'This means saga-planner failed to decompose. Escalate: this requires re-running planning with possibly-fixifyable root cause.',
-        'Call worker_ask_need({reason:"planner did not generate dev tasks — needs human to inspect planning.decomposition task output"}) ',
-        'Then worker_done.',
+        'Load skill "autonomous-recovery" and run its 6-step recovery loop.',
+        '',
+        'CONTEXT: saga-planner ran but produced no development tasks.',
+        'epic_id=<EPIC_ID>',
+        '',
+        'Decide via MCDA in the skill:',
+        'A. Re-run planning: move planning.decomposition task back to todo via task_update({status:"todo"}) so saga-planner re-executes.',
+        'B. Inspect planning.decomposition output (comments + result) — the planner may have decided the baseline is not ready. Read its reasoning.',
+        'C. Create development tasks yourself based on the ACs (each AC → at least one dev task with source_artifact_ids:[<AC id>]).',
+        '',
+        'DO NOT call worker_ask_need for planner output you can read and act on.',
       ].join('\n'),
-      max_retries: 0, // planner failures usually semantic — do not auto-retry blindly
+      max_retries: 2,
     },
     {
       // Merge conflicts block the development→verification gate. The task is
       // done (worker finished, APPROVED) but its branch conflicted with dev.
       // Healer investigates: reads the task's worktree metadata, looks at the
       // conflicting files, either resolves the conflict (mechanical: both
-      // sides add disjoint code) or escalates (semantic: two tasks changed
-      // the same logic differently).
+      // sides add disjoint code) or reworks the offending task.
       match: /tasks not completed\/integrated:.*#(\d+(?:,\s*#\d+)*)/i,
       diagnosis: 'Some development tasks are done but their branches have merge conflicts or are still pending integration.',
       action_prompt: [
-        'You are a saga recovery engineer. The development→verification gate failed because some tasks are not fully integrated.',
+        'Load skill "autonomous-recovery" and run its 6-step recovery loop.',
         '',
-        'ACTIONS (use mcp__saga__ tools; do NOT call worker_next):',
-        '1. Read task_list for the epic. Identify tasks with status=\'done\' but integration_state IN (\'conflict\', \'pending\').',
-        '2. For each such task:',
-        '   a. Read its metadata.worktree (branch, path, merge_target, merge_conflict).',
-        '   b. cd into the project repo. Check git status, git log --oneline -5, the task branch vs integration branch.',
-        '   c. For integration_state=\'conflict\': examine the conflicting files (git diff --name-only --diff-filter=U).',
-        '   d. If the conflict is mechanical (two tasks touched different parts of the same file, or different files with no logical overlap): resolve by keeping both sides. git add, git commit, then git merge.',
-        '   e. If the conflict is semantic (two tasks changed the same function/logic differently): DO NOT guess. Call worker_ask_need with a description of the conflict.',
-        '   f. After resolving: call worker_merge_release({task_id, worker_id, result:\'merged\', commit_sha}).',
-        '3. For tasks still status=\'in_progress\' or \'review_in_progress\': they are genuinely still running — do NOT touch them. Skip.',
-        '4. Call worker_done with a summary of what you resolved.',
+        'CONTEXT: development→verification gate failed — some done tasks have integration_state in (conflict, pending).',
+        'epic_id=<EPIC_ID>',
         '',
+        'For each blocked task, decide via MCDA in the skill:',
+        'A. Mechanical conflict (different files, or disjoint regions of the same file): resolve by keeping both sides. git add, git commit, worker_merge_release({result:"merged"}).',
+        'B. Semantic conflict (two tasks changed the same logic differently): pick the more correct version based on the ACs they implement. Move the loser back to todo via task_update({status:"todo"}). DO NOT silently pick — record which won and why in the comment.',
+        'C. Pending integration (worker crashed before merge): re-attempt the merge via worker_merge_acquire + worker_merge_release.',
+        '',
+        'DO NOT call worker_ask_need for conflicts you can read and adjudicate.',
         'Your worker_id is in the task payload. The worktree path is in metadata.worktree.path.',
       ].join('\n'),
-      max_retries: 2,
+      max_retries: 3,
     },
   ],
   verification: [
@@ -243,34 +277,39 @@ const RECOVERY_TREE: Record<string, RecoveryRule[]> = {
       match: /no passing baseline evidence for ([AC-]+\d+(?:,\s*[AC-]+\d+)*)/i,
       diagnosis: 'verifier missed some ACs — they have no passing evidence at baseline hash.',
       action_prompt: [
-        'You are a saga recovery engineer. Some accepted ACs have no passing verification evidence at their baseline hash.',
+        'Load skill "autonomous-recovery" and run its 6-step recovery loop.',
         '',
-        'ACTIONS:',
-        '1. Parse the error for the AC codes that lack evidence.',
-        '2. For each: artifact_get to find its id and accepted_hash.',
-        '3. task_create({epic_id, title:"Verify <AC code>", task_kind:"verification.ac", workflow_stage:"verification", execution_skill:"saga-verifier", execution_mode:"git_change", source_artifact_ids:[<AC id>], priority:"high"}) for each missing one.',
-        '4. trace_add({source_id: <AC id>, target_type:"task", target_id:<verify task id>, link_type:"depends_on"}) so the verifier knows what to verify.',
-        '5. worker_done summary.',
+        'CONTEXT: verification gate failed — some accepted ACs have no passing evidence.',
+        'epic_id=<EPIC_ID>',
         '',
-        'The engine will dispatch verifier workers; once they record passing evidence, the gate will pass on retry.',
+        'Decide via MCDA in the skill:',
+        'A. Spawn missing verification tasks: task_create({epic_id, task_kind:"verification.ac", workflow_stage:"verification", execution_skill:"saga-verifier", execution_mode:"git_change", source_artifact_ids:[<AC id>], priority:"high"}).',
+        'B. If a verifier ran but recorded outcome=failed: that is a real test failure. Move the dev task that implements the AC back to todo via task_update({status:"todo"}), so the dev reworks it.',
+        'C. If the accepted_hash on the AC drifted (someone edited the .md): artifact_save to rehash, then verify the dev tests still match.',
+        '',
+        'DO NOT call worker_ask_need for verifier gaps — spawn the verifier.',
       ].join('\n'),
-      max_retries: 2,
+      max_retries: 3,
     },
     // Verification gate also catches real test failures via outcome=failed, but those
-    // surface as "no passing evidence" too. Healer cannot fix a real failure — but it
-    // will try to re-spawn verifier once, and if it still fails, escalate.
+    // surface as "no passing evidence" too. Healer can either re-spawn verifier
+    // or move the dev task back to todo for rework.
   ],
   integration: [
     {
       match: /no integration tasks exist/i,
       diagnosis: 'workflow did not generate integration task.',
       action_prompt: [
-        'You are a saga recovery engineer. No integration task exists.',
-        'ACTIONS: task_create({epic_id, title:"Integrate verified baseline", task_kind:"integration.merge", workflow_stage:"integration", execution_skill:"saga-worker", execution_mode:"git_change", priority:"high"}). worker_done.',
+        'Load skill "autonomous-recovery" and run its 6-step recovery loop.',
+        '',
+        'CONTEXT: integration task is missing.',
+        'epic_id=<EPIC_ID>',
+        '',
+        'Likely fix: task_create({epic_id, title:"Integrate verified baseline", task_kind:"integration.merge", workflow_stage:"integration", execution_skill:"saga-worker", execution_mode:"git_change", priority:"high"}).',
       ].join('\n'),
-      max_retries: 1,
+      max_retries: 2,
     },
-    // Merge conflicts at integration → always escalate (semantic).
+    // Merge conflicts at integration → run the autonomous-recovery loop.
   ],
 };
 
@@ -692,12 +731,15 @@ function attemptHeal(epicId: number, stage: string, gateError: string): {
   // Insert the recovery task. We put the full prompt in description because
   // claude-runner's buildPrompt includes the task payload (description among
   // it) in the worker prompt — the worker reads it and acts.
+  // execution_skill='autonomous-recovery' so the worker loads that skill
+  // (which teaches the 6-step decision loop). The action_prompt in the rule
+  // also tells the worker to load the skill explicitly — belt and suspenders.
   const info = db.prepare(
     `INSERT INTO tasks
        (epic_id, title, description, status, priority, task_kind, workflow_stage,
         execution_skill, review_skill, execution_mode, tags, metadata)
      VALUES (?, ?, ?, 'todo', 'critical', 'recovery.heal', ?,
-             'saga-worker', 'saga-reviewer', 'tracker_only', ?, '{}')`,
+             'autonomous-recovery', 'saga-reviewer', 'tracker_only', ?, '{}')`,
   ).run(
     epicId,
     `Recovery: ${rule.diagnosis.slice(0, 80)}`,
@@ -709,6 +751,62 @@ function attemptHeal(epicId: number, stage: string, gateError: string): {
   logActivity(db, 'epic', epicId, 'created', 'recovery_task', null, String(taskId),
     `Engine auto-spawned recovery task #${taskId} for stage='${stage}' (attempt ${retries + 1}/${rule.max_retries}): ${rule.diagnosis}`);
   return { applied: true, escalate: false, reason: `spawned task #${taskId}`, taskId };
+}
+
+/**
+ * Spawn a generic autonomous-recovery task for an unmatched gate error.
+ *
+ * This is the catch-all path when RECOVERY_TREE has no rule matching the
+ * gate error. Instead of immediately pausing for a human, the engine gives
+ * the autonomous-recovery skill a chance to diagnose and fix the problem
+ * itself. The agent has access to all saga tools (task_update, trace_add,
+ * artifact_update, artifact_save, task_create) and the full gate error text.
+ *
+ * The skill runs a 6-step decision loop (Cynefin triage + MCDA + apply + verify)
+ * and only calls worker_ask_need if it classifies the situation as genuinely
+ * human-only (irreversible, no domain knowledge, unsafe to guess).
+ */
+function spawnGenericRecoveryTask(epicId: number, stage: string, gateError: string): number {
+  const db = getDb();
+  const projectIdRow = db.prepare('SELECT project_id FROM epics WHERE id=?').get(epicId) as { project_id: number } | undefined;
+  // If the epic is gone, we cannot help — return -1 to signal the caller.
+  if (!projectIdRow) return -1;
+  const prompt = [
+    'Load skill "autonomous-recovery" and run its 6-step recovery loop.',
+    '',
+    'CONTEXT: an episode gate failed with an error that does not match any',
+    'specific recovery rule in RECOVERY_TREE. You are the catch-all.',
+    '',
+    `epic_id=${epicId}`,
+    `stage=${stage}`,
+    `gate_error=${gateError}`,
+    '',
+    'YOUR AUTHORITY:',
+    '- Diagnose the root cause via DB queries (artifact_list, task_list, trace_list, artifact_get).',
+    '- Apply fixes: trace_add, artifact_update, artifact_save, task_create.',
+    '- Move tasks backwards via task_update({_recovery_override: true, status: "todo"}) when a producer left bad output.',
+    '- Spawn new tasks via task_create when an upstream producer crashed.',
+    '',
+    'DO NOT call worker_ask_need unless Cynefin triage in the skill returns "genuine human-only" (credentials, business intent, irreversible destructive action, external authority).',
+    'Routine engineering failures (missing traces, stale hashes, draft artifacts, crashed workers) are YOUR job to fix.',
+  ].join('\n');
+  const info = db.prepare(
+    `INSERT INTO tasks
+       (epic_id, title, description, status, priority, task_kind, workflow_stage,
+        execution_skill, review_skill, execution_mode, tags, metadata)
+     VALUES (?, ?, ?, 'todo', 'critical', 'recovery.heal', ?,
+             'autonomous-recovery', 'saga-reviewer', 'tracker_only', ?, '{}')`,
+  ).run(
+    epicId,
+    `Generic recovery: ${gateError.slice(0, 80)}`,
+    prompt,
+    stage,
+    JSON.stringify([`stage:${stage}`, 'kind:recovery.heal', 'role:recovery', 'generic:true']),
+  );
+  const taskId = Number(info.lastInsertRowid);
+  logActivity(db, 'epic', epicId, 'created', 'recovery_task', null, String(taskId),
+    `Engine auto-spawned GENERIC recovery task #${taskId} for stage='${stage}' (unmatched gate error): ${gateError.slice(0, 120)}`);
+  return taskId;
 }
 
 /**
@@ -1272,7 +1370,27 @@ export async function orchestrate(opts: OrchestrateOptions): Promise<Orchestrate
             continue;
           }
 
-          // Healer couldn't help → escalate to human.
+          // Healer couldn't help via a specific rule. Before bothering a human,
+          // spawn a GENERIC autonomous-recovery task that gets the full gate
+          // error and runs the 6-step decision loop from the skill. This is
+          // the catch-all for failures the RECOVERY_TREE did not anticipate
+          // (new gate checks, edge cases, etc.). The agent has the tools and
+          // the context — let it try to fix the problem itself.
+          const genericHealKey = `${epicId}:${stage}:generic`;
+          const genericRetries = healRetries.get(genericHealKey) ?? 0;
+          if (genericRetries < 2 && !heal.applied) {
+            healRetries.set(genericHealKey, genericRetries + 1);
+            const genericTaskId = spawnGenericRecoveryTask(epicId, stage, advance.error);
+            engineHeartbeat(opts, 'GENERIC_HEAL',
+              `spawned autonomous-recovery task #${genericTaskId} for unmatched gate error`);
+            lastError = null;
+            emptyCycles = 0;
+            clearNeedsHuman(epicId);
+            await sleep(PUMP_TICK_MS);
+            continue;
+          }
+
+          // Generic healer exhausted too → escalate to human.
           engineHeartbeat(opts, 'ESCALATE', `recovery gave up: ${heal.reason}`);
           lastError = `${advance.error} [healer: ${heal.reason}]`;
           await pauseAndAlert(epicId, lastError, opts);

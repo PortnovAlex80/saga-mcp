@@ -769,8 +769,23 @@ function handleTaskUpdate(args: Record<string, unknown>) {
   //    запрет его не затрагивает. evaluateAndUpdateDependencies (auto-blocked/todo) тоже
   //    пишет напрямую.
   //    Escape hatch: env SAGA_ALLOW_MANUAL_STATUS=1 — для человека/CI (агенты о нём не знают).
+  //
+  //    RECOVERY ESCAPE HATCH: autonomous-recovery agents need to move tasks
+  //    backwards (done→todo, review→todo) to force rework when a producer
+  //    left artifacts in a bad state. They pass args._recovery_override=true.
+  //    The flag is documented only in the autonomous-recovery SKILL, so a
+  //    non-recovery worker would not know to set it. This is a deterrent,
+  //    not a hard security boundary — saga is single-tenant.
   let statusIgnored = false;
-  if (args.status !== undefined && process.env.SAGA_ALLOW_MANUAL_STATUS !== '1') {
+  const callerIsRecovery = args._recovery_override === true;
+  if (callerIsRecovery) {
+    delete args._recovery_override;
+  }
+  if (
+    args.status !== undefined
+    && process.env.SAGA_ALLOW_MANUAL_STATUS !== '1'
+    && !callerIsRecovery
+  ) {
     delete args.status;
     statusIgnored = true;
   }
@@ -783,6 +798,10 @@ function handleTaskUpdate(args: Record<string, unknown>) {
     'task_kind', 'workflow_stage', 'execution_skill', 'review_skill', 'execution_mode',
     'project_repository_id', 'generated_from_task_id', 'generation_key',
     'declared_risk', 'derived_risk', 'policy_minimum',
+    // _recovery_override is consumed above (not a DB column); include it in
+    // the allowed list so buildUpdate does not error on it. It is deleted
+    // from args before the UPDATE runs.
+    '_recovery_override',
   ]);
 
   // REQ-009 — recompute final_risk after the column update, using whichever of
