@@ -1658,10 +1658,22 @@ function renderArtifacts(projectId, allProjects) {
   // Сироты: нет родителя И нет исходящих трасс И не являются чьим-то родителем
   // И не являются target ни одной trace (например BRIEF — корень discovery,
   // не имеет parent_artifact_id, но PRD→BRIEF derived_from связывает его).
+  //
+  // ИСКЛЮЧЕНИЯ: summary-stage bookkeeping артефакты (STAGE-DISCOVERY-SUMMARY,
+  // STAGE-FORMALIZATION-SUMMARY и т.д.) не являются частью traceability графа
+  // по дизайну — это отчёты о завершении стадии. Они никогда не имеют parent
+  // или traces, и не должны помечаться как «несвязанные» в UI.
   const parentIds = new Set(artifacts.filter(a => a.parent_artifact_id != null).map(a => a.parent_artifact_id));
   const isParent = new Set(parentIds);
   const tracesByTarget = new Set(traces.filter(t => t.target_type === 'artifact').map(t => t.target_id));
-  const orphans = artifacts.filter(a => a.parent_artifact_id == null && !isParent.has(a.id) && !tracesBySource[a.id] && !tracesByTarget.has(a.id));
+  const isStageSummary = (a) => a.type === 'decision' && typeof a.code === 'string'
+    && /^STAGE-[A-Z]+-(SUMMARY|COMPLETED)$/i.test(a.code);
+  const orphans = artifacts.filter(a =>
+    a.parent_artifact_id == null
+    && !isParent.has(a.id)
+    && !tracesBySource[a.id]
+    && !tracesByTarget.has(a.id)
+    && !isStageSummary(a));
   const treeArts = artifacts.filter(a => !orphans.includes(a));
 
   // Группировка дерева по эпикам (REQ-NNN episode). Корни — без parent_artifact_id.
