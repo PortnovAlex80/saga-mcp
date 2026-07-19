@@ -676,6 +676,27 @@ function tryAdvanceStage(epicId: number): { advanced: boolean; error: string | n
       epic_id: epicId,
       to_stage: to as never,
     }) as { changed: boolean };
+
+    // After a successful stage transition, auto-close any summary.stage tasks
+    // from the PREVIOUS stage that are still in review/todo/in_progress.
+    // These are bookkeeping tasks — their stage has ended, no worker can claim
+    // them (stage-filter blocks cross-stage claims), and leaving them stranded
+    // pollutes the kanban with "stuck" tasks that are actually finished work.
+    if (result.changed) {
+      const staleSummaries = getDb().prepare(
+        `UPDATE tasks
+            SET status='done', assigned_to=NULL, current_execution_id=NULL,
+                updated_at=datetime('now')
+          WHERE epic_id=? AND task_kind='summary.stage'
+            AND workflow_stage=? AND status != 'done'`,
+      ).run(epicId, stage);
+      if (staleSummaries.changes > 0) {
+        logActivity(getDb(), 'epic', epicId, 'updated', 'auto_closed_summaries',
+          null, String(staleSummaries.changes),
+          `Auto-closed ${staleSummaries.changes} summary.stage task(s) from stage='${stage}' after transition to '${to}'`);
+      }
+    }
+
     return { advanced: result.changed, error: null };
   } catch (err) {
     return { advanced: false, error: err instanceof Error ? err.message : String(err) };
