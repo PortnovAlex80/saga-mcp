@@ -103,13 +103,13 @@ test('model: POST /api/model/set writes metadata only', async () => {
   try {
     const r = await fetch(`http://127.0.0.1:${srv.port}/api/model/set`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: 'glm-4.5-flash', epic_id: epicId }),
+      body: JSON.stringify({ model: 'glm-4.7', epic_id: epicId }),
     });
     const j = await r.json();
     assert.equal(r.status, 200);
     assert.equal(j.ok, true);
     const meta = readMeta();
-    assert.equal(meta.active_model, 'glm-4.5-flash');
+    assert.equal(meta.active_model, 'glm-4.7');
     assert.equal(typeof meta.active_model_limit, 'number');
   } finally {
     srv.stop();
@@ -129,12 +129,12 @@ test('metadata: engine_concurrency and active_model_limit coexist', async () => 
     });
     await fetch(`http://127.0.0.1:${srv.port}/api/model/set`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: 'glm-4-plus', epic_id: epicId }),
+      body: JSON.stringify({ model: 'glm-5.2', epic_id: epicId }),
     });
     const meta = readMeta();
     assert.equal(meta.engine_concurrency, 5, 'engine_concurrency survived');
-    assert.equal(meta.active_model, 'glm-4-plus', 'active_model set');
-    assert.equal(meta.active_model_limit, 20, 'model limit set');
+    assert.equal(meta.active_model, 'glm-5.2', 'active_model set');
+    assert.equal(meta.active_model_limit, 3, 'model limit set');
   } finally {
     srv.stop();
   }

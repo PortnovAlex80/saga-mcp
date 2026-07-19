@@ -61,11 +61,11 @@ test('model-selector: returns null when no choice recorded', () => {
 test('model-selector: returns the persisted choice after /api/model/set', () => {
   // Simulate what /api/model/set writes.
   const meta = JSON.parse(getDb().prepare('SELECT metadata FROM episode_workflows WHERE epic_id=?').get(epicId).metadata);
-  meta.active_model = 'glm-4.5-flash';
-  meta.active_model_limit = 2;
+  meta.active_model = 'glm-4.7';
+  meta.active_model_limit = 10;
   getDb().prepare('UPDATE episode_workflows SET metadata=? WHERE epic_id=?').run(JSON.stringify(meta), epicId);
 
-  assert.equal(activeModelForProject(product.id), 'glm-4.5-flash');
+  assert.equal(activeModelForProject(product.id), 'glm-4.7');
 });
 
 test('model-selector: survives metadata roundtrips (other fields dont clobber)', () => {
@@ -75,19 +75,19 @@ test('model-selector: survives metadata roundtrips (other fields dont clobber)',
   getDb().prepare('UPDATE episode_workflows SET metadata=? WHERE epic_id=?').run(JSON.stringify(meta), epicId);
 
   // Model choice must survive.
-  assert.equal(activeModelForProject(product.id), 'glm-4.5-flash',
+  assert.equal(activeModelForProject(product.id), 'glm-4.7',
     'model choice preserved across unrelated metadata writes');
 });
 
 test('model-selector: render picks the right option (simulated HTML)', () => {
   const MODELS = [
-    { id: 'glm-5.2', limit: 10 },
-    { id: 'glm-4.5-flash', limit: 2 },
+    { id: 'glm-5.2', limit: 3 },
+    { id: 'glm-4.7', limit: 10 },
     { id: 'opus', limit: 10 },
   ];
   const chosen = activeModelForProject(product.id) || 'opus'; // fallback
   const html = MODELS.map(m => `<option value="${m.id}" data-limit="${m.limit}"${m.id === chosen ? ' selected' : ''}>`).join('');
-  assert.match(html, /<option value="glm-4\.5-flash"[^>]*selected/, 'flash is selected');
+  assert.match(html, /<option value="glm-4\.7"[^>]*selected/, 'glm-4.7 is selected');
   assert.doesNotMatch(html, /<option value="opus"[^>]*selected/, 'opus is NOT selected');
 });
 

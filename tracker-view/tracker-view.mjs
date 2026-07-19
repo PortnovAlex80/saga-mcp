@@ -670,7 +670,7 @@ function renderBoard(projectId, allProjects) {
             // Without this the selector reset to the process-wide WORKER_MODEL
             // constant on every page reload, losing the user's last selection.
             const chosen = activeModelForProject(projectId) || WORKER_MODEL;
-            return MODELS.map(m => `<option value="${m.id}" data-limit="${m.limit}"${m.id === chosen ? ' selected' : ''}>${m.id} (×${m.limit})</option>`).join('');
+            return MODELS.map(m => `<option value="${m.id}" data-limit="${m.limit}"${m.id === chosen ? ' selected' : ''}>${m.id} (×${m.limit}${m.note ? ' · ' + m.note : ''})</option>`).join('');
           })()}
         </select>
         <span id="agent-run-status" class="agent-run-status">движок: …</span>
@@ -4926,15 +4926,18 @@ function handleEngineRestart(req, res) {
 }
 
 // --- Known models catalog with concurrency limits ---
+// Source of truth: Z.ai GLM Coding Plan FAQ (docs.z.ai/devpack/faq):
+//   "All plans support GLM-5.2, GLM-5-Turbo and GLM-4.7."
+// Other models (glm-4-plus / glm-4.5* / glm-4.7-flash*) are NOT exposed on
+// the Coding Plan endpoint — selecting them produces api_retry "unknown"
+// errors from z.ai. Limit values reflect z.ai's documented rate multipliers:
+// GLM-5.2 counts x3 in peak hours, x2 off-peak; the others are x1.
+// The limit here is the per-epic concurrency ceiling saga uses; it is NOT
+// the prompt quota (that's tracked by z.ai on their side, 80/400/1600 per 5h).
 const MODELS = [
-  { id: 'glm-5.2',         limit: 10, tier: 'flagship' },
-  { id: 'glm-5.1',         limit: 10, tier: 'flagship' },
-  { id: 'glm-4.5',         limit: 10, tier: 'smart' },
-  { id: 'glm-4-plus',      limit: 20, tier: 'smart' },
-  { id: 'glm-4.5-air',     limit: 5,  tier: 'fast' },
-  { id: 'glm-4.5-flash',   limit: 2,  tier: 'cheap' },
-  { id: 'glm-4.7-flash',   limit: 1,  tier: 'cheap' },
-  { id: 'glm-4.7-flashx',  limit: 3,  tier: 'cheap' },
+  { id: 'glm-5.2',         limit: 3,  tier: 'flagship', note: 'Opus-level, x3 peak rate' },
+  { id: 'glm-5-turbo',     limit: 5,  tier: 'flagship', note: 'Opus-level, x1 rate' },
+  { id: 'glm-4.7',         limit: 10, tier: 'sonnet',   note: 'Sonnet-level, x1 rate — recommended default' },
 ];
 
 // --- GET /api/models ---
