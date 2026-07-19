@@ -4630,12 +4630,22 @@ function handleWorkersActive(req, res, url) {
  *   5. Synchronous 1s pause so the OS finishes cleanup before any respawn.
  */
 function killEngineTree(projectId, epicId) {
+  // IMPORTANT: the PowerShell parameter MUST NOT be named $pid — that is a
+  // read-only automatic variable in PowerShell (the current shell's PID).
+  // Declaring a function parameter with that name throws
+  // SessionStateUnauthorizedAccessException → the function body never runs
+  // → descendants are not collected → only the engine itself gets killed,
+  // not the claude.exe workers under it. Use $procId instead.
+  //
+  // The template literal is a JS backtick string. `$foo` (without braces) is
+  // NOT interpolation in JS — only `${foo}` is. So `$kids`, `$toKill`, etc.
+  // pass through to PowerShell verbatim, as intended. No escaping needed.
   try {
     require('child_process').spawnSync(
       'powershell',
       ['-Command',
-       `function Get-Descendants(\$pid) { ` +
-       `  $kids = Get-CimInstance Win32_Process -Filter "ParentProcessId=$pid"; ` +
+       `function Get-Descendants($procId) { ` +
+       `  $kids = Get-CimInstance Win32_Process -Filter "ParentProcessId=$procId"; ` +
        `  foreach ($k in $kids) { ,($k.ProcessId); Get-Descendants $k.ProcessId } ` +
        `} ; ` +
        `$toKill = @(); ` +
