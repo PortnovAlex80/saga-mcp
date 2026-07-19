@@ -103,19 +103,117 @@ test('invalid: multi-project + parallel-independent', () => {
     `errors: ${JSON.stringify(r.errors)}`);
 });
 
-console.log('\n=== validateBrief — low completeness blocks go (Rule 3) ===');
-test('invalid: completeness=low AND decision=go', () => {
+console.log('\n=== validateBrief — low completeness blocks go (Rule 3, agent-first revision) ===');
+
+// Agent-first path: completeness=low + decision=go is ALLOWED when the agent
+// has resolved every open_question itself AND built a real decision_matrix.
+// These tests pin the new contract boundary.
+
+test('invalid: completeness=low AND decision=go WITHOUT agent-resolve preconditions', () => {
+  // validBase.open_questions is a string array ['o1'] — old shape, no
+  // status/answer. Without agent-resolve preconditions, the rule fires.
   const p = clone(validBase); p.completeness = 'low'; p.decision = 'go';
   const r = validateBrief(p);
   assert.equal(r.ok, false);
-  assert.ok(r.errors.includes('completeness=low blocks decision=go; use clarify'),
+  assert.ok(r.errors.some(e => e.startsWith('completeness=low blocks decision=go')),
     `errors: ${JSON.stringify(r.errors)}`);
 });
-test('valid: completeness=low with decision=clarify', () => {
+
+test('valid: completeness=low AND decision=go WITH agent-resolved open_questions + matrix + recommended_variant', () => {
+  const p = clone(validBase);
+  p.completeness = 'low';
+  p.decision = 'go';
+  // ≥3 variants in the matrix
+  p.decision_matrix = {
+    criteria: ['business_value', 'technical_risk'],
+    variants: [
+      { name: 'A: MVP', scores: { business_value: 5, technical_risk: 3 } },
+      { name: 'B: Full', scores: { business_value: 5, technical_risk: 2 } },
+      { name: 'C: Lite', scores: { business_value: 3, technical_risk: 5 } },
+    ],
+  };
+  p.recommended_variant = 'A: MVP';
+  // open_questions as objects with status='answered' + non-empty answer
+  p.open_questions = [
+    { id: 'Q-001', question: 'which metric?', status: 'answered', answer: 'mean_session_seconds' },
+    { id: 'Q-002', question: 'standalone or backend?', status: 'answered', answer: 'standalone HTML' },
+  ];
+  assert.equal(validateBrief(p).ok, true,
+    'agent-first path: low completeness + go is valid when agent resolved all questions');
+});
+
+test('invalid: completeness=low AND decision=go WITH matrix but ONE open_question still status=open', () => {
+  const p = clone(validBase);
+  p.completeness = 'low';
+  p.decision = 'go';
+  p.decision_matrix = {
+    criteria: ['c1'],
+    variants: [
+      { name: 'A', scores: { c1: 3 } },
+      { name: 'B', scores: { c1: 3 } },
+      { name: 'C', scores: { c1: 3 } },
+    ],
+  };
+  p.recommended_variant = 'A';
+  p.open_questions = [
+    { id: 'Q-001', question: 'q1', status: 'answered', answer: 'a1' },
+    { id: 'Q-002', question: 'q2', status: 'open' },  // ← still open
+  ];
+  const r = validateBrief(p);
+  assert.equal(r.ok, false);
+  assert.ok(r.errors.some(e => e.startsWith('completeness=low blocks decision=go')),
+    'must reject when any open_question is still status=open');
+});
+
+test('invalid: completeness=low AND decision=go WITH answered questions but only 2 variants', () => {
+  const p = clone(validBase);
+  p.completeness = 'low';
+  p.decision = 'go';
+  p.decision_matrix = {
+    criteria: ['c1'],
+    variants: [
+      { name: 'A', scores: { c1: 3 } },
+      { name: 'B', scores: { c1: 3 } },
+      // only 2 — matrix below the ≥3 threshold
+    ],
+  };
+  p.recommended_variant = 'A';
+  p.open_questions = [
+    { id: 'Q-001', question: 'q1', status: 'answered', answer: 'a1' },
+  ];
+  const r = validateBrief(p);
+  assert.equal(r.ok, false);
+  assert.ok(r.errors.some(e => e.startsWith('completeness=low blocks decision=go')),
+    'must reject when matrix has <3 variants (no real decision was made)');
+});
+
+test('invalid: completeness=low AND decision=go WITH matrix+answered but missing recommended_variant', () => {
+  const p = clone(validBase);
+  p.completeness = 'low';
+  p.decision = 'go';
+  p.decision_matrix = {
+    criteria: ['c1'],
+    variants: [
+      { name: 'A', scores: { c1: 3 } },
+      { name: 'B', scores: { c1: 3 } },
+      { name: 'C', scores: { c1: 3 } },
+    ],
+  };
+  // recommended_variant omitted
+  p.open_questions = [
+    { id: 'Q-001', question: 'q1', status: 'answered', answer: 'a1' },
+  ];
+  const r = validateBrief(p);
+  assert.equal(r.ok, false);
+  assert.ok(r.errors.some(e => e.startsWith('completeness=low blocks decision=go')),
+    'must reject when recommended_variant is missing (no commitment to a specific variant)');
+});
+
+test('valid: completeness=low with decision=clarify (unchanged fallback)', () => {
   const p = clone(validBase); p.completeness = 'low'; p.decision = 'clarify';
   assert.equal(validateBrief(p).ok, true);
 });
-test('valid: completeness=high with decision=go', () => {
+test('valid: completeness=high with decision=go (unchanged)', () => {
   const p = clone(validBase); p.completeness = 'high'; p.decision = 'go';
   assert.equal(validateBrief(p).ok, true);
 });
