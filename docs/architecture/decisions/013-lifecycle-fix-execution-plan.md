@@ -56,7 +56,7 @@ worker, small steps.
 
 ## Phase 1 — Targeted fixes (1–2 days)
 
-### 1.1 — Wrap `handleWorkerAskNeed` in atomic transaction
+### 1.1 — Wrap `handleWorkerAskNeed` in atomic transaction — **DONE 2026-07-19**
 
 **Problem.** `dispatcher.ts:794` runs four separate writes with no tx wrapper:
 comment → `releaseExecutionAtomically` → `UPDATE tags` → `INSERT human_requests`.
@@ -70,6 +70,18 @@ comment → `releaseExecutionAtomically` → `UPDATE tags` → `INSERT human_req
 3. `handleWorkerAskDone` (`dispatcher.ts:904`): wrap in tx; check
    `info.changes === 1` on the `UPDATE ... WHERE state='open'`. Two concurrent
    answers must not both return `state='answered'`.
+4. **Ordering constraint discovered in implementation (not in original plan):**
+   `releaseExecutionAtomically` (`src/lifecycle/atomic-release.ts:194`) refuses
+   to release a task that already carries the `needs-human` tag. Therefore the
+   tag UPDATE must run **after** the release call, and the in-memory add of the
+   tag (which release does not see) must not be persisted before release. The
+   implementation keeps: comment → INSERT human_requests → release → UPDATE tag,
+   all inside one tx.
+5. `handleWorkerAskDone` SELECT must **not** filter on `state='open'` — otherwise
+   a request already answered by a concurrent tx is invisible and the caller
+   silently falls into `no_open_request`. The new SELECT picks the most recent
+   request in any state and the CAS UPDATE distinguishes `answered` vs
+   `already_answered`.
 
 **Acceptance criteria.**
 - AC-1: at any crash point inside `handleWorkerAskNeed`, either all four side
@@ -81,6 +93,13 @@ comment → `releaseExecutionAtomically` → `UPDATE tags` → `INSERT human_req
 
 **Tests.** Extend `tests/lifecycle/ask-protocol.test.mjs` with crash-injection
 at each intra-handler point and a concurrent-`worker_ask_done` test.
+
+**Verification (2026-07-19).** 6 new tests added; 17/17 green × 5 consecutive
+runs of `ask-protocol.test.mjs`. Full `npm test`: 357/358 green — the one
+remaining failure is the pre-existing `track(reject)` flake (Phase 1.3,
+unrelated to this change; the test's own comment names it: "flaky when run after
+track(clarify) — background engine lingers"). Implementation committed in the
+saga-mcp history as Phase 1.1.
 
 ### 1.2 — Move `generateNextForCompletedTask` into durable outbox
 
@@ -108,16 +127,30 @@ forever, replay returns receipt without `workflow_generation`
 **Tests.** New `tests/lifecycle/outbox-recovery.test.mjs`. Extend idempotency
 test for byte-equal replay.
 
-### 1.3 — Stabilise flaky `track-pipeline.test.mjs:233`
+### 1.3 — Stabilise flaky `track-pipeline.test.mjs`
 
-**Problem.** Observed flake: `decision='clarify' should set needs-human=true
-(got null)`. Likely downstream of 1.1's ASK race.
+**Problem.** Two flakes observed in this suite, with different root causes:
 
-**Fix.** After 1.1 lands, run the suite 10×. If still flaky — investigate the
-test fixture (`tests/mock-claude.mjs`) and timing. **No `sleep`/`retry` fixes.**
+1. (Originally documented) `track(clarify)` at `:233` — `decision='clarify'
+   should set needs-human=true (got null)`. Suspected downstream of 1.1's ASK
+   race. **Status after 1.1:** not reproduced across 5 ASK-stability runs;
+   may be closed if 1.3 verification stays green.
+2. (Discovered 2026-07-19 during Phase 1.1 verification) `track(reject)` at
+   `:280` — `decision='reject' should transition the episode to 'cancelled'
+   (got 'discovery')`. The test's own comment names the cause: *"flaky when run
+   after track(clarify) — background engine lingers."* This is an
+   engine-shutdown/timing issue, not an ASK issue, and it is **unrelated to
+   Phase 1.1** (track-pipeline.test.mjs does not import dispatcher and does not
+   use the ASK protocol).
+
+**Fix.** Run the suite 10× after 1.1 lands. For (1), if green — close. For (2),
+investigate why the background engine from `track(clarify)` leaks into
+`track(reject)` — look at engine teardown between tests in
+`tests/track-pipeline.test.mjs` and `tests/mock-claude.mjs`. **No `sleep` /
+`retry` fixes** — find the actual leak.
 
 **Acceptance criteria.**
-- AC-1: 10 consecutive runs of `node --test tests/lifecycle/track-pipeline.test.mjs` → 10 green.
+- AC-1: 10 consecutive runs of `node --test tests/track-pipeline.test.mjs` → 10 green.
 
 ## Phase 2 — Lock contention (3–5 days)
 
