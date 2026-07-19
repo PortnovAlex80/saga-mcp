@@ -238,6 +238,7 @@ function findNextClaimable(
       ${epicClause}
       AND (
         t.workflow_stage IS NULL
+        OR t.task_kind = 'summary.stage'   -- bookkeeping: claimable on ANY stage
         OR NOT EXISTS (SELECT 1 FROM episode_workflows ew WHERE ew.epic_id=t.epic_id)
         OR EXISTS (
           SELECT 1 FROM episode_workflows ew
@@ -554,18 +555,8 @@ function handleWorkerDone(args: Record<string, unknown>): {
     let newStatus: 'review' | 'done' | 'todo';
     let newAssignedTo: string | null; // кому уходит задача после перевода
     if (task.status === 'in_progress') {
-      // summary.stage tasks are bookkeeping — the worker writes a markdown
-      // summary file and exits. There is nothing to review: no code, no
-      // contract, no AC. Going through review wastes a full worker cycle
-      // (reviewer picks it up, reads the summary, approves — pure overhead).
-      // Short-circuit straight to done.
-      if (task.task_kind === 'summary.stage') {
-        newStatus = 'done';
-        newAssignedTo = null;
-      } else {
-        newStatus = 'review';          // цикл разработки завершён → буфер ревью
-        newAssignedTo = null;          // в очереди на ревью (без исполнителя)
-      }
+      newStatus = 'review';            // цикл разработки завершён → буфер ревью
+      newAssignedTo = null;            // в очереди на ревью (без исполнителя)
     } else if (task.status === 'review_in_progress') {
       if (verdict === 'changes_requested') {
         newStatus = 'todo';            // single-use reviewer exits; a developer reclaims it
