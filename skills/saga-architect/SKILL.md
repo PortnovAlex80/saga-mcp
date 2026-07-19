@@ -30,6 +30,12 @@ artifacts that the rest of the system traces against.
 - `worker_next({ worker_id, project_id, role: 'architect' })` — claim the SRS task.
 - If `{task: null}` → report "queue empty" and stop.
 
+> ### ⚠ PATH MUST BE RELATIVE
+> When you call `artifact_create({path: ...})`, ALWAYS use a **relative** path:
+> `path: 'docs/requirements/REQ-NNN-<slug>/01-SRS.md'` (or `#FR-N` anchor suffix).
+> **NEVER** write absolute paths like `D:\Development\moscito\docs\...`.
+> See saga-product SKILL for the full rationale.
+
 ## Preconditions (предусловия)
 
 The PRD must exist and be at least `in_review`. Find it:
@@ -228,6 +234,12 @@ to the PRD, so AC can later reference them by `code`.
 // The SRS itself
 srs_id = artifact_create({ project_id, epic_id, type: 'SRS', title:'SRS ...',
   path: '...01-SRS.md', status:'draft' }).id
+
+// Link SRS → PRD (REQUIRED — traceability edge). Without this, the
+// formalization→planning gate rejects: "SRS has no outgoing 'derived_from'
+// trace to PRD." parent_artifact_id alone does not create an artifact_traces row.
+trace_add({ source_id: srs_id, target_type:'artifact', target_id: prd_id,
+            link_type:'derived_from' })
 
 // Each functional requirement, parented to the PRD
 for each FR-N:

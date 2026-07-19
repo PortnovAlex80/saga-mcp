@@ -31,6 +31,18 @@ intent; everything downstream (SRS, UC, AC) derives from it.
 - If `{task: null}` → report "queue empty" and stop.
 - Otherwise: write the PRD, register the artifact, `worker_done`, stop on `stop:true`.
 
+> ### ⚠ PATH MUST BE RELATIVE
+> When you call `artifact_create({path: ...})`, ALWAYS use a **relative** path:
+> ```
+> path: 'docs/requirements/REQ-NNN-<slug>/00-PRD.md'
+> ```
+> **NEVER** write an absolute path like `D:\Development\moscito\docs\...` or
+> `/home/user/repo/docs/...`. The path is stored in saga.db and read by
+> tracker-view via `path.join(repository_path, artifact_path)`. On Windows,
+> `path.join(root, 'D:\\Development\\...')` produces garbage. The artifact
+> `handler will try to normalise absolute paths to relative, but this is a
+> safety net — the skill contract is RELATIVE.
+
 ## Producing the PRD (создание PRD)
 
 1. Read the epic (the REQ-NNN episode) and any seed material in the task description.
@@ -44,13 +56,27 @@ intent; everything downstream (SRS, UC, AC) derives from it.
      project_id, epic_id,
      type: 'PRD',
      title: '<PRD title>',
-     path: 'docs/requirements/REQ-NNN-<slug>/00-PRD.md',
+     path: 'docs/requirements/REQ-NNN-<slug>/00-PRD.md',   // ⚠ MUST BE RELATIVE — see warning below
      code: null,                 // PRD is the root; no code
      status: 'draft'
    })
    ```
    Remember the returned `artifact.id` — child artifacts (FRs) will reference it
    via `parent_artifact_id`.
+
+6. **Link PRD → brief** (REQUIRED — traceability edge):
+   ```
+   trace_add({
+     source_id: <PRD artifact id>,
+     target_type: 'artifact',
+     target_id: <brief artifact id>,   // from artifact_list({epic_id, type:'brief'})
+     link_type: 'derived_from'
+   })
+   ```
+   Without this edge, the formalization→planning gate rejects the episode
+   with: *"PRD has no outgoing 'derived_from' trace to a brief artifact."*
+   The `parent_artifact_id` column alone is NOT enough — it sets hierarchy
+   but does not create a row in `artifact_traces`.
 
 ## Hypotheses section (секция гипотез; REQUIRED for product episodes — ОБЯЗАТЕЛЬНО для продуктовых эпизодов)
 

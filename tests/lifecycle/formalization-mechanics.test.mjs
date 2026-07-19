@@ -215,11 +215,44 @@ test('gate: formalization→planning succeeds when gateable tasks done', () => {
   });
 
   // To pass the gate we also need accepted AC artifacts with clean hashes
-  // (acceptedBaseline). Build a minimal one directly via the artifacts tool.
+  // (acceptedBaseline) AND canonical lineage edges (assertTraceability).
+  // Build a minimal pyramid: brief → PRD → SRS+FR+UC → AC, with traces.
+  const brief = artifacts.artifact_create({
+    project_id: product.id, epic_id: epic, type: 'brief', code: 'BRIEF-1',
+    title: 'Brief', path: `docs/test/brief-${epic}.md`, status: 'accepted',
+    metadata: { brief_payload: {
+      classification: 'tech-task', complexity: { tshirt: 'S', risk_triggers: [] },
+      decision: 'go', reasoning: 'test', affected_projects: [product.id],
+      topology_hint: 'sequence', scaffold_artifacts: [], shared_mutation_risk: false,
+      completeness: 'high', degraded: false,
+    } },
+  });
+  const prdArt = artifacts.artifact_create({
+    project_id: product.id, epic_id: epic, type: 'PRD', code: null,
+    title: 'PRD', path: `docs/test/prd-${epic}.md`, status: 'accepted',
+  });
+  artifacts.trace_add({ source_id: prdArt.id, target_type: 'artifact', target_id: brief.id, link_type: 'derived_from' });
+  const srsArt = artifacts.artifact_create({
+    project_id: product.id, epic_id: epic, type: 'SRS', code: 'SRS-1',
+    title: 'SRS', path: `docs/test/srs-${epic}.md`, status: 'accepted',
+  });
+  artifacts.trace_add({ source_id: srsArt.id, target_type: 'artifact', target_id: prdArt.id, link_type: 'derived_from' });
+  const frArt = artifacts.artifact_create({
+    project_id: product.id, epic_id: epic, type: 'FR', code: 'FR-1',
+    title: 'FR', path: `docs/test/srs-${epic}.md#FR-1`, status: 'accepted',
+  });
+  const ucArt = artifacts.artifact_create({
+    project_id: product.id, epic_id: epic, type: 'UC', code: 'UC-1',
+    title: 'UC', path: `docs/test/uc-${epic}.md#UC-1`, status: 'accepted',
+  });
+  artifacts.trace_add({ source_id: ucArt.id, target_type: 'artifact', target_id: prdArt.id, link_type: 'derived_from' });
+  artifacts.trace_add({ source_id: ucArt.id, target_type: 'artifact', target_id: frArt.id, link_type: 'covers' });
   const acArtifact = artifacts.artifact_create({
     project_id: product.id, epic_id: epic, type: 'AC', code: 'AC-1',
     title: 'Test AC', path: `docs/test/ac-${epic}.md#AC-1`, status: 'accepted',
   });
+  artifacts.trace_add({ source_id: acArtifact.id, target_type: 'artifact', target_id: ucArt.id, link_type: 'derived_from' });
+  artifacts.trace_add({ source_id: acArtifact.id, target_type: 'artifact', target_id: frArt.id, link_type: 'derived_from' });
   // Pin accepted_hash = content_hash to satisfy acceptedBaseline's clean check.
   const db = getDb();
   const hash = '0'.repeat(64);
@@ -229,7 +262,7 @@ test('gate: formalization→planning succeeds when gateable tasks done', () => {
 
   assert.doesNotThrow(
     () => lifecycle.episode_transition({ epic_id: epic, to_stage: 'planning' }),
-    'gate must succeed when all gateable formalization tasks done + AC baseline accepted',
+    'gate must succeed when all gateable formalization tasks done + AC baseline accepted + traces complete',
   );
 });
 

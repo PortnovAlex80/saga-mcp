@@ -33,6 +33,13 @@ the source of a dev task's DoD.
 - The task title tells you which artifact to produce ("UC: ..." or "AC: ...").
 - If `{task: null}` → report "queue empty" and stop.
 
+> ### ⚠ PATH MUST BE RELATIVE
+> When you call `artifact_create({path: ...})`, ALWAYS use a **relative** path:
+> `path: 'docs/requirements/REQ-NNN-<slug>/02-use-cases.md#UC-N'` or
+> `path: 'docs/requirements/REQ-NNN-<slug>/03-acceptance-criteria.md#AC-N'`.
+> **NEVER** write absolute paths like `D:\Development\moscito\docs\...`.
+> See saga-product SKILL for the full rationale.
+
 ## Preconditions (предусловия)
 
 - For UC: PRD must exist (`artifact_list({ epic_id, type:'PRD' })`).
@@ -50,6 +57,11 @@ the source of a dev task's DoD.
      uc_id = artifact_create({ project_id, epic_id, type:'UC', code:'UC-1',
        title:'...', path:'...02-use-cases.md#UC-1', parent_artifact_id: prd_id,
        status:'draft' }).id
+     // REQUIRED: UC → PRD derived_from (without this, the formalization→planning
+     // gate rejects: "UC has no 'derived_from' trace to PRD." parent_artifact_id
+     // alone does not create an artifact_traces row.)
+     trace_add({ source_id: uc_id, target_type:'artifact', target_id: prd_id,
+                 link_type:'derived_from' })
      for each FR this UC covers:
        trace_add({ source_id: uc_id, target_type:'artifact', target_id: fr_id,
                    link_type:'covers' })

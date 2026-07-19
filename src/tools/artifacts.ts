@@ -54,13 +54,17 @@ function handleArtifactCreate(args: Record<string, unknown>): Artifact {
   const epicId = args.epic_id as number;
   const type = args.type as typeof ARTIFACT_TYPES[number];
   const title = args.title as string;
-  const path = args.path as string;
+  const projectRepositoryId = (args.project_repository_id as number | undefined) ?? null;
+  // Workers sometimes write absolute paths (D:\Development\moscito\docs\...md)
+  // despite the skill template saying 'docs/...'. On Windows this breaks
+  // path.join(root, absPath) downstream (tracker-view resolver, artifactDiskHash).
+  // Normalise: if path is absolute AND we know project_repository.local_path,
+  // strip the local_path prefix to make it relative. Otherwise keep as-is but
+  // tag metadata.path_warning so downstream knows.
+  const rawPath = args.path as string;
   const code = (args.code as string | undefined) ?? null;
   const status = (args.status as typeof ARTIFACT_STATUSES[number] | undefined) ?? 'draft';
   const parentArtifactId = (args.parent_artifact_id as number | undefined) ?? null;
-  const projectRepositoryId = (args.project_repository_id as number | undefined) ?? null;
-  const contentHash = artifactDiskHash(db, path, projectRepositoryId)
-    ?? (args.content_hash as string | undefined) ?? null;
   const tags = (args.tags as string[] | undefined) ?? [];
   const metadata = (args.metadata as Record<string, unknown> | undefined) ?? {};
 
@@ -73,7 +77,7 @@ function handleArtifactCreate(args: Record<string, unknown>): Artifact {
   if (title === undefined || title === null || title === '') {
     throw new Error('title and path are required');
   }
-  if (path === undefined || path === null || path === '') {
+  if (rawPath === undefined || rawPath === null || rawPath === '') {
     throw new Error('title and path are required');
   }
   if (projectRepositoryId != null) {
@@ -83,6 +87,39 @@ function handleArtifactCreate(args: Record<string, unknown>): Artifact {
       throw new Error(`Project repository ${projectRepositoryId} does not belong to product project ${projectId}`);
     }
   }
+
+  // Normalise absolute → relative path. Skill templates say 'docs/...' but
+  // LLM workers sometimes prepend the workspace cwd (D:\Development\<repo>\docs\...).
+  // We try to strip the known project_repository.local_path prefix; if that
+  // fails, we keep the absolute path but tag it so tracker-view's defensive
+  // resolver can still find the file.
+  let path = rawPath;
+  let metadataToPersist = metadata;
+  const looksAbsolute = /^([A-Za-z]:[\\/]|[\\/]|\\\\[^?])/.test(rawPath.split('#')[0]);
+  if (looksAbsolute && projectRepositoryId != null) {
+    const repoRow = db.prepare(
+      'SELECT local_path FROM project_repositories WHERE id=?',
+    ).get(projectRepositoryId) as { local_path: string | null } | undefined;
+    const localPath = repoRow?.local_path;
+    if (localPath) {
+      // Normalise both to forward slashes for prefix comparison.
+      const normLocal = localPath.replace(/\\/g, '/').replace(/\/+$/, '');
+      const normPath = rawPath.replace(/\\/g, '/');
+      if (normPath.toLowerCase().startsWith(normLocal.toLowerCase() + '/')) {
+        const stripped = normPath.slice(normLocal.length + 1);
+        path = stripped;
+      } else {
+        // Absolute but not under this repo — keep as-is, tag for triage.
+        metadataToPersist = { ...metadata, path_warning: 'absolute_path_not_under_repo_root' };
+      }
+    }
+  } else if (looksAbsolute) {
+    // No project_repository_id — cannot normalise. Tag for triage.
+    metadataToPersist = { ...metadata, path_warning: 'absolute_path_no_repo_binding' };
+  }
+
+  const contentHash = artifactDiskHash(db, path, projectRepositoryId)
+    ?? (args.content_hash as string | undefined) ?? null;
 
   // --- type-specific guards + payload prep (SRS §2b.3) ---
   //
@@ -94,7 +131,6 @@ function handleArtifactCreate(args: Record<string, unknown>): Artifact {
   // `theme`: a theme is the top-level business board and MUST live in the
   // 'business' project. Without a project `kind` column the contract's
   // `projectExists(id,'business')` is a name match.
-  let metadataToPersist = metadata;
   const acceptedHash = status === 'accepted' ? contentHash : null;
   const driftState = acceptedHash ? 'clean' : 'unknown';
 
@@ -109,7 +145,7 @@ function handleArtifactCreate(args: Record<string, unknown>): Artifact {
       // the caller-supplied status, which is 'draft' until the gate passes.
       throw new Error(`brief validation failed:\n${validation.errors.join('\n')}`);
     }
-    metadataToPersist = { ...metadata, [BRIEF_PAYLOAD_KEY]: briefPayload };
+    metadataToPersist = { ...metadataToPersist, [BRIEF_PAYLOAD_KEY]: briefPayload };
   }
 
   if (type === 'theme') {
