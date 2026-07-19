@@ -216,10 +216,11 @@ test('traceability gate: fails when UC has no covers → FR', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Test 6: gate fails when AC missing derived_from → UC.
+// Test 6: gate fails when AC traces to FR but not to UC.
+// (FR-derived ACs MUST have a UC trace — the behavioural scenario.)
 // ---------------------------------------------------------------------------
 
-test('traceability gate: fails when AC has no derived_from → UC', () => {
+test('traceability gate: fails when AC has FR but no UC trace', () => {
   const epic = makeEpic();
   makeDoneFormalizationTask(epic);
   const { ac } = buildCompletePyramid(epic);
@@ -232,8 +233,43 @@ test('traceability gate: fails when AC has no derived_from → UC', () => {
 
   assert.throws(
     () => lifecycle.episode_transition({ epic_id: epic, to_stage: 'planning' }),
-    /AC .* has no 'derived_from' trace to any UC/i,
-    'gate must reject AC without derived_from → UC',
+    /AC .* traces to FR but has no 'derived_from' trace to any UC/i,
+    'gate must reject FR-derived AC without UC trace',
+  );
+});
+
+// ---------------------------------------------------------------------------
+// Test 6b: gate ACCEPTS NFR-only AC without UC trace.
+// (Cross-cutting ACs like performance/security/code-quality do not map to UC.)
+// ---------------------------------------------------------------------------
+
+test('traceability gate: accepts NFR-only AC without UC trace', () => {
+  const epic = makeEpic();
+  makeDoneFormalizationTask(epic);
+  const { prd, uc } = buildCompletePyramid(epic);
+  // Add an NFR + an AC that traces to NFR only (no UC, no FR).
+  const nfr = artifacts.artifact_create({
+    project_id: product.id, epic_id: epic, type: 'NFR', code: 'NFR-1',
+    title: 'NFR', path: `docs/srs-${epic}.md#NFR-1`, status: 'accepted',
+    parent_artifact_id: prd.id,
+  });
+  artifacts.trace_add({ source_id: nfr.id, target_type: 'artifact', target_id: prd.id, link_type: 'derived_from' });
+  const acNfrOnly = artifacts.artifact_create({
+    project_id: product.id, epic_id: epic, type: 'AC', code: 'AC-NFR-ONLY',
+    title: 'AC for NFR only', path: `docs/ac-${epic}.md#AC-NFR-ONLY`, status: 'accepted',
+  });
+  // Trace ONLY to NFR — no UC trace, no FR trace.
+  artifacts.trace_add({ source_id: acNfrOnly.id, target_type: 'artifact', target_id: nfr.id, link_type: 'derived_from' });
+  // Pin hash so acceptedBaseline passes.
+  const db = getDb();
+  const hash = 'c'.repeat(64);
+  db.prepare(`UPDATE artifacts SET content_hash=?, accepted_hash=?, drift_state='clean' WHERE id=?`).run(hash, hash, acNfrOnly.id);
+  // Suppress unused warning.
+  void uc;
+
+  assert.doesNotThrow(
+    () => lifecycle.episode_transition({ epic_id: epic, to_stage: 'planning' }),
+    'gate must accept NFR-only AC without UC trace (cross-cutting ACs are exempt)',
   );
 });
 
