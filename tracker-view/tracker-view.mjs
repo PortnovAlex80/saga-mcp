@@ -4666,6 +4666,14 @@ function killEngineTree(projectId, epicId) {
   // → descendants are not collected → only the engine itself gets killed,
   // not the claude.exe workers under it. Use $procId instead.
   //
+  // CRITICAL: do NOT put `#` comments inside the -Command string. In
+  // -Command mode PowerShell treats the whole argument as a single line,
+  // and `#` starts a comment that swallows the REST of the script. Every
+  // statement after the first `#` silently never executes — taskkill
+  // included. That was the real reason the Pause button didn't kill: the
+  // script found the engine but the `# Dedup and kill` comment ate the
+  // taskkill loop. Keep this script comment-free.
+  //
   // The template literal is a JS backtick string. `$foo` (without braces) is
   // NOT interpolation in JS — only `${foo}` is. So `$kids`, `$toKill`, etc.
   // pass through to PowerShell verbatim, as intended. No escaping needed.
@@ -4684,11 +4692,9 @@ function killEngineTree(projectId, epicId) {
        `  $toKill += $e.ProcessId; ` +
        `  $toKill += Get-Descendants $e.ProcessId ` +
        `} ; ` +
-       `# Also catch orphan claude.exe workers for this project (survived prior kills). ` +
        `$orphans = Get-CimInstance Win32_Process -Filter "name='claude.exe'" | ` +
        `  Where-Object { $_.CommandLine -like '*project_id=${projectId}*' } ; ` +
        `foreach ($o in $orphans) { $toKill += $o.ProcessId } ; ` +
-       `# Dedup and kill. ` +
        `$toKill = $toKill | Sort-Object -Unique; ` +
        `foreach ($p in $toKill) { taskkill /F /PID $p 2>$null }`],
       { encoding: 'utf8' }
