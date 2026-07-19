@@ -291,6 +291,17 @@ function handleProjectDelete(args: Record<string, unknown>): {
 
   db.exec('BEGIN IMMEDIATE');
   try {
+    // work_attempts.execution_id REFERENCES worker_executions(execution_id)
+    // WITHOUT ON DELETE CASCADE (schema.ts). When we delete worker_executions
+    // below, work_attempts would dangle and trip FK. Clean manually first.
+    // (work_attempts also cascades from task_work_items, but execution_id is
+    // a separate FK column with no cascade rule.)
+    db.prepare(
+      `DELETE FROM work_attempts
+        WHERE execution_id IN (
+          SELECT execution_id FROM worker_executions WHERE project_id = ?
+        )`,
+    ).run(projectId);
     // worker_executions has no FK on project_id — must clean manually.
     db.prepare('DELETE FROM worker_executions WHERE project_id = ?').run(projectId);
     // DELETE FROM projects triggers every other CASCADE (schema.ts):

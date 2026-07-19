@@ -86,6 +86,129 @@ function assertTasksReady(epicId: number, stage: string): void {
   }
 }
 
+/**
+ * Traceability gate for formalization → planning transition.
+ *
+ * Verifies the canonical lineage edges exist in artifact_traces:
+ *   - PRD      has outgoing `derived_from` → brief
+ *   - SRS      has outgoing `derived_from` → PRD
+ *   - Each UC  has outgoing `covers` → ≥1 FR  AND `derived_from` → PRD
+ *   - Each AC  has outgoing `derived_from` → ≥1 UC  AND ≥1 FR/NFR
+ *
+ * Producer-skills (saga-product/architect/analyst) create these edges
+ * via trace_add at artifact creation time. Without this gate, an episode
+ * could advance to planning with PRD/SRS/UC never linked to their parents
+ * — the traceability graph would be silently broken, and later queries
+ * (artifact_coverage, tree view) would show orphan nodes.
+ *
+ * The gate reports the FIRST gap it finds (clear error vs. a wall of text).
+ * Saga-reconciler task is the recovery path: it can trace_add missing edges.
+ *
+ * Note: artifact_traces.target_type is polymorphic — for formalization
+ * lineage all targets are artifacts, so we JOIN artifacts t on target_id.
+ */
+function assertTraceability(epicId: number): void {
+  const db = getDb();
+
+  // Helper: does artifact `srcId` have an outgoing edge with given link_type
+  // to any artifact of given target_type (within this epic)?
+  const hasEdge = (
+    srcId: number, linkType: 'derived_from' | 'covers',
+    targetType: 'brief' | 'PRD' | 'UC' | 'FR' | 'NFR',
+  ): boolean => {
+    const row = db.prepare(
+      `SELECT 1 FROM artifact_traces at
+        JOIN artifacts t ON t.id = at.target_id
+       WHERE at.source_id = ?
+         AND at.link_type = ?
+         AND t.epic_id = ?
+         AND t.type = ?
+       LIMIT 1`,
+    ).get(srcId, linkType, epicId, targetType);
+    return !!row;
+  };
+
+  // Helper: does artifact `srcId` have an outgoing edge with given link_type
+  // to ≥1 artifact of ANY of the given target_types?
+  const hasEdgeToAny = (
+    srcId: number, linkType: 'derived_from' | 'covers',
+    targetTypes: Array<'UC' | 'FR' | 'NFR'>,
+  ): boolean => {
+    if (targetTypes.length === 0) return false;
+    const placeholders = targetTypes.map(() => '?').join(',');
+    const row = db.prepare(
+      `SELECT 1 FROM artifact_traces at
+        JOIN artifacts t ON t.id = at.target_id
+       WHERE at.source_id = ?
+         AND at.link_type = ?
+         AND t.epic_id = ?
+         AND t.type IN (${placeholders})
+       LIMIT 1`,
+    ).get(srcId, linkType, epicId, ...targetTypes);
+    return !!row;
+  };
+
+  // 1. PRD → brief (derived_from)
+  const prd = db.prepare(
+    `SELECT id FROM artifacts WHERE epic_id=? AND type='PRD' ORDER BY id LIMIT 1`,
+  ).get(epicId) as { id: number } | undefined;
+  if (prd && !hasEdge(prd.id, 'derived_from', 'brief')) {
+    throw new Error(
+      `Traceability gate failed: PRD #${prd.id} has no outgoing 'derived_from' trace to a brief artifact. ` +
+      `saga-product must call trace_add(PRD → brief, 'derived_from') at artifact creation.`,
+    );
+  }
+
+  // 2. SRS → PRD (derived_from)
+  const srs = db.prepare(
+    `SELECT id FROM artifacts WHERE epic_id=? AND type='SRS' ORDER BY id LIMIT 1`,
+  ).get(epicId) as { id: number } | undefined;
+  if (srs && !hasEdge(srs.id, 'derived_from', 'PRD')) {
+    throw new Error(
+      `Traceability gate failed: SRS #${srs.id} has no outgoing 'derived_from' trace to PRD. ` +
+      `saga-architect must call trace_add(SRS → PRD, 'derived_from') at artifact creation.`,
+    );
+  }
+
+  // 3. Each UC → PRD (derived_from) AND ≥1 FR (covers)
+  const ucs = db.prepare(
+    `SELECT id, code FROM artifacts WHERE epic_id=? AND type='UC' ORDER BY id`,
+  ).all(epicId) as Array<{ id: number; code: string | null }>;
+  for (const uc of ucs) {
+    if (!hasEdge(uc.id, 'derived_from', 'PRD')) {
+      throw new Error(
+        `Traceability gate failed: UC ${uc.code ?? `#${uc.id}`} has no 'derived_from' trace to PRD. ` +
+        `saga-analyst must call trace_add(UC → PRD, 'derived_from') at artifact creation.`,
+      );
+    }
+    if (!hasEdge(uc.id, 'covers', 'FR')) {
+      throw new Error(
+        `Traceability gate failed: UC ${uc.code ?? `#${uc.id}`} has no 'covers' trace to any FR. ` +
+        `Every UC must cover at least one FR (trace_add(UC → FR, 'covers')).`,
+      );
+    }
+  }
+
+  // 4. Each AC → ≥1 UC (derived_from) AND ≥1 FR/NFR (derived_from)
+  const acs = db.prepare(
+    `SELECT id, code FROM artifacts WHERE epic_id=? AND type='AC' ORDER BY id`,
+  ).all(epicId) as Array<{ id: number; code: string | null }>;
+  for (const ac of acs) {
+    if (!hasEdge(ac.id, 'derived_from', 'UC')) {
+      throw new Error(
+        `Traceability gate failed: AC ${ac.code ?? `#${ac.id}`} has no 'derived_from' trace to any UC. ` +
+        `saga-analyst must call trace_add(AC → UC, 'derived_from') at artifact creation.`,
+      );
+    }
+    if (!hasEdgeToAny(ac.id, 'derived_from', ['FR', 'NFR'])) {
+      throw new Error(
+        `Traceability gate failed: AC ${ac.code ?? `#${ac.id}`} has no 'derived_from' trace to any FR or NFR. ` +
+        `Every AC must derive from at least one FR or NFR (trace_add(AC → FR/NFR, 'derived_from')).`,
+      );
+    }
+  }
+}
+
 function assertVerificationPassed(epicId: number): void {
   const missing = getDb().prepare(
     `SELECT a.id, a.code
@@ -147,6 +270,13 @@ function handleEpisodeTransition(args: Record<string, unknown>) {
     // so this gate now also catches the real formalization deliverables
     // (PRD/SRS/UC/AC/reconciliation) being incomplete.
     assertTasksReady(epicId, 'formalization');
+    // Traceability gate (formalization-traceability fix): verify the
+    // canonical lineage edges exist in artifact_traces BEFORE accepting
+    // the baseline. Producer-skills create these edges at artifact
+    // creation time; if any is missing, the episode must NOT advance to
+    // planning — the missing edge is a real defect in the formalization
+    // output. The saga-reconciler task can repair it via trace_add.
+    assertTraceability(epicId);
     const baseline = acceptedBaseline(epicId);
     baselineArtifactId = (args.baseline_artifact_id as number | undefined) ?? baseline.artifacts[0].id;
     if (!baseline.artifacts.some(a => a.id === baselineArtifactId)) {

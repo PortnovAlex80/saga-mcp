@@ -326,6 +326,19 @@ const boardRunner = createClaudeBoardRunner({
 // Возвращает { abs, projectRoot } или null если файл не существует.
 function resolveArtifactFile(artifactPath, projectName, repositoryPath = null) {
   const cleanPath = artifactPath.split('#')[0];
+  // Workers sometimes write absolute paths (D:\Development\moscito\docs\...md)
+  // despite the skill template saying 'docs/...'. On Windows, path.join with
+  // an absolute second arg produces garbage like:
+  //   D:\Development\moscito\D:Developmentmoscitodocs...md
+  // Detect absolute paths and use them directly instead of joining with root.
+  // This is a defensive fix — the proper fix is in artifact_create handler
+  // (src/tools/artifacts.ts) which normalises absolute → relative at write time.
+  const looksAbsolute = /^([A-Za-z]:[\\/]|[\\/]|\\\\[^?])/.test(cleanPath);
+  if (looksAbsolute) {
+    return existsSync(cleanPath)
+      ? { abs: cleanPath, projectRoot: path.dirname(cleanPath) }
+      : null;
+  }
   const candidates = [];
   if (repositoryPath) candidates.push(repositoryPath);
   const map = PROJECT_REPO_MAP[projectName] || [];
@@ -3967,6 +3980,14 @@ function handleProjectDelete(req, res) {
             WHERE pr.project_id = ?`,
         ).all(projectId);
 
+        // work_attempts.execution_id → worker_executions (no CASCADE).
+        // Clean first, otherwise DELETE FROM worker_executions trips FK.
+        db.prepare(
+          `DELETE FROM work_attempts
+            WHERE execution_id IN (
+              SELECT execution_id FROM worker_executions WHERE project_id=?
+            )`
+        ).run(projectId);
         // worker_executions has no FK on project_id — manual cleanup.
         db.prepare('DELETE FROM worker_executions WHERE project_id=?').run(projectId);
         // DELETE FROM projects triggers every ON DELETE CASCADE.

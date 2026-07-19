@@ -30,6 +30,51 @@ after(() => {
   rmSync(temp, { recursive: true, force: true });
 });
 
+// Helper: seed the canonical traceability pyramid so the formalization→planning
+// gate (assertTraceability + acceptedBaseline) passes. Creates brief/PRD/SRS/
+// FR/UC artifacts and links them with derived_from/covers edges, then links
+// the given AC artifact to a UC and FR.
+//
+// Tests that focus on OTHER gates (e.g. acceptedBaseline drift mechanics,
+// verification_evidence) call this helper to satisfy the traceability
+// precondition without each test rebuilding the pyramid from scratch.
+function seedTraceabilityPyramid(product, epic, acArtifactId) {
+  const brief = artifacts.artifact_create({
+    project_id: product.id, epic_id: epic.id, type: 'brief', code: 'BRIEF-1',
+    title: 'Brief', path: `docs/brief-${epic.id}.md`, status: 'accepted',
+    metadata: { brief_payload: {
+      classification: 'tech-task', complexity: { tshirt: 'S', risk_triggers: [] },
+      decision: 'go', reasoning: 'test fixture', affected_projects: [product.id],
+      topology_hint: 'sequence', scaffold_artifacts: [], shared_mutation_risk: false,
+      completeness: 'high', degraded: false,
+    } },
+  });
+  const prdArt = artifacts.artifact_create({
+    project_id: product.id, epic_id: epic.id, type: 'PRD',
+    title: 'PRD', path: `docs/prd-${epic.id}.md`, status: 'accepted',
+  });
+  artifacts.trace_add({ source_id: prdArt.id, target_type: 'artifact', target_id: brief.id, link_type: 'derived_from' });
+  const srsArt = artifacts.artifact_create({
+    project_id: product.id, epic_id: epic.id, type: 'SRS', code: 'SRS-1',
+    title: 'SRS', path: `docs/srs-${epic.id}.md`, status: 'accepted',
+  });
+  artifacts.trace_add({ source_id: srsArt.id, target_type: 'artifact', target_id: prdArt.id, link_type: 'derived_from' });
+  const frArt = artifacts.artifact_create({
+    project_id: product.id, epic_id: epic.id, type: 'FR', code: 'FR-1',
+    title: 'FR', path: `docs/srs-${epic.id}.md#FR-1`, status: 'accepted',
+  });
+  const ucArt = artifacts.artifact_create({
+    project_id: product.id, epic_id: epic.id, type: 'UC', code: 'UC-1',
+    title: 'UC', path: `docs/uc-${epic.id}.md#UC-1`, status: 'accepted',
+  });
+  artifacts.trace_add({ source_id: ucArt.id, target_type: 'artifact', target_id: prdArt.id, link_type: 'derived_from' });
+  artifacts.trace_add({ source_id: ucArt.id, target_type: 'artifact', target_id: frArt.id, link_type: 'covers' });
+  // Link the provided AC to UC + FR.
+  artifacts.trace_add({ source_id: acArtifactId, target_type: 'artifact', target_id: ucArt.id, link_type: 'derived_from' });
+  artifacts.trace_add({ source_id: acArtifactId, target_type: 'artifact', target_id: frArt.id, link_type: 'derived_from' });
+  return { brief, prdArt, srsArt, frArt, ucArt };
+}
+
 test('one logical product registers multiple repositories idempotently', () => {
   const product = projects.project_create({ name: 'Workflow Product' });
   const a = repositories.repository_register({
@@ -446,6 +491,8 @@ test('episode planning gate requires an accepted, hash-pinned, drift-free AC bas
     project_id: product.id, epic_id: epic.id, type: 'AC', code: 'AC-1',
     title: 'Pinned criterion', path: 'docs/ac.md', status: 'accepted', content_hash: 'hash-v1',
   });
+  // Seed the canonical traceability pyramid so the assertTraceability gate passes.
+  seedTraceabilityPyramid(product, epic, ac.id);
   const advanced = lifecycle.episode_transition({
     epic_id: epic.id, to_stage: 'planning', baseline_artifact_id: ac.id,
   });
@@ -519,8 +566,9 @@ test('artifact_create stamps accepted_hash + clean drift AND computes content_ha
 
   // The planning gate should admit the episode without any status cycling.
   // Note: formalization gate (slice 3 of formalization-mechanics fix) now also
-  // calls assertTasksReady('formalization'), so we seed a done reconciliation
-  // task to satisfy the tasks-gate while this test focuses on the AC-artifact gate.
+  // calls assertTasksReady('formalization') AND assertTraceability, so we seed
+  // a done reconciliation task + a complete traceability pyramid to satisfy
+  // both gates while this test focuses on the AC-artifact gate.
   lifecycle.episode_transition({ epic_id: epic.id, to_stage: 'formalization' });
   tasks.task_create({
     epic_id: epic.id, title: 'PRD', status: 'done', priority: 'high',
@@ -528,6 +576,7 @@ test('artifact_create stamps accepted_hash + clean drift AND computes content_ha
     execution_skill: 'saga-product', review_skill: 'saga-requirements-reviewer',
     execution_mode: 'tracker_only',
   });
+  seedTraceabilityPyramid(product, epic, ac.id);
   assert.doesNotThrow(() => {
     lifecycle.episode_transition({
       epic_id: epic.id, to_stage: 'planning', baseline_artifact_id: ac.id,
@@ -568,6 +617,7 @@ test('initialized episodes enforce downstream provenance and auto-advance ready 
     project_id: product.id, epic_id: epic.id, type: 'AC', code: 'AC-P',
     title: 'Provenance criterion', path: 'ac-p.md', status: 'accepted', content_hash: 'p-hash',
   });
+  seedTraceabilityPyramid(product, epic, ac.id);
   lifecycle.episode_transition({ epic_id: epic.id, to_stage: 'planning' });
   tasks.task_create({
     epic_id: epic.id, title: 'Plan', status: 'done',
@@ -602,10 +652,11 @@ test('development.scaffold is exempt from per-AC provenance gate (infrastructure
     execution_skill: 'saga-product', review_skill: 'saga-requirements-reviewer',
     execution_mode: 'tracker_only',
   });
-  artifacts.artifact_create({
+  const acS = artifacts.artifact_create({
     project_id: product.id, epic_id: epic.id, type: 'AC', code: 'AC-S',
     title: 'Scaffold criterion', path: 'ac-s.md', status: 'accepted', content_hash: 's-hash',
   });
+  seedTraceabilityPyramid(product, epic, acS.id);
   lifecycle.episode_transition({ epic_id: epic.id, to_stage: 'planning' });
   tasks.task_create({
     epic_id: epic.id, title: 'Plan', status: 'done',

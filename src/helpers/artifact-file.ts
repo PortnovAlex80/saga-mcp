@@ -18,7 +18,13 @@ export function artifactDiskHash(
   const absolute = path.resolve(root, relative);
   const prefix = root.endsWith(path.sep) ? root : `${root}${path.sep}`;
   if (absolute !== root && !absolute.startsWith(prefix)) {
-    throw new Error(`Artifact path escapes repository root: ${artifactPath}`);
+    // Path escapes the repository root. This happens when a worker writes
+    // an absolute path (D:\foreign\...) that the artifact_create handler
+    // could not normalise. Rather than throw (which would block artifact
+    // creation entirely), return null so the artifact is still persisted
+    // (with content_hash=null). The path_warning metadata flag tells
+    // downstream tooling why the hash is missing.
+    return null;
   }
   if (!existsSync(absolute)) return null;
   return createHash('sha256').update(readFileSync(absolute)).digest('hex');

@@ -251,3 +251,62 @@ test('project_delete: second call throws not-found (no silent success)', () => {
     'second delete must throw, not silently return deleted:true',
   );
 });
+
+// ---------------------------------------------------------------------------
+// Test 10: project_delete succeeds when work_attempts reference
+//         worker_executions via execution_id (no ON DELETE CASCADE).
+//         This is the regression test for the FK constraint failure
+//         observed when deleting project 42 (epic 129) after a full
+//         formalization+development pipeline run.
+// ---------------------------------------------------------------------------
+
+test('project_delete: succeeds when work_attempts reference worker_executions', () => {
+  const { project, epic, task } = seedProject('WorkAttempts-Test');
+  const db = getDb();
+
+  // Seed a worker_execution + task_work_item + work_attempt cycle that
+  // mirrors what a real engine run leaves behind.
+  const executionId = `exec-test-${project.id}-${Date.now()}`;
+  db.prepare(
+    `INSERT INTO worker_executions
+       (execution_id, run_id, project_id, epic_id, task_id, worker_id,
+        machine_id, state, phase)
+     VALUES (?, ?, ?, ?, ?, ?, ?, 'reserved', 'executing')`,
+  ).run(executionId, `run-${project.id}`, project.id, epic.id, task.id,
+        'test-worker', 'test-machine');
+
+  const workItemId = `wi-test-${project.id}-${Date.now()}`;
+  db.prepare(
+    `INSERT INTO task_work_items
+       (work_item_id, task_id, kind, cycle_no, item_no, state)
+     VALUES (?, ?, 'implementation', 1, 1, 'active')`,
+  ).run(workItemId, task.id);
+
+  db.prepare(
+    `INSERT INTO work_attempts
+       (attempt_id, work_item_id, ordinal, state, execution_id)
+     VALUES (?, ?, 1, 'running', ?)`,
+  ).run(`wa-test-${project.id}-${Date.now()}`, workItemId, executionId);
+
+  // Pre-condition: rows exist.
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM worker_executions WHERE project_id=?').get(project.id).n, 1);
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM work_attempts WHERE execution_id=?').get(executionId).n, 1);
+
+  // The delete must not trip FK on work_attempts.execution_id.
+  assert.doesNotThrow(
+    () => projects.project_delete({ project_id: project.id }),
+    /FOREIGN KEY constraint failed/i,
+    'project_delete must clean work_attempts before worker_executions',
+  );
+
+  // Verify cascade left nothing behind.
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM projects WHERE id=?').get(project.id).n, 0);
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM worker_executions WHERE project_id=?').get(project.id).n, 0,
+    'no orphan worker_executions');
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM work_attempts WHERE execution_id=?').get(executionId).n, 0,
+    'no orphan work_attempts');
+
+  // FK integrity must still be clean.
+  const fkc = db.prepare('PRAGMA foreign_key_check').all();
+  assert.equal(fkc.length, 0, 'no FK violations after delete');
+});
