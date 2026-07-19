@@ -50,8 +50,10 @@ is scaffolded by the parallel saga-mcp SCAFFOLD task #215):
   (PRIMARY) with fingerprint-idempotency and rollout-jsonl FALLBACK.
 - `artifact_create({ type: 'brief' })` — persists the discovery brief as a
   saga artifact (carry state between sessions).
-- `AskUser` — for completeness-gate mandatory override and verdict override
-  (especially on `reject` / `clarify`).
+- `AskUser` — **last resort only**, for genuinely unresolvable questions
+  (irreversible consequences + no domain knowledge + unsafe to guess). The
+  default path is **auto-resolve** via domain knowledge — see Completeness-gate.
+  Verdict override on `reject` is still a legitimate AskUser trigger.
 
 ---
 
@@ -114,8 +116,9 @@ decision_matrix: {
   ассессоров);
 - в brief ставится **`degraded: true`** (поле `BriefPayload.degraded`);
 - спонсор информируется, что recommendation менее надёжна (нет трёх
-  независимых защит — единая точка взгляда). При `completeness=low` это
-  дополняется mandatory AskUser (см. Completeness-gate, UC-3/UC-6).
+  независимых защит — единая точка взгляда). При `completeness=low` agent
+  MUST auto-resolve open questions via domain knowledge (см. Completeness-gate);
+  AskUser — только для genuine blockers, не для routine engineering choices.
 
 Degraded-режим **честен и мечен**, никогда не тихий (NFR-5): grep по
 `degraded=true` обязан находить каждый такой случай.
@@ -214,53 +217,79 @@ gate_passed    = (coverage === 1.0) AND (source === 'db.sqlite')
    - **`gate_passed === true`** → continue the flow to the decision-fork /
      verdict. Emit the marker `GATE: passed (coverage=1.0, source=db.sqlite)` so
      the success path is grep-observable (NFR-5).
-   - **`gate_passed === false`** → **do NOT proceed to `decision`.** Run the
-     mandatory AskUser loop below. This is unconditional: no heuristic, no
-     "looks mostly covered" shortcut, no best-effort continue.
+   - **`gate_passed === false`** → **do NOT proceed to `decision` yet.** Run the
+     auto-resolve loop below. Escalation to a human (`AskUser`) is the LAST
+     resort, not the first.
 
-**Mandatory AskUser on gate failure (FR-8 / §3.3 / UC-3).**
+**Auto-resolve loop (agent-first; UC-3 revised).**
 
-When the gate fails, block the flow and ask the sponsor with a structured
-message. The body of the question lists **every uncovered replica** in the
-canonical format from SRS §3.3:
+The agent has substantial engineering domain knowledge — usually more than the
+human sponsor about the specific technology choices. Before asking a human,
+**try to resolve every uncovered replica yourself** using:
 
-```
-COMPLETENESS-GATE: not passed
-coverage = <covered>/<total> (source=<db.sqlite|rollout-jsonl>)
-The following input replicas are not yet covered by the brief:
+- the brief's existing context (PRD seed, affected_projects, topology_hint),
+- standard engineering practice for the technology stack implied by the brief,
+- the decision_matrix you are about to build (a question like "which physics
+  library?" is answered by the variant that needs it).
 
-  [I-001] <text[:100]> → uncovered
-  [I-007] <text[:100]> → uncovered
-  ...
+For each uncovered `[I-NNN]`:
 
-For each, either point it at a brief section (Covers=<anchor>) or mark it
-Status=open-question. Until coverage reaches 1.0 (on source=db.sqlite) the
-discovery cannot proceed to a decision.
-```
+1. **Pick a default answer** grounded in domain knowledge. Examples:
+   - "which session-duration metric?" → `mean_session_seconds` (standard DAU
+     derivative, well-understood, no exotic definition needed).
+   - "standalone HTML or backend?" → for an MVP scoped as variant A
+     (Physics-first), the answer is almost always `standalone HTML` unless
+     the brief explicitly mentions multi-player or persistence.
+   - "which physics library?" → pick the most mature option for the target
+     platform (Matter.js for browser JS, Box2D for native, etc.).
+2. **Annotate the row** with `Covers=<brief-section>` if the answer maps to a
+   brief section, OR `Status=answered` with an `Answer=<your-choice>` field.
+3. **Record the Q&A in `open_questions`** with `status:"answered"`,
+   `answer:"<your-choice>"`, `reasoning:"<1 sentence why this is the right
+   default>"`. These stay visible in the brief — the sponsor can override
+   later, but the agent did NOT block on a human.
+4. **Re-invoke the helper** to recompute coverage. If `gate_passed === true`
+   now → proceed to decision-fork. Emit `GATE: passed via auto-resolve
+   (coverage=1.0, N unanswered questions self-resolved)`.
 
-Each line uses the helper's stable `i_id` (`[I-NNN]`) and a truncated replica
-text — same identifiers as `00-inputs.md`, so the sponsor and the gate refer to
-the same rows.
+Bound the loop at a small fixed number of iterations (default 3). If after 3
+rounds some replicas remain genuinely unresolvable (e.g. the brief genuinely
+lacks information AND a wrong guess would be unsafe — `shared_mutation_risk:
+true` + cross-repo impact), THEN escalate to AskUser.
+
+**When to escalate to AskUser (last resort, NOT default).**
+
+Only escalate when ALL of these hold:
+- the replica concerns a decision with **irreversible consequences**
+  (security, compliance, data migration, external API contract),
+- the agent's domain knowledge does NOT cover it (truly novel context),
+- a wrong default would propagate into formalization and break ACs.
+
+For ordinary engineering choices (library, metric definition, deployment
+topology, file format, etc.) the agent **MUST** auto-resolve.
 
 **Re-evaluation loop (UC-3 1a/1b).**
 
-The sponsor's answer mutates the brief draft (adds `Covers=` / `Status=`
-annotations on the relevant rows), then the gate is **recomputed** by re-invoking
-the helper / recomputing `covered_count`. Loop until `gate_passed === true` OR an
-escalation fires. Bound the loop at a small fixed number of iterations
-(default 3) to avoid an open-ended AskUser ping-pong.
+Each iteration of the auto-resolve loop mutates the brief draft (adds `Covers=`
+or `Status=answered` + `Answer=` on the relevant rows), then the gate is
+**recomputed** by re-invoking the helper. Loop until `gate_passed === true` OR
+an escalation fires. Bound the loop at a small fixed number of iterations
+(default 3).
 
-**Escalation to `decision=clarify` (never an auto-pass).**
+**Escalation to `decision=clarify` (last resort, after auto-resolve exhausted).**
 
-- If the re-evaluation loop exhausts its iteration budget and the gate is still
-  failing → **escalate** to `decision=clarify`. The uncovered replicas are moved
-  into the brief's `#open-questions` section verbatim (they stay visible, not
-  lost), and the discovery ends at `clarify` — downstream formalization is
-  blocked per UC-4 / FR-10 until the sponsor answers.
+- If the auto-resolve loop exhausts its iteration budget AND escalation criteria
+  above (irreversible + no domain knowledge + unsafe to guess) are met →
+  **escalate** to `decision=clarify`. The still-uncovered replicas are moved
+  into the brief's `#open-questions` section with `status:"open"`, and the
+  discovery ends at `clarify` — downstream formalization is blocked per UC-4 /
+  FR-10 until the sponsor answers.
 - **It is forbidden to reach `decision=go` (or `fast-track`) with
-  `gate_passed === false`.** The only exits from a failed gate are: (a) the
-  sponsor's answers raise coverage to 1.0 on `source=db.sqlite` → gate passes →
-  continue; (b) escalation to `decision=clarify`. There is no third path.
+  `gate_passed === false` OR with any open_questions left at `status:"open"`.**
+  The validator (src/validators/brief.ts Rule 3) rejects `decision=go` under
+  `completeness=low` unless EVERY open_question has `status:"answered"` with a
+  non-empty `answer`. This is the contract boundary: agent-first means the
+  agent commits with answers, not that it hand-waves past questions.
 
 **No-silent-drop invariant.** Throughout, every `[I-NNN]` row carries one of
 `Covers=<anchor>` or `Status=open-question` — a row is never both uncovered and

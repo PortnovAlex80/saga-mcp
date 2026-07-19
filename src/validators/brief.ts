@@ -18,7 +18,12 @@
 //       → errors.push('topology_hint: multi-project requires sequence or
 //         scaffold-then-parallel').
 //   - completeness === 'low' AND decision === 'go'
-//       → errors.push('completeness=low blocks decision=go; use clarify').
+//       → ALLOWED if the brief carries a decision_matrix with ≥3 variants
+//         AND a recommended_variant AND all open_questions are answered by
+//         the agent itself (status='answered'). This is the agent-first
+//         path: the agent has enough context to commit, no human needed.
+//       → errors.push('completeness=low blocks decision=go; use clarify')
+//         ONLY when those conditions are NOT met.
 //   - empty reasoning string → error.
 //
 // Extension point (SRS §2b.2): a new validation rule = a new branch in
@@ -36,11 +41,19 @@ export interface BriefPayload {
   };
   hypotheses?: string[];
   quality_gate_checklist?: string[];
-  open_questions?: string[];
+  open_questions?: Array<{
+    id: string;
+    target?: string;
+    question: string;
+    status?: 'open' | 'answered';
+    answer?: string;
+    reasoning?: string;
+  }>;
   decision_matrix?: {
     criteria: string[];
     variants: { name: string; scores: Record<string, number> }[];
   };
+  recommended_variant?: string;
   decision: 'go' | 'fast-track' | 'clarify' | 'reject';
   reasoning: string; // ≥1 sentence
   affected_projects: number[]; // saga project_id
@@ -74,8 +87,17 @@ const DECISION_LITERALS = ['go', 'fast-track', 'clarify', 'reject'] as const;
  *   1. `decision` must be one of {go, fast-track, clarify, reject}.
  *   2. `affected_projects.length > 1` AND `topology_hint === 'parallel-independent'`
  *      → multi-project work cannot be parallel-independent.
- *   3. `completeness === 'low'` AND `decision === 'go'` → a low-completeness
- *      brief must not commit to go; use 'clarify'.
+ *   3. `completeness === 'low'` AND `decision === 'go'` → ALLOWED only when
+ *      the brief carries an agent-resolved justification:
+ *        (a) `decision_matrix` with ≥3 variants,
+ *        (b) `recommended_variant` non-empty,
+ *        (c) every entry in `open_questions` has `status='answered'` with a
+ *            non-empty `answer` (the agent itself resolved them via domain
+ *            knowledge rather than escalating to a human).
+ *      This is the **agent-first** path: the agent knows more about the
+ *      engineering context than the human sponsor; asking the human to
+ *      rubber-stamp the agent's own domain reasoning is wasteful. If any of
+ *      (a)/(b)/(c) is missing, the rule fires and the brief must use 'clarify'.
  *   4. `reasoning` must be a non-empty (non-blank) string.
  *
  * The payload is typed `unknown` (callers pass `metadata.brief_payload` straight
@@ -126,11 +148,28 @@ export function validateBrief(payload: unknown): BriefValidationResult {
     );
   }
 
-  // Rule 3 — low completeness forbids a 'go' decision. (If decision was invalid,
-  // it cannot equal 'go', so this rule simply does not fire — the invalidity is
-  // already reported by rule 1.)
+  // Rule 3 — low completeness with decision='go' is ALLOWED only when the
+  // agent has resolved every open question itself AND built a real decision
+  // matrix (≥3 variants + recommended_variant). This is the agent-first
+  // auto-resolve path: the agent uses its domain knowledge to answer the
+  // questions a human sponsor would otherwise be asked, then commits to 'go'
+  // on the strength of its own matrix. If any precondition is missing, the
+  // brief must escalate to 'clarify' (the human-in-the-loop fallback).
   if (p.completeness === 'low' && decision === 'go') {
-    errors.push('completeness=low blocks decision=go; use clarify');
+    const matrix = p.decision_matrix as
+      | { variants?: unknown[] }
+      | undefined;
+    const recommended = typeof p.recommended_variant === 'string'
+      ? (p.recommended_variant as string).trim()
+      : '';
+    const openQuestions = Array.isArray(p.open_questions) ? p.open_questions as Array<Record<string, unknown>> : [];
+    const allAnswered = openQuestions.length > 0
+      && openQuestions.every(q => q.status === 'answered' && typeof q.answer === 'string' && (q.answer as string).trim() !== '');
+    const hasMatrix = !!matrix && Array.isArray(matrix.variants) && matrix.variants.length >= 3;
+    const agentResolved = hasMatrix && recommended !== '' && allAnswered;
+    if (!agentResolved) {
+      errors.push('completeness=low blocks decision=go; use clarify (or agent-resolve all open_questions with answers + provide recommended_variant + decision_matrix with ≥3 variants)');
+    }
   }
 
   return { ok: errors.length === 0, errors };
