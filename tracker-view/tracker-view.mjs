@@ -585,6 +585,29 @@ function engineRunningForProject(projectId) {
 }
 
 /**
+ * Read the user's chosen model for a project's most-recent episode from saga.db
+ * ($.active_model). Used by the kanban render to pre-select the model selector
+ * — so F5 (page reload) preserves the choice, instead of resetting to the
+ * process-wide WORKER_MODEL constant.
+ *
+ * Returns null when no model has been set for this project (caller falls back
+ * to the process-wide WORKER_MODEL resolved from ~/.claude/settings.json).
+ */
+function activeModelForProject(projectId) {
+  try {
+    const row = withDb(db => db.prepare(
+      `SELECT json_extract(ew.metadata, '$.active_model') AS m
+       FROM episode_workflows ew
+       JOIN epics e ON e.id=ew.epic_id
+       WHERE e.project_id=?
+       ORDER BY ew.updated_at DESC LIMIT 1`,
+    ).get(projectId));
+    const m = row?.m;
+    return (typeof m === 'string' && m.length > 0) ? m : null;
+  } catch { return null; }
+}
+
+/**
  * Resolve the REAL model running under claude's --model alias. z.ai and other
  * proxies remap the Anthropic alias ('opus', 'sonnet', 'haiku') to their own
  * backend models via ~/.claude/settings.json env vars
@@ -642,7 +665,13 @@ function renderBoard(projectId, allProjects) {
           }).join('')}
         </select>
         <select id="agent-model-select" title="Модель для НОВЫХ воркеров. Активные доработают на старой. Лимит модели — потолок concurrency для pump-loop движка.">
-          ${MODELS.map(m => `<option value="${m.id}" data-limit="${m.limit}"${m.id === WORKER_MODEL ? ' selected' : ''}>${m.id} (×${m.limit})</option>`).join('')}
+          ${(function() {
+            // Read the per-epic choice from saga.db so F5 preserves it.
+            // Without this the selector reset to the process-wide WORKER_MODEL
+            // constant on every page reload, losing the user's last selection.
+            const chosen = activeModelForProject(projectId) || WORKER_MODEL;
+            return MODELS.map(m => `<option value="${m.id}" data-limit="${m.limit}"${m.id === chosen ? ' selected' : ''}>${m.id} (×${m.limit})</option>`).join('');
+          })()}
         </select>
         <span id="agent-run-status" class="agent-run-status">движок: …</span>
       </div>
