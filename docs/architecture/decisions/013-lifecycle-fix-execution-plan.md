@@ -10,11 +10,11 @@
 ## Context
 
 ADR-010 and ADR-011 were Proposed 2026-07-18, but a fresh code audit (2026-07-19)
-against `D:\Development\saga-mcp` HEAD `f4988b6` confirms the lifecycle kernel
+against `D:\Development\saga-mcp` HEAD `119fd43` confirms the lifecycle kernel
 they describe is **not wired into the production path**. The new isolated modules
 (`src/lifecycle/**`, `src/lifecycle/domain/**`) are imported only by tests and
 `backfill-migration.ts`. All runtime transitions still happen through direct
-`UPDATE tasks` in `src/tools/dispatcher.ts` (16+ occurrences) and through two
+`UPDATE tasks` in `src/tools/dispatcher.ts` (15 occurrences) and through two
 separate terminalization paths in `src/worker-executions.ts`.
 
 The audit's claim of "282/282 tests green" is also stale: the current head runs
@@ -34,9 +34,9 @@ pain in 1–2 days. Phase 4 is the long ADR-010/011 migration.
 |---|---|---|
 | `handleWorkerAskNeed` not in a transaction | `dispatcher.ts:794` — order: comment → release → UPDATE tags → INSERT human_requests, **no `withImmediateTransaction` wrapper** (unlike `completeTask:730`) | "agents not created": needs-human tag without blocking request, or request without tag |
 | `generateNextForCompletedTask` after COMMIT | `dispatcher.ts:730` tx commit, `dispatcher.ts:739` generate **outside tx** | "episode stuck after first task": crash window loses downstream forever |
-| Global write-lock on every lifecycle op | `withImmediateTransaction` (`dispatcher.ts:39-50`) = `BEGIN IMMEDIATE` = whole-DB write lock | "slow with parallel workers": writers serialize on a single lock |
+| Global write-lock on every lifecycle op | `withImmediateTransaction` (`dispatcher.ts:46-62`) = `BEGIN IMMEDIATE` = whole-DB write lock | "slow with parallel workers": writers serialize on a single lock |
 | Three terminalization paths with different effects | `markExecutionExited:109`, `markExecutionSpawnFailed:92` (own SQL + own tx) vs `reconcileWorkerExecutions:274,318` (delegates to `releaseExecutionAtomically`). Comment `atomic-release.ts:16` claims "all three callers delegate" — false | "execution not stopped": fenced task with dead execution row |
-| Architecture test is a whitelist, not a boundary | `architecture.test.mjs:114` — `SANCTIONED` set of 14 files; `architecture.test.mjs:232` — `existsSync` presence check | "false sense of single-writer" |
+| Architecture test is a whitelist, not a boundary | `architecture.test.mjs:131` — `SANCTIONED` set of 13 files; `architecture.test.mjs:239` — `existsSync` presence check | "false sense of single-writer" |
 | Lifecycle kernel not called from production | `grep "from.*lifecycle/domain" src/` → 0 hits in production code; `task_work_items` diverges from `tasks` after first runtime transition | root architectural debt |
 
 ## Decision
@@ -123,8 +123,9 @@ test fixture (`tests/mock-claude.mjs`) and timing. **No `sleep`/`retry` fixes.**
 
 ### 2.1 — Repository-scoped advisory lock instead of global `BEGIN IMMEDIATE`
 
-**Problem.** `withImmediateTransaction` (`dispatcher.ts:39-50`) is a whole-DB
-write lock acquired on every `worker_next`/`worker_done`/`ask`/`merge`.
+**Problem.** `withImmediateTransaction` (`dispatcher.ts:46-62`) is a whole-DB
+write lock acquired on every `worker_next`/`worker_done`/`ask`/`merge`. It has
+4 production call sites in `dispatcher.ts` (`:437`, `:730`, `:1026`, `:1129`).
 
 **Fix.**
 1. Saga is single-process (better-sqlite3 in-process) → in-process advisory lock
@@ -147,10 +148,12 @@ latency measurement across 3 workers × 2 repos.
 
 ### 3.1 — Collapse three terminalization paths into one
 
-**Problem.** `markExecutionExited` (`worker-executions.ts:109`) and
-`markExecutionSpawnFailed:92` carry their own SQL and own tx, while
-`reconcileWorkerExecutions:274,318` delegates to `releaseExecutionAtomically`.
-Comment `atomic-release.ts:16` claims all three delegate — false.
+**Problem.** `markExecutionExited` (`worker-executions.ts:109`, own UPDATE at
+`:119`) and `markExecutionSpawnFailed:92` (own UPDATE at `:100`) carry their
+own SQL and own tx, while `reconcileWorkerExecutions:274,318` delegates to
+`releaseExecutionAtomically`. Comment `atomic-release.ts:16` claims all three
+delegate — false. Verified: `grep "UPDATE worker_executions.*SET state=" src/`
+returns hits in both `atomic-release.ts` AND `worker-executions.ts`.
 
 **Fix.**
 1. Audit: `grep -rn "markExecutionExited\|markExecutionSpawnFailed" src/`.
@@ -166,8 +169,9 @@ Comment `atomic-release.ts:16` claims all three delegate — false.
 
 ### 3.2 — Architecture-boundary test instead of whitelist
 
-**Problem.** `architecture.test.mjs:114` — `SANCTIONED` set of 14 files is a
-whitelist, not a boundary. `architecture.test.mjs:232` uses `existsSync`.
+**Problem.** `architecture.test.mjs:131` — `SANCTIONED` set of 13 files is a
+whitelist (logic at `:155-164`: `if (SANCTIONED.has(rel)) continue;`), not a
+boundary. `architecture.test.mjs:239` and `:256` use `existsSync`.
 
 **Fix.**
 1. Invert: lifecycle `UPDATE` is allowed **only** in `src/lifecycle/**`. Any
@@ -188,8 +192,8 @@ a moving base.
 
 ### 4.1 — Application service / command bus
 
-**Problem.** `grep "from.*lifecycle/domain" src/` → 0 hits in production.
-16+ direct `UPDATE tasks` live in `dispatcher.ts`.
+**Problem.** `grep "from.*lifecycle/domain" src/` → 0 hits anywhere (production
+or test). 15 direct `UPDATE tasks` live in `dispatcher.ts`.
 
 **Fix.**
 1. Create `src/lifecycle/application-service.ts`: `handleCommand(db, cmd) →
