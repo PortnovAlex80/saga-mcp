@@ -123,32 +123,32 @@ interface RecoveryRule {
 
 const RECOVERY_TREE: Record<string, RecoveryRule[]> = {
   formalization: [
+    // NOTE (formalization-mechanics fix): workflow.ts now spawns a real
+    // formalization.ac task from srs_accepted/uc_accepted, so AC generation
+    // is the normal pipeline, not a recovery concern. The rule below is a
+    // SAFETY NET for unusual cases: a saga-analyst worker crashed mid-AC,
+    // or someone manually deleted accepted ACs. In the happy path this
+    // rule never fires because the formalization.ac task succeeded and the
+    // baseline is already accepted before episode_transition runs.
     {
-      match: /episode has no AC artifacts/i,
-      diagnosis: 'saga-analyst never generated ACs after UC done. Workflow has no uc_accepted→ac generation transition; saga-analyst skill expects to write AC in a second task that never got created.',
+      match: /no AC artifacts/i,
+      diagnosis: 'Episode has no AC artifacts. Either formalization.ac task has not run, or saga-analyst did not register AC artifacts.',
       action_prompt: [
         'You are a saga recovery engineer. Episode is stuck in formalization because no AC (acceptance criteria) artifacts exist.',
         '',
-        'ROOT CAUSE: saga-analyst wrote UCs but no ACs. The uc_accepted workflow transition does not generate a formalization.ac task.',
-        '',
         'ACTIONS (use only mcp__saga__ tools; do NOT call worker_next):',
-        '1. Read the episode: epic_id=<EPIC_ID>. Call artifact_list({epic_id, type:"UC"}) and artifact_list({epic_id, type:"SRS"}) and artifact_list({epic_id, type:"FR"}).',
+        '1. Read the episode: epic_id=<EPIC_ID>. Call artifact_list({epic_id, type:"UC"}) and artifact_list({epic_id, type:"SRS"}).',
         '2. Read each UC document at its path. Read the SRS for FR/NFR context.',
         '3. For EACH UC, derive ≥1 acceptance criterion. For each AC:',
         '   - artifact_create({project_id, epic_id, type:"AC", code:"AC-N", title:"<short>", path:"docs/.../03-acceptance-criteria.md#AC-N", status:"draft"})',
         '   - trace_add({source_id: <AC id>, target_type:"artifact", target_id: <UC id>, link_type:"derived_from"})',
-        '   - trace_add({source_id: <AC id>, target_type:"artifact", target_id: <FR id it tests>, link_type:"depends_on"})',
-        '4. After all ACs written, write the AC document to disk at the .md path you declared. Each AC MUST have: Given/When/Then + a measurable property block (per saga AC template).',
-        '5. Accept upstream artifacts that are still in "draft" but have a real document on disk:',
-        '   - artifact_list for PRD, SRS, UC. For each with status="draft": refresh hash via artifact_save with the current file content, then artifact_update to status="accepted".',
-        '   - SKIP if the .md file does not exist or is empty — that is a real gap, escalate via worker_ask_need.',
-        '6. Accept each AC: artifact_update to status:"accepted". AC MUST have content_hash matching accepted_hash (refreshArtifactHash via artifact_save if needed).',
-        '7. Call worker_done({task_id, worker_id, result:"Recovery: created N AC artifacts, accepted PRD/SRS/UC/AC baseline"}).',
+        '4. Write the AC document to disk at the .md path you declared. Each AC MUST have: Given/When/Then + a measurable property block.',
+        '5. Accept each AC: artifact_update to status:"accepted". AC MUST have content_hash matching accepted_hash.',
+        '6. Call worker_done({task_id, worker_id, result:"Recovery: created N AC artifacts"}).',
         '',
         'DO NOT touch PRD content. DO NOT change requirements — only formalize them as ACs.',
-        'DO NOT call episode_transition — the engine will retry the gate after you finish.',
       ].join('\n'),
-      max_retries: 2,
+      max_retries: 1,
     },
     {
       match: /AC baseline is not accepted and clean/i,

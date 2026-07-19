@@ -86,12 +86,13 @@ function specsForTransition(db: Database.Database, source: Task, transition: str
   // brief_accepted — seeds formalization from Discovery (ADR-008).
   //
   // When the `discovery.kickstart` task completes, the v3 engine needs a
-  // PRD task to appear so the existing chain (prd_accepted → SRS+UC →
-  // reconciliation → baseline_accepted → planning) can proceed. This branch
-  // creates EXACTLY ONE formalization.prd task — NOT PRD+SRS as the original
-  // 3.0 plan draft said. The "parallel SRS" wording was a simplification
-  // that would break the sibling() lineage lookup in srs_accepted
-  // (workflow.ts:108); see docs/architecture/decisions/008-brief-accepted-prd-only.md.
+  // PRD task to appear so the formalization chain (prd_accepted → SRS+UC →
+  // srs_accepted/uc_accepted → AC → ac_accepted → reconciliation →
+  // baseline_accepted → planning) can proceed. This branch creates
+  // EXACTLY ONE formalization.prd task — NOT PRD+SRS as the original 3.0
+  // plan draft said. The "parallel SRS" wording was a simplification that
+  // would break the sibling() lineage lookup in srs_accepted; see
+  // docs/architecture/decisions/008-brief-accepted-prd-only.md.
   //
   // Decision guard: only seed PRD when brief decision === 'go'. Other
   // outcomes have their own paths (clarify/reject stop; fast-track goes
@@ -137,7 +138,13 @@ function specsForTransition(db: Database.Database, source: Task, transition: str
           stage: 'formalization',
           executionSkill: 'saga-product',
           reviewSkill: 'saga-requirements-reviewer',
-          mode: 'git_change',
+          // tracker_only: formalization artifacts are markdown docs registered
+          // in the artifacts table; they do NOT go through git integration.
+          // tracker_only avoids the integration_state='pending' trap that
+          // previously left downstream tasks (SRS/UC) permanently blocked
+          // because dependency-checker requires integration_state='merged'
+          // for git_change tasks.
+          mode: 'tracker_only',
           repositoryId: prdRepo,
           sourceTaskId: source.id,
           dependencies: [source.id],
@@ -188,16 +195,31 @@ function specsForTransition(db: Database.Database, source: Task, transition: str
       {
         key: `prd:${source.id}:srs`, title: `SRS: ${source.title}`, kind: 'formalization.srs',
         stage: 'formalization', executionSkill: 'saga-architect', reviewSkill: 'saga-architecture-reviewer',
-        mode: 'git_change', repositoryId: repo, sourceTaskId: source.id, dependencies: [source.id],
+        mode: 'tracker_only', repositoryId: repo, sourceTaskId: source.id, dependencies: [source.id],
       },
       {
         key: `prd:${source.id}:uc`, title: `UC: ${source.title}`, kind: 'formalization.uc',
         stage: 'formalization', executionSkill: 'saga-analyst', reviewSkill: 'saga-requirements-reviewer',
-        mode: 'git_change', repositoryId: repo, sourceTaskId: source.id, dependencies: [source.id],
+        mode: 'tracker_only', repositoryId: repo, sourceTaskId: source.id, dependencies: [source.id],
       },
     ];
   }
 
+  // srs_accepted / uc_accepted → formalization.ac
+  //
+  // Both SRS and UC must be done before AC can be written — AC derives
+  // from UC (behavioural scenarios) and SRS (FR/NFR invariants). The
+  // previous design spawned formalization.reconciliation here, which
+  // silently ran saga-reconciler and *only then* declared the baseline
+  // accepted — skipping AC creation entirely. saga-analyst then never
+  // got invoked for AC, and the engine's recovery band-aid (orchestrate.ts
+  // RECOVERY_TREE.formalization[0]) had to write the ACs as a workaround.
+  //
+  // New semantics: whichever of SRS/UC finishes SECOND is the trigger.
+  // The first one returns [] (waiting); the second one returns the AC
+  // task spec, with deps on BOTH siblings so AC unblocks only when both
+  // are done. saga-analyst (Stage 4 — Formalization-AC per its SKILL)
+  // is now the legitimate executor for AC artifacts.
   if (transition === 'srs_accepted' || transition === 'uc_accepted') {
     const expected = transition === 'srs_accepted' ? 'formalization.srs' : 'formalization.uc';
     const counterpartKind = transition === 'srs_accepted' ? 'formalization.uc' : 'formalization.srs';
@@ -205,21 +227,59 @@ function specsForTransition(db: Database.Database, source: Task, transition: str
       throw new Error(`Transition ${transition} requires task_kind=${expected}, got '${source.task_kind}'`);
     }
     const counterpart = sibling(db, source.epic_id, source.generated_from_task_id, counterpartKind);
-    if (!counterpart) {
-      throw new Error(`Cannot generate reconciliation: matching ${counterpartKind} task was not found`);
+    // Counterpart SRS/UC not done yet — wait. When counterpart completes,
+    // ITS transition (uc_accepted or srs_accepted) will fire and produce
+    // the AC task. Returning [] is the engine's signal to keep cycling.
+    if (!counterpart || counterpart.status !== 'done') {
+      return [];
     }
     const prdId = source.generated_from_task_id as number;
     return [{
+      key: `prd:${prdId}:ac`,
+      title: `AC: ${source.title.replace(/^(SRS|UC):\s*/i, '')}`,
+      kind: 'formalization.ac',
+      stage: 'formalization',
+      executionSkill: 'saga-analyst',
+      reviewSkill: 'saga-requirements-reviewer',
+      mode: 'tracker_only',
+      repositoryId: repo ?? counterpart.project_repository_id,
+      sourceTaskId: source.id,
+      dependencies: [source.id, counterpart.id],
+    }];
+  }
+
+  // ac_accepted → formalization.reconciliation
+  //
+  // Once AC artifacts are written and accepted, the reconciliation task
+  // re-checks consistency across PRD/SRS/UC/AC (FR↔AC traceability,
+  // orphan ACs, missing properties) and stamps the baseline_hash.
+  // Previously baseline_accepted was the transition that did this, fired
+  // from a reconciliation task; now reconciliation is fired FROM the AC
+  // task, and baseline_accepted (still fired from reconciliation) advances
+  // the episode into planning.
+  if (transition === 'ac_accepted') {
+    if (source.task_kind !== 'formalization.ac') {
+      throw new Error(`Transition ac_accepted requires task_kind=formalization.ac, got '${source.task_kind}'`);
+    }
+    const prdId = source.generated_from_task_id as number;
+    // Look up both SRS and UC siblings to add as deps — reconciliation
+    // is the place the planner checks PRD↔SRS↔UC↔AC traceability.
+    const srs = sibling(db, source.epic_id, prdId, 'formalization.srs');
+    const uc = sibling(db, source.epic_id, prdId, 'formalization.uc');
+    const deps = [source.id];
+    if (srs) deps.push(srs.id);
+    if (uc) deps.push(uc.id);
+    return [{
       key: `prd:${prdId}:reconciliation`,
-      title: `Reconcile SRS + UC for PRD task #${prdId}`,
+      title: `Reconcile SRS + UC + AC for PRD task #${prdId}`,
       kind: 'formalization.reconciliation',
       stage: 'formalization',
       executionSkill: 'saga-reconciler',
       reviewSkill: 'saga-requirements-reviewer',
-      mode: 'git_change',
-      repositoryId: repo ?? counterpart.project_repository_id,
+      mode: 'tracker_only',
+      repositoryId: repo,
       sourceTaskId: source.id,
-      dependencies: [source.id, counterpart.id],
+      dependencies: deps,
     }];
   }
 
@@ -281,6 +341,7 @@ export function generateNextForCompletedTask(taskId: number): GeneratedResult | 
     : task.task_kind === 'formalization.prd' ? 'prd_accepted'
     : task.task_kind === 'formalization.srs' ? 'srs_accepted'
     : task.task_kind === 'formalization.uc' ? 'uc_accepted'
+    : task.task_kind === 'formalization.ac' ? 'ac_accepted'
     : task.task_kind === 'formalization.reconciliation' ? 'baseline_accepted'
     : null;
   if (!transition) return null;
@@ -293,14 +354,14 @@ export function generateNextForCompletedTask(taskId: number): GeneratedResult | 
 
 export const definitions: Tool[] = [{
   name: 'workflow_generate_next',
-  description: 'Idempotently generate the next typed workflow tasks from one completed upstream task. Supported transitions: brief_accepted (kickstart→PRD only, ADR-008), prd_accepted (→SRS+UC), srs_accepted/uc_accepted (→reconciliation), baseline_accepted (→planning).',
+  description: 'Idempotently generate the next typed workflow tasks from one completed upstream task. Supported transitions: brief_accepted (kickstart→PRD only, ADR-008), prd_accepted (→SRS+UC), srs_accepted/uc_accepted (→formalization.ac when both siblings done), ac_accepted (→reconciliation), baseline_accepted (→planning).',
   annotations: { title: 'Workflow: Generate Next', readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   inputSchema: {
     type: 'object',
     properties: {
       epic_id: { type: 'integer' },
       source_task_id: { type: 'integer' },
-      transition: { type: 'string', enum: ['brief_accepted', 'prd_accepted', 'srs_accepted', 'uc_accepted', 'baseline_accepted'] },
+      transition: { type: 'string', enum: ['brief_accepted', 'prd_accepted', 'srs_accepted', 'uc_accepted', 'ac_accepted', 'baseline_accepted'] },
     },
     required: ['epic_id', 'source_task_id', 'transition'],
   },
