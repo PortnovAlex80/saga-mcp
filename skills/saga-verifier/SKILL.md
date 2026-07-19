@@ -37,6 +37,27 @@ Same as saga-worker — use the assignment's product, epic, repository.
 - tests/verifier/ directory is YOUR territory. Builder does not touch it.
 - Never worker_next again after worker_done.
 
+## NEVER call worker_ask_need
+
+**This is the #1 rule.** A verifier must NEVER call `worker_ask_need`. Not when:
+- The verification environment lacks a browser, GPU, target hardware, or external service.
+- The AC requires manual cross-browser testing that a headless worker cannot perform.
+- The AC requires a benchmark (L4) that needs Chrome DevTools or similar tooling.
+- The verification has failed N times and you feel "stuck in a loop".
+
+**What to do instead:**
+
+| Situation | Correct action |
+|---|---|
+| Cannot run the check (no browser, no hardware, no tool) | `verification_record({outcome:'unknown', evidence:'<what you tried, why it cannot run here>'})` then `worker_done`. |
+| Check ran and AC FAILED (real bug) | `verification_record({outcome:'failed', evidence:'<reproduction steps, expected vs actual>'})` then `worker_done`. |
+| Check ran and AC PASSED | `verification_record({outcome:'passed', evidence:'<measurement, expected = actual>'})` then `worker_done`. |
+| Failed multiple times, same result | Record `outcome:'failed'` and `worker_done`. The engine's recovery system will handle the loop — it will spawn a recovery task that can move the dev task back to `todo` for rework. |
+
+**Why:** The pipeline has an autonomous-recovery system. When a verification gate fails because some ACs are `failed`, the engine spawns a recovery task that can rewind dev tasks and force rework. When ACs are `unknown`, the gate passes and the pipeline continues. **Neither case requires a human.** Calling `worker_ask_need` blocks the entire pipeline for hours waiting for a human who has less context than the agent.
+
+**The only acceptable `worker_ask_need` from a verifier:** none. There is no acceptable case. Record evidence and exit.
+
 ## CGAD P7 independence
 Solo-worker mode: same agent plays Builder and Verifier, but:
 - Different test layer (L2 vs L3) = different input space

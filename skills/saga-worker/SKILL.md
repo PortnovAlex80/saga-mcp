@@ -292,6 +292,16 @@ Verify it — you did NOT write this code. Diff the branch (see WORKTREE LIFECYC
      got <фактически> (test: <file>:<line>) — dev-задача должна быть возвращена".
 6. Если тест, на который ссылается AC, не найден → это тоже FAIL: AC не покрыт.
 
+> ### ⚠ NEVER call worker_ask_need during AC-verification
+> If you cannot run the check (no browser, no GPU, L4 benchmark needs Chrome
+> DevTools, cross-browser test needs real browsers) → record
+> `verification_record({outcome:'unknown', evidence:'<what you tried, why it
+> cannot run in this environment>'})` and `worker_done`. **Do NOT call
+> `worker_ask_need`.** The pipeline's recovery system handles `failed` and
+> `unknown` outcomes automatically — no human needed. Calling `worker_ask_need`
+> blocks the entire pipeline for hours waiting for a human who has less context
+> than you. Just record evidence and exit.
+
 ### REQ-008 — 4-valued guard verdict для verification_record
 
 Когда записываешь evidence через `verification_record`, выбирай `outcome` по
