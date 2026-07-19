@@ -1,5 +1,6 @@
 import Database from 'better-sqlite3';
 import { SCHEMA_SQL } from './schema.js';
+import { backfillWorkItemShadow } from './lifecycle/backfill-migration.js';
 
 let db: Database.Database | null = null;
 
@@ -49,6 +50,10 @@ export function getDb(): Database.Database {
   migrateVerificationExecution(db);
   migrateRiskClass(db);
   migrateEpisodeTrack(db);
+  // Slice 2 (ADR-011): populate work-item shadow tables for existing tasks.
+  // Idempotent — skips tasks that already have shadow rows. Tables themselves
+  // are created by SCHEMA_SQL (CREATE IF NOT EXISTS).
+  backfillWorkItemShadow(db);
   try { db.exec('CREATE INDEX IF NOT EXISTS idx_epics_branch ON epics(branch)'); } catch { /* index already exists */ }
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_project_repositories_project ON project_repositories(project_id, status);

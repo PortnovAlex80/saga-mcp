@@ -21,6 +21,7 @@ import { handlers as repositoryHandlers } from '../dist/tools/repositories.js';
 import { handlers as lifecycleHandlers } from '../dist/tools/lifecycle.js';
 import { createClaudeBoardRunner } from './claude-runner.mjs';
 import { isProcessAlive } from '../dist/worker-executions.js';
+import { releaseExecutionAtomically } from '../dist/lifecycle/atomic-release.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const require = createRequire(import.meta.url);
@@ -245,6 +246,17 @@ function getRunnerTaskState(taskId) {
 }
 
 function recoverRunnerAssignment({ taskId, workerId, originalStatus, executionId, reason }) {
+  // Slice 1 (ADR-010/011, blueprint §16:829-845): the recovery path now
+  // delegates fenced releases to the single atomic terminalization+release
+  // function in src/lifecycle/atomic-release.ts. This removes the duplicate
+  // recovery SQL that existed between tracker-view and orchestrate.ts
+  // (blueprint §22:1199) and collapses the close/reconciler race
+  // (blueprint §16:844): the function's fence CAS means only one of the two
+  // callers wins; the other no-ops.
+  //
+  // Legacy (pre-ADR-009, unfenced) assignments still need the old code path
+  // because there is no execution row to terminalize — only a stale
+  // assigned_to to clear.
   return withDbWrite(db => {
     const task = db.prepare(
       'SELECT id, title, status, assigned_to, tags, current_execution_id FROM tasks WHERE id=?',
@@ -254,6 +266,31 @@ function recoverRunnerAssignment({ taskId, workerId, originalStatus, executionId
     try { tags = JSON.parse(task.tags || '[]'); } catch {}
     if (tags.includes('needs-human')) return false;
 
+    // Fenced task: delegate to the atomic release path. The fence CAS inside
+    // protects against the close/reconciler race — if orchestrate.ts already
+    // released, this call no-ops on the task row (still terminalizes nothing
+    // because execution is already terminal).
+    if (executionId && task.current_execution_id === executionId) {
+      const terminalState = reason && /exit\s*code/i.test(String(reason)) ? 'exited' : 'lost';
+      const outcome = releaseExecutionAtomically(db, {
+        executionId,
+        terminalState,
+        exitCode: null,
+        reason: `runner recovery: ${reason}`,
+      });
+      if (outcome.taskReleased) {
+        db.prepare(
+          `INSERT INTO activity_log
+            (entity_type, entity_id, action, field_name, old_value, new_value, summary)
+           VALUES ('task', ?, 'status_changed', 'status', ?, ?, ?)`,
+        ).run(taskId, task.status, outcome.restoredStatus,
+          `Board runner recovered task '${task.title}' (atomic): ${reason}`);
+      }
+      return outcome.taskReleased;
+    }
+
+    // Legacy path: pre-ADR-009 unfenced assignment. Keep the old SQL — there
+    // is no execution to terminalize.
     let restoredStatus = originalStatus === 'review' ? 'review' : 'todo';
     if (originalStatus === 'review' && task.status === 'in_progress') restoredStatus = 'todo';
     const info = db.prepare(
@@ -529,6 +566,48 @@ function engineConcurrencyForProject(projectId) {
 }
 
 /**
+ * Read the persisted engine_running flag for a project's most-recent episode.
+ * Used by the kanban render to decide whether the Start/Pause button shows ▶
+ * (stopped) or ⏸ (running). Falls back to false (stopped) — safer default,
+ * prevents accidental UI hint that an engine is running when it isn't.
+ */
+function engineRunningForProject(projectId) {
+  try {
+    const row = withDb(db => db.prepare(
+      `SELECT json_extract(ew.metadata, '$.engine_running') AS r
+       FROM episode_workflows ew
+       JOIN epics e ON e.id=ew.epic_id
+       WHERE e.project_id=?
+       ORDER BY ew.updated_at DESC LIMIT 1`,
+    ).get(projectId));
+    return row?.r === 1 || row?.r === true;
+  } catch { return false; }
+}
+
+/**
+ * Read the user's chosen model for a project's most-recent episode from saga.db
+ * ($.active_model). Used by the kanban render to pre-select the model selector
+ * — so F5 (page reload) preserves the choice, instead of resetting to the
+ * process-wide WORKER_MODEL constant.
+ *
+ * Returns null when no model has been set for this project (caller falls back
+ * to the process-wide WORKER_MODEL resolved from ~/.claude/settings.json).
+ */
+function activeModelForProject(projectId) {
+  try {
+    const row = withDb(db => db.prepare(
+      `SELECT json_extract(ew.metadata, '$.active_model') AS m
+       FROM episode_workflows ew
+       JOIN epics e ON e.id=ew.epic_id
+       WHERE e.project_id=?
+       ORDER BY ew.updated_at DESC LIMIT 1`,
+    ).get(projectId));
+    const m = row?.m;
+    return (typeof m === 'string' && m.length > 0) ? m : null;
+  } catch { return null; }
+}
+
+/**
  * Resolve the REAL model running under claude's --model alias. z.ai and other
  * proxies remap the Anthropic alias ('opus', 'sonnet', 'haiku') to their own
  * backend models via ~/.claude/settings.json env vars
@@ -567,8 +646,13 @@ function renderBoard(projectId, allProjects) {
         <a class="tab" href="?project=${projectId}&tab=acceptance">Приёмка</a>
       </div>
       <span style="flex:1"></span>
-      <div class="agent-runner" id="agent-runner" title="Concurrency движка. Смена значения рестартит движок.">
+      <div class="agent-runner" id="agent-runner" title="Управление движком эпизода. ▶ старт / ⏸ пауза.">
         <span class="agent-icon">🤖</span>
+        <button id="agent-engine-toggle" class="engine-toggle${
+          engineRunningForProject(projectId) ? ' engine-running' : ''
+        }" type="button" aria-label="Запуск / пауза движка" title="Запуск / пауза движка этого эпизода">${
+          engineRunningForProject(projectId) ? '⏸' : '▶'
+        }</button>
         <select id="agent-concurrency" aria-label="Количество одновременных воркеров движка">
           ${Array.from({ length: 10 }, (_, i) => {
             // Pre-select the option matching the engine's current concurrency,
@@ -581,7 +665,13 @@ function renderBoard(projectId, allProjects) {
           }).join('')}
         </select>
         <select id="agent-model-select" title="Модель для НОВЫХ воркеров. Активные доработают на старой. Лимит модели — потолок concurrency для pump-loop движка.">
-          ${MODELS.map(m => `<option value="${m.id}" data-limit="${m.limit}"${m.id === WORKER_MODEL ? ' selected' : ''}>${m.id} (×${m.limit})</option>`).join('')}
+          ${(function() {
+            // Read the per-epic choice from saga.db so F5 preserves it.
+            // Without this the selector reset to the process-wide WORKER_MODEL
+            // constant on every page reload, losing the user's last selection.
+            const chosen = activeModelForProject(projectId) || WORKER_MODEL;
+            return MODELS.map(m => `<option value="${m.id}" data-limit="${m.limit}"${m.id === chosen ? ' selected' : ''}>${m.id} (×${m.limit}${m.note ? ' · ' + m.note : ''})</option>`).join('');
+          })()}
         </select>
         <span id="agent-run-status" class="agent-run-status">движок: …</span>
       </div>
@@ -1195,29 +1285,97 @@ function renderBoard(projectId, allProjects) {
     // restart because everything lives in the shared SQLite DB.
     runnerConcurrency.addEventListener('change', async () => {
       const newConc = Number(runnerConcurrency.value);
-      if (!confirm('Перезапустить движок с concurrency=' + newConc + '? Активные воркеры доработают, новые пойдут с новой concurrency.')) {
-        // Revert selector to current engine concurrency.
-        syncConcurrencyFromEngine();
-        return;
-      }
-      runnerStatus.textContent = 'рестарт…';
+      // Concurrency change is now a PURE METADATA WRITE — no kill, no spawn.
+      // The engine's pump loop re-reads $.engine_concurrency every cycle and
+      // converges to the new target naturally (active workers finish, no
+      // replacements spawn above the new ceiling, OR new ones spawn to fill
+      // up if raised). Same semantics as the model selector. Rate-limit
+      // scheduler in the engine already handles 429 backoff/recovery on top.
+      runnerStatus.textContent = 'concurrency=' + newConc + ' (плавно)';
       runnerConcurrency.disabled = true;
       try {
-        const r = await fetch('/api/engine/restart', {
+        const r = await fetch('/api/engine/concurrency', {
           method:'POST',
           headers:{'Content-Type':'application/json'},
           body:JSON.stringify({epic_id: window.__sagaEpicId, concurrency: newConc})
         });
         const data = await r.json();
-        if (!r.ok || !data.ok) throw new Error(data.error || 'рестарт не удался');
-        runnerStatus.textContent = 'concurrency=' + data.concurrency + ' (pid ' + data.engine_pid + ')';
+        if (!r.ok || !data.ok) throw new Error(data.error || 'не удалось сохранить');
+        runnerStatus.textContent = 'concurrency=' + data.concurrency + ' ✓';
       } catch (e) {
-        alert('Рестарт движка: ' + e.message);
+        alert('Смена concurrency: ' + e.message);
         runnerStatus.textContent = 'ошибка';
+        syncConcurrencyFromEngine();
       } finally {
         runnerConcurrency.disabled = false;
       }
     });
+    // --- Engine Start/Pause toggle button ---
+    //▶ starts the engine (spawn orchestrate-cli with current concurrency).
+    //⏸ stops the engine + workers (kill tree, no respawn). Persists
+    // $.engine_running in episode_workflows.metadata so the next page load
+    // shows the right icon. Token-safety: the engine only starts when the
+    // user explicitly presses ▶ — never automatically.
+    const engineToggle = document.getElementById('agent-engine-toggle');
+    if (engineToggle) {
+      engineToggle.addEventListener('click', async () => {
+        const epicId = window.__sagaEpicId;
+        if (!epicId) return;
+        // Read current state to decide direction.
+        let running = engineToggle.classList.contains('engine-running');
+        if (running) {
+          if (!confirm('Остановить движок этого эпизода? Активные воркеры будут убиты. Задачи останутся в очереди.')) return;
+          engineToggle.disabled = true;
+          runnerStatus.textContent = 'остановка…';
+          try {
+            const r = await fetch('/api/engine/stop', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ epic_id: epicId }),
+            });
+            const d = await r.json();
+            if (!r.ok || !d.ok) throw new Error(d.error || 'не удалось остановить');
+            syncEngineToggleButton(false);
+            runnerStatus.textContent = 'движок остановлен';
+          } catch (e) {
+            alert('Стоп движка: ' + e.message);
+            runnerStatus.textContent = 'ошибка';
+          } finally {
+            engineToggle.disabled = false;
+          }
+        } else {
+          const conc = Number(runnerConcurrency?.value) || 4;
+          if (!confirm('Запустить движок с concurrency=' + conc + '? Будут созданы воркеры (claude -p), расходующие токены.')) return;
+          engineToggle.disabled = true;
+          runnerStatus.textContent = 'старт…';
+          try {
+            const r = await fetch('/api/engine/start', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ epic_id: epicId, concurrency: conc }),
+            });
+            const d = await r.json();
+            if (!r.ok || !d.ok) throw new Error(d.error || 'не удалось запустить');
+            syncEngineToggleButton(true);
+            runnerStatus.textContent = 'concurrency=' + d.concurrency + ' (pid ' + d.engine_pid + ')';
+          } catch (e) {
+            alert('Старт движка: ' + e.message);
+            runnerStatus.textContent = 'ошибка';
+          } finally {
+            engineToggle.disabled = false;
+          }
+        }
+      });
+    }
+    // Helper: sync the toggle button visual + aria from a running=true/false.
+    function syncEngineToggleButton(running) {
+      if (!engineToggle) return;
+      engineToggle.textContent = running ? '⏸' : '▶';
+      engineToggle.classList.toggle('engine-running', running);
+      engineToggle.title = running
+        ? 'Движок работает. Нажми для паузы.'
+        : 'Движок остановлен. Нажми для запуска.';
+    }
     // Model selector: change the worker model. PATCHes ~/.claude/settings.json
     // so NEW workers (spawned after this call) read the new model. Active
     // workers keep the old model — they have already started claude -p. NO
@@ -2015,6 +2173,13 @@ function page(title, body) {
     .agent-icon{font-size:16px;line-height:1}
     .agent-runner select{width:42px;padding:3px 4px;background:#0d1117;color:#c9d1d9;border:1px solid #30363d;border-radius:5px;font-size:12px}
     .agent-runner select#agent-model-select{width:auto;min-width:130px;max-width:200px;font-size:10px}
+    /* Engine Start/Pause toggle. Green ▶ when stopped (action available),
+       amber ⏸ when running (click to pause). Disabled shows greyed-out. */
+    .engine-toggle{padding:2px 8px;background:#16a34a;color:#fff;border:1px solid #138a4a;border-radius:5px;font-size:13px;line-height:1.4;cursor:pointer;font-weight:600;min-width:28px;transition:background .12s}
+    .engine-toggle:hover{background:#158b3d}
+    .engine-toggle.engine-running{background:#b8821f;border-color:#99671a;color:#fff}
+    .engine-toggle.engine-running:hover{background:#a9741a}
+    .engine-toggle:disabled{opacity:.5;cursor:wait}
     .agent-run-btn,.agent-stop-btn{width:27px;height:25px;padding:0;border:1px solid #3d4855;border-radius:5px;background:#238636;color:white;cursor:pointer;font-size:11px}
     .agent-run-btn:hover{background:#2ea043}.agent-stop-btn{background:#b62324}.agent-stop-btn:hover{background:#da3633}
     .agent-run-btn:disabled,.agent-stop-btn:disabled{opacity:.5;cursor:default}
@@ -4458,14 +4623,258 @@ function handleWorkersActive(req, res, url) {
   }
 }
 
-// --- POST /api/engine/restart ---
-// Restart the orchestrate-cli engine for an epic with a new concurrency.
-// 1. Kill existing engine process (matched by command line).
-// 2. Spawn fresh one with --concurrency=<new>.
-// Used by the concurrency selector in the header — change value → confirm →
-// engine restarts with that concurrency. Pipeline state is preserved (episode
-// metadata, tasks, artifacts all live in the shared SQLite DB).
-function handleEngineRestart(req, res) {
+// --- Engine control: start / stop / status / restart ---
+//
+// The kanban board exposes explicit ▶ Start / ⏸ Pause buttons per epic.
+// This prevents accidental auto-start of every project's engine, which
+// would burn tokens (each running engine spawns `claude -p` workers).
+//
+// State machine:
+//   - The engine process is matched by command line (project_id + epic_id).
+//   - Persisted flag $.engine_running in episode_workflows.metadata records
+//     the user's last intent. On page reload the UI reads this flag to
+//     render the correct button label (▶ if stopped, ⏸ if running).
+//   - Start = kill any existing engine for this epic + spawn fresh.
+//   - Stop  = kill engine + workers, NO respawn.
+//   - Restart = alias of Start (back-compat for the concurrency selector).
+//
+// Concurrency selector change:
+//   - If engine is RUNNING → restart with new concurrency (old behaviour).
+//   - If engine is STOPPED → just persist the new value; do NOT auto-start.
+//     The user must press ▶ explicitly. This is the audit fix for the
+//     "tokens burned by accidental auto-start" risk.
+
+/**
+ * Kill the engine process tree + orphan workers for a given (projectId, epicId).
+ * Returns the list of PIDs that were targeted (best-effort; some may already
+ * be dead). Synchronous: uses spawnSync.
+ *
+ * Strategy:
+ *   1. Find all `orchestrate-cli.js <projectId> <epicId>` node.exe engines.
+ *   2. For each, walk the CIM process tree recursively and collect descendants
+ *      (claude.exe workers + their MCP node.exe children + conhost.exe).
+ *   3. Also catch orphan claude.exe workers whose command line mentions
+ *      project_id=<projectId> (survived a prior kill).
+ *   4. taskkill /F every collected PID.
+ *   5. Synchronous 1s pause so the OS finishes cleanup before any respawn.
+ */
+function killEngineTree(projectId, epicId) {
+  // IMPORTANT: the PowerShell parameter MUST NOT be named $pid — that is a
+  // read-only automatic variable in PowerShell (the current shell's PID).
+  // Declaring a function parameter with that name throws
+  // SessionStateUnauthorizedAccessException → the function body never runs
+  // → descendants are not collected → only the engine itself gets killed,
+  // not the claude.exe workers under it. Use $procId instead.
+  //
+  // CRITICAL: do NOT put `#` comments inside the -Command string. In
+  // -Command mode PowerShell treats the whole argument as a single line,
+  // and `#` starts a comment that swallows the REST of the script. Every
+  // statement after the first `#` silently never executes — taskkill
+  // included. That was the real reason the Pause button didn't kill: the
+  // script found the engine but the `# Dedup and kill` comment ate the
+  // taskkill loop. Keep this script comment-free.
+  //
+  // The template literal is a JS backtick string. `$foo` (without braces) is
+  // NOT interpolation in JS — only `${foo}` is. So `$kids`, `$toKill`, etc.
+  // pass through to PowerShell verbatim, as intended. No escaping needed.
+  try {
+    require('child_process').spawnSync(
+      'powershell',
+      ['-Command',
+       `function Get-Descendants($procId) { ` +
+       `  $kids = Get-CimInstance Win32_Process -Filter "ParentProcessId=$procId"; ` +
+       `  foreach ($k in $kids) { ,($k.ProcessId); Get-Descendants $k.ProcessId } ` +
+       `} ; ` +
+       `$toKill = @(); ` +
+       `$engines = Get-CimInstance Win32_Process -Filter "name='node.exe'" | ` +
+       `  Where-Object { $_.CommandLine -like '*orchestrate-cli.js ${projectId} ${epicId}*' }; ` +
+       `foreach ($e in $engines) { ` +
+       `  $toKill += $e.ProcessId; ` +
+       `  $toKill += Get-Descendants $e.ProcessId ` +
+       `} ; ` +
+       `$orphans = Get-CimInstance Win32_Process -Filter "name='claude.exe'" | ` +
+       `  Where-Object { $_.CommandLine -like '*project_id=${projectId}*' } ; ` +
+       `foreach ($o in $orphans) { $toKill += $o.ProcessId } ; ` +
+       `$toKill = $toKill | Sort-Object -Unique; ` +
+       `foreach ($p in $toKill) { taskkill /F /PID $p 2>$null }`],
+      { encoding: 'utf8' }
+    );
+    // SYNCHRONOUS pause — setTimeout was a no-op here (it schedules but
+    // doesn't block). Without this wait the fresh engine spawns while OS
+    // is still terminating the old one, leaving both alive in a race.
+    try { require('child_process').spawnSync('timeout', ['/T', '1', '/NOBREAK'], { encoding: 'utf8', stdio: 'ignore' }); } catch {}
+  } catch (e) {
+    console.error(`[engine-control] kill failed for project=${projectId} epic=${epicId}:`, e.message);
+  }
+}
+
+/**
+ * Spawn a fresh orchestrate-cli.js engine for (projectId, epicId) with the
+ * given concurrency. Returns the child process (unref'd).
+ */
+function spawnEngine(projectId, epicId, concurrency) {
+  const cliPath = path.join(__dirname, '..', 'dist', 'orchestrate-cli.js');
+  const child = spawn('node', [cliPath, String(projectId), String(epicId), `--concurrency=${concurrency}`], {
+    detached: true,
+    stdio: 'ignore',
+    env: {
+      ...process.env,
+      DB_PATH: process.env.DB_PATH,
+      SAGA_ORCHESTRATION_MODE: 'v3',
+    },
+  });
+  child.unref();
+  return child;
+}
+
+/**
+ * Read the persisted engine-running flag + last-known pid/concurrency for an
+ * epic. Returns { running, pid, concurrency, started_at }. `running` is the
+ * USER'S LAST INTENT (persisted), not a live process check — the UI uses this
+ * to render the correct button on page load.
+ *
+ * Live liveness is best-effort: we check whether any node.exe's command line
+ * mentions this epic. That's expensive, so callers should prefer the
+ * persisted flag for render-time decisions.
+ */
+function readEngineState(epicId) {
+  const row = withDb(db => db.prepare(
+    `SELECT json_extract(metadata, '$.engine_running')    AS running,
+            json_extract(metadata, '$.engine_pid')         AS pid,
+            json_extract(metadata, '$.engine_concurrency') AS concurrency,
+            json_extract(metadata, '$.engine_started_at') AS started_at
+       FROM episode_workflows WHERE epic_id=?`,
+  ).get(epicId));
+  return {
+    running: row?.running === 1 || row?.running === true,
+    pid: row?.pid ?? null,
+    concurrency: row?.concurrency ?? null,
+    started_at: row?.started_at ?? null,
+  };
+}
+
+/**
+ * Live-check whether an engine process for (projectId, epicId) is currently
+ * running on the OS. Used by /api/engine/status to reconcile the persisted
+ * flag with reality (e.g. engine crashed → flag lies).
+ */
+function isEngineAlive(projectId, epicId) {
+  try {
+    const r = require('child_process').spawnSync(
+      'powershell',
+      ['-Command',
+       `$es = Get-CimInstance Win32_Process -Filter "name='node.exe'" | ` +
+       `  Where-Object { $_.CommandLine -like '*orchestrate-cli.js ${projectId} ${epicId}*' }; ` +
+       `if ($es) { 'alive' } else { 'dead' }`],
+      { encoding: 'utf8' },
+    );
+    return (r.stdout || '').trim() === 'alive';
+  } catch {
+    return false;
+  }
+}
+
+function setEngineMeta(epicId, patch) {
+  // Build a json_set chain for each key in patch.
+  // json_set accepts (json, path, value, path, value, ...) so we expand.
+  const keys = Object.keys(patch);
+  if (keys.length === 0) return;
+  let sql = `UPDATE episode_workflows SET metadata=COALESCE(metadata,'{}'), updated_at=datetime('now')`;
+  const params = [];
+  // Re-read current metadata, merge, write back — simpler than chained json_set
+  // when patch has multiple keys.
+  const current = withDb(db => db.prepare(
+    'SELECT metadata FROM episode_workflows WHERE epic_id=?',
+  ).get(epicId));
+  const meta = JSON.parse(current?.metadata || '{}');
+  for (const k of keys) meta[k] = patch[k];
+  sql = `UPDATE episode_workflows SET metadata=?, updated_at=datetime('now') WHERE epic_id=?`;
+  params.push(JSON.stringify(meta), epicId);
+  withDbWrite(db => db.prepare(sql).run(...params));
+}
+
+// --- POST /api/engine/start ---
+// Body: { epic_id, concurrency? }. If concurrency omitted, uses the value
+// persisted in $.engine_concurrency (or falls back to 4).
+// Always kills any existing engine for this epic first, then spawns fresh.
+// Sets $.engine_running=1 so the UI renders ⏸ on next load.
+function handleEngineStart(req, res) {
+  let chunks = [];
+  req.on('data', c => chunks.push(c));
+  req.on('end', () => {
+    const raw = Buffer.concat(chunks).toString('utf8');
+    let fields;
+    try { fields = JSON.parse(raw); } catch { fields = {}; }
+    const epicId = Number(fields.epic_id);
+    if (!epicId) return respondJson(res, 400, { ok:false, error:'epic_id required' });
+    const epic = withDb(db => db.prepare('SELECT project_id FROM epics WHERE id=?').get(epicId));
+    if (!epic) return respondJson(res, 404, { ok:false, error:'epic not found' });
+    const projectId = epic.project_id;
+
+    const state = readEngineState(epicId);
+    let concurrency = Number(fields.concurrency);
+    if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 10) {
+      concurrency = Number(state.concurrency) || 4;
+    }
+
+    killEngineTree(projectId, epicId);
+
+    try {
+      const child = spawnEngine(projectId, epicId, concurrency);
+      setEngineMeta(epicId, {
+        engine_running: 1,
+        engine_pid: child.pid,
+        engine_concurrency: concurrency,
+        engine_started_at: new Date().toISOString().replace('T', ' ').slice(0, 19),
+      });
+      respondJson(res, 200, {
+        ok: true, project_id: projectId, epic_id: epicId,
+        concurrency, engine_pid: child.pid, running: true,
+      });
+    } catch (e) {
+      respondJson(res, 500, { ok:false, error: 'spawn: ' + e.message });
+    }
+  });
+}
+
+// --- POST /api/engine/stop ---
+// Body: { epic_id }. Kill engine + workers for this epic, NO respawn.
+// Sets $.engine_running=0 so the UI renders ▶ on next load.
+// Idempotent: stopping an already-stopped engine is a no-op success.
+function handleEngineStop(req, res) {
+  let chunks = [];
+  req.on('data', c => chunks.push(c));
+  req.on('end', () => {
+    const raw = Buffer.concat(chunks).toString('utf8');
+    let fields;
+    try { fields = JSON.parse(raw); } catch { fields = {}; }
+    const epicId = Number(fields.epic_id);
+    if (!epicId) return respondJson(res, 400, { ok:false, error:'epic_id required' });
+    const epic = withDb(db => db.prepare('SELECT project_id FROM epics WHERE id=?').get(epicId));
+    if (!epic) return respondJson(res, 404, { ok:false, error:'epic not found' });
+    const projectId = epic.project_id;
+
+    killEngineTree(projectId, epicId);
+    setEngineMeta(epicId, {
+      engine_running: 0,
+      engine_stopped_at: new Date().toISOString().replace('T', ' ').slice(0, 19),
+    });
+    respondJson(res, 200, { ok: true, project_id: projectId, epic_id: epicId, running: false });
+  });
+}
+
+// --- POST /api/engine/concurrency ---
+// Body: { epic_id, concurrency }. Pure metadata write — NO kill, NO spawn.
+// The engine's pump loop re-reads $.engine_concurrency every RATE_LIMIT_SCAN_TICKS
+// cycle and uses it as the new target (capped by $.active_model_limit if set).
+// Active workers finish their cycle naturally; the engine converges to the
+// new target as the active count drops. Same semantics as /api/model/set.
+//
+// This is the per-epic engine control fix: changing concurrency must NOT
+// auto-restart the engine. Restart burns tokens (kills active workers + spawns
+// a fresh cohort). A pure metadata write + pump-loop convergence respects
+// the rate-limit-aware scheduler the engine already implements.
+function handleEngineConcurrency(req, res) {
   let chunks = [];
   req.on('data', c => chunks.push(c));
   req.on('end', () => {
@@ -4478,99 +4887,57 @@ function handleEngineRestart(req, res) {
     if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 10) {
       return respondJson(res, 400, { ok:false, error:'concurrency must be 1..10' });
     }
-
-    // Resolve project_id from epic
-    const epic = withDb(db => db.prepare('SELECT project_id FROM epics WHERE id=?').get(epicId));
-    if (!epic) return respondJson(res, 404, { ok:false, error:'epic not found' });
-    const projectId = epic.project_id;
-
-    // Kill existing engine for this project (matched by command line).
-    // CRITICAL: kill the whole engine process tree, recursively, AND any
-    // orphaned claude.exe workers matching this project's epic id (they may
-    // have survived a previous engine kill because Windows 'taskkill /T'
-    // relies on ParentProcessId linkage that breaks for detached spawns).
-    //
-    // Two-pass strategy:
-    //   1. Find all orchestrate-cli.js engines for this project+epic.
-    //   2. For each engine, recursively walk CIM_Process ParentProcessId and
-    //      collect every descendant PID (claude.exe workers + their MCP
-    //      node.exe children + conhost.exe).
-    //   3. Also catch orphan claude.exe processes whose command line mentions
-    //      this epic_id (e.g. via task_id=N where N is in this epic's task
-    //      range) — these survived from a prior engine kill.
-    //   4. Kill every collected PID with /F (no /T needed, we already walked
-    //      the tree ourselves).
     try {
-      require('child_process').spawnSync(
-        'powershell',
-        ['-Command',
-         `function Get-Descendants(\$pid) { ` +
-         `  $kids = Get-CimInstance Win32_Process -Filter "ParentProcessId=$pid"; ` +
-         `  foreach ($k in $kids) { ,($k.ProcessId); Get-Descendants $k.ProcessId } ` +
-         `} ; ` +
-         `$toKill = @(); ` +
-         `$engines = Get-CimInstance Win32_Process -Filter "name='node.exe'" | ` +
-         `  Where-Object { $_.CommandLine -like '*orchestrate-cli.js ${projectId} ${epicId}*' }; ` +
-         `foreach ($e in $engines) { ` +
-         `  $toKill += $e.ProcessId; ` +
-         `  $toKill += Get-Descendants $e.ProcessId ` +
-         `} ; ` +
-         `# Also catch orphan claude.exe workers for this project (survived prior kills). ` +
-         `$orphans = Get-CimInstance Win32_Process -Filter "name='claude.exe'" | ` +
-         `  Where-Object { $_.CommandLine -like '*project_id=${projectId}*' } ; ` +
-         `foreach ($o in $orphans) { $toKill += $o.ProcessId } ; ` +
-         `# Dedup and kill. ` +
-         `$toKill = $toKill | Sort-Object -Unique; ` +
-         `foreach ($p in $toKill) { taskkill /F /PID $p 2>$null }`],
-        { encoding: 'utf8' }
-      );
-      // SYNCHRONOUS pause — setTimeout was a no-op here (it schedules but
-      // doesn't block). Without this wait the fresh engine spawns while OS
-      // is still terminating the old one, leaving both alive in a race.
-      // Use a sync sleep via 'timeout /T' (Windows) or 'sleep' (Unix).
-      try { require('child_process').spawnSync('timeout', ['/T', '1', '/NOBREAK'], { encoding: 'utf8', stdio: 'ignore' }); } catch {}
-    } catch (e) {
-      console.error('[engine-restart] kill failed:', e.message);
-    }
-
-    // Spawn fresh engine.
-    try {
-      const cliPath = path.join(__dirname, '..', 'dist', 'orchestrate-cli.js');
-      const child = spawn('node', [cliPath, String(projectId), String(epicId), `--concurrency=${concurrency}`], {
-        detached: true,
-        stdio: 'ignore',
-        env: {
-          ...process.env,
-          DB_PATH: process.env.DB_PATH,
-          SAGA_ORCHESTRATION_MODE: 'v3',
-        },
+      setEngineMeta(epicId, {
+        engine_concurrency: concurrency,
+        engine_concurrency_changed_at: new Date().toISOString().replace('T', ' ').slice(0, 19),
       });
-      child.unref();
-      withDbWrite(db => db.prepare(
-        `UPDATE episode_workflows SET metadata=json_set(COALESCE(metadata,'{}'),
-          '$.engine_concurrency', ?, '$.engine_started_at', datetime('now')),
-          updated_at=datetime('now') WHERE epic_id=?`
-      ).run(concurrency, epicId));
-      respondJson(res, 200, {
-        ok:true, project_id: projectId, epic_id: epicId,
-        concurrency, engine_pid: child.pid,
-      });
+      respondJson(res, 200, { ok: true, epic_id: epicId, concurrency });
     } catch (e) {
-      respondJson(res, 500, { ok:false, error: 'spawn: ' + e.message });
+      respondJson(res, 500, { ok:false, error: 'metadata write failed: ' + e.message });
     }
   });
 }
 
+// --- GET /api/engine/status?epic_id=N ---
+// Returns { running, pid, concurrency, started_at, alive }.
+// `running` = persisted user intent. `alive` = live OS process check
+// (reconciles a lying flag if the engine crashed without us knowing).
+function handleEngineStatus(req, res, url) {
+  const epicId = Number(url.searchParams.get('epic_id'));
+  if (!epicId) return respondJson(res, 400, { ok:false, error:'epic_id required' });
+  const epic = withDb(db => db.prepare('SELECT project_id FROM epics WHERE id=?').get(epicId));
+  if (!epic) return respondJson(res, 404, { ok:false, error:'epic not found' });
+  const state = readEngineState(epicId);
+  const alive = isEngineAlive(epic.project_id, epicId);
+  // If persisted flag says running but process is dead, reconcile the flag.
+  if (state.running && !alive) {
+    setEngineMeta(epicId, { engine_running: 0 });
+    state.running = false;
+  }
+  respondJson(res, 200, { ok: true, epic_id: epicId, ...state, alive });
+}
+
+// --- POST /api/engine/restart (back-compat alias for /api/engine/start) ---
+// Kept so the concurrency selector's change-handler continues to work; new
+// UI calls /api/engine/start directly. Behaviour is identical to start.
+function handleEngineRestart(req, res) {
+  handleEngineStart(req, res);
+}
+
 // --- Known models catalog with concurrency limits ---
+// Source of truth: Z.ai GLM Coding Plan FAQ (docs.z.ai/devpack/faq):
+//   "All plans support GLM-5.2, GLM-5-Turbo and GLM-4.7."
+// Other models (glm-4-plus / glm-4.5* / glm-4.7-flash*) are NOT exposed on
+// the Coding Plan endpoint — selecting them produces api_retry "unknown"
+// errors from z.ai. Limit values reflect z.ai's documented rate multipliers:
+// GLM-5.2 counts x3 in peak hours, x2 off-peak; the others are x1.
+// The limit here is the per-epic concurrency ceiling saga uses; it is NOT
+// the prompt quota (that's tracked by z.ai on their side, 80/400/1600 per 5h).
 const MODELS = [
-  { id: 'glm-5.2',         limit: 10, tier: 'flagship' },
-  { id: 'glm-5.1',         limit: 10, tier: 'flagship' },
-  { id: 'glm-4.5',         limit: 10, tier: 'smart' },
-  { id: 'glm-4-plus',      limit: 20, tier: 'smart' },
-  { id: 'glm-4.5-air',     limit: 5,  tier: 'fast' },
-  { id: 'glm-4.5-flash',   limit: 2,  tier: 'cheap' },
-  { id: 'glm-4.7-flash',   limit: 1,  tier: 'cheap' },
-  { id: 'glm-4.7-flashx',  limit: 3,  tier: 'cheap' },
+  { id: 'glm-5.2',         limit: 3,  tier: 'flagship', note: 'Opus-level, x3 peak rate' },
+  { id: 'glm-5-turbo',     limit: 5,  tier: 'flagship', note: 'Opus-level, x1 rate' },
+  { id: 'glm-4.7',         limit: 10, tier: 'sonnet',   note: 'Sonnet-level, x1 rate — recommended default' },
 ];
 
 // --- GET /api/models ---
@@ -4698,6 +5065,18 @@ const server = http.createServer((req, res) => {
   }
   if (req.method === 'POST' && url.pathname === '/api/engine/restart') {
     return handleEngineRestart(req, res);
+  }
+  if (req.method === 'POST' && url.pathname === '/api/engine/start') {
+    return handleEngineStart(req, res);
+  }
+  if (req.method === 'POST' && url.pathname === '/api/engine/stop') {
+    return handleEngineStop(req, res);
+  }
+  if (req.method === 'GET' && url.pathname === '/api/engine/status') {
+    return handleEngineStatus(req, res, url);
+  }
+  if (req.method === 'POST' && url.pathname === '/api/engine/concurrency') {
+    return handleEngineConcurrency(req, res);
   }
   if (req.method === 'GET' && url.pathname === '/api/models') {
     return handleModelsList(req, res);

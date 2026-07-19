@@ -458,6 +458,211 @@ CREATE INDEX IF NOT EXISTS idx_task_deps_depends ON task_dependencies(depends_on
 CREATE INDEX IF NOT EXISTS idx_comments_task ON comments(task_id);
 
 CREATE INDEX IF NOT EXISTS idx_trusted_providers_project ON trusted_providers(project_id, status);
+
+-- ---------------------------------------------------------------------------
+-- Lifecycle command kernel (ADR-010/ADR-011, blueprint §10).
+-- Added in Slice 1 (terminal execution kernel). Purely additive: existing
+-- rows are untouched; the new tables start empty and are written only by the
+-- command bus (src/lifecycle/command-bus.ts).
+-- ---------------------------------------------------------------------------
+
+-- Idempotent receipts. One row per submitted command, whether accepted or
+-- deterministically rejected (blueprint §10:477-478). A retry with the same
+-- command_id AND the same payload_hash replays the stored reply without
+-- re-running effects; a retry with the same command_id but a different
+-- payload_hash is rejected as IDEMPOTENCY_KEY_REUSED.
+CREATE TABLE IF NOT EXISTS command_receipts (
+  command_id      TEXT PRIMARY KEY,
+  command_kind    TEXT NOT NULL,
+  actor_kind      TEXT NOT NULL CHECK (actor_kind IN ('controller','managed_execution','integration_executor','human','admin')),
+  actor_id        TEXT,          -- controller/admin/human id; NULL for managed_execution (use execution_id below)
+  execution_id    TEXT,          -- set when actor_kind='managed_execution' or 'integration_executor'
+  task_id         INTEGER,       -- target task, if any
+  payload_hash    TEXT NOT NULL, -- SHA-256 of canonical command payload
+  accepted        INTEGER NOT NULL CHECK (accepted IN (0,1)),
+  rejection_code  TEXT,          -- DomainRejectionCode when accepted=0
+  result_json     TEXT,          -- decision.result when accepted=1
+  accepted_at     TEXT NOT NULL DEFAULT (datetime('now')),
+  reply_json      TEXT NOT NULL  -- the byte-equivalent reply to return on replay
+);
+
+-- Lifecycle event log. Audit trail + projection input. NOT the source of
+-- truth (blueprint §1 non-goals; ADR-011 keeps tasks/worker_executions
+-- authoritative during the Slice 1-7 rollout). Append-only.
+CREATE TABLE IF NOT EXISTS lifecycle_events (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  command_id      TEXT NOT NULL REFERENCES command_receipts(command_id) ON DELETE CASCADE,
+  seq             INTEGER NOT NULL,        -- position within this command's events (0,1,2,…)
+  event_kind      TEXT NOT NULL,
+  task_id         INTEGER,
+  payload_json    TEXT NOT NULL,           -- full DomainEvent object
+  occurred_at     TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (command_id, seq)
+);
+
+CREATE INDEX IF NOT EXISTS idx_command_receipts_task ON command_receipts(task_id);
+CREATE INDEX IF NOT EXISTS idx_command_receipts_execution ON command_receipts(execution_id);
+CREATE INDEX IF NOT EXISTS idx_command_receipts_kind_accepted ON command_receipts(command_kind, accepted);
+CREATE INDEX IF NOT EXISTS idx_lifecycle_events_task ON lifecycle_events(task_id);
+CREATE INDEX IF NOT EXISTS idx_lifecycle_events_kind ON lifecycle_events(event_kind);
+
+-- ---------------------------------------------------------------------------
+-- Work-item shadow model (ADR-011, blueprint §14 line 685-726).
+-- Added in Slice 2. Purely additive: existing rows untouched; the new tables
+-- start populated by the Slice 2 backfill migration (one synthetic current
+-- pipeline per task). Old task columns remain authoritative in Slice 2;
+-- work items are shadow-written and compared for equivalence.
+--
+-- Naming note: blueprint §14 also defines lifecycle_command_receipts,
+-- lifecycle_outbox, and a versioned lifecycle_events. Slice 1 already
+-- shipped command_receipts + a simpler lifecycle_events. Those are the
+-- current implementation; the blueprint names remain the target. We do NOT
+-- rename Slice 1's tables here — doing so would break every DB already
+-- migrated. Reconciliation is deferred to a later slice.
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS task_work_items (
+  work_item_id TEXT PRIMARY KEY,
+  task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL
+    CHECK (kind IN ('implementation','review','verification',
+                    'integration','human_decision','cleanup')),
+  cycle_no INTEGER NOT NULL,
+  item_no INTEGER NOT NULL DEFAULT 1,
+  state TEXT NOT NULL
+    CHECK (state IN ('pending','ready','active','waiting',
+                     'completed','cancelled')),
+  outcome TEXT,
+  predecessor_item_id TEXT REFERENCES task_work_items(work_item_id),
+  required INTEGER NOT NULL DEFAULT 1,
+  input_snapshot_json TEXT NOT NULL DEFAULT '{}',
+  result_json TEXT,
+  version INTEGER NOT NULL DEFAULT 0,
+  history_complete INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  completed_at TEXT,
+  UNIQUE (task_id, kind, cycle_no, item_no)
+);
+
+CREATE TABLE IF NOT EXISTS work_attempts (
+  attempt_id TEXT PRIMARY KEY,
+  work_item_id TEXT NOT NULL
+    REFERENCES task_work_items(work_item_id) ON DELETE CASCADE,
+  ordinal INTEGER NOT NULL,
+  state TEXT NOT NULL
+    CHECK (state IN ('reserved','running','succeeded','failed',
+                     'lost','cancelled')),
+  worker_id TEXT,
+  execution_id TEXT REFERENCES worker_executions(execution_id),
+  command_id TEXT,
+  outcome TEXT,
+  result_json TEXT,
+  reserved_at TEXT NOT NULL DEFAULT (datetime('now')),
+  started_at TEXT,
+  finished_at TEXT,
+  last_error TEXT,
+  UNIQUE (work_item_id, ordinal)
+);
+
+CREATE INDEX IF NOT EXISTS idx_task_work_items_task ON task_work_items(task_id);
+CREATE INDEX IF NOT EXISTS idx_task_work_items_task_state ON task_work_items(task_id, state);
+CREATE INDEX IF NOT EXISTS idx_task_work_items_kind ON task_work_items(kind, cycle_no);
+CREATE INDEX IF NOT EXISTS idx_work_attempts_item ON work_attempts(work_item_id);
+CREATE INDEX IF NOT EXISTS idx_work_attempts_execution ON work_attempts(execution_id);
+
+-- ---------------------------------------------------------------------------
+-- Human requests (ADR-011, blueprint §12.3 line 565-578, §16 Slice 3 line 871-883).
+-- Added in Slice 3. Purely additive. ASK is terminal: when a worker calls
+-- worker_ask_need, the execution is released and an open human_request row
+-- is inserted. worker_next excludes tasks with an open request. A fresh
+-- worker later claims the task and receives the persisted question/answer
+-- context. This kills the ASK dead-assignment trap the audit identified.
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS human_requests (
+  request_id TEXT PRIMARY KEY,
+  task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  -- The execution that asked the question. Terminalized when the request
+  -- was opened; recorded here so a replay or duplicate answer cannot
+  -- resurrect it.
+  requesting_execution_id TEXT,
+  -- 'implementation' | 'review' | 'integration' — the phase a fresh worker
+  -- must resume in once the human answers.
+  resume_phase TEXT NOT NULL
+    CHECK (resume_phase IN ('implementation','review','integration')),
+  -- The question the worker asked, verbatim. Fresh workers read this to
+  -- know what to ask the human.
+  question TEXT NOT NULL,
+  -- Free-form context the worker saved (file:line references, checkpoint,
+  -- source/worktree SHAs). Blueprint §12.3 step 1.
+  context_json TEXT NOT NULL DEFAULT '{}',
+  -- The human's answer, recorded by worker_ask_done. NULL while open.
+  answer TEXT,
+  answered_by TEXT,
+  answered_at TEXT,
+  state TEXT NOT NULL DEFAULT 'open'
+    CHECK (state IN ('open','answered','cancelled')),
+  -- The execution that processed the answer (the fresh worker). NULL until
+  -- a worker claims the answered task.
+  resuming_execution_id TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_human_requests_task_state ON human_requests(task_id, state);
+CREATE INDEX IF NOT EXISTS idx_human_requests_open ON human_requests(state) WHERE state = 'open';
+CREATE INDEX IF NOT EXISTS idx_human_requests_requesting_exec ON human_requests(requesting_execution_id);
+
+-- ---------------------------------------------------------------------------
+-- Integration intents (ADR-011, blueprint §13.1 line 584-611, §16 Slice 5
+-- line 900-912). Added in Slice 5. Purely additive.
+--
+-- An integration intent is a durable record that "review approved merging
+-- <source-sha> into <target>". The deterministic Git executor consults it
+-- before merging and updates it after observing the result. The intent
+-- survives process death — a crashed executor is recovered by observing
+-- repository ancestry, not by LLM-guessing.
+--
+-- Crash recovery (blueprint §13 line 669-676):
+--   - before update-ref: the temp merge commit/worktree may be discarded;
+--   - after update-ref, before DB ack: ancestry observation recovers success;
+--   - after DB ack, before outbox completion: same command_id replays stored
+--     response.
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS integration_intents (
+  integration_id          TEXT PRIMARY KEY,
+  -- Idempotency key per blueprint §13.1:607-611. One intent per
+  -- (repo, task, review-cycle, reviewed-source-sha, target-branch) — a
+  -- replay with the same values returns the existing intent.
+  intent_key              TEXT NOT NULL UNIQUE,
+  originating_command_id  TEXT,
+  task_id                 INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  project_repository_id   INTEGER,
+  source_branch           TEXT NOT NULL,
+  -- The exact commit review approved. If source_branch has advanced since,
+  -- the executor emits SOURCE_ADVANCED_AFTER_REVIEW (blueprint §13.3:625).
+  reviewed_source_sha     TEXT NOT NULL,
+  target_branch           TEXT NOT NULL,
+  -- The target head observed at intent-creation. The executor's update-ref
+  -- uses this as the CAS expected-old value (blueprint §13.3:648-654).
+  expected_target_sha     TEXT NOT NULL,
+  state                   TEXT NOT NULL DEFAULT 'pending'
+                            CHECK (state IN ('pending','running','merged','conflict',
+                                             'base_advanced','retryable','dead')),
+  executor_execution_id   TEXT,
+  attempt_count           INTEGER NOT NULL DEFAULT 0,
+  available_at            TEXT NOT NULL DEFAULT (datetime('now')),
+  result_commit           TEXT,
+  conflict_files          TEXT,   -- JSON array of paths
+  last_error              TEXT,
+  created_at              TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at              TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_integration_intents_task ON integration_intents(task_id);
+CREATE INDEX IF NOT EXISTS idx_integration_intents_repo_state ON integration_intents(project_repository_id, state);
+CREATE INDEX IF NOT EXISTS idx_integration_intents_state ON integration_intents(state);
 `;
 
 // ----------------------------------------------------------------------------

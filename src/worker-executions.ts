@@ -2,6 +2,7 @@ import Database from 'better-sqlite3';
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import os from 'node:os';
+import { releaseExecutionAtomically } from './lifecycle/atomic-release.js';
 
 export const ACTIVE_EXECUTION_STATES = ['reserved', 'running', 'cancel_requested'] as const;
 const ACTIVE_STATE_SQL = "'reserved','running','cancel_requested'";
@@ -217,23 +218,13 @@ function parseDbTime(value: string | null): number {
   return Date.parse(iso);
 }
 
-function releaseOwnedTask(db: Database.Database, row: WorkerExecutionRow): boolean {
-  if (row.current_execution_id !== row.execution_id) return false;
-  let restoredStatus = row.task_status;
-  if (row.task_status === 'in_progress') restoredStatus = 'todo';
-  else if (row.task_status === 'review_in_progress') restoredStatus = 'review';
-  else if (row.task_status === 'done' && row.integration_state === 'pending') {
-    restoredStatus = 'review';
-  }
-  const info = db.prepare(
-    `UPDATE tasks
-     SET status=?, assigned_to=NULL, current_execution_id=NULL,
-         metadata=json_remove(metadata,'$.worker_pid','$.worker_started_at'),
-         updated_at=datetime('now')
-     WHERE id=? AND current_execution_id=?`,
-  ).run(restoredStatus, row.task_id, row.execution_id);
-  return info.changes === 1;
-}
+// releaseOwnedTask was removed in Slice 1. Its logic — terminalize the
+// execution AND release the task in one atomic transaction with a fence CAS —
+// moved to src/lifecycle/atomic-release.ts (releaseExecutionAtomically).
+// All previous callers (reconcileWorkerExecutions here, recoverAssignment in
+// orchestrate.ts, recoverRunnerAssignment in tracker-view.mjs) now delegate
+// to that single function. This eliminates the duplicate recovery SQL the
+// audit flagged (blueprint §22:1199) and collapses the close/reconciler race.
 
 export interface ReconcileResult {
   executionId: string;
@@ -275,16 +266,21 @@ export function reconcileWorkerExecutions(
       && nowMs - parseDbTime(row.reserved_at) >= RESERVED_BOOT_TIMEOUT_MS;
     if ((row.state === 'running' || row.state === 'cancel_requested') && !alive || reservedExpired) {
       const terminal = row.state === 'reserved' ? 'spawn_failed' : 'lost';
-      db.prepare(
-        `UPDATE worker_executions
-         SET state=?, finished_at=datetime('now'), last_error=?
-         WHERE execution_id=? AND state=?`,
-      ).run(terminal, reservedExpired ? 'spawn reservation timed out' : 'OS process is not alive',
-        row.execution_id, row.state);
-      const released = releaseOwnedTask(db, row);
+      const reasonText = reservedExpired ? 'spawn reservation timed out' : 'OS process is not alive';
+      // Slice 1: atomic terminalization + task release in one transaction.
+      // The previous code did two separate UPDATEs without a tx wrapper — a
+      // crash between them left the execution terminal but the task still
+      // fenced (the TERMINAL_EXECUTION_OWNS_TASK invariant violation).
+      const outcome = releaseExecutionAtomically(db, {
+        executionId: row.execution_id,
+        terminalState: terminal,
+        reason: reasonText,
+        lastError: reasonText,
+      });
       results.push({
-        executionId: row.execution_id, taskId: row.task_id, action: 'lost', released,
-        reason: reservedExpired ? 'spawn reservation timed out' : 'OS process is not alive',
+        executionId: row.execution_id, taskId: row.task_id, action: 'lost',
+        released: outcome.taskReleased,
+        reason: reasonText,
       });
       continue;
     }
@@ -318,15 +314,16 @@ export function reconcileWorkerExecutions(
         });
         continue;
       }
-      db.prepare(
-        `UPDATE worker_executions
-         SET state='terminated', finished_at=datetime('now'),
-             last_error='execution no longer owns an allowed task phase'
-         WHERE execution_id=? AND state IN (${ACTIVE_STATE_SQL})`,
-      ).run(row.execution_id);
-      const released = releaseOwnedTask(db, row);
+      // Slice 1: atomic terminalization + task release.
+      const outcome = releaseExecutionAtomically(db, {
+        executionId: row.execution_id,
+        terminalState: 'terminated',
+        reason: 'execution no longer owns an allowed task phase',
+        lastError: 'execution no longer owns an allowed task phase',
+      });
       results.push({
-        executionId: row.execution_id, taskId: row.task_id, action: 'terminated', released,
+        executionId: row.execution_id, taskId: row.task_id, action: 'terminated',
+        released: outcome.taskReleased,
         reason: 'execution no longer owns an allowed task phase',
       });
     }

@@ -425,23 +425,41 @@ task_list({ epic_id: <any epic in your project>, limit: 50 })   # or tracker_das
 This probe is what catches "I finished everything!" when actually you were on
 the wrong project all along.
 
-## ASK flow (поток вопроса) — when you genuinely need a human answer (когда действительно нужен ответ человека)
+## ASK flow (поток вопроса) — TERMINAL park for genuine human blockers
 
 If you hit a real blocker where a human answer unblocks you (and rebuilding
 your context on another agent would cost more than answering — e.g. you've spent
 an hour understanding the code and need one decision):
 
 ```
-worker_ask_need({ task_id, worker_id, reason: "<the question you're about to ask>" })
-  → task gets flagged needs-human, pulses red ⚠️ on the kanban board
-  → the task STAYS with you (assigned_to unchanged, status unchanged) — do NOT release it, do NOT take another task
-AskUserQuestion(...)              ← the host's tool; the human answers in the UI
-worker_ask_done({ task_id, worker_id })
-  → flag cleared, task still yours, keep working
+worker_ask_need({ task_id, worker_id, reason: "<the question>", execution_id? })
+  → the question is persisted in human_requests.question
+  → your execution is RELEASED (terminalized atomically)
+  → your assigned_to is cleared; the task returns to its queue once answered
+  → needs-human tag pulses red ⚠️ on the kanban
+  → response carries stop:true — your process exits cleanly
 ```
 
-Use this **sparingly** — it idles you while waiting. Prefer the 80% rule
-(assume + comment) for anything reversible. Reserve ASK for genuine need.
+**You do NOT continue in this session.** ASK is terminal (blueprint §12.3,
+ADR-011). A fresh worker later claims the answered task and reads the
+persisted question and answer from `human_requests`.
+
+The human's answer is recorded (by the UI, a human, or any authorized caller)
+via:
+
+```
+worker_ask_done({ task_id, worker_id: "<answerer>", answer: "<the human's answer>" })
+  → looks up the OPEN request by task_id
+  → records answer, flips state to 'answered', clears needs-human tag
+  → task becomes claimable; a fresh worker picks it up
+```
+
+`worker_ask_done` does NOT require `execution_id` — your execution was
+terminalized and is gone. Any caller may record the answer.
+
+Use ASK **sparingly** — it ends your session. Prefer the 80% rule
+(assume + comment) for anything reversible. Reserve ASK for genuine need
+where a wrong guess is more expensive than restarting.
 
 ## Hard rules (жёсткие правила)
 

@@ -1,0 +1,27 @@
+{
+  "name": "violation-waiting-human-with-active-execution",
+  "description": "WAITING_HUMAN_WITH_ACTIVE_EXECUTION. Task has the needs-human tag AND a live execution fence. This is the ASK dead-assignment trap from the audit: worker called worker_ask_need (sets tag) but died before the task could be released, OR the managed runner's recoverAssignment refused to release because of the tag. The decoder must reject this combination rather than silently accept it.",
+  "expected": "named_violation",
+  "expectedCode": "WAITING_HUMAN_WITH_ACTIVE_EXECUTION",
+  "snapshot": {
+    "task": {
+      "id": 2005,
+      "status": "in_progress",
+      "assigned_to": "worker-asked",
+      "current_execution_id": "exec-asked-2005",
+      "integration_state": null,
+      "tags": ["needs-human"],
+      "task_kind": "development.code",
+      "execution_mode": "git_change"
+    },
+    "execution": {
+      "execution_id": "exec-asked-2005",
+      "task_id": 2005,
+      "state": "running",
+      "phase": null,
+      "worker_id": "worker-asked"
+    },
+    "integration": null,
+    "humanRequest": null
+  }
+}

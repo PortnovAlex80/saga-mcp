@@ -1,0 +1,27 @@
+{
+  "name": "violation-terminal-execution-owns-task",
+  "description": "TERMINAL_EXECUTION_OWNS_TASK. Task still fenced by an execution that has terminal state (exited/lost/terminated/spawn_failed). The fence should have been cleared by markExecutionExited's atomic UPDATE. This is the split-transaction signature the audit identified (terminalization and task release in different transactions).",
+  "expected": "named_violation",
+  "expectedCode": "TERMINAL_EXECUTION_OWNS_TASK",
+  "snapshot": {
+    "task": {
+      "id": 2003,
+      "status": "in_progress",
+      "assigned_to": "worker-dead",
+      "current_execution_id": "exec-term-2003",
+      "integration_state": null,
+      "tags": [],
+      "task_kind": "development.code",
+      "execution_mode": "git_change"
+    },
+    "execution": {
+      "execution_id": "exec-term-2003",
+      "task_id": 2003,
+      "state": "lost",
+      "phase": null,
+      "worker_id": "worker-dead"
+    },
+    "integration": null,
+    "humanRequest": null
+  }
+}

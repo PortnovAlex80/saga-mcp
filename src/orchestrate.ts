@@ -45,6 +45,7 @@ import { reevaluateDownstream } from './tools/tasks.js';
 import { handlers as projectHandlers } from './tools/projects.js';
 import { logActivity } from './helpers/activity-logger.js';
 import { reconcileWorkerExecutions } from './worker-executions.js';
+import { releaseExecutionAtomically } from './lifecycle/atomic-release.js';
 
 /**
  * Episode stage → next stage (mirror of lifecycle.ts NEXT, kept local to avoid
@@ -122,32 +123,32 @@ interface RecoveryRule {
 
 const RECOVERY_TREE: Record<string, RecoveryRule[]> = {
   formalization: [
+    // NOTE (formalization-mechanics fix): workflow.ts now spawns a real
+    // formalization.ac task from srs_accepted/uc_accepted, so AC generation
+    // is the normal pipeline, not a recovery concern. The rule below is a
+    // SAFETY NET for unusual cases: a saga-analyst worker crashed mid-AC,
+    // or someone manually deleted accepted ACs. In the happy path this
+    // rule never fires because the formalization.ac task succeeded and the
+    // baseline is already accepted before episode_transition runs.
     {
-      match: /episode has no AC artifacts/i,
-      diagnosis: 'saga-analyst never generated ACs after UC done. Workflow has no uc_accepted→ac generation transition; saga-analyst skill expects to write AC in a second task that never got created.',
+      match: /no AC artifacts/i,
+      diagnosis: 'Episode has no AC artifacts. Either formalization.ac task has not run, or saga-analyst did not register AC artifacts.',
       action_prompt: [
         'You are a saga recovery engineer. Episode is stuck in formalization because no AC (acceptance criteria) artifacts exist.',
         '',
-        'ROOT CAUSE: saga-analyst wrote UCs but no ACs. The uc_accepted workflow transition does not generate a formalization.ac task.',
-        '',
         'ACTIONS (use only mcp__saga__ tools; do NOT call worker_next):',
-        '1. Read the episode: epic_id=<EPIC_ID>. Call artifact_list({epic_id, type:"UC"}) and artifact_list({epic_id, type:"SRS"}) and artifact_list({epic_id, type:"FR"}).',
+        '1. Read the episode: epic_id=<EPIC_ID>. Call artifact_list({epic_id, type:"UC"}) and artifact_list({epic_id, type:"SRS"}).',
         '2. Read each UC document at its path. Read the SRS for FR/NFR context.',
         '3. For EACH UC, derive ≥1 acceptance criterion. For each AC:',
         '   - artifact_create({project_id, epic_id, type:"AC", code:"AC-N", title:"<short>", path:"docs/.../03-acceptance-criteria.md#AC-N", status:"draft"})',
         '   - trace_add({source_id: <AC id>, target_type:"artifact", target_id: <UC id>, link_type:"derived_from"})',
-        '   - trace_add({source_id: <AC id>, target_type:"artifact", target_id: <FR id it tests>, link_type:"depends_on"})',
-        '4. After all ACs written, write the AC document to disk at the .md path you declared. Each AC MUST have: Given/When/Then + a measurable property block (per saga AC template).',
-        '5. Accept upstream artifacts that are still in "draft" but have a real document on disk:',
-        '   - artifact_list for PRD, SRS, UC. For each with status="draft": refresh hash via artifact_save with the current file content, then artifact_update to status="accepted".',
-        '   - SKIP if the .md file does not exist or is empty — that is a real gap, escalate via worker_ask_need.',
-        '6. Accept each AC: artifact_update to status:"accepted". AC MUST have content_hash matching accepted_hash (refreshArtifactHash via artifact_save if needed).',
-        '7. Call worker_done({task_id, worker_id, result:"Recovery: created N AC artifacts, accepted PRD/SRS/UC/AC baseline"}).',
+        '4. Write the AC document to disk at the .md path you declared. Each AC MUST have: Given/When/Then + a measurable property block.',
+        '5. Accept each AC: artifact_update to status:"accepted". AC MUST have content_hash matching accepted_hash.',
+        '6. Call worker_done({task_id, worker_id, result:"Recovery: created N AC artifacts"}).',
         '',
         'DO NOT touch PRD content. DO NOT change requirements — only formalize them as ACs.',
-        'DO NOT call episode_transition — the engine will retry the gate after you finish.',
       ].join('\n'),
-      max_retries: 2,
+      max_retries: 1,
     },
     {
       match: /AC baseline is not accepted and clean/i,
@@ -508,6 +509,41 @@ function readActiveModelLimit(epicId: number): number | null {
   return typeof lim === 'number' && lim >= 1 ? lim : null;
 }
 
+/**
+ * Read the user's chosen concurrency from episode metadata. Written by the
+ * kanban UI (POST /api/engine/concurrency — a pure metadata write, NO kill,
+ * NO spawn). The pump loop re-reads this every RATE_LIMIT_SCAN_TICKS cycle
+ * so a concurrency change takes effect WITHOUT an engine restart — active
+ * workers finish their cycle; the engine converges to the new target as the
+ * active count drops.
+ *
+ * Falls back to null when no value has been recorded; caller uses the
+ * engine's startup opts.concurrency.
+ */
+function readEngineConcurrency(epicId: number): number | null {
+  const row = getDb().prepare(
+    `SELECT json_extract(metadata, '$.engine_concurrency') AS c
+     FROM episode_workflows WHERE epic_id=?`,
+  ).get(epicId) as { c: number | null } | undefined;
+  const c = row?.c;
+  return typeof c === 'number' && c >= 1 && c <= 10 ? c : null;
+}
+
+/**
+ * Compute the target concurrency for this pump cycle from the latest metadata:
+ *   target = min(engine_concurrency_metadata, active_model_limit)
+ * Both fields can be changed mid-run via the kanban UI; both are re-read on
+ * every RATE_LIMIT_SCAN_TICKS cycle so changes converge without an engine
+ * restart. Falls back to the startup value when neither field is set.
+ */
+function readTargetConcurrency(epicId: number, fallbackConcurrency: number): number {
+  const engineConc = readEngineConcurrency(epicId);
+  const modelLimit = readActiveModelLimit(epicId);
+  let target = engineConc ?? fallbackConcurrency;
+  if (modelLimit !== null) target = Math.min(target, modelLimit);
+  return target;
+}
+
 /** Persist recovery bookkeeping fields into episode metadata (merge). */
 function writeEpisodeMeta(epicId: number, patch: Record<string, unknown>): void {
   const db = getDb();
@@ -813,8 +849,12 @@ export async function orchestrate(opts: OrchestrateOptions): Promise<Orchestrate
   // Re-read every RATE_LIMIT_SCAN_TICKS cycle (see pump loop) so a model switch
   // takes effect WITHOUT an engine restart.
   let targetConcurrency = (() => {
-    const lim = readActiveModelLimit(epicId);
-    return lim !== null ? Math.min(concurrency, lim) : concurrency;
+    // Re-read EVERY RATE_LIMIT_SCAN_TICKS cycle (see pump loop) so BOTH:
+    //   - a model switch (/api/model/set → $.active_model_limit), AND
+    //   - a concurrency switch (/api/engine/concurrency → $.engine_concurrency)
+    // take effect WITHOUT an engine restart. Active workers finish; the
+    // engine converges to the new target as the active count drops.
+    return readTargetConcurrency(epicId, concurrency);
   })();
   // Effective concurrency may be lower than the target when the API is
   // rate-limiting (429). Starts at target, drops by 1 per rate-limit hit,
@@ -902,10 +942,18 @@ export async function orchestrate(opts: OrchestrateOptions): Promise<Orchestrate
       ).get(taskId);
       return row as { id: number; status: string; assigned_to: string | null; tags: string; integration_state: string | null } | undefined;
     },
-    recoverAssignment: ({ taskId, workerId, originalStatus, executionId }: {
+    recoverAssignment: ({ taskId, workerId, originalStatus, executionId, reason }: {
       taskId: number; workerId: string; originalStatus: string; reason: string;
       executionId?: string | null;
     }) => {
+      // Slice 1 (ADR-010/011, blueprint §16:829-845): fenced-task recovery
+      // delegates to the single atomic terminalization+release function in
+      // src/lifecycle/atomic-release.ts. This removes the duplicate recovery
+      // SQL between orchestrate.ts and tracker-view (blueprint §22:1199) and
+      // collapses the close/reconciler race: the function's fence CAS means
+      // only one of the two callers wins; the other no-ops.
+      //
+      // Legacy (pre-ADR-009, unfenced) assignments still need the old code path.
       const db = getDb();
       const task = db.prepare(
         `SELECT id, title, status, assigned_to, tags, current_execution_id
@@ -918,6 +966,23 @@ export async function orchestrate(opts: OrchestrateOptions): Promise<Orchestrate
       let tags: string[] = [];
       try { tags = JSON.parse(task.tags || '[]'); } catch { tags = []; }
       if (tags.includes('needs-human')) return false;
+
+      // Fenced task: delegate to atomic-release.
+      if (executionId && task.current_execution_id === executionId) {
+        const outcome = releaseExecutionAtomically(db, {
+          executionId,
+          terminalState: 'lost',
+          reason: `engine recovery: ${reason ?? 'process exited before terminal worker_done'}`,
+        });
+        if (outcome.taskReleased) {
+          logActivity(db, 'task', taskId, 'status_changed', 'status',
+            task.status, outcome.restoredStatus,
+            `Engine recovered task '${task.title}' (atomic): ${reason ?? ''}`);
+        }
+        return outcome.taskReleased;
+      }
+
+      // Legacy path: pre-ADR-009 unfenced assignment.
       const restoredStatus =
         originalStatus === 'review' && task.status !== 'in_progress' ? 'review' : 'todo';
       const info = db.prepare(
@@ -1057,8 +1122,10 @@ export async function orchestrate(opts: OrchestrateOptions): Promise<Orchestrate
       rateLimitCheckCounter += 1;
       if (rateLimitCheckCounter >= RATE_LIMIT_SCAN_TICKS) {
         rateLimitCheckCounter = 0;
-        const lim = readActiveModelLimit(epicId);
-        targetConcurrency = lim !== null ? Math.min(concurrency, lim) : concurrency;
+        // Re-read BOTH concurrency and model-limit from metadata. Either can
+        // change mid-run via the kanban UI; both take effect without an
+        // engine restart.
+        targetConcurrency = readTargetConcurrency(epicId, concurrency);
         const rlDetected = detectRateLimits(epicId, projectId, opts);
         if (rlDetected > 0) {
           // Drop ceiling by 1 per rate-limited worker (min 1). Old workers

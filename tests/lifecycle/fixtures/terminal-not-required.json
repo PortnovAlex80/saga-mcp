@@ -1,0 +1,21 @@
+{
+  "name": "terminal-not-required",
+  "description": "Terminal completed non-git task (tracker_only/read_only_evidence). status=done, integration_state=not_required. Review approved, no integration needed.",
+  "expected": "valid_managed",
+  "expectedStateKind": "completed",
+  "snapshot": {
+    "task": {
+      "id": 1006,
+      "status": "done",
+      "assigned_to": null,
+      "current_execution_id": null,
+      "integration_state": "not_required",
+      "tags": [],
+      "task_kind": "verification.ac",
+      "execution_mode": "read_only_evidence"
+    },
+    "execution": null,
+    "integration": null,
+    "humanRequest": null
+  }
+}

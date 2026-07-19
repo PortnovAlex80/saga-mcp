@@ -1,0 +1,21 @@
+{
+  "name": "violation-completed-with-unfinished-integration",
+  "description": "COMPLETED_WITH_UNFINISHED_INTEGRATION. git_change task marked done but integration_state is null/empty. The task is in a terminal column value without going through the integration pipeline. Either a manual DB edit or a buggy cutover.",
+  "expected": "named_violation",
+  "expectedCode": "COMPLETED_WITH_UNFINISHED_INTEGRATION",
+  "snapshot": {
+    "task": {
+      "id": 2007,
+      "status": "done",
+      "assigned_to": null,
+      "current_execution_id": null,
+      "integration_state": null,
+      "tags": [],
+      "task_kind": "development.code",
+      "execution_mode": "git_change"
+    },
+    "execution": null,
+    "integration": null,
+    "humanRequest": null
+  }
+}

@@ -129,21 +129,50 @@ test('typed PRD generates SRS and UC exactly once and preserves lineage', () => 
 
   const srs = first.tasks.find(t => t.task_kind === 'formalization.srs');
   const uc = first.tasks.find(t => t.task_kind === 'formalization.uc');
+
+  // First sibling done → its transition fires but returns [] (counterpart
+  // not done yet, AC must wait). This pins the "wait for both" semantics.
   process.env.SAGA_ALLOW_MANUAL_STATUS = '1';
   tasks.task_update({ id: srs.id, status: 'done' });
+  delete process.env.SAGA_ALLOW_MANUAL_STATUS;
+  const acAttempt1 = workflow.workflow_generate_next({
+    epic_id: epic.id, source_task_id: srs.id, transition: 'srs_accepted',
+  });
+  assert.equal(acAttempt1.created.length, 0);
+  assert.equal(acAttempt1.tasks.length, 0);
+
+  // Second sibling done → its transition produces the AC task with deps
+  // on BOTH siblings (so AC unblocks only when SRS AND UC are both done).
+  process.env.SAGA_ALLOW_MANUAL_STATUS = '1';
   tasks.task_update({ id: uc.id, status: 'done' });
   delete process.env.SAGA_ALLOW_MANUAL_STATUS;
+  const ac = workflow.workflow_generate_next({
+    epic_id: epic.id, source_task_id: uc.id, transition: 'uc_accepted',
+  });
+  assert.equal(ac.created.length, 1);
+  assert.equal(ac.tasks[0].task_kind, 'formalization.ac');
+  assert.equal(ac.tasks[0].status, 'todo');
+  assert.equal(ac.tasks[0].execution_mode, 'tracker_only',
+    'formalization.ac is tracker_only — markdown artifact, no git integration');
 
-  const reconciliation = workflow.workflow_generate_next({
+  // Calling srs_accepted again must reuse (idempotent), not create a duplicate.
+  const acAgain = workflow.workflow_generate_next({
     epic_id: epic.id, source_task_id: srs.id, transition: 'srs_accepted',
+  });
+  assert.deepEqual(acAgain.reused, ac.created);
+
+  // AC done → ac_accepted → reconciliation
+  process.env.SAGA_ALLOW_MANUAL_STATUS = '1';
+  tasks.task_update({ id: ac.tasks[0].id, status: 'done' });
+  delete process.env.SAGA_ALLOW_MANUAL_STATUS;
+  const reconciliation = workflow.workflow_generate_next({
+    epic_id: epic.id,
+    source_task_id: ac.tasks[0].id,
+    transition: 'ac_accepted',
   });
   assert.equal(reconciliation.created.length, 1);
   assert.equal(reconciliation.tasks[0].task_kind, 'formalization.reconciliation');
-  assert.equal(reconciliation.tasks[0].status, 'todo');
-  const reconciliationAgain = workflow.workflow_generate_next({
-    epic_id: epic.id, source_task_id: uc.id, transition: 'uc_accepted',
-  });
-  assert.deepEqual(reconciliationAgain.reused, reconciliation.created);
+  assert.equal(reconciliation.tasks[0].execution_mode, 'tracker_only');
 
   process.env.SAGA_ALLOW_MANUAL_STATUS = '1';
   tasks.task_update({ id: reconciliation.tasks[0].id, status: 'done' });
@@ -210,7 +239,8 @@ test('ADR-008: brief_accepted seeds EXACTLY ONE formalization.prd (not PRD+SRS p
   assert.equal(result.created.length, 1);
   assert.equal(result.tasks[0].task_kind, 'formalization.prd');
   assert.equal(result.tasks[0].execution_skill, 'saga-product');
-  assert.equal(result.tasks[0].execution_mode, 'git_change');
+  // formalization tasks emit tracker_only — markdown artifacts, not git-delivered code.
+  assert.equal(result.tasks[0].execution_mode, 'tracker_only');
   assert.equal(result.tasks[0].workflow_stage, 'formalization');
   assert.equal(result.tasks[0].generated_from_task_id, kickstart.id);
   // Repository inherited from the brief artifact (kickstart task has none).
@@ -394,6 +424,20 @@ test('episode planning gate requires an accepted, hash-pinned, drift-free AC bas
   const epic = epics.epic_create({ project_id: product.id, name: 'REQ-hard-gate' });
   assert.equal(lifecycle.episode_status({ epic_id: epic.id }).workflow.stage, 'discovery');
   lifecycle.episode_transition({ epic_id: epic.id, to_stage: 'formalization' });
+  // First throw: no AC artifacts AND no formalization tasks. The gate runs
+  // assertTasksReady BEFORE acceptedBaseline, so the tasks-gate fires first.
+  assert.throws(
+    () => lifecycle.episode_transition({ epic_id: epic.id, to_stage: 'planning' }),
+    /no formalization tasks exist/,
+  );
+  // Seed a done reconciliation task to satisfy the tasks-gate, then re-throw
+  // on the AC-artifact gate (acceptedBaseline).
+  tasks.task_create({
+    epic_id: epic.id, title: 'PRD', status: 'done', priority: 'high',
+    task_kind: 'formalization.prd', workflow_stage: 'formalization',
+    execution_skill: 'saga-product', review_skill: 'saga-requirements-reviewer',
+    execution_mode: 'tracker_only',
+  });
   assert.throws(
     () => lifecycle.episode_transition({ epic_id: epic.id, to_stage: 'planning' }),
     /no AC artifacts/,
@@ -474,7 +518,16 @@ test('artifact_create stamps accepted_hash + clean drift AND computes content_ha
     'drift_state must be "clean" immediately after accepted creation');
 
   // The planning gate should admit the episode without any status cycling.
+  // Note: formalization gate (slice 3 of formalization-mechanics fix) now also
+  // calls assertTasksReady('formalization'), so we seed a done reconciliation
+  // task to satisfy the tasks-gate while this test focuses on the AC-artifact gate.
   lifecycle.episode_transition({ epic_id: epic.id, to_stage: 'formalization' });
+  tasks.task_create({
+    epic_id: epic.id, title: 'PRD', status: 'done', priority: 'high',
+    task_kind: 'formalization.prd', workflow_stage: 'formalization',
+    execution_skill: 'saga-product', review_skill: 'saga-requirements-reviewer',
+    execution_mode: 'tracker_only',
+  });
   assert.doesNotThrow(() => {
     lifecycle.episode_transition({
       epic_id: epic.id, to_stage: 'planning', baseline_artifact_id: ac.id,
@@ -503,6 +556,14 @@ test('initialized episodes enforce downstream provenance and auto-advance ready 
   const epic = epics.epic_create({ project_id: product.id, name: 'REQ-provenance' });
   lifecycle.episode_status({ epic_id: epic.id });
   lifecycle.episode_transition({ epic_id: epic.id, to_stage: 'formalization' });
+  // Seed a done formalization.prd task to satisfy the formalization gate
+  // (slice 3 — assertTasksReady now runs alongside acceptedBaseline).
+  tasks.task_create({
+    epic_id: epic.id, title: 'PRD', status: 'done', priority: 'high',
+    task_kind: 'formalization.prd', workflow_stage: 'formalization',
+    execution_skill: 'saga-product', review_skill: 'saga-requirements-reviewer',
+    execution_mode: 'tracker_only',
+  });
   const ac = artifacts.artifact_create({
     project_id: product.id, epic_id: epic.id, type: 'AC', code: 'AC-P',
     title: 'Provenance criterion', path: 'ac-p.md', status: 'accepted', content_hash: 'p-hash',
@@ -535,6 +596,12 @@ test('development.scaffold is exempt from per-AC provenance gate (infrastructure
   const epic = epics.epic_create({ project_id: product.id, name: 'REQ-scaffold-provenance' });
   lifecycle.episode_status({ epic_id: epic.id });
   lifecycle.episode_transition({ epic_id: epic.id, to_stage: 'formalization' });
+  tasks.task_create({
+    epic_id: epic.id, title: 'PRD', status: 'done', priority: 'high',
+    task_kind: 'formalization.prd', workflow_stage: 'formalization',
+    execution_skill: 'saga-product', review_skill: 'saga-requirements-reviewer',
+    execution_mode: 'tracker_only',
+  });
   artifacts.artifact_create({
     project_id: product.id, epic_id: epic.id, type: 'AC', code: 'AC-S',
     title: 'Scaffold criterion', path: 'ac-s.md', status: 'accepted', content_hash: 's-hash',

@@ -134,6 +134,19 @@ function handleEpisodeTransition(args: Record<string, unknown>) {
   let baselineArtifactId = current.baseline_artifact_id;
   let baselineHash = current.baseline_hash;
   if (current.stage === 'formalization' && to === 'planning') {
+    // Slice 3 of formalization-mechanics fix: previously this branch checked
+    // ONLY the AC baseline (artifacts). Every other stage transition
+    // (planning→development, development→verification, etc.) calls
+    // assertTasksReady. The omission here let an episode advance to
+    // planning while a formalization task (typically recovery.heal) was
+    // still in 'review', stranding that task permanently — countActiveTasks
+    // and claimTask both filter by ew.stage = t.workflow_stage, so a
+    // cross-stage task is invisible and unclaimable.
+    //
+    // assertTasksReady excludes task_kind in ('summary.stage','recovery.heal'),
+    // so this gate now also catches the real formalization deliverables
+    // (PRD/SRS/UC/AC/reconciliation) being incomplete.
+    assertTasksReady(epicId, 'formalization');
     const baseline = acceptedBaseline(epicId);
     baselineArtifactId = (args.baseline_artifact_id as number | undefined) ?? baseline.artifacts[0].id;
     if (!baseline.artifacts.some(a => a.id === baselineArtifactId)) {

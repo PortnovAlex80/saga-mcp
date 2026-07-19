@@ -1,0 +1,27 @@
+{
+  "name": "clean-active-implementation",
+  "description": "Valid managed task in active implementation. status=in_progress, assigned_to set, current_execution_id set, matching active worker_executions row (state=running). This is what worker_next produces.",
+  "expected": "valid_managed",
+  "expectedStateKind": "active",
+  "snapshot": {
+    "task": {
+      "id": 1002,
+      "status": "in_progress",
+      "assigned_to": "worker-1",
+      "current_execution_id": "exec-abc-1002",
+      "integration_state": null,
+      "tags": [],
+      "task_kind": "development.code",
+      "execution_mode": "git_change"
+    },
+    "execution": {
+      "execution_id": "exec-abc-1002",
+      "task_id": 1002,
+      "state": "running",
+      "phase": null,
+      "worker_id": "worker-1"
+    },
+    "integration": null,
+    "humanRequest": null
+  }
+}

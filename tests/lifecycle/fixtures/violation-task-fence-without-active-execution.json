@@ -1,0 +1,21 @@
+{
+  "name": "violation-task-fence-without-active-execution",
+  "description": "TASK_FENCE_WITHOUT_ACTIVE_EXECUTION. Task is fenced by an execution id but no worker_executions row exists. The fence points at a ghost. Can happen after a crash between INSERT and UPDATE.",
+  "expected": "named_violation",
+  "expectedCode": "TASK_FENCE_WITHOUT_ACTIVE_EXECUTION",
+  "snapshot": {
+    "task": {
+      "id": 2002,
+      "status": "in_progress",
+      "assigned_to": "worker-1",
+      "current_execution_id": "exec-ghost-2002",
+      "integration_state": null,
+      "tags": [],
+      "task_kind": "development.code",
+      "execution_mode": "git_change"
+    },
+    "execution": null,
+    "integration": null,
+    "humanRequest": null
+  }
+}
