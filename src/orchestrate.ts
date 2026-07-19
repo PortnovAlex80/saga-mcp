@@ -677,23 +677,28 @@ function tryAdvanceStage(epicId: number): { advanced: boolean; error: string | n
       to_stage: to as never,
     }) as { changed: boolean };
 
-    // After a successful stage transition, auto-close any summary.stage tasks
-    // from the PREVIOUS stage that are still in review/todo/in_progress.
-    // These are bookkeeping tasks — their stage has ended, no worker can claim
-    // them (stage-filter blocks cross-stage claims), and leaving them stranded
-    // pollutes the kanban with "stuck" tasks that are actually finished work.
+    // After a successful stage transition, check for STRANDED tasks from the
+    // PREVIOUS stage — any task with workflow_stage=<old stage> that is NOT
+    // done. These are invisible to workers (stage-filter blocks cross-stage
+    // claims) and would pollute the kanban forever. Instead of silently
+    // auto-closing them, SPAWN A RECOVERY TASK — the autonomous-recovery
+    // agent examines each stranded task and decides: bookkeeping → close,
+    // real work → rewind/rework, genuine blocker → record.
+    //
+    // This is the "post-transition sweep": the engine doesn't guess what to
+    // do with leftover tasks — it delegates to recovery, which has the
+    // tools (task_update, trace_add, artifact_update) and the decision loop.
     if (result.changed) {
-      const staleSummaries = getDb().prepare(
-        `UPDATE tasks
-            SET status='done', assigned_to=NULL, current_execution_id=NULL,
-                updated_at=datetime('now')
-          WHERE epic_id=? AND task_kind='summary.stage'
-            AND workflow_stage=? AND status != 'done'`,
-      ).run(epicId, stage);
-      if (staleSummaries.changes > 0) {
-        logActivity(getDb(), 'epic', epicId, 'updated', 'auto_closed_summaries',
-          null, String(staleSummaries.changes),
-          `Auto-closed ${staleSummaries.changes} summary.stage task(s) from stage='${stage}' after transition to '${to}'`);
+      const stranded = getDb().prepare(
+        `SELECT id, task_kind, status FROM tasks
+          WHERE epic_id=? AND workflow_stage=? AND status != 'done'`,
+      ).all(epicId, stage) as Array<{ id: number; task_kind: string; status: string }>;
+      if (stranded.length > 0) {
+        const strandedList = stranded.map(t => `#${t.id} (${t.task_kind}, ${t.status})`).join(', ');
+        logActivity(getDb(), 'epic', epicId, 'created', 'post_transition_sweep',
+          null, strandedList,
+          `Stage '${stage}' → '${to}': ${stranded.length} stranded task(s) detected — spawning recovery to resolve: ${strandedList}`);
+        spawnPostTransitionRecovery(epicId, stage, to, stranded);
       }
     }
 
@@ -841,6 +846,93 @@ function spawnGenericRecoveryTask(epicId: number, stage: string, gateError: stri
   const taskId = Number(info.lastInsertRowid);
   logActivity(db, 'epic', epicId, 'created', 'recovery_task', null, String(taskId),
     `Engine auto-spawned GENERIC recovery task #${taskId} for stage='${stage}' (unmatched gate error): ${gateError.slice(0, 120)}`);
+  return taskId;
+}
+
+/**
+ * Spawn a recovery task to resolve STRANDED tasks after a stage transition.
+ *
+ * When the episode advances from stage X to stage Y, any task with
+ * workflow_stage=X that is NOT done becomes invisible to workers — the
+ * stage-filter in claimTask blocks cross-stage claims. These tasks would
+ * pollute the kanban forever.
+ *
+ * Instead of silently auto-closing them, the engine spawns a recovery task
+ * that gets the full list of stranded tasks and uses the autonomous-recovery
+ * skill to decide per-task:
+ *   - summary.stage / bookkeeping → close it (task_update status='done')
+ *   - real work left (in_progress, review) → rewind to todo for the NEW stage,
+ *     or close if the work is already captured in artifacts
+ *   - genuine blocker → record and close
+ *
+ * This is the "post-transition sweep": the engine doesn't guess — it delegates
+ * to recovery, which has the tools and the decision loop.
+ */
+function spawnPostTransitionRecovery(
+  epicId: number,
+  fromStage: string,
+  toStage: string,
+  stranded: Array<{ id: number; task_kind: string; status: string }>,
+): number {
+  const db = getDb();
+  const projectIdRow = db.prepare('SELECT project_id FROM epics WHERE id=?').get(epicId) as { project_id: number } | undefined;
+  if (!projectIdRow) return -1;
+
+  const strandedList = stranded.map(t => `  #${t.id}: task_kind='${t.task_kind}', status='${t.status}'`).join('\n');
+
+  const prompt = [
+    'Load skill "autonomous-recovery" and run its 6-step recovery loop.',
+    '',
+    'CONTEXT: the episode just transitioned from one stage to the next,',
+    'and some tasks from the PREVIOUS stage are still NOT done. They are',
+    'now invisible to workers (the stage-filter blocks cross-stage claims).',
+    'You must resolve each one.',
+    '',
+    `epic_id=${epicId}`,
+    `transition: '${fromStage}' → '${toStage}'`,
+    '',
+    'STRANDED TASKS:',
+    strandedList,
+    '',
+    'YOUR JOB: For EACH stranded task, decide via MCDA in the skill:',
+    '',
+    '1. task_kind="summary.stage" or "recovery.heal" → these are BOOKKEEPING.',
+    '   The stage is over. The summary was probably in review when the gate',
+    '   passed. Close it: task_update({_recovery_override:true, id:N, status:"done"}).',
+    '',
+    '2. task_kind="verification.ac" in review → the verifier recorded evidence',
+    '   (passed/failed/unknown) and the gate already decided. Close it:',
+    '   task_update({_recovery_override:true, id:N, status:"done"}).',
+    '',
+    '3. task_kind="development.code" or similar in review → the gate passed,',
+    '   meaning the work was accepted. Close it.',
+    '',
+    '4. task_kind that looks like REAL INCOMPLETE WORK (in_progress, todo,',
+    '   blocked) → the stage transition may have been premature. Either:',
+    '   a. Close it if the work was captured in downstream artifacts.',
+    '   b. Move it to the new stage: task_update({_recovery_override:true,',
+    '      id:N, status:"todo", workflow_stage:"<toStage>"}).',
+    '',
+    'DO NOT call worker_ask_need. These are bookkeeping/cleanup decisions',
+    'the agent can make by reading the task + its comments + the episode state.',
+  ].join('\n');
+
+  const info = db.prepare(
+    `INSERT INTO tasks
+       (epic_id, title, description, status, priority, task_kind, workflow_stage,
+        execution_skill, review_skill, execution_mode, tags, metadata)
+     VALUES (?, ?, ?, 'todo', 'critical', 'recovery.heal', ?,
+             'autonomous-recovery', 'saga-reviewer', 'tracker_only', ?, '{}')`,
+  ).run(
+    epicId,
+    `Post-transition sweep: ${stranded.length} stranded task(s) from '${fromStage}'`,
+    prompt,
+    toStage,
+    JSON.stringify([`stage:${toStage}`, 'kind:recovery.heal', 'role:recovery', 'post_transition_sweep:true']),
+  );
+  const taskId = Number(info.lastInsertRowid);
+  logActivity(db, 'epic', epicId, 'created', 'recovery_task', null, String(taskId),
+    `Post-transition sweep: spawned recovery task #${taskId} to resolve ${stranded.length} stranded task(s) from stage='${fromStage}' → '${toStage}'`);
   return taskId;
 }
 
