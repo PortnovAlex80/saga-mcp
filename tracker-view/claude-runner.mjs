@@ -98,6 +98,14 @@ export class ClaudeBoardRunner {
     this.dbPath = options.dbPath;
     this.sagaEntry = options.sagaEntry;
     this.sagaSkillRoot = options.sagaSkillRoot;
+    // LM Studio provider: reads { model, provider } from episode_workflows.metadata
+    // (active_model / active_provider). Returns {provider:'zai', model:null} when
+    // unset → spawn uses the legacy `--model opus` + ~/.claude/settings.json path.
+    // Env overrides (used ONLY when provider==='lmstudio'):
+    this.getActiveModel = options.getActiveModel;
+    this.lmstudioBaseUrl = options.lmstudioBaseUrl
+      ?? process.env.SAGA_LMSTUDIO_URL
+      ?? 'http://localhost:1234/v1';
     this.logRoot = options.logRoot ?? path.join(os.homedir(), '.zcode', 'cli', 'board-runs');
     // Единый heartbeat-лог всех воркеров (для наблюдения за запущенными агентами).
     // Plain text, по строке на событие. Смотреть через tail -f.
@@ -318,6 +326,19 @@ export class ClaudeBoardRunner {
           : `Legacy workspace for project '${run.projectName}' was not found`,
       );
     }
+    // Provider routing: read the active model/provider for this episode from
+    // saga.db metadata (written by POST /api/model/set). provider==='lmstudio'
+    // → point THIS worker's claude at the local LM Studio endpoint via env
+    // (env overrides ~/.claude/settings.json, so the global z.ai config is
+    // untouched). provider==='zai' (default) → legacy path: `--model opus` +
+    // whatever ~/.claude/settings.json says.
+    const am = (this.getActiveModel ? this.getActiveModel(run.epicId) : null)
+      || { provider: 'zai', model: null };
+    const isLmstudio = am.provider === 'lmstudio' && am.model;
+    // For LM Studio we must pass the concrete model id (--model <lmstudio-id>);
+    // for z.ai we keep the 'opus' alias (resolved via ANTHROPIC_DEFAULT_OPUS_MODEL).
+    const modelArg = isLmstudio ? am.model : 'opus';
+
     const prompt = buildPrompt({
       assignment,
       project: { id: run.projectId, name: run.projectName },
@@ -328,7 +349,7 @@ export class ClaudeBoardRunner {
     });
     const args = [
       '-p',
-      '--model', 'opus',
+      '--model', modelArg,
       '--effort', 'xhigh',
       '--mcp-config', this.mcpConfigPath,
       '--strict-mcp-config',
@@ -350,10 +371,23 @@ export class ClaudeBoardRunner {
       '--no-session-persistence',
       prompt,
     ];
+    // LM Studio worker env: redirect THIS worker's claude to the local
+    // Anthropic-compatible endpoint. Tokens are placeholders — LM Studio does
+    // not validate them; they exist only so claude CLI doesn't refuse to start
+    // (it requires some non-empty auth value). CLAUDE_CODE_ATTRIBUTION_HEADER=0
+    // is required by the LM Studio Claude Code integration docs (the default
+    // attribution header trips up the local server).
+    const lmstudioEnv = isLmstudio ? {
+      ANTHROPIC_BASE_URL: this.lmstudioBaseUrl,
+      ANTHROPIC_AUTH_TOKEN: 'lm-studio',
+      ANTHROPIC_API_KEY: 'lm-studio',
+      CLAUDE_CODE_ATTRIBUTION_HEADER: '0',
+    } : {};
     const child = this.spawn(this.claudePath, args, {
       cwd: workspaceRoot,
       env: {
         ...process.env,
+        ...lmstudioEnv,
         SAGA_RUN_ID: run.id,
         SAGA_WORKER_ID: workerId,
         SAGA_EXECUTION_ID: assignment.execution_id || '',

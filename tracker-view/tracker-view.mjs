@@ -730,13 +730,25 @@ function renderBoard(projectId, allProjects) {
             return `<option value="${i + 1}"${i + 1 === conc ? ' selected' : ''}>${i + 1}</option>`;
           }).join('')}
         </select>
-        <select id="agent-model-select" title="Модель для НОВЫХ воркеров. Активные доработают на старой. Лимит модели — потолок concurrency для pump-loop движка.">
+        <select id="agent-model-select" title="Модель для НОВЫХ воркеров. Активные доработают на старой. Лимит модели — потолок concurrency. Опция «↻ LM Studio» — обновить список локальных моделей.">
           ${(function() {
             // Read the per-epic choice from saga.db so F5 preserves it.
             // Without this the selector reset to the process-wide WORKER_MODEL
             // constant on every page reload, losing the user's last selection.
             const chosen = activeModelForProject(projectId) || WORKER_MODEL;
-            return MODELS.map(m => `<option value="${m.id}" data-limit="${m.limit}"${m.id === chosen ? ' selected' : ''}>${m.id} (×${m.limit}${m.note ? ' · ' + m.note : ''})</option>`).join('');
+            const zaiOpts = ZAI_MODELS.map(m =>
+              `<option value="${m.id}" data-limit="${m.limit}" data-provider="zai"${m.id === chosen ? ' selected' : ''}>${m.id} (×${m.limit}${m.note ? ' · ' + m.note : ''})</option>`
+            ).join('');
+            // LM Studio group: real loaded models if online, else a single
+            // disabled "офлайн" hint + the refresh sentinel option.
+            const lmOn = LMSTUDIO_ONLINE && LMSTUDIO_MODELS.length > 0;
+            const lmBody = lmOn
+              ? LMSTUDIO_MODELS.map(m =>
+                  `<option value="${m.id}" data-limit="${m.limit}" data-provider="lmstudio"${m.id === chosen ? ' selected' : ''}>${m.id} (×${m.limit} · локально)</option>`
+                ).join('')
+              : `<option value="" disabled>офлайн — запустите LM Studio</option>`;
+            const lmGroup = `<optgroup label="LM Studio (локально)">${lmBody}<option value="__lmstudio_refresh" data-provider="refresh">↻ обновить список</option></optgroup>`;
+            return `<optgroup label="Z.ai (облако, подписка)">${zaiOpts}</optgroup>${lmGroup}`;
           })()}
         </select>
         <span id="agent-run-status" class="agent-run-status">движок: …</span>
@@ -1452,9 +1464,28 @@ function renderBoard(projectId, allProjects) {
     if (modelSelect) {
       modelSelect.addEventListener('change', async () => {
         const modelId = modelSelect.value;
+        // Sentinel "↻ обновить список": probe LM Studio and reload the page so
+        // the optgroup re-renders with the live model list. No model switch.
+        if (modelId === '__lmstudio_refresh') {
+          runnerStatus.textContent = 'опрос LM Studio…';
+          try {
+            const r = await fetch('/api/lmstudio/models');
+            const d = await r.json();
+            runnerStatus.textContent = d.online
+              ? 'LM Studio: ' + d.models.length + ' мод. — перезагрузка…'
+              : 'LM Studio офлайн (' + (d.error || '?') + ')';
+            setTimeout(() => location.reload(), 700);
+          } catch (e) {
+            alert('Опрос LM Studio: ' + e.message);
+            runnerStatus.textContent = 'ошибка опроса';
+          }
+          return;
+        }
         const limit = Number(modelSelect.options[modelSelect.selectedIndex].dataset.limit);
-        if (!confirm('Сменить модель на ' + modelId + '? Активные воркеры доработают на старой модели. Новые воркеры пойдут на ' + modelId + '.')) {
-          // Revert dropdown to whatever the status line says is current.
+        const provider = modelSelect.options[modelSelect.selectedIndex].dataset.provider || 'zai';
+        if (!modelId) return;
+        const where = provider === 'lmstudio' ? ' (локально, LM Studio)' : ' (облако Z.ai)';
+        if (!confirm('Сменить модель на ' + modelId + where + '? Активные воркеры доработают на старой модели. Новые воркеры пойдут на ' + modelId + '.')) {
           return;
         }
         runnerStatus.textContent = 'смена модели…';
@@ -5147,15 +5178,75 @@ function handleEngineRestart(req, res) {
 // GLM-5.2 counts x3 in peak hours, x2 off-peak; the others are x1.
 // The limit here is the per-epic concurrency ceiling saga uses; it is NOT
 // the prompt quota (that's tracked by z.ai on their side, 80/400/1600 per 5h).
-const MODELS = [
-  { id: 'glm-5.2',         limit: 3,  tier: 'flagship', note: 'Opus-level, x3 peak rate' },
-  { id: 'glm-5-turbo',     limit: 5,  tier: 'flagship', note: 'Opus-level, x1 rate' },
-  { id: 'glm-4.7',         limit: 10, tier: 'sonnet',   note: 'Sonnet-level, x1 rate — recommended default' },
+// Z.ai cloud models (subscription). Source: Z.ai GLM Coding Plan FAQ
+// (docs.z.ai/devpack/faq): all plans support GLM-5.2, GLM-5-Turbo, GLM-4.7.
+// Other GLM variants are NOT exposed on the Coding Plan endpoint. Limit values
+// reflect z.ai's documented rate multipliers: GLM-5.2 counts x3 in peak hours,
+// x2 off-peak; the others are x1. The limit is the per-epic concurrency
+// ceiling saga uses; NOT the prompt quota (tracked by z.ai, 80/400/1600 per 5h).
+const ZAI_MODELS = [
+  { id: 'glm-5.2',         limit: 3,  tier: 'flagship', provider: 'zai', note: 'Opus-level, x3 peak rate' },
+  { id: 'glm-5-turbo',     limit: 5,  tier: 'flagship', provider: 'zai', note: 'Opus-level, x1 rate' },
+  { id: 'glm-4.7',         limit: 10, tier: 'sonnet',   provider: 'zai', note: 'Sonnet-level, x1 rate — recommended default' },
 ];
+
+// LM Studio local models (no subscription, runs on this machine). Populated
+// lazily from GET <LMSTUDIO_URL>/models (Anthropic+OpenAI-compatible server
+// built into LM Studio on port 1234). Empty until first probe — the UI shows
+// "LM Studio (офлайн)" while LMSTUDIO_ONLINE is false.
+const LMSTUDIO_URL = (process.env.SAGA_LMSTUDIO_URL || 'http://localhost:1234/v1').replace(/\/+$/, '');
+// Local models have no cloud rate limit, so allow a generous concurrency.
+const LMSTUDIO_DEFAULT_LIMIT = 4;
+let LMSTUDIO_MODELS = [];     // [{ id, limit, tier:'local', provider:'lmstudio' }]
+let LMSTUDIO_ONLINE = false;
+
+/**
+ * Probe LM Studio's /v1/models endpoint. Updates LMSTUDIO_MODELS + LMSTUDIO_ONLINE.
+ * Returns the fresh state. Idempotent; safe to call on every GET /api/lmstudio/models.
+ * 3s timeout — LM Studio is local; longer means it's not running.
+ */
+async function probeLmstudioModels() {
+  const url = LMSTUDIO_URL + '/models';
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 3000);
+    const r = await fetch(url, { signal: ctrl.signal });
+    clearTimeout(t);
+    if (!r.ok) { LMSTUDIO_ONLINE = false; LMSTUDIO_MODELS = []; return { online: false, error: `HTTP ${r.status}` }; }
+    const body = await r.json();
+    // OpenAI shape: { data: [{ id }] }. Tolerate { models: [{ id }] } too.
+    const list = Array.isArray(body?.data) ? body.data : (Array.isArray(body?.models) ? body.models : []);
+    const ids = list.map(m => m?.id).filter(id => typeof id === 'string' && id.length);
+    LMSTUDIO_MODELS = ids.map(id => ({ id, limit: LMSTUDIO_DEFAULT_LIMIT, tier: 'local', provider: 'lmstudio' }));
+    LMSTUDIO_ONLINE = true;
+    return { online: true, models: LMSTUDIO_MODELS };
+  } catch (e) {
+    LMSTUDIO_ONLINE = false;
+    LMSTUDIO_MODELS = [];
+    return { online: false, error: e?.name === 'AbortError' ? 'timeout' : (e?.message || String(e)) };
+  }
+}
+
+// All selectable models (cloud + local). Used by handleModelsList, handleModelSet, UI.
+function allModels() { return [...ZAI_MODELS, ...LMSTUDIO_MODELS]; }
+
+// --- GET /api/lmstudio/models ---
+// Probe LM Studio and return its live model list. The UI calls this on page
+// load (to populate the LM Studio optgroup) and on "↻ обновить" click.
+async function handleLmstudioModelsList(req, res) {
+  const result = await probeLmstudioModels();
+  respondJson(res, 200, { ok: true, lmstudio_url: LMSTUDIO_URL, ...result });
+}
 
 // --- GET /api/models ---
 function handleModelsList(req, res) {
-  respondJson(res, 200, { ok: true, current: WORKER_MODEL, models: MODELS });
+  respondJson(res, 200, {
+    ok: true,
+    current: WORKER_MODEL,
+    models: allModels(),
+    lmstudio_online: LMSTUDIO_ONLINE,
+    lmstudio_url: LMSTUDIO_URL,
+  });
 }
 
 // --- POST /api/model/set ---
@@ -5176,24 +5267,34 @@ function handleModelSet(req, res) {
     const modelId = (fields.model || '').toString().trim();
     const epicId = Number(fields.epic_id);
     if (!modelId) return respondJson(res, 400, { ok:false, error:'model required' });
-    const model = MODELS.find(m => m.id === modelId);
+    const model = allModels().find(m => m.id === modelId);
     if (!model) return respondJson(res, 400, { ok:false, error:'unknown model: ' + modelId });
+    const provider = model.provider || 'zai';
 
-    // 1. Patch ~/.claude/settings.json. `claude -p` reads this at EVERY spawn,
-    //    so workers spawned AFTER this call pick up the new model automatically.
-    try {
-      const fs = require('node:fs');
-      const os2 = require('node:os');
-      const path2 = require('node:path');
-      const settingsPath = path2.join(os2.homedir(), '.claude', 'settings.json');
-      const s = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
-      s.env = s.env || {};
-      s.env.ANTHROPIC_DEFAULT_OPUS_MODEL = modelId;
-      s.env.ANTHROPIC_DEFAULT_SONNET_MODEL = modelId;
-      s.env.ANTHROPIC_DEFAULT_HAIKU_MODEL = modelId;
-      fs.writeFileSync(settingsPath, JSON.stringify(s, null, 2), 'utf8');
-    } catch (e) {
-      return respondJson(res, 500, { ok:false, error:'settings.json patch failed: ' + e.message });
+    // 1a. For the z.ai cloud provider: patch ~/.claude/settings.json so NEW
+    //     workers (spawned after this call) read the new model. Active workers
+    //     keep the old model. Also wipe any LM Studio env leak from settings
+    //     (defensive — we never set them there, but a prior manual edit could
+    //     reroute the global claude to localhost).
+    // 1b. For the lmstudio local provider: do NOT touch settings.json. The
+    //     worker's claude is redirected to LM Studio via spawn env (env has
+    //     priority over settings.json), so the global z.ai config stays intact
+    //     for the main interactive ZCode agent and any non-lmstudio episode.
+    if (provider === 'zai') {
+      try {
+        const fs = require('node:fs');
+        const os2 = require('node:os');
+        const path2 = require('node:path');
+        const settingsPath = path2.join(os2.homedir(), '.claude', 'settings.json');
+        const s = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+        s.env = s.env || {};
+        s.env.ANTHROPIC_DEFAULT_OPUS_MODEL = modelId;
+        s.env.ANTHROPIC_DEFAULT_SONNET_MODEL = modelId;
+        s.env.ANTHROPIC_DEFAULT_HAIKU_MODEL = modelId;
+        fs.writeFileSync(settingsPath, JSON.stringify(s, null, 2), 'utf8');
+      } catch (e) {
+        return respondJson(res, 500, { ok:false, error:'settings.json patch failed: ' + e.message });
+      }
     }
 
     // 2. Persist model info into episode_workflows.metadata. The engine's pump
@@ -5201,6 +5302,8 @@ function handleModelSet(req, res) {
     //    min(opts.concurrency, active_model_limit) as the effective ceiling —
     //    active workers keep running on the old model, but no NEW workers spawn
     //    until the active count drops below the new limit.
+    //    $.active_provider tells claude-runner whether to add LM Studio env to
+    //    the spawn ('lmstudio') or keep the z.ai legacy path ('zai').
     if (epicId) {
       try {
         withDbWrite(db => db.prepare(
@@ -5208,19 +5311,20 @@ function handleModelSet(req, res) {
              SET metadata=json_set(COALESCE(metadata,'{}'),
                    '$.active_model', ?,
                    '$.active_model_limit', ?,
+                   '$.active_provider', ?,
                    '$.model_changed_at', datetime('now')),
                  updated_at=datetime('now')
              WHERE epic_id=?`
-        ).run(modelId, model.limit, epicId));
+        ).run(modelId, model.limit, provider, epicId));
       } catch (e) {
         return respondJson(res, 500, { ok:false, error:'metadata write failed: ' + e.message });
       }
     }
 
-    respondJson(res, 200, {
-      ok: true, model: modelId, limit: model.limit,
-      note: 'Settings patched. New workers will use this model. Active workers keep the old one.',
-    });
+    const note = provider === 'lmstudio'
+      ? `LM Studio (${LMSTUDIO_URL}). New workers go local; main ZCode agent stays on z.ai.`
+      : 'Settings patched. New workers will use this model. Active workers keep the old one.';
+    respondJson(res, 200, { ok: true, model: modelId, provider, limit: model.limit, note });
   });
 }
 
@@ -5299,6 +5403,9 @@ const server = http.createServer((req, res) => {
   }
   if (req.method === 'GET' && url.pathname === '/api/models') {
     return handleModelsList(req, res);
+  }
+  if (req.method === 'GET' && url.pathname === '/api/lmstudio/models') {
+    return handleLmstudioModelsList(req, res);
   }
   if (req.method === 'POST' && url.pathname === '/api/model/set') {
     return handleModelSet(req, res);
@@ -5427,6 +5534,13 @@ const SPAWNED = process.env.TRACKER_SPAWNED === '1';
     const u = `http://localhost:${PORT}`;
     console.log(`saga tracker → ${u}  (DB: ${DB_PATH})`);
     console.log(`PID: ${process.pid}`);
+    // Background probe of LM Studio so the model selector's "LM Studio" group
+    // is populated on first page load (and stays fresh). Fire-and-forget: a
+    // down/unreachable LM Studio is normal (server just shows "офлайн").
+    probeLmstudioModels().then(r => {
+      console.log(`LM Studio (${LMSTUDIO_URL}): ${r.online ? `${LMSTUDIO_MODELS.length} models` : 'offline'}`);
+    }).catch(() => {});
+    setInterval(() => { probeLmstudioModels().catch(() => {}); }, 30000);
     // Открываем браузер ТОЛЬКО если мы реально забиндились (порт был свободен).
     // В spawn-режиме pre-check выше гарантировал, что мы первые; в ручном режиме
     // EADDRINUSE-блок убил stale процесс, и этот listen — свежий, открываем.

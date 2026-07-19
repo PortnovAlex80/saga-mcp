@@ -70,6 +70,11 @@ export interface ClaudeBoardRunnerOptions {
   sagaSkillRoot: string;
   logRoot?: string;
   heartbeatLog?: string;
+  // Provider routing: read { model, provider } from episode metadata so the
+  // runner can redirect this worker's claude to LM Studio (provider='lmstudio')
+  // via spawn env, or keep it on z.ai (default). Optional for test runners.
+  getActiveModel?: (epicId: number | null) => { model: string | null; provider: string };
+  lmstudioBaseUrl?: string;
 }
 
 export interface ClaudeBoardRunner {

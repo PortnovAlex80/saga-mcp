@@ -1099,6 +1099,17 @@ export async function orchestrate(opts: OrchestrateOptions): Promise<Orchestrate
     spawn: opts.spawn ?? nodeSpawn,
     logRoot: opts.logRoot,
     heartbeatLog: opts.heartbeatLog,
+    // Provider routing: read { active_model, active_provider } from the
+    // episode's metadata so claude-runner can redirect THIS worker's claude
+    // to LM Studio (provider='lmstudio') or keep it on z.ai (default).
+    getActiveModel: (epicId: number | null) => {
+      const row = getDb().prepare(
+        `SELECT json_extract(metadata, '$.active_model') AS m,
+                json_extract(metadata, '$.active_provider') AS p
+         FROM episode_workflows WHERE epic_id=?`,
+      ).get(epicId) as { m: string | null; p: string | null } | undefined;
+      return { model: row?.m ?? null, provider: row?.p ?? 'zai' };
+    },
   });
 
   engineHeartbeat(opts, 'ENGINE_START',
