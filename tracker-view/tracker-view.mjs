@@ -1256,44 +1256,27 @@ function renderBoard(projectId, allProjects) {
     // restart because everything lives in the shared SQLite DB.
     runnerConcurrency.addEventListener('change', async () => {
       const newConc = Number(runnerConcurrency.value);
-      // Read the current engine state to decide whether a concurrency change
-      // should restart the engine or just persist the new value.
-      // Rationale (per-epic engine control): if the user paused the engine,
-      // changing concurrency must NOT auto-start it — that would burn tokens
-      // behind the user's back. Only persist; the user presses ▶ to start.
-      let engineRunning = false;
-      try {
-        const st = await fetch('/api/engine/status?epic_id=' + window.__sagaEpicId).then(r => r.json());
-        engineRunning = !!(st && st.running);
-      } catch {}
-      if (!engineRunning) {
-        // Engine is stopped. Changing the selector just records the user's
-        // intent for the next ▶ press. We do NOT spawn here — that would
-        // burn tokens behind the user's back. The value lives in the select
-        // element itself; on start, /api/engine/start reads concurrency from
-        // the request body (which the ▶ handler sends from the selector).
-        runnerStatus.textContent = 'concurrency=' + newConc + ' (применится при ▶ старт)';
-        return;
-      }
-      if (!confirm('Перезапустить движок с concurrency=' + newConc + '? Активные воркеры доработают, новые пойдут с новой concurrency.')) {
-        syncConcurrencyFromEngine();
-        return;
-      }
-      runnerStatus.textContent = 'рестарт…';
+      // Concurrency change is now a PURE METADATA WRITE — no kill, no spawn.
+      // The engine's pump loop re-reads $.engine_concurrency every cycle and
+      // converges to the new target naturally (active workers finish, no
+      // replacements spawn above the new ceiling, OR new ones spawn to fill
+      // up if raised). Same semantics as the model selector. Rate-limit
+      // scheduler in the engine already handles 429 backoff/recovery on top.
+      runnerStatus.textContent = 'concurrency=' + newConc + ' (плавно)';
       runnerConcurrency.disabled = true;
       try {
-        const r = await fetch('/api/engine/start', {
+        const r = await fetch('/api/engine/concurrency', {
           method:'POST',
           headers:{'Content-Type':'application/json'},
           body:JSON.stringify({epic_id: window.__sagaEpicId, concurrency: newConc})
         });
         const data = await r.json();
-        if (!r.ok || !data.ok) throw new Error(data.error || 'рестарт не удался');
-        runnerStatus.textContent = 'concurrency=' + data.concurrency + ' (pid ' + data.engine_pid + ')';
-        syncEngineToggleButton(true);
+        if (!r.ok || !data.ok) throw new Error(data.error || 'не удалось сохранить');
+        runnerStatus.textContent = 'concurrency=' + data.concurrency + ' ✓';
       } catch (e) {
-        alert('Рестарт движка: ' + e.message);
+        alert('Смена concurrency: ' + e.message);
         runnerStatus.textContent = 'ошибка';
+        syncConcurrencyFromEngine();
       } finally {
         runnerConcurrency.disabled = false;
       }
@@ -4835,6 +4818,42 @@ function handleEngineStop(req, res) {
   });
 }
 
+// --- POST /api/engine/concurrency ---
+// Body: { epic_id, concurrency }. Pure metadata write — NO kill, NO spawn.
+// The engine's pump loop re-reads $.engine_concurrency every RATE_LIMIT_SCAN_TICKS
+// cycle and uses it as the new target (capped by $.active_model_limit if set).
+// Active workers finish their cycle naturally; the engine converges to the
+// new target as the active count drops. Same semantics as /api/model/set.
+//
+// This is the per-epic engine control fix: changing concurrency must NOT
+// auto-restart the engine. Restart burns tokens (kills active workers + spawns
+// a fresh cohort). A pure metadata write + pump-loop convergence respects
+// the rate-limit-aware scheduler the engine already implements.
+function handleEngineConcurrency(req, res) {
+  let chunks = [];
+  req.on('data', c => chunks.push(c));
+  req.on('end', () => {
+    const raw = Buffer.concat(chunks).toString('utf8');
+    let fields;
+    try { fields = JSON.parse(raw); } catch { fields = {}; }
+    const epicId = Number(fields.epic_id);
+    const concurrency = Number(fields.concurrency);
+    if (!epicId) return respondJson(res, 400, { ok:false, error:'epic_id required' });
+    if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 10) {
+      return respondJson(res, 400, { ok:false, error:'concurrency must be 1..10' });
+    }
+    try {
+      setEngineMeta(epicId, {
+        engine_concurrency: concurrency,
+        engine_concurrency_changed_at: new Date().toISOString().replace('T', ' ').slice(0, 19),
+      });
+      respondJson(res, 200, { ok: true, epic_id: epicId, concurrency });
+    } catch (e) {
+      respondJson(res, 500, { ok:false, error: 'metadata write failed: ' + e.message });
+    }
+  });
+}
+
 // --- GET /api/engine/status?epic_id=N ---
 // Returns { running, pid, concurrency, started_at, alive }.
 // `running` = persisted user intent. `alive` = live OS process check
@@ -5007,6 +5026,9 @@ const server = http.createServer((req, res) => {
   }
   if (req.method === 'GET' && url.pathname === '/api/engine/status') {
     return handleEngineStatus(req, res, url);
+  }
+  if (req.method === 'POST' && url.pathname === '/api/engine/concurrency') {
+    return handleEngineConcurrency(req, res);
   }
   if (req.method === 'GET' && url.pathname === '/api/models') {
     return handleModelsList(req, res);
