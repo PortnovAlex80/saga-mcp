@@ -83,6 +83,19 @@ export const definitions: Tool[] = [
       required: ['name'],
     },
   },
+  {
+    name: 'project_delete',
+    description:
+      'Hard-delete a project and cascade-clean all epics, tasks, artifacts, traces, worker_executions, episode_workflows, and repository bindings. Admin escape hatch — VIOLATES CGAD P2 ("status change, not destruction"). Prefer project_update({status:"archived"}) for soft-delete. Safety: rejects if any engine is running for an epic in this project. Leaves intact: repositories rows (resource, P17), activity_log (audit trail, P12), command_receipts (idempotency ledger), on-disk .md artifact files. Returns deregistered_checkouts so the operator can clean disk separately.',
+    annotations: { title: 'Delete Project (hard)', readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
+    inputSchema: {
+      type: 'object',
+      properties: {
+        project_id: { type: 'integer', description: 'Project ID to hard-delete' },
+      },
+      required: ['project_id'],
+    },
+  },
 ];
 
 function handleProjectCreate(args: Record<string, unknown>) {
@@ -207,9 +220,120 @@ function handleProjectResolveByName(args: Record<string, unknown>): {
   }
 }
 
+// Hard-delete a project and cascade-clean every descendant.
+//
+// CGAD carve-out: this is the only cascading-delete tool in saga-mcp. It
+// violates P2 ("status change, not destruction") by design — it exists as
+// an admin/operator escape hatch for test-fixture cleanup and right-to-
+// erasure scenarios. Workers should never call this; soft-delete via
+// project_update({status:'archived'}) is the supported path.
+//
+// Cascade: every ON DELETE CASCADE edge in schema.ts fires automatically
+// once DELETE FROM projects runs. The only table we must clean manually
+// is worker_executions — it has bare-integer columns (project_id, epic_id,
+// task_id) with no FK declaration, deliberately kept as an audit trail
+// (schema.ts:142-144). We delete the project-scoped slice because those
+// rows are no longer meaningful once the project is gone, and leaving
+// them produces dangling pointers in worker_health / dashboards.
+//
+// NOT touched (intentionally):
+//   - repositories rows (project-agnostic resource — P17; deleted via
+//     project_repositories CASCADE only if no other project binds them)
+//   - activity_log (audit trail, polymorphic, no FK — P12)
+//   - command_receipts (idempotency ledger; bare task_id, no FK)
+//   - on-disk .md artifact files (no transactional coupling to DB rows;
+//     see deregistered_checkouts in the return value for disk cleanup)
+function handleProjectDelete(args: Record<string, unknown>): {
+  project_id: number;
+  deleted: boolean;
+  deregistered_checkouts: Array<{ machine_id: string; local_path: string }>;
+} {
+  const db = getDb();
+  const projectId = args.project_id as number;
+  if (!Number.isInteger(projectId) || projectId <= 0) {
+    throw new Error('project_id must be a positive integer');
+  }
+
+  // Safety guard: reject if any engine is running for an epic in this
+  // project. Killing a running engine via DB delete would orphan claude.exe
+  // worker processes. The user must stop engines explicitly first.
+  const runningEpics = db.prepare(
+    `SELECT ew.epic_id FROM episode_workflows ew
+      JOIN epics e ON e.id = ew.epic_id
+      WHERE e.project_id = ?
+        AND json_extract(ew.metadata, '$.engine_running') = 1`,
+  ).all(projectId) as Array<{ epic_id: number }>;
+  if (runningEpics.length > 0) {
+    const ids = runningEpics.map((r) => r.epic_id).join(', ');
+    throw new Error(
+      `Cannot delete project ${projectId}: engine is running for epic(s) ${ids}. ` +
+      `Stop engine(s) first via worker tools or /api/engine/stop.`,
+    );
+  }
+
+  // Capture machine checkouts before delete — the operator may want to
+  // manually rm these directories afterwards. We do NOT delete files from
+  // disk: DB transactions have no business touching the filesystem, and
+  // these paths may live on remote worker machines.
+  const checkouts = db.prepare(
+    `SELECT rc.machine_id, rc.local_path
+       FROM repository_checkouts rc
+       JOIN project_repositories pr ON pr.id = rc.project_repository_id
+      WHERE pr.project_id = ?`,
+  ).all(projectId) as Array<{ machine_id: string; local_path: string }>;
+
+  // Capture name for audit before delete (logActivity still fires after).
+  const row = db.prepare('SELECT name FROM projects WHERE id = ?').get(projectId) as
+    | { name: string }
+    | undefined;
+  if (!row) throw new Error(`Project ${projectId} not found`);
+  const projectName = row.name;
+
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    // worker_executions has no FK on project_id — must clean manually.
+    db.prepare('DELETE FROM worker_executions WHERE project_id = ?').run(projectId);
+    // DELETE FROM projects triggers every other CASCADE (schema.ts):
+    //   epics → tasks → (subtasks, task_dependencies, comments,
+    //                    task_conflict_keys, verification_evidence,
+    //                    task_work_items → work_attempts,
+    //                    human_requests, integration_intents)
+    //   epics → artifacts → artifact_traces
+    //   epics → episode_workflows
+    //   epics → runtime_observations
+    //   artifacts (direct project_id) — also cascaded
+    //   project_repositories → repository_checkouts
+    //   trusted_providers (project-scoped rows; NULL = global survives)
+    const info = db.prepare('DELETE FROM projects WHERE id = ?').run(projectId);
+    if (info.changes === 0) {
+      throw new Error(`Project ${projectId} not found (already deleted?)`);
+    }
+    db.exec('COMMIT');
+  } catch (err) {
+    try { db.exec('ROLLBACK'); } catch { /* tx may not be active */ }
+    throw err;
+  }
+
+  // activity_log has no FK, so the audit entry survives even though the
+  // project row is gone — this is by design (P12: audit is not state).
+  logActivity(
+    db,
+    'project',
+    projectId,
+    'deleted',
+    null,
+    null,
+    null,
+    `Project '${projectName}' (id=${projectId}) hard-deleted via project_delete tool`,
+  );
+
+  return { project_id: projectId, deleted: true, deregistered_checkouts: checkouts };
+}
+
 export const handlers: Record<string, ToolHandler> = {
   project_create: handleProjectCreate,
   project_list: handleProjectList,
   project_update: handleProjectUpdate,
   project_resolve_by_name: handleProjectResolveByName,
+  project_delete: handleProjectDelete,
 };

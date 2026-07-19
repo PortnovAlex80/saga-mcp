@@ -493,24 +493,37 @@ function loadArtifactsTree(projectId) {
 }
 
 // --- HTML: индекс всех saga-проектов ---
-function renderIndex(projects) {
+function renderIndex(projects, flash = null) {
   const withData = projects.filter(p => p.total > 0);
   const empty    = projects.filter(p => !p.total || p.total === 0);
   withData.sort((a,b) => b.total - a.total);
 
   const totalTasks = projects.reduce((s,p) => s + (p.total||0), 0);
   const totalProj  = projects.length;
+  // Two row buttons per project: 📦 archive (soft) and 🗑 delete (hard, cascade).
+  // data-pid / data-pname feed the click handler at the bottom of the page.
+  // preventDefault+stopPropagation on click so the parent <a> navigation is
+  // suppressed — otherwise clicking 🗑 would also open the project page.
   const rowHtml = (p) => `<a class="prow${!p.total?' empty':''}" href="?project=${p.id}">
     <span class="pdot" style="background:${p.color}"></span>
     <span class="pname">${esc(p.name)}</span>
     <span class="pstats">${p.total ? `<b>${p.total}</b> задач · <span class="ip">${p.in_progress} in progress</span>${p.reviewing ? ` · <span class="ip">${p.reviewing} reviewing</span>` : ''}` : '<span class="muted">пусто</span>'}</span>
+    <button class="row-btn archive-btn" data-pid="${p.id}" data-pname="${esc(p.name)}" type="button"
+            title="Архивировать (скрыть из списка, данные сохранятся — восстановимо через SQL)">📦</button>
+    <button class="row-btn delete-btn" data-pid="${p.id}" data-pname="${esc(p.name)}" type="button"
+            title="Удалить навсегда (cascade-delete всех эпиков/задач/артефактов — НЕ восстановимо)">🗑</button>
     <span class="arrow">→</span>
   </a>`;
 
   const active = withData.map(rowHtml).join('');
   const empties = empty.map(rowHtml).join('');
 
+  const flashHtml = flash
+    ? `<div class="flash flash-${flash.kind}">${esc(flash.text)}</div>`
+    : '';
+
   return page('Все проекты', `
+    ${flashHtml}
     <div class="summary">
       <div class="sum-item"><b>${totalProj}</b><span>проектов</span></div>
       <div class="sum-item"><b>${totalTasks}</b><span>всего задач</span></div>
@@ -539,6 +552,46 @@ function renderIndex(projects) {
       const q=document.getElementById('q');
       q.oninput=()=>{ const v=q.value.toLowerCase(); document.querySelectorAll('.prow').forEach(r=>{ r.style.display = r.textContent.toLowerCase().includes(v)?'':'none'; }); };
       setTimeout(()=>location.reload(), ${RELOAD_SEC * 1000});
+
+      // Row-button handler (event delegation — one listener for all .row-btn).
+      // confirm() -> fetch POST -> alert/redirect. Mirrors postOperation helper
+      // used elsewhere in this file (engine start/stop, model switch).
+      document.addEventListener('click', async (e) => {
+        const btn = e.target.closest('.row-btn');
+        if (!btn) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const pid = Number(btn.dataset.pid);
+        const pname = btn.dataset.pname || ('project '+pid);
+        try {
+          if (btn.classList.contains('archive-btn')) {
+            if (!confirm('Архивировать проект «'+pname+'»?\\nОн исчезнет из списка, но данные сохранятся в БД. Восстановить можно через SQL (UPDATE projects SET status=\\'active\\').')) return;
+            const r = await fetch('/api/project/archive', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ project_id: pid }) });
+            const d = await r.json();
+            if (!r.ok || !d.ok) return alert('Архивирование не удалось: ' + (d.error || r.statusText));
+            location.href = '/?archived=' + encodeURIComponent(pname);
+          } else if (btn.classList.contains('delete-btn')) {
+            const msg = 'УДАЛИТЬ НАВСЕГДА проект «'+pname+'»?\\n\\n' +
+                        'Будут удалены: все эпики, задачи, артефакты, трассировки, worker_executions, repository bindings.\\n\\n' +
+                        'activity_log и .md файлы артефактов сохранятся (audit trail).\\n\\n' +
+                        'ОТМЕНИТЬ НЕЛЬЗЯ. Продолжить?';
+            if (!confirm(msg)) return;
+            const r = await fetch('/api/project/delete', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ project_id: pid }) });
+            const d = await r.json();
+            if (!r.ok || !d.ok) return alert('Удаление не удалось: ' + (d.error || r.statusText));
+            let alertMsg = 'Проект «'+pname+'» удалён.';
+            if (d.deregistered_checkouts && d.deregistered_checkouts.length) {
+              alertMsg += '\\n\\nОстались файлы на диске (machine checkouts):\\n' +
+                          d.deregistered_checkouts.map(c => '  '+c.machine_id+': '+c.local_path).join('\\n') +
+                          '\\n\\nУдалите их вручную, если нужно.';
+            }
+            alert(alertMsg);
+            location.href = '/?deleted=' + encodeURIComponent(pname);
+          }
+        } catch (err) {
+          alert('Сетевая ошибка: ' + (err && err.message ? err.message : err));
+        }
+      });
     </script>
   `);
 }
@@ -2160,6 +2213,14 @@ function page(title, body) {
     .plist{padding:0 20px 20px;display:flex;flex-direction:column;gap:6px}
     .prow{display:flex;align-items:center;gap:12px;background:#161b22;border:1px solid #30363d;border-radius:8px;padding:12px 14px;transition:border-color .15s}
     .prow:hover{border-color:#58a6ff} .prow.empty{opacity:.55}
+    /* Per-row action buttons (📦 archive, 🗑 delete). Hidden by default,
+       shown on row hover. Stop-propagation in JS prevents the parent <a>
+       navigation. delete-btn red on hover as a final visual warning. */
+    .row-btn{background:none;border:none;font-size:15px;cursor:pointer;padding:2px 6px;border-radius:4px;opacity:.35;transition:opacity .1s,background .1s;line-height:1}
+    .prow:hover .row-btn{opacity:.85}
+    .row-btn:hover{opacity:1!important;background:rgba(255,255,255,.08)}
+    .delete-btn:hover{background:rgba(231,76,60,.18)}
+    .pstats{flex:1}
     .pdot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
     .pname{flex:1;font-weight:600;font-size:14px}
     .pstats{font-size:12px;color:#8b949e} .pstats b{color:#e6edf3} .ip{color:#3fb950}
@@ -2337,6 +2398,7 @@ function page(title, body) {
     .md-error{background:rgba(231,76,60,.1);border:1px solid #e74c3c;color:#e74c3c;padding:12px;border-radius:6px;font-size:13px}
     .flash{padding:10px 20px;font-size:13px}
     .flash.ok{background:rgba(63,185,80,.1);color:#3fb950} .flash.err{background:rgba(231,76,60,.1);color:#e74c3c}
+    .flash-warn{background:rgba(224,154,55,.12);color:#d2a8ff}
 
     /* кнопки */
     .btn{display:inline-block;background:#21262d;border:1px solid #30363d;color:#e6edf3;border-radius:6px;padding:7px 14px;font-size:12px;cursor:pointer;text-decoration:none;transition:all .15s}
@@ -3814,6 +3876,124 @@ function handleProjectCreate(req, res) {
   });
 }
 
+// --- POST /api/project/archive: soft-delete (status='archived') ---
+// Тело: { project_id }. Не трогает cascade — только переводит проект в
+// 'archived'. listProjects() фильтрует по status != 'archived', так что
+// проект исчезает из канбана, но все данные сохраняются. Это CGAD-P2-
+// совместимый путь. Восстановление — через SQL (UPDATE status='active').
+function handleProjectArchive(req, res) {
+  let chunks = [];
+  req.on('data', c => chunks.push(c));
+  req.on('end', () => {
+    const raw = Buffer.concat(chunks).toString('utf8');
+    let fields;
+    const ct = req.headers['content-type'] || '';
+    if (ct.includes('application/json')) {
+      try { fields = JSON.parse(raw); } catch { fields = {}; }
+    } else {
+      fields = Object.fromEntries(new URLSearchParams(raw));
+    }
+    const projectId = Number(fields.project_id);
+    if (!Number.isInteger(projectId) || projectId <= 0) {
+      return respondJson(res, 400, { ok:false, error: 'project_id обязателен и должен быть положительным целым' });
+    }
+    try {
+      const result = withDbWrite(db => {
+        const row = db.prepare('SELECT name, status FROM projects WHERE id=?').get(projectId);
+        if (!row) return { notFound: true };
+        if (row.status === 'archived') return { alreadyArchived: true, name: row.name };
+        db.prepare("UPDATE projects SET status='archived', updated_at=datetime('now') WHERE id=?")
+          .run(projectId);
+        db.prepare(
+          "INSERT INTO activity_log (entity_type, entity_id, action, summary) VALUES ('project', ?, 'archived', ?)"
+        ).run(projectId, `Проект «${row.name}» архивирован через tracker-view admin`);
+        return { name: row.name };
+      });
+      if (result.notFound) return respondJson(res, 404, { ok:false, error: `Проект ${projectId} не найден` });
+      if (result.alreadyArchived) return respondJson(res, 200, { ok:true, id: projectId, name: result.name, already_archived: true });
+      respondJson(res, 200, { ok:true, id: projectId, name: result.name });
+    } catch (e) {
+      respondJson(res, 500, { ok:false, error: 'db: ' + e.message });
+    }
+  });
+}
+
+// --- POST /api/project/delete: hard-delete (cascade) ---
+// Тело: { project_id }. Полное удаление со всеми эпиками, задачами,
+// артефактами, трассировками, worker_executions, repository bindings.
+// Возвращает deregistered_checkouts — список (machine_id, local_path),
+// которые были отвязаны, чтобы оператор мог подчистить диск отдельно.
+//
+// Safety: rejects (409) если engine_running=1 для любого эпика проекта.
+// Не трогает: repositories rows (P17), activity_log (P12), command_receipts,
+// on-disk .md artifact files.
+function handleProjectDelete(req, res) {
+  let chunks = [];
+  req.on('data', c => chunks.push(c));
+  req.on('end', () => {
+    const raw = Buffer.concat(chunks).toString('utf8');
+    let fields;
+    const ct = req.headers['content-type'] || '';
+    if (ct.includes('application/json')) {
+      try { fields = JSON.parse(raw); } catch { fields = {}; }
+    } else {
+      fields = Object.fromEntries(new URLSearchParams(raw));
+    }
+    const projectId = Number(fields.project_id);
+    if (!Number.isInteger(projectId) || projectId <= 0) {
+      return respondJson(res, 400, { ok:false, error: 'project_id обязателен и должен быть положительным целым' });
+    }
+    try {
+      const result = withDbWrite(db => {
+        const row = db.prepare('SELECT name FROM projects WHERE id=?').get(projectId);
+        if (!row) return { notFound: true };
+
+        // Engine guard: reject if any epic has engine_running=1.
+        const running = db.prepare(
+          `SELECT ew.epic_id FROM episode_workflows ew
+            JOIN epics e ON e.id = ew.epic_id
+           WHERE e.project_id = ?
+             AND json_extract(ew.metadata, '$.engine_running') = 1`,
+        ).all(projectId);
+        if (running.length > 0) {
+          return { engineRunning: running.map(r => r.epic_id) };
+        }
+
+        // Capture checkouts before delete (return value).
+        const checkouts = db.prepare(
+          `SELECT rc.machine_id, rc.local_path
+             FROM repository_checkouts rc
+             JOIN project_repositories pr ON pr.id = rc.project_repository_id
+            WHERE pr.project_id = ?`,
+        ).all(projectId);
+
+        // worker_executions has no FK on project_id — manual cleanup.
+        db.prepare('DELETE FROM worker_executions WHERE project_id=?').run(projectId);
+        // DELETE FROM projects triggers every ON DELETE CASCADE.
+        db.prepare('DELETE FROM projects WHERE id=?').run(projectId);
+        db.prepare(
+          "INSERT INTO activity_log (entity_type, entity_id, action, summary) VALUES ('project', ?, 'deleted', ?)"
+        ).run(projectId, `Проект «${row.name}» (id=${projectId}) удалён через tracker-view admin`);
+        return { name: row.name, checkouts };
+      });
+      if (result.notFound) return respondJson(res, 404, { ok:false, error: `Проект ${projectId} не найден` });
+      if (result.engineRunning) {
+        return respondJson(res, 409, {
+          ok:false,
+          error: `Сначала остановите движок для эпика(ов): ${result.engineRunning.join(', ')}`,
+          running_epics: result.engineRunning,
+        });
+      }
+      respondJson(res, 200, {
+        ok:true, id: projectId, name: result.name,
+        deregistered_checkouts: result.checkouts,
+      });
+    } catch (e) {
+      respondJson(res, 500, { ok:false, error: 'db: ' + e.message });
+    }
+  });
+}
+
 // --- POST /api/epic/create: INSERT нового эпика ---
 // Поля: project_id (обяз.), name (обяз.), description (опц.), branch (опц.).
 // INSERT в epics (status='planned', priority='medium'). FK project_id проверяется.
@@ -5023,6 +5203,12 @@ const server = http.createServer((req, res) => {
   if (req.method === 'POST' && url.pathname === '/api/project/create') {
     return handleProjectCreate(req, res);
   }
+  if (req.method === 'POST' && url.pathname === '/api/project/archive') {
+    return handleProjectArchive(req, res);
+  }
+  if (req.method === 'POST' && url.pathname === '/api/project/delete') {
+    return handleProjectDelete(req, res);
+  }
   if (req.method === 'POST' && url.pathname === '/api/epic/create') {
     return handleEpicCreate(req, res);
   }
@@ -5151,7 +5337,13 @@ const server = http.createServer((req, res) => {
   } else if (projectId) {
     html = renderBoard(projectId, projects);
   } else {
-    html = renderIndex(projects);
+    // Read flash message from query (set by archive/delete redirects).
+    let flash = null;
+    const archived = url.searchParams.get('archived');
+    const deleted = url.searchParams.get('deleted');
+    if (deleted) flash = { kind: 'warn', text: `Проект «${deleted}» удалён навсегда.` };
+    else if (archived) flash = { kind: 'ok', text: `Проект «${archived}» архивирован (status='archived').` };
+    html = renderIndex(projects, flash);
   }
   res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
   // partial=1: episode-progress-bar + .board (AJAX-рефреш).
