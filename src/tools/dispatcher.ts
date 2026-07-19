@@ -554,8 +554,18 @@ function handleWorkerDone(args: Record<string, unknown>): {
     let newStatus: 'review' | 'done' | 'todo';
     let newAssignedTo: string | null; // кому уходит задача после перевода
     if (task.status === 'in_progress') {
-      newStatus = 'review';            // цикл разработки завершён → буфер ревью
-      newAssignedTo = null;            // в очереди на ревью (без исполнителя)
+      // summary.stage tasks are bookkeeping — the worker writes a markdown
+      // summary file and exits. There is nothing to review: no code, no
+      // contract, no AC. Going through review wastes a full worker cycle
+      // (reviewer picks it up, reads the summary, approves — pure overhead).
+      // Short-circuit straight to done.
+      if (task.task_kind === 'summary.stage') {
+        newStatus = 'done';
+        newAssignedTo = null;
+      } else {
+        newStatus = 'review';          // цикл разработки завершён → буфер ревью
+        newAssignedTo = null;          // в очереди на ревью (без исполнителя)
+      }
     } else if (task.status === 'review_in_progress') {
       if (verdict === 'changes_requested') {
         newStatus = 'todo';            // single-use reviewer exits; a developer reclaims it
@@ -803,129 +813,209 @@ function handleWorkerAskNeed(args: Record<string, unknown>): {
   const workerId = args.worker_id as string;
   const reason = (args.reason as string | undefined) ?? null;
 
-  // This must be my task (assigned_to = worker_id) — cannot flag a task you
-  // don't hold.
-  const task = db
-    .prepare('SELECT id, title, tags, current_execution_id, status FROM tasks WHERE id=? AND assigned_to=?')
-    .get(taskId, workerId) as
-      | {
-          id: number;
-          title: string;
-          tags: string;
-          current_execution_id: string | null;
-          status: string;
-        }
-      | undefined;
-  if (!task) {
-    throw new Error(`Task ${taskId} not assigned to ${workerId} (cannot flag a task you don't hold)`);
-  }
-  assertExecutionFence(db, task, args.execution_id);
+  // ADR-013 Phase 1.1: the entire handler runs inside ONE BEGIN IMMEDIATE
+  // transaction so that (a) comment insert, (b) human_requests insert,
+  // (c) execution terminalization + task release via atomic-release, and
+  // (d) needs-human tag update commit atomically. Previously these were
+  // four separate writes — a crash between any two left the task in an
+  // inconsistent state (e.g. needs-human tag set with no human_requests
+  // row, or execution released with the tag still absent).
+  //
+  // Ordering note (DO NOT NAIVELY REORDER): releaseExecutionAtomically
+  // reads the task's tags from the DB and REFUSES to release a task that
+  // already carries the needs-human tag (atomic-release.ts:194 — "Slice 3
+  // makes ASK terminal" guard). Therefore the tag UPDATE must run AFTER
+  // the release call. We open the human_requests row BEFORE release so
+  // that a crash between request-open and release leaves the task with
+  // an open request that surfaces as a warning, rather than the reverse
+  // (released task with no blocking request).
+  return withImmediateTransaction(db, () => {
+    // This must be my task (assigned_to = worker_id) — cannot flag a task
+    // you don't hold.
+    const task = db
+      .prepare('SELECT id, title, tags, current_execution_id, status FROM tasks WHERE id=? AND assigned_to=?')
+      .get(taskId, workerId) as
+        | {
+            id: number;
+            title: string;
+            tags: string;
+            current_execution_id: string | null;
+            status: string;
+          }
+        | undefined;
+    if (!task) {
+      throw new Error(`Task ${taskId} not assigned to ${workerId} (cannot flag a task you don't hold)`);
+    }
+    assertExecutionFence(db, task, args.execution_id);
 
-  // Compute resume_phase from the current task status. in_progress →
-  // implementation, review_in_progress → review, done+pending → integration.
-  const resumePhase = taskStatusToResumePhase(task.status);
+    // Compute resume_phase from the current task status. in_progress →
+    // implementation, review_in_progress → review, done+pending → integration.
+    const resumePhase = taskStatusToResumePhase(task.status);
 
-  // Persist the question and the requesting execution identity BEFORE
-  // releasing anything. If the release below fails, the human_requests row
-  // stays 'open' and surfaces as a warning (task will not be claimable until
-  // it is resolved, which is the correct conservative behaviour).
-  const requestId = `hr-${taskId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  const contextJson = JSON.stringify({
-    worker_id: workerId,
-    execution_id: task.current_execution_id,
-    task_status_at_ask: task.status,
-    asked_at: new Date().toISOString(),
-  });
-
-  // Optional reason → comment (so the human sees WHAT is being asked, not
-  // only that the kanban is pulsing red).
-  if (reason) {
-    db.prepare('INSERT INTO comments (task_id, author, content) VALUES (?, ?, ?)')
-      .run(taskId, workerId, `ASK: ${reason}`);
-  }
-
-  // Add the needs-human tag (kanban visual; also queried by some legacy paths).
-  const tags = parseTags(task.tags);
-  if (!tags.has(NEEDS_HUMAN_TAG)) {
-    tags.add(NEEDS_HUMAN_TAG);
-  }
-
-  // Terminal release: clear assigned_to + current_execution_id and return
-  // the task to its resume queue. The execution is terminalized via the
-  // atomic-release primitive so terminalization + task release occur in one
-  // transaction (no split-write window for the reconciler to race with).
-  let releasedExecution = false;
-  if (task.current_execution_id) {
-    const outcome = releaseExecutionAtomically(db, {
-      executionId: task.current_execution_id,
-      terminalState: 'exited',
-      exitCode: 0,
-      reason: `worker_ask_need: ${reason ?? 'question for human'}`,
+    // Stable identifier for this request. Captured up-front so the row can
+    // be opened before release and referenced in the reply.
+    const requestId = `hr-${taskId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const contextJson = JSON.stringify({
+      worker_id: workerId,
+      execution_id: task.current_execution_id,
+      task_status_at_ask: task.status,
+      asked_at: new Date().toISOString(),
     });
-    releasedExecution = outcome.taskReleased;
-  } else {
-    // Legacy unfenced task — just clear assigned_to.
+
+    // Optional reason → comment (so the human sees WHAT is being asked, not
+    // only that the kanban is pulsing red).
+    if (reason) {
+      db.prepare('INSERT INTO comments (task_id, author, content) VALUES (?, ?, ?)')
+        .run(taskId, workerId, `ASK: ${reason}`);
+    }
+
+    // Open the human_requests row BEFORE releasing anything. If anything
+    // below fails, the row stays 'open' and surfaces as a warning (task
+    // will not be claimable until resolved — the correct conservative
+    // behaviour). This closes the audit's "tag set, no request" crash window.
     db.prepare(
-      `UPDATE tasks SET assigned_to=NULL, updated_at=datetime('now') WHERE id=?`,
-    ).run(taskId);
-  }
+      `INSERT INTO human_requests
+         (request_id, task_id, requesting_execution_id, resume_phase,
+          question, context_json, state)
+       VALUES (?, ?, ?, ?, ?, ?, 'open')`,
+    ).run(
+      requestId,
+      taskId,
+      task.current_execution_id,
+      resumePhase,
+      reason ?? '(no question text provided)',
+      contextJson,
+    );
 
-  // Update tags on the (now released) task.
-  db.prepare('UPDATE tasks SET tags=?, updated_at=datetime(\'now\') WHERE id=?')
-    .run(JSON.stringify([...tags]), taskId);
+    // Compute the new tag set in memory. The DB write happens AFTER release,
+    // because releaseExecutionAtomically would otherwise refuse to release
+    // a task already tagged needs-human (atomic-release.ts:194 guard).
+    const tags = parseTags(task.tags);
+    if (!tags.has(NEEDS_HUMAN_TAG)) {
+      tags.add(NEEDS_HUMAN_TAG);
+    }
 
-  // Finally, open the human_requests row.
-  db.prepare(
-    `INSERT INTO human_requests
-       (request_id, task_id, requesting_execution_id, resume_phase,
-        question, context_json, state)
-     VALUES (?, ?, ?, ?, ?, ?, 'open')`,
-  ).run(
-    requestId,
-    taskId,
-    task.current_execution_id,
-    resumePhase,
-    reason ?? '(no question text provided)',
-    contextJson,
-  );
+    // Terminal release: clear assigned_to + current_execution_id and return
+    // the task to its resume queue. The execution is terminalized via the
+    // atomic-release primitive so terminalization + task release occur in one
+    // transaction (no split-write window for the reconciler to race with).
+    let releasedExecution = false;
+    if (task.current_execution_id) {
+      const outcome = releaseExecutionAtomically(db, {
+        executionId: task.current_execution_id,
+        terminalState: 'exited',
+        exitCode: 0,
+        reason: `worker_ask_need: ${reason ?? 'question for human'}`,
+      });
+      releasedExecution = outcome.taskReleased;
+    } else {
+      // Legacy unfenced task — just clear assigned_to.
+      db.prepare(
+        `UPDATE tasks SET assigned_to=NULL, updated_at=datetime('now') WHERE id=?`,
+      ).run(taskId);
+    }
 
-  logActivity(db, 'task', taskId, 'updated', 'ask_need', null, NEEDS_HUMAN_TAG,
-    `Task '${task.title}' parked for human (terminal ASK) by ${workerId}${reason ? `: ${reason}` : ''}`);
+    // Now that release has run (and read the old tags), persist the tag
+    // update. This must follow releaseExecutionAtomically; see the ordering
+    // note at the top of this function.
+    db.prepare('UPDATE tasks SET tags=?, updated_at=datetime(\'now\') WHERE id=?')
+      .run(JSON.stringify([...tags]), taskId);
 
-  return {
-    task_id: taskId,
-    blocking: true,
-    request_id: requestId,
-    stop: true as const,
-    released_execution: releasedExecution,
-  };
+    logActivity(db, 'task', taskId, 'updated', 'ask_need', null, NEEDS_HUMAN_TAG,
+      `Task '${task.title}' parked for human (terminal ASK) by ${workerId}${reason ? `: ${reason}` : ''}`);
+
+    return {
+      task_id: taskId,
+      blocking: true,
+      request_id: requestId,
+      stop: true as const,
+      released_execution: releasedExecution,
+    };
+  });
 }
 
 function handleWorkerAskDone(args: Record<string, unknown>): {
   task_id: number;
   blocking: false;
   request_id: string | null;
-  state: 'answered' | 'no_open_request';
+  state: 'answered' | 'no_open_request' | 'already_answered';
 } {
   const db = getDb();
   const taskId = args.task_id as number;
   const workerId = args.worker_id as string;
   const answer = (args.answer as string | undefined) ?? null;
 
-  // Look up the OPEN human request for this task. We match on (task_id,
-  // state='open'); the requesting execution is long gone, so no fence.
-  const req = db
-    .prepare(
-      `SELECT request_id, question, resume_phase FROM human_requests
-        WHERE task_id=? AND state='open'
-        ORDER BY created_at DESC LIMIT 1`,
-    )
-    .get(taskId) as
-      | { request_id: string; question: string; resume_phase: string }
-      | undefined;
+  // ADR-013 Phase 1.1: wrap the entire handler in BEGIN IMMEDIATE so that
+  // the CAS UPDATE on human_requests and the tag clear commit atomically.
+  // Without this, two concurrent worker_ask_done calls could both observe
+  // state='open', both UPDATE, and both return state='answered' — the
+  // UPDATE ... WHERE state='open' is row-locked only inside a tx.
+  return withImmediateTransaction(db, () => {
+    // Look up the most recent request for this task in ANY state. We do not
+    // filter on state='open' at SELECT time — the CAS UPDATE below is the
+    // single source of truth. This distinguishes three cases:
+    //   (a) no request at all                              → no_open_request
+    //   (b) request exists, CAS wins (open → answered)     → answered
+    //   (c) request exists, CAS loses (already answered by a concurrent tx)
+    //                                                        → already_answered
+    // Pre-1.1 the SELECT filtered on state='open', which silently collapsed
+    // case (c) into case (a) and let a concurrent caller believe its answer
+    // had been recorded when in fact it had been discarded.
+    const req = db
+      .prepare(
+        `SELECT request_id, question, resume_phase, state FROM human_requests
+          WHERE task_id=?
+          ORDER BY created_at DESC LIMIT 1`,
+      )
+      .get(taskId) as
+        | { request_id: string; question: string; resume_phase: string; state: string }
+        | undefined;
 
-  if (!req) {
-    // No open request — clear any stale needs-human tag and report.
+    if (!req) {
+      // No request at all for this task — clear any stale needs-human tag
+      // and report. (If a request exists but is already 'answered', we do
+      // NOT take this branch — see the CAS below.)
+      const task = db
+        .prepare('SELECT id, title, tags FROM tasks WHERE id=?')
+        .get(taskId) as { id: number; title: string; tags: string } | undefined;
+      if (task) {
+        const tags = parseTags(task.tags);
+        if (tags.has(NEEDS_HUMAN_TAG)) {
+          tags.delete(NEEDS_HUMAN_TAG);
+          db.prepare('UPDATE tasks SET tags=?, updated_at=datetime(\'now\') WHERE id=?')
+            .run(JSON.stringify([...tags]), taskId);
+        }
+      }
+      return { task_id: taskId, blocking: false, request_id: null, state: 'no_open_request' as const };
+    }
+
+    // CAS update: the WHERE clause state='open' guarantees only ONE
+    // concurrent caller can flip the row. Capture info.changes and
+    // short-circuit the second caller BEFORE touching the task tags.
+    const info = db.prepare(
+      `UPDATE human_requests
+          SET state='answered',
+              answer=?,
+              answered_by=?,
+              answered_at=datetime('now'),
+              updated_at=datetime('now')
+        WHERE request_id=? AND state='open'`,
+    ).run(answer ?? '(answered without text)', workerId, req.request_id);
+
+    if (info.changes !== 1) {
+      // Lost the race — another caller already answered between our SELECT
+      // and our UPDATE (both inside this tx, but the CAS guarantees only
+      // one wins). Do NOT touch the task tags; the winner owns the reply.
+      return {
+        task_id: taskId,
+        blocking: false,
+        request_id: req.request_id,
+        state: 'already_answered' as const,
+      };
+    }
+
+    // We won the CAS. Clear the needs-human tag — the question has been
+    // answered and the task is now claimable.
     const task = db
       .prepare('SELECT id, title, tags FROM tasks WHERE id=?')
       .get(taskId) as { id: number; title: string; tags: string } | undefined;
@@ -937,38 +1027,17 @@ function handleWorkerAskDone(args: Record<string, unknown>): {
           .run(JSON.stringify([...tags]), taskId);
       }
     }
-    return { task_id: taskId, blocking: false, request_id: null, state: 'no_open_request' };
-  }
 
-  // Record the answer. The task is now claimable; the next worker_next will
-  // hand it to a fresh worker that reads the answer from human_requests.
-  db.prepare(
-    `UPDATE human_requests
-        SET state='answered',
-            answer=?,
-            answered_by=?,
-            answered_at=datetime('now'),
-            updated_at=datetime('now')
-      WHERE request_id=? AND state='open'`,
-  ).run(answer ?? '(answered without text)', workerId, req.request_id);
+    logActivity(db, 'task', taskId, 'updated', 'ask_done', NEEDS_HUMAN_TAG, null,
+      `Task '${task?.title ?? taskId}' needs-human answered by ${workerId}: "${answer ?? ''}"`);
 
-  // Clear the needs-human tag — the question has been answered.
-  const task = db
-    .prepare('SELECT id, title, tags FROM tasks WHERE id=?')
-    .get(taskId) as { id: number; title: string; tags: string } | undefined;
-  if (task) {
-    const tags = parseTags(task.tags);
-    if (tags.has(NEEDS_HUMAN_TAG)) {
-      tags.delete(NEEDS_HUMAN_TAG);
-      db.prepare('UPDATE tasks SET tags=?, updated_at=datetime(\'now\') WHERE id=?')
-        .run(JSON.stringify([...tags]), taskId);
-    }
-  }
-
-  logActivity(db, 'task', taskId, 'updated', 'ask_done', NEEDS_HUMAN_TAG, null,
-    `Task '${task?.title ?? taskId}' needs-human answered by ${workerId}: "${answer ?? ''}"`);
-
-  return { task_id: taskId, blocking: false, request_id: req.request_id, state: 'answered' };
+    return {
+      task_id: taskId,
+      blocking: false,
+      request_id: req.request_id,
+      state: 'answered' as const,
+    };
+  });
 }
 
 /** Map a managed-task status at ASK time to the phase a fresh worker resumes in. */
