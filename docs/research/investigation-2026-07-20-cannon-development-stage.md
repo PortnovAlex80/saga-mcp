@@ -335,6 +335,449 @@ execution с `state='running'`. Если false — терминальнуть ч
 Функция `isProcessAlive` уже экспортируется из `worker-executions.ts`
 и используется в tracker-view — достаточно импортировать её в orchestrate.
 
+#### Дыра E: бесконечный retry при unreachable AC (без circuit breaker)
+
+Подтверждено на task #31 (AC-NFR-1: Lighthouse ≥80).
+
+**Класс проблем:** AC требует характеристики, которую dev-воркер **объективно
+не может выполнить** в текущем окружении / своими знаниями. Примеры:
+
+- Performance-метрика (Lighthouse score ≥80, p95 latency <Xms) — требует
+  expertise по Vite bundle analysis, React.lazy patterns, Three.js tree-shaking
+- Browser-specific edge case (Safari flexbox bug, Firefox WebGL quirk) — требует
+  deep browser internals
+- External API contract conformance (OAuth flow, specific REST error format) —
+  требует domain expertise, недоступный локально
+- Hardware-specific (touch precision on iPad, Retina DPR) — требует устройства
+
+**Что происходит в saga сейчас (наблюдено на #31):**
+
+```
+worker → запускает Lighthouse → Performance=78 (нужно ≥80) → failed
+       → worker_done с failed → recovery → task в todo
+       → новый worker → запускает Lighthouse → снова 78 → failed
+       → ... 38 циклов за 1.5 часа
+```
+
+**156 событий activity_log, 38 failed + 12 unknown за 95 минут.**
+Каждый новый worker начинает с чистым контекстом, не знает что предыдущий
+уже пробовал. Пробует то же самое → тот же результат.
+
+Worker-3 (последний перед нами) на контексте 63k сделал:
+- 39 tool_use: **19 Bash, 7 Read, 6 Glob, 4 Grep, 2 task_get, 1 artifact_get**
+- **0 Edit, 0 Write** ← ключевой симптом
+
+То есть воркер **видит проблему** (Lighthouse=78), но **не знает как её фиксить**.
+Только читает и гоняет тесты. Никаких правок кода.
+
+**Что не хватает saga (3 уровня):**
+
+1. **Circuit breaker** (минимально): после N=3 failed на одной задаче
+   → tag `needs-human` → эпизод останавливается, человек смотрит.
+   СAGA не может завершиться gracefully без этого.
+
+2. **Эскалация к специалисту**: dev-воркер не справился за N попыток →
+   saga поднимает другой skill (например, `saga-performance-tuner` для
+   Lighthouse-задач, `saga-cross-browser-expert` для Safari edge cases).
+   Это требует **library of specialised skills**, не только `saga-worker`.
+
+3. **Channel для подсказок**: оператор видит что воркер застрял →
+   добавляет **solution hint** в `task.metadata.hint` → следующий worker
+   читает hint и пробует указанный подход. Без этого каждый worker
+   с чистым контекстом обречён повторять те же ошибки.
+
+**Контр-аргумент "но это так и задумано, deny-by-default":** да, deny-by-default
+правильно — `failed` блокирует transition. Но deny-by-default без условия
+выхода — это **вечный цикл**, не graceful degradation.
+
+**Минимальная фикса (как класс):**
+
+- После 3 failed на одной задаче → инкремент `tasks.metadata.failure_count`
+- На 3-м failed → tag `needs-human`, `releaseExecutionAtomically` НЕ возвращает
+  в очередь (atomic-release.ts:194 уже honours needs-human)
+- В UI: оператор видит красный "needs-human" → читает что не так →
+  добавляет hint в task.metadata → saga продолжает
+
+Это **класс проблем**, не специфичный для #31. Любая performance/accessibility/
+security задача с объективным gate (Lighthouse, axe, Snyk) рискует попасть
+в ту же ловушку.
+
+#### Дыра E+ (follow-up): ручной hint в task.description — это не масштабируется
+
+**Что мы сделали как workaround:** вставили в `task.description` блок
+"SOLUTION HINT" с пошаговым рефакторингом renderer.ts (разделить на port.ts +
+impl.ts, lazy-import в main.tsx, и т.д.). Следующий worker прочитал hint
+и начал применять — **это сработало**. Но это **workaround, не решение**.
+
+**Почему не масштабируется:**
+
+1. **Требует человека в цикле.** Оператор должен заметить "worker застрял",
+   прочитать код, придумать решение, вписать hint. Это ровно то, что saga
+   должна автоматизировать — снять человека с цикла.
+
+2. **Hint не передаётся между попытками надёжно.** Мы вписали hint в
+   `description` — но saga-core не знает что это hint. Любой update
+   `description` через `task_update` (например, planner пересоздаёт задачу)
+   затрёт hint без предупреждения. Нет типизированного поля.
+
+3. **Hint не связан с причиной failed.** Worker получает hint, но не знает
+   **почему именно** предыдущие попытки провалились (какую именно правку
+   они пробовали, какой был Lighthouse score). Каждый новый worker видит
+   только hint, не полную историю. Это лучше чем пустой контекст, но не
+   full picture.
+
+4. **Нет автоматического извлечения hint'а.** Saga знает что task fail'ит
+   38 раз подряд. Но не знает **почему**. Lighthouse возвращает число (78),
+   но saga не парсит это число и не понимает что "78 < 80 = bundle size issue".
+
+**Что нужно (механизмы на уровне saga-core, не workaround):**
+
+##### Механизм 1: Circuit breaker + auto-tag needs-human (минимальный)
+
+Уже описан в Дыре E выше. После 3 failed — tag needs-human, saga
+останавливается. Это **предел** — saga признаёт что не справляется и зовёт
+человека. Не решает проблему, но **прекращает бесконечный цикл**.
+
+Реализация: ~25 LoC в `src/orchestrate.ts` (increment `metadata.failure_count`,
+на 3-м failed → `addTag('needs-human')`).
+
+##### Механизм 2: Automated failure-context propagation (средний)
+
+Каждый `failed` evidence сохраняет не только outcome, но и **детали**:
+- Какой именно gate провалился (Lighthouse score 78, axe violations 5, etc.)
+- Что worker пробовал (список tool_use из последней attempt)
+- Стек ошибок / diff применённых правок
+
+Следующий worker при claim'е читает `task.metadata.previous_failures` —
+видит **что уже пробовали**. Это не hint от человека, а **детальная
+история попыток** от предыдущих воркеров. Помогает модели не повторять
+проверенные подходы.
+
+Реализация: ~80 LoC в `worker_done` handler + extension `task.metadata`.
+
+##### Механизм 3: Specialised skill escalation (архитектурный)
+
+После N failed на задаче определённого **типа** — saga эскалирует к
+специализированному skill'у. Примеры:
+
+| Тип failed | Эскалация к skill | Что он умеет |
+|---|---|---|
+| Lighthouse/Performance | `saga-perf-tuner` | bundle analysis, Vite config, code-splitting patterns |
+| TypeScript errors | `saga-type-fixer` | tsc diagnostics, tsconfig tuning |
+| Cross-browser failure | `saga-browser-expert` | Safari/Firefox/Edge specific patterns |
+| Security (Snyk/Semgrep) | `saga-security-hardener` | CVE knowledge, dependency upgrades |
+| Accessibility (axe) | `saga-a11y-expert` | ARIA patterns, keyboard nav, contrast |
+
+Это **не универсальный воркер**, а **library of specialists**. Каждый
+специалист знает домен-специфичные паттерны (например "Three.js в
+entry chunk → разделить port/impl"). Первый worker пробует generic
+подход; на 2-м failed — эскалируется к специалисту.
+
+Реализация: новая таблица `skill_specialisations`, ~300 LoC в planner /
+orchestrator. Требует **написания самих skill'ов** (каждый ~500-1000 строк
+markdown с домен-экспертизой).
+
+##### Механизм 4: Deterministic tool gate (CGAD extension)
+
+Если AC имеет **objective gate** (Lighthouse ≥80, tsc --noEmit exit 0,
+jest exit 0) — зарегистрировать этот gate как Trusted Provider
+(deterministic_evidence). Тогда:
+
+- `verification_evidence` с `outcome=failed` **автоматически** триггерит
+  recovery. Сейчас триггерит (это работает).
+- **Но** recovery должен не просто вернуть в очередь, а **передать worker'у
+  конкретный diagnostic**. Например: "tsc error count: 30, first error:
+  src/ui/calculator-form.tsx:23 TrajectoryResult not found". Это **явный
+  сигнал модели**, не абстрактный "failed".
+
+Реализация: parse tool output при записи evidence. ~150 LoC.
+
+##### Механизм 5: Hint channel (минимально-инвазивный)
+
+Типизированное поле `tasks.metadata.hint` (string, optional). UI позволяет
+оператору вписать hint (как мы сделали руками), но:
+- Поле **типизированное**, saga-core знает что это hint
+- Hint **сохраняется** при planner updates (не в `description`)
+- Worker SKILL **обязан** читать `task.metadata.hint` перед началом работы
+- Hint может добавлять также **автоматически** verifier (например, при
+  failed Lighthouse — автоматически добавить "Lighthouse=78, check bundle
+  size via `npm run build && du -sh dist/assets/`")
+
+Реализация: ~40 LoC (типизированное поле + UI input + SKILL patch).
+
+##### Сводная таблица механизмов
+
+| Механизм | LoC | Что даёт | Когда |
+|---|---:|---|---|
+| 1. Circuit breaker + needs-human | 25 | Прекращает цикл, зовёт человека | Всегда (минимум) |
+| 2. Failure-context propagation | 80 | Worker видит историю попыток | Всегда (хорошо) |
+| 3. Specialised skill escalation | 300+ | Эскалация к эксперту | Production |
+| 4. Deterministic tool gate | 150 | Конкретный diagnostic вместо "failed" | Для objective gates |
+| 5. Hint channel | 40 | Оператор может подсказать | Всегда (минимум) |
+
+**Рекомендация:** Механизмы 1+5 — минимальный набор (65 LoC).
+Дальше — 2 (failure-context) и 4 (tool gate). Механизм 3 — долгосрочная
+цель, требует library of skills.
+
+**Главный вывод:** То что мы сделали руками (hint в description) —
+**подтверждает гипотезу** (воркер может применить решение если его дать).
+Но это **не решение само по себе**. Saga нужен автоматический механизм
+эскалации. Без него saga **не может быть автономной** для задач с
+objective gates — всегда будет требовать человека в цикле.
+
+#### Дыра E++ (доп. наблюдение): verifier правит код, нарушая read_only_evidence
+
+**Источник:** task #31, worker-2 (PID 2848), heartbeat 18:03:03–18:08:23.
+
+Worker-2 выполнил задачу `task_kind=verification.ac`,
+`execution_mode=read_only_evidence` (это режим verifier'а — должен только
+записывать evidence, не трогать код). Однако в логе:
+
+| Tool | Кол-во |
+|---|---:|
+| Bash | 14 |
+| **Edit** | **7** ← правки кода |
+| Read | 5 |
+| Write | 1 (новый файл) |
+| verification_record | 1 |
+| worker_done | 1 |
+
+То есть **verifier сам отрефакторил renderer.ts** (разделил на port/impl,
+сделал lazy import в main.tsx), после чего Lighthouse поднялся до ≥80,
+и он же записал `outcome=passed`.
+
+**Что это означает концептуально:**
+
+Верификатор в saga — это **независимый арбитр** (CGAD §9): он генерирует
+property tests из замороженного AC контракта и фиксирует evidence. Он **не
+должен** править код, который проверяет — это нарушение независимости.
+
+Но в наблюденном случае verifier **одновременно**:
+1. Запустил Lighthouse → увидел fail (78 < 80)
+2. Прочитал hint из task.description
+3. **Отрефакторил код** (7 Edit + 1 Write нового renderer-port.ts)
+4. Пересобрал и снова запустил Lighthouse → ≥80
+5. Записал evidence=passed
+6. Вызвал worker_done
+
+**Это нарушение CGAD-принципа separation of concerns**, но это **сработало**
+и привело к решению, которого 38 предыдущих циклов не могли достичь.
+
+**Два чтения ситуации:**
+
+1. **Строгое (CGAD-correct):** verifier нарушил контракт. Править код должен
+   dev-воркер, verifier только проверяет. Если verifier может править, он
+   перестаёт быть "независимым арбитром" — становится dev-воркером с
+   привилегиями. **Это дыра**: `execution_mode=read_only_evidence` не
+   enforced на уровне инструментов, только на уровне SKILL.md.
+
+2. **Прагматичное:** saga получила результат за 1 цикл вместо 38. Verifier
+   видит конкретную проблему (Lighthouse=78), у него есть hint, он может
+   сразу применить фикс. Это **более эффективно**, чем возвращать задачу
+   dev-воркеру, который начнёт с чистого контекста. Получается гибридная
+   роль — "verifier-fixer".
+
+**Класс проблем:** Любой AC с objective gate (Lighthouse, axe, Snyk, tsc)
+в текущей saga может попасть в ситуацию, где verifier **может** технически
+починить код, но **по контракту не должен**. Это создаёт два режима:
+
+- verifier правит (быстро, но нарушает CGAD)
+- verifier только фиксирует fail, dev правит (правильно, но циклиться)
+
+**Что с этим делать (3 опции):**
+
+1. **Enforce read_only на уровне инструментов.** Запретить Edit/Write в
+   `execution_mode=read_only_evidence` через `--disallowedTools` в
+   claude-runner.mjs (там уже есть precedent для `worker_next`).
+   ~5 LoC. Тогда verifier не сможет править, даже если захочет. Цикл E
+   решается только через механизмы выше.
+
+2. **Легализовать "verifier-fixer" режим.** Ввести новый
+   `execution_mode = read_write_with_repair` для verification.ac задач.
+   Verifier может править код, но с ограничениями (например, только в
+   `tests/` или только в указанных в hint файлах). Тогда нарушение
+   CGAD становится задокументированным компромиссом.
+
+3. **Не менять, задокументировать как known limitation.** Verifier
+   иногда правит код — это работает на практике, нарушает теорию.
+   Принять как trade-off, описать в SKILL.md как "verifier MAY apply
+   small fixes from hints; for structural changes escalate to dev".
+
+**Рекомендация:** Опция 1 (enforce read_only) — самая чистая. Заставляет
+saga использовать правильный путь (dev-side fix через эскалацию,
+см. Дыра E+ механизм 3 — specialised skill escalation). Без enforcement
+верификатор маскирует настоящую проблему (отсутствие specialist escalation)
+тем, что делает работу dev-воркера.
+
+Однако — если механизмы эскалации из Дыры E+ **не реализованы**, опция 1
+приведёт к тому, что все Lighthouse-подобные задачи будут циклиться.
+То есть enforcement нужно вводить **вместе** с circuit breaker / hint
+channel, не отдельно.
+
+**Факт-чекинг:**
+- task #31 task_kind='verification.ac', execution_mode='read_only_evidence'
+  (подтверждено DB)
+- worker-2 role=reviewer в heartbeat (подтверждено логом)
+- 7 Edit, 1 Write в логе worker-2 (подтверждено парсингом JSONL)
+- Lighthouse перешёл с 78 на ≥80 после правок (worker-2 сам записал
+  evidence=passed)
+- `execution_mode=read_only_evidence` **не enforced** инструментально в
+  claude-runner.mjs (там только `--disallowedTools mcp__saga__worker_next`,
+  Edit/Write разрешены)
+
+---
+
+#### Дыра F: kanban скрывает агентский цикл — нет attempt history
+
+**Источник:** наблюдение за #31 (38 failed без сохранения истории между
+попытками) + обсуждение команды 2026-07-20.
+
+**Контекст.** Канбан-метафора (todo → in_progress → done) пришла из
+человеческих project-management систем (Atlassian Jira, Trello). Человек не
+делает 38 попыток на одной задаче — он либо делает, либо эскалирует.
+
+Но saga — **агентская система**. Один контракт (AC) может пережить **N попыток**
+(каждая — отдельный worker с чистым контекстом). Это норма, не ошибка.
+Применять к агентскому циклу человеческий kanban **без расширения** — терять
+критическую информацию.
+
+**Что происходит сейчас:**
+
+```
+worker fails → recovery → task in todo → fresh worker (cold start) → fails again
+```
+
+Каждый новый worker начинает **с пустым контекстом**. Не знает:
+- Что предыдущие 37 попытались
+- Какие подходы уже проверены
+- Какой именно gate провален (Lighthouse=78, не абстрактный "failed")
+- На какой модели и с каким контекстом предыдущие запускались
+- Сколько правок кода уже сделано
+
+**Что нужно хранить** в `tasks.metadata.attempt_history[]` (массив объектов):
+
+| Поле | Зачем | Пример |
+|---|---|---|
+| `attempt_number` | счётчик для circuit breaker | `38` |
+| `worker_id` | какой воркер пытался | `board-1-1784569756287-3` |
+| `outcome` | passed/failed/unknown | `failed` |
+| **`recovery_summary`** | **вербальная рефлексия: почему вернули** | "Lighthouse=78, blocker: vendor-three.js 612KB synchronous в entry chunk" |
+| `model` | какая модель | `qwen3.6-35b-a3b@q4_k_xl` |
+| `context_peak` | размер контекста в этой попытке | `152745` |
+| `tool_use_count` | сколько всего действий | `39` |
+| `edit_count` | сколько правок кода | `0` ← критический сигнал |
+| `failed_at` | timestamp | `2026-07-20T17:48:58Z` |
+| `evidence_id` | ссылка на verification_evidence | `69` |
+
+**Почему именно эти поля:**
+
+- **`recovery_summary`** — самое ценное. Это **verbal RL рефлексия**
+  ([Shinn 2023, Reflexion](https://arxiv.org/abs/2303.11366)). Verifier пишет
+  failed evidence → заодно пишет короткое резюме почему. Следующий worker
+  читает это — не начинает с пустого контекста. Это **ровно тот hint, что мы
+  написали руками в description**, но генерируется автоматически verifier'ом
+  и сохраняется типизированно.
+
+- **`context_peak` + `model`** — для specialist routing. Если видим
+  "worker на qwen3.6-35b с контекстом 152k fail'ит 3 раза" → это сигнал
+  поднять более сильную модель (z.ai glm-5.2) или специалиста
+  (saga-perf-tuner).
+
+- **`edit_count`** — различие между "worker ничего не пробовал" (edit_count=0)
+  и "worker пытался, но не вышло" (edit_count=7). Разные сценарии → разные
+  эскалации. Это **позволяет circuit breaker'у принимать умные решения**.
+
+**Как это меняет recovery loop:**
+
+```
+worker fails → writes recovery_summary →
+  attempt_history.append({outcome:'failed',
+    recovery_summary:'Lighthouse=78, vendor-three.js 612KB',
+    context_peak:152745, edit_count:0}) →
+  todo → fresh worker читает attempt_history →
+    "ага, предыдущие 3 попытки не правили код, надо Edit" →
+    пробует другой подход → succeeds
+```
+
+**Circuit breaker с умной эскалацией** (на основе attempt_history):
+
+```typescript
+function onFailed(task, evidence, recoverySummary) {
+  const attempts = JSON.parse(task.metadata.attempt_history || '[]');
+  attempts.push({
+    attempt_number: attempts.length + 1,
+    worker_id, outcome: 'failed', recovery_summary: recoverySummary,
+    model: currentModel, context_peak: peakContext, 
+    edit_count: editCount, failed_at: now, evidence_id
+  });
+  
+  const n = attempts.length;
+  updateTask(task.id, {
+    metadata: { attempt_history: JSON.stringify(attempts) }
+  });
+  
+  // Умная эскалация по паттерну провалов
+  const lastAttempt = attempts[attempts.length - 1];
+  
+  if (n >= 3 && lastAttempt.edit_count === 0) {
+    // Worker'ы ничего не правили → нужен specialist
+    addTag('needs-specialist');
+    routeToSpecialist(task);  // saga-perf-tuner, saga-a11y-expert, etc.
+  } else if (n >= 5) {
+    // 5 неудач даже с правками → needs-human
+    addTag('needs-human');
+  }
+}
+```
+
+**Recovery worker (saga-recovery) триггерится по счётчику:**
+- При `n=3` с `edit_count=0` → запускает `saga-perf-tuner` (или другой
+  specialist по домену failed-задачи)
+- Specialist читает `attempt_history` → понимает что пробовали →
+  генерирует diagnosis/plan → передаёт свежему dev-воркеру через hint
+- При `n=5` → `needs-human`, saga останавливается
+
+**Почему это допустимо несмотря на "нарушение канбана":**
+
+Классический канбан предполагает 1 задача = 1 человек = 1 попытка. В агентском
+дроп-цикле (agent drop-cycle) **нормально** делать N попыток — это часть дизайна.
+Канбан **должен быть осведомлён об итерациях**, иначе он скрывает критическую
+информацию. Это не "поломка канбана", а **расширение его под агентский use case**.
+
+Связь с литературой:
+- **Reflexion** ([Shinn 2023](https://arxiv.org/abs/2303.11366)) — verbal RL
+  через episodic memory. `recovery_summary` = episodic memory saga.
+- **Voyager skill library** ([Wang 2023](https://arxiv.org/abs/2305.16291)) —
+  накопление verified skills. `attempt_history` + specialist routing = путь
+  к skill library: каждый успешный recovery → переиспользуемый skill.
+- **TAO hierarchical escalation** ([arxiv 2506.12482](https://arxiv.org/html/2506.12482v2))
+  — complexity-based routing. Circuit breaker → specialist = TAO tier.
+
+**Реализация:**
+
+- `tasks.metadata.attempt_history` — JSON array, append-only.
+  ~30 LoC в `verification_record` / `worker_done` handler.
+- `recovery_summary` — новое поле в verifier SKILL: "при failed пиши 1-2
+  предложения диагностики в comment_add с prefix `RECOVERY:`". Handler
+  парсит и кладёт в attempt_history.
+- Circuit breaker в `orchestrate.ts` pump-loop: проверяет
+  `metadata.attempt_history` length, эскалирует. ~25 LoC.
+- Specialist routing: tag-based dispatcher extension. ~50 LoC.
+- UI: kanban card показывает `⚠ 38 attempts (last: Lighthouse=78)` red badge.
+
+**Объём:** ~105 LoC + SKILL patches + UI badge. Без изменений saga-core схемы
+(всё в `metadata`).
+
+**Главный вывод:** Канбан для людей и агентский drop-cycle — **разные модели**.
+saga имеет право расширить kanban: хранить attempt history, model, context_peak,
+edit_count, recovery_summary. Без этого saga слепа к собственным итерациям и
+обречена на cold-start retries. С этим — recovery worker может триггериться по
+счётчику и запускать нужный specialist skill. Это **минимальная** необходимая
+эволюция kanban под агентский режим.
+
+---
+
+
 ---
 
 ## 5. Динамика качества по задачам
