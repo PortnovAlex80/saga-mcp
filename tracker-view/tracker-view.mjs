@@ -460,7 +460,8 @@ function extractDiv(html, cls) {
 // Загрузка всех артефактов проекта + их исходящих трасс (для вкладки Артефакты).
 // Структура данных (по exploration):
 //   parent_artifact_id = «позвоночник» дерева, max depth 3:
-//     decision(BRIEF) → PRD → {SRS, UC, FR, NFR}; AC → UC (иногда → PRD).
+//     decision(BRIEF) → PRD → {FR, NFR, RULE, UC, SRS}; AC → UC (иногда → PRD).
+//     Pipeline order (ADR-014): PRD → UC → AC → Reconcile → SRS(+§D).
 //   artifact_traces = кросс-режущие рёбра, НЕ часть дерева:
 //     implements (AC→DEV-таск), verified_by, derived_from (AC→FR), covers (UC→FR).
 //   28 трасс кросс-проектные (AC в requirements → DEV-таск в builders-проекте).
@@ -1700,7 +1701,10 @@ function renderArtifacts(projectId, allProjects) {
   // Сводка по типам (chips).
   const byType = {};
   for (const a of artifacts) byType[a.type] = (byType[a.type] || 0) + 1;
-  const typeOrder = ['PRD','SRS','UC','AC','FR','NFR','decision','theme','brief'];
+  // Pipeline order (ADR-014): PRD → UC → AC → Reconcile → SRS. FR/NFR/RULE
+  // are children of PRD now; SRS sits after the AC baseline. Chips display
+  // in canonical pipeline order, not the pre-reorder PRD/SRS/UC sequence.
+  const typeOrder = ['PRD','FR','NFR','RULE','UC','AC','SRS','decision','theme','brief'];
   const summaryChips = typeOrder
     .filter(t => byType[t])
     .map(t => `<span class="tchip" style="border-color:${TYPE_COLORS[t]};color:${TYPE_COLORS[t]}">${TYPE_LABEL[t]||t}: ${byType[t]}</span>`)
@@ -2967,7 +2971,7 @@ function renderRegistry(type, allProjects) {
        ORDER BY p.name, a.code`).all(T));
   } catch { arts = []; }
 
-  const types = ['PRD','SRS','UC','AC','FR','NFR','decision'];
+  const types = ['PRD','FR','NFR','RULE','UC','AC','SRS','decision'];
   const typeChips = types.map(t =>
     `<a class="chip${t===T?' active':''}" href="?registry=${t}">${TYPE_LABEL[t]||t}</a>`).join('');
   const projColor = (pid) => {
@@ -3075,22 +3079,24 @@ const STAGE_DESCRIPTIONS = {
   },
   formalization: {
     name: 'Формализация',
-    responsibility: 'Превращает принятый бриф в формальные требования и приёмочные критерии. Параллельно пишет PRD (что делать), SRS (как архитектурно) и UC (сценарии использования), затем сверяет их на reconciliation и сводит к принятому baseline приёмочных критериев (AC).',
+    responsibility: 'Превращает принятый бриф в формальные требования и приёмочные критерии. Разделена на две части (ADR-014): Часть 1 — ЧТО (PRD с FR/NFR/RULE, UC, AC, reconciliation и фиксация AC baseline); Часть 2 — КАК (SRS после AC: архитектор видит замороженные AC + brief complexity и выбирает стиль по таблице complexity→architecture, затем пишет §D Decomposition для планировщика).',
     inputs: [
       'Принятый brief с decision=go из стадии Discovery',
+      'complexity.tshirt / topology_hint / shared_mutation_risk из brief',
       'Документы и контекст пользователя'
     ],
     does: [
-      'Параллельная генерация PRD, SRS и Use Cases',
-      'Reconciliation: сверка соответствия PRD ↔ SRS ↔ UC',
-      'Формирование и приёмка AC (acceptance criteria)',
-      'Фиксация baseline артефактов для планирования'
+      'Часть 1 (ЧТО): PRD с FR/NFR/RULE, UC, AC, reconciliation, фиксация AC baseline',
+      'Reconciliation: сверка трасс PRD ↔ UC ↔ AC (SRS ещё не существует)',
+      'Часть 2 (КАК): SRS после baseline — архитектор выбирает стиль по complexity→architecture таблице',
+      'Архитектор пишет §D Decomposition (машино-читаемый per-AC map для планировщика)'
     ],
     outputs: [
       'Accepted AC artifacts — baseline для стадии Planning',
-      'Связная иерархия PRD → SRS → UC → AC с трассами'
+      'Accepted SRS с §D — контракт для saga-planner',
+      'Связная иерархия: PRD(+FR/NFR/RULE) → UC → AC и PRD → SRS(+§D) с трассами'
     ],
-    roles: ['saga-product (PRD)', 'saga-architect (SRS)', 'saga-analyst (UC+AC)', 'saga-reconciler']
+    roles: ['saga-product (PRD+FR/NFR/RULE)', 'saga-analyst (UC+AC)', 'saga-reconciler', 'saga-architect (SRS+§D, после AC)']
   },
   planning: {
     name: 'Планирование',
@@ -3866,7 +3872,7 @@ function renderAdmin(projects, flash) {
         <div class="admin-hint">
           Создаёт project + repo + epic + discovery.kickstart задачу одной транзакцией.
           При <code>SAGA_ORCHESTRATION_MODE=v3</code> запускает автономный движок в background
-          (он сам прогонит kickstart → PRD → SRS/UC → planning → dev → verify → integration).
+          (он сам прогонит kickstart → PRD → UC/AC → SRS → planning → dev → verify → integration, ADR-014).
           При <code>v2</code> движок не стартует — воркеры запускаются вручную через board-run.
         </div>
         <button type="submit" class="btn primary">🚀 Создать и запустить</button>

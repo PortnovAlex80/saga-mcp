@@ -31,7 +31,7 @@ Restart ZCode. Then from any empty folder:
 Skill("saga-start")
 ```
 
-**That's it.** Saga asks for your idea, runs Discovery (3 assessors), classifies complexity, produces PRD with hypothesis → SRS with invariants → AC with property tests → plans parallel development → verifies independently → integrates → observes runtime metrics → hit/kill decision.
+**That's it.** Saga asks for your idea, runs Discovery (3 assessors), classifies complexity, then follows the canonical pipeline: `BRIEF → PRD (+FR/NFR/RULE) → UC → AC → Reconcile → SRS (+DECOMP) → Planning → Dev → Verify → Integrate`. Architect runs AFTER AC and selects architecture by complexity (ADR-014); planner becomes a dumb copier of the SRS §D decomposition; verifier generates independent L3 property tests from the frozen AC contract; integration hits a hard gate; runtime metrics feed the hit/kill decision.
 
 Full install guide: [docs/INSTALL.md](docs/INSTALL.md)
 
@@ -65,8 +65,9 @@ A governance platform for parallel LLM coding agents. SQLite-backed, MCP-native,
 |---|---|---|
 | **Discovery** | Idea → measurable hypothesis (metric, target, kill criteria) | saga-kickstart |
 | **Complexity Gate** | thin / modular / regulated / research → artifact set | senior-analyst |
-| **Formalization** | PRD (hypothesis) → SRS (style, invariants, ports) → UC/AC (contract-as-data) | product / architect / analyst |
-| **Planning** | Pattern B scaffold, conflict keys, verification routing | saga-planner |
+| **Formalization Part 1 (WHAT)** | PRD with hypotheses **+ FR/NFR/RULE** → UC → AC (contract-as-data) → Reconcile (baseline hash frozen) | product / analyst / reconciler |
+| **Formalization Part 2 (HOW)** | SRS AFTER AC: architect reads frozen ACs + brief complexity → Architectural Style, Invariants, Port Registry, **DECOMP §D** | saga-architect |
+| **Planning** | Planner = dumb copier of SRS §D2: one task per AC entry with file_path/schema/conflict_keys copied verbatim | saga-planner |
 | **Development** | Parallel workers in worktrees, merge-lock, RiskClass | saga-worker |
 | **Verification** | Independent L3 property tests from frozen AC (NOT Builder's tests) | saga-verifier |
 | **Integration** | Hard gate: every AC has passing evidence | episode_transition |
@@ -121,11 +122,16 @@ IDEA (one phrase)
    │ → brief artifact, decision ∈ {go, fast-track, clarify, reject}
    │ → Complexity Gate (senior-analyst: thin/modular/regulated/research → artifact set)
    ▼
-2. FORMALIZATION (saga-product → saga-architect → saga-analyst)
-   │ → PRD (with Hypotheses: metric, baseline, target, kill criteria)
-   │ → SRS (Architectural Style, Module Manifest, Invariant Registry, Port Registry, NFR Targets)
-   │ → UC + AC (properties blocks: YAML contract-as-data for L3 property tests)
+2. FORMALIZATION Part 1 (saga-product → saga-analyst → saga-reconciler)
+   │ → PRD (with Hypotheses: metric, baseline, target, kill criteria + FR/NFR/RULE)
+   │ → UC (covers FR; derived_from PRD)
+   │ → AC (properties blocks: YAML contract-as-data for L3 property tests; derived_from UC + FR/NFR)
    │ → RULE (business logic, enforced-by trace) + SPEC (implementation mechanism)
+   │ → Reconciliation: assertTraceability + baseline_hash freeze
+   ▼
+2b. FORMALIZATION Part 2 (saga-architect — AFTER AC, sees frozen contract + brief complexity)
+   │ → SRS (Architectural Style by complexity table, Module Manifest, Invariant Registry, Port Registry)
+   │ → §D DECOMP: per-AC YAML map (files/functions/types/conflict_keys/ac_kind) — canonical, planner copies it verbatim
    │ → Frozen Contract Snapshot (accepted_hash, drift detection)
    ▼
 3. PLANNING (saga-planner)
@@ -294,10 +300,10 @@ mcp__saga__worker_next({ worker_id: "smoke", project_id: 1 })
 |---|---|---|
 | **saga-start** | Bootstrap project + repository binding | First launch in a workspace |
 | **saga-kickstart** | Discovery: idea → brief → decision | Complexity gate, 3 assessors, completeness-gate |
-| **saga-product** | PRD with hypotheses | Formalization (product episodes) |
-| **saga-architect** | SRS with Invariant Registry, Port Registry, conflict-key surface | Formalization |
-| **saga-analyst** | UC + AC with properties blocks (contract-as-data) | Formalization |
-| **saga-planner** | Pattern B scaffold, dev tasks, conflict_keys, verification.ac routing | Planning |
+| **saga-product** | PRD with hypotheses + FR/NFR/RULE (artifact_set move from SRS per ADR-014) | Formalization Part 1 |
+| **saga-architect** | SRS AFTER AC: Architectural Style by complexity table (XS→KISS, M-seq→Modular Monolith, M-scaffold→Ports, L/XL→Hexagonal), Invariant Registry, Port Registry, DECOMP §D per-AC map | Formalization Part 2 (after AC) |
+| **saga-analyst** | UC + AC with properties blocks (contract-as-data); UC derived_from PRD, AC derived_from UC + FR/NFR in PRD | Formalization Part 1 |
+| **saga-planner** | Dumb copier: reads SRS §D2, creates one task per AC entry copying file_path/schema/conflict_keys/ac_kind | Planning |
 | **saga-worker** | Code + L2 example tests, merge-lock | Development |
 | **saga-verifier** | Independent L3 property tests from frozen AC contract | Verification |
 | **saga-orchestrator** | Drives full episode flow, Complexity Gate (Stage 1.5) | Main context |
@@ -325,8 +331,9 @@ npm run cgad-lint -- <db>   # Run cgad-spec-lint v1.3.0 (16 rules)
 - [ADRs](docs/architecture/decisions/) — 005 (CGAD adoption), 006 (Pattern B), 007 (convergence retrospective)
 - [GUARDRAILS](GUARDRAILS.md) — Signs 001-009 (informal constitution)
 - [cgad-spec-lint](tools/cgad-spec-lint.mjs) — 16 deterministic enforcement rules
-- [SRS template](docs/requirements/templates/SRS.md) — 8 required sections
-- [AC template](docs/requirements/templates/acceptance-criteria.md) — contract-as-data format
+- [PRD template](docs/requirements/templates/PRD.md) — Product Requirements + FR/NFR/RULE (since ADR-014)
+- [SRS template](docs/requirements/templates/SRS.md) — pure architecture: style, modules, ports, invariants, §D DECOMP (since ADR-014)
+- [ADR-014](docs/architecture/decisions/014-pipeline-reorder-srs-after-ac.md) — pipeline reorder (SRS after AC + Complexity Gate + DECOMP)
 - [INVARIANTS template](docs/requirements/templates/INVARIANTS.md) — per-module invariant declaration
 
 ---

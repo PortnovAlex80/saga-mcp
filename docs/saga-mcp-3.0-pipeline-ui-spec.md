@@ -17,9 +17,14 @@ Pipeline — REQ-001: AutoCad3D MVP
 [✓ Discovery] ──→ [✓ Formalization] ──→ [● Planning] ──→ [○ Development] ──→ [○ Verification] ──→ [○ Integration] ──→ [○ Completed]
      3m                  8m                   2m                —                   —                   —                  —
 
-Brief accepted    PRD+SRS+UC+AC done     Planner running    Waiting scaffold   Waiting evidence   Waiting merge      —
-HYP-1: ≥180s     24 FR, 9 NFR           3 dev tasks        Pattern B          7 verify tasks      1 integrate        —
+Brief accepted    PRD+UC+AC+SRS done     Planner running    Waiting scaffold   Waiting evidence   Waiting merge      —
+HYP-1: ≥180s     24 FR, 9 NFR (PRD)     3 dev tasks        Pattern B          7 verify tasks      1 integrate        —
+                  §D DECOMP copied
 ```
+
+> **Note (ADR-014):** formalization stage now contains **Part 1 (UC+AC+Reconcile)**
+> and **Part 2 (SRS after AC)**. Architect runs AFTER AC and writes the §D DECOMP
+> YAML that the planner copies verbatim into task metadata.
 
 Статусы:
 - `[✓]` — зелёный, стадия завершена, время показано
@@ -57,8 +62,8 @@ HYP-1: ≥180s     24 FR, 9 NFR           3 dev tasks        Pattern B          
       "started_at": "2026-07-18T06:42:07",
       "completed_at": "2026-07-18T06:50:12",
       "duration_s": 485,
-      "task_count": 4,
-      "summary": "PRD + SRS + UC + AC, 24 FR, 9 NFR"
+      "task_count": 5,
+      "summary": "PRD(+FR/NFR/RULE) + UC + AC + SRS(+§D DECOMP) — architect after AC (ADR-014)"
     },
     {
       "name": "planning",
@@ -121,12 +126,14 @@ ORDER BY created_at ASC LIMIT 1;
 | Стадия | Summary |
 |---|---|
 | discovery | `brief accepted, decision=X, HYP-N: <target>` |
-| formalization | `N FR, N NFR, N UC, N AC` (count artifacts) |
+| formalization | `PRD+UC+AC done → SRS+DECOMP after AC` (count artifacts; FR/NFR in PRD per ADR-014) |
 | planning | `N dev tasks, N verify tasks, Pattern X` (count tasks by kind) |
 | development | `N/N tasks done, N merged` |
 | verification | `N/N AC verified, N passed/N failed` |
 | integration | `merged to <branch>, commit <sha>` |
 | completed | `Total: Nm, N artifacts, N tasks` |
+
+> Pipeline order: `PRD → UC → AC → SRS` (architect runs AFTER AC, per ADR-014).
 
 ## Реализация
 

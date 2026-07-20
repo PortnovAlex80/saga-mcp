@@ -31,7 +31,7 @@ cp -r skills/* ~/.zcode/skills/
 Skill("saga-start")
 ```
 
-**Это всё.** Saga спросит идею, проведёт Discovery (оценку идеи тремя независимыми ассесорами), определит сложность, создаст PRD с гипотезой → SRS с инвариантами → критерии приёмки с тестами-свойствами → запланирует параллельную разработку → независимо проверит → интегрирует → замерит метрики runtime (работающей системы) → примет решение (гипотеза подтвердилась / опровергнулась).
+**Это всё.** Saga спросит идею, проведёт Discovery (оценку идеи тремя независимыми ассесорами), определит сложность, затем пройдёт каноничный pipeline: `BRIEF → PRD (+FR/NFR/RULE) → UC → AC → Reconcile → SRS (+DECOMP) → Planning → Dev → Verify → Integrate`. Архитектор запускается ПОСЛЕ AC и выбирает архитектуру по сложности (ADR-014); планировщик становится тупым копировщиком декомпозиции из SRS §D; независимый проверяющий генерирует L3 тесты-свойства из замороженного контракта AC; интеграция проходит жёсткий шлюз; runtime-метрики дают решение (гипотеза подтвердилась / опровергнулась).
 
 Полная инструкция: [docs/INSTALL.md](docs/INSTALL.md)
 
@@ -63,8 +63,9 @@ saga-mcp включает веб-канбан (`tracker-view/`), который 
 |---|---|---|
 | **Discovery** (исследование идеи) | Идея → измеримая гипотеза (метрика, цель, критерий провала) | saga-kickstart (скилл оценки идеи) |
 | **Complexity Gate** (шлюз сложности) | Оценка: простая / модульная / регулируемая / исследовательская → выбор набора артефактов | senior-analyst (референс-методология) |
-| **Formalization** (формализация) | PRD с гипотезой → SRS (архитектурный стиль, реестр инвариантов, реестр портов) → Use Cases + критерии приёмки | product / architect / analyst |
-| **Planning** (планирование) | Pattern B: сначала каркас-заглушки, потом параллельные тела. Ключи конфликтов. Маршрутизация задач проверки | saga-planner |
+| **Formalization Part 1 — ЧТО** | PRD с гипотезой **+ FR/NFR/RULE** → UC → AC (контракт как данные) → Reconcile (заморозка baseline_hash) | product / analyst / reconciler |
+| **Formalization Part 2 — КАК** | SRS ПОСЛЕ AC: архитектор видит замороженные AC + brief complexity → стиль, реестр инвариантов, реестр портов, **§D DECOMP** | saga-architect |
+| **Planning** (планирование) | Planner = тупой копировщик SRS §D2: одна задача на AC с file_path/schema/conflict_keys из YAML дословно | saga-planner |
 | **Development** (разработка) | Параллельные воркеры в изолированных git-worktree (рабочих копиях). Блокировка слияния (merge-lock — мьютекс интеграции). Автоматический расчёт класса риска | saga-worker |
 | **Verification** (проверка) | Независимые тесты-свойства из замороженного контракта приёмки — НЕ из тестов разработчика | saga-verifier |
 | **Integration** (интеграция) | Жёсткий шлюз: каждый критерий приёмки имеет подтверждённое доказательство с совпадающим хэшем | episode_transition |
@@ -129,10 +130,10 @@ saga-mcp **не заменяет** классическую архитектур
 |---|---|---|
 | **saga-start** | Создание проекта + привязка репозитория | Первый запуск |
 | **saga-kickstart** | Discovery (исследование): идея → brief (краткая постановка) → решение | Оценка тремя ассесорами |
-| **saga-product** | PRD с гипотезами | Формализация |
-| **saga-architect** | SRS: стиль, реестр инвариантов, реестр портов, выбор стека | Формализация |
-| **saga-analyst** | Use Cases (варианты использования) + критерии приёмки (с YAML properties — контрактом как данными) | Формализация |
-| **saga-planner** | Каркас Pattern B, задачи, семантические ключи конфликтов | Планирование |
+| **saga-product** | PRD с гипотезами + FR/NFR/RULE (переехали из SRS по ADR-014) | Формализация Part 1 |
+| **saga-architect** | SRS ПОСЛЕ AC: стиль по таблице сложности (XS→KISS, M-seq→Modular Monolith, M-scaffold→Ports, L/XL→Hexagonal), реестр инвариантов, реестр портов, §D DECOMP (per-AC map) | Формализация Part 2 (после AC) |
+| **saga-analyst** | Use Cases + критерии приёмки (с YAML properties — контрактом как данными); UC derived_from PRD, AC derived_from UC + FR/NFR в PRD | Формализация Part 1 |
+| **saga-planner** | Тупой копировщик: читает SRS §D2, создаёт одну задачу на AC, копируя file_path/schema/conflict_keys/ac_kind | Планирование |
 | **saga-worker** | Код + тесты-примеры, блокировка слияния | Разработка |
 | **saga-verifier** | Независимые тесты-свойства из замороженного контракта | Проверка |
 | **saga-orchestrator** | Полный цикл, шлюз сложности | Главный контекст |
@@ -168,8 +169,9 @@ GitHub Actions: TypeScript strict + ESLint + npm test на каждый push/PR 
 - [ADR](docs/architecture/decisions/) — архитектурные решения (Architecture Decision Records)
 - [GUARDRAILS](GUARDRAILS.md) — конституция (ограничения; Signs 001-009)
 - [cgad-spec-lint](tools/cgad-spec-lint.mjs) — 18 правил
-- [Шаблон SRS](docs/requirements/templates/SRS.md) — 8 секций
-- [Шаблон AC](docs/requirements/templates/acceptance-criteria.md) — контракт в виде данных
+- [Шаблон PRD](docs/requirements/templates/PRD.md) — Продуктовые требования + FR/NFR/RULE (с ADR-014)
+- [Шаблон SRS](docs/requirements/templates/SRS.md) — чистая архитектура: стиль, модули, порты, инварианты, §D DECOMP (с ADR-014)
+- [ADR-014](docs/architecture/decisions/014-pipeline-reorder-srs-after-ac.md) — перестановка pipeline (SRS после AC + Complexity Gate + DECOMP)
 - [Шаблон INVARIANTS](docs/requirements/templates/INVARIANTS.md) — инварианты по модулю
 
 ---

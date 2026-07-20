@@ -41,17 +41,59 @@ This skill replaces "ask the human" with a **structured self-decision loop** tha
 
 ## Step 1 — Diagnose the exact defect
 
-Read the task description (the engine put the gate error there). Then **query the DB to confirm the exact defect** before fixing:
+Read the task description (the engine put the gate error there). Then **query the DB to confirm the exact defect** before fixing.
+
+> **Gate contract (reordered pipeline, ADR-013).** The formalization stage now
+> runs in this order:
+>
+> ```
+> PRD(+FR/NFR/RULE children) → UC → AC → Reconciliation(baseline freeze)
+>   → SRS(architect reads frozen AC + complexity) → planning
+> ```
+>
+> The `formalization → planning` episode_transition gate requires:
+> 1. `assertTasksReady('formalization')` — ALL formalization tasks done,
+>    INCLUDING `formalization.srs` (SRS task spawned by `baseline_accepted`,
+>    not by `prd_accepted`).
+> 2. `assertTraceability(epicId)` — canonical lineage edges:
+>    - PRD → brief (derived_from)
+>    - SRS → PRD (derived_from) — added by saga-architect, NOT by reconciler
+>    - Each UC → PRD (derived_from) AND ≥1 FR (covers)
+>    - Each AC → ≥1 FR/NFR (derived_from, REQUIRED) AND ≥1 UC (derived_from,
+>      REQUIRED for FR-derived ACs; NFR-only ACs are exempt)
+> 3. `acceptedBaseline` — every AC status='accepted', content_hash set,
+>    accepted_hash matches, drift_state='clean'.
+>
+> Note: AC → FR/NFR edges target FR/NFR artifacts that are **children of the
+> PRD** (saga-product registers them). The gate queries by `target.type` within
+> the epic — it does not care whether the FR's parent is PRD or SRS. So a gate
+> failure on "AC has no derived_from to FR" means the AC↔FR edge is missing,
+> NOT that the FR is in the wrong place. Same for UC → FR covers.
 
 | Gate error pattern | What to query |
 |---|---|
-| `AC <code> has no 'derived_from' trace to any UC/FR/NFR` | `trace_list({source_id: <AC id>})` — see what traces exist |
+| `AC <code> has no 'derived_from' trace to any UC/FR/NFR` | `trace_list({source_id: <AC id>})` — see what traces exist. FR/NFR are children of PRD; link to the artifact id directly. |
+| `AC <code> traces to FR but has no 'derived_from' trace to any UC` | `trace_list({source_id: <AC id>})` — FR-derived ACs MUST also trace to a UC; NFR-only ACs are exempt. |
+| `UC <code> has no 'derived_from' trace to PRD` | `trace_list({source_id: <UC id>})` — UC must trace to PRD. |
+| `UC <code> has no 'covers' trace to any FR` | `trace_list({source_id: <UC id>})` — UC must cover ≥1 FR (FR is child of PRD). |
 | `PRD has no 'derived_from' trace to a brief` | `trace_list({source_id: <PRD id>})` |
+| `SRS has no 'derived_from' trace to PRD` | `trace_list({source_id: <SRS id>})` — SRS is now added by saga-architect AFTER baseline. If this fails post-reorder, the architect forgot the trace_add. |
 | `AC baseline is not accepted and clean` | `artifact_list({epic_id, type:'AC'})` — check status, content_hash, accepted_hash, drift_state |
-| `tasks not completed/integrated: #N` | `task_get({id: N})` — check status, integration_state |
+| `formalization gate failed: tasks not completed/integrated: #N` | `task_get({id: N})` — check status, integration_state. Could be the SRS task (`formalization.srs`) that hasn't reached done — the architect must finish before formalization→planning. |
+| `formalization gate failed: no formalization tasks exist` | `task_list({epic_id, workflow_stage:'formalization'})` — if empty, the `baseline_accepted` transition may have failed to spawn the SRS task; check workflow_generate_next logs. |
 | `no <stage> tasks exist` | `task_list({epic_id, status:'todo'})` — see what's queued |
 
 Do not fix what you have not diagnosed. The gate error is a symptom; the defect is in the DB.
+
+### Common ADR-013-specific recovery scenarios
+
+| Symptom | Likely cause | Fix |
+|---|---|---|
+| `SRS has no 'derived_from' trace to PRD` after architect ran | saga-architect forgot `trace_add(SRS → PRD, 'derived_from')` at registration | Add the edge directly — saga-architect is the canonical owner, but the edge itself is unambiguous (one SRS, one PRD per epic). |
+| `formalization gate failed: tasks not completed: #<srs task id>` | SRS task crashed mid-write or is in `review` not `done` | Check `task_get(<srs task id>)`. If status=`review`, dispatch the reviewer. If crashed, `task_update({status:'todo'})` to force re-run. |
+| `AC has no 'derived_from' trace to any FR` post-reorder | saga-analyst wrote AC before saga-product registered FR children | Verify FR artifacts exist under the PRD. If yes → `trace_add(AC → FR)`. If no → escalate: saga-product did not register FR (pipeline-order violation). |
+| SRS exists in the epic but baseline hash not stamped | reconciler ran before architect; pipeline-order violation | Reconciler should have stopped with `worker_ask_need`. If somehow SRS is present at reconciliation time, escalate — the order is wrong. |
+| `baseline_accepted` transition did not spawn `formalization.srs` task | Workflow transition failed silently | Check `task_list({epic_id, workflow_stage:'formalization', task_kind:'formalization.srs'})`. If empty after reconciler done, call `workflow_generate_next({epic_id, source_task_id: <reconciler task id>, transition: 'baseline_accepted'})` manually to re-trigger. |
 
 ---
 

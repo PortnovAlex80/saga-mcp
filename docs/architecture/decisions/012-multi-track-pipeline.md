@@ -4,6 +4,14 @@
 
 Accepted (2026-07-18)
 
+> **Note (2026-07-20, ADR-014):** The `go` track's formalization sequence has
+> been reshaped. After ADR-014, formalization splits into Part 1
+> (`PRD(+FR/NFR/RULE) → UC → AC → Reconcile`) and Part 2 (`SRS(+§D DECOMP)`
+> written AFTER AC). The `track` column, the 4-way switch on `decision`, and
+> the `fast-track` / `clarify` / `reject` branches of this ADR are unchanged.
+> See [014-pipeline-reorder-srs-after-ac.md](014-pipeline-reorder-srs-after-ac.md)
+> for the updated formalization order inside the `go` track.
+
 ## Context
 
 Saga-mcp's discovery phase ends with a brief artifact carrying one of four

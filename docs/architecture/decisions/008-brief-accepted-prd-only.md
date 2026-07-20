@@ -3,6 +3,35 @@
 ## Status
 Accepted (2026-07-18)
 
+---
+
+## Addendum (2026-07-20): ADR-014 supersedes part of this rationale
+
+The original rationale used `sibling()` lookup between SRS and UC tasks spawned
+in parallel by `prd_accepted`. After ADR-014 (pipeline reorder SRS after AC,
+[014-pipeline-reorder-srs-after-ac.md](014-pipeline-reorder-srs-after-ac.md)),
+`prd_accepted` no longer spawns SRS — it spawns only UC. The `sibling()` call
+between SRS and UC is no longer needed: SRS is created later by
+`baseline_accepted` (after AC + reconciliation), and there is no sibling
+relationship to maintain between SRS and UC.
+
+**Original rationale section "Why one PRD task, not parallel SRS+UC tasks"**
+is preserved below for history but no longer applies: SRS is no longer a
+sibling of UC. The Decision itself (`brief_accepted` creates only PRD) stands
+unchanged — ADR-014 only reshapes what happens downstream of `prd_accepted`.
+
+New pipeline (ADR-014):
+
+```
+BRIEF → PRD(+FR/NFR/RULE) → UC → AC → Reconcile → SRS(+DECOMP) → Planning → Dev → Verify → Integrate
+```
+
+See full plan: `docs/plans/PIPELINE-REORDER-SRS-AC.md`.
+
+---
+
+## Original Context (preserved for history)
+
 ## Context
 
 `saga-mcp-3.0-orchestration-plan.md` §2 предписывает добавить transition

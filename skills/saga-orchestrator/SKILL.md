@@ -7,6 +7,16 @@ description: "Orchestrate one logical product from Discovery through formalizati
 
 ## Typed product workflow (типизированный продуктовый рабочий процесс; REQ-007)
 
+> **Pipeline (reordered, ADR-013).** The WHAT-side (UC + AC) runs BEFORE the
+> HOW-side (SRS). Sequence:
+>
+> ```
+> BRIEF → PRD(+FR/NFR/RULE) → UC → AC → Reconcile → SRS(+DECOMP §D) → Planning → Dev → Verify → Integrate
+> ```
+>
+> Architectural style is chosen AFTER AC are baselined, with full visibility of
+> what is being verified. Planner is a dumb copier from SRS §D2.
+
 For new products, first use `saga-start`. A Saga project is the whole product;
 the current and additional physical repositories are registered through
 `repository_register`.
@@ -31,8 +41,12 @@ different directory name.
 Initialize every new REQ epic with `episode_status`. After Discovery returns
 `go`, transition it to `formalization`.
 
-Do not independently create the right-side SRS/UC tasks. For typed
-`git_change` work, review approval produces `integration_state=pending`; only
+Do not independently create the right-side UC/SRS tasks — the engine's
+`workflow_generate_next` does that from typed transitions:
+`brief_accepted`→PRD, `prd_accepted`→UC (only UC, NOT SRS+UC parallel),
+`uc_accepted`→AC, `ac_accepted`→reconciliation, `baseline_accepted`→SRS,
+`srs_accepted`→planning.decomposition. For typed `git_change` work, review
+approval produces `integration_state=pending`; only
 `worker_merge_release(result:"merged")` releases dependencies and triggers
 idempotent downstream generation. `done` without merge is not accepted input
 for the next stage.
@@ -40,8 +54,10 @@ for the next stage.
 Use explicit checkpoints:
 
 ```text
-formalization -> planning: accepted, hash-pinned, drift-free AC baseline
-planning -> development: completed planning tasks
+formalization -> planning: PRD(+FR/NFR/RULE) + UC + AC accepted and
+                            hash-pinned; reconciliation done; SRS accepted
+                            (architect chose style after seeing AC; §D2 written)
+planning -> development: completed planning tasks (planner copied §D2)
 development -> verification: completed and integrated development tasks
 verification -> integration: completed verification tasks plus passing
                             evidence for every accepted AC revision
@@ -65,7 +81,7 @@ conflict with this typed workflow section, this section is authoritative.
 - **Postcondition (постусловие):** Working product (Docker/код) + все artifacts accepted (приняты) + 0 coverage gaps (пробелов покрытия: implements + verified_by)
 - **Called by (вызывается):** Пользователь напрямую (`Skill("saga-orchestrator")`)
 - **Next enables (что разблокирует):** ничего (терминальная роль — отдаёт результат пользователю)
-- **Вызывает:** saga-kickstart (Skill) → saga-product → saga-architect+saga-analyst (параллельно) → saga-analyst (AC) → saga-planner → saga-dispatch (с роем saga-worker) → AC-verification → INTEGRATE
+- **Вызывает:** saga-kickstart → saga-product → saga-analyst (UC) → saga-analyst (AC) → saga-reconciler → saga-architect (SRS) → saga-planner → saga-dispatch (с роем saga-worker) → AC-verification → INTEGRATE
 - **Main-context-coordination-only (только координация в главном контексте):** НЕ пишет код/PRD/SRS — только оркестрирует роли.
 
 Ты — оркестратор saga-flow. **Твоя единственная работа — запускать роли в
@@ -80,17 +96,23 @@ working product.** Между ними — вызовы ролей. Каждая
 
 ## Состав ролей (что вызывает оркестратор)
 
+> **Reordered pipeline (ADR-013).** SRS moved AFTER AC. Planner is now a dumb
+> copier. Architect reads the frozen AC and the brief's `complexity.tshirt` to
+> choose a style from the complexity→architecture table.
+
 | Фаза | Кто | Как вызывает | Что делает |
 |---|---|---|---|
-| 1. Discovery | saga-kickstart | **Skill("saga-kickstart") в main-context** (НЕ subagent — Sign 005) | идея → brief → decision |
-| 2. Formalization-PRD | saga-product | Agent(subagent_type:"saga-product") | brief → PRD |
-| 3a. Formalization-SRS | saga-architect | Agent(subagent_type:"saga-architect") | PRD → SRS+FR/NFR+API contract |
-| 3b. Formalization-UC | saga-analyst | Agent(subagent_type:"saga-analyst") | PRD → UC |
-| 4. Formalization-AC | saga-analyst | Agent(subagent_type:"saga-analyst") | UC+SRS → AC |
-| 5. Planning | saga-planner | Agent(subagent_type:"saga-planner") | AC → dev-задачи + AC-verification задачи |
-| 6. Execution | saga-worker (рой) | Agent(subagent_type:"saga-worker") ×N | dev-задачи → код → review → merge |
-| 7. AC-verification | saga-worker (role:reviewer) | через dispatch loop | сверка эталонов AC с кодом |
-| 8. Integration | saga-worker | через dispatch loop | финальный merge + smoke |
+| 1. Discovery | saga-kickstart | **Skill("saga-kickstart") в main-context** (НЕ subagent — Sign 005) | идея → brief (+ `complexity.tshirt`, `topology_hint`, `shared_mutation_risk`) → decision |
+| 1.5. Complexity Gate | senior-analyst (ref) + orchestrator | `Skill("senior-analyst")` в main-context | `complexity.tshirt` → artifact-set decision; `topology_hint` → hints architect's later style choice |
+| 2. Formalization-PRD | saga-product | Agent(subagent_type:"saga-product") | brief → PRD(+ FR/NFR/RULE children) |
+| 3. Formalization-UC (WHAT part 1) | saga-analyst | Agent(subagent_type:"saga-analyst") | PRD → UC (`derived_from` PRD, `covers` ≥1 FR) |
+| 4. Formalization-AC (WHAT part 1) | saga-analyst | Agent(subagent_type:"saga-analyst") | UC + PRD(FR/NFR/RULE) → AC |
+| 4.5. Reconcile | saga-reconciler | через engine (`ac_accepted` transition) | freeze AC baseline_hash, repair traces |
+| 5. Formalization-SRS (HOW part 2) | saga-architect | Agent(subagent_type:"saga-architect") | frozen AC + brief complexity → SRS §2.1 style (по таблице) + §2b Ports + §2.3 Invariants + **§D Decomposition** |
+| 6. Planning | saga-planner | Agent(subagent_type:"saga-planner") | SRS §D2 → dev/verification/spike tasks (dumb copier) |
+| 7. Execution | saga-worker (рой) | Agent(subagent_type:"saga-worker") ×N | dev-задачи → код → review → merge |
+| 8. AC-verification | saga-verifier / saga-worker (role:reviewer) | через dispatch loop | сверка эталонов AC с кодом |
+| 9. Integration | saga-worker | через dispatch loop | финальный merge + smoke |
 
 ## Алгоритм (строго по этапам)
 
@@ -134,18 +156,22 @@ After Discovery (brief accepted), BEFORE Formalization:
 
 1. Load `Skill("senior-analyst")` reference into main context.
 2. Read brief: complexity.tshirt, risk_triggers, affected_projects, classification.
+   Also note `topology_hint` and `shared_mutation_risk` — these hint the
+   architectural style the architect will later choose (see table in §2.3 of
+   the reorder plan / saga-architect SKILL).
 3. Classify: thin / modular / regulated / research.
 4. Decide artifact set: which types does THIS project need?
 5. Create a `decision` artifact recording the artifact set:
    ```
    artifact_create({ type:'decision', title:'Artifact set for REQ-NNN',
      path:'docs/.../artifact-set.md', status:'accepted',
-     metadata: { complexity_class: 'modular', artifacts: ['PRD','SRS','FR','NFR','RULE','UC','AC','SPEC','hypothesis'] } })
+     metadata: { complexity_class: 'modular', artifacts: ['PRD','FR','NFR','RULE','UC','AC','SRS','SPEC','hypothesis'],
+                 complexity_tshirt: 'M', topology_hint: 'scaffold-then-parallel' } })
    ```
 6. Pass artifact set to downstream skills:
-   - saga-product: "create PRD with Hypotheses section (complexity=modular)"
-   - saga-architect: "create SRS with Invariant Registry + Port Registry (modular)"
-   - saga-analyst: "create UC + AC with properties blocks for algorithmic ACs"
+   - saga-product: "create PRD with FR/NFR/RULE children (complexity=modular)"
+   - saga-analyst: "create UC + AC from PRD (the WHAT side, BEFORE SRS)"
+   - saga-architect (LATER, after AC): "create SRS with style per complexity table (complexity=M, topology_hint=scaffold-then-parallel → Modular Monolith + Ports, Pattern B); include §D Decomposition"
 
 Rules:
 - For thin (XS-S, no risk triggers): skip hypothesis, skip RULE, minimal SRS.
@@ -153,56 +179,93 @@ Rules:
 - For regulated: add DR + IR + CONSTRAINT + RISK (create as artifacts).
 - For research: brief → decision → OQ only. No PRD/SRS/AC.
 - The decision artifact IS the authority — downstream skills read it and know their scope.
+- `complexity.tshirt` + `topology_hint` are read LATER by saga-architect to
+  pick the style. They are recorded in the brief (saga-kickstart writes them)
+  and surfaced through this decision artifact's metadata.
 
-### Этап 2 — PRD (saga-product)
+### Этап 2 — PRD (saga-product, with FR/NFR/RULE children)
 
 ```
 create task role:product (PRD)
-spawn Agent(subagent_type:"saga-product", prompt с brief artifact_id + project_id + epic_id)
+spawn Agent(subagent_type:"saga-product", prompt с brief artifact_id + project_id + epic_id + complexity hint)
 WAIT until PRD is done and, for git_change, integration_state=merged
+
+CHECKPOINT: PRD MUST have FR/NFR/RULE children registered
+  artifact_list({epic_id, type:'FR'})   → ≥1
+  artifact_list({epic_id, type:'NFR'})  → ≥1 (if any capacity targets)
+  artifact_list({epic_id, type:'RULE'}) → ≥1 (if any business rules)
+If FR list is empty → STOP, saga-product did not finish.
 ```
 
-### Этап 3 — SRS + UC (параллельно!)
+### Этап 3 — UC (saga-analyst, WHAT side, AFTER PRD only — no SRS dep)
 
 ```
-create task role:architect (SRS)
 create task role:analyst (UC)
+spawn Agent(subagent_type:"saga-analyst", PRD(+FR/NFR/RULE) → UC)
+WAIT until UC done
 
-spawn ОБА параллельно (одним сообщением, два Agent-вызова):
-  Agent(subagent_type:"saga-architect", SRS + API contract)
-  Agent(subagent_type:"saga-analyst", UC)
-
-WAIT until ОБА done and all git_change outputs are integrated
+CHECKPOINT: every UC traces `derived_from` → PRD and `covers` → ≥1 FR
+  artifact_coverage({epic_id, type:'UC', link_type:'derived_from'}) → 0 gaps
+  (FR are children of PRD — UC links to the FR artifact id directly.)
 ```
 
-**Контрольная точка (checkpoint):** после SRS+UC проверь, что FR готовы
-(architect их создаёт). Если FR нет — стоп, architect не закончил.
+SRS is NOT started yet. UC runs straight from PRD.
 
-### Этап 4 — AC (saga-analyst)
+### Этап 4 — AC (saga-analyst, WHAT side, AFTER UC only — no SRS dep)
 
 ```
 create task role:analyst (AC)
-spawn Agent(subagent_type:"saga-analyst", UC+SRS → AC)
+spawn Agent(subagent_type:"saga-analyst", UC + PRD(FR/NFR/RULE) → AC)
 WAIT until AC done
 
-VERIFY: artifact_coverage(type:'AC', epic_id) → 0 gaps на traces covers/derived_from
+VERIFY: artifact_coverage(type:'AC', epic_id, link_type:'derived_from') → 0 gaps
 VERIFY: every AC is accepted, hash-pinned and drift_state=clean
-CALL: episode_transition({epic_id,to_stage:"planning"})
 ```
 
-### Этап 5 — Planning (saga-planner)
+SRS is STILL not started. AC is written from the PRD's FR/NFR/RULE + UC.
+
+### Этап 4.5 — Reconciliation + Baseline freeze (engine-driven)
 
 ```
-create task role:planner
-spawn Agent(subagent_type:"saga-planner", AC → dev-задачи + AC-verification задачи)
+ac_accepted transition fires → engine spawns formalization.reconciliation task
+saga-reconciler runs → repairs traces, accepts draft artifacts, stamps baseline_hash
+baseline_accepted transition fires → engine spawns formalization.srs task
+```
+
+The AC baseline is now frozen. This is the input the architect needs.
+
+### Этап 5 — SRS (saga-architect, HOW side, AFTER baseline)
+
+```
+create task role:architect (SRS) via baseline_accepted transition
+spawn Agent(subagent_type:"saga-architect",
+            frozen AC + brief complexity.tshirt/topology_hint → SRS)
+WAIT until SRS done
+
+CHECKPOINT: SRS §2.1 style matches the complexity→architecture table
+  (e.g. M/sequence → Modular Monolith; M/scaffold-then-parallel → Modular
+  Monolith + Ports; L/scaffold-then-parallel → Hexagonal)
+CHECKPOINT: SRS §D Decomposition present
+  §D1 File Tree, §D2 AC→Implementation Map, §D3 Priority, §D4 Pattern
+CALL: episode_transition({epic_id, to_stage:"planning"})
+  (this gate now requires PRD+UC+AC+SRS all accepted, traces complete)
+```
+
+### Этап 6 — Planning (saga-planner, dumb copier)
+
+```
+srs_accepted transition fires → engine spawns planning.decomposition task
+spawn Agent(subagent_type:"saga-planner", SRS §D2 → tasks)
 WAIT until planner done
 
 VERIFY:
   artifact_coverage(type:'AC', link_type:'implements')  → 0 gaps (структурно)
-  tasks созданы с depends_on (Pattern A/B)
-  AC-verification задачи созданы (tags: ac-verification)
+  tasks have metadata.target_file / files / functions / types / public_protocol
+    (copied from §D2 — if missing, planner did not copy faithfully)
+  verification.ac tasks created for every §D2 entry with ac_kind=verification
+  scaffold tasks present for clusters where §D4 chose Pattern B
 
-  # REQ-010 — semantic conflict detection (после planner, до development)
+  # REQ-010 — semantic conflict detection (after planner, before development)
   for each dev task: conflict_keys_auto_derive({task_id})
   conflict_check({epic_id})  → collision_count должен быть 0, либо каждый
                                 collision разрулен (scaffold / depends_on /
@@ -210,16 +273,21 @@ VERIFY:
 CALL: episode_transition({epic_id,to_stage:"development"})
 ```
 
+> **Note.** The planner no longer chooses Pattern A/B or priority — the
+> architect encoded those in §D3/§D4. If you see the planner inventing these,
+> that is a regression; flag it.
+
 > **REQ-013 / CGAD-R4.** Если эпизод greenfield с ≥2 параллельными
 > dev-задачами, разделяющими модуль, и нет scaffold-задачи — R4 заблокирует
-> переход в development. Planner должен использовать Pattern B. См.
-> saga-planner SKILL.md «Pattern B».
+> переход в development. Architect должен был выбрать Pattern B в §D4 для
+> этого кластера; planner скопировал scaffold-задачу из §D2. См.
+> saga-planner SKILL.md «Step 2».
 
 > **REQ-010 / CGAD-R5.** Если ≥2 активные задачи делят conflict-key —
 > collision обнаруживается здесь, до запуска воркеров. 3+ коллизующихся
 > задач или любая коллизия с ≥2 in-flight → error (scaffold обязателен).
 
-### Этап 6 — Execution (рой saga-worker через saga-dispatch)
+### Этап 7 — Execution (рой saga-worker через saga-dispatch)
 
 ```
 Skill("saga-dispatch")  ← цикл диспетчеризации
@@ -232,10 +300,11 @@ WAIT until queue empty (task_list todo+review = 0)
 CALL: episode_transition({epic_id,to_stage:"verification"})
 ```
 
-### Этап 7 — AC-verification (через тот же dispatch)
+### Этап 8 — AC-verification (через тот же dispatch)
 
 ```
-Продолжаем dispatch — AC-verification задачи (role:reviewer, tag:ac-verification)
+Продолжаем dispatch — verification.ac задачи (role:reviewer, tag:ac-verification,
+created by planner from §D2 entries with ac_kind=verification)
 выполняются автоматически в следующих раундах.
 
 VERIFY after:
@@ -244,21 +313,21 @@ VERIFY after:
 CALL: episode_transition({epic_id,to_stage:"integration"})
 ```
 
-### Этап 8 — Integration (финальный)
+### Этап 9 — Integration (финальный)
 
 ```
-Если есть INTEGRATE задача (Pattern B) → выполнить через dispatch
+Если есть INTEGRATE задача (Pattern B из §D4) → выполнить через dispatch
 VERIFY: post-merge build green, все задачи done
 CALL: episode_transition({epic_id,to_stage:"completed"})
 ```
 
-### Этап 8.5 — Post-integration: документация и продуктовые скиллы
+### Этап 9.5 — Post-integration: документация и продуктовые скиллы
 
 После Integration, ДО объявления финального отчёта — оркестратор создаёт
 продуктовую документацию и проектные скиллы. Это делает продукт
 **поставляемым**, а не просто «код слит в dev».
 
-#### 8.5a — README продукта
+#### 9.5a — README продукта
 
 Создать `README.md` в корне продукта. Содержание:
 - **Быстрый старт** — одна команда запуска (из SRS §9 technology_stack)
@@ -271,7 +340,7 @@ CALL: episode_transition({epic_id,to_stage:"completed"})
 
 Если продукт многоязычный — создать также `README.ru.md`.
 
-#### 8.5b — Продуктовые скиллы
+#### 9.5b — Продуктовые скиллы
 
 Создать проектные скиллы в `.saga/skills/` продукта:
 
@@ -289,7 +358,7 @@ CALL: episode_transition({epic_id,to_stage:"completed"})
 - Как записать observation (observation_record)
 - Критерии приёмки релиза (из AC документа)
 
-#### 8.5c — Инструкция запуска
+#### 9.5c — Инструкция запуска
 
 Создать `INSTALL.md` или секцию в README:
 ```bash
@@ -304,7 +373,7 @@ CALL: episode_transition({epic_id,to_stage:"completed"})
 - `language: typescript` → `npm install && npm run build && npm start`
 - `language: rust` → `cargo build --release && ./target/release/<binary>`
 
-#### 8.5d — Регистрация в saga DB
+#### 9.5d — Регистрация в saga DB
 
 Создать artifacts для документации:
 ```
@@ -318,10 +387,15 @@ artifact_create({ type:'decision', title:'Product README + skills for REQ-NNN',
 ```
 ✅ saga-flow завершён для REQ-NNN
 
-Discovery:    brief (artifact N), decision=go
-Formalization: PRD(N) → SRS(N) + N FR + N NFR + UC(N) → AC(N)
+Discovery:    brief (artifact N), decision=go, complexity=<tshirt> topology=<hint>
+Formalization (WHAT):
+              PRD(N) + N FR + N NFR + N RULE → UC(N) → AC(N)
+              Baseline: frozen AC hash (artifact N)
+Formalization (HOW):
+              SRS(N) — style <Modular Monolith / Hexagonal / KISS> per complexity table
+              §D2: <N> AC entries (impl=X, verify=Y, spike=Z, merge=W)
               Hypothesis: HYP-1 metric=X target=Y kill=Z
-Planning:     N dev-задач (Pattern X), 0 coverage gaps
+Planning:     N dev-задач (Pattern from §D4), 0 coverage gaps on implements
               conflict_check: 0 collisions (или N разруленных вручную)
               final_risk: max(declared, derived, policy) per task
 Execution:    N задач done, 0 конфликтов
@@ -335,7 +409,7 @@ Post-integration:
 Runtime obs:  (если есть) observation_record benchmark/canary/incident
 Product:      <путь/URL> — working, документирован, имеет релизный чеклист
 
-Аудит: artifact_get(AC-id) → полная цепочка до brief
+Аудит: artifact_get(AC-id) → полная цепочка AC→UC→FR→PRD→brief
        cgad-spec-lint: N rules, 0 error-severity findings на этом эпизоде
 ```
 
@@ -369,19 +443,21 @@ main context** via the `Skill` tool — the same role skills, in the same order,
 just sequentially rather than in parallel subagents:
 
 ```text
-Skill("saga-kickstart")    → decision
-Skill("saga-product")      → PRD
-Skill("saga-architect")    → SRS + FR/NFR + API contract   } Этап 3 pair — no longer
-Skill("saga-analyst")      → UC                             } parallel: run architect
-Skill("saga-analyst")      → AC                             } first, then UC, then AC
-Skill("saga-planner")      → dev + AC-verification tasks
+Skill("saga-kickstart")    → decision (with complexity.tshirt, topology_hint)
+Skill("saga-product")      → PRD (+ FR/NFR/RULE children)
+Skill("saga-analyst")      → UC                       } WHAT side
+Skill("saga-analyst")      → AC                       } WHAT side (no SRS dep)
+Skill("saga-reconciler")   → freeze baseline (engine-driven, may auto-run)
+Skill("saga-architect")    → SRS (+ §D Decomposition) } HOW side, AFTER AC baseline
+Skill("saga-planner")      → dev + verification tasks (dumb copier from §D2)
 Skill("saga-dispatch")     → worker loop, review, merge
 ```
 
-The roles are **sequential** — the Этап 3 SRS+UC pair is no longer concurrent:
-run `saga-architect` first, then `saga-analyst` (UC), then `saga-analyst` (AC).
-Everything else (checkpoints, `episode_transition`, `artifact_coverage` gates,
-`conflict_check`, merge protocol) is identical to the parallel algorithm above.
+The roles are **sequential** (the parallelism opportunity between UC and SRS is
+gone — SRS now needs frozen AC, so it cannot start until AC is done). Run in
+the order above. Everything else (checkpoints, `episode_transition`,
+`artifact_coverage` gates, `conflict_check`, merge protocol) is identical to
+the algorithm above.
 
 **Flag the degradation.** Inline mode is non-parallel, so it is a degraded
 run and must be marked, not silent (NFR-5 of saga-kickstart: "no silent
@@ -417,8 +493,10 @@ mid-session, finish the current epic inline rather than mixing modes.
 3. **После merge — comment_add(task_id, "merged: <sha>").** Audit trail в трекере.
 4. **Main-context-coordination-only.** Не пишешь код, не редактируешь исходники — делегируешь.
 5. **Проверка (checkpoint) после каждой фазы** — coverage / gaps / status перед следующей.
-6. **SRS+UC параллельны** (одним сообщением, два Agent-вызова). AC — после обоих. In inline mode (see "Inline mode" above) they are sequential instead — architect then UC then AC — and the run is flagged `degraded`.
+6. **Pipeline order (reordered, ADR-013):** PRD → UC → AC → Reconcile → SRS → Planning. UC and AC are NOT parallel with SRS — SRS waits for the AC baseline. In inline mode every role is sequential in the order above.
 7. **Decision-fork / verdict / override — внутри kickstart skill** (Sign 005), не оркестратором.
+8. **Architect reads complexity from brief** (Stage 1.5 decision artifact metadata) to pick the SRS §2.1 style from the complexity→architecture table. The orchestrator does NOT override the architect's style choice.
+9. **Planner is a dumb copier.** If you see the planner inventing files/functions/pattern/priority instead of copying from §D2, that is a defect — flag it. The architect owns §D.
 
 ## Что НЕ делать
 
