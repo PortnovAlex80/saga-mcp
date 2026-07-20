@@ -663,6 +663,41 @@ CREATE TABLE IF NOT EXISTS integration_intents (
 CREATE INDEX IF NOT EXISTS idx_integration_intents_task ON integration_intents(task_id);
 CREATE INDEX IF NOT EXISTS idx_integration_intents_repo_state ON integration_intents(project_repository_id, state);
 CREATE INDEX IF NOT EXISTS idx_integration_intents_state ON integration_intents(state);
+
+-- ---------------------------------------------------------------------------
+-- Durable outbox for at-most-once side effects deferred until after COMMIT.
+-- ADR-013 Phase 1.2.
+--
+-- Why: generateNextForCompletedTask runs OUTSIDE the worker_done transaction
+-- (dispatcher.ts). A crash between COMMIT-receipt and the generate call lost
+-- downstream tasks forever — replay returned the stored receipt without
+-- workflow_generation, violating byte-equivalent replay.
+--
+-- Contract: the worker_done transaction INSERTs (OR IGNORE) an intent row
+-- keyed by the originating task; a separate drain step picks pending intents,
+-- runs the side effect idempotently, and records the result. On replay the
+-- receipt's reply is augmented with the persisted result so two identical
+-- retries return byte-identical responses.
+--
+-- Table shape mirrors integration_intents (pending/done/failed lifecycle,
+-- intent_key uniqueness, idempotent re-runs).
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS outbox_intents (
+  intent_key      TEXT PRIMARY KEY,
+  command_kind    TEXT NOT NULL,
+  originating_command_id TEXT,
+  task_id         INTEGER REFERENCES tasks(id) ON DELETE CASCADE,
+  state           TEXT NOT NULL DEFAULT 'pending'
+                    CHECK (state IN ('pending','done','failed','skipped')),
+  result_json     TEXT,
+  last_error      TEXT,
+  attempt_count   INTEGER NOT NULL DEFAULT 0,
+  created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+  processed_at    TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_outbox_intents_state ON outbox_intents(state);
+CREATE INDEX IF NOT EXISTS idx_outbox_intents_task ON outbox_intents(task_id);
 `;
 
 // ----------------------------------------------------------------------------

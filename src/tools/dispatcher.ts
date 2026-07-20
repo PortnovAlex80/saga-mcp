@@ -15,6 +15,12 @@ import {
   workerDonePayload,
   hashPayload,
 } from '../lifecycle/idempotency.js';
+import {
+  enqueueOutboxIntent,
+  drainOutbox,
+  readOutboxResult,
+  generateDownstreamIntentKey,
+} from '../lifecycle/outbox.js';
 
 // ============================================================================
 // Dispatcher: saga раздаёт задачи агентам.
@@ -723,26 +729,67 @@ function handleWorkerDone(args: Record<string, unknown>): {
       reply,
     });
 
+    // ADR-013 Phase 1.2: enqueue a durable outbox intent for downstream
+    // workflow generation. The actual generation runs AFTER COMMIT (below)
+    // via drainOutbox — but if we crash between COMMIT and that call, the
+    // intent row survives and a future drain picks it up. The intent is
+    // only enqueued when the task is in a generation-eligible state
+    // (non-git_change done — see the drain section below for why git_change
+    // tasks are excluded: their generation runs after merge, not after done).
+    if (newStatus === 'done') {
+      const completedTaskRow = db.prepare(
+        'SELECT task_kind, execution_mode FROM tasks WHERE id=?',
+      ).get(taskId) as { task_kind: string | null; execution_mode: string } | undefined;
+      const isGitChange =
+        completedTaskRow?.task_kind != null
+        && completedTaskRow.execution_mode === 'git_change';
+      if (!isGitChange) {
+        enqueueOutboxIntent(db, {
+          intentKey: generateDownstreamIntentKey(taskId),
+          commandKind: 'generate_downstream',
+          originatingCommandId: commandId,
+          taskId,
+        });
+      }
+    }
+
     return reply;
   }; // end completeTask
 
   // BEGIN IMMEDIATE — сериализация писателей (db.transaction тут DEFERRED,
   // поэтому оборачиваем явно).
   const completed = withImmediateTransaction(db, completeTask);
-  const completedTask = db.prepare(
-    'SELECT task_kind, execution_mode, integration_state FROM tasks WHERE id=?',
-  ).get(taskId) as { task_kind: string | null; execution_mode: string; integration_state: string } | undefined;
-  if (
-    completed.completed_new_status === 'done'
-    && (!completedTask?.task_kind || completedTask.execution_mode !== 'git_change')
-  ) {
-    try {
-      const generated = generateNextForCompletedTask(taskId);
-      if (generated) completed.workflow_generation = generated;
-    } catch (error) {
-      completed.workflow_generation_error = error instanceof Error ? error.message : String(error);
-      logActivity(db, 'task', taskId, 'updated', 'workflow_generation', null, 'failed',
-        `Automatic downstream generation failed: ${completed.workflow_generation_error}`);
+
+  // ADR-013 Phase 1.2: drain pending workflow-generation intents OUTSIDE the
+  // tx. The intent row was enqueued inside the tx, so it survives any crash
+  // after COMMIT. drainOutbox is idempotent: workflow generation itself is
+  // idempotent (workflow.ts:handleWorkflowGenerateNext uses INSERT OR IGNORE
+  // + tracks created vs reused), so even a partial crash between enqueue and
+  // here, or a duplicate drain, is safe.
+  if (completed.completed_new_status === 'done') {
+    const summary = drainOutbox(
+      db,
+      'generate_downstream',
+      (id) => generateNextForCompletedTask(id),
+      { intentKey: generateDownstreamIntentKey(taskId) },
+    );
+    if (summary.processed > 0) {
+      logActivity(db, 'task', taskId, 'updated', 'workflow_generation', null, null,
+        `Outbox drain: ${summary.succeeded} ok, ${summary.failed} failed, ${summary.skipped} skipped`);
+    }
+    // Augment the reply with the persisted result (if any). This is the
+    // byte-equivalent-replay guarantee: two identical retries return the
+    // same response because both read from the durable outbox row.
+    const intentRow = readOutboxResult(db, generateDownstreamIntentKey(taskId));
+    if (intentRow?.state === 'done' && intentRow.result_json) {
+      try {
+        const parsed = JSON.parse(intentRow.result_json);
+        if (parsed != null) completed.workflow_generation = parsed;
+      } catch {
+        // Defensive: corrupt result_json — leave workflow_generation unset.
+      }
+    } else if (intentRow?.state === 'failed') {
+      completed.workflow_generation_error = intentRow.last_error ?? 'unknown';
     }
   }
   return completed;
@@ -1277,15 +1324,28 @@ function handleWorkerMergeRelease(args: Record<string, unknown>): {
     updateExecutionPhase(db, taskId, workerId, args.execution_id, 'finishing');
     if (outcome === 'merged') {
       reevaluateDownstream(db, taskId);
+      // ADR-013 Phase 1.2: enqueue durable intent for post-merge downstream
+      // generation. git_change tasks reach 'done' through worker_done but
+      // only become eligible for downstream generation AFTER merge into the
+      // integration branch (their formal work is not yet complete). The
+      // direct call to generateNextForCompletedTask that used to live here
+      // ran outside the tx — a crash between COMMIT and that call would
+      // lose downstream tasks forever.
+      enqueueOutboxIntent(db, {
+        intentKey: generateDownstreamIntentKey(taskId),
+        commandKind: 'generate_downstream',
+        originatingCommandId: `merge-release:${taskId}`,
+        taskId,
+      });
     }
   });
 
+  // Drain pending intents OUTSIDE the tx (idempotent side effect).
   if (outcome === 'merged') {
-    try {
-      generateNextForCompletedTask(taskId);
-    } catch (error) {
-      logActivity(db, 'task', taskId, 'updated', 'workflow_generation', null, 'failed',
-        `Automatic downstream generation after merge failed: ${error instanceof Error ? error.message : String(error)}`);
+    const summary = drainOutbox(db, 'generate_downstream', (id) => generateNextForCompletedTask(id));
+    if (summary.processed > 0) {
+      logActivity(db, 'task', taskId, 'updated', 'workflow_generation', null, null,
+        `Post-merge outbox drain: ${summary.succeeded} ok, ${summary.failed} failed, ${summary.skipped} skipped`);
     }
   }
   return { task_id: taskId, result: outcome, merged_commit: outcome === 'merged' ? commitSha : null };
