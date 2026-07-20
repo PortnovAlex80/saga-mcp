@@ -37,12 +37,18 @@ ZCode skills/agents, кодирующих роли и процедуры.
         │      (минуя PRD)                       │
         ▼                                           │
      ┌─────────────────────────────────────────┐   │
-     │  2. FORMALIZATION (цепь ролей)          │   │
-     │  saga-product  → PRD                    │   │
-     │  saga-architect → SRS + API contract    │   │
-     │  saga-analyst  → UC → AC                │   │
-     │  Каждый пьёт из предыдущего (trace)     │   │
-     │  АРТЕФАКТЫ: PRD → SRS → UC → AC         │   │
+     │  2. FORMALIZATION Part 1 (ЧТО)          │   │
+     │  saga-product    → PRD (+FR/NFR/RULE)   │   │
+     │  saga-analyst    → UC → AC              │   │
+     │  saga-reconciler → baseline_hash freeze │   │
+     │  АРТЕФАКТЫ: PRD → UC → AC               │   │
+     └──────────────┬──────────────────────────┘   │
+                    ▼                               │
+     ┌─────────────────────────────────────────┐   │
+     │  2b. FORMALIZATION Part 2 (КАК)         │   │
+     │  saga-architect → SRS ПОСЛЕ AC          │   │
+     │    (видит замороженные AC + complexity) │   │
+     │  АРТЕФАКТЫ: SRS (стиль, порты, §D DECOMP)│   │
      └──────────────┬──────────────────────────┘   │
                     ▼                               │
      ┌─────────────────────────────────────────┐   │
@@ -84,8 +90,9 @@ ZCode skills/agents, кодирующих роли и процедуры.
 | Этап | Топология | Почему |
 |---|---|---|
 | Discovery | **Рой (3 параллельно)** | Три независимых взгляда |
-| Formalization | **Цепь (последовательно)** | SRS невозможен без PRD |
-| Planning | **Один** | Нужно видеть ВСЕ AC сразу |
+| Formalization Part 1 (UC+AC+Reconcile) | **Цепь (последовательно)** | UC невозможен без PRD; AC без UC; Reconcile без AC |
+| Formalization Part 2 (SRS) | **Один (после AC)** | Архитектор выбирает стиль, видя замороженные AC + brief complexity (ADR-014) |
+| Planning | **Один** | Нужно видеть ВСЕ AC сразу + §D DECOMP из SRS |
 | Execution | **Рой (N параллельно)** | Независимые задачи |
 | AC-verification | **Один на AC** | Содержательная сверка |
 | Review/merge | **Один + блокировка** | merge-lock = критическая секция |
@@ -128,8 +135,10 @@ ZCode skills/agents, кодирующих роли и процедуры.
 ```
 theme       ← бизнес-доска (Марс)
   brief     ← discovery (idea → decision)
-    prd → fr/nfr → srs → uc → ac →(implements)→ dev-tasks
-                                          ↘ (verified_by) → ac-verification-tasks
+    prd → fr/nfr/rule   (PRD родитель FR/NFR/RULE с ADR-014)
+      ├── uc → ac →(implements)→ dev-tasks     (UC/AC пишутся по PRD, ДО SRS)
+      │                    ↘ (verified_by) → ac-verification-tasks
+      └── srs (ПОСЛЕ AC) → decomp §D            (SRS родитель DECOMP, архитектор видит AC)
 ```
 
 ---

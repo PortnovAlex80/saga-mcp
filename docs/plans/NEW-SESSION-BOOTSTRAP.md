@@ -112,7 +112,7 @@ BRIEF → PRD (с FR/NFR/RULE) → UC → AC → Reconcile → SRS+DECOMP → Pl
 | **B** | PRODUCT | `skills/saga-product/SKILL.md`, `docs/requirements/templates/{PRD,SRS,INVARIANCES}.md` | параллельно | 3-4 ч |
 | **C** | ARCHITECT | `skills/saga-architect/SKILL.md`, `skills/saga-architecture-reviewer/SKILL.md` | параллельно | 4-6 ч |
 | **D** | ANALYST+PLANNER | `skills/saga-{analyst,planner,orchestrator,reconciler,requirements-reviewer,senior-analyst,autonomous-recovery}/SKILL.md` (7 файлов) | параллельно | 4-6 ч |
-| **E** | DOCS | `README.md`, `README.ru.md`, `docs/{INSTALL,saga-flow-overview,saga-mcp-3.0-pipeline-ui-spec,blog-saga-mcp-agent-governance,saga-mcp-history,srs-br-and-traceability,saga-mcp-3.0-orchestration}.md`, `docs/architecture/decisions/{008-brief-accepted-prd-only,012-multi-track-pipeline}.md`, НОВЫЙ `013-pipeline-reorder-srs-after-ac.md` | параллельно | 4-6 ч |
+| **E** | DOCS | `README.md`, `README.ru.md`, `docs/{INSTALL,saga-flow-overview,saga-mcp-3.0-pipeline-ui-spec,blog-saga-mcp-agent-governance,saga-mcp-history,srs-br-and-traceability,saga-mcp-3.0-orchestration}.md`, `docs/architecture/decisions/{008-brief-accepted-prd-only,012-multi-track-pipeline}.md`, НОВЫЙ `014-pipeline-reorder-srs-after-ac.md` | параллельно | 4-6 ч |
 | **F** | TESTS | `tests/lifecycle/{formalization-mechanics,traceability-gate}.test.mjs`, `tests/product-workflow.test.mjs`, опц. `tests/{track-pipeline,fast-track/fast-track,migrations/migration-tests}.test.mjs` | **после A** | 8-12 ч |
 
 ### Фазы запуска

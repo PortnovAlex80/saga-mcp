@@ -3,9 +3,17 @@
 <!--
   Copy this template to docs/requirements/REQ-NNN-<slug>/00-PRD.md.
   Produced by saga-product. Parented to the accepted brief from Discovery. The
-  PRD fixes business intent — everything downstream (SRS, UC, AC) derives from
-  it. The PRD MUST NOT specify implementation: no stack, no APIs, no data
-  models, no algorithm names. That is the SRS's job (saga-architect).
+  PRD fixes business intent and the WHAT layer (FR/NFR/RULE) — everything
+  downstream (UC, AC, SRS) derives from it. The PRD MUST NOT specify
+  implementation: no stack, no APIs, no data models, no algorithm names, no
+  class names. That is the SRS's job (saga-architect, which now runs AFTER AC
+  are frozen — see ADR-014).
+
+  FR/NFR/RULE live HERE, in the PRD — not in the SRS. saga-product registers
+  each FR/NFR/RULE row as its own artifact (parent_artifact_id = this PRD,
+  derived_from → this PRD) so UC, AC and the SRS Invariant Registry can each
+  trace to a single stable handle. A row that lives only in PRD prose is
+  invisible to the traceability lint.
 
   Fill ALL sections. Required sections are marked (REQUIRED). The product skill
   (skills/saga-product/SKILL.md) defines what each section must contain.
@@ -32,7 +40,7 @@
 
 <!--
   What this episode WILL deliver. Concrete, observable, testable. Each item
-  becomes the seed for one or more FRs in the SRS.
+  becomes the seed for one or more FRs in §FR below.
 -->
 
 ### Out of scope / Non-goals
@@ -53,6 +61,117 @@
   before designing, that does NOT belong in the FR list because it is not
   observable behaviour — it is the world the behaviour lives in.
 -->
+
+## §FR Functional Requirements (REQUIRED)
+
+<!--
+  FR describes OBSERVABLE BEHAVIOUR, NOT implementation. A black-box observer
+  must be able to verify each FR without knowing the stack. These used to live
+  in the SRS — they moved here (ADR-014) because UC and AC are now written
+  against the PRD (before SRS), so the FR handles they trace to MUST exist in
+  the PRD.
+
+  Each FR row MUST be registered by saga-product as its own `FR` artifact
+  (type='FR', parent_artifact_id = this PRD, derived_from → this PRD). The
+  `code` (FR-1, FR-2, ...) is the stable query key — UC and AC later trace to
+  it by code.
+
+  Hard rules (cgad-spec-lint R14 enforces):
+    - No endpoints, no JSON fields, no DB tables, no DB identifiers.
+    - No HTTP verbs, no protocol names, no framework references.
+    - No class names, no algorithm names, no library names.
+  If an FR requires a specific algorithm or formula: capture the business/
+  legal intent in a RULE artifact (§RULE below), capture the mechanism in a
+  SPEC artifact (created later by saga-architect in the SRS), and write the
+  FR as:
+      "The system shall calculate X per RULE-N using the approved method
+       (see SPEC-N)."
+  Do NOT inline formulas into the FR body. R14 will flag the leak.
+
+  Acceptance criteria format: each FR is later refined by one or more ACs
+  (Given / When / Then, observable outcomes) — those live in the AC artifact
+  family, not here. Here, state only the behavioural requirement.
+-->
+
+### FR-1 — <title>
+
+**Statement:** The system shall <observable behaviour>, <condition>.
+
+**Acceptance criteria format:** Given / When / Then, with observable outcomes.
+No implementation assertions (no "calls endpoint X", no "writes to table Y",
+no "returns JSON field Z").
+
+<!-- Repeat per FR. saga-product registers FR-1, FR-2, ... as individual
+     artifacts with code = FR-N, path anchored at #FR-N. -->
+
+---
+
+## §NFR Non-Functional Requirements — Capacity Targets (REQUIRED)
+
+<!--
+  NFRs are capacity / quality targets: performance, security, reliability,
+  browser support, accessibility, etc. Each NFR MUST carry a quantitative
+  target — "fast"/"secure"/"quick" are not requirements. The target becomes
+  the baseline_value for runtime observations (REQ-011) and the oracle for
+  verification evidence.
+
+  Each NFR row MUST be registered by saga-product as its own `NFR` artifact
+  (type='NFR', parent_artifact_id = this PRD, derived_from → this PRD). The
+  SRS §9 Technology Stack is later chosen to satisfy these NFRs.
+
+  Like FRs, NFR bodies must NOT name implementation (no "Vite", no "PostgreSQL
+  EXPLAIN ANALYZE"). State the target as an observable property of the shipped
+  system: "p99 page load < 2s on Slow 3G". The architect chooses how to hit it.
+-->
+
+| NFR | Target | Verification |
+|-----|--------|--------------|
+| NFR-1 | _e.g. p99 latency < 200ms at 1000 QPS sustained_ | _L4 benchmark_ |
+| NFR-2 | _e.g. cold start < 3s wall-clock_ | _L4 benchmark_ |
+| NFR-3 | _e.g. SAST clean (zero high-severity findings)_ | _L4 SAST scan_ |
+
+<!-- saga-product registers NFR-1, NFR-2, ... as individual artifacts with
+     code = NFR-N, path anchored at #NFR-N (or at this section if the table
+     is the only mention). -->
+
+---
+
+## §RULE Business Rules (REQUIRED when domain logic is present)
+
+<!--
+  RULE captures BUSINESS / LEGAL intent: decision logic, formulas, routing
+  policies, regulatory constraints. RULEs evolve independently of the FRs that
+  enforce them. A RULE is the WHAT of the decision; the FR states that the
+  system honours it; the SRS SPEC (later) states the mechanism.
+
+  Examples of RULEs:
+    - "If refund amount exceeds original charge amount, reject with error E."
+    - "Tax is calculated per jurisdiction at the rate effective on invoice date."
+    - "A user with role 'auditor' may read but not write financial records."
+    - "Discount code applies once per customer per campaign."
+
+  Each RULE row MUST be registered by saga-product as its own `RULE` artifact
+  (type='RULE', parent_artifact_id = this PRD, derived_from → this PRD).
+  cgad-spec-lint R15 checks that every accepted RULE has at least one
+  outgoing trace to a UC or AC — so a RULE with no consumer is visible at
+  lint time. The SRS §2.3 Invariant Registry later references the RULE it
+  mechanically enforces (RULE = business intent, INV-... = engineered
+  predicate + L3/L4 check; they do not duplicate each other).
+
+  RULEs MAY name domain entities (refund, charge, jurisdiction) — those are
+  ubiquitous language, not implementation. They must NOT name DB tables,
+  HTTP verbs, framework classes (R14 still applies).
+-->
+
+| RULE | Intent | Enforced by FR |
+|------|--------|----------------|
+| RULE-1 | _one-sentence business rule_ | FR-_n_ |
+| RULE-2 | _one-sentence business rule_ | FR-_n_ |
+
+<!-- saga-product registers RULE-1, RULE-2, ... as individual artifacts with
+     code = RULE-N, path anchored at #RULE-N. -->
+
+---
 
 ## Hypotheses (REQUIRED for product episodes)
 
@@ -119,7 +238,8 @@
 
 <!--
   Unresolved product decisions that the PRD carries forward. Each must have an
-  owner and a decision date. Anything still open at SRS time is a risk the
-  architect must flag. Use an OQ artifact (type='OQ') per open question so
-  saga-planner can track resolution.
+  owner and a decision date. Anything still open at UC/AC time blocks the
+  baseline; anything still open at SRS time (SRS now runs AFTER AC — see
+  ADR-014) is a risk the architect must flag. Use an OQ artifact (type='OQ')
+  per open question so saga-planner can track resolution.
 -->

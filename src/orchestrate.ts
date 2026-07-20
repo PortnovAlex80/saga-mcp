@@ -123,13 +123,14 @@ interface RecoveryRule {
 
 const RECOVERY_TREE: Record<string, RecoveryRule[]> = {
   formalization: [
-    // NOTE (formalization-mechanics fix): workflow.ts now spawns a real
-    // formalization.ac task from srs_accepted/uc_accepted, so AC generation
-    // is the normal pipeline, not a recovery concern. The rule below is a
-    // SAFETY NET for unusual cases: a saga-analyst worker crashed mid-AC,
-    // or someone manually deleted accepted ACs. In the happy path this
-    // rule never fires because the formalization.ac task succeeded and the
-    // baseline is already accepted before episode_transition runs.
+    // NOTE (ADR-013 pipeline-reorder-srs-after-ac): workflow.ts now spawns
+    // the formalization.ac task from uc_accepted (UC has no upstream sibling
+    // to wait for anymore; SRS moved post-baseline). So AC generation is the
+    // normal pipeline, not a recovery concern. The rule below is a SAFETY NET
+    // for unusual cases: a saga-analyst worker crashed mid-AC, or someone
+    // manually deleted accepted ACs. In the happy path this rule never fires
+    // because the formalization.ac task succeeded and the baseline is already
+    // accepted before episode_transition runs.
     {
       match: /no AC artifacts/i,
       diagnosis: 'Episode has no AC artifacts. Either formalization.ac task has not run, or saga-analyst did not register AC artifacts.',

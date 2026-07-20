@@ -82,8 +82,29 @@ export async function orchestrate(projectId, epicId, options) {
 > kickstart, а `prd_accepted` создал бы UC как child of PRD — `sibling()`
 > упал бы с `"matching formalization.uc task was not found"` и заблокировал
 > весь downstream. Поэтому переход создаёт **только PRD**.
+>
+> **Superseded (ADR-014, 2026-07-20):** `sibling()` rationale между SRS и UC
+> больше не применяется. После перестановки pipeline SRS создаётся через
+> `baseline_accepted` (после AC), а не через `prd_accepted` параллельно с UC.
+> `prd_accepted` теперь создаёт ТОЛЬКО UC. См. addendum к ADR-008 и сам
+> ADR-014 ([014-pipeline-reorder-srs-after-ac.md](architecture/decisions/014-pipeline-reorder-srs-after-ac.md)).
 
-Сейчас есть: `prd_accepted`, `srs_accepted`, `uc_accepted`, `baseline_accepted`.
+> **Update (ADR-014, 2026-07-20):** pipeline reorder — SRS moved AFTER AC.
+> Список transitions теперь (канон):
+>
+> | task_kind | transition | что создаёт |
+> |---|---|---|
+> | `discovery.kickstart` | `brief_accepted` | `formalization.prd` |
+> | `formalization.prd` | `prd_accepted` | **ТОЛЬКО `formalization.uc`** (не SRS+UC) |
+> | `formalization.uc` | `uc_accepted` | `formalization.ac` (без ожидания SRS) |
+> | `formalization.ac` | `ac_accepted` | `formalization.reconciliation` (без dep на SRS) |
+> | `formalization.reconciliation` | `baseline_accepted` | `formalization.srs` (НОВОЕ — SRS после AC) |
+> | `formalization.srs` | `srs_accepted` (НОВЫЙ) | `planning.decomposition` |
+>
+> FR/NFR/RULE переезжают из SRS в PRD. SRS становится чисто архитектурным +
+> содержит §D DECOMP (per-AC YAML map), по которому planner создаёт задачи
+> (dumb copier). См. `docs/architecture/decisions/014-pipeline-reorder-srs-after-ac.md`
+> и `docs/plans/PIPELINE-REORDER-SRS-AC.md` (полный план).
 
 Добавить:
 
@@ -177,6 +198,9 @@ HTML: кнопка «+ Новый проект» → модальная форм
 
 ### workflow_generate_next (`src/tools/workflow.ts`)
 - `specsForTransition` (строка 82) — 4 transition: prd_accepted, srs_accepted, uc_accepted, baseline_accepted
+  (before ADR-014; after ADR-014: 6 transitions — added `brief_accepted` (ADR-008)
+  and reshaped `prd_accepted` → UC only, `baseline_accepted` → SRS, `srs_accepted`
+  → planning. См. таблицу выше и ADR-014.)
 - `generateNextForCompletedTask` (строка 175) — вызывается из worker_done и worker_merge_release
 - `insertGeneratedTask` (строка 28) — idempotent через generation_key
 
@@ -288,7 +312,8 @@ Saga:
   - Создаёт проект + репо + git + эпизод
   - Создаёт задачу discovery.kickstart
   - Запускает движок (background)
-  - Движок: spawn kickstart worker → brief → formalization tasks → spawn workers → PRD/SRS/UC/AC → planning → dev → verify → integration → completed
+  - Движок: spawn kickstart worker → brief → formalization tasks → spawn workers → PRD(+FR/NFR/RULE)/UC/AC/Reconcile/SRS(+§D DECOMP) → planning → dev → verify → integration → completed
+    (pipeline order per ADR-014: `PRD → UC → AC → SRS`, SRS AFTER AC)
   - Канбан: live обновление, heartbeat pulse
   - Если needs-human: красный pulse + кнопка Resume
 Пользователь: открывает канбан через 2 часа → продукт готов

@@ -76,7 +76,7 @@ BRIEF → PRD (с FR/NFR/RULE) → UC → AC → Reconcile → SRS+DECOMP → Pl
 | B | **PRODUCT** — saga-product + templates PRD/SRS | `skills/saga-product/SKILL.md`, `docs/requirements/templates/PRD.md`, `docs/requirements/templates/SRS.md`, `docs/requirements/templates/INVARIANCES.md` | от §1 контракта | 3-4 ч |
 | C | **ARCHITECT** — saga-architect + reviewer | `skills/saga-architect/SKILL.md`, `skills/saga-architecture-reviewer/SKILL.md` | от §1 контракта | 4-6 ч |
 | D | **ANALYST+PLANNER** — analyst, planner, orchestrator, reconciler | `skills/saga-analyst/SKILL.md`, `skills/saga-planner/SKILL.md`, `skills/saga-orchestrator/SKILL.md`, `skills/saga-reconciler/SKILL.md`, `skills/saga-requirements-reviewer/SKILL.md` | от §1 контракта | 4-6 ч |
-| E | **DOCS** — READMEs, ADR, INSTALL, blog | `README.md`, `README.ru.md`, `docs/INSTALL.md`, `docs/saga-flow-overview.md`, `docs/saga-mcp-3.0-pipeline-ui-spec.md`, `docs/blog-saga-mcp-agent-governance.md`, `docs/saga-mcp-history.md`, `docs/srs-br-and-traceability.md`, `docs/saga-mcp-3.0-orchestration-plan.md`, `docs/architecture/decisions/008-*.md`, `docs/architecture/decisions/012-*.md`, НОВЫЙ `013-pipeline-reorder-srs-after-ac.md` | от §1 контракта | 4-6 ч |
+| E | **DOCS** — READMEs, ADR, INSTALL, blog | `README.md`, `README.ru.md`, `docs/INSTALL.md`, `docs/saga-flow-overview.md`, `docs/saga-mcp-3.0-pipeline-ui-spec.md`, `docs/blog-saga-mcp-agent-governance.md`, `docs/saga-mcp-history.md`, `docs/srs-br-and-traceability.md`, `docs/saga-mcp-3.0-orchestration-plan.md`, `docs/architecture/decisions/008-*.md`, `docs/architecture/decisions/012-*.md`, НОВЫЙ `014-pipeline-reorder-srs-after-ac.md` | от §1 контракта | 4-6 ч |
 | F | **TESTS** — тесты saga | `tests/lifecycle/formalization-mechanics.test.mjs`, `tests/lifecycle/traceability-gate.test.mjs`, `tests/product-workflow.test.mjs`, `tests/track-pipeline.test.mjs` (maybe) | **от потока A** (контракты transitions должны совпасть с тестами) | 8-12 ч |
 
 ### 2.1. Граф зависимостей
@@ -216,7 +216,7 @@ BRIEF → PRD (с FR/NFR/RULE) → UC → AC → Reconcile → SRS+DECOMP → Pl
 - `docs/saga-mcp-3.0-orchestration-plan.md` (изменить)
 - `docs/architecture/decisions/008-brief-accepted-prd-only.md` (addendum)
 - `docs/architecture/decisions/012-multi-track-pipeline.md` (minor)
-- НОВЫЙ `docs/architecture/decisions/013-pipeline-reorder-srs-after-ac.md`
+- НОВЫЙ `docs/architecture/decisions/014-pipeline-reorder-srs-after-ac.md`
 
 **Задача:** обновить все упоминания pipeline `PRD → SRS → UC → AC` на новый `PRD → UC → AC → SRS`. Создать ADR-013 с обоснованием перестановки. Добавить addendum к ADR-008 про инвалидацию rationale `sibling()`.
 

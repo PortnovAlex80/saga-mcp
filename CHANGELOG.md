@@ -1,5 +1,23 @@
 # saga-mcp 3.0 — Changelog
 
+## [Unreleased]
+
+### Changed — Pipeline reorder: SRS after AC + Complexity Gate + DECOMP (ADR-014)
+
+- **Architecture step moved.** SRS is now written AFTER AC (was: parallel with UC).
+  Pipeline: `BRIEF → PRD(+FR/NFR/RULE) → UC → AC → Reconcile → SRS(+DECOMP) → Planning → Dev → Verify → Integrate`.
+- **Complexity Gate linked to architect.** saga-architect MUST read brief complexity
+  and choose architecture by mandatory table (XS=KISS, M-sequence=Modular Monolith, etc.).
+- **DECOMP §D.** New SRS section: per-AC YAML map (files, functions, types,
+  conflict_keys, ac_kind). Planner becomes dumb copier.
+- **FR/NFR/RULE moved to PRD.** saga-product creates them as separate artifacts with
+  derived_from → PRD.
+- **11 skills updated**, **12 docs updated**, ADR-014 added, ADR-008 addendum.
+
+See `docs/plans/PIPELINE-REORDER-SRS-AC.md` for full plan and rationale.
+
+---
+
 ## Hotfix: saga-mcp 3.0.1 — Worker Execution Fencing + Markdown + Russian UX (2026-07-18)
 
 **11 commits** from `f865570` to `3ee4e66`. End-to-end verified by completing the

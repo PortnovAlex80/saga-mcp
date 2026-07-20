@@ -561,7 +561,7 @@ src/
 - [ ] **11.13.** `docs/saga-mcp-3.0-orchestration-plan.md` — transition list, superseded §2 (строки 86-94, 179, 291)
 - [ ] **11.14.** `docs/architecture/decisions/008-brief-accepted-prd-only.md` — addendum: rationale `sibling()` инвалидирован
 - [ ] **11.15.** `docs/architecture/decisions/012-multi-track-pipeline.md` — minor note (строка 16)
-- [ ] **11.16.** **Новый ADR** (`docs/architecture/decisions/013-pipeline-reorder-srs-after-ac.md`) — обоснование перестановки, ссылка на этот план
+- [ ] **11.16.** **Новый ADR** (`docs/architecture/decisions/014-pipeline-reorder-srs-after-ac.md`) — обоснование перестановки, ссылка на этот план
 - [ ] **11.17.** `CHANGELOG.md` — добавить entry при релизе (Этап 13)
 
 ### Этап 12. End-to-end проверка (4-8 часов)
