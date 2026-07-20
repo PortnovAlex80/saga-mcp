@@ -108,64 +108,88 @@ test('architecture: assertNever is exported from domain and used in switches', (
 });
 
 // ---------------------------------------------------------------------------
-// 3. No direct lifecycle UPDATE outside sanctioned files (blueprint §18:1120).
+// 3. Boundary check: lifecycle UPDATE confined to src/lifecycle/** (ADR-013 §3.2).
 // ---------------------------------------------------------------------------
+// Pre-3.2 this test was a 13-file whitelist: 'these files are allowed to
+// mutate task lifecycle, all others are forbidden'. A whitelist is weak —
+// adding a new writer is a one-line change to SANCTIONED with no force
+// pushing the writer into the lifecycle layer.
+//
+// Post-3.2 the assertion is inverted: lifecycle UPDATE (status / assigned_to
+// / integration_state / current_execution_id mutation) is allowed ONLY in
+// src/lifecycle/**. Every other file that contains such an UPDATE must be
+// listed in TEMPORARY_EXCEPTIONS with a TODO(phase) tag and a short reason.
+// The test fails on any new exception that is not explicitly acknowledged.
+//
+// The exceptions list is the migration surface for Phase 4 (application
+// service / command bus). Each entry should disappear as the corresponding
+// handler is rewritten to call into src/lifecycle/application-service.ts.
 
-test('architecture: no direct lifecycle UPDATE outside sanctioned writers', () => {
-  // Lifecycle UPDATE patterns we want to confine. Each is a status/assigned_to/
-  // integration_state mutation. They are allowed ONLY in:
-  //   - src/lifecycle/**         (projector, atomic-release, etc.)
-  //   - src/tools/dispatcher.ts  (worker_next/worker_done/ask/merge lifecycle tools)
-  //   - src/tools/tasks.ts       (evaluateAndUpdateDependencies — the reconciler)
-  //   - src/db.ts                (migrations)
-  //   - src/schema.ts            (DDL only, no UPDATE — included for completeness)
-  //   - src/tools/lifecycle.ts   (episode_transition, verification_record)
-  //   - src/orchestrate.ts       (engine recovery — recoverAssignment)
-  //   - tracker-view/**          (recoverRunnerAssignment)
-  //
-  // The blacklist: activity.ts MUST NOT mutate status/assigned_to (Slice 3 fix).
-  //
-  // We look for the specific patterns and assert they don't appear in
-  // non-sanctioned files.
-
-  const SANCTIONED = new Set([
-    'src/lifecycle/atomic-release.ts',
-    'src/lifecycle/backfill-migration.ts',
-    'src/lifecycle/work-item-repository.ts',
-    'src/lifecycle/compatibility-projector.ts',
-    'src/lifecycle/integration-executor.ts',
-    'src/lifecycle/idempotency.ts',
-    'src/lifecycle/invariant-scanner.ts',
-    'src/tools/dispatcher.ts',
-    'src/tools/tasks.ts',
-    'src/tools/lifecycle.ts',
-    'src/db.ts',
-    'src/orchestrate.ts',
-    'src/worker-executions.ts',
+test('architecture: lifecycle UPDATE confined to src/lifecycle/** (boundary, not whitelist)', () => {
+  // Files that legitimately still write lifecycle fields outside the kernel.
+  // Each entry MUST carry a TODO(phase) tag so it shows up in the migration
+  // backlog. Adding an entry without a TODO is a test failure.
+  const TEMPORARY_EXCEPTIONS = new Map([
+    // Phase 4.1 — these handlers will become thin adapters to the command bus.
+    ['src/tools/dispatcher.ts', 'TODO(4.1): worker_next/worker_done/ask/merge move to application-service'],
+    ['src/tools/tasks.ts', 'TODO(4.1): evaluateAndUpdateDependencies moves to lifecycle/reconciler'],
+    ['src/orchestrate.ts', 'TODO(4.1): recoverAssignment delegates to atomic-release already, but still contains UPDATE tasks SET status'],
+    ['src/worker-executions.ts', 'TODO(4.1): markExecutionRunning still writes state=running directly; only terminalization was unified in 3.1'],
   ]);
 
+  // Every lifecycle mutation we consider boundary-worthy. status/assigned_to
+  // were the original patterns; current_execution_id and integration_state
+  // are part of the same fence/lifecycle and should also be confined.
   const FORBIDDEN_PATTERNS = [
     /UPDATE\s+tasks\s+SET\s+status\s*=/i,
     /UPDATE\s+tasks\s+SET[^=]*assigned_to\s*=/i,
+    /UPDATE\s+tasks\s+SET[^=]*integration_state\s*=/i,
+    /UPDATE\s+tasks\s+SET[^=]*current_execution_id\s*=/i,
   ];
 
-  // Walk all .ts under src/ except the sanctioned list.
   const allTs = listFiles(SRC, isTs);
   const violations = [];
+  const staleExceptions = new Set(TEMPORARY_EXCEPTIONS.keys());
+
   for (const file of allTs) {
     const rel = path.relative(ROOT, file).replace(/\\/g, '/');
-    if (SANCTIONED.has(rel)) continue;
+    // Anything under src/lifecycle/** is the kernel — always allowed.
+    if (rel.startsWith('src/lifecycle/')) continue;
+    // Read once, scan for any forbidden pattern.
     const src = readFileSync(file, 'utf8');
-    for (const pattern of FORBIDDEN_PATTERNS) {
-      if (pattern.test(src)) {
-        violations.push(`${rel}: matches /${pattern.source}/`);
+    const matches = FORBIDDEN_PATTERNS
+      .filter((p) => p.test(src))
+      .map((p) => p.source);
+    if (matches.length === 0) continue;
+
+    if (TEMPORARY_EXCEPTIONS.has(rel)) {
+      // Acknowledged exception — verify it carries a TODO tag (enforces
+      // that new entries are deliberate, not silent).
+      const tag = TEMPORARY_EXCEPTIONS.get(rel);
+      if (!/TODO\(|NOT-ADR-013/.test(tag)) {
+        violations.push(
+          `${rel}: exception lacks TODO(phase) or NOT-ADR-013 tag (got: "${tag}")`,
+        );
       }
+      staleExceptions.delete(rel);
+      continue;
     }
+    violations.push(`${rel}: matches ${matches.map((m) => `/${m}/`).join(', ')}`);
+  }
+
+  // Any TEMPORARY_EXCEPTIONS entry that no longer matches a real file (or
+  // no longer contains the forbidden pattern) is a stale exception — remove
+  // it. This makes the migration forward-visible: when Phase 4.1 lands and
+  // the handler stops writing lifecycle fields, the exception must go too.
+  if (staleExceptions.size > 0) {
+    violations.push(
+      `stale TEMPORARY_EXCEPTIONS (file no longer contains lifecycle UPDATEs — remove the entry): ${[...staleExceptions].join(', ')}`,
+    );
   }
 
   assert.deepEqual(
     violations, [],
-    `direct lifecycle UPDATE forbidden outside sanctioned writers. Found:\n${violations.join('\n')}`,
+    `lifecycle UPDATE must live in src/lifecycle/**. Found violations:\n${violations.join('\n')}`,
   );
 });
 
