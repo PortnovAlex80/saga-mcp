@@ -101,14 +101,24 @@ async function makeFixture(decision) {
 // "Cannot open database because the directory does not exist" noise and
 // sometimes flipping subsequent tests' assertions (env var pollution, race
 // on SAGA_MOCK_DECISION).
+//
+// ADR-013 Phase 1.3: an AbortController is created per fixture and passed
+// into orchestrate(). The finally block aborts the controller BEFORE killing
+// spawned children — this makes the pump loop exit cooperatively at the next
+// sleep boundary, so the engine's promise actually resolves (instead of
+// lingering as a zombie in waitForResume). Before this fix, track(clarify)'s
+// engine outlived Promise.race and its poll-loop starved the next test's
+// pump, flipping track(reject) intermittently.
 async function runEngine(fixture) {
   const { orchestrate } = await import('../dist/orchestrate.js');
   fixture.spawnedChildren = [];
+  fixture.abortController = new AbortController();
   const result = await orchestrate({
     projectId: fixture.project.id,
     epicId: fixture.epic.id,
     concurrency: 1,
     claudePath: process.execPath,
+    abortSignal: fixture.abortController.signal,
     spawn: (cmd, args, opts) => {
       const mockScript = path.join(sagaRoot, 'tests', 'mock-claude.mjs');
       const child = nodeSpawn(cmd, [mockScript, ...args], opts);
@@ -118,6 +128,15 @@ async function runEngine(fixture) {
     sleep: (ms) => new Promise(r => setTimeout(r, Math.min(ms, 50))),
   });
   return result;
+}
+
+// Cooperative-shutdown helper: abort the engine, then kill spawned children.
+// The order matters — abort first so the pump loop exits cleanly and stops
+// scheduling new spawns, then SIGKILL the already-spawned mock-claude
+// children so they do not outlive the test fixture.
+function shutdownEngine(fixture) {
+  try { fixture.abortController?.abort(); } catch { /* already aborted */ }
+  killSpawnedChildren(fixture);
 }
 
 // Kill any mock-claude children a fixture's engine spawned. Called in the
@@ -171,7 +190,7 @@ test('track(go): formal pipeline — discovery advances to formalization', async
     assert.equal(episode.track, 'formal',
       `decision='go' should keep the episode on the 'formal' track`);
   } finally {
-    killSpawnedChildren(fx);
+    shutdownEngine(fx);
     const { closeDb } = await import('../dist/db.js');
     closeDb();
   }
@@ -218,7 +237,7 @@ test('track(fast-track): routeFastTrack jumps to development, skips formalizatio
     assert.match(devTasks[0].title, /\[fast-track\]/,
       `routeFastTrack's dev task title should carry the '[fast-track]' marker`);
   } finally {
-    killSpawnedChildren(fx);
+    shutdownEngine(fx);
     const { closeDb } = await import('../dist/db.js');
     closeDb();
   }
@@ -259,7 +278,7 @@ test('track(clarify): engine pauses with needs-human, episode stays in discovery
     assert.ok(episode.reason && episode.reason.includes('clarify'),
       `pause_reason should mention clarify (got: ${episode.reason})`);
   } finally {
-    killSpawnedChildren(fx);
+    shutdownEngine(fx);
     const { closeDb } = await import('../dist/db.js');
     closeDb();
   }
@@ -269,15 +288,14 @@ test('track(clarify): engine pauses with needs-human, episode stays in discovery
 // Test 4: decision='reject' → episode cancelled
 // ---------------------------------------------------------------------------
 
-// FLAKY in full-suite mode: when track(clarify) precedes this test, the
-// clarify engine's waitForResume() poll-loop keeps running in the background
-// after Promise.race times out. The lingering engine sometimes starves this
-// test's pump loop, so the episode never reaches 'cancelled' within the 10s
-// cap. Passes reliably in isolation (track(reject) only). The formalization-
-// mechanics fix made the formal pipeline longer, which made the clarify
-// engine's background activity noisier and amplified this latent flake.
-// Tracked as a separate issue from the formalization-mechanics fix.
-test('track(reject): engine transitions episode to cancelled', { todo: 'flaky when run after track(clarify) — background engine lingers' }, async () => {
+// ADR-013 Phase 1.3: previously { todo: 'flaky when run after track(clarify)
+// — background engine lingers' }. Root cause: track(clarify)'s engine parked
+// in waitForResume() after Promise.race timed out, and its poll-loop kept
+// running in the background, starving this test's pump. The fix in
+// runEngine()/shutdownEngine() (above) passes an AbortController into
+// orchestrate() and aborts it in the finally block, so the parked engine
+// exits cooperatively at the next sleep boundary instead of lingering.
+test('track(reject): engine transitions episode to cancelled', async () => {
   process.env.SAGA_MOCK_DECISION = 'reject';
   const fx = await makeFixture('reject');
   try {
@@ -299,7 +317,7 @@ test('track(reject): engine transitions episode to cancelled', { todo: 'flaky wh
     assert.equal(episode.stage, 'cancelled',
       `decision='reject' should transition the episode to 'cancelled' (got '${episode.stage}')`);
   } finally {
-    killSpawnedChildren(fx);
+    shutdownEngine(fx);
     const { closeDb } = await import('../dist/db.js');
     closeDb();
   }

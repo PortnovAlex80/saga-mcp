@@ -349,6 +349,19 @@ export interface OrchestrateOptions {
   now?: () => number;
   /** Injectable sleep for tests. */
   sleep?: (ms: number) => Promise<void>;
+  /**
+   * Optional abort signal. When the signal becomes aborted, the orchestrate
+   * loop unblocks at the next pump-tick / sleep boundary and returns a
+   * reason='aborted' result. Used by tests (track-pipeline) to stop a
+   * parked engine cleanly between tests — without this the engine's
+   * waitForResume poll-loop outlives the Promise.race that the test sets
+   * up around it, leaking into the next test.
+   *
+   * Abortion is cooperative: a running worker (spawned child) is NOT killed
+   * by the signal — only the pump loop stops scheduling new work. The
+   * caller is responsible for killing any spawned children it owns.
+   */
+  abortSignal?: AbortSignal;
 }
 
 export interface OrchestrateResult {
@@ -356,7 +369,7 @@ export interface OrchestrateResult {
   epicId: number;
   finalStage: string;
   endedAt: string;
-  reason: 'completed' | 'failed' | 'paused_timeout' | 'stopped';
+  reason: 'completed' | 'failed' | 'paused_timeout' | 'stopped' | 'aborted';
   cycles: number;
   lastError: string | null;
 }
@@ -626,6 +639,10 @@ async function waitForResume(
   const now = opts.now ?? Date.now;
   const startedAt = now();
   while (true) {
+    if (opts.abortSignal?.aborted) {
+      engineHeartbeat(opts, 'ABORTED', 'abort signal fired during pause');
+      return false;
+    }
     if (now() - startedAt > MAX_PAUSE_MIN * 60_000) {
       engineHeartbeat(opts, 'PAUSE_TIMEOUT', `${MAX_PAUSE_MIN}min reached — engine exits`);
       return false;
@@ -1260,6 +1277,14 @@ export async function orchestrate(opts: OrchestrateOptions): Promise<Orchestrate
   try {
     while (true) {
       cycles += 1;
+      if (opts.abortSignal?.aborted) {
+        engineHeartbeat(opts, 'ABORTED', 'abort signal fired — pump loop exits');
+        return {
+          projectId, epicId, finalStage: currentStage(epicId) ?? '?',
+          endedAt: new Date(now()).toISOString(),
+          reason: 'aborted', cycles, lastError: null,
+        };
+      }
       const stage = currentStage(epicId);
       if (!stage) {
         lastError = `episode ${epicId} workflow row vanished mid-run`;
