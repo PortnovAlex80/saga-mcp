@@ -1,5 +1,6 @@
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type Database from 'better-sqlite3';
+import os from 'node:os';
 import { getDb } from '../db.js';
 import { logActivity } from '../helpers/activity-logger.js';
 import { assertExecutionFence, updateExecutionPhase, isProcessAlive } from '../worker-executions.js';
@@ -21,6 +22,7 @@ import {
   readOutboxResult,
   generateDownstreamIntentKey,
 } from '../lifecycle/outbox.js';
+import { withRepositoryLock } from '../lifecycle/repository-lock.js';
 
 // ============================================================================
 // Dispatcher: saga раздаёт задачи агентам.
@@ -1233,6 +1235,29 @@ function handleWorkerMergeRelease(args: Record<string, unknown>): {
   }
   const commitSha = (args.commit_sha as string | undefined) ?? null;
 
+  // ADR-013 Phase 2.1: resolve the repoPath up-front so we can take a
+  // cross-process advisory lock scoped to this repository only. Two saga
+  // processes serving workers on DIFFERENT repositories now run fully in
+  // parallel — the DB-level BEGIN IMMEDIATE still serializes writers, but
+  // the filesystem-level git work (and any non-DB bookkeeping) does not
+  // contend across repos. Read-only; no transaction needed.
+  const repoScopeRow = db.prepare(
+    `SELECT t.task_kind, t.project_repository_id,
+            COALESCE(rc.local_path, pr.local_path) AS local_path
+       FROM tasks t
+       LEFT JOIN project_repositories pr ON pr.id=t.project_repository_id
+       LEFT JOIN repository_checkouts rc
+         ON rc.project_repository_id=pr.id AND rc.machine_id=? AND rc.status='active'
+      WHERE t.id=?`,
+  ).get(os.hostname(), taskId) as
+    | { task_kind: string | null; project_repository_id: number | null; local_path: string | null }
+    | undefined;
+  const repoLockPath =
+    repoScopeRow?.task_kind != null && repoScopeRow.project_repository_id != null
+      ? repoScopeRow.local_path ?? null
+      : null;
+
+  const runMergeRelease = () => {
   withImmediateTransaction(db, () => {
     const task = db.prepare(
       `SELECT t.id, t.title, t.status, t.tags, t.task_kind, t.project_repository_id,
@@ -1349,6 +1374,16 @@ function handleWorkerMergeRelease(args: Record<string, unknown>): {
     }
   }
   return { task_id: taskId, result: outcome, merged_commit: outcome === 'merged' ? commitSha : null };
+  }; // end runMergeRelease
+
+  // ADR-013 Phase 2.1: serialize per-repo filesystem operations across saga
+  // processes via an OS-level advisory lock. When repoLockPath is null
+  // (legacy global task, or repo path not resolvable), skip the advisory
+  // lock — the DB-level BEGIN IMMEDIATE inside still serializes writers.
+  if (repoLockPath) {
+    return withRepositoryLock(repoLockPath, runMergeRelease);
+  }
+  return runMergeRelease();
 }
 
 // ============================================================================
