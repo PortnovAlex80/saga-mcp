@@ -94,13 +94,26 @@ export function markExecutionSpawnFailed(
   executionId: string,
   error: string,
 ): void {
+  // ADR-013 Phase 3.1: delegate to the single terminalization kernel
+  // (releaseExecutionAtomically). Pre-3.1 this function carried its own
+  // UPDATE worker_executions SQL with its own db.transaction wrapper,
+  // duplicating the kernel's logic and skipping the task-release CAS +
+  // lifecycle_events audit row. The kernel handles all four terminal
+  // states (exited/terminated/lost/spawn_failed) through one code path.
+  //
+  // Note: spawn_failed is recorded for executions that never produced a
+  // running process. The kernel will look up the execution, see it in a
+  // 'reserved' (or rarely early 'running') state, terminalize it, and
+  // release the task if the fence still points to this execution.
   const db = openRuntimeDb(dbPath);
   try {
-    db.prepare(
-      `UPDATE worker_executions
-       SET state='spawn_failed', finished_at=datetime('now'), last_error=?
-       WHERE execution_id=? AND state IN ('reserved','running')`,
-    ).run(error, executionId);
+    releaseExecutionAtomically(db, {
+      executionId,
+      terminalState: 'spawn_failed',
+      exitCode: null,
+      reason: `spawn failed: ${error}`,
+      lastError: error,
+    });
   } finally {
     db.close();
   }
@@ -112,26 +125,24 @@ export function markExecutionExited(
   exitCode: number | null,
   state: 'exited' | 'terminated' = 'exited',
 ): void {
+  // ADR-013 Phase 3.1: delegate to releaseExecutionAtomically. Pre-3.1
+  // this function had its own UPDATE worker_executions + UPDATE tasks
+  // pair inside a db.transaction, which (a) duplicated the kernel's
+  // logic, (b) skipped the fence CAS that protects against post-crash
+  // reassignment, and (c) skipped the lifecycle_events audit row.
+  //
+  // The kernel's CAS is what we want: if the task was reassigned to a
+  // new execution between subprocess-exit and this call, we MUST NOT
+  // clobber the new assignment. The kernel handles this by checking
+  // current_execution_id === executionId before clearing the fence.
   const db = openRuntimeDb(dbPath);
   try {
-    db.transaction(() => {
-      db.prepare(
-        `UPDATE worker_executions
-         SET state=?, finished_at=datetime('now'), exit_code=?
-         WHERE execution_id=? AND state IN (${ACTIVE_STATE_SQL})`,
-      ).run(state, exitCode, executionId);
-      db.prepare(
-        `UPDATE tasks
-         SET current_execution_id=NULL,
-             metadata=CASE
-               WHEN json_extract(metadata,'$.worker_pid') = (
-                 SELECT pid FROM worker_executions WHERE execution_id=?
-               ) THEN json_remove(metadata,'$.worker_pid','$.worker_started_at')
-               ELSE metadata END,
-             updated_at=datetime('now')
-         WHERE current_execution_id=?`,
-      ).run(executionId, executionId);
-    })();
+    releaseExecutionAtomically(db, {
+      executionId,
+      terminalState: state,
+      exitCode,
+      reason: `subprocess exited with code ${exitCode ?? 'null'}`,
+    });
   } finally {
     db.close();
   }

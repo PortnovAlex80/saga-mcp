@@ -15,9 +15,14 @@
  *
  * This module provides ONE function — `releaseExecutionAtomically` — that
  * terminalizes the execution AND releases the task in a single
- * `BEGIN IMMEDIATE` transaction with a fence CAS. All three callers
- * (markExecutionExited, recoverAssignment, reconcileWorkerExecutions) delegate
- * to it. This removes the duplicated recovery SQL (blueprint §22:1199) and
+ * `BEGIN IMMEDIATE` transaction with a fence CAS. As of ADR-013 Phase 3.1
+ * (2026-07-20), ALL terminalization callers delegate to it:
+ *   - markExecutionExited (worker-executions.ts:109) — subprocess exit
+ *   - markExecutionSpawnFailed (worker-executions.ts:92) — spawn failure
+ *   - recoverAssignment (orchestrate.ts) — runner crash recovery
+ *   - reconcileWorkerExecutions (worker-executions.ts) — reconciler loop
+ *   - handleWorkerAskNeed (dispatcher.ts) — terminal ASK protocol
+ * This removes the duplicated recovery SQL (blueprint §22:1199) and
  * collapses the close/reconciler race (blueprint §16:844).
  *
  * Invariants enforced atomically:

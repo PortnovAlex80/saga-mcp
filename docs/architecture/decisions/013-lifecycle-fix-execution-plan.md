@@ -154,7 +154,7 @@ investigate why the background engine from `track(clarify)` leaks into
 
 ## Phase 2 — Lock contention (3–5 days)
 
-### 2.1 — Repository-scoped advisory lock instead of global `BEGIN IMMEDIATE`
+### 2.1 — Repository-scoped advisory lock instead of global `BEGIN IMMEDIATE` — **DONE 2026-07-20 (partial)**
 
 **Problem.** `withImmediateTransaction` (`dispatcher.ts:46-62`) is a whole-DB
 write lock acquired on every `worker_next`/`worker_done`/`ask`/`merge`. It has
@@ -177,16 +177,34 @@ write lock acquired on every `worker_next`/`worker_done`/`ask`/`merge`. It has
 **Tests.** Extend `tests/lifecycle/concurrency-transition.test.mjs` with
 latency measurement across 3 workers × 2 repos.
 
+**Verification (2026-07-20, partial).** Investigation during implementation
+found that saga-mcp runs multi-process (one OS process per worker; see
+`dispatcher.ts:1042`), so an in-process `Map<repoId, Promise>` would not have
+helped — the real contention is BETWEEN processes on the shared SQLite file.
+The actual fix shipped:
+- `src/lifecycle/repository-lock.ts`: cross-process advisory filesystem lock
+  keyed by repository `local_path` (O_EXCL create-or-fail with stale-lock
+  reclamation at 10 min, same as MERGE_LOCK_STALE_MIN).
+- `handleWorkerMergeRelease` resolves the repoPath up-front and wraps its
+  body in `withRepositoryLock(repoPath, ...)`. Two saga processes merging
+  into DIFFERENT repos now run fully in parallel at the filesystem level.
+- 7 new tests in `tests/lifecycle/repository-lock.test.mjs`.
+
+**Limitation (deferred).** The SQLite-level `BEGIN IMMEDIATE` still
+serializes all DB writers across ALL repositories (single shared DB file).
+Removing that requires sharding the DB per repository, which is a separate
+large refactor outside ADR-013's scope. This phase narrows the
+filesystem-mutation window; full per-repo DB concurrency is a follow-up.
+
 ## Phase 3 — Terminalization unification (1–2 days)
 
-### 3.1 — Collapse three terminalization paths into one
+### 3.1 — Collapse three terminalization paths into one — **DONE 2026-07-20**
 
 **Problem.** `markExecutionExited` (`worker-executions.ts:109`, own UPDATE at
-`:119`) and `markExecutionSpawnFailed:92` (own UPDATE at `:100`) carry their
-own SQL and own tx, while `reconcileWorkerExecutions:274,318` delegates to
-`releaseExecutionAtomically`. Comment `atomic-release.ts:16` claims all three
-delegate — false. Verified: `grep "UPDATE worker_executions.*SET state=" src/`
-returns hits in both `atomic-release.ts` AND `worker-executions.ts`.
+`:119`) and `markExecutionSpawnFailed:92` (own UPDATE at `:100`) carried
+their own SQL and own tx, while `reconcileWorkerExecutions:274,318` delegated
+to `releaseExecutionAtomically`. Comment `atomic-release.ts:16` claimed all
+three delegate — was false.
 
 **Fix.**
 1. Audit: `grep -rn "markExecutionExited\|markExecutionSpawnFailed" src/`.
@@ -199,6 +217,18 @@ returns hits in both `atomic-release.ts` AND `worker-executions.ts`.
   `src/lifecycle/atomic-release.ts`.
 - AC-2: regression test for each terminal state (`exited`, `terminated`,
   `spawn_failed`, `lost`) passes.
+
+**Verification (2026-07-20).** Both `markExecutionExited` and
+`markExecutionSpawnFailed` in `src/worker-executions.ts` are now 3-line
+wrappers that open a runtime DB handle and delegate to
+`releaseExecutionAtomically`. The duplicated terminalization SQL is gone:
+terminalization writes (state transitions to exited/terminated/lost/
+spawn_failed) now live only in `atomic-release.ts` (lines 291 and 297 —
+two variants for with/without `lastError`). The kernel's fence CAS now
+protects the runner-close path too (it previously bypassed the CAS and
+could clobber a reassignment made between subprocess-exit and the close
+call). `atomic-release.ts:16` header comment updated to list all five
+delegating callers. 181/181 lifecycle tests green.
 
 ### 3.2 — Architecture-boundary test instead of whitelist
 
