@@ -253,7 +253,7 @@ boundary. `architecture.test.mjs:239` and `:256` use `existsSync`.
 **Do not start until 1.x and 2.1 land.** Otherwise you will rewrite against
 a moving base.
 
-### 4.1 — Application service / command bus
+### 4.1 — Application service / command bus — **PARTIAL 2026-07-20 (facade only)**
 
 **Problem.** `grep "from.*lifecycle/domain" src/` → 0 hits anywhere (production
 or test). 15 direct `UPDATE tasks` live in `dispatcher.ts`.
@@ -279,7 +279,26 @@ or test). 15 direct `UPDATE tasks` live in `dispatcher.ts`.
 **Tests.** Property-based: for any command sequence, projection is consistent
 with events. Migration test for `backfill-migration`.
 
-### 4.2 — Integration executor into the working cycle
+**Status (2026-07-20).** FACADE LANDED, full migration deferred. The
+application service (src/lifecycle/application-service.ts) provides:
+- discriminated-union LifecycleCommand covering all six worker_facing kinds
+- handleLifecycleCommand(db, cmd) → LifecycleCommandResult with timing +
+  audit info
+- audit logging on both success and failure paths (lifecycle_events row +
+  activity_log row + stub command_receipt for the event FK)
+- 6 tests covering id stability, uniqueness, delegation, audit on
+  success/failure, unknown-kind rejection
+
+What is NOT done: the handlers' bodies have NOT migrated into the kernel.
+The handlers in src/tools/dispatcher.ts still own their SQL. The
+TEMPORARY_EXCEPTIONS list in tests/lifecycle/architecture.test.mjs
+(Phase 3.2) is the migration backlog. dispatcher.ts has a header comment
+flagging it as a LEGACY ADAPTER and pointing new callers at the application
+service. Full migration is a multi-week effort that ADR-013 §4.1 described;
+this commit ships the target shape so subsequent work can move handlers
+one at a time without further architectural changes.
+
+### 4.2 — Integration executor into the working cycle — **PARTIAL 2026-07-20 (consumer loop shipped, production wiring coexists)**
 
 **Problem.** `observeRepository`/`performMerge`
 (`integration-executor.ts:189,254`) live only in tests. Production merge is
@@ -299,7 +318,26 @@ with events. Migration test for `backfill-migration`.
 - AC-3: merge conflict → `integration_intents.state='conflict'`, task
   needs-human (already implemented upstream of this fix).
 
-### 4.3 — Delete the old state machine
+**Status (2026-07-20).** Consumer loop shipped; production wiring deferred.
+src/lifecycle/integration-executor.ts now exports:
+- processIntegrationIntent(db, id, machineId) — single intent → outcome
+- processPendingIntegrationIntents(db, machineId, options) — drain summary
+
+5 tests in tests/lifecycle/integration-executor-wiring.test.mjs:
+- missing intent → skipped
+- empty queue → all zero
+- end-to-end merge with real git: observe → performMerge CAS → state=merged
+- idempotent re-drain → already_merged short-circuit
+- conflict scenario → outcome='conflict' with file list
+
+What is NOT done: the worker_merge_release handler still drives the git
+merge itself. Switching the production path to enqueue + drain (replacing
+the worker-driven merge with intent-enqueue + executor-drain) is deferred
+until 4.1 fully lands — the bridge touches the same dispatcher.ts hot spots
+and would race with the handlers' migration. The consumer loop is callable
+now; only the wiring change is left.
+
+### 4.3 — Delete the old state machine — **DEFERRED 2026-07-20**
 
 **Problem.** After 4.1+4.2, `dispatcher.ts` retains dead direct-mutation code.
 
@@ -313,6 +351,14 @@ with events. Migration test for `backfill-migration`.
 - AC-1: `wc -l src/tools/dispatcher.ts` → <400.
 - AC-2: `architecture.test.mjs` green with no `TODO(4.1)` exceptions.
 - AC-3: all E2E tests run through the application service.
+
+**Status (2026-07-20).** DEFERRED — depends on 4.1 full migration. The
+interim measure shipped: dispatcher.ts has a header comment marking it as
+a LEGACY ADAPTER and pointing new code at the application service. Full
+body migration (moving handlers' SQL into the kernel one at a time) is
+the long tail of ADR-013; each handler removal will also remove one entry
+from TEMPORARY_EXCEPTIONS in tests/lifecycle/architecture.test.mjs, making
+forward progress visible.
 
 ## Universal checklist (every phase, every task)
 

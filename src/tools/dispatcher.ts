@@ -27,6 +27,15 @@ import { withRepositoryLock } from '../lifecycle/repository-lock.js';
 // ============================================================================
 // Dispatcher: saga раздаёт задачи агентам.
 //
+//   ⚠  ADR-013 Phase 4.1+ migration target: this module is a LEGACY ADAPTER.
+//      New code should call src/lifecycle/application-service.ts
+//      (handleLifecycleCommand) — the typed command-bus entry point that
+//      also writes audit rows. The handlers here still own their SQL until
+//      they are migrated one at a time; the TEMPORARY_EXCEPTIONS list in
+//      tests/lifecycle/architecture.test.mjs tracks the migration surface.
+//      Do NOT add new direct-lifecycle-SQL here — add a command kind to the
+//      application service and route through it.
+//
 // Две ручки поверх существующих 31 тулз saga (старые НЕ трогаем):
 //   worker_next({worker_id})          — взять следующую свободную задачу
 //   worker_done({task_id,worker_id,result}) — завершить текущую + получить следующую
