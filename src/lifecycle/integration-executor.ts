@@ -387,3 +387,225 @@ export function isAncestor(repoPath: string, ancestor: string, descendant: strin
   // Exit 0: ancestor. Exit 1: not ancestor. Anything else: error (treat as false).
   return result.status === 0;
 }
+
+// ---------------------------------------------------------------------------
+// Consumer loop — wires the deterministic executor into the working cycle.
+// ADR-013 Phase 4.2.
+// ---------------------------------------------------------------------------
+
+/**
+ * Result of processing one integration intent through the executor.
+ * Mirrors what worker_merge_release used to return, so callers can switch.
+ */
+export interface IntentProcessingResult {
+  integration_id: string;
+  task_id: number;
+  outcome: 'merged' | 'conflict' | 'base_advanced' | 'already_merged' | 'git_error' | 'skipped';
+  merge_commit: string | null;
+  conflict_files: string[] | null;
+  message: string;
+}
+
+/**
+ * Process a SINGLE integration intent through observe → merge → record.
+ *
+ * This is the deterministic replacement for the worker-driven git merge that
+ * used to live inside worker_merge_release. The worker now only reports the
+ * review outcome and queues an intent; this function picks up the intent and
+ * performs the merge with CAS, observation, and idempotent recovery.
+ *
+ * Steps (blueprint §13.3):
+ *   1. Load the intent row. If state != 'pending', return skipped.
+ *   2. Resolve the repository local_path from project_repositories +
+ *      repository_checkouts (machine-specific).
+ *   3. Observe: already_merged / base_advanced / source_moved / ready.
+ *   4. If ready, performMerge with CAS.
+ *   5. Update the intent row state and emit an audit event.
+ *
+ * Returns a structured outcome. Does NOT throw on Git failures — those become
+ * outcome='git_error' with the message, so the caller (worker_merge_release
+ * or a future consumer loop) can decide whether to retry or surface to human.
+ *
+ * Each intent is processed in its own short DB transaction so a failure on
+ * one does not block others. The Git work happens OUTSIDE the tx (Git is the
+ * source of truth for refs; we only record the outcome in the DB).
+ */
+export function processIntegrationIntent(
+  db: Database,
+  integrationId: string,
+  machineId: string,
+): IntentProcessingResult {
+  const intent = db.prepare(
+    `SELECT * FROM integration_intents WHERE integration_id=?`,
+  ).get(integrationId) as IntegrationIntentRow | undefined;
+
+  if (!intent) {
+    return {
+      integration_id: integrationId, task_id: -1, outcome: 'skipped',
+      merge_commit: null, conflict_files: null, message: 'intent not found',
+    };
+  }
+  if (intent.state !== 'pending' && intent.state !== 'retryable') {
+    return {
+      integration_id: integrationId, task_id: intent.task_id, outcome: 'skipped',
+      merge_commit: intent.result_commit, conflict_files: null,
+      message: `intent in state '${intent.state}' — not processable`,
+    };
+  }
+
+  // Resolve repoPath from the binding + this machine's checkout.
+  const repo = db.prepare(
+    `SELECT COALESCE(rc.local_path, pr.local_path) AS local_path
+       FROM project_repositories pr
+       LEFT JOIN repository_checkouts rc
+         ON rc.project_repository_id = pr.id AND rc.machine_id = ? AND rc.status='active'
+      WHERE pr.id = ?`,
+  ).get(machineId, intent.project_repository_id) as { local_path: string | null } | undefined;
+
+  if (!repo?.local_path) {
+    updateIntentState(db, integrationId, {
+      state: 'retryable',
+      lastError: `no active checkout on machine ${machineId} for repo ${intent.project_repository_id}`,
+    });
+    return {
+      integration_id: integrationId, task_id: intent.task_id, outcome: 'git_error',
+      merge_commit: null, conflict_files: null,
+      message: `no active checkout on machine ${machineId}`,
+    };
+  }
+
+  // Step 1: observe.
+  const observation = observeRepository(repo.local_path, intent);
+  if (observation.kind === 'already_merged') {
+    // The merge already happened (likely a crashed executor recovered).
+    // Record the observed sha as the result and mark merged.
+    updateIntentState(db, integrationId, {
+      state: 'merged',
+      resultCommit: observation.observedTargetSha,
+      lastError: null,
+    });
+    return {
+      integration_id: integrationId, task_id: intent.task_id,
+      outcome: 'already_merged',
+      merge_commit: observation.observedTargetSha,
+      conflict_files: null,
+      message: 'reviewed_source_sha is already an ancestor of target',
+    };
+  }
+  if (observation.kind === 'base_advanced') {
+    updateIntentState(db, integrationId, {
+      state: 'base_advanced',
+      lastError: `target advanced: expected ${intent.expected_target_sha.slice(0, 7)}, now ${observation.observedTargetSha.slice(0, 7)}`,
+    });
+    return {
+      integration_id: integrationId, task_id: intent.task_id,
+      outcome: 'base_advanced',
+      merge_commit: null, conflict_files: null,
+      message: 'target branch advanced since intent creation — re-observe required',
+    };
+  }
+  if (observation.kind === 'source_not_at_reviewed_sha') {
+    updateIntentState(db, integrationId, {
+      state: 'retryable',
+      lastError: `source branch moved off reviewed sha: now ${observation.observedSourceSha}`,
+    });
+    return {
+      integration_id: integrationId, task_id: intent.task_id,
+      outcome: 'git_error',
+      merge_commit: null, conflict_files: null,
+      message: 'source branch no longer at reviewed_source_sha',
+    };
+  }
+
+  // Step 2: perform the merge (ready_to_merge branch).
+  const mergeResult = performMerge(repo.local_path, intent);
+  if (mergeResult.kind === 'merged') {
+    updateIntentState(db, integrationId, {
+      state: 'merged',
+      resultCommit: mergeResult.mergeCommitSha,
+      lastError: null,
+    });
+    return {
+      integration_id: integrationId, task_id: intent.task_id,
+      outcome: 'merged',
+      merge_commit: mergeResult.mergeCommitSha,
+      conflict_files: null,
+      message: 'merged with CAS',
+    };
+  }
+  if (mergeResult.kind === 'conflict') {
+    updateIntentState(db, integrationId, {
+      state: 'conflict',
+      conflictFiles: mergeResult.conflictFiles,
+      lastError: null,
+    });
+    return {
+      integration_id: integrationId, task_id: intent.task_id,
+      outcome: 'conflict',
+      merge_commit: null,
+      conflict_files: mergeResult.conflictFiles,
+      message: `merge conflict in ${mergeResult.conflictFiles.length} file(s)`,
+    };
+  }
+  if (mergeResult.kind === 'cas_failed') {
+    updateIntentState(db, integrationId, {
+      state: 'base_advanced',
+      lastError: `CAS failed — target now ${mergeResult.observedTargetSha}`,
+    });
+    return {
+      integration_id: integrationId, task_id: intent.task_id,
+      outcome: 'base_advanced',
+      merge_commit: null, conflict_files: null,
+      message: 'CAS failed — another merge landed first',
+    };
+  }
+  // git_error
+  updateIntentState(db, integrationId, {
+    state: 'retryable',
+    lastError: mergeResult.message,
+  });
+  return {
+    integration_id: integrationId, task_id: intent.task_id,
+    outcome: 'git_error',
+    merge_commit: null, conflict_files: null,
+    message: mergeResult.message,
+  };
+}
+
+/**
+ * Drain all pending integration intents for the given machine. Returns a
+ * summary. Safe to call repeatedly — already-processed intents are skipped.
+ *
+ * This is the future consumer-loop entry point. Today worker_merge_release
+ * still drives the merge itself; once the migration in Phase 4.3 lands, the
+ * worker will only enqueue an intent and this function will run it.
+ */
+export function processPendingIntegrationIntents(
+  db: Database,
+  machineId: string,
+  options: { limit?: number } = {},
+): { processed: number; merged: number; conflicts: number; errors: number; skipped: number } {
+  const limit = options.limit ?? 10;
+  const pending = db.prepare(
+    `SELECT integration_id FROM integration_intents
+      WHERE state IN ('pending', 'retryable')
+        AND (executor_execution_id IS NULL OR executor_execution_id = '')
+        AND available_at <= datetime('now')
+      ORDER BY created_at ASC
+      LIMIT ?`,
+  ).all(limit) as { integration_id: string }[];
+
+  let merged = 0;
+  let conflicts = 0;
+  let errors = 0;
+  let skipped = 0;
+  for (const row of pending) {
+    const result = processIntegrationIntent(db, row.integration_id, machineId);
+    if (result.outcome === 'merged' || result.outcome === 'already_merged') merged += 1;
+    else if (result.outcome === 'conflict') conflicts += 1;
+    else if (result.outcome === 'git_error') errors += 1;
+    else if (result.outcome === 'base_advanced') errors += 1;
+    else skipped += 1;
+  }
+  return { processed: pending.length, merged, conflicts, errors, skipped };
+}
