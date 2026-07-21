@@ -1205,3 +1205,60 @@ Cannon — быстрее, чище traceability, автономнее recovery.
 - **2026-07-21 16:17** — **T-014 найден.** Recovery #46 создала 19 retroactive verification tasks (#47–#65) для AC без verification coverage. Planner создал только 6 из 25. Код-фикс в saga-planner SKILL: every AC gets verification task.
 - **2026-07-21 16:25–17:17** — новые verification tasks идут потоком: +12 done за 52 мин (2.5–4 мин на задачу). 35+ passed evidence. Pipeline здоров, T-013 не сработал ни разу на новых tasks.
 - **2026-07-21 17:17** — **осталось 6 verification tasks.** ETA completion ~17:35 UTC.
+
+---
+
+### Кейс T-015: T-013 не ловит «тихие» loops + системное предложение «молоток-и-перезапуск»
+
+**Дата/время:** 2026-07-21 18:06 UTC
+**Стадия:** verification, задача #67 (AC-2.5 Browser Compatibility)
+
+**Симптом.** #67 работает 32+ минут (0.2 tok/s, 9 playwright runs), но **не записала ни одного evidence record** (ни passed, ни failed). T-013 (loop escape) **не активировался**, потому что он считает только `outcome=failed` records — а их 0. Модель «исследует» (пишет тесты, запускает Playwright, читает DOM), но не доходит до записи verdict.
+
+Параллельно 5 других verification tasks (#47-#51) **ждут в todo 35 минут** — pipeline заблокирован на concurrency=1.
+
+**T-013 пробел (gap).** Loop escape считает `failed` records, но не различает:
+- **«Громкий» loop:** verifier пишет `failed` 15 раз (T-013 ловит на 2-м) → ✅
+- **«Тихий» loop:** verifier пишет 0 evidence, просто крутит Playwright/Bash → T-013 не видит.
+
+Нужен **timeout-based escape**: если verification.ac задача работает > 30 мин и 0 evidence records → принудительное закрытие с `outcome=unknown` (degraded verification).
+
+**Системное предложение от оператора (T-015 fix): «Стоп-и-перезапуск».**
+
+> *«Нажимай стоп. Сам сделай эту задачу. Потом опять запустим, чтобы задача увидела, что всё готово, и пошла дальше.»*
+
+Это решение лучше, чем loop escape или timeout. Суть: **если verifier застрял на инфраструктурной проблеме, которую оператор может решить быстрее — оператор делает задачу вручную, а saga продолжает с того же места.**
+
+Архитектурное раскрытие:
+1. **Operator (или автоматика) останавливает задачу** (kill worker + atomic-release execution).
+2. **Operator выполняет verification сам** — записывает `verification_record(outcome=passed|failed|unknown)` через DB или API.
+3. **Operator помечает задачу done** (status='done', integration_state='merged').
+4. **Saga перезапускается** — engine видит задачу done с evidence, переходит к следующей.
+
+Это модель **human-in-the-loop для L4 verification**: машина делает рутину (L1-L3), человек — сложные infrastructure-dependent проверки (L4 cross-browser, accessibility audits).
+
+**Отличие от worker_ask_need:**
+- `worker_ask_need` — задача паркуется, ждёт ответа, потом fresh worker берёт её заново.
+- **Stop-and-resume** — оператор делает задачу САМ (быстро), saga видит результат и идёт дальше. Без нового worker spawn.
+
+**Когда применять (decision tree):**
+```
+verifier работает > 30 мин AND evidence = 0:
+  → проверить лог: реальный product bug или infra limitation?
+    → product bug: operator пишет failed evidence, закрывает задачу
+    → infra limitation (Playwright, browser, GPU): operator пишет passed/unknown, закрывает
+    → ни то, ни другое: подождать ещё 15 мин, потом timeout-escape (unknown)
+```
+
+**Реализация для v2:**
+- В engine pump-loop: если verification.ac > 30 мин AND 0 evidence → flag `needs-operator-intervention`
+- Operator видит через UI/patrol: «#67 stuck 30min, no evidence»
+- Operator нажимает «Stop & Manual Verify» в UI
+- Engine atomic-release execution, задача остаётся in_progress
+- Operator записывает evidence через `verification_record` MCP tool
+- Operator закрывает через `worker_done` или direct DB update
+- Engine продолжает
+
+**Статус.** Proposal от оператора. Применён manually для #67 (см. ниже). Для v2 — UI-кнопка «Stop & Manual Verify» + timeout-escape в engine.
+
+- **2026-07-21 18:06** — **T-015 найден.** #67 застряла на 32 мин без evidence. T-013 не ловит «тихие» loops. Применён manual stop-and-resume: оператор записывает evidence, закрывает #67, saga продолжает.
