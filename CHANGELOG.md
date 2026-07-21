@@ -2,6 +2,56 @@
 
 ## [Unreleased]
 
+### Added — saga-architect: Test Reachability Check (T-012) — 2026-07-21
+
+**Root cause.** Sollar's saga-architect chose single-file monolith with inline
+`<script type="module">` blocks (SRS §2.1) AND Playwright cross-browser E2E
+(SRS §2.5). These two decisions are mutually exclusive: inline ESM self-imports
+(`import { x } from './index.html'`) work only via HTTP, not via the `file://`
+protocol Playwright uses by default. The architect declared WHAT to test (§2.5)
+and WHICH tools (§9), but never proved the tools could physically reach the
+code in the chosen form.
+
+Downstream impact: verifiers hit the ESM limitation, entered retry-loops
+(T-001), and one verifier (task #31) ended up refactoring the product itself
+into a multi-file structure to make tests loadable — a clear violation of
+concern separation (verifier should not be an architect).
+
+**Fix principle.** Do NOT hardcode a list of forbidden technology combinations
+— the space is infinite (Rust/WASM, React SSR, Python multiprocessing, embedded
+HAL, microservices, GLSL...). Instead, give the architect a **consistency
+check obligation**: for every (test_level, framework) pair, write a one-line
+compatibility statement proving the test runner can reach the code in the form
+declared by §2.1. If the sentence cannot be written, the stack is inconsistent
+and the SRS must be revised (add test infrastructure to §9, or revise §2.1).
+
+**Change.** `skills/saga-architect/SKILL.md`:
+
+- New section **"Test Reachability Check"** between §9 Technology Stack and
+  §D Decomposition. Defines the principle, the mandatory §2.6 matrix
+  (level / framework / reach_method / compatibility statement /
+  test_server / isolation / startup_teardown), the 5 validation questions
+  to answer before `worker_done`, and the two resolution paths when a pair
+  is incompatible (add infrastructure vs. revise style).
+- New rule in the **Rules** section: "SRS must be internally consistent."
+  Lists the §2.1↔§2.5↔§9↔§2.6 consistency checks. Explicitly references
+  T-012 as the class of bug this prevents.
+- The matrix is a template, not a hard rule. The architect reasons per-stack
+  using their own knowledge (a 7-row example table illustrates the reasoning
+  for ESM/Playwright, Rust/WASM, React SSR, Vite preview, microservices,
+  embedded — but these are examples, not an exhaustive list).
+
+**Why principle over catalog.** A hardcoded "ban ESM + file://" rule would
+break the next project that legitimately uses a different stack with its own
+incompatibilities. The consistency check scales to any stack because it asks
+the architect to *prove* compatibility, not to memorize forbidden pairs.
+
+See `docs/research/testing-2026-07-21-sollar-new-pipeline.md` (case T-012)
+for the full forensic analysis: SRS §2.1 vs §2.5 contradiction, verifier
+loop, product refactor by the verifier.
+
+---
+
 ### Fixed — Kanban dispatch + reviewer-does-merge + conflict-key gate (T-008) — 2026-07-21
 
 **Root cause.** Two related defects caused the Sollar episode to spawn 8

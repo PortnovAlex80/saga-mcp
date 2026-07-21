@@ -340,6 +340,121 @@ Downstream skills read §9 to know their tooling:
 
 ---
 
+## Test Reachability Check (проверка достижимости кода для тестов; REQUIRED when L2+ tests declared; T-012)
+
+> **Зачем этот раздел.** SRS §2.5 declares WHAT to test. §9 declares WHICH
+> tools. НО между ними есть пробел: **КАК тест-раннер физически достаёт код
+> в той форме, в которой он существует в выбранной архитектуре?** Если
+> архитектор не закрывает этот пробел, verifier'ы вниз по потоку
+> натыкаются на infra-несовместимости (например, inline ESM self-imports не
+> резолвятся через `file://` в Playwright), заходят в retry-loop (T-001) или
+> начинают рефакторить сам продукт (T-012 — нарушение принципа разделения
+> ответственности, verifier не должен быть архитектором).
+
+### Принцип (НЕ каталог частных случаев)
+
+Архитектор не должен знать все ограничения всех стеков. Технологий бесконечно
+много (Rust/WASM, React SSR, Python multiprocessing, embedded HAL, microservices,
+GLSL shaders, ...), захардкодить все пары (architecture, test-runner) невозможно.
+
+Вместо каталога архитектор применяет **принцип консистентности**: для каждой
+пары (тестовый уровень из §2.5, framework из §9) он должен **доказать одной
+строкой**, что тест-раннер **может выполнить** код в форме, заданной §2.1.
+Если однострочного доказательства нет — стек внутренне противоречив, SRS
+нельзя принимать.
+
+> Формулируй это как самопроверку: *«Если verifier возьмёт мой SRS как есть
+> и попробует запустить тест уровня L{N} инструментом {tool} — у него
+> получится? Или он упрётся в infra-gap, которого я не заметил?»*
+> Отвечай на базе собственных знаний о выбранном стеке, не жди, что
+> кто-то дал список запрещённых комбинаций — такого списка нет.
+
+### Что создать (SRS §2.6 Test Reachability)
+
+Для каждой пары (level, framework) из §9 заполни строку:
+
+```yaml
+# SRS §2.6 — Test Reachability Matrix
+test_reachability:
+  - level: L0_compilation
+    framework: tsc --noEmit
+    reach_method: direct (TypeScript source files)
+    compatibility: "tsc parses .ts files directly — no module loader involved."
+  - level: L1_component
+    framework: jest --config jest.config.js
+    reach_method: direct import (transpiled by ts-jest)
+    dom: jsdom
+    compatibility: "jest imports compiled modules via Node require — works for any TS code."
+  - level: L2_integration
+    framework: jest + jsdom + canvas-mock
+    reach_method: direct import
+    compatibility: "integration tests import modules directly; canvas mocked."
+  - level: L4_e2e
+    framework: playwright test
+    reach_method: HTTP
+    test_server:
+      command: npx http-server public -p 0 --silent   # 0 = random free port
+      url_pattern: http://localhost:{port}/index.html
+      startup_wait_ms: 1500
+    compatibility: "Playwright loads the SPA via a local HTTP server, so the
+      inline <script type=module> self-imports resolve correctly. file:// would
+      refuse them (browser security rule). HTTP-сервер поднимается verifier'ом
+      в setup(), убивается в teardown()."
+    browsers: [chromium, firefox, webkit]
+```
+
+### Валидационные вопросы (ответь до `worker_done`)
+
+Перед закрытием SRS-задачи прогони эти 5 вопросов по каждой паре (level, tool):
+
+1. **Reach method.** Как именно тест-раннер добирается до кода?
+   - direct import / HTTP / file:// / built binary / container / emulator / HAL mock / ...
+2. **Compatibility statement.** Одно предложение: почему этот reach method
+   работает с архитектурой из §2.1? Если не можешь написать это одно
+   предложение — стек противоречив.
+3. **Missing infrastructure.** Нужен ли test-server, mock, harness, docker-compose,
+   test-database, dev-сервер? Если да — он должен быть в §9.
+4. **Isolation.** Если две задачи L4 (например, AC-2.5 browser compat и
+   AC-3.3 accessibility) запускаются параллельно — они не будут конфликтовать
+   за порт/файл/состояние? Если да — объяви стратегию изоляции (random ports,
+   per-test worktree, separate temp dirs).
+5. **Startup/teardown.** Для L4 и любых long-running тестов — как verifier
+   поднимает и убивает окружение? Без явного protocol'а verifier будет гадать
+   и может оставить orphan-процессы.
+
+### Что делать, если пара несовместима
+
+У архитектора ровно **два пути**, без третьего:
+
+- **(a) Добавить недостающую инфраструктуру в §9** (test-server, mock, harness,
+  контейнер, ...) так, чтобы reachability заработал. Например: single-file
+  inline ESM + Playwright → добавить `npx http-server` в §9 + описать в §2.6.
+- **(b) Пересмотреть §2.1** на стиль, который тест-раннер может достичь.
+  Например: разбить single-file на multi-file ESM — тогда `file://` работает
+  без test-server.
+
+**Принять SRS с неразрешённым reachability — запрещено.** Это не «деталь
+реализации», это контракт, от которого зависит, сможет ли verifier вообще
+выполнить свою работу.
+
+### Примеры применения принципа к разным стекам (для контекста, не как хардкод-список)
+
+| §2.1 стиль | §9 tool | reach | совместимость? | что делать |
+|---|---|---|---|---|
+| Single-file inline ESM | Playwright | file:// | ❌ ESM self-imports не резолвятся | (a) добавить http-server, или (b) разбить на multi-file |
+| Single-file inline ESM | Playwright | HTTP | ✅ | описать test-server в §2.6 |
+| Multi-file ESM | Playwright | file:// | ✅ отдельные .js грузятся | — |
+| Rust WASM | wasm-bindgen-test | direct (cargo) | ✅ | — |
+| React SSR | Playwright | file:// | ❌ SSR требует Node server | (a) добавить server, или (b) пересмотреть архитектуру |
+| React SPA (Vite preview) | Playwright | HTTP (vite preview) | ✅ | описать vite preview в §2.6 |
+| Microservices (Go) | pytest | direct import | ❌ нужны контейнеры | (a) добавить docker-compose в §9 |
+| Embedded firmware | host test | HAL mock | ✅ если mock в §9 | описать mock в §2.6 |
+
+Это **примеры рассуждений**, а не правила. Для своего стека — рассуждай сам,
+главное — однострочное доказательство совместимости для каждой пары.
+
+---
+
 ## Step 4: Write §D Decomposition in SRS (КЛЮЧЕВАЯ НОВАЯ СЕКЦИЯ)
 
 After choosing architecture (Step 3), you MUST write §D in the SRS with these
@@ -539,6 +654,19 @@ you may create.
 - SRS fixes the **system / HOW to build**, not the user flows (that's
   saga-analyst's UC) and not the business intent / FR / NFR / RULE (those are
   saga-product's PRD).
+- **SRS must be internally consistent.** Before `worker_done`, verify that:
+  - §2.1 Architectural Style ↔ §2.5 Test Strategy (style supports test approach)
+  - §2.1 ↔ §9 Technology Stack (style supports declared tools)
+  - §2.2 Module Manifest ↔ §D Decomposition (every module has tasks)
+  - §2.3 Invariant Registry ↔ §2.5 (every L3 invariant has property-test plan)
+  - §2.5 Test Strategy ↔ §9 Stack (every test level has a tool)
+  - **§2.6 Test Reachability** — для каждой пары (level, framework) написано
+    однострочное доказательство, что тест-раннер достанет код в форме,
+    заданной §2.1. Если хотя бы одно доказательство не пишется — стек
+    противоречив, SRS пересматривается (см. раздел "Test Reachability Check").
+    Это закрывает класс багов T-012, где verifier'ы вниз по потоку натыкаются
+    на infra-несовместимости (inline ESM self-imports через file://, и т.п.),
+    заходят в retry-loop или начинают рефакторить сам продукт.
 - **Architectural style MUST be declared** and MUST follow the Step 3
   Complexity Gate table. Without it, the planner cannot decompose safely.
 - **Module Manifest with conflict-key surface MUST be present.** This is what
