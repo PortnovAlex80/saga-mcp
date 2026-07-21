@@ -747,3 +747,252 @@ ORDER BY
 - `autonomous-decision-unverifiable-acs.md` — saga-arbiter для unverifiable AC.
 - `saga-vs-gost-34-602-and-iso-12207.md` — покрытие ГОСТ / ISO 12207.
 - Скилл `saga-patrol` — `D:\Разработка\saga-mcp\skills\saga-patrol\{SKILL.md, patrol.mjs}`.
+
+---
+
+## Часть III. Системные выводы для следующей версии saga
+
+Эта часть — материалы для соседнего dev-агента, работающего над saga-mcp v2.
+Все design-предложения ниже возникли из реальных инцидентов T-001..T-011
+в ходе Sollar-эпизода и являются архитектурными приоритетами.
+
+---
+
+### Кейс T-010: System Design Gap — отсутствие degradation model
+
+**Дата/время:** 2026-07-21 ~11:30 UTC (обсуждение с оператором)
+**Контекст:** #26 verification task застряла в retry-loop на 60+ минут (12 перезаписей теста, 21 запуск Playwright), Saga «не видит» этого.
+
+**Симптом (от частного к общему).**
+
+Наблюдение, которое привело к системному выводу: worker #26 провёл 60 минут в цикле переписывания accessibility-теста. Saga со своей стороны видит только `status=in_progress, execution=running` — для движка это нормальное состояние, аварии нет. Модель со своей стороны честно перебирает стратегии (page.click → evaluate → dispatch event → static HTML), но упирается в фундаментальное ограничение (ESM self-imports не работают в Playwright `file://`).
+
+**Системная формулировка проблемы.**
+
+Pipeline-design в saga предполагает, что каждый шаг будет выполнен. Любой stuck → бесконечный retry-loop или recovery-loop. Это нарушает принцип resilience-by-design: **любой шаг pipeline может не выполниться, и система в целом должна продолжать функционировать**.
+
+Этот единственный корень проявился как каскад симптомов по ходу прогона:
+
+| Кейс | Симптом | Один корень |
+|---|---|---|
+| T-001 | patrol не отличает thinking от loop | нет определения «прогресса задачи» |
+| T-006 | priority=low → deadlock | нет модели «degradable dispatch» |
+| T-007 | фича в dev, но нет task-merge → stuck | нет модели «partial completion» |
+| T-008 | reviewer не слил → merge-конфликт | нет модели «контракт на невыполнение» |
+| T-011 (ниже) | verifier крутит тест 60 мин | нет adaptive retry с гипотезами |
+
+**Принципы, которых не хватает saga (предложения для v2).**
+
+#### Принцип 1 — Контракт на невыполнение для каждого task_kind
+
+Не «что делать, если AC не прошёл verification», а **на проектировании**: каждый task_kind имеет формальное определение «что значит, что шаг не сделан», и это легитимное состояние, не авария.
+
+| Шаг | Контракт на невыполнение |
+|---|---|
+| Development code | Код не написан → статус не определён → продукт может перейти к следующему функционалу |
+| Verification | Тест не проведён → статус не подтверждён → продукт может быть поставлен с оговорками |
+| Integration | Слияние не произошло → следующая задача работает с предыдущей версией |
+
+Сейчас в saga: «не выполнено» = «авария, spawn recovery». Это провал проектирования.
+
+#### Принцип 2 — Разделение concerns
+
+Verifier не должен быть:
+- Тестировщиком продукта (это ответственность dev task'а)
+- Фиксером кода (это ответственность dev task'а)
+- Экспертом по accessibility (это ответственность специалиста)
+
+Verifier имеет одну ответственность: запустить предопределённый тест и записать результат. Если тест не запускается из-за infra-limitation (ESM/file://) — это bug в продукте или test-infra, не verifier'а. Verifier записывает `unknown` и создаёт follow-up dev task.
+
+#### Принцип 3 — Деградация как first-class concept
+
+Устойчивая система проектируется не для happy path, а для **деградации при отказах**:
+
+```
+Full verification (25/25 passed)
+    ↓ при отказе
+Partial verification (N passed + M unknown) → ship with caveats
+    ↓ при тотальном отказе
+No verification → ship with "unverified" warning
+    ↓
+Never ship → only as last resort
+```
+
+Это continuous, не бинарное «passed/failed».
+
+#### Принцип 4 — Continuous delivery model (уровни готовности)
+
+Эпизод не «completed» или «failed» — он имеет уровень готовности:
+
+```
+Level 0 (REJECTED)  → severe defects, cannot ship
+Level 1 (DRAFT)     → no verification, ship only for review
+Level 2 (PARTIAL)   → core verified, edges unknown
+Level 3 (VERIFIED)  → all blocker ACs passed
+Level 4 (CERTIFIED) → all ACs passed + external audit
+```
+
+Gate решает не «passed/failed», а **какой уровень готовности мы достигли**.
+
+#### Принцип 5 — Backpressure вместо бесконечного retry
+
+Устойчивая система останавливает застрявший компонент и **сообщает наверх**, что не справляется. Не пытается бесконечно. Worker сказал «не могу» после N попыток → система:
+1. Не пытается снова
+2. Записывает неспособность как факт
+3. Принимает решение на уровне выше (gate, episode, operator)
+
+#### Принцип 6 — AC criticality в baseline
+
+```yaml
+- ac: AC-3.3
+  criticality: degradable    # blocker | degradable | nice-to-have
+  degradation: "If unverifiable, ship with manual-review note in CHANGELOG"
+```
+
+Gate для verification→integration:
+- Все `blocker` AC должны быть `passed`
+- `degradable` могут быть `unknown` (с пометкой)
+- `nice-to-have` могут быть пропущены
+
+#### Принцип 7 — Pipeline как DAG с degradable edges
+
+Pipeline — это не линейная последовательность stage'й. Это направленный граф (DAG), где некоторые рёбра помечены `degradable`:
+
+```
+Discovery → Formalization        (blocker)
+Formalization → Planning         (blocker)
+Planning → Development           (blocker)
+Development → Verification       (degradable — dev может работать и без external verify)
+Verification → Integration       (degradable — AC может быть unknown)
+Integration → Completed          (blocker только для blocker-AC)
+```
+
+Это позволяет эпизоду дойти до Integration даже если verification частично failed.
+
+**Статус.** Design proposal для v2. Самый важный архитектурный вывод прогона — объясняет все предыдущие кейсы как симптомы одного корня.
+
+---
+
+### Кейс T-011: Adaptive retry с гипотезами (proposal от оператора)
+
+**Дата/время:** 2026-07-21 ~11:40 UTC (proposal от оператора)
+**Контекст:** #26 крутится в retry-loop 60+ минут. Loop-detector и escalation-ladder из design-документов не реализованы. Нужно простое, реализуемое решение.
+
+**Proposal (дословно от оператора).**
+
+> «В каждый скилл воркера добавим число попыток. Например 25. После первой неудачи записать воркеру попытку в файл временный, и резюме. Чтобы самому считать попытки и историю применения.
+>
+> Далее, сообщить саге что 25 попыток всё — жопа. Сага убивает задачу. Запускает воркер, который получает задачу, делает анализ что задача проблемная, изучает причину проблемы, создаёт три гипотезы. Записывает их в json с точной формулировкой. Умирает. Сага запускает по очереди (или по количеству rate-limit) воркеры с гипотезами. Они сохраняются в папке проекта с номером задачи. Умирают. Сага запускает заново задачу, но уже с тремя гипотезами. То есть передаёт им контекст трёх гипотез. И даёт чёткую команду — можешь задачу со статусом done — решено / не решено. Но не делаем это. Запиши как идею.»
+
+**Архитектурное раскрытие proposal'а.**
+
+Это **6-фазный adaptive-retry протокол**, состоящий из 4 разных worker-ролей:
+
+```
+┌───────────────────────────────────────────────────────────────┐
+│ ФАЗА 1 — Normal execution (worker с task-specific skill)     │
+│                                                               │
+│  worker делает задачу, считает попытки во временный файл:    │
+│  .solla/attempts/task-<id>/attempt-<N>.json                   │
+│    { attempt: N, timestamp, summary, tools_used, error }      │
+│                                                               │
+│  Каждая неудача → +1 к счётчику. Worker сам читает историю    │
+│  предыдущих попыток (resume) и не повторяет тупиковые пути.   │
+└───────────────────────────┬───────────────────────────────────┘
+                            │ attempts >= MAX_ATTEMPTS (25)
+                            ▼
+┌───────────────────────────────────────────────────────────────┐
+│ ФАЗА 2 — Diagnosis (role: diagnostician, new)                │
+│                                                               │
+│  Saga убивает worker. Spawn'ит диагноста:                    │
+│    вход: task + все attempt-N.json (история неудач)          │
+│    выход: .solla/hypotheses/task-<id>/diagnosis.json         │
+│      { root_cause, reproduction, evidence }                  │
+│    выход: .solla/hypotheses/task-<id>/hypothesis-{1,2,3}.json│
+│      { id, statement, rationale, expected_outcome,           │
+│        skill_hint, code_sketch }                             │
+│    умирает                                                    │
+└───────────────────────────┬───────────────────────────────────┘
+                            ▼
+┌───────────────────────────────────────────────────────────────┐
+│ ФАЗА 3 — Hypthesis exploration (role: explorer, new)         │
+│                                                               │
+│  Saga spawn'ит по очереди (или по rate-limit) 3 explorers:   │
+│    вход: hypothesis-N.json                                    │
+│    выход: .solla/hypotheses/task-<id>/result-N.json          │
+│      { hypothesis_id, verdict: works|partial|fails,          │
+│        artifact_path, evidence }                              │
+│    умирает                                                    │
+└───────────────────────────┬───────────────────────────────────┘
+                            ▼
+┌───────────────────────────────────────────────────────────────┐
+│ ФАЗА 4 — Synthesis (role: worker с task-specific skill)      │
+│                                                               │
+│  Saga заново запускает ИСХОДНУЮ задачу, но с контекстом:     │
+│    task.description += "\n\n== PREVIOUS ATTEMPTS ==\n" +     │
+│       diagnosis + 3 hypothesis-results                       │
+│                                                               │
+│  Чёткая команда:                                              │
+│    "Реши задачу с вердиктом done=решено ИЛИ done=не_решено.  │
+│     Гипотезы уже проверены, используй их результаты.         │
+│     Не повторяй тупиковые пути из attempts/."                │
+└───────────────────────────┬───────────────────────────────────┘
+                            │ done=решено
+                            │ done=не_решено
+                            ▼
+┌───────────────────────────────────────────────────────────────┐
+│ ФАЗА 5 — Resolution branch                                    │
+│                                                               │
+│  done=решено   → задача закрыта normally, pipeline идёт дальше│
+│  done=не_решено → outcome=unknown, needs-human,               │
+│                  эпизод идёт дальше с degraded verification   │
+└───────────────────────────────────────────────────────────────┘
+```
+
+**Состав proposal'а.**
+
+| Элемент | Что | Где хранится |
+|---|---|---|
+| MAX_ATTEMPTS | лимит попыток (25 по умолчанию, настраивается per task_kind) | env / SKILL.md |
+| attempt log | временный файл с историей попыток | `<repo>/.solla/attempts/task-<id>/attempt-<N>.json` |
+| Worker resume | worker читает attempt log на старте, не повторяет тупики | SKILL.md worker'а |
+| Diagnostician | новая worker-role: анализирует причину проблемы | новый skill `saga-diagnostician` |
+| Hypothesis json | 3 формальные гипотезы с rationale | `<repo>/.solla/hypotheses/task-<id>/hypothesis-{1,2,3}.json` |
+| Explorer | новая worker-role: проверяет одну гипотезу | новый skill `saga-explorer` |
+| Synthesis | исходный worker получает task + 3 hypothesis-results, выносит done verdict | SKILL.md worker'а |
+
+**Преимущества proposal'а.**
+
+1. **Простота.** Не требует нового протокола worker↔engine. Всё через task.description + временные файлы.
+2. **Stateless diagnostician + explorer.** Каждый умирает после записи json — нет long-running worker'ов.
+3. **Изолированные эксперименты.** Hypothesis explorer'ы не могут повредить основной код (работают в своих worktrees).
+4. **Возможность rate-limit.** Saga решает, сколько explorer'ов запускать параллельно (как сейчас с concurrency).
+5. **Совместимость с current pipeline.** Не меняет gate, не меняет status-machine. Просто новый task_kind для diagnosis + enhancement существующих skill'ов.
+6. **Чёткая команда финальному worker'у** — «реши или признай неудачу». Это устраняет циклы, потому что у worker'а нет опции «попробую ещё».
+
+**Отличие от существующего autonomous-recovery.**
+
+| | autonomous-recovery (сейчас) | adaptive-retry (proposal) |
+|---|---|---|
+| Когда срабатывает | Gate failure (после того как worker закрылся) | Worker застрял в loop (до закрытия) |
+| Что делает | Анализирует gate error, чинит trace/merge | Анализирует loop, генерирует гипотезы |
+| Где работает | tracker_only (metadata) | git_change (real code experiments) |
+| Финал | Закрывается, gate ретраится | Финальный worker выносит verdict |
+
+**Связанные материалы (уже есть в research/).**
+
+- `design-2026-07-20-worker-loop-detection.md` — S1+S2 detector (база для MAX_ATTEMPTS counter)
+- `literature-2026-agentic-loops-and-escalation.md` — TAO hierarchical escalation (база для diagnostician + explorer ролей)
+- `autonomous-decision-unverifiable-acs.md` — Subjective Logic (b,d,u) для diagnosis
+- Reflexion paper (arxiv 2303.11366) — «вербальное reinforcement learning» через memory of failed attempts
+
+**Статус.** Proposal от оператора. Самый прагматичный architecture-direction для v2 — решает T-001/T-002/T-007/T-011 одним комплексным механизмом, не требует переделки gate или status-machine.
+
+---
+
+## Журнал наблюдений (append-only, продолжение)
+
+- **2026-07-21 09:52–11:30** — verification-фаза: #25 (AC-2.4 load) → passed, #29 (AC-1.4 FPS) → **passed** (тот самый unverifiable AC, на котором Cannon застрял с 38 retry-loops — здесь passed за 1 попытку). 4 evidence records.
+- **2026-07-21 ~11:30** — **T-010 системный вывод**: отсутствие degradation model в saga — корень всех симптомов T-001/T-006/T-007/T-008/T-011. Записаны 7 принципов для v2.
+- **2026-07-21 ~11:40** — **T-011 proposal от оператора**: adaptive retry с гипотезами (6-фазный протокол с diagnostician + explorer + synthesis). Самый прагматичный direction для v2.
+- **2026-07-21 ~11:40** — #26 застряла в retry-loop (12 writes + 21 playwright + 12 kills за 60+ мин). Модель нашла реальный architectural bug: ESM self-imports не работают в Playwright `file://`. Это infra-limitation продукта, не баг verifier'а — но verifier крутится, потому что saga не различает «не могу» и «продолжаю пытаться».
