@@ -409,7 +409,6 @@ function countActiveTasks(epicId: number): {
        SUM(CASE WHEN t.status IN ('todo','review')
                      AND (t.assigned_to IS NULL OR t.assigned_to='')
                      AND t.current_execution_id IS NULL
-                     AND t.priority IN ('critical','high','medium')
                      AND NOT EXISTS (
                        SELECT 1 FROM worker_executions we
                        WHERE we.task_id=t.id AND we.state IN ('reserved','running','cancel_requested')
