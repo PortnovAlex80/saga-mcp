@@ -1082,3 +1082,126 @@ UPDATE tasks SET status='done', integration_state='merged',
 **Статус.** Инцидент закрыт manually. #31 — done+merged с 19+ evidence records (передавлено Cannon 12). T-013 — архитектурный приоритет для v2, вместе с T-010/T-011 образует полную модель verification-degradation.
 
 - **2026-07-21 15:25** — **T-013 разрешён manually.** #31 закрыта с `outcome=failed`, 21 evidence records. Engine продолжил #30 (NASA JPL audit) после рестарта.
+
+---
+
+### Кейс T-014: planner создавал verification tasks только для 6 из 25 AC
+
+**Дата/время:** 2026-07-21 16:17 UTC
+**Стадия:** verification → integration transition
+
+**Симптом.** После закрытия #31 и #30, verification gate выдал ошибку:
+`Verification gate failed: no passing (or unknown) baseline evidence for
+AC-1.1, AC-1.2, AC-1.3, AC-1.5, AC-1.6, AC-2.1, …` — 19 AC без evidence.
+
+Recovery #46 диагностировала gap и создала **19 новых verification tasks**
+(#47–#65) — по одной для каждой AC, у которой не было verification task.
+
+**Природа gap — противоречие между SRS Test Strategy и Verification Gate:**
+
+| Место | Что | Что сделано |
+|---|---|---|
+| SRS §2.5 | «каждая AC должна быть протестирована (L1-L4)» | Написано правильно |
+| SRS §2.5 | НЕ указано, КТО пишет L1-L2 тесты | Gap |
+| saga-planner | Создал verification.ac только для `ac_kind=verification` (6 AC) | ❌ 19 AC пропущены |
+| saga-worker (dev) | Реализовал AC, но не написал Jest tests | нет test files в продукте |
+| Verification Gate | Требует evidence для ВСЕХ 25 AC (CGAD P14 deny-by-default) | ✅ правильно |
+| Recovery #46 | Diagnosed + создала 19 retroactive verification tasks | ✅ autonomous fix |
+
+**Корень.** `ac_kind` в §D2 классифицирует primary work (write code vs run
+benchmark), НЕ exemption от verification. Каждая AC требует verification —
+gate enforces it regardless of `ac_kind`. Planner интерпретировал `ac_kind`
+как «нужна ли verification task» — это неверное чтение.
+
+**Fix.** `skills/saga-planner/SKILL.md` — hard rule T-014: **EVERY AC gets a
+verification task (no exceptions).** Planner создаёт verification.ac для
+КАЖДОЙ AC в baseline. Routing (saga-verifier для L3 / saga-worker для L2) —
+по `properties` block, не по `ac_kind`. Exit criterion: `implements=0` AND
+`verified_by=0` gaps.
+
+Commit `2d17afd`, запушено в origin/master.
+
+---
+
+## Часть IV. Промежуточные итоги прогона (на 17:20 UTC)
+
+### Время и прогресс
+
+| Метрика | Значение |
+|---|---|
+| Wall clock | 05:02 → 17:20 = **~12 часов** |
+| Stage | verification (финальная прямая) |
+| Done | **59/65 (91%)** |
+| Verification evidence | **35+ passed**, 19 failed |
+| Осталось задач | 6 (verification) |
+
+### Что Saga сделала правильно (без human intervention)
+
+| Этап | Что | Оценка |
+|---|---|---|
+| Discovery → Formalization → Planning | Полностью автономно за ~51 мин | ✅ быстрее Cannon в 2× |
+| Development (19 AC) | 19 dev tasks + 10 merges в dev за ~4 ч | ✅ быстрее Cannon в 3× |
+| Traceability graph | 105+ edges, 0 orphan AC | ✅ лучше Cannon |
+| Auto-recovery zombie workers | T-002 (#3, #11) — atomic-release | ✅ работает |
+| Auto-recovery merge conflicts | #33/#34/#35 — 3 реальных merge fix | ✅ |
+| Recovery #46 (verification gap) | Diagnosed + создала 19 verification tasks | ✅ autonomy win |
+| Verification L4 (FPS, load) | #25, #29 — passed без retry-loops | ✅ лучше Cannon (#31 stuck 95m) |
+
+### Где потребовалось human intervention
+
+| Кейс | Что | Когда |
+|---|---|---|
+| T-005 | Engine крах (соседний агент запустил npm test в ту же saga.db) | 06:17, 10:08 |
+| T-006 | Priority=low deadlock → manual DB fix + код-фикс | 08:30 |
+| T-007 | #28 «фича уже в dev, нет task-merge» → manual DB fix | 09:08 |
+| T-008 | Reviewer exits без merge → код-фикс kanban + conflict-gate | 09:40 |
+| T-012 | ESM/file:// incompatibility → saga-architect reachability check | 11:30 |
+| T-013 | #31 verification-review loop (15 циклов) → код-фикс loop escape | 13:11–15:25 |
+| T-014 | Planner создал только 6 verification tasks → код-фикс «every AC gets verification» | 16:17 |
+| Hint injections | #26 (HTTP server), #31 (HTTP server) | 11:50, 12:54 |
+
+### Код-фиксы в saga-mcp (6, все в origin/master)
+
+| Commit | Кейс | Файл | Что |
+|---|---|---|---|
+| `95a9049` | T-006 | dispatcher.ts, orchestrate.ts | `worker_next` раздаёт все приоритеты |
+| `c90c436` | T-008 | dispatcher.ts, saga-worker/SKILL.md | kanban ORDER BY + conflict-key gate + reviewer-does-merge |
+| `abb29e1` | T-012 | saga-architect/SKILL.md | Test Reachability Check §2.6 |
+| `5fd4b80` | T-013 | dispatcher.ts | verification review-loop escape (≥2 failed → done) |
+| `2d17afd` | T-014 | saga-planner/SKILL.md | every AC gets verification task |
+| `cddb02b` | T-010/T-011 | research docs | system design gap + adaptive-retry proposal |
+
+### Design Proposals для v2 (5, зафиксированы в отчёте)
+
+| Кейс | Что | Статус |
+|---|---|---|
+| T-007 | Gate принимает done если all depends_on merged | proposal |
+| T-009 | Planner: verification.ac = tracker_only, не git_change | proposal |
+| T-010 | Degradation model (7 принципов) | proposal |
+| T-011 | Adaptive retry с гипотезами (diagnostician + explorer) | proposal |
+| T-013 (часть) | FAILED → spawn dev task автоматически | proposal |
+
+### Сравнение с Cannon baseline (предварительно)
+
+| Метрика | Cannon (12 ч) | Sollar (12 ч, ещё идёт) |
+|---|---|---|
+| Wall clock до verification | ~9 ч | **~5 ч** |
+| Dev tasks done | 14 | **19** |
+| Контекстных крахов | 2 | 0 (после T-005 fix) |
+| Recovery/healing tasks | 3 (manual) | 12 (10 auto + 2 manual) |
+| Human interventions | 4–5 | 8 (но 6 привели к код-фиксам saga) |
+| Verification evidence | 12 | **35+ passed** |
+| Orphan AC | 2 | **0** |
+| Test files в продукте | 32 (442 tests) | **0** (gap T-014) |
+| Retry-loops | 38 циклов (#31 Lighthouse) | 15 циклов (#31 Browser, T-013 fixed) |
+| LoC в продукте | ~7000 TS | ~2200 JS (single-file) |
+| Архитектурные находки | 7 (Дыры A-G) | **14** (T-001..T-014) |
+
+**Предварительный вывод:** Sollar pipeline ADR-014 **структурно лучше**
+Cannon — быстрее, чище traceability, автономнее recovery. Но имеет те же
+проблемы на verification-фазе (loop on real bugs, planner gap). Все 6
+код-фиксов напрямую улучшают saga-mcp для следующего прогона.
+
+- **2026-07-21 16:17** — **T-014 найден.** Recovery #46 создала 19 retroactive verification tasks (#47–#65) для AC без verification coverage. Planner создал только 6 из 25. Код-фикс в saga-planner SKILL: every AC gets verification task.
+- **2026-07-21 16:25–17:17** — новые verification tasks идут потоком: +12 done за 52 мин (2.5–4 мин на задачу). 35+ passed evidence. Pipeline здоров, T-013 не сработал ни разу на новых tasks.
+- **2026-07-21 17:17** — **осталось 6 verification tasks.** ETA completion ~17:35 UTC.
