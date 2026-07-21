@@ -346,7 +346,111 @@ export function calculateTrajectory(params) {
 
 ---
 
+---
+
+## Приложение A. Глубокий code review Sollar
+
+### A.1 Качество документов — ★★★★☆ (4/5)
+
+**Документация — сильнейшая сторона Sollar.** Все артефакты структурно полные и внутренне консистентны (кроме §2.1↔§2.5, см. T-012).
+
+**PRD** (201 строка):
+- ✅ Бизнес-контекст: проблема (нет доступного educational tool), value proposition, target audience (students, educators, enthusiasts)
+- ✅ 9 FR, 6 NFR — каждый с measurable target (NFR-1 «≤100ms», NFR-2 «≤3s», NFR-3 «≥60fps»)
+- ✅ 3 RULE — NASA JPL authority, educational disclaimer, user acknowledgment
+- ✅ 3 hypothesis с метриками (H1: ≥100 visitors/90d, H2: ≥20% quiz improvement, H3: ≥5 calc/session)
+- ✅ Out-of-scope (3D, backend, multi-user, PWA) — явные исключения
+
+**SRS** (642 строки):
+- ✅ §2.1 Architectural Style — обоснованный выбор (Modular Monolith для M-size)
+- ✅ §2.2 Module Manifest — 7 модулей с conflict-keys, context relationships
+- ✅ §2.3 Invariant Registry — 8 формальных предикатов с типами проверок (L2/L3/L4)
+- ✅ §2.5 Test Strategy — L0-L4 levels assigned per AC type
+- ✅ §D Decomposition — §D1 File Tree, §D2 AC→Implementation Map (YAML), §D3 Priority Rationale
+- ❌ §2.1 противоречит §2.5 (T-012 — single-file vs Playwright)
+- ❌ Нет §2.6 Test Reachability (T-012 fix proposal)
+
+**AC** (668 строк, 25 критериев):
+- ✅ Все 25 в формате Given/When/Then
+- ✅ 19 из 25 содержат YAML `properties` block для property-based testing
+- ✅ Каждая AC имеет explicit Verification level (L1/L2/L3/L4)
+- ✅ AC-R1/R2/R3 — regulatory (NASA JPL, disclaimer) — нет в Cannon baseline
+
+**UC** (236 строк, 5 use cases):
+- ✅ Каждый UC имеет main success scenario + extensions
+- ✅ Соответствует FR (covers edges)
+
+### A.2 Качество кода — ★★★☆☆ (3/5)
+
+**Физика — реальная, не выдуманная:**
+- ✅ NASA JPL данные точные: Earth (5.972e24 kg, 6371 km, 9.807 m/s²), Moon (7.342e22 kg, 1737.4 km, 1.62 m/s²), Mars (6.417e23 kg, 3389.5 km, 3.71 m/s²)
+- ✅ Гравитационная постоянная G = 6.674e-11 (в коде 1 раз, не размазана)
+- ✅ Траектория: thrust impulse → effective velocity → time of flight → ballistic arc — формулы правильные
+- ✅ Orbital velocity, escape velocity — корректные формулы (v = √(GM/r))
+
+**Код-стайл и чистота:**
+- ✅ 0 TODO/FIXME/HACK
+- ✅ 0 console.log/eval
+- ✅ Комментарии с AC-привязкой в каждом script-блоке
+- ✅ Numeric separators (6_371.0, 1_737.4) — современный JS
+- ⚠ 3 дублирующихся блока: `getElementById('massKg')` и др. — copy-paste между функциями (collectFormState и restoreFormFromScenario)
+- ⚠ CSS: 0 `@media` queries (нет responsive design, заявленного в NFR-5 «desktop and tablet»)
+- ⚠ CSS: 0 `prefers-reduced-motion` (нарушение NFR-6 accessibility для users with vestibular disorders)
+- ⚠ CSS: только 2 `:focus` стиля (недостаточно для keyboard navigation)
+
+**Критические баги:**
+
+**BUG 1 (ESM self-import).** Архитектурный — `import { x } from './index.html'` не работает ни в одном браузере. Это не баг кода, это баг SRS-дизайна (T-012). Решение: multi-file ESM или inline script (без type="module").
+
+**BUG 2 (validateParams missing body).** Конкретный код-баг:
+```javascript
+// validateParams() возвращает:
+return {
+  valid: true,
+  params: { massKg, thrustN, launchAngleDeg, initialVelocityMps }
+  // ← НЕТ body! Пользователь выбрал Mars, но params.body = undefined
+};
+
+// calculateTrajectory() падает:
+const g = resolveBody(params.body).surfaceGravity;  // body=undefined → throw
+```
+
+**Причина BUG 2:** `validateParams` читает 4 поля из `state` (mass, thrust, angle, velocity), но НЕ читает `state.body` (выбор планеты). Это oversight — функция валидирует скалярные параметры, но забывает передать categorical (body). `getElementById('targetBody')` существует в форме, но его значение не попадает в validateParams.
+
+**Исправление BUG 2 (1 строка):**
+```javascript
+return {
+  valid: true,
+  params: { massKg: clampedMass, thrustN: clampedThrust,
+            launchAngleDeg: clampedAngle, initialVelocityMps: clampedVelocity,
+            body: state.body }   // ← ДОБАВИТЬ
+};
+```
+
+**Вывод по коду:** Качество реализации **среднее**. Физика правильная, стайл чистый, но 2 критических бага делают приложение неработающим. BUG 2 тривиален (1 строка), BUG 1 архитектурный (требует рефакторинга, который verifier #31 сделал в worktree, но не merged).
+
+### A.3 Сравнение качества: Cannon vs Sollar
+
+| Метрика качества | Cannon | Sollar |
+|---|---|---|
+| Физические формулы | ✅ точные (orbital.ts) | ✅ точные (calculateTrajectory) |
+| NASA JPL данные | ✅ | ✅ (идентичные значения) |
+| TS errors в src | 36 | N/A (vanilla JS) |
+| Тесты в коде | **442** (97.3% pass) | **0** |
+| Документация (SRS) | нет §2.3 Invariants | **8 формальных инвариантов** |
+| AC формат | смешанный | **все Given/When/Then** |
+| Архитектурный style | Hexagonal (не в SRS) | Modular Monolith (в SRS §2.1) |
+| Критических багов | 0 (запускается) | **2** (не запускается) |
+| LoC | ~7000 TS | ~2300 JS (в 3× компактнее) |
+| CSS accessibility | partial | 2 focus styles, 0 media queries |
+
+**Sollar компактнее, лучше задокументирован, точнее в физике** — но не запускается из-за 2 багов. Cannon запускается, имеет 442 теста, но менее структурирован. Оба продукта требуют ручной доработки, но по разным причинам.
+
+---
+
 ## 7. Главный вывод
+
+**Sollar-эпизод — это не провал, а diagnostic session.** За 14 часов A/B-тестирования мы:
 
 **Sollar-эпизод — это не провал, а diagnostic session.** За 14 часов A/B-тестирования мы:
 
