@@ -583,6 +583,11 @@ function handleWorkerDone(args: Record<string, unknown>): {
     );
 
     // 2. Следующий статус по ТЕКУЩЕМУ статусу (он сам = флаг цикла) + verdict.
+    //    T-013: для verification.ac — review-loop escape. Если verifier уже
+    //    записал ≥2 failed evidence records, changes_requested НЕ возвращают
+    //    задачу в todo (это создаёт бесконечный цикл — verifier не может
+    //    фиксить product bugs). Вместо этого задача закрывается как done с
+    //    пометкой verification_outcome=failed в metadata.
     let newStatus: 'review' | 'done' | 'todo';
     let newAssignedTo: string | null; // кому уходит задача после перевода
     if (task.status === 'in_progress') {
@@ -590,8 +595,37 @@ function handleWorkerDone(args: Record<string, unknown>): {
       newAssignedTo = null;            // в очереди на ревью (без исполнителя)
     } else if (task.status === 'review_in_progress') {
       if (verdict === 'changes_requested') {
-        newStatus = 'todo';            // single-use reviewer exits; a developer reclaims it
-        newAssignedTo = null;
+        // T-013: verification review-loop escape.
+        // Если это verification.ac и уже есть ≥ VERIFICATION_MAX_RETRIES (2)
+        // evidence records с outcome='failed' — не возвращаем в todo.
+        // Verifier нашёл реальные product bugs — он сделал свою работу.
+        // Закрываем как done (metadata verification_outcome=failed).
+        if (task.task_kind === 'verification.ac') {
+          const failedCount = db.prepare(
+            `SELECT COUNT(*) AS n FROM verification_evidence
+             WHERE task_id=? AND outcome='failed'`,
+          ).get(taskId) as { n: number } | undefined;
+          const VERIFICATION_MAX_RETRIES = 2;
+          if ((failedCount?.n ?? 0) >= VERIFICATION_MAX_RETRIES) {
+            // Loop detected — close as done (verifier did its job: found bugs).
+            newStatus = 'done';
+            newAssignedTo = null;
+            // Tag for follow-up: product bugs need dev fixes, not verifier retries.
+            db.prepare(
+              `UPDATE tasks SET metadata=json_set(COALESCE(metadata,'{}'),
+                '$.verification_outcome', 'failed',
+                '$.verification_loop_escaped', datetime('now'),
+                '$.verification_failed_count', ?)
+                WHERE id=?`,
+            ).run(failedCount?.n ?? 0, taskId);
+          } else {
+            newStatus = 'todo';        // first/second failure — retry allowed
+            newAssignedTo = null;
+          }
+        } else {
+          newStatus = 'todo';          // non-verification: normal changes_requested
+          newAssignedTo = null;
+        }
       } else {
         newStatus = 'done';            // цикл ревью завершён (APPROVED)
         newAssignedTo = null;
@@ -608,6 +642,11 @@ function handleWorkerDone(args: Record<string, unknown>): {
     //    - review_in_progress→done:      любой воркер (status='review_in_progress'), assigned→NULL.
     //    - review_in_progress→in_progress: любой воркер (status='review_in_progress'), assigned→workerId.
     //    Гонок нет: BEGIN IMMEDIATE + info.changes===1.
+    //
+    //    T-013: verification.ac может закрываться как done в двух случаях:
+    //      (a) есть passed evidence (APPROVED — нормальный путь)
+    //      (b) loop_escaped (≥2 failed evidence — verifier нашёл product bugs,
+    //          retrying бессмысленно, pipeline должен идти дальше с degraded verification)
     if (newStatus === 'done' && task.task_kind === 'verification.ac') {
       const target = db.prepare(
         `SELECT a.id, a.accepted_hash
@@ -618,7 +657,12 @@ function handleWorkerDone(args: Record<string, unknown>): {
         `SELECT 1 FROM verification_evidence
          WHERE task_id=? AND artifact_id=? AND outcome='passed' AND content_hash=?`,
       ).get(taskId, target.id, target.accepted_hash);
-      if (!target || !passed) {
+      // T-013: check if this is a loop-escape close (metadata.verification_loop_escaped)
+      const loopEscaped = db.prepare(
+        `SELECT json_extract(metadata, '$.verification_loop_escaped') AS escaped
+         FROM tasks WHERE id=?`,
+      ).get(taskId) as { escaped: string | null } | undefined;
+      if (!target || (!passed && !loopEscaped?.escaped)) {
         throw new Error(
           `Verification task ${taskId} cannot be approved without passing evidence for its canonical AC`,
         );

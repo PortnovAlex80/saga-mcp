@@ -2,6 +2,61 @@
 
 ## [Unreleased]
 
+### Fixed — verification review-loop escape (T-013) — 2026-07-21
+
+**Root cause.** When a verifier records `outcome=failed` because it found a
+real product bug (not a test bug), the review loop returns the task with
+`changes_requested` — expecting the verifier to "fix the test". But the bug
+is in the product code, which the verifier cannot and should not fix (T-010
+Principle 2). This creates an infinite dev↔review loop.
+
+Forensic evidence (Sollar task #31, AC-2.5 Browser Compatibility): the
+verifier recorded `outcome=failed` **15 times** over ~3 hours, each time
+with the same two product bugs (ESM MIME mismatch + `validateParams()`
+missing `body` field). The pipeline never escaped — each review cycle
+returned the task with `changes_requested`.
+
+**Fix.** Two changes in `worker_done` (`src/tools/dispatcher.ts`):
+
+1. **Review-loop escape for verification.ac.** When `verdict=changes_requested`
+   is issued for a `verification.ac` task AND there are already
+   `≥ VERIFICATION_MAX_RETRIES` (2) evidence records with `outcome=failed`,
+   the task is closed as `done` instead of returned to `todo`. Metadata is
+   tagged with `verification_outcome=failed`, `verification_loop_escaped`,
+   `verification_failed_count`. Non-verification tasks retain the old
+   behaviour (unlimited retries on changes_requested).
+
+2. **Gate allows `done` on loop-escape.** The verification.ac gate previously
+   required `passed` evidence to transition to `done`. Now it also accepts
+   a close when `metadata.verification_loop_escaped` is set — i.e. the
+   pipeline acknowledges that the verifier found real product bugs and the
+   task is closed as a degraded-verification outcome.
+
+**Semantic change.**
+- `passed` → AC confirmed, normal flow.
+- `failed` (≤1 occurrence) → retry allowed (could be a test bug).
+- `failed` (≥2 occurrences, same task) → **loop escaped**: task closed as
+  done with `verification_outcome=failed`. Product bugs need a separate
+  development task, not verifier retries.
+- `unknown` → escalate (T-010).
+- `error` → retry once.
+
+**Why this is not "giving up".** The verifier DID its job: it found the
+bugs and recorded evidence. Forcing it to retry the same broken code 15
+times produces no new information — it only burns tokens and time. The
+correct downstream action is a `development.code` task to fix the bugs,
+then a fresh verification run. This fix stops the loop; spawning the dev
+task automatically is a v2 enhancement (see T-013 proposal).
+
+| File | Change |
+|---|---|
+| `src/tools/dispatcher.ts` | `worker_done`: verification.ac review-loop escape after ≥2 failed evidence; gate accepts loop-escaped `done` |
+
+See `docs/research/testing-2026-07-21-sollar-new-pipeline.md` (case T-013)
+for the full forensic analysis of the 15-cycle loop on task #31.
+
+---
+
 ### Added — saga-architect: Test Reachability Check (T-012) — 2026-07-21
 
 **Root cause.** Sollar's saga-architect chose single-file monolith with inline
