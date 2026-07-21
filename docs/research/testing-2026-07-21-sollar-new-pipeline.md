@@ -996,3 +996,89 @@ Integration → Completed          (blocker только для blocker-AC)
 - **2026-07-21 ~11:30** — **T-010 системный вывод**: отсутствие degradation model в saga — корень всех симптомов T-001/T-006/T-007/T-008/T-011. Записаны 7 принципов для v2.
 - **2026-07-21 ~11:40** — **T-011 proposal от оператора**: adaptive retry с гипотезами (6-фазный протокол с diagnostician + explorer + synthesis). Самый прагматичный direction для v2.
 - **2026-07-21 ~11:40** — #26 застряла в retry-loop (12 writes + 21 playwright + 12 kills за 60+ мин). Модель нашла реальный architectural bug: ESM self-imports не работают в Playwright `file://`. Это infra-limitation продукта, не баг verifier'а — но verifier крутится, потому что saga не различает «не могу» и «продолжаю пытаться».
+
+---
+
+### Кейс T-013: verification-review infinite loop on real product bugs
+
+**Дата/время:** 2026-07-21 13:11–15:25 UTC (закрыта manually)
+**Стадия:** verification, задача #31 (AC-2.5 Browser Compatibility)
+**Длительность:** ~3 часа, 15 dev-review циклов, 21 evidence records
+
+**Симптом.** Verification задача #31 записала `outcome=FAILED` **15 раз** подряд — каждый раз с одинаковыми двумя багами продукта. Pipeline не продвигался: dev находила баги → review возвращала с changes_requested → dev снова находила те же баги → ∞.
+
+**Что нашёл verifier (2 реальных бага продукта):**
+
+1. **ESM self-import MIME type mismatch** (архитектурный, T-012).
+   `index.html` использует `<script type="module">` с self-imports
+   (`import {...} from './index.html'`). Браузер strict MIME enforcement
+   отклоняет `text/html` response для module scripts (нужно
+   `application/javascript`). 4/7 модулей fail silently → `#calcForm` и
+   `#conceptsList` остаются пустыми. Это та же проблема T-012, но на уровне
+   MIME, не file:// — даже HTTP server не помогает без split на multi-file.
+
+2. **validateParams() missing body field** (code bug).
+   `validateParams()` возвращает `{massKg, thrustN, launchAngleDeg, initialVelocityMps}`
+   БЕЗ `body`. `calculateTrajectory(params.body)` бросает
+   `"Unknown celestial body: undefined"`. Траектория не считается ни в одном браузере.
+
+Оба бага — **ответственность developer'а**, не verifier'а (T-010 Принцип 2).
+
+**Первопричина цикла (не симптом).**
+
+Pipeline не различает 3 сценария, когда verification возвращает FAILED:
+
+| Сценарий | Что должно произойти | Что происходит сейчас |
+|---|---|---|
+| A. Тест неправильный (баг в тесте) | Verifier переписывает тест | ✅ работает |
+| B. Продукт сломан (баг в коде) | Spawn dev task «fix bug X», verifier ждёт | ❌ review возвращает verifier'у |
+| C. Infra limitation (T-012) | Spawn dev/architect task, verifier waits | ❌ review возвращает verifier'у |
+
+Сейчас review трактует ЛЮБОЙ FAILED как сценарий A («тест неправильный, перепиши»). Но #31 — сценарий B+C: реальный код продукта сломан. Verifier не должен фиксить код (T-010), но pipeline не даёт ему другого пути — только переписывать тест снова и снова.
+
+**Доказательство (15 комментариев #31):**
+
+Каждый из 15 dev-review циклов #31 записывал дословно один и тот же диагноз:
+- «BUG 1 — ESM self-import MIME type mismatch»
+- «BUG 2 — validateParams() missing body field»
+- «verification completed: FAILED across all 3 browsers»
+
+Ни разу диагноз не изменился — модель нашла те же баги 15 раз.
+
+**Ручное исправление (применено):**
+
+```sql
+-- 1. Финальный verification_record(outcome=failed) с описанием 2 багов
+INSERT INTO verification_evidence (task_id, artifact_id, outcome, evidence, ...)
+  VALUES (31, 42, 'failed', '...BUG 1 ESM MIME + BUG 2 validateParams...', ...);
+
+-- 2. Закрыть #31 как done+merged
+--    (verifier СДЕЛАЛ свою работу — нашёл баги. FAILED — это легитимный verdict)
+UPDATE tasks SET status='done', integration_state='merged',
+  metadata=json_set(metadata, '$.resolution_reason',
+    'T-013: verifier found 2 product bugs, 15 cycles, manual close.')
+  WHERE id=31;
+```
+
+**Уроки для v2.**
+
+1. **Gate logic: FAILED → spawn dev task.** Когда verifier записывает `outcome=failed` с конкретным багом, pipeline должен автоматически spawn development.code task «fix bug X found by verifier #N». Verifier не должен повторять — он ждёт, пока dev пофиксит, потом перезапускается.
+
+2. **Review loop escape condition.** После 2-3 FAILED с одинаковым root cause → auto-escalate. Не возвращать verifier'у с `changes_requested` — это бессмысленно, если баг в коде, а не в тесте. Вместо этого:
+   - Сравнить content_hash evidence в последних 2-3 failed records
+   - Если root cause тот же → `outcome=failed` окончательный, spawn dev task
+   - Verifier закрывается как done (он сделал работу — нашёл баг)
+
+3. **CGAD verdict semantics.** CGAD определяет 4-valued verdict (passed/failed/unknown/error), но pipeline трактует `failed` как «попробуй снова». Это неверно:
+   - `passed` → AC подтверждён, двигаемся дальше
+   - `failed` → AC сломан, **нужен dev fix**, verifier не должен повторять
+   - `unknown` → не могу проверить, escalate (T-010 degradation)
+   - `error` → verifier упал, retry once
+
+   Сейчас `failed` и `error` трактуются одинаково («попробуй снова») — это создаёт T-013 loop.
+
+4. **Verifier responsibility boundary.** Verifier должен иметь право сказать «это не мой баг, это код продукта» и закрыться с `failed`, без принуждения к переписыванию теста. Сейчас review не даёт этого сделать.
+
+**Статус.** Инцидент закрыт manually. #31 — done+merged с 19+ evidence records (передавлено Cannon 12). T-013 — архитектурный приоритет для v2, вместе с T-010/T-011 образует полную модель verification-degradation.
+
+- **2026-07-21 15:25** — **T-013 разрешён manually.** #31 закрыта с `outcome=failed`, 21 evidence records. Engine продолжил #30 (NASA JPL audit) после рестарта.
