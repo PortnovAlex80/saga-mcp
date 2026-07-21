@@ -386,3 +386,161 @@
   - расширение с 6 до 8 потоков
   - 3-уровневая приоритизация (T1/T2/T3)
   - целевой балл 900+ при полном v2 (T1+T2+T3)
+- **2026-07-21 v2:** ADDENDUM после Sollar A/B-теста (см. §11). Соседняя
+  сессия нашла 4 бага (T-006..T-009), 2 из которых (T-006, T-008) уже в
+  master. Добавлены 2 новые задачи: T-007 (already_in_dev) и T-009
+  (verification.ac tracker_only). Обновлены владения файлов (§12).
+
+---
+
+## §11. ADDENDUM после Sollar A/B-теста (2026-07-21)
+
+Соседняя сессия провела A/B-тест pipeline ADR-014 на эпизоде Sollar (та же
+задача + модель, что Cannon baseline 661/1000). Нашла 4 критичных бага,
+которые относятся к этому v2 рефакторингу. Полный отчёт:
+`docs/research/testing-2026-07-21-sollar-new-pipeline.md`.
+
+### §11.1. Что уже в master (T-006 + T-008) — НЕ дублировать
+
+| ID | Фикс | Файлы | Коммит |
+|---|---|---|---|
+| **T-006** | `worker_next` выдаёт ВСЕ приоритеты (был priority IN medium+) | `src/tools/dispatcher.ts`, `src/orchestrate.ts` | `95a9049` |
+| **T-008** | Kanban dispatch (review раньше todo) + conflict-key gate + reviewer-does-merge | `src/tools/dispatcher.ts`, `skills/saga-worker/SKILL.md` | `c90c436` |
+
+**Эти файлы теперь ЧАСТИЧНО ЧУЖИЕ.** Мои правки должны наслаиваться, не
+затирая. См. обновлённую карту владений в §12.
+
+### §11.2. Новые задачи (T-007 + T-009) — ДОБАВИТЬ в скоуп
+
+#### **T-007. `integration_state='already_in_dev'` для no-op dev-задач**
+
+**Проблема:** AC-4.4 (Empty Saved Scenarios) — edge-case, уже реализованный в
+#17 (AC-4.1) и #20 (AC-4.2). Worker #28 взял задачу → увидел код уже в dev →
+legitimately закрыл через `worker_done` без commit → `integration_state=""` →
+gate трактует как «зависло» → 4 recovery в цикле.
+
+**Корень:** design bug в gate. Нет статуса для задач, чьи depends_on уже
+merged в ту же ветку.
+
+**Решение (3 части):**
+
+1. **Новый `integration_state='already_in_dev'`** — для dev-задач, где код уже
+   в integration-ветке через depends_on. Gate development→verification
+   принимает наравне с `merged`.
+   - Файл: `src/tools/lifecycle.ts` (`assertTasksReady` или эквивалент)
+   - Объём: ~30 LoC
+
+2. **`worker_done({verdict: 'no_op'})`** — новое значение verdict для
+   dev-задач, где код уже был. Saga-core автоматически ставит
+   `integration_state='already_in_dev'` и ссылается на depend_on-commit.
+   - Файл: `src/tools/dispatcher.ts` (`worker_done` handler), `src/db.ts` (CHECK constraint)
+   - Объём: ~80 LoC
+
+3. **`autonomous-recovery` должен уметь ставить `integration_state='merged'`**
+   со ссылкой на depend_on-commit, если код подтверждён в integration-ветке.
+   - Файл: `skills/autonomous-recovery/SKILL.md` (DIAGNOSE фаза)
+   - Объём: ~30 строк SKILL
+
+**Приоритет:** T1 (обязательно) — критичен для edge-case AC.
+
+#### **T-009. `verification.ac` → `execution_mode=tracker_only`**
+
+**Проблема:** `verification.ac` задачи получают `execution_mode=git_change`
+из planner'а, хотя они только записывают verification_evidence. Это создаёт
+ложные pending-merge'и (#25, #29 пришлось вручную помечать merged).
+
+**Корень:** planner не различает dev и verification по execution_mode.
+
+**Решение:** в `saga-planner/SKILL.md` явно указать:
+```
+при создании verification.ac задачи → execution_mode='tracker_only'
+при создании development.code → execution_mode='git_change'
+```
+
+**Приоритет:** T1 (обязательно) — простая правка SKILL, убирает класс ошибок.
+- Файл: `skills/saga-planner/SKILL.md`
+- Объём: ~20 строк SKILL
+
+### §11.3. Обновлённый счётчик задач
+
+| Tier | Было | Стало | Дельта |
+|---|---:|---:|---:|
+| T1 | 15 | **17** | +2 (T-007, T-009) |
+| T2 | 6 | 6 | 0 |
+| T3 | 6 | 6 | 0 |
+| **Итого v2** | 27 | **29** | +2 |
+
+---
+
+## §12. Обновлённая карта владений файлов (после T-006/T-008)
+
+Эти файлы теперь **содержат чужие фиксы**. Мои правки должны наслаиваться.
+
+| Файл | Чужой фикс (НЕ стирать) | Мои правки |
+|---|---|---|
+| `src/tools/dispatcher.ts` | T-006 (priority filter removed), T-008 (kanban ORDER BY + conflict-key gate) | Этап 3.5: attempt_history append при claim; T-007 verdict='no_op' |
+| `src/orchestrate.ts:412` | T-006 (countActiveTasks priority filter removed) | Этап 3.4: zombie detect, circuit breaker, concurrency-per-model, model swap |
+| `skills/saga-worker/SKILL.md` | T-008 (MERGE-BACK секция: reviewer обязан merge) | Этап 2 поток C: build-gate (4 команды из §9) |
+| `CHANGELOG.md` | T-006, T-008 entries | Этап 5.6: v2 entry |
+| `docs/research/testing-2026-07-21-sollar-new-pipeline.md` | live отчёт соседней сессии | НЕ ТРОГАТЬ — будет финализирован после Sollar completion |
+
+### §12.1. Новые файлы-источники для тест-кейсов
+
+`docs/research/testing-2026-07-21-sollar-new-pipeline.md` — **живой материал
+для тестов v2**. Конкретные кейсы:
+
+| Кейс | Что тестирует |
+|---|---|
+| T-001 | ложная тревога patrol на thinking-моделях |
+| T-002 | autonomous recovery без оператора (positive case) |
+| T-006 | cascade-recovery-loop из-за priority=low |
+| T-007 | recovery-loop для edge-case AC (no_op verdict) |
+| T-008 | merge-окно 76 сек → conflict (reviewer-does-merge) |
+
+Каждый из T-006..T-009 должен быть покрыт **NEW тестом** в Этапе 4.
+
+### §12.2. Этап 4 (NEW tests) — обновлённый список
+
+К оригинальным 9 NEW тестам добавляются:
+- `tests/lifecycle/dispatch-all-priorities.test.mjs` — T-006 regression
+- `tests/lifecycle/no-op-dev-task.test.mjs` — T-007 (verdict=no_op, already_in_dev)
+- `tests/lifecycle/verification-tracker-only.test.mjs` — T-009 (execution_mode=tracker_only)
+- `tests/lifecycle/conflict-key-gate.test.mjs` — T-008 regression (kanban + conflict-key)
+
+Итого Этап 4 теперь = **13 NEW тестов** (вместо 9).
+
+---
+
+## §13. Координация с соседней сессией
+
+### §13.1. Что соседняя сессия делает СВОЕЙ итерацией
+
+- Патчит `skills/saga-patrol/patrol.mjs` (saga-patrol skill refinement)
+- Патчит `skills/autonomous-recovery/SKILL.md` (DIAGNOSE фаза для T-007)
+- Финализирует `docs/research/testing-2026-07-21-sollar-new-pipeline.md`
+- Делает финальный 1000-score аудит Sollar после completion
+
+### §13.2. Что я делаю в v2-comprehensive
+
+- Все правки в `src/` (dispatcher.ts, orchestrate.ts, lifecycle.ts, workflow.ts,
+  tasks.ts, atomic-release.ts, claude-runner.mjs, helpers/metadata.ts)
+- Все NEW skills (arbiter, perf-tuner, type-fixer, code-reviewer, retro,
+  readiness-checker, forge, crew, party-mode)
+- T-007 (already_in_dev) и T-009 (verification.ac tracker_only) — архитектурно
+- Все templates (SRS §10/§11/§12, PRD stakeholder)
+- Все 13 NEW tests в Этапе 4
+
+### §13.3. Разделение владений (окончательное)
+
+| Файл/зона | Соседняя | Я |
+|---|---|---|
+| `src/**` (кроме правок соседа T-006/T-008) | — | ✅ |
+| `skills/saga-patrol/**` | ✅ | — |
+| `skills/autonomous-recovery/SKILL.md` | ✅ (DIAGNOSE T-007 hook) | — |
+| `skills/saga-worker/SKILL.md` | ✅ (MERGE-BACK уже сделано) | ✅ (build-gate поверх) |
+| `skills/saga-planner/SKILL.md` | — | ✅ |
+| Все остальные skills | — | ✅ |
+| `docs/research/testing-2026-07-21-*.md` | ✅ (live отчёт) | — |
+| `docs/plans/SAGA-V2-*.md` | — | ✅ |
+| Tests | — | ✅ |
+| CHANGELOG.md | добавил T-006, T-008 | добавит v2 entry |
