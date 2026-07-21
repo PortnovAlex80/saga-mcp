@@ -353,6 +353,42 @@ trace_add({ source_id: <AC artifact id>, target_type:'task',
 `verification_record` with `outcome='passed'` at the
 `verification → integration` episode transition.)
 
+### T-014: EVERY AC gets a verification task (no exceptions)
+
+> **Hard rule (Sollar A/B lesson T-014).** The verification → integration
+> episode transition requires `outcome='passed'` (or `'unknown'` under
+> degraded-verification model) evidence for **every** accepted AC in the
+> baseline — regardless of its `ac_kind` in §D2. An AC marked
+> `ac_kind: implementation` is NOT exempt from verification: it still needs
+> an independent verifier to record evidence.
+
+**DO NOT skip creating `verification.ac` tasks for ACs with
+`ac_kind: implementation`.** The `ac_kind` field in §D2 classifies the
+*primary* work (write code vs run benchmark), not whether the AC needs
+substantive verification. Every AC needs it — the gate enforces it.
+
+In the Sollar episode, the architect marked 19 of 25 ACs as
+`ac_kind: implementation`. The planner (following the old wording of this
+section literally) created verification tasks only for the 6 ACs with
+`ac_kind: verification`. Result: at the verification→integration transition,
+the gate failed with "no passing evidence for AC-1.1, AC-1.2, …" and the
+engine had to spawn a recovery task that created 19 retroactive verification
+tasks. This wasted ~1 hour and broke the episode flow.
+
+**The rule is simple:**
+
+```
+for each AC in baseline:
+    create verification.ac task
+    add verified_by trace
+```
+
+No AC is left without a verification task. If the AC has a `properties` block
+in its YAML, route to `saga-verifier` (L3 property tests); otherwise route to
+`saga-worker` (L2 component / rendering re-check). The verifier decides
+`passed` / `failed` / `unknown` based on the evidence it can gather — the
+planner's job is to ensure the task EXISTS so evidence CAN be gathered.
+
 ## Double coverage gate before INTEGRATE (unchanged from before)
 
 ```
@@ -362,8 +398,8 @@ artifact_coverage(type:'AC', link_type:'verified_by') → 0 gaps  ← substantiv
 
 Both must show 0 gaps before INTEGRATE may start. `implements` without
 `verified_by` is a coverage gap — the episode is NOT ready for integration.
-The planner's job ends at `implements` = 0 gaps; the verifier's job produces
-the `verified_by` side.
+The planner's job ends at `implements` = 0 gaps AND `verified_by` = 0 gaps;
+the verifier's job produces the substantive `outcome` on each `verified_by` edge.
 
 ## Routing: saga-verifier for L3 property tests
 

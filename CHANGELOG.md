@@ -2,6 +2,45 @@
 
 ## [Unreleased]
 
+### Fixed — saga-planner: every AC gets a verification task (T-014) — 2026-07-21
+
+**Root cause.** The verification→integration episode gate requires `passed` (or
+`unknown`) evidence for **every** accepted AC in the baseline. But the planner
+only created `verification.ac` tasks for ACs whose §D2 entry had
+`ac_kind: verification`. ACs marked `ac_kind: implementation` (the majority —
+19 of 25 in Sollar) were left without any verification task.
+
+Result: at the verification→integration transition, the gate failed with
+"no passing evidence for AC-1.1, AC-1.2, …" and the engine had to spawn a
+recovery task that retroactively created 19 verification tasks. This wasted
+~1 hour and broke the episode flow.
+
+The misunderstanding: `ac_kind` in §D2 classifies the *primary* work (write
+code vs run benchmark), NOT whether the AC needs substantive verification.
+Every AC needs it — the gate enforces it regardless of `ac_kind`.
+
+**Fix.** `skills/saga-planner/SKILL.md`: added a hard rule "T-014: EVERY AC
+gets a verification task (no exceptions)". The planner now creates a
+`verification.ac` task for every AC in the baseline, not just those marked
+`ac_kind: verification`. Routing to `saga-verifier` (L3 property tests) vs
+`saga-worker` (L2 component re-check) is decided by the presence of a
+`properties` block, not by `ac_kind`.
+
+The planner's exit criterion is now: `implements` = 0 gaps AND `verified_by`
+= 0 gaps — both structural coverage and substantive verification coverage
+must be complete before INTEGRATE.
+
+| File | Change |
+|---|---|
+| `skills/saga-planner/SKILL.md` | Hard rule: verification task for every AC; `ac_kind` ≠ exemption from verification |
+
+See `docs/research/testing-2026-07-21-sollar-new-pipeline.md` (case T-014)
+for the full analysis: why planner created only 6 verification tasks for 25
+ACs, how recovery #46 retroactively filled the gap, and why `ac_kind` must
+not gate verification coverage.
+
+---
+
 ### Fixed — verification review-loop escape (T-013) — 2026-07-21
 
 **Root cause.** When a verifier records `outcome=failed` because it found a
