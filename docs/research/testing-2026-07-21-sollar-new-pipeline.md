@@ -645,9 +645,101 @@ UPDATE tasks SET priority='medium' WHERE id IN (21,22,23,24,28);
   - Проверка: engine видит `claimable=1` для #23 (low/medium), параллельно крутит 2 worker'а (#21 reviewing + #22 executing). Normal pipeline восстановлен.
   - Семантика priority изменилась: раньше `low` = «ждёт ручного решения / не выдавать», теперь = «выдаётся последним по ORDER BY». ORDER BY priority сохранён (critical раньше low).
 
+- **2026-07-21 09:08–09:25 — КЕЙС T-007.** После priority-fix осталась последняя задача #28 (AC-4.4 Empty Saved Scenarios). Engine породил ещё 4 recovery (#41–#44), но ни одна не помогла.
+  - **Диагноз:** AC-4.4 — edge-case, уже реализованный в #17 (AC-4.1 Save Scenario) и #20 (AC-4.2 Load). Worker #28 взял задачу → проверил код → увидел `.empty-scenarios-msg` CSS + renderScenarioList() уже в index.html → legitimately ничего не делал → закрыл через `worker_done`. Но `worker_done` для dev-задачи без commit оставил `integration_state=""` — что движок на gate трактует как «зависло».
+  - **Каждая recovery проверяла:** worktree/branch `task/28` не существует, код уже в dev через #17. Заключала «нечего мерджить» → закрывалась без fix → движок снова spawn recovery.
+  - **Корень: design bug в gate.** Нет статуса `integration_state=already_in_dev` для задач, которые legitimately ничего не мерджили, потому что фича уже в integration-ветке через depends_on.
+  - **Manual fix:** `UPDATE tasks SET integration_state='merged', integrated_commit='<commit из #17>' WHERE id=28` — с пометкой в metadata, какой task реально принёс код.
+  - **Результат:** через 30 секунд engine прошёл development→verification gate → выдал #25 (AC-2.4 Page Load) saga-verifier'у. Recovery прекратились.
+  - **Уроки для кодовой базы:**
+    1. Gate logic должен принимать dev-задачи в `done`, если ВСЕ depends_on уже `merged` в ту же ветку (edge-case AC — норма).
+    2. `worker_done` должен различать «сделано, есть commit» от «сделано, код уже был» — нужен `verdict='no_op'`.
+    3. `autonomous-recovery` должен уметь ставить `integration_state='merged'` со ссылкой на depend_on-commit, если код в integration-ветке подтверждён.
+
+- **2026-07-21 09:25 — STAGE ADVANCED development → verification.** Все 19 AC dev-задач закрыты и слиты в dev (index.html = 1946 строк). Engine немедленно выдал #25 (AC-2.4 Page Load ≤3s) saga-verifier'у. Normal pipeline восстановлен после T-006 + T-007 fix.
+
 ---
 
-## 7. Ссылки
+### Кейс T-008: merge должен делать reviewer (kanban-дисциплина выдачи)
+
+**Дата/время:** 2026-07-21 09:40 UTC (обсуждение с оператором)
+**Стадия саги:** development → verification transition (уже пройден, но выводы применяются к следующей версии saga)
+
+**Гипотеза оператора.** «Merge должен делать ревьюер. Проверь цикл на консистентности. Ревью сказало ок — мержим! Чтобы другой код уже работал поверх нового кода. И Saga если видит задачи в todo и готовностью в review, нужно брать из review (kanban).»
+
+#### Что показал forensic-анализ lifecycle задачи #20
+
+Timeline (дословно из activity_log):
+```
+07:56:17  claimed by -28 (developer)         todo → in_progress
+07:59:12  completed by -28                    in_progress → review (developer worker_done)
+07:59:17  claimed by -29 (reviewer)           review → review_in_progress (РАЗНЫЙ worker)
+08:02:03  completed by -29                    review_in_progress → done, integration_state=pending
+                                              reviewer ВЫХОДИТ без merge
+          ~~~~ 76 секунд ~~~~                 ENGINE МОЖЕТ ВЫДАТЬ СЛЕДУЮЩУЮ ЗАДАЧУ В ЭТОМ ОКНЕ
+08:03:18  merge_lock acquired by -31          ТРЕТИЙ worker берёт merge-lock
+08:03:37  merge completed by -31              -31 смержил в dev
+```
+
+#### Найденная неконсистентность цикла
+
+**SKILL.md (saga-worker) строка 197** говорит: *"Only the worker who just got `completed_new_status === "done"` does this [merge]."* — то есть мержит тот, кто получил done (reviewer).
+
+**Реальность (из worker_executions):** worker_id для developer/reviewer/merger всегда **РАЗНЫЕ**:
+- developer (-28) пишет код
+- reviewer (-29) читает и говорит APPROVED → integration_state=pending → **выходит**
+- merger (-31, третий worker) берёт merge-lock и мержит в dev
+
+Это создаёт **окно 30-180 секунд** между `done` и `merged`, где движок уже видит задачу завершённой и может выдать следующую dev-задачу с тем же `conflict_key`. В single-file monolith это **гарантированный механический merge-конфликт**.
+
+#### Консистентность цикла — таблица
+
+| Свойство | Текущий цикл | Должно быть (kanban) |
+|---|---|---|
+| Кто мержит | 3-й worker, ~76 сек после APPROVED | reviewer (атомарно с APPROVED) |
+| Окно для конфликта | 30-180 сек между done и merged | 0 сек |
+| integration_state | pending → merged (через доп. execution) | сразу merged |
+| conflict-key проверяется в gate | ❌ нет | ✅ должно |
+| Skill соответствует коду | ⚠ SKILL говорит «мержит получатель done», на деле — 3-й worker | должно совпадать |
+| ORDER BY в worker_next | `PRIORITY_ORDER, created_at` (review и todo равны) | review раньше todo |
+
+#### Корневые причины
+
+1. **`worker_done` оставляет integration_state=pending** — не делает merge. Комментарий в коде: «воркер затем берёт merge-lock, мержит». Но «воркер» — это **уже другой execution**, потому что после `worker_done(stop:true)` текущий закрывается.
+2. **`findNextClaimable`** не приоритизирует `review` над `todo` — `status IN ('todo', 'review')` без разделения. Kanban-принцип «сначала закрой начатое» не соблюдён.
+3. **Нет conflict-key aware dispatching** — движок не проверяет, есть ли уже pending-merge с тем же file_path/schema. Параллельные задачи на один файл → конфликт.
+
+#### Применённые фиксы (manual code changes)
+
+**Фикс A — `findNextClaimable` ORDER BY: kanban review-first.**
+
+В `src/tools/dispatcher.ts` изменён SELECT: `review` задачи идут раньше `todo` при равном priority. Раньше:
+```sql
+ORDER BY PRIORITY_ORDER, t.created_at
+```
+Стало:
+```sql
+ORDER BY
+  CASE WHEN t.status='review' THEN 0 ELSE 1 END,  -- kanban: review раньше todo
+  PRIORITY_ORDER,
+  t.created_at
+```
+
+**Фикс B — `findNextClaimable` не отдаёт dev-задачу если есть pending-merge по conflict_key.**
+
+Добавлен NOT EXISTS подзапрос: если в очереди/в работе есть другая dev-задача с пересекающимся conflict_key и `integration_state IN ('pending','conflict')`, кандидат не выдаётся. Ждём, пока merge завершится, и только тогда отдаём следующую.
+
+**Фикс C — saga-worker SKILL.md: reviewer делает merge атомарно.**
+
+Обновлён раздел «MERGE-BACK» (строки 195-228): явно указано, что worker, получивший `completed_new_status === 'done'` для git_change задачи, **в этом же запуске** делает acquire→merge→release, не выходит с `integration_state=pending`. Раньше SKILL это подразумевал, но не делал жёсткого запрета на выход без merge.
+
+**Фикс D — worker_done: integration_state='pending' остаётся, но SKILL+gate заставляют закрыть его сразу.**
+
+Не меняем ядро worker_done (атомарный merge в SQL-транзакции — слишком рискованно). Вместо этого:
+- ORDER BY kanban (Фикс A) гарантирует, что reviewer не уходит в простое — следующий worker_next сразу берёт эту же задачу для merge, не раздаёт todo.
+- Conflict-key gate (Фикс B) гарантирует, что параллельных dev-задач на тот же файл не будет.
+
+**Сборка + рестарт engine.** После правок `npm run build` и `POST /api/engine/stop` + `/api/engine/start`.
 
 - `audit-2026-07-20-cannon-1000-score.md` — baseline 661/1000, 1000-score framework.
 - `investigation-2026-07-20-cannon-development-stage.md` — Дыры A-G в baseline.

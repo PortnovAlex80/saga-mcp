@@ -2,6 +2,112 @@
 
 ## [Unreleased]
 
+### Fixed — Kanban dispatch + reviewer-does-merge + conflict-key gate (T-008) — 2026-07-21
+
+**Root cause.** Two related defects caused the Sollar episode to spawn 8
+`recovery.heal` tasks in a loop and to produce mechanical merge conflicts
+on a single-file monolith (`index.html`):
+
+1. **Reviewer exited with `integration_state="pending"`.** `worker_done`
+   sets `pending` after APPROVED and relies on a *third* worker to pick up
+   the merge later. In single-file monoliths this creates a 30–180s window
+   where the engine sees the task as `done` and dispatches the next dev-task
+   on the same `file_path` → guaranteed merge conflict. The saga-worker
+   SKILL claimed "the worker who got `done` does the merge", but in practice
+   reviewer and merger were different processes.
+
+2. **`findNextClaimable` treated `todo` and `review` equally.** `ORDER BY`
+   was `PRIORITY_ORDER, created_at` — no kanban priority. A new dev-task
+   could be claimed while a reviewed task waited in `review` for someone to
+   pick up its merge.
+
+3. **No conflict-key aware dispatching.** Two dev-tasks sharing
+   `conflict_key = {file_path: 'index.html'}` could be dispatched in
+   parallel because the dispatcher never checked for sibling tasks in
+   pre-merge state.
+
+**Forensic evidence (Sollar task #20 lifecycle):**
+```
+07:56:17  dev worker -28  todo → in_progress (writes code)
+07:59:12  dev worker -28  in_progress → review (worker_done)
+07:59:17  rev worker -29  review → review_in_progress (DIFFERENT worker)
+08:02:03  rev worker -29  review_in_progress → done, integration_state=pending
+                            ← reviewer EXITS without merging
+          ~~~~ 76 second window ~~~~  ← engine may dispatch next dev-task here
+08:03:18  merge worker -31  acquires merge-lock
+08:03:37  merge worker -31  git merge → dev, integration_state=merged
+```
+
+Three different workers (developer, reviewer, merger) for one task. The
+window between `done` and `merged` is where single-file merge conflicts
+were born.
+
+**Fix.**
+
+**A. Kanban ORDER BY** (`src/tools/dispatcher.ts`, `findNextClaimable`):
+```sql
+ORDER BY
+  CASE WHEN t.status = 'review' THEN 0 ELSE 1 END,  -- kanban: review first
+  PRIORITY_ORDER,
+  t.created_at
+```
+`review` tasks are now handed out before `todo` at equal priority —
+"finish what you started" before starting new work.
+
+**B. Conflict-key gate** (`src/tools/dispatcher.ts`, `findNextClaimable`):
+```sql
+AND NOT EXISTS (
+  SELECT 1 FROM tasks other
+  JOIN task_conflict_keys k1 ON k1.task_id = t.id
+  JOIN task_conflict_keys k2 ON k2.key_type = k1.key_type
+                             AND k2.key_value = k1.key_value
+  WHERE other.id = k2.task_id
+    AND other.id != t.id
+    AND other.workflow_stage = t.workflow_stage
+    AND other.execution_mode = 'git_change'
+    AND other.integration_state IN ('pending', 'conflict')
+)
+```
+A dev-task is not dispatched while another task with an overlapping
+`conflict_key` is in pre-merge state (`pending` or `conflict`). Single-file
+monoliths can no longer race. Filter is narrow: only `git_change` tasks
+with `integration_state` literally `pending` or `conflict` — `not_required`
+(tracker-only / verification / recovery) is exempt, and the filter is
+scoped to the same `workflow_stage` so verification is not blocked by
+development pending-merges.
+
+**C. Reviewer-does-merge** (`skills/saga-worker/SKILL.md`, "MERGE-BACK"
+section): explicitly states that the worker who receives
+`completed_new_status === "done"` for a `git_change` task MUST perform the
+merge in the same launch (acquire → git merge → release) before exiting.
+`stop:true` means "do not claim another task", NOT "exit immediately".
+Leaving `integration_state="pending"` and exiting is now called out as the
+anti-pattern that created the Sollar recovery-loop.
+
+| File | Change |
+|---|---|
+| `src/tools/dispatcher.ts` | `findNextClaimable`: kanban ORDER BY (review-first) + conflict-key gate |
+| `skills/saga-worker/SKILL.md` | "MERGE-BACK" section: reviewer must merge before exit; `pending` exit is an anti-pattern |
+
+**Semantic changes.**
+
+- `priority=low` no longer blocks dispatch (was the T-006 fix).
+- `review` is now preferred over `todo` in the dispatch queue at equal priority.
+- A dev-task will not be dispatched while a sibling with overlapping
+  `conflict_key` is in `pending`/`conflict` integration state.
+- Reviewer is now responsible for the merge — no separate "merger" worker.
+
+**Verification.** Sollar episode resumed immediately after engine rebuild +
+restart (PID 3992 → 13860). Previously stuck verification tasks (#25, #29)
+were manually marked `merged` (they were `verification.ac` mislabeled
+`git_change` by the planner — see T-009 candidate). Engine then dispatched
+#31 (verification.ac) within 15 seconds. No new recovery tasks spawned.
+
+See `docs/research/testing-2026-07-21-sollar-new-pipeline.md` (case T-008)
+for the full incident timeline, forensic lifecycle analysis, and root-cause.
+
+---
+
 ### Fixed — `worker_next` now dispatches ALL priorities (was: medium+ only) — 2026-07-21
 
 **Root cause.** `findNextClaimable` in `src/tools/dispatcher.ts` and

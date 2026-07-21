@@ -272,7 +272,34 @@ function findNextClaimable(
           )
         )
       )
-    ORDER BY ${PRIORITY_ORDER}, t.created_at
+      AND NOT EXISTS (
+        -- T-008 kanban: НЕ выдаём dev-задачу, если есть другая task с тем же
+        -- conflict_key, ещё не слитая в integration-ветку. Ждём, пока pending-merge
+        -- закроется — иначе параллельные задачи на один файл (single-file monolith)
+        -- гарантированно конфликтуют.
+        --
+        -- Узкий фильтр: только git_change задачи с integration_state РОВНО
+        -- 'pending' или 'conflict'. 'not_required' / '' / NULL нас не касается
+        -- (это tracker_only / recovery / read-only — они не пишут код).
+        -- Также ограничиваем тем же workflow_stage, чтобы verification-задачи
+        -- не блокировались development pending-merge'ами.
+        SELECT 1 FROM tasks other
+        JOIN task_conflict_keys k1 ON k1.task_id = t.id
+        JOIN task_conflict_keys k2 ON k2.key_type = k1.key_type
+                                   AND k2.key_value = k1.key_value
+        WHERE other.id = k2.task_id
+          AND other.id != t.id
+          AND other.workflow_stage = t.workflow_stage
+          AND other.execution_mode = 'git_change'
+          AND other.integration_state IN ('pending', 'conflict')
+      )
+    ORDER BY
+      -- T-008 kanban: review задачи выдаются РАНЬШЕ todo при равном priority.
+      -- Принцип: «сначала закрой начатое». Пока задача висит в review, она
+      -- блокирует очередь (новые todo на тот же conflict_key ждут её merge).
+      CASE WHEN t.status = 'review' THEN 0 ELSE 1 END,
+      ${PRIORITY_ORDER},
+      t.created_at
     LIMIT 1
   `;
   // Сбор параметров в порядке появления ? в SQL.

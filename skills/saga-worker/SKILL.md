@@ -194,10 +194,17 @@ via `worker_next` from the `review` buffer):
 
 ### MERGE-BACK (after APPROVED — `done`, integrate into `dev`)
 
-Only the worker who just got `completed_new_status === "done"` does this.
-`stop:true` means **do not claim another task**; it does not skip this terminal
-integration protocol. Acquire the repository-scoped merge-lock, merge to the
-`integration_branch` returned with the assignment, release, and only then exit:
+**You — the worker who just got `completed_new_status === "done"` — MUST do the
+merge before exiting.** This is not optional. `worker_done` leaves
+`integration_state="pending"`; if you exit without merging, the task sits in
+limbo and the kanban dispatcher (T-008) will block any sibling dev-task with an
+overlapping `conflict_key` until a third worker eventually picks up the merge.
+That window is exactly where single-file monolith merge conflicts are born.
+
+So when you receive `completed_new_status === "done"` for a `git_change` task:
+treat `stop:true` as "do not claim another task", **not** "exit immediately".
+Acquire the repository-scoped merge-lock, merge to the `integration_branch`
+returned with the assignment, release, and only then exit:
 
 ```bash
 # 1. Acquire the lock — loop until granted (another worker may be mid-merge)
@@ -221,6 +228,13 @@ else
   # Do NOT attempt to resolve the conflict yourself — report and move on.
 fi
 ```
+
+**Reviewer-does-merge (T-008).** In the review→done transition you are the
+reviewer: you read the diff, approved it, and `worker_done` returned `done`.
+That same launch now does the merge. Do NOT exit between APPROVED and merge —
+that gap is what created the Sollar recovery-loop. If you cannot merge (lock
+contention, git error), call `worker_merge_release(result:"conflict")` so the
+task is flagged needs-human; never silently leave `integration_state="pending"`.
 
 For typed tasks the lock is per **product repository**, serialized in the shared
 DB, so different repositories may merge concurrently. Legacy tasks retain the
