@@ -2,6 +2,53 @@
 
 ## [Unreleased]
 
+### Fixed — `worker_next` now dispatches ALL priorities (was: medium+ only) — 2026-07-21
+
+**Root cause.** `findNextClaimable` in `src/tools/dispatcher.ts` and
+`countActiveTasks` in `src/orchestrate.ts` both filtered candidate tasks by
+`priority IN ('critical','high','medium')`. Any `low`-priority task was
+invisible to the dispatcher and to the engine pump-loop.
+
+`saga-planner` legitimately assigns `priority=low` to extension / edge-case
+ACs (e.g. "Interactive Examples", "Duplicate Name Handling", "Empty-State
+Message"). These tasks had their dependencies satisfied and were ready to
+run, but `worker_next` refused to hand them out.
+
+**Cascade failure observed (Sollar episode, 2026-07-21):** 5 dev tasks
+(#21/#22/#23/#24/#28) stuck in `todo`/`blocked` because planner marked them
+`low`. Engine's gate refused to advance to verification
+("tasks not completed/integrated"). Engine then spawned 8 `recovery.heal`
+tasks (#33–#40) trying to "fix" the situation; the recovery skill
+hallucinated that the code was already written and tried to advance task
+status via the API, which `worker_done` rejects for `todo` tasks. After
+3 failed recoveries the engine paused the episode with `needs-human=1`.
+
+**Fix.** Removed the `priority IN (...)` filter from both SQL queries.
+The `ORDER BY PRIORITY_ORDER` clause is preserved, so critical tasks are
+still handed out before low — but low is no longer a hard block.
+
+| File | Change |
+|---|---|
+| `src/tools/dispatcher.ts` | `findNextClaimable`: dropped `AND t.priority IN ('critical','high','medium')`. Updated `worker_next` description (was misleading models into manually bumping priority). |
+| `src/orchestrate.ts` | `countActiveTasks`: dropped the same filter. Engine pump-loop now sees `low`-priority tasks as `claimable > 0` and dispatches workers. |
+
+**Semantic change.** `priority=low` previously meant *"waits for manual
+decision — raise to medium+ to make claimable"*. It now means *"dispatched
+last, after all higher priorities are exhausted"*. If a task must never be
+auto-dispatched, use `status=blocked` (without `depends_on`) or a dedicated
+`deferred` tag — `priority=low` is no longer a deferral mechanism.
+
+**Verification.** Sollar episode resumed immediately after the engine
+rebuild + restart (PID 3144 → 3992): `claimable=1` for the previously-stuck
+`low` task, 2 workers running in parallel, 0 new recovery tasks spawned.
+The previously-stuck chain (#21 → #22 → #23 → #24 → #28) progressed to
+completion through the normal pipeline.
+
+See `docs/research/testing-2026-07-21-sollar-new-pipeline.md` (case T-006)
+for the full incident timeline and root-cause analysis.
+
+---
+
 ### Changed — Pipeline reorder: SRS after AC + Complexity Gate + DECOMP (ADR-014)
 
 - **Architecture step moved.** SRS is now written AFTER AC (was: parallel with UC).
