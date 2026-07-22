@@ -2,13 +2,13 @@
 
 Date: 2026-07-22
 
-Status: confirmed architectural failure from a real v3 run
+Status: revised after the clean Saga 3 architecture decision
 
 Related documents:
 
+- `docs/architecture/SAGA-3-CLEAN-ARCHITECTURE.md`
 - `docs/architecture/SAGA-3-0-WORKER-PRODUCTION-AXIOM.md`
 - `docs/research/automation-pipeline-problems-and-solutions.md`
-- `docs/architecture/SAGA-3-0-MANDATE.md`
 
 ## 1. Honest finding
 
@@ -18,7 +18,7 @@ This case reveals the next missing rule:
 
 > It is not enough for a worker assignment to exist. The assignment must be causally ready.
 
-Saga successfully created and dispatched a verification task, but dispatched it before the work being verified had been produced.
+Saga created and dispatched a verification task before the work being verified had been produced.
 
 The worker-production bridge existed. The temporal and causal bridge did not.
 
@@ -27,349 +27,297 @@ The worker-production bridge existed. The temporal and causal bridge did not.
 Runtime state:
 
 ```text
-Episode stage: development
+Episode display stage: development
 Task #90: development task for AC-8, status=todo
-Task #91: verification.ac, workflow_stage=verification
+Task #91: verification.ac for AC-8
 ```
 
-Task #90 had not run. Development for the relevant acceptance criterion was not complete.
+Task #90 had not run. The implementation for AC-8 did not exist in its required integrated form.
 
-Nevertheless, task #91 was dispatched and a verifier worker started while the episode still remained in development.
+Nevertheless, task #91 was dispatched and a verifier worker started.
 
-The verifier therefore attempted to verify an output that did not yet exist in its required final form.
+The verifier attempted to verify an output that was not yet available.
 
-## 3. Failure chain
+## 3. Historical failure chain
 
-The observed control path was:
+The failed implementation contained two partially active control models.
+
+The observed chain was:
 
 ```text
-1. v3 removed stage-only dispatch filtering.
-2. This was directionally correct: stages must become derived views, not the source of truth.
-3. The tasks had no compiled condition bindings: target_conditions = [].
-4. The v3 pump could not make a condition-driven decision and returned fall_through.
-5. Fall-through invoked the legacy v2 dispatcher.
-6. A v3 guard disabled the legacy stage predicate inside that dispatcher.
-7. The legacy dispatcher therefore saw tasks from every workflow stage.
-8. verification.ac task #91 was selected while development task #90 remained todo.
+1. A new guard removed the old stage-only dispatch restriction.
+2. The intended replacement was condition-driven readiness.
+3. The task had target_conditions=[].
+4. The new pump could not make a complete readiness decision.
+5. It fell through to the previous dispatcher.
+6. That dispatcher now ran without the safety predicate it had previously relied on.
+7. It selected verification task #91 while implementation task #90 remained todo.
 ```
 
-The result was not v2 behavior and not v3 behavior.
+The important lesson is not that the previous dispatcher should be preserved.
 
-It was a hybrid authority:
+The lesson is that mixed authority made it possible to remove an invariant in one subsystem before another subsystem could enforce it.
 
-```text
-v3 removes the old safety rule
-+
-v3 lacks the new condition model
-+
-v2 performs the actual task selection
-=
-no effective sequencing authority
-```
+Saga 3 therefore adopts a clean replacement. The historical control path is retained only as a regression case.
 
-## 4. The architectural error
+## 4. Architectural decision after this failure
 
-The plan correctly said:
+There is one Saga 3 controller.
 
-```text
-Stages are derived views.
-Conditions govern readiness.
-Stage-only dispatch must be removed from v3.
-```
+There is no older runtime mode, no shadow runtime, no controller switch, and no fall-through dispatcher.
 
-But removal was performed before replacement was operational.
+The existing implementation is treated as:
 
-The old stage filter was a coarse mechanism, but it still encoded a real safety property:
+- a source of failure cases;
+- a source of historical data;
+- a possible source of explicitly adopted low-level utilities.
 
-```text
-Do not execute downstream work before its required upstream work is ready.
-```
+It is not an execution fallback.
 
-Removing the representation of that property did not remove the property itself.
-
-The replacement was supposed to be scoped conditions, work-intent dependencies, integrated source identity, and current evidence. Because those bindings were empty, no replacement authority existed.
-
-This is a cutover failure, not merely a dispatcher bug.
+The complete Saga 3 dispatch path must either authorize a WorkIntent itself or fail closed inside Saga 3.
 
 ## 5. Empty conditions are not "no restrictions"
 
-`target_conditions: []` must not be interpreted as:
+For material work:
 
 ```text
-This task has no condition constraints and is therefore freely dispatchable.
+target_conditions=[]
 ```
 
-It means one of the following:
+must never mean:
 
 ```text
-The task was not compiled into the v3 control model.
-The semantic target is missing.
-The planner or migration failed to bind the task.
-The task is legacy data and has no v3 authority.
+This task has no condition constraints and is freely dispatchable.
 ```
 
-Therefore an empty condition set for a non-bookkeeping v3 task is invalid or unknown, not vacuously ready.
+It means:
+
+```text
+The task is not compiled into the Saga 3 control model.
+Its semantic target is missing.
+Its prerequisite truth is unknown.
+Its result cannot be reconciled deterministically.
+```
 
 Required behavior:
 
 ```text
-target_conditions = []
+target_conditions=[]
 -> do not dispatch
--> create CONDITION_BINDING_MISSING or UNCOMPILED_WORK_INTENT incident
--> repair the binding through a planner/compiler worker assignment where semantic work is required
--> or terminate truthfully if no permitted binding path exists
+-> reserve no budget
+-> acquire no lease or resource claim
+-> create CONDITION_BINDING_MISSING or UNCOMPILED_WORK_INTENT
+-> materialize an autonomous binding-remediation WorkIntent where a permitted repair path exists
+-> otherwise terminate truthfully
 ```
 
-Absence of safety metadata must fail closed.
+Absence of safety metadata fails closed.
 
 ## 6. Stage removal does not mean sequence removal
 
-The phrase "stage is not truth" was interpreted too aggressively.
-
-The correct meaning is:
+The phrase "stage is not truth" means:
 
 ```text
-The display stage must not be the only reason a task is eligible or ineligible.
+A display stage is not the sole admission rule.
 ```
 
 It does not mean:
 
 ```text
-All tasks from all stages are simultaneously eligible.
+All work is ready simultaneously.
 ```
 
-The replacement sequencing model must be more precise than the old stage model.
-
-For a verification task, eligibility should be derived from its own scope and obligation, for example:
+The old stage filter was coarse, but it carried a real invariant:
 
 ```text
-Target obligation is known.
-Required implementation condition for that obligation is True.
-Required source change is integrated into the candidate baseline.
-The source fingerprint to verify is fixed and current.
-Required upstream dependencies have accepted dispositions.
+Do not execute downstream work before its required upstream output exists.
+```
+
+Saga 3 preserves that invariant through scoped conditions and explicit prerequisites rather than through a global stage equality check.
+
+Stages may remain as derived UI summaries. They do not participate in dispatch authority.
+
+## 7. Scoped readiness for verification
+
+A verification WorkIntent may be admitted only when its own scope is ready.
+
+At minimum:
+
+```text
+The target obligation and scope are known.
+The required implementation condition for that scope is True.
+The required source change is integrated into the candidate baseline.
+The candidate source fingerprint is fixed and current.
+All required upstream dependencies have accepted dispositions.
 The verification procedure or oracle path exists.
-The verifier is independent where policy requires independence.
-Budget, lease, and resource claims can be reserved.
+The environment required by the verification contract is available.
+The verifier satisfies independence rules.
+Budget, lease, and resource claims can be reserved atomically.
 ```
 
-Only after those predicates are satisfied may the verification task be dispatched.
+Only then may the verifier worker start.
 
-## 7. Important nuance: verification may overlap development
+## 8. Verification may overlap development
 
-The correct fix is not necessarily to restore a global rule saying:
+The correction is not global stage serialization.
 
-```text
-No verification may start until every development task in the episode is complete.
-```
-
-That would recreate stage-as-truth and unnecessarily serialize the pipeline.
-
-Condition-driven execution may legitimately verify one scoped obligation while unrelated development continues, but only when the verified scope is ready.
-
-Example of valid overlap:
+Valid overlap:
 
 ```text
 AC-1 implementation is complete and integrated.
 AC-1 verification starts.
-AC-8 development continues independently.
+AC-8 implementation continues independently.
 ```
 
-Example of invalid overlap:
+Invalid overlap:
 
 ```text
 AC-8 implementation task #90 is todo.
 AC-8 verification task #91 starts.
 ```
 
-Therefore the required rule is scoped causal readiness, not global stage equality.
+The distinction is scoped causal readiness.
 
-## 8. The second missing architectural invariant
+## 9. Causal-readiness invariant
 
-The worker-production axiom must be complemented by a causal-readiness invariant:
+The worker-production axiom is complemented by this invariant:
 
-> A worker may receive a task only when every artifact, state, and upstream result required to make that task meaningful already exists or is explicitly part of that worker's assignment to create.
+> A worker may receive a task only when every artifact, state, and upstream result required to make that task meaningful already exists, unless creating that missing prerequisite is explicitly part of the same assignment.
 
-For every WorkIntent, Saga must know:
+For every WorkIntent, Saga 3 must know:
 
 ```text
 what the worker is expected to create;
-what must already exist before the worker starts;
-which upstream work produces those prerequisites;
+what must exist before execution;
+which upstream WorkIntent produces each prerequisite;
+which scoped conditions prove readiness;
 which source and environment baseline the work consumes;
-which conditions prove readiness;
 which invalidations revoke readiness;
-which later result the work is allowed to authorize.
+which evidence or artifact the result may create;
+which downstream conditions may change after completion.
 ```
 
-A productive path without causal readiness creates premature work, false failures, wasted retries, and invalid evidence.
+A productive path without causal readiness causes premature work, false failures, invalid evidence, and wasted recovery budget.
 
-## 9. Three authorities were accidentally split
+## 10. One dispatch authority
 
-The implementation treated dispatch as one operation, but it contains at least three authorities:
+Dispatch contains several decisions, but one Saga 3 control plane owns all of them:
 
-### 9.1 Selection authority
+### Selection
 
-Chooses which deficit should be addressed next.
+Which current deficit should be addressed next?
 
-### 9.2 Admission authority
+### Readiness
 
-Determines whether a concrete task is safe and permitted to start now.
+Are the required upstream conditions, artifacts, source state, environment, and dependencies current?
 
-### 9.3 Sequencing and readiness authority
+### Admission
 
-Determines whether required upstream conditions, source state, integration state, and dependencies are satisfied.
+Is the action permitted now under policy, budget, resource, lease, capability, and independence rules?
 
-In the failed path:
+### Materialization
+
+Which exact worker assignment and Skill will produce the required output?
+
+These decisions may be implemented in separate modules, but they are one authority and one atomic control protocol.
+
+No module may call an alternate dispatcher when one of these decisions is incomplete.
+
+## 11. Required Saga 3 dispatch contract
+
+A material dispatch must follow this structure:
 
 ```text
-v3 attempted selection;
-v3 had no conditions and fell through;
-v2 selected the task;
-a v3 SQL guard weakened admission;
-no component owned complete readiness.
+load current EpisodeSpec and generation
+-> observe authoritative state
+-> evaluate scoped conditions
+-> choose one deficit deterministically
+-> materialize or load its unique WorkIntent
+-> require non-empty target condition bindings
+-> evaluate explicit prerequisite conditions
+-> validate source, environment, dependency, and integration readiness
+-> select a capable Skill and worker class
+-> atomically reserve budget, execution lease, and resource claims
+-> persist ControlDecision and assignment
+-> launch the worker
 ```
 
-This violated the mandate's rule that exactly one controller version owns an episode generation.
-
-A single call crossed authority modes.
-
-## 10. Correct mode semantics
-
-The dispatch contract must be mutually exclusive.
-
-### v2
+If any required input is missing:
 
 ```text
-Legacy dispatcher is authoritative.
-Legacy stage and dependency rules remain intact.
-No v3 guard weakens the v2 query.
+reject or wait inside Saga 3
+-> create a typed incident when the absence is abnormal
+-> materialize an authorized remediation WorkIntent when possible
+-> never dispatch through another control path
 ```
 
-### v3_shadow
+A row in a task table is not sufficient authority to launch work.
 
-```text
-V2 remains the only dispatcher.
-V3 evaluates conditions and records the decision it would make.
-V3 cannot modify SQL predicates, reserve budget, claim tasks, or execute effects.
-```
+## 12. Who creates missing condition bindings
 
-### v3
+The controller cannot invent semantic mappings merely because they are required.
 
-```text
-V3 is the only selection and admission authority.
-Every material task requires a compiled WorkIntent and condition bindings.
-The v2 dispatcher is not used as fall-through authority.
-Missing v3 data creates an incident or quiescent state, never legacy dispatch with weakened guards.
-```
+The producer depends on the mapping:
 
-There must be no mode equivalent to:
+- deterministic structural bindings may be compiled by trusted Saga 3 code;
+- semantic obligation-to-work mappings may require a planner or architect worker;
+- missing verification scope may require a verifier-planning worker;
+- the controller validates, versions, persists, and freezes the accepted result.
 
-```text
-v3 eligibility unavailable -> use v2 selection under v3 exceptions
-```
-
-## 11. Required dispatcher contract
-
-A safe dispatch decision should resemble:
-
-```text
-read immutable controller_version
-
-if v2:
-    apply complete legacy admission semantics
-    dispatch through v2
-
-if v3_shadow:
-    apply complete legacy admission semantics
-    dispatch through v2
-    separately record v3 proposed decision
-
-if v3:
-    require current EpisodeSpec and generation
-    require compiled WorkIntent
-    require non-empty target condition bindings for material work
-    evaluate scoped prerequisite conditions
-    validate dependency and integration readiness
-    reserve budget, lease, and resource claims atomically
-    dispatch through v3 scheduler
-
-otherwise:
-    reject invalid mode
-```
-
-A v3 decision must not call a v2 dispatcher after partially changing its semantics.
-
-## 12. Who repairs missing condition bindings
-
-This case also returns to the worker-production axiom.
-
-If `target_conditions` are missing, the controller cannot simply wish them into existence.
-
-The producer depends on the nature of the mapping:
-
-- deterministic structural bindings may be compiled by trusted controller code;
-- semantic mappings from requirements to work may need a planner or architect worker;
-- legacy tasks may require a migration worker to inspect artifacts and propose bindings;
-- the controller validates, persists, versions, and freezes the accepted mapping.
-
-The recovery chain must be explicit:
+The repair chain is:
 
 ```text
 CONDITION_BINDING_MISSING
--> materialize binding-remediation WorkIntent
--> assign planner/compiler Skill
--> worker proposes semantic mapping where needed
--> deterministic validator checks obligation IDs and scopes
--> controller persists binding under current generation
--> task readiness is reevaluated
+-> create binding-remediation WorkIntent
+-> assign the correct planner/compiler Skill
+-> worker proposes semantic mappings where needed
+-> deterministic validator checks obligation IDs, scopes, and prerequisite graph
+-> controller persists the bindings under the current EpisodeSpec
+-> readiness is reevaluated
 ```
 
-The fallback must not be "dispatch without conditions."
+The fallback is never "dispatch without conditions."
 
-## 13. Required migration gate
+## 13. Clean implementation gate
 
-The old stage predicate may be removed for a class of tasks only after all of the following are proved:
+Saga 3 dispatch is enabled only after the following are true for the vertical walking skeleton:
 
 ```text
-Every task in that class has a current WorkIntent.
-Every material WorkIntent has non-empty target conditions.
+Every material task is derived from a WorkIntent.
+Every material WorkIntent has target conditions.
 Every target has explicit prerequisite conditions.
+The prerequisite graph is acyclic and validated.
 Condition aggregation and invalidation are operational.
-The v3 scheduler can make a complete admit/reject decision.
-Shadow comparison shows equivalent or intentionally improved safety.
-No v3 decision falls through to v2 authority.
-Regression scenarios pass for unbound, stale, and partially migrated tasks.
+The scheduler can make a complete admit/reject decision.
+Missing bindings fail closed.
+Worker assignment through a Skill is operational.
+Output ingestion and condition reconciliation are operational.
+No alternate dispatcher or fallback exists in the composition root.
 ```
 
-Until then, v3 must remain shadow-only for that class.
-
-This is an authority handoff gate.
+This is not a migration handoff gate. It is the minimum completeness gate for the only Saga 3 runtime.
 
 ## 14. Required regression scenarios
 
-### Scenario A: the observed #90/#91 failure
+### Scenario A: observed #90/#91 failure
 
 ```text
-Episode is in development.
 Task #90 implements AC-8 and is todo.
-Task #91 verifies AC-8 and is todo.
-Task #91 has workflow_stage=verification.
+Task #91 verifies AC-8.
 ```
 
 Expected:
 
 ```text
 #91 is not dispatchable.
-The reason is scoped implementation/integration prerequisites, not merely display stage.
 #90 is selected first.
-After #90 is completed, integrated, and its source baseline is current, #91 becomes eligible.
+After implementation is completed, integrated, and bound to the current source fingerprint, #91 becomes eligible.
 ```
 
 ### Scenario B: empty target conditions
 
 ```text
-A material v3 task has target_conditions=[].
+A material WorkIntent has target_conditions=[].
 ```
 
 Expected:
@@ -377,46 +325,47 @@ Expected:
 ```text
 No worker is launched.
 No budget is reserved.
-A typed condition-binding incident is created.
-No v2 fall-through occurs.
+No task execution state is created.
+A typed binding incident is persisted.
 ```
 
 ### Scenario C: valid scoped overlap
 
 ```text
 AC-1 is implemented and integrated.
-AC-8 remains in development.
-Verification for AC-1 is ready.
+AC-8 remains under development.
+AC-1 verification prerequisites are satisfied.
 ```
 
 Expected:
 
 ```text
-AC-1 verification may run concurrently with AC-8 development when resource claims do not conflict.
+AC-1 verification may run concurrently with AC-8 development if resource claims do not conflict.
 ```
 
-### Scenario D: shadow isolation
+### Scenario D: stale integration baseline
 
 ```text
-controller_version=v3_shadow
+Implementation completed, but the candidate source fingerprint changed before verification dispatch.
 ```
 
 Expected:
 
 ```text
-V2 dispatch behavior is byte-for-byte unaffected by v3 evaluation.
-V3 records proposals only.
+Verification is not admitted against the stale baseline.
+Affected conditions return to Unknown or False according to policy.
+A new integration or verification WorkIntent is selected.
 ```
 
-### Scenario E: no mixed authority
+### Scenario E: no alternate authority
 
-Inject a missing condition binding during v3 dispatch.
+Inject a missing prerequisite during dispatch.
 
 Expected:
 
 ```text
-The decision terminates as reject/wait/incident inside v3.
-No legacy dispatcher is called.
+The Saga 3 decision ends as wait, reject, incident, recovery, or terminal disposition.
+No other dispatcher is callable.
 ```
 
 ## 15. Broader lesson for pipeline automation
@@ -433,7 +382,7 @@ The second real case shows:
 Creating a worker task does not make the task ready.
 ```
 
-A complete automated pipeline therefore needs both:
+A complete automated pipeline needs both:
 
 ```text
 productive reachability
@@ -445,25 +394,23 @@ The full chain is:
 
 ```text
 need detected
--> correct output identified
+-> required output identified
 -> prerequisite state proved
--> executable WorkIntent created
+-> unique WorkIntent created
 -> capable Skill and worker selected
--> task admitted under one controller authority
+-> one Saga 3 controller admits the task
 -> worker creates the output
 -> output is ingested and attested
 -> scoped conditions change
 -> downstream work becomes causally ready
 ```
 
-Any missing link creates either deadlock or premature execution.
+Any missing link creates deadlock, premature execution, or false authority.
 
 ## 16. Final statement
 
-The stage filter was not the architecture we wanted, but it was still carrying a safety invariant. Saga removed that mechanism before the condition system was capable of carrying the invariant itself.
+The previous implementation removed a coarse sequencing mechanism before the replacement readiness model was complete, then allowed another dispatcher to continue execution.
 
-The failure was caused by partial replacement:
+Saga 3 removes the possibility of that class of failure structurally:
 
-> V3 removed the old sequencing authority, had no compiled conditions to provide the new authority, and then fell through to a legacy dispatcher whose safety predicate had already been disabled.
-
-The correction is not to return permanently to stage-driven execution. The correction is to make condition-driven admission complete, fail closed on missing bindings, preserve strict mode isolation, and dispatch verification only when its scoped implementation and integrated source are actually ready.
+> There is one control system. It dispatches only compiled WorkIntents with explicit scoped prerequisites. Missing conditions fail closed. Stages are projections. No older process, compatibility mode, shadow runtime, or fall-through authority exists.
