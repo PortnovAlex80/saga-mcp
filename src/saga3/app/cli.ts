@@ -231,11 +231,12 @@ function spawnWorker(
 
   args.push(prompt);
 
-  // Per-step JSONL log under board-runs (same convention as the v2 runner and
-  // CliModelPort), so tracker-view can tail the live worker stream.
-  const runDir = path.join(logRoot, `saga3-${spec.id}-${process.pid}`);
+  // Per-step JSONL log under board-runs — SAME convention as old claude-runner:
+  // board-<projectId>-<pid>-<ts>/task-<taskId>-<workerId>.jsonl
+  const projectId = Number(process.env.SAGA3_PROJECT_ID ?? 0);
+  const runDir = path.join(logRoot, `board-${projectId}-${process.pid}-${Date.now()}`);
   try { mkdirSync(runDir, { recursive: true }); } catch { /* best effort */ }
-  const logFile = path.join(runDir, `cond-${conditionType}-${workerId}.jsonl`);
+  const logFile = path.join(runDir, `task-0-${workerId}.jsonl`);
 
   return new Promise<number>((resolve) => {
     let logStream: ReturnType<typeof createWriteStream> | null = null;
