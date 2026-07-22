@@ -36,6 +36,29 @@ export class SqliteWorkerSubmissionRepository implements WorkerSubmissionReposit
     this.insertSubmission(proposal.submissionId, proposal.executionId, 'verification', proposal);
   }
 
+  findActiveExecution(input: {
+    readonly episodeSpecId: string;
+    readonly conditionType: string;
+  }): string | null {
+    const rows = this.db.prepare(
+      `SELECT a.execution_id
+         FROM saga3_worker_assignments a
+         JOIN saga3_work_intents wi ON wi.id = a.work_intent_id
+        WHERE wi.episode_spec_id = ?
+          AND wi.target_condition = ?
+          AND a.state IN ('running', 'submitted')
+          AND a.execution_id IS NOT NULL
+        ORDER BY a.updated_at DESC`,
+    ).all(input.episodeSpecId, input.conditionType) as Array<{ execution_id: string }>;
+    if (rows.length === 0) return null;
+    if (rows.length > 1) {
+      throw new Error(
+        `Multiple active executions exist for ${input.episodeSpecId}/${input.conditionType}.`,
+      );
+    }
+    return rows[0].execution_id;
+  }
+
   loadAuthority(executionId: string): WorkerExecutionAuthority | null {
     const row = this.db.prepare(
       `SELECT a.id AS assignment_id,
@@ -161,7 +184,7 @@ export class SqliteWorkerSubmissionRepository implements WorkerSubmissionReposit
         this.insertEvidence(acceptance.evidence);
       }
 
-      this.db.prepare(
+      const conditionWrite = this.db.prepare(
         `UPDATE saga3_condition_instances
             SET status = ?,
                 observed_generation = ?,
@@ -186,14 +209,21 @@ export class SqliteWorkerSubmissionRepository implements WorkerSubmissionReposit
         acceptance.authority.scopeType,
         acceptance.authority.scopeId,
       );
+      if (conditionWrite.changes !== 1) {
+        throw new Error('Scoped condition was not found during completion commit.');
+      }
 
       const accepted = acceptance.conditionStatus === 'True';
-      this.db.prepare(
+      const assignmentWrite = this.db.prepare(
         `UPDATE saga3_worker_assignments
             SET state = ?, updated_at = datetime('now')
           WHERE id = ? AND execution_id = ? AND lease_epoch = ?`,
       ).run(accepted ? 'verified' : 'failed', acceptance.authority.assignmentId,
         acceptance.authority.executionId, acceptance.authority.leaseEpoch);
+      if (assignmentWrite.changes !== 1) {
+        throw new Error('Assignment fencing check failed during completion commit.');
+      }
+
       this.db.prepare(
         `UPDATE saga3_work_intents
             SET status = ?, updated_at = datetime('now')
