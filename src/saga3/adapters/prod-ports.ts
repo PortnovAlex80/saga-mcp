@@ -19,6 +19,9 @@
 
 import { spawn, spawnSync } from 'node:child_process';
 import { createHash, randomUUID, randomBytes, randomInt } from 'node:crypto';
+import { mkdirSync, createWriteStream } from 'node:fs';
+import path from 'node:path';
+import os from 'node:os';
 import type Database from 'better-sqlite3';
 import type {
   Ports, Clock, Deadline, IdSource, RandomSource,
@@ -75,19 +78,30 @@ export class CliModelPort implements ModelPort {
   constructor(
     private readonly claudePath: string = process.env.SAGA_CLAUDE_PATH ?? 'claude',
     private readonly workspaceRoot: string,
+    private readonly logRoot: string = path.join(os.homedir(), '.zcode', 'cli', 'board-runs'),
+    private readonly projectId: number = 0,
   ) {}
 
   async propose(req: ModelRequest, deadline: Deadline): Promise<ModelResult> {
     const args = [
       '-p',
-      '--output-format', 'json',
+      '--output-format', 'stream-json',
+      '--verbose',
       '--dangerously-skip-permissions',
       '--permission-mode', 'bypassPermissions',
       '--no-session-persistence',
       req.prompt,
     ];
 
+    // Create log directory + file for tracker-view to read.
+    const logDir = path.join(this.logRoot, `board-${this.projectId}-${process.pid}-${Date.now()}`);
+    try { mkdirSync(logDir, { recursive: true }); } catch { /* best effort */ }
+    const logFile = path.join(logDir, `task-0-saga3-${Date.now()}.jsonl`);
+
     return new Promise<ModelResult>((resolve) => {
+      let logStream: ReturnType<typeof createWriteStream> | null = null;
+      try { logStream = createWriteStream(logFile, { flags: 'a' }); } catch { /* best effort */ }
+
       const child = spawn(this.claudePath, args, {
         cwd: this.workspaceRoot,
         env: { ...process.env },
@@ -97,8 +111,14 @@ export class CliModelPort implements ModelPort {
 
       let stdout = '';
       let stderr = '';
-      child.stdout.on('data', (d) => { stdout += d; });
-      child.stderr.on('data', (d) => { stderr += d; });
+      child.stdout.on('data', (d) => {
+        stdout += d;
+        if (logStream) logStream.write(d);
+      });
+      child.stderr.on('data', (d) => {
+        stderr += d;
+        if (logStream) logStream.write(d);
+      });
 
       const timer = setTimeout(() => {
         child.kill('SIGTERM');
@@ -108,6 +128,7 @@ export class CliModelPort implements ModelPort {
 
       child.on('close', (code) => {
         clearTimeout(timer);
+        if (logStream) logStream.end();
         if (code !== 0) {
           if (/rate_limit|429/i.test(stderr)) {
             resolve({ kind: 'provider_error', status: 429, message: stderr.slice(0, 500) });
@@ -366,7 +387,12 @@ export function prodPorts(db: Database.Database, workspaceRoot: string): Ports {
     clock: new RealClock(),
     ids: new ProdIds(),
     random: new ProdRandom(),
-    model: new CliModelPort('claude', workspaceRoot),
+    model: new CliModelPort(
+      process.env.SAGA_CLAUDE_PATH ?? 'claude',
+      workspaceRoot,
+      path.join(os.homedir(), '.zcode', 'cli', 'board-runs'),
+      Number(process.env.SAGA3_PROJECT_ID ?? 0),
+    ),
     oracle: new CommandOraclePort(workspaceRoot),
     effects: new GitEffectPort(workspaceRoot),
     repository: new GitRepositoryPort(),
