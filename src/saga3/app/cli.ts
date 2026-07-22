@@ -25,6 +25,10 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, createWriteStream, writeFileSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 import { spawn } from 'node:child_process';
 import { EpisodeController, loadConditionsFromDb } from './controller.js';
 import type { EpisodeContext } from './controller.js';
@@ -205,9 +209,27 @@ function spawnWorker(
     '--output-format', 'stream-json',
     '--verbose',
     '--dangerously-skip-permissions',
+    '--permission-mode', 'bypassPermissions',
     '--no-session-persistence',
-    prompt,
   ];
+
+  // Model routing: read active_model from episode_workflows metadata (same as old claude-runner).
+  const epicId = Number(process.env.SAGA3_EPIC_ID ?? 4);
+  try {
+    const ew = db.prepare('SELECT metadata FROM episode_workflows WHERE epic_id=?').get(epicId) as { metadata: string } | undefined;
+    if (ew?.metadata) {
+      const meta = JSON.parse(ew.metadata);
+      if (meta.active_model) {
+        args.push('--model', meta.active_model);
+      }
+      // LM Studio env override (same as old claude-runner launch()).
+      if (meta.active_provider === 'lmstudio') {
+        log(`Using LM Studio provider: model=${meta.active_model}`);
+      }
+    }
+  } catch { /* non-fatal — use default model */ }
+
+  args.push(prompt);
 
   // Per-step JSONL log under board-runs (same convention as the v2 runner and
   // CliModelPort), so tracker-view can tail the live worker stream.
