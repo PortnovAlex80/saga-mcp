@@ -86,17 +86,110 @@ while true:
   // 5. Повторяем — возвращаемся к шагу 1
 ```
 
+## Completion contract (контракт завершения делегирования)
+
+<!-- source: EXT-1 https://github.com/obra/superpowers -->
+
+For one dispatched saga-worker, the dispatch loop treats exactly two outcomes
+as terminal. There is no third state — a worker is either **returned** or
+**terminal non-result**. Map each to our primitives (not to superpowers' four
+status words).
+
+(Для одного запущенного saga-worker оркестратор различает ровно два исхода.
+Третьего состояния нет — воркер либо **вернул результат**, либо ушёл в
+**терминальный не-результат**. Каждое состояние мапится на наши примитивы,
+не на статусные слова superpowers.)
+
+### Returned result (воркер вернул результат) — `worker_done`
+
+A worker that holds a task and reaches a stopping point MUST call `worker_done`.
+That single call is the delegation's returned result. The call carries:
+
+- **`verdict=approved`** — review passed; for a typed `git_change` task this
+  records `integration_state=pending` (merge still gated by
+  `worker_merge_acquire`/`worker_merge_release`).
+- **`verdict=changes_requested`** — only valid on a task in `review_in_progress`;
+  returns it to the unassigned `todo` queue for a fresh developer execution.
+- **`result` text** — recorded as a comment (author = `worker_id`).
+
+`worker_done` always carries `stop:true` and clears `assigned_to`. This is the
+normal per-task completion signal: the worker finished ITS task and exited. It
+is NOT a dispatch-loop stop signal — the next `task_list` check decides whether
+another round runs.
+
+<!-- source: EXT-1 https://github.com/obra/superpowers -->
+superpowers frames this as the implementer reporting DONE/DONE_WITH_CONCERNS
+with a commit list and test summary, then a separate task-reviewer verdict. We
+collapse both into the single `worker_done` call (verdict field) because in
+CGAD the worker IS the typed execution unit and `worker_merge_release` is the
+authoritative integration verdict — there is no parallel reviewer subagent the
+dispatcher spawns.
+
+### Terminal non-result (терминальный не-результат) — `worker_ask_need` / crash
+
+A worker that cannot reach `worker_done` falls into one terminal non-result
+path. The dispatcher MUST treat both as "no result will come from this worker"
+and MUST NOT block the loop waiting.
+
+<!-- source: EXT-1 https://github.com/obra/superpowers -->
+superpowers calls this BLOCKED and lists: provide more context and re-dispatch,
+re-dispatch on a more capable model, break the task into smaller pieces, or
+escalate to the human. We keep ONLY the escalate-to-human branch and DROP the
+self-re-dispatch branches — they would let a worker authorize its own retry or
+degradation, violating CGAD's no-self-authorization invariant.
+
+1. **`worker_ask_need` (Slice 3 ADR-011) — TERMINAL park for human input.**
+   The call persists the question + resume context, opens a `human_request`,
+   releases the execution, **terminalizes the worker process**, and clears
+   `assigned_to`. The task returns to its queue only once a human answers via
+   `worker_ask_done`; a fresh worker picks it up later. The dispatch loop sees
+   `stop:true` and MUST treat it as terminal: do NOT re-poll the same worker,
+   do NOT wait for a `worker_done` that will never arrive. The task is now
+   gated behind human input, not behind this worker.
+
+   This is the explicit reconciliation with reality: `worker_ask_need` is a
+   hard terminalization, not a wait. A dispatch loop that sleeps on a
+   `worker_ask_need`'d worker waits forever — the worker process is gone.
+
+2. **Crash / lost worker** — the worker process died without calling either
+   `worker_done` or `worker_ask_need`. The task is left in `in_progress` with
+   a stale `assigned_to`. The dispatcher detects this via `worker_health`:
+   zombies = `in_progress` tasks idle > 30 min. Treatment: report the zombie
+   to the human; do NOT auto-reassign (a human decides whether the worktree
+   holds salvageable work). Saga never deletes the worktree.
+
+### How dispatch treats each (как оркестратор обрабатывает каждый исход)
+
+| Outcome (исход) | Primitive | Task state after | Dispatch action (действие) |
+|---|---|---|---|
+| Returned — approved | `worker_done(verdict=approved)` | `done` (typed: `pending` merge) | Continue loop; next `task_list` may re-enter |
+| Returned — changes requested | `worker_done(verdict=changes_requested)` | back to `todo` | Continue loop; task is reclaimable by a fresh worker |
+| Terminal — needs human | `worker_ask_need` | parked, `needs-human` tag pulses | Continue loop on OTHER tasks; surface the parked task in the status report; do NOT wait on it |
+| Terminal — crash | (no call) | `in_progress` + stale `assigned_to` | Run `worker_health`; report zombie; do NOT auto-reassign |
+
+<!-- source: EXT-1 https://github.com/obra/superpowers -->
+superpowers' continuous-execution rule ("execute all tasks without stopping;
+the only reasons to stop are BLOCKED you cannot resolve, ambiguity that
+genuinely prevents progress, or all tasks complete") maps onto our stop
+criterion below: keep dispatching while `task_list` has `todo`/`review`, and
+stop only when the queue is empty or every remaining task is gated behind
+human input (`needs-human`) or a stuck worker.
+
 ## Критерий остановки
 
 **Единственный способ остановиться** — `task_list` вернул 0 задач в statuses
 `todo` и `review`. Не останавливайся после одного раунда. Не останавливайся
 если воркеры вернули `stop:true` — это нормально, это значит «я закончил свою
-задачу, дай мне следующую».
+задачу, дай мне следующую» (см. Completion contract выше: `stop:true` — это
+нормальный returned result от `worker_done`, либо терминальный non-result от
+`worker_ask_need`; в обоих случаях воркер завершён, ждать его не надо).
 
 Если после раунда остались задачи в `in_progress` или `review_in_progress`
-но нет `todo`/`review` — это значит воркеры ещё работают или ждут review.
-Подожди и проверь ещё раз (это может быть merge conflict с `needs-human` —
-тогда остановись и сообщи пользователю).
+но нет `todo`/`review` — это значит воркеры ещё работают, ждут review, либо
+воркер ушёл в терминальный non-result (`worker_ask_need` / crash). Подожди и
+проверь ещё раз. Если задача висит в `in_progress` с тегом `needs-human` или
+стабильным `assigned_to` > 30 мин — это merge conflict или потерянный воркер;
+остановись и сообщи пользователю (не авто-переопределяй).
 
 ## Parallel awareness (параллельное выполнение)
 
