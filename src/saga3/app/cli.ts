@@ -216,6 +216,24 @@ async function runEpisode(): Promise<void> {
 
       log(`STEP ${step}: condition=${targetCondition} skill=${skillId} — spawning worker...`);
 
+      // Write worker_executions row so tracker-view shows the worker.
+      const workerId = `saga3-${step}-${Date.now()}`;
+      const executionId = `saga3-exec-${step}-${Date.now()}`;
+      const projectId = Number(process.env.SAGA3_PROJECT_ID ?? 3);
+      const epicId = Number(process.env.SAGA3_EPIC_ID ?? 4);
+      try {
+        db.prepare(
+          `INSERT INTO worker_executions
+             (execution_id, run_id, project_id, epic_id, task_id, worker_id, machine_id,
+              launcher, state, phase, reserved_at, started_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,datetime('now'),datetime('now'))`,
+        ).run(executionId, `saga3-run-${Date.now()}`, projectId, epicId, 0, workerId,
+          'saga3-host', 'saga3-cli', 'running', 'executing');
+      } catch (e) {
+        // Old DB may not have the table — non-fatal.
+        log(`(worker_executions write skipped: ${e instanceof Error ? e.message : 'error'})`);
+      }
+
       // Build the prompt for this condition.
       const prompt = buildSkillPrompt(targetCondition, obligationId, skillId);
 
@@ -238,6 +256,15 @@ async function runEpisode(): Promise<void> {
         inputFingerprint: ctx.currentSourceFingerprint,
         prompt,
       }, deadline);
+
+      // Update worker_executions: worker finished.
+      try {
+        db.prepare(
+          `UPDATE worker_executions SET state='exited', phase='finished',
+           finished_at=datetime('now'), exit_code=?
+           WHERE execution_id=?`,
+        ).run(modelResult.kind === 'proposal' ? 0 : 1, executionId);
+      } catch { /* non-fatal */ }
 
       if (modelResult.kind !== 'proposal') {
         log(`WORKER FAILED: ${modelResult.kind}${'message' in modelResult ? ': ' + modelResult.message : ''}`);
