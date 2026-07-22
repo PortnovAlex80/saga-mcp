@@ -11,6 +11,7 @@
  * degradation, truthful negative outcomes."
  */
 
+import type Database from 'better-sqlite3';
 import type { ConditionContract, ActionContract } from './types.js';
 
 /**
@@ -207,6 +208,84 @@ export const PIPELINE_ACTIONS: readonly ActionContract[] = [
     prerequisites: ['ReleaseCompleted'],
   },
 ];
+
+/**
+ * ConditionType → v2 task_kind mapping.
+ *
+ * saga3 authorizes work on CONDITIONS, but the visibility layer
+ * (worker_executions, the frontend board, task list) speaks the v2 contract:
+ * one row in `tasks` per unit of work, addressed by real `task_id`. Without a
+ * real task row, the board shows synthetic ids (#9041356) that mean nothing to
+ * the operator. This map bridges the two: each condition carries the canonical
+ * v2 `task_kind` (and `workflow_stage`) that the corresponding skill produces,
+ * so the engine can resolve a real `tasks.id` for the episode and the board
+ * renders "🤖 #103 Discovery: ..." exactly as in v2.
+ *
+ * task_kind values are the SAME canonical set src/tools/workflow.ts validates
+ * transitions against (brief_accepted, prd_accepted, uc_accepted, ...). Do not
+ * invent new ones here — they would not auto-fire the downstream generation.
+ */
+export const CONDITION_TASK_KIND: Record<string, { task_kind: string; workflow_stage: string }> = {
+  ConstitutionReady:     { task_kind: 'discovery.kickstart',        workflow_stage: 'discovery' },
+  ContractConsistent:    { task_kind: 'formalization.prd',          workflow_stage: 'formalization' },
+  BaselineFrozen:        { task_kind: 'formalization.reconciliation', workflow_stage: 'formalization' },
+  ArchitectureReady:     { task_kind: 'formalization.srs',          workflow_stage: 'formalization' },
+  PlanReady:             { task_kind: 'planning.decomposition',      workflow_stage: 'planning' },
+  ImplementationComplete:{ task_kind: 'development.code',           workflow_stage: 'development' },
+  VerificationCurrent:   { task_kind: 'verification.ac',            workflow_stage: 'verification' },
+  IntegrationComplete:   { task_kind: 'integration.merge',          workflow_stage: 'integration' },
+  ReleaseReady:          { task_kind: 'release.prepare',            workflow_stage: 'release' },
+  ReleaseCompleted:      { task_kind: 'release.publish',            workflow_stage: 'release' },
+  ObservationHealthy:    { task_kind: 'observation.monitor',        workflow_stage: 'observation' },
+};
+
+/**
+ * Resolve a real `tasks.id` for an episode + condition, creating the task row
+ * if it does not exist yet. The id is stable across restarts (idempotent INSERT
+ * OR IGNORE on epic_id + task_kind), so the engine never invents synthetic
+ * ids and the board always renders a real task number.
+ *
+ * Returns 0 only if the condition is unmapped (defensive — should not happen
+ * for the canonical 11 conditions).
+ */
+export function resolveTaskForCondition(
+  db: Database.Database,
+  epicId: number,
+  conditionType: string,
+  mandate: string,
+): number {
+  const mapping = CONDITION_TASK_KIND[conditionType];
+  if (!mapping) return 0;
+  const existing = db.prepare(
+    `SELECT id FROM tasks WHERE epic_id=? AND task_kind=? ORDER BY id LIMIT 1`,
+  ).get(epicId, mapping.task_kind) as { id: number } | undefined;
+  if (existing) return existing.id;
+  // Create the canonical task for this stage. task_kind + workflow_stage match
+  // what workflow.ts validates transitions against, so a downstream
+  // brief_accepted/prd_accepted/... generation can fire from worker_done.
+  const title = mapping.task_kind === 'discovery.kickstart'
+    ? `Discovery: ${mandate}`
+    : `${mapping.task_kind} — ${conditionType}`;
+  const result = db.prepare(
+    `INSERT OR IGNORE INTO tasks
+       (epic_id, title, description, status, priority, task_kind, workflow_stage,
+        execution_skill, execution_mode, tags, metadata)
+     VALUES (?, ?, '', 'todo', 'high', ?, ?, ?, 'tracker_only',
+             ?, '{}')`,
+  ).run(
+    epicId, title, mapping.task_kind, mapping.workflow_stage,
+    PIPELINE_ACTIONS.find((a) => a.targetCondition === conditionType)?.skillId ?? 'saga-worker',
+    JSON.stringify([`stage:${mapping.workflow_stage}`, `kind:${mapping.task_kind}`]),
+  );
+  // INSERT OR IGNORE may have matched an existing row (changes=0); re-read.
+  if (!result.changes) {
+    const reread = db.prepare(
+      `SELECT id FROM tasks WHERE epic_id=? AND task_kind=? ORDER BY id LIMIT 1`,
+    ).get(epicId, mapping.task_kind) as { id: number } | undefined;
+    return reread?.id ?? 0;
+  }
+  return Number(result.lastInsertRowid);
+}
 
 /**
  * Derived display stages — for UI only. Never authorizes dispatch.

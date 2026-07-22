@@ -39,6 +39,7 @@ import {
   PIPELINE_CONDITIONS,
   PIPELINE_ACTIONS,
   MANDATORY_CONDITIONS,
+  resolveTaskForCondition,
 } from '../domain/pipeline-contracts.js';
 import { prodPorts } from '../adapters/prod-ports.js';
 import { initSaga3Schema } from '../domain/schema.js';
@@ -53,6 +54,24 @@ if (!mandate) {
 const workspace = process.env.SAGA3_WORKSPACE ?? process.cwd();
 if (!existsSync(workspace)) {
   console.error(`Workspace not found: ${workspace}`);
+  process.exit(1);
+}
+
+// Skills live OUTSIDE the product workspace (they are shared assets installed
+// at the user level and shipped with saga-mcp source). The worker's cwd is the
+// product workspace, which does NOT contain skills/, so a relative path fails
+// with "File does not exist". Resolve an absolute skills root:
+//   1. SAGA3_SKILLS_ROOT env override (highest priority)
+//   2. <saga-mcp source>/skills  — three levels up from dist/saga3/app/
+//   3. ~/.zcode/skills           — user-installed skills fallback
+const candidateSkillsRoots = [
+  process.env.SAGA3_SKILLS_ROOT,
+  path.join(__dirname, '..', '..', '..', 'skills'),
+  path.join(os.homedir(), '.zcode', 'skills'),
+].filter((p): p is string => !!p && existsSync(p));
+const skillsRoot = candidateSkillsRoots[0] ?? path.join(os.homedir(), '.zcode', 'skills');
+if (!existsSync(skillsRoot)) {
+  console.error(`Skills root not found. Tried: ${candidateSkillsRoots.join(', ')}`);
   process.exit(1);
 }
 
@@ -268,6 +287,7 @@ function spawnWorker(
     obligationId,
     skillId,
     workspaceRoot: workspace,
+    skillsRoot,
     episodeSpecId: spec.id,
     generation: spec.generation,
     role,
@@ -306,8 +326,13 @@ function spawnWorker(
   // board-<projectId>-<pid>-<ts>/task-<taskId>-<workerId>.jsonl
   const runDir = path.join(logRoot, `board-${projectId}-${process.pid}-${Date.now()}`);
   try { mkdirSync(runDir, { recursive: true }); } catch { /* best effort */ }
-  const task = db.prepare('SELECT id FROM tasks WHERE epic_id=? ORDER BY id LIMIT 1').get(epicId) as { id: number } | undefined;
-  const taskId = task?.id ?? 0;
+  // Resolve a REAL tasks.id for this condition (v2 contract: one task per unit
+  // of work, addressed by real task_id). This replaces the earlier synthetic
+  // 9M id hack: synthetic ids were invisible to the board (no #N→title mapping)
+  // and broke the operator's mental model. With a real task row, the board
+  // renders "🤖 #103 Discovery: ..." exactly as in v2, and worker_executions'
+  // UNIQUE(task_id) WHERE state active contract still holds.
+  const taskId = resolveTaskForCondition(db, epicId, conditionType, mandate);
   const logFile = path.join(runDir, `task-${taskId}-${workerId}.jsonl`);
 
   return new Promise<number>((resolve) => {
@@ -507,6 +532,18 @@ async function runEpisode(): Promise<void> {
         (pid, logFile, taskId) => {
           if (taskId <= 0) return;
           try {
+            // Retire any prior active execution for this condition's synthetic
+            // task_id before inserting the new one. The partial unique index
+            // idx_worker_executions_one_active_task blocks a second running row
+            // on the same task_id, so an orphaned row from a crashed prior
+            // worker would otherwise make this INSERT fail. Marking it 'lost'
+            // (not 'exited') signals the prior worker did not finish cleanly.
+            db.prepare(
+              `UPDATE worker_executions
+                  SET state='lost', finished_at=datetime('now'),
+                      last_error='superseded by new attempt'
+                WHERE task_id=? AND state IN ('reserved','running','cancel_requested')`,
+            ).run(taskId);
             db.prepare(
               `INSERT INTO worker_executions
                  (execution_id, run_id, project_id, epic_id, task_id, worker_id,

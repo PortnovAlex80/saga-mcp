@@ -44,6 +44,15 @@ export interface WorkerPromptInput {
   /** Worker role derived from the skill (developer, verifier, ...). */
   readonly role: string;
   readonly oracleId?: string;
+  /**
+   * Absolute path to the directory containing the saga skill folders
+   * (e.g. .../skills/ where skills/saga-kickstart/SKILL.md lives).
+   * Required: the worker's cwd is the product workspace, which does NOT
+   * contain skills, so a relative `skills/<id>/SKILL.md` path fails with
+   * "File does not exist". Passed as an absolute path the worker reads
+   * directly regardless of cwd.
+   */
+  readonly skillsRoot: string;
 }
 
 /**
@@ -54,6 +63,10 @@ export interface WorkerPromptInput {
  * hard rules — but rewrites the rules around the saga3 condition protocol.
  */
 export function buildWorkerPrompt(input: WorkerPromptInput): string {
+  // Skills live in a shared skills root (user-level or saga-mcp source), NOT in
+  // the product workspace. Hand the worker an absolute path so it can read its
+  // SKILL.md regardless of cwd.
+  const skillPath = `${input.skillsRoot.replace(/\\/g, '/')}/${input.skillId}/SKILL.md`;
   return [
     'You are a Saga 3 worker. Saga assigned you one condition to satisfy.',
     '',
@@ -62,11 +75,12 @@ export function buildWorkerPrompt(input: WorkerPromptInput): string {
     `condition=${input.conditionType}`,
     `obligation=${input.obligationId}`,
     `workspace_root=${input.workspaceRoot}`,
+    `skills_root=${input.skillsRoot.replace(/\\/g, '/')}`,
     `role=${input.role}`,
     `required_oracle=${input.oracleId ?? 'condition-oracle'}`,
     '',
     'INSTRUCTIONS:',
-    `1. Read your skill at skills/${input.skillId}/SKILL.md for how to do this work.`,
+    `1. Read your skill at ${skillPath} for how to do this work.`,
     '2. Do the work according to the skill (create files, write artifacts, run checks).',
     '3. When done, create your artifact files in the workspace.',
     '4. Report your result by calling the saga3 MCP tools available to you:',
