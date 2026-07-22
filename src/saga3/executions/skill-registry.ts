@@ -80,6 +80,20 @@ const REGISTRY: SkillCapability[] = [
     producesArtifacts: ['diagnosis'],
     executionMode: 'read_only_evidence',
   },
+  {
+    skillId: 'saga-release',
+    role: 'release',
+    actionKinds: ['prepare-release', 'release'],
+    producesArtifacts: ['release-notes'],
+    executionMode: 'tracker_only',
+  },
+  {
+    skillId: 'saga-reconciler',
+    role: 'reconciler',
+    actionKinds: ['reconcile', 'stamp-baseline'],
+    producesArtifacts: ['baseline'],
+    executionMode: 'tracker_only',
+  },
 ];
 
 /**
