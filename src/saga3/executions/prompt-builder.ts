@@ -43,6 +43,7 @@ export interface WorkerPromptInput {
   readonly generation: number;
   /** Worker role derived from the skill (developer, verifier, ...). */
   readonly role: string;
+  readonly oracleId?: string;
 }
 
 /**
@@ -62,6 +63,7 @@ export function buildWorkerPrompt(input: WorkerPromptInput): string {
     `obligation=${input.obligationId}`,
     `workspace_root=${input.workspaceRoot}`,
     `role=${input.role}`,
+    `required_oracle=${input.oracleId ?? 'condition-oracle'}`,
     '',
     'INSTRUCTIONS:',
     `1. Read your skill at skills/${input.skillId}/SKILL.md for how to do this work.`,
@@ -69,10 +71,11 @@ export function buildWorkerPrompt(input: WorkerPromptInput): string {
     '3. When done, create your artifact files in the workspace.',
     '4. Report your result by calling the saga3 MCP tools available to you:',
     '   - saga3_propose_artifact: to register an artifact you created',
-    '   - saga3_propose_verification: to report a verification result (if applicable)',
+    '   - saga3_propose_verification: REQUIRED for every condition; use required_oracle exactly and report passed only after checking the produced result',
     '   - saga3_complete: to signal you are done with this condition',
     '5. Do NOT call worker_done, task_update, or any v2 tool. Use only saga3_* tools.',
-    '6. After saga3_complete, stop. Do not start another task.',
+    '6. saga3_complete cannot make a condition True without current passed verification evidence.',
+    '7. After saga3_complete, stop. Do not start another task.',
   ].join('\n');
 }
 

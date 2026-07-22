@@ -20,6 +20,7 @@ import type {
   StepResult,
   OutcomeCertificate,
   WorkerOutput,
+  WorkIntent,
 } from '../domain/types.js';
 import { PIPELINE_CONDITIONS } from '../domain/pipeline-contracts.js';
 import {
@@ -71,6 +72,9 @@ export interface EpisodeContext {
   readonly db?: Database.Database;
   leaseEpoch: number;
   currentAssignment: ReturnType<typeof createAssignment> | null;
+  currentIntent?: WorkIntent | null;
+  latestEvidence?: Map<string, EvidenceRecord>;
+  maxConcurrency?: number;
 }
 
 /**
@@ -336,21 +340,31 @@ export class EpisodeController {
     // 4. Find an action contract for the deficit.
     const deficit = deficits[0];
     const action = this.ctx.actionContracts.find((a) => a.targetCondition === deficit);
+    const deficitContract = this.ctx.conditionContracts.find((c) => c.conditionType === deficit);
 
-    if (!action) {
+    if (!action || !deficitContract) {
       // No action for this deficit — try the next one.
       return { kind: 'waiting_until', at: this.ports.clock.now() + 1000 };
     }
 
     // 5. Materialize WorkIntent.
-    const intent = materializeWorkIntent({
+    const materialized = materializeWorkIntent({
       episodeSpecId: this.ctx.spec.id,
       generation: this.ctx.spec.generation,
       action,
-      obligationId: deficit,
+      obligationId: deficitContract.obligationId,
       scopeType: 'episode',
       scopeId: '',
     });
+    const intentKey = workIntentKey({
+      generation: materialized.generation,
+      targetCondition: materialized.targetCondition,
+      targetObligation: materialized.targetObligation,
+      scopeType: materialized.scopeType,
+      scopeId: materialized.scopeId,
+      strategyId: materialized.strategyId,
+    });
+    const intent: WorkIntent = { ...materialized, id: intentKey };
 
     // 6. Check causal readiness (prerequisites + dependencies + fail-closed).
     const readiness = evaluateReadiness({
@@ -378,7 +392,7 @@ export class EpisodeController {
       repositories: [],
       heldClaims: this.ctx.heldClaims,
       capacityUsed: 0,
-      capacityMax: 4,
+      capacityMax: this.ctx.maxConcurrency ?? 1,
       budget: this.ctx.budget,
       budgetReservationRef: workIntentKey({
         generation: intent.generation,
@@ -396,10 +410,37 @@ export class EpisodeController {
 
     // 9. Create worker assignment (stored in ctx for the pump).
     this.ctx.leaseEpoch += 1;
-    this.ctx.currentAssignment = createAssignment({
+    const rawAssignment = createAssignment({
       workIntent: intent,
       skill,
     });
+    this.ctx.currentAssignment = {
+      ...rawAssignment,
+      id: this.ports.ids.next('assignment'),
+    };
+    this.ctx.currentIntent = intent;
+    if (this.ctx.db) {
+      this.ctx.db.prepare(
+        `INSERT INTO saga3_work_intents
+           (id, episode_spec_id, generation, target_condition, target_obligation,
+            scope_type, scope_id, strategy_id, skill_id, origin,
+            parent_incident_id, prerequisites, read_scopes, write_scopes,
+            conflict_keys, budget_reservation, status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'admitted')
+         ON CONFLICT(id) DO UPDATE SET status='admitted', updated_at=datetime('now')`,
+      ).run(intent.id, intent.episodeSpecId, intent.generation,
+        intent.targetCondition, intent.targetObligation, intent.scopeType,
+        intent.scopeId, intent.strategyId, intent.skillId, intent.origin,
+        intent.parentIncidentId, JSON.stringify(intent.prerequisites),
+        JSON.stringify(intent.readScopes), JSON.stringify(intent.writeScopes),
+        JSON.stringify(intent.conflictKeys), intent.budgetReservation);
+      this.ctx.db.prepare(
+        `INSERT OR REPLACE INTO saga3_worker_assignments
+           (id, work_intent_id, skill_id, worker_id, execution_id, lease_epoch, state)
+         VALUES (?, ?, ?, NULL, NULL, ?, 'pending')`,
+      ).run(this.ctx.currentAssignment.id, intent.id, skill.skillId,
+        this.ctx.currentAssignment.leaseEpoch);
+    }
 
     // 10. Return did_work — the pump will drive the worker through ports.
     const decisionId = this.ports.ids.next('decision');
@@ -433,18 +474,46 @@ export class EpisodeController {
         // Direct condition — use the condition's current status.
         // The status was set by ingestOutput after evidence was attached.
         // If status is True but has no source fingerprint, it may be stale.
+        let evidence: EvidenceRecord | null = this.ctx.latestEvidence?.get(contract.conditionType) ?? null;
+        if (!evidence && this.ctx.db) {
+          const row = this.ctx.db.prepare(
+            `SELECT id, episode_spec_id, condition_type, obligation_id,
+                    generation, source_fingerprint, environment_fingerprint,
+                    oracle_id, oracle_version, trust_class, verdict, raw_digest,
+                    observed_at, freshness_max_age_ms
+               FROM saga3_evidence_records
+              WHERE episode_spec_id=? AND condition_type=? AND obligation_id=?
+              ORDER BY observed_at DESC LIMIT 1`,
+          ).get(this.ctx.spec.id, contract.conditionType, contract.obligationId) as any;
+          if (row) {
+            evidence = {
+              id: row.id,
+              episodeSpecId: row.episode_spec_id,
+              conditionType: row.condition_type,
+              obligationId: row.obligation_id,
+              generation: row.generation,
+              sourceFingerprint: row.source_fingerprint,
+              environmentFingerprint: row.environment_fingerprint,
+              oracleId: row.oracle_id,
+              oracleVersion: row.oracle_version,
+              trustClass: row.trust_class,
+              verdict: row.verdict,
+              rawDigest: row.raw_digest,
+              observedAt: row.observed_at,
+              freshnessMaxAgeMs: row.freshness_max_age_ms,
+            };
+          }
+        }
         statuses[contract.conditionType] = evaluateCondition(
           condition,
-          condition.sourceFingerprint ? { verdict: 'passed' } as any : null,
+          evidence,
           this.ctx.spec.generation,
           this.ctx.currentSourceFingerprint,
+          this.ports.clock.now(),
         );
         // If evaluateCondition returned Unknown but the raw status is True
         // (set by ingestOutput before sourceFingerprint was stamped),
         // trust the ingestOutput result — it just ran a real oracle.
-        if (statuses[contract.conditionType] === 'Unknown' && condition.status === 'True') {
-          statuses[contract.conditionType] = 'True';
-        }
       }
     }
 
@@ -481,6 +550,8 @@ export class EpisodeController {
       const condition = this.ctx.conditions.get(conditionType);
       if (condition) {
         const ev = evidence[0];
+        if (!this.ctx.latestEvidence) this.ctx.latestEvidence = new Map();
+        this.ctx.latestEvidence.set(conditionType, ev);
         if (ev.verdict === 'passed') condition.status = 'True';
         else if (ev.verdict === 'failed') condition.status = 'False';
         else condition.status = 'Unknown';

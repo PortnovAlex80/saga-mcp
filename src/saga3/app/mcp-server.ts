@@ -32,6 +32,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { initSaga3Schema } from '../domain/schema.js';
+import { PIPELINE_CONDITIONS } from '../domain/pipeline-contracts.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -70,6 +71,20 @@ function openDb(): Database.Database {
 function workspaceRoot(): string {
   const ws = process.env.SAGA3_WORKSPACE ?? process.cwd();
   return ws;
+}
+
+function assertEpisodeScope(episodeSpecId: string): void {
+  const assigned = process.env.SAGA3_EPISODE_SPEC_ID;
+  if (assigned && assigned !== episodeSpecId) {
+    throw new Error(`Worker is scoped to episode ${assigned}, not ${episodeSpecId}`);
+  }
+}
+
+function assertConditionScope(conditionType: string): void {
+  const assigned = process.env.SAGA3_CONDITION;
+  if (assigned && assigned !== conditionType) {
+    throw new Error(`Worker is scoped to condition ${assigned}, not ${conditionType}`);
+  }
 }
 
 /**
@@ -131,21 +146,31 @@ interface ProposeArtifactInput {
 }
 
 function handleProposeArtifact(args: ProposeArtifactInput): { ok: true; artifact_id: string } {
+  assertEpisodeScope(args.episode_spec_id);
   const digest = args.digest && args.digest.length > 0 ? args.digest : sha256(args.content ?? '');
 
   // Write content to disk under the workspace root (relative path resolved).
   const relativePath = args.path.split('#')[0]; // strip markdown anchor, matches ingestion.ts
-  const absolute = path.resolve(workspaceRoot(), relativePath);
+  const root = path.resolve(workspaceRoot());
+  const absolute = path.resolve(root, relativePath);
+  if (absolute !== root && !absolute.startsWith(root + path.sep)) {
+    throw new Error(`Artifact path escapes workspace: ${args.path}`);
+  }
   mkdirSync(path.dirname(absolute), { recursive: true });
   writeFileSync(absolute, args.content ?? '', 'utf8');
 
   const artifactId = `art-${randomUUID()}`;
   db.prepare(
     `INSERT INTO saga3_artifacts (id, episode_spec_id, kind, path, digest)
-     VALUES (?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(episode_spec_id, path)
+     DO UPDATE SET kind=excluded.kind, digest=excluded.digest`,
   ).run(artifactId, args.episode_spec_id, args.kind, args.path, digest);
 
-  return { ok: true, artifact_id: artifactId };
+  const stored = db.prepare(
+    `SELECT id FROM saga3_artifacts WHERE episode_spec_id=? AND path=?`,
+  ).get(args.episode_spec_id, args.path) as { id: string };
+  return { ok: true, artifact_id: stored.id };
 }
 
 interface ProposeVerificationInput {
@@ -159,6 +184,15 @@ interface ProposeVerificationInput {
 }
 
 function handleProposeVerification(args: ProposeVerificationInput): { ok: true; evidence_id: string } {
+  assertEpisodeScope(args.episode_spec_id);
+  assertConditionScope(args.condition_type);
+  const contract = PIPELINE_CONDITIONS.find((item) => item.conditionType === args.condition_type);
+  if (!contract || contract.oracleRequired !== args.oracle_id) {
+    throw new Error(`Condition ${args.condition_type} requires oracle ${contract?.oracleRequired ?? 'unknown'}`);
+  }
+  if (args.verdict === 'passed' && args.exit_code !== 0) {
+    throw new Error('A passed verdict requires exit_code=0.');
+  }
   const prov = episodeProvenance(args.episode_spec_id);
   const obligationId = obligationFor(args.episode_spec_id, args.condition_type);
 
@@ -276,35 +310,45 @@ interface CompleteInput {
 }
 
 function handleComplete(args: CompleteInput): { ok: true; new_status: string } {
-  // Deterministic status: derive from the latest attached evidence for this
-  // condition, falling back to the worker-declared result when no evidence
-  // (or an inconclusive verdict) is present.
+  assertEpisodeScope(args.episode_spec_id);
+  assertConditionScope(args.condition_type);
+  const prov = episodeProvenance(args.episode_spec_id);
   const latest = db
     .prepare(
-      `SELECT verdict
+      `SELECT verdict, generation, source_fingerprint, environment_fingerprint
          FROM saga3_evidence_records
         WHERE episode_spec_id = ? AND condition_type = ?
         ORDER BY observed_at DESC
         LIMIT 1`,
     )
-    .get(args.episode_spec_id, args.condition_type) as { verdict: string } | undefined;
+    .get(args.episode_spec_id, args.condition_type) as {
+      verdict: string;
+      generation: number;
+      source_fingerprint: string;
+      environment_fingerprint: string;
+    } | undefined;
 
-  let newStatus: string;
-  if (latest?.verdict === 'passed') {
+  const current = latest?.generation === prov.generation
+    && latest?.source_fingerprint === prov.sourceFingerprint;
+  let newStatus = 'Unknown';
+  if (current && latest?.verdict === 'passed') {
     newStatus = 'True';
-  } else if (latest?.verdict === 'failed') {
+  } else if (current && latest?.verdict === 'failed') {
     newStatus = 'False';
-  } else {
-    newStatus = args.result === 'completed' ? 'True' : 'False';
   }
 
   const result = db
     .prepare(
       `UPDATE saga3_condition_instances
-          SET status = ?, last_transition_at = datetime('now'), updated_at = datetime('now')
+          SET status = ?, observed_generation = ?, source_fingerprint = ?,
+              environment_fingerprint = ?, projection_version = projection_version + 1,
+              last_transition_at = datetime('now'), updated_at = datetime('now')
         WHERE episode_spec_id = ? AND condition_type = ?`,
     )
-    .run(newStatus, args.episode_spec_id, args.condition_type);
+    .run(newStatus, current ? prov.generation : null,
+      current ? prov.sourceFingerprint : null,
+      current ? prov.environmentFingerprint : null,
+      args.episode_spec_id, args.condition_type);
 
   if (result.changes === 0) {
     throw new Error(
@@ -385,14 +429,14 @@ const TOOLS: Tool[] = [
   {
     name: 'saga3_complete',
     description:
-      'Complete (or fail) a saga3 condition. Sets the condition status from the latest attached evidence: passed evidence -> True, failed evidence -> False. If no evidence (or an inconclusive verdict) is present, the worker-declared result drives the status (completed -> True, failed -> False). Returns the new status.',
+      'Close a saga3 worker attempt. The controller derives status only from current attached evidence: passed -> True, failed -> False, missing/inconclusive/stale -> Unknown. The declared result never substitutes for evidence.',
     annotations: { title: 'Saga3: Complete Condition', readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     inputSchema: {
       type: 'object',
       properties: {
         episode_spec_id: { type: 'string', description: 'Episode spec id of the condition.' },
         condition_type: { type: 'string', description: 'The condition type to transition.' },
-        result: { type: 'string', enum: ['completed', 'failed'], description: "Worker-declared outcome. 'completed' -> True (absent passed evidence), 'failed' -> False." },
+        result: { type: 'string', enum: ['completed', 'failed'], description: 'Worker-declared attempt outcome for diagnostics; condition authority remains evidence-only.' },
       },
       required: ['episode_spec_id', 'condition_type', 'result'],
     },

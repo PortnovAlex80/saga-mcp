@@ -79,7 +79,6 @@ export const PIPELINE_CONDITIONS: readonly ConditionContract[] = [
     scopeId: '',
     oracleRequired: 'build-check',
     dependsOn: ['PlanReady'],
-    aggregation: 'all_true',
   },
   // Verification
   {
@@ -89,7 +88,6 @@ export const PIPELINE_CONDITIONS: readonly ConditionContract[] = [
     scopeId: '',
     oracleRequired: 'evidence-check',
     dependsOn: ['ImplementationComplete'],
-    aggregation: 'all_true',
   },
   // Integration
   {

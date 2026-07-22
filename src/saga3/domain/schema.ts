@@ -29,6 +29,10 @@ export const SAGA3_SCHEMA = `
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS saga3_episode_specs (
   id                    TEXT PRIMARY KEY,
+  project_id            INTEGER NOT NULL DEFAULT 0,
+  epic_id               INTEGER NOT NULL DEFAULT 0,
+  mandate               TEXT NOT NULL DEFAULT '',
+  controller_version    TEXT NOT NULL DEFAULT 'v3',
   generation            INTEGER NOT NULL,
   platform_policy_hash  TEXT NOT NULL,
   constitution_hash     TEXT NOT NULL,
@@ -38,7 +42,7 @@ CREATE TABLE IF NOT EXISTS saga3_episode_specs (
   sealed                INTEGER NOT NULL DEFAULT 0 CHECK (sealed IN (0, 1)),
   created_at            TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at            TEXT NOT NULL DEFAULT (datetime('now')),
-  UNIQUE (generation)
+  UNIQUE (epic_id, generation)
 );
 
 -- ---------------------------------------------------------------------------
@@ -220,4 +224,47 @@ CREATE INDEX IF NOT EXISTS idx_saga3_episode_specs_sealed
  */
 export function initSaga3Schema(db: Database.Database): void {
   db.exec(SAGA3_SCHEMA);
+
+  // Migrate the original skeleton table. It had no episode identity and used
+  // UNIQUE(generation) globally, so progress could not be resumed reliably.
+  const columns = db.prepare(`PRAGMA table_info('saga3_episode_specs')`).all() as Array<{ name: string }>;
+  if (!columns.some((column) => column.name === 'epic_id')) {
+    db.transaction(() => {
+      db.exec(`
+        ALTER TABLE saga3_episode_specs RENAME TO saga3_episode_specs_legacy;
+        CREATE TABLE saga3_episode_specs (
+          id                    TEXT PRIMARY KEY,
+          project_id            INTEGER NOT NULL DEFAULT 0,
+          epic_id               INTEGER NOT NULL DEFAULT 0,
+          mandate               TEXT NOT NULL DEFAULT '',
+          controller_version    TEXT NOT NULL DEFAULT 'v3',
+          generation            INTEGER NOT NULL,
+          platform_policy_hash  TEXT NOT NULL,
+          constitution_hash     TEXT NOT NULL,
+          governance_hash       TEXT NOT NULL,
+          source_baseline       TEXT,
+          environment_baseline  TEXT,
+          sealed                INTEGER NOT NULL DEFAULT 0 CHECK (sealed IN (0, 1)),
+          created_at            TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at            TEXT NOT NULL DEFAULT (datetime('now')),
+          UNIQUE (epic_id, generation)
+        );
+        INSERT INTO saga3_episode_specs
+          (id, generation, platform_policy_hash, constitution_hash,
+           governance_hash, source_baseline, environment_baseline, sealed,
+           created_at, updated_at)
+        SELECT id, generation, platform_policy_hash, constitution_hash,
+               governance_hash, source_baseline, environment_baseline, sealed,
+               created_at, updated_at
+          FROM saga3_episode_specs_legacy;
+        DROP TABLE saga3_episode_specs_legacy;
+      `);
+    })();
+  }
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_saga3_episode_specs_sealed
+      ON saga3_episode_specs(sealed);
+    CREATE INDEX IF NOT EXISTS idx_saga3_episode_specs_epic
+      ON saga3_episode_specs(epic_id, generation DESC);
+  `);
 }

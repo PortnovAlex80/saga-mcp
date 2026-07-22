@@ -30,7 +30,7 @@ import { fileURLToPath } from 'node:url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 import { spawn } from 'node:child_process';
-import { EpisodeController, loadConditionsFromDb } from './controller.js';
+import { EpisodeController, loadConditionsFromDb, saveConditionToDb } from './controller.js';
 import type { EpisodeContext } from './controller.js';
 import { OracleRegistry } from '../evidence/attestation.js';
 import { BudgetLedger } from '../budgets/budget-ledger.js';
@@ -57,6 +57,10 @@ if (!existsSync(workspace)) {
 }
 
 const sha256 = (s: string) => createHash('sha256').update(s).digest('hex');
+const projectId = Number(process.env.SAGA3_PROJECT_ID ?? 0);
+const epicId = Number(process.env.SAGA3_EPIC_ID ?? 0);
+const configuredConcurrency = Number(process.env.SAGA3_MAX_CONCURRENCY ?? 1);
+
 
 // --- Open the DB and apply the saga3 schema before anything reads from it ---
 
@@ -80,16 +84,48 @@ initSaga3Schema(db);
 
 // --- Build episode context ---
 
-const spec = {
-  id: `spec-${Date.now()}`,
-  generation: 1,
+const constitutionHash = sha256(mandate);
+// Stable identity of the frozen episode baseline. Runtime file observations
+// belong in oracle evidence; using the live dirty-tree hash here made every
+// engine restart detach from its own progress.
+const sourceFingerprint = sha256(`${path.resolve(workspace)}\n${epicId}\n${constitutionHash}`);
+const previousSpec = db.prepare(
+  `SELECT id, generation, constitution_hash, platform_policy_hash,
+          governance_hash, source_baseline, environment_baseline, sealed
+     FROM saga3_episode_specs WHERE epic_id=?
+     ORDER BY generation DESC LIMIT 1`,
+).get(epicId) as any;
+const generation = previousSpec && previousSpec.constitution_hash !== constitutionHash
+  ? previousSpec.generation + 1
+  : previousSpec?.generation ?? 1;
+const spec = previousSpec && previousSpec.constitution_hash === constitutionHash ? {
+  id: previousSpec.id,
+  generation: previousSpec.generation,
+  platformPolicyHash: previousSpec.platform_policy_hash,
+  constitutionHash: previousSpec.constitution_hash,
+  governanceHash: previousSpec.governance_hash,
+  sourceBaseline: previousSpec.source_baseline,
+  environmentBaseline: previousSpec.environment_baseline,
+  sealed: previousSpec.sealed === 1,
+} : {
+  id: `spec-p${projectId}-e${epicId}-g${generation}-${constitutionHash.slice(0, 8)}`,
+  generation,
   platformPolicyHash: sha256('platform-default'),
-  constitutionHash: sha256(mandate),
+  constitutionHash,
   governanceHash: sha256('governance-default'),
-  sourceBaseline: sha256('init'),
+  sourceBaseline: sourceFingerprint,
   environmentBaseline: process.platform,
   sealed: true,
 };
+db.prepare(
+  `INSERT OR IGNORE INTO saga3_episode_specs
+     (id, project_id, epic_id, mandate, controller_version, generation,
+      platform_policy_hash, constitution_hash, governance_hash,
+      source_baseline, environment_baseline, sealed)
+   VALUES (?, ?, ?, ?, 'v3', ?, ?, ?, ?, ?, ?, ?)`,
+).run(spec.id, projectId, epicId, mandate, spec.generation,
+  spec.platformPolicyHash, spec.constitutionHash, spec.governanceHash,
+  spec.sourceBaseline, spec.environmentBaseline, spec.sealed ? 1 : 0);
 
 // Expose the frozen episode spec id to the environment so:
 //   (a) buildMcpConfig() below can read it, and
@@ -102,7 +138,17 @@ const conditions = loadConditionsFromDb(db, spec.id);
 // MandatePresent = True (mandate was received) — idempotent on every boot.
 const mandateCond = conditions.get('MandatePresent') as { status: string; sourceFingerprint: string | null };
 mandateCond.status = 'True';
-mandateCond.sourceFingerprint = sha256('init');
+mandateCond.sourceFingerprint = sourceFingerprint;
+db.prepare(
+  `INSERT OR IGNORE INTO saga3_evidence_records
+     (id, episode_spec_id, condition_type, obligation_id, generation,
+      source_fingerprint, environment_fingerprint, oracle_id, oracle_version,
+      trust_class, verdict, raw_digest, observed_at, freshness_max_age_ms)
+   VALUES (?, ?, 'MandatePresent', 'mandate', ?, ?, ?, 'mandate-check', '1',
+           'deterministic', 'passed', ?, ?, ?)`,
+).run(`ev-mandate-${spec.id}`, spec.id, spec.generation, sourceFingerprint,
+  process.platform, sha256(mandate), Date.now(), Number.MAX_SAFE_INTEGER);
+saveConditionToDb(db, mandateCond as any);
 
 const oracleRegistry = new OracleRegistry();
 for (const c of PIPELINE_CONDITIONS) {
@@ -153,7 +199,7 @@ const ctx: EpisodeContext = {
   skills: allSkills(),
   budget,
   oracleRegistry,
-  currentSourceFingerprint: sha256('init'),
+  currentSourceFingerprint: sourceFingerprint,
   currentEnvironmentFingerprint: process.platform,
   repositoryRoot: workspace,
   heldClaims: [],
@@ -163,6 +209,9 @@ const ctx: EpisodeContext = {
   db,
   leaseEpoch: 0,
   currentAssignment: null,
+  currentIntent: null,
+  maxConcurrency: Number.isInteger(configuredConcurrency) && configuredConcurrency > 0
+    ? configuredConcurrency : 1,
 };
 
 // --- Custom pump: did_work → spawn worker (saga3 MCP) → reload DB ---
@@ -172,6 +221,27 @@ const controller = new EpisodeController(ports, ctx);
 function log(msg: string): void {
   const ts = new Date().toISOString();
   console.log(`[${ts}] ${msg}`);
+}
+
+function setEngineLifecycle(running: boolean, extra: Record<string, unknown> = {}): void {
+  if (!epicId) return;
+  try {
+    const row = db.prepare('SELECT metadata FROM episode_workflows WHERE epic_id=?').get(epicId) as { metadata: string } | undefined;
+    if (!row) return;
+    const metadata = JSON.parse(row.metadata || '{}');
+    // A superseded process must not mark its replacement as stopped.
+    if (!running && metadata.engine_pid && Number(metadata.engine_pid) !== process.pid) return;
+    Object.assign(metadata, extra, {
+      controller_version: 'v3',
+      engine_running: running ? 1 : 0,
+      engine_pid: running ? process.pid : null,
+      engine_heartbeat_at: new Date().toISOString(),
+    });
+    db.prepare(`UPDATE episode_workflows SET metadata=?, updated_at=datetime('now') WHERE epic_id=?`)
+      .run(JSON.stringify(metadata), epicId);
+  } catch (e) {
+    log(`(engine lifecycle write skipped: ${e instanceof Error ? e.message : 'error'})`);
+  }
 }
 
 /**
@@ -191,6 +261,7 @@ function spawnWorker(
   role: string,
   executionId: string,
   workerId: string,
+  onSpawn: (pid: number | null, logFile: string, taskId: number) => void,
 ): Promise<number> {
   const prompt = buildWorkerPrompt({
     conditionType,
@@ -200,6 +271,7 @@ function spawnWorker(
     episodeSpecId: spec.id,
     generation: spec.generation,
     role,
+    oracleId: PIPELINE_CONDITIONS.find((item) => item.conditionType === conditionType)?.oracleRequired,
   });
 
   const args = [
@@ -214,7 +286,6 @@ function spawnWorker(
   ];
 
   // Model routing: read active_model from episode_workflows metadata (same as old claude-runner).
-  const epicId = Number(process.env.SAGA3_EPIC_ID ?? 4);
   try {
     const ew = db.prepare('SELECT metadata FROM episode_workflows WHERE epic_id=?').get(epicId) as { metadata: string } | undefined;
     if (ew?.metadata) {
@@ -233,10 +304,11 @@ function spawnWorker(
 
   // Per-step JSONL log under board-runs — SAME convention as old claude-runner:
   // board-<projectId>-<pid>-<ts>/task-<taskId>-<workerId>.jsonl
-  const projectId = Number(process.env.SAGA3_PROJECT_ID ?? 0);
   const runDir = path.join(logRoot, `board-${projectId}-${process.pid}-${Date.now()}`);
   try { mkdirSync(runDir, { recursive: true }); } catch { /* best effort */ }
-  const logFile = path.join(runDir, `task-0-${workerId}.jsonl`);
+  const task = db.prepare('SELECT id FROM tasks WHERE epic_id=? ORDER BY id LIMIT 1').get(epicId) as { id: number } | undefined;
+  const taskId = task?.id ?? 0;
+  const logFile = path.join(runDir, `task-${taskId}-${workerId}.jsonl`);
 
   return new Promise<number>((resolve) => {
     let logStream: ReturnType<typeof createWriteStream> | null = null;
@@ -256,6 +328,7 @@ function spawnWorker(
       windowsHide: true,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
+    onSpawn(child.pid ?? null, logFile, taskId);
 
     // Tee stdout/stderr to the JSONL log only — we do NOT accumulate or parse
     // it. The saga3 protocol routes results through the DB, not stdout.
@@ -300,6 +373,12 @@ function reloadConditionFromDb(conditionType: string, obligationId: string): str
 }
 
 async function runEpisode(): Promise<void> {
+  setEngineLifecycle(true, {
+    episode_spec_id: spec.id,
+    engine_started_at: new Date().toISOString(),
+    engine_last_error: null,
+    terminal_outcome: null,
+  });
   log(`Saga 3 starting. Mandate: ${mandate.slice(0, 80)}...`);
   log(`Workspace: ${workspace}`);
   log(`Conditions: ${PIPELINE_CONDITIONS.length} (${MANDATORY_CONDITIONS.length} mandatory)`);
@@ -310,14 +389,34 @@ async function runEpisode(): Promise<void> {
   let step = 0;
   const maxSteps = 200;
 
+  // Write a crash log file so we can debug when stdio is ignored.
+  const crashLog = path.join(os.homedir(), '.zcode', 'cli', 'saga3-crash.log');
+  function crashLogWrite(msg: string): void {
+    try { writeFileSync(crashLog, `[${new Date().toISOString()}] ${msg}\n`, { flag: 'a' }); } catch { /* best effort */ }
+  }
+  crashLogWrite(`=== saga3 started, pid=${process.pid} ===`);
+
   while (step < maxSteps) {
     step++;
+
+    // The frontend selector is the runtime source of truth. Re-read it before
+    // every control decision so changing the limit does not require restart.
+    try {
+      const row = db.prepare('SELECT metadata FROM episode_workflows WHERE epic_id=?').get(epicId) as { metadata: string } | undefined;
+      const selected = Number(JSON.parse(row?.metadata || '{}').engine_concurrency);
+      if (Number.isInteger(selected) && selected > 0) ctx.maxConcurrency = selected;
+    } catch { /* retain the last valid user-selected value */ }
 
     let result;
     try {
       result = controller.stepEpisode();
+      crashLogWrite(`step ${step}: kind=${result.kind}`);
     } catch (e) {
-      log(`ERROR step ${step}: ${e instanceof Error ? e.message : String(e)}`);
+      const msg = e instanceof Error ? e.message : String(e);
+      const stack = e instanceof Error ? e.stack : '';
+      log(`ERROR step ${step}: ${msg}`);
+      crashLogWrite(`ERROR step ${step}: ${msg}\n${stack}`);
+      setEngineLifecycle(false, { engine_last_error: msg });
       break;
     }
 
@@ -331,6 +430,7 @@ async function runEpisode(): Promise<void> {
     }
 
     if (result.kind === 'quiescent') {
+      setEngineLifecycle(false, { engine_last_error: 'Controller became quiescent without a terminal certificate' });
       log(`QUIESCENT at step ${step} — no deficits, but not terminal. Something is wrong.`);
       break;
     }
@@ -349,37 +449,52 @@ async function runEpisode(): Promise<void> {
         continue;
       }
 
-      // Find the deficit condition that was addressed.
-      const statuses: Record<string, string> = {};
-      for (const [key, cond] of ctx.conditions) {
-        statuses[key] = cond.status;
+      const intent = ctx.currentIntent;
+      if (!intent) {
+        log(`WARN: did_work but no authorized intent at step ${step}`);
+        ctx.currentAssignment = null;
+        continue;
       }
-      const deficits = Object.entries(statuses)
-        .filter(([, s]) => s !== 'True')
-        .map(([k]) => k);
-      const targetCondition = deficits[0] ?? 'unknown';
+      const targetCondition = intent.targetCondition;
 
       // Find the action contract for this condition.
       const action = PIPELINE_ACTIONS.find((a) => a.targetCondition === targetCondition);
-      const skillId = action?.skillId ?? 'saga-worker';
-      const obligationId = PIPELINE_CONDITIONS.find((c) => c.conditionType === targetCondition)?.obligationId ?? 'unknown';
+      const skillId = intent.skillId ?? action?.skillId ?? 'saga-worker';
+      const obligationId = intent.targetObligation;
       const role = allSkills().find((s) => s.skillId === skillId)?.role ?? 'worker';
+
+      const configuredMaxAttempts = Number(process.env.SAGA3_MAX_ATTEMPTS_PER_CONDITION ?? 3);
+      const maxAttempts = Number.isInteger(configuredMaxAttempts) && configuredMaxAttempts > 0
+        ? configuredMaxAttempts : 3;
+      const attempts = db.prepare(
+        `SELECT COUNT(*) AS count FROM worker_executions
+          WHERE run_id=? AND json_extract(metadata,'$.condition_type')=?
+            AND state IN ('exited','spawn_failed','lost','terminated')`,
+      ).get(`saga3-run-${spec.id}`, targetCondition) as { count: number };
+      if (attempts.count >= maxAttempts) {
+        const satisfied = [...ctx.conditions.values()].filter((item) => item.status === 'True').map((item) => item.conditionType);
+        const unresolved = [...ctx.conditions.values()].filter((item) => item.status !== 'True').map((item) => item.conditionType);
+        const reason = `Recovery budget exhausted for ${targetCondition} after ${attempts.count} attempts`;
+        db.prepare(
+          `INSERT OR REPLACE INTO saga3_outcome_certificates
+             (episode_spec_id, outcome, causal_reason, generation, source_fingerprint,
+              satisfied_conditions, unresolved_conditions, certified_at)
+           VALUES (?, 'RESOURCE_EXHAUSTED', ?, ?, ?, ?, ?, ?)`,
+        ).run(spec.id, reason, spec.generation, sourceFingerprint,
+          JSON.stringify(satisfied), JSON.stringify(unresolved), Date.now());
+        setEngineLifecycle(false, { engine_last_error: reason, terminal_outcome: 'RESOURCE_EXHAUSTED' });
+        log(`TERMINAL: RESOURCE_EXHAUSTED - ${reason}`);
+        break;
+      }
 
       log(`STEP ${step}: condition=${targetCondition} skill=${skillId} — spawning worker (saga3 MCP)...`);
 
       // Write worker_executions row so tracker-view shows the worker.
       const workerId = `saga3-${step}-${Date.now()}`;
       const executionId = `saga3-exec-${step}-${Date.now()}`;
-      const projectId = Number(process.env.SAGA3_PROJECT_ID ?? 3);
-      const epicId = Number(process.env.SAGA3_EPIC_ID ?? 4);
       try {
-        db.prepare(
-          `INSERT INTO worker_executions
-             (execution_id, run_id, project_id, epic_id, task_id, worker_id, machine_id,
-              launcher, state, phase, pid, reserved_at, started_at)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,datetime('now'),datetime('now'))`,
-        ).run(executionId, `saga3-run-${spec.id}`, projectId, epicId, 0, workerId,
-          os.hostname(), 'saga3-cli', 'running', 'executing', process.pid);
+        // The authoritative execution row is inserted by spawnWorker's
+        // onSpawn callback, after the real worker PID is available.
       } catch (e) {
         // Old DB may not have the table — non-fatal.
         log(`(worker_executions write skipped: ${e instanceof Error ? e.message : 'error'})`);
@@ -389,12 +504,36 @@ async function runEpisode(): Promise<void> {
       // saga3_* MCP tools; we only collect the exit code here.
       const exitCode = await spawnWorker(
         targetCondition, obligationId, skillId, role, executionId, workerId,
+        (pid, logFile, taskId) => {
+          if (taskId <= 0) return;
+          try {
+            db.prepare(
+              `INSERT INTO worker_executions
+                 (execution_id, run_id, project_id, epic_id, task_id, worker_id,
+                  machine_id, launcher, state, phase, pid, log_path, reserved_at,
+                  started_at, metadata)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'),datetime('now'),?)`,
+            ).run(executionId, `saga3-run-${spec.id}`, projectId, epicId, taskId,
+              workerId, os.hostname(), 'saga3-cli', 'running', 'executing', pid,
+              logFile, JSON.stringify({ condition_type: targetCondition, obligation_id: obligationId }));
+            db.prepare(
+              `UPDATE saga3_worker_assignments
+                  SET worker_id=?, execution_id=?, state='running', updated_at=datetime('now')
+                WHERE id=?`,
+            ).run(workerId, executionId, assignment.id);
+            db.prepare(
+              `UPDATE saga3_work_intents SET status='assigned', updated_at=datetime('now') WHERE id=?`,
+            ).run(intent.id);
+          } catch (e) {
+            log(`(worker_executions write skipped: ${e instanceof Error ? e.message : 'error'})`);
+          }
+        },
       );
 
       // Update worker_executions: worker finished.
       try {
         db.prepare(
-          `UPDATE worker_executions SET state='exited', phase='finished',
+          `UPDATE worker_executions SET state='exited', phase='finishing',
            finished_at=datetime('now'), exit_code=?
            WHERE execution_id=?`,
         ).run(exitCode, executionId);
@@ -415,6 +554,14 @@ async function runEpisode(): Promise<void> {
       log(`CONDITION ${targetCondition}: ${cond?.status ?? 'missing'} (db=${dbStatus ?? 'n/a'}, exit=${exitCode})`);
       log('');
 
+      const verified = exitCode === 0 && dbStatus === 'True';
+      db.prepare(
+        `UPDATE saga3_worker_assignments SET state=?, updated_at=datetime('now') WHERE id=?`,
+      ).run(verified ? 'verified' : 'failed', assignment.id);
+      db.prepare(
+        `UPDATE saga3_work_intents SET status=?, updated_at=datetime('now') WHERE id=?`,
+      ).run(verified ? 'completed' : 'failed', intent.id);
+
       if (exitCode !== 0) {
         log(`WARN: worker exited code=${exitCode} for ${targetCondition}`);
       }
@@ -422,11 +569,13 @@ async function runEpisode(): Promise<void> {
       // Mark this work as completed and clear the assignment for the next step.
       ctx.completedIntents.add(assignment.id);
       ctx.currentAssignment = null;
+      ctx.currentIntent = null;
     }
   }
 
   if (step >= maxSteps) {
     log(`MAX STEPS (${maxSteps}) reached without terminal.`);
+    setEngineLifecycle(false, { engine_last_error: `Maximum controller steps reached (${maxSteps})` });
   }
 
   log(`Episode finished after ${step} steps.`);
@@ -434,14 +583,18 @@ async function runEpisode(): Promise<void> {
 
 // Clean up the temp MCP config on exit.
 function cleanup(): void {
+  setEngineLifecycle(false, { engine_stopped_at: new Date().toISOString() });
   try { rmSync(mcpConfigPath, { force: true }); } catch { /* best effort */ }
 }
 process.once('exit', cleanup);
 process.once('SIGINT', () => { cleanup(); process.exit(130); });
 process.once('SIGTERM', () => { cleanup(); process.exit(143); });
 
-runEpisode().catch((e) => {
-  console.error('FATAL:', e);
-  cleanup();
-  process.exit(1);
-});
+runEpisode()
+  .then(() => cleanup())
+  .catch((e) => {
+    console.error('FATAL:', e);
+    setEngineLifecycle(false, { engine_last_error: e instanceof Error ? e.message : String(e) });
+    cleanup();
+    process.exit(1);
+  });

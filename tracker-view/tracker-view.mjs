@@ -239,6 +239,16 @@ function projectFolderTag(project) {
 
 function resolveProjectWorkspace(project) {
   const candidates = [];
+  try {
+    const bindings = withDb(db => db.prepare(
+      `SELECT local_path FROM project_repositories
+        WHERE project_id=? AND status='active'
+        ORDER BY CASE role WHEN 'control' THEN 0 ELSE 1 END, id`,
+    ).all(project.id));
+    for (const binding of bindings) {
+      if (binding.local_path) candidates.push(binding.local_path);
+    }
+  } catch {}
   const folderTag = projectFolderTag(project);
   if (folderTag) candidates.push(path.join(DEV_ROOT, folderTag));
   for (const folder of PROJECT_REPO_MAP[project.name] || []) {
@@ -741,7 +751,7 @@ function renderBoard(projectId, allProjects) {
           engineRunningForProject(projectId) ? '⏸' : '▶'
         }</button>
         <select id="agent-concurrency" aria-label="Количество одновременных воркеров движка">
-          ${Array.from({ length: 10 }, (_, i) => {
+          ${Array.from({ length: 32 }, (_, i) => {
             // Pre-select the option matching the engine's current concurrency,
             // read from episode_workflows.metadata.engine_concurrency. Without
             // this, hot-reload of tracker-view loses the user's last choice —
@@ -1187,6 +1197,7 @@ function renderBoard(projectId, allProjects) {
         const j = await r.json();
         if (!j.ok) { stagesEl.innerHTML = '<span class="worker-empty">' + esc(j.error || 'err') + '</span>'; return; }
         const icons = { completed:'✓', in_progress:'●', needs_human:'⚠', pending:'○' };
+        icons.failed = 'x';
         // Clickable stages: completed / in_progress / needs_human.
         // Pending is muted and not clickable (no data-stage, no click handler).
         stagesEl.innerHTML = j.stages.map((s, i) => {
@@ -1475,6 +1486,25 @@ function renderBoard(projectId, allProjects) {
         ? 'Движок работает. Нажми для паузы.'
         : 'Движок остановлен. Нажми для запуска.';
     }
+    async function syncEngineStatus() {
+      const epicId = window.__sagaEpicId;
+      if (!epicId || !engineToggle) return;
+      try {
+        const r = await fetch('/api/engine/status?epic_id=' + epicId);
+        const state = await r.json();
+        if (!r.ok || !state.ok) return;
+        syncEngineToggleButton(state.running && state.alive);
+        if (state.running && state.alive) {
+          runnerStatus.textContent = 'Saga 3 running (pid ' + state.pid + ')';
+        } else if (state.engine_last_error) {
+          runnerStatus.textContent = 'stopped: ' + state.engine_last_error;
+        } else {
+          runnerStatus.textContent = 'Saga 3 stopped';
+        }
+      } catch {}
+    }
+    syncEngineStatus();
+    setInterval(syncEngineStatus, 5000);
     // Model selector: change the worker model. PATCHes ~/.claude/settings.json
     // so NEW workers (spawned after this call) read the new model. Active
     // workers keep the old model — they have already started claude -p. NO
@@ -1522,10 +1552,6 @@ function renderBoard(projectId, allProjects) {
           // The model limit is a CEILING, not a forced value — only clamp the
           // concurrency selector down if the user's current pick exceeds the
           // new model's limit. Otherwise leave it alone.
-          if (runnerConcurrency) {
-            const cur = Number(runnerConcurrency.value) || 1;
-            if (cur > limit) runnerConcurrency.value = String(limit);
-          }
           runnerStatus.textContent = data.model + ' ×' + data.limit;
         } catch (e) {
           alert('Смена модели: ' + e.message);
@@ -1554,7 +1580,7 @@ function renderBoard(projectId, allProjects) {
     // Apply initial status: read from a one-shot endpoint would be cleanest,
     // but for now just mark "engine running" if workers come back non-empty
     // via refreshDbWorkers (already running every 2s).
-    runnerStatus.textContent = 'concurrency=2 (running)';
+    runnerStatus.textContent = 'concurrency=' + (runnerConcurrency?.value || '1');
     fetchRunnerStatus();
     setInterval(fetchRunnerStatus, 2000);
     // Apply the streaming pulse to kanban cards whose worker is actively
@@ -2635,6 +2661,7 @@ function page(title, body) {
     .pipeline-stage.in_progress{color:#58a6ff}
     .pipeline-stage.in_progress .ps-icon{animation:mp-pulse-blue 2s infinite}
     .pipeline-stage.needs_human{color:#f85149}
+    .pipeline-stage.failed{color:#f85149}
     .pipeline-stage.needs_human .ps-icon{animation:mp-pulse-red 1s infinite}
     .pipeline-stage.pending{opacity:.35}
     /* Clickable stages: completed / in_progress / needs_human are interactive;
@@ -2904,8 +2931,8 @@ function handleBoardRunStart(req, res) {
     if (!Number.isInteger(projectId) || projectId < 1) {
       return respondJson(res, 400, { ok:false, error:'project_id must be a positive integer' });
     }
-    if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 10) {
-      return respondJson(res, 400, { ok:false, error:'concurrency must be an integer from 1 to 10' });
+    if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 32) {
+      return respondJson(res, 400, { ok:false, error:'concurrency must be an integer from 1 to 32' });
     }
     try {
       const run = boardRunner.start({ projectId, concurrency });
@@ -3865,6 +3892,7 @@ function renderAdmin(projects, flash) {
       </form>
       <form class="admin-form" id="idea-form">
         <input type="hidden" name="action" value="idea">
+        <label class="ed-field"><span>Worker concurrency / available GPUs</span><select name="concurrency">${Array.from({length:32},(_,i)=>i+1).map(n => `<option value="${n}"${n===1?' selected':''}>${n}</option>`).join('')}</select></label>
         <div class="admin-card-head"><span class="admin-ic">🚀</span> Idea → Engine (3.0)</div>
         <label class="ed-field"><span>Имя проекта *</span><input type="text" name="name" required placeholder="напр. water-cannon" autocomplete="off"></label>
         <label class="ed-field"><span>Идея (одной фразой) *</span><textarea name="idea" required rows="3" placeholder="напр. мини автокад 3д для прототипирования" autocomplete="off"></textarea></label>
@@ -3893,7 +3921,7 @@ function renderAdmin(projects, flash) {
         if (j.ok) {
           if (action === 'project') location.href = '/?created=' + encodeURIComponent('проект «'+(j.name||'')+'»');
           else if (action === 'idea') {
-            const mode = j.orchestration_mode || 'v2';
+            const mode = j.orchestration_mode || 'v3';
             const engineMsg = mode === 'v3'
               ? (j.engine_spawned ? 'движок запущен (pid=' + j.engine_pid + ')' : 'движок НЕ запущен — проверь лог')
               : 'движок не стартует в v2 режиме — запусти board-run вручную';
@@ -4236,22 +4264,19 @@ function handleProjectCreateFromIdea(req, res) {
       }
 
       // Spawn движка, если включён v3 режим.
-      const mode = (process.env.SAGA_ORCHESTRATION_MODE || 'v2').toLowerCase();
+      const mode = (process.env.SAGA_ORCHESTRATION_MODE || 'v3').toLowerCase();
+      const selectedConcurrency = Number(fields.concurrency);
+      const concurrency = Number.isInteger(selectedConcurrency) && selectedConcurrency >= 1 && selectedConcurrency <= 32
+        ? selectedConcurrency : 1;
       let engineSpawned = false;
       let enginePid = null;
       if (mode === 'v3') {
         try {
-          const cliPath = path.join(__dirname, '..', 'dist', 'orchestrate-cli.js');
-          const child = spawn('node', [cliPath, String(result.projectId), String(result.epicId)], {
-            detached: true,
-            stdio: 'ignore',
-            env: {
-              ...process.env,
-              DB_PATH: process.env.DB_PATH,
-              SAGA_ORCHESTRATION_MODE: 'v3',
-            },
+          const child = spawnEngine(result.projectId, result.epicId, concurrency);
+          setEngineMeta(result.epicId, {
+            controller_version: 'v3', engine_running: 1, engine_pid: child.pid,
+            engine_concurrency: concurrency, engine_started_at: new Date().toISOString(),
           });
-          child.unref();
           engineSpawned = true;
           enginePid = child.pid;
         } catch (e) {
@@ -4339,6 +4364,57 @@ function handleEpisodePipeline(req, res, url) {
     ).all(epicId));
 
     const meta = (() => { try { return JSON.parse(ew.metadata || '{}'); } catch { return {}; } })();
+    if (meta.controller_version === 'v3') {
+      let spec = null;
+      let rows = [];
+      try {
+        spec = withDb(db => db.prepare(
+          `SELECT id FROM saga3_episode_specs WHERE epic_id=? ORDER BY generation DESC LIMIT 1`,
+        ).get(epicId));
+        rows = spec ? withDb(db => db.prepare(
+          `SELECT condition_type, status, updated_at
+             FROM saga3_condition_instances WHERE episode_spec_id=?`,
+        ).all(spec.id)) : [];
+      } catch {}
+      const byType = new Map(rows.map(row => [row.condition_type, row]));
+      const groups = [
+        ['discovery', ['MandatePresent','ConstitutionReady']],
+        ['formalization', ['ContractConsistent','BaselineFrozen']],
+        ['architecture', ['ArchitectureReady']],
+        ['planning', ['PlanReady']],
+        ['development', ['ImplementationComplete']],
+        ['verification', ['VerificationCurrent']],
+        ['integration', ['IntegrationComplete']],
+        ['release', ['ReleaseReady','ReleaseCompleted']],
+        ['observation', ['ObservationHealthy']],
+      ];
+      let firstOpen = groups.findIndex(([, conditions]) =>
+        !conditions.every(type => byType.get(type)?.status === 'True'));
+      if (firstOpen < 0) firstOpen = groups.length;
+      const stages = groups.map(([name, conditions], index) => {
+        const conditionRows = conditions.map(type => byType.get(type)).filter(Boolean);
+        const failed = conditionRows.some(row => row.status === 'False');
+        const status = index < firstOpen ? 'completed'
+          : index === firstOpen ? (failed ? 'failed' : 'in_progress') : 'pending';
+        return {
+          name, status,
+          started_at: conditionRows[0]?.updated_at ?? null,
+          completed_at: status === 'completed' ? conditionRows.at(-1)?.updated_at ?? null : null,
+          duration_s: null,
+          conditions: conditions.map(type => ({ type, status: byType.get(type)?.status ?? 'Unknown' })),
+        };
+      });
+      stages.push({
+        name: 'completed', status: firstOpen === groups.length ? 'completed' : 'pending',
+        started_at: null, completed_at: null, duration_s: null, conditions: [],
+      });
+      return respondJson(res, 200, {
+        ok: true, epic_id: epicId, controller_version: 'v3',
+        episode_spec_id: spec?.id ?? null,
+        stage: firstOpen < groups.length ? groups[firstOpen][0] : 'completed',
+        stages, needs_human: false, last_gate_error: meta.engine_last_error || null,
+      });
+    }
     const needsHuman = meta['needs-human'] === true || meta['needs-human'] === 1;
     const gateError = meta.last_gate_error || null;
 
@@ -4744,7 +4820,9 @@ function handleWorkersActive(req, res, url) {
     const rows = withDb(db => db.prepare(
       `SELECT we.execution_id, we.task_id AS id, we.worker_id AS assigned_to,
               we.pid, we.machine_id, we.phase, we.started_at AS worker_started_at,
-              we.log_path, t.title, t.status, t.task_kind, t.updated_at,
+              we.log_path,
+              COALESCE(json_extract(we.metadata,'$.condition_type'), t.title) AS title,
+              t.status, t.task_kind, t.updated_at,
               e.name AS epic_name
        FROM worker_executions we
        LEFT JOIN tasks t ON t.id=we.task_id
@@ -4929,6 +5007,25 @@ function handleWorkersActive(req, res, url) {
  *   5. Synchronous 1s pause so the OS finishes cleanup before any respawn.
  */
 function killEngineTree(projectId, epicId) {
+  const state = readEngineState(epicId);
+  if (state.pid && isProcessAlive(Number(state.pid))) {
+    try {
+      const inspection = require('child_process').spawnSync(
+        'powershell',
+        ['-Command', `(Get-CimInstance Win32_Process -Filter "ProcessId=${Number(state.pid)}").CommandLine`],
+        { encoding: 'utf8' },
+      );
+      const commandLine = (inspection.stdout || '').toLowerCase();
+      if (commandLine.includes('saga3') && commandLine.includes('cli.js')) {
+        require('child_process').spawnSync(
+          'taskkill', ['/F', '/T', '/PID', String(Number(state.pid))],
+          { encoding: 'utf8', stdio: 'ignore' },
+        );
+      }
+    } catch (e) {
+      console.error(`[engine-control] stored pid kill failed pid=${state.pid}:`, e.message);
+    }
+  }
   // IMPORTANT: the PowerShell parameter MUST NOT be named $pid — that is a
   // read-only automatic variable in PowerShell (the current shell's PID).
   // Declaring a function parameter with that name throws
@@ -4988,7 +5085,7 @@ function spawnEngine(projectId, epicId, concurrency) {
   const epicRow = withDb(db => db.prepare(
     'SELECT name, description FROM epics WHERE id=?',
   ).get(epicId));
-  const mandate = epicRow?.name || epicRow?.description || 'Continue episode';
+  const mandate = epicRow?.description || epicRow?.name || 'Continue episode';
   const child = spawn('node', [cliPath, mandate], {
     detached: true,
     stdio: 'ignore',
@@ -4998,6 +5095,7 @@ function spawnEngine(projectId, epicId, concurrency) {
       SAGA3_WORKSPACE: resolveProjectWorkspace({ id: projectId, name: withDb(db => db.prepare('SELECT name FROM projects WHERE id=?').get(projectId))?.name || '' }) || process.cwd(),
       SAGA3_PROJECT_ID: String(projectId),
       SAGA3_EPIC_ID: String(epicId),
+      SAGA3_MAX_CONCURRENCY: String(concurrency),
     },
   });
   child.unref();
@@ -5019,7 +5117,9 @@ function readEngineState(epicId) {
     `SELECT json_extract(metadata, '$.engine_running')    AS running,
             json_extract(metadata, '$.engine_pid')         AS pid,
             json_extract(metadata, '$.engine_concurrency') AS concurrency,
-            json_extract(metadata, '$.engine_started_at') AS started_at
+            json_extract(metadata, '$.engine_started_at') AS started_at,
+            json_extract(metadata, '$.engine_last_error') AS engine_last_error,
+            json_extract(metadata, '$.controller_version') AS controller_version
        FROM episode_workflows WHERE epic_id=?`,
   ).get(epicId));
   return {
@@ -5027,6 +5127,8 @@ function readEngineState(epicId) {
     pid: row?.pid ?? null,
     concurrency: row?.concurrency ?? null,
     started_at: row?.started_at ?? null,
+    engine_last_error: row?.engine_last_error ?? null,
+    controller_version: row?.controller_version ?? null,
   };
 }
 
@@ -5036,6 +5138,8 @@ function readEngineState(epicId) {
  * flag with reality (e.g. engine crashed → flag lies).
  */
 function isEngineAlive(projectId, epicId) {
+  const state = readEngineState(epicId);
+  if (state.pid && isProcessAlive(Number(state.pid))) return true;
   try {
     const r = require('child_process').spawnSync(
       'powershell',
@@ -5090,10 +5194,9 @@ function handleEngineStart(req, res) {
 
     const state = readEngineState(epicId);
     let concurrency = Number(fields.concurrency);
-    if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 10) {
+    if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 32) {
       concurrency = Number(state.concurrency) || 4;
     }
-
     killEngineTree(projectId, epicId);
 
     try {
@@ -5103,6 +5206,8 @@ function handleEngineStart(req, res) {
         engine_pid: child.pid,
         engine_concurrency: concurrency,
         engine_started_at: new Date().toISOString().replace('T', ' ').slice(0, 19),
+        engine_last_error: null,
+        terminal_outcome: null,
       });
       respondJson(res, 200, {
         ok: true, project_id: projectId, epic_id: epicId,
@@ -5161,8 +5266,8 @@ function handleEngineConcurrency(req, res) {
     const epicId = Number(fields.epic_id);
     const concurrency = Number(fields.concurrency);
     if (!epicId) return respondJson(res, 400, { ok:false, error:'epic_id required' });
-    if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 10) {
-      return respondJson(res, 400, { ok:false, error:'concurrency must be 1..10' });
+    if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 32) {
+      return respondJson(res, 400, { ok:false, error:'concurrency must be 1..32' });
     }
     try {
       setEngineMeta(epicId, {

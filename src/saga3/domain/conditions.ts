@@ -23,18 +23,20 @@ export function evaluateCondition(
   evidence: EvidenceRecord | null,
   activeGeneration: number,
   currentSourceFingerprint: string,
+  now: number = Date.now(),
 ): ConditionStatus {
+  void condition;
   // No evidence → Unknown (never True without proof).
   if (!evidence) return 'Unknown';
 
   // Stale generation → Unknown.
   if (evidence.generation !== activeGeneration) return 'Unknown';
 
+  if (evidence.freshnessMaxAgeMs >= 0
+      && now - evidence.observedAt > evidence.freshnessMaxAgeMs) return 'Unknown';
+
   // Source changed after evidence → Unknown.
-  if (
-    condition.sourceFingerprint !== null &&
-    condition.sourceFingerprint !== currentSourceFingerprint
-  ) {
+  if (evidence.sourceFingerprint !== currentSourceFingerprint) {
     return 'Unknown';
   }
 
