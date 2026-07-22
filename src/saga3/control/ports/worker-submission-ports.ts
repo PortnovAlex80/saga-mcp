@@ -43,6 +43,8 @@ export interface WorkerExecutionAuthority {
   readonly generation: number;
   readonly conditionType: string;
   readonly obligationId: string;
+  readonly scopeType: string;
+  readonly scopeId: string;
   readonly leaseEpoch: number;
   readonly assignmentState: 'running' | 'submitted';
   readonly sourceFingerprint: string;
