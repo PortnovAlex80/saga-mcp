@@ -2,8 +2,19 @@
  * Saga 3 — CLI entrypoint.
  *
  * Takes a mandate text, builds the episode, runs the engine.
- * When controller says did_work → spawns claude worker with skill prompt
- * → ingests output → condition True → next step.
+ *
+ * Pump loop (saga3 MCP protocol):
+ *   1. controller.stepEpisode() → did_work (authorized one condition deficit)
+ *   2. buildWorkerPrompt(...) → system prompt for the claude worker
+ *   3. buildMcpConfig(saga3ServerPath) → --mcp-config JSON (only saga3_* tools)
+ *   4. Spawn claude with the prompt; stream-json is tee'd to a JSONL log under
+ *      board-runs so tracker-view can tail the live worker.
+ *   5. The worker does its work and writes results DIRECTLY to the DB through
+ *      the saga3_* MCP tools (saga3_propose_artifact, saga3_propose_verification,
+ *      saga3_complete). No JSON is parsed from claude's stdout.
+ *   6. After claude exits: reload the addressed condition's status from
+ *      saga3_condition_instances. If the worker flipped it to True, the
+ *      controller advances on the next step.
  *
  * Usage:
  *   DB_PATH=~/.zcode/saga.db SAGA3_WORKSPACE=/path/to/repo \
@@ -11,9 +22,12 @@
  */
 
 import { createHash } from 'node:crypto';
-import { existsSync } from 'node:fs';
+import { existsSync, mkdirSync, createWriteStream, writeFileSync, rmSync } from 'node:fs';
 import os from 'node:os';
-import { EpisodeController } from './controller.js';
+import path from 'node:path';
+import { spawn } from 'node:child_process';
+import { EpisodeController, loadConditionsFromDb } from './controller.js';
+import type { EpisodeContext } from './controller.js';
 import { OracleRegistry } from '../evidence/attestation.js';
 import { BudgetLedger } from '../budgets/budget-ledger.js';
 import { allSkills } from '../executions/skill-registry.js';
@@ -21,13 +35,10 @@ import {
   PIPELINE_CONDITIONS,
   PIPELINE_ACTIONS,
   MANDATORY_CONDITIONS,
-  initialConditions,
 } from '../domain/pipeline-contracts.js';
-import type { EpisodeContext } from './controller.js';
-import type { WorkerOutput } from '../domain/types.js';
 import { prodPorts } from '../adapters/prod-ports.js';
-import { resolveSkill } from '../executions/assignment.js';
-import { materializeWorkIntent } from '../work-intents/work-intent.js';
+import { initSaga3Schema } from '../domain/schema.js';
+import { buildWorkerPrompt, buildMcpConfig } from '../executions/prompt-builder.js';
 
 const mandate = process.argv[2];
 if (!mandate) {
@@ -43,6 +54,26 @@ if (!existsSync(workspace)) {
 
 const sha256 = (s: string) => createHash('sha256').update(s).digest('hex');
 
+// --- Open the DB and apply the saga3 schema before anything reads from it ---
+
+// We need a real DB for prodPorts, but for the walking skeleton we can use
+// an in-memory approach. For now, create a minimal DB wrapper.
+import Database from 'better-sqlite3';
+const dbPath = process.env.DB_PATH;
+let db: Database.Database;
+if (dbPath && existsSync(dbPath)) {
+  db = new Database(dbPath);
+} else {
+  // In-memory for testing
+  db = new Database(':memory:');
+}
+db.pragma('journal_mode = WAL');
+db.pragma('foreign_keys = ON');
+// Ensure the saga3 tables exist so the worker (via the saga3 MCP server) can
+// write its condition / artifact / evidence rows, and so we can reload the
+// condition status after the worker exits.
+initSaga3Schema(db);
+
 // --- Build episode context ---
 
 const spec = {
@@ -56,8 +87,15 @@ const spec = {
   sealed: true,
 };
 
-const conditions = initialConditions(spec.id);
-// MandatePresent = True (mandate was received).
+// Expose the frozen episode spec id to the environment so:
+//   (a) buildMcpConfig() below can read it, and
+//   (b) the spawned saga3 MCP server (a child node process) inherits it and
+//       scopes every saga3_* tool call to this episode.
+process.env.SAGA3_EPISODE_SPEC_ID = spec.id;
+
+// Load (or seed) conditions from SQLite so a restart picks up where we left off.
+const conditions = loadConditionsFromDb(db, spec.id);
+// MandatePresent = True (mandate was received) — idempotent on every boot.
 const mandateCond = conditions.get('MandatePresent') as { status: string; sourceFingerprint: string | null };
 mandateCond.status = 'True';
 mandateCond.sourceFingerprint = sha256('init');
@@ -76,49 +114,28 @@ for (const c of PIPELINE_CONDITIONS) {
 const budget = new BudgetLedger(spec.id);
 budget.allocate(10000);
 
-// --- Skill prompt builder ---
-// Maps conditionType → skill → prompt for the claude worker.
+// --- saga3 MCP wiring ---
+// Absolute path to the compiled saga3 MCP server entry. Task 3 produces
+// dist/saga3/app/mcp-server.js; cli.ts compiles next to it, so __dirname
+// resolves correctly in the CJS output (dist/saga3/app/).
+const saga3ServerPath = path.join(__dirname, 'mcp-server.js');
 
-function buildSkillPrompt(conditionType: string, obligationId: string, skillId: string): string {
-  const skills = allSkills();
-  const skill = skills.find((s) => s.skillId === skillId);
-  const role = skill?.role ?? 'worker';
+// One --mcp-config temp file per CLI process, mirroring claude-runner.mjs
+// (line 122). Written once — the config does not change between steps — and
+// cleaned up on exit.
+const mcpConfigPath = path.join(os.tmpdir(), `saga3-claude-mcp-${process.pid}.json`);
+writeFileSync(
+  mcpConfigPath,
+  JSON.stringify(buildMcpConfig(saga3ServerPath), null, 2),
+  'utf8',
+);
 
-  return [
-    `You are a Saga 3 worker. Role: ${role}.`,
-    `Task: produce the artifact for condition "${conditionType}" (obligation: ${obligationId}).`,
-    `Workspace: ${workspace}`,
-    ``,
-    `Read your skill file at skills/${skillId}/SKILL.md for instructions.`,
-    `Do the work according to the skill. When done, output:`,
-    `1. The artifact file path and content.`,
-    `2. A verification observation (what you checked).`,
-    ``,
-    `Output format (JSON):`,
-    `{`,
-    `  "result": "completed" | "failed",`,
-    `  "artifacts": [{ "kind": "text", "path": "relative/path.md", "content": "..." }],`,
-    `  "observations": [{ "oracleId": "...", "oracleVersion": "1", "command": "...", "verdict": "passed"|"failed"|"unknown", "stdout": "...", "exitCode": 0 }],`,
-    `  "summary": "what you did"`,
-    `}`,
-  ].join('\n');
-}
+// board-runs log root — same location tracker-view reads for the v2 runner,
+// so a saga3 episode shows up alongside v2 board runs in the live view.
+const logRoot = path.join(os.homedir(), '.zcode', 'cli', 'board-runs');
+const claudePath = process.env.SAGA_CLAUDE_PATH ?? 'claude';
 
 // --- Build ports ---
-
-// We need a real DB for prodPorts, but for the walking skeleton we can use
-// an in-memory approach. For now, create a minimal DB wrapper.
-import Database from 'better-sqlite3';
-const dbPath = process.env.DB_PATH;
-let db: Database.Database;
-if (dbPath && existsSync(dbPath)) {
-  db = new Database(dbPath);
-} else {
-  // In-memory for testing
-  db = new Database(':memory:');
-}
-db.pragma('journal_mode = WAL');
-db.pragma('foreign_keys = ON');
 
 const ports = prodPorts(db, workspace);
 
@@ -139,11 +156,12 @@ const ctx: EpisodeContext = {
   completedIntents: new Set(),
   dependencyEdges: [],
   certificate: null,
+  db,
   leaseEpoch: 0,
   currentAssignment: null,
 };
 
-// --- Custom pump: did_work → spawn worker → ingest output ---
+// --- Custom pump: did_work → spawn worker (saga3 MCP) → reload DB ---
 
 const controller = new EpisodeController(ports, ctx);
 
@@ -152,10 +170,118 @@ function log(msg: string): void {
   console.log(`[${ts}] ${msg}`);
 }
 
+/**
+ * Spawn the claude worker for one condition deficit.
+ *
+ * The worker communicates its result back exclusively through the saga3_*
+ * MCP tools (which write to the DB). We do NOT parse its stdout for a result
+ * payload — stdout is only tee'd to a JSONL log for tracker-view.
+ *
+ * Returns claude's exit code (0 = clean exit, which for a saga3 worker means
+ * it called saga3_complete and stopped as instructed).
+ */
+function spawnWorker(
+  conditionType: string,
+  obligationId: string,
+  skillId: string,
+  role: string,
+  executionId: string,
+  workerId: string,
+): Promise<number> {
+  const prompt = buildWorkerPrompt({
+    conditionType,
+    obligationId,
+    skillId,
+    workspaceRoot: workspace,
+    episodeSpecId: spec.id,
+    generation: spec.generation,
+    role,
+  });
+
+  const args = [
+    '-p',
+    '--mcp-config', mcpConfigPath,
+    '--strict-mcp-config',
+    '--output-format', 'stream-json',
+    '--verbose',
+    '--dangerously-skip-permissions',
+    '--no-session-persistence',
+    prompt,
+  ];
+
+  // Per-step JSONL log under board-runs (same convention as the v2 runner and
+  // CliModelPort), so tracker-view can tail the live worker stream.
+  const runDir = path.join(logRoot, `saga3-${spec.id}-${process.pid}`);
+  try { mkdirSync(runDir, { recursive: true }); } catch { /* best effort */ }
+  const logFile = path.join(runDir, `cond-${conditionType}-${workerId}.jsonl`);
+
+  return new Promise<number>((resolve) => {
+    let logStream: ReturnType<typeof createWriteStream> | null = null;
+    try { logStream = createWriteStream(logFile, { flags: 'a' }); } catch { /* best effort */ }
+
+    const child = spawn(claudePath, args, {
+      cwd: workspace,
+      env: {
+        ...process.env,
+        // Inherited by the spawned saga3 MCP server (via --mcp-config) so it
+        // opens the same DB and is scoped to this episode.
+        SAGA3_EPISODE_SPEC_ID: spec.id,
+        SAGA3_EXECUTION_ID: executionId,
+        SAGA3_WORKER_ID: workerId,
+        SAGA3_CONDITION: conditionType,
+      },
+      windowsHide: true,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+
+    // Tee stdout/stderr to the JSONL log only — we do NOT accumulate or parse
+    // it. The saga3 protocol routes results through the DB, not stdout.
+    if (logStream) {
+      child.stdout?.pipe(logStream, { end: false });
+      child.stderr?.pipe(logStream, { end: false });
+    }
+
+    child.once('error', (e) => {
+      if (logStream) logStream.end();
+      log(`WORKER SPAWN ERROR: ${e.message}`);
+      resolve(1);
+    });
+
+    child.once('close', (code) => {
+      if (logStream) logStream.end();
+      resolve(code ?? 1);
+    });
+  });
+}
+
+/**
+ * Reload one condition's status from saga3_condition_instances into the live
+ * ctx.conditions map. The saga3 worker (via saga3_complete) writes the row; we
+ * read it back so the controller's next step sees the new status.
+ *
+ * Returns the DB status ('True' | 'False' | 'Unknown') or null if no row.
+ */
+function reloadConditionFromDb(conditionType: string, obligationId: string): string | null {
+  try {
+    const row = db.prepare(
+      `SELECT status FROM saga3_condition_instances
+       WHERE episode_spec_id = ? AND condition_type = ? AND obligation_id = ?
+         AND scope_type = 'episode' AND scope_id = ''
+       LIMIT 1`,
+    ).get(spec.id, conditionType, obligationId) as { status: string } | undefined;
+    return row?.status ?? null;
+  } catch {
+    // Table missing or query error — treat as "no signal".
+    return null;
+  }
+}
+
 async function runEpisode(): Promise<void> {
   log(`Saga 3 starting. Mandate: ${mandate.slice(0, 80)}...`);
   log(`Workspace: ${workspace}`);
   log(`Conditions: ${PIPELINE_CONDITIONS.length} (${MANDATORY_CONDITIONS.length} mandatory)`);
+  log(`MCP server: ${saga3ServerPath}`);
+  log(`MCP config: ${mcpConfigPath}`);
   log('');
 
   let step = 0;
@@ -214,8 +340,9 @@ async function runEpisode(): Promise<void> {
       const action = PIPELINE_ACTIONS.find((a) => a.targetCondition === targetCondition);
       const skillId = action?.skillId ?? 'saga-worker';
       const obligationId = PIPELINE_CONDITIONS.find((c) => c.conditionType === targetCondition)?.obligationId ?? 'unknown';
+      const role = allSkills().find((s) => s.skillId === skillId)?.role ?? 'worker';
 
-      log(`STEP ${step}: condition=${targetCondition} skill=${skillId} — spawning worker...`);
+      log(`STEP ${step}: condition=${targetCondition} skill=${skillId} — spawning worker (saga3 MCP)...`);
 
       // Write worker_executions row so tracker-view shows the worker.
       const workerId = `saga3-${step}-${Date.now()}`;
@@ -228,35 +355,18 @@ async function runEpisode(): Promise<void> {
              (execution_id, run_id, project_id, epic_id, task_id, worker_id, machine_id,
               launcher, state, phase, pid, reserved_at, started_at)
            VALUES (?,?,?,?,?,?,?,?,?,?,?,datetime('now'),datetime('now'))`,
-        ).run(executionId, `saga3-run-${Date.now()}`, projectId, epicId, 0, workerId,
+        ).run(executionId, `saga3-run-${spec.id}`, projectId, epicId, 0, workerId,
           os.hostname(), 'saga3-cli', 'running', 'executing', process.pid);
       } catch (e) {
         // Old DB may not have the table — non-fatal.
         log(`(worker_executions write skipped: ${e instanceof Error ? e.message : 'error'})`);
       }
 
-      // Build the prompt for this condition.
-      const prompt = buildSkillPrompt(targetCondition, obligationId, skillId);
-
-      // Call the model port (real claude CLI).
-      const deadline = ports.clock.deadline(300_000); // 5 min
-      const modelResult = await ports.model.propose({
-        role: resolveSkill(
-          materializeWorkIntent({
-            episodeSpecId: spec.id,
-            generation: spec.generation,
-            action: action!,
-            obligationId,
-            scopeType: 'episode',
-            scopeId: '',
-          }),
-          ctx.skills,
-        )?.role ?? 'worker',
-        proposalKind: targetCondition,
-        generation: spec.generation,
-        inputFingerprint: ctx.currentSourceFingerprint,
-        prompt,
-      }, deadline);
+      // Spawn the claude worker. It writes its result to the DB through the
+      // saga3_* MCP tools; we only collect the exit code here.
+      const exitCode = await spawnWorker(
+        targetCondition, obligationId, skillId, role, executionId, workerId,
+      );
 
       // Update worker_executions: worker finished.
       try {
@@ -264,57 +374,29 @@ async function runEpisode(): Promise<void> {
           `UPDATE worker_executions SET state='exited', phase='finished',
            finished_at=datetime('now'), exit_code=?
            WHERE execution_id=?`,
-        ).run(modelResult.kind === 'proposal' ? 0 : 1, executionId);
+        ).run(exitCode, executionId);
       } catch { /* non-fatal */ }
 
-      if (modelResult.kind !== 'proposal') {
-        log(`WORKER FAILED: ${modelResult.kind}${'message' in modelResult ? ': ' + modelResult.message : ''}`);
-        // Mark condition as Unknown (no evidence).
-        const cond = ctx.conditions.get(targetCondition);
-        if (cond) cond.status = 'Unknown';
-        continue;
+      // Reload the condition status the saga3 worker just wrote to the DB.
+      // No JSON parsing from stdout — the DB is the single source of truth.
+      const dbStatus = reloadConditionFromDb(targetCondition, obligationId);
+      const cond = ctx.conditions.get(targetCondition);
+      if (dbStatus && cond) {
+        (cond as { status: string }).status = dbStatus;
+        // Stamp a source fingerprint so evaluateCondition trusts a True.
+        if (dbStatus === 'True') {
+          (cond as { sourceFingerprint: string | null }).sourceFingerprint = ctx.currentSourceFingerprint;
+        }
       }
 
-      // Parse the worker output from the model result.
-      const payload = modelResult.proposal.payload as Record<string, unknown>;
-      const workerOutput: WorkerOutput = {
-        assignmentId: assignment.id,
-        workIntentId: '',
-        result: ((payload.result as string) ?? 'completed') as 'completed' | 'failed' | 'ambiguous',
-        artifacts: ((payload.artifacts as any[]) ?? []).map((a) => ({
-          kind: a.kind ?? 'text',
-          path: a.path ?? 'output.md',
-          content: a.content ?? '',
-          digest: a.digest ?? sha256(a.content ?? ''),
-        })),
-        observations: ((payload.observations as any[]) ?? []).map((o) => ({
-          oracleId: o.oracleId ?? 'file-check',
-          oracleVersion: o.oracleVersion ?? '1',
-          command: o.command ?? '',
-          verdict: o.verdict ?? 'unknown',
-          rawDigest: o.rawDigest ?? sha256(o.stdout ?? ''),
-          stdout: o.stdout ?? '',
-          exitCode: o.exitCode ?? 0,
-        })),
-        summary: (payload.summary as string) ?? '',
-      };
-
-      // Ingest the worker output.
-      const ingested = controller.ingestOutput(workerOutput, targetCondition, obligationId);
-
-      log(`INGESTED: ${ingested.artifacts.length} artifacts, ${ingested.evidence.length} evidence`);
-      for (const a of ingested.artifacts) {
-        log(`  artifact: ${a.path} (${a.written ? 'written' : 'exists'})`);
-      }
-      for (const e of ingested.evidence) {
-        log(`  evidence: ${e.oracleId} verdict=${e.verdict} trust=${e.trustClass}`);
-      }
-
-      const condAfter = ctx.conditions.get(targetCondition);
-      log(`CONDITION ${targetCondition}: ${condAfter?.status}`);
+      log(`CONDITION ${targetCondition}: ${cond?.status ?? 'missing'} (db=${dbStatus ?? 'n/a'}, exit=${exitCode})`);
       log('');
 
-      // Mark this work as completed.
+      if (exitCode !== 0) {
+        log(`WARN: worker exited code=${exitCode} for ${targetCondition}`);
+      }
+
+      // Mark this work as completed and clear the assignment for the next step.
       ctx.completedIntents.add(assignment.id);
       ctx.currentAssignment = null;
     }
@@ -327,7 +409,16 @@ async function runEpisode(): Promise<void> {
   log(`Episode finished after ${step} steps.`);
 }
 
+// Clean up the temp MCP config on exit.
+function cleanup(): void {
+  try { rmSync(mcpConfigPath, { force: true }); } catch { /* best effort */ }
+}
+process.once('exit', cleanup);
+process.once('SIGINT', () => { cleanup(); process.exit(130); });
+process.once('SIGTERM', () => { cleanup(); process.exit(143); });
+
 runEpisode().catch((e) => {
   console.error('FATAL:', e);
+  cleanup();
   process.exit(1);
 });

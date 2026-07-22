@@ -8,6 +8,7 @@
  * Terminal when evaluateTerminal certifies. No fallback. No v2.
  */
 
+import type Database from 'better-sqlite3';
 import type {
   EpisodeSpec,
   ConditionInstance,
@@ -20,6 +21,7 @@ import type {
   OutcomeCertificate,
   WorkerOutput,
 } from '../domain/types.js';
+import { PIPELINE_CONDITIONS } from '../domain/pipeline-contracts.js';
 import {
   evaluateCondition,
   selectDeficits,
@@ -60,8 +62,199 @@ export interface EpisodeContext {
   readonly completedIntents: Set<string>;
   readonly dependencyEdges: ReadonlyArray<{ readonly from: string; readonly to: string }>;
   readonly certificate: OutcomeCertificate | null;
+  /**
+   * Optional SQLite handle. When set, the controller persists condition
+   * instances, evidence records, and outcome certificates to the saga3
+   * tables so they survive restart. When null/undefined (in-memory tests),
+   * all persistence calls are skipped and behavior is identical to before.
+   */
+  readonly db?: Database.Database;
   leaseEpoch: number;
   currentAssignment: ReturnType<typeof createAssignment> | null;
+}
+
+/**
+ * Load condition instances for an episode from saga3_condition_instances.
+ *
+ * If the table has no rows for this episode yet, seed it from
+ * PIPELINE_CONDITIONS (all Unknown) and return the seeded map. This makes
+ * the very first boot after schema init equivalent to `initialConditions`,
+ * but every subsequent boot reads the persisted statuses instead — so a
+ * restart picks up exactly where the previous run left off.
+ *
+ * Returns a Map keyed by conditionType, matching the in-memory shape used
+ * by `initialConditions`.
+ */
+export function loadConditionsFromDb(
+  db: Database.Database,
+  episodeSpecId: string,
+): Map<string, ConditionInstance> {
+  const rows = db
+    .prepare(
+      `SELECT episode_spec_id, condition_type, obligation_id, scope_type, scope_id,
+              status, projection_version, observed_generation, source_fingerprint,
+              invalidation_reason
+         FROM saga3_condition_instances
+        WHERE episode_spec_id = ?`,
+    )
+    .all(episodeSpecId) as Array<{
+      episode_spec_id: string;
+      condition_type: string;
+      obligation_id: string;
+      scope_type: string;
+      scope_id: string;
+      status: ConditionStatus;
+      projection_version: number;
+      observed_generation: number | null;
+      source_fingerprint: string | null;
+      invalidation_reason: string | null;
+    }>;
+
+  if (rows.length === 0) {
+    // Seed from PIPELINE_CONDITIONS.
+    const seeded = new Map<string, ConditionInstance>();
+    const insert = db.prepare(
+      `INSERT OR REPLACE INTO saga3_condition_instances
+         (episode_spec_id, condition_type, obligation_id, scope_type, scope_id,
+          status, projection_version, observed_generation, source_fingerprint,
+          environment_fingerprint, invalidation_reason)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)`,
+    );
+    const seedOne = db.transaction((conds: readonly ConditionContract[]) => {
+      for (const c of conds) {
+        const inst: ConditionInstance = {
+          episodeSpecId,
+          conditionType: c.conditionType,
+          obligationId: c.obligationId,
+          scopeType: c.scopeType,
+          scopeId: c.scopeId,
+          status: 'Unknown',
+          projectionVersion: 0,
+          observedGeneration: null,
+          sourceFingerprint: null,
+          invalidationReason: null,
+        };
+        insert.run(
+          inst.episodeSpecId,
+          inst.conditionType,
+          inst.obligationId,
+          inst.scopeType,
+          inst.scopeId,
+          inst.status,
+          inst.projectionVersion,
+          inst.observedGeneration,
+          inst.sourceFingerprint,
+          inst.invalidationReason,
+        );
+        seeded.set(c.conditionType, inst);
+      }
+    });
+    seedOne(PIPELINE_CONDITIONS);
+    return seeded;
+  }
+
+  // Hydrate from persisted rows.
+  const map = new Map<string, ConditionInstance>();
+  for (const r of rows) {
+    map.set(r.condition_type, {
+      episodeSpecId: r.episode_spec_id,
+      conditionType: r.condition_type,
+      obligationId: r.obligation_id,
+      scopeType: r.scope_type,
+      scopeId: r.scope_id,
+      status: r.status,
+      projectionVersion: r.projection_version,
+      observedGeneration: r.observed_generation,
+      sourceFingerprint: r.source_fingerprint,
+      invalidationReason: r.invalidation_reason,
+    });
+  }
+  return map;
+}
+
+/**
+ * UPSERT a condition instance into saga3_condition_instances.
+ *
+ * Called from ingestOutput after the in-memory status is mutated, so the
+ * DB row tracks the live Map. Safe to call on every status transition.
+ */
+export function saveConditionToDb(
+  db: Database.Database,
+  condition: ConditionInstance,
+): void {
+  db.prepare(
+    `INSERT OR REPLACE INTO saga3_condition_instances
+       (episode_spec_id, condition_type, obligation_id, scope_type, scope_id,
+        status, projection_version, observed_generation, source_fingerprint,
+        environment_fingerprint, invalidation_reason)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)`,
+  ).run(
+    condition.episodeSpecId,
+    condition.conditionType,
+    condition.obligationId,
+    condition.scopeType,
+    condition.scopeId,
+    condition.status,
+    condition.projectionVersion,
+    condition.observedGeneration,
+    condition.sourceFingerprint,
+    condition.invalidationReason,
+  );
+}
+
+/**
+ * Append an evidence record into saga3_evidence_records.
+ */
+function saveEvidenceToDb(
+  db: Database.Database,
+  evidence: EvidenceRecord,
+): void {
+  db.prepare(
+    `INSERT OR REPLACE INTO saga3_evidence_records
+       (id, episode_spec_id, condition_type, obligation_id, generation,
+        source_fingerprint, environment_fingerprint, oracle_id, oracle_version,
+        trust_class, verdict, raw_digest, observed_at, freshness_max_age_ms)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(
+    evidence.id,
+    evidence.episodeSpecId,
+    evidence.conditionType,
+    evidence.obligationId,
+    evidence.generation,
+    evidence.sourceFingerprint,
+    evidence.environmentFingerprint,
+    evidence.oracleId,
+    evidence.oracleVersion,
+    evidence.trustClass,
+    evidence.verdict,
+    evidence.rawDigest,
+    evidence.observedAt,
+    evidence.freshnessMaxAgeMs,
+  );
+}
+
+/**
+ * Persist a terminal outcome certificate into saga3_outcome_certificates.
+ */
+function saveOutcomeCertificateToDb(
+  db: Database.Database,
+  cert: OutcomeCertificate,
+): void {
+  db.prepare(
+    `INSERT OR REPLACE INTO saga3_outcome_certificates
+       (episode_spec_id, outcome, causal_reason, generation, source_fingerprint,
+        satisfied_conditions, unresolved_conditions, certified_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(
+    cert.episodeSpecId,
+    cert.outcome,
+    cert.causalReason,
+    cert.generation,
+    cert.sourceFingerprint,
+    JSON.stringify(cert.satisfiedConditions),
+    JSON.stringify(cert.unresolvedConditions),
+    cert.certifiedAt,
+  );
 }
 
 /**
@@ -115,11 +308,21 @@ export class EpisodeController {
         { outcome: terminalDecision.outcome, reason: terminalDecision.reason },
       );
       // Store as absorbing — every future step returns the same terminal.
-      (this.ctx as { certificate: OutcomeCertificate | null }).certificate = {
+      const finalCert: OutcomeCertificate = {
         ...cert,
         episodeSpecId: this.ctx.spec.id,
       };
-      return { kind: 'terminal', outcome: terminalDecision.outcome, certificate: { ...cert, episodeSpecId: this.ctx.spec.id } };
+      (this.ctx as { certificate: OutcomeCertificate | null }).certificate = finalCert;
+      // Persist the terminal certificate so it survives restart.
+      if (this.ctx.db) {
+        try {
+          saveOutcomeCertificateToDb(this.ctx.db, finalCert);
+        } catch {
+          // Persistence is best-effort during the skeleton phase — a DB
+          // without the saga3 schema must not break the control decision.
+        }
+      }
+      return { kind: 'terminal', outcome: terminalDecision.outcome, certificate: finalCert };
     }
 
     // 3. Select the highest-priority deficit.
@@ -281,6 +484,23 @@ export class EpisodeController {
         if (ev.verdict === 'passed') condition.status = 'True';
         else if (ev.verdict === 'failed') condition.status = 'False';
         else condition.status = 'Unknown';
+
+        // Persist the updated condition + evidence so they survive restart.
+        if (this.ctx.db) {
+          try {
+            saveConditionToDb(this.ctx.db, condition);
+            for (const rec of evidence) {
+              // Attach a durable id if the ingestion layer left it blank.
+              const withId: EvidenceRecord = rec.id
+                ? rec
+                : { ...rec, id: `ev-${this.ctx.spec.id}-${rec.oracleId}-${rec.observedAt}` };
+              saveEvidenceToDb(this.ctx.db, withId);
+            }
+          } catch {
+            // Persistence is best-effort during the skeleton phase — a DB
+            // without the saga3 schema must not break ingestion.
+          }
+        }
       }
     }
 
