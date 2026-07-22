@@ -19,9 +19,7 @@
 
 import { spawn, spawnSync } from 'node:child_process';
 import { createHash, randomUUID, randomBytes, randomInt } from 'node:crypto';
-import { existsSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs';
-import path from 'node:path';
-import os from 'node:os';
+import { existsSync, writeFileSync } from 'node:fs';
 import type Database from 'better-sqlite3';
 import type {
   Ports, Clock, Deadline, IdSource, RandomSource,
@@ -195,7 +193,7 @@ export class CommandOraclePort implements OraclePort {
 export class GitEffectPort implements EffectPort {
   constructor(private readonly workspaceRoot: string) {}
 
-  async execute(intent: import('../ports/ports.js').EffectPortIntent, deadline: Deadline): Promise<import('../ports/ports.js').EffectPortObservation> {
+  async execute(intent: import('../ports/ports.js').EffectPortIntent, _deadline: Deadline): Promise<import('../ports/ports.js').EffectPortObservation> {
     // Parse target: "repo:source_branch->target_branch"
     const parts = intent.targetIdentity.split(':');
     const branchPart = parts[parts.length - 1];
@@ -257,7 +255,7 @@ export class GitRepositoryPort implements RepositoryPort {
 export class ChildProcessPort implements ProcessPort {
   private handles = new Map<string, ReturnType<typeof spawn>>();
 
-  async start(spec: import('../ports/ports.js').ProcessSpec, deadline: Deadline) {
+  async start(spec: import('../ports/ports.js').ProcessSpec, _deadline: Deadline) {
     const child = spawn(spec.args[0], spec.args.slice(1), {
       cwd: spec.repo,
       env: { ...process.env },
@@ -298,7 +296,7 @@ export class ChildProcessPort implements ProcessPort {
 export class SqliteStore implements DurableStore {
   constructor(private readonly db: Database.Database) {}
 
-  transact<T>(fn: (tx: Tx) => T, opts?: { readonly fault?: string }): T {
+  transact<T>(fn: (tx: Tx) => T): T {
     // Fault injection point (test use — production ignores).
     this.db.exec('BEGIN IMMEDIATE');
     try {
@@ -334,11 +332,6 @@ export class ProdScheduler implements SchedulerPort {
   admit(req: import('../ports/ports.js').SchedulerAdmitRequest): import('../ports/ports.js').SchedulerAdmitDecision {
     const pool = this.active.get(req.capacityPool) ?? new Set();
     const max = this.capacity[req.capacityPool] ?? 1;
-
-    // Check conflict keys — if any active intent in this pool shares a key.
-    for (const [, activeSet] of this.active) {
-      // Simple: don't track keys per-intent in prod, just use capacity.
-    }
 
     if (pool.size >= max) {
       return { admitted: false, reason: 'capacity' };
