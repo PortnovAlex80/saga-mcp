@@ -4983,14 +4983,21 @@ function killEngineTree(projectId, epicId) {
  * given concurrency. Returns the child process (unref'd).
  */
 function spawnEngine(projectId, epicId, concurrency) {
-  const cliPath = path.join(__dirname, '..', 'dist', 'orchestrate-cli.js');
-  const child = spawn('node', [cliPath, String(projectId), String(epicId), `--concurrency=${concurrency}`], {
+  const cliPath = path.join(__dirname, '..', 'dist', 'saga3', 'app', 'cli.js');
+  // Read the mandate from the epic's discovery brief or task title.
+  const epicRow = withDb(db => db.prepare(
+    'SELECT name, description FROM epics WHERE id=?',
+  ).get(epicId));
+  const mandate = epicRow?.name || epicRow?.description || 'Continue episode';
+  const child = spawn('node', [cliPath, mandate], {
     detached: true,
     stdio: 'ignore',
     env: {
       ...process.env,
       DB_PATH: process.env.DB_PATH,
-      SAGA_ORCHESTRATION_MODE: 'v3',
+      SAGA3_WORKSPACE: resolveProjectWorkspace({ id: projectId, name: withDb(db => db.prepare('SELECT name FROM projects WHERE id=?').get(projectId))?.name || '' }) || process.cwd(),
+      SAGA3_PROJECT_ID: String(projectId),
+      SAGA3_EPIC_ID: String(epicId),
     },
   });
   child.unref();
