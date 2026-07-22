@@ -69,6 +69,10 @@ export interface CompletionAcceptance {
 export interface WorkerSubmissionRepository {
   appendArtifact(proposal: ArtifactProposal): void;
   appendVerification(proposal: VerificationProposal): void;
+  findActiveExecution(input: {
+    readonly episodeSpecId: string;
+    readonly conditionType: string;
+  }): string | null;
   loadAuthority(executionId: string): WorkerExecutionAuthority | null;
   listPending(executionId: string): readonly PendingWorkerSubmission[];
   commitCompletion(acceptance: CompletionAcceptance): void;
