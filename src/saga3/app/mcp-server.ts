@@ -39,8 +39,23 @@ function requiredEnv(name: string): string {
   return value;
 }
 
-function assignedExecutionId(): string {
-  return requiredEnv('SAGA3_EXECUTION_ID');
+function assignedExecutionId(conditionType?: string): string {
+  const direct = process.env.SAGA3_EXECUTION_ID;
+  if (direct) return direct;
+
+  const episodeSpecId = requiredEnv('SAGA3_EPISODE_SPEC_ID');
+  const assignedCondition = conditionType ?? process.env.SAGA3_CONDITION;
+  if (!assignedCondition) {
+    throw new Error('SAGA3_EXECUTION_ID or SAGA3_CONDITION is required to resolve worker authority.');
+  }
+  const resolved = repository.findActiveExecution({
+    episodeSpecId,
+    conditionType: assignedCondition,
+  });
+  if (!resolved) {
+    throw new Error(`No active execution for ${episodeSpecId}/${assignedCondition}.`);
+  }
+  return resolved;
 }
 
 function assertEpisodeScope(episodeSpecId: string): void {
@@ -89,7 +104,7 @@ function handleProposeVerification(input: ProposeVerificationInput) {
   assertEpisodeScope(input.episode_spec_id);
   assertConditionScope(input.condition_type);
   return application.proposeVerification({
-    executionId: assignedExecutionId(),
+    executionId: assignedExecutionId(input.condition_type),
     oracleId: input.oracle_id,
     oracleVersion: input.oracle_version,
     command: input.command,
@@ -107,7 +122,7 @@ async function handleComplete(input: CompleteInput) {
   assertEpisodeScope(input.episode_spec_id);
   assertConditionScope(input.condition_type);
   return application.complete({
-    executionId: assignedExecutionId(),
+    executionId: assignedExecutionId(input.condition_type),
     workerDeclaredResult: input.result,
   });
 }
