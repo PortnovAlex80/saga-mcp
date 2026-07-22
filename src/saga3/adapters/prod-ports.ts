@@ -19,7 +19,6 @@
 
 import { spawn, spawnSync } from 'node:child_process';
 import { createHash, randomUUID, randomBytes, randomInt } from 'node:crypto';
-import { existsSync, writeFileSync } from 'node:fs';
 import type Database from 'better-sqlite3';
 import type {
   Ports, Clock, Deadline, IdSource, RandomSource,
