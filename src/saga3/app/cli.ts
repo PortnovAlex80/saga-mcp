@@ -12,6 +12,7 @@
 
 import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
+import os from 'node:os';
 import { EpisodeController } from './controller.js';
 import { OracleRegistry } from '../evidence/attestation.js';
 import { BudgetLedger } from '../budgets/budget-ledger.js';
@@ -225,10 +226,10 @@ async function runEpisode(): Promise<void> {
         db.prepare(
           `INSERT INTO worker_executions
              (execution_id, run_id, project_id, epic_id, task_id, worker_id, machine_id,
-              launcher, state, phase, reserved_at, started_at)
-           VALUES (?,?,?,?,?,?,?,?,?,?,datetime('now'),datetime('now'))`,
+              launcher, state, phase, pid, reserved_at, started_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,datetime('now'),datetime('now'))`,
         ).run(executionId, `saga3-run-${Date.now()}`, projectId, epicId, 0, workerId,
-          'saga3-host', 'saga3-cli', 'running', 'executing');
+          os.hostname(), 'saga3-cli', 'running', 'executing', process.pid);
       } catch (e) {
         // Old DB may not have the table — non-fatal.
         log(`(worker_executions write skipped: ${e instanceof Error ? e.message : 'error'})`);
