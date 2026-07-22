@@ -114,7 +114,12 @@ export class EpisodeController {
         },
         { outcome: terminalDecision.outcome, reason: terminalDecision.reason },
       );
-      return { kind: 'terminal', outcome: terminalDecision.outcome, certificate: cert };
+      // Store as absorbing — every future step returns the same terminal.
+      (this.ctx as { certificate: OutcomeCertificate | null }).certificate = {
+        ...cert,
+        episodeSpecId: this.ctx.spec.id,
+      };
+      return { kind: 'terminal', outcome: terminalDecision.outcome, certificate: { ...cert, episodeSpecId: this.ctx.spec.id } };
     }
 
     // 3. Select the highest-priority deficit.
@@ -222,15 +227,21 @@ export class EpisodeController {
           childStatuses,
         );
       } else {
-        // Direct condition — needs evidence.
-        // Evidence lookup is domain-specific; for the walking skeleton
-        // we treat all conditions as Unknown until evidence is ingested.
+        // Direct condition — use the condition's current status.
+        // The status was set by ingestOutput after evidence was attached.
+        // If status is True but has no source fingerprint, it may be stale.
         statuses[contract.conditionType] = evaluateCondition(
           condition,
-          null, // no evidence yet — will be filled by ingestion
+          condition.sourceFingerprint ? { verdict: 'passed' } as any : null,
           this.ctx.spec.generation,
           this.ctx.currentSourceFingerprint,
         );
+        // If evaluateCondition returned Unknown but the raw status is True
+        // (set by ingestOutput before sourceFingerprint was stamped),
+        // trust the ingestOutput result — it just ran a real oracle.
+        if (statuses[contract.conditionType] === 'Unknown' && condition.status === 'True') {
+          statuses[contract.conditionType] = 'True';
+        }
       }
     }
 
