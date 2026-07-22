@@ -1,107 +1,54 @@
 /**
- * Saga 3 — Worker prompt + MCP config builder.
+ * Saga 3 worker prompt and MCP configuration.
  *
- * Constructs the system prompt handed to a claude worker process and the
- * --mcp-config JSON that injects the saga3 MCP server (the only tools the
- * worker is allowed to call).
- *
- * This is the saga3 analogue of tracker-view/claude-runner.mjs buildPrompt /
- * writeMcpConfig, but reshaped around the saga3 protocol: a worker satisfies
- * exactly one ConditionInstance (conditionType + obligationId) inside a frozen
- * episode, and reports back through the saga3_* MCP tools instead of the v2
- * worker_done / task_update tools.
- *
- * Key differences from the v2 prompt:
- *  - The unit of work is a condition, not a task. The worker never sees a task
- *    row; it sees (episodeSpecId, generation, conditionType, obligationId).
- *  - The only permitted tools are the saga3_* MCP tools. Calling any v2 tool
- *    (worker_done, task_update, worker_next, ...) is a protocol violation.
- *  - The worker registers its own output via saga3_propose_artifact /
- *    saga3_propose_verification, then signals completion via saga3_complete.
+ * The worker receives one authorized condition assignment. It submits artifact
+ * content and a verification procedure. It never submits authoritative
+ * evidence or directly changes a condition.
  */
 
-// ---------------------------------------------------------------------------
-// Prompt
-// ---------------------------------------------------------------------------
-
-/**
- * Input for {@link buildWorkerPrompt}. Every field is required: a saga3 worker
- * is launched for exactly one condition and must know its full scope.
- */
 export interface WorkerPromptInput {
-  /** ConditionType of the ConditionInstance being addressed (e.g. ImplementationComplete). */
   readonly conditionType: string;
-  /** Obligation id scoped to the condition. */
   readonly obligationId: string;
-  /** Saga skill id whose SKILL.md the worker must follow (e.g. saga-worker). */
   readonly skillId: string;
-  /** Absolute path to the workspace the worker writes artifacts into. */
   readonly workspaceRoot: string;
-  /** Frozen episode spec id the condition belongs to. */
   readonly episodeSpecId: string;
-  /** Episode generation number (CAS fence against superseded episodes). */
   readonly generation: number;
-  /** Worker role derived from the skill (developer, verifier, ...). */
   readonly role: string;
   readonly oracleId?: string;
-  /**
-   * Absolute path to the directory containing the saga skill folders
-   * (e.g. .../skills/ where skills/saga-kickstart/SKILL.md lives).
-   * Required: the worker's cwd is the product workspace, which does NOT
-   * contain skills, so a relative `skills/<id>/SKILL.md` path fails with
-   * "File does not exist". Passed as an absolute path the worker reads
-   * directly regardless of cwd.
-   */
   readonly skillsRoot: string;
 }
 
-/**
- * Build the system prompt for one saga3 worker launch.
- *
- * The prompt follows the same shape as the v2 claude-runner buildPrompt — a
- * short identity line, a block of `key=value` scoping fields, then numbered
- * hard rules — but rewrites the rules around the saga3 condition protocol.
- */
 export function buildWorkerPrompt(input: WorkerPromptInput): string {
-  // Skills live in a shared skills root (user-level or saga-mcp source), NOT in
-  // the product workspace. Hand the worker an absolute path so it can read its
-  // SKILL.md regardless of cwd.
-  const skillPath = `${input.skillsRoot.replace(/\\/g, '/')}/${input.skillId}/SKILL.md`;
+  const normalizedSkillsRoot = input.skillsRoot.replace(/\\/g, '/');
+  const skillPath = `${normalizedSkillsRoot}/${input.skillId}/SKILL.md`;
   return [
-    'You are a Saga 3 worker. Saga assigned you one condition to satisfy.',
+    'You are a Saga 3 worker. Saga assigned you exactly one condition.',
     '',
     `episode_spec_id=${input.episodeSpecId}`,
     `generation=${input.generation}`,
     `condition=${input.conditionType}`,
     `obligation=${input.obligationId}`,
     `workspace_root=${input.workspaceRoot}`,
-    `skills_root=${input.skillsRoot.replace(/\\/g, '/')}`,
+    `skills_root=${normalizedSkillsRoot}`,
     `role=${input.role}`,
     `required_oracle=${input.oracleId ?? 'condition-oracle'}`,
+    'required_oracle_version=1',
     '',
     'INSTRUCTIONS:',
-    `1. Read your skill at ${skillPath} for how to do this work.`,
-    '2. Do the work according to the skill (create files, write artifacts, run checks).',
-    '3. When done, create your artifact files in the workspace.',
-    '4. Report your result by calling the saga3 MCP tools available to you:',
-    '   - saga3_propose_artifact: to register an artifact you created',
-    '   - saga3_propose_verification: REQUIRED for every condition; use required_oracle exactly and report passed only after checking the produced result',
-    '   - saga3_complete: to signal you are done with this condition',
-    '5. Do NOT call worker_done, task_update, or any v2 tool. Use only saga3_* tools.',
-    '6. saga3_complete cannot make a condition True without current passed verification evidence.',
-    '7. After saga3_complete, stop. Do not start another task.',
+    `1. Read and follow ${skillPath}.`,
+    '2. Perform only the assigned semantic work. Do not select another condition.',
+    '3. For every artifact to be accepted, call saga3_propose_artifact with its complete content.',
+    '4. Call saga3_propose_verification with the exact command Saga should execute.',
+    '   Use required_oracle and required_oracle_version exactly.',
+    '   Do not claim that the command passed. Your output is a procedure proposal, not evidence.',
+    '5. Call saga3_complete only after all artifact and verification proposals are submitted.',
+    '6. Saga 3 will validate your assignment, apply accepted artifacts, execute the oracle itself,',
+    '   attach provenance, and derive the condition state from the real observation.',
+    '7. Do not call worker_done, task_update, worker_next, or any non-saga3 control tool.',
+    '8. After saga3_complete returns, stop.',
   ].join('\n');
 }
 
-// ---------------------------------------------------------------------------
-// MCP config
-// ---------------------------------------------------------------------------
-
-/**
- * Shape of the --mcp-config JSON handed to the claude CLI. Only the saga3
- * server is exposed; v2 tools are not registered, so the worker cannot call
- * them even by mistake.
- */
 export interface McpConfig {
   readonly mcpServers: {
     readonly saga3: {
@@ -116,32 +63,14 @@ export interface McpConfig {
   };
 }
 
-/**
- * Build the --mcp-config JSON object for one worker launch.
- *
- * `saga3ServerPath` is the absolute path to the compiled saga3 MCP server
- * entry (e.g. dist/saga3/mcp/server.js). The env values are read from
- * process.env at call time, matching the codebase convention (DB_PATH in
- * src/db.ts, src/saga3/app/cli.ts):
- *   - DB_PATH                 — saga SQLite database (required)
- *   - SAGA3_EPISODE_SPEC_ID   — frozen episode the worker is scoped to
- *
- * Throws if either env value is missing: launching a worker without a DB or
- * episode scope would produce a server that cannot answer any saga3_* call.
- */
 export function buildMcpConfig(saga3ServerPath: string): McpConfig {
   const dbPath = process.env.DB_PATH;
   const episodeSpecId = process.env.SAGA3_EPISODE_SPEC_ID;
-
   if (!dbPath) {
-    throw new Error(
-      'buildMcpConfig: process.env.DB_PATH is required (path to the saga SQLite database).',
-    );
+    throw new Error('buildMcpConfig: process.env.DB_PATH is required.');
   }
   if (!episodeSpecId) {
-    throw new Error(
-      'buildMcpConfig: process.env.SAGA3_EPISODE_SPEC_ID is required (the frozen episode the worker is scoped to).',
-    );
+    throw new Error('buildMcpConfig: process.env.SAGA3_EPISODE_SPEC_ID is required.');
   }
 
   return {
