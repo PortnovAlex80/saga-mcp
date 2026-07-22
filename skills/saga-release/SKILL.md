@@ -69,12 +69,34 @@ Before tagging a new version. Run through every item. If any FAIL — release bl
 - [ ] `.github/workflows/publish.yml` exists and runs on tag
 - [ ] CI steps: tsc strict + ESLint + npm test + cgad-lint self-check
 
-### 9. Git hygiene
+<!-- source: EXT-14 https://mcpmarket.com/tools/skills/github-actions-manager -->
+**CI-management procedure** (confirm green on the release commit, not just "workflow exists"):
+- [ ] `gh run list --workflow ci.yml --branch <release-branch> --limit 1` — find the latest run on the release branch
+- [ ] `gh run view <run-id> --json conclusion --jq '.conclusion'` — must be `success`
+- [ ] If failed: `gh run view <run-id> --log-failed` — read the failing step before rerunning
+- [ ] After a fix: `gh run rerun <run-id> --failed` (rerun only failed jobs) then `gh run watch <run-id>`
+- [ ] For `publish.yml` on the tag: `gh run list --workflow publish.yml --limit 1` then `gh run watch <run-id>` until conclusion is `success`
+
+### 9. Git hygiene & pre-publish safety
 - [ ] `git status` — working tree clean (no uncommitted changes)
 - [ ] `git stash list` — empty
 - [ ] `git worktree list` — only main worktree (no leftover worktrees)
 - [ ] Feature branches cleaned up (only dev + master + optional active feature branches)
 - [ ] `git log --oneline -5` — latest commits are meaningful (no WIP commits)
+
+<!-- source: EXT-16 https://github.com/levnikolaevich/claude-code-skills (ln-62-repository-publisher) -->
+**Pre-publish safety** (from safe-repo-publishing — merged, deduped with the items above):
+- [ ] `git diff --cached` — scan the staged set for secrets, tokens, credentials, local caches, and temp artifacts. Inspect deletions and generated files as carefully as edits.
+- [ ] Confirm no unrelated user changes are staged without explicit whole-worktree authorization (stage explicit paths in a mixed worktree).
+- [ ] `git fetch <remote> && git log HEAD..<remote>/<branch>` — confirm local HEAD is in sync with the remote branch before committing.
+- [ ] If histories diverge: STOP. Report the commits on both sides; do NOT force-push or rewrite history implicitly.
+- [ ] After push: `gh run watch <run-id>` — confirm the remote branch resolves to the pushed commit AND required CI passes. Never treat a successful push as proof that CI / marketplace refresh / deployment succeeded (cross-references the EXT-14 step above).
+
+**Safety gates** (hard prohibitions — return BLOCKED rather than bypass):
+- [ ] Never expose authentication tokens or credential values in output.
+- [ ] Never create a release, tag, package publication, or PR unless explicitly requested by the operator.
+- [ ] Never delete remote branches or alter the default branch as a side effect.
+- [ ] Never bypass branch protection, required checks, or authentication to force the release through.
 
 ### 10. Version bump
 - [ ] Decide: patch (bug fix) / minor (feature) / major (breaking)
