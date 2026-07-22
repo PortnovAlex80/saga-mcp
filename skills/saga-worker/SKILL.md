@@ -161,14 +161,192 @@ if the overlap makes your work genuinely impossible without a decision.
 
 ```bash
 cd .worktrees/task-<id>
-git add -A && git commit -m "task #<id>: <what you did>"
-# run the project's tests/lint here — they must pass before you call worker_done
-worker_done({ task_id, worker_id, result: "what I did; tests pass" })
+git add -A && git commit -m "<type>(<scope>): <summary>"   # Conventional Commits — see "Branch & commit hygiene"
+# Run the Build-gate (see "Build-gate" section below) — it MUST pass before worker_done
+worker_done({ task_id, worker_id, result: "what I did; build-gate green (see output below)" })
 ```
 
 **Do not merge into `dev` here.** The branch `task/<id>` with your commit is
 exactly what the reviewer will diff. Merging now would land unreviewed code in
 `dev` and defeat the whole point.
+
+## Branch & commit hygiene (гигиена веток и коммитов)
+
+<!-- source: EXT-2 affaan-m/everything-claude-code — skills/git-workflow/SKILL.md (branching rules, merge-vs-rebase guidance, conflict-resolution procedure) -->
+<!-- source: EXT-13 github/awesome-copilot — skills/conventional-commit/SKILL.md (Conventional Commits format and scope rules) -->
+
+This section is **advisory hygiene** that sits around the authoritative merge
+gate (`worker_merge_acquire` / `worker_merge_release`, see MERGE-BACK). The gate
+decides when and whether a branch integrates; the rules below decide how your
+commits read and how you handle conflicts when the gate hands you a conflict
+result. CGAD terms (AC, episode, baseline, scope condition, integration branch,
+`task/<id>`) are preserved.
+
+### Branch naming
+
+Every worker task runs on its own branch `task/<id>` off the integration branch
+`dev` — this is already the WORKTREE LIFECYCLE convention. State it explicitly
+so reviewers and siblings parse the kanban without guessing:
+
+- branch: `task/<id>`  (e.g. `task/42`) — one task, one branch, one worktree.
+- worktree path: `.worktrees/task-<id>` (relative to repo root).
+- integration branch: `dev` — where approved `task/<id>` branches land, exclusively
+  through the merge gate at the `review→done` transition.
+
+<!-- source: EXT-2 — short-lived feature branches off the integration branch, never commit straight to dev/main. Adapted: our integration branch is `dev`, our unit of work is the episode task, so the branch is `task/<id>` not `feature/*`. -->
+
+Do **not** create parallel branches (`feature/*`, `fix/*`, personal branches)
+alongside `task/<id>`. The dispatcher, the reviewer, and the merge lock all key
+off `task/<id>`; an untracked branch silently loses your work at cleanup time.
+
+### Conventional Commits for worker commits
+
+<!-- source: EXT-13 github/awesome-copilot — conventional-commit skill: Conventional Commits 1.0.0 spec format. The XML prompt wrapper and the multi-paragraph body builder are NOT adopted; only the format + scope rules. -->
+
+Format every worker commit (the dev-phase commit on `task/<id>`, and the
+merge-back commit on `dev`) as a Conventional Commit:
+
+```
+<type>(<scope>): <summary>
+
+[optional body: what + why, wrapped at ~72 cols]
+```
+
+- `<type>` — one of:
+  - `feat` — new capability (maps to a new AC behavior implemented).
+  - `fix` — bug fix against an existing AC.
+  - `docs` — markdown-only (skills, AGENTS.md, requirements artifacts).
+  - `refactor` — internal change, no behavior delta.
+  - `test` — adds/repairs tests (no production code change).
+  - `chore` — tooling, deps, worktree bootstrap (`chore: init integration branch`).
+  - `build` / `ci` — build system or CI workflow.
+  - `perf` — performance change that is not a fix.
+- `<scope>` — optional, the module/component touched (e.g. `feat(scheduler): ...`).
+  Keep scope to one short token; omit it if the change spans the whole task.
+- `<summary>` — imperative, lowercase, no trailing period, ≤ ~72 chars.
+  Reference the task id in the body or footer, not necessarily in the summary.
+
+Examples:
+```
+feat(amort): implement exact_lower_cvar per AC-3
+fix(cashflow): correct off-by-one on last period (AC-2)
+test(amort): add etalon assertions for AC-1 100000@12%/12m
+docs(skills): augment saga-worker with git hygiene
+```
+
+The merge-back commit (MERGE-BACK step) stays a `--no-ff` merge commit as
+already specified:
+```
+merge: task #<id> (approved)
+```
+This is intentionally NOT a Conventional Commit — it is a structural integration
+marker, and the gate (`worker_merge_release`) owns its shape.
+
+### Merge vs rebase
+
+<!-- source: EXT-2 — guidance: prefer merge for integration history; rebase only to clean a private branch before it is reviewed. We invert the default for the worker: NO interactive rebase, because the reviewer must see the true history of task/<id>. -->
+
+- **Default: merge, do not rebase.** The reviewer reads `git diff dev...task/<id>`
+  and `git log task/<id>` as the audit trail of how the task evolved. Squashing
+  or rebasing that history hides the probe→fix→re-probe sequence that is exactly
+  what a reviewer needs to see.
+- **Do NOT interactively rebase `task/<id>` to "clean up" before review.** A messy
+  history with a reverted wrong turn is evidence; a polished single-commit
+  history is not. If the branch has grown long, let the reviewer see the journey.
+- **The only rebase that is acceptable:** rebasing `task/<id>` onto a fresh `dev`
+  when `dev` has moved and you get merge conflicts during MERGE-BACK. Even then,
+  prefer the conflict-resolution procedure below — the merge gate is the
+  authority, not a manual rebase.
+
+### Conflict-resolution procedure
+
+<!-- source: EXT-2 — conflict resolution: read the conflict, understand intent on both sides, resolve smallest unit first, never commit a conflict you don't understand. Adapted: the worker never force-resolves alone — a conflict at the gate routes to needs-human. -->
+
+A conflict surfaces in one of two places, and the response differs:
+
+1. **During MERGE-BACK, `git merge --no-ff task/<id>` fails** (the integration
+   branch `dev` moved since you branched). This is the **gate conflict** and it
+   is handled exactly as MERGE-BACK specifies:
+
+   ```bash
+   git merge --abort                                  # leave dev clean
+   worker_merge_release({ task_id, worker_id, result: "conflict" })
+   # saga flags the task needs-human (pulses red); it STAYS done, worktree kept.
+   ```
+
+   **Do NOT attempt to resolve the conflict yourself by force.** The merge lock
+   is authoritative; a conflict result routes the task to `needs-human` so a
+   reviewer with both branches' context resolves it. Silently picking "ours" or
+   "theirs" on a semantic conflict (two workers edited the same AC) is how
+   episodes regress.
+
+2. **During development on your own `task/<id>` branch** (e.g. you rebased onto
+   `dev` to pull in a sibling's merged work, or a cherry-pick conflicted). This
+   is **your** conflict to resolve, because you understand both sides. Procedure:
+
+   - `git status` — read every `both modified:` path; do not guess.
+   - For each conflicted hunk, read **both** sides (`HEAD` = your work, the
+     incoming = sibling's merged work). Understand the intent of each before
+     choosing. CGAD rule: the **AC / baseline** is the arbiter — if both sides
+     claim to implement the same AC, the one matching the AC's etalon wins; if
+     they implement different ACs, both hunks belong (merge both).
+   - Resolve the smallest unit first; save; `git add <file>`; repeat.
+   - **Never commit a conflict marker you do not understand.** If a hunk's intent
+     is unclear, leave the branch conflicted and use `worker_ask_need` (ASK flow)
+     with the specific question — do not paper over it.
+   - After all markers resolved: re-run the **Build-gate** (all 4 SRS §9 commands)
+     on the resolved tree before committing. A conflict resolution that breaks
+     the build is a failed gate; fix it or do not commit.
+
+### Never gag the reviewer
+
+<!-- source: EXT-1 obra/superpowers — "never gag a reviewer" principle: the author must not instruct the reviewer to skip, defer, or pre-rate a finding. -->
+
+The worker must **never** instruct its reviewer to ignore, defer, or pre-rate a
+finding. Concretely: do not write "this is fine, don't flag it", "known issue,
+skip", "pre-approved by X", or any equivalent in your `result`, commit message,
+or comments. The reviewer's verdict (`worker_done` with
+`verdict: "approved" | "changes_requested"`) is the reviewer's to form from the
+diff and the AC — not from your assurance. Flagging a concern you are aware of
+in a `comment_add` ("Known: X does not yet cover Y; tracked in task #Z") is
+**transparency**, not gagging; telling the reviewer to overlook it is gagging.
+This holds even when you are the solo worker self-reviewing on the next launch:
+the review-phase you is a distinct role from the dev-phase you.
+
+## Build-gate (обязательно перед worker_done — Дыра A)
+
+Прежде чем вызвать `worker_done`, докажите что проект всё ещё собирается.
+Абстрактное "run tests/lint" — недостаточно; читайте конкретные команды из SRS.
+
+1. Прочитайте **SRS §9 (stack declaration)** эпизода. Возьмите ВСЕ 4 команды.
+   SRS §9 — это machine-readable блок, который написал saga-architect; найдите
+   артефакт через `artifact_list({epic_id, type:'SRS', status:'accepted'})` и
+   откройте его `.md` файл, секция `## §9`.
+
+2. Запустите каждую **в worktree** (каждая должна exit 0):
+   - `type_checker` — например `npx tsc --noEmit` (L0 type gate)
+   - `test_framework` — например `npm test` (L2)
+   - `build_tool` — например `npm run build` (gate)
+   - `linter` — например `npx eslint .`
+
+3. **Вставьте ACTUAL OUTPUT каждой команды в `result` вызова `worker_done`.**
+   Не "tests pass" — а реальный вывод (exit code + последние строки). Ревьюер
+   и verifier читают этот вывод как доказательство. Без него `result`
+   голословен.
+
+Если какая-то команда упала — **НЕ завершайте задачу.** Чините код в той же
+worktree и повторите build-gate. Если не можете починить (превышает ваши
+знания/role) — используйте `worker_ask_need` для эскалации; не завершайте с
+"failed but I'm done anyway".
+
+Если в задаче есть `metadata.skip_build=true` (weak model, очень маленькая
+правка и т.п.) — build-gate опционален. Явно отметьте это в `result`, чтобы
+ревьюер знал, почему вывода команд нет.
+
+> **Why.** В Sollar/cannon-episode 6 TS-ошибок в `tests/browser/setup.ts`
+> копились необнаруженными, потому что worker SKILL говорил "run tests/lint"
+> абстрактно — без `tsc --noEmit` и без `npm run build` эти gate'ы
+> пропускались. Явное чтение §9 делает gate обязательным и воспроизводимым.
 
 ### REVIEW (`skill: "saga-reviewer"`)
 
@@ -266,7 +444,10 @@ The dispatcher's `skill` field tells you your role for THIS task:
 Implement it — **in your worktree** (see WORKTREE LIFECYCLE: CLAIM).
 1. `task_get({ id })` — description, comments (prior context), `depends_on`, subtasks (these are your DoD), `metadata.acceptance_criteria`. The acceptance criteria are the contract.
 2. `cd .worktrees/task-<id>` and read the code at `source_ref` plus the project's `AGENTS.md` / conventions before editing.
-3. Implement + write/update tests. **Run the project's tests/lint in the worktree before claiming done.**
+3. Implement + write/update tests. **Run the Build-gate (see "Build-gate" section
+   below — read SRS §9, run all 4 commands, paste output into `result`) before
+   claiming done.** Abstract "run tests" is not enough; the gate is the 4 explicit
+   commands from the stack declaration.
 4. Leave breadcrumbs via `comment_add` for anything non-obvious (a gotcha, a decision, why you took a path).
 
 ### `skill: "saga-reviewer"` (task was in `review` buffer, claim moved it to `review_in_progress`)
