@@ -1110,7 +1110,7 @@ export async function orchestrate(opts: OrchestrateOptions): Promise<Orchestrate
           if (meta.lastHealError !== advance.error) {
             // New error → previous heal advanced the diagnosis. Reset counters
             // for the new error so the engine can heal again.
-            resetHealRetriesForEpic(epicId);
+            resetHealRetriesForEpic(epicId, state);
           }
           const heal = attemptHeal(epicId, stage, advance.error, opts, state);
           writeEpisodeMeta(epicId, { lastHealError: advance.error, lastHealAttempt: new Date().toISOString() }, opts);
@@ -1162,7 +1162,7 @@ export async function orchestrate(opts: OrchestrateOptions): Promise<Orchestrate
           // the stage manually; currentStage() will reflect it next loop).
           clearNeedsHuman(epicId, opts);
           // Human override → reset retry budget, give the engine a fresh start.
-          resetHealRetriesForEpic(epicId);
+          resetHealRetriesForEpic(epicId, state);
           emptyCycles = 0;
           continue;
         }
@@ -1184,13 +1184,8 @@ export async function orchestrate(opts: OrchestrateOptions): Promise<Orchestrate
     }
   } finally {
     try { runner.dispose(); } catch { /* best effort */ }
-    // Release PID-lock so the next engine can start.
-    try {
-      if (typeof lockFile !== 'undefined' && existsSync(lockFile)) {
-        const ownerPid = parseInt(readFileSync(lockFile, 'utf8').trim(), 10);
-        if (ownerPid === process.pid) unlinkSync(lockFile);
-      }
-    } catch { /* stale lock, ignore */ }
+    // Release the host-owned singleton lock so the next engine can start.
+    opts.host.releaseEngineLock(context);
     engineHeartbeat(opts, 'ENGINE_EXIT', `cycles=${cycles} lastError=${lastError ?? 'null'}`);
   }
 
@@ -1201,6 +1196,3 @@ export async function orchestrate(opts: OrchestrateOptions): Promise<Orchestrate
     cycles, lastError,
   };
 }
-
-/** Re-export for tests. */
-export { closeDb };
