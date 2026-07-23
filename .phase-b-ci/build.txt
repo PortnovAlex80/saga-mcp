@@ -1,4 +1,0 @@
-
-> saga-mcp@2.0.0 build
-> tsc
-

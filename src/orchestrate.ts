@@ -19,7 +19,6 @@
  * nothing here is imported or executed. v2 behaviour is unchanged.
  */
 
-import { spawn as nodeSpawn } from 'node:child_process';
 import {
   existsSync,
   appendFileSync,
@@ -36,16 +35,17 @@ import {
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createClaudeBoardRunner } from '../tracker-view/claude-runner.mjs';
 import { getDb, closeDb } from './db.js';
+import type {
+  WorkerExecutorFactory,
+  WorkerRunSnapshot,
+} from './application/ports/worker-executor.js';
 import { generateNextForCompletedTask } from './tools/workflow.js';
 import { handlers as lifecycleHandlers } from './tools/lifecycle.js';
-import { handlers as dispatcherHandlers } from './tools/dispatcher.js';
 import { reevaluateDownstream } from './tools/tasks.js';
 import { handlers as projectHandlers } from './tools/projects.js';
 import { logActivity } from './helpers/activity-logger.js';
 import { reconcileWorkerExecutions } from './worker-executions.js';
-import { releaseExecutionAtomically } from './lifecycle/atomic-release.js';
 
 /**
  * Episode stage → next stage (mirror of lifecycle.ts NEXT, kept local to avoid
@@ -340,18 +340,18 @@ export interface OrchestrateOptions {
   epicId: number;
   concurrency?: number;
   claudePath?: string;
+  dbPath: string;
+  lmStudioUrl: string;
+  workerExecutorFactory: WorkerExecutorFactory;
   sagaEntry?: string;
   sagaSkillRoot?: string;
   logRoot?: string;
   heartbeatLog?: string;
-  /** Injectable for tests; defaults to node child_process.spawn. */
-  spawn?: typeof nodeSpawn;
   /** Injectable clock (ms) for tests. */
   now?: () => number;
   /** Injectable sleep for tests. */
   sleep?: (ms: number) => Promise<void>;
 }
-
 export interface OrchestrateResult {
   projectId: number;
   epicId: number;
@@ -1151,92 +1151,17 @@ export async function orchestrate(opts: OrchestrateOptions): Promise<Orchestrate
     );
   }
 
-  const runner = createClaudeBoardRunner({
-    // dispatcherHandlers.worker_next returns `unknown` (ToolHandler signature);
-    // claude-runner.mjs consumes assignment.task / assignment.skill but does
-    // not type-check them at runtime. Cast through unknown to satisfy tsc.
-    claimTask: (args: {
-      worker_id: string; project_id: number; machine_id?: string; epic_id?: number;
-      execution_id?: string; run_id?: string;
-    }) =>
-      dispatcherHandlers.worker_next(args) as ReturnType<typeof dispatcherHandlers.worker_next> as never,
-    getProject: (id: number) => getDb().prepare('SELECT * FROM projects WHERE id=?').get(id),
-    getTaskState: (taskId: number) => {
-      const row = getDb().prepare(
-        'SELECT id, status, assigned_to, tags, integration_state FROM tasks WHERE id=?',
-      ).get(taskId);
-      return row as { id: number; status: string; assigned_to: string | null; tags: string; integration_state: string | null } | undefined;
-    },
-    recoverAssignment: ({ taskId, workerId, originalStatus, executionId, reason }: {
-      taskId: number; workerId: string; originalStatus: string; reason: string;
-      executionId?: string | null;
-    }) => {
-      // Slice 1 (ADR-010/011, blueprint §16:829-845): fenced-task recovery
-      // delegates to the single atomic terminalization+release function in
-      // src/lifecycle/atomic-release.ts. This removes the duplicate recovery
-      // SQL between orchestrate.ts and tracker-view (blueprint §22:1199) and
-      // collapses the close/reconciler race: the function's fence CAS means
-      // only one of the two callers wins; the other no-ops.
-      //
-      // Legacy (pre-ADR-009, unfenced) assignments still need the old code path.
-      const db = getDb();
-      const task = db.prepare(
-        `SELECT id, title, status, assigned_to, tags, current_execution_id
-         FROM tasks WHERE id=?`,
-      ).get(taskId) as {
-        id: number; title: string; status: string; assigned_to: string;
-        tags: string; current_execution_id: string | null;
-      } | undefined;
-      if (!task || task.assigned_to !== workerId) return false;
-      let tags: string[] = [];
-      try { tags = JSON.parse(task.tags || '[]'); } catch { tags = []; }
-      if (tags.includes('needs-human')) return false;
-
-      // Fenced task: delegate to atomic-release.
-      if (executionId && task.current_execution_id === executionId) {
-        const outcome = releaseExecutionAtomically(db, {
-          executionId,
-          terminalState: 'lost',
-          reason: `engine recovery: ${reason ?? 'process exited before terminal worker_done'}`,
-        });
-        if (outcome.taskReleased) {
-          logActivity(db, 'task', taskId, 'status_changed', 'status',
-            task.status, outcome.restoredStatus,
-            `Engine recovered task '${task.title}' (atomic): ${reason ?? ''}`);
-        }
-        return outcome.taskReleased;
-      }
-
-      // Legacy path: pre-ADR-009 unfenced assignment.
-      const restoredStatus =
-        originalStatus === 'review' && task.status !== 'in_progress' ? 'review' : 'todo';
-      const info = db.prepare(
-        `UPDATE tasks
-         SET status=?, assigned_to=NULL, current_execution_id=NULL, updated_at=datetime('now')
-         WHERE id=? AND assigned_to=?
-           AND (current_execution_id IS NULL OR current_execution_id=?)`,
-      ).run(restoredStatus, taskId, workerId, executionId ?? null);
-      return info.changes === 1;
-    },
-    resolveWorkspace: () => workspaceRoot,
-    dbPath: process.env.DB_PATH!,
+  const runner = opts.workerExecutorFactory({
+    projectId,
+    epicId,
+    workspaceRoot,
+    dbPath: opts.dbPath,
     sagaEntry: opts.sagaEntry ?? path.join(__dirname, '..', 'dist', 'index.js'),
     sagaSkillRoot: opts.sagaSkillRoot ?? path.join(__dirname, '..', 'skills'),
     claudePath: opts.claudePath,
-    spawn: opts.spawn ?? nodeSpawn,
     logRoot: opts.logRoot,
     heartbeatLog: opts.heartbeatLog,
-    // Provider routing: read { active_model, active_provider } from the
-    // episode's metadata so claude-runner can redirect THIS worker's claude
-    // to LM Studio (provider='lmstudio') or keep it on z.ai (default).
-    getActiveModel: (epicId: number | null) => {
-      const row = getDb().prepare(
-        `SELECT json_extract(metadata, '$.active_model') AS m,
-                json_extract(metadata, '$.active_provider') AS p
-         FROM episode_workflows WHERE epic_id=?`,
-      ).get(epicId) as { m: string | null; p: string | null } | undefined;
-      return { model: row?.m ?? null, provider: row?.p ?? 'zai' };
-    },
+    lmStudioUrl: opts.lmStudioUrl,
   });
 
   engineHeartbeat(opts, 'ENGINE_START',
@@ -1306,7 +1231,7 @@ export async function orchestrate(opts: OrchestrateOptions): Promise<Orchestrate
       }
 
       // Step 1: pump workers for any claimable tasks in the current stage.
-      let run: ReturnType<typeof runner.status>;
+      let run: WorkerRunSnapshot | null;
       try {
         // Idempotent start: if a run is already active for this project,
         // start() throws — we treat that as "workers are already pumping".
