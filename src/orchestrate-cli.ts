@@ -1,24 +1,22 @@
 #!/usr/bin/env node
 /**
- * saga-mcp 3.0 — CLI entry point for the autonomous orchestration engine.
+ * Saga orchestration CLI host.
  *
  * Usage:
  *   node dist/orchestrate-cli.js <project_id> <epic_id> [--concurrency=4]
  *
- * This is the background process spawned by the tracker-view web UI when a
- * user clicks "New Project" (POST /api/project/create-from-idea). It runs
- * the pump loop in src/orchestrate.ts until the episode completes or pauses
- * for human attention. CLI is also the fallback when the web form is broken
- * (plan §Risks: "Web UI форма не POST'ит → CLI fallback").
+ * The CLI now depends on the engine-neutral SagaApplication boundary. The
+ * composition root currently selects Saga2Engine, which wraps the proven
+ * orchestration pump without changing its behavior.
  *
  * Env:
  *   DB_PATH             — saga SQLite database (required; same as saga server)
  *   SAGA_CLAUDE_PATH    — path to the claude CLI binary (default: 'claude')
- *   SAGA_ORCHESTRATION_LOG — directory for engine logs (default: ~/.zcode/cli)
+ *   SAGA_ORCHESTRATION_LOG — existing runtime log setting
  */
 
-import { orchestrate } from './orchestrate.js';
-import { closeDb } from './db.js';
+import { createSaga2Application } from './app/composition-root.js';
+import type { SagaApplication } from './application/saga-application.js';
 
 function parseArgs(argv: string[]): {
   projectId: number;
@@ -39,7 +37,7 @@ function parseArgs(argv: string[]): {
     if (arg === '-h' || arg === '--help') {
       process.stdout.write(
         'Usage: orchestrate-cli.js <project_id> <epic_id> [--concurrency=4]\n' +
-        '  Runs the saga 3.0 autonomous engine until episode completion.\n',
+        '  Runs the stable Saga 2 orchestration engine until episode completion.\n',
       );
       process.exit(0);
     }
@@ -65,7 +63,6 @@ function parseArgs(argv: string[]): {
 }
 
 async function main() {
-  // Parse args first so --help / -h work without DB_PATH.
   const { projectId, epicId, concurrency } = parseArgs(process.argv);
   if (!process.env.DB_PATH) {
     process.stderr.write(
@@ -73,21 +70,20 @@ async function main() {
     );
     process.exit(2);
   }
+
   process.stdout.write(
     `[orchestrate-cli] starting project=${projectId} epic=${epicId} concurrency=${concurrency}\n`,
   );
 
+  let application: SagaApplication | null = null;
   try {
-    const result = await orchestrate({
+    application = createSaga2Application(process.env);
+    const result = await application.runEpisode({
       projectId,
       epicId,
       concurrency,
-      claudePath: process.env.SAGA_CLAUDE_PATH,
     });
     process.stdout.write(`[orchestrate-cli] done: ${JSON.stringify(result)}\n`);
-    // Exit code: 0 on completion, 0 on paused_timeout (the engine waited its
-    // full pause window; that's not a crash — a human will restart it). 1 on
-    // other failures.
     process.exit(result.reason === 'failed' ? 1 : 0);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -97,7 +93,7 @@ async function main() {
     }
     process.exit(1);
   } finally {
-    try { closeDb(); } catch { /* best effort */ }
+    try { application?.close(); } catch { /* best effort */ }
   }
 }
 
