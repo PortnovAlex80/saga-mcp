@@ -433,3 +433,132 @@ test('worker model route preserves provider and effort from episode persistence'
   assert.match(runner, /isLmstudio \? null : \(am\.effort \|\| 'high'\)/);
   assert.doesNotMatch(runner, /'--effort', 'xhigh'/);
 });
+
+// ---------------------------------------------------------------------------
+// D0 — Saga 3 Discovery Edition engine shell.
+//
+// Roadmap §8.D0: prove that the Phase B infrastructure isolation can host a
+// second engine behind the existing OrchestrationEngine port WITHOUT
+// duplicating tracker, repositories, worker runtime or engine administration,
+// and WITHOUT altering Saga 2 behaviour.
+// ---------------------------------------------------------------------------
+
+test('D0: composition root selects engine by orchestration mode without branching infrastructure', async () => {
+  const { Saga3DiscoveryEngine } = await import(
+    '../../dist/engines/saga3-discovery-engine.js'
+  );
+  const compositionSrc = readFileSync(
+    path.resolve(import.meta.dirname, '..', '..', 'src', 'app', 'composition-root.ts'),
+    'utf8',
+  );
+
+  // Single composition-root switch selects the concrete engine (roadmap §5.2).
+  assert.match(compositionSrc, /saga3-discovery/);
+  assert.match(compositionSrc, /Saga3DiscoveryEngine/);
+  assert.match(compositionSrc, /Saga2Engine/);
+  // The engine is constructed in exactly one place (single switch).
+  assert.equal(
+    (compositionSrc.match(/new Saga3DiscoveryEngine/g) || []).length, 1,
+    'Saga3DiscoveryEngine is constructed in exactly one place',
+  );
+
+  // The shared persistence wiring is reused — no second worker factory, no
+  // second board reader, no second engine administration.
+  assert.doesNotMatch(
+    compositionSrc,
+    /new SqliteBoardProjectionReader[\s\S]*saga3-discovery[\s\S]*new SqliteBoardProjectionReader/,
+    'D0 must NOT add a second board reader for Saga 3',
+  );
+
+  // The engine behind the port is selected purely by config: a Saga3 discovery
+  // engine is reachable through the same SagaApplication boundary.
+  const engine = new Saga3DiscoveryEngine({
+    readStage: () => 'discovery',
+    now: () => new Date('2026-07-23T00:00:00.000Z'),
+  });
+  const result = await engine.run({ projectId: 1, epicId: 2, concurrency: 1 });
+  assert.equal(result.reason, 'discovery_not_implemented');
+  assert.equal(result.pipelineScope, 'discovery_only');
+  assert.equal(result.scopeCompleted, false);
+  assert.equal(result.outcome, 'discovery_not_implemented');
+});
+
+test('D0: saga3 discovery shell is inert — no stage mutation, no worker spawn, honest result', async () => {
+  const { Saga3DiscoveryEngine } = await import(
+    '../../dist/engines/saga3-discovery-engine.js'
+  );
+
+  // Inert: even when no stage reader is wired, the engine reports the discovery
+  // entry stage rather than inventing a later one.
+  const reads = [];
+  const engine = new Saga3DiscoveryEngine({
+    readStage: epicId => { reads.push(epicId); return 'discovery'; },
+    now: () => new Date('2026-07-23T00:00:00.000Z'),
+  });
+
+  const result = await engine.run({ projectId: 5, epicId: 7, concurrency: 2 });
+
+  // Honest partial-pipeline result (roadmap §5.3, §8.D0 exit gates).
+  assert.equal(result.projectId, 5);
+  assert.equal(result.epicId, 7);
+  assert.equal(result.finalStage, 'discovery');
+  assert.equal(result.endedAt, '2026-07-23T00:00:00.000Z');
+  assert.equal(result.reason, 'discovery_not_implemented');
+  assert.equal(result.cycles, 0);
+  assert.equal(result.lastError, null);
+  assert.equal(result.pipelineScope, 'discovery_only');
+  assert.equal(result.scopeCompleted, false);
+  assert.equal(result.outcome, 'discovery_not_implemented');
+
+  // The stage was READ exactly once (reported truthfully) and never written.
+  assert.deepEqual(reads, [7]);
+});
+
+test('D0: saga3-discovery engine has no worker, recovery, advisor or new-table dependencies', () => {
+  const engineSrc = readFileSync(
+    path.resolve(import.meta.dirname, '..', '..', 'src', 'engines', 'saga3-discovery-engine.ts'),
+    'utf8',
+  );
+  // D0 must NOT import product worker, advisor, normalization, settlement or
+  // persistence adapters. The shell consumes the narrow readStage port only.
+  assert.doesNotMatch(engineSrc, /from\s+['"][^'"]*worker/i);
+  assert.doesNotMatch(engineSrc, /WorkerExecutorFactory/);
+  assert.doesNotMatch(engineSrc, /import\s+[^;]*persistence/i);
+  assert.doesNotMatch(engineSrc, /better-sqlite3/);
+  assert.doesNotMatch(engineSrc, /getDb|\.prepare\(/);
+  // It implements the shared port, not a parallel one.
+  assert.match(engineSrc, /implements OrchestrationEngine/);
+  assert.match(engineSrc, /discovery_only/);
+  assert.match(engineSrc, /discovery_not_implemented/);
+});
+
+test('D0: OrchestrationRunResult contract is extended backward-compatibly for partial-pipeline runs', () => {
+  const portSrc = readFileSync(
+    path.resolve(import.meta.dirname, '..', '..', 'src', 'application', 'ports', 'orchestration-engine.ts'),
+    'utf8',
+  );
+  // The four Saga 2 reasons remain valid; discovery_not_implemented is added.
+  for (const reason of ['completed', 'failed', 'paused_timeout', 'stopped', 'discovery_not_implemented']) {
+    assert.match(portSrc, new RegExp(`'${reason}'`), `reason '${reason}' present in the union`);
+  }
+  // Partial-pipeline fields are optional so Saga 2 results need not populate them.
+  assert.match(portSrc, /pipelineScope\?/);
+  assert.match(portSrc, /scopeCompleted\?/);
+  assert.match(portSrc, /outcome\?/);
+});
+
+test('D0: Saga 2 remains the default engine and stays unchanged in selection', async () => {
+  const compositionSrc = readFileSync(
+    path.resolve(import.meta.dirname, '..', '..', 'src', 'app', 'composition-root.ts'),
+    'utf8',
+  );
+  // The Saga 2 engine is still constructed and is the fall-through default —
+  // any unrecognised mode keeps Saga 2 behaviour (roadmap §8.D0 gate:
+  // "saga2 mode — Saga 2 works unchanged").
+  const selectBlock = compositionSrc.match(
+    /function selectEngine[\s\S]*?return new Saga2Engine[\s\S]*?\}/,
+  );
+  assert.ok(selectBlock, 'selectEngine falls through to Saga2Engine');
+  assert.match(selectBlock[0], /orchestrationMode === 'saga3-discovery'/);
+  assert.match(selectBlock[0], /return new Saga2Engine/);
+});

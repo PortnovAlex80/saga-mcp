@@ -6,6 +6,8 @@ import type { WorkerExecutorFactory } from '../application/ports/worker-executor
 import { createSagaApplication, type SagaApplication } from '../application/saga-application.js';
 import { closeDb } from '../db.js';
 import { Saga2Engine } from '../engines/saga2-engine.js';
+import { Saga3DiscoveryEngine } from '../engines/saga3-discovery-engine.js';
+import type { OrchestrationEngine } from '../application/ports/orchestration-engine.js';
 import { LegacyEngineAdministration } from '../infrastructure/engine/legacy-engine-administration.js';
 import {
   SqliteEpisodeRuntimeRepository,
@@ -53,12 +55,7 @@ export function createSaga2Application(
       modelRouteReader: epicId => persistence.episodes.readWorkerModelRoute(epicId),
     });
   const host = overrides.host ?? new NodeSaga2HostRuntime();
-  const engine = new Saga2Engine({
-    config,
-    workerExecutorFactory,
-    persistence,
-    host,
-  });
+  const engine = selectEngine(config, persistence, workerExecutorFactory, host);
   const board = overrides.board ?? new SqliteBoardProjectionReader(config.dbPath);
   const engineAdministration = overrides.engineAdministration
     ?? new LegacyEngineAdministration({ config, baseEnv: env });
@@ -68,5 +65,41 @@ export function createSaga2Application(
     board,
     engineAdministration,
     close: overrides.close ?? closeDb,
+  });
+}
+
+/**
+ * Selects the concrete orchestration engine behind the OrchestrationEngine port.
+ *
+ * This is the single composition-root switch (roadmap §5.2):
+ *
+ *   SAGA_ORCHESTRATION_MODE=saga2 (or any unrecognised value) -> Saga2Engine
+ *   SAGA_ORCHESTRATION_MODE=saga3-discovery                    -> Saga3DiscoveryEngine
+ *
+ * The tracker, repositories, worker runtime and engine administration never
+ * branch on this value themselves — they consume the same OrchestrationEngine
+ * regardless of which implementation is wired here.
+ *
+ * The Saga 3 discovery engine reuses the shared persistence layer read-only in
+ * D0 (it reports the current stage truthfully but never mutates it). Product
+ * worker, advisor and settlement layers are added in D1–D6; D0 must not build
+ * them.
+ */
+function selectEngine(
+  config: SagaRuntimeConfig,
+  persistence: Saga2RuntimePersistence,
+  workerExecutorFactory: WorkerExecutorFactory,
+  host: Saga2HostRuntime,
+): OrchestrationEngine {
+  if (config.orchestrationMode === 'saga3-discovery') {
+    return new Saga3DiscoveryEngine({
+      readStage: epicId => persistence.episodes.currentStage(epicId),
+    });
+  }
+  return new Saga2Engine({
+    config,
+    workerExecutorFactory,
+    persistence,
+    host,
   });
 }
