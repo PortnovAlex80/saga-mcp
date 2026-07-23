@@ -28,9 +28,22 @@ export interface WorkerRunSnapshot {
   last_error?: string | null;
 }
 
+export interface WorkerExecutorFactoryContext {
+  projectId: number;
+  epicId: number;
+  workspaceRoot: string;
+  dbPath: string;
+  sagaEntry: string;
+  sagaSkillRoot: string;
+  claudePath?: string;
+  logRoot?: string;
+  heartbeatLog?: string;
+  lmStudioUrl: string;
+}
+
 /**
  * Infrastructure port for Claude CLI, LM Studio-routed CLI, or any future
- * worker process runtime. The orchestration engine must not depend on spawn,
+ * worker process runtime. The orchestration engine does not depend on spawn,
  * JSONL paths, MCP config construction, or provider-specific environment.
  */
 export interface WorkerExecutor {
@@ -40,3 +53,7 @@ export interface WorkerExecutor {
   setConcurrency(projectId: number, concurrency: number): void;
   dispose(): void;
 }
+
+export type WorkerExecutorFactory = (
+  context: WorkerExecutorFactoryContext,
+) => WorkerExecutor;
