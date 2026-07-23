@@ -22,7 +22,7 @@
  */
 
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, createWriteStream, writeFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, createWriteStream, writeFileSync, rmSync, readdirSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -241,11 +241,17 @@ const saga3ServerPath = path.join(__dirname, 'mcp-server.js');
 // (line 122). Written once — the config does not change between steps — and
 // cleaned up on exit.
 const mcpConfigPath = path.join(os.tmpdir(), `saga3-claude-mcp-${process.pid}.json`);
-writeFileSync(
-  mcpConfigPath,
-  JSON.stringify(buildMcpConfig(saga3ServerPath), null, 2),
-  'utf8',
-);
+// NOTE: this legacy file is kept only for the engine-startup log line; the
+// per-worker config (with the actual episode spec id at spawn time) is written
+// inside spawnWorker. Stale files under this prefix from a previous engine
+// process are swept on startup to avoid pid reuse carrying an old spec scope.
+try {
+  for (const f of readdirSync(os.tmpdir())) {
+    if (/^saga3-claude-mcp-.*\.json$/.test(f)) {
+      try { rmSync(path.join(os.tmpdir(), f), { force: true }); } catch { /* best effort */ }
+    }
+  }
+} catch { /* tmpdir unreadable */ }
 
 // board-runs log root — same location tracker-view reads for the v2 runner,
 // so a saga3 episode shows up alongside v2 board runs in the live view.
@@ -343,9 +349,34 @@ function spawnWorker(
     oracleId: PIPELINE_CONDITIONS.find((item) => item.conditionType === conditionType)?.oracleRequired,
   });
 
+  // Per-worker MCP config. The config binds the spawned saga3 MCP server to
+  // THIS episode spec id at spawn time. Generating it once per engine start
+  // (the old behaviour) leaks scope across episodes: when a new project was
+  // launched while a previous engine's mcp-server process was still alive, or
+  // when the OS reused a pid so the old `saga3-claude-mcp-<pid>.json` file was
+  // picked up, the worker's saga3_complete wrote evidence into the STALE spec
+  // instead of the current one. Observed in production: project 'color'
+  // (epic 12) workers completed into the 'Hello-World' (epic 11) spec.
+  //
+  // Unique filename per spawn (engine pid + worker id + epoch) guarantees no
+  // file reuse; it is removed in the close/error handlers below.
+  const workerMcpConfigPath = path.join(
+    os.tmpdir(),
+    `saga3-claude-mcp-${process.pid}-${workerId}-${Date.now()}.json`,
+  );
+  // Refresh SAGA3_EPISODE_SPEC_ID right before building the config so the
+  // current spec.id (which may have advanced generation since engine start)
+  // is captured. Set on the process env to match buildMcpConfig's read.
+  process.env.SAGA3_EPISODE_SPEC_ID = spec.id;
+  writeFileSync(
+    workerMcpConfigPath,
+    JSON.stringify(buildMcpConfig(saga3ServerPath), null, 2),
+    'utf8',
+  );
+
   const args = [
     '-p',
-    '--mcp-config', mcpConfigPath,
+    '--mcp-config', workerMcpConfigPath,
     '--strict-mcp-config',
     '--output-format', 'stream-json',
     '--verbose',
@@ -451,6 +482,7 @@ function spawnWorker(
     child.once('error', (e) => {
       if (logStream) logStream.end();
       clearTimeout(timeoutHandle);
+      try { rmSync(workerMcpConfigPath, { force: true }); } catch { /* best effort */ }
       log(`WORKER SPAWN ERROR: ${e.message}`);
       resolve(1);
     });
@@ -458,6 +490,7 @@ function spawnWorker(
     child.once('close', (code) => {
       if (logStream) logStream.end();
       clearTimeout(timeoutHandle);
+      try { rmSync(workerMcpConfigPath, { force: true }); } catch { /* best effort */ }
       resolve(code ?? 1);
     });
 
@@ -485,6 +518,7 @@ function spawnWorker(
         try { child.kill('SIGKILL'); } catch { /* already gone */ }
       }
       if (logStream) logStream.end();
+      try { rmSync(workerMcpConfigPath, { force: true }); } catch { /* best effort */ }
       resolve(124);
     }, timeoutMs);
 

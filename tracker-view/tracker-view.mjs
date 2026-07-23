@@ -4087,6 +4087,40 @@ function handleProjectDelete(req, res) {
         ).run(projectId);
         // worker_executions has no FK on project_id — manual cleanup.
         db.prepare('DELETE FROM worker_executions WHERE project_id=?').run(projectId);
+
+        // Saga 3 generations are not FK-linked to projects/epics (episode_spec_id
+        // is a string PK). Without this cascade they survive project deletion as
+        // orphans, which pollutes the board and can be picked up by a later
+        // engine that reuses the same spec id prefix. Sweep every saga3 table
+        // tied to the project's epics, in dependency order.
+        const epicIds = db.prepare('SELECT id FROM epics WHERE project_id=?').all(projectId).map(r => r.id);
+        if (epicIds.length) {
+          const epicPlaceholders = epicIds.map(() => '?').join(',');
+          const specs = db.prepare(
+            `SELECT id FROM saga3_episode_specs WHERE epic_id IN (${epicPlaceholders})`,
+          ).all(...epicIds).map(r => r.id);
+          if (specs.length) {
+            const specPlaceholders = specs.map(() => '?').join(',');
+            // saga3_worker_assignments references work_intents, not specs.
+            const workIntentIds = db.prepare(
+              `SELECT id FROM saga3_work_intents WHERE episode_spec_id IN (${specPlaceholders})`,
+            ).all(...specs).map(r => r.id);
+            if (workIntentIds.length) {
+              const wiPlaceholders = workIntentIds.map(() => '?').join(',');
+              db.prepare(`DELETE FROM saga3_worker_assignments WHERE work_intent_id IN (${wiPlaceholders})`).run(...workIntentIds);
+            }
+            for (const table of [
+              'saga3_outcome_certificates',
+              'saga3_artifacts',
+              'saga3_evidence_records',
+              'saga3_condition_instances',
+              'saga3_work_intents',
+            ]) {
+              db.prepare(`DELETE FROM ${table} WHERE episode_spec_id IN (${specPlaceholders})`).run(...specs);
+            }
+            db.prepare(`DELETE FROM saga3_episode_specs WHERE id IN (${specPlaceholders})`).run(...specs);
+          }
+        }
         // DELETE FROM projects triggers every ON DELETE CASCADE.
         db.prepare('DELETE FROM projects WHERE id=?').run(projectId);
         db.prepare(
