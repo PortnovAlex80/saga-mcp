@@ -58,8 +58,9 @@ handle.
 
 1. Read the epic (the REQ-NNN episode) and any seed material in the task description.
 2. Copy `docs/requirements/templates/PRD.md` → `docs/requirements/REQ-NNN-<slug>/00-PRD.md`.
-3. Fill every section: problem & value, boundaries (in/out scope, non-goals), context,
-   measurable success criteria, priority, open questions.
+3. Fill every section: problem & value, **stakeholder registry**, boundaries
+   (in/out scope, non-goals), context, measurable success criteria, priority,
+   open questions.
 4. Set `Status: Draft` in the doc header.
 5. **Register the artifact** so the rest of the system can query it:
    ```
@@ -88,6 +89,20 @@ handle.
    with: *"PRD has no outgoing 'derived_from' trace to a brief artifact."*
    The `parent_artifact_id` column alone is NOT enough — it sets hierarchy
    but does not create a row in `artifact_traces`.
+
+7. **Fill the Stakeholder Registry (§Stakeholders; ГОСТ 34.602-89 пункт 4,
+   REQUIRED for product episodes).** The PRD template now contains a
+   `## §Stakeholders` section that maps the humans the product serves to
+   their role, interest, influence, and engagement strategy. Fill the table
+   with at minimum:
+   - the end-user class that benefits (the protagonist of §1 Problem & Value),
+   - the sponsor / decision-maker who funds or prioritises the episode,
+   - the operator / on-call role who runs it post-ship (if any).
+   The Stakeholder Registry is part of the PRD artifact body (no separate
+   artifact type) and is the canonical source that saga-architect later
+   cross-references from SRS §10.5 Organizational обеспечение. A PRD with
+   §Stakeholders rows consisting only of placeholder ellipses (`...`) is
+   rejected at PRD review as "stakeholder registry not filled".
 
 ## Producing the FR / NFR / RULE artifact family (создание семейства артефактов; REQUIRED — ОБЯЗАТЕЛЬНО)
 
@@ -348,6 +363,13 @@ lint time.
 - The PRD fixes intent and the WHAT (FR/NFR/RULE), **not implementation**. Do
   not specify stack, APIs, data models, algorithms, or class names — that is
   saga-architect's SRS (which now runs AFTER AC, not before).
+- **The PRD MUST include a `## §Stakeholders` registry** (ГОСТ 34.602-89
+  пункт 4) with at least 3 rows: end-user, sponsor, operator. Each row's
+  5 columns (Stakeholder, Role, Interest, Influence, Strategy) must be
+  non-empty. Placeholder rows (`...`) are treated as empty. The stakeholder
+  registry is the canonical input that saga-architect later cross-references
+  from SRS §10.5 Organizational обеспечение — a PRD without it makes the
+  SRS §10.5 row unverifiable.
 - Every FR/NFR/RULE row in the PRD sections MUST be materialised as its own
   artifact with `parent_artifact_id = <PRD id>` and a `derived_from` trace to
   the PRD. Without the artifact, UC/AC cannot trace to it and review gates
