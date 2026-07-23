@@ -663,6 +663,53 @@ CREATE TABLE IF NOT EXISTS integration_intents (
 CREATE INDEX IF NOT EXISTS idx_integration_intents_task ON integration_intents(task_id);
 CREATE INDEX IF NOT EXISTS idx_integration_intents_repo_state ON integration_intents(project_repository_id, state);
 CREATE INDEX IF NOT EXISTS idx_integration_intents_state ON integration_intents(state);
+
+-- ---------------------------------------------------------------------------
+-- Saga 3 protocol entities (Discovery Edition, roadmap §7).
+-- WorkIntent and Proposal are the deterministic-kernel ↔ product-worker
+-- contract. They are deliberately NOT artifacts: artifacts are requirements &
+-- design documents (PRD/SRS/UC/AC…), not inter-plane protocol messages. These
+-- tables are shared by every Saga 3 stage (discovery today; formalization /
+-- planning / development later) — kind + schema_version discriminate the
+-- payload shape. Purely additive.
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS saga3_work_intents (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  epic_id         INTEGER NOT NULL REFERENCES epics(id) ON DELETE CASCADE,
+  kind            TEXT NOT NULL,             -- 'discovery', later 'formalization', etc.
+  objective       TEXT NOT NULL,
+  authority_scope TEXT NOT NULL,             -- JSON AuthorityScope
+  output_schema   TEXT NOT NULL,             -- schema version the worker must emit
+  token_budget    INTEGER NOT NULL DEFAULT 0,
+  retry_budget    INTEGER NOT NULL DEFAULT 0,
+  projected_task_id INTEGER REFERENCES tasks(id) ON DELETE SET NULL,
+  status          TEXT NOT NULL DEFAULT 'open'
+                    CHECK (status IN ('open','executing','concluded','cancelled')),
+  created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS saga3_proposals (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  intent_id       INTEGER NOT NULL REFERENCES saga3_work_intents(id) ON DELETE CASCADE,
+  task_id         INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  execution_id    TEXT NOT NULL,             -- worker_executions fence (not FK: row may be pruned)
+  kind            TEXT NOT NULL,             -- mirrors WorkIntent.kind ('discovery', …)
+  schema_version  TEXT NOT NULL,             -- contract version, owned by the kernel
+  payload         TEXT NOT NULL,             -- raw worker JSON (canonical, for hash reproducibility)
+  content_hash    TEXT NOT NULL,             -- SHA-256 of canonical payload
+  status          TEXT NOT NULL DEFAULT 'submitted'
+                    CHECK (status IN ('submitted','superseded','rejected_by_kernel')),
+  provenance      TEXT NOT NULL DEFAULT '{}',-- auto-captured model/provider/effort/worker/exec/time
+  created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_saga3_work_intents_epic ON saga3_work_intents(epic_id);
+CREATE INDEX IF NOT EXISTS idx_saga3_work_intents_kind_status ON saga3_work_intents(kind, status);
+CREATE INDEX IF NOT EXISTS idx_saga3_proposals_intent ON saga3_proposals(intent_id);
+CREATE INDEX IF NOT EXISTS idx_saga3_proposals_task ON saga3_proposals(task_id);
+CREATE INDEX IF NOT EXISTS idx_saga3_proposals_kind ON saga3_proposals(kind);
 `;
 
 // ----------------------------------------------------------------------------

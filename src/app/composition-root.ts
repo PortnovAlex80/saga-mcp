@@ -95,7 +95,10 @@ function selectEngine(
 ): OrchestrationEngine {
   if (isSaga3DiscoveryMode(config.orchestrationMode)) {
     return new Saga3DiscoveryEngine({
-      readStage: epicId => persistence.episodes.currentStage(epicId),
+      config,
+      workerExecutorFactory,
+      persistence,
+      host,
     });
   }
   // Every other recognised mode (v2 / v3 / saga2) selects Saga2Engine. An

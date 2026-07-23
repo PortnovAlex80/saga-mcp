@@ -523,17 +523,16 @@ test('worker model route preserves provider and effort from episode persistence'
 // and WITHOUT altering Saga 2 behaviour.
 // ---------------------------------------------------------------------------
 
-test('D0: composition root selects engine by orchestration mode without branching infrastructure', async () => {
-  const { Saga3DiscoveryEngine } = await import(
-    '../../dist/engines/saga3-discovery-engine.js'
-  );
+test('composition root selects engine by orchestration mode without branching infrastructure', () => {
+  // Structural guard: the engine switch lives in exactly one place and reuses
+  // the shared persistence/worker/board/admin wiring. (Engine-selection
+  // behaviour itself is proven by the two runEpisode tests below.)
   const compositionSrc = readFileSync(
     path.resolve(import.meta.dirname, '..', '..', 'src', 'app', 'composition-root.ts'),
     'utf8',
   );
 
-  // Single composition-root switch selects the concrete engine (roadmap §5.2).
-  assert.match(compositionSrc, /saga3-discovery/);
+  assert.match(compositionSrc, /isSaga3DiscoveryMode/);
   assert.match(compositionSrc, /Saga3DiscoveryEngine/);
   assert.match(compositionSrc, /Saga2Engine/);
   // The engine is constructed in exactly one place (single switch).
@@ -541,75 +540,40 @@ test('D0: composition root selects engine by orchestration mode without branchin
     (compositionSrc.match(/new Saga3DiscoveryEngine/g) || []).length, 1,
     'Saga3DiscoveryEngine is constructed in exactly one place',
   );
-
-  // The shared persistence wiring is reused — no second worker factory, no
-  // second board reader, no second engine administration.
+  // No second board reader / second worker factory / second admin for Saga 3 —
+  // the same wiring feeds both engines.
   assert.doesNotMatch(
     compositionSrc,
     /new SqliteBoardProjectionReader[\s\S]*saga3-discovery[\s\S]*new SqliteBoardProjectionReader/,
-    'D0 must NOT add a second board reader for Saga 3',
+    'must NOT add a second board reader for Saga 3',
   );
-
-  // The engine behind the port is selected purely by config: a Saga3 discovery
-  // engine is reachable through the same SagaApplication boundary.
-  const engine = new Saga3DiscoveryEngine({
-    readStage: () => 'discovery',
-    now: () => new Date('2026-07-23T00:00:00.000Z'),
-  });
-  const result = await engine.run({ projectId: 1, epicId: 2, concurrency: 1 });
-  assert.equal(result.reason, 'discovery_not_implemented');
-  assert.equal(result.pipelineScope, 'discovery_only');
-  assert.equal(result.scopeCompleted, false);
-  assert.equal(result.outcome, 'discovery_not_implemented');
 });
 
-test('D0: saga3 discovery shell is inert — no stage mutation, no worker spawn, honest result', async () => {
-  const { Saga3DiscoveryEngine } = await import(
-    '../../dist/engines/saga3-discovery-engine.js'
-  );
-
-  // Inert: even when no stage reader is wired, the engine reports the discovery
-  // entry stage rather than inventing a later one.
-  const reads = [];
-  const engine = new Saga3DiscoveryEngine({
-    readStage: epicId => { reads.push(epicId); return 'discovery'; },
-    now: () => new Date('2026-07-23T00:00:00.000Z'),
-  });
-
-  const result = await engine.run({ projectId: 5, epicId: 7, concurrency: 2 });
-
-  // Honest partial-pipeline result (roadmap §5.3, §8.D0 exit gates).
-  assert.equal(result.projectId, 5);
-  assert.equal(result.epicId, 7);
-  assert.equal(result.finalStage, 'discovery');
-  assert.equal(result.endedAt, '2026-07-23T00:00:00.000Z');
-  assert.equal(result.reason, 'discovery_not_implemented');
-  assert.equal(result.cycles, 0);
-  assert.equal(result.lastError, null);
-  assert.equal(result.pipelineScope, 'discovery_only');
-  assert.equal(result.scopeCompleted, false);
-  assert.equal(result.outcome, 'discovery_not_implemented');
-
-  // The stage was READ exactly once (reported truthfully) and never written.
-  assert.deepEqual(reads, [7]);
-});
-
-test('D0: saga3-discovery engine has no worker, recovery, advisor or new-table dependencies', () => {
+test('D1: saga3-discovery engine reuses worker substrate without duplicating Saga 2 pump logic', () => {
+  // D1 boundary: the engine legitimately imports WorkerExecutorFactory +
+  // persistence (it dispatches one discovery worker through the existing
+  // ClaudeBoardRunner substrate — that is the whole point of reusing infra).
+  // But it must NOT carry Saga 2 product-orchestrator concerns: no stage
+  // transition logic, no recovery tree, no advisor, no settlement policy. Those
+  // belong to later D-slices. This test guards the engine against silently
+  // becoming a second Saga 2 pump.
   const engineSrc = readFileSync(
     path.resolve(import.meta.dirname, '..', '..', 'src', 'engines', 'saga3-discovery-engine.ts'),
     'utf8',
   );
-  // D0 must NOT import product worker, advisor, normalization, settlement or
-  // persistence adapters. The shell consumes the narrow readStage port only.
-  assert.doesNotMatch(engineSrc, /from\s+['"][^'"]*worker/i);
-  assert.doesNotMatch(engineSrc, /WorkerExecutorFactory/);
-  assert.doesNotMatch(engineSrc, /import\s+[^;]*persistence/i);
-  assert.doesNotMatch(engineSrc, /better-sqlite3/);
-  assert.doesNotMatch(engineSrc, /getDb|\.prepare\(/);
+  // Reuses the existing worker-execution substrate (roadmap §8.D1).
+  assert.match(engineSrc, /WorkerExecutorFactory/);
+  assert.match(engineSrc, /workerExecutorFactory/);
+  assert.match(engineSrc, /concurrency: 1/);
+  // Must NOT import Saga 2 product-policy modules.
+  assert.doesNotMatch(engineSrc, /from\s+['"][^'"]*orchestrate(\.js)?['"]/);
+  assert.doesNotMatch(engineSrc, /generateNextForCompletedTask|workflow_generate_next/);
+  assert.doesNotMatch(engineSrc, /episode_transition|tryAdvanceStage/);
+  // D2/D3/D4/D5 concerns are explicitly deferred (no advisor/settlement/normalize).
+  assert.doesNotMatch(engineSrc, /AssessDiscoveryReadiness|DiscoveryOutcomeCertificate|SettlementPolicy/);
   // It implements the shared port, not a parallel one.
   assert.match(engineSrc, /implements OrchestrationEngine/);
   assert.match(engineSrc, /discovery_only/);
-  assert.match(engineSrc, /discovery_not_implemented/);
 });
 
 test('D0: OrchestrationRunResult contract is extended backward-compatibly for partial-pipeline runs', () => {
@@ -638,11 +602,29 @@ test('composition root selects the engine through the real wiring, not a source 
 
   let workerFactoryCalls = 0;
   const heartbeats = [];
-  // Saga3DiscoveryEngine D0 shell: does not spawn a worker (workerFactoryCalls stays 0).
+  // D1 Saga3DiscoveryEngine: observable through its OWN distinct behaviour — the
+  // duplicate-lock exit path. This proves the engine was selected and its run()
+  // executed (not just that the source contains the right string). A duplicate
+  // lock makes the engine exit before touching the worker substrate, so the
+  // worker factory is never constructed.
   const app = createSagaApplication({
     engine: new Saga3DiscoveryEngine({
-      readStage: () => 'discovery',
-      now: () => new Date('2026-07-23T00:00:00.000Z'),
+      config: fullConfig(),
+      workerExecutorFactory: () => { workerFactoryCalls += 1; throw new Error('must not build worker on duplicate lock'); },
+      persistence: {
+        episodes: { currentStage: () => 'discovery', ensureWorkflow: () => {}, readOpenIntentByEpic: () => null },
+        tasks: {}, executions: {}, workspaces: {},
+      },
+      host: {
+        processId: 7,
+        workerPaths: { sagaEntry: '/e', sagaSkillRoot: '/s' },
+        now: () => 0,
+        sleep: async () => {},
+        heartbeat: (_ctx, event, msg) => heartbeats.push([event, msg]),
+        acquireEngineLock: () => ({ status: 'duplicate', ownerPid: 888 }),
+        releaseEngineLock: () => { throw new Error('duplicate run must not release another owner lock'); },
+        scanRateLimitSignals: () => 0,
+      },
     }),
     board: { listProjects: () => [], loadProjectBoard: () => ({ epics: [], epicById: {}, tasks: [] }) },
     engineAdministration: {
@@ -656,11 +638,12 @@ test('composition root selects the engine through the real wiring, not a source 
   });
 
   const result = await app.runEpisode({ projectId: 1, epicId: 2, concurrency: 1 });
-  assert.equal(result.reason, 'discovery_not_implemented');
-  assert.equal(result.pipelineScope, 'discovery_only');
-  assert.equal(result.scopeCompleted, false);
-  assert.equal(workerFactoryCalls, 0, 'D0 shell must not construct a worker executor');
-  assert.equal(heartbeats.length, 0);
+  // D1 engine owns its own lock check — the DUPLICATE_EXIT heartbeat is its
+  // signature, distinct from Saga 2's identical-path but proving selection.
+  assert.equal(result.reason, 'failed');
+  assert.match(result.lastError, /PID 888/);
+  assert.equal(workerFactoryCalls, 0, 'duplicate lock must short-circuit before worker substrate');
+  assert.equal(heartbeats.some(([e]) => e === 'DUPLICATE_EXIT'), true, 'D1 engine emitted its DUPLICATE_EXIT heartbeat');
 });
 
 test('composition root falls through to Saga 2 engine for non-saga3 modes', async () => {

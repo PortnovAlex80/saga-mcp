@@ -30,10 +30,16 @@ import { definitions as lifecycleDefs, handlers as lifecycleHandlers } from './t
 import { definitions as observationDefs, handlers as observationHandlers } from './tools/observations.js';
 import { definitions as conflictDefs, handlers as conflictHandlers } from './tools/conflicts.js';
 import { definitions as providerDefs, handlers as providerHandlers } from './tools/providers.js';
+import { createSaga3ProposalHandlers } from './tools/saga3-proposals.js';
 import { closeDb } from './db.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// Saga 3 proposal submission boundary (D1). A factory so the composition can
+// inject a repository / model-route reader; here it uses the default SQLite
+// wiring that reads the shared saga DB directly.
+const saga3Proposals = createSaga3ProposalHandlers();
 
 const ALL_TOOLS: Tool[] = [
   ...projectDefs,
@@ -55,6 +61,7 @@ const ALL_TOOLS: Tool[] = [
   ...observationDefs,
   ...conflictDefs,
   ...providerDefs,
+  ...saga3Proposals.definitions,
 ];
 
 const ALL_HANDLERS: Record<string, (args: Record<string, unknown>) => unknown> = {
@@ -77,6 +84,7 @@ const ALL_HANDLERS: Record<string, (args: Record<string, unknown>) => unknown> =
   ...observationHandlers,
   ...conflictHandlers,
   ...providerHandlers,
+  ...saga3Proposals.handlers,
 };
 
 const server = new Server(

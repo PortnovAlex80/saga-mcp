@@ -4060,6 +4060,100 @@ function handleProjectDelete(req, res) {
   });
 }
 
+// --- POST /api/admin/purge-all-projects: cascade-delete EVERY project ---
+// Admin/operator escape hatch for resetting the board to empty (test fixtures,
+// clean D-slice smoke runs). Iterates every project and runs the SAME cascade
+// cleanup as /api/project/delete (work_attempts → worker_executions → projects
+// CASCADE, which also drops saga3_work_intents/saga3_proposals via epic/task
+// CASCADE). Returns the per-project outcome + the global seed rows preserved.
+//
+// Safety:
+//   - rejects (409) if ANY epic anywhere has engine_running=1 — operator must
+//     stop engines first (else claude.exe worker processes orphan);
+//   - never deletes platform_policies / global trusted_providers (NULL
+//     project_id) — saga needs those at bootstrap;
+//   - does NOT touch on-disk .md files or machine checkouts; returns the list
+//     of deregistered checkouts so the operator can rm them separately.
+//
+// NOT touched (by design, mirrors /api/project/delete):
+//   repositories rows (P17 resource), activity_log (P12 audit), command_receipts
+//   (idempotency ledger), on-disk artifact docs.
+function handleAdminPurgeAllProjects(req, res) {
+  let chunks = [];
+  req.on('data', c => chunks.push(c));
+  req.on('end', () => {
+    try {
+      const result = withDbWrite(db => {
+        // Global guard: no running engine for ANY epic.
+        const running = db.prepare(
+          `SELECT ew.epic_id, e.project_id FROM episode_workflows ew
+             JOIN epics e ON e.id = ew.epic_id
+            WHERE json_extract(ew.metadata, '$.engine_running') = 1`,
+        ).all();
+        if (running.length > 0) {
+          return { engineRunning: running };
+        }
+
+        const projects = db.prepare('SELECT id, name FROM projects ORDER BY id').all();
+        const checkouts = [];
+        const deleted = [];
+        for (const p of projects) {
+          // Capture this project's checkouts before delete.
+          const pco = db.prepare(
+            `SELECT rc.machine_id, rc.local_path
+               FROM repository_checkouts rc
+               JOIN project_repositories pr ON pr.id = rc.project_repository_id
+              WHERE pr.project_id = ?`,
+          ).all(p.id);
+          checkouts.push(...pco);
+
+          // Same manual cleanup as handleProjectDelete (no-FK columns first).
+          db.prepare(
+            `DELETE FROM work_attempts
+              WHERE execution_id IN (
+                SELECT execution_id FROM worker_executions WHERE project_id=?
+              )`
+          ).run(p.id);
+          db.prepare('DELETE FROM worker_executions WHERE project_id=?').run(p.id);
+          // DELETE FROM projects fires every ON DELETE CASCADE: epics → tasks →
+          // (subtasks, deps, comments, conflict_keys, verification_evidence,
+          //  task_work_items, human_requests, integration_intents), epics →
+          // artifacts → traces, epics → episode_workflows, epics →
+          // runtime_observations, epics → saga3_work_intents → saga3_proposals,
+          // project_repositories → repository_checkouts, trusted_providers
+          // (project-scoped only; global NULL-project_id rows survive).
+          db.prepare('DELETE FROM projects WHERE id=?').run(p.id);
+          deleted.push({ id: p.id, name: p.name });
+        }
+
+        // Audit the bulk purge as one entry.
+        db.prepare(
+          "INSERT INTO activity_log (entity_type, entity_id, action, summary) VALUES ('project', 0, 'purge_all', ?)"
+        ).run(`Каскадное удаление всех проектов через /api/admin/purge-all-projects: ${deleted.length} проект(ов) [${deleted.map(d => d.name).join(', ')}]`);
+
+        return { deleted, checkouts };
+      });
+
+      if (result.engineRunning) {
+        const list = result.engineRunning.map(r => `epic ${r.epic_id} (project ${r.project_id})`).join(', ');
+        return respondJson(res, 409, {
+          ok:false,
+          error: `Сначала остановите все движки: ${list}`,
+          running: result.engineRunning,
+        });
+      }
+      respondJson(res, 200, {
+        ok: true,
+        deleted: result.deleted,
+        deregistered_checkouts: result.checkouts,
+        note: 'platform_policies и глобальные trusted_providers сохранены. .md-файлы и machine checkouts на диске не тронуты.',
+      });
+    } catch (e) {
+      respondJson(res, 500, { ok:false, error: 'db: ' + e.message });
+    }
+  });
+}
+
 // --- POST /api/epic/create: INSERT нового эпика ---
 // Поля: project_id (обяз.), name (обяз.), description (опц.), branch (опц.).
 // INSERT в epics (status='planned', priority='medium'). FK project_id проверяется.
@@ -5373,6 +5467,9 @@ const server = http.createServer((req, res) => {
   }
   if (req.method === 'POST' && url.pathname === '/api/project/delete') {
     return handleProjectDelete(req, res);
+  }
+  if (req.method === 'POST' && url.pathname === '/api/admin/purge-all-projects') {
+    return handleAdminPurgeAllProjects(req, res);
   }
   if (req.method === 'POST' && url.pathname === '/api/epic/create') {
     return handleEpicCreate(req, res);

@@ -312,9 +312,14 @@ function handleProjectDelete(args: Record<string, unknown>): {
     //   epics → artifacts → artifact_traces
     //   epics → episode_workflows
     //   epics → runtime_observations
+    //   epics → saga3_work_intents → saga3_proposals (D1 protocol entities)
     //   artifacts (direct project_id) — also cascaded
     //   project_repositories → repository_checkouts
     //   trusted_providers (project-scoped rows; NULL = global survives)
+    // saga3_proposals also has task_id REFERENCES tasks CASCADE, so it is
+    // removed whichever path fires first; its execution_id is deliberately NOT
+    // a FK (worker_executions row may be pruned), but it cannot dangle because
+    // its parent row is gone.
     const info = db.prepare('DELETE FROM projects WHERE id = ?').run(projectId);
     if (info.changes === 0) {
       throw new Error(`Project ${projectId} not found (already deleted?)`);
