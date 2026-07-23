@@ -40,7 +40,7 @@ jobs:
           rm -rf .phase-b-pure-engine-ci
           mkdir -p .phase-b-pure-engine-ci/generated
 
-          node tools/apply-phase-b-pure-engine.mjs > .phase-b-pure-engine-ci/migration.txt 2>&1
+          node tools/run-phase-b-pure-engine-migration.mjs > .phase-b-pure-engine-ci/migration.txt 2>&1
           MIGRATION_STATUS=$?
           if [ ${MIGRATION_STATUS} -eq 0 ]; then
             node tools/apply-phase-b-pure-engine-tests.mjs >> .phase-b-pure-engine-ci/migration.txt 2>&1
@@ -106,8 +106,11 @@ jobs:
           fi
 
           rm -rf .phase-b-pure-engine-ci
+          rm -f .phase-b-pure-trigger
           rm -f tools/apply-phase-b-pure-engine.mjs
           rm -f tools/apply-phase-b-pure-engine-tests.mjs
+          rm -f tools/run-phase-b-pure-engine-migration.mjs
+          rm -f tools/.apply-phase-b-pure-engine.generated.mjs
           rm -f .github/workflows/apply-phase-b-pure-engine.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
