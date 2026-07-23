@@ -170,7 +170,7 @@ const TOOLS: Tool[] = [
         kind: { type: 'string' },
         path: { type: 'string' },
         content: { type: 'string' },
-        digest: { type: 'string' },
+        digest: { type: 'string', description: 'DEPRECATED — do not send. Saga computes the digest from content. Any value you invent will be rejected.' },
       },
       required: ['episode_spec_id', 'kind', 'path', 'content'],
     },

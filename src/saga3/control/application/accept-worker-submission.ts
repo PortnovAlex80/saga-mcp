@@ -46,10 +46,12 @@ export class AcceptWorkerSubmission {
     readonly digest?: string;
   }): { readonly submissionId: string } {
     this.requireAuthority(input.executionId);
+    // The worker CANNOT compute SHA-256 in its head. Any digest it sends is a
+    // hallucinated 64-hex string. Saga is the authority: always compute from
+    // content, silently ignoring a wrong worker-supplied digest. (The earlier
+    // strict check rejected legitimate artifacts because gemma-4 invented a
+    // plausible-looking but wrong hash.)
     const computedDigest = sha256(input.content);
-    if (input.digest && input.digest !== computedDigest) {
-      throw new Error('Artifact digest does not match submitted content.');
-    }
 
     const proposal: ArtifactProposal = {
       submissionId: this.deps.ids.next('submission'),

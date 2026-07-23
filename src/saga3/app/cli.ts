@@ -303,6 +303,14 @@ function spawnWorker(
     '--dangerously-skip-permissions',
     '--permission-mode', 'bypassPermissions',
     '--no-session-persistence',
+    // Disable claude-code's own skill/slash-command subsystem so the worker
+    // does not auto-trigger bootstrap skills like `superpowers:using-superpowers`
+    // (which hijacked the first turn and consumed ~50k input tokens, leaving the
+    // worker to only narrate a plan and exit without calling any saga3_* MCP
+    // tool). The saga3 worker reads its assigned skill via Read(file) — it is
+    // not invoked as a slash command — so disabling slash commands does not
+    // break skill loading.
+    '--disable-slash-commands',
   ];
 
   // Model routing: read active_model from episode_workflows metadata (same as old claude-runner).
