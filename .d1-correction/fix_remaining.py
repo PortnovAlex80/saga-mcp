@@ -12,14 +12,6 @@ def write(path: str, text: str) -> None:
     (ROOT / path).write_text(text, encoding='utf-8')
 
 
-def replace_once(path: str, old: str, new: str) -> None:
-    text = read(path)
-    count = text.count(old)
-    if count != 1:
-        raise SystemExit(f'{path}: expected one match, found {count}: {old[:100]!r}')
-    write(path, text.replace(old, new, 1))
-
-
 # 1. Authority fixtures must carry the same task -> WorkIntent binding that the
 # production dispatcher freezes at claim time.
 auth_path = 'tests/saga3/d1-1-authority.test.mjs'
@@ -146,23 +138,22 @@ if import_line not in runtime:
         raise SystemExit(f'{runtime_path}: import anchor missing')
     runtime = runtime.replace(import_anchor, import_anchor + import_line, 1)
 
-direct_update = """      const restoredStatus = task.status === 'review_in_progress' ? 'review'
-        : task.status === 'in_progress' ? 'todo' : task.status;
-      if (task.assigned_to || task.current_execution_id || restoredStatus !== task.status) {
-        db.prepare(
-          `UPDATE tasks SET status=?, assigned_to=NULL, current_execution_id=NULL,
-                         updated_at=datetime('now') WHERE id=?`,
-        ).run(restoredStatus, taskId);
-      }"""
-writer_call = """      const restoredStatus = prepareSaga3ProjectedTaskForExecution(db, {
+recovery_pattern = re.compile(
+    r"\n\s*const restoredStatus\s*=\s*task\.status\s*===\s*'review_in_progress'\s*\?\s*'review'"
+    r".*?if\s*\(task\.assigned_to\s*\|\|\s*task\.current_execution_id\s*\|\|\s*restoredStatus\s*!==\s*task\.status\)\s*\{"
+    r".*?\n\s*\}",
+    re.S,
+)
+writer_call = """
+      const restoredStatus = prepareSaga3ProjectedTaskForExecution(db, {
         taskId,
         currentStatus: task.status,
         assignedTo: task.assigned_to,
         currentExecutionId: task.current_execution_id,
       });"""
-if direct_update not in runtime:
-    raise SystemExit(f'{runtime_path}: direct recovery update anchor missing')
-runtime = runtime.replace(direct_update, writer_call, 1)
+runtime, count = recovery_pattern.subn(writer_call, runtime, count=1)
+if count != 1:
+    raise SystemExit(f'{runtime_path}: structured recovery rewrite matched {count}')
 write(runtime_path, runtime)
 
 print('remaining D1.1 fixes applied')
