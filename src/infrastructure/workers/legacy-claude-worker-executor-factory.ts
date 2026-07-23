@@ -6,6 +6,7 @@ import type {
 } from '../../../tracker-view/claude-runner.mjs';
 import type {
   WorkerExecutorFactory,
+  WorkerModelRouteReader,
 } from '../../application/ports/worker-executor.js';
 import { getDb } from '../../db.js';
 import { logActivity } from '../../helpers/activity-logger.js';
@@ -18,6 +19,26 @@ import {
 
 export interface LegacyClaudeWorkerExecutorFactoryOptions {
   spawn?: typeof nodeSpawn;
+  modelRouteReader?: WorkerModelRouteReader;
+}
+
+function readLegacyModelRoute(epicId: number | null) {
+  if (!epicId) return { model: null, provider: 'zai', effort: null };
+  const row = getDb().prepare(
+    `SELECT json_extract(metadata, '$.active_model') AS m,
+            json_extract(metadata, '$.active_provider') AS p,
+            json_extract(metadata, '$.active_model_effort') AS e
+       FROM episode_workflows WHERE epic_id=?`,
+  ).get(epicId) as {
+    m: string | null;
+    p: string | null;
+    e: string | null;
+  } | undefined;
+  return {
+    model: row?.m ?? null,
+    provider: row?.p ?? 'zai',
+    effort: row?.e ?? null,
+  };
 }
 
 /**
@@ -29,6 +50,7 @@ export interface LegacyClaudeWorkerExecutorFactoryOptions {
 export function createLegacyClaudeWorkerExecutorFactory(
   options: LegacyClaudeWorkerExecutorFactoryOptions = {},
 ): WorkerExecutorFactory {
+  const modelRouteReader = options.modelRouteReader ?? readLegacyModelRoute;
   return context => {
     const runnerOptions: ClaudeBoardRunnerOptions = {
       claimTask: args =>
@@ -107,15 +129,7 @@ export function createLegacyClaudeWorkerExecutorFactory(
       logRoot: context.logRoot,
       heartbeatLog: context.heartbeatLog,
       lmstudioBaseUrl: context.lmStudioUrl,
-      getActiveModel: epicId => {
-        const row = getDb().prepare(
-          `SELECT json_extract(metadata, '$.active_model') AS m,
-                  json_extract(metadata, '$.active_provider') AS p,
-                  json_extract(metadata, '$.active_model_effort') AS e
-             FROM episode_workflows WHERE epic_id=?`,
-        ).get(epicId) as { m: string | null; p: string | null; e: string | null } | undefined;
-        return { model: row?.m ?? null, provider: row?.p ?? 'zai', effort: row?.e ?? null };
-      },
+      getActiveModel: modelRouteReader,
     };
 
     const runner = createClaudeBoardRunner(runnerOptions);
