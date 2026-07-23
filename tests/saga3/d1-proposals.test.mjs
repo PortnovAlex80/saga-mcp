@@ -139,43 +139,44 @@ function makeFixture() {
   return { temp, dbPath: process.env.DB_PATH };
 }
 
-function seedIntentAndTask(db, { intentId = 1, taskId = 100, executionId = 'exec-1', liveExecution = true, workIntentId = 1 } = {}) {
+function seedIntentAndTask(db, { intentId = 1, taskId = 100, executionId = 'exec-1', liveExecution = true, workIntentId = 1, model = 'qwen-test', provider = 'lmstudio', effort = 'high', genKey = 'k', workerId = 'w-1' } = {}) {
   // Order matters under foreign_keys=ON: task first (intent.projected_task_id
   // references it), then intent, then worker_executions.
   db.prepare(
     `INSERT INTO tasks (id, epic_id, title, status, task_kind, workflow_stage,
         execution_skill, execution_mode, generation_key, metadata)
      VALUES (?, 10, 'Discovery', 'in_progress', 'discovery.work', 'discovery',
-        'saga-discovery-worker', 'tracker_only', 'k', ?)`,
-  ).run(taskId, JSON.stringify({ work_intent_id: workIntentId }));
+        'saga-discovery-worker', 'tracker_only', ?, ?)`,
+  ).run(taskId, genKey, JSON.stringify({ work_intent_id: workIntentId }));
   db.prepare(
     `INSERT INTO saga3_work_intents
        (id, epic_id, kind, objective, authority_scope, output_schema,
         token_budget, retry_budget, projected_task_id, status)
      VALUES (?,?,?,?,?,?,?,?,?, 'executing')`,
   ).run(intentId, 10, DISCOVERY_INTENT_KIND, 'investigate the idea',
-    JSON.stringify({ snapshot_ref: 'episode:10', scope: 'discovery', allowed_tools: [] }),
+    JSON.stringify({ snapshot_ref: 'episode:10', scope: 'discovery', allowed_tools: [], enforcement: 'advisory' }),
     DISCOVERY_WORK_INTENT_SCHEMA, 0, 0, taskId);
   // Now stamp the task's execution fence + insert the matching execution row.
   db.prepare(`UPDATE tasks SET current_execution_id=? WHERE id=?`).run(executionId, taskId);
+  // Launch-time snapshot in metadata — proposal_submit reads provenance from here.
   db.prepare(
     `INSERT INTO worker_executions
-       (execution_id, run_id, project_id, epic_id, task_id, worker_id, machine_id, state, phase)
-     VALUES (?, 'run-1', 1, 10, ?, 'w-1', 'm-1', ?, 'executing')`,
-  ).run(executionId, taskId, liveExecution ? 'running' : 'exited');
+       (execution_id, run_id, project_id, epic_id, task_id, worker_id, machine_id, state, phase, metadata)
+     VALUES (?, 'run-1', 1, 10, ?, ?, 'm-1', ?, 'executing', ?)`,
+  ).run(executionId, taskId, workerId, liveExecution ? 'running' : 'exited',
+    JSON.stringify({ model, provider, effort }));
   return { intentId, taskId, executionId };
 }
 
-test('proposal_submit: valid submission records the proposal with auto-captured provenance', async () => {
+test('proposal_submit: valid submission records the proposal with provenance from execution snapshot', async () => {
   const { temp, dbPath } = makeFixture();
   try {
-    // Re-open a writable handle for seeding; the handler opens its own via getDb.
     const { intentId, taskId, executionId } = seedIntentAndTask(getDb());
 
     const { createSaga3ProposalHandlers } = await import('../../dist/tools/saga3-proposals.js');
     const { Saga3ProposalRepository } = await import('../../dist/saga3/persistence/saga3-proposal-repository.js');
     const repo = new Saga3ProposalRepository();
-    const { handlers } = createSaga3ProposalHandlers({ repository: repo, modelRoute: () => ({ model: 'qwen', provider: 'lmstudio', effort: 'high' }) });
+    const { handlers } = createSaga3ProposalHandlers();
 
     const result = handlers.proposal_submit({
       intent_id: intentId, task_id: taskId, execution_id: executionId,
@@ -185,14 +186,100 @@ test('proposal_submit: valid submission records the proposal with auto-captured 
     assert.equal(typeof result.proposal_id, 'number');
     assert.match(result.content_hash, /^[0-9a-f]{64}$/);
     assert.equal(result.status, 'submitted');
+    assert.equal(result.replayed, false);
 
-    // Provenance was captured automatically (worker never supplied these).
+    // Provenance is read from the launch-time execution snapshot
+    // (model=qwen-test, captured at claim), NOT from current episode config.
     const rec = repo.readLatestProposalForIntent(intentId);
-    assert.equal(rec.provenance.model, 'qwen');
+    assert.equal(rec.provenance.model, 'qwen-test');
     assert.equal(rec.provenance.provider, 'lmstudio');
     assert.equal(rec.provenance.worker_id, 'w-1');
     assert.equal(rec.provenance.execution_id, executionId);
     assert.equal(rec.payload.recommended_outcome, 'go');
+  } finally {
+    closeDb();
+    rmSync(temp, { recursive: true, force: true });
+    delete process.env.DB_PATH;
+  }
+});
+
+test('proposal_submit: exact replay returns the same proposal id with replayed=true (idempotent)', async () => {
+  const { temp, dbPath } = makeFixture();
+  try {
+    const { intentId, taskId, executionId } = seedIntentAndTask(getDb());
+    const { createSaga3ProposalHandlers } = await import('../../dist/tools/saga3-proposals.js');
+    const { handlers } = createSaga3ProposalHandlers();
+
+    const payload = validPayload();
+    const first = handlers.proposal_submit({
+      intent_id: intentId, task_id: taskId, execution_id: executionId,
+      kind: 'discovery', schema_version: DISCOVERY_PROPOSAL_SCHEMA, payload,
+    });
+    // Exact same submission → same proposal_id, replayed=true, no duplicate.
+    const replay = handlers.proposal_submit({
+      intent_id: intentId, task_id: taskId, execution_id: executionId,
+      kind: 'discovery', schema_version: DISCOVERY_PROPOSAL_SCHEMA, payload,
+    });
+    assert.equal(replay.proposal_id, first.proposal_id);
+    assert.equal(replay.content_hash, first.content_hash);
+    assert.equal(replay.replayed, true);
+
+    const { Saga3ProposalRepository } = await import('../../dist/saga3/persistence/saga3-proposal-repository.js');
+    const repo = new Saga3ProposalRepository();
+    const count = getDb().prepare('SELECT COUNT(*) c FROM saga3_proposals WHERE intent_id=?').get(intentId).c;
+    assert.equal(count, 1, 'replay must not create a duplicate proposal row');
+  } finally {
+    closeDb();
+    rmSync(temp, { recursive: true, force: true });
+    delete process.env.DB_PATH;
+  }
+});
+
+test('proposal_submit: fence rejects execution that owns a different task', async () => {
+  const { temp, dbPath } = makeFixture();
+  try {
+    // Two tasks, two executions — worker tries to submit against task A while
+    // holding execution for task B.
+    const seed = getDb();
+    seedIntentAndTask(seed, { taskId: 100, executionId: 'exec-A' });
+    seedIntentAndTask(seed, { intentId: 2, taskId: 200, executionId: 'exec-B', workIntentId: 2, genKey: 'k2', workerId: 'w-2' });
+    // Make intent 2 point at task 200. Then forge task 200's fence to claim it
+    // holds exec-A (so the task-fence check passes), while exec-A actually owns
+    // task 100 — the execution-ownership check must catch this.
+    seed.prepare('UPDATE saga3_work_intents SET projected_task_id=200 WHERE id=2').run();
+    seed.prepare('UPDATE tasks SET current_execution_id=? WHERE id=?').run('exec-A', 200);
+    const { createSaga3ProposalHandlers } = await import('../../dist/tools/saga3-proposals.js');
+    const { handlers } = createSaga3ProposalHandlers();
+    assert.throws(
+      () => handlers.proposal_submit({
+        intent_id: 2, task_id: 200, execution_id: 'exec-A',
+        kind: 'discovery', schema_version: DISCOVERY_PROPOSAL_SCHEMA, payload: validPayload(),
+      }),
+      /owns task 100, not 200/,
+    );
+  } finally {
+    closeDb();
+    rmSync(temp, { recursive: true, force: true });
+    delete process.env.DB_PATH;
+  }
+});
+
+test('proposal_submit: fence rejects cancel_requested execution state', async () => {
+  const { temp, dbPath } = makeFixture();
+  try {
+    const seed = getDb();
+    const { intentId, taskId, executionId } = seedIntentAndTask(seed, { liveExecution: false });
+    // Override to cancel_requested specifically (not a plain terminal state).
+    seed.prepare("UPDATE worker_executions SET state='cancel_requested' WHERE execution_id=?").run(executionId);
+    const { createSaga3ProposalHandlers } = await import('../../dist/tools/saga3-proposals.js');
+    const { handlers } = createSaga3ProposalHandlers();
+    assert.throws(
+      () => handlers.proposal_submit({
+        intent_id: intentId, task_id: taskId, execution_id: executionId,
+        kind: 'discovery', schema_version: DISCOVERY_PROPOSAL_SCHEMA, payload: validPayload(),
+      }),
+      /not live.*cancel_requested/,
+    );
   } finally {
     closeDb();
     rmSync(temp, { recursive: true, force: true });

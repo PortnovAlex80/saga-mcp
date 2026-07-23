@@ -7,7 +7,6 @@ import type { Saga2HostRuntime } from '../application/ports/saga2-host-runtime.j
 import type { Saga2RuntimePersistence } from '../application/ports/saga2-runtime-persistence.js';
 import type { WorkerExecutorFactory } from '../application/ports/worker-executor.js';
 import type { SagaRuntimeConfig } from '../runtime/saga-runtime-config.js';
-import { getDb } from '../db.js';
 import {
   DISCOVERY_INTENT_KIND,
   DISCOVERY_WORK_INTENT_SCHEMA,
@@ -19,7 +18,7 @@ import {
   type DiscoveryOutcome,
   type DiscoveryProposalPayload,
 } from '../saga3/domain/discovery-proposal.js';
-import { Saga3ProposalRepository } from '../saga3/persistence/saga3-proposal-repository.js';
+import type { Saga3DiscoveryRuntimePersistence } from '../saga3/persistence/saga3-discovery-runtime-port.js';
 
 /**
  * Task kind / skill for the discovery WorkIntent's board projection.
@@ -38,6 +37,20 @@ function discoveryGenerationKey(intentId: number): string {
 }
 
 /**
+ * Tools the discovery skill is permitted to call. MUST stay in sync with
+ * skills/saga-discovery-worker/SKILL.md. Listed here (not invented per call)
+ * so the WorkIntent contract and the skill document one allowlist.
+ */
+const DISCOVERY_ALLOWED_TOOLS = [
+  'task_get',
+  'repository_checkout_list',
+  'artifact_list',
+  'note_list',
+  'proposal_submit',
+  'worker_done',
+];
+
+/**
  * DiscoveryEdition run output (roadmap §5.3 partial-pipeline fields + outcome).
  * outcomeAuthority='worker_proposal' marks this as PROVISIONAL: D4 settlement
  * is what makes a discovery outcome authoritative.
@@ -54,11 +67,11 @@ export interface Saga3DiscoveryEngineDependencies {
   workerExecutorFactory: WorkerExecutorFactory;
   persistence: Saga2RuntimePersistence;
   host: Saga2HostRuntime;
-  /** Proposal/intent repository. Defaults to the SQLite implementation. */
-  proposalRepository?: Saga3ProposalRepository;
+  /** Saga 3 runtime persistence port (the only data access the engine uses). */
+  runtimePersistence: Saga3DiscoveryRuntimePersistence;
   now?: () => Date;
   sleep?: (ms: number) => Promise<void>;
-  /** Max wall-clock seconds the engine waits for a proposal before timing out. */
+  /** Max wall-clock seconds the engine waits for the worker to finish. */
   maxRunSeconds?: number;
   /** Poll interval between executor status checks. */
   pollMs?: number;
@@ -73,22 +86,19 @@ export interface Saga3DiscoveryEngineDependencies {
  *     → projected_as one board task (task_kind=discovery.work)
  *     → executed_by the existing WorkerExecutorFactory / ClaudeBoardRunner
  *       (concurrency=1, the same worker-execution substrate Saga 2 uses — NOT a
- *       second claim/fencing/MCP path)
+ *       second claim/fencing/MCP path), claim-scoped to exactly that task
  *     → the worker submits a typed DiscoveryProposal via proposal_submit
- *     → engine reads the latest proposal, records a PROVISIONAL outcome
+ *     → engine waits for the worker to reach worker_done (NOT for the proposal
+ *       alone — observing a proposal is not a terminal condition), then
+ *       records a PROVISIONAL outcome
  *
  * What this engine does NOT do (deferred): deterministic normalization (D2),
  * readiness advisor (D3), authoritative settlement + certificate (D4), anomaly
- * diagnosis (D5), stage transition. The discovery-only run terminates with a
- * provisional outcome and `scope_completed` set only when a valid proposal was
- * submitted. An absent or invalid proposal yields `inconclusive` / `failed`
- * honestly — never a false 'completed'.
+ * diagnosis (D5), stage transition, authority runtime-enforcement (D1.1).
  *
- * The worker-execution substrate is the existing ClaudeBoardRunner reached
- * through WorkerExecutorFactory. This is NOT the Saga 2 product orchestrator:
- * ClaudeBoardRunner only does claim → execution fence → spawn → wait. The
- * product policy (what to create next, whether to advance) stays in this
- * engine, which is much thinner than the Saga 2 pump.
+ * The engine consumes a persistence PORT only — no direct database handle, no
+ * inline SQL, no concrete repository class. Phase B's pure-engine boundary is
+ * preserved; the static architecture test guards against regression.
  */
 export class Saga3DiscoveryEngine implements OrchestrationEngine {
   private readonly deps: Saga3DiscoveryEngineDependencies;
@@ -140,8 +150,7 @@ export class Saga3DiscoveryEngine implements OrchestrationEngine {
     heartbeat: (event: string, message: string) => void,
     startedAt: number,
   ): Promise<OrchestrationRunResult> {
-    const { workerExecutorFactory, persistence, host } = this.deps;
-    const repo = this.deps.proposalRepository ?? new Saga3ProposalRepository();
+    const { workerExecutorFactory, persistence, host, runtimePersistence: rt } = this.deps;
 
     heartbeat('ENGINE_START', 'saga3-discovery D1');
 
@@ -152,9 +161,10 @@ export class Saga3DiscoveryEngine implements OrchestrationEngine {
     }
 
     // 1. Idempotent WorkIntent — re-use the open one if a previous run created it.
-    let intent = repo.readOpenIntentByEpic(epicId, DISCOVERY_INTENT_KIND);
+    let intent = rt.readOpenIntent(epicId, DISCOVERY_INTENT_KIND);
     if (!intent) {
-      const objective = this.readObjective(epicId);
+      const epic = rt.readEpicObjective(epicId);
+      const objective = epic?.description || epic?.name || `discovery for epic ${epicId}`;
       const create: CreateWorkIntent = {
         epic_id: epicId,
         kind: DISCOVERY_INTENT_KIND,
@@ -162,23 +172,33 @@ export class Saga3DiscoveryEngine implements OrchestrationEngine {
         authority_scope: {
           snapshot_ref: `episode:${epicId}`,
           scope: 'read-only discovery context',
-          allowed_tools: ['proposal_submit', 'worker_done'],
+          allowed_tools: DISCOVERY_ALLOWED_TOOLS,
+          // D1: advisory only — runtime enforcement is the D1.1 slice.
+          enforcement: 'advisory',
         },
         output_schema: DISCOVERY_WORK_INTENT_SCHEMA,
         token_budget: 0,
         retry_budget: 0,
       };
-      intent = repo.createWorkIntent(create);
+      intent = rt.createIntent(create);
       heartbeat('INTENT_CREATED', `id=${intent.id}`);
     }
 
     // 2. Idempotent board-task projection (generation_key UNIQUE per epic).
-    const taskId = this.ensureDiscoveryTask(projectId, epicId, intent.id, intent.objective);
-    if (!intent.projected_task_id) repo.setProjectedTask(intent.id, taskId);
+    const taskId = rt.ensureProjectedTask({
+      epicId,
+      projectId,
+      intentId: intent.id,
+      objective: intent.objective,
+      taskKind: DISCOVERY_TASK_KIND,
+      executionSkill: DISCOVERY_SKILL,
+      generationKey: discoveryGenerationKey(intent.id),
+    });
+    if (!intent.projected_task_id) rt.setProjectedTask(intent.id, taskId);
 
-    // 3. Start the worker-execution substrate ONCE. concurrency=1 — D1 runs a
-    //    single discovery worker. The substrate claims the task, spawns the
-    //    worker, fences the execution, and waits. We poll the proposal table.
+    // 3. Start the worker-execution substrate ONCE. concurrency=1 AND
+    //    claim-scoped to exactly this task — the runner will not pick up any
+    //    other task in the episode (e.g. a legacy discovery.kickstart).
     const executor = workerExecutorFactory({
       projectId,
       epicId,
@@ -194,31 +214,37 @@ export class Saga3DiscoveryEngine implements OrchestrationEngine {
 
     try {
       try {
-        executor.start({ projectId, epicId, concurrency: 1 });
+        executor.start({ projectId, epicId, concurrency: 1, claimScope: { taskIds: [taskId] } });
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         if (!/already has an active board run/.test(msg)) throw err;
       }
+      // open → executing once the substrate has accepted the run.
+      rt.setIntentStatus(intent.id, 'open', 'executing');
       heartbeat('EXECUTOR_STARTED', `task=${taskId}`);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      repo.setIntentStatus(intent.id, 'concluded');
+      rt.setIntentStatus(intent.id, 'executing', 'concluded');
       return this.runResult(projectId, epicId, 'failed', 0, msg,
         { outcome: 'failed', outcomeAuthority: 'none', proposalId: null, proposalHash: null });
     }
 
-    // 4. Poll until: proposal submitted, task terminal, executor dead, or timeout.
+    // 4. Poll until the worker reaches a terminal task state, OR a hard
+    //    abort condition (executor died / timeout). Observing a Proposal is
+    //    NOT a terminal condition: the worker must still call worker_done to
+    //    close its execution fence, and killing the substrate between
+    //    proposal_submit and worker_done triggers recovery ("exited before
+    //    terminal worker_done"). We keep looping after a proposal appears,
+    //    waiting for task done.
     let cycles = 0;
-    let terminal: 'proposal' | 'task_terminal' | 'executor_dead' | 'timeout' = 'timeout';
+    let seenProposal = false;
+    let terminal: 'task_terminal' | 'executor_dead' | 'timeout' = 'timeout';
     while (true) {
       cycles += 1;
-      heartbeat('CYCLE', `cycle=${cycles}`);
-      const proposal = repo.readLatestProposalForIntent(intent.id);
-      if (proposal) {
-        terminal = 'proposal';
-        break;
-      }
-      const taskStatus = this.taskStatus(taskId);
+      heartbeat('CYCLE', `cycle=${cycles}${seenProposal ? ' (proposal seen, waiting worker_done)' : ''}`);
+      const proposal = rt.readLatestProposal(intent.id);
+      if (proposal) seenProposal = true;
+      const taskStatus = rt.readTaskState(taskId);
       if (taskStatus === 'done' || taskStatus === 'blocked') {
         terminal = 'task_terminal';
         break;
@@ -235,14 +261,23 @@ export class Saga3DiscoveryEngine implements OrchestrationEngine {
       await this.sleep(this.pollMs);
     }
 
-    // Best-effort stop of the substrate (one discovery task only).
-    try { executor.stop(projectId); } catch { /* best effort */ }
+    // Only stop the substrate on a HARD exit. When the task reached a terminal
+    // state the worker already exited on its own (it called worker_done); a
+    // stop() here would be a redundant kill of an already-dead run and could
+    // race the close handler. On timeout / executor_dead we DO stop to reclaim
+    // any lingering worker process.
+    if (terminal !== 'task_terminal') {
+      try { executor.stop(projectId); } catch { /* best effort */ }
+    }
+
+    // executing → concluded (CAS; a restarted engine cannot clobber a different state).
+    rt.setIntentStatus(intent.id, 'executing', 'concluded');
 
     // 5. Provisional outcome (roadmap §8.D1). NOT authoritative — D4 settles.
-    repo.setIntentStatus(intent.id, 'concluded');
-    const proposal = repo.readLatestProposalForIntent(intent.id);
+    const proposal = rt.readLatestProposal(intent.id);
+    const taskStatus = rt.readTaskState(taskId);
+    const workerReachedTerminal = taskStatus === 'done' || taskStatus === 'blocked';
     let outcome: DiscoveryRunOutcome;
-    let finalStage = persistence.episodes.currentStage(epicId) ?? 'discovery';
     if (proposal) {
       const validation = validateDiscoveryProposal(proposal.payload);
       if (validation.valid) {
@@ -252,7 +287,7 @@ export class Saga3DiscoveryEngine implements OrchestrationEngine {
           outcome: provisional.outcome, outcomeAuthority: provisional.authority,
           proposalId: proposal.id, proposalHash: proposal.content_hash,
         };
-        heartbeat('PROPOSAL_VALID', `id=${proposal.id} outcome=${provisional.outcome}`);
+        heartbeat('PROPOSAL_VALID', `id=${proposal.id} outcome=${provisional.outcome} taskDone=${workerReachedTerminal}`);
       } else {
         // Malformed proposal → honest non-success (roadmap D1 exit gate).
         outcome = {
@@ -263,77 +298,27 @@ export class Saga3DiscoveryEngine implements OrchestrationEngine {
       }
     } else {
       // No proposal submitted (timeout / task terminal without submission).
-      outcome = { outcome: terminal === 'timeout' ? 'inconclusive' : 'failed',
-        outcomeAuthority: 'none', proposalId: null, proposalHash: null };
+      outcome = {
+        outcome: terminal === 'timeout' ? 'inconclusive' : 'failed',
+        outcomeAuthority: 'none', proposalId: null, proposalHash: null,
+      };
       heartbeat('NO_PROPOSAL', `terminal=${terminal}`);
     }
 
     // Discovery Edition never advances the stage and never marks the product
-    // completed (roadmap §5.3). scope_completed reflects only whether the
-    // discovery-only slice reached a valid proposal.
-    const reason: OrchestrationRunResult['reason'] =
-      outcome.outcome === 'discovery_not_implemented' ? 'discovery_not_implemented' : 'completed';
-    const scopeCompleted = outcome.outcome !== 'inconclusive'
-      && outcome.outcome !== 'failed'
-      && outcome.outcome !== 'discovery_not_implemented'
-      && proposal !== null;
+    // completed (roadmap §5.3). scopeCompleted is decoupled from the BUSINESS
+    // outcome: it is true iff the discovery slice actually ran to completion —
+    // i.e. a structurally valid proposal was submitted AND the worker reached a
+    // terminal execution. A valid 'clarify'/'reject'/'failed' proposal with a
+    // terminal worker still completes the discovery scope; the business verdict
+    // is simply negative or non-go. An absent/invalid proposal, or a proposal
+    // without a terminal worker, leaves the scope incomplete.
+    const validProposal = proposal !== null && validateDiscoveryProposal(proposal.payload).valid;
+    const scopeCompleted = validProposal && workerReachedTerminal;
+    const finalStage = persistence.episodes.currentStage(epicId) ?? 'discovery';
 
+    const reason: OrchestrationRunResult['reason'] = 'completed';
     return this.runResult(projectId, epicId, reason, cycles, null, outcome, finalStage, scopeCompleted);
-  }
-
-  // --- helpers ---------------------------------------------------------------
-
-  private readObjective(epicId: number): string {
-    const db = getDb();
-    const row = db.prepare(
-      `SELECT e.name, e.description FROM epics e WHERE e.id=?`,
-    ).get(epicId) as { name: string; description: string | null } | undefined;
-    return row?.description || row?.name || `discovery for epic ${epicId}`;
-  }
-
-  /**
-   * Create the discovery board task if absent (idempotent via generation_key
-   * UNIQUE index). Returns the task id (existing or newly created).
-   */
-  private ensureDiscoveryTask(projectId: number, epicId: number, intentId: number, objective: string): number {
-    const db = getDb();
-    const key = discoveryGenerationKey(intentId);
-    const existing = db.prepare(
-      `SELECT id FROM tasks WHERE epic_id=? AND generation_key=?`,
-    ).get(epicId, key) as { id: number } | undefined;
-    if (existing) return existing.id;
-
-    const repoId = this.repoForProject(projectId);
-    const info = db.prepare(
-      `INSERT INTO tasks
-         (epic_id, title, description, status, priority, task_kind, workflow_stage,
-          execution_skill, execution_mode, project_repository_id, generation_key, tags, metadata)
-       VALUES (?, ?, ?, 'todo', 'high', ?, 'discovery', ?, 'tracker_only', ?, ?, '[]', ?)`,
-    ).run(
-      epicId,
-      `Discovery: ${objective.slice(0, 80)}`,
-      JSON.stringify({ work_intent_id: intentId, objective }),
-      DISCOVERY_TASK_KIND,
-      DISCOVERY_SKILL,
-      repoId,
-      key,
-      JSON.stringify({ work_intent_id: intentId }),
-    );
-    return Number(info.lastInsertRowid);
-  }
-
-  private repoForProject(projectId: number): number | null {
-    const db = getDb();
-    const row = db.prepare(
-      `SELECT id FROM project_repositories WHERE project_id=? ORDER BY id LIMIT 1`,
-    ).get(projectId) as { id: number } | undefined;
-    return row?.id ?? null;
-  }
-
-  private taskStatus(taskId: number): string | null {
-    const db = getDb();
-    const row = db.prepare('SELECT status FROM tasks WHERE id=?').get(taskId) as { status: string } | undefined;
-    return row?.status ?? null;
   }
 
   private runResult(
@@ -357,6 +342,9 @@ export class Saga3DiscoveryEngine implements OrchestrationEngine {
       pipelineScope: 'discovery_only',
       scopeCompleted,
       outcome: outcome.outcome,
+      outcomeAuthority: outcome.outcomeAuthority,
+      proposalId: outcome.proposalId,
+      proposalHash: outcome.proposalHash,
     };
   }
 }

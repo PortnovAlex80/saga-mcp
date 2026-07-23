@@ -2,6 +2,16 @@ export interface WorkerExecutorStart {
   projectId: number;
   epicId?: number | null;
   concurrency: number;
+  /**
+   * Optional claim scope. When taskIds is provided, the worker substrate must
+   * only claim one of the listed tasks — never any other task in the episode,
+   * even one of higher priority. Used by the Saga 3 engine to dispatch exactly
+   * the discovery task projected from its WorkIntent, so a legacy
+   * discovery.kickstart task in the same episode cannot be picked up instead.
+   */
+  claimScope?: {
+    taskIds?: number[];
+  };
 }
 
 export interface WorkerModelRoute {

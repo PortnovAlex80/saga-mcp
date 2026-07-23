@@ -7,6 +7,7 @@ import { createSagaApplication, type SagaApplication } from '../application/saga
 import { closeDb } from '../db.js';
 import { Saga2Engine } from '../engines/saga2-engine.js';
 import { Saga3DiscoveryEngine } from '../engines/saga3-discovery-engine.js';
+import { SqliteSaga3DiscoveryRuntime } from '../saga3/persistence/sqlite-saga3-discovery-runtime.js';
 import type { OrchestrationEngine } from '../application/ports/orchestration-engine.js';
 import { LegacyEngineAdministration } from '../infrastructure/engine/legacy-engine-administration.js';
 import {
@@ -99,6 +100,7 @@ function selectEngine(
       workerExecutorFactory,
       persistence,
       host,
+      runtimePersistence: new SqliteSaga3DiscoveryRuntime(),
     });
   }
   // Every other recognised mode (v2 / v3 / saga2) selects Saga2Engine. An

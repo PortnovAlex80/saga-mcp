@@ -710,6 +710,15 @@ CREATE INDEX IF NOT EXISTS idx_saga3_work_intents_kind_status ON saga3_work_inte
 CREATE INDEX IF NOT EXISTS idx_saga3_proposals_intent ON saga3_proposals(intent_id);
 CREATE INDEX IF NOT EXISTS idx_saga3_proposals_task ON saga3_proposals(task_id);
 CREATE INDEX IF NOT EXISTS idx_saga3_proposals_kind ON saga3_proposals(kind);
+-- Idempotency: replaying the same submission (same intent + execution +
+-- content hash) must return the existing proposal, not create a duplicate.
+-- The worker's skill allows "fix the payload and submit once more" — without
+-- this UNIQUE, a second submission of the corrected payload would shadow the
+-- first on readLatestProposalForIntent (ORDER BY id DESC). With it, an exact
+-- replay is a no-op; a corrected payload has a different content_hash and
+-- inserts normally (the engine reads the latest by id).
+CREATE UNIQUE INDEX IF NOT EXISTS idx_saga3_proposals_idempotency
+  ON saga3_proposals(intent_id, execution_id, content_hash);
 `;
 
 // ----------------------------------------------------------------------------

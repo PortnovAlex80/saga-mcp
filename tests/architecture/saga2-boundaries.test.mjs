@@ -576,6 +576,23 @@ test('D1: saga3-discovery engine reuses worker substrate without duplicating Sag
   assert.match(engineSrc, /discovery_only/);
 });
 
+test('D1: saga3-discovery engine is pure — no direct SQLite / getDb / concrete repository', () => {
+  // Phase B pure-engine boundary, restored by the D1 correction. The engine
+  // must consume the Saga3DiscoveryRuntimePersistence PORT only — no getDb,
+  // no .prepare, no concrete Saga3ProposalRepository construction. This guard
+  // fails the moment someone reintroduces inline SQL into the engine.
+  const engineSrc = readFileSync(
+    path.resolve(import.meta.dirname, '..', '..', 'src', 'engines', 'saga3-discovery-engine.ts'),
+    'utf8',
+  );
+  assert.doesNotMatch(engineSrc, /\bgetDb\b/);
+  assert.doesNotMatch(engineSrc, /\.prepare\s*\(/);
+  assert.doesNotMatch(engineSrc, /new Saga3ProposalRepository/);
+  // The port is the only persistence surface the engine is allowed.
+  assert.match(engineSrc, /runtimePersistence/);
+  assert.match(engineSrc, /Saga3DiscoveryRuntimePersistence/);
+});
+
 test('D0: OrchestrationRunResult contract is extended backward-compatibly for partial-pipeline runs', () => {
   const portSrc = readFileSync(
     path.resolve(import.meta.dirname, '..', '..', 'src', 'application', 'ports', 'orchestration-engine.ts'),

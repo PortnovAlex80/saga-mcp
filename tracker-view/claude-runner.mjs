@@ -167,7 +167,7 @@ export class ClaudeBoardRunner {
     try { rmSync(this.mcpConfigPath, { force: true }); } catch {}
   }
 
-  start({ projectId, epicId, concurrency }) {
+  start({ projectId, epicId, concurrency, claimScope }) {
     const existing = this.runs.get(projectId);
     if (existing && !TERMINAL_RUN_STATES.has(existing.status)) {
       throw new Error(`Project ${projectId} already has an active board run`);
@@ -185,6 +185,12 @@ export class ClaudeBoardRunner {
       id: runId,
       projectId,
       epicId: epicId ?? null,
+      // Claim scope: when set, the runner only claims one of these task ids.
+      // The Saga 3 engine uses this to dispatch exactly its projected discovery
+      // task and never a co-existing legacy discovery.kickstart task.
+      claimTaskIds: Array.isArray(claimScope?.taskIds) && claimScope.taskIds.length > 0
+        ? claimScope.taskIds
+        : null,
       projectName: project.name,
       workspaceRoot,
       concurrency,
@@ -289,6 +295,9 @@ export class ClaudeBoardRunner {
           epic_id: run.epicId ?? undefined,
           execution_id: executionId,
           run_id: run.id,
+          // Forward the claim scope so worker_next restricts candidates to these
+          // task ids (null → no restriction, legacy behaviour).
+          task_ids: run.claimTaskIds,
         });
       } catch (error) {
         run.lastError = error instanceof Error ? error.message : String(error);

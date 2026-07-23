@@ -37,10 +37,22 @@ export interface OrchestrationRunResult {
    * ('discovery_only' for the Discovery Edition). scopeCompleted=true means
    * that the configured slice completed — NOT that the full product is
    * delivered. outcome is the typed business verdict the slice produced.
+   *
+   * scopeCompleted is decoupled from the business outcome: a valid proposal
+   * followed by a terminal worker execution means the discovery slice ran to
+   * completion, even when the business verdict is 'clarify'/'reject'/'failed'.
+   * outcomeAuthority records whether the outcome came from a worker proposal
+   * ('worker_proposal', PROVISIONAL — D4 settlement makes it authoritative) or
+   * from the engine itself ('none', e.g. timeout / no proposal).
+   * proposalId / proposalHash carry the provenance link to the submitted
+   * proposal (null when none).
    */
   pipelineScope?: string;
   scopeCompleted?: boolean;
   outcome?: string;
+  outcomeAuthority?: 'worker_proposal' | 'none';
+  proposalId?: number | null;
+  proposalHash?: string | null;
 }
 
 /**

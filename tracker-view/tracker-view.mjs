@@ -25,7 +25,7 @@ import { releaseExecutionAtomically } from '../dist/lifecycle/atomic-release.js'
 import { getDb as ensureSagaDb, closeDb as closeSagaDb } from '../dist/db.js';
 import { createSaga2Application } from '../dist/app/composition-root.js';
 import { loadSagaRuntimeConfig } from '../dist/runtime/saga-runtime-config.js';
-import { requiresBackgroundEngine } from '../dist/runtime/orchestration-mode.js';
+import { requiresBackgroundEngine, isSaga3DiscoveryMode } from '../dist/runtime/orchestration-mode.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const require = createRequire(import.meta.url);
@@ -4270,21 +4270,29 @@ function handleProjectCreateFromIdea(req, res) {
         // 4. episode_workflows — discovery stage
         db.prepare('INSERT OR IGNORE INTO episode_workflows (epic_id) VALUES (?)').run(epicId);
 
-        // 5. kickstart task — tracker_only so worker_done auto-fires brief_accepted
-        //    (dispatcher.ts:608-611 gates generation on execution_mode !== git_change).
-        const taskInfo = db.prepare(
-          `INSERT INTO tasks
-             (epic_id, title, description, status, priority, task_kind, workflow_stage,
-              execution_skill, review_skill, execution_mode, tags, metadata)
-           VALUES (?, ?, ?, 'todo', 'critical', 'discovery.kickstart', 'discovery',
-                   'saga-kickstart', 'saga-requirements-reviewer', 'tracker_only', ?, '{}')`,
-        ).run(
-          epicId,
-          `Discovery: ${idea}`,
-          JSON.stringify({ idea }),
-          JSON.stringify(['stage:discovery', 'kind:discovery.kickstart', 'role:discovery']),
-        );
-        const taskId = Number(taskInfo.lastInsertRowid);
+        // 5. Discovery task projection. For v2/v3/saga2 (legacy flow): create
+        //    the discovery.kickstart task; the saga-orchestrator/kickstart skill
+        //    drives the rest. For saga3-discovery: the bootstrap creates NO
+        //    task — the Saga3DiscoveryEngine projects its own discovery.work
+        //    task from a WorkIntent. Creating a legacy kickstart here would let
+        //    the board runner claim it instead of the engine's task (race), so
+        //    it is deliberately skipped.
+        let taskId = null;
+        if (!isSaga3DiscoveryMode(runtimeConfig.orchestrationMode)) {
+          const taskInfo = db.prepare(
+            `INSERT INTO tasks
+               (epic_id, title, description, status, priority, task_kind, workflow_stage,
+                execution_skill, review_skill, execution_mode, tags, metadata)
+             VALUES (?, ?, ?, 'todo', 'critical', 'discovery.kickstart', 'discovery',
+                     'saga-kickstart', 'saga-requirements-reviewer', 'tracker_only', ?, '{}')`,
+          ).run(
+            epicId,
+            `Discovery: ${idea}`,
+            JSON.stringify({ idea }),
+            JSON.stringify(['stage:discovery', 'kind:discovery.kickstart', 'role:discovery']),
+          );
+          taskId = Number(taskInfo.lastInsertRowid);
+        }
 
         db.prepare(
           "INSERT INTO activity_log (entity_type, entity_id, action, summary) VALUES ('project', ?, 'created', ?)"

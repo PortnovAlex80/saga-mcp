@@ -212,6 +212,7 @@ function findNextClaimable(
     runId: string;
     machineId: string;
   },
+  taskIds?: number[],
 ): Task | null {
   // Стоп через MAX_CLAIM_ATTEMPTS: под IMMEDIATE-локом контентция редка, но
   // бесконечная рекурсия могла бы livelock'нуть глобальный write-lock.
@@ -234,12 +235,19 @@ function findNextClaimable(
   const excludeClause = excludeTaskId !== undefined ? 'AND t.id != ?' : '';
   const roleClause = role ? `AND EXISTS (SELECT 1 FROM json_each(t.tags) WHERE json_each.value = ?)` : '';
   const epicClause = epicId !== undefined ? 'AND t.epic_id = ?' : '';
+  // Claim scope (Saga 3 engine): restrict candidates to an explicit task-id
+  // allowlist. Follows the same conditional-clause pattern as epic/exclude.
+  // When unset, any claimable task in the project/epic may be claimed (legacy).
+  const taskIdsClause = taskIds && taskIds.length > 0
+    ? `AND t.id IN (${taskIds.map(() => '?').join(',')})`
+    : '';
   const selectSql = `
     SELECT t.* FROM tasks t
     WHERE t.status IN ('todo', 'review')
       AND (t.assigned_to IS NULL OR t.assigned_to = '')
       AND t.epic_id IN (SELECT id FROM epics WHERE project_id = ?)
       ${epicClause}
+      ${taskIdsClause}
       AND (
         t.workflow_stage IS NULL
         OR t.task_kind = 'summary.stage'   -- bookkeeping: claimable on ANY stage
@@ -305,6 +313,7 @@ function findNextClaimable(
   // Сбор параметров в порядке появления ? в SQL.
   const params: unknown[] = [projectId];
   if (epicId !== undefined) params.push(epicId);
+  if (taskIds && taskIds.length > 0) params.push(...taskIds);
   if (excludeTaskId !== undefined) params.push(excludeTaskId);
   if (role) params.push(`role:${role}`);
   const task = db.prepare(selectSql).get(...params) as Task | undefined;
@@ -344,15 +353,31 @@ function findNextClaimable(
   //    с ограничением попыток (см. MAX_CLAIM_ATTEMPTS выше). projectId и role пробрасываем.
   if (info.changes !== 1) {
     return findNextClaimable(
-      db, workerId, projectId, excludeTaskId, attempt + 1, role, epicId, reservation,
+      db, workerId, projectId, excludeTaskId, attempt + 1, role, epicId, reservation, taskIds,
     );
   }
 
   if (reservation) {
+    // Capture the launch-time model route snapshot into worker_executions.
+    // metadata. This is the IMMUTABLE authority source that proposal_submit
+    // later reads for provenance — it reflects the model the worker actually
+    // started under, NOT the current episode config (which a /api/model/set
+    // could change mid-run). Read inside the same IMMEDIATE transaction.
+    const ew = db.prepare(
+      `SELECT json_extract(metadata, '$.active_model') AS m,
+              json_extract(metadata, '$.active_provider') AS p,
+              json_extract(metadata, '$.active_model_effort') AS e
+         FROM episode_workflows WHERE epic_id=?`,
+    ).get(task.epic_id) as { m: string | null; p: string | null; e: string | null } | undefined;
+    const launchSnapshot = JSON.stringify({
+      model: ew?.m ?? null,
+      provider: ew?.p ?? 'zai',
+      effort: ew?.e ?? null,
+    });
     db.prepare(
       `INSERT INTO worker_executions
-        (execution_id,run_id,project_id,epic_id,task_id,worker_id,machine_id,phase)
-       VALUES (?,?,?,?,?,?,?,?)`,
+        (execution_id,run_id,project_id,epic_id,task_id,worker_id,machine_id,phase,metadata)
+       VALUES (?,?,?,?,?,?,?,?,?)`,
     ).run(
       reservation.executionId,
       reservation.runId,
@@ -362,6 +387,7 @@ function findNextClaimable(
       workerId,
       reservation.machineId,
       task.status === 'review' ? 'reviewing' : 'executing',
+      launchSnapshot,
     );
   }
 
@@ -442,6 +468,14 @@ function handleWorkerNext(args: Record<string, unknown>): {
   // / role:architect — каждый агент получает только свои задачи. Без role — любое.
   const role = args.role as string | undefined;
   const epicId = args.epic_id as number | undefined;
+  // Claim scope (Saga 3 engine): optional explicit task-id allowlist forwarded
+  // from the board runner's run.claimTaskIds. When present, only these task ids
+  // are eligible, regardless of priority — the engine dispatches exactly its
+  // projected discovery task and never a co-existing legacy task.
+  const rawTaskIds = args.task_ids;
+  const taskIds = Array.isArray(rawTaskIds)
+    ? rawTaskIds.filter((id): id is number => Number.isInteger(id))
+    : undefined;
   if (epicId !== undefined) {
     const epic = db.prepare('SELECT project_id FROM epics WHERE id=?').get(epicId) as
       | { project_id: number }
@@ -467,7 +501,7 @@ function handleWorkerNext(args: Record<string, unknown>): {
   // (аналог SELECT FOR UPDATE, которого нет в SQLite). busy_timeout=5000 в db.ts.
   // db.transaction(fn) тут только DEFERRED, поэтому оборачиваем явно.
   const task = withImmediateTransaction(db, () =>
-    findNextClaimable(db, workerId, projectId, undefined, 0, role, epicId, reservation),
+    findNextClaimable(db, workerId, projectId, undefined, 0, role, epicId, reservation, taskIds),
   );
 
   // active_tasks — read-only снапшот параллельной работы. Берём ПОСЛЕ транзакции,

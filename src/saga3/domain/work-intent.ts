@@ -26,8 +26,24 @@ export interface AuthorityScope {
   snapshot_ref: string;
   /** Human-readable scope label (e.g. "read-only discovery context"). */
   scope: string;
-  /** Tool allowlist the worker is permitted to call. */
+  /**
+   * Tool allowlist the worker is permitted to call. MUST stay in sync with the
+   * discovery skill's documented tool list; the WorkIntent is the source of
+   * truth and the skill mirrors it.
+   */
   allowed_tools: string[];
+  /**
+   * Whether the runtime actually enforces allowed_tools.
+   * - 'advisory' (D1): the allowlist is declared but not yet enforced at the
+   *   MCP gateway / spawn layer. The skill instructs the worker to honour it.
+   * - 'runtime' (D1.1): an immutable authority snapshot captured at claim time
+   *   is checked by the MCP gateway on every tool call; Claude's
+   *   --disallowedTools is added only as defense in depth.
+   *
+   * D1 ships with 'advisory' so the correction commit does not modify the
+   * shared Claude spawn path; D1.1 flips discovery intents to 'runtime'.
+   */
+  enforcement: 'advisory' | 'runtime';
 }
 
 /**
