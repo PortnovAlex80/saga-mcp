@@ -23,6 +23,8 @@ import { createClaudeBoardRunner } from './claude-runner.mjs';
 import { isProcessAlive } from '../dist/worker-executions.js';
 import { releaseExecutionAtomically } from '../dist/lifecycle/atomic-release.js';
 import { getDb as ensureSagaDb, closeDb as closeSagaDb } from '../dist/db.js';
+import { createSaga2Application } from '../dist/app/composition-root.js';
+import { loadSagaRuntimeConfig } from '../dist/runtime/saga-runtime-config.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const require = createRequire(import.meta.url);
@@ -30,19 +32,12 @@ const require = createRequire(import.meta.url);
 // better-sqlite3 уже стоит в node_modules форка (npm install). Берём оттуда.
 const Database = require(path.join(__dirname, '..', 'node_modules', 'better-sqlite3'));
 
-// ОДИН источник данных — общая БД saga-mcp. Та же, что saga-MCP-сервер.
-const DB_PATH = process.env.DB_PATH;
-if (!DB_PATH) {
-  console.error('DB_PATH не задан. Укажите путь к saga.db (например, DB_PATH=C:/Users/<вы>/.zcode/saga.db).');
-  process.exit(1);
-}
+// ОДИН источник конфигурации для tracker/runtime adapters.
+const runtimeConfig = loadSagaRuntimeConfig(process.env);
+const DB_PATH = runtimeConfig.dbPath;
+
 // Файл saga.db создаётся лениво MCP-сервером при первом вызове инструмента.
-// Если tracker-view запускается первым (свежая установка, ручной `npm run tracker`,
-// или ZCode открыт до первого MCP-вызова) — файла ещё нет, и старый guard валил
-// процесс, оставляя пустой фронт. Здесь мы инициализируем БД тем же путём, что и
-// MCP-сервер (getDb из dist/db.js): полный SCHEMA_SQL + миграции + индексы, чтобы
-// viewer и server видели идентичную схему. Идемпотентно — если файл есть, getDb
-// просто открывает его.
+// Если tracker-view запускается первым, инициализируем ту же schema/migrations.
 if (!existsSync(DB_PATH)) {
   try {
     const dir = path.dirname(DB_PATH);
@@ -55,9 +50,11 @@ if (!existsSync(DB_PATH)) {
     process.exit(1);
   }
 }
-const PORT = Number(process.env.PORT) || 4321;
+
+const PORT = runtimeConfig.trackerPort;
 const PID_FILE = path.join(__dirname, '.tracker-view.pid');
-const RELOAD_SEC = Number(process.env.RELOAD_SEC) || 5;
+const RELOAD_SEC = runtimeConfig.trackerReloadSec;
+const sagaApplication = createSaga2Application(process.env);
 
 const COLS = [
   { key: 'todo',               label: 'Backlog' },
@@ -148,63 +145,17 @@ function ageText(iso) {
   return Math.floor(ago / 3600) + 'ч';
 }
 
-// Все saga-проекты (id, name, status) + счётчики задач.
-// archived исключаем — нечего показывать на канбане.
+// Все saga-проекты и канбан читаются через стабильную application projection.
 function listProjects() {
-  return withDb(db => {
-    const rows = db.prepare(`
-      SELECT p.id, p.name, p.status,
-        COUNT(t.id) AS total,
-        SUM(CASE WHEN t.status='in_progress' THEN 1 ELSE 0 END) AS in_progress,
-        SUM(CASE WHEN t.status='review_in_progress' THEN 1 ELSE 0 END) AS reviewing
-      FROM projects p
-      LEFT JOIN epics e ON e.project_id = p.id
-      LEFT JOIN tasks t ON t.epic_id = e.id
-      WHERE p.status != 'archived'
-      GROUP BY p.id
-      ORDER BY p.name COLLATE NOCASE
-    `).all();
-    return rows.map((r, i) => ({ ...r, color: PROJECT_COLORS[i % PROJECT_COLORS.length] }));
-  });
+  return sagaApplication.listProjects();
 }
 
 function getProject(id) {
   return withDb(db => db.prepare('SELECT * FROM projects WHERE id=?').get(id));
 }
 
-// Полный рендер канбана одного saga-проекта.
 function loadBoard(projectId) {
-  return withDb(db => {
-    const epicRows = db.prepare(`
-      SELECT e.id, e.name, e.project_id, ew.stage AS episode_stage,
-        json_extract(ew.metadata,'$.last_gate_error') AS gate_error,
-        json_extract(ew.metadata,'$.needs-human') AS needs_human,
-        json_extract(ew.metadata,'$.pause_reason') AS pause_reason,
-        (SELECT count(*) FROM artifacts a WHERE a.epic_id=e.id AND a.status='accepted' AND a.drift_state='drifted') AS drift_count,
-        (SELECT count(*) FROM verification_evidence v JOIN artifacts a ON a.id=v.artifact_id
-          WHERE a.epic_id=e.id AND v.outcome='passed') AS evidence_count
-      FROM epics e LEFT JOIN episode_workflows ew ON ew.epic_id=e.id
-      WHERE e.project_id=? ORDER BY e.id
-    `).all(projectId);
-    if (epicRows.length === 0) return { empty: true, reason: 'no-epics' };
-    const epicIds = epicRows.map(e => e.id);
-    const tasks = db.prepare(`
-      SELECT t.*,
-        (SELECT r.name FROM project_repositories pr JOIN repositories r ON r.id=pr.repository_id
-          WHERE pr.id=t.project_repository_id) AS repository_name,
-        (SELECT group_concat('#' || dep.id || ' ' ||
-          CASE WHEN dep.status!='done' THEN dep.status ELSE dep.integration_state END, ', ')
-         FROM task_dependencies d JOIN tasks dep ON dep.id=d.depends_on_task_id
-         WHERE d.task_id=t.id AND (
-           dep.status!='done' OR
-           (dep.task_kind IS NOT NULL AND dep.execution_mode='git_change' AND dep.integration_state!='merged')
-         )) AS blocked_reason
-      FROM tasks t WHERE epic_id IN (${epicIds.map(() => '?').join(',')})
-      ORDER BY sort_order, id
-    `).all(...epicIds);
-    const epicById = Object.fromEntries(epicRows.map(e => [e.id, e]));
-    return { epics: epicRows, epicById, tasks };
-  });
+  return sagaApplication.loadProjectBoard(Number(projectId));
 }
 
 function esc(s){ return String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
@@ -336,9 +287,11 @@ const boardRunner = createClaudeBoardRunner({
   getTaskState: getRunnerTaskState,
   recoverAssignment: recoverRunnerAssignment,
   resolveWorkspace: resolveProjectWorkspace,
-  dbPath: DB_PATH,
+  dbPath: runtimeConfig.dbPath,
   sagaEntry: path.join(__dirname, '..', 'dist', 'index.js'),
   sagaSkillRoot: path.join(__dirname, '..', 'skills'),
+  claudePath: runtimeConfig.claudePath,
+  lmstudioBaseUrl: runtimeConfig.lmStudioUrl,
 });
 
 // Найти физический путь к .md файлу артефакта.
@@ -4235,25 +4188,15 @@ function handleProjectCreateFromIdea(req, res) {
         console.error(`[create-from-idea] mkdir ${localPath} failed: ${e.message}`);
       }
 
-      // Spawn движка, если включён v3 режим.
-      const mode = (process.env.SAGA_ORCHESTRATION_MODE || 'v2').toLowerCase();
+      // Engine process control is owned by EngineAdministration.
+      const mode = runtimeConfig.orchestrationMode;
       let engineSpawned = false;
       let enginePid = null;
       if (mode === 'v3') {
         try {
-          const cliPath = path.join(__dirname, '..', 'dist', 'orchestrate-cli.js');
-          const child = spawn('node', [cliPath, String(result.projectId), String(result.epicId)], {
-            detached: true,
-            stdio: 'ignore',
-            env: {
-              ...process.env,
-              DB_PATH: process.env.DB_PATH,
-              SAGA_ORCHESTRATION_MODE: 'v3',
-            },
-          });
-          child.unref();
-          engineSpawned = true;
-          enginePid = child.pid;
+          const state = sagaApplication.startEngine({ epicId: result.epicId });
+          engineSpawned = state.running;
+          enginePid = state.pid;
         } catch (e) {
           console.error(`[create-from-idea] engine spawn failed: ${e.message}`);
         }
@@ -4893,306 +4836,122 @@ function handleWorkersActive(req, res, url) {
   }
 }
 
-// --- Engine control: start / stop / status / restart ---
-//
-// The kanban board exposes explicit ▶ Start / ⏸ Pause buttons per epic.
-// This prevents accidental auto-start of every project's engine, which
-// would burn tokens (each running engine spawns `claude -p` workers).
-//
-// State machine:
-//   - The engine process is matched by command line (project_id + epic_id).
-//   - Persisted flag $.engine_running in episode_workflows.metadata records
-//     the user's last intent. On page reload the UI reads this flag to
-//     render the correct button label (▶ if stopped, ⏸ if running).
-//   - Start = kill any existing engine for this epic + spawn fresh.
-//   - Stop  = kill engine + workers, NO respawn.
-//   - Restart = alias of Start (back-compat for the concurrency selector).
-//
-// Concurrency selector change:
-//   - If engine is RUNNING → restart with new concurrency (old behaviour).
-//   - If engine is STOPPED → just persist the new value; do NOT auto-start.
-//     The user must press ▶ explicitly. This is the audit fix for the
-//     "tokens burned by accidental auto-start" risk.
+// --- Engine control: thin HTTP adapter over EngineAdministration ---
 
-/**
- * Kill the engine process tree + orphan workers for a given (projectId, epicId).
- * Returns the list of PIDs that were targeted (best-effort; some may already
- * be dead). Synchronous: uses spawnSync.
- *
- * Strategy:
- *   1. Find all `orchestrate-cli.js <projectId> <epicId>` node.exe engines.
- *   2. For each, walk the CIM process tree recursively and collect descendants
- *      (claude.exe workers + their MCP node.exe children + conhost.exe).
- *   3. Also catch orphan claude.exe workers whose command line mentions
- *      project_id=<projectId> (survived a prior kill).
- *   4. taskkill /F every collected PID.
- *   5. Synchronous 1s pause so the OS finishes cleanup before any respawn.
- */
-function killEngineTree(projectId, epicId) {
-  // IMPORTANT: the PowerShell parameter MUST NOT be named $pid — that is a
-  // read-only automatic variable in PowerShell (the current shell's PID).
-  // Declaring a function parameter with that name throws
-  // SessionStateUnauthorizedAccessException → the function body never runs
-  // → descendants are not collected → only the engine itself gets killed,
-  // not the claude.exe workers under it. Use $procId instead.
-  //
-  // CRITICAL: do NOT put `#` comments inside the -Command string. In
-  // -Command mode PowerShell treats the whole argument as a single line,
-  // and `#` starts a comment that swallows the REST of the script. Every
-  // statement after the first `#` silently never executes — taskkill
-  // included. That was the real reason the Pause button didn't kill: the
-  // script found the engine but the `# Dedup and kill` comment ate the
-  // taskkill loop. Keep this script comment-free.
-  //
-  // The template literal is a JS backtick string. `$foo` (without braces) is
-  // NOT interpolation in JS — only `${foo}` is. So `$kids`, `$toKill`, etc.
-  // pass through to PowerShell verbatim, as intended. No escaping needed.
-  try {
-    require('child_process').spawnSync(
-      'powershell',
-      ['-Command',
-       `function Get-Descendants($procId) { ` +
-       `  $kids = Get-CimInstance Win32_Process -Filter "ParentProcessId=$procId"; ` +
-       `  foreach ($k in $kids) { ,($k.ProcessId); Get-Descendants $k.ProcessId } ` +
-       `} ; ` +
-       `$toKill = @(); ` +
-       `$engines = Get-CimInstance Win32_Process -Filter "name='node.exe'" | ` +
-       `  Where-Object { $_.CommandLine -like '*orchestrate-cli.js ${projectId} ${epicId}*' }; ` +
-       `foreach ($e in $engines) { ` +
-       `  $toKill += $e.ProcessId; ` +
-       `  $toKill += Get-Descendants $e.ProcessId ` +
-       `} ; ` +
-       `$orphans = Get-CimInstance Win32_Process -Filter "name='claude.exe'" | ` +
-       `  Where-Object { $_.CommandLine -like '*project_id=${projectId}*' } ; ` +
-       `foreach ($o in $orphans) { $toKill += $o.ProcessId } ; ` +
-       `$toKill = $toKill | Sort-Object -Unique; ` +
-       `foreach ($p in $toKill) { taskkill /F /PID $p 2>$null }`],
-      { encoding: 'utf8' }
-    );
-    // SYNCHRONOUS pause — setTimeout was a no-op here (it schedules but
-    // doesn't block). Without this wait the fresh engine spawns while OS
-    // is still terminating the old one, leaving both alive in a race.
-    try { require('child_process').spawnSync('timeout', ['/T', '1', '/NOBREAK'], { encoding: 'utf8', stdio: 'ignore' }); } catch {}
-  } catch (e) {
-    console.error(`[engine-control] kill failed for project=${projectId} epic=${epicId}:`, e.message);
-  }
-}
-
-/**
- * Spawn a fresh orchestrate-cli.js engine for (projectId, epicId) with the
- * given concurrency. Returns the child process (unref'd).
- */
-function spawnEngine(projectId, epicId, concurrency) {
-  const cliPath = path.join(__dirname, '..', 'dist', 'orchestrate-cli.js');
-  const child = spawn('node', [cliPath, String(projectId), String(epicId), `--concurrency=${concurrency}`], {
-    detached: true,
-    stdio: 'ignore',
-    env: {
-      ...process.env,
-      DB_PATH: process.env.DB_PATH,
-      SAGA_ORCHESTRATION_MODE: 'v3',
-    },
+function readJsonRequest(req, callback) {
+  const chunks = [];
+  req.on('data', chunk => chunks.push(chunk));
+  req.on('end', () => {
+    const raw = Buffer.concat(chunks).toString('utf8');
+    let fields;
+    try { fields = JSON.parse(raw); } catch { fields = {}; }
+    callback(fields);
   });
-  child.unref();
-  return child;
 }
 
-/**
- * Read the persisted engine-running flag + last-known pid/concurrency for an
- * epic. Returns { running, pid, concurrency, started_at }. `running` is the
- * USER'S LAST INTENT (persisted), not a live process check — the UI uses this
- * to render the correct button on page load.
- *
- * Live liveness is best-effort: we check whether any node.exe's command line
- * mentions this epic. That's expensive, so callers should prefer the
- * persisted flag for render-time decisions.
- */
-function readEngineState(epicId) {
-  const row = withDb(db => db.prepare(
-    `SELECT json_extract(metadata, '$.engine_running')    AS running,
-            json_extract(metadata, '$.engine_pid')         AS pid,
-            json_extract(metadata, '$.engine_concurrency') AS concurrency,
-            json_extract(metadata, '$.engine_started_at') AS started_at
-       FROM episode_workflows WHERE epic_id=?`,
-  ).get(epicId));
-  return {
-    running: row?.running === 1 || row?.running === true,
-    pid: row?.pid ?? null,
-    concurrency: row?.concurrency ?? null,
-    started_at: row?.started_at ?? null,
-  };
+function respondEngineError(res, error) {
+  const code = error?.code;
+  const status = code === 'epic_not_found' ? 404
+    : (code === 'invalid_epic' || code === 'invalid_concurrency') ? 400
+    : 500;
+  respondJson(res, status, { ok: false, error: error?.message || String(error) });
 }
 
-/**
- * Live-check whether an engine process for (projectId, epicId) is currently
- * running on the OS. Used by /api/engine/status to reconcile the persisted
- * flag with reality (e.g. engine crashed → flag lies).
- */
-function isEngineAlive(projectId, epicId) {
-  try {
-    const r = require('child_process').spawnSync(
-      'powershell',
-      ['-Command',
-       `$es = Get-CimInstance Win32_Process -Filter "name='node.exe'" | ` +
-       `  Where-Object { $_.CommandLine -like '*orchestrate-cli.js ${projectId} ${epicId}*' }; ` +
-       `if ($es) { 'alive' } else { 'dead' }`],
-      { encoding: 'utf8' },
-    );
-    return (r.stdout || '').trim() === 'alive';
-  } catch {
-    return false;
-  }
-}
-
-function setEngineMeta(epicId, patch) {
-  // Build a json_set chain for each key in patch.
-  // json_set accepts (json, path, value, path, value, ...) so we expand.
-  const keys = Object.keys(patch);
-  if (keys.length === 0) return;
-  let sql = `UPDATE episode_workflows SET metadata=COALESCE(metadata,'{}'), updated_at=datetime('now')`;
-  const params = [];
-  // Re-read current metadata, merge, write back — simpler than chained json_set
-  // when patch has multiple keys.
-  const current = withDb(db => db.prepare(
-    'SELECT metadata FROM episode_workflows WHERE epic_id=?',
-  ).get(epicId));
-  const meta = JSON.parse(current?.metadata || '{}');
-  for (const k of keys) meta[k] = patch[k];
-  sql = `UPDATE episode_workflows SET metadata=?, updated_at=datetime('now') WHERE epic_id=?`;
-  params.push(JSON.stringify(meta), epicId);
-  withDbWrite(db => db.prepare(sql).run(...params));
-}
-
-// --- POST /api/engine/start ---
-// Body: { epic_id, concurrency? }. If concurrency omitted, uses the value
-// persisted in $.engine_concurrency (or falls back to 4).
-// Always kills any existing engine for this epic first, then spawns fresh.
-// Sets $.engine_running=1 so the UI renders ⏸ on next load.
 function handleEngineStart(req, res) {
-  let chunks = [];
-  req.on('data', c => chunks.push(c));
-  req.on('end', () => {
-    const raw = Buffer.concat(chunks).toString('utf8');
-    let fields;
-    try { fields = JSON.parse(raw); } catch { fields = {}; }
-    const epicId = Number(fields.epic_id);
-    if (!epicId) return respondJson(res, 400, { ok:false, error:'epic_id required' });
-    const epic = withDb(db => db.prepare('SELECT project_id FROM epics WHERE id=?').get(epicId));
-    if (!epic) return respondJson(res, 404, { ok:false, error:'epic not found' });
-    const projectId = epic.project_id;
-
-    const state = readEngineState(epicId);
-    let concurrency = Number(fields.concurrency);
-    if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 10) {
-      concurrency = Number(state.concurrency) || 4;
-    }
-
-    killEngineTree(projectId, epicId);
-
+  readJsonRequest(req, fields => {
     try {
-      const child = spawnEngine(projectId, epicId, concurrency);
-      setEngineMeta(epicId, {
-        engine_running: 1,
-        engine_pid: child.pid,
-        engine_concurrency: concurrency,
-        engine_started_at: new Date().toISOString().replace('T', ' ').slice(0, 19),
-      });
+      const epicId = Number(fields.epic_id);
+      const concurrency = fields.concurrency === undefined
+        ? undefined
+        : Number(fields.concurrency);
+      const state = sagaApplication.startEngine({ epicId, concurrency });
       respondJson(res, 200, {
-        ok: true, project_id: projectId, epic_id: epicId,
-        concurrency, engine_pid: child.pid, running: true,
+        ok: true,
+        project_id: state.projectId,
+        epic_id: state.epicId,
+        concurrency: state.concurrency,
+        engine_pid: state.pid,
+        running: state.running,
       });
-    } catch (e) {
-      respondJson(res, 500, { ok:false, error: 'spawn: ' + e.message });
+    } catch (error) {
+      respondEngineError(res, error);
     }
   });
 }
 
-// --- POST /api/engine/stop ---
-// Body: { epic_id }. Kill engine + workers for this epic, NO respawn.
-// Sets $.engine_running=0 so the UI renders ▶ on next load.
-// Idempotent: stopping an already-stopped engine is a no-op success.
 function handleEngineStop(req, res) {
-  let chunks = [];
-  req.on('data', c => chunks.push(c));
-  req.on('end', () => {
-    const raw = Buffer.concat(chunks).toString('utf8');
-    let fields;
-    try { fields = JSON.parse(raw); } catch { fields = {}; }
-    const epicId = Number(fields.epic_id);
-    if (!epicId) return respondJson(res, 400, { ok:false, error:'epic_id required' });
-    const epic = withDb(db => db.prepare('SELECT project_id FROM epics WHERE id=?').get(epicId));
-    if (!epic) return respondJson(res, 404, { ok:false, error:'epic not found' });
-    const projectId = epic.project_id;
-
-    killEngineTree(projectId, epicId);
-    setEngineMeta(epicId, {
-      engine_running: 0,
-      engine_stopped_at: new Date().toISOString().replace('T', ' ').slice(0, 19),
-    });
-    respondJson(res, 200, { ok: true, project_id: projectId, epic_id: epicId, running: false });
-  });
-}
-
-// --- POST /api/engine/concurrency ---
-// Body: { epic_id, concurrency }. Pure metadata write — NO kill, NO spawn.
-// The engine's pump loop re-reads $.engine_concurrency every RATE_LIMIT_SCAN_TICKS
-// cycle and uses it as the new target (capped by $.active_model_limit if set).
-// Active workers finish their cycle naturally; the engine converges to the
-// new target as the active count drops. Same semantics as /api/model/set.
-//
-// This is the per-epic engine control fix: changing concurrency must NOT
-// auto-restart the engine. Restart burns tokens (kills active workers + spawns
-// a fresh cohort). A pure metadata write + pump-loop convergence respects
-// the rate-limit-aware scheduler the engine already implements.
-function handleEngineConcurrency(req, res) {
-  let chunks = [];
-  req.on('data', c => chunks.push(c));
-  req.on('end', () => {
-    const raw = Buffer.concat(chunks).toString('utf8');
-    let fields;
-    try { fields = JSON.parse(raw); } catch { fields = {}; }
-    const epicId = Number(fields.epic_id);
-    const concurrency = Number(fields.concurrency);
-    if (!epicId) return respondJson(res, 400, { ok:false, error:'epic_id required' });
-    if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 10) {
-      return respondJson(res, 400, { ok:false, error:'concurrency must be 1..10' });
-    }
+  readJsonRequest(req, fields => {
     try {
-      setEngineMeta(epicId, {
-        engine_concurrency: concurrency,
-        engine_concurrency_changed_at: new Date().toISOString().replace('T', ' ').slice(0, 19),
+      const state = sagaApplication.stopEngine(Number(fields.epic_id));
+      respondJson(res, 200, {
+        ok: true,
+        project_id: state.projectId,
+        epic_id: state.epicId,
+        running: state.running,
       });
-      respondJson(res, 200, { ok: true, epic_id: epicId, concurrency });
-    } catch (e) {
-      respondJson(res, 500, { ok:false, error: 'metadata write failed: ' + e.message });
+    } catch (error) {
+      respondEngineError(res, error);
     }
   });
 }
 
-// --- GET /api/engine/status?epic_id=N ---
-// Returns { running, pid, concurrency, started_at, alive }.
-// `running` = persisted user intent. `alive` = live OS process check
-// (reconciles a lying flag if the engine crashed without us knowing).
-function handleEngineStatus(req, res, url) {
-  const epicId = Number(url.searchParams.get('epic_id'));
-  if (!epicId) return respondJson(res, 400, { ok:false, error:'epic_id required' });
-  const epic = withDb(db => db.prepare('SELECT project_id FROM epics WHERE id=?').get(epicId));
-  if (!epic) return respondJson(res, 404, { ok:false, error:'epic not found' });
-  const state = readEngineState(epicId);
-  const alive = isEngineAlive(epic.project_id, epicId);
-  // If persisted flag says running but process is dead, reconcile the flag.
-  if (state.running && !alive) {
-    setEngineMeta(epicId, { engine_running: 0 });
-    state.running = false;
-  }
-  respondJson(res, 200, { ok: true, epic_id: epicId, ...state, alive });
+function handleEngineConcurrency(req, res) {
+  readJsonRequest(req, fields => {
+    try {
+      const state = sagaApplication.setEngineConcurrency(
+        Number(fields.epic_id),
+        Number(fields.concurrency),
+      );
+      respondJson(res, 200, {
+        ok: true,
+        epic_id: state.epicId,
+        concurrency: state.concurrency,
+      });
+    } catch (error) {
+      respondEngineError(res, error);
+    }
+  });
 }
 
-// --- POST /api/engine/restart (back-compat alias for /api/engine/start) ---
-// Kept so the concurrency selector's change-handler continues to work; new
-// UI calls /api/engine/start directly. Behaviour is identical to start.
+function handleEngineStatus(req, res, url) {
+  try {
+    const state = sagaApplication.getEngineStatus(
+      Number(url.searchParams.get('epic_id')),
+    );
+    respondJson(res, 200, {
+      ok: true,
+      epic_id: state.epicId,
+      running: state.running,
+      pid: state.pid,
+      concurrency: state.concurrency,
+      started_at: state.startedAt,
+      alive: state.alive,
+    });
+  } catch (error) {
+    respondEngineError(res, error);
+  }
+}
+
 function handleEngineRestart(req, res) {
-  handleEngineStart(req, res);
+  readJsonRequest(req, fields => {
+    try {
+      const epicId = Number(fields.epic_id);
+      const concurrency = fields.concurrency === undefined
+        ? undefined
+        : Number(fields.concurrency);
+      const state = sagaApplication.restartEngine({ epicId, concurrency });
+      respondJson(res, 200, {
+        ok: true,
+        project_id: state.projectId,
+        epic_id: state.epicId,
+        concurrency: state.concurrency,
+        engine_pid: state.pid,
+        running: state.running,
+      });
+    } catch (error) {
+      respondEngineError(res, error);
+    }
+  });
 }
 
 // --- Known models catalog with concurrency limits ---
@@ -5224,7 +4983,7 @@ const ZAI_MODELS = [
 // OpenAI-compatible list endpoint). The settings.json ANTHROPIC_BASE_URL we
 // write for claude v2 is derived by stripping /v1 (see handleModelSet) —
 // claude v2 appends /v1 itself, so keeping it here would yield /v1/v1.
-const LMSTUDIO_URL = (process.env.SAGA_LMSTUDIO_URL || 'http://localhost:1234/v1').replace(/\/+$/, '');
+const LMSTUDIO_URL = runtimeConfig.lmStudioUrl.replace(/\/+$/, '');
 // Snapshot of the user's original cloud settings.json — captured BEFORE the
 // first LM Studio activation, restored when switching back to zai. Path next
 // to settings.json so it travels with the user profile.
@@ -5244,7 +5003,7 @@ const CLAUDE_SETTINGS_LMSTUDIO_TPL = path.join(os.homedir(), '.claude', 'setting
 // template exists yet (saga started on LM Studio config or the user never
 // had a cloud session). The endpoint is a Z.ai-wide constant; only the
 // AUTH_TOKEN is user-specific.
-const ZAI_DEFAULT_BASE_URL = process.env.SAGA_ZAI_BASE_URL || 'https://api.z.ai/api/anthropic';
+const ZAI_DEFAULT_BASE_URL = runtimeConfig.zaiBaseUrl;
 // Local models have no cloud rate limit, so allow a generous concurrency.
 const LMSTUDIO_DEFAULT_LIMIT = 4;
 let LMSTUDIO_MODELS = [];     // [{ id, limit, tier:'local', provider:'lmstudio' }]
@@ -5755,7 +5514,7 @@ function isPortTaken(port) {
   });
 }
 
-const SPAWNED = process.env.TRACKER_SPAWNED === '1';
+const SPAWNED = runtimeConfig.trackerSpawned;
 
 (async () => {
   if (SPAWNED) {
@@ -5781,7 +5540,7 @@ const SPAWNED = process.env.TRACKER_SPAWNED === '1';
     // Открываем браузер ТОЛЬКО если мы реально забиндились (порт был свободен).
     // В spawn-режиме pre-check выше гарантировал, что мы первые; в ручном режиме
     // EADDRINUSE-блок убил stale процесс, и этот listen — свежий, открываем.
-    if (process.env.TRACKER_NO_BROWSER !== '1') {
+    if (!runtimeConfig.trackerNoBrowser) {
       const open = process.platform === 'win32' ? `start ${u}` : process.platform === 'darwin' ? `open ${u}` : `xdg-open ${u}`;
       try { require('node:child_process').exec(open); } catch {}
     }
@@ -5807,6 +5566,6 @@ const SPAWNED = process.env.TRACKER_SPAWNED === '1';
   });
 })();
 
-process.on('exit',  () => { boardRunner.dispose(); try { unlinkSync(PID_FILE); } catch {} });
-process.on('SIGINT', () => { boardRunner.dispose(); try { unlinkSync(PID_FILE); } catch {} process.exit(0); });
-process.on('SIGTERM',() => { boardRunner.dispose(); try { unlinkSync(PID_FILE); } catch {} process.exit(0); });
+process.on('exit',  () => { boardRunner.dispose(); sagaApplication.close(); try { unlinkSync(PID_FILE); } catch {} });
+process.on('SIGINT', () => { boardRunner.dispose(); sagaApplication.close(); try { unlinkSync(PID_FILE); } catch {} process.exit(0); });
+process.on('SIGTERM',() => { boardRunner.dispose(); sagaApplication.close(); try { unlinkSync(PID_FILE); } catch {} process.exit(0); });

@@ -1,6 +1,0 @@
-
-> saga-mcp@2.0.0 build
-> tsc
-
-src/infrastructure/projections/sqlite-board-projection-reader.ts(25,5): error TS2322: Type '{ total: number; in_progress: number; reviewing: number; color: string; }[]' is not assignable to type 'BoardProjectSummary[]'.
-  Type '{ total: number; in_progress: number; reviewing: number; color: string; }' is missing the following properties from type 'BoardProjectSummary': id, name, status
