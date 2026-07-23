@@ -43,6 +43,10 @@ jobs:
 
           node tools/apply-phase-b-persistence.mjs > .phase-b-persistence-ci/migration.txt 2>&1
           MIGRATION_STATUS=$?
+          if [ ${MIGRATION_STATUS} -eq 0 ]; then
+            node tools/apply-phase-b-persistence-test-adapters.mjs >> .phase-b-persistence-ci/migration.txt 2>&1
+            MIGRATION_STATUS=$?
+          fi
           BUILD_STATUS=99
           ARCH_STATUS=99
           CHAR_STATUS=99
@@ -79,6 +83,8 @@ jobs:
           cp tests/architecture/saga2-boundaries.test.mjs .phase-b-persistence-ci/generated/architecture.test.mjs 2>/dev/null || true
           cp tests/characterization/saga2-runtime-contracts.test.mjs .phase-b-persistence-ci/generated/characterization.test.mjs 2>/dev/null || true
           cp tests/e2e-pipeline.test.mjs .phase-b-persistence-ci/generated/e2e.test.mjs 2>/dev/null || true
+          cp tests/track-pipeline.test.mjs .phase-b-persistence-ci/generated/track-pipeline.test.mjs 2>/dev/null || true
+          cp tests/lifecycle/concurrency-transition.test.mjs .phase-b-persistence-ci/generated/concurrency-transition.test.mjs 2>/dev/null || true
 
           if [ ${MIGRATION_STATUS} -ne 0 ] || [ ${BUILD_STATUS} -ne 0 ] || \
              [ ${ARCH_STATUS} -ne 0 ] || [ ${CHAR_STATUS} -ne 0 ] || \
@@ -99,6 +105,7 @@ jobs:
 
           rm -rf .phase-b-persistence-ci
           rm -f tools/apply-phase-b-persistence.mjs
+          rm -f tools/apply-phase-b-persistence-test-adapters.mjs
           rm -f .github/workflows/apply-phase-b-persistence.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
