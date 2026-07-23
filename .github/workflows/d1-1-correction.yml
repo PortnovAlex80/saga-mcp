@@ -143,6 +143,7 @@ jobs:
               raise SystemExit(f'obsolete LaunchSnapshot parser removal matched {count} blocks')
           p.write_text(updated, encoding='utf-8')
           PY
+          python3 .d1-correction/fix_remaining.py
 
       - name: Upload patch diagnostic
         if: steps.apply.outputs.code != '0'
