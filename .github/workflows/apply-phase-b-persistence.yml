@@ -83,6 +83,11 @@ jobs:
           if [ ${MIGRATION_STATUS} -ne 0 ] || [ ${BUILD_STATUS} -ne 0 ] || \
              [ ${ARCH_STATUS} -ne 0 ] || [ ${CHAR_STATUS} -ne 0 ] || \
              [ ${E2E_STATUS} -ne 0 ] || [ ${FULL_STATUS} -ne 0 ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add -f .phase-b-persistence-ci
+            git commit -m "ci(phase-b): capture persistence extraction failure"
+            git push origin HEAD:${TARGET_BRANCH}
             cat .phase-b-persistence-ci/status.txt
             cat .phase-b-persistence-ci/migration.txt
             cat .phase-b-persistence-ci/build.txt 2>/dev/null || true
@@ -100,11 +105,3 @@ jobs:
           git add -A
           git commit -m "refactor(phase-b): extract Saga2 engine persistence"
           git push origin HEAD:${TARGET_BRANCH}
-
-      - name: Upload diagnostics
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: phase-b-persistence-diagnostics
-          path: .phase-b-persistence-ci
-          if-no-files-found: warn
