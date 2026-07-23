@@ -468,7 +468,18 @@ function tryAdvanceStage(
   if (stage === 'completed' || stage === 'cancelled') return { advanced: false, error: null };
   if (opts.persistence.tasks.hasActiveRecovery(epicId)) return { advanced: false, error: null };
 
-  const to = NEXT_STAGE[stage];
+  // Per-track stage graph (Plan B — tier-aware transitions). The formal track
+  // follows NEXT_STAGE as-is. The fast-track track (XS tech-tasks that skipped
+  // formalization+planning and therefore have no AC artifacts / verification
+  // tasks) jumps development → integration, dropping the verification stage:
+  // there is no baseline AC to verify against, so the verification gate would
+  // deadlock. The dev task's review+merge IS the XS verification.
+  const nextMap = NEXT_STAGE;
+  const decision = readLatestBriefDecision(epicId, opts);
+  const isFastTrack = decision === 'fast-track';
+  const to = (isFastTrack && stage === 'development')
+    ? 'integration'
+    : nextMap[stage];
   if (!to) return { advanced: false, error: `no NEXT stage for '${stage}'` };
   try {
     const result = lifecycleHandlers.episode_transition({

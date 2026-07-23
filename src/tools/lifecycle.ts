@@ -21,6 +21,26 @@ const NEXT: Partial<Record<Stage, Stage>> = {
   integration: 'completed',
 };
 
+/**
+ * Per-track stage graphs. The formal track follows NEXT as-is (every stage
+ * runs, verification gate enforces AC evidence). The fast-track track (XS
+ * tech-tasks that skipped formalization+planning entirely and therefore have
+ * no AC artifacts) jumps development → integration, dropping the verification
+ * stage: there is no baseline AC to verify against, so the verification gate
+ * would deadlock. The dev task's review+merge IS the XS verification.
+ *
+ * Returned shape mirrors NEXT: a map of current-stage → next-stage for the
+ * track. Falls back to NEXT for stages this track doesn't override.
+ */
+const NEXT_FAST_TRACK: Partial<Record<Stage, Stage>> = {
+  ...NEXT,
+  development: 'integration',
+};
+
+function nextStageForTrack(track: 'formal' | 'fast-track'): Partial<Record<Stage, Stage>> {
+  return track === 'fast-track' ? NEXT_FAST_TRACK : NEXT;
+}
+
 function ensureEpic(epicId: number): void {
   const epic = getDb().prepare('SELECT id FROM epics WHERE id=?').get(epicId);
   if (!epic) throw new Error(`Epic ${epicId} not found`);
@@ -257,7 +277,8 @@ function handleEpisodeTransition(args: Record<string, unknown>) {
   if (!STAGES.includes(to)) throw new Error(`Unknown episode stage '${to}'`);
   const current = getOrCreate(epicId);
   if (current.stage === to) return { changed: false, workflow: current };
-  if (to !== 'cancelled' && NEXT[current.stage] !== to) {
+  const validNext = nextStageForTrack(current.track)[current.stage];
+  if (to !== 'cancelled' && validNext !== to) {
     throw new Error(`Invalid episode transition ${current.stage} -> ${to}`);
   }
 
@@ -293,6 +314,12 @@ function handleEpisodeTransition(args: Record<string, unknown>) {
   } else if (current.stage === 'planning' && to === 'development') {
     assertTasksReady(epicId, 'planning');
   } else if (current.stage === 'development' && to === 'verification') {
+    assertTasksReady(epicId, 'development');
+  } else if (current.stage === 'development' && to === 'integration') {
+    // Fast-track (XS) path: skip verification entirely. The episode skipped
+    // formalization+planning, so there are no AC artifacts and no verification
+    // tasks — the verification gate would deadlock. The dev task's review+merge
+    // is the XS verification. Only check the dev work is complete.
     assertTasksReady(epicId, 'development');
   } else if (current.stage === 'verification' && to === 'integration') {
     assertTasksReady(epicId, 'verification');
