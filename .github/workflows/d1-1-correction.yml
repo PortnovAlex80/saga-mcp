@@ -32,6 +32,22 @@ jobs:
       - name: Reconstruct patch
         run: |
           cat .d1-correction/chunk*.b64 | base64 -d > /tmp/apply_d11.py
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('/tmp/apply_d11.py')
+          text = p.read_text(encoding='utf-8')
+          old = """    if count != 1:
+                  raise SystemExit(f"{path}: expected exactly one match, found {count}: {old[:120]!r}")
+              write(path, text.replace(old, new, 1))"""
+          new = """    if count == 0 and path == 'tests/saga3/d1-proposals.test.mjs' and old.startswith(\"  // Now stamp the task's execution fence\"):
+                  return
+              if count != 1:
+                  raise SystemExit(f"{path}: expected exactly one match, found {count}: {old[:120]!r}")
+              write(path, text.replace(old, new, 1))"""
+          if old not in text:
+              raise SystemExit('replace_once preprocessor anchor not found')
+          p.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
           python3 -m py_compile /tmp/apply_d11.py
 
       - name: Apply correction
@@ -44,6 +60,74 @@ jobs:
           cat /tmp/apply-d11.log
           echo "code=$code" >> "$GITHUB_OUTPUT"
           exit 0
+
+      - name: Rewrite proposal fixture structurally
+        if: steps.apply.outputs.code == '0'
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          p = Path('tests/saga3/d1-proposals.test.mjs')
+          text = p.read_text(encoding='utf-8')
+          replacement = r'''function seedIntentAndTask(db, { intentId = 1, taskId = 100, executionId = 'exec-1', liveExecution = true, workIntentId = 1, model = 'qwen-test', provider = 'lmstudio', effort = 'high', genKey = 'k', workerId = 'w-1' } = {}) {
+            db.prepare(
+              `INSERT INTO tasks (id, epic_id, title, status, task_kind, workflow_stage,
+                  execution_skill, execution_mode, generation_key, metadata)
+               VALUES (?, 10, 'Discovery', 'in_progress', 'discovery.work', 'discovery',
+                  'saga-discovery-worker', 'tracker_only', ?, ?)`,
+            ).run(taskId, genKey, JSON.stringify({ work_intent_id: workIntentId }));
+            const authorityScope = {
+              snapshot_ref: 'episode:10',
+              scope: 'discovery',
+              allowed_tools: ['proposal_submit', 'worker_done'],
+              enforcement: 'runtime',
+            };
+            db.prepare(
+              `INSERT INTO saga3_work_intents
+                 (id, epic_id, kind, objective, authority_scope, output_schema,
+                  token_budget, retry_budget, projected_task_id, status)
+               VALUES (?,?,?,?,?,?,?,?,?, 'executing')`,
+            ).run(intentId, 10, DISCOVERY_INTENT_KIND, 'investigate the idea',
+              JSON.stringify(authorityScope), DISCOVERY_WORK_INTENT_SCHEMA, 0, 0, taskId);
+            db.prepare(`UPDATE tasks SET current_execution_id=? WHERE id=?`).run(executionId, taskId);
+            const workIntent = {
+              id: intentId,
+              epic_id: 10,
+              kind: DISCOVERY_INTENT_KIND,
+              objective: 'investigate the idea',
+              authority_scope: authorityScope,
+              output_schema: DISCOVERY_WORK_INTENT_SCHEMA,
+              token_budget: 0,
+              retry_budget: 0,
+              projected_task_id: taskId,
+              status: 'executing',
+              created_at: '2026-07-24T00:00:00.000Z',
+            };
+            const execution_context = buildExecutionContext({
+              modelRoute: { model, provider, effort },
+              workIntent,
+              capturedAt: '2026-07-24T00:00:00.000Z',
+            });
+            const metadata = JSON.stringify({
+              execution_context,
+              execution_context_hash: executionContextHash(execution_context),
+            });
+            db.prepare(
+              `INSERT INTO worker_executions
+                 (execution_id, run_id, project_id, epic_id, task_id, worker_id, machine_id, state, phase, metadata)
+               VALUES (?, 'run-1', 1, 10, ?, ?, 'm-1', ?, 'executing', ?)`,
+            ).run(executionId, taskId, workerId, liveExecution ? 'running' : 'exited', metadata);
+            return { intentId, taskId, executionId };
+          }
+
+          '''
+          pattern = r"function seedIntentAndTask\(db, \{.*?\n\}\n\n(?=test\('proposal_submit: valid submission)"
+          updated, count = re.subn(pattern, replacement, text, count=1, flags=re.S)
+          if count != 1:
+              raise SystemExit(f'proposal fixture structural rewrite matched {count} functions')
+          p.write_text(updated, encoding='utf-8')
+          PY
 
       - name: Upload patch diagnostic
         if: steps.apply.outputs.code != '0'
