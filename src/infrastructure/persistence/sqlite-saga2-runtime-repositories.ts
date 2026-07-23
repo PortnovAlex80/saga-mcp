@@ -10,8 +10,8 @@ import type {
   StrandedTaskProjection,
   TaskRuntimeRepository,
   TerminalBookkeepingCounts,
-  WorkerModelRoute,
 } from '../../application/ports/saga2-runtime-persistence.js';
+import type { WorkerModelRoute } from '../../application/ports/worker-executor.js';
 import { getDb } from '../../db.js';
 import { logActivity } from '../../helpers/activity-logger.js';
 import { reevaluateDownstream } from '../../tools/tasks.js';
