@@ -44,6 +44,8 @@ import {
 import { prodPorts } from '../adapters/prod-ports.js';
 import { initSaga3Schema } from '../domain/schema.js';
 import { buildWorkerPrompt, buildMcpConfig } from '../executions/prompt-builder.js';
+import type { ConditionStatus, OutcomeCertificate } from '../domain/types.js';
+import { SqliteRuntimeCoordinator } from '../infrastructure/sqlite/sqlite-runtime-coordinator.js';
 
 const mandate = process.argv[2];
 if (!mandate) {
@@ -79,6 +81,8 @@ const sha256 = (s: string) => createHash('sha256').update(s).digest('hex');
 const projectId = Number(process.env.SAGA3_PROJECT_ID ?? 0);
 const epicId = Number(process.env.SAGA3_EPIC_ID ?? 0);
 const configuredConcurrency = Number(process.env.SAGA3_MAX_CONCURRENCY ?? 1);
+const platformPolicyHash = sha256('saga3-runtime-coherence-v1');
+const governanceHash = sha256('saga3-governance-v1');
 
 
 // --- Open the DB and apply the saga3 schema before anything reads from it ---
@@ -114,10 +118,16 @@ const previousSpec = db.prepare(
      FROM saga3_episode_specs WHERE epic_id=?
      ORDER BY generation DESC LIMIT 1`,
 ).get(epicId) as any;
-const generation = previousSpec && previousSpec.constitution_hash !== constitutionHash
-  ? previousSpec.generation + 1
-  : previousSpec?.generation ?? 1;
-const spec = previousSpec && previousSpec.constitution_hash === constitutionHash ? {
+const frozenPolicyChanged = previousSpec && (
+  previousSpec.constitution_hash !== constitutionHash
+  || previousSpec.platform_policy_hash !== platformPolicyHash
+  || previousSpec.governance_hash !== governanceHash
+);
+const generation = previousSpec
+  ? previousSpec.generation + (frozenPolicyChanged ? 1 : 0)
+  : 1;
+const canResumePreviousSpec = previousSpec && !frozenPolicyChanged;
+const spec = canResumePreviousSpec ? {
   id: previousSpec.id,
   generation: previousSpec.generation,
   platformPolicyHash: previousSpec.platform_policy_hash,
@@ -129,9 +139,9 @@ const spec = previousSpec && previousSpec.constitution_hash === constitutionHash
 } : {
   id: `spec-p${projectId}-e${epicId}-g${generation}-${constitutionHash.slice(0, 8)}`,
   generation,
-  platformPolicyHash: sha256('platform-default'),
+  platformPolicyHash,
   constitutionHash,
-  governanceHash: sha256('governance-default'),
+  governanceHash,
   sourceBaseline: sourceFingerprint,
   environmentBaseline: process.platform,
   sealed: true,
@@ -183,6 +193,44 @@ for (const c of PIPELINE_CONDITIONS) {
 const budget = new BudgetLedger(spec.id);
 budget.allocate(10000);
 
+function loadOutcomeCertificate(): OutcomeCertificate | null {
+  const row = db.prepare(
+    `SELECT episode_spec_id, outcome, causal_reason, generation,
+            source_fingerprint, satisfied_conditions, unresolved_conditions,
+            certified_at
+       FROM saga3_outcome_certificates
+      WHERE episode_spec_id=?`,
+  ).get(spec.id) as {
+    episode_spec_id: string;
+    outcome: OutcomeCertificate['outcome'];
+    causal_reason: string;
+    generation: number;
+    source_fingerprint: string | null;
+    satisfied_conditions: string;
+    unresolved_conditions: string;
+    certified_at: number;
+  } | undefined;
+  if (!row) return null;
+  return {
+    episodeSpecId: row.episode_spec_id,
+    outcome: row.outcome,
+    causalReason: row.causal_reason,
+    generation: row.generation,
+    sourceFingerprint: row.source_fingerprint,
+    satisfiedConditions: JSON.parse(row.satisfied_conditions || '[]'),
+    unresolvedConditions: JSON.parse(row.unresolved_conditions || '[]'),
+    certifiedAt: row.certified_at,
+  };
+}
+
+const existingCertificate = loadOutcomeCertificate();
+const completedIntentIds = new Set(
+  (db.prepare(
+    `SELECT id FROM saga3_work_intents
+      WHERE episode_spec_id=? AND status='completed'`,
+  ).all(spec.id) as Array<{ id: string }>).map((row) => row.id),
+);
+
 // --- saga3 MCP wiring ---
 // Absolute path to the compiled saga3 MCP server entry. Task 3 produces
 // dist/saga3/app/mcp-server.js; cli.ts compiles next to it, so __dirname
@@ -222,9 +270,9 @@ const ctx: EpisodeContext = {
   currentEnvironmentFingerprint: process.platform,
   repositoryRoot: workspace,
   heldClaims: [],
-  completedIntents: new Set(),
+  completedIntents: completedIntentIds,
   dependencyEdges: [],
-  certificate: null,
+  certificate: existingCertificate,
   db,
   leaseEpoch: 0,
   currentAssignment: null,
@@ -236,6 +284,7 @@ const ctx: EpisodeContext = {
 // --- Custom pump: did_work → spawn worker (saga3 MCP) → reload DB ---
 
 const controller = new EpisodeController(ports, ctx);
+const runtime = new SqliteRuntimeCoordinator(db);
 
 function log(msg: string): void {
   const ts = new Date().toISOString();
@@ -311,9 +360,14 @@ function spawnWorker(
     // not invoked as a slash command — so disabling slash commands does not
     // break skill loading.
     '--disable-slash-commands',
+    // The Saga worker is a controlled runtime role. Disable user hooks,
+    // plugin auto-start and background customizations; the explicit strict
+    // MCP config above remains its only orchestration transport.
+    '--safe-mode',
   ];
 
   // Model routing: read active_model from episode_workflows metadata (same as old claude-runner).
+  const providerEnv: NodeJS.ProcessEnv = {};
   try {
     const ew = db.prepare('SELECT metadata FROM episode_workflows WHERE epic_id=?').get(epicId) as { metadata: string } | undefined;
     if (ew?.metadata) {
@@ -323,6 +377,13 @@ function spawnWorker(
       }
       // LM Studio env override (same as old claude-runner launch()).
       if (meta.active_provider === 'lmstudio') {
+        Object.assign(providerEnv, {
+          ANTHROPIC_BASE_URL: process.env.SAGA_LMSTUDIO_URL ?? 'http://localhost:1234/v1',
+          ANTHROPIC_AUTH_TOKEN: 'lm-studio',
+          ANTHROPIC_API_KEY: 'lm-studio',
+          CLAUDE_CODE_ATTRIBUTION_HEADER: '0',
+          CLAUDE_CODE_MAX_CONTEXT_TOKENS: '262144',
+        });
         log(`Using LM Studio provider: model=${meta.active_model}`);
       }
     }
@@ -351,6 +412,7 @@ function spawnWorker(
       cwd: workspace,
       env: {
         ...process.env,
+        ...providerEnv,
         // Inherited by the spawned saga3 MCP server (via --mcp-config) so it
         // opens the same DB and is scoped to this episode.
         SAGA3_EPISODE_SPEC_ID: spec.id,
@@ -361,7 +423,23 @@ function spawnWorker(
       windowsHide: true,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
-    onSpawn(child.pid ?? null, logFile, taskId);
+    try {
+      onSpawn(child.pid ?? null, logFile, taskId);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      log(`RUNTIME START ERROR: ${message}`);
+      try {
+        if (process.platform === 'win32' && child.pid) {
+          spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'],
+            { stdio: 'ignore', windowsHide: true });
+        } else {
+          child.kill('SIGKILL');
+        }
+      } catch { /* process may already have stopped */ }
+      if (logStream) logStream.end();
+      resolve(1);
+      return;
+    }
 
     // Tee stdout/stderr to the JSONL log only — we do NOT accumulate or parse
     // it. The saga3 protocol routes results through the DB, not stdout.
@@ -424,7 +502,7 @@ function spawnWorker(
  *
  * Returns the DB status ('True' | 'False' | 'Unknown') or null if no row.
  */
-function reloadConditionFromDb(conditionType: string, obligationId: string): string | null {
+function reloadConditionFromDb(conditionType: string, obligationId: string): ConditionStatus | null {
   try {
     const row = db.prepare(
       `SELECT status FROM saga3_condition_instances
@@ -432,7 +510,10 @@ function reloadConditionFromDb(conditionType: string, obligationId: string): str
          AND scope_type = 'episode' AND scope_id = ''
        LIMIT 1`,
     ).get(spec.id, conditionType, obligationId) as { status: string } | undefined;
-    return row?.status ?? null;
+    const status = row?.status;
+    return status === 'True' || status === 'False' || status === 'Unknown'
+      ? status
+      : null;
   } catch {
     // Table missing or query error — treat as "no signal".
     return null;
@@ -440,6 +521,16 @@ function reloadConditionFromDb(conditionType: string, obligationId: string): str
 }
 
 async function runEpisode(): Promise<void> {
+  if (ctx.certificate) {
+    setEngineLifecycle(false, {
+      engine_last_error: ctx.certificate.causalReason,
+      terminal_outcome: ctx.certificate.outcome,
+    });
+    log(`Episode is already terminal: ${ctx.certificate.outcome}`);
+    log(`Reason: ${ctx.certificate.causalReason}`);
+    return;
+  }
+
   setEngineLifecycle(true, {
     episode_spec_id: spec.id,
     engine_started_at: new Date().toISOString(),
@@ -542,6 +633,10 @@ async function runEpisode(): Promise<void> {
         const satisfied = [...ctx.conditions.values()].filter((item) => item.status === 'True').map((item) => item.conditionType);
         const unresolved = [...ctx.conditions.values()].filter((item) => item.status !== 'True').map((item) => item.conditionType);
         const reason = `Recovery budget exhausted for ${targetCondition} after ${attempts.count} attempts`;
+        runtime.abandonAuthorizedAttempt({
+          assignmentId: assignment.id,
+          workIntentId: intent.id,
+        });
         db.prepare(
           `INSERT OR REPLACE INTO saga3_outcome_certificates
              (episode_spec_id, outcome, causal_reason, generation, source_fingerprint,
@@ -559,13 +654,7 @@ async function runEpisode(): Promise<void> {
       // Write worker_executions row so tracker-view shows the worker.
       const workerId = `saga3-${step}-${Date.now()}`;
       const executionId = `saga3-exec-${step}-${Date.now()}`;
-      try {
-        // The authoritative execution row is inserted by spawnWorker's
-        // onSpawn callback, after the real worker PID is available.
-      } catch (e) {
-        // Old DB may not have the table — non-fatal.
-        log(`(worker_executions write skipped: ${e instanceof Error ? e.message : 'error'})`);
-      }
+      let runtimeTaskId: number | null = null;
 
       // Spawn the claude worker. It writes its result to the DB through the
       // saga3_* MCP tools; we only collect the exit code here.
@@ -573,50 +662,23 @@ async function runEpisode(): Promise<void> {
         targetCondition, obligationId, skillId, role, executionId, workerId,
         (pid, logFile, taskId) => {
           if (taskId <= 0) return;
-          try {
-            // Retire any prior active execution for this condition's synthetic
-            // task_id before inserting the new one. The partial unique index
-            // idx_worker_executions_one_active_task blocks a second running row
-            // on the same task_id, so an orphaned row from a crashed prior
-            // worker would otherwise make this INSERT fail. Marking it 'lost'
-            // (not 'exited') signals the prior worker did not finish cleanly.
-            db.prepare(
-              `UPDATE worker_executions
-                  SET state='lost', finished_at=datetime('now'),
-                      last_error='superseded by new attempt'
-                WHERE task_id=? AND state IN ('reserved','running','cancel_requested')`,
-            ).run(taskId);
-            db.prepare(
-              `INSERT INTO worker_executions
-                 (execution_id, run_id, project_id, epic_id, task_id, worker_id,
-                  machine_id, launcher, state, phase, pid, log_path, reserved_at,
-                  started_at, metadata)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'),datetime('now'),?)`,
-            ).run(executionId, `saga3-run-${spec.id}`, projectId, epicId, taskId,
-              workerId, os.hostname(), 'saga3-cli', 'running', 'executing', pid,
-              logFile, JSON.stringify({ condition_type: targetCondition, obligation_id: obligationId }));
-            db.prepare(
-              `UPDATE saga3_worker_assignments
-                  SET worker_id=?, execution_id=?, state='running', updated_at=datetime('now')
-                WHERE id=?`,
-            ).run(workerId, executionId, assignment.id);
-            db.prepare(
-              `UPDATE saga3_work_intents SET status='assigned', updated_at=datetime('now') WHERE id=?`,
-            ).run(intent.id);
-          } catch (e) {
-            log(`(worker_executions write skipped: ${e instanceof Error ? e.message : 'error'})`);
-          }
+          runtime.startAttempt({
+            executionId,
+            runId: `saga3-run-${spec.id}`,
+            projectId,
+            epicId,
+            taskId,
+            workerId,
+            pid,
+            logFile,
+            assignmentId: assignment.id,
+            workIntentId: intent.id,
+            conditionType: targetCondition,
+            obligationId,
+          });
+          runtimeTaskId = taskId;
         },
       );
-
-      // Update worker_executions: worker finished.
-      try {
-        db.prepare(
-          `UPDATE worker_executions SET state='exited', phase='finishing',
-           finished_at=datetime('now'), exit_code=?
-           WHERE execution_id=?`,
-        ).run(exitCode, executionId);
-      } catch { /* non-fatal */ }
 
       // Reload the condition status the saga3 worker just wrote to the DB.
       // No JSON parsing from stdout — the DB is the single source of truth.
@@ -633,20 +695,25 @@ async function runEpisode(): Promise<void> {
       log(`CONDITION ${targetCondition}: ${cond?.status ?? 'missing'} (db=${dbStatus ?? 'n/a'}, exit=${exitCode})`);
       log('');
 
-      const verified = exitCode === 0 && dbStatus === 'True';
-      db.prepare(
-        `UPDATE saga3_worker_assignments SET state=?, updated_at=datetime('now') WHERE id=?`,
-      ).run(verified ? 'verified' : 'failed', assignment.id);
-      db.prepare(
-        `UPDATE saga3_work_intents SET status=?, updated_at=datetime('now') WHERE id=?`,
-      ).run(verified ? 'completed' : 'failed', intent.id);
+      if (runtimeTaskId !== null) {
+        runtime.finishAttempt({
+          executionId,
+          taskId: runtimeTaskId,
+          assignmentId: assignment.id,
+          workIntentId: intent.id,
+          processExitCode: exitCode,
+          conditionStatus: dbStatus,
+        });
+      }
 
       if (exitCode !== 0) {
         log(`WARN: worker exited code=${exitCode} for ${targetCondition}`);
       }
 
       // Mark this work as completed and clear the assignment for the next step.
-      ctx.completedIntents.add(assignment.id);
+      if (dbStatus === 'True') {
+        ctx.completedIntents.add(intent.id);
+      }
       ctx.currentAssignment = null;
       ctx.currentIntent = null;
     }

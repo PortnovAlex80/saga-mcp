@@ -19,7 +19,7 @@
 
 import { spawn, spawnSync } from 'node:child_process';
 import { createHash, randomUUID, randomBytes, randomInt } from 'node:crypto';
-import { mkdirSync, createWriteStream } from 'node:fs';
+import { existsSync, mkdirSync, createWriteStream } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import type Database from 'better-sqlite3';
@@ -178,9 +178,21 @@ export class CommandOraclePort implements OraclePort {
   async observe(req: OracleRequest, deadline: Deadline): Promise<OracleResult> {
     const command = ORACLE_COMMANDS[req.oracleId] ?? req.command;
     const timeout = Math.max(1000, deadline.at - Date.now());
+    const shell = resolveOracleShell();
 
     return new Promise<OracleResult>((resolve) => {
-      const result = spawnSync('bash', ['-c', command], {
+      // A missing command interpreter is an observation-channel failure, not
+      // negative product evidence. In particular, Windows' system32\bash.exe
+      // is only a WSL relay and may exist even when /bin/bash does not.
+      if (!shell) {
+        const rawDigest = createHash('sha256')
+          .update(`oracle-shell-unavailable:${process.platform}`)
+          .digest('hex');
+        resolve({ verdict: 'unknown', rawDigest, executed: false });
+        return;
+      }
+
+      const result = spawnSync(shell.executable, [...shell.args, command], {
         cwd: this.workspaceRoot,
         env: { ...process.env },
         encoding: 'utf8',
@@ -204,6 +216,44 @@ export class CommandOraclePort implements OraclePort {
       }
     });
   }
+}
+
+interface OracleShell {
+  readonly executable: string;
+  readonly args: readonly string[];
+}
+
+/**
+ * Resolve a real shell explicitly.
+ *
+ * Do not use `bash` through PATH on Windows: Windows ships a WSL relay named
+ * bash.exe which can start successfully and then fail because no Linux
+ * distribution is installed. Git Bash is the supported compatibility shell
+ * for the command-shaped oracle contract until oracles become structured argv.
+ */
+function resolveOracleShell(): OracleShell | null {
+  const configured = process.env.SAGA3_ORACLE_SHELL;
+  if (configured) {
+    return existsSync(configured)
+      ? { executable: configured, args: ['-c'] }
+      : null;
+  }
+
+  if (process.platform === 'win32') {
+    const candidates = [
+      path.join(process.env.ProgramFiles ?? 'C:\\Program Files', 'Git', 'bin', 'bash.exe'),
+      path.join(process.env.ProgramFiles ?? 'C:\\Program Files', 'Git', 'usr', 'bin', 'bash.exe'),
+      process.env.LOCALAPPDATA
+        ? path.join(process.env.LOCALAPPDATA, 'Programs', 'Git', 'bin', 'bash.exe')
+        : '',
+    ];
+    const gitBash = candidates.find((candidate) => candidate && existsSync(candidate));
+    return gitBash ? { executable: gitBash, args: ['-c'] } : null;
+  }
+
+  if (existsSync('/bin/bash')) return { executable: '/bin/bash', args: ['-c'] };
+  if (existsSync('/bin/sh')) return { executable: '/bin/sh', args: ['-c'] };
+  return null;
 }
 
 // ---------------------------------------------------------------------------

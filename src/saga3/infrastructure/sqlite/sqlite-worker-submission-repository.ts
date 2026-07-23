@@ -7,7 +7,6 @@
 
 import type Database from 'better-sqlite3';
 import type { ConditionStatus, EvidenceRecord } from '../../domain/types.js';
-import { CONDITION_TASK_KIND } from '../../domain/pipeline-contracts.js';
 import type {
   ArtifactProposal,
   CompletionAcceptance,
@@ -23,7 +22,6 @@ interface SubmissionRow {
   submission_kind: 'artifact' | 'verification';
   payload: string;
 }
-
 export class SqliteWorkerSubmissionRepository implements WorkerSubmissionRepository {
   constructor(private readonly db: Database.Database) {
     this.ensureSchema();
@@ -250,16 +248,9 @@ export class SqliteWorkerSubmissionRepository implements WorkerSubmissionReposit
       // so downstream tooling and the live-acceptance check
       // 'worker execution exited cleanly' (which expects exit_code=0) does not
       // mistake it for a success.
-      const workerExitCode = acceptance.conditionStatus === 'True' ? 0 : 1;
-      this.db.prepare(
-        `UPDATE worker_executions
-            SET state = 'exited',
-                phase = 'finishing',
-                exit_code = ?,
-                finished_at = datetime('now')
-          WHERE execution_id = ?
-            AND state IN ('reserved','running','cancel_requested')`,
-      ).run(workerExitCode, acceptance.authority.executionId);
+      // Runtime process state and tracker task state are projections. They are
+      // finalized by the runtime coordinator after the OS process actually
+      // exits; this repository owns only the Saga 3 completion transaction.
 
       // The condition→task mapping lives in pipeline-contracts.ts
       // (resolveTaskForCondition). Tasks are matched by epic_id + task_kind,
@@ -272,27 +263,6 @@ export class SqliteWorkerSubmissionRepository implements WorkerSubmissionReposit
       // Closing the task as 'done' on a failed oracle was a bug — it hid the
       // failure from the board and made the engine look finished when the
       // condition was actually False.
-      const specRow = this.db.prepare(
-        `SELECT epic_id FROM saga3_episode_specs WHERE id = ?`,
-      ).get(acceptance.authority.episodeSpecId) as { epic_id: number } | undefined;
-      if (specRow?.epic_id) {
-        const taskKind = conditionTaskKind(acceptance.authority.conditionType);
-        if (taskKind) {
-          const taskStatus = acceptance.conditionStatus === 'True'
-            ? 'done'
-            : acceptance.conditionStatus === 'False'
-              ? 'blocked'
-              : 'in_progress';
-          this.db.prepare(
-            `UPDATE tasks
-                SET status = ?,
-                    updated_at = datetime('now')
-              WHERE epic_id = ?
-                AND task_kind = ?
-                AND status IN ('todo','in_progress','review','review_in_progress')`,
-          ).run(taskStatus, specRow.epic_id, taskKind);
-        }
-      }
     })();
   }
 
@@ -401,14 +371,4 @@ export class SqliteWorkerSubmissionRepository implements WorkerSubmissionReposit
         ON saga3_worker_submissions(execution_id, state, created_at);
     `);
   }
-}
-
-/**
- * Resolve the v2 `task_kind` for a saga3 condition. Mirrors the lookup in
- * pipeline-contracts.ts resolveTaskForCondition but returns only the kind
- * (the caller already has epic_id). Returns null for unmapped conditions
- * (e.g. MandatePresent, which has no task row by design).
- */
-function conditionTaskKind(conditionType: string): string | null {
-  return CONDITION_TASK_KIND[conditionType]?.task_kind ?? null;
 }

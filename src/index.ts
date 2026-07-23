@@ -151,6 +151,7 @@ async function main() {
         const child = spawn('node', [trackerPath], {
           detached: true,
           stdio: 'ignore',
+          windowsHide: true,
           env: {
             ...process.env,
             PORT: trackerPort,
@@ -184,6 +185,7 @@ async function main() {
         const child = spawn('node', [docsGraphPath], {
           detached: true,
           stdio: 'ignore',
+          windowsHide: true,
           env: {
             ...process.env,
             DOCS_GRAPH_PORT: docsPort,

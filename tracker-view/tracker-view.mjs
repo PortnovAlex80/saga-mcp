@@ -5064,12 +5064,18 @@ function killEngineTree(projectId, epicId) {
        `foreach ($o in $orphans) { $toKill += $o.ProcessId } ; ` +
        `$toKill = $toKill | Sort-Object -Unique; ` +
        `foreach ($p in $toKill) { taskkill /F /PID $p 2>$null }`],
-      { encoding: 'utf8' }
+      { encoding: 'utf8', windowsHide: true }
     );
     // SYNCHRONOUS pause — setTimeout was a no-op here (it schedules but
     // doesn't block). Without this wait the fresh engine spawns while OS
     // is still terminating the old one, leaving both alive in a race.
-    try { require('child_process').spawnSync('timeout', ['/T', '1', '/NOBREAK'], { encoding: 'utf8', stdio: 'ignore' }); } catch {}
+    try {
+      require('child_process').spawnSync(
+        'timeout',
+        ['/T', '1', '/NOBREAK'],
+        { encoding: 'utf8', stdio: 'ignore', windowsHide: true },
+      );
+    } catch {}
   } catch (e) {
     console.error(`[engine-control] kill failed for project=${projectId} epic=${epicId}:`, e.message);
   }
@@ -5089,6 +5095,7 @@ function spawnEngine(projectId, epicId, concurrency) {
   const child = spawn('node', [cliPath, mandate], {
     detached: true,
     stdio: 'ignore',
+    windowsHide: true,
     env: {
       ...process.env,
       DB_PATH: process.env.DB_PATH,
@@ -5139,20 +5146,7 @@ function readEngineState(epicId) {
  */
 function isEngineAlive(projectId, epicId) {
   const state = readEngineState(epicId);
-  if (state.pid && isProcessAlive(Number(state.pid))) return true;
-  try {
-    const r = require('child_process').spawnSync(
-      'powershell',
-      ['-Command',
-       `$es = Get-CimInstance Win32_Process -Filter "name='node.exe'" | ` +
-       `  Where-Object { $_.CommandLine -like '*orchestrate-cli.js ${projectId} ${epicId}*' }; ` +
-       `if ($es) { 'alive' } else { 'dead' }`],
-      { encoding: 'utf8' },
-    );
-    return (r.stdout || '').trim() === 'alive';
-  } catch {
-    return false;
-  }
+  return Boolean(state.pid && isProcessAlive(Number(state.pid)));
 }
 
 function setEngineMeta(epicId, patch) {
@@ -5195,7 +5189,7 @@ function handleEngineStart(req, res) {
     const state = readEngineState(epicId);
     let concurrency = Number(fields.concurrency);
     if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 32) {
-      concurrency = Number(state.concurrency) || 4;
+      concurrency = Number(state.concurrency) || 1;
     }
     killEngineTree(projectId, epicId);
 
