@@ -22,6 +22,7 @@ import {
   loadSagaRuntimeConfig,
   type SagaRuntimeConfig,
 } from '../runtime/saga-runtime-config.js';
+import { isSaga3DiscoveryMode } from '../runtime/orchestration-mode.js';
 
 export interface Saga2CompositionOverrides {
   config?: SagaRuntimeConfig;
@@ -73,17 +74,18 @@ export function createSaga2Application(
  *
  * This is the single composition-root switch (roadmap §5.2):
  *
- *   SAGA_ORCHESTRATION_MODE=saga2 (or any unrecognised value) -> Saga2Engine
- *   SAGA_ORCHESTRATION_MODE=saga3-discovery                    -> Saga3DiscoveryEngine
+ *   SAGA_ORCHESTRATION_MODE=saga3-discovery -> Saga3DiscoveryEngine
+ *   SAGA_ORCHESTRATION_MODE=v2|v3|saga2     -> Saga2Engine
  *
- * The tracker, repositories, worker runtime and engine administration never
- * branch on this value themselves — they consume the same OrchestrationEngine
- * regardless of which implementation is wired here.
+ * An unknown mode never reaches here — parseOrchestrationMode (runtime/
+ * orchestration-mode.ts) rejects it at config-load time, so there is no silent
+ * fallback to the wrong engine. isSaga3DiscoveryMode is the one condition that
+ * decides engine selection; requiresBackgroundEngine is the one condition that
+ * decides whether the tracker spawns a background process. Both live in the
+ * same module so the two decisions can never disagree.
  *
- * The Saga 3 discovery engine reuses the shared persistence layer read-only in
- * D0 (it reports the current stage truthfully but never mutates it). Product
- * worker, advisor and settlement layers are added in D1–D6; D0 must not build
- * them.
+ * The Saga 3 discovery engine reuses the shared persistence/worker layer.
+ * Product worker, advisor and settlement layers are added in D1–D6.
  */
 function selectEngine(
   config: SagaRuntimeConfig,
@@ -91,11 +93,14 @@ function selectEngine(
   workerExecutorFactory: WorkerExecutorFactory,
   host: Saga2HostRuntime,
 ): OrchestrationEngine {
-  if (config.orchestrationMode === 'saga3-discovery') {
+  if (isSaga3DiscoveryMode(config.orchestrationMode)) {
     return new Saga3DiscoveryEngine({
       readStage: epicId => persistence.episodes.currentStage(epicId),
     });
   }
+  // Every other recognised mode (v2 / v3 / saga2) selects Saga2Engine. An
+  // unknown mode never reaches here — parseOrchestrationMode rejects it at
+  // config-load time, so there is no silent fallback to the wrong engine.
   return new Saga2Engine({
     config,
     workerExecutorFactory,

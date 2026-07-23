@@ -25,6 +25,7 @@ import { releaseExecutionAtomically } from '../dist/lifecycle/atomic-release.js'
 import { getDb as ensureSagaDb, closeDb as closeSagaDb } from '../dist/db.js';
 import { createSaga2Application } from '../dist/app/composition-root.js';
 import { loadSagaRuntimeConfig } from '../dist/runtime/saga-runtime-config.js';
+import { requiresBackgroundEngine } from '../dist/runtime/orchestration-mode.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const require = createRequire(import.meta.url);
@@ -3864,8 +3865,13 @@ function renderAdmin(projects, flash) {
           if (action === 'project') location.href = '/?created=' + encodeURIComponent('проект «'+(j.name||'')+'»');
           else if (action === 'idea') {
             const mode = j.orchestration_mode || 'v2';
-            const engineMsg = mode === 'v3'
-              ? (j.engine_spawned ? 'движок запущен (pid=' + j.engine_pid + ')' : 'движок НЕ запущен — проверь лог')
+            // Mirrors server-side requiresBackgroundEngine(): any mode except
+            // 'v2' spawns a background engine. 'v3'/'saga2' → Saga2Engine,
+            // 'saga3-discovery' → Saga3 engine. Display-only; the server is the
+            // authority on whether the engine actually started.
+            const hasBgEngine = mode !== 'v2';
+            const engineMsg = hasBgEngine
+              ? (j.engine_spawned ? 'движок запущен (' + mode + ', pid=' + j.engine_pid + ')' : 'движок НЕ запущен — проверь лог')
               : 'движок не стартует в v2 режиме — запусти board-run вручную';
             alert('Проект создан. project=' + j.project_id + ' epic=' + j.epic_id + ' task=' + j.task_id + '\\n' + engineMsg);
             location.href = '?project=' + j.project_id + '&created=' + encodeURIComponent('idea → ' + engineMsg);
@@ -4209,9 +4215,11 @@ function handleProjectCreateFromIdea(req, res) {
       const mode = runtimeConfig.orchestrationMode;
       let engineSpawned = false;
       let enginePid = null;
-      // Any autonomous engine spawns a background orchestrate-cli process; only
-      // legacy 'v2' drives the flow from the saga-orchestrator skill instead.
-      if (mode !== 'v2') {
+      // Spawn the background orchestrate-cli process for any mode that requires
+      // one. requiresBackgroundEngine is the single source of truth — the
+      // engine administration and the composition root agree on it, so a typo'd
+      // or unknown mode (rejected at config-load) can never split-brain here.
+      if (requiresBackgroundEngine(mode)) {
         try {
           const state = sagaApplication.startEngine({ epicId: result.epicId });
           engineSpawned = state.running;

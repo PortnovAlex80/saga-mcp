@@ -1,3 +1,8 @@
+import {
+  parseOrchestrationMode,
+  type OrchestrationMode,
+} from './orchestration-mode.js';
+
 export interface SagaRuntimeConfig {
   dbPath: string;
   claudePath?: string;
@@ -8,7 +13,7 @@ export interface SagaRuntimeConfig {
   trackerReloadSec: number;
   trackerSpawned: boolean;
   trackerNoBrowser: boolean;
-  orchestrationMode: string;
+  orchestrationMode: OrchestrationMode;
 }
 
 function positiveInteger(value: string | undefined, fallback: number): number {
@@ -39,6 +44,6 @@ export function loadSagaRuntimeConfig(
     trackerReloadSec: positiveInteger(env.RELOAD_SEC, 5),
     trackerSpawned: env.TRACKER_SPAWNED === '1',
     trackerNoBrowser: env.TRACKER_NO_BROWSER === '1',
-    orchestrationMode: env.SAGA_ORCHESTRATION_MODE?.trim().toLowerCase() || 'saga3-discovery',
+    orchestrationMode: parseOrchestrationMode(env.SAGA_ORCHESTRATION_MODE),
   };
 }
