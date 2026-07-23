@@ -1,0 +1,4 @@
+build=2
+architecture=99
+characterization=99
+e2e=99
