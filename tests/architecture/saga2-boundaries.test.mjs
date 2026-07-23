@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -23,6 +23,9 @@ const { SqliteBoardProjectionReader } = await import(
 );
 const { LegacyEngineAdministration } = await import(
   '../../dist/infrastructure/engine/legacy-engine-administration.js'
+);
+const { NodeSaga2HostRuntime } = await import(
+  '../../dist/infrastructure/runtime/node-saga2-host-runtime.js'
 );
 
 const fullConfig = (overrides = {}) => ({
@@ -69,34 +72,87 @@ test('runtime config preserves Saga 2 defaults and environment precedence', () =
   assert.throws(() => loadSagaRuntimeConfig({}), /DB_PATH env var is required/);
 });
 
-test('Saga2Engine delegates through the legacy runtime port', async () => {
-  const calls = [];
-  const expected = {
-    projectId: 11,
-    epicId: 22,
-    finalStage: 'completed',
-    endedAt: '2026-07-23T00:00:00.000Z',
-    reason: 'completed',
-    cycles: 9,
-    lastError: null,
+test('Saga2Engine owns the pump and consumes only injected runtime ports', async () => {
+  const heartbeats = [];
+  const patches = [];
+  let workerFactoryCalls = 0;
+  const host = {
+    processId: 77,
+    workerPaths: { sagaEntry: '/dist/index.js', sagaSkillRoot: '/skills' },
+    now: () => Date.parse('2026-07-23T00:00:00.000Z'),
+    sleep: async () => {},
+    heartbeat(context, event, message) { heartbeats.push([context, event, message]); },
+    acquireEngineLock: () => ({ status: 'duplicate', ownerPid: 123 }),
+    releaseEngineLock: () => { throw new Error('duplicate run must not release another owner lock'); },
+    scanRateLimitSignals: () => 0,
   };
-
+  const persistence = {
+    episodes: {
+      readTargetConcurrency: (_epicId, fallback) => fallback,
+      patchMetadata: (epicId, patch) => patches.push([epicId, patch]),
+      currentStage: () => 'development',
+    },
+    tasks: {},
+    executions: {},
+    workspaces: {},
+  };
   const engine = new Saga2Engine({
     config: fullConfig(),
-    runLegacy: async invocation => {
-      calls.push(invocation);
-      return expected;
+    host,
+    persistence,
+    workerExecutorFactory: () => {
+      workerFactoryCalls += 1;
+      throw new Error('duplicate engine must not construct worker runtime');
     },
   });
 
   const result = await engine.run({ projectId: 11, epicId: 22, concurrency: 3 });
-  assert.deepEqual(result, expected);
-  assert.deepEqual(calls, [{
-    projectId: 11,
-    epicId: 22,
-    concurrency: 3,
-    claudePath: '/opt/claude',
-  }]);
+  assert.equal(result.reason, 'failed');
+  assert.equal(result.finalStage, 'development');
+  assert.match(result.lastError, /PID 123/);
+  assert.equal(workerFactoryCalls, 0);
+  assert.equal(heartbeats[0][1], 'DUPLICATE_EXIT');
+  assert.equal(patches[0][0], 22);
+  assert.equal(patches[0][1].engine_rejected, true);
+});
+
+test('Node Saga2 host runtime owns lock, heartbeat and rate-limit telemetry', () => {
+  const temp = mkdtempSync(path.join(os.tmpdir(), 'saga-host-runtime-'));
+  const context = { projectId: 1, epicId: 2 };
+  const cliRoot = path.join(temp, '.zcode', 'cli');
+  const lockPath = path.join(cliRoot, 'engine-1-2.pid');
+  const runDir = path.join(cliRoot, 'board-runs', 'board-1-100');
+  mkdirSync(runDir, { recursive: true });
+  writeFileSync(lockPath, '999', 'utf8');
+  writeFileSync(
+    path.join(runDir, 'task-7-worker-1.jsonl'),
+    JSON.stringify({ type: 'api_retry', error_status: 429, error: 'rate_limit' }) + '\n',
+    'utf8',
+  );
+
+  try {
+    const host = new NodeSaga2HostRuntime({
+      processId: 4242,
+      homeDirectory: temp,
+      now: () => Date.parse('2026-07-23T01:02:03.000Z'),
+      isProcessAlive: pid => pid === 999,
+    });
+    assert.deepEqual(host.acquireEngineLock(context), { status: 'duplicate', ownerPid: 999 });
+
+    unlinkSync(lockPath);
+    assert.deepEqual(host.acquireEngineLock(context), { status: 'acquired', ownerPid: 4242 });
+    assert.equal(readFileSync(lockPath, 'utf8'), '4242');
+
+    host.heartbeat(context, 'CYCLE', 'stage=development');
+    const heartbeat = readFileSync(path.join(cliRoot, 'engine-heartbeat.log'), 'utf8');
+    assert.match(heartbeat, /2026-07-23T01:02:03.000Z engine project=1 epic=2 CYCLE stage=development/);
+
+    assert.equal(host.scanRateLimitSignals(context, [{ id: 7, assigned_to: 'worker-1' }]), 1);
+    host.releaseEngineLock(context);
+    assert.equal(existsSync(lockPath), false);
+  } finally {
+    rmSync(temp, { recursive: true, force: true });
+  }
 });
 
 test('Saga application coordinates engine, board and administration ports', async () => {

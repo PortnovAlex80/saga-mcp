@@ -56,6 +56,9 @@ const {
 const { SqliteWorkspaceResolver } = await import(
   '../dist/infrastructure/workspaces/sqlite-workspace-resolver.js'
 );
+const { NodeSaga2HostRuntime } = await import(
+  '../dist/infrastructure/runtime/node-saga2-host-runtime.js'
+);
 
 test.after(() => {
   closeDb();
@@ -152,7 +155,10 @@ test('e2e: engine drives verification → integration → completed with mock-cl
     lmStudioUrl: 'http://localhost:1234/v1',
     workerExecutorFactory,
     persistence,
-    sleep: (ms) => new Promise(resolve => setTimeout(resolve, Math.min(ms, 100))),
+    host: new NodeSaga2HostRuntime({
+      homeDirectory: temp,
+      sleep: ms => new Promise(resolve => setTimeout(resolve, Math.min(ms, 100))),
+    }),
   });
 
   const db = getDb();
