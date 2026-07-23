@@ -101,7 +101,7 @@ test('single-source: the SAME model route object feeds spawn, gateway, and prove
 });
 
 test('authorityHash is deterministic and independent of array order', () => {
-  const base = { allowed_saga_tools: ALLOWED, scope: 's', snapshot_ref: 'e:10', work_intent_id: 7 };
+  const base = { enforcement: 'runtime', allowed_saga_tools: ALLOWED, scope: 's', snapshot_ref: 'e:10', work_intent_id: 7 };
   const h1 = authorityHash(base);
   const h2 = authorityHash({ ...base, allowed_saga_tools: [...ALLOWED].reverse() });
   assert.equal(h1, h2, 'reordering allowed_tools must not change the hash');
@@ -110,14 +110,12 @@ test('authorityHash is deterministic and independent of array order', () => {
   assert.notEqual(h1, h3);
 });
 
-test('authorityHash excludes enforcement and the hash itself (no circular dependency)', () => {
-  // enforcement is a policy property, not part of the granted surface — two
-  // authorities with the same allowlist but different enforcement must hash equal.
-  const surface = { allowed_saga_tools: ALLOWED, scope: 's', snapshot_ref: 'e:10', work_intent_id: 7 };
+test('authorityHash includes enforcement and excludes the hash itself', () => {
+  // Runtime vs advisory changes the effective boundary and must change the hash.
+  const surface = { enforcement: 'runtime', allowed_saga_tools: ALLOWED, scope: 's', snapshot_ref: 'e:10', work_intent_id: 7 };
   const h1 = authorityHash(surface);
-  // Pretend enforcement differs — the hash input is identical.
-  const h2 = authorityHash(surface);
-  assert.equal(h1, h2);
+  const h2 = authorityHash({ ...surface, enforcement: 'advisory' });
+  assert.notEqual(h1, h2);
 });
 
 test('executionContextHash is stable for the same snapshot and changes with the model route', () => {

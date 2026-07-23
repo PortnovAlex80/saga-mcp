@@ -155,6 +155,7 @@ export class ClaudeBoardRunner {
           env: {
             DB_PATH: this.dbPath,
             TRACKER_AUTOSTART: '0',
+            SAGA_MANAGED_EXECUTION: '0',
           },
         },
       },
@@ -181,6 +182,7 @@ export class ClaudeBoardRunner {
           env: {
             DB_PATH: this.dbPath,
             TRACKER_AUTOSTART: '0',
+            SAGA_MANAGED_EXECUTION: '1',
             SAGA_EXECUTION_ID: executionId || '',
             SAGA_TASK_ID: String(taskId ?? ''),
             SAGA_WORKER_ID: workerId || '',

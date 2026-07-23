@@ -17,6 +17,7 @@
 export type WorkIntentStatus =
   | 'open'        // created, waiting for a worker to execute it
   | 'executing'   // a task+execution is running against it
+  | 'paused'      // interrupted; the same intent/task must be resumed, not duplicated
   | 'concluded'   // the kernel has produced a provisional/authoritative outcome
   | 'cancelled';
 

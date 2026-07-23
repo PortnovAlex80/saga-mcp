@@ -10,7 +10,12 @@ import { advanceReadyEpisodes } from './lifecycle.js';
 import { releaseExecutionAtomically } from '../lifecycle/atomic-release.js';
 import { buildExecutionContext } from '../saga3/authority/build-execution-context.js';
 import { executionContextHash } from '../saga3/domain/execution-context.js';
-import type { WorkIntent } from '../saga3/domain/work-intent.js';
+import {
+  DISCOVERY_INTENT_KIND,
+  DISCOVERY_WORK_INTENT_SCHEMA,
+  type AuthorityScope,
+  type WorkIntent,
+} from '../saga3/domain/work-intent.js';
 import {
   checkReceipt,
   storeReceipt,
@@ -226,37 +231,83 @@ function readModelRouteAtClaim(
  * metadata to avoid a re-read; falls back to a SQL read when metadata is a
  * string (the Task type may carry it either way depending on call site).
  */
+function strictAuthorityScope(raw: unknown): AuthorityScope {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    throw new Error('AUTHORITY_BINDING_INVALID: authority_scope must be an object');
+  }
+  const scope = raw as Record<string, unknown>;
+  if (typeof scope.snapshot_ref !== 'string' || scope.snapshot_ref.trim() === '') {
+    throw new Error('AUTHORITY_BINDING_INVALID: authority_scope.snapshot_ref is required');
+  }
+  if (typeof scope.scope !== 'string' || scope.scope.trim() === '') {
+    throw new Error('AUTHORITY_BINDING_INVALID: authority_scope.scope is required');
+  }
+  if (!Array.isArray(scope.allowed_tools)
+      || !scope.allowed_tools.every(x => typeof x === 'string' && x.trim() !== '')
+      || new Set(scope.allowed_tools).size !== scope.allowed_tools.length) {
+    throw new Error('AUTHORITY_BINDING_INVALID: authority_scope.allowed_tools must be a unique string array');
+  }
+  if (scope.enforcement !== 'runtime' && scope.enforcement !== 'advisory') {
+    throw new Error('AUTHORITY_BINDING_INVALID: authority_scope.enforcement must be advisory|runtime');
+  }
+  return {
+    snapshot_ref: scope.snapshot_ref,
+    scope: scope.scope,
+    allowed_tools: [...scope.allowed_tools] as string[],
+    enforcement: scope.enforcement,
+  };
+}
+
 function readWorkIntentForTaskClaim(
   db: Database.Database,
-  taskId: number,
-  taskMetadata: unknown,
+  task: Task,
 ): WorkIntent | null {
-  let intentId: number | null = null;
-  if (taskMetadata && typeof taskMetadata === 'object') {
-    const m = taskMetadata as Record<string, unknown>;
-    if (typeof m.work_intent_id === 'number') intentId = m.work_intent_id;
-  } else if (typeof taskMetadata === 'string') {
+  let metadata: Record<string, unknown> = {};
+  if (task.metadata && typeof task.metadata === 'object') {
+    metadata = task.metadata as Record<string, unknown>;
+  } else if (typeof task.metadata === 'string') {
     try {
-      const m = JSON.parse(taskMetadata) as Record<string, unknown>;
-      if (typeof m.work_intent_id === 'number') intentId = m.work_intent_id;
+      const parsed = JSON.parse(task.metadata);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) metadata = parsed;
     } catch {
-      intentId = null;
+      if (task.task_kind === 'discovery.work' || task.execution_skill === 'saga-discovery-worker') {
+        throw new Error(`AUTHORITY_BINDING_INVALID: Saga 3 task ${task.id} metadata is malformed`);
+      }
     }
   }
+  let intentId = Number.isInteger(metadata.work_intent_id) ? metadata.work_intent_id as number : null;
   if (intentId == null) {
-    // Fall back to a SQL read of the metadata column (the Task object may not
-    // have carried it). Returns null when the task genuinely has no binding.
     const row = db.prepare(
-      `SELECT json_extract(metadata, '$.work_intent_id') AS intent_id
-         FROM tasks WHERE id=?`,
-    ).get(taskId) as { intent_id: number | null } | undefined;
+      `SELECT json_extract(metadata, '$.work_intent_id') AS intent_id FROM tasks WHERE id=?`,
+    ).get(task.id) as { intent_id: number | null } | undefined;
     intentId = row?.intent_id ?? null;
   }
-  if (intentId == null) return null;
-  const row = db.prepare(
-    'SELECT * FROM saga3_work_intents WHERE id=?',
-  ).get(intentId) as WorkIntentClaimRow | undefined;
-  return row ? claimRowToIntent(row) : null;
+  const saga3Task = task.task_kind === 'discovery.work' || task.execution_skill === 'saga-discovery-worker';
+  if (intentId == null) {
+    if (saga3Task) throw new Error(`AUTHORITY_BINDING_INVALID: Saga 3 task ${task.id} has no work_intent_id`);
+    return null;
+  }
+  const row = db.prepare('SELECT * FROM saga3_work_intents WHERE id=?').get(intentId) as WorkIntentClaimRow | undefined;
+  if (!row) throw new Error(`AUTHORITY_BINDING_INVALID: WorkIntent ${intentId} referenced by task ${task.id} does not exist`);
+  if (row.epic_id !== task.epic_id) {
+    throw new Error(`AUTHORITY_BINDING_INVALID: WorkIntent ${intentId} epic ${row.epic_id} != task epic ${task.epic_id}`);
+  }
+  if (row.projected_task_id !== task.id) {
+    throw new Error(`AUTHORITY_BINDING_INVALID: WorkIntent ${intentId} projected_task_id ${row.projected_task_id} != task ${task.id}`);
+  }
+  if (row.status !== 'open' && row.status !== 'executing') {
+    throw new Error(`AUTHORITY_BINDING_INVALID: WorkIntent ${intentId} status '${row.status}' is not claimable`);
+  }
+  let rawAuthority: unknown;
+  try { rawAuthority = JSON.parse(row.authority_scope); }
+  catch { throw new Error(`AUTHORITY_BINDING_INVALID: WorkIntent ${intentId} authority_scope is malformed JSON`); }
+  const authority = strictAuthorityScope(rawAuthority);
+  if (saga3Task) {
+    if (row.kind !== DISCOVERY_INTENT_KIND || row.output_schema !== DISCOVERY_WORK_INTENT_SCHEMA) {
+      throw new Error(`AUTHORITY_BINDING_INVALID: discovery task ${task.id} is bound to incompatible WorkIntent ${intentId}`);
+    }
+  }
+  return claimRowToIntent(row, authority);
 }
 
 interface WorkIntentClaimRow {
@@ -274,13 +325,13 @@ interface WorkIntentClaimRow {
   updated_at: string;
 }
 
-function claimRowToIntent(row: WorkIntentClaimRow): WorkIntent {
+function claimRowToIntent(row: WorkIntentClaimRow, authorityScope?: AuthorityScope): WorkIntent {
   return {
     id: row.id,
     epic_id: row.epic_id,
     kind: row.kind,
     objective: row.objective,
-    authority_scope: JSON.parse(row.authority_scope),
+    authority_scope: authorityScope ?? strictAuthorityScope(JSON.parse(row.authority_scope)),
     output_schema: row.output_schema,
     token_budget: row.token_budget,
     retry_budget: row.retry_budget,
@@ -462,7 +513,7 @@ function findNextClaimable(
     // Read inside the same IMMEDIATE transaction so the snapshot reflects the
     // state at the atomic claim instant.
     const modelRoute = readModelRouteAtClaim(db, task.epic_id);
-    const workIntent = readWorkIntentForTaskClaim(db, task.id, task.metadata);
+    const workIntent = readWorkIntentForTaskClaim(db, task);
     const executionContext = buildExecutionContext({
       modelRoute,
       workIntent,

@@ -32,6 +32,9 @@ const { closeDb, getDb } = await import('../../dist/db.js');
 const { authorizeSagaToolCall } = await import(
   '../../dist/saga3/authority/authorize-saga-tool-call.js'
 );
+const { authorityHash, executionContextHash } = await import(
+  '../../dist/saga3/domain/execution-context.js'
+);
 
 const ALLOWED = ['task_get', 'repository_checkout_list', 'artifact_list', 'note_list', 'proposal_submit', 'worker_done'];
 
@@ -47,15 +50,25 @@ function cleanup(temp) {
   rmSync(temp, { recursive: true, force: true });
   delete process.env.DB_PATH;
   delete process.env.SAGA_EXECUTION_ID;
+  delete process.env.SAGA_MANAGED_EXECUTION;
 }
 
 /** Insert a worker_executions row with the given metadata JSON + state. */
 function seedExecution(db, executionId, metadata, { state = 'running', taskId = 100, workerId = 'w-1' } = {}) {
-  // tasks/epics/projects rows must exist for FKs; insert minimal stubs once.
   db.prepare(`INSERT OR IGNORE INTO projects (id,name,status) VALUES (1,'P','active')`).run();
   db.prepare(`INSERT OR IGNORE INTO epics (id,project_id,name) VALUES (10,1,'REQ-10')`).run();
-  db.prepare(`INSERT OR IGNORE INTO tasks (id, epic_id, title, status, task_kind, generation_key)
-              VALUES (?, 10, 'T', 'in_progress', 'discovery.work', ?)`).run(taskId, `gk-${taskId}`);
+  let taskMetadata = '{}';
+  try {
+    const parsed = JSON.parse(metadata);
+    const context = parsed?.execution_context;
+    if (context?.authority && Number.isInteger(context.work_intent_id)) {
+      taskMetadata = JSON.stringify({ work_intent_id: context.work_intent_id });
+    }
+  } catch {
+    taskMetadata = '{}';
+  }
+  db.prepare(`INSERT OR IGNORE INTO tasks (id, epic_id, title, status, task_kind, generation_key, metadata)
+              VALUES (?, 10, 'T', 'in_progress', 'discovery.work', ?, ?)`).run(taskId, `gk-${taskId}`, taskMetadata);
   db.prepare(
     `INSERT INTO worker_executions
        (execution_id, run_id, project_id, epic_id, task_id, worker_id, machine_id, state, phase, metadata)
@@ -64,29 +77,37 @@ function seedExecution(db, executionId, metadata, { state = 'running', taskId = 
 }
 
 function runtimeSnapshot(allowed = ALLOWED, workIntentId = 7, overrides = {}) {
-  return JSON.stringify({
-    execution_context: {
-      policy_version: 'saga3.execution.v1',
-      work_intent_id: workIntentId,
-      authority: {
-        enforcement: 'runtime',
-        allowed_saga_tools: allowed,
-        scope: 'read-only discovery context',
-        snapshot_ref: 'episode:10',
-        work_intent_id: workIntentId,
-        authority_hash: 'deadbeef'.repeat(8),
-      },
-      model_route: { provider: 'lmstudio', model: 'qwen-test', effort: null },
-      captured_at: '2026-07-23T20:00:00.000Z',
-      ...overrides,
-    },
-    execution_context_hash: 'abc'.repeat(22),
-  });
+  const authority = {
+    enforcement: 'runtime',
+    allowed_saga_tools: allowed,
+    scope: 'read-only discovery context',
+    snapshot_ref: 'episode:10',
+    work_intent_id: workIntentId,
+  };
+  authority.authority_hash = authorityHash(authority);
+  const execution_context = {
+    policy_version: 'saga3.execution.v1',
+    work_intent_id: workIntentId,
+    authority,
+    model_route: { provider: 'lmstudio', model: 'qwen-test', effort: null },
+    captured_at: '2026-07-23T20:00:00.000Z',
+    ...overrides,
+  };
+  return JSON.stringify({ execution_context, execution_context_hash: executionContextHash(execution_context) });
 }
 
 function advisorySnapshot(allowed = ALLOWED, workIntentId = 7) {
   const base = JSON.parse(runtimeSnapshot(allowed, workIntentId));
-  base.execution_context.authority.enforcement = 'advisory';
+  const authority = base.execution_context.authority;
+  authority.enforcement = 'advisory';
+  authority.authority_hash = authorityHash({
+    enforcement: authority.enforcement,
+    allowed_saga_tools: authority.allowed_saga_tools,
+    scope: authority.scope,
+    snapshot_ref: authority.snapshot_ref,
+    work_intent_id: authority.work_intent_id,
+  });
+  base.execution_context_hash = executionContextHash(base.execution_context);
   return JSON.stringify(base);
 }
 
@@ -186,21 +207,14 @@ test('immutable: mutating the WorkIntent after claim does not change gateway per
 
 // --- (6) Saga 3 execution row WITHOUT execution_context → fail-closed deny -----
 
-test('fail-closed: a Saga 3 execution row with empty metadata is denied (not silently allowed)', () => {
-  // Spec #6: a Saga 3 managed execution that somehow has no authority snapshot
-  // (malformed) must be fail-closed. However the gateway's compat rule (#2)
-  // treats "no execution_context key" as legacy compat-allow. This test pins the
-  // CURRENT behaviour: an execution row with no execution_context is treated as
-  // legacy compatibility-allow (so a botched upgrade doesn't brick every worker).
-  // The fail-closed property is instead enforced for a row that HAS an
-  // execution_context with authority=null is compat (Saga2); a row whose
-  // authority.enforcement='runtime' but allowlist=[] denies everything.
+test('fail-closed: a managed execution row with empty metadata is denied', () => {
   const { temp, db } = makeFixture();
   try {
     seedExecution(db, 'exec-empty', '{}');
     const d = authorizeSagaToolCall({ toolName: 'task_get', db, executionId: 'exec-empty' });
-    // Compat-allow: no execution_context key → treated as legacy. Documented.
-    assert.equal(d.allow, true, 'no execution_context key → legacy compat-allow (documented)');
+    assert.equal(d.allow, false);
+    assert.equal(d.code, 'AUTHORITY_CONTEXT_INVALID');
+    assert.match(d.details.reason, /execution_context_hash|execution_context/);
   } finally { cleanup(temp); }
 });
 
@@ -222,14 +236,16 @@ test('fail-closed: a runtime execution with an EMPTY allowlist denies every tool
 test('compat: legacy Saga 2 execution (authority=null) is compatibility-allowed', () => {
   const { temp, db } = makeFixture();
   try {
+    const execution_context = {
+      policy_version: 'saga3.execution.v1',
+      work_intent_id: null,
+      authority: null,
+      model_route: { provider: 'zai', model: null, effort: 'high' },
+      captured_at: '2026-07-23T20:00:00.000Z',
+    };
     const snapshot = JSON.stringify({
-      execution_context: {
-        policy_version: 'saga3.execution.v1',
-        work_intent_id: null,
-        authority: null,   // Saga 2 managed execution: no WorkIntent
-        model_route: { provider: 'zai', model: null, effort: 'high' },
-        captured_at: '2026-07-23T20:00:00.000Z',
-      },
+      execution_context,
+      execution_context_hash: executionContextHash(execution_context),
     });
     seedExecution(db, 'exec-saga2', snapshot);
     // Any Saga tool is allowed under compatibility — Saga 2 stays unenforced.
@@ -287,9 +303,36 @@ test('identity: gateway reads process.env.SAGA_EXECUTION_ID when executionId is 
   const { temp, db } = makeFixture();
   try {
     seedExecution(db, 'exec-env', runtimeSnapshot());
+    process.env.SAGA_MANAGED_EXECUTION = '1';
     process.env.SAGA_EXECUTION_ID = 'exec-env';
     const d = authorizeSagaToolCall({ toolName: 'task_get', db });
     assert.equal(d.allow, true);
     assert.equal(d.executionId, 'exec-env');
+  } finally { cleanup(temp); }
+});
+
+
+test('fail-closed: context hash tampering is rejected', () => {
+  const { temp, db } = makeFixture();
+  try {
+    const metadata = JSON.parse(runtimeSnapshot());
+    metadata.execution_context.model_route.model = 'tampered-model';
+    seedExecution(db, 'exec-tampered', JSON.stringify(metadata));
+    const d = authorizeSagaToolCall({ toolName: 'task_get', db, executionId: 'exec-tampered' });
+    assert.equal(d.allow, false);
+    assert.equal(d.code, 'AUTHORITY_CONTEXT_INVALID');
+    assert.match(d.details.reason, /hash mismatch/);
+  } finally { cleanup(temp); }
+});
+
+test('identity: execution id without managed marker is rejected on env path', () => {
+  const { temp, db } = makeFixture();
+  try {
+    seedExecution(db, 'exec-no-marker', runtimeSnapshot());
+    process.env.SAGA_EXECUTION_ID = 'exec-no-marker';
+    delete process.env.SAGA_MANAGED_EXECUTION;
+    const d = authorizeSagaToolCall({ toolName: 'task_get', db });
+    assert.equal(d.allow, false);
+    assert.equal(d.code, 'AUTHORITY_CONTEXT_INVALID');
   } finally { cleanup(temp); }
 });

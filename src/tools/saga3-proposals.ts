@@ -17,6 +17,7 @@ import type {
   SubmittedProposalResult,
 } from '../saga3/domain/proposal.js';
 import { canonicalJson } from '../saga3/persistence/saga3-proposal-repository.js';
+import { readExecutionContextStrict } from '../saga3/authority/authorize-saga-tool-call.js';
 
 /**
  * Per-kind (kind, output_schema) → (proposal_schema_version, validator) map.
@@ -167,6 +168,16 @@ export function createSaga3ProposalHandlers(
         );
       }
 
+      const strictContext = readExecutionContextStrict(db, submission.execution_id);
+      if (!strictContext.ok) {
+        throw new Error(`proposal_submit: AUTHORITY_CONTEXT_INVALID — ${strictContext.reason}`);
+      }
+      if (!strictContext.snapshot.authority
+          || strictContext.snapshot.work_intent_id !== submission.intent_id
+          || strictContext.row.task_id !== submission.task_id) {
+        throw new Error('proposal_submit: execution context is not bound to this WorkIntent/task');
+      }
+
       // 4. Structural payload validation (deterministic, no LM).
       const validation = contract.validate(submission.payload);
       if (!validation.valid) {
@@ -178,7 +189,7 @@ export function createSaga3ProposalHandlers(
       // 5. Provenance from the launch-time snapshot captured at claim. Falls
       //    back to a legacy empty snapshot (older executions without metadata)
       //    rather than re-reading mutable episode config.
-      const snapshot = parseLaunchSnapshot(execRow.metadata);
+      const snapshot = strictContext.snapshot.model_route;
       const provenance: ProposalProvenance = {
         model: snapshot.model,
         provider: snapshot.provider,
@@ -304,37 +315,6 @@ export function createSaga3ProposalHandlers(
   };
 }
 
-interface LaunchSnapshot {
-  model: string | null;
-  provider: string;
-  effort: string | null;
-}
-
-function parseLaunchSnapshot(metadata: string): LaunchSnapshot {
-  // The model route provenance is read from the FROZEN execution_context
-  // snapshot captured at claim (D1.1 single-source-of-truth). Resolution order:
-  //   1. metadata.execution_context.model_route   (D1.1 — canonical)
-  //   2. metadata.authority_snapshot              (transitional D1 shape)
-  //   3. flat {model, provider, effort}           (earliest D1 shape)
-  //   4. nulls                                    (pre-fix / '{}' metadata)
-  // Never re-reads mutable episode config — claim model == spawn model == this
-  // provenance model.
-  try {
-    const parsed = JSON.parse(metadata) as Partial<LaunchSnapshot> & {
-      authority_snapshot?: Partial<LaunchSnapshot>;
-      execution_context?: { model_route?: Partial<LaunchSnapshot> };
-    };
-    const ctx = parsed.execution_context?.model_route;
-    const src = ctx ?? parsed.authority_snapshot ?? parsed;
-    return {
-      model: src.model ?? null,
-      provider: src.provider ?? 'zai',
-      effort: src.effort ?? null,
-    };
-  } catch {
-    return { model: null, provider: 'zai', effort: null };
-  }
-}
 
 function readSubmission(args: Record<string, unknown>): SubmitProposal {
   const intentId = args.intent_id as number;

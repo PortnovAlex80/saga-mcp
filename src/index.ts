@@ -37,6 +37,20 @@ import { closeDb, getDb } from './db.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+export function assertManagedExecutionIdentity(env: NodeJS.ProcessEnv = process.env): void {
+  const marker = env.SAGA_MANAGED_EXECUTION;
+  const executionId = env.SAGA_EXECUTION_ID;
+  if (marker !== undefined && marker !== '0' && marker !== '1') {
+    throw new Error(`AUTHORITY_CONTEXT_INVALID: invalid SAGA_MANAGED_EXECUTION='${marker}'`);
+  }
+  if (marker === '1' && !executionId) {
+    throw new Error('AUTHORITY_CONTEXT_INVALID: managed MCP child is missing SAGA_EXECUTION_ID');
+  }
+  if (marker !== '1' && executionId) {
+    throw new Error('AUTHORITY_CONTEXT_INVALID: SAGA_EXECUTION_ID requires SAGA_MANAGED_EXECUTION=1');
+  }
+}
+
 // Saga 3 proposal submission boundary (D1). A factory so the composition can
 // inject a repository / model-route reader; here it uses the default SQLite
 // wiring that reads the shared saga DB directly.
@@ -167,6 +181,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 });
 
 async function main() {
+  assertManagedExecutionIdentity();
   const transport = new StdioServerTransport();
   await server.connect(transport);
   console.error('Tracker MCP Server running on stdio');

@@ -77,3 +77,34 @@ export function recoverLegacyAssignment(
   );
   return info.changes === 1;
 }
+
+
+export interface Saga3ProjectedTaskRecoveryCommand {
+  taskId: number;
+  currentStatus: string;
+  assignedTo: string | null;
+  currentExecutionId: string | null;
+}
+
+/**
+ * Restore an interrupted Saga 3 projected task to a claimable queue state.
+ * The caller owns the surrounding transaction; this module owns the lifecycle
+ * mutation so orchestration persistence never writes task status directly.
+ */
+export function prepareSaga3ProjectedTaskForExecution(
+  db: Database.Database,
+  command: Saga3ProjectedTaskRecoveryCommand,
+): string {
+  const restoredStatus = command.currentStatus === 'review_in_progress'
+    ? 'review'
+    : command.currentStatus === 'in_progress'
+      ? 'todo'
+      : command.currentStatus;
+  if (command.assignedTo || command.currentExecutionId || restoredStatus !== command.currentStatus) {
+    db.prepare(
+      `UPDATE tasks SET status=?, assigned_to=NULL, current_execution_id=NULL,
+                        updated_at=datetime('now') WHERE id=?`,
+    ).run(restoredStatus, command.taskId);
+  }
+  return restoredStatus;
+}

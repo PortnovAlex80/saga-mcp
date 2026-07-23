@@ -51,6 +51,7 @@ export function buildExecutionContext(input: BuildExecutionContextInput): Execut
         snapshot_ref: workIntent.authority_scope.snapshot_ref,
         work_intent_id: workIntent.id,
         authority_hash: authorityHash({
+          enforcement: workIntent.authority_scope.enforcement,
           allowed_saga_tools: workIntent.authority_scope.allowed_tools,
           scope: workIntent.authority_scope.scope,
           snapshot_ref: workIntent.authority_scope.snapshot_ref,

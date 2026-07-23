@@ -18,6 +18,12 @@ import type { ProposalRecord } from '../domain/proposal.js';
  * makes the open → executing → concluded transition race-free across engine
  * restarts.
  */
+export type PrepareIntentForExecutionResult =
+  | { state: 'ready'; intentStatus: 'open' | 'paused'; taskStatus: string }
+  | { state: 'active'; intentStatus: 'executing'; taskStatus: string; detail: string }
+  | { state: 'blocked'; intentStatus: 'paused'; taskStatus: 'blocked'; detail: string }
+  | { state: 'done'; intentStatus: WorkIntentStatus; taskStatus: 'done' };
+
 export interface Saga3DiscoveryRuntimePersistence {
   /** Read the epic's name + description (the discovery objective source). */
   readEpicObjective(epicId: number): { name: string; description: string | null } | null;
@@ -49,6 +55,9 @@ export interface Saga3DiscoveryRuntimePersistence {
 
   /** Current task status ('todo' | 'in_progress' | 'done' | ...), or null if gone. */
   readTaskState(taskId: number): string | null;
+
+  /** Recover stale assignment/fence and prepare an existing intent/task for restart. */
+  prepareIntentForExecution(intentId: number, taskId: number): PrepareIntentForExecutionResult;
 
   /**
    * Read the WorkIntent bound to a board task via `tasks.metadata.work_intent_id`,

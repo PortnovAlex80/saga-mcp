@@ -685,7 +685,7 @@ CREATE TABLE IF NOT EXISTS saga3_work_intents (
   retry_budget    INTEGER NOT NULL DEFAULT 0,
   projected_task_id INTEGER REFERENCES tasks(id) ON DELETE SET NULL,
   status          TEXT NOT NULL DEFAULT 'open'
-                    CHECK (status IN ('open','executing','concluded','cancelled')),
+                    CHECK (status IN ('open','executing','paused','concluded','cancelled')),
   created_at      TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
 );

@@ -1,8 +1,10 @@
 import { getDb } from '../../db.js';
+import { prepareSaga3ProjectedTaskForExecution } from '../../lifecycle/legacy-assignment-recovery.js';
 import type { CreateWorkIntent, WorkIntent, WorkIntentStatus } from '../domain/work-intent.js';
 import type { ProposalRecord } from '../domain/proposal.js';
 import {
   type EnsureProjectedTask,
+  type PrepareIntentForExecutionResult,
   type Saga3DiscoveryRuntimePersistence,
 } from './saga3-discovery-runtime-port.js';
 import {
@@ -20,6 +22,8 @@ import {
  * WorkIntent + proposal reads it delegated to Saga3ProposalRepository.
  */
 export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersistence {
+  constructor() { ensurePausedWorkIntentStatus(getDb()); }
+
   readEpicObjective(epicId: number): { name: string; description: string | null } | null {
     const row = getDb().prepare(
       'SELECT name, description FROM epics WHERE id=?',
@@ -30,7 +34,7 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
   readOpenIntent(epicId: number, kind: string): WorkIntent | null {
     const row = getDb().prepare(
       `SELECT * FROM saga3_work_intents
-        WHERE epic_id=? AND kind=? AND status IN ('open','executing')
+        WHERE epic_id=? AND kind=? AND status IN ('open','executing','paused')
         ORDER BY id DESC LIMIT 1`,
     ).get(epicId, kind) as WorkIntentRow | undefined;
     return row ? rowToIntent(row) : null;
@@ -105,6 +109,67 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
       | { status: string }
       | undefined;
     return row?.status ?? null;
+  }
+
+
+  prepareIntentForExecution(intentId: number, taskId: number): PrepareIntentForExecutionResult {
+    const db = getDb();
+    db.exec('BEGIN IMMEDIATE');
+    try {
+      const intent = db.prepare(
+        'SELECT status, projected_task_id FROM saga3_work_intents WHERE id=?',
+      ).get(intentId) as { status: WorkIntentStatus; projected_task_id: number | null } | undefined;
+      if (!intent) throw new Error(`saga3: WorkIntent ${intentId} not found during resume`);
+      if (intent.projected_task_id !== taskId) {
+        throw new Error(`saga3: WorkIntent ${intentId} is not projected to task ${taskId}`);
+      }
+      const task = db.prepare(
+        `SELECT status, assigned_to, current_execution_id FROM tasks WHERE id=?`,
+      ).get(taskId) as { status: string; assigned_to: string | null; current_execution_id: string | null } | undefined;
+      if (!task) throw new Error(`saga3: projected task ${taskId} not found during resume`);
+      if (task.status === 'done') {
+        db.exec('COMMIT');
+        return { state: 'done', intentStatus: intent.status, taskStatus: 'done' };
+      }
+      if (task.status === 'blocked') {
+        if (intent.status === 'executing') {
+          db.prepare(`UPDATE saga3_work_intents SET status='paused', updated_at=datetime('now') WHERE id=? AND status='executing'`).run(intentId);
+        }
+        db.exec('COMMIT');
+        return { state: 'blocked', intentStatus: 'paused', taskStatus: 'blocked', detail: 'blocked tasks require controller/operator policy' };
+      }
+      if (task.current_execution_id) {
+        const execution = db.prepare(
+          'SELECT state FROM worker_executions WHERE execution_id=?',
+        ).get(task.current_execution_id) as { state: string } | undefined;
+        if (execution && ['reserved','running','cancel_requested'].includes(execution.state)) {
+          db.exec('COMMIT');
+          return {
+            state: 'active', intentStatus: 'executing', taskStatus: task.status,
+            detail: `execution ${task.current_execution_id} is still ${execution.state}`,
+          };
+        }
+      }
+      const restoredStatus = prepareSaga3ProjectedTaskForExecution(db, {
+        taskId,
+        currentStatus: task.status,
+        assignedTo: task.assigned_to,
+        currentExecutionId: task.current_execution_id,
+      });
+      let intentStatus = intent.status;
+      if (intentStatus === 'executing') {
+        db.prepare(`UPDATE saga3_work_intents SET status='paused', updated_at=datetime('now') WHERE id=? AND status='executing'`).run(intentId);
+        intentStatus = 'paused';
+      }
+      if (intentStatus !== 'open' && intentStatus !== 'paused') {
+        throw new Error(`saga3: WorkIntent ${intentId} status '${intentStatus}' is not resumable`);
+      }
+      db.exec('COMMIT');
+      return { state: 'ready', intentStatus, taskStatus: restoredStatus };
+    } catch (error) {
+      try { db.exec('ROLLBACK'); } catch { /* no active transaction */ }
+      throw error;
+    }
   }
 
   readWorkIntentForTask(taskId: number): WorkIntent | null {
@@ -200,6 +265,53 @@ function rowToRecord(row: ProposalRow): ProposalRecord {
     provenance: provenance as NonNullable<typeof provenance>,
     created_at: row.created_at,
   };
+}
+
+
+function ensurePausedWorkIntentStatus(db: ReturnType<typeof getDb>): void {
+  const ddl = db.prepare(
+    "SELECT sql FROM sqlite_schema WHERE type='table' AND name='saga3_work_intents'",
+  ).get() as { sql: string } | undefined;
+  if (!ddl?.sql || ddl.sql.includes("'paused'")) return;
+  db.pragma('foreign_keys = OFF');
+  try {
+    db.exec('BEGIN IMMEDIATE');
+    db.exec(`
+      CREATE TABLE saga3_work_intents_new (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        epic_id INTEGER NOT NULL REFERENCES epics(id) ON DELETE CASCADE,
+        kind TEXT NOT NULL,
+        objective TEXT NOT NULL,
+        authority_scope TEXT NOT NULL,
+        output_schema TEXT NOT NULL,
+        token_budget INTEGER NOT NULL DEFAULT 0,
+        retry_budget INTEGER NOT NULL DEFAULT 0,
+        projected_task_id INTEGER REFERENCES tasks(id) ON DELETE SET NULL,
+        status TEXT NOT NULL DEFAULT 'open'
+          CHECK (status IN ('open','executing','paused','concluded','cancelled')),
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      INSERT INTO saga3_work_intents_new
+        (id, epic_id, kind, objective, authority_scope, output_schema,
+         token_budget, retry_budget, projected_task_id, status, created_at, updated_at)
+      SELECT id, epic_id, kind, objective, authority_scope, output_schema,
+             token_budget, retry_budget, projected_task_id, status, created_at, updated_at
+        FROM saga3_work_intents;
+      DROP TABLE saga3_work_intents;
+      ALTER TABLE saga3_work_intents_new RENAME TO saga3_work_intents;
+      CREATE INDEX IF NOT EXISTS idx_saga3_work_intents_epic ON saga3_work_intents(epic_id);
+      CREATE INDEX IF NOT EXISTS idx_saga3_work_intents_kind_status ON saga3_work_intents(kind, status);
+    `);
+    db.exec('COMMIT');
+  } catch (error) {
+    try { db.exec('ROLLBACK'); } catch { /* no active transaction */ }
+    throw new Error(`Migration 'saga3 WorkIntent paused' failed: ${(error as Error).message}`);
+  } finally {
+    db.pragma('foreign_keys = ON');
+  }
+  const violation = db.prepare('PRAGMA foreign_key_check').get();
+  if (violation) throw new Error("Migration 'saga3 WorkIntent paused' produced foreign key violations");
 }
 
 // Re-export the canonical-JSON helpers so the proposal handler keeps a single

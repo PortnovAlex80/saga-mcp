@@ -200,6 +200,30 @@ export class Saga3DiscoveryEngine implements OrchestrationEngine {
     });
     if (!intent.projected_task_id) rt.setProjectedTask(intent.id, taskId);
 
+    const preparation = rt.prepareIntentForExecution(intent.id, taskId);
+    if (preparation.state === 'active') {
+      return this.runResult(projectId, epicId, 'stopped', 0, preparation.detail,
+        { outcome: 'inconclusive', outcomeAuthority: 'none', proposalId: null, proposalHash: null });
+    }
+    if (preparation.state === 'blocked') {
+      return this.runResult(projectId, epicId, 'failed', 0, preparation.detail,
+        { outcome: 'failed', outcomeAuthority: 'none', proposalId: null, proposalHash: null });
+    }
+    if (preparation.state === 'done') {
+      const existingProposal = rt.readLatestProposal(intent.id);
+      const valid = existingProposal !== null && validateDiscoveryProposal(existingProposal.payload).valid;
+      if (intent.status === 'executing') rt.setIntentStatus(intent.id, 'executing', 'concluded');
+      if (intent.status === 'paused') rt.setIntentStatus(intent.id, 'paused', 'concluded');
+      const existingOutcome = valid
+        ? provisionalOutcomeFromProposal(existingProposal!.payload as DiscoveryProposalPayload)
+        : { outcome: 'failed' as const, authority: 'none' as const };
+      return this.runResult(projectId, epicId, valid ? 'completed' : 'failed', 0,
+        valid ? null : 'discovery task is done without a valid proposal',
+        { outcome: existingOutcome.outcome, outcomeAuthority: existingOutcome.authority,
+          proposalId: existingProposal?.id ?? null, proposalHash: existingProposal?.content_hash ?? null },
+        persistence.episodes.currentStage(epicId) ?? 'discovery', valid);
+    }
+
     // 3. Start the worker-execution substrate ONCE. concurrency=1 AND
     //    claim-scoped to exactly this task — the runner will not pick up any
     //    other task in the episode (e.g. a legacy discovery.kickstart).
@@ -223,12 +247,11 @@ export class Saga3DiscoveryEngine implements OrchestrationEngine {
       // intent/process with unknown claimScope. Treat it as a conflict and
       // fail rather than poll an unknown runner (review P1).
       executor.start({ projectId, epicId, concurrency: 1, claimScope: { taskIds: [taskId] } });
-      // open → executing once the substrate has accepted the run.
-      rt.setIntentStatus(intent.id, 'open', 'executing');
+      // open/paused → executing once the substrate has accepted the run.
+      rt.setIntentStatus(intent.id, preparation.intentStatus, 'executing');
       heartbeat('EXECUTOR_STARTED', `task=${taskId}`);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      rt.setIntentStatus(intent.id, 'executing', 'concluded');
       return this.runResult(projectId, epicId, 'failed', 0, msg,
         { outcome: 'failed', outcomeAuthority: 'none', proposalId: null, proposalHash: null });
     }
@@ -252,6 +275,7 @@ export class Saga3DiscoveryEngine implements OrchestrationEngine {
       | 'task_blocked'       // task blocked (non-clean stop) AND worker gone
       | 'executor_failed'    // run.status=failed (checked BEFORE clean — masks nothing)
       | 'executor_dead'      // status() returned null (run vanished)
+      | 'stopped'            // explicit external stop; preserve intent for resume
       | 'timeout'
       | 'task_unclaimed' = 'timeout'; // run reached terminal healthy without task done
     while (true) {
@@ -269,7 +293,8 @@ export class Saga3DiscoveryEngine implements OrchestrationEngine {
       const run = executor.status(projectId);
       const runIsNull = run === null;
       const runStatus = run?.status ?? null;
-      const runTerminalHealthy = runStatus === 'completed' || runStatus === 'stopped';
+      const runCompleted = runStatus === 'completed';
+      const runStopped = runStatus === 'stopped';
       const runFailed = runStatus === 'failed';
       const taskStillActive = run?.active?.some(w => w.task_id === taskId) ?? false;
 
@@ -282,6 +307,10 @@ export class Saga3DiscoveryEngine implements OrchestrationEngine {
       // substrate failure, not masked as a clean closure.
       if (runFailed) {
         terminal = 'executor_failed';
+        break;
+      }
+      if (runStopped) {
+        terminal = 'stopped';
         break;
       }
       // Clean closure: task reached worker_done ('done' only) AND its claude
@@ -300,7 +329,7 @@ export class Saga3DiscoveryEngine implements OrchestrationEngine {
       // Substrate finished its loop (completed/stopped) but the task never
       // reached done — the worker either never claimed it or bailed. Do not
       // wait for a timeout that will never come.
-      if (runTerminalHealthy && !taskDone) {
+      if (runCompleted && !taskDone) {
         terminal = 'task_unclaimed';
         break;
       }
@@ -317,8 +346,10 @@ export class Saga3DiscoveryEngine implements OrchestrationEngine {
       try { executor.stop(projectId); } catch { /* best effort */ }
     }
 
-    // executing → concluded (CAS; a restarted engine cannot clobber a different state).
-    rt.setIntentStatus(intent.id, 'executing', 'concluded');
+    // Only a clean closure concludes the intent. Every interruption is paused
+    // so restart reuses the same intent and projected task.
+    if (terminal === 'clean') rt.setIntentStatus(intent.id, 'executing', 'concluded');
+    else rt.setIntentStatus(intent.id, 'executing', 'paused');
 
     // 5. Provisional outcome (roadmap §8.D1). NOT authoritative — D4 settles.
     const proposal = rt.readLatestProposal(intent.id);
@@ -372,9 +403,11 @@ export class Saga3DiscoveryEngine implements OrchestrationEngine {
     const reason: OrchestrationRunResult['reason'] =
       terminal === 'clean' ? 'completed'
       : terminal === 'timeout' ? 'paused_timeout'
+      : terminal === 'stopped' ? 'stopped'
       : 'failed';
     const lastError: string | null =
       terminal === 'clean' ? null
+      : terminal === 'stopped' ? 'discovery execution was stopped; intent paused for resume'
       : terminal === 'timeout' ? `discovery run timed out after ${Math.round(this.maxRunMs / 1000)}s`
       : terminal === 'task_blocked' ? `discovery task ended blocked (terminal=${terminal}); not a clean worker closure`
       : `discovery substrate ended without clean worker closure (terminal=${terminal})`;

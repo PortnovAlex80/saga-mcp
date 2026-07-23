@@ -44,7 +44,7 @@ function makeFakeRuntime({ proposalPayload, workerDelaysDone = true, workerReach
       return { name: `epic-${epicId}`, description: 'discover the idea' };
     },
     readOpenIntent(_epicId, kind) {
-      return intent && intent.kind === kind && (intent.status === 'open' || intent.status === 'executing') ? intent : null;
+      return intent && intent.kind === kind && (intent.status === 'open' || intent.status === 'executing' || intent.status === 'paused') ? intent : null;
     },
     createIntent(command) {
       intent = { id: nextId++, epic_id: command.epic_id, kind: command.kind, objective: command.objective,
@@ -76,6 +76,18 @@ function makeFakeRuntime({ proposalPayload, workerDelaysDone = true, workerReach
       return task.id;
     },
     readTaskState(tid) { return task && task.id === tid ? task.status : null; },
+    prepareIntentForExecution(_intentId, tid) {
+      if (!task || task.id !== tid) throw new Error('task missing');
+      if (task.status === 'done') return { state: 'done', intentStatus: intent.status, taskStatus: 'done' };
+      if (task.status === 'blocked') {
+        if (intent.status === 'executing') intent.status = 'paused';
+        return { state: 'blocked', intentStatus: 'paused', taskStatus: 'blocked', detail: 'blocked' };
+      }
+      if (task.status === 'in_progress') task.status = 'todo';
+      if (task.status === 'review_in_progress') task.status = 'review';
+      if (intent.status === 'executing') intent.status = 'paused';
+      return { state: 'ready', intentStatus: intent.status, taskStatus: task.status };
+    },
     readLatestProposal(_intentId) { return proposal; },
 
     // Worker-plane simulation hooks (not part of the port — test internals).
@@ -440,4 +452,43 @@ test('task done + run.status=failed + active=[] → reason=failed (runFailed che
   const result = await engine.run({ projectId: 1, epicId: 10, concurrency: 1 });
   assert.equal(result.reason, 'failed', 'runFailed must win over clean when task=done + run.status=failed');
   assert.match(result.lastError, /executor_failed/);
+});
+
+
+test('non-clean executor failure pauses intent instead of concluding it', async () => {
+  const runtime = makeFakeRuntime({ proposalPayload: validPayload('go') });
+  const failedRun = { id: 'r', project_id: 1, concurrency: 1, status: 'failed', active: [], completed: 0, failed: 1, claimed: 0 };
+  const engine = new Saga3DiscoveryEngine({
+    config: fullConfig(), workerExecutorFactory: () => makeFakeExecutor(() => {}, [], failedRun),
+    persistence: { episodes: { currentStage: () => 'discovery' }, workspaces: { resolve: () => ({ workspaceRoot: '/w' }) } },
+    host: fakeHost(), runtimePersistence: runtime, pollMs: 0,
+  });
+  const result = await engine.run({ projectId: 1, epicId: 10, concurrency: 1 });
+  assert.equal(result.reason, 'failed');
+  const transitions = runtime.events.filter(([e]) => e === 'setIntentStatus').map(([, , t]) => t);
+  assert.deepEqual(transitions, ['open->executing', 'executing->paused']);
+});
+
+test('restart reuses paused intent and projected task, then concludes cleanly', async () => {
+  const runtime = makeFakeRuntime({ proposalPayload: validPayload('go') });
+  const failedRun = { id: 'r1', project_id: 1, concurrency: 1, status: 'failed', active: [], completed: 0, failed: 1, claimed: 0 };
+  const first = new Saga3DiscoveryEngine({
+    config: fullConfig(), workerExecutorFactory: () => makeFakeExecutor(() => {}, [], failedRun),
+    persistence: { episodes: { currentStage: () => 'discovery' }, workspaces: { resolve: () => ({ workspaceRoot: '/w' }) } },
+    host: fakeHost(), runtimePersistence: runtime, pollMs: 0,
+  });
+  await first.run({ projectId: 1, epicId: 10, concurrency: 1 });
+  const secondExecutor = makeFakeExecutor(() => runtime._simulateWorkerTick(), []);
+  const second = new Saga3DiscoveryEngine({
+    config: fullConfig(), workerExecutorFactory: () => secondExecutor,
+    persistence: { episodes: { currentStage: () => 'discovery' }, workspaces: { resolve: () => ({ workspaceRoot: '/w' }) } },
+    host: fakeHost(), runtimePersistence: runtime, pollMs: 0,
+  });
+  const result = await second.run({ projectId: 1, epicId: 10, concurrency: 1 });
+  assert.equal(result.reason, 'completed');
+  assert.equal(runtime.events.filter(([e]) => e === 'createIntent').length, 1);
+  assert.equal(runtime.events.filter(([e]) => e === 'ensureProjectedTask-create').length, 1);
+  const transitions = runtime.events.filter(([e]) => e === 'setIntentStatus').map(([, , t]) => t);
+  assert.ok(transitions.includes('paused->executing'));
+  assert.ok(transitions.includes('executing->concluded'));
 });

@@ -43,8 +43,9 @@ export interface ExecutionModelRoute {
  * denial without re-reading the (mutable) WorkIntent row.
  *
  * `authority_hash` covers the immutable authority fields
- * ({allowed_saga_tools, scope, snapshot_ref, work_intent_id}) — NOT enforcement
- * (which is a property of the policy, not the granted tool surface) and NOT
+ * ({enforcement, allowed_saga_tools, scope, snapshot_ref, work_intent_id}).
+ * Enforcement is included because changing runtime→advisory changes the actual
+ * authority boundary and must invalidate the snapshot. The model route is NOT
  * the model route (which lives on the snapshot, not the authority). This hash
  * is what an OutcomeCertificate (D4) will cite as "the authority this run
  * operated under".
@@ -95,11 +96,11 @@ function sha256Hex(text: string): string {
 
 /**
  * Deterministic hash over the immutable authority surface
- * ({allowed_saga_tools, scope, snapshot_ref, work_intent_id}). Independent of
- * `enforcement` (policy property) and `authority_hash` itself (would be
- * circular) so the hash is a stable citation target.
+ * ({enforcement, allowed_saga_tools, scope, snapshot_ref, work_intent_id}).
+ * `authority_hash` itself is excluded to avoid a circular dependency.
  */
 export function authorityHash(input: {
+  enforcement: 'advisory' | 'runtime';
   allowed_saga_tools: string[];
   scope: string;
   snapshot_ref: string;
@@ -107,6 +108,7 @@ export function authorityHash(input: {
 }): string {
   return sha256Hex(
     canonicalJson({
+      enforcement: input.enforcement,
       allowed_saga_tools: [...input.allowed_saga_tools].sort(),
       scope: input.scope,
       snapshot_ref: input.snapshot_ref,
