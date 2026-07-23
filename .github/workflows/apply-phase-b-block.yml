@@ -1,5 +1,6 @@
 name: Apply Phase B block 1-4
 
+# Second push trigger: the workflow now already exists on saga2-refactoring.
 on:
   workflow_dispatch:
   push:
