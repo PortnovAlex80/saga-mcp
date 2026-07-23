@@ -1,6 +1,6 @@
-migration=1
-build=99
-architecture=99
+migration=0
+build=0
+architecture=1
 characterization=99
 e2e=99
 full=99

@@ -19,23 +19,7 @@
  * nothing here is imported or executed. v2 behaviour is unchanged.
  */
 
-import {
-  existsSync,
-  appendFileSync,
-  readFileSync,
-  writeFileSync,
-  unlinkSync,
-  mkdirSync,
-  statSync,
-  readdirSync,
-  openSync,
-  readSync,
-  closeSync,
-} from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { closeDb } from './db.js';
+import type { Saga2HostRuntime } from './application/ports/saga2-host-runtime.js';
 import type { Saga2RuntimePersistence } from './application/ports/saga2-runtime-persistence.js';
 import type {
   WorkerExecutorFactory,
@@ -68,7 +52,6 @@ const PUMP_TICK_MS = 5_000;
 
 /** Reconcile durable worker executions every 6 cycles (30s). */
 const ZOMBIE_CHECK_TICKS = 6;
-let zombieCheckCounter = 0;
 
 /**
  * Rate-limit aware concurrency. When API returns 429 (rate_limit), the engine
@@ -86,10 +69,12 @@ let zombieCheckCounter = 0;
  */
 const RATE_LIMIT_SCAN_TICKS = 2;         // every 10s
 const RATE_LIMIT_COOLDOWN_SEC = 60;      // 60s without 429 → +1 concurrency
-const RATE_LIMIT_LOG_TAIL_BYTES = 8192;  // scan last 8KB of JSONL for 429
-const RATE_LIMIT_PATTERN = /api_retry[^\n]*"error_status":429[^\n]*"error":"rate_limit"/;
-let rateLimitCheckCounter = 0;
-let lastRateLimitAt = 0;                  // ms epoch of last 429 detection
+interface Saga2PumpState {
+  zombieCheckCounter: number;
+  rateLimitCheckCounter: number;
+  lastRateLimitAt: number;
+  healRetries: Map<string, number>;
+}
 
 /**
  * RECOVERY TREE — lookup table for self-healing on gate failures.
@@ -325,12 +310,6 @@ const RECOVERY_TREE: Record<string, RecoveryRule[]> = {
   ],
 };
 
-/** Track heal attempts per (epic, stage, diagnosis) to enforce max_retries. */
-const healRetries = new Map<string, number>();
-
-// ESM does not define __dirname; derive it once from import.meta.url.
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 export interface OrchestrateOptions {
   projectId: number;
@@ -341,14 +320,7 @@ export interface OrchestrateOptions {
   lmStudioUrl: string;
   workerExecutorFactory: WorkerExecutorFactory;
   persistence: Saga2RuntimePersistence;
-  sagaEntry?: string;
-  sagaSkillRoot?: string;
-  logRoot?: string;
-  heartbeatLog?: string;
-  /** Injectable clock (ms) for tests. */
-  now?: () => number;
-  /** Injectable sleep for tests. */
-  sleep?: (ms: number) => Promise<void>;
+  host: Saga2HostRuntime;
 }
 export interface OrchestrateResult {
   projectId: number;
@@ -365,19 +337,13 @@ export interface OrchestrateResult {
  * matches claude-runner.mjs heartbeat (line ~100): one line per event, plain
  * text, parseable by `tail -f`.
  */
-function engineHeartbeat(opts: OrchestrateOptions, event: string, message: string, now = Date.now): void {
-  const line = [
-    new Date(now()).toISOString(),
-    `engine project=${opts.projectId} epic=${opts.epicId}`,
+function engineHeartbeat(opts: OrchestrateOptions, event: string, message: string): void {
+  opts.host.heartbeat(
+    { projectId: opts.projectId, epicId: opts.epicId },
     event,
     message,
-  ].join(' ').replace(/\s+/g, ' ').trim() + '\n';
-  const logPath = opts.heartbeatLog
-    ?? path.join(os.homedir(), '.zcode', 'cli', 'engine-heartbeat.log');
-  try { appendFileSync(logPath, line); } catch { /* log not critical */ }
+  );
 }
-
-const defaultSleep = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
 
 /**
  * Returns the current episode stage, or null if the episode has no workflow row.
@@ -467,9 +433,9 @@ function writeEpisodeMeta(
 }
 
 /** Wipe retry counters for one epic (used on human-resume or on new diagnosis). */
-function resetHealRetriesForEpic(epicId: number): void {
-  for (const key of [...healRetries.keys()]) {
-    if (key.startsWith(`${epicId}:`)) healRetries.delete(key);
+function resetHealRetriesForEpic(epicId: number, state: Saga2PumpState): void {
+  for (const key of [...state.healRetries.keys()]) {
+    if (key.startsWith(`${epicId}:`)) state.healRetries.delete(key);
   }
 }
 
@@ -477,16 +443,14 @@ async function waitForResume(
   epicId: number,
   opts: OrchestrateOptions,
 ): Promise<boolean> {
-  const sleep = opts.sleep ?? defaultSleep;
-  const now = opts.now ?? Date.now;
-  const startedAt = now();
+  const startedAt = opts.host.now();
   while (true) {
-    if (now() - startedAt > MAX_PAUSE_MIN * 60_000) {
+    if (opts.host.now() - startedAt > MAX_PAUSE_MIN * 60_000) {
       engineHeartbeat(opts, 'PAUSE_TIMEOUT', `${MAX_PAUSE_MIN}min reached — engine exits`);
       return false;
     }
     if (!opts.persistence.episodes.isNeedsHuman(epicId)) return true;
-    await sleep(RESUME_POLL_MS);
+    await opts.host.sleep(RESUME_POLL_MS);
   }
 }
 
@@ -568,6 +532,7 @@ function attemptHeal(
   stage: string,
   gateError: string,
   opts: OrchestrateOptions,
+  state: Saga2PumpState,
 ): {
   applied: boolean;
   escalate: boolean;
@@ -583,11 +548,11 @@ function attemptHeal(
     return { applied: false, escalate: true, reason: `unmatched gate error for stage '${stage}': ${gateError.slice(0, 120)}`, taskId: null };
   }
   const healKey = `${epicId}:${stage}:${rule.diagnosis}`;
-  const retries = healRetries.get(healKey) ?? 0;
+  const retries = state.healRetries.get(healKey) ?? 0;
   if (retries >= rule.max_retries) {
     return { applied: false, escalate: true, reason: `max_retries (${rule.max_retries}) reached for: ${rule.diagnosis}`, taskId: null };
   }
-  healRetries.set(healKey, retries + 1);
+  state.healRetries.set(healKey, retries + 1);
   if (opts.persistence.episodes.projectIdForEpic(epicId) === null) {
     return { applied: false, escalate: true, reason: `epic ${epicId} has no project`, taskId: null };
   }
@@ -717,27 +682,6 @@ function spawnPostTransitionRecovery(
   });
 }
 
-/**
- * Resolve the JSONL log path for an active worker task. claude-runner writes
- * to <logRoot>/board-<projectId>-<ts>/task-<taskId>-<workerId>.jsonl. We find
- * it by scanning the newest matching file (worker IDs are unique per spawn).
- */
-function resolveWorkerLogPath(taskId: number, workerId: string, projectId: number): string | null {
-  const logRoot = path.join(os.homedir(), '.zcode', 'cli', 'board-runs');
-  const safeWorker = workerId.replace(/[^a-zA-Z0-9._-]+/g, '-');
-  const fileName = `task-${taskId}-${safeWorker}.jsonl`;
-  try {
-    const dir = readdirSync(logRoot)
-      .filter((d: string) => d.startsWith(`board-${projectId}-`))
-      .map((d: string) => ({ d, full: path.join(logRoot, d), mtime: statSync(path.join(logRoot, d)).mtimeMs }))
-      .sort((a: { mtime: number }, b: { mtime: number }) => b.mtime - a.mtime);
-    for (const r of dir) {
-      const candidate = path.join(r.full, fileName);
-      if (existsSync(candidate)) return candidate;
-    }
-  } catch { /* logRoot missing */ }
-  return null;
-}
 
 /**
  * Reconcile process truth independently from task status. Log output is not a
@@ -789,30 +733,23 @@ function detectAndKillZombies(epicId: number, projectId: number, opts: Orchestra
  *
  * Recovery: 60s without 429 → effectiveConcurrency climbs by 1 per scan.
  */
-function detectRateLimits(epicId: number, projectId: number, opts: OrchestrateOptions): number {
-  const tasks = opts.persistence.tasks.listRateLimitTasks(epicId);
-
-  let rateLimited = 0;
-  for (const t of tasks) {
-    const logPath = resolveWorkerLogPath(t.id, t.assigned_to, projectId);
-    if (!logPath || !existsSync(logPath)) continue;
-    try {
-      const st = statSync(logPath);
-      const tailBytes = Math.min(st.size, RATE_LIMIT_LOG_TAIL_BYTES);
-      const fd = openSync(logPath, 'r');
-      const buf = Buffer.alloc(tailBytes);
-      readSync(fd, buf, 0, tailBytes, Math.max(0, st.size - tailBytes));
-      closeSync(fd);
-      const tail = buf.toString('utf8');
-      if (RATE_LIMIT_PATTERN.test(tail)) {
-        rateLimited += 1;
-        lastRateLimitAt = Date.now();
-      }
-    } catch { /* stat/read failed */ }
-  }
+function detectRateLimits(
+  epicId: number,
+  projectId: number,
+  opts: OrchestrateOptions,
+  state: Saga2PumpState,
+): number {
+  const rateLimited = opts.host.scanRateLimitSignals(
+    { projectId, epicId },
+    opts.persistence.tasks.listRateLimitTasks(epicId),
+  );
   if (rateLimited > 0) {
-    engineHeartbeat(opts, 'RATE_LIMIT',
-      `${rateLimited} worker(s) hit 429 — lowering concurrency ceiling`);
+    state.lastRateLimitAt = opts.host.now();
+    engineHeartbeat(
+      opts,
+      'RATE_LIMIT',
+      `${rateLimited} worker(s) hit 429 — lowering concurrency ceiling`,
+    );
   }
   return rateLimited;
 }
@@ -822,14 +759,17 @@ function detectRateLimits(epicId: number, projectId: number, opts: OrchestrateOp
  * recently, throttle down. If the cooldown window passed without new 429s,
  * recover toward the target.
  */
-function computeEffectiveConcurrency(target: number, current: number): number {
+function computeEffectiveConcurrency(
+  target: number,
+  current: number,
+  lastRateLimitAt: number,
+  now: number,
+): number {
   if (lastRateLimitAt === 0) return target;
-  const sinceLimit = (Date.now() - lastRateLimitAt) / 1000;
+  const sinceLimit = (now - lastRateLimitAt) / 1000;
   if (sinceLimit < RATE_LIMIT_COOLDOWN_SEC) {
-    // Still in cooldown — hold current (don't increase).
     return Math.min(current, target);
   }
-  // Cooldown elapsed — recover by 1 per call (caller runs this every RATE_LIMIT_SCAN_TICKS).
   return Math.min(current + 1, target);
 }
 
@@ -863,56 +803,41 @@ export async function orchestrate(opts: OrchestrateOptions): Promise<Orchestrate
   // rate-limiting (429). Starts at target, drops by 1 per rate-limit hit,
   // recovers by 1 per RATE_LIMIT_COOLDOWN_SEC of clean running.
   let effectiveConcurrency = targetConcurrency;
-  const now = opts.now ?? Date.now;
-  const sleep = opts.sleep ?? defaultSleep;
+  const context = { projectId, epicId };
+  const state: Saga2PumpState = {
+    zombieCheckCounter: 0,
+    rateLimitCheckCounter: 0,
+    lastRateLimitAt: 0,
+    healRetries: new Map(),
+  };
+  const now = () => opts.host.now();
+  const sleep = (ms: number) => opts.host.sleep(ms);
 
   // === SINGLETON GUARD (PID-lock) ===
-  // Only ONE engine per epic. Without this, every /api/engine/restart and
-  // /api/model/set spawned a fresh engine without killing the old one —
-  // producing 6+ engines, 10+ claude workers, rate-limit storms.
-  // The lock is a file: ~/.zcode/cli/engine-<projectId>-<epicId>.pid
-  // containing the engine's PID. On start: check if existing engine is alive.
-  // If yes → exit immediately (duplicate engine). If no → claim the lock.
-  const lockFile = path.join(os.homedir(), '.zcode', 'cli', `engine-${projectId}-${epicId}.pid`);
-  try {
-    if (existsSync(lockFile)) {
-      const existingPid = parseInt(readFileSync(lockFile, 'utf8').trim(), 10);
-      if (existingPid && !Number.isNaN(existingPid)) {
-        // Check if process is alive: process.kill(pid, 0) throws if dead.
-        try {
-          process.kill(existingPid, 0);
-          // Process is alive — this is a DUPLICATE engine. Exit.
-          engineHeartbeat(opts, 'DUPLICATE_EXIT',
-            `engine PID ${existingPid} already running for project=${projectId} epic=${epicId} — exiting`);
-          writeEpisodeMeta(epicId, { engine_rejected: true, engine_rejected_reason: `PID ${existingPid} already running` }, opts);
-          return {
-            projectId, epicId, finalStage: currentStage(epicId, opts) ?? 'unknown',
-            endedAt: new Date(now()).toISOString(),
-            reason: 'failed', cycles: 0,
-            lastError: `duplicate engine — PID ${existingPid} already running`,
-          };
-        } catch {
-          // Process is dead — stale lock. Remove and claim.
-          try { unlinkSync(lockFile); } catch { /* ignore */ }
-        }
-      }
-    }
-    // Claim the lock with our PID.
-    mkdirSync(path.dirname(lockFile), { recursive: true });
-    writeFileSync(lockFile, String(process.pid), { encoding: 'utf8', flag: 'wx' });
-  } catch (e) {
-    if ((e as NodeJS.ErrnoException).code === 'EEXIST') {
-      const winnerPid = parseInt(readFileSync(lockFile, 'utf8').trim(), 10);
-      engineHeartbeat(opts, 'DUPLICATE_EXIT',
-        `engine PID ${winnerPid || '?'} won atomic lock for project=${projectId} epic=${epicId}`);
-      return {
-        projectId, epicId, finalStage: currentStage(epicId, opts) ?? 'unknown',
-        endedAt: new Date(now()).toISOString(),
-        reason: 'failed', cycles: 0,
-        lastError: `duplicate engine — PID ${winnerPid || '?'} owns atomic lock`,
-      };
-    }
-    engineHeartbeat(opts, 'LOCK_WARN', `PID-lock failed: ${e instanceof Error ? e.message : String(e)}`);
+  const lock = opts.host.acquireEngineLock(context);
+  if (lock.status === 'duplicate') {
+    const owner = lock.ownerPid ?? '?';
+    engineHeartbeat(
+      opts,
+      'DUPLICATE_EXIT',
+      `engine PID ${owner} already owns project=${projectId} epic=${epicId} — exiting`,
+    );
+    writeEpisodeMeta(epicId, {
+      engine_rejected: true,
+      engine_rejected_reason: `PID ${owner} already running`,
+    }, opts);
+    return {
+      projectId,
+      epicId,
+      finalStage: currentStage(epicId, opts) ?? 'unknown',
+      endedAt: new Date(now()).toISOString(),
+      reason: 'failed',
+      cycles: 0,
+      lastError: `duplicate engine — PID ${owner} already running`,
+    };
+  }
+  if (lock.status === 'unavailable') {
+    engineHeartbeat(opts, 'LOCK_WARN', `PID-lock failed: ${lock.error}`);
   }
 
   // Resolve the project's workspace (where `claude -p` will run).
@@ -933,11 +858,11 @@ export async function orchestrate(opts: OrchestrateOptions): Promise<Orchestrate
     epicId,
     workspaceRoot,
     dbPath: opts.dbPath,
-    sagaEntry: opts.sagaEntry ?? path.join(__dirname, '..', 'dist', 'index.js'),
-    sagaSkillRoot: opts.sagaSkillRoot ?? path.join(__dirname, '..', 'skills'),
+    sagaEntry: opts.host.workerPaths.sagaEntry,
+    sagaSkillRoot: opts.host.workerPaths.sagaSkillRoot,
     claudePath: opts.claudePath,
-    logRoot: opts.logRoot,
-    heartbeatLog: opts.heartbeatLog,
+    logRoot: opts.host.workerPaths.logRoot,
+    heartbeatLog: opts.host.workerPaths.heartbeatLog,
     lmStudioUrl: opts.lmStudioUrl,
   });
 
@@ -951,8 +876,8 @@ export async function orchestrate(opts: OrchestrateOptions): Promise<Orchestrate
   // Updated on every engine start; cleared in engineHeartbeat on ENGINE_EXIT.
   writeEpisodeMeta(epicId, {
     engine_concurrency: concurrency,
-    engine_pid: process.pid,
-    engine_started_at: new Date().toISOString(),
+    engine_pid: opts.host.processId,
+    engine_started_at: new Date(now()).toISOString(),
   }, opts);
 
   let cycles = 0;
@@ -1025,9 +950,9 @@ export async function orchestrate(opts: OrchestrateOptions): Promise<Orchestrate
       opts.persistence.tasks.reevaluateDoneDependencies(epicId);
 
       // Reconcile durable process state every ~30s. Quiet logs are ignored.
-      zombieCheckCounter += 1;
-      if (zombieCheckCounter >= ZOMBIE_CHECK_TICKS) {
-        zombieCheckCounter = 0;
+      state.zombieCheckCounter += 1;
+      if (state.zombieCheckCounter >= ZOMBIE_CHECK_TICKS) {
+        state.zombieCheckCounter = 0;
         const killed = detectAndKillZombies(epicId, projectId, opts);
         if (killed > 0) emptyCycles = 0;
       }
@@ -1043,14 +968,14 @@ export async function orchestrate(opts: OrchestrateOptions): Promise<Orchestrate
       // 4. Apply via runner.setConcurrency — no kill, no spawn, just ceiling
       //    Workers that hit 429 keep running (claude backoff); when they die
       //    naturally, pump() won't spawn a replacement if below ceiling.
-      rateLimitCheckCounter += 1;
-      if (rateLimitCheckCounter >= RATE_LIMIT_SCAN_TICKS) {
-        rateLimitCheckCounter = 0;
+      state.rateLimitCheckCounter += 1;
+      if (state.rateLimitCheckCounter >= RATE_LIMIT_SCAN_TICKS) {
+        state.rateLimitCheckCounter = 0;
         // Re-read BOTH concurrency and model-limit from metadata. Either can
         // change mid-run via the kanban UI; both take effect without an
         // engine restart.
         targetConcurrency = readTargetConcurrency(epicId, concurrency, opts);
-        const rlDetected = detectRateLimits(epicId, projectId, opts);
+        const rlDetected = detectRateLimits(epicId, projectId, opts, state);
         if (rlDetected > 0) {
           // Drop ceiling by 1 per rate-limited worker (min 1). Old workers
           // keep running and eventually die; no replacements spawn until
@@ -1059,7 +984,12 @@ export async function orchestrate(opts: OrchestrateOptions): Promise<Orchestrate
           emptyCycles = 0;
         }
         // Recovery: if no 429 for cooldown window, climb back toward target.
-        effectiveConcurrency = computeEffectiveConcurrency(targetConcurrency, effectiveConcurrency);
+        effectiveConcurrency = computeEffectiveConcurrency(
+          targetConcurrency,
+          effectiveConcurrency,
+          state.lastRateLimitAt,
+          now(),
+        );
         // Apply ceiling to runner — live, no restart needed.
         runner.setConcurrency(projectId, effectiveConcurrency);
       }
@@ -1179,9 +1109,9 @@ export async function orchestrate(opts: OrchestrateOptions): Promise<Orchestrate
           if (meta.lastHealError !== advance.error) {
             // New error → previous heal advanced the diagnosis. Reset counters
             // for the new error so the engine can heal again.
-            resetHealRetriesForEpic(epicId);
+            resetHealRetriesForEpic(epicId, state);
           }
-          const heal = attemptHeal(epicId, stage, advance.error, opts);
+          const heal = attemptHeal(epicId, stage, advance.error, opts, state);
           writeEpisodeMeta(epicId, { lastHealError: advance.error, lastHealAttempt: new Date().toISOString() }, opts);
           if (heal.applied) {
             engineHeartbeat(opts, 'HEALING',
@@ -1203,9 +1133,9 @@ export async function orchestrate(opts: OrchestrateOptions): Promise<Orchestrate
           // (new gate checks, edge cases, etc.). The agent has the tools and
           // the context — let it try to fix the problem itself.
           const genericHealKey = `${epicId}:${stage}:generic`;
-          const genericRetries = healRetries.get(genericHealKey) ?? 0;
+          const genericRetries = state.healRetries.get(genericHealKey) ?? 0;
           if (genericRetries < 2 && !heal.applied) {
-            healRetries.set(genericHealKey, genericRetries + 1);
+            state.healRetries.set(genericHealKey, genericRetries + 1);
             const genericTaskId = spawnGenericRecoveryTask(epicId, stage, advance.error, opts);
             engineHeartbeat(opts, 'GENERIC_HEAL',
               `spawned autonomous-recovery task #${genericTaskId} for unmatched gate error`);
@@ -1231,7 +1161,7 @@ export async function orchestrate(opts: OrchestrateOptions): Promise<Orchestrate
           // the stage manually; currentStage() will reflect it next loop).
           clearNeedsHuman(epicId, opts);
           // Human override → reset retry budget, give the engine a fresh start.
-          resetHealRetriesForEpic(epicId);
+          resetHealRetriesForEpic(epicId, state);
           emptyCycles = 0;
           continue;
         }
@@ -1253,13 +1183,8 @@ export async function orchestrate(opts: OrchestrateOptions): Promise<Orchestrate
     }
   } finally {
     try { runner.dispose(); } catch { /* best effort */ }
-    // Release PID-lock so the next engine can start.
-    try {
-      if (typeof lockFile !== 'undefined' && existsSync(lockFile)) {
-        const ownerPid = parseInt(readFileSync(lockFile, 'utf8').trim(), 10);
-        if (ownerPid === process.pid) unlinkSync(lockFile);
-      }
-    } catch { /* stale lock, ignore */ }
+    // Release the host-owned singleton lock so the next engine can start.
+    opts.host.releaseEngineLock(context);
     engineHeartbeat(opts, 'ENGINE_EXIT', `cycles=${cycles} lastError=${lastError ?? 'null'}`);
   }
 
@@ -1270,6 +1195,3 @@ export async function orchestrate(opts: OrchestrateOptions): Promise<Orchestrate
     cycles, lastError,
   };
 }
-
-/** Re-export for tests. */
-export { closeDb };
