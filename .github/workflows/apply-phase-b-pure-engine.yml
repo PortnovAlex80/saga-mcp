@@ -47,6 +47,10 @@ jobs:
             MIGRATION_STATUS=$?
           fi
           if [ ${MIGRATION_STATUS} -eq 0 ]; then
+            node tools/fix-phase-b-pure-engine-generated-tests.mjs >> .phase-b-pure-engine-ci/migration.txt 2>&1
+            MIGRATION_STATUS=$?
+          fi
+          if [ ${MIGRATION_STATUS} -eq 0 ]; then
             rm -f src/application/ports/legacy-saga2-runtime.ts
             rm -f src/infrastructure/runtime/legacy-saga2-runner.ts
           fi
@@ -110,6 +114,7 @@ jobs:
           rm -f tools/apply-phase-b-pure-engine.mjs
           rm -f tools/apply-phase-b-pure-engine-tests.mjs
           rm -f tools/run-phase-b-pure-engine-migration.mjs
+          rm -f tools/fix-phase-b-pure-engine-generated-tests.mjs
           rm -f tools/.apply-phase-b-pure-engine.generated.mjs
           rm -f .github/workflows/apply-phase-b-pure-engine.yml
           git config user.name "github-actions[bot]"
