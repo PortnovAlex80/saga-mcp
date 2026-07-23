@@ -1,0 +1,110 @@
+name: Verify Phase B persistence extraction
+
+on:
+  pull_request:
+    branches: [saga2-refactoring]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: phase-b-persistence-${{ github.head_ref }}
+  cancel-in-progress: false
+
+jobs:
+  migrate-and-verify:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Require model-effort fix base
+        run: git merge-base --is-ancestor 92a2e9d5133c59464c5b95dbec7f0823721b2199 HEAD
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Apply migration and run verification gates
+        id: verify
+        env:
+          TARGET_BRANCH: ${{ github.head_ref }}
+        run: |
+          set +e
+          rm -rf .phase-b-persistence-ci
+          mkdir -p .phase-b-persistence-ci/generated
+
+          node tools/apply-phase-b-persistence.mjs > .phase-b-persistence-ci/migration.txt 2>&1
+          MIGRATION_STATUS=$?
+          BUILD_STATUS=99
+          ARCH_STATUS=99
+          CHAR_STATUS=99
+          E2E_STATUS=99
+          FULL_STATUS=99
+
+          if [ ${MIGRATION_STATUS} -eq 0 ]; then
+            npm run build > .phase-b-persistence-ci/build.txt 2>&1
+            BUILD_STATUS=$?
+          fi
+          if [ ${BUILD_STATUS} -eq 0 ]; then
+            npm run test:architecture > .phase-b-persistence-ci/architecture.txt 2>&1
+            ARCH_STATUS=$?
+          fi
+          if [ ${ARCH_STATUS} -eq 0 ]; then
+            npm run test:characterization > .phase-b-persistence-ci/characterization.txt 2>&1
+            CHAR_STATUS=$?
+          fi
+          if [ ${CHAR_STATUS} -eq 0 ]; then
+            npm run test:e2e > .phase-b-persistence-ci/e2e.txt 2>&1
+            E2E_STATUS=$?
+          fi
+          if [ ${E2E_STATUS} -eq 0 ]; then
+            npm test > .phase-b-persistence-ci/full-test.txt 2>&1
+            FULL_STATUS=$?
+          fi
+
+          printf 'migration=%s\nbuild=%s\narchitecture=%s\ncharacterization=%s\ne2e=%s\nfull=%s\n' \
+            "${MIGRATION_STATUS}" "${BUILD_STATUS}" "${ARCH_STATUS}" \
+            "${CHAR_STATUS}" "${E2E_STATUS}" "${FULL_STATUS}" \
+            > .phase-b-persistence-ci/status.txt
+
+          cp src/orchestrate.ts .phase-b-persistence-ci/generated/orchestrate.ts 2>/dev/null || true
+          cp tests/architecture/saga2-boundaries.test.mjs .phase-b-persistence-ci/generated/architecture.test.mjs 2>/dev/null || true
+          cp tests/characterization/saga2-runtime-contracts.test.mjs .phase-b-persistence-ci/generated/characterization.test.mjs 2>/dev/null || true
+          cp tests/e2e-pipeline.test.mjs .phase-b-persistence-ci/generated/e2e.test.mjs 2>/dev/null || true
+
+          if [ ${MIGRATION_STATUS} -ne 0 ] || [ ${BUILD_STATUS} -ne 0 ] || \
+             [ ${ARCH_STATUS} -ne 0 ] || [ ${CHAR_STATUS} -ne 0 ] || \
+             [ ${E2E_STATUS} -ne 0 ] || [ ${FULL_STATUS} -ne 0 ]; then
+            cat .phase-b-persistence-ci/status.txt
+            cat .phase-b-persistence-ci/migration.txt
+            cat .phase-b-persistence-ci/build.txt 2>/dev/null || true
+            cat .phase-b-persistence-ci/architecture.txt 2>/dev/null || true
+            cat .phase-b-persistence-ci/characterization.txt 2>/dev/null || true
+            cat .phase-b-persistence-ci/e2e.txt 2>/dev/null || true
+            exit 1
+          fi
+
+          rm -rf .phase-b-persistence-ci
+          rm -f tools/apply-phase-b-persistence.mjs
+          rm -f .github/workflows/apply-phase-b-persistence.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "refactor(phase-b): extract Saga2 engine persistence"
+          git push origin HEAD:${TARGET_BRANCH}
+
+      - name: Upload diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase-b-persistence-diagnostics
+          path: .phase-b-persistence-ci
+          if-no-files-found: warn
