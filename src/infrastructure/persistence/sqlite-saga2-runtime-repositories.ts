@@ -178,8 +178,7 @@ export class SqliteTaskRuntimeRepository implements TaskRuntimeRepository {
                           )
                        )
                   THEN 1 ELSE 0 END) AS claimable,
-         SUM(CASE WHEN t.status IN ('in_progress','review_in_progress')
-                       OR (t.status='review' AND t.assigned_to IS NOT NULL AND t.assigned_to!='')
+         SUM(CASE WHEN t.status IN ('in_progress','review_in_progress','review')
                        OR EXISTS (
                          SELECT 1 FROM worker_executions live
                           WHERE live.task_id=t.id
@@ -272,8 +271,7 @@ export class SqliteTaskRuntimeRepository implements TaskRuntimeRepository {
          SUM(CASE WHEN status IN ('todo','review')
                    AND (assigned_to IS NULL OR assigned_to='')
                    AND current_execution_id IS NULL THEN 1 ELSE 0 END) AS claimable,
-         SUM(CASE WHEN status IN ('in_progress','review_in_progress')
-                   OR (status='review' AND assigned_to IS NOT NULL AND assigned_to!='')
+         SUM(CASE WHEN status IN ('in_progress','review_in_progress','review')
                   THEN 1 ELSE 0 END) AS in_flight
        FROM tasks
        WHERE epic_id=? AND workflow_stage=?
