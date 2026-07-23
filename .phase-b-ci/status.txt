@@ -1,4 +1,4 @@
-build=2
-architecture=99
-characterization=99
-e2e=99
+build=0
+architecture=0
+characterization=0
+e2e=1
