@@ -1,0 +1,7 @@
+
+> saga-mcp@2.0.0 build
+> tsc
+
+src/orchestrate.ts(387,57): error TS2554: Expected 1 arguments, but got 2.
+src/orchestrate.ts(442,53): error TS2554: Expected 1 arguments, but got 2.
+src/orchestrate.ts(446,68): error TS2554: Expected 1 arguments, but got 2.
