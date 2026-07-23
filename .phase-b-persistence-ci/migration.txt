@@ -1,2 +1,0 @@
-Phase B persistence migration applied.
-Phase B full-suite test adapters applied.

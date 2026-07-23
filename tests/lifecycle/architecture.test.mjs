@@ -136,6 +136,7 @@ test('architecture: no direct lifecycle UPDATE outside sanctioned writers', () =
     'src/lifecycle/integration-executor.ts',
     'src/lifecycle/idempotency.ts',
     'src/lifecycle/invariant-scanner.ts',
+    'src/lifecycle/legacy-assignment-recovery.ts',
     'src/tools/dispatcher.ts',
     'src/tools/tasks.ts',
     'src/tools/lifecycle.ts',

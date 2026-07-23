@@ -21,7 +21,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, mkdirSync } from 'node:fs';
+import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
@@ -32,6 +32,20 @@ const dbPath = path.join(temp, 'conc.db');
 process.env.DB_PATH = dbPath;
 const repoPath = path.join(temp, 'repo');
 mkdirSync(repoPath);
+const homePath = path.join(temp, 'home');
+const claudePath = path.join(homePath, '.claude');
+mkdirSync(claudePath, { recursive: true });
+writeFileSync(path.join(claudePath, 'settings.json'), JSON.stringify({
+  env: {
+    ANTHROPIC_BASE_URL: 'https://api.z.ai/api/anthropic',
+    ANTHROPIC_AUTH_TOKEN: 'test-token',
+    ANTHROPIC_DEFAULT_HAIKU_MODEL: 'glm-4.7',
+    ANTHROPIC_DEFAULT_SONNET_MODEL: 'glm-4.7',
+    ANTHROPIC_DEFAULT_OPUS_MODEL: 'glm-4.7',
+    CLAUDE_CODE_SUBAGENT_MODEL: 'glm-4.7',
+  },
+  permissions: { allow: ['*'] },
+}, null, 2));
 
 const { closeDb, getDb } = await import('../../dist/db.js');
 const { handlers: projects } = await import('../../dist/tools/projects.js');
@@ -58,7 +72,7 @@ async function startServer() {
   });
   const child = spawn('node', [
     path.join(import.meta.dirname, '..', '..', 'tracker-view', 'tracker-view.mjs'),
-  ], { env: { ...process.env, DB_PATH: dbPath, PORT: String(port) }, stdio: ['ignore', 'pipe', 'pipe'] });
+  ], { env: { ...process.env, HOME: homePath, USERPROFILE: homePath, DB_PATH: dbPath, PORT: String(port), TRACKER_AUTOSTART: '0', TRACKER_NO_BROWSER: '1' }, stdio: ['ignore', 'pipe', 'pipe'] });
   const start = Date.now();
   while (Date.now() - start < 5000) {
     try { const r = await fetch(`http://127.0.0.1:${port}/api/heartbeat`); if (r.ok) break; } catch { await new Promise(r=>setTimeout(r,200)); }
@@ -111,6 +125,7 @@ test('model: POST /api/model/set writes metadata only', async () => {
     const meta = readMeta();
     assert.equal(meta.active_model, 'glm-4.7');
     assert.equal(typeof meta.active_model_limit, 'number');
+    assert.equal(meta.active_model_effort, 'high');
   } finally {
     srv.stop();
   }
@@ -135,6 +150,7 @@ test('metadata: engine_concurrency and active_model_limit coexist', async () => 
     assert.equal(meta.engine_concurrency, 5, 'engine_concurrency survived');
     assert.equal(meta.active_model, 'glm-5.2', 'active_model set');
     assert.equal(meta.active_model_limit, 3, 'model limit set');
+    assert.equal(meta.active_model_effort, 'high', 'model effort set');
   } finally {
     srv.stop();
   }

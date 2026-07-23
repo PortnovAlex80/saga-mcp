@@ -103,21 +103,46 @@ async function makeFixture(decision) {
 // on SAGA_MOCK_DECISION).
 async function runEngine(fixture) {
   const { orchestrate } = await import('../dist/orchestrate.js');
+  const { createLegacyClaudeWorkerExecutorFactory } = await import(
+    '../dist/infrastructure/workers/legacy-claude-worker-executor-factory.js'
+  );
+  const {
+    SqliteEpisodeRuntimeRepository,
+    SqliteExecutionRuntimeRepository,
+    SqliteTaskRuntimeRepository,
+  } = await import('../dist/infrastructure/persistence/sqlite-saga2-runtime-repositories.js');
+  const { SqliteWorkspaceResolver } = await import(
+    '../dist/infrastructure/workspaces/sqlite-workspace-resolver.js'
+  );
+
+  const persistence = {
+    episodes: new SqliteEpisodeRuntimeRepository(),
+    tasks: new SqliteTaskRuntimeRepository(),
+    executions: new SqliteExecutionRuntimeRepository(),
+    workspaces: new SqliteWorkspaceResolver(),
+  };
   fixture.spawnedChildren = [];
-  const result = await orchestrate({
-    projectId: fixture.project.id,
-    epicId: fixture.epic.id,
-    concurrency: 1,
-    claudePath: process.execPath,
+  const workerExecutorFactory = createLegacyClaudeWorkerExecutorFactory({
+    modelRouteReader: epicId => persistence.episodes.readWorkerModelRoute(epicId),
     spawn: (cmd, args, opts) => {
       const mockScript = path.join(sagaRoot, 'tests', 'mock-claude.mjs');
       const child = nodeSpawn(cmd, [mockScript, ...args], opts);
       fixture.spawnedChildren.push(child);
       return child;
     },
-    sleep: (ms) => new Promise(r => setTimeout(r, Math.min(ms, 50))),
   });
-  return result;
+
+  return orchestrate({
+    projectId: fixture.project.id,
+    epicId: fixture.epic.id,
+    concurrency: 1,
+    claudePath: process.execPath,
+    dbPath: process.env.DB_PATH,
+    lmStudioUrl: 'http://127.0.0.1:1234/v1',
+    workerExecutorFactory,
+    persistence,
+    sleep: (ms) => new Promise(resolve => setTimeout(resolve, Math.min(ms, 50))),
+  });
 }
 
 // Kill any mock-claude children a fixture's engine spawned. Called in the
