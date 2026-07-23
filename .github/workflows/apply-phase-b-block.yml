@@ -35,6 +35,18 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Repair guarded range anchor
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync, writeFileSync } from 'node:fs';
+          const file = 'tools/apply-phase-b-block.mjs';
+          const source = readFileSync(file, 'utf8');
+          const oldAnchor = "decode('Cn0KCmV4cG9ydCBpbnRlcmZhY2UgT3JjaGVzdHJhdGVSZXN1bHQ=')";
+          const newAnchor = "decode('CmV4cG9ydCBpbnRlcmZhY2UgT3JjaGVzdHJhdGVSZXN1bHQ=')";
+          if (!source.includes(oldAnchor)) throw new Error('OrchestrateOptions range anchor not found');
+          writeFileSync(file, source.replace(oldAnchor, newAnchor), 'utf8');
+          NODE
+
       - name: Apply guarded source migration
         run: node tools/apply-phase-b-block.mjs
 
