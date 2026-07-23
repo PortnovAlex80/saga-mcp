@@ -1,10 +1,6 @@
-export type BriefDecision = 'go' | 'fast-track' | 'clarify' | 'reject';
+import type { WorkerModelRoute } from './worker-executor.js';
 
-export interface WorkerModelRoute {
-  model: string | null;
-  provider: string;
-  effort: string | null;
-}
+export type BriefDecision = 'go' | 'fast-track' | 'clarify' | 'reject';
 
 export interface EpisodeHealMetadata {
   lastHealError: string | null;
