@@ -29,10 +29,11 @@ const { Saga3DiscoveryEngine } = await import(
  * In-memory fake of Saga3DiscoveryRuntimePersistence. Records every mutation
  * so assertions can inspect the intent lifecycle and task transitions.
  */
-function makeFakeRuntime({ proposalPayload, workerDelaysDone = true, workerReachesTerminal = true }) {
+function makeFakeRuntime({ proposalPayload, workerDelaysDone = true, workerReachesTerminal = true, finalTaskStatus = 'done' }) {
   const events = [];
   let intent = null;          // {id, kind, status, projected_task_id, ...}
   let task = null;            // {id, status}
+  let ticksSeenProposal = 0;
   let proposal = null;        // ProposalRecord or null
   let nextId = 1;
   let taskId = 100;
@@ -79,8 +80,11 @@ function makeFakeRuntime({ proposalPayload, workerDelaysDone = true, workerReach
 
     // Worker-plane simulation hooks (not part of the port — test internals).
     _simulateWorkerTick() {
-      // Called by the fake executor on each poll. First registers the proposal;
-      // subsequent ticks flip the task to done (simulating worker_done).
+      // Called by the fake executor on each poll. First registers the proposal
+      // (when a payload is configured); subsequent ticks flip the task to the
+      // final status (simulating worker_done). When no payload is configured,
+      // the worker still reaches the final status on its second tick (it bailed
+      // without submitting).
       if (proposalPayload && !proposal) {
         proposal = {
           id: 1, intent_id: intent.id, task_id: task.id, execution_id: 'fake-exec',
@@ -89,14 +93,22 @@ function makeFakeRuntime({ proposalPayload, workerDelaysDone = true, workerReach
           provenance: null, created_at: 't',
         };
         events.push(['worker-submitted-proposal', proposal.id]);
+        ticksSeenProposal = 1;
         if (!workerDelaysDone) {
-          task.status = 'done';
-          events.push(['worker-done', task.id]);
+          task.status = finalTaskStatus;
+          events.push(['worker-terminal', task.id, finalTaskStatus]);
         }
-      } else if (workerReachesTerminal && proposal && task.status !== 'done') {
-        task.status = 'done';
-        events.push(['worker-done', task.id]);
+        return;
       }
+      // Second tick (or first tick when no proposal payload): reach terminal.
+      if (workerReachesTerminal && task && task.status === 'todo') {
+        const ready = proposal ? ticksSeenProposal >= 1 : true;
+        if (ready) {
+          task.status = finalTaskStatus;
+          events.push(['worker-terminal', task.id, finalTaskStatus]);
+        }
+      }
+      if (proposal) ticksSeenProposal += 1;
     },
   };
 }
@@ -173,7 +185,7 @@ test('engine waits for worker_done after proposal; does not kill the worker (no 
 
   // The worker submitted a proposal, then (one tick later) reached done.
   assert.ok(runtime.events.some(([e]) => e === 'worker-submitted-proposal'), 'proposal was submitted');
-  assert.ok(runtime.events.some(([e]) => e === 'worker-done'), 'worker reached done');
+  assert.ok(runtime.events.some(([e]) => e === 'worker-terminal'), 'worker reached a terminal status');
   // CRITICAL: on a clean (task_terminal) exit the engine must NOT call stop —
   // that would race the worker's worker_done. stop only runs on hard exit.
   assert.equal(execLog.some(([e]) => e === 'stop'), false,
@@ -199,39 +211,16 @@ test('scopeCompleted is decoupled from business outcome: valid inconclusive + do
   assert.equal(result.scopeCompleted, true, 'valid proposal + terminal worker => scope complete regardless of business verdict');
 });
 
-test('task terminal without a proposal → honest incomplete (scopeCompleted=false, outcome=failed)', async () => {
-  const runtime = makeFakeRuntime({ proposalPayload: null });
-  // Force the worker to finish with no proposal: flip task to done without ever
-  // submitting. Override the simulate hook.
-  runtime._simulateWorkerTick = function () {
-    if (runtime.events.every(([e]) => e !== 'worker-done')) {
-      // reach into the closure's task via ensureProjectedTask side effect
-      const tid = runtime.ensureProjectedTask({ epicId: 10, projectId: 1, intentId: 1, objective: 'o', taskKind: 'discovery.work', executionSkill: 'saga-discovery-worker', generationKey: 'k' });
-      runtime.readTaskState; // noop
-      // flip the task done directly through a re-read trick: use readTaskState
-      // path by marking done via a custom field
-      this._forceDone = true;
-    }
-  };
-  // Simpler: just make the fake task done immediately on first poll, no proposal.
-  const rt2 = makeFakeRuntime({ proposalPayload: null });
-  rt2._simulateWorkerTick = function () {
-    if (!this._done) {
-      // The engine created task via ensureProjectedTask on a prior readEpic? No —
-      // ensureProjectedTask runs during runDiscovery. Simulate by setting an
-      // internal done flag the readTaskState will honour.
-      this._done = true;
-    }
-  };
-  // Patch readTaskState to report done after the first tick.
-  let tickCount = 0;
-  const origReadTask = rt2.readTaskState.bind(rt2);
-  rt2.readTaskState = (tid) => { tickCount += 1; return tickCount > 1 ? 'done' : origReadTask(tid); };
-  const executor = makeFakeExecutor(() => rt2._simulateWorkerTick(), []);
+test('task done without a proposal → honest incomplete (scopeCompleted=false, outcome=failed)', async () => {
+  // Worker reaches 'done' but never submitted a proposal (bail / error). The
+  // terminal verdict is 'clean' (task done, process gone), but scopeCompleted
+  // is false because there is no valid proposal, and outcome is 'failed'.
+  const runtime = makeFakeRuntime({ proposalPayload: null, finalTaskStatus: 'done' });
+  const executor = makeFakeExecutor(() => runtime._simulateWorkerTick(), []);
   const engine = new Saga3DiscoveryEngine({
     config: fullConfig(), workerExecutorFactory: () => executor,
     persistence: { episodes: { currentStage: () => 'discovery' }, workspaces: { resolve: () => ({ workspaceRoot: '/w' }) } },
-    host: fakeHost(), runtimePersistence: rt2, pollMs: 0,
+    host: fakeHost(), runtimePersistence: runtime, pollMs: 0,
   });
 
   const result = await engine.run({ projectId: 1, epicId: 10, concurrency: 1 });
@@ -349,8 +338,9 @@ test('timeout → reason=paused_timeout (not completed), executor.stop() called'
   const runtime = makeFakeRuntime({ proposalPayload: null });
   // Run stays 'running' forever; the worker never produces a proposal and never
   // reaches done. The engine must hit maxRunMs and exit paused_timeout.
+  const execLog = [];
   const engine = new Saga3DiscoveryEngine({
-    config: fullConfig(), workerExecutorFactory: () => makeFakeExecutor(() => {}, []),
+    config: fullConfig(), workerExecutorFactory: () => makeFakeExecutor(() => {}, execLog),
     persistence: { episodes: { currentStage: () => 'discovery' }, workspaces: { resolve: () => ({ workspaceRoot: '/w' }) } },
     host: fakeHost(), runtimePersistence: runtime, pollMs: 0, maxRunSeconds: 0,
   });
@@ -358,6 +348,7 @@ test('timeout → reason=paused_timeout (not completed), executor.stop() called'
   assert.equal(result.reason, 'paused_timeout');
   assert.equal(result.outcome, 'inconclusive');
   assert.equal(result.scopeCompleted, false);
+  assert.ok(execLog.some(([e]) => e === 'stop'), 'timeout must call executor.stop() to reclaim the worker');
 });
 
 test('clean closure requires the worker process to leave run.active (not just task done)', async () => {
@@ -394,4 +385,59 @@ test('clean closure requires the worker process to leave run.active (not just ta
   assert.ok(pollCount >= 2, 'engine polled at least twice — waited for the process to leave run.active');
   assert.equal(result.reason, 'completed');
   assert.equal(result.scopeCompleted, true);
+});
+
+// --- blocked semantics (review P0): blocked is NOT a clean worker_done ---
+
+test('blocked task + valid proposal + inactive worker → reason=failed, scopeCompleted=false', async () => {
+  // The worker hit a blocker, the task went to 'blocked' (NOT 'done'), and the
+  // process has left run.active. Even though a valid proposal exists, this is
+  // NOT a clean closure: blocked means the work did not complete. The engine
+  // must report reason=failed and scopeCompleted=false.
+  const runtime = makeFakeRuntime({ proposalPayload: validPayload('go'), finalTaskStatus: 'blocked' });
+  const executor = makeFakeExecutor(() => runtime._simulateWorkerTick(), []);
+  const engine = new Saga3DiscoveryEngine({
+    config: fullConfig(), workerExecutorFactory: () => executor,
+    persistence: { episodes: { currentStage: () => 'discovery' }, workspaces: { resolve: () => ({ workspaceRoot: '/w' }) } },
+    host: fakeHost(), runtimePersistence: runtime, pollMs: 0,
+  });
+  const result = await engine.run({ projectId: 1, epicId: 10, concurrency: 1 });
+  assert.equal(result.reason, 'failed');
+  assert.equal(result.scopeCompleted, false, 'blocked task must not count as a completed discovery scope');
+  assert.match(result.lastError, /task_blocked/);
+});
+
+test('task done + run.status=failed + active=[] → reason=failed (runFailed checked before clean)', async () => {
+  // The task reached 'done' but the run is in 'failed' state (substrate error).
+  // runFailed must be checked BEFORE the clean-closure branch, otherwise the
+  // substrate failure is masked as 'completed'. The onPoll advances the worker
+  // (proposal + done); once the task is done, status() returns 'failed' with
+  // empty active — the exact condition that would wrongly fire 'clean' if
+  // runFailed were checked after the clean branch.
+  const runtime = makeFakeRuntime({ proposalPayload: validPayload('go'), finalTaskStatus: 'done' });
+  runtime._taskId = () => runtime.events.find(([e]) => e === 'ensureProjectedTask-create')?.[1] ?? null;
+  let polls = 0;
+  const executor = {
+    start(cmd) {}, stop() {},
+    status() {
+      polls += 1;
+      runtime._simulateWorkerTick();
+      const tid = runtime._taskId();
+      const taskDone = tid !== null && runtime.readTaskState(tid) === 'done';
+      return {
+        id: 'r', project_id: 1, concurrency: 1,
+        status: taskDone ? 'failed' : 'running',
+        active: [], completed: 0, failed: 1, claimed: 1,
+      };
+    },
+    setConcurrency() {}, dispose() {},
+  };
+  const engine = new Saga3DiscoveryEngine({
+    config: fullConfig(), workerExecutorFactory: () => executor,
+    persistence: { episodes: { currentStage: () => 'discovery' }, workspaces: { resolve: () => ({ workspaceRoot: '/w' }) } },
+    host: fakeHost(), runtimePersistence: runtime, pollMs: 0, maxRunSeconds: 5,
+  });
+  const result = await engine.run({ projectId: 1, epicId: 10, concurrency: 1 });
+  assert.equal(result.reason, 'failed', 'runFailed must win over clean when task=done + run.status=failed');
+  assert.match(result.lastError, /executor_failed/);
 });

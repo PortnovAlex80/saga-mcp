@@ -244,18 +244,24 @@ export class Saga3DiscoveryEngine implements OrchestrationEngine {
     let cycles = 0;
     let seenProposal = false;
     let terminal:
-      | 'clean'              // task terminal AND worker process gone AND run healthy/terminal
-      | 'executor_failed'    // run.status=failed without task terminal
+      | 'clean'              // task DONE AND worker process gone AND run healthy
+      | 'task_blocked'       // task blocked (non-clean stop) AND worker gone
+      | 'executor_failed'    // run.status=failed (checked BEFORE clean — masks nothing)
       | 'executor_dead'      // status() returned null (run vanished)
       | 'timeout'
-      | 'task_unclaimed' = 'timeout'; // run reached terminal healthy without ever claiming the task
+      | 'task_unclaimed' = 'timeout'; // run reached terminal healthy without task done
     while (true) {
       cycles += 1;
       heartbeat('CYCLE', `cycle=${cycles}${seenProposal ? ' (proposal seen, waiting worker_done)' : ''}`);
       const proposal = rt.readLatestProposal(intent.id);
       if (proposal) seenProposal = true;
       const taskStatus = rt.readTaskState(taskId);
-      const taskTerminal = taskStatus === 'done' || taskStatus === 'blocked';
+      // worker_done ends a task in 'done' (happy path) or cycles it to 'review'
+      // / back to 'todo'. It NEVER ends in 'blocked' — blocked means the work
+      // did NOT complete cleanly (a blocker / human request / failure). Only
+      // 'done' counts as clean worker closure.
+      const taskDone = taskStatus === 'done';
+      const taskBlocked = taskStatus === 'blocked';
       const run = executor.status(projectId);
       const runIsNull = run === null;
       const runStatus = run?.status ?? null;
@@ -267,23 +273,30 @@ export class Saga3DiscoveryEngine implements OrchestrationEngine {
         terminal = 'executor_dead';
         break;
       }
-      // Clean closure: task reached worker_done AND its claude process has
-      // left run.active (close handler ran). The run may still be 'running'
-      // (it re-arms the pump); that's fine — we only need OUR worker gone.
-      if (taskTerminal && !taskStillActive) {
-        terminal = 'clean';
-        break;
-      }
-      // Substrate failed (e.g. claim threw, spawn failed) without the worker
-      // reaching worker_done — this already happened, do not wait for timeout.
+      // Substrate failed (e.g. claim threw, spawn failed). Checked BEFORE clean
+      // so a run.status=failed with task=done is reported honestly as a
+      // substrate failure, not masked as a clean closure.
       if (runFailed) {
         terminal = 'executor_failed';
         break;
       }
+      // Clean closure: task reached worker_done ('done' only) AND its claude
+      // process has left run.active (close handler ran).
+      if (taskDone && !taskStillActive) {
+        terminal = 'clean';
+        break;
+      }
+      // task blocked: the work did NOT complete cleanly (blocker / human
+      // request / failure). The worker has exited (not in run.active). This is
+      // NOT a clean closure — scopeCompleted stays false, reason='failed'.
+      if (taskBlocked && !taskStillActive) {
+        terminal = 'task_blocked';
+        break;
+      }
       // Substrate finished its loop (completed/stopped) but the task never
-      // reached worker_done — the worker either never claimed the task or
-      // bailed. Do not wait for a timeout that will never come.
-      if (runTerminalHealthy && !taskTerminal) {
+      // reached done — the worker either never claimed it or bailed. Do not
+      // wait for a timeout that will never come.
+      if (runTerminalHealthy && !taskDone) {
         terminal = 'task_unclaimed';
         break;
       }
@@ -305,8 +318,6 @@ export class Saga3DiscoveryEngine implements OrchestrationEngine {
 
     // 5. Provisional outcome (roadmap §8.D1). NOT authoritative — D4 settles.
     const proposal = rt.readLatestProposal(intent.id);
-    const taskStatus = rt.readTaskState(taskId);
-    const workerReachedTerminal = taskStatus === 'done' || taskStatus === 'blocked';
     let outcome: DiscoveryRunOutcome;
     if (proposal) {
       const validation = validateDiscoveryProposal(proposal.payload);
@@ -317,7 +328,7 @@ export class Saga3DiscoveryEngine implements OrchestrationEngine {
           outcome: provisional.outcome, outcomeAuthority: provisional.authority,
           proposalId: proposal.id, proposalHash: proposal.content_hash,
         };
-        heartbeat('PROPOSAL_VALID', `id=${proposal.id} outcome=${provisional.outcome} taskDone=${workerReachedTerminal}`);
+        heartbeat('PROPOSAL_VALID', `id=${proposal.id} outcome=${provisional.outcome} terminal=${terminal}`);
       } else {
         // Malformed proposal → honest non-success (roadmap D1 exit gate).
         outcome = {
@@ -337,19 +348,20 @@ export class Saga3DiscoveryEngine implements OrchestrationEngine {
 
     // Discovery Edition never advances the stage and never marks the product
     // completed (roadmap §5.3). scopeCompleted is decoupled from the BUSINESS
-    // outcome: it is true iff the discovery slice actually ran to completion —
-    // i.e. a structurally valid proposal was submitted AND the worker reached a
-    // terminal execution. A valid 'clarify'/'reject'/'failed' proposal with a
-    // terminal worker still completes the discovery scope; the business verdict
-    // is simply negative or non-go. An absent/invalid proposal, or a proposal
-    // without a terminal worker, leaves the scope incomplete.
+    // outcome but tightly coupled to the CLEAN terminal verdict: true iff the
+    // slice ran to a clean worker closure ('done', process gone) AND a
+    // structurally valid proposal exists. A valid 'clarify'/'reject'/'failed'
+    // proposal on a clean closure still completes the discovery scope. A
+    // blocked task, a failed substrate, a timeout, or an absent/invalid
+    // proposal leaves the scope incomplete regardless of business outcome.
     const validProposal = proposal !== null && validateDiscoveryProposal(proposal.payload).valid;
-    const scopeCompleted = validProposal && workerReachedTerminal;
+    const scopeCompleted = terminal === 'clean' && validProposal;
     const finalStage = persistence.episodes.currentStage(epicId) ?? 'discovery';
 
     // reason must reflect the actual terminal condition, not always 'completed'.
     //   clean            → completed
     //   timeout          → paused_timeout (bounded execution honour; not 'completed')
+    //   task_blocked     → failed (blocked is NOT a clean worker_done)
     //   executor_failed  → failed
     //   executor_dead    → failed
     //   task_unclaimed   → failed (substrate gave up without worker_done)
@@ -360,6 +372,7 @@ export class Saga3DiscoveryEngine implements OrchestrationEngine {
     const lastError: string | null =
       terminal === 'clean' ? null
       : terminal === 'timeout' ? `discovery run timed out after ${Math.round(this.maxRunMs / 1000)}s`
+      : terminal === 'task_blocked' ? `discovery task ended blocked (terminal=${terminal}); not a clean worker closure`
       : `discovery substrate ended without clean worker closure (terminal=${terminal})`;
     return this.runResult(projectId, epicId, reason, cycles, lastError, outcome, finalStage, scopeCompleted);
   }
