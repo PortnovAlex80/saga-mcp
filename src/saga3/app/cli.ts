@@ -29,7 +29,7 @@ import { fileURLToPath } from 'node:url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { EpisodeController, loadConditionsFromDb, saveConditionToDb } from './controller.js';
 import type { EpisodeContext } from './controller.js';
 import { OracleRegistry } from '../evidence/attestation.js';
@@ -372,14 +372,48 @@ function spawnWorker(
 
     child.once('error', (e) => {
       if (logStream) logStream.end();
+      clearTimeout(timeoutHandle);
       log(`WORKER SPAWN ERROR: ${e.message}`);
       resolve(1);
     });
 
     child.once('close', (code) => {
       if (logStream) logStream.end();
+      clearTimeout(timeoutHandle);
       resolve(code ?? 1);
     });
+
+    // Hard timeout. If the worker (claude -p) gets stuck — e.g. gemma-4-12b
+    // spinning forever in thinking_tokens without ever calling a saga3_* MCP
+    // tool — kill it so the controller retry loop can move on. Without this,
+    // a hung worker blocks the entire episode (observed 42min stall).
+    //
+    // Default 180s. Override with SAGA3_WORKER_TIMEOUT_MS.
+    // On timeout: SIGTERM, then SIGKILL after 10s grace if still alive.
+    // Resolve with 124 (the unix `timeout` command's exit code for KIA).
+    const timeoutMs = Math.max(30_000, Number(process.env.SAGA3_WORKER_TIMEOUT_MS ?? 180_000));
+    let killed = false;
+    const timeoutHandle = setTimeout(() => {
+      if (killed) return;
+      killed = true;
+      log(`WORKER TIMEOUT after ${Math.round(timeoutMs / 1000)}s — killing claude pid=${child.pid ?? 'n/a'}`);
+      try {
+        // Windows has no process groups for spawn; taskkill /T /F is the
+        // reliable way to take down the claude child + its own subprocesses
+        // (the spawned saga3 MCP server is a grandchild here).
+        spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'],
+          { stdio: 'ignore', windowsHide: true });
+      } catch {
+        try { child.kill('SIGKILL'); } catch { /* already gone */ }
+      }
+      if (logStream) logStream.end();
+      resolve(124);
+    }, timeoutMs);
+
+    // Keep the Node event loop alive while the worker runs (the timeout
+    // handle would do this anyway, but be explicit so the pump does not
+    // exit prematurely while waiting on a worker).
+    timeoutHandle.unref?.();
   });
 }
 

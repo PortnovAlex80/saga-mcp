@@ -245,36 +245,52 @@ export class SqliteWorkerSubmissionRepository implements WorkerSubmissionReposit
       // successful saga3_complete — which is mechanically wrong and blocks
       // downstream stage checks ('worker execution exited cleanly',
       // 'board task is done after worker completion').
+      // worker_executions: always close, but the exit_code reflects outcome.
+      // A failed oracle (condition=False) is a real worker failure — exit=1 —
+      // so downstream tooling and the live-acceptance check
+      // 'worker execution exited cleanly' (which expects exit_code=0) does not
+      // mistake it for a success.
+      const workerExitCode = acceptance.conditionStatus === 'True' ? 0 : 1;
       this.db.prepare(
         `UPDATE worker_executions
             SET state = 'exited',
                 phase = 'finishing',
-                exit_code = 0,
+                exit_code = ?,
                 finished_at = datetime('now')
           WHERE execution_id = ?
             AND state IN ('reserved','running','cancel_requested')`,
-      ).run(acceptance.authority.executionId);
+      ).run(workerExitCode, acceptance.authority.executionId);
 
       // The condition→task mapping lives in pipeline-contracts.ts
       // (resolveTaskForCondition). Tasks are matched by epic_id + task_kind,
       // which we resolve from episode_spec → epic. We look up the epic once.
+      //
+      // Task status mirrors the condition outcome:
+      //   True    → done (work genuinely complete)
+      //   False   → blocked (oracle rejected; needs revision, NOT done)
+      //   Unknown → in_progress (no conclusive signal; let the pump retry)
+      // Closing the task as 'done' on a failed oracle was a bug — it hid the
+      // failure from the board and made the engine look finished when the
+      // condition was actually False.
       const specRow = this.db.prepare(
         `SELECT epic_id FROM saga3_episode_specs WHERE id = ?`,
       ).get(acceptance.authority.episodeSpecId) as { epic_id: number } | undefined;
       if (specRow?.epic_id) {
-        // The task_kind for this condition is derived by resolveTaskForCondition
-        // from the same CONDITION_TASK_KIND map. To avoid a circular import
-        // (control ports → domain → sqlite), re-derive the small lookup here.
         const taskKind = conditionTaskKind(acceptance.authority.conditionType);
         if (taskKind) {
+          const taskStatus = acceptance.conditionStatus === 'True'
+            ? 'done'
+            : acceptance.conditionStatus === 'False'
+              ? 'blocked'
+              : 'in_progress';
           this.db.prepare(
             `UPDATE tasks
-                SET status = 'done',
+                SET status = ?,
                     updated_at = datetime('now')
               WHERE epic_id = ?
                 AND task_kind = ?
                 AND status IN ('todo','in_progress','review','review_in_progress')`,
-          ).run(specRow.epic_id, taskKind);
+          ).run(taskStatus, specRow.epic_id, taskKind);
         }
       }
     })();
