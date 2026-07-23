@@ -34,6 +34,7 @@
     "prepublishOnly": "npm run build",
     "test": "tsc && node --test",
     "test:characterization": "node --test tests/characterization/saga2-runtime-contracts.test.mjs",
+    "test:architecture": "tsc && node --test tests/architecture/saga2-boundaries.test.mjs",
     "test:e2e": "tsc && node --test tests/e2e-pipeline.test.mjs",
     "mock:run": "SAGA_CLAUDE_PATH=\"node tests/mock-claude.mjs\" node dist/orchestrate-cli.js"
   },
