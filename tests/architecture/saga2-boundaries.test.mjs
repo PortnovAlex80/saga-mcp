@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -21,26 +21,49 @@ const { LegacyBoardProjectionAdapter } = await import(
 const { SqliteBoardProjectionReader } = await import(
   '../../dist/infrastructure/projections/sqlite-board-projection-reader.js'
 );
+const { LegacyEngineAdministration } = await import(
+  '../../dist/infrastructure/engine/legacy-engine-administration.js'
+);
+
+const fullConfig = (overrides = {}) => ({
+  dbPath: '/tmp/saga.db',
+  claudePath: '/opt/claude',
+  lmStudioUrl: 'http://localhost:1234/v1',
+  zaiBaseUrl: 'https://api.z.ai/api/anthropic',
+  trackerAutostart: true,
+  trackerPort: 4321,
+  trackerReloadSec: 5,
+  trackerSpawned: false,
+  trackerNoBrowser: false,
+  orchestrationMode: 'v2',
+  ...overrides,
+});
 
 test('runtime config preserves Saga 2 defaults and environment precedence', () => {
   const config = loadSagaRuntimeConfig({
     DB_PATH: '/tmp/saga.db',
     SAGA_CLAUDE_PATH: '/opt/claude',
     SAGA_LMSTUDIO_URL: 'http://127.0.0.1:1234/v1',
+    SAGA_ZAI_BASE_URL: 'https://zai.example/anthropic',
     TRACKER_AUTOSTART: '0',
+    TRACKER_SPAWNED: '1',
+    TRACKER_NO_BROWSER: '1',
     PORT: '5000',
     RELOAD_SEC: '7',
-    SAGA_ORCHESTRATION_MODE: 'v2',
+    SAGA_ORCHESTRATION_MODE: 'v3',
   });
 
   assert.deepEqual(config, {
     dbPath: '/tmp/saga.db',
     claudePath: '/opt/claude',
     lmStudioUrl: 'http://127.0.0.1:1234/v1',
+    zaiBaseUrl: 'https://zai.example/anthropic',
     trackerAutostart: false,
     trackerPort: 5000,
     trackerReloadSec: 7,
-    orchestrationMode: 'v2',
+    trackerSpawned: true,
+    trackerNoBrowser: true,
+    orchestrationMode: 'v3',
   });
 
   assert.throws(() => loadSagaRuntimeConfig({}), /DB_PATH env var is required/);
@@ -59,15 +82,7 @@ test('Saga2Engine delegates through the legacy runtime port', async () => {
   };
 
   const engine = new Saga2Engine({
-    config: {
-      dbPath: '/tmp/saga.db',
-      claudePath: '/opt/claude',
-      lmStudioUrl: 'http://localhost:1234/v1',
-      trackerAutostart: true,
-      trackerPort: 4321,
-      trackerReloadSec: 5,
-      orchestrationMode: 'v2',
-    },
+    config: fullConfig(),
     runLegacy: async invocation => {
       calls.push(invocation);
       return expected;
@@ -84,11 +99,17 @@ test('Saga2Engine delegates through the legacy runtime port', async () => {
   }]);
 });
 
-test('Saga application host coordinates engine and board ports and closes once', async () => {
+test('Saga application coordinates engine, board and administration ports', async () => {
   const commands = [];
+  const adminCalls = [];
   let closes = 0;
+  let adminDisposes = 0;
   const projects = [{ id: 1, name: 'Stable', status: 'active', total: 1, in_progress: 0, reviewing: 0 }];
   const board = { epics: [], epicById: {}, tasks: [] };
+  const engineState = {
+    projectId: 1, epicId: 2, running: true, alive: true,
+    pid: 123, concurrency: 2, startedAt: '2026-07-23 00:00:00',
+  };
   const application = createSagaApplication({
     engine: {
       async run(command) {
@@ -111,6 +132,17 @@ test('Saga application host coordinates engine and board ports and closes once',
         return board;
       },
     },
+    engineAdministration: {
+      start(command) { adminCalls.push(['start', command]); return engineState; },
+      stop(epicId) { adminCalls.push(['stop', epicId]); return { ...engineState, running: false, alive: false }; },
+      restart(command) { adminCalls.push(['restart', command]); return engineState; },
+      setConcurrency(epicId, concurrency) {
+        adminCalls.push(['concurrency', epicId, concurrency]);
+        return { ...engineState, concurrency };
+      },
+      status(epicId) { adminCalls.push(['status', epicId]); return engineState; },
+      dispose() { adminDisposes += 1; },
+    },
     close: () => { closes += 1; },
   });
 
@@ -118,8 +150,21 @@ test('Saga application host coordinates engine and board ports and closes once',
   assert.deepEqual(commands, [{ projectId: 1, epicId: 2, concurrency: 1 }]);
   assert.equal(application.listProjects(), projects);
   assert.equal(application.loadProjectBoard(1), board);
+  assert.equal(application.startEngine({ epicId: 2, concurrency: 2 }), engineState);
+  application.getEngineStatus(2);
+  application.setEngineConcurrency(2, 3);
+  application.stopEngine(2);
+  application.restartEngine({ epicId: 2 });
+  assert.deepEqual(adminCalls, [
+    ['start', { epicId: 2, concurrency: 2 }],
+    ['status', 2],
+    ['concurrency', 2, 3],
+    ['stop', 2],
+    ['restart', { epicId: 2 }],
+  ]);
   application.close();
   application.close();
+  assert.equal(adminDisposes, 1);
   assert.equal(closes, 1);
   assert.throws(() => application.runEpisode({ projectId: 1, epicId: 2 }), /Saga application is closed/);
   assert.throws(() => application.listProjects(), /Saga application is closed/);
@@ -218,4 +263,93 @@ test('SQLite board reader preserves the tracker project and board projection', (
   } finally {
     rmSync(temp, { recursive: true, force: true });
   }
+});
+
+test('legacy engine administration preserves start/status/concurrency/stop semantics', () => {
+  const temp = mkdtempSync(path.join(os.tmpdir(), 'saga-engine-admin-'));
+  const dbPath = path.join(temp, 'saga.db');
+  const db = new Database(dbPath);
+  try {
+    db.exec(`
+      CREATE TABLE epics (id INTEGER PRIMARY KEY, project_id INTEGER);
+      CREATE TABLE episode_workflows (
+        epic_id INTEGER PRIMARY KEY,
+        metadata TEXT,
+        updated_at TEXT
+      );
+    `);
+    db.prepare('INSERT INTO epics VALUES (2, 1)').run();
+    db.prepare(`INSERT INTO episode_workflows VALUES (2, '{}', datetime('now'))`).run();
+  } finally {
+    db.close();
+  }
+
+  let alive = false;
+  const spawned = [];
+  const syncCalls = [];
+  const admin = new LegacyEngineAdministration({
+    config: fullConfig({ dbPath, orchestrationMode: 'v3' }),
+    baseEnv: { KEEP_ME: '1' },
+    orchestrateCliPath: '/dist/orchestrate-cli.js',
+    platform: 'linux',
+    now: () => new Date('2026-07-23T01:02:03.000Z'),
+    spawnProcess(command, args, options) {
+      spawned.push({ command, args, options });
+      alive = true;
+      return { pid: 4321, unref() {} };
+    },
+    spawnProcessSync(command, args) {
+      syncCalls.push([command, args]);
+      if (command === 'pkill') { alive = false; return { status: 0, stdout: '' }; }
+      if (command === 'pgrep') return { status: alive ? 0 : 1, stdout: alive ? '4321' : '' };
+      return { status: 0, stdout: '' };
+    },
+  });
+
+  try {
+    const started = admin.start({ epicId: 2, concurrency: 3 });
+    assert.equal(started.running, true);
+    assert.equal(started.alive, true);
+    assert.equal(started.pid, 4321);
+    assert.equal(started.concurrency, 3);
+    assert.equal(spawned[0].options.env.DB_PATH, dbPath);
+    assert.equal(spawned[0].options.env.SAGA_ORCHESTRATION_MODE, 'v3');
+    assert.equal(spawned[0].options.env.KEEP_ME, '1');
+
+    const status = admin.status(2);
+    assert.equal(status.alive, true);
+    assert.equal(status.running, true);
+
+    const changed = admin.setConcurrency(2, 2);
+    assert.equal(changed.concurrency, 2);
+
+    const stopped = admin.stop(2);
+    assert.equal(stopped.running, false);
+    assert.equal(stopped.alive, false);
+    assert.ok(syncCalls.some(([command]) => command === 'pkill'));
+  } finally {
+    admin.dispose();
+    rmSync(temp, { recursive: true, force: true });
+  }
+});
+
+test('tracker uses extracted ports and preserves the LM Studio hard rule fix', () => {
+  const trackerPath = path.join(process.cwd(), 'tracker-view', 'tracker-view.mjs');
+  const source = readFileSync(trackerPath, 'utf8');
+
+  assert.match(source, /createSaga2Application/);
+  assert.match(source, /sagaApplication\.listProjects\(\)/);
+  assert.match(source, /sagaApplication\.loadProjectBoard/);
+  assert.match(source, /sagaApplication\.startEngine/);
+  assert.doesNotMatch(source, /function killEngineTree\(/);
+
+  for (const slot of [
+    'ANTHROPIC_DEFAULT_HAIKU_MODEL',
+    'ANTHROPIC_DEFAULT_SONNET_MODEL',
+    'ANTHROPIC_DEFAULT_OPUS_MODEL',
+    'CLAUDE_CODE_SUBAGENT_MODEL',
+  ]) {
+    assert.match(source, new RegExp(`payload\\.env\\.${slot} = modelId`));
+  }
+  assert.match(source, /CLAUDE_SETTINGS_LMSTUDIO_TPL/);
 });
