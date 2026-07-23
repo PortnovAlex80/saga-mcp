@@ -12,6 +12,15 @@ const PROJECT_COLORS = [
   '#1abc9c', '#f39c12', '#34495e', '#2ecc71', '#e84393',
 ];
 
+interface BoardProjectRow {
+  id: number;
+  name: string;
+  status: string;
+  total: number | null;
+  in_progress: number | null;
+  reviewing: number | null;
+}
+
 /**
  * Read-only adapter containing the tracker board SQL that is currently part of
  * tracker-view.mjs. It intentionally preserves query semantics and result
@@ -34,10 +43,12 @@ export class SqliteBoardProjectionReader implements BoardProjectionReader {
         WHERE p.status != 'archived'
         GROUP BY p.id
         ORDER BY p.name COLLATE NOCASE
-      `).all() as Array<Omit<BoardProjectSummary, 'color'>>;
+      `).all() as BoardProjectRow[];
 
-      return rows.map((row, index) => ({
-        ...row,
+      return rows.map((row, index): BoardProjectSummary => ({
+        id: row.id,
+        name: row.name,
+        status: row.status,
         total: Number(row.total ?? 0),
         in_progress: Number(row.in_progress ?? 0),
         reviewing: Number(row.reviewing ?? 0),
