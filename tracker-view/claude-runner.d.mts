@@ -70,10 +70,14 @@ export interface ClaudeBoardRunnerOptions {
   sagaSkillRoot: string;
   logRoot?: string;
   heartbeatLog?: string;
-  // Provider routing: read { model, provider } from episode metadata so the
-  // runner can redirect this worker's claude to LM Studio (provider='lmstudio')
+  // Provider routing: read { model, provider, effort } from episode metadata so
+  // the runner can redirect this worker's claude to LM Studio (provider='lmstudio')
   // via spawn env, or keep it on z.ai (default). Optional for test runners.
-  getActiveModel?: (epicId: number | null) => { model: string | null; provider: string };
+  // `effort` is the model-config-derived reasoning effort to pass as `--effort`
+  // (e.g. 'high' for z.ai cloud). Absent for LM Studio models → the runner
+  // omits `--effort` entirely so the local chat template picks its own default
+  // (LM Studio rejects effort='xhigh'/'high' for qwen models; see model catalog).
+  getActiveModel?: (epicId: number | null) => { model: string | null; provider: string; effort?: string | null };
   lmstudioBaseUrl?: string;
 }
 

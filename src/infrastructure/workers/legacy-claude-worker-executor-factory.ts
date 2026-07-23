@@ -110,10 +110,11 @@ export function createLegacyClaudeWorkerExecutorFactory(
       getActiveModel: epicId => {
         const row = getDb().prepare(
           `SELECT json_extract(metadata, '$.active_model') AS m,
-                  json_extract(metadata, '$.active_provider') AS p
+                  json_extract(metadata, '$.active_provider') AS p,
+                  json_extract(metadata, '$.active_model_effort') AS e
              FROM episode_workflows WHERE epic_id=?`,
-        ).get(epicId) as { m: string | null; p: string | null } | undefined;
-        return { model: row?.m ?? null, provider: row?.p ?? 'zai' };
+        ).get(epicId) as { m: string | null; p: string | null; e: string | null } | undefined;
+        return { model: row?.m ?? null, provider: row?.p ?? 'zai', effort: row?.e ?? null };
       },
     };
 

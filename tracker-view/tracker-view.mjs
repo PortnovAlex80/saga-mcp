@@ -292,6 +292,23 @@ const boardRunner = createClaudeBoardRunner({
   sagaSkillRoot: path.join(__dirname, '..', 'skills'),
   claudePath: runtimeConfig.claudePath,
   lmstudioBaseUrl: runtimeConfig.lmStudioUrl,
+  // Provider + effort routing for the board-run path (mirrors the engine's
+  // legacy-claude-worker-executor-factory.ts). Reads $.active_model /
+  // $.active_provider / $.active_model_effort from the episode's metadata so
+  // the runner can point the worker at LM Studio and omit --effort for it.
+  // Returns the zai/null default when the episode has no chosen model yet.
+  getActiveModel: epicId => {
+    if (!epicId) return { model: null, provider: 'zai', effort: null };
+    try {
+      const row = withDb(db => db.prepare(
+        `SELECT json_extract(metadata, '$.active_model') AS m,
+                json_extract(metadata, '$.active_provider') AS p,
+                json_extract(metadata, '$.active_model_effort') AS e
+           FROM episode_workflows WHERE epic_id=?`,
+      ).get(epicId));
+      return { model: row?.m ?? null, provider: row?.p ?? 'zai', effort: row?.e ?? null };
+    } catch { return { model: null, provider: 'zai', effort: null }; }
+  },
 });
 
 // Найти физический путь к .md файлу артефакта.
@@ -4970,9 +4987,9 @@ function handleEngineRestart(req, res) {
 // x2 off-peak; the others are x1. The limit is the per-epic concurrency
 // ceiling saga uses; NOT the prompt quota (tracked by z.ai, 80/400/1600 per 5h).
 const ZAI_MODELS = [
-  { id: 'glm-5.2',         limit: 3,  tier: 'flagship', provider: 'zai', note: 'Opus-level, x3 peak rate' },
-  { id: 'glm-5-turbo',     limit: 5,  tier: 'flagship', provider: 'zai', note: 'Opus-level, x1 rate' },
-  { id: 'glm-4.7',         limit: 10, tier: 'sonnet',   provider: 'zai', note: 'Sonnet-level, x1 rate — recommended default' },
+  { id: 'glm-5.2',         limit: 3,  tier: 'flagship', provider: 'zai', effort: 'high', note: 'Opus-level, x3 peak rate' },
+  { id: 'glm-5-turbo',     limit: 5,  tier: 'flagship', provider: 'zai', effort: 'high', note: 'Opus-level, x1 rate' },
+  { id: 'glm-4.7',         limit: 10, tier: 'sonnet',   provider: 'zai', effort: 'high', note: 'Sonnet-level, x1 rate — recommended default' },
 ];
 
 // LM Studio local models (no subscription, runs on this machine). Populated
@@ -5006,7 +5023,7 @@ const CLAUDE_SETTINGS_LMSTUDIO_TPL = path.join(os.homedir(), '.claude', 'setting
 const ZAI_DEFAULT_BASE_URL = runtimeConfig.zaiBaseUrl;
 // Local models have no cloud rate limit, so allow a generous concurrency.
 const LMSTUDIO_DEFAULT_LIMIT = 4;
-let LMSTUDIO_MODELS = [];     // [{ id, limit, tier:'local', provider:'lmstudio' }]
+let LMSTUDIO_MODELS = [];     // [{ id, limit, tier:'local', provider:'lmstudio' }] — NO `effort` field: LM Studio owns its reasoning default (qwen rejects effort='xhigh'/'high'), so the runner omits --effort entirely for these.
 let LMSTUDIO_ONLINE = false;
 
 /**
@@ -5300,6 +5317,10 @@ function handleModelSet(req, res) {
     //    until the active count drops below the new limit.
     //    $.active_provider tells claude-runner whether to add LM Studio env to
     //    the spawn ('lmstudio') or keep the z.ai legacy path ('zai').
+    //    $.active_model_effort is the model-config reasoning effort (e.g. 'high'
+    //    for z.ai cloud). LM Studio models have no effort field → null is
+    //    written, which the runner reads as "omit --effort entirely" so the
+    //    local chat template picks its own reasoning default.
     if (epicId) {
       try {
         withDbWrite(db => db.prepare(
@@ -5308,10 +5329,11 @@ function handleModelSet(req, res) {
                    '$.active_model', ?,
                    '$.active_model_limit', ?,
                    '$.active_provider', ?,
+                   '$.active_model_effort', ?,
                    '$.model_changed_at', datetime('now')),
                  updated_at=datetime('now')
              WHERE epic_id=?`
-        ).run(modelId, model.limit, provider, epicId));
+        ).run(modelId, model.limit, provider, model.effort ?? null, epicId));
       } catch (e) {
         return respondJson(res, 500, { ok:false, error:'metadata write failed: ' + e.message });
       }

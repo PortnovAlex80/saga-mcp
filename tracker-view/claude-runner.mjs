@@ -98,9 +98,10 @@ export class ClaudeBoardRunner {
     this.dbPath = options.dbPath;
     this.sagaEntry = options.sagaEntry;
     this.sagaSkillRoot = options.sagaSkillRoot;
-    // LM Studio provider: reads { model, provider } from episode_workflows.metadata
-    // (active_model / active_provider). Returns {provider:'zai', model:null} when
-    // unset → spawn uses the legacy `--model opus` + ~/.claude/settings.json path.
+    // LM Studio provider: reads { model, provider, effort } from episode_workflows.metadata
+    // (active_model / active_provider / active_model_effort). Returns
+    // {provider:'zai', model:null, effort:null} when unset → spawn uses the
+    // legacy `--model opus` + ~/.claude/settings.json path.
     // LM Studio routing lives primarily in ~/.claude/settings.json (patched by
     // POST /api/model/set). The spawn-env override below is a defensive belt-
     // and-suspenders for claude CLI versions where env DOES take priority over
@@ -339,12 +340,21 @@ export class ClaudeBoardRunner {
     // (env overrides ~/.claude/settings.json, so the global z.ai config is
     // untouched). provider==='zai' (default) → legacy path: `--model opus` +
     // whatever ~/.claude/settings.json says.
+    // `am.effort` carries the model-config reasoning effort (e.g. 'high' for
+    // z.ai cloud). LM Studio models omit it → we pass NO --effort so the local
+    // chat template picks its own default (LM Studio rejects effort='xhigh'/
+    // 'high' for qwen, mapping them inefficiently to reasoning='on').
     const am = (this.getActiveModel ? this.getActiveModel(run.epicId) : null)
       || { provider: 'zai', model: null };
     const isLmstudio = am.provider === 'lmstudio' && am.model;
     // For LM Studio we must pass the concrete model id (--model <lmstudio-id>);
     // for z.ai we keep the 'opus' alias (resolved via ANTHROPIC_DEFAULT_OPUS_MODEL).
     const modelArg = isLmstudio ? am.model : 'opus';
+    // --effort is model-config-driven, not a global constant. LM Studio: omit
+    // entirely (its chat template owns the reasoning default). z.ai: use the
+    // per-model effort from the catalog, falling back to 'high' (the previous
+    // 'xhigh' was excessive even for cloud and burned tokens at x3 peak rate).
+    const effortArg = isLmstudio ? null : (am.effort || 'high');
 
     const prompt = buildPrompt({
       assignment,
@@ -357,7 +367,7 @@ export class ClaudeBoardRunner {
     const args = [
       '-p',
       '--model', modelArg,
-      '--effort', 'xhigh',
+      // --effort is injected conditionally below (LM Studio → omitted).
       '--mcp-config', this.mcpConfigPath,
       '--strict-mcp-config',
       '--disallowedTools', 'mcp__saga__worker_next',
@@ -378,6 +388,13 @@ export class ClaudeBoardRunner {
       '--no-session-persistence',
       prompt,
     ];
+    // Inject --effort right after --model so the flag order stays grouped.
+    // Spliced here (not inline above) so the LM Studio "omit entirely" rule is
+    // a single readable branch rather than a ternary inside the array literal.
+    if (effortArg) {
+      const modelIdx = args.indexOf('--model');
+      args.splice(modelIdx + 2, 0, '--effort', effortArg);
+    }
     // LM Studio worker env: redirect THIS worker's claude to the local
     // Anthropic-compatible endpoint. Tokens are placeholders — LM Studio does
     // not validate them; they exist only so claude CLI doesn't refuse to start
