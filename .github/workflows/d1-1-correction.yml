@@ -35,15 +35,37 @@ jobs:
           python3 -m py_compile /tmp/apply_d11.py
 
       - name: Apply correction
-        run: python3 /tmp/apply_d11.py
+        id: apply
+        continue-on-error: true
+        run: |
+          set +e
+          python3 /tmp/apply_d11.py > /tmp/apply-d11.log 2>&1
+          code=$?
+          cat /tmp/apply-d11.log
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Upload patch diagnostic
+        if: steps.apply.outputs.code != '0'
+        uses: actions/upload-artifact@v4
+        with:
+          name: d1-1-patch-diagnostic
+          path: /tmp/apply-d11.log
+
+      - name: Fail on patch mismatch
+        if: steps.apply.outputs.code != '0'
+        run: exit 1
 
       - name: Install dependencies
+        if: steps.apply.outputs.code == '0'
         run: npm ci
 
       - name: Run full test suite
+        if: steps.apply.outputs.code == '0'
         run: npm test
 
       - name: Commit verified correction
+        if: steps.apply.outputs.code == '0'
         run: |
           git rm -r .d1-correction .github/workflows/d1-1-correction.yml
           git config user.name "github-actions[bot]"
