@@ -14,7 +14,7 @@ const finalGuard = "const finalSource = read(orchestrate);";
 if (!source.includes(finalGuard)) throw new Error('pure-engine final guard anchor missing');
 source = source.replace(
   finalGuard,
-  "replaceExact(orchestrate, `const RATE_LIMIT_LOG_TAIL_BYTES = 8192;  // scan last 8KB of JSONL for 429\\n`, '');\\n\\n" + finalGuard,
+  "replaceExact(orchestrate, `const RATE_LIMIT_LOG_TAIL_BYTES = 8192;  // scan last 8KB of JSONL for 429\\n`, '');\n\n" + finalGuard,
 );
 
 writeFileSync(generatedPath, source, 'utf8');
