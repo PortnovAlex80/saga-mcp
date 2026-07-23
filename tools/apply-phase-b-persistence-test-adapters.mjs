@@ -49,7 +49,7 @@ replaceExact(
 replaceBetween(
   'tests/track-pipeline.test.mjs',
   'async function runEngine(fixture) {',
-  '\n}\n\n// Kill any mock-claude children',
+  '// Kill any mock-claude children',
 `async function runEngine(fixture) {
   const { orchestrate } = await import('../dist/orchestrate.js');
   const { createLegacyClaudeWorkerExecutorFactory } = await import(
@@ -93,6 +93,7 @@ replaceBetween(
     sleep: (ms) => new Promise(resolve => setTimeout(resolve, Math.min(ms, 50))),
   });
 }
+
 `);
 
 // Model API tests must not read or overwrite the runner's shared ~/.claude.
