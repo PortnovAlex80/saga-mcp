@@ -37,7 +37,7 @@ function parseArgs(argv: string[]): {
     if (arg === '-h' || arg === '--help') {
       process.stdout.write(
         'Usage: orchestrate-cli.js <project_id> <epic_id> [--concurrency=4]\n' +
-        '  Runs the stable Saga 2 orchestration engine until episode completion.\n',
+        '  Runs the saga 3.0 autonomous engine until episode completion.\n',
       );
       process.exit(0);
     }
