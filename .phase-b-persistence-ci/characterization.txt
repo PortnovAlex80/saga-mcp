@@ -1,0 +1,21 @@
+
+> saga-mcp@2.0.0 test:characterization
+> node --test tests/characterization/saga2-runtime-contracts.test.mjs
+
+✔ Saga 2 package entrypoints remain compatible (1.002662ms)
+✔ Saga 2 cross-process runtime files remain present (1.171257ms)
+✔ orchestration keeps its stable decision and lifecycle anchors (0.471297ms)
+✔ persistence adapters keep the moved SQLite and execution anchors (0.186032ms)
+✔ model route remains model-config-driven across the worker boundary (0.325701ms)
+✔ worker infrastructure keeps claim, recovery and concrete runner anchors (0.148996ms)
+✔ worker runner keeps the assignment, fencing, provider, logging, and MCP protocol (0.218045ms)
+✔ tracker keeps the stable board, artifact, workflow, and worker projection (1.841728ms)
+✔ existing behavioral suites remain part of the Phase A safety net (0.571384ms)
+ℹ tests 9
+ℹ suites 0
+ℹ pass 9
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 63.850986

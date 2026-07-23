@@ -1,0 +1,22 @@
+
+> saga-mcp@2.0.0 test:architecture
+> tsc && node --test tests/architecture/saga2-boundaries.test.mjs
+
+✔ runtime config preserves Saga 2 defaults and environment precedence (1.605751ms)
+✔ Saga2Engine delegates through the legacy runtime port (0.278244ms)
+✔ Saga application coordinates engine, board and administration ports (0.605066ms)
+✔ worker adapter preserves the existing board runner protocol (0.237175ms)
+✔ frontend projection adapter preserves legacy rows unchanged (0.16758ms)
+✔ SQLite board reader preserves the tracker project and board projection (95.021175ms)
+✔ legacy engine administration preserves start/status/concurrency/stop semantics (16.844366ms)
+✔ tracker uses extracted ports and preserves the LM Studio hard rule fix (2.26517ms)
+✔ orchestration pump has no direct persistence access after Phase B item 5 (0.731261ms)
+✔ worker model route preserves provider and effort from episode persistence (0.461997ms)
+ℹ tests 10
+ℹ suites 0
+ℹ pass 10
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 188.278309
