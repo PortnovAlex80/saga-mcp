@@ -1,0 +1,5 @@
+
+> saga-mcp@2.0.0 build
+> tsc
+
+src/infrastructure/persistence/sqlite-saga2-runtime-repositories.ts(13,3): error TS2459: Module '"../../application/ports/saga2-runtime-persistence.js"' declares 'WorkerModelRoute' locally, but it is not exported.
