@@ -48,6 +48,14 @@ const { orchestrate } = await import('../dist/orchestrate.js');
 const { createLegacyClaudeWorkerExecutorFactory } = await import(
   '../dist/infrastructure/workers/legacy-claude-worker-executor-factory.js'
 );
+const {
+  SqliteEpisodeRuntimeRepository,
+  SqliteExecutionRuntimeRepository,
+  SqliteTaskRuntimeRepository,
+} = await import('../dist/infrastructure/persistence/sqlite-saga2-runtime-repositories.js');
+const { SqliteWorkspaceResolver } = await import(
+  '../dist/infrastructure/workspaces/sqlite-workspace-resolver.js'
+);
 
 test.after(() => {
   closeDb();
@@ -118,9 +126,17 @@ function seedEpisode() {
 test('e2e: engine drives verification → integration → completed with mock-claude', async () => {
   const { project, epic, verify, integrate } = seedEpisode();
 
+  const persistence = {
+    episodes: new SqliteEpisodeRuntimeRepository(),
+    tasks: new SqliteTaskRuntimeRepository(),
+    executions: new SqliteExecutionRuntimeRepository(),
+    workspaces: new SqliteWorkspaceResolver(),
+  };
+
   // The mock process is injected through the same WorkerExecutorFactory port
   // used by the composition root, rather than through the orchestration pump.
   const workerExecutorFactory = createLegacyClaudeWorkerExecutorFactory({
+    modelRouteReader: epicId => persistence.episodes.readWorkerModelRoute(epicId),
     spawn: (cmd, args, opts) => {
       const mockScript = path.join(sagaRoot, 'tests', 'mock-claude.mjs');
       return nodeSpawn(cmd, [mockScript, ...args], opts);
@@ -135,6 +151,7 @@ test('e2e: engine drives verification → integration → completed with mock-cl
     dbPath: process.env.DB_PATH,
     lmStudioUrl: 'http://localhost:1234/v1',
     workerExecutorFactory,
+    persistence,
     sleep: (ms) => new Promise(resolve => setTimeout(resolve, Math.min(ms, 100))),
   });
 

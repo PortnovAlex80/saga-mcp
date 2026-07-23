@@ -353,3 +353,27 @@ test('tracker uses extracted ports and preserves the LM Studio hard rule fix', (
   }
   assert.match(source, /CLAUDE_SETTINGS_LMSTUDIO_TPL/);
 });
+
+
+test('orchestration pump has no direct persistence access after Phase B item 5', () => {
+  const source = readFileSync(path.resolve(import.meta.dirname, '..', '..', 'src', 'orchestrate.ts'), 'utf8');
+  assert.doesNotMatch(source, /\bgetDb\b/);
+  assert.doesNotMatch(source, /\.prepare\s*\(/);
+  assert.doesNotMatch(source, /reconcileWorkerExecutions/);
+  assert.match(source, /Saga2RuntimePersistence/);
+  assert.match(source, /persistence\.episodes/);
+  assert.match(source, /persistence\.tasks/);
+  assert.match(source, /persistence\.executions/);
+  assert.match(source, /persistence\.workspaces/);
+});
+
+test('worker model route preserves provider and effort from episode persistence', () => {
+  const port = readFileSync(path.resolve(import.meta.dirname, '..', '..', 'src', 'application', 'ports', 'worker-executor.ts'), 'utf8');
+  const composition = readFileSync(path.resolve(import.meta.dirname, '..', '..', 'src', 'app', 'composition-root.ts'), 'utf8');
+  const runner = readFileSync(path.resolve(import.meta.dirname, '..', '..', 'tracker-view', 'claude-runner.mjs'), 'utf8');
+  assert.match(port, /WorkerModelRoute/);
+  assert.match(port, /effort: string \| null/);
+  assert.match(composition, /readWorkerModelRoute/);
+  assert.match(runner, /isLmstudio \? null : \(am\.effort \|\| 'high'\)/);
+  assert.doesNotMatch(runner, /'--effort', 'xhigh'/);
+});

@@ -61,10 +61,9 @@ test('orchestration keeps its stable decision and lifecycle anchors', () => {
   const source = read('src/orchestrate.ts');
   assertIncludesAll(source, [
     'workerExecutorFactory',
-    'getDb',
+    'persistence',
     'generateNextForCompletedTask',
     'lifecycleHandlers',
-    'reconcileWorkerExecutions',
     "discovery: 'formalization'",
     "formalization: 'planning'",
     "planning: 'development'",
@@ -74,12 +73,40 @@ test('orchestration keeps its stable decision and lifecycle anchors', () => {
   ], 'src/orchestrate.ts');
 });
 
+test('persistence adapters keep the moved SQLite and execution anchors', () => {
+  const source = read('src/infrastructure/persistence/sqlite-saga2-runtime-repositories.ts');
+  assertIncludesAll(source, [
+    'episode_workflows',
+    'worker_executions',
+    'task_dependencies',
+    'createRecoveryTask',
+    'reconcileWorkerExecutions',
+    'reevaluateDownstream',
+    'active_model_effort',
+    'readWorkerModelRoute',
+  ], 'sqlite-saga2-runtime-repositories.ts');
+});
+
+test('model route remains model-config-driven across the worker boundary', () => {
+  const runner = read('tracker-view/claude-runner.mjs');
+  const factory = read('src/infrastructure/workers/legacy-claude-worker-executor-factory.ts');
+  assertIncludesAll(runner, [
+    "const effortArg = isLmstudio ? null : (am.effort || 'high');",
+    "args.splice(modelIdx + 2, 0, '--effort', effortArg);",
+  ], 'claude-runner.mjs');
+  assert.ok(!runner.includes("'--effort', 'xhigh'"), 'xhigh must not be hardcoded');
+  assertIncludesAll(factory, [
+    'modelRouteReader',
+    'getActiveModel: modelRouteReader',
+  ], 'legacy-claude-worker-executor-factory.ts');
+});
+
 test('worker infrastructure keeps claim, recovery and concrete runner anchors', () => {
   const source = read('src/infrastructure/workers/legacy-claude-worker-executor-factory.ts');
   assertIncludesAll(source, [
     'createClaudeBoardRunner',
     'dispatcherHandlers.worker_next',
-    'releaseExecutionAtomically',
+    'recoverLegacyAssignment',
     'getActiveModel',
     'lmstudioBaseUrl',
     'ClaudeBoardWorkerExecutor',

@@ -35,17 +35,14 @@ import {
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { getDb, closeDb } from './db.js';
+import { closeDb } from './db.js';
+import type { Saga2RuntimePersistence } from './application/ports/saga2-runtime-persistence.js';
 import type {
   WorkerExecutorFactory,
   WorkerRunSnapshot,
 } from './application/ports/worker-executor.js';
 import { generateNextForCompletedTask } from './tools/workflow.js';
 import { handlers as lifecycleHandlers } from './tools/lifecycle.js';
-import { reevaluateDownstream } from './tools/tasks.js';
-import { handlers as projectHandlers } from './tools/projects.js';
-import { logActivity } from './helpers/activity-logger.js';
-import { reconcileWorkerExecutions } from './worker-executions.js';
 
 /**
  * Episode stage → next stage (mirror of lifecycle.ts NEXT, kept local to avoid
@@ -343,6 +340,7 @@ export interface OrchestrateOptions {
   dbPath: string;
   lmStudioUrl: string;
   workerExecutorFactory: WorkerExecutorFactory;
+  persistence: Saga2RuntimePersistence;
   sagaEntry?: string;
   sagaSkillRoot?: string;
   logRoot?: string;
@@ -385,63 +383,18 @@ const defaultSleep = (ms: number) => new Promise<void>(resolve => setTimeout(res
  * Returns the current episode stage, or null if the episode has no workflow row.
  * Mirrors lifecycle.ts:getOrCreate without the INSERT side effect.
  */
-function currentStage(epicId: number): string | null {
-  const row = getDb().prepare('SELECT stage FROM episode_workflows WHERE epic_id=?').get(epicId) as
-    | { stage: string }
-    | undefined;
-  return row?.stage ?? null;
+function currentStage(epicId: number, opts: OrchestrateOptions): string | null {
+  return opts.persistence.episodes.currentStage(epicId);
 }
 
 /**
  * Count tasks in a stage by status. Used by the engine to decide whether to
  * pump workers, generate next, or attempt a transition.
  */
-function countActiveTasks(epicId: number): {
-  claimable: number;
-  inFlight: number;
-  doneInCurrentStage: number;
-} {
-  const db = getDb();
-  const stage = currentStage(epicId);
+function countActiveTasks(epicId: number, opts: OrchestrateOptions) {
+  const stage = currentStage(epicId, opts);
   if (!stage) return { claimable: 0, inFlight: 0, doneInCurrentStage: 0 };
-  const row = db.prepare(
-    `SELECT
-       SUM(CASE WHEN t.status IN ('todo','review')
-                     AND (t.assigned_to IS NULL OR t.assigned_to='')
-                     AND t.current_execution_id IS NULL
-                     AND NOT EXISTS (
-                       SELECT 1 FROM worker_executions we
-                       WHERE we.task_id=t.id AND we.state IN ('reserved','running','cancel_requested')
-                     )
-                     AND NOT EXISTS (
-                       SELECT 1 FROM task_dependencies d
-                       JOIN tasks dep ON dep.id=d.depends_on_task_id
-                       WHERE d.task_id=t.id AND (
-                         dep.status!='done' OR (
-                           dep.task_kind IS NOT NULL AND dep.execution_mode='git_change'
-                           AND dep.integration_state!='merged'
-                         )
-                       )
-                     )
-                THEN 1 ELSE 0 END) AS claimable,
-       SUM(CASE WHEN t.status IN ('in_progress','review_in_progress')
-                      OR (t.status='review' AND t.assigned_to IS NOT NULL AND t.assigned_to!='')
-                      OR EXISTS (
-                        SELECT 1 FROM worker_executions live
-                         WHERE live.task_id=t.id
-                           AND live.state IN ('reserved','running','cancel_requested')
-                      )
-                THEN 1 ELSE 0 END) AS in_flight,
-       SUM(CASE WHEN t.status='done' THEN 1 ELSE 0 END) AS done_count
-     FROM tasks t WHERE t.epic_id=? AND t.workflow_stage=?`,
-  ).get(epicId, stage) as {
-    claimable: number | null; in_flight: number | null; done_count: number | null;
-  };
-  return {
-    claimable: row.claimable ?? 0,
-    inFlight: row.in_flight ?? 0,
-    doneInCurrentStage: row.done_count ?? 0,
-  };
+  return opts.persistence.tasks.countStageTasks(epicId, stage);
 }
 
 /**
@@ -453,21 +406,17 @@ function countActiveTasks(epicId: number): {
  * (insertGeneratedTask dedupes by generation_key), so calling it on every
  * done task is safe — it no-ops on tasks whose downstream already exists.
  */
-function generateNextIfReady(epicId: number): { created: number; error: string | null } {
-  const db = getDb();
-  const candidates = db.prepare(
-    `SELECT id FROM tasks
-     WHERE epic_id=? AND status='done' AND task_kind IS NOT NULL
-     ORDER BY id`,
-  ).all(epicId) as Array<{ id: number }>;
+function generateNextIfReady(
+  epicId: number,
+  opts: OrchestrateOptions,
+): { created: number; error: string | null } {
+  const candidates = opts.persistence.tasks.listGenerationCandidateIds(epicId);
   let totalCreated = 0;
   let lastError: string | null = null;
-  for (const c of candidates) {
+  for (const taskId of candidates) {
     try {
-      const result = generateNextForCompletedTask(c.id);
-      if (result && result.created.length > 0) {
-        totalCreated += result.created.length;
-      }
+      const result = generateNextForCompletedTask(taskId);
+      if (result && result.created.length > 0) totalCreated += result.created.length;
     } catch (err) {
       lastError = err instanceof Error ? err.message : String(err);
     }
@@ -485,130 +434,36 @@ async function pauseAndAlert(
   reason: string,
   opts: OrchestrateOptions,
 ): Promise<void> {
-  const db = getDb();
-  db.prepare(
-    `UPDATE episode_workflows
-     SET metadata=json_set(COALESCE(metadata,'{}'),
-       '$.needs-human', true,
-       '$.pause_reason', ?,
-       '$.paused_at', datetime('now')),
-       updated_at=datetime('now')
-     WHERE epic_id=?`,
-  ).run(reason, epicId);
-  logActivity(db, 'epic', epicId, 'updated', 'needs-human', null, 'true',
-    `Engine paused: ${reason}`);
+  opts.persistence.episodes.pause(epicId, reason);
   engineHeartbeat(opts, 'PAUSED', `reason="${reason.slice(0, 200)}"`);
 }
 
-function clearNeedsHuman(epicId: number): void {
-  const db = getDb();
-  db.prepare(
-    `UPDATE episode_workflows
-     SET metadata=json_remove(metadata, '$.needs-human', '$.pause_reason', '$.paused_at'),
-       updated_at=datetime('now')
-     WHERE epic_id=?`,
-  ).run(epicId);
+function clearNeedsHuman(epicId: number, opts: OrchestrateOptions): void {
+  opts.persistence.episodes.clearNeedsHuman(epicId);
 }
 
-/**
- * ADR-012 — Read the decision from the most recent brief artifact in the
- * epic. Used by the engine's main loop to route discovery-stage episodes
- * after their kickstart worker completes. Returns one of 'go', 'fast-track',
- * 'clarify', 'reject' — or null if no brief exists / metadata is malformed
- * / decision is absent. The caller treats null as 'go' (formal pipeline).
- */
-function readLatestBriefDecision(epicId: number): string | null {
-  const row = getDb().prepare(
-    `SELECT metadata FROM artifacts
-     WHERE epic_id=? AND type='brief' ORDER BY id DESC LIMIT 1`,
-  ).get(epicId) as { metadata: string | null } | undefined;
-  if (!row?.metadata) return null;
-  try {
-    const decision = JSON.parse(row.metadata)?.brief_payload?.decision;
-    if (typeof decision === 'string' && ['go', 'fast-track', 'clarify', 'reject'].includes(decision)) {
-      return decision;
-    }
-  } catch { /* malformed metadata */ }
-  return null;
+function readLatestBriefDecision(epicId: number, opts: OrchestrateOptions): string | null {
+  return opts.persistence.episodes.readLatestBriefDecision(epicId);
 }
 
-/** Read select metadata fields for the recovery loop's bookkeeping. */
-function readEpisodeMeta(epicId: number): { lastHealError: string | null; lastHealAttempt: string | null } {
-  const row = getDb().prepare(
-    `SELECT json_extract(metadata, '$.lastHealError') AS e,
-            json_extract(metadata, '$.lastHealAttempt') AS a
-     FROM episode_workflows WHERE epic_id=?`,
-  ).get(epicId) as { e: string | null; a: string | null } | undefined;
-  return { lastHealError: row?.e ?? null, lastHealAttempt: row?.a ?? null };
+function readEpisodeMeta(epicId: number, opts: OrchestrateOptions) {
+  return opts.persistence.episodes.readHealMetadata(epicId);
 }
 
-/**
- * Read the active model's concurrency limit (ceiling) from episode metadata.
- * Written by /api/model/set when the user switches models mid-run. The pump
- * loop uses min(opts.concurrency, active_model_limit) as its target so that:
- *   - Active workers (already on the OLD model) finish their cycle untouched.
- *   - The engine stops spawning NEW workers until the active count drops below
- *     the new limit, then spawns fresh workers that read the patched
- *     ~/.claude/settings.json and run on the new model.
- * Returns null when no model limit has been recorded — caller falls back to
- * opts.concurrency unchanged.
- */
-function readActiveModelLimit(epicId: number): number | null {
-  const row = getDb().prepare(
-    `SELECT json_extract(metadata, '$.active_model_limit') AS lim
-     FROM episode_workflows WHERE epic_id=?`,
-  ).get(epicId) as { lim: number | null } | undefined;
-  const lim = row?.lim;
-  return typeof lim === 'number' && lim >= 1 ? lim : null;
+function readTargetConcurrency(
+  epicId: number,
+  fallbackConcurrency: number,
+  opts: OrchestrateOptions,
+): number {
+  return opts.persistence.episodes.readTargetConcurrency(epicId, fallbackConcurrency);
 }
 
-/**
- * Read the user's chosen concurrency from episode metadata. Written by the
- * kanban UI (POST /api/engine/concurrency — a pure metadata write, NO kill,
- * NO spawn). The pump loop re-reads this every RATE_LIMIT_SCAN_TICKS cycle
- * so a concurrency change takes effect WITHOUT an engine restart — active
- * workers finish their cycle; the engine converges to the new target as the
- * active count drops.
- *
- * Falls back to null when no value has been recorded; caller uses the
- * engine's startup opts.concurrency.
- */
-function readEngineConcurrency(epicId: number): number | null {
-  const row = getDb().prepare(
-    `SELECT json_extract(metadata, '$.engine_concurrency') AS c
-     FROM episode_workflows WHERE epic_id=?`,
-  ).get(epicId) as { c: number | null } | undefined;
-  const c = row?.c;
-  return typeof c === 'number' && c >= 1 && c <= 10 ? c : null;
-}
-
-/**
- * Compute the target concurrency for this pump cycle from the latest metadata:
- *   target = min(engine_concurrency_metadata, active_model_limit)
- * Both fields can be changed mid-run via the kanban UI; both are re-read on
- * every RATE_LIMIT_SCAN_TICKS cycle so changes converge without an engine
- * restart. Falls back to the startup value when neither field is set.
- */
-function readTargetConcurrency(epicId: number, fallbackConcurrency: number): number {
-  const engineConc = readEngineConcurrency(epicId);
-  const modelLimit = readActiveModelLimit(epicId);
-  let target = engineConc ?? fallbackConcurrency;
-  if (modelLimit !== null) target = Math.min(target, modelLimit);
-  return target;
-}
-
-/** Persist recovery bookkeeping fields into episode metadata (merge). */
-function writeEpisodeMeta(epicId: number, patch: Record<string, unknown>): void {
-  const db = getDb();
-  let sql = 'UPDATE episode_workflows SET metadata=json_set(COALESCE(metadata,\'{}\')';
-  const params: unknown[] = [];
-  for (const [k, v] of Object.entries(patch)) {
-    sql += `,'$.${k}',?`;
-    params.push(v);
-  }
-  sql += '), updated_at=datetime(\'now\') WHERE epic_id=?';
-  params.push(epicId);
-  db.prepare(sql).run(...params);
+function writeEpisodeMeta(
+  epicId: number,
+  patch: Record<string, unknown>,
+  opts: OrchestrateOptions,
+): void {
+  opts.persistence.episodes.patchMetadata(epicId, patch);
 }
 
 /** Wipe retry counters for one epic (used on human-resume or on new diagnosis). */
@@ -630,13 +485,7 @@ async function waitForResume(
       engineHeartbeat(opts, 'PAUSE_TIMEOUT', `${MAX_PAUSE_MIN}min reached — engine exits`);
       return false;
     }
-    const row = getDb().prepare(
-      `SELECT json_extract(metadata,'$.needs-human') AS nh FROM episode_workflows WHERE epic_id=?`,
-    ).get(epicId) as { nh: number | null } | undefined;
-    if (!row || row.nh !== 1) {
-      // Either the flag was cleared, or the row was deleted. Treat as resumed.
-      return true;
-    }
+    if (!opts.persistence.episodes.isNeedsHuman(epicId)) return true;
     await sleep(RESUME_POLL_MS);
   }
 }
@@ -646,28 +495,14 @@ async function waitForResume(
  * changed, false if a hard gate blocked the transition (the caller then
  * pauses for human attention).
  */
-function tryAdvanceStage(epicId: number): { advanced: boolean; error: string | null } {
-  const stage = currentStage(epicId);
+function tryAdvanceStage(
+  epicId: number,
+  opts: OrchestrateOptions,
+): { advanced: boolean; error: string | null } {
+  const stage = currentStage(epicId, opts);
   if (!stage) return { advanced: false, error: `episode ${epicId} has no workflow row` };
-  if (stage === 'completed' || stage === 'cancelled') {
-    return { advanced: false, error: null };
-  }
-
-  // RECOVERY HOLD: if any recovery.heal task is still active (not done), the
-  // episode MUST NOT advance. Recovery is a monopoly mode — pump loop keeps
-  // spawning workers (including the recovery task's reviewer), but episode
-  // transition is blocked until every recovery task in the epic reaches done.
-  // Without this, episode can race ahead (e.g. formalization→planning) while
-  // a healer's review is still in flight, leaving the review task stranded
-  // with a stale workflow_stage that no worker can claim.
-  const activeRecovery = getDb().prepare(
-    `SELECT id FROM tasks
-     WHERE epic_id=? AND task_kind='recovery.heal'
-       AND status IN ('todo','in_progress','review','review_in_progress')`,
-  ).get(epicId) as { id: number } | undefined;
-  if (activeRecovery) {
-    return { advanced: false, error: null };
-  }
+  if (stage === 'completed' || stage === 'cancelled') return { advanced: false, error: null };
+  if (opts.persistence.tasks.hasActiveRecovery(epicId)) return { advanced: false, error: null };
 
   const to = NEXT_STAGE[stage];
   if (!to) return { advanced: false, error: `no NEXT stage for '${stage}'` };
@@ -677,31 +512,20 @@ function tryAdvanceStage(epicId: number): { advanced: boolean; error: string | n
       to_stage: to as never,
     }) as { changed: boolean };
 
-    // After a successful stage transition, check for STRANDED tasks from the
-    // PREVIOUS stage — any task with workflow_stage=<old stage> that is NOT
-    // done. These are invisible to workers (stage-filter blocks cross-stage
-    // claims) and would pollute the kanban forever. Instead of silently
-    // auto-closing them, SPAWN A RECOVERY TASK — the autonomous-recovery
-    // agent examines each stranded task and decides: bookkeeping → close,
-    // real work → rewind/rework, genuine blocker → record.
-    //
-    // This is the "post-transition sweep": the engine doesn't guess what to
-    // do with leftover tasks — it delegates to recovery, which has the
-    // tools (task_update, trace_add, artifact_update) and the decision loop.
     if (result.changed) {
-      const stranded = getDb().prepare(
-        `SELECT id, task_kind, status FROM tasks
-          WHERE epic_id=? AND workflow_stage=? AND status != 'done'`,
-      ).all(epicId, stage) as Array<{ id: number; task_kind: string; status: string }>;
+      const stranded = opts.persistence.tasks.listStrandedTasks(epicId, stage);
       if (stranded.length > 0) {
-        const strandedList = stranded.map(t => `#${t.id} (${t.task_kind}, ${t.status})`).join(', ');
-        logActivity(getDb(), 'epic', epicId, 'created', 'post_transition_sweep',
-          null, strandedList,
-          `Stage '${stage}' → '${to}': ${stranded.length} stranded task(s) detected — spawning recovery to resolve: ${strandedList}`);
-        spawnPostTransitionRecovery(epicId, stage, to, stranded);
+        const strandedList = stranded
+          .map(task => `#${task.id} (${task.task_kind}, ${task.status})`)
+          .join(', ');
+        opts.persistence.tasks.recordPostTransitionSweep(
+          epicId,
+          strandedList,
+          `Stage '${stage}' → '${to}': ${stranded.length} stranded task(s) detected — spawning recovery to resolve: ${strandedList}`,
+        );
+        spawnPostTransitionRecovery(epicId, stage, to, stranded, opts);
       }
     }
-
     return { advanced: result.changed, error: null };
   } catch (err) {
     return { advanced: false, error: err instanceof Error ? err.message : String(err) };
@@ -739,7 +563,12 @@ function tryAdvanceStage(epicId: number): { advanced: boolean; error: string | n
  * description as part of its standard context. The prompt is loud enough to
  * override the skill body.
  */
-function attemptHeal(epicId: number, stage: string, gateError: string): {
+function attemptHeal(
+  epicId: number,
+  stage: string,
+  gateError: string,
+  opts: OrchestrateOptions,
+): {
   applied: boolean;
   escalate: boolean;
   reason: string;
@@ -749,7 +578,7 @@ function attemptHeal(epicId: number, stage: string, gateError: string): {
   if (!rules || rules.length === 0) {
     return { applied: false, escalate: true, reason: `no recovery rules for stage '${stage}'`, taskId: null };
   }
-  const rule = rules.find(r => r.match.test(gateError));
+  const rule = rules.find(candidate => candidate.match.test(gateError));
   if (!rule) {
     return { applied: false, escalate: true, reason: `unmatched gate error for stage '${stage}': ${gateError.slice(0, 120)}`, taskId: null };
   }
@@ -759,37 +588,19 @@ function attemptHeal(epicId: number, stage: string, gateError: string): {
     return { applied: false, escalate: true, reason: `max_retries (${rule.max_retries}) reached for: ${rule.diagnosis}`, taskId: null };
   }
   healRetries.set(healKey, retries + 1);
-
-  // Render prompt with epic_id substituted (other placeholders deliberately
-  // absent — the healer discovers project_id, artifact ids via saga MCP).
-  const prompt = rule.action_prompt.replace(/<EPIC_ID>/g, String(epicId));
-  const db = getDb();
-  const projectIdRow = db.prepare('SELECT project_id FROM epics WHERE id=?').get(epicId) as { project_id: number } | undefined;
-  if (!projectIdRow) {
+  if (opts.persistence.episodes.projectIdForEpic(epicId) === null) {
     return { applied: false, escalate: true, reason: `epic ${epicId} has no project`, taskId: null };
   }
-  // Insert the recovery task. We put the full prompt in description because
-  // claude-runner's buildPrompt includes the task payload (description among
-  // it) in the worker prompt — the worker reads it and acts.
-  // execution_skill='autonomous-recovery' so the worker loads that skill
-  // (which teaches the 6-step decision loop). The action_prompt in the rule
-  // also tells the worker to load the skill explicitly — belt and suspenders.
-  const info = db.prepare(
-    `INSERT INTO tasks
-       (epic_id, title, description, status, priority, task_kind, workflow_stage,
-        execution_skill, review_skill, execution_mode, tags, metadata)
-     VALUES (?, ?, ?, 'todo', 'critical', 'recovery.heal', ?,
-             'autonomous-recovery', 'saga-reviewer', 'tracker_only', ?, '{}')`,
-  ).run(
+
+  const prompt = rule.action_prompt.replace(/<EPIC_ID>/g, String(epicId));
+  const taskId = opts.persistence.tasks.createRecoveryTask({
     epicId,
-    `Recovery: ${rule.diagnosis.slice(0, 80)}`,
-    `RECOVERY TASK (auto-spawned by engine).\n\nStage: ${stage}\nGate error: ${gateError}\nDiagnosis: ${rule.diagnosis}\n\n${prompt}`,
-    stage,
-    JSON.stringify([`stage:${stage}`, 'kind:recovery.heal', 'role:recovery']),
-  );
-  const taskId = Number(info.lastInsertRowid);
-  logActivity(db, 'epic', epicId, 'created', 'recovery_task', null, String(taskId),
-    `Engine auto-spawned recovery task #${taskId} for stage='${stage}' (attempt ${retries + 1}/${rule.max_retries}): ${rule.diagnosis}`);
+    title: `Recovery: ${rule.diagnosis.slice(0, 80)}`,
+    description: `RECOVERY TASK (auto-spawned by engine).\n\nStage: ${stage}\nGate error: ${gateError}\nDiagnosis: ${rule.diagnosis}\n\n${prompt}`,
+    workflowStage: stage,
+    tags: [`stage:${stage}`, 'kind:recovery.heal', 'role:recovery'],
+    activitySummary: `Engine auto-spawned recovery task #<TASK_ID> for stage='${stage}' (attempt ${retries + 1}/${rule.max_retries}): ${rule.diagnosis}`,
+  });
   return { applied: true, escalate: false, reason: `spawned task #${taskId}`, taskId };
 }
 
@@ -806,11 +617,13 @@ function attemptHeal(epicId: number, stage: string, gateError: string): {
  * and only calls worker_ask_need if it classifies the situation as genuinely
  * human-only (irreversible, no domain knowledge, unsafe to guess).
  */
-function spawnGenericRecoveryTask(epicId: number, stage: string, gateError: string): number {
-  const db = getDb();
-  const projectIdRow = db.prepare('SELECT project_id FROM epics WHERE id=?').get(epicId) as { project_id: number } | undefined;
-  // If the epic is gone, we cannot help — return -1 to signal the caller.
-  if (!projectIdRow) return -1;
+function spawnGenericRecoveryTask(
+  epicId: number,
+  stage: string,
+  gateError: string,
+  opts: OrchestrateOptions,
+): number {
+  if (opts.persistence.episodes.projectIdForEpic(epicId) === null) return -1;
   const prompt = [
     'Load skill "autonomous-recovery" and run its 6-step recovery loop.',
     '',
@@ -830,23 +643,14 @@ function spawnGenericRecoveryTask(epicId: number, stage: string, gateError: stri
     'DO NOT call worker_ask_need unless Cynefin triage in the skill returns "genuine human-only" (credentials, business intent, irreversible destructive action, external authority).',
     'Routine engineering failures (missing traces, stale hashes, draft artifacts, crashed workers) are YOUR job to fix.',
   ].join('\n');
-  const info = db.prepare(
-    `INSERT INTO tasks
-       (epic_id, title, description, status, priority, task_kind, workflow_stage,
-        execution_skill, review_skill, execution_mode, tags, metadata)
-     VALUES (?, ?, ?, 'todo', 'critical', 'recovery.heal', ?,
-             'autonomous-recovery', 'saga-reviewer', 'tracker_only', ?, '{}')`,
-  ).run(
+  return opts.persistence.tasks.createRecoveryTask({
     epicId,
-    `Generic recovery: ${gateError.slice(0, 80)}`,
-    prompt,
-    stage,
-    JSON.stringify([`stage:${stage}`, 'kind:recovery.heal', 'role:recovery', 'generic:true']),
-  );
-  const taskId = Number(info.lastInsertRowid);
-  logActivity(db, 'epic', epicId, 'created', 'recovery_task', null, String(taskId),
-    `Engine auto-spawned GENERIC recovery task #${taskId} for stage='${stage}' (unmatched gate error): ${gateError.slice(0, 120)}`);
-  return taskId;
+    title: `Generic recovery: ${gateError.slice(0, 80)}`,
+    description: prompt,
+    workflowStage: stage,
+    tags: [`stage:${stage}`, 'kind:recovery.heal', 'role:recovery', 'generic:true'],
+    activitySummary: `Engine auto-spawned GENERIC recovery task #<TASK_ID> for stage='${stage}' (unmatched gate error): ${gateError.slice(0, 120)}`,
+  });
 }
 
 /**
@@ -873,13 +677,12 @@ function spawnPostTransitionRecovery(
   fromStage: string,
   toStage: string,
   stranded: Array<{ id: number; task_kind: string; status: string }>,
+  opts: OrchestrateOptions,
 ): number {
-  const db = getDb();
-  const projectIdRow = db.prepare('SELECT project_id FROM epics WHERE id=?').get(epicId) as { project_id: number } | undefined;
-  if (!projectIdRow) return -1;
-
-  const strandedList = stranded.map(t => `  #${t.id}: task_kind='${t.task_kind}', status='${t.status}'`).join('\n');
-
+  if (opts.persistence.episodes.projectIdForEpic(epicId) === null) return -1;
+  const strandedList = stranded
+    .map(task => `  #${task.id}: task_kind='${task.task_kind}', status='${task.status}'`)
+    .join('\n');
   const prompt = [
     'Load skill "autonomous-recovery" and run its 6-step recovery loop.',
     '',
@@ -897,43 +700,21 @@ function spawnPostTransitionRecovery(
     'YOUR JOB: For EACH stranded task, decide via MCDA in the skill:',
     '',
     '1. task_kind="summary.stage" or "recovery.heal" → these are BOOKKEEPING.',
-    '   The stage is over. The summary was probably in review when the gate',
-    '   passed. Close it: task_update({_recovery_override:true, id:N, status:"done"}).',
+    '   The stage is over. Close it with task_update({_recovery_override:true, id:N, status:"done"}).',
+    '2. task_kind="verification.ac" in review → the gate already decided. Close it.',
+    '3. task_kind="development.code" in review → the gate passed. Close it.',
+    '4. Real incomplete work → close if captured downstream, otherwise move it to the new stage.',
     '',
-    '2. task_kind="verification.ac" in review → the verifier recorded evidence',
-    '   (passed/failed/unknown) and the gate already decided. Close it:',
-    '   task_update({_recovery_override:true, id:N, status:"done"}).',
-    '',
-    '3. task_kind="development.code" or similar in review → the gate passed,',
-    '   meaning the work was accepted. Close it.',
-    '',
-    '4. task_kind that looks like REAL INCOMPLETE WORK (in_progress, todo,',
-    '   blocked) → the stage transition may have been premature. Either:',
-    '   a. Close it if the work was captured in downstream artifacts.',
-    '   b. Move it to the new stage: task_update({_recovery_override:true,',
-    '      id:N, status:"todo", workflow_stage:"<toStage>"}).',
-    '',
-    'DO NOT call worker_ask_need. These are bookkeeping/cleanup decisions',
-    'the agent can make by reading the task + its comments + the episode state.',
+    'DO NOT call worker_ask_need. Resolve by reading task comments and episode state.',
   ].join('\n');
-
-  const info = db.prepare(
-    `INSERT INTO tasks
-       (epic_id, title, description, status, priority, task_kind, workflow_stage,
-        execution_skill, review_skill, execution_mode, tags, metadata)
-     VALUES (?, ?, ?, 'todo', 'critical', 'recovery.heal', ?,
-             'autonomous-recovery', 'saga-reviewer', 'tracker_only', ?, '{}')`,
-  ).run(
+  return opts.persistence.tasks.createRecoveryTask({
     epicId,
-    `Post-transition sweep: ${stranded.length} stranded task(s) from '${fromStage}'`,
-    prompt,
-    toStage,
-    JSON.stringify([`stage:${toStage}`, 'kind:recovery.heal', 'role:recovery', 'post_transition_sweep:true']),
-  );
-  const taskId = Number(info.lastInsertRowid);
-  logActivity(db, 'epic', epicId, 'created', 'recovery_task', null, String(taskId),
-    `Post-transition sweep: spawned recovery task #${taskId} to resolve ${stranded.length} stranded task(s) from stage='${fromStage}' → '${toStage}'`);
-  return taskId;
+    title: `Post-transition sweep: ${stranded.length} stranded task(s) from '${fromStage}'`,
+    description: prompt,
+    workflowStage: toStage,
+    tags: [`stage:${toStage}`, 'kind:recovery.heal', 'role:recovery', 'post_transition_sweep:true'],
+    activitySummary: `Post-transition sweep: spawned recovery task #<TASK_ID> to resolve ${stranded.length} stranded task(s) from stage='${fromStage}' → '${toStage}'`,
+  });
 }
 
 /**
@@ -967,7 +748,7 @@ function detectAndKillZombies(epicId: number, projectId: number, opts: Orchestra
   // legitimately spend several minutes in cargo/vitest or contract reading.
   // The durable execution reconciler revokes only a dead host-local PID or a
   // fenced execution that no longer owns an allowed lifecycle phase.
-  const reconciled = reconcileWorkerExecutions(getDb(), projectId, epicId);
+  const reconciled = opts.persistence.executions.reconcile(projectId, epicId);
   const recovered = reconciled.filter(result =>
     result.action === 'lost' || result.action === 'terminated',
   );
@@ -1009,10 +790,7 @@ function detectAndKillZombies(epicId: number, projectId: number, opts: Orchestra
  * Recovery: 60s without 429 → effectiveConcurrency climbs by 1 per scan.
  */
 function detectRateLimits(epicId: number, projectId: number, opts: OrchestrateOptions): number {
-  const tasks = getDb().prepare(
-    `SELECT id, assigned_to FROM tasks
-     WHERE epic_id=? AND status='in_progress' AND assigned_to IS NOT NULL`,
-  ).all(epicId) as Array<{ id: number; assigned_to: string }>;
+  const tasks = opts.persistence.tasks.listRateLimitTasks(epicId);
 
   let rateLimited = 0;
   for (const t of tasks) {
@@ -1079,7 +857,7 @@ export async function orchestrate(opts: OrchestrateOptions): Promise<Orchestrate
     //   - a concurrency switch (/api/engine/concurrency → $.engine_concurrency)
     // take effect WITHOUT an engine restart. Active workers finish; the
     // engine converges to the new target as the active count drops.
-    return readTargetConcurrency(epicId, concurrency);
+    return readTargetConcurrency(epicId, concurrency, opts);
   })();
   // Effective concurrency may be lower than the target when the API is
   // rate-limiting (429). Starts at target, drops by 1 per rate-limit hit,
@@ -1106,9 +884,9 @@ export async function orchestrate(opts: OrchestrateOptions): Promise<Orchestrate
           // Process is alive — this is a DUPLICATE engine. Exit.
           engineHeartbeat(opts, 'DUPLICATE_EXIT',
             `engine PID ${existingPid} already running for project=${projectId} epic=${epicId} — exiting`);
-          writeEpisodeMeta(epicId, { engine_rejected: true, engine_rejected_reason: `PID ${existingPid} already running` });
+          writeEpisodeMeta(epicId, { engine_rejected: true, engine_rejected_reason: `PID ${existingPid} already running` }, opts);
           return {
-            projectId, epicId, finalStage: currentStage(epicId) ?? 'unknown',
+            projectId, epicId, finalStage: currentStage(epicId, opts) ?? 'unknown',
             endedAt: new Date(now()).toISOString(),
             reason: 'failed', cycles: 0,
             lastError: `duplicate engine — PID ${existingPid} already running`,
@@ -1128,7 +906,7 @@ export async function orchestrate(opts: OrchestrateOptions): Promise<Orchestrate
       engineHeartbeat(opts, 'DUPLICATE_EXIT',
         `engine PID ${winnerPid || '?'} won atomic lock for project=${projectId} epic=${epicId}`);
       return {
-        projectId, epicId, finalStage: currentStage(epicId) ?? 'unknown',
+        projectId, epicId, finalStage: currentStage(epicId, opts) ?? 'unknown',
         endedAt: new Date(now()).toISOString(),
         reason: 'failed', cycles: 0,
         lastError: `duplicate engine — PID ${winnerPid || '?'} owns atomic lock`,
@@ -1138,12 +916,11 @@ export async function orchestrate(opts: OrchestrateOptions): Promise<Orchestrate
   }
 
   // Resolve the project's workspace (where `claude -p` will run).
-  const projects = projectHandlers.project_list({}) as unknown as Array<{ id: number }>;
-  const project = projects.find(p => p.id === projectId);
-  if (!project) {
+  const workspace = opts.persistence.workspaces.resolve(projectId);
+  if (!workspace.projectExists) {
     throw new Error(`orchestrate: project ${projectId} not found`);
   }
-  const workspaceRoot = resolveProjectWorkspaceForEngine(projectId);
+  const workspaceRoot = workspace.workspaceRoot;
   if (!workspaceRoot) {
     throw new Error(
       `orchestrate: no workspace resolved for project ${projectId}. ` +
@@ -1168,7 +945,7 @@ export async function orchestrate(opts: OrchestrateOptions): Promise<Orchestrate
     `project=${projectId} epic=${epicId} concurrency=${concurrency} workspace=${workspaceRoot}`);
 
   // Ensure the episode has a workflow row (lifecycle.getOrCreate-style).
-  getDb().prepare('INSERT OR IGNORE INTO episode_workflows (epic_id) VALUES (?)').run(epicId);
+  opts.persistence.episodes.ensureWorkflow(epicId);
 
   // Persist engine state for UI consumption (concurrency selector reads this).
   // Updated on every engine start; cleared in engineHeartbeat on ENGINE_EXIT.
@@ -1176,7 +953,7 @@ export async function orchestrate(opts: OrchestrateOptions): Promise<Orchestrate
     engine_concurrency: concurrency,
     engine_pid: process.pid,
     engine_started_at: new Date().toISOString(),
-  });
+  }, opts);
 
   let cycles = 0;
   let emptyCycles = 0;
@@ -1185,7 +962,7 @@ export async function orchestrate(opts: OrchestrateOptions): Promise<Orchestrate
   try {
     while (true) {
       cycles += 1;
-      const stage = currentStage(epicId);
+      const stage = currentStage(epicId, opts);
       if (!stage) {
         lastError = `episode ${epicId} workflow row vanished mid-run`;
         engineHeartbeat(opts, 'ABORT', lastError);
@@ -1202,20 +979,9 @@ export async function orchestrate(opts: OrchestrateOptions): Promise<Orchestrate
         // episode, but the engine must still drain them. Gate-level tasks
         // (development.code, verification.ac, etc.) cannot exist here: the
         // episode would not have transitioned to 'completed' otherwise.
-        const drainable = getDb().prepare(
-          `SELECT
-             SUM(CASE WHEN status IN ('todo','review')
-                       AND (assigned_to IS NULL OR assigned_to='')
-                       AND current_execution_id IS NULL THEN 1 ELSE 0 END) AS claimable,
-             SUM(CASE WHEN status IN ('in_progress','review_in_progress')
-                       OR (status='review' AND assigned_to IS NOT NULL AND assigned_to!='')
-                       THEN 1 ELSE 0 END) AS in_flight
-           FROM tasks
-           WHERE epic_id=? AND workflow_stage=?
-             AND task_kind IN ('summary.stage','recovery.heal')`,
-        ).get(epicId, stage) as { claimable: number | null; in_flight: number | null };
-        const claimable = drainable?.claimable ?? 0;
-        const inFlight = drainable?.in_flight ?? 0;
+        const drainable = opts.persistence.tasks.terminalBookkeepingCounts(epicId, stage);
+        const claimable = drainable.claimable;
+        const inFlight = drainable.inFlight;
         if (claimable === 0 && inFlight === 0) {
           engineHeartbeat(opts, 'DONE', `stage=${stage} cycles=${cycles}`);
           return {
@@ -1256,10 +1022,7 @@ export async function orchestrate(opts: OrchestrateOptions): Promise<Orchestrate
       // (recovery healer, manual DB fix, engine restart mid-cycle), blocked
       // tasks may remain blocked even though their deps are now done+merged.
       // Calling it here is idempotent and cheap (one UPDATE per ready task).
-      const doneTasks = getDb().prepare(
-        `SELECT id FROM tasks WHERE epic_id=? AND status='done'`,
-      ).all(epicId) as Array<{ id: number }>;
-      for (const d of doneTasks) reevaluateDownstream(getDb(), d.id);
+      opts.persistence.tasks.reevaluateDoneDependencies(epicId);
 
       // Reconcile durable process state every ~30s. Quiet logs are ignored.
       zombieCheckCounter += 1;
@@ -1286,7 +1049,7 @@ export async function orchestrate(opts: OrchestrateOptions): Promise<Orchestrate
         // Re-read BOTH concurrency and model-limit from metadata. Either can
         // change mid-run via the kanban UI; both take effect without an
         // engine restart.
-        targetConcurrency = readTargetConcurrency(epicId, concurrency);
+        targetConcurrency = readTargetConcurrency(epicId, concurrency, opts);
         const rlDetected = detectRateLimits(epicId, projectId, opts);
         if (rlDetected > 0) {
           // Drop ceiling by 1 per rate-limited worker (min 1). Old workers
@@ -1301,7 +1064,7 @@ export async function orchestrate(opts: OrchestrateOptions): Promise<Orchestrate
         runner.setConcurrency(projectId, effectiveConcurrency);
       }
 
-      const counts = countActiveTasks(epicId);
+      const counts = countActiveTasks(epicId, opts);
       const workersBusy = (run?.active?.length ?? 0) > 0;
 
       engineHeartbeat(opts, 'CYCLE',
@@ -1320,7 +1083,7 @@ export async function orchestrate(opts: OrchestrateOptions): Promise<Orchestrate
       // kickstart worker is mid-flight writing its brief — episode jumps to
       // 'formalization' with no artifacts, then crashes the planning gate.
       if (counts.claimable === 0 && !workersBusy && counts.inFlight === 0) {
-        const gen = generateNextIfReady(epicId);
+        const gen = generateNextIfReady(epicId, opts);
         if (gen.error) {
           engineHeartbeat(opts, 'GEN_ERROR', gen.error.slice(0, 200));
           lastError = gen.error;
@@ -1345,7 +1108,7 @@ export async function orchestrate(opts: OrchestrateOptions): Promise<Orchestrate
         // advanced, the decision has been honoured and re-reading it would
         // re-enter the branch every cycle.
         if (stage === 'discovery') {
-          const decision = readLatestBriefDecision(epicId);
+          const decision = readLatestBriefDecision(epicId, opts);
           if (decision === 'fast-track') {
             engineHeartbeat(opts, 'FAST_TRACK',
               `brief decision='fast-track' → routeFastTrack jumped stage; continuing`);
@@ -1387,9 +1150,9 @@ export async function orchestrate(opts: OrchestrateOptions): Promise<Orchestrate
         }
 
         // Step 3: nothing left to generate. Try to advance the stage.
-        const advance = tryAdvanceStage(epicId);
+        const advance = tryAdvanceStage(epicId, opts);
         if (advance.advanced) {
-          engineHeartbeat(opts, 'STAGE_ADVANCED', `${stage} → ${currentStage(epicId)}`);
+          engineHeartbeat(opts, 'STAGE_ADVANCED', `${stage} → ${currentStage(epicId, opts)}`);
           emptyCycles = 0;
           continue;
         }
@@ -1412,14 +1175,14 @@ export async function orchestrate(opts: OrchestrateOptions): Promise<Orchestrate
           // Only check for a NEW gate error — if it changed since last heal
           // attempt, the previous heal made progress (different failure now),
           // so we reset the retry counter for the new diagnosis.
-          const meta = readEpisodeMeta(epicId);
+          const meta = readEpisodeMeta(epicId, opts);
           if (meta.lastHealError !== advance.error) {
             // New error → previous heal advanced the diagnosis. Reset counters
             // for the new error so the engine can heal again.
             resetHealRetriesForEpic(epicId);
           }
-          const heal = attemptHeal(epicId, stage, advance.error);
-          writeEpisodeMeta(epicId, { lastHealError: advance.error, lastHealAttempt: new Date().toISOString() });
+          const heal = attemptHeal(epicId, stage, advance.error, opts);
+          writeEpisodeMeta(epicId, { lastHealError: advance.error, lastHealAttempt: new Date().toISOString() }, opts);
           if (heal.applied) {
             engineHeartbeat(opts, 'HEALING',
               `spawned task #${heal.taskId} — ${heal.reason.slice(0, 100)}`);
@@ -1428,7 +1191,7 @@ export async function orchestrate(opts: OrchestrateOptions): Promise<Orchestrate
             // Clear needs-human so waitForResume isn't triggered; the pump
             // loop will pick up the healer task on next cycle and wait for
             // it like any other worker.
-            clearNeedsHuman(epicId);
+            clearNeedsHuman(epicId, opts);
             await sleep(PUMP_TICK_MS);
             continue;
           }
@@ -1443,12 +1206,12 @@ export async function orchestrate(opts: OrchestrateOptions): Promise<Orchestrate
           const genericRetries = healRetries.get(genericHealKey) ?? 0;
           if (genericRetries < 2 && !heal.applied) {
             healRetries.set(genericHealKey, genericRetries + 1);
-            const genericTaskId = spawnGenericRecoveryTask(epicId, stage, advance.error);
+            const genericTaskId = spawnGenericRecoveryTask(epicId, stage, advance.error, opts);
             engineHeartbeat(opts, 'GENERIC_HEAL',
               `spawned autonomous-recovery task #${genericTaskId} for unmatched gate error`);
             lastError = null;
             emptyCycles = 0;
-            clearNeedsHuman(epicId);
+            clearNeedsHuman(epicId, opts);
             await sleep(PUMP_TICK_MS);
             continue;
           }
@@ -1466,7 +1229,7 @@ export async function orchestrate(opts: OrchestrateOptions): Promise<Orchestrate
           }
           // Resumed — clear flag and continue (the human may have advanced
           // the stage manually; currentStage() will reflect it next loop).
-          clearNeedsHuman(epicId);
+          clearNeedsHuman(epicId, opts);
           // Human override → reset retry budget, give the engine a fresh start.
           resetHealRetriesForEpic(epicId);
           emptyCycles = 0;
@@ -1500,37 +1263,12 @@ export async function orchestrate(opts: OrchestrateOptions): Promise<Orchestrate
     engineHeartbeat(opts, 'ENGINE_EXIT', `cycles=${cycles} lastError=${lastError ?? 'null'}`);
   }
 
-  const finalStage = currentStage(epicId) ?? 'unknown';
+  const finalStage = currentStage(epicId, opts) ?? 'unknown';
   return {
     projectId, epicId, finalStage, endedAt: new Date(now()).toISOString(),
     reason: finalStage === 'completed' ? 'completed' : 'failed',
     cycles, lastError,
   };
-}
-
-/**
- * Resolve the workspace root for spawning workers. Preference order:
- *  1. The first registered repository with a local_path that exists on disk.
- *  2. Null if no usable workspace is found.
- *
- * Mirrors tracker-view.mjs resolveProjectWorkspace but kept self-contained
- * so the engine does not depend on the HTTP server.
- */
-function resolveProjectWorkspaceForEngine(projectId: number): string | null {
-  const db = getDb();
-  const rows = db.prepare(
-    `SELECT pr.id, r.name, COALESCE(rc.local_path, pr.local_path) AS local_path
-     FROM project_repositories pr
-     JOIN repositories r ON r.id=pr.repository_id
-     LEFT JOIN repository_checkouts rc
-       ON rc.project_repository_id=pr.id AND rc.machine_id=? AND rc.status='active'
-     WHERE pr.project_id=? AND pr.status='active'
-     ORDER BY pr.id`,
-  ).all(os.hostname(), projectId) as Array<{ id: number; name: string; local_path: string | null }>;
-  for (const r of rows) {
-    if (r.local_path && existsSync(r.local_path)) return r.local_path;
-  }
-  return null;
 }
 
 /** Re-export for tests. */
