@@ -106,7 +106,7 @@ test('worker infrastructure keeps claim, recovery and concrete runner anchors', 
   assertIncludesAll(source, [
     'createClaudeBoardRunner',
     'dispatcherHandlers.worker_next',
-    'releaseExecutionAtomically',
+    'recoverLegacyAssignment',
     'getActiveModel',
     'lmstudioBaseUrl',
     'ClaudeBoardWorkerExecutor',

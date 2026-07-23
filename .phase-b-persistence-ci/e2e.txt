@@ -1,0 +1,13 @@
+
+> saga-mcp@2.0.0 test:e2e
+> tsc && node --test tests/e2e-pipeline.test.mjs
+
+✔ e2e: engine drives verification → integration → completed with mock-claude (4468.762709ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 4610.755045

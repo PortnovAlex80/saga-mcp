@@ -2,41 +2,20 @@
 > saga-mcp@2.0.0 test:characterization
 > node --test tests/characterization/saga2-runtime-contracts.test.mjs
 
-✔ Saga 2 package entrypoints remain compatible (1.029537ms)
-✔ Saga 2 cross-process runtime files remain present (1.069194ms)
-✔ orchestration keeps its stable decision and lifecycle anchors (0.437255ms)
-✔ persistence adapters keep the moved SQLite and execution anchors (0.199303ms)
-✔ model route remains model-config-driven across the worker boundary (0.367403ms)
-✖ worker infrastructure keeps claim, recovery and concrete runner anchors (0.600859ms)
-✔ worker runner keeps the assignment, fencing, provider, logging, and MCP protocol (0.271997ms)
-✔ tracker keeps the stable board, artifact, workflow, and worker projection (1.800956ms)
-✔ existing behavioral suites remain part of the Phase A safety net (0.663662ms)
+✔ Saga 2 package entrypoints remain compatible (1.016705ms)
+✔ Saga 2 cross-process runtime files remain present (1.072905ms)
+✔ orchestration keeps its stable decision and lifecycle anchors (0.48667ms)
+✔ persistence adapters keep the moved SQLite and execution anchors (0.203089ms)
+✔ model route remains model-config-driven across the worker boundary (0.295466ms)
+✔ worker infrastructure keeps claim, recovery and concrete runner anchors (0.155235ms)
+✔ worker runner keeps the assignment, fencing, provider, logging, and MCP protocol (0.24472ms)
+✔ tracker keeps the stable board, artifact, workflow, and worker projection (1.792252ms)
+✔ existing behavioral suites remain part of the Phase A safety net (0.726499ms)
 ℹ tests 9
 ℹ suites 0
-ℹ pass 8
-ℹ fail 1
+ℹ pass 9
+ℹ fail 0
 ℹ cancelled 0
 ℹ skipped 0
 ℹ todo 0
-ℹ duration_ms 62.155371
-
-✖ failing tests:
-
-test at tests/characterization/saga2-runtime-contracts.test.mjs:104:1
-✖ worker infrastructure keeps claim, recovery and concrete runner anchors (0.600859ms)
-  AssertionError [ERR_ASSERTION]: legacy-claude-worker-executor-factory.ts lost contract anchor: releaseExecutionAtomically
-      at assertIncludesAll (file:///home/runner/work/saga-mcp/saga-mcp/tests/characterization/saga2-runtime-contracts.test.mjs:33:12)
-      at TestContext.<anonymous> (file:///home/runner/work/saga-mcp/saga-mcp/tests/characterization/saga2-runtime-contracts.test.mjs:106:3)
-      at Test.runInAsyncScope (node:async_hooks:227:14)
-      at Test.run (node:internal/test_runner/test:1325:25)
-      at Test.processPendingSubtests (node:internal/test_runner/test:911:18)
-      at Test.postRun (node:internal/test_runner/test:1465:19)
-      at Test.run (node:internal/test_runner/test:1390:12)
-      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
-    generatedMessage: false,
-    code: 'ERR_ASSERTION',
-    actual: false,
-    expected: true,
-    operator: '==',
-    diff: 'simple'
-  }
+ℹ duration_ms 65.324634
