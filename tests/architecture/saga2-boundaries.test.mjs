@@ -1,19 +1,26 @@
 import assert from 'node:assert/strict';
+import { mkdtempSync, rmSync } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import test from 'node:test';
+import Database from 'better-sqlite3';
 
-const {
-  loadSagaRuntimeConfig,
-} = await import('../../dist/runtime/saga-runtime-config.js');
+const { loadSagaRuntimeConfig } = await import(
+  '../../dist/runtime/saga-runtime-config.js'
+);
 const { Saga2Engine } = await import('../../dist/engines/saga2-engine.js');
-const {
-  createSagaApplication,
-} = await import('../../dist/application/saga-application.js');
-const {
-  ClaudeBoardWorkerExecutor,
-} = await import('../../dist/infrastructure/workers/claude-board-worker-executor.js');
-const {
-  LegacyBoardProjectionAdapter,
-} = await import('../../dist/infrastructure/projections/legacy-board-projection.js');
+const { createSagaApplication } = await import(
+  '../../dist/application/saga-application.js'
+);
+const { ClaudeBoardWorkerExecutor } = await import(
+  '../../dist/infrastructure/workers/claude-board-worker-executor.js'
+);
+const { LegacyBoardProjectionAdapter } = await import(
+  '../../dist/infrastructure/projections/legacy-board-projection.js'
+);
+const { SqliteBoardProjectionReader } = await import(
+  '../../dist/infrastructure/projections/sqlite-board-projection-reader.js'
+);
 
 test('runtime config preserves Saga 2 defaults and environment precedence', () => {
   const config = loadSagaRuntimeConfig({
@@ -36,13 +43,10 @@ test('runtime config preserves Saga 2 defaults and environment precedence', () =
     orchestrationMode: 'v2',
   });
 
-  assert.throws(
-    () => loadSagaRuntimeConfig({}),
-    /DB_PATH env var is required/,
-  );
+  assert.throws(() => loadSagaRuntimeConfig({}), /DB_PATH env var is required/);
 });
 
-test('Saga2Engine delegates to the proven pump through the engine-neutral contract', async () => {
+test('Saga2Engine delegates through the legacy runtime port', async () => {
   const calls = [];
   const expected = {
     projectId: 11,
@@ -64,26 +68,27 @@ test('Saga2Engine delegates to the proven pump through the engine-neutral contra
       trackerReloadSec: 5,
       orchestrationMode: 'v2',
     },
-    runLegacy: async options => {
-      calls.push(options);
+    runLegacy: async invocation => {
+      calls.push(invocation);
       return expected;
     },
   });
 
   const result = await engine.run({ projectId: 11, epicId: 22, concurrency: 3 });
   assert.deepEqual(result, expected);
-  assert.equal(calls.length, 1);
-  assert.deepEqual(calls[0], {
+  assert.deepEqual(calls, [{
     projectId: 11,
     epicId: 22,
     concurrency: 3,
     claudePath: '/opt/claude',
-  });
+  }]);
 });
 
-test('Saga application host is engine-neutral and closes once', async () => {
+test('Saga application host coordinates engine and board ports and closes once', async () => {
   const commands = [];
   let closes = 0;
+  const projects = [{ id: 1, name: 'Stable', status: 'active', total: 1, in_progress: 0, reviewing: 0 }];
+  const board = { epics: [], epicById: {}, tasks: [] };
   const application = createSagaApplication({
     engine: {
       async run(command) {
@@ -99,39 +104,38 @@ test('Saga application host is engine-neutral and closes once', async () => {
         };
       },
     },
+    board: {
+      listProjects: () => projects,
+      loadProjectBoard: projectId => {
+        assert.equal(projectId, 1);
+        return board;
+      },
+    },
     close: () => { closes += 1; },
   });
 
   await application.runEpisode({ projectId: 1, epicId: 2, concurrency: 1 });
   assert.deepEqual(commands, [{ projectId: 1, epicId: 2, concurrency: 1 }]);
+  assert.equal(application.listProjects(), projects);
+  assert.equal(application.loadProjectBoard(1), board);
   application.close();
   application.close();
   assert.equal(closes, 1);
-  assert.throws(
-    () => application.runEpisode({ projectId: 1, epicId: 2 }),
-    /Saga application is closed/,
-  );
+  assert.throws(() => application.runEpisode({ projectId: 1, epicId: 2 }), /Saga application is closed/);
+  assert.throws(() => application.listProjects(), /Saga application is closed/);
 });
 
 test('worker adapter preserves the existing board runner protocol', () => {
   const calls = [];
   const snapshot = {
-    id: 'run-1',
-    project_id: 1,
-    concurrency: 2,
-    status: 'running',
-    active: [],
-    completed: 0,
-    failed: 0,
-    claimed: 0,
+    id: 'run-1', project_id: 1, concurrency: 2, status: 'running',
+    active: [], completed: 0, failed: 0, claimed: 0,
   };
   const runner = {
     start(command) { calls.push(['start', command]); return snapshot; },
     stop(projectId) { calls.push(['stop', projectId]); return snapshot; },
     status(projectId) { calls.push(['status', projectId]); return snapshot; },
-    setConcurrency(projectId, concurrency) {
-      calls.push(['setConcurrency', projectId, concurrency]);
-    },
+    setConcurrency(projectId, concurrency) { calls.push(['setConcurrency', projectId, concurrency]); },
     dispose() { calls.push(['dispose']); },
   };
 
@@ -141,7 +145,6 @@ test('worker adapter preserves the existing board runner protocol', () => {
   executor.setConcurrency(1, 3);
   assert.equal(executor.stop(1), snapshot);
   executor.dispose();
-
   assert.deepEqual(calls, [
     ['start', { projectId: 1, epicId: 2, concurrency: 2 }],
     ['status', 1],
@@ -151,20 +154,9 @@ test('worker adapter preserves the existing board runner protocol', () => {
   ]);
 });
 
-test('frontend projection adapter preserves legacy board rows unchanged', () => {
-  const projects = [{
-    id: 1,
-    name: 'Stable',
-    status: 'active',
-    total: 3,
-    in_progress: 1,
-    reviewing: 0,
-  }];
-  const board = {
-    empty: false,
-    epics: [],
-    tasks: [],
-  };
+test('frontend projection adapter preserves legacy rows unchanged', () => {
+  const projects = [{ id: 1, name: 'Stable', status: 'active', total: 3, in_progress: 1, reviewing: 0 }];
+  const board = { epics: [], epicById: {}, tasks: [] };
   const adapter = new LegacyBoardProjectionAdapter({
     listProjects: () => projects,
     loadProjectBoard: projectId => {
@@ -172,7 +164,58 @@ test('frontend projection adapter preserves legacy board rows unchanged', () => 
       return board;
     },
   });
-
   assert.equal(adapter.listProjects(), projects);
   assert.equal(adapter.loadProjectBoard(1), board);
+});
+
+test('SQLite board reader preserves the tracker project and board projection', () => {
+  const temp = mkdtempSync(path.join(os.tmpdir(), 'saga-board-projection-'));
+  const dbPath = path.join(temp, 'saga.db');
+  const db = new Database(dbPath);
+  try {
+    db.exec(`
+      CREATE TABLE projects (id INTEGER PRIMARY KEY, name TEXT, status TEXT);
+      CREATE TABLE epics (id INTEGER PRIMARY KEY, name TEXT, project_id INTEGER);
+      CREATE TABLE episode_workflows (epic_id INTEGER, stage TEXT, metadata TEXT);
+      CREATE TABLE artifacts (id INTEGER PRIMARY KEY, epic_id INTEGER, status TEXT, drift_state TEXT);
+      CREATE TABLE verification_evidence (id INTEGER PRIMARY KEY, artifact_id INTEGER, outcome TEXT);
+      CREATE TABLE repositories (id INTEGER PRIMARY KEY, name TEXT);
+      CREATE TABLE project_repositories (id INTEGER PRIMARY KEY, project_id INTEGER, repository_id INTEGER);
+      CREATE TABLE tasks (
+        id INTEGER PRIMARY KEY, epic_id INTEGER, title TEXT, status TEXT,
+        task_kind TEXT, workflow_stage TEXT, execution_skill TEXT,
+        execution_mode TEXT, assigned_to TEXT, integration_state TEXT,
+        sort_order INTEGER, project_repository_id INTEGER
+      );
+      CREATE TABLE task_dependencies (task_id INTEGER, depends_on_task_id INTEGER);
+    `);
+    db.prepare(`INSERT INTO projects VALUES (1, 'Stable', 'active')`).run();
+    db.prepare(`INSERT INTO epics VALUES (10, 'REQ-10', 1)`).run();
+    db.prepare(`INSERT INTO episode_workflows VALUES (10, 'development', '{}')`).run();
+    db.prepare(`INSERT INTO repositories VALUES (20, 'product')`).run();
+    db.prepare(`INSERT INTO project_repositories VALUES (30, 1, 20)`).run();
+    db.prepare(`INSERT INTO tasks VALUES (40, 10, 'Build', 'in_progress', 'development.code', 'development', 'saga-worker', 'git_change', 'worker-1', 'pending', 1, 30)`).run();
+  } finally {
+    db.close();
+  }
+
+  try {
+    const reader = new SqliteBoardProjectionReader(dbPath);
+    const projects = reader.listProjects();
+    assert.equal(projects.length, 1);
+    assert.equal(projects[0].name, 'Stable');
+    assert.equal(projects[0].total, 1);
+    assert.equal(projects[0].in_progress, 1);
+    assert.match(projects[0].color, /^#/);
+
+    const projection = reader.loadProjectBoard(1);
+    assert.equal(projection.epics.length, 1);
+    assert.equal(projection.epics[0].episode_stage, 'development');
+    assert.equal(projection.tasks.length, 1);
+    assert.equal(projection.tasks[0].task_kind, 'development.code');
+    assert.equal(projection.tasks[0].repository_name, 'product');
+    assert.equal(projection.epicById[10].name, 'REQ-10');
+  } finally {
+    rmSync(temp, { recursive: true, force: true });
+  }
 });
