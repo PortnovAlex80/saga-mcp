@@ -64,6 +64,7 @@ export interface TaskRuntimeRepository {
   listGenerationCandidateIds(epicId: number): number[];
   hasActiveRecovery(epicId: number): boolean;
   listStrandedTasks(epicId: number, stage: string): StrandedTaskProjection[];
+  recordPostTransitionSweep(epicId: number, strandedList: string, summary: string): void;
   createRecoveryTask(command: RecoveryTaskCreate): number;
   terminalBookkeepingCounts(epicId: number, stage: string): TerminalBookkeepingCounts;
   reevaluateDoneDependencies(epicId: number): void;
