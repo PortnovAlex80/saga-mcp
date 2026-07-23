@@ -129,6 +129,21 @@ jobs:
           p.write_text(updated, encoding='utf-8')
           PY
 
+      - name: Remove obsolete proposal launch parser
+        if: steps.apply.outputs.code == '0'
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          p = Path('src/tools/saga3-proposals.ts')
+          text = p.read_text(encoding='utf-8')
+          pattern = r"\ninterface LaunchSnapshot \{.*?\n\}\n\nfunction parseLaunchSnapshot\(metadata: string\): LaunchSnapshot \{.*?\n\}\n"
+          updated, count = re.subn(pattern, '\n', text, count=1, flags=re.S)
+          if count != 1:
+              raise SystemExit(f'obsolete LaunchSnapshot parser removal matched {count} blocks')
+          p.write_text(updated, encoding='utf-8')
+          PY
+
       - name: Upload patch diagnostic
         if: steps.apply.outputs.code != '0'
         uses: actions/upload-artifact@v4
