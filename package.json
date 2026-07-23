@@ -34,6 +34,9 @@
     "prepublishOnly": "npm run build",
     "test": "tsc && node --test",
     "test:e2e": "tsc && node --test tests/e2e-pipeline.test.mjs",
+    "test:saga3:live": "node tests/saga3/live/run-stage-acceptance.mjs",
+    "test:saga3:live:review": "node tests/saga3/live/validate-agent-review.mjs",
+    "test:saga3:live:contracts": "node --test tests/saga3/live/stage-matrix.test.mjs tests/saga3/live/semantic-review.test.mjs",
     "mock:run": "SAGA_CLAUDE_PATH=\"node tests/mock-claude.mjs\" node dist/orchestrate-cli.js"
   },
   "keywords": [

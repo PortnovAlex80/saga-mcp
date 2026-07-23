@@ -1,0 +1,172 @@
+export const LIVE_STAGE_SEQUENCE = [
+  {
+    condition: 'ConstitutionReady',
+    prerequisite: 'MandatePresent',
+    taskKind: 'discovery.kickstart',
+    workflowStage: 'discovery',
+    skillId: 'saga-kickstart',
+    oracleId: 'constitution-check',
+    artifactKinds: ['brief', 'decision'],
+    semanticChecks: [
+      'The artifact states a concrete product mission rather than generic process prose.',
+      'Target users and their problem are explicit and consistent with the mandate.',
+      'Mandatory obligations, constraints, exclusions, and success criteria are identifiable.',
+      'The document contains no fabricated facts presented as user-provided requirements.',
+      'The next formalization step has enough material to derive a PRD without guessing the product goal.',
+    ],
+  },
+  {
+    condition: 'ContractConsistent',
+    prerequisite: 'ConstitutionReady',
+    taskKind: 'formalization.prd',
+    workflowStage: 'formalization',
+    skillId: 'saga-product',
+    oracleId: 'traceability-check',
+    artifactKinds: ['prd', 'fr', 'nfr'],
+    semanticChecks: [
+      'Requirements are testable, scoped, and traced back to the constitution or mandate.',
+      'Functional and non-functional requirements are not mixed or duplicated.',
+      'Conflicts, ambiguities, assumptions, and unresolved decisions are explicit.',
+      'The product boundary and excluded behavior are clear.',
+    ],
+  },
+  {
+    condition: 'BaselineFrozen',
+    prerequisite: 'ContractConsistent',
+    taskKind: 'formalization.reconciliation',
+    workflowStage: 'formalization',
+    skillId: 'saga-reconciler',
+    oracleId: 'baseline-hash-check',
+    artifactKinds: ['baseline'],
+    semanticChecks: [
+      'The baseline identifies exactly which requirement artifacts and versions are frozen.',
+      'Known contradictions or missing decisions are not silently hidden.',
+      'The baseline is reproducible from the recorded source artifacts and hashes.',
+    ],
+  },
+  {
+    condition: 'ArchitectureReady',
+    prerequisite: 'BaselineFrozen',
+    taskKind: 'formalization.srs',
+    workflowStage: 'formalization',
+    skillId: 'saga-architect',
+    oracleId: 'srs-check',
+    artifactKinds: ['srs'],
+    semanticChecks: [
+      'Architecture decisions are derived from requirements and constraints.',
+      'Module boundaries, ports, data ownership, invariants, and failure behavior are concrete.',
+      'The design avoids implementation detail that is not justified by a requirement or risk.',
+      'Traceability from architecture decisions to requirements is visible.',
+    ],
+  },
+  {
+    condition: 'PlanReady',
+    prerequisite: 'ArchitectureReady',
+    taskKind: 'planning.decomposition',
+    workflowStage: 'planning',
+    skillId: 'saga-planner',
+    oracleId: 'plan-completeness-check',
+    artifactKinds: ['plan'],
+    semanticChecks: [
+      'Tasks form an executable dependency graph rather than a narrative checklist.',
+      'Every task has an output, acceptance condition, skill/role, and ingestion path.',
+      'Development and verification work are causally linked at the same scope.',
+      'The plan contains no stage-only ordering where explicit prerequisites are required.',
+    ],
+  },
+  {
+    condition: 'ImplementationComplete',
+    prerequisite: 'PlanReady',
+    taskKind: 'development.code',
+    workflowStage: 'development',
+    skillId: 'saga-worker',
+    oracleId: 'build-check',
+    artifactKinds: ['code', 'test'],
+    semanticChecks: [
+      'The implementation satisfies the scoped task rather than merely adding placeholders.',
+      'Tests cover the intended behavior and meaningful failure cases.',
+      'The change respects the approved architecture and does not broaden scope silently.',
+      'Build output and repository diff are consistent with the claimed completion.',
+    ],
+  },
+  {
+    condition: 'VerificationCurrent',
+    prerequisite: 'ImplementationComplete',
+    taskKind: 'verification.ac',
+    workflowStage: 'verification',
+    skillId: 'saga-verifier',
+    oracleId: 'evidence-check',
+    artifactKinds: ['evidence'],
+    semanticChecks: [
+      'Evidence addresses the canonical acceptance condition and current source revision.',
+      'The verifier is independent from the implementation execution.',
+      'A passed result is supported by an actual oracle observation, not an LM assertion.',
+      'Failures and unverified areas are reported truthfully.',
+    ],
+  },
+  {
+    condition: 'IntegrationComplete',
+    prerequisite: 'VerificationCurrent',
+    taskKind: 'integration.merge',
+    workflowStage: 'integration',
+    skillId: 'saga-worker',
+    oracleId: 'integration-check',
+    artifactKinds: [],
+    semanticChecks: [
+      'The integrated revision contains the verified implementation and no unrelated changes.',
+      'Merge conflicts and coordination decisions are resolved explicitly.',
+      'The integration oracle observes the actual target branch state.',
+    ],
+  },
+  {
+    condition: 'ReleaseReady',
+    prerequisite: 'IntegrationComplete',
+    taskKind: 'release.prepare',
+    workflowStage: 'release',
+    skillId: 'saga-release',
+    oracleId: 'release-check',
+    artifactKinds: ['release-notes'],
+    semanticChecks: [
+      'Release notes match the integrated change and do not overstate delivered behavior.',
+      'Known limitations, migration needs, rollback, and operational prerequisites are explicit.',
+      'The release candidate is tied to an immutable source identity.',
+    ],
+  },
+  {
+    condition: 'ReleaseCompleted',
+    prerequisite: 'ReleaseReady',
+    taskKind: 'release.publish',
+    workflowStage: 'release',
+    skillId: 'saga-release',
+    oracleId: 'release-observed',
+    artifactKinds: ['release-notes'],
+    semanticChecks: [
+      'The claimed release is backed by an observed external effect or an explicit already-applied result.',
+      'Ambiguous publication state is not reported as success.',
+      'The released identity matches the approved candidate.',
+    ],
+  },
+  {
+    condition: 'ObservationHealthy',
+    prerequisite: 'ReleaseCompleted',
+    taskKind: 'observation.monitor',
+    workflowStage: 'observation',
+    skillId: 'saga-verifier',
+    oracleId: 'health-check',
+    artifactKinds: ['evidence'],
+    semanticChecks: [
+      'Health evidence observes the released system rather than a local surrogate.',
+      'The observation window and freshness are sufficient for the claimed health status.',
+      'Material degradation or uncertainty is surfaced instead of normalized away.',
+    ],
+  },
+];
+
+export function stageByCondition(condition) {
+  return LIVE_STAGE_SEQUENCE.find((stage) => stage.condition === condition) ?? null;
+}
+
+export function previousStage(condition) {
+  const index = LIVE_STAGE_SEQUENCE.findIndex((stage) => stage.condition === condition);
+  return index > 0 ? LIVE_STAGE_SEQUENCE[index - 1] : null;
+}

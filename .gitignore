@@ -15,5 +15,8 @@ tracker-view/.tracker-view.pid
 # ZCode client session artifacts (local plans, not part of the repo)
 .zcode/
 
+# Saga 3 live LM Studio acceptance runs
+.saga3-live/
+
 # temp test/build logs
 *.log
