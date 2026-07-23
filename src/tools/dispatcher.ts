@@ -8,6 +8,9 @@ import type { Task, ToolHandler } from '../types.js';
 import { generateNextForCompletedTask } from './workflow.js';
 import { advanceReadyEpisodes } from './lifecycle.js';
 import { releaseExecutionAtomically } from '../lifecycle/atomic-release.js';
+import { buildExecutionContext } from '../saga3/authority/build-execution-context.js';
+import { executionContextHash } from '../saga3/domain/execution-context.js';
+import type { WorkIntent } from '../saga3/domain/work-intent.js';
 import {
   checkReceipt,
   storeReceipt,
@@ -199,6 +202,95 @@ function addTag(db: Database.Database, taskId: number, tag: string): void {
 // excludeTaskId — чтобы worker_done не отдал тому же агенту только что
 // закрытую задачу на ревью (anti-self-review).
 // ============================================================================
+// D1.1 claim-time snapshot helpers. Both read inside the claim IMMEDIATE
+// transaction so the snapshot is internally consistent with the atomic claim.
+// ============================================================================
+
+/** Read the active model route for an episode once (single source of truth). */
+function readModelRouteAtClaim(
+  db: Database.Database,
+  epicId: number,
+): { provider: string; model: string | null; effort: string | null } {
+  const ew = db.prepare(
+    `SELECT json_extract(metadata, '$.active_model') AS m,
+            json_extract(metadata, '$.active_provider') AS p,
+            json_extract(metadata, '$.active_model_effort') AS e
+       FROM episode_workflows WHERE epic_id=?`,
+  ).get(epicId) as { m: string | null; p: string | null; e: string | null } | undefined;
+  return { model: ew?.m ?? null, provider: ew?.p ?? 'zai', effort: ew?.e ?? null };
+}
+
+/**
+ * Read the WorkIntent bound to a task for the authority snapshot, or null for a
+ * legacy Saga 2 task (no work_intent_id). Accepts the already-parsed task
+ * metadata to avoid a re-read; falls back to a SQL read when metadata is a
+ * string (the Task type may carry it either way depending on call site).
+ */
+function readWorkIntentForTaskClaim(
+  db: Database.Database,
+  taskId: number,
+  taskMetadata: unknown,
+): WorkIntent | null {
+  let intentId: number | null = null;
+  if (taskMetadata && typeof taskMetadata === 'object') {
+    const m = taskMetadata as Record<string, unknown>;
+    if (typeof m.work_intent_id === 'number') intentId = m.work_intent_id;
+  } else if (typeof taskMetadata === 'string') {
+    try {
+      const m = JSON.parse(taskMetadata) as Record<string, unknown>;
+      if (typeof m.work_intent_id === 'number') intentId = m.work_intent_id;
+    } catch {
+      intentId = null;
+    }
+  }
+  if (intentId == null) {
+    // Fall back to a SQL read of the metadata column (the Task object may not
+    // have carried it). Returns null when the task genuinely has no binding.
+    const row = db.prepare(
+      `SELECT json_extract(metadata, '$.work_intent_id') AS intent_id
+         FROM tasks WHERE id=?`,
+    ).get(taskId) as { intent_id: number | null } | undefined;
+    intentId = row?.intent_id ?? null;
+  }
+  if (intentId == null) return null;
+  const row = db.prepare(
+    'SELECT * FROM saga3_work_intents WHERE id=?',
+  ).get(intentId) as WorkIntentClaimRow | undefined;
+  return row ? claimRowToIntent(row) : null;
+}
+
+interface WorkIntentClaimRow {
+  id: number;
+  epic_id: number;
+  kind: string;
+  objective: string;
+  authority_scope: string;
+  output_schema: string;
+  token_budget: number;
+  retry_budget: number;
+  projected_task_id: number | null;
+  status: string;
+  created_at: string;
+  updated_at: string;
+}
+
+function claimRowToIntent(row: WorkIntentClaimRow): WorkIntent {
+  return {
+    id: row.id,
+    epic_id: row.epic_id,
+    kind: row.kind,
+    objective: row.objective,
+    authority_scope: JSON.parse(row.authority_scope),
+    output_schema: row.output_schema,
+    token_budget: row.token_budget,
+    retry_budget: row.retry_budget,
+    projected_task_id: row.projected_task_id,
+    status: row.status as WorkIntent['status'],
+    created_at: row.created_at,
+  };
+}
+
+// ============================================================================
 function findNextClaimable(
   db: Database.Database,
   workerId: string,
@@ -358,21 +450,28 @@ function findNextClaimable(
   }
 
   if (reservation) {
-    // Capture the launch-time model route snapshot into worker_executions.
-    // metadata. This is the IMMUTABLE authority source that proposal_submit
-    // later reads for provenance — it reflects the model the worker actually
-    // started under, NOT the current episode config (which a /api/model/set
-    // could change mid-run). Read inside the same IMMEDIATE transaction.
-    const ew = db.prepare(
-      `SELECT json_extract(metadata, '$.active_model') AS m,
-              json_extract(metadata, '$.active_provider') AS p,
-              json_extract(metadata, '$.active_model_effort') AS e
-         FROM episode_workflows WHERE epic_id=?`,
-    ).get(task.epic_id) as { m: string | null; p: string | null; e: string | null } | undefined;
-    const launchSnapshot = JSON.stringify({
-      model: ew?.m ?? null,
-      provider: ew?.p ?? 'zai',
-      effort: ew?.e ?? null,
+    // D1.1: freeze the IMMUTABLE execution context snapshot at claim. The model
+    // route is read ONCE here (single source of truth) — spawn-side and
+    // proposal-provenance-side both consume the frozen value from
+    // worker_executions.metadata.execution_context, eliminating the D1
+    // claim↔spawn model-route race. Authority is frozen from the WorkIntent
+    // bound to the task (via tasks.metadata.work_intent_id); a WorkIntent
+    // mutated AFTER claim does not change this snapshot, so the worker cannot
+    // expand its own authority mid-run.
+    //
+    // Read inside the same IMMEDIATE transaction so the snapshot reflects the
+    // state at the atomic claim instant.
+    const modelRoute = readModelRouteAtClaim(db, task.epic_id);
+    const workIntent = readWorkIntentForTaskClaim(db, task.id, task.metadata);
+    const executionContext = buildExecutionContext({
+      modelRoute,
+      workIntent,
+      capturedAt: new Date().toISOString(),
+    });
+    const executionContextHashValue = executionContextHash(executionContext);
+    const metadataJson = JSON.stringify({
+      execution_context: executionContext,
+      execution_context_hash: executionContextHashValue,
     });
     db.prepare(
       `INSERT INTO worker_executions
@@ -387,7 +486,7 @@ function findNextClaimable(
       workerId,
       reservation.machineId,
       task.status === 'review' ? 'reviewing' : 'executing',
-      launchSnapshot,
+      metadataJson,
     );
   }
 
@@ -434,6 +533,14 @@ function handleWorkerNext(args: Record<string, unknown>): {
   }>;
   reason?: string;
   execution_id?: string;
+  /**
+   * D1.1: the frozen execution-context snapshot (model route + authority)
+   * captured at claim. The board runner consumes `model_route` to spawn the
+   * worker (single source of truth, no re-read) and the saga MCP child receives
+   * `SAGA_EXECUTION_ID` so the gateway can authorize calls against `authority`.
+   * Absent for the empty-queue path.
+   */
+  execution_context?: unknown;
 } {
   const db = getDb();
   const workerId = args.worker_id as string;
@@ -526,12 +633,30 @@ function handleWorkerNext(args: Record<string, unknown>): {
   if (task.project_repository_id != null && !repository) {
     throw new Error(`Task ${task.id} targets missing or foreign project_repository_id=${task.project_repository_id}`);
   }
+  // D1.1: read the frozen execution_context back from the row the claim just
+  // wrote, and surface it to the runner so spawn + provenance read the SAME
+  // frozen model route (no re-read). Absent when no reservation was supplied.
+  let executionContext: unknown = undefined;
+  if (executionId) {
+    const execRow = db.prepare(
+      'SELECT metadata FROM worker_executions WHERE execution_id=?',
+    ).get(executionId) as { metadata: string } | undefined;
+    if (execRow?.metadata) {
+      try {
+        const parsed = JSON.parse(execRow.metadata) as { execution_context?: unknown };
+        executionContext = parsed.execution_context;
+      } catch {
+        executionContext = undefined;
+      }
+    }
+  }
   return {
     task,
     skill: skillForTask(task, task.status),
     repository: repository ?? null,
     active_tasks,
     execution_id: executionId,
+    execution_context: executionContext,
   };
 }
 

@@ -31,7 +31,8 @@ import { definitions as observationDefs, handlers as observationHandlers } from 
 import { definitions as conflictDefs, handlers as conflictHandlers } from './tools/conflicts.js';
 import { definitions as providerDefs, handlers as providerHandlers } from './tools/providers.js';
 import { createSaga3ProposalHandlers } from './tools/saga3-proposals.js';
-import { closeDb } from './db.js';
+import { authorizeSagaToolCall } from './saga3/authority/authorize-saga-tool-call.js';
+import { closeDb, getDb } from './db.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -120,6 +121,30 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const handler = ALL_HANDLERS[name];
     if (!handler) {
       throw new Error(`Unknown tool: ${name}`);
+    }
+
+    // D1.1: authority gateway. Enforces the frozen execution_context snapshot
+    // captured at claim against this Saga tool call. The gateway is the ONLY
+    // runtime enforcement point for Saga 3 authority — the skill prompt and
+    // --disallowedTools are not the authority source. Saga 3 runtime executions
+    // are fail-closed (default-deny: an unlisted tool is denied); legacy Saga 2
+    // and non-managed calls are compatibility-allowed.
+    const decision = authorizeSagaToolCall({ toolName: name, db: getDb() });
+    if (!decision.allow) {
+      // Handler must NOT run — return the actionable denial without invoking it.
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({ code: decision.code, ...decision.details }, null, 2),
+          },
+        ],
+        isError: true,
+      };
+    }
+    if (decision.advisory) {
+      // Declared-but-not-enforced: log the observation, still run the handler.
+      console.error(`[saga-authority] advisory ${decision.observation} (execution=${decision.executionId ?? '-'})`);
     }
 
     const result = handler(args ?? {});

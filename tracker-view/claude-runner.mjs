@@ -162,6 +162,36 @@ export class ClaudeBoardRunner {
     writeFileSync(this.mcpConfigPath, JSON.stringify(config, null, 2), 'utf8');
   }
 
+  // D1.1: write a per-execution MCP config that carries SAGA_EXECUTION_ID +
+  // SAGA_TASK_ID + SAGA_WORKER_ID into the spawned saga MCP child's env. Under
+  // --strict-mcp-config the MCP child receives ONLY the keys in this env block,
+  // so execution identity must be plumbed HERE, not via the worker claude's
+  // process env (which does not reach the stdio-spawned MCP child). The gateway
+  // in src/index.ts reads process.env.SAGA_EXECUTION_ID to authorize each Saga
+  // tool call against the frozen execution_context snapshot.
+  writeExecutionMcpConfig(executionId, taskId, workerId) {
+    const safeId = (executionId || 'noexec').replace(/[^A-Za-z0-9_.-]/g, '_');
+    const configPath = path.join(os.tmpdir(), `saga-claude-mcp-exec-${safeId}.json`);
+    const config = {
+      mcpServers: {
+        saga: {
+          type: 'stdio',
+          command: 'node',
+          args: [this.sagaEntry],
+          env: {
+            DB_PATH: this.dbPath,
+            TRACKER_AUTOSTART: '0',
+            SAGA_EXECUTION_ID: executionId || '',
+            SAGA_TASK_ID: String(taskId ?? ''),
+            SAGA_WORKER_ID: workerId || '',
+          },
+        },
+      },
+    };
+    writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf8');
+    return configPath;
+  }
+
   dispose() {
     for (const run of this.runs.values()) this.stop(run.projectId);
     try { rmSync(this.mcpConfigPath, { force: true }); } catch {}
@@ -353,7 +383,15 @@ export class ClaudeBoardRunner {
     // z.ai cloud). LM Studio models omit it → we pass NO --effort so the local
     // chat template picks its own default (LM Studio rejects effort='xhigh'/
     // 'high' for qwen, mapping them inefficiently to reasoning='on').
-    const am = (this.getActiveModel ? this.getActiveModel(run.epicId) : null)
+    //
+    // D1.1: prefer the FROZEN model route from the execution_context snapshot
+    // captured at claim (single source of truth — same value the gateway and
+    // proposal provenance will see). Fall back to getActiveModel only when no
+    // snapshot is present (legacy Saga 2 dispatch / null task), preserving the
+    // pre-D1.1 path byte-for-byte for those cases.
+    const snapshotRoute = assignment.execution_context?.model_route;
+    const am = snapshotRoute
+      || (this.getActiveModel ? this.getActiveModel(run.epicId) : null)
       || { provider: 'zai', model: null };
     const isLmstudio = am.provider === 'lmstudio' && am.model;
     // For LM Studio we must pass the concrete model id (--model <lmstudio-id>);
@@ -364,6 +402,13 @@ export class ClaudeBoardRunner {
     // per-model effort from the catalog, falling back to 'high' (the previous
     // 'xhigh' was excessive even for cloud and burned tokens at x3 peak rate).
     const effortArg = isLmstudio ? null : (am.effort || 'high');
+
+    // D1.1: per-execution MCP config carrying SAGA_EXECUTION_ID/TASK_ID/WORKER_ID
+    // into the spawned saga MCP child. Falls back to the shared PID config when
+    // no execution identity is present (defensive — every claim today supplies one).
+    const executionMcpConfigPath = assignment.execution_id
+      ? this.writeExecutionMcpConfig(assignment.execution_id, task.id, workerId)
+      : this.mcpConfigPath;
 
     const prompt = buildPrompt({
       assignment,
@@ -377,7 +422,7 @@ export class ClaudeBoardRunner {
       '-p',
       '--model', modelArg,
       // --effort is injected conditionally below (LM Studio → omitted).
-      '--mcp-config', this.mcpConfigPath,
+      '--mcp-config', executionMcpConfigPath,
       '--strict-mcp-config',
       '--disallowedTools', 'mcp__saga__worker_next',
       '--permission-mode', 'bypassPermissions',
@@ -455,6 +500,11 @@ export class ClaudeBoardRunner {
       startedAt: nowIso(),
       workspaceRoot,
       repository: assignment.repository?.name || null,
+      // D1.1: per-execution MCP config path — cleaned up on close so /tmp does
+      // not accumulate one file per worker launch.
+      executionMcpConfigPath: executionMcpConfigPath !== this.mcpConfigPath
+        ? executionMcpConfigPath
+        : null,
     };
     run.active.set(workerId, execution);
 
@@ -469,6 +519,10 @@ export class ClaudeBoardRunner {
     child.once('close', code => {
       child.stdout?.unpipe(log);
       child.stderr?.unpipe(log);
+      // D1.1: clean up the per-execution MCP config file.
+      if (execution.executionMcpConfigPath) {
+        try { rmSync(execution.executionMcpConfigPath, { force: true }); } catch {}
+      }
       const finalize = () => {
       run.active.delete(workerId);
       const taskState = this.getTaskState(task.id);

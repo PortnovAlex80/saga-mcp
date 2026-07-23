@@ -173,8 +173,12 @@ export class Saga3DiscoveryEngine implements OrchestrationEngine {
           snapshot_ref: `episode:${epicId}`,
           scope: 'read-only discovery context',
           allowed_tools: DISCOVERY_ALLOWED_TOOLS,
-          // D1: advisory only — runtime enforcement is the D1.1 slice.
-          enforcement: 'advisory',
+          // D1.1: runtime-enforced. The MCP gateway (authorizeSagaToolCall)
+          // checks the frozen execution_context snapshot against every Saga
+          // tool call and denies anything outside allowed_tools with
+          // AUTHORITY_DENIED. The worker cannot expand its own authority; only
+          // a new WorkIntent issued by the kernel can.
+          enforcement: 'runtime',
         },
         output_schema: DISCOVERY_WORK_INTENT_SCHEMA,
         token_budget: 0,

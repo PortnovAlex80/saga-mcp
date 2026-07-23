@@ -311,12 +311,21 @@ interface LaunchSnapshot {
 }
 
 function parseLaunchSnapshot(metadata: string): LaunchSnapshot {
-  // dispatcher.findNextClaimable writes {model, provider, effort} into
-  // worker_executions.metadata at claim time. Older executions (pre-fix) have
-  // '{}' — fall back to nulls rather than re-reading mutable episode config.
+  // The model route provenance is read from the FROZEN execution_context
+  // snapshot captured at claim (D1.1 single-source-of-truth). Resolution order:
+  //   1. metadata.execution_context.model_route   (D1.1 — canonical)
+  //   2. metadata.authority_snapshot              (transitional D1 shape)
+  //   3. flat {model, provider, effort}           (earliest D1 shape)
+  //   4. nulls                                    (pre-fix / '{}' metadata)
+  // Never re-reads mutable episode config — claim model == spawn model == this
+  // provenance model.
   try {
-    const parsed = JSON.parse(metadata) as Partial<LaunchSnapshot> & { authority_snapshot?: Partial<LaunchSnapshot> };
-    const src = parsed.authority_snapshot ?? parsed;
+    const parsed = JSON.parse(metadata) as Partial<LaunchSnapshot> & {
+      authority_snapshot?: Partial<LaunchSnapshot>;
+      execution_context?: { model_route?: Partial<LaunchSnapshot> };
+    };
+    const ctx = parsed.execution_context?.model_route;
+    const src = ctx ?? parsed.authority_snapshot ?? parsed;
     return {
       model: src.model ?? null,
       provider: src.provider ?? 'zai',

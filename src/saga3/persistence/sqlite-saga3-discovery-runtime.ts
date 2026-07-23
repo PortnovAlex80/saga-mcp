@@ -107,6 +107,19 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
     return row?.status ?? null;
   }
 
+  readWorkIntentForTask(taskId: number): WorkIntent | null {
+    const db = getDb();
+    const task = db.prepare(
+      `SELECT json_extract(metadata, '$.work_intent_id') AS intent_id
+         FROM tasks WHERE id=?`,
+    ).get(taskId) as { intent_id: number | null } | undefined;
+    if (!task || task.intent_id == null) return null;
+    const row = db.prepare(
+      'SELECT * FROM saga3_work_intents WHERE id=?',
+    ).get(task.intent_id) as WorkIntentRow | undefined;
+    return row ? rowToIntent(row) : null;
+  }
+
   readLatestProposal(intentId: number): ProposalRecord | null {
     const row = getDb().prepare(
       `SELECT * FROM saga3_proposals

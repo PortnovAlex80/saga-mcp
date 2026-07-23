@@ -50,6 +50,14 @@ export interface Saga3DiscoveryRuntimePersistence {
   /** Current task status ('todo' | 'in_progress' | 'done' | ...), or null if gone. */
   readTaskState(taskId: number): string | null;
 
+  /**
+   * Read the WorkIntent bound to a board task via `tasks.metadata.work_intent_id`,
+   * or null if the task has no work_intent_id (legacy Saga 2 task) or the
+   * referenced intent no longer exists. Used at claim time to freeze the
+   * immutable execution authority snapshot (D1.1).
+   */
+  readWorkIntentForTask(taskId: number): WorkIntent | null;
+
   /** Latest submitted proposal answering the intent, or null if none. */
   readLatestProposal(intentId: number): ProposalRecord | null;
 }
