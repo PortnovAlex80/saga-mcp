@@ -107,6 +107,30 @@ the machine-queryable handles downstream skills trace to.
 
 ### FR artifacts (functional requirements)
 
+<!-- source: EXT-11 OrchestKit requirements-engineering (write-prd skill, references/user-stories-guide.md) — https://mcpmarket.com/tools/skills/requirements-engineering-3 -->
+**Recommended capability-description format (user stories).** When you describe
+the capability a stakeholder gains from an FR, prefer the standard user-story
+form rather than a feature bullet. It ties each capability to a stakeholder
+(from §Stakeholders) and a measurable benefit, which is what downstream UC/AC
+trace to:
+
+```
+As a <role>,
+I want <capability>,
+so that <benefit>.
+```
+
+This is advisory structure inside the PRD body, NOT a new artifact type — the
+FR artifact itself remains an observable-behaviour statement (see authoring
+rules below). The user story is the human-readable framing of the FR row; the
+`code`/`title`/`trace_add` contract is unchanged. Map `<role>` to a
+§Stakeholders row; map `<benefit>` to a measurable success criterion or, for
+`product`-classified episodes, a Hypothesis metric. Apply the INVEST check
+(Independent, Negotiable, Valuable, Estimable, Small, Testable) as a
+readiness sanity check before registering the FR artifact — a story that fails
+Testable or Valuable usually means the FR body is missing its observable
+outcome or its benefit, which the FR authoring rules below already require.
+
 For each `FR-N` row in `## FR — Functional Requirements`:
 
 ```

@@ -84,6 +84,42 @@ AC to choose an architecture.
    represents an enforceable contract MUST have at least one AC that verifies it.
 2. Copy `docs/requirements/templates/acceptance-criteria.md` → `...03-acceptance-criteria.md`.
 3. Write each AC in **Given/When/Then** form, verifiable. Number them (AC-N).
+
+> ### Preferred AC body format for behavior-driven criteria: Gherkin BDD
+> <!-- source: EXT-11 OrchestKit requirements-engineering (write-prd skill, references/user-stories-guide.md) — https://mcpmarket.com/tools/skills/requirements-engineering-3 -->
+> When an AC verifies an interaction/behavior (the common case for UC-derived
+> ACs), write the AC body as a **Gherkin scenario**. Our existing AC structure
+> stays as the **wrapper** (the `AC-N` heading, the `derived_from` traces to
+> UC/FR/NFR, and — for algorithmic ACs — the `properties` YAML block are all
+> unchanged); Gherkin goes **inside** the acceptance-criterion body:
+>
+> ```gherkin
+> Scenario: <one-line outcome name>
+>   Given <precondition / initial state>
+>   And <additional setup>
+>   When <the observable action by the actor>
+>   And <a second action, if any>
+>   Then <observable outcome — the check that proves the AC passes>
+>   But <outcome that must NOT hold, if relevant>
+> ```
+>
+> Rules of thumb reconciling Gherkin with CGAD:
+> - **One Scenario per AC-N when the AC is behavior-driven.** If a single AC
+>   needs more than one scenario, that is usually a signal to split it into
+>   AC-N and AC-N+1 (each AC traces to exactly one UC and one FR/NFR).
+> - **`Given` must be observable, not implementation.** No DB rows, no endpoint
+>   names — same remove-technology discipline as the Classification Engine
+>   TEST 2. "Given the account balance is below the threshold" (good, from a
+>   RULE), not "Given the `accounts` table has a row with `balance < X`".
+> - **`Then` must be verifiable by a black-box observer** (Classification Engine
+>   TEST 3). This is what the Verifier turns into an L3 property test — the
+>   `Then` clause is the assertion.
+> - **Algorithmic ACs still need the `properties` YAML block** (step 4 below).
+>   Gherkin expresses the scenario; `properties` expresses the invariant
+>   (monotonicity, bounds, idempotency). Use both when the AC has a formula.
+> - **Non-behavioral ACs** (pure data-shape, capacity/NFR targets) keep their
+>   existing form — Gherkin is *preferred when behavior-driven*, not mandatory
+>   for every AC.
 4. **For algorithmic ACs** (formulas, calculations, invariants): include a
    `properties` block (YAML fenced code). This is contract-as-data — the
    Verifier generates L3 property tests from it, independently of the

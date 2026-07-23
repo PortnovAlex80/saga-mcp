@@ -498,6 +498,45 @@ mid-session, finish the current epic inline rather than mixing modes.
 8. **Architect reads complexity from brief** (Stage 1.5 decision artifact metadata) to pick the SRS §2.1 style from the complexity→architecture table. The orchestrator does NOT override the architect's style choice.
 9. **Planner is a dumb copier.** If you see the planner inventing files/functions/pattern/priority instead of copying from §D2, that is a defect — flag it. The architect owns §D.
 
+## Delegation discipline (EXT-1 superpowers, adapted)
+
+<!-- source: EXT-1 https://github.com/obra/superpowers — subagent-driven-development.
+     We adopt its delegation *discipline* (fresh worker per task, curated context,
+     explicit result-return). We do NOT adopt its phase names, model-tier selection,
+     or parallel dispatch — those are reconciled against CGAD below. -->
+
+Each role spawn (saga-product, saga-analyst, saga-architect, saga-planner,
+saga-worker) is **one task delegated to one subagent with a result-return
+obligation**. The full one-page contract lives in
+[`delegation-contract.md`](./delegation-contract.md). The binding summary:
+
+- **One task = one launch = one result.** A worker that finishes calls
+  `worker_done` and exits; the dispatch loop claims the next task for a fresh
+  worker. Never bundle two tasks, never let a worker self-claim a second.
+- **Result-return obligation** — exactly one of these fires before the launch
+  closes: `worker_done(verdict:"approved"|"changes_requested")` (work done),
+  `worker_ask_need` (blocked, **terminal** — do not wait for a result), or the
+  engine terminalizes a crashed/timed-out execution. There is no "keep going
+  and grab more tasks" outcome.
+- **Done ≠ integrated.** For typed `git_change` tasks, `worker_done` only sets
+  `integration_state=pending`; the stage checkpoint needs
+  `worker_merge_release(result:"merged")` to release dependents.
+- **Curate, don't restate.** Hand the worker *where this task fits* (one line)
+  and *where to read its requirements* (the task + its `source_artifact_ids`),
+  not a restatement of the spec. The worker reasons from the accepted AC/SRS,
+  not from the orchestrator's memory.
+- **No self-authorization, no gagged reviewers.** The orchestrator proposes
+  (dispatches); the worker proposes (`worker_done`); the engine + evidence +
+  (critical risk) the human decide. Never instruct a reviewer to ignore a
+  finding — let the review loop raise it and adjudicate via verdict/comment.
+- **Durable progress = the tracker.** After any context loss, trust
+  `task_list` + `episode_status` + `artifact_coverage` + `git log` over your
+  own recollection. Re-dispatching a task already marked `done`/`merged` is
+  the most expensive orchestrator failure — read `task_list` first.
+
+This reinforces the CGAD guardrails above; it does not replace `worker_next` /
+`worker_done` or rename any episode stage.
+
 ## Что НЕ делать
 
 - НЕ вызывай worker_next/worker_done сам — это зона воркеров/dispatch
