@@ -614,12 +614,27 @@ async function main() {
   }
 
   if (targetReached) {
-    const graceUntil = Date.now() + 5000;
-    while (Date.now() < graceUntil) {
+    // After the condition is True, the claude worker process is still alive:
+    // it has called saga3_complete via MCP, but claude -p still has to emit
+    // its final assistant text and the closing `result` stream-json event.
+    // Killing the tree here (the old behaviour) truncated the JSONL log before
+    // the result event, failing the "worker JSONL has a result event" check.
+    //
+    // Give claude a grace window to finish its turn naturally. We wait for
+    // EITHER the engine child to exit on its own (preferred — means the
+    // worker returned cleanly), OR the JSONL log to contain a `result` event,
+    // OR a hard cap (30s) — whichever comes first.
+    const graceUntil = Date.now() + 30000;
+    while (Date.now() < graceUntil && !engineExited) {
       const task = queryOne(db, 'SELECT id FROM tasks WHERE epic_id=? AND task_kind=? ORDER BY id DESC LIMIT 1', manifest.epicId, stage.taskKind);
-      const execution = task ? queryOne(db, 'SELECT state FROM worker_executions WHERE task_id=? ORDER BY started_at DESC LIMIT 1', task.id) : null;
-      if (execution?.state === 'exited') break;
-      await sleep(100);
+      const execution = task ? queryOne(db, 'SELECT state, log_path FROM worker_executions WHERE task_id=? ORDER BY started_at DESC LIMIT 1', task.id) : null;
+      if (execution?.log_path && existsSync(execution.log_path)) {
+        try {
+          const tail = readFileSync(execution.log_path, 'utf8').slice(-8192);
+          if (/\{"type":"result"/.test(tail)) break;
+        } catch { /* log may be mid-write */ }
+      }
+      await sleep(200);
     }
   }
   if (!engineExited) terminateProcessTree(child);

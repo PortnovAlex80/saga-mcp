@@ -7,6 +7,7 @@
 
 import type Database from 'better-sqlite3';
 import type { ConditionStatus, EvidenceRecord } from '../../domain/types.js';
+import { CONDITION_TASK_KIND } from '../../domain/pipeline-contracts.js';
 import type {
   ArtifactProposal,
   CompletionAcceptance,
@@ -234,6 +235,48 @@ export class SqliteWorkerSubmissionRepository implements WorkerSubmissionReposit
             SET state = 'processed', processed_at = datetime('now')
           WHERE execution_id = ? AND state = 'pending'`,
       ).run(acceptance.authority.executionId);
+
+      // Tracker projection: close the worker_executions row and the task row
+      // that the Saga 3 engine reserved for this condition. The condition
+      // projection above is the authority for saga3 state; these tracker rows
+      // are the v2 board projection that the tracker-view UI and the live
+      // stage-acceptance test read. Without closing them, the board keeps
+      // showing the worker as 'running' and the task as 'todo' even after a
+      // successful saga3_complete — which is mechanically wrong and blocks
+      // downstream stage checks ('worker execution exited cleanly',
+      // 'board task is done after worker completion').
+      this.db.prepare(
+        `UPDATE worker_executions
+            SET state = 'exited',
+                phase = 'finishing',
+                exit_code = 0,
+                finished_at = datetime('now')
+          WHERE execution_id = ?
+            AND state IN ('reserved','running','cancel_requested')`,
+      ).run(acceptance.authority.executionId);
+
+      // The condition→task mapping lives in pipeline-contracts.ts
+      // (resolveTaskForCondition). Tasks are matched by epic_id + task_kind,
+      // which we resolve from episode_spec → epic. We look up the epic once.
+      const specRow = this.db.prepare(
+        `SELECT epic_id FROM saga3_episode_specs WHERE id = ?`,
+      ).get(acceptance.authority.episodeSpecId) as { epic_id: number } | undefined;
+      if (specRow?.epic_id) {
+        // The task_kind for this condition is derived by resolveTaskForCondition
+        // from the same CONDITION_TASK_KIND map. To avoid a circular import
+        // (control ports → domain → sqlite), re-derive the small lookup here.
+        const taskKind = conditionTaskKind(acceptance.authority.conditionType);
+        if (taskKind) {
+          this.db.prepare(
+            `UPDATE tasks
+                SET status = 'done',
+                    updated_at = datetime('now')
+              WHERE epic_id = ?
+                AND task_kind = ?
+                AND status IN ('todo','in_progress','review','review_in_progress')`,
+          ).run(specRow.epic_id, taskKind);
+        }
+      }
     })();
   }
 
@@ -342,4 +385,14 @@ export class SqliteWorkerSubmissionRepository implements WorkerSubmissionReposit
         ON saga3_worker_submissions(execution_id, state, created_at);
     `);
   }
+}
+
+/**
+ * Resolve the v2 `task_kind` for a saga3 condition. Mirrors the lookup in
+ * pipeline-contracts.ts resolveTaskForCondition but returns only the kind
+ * (the caller already has epic_id). Returns null for unmapped conditions
+ * (e.g. MandatePresent, which has no task row by design).
+ */
+function conditionTaskKind(conditionType: string): string | null {
+  return CONDITION_TASK_KIND[conditionType]?.task_kind ?? null;
 }
