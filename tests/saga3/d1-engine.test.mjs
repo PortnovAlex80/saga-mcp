@@ -101,8 +101,13 @@ function makeFakeRuntime({ proposalPayload, workerDelaysDone = true, workerReach
   };
 }
 
-/** Fake WorkerExecutor. status() stays non-null unless stop() is called. */
-function makeFakeExecutor(onPoll, callLog) {
+/**
+ * Fake WorkerExecutor. `statusOverride` lets a scenario force the run into a
+ * terminal state (failed/completed/stopped) with an optional active worker, to
+ * exercise the lifecycle-closure logic. By default the run stays 'running'
+ * with no active workers.
+ */
+function makeFakeExecutor(onPoll, callLog, statusOverride) {
   let stopped = false;
   let startCmd = null;
   return {
@@ -111,7 +116,9 @@ function makeFakeExecutor(onPoll, callLog) {
     status() {
       // Each status poll is the engine's tick — simulate worker progress here.
       if (!stopped) onPoll();
-      return stopped ? null : { id: 'fake-run', project_id: 1, concurrency: 1, status: 'running', active: [], completed: 0, failed: 0, claimed: 1 };
+      if (stopped) return null;
+      if (statusOverride) return statusOverride;
+      return { id: 'fake-run', project_id: 1, concurrency: 1, status: 'running', active: [], completed: 0, failed: 0, claimed: 1 };
     },
     setConcurrency() {},
     dispose() {},
@@ -279,4 +286,112 @@ test('engine does not call executor.stop on timeout when task already terminal (
   const result = await engine.run({ projectId: 1, epicId: 10, concurrency: 1 });
   assert.equal(result.scopeCompleted, true);
   assert.equal(execLog.some(([e]) => e === 'stop'), false, 'no stop on clean task-terminal exit');
+});
+
+// --- lifecycle-closure scenarios (terminal runner states w/o terminal task) ---
+// These exercise the new poll-loop logic that does NOT wait 30min for a timeout
+// when the substrate already gave up.
+
+test('executor failed without terminal task → reason=failed, executor.stop() called, no 30min wait', async () => {
+  const runtime = makeFakeRuntime({ proposalPayload: null });
+  // Run enters 'failed' immediately, task stays todo (spawn never succeeded).
+  const failedRun = { id: 'r', project_id: 1, concurrency: 1, status: 'failed', active: [], completed: 0, failed: 1, claimed: 0 };
+  const execLog = [];
+  const executor = makeFakeExecutor(() => {}, execLog, failedRun);
+  const engine = new Saga3DiscoveryEngine({
+    config: fullConfig(), workerExecutorFactory: () => executor,
+    persistence: { episodes: { currentStage: () => 'discovery' }, workspaces: { resolve: () => ({ workspaceRoot: '/w' }) } },
+    host: fakeHost(), runtimePersistence: runtime, pollMs: 0, maxRunSeconds: 60,
+  });
+  const result = await engine.run({ projectId: 1, epicId: 10, concurrency: 1 });
+  assert.equal(result.reason, 'failed');
+  assert.equal(result.outcome, 'failed');
+  assert.equal(result.scopeCompleted, false);
+  assert.ok(execLog.some(([e]) => e === 'stop'), 'hard exit must call executor.stop()');
+  assert.match(result.lastError, /executor_failed|without clean worker closure/);
+});
+
+test('executor completed without worker_done (task unclaimed) → reason=failed, no 30min wait', async () => {
+  const runtime = makeFakeRuntime({ proposalPayload: null });
+  // Run reaches 'completed' (pump drained) but the task never reached done —
+  // the worker never claimed it. The engine must not wait for a timeout.
+  const completedRun = { id: 'r', project_id: 1, concurrency: 1, status: 'completed', active: [], completed: 0, failed: 0, claimed: 0 };
+  const execLog = [];
+  const executor = makeFakeExecutor(() => {}, execLog, completedRun);
+  const engine = new Saga3DiscoveryEngine({
+    config: fullConfig(), workerExecutorFactory: () => executor,
+    persistence: { episodes: { currentStage: () => 'discovery' }, workspaces: { resolve: () => ({ workspaceRoot: '/w' }) } },
+    host: fakeHost(), runtimePersistence: runtime, pollMs: 0, maxRunSeconds: 60,
+  });
+  const result = await engine.run({ projectId: 1, epicId: 10, concurrency: 1 });
+  assert.equal(result.reason, 'failed');
+  assert.equal(result.scopeCompleted, false);
+  assert.match(result.lastError, /task_unclaimed|without clean worker closure/);
+});
+
+test('executor status null (run vanished) → reason=failed, terminal=executor_dead', async () => {
+  const runtime = makeFakeRuntime({ proposalPayload: null });
+  // status() returns null → run vanished (e.g. process died). No override.
+  const executor = makeFakeExecutor(() => {}, [], null);
+  // Force null return: override status after construction.
+  executor.status = () => null;
+  const engine = new Saga3DiscoveryEngine({
+    config: fullConfig(), workerExecutorFactory: () => executor,
+    persistence: { episodes: { currentStage: () => 'discovery' }, workspaces: { resolve: () => ({ workspaceRoot: '/w' }) } },
+    host: fakeHost(), runtimePersistence: runtime, pollMs: 0,
+  });
+  const result = await engine.run({ projectId: 1, epicId: 10, concurrency: 1 });
+  assert.equal(result.reason, 'failed');
+  assert.match(result.lastError, /executor_dead|without clean worker closure/);
+});
+
+test('timeout → reason=paused_timeout (not completed), executor.stop() called', async () => {
+  const runtime = makeFakeRuntime({ proposalPayload: null });
+  // Run stays 'running' forever; the worker never produces a proposal and never
+  // reaches done. The engine must hit maxRunMs and exit paused_timeout.
+  const engine = new Saga3DiscoveryEngine({
+    config: fullConfig(), workerExecutorFactory: () => makeFakeExecutor(() => {}, []),
+    persistence: { episodes: { currentStage: () => 'discovery' }, workspaces: { resolve: () => ({ workspaceRoot: '/w' }) } },
+    host: fakeHost(), runtimePersistence: runtime, pollMs: 0, maxRunSeconds: 0,
+  });
+  const result = await engine.run({ projectId: 1, epicId: 10, concurrency: 1 });
+  assert.equal(result.reason, 'paused_timeout');
+  assert.equal(result.outcome, 'inconclusive');
+  assert.equal(result.scopeCompleted, false);
+});
+
+test('clean closure requires the worker process to leave run.active (not just task done)', async () => {
+  // worker_done flips task to done, but the claude process is still closing —
+  // run.active still lists this task. The engine must keep waiting one more
+  // tick until the process is gone, then exit clean.
+  const runtime = makeFakeRuntime({ proposalPayload: validPayload('go'), workerDelaysDone: false });
+  // Custom executor: first poll worker is active + task done; second poll
+  // worker has left active.
+  let pollCount = 0;
+  const executor = {
+    start(cmd) {}, stop() {},
+    status() {
+      pollCount += 1;
+      runtime._simulateWorkerTick(); // marks proposal + (here) task done immediately
+      const taskDone = runtime.readTaskState(runtime._taskId()) === 'done';
+      const stillActive = taskDone && pollCount === 1; // process closing on tick 1
+      return {
+        id: 'r', project_id: 1, concurrency: 1, status: 'running',
+        active: stillActive ? [{ task_id: runtime._taskId(), worker_id: 'w', pid: 1, started_at: 't' }] : [],
+        completed: stillActive ? 0 : 1, failed: 0, claimed: 1,
+      };
+    },
+    setConcurrency() {}, dispose() {},
+  };
+  // Expose task id helper on the runtime fake.
+  runtime._taskId = () => runtime.events.find(([e]) => e === 'ensureProjectedTask-create')?.[1] ?? 100;
+  const engine = new Saga3DiscoveryEngine({
+    config: fullConfig(), workerExecutorFactory: () => executor,
+    persistence: { episodes: { currentStage: () => 'discovery' }, workspaces: { resolve: () => ({ workspaceRoot: '/w' }) } },
+    host: fakeHost(), runtimePersistence: runtime, pollMs: 0,
+  });
+  const result = await engine.run({ projectId: 1, epicId: 10, concurrency: 1 });
+  assert.ok(pollCount >= 2, 'engine polled at least twice — waited for the process to leave run.active');
+  assert.equal(result.reason, 'completed');
+  assert.equal(result.scopeCompleted, true);
 });

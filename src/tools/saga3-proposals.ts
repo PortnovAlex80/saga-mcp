@@ -227,14 +227,18 @@ export function createSaga3ProposalHandlers(
         replayed = true;
       }
 
-      // 7. Visibility comment (same transaction — cannot dangle).
-      db.prepare(
-        `INSERT INTO comments (task_id, author, content)
-         VALUES (?, 'saga3-kernel', ?)`,
-      ).run(
-        submission.task_id,
-        `Proposal ${replayed ? 'replayed' : 'submitted'}: id=${proposalId} hash=${contentHash.slice(0, 12)}… status=submitted`,
-      );
+      // 7. Visibility comment — ONLY on a fresh insert. The handler is marked
+      //    idempotentHint: true, so its side effects must be idempotent too: a
+      //    replay must not create a duplicate visibility comment (review P1).
+      if (!replayed) {
+        db.prepare(
+          `INSERT INTO comments (task_id, author, content)
+           VALUES (?, 'saga3-kernel', ?)`,
+        ).run(
+          submission.task_id,
+          `Proposal submitted: id=${proposalId} hash=${contentHash.slice(0, 12)}… status=submitted`,
+        );
+      }
 
       const result: SubmittedProposalResultWithReplay = {
         proposal_id: proposalId,

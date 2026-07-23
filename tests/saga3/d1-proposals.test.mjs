@@ -228,6 +228,12 @@ test('proposal_submit: exact replay returns the same proposal id with replayed=t
     const repo = new Saga3ProposalRepository();
     const count = getDb().prepare('SELECT COUNT(*) c FROM saga3_proposals WHERE intent_id=?').get(intentId).c;
     assert.equal(count, 1, 'replay must not create a duplicate proposal row');
+    // Replay must also be idempotent for the visibility side-effect: exactly one
+    // saga3-kernel comment, not one per submission (review P1).
+    const commentCount = getDb().prepare(
+      "SELECT COUNT(*) c FROM comments WHERE task_id=? AND author='saga3-kernel'",
+    ).get(taskId).c;
+    assert.equal(commentCount, 1, 'replay must not create a duplicate visibility comment');
   } finally {
     closeDb();
     rmSync(temp, { recursive: true, force: true });

@@ -213,12 +213,12 @@ export class Saga3DiscoveryEngine implements OrchestrationEngine {
     });
 
     try {
-      try {
-        executor.start({ projectId, epicId, concurrency: 1, claimScope: { taskIds: [taskId] } });
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        if (!/already has an active board run/.test(msg)) throw err;
-      }
+      // Start the substrate. An "already has an active board run" is NOT a
+      // recoverable case for the Saga 3 engine: the factory builds a fresh
+      // runner per executor, so this error signals a stray run from another
+      // intent/process with unknown claimScope. Treat it as a conflict and
+      // fail rather than poll an unknown runner (review P1).
+      executor.start({ projectId, epicId, concurrency: 1, claimScope: { taskIds: [taskId] } });
       // open → executing once the substrate has accepted the run.
       rt.setIntentStatus(intent.id, 'open', 'executing');
       heartbeat('EXECUTOR_STARTED', `task=${taskId}`);
@@ -229,29 +229,62 @@ export class Saga3DiscoveryEngine implements OrchestrationEngine {
         { outcome: 'failed', outcomeAuthority: 'none', proposalId: null, proposalHash: null });
     }
 
-    // 4. Poll until the worker reaches a terminal task state, OR a hard
-    //    abort condition (executor died / timeout). Observing a Proposal is
-    //    NOT a terminal condition: the worker must still call worker_done to
-    //    close its execution fence, and killing the substrate between
-    //    proposal_submit and worker_done triggers recovery ("exited before
-    //    terminal worker_done"). We keep looping after a proposal appears,
-    //    waiting for task done.
+    // 4. Poll for execution closure, not just task terminality. Three
+    //    independent signals combine into a terminal verdict:
+    //      - task status (done/blocked): the worker called worker_done
+    //      - run.active: whether THIS task's claude process is still spawning/
+    //        closing (worker_done flips task.status before the claude process
+    //        exits and the runner's close handler runs)
+    //      - run.status: terminal runner states (completed/failed/stopped)
+    //        with a non-terminal task mean the substrate gave up without the
+    //        worker reaching worker_done (e.g. spawn failure, empty claim) —
+    //        the engine must not wait 30min for a timeout that already happened.
+    //    Observing a Proposal is NOT terminal: the worker must still call
+    //    worker_done and its claude process must exit.
     let cycles = 0;
     let seenProposal = false;
-    let terminal: 'task_terminal' | 'executor_dead' | 'timeout' = 'timeout';
+    let terminal:
+      | 'clean'              // task terminal AND worker process gone AND run healthy/terminal
+      | 'executor_failed'    // run.status=failed without task terminal
+      | 'executor_dead'      // status() returned null (run vanished)
+      | 'timeout'
+      | 'task_unclaimed' = 'timeout'; // run reached terminal healthy without ever claiming the task
     while (true) {
       cycles += 1;
       heartbeat('CYCLE', `cycle=${cycles}${seenProposal ? ' (proposal seen, waiting worker_done)' : ''}`);
       const proposal = rt.readLatestProposal(intent.id);
       if (proposal) seenProposal = true;
       const taskStatus = rt.readTaskState(taskId);
-      if (taskStatus === 'done' || taskStatus === 'blocked') {
-        terminal = 'task_terminal';
+      const taskTerminal = taskStatus === 'done' || taskStatus === 'blocked';
+      const run = executor.status(projectId);
+      const runIsNull = run === null;
+      const runStatus = run?.status ?? null;
+      const runTerminalHealthy = runStatus === 'completed' || runStatus === 'stopped';
+      const runFailed = runStatus === 'failed';
+      const taskStillActive = run?.active?.some(w => w.task_id === taskId) ?? false;
+
+      if (runIsNull) {
+        terminal = 'executor_dead';
         break;
       }
-      const run = executor.status(projectId);
-      if (run === null) {
-        terminal = 'executor_dead';
+      // Clean closure: task reached worker_done AND its claude process has
+      // left run.active (close handler ran). The run may still be 'running'
+      // (it re-arms the pump); that's fine — we only need OUR worker gone.
+      if (taskTerminal && !taskStillActive) {
+        terminal = 'clean';
+        break;
+      }
+      // Substrate failed (e.g. claim threw, spawn failed) without the worker
+      // reaching worker_done — this already happened, do not wait for timeout.
+      if (runFailed) {
+        terminal = 'executor_failed';
+        break;
+      }
+      // Substrate finished its loop (completed/stopped) but the task never
+      // reached worker_done — the worker either never claimed the task or
+      // bailed. Do not wait for a timeout that will never come.
+      if (runTerminalHealthy && !taskTerminal) {
+        terminal = 'task_unclaimed';
         break;
       }
       if (this.now().getTime() - startedAt > this.maxRunMs) {
@@ -261,12 +294,9 @@ export class Saga3DiscoveryEngine implements OrchestrationEngine {
       await this.sleep(this.pollMs);
     }
 
-    // Only stop the substrate on a HARD exit. When the task reached a terminal
-    // state the worker already exited on its own (it called worker_done); a
-    // stop() here would be a redundant kill of an already-dead run and could
-    // race the close handler. On timeout / executor_dead we DO stop to reclaim
-    // any lingering worker process.
-    if (terminal !== 'task_terminal') {
+    // Only stop the substrate on a HARD exit. On a clean closure the worker
+    // already exited on its own; stop() is reserved for timeout/dead/failed.
+    if (terminal !== 'clean') {
       try { executor.stop(projectId); } catch { /* best effort */ }
     }
 
@@ -297,7 +327,7 @@ export class Saga3DiscoveryEngine implements OrchestrationEngine {
         heartbeat('PROPOSAL_INVALID', `errors=${validation.errors.join(';')}`);
       }
     } else {
-      // No proposal submitted (timeout / task terminal without submission).
+      // No proposal submitted. Map terminal condition to an honest outcome.
       outcome = {
         outcome: terminal === 'timeout' ? 'inconclusive' : 'failed',
         outcomeAuthority: 'none', proposalId: null, proposalHash: null,
@@ -317,8 +347,21 @@ export class Saga3DiscoveryEngine implements OrchestrationEngine {
     const scopeCompleted = validProposal && workerReachedTerminal;
     const finalStage = persistence.episodes.currentStage(epicId) ?? 'discovery';
 
-    const reason: OrchestrationRunResult['reason'] = 'completed';
-    return this.runResult(projectId, epicId, reason, cycles, null, outcome, finalStage, scopeCompleted);
+    // reason must reflect the actual terminal condition, not always 'completed'.
+    //   clean            → completed
+    //   timeout          → paused_timeout (bounded execution honour; not 'completed')
+    //   executor_failed  → failed
+    //   executor_dead    → failed
+    //   task_unclaimed   → failed (substrate gave up without worker_done)
+    const reason: OrchestrationRunResult['reason'] =
+      terminal === 'clean' ? 'completed'
+      : terminal === 'timeout' ? 'paused_timeout'
+      : 'failed';
+    const lastError: string | null =
+      terminal === 'clean' ? null
+      : terminal === 'timeout' ? `discovery run timed out after ${Math.round(this.maxRunMs / 1000)}s`
+      : `discovery substrate ended without clean worker closure (terminal=${terminal})`;
+    return this.runResult(projectId, epicId, reason, cycles, lastError, outcome, finalStage, scopeCompleted);
   }
 
   private runResult(
