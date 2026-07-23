@@ -1,0 +1,127 @@
+name: Verify Phase B persistence extraction
+
+on:
+  pull_request:
+    branches: [saga2-refactoring]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: phase-b-persistence-${{ github.head_ref }}
+  cancel-in-progress: false
+
+jobs:
+  migrate-and-verify:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Normalize guarded migration anchors
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync, writeFileSync } from 'node:fs';
+          const file = 'tools/apply-phase-b-persistence.mjs';
+          let source = readFileSync(file, 'utf8');
+          source = source.replace(
+            "'      writeEpisodeMeta(epicId, { engine_rejected: true, engine_rejected_reason: `PID ${existingPid} already running` });'",
+            "'writeEpisodeMeta(epicId, { engine_rejected: true, engine_rejected_reason: `PID ${existingPid} already running` });'",
+          );
+          source = source.replace(
+            "'      writeEpisodeMeta(epicId, { engine_rejected: true, engine_rejected_reason: `PID ${existingPid} already running` }, opts);'",
+            "'writeEpisodeMeta(epicId, { engine_rejected: true, engine_rejected_reason: `PID ${existingPid} already running` }, opts);'",
+          );
+          source = source.replace(
+            "'          writeEpisodeMeta(epicId, { lastHealError: advance.error, lastHealAttempt: new Date().toISOString() });'",
+            "'writeEpisodeMeta(epicId, { lastHealError: advance.error, lastHealAttempt: new Date().toISOString() });'",
+          );
+          source = source.replace(
+            "'          writeEpisodeMeta(epicId, { lastHealError: advance.error, lastHealAttempt: new Date().toISOString() }, opts);'",
+            "'writeEpisodeMeta(epicId, { lastHealError: advance.error, lastHealAttempt: new Date().toISOString() }, opts);'",
+          );
+          source = source.replace(
+            "path.join(root, 'src', 'orchestrate.ts')",
+            "path.resolve(import.meta.dirname, '..', '..', 'src', 'orchestrate.ts')",
+          );
+          writeFileSync(file, source, 'utf8');
+          NODE
+
+      - name: Apply migration and run verification gates
+        env:
+          TARGET_BRANCH: ${{ github.head_ref }}
+        run: |
+          set +e
+          rm -rf .phase-b-persistence-ci
+          mkdir -p .phase-b-persistence-ci
+
+          node tools/apply-phase-b-persistence.mjs > .phase-b-persistence-ci/migration.txt 2>&1
+          MIGRATION_STATUS=$?
+          BUILD_STATUS=99
+          ARCH_STATUS=99
+          CHAR_STATUS=99
+          E2E_STATUS=99
+          FULL_STATUS=99
+
+          if [ ${MIGRATION_STATUS} -eq 0 ]; then
+            npm run build > .phase-b-persistence-ci/build.txt 2>&1
+            BUILD_STATUS=$?
+          fi
+          if [ ${BUILD_STATUS} -eq 0 ]; then
+            npm run test:architecture > .phase-b-persistence-ci/architecture.txt 2>&1
+            ARCH_STATUS=$?
+          fi
+          if [ ${ARCH_STATUS} -eq 0 ]; then
+            npm run test:characterization > .phase-b-persistence-ci/characterization.txt 2>&1
+            CHAR_STATUS=$?
+          fi
+          if [ ${CHAR_STATUS} -eq 0 ]; then
+            npm run test:e2e > .phase-b-persistence-ci/e2e.txt 2>&1
+            E2E_STATUS=$?
+          fi
+          if [ ${E2E_STATUS} -eq 0 ]; then
+            npm test > .phase-b-persistence-ci/full-test.txt 2>&1
+            FULL_STATUS=$?
+          fi
+
+          printf 'migration=%s\nbuild=%s\narchitecture=%s\ncharacterization=%s\ne2e=%s\nfull=%s\n' \
+            "${MIGRATION_STATUS}" "${BUILD_STATUS}" "${ARCH_STATUS}" \
+            "${CHAR_STATUS}" "${E2E_STATUS}" "${FULL_STATUS}" \
+            > .phase-b-persistence-ci/status.txt
+
+          if [ ${MIGRATION_STATUS} -ne 0 ] || [ ${BUILD_STATUS} -ne 0 ] || \
+             [ ${ARCH_STATUS} -ne 0 ] || [ ${CHAR_STATUS} -ne 0 ] || \
+             [ ${E2E_STATUS} -ne 0 ] || [ ${FULL_STATUS} -ne 0 ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add -f .phase-b-persistence-ci
+            git commit -m "ci(phase-b): capture persistence extraction failure"
+            git push origin HEAD:${TARGET_BRANCH}
+            cat .phase-b-persistence-ci/status.txt
+            cat .phase-b-persistence-ci/migration.txt
+            cat .phase-b-persistence-ci/build.txt 2>/dev/null || true
+            cat .phase-b-persistence-ci/architecture.txt 2>/dev/null || true
+            cat .phase-b-persistence-ci/characterization.txt 2>/dev/null || true
+            cat .phase-b-persistence-ci/e2e.txt 2>/dev/null || true
+            exit 1
+          fi
+
+          rm -rf .phase-b-persistence-ci
+          rm -f tools/apply-phase-b-persistence.mjs
+          rm -f .github/workflows/apply-phase-b-persistence.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "refactor(phase-b): extract Saga2 engine persistence"
+          git push origin HEAD:${TARGET_BRANCH}
