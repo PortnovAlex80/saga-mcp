@@ -1,10 +1,14 @@
 import type { BoardProjectionReader } from '../application/ports/board-projection.js';
+import type { EngineAdministration } from '../application/ports/engine-administration.js';
 import type { LegacySaga2Runner } from '../application/ports/legacy-saga2-runtime.js';
+import type { WorkerExecutorFactory } from '../application/ports/worker-executor.js';
 import { createSagaApplication, type SagaApplication } from '../application/saga-application.js';
 import { closeDb } from '../db.js';
 import { Saga2Engine } from '../engines/saga2-engine.js';
+import { LegacyEngineAdministration } from '../infrastructure/engine/legacy-engine-administration.js';
 import { SqliteBoardProjectionReader } from '../infrastructure/projections/sqlite-board-projection-reader.js';
-import { runLegacySaga2 } from '../infrastructure/runtime/legacy-saga2-runner.js';
+import { createLegacySaga2Runner } from '../infrastructure/runtime/legacy-saga2-runner.js';
+import { createLegacyClaudeWorkerExecutorFactory } from '../infrastructure/workers/legacy-claude-worker-executor-factory.js';
 import {
   loadSagaRuntimeConfig,
   type SagaRuntimeConfig,
@@ -13,30 +17,39 @@ import {
 export interface Saga2CompositionOverrides {
   config?: SagaRuntimeConfig;
   runLegacy?: LegacySaga2Runner;
+  workerExecutorFactory?: WorkerExecutorFactory;
   board?: BoardProjectionReader;
+  engineAdministration?: EngineAdministration;
   close?: () => void;
 }
 
 /**
  * The only place that selects concrete Saga 2 runtime implementations.
  *
- * CLI and future HTTP hosts consume SagaApplication and do not import the
- * pump, SQLite projection SQL, worker process code, or database shutdown.
+ * CLI and HTTP hosts consume SagaApplication and do not import the pump,
+ * ClaudeBoardRunner, SQLite projection SQL, process control, or environment.
  */
 export function createSaga2Application(
   env: NodeJS.ProcessEnv = process.env,
   overrides: Saga2CompositionOverrides = {},
 ): SagaApplication {
   const config = overrides.config ?? loadSagaRuntimeConfig(env);
-  const engine = new Saga2Engine({
-    config,
-    runLegacy: overrides.runLegacy ?? runLegacySaga2,
+  const workerExecutorFactory = overrides.workerExecutorFactory
+    ?? createLegacyClaudeWorkerExecutorFactory();
+  const runLegacy = overrides.runLegacy ?? createLegacySaga2Runner({
+    dbPath: config.dbPath,
+    lmStudioUrl: config.lmStudioUrl,
+    workerExecutorFactory,
   });
+  const engine = new Saga2Engine({ config, runLegacy });
   const board = overrides.board ?? new SqliteBoardProjectionReader(config.dbPath);
+  const engineAdministration = overrides.engineAdministration
+    ?? new LegacyEngineAdministration({ config, baseEnv: env });
 
   return createSagaApplication({
     engine,
     board,
+    engineAdministration,
     close: overrides.close ?? closeDb,
   });
 }
