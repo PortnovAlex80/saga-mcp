@@ -13,6 +13,8 @@ export interface BoardProjectSummary {
   total: number;
   in_progress: number;
   reviewing: number;
+  color?: string;
+  [key: string]: unknown;
 }
 
 export interface BoardEpicProjection {
@@ -25,6 +27,7 @@ export interface BoardEpicProjection {
   pause_reason: string | null;
   drift_count: number;
   evidence_count: number;
+  [key: string]: unknown;
 }
 
 export interface BoardTaskProjection {
@@ -40,13 +43,20 @@ export interface BoardTaskProjection {
   integration_state: string | null;
   blocked_reason: string | null;
   repository_name: string | null;
+  [key: string]: unknown;
 }
 
+/**
+ * Compatibility shape of tracker-view's current loadBoard() result.
+ * The empty case intentionally omits epics/tasks, matching the existing HTTP
+ * implementation rather than inventing a cleaner but incompatible shape.
+ */
 export interface ProjectBoardProjection {
-  empty: boolean;
+  empty?: boolean;
   reason?: 'no-epics';
-  epics: BoardEpicProjection[];
-  tasks: BoardTaskProjection[];
+  epics?: BoardEpicProjection[];
+  epicById?: Record<number, BoardEpicProjection>;
+  tasks?: BoardTaskProjection[];
 }
 
 /** Read-only administrative view consumed by tracker/frontends. */
