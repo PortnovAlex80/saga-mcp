@@ -5,6 +5,10 @@ on:
     branches: [saga3-discovery]
     paths:
       - ".github/workflows/d1-1-correction.yml"
+  pull_request:
+    branches: [saga3-discovery]
+    paths:
+      - ".d1-correction/trigger"
 
 permissions:
   contents: write
