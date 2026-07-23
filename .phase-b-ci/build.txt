@@ -1,0 +1,5 @@
+
+> saga-mcp@2.0.0 build
+> tsc
+
+src/orchestrate.ts(355,1): error TS1128: Declaration or statement expected.
