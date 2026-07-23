@@ -1,6 +1,6 @@
 import type { BoardProjectionReader } from '../application/ports/board-projection.js';
 import type { EngineAdministration } from '../application/ports/engine-administration.js';
-import type { LegacySaga2Runner } from '../application/ports/legacy-saga2-runtime.js';
+import type { Saga2HostRuntime } from '../application/ports/saga2-host-runtime.js';
 import type { Saga2RuntimePersistence } from '../application/ports/saga2-runtime-persistence.js';
 import type { WorkerExecutorFactory } from '../application/ports/worker-executor.js';
 import { createSagaApplication, type SagaApplication } from '../application/saga-application.js';
@@ -13,7 +13,7 @@ import {
   SqliteTaskRuntimeRepository,
 } from '../infrastructure/persistence/sqlite-saga2-runtime-repositories.js';
 import { SqliteBoardProjectionReader } from '../infrastructure/projections/sqlite-board-projection-reader.js';
-import { createLegacySaga2Runner } from '../infrastructure/runtime/legacy-saga2-runner.js';
+import { NodeSaga2HostRuntime } from '../infrastructure/runtime/node-saga2-host-runtime.js';
 import { createLegacyClaudeWorkerExecutorFactory } from '../infrastructure/workers/legacy-claude-worker-executor-factory.js';
 import { SqliteWorkspaceResolver } from '../infrastructure/workspaces/sqlite-workspace-resolver.js';
 import {
@@ -23,9 +23,9 @@ import {
 
 export interface Saga2CompositionOverrides {
   config?: SagaRuntimeConfig;
-  runLegacy?: LegacySaga2Runner;
   workerExecutorFactory?: WorkerExecutorFactory;
   persistence?: Saga2RuntimePersistence;
+  host?: Saga2HostRuntime;
   board?: BoardProjectionReader;
   engineAdministration?: EngineAdministration;
   close?: () => void;
@@ -35,7 +35,7 @@ export interface Saga2CompositionOverrides {
  * The only place that selects concrete Saga 2 runtime implementations.
  *
  * CLI and HTTP hosts consume SagaApplication and do not import the pump,
- * ClaudeBoardRunner, SQLite projection SQL, process control, or environment.
+ * ClaudeBoardRunner, SQLite projection SQL, process control or environment.
  */
 export function createSaga2Application(
   env: NodeJS.ProcessEnv = process.env,
@@ -52,13 +52,13 @@ export function createSaga2Application(
     ?? createLegacyClaudeWorkerExecutorFactory({
       modelRouteReader: epicId => persistence.episodes.readWorkerModelRoute(epicId),
     });
-  const runLegacy = overrides.runLegacy ?? createLegacySaga2Runner({
-    dbPath: config.dbPath,
-    lmStudioUrl: config.lmStudioUrl,
+  const host = overrides.host ?? new NodeSaga2HostRuntime();
+  const engine = new Saga2Engine({
+    config,
     workerExecutorFactory,
     persistence,
+    host,
   });
-  const engine = new Saga2Engine({ config, runLegacy });
   const board = overrides.board ?? new SqliteBoardProjectionReader(config.dbPath);
   const engineAdministration = overrides.engineAdministration
     ?? new LegacyEngineAdministration({ config, baseEnv: env });

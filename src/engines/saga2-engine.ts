@@ -3,37 +3,45 @@ import type {
   OrchestrationRunResult,
   RunEpisodeCommand,
 } from '../application/ports/orchestration-engine.js';
-import type { LegacySaga2Runner } from '../application/ports/legacy-saga2-runtime.js';
+import type { Saga2HostRuntime } from '../application/ports/saga2-host-runtime.js';
+import type { Saga2RuntimePersistence } from '../application/ports/saga2-runtime-persistence.js';
+import type { WorkerExecutorFactory } from '../application/ports/worker-executor.js';
+import { orchestrate } from '../orchestrate.js';
 import type { SagaRuntimeConfig } from '../runtime/saga-runtime-config.js';
 
 export interface Saga2EngineDependencies {
   config: SagaRuntimeConfig;
-  runLegacy: LegacySaga2Runner;
+  workerExecutorFactory: WorkerExecutorFactory;
+  persistence: Saga2RuntimePersistence;
+  host: Saga2HostRuntime;
 }
 
 /**
- * Compatibility adapter around the proven Saga 2 pump.
+ * Stable Saga 2 orchestration engine.
  *
- * The class contains no SQLite, child-process, tracker, MCP, or concrete pump
- * imports. The composition root supplies the infrastructure implementation.
+ * The engine owns orchestration decisions and receives every external effect
+ * through explicit ports. Replacing it with Saga3Engine does not change CLI,
+ * tracker, SQLite adapters, worker runtime or engine administration.
  */
 export class Saga2Engine implements OrchestrationEngine {
-  private readonly config: SagaRuntimeConfig;
-  private readonly runLegacy: LegacySaga2Runner;
+  private readonly dependencies: Saga2EngineDependencies;
 
   constructor(dependencies: Saga2EngineDependencies) {
-    this.config = dependencies.config;
-    this.runLegacy = dependencies.runLegacy;
+    this.dependencies = dependencies;
   }
 
   async run(command: RunEpisodeCommand): Promise<OrchestrationRunResult> {
-    return this.runLegacy({
+    const { config, workerExecutorFactory, persistence, host } = this.dependencies;
+    return orchestrate({
       projectId: command.projectId,
       epicId: command.epicId,
       concurrency: command.concurrency,
-      claudePath: this.config.claudePath,
+      claudePath: config.claudePath,
+      dbPath: config.dbPath,
+      lmStudioUrl: config.lmStudioUrl,
+      workerExecutorFactory,
+      persistence,
+      host,
     });
   }
 }
-
-export type { LegacySaga2Runner } from '../application/ports/legacy-saga2-runtime.js';

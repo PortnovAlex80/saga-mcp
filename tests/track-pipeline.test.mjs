@@ -114,6 +114,9 @@ async function runEngine(fixture) {
   const { SqliteWorkspaceResolver } = await import(
     '../dist/infrastructure/workspaces/sqlite-workspace-resolver.js'
   );
+  const { NodeSaga2HostRuntime } = await import(
+    '../dist/infrastructure/runtime/node-saga2-host-runtime.js'
+  );
 
   const persistence = {
     episodes: new SqliteEpisodeRuntimeRepository(),
@@ -141,7 +144,10 @@ async function runEngine(fixture) {
     lmStudioUrl: 'http://127.0.0.1:1234/v1',
     workerExecutorFactory,
     persistence,
-    sleep: (ms) => new Promise(resolve => setTimeout(resolve, Math.min(ms, 50))),
+    host: new NodeSaga2HostRuntime({
+      homeDirectory: fixture.temp,
+      sleep: ms => new Promise(resolve => setTimeout(resolve, Math.min(ms, 50))),
+    }),
   });
 }
 
