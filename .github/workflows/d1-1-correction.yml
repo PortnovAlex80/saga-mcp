@@ -143,7 +143,29 @@ jobs:
               raise SystemExit(f'obsolete LaunchSnapshot parser removal matched {count} blocks')
           p.write_text(updated, encoding='utf-8')
           PY
-          python3 .d1-correction/fix_remaining.py
+
+      - name: Apply remaining authority and lifecycle fixes
+        id: remaining
+        if: steps.apply.outputs.code == '0'
+        continue-on-error: true
+        run: |
+          set +e
+          python3 .d1-correction/fix_remaining.py > /tmp/fix-remaining.log 2>&1
+          code=$?
+          cat /tmp/fix-remaining.log
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Upload remaining-fix diagnostic
+        if: steps.apply.outputs.code == '0' && steps.remaining.outputs.code != '0'
+        uses: actions/upload-artifact@v4
+        with:
+          name: d1-1-remaining-diagnostic
+          path: /tmp/fix-remaining.log
+
+      - name: Fail on remaining-fix mismatch
+        if: steps.apply.outputs.code == '0' && steps.remaining.outputs.code != '0'
+        run: exit 1
 
       - name: Upload patch diagnostic
         if: steps.apply.outputs.code != '0'
@@ -157,12 +179,12 @@ jobs:
         run: exit 1
 
       - name: Install dependencies
-        if: steps.apply.outputs.code == '0'
+        if: steps.apply.outputs.code == '0' && steps.remaining.outputs.code == '0'
         run: npm ci
 
       - name: Run full test suite
         id: tests
-        if: steps.apply.outputs.code == '0'
+        if: steps.apply.outputs.code == '0' && steps.remaining.outputs.code == '0'
         continue-on-error: true
         run: |
           set +e
@@ -173,18 +195,18 @@ jobs:
           exit 0
 
       - name: Upload test diagnostic
-        if: steps.apply.outputs.code == '0' && steps.tests.outputs.code != '0'
+        if: steps.apply.outputs.code == '0' && steps.remaining.outputs.code == '0' && steps.tests.outputs.code != '0'
         uses: actions/upload-artifact@v4
         with:
           name: d1-1-test-diagnostic
           path: /tmp/npm-test.log
 
       - name: Fail on test failure
-        if: steps.apply.outputs.code == '0' && steps.tests.outputs.code != '0'
+        if: steps.apply.outputs.code == '0' && steps.remaining.outputs.code == '0' && steps.tests.outputs.code != '0'
         run: exit 1
 
       - name: Commit verified correction
-        if: steps.apply.outputs.code == '0' && steps.tests.outputs.code == '0'
+        if: steps.apply.outputs.code == '0' && steps.remaining.outputs.code == '0' && steps.tests.outputs.code == '0'
         run: |
           git rm -r .d1-correction .github/workflows/d1-1-correction.yml
           git config user.name "github-actions[bot]"
