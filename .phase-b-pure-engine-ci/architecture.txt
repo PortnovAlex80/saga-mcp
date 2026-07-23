@@ -19,7 +19,7 @@ SyntaxError: Invalid or unexpected token
     at TracingChannel.tracePromise (node:diagnostics_channel:362:14)
 
 Node.js v24.18.0
-✖ tests/architecture/saga2-boundaries.test.mjs (32.270469ms)
+✖ tests/architecture/saga2-boundaries.test.mjs (27.841132ms)
 ℹ tests 1
 ℹ suites 0
 ℹ pass 0
@@ -27,10 +27,10 @@ Node.js v24.18.0
 ℹ cancelled 0
 ℹ skipped 0
 ℹ todo 0
-ℹ duration_ms 41.321827
+ℹ duration_ms 34.314799
 
 ✖ failing tests:
 
 test at tests/architecture/saga2-boundaries.test.mjs:1:1
-✖ tests/architecture/saga2-boundaries.test.mjs (32.270469ms)
+✖ tests/architecture/saga2-boundaries.test.mjs (27.841132ms)
   'test failed'
