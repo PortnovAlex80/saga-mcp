@@ -39,6 +39,6 @@ export function loadSagaRuntimeConfig(
     trackerReloadSec: positiveInteger(env.RELOAD_SEC, 5),
     trackerSpawned: env.TRACKER_SPAWNED === '1',
     trackerNoBrowser: env.TRACKER_NO_BROWSER === '1',
-    orchestrationMode: env.SAGA_ORCHESTRATION_MODE?.trim().toLowerCase() || 'v2',
+    orchestrationMode: env.SAGA_ORCHESTRATION_MODE?.trim().toLowerCase() || 'saga3-discovery',
   };
 }

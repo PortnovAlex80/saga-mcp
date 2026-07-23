@@ -80,7 +80,7 @@ export class LegacyEngineAdministration implements EngineAdministration {
           env: {
             ...this.baseEnv,
             DB_PATH: this.config.dbPath,
-            SAGA_ORCHESTRATION_MODE: 'v3',
+            SAGA_ORCHESTRATION_MODE: this.config.orchestrationMode,
           },
         },
       );

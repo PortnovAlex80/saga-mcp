@@ -4209,7 +4209,9 @@ function handleProjectCreateFromIdea(req, res) {
       const mode = runtimeConfig.orchestrationMode;
       let engineSpawned = false;
       let enginePid = null;
-      if (mode === 'v3') {
+      // Any autonomous engine spawns a background orchestrate-cli process; only
+      // legacy 'v2' drives the flow from the saga-orchestrator skill instead.
+      if (mode !== 'v2') {
         try {
           const state = sagaApplication.startEngine({ epicId: result.epicId });
           engineSpawned = state.running;

@@ -389,6 +389,55 @@ test('legacy engine administration preserves start/status/concurrency/stop seman
   }
 });
 
+test('engine spawn propagates config.orchestrationMode (no hardcoded mode)', () => {
+  // D0 spawn-path fix: spawned orchestrate-cli env MUST equal config.orchestrationMode,
+  // not a hardcoded 'v3'. Otherwise saga3-discovery branch never reaches Saga3DiscoveryEngine.
+  const temp = mkdtempSync(path.join(os.tmpdir(), 'saga-spawn-mode-'));
+  const dbPath = path.join(temp, 'saga.db');
+  const db = new Database(dbPath);
+  try {
+    db.exec(`
+      CREATE TABLE epics (id INTEGER PRIMARY KEY, project_id INTEGER);
+      CREATE TABLE episode_workflows (epic_id INTEGER PRIMARY KEY, metadata TEXT, updated_at TEXT);
+    `);
+    db.prepare('INSERT INTO epics VALUES (2, 1)').run();
+    db.prepare(`INSERT INTO episode_workflows VALUES (2, '{}', datetime('now'))`).run();
+  } finally {
+    db.close();
+  }
+
+  for (const mode of ['v3', 'saga3-discovery']) {
+    const spawned = [];
+    const admin = new LegacyEngineAdministration({
+      config: fullConfig({ dbPath, orchestrationMode: mode }),
+      baseEnv: {},
+      orchestrateCliPath: '/dist/orchestrate-cli.js',
+      platform: 'linux',
+      spawnProcess(command, args, options) {
+        spawned.push(options.env);
+        return { pid: 100, unref() {} };
+      },
+      spawnProcessSync: () => ({ status: 0, stdout: '' }),
+    });
+    try {
+      admin.start({ epicId: 2, concurrency: 1 });
+      assert.equal(spawned[0].SAGA_ORCHESTRATION_MODE, mode,
+        `spawned env SAGA_ORCHESTRATION_MODE must equal config.orchestrationMode='${mode}' (no hardcoded v3)`);
+    } finally {
+      admin.dispose();
+    }
+  }
+  rmSync(temp, { recursive: true, force: true });
+});
+
+test('runtime config defaults orchestration mode to saga3-discovery on the saga3 branch', () => {
+  // Empty env -> the saga3-discovery branch runs the new engine by default.
+  // A project created without an explicit mode flag goes through Saga3DiscoveryEngine.
+  const config = loadSagaRuntimeConfig({ DB_PATH: '/tmp/saga.db' });
+  assert.equal(config.orchestrationMode, 'saga3-discovery',
+    'default orchestration mode on saga3-discovery branch must be saga3-discovery');
+});
+
 test('tracker uses extracted ports and preserves the LM Studio hard rule fix', () => {
   const trackerPath = path.join(process.cwd(), 'tracker-view', 'tracker-view.mjs');
   const source = readFileSync(trackerPath, 'utf8');
