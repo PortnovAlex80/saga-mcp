@@ -16,6 +16,11 @@ const requiredFiles = [
   'src/tools/lifecycle.ts',
   'src/tools/workflow.ts',
   'src/worker-executions.ts',
+  'src/application/ports/worker-executor.ts',
+  'src/application/ports/engine-administration.ts',
+  'src/infrastructure/workers/legacy-claude-worker-executor-factory.ts',
+  'src/infrastructure/engine/legacy-engine-administration.ts',
+  'src/infrastructure/projections/sqlite-board-projection-reader.ts',
   'tracker-view/tracker-view.mjs',
   'tracker-view/claude-runner.mjs',
   'tests/mock-claude.mjs',
@@ -52,16 +57,14 @@ test('Saga 2 cross-process runtime files remain present', () => {
   }
 });
 
-test('orchestration keeps its stable integration anchors', () => {
+test('orchestration keeps its stable decision and lifecycle anchors', () => {
   const source = read('src/orchestrate.ts');
   assertIncludesAll(source, [
-    'createClaudeBoardRunner',
+    'workerExecutorFactory',
     'getDb',
     'generateNextForCompletedTask',
     'lifecycleHandlers',
-    'dispatcherHandlers',
     'reconcileWorkerExecutions',
-    'releaseExecutionAtomically',
     "discovery: 'formalization'",
     "formalization: 'planning'",
     "planning: 'development'",
@@ -69,6 +72,18 @@ test('orchestration keeps its stable integration anchors', () => {
     "verification: 'integration'",
     "integration: 'completed'",
   ], 'src/orchestrate.ts');
+});
+
+test('worker infrastructure keeps claim, recovery and concrete runner anchors', () => {
+  const source = read('src/infrastructure/workers/legacy-claude-worker-executor-factory.ts');
+  assertIncludesAll(source, [
+    'createClaudeBoardRunner',
+    'dispatcherHandlers.worker_next',
+    'releaseExecutionAtomically',
+    'getActiveModel',
+    'lmstudioBaseUrl',
+    'ClaudeBoardWorkerExecutor',
+  ], 'legacy-claude-worker-executor-factory.ts');
 });
 
 test('worker runner keeps the assignment, fencing, provider, logging, and MCP protocol', () => {
