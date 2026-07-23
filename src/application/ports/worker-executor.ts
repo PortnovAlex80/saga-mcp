@@ -4,6 +4,16 @@ export interface WorkerExecutorStart {
   concurrency: number;
 }
 
+export interface WorkerModelRoute {
+  model: string | null;
+  provider: string;
+  effort: string | null;
+}
+
+export type WorkerModelRouteReader = (
+  epicId: number | null,
+) => WorkerModelRoute;
+
 export interface ActiveWorkerProjection {
   task_id: number;
   title?: string;
