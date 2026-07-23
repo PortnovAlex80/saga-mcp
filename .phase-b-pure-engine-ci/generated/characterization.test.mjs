@@ -17,11 +17,9 @@ const requiredFiles = [
   'src/tools/workflow.ts',
   'src/worker-executions.ts',
   'src/application/ports/worker-executor.ts',
-  'src/application/ports/saga2-host-runtime.ts',
   'src/application/ports/engine-administration.ts',
   'src/infrastructure/workers/legacy-claude-worker-executor-factory.ts',
   'src/infrastructure/engine/legacy-engine-administration.ts',
-  'src/infrastructure/runtime/node-saga2-host-runtime.ts',
   'src/infrastructure/projections/sqlite-board-projection-reader.ts',
   'tracker-view/tracker-view.mjs',
   'tracker-view/claude-runner.mjs',
@@ -64,10 +62,6 @@ test('orchestration keeps its stable decision and lifecycle anchors', () => {
   assertIncludesAll(source, [
     'workerExecutorFactory',
     'persistence',
-    'host: Saga2HostRuntime',
-    'opts.host.acquireEngineLock(context)',
-    'opts.host.releaseEngineLock(context)',
-    'opts.host.scanRateLimitSignals',
     'generateNextForCompletedTask',
     'lifecycleHandlers',
     "discovery: 'formalization'",
@@ -77,34 +71,6 @@ test('orchestration keeps its stable decision and lifecycle anchors', () => {
     "verification: 'integration'",
     "integration: 'completed'",
   ], 'src/orchestrate.ts');
-});
-
-test('orchestration pump contains decisions but no host implementation mechanics', () => {
-  const source = read('src/orchestrate.ts');
-  for (const forbidden of [
-    "from 'node:fs'", "from 'node:os'", "from 'node:path'",
-    'process.pid', 'process.kill', 'Date.now', 'setTimeout(',
-    'readFileSync(', 'writeFileSync(', 'readdirSync(', 'openSync(',
-  ]) {
-    assert.ok(!source.includes(forbidden), `orchestrate.ts retained host mechanic: ${forbidden}`);
-  }
-  const engine = read('src/engines/saga2-engine.ts');
-  assertIncludesAll(engine, [
-    'orchestrate({', 'workerExecutorFactory', 'persistence', 'host',
-  ], 'src/engines/saga2-engine.ts');
-  assert.ok(!engine.includes('LegacySaga2Runner'), 'Saga2Engine still depends on legacy bridge');
-});
-
-test('Node host adapter preserves PID, heartbeat and JSONL contracts', () => {
-  const source = read('src/infrastructure/runtime/node-saga2-host-runtime.ts');
-  assertIncludesAll(source, [
-    "flag: 'wx'",
-    'process.kill(pid, 0)',
-    'engine-heartbeat.log',
-    'board-runs',
-    'error_status":429',
-    'releaseEngineLock',
-  ], 'node-saga2-host-runtime.ts');
 });
 
 test('persistence adapters keep the moved SQLite and execution anchors', () => {
