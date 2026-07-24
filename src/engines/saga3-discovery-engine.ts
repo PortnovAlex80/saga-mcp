@@ -21,7 +21,17 @@ import {
 import type { Saga3DiscoveryRuntimePersistence } from '../saga3/persistence/saga3-discovery-runtime-port.js';
 import type { DiscoveryNormalizationService } from '../saga3/application/discovery-normalization-service.js';
 import type { DiscoveryReadinessService } from '../saga3/application/discovery-readiness-service.js';
+import type { DiscoverySettlementService, DiscoverySettlementResult, ProvisionalOutcome } from '../saga3/application/discovery-settlement-service.js';
 import type { ReadinessShadowResult } from '../saga3/domain/discovery-readiness-assessment.js';
+
+/**
+ * The settlement view the engine threads through runResult. Extends the
+ * service's result with the 'not_run' status for runs that did not invoke
+ * settlement (no valid Proposal, or settlement not wired in tests).
+ */
+type EngineSettlementResult = Omit<DiscoverySettlementResult, 'status'> & {
+  status: 'issued' | 'failed' | 'not_run';
+};
 
 /**
  * Task kind / skill for the discovery WorkIntent's board projection.
@@ -60,7 +70,11 @@ const DISCOVERY_ALLOWED_TOOLS = [
  */
 export interface DiscoveryRunOutcome {
   outcome: DiscoveryOutcome | 'discovery_not_implemented';
-  outcomeAuthority: 'worker_proposal' | 'normalized_worker_proposal' | 'none';
+  outcomeAuthority:
+    | 'worker_proposal'
+    | 'normalized_worker_proposal'
+    | 'discovery_settlement_policy'
+    | 'none';
   proposalId: number | null;
   proposalHash: string | null;
 }
@@ -80,6 +94,14 @@ export interface Saga3DiscoveryEngineDependencies {
    * readiness.status='not_run' and never spawns an advisor worker.
    */
   readinessService?: DiscoveryReadinessService;
+  /**
+   * D4 authoritative settlement service. Optional so D1/D2/D3 engine tests
+   * that do not exercise settlement stay green without wiring a fake;
+   * production (composition-root) always supplies it. When absent, the engine
+   * records settlement.status='not_run' and leaves the provisional outcome as
+   * the top-level outcome.
+   */
+  settlementService?: DiscoverySettlementService;
   now?: () => Date;
   sleep?: (ms: number) => Promise<void>;
   /** Max wall-clock seconds the engine waits for the worker to finish. */
@@ -261,10 +283,47 @@ export class Saga3DiscoveryEngine implements OrchestrationEngine {
         const authority = existingProposal!.provenance?.normalization_mode === 'lm_transformation'
           ? 'normalized_worker_proposal' as const
           : provisional.authority;
+        const provisionalOutcome: DiscoveryRunOutcome = {
+          outcome: provisional.outcome, outcomeAuthority: authority,
+          proposalId: existingProposal!.id, proposalHash: existingProposal!.content_hash,
+        };
+        // D4: recovery runs settlement too (it reads the durable accepted
+        // assessment from the DB directly; the engine shadow is not_run here).
+        const recoveryReadiness: ReadinessShadowResult = {
+          status: 'not_run', authority: 'none',
+          assessmentId: null, assessmentHash: null,
+          overallReadiness: null, recommendedNextAction: null, error: null,
+        };
+        let recoverySettlement: EngineSettlementResult;
+        if (this.deps.settlementService) {
+          try {
+            recoverySettlement = await this.deps.settlementService.settle({
+              projectId, epicId,
+              proposalId: existingProposal!.id,
+              proposalHash: existingProposal!.content_hash,
+              readiness: recoveryReadiness,
+            });
+          } catch (settleErr) {
+            const msg = settleErr instanceof Error ? settleErr.message : String(settleErr);
+            recoverySettlement = {
+              status: 'failed',
+              settlementId: null, certificateId: null, certificateHash: null,
+              policyVersion: null, policyHash: null,
+              decision: null, reasonCodes: [], error: msg,
+            };
+          }
+        } else {
+          recoverySettlement = {
+            status: 'not_run',
+            settlementId: null, certificateId: null, certificateHash: null,
+            policyVersion: null, policyHash: null,
+            decision: null, reasonCodes: [], error: null,
+          };
+        }
         return this.runResult(projectId, epicId, 'completed', recoveryCycles, null,
-          { outcome: provisional.outcome, outcomeAuthority: authority,
-            proposalId: existingProposal!.id, proposalHash: existingProposal!.content_hash },
-          persistence.episodes.currentStage(epicId) ?? 'discovery', true);
+          provisionalOutcome,
+          persistence.episodes.currentStage(epicId) ?? 'discovery', true,
+          recoveryReadiness, recoverySettlement);
       }
 
       return this.runResult(projectId, epicId, 'failed', recoveryCycles,
@@ -534,7 +593,46 @@ export class Saga3DiscoveryEngine implements OrchestrationEngine {
         overallReadiness: null, recommendedNextAction: null, error: null,
       };
     }
-    return this.runResult(projectId, epicId, reason, cycles, lastError, outcome, finalStage, scopeCompleted, readiness);
+
+    // D4: authoritative settlement. Runs after readiness (D3 shadow) for every
+    // run with a structurally valid canonical Proposal. Unlike D3, D4 IS the
+    // authoritative boundary: a successful settlement makes the outcome
+    // authoritative (outcomeAuthority='discovery_settlement_policy'); a
+    // settlement infrastructure failure means the run FAILED (reason='failed',
+    // scopeCompleted=false) — Discovery Edition did NOT complete
+    // authoritatively. Settlement runs even when readiness failed/paused; the
+    // policy then fail-closes to clarify. The provisional outcome is always
+    // preserved separately.
+    let settlement: EngineSettlementResult;
+    if (validProposal && proposal && this.deps.settlementService) {
+      try {
+        settlement = await this.deps.settlementService.settle({
+          projectId,
+          epicId,
+          proposalId: proposal.id,
+          proposalHash: proposal.content_hash,
+          readiness,
+        });
+      } catch (settleErr) {
+        const msg = settleErr instanceof Error ? settleErr.message : String(settleErr);
+        heartbeat('SETTLEMENT_ISOLATED_FAILURE', msg);
+        settlement = {
+          status: 'failed',
+          settlementId: null, certificateId: null, certificateHash: null,
+          policyVersion: null, policyHash: null,
+          decision: null, reasonCodes: [], error: msg,
+        };
+      }
+    } else {
+      settlement = {
+        status: 'not_run',
+        settlementId: null, certificateId: null, certificateHash: null,
+        policyVersion: null, policyHash: null,
+        decision: null, reasonCodes: [], error: null,
+      };
+    }
+
+    return this.runResult(projectId, epicId, reason, cycles, lastError, outcome, finalStage, scopeCompleted, readiness, settlement);
   }
 
   private runResult(
@@ -551,22 +649,74 @@ export class Saga3DiscoveryEngine implements OrchestrationEngine {
       assessmentId: null, assessmentHash: null,
       overallReadiness: null, recommendedNextAction: null, error: null,
     },
+    settlement: EngineSettlementResult = {
+      status: 'not_run',
+      settlementId: null, certificateId: null, certificateHash: null,
+      policyVersion: null, policyHash: null,
+      decision: null, reasonCodes: [], error: null,
+    },
   ): OrchestrationRunResult {
+    // The provisional outcome is what the worker produced (preserved
+    // separately so settlement's authoritative override is visible but the
+    // worker's recommendation is never lost).
+    const provisional: ProvisionalOutcome = {
+      outcome: outcome.outcome,
+      authority: outcome.outcomeAuthority === 'discovery_settlement_policy'
+        ? 'worker_proposal'
+        : outcome.outcomeAuthority,
+      proposalId: outcome.proposalId,
+      proposalHash: outcome.proposalHash,
+    };
+
+    // When settlement issued a certificate, the top-level outcome becomes
+    // AUTHORITATIVE: the policy's decision replaces the provisional outcome and
+    // outcomeAuthority is the settlement policy. When settlement failed, the
+    // run is failed (authoritative boundary) — outcome becomes 'failed',
+    // outcomeAuthority 'none'. When settlement did not run, the provisional
+    // outcome stays as the top-level outcome.
+    let topLevelOutcome = outcome.outcome;
+    let topLevelAuthority = outcome.outcomeAuthority;
+    let topLevelReason = reason;
+    let topLevelScope = scopeCompleted;
+
+    if (settlement.status === 'issued') {
+      topLevelOutcome = settlement.decision ?? outcome.outcome;
+      topLevelAuthority = 'discovery_settlement_policy';
+      topLevelReason = 'completed';
+      topLevelScope = true;
+    } else if (settlement.status === 'failed') {
+      topLevelOutcome = 'failed';
+      topLevelAuthority = 'none';
+      topLevelReason = 'failed';
+      topLevelScope = false;
+    }
+
     return {
       projectId,
       epicId,
       finalStage,
       endedAt: this.now().toISOString(),
-      reason,
+      reason: topLevelReason,
       cycles,
       lastError,
       pipelineScope: 'discovery_only',
-      scopeCompleted,
-      outcome: outcome.outcome,
-      outcomeAuthority: outcome.outcomeAuthority,
+      scopeCompleted: topLevelScope,
+      outcome: topLevelOutcome,
+      outcomeAuthority: topLevelAuthority,
       proposalId: outcome.proposalId,
       proposalHash: outcome.proposalHash,
+      provisional,
       readiness,
+      settlement: {
+        status: settlement.status,
+        settlementId: settlement.settlementId,
+        certificateId: settlement.certificateId,
+        certificateHash: settlement.certificateHash,
+        policyVersion: settlement.policyVersion,
+        decision: settlement.decision,
+        reasonCodes: settlement.reasonCodes,
+        error: settlement.error,
+      },
     };
   }
 }
