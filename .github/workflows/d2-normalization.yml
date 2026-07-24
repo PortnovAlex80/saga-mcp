@@ -21,6 +21,8 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      - name: Prepare D2 lifecycle follow-up
+        run: python3 .d2-followup/preprocess.py
       - name: Apply D2 lifecycle follow-up
         id: apply
         continue-on-error: true
