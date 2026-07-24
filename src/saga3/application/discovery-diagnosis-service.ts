@@ -126,18 +126,9 @@ export interface Saga3DiscoveryDiagnosisServiceDependencies {
 // the engine projects — never outcome/outcomeAuthority/scopeCompleted/reason/
 // finalStage (invariant I1).
 
-import { createHash } from 'node:crypto';
-
 import type { OutcomeCertificateRecord, SettlementRecord } from '../domain/discovery-settlement-records.js';
-import type { ReadinessAssessmentRecord } from '../domain/discovery-readiness-records.js';
 import type { DiscoveryProposalPayload } from '../domain/discovery-proposal.js';
-import { DISCOVERY_PROPOSAL_SCHEMA, validateDiscoveryProposal } from '../domain/discovery-proposal.js';
 import type { ReadinessAssessmentPayload } from '../domain/discovery-readiness-assessment.js';
-import { validateReadinessAssessment } from '../domain/discovery-readiness-assessment.js';
-import {
-  DISCOVERY_SETTLEMENT_INPUT_SCHEMA,
-  type DiscoverySettlementInputSnapshot,
-} from '../domain/discovery-settlement-input.js';
 import {
   DISCOVERY_DIAGNOSIS_CASE_SCHEMA,
   DISCOVERY_DIAGNOSIS_CONTRACT_VERSION,
@@ -151,7 +142,16 @@ import {
 import { DISCOVERY_DIAGNOSIS_REPORT_SCHEMA } from '../domain/discovery-diagnosis-report.js';
 import type { DiagnosisControlExecution, DiagnosisReportRecord } from '../domain/discovery-diagnosis-records.js';
 import type { SettlementProposalRecord } from '../persistence/saga3-discovery-runtime-port.js';
-import { canonicalJson, collectDiscoverySourceRefs, sha256Hex } from '../shared/discovery-canonical.js';
+import { discoverySettlementPolicyV1 } from '../domain/discovery-settlement-policy.js';
+import { canonicalJson } from '../shared/discovery-canonical.js';
+// P0-3: the diagnosis target gate now calls the SAME full verifier D4 uses, so
+// D5 no longer maintains a weaker independent copy of the certificate /
+// settlement / snapshot / readiness verification. The bundle returns every
+// verified input the DiagnosisCase is built from.
+import {
+  verifyDiscoveryCertificateBundle,
+  type VerifiedCertificateBundle,
+} from './discovery-certificate-bundle.js';
 
 /**
  * Thrown when the diagnosis target cannot be verified (missing certificate,
@@ -286,106 +286,63 @@ export class Saga3DiscoveryDiagnosisService implements DiscoveryDiagnosisService
 
   // -------------------------------------------------------------------------
   // Target verification — the kernel-only gate that proves the diagnosis is
-  // bound to an EXACT immutable certificate (invariant I3). Mirrors the D4
-  // settlement verification discipline but read-only (D5 mutates nothing).
-  // Throws DiagnosisTargetError on any mismatch; the caller catches it.
+  // bound to an EXACT immutable certificate (invariant I3). P0-3: this now
+  // calls the SAME full verifier D4 uses (verifyDiscoveryCertificateBundle), so
+  // D5 no longer maintains a weaker independent copy. The bundle recomputes the
+  // certificate_hash from the certificate_payload, rebuilds the expected
+  // certificate, requires settlement.status === 'certificate_issued', verifies
+  // reason-code / policy / readiness lineage, recomputes the input_hash, and
+  // replays the policy — every check D4 does. The DiagnosisCase is built
+  // EXCLUSIVELY from the returned VerifiedCertificateBundle. Read-only: D5
+  // mutates nothing. Throws DiagnosisTargetError on any mismatch (the caller
+  // catches it and returns status='failed', leaving D4 untouched — I5).
   // -------------------------------------------------------------------------
   private verifyDiagnosisTarget(
     rt: Saga3DiscoveryRuntimePersistence,
     request: DiagnoseRequest,
   ): VerifiedTarget {
-    // 1. Load the certificate by EXACT id.
-    const cert = rt.readOutcomeCertificate(request.certificateId);
-    if (!cert) {
-      throw new DiagnosisTargetError(
-        `certificate ${request.certificateId} not found`,
+    let bundle: VerifiedCertificateBundle;
+    try {
+      bundle = verifyDiscoveryCertificateBundle(
+        rt,
+        request.certificateId,
+        request.certificateHash,
+        discoverySettlementPolicyV1,
       );
+    } catch (error) {
+      // Re-surface CertificateBundleError as DiagnosisTargetError so the
+      // caller's single catch maps it to status='failed' with the precise
+      // message from the bundle verifier.
+      const message = error instanceof Error ? error.message : String(error);
+      throw new DiagnosisTargetError(message);
     }
-    // 2. Verify the certificate hash matches the engine-supplied hash (I3).
-    if (cert.certificate_hash !== request.certificateHash) {
-      throw new DiagnosisTargetError(
-        `certificate ${request.certificateId} hash mismatch (stored ${cert.certificate_hash.slice(0, 12)}, request ${request.certificateHash.slice(0, 12)})`,
-      );
-    }
-    // 3. Load the settlement that issued this certificate.
-    const settlement = rt.readSettlement(cert.settlement_id);
-    if (!settlement) {
-      throw new DiagnosisTargetError(
-        `settlement ${cert.settlement_id} for certificate ${cert.id} not found`,
-      );
-    }
-    // 4. Verify settlement/certificate relation.
-    if (cert.settlement_id !== settlement.id) {
-      throw new DiagnosisTargetError(
-        `certificate ${cert.id} settlement_id ${cert.settlement_id} != settlement.id ${settlement.id}`,
-      );
-    }
-    if (cert.input_hash !== settlement.input_hash) {
-      throw new DiagnosisTargetError(
-        `certificate ${cert.id} input_hash ${cert.input_hash.slice(0, 12)} != settlement.input_hash ${settlement.input_hash.slice(0, 12)}`,
-      );
-    }
-    if (cert.epic_id !== settlement.epic_id) {
-      throw new DiagnosisTargetError(
-        `certificate ${cert.id} epic_id ${cert.epic_id} != settlement epic_id ${settlement.epic_id}`,
-      );
-    }
+    const { certificate: cert, settlement, proposal: proposalRow, snapshot } = bundle;
+
+    // Bind the verified certificate's epic to the request epic (the bundle
+    // verified cert.epic_id === settlement.epic_id; this is the cross-check
+    // against the engine-supplied request epic).
     if (cert.epic_id !== request.epicId) {
       throw new DiagnosisTargetError(
         `certificate ${cert.id} epic_id ${cert.epic_id} != request epic_id ${request.epicId}`,
       );
     }
-    // 5. Verify the certificate row's decision/policy/reason lineage agrees with
-    //    the settlement row (defence in depth — both come from D4, must agree).
-    if (cert.decision !== settlement.decision) {
-      throw new DiagnosisTargetError(
-        `certificate ${cert.id} decision ${cert.decision} != settlement.decision ${settlement.decision}`,
-      );
-    }
-    if (cert.policy_version !== settlement.policy_version
-        || cert.policy_hash !== settlement.policy_hash) {
-      throw new DiagnosisTargetError(
-        `certificate ${cert.id} policy version/hash does not match the settlement`,
-      );
-    }
-
-    // 6. Parse the stored settlement input_snapshot (the immutable D4 input the
-    //    certificate was issued against) and derive the proposal + readiness
-    //    slices needed to build the DiagnosisCase. We do NOT re-run the policy
-    //    (D4 already settled); we re-derive the case inputs from the snapshot
-    //    so the diagnosis explains the EXACT settled inputs.
-    const snapshot = this.parseSettlementSnapshot(settlement);
-
-    // 7. Re-load + verify the canonical Proposal (the snapshot embeds its hash
-    //    + payload, but we bind to the LIVE canonical row so the case carries
-    //    the same lineage the D4 settlement verified). Mirrors D4 step 1-2.
-    const proposalRow = rt.readProposalForSettlement(snapshot.proposal.id);
-    if (!proposalRow) {
-      throw new DiagnosisTargetError(
-        `proposal ${snapshot.proposal.id} (from settlement snapshot) not found`,
-      );
-    }
-    this.verifyProposalLineage(proposalRow, settlement, snapshot);
 
     const proposalPayload = proposalRow.payload as DiscoveryProposalPayload;
 
-    // 8. Re-load + verify the accepted readiness assessment (when the snapshot
-    //    says one exists). Mirrors D4 step 3.
+    // Build the readiness ref from the VERIFIED bundle. When the snapshot
+    // readiness is accepted, the bundle re-loaded + re-verified the exact
+    // assessment (status, proposal binding, full lineage, payload hash). When
+    // it is missing/failed/paused, the bundle's snapshot null-anchor check
+    // already ensured assessment_id/content_hash/payload are all null.
     let readiness: DiagnosisReadinessRef;
     if (snapshot.readiness.status === 'accepted_by_kernel') {
-      const assessmentId = snapshot.readiness.assessment_id;
-      if (assessmentId === null) {
+      const assessment = bundle.readinessAssessment;
+      // The bundle guarantees non-null here; narrow for TS.
+      if (!assessment) {
         throw new DiagnosisTargetError(
-          `settlement ${settlement.id} snapshot readiness=accepted_by_kernel but assessment_id is null`,
+          `settlement ${settlement.id} snapshot readiness=accepted_by_kernel but bundle has no verified assessment`,
         );
       }
-      const assessment = rt.readReadinessAssessment(assessmentId);
-      if (!assessment || assessment.status !== 'accepted_by_kernel') {
-        throw new DiagnosisTargetError(
-          `readiness assessment ${assessmentId} not found or not accepted_by_kernel`,
-        );
-      }
-      this.verifyAssessmentLineage(assessment, proposalRow, snapshot);
       readiness = {
         status: 'accepted_by_kernel',
         assessment_id: assessment.id,
@@ -403,7 +360,8 @@ export class Saga3DiscoveryDiagnosisService implements DiscoveryDiagnosisService
       };
     }
 
-    // 9. Build the certificate ref + proposal ref for the DiagnosisCase.
+    // Build the certificate ref + proposal ref for the DiagnosisCase directly
+    // from the VERIFIED bundle rows.
     const certificateRef: DiagnosisCertificateRef = {
       id: cert.id,
       hash: cert.certificate_hash,
@@ -434,132 +392,6 @@ export class Saga3DiscoveryDiagnosisService implements DiscoveryDiagnosisService
     };
 
     return { cert, settlement, proposalRow, caseInput, epicObjective };
-  }
-
-  /** Parse + structurally verify the settlement input_snapshot. */
-  private parseSettlementSnapshot(settlement: SettlementRecord): DiscoverySettlementInputSnapshot {
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(settlement.input_snapshot);
-    } catch {
-      throw new DiagnosisTargetError(
-        `settlement ${settlement.id}: input_snapshot is not valid JSON`,
-      );
-    }
-    const snap = parsed as DiscoverySettlementInputSnapshot;
-    if (snap.schema_version !== DISCOVERY_SETTLEMENT_INPUT_SCHEMA) {
-      throw new DiagnosisTargetError(
-        `settlement ${settlement.id}: snapshot schema_version '${snap.schema_version}' is not ${DISCOVERY_SETTLEMENT_INPUT_SCHEMA}`,
-      );
-    }
-    if (snap.epic_id !== settlement.epic_id) {
-      throw new DiagnosisTargetError(
-        `settlement ${settlement.id}: snapshot epic_id ${snap.epic_id} != settlement epic_id ${settlement.epic_id}`,
-      );
-    }
-    if (snap.proposal.id !== settlement.proposal_id
-        || snap.proposal.content_hash !== settlement.proposal_content_hash) {
-      throw new DiagnosisTargetError(
-        `settlement ${settlement.id}: snapshot proposal id/hash does not match the settlement`,
-      );
-    }
-    return snap;
-  }
-
-  /** Verify the canonical Proposal row binds to the settlement snapshot. */
-  private verifyProposalLineage(
-    proposalRow: SettlementProposalRecord,
-    settlement: SettlementRecord,
-    snapshot: DiscoverySettlementInputSnapshot,
-  ): void {
-    if (proposalRow.id !== settlement.proposal_id
-        || proposalRow.content_hash !== settlement.proposal_content_hash
-        || proposalRow.id !== snapshot.proposal.id
-        || proposalRow.content_hash !== snapshot.proposal.content_hash) {
-      throw new DiagnosisTargetError(
-        `proposal ${proposalRow.id} id/hash does not match the settlement/snapshot`,
-      );
-    }
-    if (proposalRow.epic_id !== settlement.epic_id) {
-      throw new DiagnosisTargetError(
-        `proposal ${proposalRow.id} epic_id ${proposalRow.epic_id} != settlement epic_id ${settlement.epic_id}`,
-      );
-    }
-    if (proposalRow.kind !== 'discovery'
-        || proposalRow.schema_version !== DISCOVERY_PROPOSAL_SCHEMA
-        || proposalRow.status !== 'submitted') {
-      throw new DiagnosisTargetError(
-        `proposal ${proposalRow.id} is not a submitted discovery proposal of the canonical schema`,
-      );
-    }
-    // Recompute the proposal content hash from the canonical payload and
-    // compare to the stored hash. Catches a tampered payload.
-    const recomputed = createHash('sha256')
-      .update(canonicalJson(proposalRow.payload)).digest('hex');
-    if (recomputed !== proposalRow.content_hash) {
-      throw new DiagnosisTargetError(
-        `proposal ${proposalRow.id} content_hash mismatch (tampered payload)`,
-      );
-    }
-    // The canonical payload must agree with the snapshot's embedded payload.
-    if (canonicalJson(proposalRow.payload) !== canonicalJson(snapshot.proposal.payload)) {
-      throw new DiagnosisTargetError(
-        `proposal ${proposalRow.id} payload does not match the settlement snapshot payload`,
-      );
-    }
-    // Structural validation of the payload (defence in depth).
-    const validation = validateDiscoveryProposal(proposalRow.payload);
-    if (!validation.valid) {
-      throw new DiagnosisTargetError(
-        `proposal ${proposalRow.id} payload failed re-validation: ${validation.errors.join('; ')}`,
-      );
-    }
-  }
-
-  /** Verify the accepted readiness assessment binds to the proposal + snapshot. */
-  private verifyAssessmentLineage(
-    assessment: ReadinessAssessmentRecord,
-    proposalRow: SettlementProposalRecord,
-    snapshot: DiscoverySettlementInputSnapshot,
-  ): void {
-    if (assessment.proposal_id !== proposalRow.id
-        || assessment.proposal_content_hash !== proposalRow.content_hash) {
-      throw new DiagnosisTargetError(
-        `assessment ${assessment.id} targets proposal ${assessment.proposal_id}, not ${proposalRow.id}`,
-      );
-    }
-    if (snapshot.readiness.assessment_id !== assessment.id) {
-      throw new DiagnosisTargetError(
-        `assessment ${assessment.id} != snapshot.readiness.assessment_id ${snapshot.readiness.assessment_id}`,
-      );
-    }
-    // Recompute the assessment content hash; must match the stored hash.
-    const recomputed = sha256Hex(assessment.payload);
-    if (recomputed !== assessment.content_hash) {
-      throw new DiagnosisTargetError(
-        `assessment ${assessment.id} content_hash mismatch (tampered payload)`,
-      );
-    }
-    // Structural validation of the assessment payload (defence in depth).
-    const allowedRefs = collectDiscoverySourceRefs(
-      {
-        proposalId: proposalRow.id,
-        sourceSubmissionId: proposalRow.source_submission_id,
-        normalizationProposalId: proposalRow.normalization_proposal_id,
-      },
-      proposalRow.payload as DiscoveryProposalPayload,
-    );
-    const validation = validateReadinessAssessment(
-      assessment.payload,
-      proposalRow.id,
-      proposalRow.content_hash,
-      allowedRefs,
-    );
-    if (!validation.valid) {
-      throw new DiagnosisTargetError(
-        `assessment ${assessment.id} failed re-validation: ${validation.errors.join('; ')}`,
-      );
-    }
   }
 
   private readEpicObjective(
