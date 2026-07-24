@@ -89,3 +89,13 @@ export const DISCOVERY_INTENT_KIND = 'discovery';
 
 /** Kind used by the bounded D2 cognitive normalization worker. */
 export const DISCOVERY_NORMALIZATION_INTENT_KIND = 'discovery.normalize';
+
+/**
+ * Kind used by the bounded D3 shadow readiness-advisor worker. Its authority
+ * is minimal and runtime-enforced; it assesses a canonical Proposal but
+ * cannot change the discovery outcome or settle it (roadmap D3).
+ */
+export const DISCOVERY_READINESS_INTENT_KIND = 'discovery.assess';
+
+/** ControlIntent kind for an AssessDiscoveryReadiness control intent. */
+export const ASSESS_DISCOVERY_READINESS_KIND = 'AssessDiscoveryReadiness';

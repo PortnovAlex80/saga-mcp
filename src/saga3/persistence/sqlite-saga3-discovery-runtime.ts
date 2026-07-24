@@ -2,12 +2,15 @@ import { getDb } from '../../db.js';
 import { prepareSaga3ProjectedTaskForExecution } from '../../lifecycle/legacy-assignment-recovery.js';
 import type { CreateWorkIntent, WorkIntent, WorkIntentStatus } from '../domain/work-intent.js';
 import type { ProposalRecord } from '../domain/proposal.js';
-import { DISCOVERY_NORMALIZATION_INTENT_KIND } from '../domain/work-intent.js';
+import { DISCOVERY_NORMALIZATION_INTENT_KIND, DISCOVERY_READINESS_INTENT_KIND } from '../domain/work-intent.js';
 import { DISCOVERY_NORMALIZATION_PROPOSAL_SCHEMA } from '../domain/discovery-normalization-proposal.js';
+import { DISCOVERY_READINESS_ASSESSMENT_SCHEMA } from '../domain/discovery-readiness-assessment.js';
 import type { ControlIntentStatus } from '../domain/discovery-normalization-records.js';
+import type { ReadinessAssessmentRecord, ReadinessControlExecution, ReadinessControlStatus } from '../domain/discovery-readiness-records.js';
 import {
   type EnsureNormalizationControl,
   type EnsureProjectedTask,
+  type EnsureReadinessControl,
   type NormalizationControlExecution,
   type PrepareIntentForExecutionResult,
   type Saga3DiscoveryRuntimePersistence,
@@ -17,6 +20,10 @@ import {
   hashPayload,
 } from './saga3-proposal-repository.js';
 import { ensureSaga3NormalizationSchema, readLatestRawSubmissionForIntent } from './saga3-normalization-repository.js';
+import {
+  ensureSaga3ReadinessSchema,
+  readLatestReadinessAssessmentForControl,
+} from './saga3-readiness-repository.js';
 
 /**
  * SQLite implementation of the Saga3DiscoveryRuntimePersistence port.
@@ -31,6 +38,7 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
   constructor() {
     ensurePausedWorkIntentStatus(getDb());
     ensureSaga3NormalizationSchema(getDb());
+    ensureSaga3ReadinessSchema(getDb());
   }
 
   readEpicObjective(epicId: number): { name: string; description: string | null } | null {
@@ -288,6 +296,107 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
       `UPDATE saga3_control_intents SET status=?, updated_at=datetime('now') WHERE id=? AND status=?`,
     ).run(next, controlIntentId, expected);
     return info.changes === 1;
+  }
+
+  ensureReadinessControl(input: EnsureReadinessControl): ReadinessControlExecution {
+    const db = getDb();
+    ensureSaga3ReadinessSchema(db);
+    // Idempotent on the immutable Proposal version (proposal_id + content_hash).
+    let control = db.prepare(
+      `SELECT id, authority_intent_id, projected_task_id, status
+         FROM saga3_readiness_control_intents
+        WHERE proposal_id=? AND proposal_content_hash=?`,
+    ).get(input.proposalId, input.proposalContentHash) as {
+      id: number;
+      authority_intent_id: number;
+      projected_task_id: number | null;
+      status: ReadinessControlStatus;
+    } | undefined;
+
+    let authority: WorkIntent;
+    if (!control) {
+      authority = this.createIntent({
+        epic_id: input.epicId,
+        kind: DISCOVERY_READINESS_INTENT_KIND,
+        objective: `Assess readiness of discovery proposal ${input.proposalId}: ${input.objective}`,
+        authority_scope: {
+          snapshot_ref: `proposal:${input.proposalId}:${input.proposalContentHash.slice(0, 12)}`,
+          scope: 'read-only shadow readiness assessment',
+          // Minimal authority: exactly the tools the advisor needs, nothing more.
+          allowed_tools: ['task_get', 'readiness_get', 'readiness_submit', 'worker_done'],
+          enforcement: 'runtime',
+        },
+        output_schema: DISCOVERY_READINESS_ASSESSMENT_SCHEMA,
+        token_budget: 0,
+        retry_budget: 0,
+      });
+      const info = db.prepare(
+        `INSERT INTO saga3_readiness_control_intents
+           (epic_id, kind, proposal_id, proposal_content_hash, source_intent_id,
+            authority_intent_id, status)
+         VALUES (?, 'AssessDiscoveryReadiness', ?, ?, ?, ?, 'open')`,
+      ).run(
+        input.epicId,
+        input.proposalId,
+        input.proposalContentHash,
+        input.sourceIntentId,
+        authority.id,
+      );
+      control = {
+        id: Number(info.lastInsertRowid),
+        authority_intent_id: authority.id,
+        projected_task_id: null,
+        status: 'open',
+      };
+    } else {
+      authority = this.readIntentStrict(control.authority_intent_id);
+    }
+
+    const taskId = this.ensureProjectedTask({
+      epicId: input.epicId,
+      projectId: input.projectId,
+      intentId: authority.id,
+      objective: authority.objective,
+      taskKind: 'discovery.assess',
+      executionSkill: 'saga-discovery-readiness-advisor',
+      // generation_key ties the advisor task to the immutable Proposal version.
+      generationKey: `saga3:assess:${input.proposalId}:${input.proposalContentHash.slice(0, 12)}`,
+      metadata: {
+        control_intent_id: control.id,
+        proposal_id: input.proposalId,
+        proposal_content_hash: input.proposalContentHash,
+      },
+    });
+    if (!authority.projected_task_id) {
+      this.setProjectedTask(authority.id, taskId);
+      authority = this.readIntentStrict(authority.id);
+    }
+    if (control.projected_task_id !== taskId) {
+      db.prepare(
+        `UPDATE saga3_readiness_control_intents SET projected_task_id=?, updated_at=datetime('now') WHERE id=?`,
+      ).run(taskId, control.id);
+    }
+    return {
+      controlIntentId: control.id,
+      proposalId: input.proposalId,
+      proposalContentHash: input.proposalContentHash,
+      controlStatus: control.status,
+      authorityIntentId: authority.id,
+      authorityIntentStatus: authority.status,
+      taskId,
+    };
+  }
+
+  setReadinessControlStatus(controlIntentId: number, expected: ReadinessControlStatus, next: ReadinessControlStatus): boolean {
+    const info = getDb().prepare(
+      `UPDATE saga3_readiness_control_intents SET status=?, updated_at=datetime('now') WHERE id=? AND status=?`,
+    ).run(next, controlIntentId, expected);
+    return info.changes === 1;
+  }
+
+  readLatestReadinessAssessment(controlIntentId: number): ReadinessAssessmentRecord | null {
+    ensureSaga3ReadinessSchema(getDb());
+    return readLatestReadinessAssessmentForControl(getDb(), controlIntentId);
   }
 
   private readIntentStrict(id: number): WorkIntent {
