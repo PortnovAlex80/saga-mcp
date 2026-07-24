@@ -32,6 +32,7 @@ import { definitions as conflictDefs, handlers as conflictHandlers } from './too
 import { definitions as providerDefs, handlers as providerHandlers } from './tools/providers.js';
 import { createSaga3ProposalHandlers } from './tools/saga3-proposals.js';
 import { createSaga3NormalizationHandlers } from './tools/saga3-normalization.js';
+import { createSaga3ReadinessHandlers } from './tools/saga3-readiness.js';
 import { authorizeSagaToolCall } from './saga3/authority/authorize-saga-tool-call.js';
 import { closeDb, getDb } from './db.js';
 
@@ -57,6 +58,7 @@ export function assertManagedExecutionIdentity(env: NodeJS.ProcessEnv = process.
 // wiring that reads the shared saga DB directly.
 const saga3Proposals = createSaga3ProposalHandlers();
 const saga3Normalization = createSaga3NormalizationHandlers();
+const saga3Readiness = createSaga3ReadinessHandlers();
 
 const ALL_TOOLS: Tool[] = [
   ...projectDefs,
@@ -80,6 +82,7 @@ const ALL_TOOLS: Tool[] = [
   ...providerDefs,
   ...saga3Proposals.definitions,
   ...saga3Normalization.definitions,
+  ...saga3Readiness.definitions,
 ];
 
 const ALL_HANDLERS: Record<string, (args: Record<string, unknown>) => unknown> = {
@@ -104,6 +107,7 @@ const ALL_HANDLERS: Record<string, (args: Record<string, unknown>) => unknown> =
   ...providerHandlers,
   ...saga3Proposals.handlers,
   ...saga3Normalization.handlers,
+  ...saga3Readiness.handlers,
 };
 
 const server = new Server(

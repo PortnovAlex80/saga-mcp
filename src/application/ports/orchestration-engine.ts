@@ -53,6 +53,24 @@ export interface OrchestrationRunResult {
   outcomeAuthority?: 'worker_proposal' | 'normalized_worker_proposal' | 'none';
   proposalId?: number | null;
   proposalHash?: string | null;
+
+  /**
+   * D3 shadow readiness section. ADVISORY ONLY — never feeds back into
+   * outcome/outcomeAuthority/scopeCompleted. If discovery succeeded but the
+   * readiness assessment failed/paused, the provisional discovery result is
+   * preserved unchanged and readiness.status reports the failure separately.
+   * D3 must not overload outcomeAuthority with readiness authority (D4 owns
+   * settlement).
+   */
+  readiness?: {
+    status: 'completed' | 'not_run' | 'failed' | 'paused';
+    authority: 'shadow_advisor' | 'none';
+    assessmentId: number | null;
+    assessmentHash: string | null;
+    overallReadiness: 'ready' | 'conditionally_ready' | 'not_ready' | 'inconclusive' | null;
+    recommendedNextAction: string | null;
+    error: string | null;
+  };
 }
 
 /**

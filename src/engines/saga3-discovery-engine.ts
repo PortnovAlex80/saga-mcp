@@ -20,6 +20,8 @@ import {
 } from '../saga3/domain/discovery-proposal.js';
 import type { Saga3DiscoveryRuntimePersistence } from '../saga3/persistence/saga3-discovery-runtime-port.js';
 import type { DiscoveryNormalizationService } from '../saga3/application/discovery-normalization-service.js';
+import type { DiscoveryReadinessService } from '../saga3/application/discovery-readiness-service.js';
+import type { ReadinessShadowResult } from '../saga3/domain/discovery-readiness-assessment.js';
 
 /**
  * Task kind / skill for the discovery WorkIntent's board projection.
@@ -71,6 +73,13 @@ export interface Saga3DiscoveryEngineDependencies {
   /** Saga 3 runtime persistence port (the only data access the engine uses). */
   runtimePersistence: Saga3DiscoveryRuntimePersistence;
   normalizationService: DiscoveryNormalizationService;
+  /**
+   * D3 shadow readiness advisor. Optional so D1/D2 engine tests that do not
+   * exercise readiness stay green without wiring a fake; production
+   * (composition-root) always supplies it. When absent, the engine records
+   * readiness.status='not_run' and never spawns an advisor worker.
+   */
+  readinessService?: DiscoveryReadinessService;
   now?: () => Date;
   sleep?: (ms: number) => Promise<void>;
   /** Max wall-clock seconds the engine waits for the worker to finish. */
@@ -482,7 +491,35 @@ export class Saga3DiscoveryEngine implements OrchestrationEngine {
       : terminal === 'timeout' ? `discovery run timed out after ${Math.round(this.maxRunMs / 1000)}s`
       : terminal === 'task_blocked' ? `discovery task ended blocked (terminal=${terminal}); not a clean worker closure`
       : `discovery substrate ended without clean worker closure (terminal=${terminal})`;
-    return this.runResult(projectId, epicId, reason, cycles, lastError, outcome, finalStage, scopeCompleted);
+
+    // D3: shadow readiness advisor. Runs ONLY after a structurally valid
+    // canonical Proposal exists. It is ADVISORY: it cannot change outcome,
+    // outcomeAuthority, scopeCompleted, finalStage, or reason. If discovery
+    // succeeded but the advisor fails, the provisional discovery result is
+    // preserved unchanged and readiness.status reports the failure separately.
+    // Missing/invalid Proposal → readiness stays not_run, no advisor worker.
+    let readiness: ReadinessShadowResult;
+    if (validProposal && proposal && this.deps.readinessService) {
+      const assessed = await this.deps.readinessService.assess({
+        projectId,
+        epicId,
+        proposalId: proposal.id,
+        proposalContentHash: proposal.content_hash,
+        sourceIntentId: intent.id,
+        objective: intent.objective,
+        workspaceRoot: workspace.workspaceRoot,
+        heartbeat,
+      });
+      cycles += assessed.cycles;
+      readiness = assessed.shadow;
+    } else {
+      readiness = {
+        status: 'not_run', authority: 'none',
+        assessmentId: null, assessmentHash: null,
+        overallReadiness: null, recommendedNextAction: null, error: null,
+      };
+    }
+    return this.runResult(projectId, epicId, reason, cycles, lastError, outcome, finalStage, scopeCompleted, readiness);
   }
 
   private runResult(
@@ -494,6 +531,11 @@ export class Saga3DiscoveryEngine implements OrchestrationEngine {
     outcome: DiscoveryRunOutcome,
     finalStage = 'discovery',
     scopeCompleted = false,
+    readiness: ReadinessShadowResult = {
+      status: 'not_run', authority: 'none',
+      assessmentId: null, assessmentHash: null,
+      overallReadiness: null, recommendedNextAction: null, error: null,
+    },
   ): OrchestrationRunResult {
     return {
       projectId,
@@ -509,6 +551,7 @@ export class Saga3DiscoveryEngine implements OrchestrationEngine {
       outcomeAuthority: outcome.outcomeAuthority,
       proposalId: outcome.proposalId,
       proposalHash: outcome.proposalHash,
+      readiness,
     };
   }
 }

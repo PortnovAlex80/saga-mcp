@@ -9,6 +9,7 @@ import { Saga2Engine } from '../engines/saga2-engine.js';
 import { Saga3DiscoveryEngine } from '../engines/saga3-discovery-engine.js';
 import { SqliteSaga3DiscoveryRuntime } from '../saga3/persistence/sqlite-saga3-discovery-runtime.js';
 import { Saga3DiscoveryNormalizationService } from '../saga3/application/discovery-normalization-service.js';
+import { Saga3DiscoveryReadinessService } from '../saga3/application/discovery-readiness-service.js';
 import type { OrchestrationEngine } from '../application/ports/orchestration-engine.js';
 import { LegacyEngineAdministration } from '../infrastructure/engine/legacy-engine-administration.js';
 import {
@@ -103,6 +104,12 @@ function selectEngine(
       host,
       runtimePersistence,
     });
+    const readinessService = new Saga3DiscoveryReadinessService({
+      config,
+      workerExecutorFactory,
+      host,
+      runtimePersistence,
+    });
     return new Saga3DiscoveryEngine({
       config,
       workerExecutorFactory,
@@ -110,6 +117,7 @@ function selectEngine(
       host,
       runtimePersistence,
       normalizationService,
+      readinessService,
     });
   }
   // Every other recognised mode (v2 / v3 / saga2) selects Saga2Engine. An
