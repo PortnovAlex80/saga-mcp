@@ -212,18 +212,58 @@ export class Saga3DiscoveryEngine implements OrchestrationEngine {
         { outcome: 'failed', outcomeAuthority: 'none', proposalId: null, proposalHash: null });
     }
     if (preparation.state === 'done') {
-      const existingProposal = rt.readLatestProposal(intent.id);
-      const valid = existingProposal !== null && validateDiscoveryProposal(existingProposal.payload).valid;
+      // A restart may observe the product task already done while a previous
+      // normalization control run was interrupted. Resume/reuse that ControlIntent
+      // instead of permanently returning "done without proposal".
+      let existingProposal = rt.readLatestProposal(intent.id);
+      let recoveryCycles = 0;
+      let recoveryError: string | null = null;
+      if (!existingProposal || !validateDiscoveryProposal(existingProposal.payload).valid) {
+        const raw = rt.readLatestRawSubmission(intent.id);
+        if (raw?.status === 'normalization_required') {
+          const normalized = await this.deps.normalizationService.normalize({
+            projectId,
+            epicId,
+            sourceSubmissionId: raw.id,
+            objective: intent.objective,
+            workspaceRoot: workspace.workspaceRoot,
+            heartbeat,
+          });
+          recoveryCycles += normalized.cycles;
+          recoveryError = normalized.error;
+          existingProposal = rt.readLatestProposal(intent.id);
+        } else if (raw?.status === 'rejected_syntax') {
+          recoveryError = 'worker response was not strict JSON after deterministic fence removal';
+        } else if (raw && !existingProposal) {
+          recoveryError = `raw submission ${raw.id} status='${raw.status}' produced no canonical proposal`;
+        }
+      }
+
+      const valid = existingProposal !== null
+        && validateDiscoveryProposal(existingProposal.payload).valid;
+      if (intent.status === 'open') rt.setIntentStatus(intent.id, 'open', 'concluded');
       if (intent.status === 'executing') rt.setIntentStatus(intent.id, 'executing', 'concluded');
       if (intent.status === 'paused') rt.setIntentStatus(intent.id, 'paused', 'concluded');
-      const existingOutcome = valid
-        ? provisionalOutcomeFromProposal(existingProposal!.payload as DiscoveryProposalPayload)
-        : { outcome: 'failed' as const, authority: 'none' as const };
-      return this.runResult(projectId, epicId, valid ? 'completed' : 'failed', 0,
-        valid ? null : 'discovery task is done without a valid proposal',
-        { outcome: existingOutcome.outcome, outcomeAuthority: existingOutcome.authority,
-          proposalId: existingProposal?.id ?? null, proposalHash: existingProposal?.content_hash ?? null },
-        persistence.episodes.currentStage(epicId) ?? 'discovery', valid);
+
+      if (valid) {
+        const provisional = provisionalOutcomeFromProposal(
+          existingProposal!.payload as DiscoveryProposalPayload,
+        );
+        const authority = existingProposal!.provenance?.normalization_mode === 'lm_transformation'
+          ? 'normalized_worker_proposal' as const
+          : provisional.authority;
+        return this.runResult(projectId, epicId, 'completed', recoveryCycles, null,
+          { outcome: provisional.outcome, outcomeAuthority: authority,
+            proposalId: existingProposal!.id, proposalHash: existingProposal!.content_hash },
+          persistence.episodes.currentStage(epicId) ?? 'discovery', true);
+      }
+
+      return this.runResult(projectId, epicId, 'failed', recoveryCycles,
+        recoveryError ?? 'discovery task is done without a valid proposal',
+        { outcome: 'failed', outcomeAuthority: 'none',
+          proposalId: existingProposal?.id ?? null,
+          proposalHash: existingProposal?.content_hash ?? null },
+        persistence.episodes.currentStage(epicId) ?? 'discovery', false);
     }
 
     // 3. Start the worker-execution substrate ONCE. concurrency=1 AND

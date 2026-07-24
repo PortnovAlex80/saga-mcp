@@ -100,7 +100,6 @@ function selectEngine(
     const normalizationService = new Saga3DiscoveryNormalizationService({
       config,
       workerExecutorFactory,
-      persistence,
       host,
       runtimePersistence,
     });
