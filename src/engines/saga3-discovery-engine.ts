@@ -19,6 +19,7 @@ import {
   type DiscoveryProposalPayload,
 } from '../saga3/domain/discovery-proposal.js';
 import type { Saga3DiscoveryRuntimePersistence } from '../saga3/persistence/saga3-discovery-runtime-port.js';
+import type { DiscoveryNormalizationService } from '../saga3/application/discovery-normalization-service.js';
 
 /**
  * Task kind / skill for the discovery WorkIntent's board projection.
@@ -57,7 +58,7 @@ const DISCOVERY_ALLOWED_TOOLS = [
  */
 export interface DiscoveryRunOutcome {
   outcome: DiscoveryOutcome | 'discovery_not_implemented';
-  outcomeAuthority: 'worker_proposal' | 'none';
+  outcomeAuthority: 'worker_proposal' | 'normalized_worker_proposal' | 'none';
   proposalId: number | null;
   proposalHash: string | null;
 }
@@ -69,6 +70,7 @@ export interface Saga3DiscoveryEngineDependencies {
   host: Saga2HostRuntime;
   /** Saga 3 runtime persistence port (the only data access the engine uses). */
   runtimePersistence: Saga3DiscoveryRuntimePersistence;
+  normalizationService: DiscoveryNormalizationService;
   now?: () => Date;
   sleep?: (ms: number) => Promise<void>;
   /** Max wall-clock seconds the engine waits for the worker to finish. */
@@ -351,16 +353,45 @@ export class Saga3DiscoveryEngine implements OrchestrationEngine {
     if (terminal === 'clean') rt.setIntentStatus(intent.id, 'executing', 'concluded');
     else rt.setIntentStatus(intent.id, 'executing', 'paused');
 
-    // 5. Provisional outcome (roadmap §8.D1). NOT authoritative — D4 settles.
-    const proposal = rt.readLatestProposal(intent.id);
+    // D2: deterministic normalization happens inside proposal_submit. Only a
+    // semantic ambiguity creates a bounded cognitive-control worker. The raw
+    // response is immutable and the normalizer can only propose a transform.
+    let proposal = rt.readLatestProposal(intent.id);
+    let normalizationError: string | null = null;
+    if (terminal === 'clean' && !proposal) {
+      const raw = rt.readLatestRawSubmission(intent.id);
+      if (raw?.status === 'normalization_required') {
+        const normalized = await this.deps.normalizationService.normalize({
+          projectId,
+          epicId,
+          sourceSubmissionId: raw.id,
+          objective: intent.objective,
+          workspaceRoot: workspace.workspaceRoot,
+          heartbeat,
+        });
+        cycles += normalized.cycles;
+        normalizationError = normalized.error;
+        proposal = rt.readLatestProposal(intent.id);
+      } else if (raw?.status === 'rejected_syntax') {
+        normalizationError = 'worker response was not strict JSON after deterministic fence removal';
+      } else if (raw && !proposal) {
+        normalizationError = `raw submission ${raw.id} status='${raw.status}' produced no canonical proposal`;
+      }
+    }
+
+    // 5. Provisional outcome. A normalized proposal is still non-authoritative;
+    // D4 settlement owns the eventual committed outcome.
     let outcome: DiscoveryRunOutcome;
     if (proposal) {
       const validation = validateDiscoveryProposal(proposal.payload);
       if (validation.valid) {
         const payload = proposal.payload as DiscoveryProposalPayload;
         const provisional = provisionalOutcomeFromProposal(payload);
+        const normalizedAuthority = proposal.provenance?.normalization_mode === 'lm_transformation'
+          ? 'normalized_worker_proposal' as const
+          : provisional.authority;
         outcome = {
-          outcome: provisional.outcome, outcomeAuthority: provisional.authority,
+          outcome: provisional.outcome, outcomeAuthority: normalizedAuthority,
           proposalId: proposal.id, proposalHash: proposal.content_hash,
         };
         heartbeat('PROPOSAL_VALID', `id=${proposal.id} outcome=${provisional.outcome} terminal=${terminal}`);
@@ -401,12 +432,12 @@ export class Saga3DiscoveryEngine implements OrchestrationEngine {
     //   executor_dead    → failed
     //   task_unclaimed   → failed (substrate gave up without worker_done)
     const reason: OrchestrationRunResult['reason'] =
-      terminal === 'clean' ? 'completed'
+      terminal === 'clean' ? (validProposal ? 'completed' : 'failed')
       : terminal === 'timeout' ? 'paused_timeout'
       : terminal === 'stopped' ? 'stopped'
       : 'failed';
     const lastError: string | null =
-      terminal === 'clean' ? null
+      terminal === 'clean' ? (validProposal ? null : normalizationError ?? 'clean worker closure without a valid proposal')
       : terminal === 'stopped' ? 'discovery execution was stopped; intent paused for resume'
       : terminal === 'timeout' ? `discovery run timed out after ${Math.round(this.maxRunMs / 1000)}s`
       : terminal === 'task_blocked' ? `discovery task ended blocked (terminal=${terminal}); not a clean worker closure`

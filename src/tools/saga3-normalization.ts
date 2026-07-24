@@ -12,8 +12,10 @@ import {
 import type { ProposalProvenance } from '../saga3/domain/proposal.js';
 import {
   canonicalJson,
+  ensureSaga3NormalizationSchema,
   insertNormalizationProposal,
   markNormalizationAccepted,
+  markRawSubmissionNormalized,
   readRawSubmission,
 } from '../saga3/persistence/saga3-normalization-repository.js';
 
@@ -87,6 +89,7 @@ export function createSaga3NormalizationHandlers(
 ): { definitions: Tool[]; handlers: Record<string, ToolHandler> } {
   const getDbFn = options.db ?? getDb;
   const now = options.now ?? (() => new Date());
+  ensureSaga3NormalizationSchema(getDbFn());
 
   const normalizationGet: ToolHandler = args => {
     const controlIntentId = integerArg(args, 'control_intent_id');
@@ -136,6 +139,8 @@ export function createSaga3NormalizationHandlers(
       );
       const source = readRawSubmission(db, sourceSubmissionId);
       if (!source) throw new Error(`normalization_submit: source submission ${sourceSubmissionId} not found`);
+      const sourceIntent = db.prepare(`SELECT epic_id FROM saga3_work_intents WHERE id=?`).get(source.intent_id) as { epic_id: number } | undefined;
+      if (!sourceIntent || sourceIntent.epic_id !== binding.control.epic_id) throw new Error('normalization_submit: source submission/control epic mismatch');
       if (source.status !== 'normalization_required') {
         throw new Error(`normalization_submit: source submission status is '${source.status}'`);
       }
@@ -196,6 +201,7 @@ export function createSaga3NormalizationHandlers(
       if (!product) throw new Error('normalization_submit: accepted product proposal vanished');
 
       markNormalizationAccepted(db, inserted.record.id);
+      markRawSubmissionNormalized(db, source.id);
       if (productInsert.changes === 1) {
         db.prepare(
           `INSERT INTO comments (task_id, author, content)

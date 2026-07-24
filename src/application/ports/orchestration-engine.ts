@@ -50,7 +50,7 @@ export interface OrchestrationRunResult {
   pipelineScope?: string;
   scopeCompleted?: boolean;
   outcome?: string;
-  outcomeAuthority?: 'worker_proposal' | 'none';
+  outcomeAuthority?: 'worker_proposal' | 'normalized_worker_proposal' | 'none';
   proposalId?: number | null;
   proposalHash?: string | null;
 }

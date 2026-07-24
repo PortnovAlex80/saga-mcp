@@ -7,6 +7,65 @@ import type {
 } from '../domain/discovery-normalization-records.js';
 import type { ProposalProvenance } from '../domain/proposal.js';
 
+export function ensureSaga3NormalizationSchema(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS saga3_raw_submissions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      intent_id INTEGER NOT NULL REFERENCES saga3_work_intents(id) ON DELETE CASCADE,
+      task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+      execution_id TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      schema_version TEXT NOT NULL,
+      raw_payload TEXT NOT NULL,
+      raw_hash TEXT NOT NULL,
+      parsed_payload TEXT,
+      status TEXT NOT NULL CHECK (status IN ('accepted_deterministically','normalization_required','rejected_syntax','normalized')),
+      normalization_trace TEXT NOT NULL DEFAULT '[]',
+      validation_errors TEXT NOT NULL DEFAULT '[]',
+      alias_conflicts TEXT NOT NULL DEFAULT '[]',
+      allowed_evidence_refs TEXT NOT NULL DEFAULT '[]',
+      provenance TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE TABLE IF NOT EXISTS saga3_control_intents (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      epic_id INTEGER NOT NULL REFERENCES epics(id) ON DELETE CASCADE,
+      kind TEXT NOT NULL,
+      question TEXT NOT NULL,
+      source_submission_id INTEGER NOT NULL UNIQUE REFERENCES saga3_raw_submissions(id) ON DELETE CASCADE,
+      authority_intent_id INTEGER NOT NULL REFERENCES saga3_work_intents(id) ON DELETE CASCADE,
+      projected_task_id INTEGER REFERENCES tasks(id) ON DELETE SET NULL,
+      status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','executing','paused','concluded','cancelled')),
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE TABLE IF NOT EXISTS saga3_normalization_proposals (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      control_intent_id INTEGER NOT NULL REFERENCES saga3_control_intents(id) ON DELETE CASCADE,
+      source_submission_id INTEGER NOT NULL REFERENCES saga3_raw_submissions(id) ON DELETE CASCADE,
+      task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+      execution_id TEXT NOT NULL,
+      payload TEXT NOT NULL,
+      content_hash TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'submitted' CHECK (status IN ('submitted','accepted_by_kernel','rejected_by_kernel')),
+      provenance TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_saga3_raw_submission_idempotency
+      ON saga3_raw_submissions(intent_id, execution_id, raw_hash);
+    CREATE INDEX IF NOT EXISTS idx_saga3_raw_submission_intent
+      ON saga3_raw_submissions(intent_id);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_saga3_normalization_idempotency
+      ON saga3_normalization_proposals(control_intent_id, execution_id, content_hash);
+    CREATE INDEX IF NOT EXISTS idx_saga3_control_epic
+      ON saga3_control_intents(epic_id, status);
+  `);
+  const columns = db.prepare(`PRAGMA table_info(saga3_proposals)`).all() as Array<{ name: string }>;
+  const names = new Set(columns.map(column => column.name));
+  if (!names.has('source_submission_id')) db.exec(`ALTER TABLE saga3_proposals ADD COLUMN source_submission_id INTEGER`);
+  if (!names.has('normalization_proposal_id')) db.exec(`ALTER TABLE saga3_proposals ADD COLUMN normalization_proposal_id INTEGER`);
+}
+
 export function hashRawSubmission(raw: string): string {
   return createHash('sha256').update(raw).digest('hex');
 }
@@ -72,6 +131,13 @@ export function readRawSubmission(
   return row ? rawRowToRecord(row) : null;
 }
 
+export function markRawSubmissionNormalized(
+  db: Database.Database,
+  submissionId: number,
+): void {
+  db.prepare(`UPDATE saga3_raw_submissions SET status='normalized' WHERE id=? AND status IN ('normalization_required','normalized')`).run(submissionId);
+}
+
 export function readLatestRawSubmissionForIntent(
   db: Database.Database,
   intentId: number,
@@ -118,6 +184,15 @@ export function insertNormalizationProposal(
   ).get(input.controlIntentId, input.executionId, hash) as NormalizationProposalRow | undefined;
   if (!row) throw new Error('saga3: normalization proposal vanished after insert');
   return { record: normalizationRowToRecord(row), replayed: info.changes === 0 };
+}
+
+export function readLatestNormalizationProposalForControl(
+  db: Database.Database,
+  controlIntentId: number,
+): DiscoveryNormalizationProposalRecord | null {
+  const row = db.prepare(`SELECT * FROM saga3_normalization_proposals WHERE control_intent_id=? ORDER BY id DESC LIMIT 1`)
+    .get(controlIntentId) as NormalizationProposalRow | undefined;
+  return row ? normalizationRowToRecord(row) : null;
 }
 
 export function markNormalizationAccepted(
