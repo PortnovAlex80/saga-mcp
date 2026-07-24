@@ -11,6 +11,7 @@ import { SqliteSaga3DiscoveryRuntime } from '../saga3/persistence/sqlite-saga3-d
 import { Saga3DiscoveryNormalizationService } from '../saga3/application/discovery-normalization-service.js';
 import { Saga3DiscoveryReadinessService } from '../saga3/application/discovery-readiness-service.js';
 import { Saga3DiscoverySettlementService } from '../saga3/application/discovery-settlement-service.js';
+import { Saga3DiscoveryDiagnosisService } from '../saga3/application/discovery-diagnosis-service.js';
 import type { OrchestrationEngine } from '../application/ports/orchestration-engine.js';
 import { LegacyEngineAdministration } from '../infrastructure/engine/legacy-engine-administration.js';
 import {
@@ -115,6 +116,15 @@ function selectEngine(
     const settlementService = new Saga3DiscoverySettlementService({
       runtimePersistence,
     });
+    // D5: advisory diagnosis service. Mirrors the readiness/settlement service
+    // wiring: a bounded worker lifecycle over the runtime persistence port. The
+    // diagnosis is ADVISORY ONLY — it never changes the D4 authoritative result.
+    const diagnosisService = new Saga3DiscoveryDiagnosisService({
+      config,
+      workerExecutorFactory,
+      host,
+      runtimePersistence,
+    });
     return new Saga3DiscoveryEngine({
       config,
       workerExecutorFactory,
@@ -124,6 +134,7 @@ function selectEngine(
       normalizationService,
       readinessService,
       settlementService,
+      diagnosisService,
     });
   }
   // Every other recognised mode (v2 / v3 / saga2) selects Saga2Engine. An

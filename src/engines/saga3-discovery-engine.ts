@@ -22,6 +22,10 @@ import type { Saga3DiscoveryRuntimePersistence } from '../saga3/persistence/saga
 import type { DiscoveryNormalizationService } from '../saga3/application/discovery-normalization-service.js';
 import type { DiscoveryReadinessService } from '../saga3/application/discovery-readiness-service.js';
 import type { DiscoverySettlementService, DiscoverySettlementResult, ProvisionalOutcome } from '../saga3/application/discovery-settlement-service.js';
+import type {
+  DiscoveryDiagnosisResult,
+  DiscoveryDiagnosisService,
+} from '../saga3/application/discovery-diagnosis-service.js';
 import type { ReadinessShadowResult } from '../saga3/domain/discovery-readiness-assessment.js';
 import type { ReadinessAssessmentRecord, ReadinessControlIntentRecord } from '../saga3/domain/discovery-readiness-records.js';
 
@@ -33,6 +37,46 @@ import type { ReadinessAssessmentRecord, ReadinessControlIntentRecord } from '..
 type EngineSettlementResult = Omit<DiscoverySettlementResult, 'status'> & {
   status: 'issued' | 'failed' | 'not_run';
 };
+
+/**
+ * The diagnosis view the engine threads through runResult. A mirror of the
+ * service's discriminated union (`DiscoveryDiagnosisResult`) plus a synthetic
+ * 'not_run' status for runs that did not invoke diagnosis (no certificate, or
+ * diagnosis not wired in tests). Like settlement, the engine constructs this
+ * locally so the result object stays shaped even when the service is absent.
+ *
+ * ADVISORY ONLY (invariants I1/I2): this section never feeds back into the
+ * top-level outcome/authority/scope/reason/finalStage fields. It is surfaced
+ * separately in `OrchestrationRunResult.diagnosis` for observability.
+ */
+type EngineDiagnosisResult = {
+  status: 'completed' | 'failed' | 'paused' | 'not_run';
+  authority: 'advisory_diagnosis' | 'none';
+  reportId: number | null;
+  reportHash: string | null;
+  target: { certificateId: number | null; certificateHash: string | null };
+  summary: string | null;
+  primaryCauses: string[];
+  blockingGaps: string[];
+  recommendedActions: string[];
+  error: string | null;
+};
+
+/** Build the default not_run diagnosis (mirrors the settlement not_run default). */
+function notRunDiagnosis(): EngineDiagnosisResult {
+  return {
+    status: 'not_run',
+    authority: 'none',
+    reportId: null,
+    reportHash: null,
+    target: { certificateId: null, certificateHash: null },
+    summary: null,
+    primaryCauses: [],
+    blockingGaps: [],
+    recommendedActions: [],
+    error: null,
+  };
+}
 
 /**
  * Task kind / skill for the discovery WorkIntent's board projection.
@@ -103,6 +147,16 @@ export interface Saga3DiscoveryEngineDependencies {
    * the top-level outcome.
    */
   settlementService?: DiscoverySettlementService;
+  /**
+   * D5 advisory diagnosis service. Optional so D1-D4 engine tests that do not
+   * exercise diagnosis stay green without wiring a fake; production
+   * (composition-root) always supplies it. When absent (or when no authoritative
+   * certificate was issued), the engine records diagnosis.status='not_run' and
+   * NEVER mutates the top-level outcome/authority/scope/reason/finalStage set
+   * by D4 (invariants I1/I5). Diagnosis runs only after settlement issued a
+   * certificate authoritatively (topLevelAuthority='discovery_settlement_policy').
+   */
+  diagnosisService?: DiscoveryDiagnosisService;
   now?: () => Date;
   sleep?: (ms: number) => Promise<void>;
   /** Max wall-clock seconds the engine waits for the worker to finish. */
@@ -377,10 +431,18 @@ export class Saga3DiscoveryEngine implements OrchestrationEngine {
             decision: null, reasonCodes: [], error: null,
           };
         }
+        // D5 recovery: mirror the fresh-run diagnosis hook. Diagnosis runs ONLY
+        // when the recovery settlement issued a certificate authoritatively
+        // (status='issued' + non-null certificate). When the recovery settlement
+        // is not_run/failed, diagnosis stays not_run. Invariants I1/I5 hold:
+        // the diagnosis is advisory and never mutates top-level fields.
+        const recoveryDiagnosis = await this.runDiagnosis(
+          projectId, epicId, recoverySettlement, workspace.workspaceRoot, heartbeat,
+        );
         return this.runResult(projectId, epicId, 'completed', recoveryCycles, null,
           provisionalOutcome,
           persistence.episodes.currentStage(epicId) ?? 'discovery', true,
-          recoveryReadiness, recoverySettlement);
+          recoveryReadiness, recoverySettlement, recoveryDiagnosis);
       }
 
       return this.runResult(projectId, epicId, 'failed', recoveryCycles,
@@ -700,7 +762,115 @@ export class Saga3DiscoveryEngine implements OrchestrationEngine {
       };
     }
 
-    return this.runResult(projectId, epicId, reason, cycles, lastError, outcome, finalStage, scopeCompleted, readiness, settlement);
+    // D5: advisory diagnosis. Eligibility (D5-TEST-MATRIX §12) REQUIRES the
+    // settlement to have issued a certificate AUTHORITATIVELY: status='issued'
+    // with non-null certificateId + certificateHash. This is exactly the
+    // condition under which runResult sets topLevelAuthority=
+    // 'discovery_settlement_policy'. When not eligible (settlement failed /
+    // not_run, or no certificate), diagnosis stays not_run.
+    //
+    // CRITICAL invariants I1/I5: the diagnosis result is ADVISORY ONLY. It MUST
+    // NOT change topLevelOutcome, topLevelAuthority, topLevelReason,
+    // topLevelScope, topLevelLastError, or finalStage — those were set
+    // authoritatively by the settlement block above and are projected by
+    // runResult. A diagnosis failure (worker crash, invalid payload, persistence
+    // error) leaves the D4 result COMPLETE and UNCHANGED; only the advisory
+    // diagnosis section records the failure. There is NO `if (diagnosis...)`
+    // branch that mutates top-level fields.
+    const diagnosis = await this.runDiagnosis(
+      projectId, epicId, settlement, workspace.workspaceRoot, heartbeat,
+    );
+
+    return this.runResult(projectId, epicId, reason, cycles, lastError, outcome, finalStage, scopeCompleted, readiness, settlement, diagnosis);
+  }
+
+  /**
+   * D5 advisory diagnosis hook. Mirrors the D4 settlement eligibility + try/catch
+   * isolation pattern. Returns an `EngineDiagnosisResult` that runResult surfaces
+   * in the `diagnosis` section WITHOUT touching any top-level field (I1/I5).
+   *
+   * Eligibility (§12): settlement.status='issued' AND certificateId != null AND
+   * certificateHash != null — i.e. settlement issued authoritatively. This is the
+   * exact condition under which runResult sets topLevelAuthority=
+   * 'discovery_settlement_policy'. When the diagnosis service is not wired
+   * (D1-D4 engine tests) or no certificate was issued, returns notRunDiagnosis().
+   *
+   * On ANY throw from the service, returns status='failed' with the error — the
+   * D4 result stays COMPLETE (I5). The service itself is defensive and returns
+   * failed/failed-payload results rather than throwing, but the try/catch is
+   * belt-and-braces (mirrors the settlement hook).
+   */
+  private async runDiagnosis(
+    projectId: number,
+    epicId: number,
+    settlement: EngineSettlementResult,
+    workspaceRoot: string,
+    heartbeat: (event: string, message: string) => void,
+  ): Promise<EngineDiagnosisResult> {
+    const eligible =
+      settlement.status === 'issued'
+      && settlement.certificateId !== null
+      && settlement.certificateHash !== null
+      && !!this.deps.diagnosisService;
+    if (!eligible || !this.deps.diagnosisService
+        || settlement.certificateId === null
+        || settlement.certificateHash === null) {
+      return notRunDiagnosis();
+    }
+    try {
+      const result = await this.deps.diagnosisService.diagnose({
+        projectId,
+        epicId,
+        certificateId: settlement.certificateId,
+        certificateHash: settlement.certificateHash,
+        workspaceRoot,
+        heartbeat,
+      });
+      return this.projectDiagnosisResult(result);
+    } catch (diagErr) {
+      const msg = diagErr instanceof Error ? diagErr.message : String(diagErr);
+      heartbeat('DIAGNOSIS_ISOLATED_FAILURE', msg);
+      return {
+        status: 'failed',
+        authority: 'none',
+        reportId: null,
+        reportHash: null,
+        target: {
+          certificateId: settlement.certificateId,
+          certificateHash: settlement.certificateHash,
+        },
+        summary: null,
+        primaryCauses: [],
+        blockingGaps: [],
+        recommendedActions: [],
+        error: msg,
+      };
+    }
+  }
+
+  /**
+   * Map the service's `DiscoveryDiagnosisResult` discriminated union into the
+   * engine's `EngineDiagnosisResult`. The shapes are identical by construction;
+   * this exists so the engine owns its result type (mirrors how
+   * `EngineSettlementResult` relates to `DiscoverySettlementResult`). It never
+   * mutates anything outside the advisory diagnosis section.
+   */
+  private projectDiagnosisResult(result: DiscoveryDiagnosisResult): EngineDiagnosisResult {
+    return {
+      status: result.status,
+      authority: result.authority,
+      reportId: result.reportId,
+      reportHash: result.reportHash,
+      target: {
+        certificateId: result.target.certificateId,
+        certificateHash: result.target.certificateHash,
+      },
+      summary: result.summary,
+      primaryCauses: result.primaryCauses,
+      blockingGaps: result.blockingGaps,
+      recommendedActions: result.recommendedActions,
+      error: result.error,
+    };
   }
 
   private runResult(
@@ -723,6 +893,7 @@ export class Saga3DiscoveryEngine implements OrchestrationEngine {
       policyVersion: null, policyHash: null,
       decision: null, reasonCodes: [], error: null,
     },
+    diagnosis: EngineDiagnosisResult = notRunDiagnosis(),
   ): OrchestrationRunResult {
     // The provisional outcome is what the worker produced (preserved
     // separately so settlement's authoritative override is visible but the
@@ -789,6 +960,21 @@ export class Saga3DiscoveryEngine implements OrchestrationEngine {
         decision: settlement.decision,
         reasonCodes: settlement.reasonCodes,
         error: settlement.error,
+      },
+      diagnosis: {
+        status: diagnosis.status,
+        authority: diagnosis.authority,
+        reportId: diagnosis.reportId,
+        reportHash: diagnosis.reportHash,
+        target: {
+          certificateId: diagnosis.target.certificateId,
+          certificateHash: diagnosis.target.certificateHash,
+        },
+        summary: diagnosis.summary,
+        primaryCauses: diagnosis.primaryCauses,
+        blockingGaps: diagnosis.blockingGaps,
+        recommendedActions: diagnosis.recommendedActions,
+        error: diagnosis.error,
       },
     };
   }
