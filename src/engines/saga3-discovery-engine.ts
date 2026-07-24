@@ -500,18 +500,33 @@ export class Saga3DiscoveryEngine implements OrchestrationEngine {
     // Missing/invalid Proposal → readiness stays not_run, no advisor worker.
     let readiness: ReadinessShadowResult;
     if (validProposal && proposal && this.deps.readinessService) {
-      const assessed = await this.deps.readinessService.assess({
-        projectId,
-        epicId,
-        proposalId: proposal.id,
-        proposalContentHash: proposal.content_hash,
-        sourceIntentId: intent.id,
-        objective: intent.objective,
-        workspaceRoot: workspace.workspaceRoot,
-        heartbeat,
-      });
-      cycles += assessed.cycles;
-      readiness = assessed.shadow;
+      // P0-3: the entire readiness phase is ISOLATED from the product result.
+      // ensureReadinessControl / prepareIntentForExecution / executor
+      // construction run BEFORE the service's internal try — an exception
+      // there must NOT propagate to the engine's outer catch and rewrite a
+      // successful discovery as 'failed'. Capture it as a readiness failure.
+      try {
+        const assessed = await this.deps.readinessService.assess({
+          projectId,
+          epicId,
+          proposalId: proposal.id,
+          proposalContentHash: proposal.content_hash,
+          sourceIntentId: intent.id,
+          objective: intent.objective,
+          workspaceRoot: workspace.workspaceRoot,
+          heartbeat,
+        });
+        cycles += assessed.cycles;
+        readiness = assessed.shadow;
+      } catch (readinessErr) {
+        const msg = readinessErr instanceof Error ? readinessErr.message : String(readinessErr);
+        heartbeat('READINESS_ISOLATED_FAILURE', msg);
+        readiness = {
+          status: 'failed', authority: 'none',
+          assessmentId: null, assessmentHash: null,
+          overallReadiness: null, recommendedNextAction: null, error: msg,
+        };
+      }
     } else {
       readiness = {
         status: 'not_run', authority: 'none',

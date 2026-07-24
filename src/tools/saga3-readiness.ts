@@ -24,12 +24,15 @@ import {
   type ReadinessAssessmentPayload,
 } from '../saga3/domain/discovery-readiness-assessment.js';
 import type { ProposalProvenance } from '../saga3/domain/proposal.js';
-import type { DiscoveryProposalPayload } from '../saga3/domain/discovery-proposal.js';
+import { validateDiscoveryProposal, type DiscoveryProposalPayload } from '../saga3/domain/discovery-proposal.js';
 import {
   ensureSaga3ReadinessSchema,
   insertReadinessAssessment,
   markReadinessAccepted,
+  markReadinessRejected,
 } from '../saga3/persistence/saga3-readiness-repository.js';
+import { canonicalJson } from '../saga3/persistence/saga3-normalization-repository.js';
+import { createHash } from 'node:crypto';
 
 export interface Saga3ReadinessHandlersOptions {
   db?: () => ReturnType<typeof getDb>;
@@ -203,9 +206,7 @@ export function createSaga3ReadinessHandlers(
       const db = getDbFn();
       const binding = requireReadinessBinding(db, controlIntentId, executionId);
 
-      // Re-read the product Proposal and re-bind to its immutable hash. A
-      // changed hash is a new assessment target and must NOT reuse this
-      // ControlIntent's assessment.
+      // Re-read the product Proposal and re-bind to its immutable version.
       const proposal = db.prepare(
         `SELECT id, intent_id, task_id, execution_id, payload, content_hash,
                 provenance, source_submission_id, normalization_proposal_id
@@ -214,16 +215,81 @@ export function createSaga3ReadinessHandlers(
       if (!proposal) {
         throw new Error(`readiness_submit: Proposal ${binding.control.proposal_id} not found`);
       }
-      if (proposal.content_hash !== binding.control.proposal_content_hash) {
-        throw new Error(
-          `readiness_submit: Proposal ${proposal.id} content_hash changed; ControlIntent ${controlIntentId} is for an older version`,
-        );
+
+      // P1-2: STRICT Proposal target re-validation. The advisor must not assess
+      // a corrupted or cross-bound Proposal. Each check below is a precondition
+      // for persisting the assessment — failures here are NOT advisor proposals
+      // (they are integrity violations) and throw before any row is written.
+      const targetErrors: string[] = [];
+      let proposalPayload: DiscoveryProposalPayload;
+      try {
+        proposalPayload = JSON.parse(proposal.payload) as DiscoveryProposalPayload;
+      } catch {
+        throw new Error(`readiness_submit: Proposal ${proposal.id} payload is not valid JSON`);
       }
-      const proposalPayload = JSON.parse(proposal.payload) as DiscoveryProposalPayload;
+      const proposalValidation = validateDiscoveryProposal(proposalPayload);
+      if (!proposalValidation.valid) {
+        targetErrors.push(`Proposal payload is structurally invalid: ${proposalValidation.errors.join('; ')}`);
+      }
+      const recomputedHash = createHash('sha256').update(canonicalJson(proposalPayload)).digest('hex');
+      if (recomputedHash !== proposal.content_hash) {
+        targetErrors.push(`Proposal content_hash mismatch: stored=${proposal.content_hash.slice(0, 12)}… recomputed=${recomputedHash.slice(0, 12)}…`);
+      }
+      if (recomputedHash !== binding.control.proposal_content_hash) {
+        targetErrors.push('Proposal content_hash changed since the ControlIntent was created; this is a new assessment target');
+      }
+      if (proposal.intent_id !== binding.control.source_intent_id) {
+        targetErrors.push(`Proposal intent_id=${proposal.intent_id} does not match ControlIntent source_intent_id=${binding.control.source_intent_id}`);
+      }
+      // Epic binding: the source WorkIntent's epic must equal the ControlIntent's epic.
+      const sourceIntentEpic = db.prepare('SELECT epic_id FROM saga3_work_intents WHERE id=?')
+        .get(binding.control.source_intent_id) as { epic_id: number } | undefined;
+      if (!sourceIntentEpic || sourceIntentEpic.epic_id !== binding.control.epic_id) {
+        targetErrors.push('ControlIntent source_intent_id is not bound to this epic');
+      }
+      const execEpic = db.prepare('SELECT epic_id FROM worker_executions WHERE execution_id=?')
+        .get(executionId) as { epic_id: number } | undefined;
+      if (!execEpic || execEpic.epic_id !== binding.control.epic_id) {
+        targetErrors.push('execution epic does not match the ControlIntent epic');
+      }
+      if (targetErrors.length > 0) {
+        // Integrity violation — never an advisor proposal. Throw without
+        // persisting: this call was not authorized to assess this Proposal.
+        throw new Error(`readiness_submit: Proposal target integrity check failed — ${targetErrors.join('; ')}`);
+      }
+
       const allowedSourceRefs = collectAllowedSourceRefs(proposal, proposalPayload);
 
-      // Deterministic validation — no LM. Rejects malformed or evidence-
-      // inventing assessments before they are persisted as accepted.
+      // P0-2: persist the submitted assessment FIRST (status='submitted'), THEN
+      // run deterministic validation. A rejection must be DURABLE — the advisor
+      // proposed, the kernel rejected, and the rejection reason survives so a
+      // human/D4 can see why. We never silently discard an advisor proposal.
+      const inserted = insertReadinessAssessment(db, {
+        controlIntentId,
+        proposalId: proposal.id,
+        proposalContentHash: proposal.content_hash,
+        taskId: binding.control.projected_task_id!,
+        executionId,
+        payload,
+        overallReadiness: null,           // set on accept; stays null on reject
+        recommendedNextAction: null,      // set on accept; stays null on reject
+        validationErrors: [],             // set on reject
+        provenance: binding.provenance,
+      });
+
+      // If this exact assessment (control + content hash) was already
+      // submitted, return the prior verdict without re-validating.
+      if (inserted.replayed) {
+        return {
+          assessment_id: inserted.record.id,
+          content_hash: inserted.record.content_hash,
+          status: inserted.record.status,
+          replayed: true,
+          validation_errors: inserted.record.validation_errors,
+        };
+      }
+
+      // Deterministic validation — no LM. This IS the kernel acceptance gate.
       const validation = validateReadinessAssessment(
         payload,
         proposal.id,
@@ -231,48 +297,61 @@ export function createSaga3ReadinessHandlers(
         allowedSourceRefs,
       );
       if (!validation.valid) {
-        throw new Error(
-          `readiness_submit: assessment validation failed — ${validation.errors.join('; ')}`,
-        );
-      }
-      const typed = payload as ReadinessAssessmentPayload;
-      // Re-check the immutable-target identity (defence in depth: the
-      // validator already enforced it, but a replay must not cross targets).
-      if (typed.proposal_id !== binding.control.proposal_id
-          || typed.proposal_content_hash !== binding.control.proposal_content_hash) {
-        throw new Error('readiness_submit: assessment targets a different Proposal version than the ControlIntent');
-      }
-
-      const inserted = insertReadinessAssessment(db, {
-        controlIntentId,
-        proposalId: proposal.id,
-        proposalContentHash: proposal.content_hash,
-        taskId: binding.control.projected_task_id!,
-        executionId,
-        payload: typed,
-        overallReadiness: typed.overall_readiness,
-        recommendedNextAction: typed.recommended_next_action,
-        provenance: binding.provenance,
-      });
-
-      // The advisor PROPOSES; only the kernel marks accepted. Validation
-      // above IS the kernel acceptance gate.
-      markReadinessAccepted(db, inserted.record.id);
-
-      // Audit trail comment on the advisor task (not the product task).
-      if (!inserted.replayed) {
+        // P0: mark rejected and KEEP the row + errors. The advisor proposed;
+        // the kernel rejected; the decision is durable.
+        markReadinessRejected(db, inserted.record.id, validation.errors);
         db.prepare(
           `INSERT INTO comments (task_id, author, content) VALUES (?, 'saga3-kernel', ?)`,
         ).run(
           binding.control.projected_task_id,
-          `Readiness assessment accepted: control=${controlIntentId} assessment=${inserted.record.id} overall=${typed.overall_readiness} hash=${inserted.record.content_hash.slice(0, 12)}…`,
+          `Readiness assessment REJECTED: control=${controlIntentId} assessment=${inserted.record.id} errors=${validation.errors.length > 0 ? validation.errors[0].slice(0, 120) : 'unknown'}`,
         );
+        return {
+          assessment_id: inserted.record.id,
+          content_hash: inserted.record.content_hash,
+          status: 'rejected_by_kernel' as const,
+          replayed: false,
+          validation_errors: validation.errors,
+        };
       }
+
+      const typed = payload as ReadinessAssessmentPayload;
+      // Defence in depth: the validator already enforced the identity, but a
+      // replay must not cross targets.
+      if (typed.proposal_id !== binding.control.proposal_id
+          || typed.proposal_content_hash !== binding.control.proposal_content_hash) {
+        const crossTargetErrors = ['assessment targets a different Proposal version than the ControlIntent'];
+        markReadinessRejected(db, inserted.record.id, crossTargetErrors);
+        return {
+          assessment_id: inserted.record.id,
+          content_hash: inserted.record.content_hash,
+          status: 'rejected_by_kernel' as const,
+          replayed: false,
+          validation_errors: crossTargetErrors,
+        };
+      }
+
+      // The advisor PROPOSES; only the kernel marks accepted. Validation above
+      // IS the kernel acceptance gate. Update the denormalized verdict columns.
+      markReadinessAccepted(db, inserted.record.id);
+      db.prepare(
+        `UPDATE saga3_readiness_assessments
+            SET overall_readiness=?, recommended_next_action=?
+          WHERE id=? AND status='accepted_by_kernel'`,
+      ).run(typed.overall_readiness, typed.recommended_next_action, inserted.record.id);
+
+      db.prepare(
+        `INSERT INTO comments (task_id, author, content) VALUES (?, 'saga3-kernel', ?)`,
+      ).run(
+        binding.control.projected_task_id,
+        `Readiness assessment accepted: control=${controlIntentId} assessment=${inserted.record.id} overall=${typed.overall_readiness} hash=${inserted.record.content_hash.slice(0, 12)}…`,
+      );
       return {
         assessment_id: inserted.record.id,
         content_hash: inserted.record.content_hash,
         status: 'accepted_by_kernel' as const,
-        replayed: inserted.replayed,
+        replayed: false,
+        validation_errors: [],
       };
     });
   };

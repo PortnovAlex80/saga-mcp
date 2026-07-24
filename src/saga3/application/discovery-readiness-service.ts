@@ -73,9 +73,11 @@ export class Saga3DiscoveryReadinessService implements DiscoveryReadinessService
     });
     const preparation = rt.prepareIntentForExecution(control.authorityIntentId, control.taskId);
 
-    // Restart-resume: if the advisor task is already done, an accepted
-    // assessment exists (or none was ever submitted). Either way, no new
-    // worker spawn — return the shadow verdict without touching the outcome.
+    // Restart-resume: if the advisor task is already done, NO new worker
+    // spawns. But task=done does NOT imply success — the advisor may have
+    // exited without a valid/accepted assessment (rejected, or never
+    // submitted). The shadow status is derived from the latest assessment
+    // row, not from the task terminal condition (P0-1).
     if (preparation.state === 'done') {
       if (control.authorityIntentStatus === 'executing') {
         rt.setIntentStatus(control.authorityIntentId, 'executing', 'concluded');
@@ -87,7 +89,7 @@ export class Saga3DiscoveryReadinessService implements DiscoveryReadinessService
       } else if (control.controlStatus === 'paused') {
         rt.setReadinessControlStatus(control.controlIntentId, 'paused', 'concluded');
       }
-      return { success: true, cycles: 0, error: null, shadow: this.shadowFrom(control.controlIntentId, 'completed', null) };
+      return { success: true, cycles: 0, error: null, shadow: this.shadowFrom(control.controlIntentId, 'restart') };
     }
     if (preparation.state === 'blocked' || preparation.state === 'active') {
       return {
@@ -167,7 +169,10 @@ export class Saga3DiscoveryReadinessService implements DiscoveryReadinessService
         'READINESS_COMPLETED',
         `control=${control.controlIntentId} proposal=${request.proposalId}`,
       );
-      return { success: true, cycles, error: null, shadow: this.shadowFrom(control.controlIntentId, 'completed', null) };
+      // task=done is necessary but NOT sufficient for success. shadowFrom
+      // inspects the latest assessment row: accepted → completed, rejected or
+      // absent → failed (the advisor exited without an accepted assessment).
+      return { success: true, cycles, error: null, shadow: this.shadowFrom(control.controlIntentId, 'clean') };
     }
 
     // Interruption/timeout → paused. Restart reuses the same ControlIntent/task.
@@ -183,34 +188,85 @@ export class Saga3DiscoveryReadinessService implements DiscoveryReadinessService
 
   /**
    * Project the latest assessment for a control intent into the shadow result.
-   * Reads-only: never mutates outcome/authority/scope. If no accepted
-   * assessment exists, returns not_run/none.
+   * Reads-only: never mutates outcome/authority/scope.
+   *
+   * P0-1 matrix:
+   *   accepted_by_kernel assessment → completed / shadow_advisor + verdict
+   *   rejected_by_kernel assessment → failed / none + rejection reasons
+   *   assessment exists but not accepted/rejected (submitted) → failed
+   *   NO assessment + advisor ran (clean/restart) → failed (exited without one)
+   *   NO assessment + never invoked → not_run
    */
   private shadowFrom(
     controlIntentId: number,
-    status: ReadinessShadowResult['status'],
-    error: string | null,
+    hint: 'clean' | 'restart' | 'completed' | 'failed' | 'paused',
+    error: string | null = null,
   ): ReadinessShadowResult {
     const assessment = this.deps.runtimePersistence.readLatestReadinessAssessment(controlIntentId);
     if (assessment && assessment.status === 'accepted_by_kernel') {
       return {
-        status,
+        status: 'completed',
         authority: 'shadow_advisor',
         assessmentId: assessment.id,
         assessmentHash: assessment.content_hash,
         overallReadiness: assessment.overall_readiness,
         recommendedNextAction: assessment.recommended_next_action,
-        error,
+        error: null,
       };
     }
+    if (assessment && assessment.status === 'rejected_by_kernel') {
+      // P0-2: rejected assessments are durable and observable.
+      const rejectionError = `assessment rejected: ${(assessment.validation_errors ?? []).join('; ')}`;
+      return {
+        status: 'failed',
+        authority: 'none',
+        assessmentId: assessment.id,
+        assessmentHash: assessment.content_hash,
+        overallReadiness: null,
+        recommendedNextAction: null,
+        error: rejectionError,
+      };
+    }
+    if (assessment) {
+      // submitted (no terminal verdict yet) — treat as failed; the advisor
+      // proposed but the kernel did not reach a verdict.
+      return {
+        status: 'failed', authority: 'none',
+        assessmentId: assessment.id, assessmentHash: assessment.content_hash,
+        overallReadiness: null, recommendedNextAction: null,
+        error: error ?? 'advisor assessment was not accepted by the kernel',
+      };
+    }
+    // NO assessment row at all.
+    if (hint === 'clean' || hint === 'restart') {
+      // The advisor ran (task reached done) or restart observed a done task,
+      // but no assessment was ever persisted/accepted → failed.
+      return {
+        status: 'failed', authority: 'none',
+        assessmentId: null, assessmentHash: null,
+        overallReadiness: null, recommendedNextAction: null,
+        error: error ?? 'advisor completed without submitting an accepted assessment',
+      };
+    }
+    if (hint === 'failed') {
+      return {
+        status: 'failed', authority: 'none',
+        assessmentId: null, assessmentHash: null,
+        overallReadiness: null, recommendedNextAction: null, error,
+      };
+    }
+    if (hint === 'paused') {
+      return {
+        status: 'paused', authority: 'none',
+        assessmentId: null, assessmentHash: null,
+        overallReadiness: null, recommendedNextAction: null, error,
+      };
+    }
+    // completed hint with no assessment is impossible in practice; default to not_run.
     return {
-      status: assessment ? status : 'not_run',
-      authority: 'none',
-      assessmentId: assessment?.id ?? null,
-      assessmentHash: assessment?.content_hash ?? null,
-      overallReadiness: null,
-      recommendedNextAction: null,
-      error,
+      status: 'not_run', authority: 'none',
+      assessmentId: null, assessmentHash: null,
+      overallReadiness: null, recommendedNextAction: null, error,
     };
   }
 }

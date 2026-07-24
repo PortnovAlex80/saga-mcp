@@ -52,6 +52,11 @@ dimension, classify that dimension honestly (`insufficient` or `unknown`),
 record it in `blocking_gaps`, and still submit the assessment. Do NOT
 fabricate content or skip the dimension — every dimension is required.
 
-If `readiness_submit` throws (validation error, authority mismatch), fix the
-payload and submit once more. If it still fails, call `worker_done` with a
-truthful result describing the failure.
+## One submission, no retries
+
+Call `readiness_submit` EXACTLY ONCE. If the kernel returns
+`status: "rejected_by_kernel"` (or the call throws), do NOT submit again —
+the rejection is durable and the kernel has recorded its reasons. Call
+`worker_done` with a truthful result describing the outcome (accepted or
+rejected). A second cognitive attempt is an explicit retry/recovery policy,
+not a hidden skill behaviour.

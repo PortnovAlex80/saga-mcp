@@ -52,6 +52,7 @@ export function ensureSaga3ReadinessSchema(db: Database.Database): void {
                                CHECK (status IN ('submitted','accepted_by_kernel','rejected_by_kernel')),
       overall_readiness        TEXT,
       recommended_next_action  TEXT,
+      validation_errors        TEXT NOT NULL DEFAULT '[]',
       provenance               TEXT NOT NULL DEFAULT '{}',
       created_at               TEXT NOT NULL DEFAULT (datetime('now'))
     );
@@ -59,12 +60,21 @@ export function ensureSaga3ReadinessSchema(db: Database.Database): void {
     CREATE UNIQUE INDEX IF NOT EXISTS idx_saga3_readiness_control_target
       ON saga3_readiness_control_intents(proposal_id, proposal_content_hash);
     CREATE UNIQUE INDEX IF NOT EXISTS idx_saga3_readiness_assessment_idempotency
-      ON saga3_readiness_assessments(control_intent_id, execution_id, content_hash);
+      ON saga3_readiness_assessments(control_intent_id, content_hash);
     CREATE INDEX IF NOT EXISTS idx_saga3_readiness_control_epic
       ON saga3_readiness_control_intents(epic_id, status);
     CREATE INDEX IF NOT EXISTS idx_saga3_readiness_assessment_control
       ON saga3_readiness_assessments(control_intent_id);
   `);
+  // Runtime migration: add validation_errors to pre-existing assessments tables
+  // (P0: durable rejection reasons). ALTER ... ADD COLUMN is idempotent via try/catch.
+  const cols = db.prepare('PRAGMA table_info(saga3_readiness_assessments)').all() as Array<{ name: string }>;
+  if (!cols.some(c => c.name === 'validation_errors')) {
+    db.exec('ALTER TABLE saga3_readiness_assessments ADD COLUMN validation_errors TEXT NOT NULL DEFAULT \'[]\'');
+  }
+  // Drop the old execution-scoped idempotency index if it still exists (pre-P1-3
+  // DBs), then the content-scoped CREATE above wins. best-effort.
+  try { db.exec('DROP INDEX IF EXISTS idx_saga3_readiness_assessment_idempotency_exec'); } catch { /* not present */ }
 }
 
 /** SHA-256 over the canonical serialization of the assessment payload. */
@@ -79,25 +89,28 @@ export interface InsertReadinessAssessment {
   taskId: number;
   executionId: string;
   payload: unknown;
-  overallReadiness: OverallReadiness;
-  recommendedNextAction: RecommendedNextAction;
+  overallReadiness: OverallReadiness | null;
+  recommendedNextAction: RecommendedNextAction | null;
+  validationErrors: string[];
   provenance: ProposalProvenance;
 }
 
-/** Idempotent insert of a readiness assessment. */
+/** Idempotent insert of a readiness assessment (submitted status). */
 export function insertReadinessAssessment(
   db: Database.Database,
   input: InsertReadinessAssessment,
 ): { record: ReadinessAssessmentRecord; replayed: boolean } {
   const payloadText = canonicalJson(input.payload);
   const hash = createHash('sha256').update(payloadText).digest('hex');
+  // Idempotency key is (control_intent_id, content_hash) — INDEPENDENT of
+  // execution_id (P1-3): a restart with a new execution reuses the same row.
   const info = db.prepare(
     `INSERT INTO saga3_readiness_assessments
        (control_intent_id, proposal_id, proposal_content_hash, task_id,
         execution_id, payload, content_hash, status, overall_readiness,
-        recommended_next_action, provenance)
-     VALUES (?,?,?,?,?,?,?, 'submitted', ?, ?, ?)
-     ON CONFLICT(control_intent_id, execution_id, content_hash) DO NOTHING`,
+        recommended_next_action, validation_errors, provenance)
+     VALUES (?,?,?,?,?,?,?, 'submitted', ?, ?, ?, ?)
+     ON CONFLICT(control_intent_id, content_hash) DO NOTHING`,
   ).run(
     input.controlIntentId,
     input.proposalId,
@@ -108,12 +121,13 @@ export function insertReadinessAssessment(
     hash,
     input.overallReadiness,
     input.recommendedNextAction,
+    JSON.stringify(input.validationErrors),
     JSON.stringify(input.provenance),
   );
   const row = db.prepare(
     `SELECT * FROM saga3_readiness_assessments
-      WHERE control_intent_id=? AND execution_id=? AND content_hash=?`,
-  ).get(input.controlIntentId, input.executionId, hash) as ReadinessAssessmentRow | undefined;
+      WHERE control_intent_id=? AND content_hash=?`,
+  ).get(input.controlIntentId, hash) as ReadinessAssessmentRow | undefined;
   if (!row) throw new Error('saga3: readiness assessment vanished after insert');
   return { record: assessmentRowToRecord(row), replayed: info.changes === 0 };
 }
@@ -159,12 +173,14 @@ export function markReadinessAccepted(db: Database.Database, assessmentId: numbe
   ).run(assessmentId);
 }
 
-export function markReadinessRejected(db: Database.Database, assessmentId: number): void {
+export function markReadinessRejected(db: Database.Database, assessmentId: number, validationErrors: string[]): void {
+  // P0: rejected assessments must be DURABLE. The advisor proposed; the kernel
+  // rejected; the rejection reason is retained so a human/D4 can see WHY.
   db.prepare(
     `UPDATE saga3_readiness_assessments
-        SET status='rejected_by_kernel'
+        SET status='rejected_by_kernel', validation_errors=?
       WHERE id=? AND status IN ('submitted','rejected_by_kernel')`,
-  ).run(assessmentId);
+  ).run(JSON.stringify(validationErrors), assessmentId);
 }
 
 /** Read a readiness ControlIntent by its immutable Proposal target. */
@@ -233,6 +249,7 @@ interface ReadinessAssessmentRow {
   status: ReadinessAssessmentStatus;
   overall_readiness: string | null;
   recommended_next_action: string | null;
+  validation_errors: string;
   provenance: string;
   created_at: string;
 }
@@ -250,6 +267,7 @@ function assessmentRowToRecord(row: ReadinessAssessmentRow): ReadinessAssessment
     status: row.status,
     overall_readiness: row.overall_readiness as OverallReadiness | null,
     recommended_next_action: row.recommended_next_action as RecommendedNextAction | null,
+    validation_errors: JSON.parse(row.validation_errors ?? '[]'),
     provenance: row.provenance && row.provenance !== '{}' ? JSON.parse(row.provenance) : null,
     created_at: row.created_at,
   };

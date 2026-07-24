@@ -230,6 +230,11 @@ export function validateReadinessAssessment(
       }
       if (!isStringArray(d.source_refs)) {
         errors.push(`dimension_assessments.${dimension}.source_refs must be an array of strings`);
+      } else if (d.source_refs.length === 0) {
+        // P1-1: grounding requires at least one cited source per dimension. An
+        // empty array passes the type check but asserts nothing — that would
+        // accept a fully ungrounded assessment.
+        errors.push(`dimension_assessments.${dimension}.source_refs must cite at least one source`);
       }
     }
     // Reject unknown dimensions — the contract is exactly the seven required.
@@ -264,6 +269,9 @@ export function validateReadinessAssessment(
       }
       if (!isStringArray(gap.source_refs)) {
         errors.push(`${field}[${index}].source_refs must be an array of strings`);
+      } else if (gap.source_refs.length === 0) {
+        // P1-1: a gap must be grounded — cite at least one source.
+        errors.push(`${field}[${index}].source_refs must cite at least one source`);
       }
     });
   };

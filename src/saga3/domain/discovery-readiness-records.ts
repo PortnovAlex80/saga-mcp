@@ -76,6 +76,8 @@ export interface ReadinessAssessmentRecord {
   status: ReadinessAssessmentStatus;
   overall_readiness: OverallReadiness | null;
   recommended_next_action: RecommendedNextAction | null;
+  /** Durable rejection reasons when status='rejected_by_kernel' (P0). */
+  validation_errors: string[];
   provenance: ProposalProvenance | null;
   created_at: string;
 }

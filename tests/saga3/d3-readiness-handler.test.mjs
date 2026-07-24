@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -13,6 +14,7 @@ const {
   DISCOVERY_WORK_INTENT_SCHEMA,
 } = await import('../../dist/saga3/domain/work-intent.js');
 const { DISCOVERY_PROPOSAL_SCHEMA } = await import('../../dist/saga3/domain/discovery-proposal.js');
+const { canonicalJson } = await import('../../dist/saga3/persistence/saga3-normalization-repository.js');
 const { DISCOVERY_READINESS_ASSESSMENT_SCHEMA, READINESS_DIMENSIONS } = await import(
   '../../dist/saga3/domain/discovery-readiness-assessment.js'
 );
@@ -36,7 +38,6 @@ function cleanup(temp) {
   delete process.env.DB_PATH;
 }
 
-const PRODUCT_PROPOSAL_HASH = 'c'.repeat(64);
 const PRODUCT_PROPOSAL_PAYLOAD = {
   problem_statement: 'the problem',
   observed_context: 'the context',
@@ -49,6 +50,9 @@ const PRODUCT_PROPOSAL_PAYLOAD = {
   recommended_outcome: 'clarify',
   rationale: 'rationale',
 };
+// P1-2: compute the REAL hash so the strict target re-validation in the
+// handler passes (it recomputes from payload and compares to the stored hash).
+const PRODUCT_PROPOSAL_HASH = createHash('sha256').update(canonicalJson(PRODUCT_PROPOSAL_PAYLOAD)).digest('hex');
 
 function validAssessmentPayload(proposalId = 50, proposalHash = PRODUCT_PROPOSAL_HASH) {
   const dims = {};
@@ -257,14 +261,18 @@ test('D3 handler: changed proposal content_hash rejected (immutable target bindi
   try {
     const ctx = buildLiveFixture(db);
     // Mutate the product proposal's content_hash AFTER the ControlIntent was
-    // created for the old hash. The submit must refuse (new target).
+    // created for the old hash. The strict target re-validation (P1-2) catches
+    // this because the recomputed hash no longer matches the stored hash, and
+    // neither matches the ControlIntent's target. Throw before persistence.
     db.prepare('UPDATE saga3_proposals SET content_hash=? WHERE id=50').run('d'.repeat(64));
     const { createSaga3ReadinessHandlers } = await import('../../dist/tools/saga3-readiness.js');
     const { handlers } = createSaga3ReadinessHandlers({ db: () => db });
     assert.throws(() => handlers.readiness_submit({
       control_intent_id: ctx.controlIntentId, execution_id: ctx.executionId,
       schema_version: DISCOVERY_READINESS_ASSESSMENT_SCHEMA, payload: validAssessmentPayload(),
-    }), /content_hash changed/);
+    }), /Proposal target integrity check failed.*content_hash/);
+    // No assessment row must be persisted for an integrity violation.
+    assert.equal(db.prepare('SELECT COUNT(*) c FROM saga3_readiness_assessments').get().c, 0);
   } finally { cleanup(temp); }
 });
 

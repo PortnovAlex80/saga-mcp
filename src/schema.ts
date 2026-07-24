@@ -780,6 +780,7 @@ CREATE TABLE IF NOT EXISTS saga3_readiness_assessments (
                              CHECK (status IN ('submitted','accepted_by_kernel','rejected_by_kernel')),
   overall_readiness        TEXT,                              -- denormalized for shadow visibility
   recommended_next_action  TEXT,
+  validation_errors        TEXT NOT NULL DEFAULT '[]',        -- durable rejection reasons (P0: rejected assessments must survive)
   provenance               TEXT NOT NULL DEFAULT '{}',
   created_at               TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -787,9 +788,11 @@ CREATE TABLE IF NOT EXISTS saga3_readiness_assessments (
 -- One readiness ControlIntent per immutable Proposal version.
 CREATE UNIQUE INDEX IF NOT EXISTS idx_saga3_readiness_control_target
   ON saga3_readiness_control_intents(proposal_id, proposal_content_hash);
--- Idempotent submission: same control + advisor execution + content hash.
+-- Idempotent submission keyed by immutable assessment target + submitted
+-- content, INDEPENDENT of execution_id (P1-3): a restart with a new execution
+-- must reuse the same assessment row, not create a duplicate.
 CREATE UNIQUE INDEX IF NOT EXISTS idx_saga3_readiness_assessment_idempotency
-  ON saga3_readiness_assessments(control_intent_id, execution_id, content_hash);
+  ON saga3_readiness_assessments(control_intent_id, content_hash);
 CREATE INDEX IF NOT EXISTS idx_saga3_readiness_control_epic
   ON saga3_readiness_control_intents(epic_id, status);
 CREATE INDEX IF NOT EXISTS idx_saga3_readiness_assessment_control
