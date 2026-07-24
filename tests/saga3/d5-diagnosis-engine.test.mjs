@@ -507,6 +507,7 @@ async function loadRealDeps() {
   DB_DEPS.diagnosisCaseHash = (await import('../../dist/saga3/domain/discovery-diagnosis-case.js')).diagnosisCaseHash;
   DB_DEPS.SqliteSaga3DiscoveryRuntime = (await import('../../dist/saga3/persistence/sqlite-saga3-discovery-runtime.js')).SqliteSaga3DiscoveryRuntime;
   DB_DEPS.Saga3DiscoveryDiagnosisService = (await import('../../dist/saga3/application/discovery-diagnosis-service.js')).Saga3DiscoveryDiagnosisService;
+  DB_DEPS.Saga3DiscoverySettlementService = (await import('../../dist/saga3/application/discovery-settlement-service.js')).Saga3DiscoverySettlementService;
   return DB_DEPS;
 }
 
@@ -550,23 +551,7 @@ async function realSqliteHarness() {
     confidence: 0.9, rationale: 'well grounded',
   };
   const ASSESSMENT_HASH = createHash('sha256').update(D.canonicalJson(ASSESSMENT_PAYLOAD)).digest('hex');
-  const ACCEPTED_TARGET = `accepted:${ASSESSMENT_HASH}`;
-  const SETTLEMENT_SNAPSHOT = {
-    schema_version: 'saga3.discovery-settlement-input.v1',
-    epic_id: 10,
-    proposal: {
-      id: 50, content_hash: PRODUCT_PROPOSAL_HASH, payload: PRODUCT_PROPOSAL_PAYLOAD,
-      source_intent_id: 1, source_submission_id: null, normalization_proposal_id: null,
-    },
-    readiness: {
-      status: 'accepted_by_kernel', assessment_id: 7,
-      content_hash: ASSESSMENT_HASH, payload: ASSESSMENT_PAYLOAD,
-    },
-    policy: { version: 'saga3.settlement-policy.v1', content_hash: 'p'.repeat(64) },
-    captured_at: '2026-07-24T00:00:00.000Z',
-  };
-  const SETTLEMENT_INPUT_HASH = createHash('sha256').update(D.canonicalJson(SETTLEMENT_SNAPSHOT)).digest('hex');
-  const POLICY_HASH = 'p'.repeat(64);
+
 
   // Seed full D4 FK chain (settlement id 1 + outcome certificate id 1, go).
   D.ensureSaga3ReadinessSchema(db);
@@ -604,38 +589,31 @@ async function realSqliteHarness() {
         validation_errors,provenance)
      VALUES (7,1,50,?,200,'advisor-exec',?,?, 'accepted_by_kernel','ready','proceed_to_settlement','[]','{}')`,
   ).run(PRODUCT_PROPOSAL_HASH, D.canonicalJson(ASSESSMENT_PAYLOAD), ASSESSMENT_HASH);
-  const certHash = createHash('sha256').update('cert-1-go').digest('hex');
-  db.prepare(
-    `INSERT INTO saga3_discovery_settlements
-       (id,epic_id,proposal_id,proposal_content_hash,readiness_assessment_id,
-        readiness_assessment_hash,policy_version,policy_hash,input_snapshot,
-        input_hash,decision,reason_codes,rationale,status)
-     VALUES (1,10,50,?,7,?,'saga3.settlement-policy.v1',?,?,?,?,?,?,'certificate_issued')`,
-  ).run(PRODUCT_PROPOSAL_HASH, ACCEPTED_TARGET, POLICY_HASH, D.canonicalJson(SETTLEMENT_SNAPSHOT), SETTLEMENT_INPUT_HASH, 'go', JSON.stringify(['GO_READY_AND_GROUNDED']), 'ready and grounded');
-  db.prepare(
-    `INSERT INTO saga3_discovery_outcome_certificates
-       (id,settlement_id,epic_id,proposal_id,proposal_content_hash,
-        readiness_assessment_id,readiness_assessment_hash,policy_version,
-        policy_hash,decision,reason_codes,input_hash,certificate_payload,
-        certificate_hash,issued_at)
-     VALUES (1,1,10,50,?,7,?,'saga3.settlement-policy.v1',?,?,?,?,'{}',?,'2026-07-24T00:00:00.000Z')`,
-  ).run(PRODUCT_PROPOSAL_HASH, ACCEPTED_TARGET, POLICY_HASH, 'go', JSON.stringify(['GO_READY_AND_GROUNDED']), SETTLEMENT_INPUT_HASH, certHash);
-
-  const certId = 1;
+  const authoritativeSettlementService = new D.Saga3DiscoverySettlementService({
+    runtimePersistence: new D.SqliteSaga3DiscoveryRuntime(),
+  });
+  const issued = await authoritativeSettlementService.settle({
+    projectId: 1,
+    epicId: 10,
+    proposalId: 50,
+    proposalHash: PRODUCT_PROPOSAL_HASH,
+    readiness: {
+      status: 'completed', authority: 'shadow_advisor',
+      assessmentId: 7, assessmentHash: ASSESSMENT_HASH,
+      overallReadiness: 'ready', recommendedNextAction: 'proceed_to_settlement',
+      error: null,
+    },
+  });
+  assert.equal(issued.status, 'issued');
+  const certId = issued.certificateId;
+  const certHash = issued.certificateHash;
+  const POLICY_HASH = issued.policyHash;
   let workerSpawnCount = 0;
 
-  // A fake settlement service that returns the seeded issued certificate, so
-  // the engine's diagnosis eligibility (status='issued' + non-null cert) is
-  // satisfied and the REAL diagnosis service receives the real cert target.
+  // A fake engine settlement service returns the real D4-issued target. The
+  // diagnosis service independently verifies it against the real DB.
   const settlementService = {
-    async settle() {
-      return {
-        status: 'issued',
-        settlementId: 1, certificateId: certId, certificateHash: certHash,
-        policyVersion: 'saga3.settlement-policy.v1', policyHash: POLICY_HASH,
-        decision: 'go', reasonCodes: ['GO_READY_AND_GROUNDED'], error: null,
-      };
-    },
+    async settle() { return { ...issued }; },
   };
 
   /**
@@ -752,21 +730,12 @@ async function realSqliteHarness() {
     };
   }
 
-  function insertReport(control, report, status, validationErrors, execId) {
+  function insertReport(control, report, execId) {
     const diagRuntime = new D.SqliteSaga3DiscoveryRuntime();
-    diagRuntime.insertDiagnosisReportAtomically({
+    return diagRuntime.submitDiagnosisReportAtomically({
       controlIntentId: control.id,
-      certificateId: certId,
-      certificateHash: certHash,
-      settlementInputHash: control.settlement_input_hash,
-      decision: 'go',
-      taskId: control.projected_task_id,
       executionId: execId,
-      schemaVersion: D.DISCOVERY_DIAGNOSIS_REPORT_SCHEMA,
       payload: report,
-      expectedContentHash: createHash('sha256').update(D.canonicalJson(report)).digest('hex'),
-      status,
-      validationErrors,
       provenance: { worker_id: 'diag-worker', execution_id: execId },
     });
   }
@@ -775,7 +744,7 @@ async function realSqliteHarness() {
     const report = validGoReport(caseData);
     const validation = D.validateDiagnosisReport(report, caseData);
     assert.equal(validation.valid, true, `fixture report must be valid: ${validation.errors.join('; ')}`);
-    insertReport(control, report, 'accepted_by_kernel', [], 'diag-exec-valid');
+    insertReport(control, report, 'diag-exec-valid');
   }
 
   function submitInvalidReport(control, caseData) {
@@ -783,7 +752,7 @@ async function realSqliteHarness() {
     report.recommended_actions[0].source_refs = ['$.invented_field_not_in_allowlist'];
     const validation = D.validateDiagnosisReport(report, caseData);
     assert.equal(validation.valid, false, 'fixture: invented source ref must be invalid');
-    insertReport(control, report, 'rejected_by_kernel', validation.errors, 'diag-exec-reject');
+    insertReport(control, report, 'diag-exec-reject');
   }
 
   /**

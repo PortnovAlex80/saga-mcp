@@ -28,6 +28,11 @@
 
 import type Database from 'better-sqlite3';
 
+import {
+  DIAGNOSE_DISCOVERY_OUTCOME_KIND,
+  DISCOVERY_DIAGNOSIS_INTENT_KIND,
+  DISCOVERY_DIAGNOSIS_WORK_INTENT_SCHEMA,
+} from '../domain/work-intent.js';
 import type {
   DiagnosisControlIntentRecord,
   DiagnosisControlStatus,
@@ -35,7 +40,10 @@ import type {
   DiagnosisReportStatus,
 } from '../domain/discovery-diagnosis-records.js';
 import { canonicalJson, sha256Hex } from '../shared/discovery-canonical.js';
-import { diagnosisCaseHash } from '../domain/discovery-diagnosis-case.js';
+import {
+  diagnosisCaseHash,
+  DISCOVERY_DIAGNOSIS_CASE_SCHEMA,
+} from '../domain/discovery-diagnosis-case.js';
 import { validateDiagnosisReport } from '../domain/discovery-diagnosis-validator.js';
 import { DISCOVERY_DIAGNOSIS_REPORT_SCHEMA } from '../domain/discovery-diagnosis-report.js';
 
@@ -320,6 +328,75 @@ export function submitDiagnosisReportAtomically(
         `saga3: diagnosis control ${input.controlIntentId} has no projected_task_id`,
       );
     }
+    if (control.kind !== DIAGNOSE_DISCOVERY_OUTCOME_KIND) {
+      throw new Error(
+        `saga3: diagnosis control ${input.controlIntentId} kind '${control.kind}' is not '${DIAGNOSE_DISCOVERY_OUTCOME_KIND}'`,
+      );
+    }
+
+    // Independent task + authority anchors. The task metadata is frozen when
+    // the ControlIntent is projected and is checked inside the same transaction
+    // as report validation. A coherent case+hash rewrite on the control row
+    // therefore cannot silently expand the evidence allowlist.
+    const task = db.prepare(
+      `SELECT id, epic_id, task_kind, metadata FROM tasks WHERE id=?`,
+    ).get(control.projected_task_id) as
+      | { id: number; epic_id: number; task_kind: string; metadata: string }
+      | undefined;
+    if (!task) {
+      throw new Error(`saga3: diagnosis projected task ${control.projected_task_id} not found`);
+    }
+    let taskMetadata: Record<string, unknown>;
+    try {
+      taskMetadata = JSON.parse(task.metadata ?? '{}') as Record<string, unknown>;
+    } catch {
+      throw new Error(`saga3: diagnosis projected task ${task.id} metadata is not valid JSON`);
+    }
+    const taskChecks: Array<[string, unknown, unknown]> = [
+      ['epic_id', task.epic_id, control.epic_id],
+      ['task_kind', task.task_kind, 'discovery.diagnose'],
+      ['metadata.work_intent_id', taskMetadata.work_intent_id, control.authority_intent_id],
+      ['metadata.control_intent_id', taskMetadata.control_intent_id, control.id],
+      ['metadata.certificate_id', taskMetadata.certificate_id, control.certificate_id],
+      ['metadata.certificate_hash', taskMetadata.certificate_hash, control.certificate_hash],
+      ['metadata.settlement_input_hash', taskMetadata.settlement_input_hash, control.settlement_input_hash],
+      ['metadata.diagnosis_case_hash', taskMetadata.diagnosis_case_hash, control.diagnosis_case_hash],
+      ['metadata.diagnosis_contract_version', taskMetadata.diagnosis_contract_version, control.diagnosis_contract_version],
+    ];
+    for (const [field, actual, expected] of taskChecks) {
+      if (actual !== expected) {
+        throw new Error(
+          `saga3: diagnosis task ${task.id} ${field} '${String(actual)}' != control anchor '${String(expected)}'`,
+        );
+      }
+    }
+    const authority = db.prepare(
+      `SELECT id, epic_id, kind, output_schema, projected_task_id, status
+         FROM saga3_work_intents WHERE id=?`,
+    ).get(control.authority_intent_id) as
+      | { id: number; epic_id: number; kind: string; output_schema: string; projected_task_id: number | null; status: string }
+      | undefined;
+    if (!authority) {
+      throw new Error(`saga3: diagnosis authority WorkIntent ${control.authority_intent_id} not found`);
+    }
+    const authorityChecks: Array<[string, unknown, unknown]> = [
+      ['epic_id', authority.epic_id, control.epic_id],
+      ['kind', authority.kind, DISCOVERY_DIAGNOSIS_INTENT_KIND],
+      ['output_schema', authority.output_schema, DISCOVERY_DIAGNOSIS_WORK_INTENT_SCHEMA],
+      ['projected_task_id', authority.projected_task_id, control.projected_task_id],
+    ];
+    for (const [field, actual, expected] of authorityChecks) {
+      if (actual !== expected) {
+        throw new Error(
+          `saga3: diagnosis authority WorkIntent ${authority.id} ${field} '${String(actual)}' != expected '${String(expected)}'`,
+        );
+      }
+    }
+    if (!['open', 'executing', 'paused'].includes(authority.status)) {
+      throw new Error(
+        `saga3: diagnosis authority WorkIntent ${authority.id} status '${authority.status}' is not active`,
+      );
+    }
 
     // 2. Parse the frozen DiagnosisCase and verify it has not drifted.
     let storedCase: unknown;
@@ -346,10 +423,31 @@ export function submitDiagnosisReportAtomically(
         `saga3: diagnosis control ${input.controlIntentId} contract version '${control.diagnosis_contract_version}' is not '${DISCOVERY_DIAGNOSIS_REPORT_SCHEMA}'`,
       );
     }
+    const structuralCase = storedCase as {
+      schema_version?: unknown;
+      epic_id?: unknown;
+      decision?: unknown;
+      certificate?: { id?: unknown; hash?: unknown; settlement_input_hash?: unknown; decision?: unknown };
+    };
+    if (structuralCase.schema_version !== DISCOVERY_DIAGNOSIS_CASE_SCHEMA) {
+      throw new Error(
+        `saga3: diagnosis control ${input.controlIntentId} case schema '${String(structuralCase.schema_version)}' is not '${DISCOVERY_DIAGNOSIS_CASE_SCHEMA}'`,
+      );
+    }
+    if (structuralCase.epic_id !== control.epic_id) {
+      throw new Error(
+        `saga3: diagnosis control ${input.controlIntentId} case epic_id '${String(structuralCase.epic_id)}' does not match control epic_id '${control.epic_id}'`,
+      );
+    }
+    if (structuralCase.decision !== structuralCase.certificate?.decision) {
+      throw new Error(
+        `saga3: diagnosis control ${input.controlIntentId} case decision does not match its certificate decision`,
+      );
+    }
     // Verify the case's certificate tuple agrees with the control row. The case
     // was frozen from the verified certificate bundle; if the control's cert
     // target drifted (TOCTOU), this rejects.
-    const caseObj = storedCase as { certificate?: { id?: unknown; hash?: unknown; settlement_input_hash?: unknown; decision?: unknown } };
+    const caseObj = structuralCase;
     if (caseObj.certificate?.id !== control.certificate_id
         || caseObj.certificate?.hash !== control.certificate_hash
         || caseObj.certificate?.settlement_input_hash !== control.settlement_input_hash) {
@@ -367,11 +465,56 @@ export function submitDiagnosisReportAtomically(
         WHERE control_intent_id=? AND content_hash=? LIMIT 1`,
     ).get(input.controlIntentId, payloadHash) as DiagnosisReportRow | undefined;
     if (existing) {
-      // Co-tamper guard on the replayed row.
-      const storedPayloadHash = sha256Hex(JSON.parse(existing.payload));
-      if (storedPayloadHash !== existing.content_hash) {
+      // P0-2: a replay is not trusted merely because its payload and hash agree.
+      // Re-verify the complete stored row against the currently verified frozen
+      // case before returning it. This catches coherent payload+hash tamper and
+      // verdict/status drift on restart/idempotent resubmission.
+      let storedPayload: unknown;
+      try {
+        storedPayload = JSON.parse(existing.payload);
+      } catch {
+        throw new Error(`saga3: replayed diagnosis report ${existing.id} payload is not valid JSON`);
+      }
+      const storedPayloadHash = sha256Hex(storedPayload);
+      if (storedPayloadHash !== existing.content_hash || existing.content_hash !== payloadHash) {
         throw new Error(
-          `saga3: replayed diagnosis report ${existing.id} payload hash does not match stored content_hash (co-tamper or corruption)`,
+          `saga3: replayed diagnosis report ${existing.id} payload hash does not match stored/content replay hash (co-tamper or corruption)`,
+        );
+      }
+      if (existing.control_intent_id !== control.id
+          || existing.certificate_id !== control.certificate_id
+          || existing.certificate_hash !== control.certificate_hash
+          || existing.task_id !== control.projected_task_id
+          || existing.schema_version !== DISCOVERY_DIAGNOSIS_REPORT_SCHEMA) {
+        throw new Error(
+          `saga3: replayed diagnosis report ${existing.id} row binding drifted from its control`,
+        );
+      }
+      const replayValidation = validateDiagnosisReport(
+        storedPayload,
+        storedCase as Parameters<typeof validateDiagnosisReport>[1],
+      );
+      const derivedStatus: DiagnosisReportStatus = replayValidation.valid
+        ? 'accepted_by_kernel'
+        : 'rejected_by_kernel';
+      const storedErrors = JSON.parse(existing.validation_errors ?? '[]') as unknown;
+      if (!Array.isArray(storedErrors)) {
+        throw new Error(`saga3: replayed diagnosis report ${existing.id} validation_errors is not an array`);
+      }
+      if (existing.status !== derivedStatus) {
+        throw new Error(
+          `saga3: replayed diagnosis report ${existing.id} verdict drift: stored '${existing.status}', derived '${derivedStatus}'`,
+        );
+      }
+      if (derivedStatus === 'accepted_by_kernel' && storedErrors.length !== 0) {
+        throw new Error(
+          `saga3: replayed accepted diagnosis report ${existing.id} has non-empty validation_errors`,
+        );
+      }
+      if (derivedStatus === 'rejected_by_kernel'
+          && canonicalJson(storedErrors) !== canonicalJson(replayValidation.errors)) {
+        throw new Error(
+          `saga3: replayed rejected diagnosis report ${existing.id} validation errors drifted from deterministic validation`,
         );
       }
       db.exec('COMMIT');

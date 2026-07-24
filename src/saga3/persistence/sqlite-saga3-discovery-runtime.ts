@@ -8,6 +8,7 @@ import { DISCOVERY_READINESS_ASSESSMENT_SCHEMA } from '../domain/discovery-readi
 import type { ControlIntentStatus } from '../domain/discovery-normalization-records.js';
 import type { ReadinessAssessmentRecord, ReadinessControlExecution, ReadinessControlIntentRecord, ReadinessControlStatus } from '../domain/discovery-readiness-records.js';
 import type { OutcomeCertificateRecord, SettlementRecord } from '../domain/discovery-settlement-records.js';
+import { diagnosisCaseHash } from '../domain/discovery-diagnosis-case.js';
 import type {
   DiagnosisControlExecution,
   DiagnosisControlIntentRecord,
@@ -563,7 +564,9 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
     // Idempotent on the immutable certificate target (certificate_id +
     // certificate_hash + diagnosis_contract_version).
     let control = db.prepare(
-      `SELECT id, authority_intent_id, projected_task_id, status
+      `SELECT id, epic_id, kind, certificate_id, certificate_hash, settlement_input_hash,
+              diagnosis_case, diagnosis_case_hash, diagnosis_contract_version,
+              authority_intent_id, projected_task_id, status
          FROM saga3_discovery_diagnosis_control_intents
         WHERE certificate_id=? AND certificate_hash=? AND diagnosis_contract_version=?`,
     ).get(
@@ -572,6 +575,14 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
       input.diagnosisContractVersion,
     ) as {
       id: number;
+      epic_id: number;
+      kind: string;
+      certificate_id: number;
+      certificate_hash: string;
+      settlement_input_hash: string;
+      diagnosis_case: string;
+      diagnosis_case_hash: string;
+      diagnosis_contract_version: string;
       authority_intent_id: number;
       projected_task_id: number | null;
       status: DiagnosisControlStatus;
@@ -615,11 +626,43 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
       );
       control = {
         id: Number(info.lastInsertRowid),
+        epic_id: input.epicId,
+        kind: DIAGNOSE_DISCOVERY_OUTCOME_KIND,
+        certificate_id: input.certificateId,
+        certificate_hash: input.certificateHash,
+        settlement_input_hash: input.settlementInputHash,
+        diagnosis_case: input.diagnosisCase,
+        diagnosis_case_hash: input.diagnosisCaseHash,
+        diagnosis_contract_version: input.diagnosisContractVersion,
         authority_intent_id: authority.id,
         projected_task_id: null,
         status: 'open',
       };
     } else {
+      let storedCase: unknown;
+      try { storedCase = JSON.parse(control.diagnosis_case); } catch {
+        throw new Error(`saga3: diagnosis control ${control.id} diagnosis_case is not valid JSON`);
+      }
+      const storedRecomputedHash = diagnosisCaseHash(
+        storedCase as Parameters<typeof diagnosisCaseHash>[0],
+      );
+      const reuseChecks: Array<[string, unknown, unknown]> = [
+        ['epic_id', control.epic_id, input.epicId],
+        ['kind', control.kind, DIAGNOSE_DISCOVERY_OUTCOME_KIND],
+        ['certificate_id', control.certificate_id, input.certificateId],
+        ['certificate_hash', control.certificate_hash, input.certificateHash],
+        ['settlement_input_hash', control.settlement_input_hash, input.settlementInputHash],
+        ['diagnosis_case_hash', control.diagnosis_case_hash, input.diagnosisCaseHash],
+        ['recomputed diagnosis_case_hash', storedRecomputedHash, control.diagnosis_case_hash],
+        ['diagnosis_contract_version', control.diagnosis_contract_version, input.diagnosisContractVersion],
+      ];
+      for (const [field, actual, expected] of reuseChecks) {
+        if (actual !== expected) {
+          throw new Error(
+            `saga3: diagnosis control ${control.id} ${field} '${String(actual)}' != expected '${String(expected)}'`,
+          );
+        }
+      }
       authority = this.readIntentStrict(control.authority_intent_id);
     }
 
@@ -636,6 +679,9 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
         control_intent_id: control.id,
         certificate_id: input.certificateId,
         certificate_hash: input.certificateHash,
+        settlement_input_hash: input.settlementInputHash,
+        diagnosis_case_hash: input.diagnosisCaseHash,
+        diagnosis_contract_version: input.diagnosisContractVersion,
       },
     });
     if (!authority.projected_task_id) {

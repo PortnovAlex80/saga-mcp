@@ -4,7 +4,7 @@
  * Independent Stage-5 review. These tests do NOT trust the implementer's
  * narrative; they ATTACK the real code paths and assert the invariants hold.
  * Every test exercises the REAL domain validator, the REAL atomic insert
- * (`insertDiagnosisReportAtomically`), and — where a service path exists — the
+ * (`submitDiagnosisReportAtomically`), and — where a service path exists — the
  * REAL `Saga3DiscoveryDiagnosisService` bound to a real better-sqlite3 runtime
  * port. The only fake is the worker executor, which injects the attack payload
  * (exactly as a malicious or buggy worker would).
@@ -75,11 +75,11 @@ const { validateDiagnosisReport } = await import(
 const { FORBIDDEN_DIAGNOSIS_FIELDS } = await import(
   '../../dist/saga3/domain/discovery-diagnosis-report.js'
 );
-const { insertDiagnosisReportAtomically } = await import(
-  '../../dist/saga3/persistence/saga3-diagnosis-repository.js'
-);
 const { Saga3DiscoveryDiagnosisService } = await import(
   '../../dist/saga3/application/discovery-diagnosis-service.js'
+);
+const { Saga3DiscoverySettlementService } = await import(
+  '../../dist/saga3/application/discovery-settlement-service.js'
 );
 const { SqliteSaga3DiscoveryRuntime } = await import(
   '../../dist/saga3/persistence/sqlite-saga3-discovery-runtime.js'
@@ -274,6 +274,33 @@ function seedCertificate(db, {
   return { certId, certHash, inputHash };
 }
 
+
+/** Issue a real D4 GO certificate over the seeded product/readiness rows. */
+async function issueRealGoCertificate(db) {
+  seedCertificate(db, { decision: 'go' });
+  db.exec(`
+    DELETE FROM saga3_discovery_outcome_certificates;
+    DELETE FROM saga3_discovery_settlements;
+  `);
+  const service = new Saga3DiscoverySettlementService({
+    runtimePersistence: new SqliteSaga3DiscoveryRuntime(),
+  });
+  const result = await service.settle({
+    projectId: 1,
+    epicId: 10,
+    proposalId: 50,
+    proposalHash: PRODUCT_PROPOSAL_HASH,
+    readiness: {
+      status: 'completed', authority: 'shadow_advisor',
+      assessmentId: 7, assessmentHash: ASSESSMENT_HASH,
+      overallReadiness: 'ready', recommendedNextAction: 'proceed_to_settlement',
+      error: null,
+    },
+  });
+  assert.equal(result.status, 'issued');
+  return { certId: result.certificateId, certHash: result.certificateHash };
+}
+
 function fixture() {
   const temp = mkdtempSync(path.join(os.tmpdir(), 'saga3-d5-adv-'));
   process.env.DB_PATH = path.join(temp, 'd5adv.db');
@@ -334,20 +361,12 @@ function makeFakeExecutor(onFirstPoll) {
  * settlementInputHash, taskId). `caseData` supplies the decision (read from the
  * immutable case the control froze).
  */
-function insertReport(runtime, control, caseData, payload, { status, validationErrors, executionId = 'diag-exec', certificateId = control.certificateId, certificateHash = control.certificateHash } = {}) {
-  return runtime.insertDiagnosisReportAtomically({
+function insertReport(runtime, control, caseData, payload, { executionId = 'diag-exec' } = {}) {
+  void caseData;
+  return runtime.submitDiagnosisReportAtomically({
     controlIntentId: control.controlIntentId,
-    certificateId,
-    certificateHash,
-    settlementInputHash: control.settlementInputHash,
-    decision: caseData.certificate.decision,
-    taskId: control.taskId,
     executionId,
-    schemaVersion: DISCOVERY_DIAGNOSIS_REPORT_SCHEMA,
     payload,
-    expectedContentHash: hashDiagnosisReport(payload),
-    status,
-    validationErrors,
     provenance: { worker_id: 'diag-worker', execution_id: executionId },
   });
 }
@@ -416,7 +435,7 @@ function diagnose(service, certId, certHash) {
 //   (a) TOCTOU at the persistence boundary: a control is created for target T1;
 //       an attacker tampers the control row's certificate_hash directly (raw
 //       SQL UPDATE) AFTER the control was created but BEFORE BEGIN IMMEDIATE.
-//       insertDiagnosisReportAtomically is then called with the ORIGINAL target.
+//       submitDiagnosisReportAtomically is then called with the ORIGINAL target.
 //       The atomic tx must re-read the control and REJECT (TOCTOU closure).
 //
 //   (b) Service-level hash drift: the service is fed a certificateHash that
@@ -464,7 +483,7 @@ test('D5 adv G1: tampered control certificate_hash is caught by the atomic inser
     const report = validGoReport(caseData);
     assert.throws(
       () => insertReport(runtime, control, caseData, report, { status: 'accepted_by_kernel', validationErrors: [] }),
-      /certificate_hash .* != expected|TOCTOU/i,
+      /case certificate tuple does not match|metadata.certificate_hash|TOCTOU/i,
       'atomic insert must reject a report whose target drifted from the control row',
     );
     // No report persisted.
@@ -638,7 +657,7 @@ test('D5 adv G3: clarify certificate reason code not covered by any cause is rej
         cause_id: 'C1', category: 'blocking_gap', description: 'd', severity: 'blocking',
         // Invented code — not on the certificate.
         reason_codes: ['REJECT_WORKER_AND_ADVISOR_AGREE'],
-        failed_condition_ids: [],
+        cited_condition_ids: [],
         source_refs: [`certificate:${certId}`],
       }],
       information_requests: [], recommended_actions: [], residual_risks: [],
@@ -677,21 +696,17 @@ test('D5 adv G3: clarify certificate reason code not covered by any cause is rej
 test('D5 adv G4: restart returns the same reportId/reportHash and does not respawn the worker', async () => {
   const { temp, db } = fixture();
   try {
-    const { certId, certHash } = seedCertificate(db, { decision: 'go' });
+    const { certId, certHash } = await issueRealGoCertificate(db);
     let startCount = 0;
     const executor = makeFakeExecutor(() => {
       const control = runtime.readDiagnosisControlForTarget(certId, certHash);
       const caseData = JSON.parse(control.diagnosis_case);
       db.prepare('UPDATE tasks SET status=? WHERE id=?').run('done', control.projected_task_id);
       const report = validGoReport(caseData);
-      runtime.insertDiagnosisReportAtomically({
+      runtime.submitDiagnosisReportAtomically({
         controlIntentId: control.id,
-        certificateId: certId, certificateHash: certHash,
-        settlementInputHash: control.settlement_input_hash,
-        decision: 'go', taskId: control.projected_task_id,
-        executionId: 'diag-exec-1', schemaVersion: DISCOVERY_DIAGNOSIS_REPORT_SCHEMA,
-        payload: report, expectedContentHash: hashDiagnosisReport(report),
-        status: 'accepted_by_kernel', validationErrors: [],
+        executionId: 'diag-exec-1',
+        payload: report,
         provenance: { worker_id: 'diag-worker', execution_id: 'diag-exec-1' },
       });
     });
@@ -843,7 +858,7 @@ test('D5 adv G6: override_decision (and all forbidden fields) are rejected; resu
       executive_summary: 'gaps remain',
       cause_analysis: [{
         cause_id: 'C1', category: 'blocking_gap', description: 'd', severity: 'blocking',
-        reason_codes: ['CLARIFY_BLOCKING_GAPS'], failed_condition_ids: [],
+        reason_codes: ['CLARIFY_BLOCKING_GAPS'], cited_condition_ids: [],
         source_refs: [`certificate:${certId}`],
       }],
       information_requests: [], recommended_actions: [], residual_risks: [],
@@ -894,14 +909,10 @@ test('D5 adv G6: override_decision (and all forbidden fields) are rejected; resu
       const report = { ...validClarify, override_decision: 'go' };
       const validation = validateDiagnosisReport(report, c);
       assert.equal(validation.valid, false, 'fixture: override payload must be invalid');
-      svcRt.insertDiagnosisReportAtomically({
+      svcRt.submitDiagnosisReportAtomically({
         controlIntentId: control.id,
-        certificateId: certId, certificateHash: certHash,
-        settlementInputHash: control.settlement_input_hash,
-        decision: 'clarify', taskId: control.projected_task_id,
-        executionId: 'diag-exec-override', schemaVersion: DISCOVERY_DIAGNOSIS_REPORT_SCHEMA,
-        payload: report, expectedContentHash: hashDiagnosisReport(report),
-        status: 'rejected_by_kernel', validationErrors: validation.errors,
+        executionId: 'diag-exec-override',
+        payload: report,
         provenance: { worker_id: 'diag-worker', execution_id: 'diag-exec-override' },
       });
     }));
@@ -988,7 +999,7 @@ test('D5 adv G7: transition_stage is rejected and finalStage stays discovery aft
 // After an accepted report exists, verify there is NO repository/port API path
 // that can UPDATE its payload or status. Assert:
 //   (a) readAcceptedDiagnosisReport returns the ORIGINAL row (byte-identical).
-//   (b) a second insertDiagnosisReportAtomically with the SAME content_hash
+//   (b) a second submitDiagnosisReportAtomically with the SAME content_hash
 //       returns the SAME row (replayed:true, inserted:false) WITHOUT changing
 //       its status/payload/provenance.
 //   (c) attempting to mark a SECOND DISTINCT report accepted throws.
@@ -1098,65 +1109,65 @@ test('D5 adv G8: accepted report is immutable — replay does not mutate, second
 // A durable rejection must be OBSERVABLE: a rejected_by_kernel report with
 // non-empty validation_errors is distinguishable from a row that carries no
 // verdict. The repository enforces this itself (insert-time guard in
-// insertDiagnosisReportAtomically): a reject with empty validationErrors throws
+// submitDiagnosisReportAtomically): a reject with empty validationErrors throws
 // inside BEGIN IMMEDIATE and rolls back. This closes the hole the adversarial
 // reviewer found — a future caller that forgets to supply rejection reasons
 // cannot persist a "mute" rejection.
 
-test('D5 adv DURABILITY (defense-in-depth): a rejected_by_kernel report MUST carry non-empty validation_errors', () => {
+test('D5 adv DURABILITY: invalid report is durably rejected with deterministic non-empty errors', () => {
   const { temp, db } = fixture();
   try {
     const { certId, certHash } = seedCertificate(db, { decision: 'go' });
     const runtime = new SqliteSaga3DiscoveryRuntime();
+    const cert = runtime.readOutcomeCertificate(certId);
+    const proposal = runtime.readProposalForSettlement(cert.proposal_id);
+    const assessment = runtime.readReadinessAssessment(cert.readiness_assessment_id);
+    const caseData = buildDiagnosisCase({
+      epic_id: 10,
+      certificate: {
+        id: cert.id, hash: cert.certificate_hash, decision: cert.decision,
+        reason_codes: cert.reason_codes, policy_version: cert.policy_version,
+        policy_hash: cert.policy_hash, settlement_id: cert.settlement_id,
+        settlement_input_hash: cert.input_hash,
+      },
+      proposal: { id: proposal.id, hash: proposal.content_hash, payload: proposal.payload },
+      readiness: {
+        status: 'accepted_by_kernel', assessment_id: assessment.id,
+        hash: assessment.content_hash, payload: assessment.payload,
+      },
+      proposal_source_submission_id: proposal.source_submission_id,
+      proposal_normalization_proposal_id: proposal.normalization_proposal_id,
+      captured_at: '2026-07-24T00:00:00.000Z',
+    });
     const control = runtime.ensureDiagnosisControl({
       epicId: 10, projectId: 1,
       certificateId: certId, certificateHash: certHash,
-      settlementId: 1, settlementInputHash: 'i'.repeat(64),
-      sourceIntentId: 1, objective: 'o',
-      diagnosisCase: '{}', diagnosisCaseHash: 'd'.repeat(64),
+      settlementId: cert.settlement_id, settlementInputHash: cert.input_hash,
+      sourceIntentId: proposal.intent_id, objective: 'o',
+      diagnosisCase: canonicalJson(caseData), diagnosisCaseHash: diagnosisCaseHash(caseData),
       diagnosisContractVersion: DISCOVERY_DIAGNOSIS_CONTRACT_VERSION,
     });
-    const report = { schema_version: DISCOVERY_DIAGNOSIS_REPORT_SCHEMA };
-    // A reject with EMPTY validationErrors must THROW (the guard fires inside
-    // the atomic tx) and roll back — no row is persisted.
-    assert.throws(
-      () => runtime.insertDiagnosisReportAtomically({
-        controlIntentId: control.controlIntentId,
-        certificateId: certId, certificateHash: certHash,
-        settlementInputHash: control.settlementInputHash,
-        decision: 'go', taskId: control.taskId,
-        executionId: 'exec-1', schemaVersion: DISCOVERY_DIAGNOSIS_REPORT_SCHEMA,
-        payload: report, expectedContentHash: hashDiagnosisReport(report),
-        status: 'rejected_by_kernel', validationErrors: [],
-        provenance: { worker_id: 'w', execution_id: 'exec-1' },
-      }),
-      /empty validation_errors/,
-      'a rejected_by_kernel report with empty validationErrors must be rejected at insert time',
-    );
-    // No report row persisted (the tx rolled back).
-    assert.equal(
-      db.prepare('SELECT COUNT(*) c FROM saga3_discovery_diagnosis_reports').get().c,
-      0,
-      'no report row when the reject carries no explanation',
-    );
-    // And a reject WITH a non-empty reason persists fine (control case).
-    runtime.insertDiagnosisReportAtomically({
+    const invalid = validGoReport(caseData);
+    invalid.residual_risks[0].source_refs = ['$.invented'];
+    const submitted = runtime.submitDiagnosisReportAtomically({
       controlIntentId: control.controlIntentId,
-      certificateId: certId, certificateHash: certHash,
-      settlementInputHash: control.settlementInputHash,
-      decision: 'go', taskId: control.taskId,
-      executionId: 'exec-2', schemaVersion: DISCOVERY_DIAGNOSIS_REPORT_SCHEMA,
-      payload: report, expectedContentHash: hashDiagnosisReport(report),
-      status: 'rejected_by_kernel', validationErrors: ['invented source ref'],
-      provenance: { worker_id: 'w', execution_id: 'exec-2' },
+      executionId: 'exec-invalid',
+      payload: invalid,
+      provenance: { worker_id: 'w', execution_id: 'exec-invalid' },
     });
-    const row = db.prepare('SELECT validation_errors FROM saga3_discovery_diagnosis_reports WHERE control_intent_id=?')
-      .get(control.controlIntentId);
-    assert.deepEqual(JSON.parse(row.validation_errors), ['invented source ref']);
+    assert.equal(submitted.record.status, 'rejected_by_kernel');
+    assert.ok(submitted.record.validation_errors.length > 0);
+    assert.ok(submitted.record.validation_errors.some(error => error.includes('$.invented')));
+    const row = db.prepare(
+      'SELECT status, validation_errors FROM saga3_discovery_diagnosis_reports WHERE id=?',
+    ).get(submitted.record.id);
+    assert.equal(row.status, 'rejected_by_kernel');
+    assert.deepEqual(JSON.parse(row.validation_errors), submitted.record.validation_errors);
   } finally {
     cleanup(temp);
   }
 });
+
 
 // ---------------------------------------------------------------------------
 // Engine harness for G7 (mirrors d5-diagnosis-engine.test.mjs harness A).

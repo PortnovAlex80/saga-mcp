@@ -55,10 +55,13 @@ const {
   readAcceptedDiagnosisReportForControl,
   readDiagnosisControlById,
   readLatestDiagnosisReportForControl,
-  insertDiagnosisReportAtomically,
+  submitDiagnosisReportAtomically,
 } = await import('../../dist/saga3/persistence/saga3-diagnosis-repository.js');
 const { SqliteSaga3DiscoveryRuntime } = await import(
   '../../dist/saga3/persistence/sqlite-saga3-discovery-runtime.js'
+);
+const { READINESS_DIMENSIONS } = await import(
+  '../../dist/saga3/domain/discovery-readiness-assessment.js'
 );
 
 // ---------------------------------------------------------------------------
@@ -155,22 +158,42 @@ function seedCertificate(db, {
  * Build a valid DiagnosisCase for a GO certificate, with an accepted readiness
  * ref. Used as the immutable `diagnosisCase` text on the control row.
  */
-function buildGoCase(certId, certHash) {
+function buildGoCase(certId, certHash, settlementId = certId) {
+  const dimension_assessments = {};
+  for (const dimension of READINESS_DIMENSIONS) {
+    dimension_assessments[dimension] = {
+      status: 'sufficient', rationale: 'grounded', source_refs: ['$.problem_statement'],
+    };
+  }
+  const readinessPayload = {
+    proposal_id: 50,
+    proposal_content_hash: PROPOSAL_HASH,
+    overall_readiness: 'ready',
+    dimension_assessments,
+    blocking_gaps: [],
+    non_blocking_gaps: [],
+    recommended_next_action: 'proceed_to_settlement',
+    confidence: 0.9,
+    rationale: 'ready',
+  };
   const certRef = {
     id: certId,
     hash: certHash,
     decision: 'go',
     reason_codes: ['GO_READY_AND_GROUNDED'],
-    policy_version: 'saga3.settlement-policy.v1',
+    policy_version: 'saga3.discovery-settlement-policy.v1',
     policy_hash: 'p'.repeat(64),
-    settlement_id: 1,
+    settlement_id: settlementId,
     settlement_input_hash: SETTLEMENT_INPUT_HASH,
   };
   return buildDiagnosisCase({
     epic_id: 10,
     certificate: certRef,
     proposal: { id: 50, hash: PROPOSAL_HASH, payload: PROPOSAL_PAYLOAD },
-    readiness: { status: 'accepted_by_kernel', assessment_id: 7, hash: 'b'.repeat(64), payload: null },
+    readiness: {
+      status: 'accepted_by_kernel', assessment_id: 7,
+      hash: sha256Hex(readinessPayload), payload: readinessPayload,
+    },
     proposal_source_submission_id: null,
     proposal_normalization_proposal_id: null,
     captured_at: '2026-07-24T00:00:00.000Z',
@@ -230,7 +253,7 @@ function cleanup(temp) {
 
 /** Build a EnsureDiagnosisControl input for a GO certificate target. */
 function ensureInput(certId, certHash, overrides = {}) {
-  const caseData = buildGoCase(certId, certHash);
+  const caseData = buildGoCase(certId, certHash, certId);
   const caseText = canonicalJson(caseData);
   const caseHash = diagnosisCaseHash(caseData);
   return {
@@ -238,7 +261,7 @@ function ensureInput(certId, certHash, overrides = {}) {
     projectId: 1,
     certificateId: certId,
     certificateHash: certHash,
-    settlementId: 1,
+    settlementId: certId,
     settlementInputHash: SETTLEMENT_INPUT_HASH,
     sourceIntentId: 1,
     objective: 'explain the go outcome',
@@ -250,20 +273,11 @@ function ensureInput(certId, certHash, overrides = {}) {
 }
 
 /** Build a report-insert input from a payload (hash recomputed from it). */
-function reportInput(controlIntentId, certId, certHash, payload, overrides = {}) {
+function reportInput(controlIntentId, payload, overrides = {}) {
   return {
     controlIntentId,
-    certificateId: certId,
-    certificateHash: certHash,
-    settlementInputHash: SETTLEMENT_INPUT_HASH,
-    decision: 'go',
-    taskId: 100,
     executionId: 'diag-exec-1',
-    schemaVersion: DISCOVERY_DIAGNOSIS_REPORT_SCHEMA,
     payload,
-    expectedContentHash: hashDiagnosisReport(payload),
-    status: 'accepted_by_kernel',
-    validationErrors: [],
     provenance: { worker_id: 'diag-worker', model: 'test-model' },
     ...overrides,
   };
@@ -393,15 +407,15 @@ test('D5 persistence: same content reuses report', () => {
     const control = new SqliteSaga3DiscoveryRuntime().ensureDiagnosisControl(ensureInput(certId, certHash));
     const payload = validReportPayload(certId, certHash);
 
-    const first = insertDiagnosisReportAtomically(db, reportInput(control.controlIntentId, certId, certHash, payload));
+    const first = submitDiagnosisReportAtomically(db, reportInput(control.controlIntentId, payload));
     assert.equal(first.inserted, true);
     assert.equal(first.replayed, false);
     assert.equal(first.record.status, 'accepted_by_kernel');
 
     // Resubmit the SAME content under a DIFFERENT execution_id — must reuse.
-    const second = insertDiagnosisReportAtomically(
+    const second = submitDiagnosisReportAtomically(
       db,
-      reportInput(control.controlIntentId, certId, certHash, payload, { executionId: 'diag-exec-2' }),
+      reportInput(control.controlIntentId, payload, { executionId: 'diag-exec-2' }),
     );
     assert.equal(second.inserted, false);
     assert.equal(second.replayed, true);
@@ -427,7 +441,7 @@ test('D5 persistence: corrected content new report', () => {
     const { certId, certHash } = seedCertificate(db);
     const control = new SqliteSaga3DiscoveryRuntime().ensureDiagnosisControl(ensureInput(certId, certHash));
     const payloadA = validReportPayload(certId, certHash);
-    const first = insertDiagnosisReportAtomically(db, reportInput(control.controlIntentId, certId, certHash, payloadA));
+    const first = submitDiagnosisReportAtomically(db, reportInput(control.controlIntentId, payloadA));
 
     // A DIFFERENT content_hash (corrected payload) under the same control
     // creates a NEW report row. The first was accepted; the second accepted
@@ -439,9 +453,9 @@ test('D5 persistence: corrected content new report', () => {
     });
     assert.notEqual(hashDiagnosisReport(payloadB), hashDiagnosisReport(payloadA));
     assert.throws(
-      () => insertDiagnosisReportAtomically(
+      () => submitDiagnosisReportAtomically(
         db,
-        reportInput(control.controlIntentId, certId, certHash, payloadB, { executionId: 'diag-exec-2' }),
+        reportInput(control.controlIntentId, payloadB, { executionId: 'diag-exec-2' }),
       ),
       /at-most-one-accepted/i,
     );
@@ -455,13 +469,10 @@ test('D5 persistence: corrected content new report', () => {
     // A CORRECTED report that is REJECTED (not a second accepted) does persist
     // as a new durable row — corrected content under a new hash lands.
     const payloadC = validReportPayload(certId, certHash, 'go', { executive_summary: 'third try' });
-    const rejected = insertDiagnosisReportAtomically(
+    payloadC.residual_risks[0].source_refs = ['$.invented'];
+    const rejected = submitDiagnosisReportAtomically(
       db,
-      reportInput(control.controlIntentId, certId, certHash, payloadC, {
-        executionId: 'diag-exec-3',
-        status: 'rejected_by_kernel',
-        validationErrors: ['invented source ref'],
-      }),
+      reportInput(control.controlIntentId, payloadC, { executionId: 'diag-exec-3' }),
     );
     assert.equal(rejected.inserted, true);
     assert.notEqual(rejected.record.id, first.record.id);
@@ -485,19 +496,16 @@ test('D5 persistence: rejected report durable', () => {
     const { certId, certHash } = seedCertificate(db);
     const control = new SqliteSaga3DiscoveryRuntime().ensureDiagnosisControl(ensureInput(certId, certHash));
     const payload = validReportPayload(certId, certHash);
-    const errors = ['invented_source_ref', 'unknown_reason_code:X'];
-    insertDiagnosisReportAtomically(
+    payload.residual_risks[0].source_refs = ['$.invented_source_ref'];
+    submitDiagnosisReportAtomically(
       db,
-      reportInput(control.controlIntentId, certId, certHash, payload, {
-        status: 'rejected_by_kernel',
-        validationErrors: errors,
-      }),
+      reportInput(control.controlIntentId, payload),
     );
     // Re-read via the repo: the row + status + validation_errors survive.
     const latest = readLatestDiagnosisReportForControl(db, control.controlIntentId);
     assert.ok(latest);
     assert.equal(latest.status, 'rejected_by_kernel');
-    assert.deepEqual(latest.validation_errors, errors);
+    assert.ok(latest.validation_errors.some(error => error.includes('invented_source_ref')));
     // No accepted report exists for this target.
     const accepted = readAcceptedDiagnosisReportForControl(db, control.controlIntentId);
     assert.equal(accepted, null);
@@ -516,20 +524,20 @@ test('D5 persistence: accepted report has no mutation path', () => {
     const { certId, certHash } = seedCertificate(db);
     const control = new SqliteSaga3DiscoveryRuntime().ensureDiagnosisControl(ensureInput(certId, certHash));
     const payload = validReportPayload(certId, certHash);
-    const { record } = insertDiagnosisReportAtomically(
+    const { record } = submitDiagnosisReportAtomically(
       db,
-      reportInput(control.controlIntentId, certId, certHash, payload),
+      reportInput(control.controlIntentId, payload),
     );
 
     // The repository exports NO function that updates an accepted report's
-    // payload or status. The only writes are: insertDiagnosisReportAtomically
+    // payload or status. The only writes are: submitDiagnosisReportAtomically
     // (insert-only) and setDiagnosisControlStatus (control lifecycle, not the
     // report). Assert the accepted row is read-back byte-identical and that the
     // idempotent re-insert does NOT mutate it.
     const before = readAcceptedDiagnosisReportForControl(db, control.controlIntentId);
-    insertDiagnosisReportAtomically(
+    submitDiagnosisReportAtomically(
       db,
-      reportInput(control.controlIntentId, certId, certHash, payload, { executionId: 'exec-2' }),
+      reportInput(control.controlIntentId, payload, { executionId: 'exec-2' }),
     );
     const after = readAcceptedDiagnosisReportForControl(db, control.controlIntentId);
     assert.deepEqual(after, before);
@@ -584,26 +592,18 @@ test('D5 persistence: report target mismatch rejected', () => {
     const { certId, certHash } = seedCertificate(db);
     const control = new SqliteSaga3DiscoveryRuntime().ensureDiagnosisControl(ensureInput(certId, certHash));
     const payload = validReportPayload(certId, certHash);
-    // The input's certificate_id/hash disagree with the control's target.
-    assert.throws(
-      () => insertDiagnosisReportAtomically(
-        db,
-        reportInput(control.controlIntentId, certId, certHash, payload, {
-          certificateId: certId,
-          certificateHash: '0'.repeat(64), // wrong hash
-        }),
-      ),
-      /certificate_hash .* != expected/i,
+    payload.target.certificate_hash = '0'.repeat(64);
+    const result = submitDiagnosisReportAtomically(
+      db,
+      reportInput(control.controlIntentId, payload),
     );
-    // No report row persisted (tx rolled back).
-    assert.equal(
-      db.prepare('SELECT COUNT(*) c FROM saga3_discovery_diagnosis_reports').get().c,
-      0,
-    );
+    assert.equal(result.record.status, 'rejected_by_kernel');
+    assert.ok(result.record.validation_errors.some(error => error.includes('target.certificate_hash')));
   } finally {
     cleanup(temp);
   }
 });
+
 
 // ---------------------------------------------------------------------------
 // C10 — restart returns same id + content_hash
@@ -615,15 +615,15 @@ test('D5 persistence: restart same report id/hash', () => {
     const { certId, certHash } = seedCertificate(db);
     const control = new SqliteSaga3DiscoveryRuntime().ensureDiagnosisControl(ensureInput(certId, certHash));
     const payload = validReportPayload(certId, certHash);
-    const first = insertDiagnosisReportAtomically(
+    const first = submitDiagnosisReportAtomically(
       db,
-      reportInput(control.controlIntentId, certId, certHash, payload),
+      reportInput(control.controlIntentId, payload),
     );
     // Simulate a restart: a fresh runtime + a replayed identical submission.
     new SqliteSaga3DiscoveryRuntime();
-    const replayed = insertDiagnosisReportAtomically(
+    const replayed = submitDiagnosisReportAtomically(
       db,
-      reportInput(control.controlIntentId, certId, certHash, payload, { executionId: 'restart-exec' }),
+      reportInput(control.controlIntentId, payload, { executionId: 'restart-exec' }),
     );
     assert.equal(replayed.record.id, first.record.id);
     assert.equal(replayed.record.content_hash, first.record.content_hash);
@@ -656,11 +656,11 @@ test('D5 persistence: atomic insert verifies target lineage', () => {
     ).run('e'.repeat(64), control.controlIntentId);
 
     assert.throws(
-      () => insertDiagnosisReportAtomically(
+      () => submitDiagnosisReportAtomically(
         db,
-        reportInput(control.controlIntentId, certId, certHash, payload),
+        reportInput(control.controlIntentId, payload),
       ),
-      /certificate_hash .* != expected/i,
+      /case certificate tuple does not match|metadata.certificate_hash/i,
     );
     // No report row persisted.
     assert.equal(
@@ -680,49 +680,37 @@ test('D5 persistence: atomic insert verifies target lineage', () => {
 // C12 — atomic insert rejects co-tamper (payload+hash changed together)
 // ---------------------------------------------------------------------------
 
-test('D5 persistence: atomic insert rejects co-tamper', () => {
+test('D5 persistence: atomic replay rejects coherent accepted-report tamper', () => {
   const { temp, db } = fixture();
   try {
     const { certId, certHash } = seedCertificate(db);
     const control = new SqliteSaga3DiscoveryRuntime().ensureDiagnosisControl(ensureInput(certId, certHash));
+    const payload = validReportPayload(certId, certHash);
+    const inserted = submitDiagnosisReportAtomically(
+      db,
+      reportInput(control.controlIntentId, payload),
+    );
+    assert.equal(inserted.record.status, 'accepted_by_kernel');
 
-    // Build the real payload, then craft a LYING expectedContentHash that agrees
-    // with a DIFFERENT (tampered) payload but not with what the caller passed.
-    // The atomic tx recomputes sha256Hex(input.payload) and compares to
-    // expectedContentHash — a payload+hash co-tampered to agree with each other
-    // but not with the recomputation is caught.
-    const realPayload = validReportPayload(certId, certHash);
-    const tamperedPayload = validReportPayload(certId, certHash, 'go', {
-      executive_summary: 'attacker rewritten',
-    });
-    const lyingHash = hashDiagnosisReport(tamperedPayload);
+    const tampered = structuredClone(payload);
+    tampered.residual_risks[0].source_refs = ['$.invented_after_accept'];
+    const tamperedHash = hashDiagnosisReport(tampered);
+    db.prepare(
+      `UPDATE saga3_discovery_diagnosis_reports SET payload=?, content_hash=? WHERE id=?`,
+    ).run(canonicalJson(tampered), tamperedHash, inserted.record.id);
 
     assert.throws(
-      () => insertDiagnosisReportAtomically(
+      () => submitDiagnosisReportAtomically(
         db,
-        reportInput(control.controlIntentId, certId, certHash, realPayload, {
-          expectedContentHash: lyingHash,
-        }),
+        reportInput(control.controlIntentId, tampered, { executionId: 'diag-replay-tampered' }),
       ),
-      /payload hash mismatch/i,
+      /replayed diagnosis report .* no longer validates|verdict drift/i,
     );
-    // No report row persisted (tx rolled back).
-    assert.equal(
-      db.prepare('SELECT COUNT(*) c FROM saga3_discovery_diagnosis_reports').get().c,
-      0,
-    );
-
-    // Sanity: the SAME real payload with its TRUE hash inserts cleanly afterwards.
-    const ok = insertDiagnosisReportAtomically(
-      db,
-      reportInput(control.controlIntentId, certId, certHash, realPayload, { executionId: 'diag-clean' }),
-    );
-    assert.equal(ok.inserted, true);
-    assert.equal(ok.record.status, 'accepted_by_kernel');
   } finally {
     cleanup(temp);
   }
 });
+
 
 // ---------------------------------------------------------------------------
 // Extra: setDiagnosisControlStatus CAS + DiagnosisControlExecution shape

@@ -54,11 +54,14 @@ const { DISCOVERY_DIAGNOSIS_REPORT_SCHEMA } = await import(
 const { validateDiagnosisReport } = await import(
   '../../dist/saga3/domain/discovery-diagnosis-validator.js'
 );
-const { buildDiagnosisCase } = await import(
+const { buildDiagnosisCase, diagnosisCaseHash } = await import(
   '../../dist/saga3/domain/discovery-diagnosis-case.js'
 );
 const { Saga3DiscoveryDiagnosisService } = await import(
   '../../dist/saga3/application/discovery-diagnosis-service.js'
+);
+const { Saga3DiscoverySettlementService } = await import(
+  '../../dist/saga3/application/discovery-settlement-service.js'
 );
 const { SqliteSaga3DiscoveryRuntime } = await import(
   '../../dist/saga3/persistence/sqlite-saga3-discovery-runtime.js'
@@ -142,7 +145,7 @@ const POLICY_HASH = 'p'.repeat(64);
  * Mirrors d4-settlement-recovery.test.mjs buildLiveFixture, but also inserts
  * the settlement + certificate rows so the diagnosis service has a target.
  */
-function buildLiveFixture(db) {
+async function buildLiveFixture(db) {
   ensureSaga3ReadinessSchema(db);
   ensureSaga3SettlementSchema(db);
   ensureSaga3DiagnosisSchema(db);
@@ -194,41 +197,28 @@ function buildLiveFixture(db) {
      VALUES (7,1,50,?,200,'advisor-exec',?,?, 'accepted_by_kernel','ready','proceed_to_settlement','[]','{}')`,
   ).run(PRODUCT_PROPOSAL_HASH, canonicalJson(ASSESSMENT_PAYLOAD), ASSESSMENT_HASH);
 
-  // Settlement (id 1) + outcome certificate (id 1, decision go).
-  const certHash = createHash('sha256').update('cert-1-go').digest('hex');
-  db.prepare(
-    `INSERT INTO saga3_discovery_settlements
-       (id,epic_id,proposal_id,proposal_content_hash,readiness_assessment_id,
-        readiness_assessment_hash,policy_version,policy_hash,input_snapshot,
-        input_hash,decision,reason_codes,rationale,status)
-     VALUES (1,10,50,?,7,?,'saga3.settlement-policy.v1',?,?,?,?,?,?,'certificate_issued')`,
-  ).run(
-    PRODUCT_PROPOSAL_HASH,
-    ACCEPTED_TARGET,
-    POLICY_HASH,
-    canonicalJson(SETTLEMENT_SNAPSHOT),
-    SETTLEMENT_INPUT_HASH,
-    'go',
-    JSON.stringify(['GO_READY_AND_GROUNDED']),
-    'ready and grounded',
-  );
-  db.prepare(
-    `INSERT INTO saga3_discovery_outcome_certificates
-       (id,settlement_id,epic_id,proposal_id,proposal_content_hash,
-        readiness_assessment_id,readiness_assessment_hash,policy_version,
-        policy_hash,decision,reason_codes,input_hash,certificate_payload,
-        certificate_hash,issued_at)
-     VALUES (1,1,10,50,?,7,?,'saga3.settlement-policy.v1',?,?,?,?,'{}',?,'2026-07-24T00:00:00.000Z')`,
-  ).run(
-    PRODUCT_PROPOSAL_HASH,
-    ACCEPTED_TARGET,
-    POLICY_HASH,
-    'go',
-    JSON.stringify(['GO_READY_AND_GROUNDED']),
-    SETTLEMENT_INPUT_HASH,
-    certHash,
-  );
-  return { certId: 1, certHash };
+  // Issue the authoritative D4 target through the real settlement service.
+  const settlementService = new Saga3DiscoverySettlementService({
+    runtimePersistence: new SqliteSaga3DiscoveryRuntime(),
+  });
+  const result = await settlementService.settle({
+    projectId: 1,
+    epicId: 10,
+    proposalId: 50,
+    proposalHash: PRODUCT_PROPOSAL_HASH,
+    readiness: {
+      status: 'completed',
+      authority: 'shadow_advisor',
+      assessmentId: 7,
+      assessmentHash: ASSESSMENT_HASH,
+      overallReadiness: 'ready',
+      recommendedNextAction: 'proceed_to_settlement',
+      error: null,
+    },
+  });
+  assert.equal(result.status, 'issued');
+  return { certId: result.certificateId, certHash: result.certificateHash };
+
 }
 
 function fixture() {
@@ -373,7 +363,7 @@ function assertD4Unchanged(db, before, label) {
 test('D5 service: loads and verifies certificate lineage', async () => {
   const { temp, db } = fixture();
   try {
-    const { certId, certHash } = buildLiveFixture(db);
+    const { certId, certHash } = await buildLiveFixture(db);
     // The worker submits a valid report; the service must load the cert by id,
     // verify hash + settlement + snapshot lineage, build the case, run the
     // worker, and project a completed advisory result.
@@ -392,19 +382,10 @@ test('D5 service: loads and verifies certificate lineage', async () => {
       const report = validGoReport(caseData);
       const validation = validateDiagnosisReport(report, caseData);
       assert.equal(validation.valid, true, `fixture report must be valid: ${validation.errors.join('; ')}`);
-      runtime.insertDiagnosisReportAtomically({
+      runtime.submitDiagnosisReportAtomically({
         controlIntentId: control.id,
-        certificateId: certId,
-        certificateHash: certHash,
-        settlementInputHash: control.settlement_input_hash,
-        decision: 'go',
-        taskId: control.projected_task_id,
         executionId: 'diag-exec-1',
-        schemaVersion: DISCOVERY_DIAGNOSIS_REPORT_SCHEMA,
         payload: report,
-        expectedContentHash: createHash('sha256').update(canonicalJson(report)).digest('hex'),
-        status: 'accepted_by_kernel',
-        validationErrors: [],
         provenance: { worker_id: 'diag-worker', execution_id: 'diag-exec-1' },
       });
     }));
@@ -428,7 +409,7 @@ test('D5 service: loads and verifies certificate lineage', async () => {
 test('D5 service: accepted report reused', async () => {
   const { temp, db } = fixture();
   try {
-    const { certId, certHash } = buildLiveFixture(db);
+    const { certId, certHash } = await buildLiveFixture(db);
     let spawnCount = 0;
     const executor = makeFakeExecutor(() => {
       spawnCount++;
@@ -436,19 +417,10 @@ test('D5 service: accepted report reused', async () => {
       const caseData = JSON.parse(control.diagnosis_case);
       db.prepare('UPDATE tasks SET status=? WHERE id=?').run('done', control.projected_task_id);
       const report = validGoReport(caseData);
-      runtime.insertDiagnosisReportAtomically({
+      runtime.submitDiagnosisReportAtomically({
         controlIntentId: control.id,
-        certificateId: certId,
-        certificateHash: certHash,
-        settlementInputHash: control.settlement_input_hash,
-        decision: 'go',
-        taskId: control.projected_task_id,
         executionId: 'diag-exec-1',
-        schemaVersion: DISCOVERY_DIAGNOSIS_REPORT_SCHEMA,
         payload: report,
-        expectedContentHash: createHash('sha256').update(canonicalJson(report)).digest('hex'),
-        status: 'accepted_by_kernel',
-        validationErrors: [],
         provenance: { worker_id: 'diag-worker', execution_id: 'diag-exec-1' },
       });
     });
@@ -483,7 +455,7 @@ test('D5 service: accepted report reused', async () => {
 test('D5 service: resumable control resumed', async () => {
   const { temp, db } = fixture();
   try {
-    const { certId, certHash } = buildLiveFixture(db);
+    const { certId, certHash } = await buildLiveFixture(db);
     // Seed a pre-existing diagnosis control in 'paused' state with NO accepted
     // report (simulating a prior interrupted run). The service must RESUME it
     // (same ControlIntent, same task) rather than creating a new one.
@@ -495,19 +467,10 @@ test('D5 service: resumable control resumed', async () => {
       const caseData = JSON.parse(c.diagnosis_case);
       db.prepare('UPDATE tasks SET status=? WHERE id=?').run('done', c.projected_task_id);
       const report = validGoReport(caseData);
-      runtime.insertDiagnosisReportAtomically({
+      runtime.submitDiagnosisReportAtomically({
         controlIntentId: c.id,
-        certificateId: certId,
-        certificateHash: certHash,
-        settlementInputHash: c.settlement_input_hash,
-        decision: 'go',
-        taskId: c.projected_task_id,
         executionId: 'diag-exec-resume',
-        schemaVersion: DISCOVERY_DIAGNOSIS_REPORT_SCHEMA,
         payload: report,
-        expectedContentHash: createHash('sha256').update(canonicalJson(report)).digest('hex'),
-        status: 'accepted_by_kernel',
-        validationErrors: [],
         provenance: { worker_id: 'diag-worker', execution_id: 'diag-exec-resume' },
       });
     }));
@@ -532,7 +495,7 @@ test('D5 service: resumable control resumed', async () => {
 test('D5 service: invalid report durable rejected', async () => {
   const { temp, db } = fixture();
   try {
-    const { certId, certHash } = buildLiveFixture(db);
+    const { certId, certHash } = await buildLiveFixture(db);
     const { runtime, service } = makeService(makeFakeExecutor(() => {
       const control = runtime.readDiagnosisControlForTarget(certId, certHash);
       const caseData = JSON.parse(control.diagnosis_case);
@@ -544,19 +507,10 @@ test('D5 service: invalid report durable rejected', async () => {
       // and persists rejected_by_kernel. We simulate that here.
       const validation = validateDiagnosisReport(report, caseData);
       assert.equal(validation.valid, false, 'fixture: invented source ref must be invalid');
-      runtime.insertDiagnosisReportAtomically({
+      runtime.submitDiagnosisReportAtomically({
         controlIntentId: control.id,
-        certificateId: certId,
-        certificateHash: certHash,
-        settlementInputHash: control.settlement_input_hash,
-        decision: 'go',
-        taskId: control.projected_task_id,
         executionId: 'diag-exec-reject',
-        schemaVersion: DISCOVERY_DIAGNOSIS_REPORT_SCHEMA,
         payload: report,
-        expectedContentHash: createHash('sha256').update(canonicalJson(report)).digest('hex'),
-        status: 'rejected_by_kernel',
-        validationErrors: validation.errors,
         provenance: { worker_id: 'diag-worker', execution_id: 'diag-exec-reject' },
       });
     }));
@@ -591,7 +545,7 @@ test('D5 service: invalid report durable rejected', async () => {
 test('D5 service: worker throw isolated', async () => {
   const { temp, db } = fixture();
   try {
-    const { certId, certHash } = buildLiveFixture(db);
+    const { certId, certHash } = await buildLiveFixture(db);
     const before = snapshotD4(db);
     // A fake executor whose status() throws — simulates a worker-substrate
     // crash. The service must catch it and return status='failed' without
@@ -632,7 +586,7 @@ test('D5 service: worker throw isolated', async () => {
 test('D5 service: wrong target rejected', async () => {
   const { temp, db } = fixture();
   try {
-    const { certId, certHash } = buildLiveFixture(db);
+    const { certId, certHash } = await buildLiveFixture(db);
     const { runtime, service } = makeService(makeFakeExecutor(() => {
       const control = runtime.readDiagnosisControlForTarget(certId, certHash);
       const caseData = JSON.parse(control.diagnosis_case);
@@ -643,19 +597,10 @@ test('D5 service: wrong target rejected', async () => {
       report.target.certificate_hash = '0'.repeat(64);
       const validation = validateDiagnosisReport(report, caseData);
       assert.equal(validation.valid, false, 'fixture: wrong target must be invalid');
-      runtime.insertDiagnosisReportAtomically({
+      runtime.submitDiagnosisReportAtomically({
         controlIntentId: control.id,
-        certificateId: certId,
-        certificateHash: certHash,
-        settlementInputHash: control.settlement_input_hash,
-        decision: 'go',
-        taskId: control.projected_task_id,
         executionId: 'diag-exec-wrong-target',
-        schemaVersion: DISCOVERY_DIAGNOSIS_REPORT_SCHEMA,
         payload: report,
-        expectedContentHash: createHash('sha256').update(canonicalJson(report)).digest('hex'),
-        status: 'rejected_by_kernel',
-        validationErrors: validation.errors,
         provenance: { worker_id: 'diag-worker', execution_id: 'diag-exec-wrong-target' },
       });
     }));
@@ -674,26 +619,17 @@ test('D5 service: wrong target rejected', async () => {
 test('D5 service: only diagnosis tables written', async () => {
   const { temp, db } = fixture();
   try {
-    const { certId, certHash } = buildLiveFixture(db);
+    const { certId, certHash } = await buildLiveFixture(db);
     const before = snapshotD4(db);
     const { runtime, service } = makeService(makeFakeExecutor(() => {
       const control = runtime.readDiagnosisControlForTarget(certId, certHash);
       const caseData = JSON.parse(control.diagnosis_case);
       db.prepare('UPDATE tasks SET status=? WHERE id=?').run('done', control.projected_task_id);
       const report = validGoReport(caseData);
-      runtime.insertDiagnosisReportAtomically({
+      runtime.submitDiagnosisReportAtomically({
         controlIntentId: control.id,
-        certificateId: certId,
-        certificateHash: certHash,
-        settlementInputHash: control.settlement_input_hash,
-        decision: 'go',
-        taskId: control.projected_task_id,
         executionId: 'diag-exec-e7',
-        schemaVersion: DISCOVERY_DIAGNOSIS_REPORT_SCHEMA,
         payload: report,
-        expectedContentHash: createHash('sha256').update(canonicalJson(report)).digest('hex'),
-        status: 'accepted_by_kernel',
-        validationErrors: [],
         provenance: { worker_id: 'diag-worker', execution_id: 'diag-exec-e7' },
       });
     }));
@@ -723,25 +659,16 @@ test('D5 service: only diagnosis tables written', async () => {
 test('D5 service: result shape is advisory only', async () => {
   const { temp, db } = fixture();
   try {
-    const { certId, certHash } = buildLiveFixture(db);
+    const { certId, certHash } = await buildLiveFixture(db);
     const { runtime, service } = makeService(makeFakeExecutor(() => {
       const control = runtime.readDiagnosisControlForTarget(certId, certHash);
       const caseData = JSON.parse(control.diagnosis_case);
       db.prepare('UPDATE tasks SET status=? WHERE id=?').run('done', control.projected_task_id);
       const report = validGoReport(caseData);
-      runtime.insertDiagnosisReportAtomically({
+      runtime.submitDiagnosisReportAtomically({
         controlIntentId: control.id,
-        certificateId: certId,
-        certificateHash: certHash,
-        settlementInputHash: control.settlement_input_hash,
-        decision: 'go',
-        taskId: control.projected_task_id,
         executionId: 'diag-exec-e8',
-        schemaVersion: DISCOVERY_DIAGNOSIS_REPORT_SCHEMA,
         payload: report,
-        expectedContentHash: createHash('sha256').update(canonicalJson(report)).digest('hex'),
-        status: 'accepted_by_kernel',
-        validationErrors: [],
         provenance: { worker_id: 'diag-worker', execution_id: 'diag-exec-e8' },
       });
     }));
@@ -760,57 +687,13 @@ test('D5 service: result shape is advisory only', async () => {
       assert.ok(!(forbidden in completed), `advisory result must not carry '${forbidden}'`);
     }
 
-    // Failed result (worker crash): authority 'none', never kernel_policy.
-    const crashingExecutor = {
-      start() {},
-      status() { throw new Error('boom'); },
-      setConcurrency() {},
-      stop() {},
-      dispose() {},
-    };
-    const { service: failService } = makeService(crashingExecutor);
-    // Use a fresh certificate target so the control is not already concluded.
-    // A distinct immutable target requires a distinct (proposal_hash,
-    // readiness_hash, policy) tuple, otherwise the settlement unique index
-    // (idx_saga3_settlement_input) collides with settlement 1. We vary the
-    // policy_version to produce a genuinely new target.
-    const cert2Hash = createHash('sha256').update('cert-2-go').digest('hex');
-    const POLICY_VERSION_2 = 'saga3.settlement-policy.v2';
-    db.prepare(
-      `INSERT INTO saga3_discovery_settlements
-         (id,epic_id,proposal_id,proposal_content_hash,readiness_assessment_id,
-          readiness_assessment_hash,policy_version,policy_hash,input_snapshot,
-          input_hash,decision,reason_codes,rationale,status)
-       VALUES (2,10,50,?,7,?,?,?,?,?,?,?,?,'certificate_issued')`,
-    ).run(
-      PRODUCT_PROPOSAL_HASH,
-      ACCEPTED_TARGET,
-      POLICY_VERSION_2,
-      POLICY_HASH,
-      canonicalJson(SETTLEMENT_SNAPSHOT),
-      SETTLEMENT_INPUT_HASH,
-      'go',
-      JSON.stringify(['GO_READY_AND_GROUNDED']),
-      'ready',
-    );
-    db.prepare(
-      `INSERT INTO saga3_discovery_outcome_certificates
-         (id,settlement_id,epic_id,proposal_id,proposal_content_hash,
-          readiness_assessment_id,readiness_assessment_hash,policy_version,
-          policy_hash,decision,reason_codes,input_hash,certificate_payload,
-          certificate_hash,issued_at)
-       VALUES (2,2,10,50,?,7,?,?,?,?,?,?,'{}',?,'2026-07-24T00:00:00.000Z')`,
-    ).run(
-      PRODUCT_PROPOSAL_HASH,
-      ACCEPTED_TARGET,
-      POLICY_VERSION_2,
-      POLICY_HASH,
-      'go',
-      JSON.stringify(['GO_READY_AND_GROUNDED']),
-      SETTLEMENT_INPUT_HASH,
-      cert2Hash,
-    );
-    const failed = await diagnose(failService, 2, cert2Hash);
+    // Failed result: a stale target is rejected as advisory failure. Authority
+    // remains none and no authoritative field is surfaced.
+    const { service: failService } = makeService({
+      start() {}, status() { throw new Error('must not spawn for stale target'); },
+      setConcurrency() {}, stop() {}, dispose() {},
+    });
+    const failed = await diagnose(failService, certId, '0'.repeat(64));
     assert.equal(failed.status, 'failed');
     assert.equal(failed.authority, 'none');
     assert.notEqual(failed.authority, 'kernel_policy');
@@ -848,15 +731,7 @@ function runtime_readOrCreateControl(db, certId, certHash) {
     proposal_normalization_proposal_id: proposal.normalization_proposal_id,
     captured_at: '2026-07-24T00:00:00.000Z',
   });
-  const caseHash = createHash('sha256').update(canonicalJson({
-    schema_version: caseData.schema_version,
-    epic_id: caseData.epic_id,
-    certificate: caseData.certificate,
-    proposal: caseData.proposal,
-    readiness: caseData.readiness,
-    policy_conditions: caseData.policy_conditions,
-    allowed_source_refs: caseData.allowed_source_refs,
-  })).digest('hex');
+  const caseHash = diagnosisCaseHash(caseData)
   const control = runtime.ensureDiagnosisControl({
     epicId: 10, projectId: 1, certificateId: certId, certificateHash: certHash,
     settlementId: settlement.id, settlementInputHash: settlement.input_hash,
