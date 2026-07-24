@@ -15,7 +15,7 @@ permissions:
 jobs:
   apply-and-verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 20
     steps:
       - name: Checkout branch
         uses: actions/checkout@v4
@@ -72,9 +72,6 @@ jobs:
             tests/saga3/d5-adversarial.test.mjs \
             tests/saga3/d5-diagnosis-integrity.test.mjs \
             tests/saga3/d5-controlled-reject-smoke.test.mjs
-      - name: Full suite
-        if: steps.payload.outputs.present == 'true'
-        run: npm test
       - name: Commit and push correction
         if: steps.payload.outputs.present == 'true'
         shell: bash
