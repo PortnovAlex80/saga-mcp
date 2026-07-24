@@ -852,6 +852,59 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_saga3_settlement_input
 CREATE INDEX IF NOT EXISTS idx_saga3_settlement_epic
   ON saga3_discovery_settlements(epic_id, status);
 
+-- D5: advisory diagnosis. A diagnosis control binds an immutable certificate
+-- TARGET (certificate_id + certificate_hash + diagnosis contract version) to a
+-- bounded diagnosis worker task. A report row retains the worker's typed
+-- payload, content hash, status, separate provenance. The diagnosis is ADVISORY
+-- — it never mutates the D4 settlement/certificate, the product Proposal, or
+-- the readiness assessment.
+CREATE TABLE IF NOT EXISTS saga3_discovery_diagnosis_control_intents (
+  id                          INTEGER PRIMARY KEY AUTOINCREMENT,
+  epic_id                     INTEGER NOT NULL REFERENCES epics(id) ON DELETE CASCADE,
+  kind                        TEXT NOT NULL DEFAULT 'DiagnoseDiscoveryOutcome',
+  certificate_id              INTEGER NOT NULL REFERENCES saga3_discovery_outcome_certificates(id) ON DELETE CASCADE,
+  certificate_hash            TEXT NOT NULL,
+  settlement_input_hash       TEXT NOT NULL,
+  diagnosis_case              TEXT NOT NULL,         -- canonical JSON of the immutable DiagnosisCase
+  diagnosis_case_hash         TEXT NOT NULL,         -- SHA-256 over the case (captured_at excluded)
+  diagnosis_contract_version  TEXT NOT NULL,
+  authority_intent_id         INTEGER NOT NULL REFERENCES saga3_work_intents(id) ON DELETE CASCADE,
+  projected_task_id           INTEGER REFERENCES tasks(id) ON DELETE SET NULL,
+  status                      TEXT NOT NULL DEFAULT 'open'
+                                CHECK (status IN ('open','executing','paused','concluded','cancelled')),
+  created_at                  TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at                  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS saga3_discovery_diagnosis_reports (
+  id                          INTEGER PRIMARY KEY AUTOINCREMENT,
+  control_intent_id           INTEGER NOT NULL REFERENCES saga3_discovery_diagnosis_control_intents(id) ON DELETE CASCADE,
+  certificate_id              INTEGER NOT NULL,
+  certificate_hash            TEXT NOT NULL,
+  task_id                     INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  execution_id                TEXT NOT NULL,
+  schema_version              TEXT NOT NULL,
+  payload                     TEXT NOT NULL,         -- canonical JSON of the report payload
+  content_hash                TEXT NOT NULL,         -- hashDiagnosisReport(payload)
+  status                      TEXT NOT NULL DEFAULT 'submitted'
+                                CHECK (status IN ('submitted','accepted_by_kernel','rejected_by_kernel')),
+  validation_errors           TEXT NOT NULL DEFAULT '[]',  -- JSON array; durable rejection reasons
+  provenance                  TEXT NOT NULL DEFAULT '{}',
+  created_at                  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- One control per immutable certificate target.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_saga3_diagnosis_control_target
+  ON saga3_discovery_diagnosis_control_intents(certificate_id, certificate_hash, diagnosis_contract_version);
+CREATE INDEX IF NOT EXISTS idx_saga3_diagnosis_control_epic
+  ON saga3_discovery_diagnosis_control_intents(epic_id, status);
+CREATE INDEX IF NOT EXISTS idx_saga3_diagnosis_reports_control
+  ON saga3_discovery_diagnosis_reports(control_intent_id);
+-- Idempotency: replaying the same report (same control + content hash) under a
+-- new execution returns the existing row. execution_id is NOT in the key.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_saga3_diagnosis_reports_idempotency
+  ON saga3_discovery_diagnosis_reports(control_intent_id, content_hash);
+
 CREATE TABLE IF NOT EXISTS saga3_proposals (
   id              INTEGER PRIMARY KEY AUTOINCREMENT,
   intent_id       INTEGER NOT NULL REFERENCES saga3_work_intents(id) ON DELETE CASCADE,
