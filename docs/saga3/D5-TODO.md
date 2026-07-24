@@ -10,6 +10,38 @@
 
 ---
 
+## Final state (all stages implemented; gate UNCHANGED — human decides)
+
+| Stage | Commit | Suite |
+|-------|--------|-------|
+| 0 docs | `710ad96` | — |
+| 1 domain + pure tests | (squash commit 2) | 24/24 |
+| 2+2b persistence + architecture | `61ea237` | 643/0 |
+| 3 service + handler + E1-E8 | `4c03e84` | 654/0 |
+| 4 engine integration + D1-D10 | `0e889ce` | 666/0 |
+| 5 adversarial G1-G8 + guard fix | `f2ac945` | 675/0 |
+| 6 smokes A-E (2 fixes) | `d20028e` + `f298072` | 676/675/0 |
+| 7 evidence audit + doc align | `cdca997` | 676/675/0 |
+
+**Suite:** `npm test` = 676 tests, 675 pass, 0 fail, 1 todo (pre-existing
+non-D5 `track(reject)` in `tests/track-pipeline.test.mjs`, untouched by D5).
+77 D5 tests across 7 files.
+
+**Auditor verdict (Stage 7):** "AUDIT: no unsupported PASS claims found." All
+18 exit-gate criteria supported; invariants I1–I8 intact; forbidden files never
+committed; settings/policies untouched; implementer issued no merge verdict (I8).
+
+**Two defects the smokes surfaced and fixed:** missing diagnosis skill
+(`d20028e`); nested-transaction bug in `diagnosis_submit` (`d20028e`). Both
+fixed before the smoke evidence was recorded.
+
+**Per invariant I8, the implementer does NOT close the exit gate.** The §24
+criteria below remain for the human reviewer to check and verdict. This file
+states: *implementation finished; ready for independent review.*
+
+---
+
+
 ## Stage 0 — analysis only (NO code)
 
 - [x] **0.1** `D5-INVARIANTS.md` written — 8 invariants, I1..I8
