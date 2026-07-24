@@ -140,9 +140,14 @@ export function createSaga3NormalizationHandlers(
       const source = readRawSubmission(db, sourceSubmissionId);
       if (!source) throw new Error(`normalization_submit: source submission ${sourceSubmissionId} not found`);
       const sourceIntent = db.prepare(`SELECT epic_id FROM saga3_work_intents WHERE id=?`).get(source.intent_id) as { epic_id: number } | undefined;
-      if (!sourceIntent || sourceIntent.epic_id !== binding.control.epic_id) throw new Error('normalization_submit: source submission/control epic mismatch');
+      if (!sourceIntent || sourceIntent.epic_id !== binding.control.epic_id) {
+        throw new Error('normalization_submit: source submission/control epic mismatch');
+      }
       if (source.status !== 'normalization_required') {
         throw new Error(`normalization_submit: source submission status is '${source.status}'`);
+      }
+      if (!source.provenance) {
+        throw new Error('normalization_submit: source submission has no product provenance');
       }
 
       const validation = validateDiscoveryNormalizationProposal(
@@ -158,11 +163,9 @@ export function createSaga3NormalizationHandlers(
         throw new Error('normalization_submit: source identity/hash mismatch');
       }
 
-      const provenance: ProposalProvenance = {
+      const normalizerProvenance: ProposalProvenance = {
         ...binding.provenance,
         submitted_at: now().toISOString(),
-        normalization_mode: 'lm_transformation',
-        source_submission_id: source.id,
       };
       const inserted = insertNormalizationProposal(db, {
         controlIntentId,
@@ -170,11 +173,30 @@ export function createSaga3NormalizationHandlers(
         taskId: binding.control.projected_task_id!,
         executionId,
         payload,
-        provenance,
+        provenance: normalizerProvenance,
       });
 
       const normalizedText = canonicalJson(typed.normalized_payload);
       const contentHash = createHash('sha256').update(normalizedText).digest('hex');
+      const productProvenance: ProposalProvenance = {
+        ...source.provenance,
+        normalization_mode: 'lm_transformation',
+        source_submission_id: source.id,
+        normalization_proposal_id: inserted.record.id,
+        normalizer: {
+          model: normalizerProvenance.model,
+          provider: normalizerProvenance.provider,
+          effort: normalizerProvenance.effort,
+          worker_id: normalizerProvenance.worker_id,
+          execution_id: normalizerProvenance.execution_id,
+          submitted_at: normalizerProvenance.submitted_at,
+        },
+      };
+
+      // The canonical product Proposal remains attached to the original product
+      // task/execution. The normalizer owns a separate normalization proposal;
+      // mixing its execution_id with the product task_id would create a false
+      // task↔execution pair and break D1's provenance invariant.
       const productInsert = db.prepare(
         `INSERT INTO saga3_proposals
            (intent_id, task_id, execution_id, kind, schema_version, payload,
@@ -185,19 +207,19 @@ export function createSaga3NormalizationHandlers(
       ).run(
         source.intent_id,
         source.task_id,
-        executionId,
+        source.execution_id,
         source.kind,
         source.schema_version,
         normalizedText,
         contentHash,
-        JSON.stringify(provenance),
+        JSON.stringify(productProvenance),
         source.id,
         inserted.record.id,
       );
       const product = db.prepare(
         `SELECT id FROM saga3_proposals
           WHERE intent_id=? AND execution_id=? AND content_hash=?`,
-      ).get(source.intent_id, executionId, contentHash) as { id: number } | undefined;
+      ).get(source.intent_id, source.execution_id, contentHash) as { id: number } | undefined;
       if (!product) throw new Error('normalization_submit: accepted product proposal vanished');
 
       markNormalizationAccepted(db, inserted.record.id);
