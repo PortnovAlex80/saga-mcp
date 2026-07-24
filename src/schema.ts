@@ -747,6 +747,57 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_saga3_normalization_idempotency
 CREATE INDEX IF NOT EXISTS idx_saga3_control_epic
   ON saga3_control_intents(epic_id, status);
 
+-- D3: shadow readiness advisor. A readiness ControlIntent is keyed by the
+-- IMMUTABLE Proposal version (proposal_id + proposal_content_hash), not by a
+-- raw submission: a changed content hash is a new assessment target. This is
+-- a separate table from saga3_control_intents (whose UNIQUE is on
+-- source_submission_id) so the two control kinds never collide.
+CREATE TABLE IF NOT EXISTS saga3_readiness_control_intents (
+  id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+  epic_id               INTEGER NOT NULL REFERENCES epics(id) ON DELETE CASCADE,
+  kind                  TEXT NOT NULL,                        -- 'AssessDiscoveryReadiness'
+  proposal_id           INTEGER NOT NULL REFERENCES saga3_proposals(id) ON DELETE CASCADE,
+  proposal_content_hash TEXT NOT NULL,                        -- binds to one immutable Proposal version
+  source_intent_id      INTEGER NOT NULL REFERENCES saga3_work_intents(id) ON DELETE CASCADE,
+  authority_intent_id   INTEGER NOT NULL REFERENCES saga3_work_intents(id) ON DELETE CASCADE,
+  projected_task_id     INTEGER REFERENCES tasks(id) ON DELETE SET NULL,
+  status                TEXT NOT NULL DEFAULT 'open'
+                          CHECK (status IN ('open','executing','paused','concluded','cancelled')),
+  created_at            TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at            TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS saga3_readiness_assessments (
+  id                       INTEGER PRIMARY KEY AUTOINCREMENT,
+  control_intent_id        INTEGER NOT NULL REFERENCES saga3_readiness_control_intents(id) ON DELETE CASCADE,
+  proposal_id              INTEGER NOT NULL REFERENCES saga3_proposals(id) ON DELETE CASCADE,
+  proposal_content_hash    TEXT NOT NULL,
+  task_id                  INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  execution_id             TEXT NOT NULL,
+  payload                  TEXT NOT NULL,
+  content_hash             TEXT NOT NULL,
+  status                   TEXT NOT NULL DEFAULT 'submitted'
+                             CHECK (status IN ('submitted','accepted_by_kernel','rejected_by_kernel')),
+  overall_readiness        TEXT,                              -- denormalized for shadow visibility
+  recommended_next_action  TEXT,
+  validation_errors        TEXT NOT NULL DEFAULT '[]',        -- durable rejection reasons (P0: rejected assessments must survive)
+  provenance               TEXT NOT NULL DEFAULT '{}',
+  created_at               TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- One readiness ControlIntent per immutable Proposal version.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_saga3_readiness_control_target
+  ON saga3_readiness_control_intents(proposal_id, proposal_content_hash);
+-- Idempotent submission keyed by immutable assessment target + submitted
+-- content, INDEPENDENT of execution_id (P1-3): a restart with a new execution
+-- must reuse the same assessment row, not create a duplicate.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_saga3_readiness_assessment_idempotency
+  ON saga3_readiness_assessments(control_intent_id, content_hash);
+CREATE INDEX IF NOT EXISTS idx_saga3_readiness_control_epic
+  ON saga3_readiness_control_intents(epic_id, status);
+CREATE INDEX IF NOT EXISTS idx_saga3_readiness_assessment_control
+  ON saga3_readiness_assessments(control_intent_id);
+
 CREATE TABLE IF NOT EXISTS saga3_proposals (
   id              INTEGER PRIMARY KEY AUTOINCREMENT,
   intent_id       INTEGER NOT NULL REFERENCES saga3_work_intents(id) ON DELETE CASCADE,

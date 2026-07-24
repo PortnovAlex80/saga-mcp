@@ -1,6 +1,11 @@
 import type { CreateWorkIntent, WorkIntent, WorkIntentStatus } from '../domain/work-intent.js';
 import type { ProposalRecord } from '../domain/proposal.js';
 import type { ControlIntentStatus, RawDiscoverySubmissionRecord } from '../domain/discovery-normalization-records.js';
+import type {
+  ReadinessAssessmentRecord,
+  ReadinessControlExecution,
+  ReadinessControlStatus,
+} from '../domain/discovery-readiness-records.js';
 
 /**
  * Runtime-persistence boundary for the Saga 3 Discovery Edition engine.
@@ -76,6 +81,17 @@ export interface Saga3DiscoveryRuntimePersistence {
   ensureNormalizationControl(input: EnsureNormalizationControl): NormalizationControlExecution;
   /** Compare-and-set ControlIntent lifecycle. */
   setControlIntentStatus(controlIntentId: number, expected: ControlIntentStatus, next: ControlIntentStatus): boolean;
+
+  /**
+   * D3: Idempotently create/reuse the AssessDiscoveryReadiness ControlIntent,
+   * its bounded authority WorkIntent, and the projected advisor task for one
+   * immutable Proposal version. A changed content hash is a new target.
+   */
+  ensureReadinessControl(input: EnsureReadinessControl): ReadinessControlExecution;
+  /** D3: Compare-and-set readiness ControlIntent lifecycle. */
+  setReadinessControlStatus(controlIntentId: number, expected: ReadinessControlStatus, next: ReadinessControlStatus): boolean;
+  /** D3: Latest assessment (any status) for one readiness ControlIntent. */
+  readLatestReadinessAssessment(controlIntentId: number): ReadinessAssessmentRecord | null;
 }
 
 export interface EnsureProjectedTask {
@@ -105,4 +121,13 @@ export interface NormalizationControlExecution {
   authorityIntentId: number;
   authorityIntentStatus: WorkIntentStatus;
   taskId: number;
+}
+
+export interface EnsureReadinessControl {
+  epicId: number;
+  projectId: number;
+  proposalId: number;
+  proposalContentHash: string;
+  sourceIntentId: number;
+  objective: string;
 }
