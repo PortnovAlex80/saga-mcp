@@ -98,6 +98,12 @@ export function ensureSaga3DiagnosisSchema(db: Database.Database): void {
     -- a new execution returns the existing row. execution_id is NOT in the key.
     CREATE UNIQUE INDEX IF NOT EXISTS idx_saga3_diagnosis_reports_idempotency
       ON saga3_discovery_diagnosis_reports(control_intent_id, content_hash);
+    -- P0-2: at-most-one accepted report per control. The runtime at-most-one
+    -- check lives inside BEGIN IMMEDIATE in submitDiagnosisReportAtomically; this
+    -- partial unique index is a STRUCTURAL second line of defence so the DB itself
+    -- guarantees the invariant even if a future writer bypasses the repo function.
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_saga3_diagnosis_reports_one_accepted
+      ON saga3_discovery_diagnosis_reports(control_intent_id) WHERE status='accepted_by_kernel';
   `);
 }
 

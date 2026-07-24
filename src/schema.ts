@@ -904,6 +904,10 @@ CREATE INDEX IF NOT EXISTS idx_saga3_diagnosis_reports_control
 -- new execution returns the existing row. execution_id is NOT in the key.
 CREATE UNIQUE INDEX IF NOT EXISTS idx_saga3_diagnosis_reports_idempotency
   ON saga3_discovery_diagnosis_reports(control_intent_id, content_hash);
+-- P0-2: at-most-one accepted report per control (structural second line of
+-- defence; the runtime check lives inside BEGIN IMMEDIATE in the repo function).
+CREATE UNIQUE INDEX IF NOT EXISTS idx_saga3_diagnosis_reports_one_accepted
+  ON saga3_discovery_diagnosis_reports(control_intent_id) WHERE status='accepted_by_kernel';
 
 CREATE TABLE IF NOT EXISTS saga3_proposals (
   id              INTEGER PRIMARY KEY AUTOINCREMENT,

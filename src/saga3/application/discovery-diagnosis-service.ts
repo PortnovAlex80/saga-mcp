@@ -139,7 +139,15 @@ import {
   type DiagnosisProposalRef,
   type DiagnosisReadinessRef,
 } from '../domain/discovery-diagnosis-case.js';
-import { DISCOVERY_DIAGNOSIS_REPORT_SCHEMA } from '../domain/discovery-diagnosis-report.js';
+import {
+  DISCOVERY_DIAGNOSIS_REPORT_SCHEMA,
+  hashDiagnosisReport,
+} from '../domain/discovery-diagnosis-report.js';
+import { validateDiagnosisReport } from '../domain/discovery-diagnosis-validator.js';
+import type {
+  DiscoveryDiagnosisCase,
+  DiagnosisDecision,
+} from '../domain/discovery-diagnosis-case.js';
 import type { DiagnosisControlExecution, DiagnosisReportRecord } from '../domain/discovery-diagnosis-records.js';
 import type { SettlementProposalRecord } from '../persistence/saga3-discovery-runtime-port.js';
 import { discoverySettlementPolicyV1 } from '../domain/discovery-settlement-policy.js';
@@ -233,20 +241,20 @@ export class Saga3DiscoveryDiagnosisService implements DiscoveryDiagnosisService
 
     // -----------------------------------------------------------------------
     // RESTART-RESUME (invariant I7): if an accepted report already exists for
-    // this target, return it WITHOUT spawning a worker.
+    // this target, return it WITHOUT spawning a worker. P0-2: the stored
+    // accepted report is RE-VERIFIED against the freshly built verified case
+    // before it is surfaced as completed — a tampered accepted payload must
+    // NEVER be projected as a completed diagnosis. On verification failure the
+    // diagnosis is treated as failed (the D4 result stays complete — I5).
     // -----------------------------------------------------------------------
     try {
       const accepted = rt.readAcceptedDiagnosisReport(control.controlIntentId);
       if (accepted) {
-        // The accepted report is the durable answer. Validate its target still
-        // binds to this control (defence in depth — the atomic insert already
-        // enforces this, but a corrupted row must not be projected as success).
-        if (accepted.certificate_id !== request.certificateId
-            || accepted.certificate_hash !== request.certificateHash) {
-          throw new DiagnosisTargetError(
-            `accepted report ${accepted.id} target drift (cert ${accepted.certificate_id} != ${request.certificateId})`,
-          );
-        }
+        // P0-2: full re-verification against the frozen verified case. This
+        // catches content_hash tamper, payload tamper, target drift, schema
+        // drift, status/errors contradiction, and any causal/coverage rule
+        // violation a tampered payload might introduce.
+        verifyAcceptedDiagnosisReport(accepted, caseData, control);
         request.heartbeat(
           'DIAGNOSIS_COMPLETED',
           `control=${control.controlIntentId} report=${accepted.id} (reused)`,
@@ -255,7 +263,7 @@ export class Saga3DiscoveryDiagnosisService implements DiscoveryDiagnosisService
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      request.heartbeat('DIAGNOSIS_FAILED', `accepted-report read failed: ${message}`);
+      request.heartbeat('DIAGNOSIS_FAILED', `accepted-report verification failed: ${message}`);
       return failedResult(request.certificateId, request.certificateHash, message);
     }
 
@@ -268,8 +276,10 @@ export class Saga3DiscoveryDiagnosisService implements DiscoveryDiagnosisService
       const outcome = await this.runDiagnosisWorker(request, control);
       // After worker closure: read the latest report the worker submitted via
       // diagnosis_submit (which already validated + persisted the verdict
-      // atomically) and project the advisory result.
-      const result = this.persistAndProject(rt, request, control, outcome);
+      // atomically) and project the advisory result. P0-2: if the latest report
+      // is accepted, it is re-verified against the frozen verified case before
+      // being projected as completed.
+      const result = this.persistAndProject(rt, request, control, caseData, outcome);
       request.heartbeat(
         result.status === 'completed' ? 'DIAGNOSIS_COMPLETED' : 'DIAGNOSIS_FAILED',
         result.status === 'completed'
@@ -514,14 +524,19 @@ export class Saga3DiscoveryDiagnosisService implements DiscoveryDiagnosisService
   // NOTE: diagnosis_submit ALREADY runs validateDiagnosisReport and persists
   // the accepted/rejected verdict atomically. So by the time the worker
   // closes, the report row carries its final status. This method READS that
-  // row and projects the advisory result. It does NOT re-validate (the atomic
-  // insert is the kernel gate); it only projects. If no report row exists,
-  // the diagnosis failed without producing a report.
+  // row and projects the advisory result. If no report row exists, the
+  // diagnosis failed without producing a report.
+  //
+  // P0-2: if the latest report is accepted_by_kernel, it is RE-VERIFIED against
+  // the frozen verified case before being projected as completed. A tampered
+  // accepted payload must never surface as a completed diagnosis. On
+  // verification failure the result is 'failed' (advisory — I5).
   // -------------------------------------------------------------------------
   private persistAndProject(
     rt: Saga3DiscoveryRuntimePersistence,
     request: DiagnoseRequest,
     control: DiagnosisControlExecution,
+    verifiedCase: DiscoveryDiagnosisCase,
     outcome: WorkerOutcome,
   ): DiscoveryDiagnosisResult {
     // A non-clean terminal with no accepted report is a failure.
@@ -554,6 +569,19 @@ export class Saga3DiscoveryDiagnosisService implements DiscoveryDiagnosisService
     }
 
     if (latest.status === 'accepted_by_kernel') {
+      // P0-2: full re-verification against the frozen verified case before
+      // projecting completed. A tampered accepted payload is treated as a
+      // diagnosis failure, never a completed diagnosis.
+      try {
+        verifyAcceptedDiagnosisReport(latest, verifiedCase, control);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return failedResult(
+          request.certificateId,
+          request.certificateHash,
+          `accepted report ${latest.id} verification failed: ${message}`,
+        );
+      }
       return completedResult(latest);
     }
 
@@ -587,6 +615,125 @@ interface VerifiedTarget {
 interface WorkerOutcome {
   terminal: 'clean' | 'failed' | 'stopped' | 'timeout' | 'blocked';
   error: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// verifyAcceptedDiagnosisReport (P0-2) — the kernel-only gate that re-verifies
+// a stored accepted_by_kernel report BEFORE surfacing it as a completed
+// diagnosis. Without this, a tampered accepted payload (payload rewritten,
+// content_hash recomputed, status left 'accepted_by_kernel') would be projected
+// as a completed diagnosis on restart and after the worker closes.
+//
+// It runs at every place the service READS an accepted report and projects it
+// as 'completed': restart-resume reuse, post-worker projection, and the
+// service-side replay path of submitDiagnosisReportAtomically. On ANY mismatch
+// it THROWS — the caller maps the throw to status='failed' so a corrupt accepted
+// report is NEVER surfaced as a completed diagnosis (the D4 result stays
+// complete — I5).
+//
+// Checks (any failure throws):
+//  1. report.control_intent_id === control.id           (report belongs to this control)
+//  2. report.certificate_id === control.certificate_id
+//     AND report.certificate_hash === control.certificate_hash (cert target binding)
+//  3. report.task_id === control.taskId                 (task binding)
+//  4. report.schema_version === DISCOVERY_DIAGNOSIS_REPORT_SCHEMA
+//  5. recompute hashDiagnosisReport(report.payload) === report.content_hash
+//     (canonical payload integrity — catches payload tamper with a recomputed hash
+//     AND hash-only tamper)
+//  6. report.status === 'accepted_by_kernel' AND report.validation_errors is EMPTY
+//     (an accepted report with non-empty errors is a contradiction)
+//  7. the payload's target (certificate_id/certificate_hash/settlement_input_hash/
+//     decision) matches the control + verified case certificate tuple
+//  8. validateDiagnosisReport(report.payload, verifiedCase) is valid (re-validation
+//     against the frozen case catches invented evidence / coverage gaps / causal-
+//     rule violations a tampered payload might introduce)
+//
+// The function goes through the port/domain only — it never touches the DB
+// handle directly and contains no inline SQL (architecture F1/F2).
+// ---------------------------------------------------------------------------
+export function verifyAcceptedDiagnosisReport(
+  report: DiagnosisReportRecord,
+  verifiedCase: DiscoveryDiagnosisCase,
+  control: DiagnosisControlExecution,
+): void {
+  // 1. The report belongs to this control.
+  if (report.control_intent_id !== control.controlIntentId) {
+    throw new DiagnosisTargetError(
+      `accepted report ${report.id} control_intent_id ${report.control_intent_id} != control ${control.controlIntentId}`,
+    );
+  }
+  // 2. Cert target binding.
+  if (report.certificate_id !== control.certificateId) {
+    throw new DiagnosisTargetError(
+      `accepted report ${report.id} certificate_id ${report.certificate_id} != control ${control.certificateId}`,
+    );
+  }
+  if (report.certificate_hash !== control.certificateHash) {
+    throw new DiagnosisTargetError(
+      `accepted report ${report.id} certificate_hash ${report.certificate_hash} != control ${control.certificateHash}`,
+    );
+  }
+  // 3. Task binding.
+  if (report.task_id !== control.taskId) {
+    throw new DiagnosisTargetError(
+      `accepted report ${report.id} task_id ${report.task_id} != control task ${control.taskId}`,
+    );
+  }
+  // 4. Schema version.
+  if (report.schema_version !== DISCOVERY_DIAGNOSIS_REPORT_SCHEMA) {
+    throw new DiagnosisTargetError(
+      `accepted report ${report.id} schema_version ${JSON.stringify(report.schema_version)} != ${DISCOVERY_DIAGNOSIS_REPORT_SCHEMA}`,
+    );
+  }
+  // 5. Canonical payload integrity: recompute the content hash from the stored
+  //    payload and require it to equal the stored content_hash. A tampered
+  //    payload whose hash was recomputed to match would still fail step 8
+  //    (re-validation against the frozen case); a tampered payload whose hash
+  //    was NOT recomputed fails here.
+  const recomputedHash = hashDiagnosisReport(report.payload as Parameters<typeof hashDiagnosisReport>[0]);
+  if (recomputedHash !== report.content_hash) {
+    throw new DiagnosisTargetError(
+      `accepted report ${report.id} content_hash ${report.content_hash} does not match a recomputation of its stored payload (tampered payload or hash)`,
+    );
+  }
+  // 6. An accepted report with non-empty validation_errors is a contradiction.
+  if (report.status !== 'accepted_by_kernel') {
+    throw new DiagnosisTargetError(
+      `accepted report ${report.id} status ${JSON.stringify(report.status)} is not 'accepted_by_kernel'`,
+    );
+  }
+  if (report.validation_errors.length > 0) {
+    throw new DiagnosisTargetError(
+      `accepted report ${report.id} carries non-empty validation_errors (${JSON.stringify(report.validation_errors)}); an accepted report must have empty errors`,
+    );
+  }
+  // 7. The payload's target must match the control + verified case certificate
+  //    tuple. The verified case's certificate slice is the authoritative target.
+  const payload = report.payload as { target?: { certificate_id?: unknown; certificate_hash?: unknown; settlement_input_hash?: unknown; decision?: unknown } };
+  const target = payload?.target;
+  const cert = verifiedCase.certificate;
+  const targetFields: Array<[string, unknown, unknown]> = [
+    ['target.certificate_id', target?.certificate_id, control.certificateId],
+    ['target.certificate_hash', target?.certificate_hash, control.certificateHash],
+    ['target.settlement_input_hash', target?.settlement_input_hash, cert.settlement_input_hash],
+    ['target.decision', target?.decision, cert.decision as DiagnosisDecision],
+  ];
+  for (const [field, actual, expected] of targetFields) {
+    if (actual !== expected) {
+      throw new DiagnosisTargetError(
+        `accepted report ${report.id} payload ${field} ${JSON.stringify(actual)} != verified case ${JSON.stringify(expected)}`,
+      );
+    }
+  }
+  // 8. Re-validate the stored payload against the FROZEN verified case. This
+  //    catches invented evidence / coverage gaps / causal-rule violations that a
+  //    tampered payload might introduce even when its hash agrees.
+  const validation = validateDiagnosisReport(report.payload, verifiedCase);
+  if (!validation.valid) {
+    throw new DiagnosisTargetError(
+      `accepted report ${report.id} payload failed re-validation against the frozen case: ${validation.errors.join('; ')}`,
+    );
+  }
 }
 
 function completedResult(report: DiagnosisReportRecord): DiscoveryDiagnosisResult {
