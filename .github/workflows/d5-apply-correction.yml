@@ -7,6 +7,12 @@ on:
     paths:
       - tools/d5-review-correction.b64.02
       - .github/workflows/d5-apply-correction.yml
+  pull_request:
+    branches:
+      - saga3-discovery
+    paths:
+      - tools/d5-review-correction.b64.02
+      - .github/workflows/d5-apply-correction.yml
   workflow_dispatch:
 
 permissions:
