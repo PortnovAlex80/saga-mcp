@@ -76,9 +76,10 @@ export class Saga3DiscoveryReadinessService implements DiscoveryReadinessService
     // Restart-resume: if the advisor task is already done, NO new worker
     // spawns. But task=done does NOT imply success — the advisor may have
     // exited without a valid/accepted assessment (rejected, or never
-    // submitted). The shadow status is derived from the latest assessment
-    // row, not from the task terminal condition (P0-1).
+    // submitted). Derive shadow FIRST, then align success/heartbeat to it so
+    // the observability contract never claims COMPLETED while shadow is failed.
     if (preparation.state === 'done') {
+      const shadow = this.shadowFrom(control.controlIntentId, 'restart');
       if (control.authorityIntentStatus === 'executing') {
         rt.setIntentStatus(control.authorityIntentId, 'executing', 'concluded');
       } else if (control.authorityIntentStatus === 'paused') {
@@ -89,7 +90,14 @@ export class Saga3DiscoveryReadinessService implements DiscoveryReadinessService
       } else if (control.controlStatus === 'paused') {
         rt.setReadinessControlStatus(control.controlIntentId, 'paused', 'concluded');
       }
-      return { success: true, cycles: 0, error: null, shadow: this.shadowFrom(control.controlIntentId, 'restart') };
+      const success = shadow.status === 'completed';
+      request.heartbeat(
+        success ? 'READINESS_COMPLETED' : 'READINESS_FAILED',
+        success
+          ? `control=${control.controlIntentId} proposal=${request.proposalId}`
+          : (shadow.error ?? 'readiness completed without an accepted assessment'),
+      );
+      return { success, cycles: 0, error: shadow.error, shadow };
     }
     if (preparation.state === 'blocked' || preparation.state === 'active') {
       return {
@@ -165,14 +173,18 @@ export class Saga3DiscoveryReadinessService implements DiscoveryReadinessService
     if (terminal === 'clean') {
       rt.setIntentStatus(control.authorityIntentId, 'executing', 'concluded');
       rt.setReadinessControlStatus(control.controlIntentId, 'executing', 'concluded');
+      // P1: derive shadow FIRST, then align success + heartbeat to it. A clean
+      // task closure with no accepted assessment is NOT a completion — the
+      // heartbeat and service.success must reflect that honestly.
+      const shadow = this.shadowFrom(control.controlIntentId, 'clean');
+      const success = shadow.status === 'completed';
       request.heartbeat(
-        'READINESS_COMPLETED',
-        `control=${control.controlIntentId} proposal=${request.proposalId}`,
+        success ? 'READINESS_COMPLETED' : 'READINESS_FAILED',
+        success
+          ? `control=${control.controlIntentId} proposal=${request.proposalId}`
+          : (shadow.error ?? 'readiness completed without an accepted assessment'),
       );
-      // task=done is necessary but NOT sufficient for success. shadowFrom
-      // inspects the latest assessment row: accepted → completed, rejected or
-      // absent → failed (the advisor exited without an accepted assessment).
-      return { success: true, cycles, error: null, shadow: this.shadowFrom(control.controlIntentId, 'clean') };
+      return { success, cycles, error: shadow.error, shadow };
     }
 
     // Interruption/timeout → paused. Restart reuses the same ControlIntent/task.

@@ -72,9 +72,53 @@ export function ensureSaga3ReadinessSchema(db: Database.Database): void {
   if (!cols.some(c => c.name === 'validation_errors')) {
     db.exec('ALTER TABLE saga3_readiness_assessments ADD COLUMN validation_errors TEXT NOT NULL DEFAULT \'[]\'');
   }
-  // Drop the old execution-scoped idempotency index if it still exists (pre-P1-3
-  // DBs), then the content-scoped CREATE above wins. best-effort.
-  try { db.exec('DROP INDEX IF EXISTS idx_saga3_readiness_assessment_idempotency_exec'); } catch { /* not present */ }
+  // P0 migration: the original D3 (9895532) created the idempotency index as
+  // UNIQUE(control_intent_id, execution_id, content_hash). The correction
+  // requires UNIQUE(control_intent_id, content_hash) (independent of execution).
+  // CREATE UNIQUE INDEX IF NOT EXISTS is a NO-OP when an index of the SAME NAME
+  // already exists — even if its columns differ — so on a pre-correction DB the
+  // old execution-scoped index would survive and the handler's
+  // ON CONFLICT(control_intent_id, content_hash) would throw
+  // "ON CONFLICT clause does not match any PRIMARY KEY or UNIQUE constraint".
+  // Inspect the actual index columns and rebuild it deterministically.
+  const indexColumns = db.prepare(
+    `PRAGMA index_info('idx_saga3_readiness_assessment_idempotency')`,
+  ).all() as Array<{ name: string }>;
+  const wantsCorrect =
+    indexColumns.length === 2
+    && indexColumns[0]?.name === 'control_intent_id'
+    && indexColumns[1]?.name === 'content_hash';
+  if (!wantsCorrect) {
+    // Before introducing the new unique constraint, collapse any pre-existing
+    // duplicates on (control_intent_id, content_hash) that the old
+    // execution-scoped index permitted. Keep the strongest row per group:
+    // accepted_by_kernel > rejected_by_kernel > submitted. This is a
+    // deterministic, loss-minimising dedupe — it never drops an accepted row.
+    db.exec(`
+      DELETE FROM saga3_readiness_assessments
+       WHERE id NOT IN (
+         SELECT id FROM (
+           SELECT id,
+                  ROW_NUMBER() OVER (
+                    PARTITION BY control_intent_id, content_hash
+                    ORDER BY CASE status
+                               WHEN 'accepted_by_kernel' THEN 0
+                               WHEN 'rejected_by_kernel' THEN 1
+                               WHEN 'submitted' THEN 2
+                               ELSE 3
+                             END,
+                             id ASC
+                  ) AS rn
+             FROM saga3_readiness_assessments
+         ) WHERE rn = 1
+       );
+    `);
+    db.exec('DROP INDEX IF EXISTS idx_saga3_readiness_assessment_idempotency');
+    db.exec(
+      `CREATE UNIQUE INDEX idx_saga3_readiness_assessment_idempotency
+         ON saga3_readiness_assessments(control_intent_id, content_hash)`,
+    );
+  }
 }
 
 /** SHA-256 over the canonical serialization of the assessment payload. */
