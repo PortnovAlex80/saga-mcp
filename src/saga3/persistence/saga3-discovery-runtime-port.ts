@@ -6,6 +6,10 @@ import type {
   ReadinessControlExecution,
   ReadinessControlStatus,
 } from '../domain/discovery-readiness-records.js';
+import type {
+  OutcomeCertificateRecord,
+  SettlementRecord,
+} from '../domain/discovery-settlement-records.js';
 
 /**
  * Runtime-persistence boundary for the Saga 3 Discovery Edition engine.
@@ -92,6 +96,94 @@ export interface Saga3DiscoveryRuntimePersistence {
   setReadinessControlStatus(controlIntentId: number, expected: ReadinessControlStatus, next: ReadinessControlStatus): boolean;
   /** D3: Latest assessment (any status) for one readiness ControlIntent. */
   readLatestReadinessAssessment(controlIntentId: number): ReadinessAssessmentRecord | null;
+
+  /**
+   * D4: Read the canonical Proposal by id with the full lineage columns the
+   * settlement input snapshot needs (source_submission_id,
+   * normalization_proposal_id) and the epic_id (joined via the WorkIntent).
+   * Returns null if the proposal does not exist. The settlement service
+   * re-validates the payload and recomputes the content hash itself.
+   */
+  readProposalForSettlement(proposalId: number): SettlementProposalRecord | null;
+
+  /**
+   * D4: Latest ACCEPTED readiness assessment for one Proposal, or null if none.
+   * The settlement snapshot only ever consumes an accepted_by_kernel assessment;
+   * a missing/failed readiness state is represented by a 'missing'/'failed'
+   * snapshot readiness status, not by reading a non-accepted row.
+   */
+  readAcceptedReadinessAssessmentForProposal(proposalId: number): ReadinessAssessmentRecord | null;
+
+  /** D4: Find an existing settlement by its immutable input key (any status). */
+  findSettlementByInputKey(key: SettlementInputKey): SettlementRecord | null;
+
+  /** D4: Idempotent insert of a settlement row (status 'computed'). */
+  insertSettlement(input: InsertSettlementPort): { record: SettlementRecord; replayed: boolean };
+
+  /** D4: Mark a settlement as having an issued certificate (CAS). */
+  markSettlementCertificateIssued(settlementId: number): boolean;
+
+  /** D4: Mark a settlement failed (no certificate could be issued). */
+  markSettlementFailed(settlementId: number): void;
+
+  /** D4: Insert the immutable outcome certificate (write-once). */
+  insertCertificate(input: InsertCertificatePort): { record: OutcomeCertificateRecord; replayed: boolean };
+
+  /** D4: Read the certificate for a settlement, if any. */
+  readCertificateForSettlement(settlementId: number): OutcomeCertificateRecord | null;
+}
+
+/**
+ * D4: the proposal slice the settlement snapshot captures. The full typed
+ * payload is parsed/validated by the settlement service; this is the durable
+ * read result. Named ...Record to avoid clashing with the domain snapshot's
+ * SettlementProposalInput (different shape: this carries intent_id, the
+ * snapshot carries source_intent_id).
+ */
+export interface SettlementProposalRecord {
+  id: number;
+  epic_id: number;
+  intent_id: number;
+  content_hash: string;
+  payload: unknown;
+  source_submission_id: number | null;
+  normalization_proposal_id: number | null;
+}
+
+/** D4: the immutable input key for a settlement. */
+export interface SettlementInputKey {
+  proposalId: number;
+  proposalContentHash: string;
+  readinessAssessmentHash: string;
+  policyVersion: string;
+  policyHash: string;
+}
+
+/** D4: port-level insert input for a settlement row. */
+export interface InsertSettlementPort {
+  epicId: number;
+  key: SettlementInputKey;
+  readinessAssessmentId: number | null;
+  inputSnapshot: unknown;
+  decision: 'go' | 'clarify' | 'reject';
+  reasonCodes: string[];
+  rationale: string;
+}
+
+/** D4: port-level insert input for a certificate row. */
+export interface InsertCertificatePort {
+  settlementId: number;
+  epicId: number;
+  proposalId: number;
+  proposalContentHash: string;
+  readinessAssessmentId: number | null;
+  readinessAssessmentHash: string;
+  policyVersion: string;
+  policyHash: string;
+  decision: 'go' | 'clarify' | 'reject';
+  reasonCodes: string[];
+  inputHash: string;
+  certificatePayload: unknown;
 }
 
 export interface EnsureProjectedTask {

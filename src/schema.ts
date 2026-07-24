@@ -798,6 +798,60 @@ CREATE INDEX IF NOT EXISTS idx_saga3_readiness_control_epic
 CREATE INDEX IF NOT EXISTS idx_saga3_readiness_assessment_control
   ON saga3_readiness_assessments(control_intent_id);
 
+-- D4: authoritative discovery settlement. A settlement binds the immutable
+-- settlement INPUT (proposal hash + readiness hash + policy version/hash) to a
+-- deterministic kernel decision. Kernel-only: no LM WorkIntent, no worker task.
+-- Provisional Proposal lineage is separate and never mutated here.
+CREATE TABLE IF NOT EXISTS saga3_discovery_settlements (
+  id                          INTEGER PRIMARY KEY AUTOINCREMENT,
+  epic_id                     INTEGER NOT NULL REFERENCES epics(id) ON DELETE CASCADE,
+  proposal_id                 INTEGER NOT NULL REFERENCES saga3_proposals(id) ON DELETE CASCADE,
+  proposal_content_hash       TEXT NOT NULL,
+  readiness_assessment_id     INTEGER,                           -- nullable: no accepted assessment
+  readiness_assessment_hash   TEXT NOT NULL,                     -- sentinel 'none' when null assessment
+  policy_version              TEXT NOT NULL,
+  policy_hash                 TEXT NOT NULL,
+  input_snapshot              TEXT NOT NULL,                     -- canonical JSON of the input snapshot
+  input_hash                  TEXT NOT NULL,                     -- SHA-256 over input_snapshot
+  decision                    TEXT NOT NULL
+                                CHECK (decision IN ('go','clarify','reject')),
+  reason_codes                TEXT NOT NULL DEFAULT '[]',        -- JSON array of stable codes
+  rationale                   TEXT NOT NULL,
+  status                      TEXT NOT NULL DEFAULT 'computed'
+                                CHECK (status IN ('computed','certificate_issued','failed')),
+  created_at                  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- D4: the immutable outcome certificate. 1:1 with a settlement. There is no
+-- UPDATE path for this table in code — certificates are write-once.
+CREATE TABLE IF NOT EXISTS saga3_discovery_outcome_certificates (
+  id                          INTEGER PRIMARY KEY AUTOINCREMENT,
+  settlement_id               INTEGER NOT NULL UNIQUE REFERENCES saga3_discovery_settlements(id) ON DELETE CASCADE,
+  epic_id                     INTEGER NOT NULL REFERENCES epics(id) ON DELETE CASCADE,
+  proposal_id                 INTEGER NOT NULL REFERENCES saga3_proposals(id) ON DELETE CASCADE,
+  proposal_content_hash       TEXT NOT NULL,
+  readiness_assessment_id     INTEGER,
+  readiness_assessment_hash   TEXT NOT NULL,
+  policy_version              TEXT NOT NULL,
+  policy_hash                 TEXT NOT NULL,
+  decision                    TEXT NOT NULL
+                                CHECK (decision IN ('go','clarify','reject')),
+  reason_codes                TEXT NOT NULL DEFAULT '[]',
+  input_hash                  TEXT NOT NULL,
+  certificate_payload         TEXT NOT NULL,                     -- canonical JSON of the certificate payload
+  certificate_hash            TEXT NOT NULL UNIQUE,              -- integrity check, write-once
+  issued_at                   TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- One settlement per immutable INPUT target. A changed proposal hash, a
+-- changed readiness hash, or a new policy version is a NEW target.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_saga3_settlement_input
+  ON saga3_discovery_settlements(
+    proposal_id, proposal_content_hash, readiness_assessment_hash,
+    policy_version, policy_hash);
+CREATE INDEX IF NOT EXISTS idx_saga3_settlement_epic
+  ON saga3_discovery_settlements(epic_id, status);
+
 CREATE TABLE IF NOT EXISTS saga3_proposals (
   id              INTEGER PRIMARY KEY AUTOINCREMENT,
   intent_id       INTEGER NOT NULL REFERENCES saga3_work_intents(id) ON DELETE CASCADE,
