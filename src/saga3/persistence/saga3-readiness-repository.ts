@@ -23,7 +23,7 @@ import type { ProposalProvenance } from '../domain/proposal.js';
 
 /** Idempotently create the D3 readiness tables if absent. */
 export function ensureSaga3ReadinessSchema(db: Database.Database): void {
-  db.prepare(`
+  db.exec(`
     CREATE TABLE IF NOT EXISTS saga3_readiness_control_intents (
       id                    INTEGER PRIMARY KEY AUTOINCREMENT,
       epic_id               INTEGER NOT NULL REFERENCES epics(id) ON DELETE CASCADE,
@@ -64,7 +64,7 @@ export function ensureSaga3ReadinessSchema(db: Database.Database): void {
       ON saga3_readiness_control_intents(epic_id, status);
     CREATE INDEX IF NOT EXISTS idx_saga3_readiness_assessment_control
       ON saga3_readiness_assessments(control_intent_id);
-  `).run();
+  `);
 }
 
 /** SHA-256 over the canonical serialization of the assessment payload. */
