@@ -48,6 +48,9 @@ jobs:
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
           cat d5-focused.log
           exit 0
+      - name: Package review checkout
+        if: always()
+        run: tar --exclude=.git --exclude=node_modules -czf d5-review-source.tgz .
       - name: Upload focused test log
         if: always()
         uses: actions/upload-artifact@v4
@@ -56,6 +59,14 @@ jobs:
           path: d5-focused.log
           if-no-files-found: error
           retention-days: 5
+      - name: Upload review checkout
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: d5-review-source
+          path: d5-review-source.tgz
+          if-no-files-found: error
+          retention-days: 2
       - name: Fail on focused test errors
         if: steps.focused.outputs.exit_code != '0'
         run: exit 1
