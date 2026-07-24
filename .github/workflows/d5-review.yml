@@ -31,7 +31,10 @@ jobs:
       - name: Architecture
         run: npm run build && node --test tests/saga3/*architecture*.test.mjs
       - name: D5 focused tests
+        id: focused
+        shell: bash
         run: |
+          set +e
           node --test \
             tests/saga3/d5-certificate-bundle.test.mjs \
             tests/saga3/d5-diagnosis-case.test.mjs \
@@ -39,7 +42,23 @@ jobs:
             tests/saga3/d5-diagnosis-persistence.test.mjs \
             tests/saga3/d5-diagnosis-service.test.mjs \
             tests/saga3/d5-diagnosis-engine.test.mjs \
-            tests/saga3/d5-adversarial.test.mjs
+            tests/saga3/d5-adversarial.test.mjs \
+            > d5-focused.log 2>&1
+          code=$?
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          cat d5-focused.log
+          exit 0
+      - name: Upload focused test log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: d5-focused-log
+          path: d5-focused.log
+          if-no-files-found: error
+          retention-days: 5
+      - name: Fail on focused test errors
+        if: steps.focused.outputs.exit_code != '0'
+        run: exit 1
       - name: Full suite
         if: success()
         run: npm test
