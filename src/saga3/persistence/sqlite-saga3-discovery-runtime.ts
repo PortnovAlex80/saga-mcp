@@ -2,8 +2,13 @@ import { getDb } from '../../db.js';
 import { prepareSaga3ProjectedTaskForExecution } from '../../lifecycle/legacy-assignment-recovery.js';
 import type { CreateWorkIntent, WorkIntent, WorkIntentStatus } from '../domain/work-intent.js';
 import type { ProposalRecord } from '../domain/proposal.js';
+import { DISCOVERY_NORMALIZATION_INTENT_KIND } from '../domain/work-intent.js';
+import { DISCOVERY_NORMALIZATION_PROPOSAL_SCHEMA } from '../domain/discovery-normalization-proposal.js';
+import type { ControlIntentStatus } from '../domain/discovery-normalization-records.js';
 import {
+  type EnsureNormalizationControl,
   type EnsureProjectedTask,
+  type NormalizationControlExecution,
   type PrepareIntentForExecutionResult,
   type Saga3DiscoveryRuntimePersistence,
 } from './saga3-discovery-runtime-port.js';
@@ -11,6 +16,7 @@ import {
   canonicalJson,
   hashPayload,
 } from './saga3-proposal-repository.js';
+import { ensureSaga3NormalizationSchema, readLatestRawSubmissionForIntent } from './saga3-normalization-repository.js';
 
 /**
  * SQLite implementation of the Saga3DiscoveryRuntimePersistence port.
@@ -22,7 +28,10 @@ import {
  * WorkIntent + proposal reads it delegated to Saga3ProposalRepository.
  */
 export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersistence {
-  constructor() { ensurePausedWorkIntentStatus(getDb()); }
+  constructor() {
+    ensurePausedWorkIntentStatus(getDb());
+    ensureSaga3NormalizationSchema(getDb());
+  }
 
   readEpicObjective(epicId: number): { name: string; description: string | null } | null {
     const row = getDb().prepare(
@@ -94,12 +103,12 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
     ).run(
       input.epicId,
       `Discovery: ${input.objective.slice(0, 80)}`,
-      JSON.stringify({ work_intent_id: input.intentId, objective: input.objective }),
+      JSON.stringify({ work_intent_id: input.intentId, objective: input.objective, ...(input.metadata ?? {}) }),
       input.taskKind,
       input.executionSkill,
       repoId?.id ?? null,
       input.generationKey,
-      JSON.stringify({ work_intent_id: input.intentId }),
+      JSON.stringify({ work_intent_id: input.intentId, ...(input.metadata ?? {}) }),
     );
     return Number(info.lastInsertRowid);
   }
@@ -192,6 +201,93 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
         ORDER BY id DESC LIMIT 1`,
     ).get(intentId) as ProposalRow | undefined;
     return row ? rowToRecord(row) : null;
+  }
+
+  readLatestRawSubmission(intentId: number) {
+    ensureSaga3NormalizationSchema(getDb());
+    return readLatestRawSubmissionForIntent(getDb(), intentId);
+  }
+
+  ensureNormalizationControl(input: EnsureNormalizationControl): NormalizationControlExecution {
+    const db = getDb();
+    ensureSaga3NormalizationSchema(db);
+    let control = db.prepare(
+      `SELECT id, authority_intent_id, projected_task_id, status FROM saga3_control_intents WHERE source_submission_id=?`,
+    ).get(input.sourceSubmissionId) as {
+      id: number;
+      authority_intent_id: number;
+      projected_task_id: number | null;
+      status: ControlIntentStatus;
+    } | undefined;
+
+    let authority: WorkIntent;
+    if (!control) {
+      authority = this.createIntent({
+        epic_id: input.epicId,
+        kind: DISCOVERY_NORMALIZATION_INTENT_KIND,
+        objective: `Normalize raw discovery submission ${input.sourceSubmissionId}: ${input.objective}`,
+        authority_scope: {
+          snapshot_ref: `raw-submission:${input.sourceSubmissionId}`,
+          scope: 'read-only normalization control',
+          allowed_tools: ['task_get', 'normalization_get', 'normalization_submit', 'worker_done'],
+          enforcement: 'runtime',
+        },
+        output_schema: DISCOVERY_NORMALIZATION_PROPOSAL_SCHEMA,
+        token_budget: 0,
+        retry_budget: 0,
+      });
+      const info = db.prepare(
+        `INSERT INTO saga3_control_intents
+           (epic_id, kind, question, source_submission_id, authority_intent_id, status)
+         VALUES (?, 'NormalizeDiscoveryProposal', ?, ?, ?, 'open')`,
+      ).run(
+        input.epicId,
+        `Transform source ${input.sourceSubmissionId} into the discovery proposal schema without inventing evidence.`,
+        input.sourceSubmissionId,
+        authority.id,
+      );
+      control = {
+        id: Number(info.lastInsertRowid),
+        authority_intent_id: authority.id,
+        projected_task_id: null,
+        status: 'open',
+      };
+    } else {
+      authority = this.readIntentStrict(control.authority_intent_id);
+    }
+
+    const taskId = this.ensureProjectedTask({
+      epicId: input.epicId,
+      projectId: input.projectId,
+      intentId: authority.id,
+      objective: authority.objective,
+      taskKind: 'discovery.normalize',
+      executionSkill: 'saga-discovery-normalizer',
+      generationKey: `saga3:normalize:${input.sourceSubmissionId}`,
+      metadata: { control_intent_id: control.id, source_submission_id: input.sourceSubmissionId },
+    });
+    if (!authority.projected_task_id) {
+      this.setProjectedTask(authority.id, taskId);
+      authority = this.readIntentStrict(authority.id);
+    }
+    if (control.projected_task_id !== taskId) {
+      db.prepare(`UPDATE saga3_control_intents SET projected_task_id=?, updated_at=datetime('now') WHERE id=?`).run(taskId, control.id);
+    }
+    return {
+      controlIntentId: control.id,
+      sourceSubmissionId: input.sourceSubmissionId,
+      controlStatus: control.status,
+      authorityIntentId: authority.id,
+      authorityIntentStatus: authority.status,
+      taskId,
+    };
+  }
+
+  setControlIntentStatus(controlIntentId: number, expected: ControlIntentStatus, next: ControlIntentStatus): boolean {
+    const info = getDb().prepare(
+      `UPDATE saga3_control_intents SET status=?, updated_at=datetime('now') WHERE id=? AND status=?`,
+    ).run(next, controlIntentId, expected);
+    return info.changes === 1;
   }
 
   private readIntentStrict(id: number): WorkIntent {

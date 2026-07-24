@@ -31,6 +31,7 @@ import { definitions as observationDefs, handlers as observationHandlers } from 
 import { definitions as conflictDefs, handlers as conflictHandlers } from './tools/conflicts.js';
 import { definitions as providerDefs, handlers as providerHandlers } from './tools/providers.js';
 import { createSaga3ProposalHandlers } from './tools/saga3-proposals.js';
+import { createSaga3NormalizationHandlers } from './tools/saga3-normalization.js';
 import { authorizeSagaToolCall } from './saga3/authority/authorize-saga-tool-call.js';
 import { closeDb, getDb } from './db.js';
 
@@ -55,6 +56,7 @@ export function assertManagedExecutionIdentity(env: NodeJS.ProcessEnv = process.
 // inject a repository / model-route reader; here it uses the default SQLite
 // wiring that reads the shared saga DB directly.
 const saga3Proposals = createSaga3ProposalHandlers();
+const saga3Normalization = createSaga3NormalizationHandlers();
 
 const ALL_TOOLS: Tool[] = [
   ...projectDefs,
@@ -77,6 +79,7 @@ const ALL_TOOLS: Tool[] = [
   ...conflictDefs,
   ...providerDefs,
   ...saga3Proposals.definitions,
+  ...saga3Normalization.definitions,
 ];
 
 const ALL_HANDLERS: Record<string, (args: Record<string, unknown>) => unknown> = {
@@ -100,6 +103,7 @@ const ALL_HANDLERS: Record<string, (args: Record<string, unknown>) => unknown> =
   ...conflictHandlers,
   ...providerHandlers,
   ...saga3Proposals.handlers,
+  ...saga3Normalization.handlers,
 };
 
 const server = new Server(

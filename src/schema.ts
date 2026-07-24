@@ -690,6 +690,63 @@ CREATE TABLE IF NOT EXISTS saga3_work_intents (
   updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS saga3_raw_submissions (
+  id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+  intent_id             INTEGER NOT NULL REFERENCES saga3_work_intents(id) ON DELETE CASCADE,
+  task_id               INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  execution_id          TEXT NOT NULL,
+  kind                  TEXT NOT NULL,
+  schema_version        TEXT NOT NULL,
+  raw_payload           TEXT NOT NULL,
+  raw_hash              TEXT NOT NULL,
+  parsed_payload        TEXT,
+  status                TEXT NOT NULL
+                          CHECK (status IN ('accepted_deterministically','normalization_required','rejected_syntax','normalized')),
+  normalization_trace   TEXT NOT NULL DEFAULT '[]',
+  validation_errors     TEXT NOT NULL DEFAULT '[]',
+  alias_conflicts       TEXT NOT NULL DEFAULT '[]',
+  allowed_evidence_refs TEXT NOT NULL DEFAULT '[]',
+  provenance            TEXT NOT NULL DEFAULT '{}',
+  created_at            TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS saga3_control_intents (
+  id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+  epic_id               INTEGER NOT NULL REFERENCES epics(id) ON DELETE CASCADE,
+  kind                  TEXT NOT NULL,
+  question              TEXT NOT NULL,
+  source_submission_id  INTEGER NOT NULL UNIQUE REFERENCES saga3_raw_submissions(id) ON DELETE CASCADE,
+  authority_intent_id   INTEGER NOT NULL REFERENCES saga3_work_intents(id) ON DELETE CASCADE,
+  projected_task_id     INTEGER REFERENCES tasks(id) ON DELETE SET NULL,
+  status                TEXT NOT NULL DEFAULT 'open'
+                          CHECK (status IN ('open','executing','paused','concluded','cancelled')),
+  created_at            TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at            TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS saga3_normalization_proposals (
+  id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+  control_intent_id     INTEGER NOT NULL REFERENCES saga3_control_intents(id) ON DELETE CASCADE,
+  source_submission_id  INTEGER NOT NULL REFERENCES saga3_raw_submissions(id) ON DELETE CASCADE,
+  task_id               INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  execution_id          TEXT NOT NULL,
+  payload               TEXT NOT NULL,
+  content_hash          TEXT NOT NULL,
+  status                TEXT NOT NULL DEFAULT 'submitted'
+                          CHECK (status IN ('submitted','accepted_by_kernel','rejected_by_kernel')),
+  provenance            TEXT NOT NULL DEFAULT '{}',
+  created_at            TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_saga3_raw_submission_idempotency
+  ON saga3_raw_submissions(intent_id, execution_id, raw_hash);
+CREATE INDEX IF NOT EXISTS idx_saga3_raw_submission_intent
+  ON saga3_raw_submissions(intent_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_saga3_normalization_idempotency
+  ON saga3_normalization_proposals(control_intent_id, execution_id, content_hash);
+CREATE INDEX IF NOT EXISTS idx_saga3_control_epic
+  ON saga3_control_intents(epic_id, status);
+
 CREATE TABLE IF NOT EXISTS saga3_proposals (
   id              INTEGER PRIMARY KEY AUTOINCREMENT,
   intent_id       INTEGER NOT NULL REFERENCES saga3_work_intents(id) ON DELETE CASCADE,
@@ -702,6 +759,8 @@ CREATE TABLE IF NOT EXISTS saga3_proposals (
   status          TEXT NOT NULL DEFAULT 'submitted'
                     CHECK (status IN ('submitted','superseded','rejected_by_kernel')),
   provenance      TEXT NOT NULL DEFAULT '{}',-- auto-captured model/provider/effort/worker/exec/time
+  source_submission_id INTEGER REFERENCES saga3_raw_submissions(id) ON DELETE SET NULL,
+  normalization_proposal_id INTEGER REFERENCES saga3_normalization_proposals(id) ON DELETE SET NULL,
   created_at      TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

@@ -86,3 +86,6 @@ export const DISCOVERY_WORK_INTENT_SCHEMA = 'saga3.work-intent.discovery.v1';
 
 /** Kind value for discovery product work. */
 export const DISCOVERY_INTENT_KIND = 'discovery';
+
+/** Kind used by the bounded D2 cognitive normalization worker. */
+export const DISCOVERY_NORMALIZATION_INTENT_KIND = 'discovery.normalize';
