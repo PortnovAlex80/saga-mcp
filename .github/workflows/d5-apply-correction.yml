@@ -89,7 +89,7 @@ jobs:
             tests/saga3/d5-adversarial.test.mjs \
             tests/saga3/d5-diagnosis-integrity.test.mjs \
             tests/saga3/d5-controlled-reject-smoke.test.mjs
-      - name: Commit and push correction
+      - name: Commit and publish reviewed tree
         if: steps.payload.outputs.present == 'true'
         shell: bash
         run: |
@@ -97,4 +97,4 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git status --short
           git commit -m "fix(saga3-d5): close integrity review and downstream tests"
-          git push origin HEAD:d5-discovery-diagnosis
+          git push --force origin HEAD:refs/heads/d5-reviewed-tree
