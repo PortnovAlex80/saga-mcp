@@ -3,8 +3,8 @@
  * execution against a WorkIntent.
  *
  * Roadmap §7.3 + §6.4 settlement. The worker submits ONLY the semantic payload;
- * the infrastructure (proposal_submit handler) records runtime provenance
- * automatically. The worker must never hand-author provenance.
+ * the infrastructure records runtime provenance automatically. The worker must
+ * never hand-author provenance.
  */
 
 export type ProposalStatus = 'submitted' | 'superseded' | 'rejected_by_kernel';
@@ -22,19 +22,30 @@ export interface Proposal {
   created_at: string;
 }
 
-/** Runtime provenance captured automatically from the immutable execution
- * context. D2 adds optional transformation lineage for proposals produced by a
- * normalization control worker; product workers never populate these fields. */
-export interface ProposalProvenance {
+/** One immutable execution identity captured by the kernel. */
+export interface ExecutionProvenance {
   model: string | null;
   provider: string;
   effort: string | null;
   worker_id: string;
   execution_id: string;
   submitted_at: string;
+}
+
+/**
+ * Provenance of the product Proposal.
+ *
+ * For an LM-normalized Proposal the top-level identity remains the ORIGINAL
+ * product-worker execution that owns Proposal.task_id. Transformation lineage
+ * is additive: `normalizer` identifies the separate control execution and
+ * `normalization_proposal_id` links its non-authoritative transform proposal.
+ * This preserves the invariant Proposal.task_id ↔ Proposal.execution_id.
+ */
+export interface ProposalProvenance extends ExecutionProvenance {
   normalization_mode?: 'deterministic' | 'lm_transformation';
   source_submission_id?: number;
   normalization_proposal_id?: number;
+  normalizer?: ExecutionProvenance;
 }
 
 export interface SubmitProposal {
