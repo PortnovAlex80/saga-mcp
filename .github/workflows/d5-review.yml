@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - d5-discovery-diagnosis
+  pull_request:
+    branches:
+      - saga3-discovery
   workflow_dispatch:
 
 permissions:
