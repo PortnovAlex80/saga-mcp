@@ -6,6 +6,7 @@ import type {
   RawDiscoverySubmissionStatus,
 } from '../domain/discovery-normalization-records.js';
 import type { ProposalProvenance } from '../domain/proposal.js';
+import { canonicalJson } from '../shared/discovery-canonical.js';
 
 export function ensureSaga3NormalizationSchema(db: Database.Database): void {
   db.exec(`
@@ -206,14 +207,7 @@ export function markNormalizationAccepted(
   ).run(normalizationProposalId);
 }
 
-export function canonicalJson(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
-  if (value && typeof value === 'object') {
-    const obj = value as Record<string, unknown>;
-    return `{${Object.keys(obj).sort().map(key => `${JSON.stringify(key)}:${canonicalJson(obj[key])}`).join(',')}}`;
-  }
-  return JSON.stringify(value);
-}
+export { canonicalJson } from '../shared/discovery-canonical.js';
 
 interface RawSubmissionRow {
   id: number;

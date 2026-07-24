@@ -21,7 +21,18 @@ import {
 import type { Saga3DiscoveryRuntimePersistence } from '../saga3/persistence/saga3-discovery-runtime-port.js';
 import type { DiscoveryNormalizationService } from '../saga3/application/discovery-normalization-service.js';
 import type { DiscoveryReadinessService } from '../saga3/application/discovery-readiness-service.js';
+import type { DiscoverySettlementService, DiscoverySettlementResult, ProvisionalOutcome } from '../saga3/application/discovery-settlement-service.js';
 import type { ReadinessShadowResult } from '../saga3/domain/discovery-readiness-assessment.js';
+import type { ReadinessAssessmentRecord, ReadinessControlIntentRecord } from '../saga3/domain/discovery-readiness-records.js';
+
+/**
+ * The settlement view the engine threads through runResult. Extends the
+ * service's result with the 'not_run' status for runs that did not invoke
+ * settlement (no valid Proposal, or settlement not wired in tests).
+ */
+type EngineSettlementResult = Omit<DiscoverySettlementResult, 'status'> & {
+  status: 'issued' | 'failed' | 'not_run';
+};
 
 /**
  * Task kind / skill for the discovery WorkIntent's board projection.
@@ -60,7 +71,11 @@ const DISCOVERY_ALLOWED_TOOLS = [
  */
 export interface DiscoveryRunOutcome {
   outcome: DiscoveryOutcome | 'discovery_not_implemented';
-  outcomeAuthority: 'worker_proposal' | 'normalized_worker_proposal' | 'none';
+  outcomeAuthority:
+    | 'worker_proposal'
+    | 'normalized_worker_proposal'
+    | 'discovery_settlement_policy'
+    | 'none';
   proposalId: number | null;
   proposalHash: string | null;
 }
@@ -80,6 +95,14 @@ export interface Saga3DiscoveryEngineDependencies {
    * readiness.status='not_run' and never spawns an advisor worker.
    */
   readinessService?: DiscoveryReadinessService;
+  /**
+   * D4 authoritative settlement service. Optional so D1/D2/D3 engine tests
+   * that do not exercise settlement stay green without wiring a fake;
+   * production (composition-root) always supplies it. When absent, the engine
+   * records settlement.status='not_run' and leaves the provisional outcome as
+   * the top-level outcome.
+   */
+  settlementService?: DiscoverySettlementService;
   now?: () => Date;
   sleep?: (ms: number) => Promise<void>;
   /** Max wall-clock seconds the engine waits for the worker to finish. */
@@ -261,10 +284,103 @@ export class Saga3DiscoveryEngine implements OrchestrationEngine {
         const authority = existingProposal!.provenance?.normalization_mode === 'lm_transformation'
           ? 'normalized_worker_proposal' as const
           : provisional.authority;
+        const provisionalOutcome: DiscoveryRunOutcome = {
+          outcome: provisional.outcome, outcomeAuthority: authority,
+          proposalId: existingProposal!.id, proposalHash: existingProposal!.content_hash,
+        };
+        // D4: recovery reconstructs the durable D3 readiness shadow for the
+        // exact Proposal target (ControlIntent -> latest assessment -> shadow),
+        // instead of fabricating a not_run shadow. This prevents a restart from
+        // replacing a previously-accepted (go) or failed readiness verdict with
+        // a CLARIFY_READINESS_MISSING. If the ControlIntent is paused (advisor
+        // interrupted), the existing D3 resume runs first via the readiness
+        // service on the fresh-run path; on the recovery path we report the
+        // durable paused state so settlement fail-closes to clarify.
+        let recoverySettlement: EngineSettlementResult;
+        let recoveryReadiness: ReadinessShadowResult;
+        if (this.deps.settlementService) {
+          // P0-3: if the readiness ControlIntent is resumable (open/executing/
+          // paused) and has NO accepted assessment, RESUME the advisor through
+          // the readiness service instead of immediately issuing
+          // CLARIFY_READINESS_PAUSED. A temporary interruption must not become a
+          // final business decision. An existing accepted assessment is never
+          // re-run; a concluded/cancelled control without an assessment is a
+          // durable failure (failed shadow).
+          const control = rt.readReadinessControlForProposal(
+            existingProposal!.id, existingProposal!.content_hash,
+          );
+          const assessment = control
+            ? rt.readLatestReadinessAssessment(control.id)
+            : null;
+          const hasAccepted = assessment?.status === 'accepted_by_kernel';
+          const resumable = !!control
+            && !hasAccepted
+            && (control.status === 'open' || control.status === 'executing' || control.status === 'paused')
+            && !!this.deps.readinessService;
+          if (resumable) {
+            // Resume the D3 advisor lifecycle; it performs its own
+            // restart/resume and returns the shadow.
+            try {
+              const assessed = await this.deps.readinessService!.assess({
+                projectId, epicId,
+                proposalId: existingProposal!.id,
+                proposalContentHash: existingProposal!.content_hash,
+                sourceIntentId: intent.id,
+                objective: intent.objective,
+                workspaceRoot: workspace.workspaceRoot,
+                heartbeat,
+              });
+              recoveryCycles += assessed.cycles;
+              recoveryReadiness = assessed.shadow;
+            } catch (resumeErr) {
+              const msg = resumeErr instanceof Error ? resumeErr.message : String(resumeErr);
+              heartbeat('READINESS_RECOVERY_FAILURE', msg);
+              recoveryReadiness = {
+                status: 'failed', authority: 'none',
+                assessmentId: null, assessmentHash: null,
+                overallReadiness: null, recommendedNextAction: null, error: msg,
+              };
+            }
+          } else {
+            // No resumable control: reconstruct the durable shadow from the
+            // persisted assessment (accepted->completed, failed->failed, etc.).
+            recoveryReadiness = this.reconstructReadinessShadow(
+              rt, existingProposal!.id, existingProposal!.content_hash,
+            );
+          }
+          try {
+            recoverySettlement = await this.deps.settlementService.settle({
+              projectId, epicId,
+              proposalId: existingProposal!.id,
+              proposalHash: existingProposal!.content_hash,
+              readiness: recoveryReadiness,
+            });
+          } catch (settleErr) {
+            const msg = settleErr instanceof Error ? settleErr.message : String(settleErr);
+            recoverySettlement = {
+              status: 'failed',
+              settlementId: null, certificateId: null, certificateHash: null,
+              policyVersion: null, policyHash: null,
+              decision: null, reasonCodes: [], error: msg,
+            };
+          }
+        } else {
+          recoveryReadiness = {
+            status: 'not_run', authority: 'none',
+            assessmentId: null, assessmentHash: null,
+            overallReadiness: null, recommendedNextAction: null, error: null,
+          };
+          recoverySettlement = {
+            status: 'not_run',
+            settlementId: null, certificateId: null, certificateHash: null,
+            policyVersion: null, policyHash: null,
+            decision: null, reasonCodes: [], error: null,
+          };
+        }
         return this.runResult(projectId, epicId, 'completed', recoveryCycles, null,
-          { outcome: provisional.outcome, outcomeAuthority: authority,
-            proposalId: existingProposal!.id, proposalHash: existingProposal!.content_hash },
-          persistence.episodes.currentStage(epicId) ?? 'discovery', true);
+          provisionalOutcome,
+          persistence.episodes.currentStage(epicId) ?? 'discovery', true,
+          recoveryReadiness, recoverySettlement);
       }
 
       return this.runResult(projectId, epicId, 'failed', recoveryCycles,
@@ -534,7 +650,57 @@ export class Saga3DiscoveryEngine implements OrchestrationEngine {
         overallReadiness: null, recommendedNextAction: null, error: null,
       };
     }
-    return this.runResult(projectId, epicId, reason, cycles, lastError, outcome, finalStage, scopeCompleted, readiness);
+
+    // D4: authoritative settlement. Eligibility REQUIRES the product discovery
+    // lifecycle to have completed CLEANLY: reason='completed', scopeCompleted,
+    // terminal='clean', and a structurally valid canonical Proposal. A Proposal
+    // submitted before timeout, blocked, stopped, or executor failure must NOT
+    // become an authoritative success — the certificate cannot legalize an
+    // incomplete lifecycle. When not eligible, settlement stays not_run and the
+    // original failed/paused result is preserved unchanged.
+    //
+    // Unlike D3, D4 IS the authoritative boundary: a successful settlement makes
+    // the outcome authoritative (outcomeAuthority='discovery_settlement_policy');
+    // a settlement infrastructure failure means the run FAILED (reason='failed',
+    // scopeCompleted=false) — Discovery Edition did NOT complete
+    // authoritatively. Settlement runs even when readiness failed/paused; the
+    // policy then fail-closes to clarify. The provisional outcome is always
+    // preserved separately.
+    const eligibleForSettlement =
+      reason === 'completed'
+      && scopeCompleted
+      && terminal === 'clean'
+      && validProposal;
+    let settlement: EngineSettlementResult;
+    if (eligibleForSettlement && proposal && this.deps.settlementService) {
+      try {
+        settlement = await this.deps.settlementService.settle({
+          projectId,
+          epicId,
+          proposalId: proposal.id,
+          proposalHash: proposal.content_hash,
+          readiness,
+        });
+      } catch (settleErr) {
+        const msg = settleErr instanceof Error ? settleErr.message : String(settleErr);
+        heartbeat('SETTLEMENT_ISOLATED_FAILURE', msg);
+        settlement = {
+          status: 'failed',
+          settlementId: null, certificateId: null, certificateHash: null,
+          policyVersion: null, policyHash: null,
+          decision: null, reasonCodes: [], error: msg,
+        };
+      }
+    } else {
+      settlement = {
+        status: 'not_run',
+        settlementId: null, certificateId: null, certificateHash: null,
+        policyVersion: null, policyHash: null,
+        decision: null, reasonCodes: [], error: null,
+      };
+    }
+
+    return this.runResult(projectId, epicId, reason, cycles, lastError, outcome, finalStage, scopeCompleted, readiness, settlement);
   }
 
   private runResult(
@@ -551,22 +717,150 @@ export class Saga3DiscoveryEngine implements OrchestrationEngine {
       assessmentId: null, assessmentHash: null,
       overallReadiness: null, recommendedNextAction: null, error: null,
     },
+    settlement: EngineSettlementResult = {
+      status: 'not_run',
+      settlementId: null, certificateId: null, certificateHash: null,
+      policyVersion: null, policyHash: null,
+      decision: null, reasonCodes: [], error: null,
+    },
   ): OrchestrationRunResult {
+    // The provisional outcome is what the worker produced (preserved
+    // separately so settlement's authoritative override is visible but the
+    // worker's recommendation is never lost).
+    const provisional: ProvisionalOutcome = {
+      outcome: outcome.outcome,
+      authority: outcome.outcomeAuthority === 'discovery_settlement_policy'
+        ? 'worker_proposal'
+        : outcome.outcomeAuthority,
+      proposalId: outcome.proposalId,
+      proposalHash: outcome.proposalHash,
+    };
+
+    // When settlement issued a certificate, the top-level outcome becomes
+    // AUTHORITATIVE: the policy's decision replaces the provisional outcome and
+    // outcomeAuthority is the settlement policy. When settlement failed, the
+    // run is failed (authoritative boundary) — outcome becomes 'failed',
+    // outcomeAuthority 'none'. When settlement did not run, the provisional
+    // outcome stays as the top-level outcome.
+    let topLevelOutcome = outcome.outcome;
+    let topLevelAuthority = outcome.outcomeAuthority;
+    let topLevelReason = reason;
+    let topLevelScope = scopeCompleted;
+    // A failed settlement must surface its error in lastError — otherwise a run
+    // could return reason='failed' with lastError=null (e.g. after a clean
+    // discovery whose settlement then crashed), which hides the cause.
+    let topLevelLastError = lastError;
+
+    if (settlement.status === 'issued') {
+      topLevelOutcome = settlement.decision ?? outcome.outcome;
+      topLevelAuthority = 'discovery_settlement_policy';
+      topLevelReason = 'completed';
+      topLevelScope = true;
+    } else if (settlement.status === 'failed') {
+      topLevelOutcome = 'failed';
+      topLevelAuthority = 'none';
+      topLevelReason = 'failed';
+      topLevelScope = false;
+      topLevelLastError = settlement.error ?? 'settlement failed';
+    }
+
     return {
       projectId,
       epicId,
       finalStage,
       endedAt: this.now().toISOString(),
-      reason,
+      reason: topLevelReason,
       cycles,
-      lastError,
+      lastError: topLevelLastError,
       pipelineScope: 'discovery_only',
-      scopeCompleted,
-      outcome: outcome.outcome,
-      outcomeAuthority: outcome.outcomeAuthority,
+      scopeCompleted: topLevelScope,
+      outcome: topLevelOutcome,
+      outcomeAuthority: topLevelAuthority,
       proposalId: outcome.proposalId,
       proposalHash: outcome.proposalHash,
+      provisional,
       readiness,
+      settlement: {
+        status: settlement.status,
+        settlementId: settlement.settlementId,
+        certificateId: settlement.certificateId,
+        certificateHash: settlement.certificateHash,
+        policyVersion: settlement.policyVersion,
+        decision: settlement.decision,
+        reasonCodes: settlement.reasonCodes,
+        error: settlement.error,
+      },
+    };
+  }
+
+  /**
+   * D4 recovery: reconstruct the durable D3 readiness shadow for an exact
+   * immutable Proposal target, instead of fabricating a not_run shadow. This
+   * mirrors the D3 `shadowFrom` projection (accepted→completed, rejected/
+   * submitted→failed, no-assessment-with-control→failed, paused-control→paused,
+   * no-control→not_run) so a restart after an accepted assessment preserves the
+   * go/clarify/reject verdict rather than collapsing to CLARIFY_READINESS_MISSING.
+   */
+  private reconstructReadinessShadow(
+    rt: Saga3DiscoveryRuntimePersistence,
+    proposalId: number,
+    proposalContentHash: string,
+  ): ReadinessShadowResult {
+    const control: ReadinessControlIntentRecord | null =
+      rt.readReadinessControlForProposal(proposalId, proposalContentHash);
+    if (!control) {
+      // No readiness phase was ever initiated for this Proposal.
+      return {
+        status: 'not_run', authority: 'none',
+        assessmentId: null, assessmentHash: null,
+        overallReadiness: null, recommendedNextAction: null, error: null,
+      };
+    }
+    const assessment: ReadinessAssessmentRecord | null =
+      rt.readLatestReadinessAssessment(control.id);
+    if (!assessment) {
+      // Control exists but no assessment row. If paused, report paused; the
+      // advisor ran but did not produce a durable verdict — fail closed.
+      if (control.status === 'paused' || control.status === 'executing' || control.status === 'open') {
+        return {
+          status: 'paused', authority: 'none',
+          assessmentId: null, assessmentHash: null,
+          overallReadiness: null, recommendedNextAction: null,
+          error: 'readiness phase was paused/interrupted before producing an accepted assessment',
+        };
+      }
+      // concluded/cancelled with no assessment -> advisor finished without one.
+      return {
+        status: 'failed', authority: 'none',
+        assessmentId: null, assessmentHash: null,
+        overallReadiness: null, recommendedNextAction: null,
+        error: 'advisor completed without submitting an accepted assessment',
+      };
+    }
+    // Assessment exists — project by status (mirrors shadowFrom).
+    if (assessment.status === 'accepted_by_kernel') {
+      return {
+        status: 'completed', authority: 'shadow_advisor',
+        assessmentId: assessment.id, assessmentHash: assessment.content_hash,
+        overallReadiness: assessment.overall_readiness,
+        recommendedNextAction: assessment.recommended_next_action,
+        error: null,
+      };
+    }
+    if (assessment.status === 'rejected_by_kernel') {
+      return {
+        status: 'failed', authority: 'none',
+        assessmentId: assessment.id, assessmentHash: assessment.content_hash,
+        overallReadiness: null, recommendedNextAction: null,
+        error: `assessment rejected: ${assessment.validation_errors.join('; ')}`,
+      };
+    }
+    // submitted (not yet accepted/rejected by the kernel).
+    return {
+      status: 'failed', authority: 'none',
+      assessmentId: assessment.id, assessmentHash: assessment.content_hash,
+      overallReadiness: null, recommendedNextAction: null,
+      error: 'advisor assessment was not accepted by the kernel',
     };
   }
 }

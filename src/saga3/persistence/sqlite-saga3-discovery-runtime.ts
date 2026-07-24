@@ -6,14 +6,19 @@ import { DISCOVERY_NORMALIZATION_INTENT_KIND, DISCOVERY_READINESS_INTENT_KIND } 
 import { DISCOVERY_NORMALIZATION_PROPOSAL_SCHEMA } from '../domain/discovery-normalization-proposal.js';
 import { DISCOVERY_READINESS_ASSESSMENT_SCHEMA } from '../domain/discovery-readiness-assessment.js';
 import type { ControlIntentStatus } from '../domain/discovery-normalization-records.js';
-import type { ReadinessAssessmentRecord, ReadinessControlExecution, ReadinessControlStatus } from '../domain/discovery-readiness-records.js';
+import type { ReadinessAssessmentRecord, ReadinessControlExecution, ReadinessControlIntentRecord, ReadinessControlStatus } from '../domain/discovery-readiness-records.js';
+import type { OutcomeCertificateRecord, SettlementRecord } from '../domain/discovery-settlement-records.js';
 import {
   type EnsureNormalizationControl,
   type EnsureProjectedTask,
   type EnsureReadinessControl,
+  type InsertSettlementPort,
+  type IssueCertificateAtomicallyInput,
   type NormalizationControlExecution,
   type PrepareIntentForExecutionResult,
   type Saga3DiscoveryRuntimePersistence,
+  type SettlementInputKey,
+  type SettlementProposalRecord,
 } from './saga3-discovery-runtime-port.js';
 import {
   canonicalJson,
@@ -23,7 +28,18 @@ import { ensureSaga3NormalizationSchema, readLatestRawSubmissionForIntent } from
 import {
   ensureSaga3ReadinessSchema,
   readLatestReadinessAssessmentForControl,
+  readReadinessAssessment,
+  readReadinessControlForProposal as readReadinessControlForProposalRepo,
 } from './saga3-readiness-repository.js';
+import {
+  ensureSaga3SettlementSchema,
+  findSettlementByInputKey as findSettlementByInputKeyRepo,
+  insertSettlement as insertSettlementRepo,
+  issueCertificateAtomically as issueCertificateAtomicallyRepo,
+  markSettlementFailed as markSettlementFailedRepo,
+  readCertificateForSettlement as readCertificateForSettlementRepo,
+  reconcileExistingCertificate as reconcileExistingCertificateRepo,
+} from './saga3-settlement-repository.js';
 
 /**
  * SQLite implementation of the Saga3DiscoveryRuntimePersistence port.
@@ -39,6 +55,7 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
     ensurePausedWorkIntentStatus(getDb());
     ensureSaga3NormalizationSchema(getDb());
     ensureSaga3ReadinessSchema(getDb());
+    ensureSaga3SettlementSchema(getDb());
   }
 
   readEpicObjective(epicId: number): { name: string; description: string | null } | null {
@@ -397,6 +414,109 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
   readLatestReadinessAssessment(controlIntentId: number): ReadinessAssessmentRecord | null {
     ensureSaga3ReadinessSchema(getDb());
     return readLatestReadinessAssessmentForControl(getDb(), controlIntentId);
+  }
+
+  readReadinessControlForProposal(proposalId: number, proposalContentHash: string): ReadinessControlIntentRecord | null {
+    // D4: read-only lookup of the readiness ControlIntent for an exact immutable
+    // Proposal version. Used by engine recovery (reconstruct the D3 readiness
+    // shadow) and by the settlement service (full exact binding through the
+    // ControlIntent + authority WorkIntent).
+    ensureSaga3ReadinessSchema(getDb());
+    return readReadinessControlForProposalRepo(getDb(), proposalId, proposalContentHash);
+  }
+
+  readWorkIntent(intentId: number): WorkIntent | null {
+    // D4: read-only lookup of any WorkIntent by id (authority lineage binding).
+    const row = getDb().prepare('SELECT * FROM saga3_work_intents WHERE id=?')
+      .get(intentId) as WorkIntentRow | undefined;
+    return row ? rowToIntent(row) : null;
+  }
+
+  readProposalForSettlement(proposalId: number): SettlementProposalRecord | null {
+    // D4: read the canonical proposal plus the lineage columns the snapshot
+    // needs. epic_id is on the WorkIntent, project_id is on the epic, so join
+    // both. kind/schema_version/status are surfaced so the service can do
+    // EXACT target binding (it rejects a proposal of the wrong kind/schema/
+    // status, or bound to a different epic/project than the request).
+    ensureSaga3NormalizationSchema(getDb());
+    const row = getDb().prepare(
+      `SELECT p.id, p.intent_id, p.kind, p.schema_version, p.status,
+              p.content_hash, p.payload,
+              p.source_submission_id, p.normalization_proposal_id,
+              wi.epic_id AS epic_id, e.project_id AS project_id
+         FROM saga3_proposals p
+         JOIN saga3_work_intents wi ON wi.id = p.intent_id
+         JOIN epics e ON e.id = wi.epic_id
+        WHERE p.id=?`,
+    ).get(proposalId) as
+      | {
+          id: number; intent_id: number; kind: string; schema_version: string;
+          status: string; content_hash: string; payload: string;
+          source_submission_id: number | null; normalization_proposal_id: number | null;
+          epic_id: number; project_id: number;
+        }
+      | undefined;
+    if (!row) return null;
+    return {
+      id: row.id,
+      epic_id: row.epic_id,
+      project_id: row.project_id,
+      intent_id: row.intent_id,
+      kind: row.kind,
+      schema_version: row.schema_version,
+      status: row.status,
+      content_hash: row.content_hash,
+      // payload is stored as canonical JSON text; parse for the service to
+      // re-validate and re-hash. The service recomputes the hash from the
+      // canonical form and compares to content_hash, so a parse->canonicalize
+      // round-trip must match (it does, by canonicalJson construction).
+      payload: JSON.parse(row.payload),
+      source_submission_id: row.source_submission_id,
+      normalization_proposal_id: row.normalization_proposal_id,
+    };
+  }
+
+  readReadinessAssessment(assessmentId: number): ReadinessAssessmentRecord | null {
+    // D4: EXACT target binding — read the specific assessment by id (NOT the
+    // latest accepted for a proposal). The engine supplies the exact
+    // assessmentId/assessmentHash it observed via D3; the settlement must
+    // build its snapshot from THAT assessment, never silently substitute a
+    // newer accepted row that appeared afterwards.
+    ensureSaga3ReadinessSchema(getDb());
+    return readReadinessAssessment(getDb(), assessmentId);
+  }
+
+  findSettlementByInputKey(key: SettlementInputKey): SettlementRecord | null {
+    ensureSaga3SettlementSchema(getDb());
+    return findSettlementByInputKeyRepo(getDb(), key);
+  }
+
+  insertSettlement(input: InsertSettlementPort): { record: SettlementRecord; replayed: boolean } {
+    ensureSaga3SettlementSchema(getDb());
+    return insertSettlementRepo(getDb(), input);
+  }
+
+  markSettlementFailed(settlementId: number): void {
+    ensureSaga3SettlementSchema(getDb());
+    markSettlementFailedRepo(getDb(), settlementId);
+  }
+
+  readCertificateForSettlement(settlementId: number): OutcomeCertificateRecord | null {
+    ensureSaga3SettlementSchema(getDb());
+    return readCertificateForSettlementRepo(getDb(), settlementId);
+  }
+
+  issueCertificateAtomically(input: IssueCertificateAtomicallyInput): {
+    record: OutcomeCertificateRecord;
+    inserted: boolean;
+  } {
+    ensureSaga3SettlementSchema(getDb());
+    return issueCertificateAtomicallyRepo(getDb(), input);
+  }
+
+  reconcileExistingCertificate(input: IssueCertificateAtomicallyInput): OutcomeCertificateRecord {
+    ensureSaga3SettlementSchema(getDb());
+    return reconcileExistingCertificateRepo(getDb(), input);
   }
 
   private readIntentStrict(id: number): WorkIntent {

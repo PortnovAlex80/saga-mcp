@@ -31,7 +31,7 @@ import {
   markReadinessAccepted,
   markReadinessRejected,
 } from '../saga3/persistence/saga3-readiness-repository.js';
-import { canonicalJson } from '../saga3/persistence/saga3-normalization-repository.js';
+import { canonicalJson, collectDiscoverySourceRefs } from '../saga3/shared/discovery-canonical.js';
 import { createHash } from 'node:crypto';
 
 export interface Saga3ReadinessHandlersOptions {
@@ -115,41 +115,24 @@ function requireReadinessBinding(
 }
 
 /**
- * Build the EXACT set of source identifiers the advisor is allowed to cite.
- * This is the anti-invent-evidence contract: anything outside this set is
- * rejected by validateReadinessAssessment. The advisor receives this list
- * via readiness_get and MUST cite only from it.
- *
- * Allowed sources:
- *   - JSON paths into the canonical Proposal payload fields
- *     (`$.problem_statement`, `$.evidence_refs[0]`, ...);
- *   - explicit evidence literal strings from the Proposal's evidence_refs;
- *   - lineage identifiers: `proposal:<id>`, `raw:<id>` (if normalized),
- *     `normalization:<id>` (if LM-transformed).
+ * The allowed source-ref set is built by the SHARED collectDiscoverySourceRefs
+ * (src/saga3/shared/discovery-canonical.ts). Both the D3 readiness handler and
+ * the D4 settlement service MUST use that single function: a drift between the
+ * two once made an accepted assessment fail settlement re-validation. This thin
+ * adapter maps the handler's ProductProposalRow into the shared target shape.
  */
 function collectAllowedSourceRefs(
   proposal: ProductProposalRow,
   payload: DiscoveryProposalPayload,
 ): string[] {
-  const refs = new Set<string>();
-  refs.add(`proposal:${proposal.id}`);
-  // Top-level field paths.
-  for (const key of Object.keys(payload)) {
-    refs.add(`$.${key}`);
-  }
-  // Indexed evidence paths + the literal evidence strings themselves.
-  payload.evidence_refs.forEach((evidence, index) => {
-    refs.add(`$.evidence_refs[${index}]`);
-    refs.add(evidence);
-  });
-  // Lineage identifiers (may be absent for a direct worker proposal).
-  if (proposal.source_submission_id !== null) {
-    refs.add(`raw:${proposal.source_submission_id}`);
-  }
-  if (proposal.normalization_proposal_id !== null) {
-    refs.add(`normalization:${proposal.normalization_proposal_id}`);
-  }
-  return [...refs];
+  return collectDiscoverySourceRefs(
+    {
+      proposalId: proposal.id,
+      sourceSubmissionId: proposal.source_submission_id,
+      normalizationProposalId: proposal.normalization_proposal_id,
+    },
+    payload,
+  );
 }
 
 export function createSaga3ReadinessHandlers(

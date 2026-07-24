@@ -50,9 +50,28 @@ export interface OrchestrationRunResult {
   pipelineScope?: string;
   scopeCompleted?: boolean;
   outcome?: string;
-  outcomeAuthority?: 'worker_proposal' | 'normalized_worker_proposal' | 'none';
+  outcomeAuthority?:
+    | 'worker_proposal'
+    | 'normalized_worker_proposal'
+    | 'discovery_settlement_policy'
+    | 'none';
   proposalId?: number | null;
   proposalHash?: string | null;
+
+  /**
+   * D4 provisional outcome section. When settlement ran and issued a
+   * certificate, the top-level outcome/outcomeAuthority become AUTHORITATIVE
+   * (outcomeAuthority='discovery_settlement_policy') and the worker's original
+   * provisional recommendation is preserved here, unchanged. Before settlement
+   * (or when settlement is not_run), the top-level fields ARE the provisional
+   * outcome and this section mirrors them.
+   */
+  provisional?: {
+    outcome: string;
+    authority: 'worker_proposal' | 'normalized_worker_proposal' | 'none';
+    proposalId: number | null;
+    proposalHash: string | null;
+  };
 
   /**
    * D3 shadow readiness section. ADVISORY ONLY — never feeds back into
@@ -69,6 +88,28 @@ export interface OrchestrationRunResult {
     assessmentHash: string | null;
     overallReadiness: 'ready' | 'conditionally_ready' | 'not_ready' | 'inconclusive' | null;
     recommendedNextAction: string | null;
+    error: string | null;
+  };
+
+  /**
+   * D4 authoritative settlement section. status='issued' means an immutable
+   * DiscoveryOutcomeCertificate exists and the top-level outcome is
+   * AUTHORITATIVE (outcomeAuthority='discovery_settlement_policy').
+   * status='failed' means the settlement infrastructure errored before a
+   * certificate could be issued — this is the authoritative boundary, so the
+   * run reason is 'failed' and scopeCompleted is false (unlike D3 shadow, a
+   * settlement failure means Discovery Edition did NOT complete
+   * authoritatively). status='not_run' means settlement was not wired (legacy
+   * / test) and the top-level outcome stays provisional.
+   */
+  settlement?: {
+    status: 'issued' | 'failed' | 'not_run';
+    settlementId: number | null;
+    certificateId: number | null;
+    certificateHash: string | null;
+    policyVersion: string | null;
+    decision: 'go' | 'clarify' | 'reject' | null;
+    reasonCodes: string[];
     error: string | null;
   };
 }
