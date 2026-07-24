@@ -32,7 +32,12 @@ jobs:
         id: payload
         shell: bash
         run: |
-          if [[ -f tools/d5-review-correction.b64.00 && -f tools/d5-review-correction.b64.01 && -f tools/d5-review-correction.b64.02 ]]; then
+          if [[ -f tools/d5-review-correction.b64.00 \
+             && -f tools/d5-review-correction.b64.01a \
+             && -f tools/d5-review-correction.b64.01b \
+             && -f tools/d5-review-correction.b64.01c \
+             && -f tools/d5-review-correction.b64.01d \
+             && -f tools/d5-review-correction.b64.02 ]]; then
             echo "present=true" >> "$GITHUB_OUTPUT"
           else
             echo "present=false" >> "$GITHUB_OUTPUT"
@@ -42,13 +47,19 @@ jobs:
         shell: bash
         run: |
           cat tools/d5-review-correction.b64.00 \
-              tools/d5-review-correction.b64.01 \
+              tools/d5-review-correction.b64.01a \
+              tools/d5-review-correction.b64.01b \
+              tools/d5-review-correction.b64.01c \
+              tools/d5-review-correction.b64.01d \
               tools/d5-review-correction.b64.02 \
             | base64 --decode | gzip --decompress > /tmp/d5-correction.patch
           git apply --check --exclude=.github/workflows/d5-review.yml /tmp/d5-correction.patch
           git apply --index --exclude=.github/workflows/d5-review.yml /tmp/d5-correction.patch
           git rm tools/d5-review-correction.b64.00 \
-                 tools/d5-review-correction.b64.01 \
+                 tools/d5-review-correction.b64.01a \
+                 tools/d5-review-correction.b64.01b \
+                 tools/d5-review-correction.b64.01c \
+                 tools/d5-review-correction.b64.01d \
                  tools/d5-review-correction.b64.02
       - name: Setup Node
         if: steps.payload.outputs.present == 'true'
