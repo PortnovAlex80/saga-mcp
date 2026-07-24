@@ -107,12 +107,12 @@ export interface Saga3DiscoveryRuntimePersistence {
   readProposalForSettlement(proposalId: number): SettlementProposalRecord | null;
 
   /**
-   * D4: Latest ACCEPTED readiness assessment for one Proposal, or null if none.
-   * The settlement snapshot only ever consumes an accepted_by_kernel assessment;
-   * a missing/failed readiness state is represented by a 'missing'/'failed'
-   * snapshot readiness status, not by reading a non-accepted row.
+   * D4: Read the EXACT readiness assessment by id (NOT the latest accepted for a
+   * proposal). The engine supplies the assessmentId/assessmentHash it observed
+   * via D3; the settlement builds its snapshot from THAT assessment, never
+   * silently substituting a newer accepted row. Returns null if no such row.
    */
-  readAcceptedReadinessAssessmentForProposal(proposalId: number): ReadinessAssessmentRecord | null;
+  readReadinessAssessment(assessmentId: number): ReadinessAssessmentRecord | null;
 
   /** D4: Find an existing settlement by its immutable input key (any status). */
   findSettlementByInputKey(key: SettlementInputKey): SettlementRecord | null;
@@ -143,18 +143,37 @@ export interface Saga3DiscoveryRuntimePersistence {
 export interface SettlementProposalRecord {
   id: number;
   epic_id: number;
+  project_id: number;
   intent_id: number;
+  kind: string;
+  schema_version: string;
+  status: string;
   content_hash: string;
   payload: unknown;
   source_submission_id: number | null;
   normalization_proposal_id: number | null;
 }
 
+/**
+ * D4: the semantic readiness-target component of the idempotency key. Distinct
+ * states are SEPARATE idempotency buckets: a run that observed readiness=missing
+ * must never reuse a certificate later produced when readiness became=failed.
+ * For an accepted assessment, the target is the assessment content hash (so a
+ * changed assessment is a new target). For missing/failed/paused there is no
+ * assessment hash, so the status itself is the discriminator.
+ */
+export type SettlementReadinessTarget =
+  | { kind: 'accepted'; assessmentHash: string }
+  | { kind: 'missing' }
+  | { kind: 'failed' }
+  | { kind: 'paused' };
+
 /** D4: the immutable input key for a settlement. */
 export interface SettlementInputKey {
   proposalId: number;
   proposalContentHash: string;
-  readinessAssessmentHash: string;
+  /** Encoded readiness target string: 'accepted:<hash>' | 'missing' | 'failed' | 'paused'. */
+  readinessTarget: string;
   policyVersion: string;
   policyHash: string;
 }

@@ -15,6 +15,7 @@ import {
   DISCOVERY_SETTLEMENT_POLICY_VERSION,
   GO_MIN_CONFIDENCE,
   POLICY_V1_CONTENT_HASH,
+  POLICY_V1_MANIFEST,
   REJECT_MIN_CONFIDENCE,
 } from '../../dist/saga3/domain/discovery-settlement-policy.js';
 import {
@@ -82,6 +83,8 @@ function snapshot({ workerOutcome = 'go', assessment = null, readinessKind = 'ac
     readiness = { status: 'accepted_by_kernel', assessment_id: 7, content_hash: 'b'.repeat(64), payload: assessment };
   } else if (readinessKind === 'failed') {
     readiness = { status: 'failed', assessment_id: null, content_hash: null, payload: null };
+  } else if (readinessKind === 'paused') {
+    readiness = { status: 'paused', assessment_id: null, content_hash: null, payload: null };
   } else {
     readiness = { status: 'missing', assessment_id: null, content_hash: null, payload: null };
   }
@@ -133,12 +136,25 @@ test('D4 GO: worker go + readiness ready + no gaps + grounded + high confidence 
   assert.deepEqual(d.reason_codes, ['GO_READY_AND_GROUNDED']);
 });
 
-test('D4 GO requires at least one evidence_ref — but that is on the proposal, not policy; policy checks grounding dimension', () => {
-  // The policy's GO check uses the advisor's evidence_grounding dimension,
-  // not the proposal's evidence_refs count directly. evidence_grounding
-  // sufficient + worker go + ready -> go.
-  const d = policy.settle(snapshot({ assessment: readyAssessment() }));
-  assert.equal(d.decision, 'go');
+test('D4 GO requires at least one non-empty Proposal.evidence_ref (P0 correction)', () => {
+  // The advisor's evidence_grounding=sufficient is NOT enough: the Proposal
+  // itself must carry at least one non-empty evidence_ref. Empty evidence ->
+  // clarify / CLARIFY_EVIDENCE_INSUFFICIENT.
+  const d = policy.settle(snapshot({
+    assessment: readyAssessment(),
+    proposalOverrides: { evidence_refs: [] },
+  }));
+  assert.equal(d.decision, 'clarify');
+  assert.ok(d.reason_codes.includes('CLARIFY_EVIDENCE_INSUFFICIENT'), JSON.stringify(d.reason_codes));
+});
+
+test('D4 GO blocked by whitespace-only evidence_refs (P0 correction)', () => {
+  const d = policy.settle(snapshot({
+    assessment: readyAssessment(),
+    proposalOverrides: { evidence_refs: ['   ', ''] },
+  }));
+  assert.equal(d.decision, 'clarify');
+  assert.ok(d.reason_codes.includes('CLARIFY_EVIDENCE_INSUFFICIENT'), JSON.stringify(d.reason_codes));
 });
 
 // ---- CLARIFY path (§6.3) ---------------------------------------------------
@@ -301,4 +317,22 @@ test('D4 policy: all OVERALL_READINESS values are handled without throwing', () 
     const d = policy.settle(snapshot({ assessment }));
     assert.ok(['go', 'clarify', 'reject'].includes(d.decision), `${overall} produced ${d.decision}`);
   }
+});
+
+test('D4 policy: readiness paused -> clarify (CLARIFY_READINESS_PAUSED)', () => {
+  const d = policy.settle(snapshot({ readinessKind: 'paused' }));
+  assert.equal(d.decision, 'clarify');
+  assert.deepEqual(d.reason_codes, ['CLARIFY_READINESS_PAUSED']);
+});
+
+test('D4 policy: POLICY_V1_MANIFEST is internally consistent with the rules (manifest integrity)', () => {
+  // The policy hash is over the FULL manifest (incl. proposal_evidence_min,
+  // fallback, reason-code mapping). Assert the manifest fields match the
+  // actual rule behaviour so a silent rule change without a manifest change
+  // is caught.
+  assert.equal(POLICY_V1_MANIFEST.go.proposal_evidence_min, 1);
+  assert.equal(POLICY_V1_MANIFEST.go.confidence_min, GO_MIN_CONFIDENCE);
+  assert.equal(POLICY_V1_MANIFEST.reject.confidence_min, REJECT_MIN_CONFIDENCE);
+  assert.equal(POLICY_V1_MANIFEST.fallback_decision, 'clarify');
+  assert.equal(POLICY_V1_MANIFEST.reason_code_mapping_version, 1);
 });

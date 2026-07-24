@@ -174,8 +174,8 @@ function makeFakeExecutor(onPoll) {
   };
 }
 
-async function runEngine({ proposalPayload, settlementStatus, settlementDecision, readinessOutcome = 'completed' }) {
-  const runtime = makeFakeRuntime({ proposalPayload });
+async function runEngine({ proposalPayload, settlementStatus, settlementDecision, readinessOutcome = 'completed', finalTaskStatus = 'done' }) {
+  const runtime = makeFakeRuntime({ proposalPayload, finalTaskStatus });
   const executor = makeFakeExecutor(() => runtime._simulateWorkerTick());
   const readiness = makeFakeReadinessService({ outcome: readinessOutcome });
   const settlement = makeFakeSettlementService({ status: settlementStatus, decision: settlementDecision });
@@ -301,4 +301,44 @@ test('D4 engine: no settlementService wired -> settlement not_run, backward comp
   assert.equal(result.outcome, 'go');
   assert.equal(result.outcomeAuthority, 'worker_proposal'); // provisional stays top-level
   assert.equal(result.provisional.outcome, 'go');
+});
+
+// ---- P0-1: lifecycle eligibility (certificate must not legalize an incomplete lifecycle) ----
+
+test('D4 engine: valid Proposal + blocked lifecycle -> settlement NOT run (P0-1)', async () => {
+  // Worker submitted a valid Proposal but the task ended 'blocked' (not clean).
+  // Settlement must NOT issue a certificate that legalizes the incomplete run.
+  const { result, settlement } = await runEngine({
+    proposalPayload: validPayload('go'),
+    settlementStatus: 'issued', settlementDecision: 'go',
+    finalTaskStatus: 'blocked',
+  });
+  assert.equal(result.settlement.status, 'not_run');
+  assert.equal(settlement.calls.length, 0, 'settlement must not run on a non-clean lifecycle');
+  // The original failed result is preserved: not authoritative.
+  assert.notEqual(result.outcomeAuthority, 'discovery_settlement_policy');
+});
+
+// ---- P1-3: settlement failure populates top-level lastError ----
+
+test('D4 engine: settlement failure populates top-level lastError (P1-3)', async () => {
+  // A clean discovery (lastError=null) whose settlement then crashes must
+  // surface the settlement error in lastError, not hide it behind null.
+  const { result } = await runEngine({
+    proposalPayload: validPayload('go'),
+    settlementStatus: 'failed',
+  });
+  assert.equal(result.reason, 'failed');
+  assert.equal(result.settlement.status, 'failed');
+  assert.ok(result.lastError, 'lastError must be populated on settlement failure');
+  assert.equal(result.lastError, result.settlement.error);
+});
+
+test('D4 engine: settlement issued leaves lastError null (clean discovery)', async () => {
+  const { result } = await runEngine({
+    proposalPayload: validPayload('go'),
+    settlementStatus: 'issued', settlementDecision: 'go',
+  });
+  assert.equal(result.reason, 'completed');
+  assert.equal(result.lastError, null);
 });

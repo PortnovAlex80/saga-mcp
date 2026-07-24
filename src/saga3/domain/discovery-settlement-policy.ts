@@ -22,7 +22,7 @@
 import { createHash } from 'node:crypto';
 
 import type { DiscoverySettlementInputSnapshot } from './discovery-settlement-input.js';
-import { canonicalJson } from '../persistence/saga3-normalization-repository.js';
+import { canonicalJson } from '../shared/discovery-canonical.js';
 
 /**
  * Version string for policy v1. Recorded in the snapshot, the settlement row,
@@ -44,6 +44,7 @@ export type DiscoverySettlementReasonCode =
   | 'CLARIFY_WORKER_REQUESTED'
   | 'CLARIFY_READINESS_MISSING'
   | 'CLARIFY_READINESS_FAILED'
+  | 'CLARIFY_READINESS_PAUSED'
   | 'CLARIFY_READINESS_INCONCLUSIVE'
   | 'CLARIFY_CONDITIONALLY_READY'
   | 'CLARIFY_BLOCKING_GAPS'
@@ -89,23 +90,79 @@ export const GO_MIN_CONFIDENCE = 0.70;
 export const REJECT_MIN_CONFIDENCE = 0.70;
 
 /**
- * The stable content hash of policy v1: SHA-256 over the canonical JSON of the
- * version string plus the two thresholds. This is the "policy identity" baked
- * into every snapshot, settlement row, and certificate produced by v1. It must
- * change only when the policy's decision logic changes.
+ * The canonical POLICY MANIFEST — a full, declarative description of v1's
+ * decision rules. The policy hash is SHA-256 over the canonical JSON of this
+ * manifest, NOT merely over the version + thresholds. This is the "policy
+ * identity" baked into every snapshot, settlement row, and certificate.
  *
- * NOTE: it is computed over { version, go_min_confidence, reject_min_confidence
- * } — the observable knobs of the policy. Editing the threshold constants
- * changes the hash, which is exactly what we want: a new policy identity.
+ * Why a manifest and not just {version, thresholds}: the previous hash covered
+ * only two numbers, so one could change a GO predicate (e.g. drop the evidence
+ * requirement, flip clarify->go) while leaving version + thresholds — and the
+ * certificate would carry the SAME policy_hash despite a different decision.
+ * The manifest enumerates the actual GO/REJECT predicates, the evidence
+ * requirement, the fallback decision, the thresholds, and the reason-code
+ * mapping version, so ANY behavioural change changes the hash. (The manifest is
+ * declarative; the imperative rules below must match it. A mismatch is caught
+ * by the policy manifest unit tests, which assert the manifest equals the
+ * actual rule behaviour.)
  */
-export const POLICY_V1_CONTENT_HASH: string = (() => {
-  const policyIdentity = {
-    version: DISCOVERY_SETTLEMENT_POLICY_VERSION,
-    go_min_confidence: GO_MIN_CONFIDENCE,
-    reject_min_confidence: REJECT_MIN_CONFIDENCE,
+export interface SettlementPolicyManifest {
+  schema: 'saga3.discovery-settlement-policy-manifest.v1';
+  version: string;
+  go: {
+    worker_outcome: 'go';
+    proposal_evidence_min: number;
+    readiness_overall: 'ready';
+    blocking_gaps_max: number;
+    evidence_grounding_status: 'sufficient';
+    recommended_next_action: 'proceed_to_settlement';
+    confidence_min: number;
   };
-  return createHash('sha256').update(canonicalJson(policyIdentity)).digest('hex');
-})();
+  reject: {
+    worker_outcome: 'reject';
+    readiness_overall: 'not_ready';
+    recommended_next_action: 'reject';
+    blocking_gaps_min: number;
+    each_blocking_gap_must_have_source_refs: boolean;
+    confidence_min: number;
+  };
+  fallback_decision: 'clarify';
+  reason_code_mapping_version: number;
+}
+
+export const POLICY_V1_MANIFEST: SettlementPolicyManifest = {
+  schema: 'saga3.discovery-settlement-policy-manifest.v1',
+  version: DISCOVERY_SETTLEMENT_POLICY_VERSION,
+  go: {
+    worker_outcome: 'go',
+    proposal_evidence_min: 1,
+    readiness_overall: 'ready',
+    blocking_gaps_max: 0,
+    evidence_grounding_status: 'sufficient',
+    recommended_next_action: 'proceed_to_settlement',
+    confidence_min: GO_MIN_CONFIDENCE,
+  },
+  reject: {
+    worker_outcome: 'reject',
+    readiness_overall: 'not_ready',
+    recommended_next_action: 'reject',
+    blocking_gaps_min: 1,
+    each_blocking_gap_must_have_source_refs: true,
+    confidence_min: REJECT_MIN_CONFIDENCE,
+  },
+  fallback_decision: 'clarify',
+  reason_code_mapping_version: 1,
+};
+
+/**
+ * The stable content hash of policy v1: SHA-256 over the canonical JSON of the
+ * full manifest (every GO/REJECT predicate, evidence requirement, thresholds,
+ * fallback, reason-code mapping version). Changes to ANY observable rule change
+ * this hash, which is exactly what we want: a new policy identity.
+ */
+export const POLICY_V1_CONTENT_HASH: string = createHash('sha256')
+  .update(canonicalJson(POLICY_V1_MANIFEST))
+  .digest('hex');
 
 /**
  * Build the rationale string from reason codes. The kernel owns this — an LM
@@ -123,6 +180,7 @@ const REASON_CODE_TEXT: Record<DiscoverySettlementReasonCode, string> = {
   CLARIFY_WORKER_REQUESTED: 'Worker recommended clarification',
   CLARIFY_READINESS_MISSING: 'No accepted readiness assessment is available',
   CLARIFY_READINESS_FAILED: 'Readiness assessment failed',
+  CLARIFY_READINESS_PAUSED: 'Readiness assessment was paused',
   CLARIFY_READINESS_INCONCLUSIVE: 'Readiness assessment was inconclusive',
   CLARIFY_CONDITIONALLY_READY: 'Readiness assessment was conditionally ready',
   CLARIFY_BLOCKING_GAPS: 'Blocking gaps remain',
@@ -176,15 +234,18 @@ export class DiscoverySettlementPolicyV1 implements DiscoverySettlementPolicy {
 
     const readiness = input.readiness;
 
-    // No accepted assessment -> the advisor is unavailable, errored, or never
-    // ran. Per the fail-closed mandate this is an authoritative CLARIFY (not a
-    // pipeline failure — the pipeline still completes with a certificate). The
-    // missing/failed distinction is preserved in the reason code.
+    // No accepted assessment -> the advisor is unavailable, errored, paused, or
+    // never ran. Per the fail-closed mandate this is an authoritative CLARIFY
+    // (not a pipeline failure — the pipeline still completes with a
+    // certificate). The missing/failed/paused distinction is preserved in the
+    // reason code AND in the semantic readiness-target idempotency key.
     if (readiness.status !== 'accepted_by_kernel') {
       const code =
         readiness.status === 'failed'
           ? 'CLARIFY_READINESS_FAILED'
-          : 'CLARIFY_READINESS_MISSING';
+          : readiness.status === 'paused'
+            ? 'CLARIFY_READINESS_PAUSED'
+            : 'CLARIFY_READINESS_MISSING';
       return clarify([code], this.version, this.contentHash);
     }
 
@@ -233,7 +294,15 @@ export class DiscoverySettlementPolicyV1 implements DiscoverySettlementPolicy {
     // ---- GO path (§6.1) ---------------------------------------------------
     // Only for worker go. Every condition must hold simultaneously.
     if (workerOutcome === 'go') {
+      // The Proposal itself must carry at least one non-empty evidence_ref.
+      // The advisor's evidence_grounding dimension alone is NOT enough: an
+      // advisor can say 'sufficient' even when the Proposal's evidence_refs is
+      // empty. The GO contract requires groundING in the Proposal, not just an
+      // advisor opinion about it. (manifest.go.proposal_evidence_min = 1.)
+      const hasProposalEvidence = Array.isArray(proposal.evidence_refs)
+        && proposal.evidence_refs.some(ref => typeof ref === 'string' && ref.trim().length > 0);
       const goConditions = {
+        proposalEvidence: hasProposalEvidence,
         overallReady: advisorOverall === 'ready',
         noBlockingGaps: blockingGaps.length === 0,
         evidenceSufficient:
@@ -254,6 +323,7 @@ export class DiscoverySettlementPolicyV1 implements DiscoverySettlementPolicy {
       // Worker wants go but not all conditions hold -> clarify with the
       // specific reasons that prevented a go.
       const codes: DiscoverySettlementReasonCode[] = [];
+      if (!goConditions.proposalEvidence) codes.push('CLARIFY_EVIDENCE_INSUFFICIENT');
       if (advisorOverall === 'conditionally_ready') codes.push('CLARIFY_CONDITIONALLY_READY');
       else if (advisorOverall === 'inconclusive') codes.push('CLARIFY_READINESS_INCONCLUSIVE');
       if (blockingGaps.length > 0) codes.push('CLARIFY_BLOCKING_GAPS');

@@ -27,8 +27,8 @@ import {
 import { ensureSaga3NormalizationSchema, readLatestRawSubmissionForIntent } from './saga3-normalization-repository.js';
 import {
   ensureSaga3ReadinessSchema,
-  readLatestAcceptedReadinessAssessmentForControl,
   readLatestReadinessAssessmentForControl,
+  readReadinessAssessment,
 } from './saga3-readiness-repository.js';
 import {
   ensureSaga3SettlementSchema,
@@ -417,27 +417,37 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
 
   readProposalForSettlement(proposalId: number): SettlementProposalRecord | null {
     // D4: read the canonical proposal plus the lineage columns the snapshot
-    // needs. epic_id is on the WorkIntent, not the proposal, so join.
+    // needs. epic_id is on the WorkIntent, project_id is on the epic, so join
+    // both. kind/schema_version/status are surfaced so the service can do
+    // EXACT target binding (it rejects a proposal of the wrong kind/schema/
+    // status, or bound to a different epic/project than the request).
     ensureSaga3NormalizationSchema(getDb());
     const row = getDb().prepare(
-      `SELECT p.id, p.intent_id, p.content_hash, p.payload,
+      `SELECT p.id, p.intent_id, p.kind, p.schema_version, p.status,
+              p.content_hash, p.payload,
               p.source_submission_id, p.normalization_proposal_id,
-              wi.epic_id AS epic_id
+              wi.epic_id AS epic_id, e.project_id AS project_id
          FROM saga3_proposals p
          JOIN saga3_work_intents wi ON wi.id = p.intent_id
+         JOIN epics e ON e.id = wi.epic_id
         WHERE p.id=?`,
     ).get(proposalId) as
       | {
-          id: number; intent_id: number; content_hash: string; payload: string;
+          id: number; intent_id: number; kind: string; schema_version: string;
+          status: string; content_hash: string; payload: string;
           source_submission_id: number | null; normalization_proposal_id: number | null;
-          epic_id: number;
+          epic_id: number; project_id: number;
         }
       | undefined;
     if (!row) return null;
     return {
       id: row.id,
       epic_id: row.epic_id,
+      project_id: row.project_id,
       intent_id: row.intent_id,
+      kind: row.kind,
+      schema_version: row.schema_version,
+      status: row.status,
       content_hash: row.content_hash,
       // payload is stored as canonical JSON text; parse for the service to
       // re-validate and re-hash. The service recomputes the hash from the
@@ -449,17 +459,14 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
     };
   }
 
-  readAcceptedReadinessAssessmentForProposal(proposalId: number): ReadinessAssessmentRecord | null {
-    // D4: the settlement snapshot may only consume an accepted_by_kernel
-    // assessment. Join readiness ControlIntent (keyed by proposal) to find the
-    // control, then the latest accepted assessment for that control.
+  readReadinessAssessment(assessmentId: number): ReadinessAssessmentRecord | null {
+    // D4: EXACT target binding — read the specific assessment by id (NOT the
+    // latest accepted for a proposal). The engine supplies the exact
+    // assessmentId/assessmentHash it observed via D3; the settlement must
+    // build its snapshot from THAT assessment, never silently substitute a
+    // newer accepted row that appeared afterwards.
     ensureSaga3ReadinessSchema(getDb());
-    const control = getDb().prepare(
-      `SELECT id FROM saga3_readiness_control_intents
-        WHERE proposal_id=? ORDER BY id DESC LIMIT 1`,
-    ).get(proposalId) as { id: number } | undefined;
-    if (!control) return null;
-    return readLatestAcceptedReadinessAssessmentForControl(getDb(), control.id);
+    return readReadinessAssessment(getDb(), assessmentId);
   }
 
   findSettlementByInputKey(key: SettlementInputKey): SettlementRecord | null {

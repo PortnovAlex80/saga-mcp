@@ -16,7 +16,7 @@
 import { createHash } from 'node:crypto';
 
 import type { DiscoverySettlementDecision } from './discovery-settlement-policy.js';
-import { canonicalJson } from '../persistence/saga3-normalization-repository.js';
+import { canonicalJson } from '../shared/discovery-canonical.js';
 
 /**
  * Schema version for the outcome certificate payload.
@@ -47,7 +47,7 @@ export interface CertificateProposalRef {
 export interface CertificateReadinessRef {
   assessment_id: number | null;
   content_hash: string | null;
-  status: 'accepted_by_kernel' | 'missing' | 'failed';
+  status: 'accepted_by_kernel' | 'missing' | 'failed' | 'paused';
 }
 
 /**
@@ -83,7 +83,7 @@ export interface BuildOutcomeCertificateInput {
   epic_id: number;
   proposalId: number;
   proposalContentHash: string;
-  readinessStatus: 'accepted_by_kernel' | 'missing' | 'failed';
+  readinessStatus: 'accepted_by_kernel' | 'missing' | 'failed' | 'paused';
   readinessAssessmentId: number | null;
   readinessContentHash: string | null;
   decision: DiscoverySettlementDecision;

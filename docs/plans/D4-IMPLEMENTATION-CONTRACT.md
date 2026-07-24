@@ -1,7 +1,7 @@
 # D4 — Authoritative Discovery Settlement — Implementation Contract & Checklist
 
 **Branch:** `d4-discovery-settlement` (base: `saga3-discovery` @ `c312464`, post-D3 squash-merge)
-**Status:** IN PROGRESS
+**Status:** COMPLETE — pushed to origin/d4-discovery-settlement, ready for review
 **Last updated:** 2026-07-24
 
 This file is the **single source of truth** for D4 progress. Each stage updates its

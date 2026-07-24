@@ -147,10 +147,17 @@ function settlementRowToRecord(row: SettlementRow): SettlementRecord {
   };
 }
 
+/**
+ * The immutable input key for a settlement. `readinessTarget` is the ENCODED
+ * semantic readiness target: 'accepted:<hash>' | 'missing' | 'failed' |
+ * 'paused'. Distinct readiness states are distinct idempotency buckets — a run
+ * that observed missing must never reuse a certificate later produced for
+ * failed. The encoding keeps this layer free of the domain union type.
+ */
 export interface SettlementInputKey {
   proposalId: number;
   proposalContentHash: string;
-  readinessAssessmentHash: string;
+  readinessTarget: string;
   policyVersion: string;
   policyHash: string;
 }
@@ -183,7 +190,7 @@ export function findSettlementByInputKey(
   ).get(
     key.proposalId,
     key.proposalContentHash,
-    key.readinessAssessmentHash,
+    key.readinessTarget,
     key.policyVersion,
     key.policyHash,
   ) as SettlementRow | undefined;
@@ -215,7 +222,7 @@ export function insertSettlement(
     input.key.proposalId,
     input.key.proposalContentHash,
     input.readinessAssessmentId,
-    input.key.readinessAssessmentHash,
+    input.key.readinessTarget,
     input.key.policyVersion,
     input.key.policyHash,
     snapshotText,
@@ -230,9 +237,11 @@ export function insertSettlement(
 }
 
 /**
- * Mark a settlement as having an issued certificate. CAS-guarded: only
- * computed -> certificate_issued (or stays certificate_issued on replay).
- * Returns true iff the row is now certificate_issued.
+ * Mark a settlement as having an issued certificate. CAS-guarded: transitions
+ * computed OR failed -> certificate_issued (and stays certificate_issued on
+ * replay). A failed settlement is recoverable to certificate_issued on a later
+ * deterministic retry (the certificate is rebuilt from the STORED snapshot, so
+ * recovery is safe). Returns true iff the row is now certificate_issued.
  */
 export function markSettlementCertificateIssued(
   db: Database.Database,
@@ -241,7 +250,7 @@ export function markSettlementCertificateIssued(
   const info = db.prepare(
     `UPDATE saga3_discovery_settlements
         SET status='certificate_issued'
-      WHERE id=? AND status IN ('computed','certificate_issued')`,
+      WHERE id=? AND status IN ('computed','failed','certificate_issued')`,
   ).run(settlementId);
   return info.changes > 0;
 }

@@ -18,7 +18,7 @@ import { createHash } from 'node:crypto';
 
 import type { DiscoveryProposalPayload } from './discovery-proposal.js';
 import type { ReadinessAssessmentPayload } from './discovery-readiness-assessment.js';
-import { canonicalJson } from '../persistence/saga3-normalization-repository.js';
+import { canonicalJson } from '../shared/discovery-canonical.js';
 
 /**
  * Schema version for the settlement input snapshot. The hash computed over a
@@ -33,10 +33,14 @@ export const DISCOVERY_SETTLEMENT_INPUT_SCHEMA = 'saga3.discovery-settlement-inp
  *   - 'missing': no assessment exists (advisor never produced one we can use).
  *   - 'failed': the readiness phase errored or produced no accepted assessment.
  *
- * Missing and failed both fail-closed to CLARIFY in the policy; the
- * distinction is preserved for reason codes and audit.
+ * Missing, failed, and paused all fail-closed to CLARIFY in the policy; the
+ * distinction is preserved for the idempotency key, reason codes, and audit.
+ * The semantic readiness-target key (accepted:<hash> | missing | failed |
+ * paused) keeps these states in SEPARATE idempotency buckets, so a run that
+ * saw readiness=missing never reuses a certificate produced when readiness
+ * later became=failed (different authoritative inputs must not collapse).
  */
-export type SettlementReadinessStatus = 'accepted_by_kernel' | 'missing' | 'failed';
+export type SettlementReadinessStatus = 'accepted_by_kernel' | 'missing' | 'failed' | 'paused';
 
 /**
  * The proposal slice captured into the snapshot. Includes the full typed

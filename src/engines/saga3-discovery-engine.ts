@@ -594,17 +594,28 @@ export class Saga3DiscoveryEngine implements OrchestrationEngine {
       };
     }
 
-    // D4: authoritative settlement. Runs after readiness (D3 shadow) for every
-    // run with a structurally valid canonical Proposal. Unlike D3, D4 IS the
-    // authoritative boundary: a successful settlement makes the outcome
-    // authoritative (outcomeAuthority='discovery_settlement_policy'); a
-    // settlement infrastructure failure means the run FAILED (reason='failed',
+    // D4: authoritative settlement. Eligibility REQUIRES the product discovery
+    // lifecycle to have completed CLEANLY: reason='completed', scopeCompleted,
+    // terminal='clean', and a structurally valid canonical Proposal. A Proposal
+    // submitted before timeout, blocked, stopped, or executor failure must NOT
+    // become an authoritative success — the certificate cannot legalize an
+    // incomplete lifecycle. When not eligible, settlement stays not_run and the
+    // original failed/paused result is preserved unchanged.
+    //
+    // Unlike D3, D4 IS the authoritative boundary: a successful settlement makes
+    // the outcome authoritative (outcomeAuthority='discovery_settlement_policy');
+    // a settlement infrastructure failure means the run FAILED (reason='failed',
     // scopeCompleted=false) — Discovery Edition did NOT complete
     // authoritatively. Settlement runs even when readiness failed/paused; the
     // policy then fail-closes to clarify. The provisional outcome is always
     // preserved separately.
+    const eligibleForSettlement =
+      reason === 'completed'
+      && scopeCompleted
+      && terminal === 'clean'
+      && validProposal;
     let settlement: EngineSettlementResult;
-    if (validProposal && proposal && this.deps.settlementService) {
+    if (eligibleForSettlement && proposal && this.deps.settlementService) {
       try {
         settlement = await this.deps.settlementService.settle({
           projectId,
@@ -678,6 +689,10 @@ export class Saga3DiscoveryEngine implements OrchestrationEngine {
     let topLevelAuthority = outcome.outcomeAuthority;
     let topLevelReason = reason;
     let topLevelScope = scopeCompleted;
+    // A failed settlement must surface its error in lastError — otherwise a run
+    // could return reason='failed' with lastError=null (e.g. after a clean
+    // discovery whose settlement then crashed), which hides the cause.
+    let topLevelLastError = lastError;
 
     if (settlement.status === 'issued') {
       topLevelOutcome = settlement.decision ?? outcome.outcome;
@@ -689,6 +704,7 @@ export class Saga3DiscoveryEngine implements OrchestrationEngine {
       topLevelAuthority = 'none';
       topLevelReason = 'failed';
       topLevelScope = false;
+      topLevelLastError = settlement.error ?? 'settlement failed';
     }
 
     return {
@@ -698,7 +714,7 @@ export class Saga3DiscoveryEngine implements OrchestrationEngine {
       endedAt: this.now().toISOString(),
       reason: topLevelReason,
       cycles,
-      lastError,
+      lastError: topLevelLastError,
       pipelineScope: 'discovery_only',
       scopeCompleted: topLevelScope,
       outcome: topLevelOutcome,
