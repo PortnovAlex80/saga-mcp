@@ -49,7 +49,7 @@ jobs:
       - name: Commit verified follow-up
         if: steps.apply.outputs.code == '0'
         run: |
-          git rm -r .d2-followup
+          git rm -rf .d2-followup
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
