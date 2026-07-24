@@ -22,10 +22,30 @@ jobs:
           node-version: 22
           cache: npm
       - name: Apply D2 lifecycle follow-up
-        run: python3 .d2-followup/apply.py
-      - run: npm ci
-      - run: npm test
+        id: apply
+        continue-on-error: true
+        run: |
+          set +e
+          python3 .d2-followup/apply.py > /tmp/d2-followup.log 2>&1
+          code=$?
+          cat /tmp/d2-followup.log
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          exit 0
+      - name: Upload apply diagnostic
+        if: steps.apply.outputs.code != '0'
+        uses: actions/upload-artifact@v4
+        with:
+          name: d2-followup-diagnostic
+          path: /tmp/d2-followup.log
+      - name: Fail on apply mismatch
+        if: steps.apply.outputs.code != '0'
+        run: exit 1
+      - if: steps.apply.outputs.code == '0'
+        run: npm ci
+      - if: steps.apply.outputs.code == '0'
+        run: npm test
       - name: Commit verified follow-up
+        if: steps.apply.outputs.code == '0'
         run: |
           git rm -r .d2-followup
           git config user.name "github-actions[bot]"
