@@ -392,6 +392,18 @@ export function insertDiagnosisReportAtomically(
     //    accepted_by_kernel on a valid report, rejected_by_kernel on an invalid
     //    one (durable audit row). A submitted row that fails validation is still
     //    persisted as rejected_by_kernel — it is NOT deleted.
+    //
+    //    Defense-in-depth (adversarial G-durability): a rejected_by_kernel report
+    //    MUST carry non-empty validation_errors. The schema default is '[]' and
+    //    there is no CHECK constraint, so without this guard a future caller that
+    //    forgets to supply the rejection reasons could persist a "mute" rejection
+    //    — indistinguishable from a non-verdict row. The repository itself enforces
+    //    observability: a rejection with no explanation is rejected at insert time.
+    if (input.status === 'rejected_by_kernel' && input.validationErrors.length === 0) {
+      throw new Error(
+        `saga3: diagnosis report ${newId} cannot be rejected_by_kernel with empty validation_errors (a durable rejection must explain itself)`,
+      );
+    }
     db.prepare(
       `UPDATE saga3_discovery_diagnosis_reports SET status=? WHERE id=?`,
     ).run(input.status, newId);
