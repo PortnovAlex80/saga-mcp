@@ -146,6 +146,20 @@ export interface Saga3DiscoveryRuntimePersistence {
   readCertificateForSettlement(settlementId: number): OutcomeCertificateRecord | null;
 
   /**
+   * D4/D5: Read the outcome certificate by its exact id. Used by the D5
+   * diagnosis service to load + verify the immutable diagnosis target (the
+   * certificate the engine points at). Returns null if no such row. Read-only.
+   */
+  readOutcomeCertificate(certificateId: number): OutcomeCertificateRecord | null;
+
+  /**
+   * D4/D5: Read a settlement by its exact id. Used by the D5 diagnosis service
+   * to verify the settlement/certificate relation (settlement_id, input_hash,
+   * decision lineage) before building the diagnosis case. Read-only.
+   */
+  readSettlement(settlementId: number): SettlementRecord | null;
+
+  /**
    * D4: ONE ATOMIC operation that issues a certificate. Inside a single
    * BEGIN IMMEDIATE transaction: read the settlement, insert-or-reuse the
    * certificate (write-once), transition the settlement status from

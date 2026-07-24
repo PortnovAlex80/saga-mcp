@@ -46,6 +46,8 @@ import {
   issueCertificateAtomically as issueCertificateAtomicallyRepo,
   markSettlementFailed as markSettlementFailedRepo,
   readCertificateForSettlement as readCertificateForSettlementRepo,
+  readOutcomeCertificate as readOutcomeCertificateRepo,
+  readSettlement as readSettlementRepo,
   reconcileExistingCertificate as reconcileExistingCertificateRepo,
 } from './saga3-settlement-repository.js';
 import {
@@ -521,6 +523,19 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
   readCertificateForSettlement(settlementId: number): OutcomeCertificateRecord | null {
     ensureSaga3SettlementSchema(getDb());
     return readCertificateForSettlementRepo(getDb(), settlementId);
+  }
+
+  readOutcomeCertificate(certificateId: number): OutcomeCertificateRecord | null {
+    // D5: load the immutable diagnosis target by exact certificate id. Read-only.
+    ensureSaga3SettlementSchema(getDb());
+    return readOutcomeCertificateRepo(getDb(), certificateId);
+  }
+
+  readSettlement(settlementId: number): SettlementRecord | null {
+    // D5: load the settlement by exact id (settlement/certificate relation
+    // verification before building the diagnosis case). Read-only.
+    ensureSaga3SettlementSchema(getDb());
+    return readSettlementRepo(getDb(), settlementId);
   }
 
   issueCertificateAtomically(input: IssueCertificateAtomicallyInput): {
