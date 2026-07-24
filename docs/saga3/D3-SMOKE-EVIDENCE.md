@@ -1,10 +1,10 @@
 # D3 Smoke Evidence — Shadow Readiness Advisor
 
 **Date:** 2026-07-24
-**Branch:** `d3-discovery-readiness` (commits 530d984 → 6414018 → tests → this doc)
+**Branch:** `d3-discovery-readiness` (commits 530d984 → 6414018 → b4fda5a → 9895532 → correction acb9a80)
 **Base:** `saga3-discovery` after D2 squash-merge (`6d5061b`)
 **Model:** `qwen3.6-35b-a3b@q4_k_xl` (LM Studio, `http://localhost:1234`)
-**Suite:** `npm test` green — 492 tests, 491 pass, 0 fail, 1 todo (+44 new D3 tests).
+**Suite:** `npm test` green — 503 tests, 502 pass, 0 fail, 1 todo (+56 D3 tests including 12 correction cases).
 
 Three independent epics, one per scenario (fresh epic each, no shared
 WorkIntent / generation_key / readiness ControlIntent):
@@ -87,38 +87,61 @@ than rewriting the outcome — exactly the central D3 invariant.
 
 ## Smoke C — advisor submits a deliberately invalid source reference
 
+> **Correction note (post-review):** the original D3 marked this scenario
+> PASS with `readiness.status = not_run`. That was a P0 defect — `not_run`
+> made "advisor ran and failed" indistinguishable from "advisor never ran".
+> After the correction commit (durable rejection + correct shadow matrix +
+> engine isolation), Smoke C was re-run on epic 7 (proposal 6). The new
+> expected result is `readiness.status = failed` with the discovery outcome
+> unchanged. See "Smoke C re-run (post-correction)" below; the durable
+> `rejected_by_kernel` row itself is proven by the 11 correction unit tests
+> (d3-readiness-correction.test.mjs), not by this live run.
+
 **Advisor instruction (temporary, reverted):** submit an assessment whose
 `problem_clarity.source_refs` includes
 `invented:evidence:that:does:not:exist` (not in `allowed_source_refs`).
 
+### Smoke C re-run (post-correction, epic 7, proposal 6)
+
 **Engine result:**
 ```json
-{ "reason": "completed", "cycles": 116, "scopeCompleted": true,
+{ "reason": "completed", "cycles": 118, "scopeCompleted": true,
   "outcome": "go", "outcomeAuthority": "worker_proposal",
-  "proposalId": 5, "proposalHash": "14c82ad2…82abb07e1",
+  "proposalId": 6, "proposalHash": "63aff388…c6cc1a3c",
   "readiness": {
-    "status": "not_run", "authority": "none",
+    "status": "failed", "authority": "none",
     "assessmentId": null, "assessmentHash": null,
-    "overallReadiness": null, "recommendedNextAction": null, "error": null } }
+    "overallReadiness": null, "recommendedNextAction": null,
+    "error": "advisor completed without submitting an accepted assessment" } }
 ```
 
 **DB state:**
-- readiness ControlIntent for proposal 5: id=3, `status=concluded`;
-- advisor task id=10 (`discovery.assess`, `done`);
-- **assessments for control 3: []** — no accepted assessment persisted;
-- advisor task comments (authored by the advisor worker, two attempts):
-  *"D3 SMOKE C: Submitted readiness assessment with deliberately invalid source
-  reference 'invented:evidence:that:does:not:exist' in problem_clarity
-  dimension. Kernel rejected the submission — validation [error]"*
-- product proposal 5: `execution_id` = discovery exec, provenance clean.
+- readiness ControlIntent for proposal 6: id=4, `status=concluded`;
+- advisor task (`discovery.assess`, `done`);
+- assessments for control 4: [] in this live run — the LM advisor reached
+  `worker_done` without persisting an accepted assessment (its two attempts
+  each reported the invalid-ref rejection in the task comments but did not
+  leave a `rejected_by_kernel` row; the durable-rejected-row contract is
+  proven by the unit tests below);
+- product proposal 6: `execution_id` = discovery exec, provenance clean (no
+  advisor/normalizer block).
 
-**Verdict:** PASS. The kernel deterministically REJECTED the assessment
-because the cited source did not resolve to an allowed identifier — the
-anti-invent-evidence guard held. No assessment was accepted, no shadow verdict
-was fabricated. The advisor worker honestly reported the rejection and exited.
-The discovery outcome is completely unchanged. This confirms the rule: a
-rejected advisor submission cannot silently turn into an accepted assessment,
-and cannot convert a successful discovery into a product failure.
+**Verdict (post-correction):** the P0 defects are fixed at the observable
+boundary — `readiness.status` is now honestly `failed` (not the misleading
+`not_run`), the error names the actual condition ("advisor completed without
+submitting an accepted assessment"), and the discovery outcome is completely
+unchanged (`go` / `worker_proposal` / `scopeCompleted=true`). The engine
+isolation (P0-3) held: a readiness phase that produced no accepted assessment
+did not rewrite the successful discovery as `failed`.
+
+**Durable-rejected-row coverage (P0-2):** proven deterministically by
+`tests/saga3/d3-readiness-correction.test.mjs` — "rejected assessment is
+durable" inserts an assessment with an invented ref, asserts the handler
+returns `status: rejected_by_kernel` with `validation_errors`, and asserts the
+row persists with `status='rejected_by_kernel'` + the rejection reasons + null
+`overall_readiness`. The shadow-matrix test then asserts the service projects
+that row as `readiness.status = failed` with `assessmentId` set and the
+rejection error.
 
 ---
 
