@@ -6,6 +6,7 @@ on:
       - d5-discovery-diagnosis
     paths:
       - tools/d5-review-correction.b64.02
+      - .github/workflows/d5-apply-correction.yml
   workflow_dispatch:
 
 permissions:
