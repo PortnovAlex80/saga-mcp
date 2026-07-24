@@ -15,14 +15,14 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v4
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '24'
           cache: npm
       - name: Install dependencies
         run: npm ci
@@ -31,10 +31,7 @@ jobs:
       - name: Architecture
         run: npm run build && node --test tests/saga3/*architecture*.test.mjs
       - name: D5 focused tests
-        id: focused
-        shell: bash
         run: |
-          set +e
           node --test \
             tests/saga3/d5-certificate-bundle.test.mjs \
             tests/saga3/d5-diagnosis-case.test.mjs \
@@ -43,33 +40,7 @@ jobs:
             tests/saga3/d5-diagnosis-service.test.mjs \
             tests/saga3/d5-diagnosis-engine.test.mjs \
             tests/saga3/d5-adversarial.test.mjs \
-            > d5-focused.log 2>&1
-          code=$?
-          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
-          cat d5-focused.log
-          exit 0
-      - name: Package review workspace
-        if: always()
-        run: tar --exclude=.git -czf /tmp/d5-review-workspace.tgz .
-      - name: Upload focused test log
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: d5-focused-log
-          path: d5-focused.log
-          if-no-files-found: error
-          retention-days: 5
-      - name: Upload review workspace
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: d5-review-workspace
-          path: /tmp/d5-review-workspace.tgz
-          if-no-files-found: error
-          retention-days: 2
-      - name: Fail on focused test errors
-        if: steps.focused.outputs.exit_code != '0'
-        run: exit 1
+            tests/saga3/d5-diagnosis-integrity.test.mjs \
+            tests/saga3/d5-controlled-reject-smoke.test.mjs
       - name: Full suite
-        if: success()
         run: npm test
