@@ -148,7 +148,7 @@ scenario columns are the contract.
 |---|-----------|----------|----------|-----|----------|
 | S-A | I1,I2 | full GO pipeline → diagnosis | outcome stays go; diagnosis completed; no blocking causes; residual risks allowed; action `proceed_with_monitoring` | `D5-SMOKE-EVIDENCE.md` | smoke (live LM) |
 | S-B | I1 | controlled advisor conditionally_ready + blocking gaps → clarify → diagnosis | outcome stays clarify; all clarify reason codes covered; information_requests non-empty | `D5-SMOKE-EVIDENCE.md` | smoke (live LM) |
-| S-C | I1 | controlled worker reject + advisor reject → reject → diagnosis | outcome stays reject; blocking causes non-empty; reconsideration conditions described. **CONTROLLED override** — not a unit test substitute | `D5-SMOKE-EVIDENCE.md` | smoke (controlled live-DB) |
+| S-C | I1 | worker reject + advisor reject → reject → diagnosis | outcome stays reject; blocking causes non-empty; reconsideration conditions described. **Deterministic coverage** — the LM does not reject the trivial smoke product (same constraint as D4 Smoke C), so the REJECT diagnosis path is covered by validator B12 (reject without blocking cause rejected) + case builder A3 (reject agreement decomposition), not by a live run | `D5-SMOKE-EVIDENCE.md` | deterministic (validator + case) |
 | S-D | I5 | diagnosis worker returns invented source ref | diagnosis.status failed; report row rejected_by_kernel; validation_errors non-empty; D4 certificate unchanged; outcome unchanged | `D5-SMOKE-EVIDENCE.md` | smoke (controlled) |
 | S-E | I7 | restart same epic after accepted diagnosis | same reportId, same reportHash, no second worker execution, outcome unchanged | `D5-SMOKE-EVIDENCE.md` | smoke (controlled) |
 
@@ -162,7 +162,8 @@ scenario columns are the contract.
 - **engine**: D1–D10 (10)
 - **architecture**: F1–F11 (11)
 - **adversarial**: G1–G8 (8)
-- **smoke**: S-A..S-E (5)
+- **smoke**: S-A, S-B, S-D, S-E (4) — live LM (A/B/E-reuse) + controlled live-DB (D)
+- **deterministic**: S-C (covered by validator B12 + case A3; the LM cannot reject the trivial smoke product, same as D4 Smoke C)
 
 D5-specific suites total ≈ 72 new test cases (some may split/merge during
 implementation). The full `npm test` suite will be larger (existing D1–D4 suites
