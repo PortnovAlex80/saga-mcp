@@ -1,5 +1,6 @@
 import type { CreateWorkIntent, WorkIntent, WorkIntentStatus } from '../domain/work-intent.js';
 import type { ProposalRecord } from '../domain/proposal.js';
+import type { ControlIntentStatus, RawDiscoverySubmissionRecord } from '../domain/discovery-normalization-records.js';
 
 /**
  * Runtime-persistence boundary for the Saga 3 Discovery Edition engine.
@@ -67,8 +68,14 @@ export interface Saga3DiscoveryRuntimePersistence {
    */
   readWorkIntentForTask(taskId: number): WorkIntent | null;
 
-  /** Latest submitted proposal answering the intent, or null if none. */
+  /** Latest submitted canonical proposal answering the intent, or null if none. */
   readLatestProposal(intentId: number): ProposalRecord | null;
+  /** Latest immutable raw response for the product WorkIntent. */
+  readLatestRawSubmission(intentId: number): RawDiscoverySubmissionRecord | null;
+  /** Idempotently create/reuse the D2 ControlIntent, authority WorkIntent and task. */
+  ensureNormalizationControl(input: EnsureNormalizationControl): NormalizationControlExecution;
+  /** Compare-and-set ControlIntent lifecycle. */
+  setControlIntentStatus(controlIntentId: number, expected: ControlIntentStatus, next: ControlIntentStatus): boolean;
 }
 
 export interface EnsureProjectedTask {
@@ -80,4 +87,22 @@ export interface EnsureProjectedTask {
   executionSkill: string;
   /** generation_key (UNIQUE per epic) for idempotency. */
   generationKey: string;
+  metadata?: Record<string, unknown>;
+}
+
+
+export interface EnsureNormalizationControl {
+  epicId: number;
+  projectId: number;
+  sourceSubmissionId: number;
+  objective: string;
+}
+
+export interface NormalizationControlExecution {
+  controlIntentId: number;
+  sourceSubmissionId: number;
+  controlStatus: ControlIntentStatus;
+  authorityIntentId: number;
+  authorityIntentStatus: WorkIntentStatus;
+  taskId: number;
 }

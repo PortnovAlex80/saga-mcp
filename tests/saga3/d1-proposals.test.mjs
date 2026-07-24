@@ -425,20 +425,28 @@ test('proposal_submit: task not projected from the intent is rejected', async ()
   }
 });
 
-test('proposal_submit: malformed payload is rejected (no LM, deterministic)', async () => {
+test('proposal_submit D2: malformed semantic payload is preserved and requests normalization', async () => {
   const { temp, dbPath } = makeFixture();
   try {
     const { intentId, taskId, executionId } = seedIntentAndTask(getDb());
     const { createSaga3ProposalHandlers } = await import('../../dist/tools/saga3-proposals.js');
     const { handlers } = createSaga3ProposalHandlers();
-    assert.throws(
-      () => handlers.proposal_submit({
-        intent_id: intentId, task_id: taskId, execution_id: executionId,
-        kind: 'discovery', schema_version: DISCOVERY_PROPOSAL_SCHEMA,
-        payload: { problem_statement: 'x' }, // missing required fields
-      }),
-      /payload validation failed/,
-    );
+    const result = handlers.proposal_submit({
+      intent_id: intentId, task_id: taskId, execution_id: executionId,
+      kind: 'discovery', schema_version: DISCOVERY_PROPOSAL_SCHEMA,
+      payload: { problem_statement: 'x' }, // valid JSON, missing semantic fields
+    });
+    assert.equal(result.status, 'normalization_required');
+    assert.equal(result.proposal_id, null, 'normalizer has not produced a canonical Proposal yet');
+    assert.equal(typeof result.raw_submission_id, 'number');
+    assert.ok(result.validation_errors.length > 0);
+    const raw = getDb().prepare('SELECT status, raw_payload FROM saga3_raw_submissions WHERE id=?')
+      .get(result.raw_submission_id);
+    assert.equal(raw.status, 'normalization_required');
+    assert.equal(JSON.parse(raw.raw_payload).problem_statement, 'x');
+    const proposalCount = getDb().prepare('SELECT COUNT(*) c FROM saga3_proposals WHERE intent_id=?')
+      .get(intentId).c;
+    assert.equal(proposalCount, 0, 'raw ambiguous response must not become a canonical Proposal');
   } finally {
     closeDb();
     rmSync(temp, { recursive: true, force: true });
