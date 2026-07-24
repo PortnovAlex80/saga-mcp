@@ -1,10 +1,10 @@
 # D3 Smoke Evidence — Shadow Readiness Advisor
 
 **Date:** 2026-07-24
-**Branch:** `d3-discovery-readiness` (commits 530d984 → 6414018 → b4fda5a → 9895532 → correction acb9a80)
+**Branch:** `d3-discovery-readiness` (commits 530d984 → 6414018 → b4fda5a → 9895532 → correction acb9a80 → a12828a → 4bc6eea)
 **Base:** `saga3-discovery` after D2 squash-merge (`6d5061b`)
 **Model:** `qwen3.6-35b-a3b@q4_k_xl` (LM Studio, `http://localhost:1234`)
-**Suite:** `npm test` green — 503 tests, 502 pass, 0 fail, 1 todo (+56 D3 tests including 12 correction cases).
+**Suite:** `npm test` green — 506 tests, 505 pass, 0 fail, 1 todo (+59 D3 tests: 44 original + 12 correction + 3 migration).
 
 Three independent epics, one per scenario (fresh epic each, no shared
 WorkIntent / generation_key / readiness ControlIntent):
@@ -13,7 +13,7 @@ WorkIntent / generation_key / readiness ControlIntent):
 |-------|--------------|--------------------|--------|
 | A | 4 / 4 | id 3 | Clearly ready Proposal |
 | B | 5 / 5 | id 4 | Proposal with visible gaps |
-| C | 6 / 6 | id 5 | Advisor submits deliberately invalid source ref |
+| C | D3-Smoke-Mig / 1 | id 1 | Advisor submits deliberately invalid source ref (run on a pre-correction DB migrated on open) |
 
 Each smoke ran via `node dist/orchestrate-cli.js <proj> <epic> --concurrency=1`
 with `SAGA_ORCHESTRATION_MODE=saga3-discovery`, `SAGA_CLAUDE_PATH=claude`,
@@ -87,61 +87,74 @@ than rewriting the outcome — exactly the central D3 invariant.
 
 ## Smoke C — advisor submits a deliberately invalid source reference
 
-> **Correction note (post-review):** the original D3 marked this scenario
-> PASS with `readiness.status = not_run`. That was a P0 defect — `not_run`
-> made "advisor ran and failed" indistinguishable from "advisor never ran".
-> After the correction commit (durable rejection + correct shadow matrix +
-> engine isolation), Smoke C was re-run on epic 7 (proposal 6). The new
-> expected result is `readiness.status = failed` with the discovery outcome
-> unchanged. See "Smoke C re-run (post-correction)" below; the durable
-> `rejected_by_kernel` row itself is proven by the 11 correction unit tests
-> (d3-readiness-correction.test.mjs), not by this live run.
+> **History:** the original D3 (9895532) marked this scenario PASS with
+> `readiness.status = not_run` — a P0 defect that made "advisor ran and
+> failed" indistinguishable from "advisor never ran". The first correction
+> (acb9a80) fixed the shadow matrix and made rejection durable, but a
+> second-review P0 found that the idempotency-index migration was a no-op on
+> pre-correction DBs (the old execution-scoped index survived by name, so
+> `ON CONFLICT(control_intent_id, content_hash)` threw and no rejected row
+> could persist). The final correction (4bc6eea) rebuilds the index via
+> `PRAGMA index_info` inspection + deterministic dedupe. The run below is the
+> authoritative end-to-end evidence: a pre-correction DB, migrated on open,
+> with a durable `rejected_by_kernel` row.
+
+### Smoke C (final, upgraded pre-correction DB)
+
+**DB under test:** a fresh DB seeded with the ORIGINAL execution-scoped index
+`UNIQUE(control_intent_id, execution_id, content_hash)` (the 9895532 shape),
+then opened through the corrected engine so `ensureSaga3ReadinessSchema`
+runs the migration. Project/epic = D3-Smoke-Mig / 1, proposal id 1.
 
 **Advisor instruction (temporary, reverted):** submit an assessment whose
 `problem_clarity.source_refs` includes
 `invented:evidence:that:does:not:exist` (not in `allowed_source_refs`).
 
-### Smoke C re-run (post-correction, epic 7, proposal 6)
-
 **Engine result:**
 ```json
-{ "reason": "completed", "cycles": 118, "scopeCompleted": true,
+{ "reason": "completed", "cycles": 120, "scopeCompleted": true,
   "outcome": "go", "outcomeAuthority": "worker_proposal",
-  "proposalId": 6, "proposalHash": "63aff388…c6cc1a3c",
+  "proposalId": 1, "proposalHash": "00d9d5ec…82b653be0c",
   "readiness": {
     "status": "failed", "authority": "none",
-    "assessmentId": null, "assessmentHash": null,
+    "assessmentId": 2, "assessmentHash": "0e52d064…c77e191ef72",
     "overallReadiness": null, "recommendedNextAction": null,
-    "error": "advisor completed without submitting an accepted assessment" } }
+    "error": "assessment rejected: … blocking_gaps[0] cites an unresolved source reference 'invented:evidence:that:does:not:exist'" } }
 ```
 
-**DB state:**
-- readiness ControlIntent for proposal 6: id=4, `status=concluded`;
-- advisor task (`discovery.assess`, `done`);
-- assessments for control 4: [] in this live run — the LM advisor reached
-  `worker_done` without persisting an accepted assessment (its two attempts
-  each reported the invalid-ref rejection in the task comments but did not
-  leave a `rejected_by_kernel` row; the durable-rejected-row contract is
-  proven by the unit tests below);
-- product proposal 6: `execution_id` = discovery exec, provenance clean (no
+**Migration result (DB after open):**
+- `PRAGMA index_info('idx_saga3_readiness_assessment_idempotency')` →
+  `[control_intent_id, content_hash]` (was the 3-column execution-scoped index).
+
+**DB state (durable rejected assessments):**
+- `saga3_readiness_assessments`: two rows, both `status = rejected_by_kernel`,
+  each with non-empty `validation_errors`; `overall_readiness = null` on both.
+  The rejected rows cite the invented source reference among the validation
+  errors (e.g. `blocking_gaps[0] cites an unresolved source reference
+  'invented:evidence:that:does:not:exist'`).
+- readiness ControlIntent: `status = concluded`.
+- advisor task (`discovery.assess`): `done`.
+- product proposal 1: `execution_id` = discovery exec; provenance clean (no
   advisor/normalizer block).
 
-**Verdict (post-correction):** the P0 defects are fixed at the observable
-boundary — `readiness.status` is now honestly `failed` (not the misleading
-`not_run`), the error names the actual condition ("advisor completed without
-submitting an accepted assessment"), and the discovery outcome is completely
-unchanged (`go` / `worker_proposal` / `scopeCompleted=true`). The engine
-isolation (P0-3) held: a readiness phase that produced no accepted assessment
-did not rewrite the successful discovery as `failed`.
+**Verdict (final):** PASS. Every P0/P1 is confirmed end-to-end on an upgraded
+DB:
+- the index migration rebuilds the content-scoped unique index (the old
+  execution-scoped index no longer blocks `ON CONFLICT`);
+- the rejected advisor proposal is now DURABLE — `rejected_by_kernel` rows
+  survive with their `validation_errors`, exactly as the model requires
+  (LM proposes → kernel validates → kernel accepts or rejects → decision
+  remains durable);
+- `readiness.status = failed` with `assessmentId` and the rejection error in
+  the shadow section (not the misleading `not_run`);
+- the discovery outcome is completely unchanged (`go` / `worker_proposal` /
+  `scopeCompleted=true`) — a failed/paused readiness phase cannot convert a
+  successful discovery into a product failure.
 
-**Durable-rejected-row coverage (P0-2):** proven deterministically by
-`tests/saga3/d3-readiness-correction.test.mjs` — "rejected assessment is
-durable" inserts an assessment with an invented ref, asserts the handler
-returns `status: rejected_by_kernel` with `validation_errors`, and asserts the
-row persists with `status='rejected_by_kernel'` + the rejection reasons + null
-`overall_readiness`. The shadow-matrix test then asserts the service projects
-that row as `readiness.status = failed` with `assessmentId` set and the
-rejection error.
+The durable-rejected-row contract is ALSO covered deterministically by
+`tests/saga3/d3-readiness-correction.test.mjs` (handler + shadow observability)
+and the migration path by `tests/saga3/d3-readiness-index-migration.test.mjs`
+(index rebuild, cross-exec replay, duplicate collapse).
 
 ---
 
@@ -149,14 +162,14 @@ rejection error.
 
 | # | Exit gate | Covered by | Status |
 |---|-----------|-----------|--------|
-| 1 | readiness runs only after a valid canonical Proposal | engine hook gated on `validProposal && proposal`; Smoke C had no accepted assessment because none could be submitted; missing-Proposal lifecycle test | ✅ |
+| 1 | readiness runs only after a valid canonical Proposal | engine hook gated on `validProposal && proposal`; Smoke C ran the advisor only after a valid proposal existed; missing-Proposal lifecycle test asserts not_run + no advisor worker | ✅ |
 | 2 | advisor authority is minimal and runtime-enforced | `allowed_tools=['task_get','readiness_get','readiness_submit','worker_done']`, `enforcement:'runtime'`; lifecycle test pins the 4-tool allowlist (no proposal_submit/normalization_submit/task_create) | ✅ |
-| 3 | source/evidence invention is deterministically rejected | Smoke C: invented ref → kernel reject, no accepted assessment; domain tests (invented evidence, vague ref, nonexistent ref) | ✅ |
-| 4 | assessment is durable, typed, hashed, idempotent, separately provenanced | handler tests (idempotent replay, lineage separate); Smoke A/B persisted assessments with content_hash + separate advisor provenance | ✅ |
-| 5 | product outcome unchanged under every readiness result | Smoke A (ready), B (conditionally_ready), C (rejected/not_run) all kept `outcome=go`, `outcomeAuthority=worker_proposal`; lifecycle tests | ✅ |
+| 3 | source/evidence invention is deterministically rejected | Smoke C: invented ref → durable `rejected_by_kernel` row with the ref in `validation_errors`; domain tests (invented evidence, vague ref, nonexistent ref); empty-refs grounding tests | ✅ |
+| 4 | assessment is durable, typed, hashed, idempotent, separately provenanced | Smoke C durable rejected rows; handler tests (idempotent replay, lineage separate); Smoke A/B persisted accepted assessments with content_hash + separate advisor provenance; migration test (cross-exec replay, content-scoped idempotency) | ✅ |
+| 5 | product outcome unchanged under every readiness result | Smoke A (ready), B (conditionally_ready), C (rejected/failed) all kept `outcome=go`, `outcomeAuthority=worker_proposal`; lifecycle tests | ✅ |
 | 6 | readiness failure cannot convert successful discovery into product failure | lifecycle test "readiness failure does NOT turn successful discovery into a product failure"; Smoke C | ✅ |
 | 7 | restart reuses the same ControlIntent and task | service restart-resume + lifecycle "accepted → no respawn"; ControlIntent UNIQUE(proposal_id, proposal_content_hash) | ✅ |
-| 8 | full npm test passes | 492 tests, 491 pass, 0 fail, 1 todo | ✅ |
+| 8 | full npm test passes | 506 tests, 505 pass, 0 fail, 1 todo | ✅ |
 | 9 | all three real LM smoke scenarios pass | Smoke A/B/C above | ✅ |
 | 10 | D4 settlement, certificate, stage transition remain absent | engine never advances finalStage; no OutcomeCertificate table/code; `outcomeAuthority` never becomes authoritative; architecture boundary tests | ✅ |
 
