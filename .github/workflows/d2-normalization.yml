@@ -1,0 +1,42 @@
+name: D2 normalization validation
+
+on:
+  pull_request:
+    branches: [saga3-discovery]
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: d2-discovery-normalization
+          fetch-depth: 0
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Test
+        id: test
+        continue-on-error: true
+        run: |
+          set +e
+          npm test > /tmp/d2-test.log 2>&1
+          code=$?
+          cat /tmp/d2-test.log
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          exit 0
+      - name: Upload diagnostic
+        if: steps.test.outputs.code != '0'
+        uses: actions/upload-artifact@v4
+        with:
+          name: d2-test-diagnostic
+          path: /tmp/d2-test.log
+      - name: Fail on test failure
+        if: steps.test.outputs.code != '0'
+        run: exit 1
