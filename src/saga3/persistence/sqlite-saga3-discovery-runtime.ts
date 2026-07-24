@@ -19,7 +19,6 @@ import {
   type EnsureNormalizationControl,
   type EnsureProjectedTask,
   type EnsureReadinessControl,
-  type InsertDiagnosisReportInput,
   type InsertSettlementPort,
   type IssueCertificateAtomicallyInput,
   type NormalizationControlExecution,
@@ -27,6 +26,7 @@ import {
   type Saga3DiscoveryRuntimePersistence,
   type SettlementInputKey,
   type SettlementProposalRecord,
+  type SubmitDiagnosisReportInput,
 } from './saga3-discovery-runtime-port.js';
 import {
   canonicalJson,
@@ -53,7 +53,7 @@ import {
 import {
   ensureSaga3DiagnosisSchema,
   findDiagnosisControlByTarget as findDiagnosisControlByTargetRepo,
-  insertDiagnosisReportAtomically as insertDiagnosisReportAtomicallyRepo,
+  submitDiagnosisReportAtomically as submitDiagnosisReportAtomicallyRepo,
   readAcceptedDiagnosisReportForControl as readAcceptedDiagnosisReportForControlRepo,
   readDiagnosisControlById as readDiagnosisControlByIdRepo,
   readLatestDiagnosisReportForControl as readLatestDiagnosisReportForControlRepo,
@@ -690,13 +690,13 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
     return readLatestDiagnosisReportForControlRepo(getDb(), controlIntentId);
   }
 
-  insertDiagnosisReportAtomically(input: InsertDiagnosisReportInput): {
+  submitDiagnosisReportAtomically(input: SubmitDiagnosisReportInput): {
     record: DiagnosisReportRecord;
     inserted: boolean;
     replayed: boolean;
   } {
     ensureSaga3DiagnosisSchema(getDb());
-    return insertDiagnosisReportAtomicallyRepo(getDb(), input);
+    return submitDiagnosisReportAtomicallyRepo(getDb(), input);
   }
 
   private readIntentStrict(id: number): WorkIntent {

@@ -35,6 +35,9 @@ import type {
   DiagnosisReportStatus,
 } from '../domain/discovery-diagnosis-records.js';
 import { canonicalJson, sha256Hex } from '../shared/discovery-canonical.js';
+import { diagnosisCaseHash } from '../domain/discovery-diagnosis-case.js';
+import { validateDiagnosisReport } from '../domain/discovery-diagnosis-validator.js';
+import { DISCOVERY_DIAGNOSIS_REPORT_SCHEMA } from '../domain/discovery-diagnosis-report.js';
 
 /**
  * Create the diagnosis control + report tables and indexes. Idempotent. Uses
@@ -233,101 +236,132 @@ export function readLatestDiagnosisReportForControl(
 // Atomic report insert (the critical op)
 // ---------------------------------------------------------------------------
 
-/** Inputs to the atomic report-insert operation (mirrors the port type). */
-export interface InsertDiagnosisReportInput {
+/**
+ * Inputs to the atomic report-submit operation (P0-1). The caller (handler)
+ * supplies ONLY the worker's payload + provenance + execution identity — it
+ * does NOT supply the verdict (accepted/rejected) or validation errors. The
+ * repository DERIVES the verdict inside BEGIN IMMEDIATE from the FROZEN stored
+ * DiagnosisCase, so a handler can never declare a report accepted.
+ */
+export interface SubmitDiagnosisReportInput {
   controlIntentId: number;
-  certificateId: number;
-  certificateHash: string;
-  settlementInputHash: string;
-  /** The certificate's decision, surfaced for target-lineage re-verification. */
-  decision: 'go' | 'clarify' | 'reject';
-  taskId: number;
+  /** The worker execution submitting this report (for provenance; NOT in the uniqueness key). */
   executionId: string;
-  schemaVersion: string;
-  /** Parsed report payload object; stored as canonical JSON. */
+  /** The worker's proposed report payload object. */
   payload: unknown;
-  /** SHA-256 over canonicalJson(payload); recomputed inside the tx. */
-  expectedContentHash: string;
-  status: 'accepted_by_kernel' | 'rejected_by_kernel';
-  validationErrors: string[];
+  /** Provenance captured from the execution (model/provider/worker/exec/time). */
   provenance: unknown;
 }
 
 /**
- * ONE ATOMIC operation (BEGIN IMMEDIATE): insert a diagnosis report and
- * transition it to accepted/rejected. Mirrors issueCertificateAtomically in the
- * settlement repo (raw db.exec('BEGIN IMMEDIATE') / COMMIT / ROLLBACK — the
- * forked better-sqlite3 types do not support the mode arg on db.transaction).
+ * ONE ATOMIC operation (BEGIN IMMEDIATE): accept a diagnosis report submission
+ * and DERIVE its verdict internally. The handler cannot tell the repository that
+ * a report is accepted — the repository re-reads the frozen DiagnosisCase inside
+ * the transaction, verifies it has not drifted, and runs the deterministic
+ * validator itself (P0-1).
  *
- * Steps:
- *  1. Re-read the control row; verify certificate_id, certificate_hash,
- *     settlement_input_hash are UNCHANGED vs input (TOCTOU closure). Throw if
- *     mismatched.
- *  2. Try to find an existing report by (control_intent_id, content_hash). If
- *     found, return it {record, inserted:false, replayed:true} (idempotent —
- *     same content under a new execution reuses the row).
- *  3. INSERT the report row with status='submitted', content_hash=
- *     expectedContentHash, validation_errors + provenance + payload as canonical
- *     JSON text.
- *  4. Verify the stored payload hashes to expectedContentHash AND to the stored
- *     content_hash (co-tamper detection): sha256Hex(payload) must equal
- *     expectedContentHash AND the stored content_hash. If not, ROLLBACK + throw.
- *  5. Transition status to input.status (accepted_by_kernel or
- *     rejected_by_kernel) via UPDATE WHERE id=?.
- *  6. If input.status='accepted_by_kernel': enforce at-most-one-accepted —
- *     check no other accepted report exists for this control
- *     (SELECT id WHERE control_intent_id=? AND status='accepted_by_kernel'
- *     AND id != newId). If one exists, ROLLBACK + throw.
- *  7. COMMIT. Return {record, inserted:true, replayed:false}.
+ * Steps inside BEGIN IMMEDIATE:
+ *  1. Re-read the FULL control row. Verify it is in an active lifecycle status
+ *     (open/executing/paused) — a concluded/cancelled control cannot accept a
+ *     report.
+ *  2. Parse the stored DiagnosisCase (frozen at control-creation time). Verify
+ *     schema_version + that the case's certificate tuple (id/hash/input_hash/
+ *     decision) agrees with the control row's certificate_id/hash/
+ *     settlement_input_hash. Recompute diagnosis_case_hash from the stored case
+ *     and require it to equal the control's diagnosis_case_hash. This closes the
+ *     attack where diagnosis_case (e.g. allowed_source_refs) is tampered while
+ *     the hash is left unchanged: the recomputed hash will not match.
+ *  3. Idempotency: replaying the same payload (same control + content_hash) under
+ *     a new execution returns the existing row verbatim (execution_id is NOT in
+ *     the uniqueness key). The replayed row is re-verified (payload hashes to
+ *     its content_hash) before returning.
+ *  4. Recompute the report content hash from the payload; INSERT the row as
+ *     'submitted'.
+ *  5. DERIVE the verdict: run validateDiagnosisReport(payload, storedCase). On
+ *     valid -> 'accepted_by_kernel' with empty errors; on invalid ->
+ *     'rejected_by_kernel' with the validation errors. (A rejected report is
+ *     still persisted — durable audit; a mute rejection is impossible because an
+ *     invalid payload always yields >=1 error.)
+ *  6. At-most-one-accepted: if the verdict is accepted, ensure no other accepted
+ *     report exists for this control.
+ *  7. Transition the row to the derived verdict. COMMIT. Return the record.
  *
  * On ANY throw: ROLLBACK + rethrow.
  */
-export function insertDiagnosisReportAtomically(
+export function submitDiagnosisReportAtomically(
   db: Database.Database,
-  input: InsertDiagnosisReportInput,
+  input: SubmitDiagnosisReportInput,
 ): { record: DiagnosisReportRecord; inserted: boolean; replayed: boolean } {
   db.exec('BEGIN IMMEDIATE');
   try {
-    // 1. Re-read the control row and verify its target lineage is UNCHANGED.
-    //    This closes the TOCTOU window between the service-level validation and
-    //    BEGIN IMMEDIATE: another writer could have changed the control's
-    //    certificate_id / certificate_hash / settlement_input_hash after the
-    //    service verified it. The atomic boundary must re-confirm the target.
+    // 1. Re-read the FULL control row inside the tx.
     const control = db.prepare(
       'SELECT * FROM saga3_discovery_diagnosis_control_intents WHERE id=?',
     ).get(input.controlIntentId) as DiagnosisControlRow | undefined;
     if (!control) {
       throw new Error(
-        `saga3: diagnosis control ${input.controlIntentId} not found for report insert`,
+        `saga3: diagnosis control ${input.controlIntentId} not found for report submit`,
       );
     }
-    const controlChecks: Array<[string, unknown, unknown]> = [
-      ['certificate_id', control.certificate_id, input.certificateId],
-      ['certificate_hash', control.certificate_hash, input.certificateHash],
-      ['settlement_input_hash', control.settlement_input_hash, input.settlementInputHash],
-    ];
-    for (const [field, actual, expected] of controlChecks) {
-      if (actual !== expected) {
-        throw new Error(
-          `saga3: diagnosis control ${input.controlIntentId} ${field} '${actual}' != expected '${expected}' (TOCTOU drift inside atomic report tx)`,
-        );
-      }
+    // A control not in an active lifecycle cannot accept a report.
+    if (control.status !== 'open' && control.status !== 'executing' && control.status !== 'paused') {
+      throw new Error(
+        `saga3: diagnosis control ${input.controlIntentId} status '${control.status}' is not active (cannot accept a report)`,
+      );
+    }
+    if (control.projected_task_id === null) {
+      throw new Error(
+        `saga3: diagnosis control ${input.controlIntentId} has no projected_task_id`,
+      );
     }
 
-    // 2. Idempotency: replaying the same report (same control + content_hash)
-    //    under a new execution returns the existing row (execution_id is NOT in
-    //    the key). The stored row's status + payload are NOT overwritten — a
-    //    replayed report keeps its original verdict (deterministic by construction).
+    // 2. Parse the frozen DiagnosisCase and verify it has not drifted.
+    let storedCase: unknown;
+    try {
+      storedCase = JSON.parse(control.diagnosis_case);
+    } catch {
+      throw new Error(
+        `saga3: diagnosis control ${input.controlIntentId} diagnosis_case is not valid JSON`,
+      );
+    }
+    // Recompute the case hash from the stored case text (captured_at excluded by
+    // diagnosisCaseHash) and require it to equal the control's recorded hash. A
+    // tampered case (e.g. allowed_source_refs expanded) with the original hash
+    // left in place is caught here.
+    const recomputedCaseHash = diagnosisCaseHash(storedCase as Parameters<typeof diagnosisCaseHash>[0]);
+    if (recomputedCaseHash !== control.diagnosis_case_hash) {
+      throw new Error(
+        `saga3: diagnosis control ${input.controlIntentId} diagnosis_case_hash does not match a recomputation of the stored case (tampered case)`,
+      );
+    }
+    // Verify the contract version the control was built under.
+    if (control.diagnosis_contract_version !== DISCOVERY_DIAGNOSIS_REPORT_SCHEMA) {
+      throw new Error(
+        `saga3: diagnosis control ${input.controlIntentId} contract version '${control.diagnosis_contract_version}' is not '${DISCOVERY_DIAGNOSIS_REPORT_SCHEMA}'`,
+      );
+    }
+    // Verify the case's certificate tuple agrees with the control row. The case
+    // was frozen from the verified certificate bundle; if the control's cert
+    // target drifted (TOCTOU), this rejects.
+    const caseObj = storedCase as { certificate?: { id?: unknown; hash?: unknown; settlement_input_hash?: unknown; decision?: unknown } };
+    if (caseObj.certificate?.id !== control.certificate_id
+        || caseObj.certificate?.hash !== control.certificate_hash
+        || caseObj.certificate?.settlement_input_hash !== control.settlement_input_hash) {
+      throw new Error(
+        `saga3: diagnosis control ${input.controlIntentId} case certificate tuple does not match the control target`,
+      );
+    }
+
+    // 3. Idempotency: replaying the same payload under a new execution returns
+    //    the existing row. Recompute the content hash from the payload (the
+    //    authoritative key — the worker submits a payload, not a hash).
+    const payloadHash = sha256Hex(input.payload);
     const existing = db.prepare(
       `SELECT * FROM saga3_discovery_diagnosis_reports
         WHERE control_intent_id=? AND content_hash=? LIMIT 1`,
-    ).get(input.controlIntentId, input.expectedContentHash) as
-      | DiagnosisReportRow
-      | undefined;
+    ).get(input.controlIntentId, payloadHash) as DiagnosisReportRow | undefined;
     if (existing) {
-      // Co-tamper guard on the replayed row: the stored payload must hash to the
-      // stored content_hash (independent anchor). A concurrent writer could have
-      // inserted a row with the right content_hash key but a corrupted payload.
+      // Co-tamper guard on the replayed row.
       const storedPayloadHash = sha256Hex(JSON.parse(existing.payload));
       if (storedPayloadHash !== existing.content_hash) {
         throw new Error(
@@ -338,82 +372,37 @@ export function insertDiagnosisReportAtomically(
       return { record: diagnosisReportRowToRecord(existing), inserted: false, replayed: true };
     }
 
-    // 3. INSERT the report row with status='submitted'. payload + provenance are
-    //    canonicalized so the stored text hashes deterministically.
+    // 4. INSERT the row as 'submitted'. The content_hash is the recomputed
+    //    payloadHash (the repository owns it — the caller never supplies a hash).
     const payloadText = canonicalJson(input.payload);
-    const validationErrorsText = JSON.stringify(input.validationErrors);
     const provenanceText = canonicalJson(input.provenance);
     const insertInfo = db.prepare(
       `INSERT INTO saga3_discovery_diagnosis_reports
          (control_intent_id, certificate_id, certificate_hash, task_id,
           execution_id, schema_version, payload, content_hash, status,
           validation_errors, provenance)
-       VALUES (?,?,?,?,?,?,?,?,'submitted',?,?)`,
+       VALUES (?,?,?,?,?,?,?,?,'submitted','[]',?)`,
     ).run(
       input.controlIntentId,
-      input.certificateId,
-      input.certificateHash,
-      input.taskId,
+      control.certificate_id,
+      control.certificate_hash,
+      control.projected_task_id,
       input.executionId,
-      input.schemaVersion,
+      DISCOVERY_DIAGNOSIS_REPORT_SCHEMA,
       payloadText,
-      input.expectedContentHash,
-      validationErrorsText,
+      payloadHash,
       provenanceText,
     );
     const newId = Number(insertInfo.lastInsertRowid);
 
-    // 4. Co-tamper detection: recompute the hash from the parsed payload and
-    //    require it to equal BOTH the caller's expectedContentHash AND the stored
-    //    content_hash. A payload+hash changed together to agree with each other
-    //    but not with our recomputation is caught here. (The stored content_hash
-    //    column == input.expectedContentHash by the INSERT above, so the two
-    //    comparisons collapse to one recompute + one equality, but we check both
-    //    explicitly to document the independent anchors.)
-    const recomputedHash = sha256Hex(input.payload);
-    if (recomputedHash !== input.expectedContentHash) {
-      throw new Error(
-        `saga3: diagnosis report payload hash mismatch for control ${input.controlIntentId} (caller expected ${input.expectedContentHash.slice(0, 12)}, recomputed ${recomputedHash.slice(0, 12)})`,
-      );
-    }
-    const newReport = db.prepare(
-      'SELECT * FROM saga3_discovery_diagnosis_reports WHERE id=?',
-    ).get(newId) as DiagnosisReportRow | undefined;
-    if (!newReport) {
-      throw new Error(`saga3: diagnosis report ${newId} vanished after insert`);
-    }
-    if (newReport.content_hash !== recomputedHash) {
-      throw new Error(
-        `saga3: stored diagnosis report ${newId} content_hash disagrees with recomputed hash (co-tamper or version drift)`,
-      );
-    }
+    // 5. DERIVE the verdict from the FROZEN stored case. The repository decides
+    //    accepted vs rejected; the handler cannot influence it.
+    const validation = validateDiagnosisReport(input.payload, storedCase as Parameters<typeof validateDiagnosisReport>[1]);
+    const status: DiagnosisReportStatus = validation.valid ? 'accepted_by_kernel' : 'rejected_by_kernel';
+    const validationErrors = validation.errors; // >=1 when invalid by construction
 
-    // 5. Transition status to the verdict the service computed via the validator.
-    //    accepted_by_kernel on a valid report, rejected_by_kernel on an invalid
-    //    one (durable audit row). A submitted row that fails validation is still
-    //    persisted as rejected_by_kernel — it is NOT deleted.
-    //
-    //    Defense-in-depth (adversarial G-durability): a rejected_by_kernel report
-    //    MUST carry non-empty validation_errors. The schema default is '[]' and
-    //    there is no CHECK constraint, so without this guard a future caller that
-    //    forgets to supply the rejection reasons could persist a "mute" rejection
-    //    — indistinguishable from a non-verdict row. The repository itself enforces
-    //    observability: a rejection with no explanation is rejected at insert time.
-    if (input.status === 'rejected_by_kernel' && input.validationErrors.length === 0) {
-      throw new Error(
-        `saga3: diagnosis report ${newId} cannot be rejected_by_kernel with empty validation_errors (a durable rejection must explain itself)`,
-      );
-    }
-    db.prepare(
-      `UPDATE saga3_discovery_diagnosis_reports SET status=? WHERE id=?`,
-    ).run(input.status, newId);
-
-    // 6. At-most-one-accepted: there is at most ONE accepted report per target.
-    //    Enforced inside the tx so a concurrent accepted-insert cannot land two.
-    //    The UNIQUE idempotency index is on (control_intent_id, content_hash),
-    //    which does NOT prevent a SECOND accepted row with a different hash —
-    //    this check closes that gap. A second accepted attempt must ROLLBACK.
-    if (input.status === 'accepted_by_kernel') {
+    // 6. At-most-one-accepted (checked before the verdict transition commits).
+    if (status === 'accepted_by_kernel') {
       const other = db.prepare(
         `SELECT id FROM saga3_discovery_diagnosis_reports
           WHERE control_intent_id=? AND status='accepted_by_kernel' AND id != ? LIMIT 1`,
@@ -425,7 +414,11 @@ export function insertDiagnosisReportAtomically(
       }
     }
 
-    // 7. COMMIT + return the final record (re-read so status reflects the verdict).
+    // 7. Transition to the derived verdict + commit.
+    db.prepare(
+      `UPDATE saga3_discovery_diagnosis_reports SET status=?, validation_errors=? WHERE id=?`,
+    ).run(status, JSON.stringify(validationErrors), newId);
+
     db.exec('COMMIT');
     const finalRow = db.prepare(
       'SELECT * FROM saga3_discovery_diagnosis_reports WHERE id=?',

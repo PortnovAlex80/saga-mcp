@@ -32,17 +32,14 @@ import type { ToolHandler } from '../types.js';
 import { readExecutionContextStrict } from '../saga3/authority/authorize-saga-tool-call.js';
 import {
   DISCOVERY_DIAGNOSIS_REPORT_SCHEMA,
-  FORBIDDEN_DIAGNOSIS_FIELDS,
-  hashDiagnosisReport,
 } from '../saga3/domain/discovery-diagnosis-report.js';
 import {
   DISCOVERY_DIAGNOSIS_CONTRACT_VERSION,
   type DiscoveryDiagnosisCase,
 } from '../saga3/domain/discovery-diagnosis-case.js';
-import { validateDiagnosisReport } from '../saga3/domain/discovery-diagnosis-validator.js';
 import {
   ensureSaga3DiagnosisSchema,
-  insertDiagnosisReportAtomically,
+  submitDiagnosisReportAtomically,
 } from '../saga3/persistence/saga3-diagnosis-repository.js';
 
 export interface Saga3DiagnosisHandlersOptions {
@@ -161,127 +158,44 @@ export function createSaga3DiagnosisHandlers(
       );
     }
 
-    // NO outer withImmediateTransaction: insertDiagnosisReportAtomically opens
-    // its own BEGIN IMMEDIATE and closes it atomically. Wrapping the call in a
-    // second transaction causes a nested-transaction error ("cannot start a
-    // transaction within a transaction"), which is exactly what the live D5
-    // smoke surfaced (the worker composed a valid report but the submit threw).
-    // The read-only binding/case/validation steps do not need a transaction; the
-    // atomic insert is the single integrity boundary. The comment INSERT after a
-    // successful/failed insert is best-effort observability — if it throws, the
-    // report row is already durable (and a retry replays it).
+    // P0-1: the handler does NOT compute the verdict. It binds the execution to
+    // the control (authority/fence/lifecycle), captures provenance, and hands
+    // the worker's payload to submitDiagnosisReportAtomically. The repository
+    // DERIVES accepted_by_kernel | rejected_by_kernel inside BEGIN IMMEDIATE
+    // from the FROZEN stored DiagnosisCase — re-reading the case, recomputing
+    // its hash, verifying the cert tuple, and running validateDiagnosisReport
+    // itself. The handler therefore cannot declare a report accepted, and a
+    // tampered case (e.g. expanded allowed_source_refs) with an unchanged hash
+    // is rejected inside the transaction.
     const db = getDbFn();
     const binding = requireDiagnosisBinding(db, controlIntentId, executionId);
 
-    // Re-read the frozen DiagnosisCase the kernel built for THIS target. The
-    // validator runs against the case, never against the live state.
-    let caseData: DiscoveryDiagnosisCase;
-    try {
-      caseData = JSON.parse(binding.control.diagnosis_case) as DiscoveryDiagnosisCase;
-    } catch {
-      throw new Error(`diagnosis_submit: ControlIntent ${controlIntentId} diagnosis_case is not valid JSON`);
-    }
-
-    // Defence in depth: the payload's target must bind to the control's
-    // certificate target. The validator checks target vs case.certificate;
-    // here we additionally confirm the case itself is for THIS control's cert.
-    if (caseData.certificate.id !== binding.control.certificate_id
-        || caseData.certificate.hash !== binding.control.certificate_hash) {
-      throw new Error(`diagnosis_submit: ControlIntent ${controlIntentId} case target does not match the control's certificate target`);
-    }
-
-    // Forbidden authority-shaped fields: reject OUTRIGHT (the payload attempts
-    // to override the outcome / stage / certificate — invariants I1, I2). The
-    // validator also checks these, but we surface them as durable rejections
-    // (rejected_by_kernel) rather than throws, so the attempt is auditable.
-    const forbiddenPresent: string[] = [];
-    if (payload !== null && typeof payload === 'object' && !Array.isArray(payload)) {
-      for (const forbidden of FORBIDDEN_DIAGNOSIS_FIELDS) {
-        if (Object.prototype.hasOwnProperty.call(payload, forbidden)) {
-          forbiddenPresent.push(forbidden);
-        }
-      }
-    }
-
-    // P0-2 (mirrors readiness_submit): persist the submitted report FIRST,
-    // THEN run deterministic validation. A rejection is DURABLE — the advisor
-    // proposed, the kernel rejected, and the rejection reason survives so a
-    // human / the service can see why. We never silently discard an advisor
-    // proposal. The verdict (accepted/rejected) is computed here and passed
-    // to the atomic insert, which applies it inside its own BEGIN IMMEDIATE.
-    let validationErrors: string[];
-    let status: 'accepted_by_kernel' | 'rejected_by_kernel';
-    if (forbiddenPresent.length > 0) {
-      validationErrors = forbiddenPresent.map(
-        f => `diagnosis payload must not contain forbidden field '${f}'`,
-      );
-      status = 'rejected_by_kernel';
-    } else {
-      const validation = validateDiagnosisReport(payload, caseData);
-      validationErrors = validation.errors;
-      status = validation.valid ? 'accepted_by_kernel' : 'rejected_by_kernel';
-    }
-
-    // Recompute the content hash from the canonical payload via the domain
-    // helper. The atomic insert re-verifies this inside BEGIN IMMEDIATE
-    // (co-tamper guard).
-    const expectedContentHash = hashDiagnosisReport(payload as Parameters<typeof hashDiagnosisReport>[0]);
-
-    const inserted = insertDiagnosisReportAtomically(db, {
+    const result = submitDiagnosisReportAtomically(db, {
       controlIntentId,
-      certificateId: binding.control.certificate_id,
-      certificateHash: binding.control.certificate_hash,
-      settlementInputHash: binding.control.settlement_input_hash,
-      decision: caseData.certificate.decision,
-      taskId: binding.control.projected_task_id!,
       executionId,
-      schemaVersion,
       payload,
-      expectedContentHash,
-      status,
-      validationErrors,
       provenance: binding.provenance,
     });
 
-    // Idempotent replay: the same (control + content_hash) under a new
-    // execution returns the existing row with its original verdict.
-    if (inserted.replayed) {
-      return {
-        report_id: inserted.record.id,
-        content_hash: inserted.record.content_hash,
-        status: inserted.record.status,
-        replayed: true,
-        validation_errors: inserted.record.validation_errors,
-      };
-    }
-
     // Best-effort observability comment (the report row is already durable).
-    if (inserted.record.status === 'rejected_by_kernel') {
-      try {
-        db.prepare(
-          `INSERT INTO comments (task_id, author, content) VALUES (?, 'saga3-kernel', ?)`,
-        ).run(
-          binding.control.projected_task_id,
-          `Diagnosis report REJECTED: control=${controlIntentId} report=${inserted.record.id} errors=${validationErrors.length > 0 ? validationErrors[0].slice(0, 120) : 'unknown'}`,
-        );
-      } catch { /* comment is observability only */ }
-    } else {
-      try {
-        db.prepare(
-          `INSERT INTO comments (task_id, author, content) VALUES (?, 'saga3-kernel', ?)`,
-        ).run(
-          binding.control.projected_task_id,
-          `Diagnosis report accepted: control=${controlIntentId} report=${inserted.record.id} hash=${inserted.record.content_hash.slice(0, 12)}…`,
-        );
-      } catch { /* comment is observability only */ }
-    }
+    const errs = result.record.validation_errors;
+    try {
+      db.prepare(
+        `INSERT INTO comments (task_id, author, content) VALUES (?, 'saga3-kernel', ?)`,
+      ).run(
+        binding.control.projected_task_id,
+        result.record.status === 'accepted_by_kernel'
+          ? `Diagnosis report accepted: control=${controlIntentId} report=${result.record.id} hash=${result.record.content_hash.slice(0, 12)}…`
+          : `Diagnosis report REJECTED: control=${controlIntentId} report=${result.record.id} errors=${errs.length > 0 ? errs[0].slice(0, 120) : 'unknown'}`,
+      );
+    } catch { /* comment is observability only */ }
 
     return {
-      report_id: inserted.record.id,
-      content_hash: inserted.record.content_hash,
-      status: inserted.record.status,
-      replayed: false,
-      validation_errors: inserted.record.validation_errors,
+      report_id: result.record.id,
+      content_hash: result.record.content_hash,
+      status: result.record.status,
+      replayed: result.replayed,
+      validation_errors: errs,
     };
   };
 

@@ -222,15 +222,20 @@ export interface Saga3DiscoveryRuntimePersistence {
   readLatestDiagnosisReport(controlIntentId: number): DiagnosisReportRecord | null;
 
   /**
-   * D5: ONE ATOMIC operation that inserts a diagnosis report and transitions
-   * it to accepted/rejected. Inside BEGIN IMMEDIATE: persist the submitted
-   * report, re-verify the control's target lineage (certificate_id/hash/
-   * input_hash unchanged), then mark accepted_by_kernel or rejected_by_kernel.
-   * A byte-identical replay (same control + content_hash) under a new
-   * execution returns the existing row (idempotent; execution_id is NOT part of
-   * the uniqueness key). At most one accepted report per target.
+   * D5: ONE ATOMIC operation that accepts a diagnosis report submission and
+   * DERIVES its verdict internally (P0-1). The caller supplies ONLY the worker's
+   * payload + provenance + execution identity — it does NOT supply the verdict
+   * or validation errors. Inside BEGIN IMMEDIATE the repository re-reads the
+   * frozen DiagnosisCase, verifies it has not drifted (recomputed
+   * diagnosis_case_hash must equal the control's; case certificate tuple must
+   * match the control target; contract version must match), runs
+   * validateDiagnosisReport itself, and derives accepted_by_kernel or
+   * rejected_by_kernel. A byte-identical replay (same control + content_hash)
+   * under a new execution returns the existing row (idempotent; execution_id is
+   * NOT in the uniqueness key). At most one accepted report per target. The
+   * handler cannot declare a report accepted.
    */
-  insertDiagnosisReportAtomically(input: InsertDiagnosisReportInput): {
+  submitDiagnosisReportAtomically(input: SubmitDiagnosisReportInput): {
     record: DiagnosisReportRecord;
     inserted: boolean;
     replayed: boolean;
@@ -401,23 +406,18 @@ export interface EnsureDiagnosisControl {
 }
 
 /**
- * D5: input to insertDiagnosisReportAtomically. `decision` is the certificate's
- * decision, surfaced so the atomic tx can re-verify target lineage. `status` is
- * the verdict the service computed via the validator: accepted_by_kernel on a
- * valid report, rejected_by_kernel on an invalid one (durable audit).
+ * D5: input to submitDiagnosisReportAtomically (P0-1). The caller supplies ONLY
+ * the worker's payload + provenance + execution identity. The repository derives
+ * the verdict (accepted/rejected) internally from the frozen stored
+ * DiagnosisCase inside BEGIN IMMEDIATE — the handler cannot declare a report
+ * accepted.
  */
-export interface InsertDiagnosisReportInput {
+export interface SubmitDiagnosisReportInput {
   controlIntentId: number;
-  certificateId: number;
-  certificateHash: string;
-  settlementInputHash: string;
-  decision: 'go' | 'clarify' | 'reject';
-  taskId: number;
+  /** The worker execution submitting this report (provenance; NOT in the uniqueness key). */
   executionId: string;
-  schemaVersion: string;
+  /** The worker's proposed report payload object. */
   payload: unknown;
-  expectedContentHash: string;
-  status: 'accepted_by_kernel' | 'rejected_by_kernel';
-  validationErrors: string[];
+  /** Provenance captured from the execution. */
   provenance: unknown;
 }
