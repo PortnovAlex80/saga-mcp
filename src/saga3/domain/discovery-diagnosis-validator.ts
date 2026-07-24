@@ -11,15 +11,27 @@
  * The validator enforces, in order:
  *   1. target binding — exact certificate id/hash/input_hash/decision match;
  *   2. forbidden fields — none of the authority-shaped field names present;
- *   3. reason coverage — every certificate reason_code covered by a cause;
- *      no cause cites an unknown reason code;
- *   4. condition coverage — every failed_condition_id exists in the case and is
- *      `failed` (citing a passed condition as a root cause is rejected);
- *   5. source refs — every cited ref is in the case allowlist; none empty;
- *   6. internal references — resolves_cause_ids all point to existing cause_ids;
+ *   3. reason codes — every certificate reason_code covered by a cause (for
+ *      CLARIFY/REJECT); no cause cites an unknown reason code; each cause's
+ *      reason_codes must be a subset of (or equal to the union of) the
+ *      `emitted_reason_codes` of the conditions it cites (cause reasons must
+ *      agree with the conditions it cites);
+ *   4. condition coverage (causal) — every `cited_condition_id` exists in the
+ *      policy trace AND has `contributed_to_decision === true`. A cause may not
+ *      cite a predicate that did not participate in the decision;
+ *   5. outcome-specific grounds:
+ *        GO:     a cause may cite ONLY conditions with branch==='go' AND
+ *                evaluation==='passed'. NO blocking cause (§7-GO).
+ *        REJECT: a cause MUST cite at least one condition with branch==='reject'
+ *                AND evaluation==='passed' (REJECT is grounded in PASSED reject
+ *                conditions). At least one cause must have severity==='blocking'.
+ *        CLARIFY: a cause may cite conditions with branch==='clarify' AND
+ *                evaluation==='failed' (the blocking conditions that prevented
+ *                GO/REJECT and produced clarify codes). At least one cause
+ *                required; every certificate reason code covered by some cause.
+ *   6. source refs — every cited ref is in the case allowlist; none empty;
+ *   7. internal references — resolves_cause_ids all point to existing cause_ids;
  *      all ids unique;
- *   7. outcome consistency — GO has no blocking cause; clarify has ≥1 cause;
- *      reject has ≥1 blocking cause;
  *   8. confidence — finite, in [0, 1].
  */
 import {
@@ -29,6 +41,7 @@ import {
   FORBIDDEN_DIAGNOSIS_FIELDS,
 } from './discovery-diagnosis-report.js';
 import type { DiscoveryDiagnosisCase } from './discovery-diagnosis-case.js';
+import type { SettlementConditionTrace } from './discovery-settlement-policy.js';
 
 export interface DiagnosisValidation {
   valid: boolean;
@@ -105,7 +118,7 @@ export function validateDiagnosisReport(
 
   // 5. cause_analysis structural validation + collect ids.
   const causeIds = new Set<string>();
-  const causeIdObjects: { cause_id: string; reason_codes: string[]; failed_condition_ids: string[] }[] = [];
+  const causeIdObjects: { cause_id: string; reason_codes: string[]; cited_condition_ids: string[]; severity: unknown }[] = [];
   const causes = payload.cause_analysis;
   if (!Array.isArray(causes)) {
     errors.push('field \'cause_analysis\' must be an array');
@@ -124,8 +137,9 @@ export function validateDiagnosisReport(
         causeIds.add(cid);
         causeIdObjects.push({
           cause_id: cid,
+          severity: cause.severity,
           reason_codes: isStringArray(cause.reason_codes) ? cause.reason_codes : [],
-          failed_condition_ids: isStringArray(cause.failed_condition_ids) ? cause.failed_condition_ids : [],
+          cited_condition_ids: isStringArray(cause.cited_condition_ids) ? cause.cited_condition_ids : [],
         });
       }
       if (typeof cause.category !== 'string'
@@ -142,8 +156,8 @@ export function validateDiagnosisReport(
       if (!isStringArray(cause.reason_codes)) {
         errors.push(`cause_analysis[${index}].reason_codes must be an array of strings`);
       }
-      if (!isStringArray(cause.failed_condition_ids)) {
-        errors.push(`cause_analysis[${index}].failed_condition_ids must be an array of strings`);
+      if (!isStringArray(cause.cited_condition_ids)) {
+        errors.push(`cause_analysis[${index}].cited_condition_ids must be an array of strings`);
       }
       if (!isStringArray(cause.source_refs)) {
         errors.push(`cause_analysis[${index}].source_refs must be an array of strings`);
@@ -245,20 +259,56 @@ export function validateDiagnosisReport(
   // ---- Semantic checks (only meaningful once structure is well-formed) ----
 
   const allowed = new Set(caseData.allowed_source_refs);
-  const failedConditions = new Map(
-    caseData.policy_conditions.filter(c => c.result === 'failed').map(c => [c.condition_id, c]),
-  );
-  const allConditionIds = new Set(caseData.policy_conditions.map(c => c.condition_id));
+  const traceById = new Map<string, SettlementConditionTrace>();
+  for (const node of caseData.policy_trace) traceById.set(node.condition_id, node);
   const certReasonCodes = new Set<string>(caseData.certificate.reason_codes);
 
-  // 9. Reason coverage. §7 requires every certificate reason_code to be covered
-  //    by at least one cause for CLARIFY and REJECT (those decisions are
-  //    negative/explanatory — the diagnosis must explain each reason the policy
-  //    emitted). For GO the certificate carries GO_READY_AND_GROUNDED and the
-  //    diagnosis may legitimately have empty causes (it explains why everything
-  //    is fine via residual risks + proceed_with_monitoring), so GO reason
-  //    codes are NOT required to be covered. In ALL decisions a cause must not
-  //    cite a reason_code the certificate does not carry (no invented codes).
+  // 9. Condition coverage (causal). Every cited_condition_id MUST exist in the
+  //    policy trace AND have contributed_to_decision === true. A cause may not
+  //    cite a predicate that did not participate in the decision (alternative-
+  //    branch, short-circuited, or merely evaluated-but-non-contributing).
+  for (const c of causeIdObjects) {
+    for (const condId of c.cited_condition_ids) {
+      const node = traceById.get(condId);
+      if (!node) {
+        errors.push(`cause '${c.cause_id}' cites unknown condition '${condId}' (not in policy trace)`);
+      } else if (!node.contributed_to_decision) {
+        errors.push(`cause '${c.cause_id}' cites condition '${condId}' which did not contribute to the decision (only contributed_to_decision conditions are citable)`);
+      }
+    }
+  }
+
+  // 10. Reason-code agreement. A cause's reason_codes must be a SUBSET of (or
+  //     equal to the union of) the emitted_reason_codes of the conditions it
+  //     cites — the stated reasons must agree with the conditions it cites.
+  //     A cause with no cited conditions may carry no reason codes UNLESS the
+  //     decision is GO (a GO cause may legitimately carry GO_READY_AND_GROUNDED
+  //     to explain why the decision is sound, citing the GO conditions).
+  for (const c of causeIdObjects) {
+    const citedEmitted = new Set<string>();
+    for (const condId of c.cited_condition_ids) {
+      const node = traceById.get(condId);
+      if (node) {
+        for (const code of node.emitted_reason_codes) citedEmitted.add(code);
+      }
+    }
+    for (const code of c.reason_codes) {
+      // Unknown-to-certificate codes are reported in step 11; here we only check
+      // agreement with the cited conditions.
+      if (citedEmitted.size > 0 && !citedEmitted.has(code)) {
+        errors.push(`cause '${c.cause_id}' reason code '${code}' is not emitted by any of its cited conditions [${c.cited_condition_ids.join(', ')}]`);
+      }
+    }
+  }
+
+  // 11. Reason coverage. §7 requires every certificate reason_code to be covered
+  //     by at least one cause for CLARIFY and REJECT (those decisions are
+  //     negative/explanatory — the diagnosis must explain each reason the policy
+  //     emitted). For GO the certificate carries GO_READY_AND_GROUNDED and the
+  //     diagnosis may legitimately have empty causes (it explains why everything
+  //     is fine via residual risks + proceed_with_monitoring), so GO reason
+  //     codes are NOT required to be covered. In ALL decisions a cause must not
+  //     cite a reason_code the certificate does not carry (no invented codes).
   const coveredReasonCodes = new Set<string>();
   for (const c of causeIdObjects) {
     for (const code of c.reason_codes) {
@@ -278,20 +328,7 @@ export function validateDiagnosisReport(
     }
   }
 
-  // 10. Condition coverage: every failed_condition_id must exist in the case and
-  //     be `failed`. Citing a passed/not_applicable condition is rejected — the
-  //     diagnosis may not root a cause in a predicate the policy already cleared.
-  for (const c of causeIdObjects) {
-    for (const condId of c.failed_condition_ids) {
-      if (!allConditionIds.has(condId)) {
-        errors.push(`cause '${c.cause_id}' cites unknown condition '${condId}'`);
-      } else if (!failedConditions.has(condId)) {
-        errors.push(`cause '${c.cause_id}' cites condition '${condId}' which is not 'failed' (passed/NA conditions cannot be a root cause)`);
-      }
-    }
-  }
-
-  // 11. Source refs: every cited ref must be in the case allowlist (catches
+  // 12. Source refs: every cited ref must be in the case allowlist (catches
   //     invented evidence). Empty-array checks already ran above.
   const checkRefs = (refs: unknown, label: string): void => {
     if (!isStringArray(refs)) return;
@@ -316,7 +353,7 @@ export function validateDiagnosisReport(
     risks.forEach((r, i) => isRecord(r) && checkRefs(r.source_refs, `residual_risks[${i}].source_refs`));
   }
 
-  // 12. Internal references: every resolves_cause_ids must point to an existing
+  // 13. Internal references: every resolves_cause_ids must point to an existing
   //     cause_id.
   const checkCauseRefs = (refs: unknown, label: string): void => {
     if (!isStringArray(refs)) return;
@@ -333,29 +370,68 @@ export function validateDiagnosisReport(
     actions.forEach((a, i) => isRecord(a) && checkCauseRefs(a.resolves_cause_ids, `recommended_actions[${i}]`));
   }
 
-  // 13. Outcome consistency (§7).
+  // 14. Outcome-specific grounds + outcome consistency (§7). Enforced per the
+  //     policy trace so a cause is grounded in the RIGHT kind of condition for
+  //     the actual decision.
   const decision = caseData.certificate.decision;
   if (decision === 'go') {
-    // GO diagnosis must not create blocking causes (a blocking cause would
-    // argue the settlement was wrong — I1).
+    // GO: a cause may cite ONLY go-branch conditions that PASSED. GO is
+    // explained by its passed supporting conditions. NO blocking cause (a
+    // blocking cause would argue the settlement was wrong — I1).
     if (Array.isArray(causes)) {
-      causes.forEach((c, i) => {
-        if (isRecord(c) && c.severity === 'blocking') {
+      causes.forEach((cause, i) => {
+        if (!isRecord(cause)) return;
+        if (cause.severity === 'blocking') {
           errors.push(`decision is 'go' but cause_analysis[${i}] has severity 'blocking' (GO diagnosis must not create blocking causes)`);
+        }
+        const cited = isStringArray(cause.cited_condition_ids) ? cause.cited_condition_ids : [];
+        for (const condId of cited) {
+          const node = traceById.get(condId);
+          if (node && !(node.branch === 'go' && node.evaluation === 'passed')) {
+            errors.push(`decision is 'go' but cause_analysis[${i}] cites condition '${condId}' (branch='${node.branch}', evaluation='${node.evaluation}'); a GO cause may cite only go-branch passed conditions`);
+          }
         }
       });
     }
-  } else if (decision === 'clarify') {
-    // CLARIFY must have at least one cause (§7).
-    if (!Array.isArray(causes) || causes.length === 0) {
-      errors.push('decision is \'clarify\' but cause_analysis is empty');
-    }
   } else if (decision === 'reject') {
-    // REJECT must have at least one blocking cause (§7).
-    const hasBlocking = Array.isArray(causes) && causes.some(c => isRecord(c) && c.severity === 'blocking');
+    // REJECT: a cause MUST cite at least one reject-branch condition that
+    // PASSED (REJECT is grounded in PASSED reject conditions). At least one
+    // cause must have severity==='blocking'. A cause may not cite conditions of
+    // another branch/evaluation.
+    let hasBlocking = false;
+    causeIdObjects.forEach((c, idx) => {
+      if (c.severity === 'blocking') hasBlocking = true;
+      const citedNodes = c.cited_condition_ids
+        .map(id => traceById.get(id))
+        .filter((n): n is SettlementConditionTrace => !!n);
+      const hasPassedReject = citedNodes.some(n => n.branch === 'reject' && n.evaluation === 'passed');
+      if (!hasPassedReject) {
+        errors.push(`decision is 'reject' but cause_analysis[${idx}] '${c.cause_id}' cites no reject-branch passed condition (REJECT must be grounded in passed reject conditions)`);
+      }
+      for (const node of citedNodes) {
+        if (!(node.branch === 'reject' && node.evaluation === 'passed')) {
+          errors.push(`decision is 'reject' but cause_analysis[${idx}] '${c.cause_id}' cites condition '${node.condition_id}' (branch='${node.branch}', evaluation='${node.evaluation}'); a REJECT cause may cite only reject-branch passed conditions`);
+        }
+      }
+    });
     if (!hasBlocking) {
       errors.push('decision is \'reject\' but no cause has severity \'blocking\'');
     }
+  } else if (decision === 'clarify') {
+    // CLARIFY: a cause may cite conditions with branch==='clarify' AND
+    // evaluation==='failed' (the blocking conditions that prevented GO/REJECT
+    // and produced clarify codes). At least one cause required.
+    if (causeIdObjects.length === 0) {
+      errors.push('decision is \'clarify\' but cause_analysis is empty');
+    }
+    causeIdObjects.forEach((c, idx) => {
+      for (const condId of c.cited_condition_ids) {
+        const node = traceById.get(condId);
+        if (node && !(node.branch === 'clarify' && node.evaluation === 'failed')) {
+          errors.push(`decision is 'clarify' but cause_analysis[${idx}] '${c.cause_id}' cites condition '${condId}' (branch='${node.branch}', evaluation='${node.evaluation}'); a CLARIFY cause may cite only clarify-branch failed conditions`);
+        }
+      }
+    });
   }
 
   return { valid: errors.length === 0, errors };

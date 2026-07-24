@@ -80,14 +80,24 @@ export interface DiagnosisReportTarget {
   decision: DiagnosisDecision;
 }
 
-/** A cause the diagnosis identified (§6 cause_analysis). */
+/**
+ * A cause the diagnosis identified (§6 cause_analysis).
+ *
+ * `cited_condition_ids` are the trace condition_ids this cause explains. A cause
+ * may cite PASSED conditions (GO/REJECT grounds — the decision is explained by
+ * the supporting conditions that held) OR FAILED conditions (CLARIFY grounds —
+ * the blocking conditions that prevented GO/REJECT). The validator decides, per
+ * the diagnosed decision, whether the cited conditions are valid grounds. Every
+ * cited id MUST exist in `case.policy_trace` AND have
+ * `contributed_to_decision === true`.
+ */
 export interface DiagnosisCause {
   cause_id: string;
   category: DiagnosisCauseCategory;
   description: string;
   severity: DiagnosisSeverity;
   reason_codes: string[];
-  failed_condition_ids: string[];
+  cited_condition_ids: string[];
   source_refs: string[];
 }
 

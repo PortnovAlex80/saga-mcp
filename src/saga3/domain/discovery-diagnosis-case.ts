@@ -10,14 +10,25 @@
  * The diagnosis worker is ADVISORY ONLY (invariant I2). It may never change the
  * outcome, the certificate, or the stage. To keep it grounded, the kernel does
  * not hand the LM the raw inputs and ask "why did this happen?" — that invites
- * invented reasoning. Instead the kernel itself decomposes the settled decision
- * into a list of `DiagnosisPolicyCondition` predicates, each marked
- * passed/failed/not_applicable with the exact observed value and the reason
- * code it maps to. The LM then writes a diagnosis report that MUST cite these
- * conditions (via `failed_condition_ids`) and the allowlisted source refs.
+ * invented reasoning. Instead the kernel itself runs the deterministic
+ * settlement policy's `evaluate()` over a reconstructed `DiscoverySettlementInputSnapshot`
+ * and attaches the resulting `SettlementConditionTrace` to the case. The LM may
+ * cite ONLY trace nodes with `contributed_to_decision === true`, and its stated
+ * reason codes must agree with the cited nodes' `emitted_reason_codes`.
+ *
+ * Why a trace (not a hand-rolled flat "passed/failed" predicate list): a flat
+ * superset lets a diagnosis cite an ALTERNATIVE-branch predicate as the cause of
+ * the actual decision (e.g. citing `worker_outcome_is_reject` as a GO/CLARIFY
+ * cause when the worker recommended go). The trace is causally exact: it
+ * contains ONLY predicates the policy actually evaluated for the decided branch,
+ * and `contributed_to_decision=true` nodes are exactly the ones whose evaluation
+ * produced the emitted reason codes. A REJECT decision is grounded in PASSED
+ * reject conditions; a GO in PASSED go conditions; a CLARIFY in FAILED blocking
+ * conditions. The validator enforces this per-decision.
  *
  * This module is PURE: only node:crypto + the shared canonicalizer + domain
- * types. No SQLite, no LM, no I/O. The architecture test (F11) guards that.
+ * types (the settlement policy is itself pure). No SQLite, no LM, no I/O. The
+ * architecture test (F11) guards that.
  */
 import { createHash } from 'node:crypto';
 
@@ -25,9 +36,18 @@ import type { DiscoveryProposalPayload } from './discovery-proposal.js';
 import type { ReadinessAssessmentPayload } from './discovery-readiness-assessment.js';
 import type { DiscoverySettlementReasonCode } from './discovery-settlement-policy.js';
 import {
-  GO_MIN_CONFIDENCE,
-  REJECT_MIN_CONFIDENCE,
+  discoverySettlementPolicyV1,
+  DISCOVERY_SETTLEMENT_POLICY_VERSION,
+  POLICY_V1_CONTENT_HASH,
 } from './discovery-settlement-policy.js';
+import type {
+  DiscoverySettlementInputSnapshot,
+  SettlementProposalInput,
+  SettlementReadinessInput,
+  SettlementReadinessStatus,
+} from './discovery-settlement-input.js';
+import { DISCOVERY_SETTLEMENT_INPUT_SCHEMA } from './discovery-settlement-input.js';
+import type { SettlementConditionTrace } from './discovery-settlement-policy.js';
 import { canonicalJson, collectDiscoverySourceRefs } from '../shared/discovery-canonical.js';
 
 /** Schema version for the diagnosis case. */
@@ -49,35 +69,7 @@ export type DiagnosisDecision = 'go' | 'clarify' | 'reject';
  * When no accepted assessment exists, status is missing/failed/paused and the
  * payload/assessment_id/hash are null.
  */
-export type DiagnosisReadinessStatus =
-  | 'accepted_by_kernel'
-  | 'missing'
-  | 'failed'
-  | 'paused';
-
-/**
- * A single deterministic predicate the kernel derived from the settled inputs.
- * The LM does NOT compute these — it receives them and may only reference them.
- *
- *   - 'passed':           the observed value satisfied the policy requirement.
- *   - 'failed':           it did not; this condition contributed to a non-GO
- *                          decision (or would have, for a reject precondition).
- *   - 'not_applicable':   the condition could not be evaluated (e.g. an
- *                          assessment-based predicate when no assessment exists).
- *
- * `reason_code` is the settlement reason code this condition maps to when it
- * FAILS (null when the condition is a reject/GO precondition that does not
- * itself emit a clarify code). `source_refs` point to where the observed value
- * came from, drawn from the case's allowlist.
- */
-export interface DiagnosisPolicyCondition {
-  condition_id: string;
-  required_value: unknown;
-  observed_value: unknown;
-  result: 'passed' | 'failed' | 'not_applicable';
-  reason_code: DiscoverySettlementReasonCode | null;
-  source_refs: string[];
-}
+export type DiagnosisReadinessStatus = SettlementReadinessStatus;
 
 /** The certificate slice lifted into the case (verbatim from D4). */
 export interface DiagnosisCertificateRef {
@@ -111,14 +103,25 @@ export interface DiagnosisReadinessRef {
  * nothing else is available. `captured_at` is informational only — it is
  * EXCLUDED from `diagnosisCaseHash` so two cases over identical inputs produce
  * the same hash (invariant I7: restart idempotency).
+ *
+ * `policy_trace` is the deterministic settlement-policy evaluation trace for
+ * this case's reconstructed snapshot. It is causally exact: only predicates the
+ * policy actually evaluated for the decided branch appear; alternative-branch
+ * and short-circuited predicates are absent. The diagnosis may cite ONLY nodes
+ * with `contributed_to_decision === true`.
+ *
+ * `decision` is the decision being diagnosed (lifted from the certificate) so
+ * the validator can branch on it without re-reading the certificate.
  */
 export interface DiscoveryDiagnosisCase {
   schema_version: typeof DISCOVERY_DIAGNOSIS_CASE_SCHEMA;
   epic_id: number;
   certificate: DiagnosisCertificateRef;
+  /** The decision being diagnosed (mirrors certificate.decision). */
+  decision: DiagnosisDecision;
   proposal: DiagnosisProposalRef;
   readiness: DiagnosisReadinessRef;
-  policy_conditions: DiagnosisPolicyCondition[];
+  policy_trace: SettlementConditionTrace[];
   allowed_source_refs: string[];
   captured_at: string; // ISO 8601 — informational, not in the semantic hash
 }
@@ -138,8 +141,11 @@ export interface BuildDiagnosisCaseInput {
 
 /**
  * Build the immutable diagnosis case. PURE: no I/O, no randomness. The policy
- * conditions are derived deterministically from the settled inputs — the LM
- * never guesses which condition failed.
+ * trace is produced by running the deterministic settlement policy's
+ * `evaluate()` over a minimal `DiscoverySettlementInputSnapshot` reconstructed
+ * from the certificate + proposal + readiness slices. The trace is causally
+ * exact for the decision being diagnosed — the LM cannot cite an
+ * alternative-branch or short-circuited predicate.
  */
 export function buildDiagnosisCase(input: BuildDiagnosisCaseInput): DiscoveryDiagnosisCase {
   const proposalId = input.proposal.id;
@@ -157,31 +163,40 @@ export function buildDiagnosisCase(input: BuildDiagnosisCaseInput): DiscoveryDia
   const certificateAnchors = buildCertificateAnchors(input.certificate);
   const assessmentAnchors = buildAssessmentAnchors(input.readiness);
 
-  const allowedSourceRefs = dedupeSorted([
+  // Reconstruct the minimal settlement snapshot and run the policy to obtain
+  // the causally-exact evaluation trace. The proposal/readiness slices carry
+  // the same content the original settlement saw, so evaluate() returns the
+  // SAME branch and reason codes the certificate carries (the policy is pure
+  // and deterministic). The trace IS the case's policy_trace — we never
+  // hand-roll predicates.
+  const snapshot = buildSettlementSnapshot(input);
+  const evaluation = discoverySettlementPolicyV1.evaluate(snapshot);
+  const policyTrace = evaluation.trace;
+
+  // Each trace node's source_refs must be citable by the worker (P1: the kernel
+  // must not emit a source ref the worker can't cite), so union them into the
+  // allowlist. Each trace condition_id is also a citable anchor.
+  const allowedSourceRefs = new Set<string>([
     ...certificateAnchors,
     ...proposalRefs,
     ...assessmentAnchors,
     ...input.certificate.reason_codes.map(code => `reason_code:${code}`),
-    // policy_condition anchors are added after conditions are built (below).
   ]);
-
-  const policyConditions = buildPolicyConditions(
-    input.certificate,
-    input.proposal,
-    input.readiness,
-  );
-  // Each condition id is itself a citable source ref.
-  for (const cond of policyConditions) {
-    allowedSourceRefs.add(`policy_condition:${cond.condition_id}`);
+  for (const node of policyTrace) {
+    for (const ref of node.source_refs) {
+      allowedSourceRefs.add(ref);
+    }
+    allowedSourceRefs.add(`policy_condition:${node.condition_id}`);
   }
 
   return {
     schema_version: DISCOVERY_DIAGNOSIS_CASE_SCHEMA,
     epic_id: input.epic_id,
     certificate: input.certificate,
+    decision: input.certificate.decision,
     proposal: input.proposal,
     readiness: input.readiness,
-    policy_conditions: policyConditions,
+    policy_trace: policyTrace,
     allowed_source_refs: [...allowedSourceRefs].sort(),
     captured_at: input.captured_at ?? new Date().toISOString(),
   };
@@ -198,12 +213,58 @@ export function diagnosisCaseHash(caseData: DiscoveryDiagnosisCase): string {
     schema_version: caseData.schema_version,
     epic_id: caseData.epic_id,
     certificate: caseData.certificate,
+    decision: caseData.decision,
     proposal: caseData.proposal,
     readiness: caseData.readiness,
-    policy_conditions: caseData.policy_conditions,
+    policy_trace: caseData.policy_trace,
     allowed_source_refs: caseData.allowed_source_refs,
   };
   return createHash('sha256').update(canonicalJson(semantic)).digest('hex');
+}
+
+// ---------------------------------------------------------------------------
+// Snapshot reconstruction + policy evaluation
+// ---------------------------------------------------------------------------
+
+/**
+ * Reconstruct a minimal `DiscoverySettlementInputSnapshot` from the case slices.
+ * The policy only inspects: `proposal.payload` (recommended_outcome,
+ * evidence_refs), `readiness.status` + `readiness.payload`, and `policy`
+ * (version + content_hash). The other snapshot fields (source_intent_id etc.)
+ * are required by the type but do not influence the decision; they are filled
+ * with deterministic placeholders. `captured_at` is excluded from the snapshot's
+ * semantic content by using a constant (it does not feed the policy).
+ *
+ * The policy version/hash are taken from the certificate so the reconstructed
+ * evaluation matches the version that actually settled the case. (For policy v1
+ * the canonical instance is used; the version is asserted to match.)
+ */
+function buildSettlementSnapshot(input: BuildDiagnosisCaseInput): DiscoverySettlementInputSnapshot {
+  const proposalSlice: SettlementProposalInput = {
+    id: input.proposal.id,
+    content_hash: input.proposal.hash,
+    payload: input.proposal.payload,
+    source_intent_id: 0, // unused by the policy; deterministic placeholder.
+    source_submission_id: input.proposal_source_submission_id,
+    normalization_proposal_id: input.proposal_normalization_proposal_id,
+  };
+  const readinessSlice: SettlementReadinessInput = {
+    status: input.readiness.status,
+    assessment_id: input.readiness.assessment_id,
+    content_hash: input.readiness.hash,
+    payload: input.readiness.payload,
+  };
+  return {
+    schema_version: DISCOVERY_SETTLEMENT_INPUT_SCHEMA,
+    epic_id: input.epic_id,
+    proposal: proposalSlice,
+    readiness: readinessSlice,
+    policy: {
+      version: DISCOVERY_SETTLEMENT_POLICY_VERSION,
+      content_hash: POLICY_V1_CONTENT_HASH,
+    },
+    captured_at: '1970-01-01T00:00:00.000Z', // constant — does not feed the policy.
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -222,6 +283,12 @@ function buildCertificateAnchors(cert: DiagnosisCertificateRef): string[] {
  * Readiness-assessment source anchors. Only emitted when an accepted assessment
  * is present — a missing/failed/paused readiness contributes no assessment refs
  * (the worker may not cite fields of an assessment that does not exist).
+ *
+ * The aggregate anchors (`assessment.blocking_gaps`,
+ * `assessment.non_blocking_gaps`, `assessment.dimension_assessments`,
+ * `assessment.overall_readiness`, `assessment.recommended_next_action`,
+ * `assessment.confidence`) are always added when an assessment exists so that a
+ * trace node's aggregate ref is always citable.
  */
 function buildAssessmentAnchors(readiness: DiagnosisReadinessRef): string[] {
   if (readiness.status !== 'accepted_by_kernel' || !readiness.payload || readiness.assessment_id === null) {
@@ -231,10 +298,14 @@ function buildAssessmentAnchors(readiness: DiagnosisReadinessRef): string[] {
   const p = readiness.payload;
   const refs = new Set<string>([
     `assessment:${id}`,
-    `assessment.overall_readiness`,
-    `assessment.recommended_next_action`,
-    `assessment.confidence`,
-    `assessment.rationale`,
+    'assessment.overall_readiness',
+    'assessment.recommended_next_action',
+    'assessment.confidence',
+    'assessment.rationale',
+    // Aggregate anchors always citable when an assessment exists.
+    'assessment.blocking_gaps',
+    'assessment.non_blocking_gaps',
+    'assessment.dimension_assessments',
   ]);
   for (const dim of Object.keys(p.dimension_assessments)) {
     refs.add(`assessment.dimension_assessments.${dim}`);
@@ -242,362 +313,4 @@ function buildAssessmentAnchors(readiness: DiagnosisReadinessRef): string[] {
   p.blocking_gaps.forEach((_, i) => refs.add(`assessment.blocking_gaps[${i}]`));
   p.non_blocking_gaps.forEach((_, i) => refs.add(`assessment.non_blocking_gaps[${i}]`));
   return [...refs];
-}
-
-function dedupeSorted(items: string[]): Set<string> {
-  return new Set(items);
-}
-
-// ---------------------------------------------------------------------------
-// Policy-condition decomposition
-// ---------------------------------------------------------------------------
-
-/**
- * The fixed condition set. Each entry knows how to evaluate itself against the
- * settled inputs and which reason code (if any) it maps to on failure.
- *
- * The condition list is a SUPERSET: for any given decision some conditions are
- * `not_applicable` (e.g. an assessment-based predicate when no assessment
- * exists, or a reject precondition under a GO certificate). The LM sees the
- * full picture and cites the failed ones.
- */
-interface ConditionSpec {
-  condition_id: string;
-  reason_code: DiscoverySettlementReasonCode | null;
-  build(
-    ctx: ConditionContext,
-  ): { required_value: unknown; observed_value: unknown; result: DiagnosisPolicyCondition['result']; source_refs: string[] };
-}
-
-interface ConditionContext {
-  cert: DiagnosisCertificateRef;
-  proposal: DiagnosisProposalRef;
-  readiness: DiagnosisReadinessRef;
-}
-
-const HAS_ASSESSMENT = (r: DiagnosisReadinessRef): boolean =>
-  r.status === 'accepted_by_kernel' && r.payload !== null && r.assessment_id !== null;
-
-const GO_CONDITIONS: ConditionSpec[] = [
-  {
-    condition_id: 'worker_outcome_is_go',
-    reason_code: 'CLARIFY_WORKER_REQUESTED',
-    build(ctx) {
-      const observed = ctx.proposal.payload.recommended_outcome;
-      return {
-        required_value: 'go',
-        observed_value: observed,
-        result: observed === 'go' ? 'passed' : 'failed',
-        source_refs: [`proposal:${ctx.proposal.id}`, '$.recommended_outcome'],
-      };
-    },
-  },
-  {
-    condition_id: 'proposal_evidence_present',
-    reason_code: 'CLARIFY_EVIDENCE_INSUFFICIENT',
-    build(ctx) {
-      const refs = ctx.proposal.payload.evidence_refs;
-      const has = Array.isArray(refs) && refs.some(r => typeof r === 'string' && r.trim().length > 0);
-      return {
-        required_value: true,
-        observed_value: has,
-        result: has ? 'passed' : 'failed',
-        source_refs: [`proposal:${ctx.proposal.id}`, '$.evidence_refs'],
-      };
-    },
-  },
-  {
-    condition_id: 'readiness_accepted',
-    reason_code: 'CLARIFY_READINESS_MISSING',
-    build(ctx) {
-      const status = ctx.readiness.status;
-      // The exact reason code (failed/paused/missing) is refined by
-      // buildPolicyConditions via READINESS_ACCEPTED_CODE; the spec's static
-      // reason_code is the canonical 'missing' default.
-      return {
-        required_value: 'accepted_by_kernel',
-        observed_value: status,
-        result: status === 'accepted_by_kernel' ? 'passed' : 'failed',
-        source_refs: [`settlement:${ctx.cert.settlement_id}`],
-      };
-    },
-  },
-  {
-    condition_id: 'overall_readiness_ready',
-    reason_code: 'CLARIFY_CONDITIONALLY_READY',
-    build(ctx) {
-      if (!HAS_ASSESSMENT(ctx.readiness)) {
-        return { required_value: 'ready', observed_value: null, result: 'not_applicable', source_refs: [`settlement:${ctx.cert.settlement_id}`] };
-      }
-      const observed = ctx.readiness.payload!.overall_readiness;
-      return {
-        required_value: 'ready',
-        observed_value: observed,
-        result: observed === 'ready' ? 'passed' : 'failed',
-        source_refs: [`assessment:${ctx.readiness.assessment_id}`, 'assessment.overall_readiness'],
-      };
-    },
-  },
-  {
-    condition_id: 'no_blocking_gaps',
-    reason_code: 'CLARIFY_BLOCKING_GAPS',
-    build(ctx) {
-      if (!HAS_ASSESSMENT(ctx.readiness)) {
-        return { required_value: true, observed_value: null, result: 'not_applicable', source_refs: [`settlement:${ctx.cert.settlement_id}`] };
-      }
-      const gaps = ctx.readiness.payload!.blocking_gaps;
-      const none = gaps.length === 0;
-      return {
-        required_value: true,
-        observed_value: none,
-        result: none ? 'passed' : 'failed',
-        source_refs: [`assessment:${ctx.readiness.assessment_id}`, 'assessment.blocking_gaps'],
-      };
-    },
-  },
-  {
-    condition_id: 'evidence_grounding_sufficient',
-    reason_code: 'CLARIFY_EVIDENCE_INSUFFICIENT',
-    build(ctx) {
-      if (!HAS_ASSESSMENT(ctx.readiness)) {
-        return { required_value: 'sufficient', observed_value: null, result: 'not_applicable', source_refs: [`settlement:${ctx.cert.settlement_id}`] };
-      }
-      const observed = ctx.readiness.payload!.dimension_assessments.evidence_grounding.status;
-      return {
-        required_value: 'sufficient',
-        observed_value: observed,
-        result: observed === 'sufficient' ? 'passed' : 'failed',
-        source_refs: [`assessment:${ctx.readiness.assessment_id}`, 'assessment.dimension_assessments.evidence_grounding'],
-      };
-    },
-  },
-  {
-    condition_id: 'recommended_action_proceed',
-    reason_code: 'CLARIFY_MANUAL_REVIEW_RECOMMENDED',
-    build(ctx) {
-      if (!HAS_ASSESSMENT(ctx.readiness)) {
-        return { required_value: 'proceed_to_settlement', observed_value: null, result: 'not_applicable', source_refs: [`settlement:${ctx.cert.settlement_id}`] };
-      }
-      const observed = ctx.readiness.payload!.recommended_next_action;
-      return {
-        required_value: 'proceed_to_settlement',
-        observed_value: observed,
-        result: observed === 'proceed_to_settlement' ? 'passed' : 'failed',
-        source_refs: [`assessment:${ctx.readiness.assessment_id}`, 'assessment.recommended_next_action'],
-      };
-    },
-  },
-  {
-    condition_id: 'confidence_above_go_threshold',
-    reason_code: 'CLARIFY_LOW_CONFIDENCE',
-    build(ctx) {
-      if (!HAS_ASSESSMENT(ctx.readiness)) {
-        return { required_value: GO_MIN_CONFIDENCE, observed_value: null, result: 'not_applicable', source_refs: [`settlement:${ctx.cert.settlement_id}`] };
-      }
-      const observed = ctx.readiness.payload!.confidence;
-      return {
-        required_value: GO_MIN_CONFIDENCE,
-        observed_value: observed,
-        result: observed >= GO_MIN_CONFIDENCE ? 'passed' : 'failed',
-        source_refs: [`assessment:${ctx.readiness.assessment_id}`, 'assessment.confidence'],
-      };
-    },
-  },
-];
-
-const REJECT_CONDITIONS: ConditionSpec[] = [
-  {
-    condition_id: 'worker_outcome_is_reject',
-    reason_code: null,
-    build(ctx) {
-      const observed = ctx.proposal.payload.recommended_outcome;
-      return {
-        required_value: 'reject',
-        observed_value: observed,
-        result: observed === 'reject' ? 'passed' : 'failed',
-        source_refs: [`proposal:${ctx.proposal.id}`, '$.recommended_outcome'],
-      };
-    },
-  },
-  {
-    condition_id: 'overall_readiness_not_ready',
-    reason_code: null,
-    build(ctx) {
-      if (!HAS_ASSESSMENT(ctx.readiness)) {
-        return { required_value: 'not_ready', observed_value: null, result: 'not_applicable', source_refs: [`settlement:${ctx.cert.settlement_id}`] };
-      }
-      const observed = ctx.readiness.payload!.overall_readiness;
-      return {
-        required_value: 'not_ready',
-        observed_value: observed,
-        result: observed === 'not_ready' ? 'passed' : 'failed',
-        source_refs: [`assessment:${ctx.readiness.assessment_id}`, 'assessment.overall_readiness'],
-      };
-    },
-  },
-  {
-    condition_id: 'recommended_action_reject',
-    reason_code: null,
-    build(ctx) {
-      if (!HAS_ASSESSMENT(ctx.readiness)) {
-        return { required_value: 'reject', observed_value: null, result: 'not_applicable', source_refs: [`settlement:${ctx.cert.settlement_id}`] };
-      }
-      const observed = ctx.readiness.payload!.recommended_next_action;
-      return {
-        required_value: 'reject',
-        observed_value: observed,
-        result: observed === 'reject' ? 'passed' : 'failed',
-        source_refs: [`assessment:${ctx.readiness.assessment_id}`, 'assessment.recommended_next_action'],
-      };
-    },
-  },
-  {
-    condition_id: 'blocking_gaps_present',
-    reason_code: null,
-    build(ctx) {
-      if (!HAS_ASSESSMENT(ctx.readiness)) {
-        return { required_value: 1, observed_value: null, result: 'not_applicable', source_refs: [`settlement:${ctx.cert.settlement_id}`] };
-      }
-      const count = ctx.readiness.payload!.blocking_gaps.length;
-      return {
-        required_value: 1,
-        observed_value: count,
-        result: count >= 1 ? 'passed' : 'failed',
-        source_refs: [`assessment:${ctx.readiness.assessment_id}`, 'assessment.blocking_gaps'],
-      };
-    },
-  },
-  {
-    condition_id: 'each_blocking_gap_has_source_refs',
-    reason_code: null,
-    build(ctx) {
-      if (!HAS_ASSESSMENT(ctx.readiness)) {
-        return { required_value: true, observed_value: null, result: 'not_applicable', source_refs: [`settlement:${ctx.cert.settlement_id}`] };
-      }
-      const gaps = ctx.readiness.payload!.blocking_gaps;
-      const all = gaps.length > 0 && gaps.every(g => Array.isArray(g.source_refs) && g.source_refs.length > 0);
-      return {
-        required_value: true,
-        observed_value: all,
-        result: gaps.length === 0 ? 'not_applicable' : all ? 'passed' : 'failed',
-        source_refs: [`assessment:${ctx.readiness.assessment_id}`, 'assessment.blocking_gaps'],
-      };
-    },
-  },
-  {
-    condition_id: 'confidence_above_reject_threshold',
-    reason_code: null,
-    build(ctx) {
-      if (!HAS_ASSESSMENT(ctx.readiness)) {
-        return { required_value: REJECT_MIN_CONFIDENCE, observed_value: null, result: 'not_applicable', source_refs: [`settlement:${ctx.cert.settlement_id}`] };
-      }
-      const observed = ctx.readiness.payload!.confidence;
-      return {
-        required_value: REJECT_MIN_CONFIDENCE,
-        observed_value: observed,
-        result: observed >= REJECT_MIN_CONFIDENCE ? 'passed' : 'failed',
-        source_refs: [`assessment:${ctx.readiness.assessment_id}`, 'assessment.confidence'],
-      };
-    },
-  },
-];
-
-/**
- * Worker/advisor directional agreement. Passed when the worker outcome and the
- * advisor's recommended_next_action point the same way (both go, both reject,
- * or the worker asks clarify and the advisor does not flatly reject). Failed
- * (→ CLARIFY_WORKER_ADVISOR_CONFLICT) when they disagree materially.
- */
-const AGREEMENT_CONDITION: ConditionSpec = {
-  condition_id: 'worker_advisor_agreement',
-  reason_code: 'CLARIFY_WORKER_ADVISOR_CONFLICT',
-  build(ctx) {
-    const worker = ctx.proposal.payload.recommended_outcome;
-    if (!HAS_ASSESSMENT(ctx.readiness)) {
-      return { required_value: true, observed_value: null, result: 'not_applicable', source_refs: [`settlement:${ctx.cert.settlement_id}`] };
-    }
-    const advisorAction = ctx.readiness.payload!.recommended_next_action;
-    const advisorOverall = ctx.readiness.payload!.overall_readiness;
-    let agree = true;
-    if (worker === 'go' && (advisorOverall === 'not_ready' && advisorAction !== 'manual_review')) agree = false;
-    if (worker === 'reject' && !(advisorOverall === 'not_ready' && advisorAction === 'reject')) agree = false;
-    return {
-      required_value: true,
-      observed_value: agree,
-      result: agree ? 'passed' : 'failed',
-      source_refs: [`proposal:${ctx.proposal.id}`, '$.recommended_outcome', `assessment:${ctx.readiness.assessment_id}`, 'assessment.recommended_next_action'],
-    };
-  },
-};
-
-const ALL_CONDITION_SPECS: ConditionSpec[] = [...GO_CONDITIONS, ...REJECT_CONDITIONS, AGREEMENT_CONDITION];
-
-/**
- * Per readiness-status reason-code override for `readiness_accepted`. The spec's
- * static reason_code is the canonical 'missing' code; the actual non-accepted
- * status selects the precise code (failed/paused/missing) the settlement would
- * emit, so the diagnosis cites the same code the certificate carries.
- */
-const READINESS_ACCEPTED_CODE: Record<DiagnosisReadinessStatus, DiscoverySettlementReasonCode> = {
-  accepted_by_kernel: 'CLARIFY_READINESS_MISSING',
-  failed: 'CLARIFY_READINESS_FAILED',
-  paused: 'CLARIFY_READINESS_PAUSED',
-  missing: 'CLARIFY_READINESS_MISSING',
-};
-
-/** Per overall_readiness override for `overall_readiness_ready`. */
-function overallReadinessCode(overall: string): DiscoverySettlementReasonCode {
-  if (overall === 'inconclusive') return 'CLARIFY_READINESS_INCONCLUSIVE';
-  if (overall === 'conditionally_ready') return 'CLARIFY_CONDITIONALLY_READY';
-  return 'CLARIFY_CONDITIONALLY_READY';
-}
-
-/** Per recommended_next_action override for `recommended_action_proceed`. */
-function recommendedActionCode(action: string): DiscoverySettlementReasonCode {
-  if (action === 'manual_review') return 'CLARIFY_MANUAL_REVIEW_RECOMMENDED';
-  if (action === 'repeat_discovery') return 'CLARIFY_REPEAT_DISCOVERY_RECOMMENDED';
-  return 'CLARIFY_MANUAL_REVIEW_RECOMMENDED';
-}
-
-/**
- * Evaluate the full condition set against the settled inputs and produce the
- * deterministic predicate list. The reason_code on each condition is refined to
- * match the EXACT code the settlement policy would emit for that observed value,
- * so the diagnosis's `failed_condition_ids` and the certificate's reason_codes
- * stay consistent.
- */
-function buildPolicyConditions(
-  cert: DiagnosisCertificateRef,
-  proposal: DiagnosisProposalRef,
-  readiness: DiagnosisReadinessRef,
-): DiagnosisPolicyCondition[] {
-  const ctx: ConditionContext = { cert, proposal, readiness };
-  const conditions: DiagnosisPolicyCondition[] = [];
-  for (const spec of ALL_CONDITION_SPECS) {
-    const built = spec.build(ctx);
-    let reasonCode = spec.reason_code;
-    // Refine the reason code to the exact observed value where the spec is
-    // status/value-dependent. Only meaningful when the condition failed.
-    if (built.result === 'failed') {
-      if (spec.condition_id === 'readiness_accepted' && readiness.status !== 'accepted_by_kernel') {
-        reasonCode = READINESS_ACCEPTED_CODE[readiness.status];
-      } else if (spec.condition_id === 'overall_readiness_ready' && HAS_ASSESSMENT(readiness)) {
-        reasonCode = overallReadinessCode(readiness.payload!.overall_readiness);
-      } else if (spec.condition_id === 'recommended_action_proceed' && HAS_ASSESSMENT(readiness)) {
-        reasonCode = recommendedActionCode(readiness.payload!.recommended_next_action);
-      }
-    } else if (built.result === 'passed' || built.result === 'not_applicable') {
-      // A passing/NA condition does not carry a reason code into the diagnosis.
-      reasonCode = null;
-    }
-    conditions.push({
-      condition_id: spec.condition_id,
-      required_value: built.required_value,
-      observed_value: built.observed_value,
-      result: built.result,
-      reason_code: reasonCode,
-      source_refs: built.source_refs,
-    });
-  }
-  return conditions;
 }
