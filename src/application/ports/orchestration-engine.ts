@@ -112,6 +112,38 @@ export interface OrchestrationRunResult {
     reasonCodes: string[];
     error: string | null;
   };
+
+  /**
+   * D5 advisory diagnosis section. ADVISORY ONLY (invariant I2) — never feeds
+   * back into outcome/outcomeAuthority/scopeCompleted/reason/finalStage. The
+   * diagnosis EXPLAINS the already-issued certificate; it never changes it.
+   *
+   * status='completed' means an accepted_by_kernel diagnosis report exists for
+   * the certificate target; the summary/causes/gaps/actions are surfaced for
+   * observability. status='failed' means the diagnosis worker crashed, the
+   * payload was rejected, or recovery failed — but the D4 result stays
+   * COMPLETE and authoritative (invariant I5). status='paused' means the
+   * diagnosis worker was interrupted; restart resumes it. status='not_run'
+   * means there was no D4 certificate to diagnose (settlement did not issue).
+   *
+   * authority is 'advisory_diagnosis' (a report exists) or 'none' — NEVER
+   * 'kernel_policy' or 'discovery_settlement_policy' (invariant I2).
+   */
+  diagnosis?: {
+    status: 'completed' | 'failed' | 'paused' | 'not_run';
+    authority: 'advisory_diagnosis' | 'none';
+    reportId: number | null;
+    reportHash: string | null;
+    target: {
+      certificateId: number | null;
+      certificateHash: string | null;
+    };
+    summary: string | null;
+    primaryCauses: string[];
+    blockingGaps: string[];
+    recommendedActions: string[];
+    error: string | null;
+  };
 }
 
 /**
