@@ -70,6 +70,68 @@ export interface DiscoverySettlementDecision {
 }
 
 /**
+ * One node of the deterministic policy evaluation trace (P0-4). Each node is a
+ * predicate the policy considered, marked with WHICH branch it belongs to,
+ * WHETHER it was actually evaluated, what ROLE it plays, WHETHER it contributed
+ * to the final decision, and WHICH reason codes it emitted.
+ *
+ * Why a trace (not a flat "failed conditions" list): a generic superset of
+ * predicates marked passed/failed lets a diagnosis cite an ALTERNATIVE-branch
+ * predicate as the cause of the actual decision (e.g. citing
+ * `worker_outcome_is_reject` as a CLARIFY cause when the worker recommended go).
+ * The trace distinguishes:
+ *
+ *   - evaluation: 'passed' | 'failed' | 'not_evaluated'.
+ *       * 'not_evaluated' covers short-circuited predicates (the policy returned
+ *         before reaching them) and alternative-branch predicates (GO predicates
+ *         under a REJECT decision, and vice versa). These MUST NOT be citable as
+ *         causes — they did not participate in the decision.
+ *   - role: 'supporting' | 'blocking' | 'fallback'.
+ *       * 'supporting': a predicate that, when it holds, moves the policy toward
+ *         this decision (GO conditions for a GO; REJECT conditions for a REJECT).
+ *       * 'blocking': a predicate that, when it fails, moves the policy away
+ *         from GO and toward CLARIFY (readiness missing/failed, blocking gaps,
+ *         low confidence, evidence insufficient, worker/advisor conflict).
+ *       * 'fallback': the catch-all CLARIFY_POLICY_FALLBACK.
+ *   - contributed_to_decision: true iff THIS predicate actually contributed to
+ *       the emitted decision + reason codes. For a GO, the passed GO conditions
+ *       contribute (emitted GO_READY_AND_GROUNDED). For a REJECT, the passed
+ *       REJECT conditions contribute (emitted REJECT_WORKER_AND_ADVISOR_AGREE).
+ *       For a CLARIFY, the failed blocking conditions contribute, each emitting
+ *       its reason code. Alternative-branch and not_evaluated predicates never
+ *       contribute.
+ *
+ * D5's DiagnosisCase carries this trace; the diagnosis may cite ONLY nodes with
+ * contributed_to_decision=true, and a cause's reason_codes must agree with the
+ * cited node's emitted_reason_codes.
+ */
+export type SettlementConditionEvaluation = 'passed' | 'failed' | 'not_evaluated';
+export type SettlementConditionRole = 'supporting' | 'blocking' | 'fallback';
+export type SettlementConditionBranch = 'go' | 'reject' | 'clarify';
+
+export interface SettlementConditionTrace {
+  condition_id: string;
+  branch: SettlementConditionBranch;
+  evaluation: SettlementConditionEvaluation;
+  role: SettlementConditionRole;
+  contributed_to_decision: boolean;
+  emitted_reason_codes: readonly DiscoverySettlementReasonCode[];
+  source_refs: readonly string[];
+}
+
+/**
+ * The full evaluation result: the authoritative decision PLUS the deterministic
+ * trace. `settle()` returns `evaluate(input).decision`, so the observable
+ * decision behaviour and the policy_hash are UNCHANGED (the manifest hashes the
+ * decision rules, not the trace shape). D5 consumes the trace to build a
+ * causally-correct DiagnosisCase.
+ */
+export interface SettlementEvaluation {
+  decision: DiscoverySettlementDecision;
+  trace: SettlementConditionTrace[];
+}
+
+/**
  * A versioned settlement policy. v1 is implemented by
  * `DiscoverySettlementPolicyV1`. The interface lets future versions coexist
  * with v1 (the snapshot records which version settled it).
@@ -78,6 +140,13 @@ export interface DiscoverySettlementPolicy {
   readonly version: string;
   readonly contentHash: string;
   settle(input: DiscoverySettlementInputSnapshot): DiscoverySettlementDecision;
+  /**
+   * The deterministic evaluation trace (P0-4). Returns the SAME decision as
+   * settle() PLUS the per-condition trace. settle() === evaluate(input).decision
+   * by construction, so the policy identity (hash) and observable decision
+   * behaviour are unchanged; the trace is additional read-only surface for D5.
+   */
+  evaluate(input: DiscoverySettlementInputSnapshot): SettlementEvaluation;
 }
 
 /**
@@ -221,40 +290,64 @@ export class DiscoverySettlementPolicyV1 implements DiscoverySettlementPolicy {
   readonly version = DISCOVERY_SETTLEMENT_POLICY_VERSION;
   readonly contentHash = POLICY_V1_CONTENT_HASH;
 
+  /** settle() is exactly evaluate(input).decision — the trace is additive. */
   settle(input: DiscoverySettlementInputSnapshot): DiscoverySettlementDecision {
+    return this.evaluate(input).decision;
+  }
+
+  /**
+   * The deterministic evaluation. Builds the decision AND the per-condition
+   * trace. The trace marks each predicate with its branch, whether it was
+   * evaluated, its role, whether it contributed, and the reason codes it
+   * emitted. Alternative-branch and short-circuited predicates are
+   * 'not_evaluated' and never contribute — so a diagnosis cannot cite them as
+   * causes of the actual decision.
+   */
+  evaluate(input: DiscoverySettlementInputSnapshot): SettlementEvaluation {
     const proposal = input.proposal.payload;
     const workerOutcome = proposal.recommended_outcome;
+    const trace: SettlementConditionTrace[] = [];
+    const v = this.version;
+    const h = this.contentHash;
 
-    // Worker-requested clarify short-circuits to clarify regardless of
-    // readiness: the worker is the originator of the Proposal and its explicit
-    // ask for clarification is respected.
+    // Helper to push a node.
+    const node = (
+      condition_id: string,
+      branch: SettlementConditionBranch,
+      evaluation: SettlementConditionEvaluation,
+      role: SettlementConditionRole,
+      contributed: boolean,
+      codes: readonly DiscoverySettlementReasonCode[],
+      source_refs: readonly string[],
+    ): void => {
+      trace.push({ condition_id, branch, evaluation, role, contributed_to_decision: contributed, emitted_reason_codes: codes, source_refs });
+    };
+
+    // ---- short-circuit 1: worker-requested clarify ------------------------
     if (workerOutcome === 'clarify') {
-      return clarify(['CLARIFY_WORKER_REQUESTED'], this.version, this.contentHash);
+      node('worker_requested_clarify', 'clarify', 'passed', 'blocking', true,
+        ['CLARIFY_WORKER_REQUESTED'], ['$.recommended_outcome']);
+      return { decision: clarify(['CLARIFY_WORKER_REQUESTED'], v, h), trace };
     }
 
-    const readiness = input.readiness;
-
-    // No accepted assessment -> the advisor is unavailable, errored, paused, or
-    // never ran. Per the fail-closed mandate this is an authoritative CLARIFY
-    // (not a pipeline failure — the pipeline still completes with a
-    // certificate). The missing/failed/paused distinction is preserved in the
-    // reason code AND in the semantic readiness-target idempotency key.
-    if (readiness.status !== 'accepted_by_kernel') {
-      const code =
-        readiness.status === 'failed'
-          ? 'CLARIFY_READINESS_FAILED'
-          : readiness.status === 'paused'
-            ? 'CLARIFY_READINESS_PAUSED'
-            : 'CLARIFY_READINESS_MISSING';
-      return clarify([code], this.version, this.contentHash);
+    // ---- short-circuit 2: no accepted readiness ---------------------------
+    if (input.readiness.status !== 'accepted_by_kernel') {
+      const code: DiscoverySettlementReasonCode =
+        input.readiness.status === 'failed' ? 'CLARIFY_READINESS_FAILED'
+        : input.readiness.status === 'paused' ? 'CLARIFY_READINESS_PAUSED'
+        : 'CLARIFY_READINESS_MISSING';
+      node('readiness_accepted', 'clarify', 'failed', 'blocking', true,
+        [code], []);
+      return { decision: clarify([code], v, h), trace };
     }
 
-    // From here on we have an accepted assessment.
-    const assessment = readiness.payload;
-    // Guard against a malformed snapshot: an accepted_by_kernel status must
-    // carry a payload. If it somehow does not, fail-closed.
+    // From here we have an accepted assessment (readiness.payload non-null by
+    // snapshot construction, but guard).
+    const assessment = input.readiness.payload;
     if (!assessment) {
-      return clarify(['CLARIFY_POLICY_FALLBACK'], this.version, this.contentHash);
+      node('policy_fallback_malformed_snapshot', 'clarify', 'failed', 'fallback', true,
+        ['CLARIFY_POLICY_FALLBACK'], []);
+      return { decision: clarify(['CLARIFY_POLICY_FALLBACK'], v, h), trace };
     }
 
     const advisorOverall = assessment.overall_readiness;
@@ -263,86 +356,173 @@ export class DiscoverySettlementPolicyV1 implements DiscoverySettlementPolicy {
     const blockingGaps = assessment.blocking_gaps;
     const evidenceDimension = assessment.dimension_assessments.evidence_grounding;
 
+    // Evaluate the REJECT preconditions (supporting a reject decision).
+    const rejectChecks = {
+      workerReject: workerOutcome === 'reject',
+      advisorNotReady: advisorOverall === 'not_ready',
+      advisorActionReject: advisorAction === 'reject',
+      blockingGapsPresent: blockingGaps.length > 0,
+      eachBlockingGapGrounded: blockingGaps.length > 0
+        && blockingGaps.every(g => Array.isArray(g.source_refs) && g.source_refs.length > 0),
+      confidenceOk: advisorConfidence >= REJECT_MIN_CONFIDENCE,
+    };
+
+    // Evaluate the GO preconditions (supporting a go decision).
+    const hasProposalEvidence = Array.isArray(proposal.evidence_refs)
+      && proposal.evidence_refs.some(ref => typeof ref === 'string' && ref.trim().length > 0);
+    const goChecks = {
+      workerGo: workerOutcome === 'go',
+      proposalEvidence: hasProposalEvidence,
+      overallReady: advisorOverall === 'ready',
+      noBlockingGaps: blockingGaps.length === 0,
+      evidenceSufficient: evidenceDimension.status === 'sufficient',
+      proceed: advisorAction === 'proceed_to_settlement',
+      confidenceOk: advisorConfidence >= GO_MIN_CONFIDENCE,
+    };
+
     // ---- REJECT path (§6.2) ----------------------------------------------
-    // Requires a coherent negative signal from BOTH worker and advisor.
     if (workerOutcome === 'reject') {
-      const rejectConditions =
-        advisorOverall === 'not_ready'
-        && advisorAction === 'reject'
-        && blockingGaps.length > 0
-        && blockingGaps.every(g => Array.isArray(g.source_refs) && g.source_refs.length > 0)
-        && advisorConfidence >= REJECT_MIN_CONFIDENCE;
-      if (rejectConditions) {
+      const allReject = rejectChecks.workerReject && rejectChecks.advisorNotReady
+        && rejectChecks.advisorActionReject && rejectChecks.blockingGapsPresent
+        && rejectChecks.eachBlockingGapGrounded && rejectChecks.confidenceOk;
+      if (allReject) {
+        // The reject decision is grounded in PASSED reject conditions. These
+        // contribute; a REJECT diagnosis cites them (not failed GO conditions).
+        for (const [id, held, refs] of [
+          ['worker_outcome_is_reject', rejectChecks.workerReject, ['$.recommended_outcome']],
+          ['overall_readiness_not_ready', rejectChecks.advisorNotReady, ['assessment.overall_readiness']],
+          ['recommended_action_reject', rejectChecks.advisorActionReject, ['assessment.recommended_next_action']],
+          ['blocking_gaps_present', rejectChecks.blockingGapsPresent, ['assessment.blocking_gaps']],
+          ['each_blocking_gap_grounded', rejectChecks.eachBlockingGapGrounded, ['assessment.blocking_gaps']],
+          ['confidence_above_reject_threshold', rejectChecks.confidenceOk, ['assessment.confidence']],
+        ] as const) {
+          node(id, 'reject', held ? 'passed' : 'failed', 'supporting', true,
+            held ? ['REJECT_WORKER_AND_ADVISOR_AGREE'] : [], refs);
+        }
         return {
-          decision: 'reject',
-          reason_codes: ['REJECT_WORKER_AND_ADVISOR_AGREE'],
-          rationale: rationaleFromCodes(['REJECT_WORKER_AND_ADVISOR_AGREE']),
-          policy_version: this.version,
-          policy_hash: this.contentHash,
+          decision: {
+            decision: 'reject', reason_codes: ['REJECT_WORKER_AND_ADVISOR_AGREE'],
+            rationale: rationaleFromCodes(['REJECT_WORKER_AND_ADVISOR_AGREE']),
+            policy_version: v, policy_hash: h,
+          },
+          trace,
         };
       }
-      // Worker rejects but the advisor does not coherently agree -> clarify.
-      // Distinguish the common sub-cases for actionable reason codes.
+      // Worker rejects but advisor does not coherently agree -> clarify. The
+      // failed reject preconditions contribute, each emitting its clarify code.
+      if (!rejectChecks.advisorNotReady && advisorOverall === 'inconclusive') {
+        node('readiness_inconclusive', 'clarify', 'failed', 'blocking', true,
+          ['CLARIFY_READINESS_INCONCLUSIVE'], ['assessment.overall_readiness']);
+      }
+      if (advisorAction === 'manual_review') {
+        node('manual_review_recommended', 'clarify', 'failed', 'blocking', true,
+          ['CLARIFY_MANUAL_REVIEW_RECOMMENDED'], ['assessment.recommended_next_action']);
+      }
+      if (advisorConfidence < REJECT_MIN_CONFIDENCE) {
+        node('low_confidence', 'clarify', 'failed', 'blocking', true,
+          ['CLARIFY_LOW_CONFIDENCE'], ['assessment.confidence']);
+      }
+      // Build the clarify codes (same logic as the original settle()).
       const codes: DiscoverySettlementReasonCode[] = [];
       if (advisorAction === 'manual_review') codes.push('CLARIFY_MANUAL_REVIEW_RECOMMENDED');
       if (advisorOverall === 'inconclusive') codes.push('CLARIFY_READINESS_INCONCLUSIVE');
       if (advisorConfidence < REJECT_MIN_CONFIDENCE) codes.push('CLARIFY_LOW_CONFIDENCE');
-      if (codes.length === 0) codes.push('CLARIFY_WORKER_ADVISOR_CONFLICT');
-      return clarify(codes, this.version, this.contentHash);
+      if (codes.length === 0) {
+        codes.push('CLARIFY_WORKER_ADVISOR_CONFLICT');
+        node('worker_advisor_conflict', 'clarify', 'failed', 'blocking', true,
+          ['CLARIFY_WORKER_ADVISOR_CONFLICT'], ['$.recommended_outcome', 'assessment.recommended_next_action']);
+      }
+      return { decision: clarify(codes, v, h), trace };
     }
 
     // ---- GO path (§6.1) ---------------------------------------------------
-    // Only for worker go. Every condition must hold simultaneously.
     if (workerOutcome === 'go') {
-      // The Proposal itself must carry at least one non-empty evidence_ref.
-      // The advisor's evidence_grounding dimension alone is NOT enough: an
-      // advisor can say 'sufficient' even when the Proposal's evidence_refs is
-      // empty. The GO contract requires groundING in the Proposal, not just an
-      // advisor opinion about it. (manifest.go.proposal_evidence_min = 1.)
-      const hasProposalEvidence = Array.isArray(proposal.evidence_refs)
-        && proposal.evidence_refs.some(ref => typeof ref === 'string' && ref.trim().length > 0);
-      const goConditions = {
-        proposalEvidence: hasProposalEvidence,
-        overallReady: advisorOverall === 'ready',
-        noBlockingGaps: blockingGaps.length === 0,
-        evidenceSufficient:
-          evidenceDimension.status === 'sufficient',
-        proceed: advisorAction === 'proceed_to_settlement',
-        confidenceOk: advisorConfidence >= GO_MIN_CONFIDENCE,
-      };
-      const allGo = Object.values(goConditions).every(Boolean);
+      const allGo = goChecks.proposalEvidence && goChecks.overallReady
+        && goChecks.noBlockingGaps && goChecks.evidenceSufficient
+        && goChecks.proceed && goChecks.confidenceOk;
       if (allGo) {
+        // The go decision is grounded in PASSED GO conditions.
+        for (const [id, refs] of [
+          ['worker_outcome_is_go', ['$.recommended_outcome']],
+          ['proposal_evidence_present', ['$.evidence_refs']],
+          ['overall_readiness_ready', ['assessment.overall_readiness']],
+          ['no_blocking_gaps', ['assessment.blocking_gaps']],
+          ['evidence_grounding_sufficient', ['assessment.dimension_assessments.evidence_grounding']],
+          ['recommended_action_proceed', ['assessment.recommended_next_action']],
+          ['confidence_above_go_threshold', ['assessment.confidence']],
+        ] as const) {
+          node(id, 'go', 'passed', 'supporting', true, ['GO_READY_AND_GROUNDED'], refs);
+        }
         return {
-          decision: 'go',
-          reason_codes: ['GO_READY_AND_GROUNDED'],
-          rationale: rationaleFromCodes(['GO_READY_AND_GROUNDED']),
-          policy_version: this.version,
-          policy_hash: this.contentHash,
+          decision: {
+            decision: 'go', reason_codes: ['GO_READY_AND_GROUNDED'],
+            rationale: rationaleFromCodes(['GO_READY_AND_GROUNDED']),
+            policy_version: v, policy_hash: h,
+          },
+          trace,
         };
       }
-      // Worker wants go but not all conditions hold -> clarify with the
-      // specific reasons that prevented a go.
+      // Worker wants go but not all conditions hold -> clarify. Each failed
+      // condition contributes and emits its reason code.
+      if (!goChecks.proposalEvidence) {
+        node('proposal_evidence_present', 'clarify', 'failed', 'blocking', true,
+          ['CLARIFY_EVIDENCE_INSUFFICIENT'], ['$.evidence_refs']);
+      }
+      if (advisorOverall === 'conditionally_ready') {
+        node('overall_readiness_ready', 'clarify', 'failed', 'blocking', true,
+          ['CLARIFY_CONDITIONALLY_READY'], ['assessment.overall_readiness']);
+      } else if (advisorOverall === 'inconclusive') {
+        node('overall_readiness_ready', 'clarify', 'failed', 'blocking', true,
+          ['CLARIFY_READINESS_INCONCLUSIVE'], ['assessment.overall_readiness']);
+      }
+      if (blockingGaps.length > 0) {
+        node('no_blocking_gaps', 'clarify', 'failed', 'blocking', true,
+          ['CLARIFY_BLOCKING_GAPS'], ['assessment.blocking_gaps']);
+      }
+      if (!goChecks.evidenceSufficient) {
+        node('evidence_grounding_sufficient', 'clarify', 'failed', 'blocking', true,
+          ['CLARIFY_EVIDENCE_INSUFFICIENT'], ['assessment.dimension_assessments.evidence_grounding']);
+      }
+      if (!goChecks.confidenceOk) {
+        node('confidence_above_go_threshold', 'clarify', 'failed', 'blocking', true,
+          ['CLARIFY_LOW_CONFIDENCE'], ['assessment.confidence']);
+      }
+      if (advisorAction === 'manual_review') {
+        node('recommended_action_proceed', 'clarify', 'failed', 'blocking', true,
+          ['CLARIFY_MANUAL_REVIEW_RECOMMENDED'], ['assessment.recommended_next_action']);
+      } else if (advisorAction === 'repeat_discovery') {
+        node('recommended_action_proceed', 'clarify', 'failed', 'blocking', true,
+          ['CLARIFY_REPEAT_DISCOVERY_RECOMMENDED'], ['assessment.recommended_next_action']);
+      }
+      if (advisorOverall === 'not_ready' && advisorAction !== 'manual_review') {
+        node('worker_advisor_agreement', 'clarify', 'failed', 'blocking', true,
+          ['CLARIFY_WORKER_ADVISOR_CONFLICT'], ['$.recommended_outcome', 'assessment.overall_readiness']);
+      }
+      // Build the clarify codes (same logic as the original settle()).
       const codes: DiscoverySettlementReasonCode[] = [];
-      if (!goConditions.proposalEvidence) codes.push('CLARIFY_EVIDENCE_INSUFFICIENT');
+      if (!goChecks.proposalEvidence) codes.push('CLARIFY_EVIDENCE_INSUFFICIENT');
       if (advisorOverall === 'conditionally_ready') codes.push('CLARIFY_CONDITIONALLY_READY');
       else if (advisorOverall === 'inconclusive') codes.push('CLARIFY_READINESS_INCONCLUSIVE');
       if (blockingGaps.length > 0) codes.push('CLARIFY_BLOCKING_GAPS');
-      if (!goConditions.evidenceSufficient) codes.push('CLARIFY_EVIDENCE_INSUFFICIENT');
-      if (!goConditions.confidenceOk) codes.push('CLARIFY_LOW_CONFIDENCE');
+      if (!goChecks.evidenceSufficient) codes.push('CLARIFY_EVIDENCE_INSUFFICIENT');
+      if (!goChecks.confidenceOk) codes.push('CLARIFY_LOW_CONFIDENCE');
       if (advisorAction === 'manual_review') codes.push('CLARIFY_MANUAL_REVIEW_RECOMMENDED');
       if (advisorAction === 'repeat_discovery') codes.push('CLARIFY_REPEAT_DISCOVERY_RECOMMENDED');
-      // Worker go vs advisor not-ready/not-clarifying is a conflict.
       if (advisorOverall === 'not_ready' && advisorAction !== 'manual_review') {
         codes.push('CLARIFY_WORKER_ADVISOR_CONFLICT');
       }
-      if (codes.length === 0) codes.push('CLARIFY_POLICY_FALLBACK');
-      return clarify(codes, this.version, this.contentHash);
+      if (codes.length === 0) {
+        codes.push('CLARIFY_POLICY_FALLBACK');
+        node('policy_fallback', 'clarify', 'failed', 'fallback', true,
+          ['CLARIFY_POLICY_FALLBACK'], []);
+      }
+      return { decision: clarify(codes, v, h), trace };
     }
 
-    // ---- catch-all -------------------------------------------------------
-    // Worker outcome is one of defer/inconclusive/failed (we already handled
-    // go/clarify/reject). All of these are indeterminate -> clarify.
-    return clarify(['CLARIFY_POLICY_FALLBACK'], this.version, this.contentHash);
+    // ---- catch-all: defer/inconclusive/failed worker outcome --------------
+    node('policy_fallback_indeterminate_worker', 'clarify', 'failed', 'fallback', true,
+      ['CLARIFY_POLICY_FALLBACK'], ['$.recommended_outcome']);
+    return { decision: clarify(['CLARIFY_POLICY_FALLBACK'], v, h), trace };
   }
 }
 
