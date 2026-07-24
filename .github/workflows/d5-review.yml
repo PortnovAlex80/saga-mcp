@@ -29,7 +29,7 @@ jobs:
       - name: TypeScript
         run: npx tsc --noEmit
       - name: Architecture
-        run: npm run build && node --test tests/saga3/d5-architecture.test.mjs
+        run: npm run build && node --test tests/saga3/*architecture*.test.mjs
       - name: D5 focused tests
         run: |
           node --test \
