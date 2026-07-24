@@ -1,0 +1,46 @@
+name: D5 Review
+
+on:
+  push:
+    branches:
+      - d5-discovery-diagnosis
+  pull_request:
+    branches:
+      - saga3-discovery
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: TypeScript
+        run: npx tsc --noEmit
+      - name: Architecture
+        run: npm run build && node --test tests/saga3/*architecture*.test.mjs
+      - name: D5 focused tests
+        run: |
+          node --test \
+            tests/saga3/d5-certificate-bundle.test.mjs \
+            tests/saga3/d5-diagnosis-case.test.mjs \
+            tests/saga3/d5-diagnosis-validator.test.mjs \
+            tests/saga3/d5-diagnosis-persistence.test.mjs \
+            tests/saga3/d5-diagnosis-service.test.mjs \
+            tests/saga3/d5-diagnosis-engine.test.mjs \
+            tests/saga3/d5-adversarial.test.mjs \
+            tests/saga3/d5-diagnosis-integrity.test.mjs \
+            tests/saga3/d5-controlled-reject-smoke.test.mjs
+      - name: Full suite
+        run: npm test

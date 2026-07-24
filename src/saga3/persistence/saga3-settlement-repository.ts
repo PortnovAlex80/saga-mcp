@@ -392,6 +392,21 @@ export function readCertificateForSettlement(
   return row ? certificateRowToRecord(row) : null;
 }
 
+/**
+ * Read an outcome certificate by its exact id. Used by the D5 diagnosis service
+ * to load the immutable diagnosis target (the certificate the engine points
+ * at). Read-only. Returns null if no such row.
+ */
+export function readOutcomeCertificate(
+  db: Database.Database,
+  certificateId: number,
+): OutcomeCertificateRecord | null {
+  const row = db.prepare(
+    'SELECT * FROM saga3_discovery_outcome_certificates WHERE id=?',
+  ).get(certificateId) as CertificateRow | undefined;
+  return row ? certificateRowToRecord(row) : null;
+}
+
 /** Inputs to the atomic certificate-issuance operation (mirrors the port type). */
 export interface IssueCertificateAtomicInput {
   settlementId: number;

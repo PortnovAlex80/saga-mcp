@@ -2,13 +2,21 @@ import { getDb } from '../../db.js';
 import { prepareSaga3ProjectedTaskForExecution } from '../../lifecycle/legacy-assignment-recovery.js';
 import type { CreateWorkIntent, WorkIntent, WorkIntentStatus } from '../domain/work-intent.js';
 import type { ProposalRecord } from '../domain/proposal.js';
-import { DISCOVERY_NORMALIZATION_INTENT_KIND, DISCOVERY_READINESS_INTENT_KIND } from '../domain/work-intent.js';
+import { DISCOVERY_DIAGNOSIS_INTENT_KIND, DIAGNOSE_DISCOVERY_OUTCOME_KIND, DISCOVERY_DIAGNOSIS_WORK_INTENT_SCHEMA, DISCOVERY_NORMALIZATION_INTENT_KIND, DISCOVERY_READINESS_INTENT_KIND } from '../domain/work-intent.js';
 import { DISCOVERY_NORMALIZATION_PROPOSAL_SCHEMA } from '../domain/discovery-normalization-proposal.js';
 import { DISCOVERY_READINESS_ASSESSMENT_SCHEMA } from '../domain/discovery-readiness-assessment.js';
 import type { ControlIntentStatus } from '../domain/discovery-normalization-records.js';
 import type { ReadinessAssessmentRecord, ReadinessControlExecution, ReadinessControlIntentRecord, ReadinessControlStatus } from '../domain/discovery-readiness-records.js';
 import type { OutcomeCertificateRecord, SettlementRecord } from '../domain/discovery-settlement-records.js';
+import { diagnosisCaseHash } from '../domain/discovery-diagnosis-case.js';
+import type {
+  DiagnosisControlExecution,
+  DiagnosisControlIntentRecord,
+  DiagnosisControlStatus,
+  DiagnosisReportRecord,
+} from '../domain/discovery-diagnosis-records.js';
 import {
+  type EnsureDiagnosisControl,
   type EnsureNormalizationControl,
   type EnsureProjectedTask,
   type EnsureReadinessControl,
@@ -19,6 +27,7 @@ import {
   type Saga3DiscoveryRuntimePersistence,
   type SettlementInputKey,
   type SettlementProposalRecord,
+  type SubmitDiagnosisReportInput,
 } from './saga3-discovery-runtime-port.js';
 import {
   canonicalJson,
@@ -38,8 +47,18 @@ import {
   issueCertificateAtomically as issueCertificateAtomicallyRepo,
   markSettlementFailed as markSettlementFailedRepo,
   readCertificateForSettlement as readCertificateForSettlementRepo,
+  readOutcomeCertificate as readOutcomeCertificateRepo,
+  readSettlement as readSettlementRepo,
   reconcileExistingCertificate as reconcileExistingCertificateRepo,
 } from './saga3-settlement-repository.js';
+import {
+  ensureSaga3DiagnosisSchema,
+  findDiagnosisControlByTarget as findDiagnosisControlByTargetRepo,
+  submitDiagnosisReportAtomically as submitDiagnosisReportAtomicallyRepo,
+  readAcceptedDiagnosisReportForControl as readAcceptedDiagnosisReportForControlRepo,
+  readDiagnosisControlById as readDiagnosisControlByIdRepo,
+  readLatestDiagnosisReportForControl as readLatestDiagnosisReportForControlRepo,
+} from './saga3-diagnosis-repository.js';
 
 /**
  * SQLite implementation of the Saga3DiscoveryRuntimePersistence port.
@@ -56,6 +75,7 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
     ensureSaga3NormalizationSchema(getDb());
     ensureSaga3ReadinessSchema(getDb());
     ensureSaga3SettlementSchema(getDb());
+    ensureSaga3DiagnosisSchema(getDb());
   }
 
   readEpicObjective(epicId: number): { name: string; description: string | null } | null {
@@ -506,6 +526,19 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
     return readCertificateForSettlementRepo(getDb(), settlementId);
   }
 
+  readOutcomeCertificate(certificateId: number): OutcomeCertificateRecord | null {
+    // D5: load the immutable diagnosis target by exact certificate id. Read-only.
+    ensureSaga3SettlementSchema(getDb());
+    return readOutcomeCertificateRepo(getDb(), certificateId);
+  }
+
+  readSettlement(settlementId: number): SettlementRecord | null {
+    // D5: load the settlement by exact id (settlement/certificate relation
+    // verification before building the diagnosis case). Read-only.
+    ensureSaga3SettlementSchema(getDb());
+    return readSettlementRepo(getDb(), settlementId);
+  }
+
   issueCertificateAtomically(input: IssueCertificateAtomicallyInput): {
     record: OutcomeCertificateRecord;
     inserted: boolean;
@@ -517,6 +550,199 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
   reconcileExistingCertificate(input: IssueCertificateAtomicallyInput): OutcomeCertificateRecord {
     ensureSaga3SettlementSchema(getDb());
     return reconcileExistingCertificateRepo(getDb(), input);
+  }
+
+  // -------------------------------------------------------------------------
+  // D5: advisory diagnosis. Read-only against D4 artifacts; the ONLY writes are
+  // the two diagnosis tables. Diagnosis never mutates the D4
+  // settlement/certificate, the product Proposal, or the readiness assessment.
+  // -------------------------------------------------------------------------
+
+  ensureDiagnosisControl(input: EnsureDiagnosisControl): DiagnosisControlExecution {
+    const db = getDb();
+    ensureSaga3DiagnosisSchema(db);
+    // Idempotent on the immutable certificate target (certificate_id +
+    // certificate_hash + diagnosis_contract_version).
+    let control = db.prepare(
+      `SELECT id, epic_id, kind, certificate_id, certificate_hash, settlement_input_hash,
+              diagnosis_case, diagnosis_case_hash, diagnosis_contract_version,
+              authority_intent_id, projected_task_id, status
+         FROM saga3_discovery_diagnosis_control_intents
+        WHERE certificate_id=? AND certificate_hash=? AND diagnosis_contract_version=?`,
+    ).get(
+      input.certificateId,
+      input.certificateHash,
+      input.diagnosisContractVersion,
+    ) as {
+      id: number;
+      epic_id: number;
+      kind: string;
+      certificate_id: number;
+      certificate_hash: string;
+      settlement_input_hash: string;
+      diagnosis_case: string;
+      diagnosis_case_hash: string;
+      diagnosis_contract_version: string;
+      authority_intent_id: number;
+      projected_task_id: number | null;
+      status: DiagnosisControlStatus;
+    } | undefined;
+
+    let authority: WorkIntent;
+    if (!control) {
+      authority = this.createIntent({
+        epic_id: input.epicId,
+        kind: DISCOVERY_DIAGNOSIS_INTENT_KIND,
+        objective: `Diagnose discovery outcome certificate ${input.certificateId}: ${input.objective}`,
+        authority_scope: {
+          snapshot_ref: `certificate:${input.certificateId}:${input.certificateHash.slice(0, 12)}`,
+          scope: 'read-only advisory diagnosis',
+          // Minimal authority: exactly the tools the advisor needs, nothing more.
+          // No proposal_submit / readiness_submit / settlement_submit /
+          // certificate_submit / stage_transition / task_create (architecture F8).
+          allowed_tools: ['task_get', 'diagnosis_get', 'diagnosis_submit', 'worker_done'],
+          enforcement: 'runtime',
+        },
+        output_schema: DISCOVERY_DIAGNOSIS_WORK_INTENT_SCHEMA,
+        token_budget: 0,
+        retry_budget: 0,
+      });
+      const info = db.prepare(
+        `INSERT INTO saga3_discovery_diagnosis_control_intents
+           (epic_id, kind, certificate_id, certificate_hash, settlement_input_hash,
+            diagnosis_case, diagnosis_case_hash, diagnosis_contract_version,
+            authority_intent_id, status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'open')`,
+      ).run(
+        input.epicId,
+        DIAGNOSE_DISCOVERY_OUTCOME_KIND,
+        input.certificateId,
+        input.certificateHash,
+        input.settlementInputHash,
+        input.diagnosisCase,
+        input.diagnosisCaseHash,
+        input.diagnosisContractVersion,
+        authority.id,
+      );
+      control = {
+        id: Number(info.lastInsertRowid),
+        epic_id: input.epicId,
+        kind: DIAGNOSE_DISCOVERY_OUTCOME_KIND,
+        certificate_id: input.certificateId,
+        certificate_hash: input.certificateHash,
+        settlement_input_hash: input.settlementInputHash,
+        diagnosis_case: input.diagnosisCase,
+        diagnosis_case_hash: input.diagnosisCaseHash,
+        diagnosis_contract_version: input.diagnosisContractVersion,
+        authority_intent_id: authority.id,
+        projected_task_id: null,
+        status: 'open',
+      };
+    } else {
+      let storedCase: unknown;
+      try { storedCase = JSON.parse(control.diagnosis_case); } catch {
+        throw new Error(`saga3: diagnosis control ${control.id} diagnosis_case is not valid JSON`);
+      }
+      const storedRecomputedHash = diagnosisCaseHash(
+        storedCase as Parameters<typeof diagnosisCaseHash>[0],
+      );
+      const reuseChecks: Array<[string, unknown, unknown]> = [
+        ['epic_id', control.epic_id, input.epicId],
+        ['kind', control.kind, DIAGNOSE_DISCOVERY_OUTCOME_KIND],
+        ['certificate_id', control.certificate_id, input.certificateId],
+        ['certificate_hash', control.certificate_hash, input.certificateHash],
+        ['settlement_input_hash', control.settlement_input_hash, input.settlementInputHash],
+        ['diagnosis_case_hash', control.diagnosis_case_hash, input.diagnosisCaseHash],
+        ['recomputed diagnosis_case_hash', storedRecomputedHash, control.diagnosis_case_hash],
+        ['diagnosis_contract_version', control.diagnosis_contract_version, input.diagnosisContractVersion],
+      ];
+      for (const [field, actual, expected] of reuseChecks) {
+        if (actual !== expected) {
+          throw new Error(
+            `saga3: diagnosis control ${control.id} ${field} '${String(actual)}' != expected '${String(expected)}'`,
+          );
+        }
+      }
+      authority = this.readIntentStrict(control.authority_intent_id);
+    }
+
+    const taskId = this.ensureProjectedTask({
+      epicId: input.epicId,
+      projectId: input.projectId,
+      intentId: authority.id,
+      objective: authority.objective,
+      taskKind: 'discovery.diagnose',
+      executionSkill: 'saga-discovery-diagnosis-advisor',
+      // generation_key ties the advisor task to the immutable certificate target.
+      generationKey: `saga3:diagnose:${input.certificateId}:${input.certificateHash.slice(0, 12)}`,
+      metadata: {
+        control_intent_id: control.id,
+        certificate_id: input.certificateId,
+        certificate_hash: input.certificateHash,
+        settlement_input_hash: input.settlementInputHash,
+        diagnosis_case_hash: input.diagnosisCaseHash,
+        diagnosis_contract_version: input.diagnosisContractVersion,
+      },
+    });
+    if (!authority.projected_task_id) {
+      this.setProjectedTask(authority.id, taskId);
+      authority = this.readIntentStrict(authority.id);
+    }
+    if (control.projected_task_id !== taskId) {
+      db.prepare(
+        `UPDATE saga3_discovery_diagnosis_control_intents
+           SET projected_task_id=?, updated_at=datetime('now') WHERE id=?`,
+      ).run(taskId, control.id);
+    }
+    return {
+      controlIntentId: control.id,
+      certificateId: input.certificateId,
+      certificateHash: input.certificateHash,
+      settlementInputHash: input.settlementInputHash,
+      controlStatus: control.status,
+      authorityIntentId: authority.id,
+      authorityIntentStatus: authority.status,
+      taskId,
+      diagnosisCase: input.diagnosisCase,
+      diagnosisCaseHash: input.diagnosisCaseHash,
+    };
+  }
+
+  setDiagnosisControlStatus(controlIntentId: number, expected: DiagnosisControlStatus, next: DiagnosisControlStatus): boolean {
+    const info = getDb().prepare(
+      `UPDATE saga3_discovery_diagnosis_control_intents
+          SET status=?, updated_at=datetime('now') WHERE id=? AND status=?`,
+    ).run(next, controlIntentId, expected);
+    return info.changes === 1;
+  }
+
+  readDiagnosisControlForTarget(certificateId: number, certificateHash: string): DiagnosisControlIntentRecord | null {
+    ensureSaga3DiagnosisSchema(getDb());
+    return findDiagnosisControlByTargetRepo(getDb(), certificateId, certificateHash);
+  }
+
+  readDiagnosisControl(controlIntentId: number): DiagnosisControlIntentRecord | null {
+    ensureSaga3DiagnosisSchema(getDb());
+    return readDiagnosisControlByIdRepo(getDb(), controlIntentId);
+  }
+
+  readAcceptedDiagnosisReport(controlIntentId: number): DiagnosisReportRecord | null {
+    ensureSaga3DiagnosisSchema(getDb());
+    return readAcceptedDiagnosisReportForControlRepo(getDb(), controlIntentId);
+  }
+
+  readLatestDiagnosisReport(controlIntentId: number): DiagnosisReportRecord | null {
+    ensureSaga3DiagnosisSchema(getDb());
+    return readLatestDiagnosisReportForControlRepo(getDb(), controlIntentId);
+  }
+
+  submitDiagnosisReportAtomically(input: SubmitDiagnosisReportInput): {
+    record: DiagnosisReportRecord;
+    inserted: boolean;
+    replayed: boolean;
+  } {
+    ensureSaga3DiagnosisSchema(getDb());
+    return submitDiagnosisReportAtomicallyRepo(getDb(), input);
   }
 
   private readIntentStrict(id: number): WorkIntent {

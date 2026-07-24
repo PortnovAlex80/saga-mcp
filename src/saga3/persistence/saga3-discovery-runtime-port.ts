@@ -11,6 +11,12 @@ import type {
   OutcomeCertificateRecord,
   SettlementRecord,
 } from '../domain/discovery-settlement-records.js';
+import type {
+  DiagnosisControlExecution,
+  DiagnosisControlIntentRecord,
+  DiagnosisControlStatus,
+  DiagnosisReportRecord,
+} from '../domain/discovery-diagnosis-records.js';
 
 /**
  * Runtime-persistence boundary for the Saga 3 Discovery Edition engine.
@@ -140,6 +146,20 @@ export interface Saga3DiscoveryRuntimePersistence {
   readCertificateForSettlement(settlementId: number): OutcomeCertificateRecord | null;
 
   /**
+   * D4/D5: Read the outcome certificate by its exact id. Used by the D5
+   * diagnosis service to load + verify the immutable diagnosis target (the
+   * certificate the engine points at). Returns null if no such row. Read-only.
+   */
+  readOutcomeCertificate(certificateId: number): OutcomeCertificateRecord | null;
+
+  /**
+   * D4/D5: Read a settlement by its exact id. Used by the D5 diagnosis service
+   * to verify the settlement/certificate relation (settlement_id, input_hash,
+   * decision lineage) before building the diagnosis case. Read-only.
+   */
+  readSettlement(settlementId: number): SettlementRecord | null;
+
+  /**
    * D4: ONE ATOMIC operation that issues a certificate. Inside a single
    * BEGIN IMMEDIATE transaction: read the settlement, insert-or-reuse the
    * certificate (write-once), transition the settlement status from
@@ -167,6 +187,59 @@ export interface Saga3DiscoveryRuntimePersistence {
    * settlement lineage (same shape as issueCertificateAtomically).
    */
   reconcileExistingCertificate(input: IssueCertificateAtomicallyInput): OutcomeCertificateRecord;
+
+  // -------------------------------------------------------------------------
+  // D5: advisory diagnosis (roadmap D5). Read-only against D4 artifacts; the
+  // ONLY writes are the two diagnosis tables. Diagnosis never mutates the D4
+  // settlement/certificate, the product Proposal, or the readiness assessment.
+  // -------------------------------------------------------------------------
+
+  /**
+   * D5: Idempotently create/reuse the DiagnoseDiscoveryOutcome ControlIntent,
+   * its bounded authority WorkIntent, and the projected diagnosis task for one
+   * immutable certificate target. A changed certificate hash is a new target
+   * (new control, new report). Records the immutable DiagnosisCase + its hash
+   * on the control row.
+   */
+  ensureDiagnosisControl(input: EnsureDiagnosisControl): DiagnosisControlExecution;
+
+  /** D5: Compare-and-set diagnosis ControlIntent lifecycle. */
+  setDiagnosisControlStatus(controlIntentId: number, expected: DiagnosisControlStatus, next: DiagnosisControlStatus): boolean;
+
+  /** D5: Read the diagnosis ControlIntent for an exact certificate target, or null. */
+  readDiagnosisControlForTarget(certificateId: number, certificateHash: string): DiagnosisControlIntentRecord | null;
+
+  /** D5: Read a diagnosis ControlIntent by id, or null. */
+  readDiagnosisControl(controlIntentId: number): DiagnosisControlIntentRecord | null;
+
+  /**
+   * D5: The accepted_by_kernel report for a control, or null (no accepted
+   * report exists yet). There is at most ONE accepted report per target.
+   */
+  readAcceptedDiagnosisReport(controlIntentId: number): DiagnosisReportRecord | null;
+
+  /** D5: Latest report (any status) for a control, or null. */
+  readLatestDiagnosisReport(controlIntentId: number): DiagnosisReportRecord | null;
+
+  /**
+   * D5: ONE ATOMIC operation that accepts a diagnosis report submission and
+   * DERIVES its verdict internally (P0-1). The caller supplies ONLY the worker's
+   * payload + provenance + execution identity — it does NOT supply the verdict
+   * or validation errors. Inside BEGIN IMMEDIATE the repository re-reads the
+   * frozen DiagnosisCase, verifies it has not drifted (recomputed
+   * diagnosis_case_hash must equal the control's; case certificate tuple must
+   * match the control target; contract version must match), runs
+   * validateDiagnosisReport itself, and derives accepted_by_kernel or
+   * rejected_by_kernel. A byte-identical replay (same control + content_hash)
+   * under a new execution returns the existing row (idempotent; execution_id is
+   * NOT in the uniqueness key). At most one accepted report per target. The
+   * handler cannot declare a report accepted.
+   */
+  submitDiagnosisReportAtomically(input: SubmitDiagnosisReportInput): {
+    record: DiagnosisReportRecord;
+    inserted: boolean;
+    replayed: boolean;
+  };
 }
 
 export interface IssueCertificateAtomicallyInput {
@@ -307,4 +380,44 @@ export interface EnsureReadinessControl {
   proposalContentHash: string;
   sourceIntentId: number;
   objective: string;
+}
+
+/**
+ * D5: input to ensureDiagnosisControl. Binds the control to an EXACT immutable
+ * certificate target. `diagnosisCase` is the canonical-JSON text of the
+ * immutable DiagnosisCase (built by the service, frozen on the row); its hash
+ * is the diagnosis_case_hash.
+ */
+export interface EnsureDiagnosisControl {
+  epicId: number;
+  projectId: number;
+  certificateId: number;
+  certificateHash: string;
+  settlementId: number;
+  settlementInputHash: string;
+  /** The authority WorkIntent id that owns the product proposal (for lineage). */
+  sourceIntentId: number;
+  objective: string;
+  /** Canonical-JSON text of the immutable DiagnosisCase. */
+  diagnosisCase: string;
+  /** SHA-256 over the case (captured_at excluded). */
+  diagnosisCaseHash: string;
+  diagnosisContractVersion: string;
+}
+
+/**
+ * D5: input to submitDiagnosisReportAtomically (P0-1). The caller supplies ONLY
+ * the worker's payload + provenance + execution identity. The repository derives
+ * the verdict (accepted/rejected) internally from the frozen stored
+ * DiagnosisCase inside BEGIN IMMEDIATE — the handler cannot declare a report
+ * accepted.
+ */
+export interface SubmitDiagnosisReportInput {
+  controlIntentId: number;
+  /** The worker execution submitting this report (provenance; NOT in the uniqueness key). */
+  executionId: string;
+  /** The worker's proposed report payload object. */
+  payload: unknown;
+  /** Provenance captured from the execution. */
+  provenance: unknown;
 }

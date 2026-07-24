@@ -39,13 +39,11 @@ import { createHash } from 'node:crypto';
 import type { Saga3DiscoveryRuntimePersistence, SettlementInputKey, SettlementProposalRecord, IssueCertificateAtomicallyInput } from '../persistence/saga3-discovery-runtime-port.js';
 import type { SettlementRecord, OutcomeCertificateRecord } from '../domain/discovery-settlement-records.js';
 import type { ReadinessAssessmentRecord } from '../domain/discovery-readiness-records.js';
-import type { WorkIntent } from '../domain/work-intent.js';
-import { DISCOVERY_READINESS_INTENT_KIND } from '../domain/work-intent.js';
 import type { ReadinessShadowResult } from '../domain/discovery-readiness-assessment.js';
 import type { DiscoveryProposalPayload } from '../domain/discovery-proposal.js';
 import { DISCOVERY_PROPOSAL_SCHEMA, validateDiscoveryProposal } from '../domain/discovery-proposal.js';
 import type { ReadinessAssessmentPayload } from '../domain/discovery-readiness-assessment.js';
-import { DISCOVERY_READINESS_ASSESSMENT_SCHEMA, validateReadinessAssessment } from '../domain/discovery-readiness-assessment.js';
+import { validateReadinessAssessment } from '../domain/discovery-readiness-assessment.js';
 import {
   DISCOVERY_SETTLEMENT_INPUT_SCHEMA,
   buildSettlementInputHash,
@@ -64,7 +62,19 @@ import {
   buildOutcomeCertificatePayload,
   hashOutcomeCertificate,
 } from '../domain/discovery-outcome-certificate.js';
-import { canonicalJson, collectDiscoverySourceRefs, sha256Hex } from '../shared/discovery-canonical.js';
+import { canonicalJson, collectDiscoverySourceRefs } from '../shared/discovery-canonical.js';
+// P0-3: the certificate/snapshot/readiness verification discipline is now shared
+// with the D5 diagnosis service via discovery-certificate-bundle. D4 keeps its
+// observable SettlementValidationError identity by wrapping the shared helpers
+// (same messages, same decision logic). D5 calls verifyDiscoveryCertificateBundle
+// directly so it no longer maintains a weaker independent copy.
+import {
+  buildExpectedCertificatePayloadShared,
+  encodeReadinessTarget,
+  parseAndVerifyStoredSnapshotShared,
+  verifyCertificateRecordShared,
+  verifyReadinessLineageShared,
+} from './discovery-certificate-bundle.js';
 
 /**
  * What the engine passes to the settlement service. The readiness shadow is the
@@ -585,158 +595,16 @@ export class Saga3DiscoverySettlementService implements DiscoverySettlementServi
     policy: DiscoverySettlementPolicy,
     currentProposal: SettlementProposalRecord,
   ): { snapshot: DiscoverySettlementInputSnapshot; inputHash: string } {
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(settlement.input_snapshot);
-    } catch {
-      throw new SettlementValidationError(
-        `settlement ${settlement.id}: stored input_snapshot is not valid JSON`,
-      );
-    }
-    const snap = parsed as DiscoverySettlementInputSnapshot;
-    // Schema version.
-    if (snap.schema_version !== DISCOVERY_SETTLEMENT_INPUT_SCHEMA) {
-      throw new SettlementValidationError(
-        `settlement ${settlement.id}: snapshot schema_version '${snap.schema_version}' is not ${DISCOVERY_SETTLEMENT_INPUT_SCHEMA}`,
-      );
-    }
-    // Epic binding.
-    if (snap.epic_id !== settlement.epic_id) {
-      throw new SettlementValidationError(
-        `settlement ${settlement.id}: snapshot epic_id ${snap.epic_id} != settlement epic_id ${settlement.epic_id}`,
-      );
-    }
-    // Proposal id + hash binding.
-    if (snap.proposal.id !== settlement.proposal_id
-        || snap.proposal.content_hash !== settlement.proposal_content_hash
-        || snap.proposal.id !== key.proposalId
-        || snap.proposal.content_hash !== key.proposalContentHash) {
-      throw new SettlementValidationError(
-        `settlement ${settlement.id}: snapshot proposal id/hash does not match the settlement/key`,
-      );
-    }
-    // NESTED Proposal payload integrity: validate the payload structurally and
-    // recompute its content hash. input_hash alone is NOT an independent anchor
-    // (it lives in the same mutable row as the snapshot); the Proposal hash is.
-    // A coherent tamper that edits the payload, leaves content_hash, and
-    // rewrites input_hash would otherwise pass.
-    const proposalValidation = validateDiscoveryProposal(snap.proposal.payload);
-    if (!proposalValidation.valid) {
-      throw new SettlementValidationError(
-        `settlement ${settlement.id}: snapshot proposal payload failed re-validation: ${proposalValidation.errors.join('; ')}`,
-      );
-    }
-    const proposalPayloadHash = sha256Hex(snap.proposal.payload);
-    if (proposalPayloadHash !== snap.proposal.content_hash) {
-      throw new SettlementValidationError(
-        `settlement ${settlement.id}: snapshot proposal payload hash does not match snapshot.proposal.content_hash`,
-      );
-    }
-    // The stored snapshot Proposal payload must be byte-identical (canonically)
-    // to the canonical Proposal loaded at the start of settle(), and the lineage
-    // ids must agree. This binds the stored snapshot to the live canonical row.
-    if (canonicalJson(snap.proposal.payload) !== canonicalJson(currentProposal.payload)) {
-      throw new SettlementValidationError(
-        `settlement ${settlement.id}: snapshot proposal payload does not match the canonical Proposal payload`,
-      );
-    }
-    if (snap.proposal.source_intent_id !== currentProposal.intent_id
-        || snap.proposal.source_submission_id !== currentProposal.source_submission_id
-        || snap.proposal.normalization_proposal_id !== currentProposal.normalization_proposal_id) {
-      throw new SettlementValidationError(
-        `settlement ${settlement.id}: snapshot proposal lineage ids do not match the canonical Proposal`,
-      );
-    }
-    // Policy version + hash binding.
-    if (snap.policy.version !== settlement.policy_version
-        || snap.policy.content_hash !== settlement.policy_hash
-        || snap.policy.version !== key.policyVersion
-        || snap.policy.content_hash !== key.policyHash) {
-      throw new SettlementValidationError(
-        `settlement ${settlement.id}: snapshot policy version/hash does not match the settlement/key`,
-      );
-    }
-    // Readiness target/id/hash/payload consistency. The encoded readiness target
-    // in the settlement row must match the snapshot's readiness status + hash.
-    const expectedTarget = encodeReadinessTarget(snap.readiness.status, snap.readiness.content_hash);
-    if (expectedTarget !== settlement.readiness_assessment_hash
-        || expectedTarget !== key.readinessTarget) {
-      throw new SettlementValidationError(
-        `settlement ${settlement.id}: snapshot readiness target '${expectedTarget}' does not match the settlement/key`,
-      );
-    }
-    if (snap.readiness.assessment_id !== settlement.readiness_assessment_id) {
-      throw new SettlementValidationError(
-        `settlement ${settlement.id}: snapshot readiness.assessment_id ${snap.readiness.assessment_id} != settlement ${settlement.readiness_assessment_id}`,
-      );
-    }
-    // Accepted readiness MUST carry non-null payload/id/hash; non-accepted MUST
-    // carry null payload/id/hash (ALL three — a non-null assessment_id alone on
-    // a failed snapshot is an internal contradiction). This is an independent
-    // anchor check: input_hash lives in the same mutable row.
-    if (snap.readiness.status === 'accepted_by_kernel') {
-      if (snap.readiness.payload === null
-          || snap.readiness.assessment_id === null
-          || snap.readiness.content_hash === null) {
-        throw new SettlementValidationError(
-          `settlement ${settlement.id}: snapshot readiness accepted_by_kernel must carry non-null payload/id/hash`,
-        );
-      }
-      // NESTED readiness payload integrity: validate + recompute content hash.
-      const allowedRefs = collectDiscoverySourceRefs(
-        {
-          proposalId: snap.proposal.id,
-          sourceSubmissionId: snap.proposal.source_submission_id,
-          normalizationProposalId: snap.proposal.normalization_proposal_id,
-        },
-        snap.proposal.payload as DiscoveryProposalPayload,
-      );
-      const readinessValidation = validateReadinessAssessment(
-        snap.readiness.payload,
-        snap.proposal.id,
-        snap.proposal.content_hash,
-        allowedRefs,
-      );
-      if (!readinessValidation.valid) {
-        throw new SettlementValidationError(
-          `settlement ${settlement.id}: snapshot readiness payload failed re-validation: ${readinessValidation.errors.join('; ')}`,
-        );
-      }
-      const readinessPayloadHash = sha256Hex(snap.readiness.payload);
-      if (readinessPayloadHash !== snap.readiness.content_hash) {
-        throw new SettlementValidationError(
-          `settlement ${settlement.id}: snapshot readiness payload hash does not match snapshot.readiness.content_hash`,
-        );
-      }
-    } else {
-      // missing | failed | paused: assessment_id, content_hash, AND payload
-      // must all be null.
-      if (snap.readiness.payload !== null
-          || snap.readiness.content_hash !== null
-          || snap.readiness.assessment_id !== null) {
-        throw new SettlementValidationError(
-          `settlement ${settlement.id}: snapshot readiness ${snap.readiness.status} must carry null payload/content_hash/assessment_id`,
-        );
-      }
-    }
-    // Verify the snapshot's own hash matches the row's recorded input_hash.
-    const recomputed = buildSettlementInputHash(snap);
-    if (recomputed !== settlement.input_hash) {
-      throw new SettlementValidationError(
-        `settlement ${settlement.id}: stored input_hash does not match recomputed snapshot hash`,
-      );
-    }
-    // Re-run the policy against the STORED snapshot and confirm the decision +
-    // reason codes AND rationale are unchanged.
-    const replay = policy.settle(snap);
-    if (replay.decision !== settlement.decision
-        || !arrayEquals(replay.reason_codes, settlement.reason_codes)
-        || replay.rationale !== settlement.rationale) {
-      throw new SettlementValidationError(
-        `settlement ${settlement.id}: stored decision/reason_codes/rationale do not match a policy replay of the stored snapshot`,
-      );
-    }
-    return { snapshot: snap, inputHash: recomputed };
+    // P0-3: delegates to the shared verifier (single source of truth, also used
+    // by D5). Wrapped so D4's observable SettlementValidationError identity +
+    // messages are preserved bit-for-bit.
+    return parseAndVerifyStoredSnapshotShared(
+      settlement,
+      key,
+      policy,
+      currentProposal,
+      (message) => new SettlementValidationError(message),
+    );
   }
 
   /**
@@ -752,94 +620,15 @@ export class Saga3DiscoverySettlementService implements DiscoverySettlementServi
     assessment: ReadinessAssessmentRecord,
     proposal: SettlementProposalRecord,
   ): void {
-    const control = rt.readReadinessControlForProposal(proposal.id, proposal.content_hash);
-    if (!control) {
-      throw new SettlementValidationError(
-        `settlement: no readiness ControlIntent for proposal ${proposal.id}`,
-      );
-    }
-    // ControlIntent must own this assessment.
-    if (assessment.control_intent_id !== control.id) {
-      throw new SettlementValidationError(
-        `settlement: readiness assessment ${assessment.id} belongs to control ${assessment.control_intent_id}, not the proposal's control ${control.id}`,
-      );
-    }
-    // ControlIntent target + epic + kind + source intent.
-    if (control.proposal_id !== proposal.id
-        || control.proposal_content_hash !== proposal.content_hash) {
-      throw new SettlementValidationError(
-        `settlement: readiness ControlIntent ${control.id} targets a different proposal version`,
-      );
-    }
-    if (control.epic_id !== proposal.epic_id) {
-      throw new SettlementValidationError(
-        `settlement: readiness ControlIntent ${control.id} epic ${control.epic_id} != proposal epic ${proposal.epic_id}`,
-      );
-    }
-    if (control.kind !== 'AssessDiscoveryReadiness') {
-      throw new SettlementValidationError(
-        `settlement: readiness ControlIntent ${control.id} kind '${control.kind}' is not 'AssessDiscoveryReadiness'`,
-      );
-    }
-    if (control.source_intent_id !== proposal.intent_id) {
-      throw new SettlementValidationError(
-        `settlement: readiness ControlIntent ${control.id} source_intent_id ${control.source_intent_id} != proposal intent ${proposal.intent_id}`,
-      );
-    }
-    // Authority WorkIntent well-formedness.
-    const authority: WorkIntent | null = rt.readWorkIntent(control.authority_intent_id);
-    if (!authority) {
-      throw new SettlementValidationError(
-        `settlement: readiness ControlIntent ${control.id} authority WorkIntent ${control.authority_intent_id} not found`,
-      );
-    }
-    if (authority.kind !== DISCOVERY_READINESS_INTENT_KIND) {
-      throw new SettlementValidationError(
-        `settlement: authority WorkIntent ${authority.id} kind '${authority.kind}' is not '${DISCOVERY_READINESS_INTENT_KIND}'`,
-      );
-    }
-    if (authority.output_schema !== DISCOVERY_READINESS_ASSESSMENT_SCHEMA) {
-      throw new SettlementValidationError(
-        `settlement: authority WorkIntent ${authority.id} output_schema '${authority.output_schema}' is not '${DISCOVERY_READINESS_ASSESSMENT_SCHEMA}'`,
-      );
-    }
-    if (authority.epic_id !== proposal.epic_id) {
-      throw new SettlementValidationError(
-        `settlement: authority WorkIntent ${authority.id} epic ${authority.epic_id} != proposal epic ${proposal.epic_id}`,
-      );
-    }
-    // P1: projected-task + lifecycle completeness. An accepted assessment implies
-    // the advisor actually ran to completion, so the ControlIntent AND its
-    // authority WorkIntent must each carry a non-null projected task that the
-    // assessment was submitted from, and both must be in a terminal lifecycle.
-    if (control.projected_task_id === null) {
-      throw new SettlementValidationError(
-        `settlement: readiness ControlIntent ${control.id} has no projected_task_id (accepted assessment requires a projected task)`,
-      );
-    }
-    if (authority.projected_task_id === null
-        || authority.projected_task_id !== control.projected_task_id) {
-      throw new SettlementValidationError(
-        `settlement: authority WorkIntent ${authority.id} projected_task_id ${authority.projected_task_id} != control ${control.id} projected_task_id ${control.projected_task_id}`,
-      );
-    }
-    if (assessment.task_id !== control.projected_task_id) {
-      throw new SettlementValidationError(
-        `settlement: readiness assessment ${assessment.id} task_id ${assessment.task_id} != control ${control.id} projected_task_id ${control.projected_task_id}`,
-      );
-    }
-    // Lifecycle: an accepted assessment means the advisor closed cleanly, so the
-    // ControlIntent and its authority WorkIntent must be concluded.
-    if (control.status !== 'concluded') {
-      throw new SettlementValidationError(
-        `settlement: readiness ControlIntent ${control.id} status '${control.status}' is not 'concluded' (accepted assessment requires a concluded control)`,
-      );
-    }
-    if (authority.status !== 'concluded') {
-      throw new SettlementValidationError(
-        `settlement: authority WorkIntent ${authority.id} status '${authority.status}' is not 'concluded' (accepted assessment requires a concluded authority)`,
-      );
-    }
+    // P0-3: delegates to the shared lineage verifier (single source of truth).
+    // Wrapped so D4's observable SettlementValidationError identity + messages
+    // are preserved bit-for-bit.
+    verifyReadinessLineageShared(
+      rt,
+      assessment,
+      proposal,
+      (message) => new SettlementValidationError(message),
+    );
   }
 
   /**
@@ -862,89 +651,27 @@ export class Saga3DiscoverySettlementService implements DiscoverySettlementServi
     settlement: SettlementRecord,
     stored: { snapshot: DiscoverySettlementInputSnapshot; inputHash: string },
   ): void {
-    const expectedPayload = this.buildExpectedCertificatePayload(settlement, stored);
-    const expectedHash = hashOutcomeCertificate(expectedPayload);
-    // Stored payload must be byte-identical (canonical) to the rebuild.
-    let parsedStoredPayload: unknown;
-    try {
-      parsedStoredPayload = JSON.parse(cert.certificate_payload);
-    } catch {
-      throw new SettlementValidationError(
-        `settlement ${settlement.id}: stored certificate_payload is not valid JSON`,
-      );
-    }
-    if (canonicalJson(parsedStoredPayload) !== canonicalJson(expectedPayload)) {
-      throw new SettlementValidationError(
-        `settlement ${settlement.id}: stored certificate_payload does not match the rebuilt expected payload`,
-      );
-    }
-    // Stored hash must equal the rebuild hash.
-    if (cert.certificate_hash !== expectedHash) {
-      throw new SettlementValidationError(
-        `settlement ${settlement.id}: stored certificate_hash does not match the rebuilt expected hash`,
-      );
-    }
-    // Encoded readiness target expected on the certificate row.
-    const expectedTarget = encodeReadinessTarget(
-      stored.snapshot.readiness.status,
-      stored.snapshot.readiness.content_hash,
+    // P0-3: delegates to the shared certificate verifier (single source of
+    // truth). Wrapped so D4's observable SettlementValidationError identity +
+    // messages are preserved bit-for-bit.
+    verifyCertificateRecordShared(
+      cert,
+      settlement,
+      stored,
+      (message) => new SettlementValidationError(message),
     );
-    // Row lineage columns — every one must match.
-    const rowChecks: Array<[string, unknown, unknown]> = [
-      ['epic_id', cert.epic_id, settlement.epic_id],
-      ['proposal_id', cert.proposal_id, settlement.proposal_id],
-      ['proposal_content_hash', cert.proposal_content_hash, settlement.proposal_content_hash],
-      ['readiness_assessment_id', cert.readiness_assessment_id, settlement.readiness_assessment_id],
-      ['readiness_assessment_hash', cert.readiness_assessment_hash, expectedTarget],
-      ['policy_version', cert.policy_version, settlement.policy_version],
-      ['policy_hash', cert.policy_hash, settlement.policy_hash],
-      ['decision', cert.decision, settlement.decision],
-      ['reason_codes', JSON.stringify(cert.reason_codes), JSON.stringify(settlement.reason_codes)],
-      ['input_hash', cert.input_hash, settlement.input_hash],
-      ['issued_at', cert.issued_at, settlement.created_at],
-    ];
-    for (const [field, actual, expected] of rowChecks) {
-      if (actual !== expected) {
-        throw new SettlementValidationError(
-          `settlement ${settlement.id}: certificate row ${field} '${actual}' != expected '${expected}'`,
-        );
-      }
-    }
-    // issued_at in the payload must equal the row's issued_at.
-    const payloadIssuedAt = (parsedStoredPayload as { issued_at?: unknown }).issued_at;
-    if (payloadIssuedAt !== cert.issued_at) {
-      throw new SettlementValidationError(
-        `settlement ${settlement.id}: certificate payload issued_at '${payloadIssuedAt}' != row issued_at '${cert.issued_at}'`,
-      );
-    }
   }
 
   /**
    * Build the EXPECTED certificate payload from a verified stored settlement +
-   * snapshot. Centralised so every path (verify, reconcile, issue) builds the
-   * identical payload.
+   * snapshot. Delegates to the shared builder so every path (verify, reconcile,
+   * issue, bundle) builds the identical payload.
    */
   private buildExpectedCertificatePayload(
     settlement: SettlementRecord,
     stored: { snapshot: DiscoverySettlementInputSnapshot; inputHash: string },
   ): ReturnType<typeof buildOutcomeCertificatePayload> {
-    return buildOutcomeCertificatePayload({
-      epic_id: settlement.epic_id,
-      proposalId: stored.snapshot.proposal.id,
-      proposalContentHash: stored.snapshot.proposal.content_hash,
-      readinessStatus: stored.snapshot.readiness.status,
-      readinessAssessmentId: stored.snapshot.readiness.assessment_id,
-      readinessContentHash: stored.snapshot.readiness.content_hash,
-      decision: {
-        decision: settlement.decision,
-        reason_codes: settlement.reason_codes,
-        rationale: '',
-        policy_version: settlement.policy_version,
-        policy_hash: settlement.policy_hash,
-      },
-      settlementInputHash: stored.inputHash,
-      issuedAt: settlement.created_at,
-    });
+    return buildExpectedCertificatePayloadShared(settlement, stored);
   }
 
   /**
@@ -982,22 +709,6 @@ export class Saga3DiscoverySettlementService implements DiscoverySettlementServi
       rationale: settlement.rationale,
     };
   }
-}
-
-/** Encode a settlement readiness status + (optional) hash into the semantic
- * readiness-target string used in the idempotency key and certificate row. */
-function encodeReadinessTarget(
-  status: SettlementReadinessStatus,
-  contentHash: string | null,
-): string {
-  if (status === 'accepted_by_kernel') {
-    return contentHash ? `accepted:${contentHash}` : 'accepted:none';
-  }
-  return status; // 'missing' | 'failed' | 'paused'
-}
-
-function arrayEquals<T>(a: T[], b: T[]): boolean {
-  return a.length === b.length && a.every((v, i) => v === b[i]);
 }
 
 // Re-export for the engine/composition root.

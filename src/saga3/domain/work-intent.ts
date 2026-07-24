@@ -99,3 +99,18 @@ export const DISCOVERY_READINESS_INTENT_KIND = 'discovery.assess';
 
 /** ControlIntent kind for an AssessDiscoveryReadiness control intent. */
 export const ASSESS_DISCOVERY_READINESS_KIND = 'AssessDiscoveryReadiness';
+
+/**
+ * Kind used by the bounded D5 advisory diagnosis worker. Its authority is
+ * minimal and runtime-enforced; it EXPLAINS an already-issued
+ * DiscoveryOutcomeCertificate but can never change the outcome, the
+ * certificate, or the stage (roadmap D5). Output schema is
+ * saga3.discovery-diagnosis.v1.
+ */
+export const DISCOVERY_DIAGNOSIS_INTENT_KIND = 'discovery.diagnose';
+
+/** ControlIntent kind for a DiagnoseDiscoveryOutcome control intent (D5). */
+export const DIAGNOSE_DISCOVERY_OUTCOME_KIND = 'DiagnoseDiscoveryOutcome';
+
+/** Output schema name for the D5 diagnosis WorkIntent (owned by the kernel). */
+export const DISCOVERY_DIAGNOSIS_WORK_INTENT_SCHEMA = 'saga3.work-intent.discovery-diagnosis.v1';
