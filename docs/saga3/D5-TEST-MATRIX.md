@@ -13,11 +13,33 @@
 >   SQLite runtime port (no live LM).
 > - **architecture** — static source-grep boundary test (no runtime).
 > - **adversarial** — Stage 5 read-only attack tests (separate subagent).
-> - **smoke** — Stage 6 live engine/service run on the real LM (A,B) or controlled
->   live-DB (C,D,E).
+> - **smoke** — live LM evidence for A/B and controlled end-to-end or integrity evidence for C/D/E.
+> - **integrity** — adversarial checks of frozen-case, lineage, replay and accepted-report verification.
 
 The exact test names may evolve slightly during implementation; the invariant +
 scenario columns are the contract.
+
+## Final executable status
+
+The original A–H rows remain the planning trace. The final executable suite is
+larger because the independent review added a shared certificate-bundle suite,
+integrity attacks and a controlled end-to-end REJECT smoke.
+
+| File | Tests | Result |
+|---|---:|---|
+| `d5-certificate-bundle.test.mjs` | 10 | pass |
+| `d5-diagnosis-case.test.mjs` | 10 | pass |
+| `d5-diagnosis-validator.test.mjs` | 23 | pass |
+| `d5-diagnosis-persistence.test.mjs` | 13 | pass |
+| `d5-diagnosis-service.test.mjs` | 8 | pass |
+| `d5-diagnosis-engine.test.mjs` | 11 | pass |
+| `d5-adversarial.test.mjs` | 10 | pass |
+| `d5-diagnosis-integrity.test.mjs` | 5 | pass |
+| `d5-controlled-reject-smoke.test.mjs` | 1 | pass |
+| **Focused runtime total** | **91** | **91 pass / 0 fail** |
+
+The D5 architecture-boundary file adds 11 static checks. The repository-wide
+Node.js 24 gate is 701 total, 700 pass, 0 fail and 1 pre-existing todo.
 
 ---
 
@@ -27,7 +49,7 @@ scenario columns are the contract.
 |---|-----------|----------|----------|------|-----------|----------|
 | A1 | I3,I4 | GO snapshot → policy_conditions | every GO predicate marked `passed`; reason_code `GO_READY_AND_GROUNDED` present | `tests/saga3/d5-diagnosis-case.test.mjs` | `D5 case: GO conditions marked passed` | pure |
 | A2 | I3 | clarify-from-gaps snapshot | blocking-gap predicates marked `failed`; reason code `CLARIFY_BLOCKING_GAPS` surfaces a failed condition | `d5-diagnosis-case.test.mjs` | `D5 case: clarify reason codes map to failed conditions` | pure |
-| A3 | I3 | reject agreement snapshot | worker+advisor reject → `worker_advisor_agreement` condition `passed`; the negative conditions that WOULD fail a go are `not_applicable` | `d5-diagnosis-case.test.mjs` | `D5 case: reject agreement represented correctly` | pure |
+| A3 | I3 | reject agreement snapshot | exact policy trace contains contributing passed REJECT predicates; GO branch predicates are `not_evaluated` and cannot be cited as causes | `d5-diagnosis-case.test.mjs` | `D5 case: reject agreement represented correctly` | pure |
 | A4 | I4 | source allowlist deterministic | `allowed_source_refs` is a function of the certificate+proposal+assessment only (same inputs ⇒ same set, same order-independent content) | `d5-diagnosis-case.test.mjs` | `D5 case: allowed_source_refs deterministic` | pure |
 | A5 | I7 | case hash deterministic | same certificate+proposal+readiness+policy ⇒ same `diagnosis_case_hash` | `d5-diagnosis-case.test.mjs` | `D5 case: hash deterministic` | pure |
 | A6 | I3 | changed certificate hash ⇒ changed case hash | mutating the certificate_hash changes `diagnosis_case_hash` | `d5-diagnosis-case.test.mjs` | `D5 case: certificate hash change changes case hash` | pure |
@@ -48,7 +70,7 @@ scenario columns are the contract.
 | B6 | I4 | invented source ref | a cause cites a source ref not in allowed_source_refs ⇒ rejected | `d5-diagnosis-validator.test.mjs` | `D5 validator: invented source ref rejected` | pure |
 | B7 | I4 | empty source refs | a cause/action/risk with empty source_refs ⇒ rejected | `d5-diagnosis-validator.test.mjs` | `D5 validator: empty source refs rejected` | pure |
 | B8 | §8 | dangling internal ref | `resolves_cause_ids` points to a non-existent cause_id ⇒ rejected | `d5-diagnosis-validator.test.mjs` | `D5 validator: dangling cause ref rejected` | pure |
-| B9 | §8 | passed condition as root cause | a cause cites a `failed_condition_id` whose condition is `passed` ⇒ rejected | `d5-diagnosis-validator.test.mjs` | `D5 validator: passed condition as root cause rejected` | pure |
+| B9 | §8 | invalid condition grounding | a cause cites a non-contributing or wrong-branch `cited_condition_id` ⇒ rejected | `d5-diagnosis-validator.test.mjs` | final validator grounding tests | pure |
 | B10 | §7 | GO with blocking cause | decision=go but a cause has severity=`blocking` ⇒ rejected | `d5-diagnosis-validator.test.mjs` | `D5 validator: GO with blocking cause rejected` | pure |
 | B11 | §7 | clarify with empty causes | decision=clarify but cause_analysis is empty ⇒ rejected | `d5-diagnosis-validator.test.mjs` | `D5 validator: clarify with empty causes rejected` | pure |
 | B12 | §7 | reject without blocking cause | decision=reject but no blocking cause ⇒ rejected | `d5-diagnosis-validator.test.mjs` | `D5 validator: reject without blocking cause rejected` | pure |
@@ -140,6 +162,23 @@ scenario columns are the contract.
 | G7 | I1 | stage transition attempt | worker payload contains `transition_stage:'formalization'` ⇒ rejected | `d5-adversarial.test.mjs` | `D5 adv: stage transition rejected` | adversarial |
 | G8 | I7 | accepted report cannot be overwritten | a second accepted-by-kernel row for the same target is impossible (UNIQUE / atomic guard) | `d5-adversarial.test.mjs` | `D5 adv: accepted report immutable` | adversarial |
 
+
+---
+
+## G2. Independent integrity correction tests
+
+| # | invariant | attack | expected | file | evidence |
+|---|---|---|---|---|---|
+| I-1 | I3,I4 | frozen case changed while stored hash is unchanged | atomic submit rejects before persistence | `d5-diagnosis-integrity.test.mjs` | integrity |
+| I-2 | I3,I4 | case and case hash coherently changed to expand allowlist | independent task/control anchors reject | `d5-diagnosis-integrity.test.mjs` | integrity |
+| I-3 | I3,I7 | stored control case drifts from the freshly rebuilt verified certificate bundle | `ensureDiagnosisControl` fails closed | `d5-diagnosis-integrity.test.mjs` | integrity |
+| I-4 | I3 | contract, task, authority or lifecycle status drifts | atomic submit rejects | `d5-diagnosis-integrity.test.mjs` | integrity |
+| I-5 | I3,I4,I7 | accepted report schema/control/task/target or payload+hash is coherently tampered | accepted-report verifier rejects | `d5-diagnosis-integrity.test.mjs` | integrity |
+
+The persistence/adversarial suites additionally verify that replay re-derives the
+verdict from the verified frozen case and rejects a stored row whose verdict,
+validation errors or target binding no longer agree.
+
 ---
 
 ## H. Smoke scenarios (§20 — Stage 6)
@@ -148,7 +187,7 @@ scenario columns are the contract.
 |---|-----------|----------|----------|-----|----------|
 | S-A | I1,I2 | full GO pipeline → diagnosis | outcome stays go; diagnosis completed; no blocking causes; residual risks allowed; action `proceed_with_monitoring` | `D5-SMOKE-EVIDENCE.md` | smoke (live LM) |
 | S-B | I1 | controlled advisor conditionally_ready + blocking gaps → clarify → diagnosis | outcome stays clarify; all clarify reason codes covered; information_requests non-empty | `D5-SMOKE-EVIDENCE.md` | smoke (live LM) |
-| S-C | I1 | worker reject + advisor reject → reject → diagnosis | outcome stays reject; blocking causes non-empty; reconsideration conditions described. **Deterministic coverage** — the LM does not reject the trivial smoke product (same constraint as D4 Smoke C), so the REJECT diagnosis path is covered by validator B12 (reject without blocking cause rejected) + case builder A3 (reject agreement decomposition), not by a live run | `D5-SMOKE-EVIDENCE.md` | deterministic (validator + case) |
+| S-C | I1,I3,I7 | coherent worker reject + advisor reject → real D4 REJECT certificate → real D5 diagnosis | accepted advisory report cites contributing passed REJECT conditions; D4 artifacts remain byte-identical; restart returns same report without respawn | `d5-controlled-reject-smoke.test.mjs`, `D5-SMOKE-EVIDENCE.md` | controlled end-to-end |
 | S-D | I5 | diagnosis worker returns invented source ref | diagnosis.status failed; report row rejected_by_kernel; validation_errors non-empty; D4 certificate unchanged; outcome unchanged | `D5-SMOKE-EVIDENCE.md` | smoke (controlled) |
 | S-E | I7 | restart same epic after accepted diagnosis | same reportId, same reportHash, no second worker execution, outcome unchanged | `D5-SMOKE-EVIDENCE.md` | smoke (controlled) |
 
@@ -156,15 +195,28 @@ scenario columns are the contract.
 
 ## Coverage summary
 
-- **pure**: A1–A8 (8), B1–B15 (15) = 23
-- **persistence**: C1–C12 (12)
-- **service**: E1–E8 (8)
-- **engine**: D1–D10 (10)
-- **architecture**: F1–F11 (11)
-- **adversarial**: G1–G8 (8)
-- **smoke**: S-A, S-B, S-D, S-E (4) — live LM (A/B/E-reuse) + controlled live-DB (D)
-- **deterministic**: S-C (covered by validator B12 + case A3; the LM cannot reject the trivial smoke product, same as D4 Smoke C)
+Final executable evidence:
 
-D5-specific suites total ≈ 72 new test cases (some may split/merge during
-implementation). The full `npm test` suite will be larger (existing D1–D4 suites
-remain green).
+- certificate-bundle verification: 10;
+- diagnosis case/policy trace: 10;
+- deterministic validator: 23;
+- persistence and atomic replay: 13;
+- service lifecycle/restart: 8;
+- engine integration/isolation: 11;
+- adversarial attacks: 10;
+- independent integrity correction: 5;
+- controlled end-to-end REJECT smoke: 1;
+- D5 architecture boundaries: 11 static checks.
+
+The focused runtime suite is **91/91** across 9 files. Architecture boundaries,
+TypeScript and the full repository suite are separate gates. The final Node.js
+24 repository run is **701 total / 700 pass / 0 fail / 1 todo**.
+
+Smoke evidence classification:
+
+- A and B: live LM;
+- C: controlled end-to-end D4 → D5 REJECT;
+- D: controlled invalid-evidence attack;
+- E: durable restart reuse.
+
+The matrix no longer treats validator A3/B12 as a substitute for Smoke C.

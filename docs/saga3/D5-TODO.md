@@ -10,34 +10,35 @@
 
 ---
 
-## Final state (all stages implemented; gate UNCHANGED — human decides)
+## Final corrected state — independent review complete
 
-| Stage | Commit | Suite |
-|-------|--------|-------|
-| 0 docs | `710ad96` | — |
-| 1 domain + pure tests | (squash commit 2) | 24/24 |
-| 2+2b persistence + architecture | `61ea237` | 643/0 |
-| 3 service + handler + E1-E8 | `4c03e84` | 654/0 |
-| 4 engine integration + D1-D10 | `0e889ce` | 666/0 |
-| 5 adversarial G1-G8 + guard fix | `f2ac945` | 675/0 |
-| 6 smokes A-E (2 fixes) | `d20028e` + `f298072` | 676/675/0 |
-| 7 evidence audit + doc align | `cdca997` | 676/675/0 |
+The original seven implementation stages remain below as historical trace. An
+independent review then found four integrity/causal defects and one evidence gap.
+Those defects are now corrected without starting D6.
 
-**Suite:** `npm test` = 676 tests, 675 pass, 0 fail, 1 todo (pre-existing
-non-D5 `track(reject)` in `tests/track-pipeline.test.mjs`, untouched by D5).
-77 D5 tests across 7 files.
+| Correction | Result |
+|---|---|
+| exact D4 policy evaluation trace | GO/CLARIFY/REJECT explanations cite only contributing conditions; alternative branches are `not_evaluated` |
+| shared certificate-bundle verification | D4 replay/recovery and D5 case construction use one full verifier |
+| atomic kernel-owned diagnosis verdict | handler cannot declare acceptance; repository validates the verified frozen case inside `BEGIN IMMEDIATE` |
+| accepted-report/replay verification | restart, post-worker and replay paths re-hash, re-bind and re-validate before projection |
+| coherent case/allowlist drift protection | fresh bundle case, control, task metadata and authority anchors must agree |
+| controlled REJECT smoke | real D4 REJECT certificate → real D5 accepted advisory report → byte-identical D4 artifacts → restart reuse |
 
-**Auditor verdict (Stage 7):** "AUDIT: no unsupported PASS claims found." All
-18 exit-gate criteria supported; invariants I1–I8 intact; forbidden files never
-committed; settings/policies untouched; implementer issued no merge verdict (I8).
+**Final gates on Node.js 24 / Ubuntu 24.04:**
 
-**Two defects the smokes surfaced and fixed:** missing diagnosis skill
-(`d20028e`); nested-transaction bug in `diagnosis_submit` (`d20028e`). Both
-fixed before the smoke evidence was recorded.
+- `npx tsc --noEmit`: pass;
+- architecture boundary gate: pass;
+- focused D5 runtime suite: **91/91** across 9 files;
+- full repository suite: **701 total / 700 pass / 0 fail / 1 todo**;
+- forbidden files absent from PR change set;
+- D6 not started.
 
-**Per invariant I8, the implementer does NOT close the exit gate.** The §24
-criteria below remain for the human reviewer to check and verdict. This file
-states: *implementation finished; ready for independent review.*
+The single todo is the pre-existing non-D5 `track(reject)` case.
+
+**Independent reviewer state:** D5 implementation and evidence are corrected;
+the branch is eligible for final squash-merge after the final documentation CI
+run. This summary does not start D6 and does not alter D4 authority.
 
 ---
 
