@@ -17,6 +17,32 @@ already present in the immutable source response.
 5. Call `normalization_submit`.
 6. Call `worker_done`.
 
+## Exact call shapes (use these argument shapes literally)
+
+`normalization_get` (read-only, step 3):
+```
+normalization_get({
+  control_intent_id: <integer from task_get metadata.control_intent_id>,
+  source_submission_id: <integer from task_get metadata.source_submission_id>,
+  execution_id: <string, your execution_id>
+})
+```
+
+`normalization_submit` (step 5 — exactly ONCE):
+```
+normalization_submit({
+  control_intent_id: <integer, same as normalization_get>,
+  source_submission_id: <integer, same as normalization_get>,
+  execution_id: <string>,
+  schema_version: "saga3.discovery-normalization-proposal.v1",
+  payload: { ...the normalized discovery proposal fields... }
+})
+```
+
+IMPORTANT: `control_intent_id`, `source_submission_id`, `execution_id`,
+`schema_version` are TOP-LEVEL arguments of `normalization_submit`, NOT fields
+inside `payload`. `payload` contains ONLY the normalized proposal object.
+
 ## Hard constraints
 
 - Never invent evidence or missing facts.

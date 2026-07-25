@@ -74,6 +74,50 @@ human terms and turn them into actionable next steps.
    `schema_version`, and the payload.
 5. Call `worker_done` exactly once. Then stop — do not claim another task.
 
+## Exact call shapes (use these argument shapes literally)
+
+`diagnosis_get` (read-only, step 2):
+```
+diagnosis_get({
+  control_intent_id: <integer from task_get metadata.control_intent_id>,
+  execution_id: <string, your execution_id>
+})
+```
+
+`diagnosis_submit` (step 4 — exactly ONCE):
+```
+diagnosis_submit({
+  control_intent_id: <integer, same as diagnosis_get>,
+  execution_id: <string>,
+  schema_version: "saga3.discovery-diagnosis.v1",
+  payload: {
+    target: {
+      certificate_id: <integer from diagnosis_case.certificate.id>,
+      certificate_hash: "<64-char hex from diagnosis_case.certificate.hash>",
+      settlement_input_hash: "<64-char hex from diagnosis_case.certificate.settlement_input_hash>",
+      decision: "go" | "clarify" | "reject"
+    },
+    executive_summary: "...",
+    cause_analysis: [
+      { cause_id: "...", category: "...", description: "...", severity: "blocking"|"material"|"informational",
+        reason_codes: [...], cited_condition_ids: [...], source_refs: [...] }
+    ],
+    information_requests: [ { request_id: "...", question: "...", resolves_cause_ids: [...], source_refs: [...] } ],
+    recommended_actions: [ { action_id: "...", action: "...", description: "...", resolves_cause_ids: [...], source_refs: [...] } ],
+    residual_risks: [ { risk: "...", source_refs: [...] } ],
+    confidence: <number 0..1>
+  }
+})
+```
+
+IMPORTANT: `control_intent_id`, `execution_id`, `schema_version` are TOP-LEVEL
+arguments of `diagnosis_submit`, NOT fields inside `payload`. `cited_condition_ids`
+must reference condition_ids from `diagnosis_case.policy_trace` that have
+`contributed_to_decision: true`. Every `source_ref` must come from the
+`allowed_source_refs` returned by `diagnosis_get`. The payload must NOT contain
+any of: `new_outcome`, `override_decision`, `approved`, `settled`,
+`transition_stage`, `new_certificate`.
+
 ## Outcome-specific constraints
 
 **GO certificate:** explain why all conditions passed. Do NOT create blocking

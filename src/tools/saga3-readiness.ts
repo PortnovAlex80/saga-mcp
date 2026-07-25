@@ -17,6 +17,7 @@ import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import { getDb } from '../db.js';
 import type { ToolHandler } from '../types.js';
 import { withImmediateTransaction } from './dispatcher.js';
+import { argInt, argStr, SAGA3_TOOL_CALL_SHAPES, SAGA3_ARG_SOURCES } from './saga3-args.js';
 import { readExecutionContextStrict } from '../saga3/authority/authorize-saga-tool-call.js';
 import {
   DISCOVERY_READINESS_ASSESSMENT_SCHEMA,
@@ -378,17 +379,11 @@ export function createSaga3ReadinessHandlers(
 }
 
 function integerArg(args: Record<string, unknown>, key: string): number {
-  const v = args[key];
-  if (typeof v !== 'number' || !Number.isInteger(v)) {
-    throw new Error(`readiness: '${key}' must be an integer, got ${JSON.stringify(v)}`);
-  }
-  return v;
+  const shape = key === 'control_intent_id' ? SAGA3_TOOL_CALL_SHAPES.readiness_get : SAGA3_TOOL_CALL_SHAPES.readiness_submit;
+  return argInt('readiness', args, key, { source: SAGA3_ARG_SOURCES[key as keyof typeof SAGA3_ARG_SOURCES] ?? key, expected: shape });
 }
 
 function stringArg(args: Record<string, unknown>, key: string): string {
-  const v = args[key];
-  if (typeof v !== 'string' || v.trim() === '') {
-    throw new Error(`readiness: '${key}' must be a non-empty string`);
-  }
-  return v;
+  const shape = key === 'execution_id' ? SAGA3_TOOL_CALL_SHAPES.readiness_get : SAGA3_TOOL_CALL_SHAPES.readiness_submit;
+  return argStr('readiness', args, key, { source: SAGA3_ARG_SOURCES[key as keyof typeof SAGA3_ARG_SOURCES] ?? key, expected: shape });
 }

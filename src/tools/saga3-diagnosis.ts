@@ -29,6 +29,7 @@ import type { ToolHandler } from '../types.js';
 // submit handler does NOT wrap insertDiagnosisReportAtomically in an outer
 // transaction — that caused a nested-transaction error in the live D5 smoke.
 // The repository function is itself the single atomic boundary.)
+import { argInt, argStr, SAGA3_TOOL_CALL_SHAPES, SAGA3_ARG_SOURCES } from './saga3-args.js';
 import { readExecutionContextStrict } from '../saga3/authority/authorize-saga-tool-call.js';
 import {
   DISCOVERY_DIAGNOSIS_REPORT_SCHEMA,
@@ -248,19 +249,13 @@ export interface DiagnosisProvenance {
 }
 
 function integerArg(args: Record<string, unknown>, key: string): number {
-  const v = args[key];
-  if (typeof v !== 'number' || !Number.isInteger(v)) {
-    throw new Error(`diagnosis: '${key}' must be an integer, got ${JSON.stringify(v)}`);
-  }
-  return v;
+  const shape = key === 'control_intent_id' ? SAGA3_TOOL_CALL_SHAPES.diagnosis_get : SAGA3_TOOL_CALL_SHAPES.diagnosis_submit;
+  return argInt('diagnosis', args, key, { source: SAGA3_ARG_SOURCES[key as keyof typeof SAGA3_ARG_SOURCES] ?? key, expected: shape });
 }
 
 function stringArg(args: Record<string, unknown>, key: string): string {
-  const v = args[key];
-  if (typeof v !== 'string' || v.trim() === '') {
-    throw new Error(`diagnosis: '${key}' must be a non-empty string`);
-  }
-  return v;
+  const shape = key === 'execution_id' ? SAGA3_TOOL_CALL_SHAPES.diagnosis_get : SAGA3_TOOL_CALL_SHAPES.diagnosis_submit;
+  return argStr('diagnosis', args, key, { source: SAGA3_ARG_SOURCES[key as keyof typeof SAGA3_ARG_SOURCES] ?? key, expected: shape });
 }
 
 // Re-export so the composition root / tests can reference the contract version.

@@ -3,6 +3,7 @@ import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import { getDb } from '../db.js';
 import type { ToolHandler } from '../types.js';
 import { withImmediateTransaction } from './dispatcher.js';
+import { argInt, argStr, SAGA3_TOOL_CALL_SHAPES, SAGA3_ARG_SOURCES } from './saga3-args.js';
 import { readExecutionContextStrict } from '../saga3/authority/authorize-saga-tool-call.js';
 import {
   DISCOVERY_NORMALIZATION_PROPOSAL_SCHEMA,
@@ -284,13 +285,14 @@ export function createSaga3NormalizationHandlers(
 }
 
 function integerArg(args: Record<string, unknown>, name: string): number {
-  const value = args[name];
-  if (!Number.isInteger(value)) throw new Error(`${name} must be an integer`);
-  return value as number;
+  // normalization_get uses control_intent_id+source_submission_id+execution_id;
+  // normalization_submit adds schema_version. Pick the shape by whether schema_version
+  // is among the args (submit) or not (get).
+  const shape = args.schema_version !== undefined ? SAGA3_TOOL_CALL_SHAPES.normalization_submit : SAGA3_TOOL_CALL_SHAPES.normalization_get;
+  return argInt('normalization', args, name, { source: SAGA3_ARG_SOURCES[name as keyof typeof SAGA3_ARG_SOURCES] ?? name, expected: shape });
 }
 
 function stringArg(args: Record<string, unknown>, name: string): string {
-  const value = args[name];
-  if (typeof value !== 'string' || value === '') throw new Error(`${name} must be a non-empty string`);
-  return value;
+  const shape = args.schema_version !== undefined ? SAGA3_TOOL_CALL_SHAPES.normalization_submit : SAGA3_TOOL_CALL_SHAPES.normalization_get;
+  return argStr('normalization', args, name, { source: SAGA3_ARG_SOURCES[name as keyof typeof SAGA3_ARG_SOURCES] ?? name, expected: shape });
 }

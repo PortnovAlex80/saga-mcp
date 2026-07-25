@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import { getDb } from '../db.js';
 import { withImmediateTransaction } from './dispatcher.js';
+import { argInt, argStr, SAGA3_TOOL_CALL_SHAPES, SAGA3_ARG_SOURCES } from './saga3-args.js';
 import type { ToolHandler } from '../types.js';
 import { DISCOVERY_INTENT_KIND, DISCOVERY_WORK_INTENT_SCHEMA } from '../saga3/domain/work-intent.js';
 import { DISCOVERY_PROPOSAL_SCHEMA } from '../saga3/domain/discovery-proposal.js';
@@ -197,17 +198,28 @@ export function createSaga3ProposalHandlers(
 }
 
 function readSubmission(args: Record<string, unknown>): SubmitProposal {
-  const intentId = args.intent_id as number;
-  const taskId = args.task_id as number;
-  const executionId = args.execution_id as string;
-  const kind = args.kind as string;
-  const schemaVersion = args.schema_version as string;
+  const intentId = argInt('proposal_submit', args, 'intent_id', {
+    source: SAGA3_ARG_SOURCES.intent_id, expected: SAGA3_TOOL_CALL_SHAPES.proposal_submit,
+  });
+  const taskId = argInt('proposal_submit', args, 'task_id', {
+    source: SAGA3_ARG_SOURCES.task_id, expected: SAGA3_TOOL_CALL_SHAPES.proposal_submit,
+  });
+  const executionId = argStr('proposal_submit', args, 'execution_id', {
+    source: SAGA3_ARG_SOURCES.execution_id, expected: SAGA3_TOOL_CALL_SHAPES.proposal_submit,
+  });
+  // kind/schema_version use argStr with their source, then narrowed by the handler.
+  const kind = argStr('proposal_submit', args, 'kind', {
+    source: SAGA3_ARG_SOURCES.kind, expected: SAGA3_TOOL_CALL_SHAPES.proposal_submit,
+  });
+  const schemaVersion = argStr('proposal_submit', args, 'schema_version', {
+    source: SAGA3_ARG_SOURCES.schema_version, expected: SAGA3_TOOL_CALL_SHAPES.proposal_submit,
+  });
   const payload = args.payload;
-  if (!Number.isInteger(intentId)) throw new Error('proposal_submit: intent_id must be an integer');
-  if (!Number.isInteger(taskId)) throw new Error('proposal_submit: task_id must be an integer');
-  if (typeof executionId !== 'string' || executionId === '') throw new Error('proposal_submit: execution_id must be a non-empty string');
-  if (typeof kind !== 'string') throw new Error('proposal_submit: kind must be a string');
-  if (typeof schemaVersion !== 'string') throw new Error('proposal_submit: schema_version must be a string');
-  if (payload === undefined) throw new Error('proposal_submit: payload is required');
+  if (payload === undefined) {
+    throw new Error(
+      `proposal_submit: 'payload' is required (the typed discovery proposal object; must be a top-level arg). ` +
+      `Expected shape: ${SAGA3_TOOL_CALL_SHAPES.proposal_submit}`,
+    );
+  }
   return { intent_id: intentId, task_id: taskId, execution_id: executionId, kind, schema_version: schemaVersion, payload };
 }

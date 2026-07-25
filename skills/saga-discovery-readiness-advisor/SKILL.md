@@ -45,6 +45,50 @@ Proposal, and your assessment cannot change the discovery result.
    `schema_version`, and the payload.
 5. Call `worker_done` exactly once. Then stop — do not claim another task.
 
+## Exact call shapes (use these argument shapes literally)
+
+`readiness_get` (read-only, step 2):
+```
+readiness_get({
+  control_intent_id: <integer from task_get metadata.control_intent_id>,
+  execution_id: <string, your execution_id>
+})
+```
+
+`readiness_submit` (step 4 — exactly ONCE):
+```
+readiness_submit({
+  control_intent_id: <integer, same as readiness_get>,
+  execution_id: <string>,
+  schema_version: "saga3.discovery-readiness-assessment.v1",
+  payload: {
+    proposal_id: <integer from readiness_get>,
+    proposal_content_hash: "<64-char hex from readiness_get>",
+    overall_readiness: "ready" | "conditionally_ready" | "not_ready" | "inconclusive",
+    dimension_assessments: {
+      problem_clarity:        { status: "sufficient"|"partial"|"insufficient"|"unknown", rationale: "...", source_refs: [...] },
+      scope_boundedness:      { status: "...", rationale: "...", source_refs: [...] },
+      stakeholder_coverage:   { status: "...", rationale: "...", source_refs: [...] },
+      assumption_visibility:  { status: "...", rationale: "...", source_refs: [...] },
+      unknowns_manageability: { status: "...", rationale: "...", source_refs: [...] },
+      risk_visibility:        { status: "...", rationale: "...", source_refs: [...] },
+      evidence_grounding:     { status: "...", rationale: "...", source_refs: [...] }
+    },
+    blocking_gaps:      [ { code: "...", description: "...", source_refs: [...] } ],
+    non_blocking_gaps:  [ { code: "...", description: "...", source_refs: [...] } ],
+    recommended_next_action: "proceed_to_settlement" | "request_clarification" | "repeat_discovery" | "defer" | "reject" | "manual_review",
+    confidence: <number 0..1>,
+    rationale: "..."
+  }
+})
+```
+
+IMPORTANT: `control_intent_id`, `execution_id`, `schema_version` are TOP-LEVEL
+arguments of `readiness_submit`, NOT fields inside `payload`. `payload` contains
+ONLY the assessment object (proposal_id + dimensions + gaps + ...). Every
+`source_ref` in every dimension and gap MUST come from the `allowed_source_refs`
+returned by `readiness_get`.
+
 ## If the source cannot support an assessment
 
 If the Proposal genuinely lacks the information needed to classify a
