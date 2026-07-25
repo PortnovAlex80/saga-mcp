@@ -1,3 +1,5 @@
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import path from 'node:path';
 import type {
   OrchestrationEngine,
   OrchestrationRunResult,
@@ -707,6 +709,13 @@ export class Saga3DiscoveryEngine implements OrchestrationEngine {
       // there must NOT propagate to the engine's outer catch and rewrite a
       // successful discovery as 'failed'. Capture it as a readiness failure.
       try {
+        // Create filled readiness-call template so the advisor worker can
+        // copy → fill remaining fields → verify → submit, instead of guessing
+        // proposal_id/proposal_content_hash/control_intent_id from memory.
+        this.ensureStageTemplate(workspace.workspaceRoot, epicId, 'readiness', {
+          proposal_id: proposal.id,
+          proposal_content_hash: proposal.content_hash,
+        });
         const assessed = await this.deps.readinessService.assess({
           projectId,
           epicId,
@@ -841,6 +850,13 @@ export class Saga3DiscoveryEngine implements OrchestrationEngine {
       return notRunDiagnosis();
     }
     try {
+      // Create filled diagnosis-call template so the diagnosis worker can
+      // copy → fill remaining fields → verify → submit. Pre-fills the target
+      // tuple (certificate_id/hash/decision) that the model must echo exactly.
+      this.ensureStageTemplate(workspaceRoot, epicId, 'diagnosis', {
+        certificate_id: settlement.certificateId,
+        certificate_hash: settlement.certificateHash,
+      });
       const result = await this.deps.diagnosisService.diagnose({
         projectId,
         epicId,
@@ -1071,5 +1087,42 @@ export class Saga3DiscoveryEngine implements OrchestrationEngine {
       overallReadiness: null, recommendedNextAction: null,
       error: 'advisor assessment was not accepted by the kernel',
     };
+  }
+
+  /**
+   * Create a filled template for a stage (readiness/diagnosis) by copying the
+   * static template from tool-templates/discovery/ and substituting known IDs.
+   * The model reads this file, fills remaining FILL_ placeholders, verifies
+   * against the checklist, and submits. Idempotent: skips if target exists.
+   */
+  private ensureStageTemplate(
+    workspaceRoot: string | undefined,
+    epicId: number,
+    stage: 'readiness' | 'diagnosis',
+    values: Record<string, unknown>,
+  ): void {
+    if (!workspaceRoot) return;
+    const tmplDir = path.join(workspaceRoot, 'tool-templates', 'discovery');
+    const tmplFile = path.join(tmplDir, `${stage}-call-template.json`);
+    if (!existsSync(tmplFile)) return; // templates not installed — skip gracefully
+
+    const destDir = path.join(workspaceRoot, 'docs', 'discovery');
+    const destFile = path.join(destDir, `${stage}-call-${epicId}.json`);
+    if (existsSync(destFile)) return; // already created (restart-safe)
+
+    try {
+      mkdirSync(destDir, { recursive: true });
+      let content = readFileSync(tmplFile, 'utf8');
+      // Substitute known values (proposal_id, certificate_id, etc.)
+      for (const [key, val] of Object.entries(values)) {
+        // Replace both quoted and unquoted FILL_ placeholders for this key's
+        // context. The template uses FILL_ patterns like:
+        //   "proposal_id": "FILL_INTEGER_FROM_TASK_GET..."
+        // We replace the entire value with the real one.
+        const regex = new RegExp(`"FILL_[^"]*${key.toUpperCase()}[^"]*"`, 'gi');
+        content = content.replace(regex, JSON.stringify(val));
+      }
+      writeFileSync(destFile, content);
+    } catch { /* best effort — model can still work without the template */ }
   }
 }
