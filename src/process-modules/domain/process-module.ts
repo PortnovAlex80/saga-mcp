@@ -57,7 +57,12 @@ export interface ExecutionProfileDefinition {
   workIntentKind: string;
   workIntentSchema: SchemaReference;
   taskKind: string;
+  /** Current composed/compatibility skill selected by the existing runner. */
   executionSkill: string;
+  /** Reusable physical execution protocol: tracker, hooks, MCP and recovery. */
+  protocolSkill: string;
+  /** Domain-specific semantic role skill for this node. */
+  semanticSkill: string;
   executionMode: string;
   allowedTools: readonly string[];
   trackerTemplate: string | null;
