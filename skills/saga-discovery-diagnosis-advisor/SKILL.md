@@ -31,9 +31,12 @@ file tools (`Read`, `Write`, `Edit`, `Bash`, `Glob`, `Grep`).
   `new_certificate`.
 
 ## External memory
-The diagnosis-call JSON IS your external memory. Templates live in
-`docs/discovery/tools/` (copied from `tool-templates/discovery/`). COPY
-templates — never recreate.
+The diagnosis-call JSON IS your external memory. The engine ALREADY created
+`docs/discovery/diagnosis-call-<epic_id>.json` with `control_intent_id`,
+`execution_id`, `schema_version`, and `payload.target.*` pre-filled from the
+issued certificate. You MUST NOT copy a fresh template over it — that loses
+the engine-filled values. Only `Edit` the existing file to fill the remaining
+`FILL_` placeholders.
 
 ## Workflow (IN ORDER)
 
@@ -52,13 +55,15 @@ kernel's decomposed `policy_trace`) and EXACT `allowed_source_refs`. The kernel
 ALREADY tells you which conditions passed/failed and emitted reason codes — you
 do NOT re-derive that. Record `certificate`, `policy_trace`, `allowed_source_refs`.
 
-### Step 3: Write the diagnosis-call JSON
-1. `Read` template: `docs/discovery/tools/diagnosis-call-template.json`
-2. `Write` to `docs/discovery/diagnosis-call-<epic_id>.json`
-3. `Edit` the copy: replace **every** `FILL_` from `diagnosis_get`. CRITICAL:
-   - `schema_version` is a TOP-LEVEL arg, NOT inside `payload`
-   - `payload.target.*` must match `diagnosis_case.certificate` EXACTLY:
-     `certificate_id`, `certificate_hash`, `settlement_input_hash`, `decision`
+### Step 3: Fill the diagnosis-call JSON (DO NOT recreate)
+1. `Read` the engine-created file: `docs/discovery/diagnosis-call-<epic_id>.json`
+   (it already has `control_intent_id`, `execution_id`, `schema_version`, and
+   `payload.target.certificate_id` / `certificate_hash` filled by the engine).
+2. `Edit` it: replace **every** remaining `FILL_` from `diagnosis_get`. CRITICAL:
+   - NEVER touch `schema_version` — it is already `saga3.discovery-diagnosis.v1`
+     and a TOP-LEVEL arg (NOT inside `payload`).
+   - `payload.target.settlement_input_hash` and `payload.target.decision` come
+     from `diagnosis_case.certificate` — fill EXACTLY as given.
    - `cause_analysis`: one cause per FAILED contributing condition — `cause_id`,
      `category`, `description`, `severity`, `reason_codes`,
      `cited_condition_ids`, `source_refs`
@@ -67,6 +72,11 @@ do NOT re-derive that. Record `certificate`, `policy_trace`, `allowed_source_ref
    - `information_requests`, `recommended_actions`, `residual_risks`,
      `executive_summary`, `confidence` in [0,1]
    - every `source_ref` from `allowed_source_refs`
+
+**Why:** the engine pre-fills the exact binding values (certificate_id/hash,
+control_intent_id, execution_id, schema_version) so you cannot mis-type them or
+drop a top-level arg. Recreating the JSON from a template loses these and the
+kernel rejects with `schema_version got undefined` or `certificate hash mismatch`.
 
 ### Step 4: Verify the checklist (MANDATORY before submit)
 1. `Read` `docs/discovery/tools/diagnosis-checklist.md`
@@ -94,6 +104,11 @@ diagnosis_submit({
 If the kernel rejects (or throws), do NOT retry — rejection is durable.
 
 ### Step 6: Complete
+1. `Read` `docs/discovery/project-<epic_id>-discovery-stage.md` (the stage
+   tracker, if it exists).
+2. `Edit` the tracker: mark steps 9, 10a, 10b, 11 `[x]`, set
+   `## Current Step: done`.
+3. Then:
 ```
 worker_done({
   task_id: <integer>, worker_id: "<string>", execution_id: "<string>",
@@ -121,6 +136,7 @@ Say so honestly in the cause description, cite the available source, still
 submit. Never fabricate or invent source refs — the kernel rejects unresolved.
 
 ## Do NOT
-Recreate templates · submit without writing+verifying JSON · call a tool that
-returned AUTHORITY_DENIED · hold values in your head · spawn nested agents ·
-invent evidence.
+Recreate templates · **copy a fresh template over the engine-filled
+diagnosis-call JSON** (it loses schema_version + certificate binding) · submit
+without writing+verifying JSON · call a tool that returned AUTHORITY_DENIED ·
+hold values in your head · spawn nested agents · invent evidence.

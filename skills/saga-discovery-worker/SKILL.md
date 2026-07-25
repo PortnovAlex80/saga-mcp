@@ -30,14 +30,20 @@ at startup). You COPY templates — never recreate them from scratch.
 
 ## Your workflow (FOLLOW THESE STEPS IN ORDER)
 
-### Step 0: Open the stage tracker (FIRST THING YOU DO)
+### Step 0: Open or create the stage tracker (FIRST THING YOU DO)
 
-The startup copy already created `docs/discovery/project-<epic_id>-discovery-stage.md`.
-`Read` it. It is the source of truth for `task_id`, `execution_id`, `worker_id`,
-`epic_id`, and `intent_id`.
+`Read` `docs/discovery/project-<epic_id>-discovery-stage.md`. It is the source
+of truth for `task_id`, `execution_id`, `worker_id`, `epic_id`, and `intent_id`.
 
-Do NOT recreate the file. Only `Edit` it to fill `intent_id` (after step 1) and
-to advance `Current Step` after each step.
+**If the file does NOT exist:** copy the template:
+1. `Read` `docs/discovery/tools/stage-tracker.md`
+2. `Write` it to `docs/discovery/project-<epic_id>-discovery-stage.md`
+3. `Edit` the copy: replace `{PROJECT_ID}`, `{EPIC_ID}`, `{TASK_ID}` with your
+   values (you know `epic_id` and `task_id` from the task title / task_get in
+   step 1 — fill `task_id` now, leave `intent_id`/`execution_id` for step 1).
+
+**If the file DOES exist:** only `Edit` it to fill `intent_id` (after step 1)
+and to advance `Current Step` after each step. Do NOT recreate it.
 
 Before every later tool call, re-read the tracker to remind yourself of the
 current step and collected values.
@@ -136,7 +142,7 @@ Mark step 5 `[x]`. Then stop. Do not claim another task.
 
 ## What you must NOT do
 
-- Do NOT recreate the stage tracker file (step 0) — startup already created it.
+- Do NOT recreate the stage tracker file if it already exists (step 0).
 - Do NOT recreate the discovery doc or proposal JSON from scratch — copy the templates.
 - Do NOT call `proposal_submit` without first writing and verifying the JSON file.
 - Do NOT hold values in your head — read the tracker, write to the tracker.

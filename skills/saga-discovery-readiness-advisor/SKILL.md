@@ -22,9 +22,12 @@ file tools (`Read`, `Write`, `Edit`, `Bash`, `Glob`, `Grep`).
   `task_create`, or any stage-mutation tool. Only write: `readiness_submit`.
 
 ## External memory
-The readiness-call JSON IS your external memory. Templates live in
-`docs/discovery/tools/` (copied from `tool-templates/discovery/`). COPY
-templates — never recreate.
+The readiness-call JSON IS your external memory. The engine ALREADY created
+`docs/discovery/readiness-call-<epic_id>.json` with `control_intent_id`,
+`execution_id`, `schema_version`, and `payload.proposal_id` /
+`payload.proposal_content_hash` pre-filled from the canonical Proposal. You
+MUST NOT copy a fresh template over it — that loses the engine-filled values.
+Only `Edit` the existing file to fill the remaining `FILL_` placeholders.
 
 ## Workflow (IN ORDER)
 
@@ -41,18 +44,28 @@ readiness_get({ control_intent_id: <integer>, execution_id: "<string>" })
 Returns immutable Proposal + EXACT `allowed_source_refs`. Record `proposal_id`,
 `proposal_content_hash`, `allowed_source_refs`.
 
-### Step 3: Write the readiness-call JSON
-1. `Read` template: `docs/discovery/tools/readiness-call-template.json`
-2. `Write` to `docs/discovery/readiness-call-<epic_id>.json`
-3. `Edit` the copy: replace **every** `FILL_` from `readiness_get`:
-   - `control_intent_id`, `execution_id`
-   - `payload.proposal_id`, `payload.proposal_content_hash`
+### Step 3: Fill the readiness-call JSON (DO NOT recreate)
+1. `Read` the engine-created file: `docs/discovery/readiness-call-<epic_id>.json`
+   (it already has `control_intent_id`, `execution_id`, `schema_version`, and
+   `payload.proposal_id` / `proposal_content_hash` filled by the engine).
+2. `Edit` it: replace **every** remaining `FILL_` from `readiness_get`. CRITICAL:
+   - NEVER touch `schema_version` — it is already
+     `"saga3.discovery-readiness-assessment.v1"` and a TOP-LEVEL arg (NOT inside
+     `payload`).
+   - If `control_intent_id` / `execution_id` / `proposal_id` / `proposal_content_hash`
+     are still `FILL_`, fill them from `readiness_get` — but normally the engine
+     already did this.
    - all SEVEN dimensions: `problem_clarity`, `scope_boundedness`,
      `stakeholder_coverage`, `assumption_visibility`, `unknowns_manageability`,
      `risk_visibility`, `evidence_grounding`
    - `overall_readiness`, `blocking_gaps`, `non_blocking_gaps` (unique codes),
      `recommended_next_action`, `confidence` in [0,1], `rationale`
    - every `source_ref` from `allowed_source_refs`
+
+**Why:** the engine pre-fills the exact binding values so you cannot mis-type
+them or drop a top-level arg. Recreating the JSON from a template loses these
+and the kernel rejects with `schema_version got undefined` or
+`proposal hash mismatch`.
 
 ### Step 4: Verify the checklist (MANDATORY before submit)
 1. `Read` `docs/discovery/tools/readiness-checklist.md`
@@ -75,6 +88,11 @@ readiness_submit({
 If the kernel rejects (or throws), do NOT retry — rejection is durable.
 
 ### Step 6: Complete
+1. `Read` `docs/discovery/project-<epic_id>-discovery-stage.md` (the stage
+   tracker, if it exists).
+2. `Edit` the tracker: mark steps 6, 7a, 7b, 8 `[x]`, set
+   `## Current Step: readiness_done`.
+3. Then:
 ```
 worker_done({
   task_id: <integer>, worker_id: "<string>", execution_id: "<string>",
@@ -92,6 +110,7 @@ Classify an under-supported dimension honestly (`insufficient`/`unknown`), recor
 in `blocking_gaps`, still submit. Never fabricate or skip a dimension.
 
 ## Do NOT
-Recreate templates · submit without writing+verifying JSON · call a tool that
-returned AUTHORITY_DENIED · hold values in your head · spawn nested agents ·
-invent evidence.
+Recreate templates · **copy a fresh template over the engine-filled
+readiness-call JSON** (it loses schema_version + proposal binding) · submit
+without writing+verifying JSON · call a tool that returned AUTHORITY_DENIED ·
+hold values in your head · spawn nested agents · invent evidence.
