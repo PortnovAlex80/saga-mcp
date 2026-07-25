@@ -319,6 +319,15 @@ export class Saga3DiscoveryEngine implements OrchestrationEngine {
     // proposal-call JSON with known IDs (epic_id/task_id/intent_id). Idempotent
     // (restart-safe): skips files that already exist. Regression-protected by
     // tests/saga3/d1-workspace-creation.test.mjs.
+    //
+    // ⚠️ DO NOT REMOVE THIS CALL. It was deleted once (commit 12952be, "engine
+    // no longer touches the filesystem") and the deletion went uncaught because
+    // no test covered workspace creation. The consequence surfaced 5 commits
+    // later on epic 33: tools/ drifted out of sync, per-epic tracker had to be
+    // created by hand, the diagnosis worker kept losing schema_version. See the
+    // DO-NOT-DELETE block at the top of ensure-discovery-workspace.ts for the
+    // full regression story. If you want to relocate the logic, MOVE it — keep
+    // the test green.
     ensureDiscoveryWorkspace({
       workspaceRoot: workspace.workspaceRoot ?? '',
       epicId,
