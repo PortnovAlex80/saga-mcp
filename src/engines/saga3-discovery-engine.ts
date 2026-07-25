@@ -106,6 +106,15 @@ const DISCOVERY_ALLOWED_TOOLS = [
   'note_list',
   'proposal_submit',
   'worker_done',
+  // File tools for writing the mandatory discovery .md document.
+  // The authority gateway only checks mcp__saga__* tools; these are listed
+  // here for documentation and skill sync, not for gateway enforcement.
+  'Write',
+  'Read',
+  'Edit',
+  'Bash',
+  'Glob',
+  'Grep',
 ];
 
 /**
