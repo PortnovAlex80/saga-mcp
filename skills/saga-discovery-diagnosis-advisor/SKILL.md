@@ -64,11 +64,14 @@ do NOT re-derive that. Record `certificate`, `policy_trace`, `allowed_source_ref
      and a TOP-LEVEL arg (NOT inside `payload`).
    - `payload.target.settlement_input_hash` and `payload.target.decision` come
      from `diagnosis_case.certificate` — fill EXACTLY as given.
-   - `cause_analysis`: one cause per FAILED contributing condition — `cause_id`,
+   - `cause_analysis`: one cause per contributing condition — `cause_id`,
      `category`, `description`, `severity`, `reason_codes`,
      `cited_condition_ids`, `source_refs`
    - `cited_condition_ids` reference `policy_trace` entries where
-     `contributed_to_decision === true`
+     `contributed_to_decision === true` AND match the branch/evaluation rule
+     for the certificate decision (see "CRITICAL: cited_condition_ids
+     branch/evaluation rule" below — citing the wrong branch/evaluation is
+     the #1 rejection reason)
    - `information_requests`, `recommended_actions`, `residual_risks`,
      `executive_summary`, `confidence` in [0,1]
    - every `source_ref` from `allowed_source_refs`
@@ -83,8 +86,10 @@ kernel rejects with `schema_version got undefined` or `certificate hash mismatch
 2. `Read` your `docs/discovery/projects/<epic_id>/diagnosis-call-<epic_id>.json` back
 3. Verify **EVERY** item. If any fails, `Edit`, re-read, re-check. Especially:
    - `schema_version` at TOP LEVEL (not in `payload`)
-   - `cited_condition_ids` reference conditions with
-     `contributed_to_decision === true`
+   - `cited_condition_ids` match the **branch/evaluation rule** for the
+     certificate decision (see "CRITICAL" section above). For CLARIFY: cite
+     ONLY clarify-branch FAILED conditions. Do NOT cite `worker_requested_clarify`
+     (it is `passed`, not `failed`).
    - **CLARIFY**: at least one cause; every certificate-emitted reason code is
      covered by some cause's `reason_codes`
    - **GO**: NO cause has `severity == "blocking"`
@@ -123,13 +128,58 @@ Then stop. Do not claim another task.
 (target + cause_analysis + ...). `cited_condition_ids` must reference
 `policy_trace` conditions with `contributed_to_decision: true`.
 
+## CRITICAL: cited_condition_ids branch/evaluation rule
+
+The kernel validator enforces a STRICT rule on which policy_trace conditions
+a cause may cite, depending on the certificate `decision`. Getting this wrong
+is the #1 diagnosis rejection reason (after schema_version, now fixed).
+
+Each `policy_trace` condition has:
+- `condition_id` — e.g. `worker_requested_clarify`, `no_blocking_gaps`
+- `branch` — `go` | `clarify` | `reject` (which decision branch it belongs to)
+- `evaluation` — `passed` | `failed` (did the condition hold?)
+- `contributed_to_decision` — true | false
+
+**The rule (memorize this):**
+
+| Certificate decision | A cause may cite ONLY conditions where |
+|---|---|
+| `go` | `branch === 'go'` AND `evaluation === 'passed'` |
+| `clarify` | `branch === 'clarify'` AND `evaluation === 'failed'` |
+| `reject` | `branch === 'reject'` AND `evaluation === 'passed'` |
+
+**Plain-language meaning:**
+- **GO** → explain why all go-branch conditions PASSED (the idea met every bar).
+- **CLARIFY** → explain why a clarify-branch condition FAILED to be satisfied
+  (e.g. a readiness dimension was insufficient → the "evidence_sufficient"
+  clarify-branch condition FAILED). You are explaining an OBSTACLE, not a success.
+- **REJECT** → explain why a reject-branch condition PASSED (e.g. a fatal risk
+  was confirmed → the "fatal_risk_present" reject-branch condition PASSED).
+
+**Common mistake (AVOID):** for a CLARIFY decision, do NOT cite
+`worker_requested_clarify`. That condition has `branch='clarify'` but
+`evaluation='passed'` (the worker successfully requested clarify). Citing it
+explains "why clarify happened" (tautology), not "why the idea could not
+proceed". The validator rejects this.
+
+**What to cite for CLARIFY instead:** look in the policy_trace for
+clarify-branch conditions with `evaluation='failed'`. If the readiness
+assessment flagged `evidence_grounding: insufficient`, there is typically a
+clarify-branch condition like `evidence_sufficient` that FAILED. Cite THAT —
+it explains the real obstacle. If no clarify-branch failed condition exists
+in the trace, cite nothing in `cited_condition_ids` (empty array is allowed)
+and explain the obstacle in the cause `description` from the readiness
+assessment's blocking_gaps instead.
+
 ## Outcome-specific constraints
-- **GO**: explain why all conditions passed. NO blocking causes. Residual risks
-  expected; usual action `proceed_with_monitoring`.
+- **GO**: explain why all go-branch conditions passed. NO blocking causes.
+  Residual risks expected; usual action `proceed_with_monitoring`.
 - **CLARIFY**: at least one cause; cover every certificate reason code. Turn
-  blocking gaps into `information_requests`. Do NOT claim GO or REJECT.
-- **REJECT**: at least one cause with `severity: "blocking"`. Recommendations
-  may describe reconsideration conditions — never promise an outcome change.
+  blocking gaps into `information_requests`. Cite clarify-branch FAILED
+  conditions (see rule above). Do NOT claim GO or REJECT.
+- **REJECT**: at least one cause with `severity: "blocking"`. Cite
+  reject-branch PASSED conditions. Recommendations may describe
+  reconsideration conditions — never promise an outcome change.
 
 ## If the case cannot support a report
 Say so honestly in the cause description, cite the available source, still
