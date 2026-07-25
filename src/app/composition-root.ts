@@ -28,6 +28,12 @@ import {
   type SagaRuntimeConfig,
 } from '../runtime/saga-runtime-config.js';
 import { isSaga3DiscoveryMode } from '../runtime/orchestration-mode.js';
+import {
+  ExistingOrchestrationEngineAdapter,
+  ProcessModuleRuntimeEngine,
+} from '../process-modules/application/process-module-runtime-engine.js';
+import { createBuiltInProcessModuleRegistry } from '../process-modules/modules/catalog.js';
+import { DISCOVERY_PROCESS_MODULE_REF } from '../process-modules/modules/discovery/discovery-process-module.js';
 
 export interface Saga2CompositionOverrides {
   config?: SagaRuntimeConfig;
@@ -79,18 +85,16 @@ export function createSaga2Application(
  *
  * This is the single composition-root switch (roadmap §5.2):
  *
- *   SAGA_ORCHESTRATION_MODE=saga3-discovery -> Saga3DiscoveryEngine
+ *   SAGA_ORCHESTRATION_MODE=saga3-discovery -> ProcessModuleRuntimeEngine
+ *                                                -> Product Discovery module
+ *                                                -> Saga3DiscoveryEngine adapter
  *   SAGA_ORCHESTRATION_MODE=v2|v3|saga2     -> Saga2Engine
  *
- * An unknown mode never reaches here — parseOrchestrationMode (runtime/
- * orchestration-mode.ts) rejects it at config-load time, so there is no silent
- * fallback to the wrong engine. isSaga3DiscoveryMode is the one condition that
- * decides engine selection; requiresBackgroundEngine is the one condition that
- * decides whether the tracker spawns a background process. Both live in the
- * same module so the two decisions can never disagree.
- *
- * The Saga 3 discovery engine reuses the shared persistence/worker layer.
- * Product worker, advisor and settlement layers are added in D1–D6.
+ * The Discovery-specific engine is now an execution adapter behind the generic
+ * Process Module boundary. Its proven D1-D5 flow is preserved while module
+ * identity, contracts, profiles and local outcome projection are supplied by
+ * the Process Module registry. New modules can be registered without extending
+ * the application-facing OrchestrationEngine contract.
  */
 function selectEngine(
   config: SagaRuntimeConfig,
@@ -125,7 +129,7 @@ function selectEngine(
       host,
       runtimePersistence,
     });
-    return new Saga3DiscoveryEngine({
+    const discoveryEngine = new Saga3DiscoveryEngine({
       config,
       workerExecutorFactory,
       persistence,
@@ -136,6 +140,13 @@ function selectEngine(
       settlementService,
       diagnosisService,
     });
+
+    const registry = createBuiltInProcessModuleRegistry();
+    return new ProcessModuleRuntimeEngine(
+      registry,
+      DISCOVERY_PROCESS_MODULE_REF,
+      new ExistingOrchestrationEngineAdapter(DISCOVERY_PROCESS_MODULE_REF, discoveryEngine),
+    );
   }
   // Every other recognised mode (v2 / v3 / saga2) selects Saga2Engine. An
   // unknown mode never reaches here — parseOrchestrationMode rejects it at
