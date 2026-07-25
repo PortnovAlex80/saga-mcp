@@ -1,5 +1,3 @@
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
-import path from 'node:path';
 import type {
   OrchestrationEngine,
   OrchestrationRunResult,
@@ -298,11 +296,6 @@ export class Saga3DiscoveryEngine implements OrchestrationEngine {
       generationKey: discoveryGenerationKey(intent.id),
     });
     if (!intent.projected_task_id) rt.setProjectedTask(intent.id, taskId);
-
-    // Create the discovery workspace files (stage tracker + tool templates).
-    // The model reads these instead of holding structure in context. Idempotent:
-    // only creates if the files don't exist yet (restart-safe).
-    this.ensureDiscoveryWorkspace(workspace.workspaceRoot, epicId, projectId, taskId);
 
     const preparation = rt.prepareIntentForExecution(intent.id, taskId);
     if (preparation.state === 'active') {
@@ -1064,114 +1057,5 @@ export class Saga3DiscoveryEngine implements OrchestrationEngine {
       overallReadiness: null, recommendedNextAction: null,
       error: 'advisor assessment was not accepted by the kernel',
     };
-  }
-
-  /**
-   * Create the discovery workspace files: stage tracker + tool-call templates.
-   * The model reads these instead of holding structure in context — it fills in
-   * values and marks steps done. Idempotent: skips files that already exist
-   * (restart-safe). Uses node:fs directly (the engine already reads/writes the
-   * workspace for the worker substrate).
-   */
-  private ensureDiscoveryWorkspace(
-    workspaceRoot: string | undefined,
-    epicId: number,
-    projectId: number,
-    taskId: number,
-  ): void {
-    if (!workspaceRoot) return;
-    const dir = path.join(workspaceRoot, 'docs', 'discovery');
-    const toolsDir = path.join(dir, 'tools');
-    try {
-      mkdirSync(dir, { recursive: true });
-      mkdirSync(toolsDir, { recursive: true });
-    } catch { /* dir exists */ }
-
-    // Stage tracker — only create if absent (restart preserves progress).
-    const trackerPath = path.join(dir, `project-${epicId}-discovery-stage.md`);
-    if (!existsSync(trackerPath)) {
-      const tracker = `# Discovery Stage Tracker — Project ${projectId} / Epic ${epicId}
-
-## Collected Values (fill after task_get)
-- task_id: ${taskId}
-- execution_id: "<fill from your system prompt>"
-- intent_id: <fill from task_get metadata.work_intent_id>
-- epic_id: ${epicId}
-- worker_id: "<fill from your system prompt>"
-
-## Step Progress (update [x] after each step)
-- [ ] 1. task_get({ id: ${taskId} }) — get intent_id
-- [ ] 2. Investigate context: repository_checkout_list, artifact_list, Read/Glob/Grep (3-4 calls max)
-- [ ] 3. Write discovery-${epicId}.md (use template at tools/discovery-doc-template.md)
-- [ ] 4a. Fill proposal-call-${epicId}.json (copy template from tools/proposal-call-template.json)
-- [ ] 4b. Read it back, verify ALL fields present and correct types
-- [ ] 4c. proposal_submit — submit using verified values
-- [ ] 5. worker_done({ task_id, worker_id, execution_id, result }) — close task
-
-## Current Step: 1
-## Errors: (none)
-`;
-      try { writeFileSync(trackerPath, tracker); } catch { /* best effort */ }
-    }
-
-    // Discovery document template.
-    const docTemplate = path.join(toolsDir, 'discovery-doc-template.md');
-    if (!existsSync(docTemplate)) {
-      try { writeFileSync(docTemplate, `# Discovery: <idea name>
-
-## Problem
-<1-2 paragraphs: what problem or opportunity does this idea address?>
-
-## Context
-<what you observed in the workspace, repo, notes, artifacts>
-
-## Users and Stakeholders
-- <stakeholder 1>
-- <stakeholder 2>
-
-## Candidate Scope
-<1 paragraph: the minimum useful product scope>
-
-## Assumptions
-- <assumption 1>
-
-## Unknowns
-- <what you could not determine>
-
-## Risks
-- <technical/regulatory/adoption risk>
-
-## Evidence
-- <file path, note, or observation you relied on>
-
-## Recommendation: <go | clarify | reject>
-<rationale grounded in the above sections>
-`); } catch { /* best effort */ }
-    }
-
-    // Proposal-call template — model fills this and submits.
-    const proposalTemplate = path.join(toolsDir, 'proposal-call-template.json');
-    if (!existsSync(proposalTemplate)) {
-      try { writeFileSync(proposalTemplate, `{
-  "intent_id": <INTEGER from task_get metadata.work_intent_id>,
-  "task_id": ${taskId},
-  "execution_id": "<STRING from your system prompt>",
-  "kind": "discovery",
-  "schema_version": "saga3.discovery-proposal.v1",
-  "payload": {
-    "problem_statement": "<from discovery doc Problem section>",
-    "observed_context": "<from discovery doc Context section>",
-    "stakeholders_or_actors": ["<from Users section>"],
-    "assumptions": ["<from Assumptions section>"],
-    "unknowns": ["<from Unknowns section>"],
-    "risks": ["<from Risks section>"],
-    "candidate_scope": "<from Candidate Scope section>",
-    "evidence_refs": ["<from Evidence section>"],
-    "recommended_outcome": "<go | clarify | reject | defer | inconclusive | failed>",
-    "rationale": "<from Recommendation section>"
-  }
-}
-`); } catch { /* best effort */ }
-    }
   }
 }
