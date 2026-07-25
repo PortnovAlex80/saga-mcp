@@ -98,10 +98,14 @@ export function validateDiagnosisReport(
     }
   }
 
-  // 2. schema_version.
-  if (payload.schema_version !== 'saga3.discovery-diagnosis.v1') {
-    errors.push(`field 'schema_version' must be 'saga3.discovery-diagnosis.v1', got ${JSON.stringify(payload.schema_version)}`);
-  }
+  // 2. schema_version is enforced at the MCP handler boundary (saga3-diagnosis.ts)
+  // as a TOP-LEVEL arg, NOT inside payload. Checking payload.schema_version here
+  // was a bug: the handler passes args.payload (without schema_version) to this
+  // validator, so the check always read `undefined` and rejected every
+  // diagnosis_submit call whose schema_version was correctly placed top-level
+  // (i.e. every call that followed the template + SKILL contract). Epic 32/34
+  // rejections ("schema_version got undefined") were this false positive.
+  // Regression-guarded by tests/saga3/d5-diagnosis-validator.test.mjs.
 
   // 3. executive_summary non-empty string.
   if (typeof payload.executive_summary !== 'string' || payload.executive_summary.trim() === '') {

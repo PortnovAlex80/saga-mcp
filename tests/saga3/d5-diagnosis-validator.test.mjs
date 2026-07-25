@@ -670,3 +670,41 @@ test('D5 validator: valid CLARIFY diagnosis citing failed clarify conditions acc
   };
   validReportAccepts(c, r);
 });
+
+// Regression: payload MUST be accepted even WITHOUT schema_version in payload.
+// schema_version is a TOP-LEVEL arg of diagnosis_submit (enforced at the MCP
+// handler boundary in saga3-diagnosis.ts), never inside payload. Previously
+// discovery-diagnosis-validator.ts:102 checked payload.schema_version, which
+// was always undefined (handler passes args.payload without schema_version),
+// causing every diagnosis_submit to be falsely rejected with
+// "schema_version got undefined". Epic 32/34 diagnosis failures were this bug.
+test('regression: payload without schema_version is valid (schema_version is top-level arg)', () => {
+  const c = buildDiagnosisCase({
+    epic_id: 10,
+    certificate: {
+      id: 100, hash: 'c'.repeat(64), decision: 'clarify',
+      reason_codes: ['CLARIFY_BLOCKING_GAPS'],
+      policy_version: 'saga3.discovery-settlement-policy.v1', policy_hash: 'p'.repeat(64),
+      settlement_id: 50, settlement_input_hash: 'i'.repeat(64),
+    },
+    proposal: { id: 1, hash: 'a'.repeat(64), payload: proposal() },
+    readiness: { status: 'accepted_by_kernel', assessment_id: 7, hash: 'b'.repeat(64),
+      payload: readyAssessment({ blocking_gaps: [{ code: 'G1', description: 'g', source_refs: ['$.problem_statement'] }] }) },
+  });
+  // NO schema_version field — mirrors what the handler actually passes.
+  const r = {
+    target: { certificate_id: 100, certificate_hash: 'c'.repeat(64), settlement_input_hash: 'i'.repeat(64), decision: 'clarify' },
+    executive_summary: 'Blocking gaps prevent proceeding.',
+    cause_analysis: [{
+      cause_id: 'C1', category: 'blocking_gap', description: 'Blocking gaps remain.',
+      severity: 'blocking', reason_codes: ['CLARIFY_BLOCKING_GAPS'],
+      cited_condition_ids: ['no_blocking_gaps'], // clarify-branch FAILED
+      source_refs: ['certificate:100'],
+    }],
+    information_requests: [], recommended_actions: [], residual_risks: [], confidence: 0.6,
+  };
+  const v = validateDiagnosisReport(r, c);
+  assert.equal(v.valid, true, `payload without schema_version must be valid; got: ${JSON.stringify(v.errors)}`);
+  assert.ok(!v.errors.some(e => e.includes('schema_version')),
+    `validator must NOT emit schema_version errors for payload; got: ${JSON.stringify(v.errors)}`);
+});
