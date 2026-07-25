@@ -15,7 +15,7 @@ plus file tools (`Read`, `Write`, `Edit`, `Bash`, `Glob`, `Grep`).
 
 ## External memory
 The normalization-call JSON IS your external memory. The engine ALREADY created
-`docs/discovery/normalization-call-<epic_id>.json` with `control_intent_id`,
+`docs/discovery/projects/<epic_id>/normalization-call-<epic_id>.json` with `control_intent_id`,
 `source_submission_id`, `execution_id`, `schema_version`, and `source_raw_hash`
 pre-filled from the raw submission. You MUST NOT copy a fresh template over it —
 that loses the engine-filled values. Only `Edit` the existing file to fill the
@@ -45,7 +45,7 @@ diagnostics, and the raw payload.
 
 ### Step 3: Fill the normalization-call JSON (DO NOT recreate)
 1. `Read` the engine-created file:
-   `docs/discovery/normalization-call-<epic_id>.json`
+   `docs/discovery/projects/<epic_id>/normalization-call-<epic_id>.json`
    (it already has `control_intent_id`, `source_submission_id`,
    `execution_id`, `schema_version`, `source_raw_hash` filled by the engine).
 2. `Edit` it: replace **every** remaining `FILL_` from `normalization_get`.
@@ -60,7 +60,7 @@ diagnostics, and the raw payload.
 
 ### Step 4: Verify the checklist (MANDATORY before submit)
 1. `Read` `docs/discovery/tools/normalization-checklist.md` (if it exists).
-2. `Read` your `docs/discovery/normalization-call-<epic_id>.json` back.
+2. `Read` your `docs/discovery/projects/<epic_id>/normalization-call-<epic_id>.json` back.
 3. Verify **EVERY** item. Critical: `schema_version` at TOP LEVEL;
    `control_intent_id` / `source_submission_id` bare ints; `source_field_map`
    paths all exist in the raw source; **no `FILL_` remains**.
@@ -79,7 +79,7 @@ normalization_submit({
 If the kernel rejects (or throws), do NOT retry — rejection is durable.
 
 ### Step 6: Complete
-1. `Read` `docs/discovery/project-<epic_id>-discovery-stage.md` (the stage
+1. `Read` `docs/discovery/projects/<epic_id>/project-<epic_id>-discovery-stage.md` (the stage
    tracker, if it exists).
 2. `Edit` the tracker: mark the normalization steps `[x]`, set
    `## Current Step: normalization_done`.
@@ -87,7 +87,7 @@ If the kernel rejects (or throws), do NOT retry — rejection is durable.
 ```
 worker_done({
   task_id: <integer>, worker_id: "<string>", execution_id: "<string>",
-  result: "Normalization submitted (accepted|rejected). File: docs/discovery/normalization-call-<epic_id>.json."
+  result: "Normalization submitted (accepted|rejected). File: docs/discovery/projects/<epic_id>/normalization-call-<epic_id>.json."
 })
 ```
 Then stop. Do not claim another task.

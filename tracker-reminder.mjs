@@ -5,7 +5,7 @@
 // stdin: JSON { tool_name, tool_input, tool_result, cwd, ... }
 // stdout: JSON { additionalContext: "..." } or {} (no reminder)
 
-import { readFileSync, existsSync, readdirSync } from 'node:fs';
+import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
 let input = '';
@@ -26,16 +26,32 @@ try {
 // formalization, etc.) not just discovery.
 const cwd = event.cwd || process.cwd();
 const discoveryDir = join(cwd, 'docs', 'discovery');
+const projectsDir = join(discoveryDir, 'projects');
 
-// Find any project-*-stage.md tracker (glob: any stage name)
+// Find any project-*-stage.md tracker. With the per-epic workspace layout
+// (docs/discovery/projects/<N>/project-N-discovery-stage.md) we recurse one
+// level into projects/. Falls back to the legacy flat layout for back-compat.
 let trackerPath = null;
 let trackerContent = null;
 try {
-    const files = existsSync(discoveryDir)
-    ? readdirSync(discoveryDir).filter(f => f.match(/project-\d+-\w+-stage\.md/))
-    : [];
-  if (files.length > 0) {
-    trackerPath = join(discoveryDir, files[0]);
+  const flatten = (dir) => {
+    if (!existsSync(dir)) return [];
+    const out = [];
+    for (const name of readdirSync(dir)) {
+      const p = join(dir, name);
+      try {
+        const st = statSync(p);
+        if (st.isDirectory()) out.push(...readdirSync(p).map(n => join(p, n)));
+        else out.push(p);
+      } catch {}
+    }
+    return out;
+  };
+  // Prefer projects/ subdir; fall back to flat discoveryDir for old epics.
+  const candidates = existsSync(projectsDir) ? flatten(projectsDir) : flatten(discoveryDir);
+  const match = candidates.find(f => f.match(/project-\d+-\w+-stage\.md$/));
+  if (match) {
+    trackerPath = match;
     trackerContent = readFileSync(trackerPath, 'utf8');
   }
 } catch {

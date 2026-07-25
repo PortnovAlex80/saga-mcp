@@ -32,7 +32,7 @@ file tools (`Read`, `Write`, `Edit`, `Bash`, `Glob`, `Grep`).
 
 ## External memory
 The diagnosis-call JSON IS your external memory. The engine ALREADY created
-`docs/discovery/diagnosis-call-<epic_id>.json` with `control_intent_id`,
+`docs/discovery/projects/<epic_id>/diagnosis-call-<epic_id>.json` with `control_intent_id`,
 `execution_id`, `schema_version`, and `payload.target.*` pre-filled from the
 issued certificate. You MUST NOT copy a fresh template over it — that loses
 the engine-filled values. Only `Edit` the existing file to fill the remaining
@@ -56,7 +56,7 @@ ALREADY tells you which conditions passed/failed and emitted reason codes — yo
 do NOT re-derive that. Record `certificate`, `policy_trace`, `allowed_source_refs`.
 
 ### Step 3: Fill the diagnosis-call JSON (DO NOT recreate)
-1. `Read` the engine-created file: `docs/discovery/diagnosis-call-<epic_id>.json`
+1. `Read` the engine-created file: `docs/discovery/projects/<epic_id>/diagnosis-call-<epic_id>.json`
    (it already has `control_intent_id`, `execution_id`, `schema_version`, and
    `payload.target.certificate_id` / `certificate_hash` filled by the engine).
 2. `Edit` it: replace **every** remaining `FILL_` from `diagnosis_get`. CRITICAL:
@@ -80,7 +80,7 @@ kernel rejects with `schema_version got undefined` or `certificate hash mismatch
 
 ### Step 4: Verify the checklist (MANDATORY before submit)
 1. `Read` `docs/discovery/tools/diagnosis-checklist.md`
-2. `Read` your `docs/discovery/diagnosis-call-<epic_id>.json` back
+2. `Read` your `docs/discovery/projects/<epic_id>/diagnosis-call-<epic_id>.json` back
 3. Verify **EVERY** item. If any fails, `Edit`, re-read, re-check. Especially:
    - `schema_version` at TOP LEVEL (not in `payload`)
    - `cited_condition_ids` reference conditions with
@@ -104,7 +104,7 @@ diagnosis_submit({
 If the kernel rejects (or throws), do NOT retry — rejection is durable.
 
 ### Step 6: Complete
-1. `Read` `docs/discovery/project-<epic_id>-discovery-stage.md` (the stage
+1. `Read` `docs/discovery/projects/<epic_id>/project-<epic_id>-discovery-stage.md` (the stage
    tracker, if it exists).
 2. `Edit` the tracker: mark steps 9, 10a, 10b, 11 `[x]`, set
    `## Current Step: done`.
@@ -112,7 +112,7 @@ If the kernel rejects (or throws), do NOT retry — rejection is durable.
 ```
 worker_done({
   task_id: <integer>, worker_id: "<string>", execution_id: "<string>",
-  result: "Diagnosis submitted (accepted|rejected). File: docs/discovery/diagnosis-call-<epic_id>.json."
+  result: "Diagnosis submitted (accepted|rejected). File: docs/discovery/projects/<epic_id>/diagnosis-call-<epic_id>.json."
 })
 ```
 Then stop. Do not claim another task.

@@ -11,7 +11,7 @@
  * be seeded by hand. This test prevents that regression from recurring.
  *
  * The function under test is pure: it reads tool-templates/discovery/* from
- * the given workspaceRoot and writes docs/discovery/* into it. No DB, no LM.
+ * the given workspaceRoot and writes docs/discovery/projects/<epicId>/* into it. No DB, no LM.
  */
 
 import assert from 'node:assert/strict';
@@ -142,7 +142,7 @@ test('D1 workspace: creates per-epic stage tracker with PROJECT_ID/EPIC_ID/TASK_
       workspaceRoot: root, epicId: 42, projectId: 7, taskId: 999, intentId: 1234,
     });
 
-    const trackerPath = path.join(root, 'docs', 'discovery', 'project-42-discovery-stage.md');
+    const trackerPath = path.join(root, 'docs', 'discovery', 'projects', '42', 'project-42-discovery-stage.md');
     assert.ok(existsSync(trackerPath), 'per-epic tracker must be created');
     const content = readFileSync(trackerPath, 'utf8');
     assert.match(content, /Project 7/, 'PROJECT_ID substituted');
@@ -164,7 +164,7 @@ test('D1 workspace: creates per-epic proposal-call JSON with intent_id/task_id p
       workspaceRoot: root, epicId: 42, projectId: 7, taskId: 999, intentId: 1234,
     });
 
-    const proposalPath = path.join(root, 'docs', 'discovery', 'proposal-call-42.json');
+    const proposalPath = path.join(root, 'docs', 'discovery', 'projects', '42', 'proposal-call-42.json');
     assert.ok(existsSync(proposalPath), 'per-epic proposal-call JSON must be created');
     const parsed = JSON.parse(readFileSync(proposalPath, 'utf8'));
     assert.equal(parsed.intent_id, 1234, 'intent_id pre-bound as bare integer');
@@ -190,7 +190,7 @@ test('D1 workspace: idempotent — second call does NOT overwrite existing files
     assert.equal(first.toolsCopied.length, 5);
 
     // Mutate the created files to prove the second call does not overwrite.
-    const trackerPath = path.join(root, 'docs', 'discovery', 'project-42-discovery-stage.md');
+    const trackerPath = path.join(root, 'docs', 'discovery', 'projects', '42', 'project-42-discovery-stage.md');
     writeFileSync(trackerPath, 'WORKER_EDITED_THIS');
 
     const second = ensureDiscoveryWorkspace({
@@ -237,10 +237,10 @@ test('D1 workspace: different epics get independent trackers and proposal-call f
       workspaceRoot: root, epicId: 11, projectId: 1, taskId: 101, intentId: 1001,
     });
 
-    const t10 = path.join(root, 'docs', 'discovery', 'project-10-discovery-stage.md');
-    const t11 = path.join(root, 'docs', 'discovery', 'project-11-discovery-stage.md');
-    const p10 = path.join(root, 'docs', 'discovery', 'proposal-call-10.json');
-    const p11 = path.join(root, 'docs', 'discovery', 'proposal-call-11.json');
+    const t10 = path.join(root, 'docs', 'discovery', 'projects', '10', 'project-10-discovery-stage.md');
+    const t11 = path.join(root, 'docs', 'discovery', 'projects', '11', 'project-11-discovery-stage.md');
+    const p10 = path.join(root, 'docs', 'discovery', 'projects', '10', 'proposal-call-10.json');
+    const p11 = path.join(root, 'docs', 'discovery', 'projects', '11', 'proposal-call-11.json');
 
     assert.ok(existsSync(t10) && existsSync(t11));
     assert.ok(existsSync(p10) && existsSync(p11));

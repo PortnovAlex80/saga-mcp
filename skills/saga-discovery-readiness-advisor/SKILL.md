@@ -23,7 +23,7 @@ file tools (`Read`, `Write`, `Edit`, `Bash`, `Glob`, `Grep`).
 
 ## External memory
 The readiness-call JSON IS your external memory. The engine ALREADY created
-`docs/discovery/readiness-call-<epic_id>.json` with `control_intent_id`,
+`docs/discovery/projects/<epic_id>/readiness-call-<epic_id>.json` with `control_intent_id`,
 `execution_id`, `schema_version`, and `payload.proposal_id` /
 `payload.proposal_content_hash` pre-filled from the canonical Proposal. You
 MUST NOT copy a fresh template over it — that loses the engine-filled values.
@@ -45,7 +45,7 @@ Returns immutable Proposal + EXACT `allowed_source_refs`. Record `proposal_id`,
 `proposal_content_hash`, `allowed_source_refs`.
 
 ### Step 3: Fill the readiness-call JSON (DO NOT recreate)
-1. `Read` the engine-created file: `docs/discovery/readiness-call-<epic_id>.json`
+1. `Read` the engine-created file: `docs/discovery/projects/<epic_id>/readiness-call-<epic_id>.json`
    (it already has `control_intent_id`, `execution_id`, `schema_version`, and
    `payload.proposal_id` / `proposal_content_hash` filled by the engine).
 2. `Edit` it: replace **every** remaining `FILL_` from `readiness_get`. CRITICAL:
@@ -69,7 +69,7 @@ and the kernel rejects with `schema_version got undefined` or
 
 ### Step 4: Verify the checklist (MANDATORY before submit)
 1. `Read` `docs/discovery/tools/readiness-checklist.md`
-2. `Read` your `docs/discovery/readiness-call-<epic_id>.json` back
+2. `Read` your `docs/discovery/projects/<epic_id>/readiness-call-<epic_id>.json` back
 3. Verify **EVERY** item. If any fails, `Edit`, re-read, re-check. Critical:
    `control_intent_id` bare int; `schema_version` exactly
    `"saga3.discovery-readiness-assessment.v1"`; exactly 7 dimensions; every
@@ -88,7 +88,7 @@ readiness_submit({
 If the kernel rejects (or throws), do NOT retry — rejection is durable.
 
 ### Step 6: Complete
-1. `Read` `docs/discovery/project-<epic_id>-discovery-stage.md` (the stage
+1. `Read` `docs/discovery/projects/<epic_id>/project-<epic_id>-discovery-stage.md` (the stage
    tracker, if it exists).
 2. `Edit` the tracker: mark steps 6, 7a, 7b, 8 `[x]`, set
    `## Current Step: readiness_done`.
@@ -96,7 +96,7 @@ If the kernel rejects (or throws), do NOT retry — rejection is durable.
 ```
 worker_done({
   task_id: <integer>, worker_id: "<string>", execution_id: "<string>",
-  result: "Readiness submitted (accepted|rejected). File: docs/discovery/readiness-call-<epic_id>.json."
+  result: "Readiness submitted (accepted|rejected). File: docs/discovery/projects/<epic_id>/readiness-call-<epic_id>.json."
 })
 ```
 Then stop. Do not claim another task.

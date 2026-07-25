@@ -32,12 +32,12 @@ at startup). You COPY templates — never recreate them from scratch.
 
 ### Step 0: Open or create the stage tracker (FIRST THING YOU DO)
 
-`Read` `docs/discovery/project-<epic_id>-discovery-stage.md`. It is the source
+`Read` `docs/discovery/projects/<epic_id>/project-<epic_id>-discovery-stage.md`. It is the source
 of truth for `task_id`, `execution_id`, `worker_id`, `epic_id`, and `intent_id`.
 
 **If the file does NOT exist:** copy the template:
 1. `Read` `docs/discovery/tools/stage-tracker.md`
-2. `Write` it to `docs/discovery/project-<epic_id>-discovery-stage.md`
+2. `Write` it to `docs/discovery/projects/<epic_id>/project-<epic_id>-discovery-stage.md`
 3. `Edit` the copy: replace `{PROJECT_ID}`, `{EPIC_ID}`, `{TASK_ID}` with your
    values (you know `epic_id` and `task_id` from the task title / task_get in
    step 1 — fill `task_id` now, leave `intent_id`/`execution_id` for step 1).
@@ -71,7 +71,7 @@ Use read-only tools quickly:
 ### Step 3: Write your discovery document (MANDATORY)
 
 1. `Read` the template: `docs/discovery/tools/discovery-doc-template.md`
-2. `Write` it to `docs/discovery/discovery-<epic_id>.md`
+2. `Write` it to `docs/discovery/projects/<epic_id>/discovery-<epic_id>.md`
 3. `Edit` the copy to fill in every section (Problem, Context, Users,
    Candidate Scope, Assumptions, Unknowns, Risks, Evidence, Recommendation).
 
@@ -80,7 +80,7 @@ Use read-only tools quickly:
 ### Step 4a: Write the proposal-call JSON file
 
 1. `Read` the template: `docs/discovery/tools/proposal-call-template.json`
-2. `Write` it to `docs/discovery/proposal-call-<epic_id>.json`
+2. `Write` it to `docs/discovery/projects/<epic_id>/proposal-call-<epic_id>.json`
 3. `Edit` the copy: replace **every** `FILL_` placeholder using the tracker
    (`intent_id`, `task_id`, `execution_id`) and the discovery document sections.
 
@@ -89,7 +89,7 @@ Use read-only tools quickly:
 ### Step 4b: Verify the checklist (MANDATORY before submit)
 
 1. `Read` `docs/discovery/tools/proposal-checklist.md`.
-2. `Read` your `docs/discovery/proposal-call-<epic_id>.json` back.
+2. `Read` your `docs/discovery/projects/<epic_id>/proposal-call-<epic_id>.json` back.
 3. Verify **EVERY** checklist item against your JSON. Critical checks:
    - `intent_id` and `task_id` are bare integers (no quotes)
    - `execution_id` is a quoted string
@@ -134,7 +134,7 @@ worker_done({
   task_id: <integer>,
   worker_id: "<string>",
   execution_id: "<string>",
-  result: "Discovery complete. Document: docs/discovery/discovery-<epic_id>.md."
+  result: "Discovery complete. Document: docs/discovery/projects/<epic_id>/discovery-<epic_id>.md."
 })
 ```
 

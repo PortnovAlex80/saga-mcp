@@ -86,11 +86,23 @@ export function ensureDiscoveryWorkspace(
     return result;
   }
 
-  const destDir = path.join(workspaceRoot, 'docs', 'discovery');
-  const toolsDir = path.join(destDir, 'tools');
+  // SHARED tools/ — copied once for all epics (templates are stage-static,
+  // not epic-specific). Workers read templates from here.
+  const discoveryRoot = path.join(workspaceRoot, 'docs', 'discovery');
+  const toolsDir = path.join(discoveryRoot, 'tools');
+
+  // PER-EPIC workspace — each epic gets its own folder for tracker,
+  // discovery doc, *-call-N.json. This isolates one epic's artifacts from
+  // another (regression proof: epic 35's worker read epic 34's discovery
+  // doc and invented a 'relationship to epic 34' blocking gap that was not
+  // a real product question). With per-project folders, a worker only sees
+  // its own epic's workspace.
+  const epicDir = path.join(discoveryRoot, 'projects', String(epicId));
+
   try {
-    mkdirSync(destDir, { recursive: true });
+    mkdirSync(discoveryRoot, { recursive: true });
     mkdirSync(toolsDir, { recursive: true });
+    mkdirSync(epicDir, { recursive: true });
   } catch { /* dirs already exist */ }
 
   // 1. Copy ALL static templates into docs/discovery/tools/ (idempotent).
@@ -112,8 +124,9 @@ export function ensureDiscoveryWorkspace(
     }
   } catch { /* readdir failed — best effort */ }
 
-  // 2. Per-epic stage tracker.
-  const trackerDest = path.join(destDir, `project-${epicId}-discovery-stage.md`);
+  // 2. Per-epic stage tracker (in epicDir, NOT in discoveryRoot — isolates
+  //    one epic's tracker from another).
+  const trackerDest = path.join(epicDir, `project-${epicId}-discovery-stage.md`);
   if (!existsSync(trackerDest)) {
     const trackerSrc = path.join(tmplDir, 'stage-tracker.md');
     if (existsSync(trackerSrc)) {
@@ -130,7 +143,8 @@ export function ensureDiscoveryWorkspace(
   }
 
   // 3. Per-epic proposal-call JSON (engine-fill for the discovery stage).
-  const proposalDest = path.join(destDir, `proposal-call-${epicId}.json`);
+  //    Lives in epicDir so the worker only sees its own epic's binding.
+  const proposalDest = path.join(epicDir, `proposal-call-${epicId}.json`);
   if (!existsSync(proposalDest)) {
     const proposalSrc = path.join(tmplDir, 'proposal-call-template.json');
     if (existsSync(proposalSrc)) {

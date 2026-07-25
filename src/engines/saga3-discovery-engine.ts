@@ -1129,12 +1129,15 @@ export class Saga3DiscoveryEngine implements OrchestrationEngine {
     const tmplFile = path.join(tmplDir, `${stage}-call-template.json`);
     if (!existsSync(tmplFile)) return; // templates not installed — skip gracefully
 
-    const destDir = path.join(workspaceRoot, 'docs', 'discovery');
-    const destFile = path.join(destDir, `${stage}-call-${epicId}.json`);
+    // Per-epic workspace (see ensureDiscoveryWorkspace for rationale):
+    // readiness-call/diagnosis-call live in docs/discovery/projects/<epicId>/
+    // so one epic's call-JSON cannot be seen by another epic's worker.
+    const epicDir = path.join(workspaceRoot, 'docs', 'discovery', 'projects', String(epicId));
+    const destFile = path.join(epicDir, `${stage}-call-${epicId}.json`);
     if (existsSync(destFile)) return; // already created (restart-safe)
 
     try {
-      mkdirSync(destDir, { recursive: true });
+      mkdirSync(epicDir, { recursive: true });
       let content = readFileSync(tmplFile, 'utf8');
       // Substitute known values (proposal_id, certificate_id, etc.)
       for (const [key, val] of Object.entries(values)) {
