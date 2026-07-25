@@ -708,13 +708,17 @@ function handleTaskGet(args: Record<string, unknown>) {
     )
     .all(id);
 
-  // Workflow hint: for discovery-stage tasks, remind the model to maintain its stage tracker.
+  // Workflow hint: for saga3 tasks, remind the model to maintain its stage tracker.
+  // Works for ANY saga3 stage (discovery.*, formalization.*, etc.) — extracts
+  // the stage name from task_kind and builds the tracker path dynamically.
   const taskRow = task as Record<string, unknown>;
-  const isDiscoveryTask = typeof taskRow.task_kind === 'string' && taskRow.task_kind.startsWith('discovery.');
+  const taskKind = typeof taskRow.task_kind === 'string' ? taskRow.task_kind : '';
+  const isSaga3Task = taskKind.includes('.');
   const result: Record<string, unknown> = { ...taskRow, subtasks, notes, comments, depends_on: dependsOn, dependents };
-  if (isDiscoveryTask) {
+  if (isSaga3Task) {
     const epicId = taskRow.epic_id;
-    result._workflow_hint = `Discovery task detected. Maintain your stage tracker: Read docs/discovery/project-${epicId}-discovery-stage.md. If it doesn't exist, create it (Step 0). Update Current Step after every action. Check Collected Values (task_id, execution_id, intent_id) before calling proposal_submit.`;
+    const stage = taskKind.split('.')[0]; // 'discovery', 'formalization', etc.
+    result._workflow_hint = `Saga3 ${stage} task. Maintain your stage tracker: Read docs/${stage}/project-${epicId}-${stage}-stage.md. Update Current Step after every action. Use templates from docs/${stage}/tools/ — copy, fill, verify with checklist, then submit.`;
   }
   return result;
 }

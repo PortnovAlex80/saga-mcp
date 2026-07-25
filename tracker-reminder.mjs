@@ -22,16 +22,17 @@ try {
   process.exit(0);
 }
 
-// Find the tracker file in the workspace
+// Find the tracker file in the workspace — works for ANY stage (discovery,
+// formalization, etc.) not just discovery.
 const cwd = event.cwd || process.cwd();
 const discoveryDir = join(cwd, 'docs', 'discovery');
 
-// Find any project-*-discovery-stage.md tracker
+// Find any project-*-stage.md tracker (glob: any stage name)
 let trackerPath = null;
 let trackerContent = null;
 try {
     const files = existsSync(discoveryDir)
-    ? readdirSync(discoveryDir).filter(f => f.match(/project-\d+-discovery-stage\.md/))
+    ? readdirSync(discoveryDir).filter(f => f.match(/project-\d+-\w+-stage\.md/))
     : [];
   if (files.length > 0) {
     trackerPath = join(discoveryDir, files[0]);
