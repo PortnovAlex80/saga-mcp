@@ -438,6 +438,19 @@ export class ClaudeBoardRunner {
       '--mcp-config', executionMcpConfigPath,
       '--strict-mcp-config',
     ];
+    // PostToolUse hook: after every tool call, inject a tracker reminder into
+    // the model's context so it doesn't forget to update its stage tracker.
+    // The hook script reads docs/discovery/project-*-discovery-stage.md and
+    // returns the current step + next action as additionalContext.
+    const hookPath = path.join(path.dirname(new URL(import.meta.url).pathname.replace(/^\//,'')), 'tracker-reminder.mjs');
+    if (existsSync(hookPath)) {
+      const settings = {
+        hooks: {
+          PostToolUse: [{ command: `node "${hookPath}"` }],
+        },
+      };
+      args.push('--settings', JSON.stringify(settings));
+    }
     // D-whitelist: if the frozen execution_context carries allowed_saga_tools,
     // pass them as --allowedTools so claude NEVER sees the other 90+ saga tools
     // it has no authority to call. This eliminates wasted tokens reasoning
