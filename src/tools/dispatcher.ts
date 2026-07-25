@@ -734,6 +734,17 @@ function handleWorkerDone(args: Record<string, unknown>): {
   const taskId = args.task_id as number;
   const workerId = args.worker_id as string;
   const result = args.result as string;
+  // Defensive: canonicalJson crashes on undefined. Catch missing fields early
+  // with an actionable error instead of an opaque serialization crash.
+  if (!Number.isInteger(taskId)) {
+    throw new Error(`worker_done: 'task_id' must be an integer. Call shape: worker_done({ task_id: <integer>, worker_id: "<string>", result: "<string>", execution_id: "<string>" }). Got: ${JSON.stringify(args.task_id)}`);
+  }
+  if (typeof workerId !== 'string' || workerId.trim() === '') {
+    throw new Error(`worker_done: 'worker_id' must be a non-empty string (your worker_id from the system prompt). Call shape: worker_done({ task_id: <integer>, worker_id: "<string>", result: "<string>", execution_id: "<string>" }). Got: ${JSON.stringify(args.worker_id)}`);
+  }
+  if (typeof result !== 'string' || result.trim() === '') {
+    throw new Error(`worker_done: 'result' must be a non-empty string describing what you did. Call shape: worker_done({ task_id: <integer>, worker_id: "<string>", result: "<string>", execution_id: "<string>" }). Got: ${JSON.stringify(args.result)}`);
+  }
   // verdict — только для задач в review. По умолчанию 'approved' (обратная
   // совместимость: старые вызовы без verdict ведут себя как раньше — review→done).
   // 'changes_requested' возвращает задачу в in_progress: ветка task/<id> и её
