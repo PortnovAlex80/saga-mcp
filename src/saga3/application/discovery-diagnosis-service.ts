@@ -188,7 +188,13 @@ export class Saga3DiscoveryDiagnosisService implements DiscoveryDiagnosisService
   constructor(private readonly deps: Saga3DiscoveryDiagnosisServiceDependencies) {
     this.now = deps.now ?? (() => new Date());
     this.sleep = deps.sleep ?? (ms => new Promise(resolve => setTimeout(resolve, ms)));
-    this.maxRunMs = (deps.maxRunSeconds ?? 60 * 10) * 1000;
+    // Diagnosis is the most text-heavy stage (executive_summary + 4 causes
+    // + 3 info_requests + 3 actions + 3 residual_risks). The previous 10-min
+    // default was too tight for weaker LM models (qwen3.6-27b@q4_k_xl hit
+    // timeout on epic 31 after filling the report but before calling
+    // diagnosis_submit). Align with the engine's own 30-min default so the
+    // inner service does not time out before the outer engine.
+    this.maxRunMs = (deps.maxRunSeconds ?? 60 * 30) * 1000;
     this.pollMs = deps.pollMs ?? 3000;
   }
 

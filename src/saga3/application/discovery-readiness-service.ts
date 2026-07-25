@@ -57,7 +57,13 @@ export class Saga3DiscoveryReadinessService implements DiscoveryReadinessService
   constructor(private readonly deps: Saga3DiscoveryReadinessServiceDependencies) {
     this.now = deps.now ?? (() => new Date());
     this.sleep = deps.sleep ?? (ms => new Promise(resolve => setTimeout(resolve, ms)));
-    this.maxRunMs = (deps.maxRunSeconds ?? 60 * 10) * 1000;
+    // Readiness is a text-heavy stage (7 dimension rationale + blocking/
+    // non-blocking gaps). The previous 10-min default was too tight for
+    // weaker LM models and raced the worker close (epic 31 readiness hit
+    // timeout within seconds of clean closure). Align with the engine's
+    // own 30-min default so the inner service does not time out before
+    // the outer engine.
+    this.maxRunMs = (deps.maxRunSeconds ?? 60 * 30) * 1000;
     this.pollMs = deps.pollMs ?? 3000;
   }
 

@@ -48,7 +48,11 @@ export class Saga3DiscoveryNormalizationService implements DiscoveryNormalizatio
   constructor(private readonly deps: Saga3DiscoveryNormalizationServiceDependencies) {
     this.now = deps.now ?? (() => new Date());
     this.sleep = deps.sleep ?? (ms => new Promise(resolve => setTimeout(resolve, ms)));
-    this.maxRunMs = (deps.maxRunSeconds ?? 60 * 10) * 1000;
+    // Align with the engine's own 30-min default (see discovery-readiness/
+    // diagnosis services) so the inner service does not time out before the
+    // outer engine. The previous 10-min default was too tight for weaker LM
+    // models on text-heavy stages.
+    this.maxRunMs = (deps.maxRunSeconds ?? 60 * 30) * 1000;
     this.pollMs = deps.pollMs ?? 3000;
   }
 
