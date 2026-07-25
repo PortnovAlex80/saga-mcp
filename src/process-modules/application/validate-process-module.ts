@@ -35,6 +35,8 @@ function validateExecutionProfile(
   if (!profile.workIntentSchema.id.trim()) errors.push(`execution profile '${profile.id}' has no workIntentSchema`);
   if (!profile.taskKind.trim()) errors.push(`execution profile '${profile.id}' has no taskKind`);
   if (!profile.executionSkill.trim()) errors.push(`execution profile '${profile.id}' has no executionSkill`);
+  if (!profile.protocolSkill.trim()) errors.push(`execution profile '${profile.id}' has no protocolSkill`);
+  if (!profile.semanticSkill.trim()) errors.push(`execution profile '${profile.id}' has no semanticSkill`);
   if (!profile.outputSchema.id.trim()) errors.push(`execution profile '${profile.id}' has no outputSchema`);
   if (profile.retryPolicy.maxAttempts < 1 || !Number.isInteger(profile.retryPolicy.maxAttempts)) {
     errors.push(`execution profile '${profile.id}' retryPolicy.maxAttempts must be a positive integer`);
