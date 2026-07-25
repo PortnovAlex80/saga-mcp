@@ -15,6 +15,7 @@ It must be combined with exactly one semantic Process Module skill.
 - Never call `worker_next`.
 - Never select or start the next Process Module.
 - Never call a lifecycle transition unless this node is an explicitly authorized Kernel/Human node; LM workers are not.
+- The current **Stage Binding** belongs to the Lifecycle: it maps inputs and routes the module's local outcome. The LM worker must not edit, bypass or reinterpret it.
 - After one truthful `worker_done`, exit permanently.
 
 ## Startup hook
@@ -22,7 +23,7 @@ It must be combined with exactly one semantic Process Module skill.
 Before domain work:
 
 1. Read the machine-provisioned external tracker.
-2. Verify process module, process run, stage, node, WorkIntent, task, execution and worker bindings against `task_get`.
+2. Verify process module, process run, Stage Binding, stage, node, WorkIntent, task, execution and worker bindings against `task_get`.
 3. Verify input snapshot ref/hash, output schema, allowed tools and retry budget.
 4. Record startup/checkpoint state in the tracker.
 5. Read the semantic role skill supplied by the execution profile.
@@ -43,7 +44,7 @@ The tracker is the program counter and recovery frame.
 
 The Runtime owns:
 
-- process/lifecycle/stage/node run ids;
+- process/lifecycle/Stage Binding/stage/node run ids;
 - WorkIntent/task/execution/worker ids;
 - project/epic/repository bindings;
 - schema versions;
