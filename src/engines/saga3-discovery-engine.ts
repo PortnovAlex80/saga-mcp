@@ -270,7 +270,14 @@ export class Saga3DiscoveryEngine implements OrchestrationEngine {
       // resume readiness/diagnosis. This prevents the duplicate-intent bug where
       // a restart after a clean discovery closure creates a fresh worker instead
       // of recovering the existing authoritative result.
-      const concluded = rt.readConcludedIntentWithProposal(epicId, DISCOVERY_INTENT_KIND);
+      // Compatibility boundary: the concluded-intent recovery lookup was added
+// after several external/fake runtime adapters already implemented the port.
+// Production SQLite implements it; older adapters may omit it. Missing support
+// means only that this optional recovery optimization is unavailable — normal
+// open-intent creation remains valid and must not abort the entire process.
+const concluded = typeof rt.readConcludedIntentWithProposal === 'function'
+  ? rt.readConcludedIntentWithProposal(epicId, DISCOVERY_INTENT_KIND)
+  : null;
       if (concluded) {
         intent = concluded;
         heartbeat('INTENT_REUSED_CONCLUDED', `id=${intent.id} (recovery: proposal already submitted)`);
