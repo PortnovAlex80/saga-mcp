@@ -1,4 +1,4 @@
-import { createWriteStream, existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { createWriteStream, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawn as nodeSpawn } from 'node:child_process';
@@ -40,6 +40,15 @@ function buildPrompt({ assignment, project, workerId, workspaceRoot, sagaSkillRo
   const workerSkill = path.join(sagaSkillRoot, 'saga-worker', 'SKILL.md');
   const skillPath = existsSync(roleSkill) ? roleSkill : workerSkill;
   const isReview = task.status === 'review' || task.status === 'review_in_progress';
+  // Inline the skill file content directly into the prompt so weaker models that
+  // skip "Read {path}" instructions still get the full workflow. Strong models
+  // can still Read the file for the canonical version.
+  let skillInline = '';
+  try {
+    skillInline = `--- SKILL BEGIN ---\n${readFileSync(skillPath, 'utf8')}\n--- SKILL END ---`;
+  } catch {
+    skillInline = `(Could not read skill file at ${skillPath}. Follow rules 1-8 below.)`;
+  }
 
   return [
     'You are a single-use Saga CLI worker. Saga already atomically assigned exactly one task to this process.',
@@ -64,7 +73,8 @@ function buildPrompt({ assignment, project, workerId, workspaceRoot, sagaSkillRo
     '2. Never call worker_next; it is explicitly disabled for this process.',
     '3. Read the assigned task and its context through Saga MCP as needed.',
     `   To read your task: task_get({ id: ${task.id} }) — the parameter name is 'id' (NOT 'task_id' or 'taskId').`,
-    `4. Read ${skillPath} for the role workflow, but SKIP every instruction that claims or selects a task.`,
+    `4. Follow the skill workflow below (also at ${skillPath}). SKIP every instruction that claims or selects a task.`,
+    skillInline,
     task.execution_mode === 'git_change'
       ? '5. Use the existing task worktree/branch conventions from the skill.'
       : '5. This task is not a git-change task. Do not create a worktree or merge unless the assigned skill explicitly requires one.',
