@@ -124,3 +124,93 @@ export const SAGA3_ARG_SOURCES = {
   schema_version: 'the exact schema string for this tool (top-level arg, NOT inside payload)',
   kind: '"discovery" (top-level arg, NOT inside payload)',
 } as const;
+
+/**
+ * Per-tool mapping of PAYLOAD fields (the typed object inside the tool's
+ * `payload` arg) to where the worker should source their correct values. This
+ * extends SAGA3_ARG_SOURCES (which covers envelope args) to the payload body.
+ *
+ * Identity-echo fields (proposal_id, certificate_id, hashes) point the worker to
+ * the read-only `_get` tool that already returned them. source_refs failures
+ * point to the `allowed_source_refs` list the `_get` tool returned. Fields that
+ * are the worker's own analysis (rationale, description, summary) get no hint.
+ */
+const PAYLOAD_FIELD_SOURCES: Record<string, Record<string, string>> = {
+  readiness_submit: {
+    proposal_id: 'readiness_get → proposal_id (echo the value readiness_get returned; must be an integer)',
+    proposal_content_hash: 'readiness_get → proposal_content_hash (echo the 64-char hex readiness_get returned)',
+    source_refs: 'use ONLY refs from the allowed_source_refs list returned by readiness_get',
+    overall_readiness: 'one of: ready, conditionally_ready, not_ready, inconclusive',
+    recommended_next_action: 'one of: proceed_to_settlement, request_clarification, repeat_discovery, defer, reject, manual_review',
+    confidence: 'a number between 0 and 1',
+    dimension_assessments: 'object with all 7 keys: problem_clarity, scope_boundedness, stakeholder_coverage, assumption_visibility, unknowns_manageability, risk_visibility, evidence_grounding',
+    blocking_gaps: 'array of { code, description, source_refs[] }',
+    non_blocking_gaps: 'array of { code, description, source_refs[] }',
+  },
+  diagnosis_submit: {
+    certificate_id: 'diagnosis_get → diagnosis_case.certificate.id (echo the integer)',
+    certificate_hash: 'diagnosis_get → diagnosis_case.certificate.hash (echo the 64-char hex)',
+    settlement_input_hash: 'diagnosis_get → diagnosis_case.certificate.settlement_input_hash (echo the 64-char hex)',
+    decision: 'diagnosis_get → diagnosis_case.certificate.decision (go, clarify, or reject)',
+    target: 'object: { certificate_id, certificate_hash, settlement_input_hash, decision } — copy from diagnosis_case.certificate',
+    source_refs: 'use ONLY refs from the allowed_source_refs list returned by diagnosis_get',
+    cited_condition_ids: 'condition_ids from diagnosis_case.policy_trace where contributed_to_decision is true',
+    reason_codes: 'reason codes emitted by the cited policy_trace nodes (emitted_reason_codes)',
+    confidence: 'a number between 0 and 1',
+  },
+  proposal_submit: {
+    recommended_outcome: 'one of: go, clarify, reject, defer, inconclusive, failed',
+    evidence_refs: 'array of non-empty strings (citations the proposal is grounded on)',
+    stakeholders_or_actors: 'array of strings',
+    assumptions: 'array of strings',
+    unknowns: 'array of strings (NOT a JSON string — an actual array)',
+    risks: 'array of strings',
+  },
+  normalization_submit: {
+    source_submission_id: 'normalization_get → source_submission_id (echo the integer)',
+    source_raw_hash: 'normalization_get → source raw hash (echo the 64-char hex)',
+    source_field_map: 'object mapping each canonical field to source JSON paths that exist in the raw payload',
+    normalized_payload: 'a valid discovery proposal object (see proposal_submit payload shape)',
+  },
+};
+
+/**
+ * Enrich raw payload-validator errors with actionable context for the model.
+ * The validators return terse diagnostics like "field 'proposal_id' must be an
+ * integer" — this appends a Source hint telling the worker WHERE to get the
+ * correct value (readiness_get/diagnosis_get/normalization_get), plus the
+ * expected call shape once per batch. The raw error phrase is preserved as a
+ * substring so existing regex tests and DB-stored audit errors stay stable.
+ *
+ * Applied ONLY at the 4 handler→model boundaries (the DB copy stays raw for
+ * kernel audit). The pure validators are untouched.
+ */
+export function enrichPayloadErrors(tool: string, errors: string[]): string[] {
+  if (!errors || errors.length === 0) return errors;
+  const sources = PAYLOAD_FIELD_SOURCES[tool];
+  const shape = (SAGA3_TOOL_CALL_SHAPES as Record<string, string>)[tool];
+  const enriched = errors.map((raw) => {
+    let hint: string | undefined;
+    if (sources) {
+      // source_refs errors must be matched FIRST — they nest under many paths
+      // (dimension_assessments.X.source_refs, blocking_gaps[i].source_refs, etc.)
+      // and the generic field-key loop below would wrongly match the parent
+      // field (e.g. 'dimension_assessments') instead of the source_refs rule.
+      if (/source_ref|unresolved source|empty source|invents evidence/.test(raw) && sources.source_refs) {
+        hint = sources.source_refs;
+      }
+      if (!hint) {
+        const fieldKeys = Object.keys(sources).sort((a, b) => b.length - a.length);
+        for (const field of fieldKeys) {
+          if (field !== 'source_refs' && raw.includes(field)) {
+            hint = sources[field];
+            break;
+          }
+        }
+      }
+    }
+    return hint ? `${raw} [Source: ${hint}]` : raw;
+  });
+  if (shape) enriched.push(`[Expected ${tool} shape: ${shape}]`);
+  return enriched;
+}

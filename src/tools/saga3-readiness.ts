@@ -17,7 +17,7 @@ import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import { getDb } from '../db.js';
 import type { ToolHandler } from '../types.js';
 import { withImmediateTransaction } from './dispatcher.js';
-import { argInt, argStr, SAGA3_TOOL_CALL_SHAPES, SAGA3_ARG_SOURCES } from './saga3-args.js';
+import { argInt, argStr, SAGA3_TOOL_CALL_SHAPES, SAGA3_ARG_SOURCES, enrichPayloadErrors } from './saga3-args.js';
 import { readExecutionContextStrict } from '../saga3/authority/authorize-saga-tool-call.js';
 import {
   DISCOVERY_READINESS_ASSESSMENT_SCHEMA,
@@ -295,7 +295,7 @@ export function createSaga3ReadinessHandlers(
           content_hash: inserted.record.content_hash,
           status: 'rejected_by_kernel' as const,
           replayed: false,
-          validation_errors: validation.errors,
+          validation_errors: enrichPayloadErrors('readiness_submit', validation.errors),
         };
       }
 
@@ -311,7 +311,7 @@ export function createSaga3ReadinessHandlers(
           content_hash: inserted.record.content_hash,
           status: 'rejected_by_kernel' as const,
           replayed: false,
-          validation_errors: crossTargetErrors,
+          validation_errors: enrichPayloadErrors('readiness_submit', crossTargetErrors),
         };
       }
 

@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import { getDb } from '../db.js';
 import { withImmediateTransaction } from './dispatcher.js';
-import { argInt, argStr, SAGA3_TOOL_CALL_SHAPES, SAGA3_ARG_SOURCES } from './saga3-args.js';
+import { argInt, argStr, SAGA3_TOOL_CALL_SHAPES, SAGA3_ARG_SOURCES, enrichPayloadErrors } from './saga3-args.js';
 import type { ToolHandler } from '../types.js';
 import { DISCOVERY_INTENT_KIND, DISCOVERY_WORK_INTENT_SCHEMA } from '../saga3/domain/work-intent.js';
 import { DISCOVERY_PROPOSAL_SCHEMA } from '../saga3/domain/discovery-proposal.js';
@@ -132,7 +132,7 @@ export function createSaga3ProposalHandlers(
           status: deterministic.disposition === 'needs_lm' ? 'normalization_required' : 'rejected_syntax',
           replayed: raw.replayed,
           deterministic_trace: deterministic.trace,
-          validation_errors: deterministic.validation_errors,
+          validation_errors: enrichPayloadErrors('proposal_submit', deterministic.validation_errors),
           alias_conflicts: deterministic.alias_conflicts,
         } satisfies D2ProposalSubmitResult;
       }

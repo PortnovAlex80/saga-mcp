@@ -29,7 +29,7 @@ import type { ToolHandler } from '../types.js';
 // submit handler does NOT wrap insertDiagnosisReportAtomically in an outer
 // transaction — that caused a nested-transaction error in the live D5 smoke.
 // The repository function is itself the single atomic boundary.)
-import { argInt, argStr, SAGA3_TOOL_CALL_SHAPES, SAGA3_ARG_SOURCES } from './saga3-args.js';
+import { argInt, argStr, SAGA3_TOOL_CALL_SHAPES, SAGA3_ARG_SOURCES, enrichPayloadErrors } from './saga3-args.js';
 import { readExecutionContextStrict } from '../saga3/authority/authorize-saga-tool-call.js';
 import {
   DISCOVERY_DIAGNOSIS_REPORT_SCHEMA,
@@ -196,7 +196,7 @@ export function createSaga3DiagnosisHandlers(
       content_hash: result.record.content_hash,
       status: result.record.status,
       replayed: result.replayed,
-      validation_errors: errs,
+      validation_errors: enrichPayloadErrors('diagnosis_submit', errs),
     };
   };
 

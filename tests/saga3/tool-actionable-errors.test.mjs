@@ -22,6 +22,7 @@ import {
   argInt,
   argStr,
   actionableError,
+  enrichPayloadErrors,
   SAGA3_TOOL_CALL_SHAPES,
   SAGA3_ARG_SOURCES,
 } from '../../dist/tools/saga3-args.js';
@@ -142,4 +143,42 @@ test('regression (gemma E2E): intent_id nested in payload triggers actionable er
       return true;
     },
   );
+});
+
+// ---- enrichPayloadErrors: payload-validator errors get Source hints --------
+
+test('enrichPayloadErrors: readiness proposal_id error gets readiness_get source', () => {
+  const raw = ["field 'proposal_id' must be an integer", "field 'proposal_content_hash' must be a lowercase SHA-256 hex string"];
+  const enriched = enrichPayloadErrors('readiness_submit', raw);
+  // Raw phrase preserved.
+  assert.match(enriched[0], /field 'proposal_id' must be an integer/);
+  // Source hint appended.
+  assert.match(enriched[0], /Source: readiness_get → proposal_id/);
+  assert.match(enriched[1], /Source: readiness_get → proposal_content_hash/);
+  // Expected shape appended once at end.
+  assert.match(enriched[enriched.length - 1], /\[Expected readiness_submit shape:/);
+});
+
+test('enrichPayloadErrors: diagnosis target.certificate_id gets diagnosis_get source', () => {
+  const enriched = enrichPayloadErrors('diagnosis_submit', ["field 'target.certificate_id' must be 12, got 7"]);
+  assert.match(enriched[0], /Source: diagnosis_get → diagnosis_case\.certificate\.id/);
+});
+
+test('enrichPayloadErrors: source_refs failure gets allowed_source_refs hint', () => {
+  const enriched = enrichPayloadErrors('readiness_submit', ["dimension_assessments.evidence_grounding cites an unresolved source reference 'the proposal'"]);
+  assert.match(enriched[0], /Source: use ONLY refs from the allowed_source_refs list returned by readiness_get/);
+});
+
+test('enrichPayloadErrors: empty array returns empty (no shape appended)', () => {
+  assert.deepEqual(enrichPayloadErrors('readiness_submit', []), []);
+});
+
+test('enrichPayloadErrors: unknown tool returns errors unchanged (no crash)', () => {
+  const enriched = enrichPayloadErrors('nonexistent_tool', ['some error']);
+  assert.deepEqual(enriched, ['some error']);
+});
+
+test('enrichPayloadErrors: proposal unknowns-as-string gets array hint', () => {
+  const enriched = enrichPayloadErrors('proposal_submit', ["field 'unknowns' must be an array of strings"]);
+  assert.match(enriched[0], /Source: array of strings \(NOT a JSON string — an actual array\)/);
 });

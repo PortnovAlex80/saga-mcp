@@ -3,7 +3,7 @@ import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import { getDb } from '../db.js';
 import type { ToolHandler } from '../types.js';
 import { withImmediateTransaction } from './dispatcher.js';
-import { argInt, argStr, SAGA3_TOOL_CALL_SHAPES, SAGA3_ARG_SOURCES } from './saga3-args.js';
+import { argInt, argStr, SAGA3_TOOL_CALL_SHAPES, SAGA3_ARG_SOURCES, enrichPayloadErrors } from './saga3-args.js';
 import { readExecutionContextStrict } from '../saga3/authority/authorize-saga-tool-call.js';
 import {
   DISCOVERY_NORMALIZATION_PROPOSAL_SCHEMA,
@@ -157,7 +157,7 @@ export function createSaga3NormalizationHandlers(
         source.allowed_evidence_refs,
       );
       if (!validation.valid) {
-        throw new Error(`normalization_submit: proposal validation failed — ${validation.errors.join('; ')}`);
+        throw new Error(`normalization_submit: proposal validation failed — ${enrichPayloadErrors('normalization_submit', validation.errors).join('; ')}`);
       }
       const typed = payload as DiscoveryNormalizationProposalPayload;
       if (typed.source_submission_id !== source.id || typed.source_raw_hash !== source.raw_hash) {
