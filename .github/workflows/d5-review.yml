@@ -31,9 +31,10 @@ jobs:
       - name: Architecture
         run: npm run build && node --test tests/saga3/*architecture*.test.mjs
       - name: D5 focused tests
+        id: d5_focused
+        continue-on-error: true
         shell: bash
         run: |
-          set +e
           node --test \
             tests/saga3/d5-certificate-bundle.test.mjs \
             tests/saga3/d5-diagnosis-case.test.mjs \
@@ -45,8 +46,18 @@ jobs:
             tests/saga3/d5-diagnosis-integrity.test.mjs \
             tests/saga3/d5-controlled-reject-smoke.test.mjs \
             > d5-focused.log 2>&1
-          status=$?
+      - name: Upload D5 focused log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: d5-focused-log
+          path: d5-focused.log
+          if-no-files-found: error
+          retention-days: 3
+      - name: Fail on focused test failure
+        if: steps.d5_focused.outcome == 'failure'
+        run: |
           tail -n 180 d5-focused.log
-          exit $status
+          exit 1
       - name: Full suite
         run: npm test
