@@ -10,6 +10,7 @@ const ARTIFACT_CALL = 'tool-templates/formalization/artifact-create-call-templat
 const TRACE_CALL = 'tool-templates/formalization/trace-add-call-template.json';
 const DONE_CALL = 'tool-templates/formalization/worker-done-call-template.json';
 const CHECKLIST = 'tool-templates/formalization/formalization-node-checklist.md';
+const PROCESS_PROTOCOL_SKILL = 'saga-process-module-worker-protocol';
 
 const COMMON_READ_TOOLS = [
   'task_get', 'artifact_list', 'trace_list', 'note_list', 'repository_checkout_list',
@@ -188,6 +189,8 @@ export const formalizationProcessModule: ProcessModuleDefinition = {
       workIntentSchema: { id: 'saga3.work-intent.formalization-product.v1' },
       taskKind: 'formalization.prd',
       executionSkill: 'saga-product',
+      protocolSkill: PROCESS_PROTOCOL_SKILL,
+      semanticSkill: 'saga-product',
       executionMode: 'artifact_change',
       allowedTools: COMMON_WRITE_TOOLS,
       trackerTemplate: TRACKER,
@@ -204,6 +207,8 @@ export const formalizationProcessModule: ProcessModuleDefinition = {
       workIntentSchema: { id: 'saga3.work-intent.formalization-use-cases.v1' },
       taskKind: 'formalization.uc',
       executionSkill: 'saga-analyst',
+      protocolSkill: PROCESS_PROTOCOL_SKILL,
+      semanticSkill: 'saga-analyst',
       executionMode: 'artifact_change',
       allowedTools: COMMON_WRITE_TOOLS,
       trackerTemplate: TRACKER,
@@ -220,6 +225,8 @@ export const formalizationProcessModule: ProcessModuleDefinition = {
       workIntentSchema: { id: 'saga3.work-intent.formalization-acceptance.v1' },
       taskKind: 'formalization.ac',
       executionSkill: 'saga-analyst',
+      protocolSkill: PROCESS_PROTOCOL_SKILL,
+      semanticSkill: 'saga-analyst',
       executionMode: 'artifact_change',
       allowedTools: COMMON_WRITE_TOOLS,
       trackerTemplate: TRACKER,
@@ -236,6 +243,8 @@ export const formalizationProcessModule: ProcessModuleDefinition = {
       workIntentSchema: { id: 'saga3.work-intent.formalization-reconciliation.v1' },
       taskKind: 'formalization.reconciliation',
       executionSkill: 'saga-reconciler',
+      protocolSkill: PROCESS_PROTOCOL_SKILL,
+      semanticSkill: 'saga-reconciler',
       executionMode: 'artifact_change',
       allowedTools: COMMON_WRITE_TOOLS,
       trackerTemplate: TRACKER,
@@ -252,6 +261,8 @@ export const formalizationProcessModule: ProcessModuleDefinition = {
       workIntentSchema: { id: 'saga3.work-intent.formalization-architecture.v1' },
       taskKind: 'formalization.srs',
       executionSkill: 'saga-architect',
+      protocolSkill: PROCESS_PROTOCOL_SKILL,
+      semanticSkill: 'saga-architect',
       executionMode: 'artifact_change',
       allowedTools: COMMON_WRITE_TOOLS,
       trackerTemplate: TRACKER,
