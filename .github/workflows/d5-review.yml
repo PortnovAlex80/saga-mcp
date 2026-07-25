@@ -31,7 +31,9 @@ jobs:
       - name: Architecture
         run: npm run build && node --test tests/saga3/*architecture*.test.mjs
       - name: D5 focused tests
+        shell: bash
         run: |
+          set +e
           node --test \
             tests/saga3/d5-certificate-bundle.test.mjs \
             tests/saga3/d5-diagnosis-case.test.mjs \
@@ -41,6 +43,10 @@ jobs:
             tests/saga3/d5-diagnosis-engine.test.mjs \
             tests/saga3/d5-adversarial.test.mjs \
             tests/saga3/d5-diagnosis-integrity.test.mjs \
-            tests/saga3/d5-controlled-reject-smoke.test.mjs
+            tests/saga3/d5-controlled-reject-smoke.test.mjs \
+            > d5-focused.log 2>&1
+          status=$?
+          tail -n 180 d5-focused.log
+          exit $status
       - name: Full suite
         run: npm test
