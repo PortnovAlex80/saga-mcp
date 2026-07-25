@@ -60,4 +60,20 @@ jobs:
           tail -n 180 d5-focused.log
           exit 1
       - name: Full suite
-        run: npm test
+        id: full_suite
+        continue-on-error: true
+        shell: bash
+        run: npm test > full-suite.log 2>&1
+      - name: Upload full suite log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-suite-log
+          path: full-suite.log
+          if-no-files-found: error
+          retention-days: 3
+      - name: Fail on full suite failure
+        if: steps.full_suite.outcome == 'failure'
+        run: |
+          tail -n 220 full-suite.log
+          exit 1
