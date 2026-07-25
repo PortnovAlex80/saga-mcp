@@ -187,6 +187,29 @@ export class Saga3DiscoveryReadinessService implements DiscoveryReadinessService
       return { success, cycles, error: shadow.error, shadow };
     }
 
+    // Soft timeout / interruption recovery: BEFORE marking the control as
+    // paused, check whether the advisor already produced an accepted_by_kernel
+    // assessment. A real LM advisor can race maxRunMs by a few seconds: it
+    // calls readiness_submit (kernel accepts), then worker_done (closes the
+    // task). If the poll-loop sees timeout in that window, the run is
+    // semantically complete — discarding it over a timing race would lose
+    // accepted kernel verdicts. If an accepted assessment exists, treat this
+    // path as a clean closure: conclude the control/authority and report
+    // success. Only fall to paused (restart-reusable) when no accepted
+    // assessment exists.
+    if (terminal === 'timeout') {
+      const probe = this.shadowFrom(control.controlIntentId, 'clean');
+      if (probe.status === 'completed') {
+        rt.setIntentStatus(control.authorityIntentId, 'executing', 'concluded');
+        rt.setReadinessControlStatus(control.controlIntentId, 'executing', 'concluded');
+        request.heartbeat(
+          'READINESS_COMPLETED',
+          `control=${control.controlIntentId} proposal=${request.proposalId} (recovered from timeout race: assessment accepted)`,
+        );
+        return { success: true, cycles, error: null, shadow: probe };
+      }
+    }
+
     // Interruption/timeout → paused. Restart reuses the same ControlIntent/task.
     rt.setIntentStatus(control.authorityIntentId, 'executing', 'paused');
     rt.setReadinessControlStatus(control.controlIntentId, 'executing', 'paused');

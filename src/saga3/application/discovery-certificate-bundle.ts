@@ -411,15 +411,26 @@ export function verifyReadinessLineageShared(
       `settlement: readiness assessment ${assessment.id} task_id ${assessment.task_id} != control ${control.id} projected_task_id ${control.projected_task_id}`,
     );
   }
-  // Lifecycle: an accepted assessment means the advisor closed cleanly.
-  if (control.status !== 'concluded') {
+  // Lifecycle: the kernel verdict (assessment.status === 'accepted_by_kernel')
+  // is the source of truth, NOT the ControlIntent/WorkIntent lifecycle status.
+  // A real LM advisor can race: it calls readiness_submit (kernel accepts),
+  // then worker_done (closes the task → clean-path concludes the control). If
+  // maxRunMs elapses inside that window the control stays 'paused' even though
+  // the kernel has already accepted the assessment. Blocking settlement on the
+  // lifecycle status here would discard a kernel-accepted assessment over an
+  // executor observability race. The caller (settlement-service) has already
+  // verified assessment.status === 'accepted_by_kernel' before reaching here,
+  // so we accept any terminal lifecycle state ('concluded' or 'paused').
+  // 'open'/'executing' would indicate the advisor is still running or was never
+  // started — those remain rejectable.
+  if (control.status !== 'concluded' && control.status !== 'paused') {
     throw error(
-      `settlement: readiness ControlIntent ${control.id} status '${control.status}' is not 'concluded' (accepted assessment requires a concluded control)`,
+      `settlement: readiness ControlIntent ${control.id} status '${control.status}' is not terminal (expected 'concluded' or 'paused'; assessment is accepted_by_kernel)`,
     );
   }
-  if (authority.status !== 'concluded') {
+  if (authority.status !== 'concluded' && authority.status !== 'paused') {
     throw error(
-      `settlement: authority WorkIntent ${authority.id} status '${authority.status}' is not 'concluded' (accepted assessment requires a concluded authority)`,
+      `settlement: authority WorkIntent ${authority.id} status '${authority.status}' is not terminal (expected 'concluded' or 'paused'; assessment is accepted_by_kernel)`,
     );
   }
 }
