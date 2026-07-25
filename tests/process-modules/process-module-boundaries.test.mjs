@@ -41,7 +41,7 @@ test('Formalization module does not import or start Discovery', () => {
   assert.doesNotMatch(source, /startDiscovery|runDiscovery/);
 });
 
-test('module asset references exist', async () => {
+test('module asset and skill references exist', async () => {
   const { createBuiltInProcessModuleRegistry } = await import(
     '../../dist/process-modules/modules/catalog.js'
   );
@@ -62,6 +62,19 @@ test('module asset references exist', async () => {
           `${module.identity.name}/${profile.id} references missing asset ${referencedPath}`,
         );
       }
+
+      for (const skillName of new Set([
+        profile.executionSkill,
+        profile.protocolSkill,
+        profile.semanticSkill,
+      ])) {
+        const skillPath = path.join(ROOT, 'skills', skillName, 'SKILL.md');
+        assert.equal(
+          existsSync(skillPath),
+          true,
+          `${module.identity.name}/${profile.id} references missing skill ${skillName}`,
+        );
+      }
     }
   }
 });
@@ -69,12 +82,16 @@ test('module asset references exist', async () => {
 test('every Process Module design is guarded by the reusable checklist and skill', () => {
   const checklist = path.join(ROOT, 'docs', 'saga3', 'process-modules', 'PROCESS-MODULE-CHECKLIST.md');
   const skill = path.join(ROOT, 'skills', 'saga-process-module-designer', 'SKILL.md');
+  const protocol = path.join(ROOT, 'skills', 'saga-process-module-worker-protocol', 'SKILL.md');
   assert.equal(existsSync(checklist), true);
   assert.equal(existsSync(skill), true);
+  assert.equal(existsSync(protocol), true);
   const checklistSource = readFileSync(checklist, 'utf8');
   const skillSource = readFileSync(skill, 'utf8');
+  const protocolSource = readFileSync(protocol, 'utf8');
   for (const term of ['WorkIntent', 'tracker', 'MCP', 'recovery', 'Stage Binding', 'machine-filled']) {
     assert.match(checklistSource, new RegExp(term, 'i'));
     assert.match(skillSource, new RegExp(term, 'i'));
+    assert.match(protocolSource, new RegExp(term, 'i'));
   }
 });
