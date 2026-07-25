@@ -145,7 +145,23 @@ function selectEngine(
     return new ProcessModuleRuntimeEngine(
       registry,
       DISCOVERY_PROCESS_MODULE_REF,
-      new ExistingOrchestrationEngineAdapter(DISCOVERY_PROCESS_MODULE_REF, discoveryEngine),
+      new ExistingOrchestrationEngineAdapter(
+        DISCOVERY_PROCESS_MODULE_REF,
+        discoveryEngine,
+        (_module, result) => {
+          const certificateId = result.settlement?.certificateId;
+          const proposalId = result.proposalId;
+          return {
+            code: result.outcome ?? result.reason,
+            authority: result.outcomeAuthority ?? null,
+            outputRef: certificateId !== undefined && certificateId !== null
+              ? `certificate:${certificateId}`
+              : proposalId !== undefined && proposalId !== null
+                ? `proposal:${proposalId}`
+                : null,
+          };
+        },
+      ),
     );
   }
   // Every other recognised mode (v2 / v3 / saga2) selects Saga2Engine. An
