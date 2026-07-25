@@ -801,8 +801,18 @@ function handleWorkerDone(args: Record<string, unknown>): {
     let newStatus: 'review' | 'done' | 'todo';
     let newAssignedTo: string | null; // кому уходит задача после перевода
     if (task.status === 'in_progress') {
-      newStatus = 'review';            // цикл разработки завершён → буфер ревью
-      newAssignedTo = null;            // в очереди на ревью (без исполнителя)
+      // Discovery-only tasks (discovery.work, discovery.assess, discovery.diagnose,
+      // discovery.normalize) skip the review loop — they are tracker_only tasks
+      // with no code to review. Sending them to review creates a spawn-loop
+      // (no reviewer worker can close them) that causes OOM (32k+ executions).
+      const isDiscoveryOnly = task.task_kind?.startsWith('discovery.');
+      if (isDiscoveryOnly) {
+        newStatus = 'done';            // discovery-only: close immediately
+        newAssignedTo = null;
+      } else {
+        newStatus = 'review';          // цикл разработки завершён → буфер ревью
+        newAssignedTo = null;          // в очереди на ревью (без исполнителя)
+      }
     } else if (task.status === 'review_in_progress') {
       if (verdict === 'changes_requested') {
         // T-013: verification review-loop escape.

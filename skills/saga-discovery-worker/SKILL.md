@@ -19,32 +19,71 @@ Your allowed tools: `task_get`, `repository_checkout_list`, `artifact_list`,
 `note_list`, `proposal_submit`, `worker_done`, plus file tools (`Write`, `Read`,
 `Edit`, `Bash`, `Glob`, `Grep`).
 
+## CRITICAL: External memory workflow
+
+You CANNOT hold all parameters in your head. You WILL forget task_id, schema_version,
+or mix up payload fields. To prevent this, you maintain TWO files as external memory.
+**Read them before every action. Update them after every step.**
+
 ## Your workflow (FOLLOW THESE STEPS IN ORDER)
+
+### Step 0: Create the stage tracker (FIRST THING YOU DO)
+
+Before ANY investigation, create `docs/discovery/project-<epic_id>-discovery-stage.md`
+using `Write`. Copy this EXACT template and fill in the values from your system prompt:
+
+```markdown
+# Discovery Stage Tracker — Project <epic_id>
+
+## Collected Values
+- task_id: <YOUR task_id from system prompt>
+- execution_id: "<YOUR execution_id from system prompt>"
+- intent_id: <fill after step 1, from task_get metadata.work_intent_id>
+- epic_id: <epic_id>
+- worker_id: "<YOUR worker_id from system prompt>"
+
+## Step Progress
+- [ ] 0. Create this tracker (you are here)
+- [ ] 1. task_get — get intent_id
+- [ ] 2. Investigate context (3-4 calls max)
+- [ ] 3. Write discovery-<epic_id>.md
+- [ ] 4a. Write proposal-call-<epic_id>.json
+- [ ] 4b. Verify checklist (read file back, check all 15 items)
+- [ ] 4c. proposal_submit
+- [ ] 5. worker_done
+
+## Current Step: 0
+## Errors: (none)
+```
+
+After creating it, read it back to confirm. **From now on, before every tool call,
+read this file to remind yourself of the current step and collected values.**
 
 ### Step 1: Read your task
 
 ```
-task_get({ id: <your task_id> })
+task_get({ id: <task_id from tracker> })
 ```
 
-The parameter name is **`id`** (not `task_id` or `taskId`). Write down these
-values from the task response — you will need them:
-- `task_id` = the task id (from your system prompt, e.g. task_id=6228)
-- `execution_id` = your execution id (from your system prompt)
-- `metadata.work_intent_id` = the intent id
+The parameter name is **`id`** (not `task_id` or `taskId`).
 
-### Step 2: Investigate context (brief)
+After getting the result, update your tracker:
+- Fill `intent_id` from `metadata.work_intent_id`
+- Mark step 1 as `[x]`
+- Set `Current Step: 2`
+
+### Step 2: Investigate context (3-4 calls MAX)
 
 Use read-only tools quickly:
 - `repository_checkout_list({ project_id: <id> })`
 - `artifact_list({ epic_id: <id> })`
-- `Read`, `Glob`, `Grep` — explore repo files.
+- `Read`, `Glob`, `Grep` — explore repo files briefly.
 
-Do NOT spend more than 3-4 tool calls here. Move on to step 3.
+After investigating, update tracker: mark step 2 `[x]`, set `Current Step: 3`.
 
 ### Step 3: Write your discovery document (MANDATORY)
 
-Create `docs/discovery/discovery-<epic_id>.md` using `Write`. Use this structure:
+Create `docs/discovery/discovery-<epic_id>.md` using `Write`:
 
 ```markdown
 # Discovery: <idea name>
@@ -77,21 +116,18 @@ Create `docs/discovery/discovery-<epic_id>.md` using `Write`. Use this structure
 <rationale>
 ```
 
-### Step 4: Build the proposal_submit call IN A FILE (CRITICAL)
+After writing, update tracker: mark step 3 `[x]`, set `Current Step: 4a`.
 
-**DO NOT try to call proposal_submit from memory.** You WILL forget parameters.
-Instead, build the call in a file, check it, then submit.
+### Step 4a: Write the proposal-call JSON file
 
-#### 4a. Write a checklist file
-
-Create `docs/discovery/proposal-call-<epic_id>.json` using `Write` with this
-EXACT structure. Fill in EVERY field from your discovery document:
+Create `docs/discovery/proposal-call-<epic_id>.json` using `Write`. Fill EVERY
+field from your tracker (intent_id, task_id, execution_id) and discovery document:
 
 ```json
 {
-  "intent_id": <INTEGER from task_get metadata.work_intent_id>,
-  "task_id": <INTEGER your task_id>,
-  "execution_id": "<STRING your execution_id>",
+  "intent_id": <INTEGER from tracker>,
+  "task_id": <INTEGER from tracker>,
+  "execution_id": "<STRING from tracker>",
   "kind": "discovery",
   "schema_version": "saga3.discovery-proposal.v1",
   "payload": {
@@ -109,73 +145,76 @@ EXACT structure. Fill in EVERY field from your discovery document:
 }
 ```
 
-#### 4b. Verify the checklist (DO THIS BEFORE SUBMITTING)
+After writing, update tracker: mark step 4a `[x]`, set `Current Step: 4b`.
 
-Read the file back with `Read`. Check EVERY item below. If any fails, use
-`Edit` to fix the file, then read it again:
+### Step 4b: Verify the checklist (MANDATORY before submit)
+
+Read `proposal-call-<epic_id>.json` back with `Read`. Check EVERY item:
 
 ```
-CHECKLIST (all must be YES):
-[ ] intent_id is an integer (not a string, not null)
-[ ] task_id is an integer (not a string, not null)
+CHECKLIST:
+[ ] intent_id is an integer (like 10228, NOT "10228")
+[ ] task_id is an integer (like 6229, NOT "6229")
 [ ] execution_id is a string in quotes
 [ ] kind is exactly "discovery"
 [ ] schema_version is exactly "saga3.discovery-proposal.v1"
-[ ] payload.problem_statement is a non-empty string
-[ ] payload.observed_context is a non-empty string
-[ ] payload.stakeholders_or_actors is an ARRAY of strings: ["a", "b"]
-[ ] payload.assumptions is an ARRAY of strings
-[ ] payload.unknowns is an ARRAY of strings
-[ ] payload.risks is an ARRAY of strings
-[ ] payload.candidate_scope is a non-empty string
-[ ] payload.evidence_refs is an ARRAY of strings
-[ ] payload.recommended_outcome is one of: go, clarify, reject, defer, inconclusive, failed
-[ ] payload.rationale is a non-empty string
+[ ] problem_statement is a non-empty string
+[ ] observed_context is a non-empty string
+[ ] stakeholders_or_actors is a real array: ["a", "b"]
+[ ] assumptions is a real array
+[ ] unknowns is a real array
+[ ] risks is a real array
+[ ] candidate_scope is a non-empty string
+[ ] evidence_refs is a real array
+[ ] recommended_outcome is one of: go, clarify, reject, defer, inconclusive, failed
+[ ] rationale is a non-empty string
 ```
 
-**Common mistakes to avoid:**
-- Putting `task_id` or `schema_version` INSIDE payload — they are TOP-LEVEL
-- Making arrays into strings — `["a","b"]` not `"[\"a\",\"b\"]"`
-- Forgetting `task_id` entirely
-- Using `taskId` instead of `task_id`
+If ANY item fails, use `Edit` to fix the JSON file, then read it again.
+After all pass, update tracker: mark step 4b `[x]`, set `Current Step: 4c`.
 
-#### 4c. Submit
+### Step 4c: Submit the proposal
 
-Once ALL checklist items pass, call `proposal_submit` using the verified values
-from your file:
+Read your verified JSON file ONE MORE TIME. Then call proposal_submit using
+those EXACT values:
 
 ```
 proposal_submit({
-  intent_id: <the integer from your file>,
-  task_id: <the integer from your file>,
-  execution_id: "<the string from your file>",
+  intent_id: <integer>,
+  task_id: <integer>,
+  execution_id: "<string>",
   kind: "discovery",
   schema_version: "saga3.discovery-proposal.v1",
-  payload: <the payload object from your file>
+  payload: <the payload object>
 })
 ```
 
-If it throws: read the error, fix your file with `Edit`, re-verify the checklist,
-submit **once more**. Maximum 2 attempts.
+If it throws: read the error, use `Edit` to fix your JSON file, re-verify
+the checklist, submit **once more**. Maximum 2 attempts.
+
+After success, update tracker: mark step 4c `[x]`, set `Current Step: 5`.
 
 ### Step 5: Complete the task
 
+Read your tracker for task_id, worker_id, execution_id. Then:
+
 ```
 worker_done({
-  task_id: <your task_id>,
-  worker_id: <your worker_id>,
-  execution_id: <your execution_id>,
-  result: "Discovery complete. Document: docs/discovery/discovery-<epic_id>.md. Proposal submitted."
+  task_id: <integer>,
+  worker_id: "<string>",
+  execution_id: "<string>",
+  result: "Discovery complete. Document: docs/discovery/discovery-<epic_id>.md."
 })
 ```
 
-Then stop. Do not claim another task.
+Mark step 5 `[x]`. Then stop. Do not claim another task.
 
 ## What you must NOT do
 
+- Do NOT skip the stage tracker file (step 0).
 - Do NOT call proposal_submit without first writing and verifying the JSON file.
+- Do NOT hold values in your head — write them to the tracker.
+- Do NOT call a tool that returned AUTHORITY_DENIED.
 - Do NOT call `episode_transition`.
 - Do NOT spawn nested agents.
-- Do NOT call a tool that returned AUTHORITY_DENIED.
 - Do NOT fabricate evidence.
-- Do NOT skip the `.md` document or the checklist.
