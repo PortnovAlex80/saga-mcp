@@ -22,6 +22,7 @@ import {
 } from '../saga3/domain/discovery-proposal.js';
 import type { Saga3DiscoveryRuntimePersistence } from '../saga3/persistence/saga3-discovery-runtime-port.js';
 import type { DiscoveryNormalizationService } from '../saga3/application/discovery-normalization-service.js';
+import { ensureDiscoveryWorkspace } from '../saga3/application/ensure-discovery-workspace.js';
 import type { DiscoveryReadinessService } from '../saga3/application/discovery-readiness-service.js';
 import type { DiscoverySettlementService, DiscoverySettlementResult, ProvisionalOutcome } from '../saga3/application/discovery-settlement-service.js';
 import type {
@@ -312,6 +313,19 @@ export class Saga3DiscoveryEngine implements OrchestrationEngine {
       generationKey: discoveryGenerationKey(intent.id),
     });
     if (!intent.projected_task_id) rt.setProjectedTask(intent.id, taskId);
+
+    // 2b. Ensure the discovery workspace exists: copy static templates into
+    // docs/discovery/tools/ and seed the epic-specific stage tracker +
+    // proposal-call JSON with known IDs (epic_id/task_id/intent_id). Idempotent
+    // (restart-safe): skips files that already exist. Regression-protected by
+    // tests/saga3/d1-workspace-creation.test.mjs.
+    ensureDiscoveryWorkspace({
+      workspaceRoot: workspace.workspaceRoot ?? '',
+      epicId,
+      projectId,
+      taskId,
+      intentId: intent.id,
+    });
 
     const preparation = rt.prepareIntentForExecution(intent.id, taskId);
     if (preparation.state === 'active') {
