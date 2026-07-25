@@ -1,6 +1,7 @@
 import type {
   OrchestrationEngine,
   OrchestrationRunResult,
+  ProcessOutcomeMetadata,
   RunEpisodeCommand,
 } from '../../application/ports/orchestration-engine.js';
 import {
@@ -16,7 +17,16 @@ export interface ProcessModuleExecutionAdapter {
     module: ProcessModuleDefinition,
     command: RunEpisodeCommand,
   ): Promise<OrchestrationRunResult>;
+  projectOutcome(
+    module: ProcessModuleDefinition,
+    result: OrchestrationRunResult,
+  ): ProcessOutcomeMetadata;
 }
+
+export type ProcessOutcomeProjector = (
+  module: ProcessModuleDefinition,
+  result: OrchestrationRunResult,
+) => ProcessOutcomeMetadata;
 
 /**
  * Compatibility adapter for an existing stage-specific orchestration engine.
@@ -24,19 +34,36 @@ export interface ProcessModuleExecutionAdapter {
  * It lets Saga migrate one process at a time: the module definition and
  * lifecycle boundary become generic first, while the proven stage engine keeps
  * executing the internal flow until its nodes are moved onto the generic node
- * runtime.
+ * runtime. Stage-specific result fields are interpreted only by the adapter's
+ * projector, never by the process-agnostic Runtime.
  */
 export class ExistingOrchestrationEngineAdapter implements ProcessModuleExecutionAdapter {
+  private readonly projector: ProcessOutcomeProjector;
+
   constructor(
     readonly moduleRef: ProcessModuleReference,
     private readonly engine: OrchestrationEngine,
-  ) {}
+    projector?: ProcessOutcomeProjector,
+  ) {
+    this.projector = projector ?? ((_module, result) => ({
+      code: result.outcome ?? result.reason,
+      authority: null,
+      outputRef: null,
+    }));
+  }
 
   run(
     _module: ProcessModuleDefinition,
     command: RunEpisodeCommand,
   ): Promise<OrchestrationRunResult> {
     return this.engine.run(command);
+  }
+
+  projectOutcome(
+    module: ProcessModuleDefinition,
+    result: OrchestrationRunResult,
+  ): ProcessOutcomeMetadata {
+    return this.projector(module, result);
   }
 }
 
@@ -45,7 +72,8 @@ export class ExistingOrchestrationEngineAdapter implements ProcessModuleExecutio
  *
  * The wrapper validates registration, binds the selected module to an execution
  * adapter, and projects a generic local process outcome. It deliberately does
- * not select the next module: Lifecycle/StageBinding owns that decision.
+ * not interpret domain-specific result fields or select the next module:
+ * adapter owns compatibility projection, Lifecycle/StageBinding owns routing.
  */
 export class ProcessModuleRuntimeEngine implements OrchestrationEngine {
   constructor(
@@ -64,7 +92,6 @@ export class ProcessModuleRuntimeEngine implements OrchestrationEngine {
   async run(command: RunEpisodeCommand): Promise<OrchestrationRunResult> {
     const module = this.registry.require(this.moduleRef);
     const result = await this.adapter.run(module, command);
-    const code = result.outcome ?? result.reason;
 
     return {
       ...result,
@@ -74,22 +101,7 @@ export class ProcessModuleRuntimeEngine implements OrchestrationEngine {
         kind: module.identity.kind,
         ref: processModuleKey(module.identity),
       },
-      processOutcome: {
-        code,
-        authority: result.outcomeAuthority ?? null,
-        outputRef: this.outputRef(result),
-      },
+      processOutcome: this.adapter.projectOutcome(module, result),
     };
-  }
-
-  private outputRef(result: OrchestrationRunResult): string | null {
-    const certificateId = result.settlement?.certificateId;
-    if (certificateId !== undefined && certificateId !== null) {
-      return `certificate:${certificateId}`;
-    }
-    if (result.proposalId !== undefined && result.proposalId !== null) {
-      return `proposal:${result.proposalId}`;
-    }
-    return null;
   }
 }
