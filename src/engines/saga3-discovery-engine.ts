@@ -260,6 +260,20 @@ export class Saga3DiscoveryEngine implements OrchestrationEngine {
     // 1. Idempotent WorkIntent — re-use the open one if a previous run created it.
     let intent = rt.readOpenIntent(epicId, DISCOVERY_INTENT_KIND);
     if (!intent) {
+      // Recovery check: before creating a NEW intent, check whether a CONCLUDED
+      // discovery intent already exists for this episode with a submitted
+      // Proposal. If so, reuse it — the recovery branch (preparation.state ===
+      // 'done') will reuse the existing proposal, settlement, certificate, and
+      // resume readiness/diagnosis. This prevents the duplicate-intent bug where
+      // a restart after a clean discovery closure creates a fresh worker instead
+      // of recovering the existing authoritative result.
+      const concluded = rt.readConcludedIntentWithProposal(epicId, DISCOVERY_INTENT_KIND);
+      if (concluded) {
+        intent = concluded;
+        heartbeat('INTENT_REUSED_CONCLUDED', `id=${intent.id} (recovery: proposal already submitted)`);
+      }
+    }
+    if (!intent) {
       const epic = rt.readEpicObjective(epicId);
       const objective = epic?.description || epic?.name || `discovery for epic ${epicId}`;
       const create: CreateWorkIntent = {

@@ -48,6 +48,15 @@ export interface Saga3DiscoveryRuntimePersistence {
   /** Open WorkIntent of the given kind for the episode, if any. */
   readOpenIntent(epicId: number, kind: string): WorkIntent | null;
 
+  /**
+   * Recovery: find the latest CONCLUDED WorkIntent of the given kind for the
+   * episode that has a submitted Proposal. Returns null if no such intent
+   * exists (no concluded intent, or concluded without a proposal — stale
+   * conclusion). Used on restart to reuse an existing discovery result instead
+   * of creating a duplicate intent.
+   */
+  readConcludedIntentWithProposal(epicId: number, kind: string): WorkIntent | null;
+
   /** Create a new WorkIntent (status starts 'open'). */
   createIntent(command: CreateWorkIntent): WorkIntent;
 

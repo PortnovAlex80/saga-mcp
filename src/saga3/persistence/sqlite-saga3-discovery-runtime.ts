@@ -94,6 +94,22 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
     return row ? rowToIntent(row) : null;
   }
 
+  readConcludedIntentWithProposal(epicId: number, kind: string): WorkIntent | null {
+    // Find the latest concluded intent that has a submitted proposal.
+    // This enables restart recovery: reuse the existing discovery result
+    // instead of creating a duplicate intent + worker.
+    const row = getDb().prepare(
+      `SELECT wi.* FROM saga3_work_intents wi
+        WHERE wi.epic_id=? AND wi.kind=? AND wi.status='concluded'
+          AND EXISTS (
+            SELECT 1 FROM saga3_proposals p
+            WHERE p.intent_id = wi.id AND p.status = 'submitted'
+          )
+        ORDER BY wi.id DESC LIMIT 1`,
+    ).get(epicId, kind) as WorkIntentRow | undefined;
+    return row ? rowToIntent(row) : null;
+  }
+
   createIntent(command: CreateWorkIntent): WorkIntent {
     const db = getDb();
     const info = db.prepare(
