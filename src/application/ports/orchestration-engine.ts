@@ -21,6 +21,21 @@ export type OrchestrationRunReason =
   | 'stopped'
   | 'discovery_not_implemented';
 
+/** Generic identity projected by the Process Module runtime wrapper. */
+export interface ProcessModuleRunMetadata {
+  name: string;
+  version: string;
+  kind: string;
+  ref: string;
+}
+
+/** Generic local process outcome, independent of lifecycle routing. */
+export interface ProcessOutcomeMetadata {
+  code: string;
+  authority: string | null;
+  outputRef: string | null;
+}
+
 export interface OrchestrationRunResult {
   projectId: number;
   epicId: number;
@@ -29,6 +44,14 @@ export interface OrchestrationRunResult {
   reason: OrchestrationRunReason;
   cycles: number;
   lastError: string | null;
+
+  /**
+   * Process Module projection. Optional for Saga 2 compatibility. A module
+   * returns only its local outcome; the parent Lifecycle owns routing to the
+   * next Stage Binding.
+   */
+  processModule?: ProcessModuleRunMetadata;
+  processOutcome?: ProcessOutcomeMetadata;
 
   /**
    * Saga 3 partial-pipeline fields (optional for Saga 2 backward compatibility).
