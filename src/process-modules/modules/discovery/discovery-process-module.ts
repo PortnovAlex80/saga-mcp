@@ -17,6 +17,7 @@ export const DISCOVERY_PROCESS_MODULE_REF = {
 } as const;
 
 const DISCOVERY_TRACKER = 'tool-templates/discovery/stage-tracker.md';
+const PROCESS_PROTOCOL_SKILL = 'saga-process-module-worker-protocol';
 
 export const discoveryProcessModule: ProcessModuleDefinition = {
   identity: {
@@ -166,6 +167,8 @@ export const discoveryProcessModule: ProcessModuleDefinition = {
       workIntentSchema: { id: DISCOVERY_WORK_INTENT_SCHEMA },
       taskKind: 'discovery.work',
       executionSkill: 'saga-discovery-worker',
+      protocolSkill: PROCESS_PROTOCOL_SKILL,
+      semanticSkill: 'saga-discovery-worker',
       executionMode: 'tracker_only',
       allowedTools: [
         'task_get', 'repository_checkout_list', 'artifact_list', 'note_list',
@@ -188,6 +191,8 @@ export const discoveryProcessModule: ProcessModuleDefinition = {
       workIntentSchema: { id: DISCOVERY_NORMALIZATION_PROPOSAL_SCHEMA },
       taskKind: 'discovery.normalize',
       executionSkill: 'saga-discovery-normalizer',
+      protocolSkill: PROCESS_PROTOCOL_SKILL,
+      semanticSkill: 'saga-discovery-normalizer',
       executionMode: 'tracker_only',
       allowedTools: ['task_get', 'normalization_get', 'normalization_submit', 'worker_done', 'Read', 'Edit'],
       trackerTemplate: DISCOVERY_TRACKER,
@@ -204,6 +209,8 @@ export const discoveryProcessModule: ProcessModuleDefinition = {
       workIntentSchema: { id: DISCOVERY_READINESS_ASSESSMENT_SCHEMA },
       taskKind: 'discovery.assess',
       executionSkill: 'saga-discovery-readiness-advisor',
+      protocolSkill: PROCESS_PROTOCOL_SKILL,
+      semanticSkill: 'saga-discovery-readiness-advisor',
       executionMode: 'tracker_only',
       allowedTools: ['task_get', 'readiness_get', 'readiness_submit', 'worker_done', 'Read', 'Edit'],
       trackerTemplate: DISCOVERY_TRACKER,
@@ -220,6 +227,8 @@ export const discoveryProcessModule: ProcessModuleDefinition = {
       workIntentSchema: { id: DISCOVERY_DIAGNOSIS_REPORT_SCHEMA },
       taskKind: 'discovery.diagnose',
       executionSkill: 'saga-discovery-diagnosis-advisor',
+      protocolSkill: PROCESS_PROTOCOL_SKILL,
+      semanticSkill: 'saga-discovery-diagnosis-advisor',
       executionMode: 'tracker_only',
       allowedTools: ['task_get', 'diagnosis_get', 'diagnosis_submit', 'worker_done', 'Read', 'Edit'],
       trackerTemplate: DISCOVERY_TRACKER,
