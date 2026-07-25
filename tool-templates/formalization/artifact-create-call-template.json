@@ -1,0 +1,22 @@
+{
+  "tool": "artifact_create",
+  "arguments": {
+    "project_id": "FILL_INTEGER_MACHINE_BOUND_PROJECT_ID",
+    "epic_id": "FILL_INTEGER_MACHINE_BOUND_EPIC_ID",
+    "type": "FILL_NODE_OWNED_ARTIFACT_TYPE",
+    "title": "FILL_ARTIFACT_TITLE",
+    "path": "FILL_RELATIVE_ARTIFACT_PATH",
+    "code": "FILL_STABLE_CODE_OR_NULL",
+    "status": "draft",
+    "parent_artifact_id": "FILL_INTEGER_PARENT_ID_OR_NULL"
+  },
+  "provenance": {
+    "process_module_ref": "solution-formalization@1.0.0",
+    "process_run_id": "FILL_MACHINE_BOUND_PROCESS_RUN_ID",
+    "node_id": "FILL_MACHINE_BOUND_NODE_ID",
+    "work_intent_id": "FILL_INTEGER_MACHINE_BOUND_WORK_INTENT_ID",
+    "task_id": "FILL_INTEGER_MACHINE_BOUND_TASK_ID",
+    "execution_id": "FILL_MACHINE_BOUND_EXECUTION_ID",
+    "input_snapshot_hash": "FILL_MACHINE_BOUND_INPUT_HASH"
+  }
+}
