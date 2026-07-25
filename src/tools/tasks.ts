@@ -708,7 +708,15 @@ function handleTaskGet(args: Record<string, unknown>) {
     )
     .all(id);
 
-  return { ...(task as object), subtasks, notes, comments, depends_on: dependsOn, dependents };
+  // Workflow hint: for discovery-stage tasks, remind the model to maintain its stage tracker.
+  const taskRow = task as Record<string, unknown>;
+  const isDiscoveryTask = typeof taskRow.task_kind === 'string' && taskRow.task_kind.startsWith('discovery.');
+  const result: Record<string, unknown> = { ...taskRow, subtasks, notes, comments, depends_on: dependsOn, dependents };
+  if (isDiscoveryTask) {
+    const epicId = taskRow.epic_id;
+    result._workflow_hint = `Discovery task detected. Maintain your stage tracker: Read docs/discovery/project-${epicId}-discovery-stage.md. If it doesn't exist, create it (Step 0). Update Current Step after every action. Check Collected Values (task_id, execution_id, intent_id) before calling proposal_submit.`;
+  }
+  return result;
 }
 
 function handleTaskUpdate(args: Record<string, unknown>) {

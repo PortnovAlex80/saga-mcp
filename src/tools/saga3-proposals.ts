@@ -39,6 +39,8 @@ export interface D2ProposalSubmitResult {
   deterministic_trace: string[];
   validation_errors: string[];
   alias_conflicts: string[];
+  /** Workflow reminder for the model — not stored, only in the tool response. */
+  _workflow_hint?: string;
 }
 
 export function createSaga3ProposalHandlers(
@@ -171,6 +173,7 @@ export function createSaga3ProposalHandlers(
         deterministic_trace: deterministic.trace,
         validation_errors: [],
         alias_conflicts: [],
+        _workflow_hint: '✅ Proposal accepted! Update your stage tracker: Read docs/discovery/project-<N>-discovery-stage.md, mark step 4c [x], set Current Step: 5. Then call worker_done with your task_id and execution_id.',
       } satisfies D2ProposalSubmitResult;
     });
   };

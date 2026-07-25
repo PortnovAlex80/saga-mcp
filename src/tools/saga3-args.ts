@@ -212,5 +212,7 @@ export function enrichPayloadErrors(tool: string, errors: string[]): string[] {
     return hint ? `${raw} [Source: ${hint}]` : raw;
   });
   if (shape) enriched.push(`[Expected ${tool} shape: ${shape}]`);
+  // Workflow reminder: tell the model to check its stage tracker file.
+  enriched.push('[Workflow: Read your stage tracker docs/discovery/project-<N>-discovery-stage.md, fix the field, verify checklist, retry.]');
   return enriched;
 }
