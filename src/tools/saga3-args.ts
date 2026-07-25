@@ -182,13 +182,19 @@ const PAYLOAD_FIELD_SOURCES: Record<string, Record<string, string>> = {
  * expected call shape once per batch. The raw error phrase is preserved as a
  * substring so existing regex tests and DB-stored audit errors stay stable.
  *
- * Applied ONLY at the 4 handler→model boundaries (the DB copy stays raw for
+ * Applied ONLY at the handler→model boundaries (the DB copy stays raw for
  * kernel audit). The pure validators are untouched.
  */
 export function enrichPayloadErrors(tool: string, errors: string[]): string[] {
   if (!errors || errors.length === 0) return errors;
   const sources = PAYLOAD_FIELD_SOURCES[tool];
   const shape = (SAGA3_TOOL_CALL_SHAPES as Record<string, string>)[tool];
+
+  // This helper is deliberately scoped to known Saga 3 tool contracts. Adding a
+  // generic workflow sentence to an unknown tool changes its error semantics and
+  // can hide the fact that no actionable shape/source registry exists for it.
+  if (!sources && !shape) return errors;
+
   const enriched = errors.map((raw) => {
     let hint: string | undefined;
     if (sources) {
@@ -211,8 +217,10 @@ export function enrichPayloadErrors(tool: string, errors: string[]): string[] {
     }
     return hint ? `${raw} [Source: ${hint}]` : raw;
   });
-  if (shape) enriched.push(`[Expected ${tool} shape: ${shape}]`);
-  // Workflow reminder: tell the model to check its stage tracker file.
+
+  // Keep the expected shape as the final, highest-value recovery instruction.
+  // Tests and weak-model skills rely on this stable last element.
   enriched.push('[Workflow: Read your stage tracker docs/discovery/project-<N>-discovery-stage.md, fix the field, verify checklist, retry.]');
+  if (shape) enriched.push(`[Expected ${tool} shape: ${shape}]`);
   return enriched;
 }
