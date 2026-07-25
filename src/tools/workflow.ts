@@ -392,7 +392,9 @@ export function generateNextForCompletedTask(taskId: number): GeneratedResult | 
 
 export const definitions: Tool[] = [{
   name: 'workflow_generate_next',
-  description: 'Idempotently generate the next typed workflow tasks from one completed upstream task. Supported transitions (ADR-013 pipeline-reorder-srs-after-ac): brief_accepted (kickstart→PRD only, ADR-008), prd_accepted (→UC), uc_accepted (→AC), ac_accepted (→reconciliation), baseline_accepted (→SRS, post-baseline), srs_accepted (→planning).',
+  description:
+    'Idempotently generate the next typed workflow tasks from one completed upstream task. Supported transitions (ADR-013 pipeline-reorder-srs-after-ac): brief_accepted (kickstart→PRD only, ADR-008), prd_accepted (→UC), uc_accepted (→AC), ac_accepted (→reconciliation), baseline_accepted (→SRS, post-baseline), srs_accepted (→planning). ' +
+    'Call shape: workflow_generate_next({ epic_id: <integer>, source_task_id: <integer (the done upstream task)>, transition: "brief_accepted|prd_accepted|uc_accepted|ac_accepted|baseline_accepted|srs_accepted" }). Required: epic_id, source_task_id, transition.',
   annotations: { title: 'Workflow: Generate Next', readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   inputSchema: {
     type: 'object',

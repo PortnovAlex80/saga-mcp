@@ -8,7 +8,9 @@ import type { ToolHandler } from '../types.js';
 export const definitions: Tool[] = [
   {
     name: 'project_create',
-    description: 'Create a new project. Projects are the top-level container for all work.',
+    description:
+      'Create a new project. Projects are the top-level container for all work. ' +
+      'Call shape: project_create({ name: "<string>", description: "<string>", status: "active|on_hold|completed|archived", tags: ["<string>", ...] }). Required: name.',
     annotations: { title: 'Create Project', readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     inputSchema: {
       type: 'object',
@@ -33,7 +35,8 @@ export const definitions: Tool[] = [
   {
     name: 'project_list',
     description:
-      'List all projects with epic/task counts and completion percentages. Optionally filter by status.',
+      'List all projects with epic/task counts and completion percentages. Optionally filter by status. ' +
+      'Call shape: project_list({ status: "active|on_hold|completed|archived" }). All params optional.',
     annotations: { title: 'List Projects', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: 'object',
@@ -49,7 +52,8 @@ export const definitions: Tool[] = [
   {
     name: 'project_update',
     description:
-      'Update a project. Pass only the fields you want to change. Set status to "archived" to soft-delete.',
+      'Update a project. Pass only the fields you want to change. Set status to "archived" to soft-delete. ' +
+      'Call shape: project_update({ id: <integer>, name: "<string>", description: "<string>", status: "active|on_hold|completed|archived", tags: ["<string>", ...] }). Required: id.',
     annotations: { title: 'Update Project', readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: 'object',
@@ -66,7 +70,8 @@ export const definitions: Tool[] = [
   {
     name: 'project_resolve_by_name',
     description:
-      'Get-or-create a project by its exact name, atomically. Returns {project_id, created, project}. created:true if a new project was inserted, false if an existing name matched. Use this when a worker needs a stable project_id from a project name (e.g. read from ./projectname.txt) — guarantees no duplicate projects are created when multiple agents start cold at once (name is not unique in saga, so the atomic lookup-or-insert under a write lock is what prevents duplicates).',
+      'Get-or-create a project by its exact name, atomically. Returns {project_id, created, project}. created:true if a new project was inserted, false if an existing name matched. Use this when a worker needs a stable project_id from a project name (e.g. read from ./projectname.txt) — guarantees no duplicate projects are created when multiple agents start cold at once (name is not unique in saga, so the atomic lookup-or-insert under a write lock is what prevents duplicates). ' +
+      'Call shape: project_resolve_by_name({ name: "<string (exact match)>", description: "<string (only used if creating)>" }). Required: name.',
     annotations: { title: 'Resolve Project by Name', readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: 'object',
@@ -86,7 +91,8 @@ export const definitions: Tool[] = [
   {
     name: 'project_delete',
     description:
-      'Hard-delete a project and cascade-clean all epics, tasks, artifacts, traces, worker_executions, episode_workflows, and repository bindings. Admin escape hatch — VIOLATES CGAD P2 ("status change, not destruction"). Prefer project_update({status:"archived"}) for soft-delete. Safety: rejects if any engine is running for an epic in this project. Leaves intact: repositories rows (resource, P17), activity_log (audit trail, P12), command_receipts (idempotency ledger), on-disk .md artifact files. Returns deregistered_checkouts so the operator can clean disk separately.',
+      'Hard-delete a project and cascade-clean all epics, tasks, artifacts, traces, worker_executions, episode_workflows, and repository bindings. Admin escape hatch — VIOLATES CGAD P2 ("status change, not destruction"). Prefer project_update({status:"archived"}) for soft-delete. Safety: rejects if any engine is running for an epic in this project. Leaves intact: repositories rows (resource, P17), activity_log (audit trail, P12), command_receipts (idempotency ledger), on-disk .md artifact files. Returns deregistered_checkouts so the operator can clean disk separately. ' +
+      'Call shape: project_delete({ project_id: <integer> }). The parameter is "project_id" (not "id"). Required: project_id.',
     annotations: { title: 'Delete Project (hard)', readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
     inputSchema: {
       type: 'object',

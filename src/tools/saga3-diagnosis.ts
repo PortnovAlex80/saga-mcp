@@ -204,7 +204,7 @@ export function createSaga3DiagnosisHandlers(
     definitions: [
       {
         name: 'diagnosis_get',
-        description: 'Read the immutable DiagnosisCase the kernel built for the exact certificate target, plus the allowed source references a diagnosis advisor may cite and the report output schema.',
+        description: 'Read the immutable DiagnosisCase the kernel built for the exact certificate target, plus the allowed source references a diagnosis advisor may cite and the report output schema. Call shape: diagnosis_get({ control_intent_id: <int from task_get.metadata.control_intent_id>, execution_id: <string, your execution_id> }) — returns certificate_id, certificate_hash, diagnosis_case (with .certificate carrying id/hash/decision/settlement_input_hash, and .policy_trace carrying cite-able condition_ids where contributed_to_decision is true), allowed_source_refs, output_schema, rule. Echo the returned certificate tuple verbatim into the subsequent diagnosis_submit payload.target.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -217,7 +217,7 @@ export function createSaga3DiagnosisHandlers(
       },
       {
         name: 'diagnosis_submit',
-        description: 'Submit one typed advisory diagnosis report for the immutable certificate target bound to the ControlIntent. The kernel validates it deterministically and accepts or rejects; this never modifies the D4 settlement, certificate, proposal, readiness, or the discovery outcome.',
+        description: 'Submit one typed advisory diagnosis report for the immutable certificate target bound to the ControlIntent. The kernel validates it deterministically and accepts or rejects; this never modifies the D4 settlement, certificate, proposal, readiness, or the discovery outcome. Call shape: diagnosis_submit({ control_intent_id: <int from task_get.metadata.control_intent_id>, execution_id: <string, your execution_id>, schema_version: "saga3.discovery-diagnosis.v1", payload: { target: { certificate_id: <int from diagnosis_get.diagnosis_case.certificate.id>, certificate_hash: "<64-char hex from diagnosis_get.diagnosis_case.certificate.hash>", settlement_input_hash: "<64-char hex from diagnosis_get.diagnosis_case.certificate.settlement_input_hash>", decision: "go|clarify|reject from diagnosis_get" }, executive_summary: <string>, cause_analysis: [ { cause_id: <string>, category: "missing_evidence|blocking_gap|conflicting_assessment|low_confidence|scope_problem|unresolved_unknown|policy_condition|residual_risk", description: <string>, severity: "blocking|material|informational", reason_codes: <string[]>, cited_condition_ids: <string[] from policy_trace where contributed_to_decision=true>, source_refs: <string[] from allowed_source_refs> } ], information_requests: [ { request_id, question, resolves_cause_ids[], source_refs[] } ], recommended_actions: [ { action_id, action: "collect_information|resolve_conflict|revise_scope|repeat_discovery|request_human_decision|proceed_with_monitoring", description, resolves_cause_ids[], source_refs[] } ], residual_risks: [ { risk, source_refs[] } ], confidence: <number 0..1> } }). IMPORTANT: control_intent_id/execution_id/schema_version are TOP-LEVEL args, NOT inside payload; the target certificate tuple must echo diagnosis_get exactly; all source_refs must come from allowed_source_refs; payload MUST NOT contain new_outcome/override_decision/approved/settled/transition_stage/new_certificate.',
         inputSchema: {
           type: 'object',
           properties: {

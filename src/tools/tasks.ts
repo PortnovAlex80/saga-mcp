@@ -120,7 +120,9 @@ function derivePolicyMinimum(tags: string[], taskKind: string | null): 'low' | '
 export const definitions: Tool[] = [
   {
     name: 'task_create',
-    description: 'Create a task within an epic. Tasks are the primary unit of work.',
+    description:
+      'Create a task within an epic. Tasks are the primary unit of work. ' +
+      'Call shape: task_create({ epic_id: <integer>, title: "<string>", description: "<string>", status: "todo|in_progress|review|review_in_progress|done|blocked", priority: "low|medium|high|critical", assigned_to: "<string>", estimated_hours: <number>, due_date: "<YYYY-MM-DD>", depends_on: [<task_id>, ...], tags: ["<string>", ...], task_kind: "<string>", workflow_stage: "discovery|formalization|planning|development|verification|integration", execution_skill: "<string>", review_skill: "<string>", execution_mode: "git_change|tracker_only|read_only_evidence|interactive", project_repository_id: <integer>, generated_from_task_id: <integer>, source_artifact_ids: [<artifact_id>, ...], verification_target_artifact_id: <integer>, generation_key: "<string>" }). Required: epic_id, title. The parameter names are snake_case (e.g. epic_id, task_kind, project_repository_id) — NOT camelCase.',
     annotations: { title: 'Create Task', readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     inputSchema: {
       type: 'object',
@@ -198,7 +200,8 @@ export const definitions: Tool[] = [
   {
     name: 'task_list',
     description:
-      'List tasks with optional filters. If no epic_id given, lists across ALL epics. Includes subtask counts and dependency info. Pass branch="current" to restrict to tasks whose epic is scoped to the active git branch.',
+      'List tasks with optional filters. If no epic_id given, lists across ALL epics. Includes subtask counts and dependency info. Pass branch="current" to restrict to tasks whose epic is scoped to the active git branch. ' +
+      'Call shape: task_list({ epic_id: <integer>, status: "todo|in_progress|review|review_in_progress|done|blocked", priority: "low|medium|high|critical", assigned_to: "<string>", tag: "<string>", task_kind: "<string>", workflow_stage: "<string>", project_repository_id: <integer>, branch: "current|<branch-name>|", sort_by: "priority|created|due_date|status", limit: <integer> }). All params optional.',
     annotations: { title: 'List Tasks', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: 'object',
@@ -227,7 +230,9 @@ export const definitions: Tool[] = [
   },
   {
     name: 'task_get',
-    description: 'Get a single task with full details including all subtasks, related notes, comments, and dependencies.',
+    description:
+      'Get a single task with full details including all subtasks, related notes, comments, and dependencies. ' +
+      'Call shape: task_get({ id: <integer> }). The parameter is "id" (not "task_id" or "taskId").',
     annotations: { title: 'Get Task', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: 'object',
@@ -240,7 +245,9 @@ export const definitions: Tool[] = [
   {
     name: 'task_update',
     description:
-      'Update a task. Pass only fields to change. Status transitions are automatically logged in the activity log.',
+      'Update a task. Pass only fields to change. Status transitions are automatically logged in the activity log. ' +
+      'NOTE: the "status" field is IGNORED — only the dispatcher (worker_next / worker_done) may change task status; to move a task use worker_done. ' +
+      'Call shape: task_update({ id: <integer>, title: "<string>", description: "<string>", priority: "low|medium|high|critical", assigned_to: "<string>", estimated_hours: <number>, actual_hours: <number>, due_date: "<YYYY-MM-DD>", depends_on: [<task_id>, ...] (replaces existing), tags: ["<string>", ...], task_kind: "<string>", workflow_stage: "<string>", execution_skill: "<string>", review_skill: "<string>", execution_mode: "git_change|tracker_only|read_only_evidence|interactive", declared_risk: "low|medium|high|critical", derived_risk: "low|medium|high|critical", policy_minimum: "low|medium|high|critical", ... }). Required: id. The parameter is "id" (not "task_id" or "taskId").',
     annotations: { title: 'Update Task', readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: 'object',

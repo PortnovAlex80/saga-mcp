@@ -7,7 +7,8 @@ export const definitions: Tool[] = [
   {
     name: 'tracker_search',
     description:
-      'Search across ALL entities (projects, epics, tasks, notes) by keyword. Returns categorized results. Pass branch="current" to restrict epic/task matches to the active git branch (projects and notes are not branch-scoped).',
+      'Search across ALL entities (projects, epics, tasks, notes) by keyword. Returns categorized results. Pass branch="current" to restrict epic/task matches to the active git branch (projects and notes are not branch-scoped). ' +
+      'Call shape: tracker_search({ query: "<string>", entity_types: ["project","epic","task","note"], branch: "current|<branch-name>|", limit: <integer> }). Required: query. Omit entity_types to search all.',
     annotations: { title: 'Global Search', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: 'object',

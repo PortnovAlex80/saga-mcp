@@ -178,7 +178,7 @@ export function createSaga3ProposalHandlers(
   return {
     definitions: [{
       name: 'proposal_submit',
-      description: 'Store the immutable raw discovery response, then run deterministic normalization: strict JSON, full markdown-fence removal, supported aliases, schema validation. Only semantic ambiguity is delegated to a bounded normalization control worker.',
+      description: 'Store the immutable raw discovery response, then run deterministic normalization: strict JSON, full markdown-fence removal, supported aliases, schema validation. Only semantic ambiguity is delegated to a bounded normalization control worker. Call shape: proposal_submit({ intent_id: <int from task_get.metadata.work_intent_id>, task_id: <int, your assigned task_id>, execution_id: <string, your execution_id>, kind: "discovery", schema_version: "saga3.discovery-proposal.v1", payload: { problem_statement: <string>, observed_context: <string>, stakeholders_or_actors: <string[]>, assumptions: <string[]>, unknowns: <string[]>, risks: <string[]>, candidate_scope: <string>, evidence_refs: <string[]>, recommended_outcome: "go|clarify|reject|defer|inconclusive|failed", rationale: <string> } }). IMPORTANT: intent_id/task_id/execution_id/kind/schema_version are TOP-LEVEL args, NOT inside payload; payload must be the discovery proposal object only.',
       annotations: { title: 'Saga3: Submit Proposal', readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
       inputSchema: {
         type: 'object',

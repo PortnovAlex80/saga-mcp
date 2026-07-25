@@ -596,7 +596,8 @@ export const definitions: Tool[] = [
   {
     name: 'artifact_create',
     description:
-      "Create a requirements/design artifact (PRD, SRS, UC, AC, FR, NFR, or decision) tied to a .md doc on disk. Scoped to a project and an epic (the epic = one REQ-NNN episode). Carries a code for queryability (e.g. 'AC-1', 'FR-3'), a status (draft/in_review/accepted/superseded) mirroring the doc's Status header, and an optional parent_artifact_id to build the within-episode hierarchy (AC→UC, FR→PRD).",
+      "Create a requirements/design artifact (PRD, SRS, UC, AC, FR, NFR, or decision) tied to a .md doc on disk. Scoped to a project and an epic (the epic = one REQ-NNN episode). Carries a code for queryability (e.g. 'AC-1', 'FR-3'), a status (draft/in_review/accepted/superseded) mirroring the doc's Status header, and an optional parent_artifact_id to build the within-episode hierarchy (AC→UC, FR→PRD). " +
+      'Call shape: artifact_create({ project_id: <integer>, epic_id: <integer>, type: "PRD|SRS|UC|AC|FR|NFR|decision|brief|theme|RULE|OQ|SPEC|hypothesis|business_metric|summary", title: "<string>", path: "<string>", code: "<string (e.g. AC-1)>", status: "draft|in_review|accepted|superseded", parent_artifact_id: <integer>, project_repository_id: <integer>, content_hash: "<string>", tags: ["<string>", ...], metadata: {<object>} }). Required: project_id, epic_id, type, title, path.',
     annotations: { title: 'Artifact: Create', readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     inputSchema: {
       type: 'object',
@@ -620,7 +621,8 @@ export const definitions: Tool[] = [
   {
     name: 'artifact_get',
     description:
-      'Get one artifact with its full context: parents up the hierarchy, direct children, outgoing traces (this artifact → others/tasks), and incoming traces (others → this artifact). Use this to understand an AC: which UC/FR it derives from, and which dev-tasks implement it.',
+      'Get one artifact with its full context: parents up the hierarchy, direct children, outgoing traces (this artifact → others/tasks), and incoming traces (others → this artifact). Use this to understand an AC: which UC/FR it derives from, and which dev-tasks implement it. ' +
+      'Call shape: artifact_get({ id: <integer> }). The parameter is "id" (not "artifact_id").',
     annotations: { title: 'Artifact: Get', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: 'object',
@@ -631,7 +633,8 @@ export const definitions: Tool[] = [
   {
     name: 'artifact_list',
     description:
-      'List artifacts with optional filters (project, epic, type, status, parent). Ordered by epic, type, code. Use type:"AC" + epic to get all acceptance criteria of a REQ episode.',
+      'List artifacts with optional filters (project, epic, type, status, parent). Ordered by epic, type, code. Use type:"AC" + epic to get all acceptance criteria of a REQ episode. ' +
+      'Call shape: artifact_list({ project_id: <integer>, epic_id: <integer>, type: "PRD|SRS|UC|AC|FR|NFR|decision|brief|theme|RULE|OQ|SPEC|hypothesis|business_metric|summary", status: "draft|in_review|accepted|superseded", parent_artifact_id: <integer> }). All params optional.',
     annotations: { title: 'Artifact: List', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: 'object',
@@ -647,7 +650,8 @@ export const definitions: Tool[] = [
   {
     name: 'artifact_update',
     description:
-      "Update an artifact's mutable fields (title, path, code, status, parent_artifact_id, tags, metadata). Status transitions (draft→in_review→accepted→superseded) are logged. Use this when a doc's Status header changes.",
+      "Update an artifact's mutable fields (title, path, code, status, parent_artifact_id, tags, metadata). Status transitions (draft→in_review→accepted→superseded) are logged. Use this when a doc's Status header changes. " +
+      'Call shape: artifact_update({ id: <integer>, title: "<string>", path: "<string>", code: "<string>", status: "draft|in_review|accepted|superseded", parent_artifact_id: <integer (pass null to detach)>, project_repository_id: <integer>, content_hash: "<string>", tags: ["<string>", ...], metadata: {<object>} }). Required: id. The parameter is "id" (not "artifact_id").',
     annotations: { title: 'Artifact: Update', readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     inputSchema: {
       type: 'object',
@@ -669,7 +673,8 @@ export const definitions: Tool[] = [
   {
     name: 'trace_add',
     description:
-      "Add a directed trace edge from an artifact (source) to another artifact or a task (target). link_type names the relation: 'covers' (FR covered by UC), 'implements' (AC implemented by a dev task — the bridge to the builders' kanban), 'implements_spec' (FR or RULE implemented by a SPEC design contract), 'derived_from' (AC derived from UC), 'depends_on', 'verified_by', 'superseded_by'. This is what builds the traceability graph.",
+      "Add a directed trace edge from an artifact (source) to another artifact or a task (target). link_type names the relation: 'covers' (FR covered by UC), 'implements' (AC implemented by a dev task — the bridge to the builders' kanban), 'implements_spec' (FR or RULE implemented by a SPEC design contract), 'derived_from' (AC derived from UC), 'depends_on', 'verified_by', 'superseded_by'. This is what builds the traceability graph. " +
+      'Call shape: trace_add({ source_id: <integer (artifact ID)>, target_type: "artifact|task", target_id: <integer>, link_type: "covers|implements|implements_spec|derived_from|depends_on|verified_by|superseded_by" }). Required: all four. source_id is always an artifact; target may be artifact or task.',
     annotations: { title: 'Trace: Add', readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: 'object',
@@ -685,7 +690,8 @@ export const definitions: Tool[] = [
   {
     name: 'trace_list',
     description:
-      "List traces with optional filters (source, target_type, target_id, link_type). Returns source/target titles and the target's current status, so you can see e.g. which AC are implemented by done tasks vs in_progress tasks.",
+      "List traces with optional filters (source, target_type, target_id, link_type). Returns source/target titles and the target's current status, so you can see e.g. which AC are implemented by done tasks vs in_progress tasks. " +
+      'Call shape: trace_list({ source_id: <integer>, target_type: "artifact|task", target_id: <integer>, link_type: "covers|implements|implements_spec|derived_from|depends_on|verified_by|superseded_by" }). All params optional.',
     annotations: { title: 'Trace: List', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: 'object',
@@ -700,7 +706,8 @@ export const definitions: Tool[] = [
   {
     name: 'artifact_coverage',
     description:
-      "Coverage matrix for an epic (REQ-NNN episode): of the artifacts of a given type (default AC), which are linked via a given link_type (default 'implements') to tasks, and which are gaps (not yet implemented). The core traceability query — use it to see 'AC-3 is not yet implemented by any dev task'.",
+      "Coverage matrix for an epic (REQ-NNN episode): of the artifacts of a given type (default AC), which are linked via a given link_type (default 'implements') to tasks, and which are gaps (not yet implemented). The core traceability query — use it to see 'AC-3 is not yet implemented by any dev task'. " +
+      'Call shape: artifact_coverage({ epic_id: <integer>, type: "AC (default)|PRD|SRS|UC|FR|NFR|...", link_type: "implements (default)|covers|implements_spec|derived_from|depends_on|verified_by|superseded_by" }). Required: epic_id.',
     annotations: { title: 'Artifact: Coverage', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: 'object',

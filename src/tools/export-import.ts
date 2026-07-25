@@ -7,7 +7,7 @@ export const definitions: Tool[] = [
   {
     name: 'tracker_export',
     description:
-      'Export a full project as nested JSON. Includes all epics, tasks, subtasks, comments, dependencies, and related notes. Useful for backup, migration, or sharing.',
+      'Export a full project as nested JSON. Includes all epics, tasks, subtasks, comments, dependencies, and related notes. Useful for backup, migration, or sharing. Call shape: tracker_export({ project_id: <integer> }). project_id is optional — omit if only one project exists.',
     annotations: { title: 'Export Project', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: 'object',
@@ -22,7 +22,7 @@ export const definitions: Tool[] = [
   {
     name: 'tracker_import',
     description:
-      'Import a project from JSON (matching tracker_export format). Creates all entities with new IDs and remaps references. Uses a transaction for atomicity.',
+      'Import a project from JSON (matching tracker_export format). Creates all entities with new IDs and remaps references. Uses a transaction for atomicity. Call shape: tracker_import({ data: <object, the full export JSON from tracker_export> }). Required: data.',
     annotations: { title: 'Import Project', readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     inputSchema: {
       type: 'object',

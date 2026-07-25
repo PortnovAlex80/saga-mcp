@@ -63,6 +63,7 @@ function buildPrompt({ assignment, project, workerId, workspaceRoot, sagaSkillRo
     `1. Work only on task_id=${task.id}.`,
     '2. Never call worker_next; it is explicitly disabled for this process.',
     '3. Read the assigned task and its context through Saga MCP as needed.',
+    `   To read your task: task_get({ id: ${task.id} }) — the parameter name is 'id' (NOT 'task_id' or 'taskId').`,
     `4. Read ${skillPath} for the role workflow, but SKIP every instruction that claims or selects a task.`,
     task.execution_mode === 'git_change'
       ? '5. Use the existing task worktree/branch conventions from the skill.'
@@ -426,7 +427,25 @@ export class ClaudeBoardRunner {
       // --effort is injected conditionally below (LM Studio → omitted).
       '--mcp-config', executionMcpConfigPath,
       '--strict-mcp-config',
-      '--disallowedTools', 'mcp__saga__worker_next',
+    ];
+    // D-whitelist: if the frozen execution_context carries allowed_saga_tools,
+    // pass them as --allowedTools so claude NEVER sees the other 90+ saga tools
+    // it has no authority to call. This eliminates wasted tokens reasoning
+    // about tools like tracker_dashboard/epic_create/note_search that will only
+    // produce AUTHORITY_DENIED. Non-saga tools (Bash, Read, Write, Glob, Grep,
+    // etc.) are always allowed — the saga authority covers only mcp__saga__*.
+    // Legacy path (no execution_context / Saga 2) keeps the old single-blacklist.
+    const frozenTools = assignment.execution_context?.authority?.allowed_saga_tools;
+    if (Array.isArray(frozenTools) && frozenTools.length > 0) {
+      const sagaAllowed = frozenTools.map(t => `mcp__saga__${t}`);
+      // Non-saga built-in tools that workers legitimately need (heartbeat, file
+      // reads for skill/worktree conventions). These are NOT authority-gated.
+      const builtin = ['Bash', 'Read', 'Write', 'Edit', 'Glob', 'Grep', 'MultiEdit', 'Task'];
+      args.push('--allowedTools', [...sagaAllowed, ...builtin].join(','));
+    } else {
+      args.push('--disallowedTools', 'mcp__saga__worker_next');
+    }
+    args.push(
       '--permission-mode', 'bypassPermissions',
       '--dangerously-skip-permissions',
       // stream-json: one JSON event per line in real time (system/init,
@@ -443,7 +462,7 @@ export class ClaudeBoardRunner {
       '--forward-subagent-text',
       '--no-session-persistence',
       prompt,
-    ];
+    );
     // Inject --effort right after --model so the flag order stays grouped.
     // Spliced here (not inline above) so the LM Studio "omit entirely" rule is
     // a single readable branch rather than a ternary inside the array literal.

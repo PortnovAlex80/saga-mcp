@@ -1667,7 +1667,7 @@ export const definitions: Tool[] = [
   {
     name: 'worker_next',
     description:
-      'Claim the next available task for a worker WITHIN A PROJECT. Finds a free task (status todo or review, unassigned, no unmet dependencies) in the given project only, atomically assigns it to the worker, and returns the task plus the skill the agent should use. Tasks of ANY priority (critical/high/medium/low) are handed out, ordered by priority (critical first, low last). Other projects in the shared DB are never touched. project_id is REQUIRED — resolve it once from ./projectname.txt via project_resolve_by_name, then pass it on every call. Optional `role` filters the queue to tasks tagged `role:<name>` (e.g. role:"analyst") — used in the requirements project to split work between saga-product / saga-analyst / saga-architect. Returns {task: null} when the project queue is empty.',
+      'Claim the next available task for a worker WITHIN A PROJECT. Finds a free task (status todo or review, unassigned, no unmet dependencies) in the given project only, atomically assigns it to the worker, and returns the task plus the skill the agent should use. Tasks of ANY priority (critical/high/medium/low) are handed out, ordered by priority (critical first, low last). Other projects in the shared DB are never touched. project_id is REQUIRED — resolve it once from ./projectname.txt via project_resolve_by_name, then pass it on every call. Optional `role` filters the queue to tasks tagged `role:<name>` (e.g. role:"analyst") — used in the requirements project to split work between saga-product / saga-analyst / saga-architect. Returns {task: null} when the project queue is empty. Call shape: worker_next({ worker_id: "<string>", project_id: <integer>, role: "<string>", machine_id: "<string>", epic_id: <integer>, execution_id: "<string>", run_id: "<string>" }). Required: worker_id, project_id.',
     annotations: {
       title: 'Worker: Next Task',
       readOnlyHint: false,
@@ -1712,7 +1712,7 @@ export const definitions: Tool[] = [
   {
     name: 'worker_done',
     description:
-      'Complete the held task and free its assignment. Marks the task done by this worker (in_progress->review buffer, or review_in_progress->done on APPROVED), records the result as a comment, and clears assigned_to. Does NOT claim or return the next task — the response carries stop:true. For typed git_change tasks, approval records integration_state=pending: dependencies and downstream generation remain gated until worker_merge_release(result="merged"). Legacy and non-git tasks retain done-is-ready behavior. For a task in review_in_progress, verdict="changes_requested" returns it to the unassigned todo queue for a fresh developer execution.',
+      'Complete the held task and free its assignment. Marks the task done by this worker (in_progress->review buffer, or review_in_progress->done on APPROVED), records the result as a comment, and clears assigned_to. Does NOT claim or return the next task — the response carries stop:true. For typed git_change tasks, approval records integration_state=pending: dependencies and downstream generation remain gated until worker_merge_release(result="merged"). Legacy and non-git tasks retain done-is-ready behavior. For a task in review_in_progress, verdict="changes_requested" returns it to the unassigned todo queue for a fresh developer execution. Call shape: worker_done({ task_id: <integer>, worker_id: "<string>", result: "<string>", verdict: "approved|changes_requested", execution_id: "<string>" }). Required: task_id, worker_id, result.',
     annotations: {
       title: 'Worker: Complete',
       readOnlyHint: false,
@@ -1747,7 +1747,7 @@ export const definitions: Tool[] = [
   {
     name: 'worker_ask_need',
     description:
-      "TERMINAL park for human input (Slice 3, ADR-011, blueprint §12.3). Use this when you are blocked on a task and need a human answer that genuinely cannot be assumed or deferred. The call persists the question and resume context, opens a human_request, releases your execution (terminalized atomically), and clears your assignment so the task returns to its queue once answered. The 'needs-human' tag pulses red (⚠) on the kanban. The response carries stop:true — your process exits cleanly; do NOT plan to continue in this session. A fresh worker later claims the answered task and reads the question and answer from human_requests. This replaces the previous in-session ASK protocol, which was incompatible with headless `claude -p` (stdin disabled). Pass 'reason' with the question text. Reserved for genuine blockers — prefer the 80% rule (assume + comment) for reversible decisions.",
+      "TERMINAL park for human input (Slice 3, ADR-011, blueprint §12.3). Use this when you are blocked on a task and need a human answer that genuinely cannot be assumed or deferred. The call persists the question and resume context, opens a human_request, releases your execution (terminalized atomically), and clears your assignment so the task returns to its queue once answered. The 'needs-human' tag pulses red (⚠) on the kanban. The response carries stop:true — your process exits cleanly; do NOT plan to continue in this session. A fresh worker later claims the answered task and reads the question and answer from human_requests. This replaces the previous in-session ASK protocol, which was incompatible with headless `claude -p` (stdin disabled). Pass 'reason' with the question text. Reserved for genuine blockers — prefer the 80% rule (assume + comment) for reversible decisions. Call shape: worker_ask_need({ task_id: <integer>, worker_id: <string>, reason: <string, the question text>, execution_id: <string> }). Required: task_id, worker_id, reason.",
     annotations: {
       title: 'Worker: Ask Human (terminal park)',
       readOnlyHint: false,
@@ -1772,7 +1772,7 @@ export const definitions: Tool[] = [
   {
     name: 'worker_ask_done',
     description:
-      "Record the human's answer to an open needs-human request on a task. Looks up the most recent OPEN human_requests row for this task, stores the answer, flips state to 'answered', and clears the needs-human tag. The task becomes claimable again; a fresh worker will pick it up and read the persisted question and answer. Does NOT require the original execution_id — that execution was terminalized by worker_ask_need and is gone. Any authorized caller (UI, human, fresh worker) may invoke this. If there is no open request, clears any stale needs-human tag and returns state='no_open_request'.",
+      "Record the human's answer to an open needs-human request on a task. Looks up the most recent OPEN human_requests row for this task, stores the answer, flips state to 'answered', and clears the needs-human tag. The task becomes claimable again; a fresh worker will pick it up and read the persisted question and answer. Does NOT require the original execution_id — that execution was terminalized by worker_ask_need and is gone. Any authorized caller (UI, human, fresh worker) may invoke this. If there is no open request, clears any stale needs-human tag and returns state='no_open_request'. Call shape: worker_ask_done({ task_id: <integer>, worker_id: <string>, answer: <string, the human's answer> }). Required: task_id, worker_id, answer.",
     annotations: {
       title: 'Worker: Ask Human (record answer)',
       readOnlyHint: false,
@@ -1796,7 +1796,7 @@ export const definitions: Tool[] = [
   {
     name: 'worker_merge_acquire',
     description:
-      'Acquire the merge-lock before integrating task/<id>. Typed repository tasks lock only their project_repository and use its integration_branch, so different repositories may merge concurrently. Legacy tasks retain the project-level dev lock. The lock auto-expires after 10 minutes.',
+      'Acquire the merge-lock before integrating task/<id>. Typed repository tasks lock only their project_repository and use its integration_branch, so different repositories may merge concurrently. Legacy tasks retain the project-level dev lock. The lock auto-expires after 10 minutes. Call shape: worker_merge_acquire({ task_id: <integer (a done task you hold)>, worker_id: "<string>", execution_id: "<string>" }). Required: task_id, worker_id.',
     annotations: {
       title: 'Worker: Merge Lock (acquire)',
       readOnlyHint: false,
@@ -1817,7 +1817,7 @@ export const definitions: Tool[] = [
   {
     name: 'worker_merge_release',
     description:
-      'Release the merge-lock you hold and record the outcome of integrating task/<id> into the integration branch. Call this AFTER running git merge (success: result="merged", pass the resulting commit sha) or after a merge CONFLICT (result="conflict", abort the merge first). On "merged", sets metadata.worktree.merged_into="dev" — work is integrated. On "conflict", sets merged_into="conflict" and flags the task needs-human (it pulses red on the board); the task stays done, the worktree and branch are kept so a human can resolve. Only the lock holder may release. If you crashed mid-merge, the lock will expire after 10 minutes and another worker can reclaim it.',
+      'Release the merge-lock you hold and record the outcome of integrating task/<id> into the integration branch. Call this AFTER running git merge (success: result="merged", pass the resulting commit sha) or after a merge CONFLICT (result="conflict", abort the merge first). On "merged", sets metadata.worktree.merged_into="dev" — work is integrated. On "conflict", sets merged_into="conflict" and flags the task needs-human (it pulses red on the board); the task stays done, the worktree and branch are kept so a human can resolve. Only the lock holder may release. If you crashed mid-merge, the lock will expire after 10 minutes and another worker can reclaim it. Call shape: worker_merge_release({ task_id: <integer>, worker_id: "<string>", result: "merged|conflict", commit_sha: "<string (only when result=merged)>", execution_id: "<string>" }). Required: task_id, worker_id, result.',
     annotations: {
       title: 'Worker: Merge Lock (release)',
       readOnlyHint: false,
@@ -1840,7 +1840,7 @@ export const definitions: Tool[] = [
   {
     name: 'worker_health',
     description:
-      'Read-only check for stuck worktrees in a project. Returns three lists: zombies (in_progress tasks idle > 30 min — a worker may have died holding them), never_merged (done tasks whose branch was never merged into dev, or is still "pending" — work that could be lost), and stuck_merges (done tasks whose merge conflicted and need human resolution). Use this from a watcher/orchestrator, or a worker noticing the queue stalled, to find orphaned worktrees. Saga does NOT delete anything — worktrees may hold another worker\'s uncommitted work; a human decides.',
+      "Read-only check for stuck worktrees in a project. Returns three lists: zombies (in_progress tasks idle > 30 min — a worker may have died holding them), never_merged (done tasks whose branch was never merged into dev, or is still \"pending\" — work that could be lost), and stuck_merges (done tasks whose merge conflicted and need human resolution). Use this from a watcher/orchestrator, or a worker noticing the queue stalled, to find orphaned worktrees. Saga does NOT delete anything — worktrees may hold another worker's uncommitted work; a human decides. Call shape: worker_health({ project_id: <integer> }). Required: project_id.",
     annotations: {
       title: 'Worker: Health (stuck worktrees)',
       readOnlyHint: true,

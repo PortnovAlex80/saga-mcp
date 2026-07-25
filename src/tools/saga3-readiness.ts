@@ -344,7 +344,7 @@ export function createSaga3ReadinessHandlers(
     definitions: [
       {
         name: 'readiness_get',
-        description: 'Read the immutable canonical discovery Proposal and the exact source references a shadow readiness advisor may cite, plus the assessment output schema.',
+        description: 'Read the immutable canonical discovery Proposal and the exact source references a shadow readiness advisor may cite, plus the assessment output schema. Call shape: readiness_get({ control_intent_id: <int from task_get.metadata.control_intent_id>, execution_id: <string, your execution_id> }) — returns proposal_id, proposal_content_hash, proposal_payload, allowed_source_refs, output_schema, rule. Echo the returned proposal_id and proposal_content_hash verbatim in the subsequent readiness_submit payload.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -357,7 +357,7 @@ export function createSaga3ReadinessHandlers(
       },
       {
         name: 'readiness_submit',
-        description: 'Submit one typed readiness assessment for the immutable Proposal bound to the ControlIntent. The kernel validates it deterministically and accepts or rejects; this never modifies the product Proposal or the discovery outcome.',
+        description: 'Submit one typed readiness assessment for the immutable Proposal bound to the ControlIntent. The kernel validates it deterministically and accepts or rejects; this never modifies the product Proposal or the discovery outcome. Call shape: readiness_submit({ control_intent_id: <int from task_get.metadata.control_intent_id>, execution_id: <string, your execution_id>, schema_version: "saga3.discovery-readiness-assessment.v1", payload: { proposal_id: <int from readiness_get, echo verbatim>, proposal_content_hash: "<64-char hex from readiness_get, echo verbatim>", overall_readiness: "ready|conditionally_ready|not_ready|inconclusive", dimension_assessments: { problem_clarity: { status: "sufficient|partial|insufficient|unknown", rationale: <string>, source_refs: <string[] from allowed_source_refs> }, scope_boundedness: {...}, stakeholder_coverage: {...}, assumption_visibility: {...}, unknowns_manageability: {...}, risk_visibility: {...}, evidence_grounding: {...} }, blocking_gaps: [ { code: <string>, description: <string>, source_refs: <string[]> } ], non_blocking_gaps: [ { code, description, source_refs[] } ], recommended_next_action: "proceed_to_settlement|request_clarification|repeat_discovery|defer|reject|manual_review", confidence: <number 0..1>, rationale: <string> } }). IMPORTANT: control_intent_id/execution_id/schema_version are TOP-LEVEL args, NOT inside payload; all source_refs must come from the allowed_source_refs list returned by readiness_get.',
         inputSchema: {
           type: 'object',
           properties: {

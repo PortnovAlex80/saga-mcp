@@ -248,7 +248,7 @@ export function createSaga3NormalizationHandlers(
     definitions: [
       {
         name: 'normalization_get',
-        description: 'Read the immutable raw discovery submission and deterministic normalization diagnostics for the assigned NormalizeDiscoveryProposal ControlIntent.',
+        description: 'Read the immutable raw discovery submission and deterministic normalization diagnostics for the assigned NormalizeDiscoveryProposal ControlIntent. Call shape: normalization_get({ control_intent_id: <int from task_get.metadata.control_intent_id>, source_submission_id: <int from task_get.metadata.source_submission_id>, execution_id: <string, your execution_id> }) — returns source_submission_id, source_raw_hash, raw_payload, parsed_payload, deterministic_trace, validation_errors, alias_conflicts, allowed_evidence_refs, output_schema, rule. Echo source_submission_id and source_raw_hash verbatim into the subsequent normalization_submit payload.',
         annotations: { title: 'Saga3: Read Normalization Input', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
         inputSchema: {
           type: 'object',
@@ -262,7 +262,7 @@ export function createSaga3NormalizationHandlers(
       },
       {
         name: 'normalization_submit',
-        description: 'Submit a transformation proposal for a raw discovery response. The LM cannot accept it; the deterministic kernel validates source paths, schema, raw hash and evidence non-invention before creating the canonical product proposal.',
+        description: 'Submit a transformation proposal for a raw discovery response. The LM cannot accept it; the deterministic kernel validates source paths, schema, raw hash and evidence non-invention before creating the canonical product proposal. Call shape: normalization_submit({ control_intent_id: <int from task_get.metadata.control_intent_id>, source_submission_id: <int from normalization_get, echo verbatim>, execution_id: <string, your execution_id>, schema_version: "saga3.discovery-normalization-proposal.v1", payload: { source_submission_id: <int, echo normalization_get>, source_raw_hash: "<64-char hex, echo normalization_get>", normalized_payload: { problem_statement, observed_context, stakeholders_or_actors: [], assumptions: [], unknowns: [], risks: [], candidate_scope, evidence_refs: [], recommended_outcome: "go|clarify|reject|defer|inconclusive|failed", rationale }, source_field_map: { problem_statement: [<JSON paths into parsed_payload>], observed_context: [...], candidate_scope: [...], rationale: [...], stakeholders_or_actors: [...], assumptions: [...], unknowns: [...], risks: [...], evidence_refs: [...] }, notes: <string[]> } }). IMPORTANT: control_intent_id/source_submission_id/execution_id/schema_version are TOP-LEVEL args, NOT inside payload; every source_field_map path MUST resolve in normalization_get.parsed_payload; evidence_refs must come from allowed_evidence_refs.',
         annotations: { title: 'Saga3: Submit Normalization Proposal', readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
         inputSchema: {
           type: 'object',

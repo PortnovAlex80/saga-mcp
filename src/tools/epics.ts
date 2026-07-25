@@ -9,7 +9,8 @@ export const definitions: Tool[] = [
   {
     name: 'epic_create',
     description:
-      'Create an epic within a project. Epics group related tasks into a feature or workstream. Pass branch to scope the epic to a git branch (use "current" to auto-detect).',
+      'Create an epic within a project. Epics group related tasks into a feature or workstream. Pass branch to scope the epic to a git branch (use "current" to auto-detect). ' +
+      'Call shape: epic_create({ project_id: <integer>, name: "<string>", description: "<string>", status: "planned|in_progress|completed|cancelled", priority: "low|medium|high|critical", branch: "current|<branch-name>|<empty for global>", tags: ["<string>", ...] }). Required: project_id, name.',
     annotations: { title: 'Create Epic', readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     inputSchema: {
       type: 'object',
@@ -39,7 +40,8 @@ export const definitions: Tool[] = [
   {
     name: 'epic_list',
     description:
-      'List epics for a project with task counts and completion stats. Optionally filter by status, priority, or branch. Pass branch="current" to auto-detect the active git branch; pass empty string to list only branch-agnostic epics.',
+      'List epics for a project with task counts and completion stats. Optionally filter by status, priority, or branch. Pass branch="current" to auto-detect the active git branch; pass empty string to list only branch-agnostic epics. ' +
+      'Call shape: epic_list({ project_id: <integer>, status: "planned|in_progress|completed|cancelled", priority: "low|medium|high|critical", branch: "current|<branch-name>|" }). Required: project_id.',
     annotations: { title: 'List Epics', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: 'object',
@@ -58,7 +60,8 @@ export const definitions: Tool[] = [
   {
     name: 'epic_update',
     description:
-      'Update an epic. Pass only the fields you want to change. Set status to "cancelled" to soft-delete. Pass branch="current" to pin to the active branch, or empty string to clear.',
+      'Update an epic. Pass only the fields you want to change. Set status to "cancelled" to soft-delete. Pass branch="current" to pin to the active branch, or empty string to clear. ' +
+      'Call shape: epic_update({ id: <integer>, name: "<string>", description: "<string>", status: "planned|in_progress|completed|cancelled", priority: "low|medium|high|critical", sort_order: <integer>, branch: "current|<branch-name>|<empty to clear>", tags: ["<string>", ...] }). Required: id.',
     annotations: { title: 'Update Epic', readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: 'object',

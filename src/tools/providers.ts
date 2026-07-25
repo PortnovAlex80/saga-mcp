@@ -256,7 +256,8 @@ export const definitions: Tool[] = [
       'Categories: deterministic_evidence (full determinism, feeds verification_evidence), ' +
       'authoritative_state (partial — CI/git/release manager), authorized_decision (none — human/policy). ' +
       'project_id IS NULL means a GLOBAL provider (inherited by every project). ' +
-      'Idempotent on UNIQUE(project_id, name): re-registering the same pair returns the existing row.',
+      'Idempotent on UNIQUE(project_id, name): re-registering the same pair returns the existing row. ' +
+      'Call shape: provider_register({ project_id: <integer|null>, category: "deterministic_evidence|authoritative_state|authorized_decision", name: "<string>", trust_basis: "<string>", determinism: "full|partial|none", scope: "<string>", layer: "L0|L1|L2|L3|L4", version: "<string>", config_path: "<string>", status: "active|disabled|deprecated" }). Required: category, name, trust_basis, determinism, scope.',
     annotations: {
       title: 'Provider: Register',
       readOnlyHint: false,
@@ -299,7 +300,8 @@ export const definitions: Tool[] = [
       'REQ-012 — List Trusted Providers for a project. ALWAYS includes GLOBAL providers (project_id IS NULL). ' +
       'When project_id is given, returns global + project-scoped providers. ' +
       'When project_id is omitted, returns ONLY global providers. ' +
-      'Filterable by category, layer, status (default status=active; pass status="__all__" to include disabled/deprecated).',
+      'Filterable by category, layer, status (default status=active; pass status="__all__" to include disabled/deprecated). ' +
+      'Call shape: provider_list({ project_id: <integer|null>, category: "deterministic_evidence|authoritative_state|authorized_decision", layer: "L0|L1|L2|L3|L4", status: "active|disabled|deprecated|__all__" }).',
     annotations: {
       title: 'Provider: List',
       readOnlyHint: true,

@@ -485,13 +485,17 @@ function handleVerificationRecord(args: Record<string, unknown>) {
 export const definitions: Tool[] = [
   {
     name: 'episode_status',
-    description: 'Read the executable stage, stage task counts, baseline and drift state for one REQ episode.',
+    description:
+      'Read the executable stage, stage task counts, baseline and drift state for one REQ episode. ' +
+      'Call shape: episode_status({ epic_id: <integer> }). Required: epic_id.',
     annotations: { title: 'Episode: Status', readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: { type: 'object', properties: { epic_id: { type: 'integer' } }, required: ['epic_id'] },
   },
   {
     name: 'episode_transition',
-    description: 'Advance an episode by one stage after enforcing artifact, integration and verification hard gates.',
+    description:
+      'Advance an episode by one stage after enforcing artifact, integration and verification hard gates. ' +
+      'Call shape: episode_transition({ epic_id: <integer>, to_stage: "discovery|formalization|planning|development|verification|integration|completed|cancelled", baseline_artifact_id: <integer (optional, only for formalization→planning)> }). Required: epic_id, to_stage.',
     annotations: { title: 'Episode: Transition', readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: 'object',
@@ -505,7 +509,9 @@ export const definitions: Tool[] = [
   },
   {
     name: 'verification_record',
-    description: 'Record immutable evidence for an accepted AC baseline using CGAD 4-valued verdict (passed/failed/unknown/error). Only passing evidence creates verified_by; unknown and error are denials (CGAD P14).',
+    description:
+      'Record immutable evidence for an accepted AC baseline using CGAD 4-valued verdict (passed/failed/unknown/error). Only passing evidence creates verified_by; unknown and error are denials (CGAD P14). ' +
+      'Call shape: verification_record({ task_id: <integer (a verification.ac task you hold)>, artifact_id: <integer (the AC you are verifying)>, outcome: "passed|failed|unknown|error", evidence: "<string>", recorded_by: "<string (your worker_id, must equal task.assigned_to)>", content_hash: "<string (defaults to AC accepted_hash)>", provider: "<string>", execution_id: "<string (fencing token)>" }). Required: task_id, artifact_id, outcome, evidence.',
     annotations: { title: 'Verification: Record Evidence', readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: 'object',
