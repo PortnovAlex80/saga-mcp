@@ -5,16 +5,35 @@ const { definitions, handlers } = await import('../../dist/tools/process-modules
 
 const toolNames = definitions.map(definition => definition.name);
 
-test('MCP exposes read-only Process Module catalog tools', () => {
+test('MCP exposes Process Module catalog + ProcessRun lifecycle tools', () => {
+  // Two namespaces: process_module_* (catalog, read-only) and process_run_*
+  // (lifecycle, mutating). The split avoids name collisions in the flat MCP
+  // tool namespace and keeps the read-only catalog separable from mutable runs.
   assert.deepEqual(toolNames.sort(), [
     'process_lifecycle_get',
     'process_module_get',
     'process_module_list',
     'process_module_validate',
+    'process_run_cancel',
+    'process_run_get',
+    'process_run_list',
+    'process_run_set',
+    'process_run_start',
+  ]);
+  // Catalog tools are read-only; ProcessRun tools are not (start/set/cancel
+  // mutate). get/list reads within process_run_* are still flagged non-
+  // destructive but not readOnlyHint because they share the mutating namespace.
+  const readOnly = new Set([
+    'process_lifecycle_get', 'process_module_get',
+    'process_module_list', 'process_module_validate',
+    'process_run_get', 'process_run_list',
   ]);
   for (const definition of definitions) {
-    assert.equal(definition.annotations.readOnlyHint, true);
     assert.equal(definition.annotations.destructiveHint, false);
+    if (readOnly.has(definition.name)) {
+      assert.equal(definition.annotations.readOnlyHint, true,
+        `${definition.name} should be readOnly`);
+    }
   }
 });
 

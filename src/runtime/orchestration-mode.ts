@@ -29,15 +29,31 @@
  * - 'v3'            — Saga 2 autonomous background pump (orchestrate.ts).
  * - 'saga2'         — alias of 'v3' (same Saga2Engine, clearer name).
  * - 'saga3-discovery' — Saga 3 Discovery Edition background engine.
+ * - 'saga3-discovery-generic' — P6c: Discovery исполняется Universal
+ *                     ProcessModuleRuntime (GenericFlowExecutor), который читает
+ *                     discoveryProcessModule как данные. Замена legacy
+ *                     Saga3DiscoveryEngine. После зелёного E2E этот режим
+ *                     становится primary, а 'saga3-discovery' удаляется (шаг 6).
+ * - 'saga3-formalization' — Saga 3 Formalization Edition. Mounts the Formalization
+ *                     Process Module Installation and runs the settlement+certificate
+ *                     adapter. The formalization workers themselves are still
+ *                     driven by saga2 (or saga-dispatch); this mode only governs
+ *                     the ProcessRun + certificate lifecycle.
  *
- * Only 'saga3-discovery' selects a non-Saga2 engine today. New modes are
- * appended here AND in parseOrchestrationMode; an unrecognised value is an
- * error, never a silent fallback.
+ * 'saga3-discovery*', 'saga3-discovery-generic' and 'saga3-formalization' select
+ * non-Saga2 engines today. New modes are appended here AND in parseOrchestrationMode;
+ * an unrecognised value is an error, never a silent fallback.
  */
-export type OrchestrationMode = 'v2' | 'v3' | 'saga2' | 'saga3-discovery';
+export type OrchestrationMode =
+  | 'v2'
+  | 'v3'
+  | 'saga2'
+  | 'saga3-discovery'
+  | 'saga3-discovery-generic'
+  | 'saga3-formalization';
 
 export const ORCHESTRATION_MODES: readonly OrchestrationMode[] = [
-  'v2', 'v3', 'saga2', 'saga3-discovery',
+  'v2', 'v3', 'saga2', 'saga3-discovery', 'saga3-discovery-generic', 'saga3-formalization',
 ];
 
 /** The stable default. Never an experimental engine (see header). */
@@ -77,7 +93,31 @@ export function requiresBackgroundEngine(mode: OrchestrationMode): boolean {
 /**
  * Does this mode select the Saga 3 Discovery engine? Centralised so the
  * composition root and any future dispatcher agree on exactly one condition.
+ *
+ * Both 'saga3-discovery' (legacy Saga3DiscoveryEngine adapter) and
+ * 'saga3-discovery-generic' (P6c GenericFlowExecutor) mount the Discovery
+ * Process Module; the composition root distinguishes them to wire the right
+ * executor.
  */
 export function isSaga3DiscoveryMode(mode: OrchestrationMode): boolean {
-  return mode === 'saga3-discovery';
+  return mode === 'saga3-discovery' || mode === 'saga3-discovery-generic';
+}
+
+/**
+ * Does this mode select the P6c GenericFlowExecutor path for Discovery? When
+ * true, the composition root builds the Installation registry + handler
+ * registry + GenericFlowExecutor and runs Discovery purely from its descriptor.
+ */
+export function isSaga3DiscoveryGenericMode(mode: OrchestrationMode): boolean {
+  return mode === 'saga3-discovery-generic';
+}
+
+/**
+ * Does this mode select the Saga 3 Formalization adapter? Centralised for the
+ * composition root. When true, the composition root mounts the Formalization
+ * ProcessModuleInstallation and returns an engine that drives the
+ * LegacyFormalizationProcessAdapter (settlement + certificate THIN SHIM).
+ */
+export function isSaga3FormalizationMode(mode: OrchestrationMode): boolean {
+  return mode === 'saga3-formalization';
 }

@@ -95,6 +95,23 @@ export interface Saga3DiscoveryRuntimePersistence {
 
   /** Latest submitted canonical proposal answering the intent, or null if none. */
   readLatestProposal(intentId: number): ProposalRecord | null;
+  /**
+   * Latest submitted canonical proposal for an epic (joined through the
+   * work intent). P6c: generic-flow settlement handler reads the canonical
+   * proposal by epic, not by intent id, since the executor does not carry the
+   * intent id forward into the settlement node.
+   */
+  readLatestProposalByEpic(epicId: number): ProposalRecord | null;
+  /**
+   * Latest accepted readiness assessment for an epic (the advisor's accepted
+   * shadow result). P6c: generic-flow settlement handler builds its readiness
+   * slice from this; returns null when no assessment exists.
+   */
+  readLatestAcceptedReadinessForEpic(epicId: number): {
+    assessment_id: number;
+    content_hash: string;
+    payload: unknown;
+  } | null;
   /** Latest immutable raw response for the product WorkIntent. */
   readLatestRawSubmission(intentId: number): RawDiscoverySubmissionRecord | null;
   /** Idempotently create/reuse the D2 ControlIntent, authority WorkIntent and task. */
@@ -363,6 +380,18 @@ export interface EnsureProjectedTask {
   /** generation_key (UNIQUE per epic) for idempotency. */
   generationKey: string;
   metadata?: Record<string, unknown>;
+  /**
+   * Generic-runtime parameters (P6c). The discovery engine historically
+   * hardcoded these; the generic flow executor passes them from the module's
+   * ExecutionProfileDefinition. Backward-compat defaults keep the discovery
+   * semantics for callers that omit them.
+   */
+  workflowStage?: string;
+  executionMode?: string;
+  /** Optional title prefix; defaults to "Discovery: " for backward compat. */
+  titlePrefix?: string;
+  /** Optional task priority; defaults to "high" for backward compat. */
+  priority?: string;
 }
 
 

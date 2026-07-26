@@ -113,7 +113,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   execution_skill TEXT,
   review_skill    TEXT,
   execution_mode  TEXT NOT NULL DEFAULT 'git_change'
-                    CHECK (execution_mode IN ('git_change','tracker_only','read_only_evidence','interactive')),
+                    CHECK (execution_mode IN ('git_change','tracker_only','read_only_evidence','interactive','artifact_change')),
   project_repository_id INTEGER REFERENCES project_repositories(id) ON DELETE SET NULL,
   -- REQ-009 / CGAD 11 RiskClass. final_risk = max(declared_risk, derived_risk,
   -- policy_minimum). The legacy priority column is kept as the declared risk

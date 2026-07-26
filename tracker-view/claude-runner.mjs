@@ -32,22 +32,82 @@ function roleFromTask(task, fallbackSkill) {
   return fallbackSkill === 'saga-reviewer' ? 'reviewer' : 'developer';
 }
 
-function buildPrompt({ assignment, project, workerId, workspaceRoot, sagaSkillRoot }) {
+function buildPrompt({ assignment, project, workerId, workspaceRoot, sagaSkillRoot, resolveProfile }) {
   const task = assignment.task;
   const role = roleFromTask(task, assignment.skill);
-  const selectedSkill = assignment.skill || `saga-${role}`;
-  const roleSkill = path.join(sagaSkillRoot, selectedSkill, 'SKILL.md');
-  const workerSkill = path.join(sagaSkillRoot, 'saga-worker', 'SKILL.md');
-  const skillPath = existsSync(roleSkill) ? roleSkill : workerSkill;
   const isReview = task.status === 'review' || task.status === 'review_in_progress';
-  // Inline the skill file content directly into the prompt so weaker models that
-  // skip "Read {path}" instructions still get the full workflow. Strong models
-  // can still Read the file for the canonical version.
+
+  // --- Process Module execution profile resolution (P5b) -------------------
+  // When the task's task_kind matches a Process Module execution profile, the
+  // profile supplies TWO skills that the worker must combine:
+  //   protocolSkill  — the reusable physical execution protocol (machine
+  //                    binding, tracker hooks, materialized MCP calls,
+  //                    authority enforcement, recovery). Same for every node
+  //                    of every module — saga-process-module-worker-protocol.
+  //   semanticSkill  — the domain role skill (saga-product, saga-analyst,
+  //                    saga-discovery-worker, …). Defines WHAT the worker
+  //                    produces; the protocol defines HOW it produces it
+  //                    reliably.
+  //
+  // When no profile matches (legacy tasks, ad-hoc kinds), we fall back to the
+  // legacy single-skill path (assignment.skill). This keeps older tasks
+  // working unchanged while Process Module tasks get the composed prompt.
+  let protocolSkillName = null;
+  let semanticSkillName = null;
+  if (typeof resolveProfile === 'function') {
+    try {
+      const resolved = resolveProfile(task.task_kind);
+      if (resolved) {
+        protocolSkillName = resolved.protocolSkill ?? null;
+        semanticSkillName = resolved.semanticSkill ?? null;
+      }
+    } catch {
+      // Resolver failure must NEVER block the worker — fall back to legacy.
+    }
+  }
+  // Effective semantic skill: profile.semanticSkill overrides assignment.skill
+  // when present (the profile is the single source of truth for Process Module
+  // tasks). Legacy tasks keep assignment.skill.
+  const effectiveSemanticSkill = semanticSkillName ?? assignment.skill ?? `saga-${role}`;
+  const semanticSkillPath = path.join(sagaSkillRoot, effectiveSemanticSkill, 'SKILL.md');
+  const workerSkillPath = path.join(sagaSkillRoot, 'saga-worker', 'SKILL.md');
+  const skillPath = existsSync(semanticSkillPath) ? semanticSkillPath : workerSkillPath;
+
+  // Inline the skill file(s) directly into the prompt. When a protocol skill
+  // is resolved, BOTH are inlined as separate sections so the worker sees the
+  // universal execution physics FIRST, then the domain workflow. Strong models
+  // can still Read the files for the canonical version.
   let skillInline = '';
-  try {
-    skillInline = `--- SKILL BEGIN ---\n${readFileSync(skillPath, 'utf8')}\n--- SKILL END ---`;
-  } catch {
-    skillInline = `(Could not read skill file at ${skillPath}. Follow rules 1-8 below.)`;
+  if (protocolSkillName) {
+    const protocolSkillPath = path.join(sagaSkillRoot, protocolSkillName, 'SKILL.md');
+    let protocolInline = '';
+    try {
+      protocolInline = readFileSync(protocolSkillPath, 'utf8');
+    } catch {
+      protocolInline = `(Could not read protocol skill file at ${protocolSkillPath}.)`;
+    }
+    let semanticInline = '';
+    try {
+      semanticInline = readFileSync(skillPath, 'utf8');
+    } catch {
+      semanticInline = `(Could not read semantic skill file at ${skillPath}. Follow the protocol above.)`;
+    }
+    skillInline = [
+      '--- PROTOCOL SKILL BEGIN (universal execution physics — apply to every action) ---',
+      protocolInline,
+      '--- PROTOCOL SKILL END ---',
+      '',
+      '--- SEMANTIC SKILL BEGIN (domain role — what to produce) ---',
+      semanticInline,
+      '--- SEMANTIC SKILL END ---',
+    ].join('\n');
+  } else {
+    // Legacy single-skill path (no Process Module profile resolved).
+    try {
+      skillInline = `--- SKILL BEGIN ---\n${readFileSync(skillPath, 'utf8')}\n--- SKILL END ---`;
+    } catch {
+      skillInline = `(Could not read skill file at ${skillPath}. Follow rules 1-8 below.)`;
+    }
   }
 
   return [
@@ -60,6 +120,8 @@ function buildPrompt({ assignment, project, workerId, workspaceRoot, sagaSkillRo
     `execution_id=${assignment.execution_id || 'legacy'}`,
     `role=${role}`,
     `dispatcher_skill=${assignment.skill}`,
+    protocolSkillName ? `protocol_skill=${protocolSkillName}` : null,
+    semanticSkillName ? `semantic_skill=${semanticSkillName}` : null,
     `task_kind=${task.task_kind || 'legacy'}`,
     `workflow_stage=${task.workflow_stage || 'legacy'}`,
     `execution_mode=${task.execution_mode || 'git_change'}`,
@@ -73,7 +135,9 @@ function buildPrompt({ assignment, project, workerId, workspaceRoot, sagaSkillRo
     '2. Never call worker_next; it is explicitly disabled for this process.',
     '3. Read the assigned task and its context through Saga MCP as needed.',
     `   To read your task: task_get({ id: ${task.id} }) — the parameter name is 'id' (NOT 'task_id' or 'taskId').`,
-    `4. Follow the skill workflow below (also at ${skillPath}). SKIP every instruction that claims or selects a task.`,
+    protocolSkillName
+      ? `4. Follow the PROTOCOL SKILL (execution physics) and the SEMANTIC SKILL (domain role) below. SKIP every instruction that claims or selects a task. The protocol is authoritative for HOW you work; the semantic skill is authoritative for WHAT you produce.`
+      : `4. Follow the skill workflow below (also at ${skillPath}). SKIP every instruction that claims or selects a task.`,
     skillInline,
     task.execution_mode === 'git_change'
       ? '5. Use the existing task worktree/branch conventions from the skill.'
@@ -94,7 +158,7 @@ function buildPrompt({ assignment, project, workerId, workspaceRoot, sagaSkillRo
     '',
     'Assigned task payload:',
     JSON.stringify(task, null, 2),
-  ].join('\n');
+  ].filter(line => line !== null).join('\n');
 }
 
 export class ClaudeBoardRunner {
@@ -122,6 +186,12 @@ export class ClaudeBoardRunner {
     // NOTE: the URL here keeps /v1 for direct /models probes; the settings.json
     // write strips it (claude v2 appends /v1 itself → /v1/v1/messages otherwise).
     this.getActiveModel = options.getActiveModel;
+    // P5b: optional resolver that maps a task_kind to its Process Module
+    // execution profile ({ protocolSkill, semanticSkill }). When present, the
+    // prompt builder inlines BOTH skills (protocol = execution physics,
+    // semantic = domain role). When absent or null, the legacy single-skill
+    // path is used. The resolver is injected by the worker-executor factory.
+    this.resolveProfile = options.resolveProfile ?? null;
     this.lmstudioBaseUrl = options.lmstudioBaseUrl
       ?? process.env.SAGA_LMSTUDIO_URL
       ?? 'http://localhost:1234/v1';
@@ -430,6 +500,7 @@ export class ClaudeBoardRunner {
       executionId: assignment.execution_id || null,
       workspaceRoot,
       sagaSkillRoot: this.sagaSkillRoot,
+      resolveProfile: this.resolveProfile,
     });
     const args = [
       '-p',

@@ -31,12 +31,12 @@ test('Discovery go routes to Formalization through Stage Binding', () => {
   });
 });
 
-test('Formalization accepted stops at ready-for-development until Development is modularized', () => {
+test('Formalization formalized stops at ready-for-development until Development is modularized', () => {
   const formalization = discoveryToFormalizationLifecycle.stages.find(
     stage => stage.id === 'solution-formalization',
   );
   assert.ok(formalization);
-  assert.deepEqual(routeProcessOutcome(formalization, 'accepted').target, {
+  assert.deepEqual(routeProcessOutcome(formalization, 'formalized').target, {
     type: 'terminal',
     status: 'ready-for-development',
   });

@@ -11,8 +11,6 @@ import { releaseExecutionAtomically } from '../lifecycle/atomic-release.js';
 import { buildExecutionContext } from '../saga3/authority/build-execution-context.js';
 import { executionContextHash } from '../saga3/domain/execution-context.js';
 import {
-  DISCOVERY_INTENT_KIND,
-  DISCOVERY_WORK_INTENT_SCHEMA,
   type AuthorityScope,
   type WorkIntent,
 } from '../saga3/domain/work-intent.js';
@@ -262,6 +260,13 @@ function readWorkIntentForTaskClaim(
   db: Database.Database,
   task: Task,
 ): WorkIntent | null {
+  // P6c: the discriminator for "managed execution with frozen authority" is
+  // the presence of `work_intent_id` in task metadata — NOT a discovery-specific
+  // task_kind/skill literal. Any task whose metadata carries a work_intent_id
+  // MUST have a valid, claimable WorkIntent binding; tasks without one take the
+  // legacy null-authority path. This lets the generic flow executor project
+  // tasks for any module (Discovery, Formalization, …) without the dispatcher
+  // knowing the module name.
   let metadata: Record<string, unknown> = {};
   if (task.metadata && typeof task.metadata === 'object') {
     metadata = task.metadata as Record<string, unknown>;
@@ -270,9 +275,7 @@ function readWorkIntentForTaskClaim(
       const parsed = JSON.parse(task.metadata);
       if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) metadata = parsed;
     } catch {
-      if (task.task_kind === 'discovery.work' || task.execution_skill === 'saga-discovery-worker') {
-        throw new Error(`AUTHORITY_BINDING_INVALID: Saga 3 task ${task.id} metadata is malformed`);
-      }
+      // fall through — intentId lookup below will detect a missing binding.
     }
   }
   let intentId = Number.isInteger(metadata.work_intent_id) ? metadata.work_intent_id as number : null;
@@ -282,9 +285,8 @@ function readWorkIntentForTaskClaim(
     ).get(task.id) as { intent_id: number | null } | undefined;
     intentId = row?.intent_id ?? null;
   }
-  const saga3Task = task.task_kind === 'discovery.work' || task.execution_skill === 'saga-discovery-worker';
   if (intentId == null) {
-    if (saga3Task) throw new Error(`AUTHORITY_BINDING_INVALID: Saga 3 task ${task.id} has no work_intent_id`);
+    // No work_intent_id → legacy/manual task, no frozen authority. Allowed.
     return null;
   }
   const row = db.prepare('SELECT * FROM saga3_work_intents WHERE id=?').get(intentId) as WorkIntentClaimRow | undefined;
@@ -302,11 +304,10 @@ function readWorkIntentForTaskClaim(
   try { rawAuthority = JSON.parse(row.authority_scope); }
   catch { throw new Error(`AUTHORITY_BINDING_INVALID: WorkIntent ${intentId} authority_scope is malformed JSON`); }
   const authority = strictAuthorityScope(rawAuthority);
-  if (saga3Task) {
-    if (row.kind !== DISCOVERY_INTENT_KIND || row.output_schema !== DISCOVERY_WORK_INTENT_SCHEMA) {
-      throw new Error(`AUTHORITY_BINDING_INVALID: discovery task ${task.id} is bound to incompatible WorkIntent ${intentId}`);
-    }
-  }
+  // The module that created the WorkIntent owns its kind/output_schema; the
+  // dispatcher does not validate module-specific schema identity here. The
+  // module's submit handlers (proposal_submit / readiness_submit / …) re-check
+  // the binding against their own contract before accepting any submission.
   return claimRowToIntent(row, authority);
 }
 

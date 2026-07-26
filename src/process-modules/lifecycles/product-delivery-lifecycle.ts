@@ -58,7 +58,7 @@ export const discoveryToFormalizationLifecycle: LifecycleDefinition = {
         decision: '$.processOutcome.code',
       },
       outcomeRoutes: {
-        accepted: { type: 'terminal', status: 'ready-for-development' },
+        formalized: { type: 'terminal', status: 'ready-for-development' },
         'clarification-required': { type: 'terminal', status: 'clarification-required' },
         inconsistent: { type: 'terminal', status: 'formalization-inconsistent' },
         infeasible: { type: 'terminal', status: 'infeasible' },

@@ -32,7 +32,7 @@ export const formalizationProcessModule: ProcessModuleDefinition = {
   inputContract: { id: 'saga3.formalization-case.v1' },
   outputContract: { id: 'saga3.solution-contract-certificate.v1' },
   outcomes: [
-    { code: 'accepted', description: 'A complete frozen solution contract is ready for downstream work.', terminal: true },
+    { code: 'formalized', description: 'A complete frozen solution contract is ready for downstream work.', terminal: true },
     { code: 'clarification-required', description: 'Required product or acceptance information is missing.', terminal: true },
     { code: 'inconsistent', description: 'The contract graph contains unresolved contradictions or traceability gaps.', terminal: true },
     { code: 'infeasible', description: 'The requested solution cannot be implemented under the accepted constraints.', terminal: true },
@@ -102,7 +102,7 @@ export const formalizationProcessModule: ProcessModuleDefinition = {
         outputSchema: { id: 'saga3.solution-contract-certificate.v1' },
       },
       ...[
-        'accepted', 'clarification-required', 'inconsistent', 'infeasible', 'failed',
+        'formalized', 'clarification-required', 'inconsistent', 'infeasible', 'failed',
       ].map(code => ({
         id: `complete-${code}`,
         label: `Complete: ${code}`,
@@ -133,14 +133,14 @@ export const formalizationProcessModule: ProcessModuleDefinition = {
       { from: 'define-architecture-contract', to: 'complete-infeasible', on: 'infeasible' },
       { from: 'define-architecture-contract', to: 'complete-clarification-required', on: 'clarification-required' },
       { from: 'define-architecture-contract', to: 'complete-failed', on: 'failed' },
-      { from: 'settle-formalization', to: 'complete-accepted', on: 'accepted' },
+      { from: 'settle-formalization', to: 'complete-formalized', on: 'formalized' },
       { from: 'settle-formalization', to: 'complete-clarification-required', on: 'clarification-required' },
       { from: 'settle-formalization', to: 'complete-inconsistent', on: 'inconsistent' },
       { from: 'settle-formalization', to: 'complete-infeasible', on: 'infeasible' },
       { from: 'settle-formalization', to: 'complete-failed', on: 'failed' },
     ],
     terminalNodeIds: [
-      'complete-accepted',
+      'complete-formalized',
       'complete-clarification-required',
       'complete-inconsistent',
       'complete-infeasible',

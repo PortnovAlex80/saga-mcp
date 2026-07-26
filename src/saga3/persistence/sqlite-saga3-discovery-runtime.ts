@@ -156,17 +156,28 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
       'SELECT id FROM project_repositories WHERE project_id=? ORDER BY id LIMIT 1',
     ).get(input.projectId) as { id: number } | undefined;
 
+    // Generic-runtime parameters (P6c): the generic flow executor passes these
+    // from the module's ExecutionProfileDefinition. Discovery historically
+    // hardcoded these literals; defaults preserve that for existing callers.
+    const workflowStage = input.workflowStage ?? 'discovery';
+    const executionMode = input.executionMode ?? 'tracker_only';
+    const titlePrefix = input.titlePrefix ?? 'Discovery: ';
+    const priority = input.priority ?? 'high';
+
     const info = db.prepare(
       `INSERT INTO tasks
          (epic_id, title, description, status, priority, task_kind, workflow_stage,
           execution_skill, execution_mode, project_repository_id, generation_key, tags, metadata)
-       VALUES (?, ?, ?, 'todo', 'high', ?, 'discovery', ?, 'tracker_only', ?, ?, '[]', ?)`,
+       VALUES (?, ?, ?, 'todo', ?, ?, ?, ?, ?, ?, ?, '[]', ?)`,
     ).run(
       input.epicId,
-      `Discovery: ${input.objective.slice(0, 80)}`,
+      `${titlePrefix}${input.objective.slice(0, 80)}`,
       JSON.stringify({ work_intent_id: input.intentId, objective: input.objective, ...(input.metadata ?? {}) }),
+      priority,
       input.taskKind,
+      workflowStage,
       input.executionSkill,
+      executionMode,
       repoId?.id ?? null,
       input.generationKey,
       JSON.stringify({ work_intent_id: input.intentId, ...(input.metadata ?? {}) }),
@@ -262,6 +273,34 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
         ORDER BY id DESC LIMIT 1`,
     ).get(intentId) as ProposalRow | undefined;
     return row ? rowToRecord(row) : null;
+  }
+
+  readLatestProposalByEpic(epicId: number): ProposalRecord | null {
+    const row = getDb().prepare(
+      `SELECT p.* FROM saga3_proposals p
+        JOIN saga3_work_intents i ON i.id = p.intent_id
+        WHERE i.epic_id=? AND p.status='submitted'
+        ORDER BY p.id DESC LIMIT 1`,
+    ).get(epicId) as ProposalRow | undefined;
+    return row ? rowToRecord(row) : null;
+  }
+
+  readLatestAcceptedReadinessForEpic(epicId: number): {
+    assessment_id: number;
+    content_hash: string;
+    payload: unknown;
+  } | null {
+    ensureSaga3ReadinessSchema(getDb());
+    const row = getDb().prepare(
+      `SELECT a.id AS assessment_id, a.content_hash, a.payload
+         FROM saga3_readiness_assessments a
+         JOIN saga3_control_intents c ON c.id = a.control_intent_id
+        WHERE c.epic_id=? AND a.status='accepted_by_kernel'
+        ORDER BY a.id DESC LIMIT 1`,
+    ).get(epicId) as
+      | { assessment_id: number; content_hash: string; payload: unknown }
+      | undefined;
+    return row ?? null;
   }
 
   readLatestRawSubmission(intentId: number) {

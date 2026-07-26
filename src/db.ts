@@ -77,6 +77,11 @@ export function getDb(): Database.Database {
   migrateReviewInProgress(db);
   migrateVerificationTargets(db);
 
+  // P6c: extend the execution_mode CHECK to include 'artifact_change'
+  // (declared by Formalization execution profiles). Required before the generic
+  // flow executor can project Formalization tasks.
+  migrateExecutionModeArtifactChange(db);
+
   return db;
 }
 
@@ -136,7 +141,7 @@ function migrateReviewInProgress(db: Database.Database): void {
         execution_skill TEXT,
         review_skill TEXT,
         execution_mode TEXT NOT NULL DEFAULT 'git_change'
-              CHECK (execution_mode IN ('git_change','tracker_only','read_only_evidence','interactive')),
+              CHECK (execution_mode IN ('git_change','tracker_only','read_only_evidence','interactive','artifact_change')),
         project_repository_id INTEGER REFERENCES project_repositories(id) ON DELETE SET NULL,
         integration_state TEXT NOT NULL DEFAULT 'not_required'
               CHECK (integration_state IN ('not_required','pending','merged','conflict')),
@@ -198,6 +203,114 @@ function migrateReviewInProgress(db: Database.Database): void {
   }
   const violation = db.prepare('PRAGMA foreign_key_check').get();
   if (violation) throw new Error(`Migration 'review_in_progress' produced foreign key violations`);
+}
+
+/**
+ * P6c: extend the tasks.execution_mode CHECK to include 'artifact_change'.
+ *
+ * Discovery historically used 'tracker_only'; Formalization execution profiles
+ * declare executionMode: 'artifact_change', which the generic flow executor
+ * projects onto the task. Without this migration, projecting a Formalization
+ * task would violate the CHECK at INSERT.
+ *
+ * Detection: inspect the live DDL — if the CHECK already contains
+ * 'artifact_change', the migration is a no-op (fresh DBs get the extended
+ * constraint directly via schema.ts; older DBs migrated through
+ * migrateReviewInProgress get it via that rebuild's DDL too). Only DBs that
+ * predate both paths need the rebuild.
+ *
+ * Rebuild shape mirrors migrateReviewInProgress: copy all columns, drop,
+ * rename, recreate indexes.
+ */
+function migrateExecutionModeArtifactChange(db: Database.Database): void {
+  const row = db.prepare(
+    "SELECT sql FROM sqlite_schema WHERE type='table' AND name='tasks'",
+  ).get() as { sql: string } | undefined;
+  if (!row?.sql) return; // nothing to migrate (table not created yet)
+  if (row.sql.includes("'artifact_change'")) return; // already migrated
+
+  db.pragma('foreign_keys = OFF');
+  try {
+    db.exec('BEGIN IMMEDIATE');
+    db.exec(`
+      CREATE TABLE tasks_new (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        epic_id INTEGER NOT NULL REFERENCES epics(id) ON DELETE CASCADE,
+        title TEXT NOT NULL,
+        description TEXT,
+        status TEXT NOT NULL DEFAULT 'todo'
+              CHECK (status IN ('todo', 'in_progress', 'review', 'review_in_progress', 'done', 'blocked')),
+        priority TEXT NOT NULL DEFAULT 'medium'
+              CHECK (priority IN ('low', 'medium', 'high', 'critical')),
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        assigned_to TEXT,
+        current_execution_id TEXT,
+        verification_target_artifact_id INTEGER REFERENCES artifacts(id) ON DELETE SET NULL,
+        estimated_hours REAL,
+        actual_hours REAL,
+        due_date TEXT,
+        source_ref TEXT,
+        task_kind TEXT,
+        workflow_stage TEXT,
+        execution_skill TEXT,
+        review_skill TEXT,
+        execution_mode TEXT NOT NULL DEFAULT 'git_change'
+              CHECK (execution_mode IN ('git_change','tracker_only','read_only_evidence','interactive','artifact_change')),
+        project_repository_id INTEGER REFERENCES project_repositories(id) ON DELETE SET NULL,
+        integration_state TEXT NOT NULL DEFAULT 'not_required'
+              CHECK (integration_state IN ('not_required','pending','merged','conflict')),
+        integrated_at TEXT,
+        integrated_commit TEXT,
+        generated_from_task_id INTEGER REFERENCES tasks(id) ON DELETE SET NULL,
+        generation_key TEXT,
+        declared_risk TEXT CHECK (declared_risk IN ('low','medium','high','critical') OR declared_risk IS NULL),
+        derived_risk TEXT CHECK (derived_risk IN ('low','medium','high','critical') OR derived_risk IS NULL),
+        policy_minimum TEXT CHECK (policy_minimum IN ('low','medium','high','critical') OR policy_minimum IS NULL),
+        final_risk TEXT CHECK (final_risk IN ('low','medium','high','critical') OR final_risk IS NULL),
+        tags TEXT NOT NULL DEFAULT '[]',
+        metadata TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      )
+    `);
+    db.exec(`
+      INSERT INTO tasks_new (id, epic_id, title, description, status, priority, sort_order,
+                             assigned_to, current_execution_id, verification_target_artifact_id,
+                             estimated_hours, actual_hours, due_date, source_ref,
+                             task_kind, workflow_stage, execution_skill, review_skill,
+                             execution_mode, project_repository_id, generated_from_task_id,
+                             integration_state, integrated_at, integrated_commit,
+                             generation_key, declared_risk, derived_risk, policy_minimum, final_risk,
+                             tags, metadata, created_at, updated_at)
+      SELECT id, epic_id, title, description, status, priority, sort_order,
+             assigned_to, current_execution_id, verification_target_artifact_id,
+             estimated_hours, actual_hours, due_date, source_ref,
+             task_kind, workflow_stage, execution_skill, review_skill,
+             execution_mode, project_repository_id, generated_from_task_id,
+             integration_state, integrated_at, integrated_commit,
+             generation_key, declared_risk, derived_risk, policy_minimum, final_risk,
+             tags, metadata, created_at, updated_at
+      FROM tasks
+    `);
+    db.exec('DROP TABLE tasks');
+    db.exec('ALTER TABLE tasks_new RENAME TO tasks');
+    db.exec('CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status)');
+    db.exec('CREATE INDEX IF NOT EXISTS idx_tasks_epic_id ON tasks(epic_id)');
+    db.exec('CREATE INDEX IF NOT EXISTS idx_tasks_priority ON tasks(priority)');
+    db.exec('CREATE INDEX IF NOT EXISTS idx_tasks_assigned ON tasks(assigned_to)');
+    db.exec('CREATE INDEX IF NOT EXISTS idx_tasks_current_execution ON tasks(current_execution_id)');
+    db.exec('CREATE INDEX IF NOT EXISTS idx_tasks_verification_target ON tasks(verification_target_artifact_id)');
+    db.exec('CREATE INDEX IF NOT EXISTS idx_tasks_due ON tasks(due_date)');
+    db.exec('CREATE INDEX IF NOT EXISTS idx_tasks_sort ON tasks(epic_id, sort_order)');
+    db.exec('COMMIT');
+  } catch (err) {
+    try { db.exec('ROLLBACK'); } catch { /* tx not active */ }
+    throw new Error(`Migration 'execution_mode_artifact_change' failed: ${(err as Error).message}`);
+  } finally {
+    db.pragma('foreign_keys = ON');
+  }
+  const violation = db.prepare('PRAGMA foreign_key_check').get();
+  if (violation) throw new Error(`Migration 'execution_mode_artifact_change' produced foreign key violations`);
 }
 
 function migrateArtifactTypes(db: Database.Database): void {
