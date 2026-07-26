@@ -26,6 +26,8 @@ import { EXECUTOR_KINDS } from '../persistence/process-run.js';
 import { processModuleKey } from '../domain/process-module.js';
 import type { ProcessModuleInstallation } from './process-module-executor.js';
 import type { KernelHandlerRegistry } from './kernel-handler-registry.js';
+import type { ExternalAdapterRegistry } from './external-adapter-registry.js';
+import type { HumanInteractionRegistry } from './human-interaction-registry.js';
 import { PROCESS_OUTCOME_EMITTER_HANDLER_ID } from './handlers/process-outcome-emitter.js';
 
 export interface ProcessModuleInstallationValidationResult {
@@ -41,6 +43,10 @@ export interface ValidateProcessModuleInstallationOptions {
    * risk of an unbacked handler id surfacing at dispatch time).
    */
   kernelHandlerRegistry?: KernelHandlerRegistry;
+  /** External provider registry used for fail-fast adapter coverage. */
+  externalAdapterRegistry?: ExternalAdapterRegistry;
+  /** Durable human-decision registry used for fail-fast contract coverage. */
+  humanInteractionRegistry?: HumanInteractionRegistry;
 }
 
 export function validateProcessModuleInstallation(
@@ -81,6 +87,31 @@ export function validateProcessModuleInstallation(
           `kernel node '${node.id}' declares handler '${handlerId}' that is not `
             + `registered in the KernelHandlerRegistry — register it before installing `
             + `the module (generic-flow executor dispatches by handler id)`,
+        );
+      }
+    }
+  }
+
+  if (executor.kind === 'generic-flow' && options.externalAdapterRegistry) {
+    for (const node of definition.flow.nodes) {
+      if (node.kind === 'external' && !options.externalAdapterRegistry.has(node.adapter)) {
+        errors.push(
+          `external node '${node.id}' declares adapter '${node.adapter}' that is not `
+          + 'registered in the ExternalAdapterRegistry',
+        );
+      }
+    }
+  }
+
+  if (executor.kind === 'generic-flow' && options.humanInteractionRegistry) {
+    for (const node of definition.flow.nodes) {
+      if (
+        node.kind === 'human'
+        && !options.humanInteractionRegistry.has(node.interactionContract.id)
+      ) {
+        errors.push(
+          `human node '${node.id}' declares interaction '${node.interactionContract.id}' `
+          + 'that is not registered in the HumanInteractionRegistry',
         );
       }
     }

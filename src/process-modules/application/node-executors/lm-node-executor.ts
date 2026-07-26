@@ -27,10 +27,12 @@ import type {
 import type { WorkerExecutor, WorkerExecutorFactory, WorkerExecutorFactoryContext } from '../../../application/ports/worker-executor.js';
 import {
   NodeExecutionError,
+  NodeExecutionLeaseLostError,
   type NodeExecutionContext,
   type NodeExecutionResult,
   type NodeExecutor,
 } from '../node-executor.js';
+import { sha256Hex } from '../../shared/canonical-json.js';
 
 /**
  * Subset of the saga3 runtime persistence the LM executor needs. Mirrors the
@@ -39,6 +41,35 @@ import {
  * via the existing saga3 adapter — same code path, parameterised).
  */
 export interface LmNodeExecutionPersistence {
+  ensureExecutionPlan(input: {
+    intent: {
+      epicId: number;
+      kind: string;
+      objective: string;
+      authorityScope: {
+        snapshot_ref: string;
+        scope: string;
+        allowed_tools: string[];
+        enforcement: 'advisory' | 'runtime';
+      };
+      outputSchema: string;
+      tokenBudget: number;
+      retryBudget: number;
+    };
+    task: {
+      epicId: number;
+      projectId: number;
+      objective: string;
+      taskKind: string;
+      executionSkill: string;
+      generationKey: string;
+      workflowStage?: string;
+      executionMode?: string;
+      titlePrefix?: string;
+      metadata?: Record<string, unknown>;
+    };
+  }): { intentId: number; taskId: number; replayed: boolean };
+
   createIntent(input: {
     epicId: number;
     kind: string;
@@ -70,6 +101,17 @@ export interface LmNodeExecutionPersistence {
 
   setProjectedTask(intentId: number, taskId: number): void;
 
+  /** Stamp server-owned ProcessRun/node lineage onto an exact projected task. */
+  bindProjectedTaskProcessContext?(input: {
+    taskId: number;
+    processRunId: number;
+    nodeId: string;
+    moduleRef: string;
+    processInputHash: string;
+    nodeInput: unknown;
+    nodeInputHash: string;
+  }): void;
+
   setIntentStatus(
     intentId: number,
     expected: string,
@@ -82,6 +124,12 @@ export interface LmNodeExecutionPersistence {
   ): { status: 'ready' | 'active' | 'blocked' | 'done'; intentStatus: string };
 
   readTaskState(taskId: number): string | null;
+
+  /** Current execution fence while the task is claimed. */
+  readCurrentExecutionId(taskId: number): string | null;
+
+  /** Latest physical execution for the exact projected task. */
+  readLatestExecutionId(taskId: number): string | null;
 }
 
 export interface LmNodeExecutorOptions {
@@ -146,9 +194,12 @@ export class LmNodeExecutor implements NodeExecutor {
       // needs to know WHAT to investigate. Fall back to node description only
       // when the input carries no objective (e.g. synthetic test modules).
       const inputObj = (ctx.input ?? {}) as { objective?: string };
+      const runInputObj = (ctx.frame.runInput ?? {}) as { objective?: string };
       const objective = inputObj.objective && inputObj.objective.trim().length > 0
         ? inputObj.objective
-        : (node.description || node.label);
+        : runInputObj.objective && runInputObj.objective.trim().length > 0
+          ? runInputObj.objective
+          : (node.description || node.label);
 
       // Д5: a preparation kernel node upstream may have ALREADY created the
       // WorkIntent + projected task (e.g. discovery-prepare-readiness creates
@@ -161,6 +212,14 @@ export class LmNodeExecutor implements NodeExecutor {
       const prepBindings = (ctx.input as { bindings?: Record<string, unknown> } | null)?.bindings ?? {};
       const preProjectedTaskId = Number(prepBindings.preProjectedTaskId ?? 0);
       const preProjectedIntentId = Number(prepBindings.preProjectedIntentId ?? prepBindings.authorityIntentId ?? 0);
+      const processBinding = {
+        process_run_id: ctx.processRunId,
+        process_node_id: node.id,
+        process_module_ref: `${ctx.module.identity.name}@${ctx.module.identity.version}`,
+        process_input_hash: sha256Hex(ctx.frame.runInput),
+        process_node_input: ctx.input,
+        process_node_input_hash: sha256Hex(ctx.input),
+      };
 
       let intent: { id: number };
       let taskId: number;
@@ -171,38 +230,54 @@ export class LmNodeExecutor implements NodeExecutor {
         intent = { id: preProjectedIntentId };
         taskId = preProjectedTaskId;
       } else {
-        // 1. Create the WorkIntent — module content (kind/schema/tools) from the profile.
-        intent = this.persistence.createIntent({
-          epicId: ctx.epicId,
-          kind: profile.workIntentKind,
-          objective,
-          authorityScope: {
-            snapshot_ref: `process-run:${ctx.processRunId}:node:${node.id}`,
-            scope: profile.semanticSkill,
-            allowed_tools: [...profile.allowedTools],
-            enforcement: 'runtime',
-          },
-          outputSchema: profile.outputSchema.id,
-          tokenBudget: 0,
-          retryBudget: profile.retryPolicy.maxAttempts,
-        });
-
-        // 2. Project the board task — module content (stage/kind/skill) from the profile.
+        // Atomically ensure the WorkIntent + projected task pair. A restart
+        // must never create a new intent and then reuse a task whose metadata
+        // is still bound to an older intent.
         const generationKey = `process-run:${ctx.processRunId}:node:${node.id}`;
-        taskId = this.persistence.ensureProjectedTask({
-          epicId: ctx.epicId,
-          projectId: ctx.projectId,
-          intentId: intent.id,
-          objective,
-          taskKind: profile.taskKind,
-          executionSkill: profile.executionSkill,
-          generationKey,
-          workflowStage: ctx.module.identity.kind,
-          executionMode: profile.executionMode,
-          titlePrefix: `${ctx.module.identity.displayName}: `,
+        const plan = this.persistence.ensureExecutionPlan({
+          intent: {
+            epicId: ctx.epicId,
+            kind: profile.workIntentKind,
+            objective,
+            authorityScope: {
+              snapshot_ref: `process-run:${ctx.processRunId}:node:${node.id}`,
+              scope: profile.semanticSkill,
+              allowed_tools: [...profile.allowedTools],
+              enforcement: 'runtime',
+            },
+            outputSchema: profile.outputSchema.id,
+            tokenBudget: 0,
+            retryBudget: profile.retryPolicy.maxAttempts,
+          },
+          task: {
+            epicId: ctx.epicId,
+            projectId: ctx.projectId,
+            objective,
+            taskKind: profile.taskKind,
+            executionSkill: profile.executionSkill,
+            generationKey,
+            workflowStage: ctx.module.identity.kind,
+            executionMode: profile.executionMode,
+            titlePrefix: `${ctx.module.identity.displayName}: `,
+            metadata: processBinding,
+          },
         });
-        this.persistence.setProjectedTask(intent.id, taskId);
+        intent = { id: plan.intentId };
+        taskId = plan.taskId;
       }
+
+      // Preparation nodes may project the task before this generic LM cell is
+      // entered. Stamp the same reserved lineage in both paths; the persistence
+      // adapter rejects attempts to rebind an existing task to another run.
+      this.persistence.bindProjectedTaskProcessContext?.({
+        taskId,
+        processRunId: ctx.processRunId,
+        nodeId: node.id,
+        moduleRef: processBinding.process_module_ref,
+        processInputHash: processBinding.process_input_hash,
+        nodeInput: processBinding.process_node_input,
+        nodeInputHash: processBinding.process_node_input_hash,
+      });
 
       // 3. Prepare (CAS open→executing guard) — handles resume of a stale fence.
       const preparation = this.persistence.prepareIntentForExecution(intent.id, taskId);
@@ -211,11 +286,29 @@ export class LmNodeExecutor implements NodeExecutor {
         this.persistence.setIntentStatus(intent.id, preparation.intentStatus, 'concluded');
         return {
           runtimeEvent: 'completed',
-          production: {
-            schema: profile.outputSchema.id,
-            artifactRef: `lm:${node.id}:task:${taskId}`,
-            contentHash: '',
-            bindings: { intentId: intent.id, taskId, workIntentId: intent.id, epicId: ctx.epicId ?? 0, replayed: 1 },
+          receipt: {
+            kind: 'task-execution',
+            executorKind: 'lm',
+            intentId: intent.id,
+            taskId,
+            executionId: this.persistence.readLatestExecutionId(taskId),
+            runtimeStatus: 'completed',
+            replayed: true,
+          },
+        };
+      }
+      if (preparation.status === 'active') {
+        return {
+          runtimeEvent: 'paused',
+          receipt: {
+            kind: 'task-execution',
+            executorKind: 'lm',
+            intentId: intent.id,
+            taskId,
+            executionId: this.persistence.readCurrentExecutionId(taskId)
+              ?? this.persistence.readLatestExecutionId(taskId),
+            runtimeStatus: 'paused',
+            replayed: true,
           },
         };
       }
@@ -223,16 +316,41 @@ export class LmNodeExecutor implements NodeExecutor {
         throw new NodeExecutionError('lm', node.id, `projected task ${taskId} is blocked`);
       }
 
-      // 4. Spawn the worker, scoped to exactly this task.
-      const workerCtx = this.resolveWorkerContext(ctx);
-      const executor: WorkerExecutor = this.workerExecutorFactory(workerCtx);
-      executor.start({
-        projectId: ctx.projectId,
-        epicId: ctx.epicId,
-        concurrency: 1,
-        claimScope: { taskIds: [taskId] },
-      });
-      this.persistence.setIntentStatus(intent.id, preparation.intentStatus, 'executing');
+      // 4. Claim the WorkIntent before even constructing a worker executor.
+      // A concurrent driver that loses this CAS must not allocate or start a
+      // second worker for the same projected task.
+      if (!this.persistence.setIntentStatus(intent.id, preparation.intentStatus, 'executing')) {
+        return {
+          runtimeEvent: 'paused',
+          receipt: {
+            kind: 'task-execution',
+            executorKind: 'lm',
+            intentId: intent.id,
+            taskId,
+            executionId: this.persistence.readCurrentExecutionId(taskId)
+              ?? this.persistence.readLatestExecutionId(taskId),
+            runtimeStatus: 'paused',
+            replayed: true,
+          },
+        };
+      }
+      let workerExecutor: WorkerExecutor | null = null;
+      try {
+        const workerCtx = this.resolveWorkerContext(ctx);
+        workerExecutor = this.workerExecutorFactory(workerCtx);
+        ctx.heartbeat();
+        workerExecutor.start({
+          projectId: ctx.projectId,
+          epicId: ctx.epicId,
+          concurrency: 1,
+          claimScope: { taskIds: [taskId] },
+        });
+      } catch (error) {
+        this.persistence.setIntentStatus(intent.id, 'executing', 'paused');
+        try { workerExecutor?.dispose(); } catch { /* best effort */ }
+        throw error;
+      }
+      const executor = workerExecutor;
 
       // 5. Poll loop — copied from Saga3DiscoveryEngine. The terminal verdict
       //    combines task status + worker substrate state + wall clock.
@@ -245,8 +363,11 @@ export class LmNodeExecutor implements NodeExecutor {
         | 'stopped'
         | 'timeout'
         | 'task_unclaimed' = 'timeout';
+      let executionId = this.persistence.readCurrentExecutionId(taskId);
       try {
         while (true) {
+          ctx.heartbeat();
+          executionId ??= this.persistence.readCurrentExecutionId(taskId);
           const taskStatus = this.persistence.readTaskState(taskId);
           const taskDone = taskStatus === 'done';
           const taskBlocked = taskStatus === 'blocked';
@@ -267,6 +388,9 @@ export class LmNodeExecutor implements NodeExecutor {
           if (this.now().getTime() - startedAt > this.maxRunMs) { terminal = 'timeout'; break; }
           await this.sleep(this.pollMs);
         }
+      } catch (error) {
+        this.persistence.setIntentStatus(intent.id, 'executing', 'paused');
+        throw error;
       } finally {
         if (terminal !== 'clean') {
           try { executor.stop(ctx.projectId); } catch { /* best effort */ }
@@ -285,26 +409,35 @@ export class LmNodeExecutor implements NodeExecutor {
         // downstream settlement kernel can read exact lineage from the chain.
         return {
           runtimeEvent: 'completed',
-          production: {
-            schema: profile.outputSchema.id,
-            artifactRef: `lm:${node.id}:task:${taskId}`,
-            contentHash: '',
-            bindings: {
-              intentId: intent.id,
-              taskId,
-              workIntentId: intent.id,
-              epicId: ctx.epicId ?? 0,
-              // Forward upstream preparation bindings (proposalId, proposalHash,
-              // controlIntentId, ...) so settlement kernel can read exact lineage.
-              ...forwardPrepBindings(prepBindings),
-            },
+          receipt: {
+            kind: 'task-execution',
+            executorKind: 'lm',
+            intentId: intent.id,
+            taskId,
+            executionId: executionId ?? this.persistence.readLatestExecutionId(taskId),
+            runtimeStatus: 'completed',
+            replayed: false,
           },
         };
       }
       this.persistence.setIntentStatus(intent.id, 'executing', 'paused');
-      return { runtimeEvent: 'paused' };
+      const runtimeEvent = terminal === 'stopped' || terminal === 'timeout'
+        ? 'paused'
+        : 'failed';
+      return {
+        runtimeEvent,
+        receipt: {
+          kind: 'task-execution',
+          executorKind: 'lm',
+          intentId: intent.id,
+          taskId,
+          executionId: executionId ?? this.persistence.readLatestExecutionId(taskId),
+          runtimeStatus: runtimeEvent,
+          replayed: false,
+        },
+      };
     } catch (err) {
-      if (err instanceof NodeExecutionError) throw err;
+      if (err instanceof NodeExecutionError || err instanceof NodeExecutionLeaseLostError) throw err;
       throw new NodeExecutionError('lm', node.id, (err as Error).message, err);
     }
   }
@@ -327,13 +460,3 @@ function resolveProfile(
  * (preProjectedTaskId/preProjectedIntentId) are dropped — they are consumed by
  * this executor only.
  */
-function forwardPrepBindings(
-  prep: Record<string, unknown>,
-): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(prep)) {
-    if (k === 'preProjectedTaskId' || k === 'preProjectedIntentId') continue;
-    out[k] = v;
-  }
-  return out;
-}

@@ -38,6 +38,14 @@ export interface NodeExecutionContext {
   node: FlowNodeDefinition;
   /** Декодированный вход узла. */
   input: unknown;
+  /**
+   * Durable data frame reconstructed from every completed NodeRun. Consumers
+   * address products by producer node id instead of relying on a mutable bag
+   * copied through every intermediate node.
+   */
+  frame: NodeExecutionFrame;
+  /** Renew the ProcessRun single-driver lease during long node execution. */
+  heartbeat: () => void;
   /** Идентификатор инициатора для аудита. */
   initiatedBy: string;
 }
@@ -72,9 +80,40 @@ export interface NodeExecutionContext {
 export interface NodeExecutionResult {
   runtimeEvent: 'completed' | 'failed' | 'paused';
   domainEvent?: string;
+  /**
+   * Physical execution evidence. LM/external/human executors return a receipt;
+   * they MUST NOT pretend that a completed task is the module's domain product.
+   * A module-owned resolver kernel consumes this receipt, reads the canonical
+   * module store, and emits NodeProduction.
+   */
+  receipt?: NodeExecutionReceipt;
   production?: NodeProduction;
   /** Только для terminal-узлов (outcome-emitter). */
   outcome?: string;
+}
+
+/**
+ * Module-agnostic evidence that one physical node execution finished.
+ *
+ * `inputBindings` are an opaque snapshot supplied by the preceding module
+ * preparation node. Runtime persists and forwards them, but never interprets
+ * domain keys such as proposalId or controlIntentId.
+ */
+export interface NodeExecutionReceipt {
+  kind: 'task-execution';
+  executorKind: FlowNodeKind;
+  intentId: number;
+  taskId: number;
+  /** Exact worker execution fence when the substrate exposes it. */
+  executionId: string | null;
+  runtimeStatus: 'completed' | 'failed' | 'paused';
+  replayed: boolean;
+}
+
+export interface NodeExecutionFrame {
+  runInput: unknown;
+  productions: Record<string, NodeProduction>;
+  receipts: Record<string, NodeExecutionReceipt>;
 }
 
 /**
@@ -138,5 +177,12 @@ export class NodeExecutionError extends Error {
   ) {
     super(`node '${nodeId}' (kind=${nodeKind}) execution failed: ${message}`);
     this.name = 'NodeExecutionError';
+  }
+}
+
+export class NodeExecutionLeaseLostError extends Error {
+  constructor(readonly processRunId: number) {
+    super(`ProcessRun ${processRunId} execution lease was lost`);
+    this.name = 'NodeExecutionLeaseLostError';
   }
 }

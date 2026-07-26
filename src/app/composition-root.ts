@@ -27,7 +27,12 @@ import {
   loadSagaRuntimeConfig,
   type SagaRuntimeConfig,
 } from '../runtime/saga-runtime-config.js';
-import { isSaga3DiscoveryMode, isSaga3DiscoveryGenericMode, isSaga3FormalizationMode } from '../runtime/orchestration-mode.js';
+import {
+  isSaga3DiscoveryMode,
+  isSaga3DiscoveryGenericMode,
+  isSaga3FormalizationMode,
+  isSaga3LifecycleMode,
+} from '../runtime/orchestration-mode.js';
 import {
   ExistingOrchestrationEngineAdapter,
   ProcessModuleRuntimeEngine,
@@ -50,6 +55,15 @@ import { GenericFlowEngineAdapter } from '../process-modules/application/generic
 import { createDiscoveryKernelHandlers, createDiscoveryLmNodePersistence } from '../process-modules/modules/discovery/discovery-installation.js';
 import { createBuiltInProcessModuleInstallationRegistry } from '../process-modules/modules/installations.js';
 import { getDb } from '../db.js';
+import {
+  createProductLifecycleRuntime,
+  type ProductLifecycleRuntimeOptions,
+} from '../process-modules/composition/product-lifecycle-runtime.js';
+
+export type ProductLifecycleCompositionOverrides = Omit<
+  ProductLifecycleRuntimeOptions,
+  'workerExecutorFactory' | 'resolveWorkerContext'
+>;
 
 export interface Saga2CompositionOverrides {
   config?: SagaRuntimeConfig;
@@ -58,6 +72,11 @@ export interface Saga2CompositionOverrides {
   host?: Saga2HostRuntime;
   board?: BoardProjectionReader;
   engineAdministration?: EngineAdministration;
+  /**
+   * Required explicit module/provider ports for saga3-lifecycle mode.
+   * No Git/CI/deployment/human provider is silently selected.
+   */
+  productLifecycle?: ProductLifecycleCompositionOverrides;
   close?: () => void;
 }
 
@@ -83,7 +102,13 @@ export function createSaga2Application(
       modelRouteReader: epicId => persistence.episodes.readWorkerModelRoute(epicId),
     });
   const host = overrides.host ?? new NodeSaga2HostRuntime();
-  const engine = selectEngine(config, persistence, workerExecutorFactory, host);
+  const engine = selectEngine(
+    config,
+    persistence,
+    workerExecutorFactory,
+    host,
+    overrides.productLifecycle,
+  );
   const board = overrides.board ?? new SqliteBoardProjectionReader(config.dbPath);
   const engineAdministration = overrides.engineAdministration
     ?? new LegacyEngineAdministration({ config, baseEnv: env });
@@ -121,7 +146,24 @@ function selectEngine(
   persistence: Saga2RuntimePersistence,
   workerExecutorFactory: WorkerExecutorFactory,
   host: Saga2HostRuntime,
+  productLifecycle: ProductLifecycleCompositionOverrides | undefined,
 ): OrchestrationEngine {
+  if (isSaga3LifecycleMode(config.orchestrationMode)) {
+    if (!productLifecycle) {
+      throw new Error(
+        'SAGA3_LIFECYCLE_DEPENDENCIES_REQUIRED: createSaga2Application '
+        + 'must receive overrides.productLifecycle with explicit Development '
+        + 'and Delivery provider/state ports',
+      );
+    }
+    return createProductLifecycleRuntime({
+      ...productLifecycle,
+      workerExecutorFactory,
+      resolveWorkerContext: context =>
+        buildDiscoveryWorkerContext(config, persistence, host, context),
+    }).engine;
+  }
+
   // P6c: Universal ProcessModuleRuntime. Discovery исполняется как DATA через
   // GenericFlowExecutor — никакого Saga3DiscoveryEngine. Composition-root строит:
   //   1. KernelHandlerRegistry + регистрирует runtime-provided process-outcome-emitter;

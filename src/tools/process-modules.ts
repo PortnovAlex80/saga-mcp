@@ -2,7 +2,7 @@ import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 
 import { validateLifecycleDefinition } from '../process-modules/application/lifecycle-router.js';
 import { validateProcessModuleDefinition } from '../process-modules/application/validate-process-module.js';
-import { discoveryToFormalizationLifecycle } from '../process-modules/lifecycles/product-delivery-lifecycle.js';
+import { productDeliveryLifecycle } from '../process-modules/lifecycles/product-delivery-lifecycle.js';
 import { createBuiltInProcessModuleRegistry } from '../process-modules/modules/catalog.js';
 import {
   processModuleKey,
@@ -128,8 +128,8 @@ function handleProcessModuleValidate(args: Record<string, unknown>) {
 
 function handleProcessLifecycleGet() {
   return {
-    lifecycle: discoveryToFormalizationLifecycle,
-    validation: validateLifecycleDefinition(discoveryToFormalizationLifecycle, registry),
+    lifecycle: productDeliveryLifecycle,
+    validation: validateLifecycleDefinition(productDeliveryLifecycle, registry),
   };
 }
 

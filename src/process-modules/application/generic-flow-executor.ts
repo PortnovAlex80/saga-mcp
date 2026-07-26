@@ -21,6 +21,7 @@
  * регистрацию handlers/профилей в шаге 4, а этот executor остаётся неизменным.
  */
 
+import { randomUUID } from 'node:crypto';
 import { type ProcessModuleDefinition } from '../domain/process-module.js';
 import type { FlowNodeDefinition, FlowTransitionDefinition } from '../domain/process-module.js';
 import type {
@@ -43,8 +44,11 @@ import type {
 } from '../persistence/process-run.js';
 import type {
   NodeExecutionContext,
+  NodeExecutionFrame,
+  NodeExecutionReceipt,
   NodeExecutor,
   NodeExecutionResult,
+  NodeProduction,
 } from './node-executor.js';
 import type {
   ProcessModuleExecutionContext,
@@ -52,7 +56,8 @@ import type {
   ProcessModuleRunResult,
 } from './process-module-executor.js';
 import { validateProcessModuleRunResult } from './validate-process-module-run-result.js';
-import { nodeEventForTransition } from './node-executor.js';
+import { NodeExecutionLeaseLostError, nodeEventForTransition } from './node-executor.js';
+import { sha256Hex } from '../shared/canonical-json.js';
 
 export interface GenericFlowExecutorOptions {
   moduleRef: ProcessModuleDefinition['identity'];
@@ -73,6 +78,22 @@ export interface GenericFlowExecutorOptions {
     terminalResult: NodeExecutionResult,
     context: ProcessModuleExecutionContext,
   ) => ProcessModuleOutput | null;
+}
+
+const PROCESS_RUN_LEASE_MS = 120_000;
+
+export class ProcessRunBusyError extends Error {
+  constructor(readonly processRunId: number) {
+    super(`ProcessRun ${processRunId} is already owned by another executor`);
+    this.name = 'ProcessRunBusyError';
+  }
+}
+
+export class ProcessRunPausedError extends Error {
+  constructor(readonly processRunId: number, readonly nodeId: string) {
+    super(`ProcessRun ${processRunId} paused at node '${nodeId}' and can be resumed`);
+    this.name = 'ProcessRunPausedError';
+  }
 }
 
 export class GenericFlowExecutor implements ProcessModuleExecutor {
@@ -97,49 +118,56 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
       throw new Error(`GenericFlowExecutor: process_run ${context.processRunId} not found`);
     }
 
+    const leaseOwner = randomUUID();
+    const renewLease = (): void => {
+      const expiresAt = new Date(Date.now() + PROCESS_RUN_LEASE_MS).toISOString();
+      if (!processRunRepo.renewExecutionLease(context.processRunId, leaseOwner, expiresAt)) {
+        throw new NodeExecutionLeaseLostError(context.processRunId);
+      }
+    };
+    const acquired = processRunRepo.acquireExecutionLease(
+      context.processRunId,
+      leaseOwner,
+      new Date().toISOString(),
+      new Date(Date.now() + PROCESS_RUN_LEASE_MS).toISOString(),
+    );
+    if (!acquired) {
+      throw new ProcessRunBusyError(context.processRunId);
+    }
+
+    try {
+
     // Drive created → preparing → running.
     if (run.status === 'created') {
       processRunRepo.update(context.processRunId, { status: 'preparing' });
     }
-    processRunRepo.update(context.processRunId, { status: 'running' });
+    const prepared = processRunRepo.read(context.processRunId);
+    if (prepared && prepared.status !== 'running' && prepared.status !== 'settling') {
+      processRunRepo.update(context.processRunId, { status: 'running' });
+    }
+    renewLease();
 
     try {
       // Walk the flow from entry (or last completed NodeRun — restart support).
-      const terminal = await this.walk(module, context, nodeRunRepo, nodeExecutors);
+      const terminal = await this.walk(
+        module,
+        context,
+        nodeRunRepo,
+        nodeExecutors,
+        renewLease,
+      );
 
-      // Д6: the settlement kernel handler ALREADY built the authoritative
-      // certificate envelope and returned it inside ITS production's bindings.
-      // The terminal outcome-emitter node produces its own (outcome-only)
-      // production, so we must look up the certificate envelope in the chain of
-      // completed NodeRuns — the LAST one whose production carries
-      // certificatePayload. This keeps the certificate a first-class product of
-      // the settlement kernel node, not something the Runtime reconstructs.
-      const completedRuns = nodeRunRepo.list(context.processRunId);
-      let certPayload: ProcessOutcomeCertificatePayload | undefined;
-      let certHash: string | undefined;
-      let certSchema: string | undefined;
-      let authority: string | null = null;
-      for (const nr of completedRuns) {
-        // The settlement kernel handler is identified by its artifactRef
-        // convention OR by the presence of certificatePayload in a stored
-        // production. We don't store full bindings in NodeRun yet (Д8), so we
-        // recognise settlement by artifactRef prefix 'settlement:'.
-        if (nr.outputRef && nr.outputRef.startsWith('settlement:')) {
-          // The settlement production is no longer in memory after the walk;
-          // for now, when the terminal node IS the settlement terminal (no
-          // separate outcome-emitter, e.g. synthetic test), the envelope is on
-          // terminal.result. The discovery descriptor has a separate terminal
-          // outcome-emitter; for it, the envelope is re-read below via the
-          // walk's last kernel production.
-        }
-      }
-      // Primary source: the terminal result itself (when settlement IS the
-      // terminal node, or when the outcome-emitter preserved chain bindings).
+      // The settlement production owns the certificate envelope. A separate
+      // outcome-emitter preserves those bindings, and terminal replay rebuilds
+      // the same production from the durable NodeRun checkpoint.
       const terminalBindings = (terminal.result.production?.bindings ?? {}) as Record<string, unknown>;
-      certPayload = (terminalBindings.certificatePayload as ProcessOutcomeCertificatePayload | undefined) ?? certPayload;
-      certHash = (terminalBindings.certificateHash as string | undefined) ?? certHash;
-      certSchema = (terminalBindings.certificateSchema as string | undefined) ?? certSchema;
-      authority = (terminalBindings.authority as string | undefined) ?? authority;
+      const certPayload = terminalBindings.certificatePayload as ProcessOutcomeCertificatePayload | undefined;
+      const certHash = terminalBindings.certificateHash as string | undefined;
+      const certSchema = terminalBindings.certificateSchema as string | undefined;
+      const existingCertificateRef = terminalBindings.certificateRef as string | undefined;
+      const certificateArtifactPayload = terminalBindings.certificateArtifactPayload;
+      const certificateDecision = terminalBindings.certificateDecision as string | undefined;
+      const authority = (terminalBindings.authority as string | undefined) ?? null;
 
       const output = this.opts.resolveOutput
         ? this.opts.resolveOutput(module, terminal.outcome, terminal.result, context)
@@ -151,7 +179,47 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
       processRunRepo.update(context.processRunId, { status: 'settling' });
 
       let certificate: ProcessModuleCertificateRef | null = null;
-      if (certPayload && certHash && certSchema) {
+      const hasReferencedEnvelopeField = existingCertificateRef !== undefined
+        || certificateArtifactPayload !== undefined
+        || certificateDecision !== undefined;
+      const hasGenericEnvelopeField = certPayload !== undefined;
+      if (hasReferencedEnvelopeField && hasGenericEnvelopeField) {
+        throw new Error(
+          'GenericFlowExecutor: certificate envelope is ambiguous (both referenced and generic)',
+        );
+      }
+      if (hasReferencedEnvelopeField) {
+        if (
+          !existingCertificateRef
+          || certificateArtifactPayload === undefined
+          || !certHash
+          || !certSchema
+          || !certificateDecision
+        ) {
+          throw new Error('GenericFlowExecutor: referenced certificate envelope is incomplete');
+        }
+        assertReferencedCertificateEnvelope({
+          payload: certificateArtifactPayload,
+          certificateHash: certHash,
+          certificateSchema: certSchema,
+          certificateDecision,
+          terminalOutcome: terminal.outcome,
+        });
+        certificate = {
+          schema: certSchema,
+          certificateRef: existingCertificateRef,
+          certificateHash: certHash,
+        };
+      } else if (hasGenericEnvelopeField) {
+        if (!certPayload || !certHash || !certSchema) {
+          throw new Error('GenericFlowExecutor: generic certificate envelope is incomplete');
+        }
+        assertGenericCertificateEnvelope(
+          certPayload,
+          certHash,
+          certSchema,
+          terminal.outcome,
+        );
         // Д7: issue the certificate FIRST (so its ref is non-empty), then
         // validate the complete RunResult, then flip ProcessRun to completed.
         // If validation fails after issue, the certificate is orphaned but
@@ -170,6 +238,8 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
           certificateRef: `certificate:${certResult.record.id}`,
           certificateHash: certResult.record.certificateHash,
         };
+      } else if (certHash !== undefined || certSchema !== undefined) {
+        throw new Error('GenericFlowExecutor: certificate hash/schema has no payload');
       }
 
       const runResult: ProcessModuleRunResult = {
@@ -192,12 +262,26 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
       processRunRepo.update(context.processRunId, {
         status: 'completed',
         localOutcome: terminal.outcome,
+        authority,
         output,
         certificate,
       });
 
       return runResult;
     } catch (err) {
+      if (err instanceof ProcessRunPausedError) {
+        const current = processRunRepo.read(context.processRunId);
+        if (current && (current.status === 'running' || current.status === 'preparing')) {
+          processRunRepo.update(context.processRunId, {
+            status: 'paused',
+            error: err.message,
+          });
+        }
+        throw err;
+      }
+      if (err instanceof NodeExecutionLeaseLostError) {
+        throw err;
+      }
       // Best-effort transition to failed; record the reason.
       const message = (err as Error).message ?? String(err);
       try {
@@ -213,6 +297,9 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
       }
       throw err;
     }
+    } finally {
+      processRunRepo.releaseExecutionLease(context.processRunId, leaseOwner);
+    }
   }
 
   private async walk(
@@ -220,6 +307,7 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
     context: ProcessModuleExecutionContext,
     nodeRunRepo: NodeRunRepository,
     nodeExecutors: ReadonlyMap<string, NodeExecutor>,
+    heartbeat: () => void,
   ): Promise<{ outcome: string; result: NodeExecutionResult }> {
     const flow = module.flow;
 
@@ -240,9 +328,12 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
             outcome: terminalNode.emitsOutcome,
             result: {
               runtimeEvent: 'completed',
+              receipt: lastCompleted.executionReceipt
+                ? lastCompleted.executionReceipt as unknown as NodeExecutionReceipt
+                : undefined,
               production: lastCompleted.outputRef || lastCompleted.outputBindings
                 ? {
-                    schema: '',
+                    schema: lastCompleted.outputSchema ?? '',
                     artifactRef: lastCompleted.outputRef ?? '',
                     contentHash: lastCompleted.outputHash ?? '',
                     bindings: lastCompleted.outputBindings ?? {},
@@ -260,6 +351,7 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
 
     // Bound the walk to prevent infinite loops on malformed transitions.
     const maxSteps = flow.nodes.length * 4 + 10;
+    const frame = restoreFrame(context.inputPayload, nodeRunRepo.list(context.processRunId));
 
     // The first node receives the module input payload. Each subsequent node
     // receives the PREVIOUS node's output — this is the data chain that lets a
@@ -273,11 +365,14 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
     // produced, so resuming the next node sees the same upstream context.
     let chainInput: unknown = context.inputPayload;
     const lastCompletedForChain = nodeRunRepo.readLastCompleted(context.processRunId);
-    if (lastCompletedForChain?.outputBindings) {
-      chainInput = { bindings: lastCompletedForChain.outputBindings };
+    if (lastCompletedForChain?.executionReceipt) {
+      chainInput = lastCompletedForChain.executionReceipt;
+    } else if (lastCompletedForChain?.outputBindings || lastCompletedForChain?.outputRef) {
+      chainInput = restoreProduction(lastCompletedForChain);
     }
 
     for (let step = 0; step < maxSteps; step += 1) {
+      heartbeat();
       const node = this.findNode(flow, currentNodeId);
       if (!node) {
         throw new Error(`GenericFlowExecutor: node '${currentNodeId}' not in flow`);
@@ -304,12 +399,16 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
         module,
         node,
         input: chainInput,
+        frame,
+        heartbeat,
         initiatedBy: context.initiatedBy,
       };
 
       let result: NodeExecutionResult;
       try {
         result = await executor.execute(ctx);
+        assertNodeExecutionResult(node, result);
+        heartbeat();
       } catch (err) {
         nodeRunRepo.fail({
           id: nodeRun.id,
@@ -319,21 +418,31 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
       }
 
       const outputRef = result.production?.artifactRef ?? null;
+      const outputSchema = result.production?.schema ?? null;
       const outputHash = result.production?.contentHash ?? null;
       const outputBindings = result.production?.bindings ?? null;
       nodeRunRepo.complete({
         id: nodeRun.id,
         event: nodeEventForTransition(result),
         outputRef,
+        outputSchema,
         outputHash,
         outputBindings,
+        executionReceipt: result.receipt as unknown as Record<string, unknown> | undefined,
       });
+
+      if (result.runtimeEvent === 'paused') {
+        throw new ProcessRunPausedError(context.processRunId, node.id);
+      }
+
+      if (result.production) frame.productions[node.id] = result.production;
+      if (result.receipt) frame.receipts[node.id] = result.receipt;
 
       // Forward the node's production (durable ref) to the next node in the
       // chain. Downstream kernel nodes (settlement) read exact bindings from
       // production.bindings and re-read canonical rows from durable storage —
       // never from "latest by epic" and never from raw runtime objects.
-      chainInput = result.production ?? chainInput;
+      chainInput = result.production ?? result.receipt ?? chainInput;
 
       // Terminal node — emit its outcome.
       if (node.emitsOutcome) {
@@ -378,6 +487,135 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
       if (t.on === '*') fallback = t.to;
     }
     return fallback;
+  }
+}
+
+function restoreProduction(run: {
+  outputRef: string | null;
+  outputSchema: string | null;
+  outputHash: string | null;
+  outputBindings: Record<string, unknown> | null;
+}): NodeProduction {
+  return {
+    schema: run.outputSchema ?? '',
+    artifactRef: run.outputRef ?? '',
+    contentHash: run.outputHash ?? '',
+    bindings: run.outputBindings ?? {},
+  };
+}
+
+function restoreFrame(
+  runInput: unknown,
+  runs: readonly {
+    nodeId: string;
+    status: string;
+    event: string | null;
+    outputRef: string | null;
+    outputSchema: string | null;
+    outputHash: string | null;
+    outputBindings: Record<string, unknown> | null;
+    executionReceipt: Record<string, unknown> | null;
+  }[],
+): NodeExecutionFrame {
+  const frame: NodeExecutionFrame = {
+    runInput,
+    productions: {},
+    receipts: {},
+  };
+  for (const run of runs) {
+    if (run.status !== 'completed' || run.event === 'runtime.paused') continue;
+    if (run.outputRef || run.outputBindings) {
+      frame.productions[run.nodeId] = restoreProduction(run);
+    }
+    if (run.executionReceipt) {
+      frame.receipts[run.nodeId] = run.executionReceipt as unknown as NodeExecutionReceipt;
+    }
+  }
+  return frame;
+}
+
+function assertNodeExecutionResult(
+  node: FlowNodeDefinition,
+  result: NodeExecutionResult,
+): void {
+  if (result.receipt && result.production) {
+    throw new Error(
+      `GenericFlowExecutor: node '${node.id}' returned both a physical receipt and a domain production`,
+    );
+  }
+  if (node.kind === 'lm' && !result.receipt) {
+    throw new Error(
+      `GenericFlowExecutor: LM node '${node.id}' must return an execution receipt, not a domain production`,
+    );
+  }
+  if (!result.receipt) return;
+  const receipt = result.receipt;
+  if (
+    receipt.kind !== 'task-execution'
+    || receipt.executorKind !== node.kind
+    || receipt.runtimeStatus !== result.runtimeEvent
+    || !Number.isInteger(receipt.intentId)
+    || receipt.intentId <= 0
+    || !Number.isInteger(receipt.taskId)
+    || receipt.taskId <= 0
+    || (receipt.executionId !== null && typeof receipt.executionId !== 'string')
+  ) {
+    throw new Error(`GenericFlowExecutor: node '${node.id}' returned an invalid execution receipt`);
+  }
+}
+
+function assertGenericCertificateEnvelope(
+  payload: ProcessOutcomeCertificatePayload,
+  certificateHash: string,
+  certificateSchema: string,
+  terminalOutcome: string,
+): void {
+  if (
+    !payload
+    || typeof payload !== 'object'
+    || typeof payload.schemaVersion !== 'string'
+    || typeof payload.decision !== 'string'
+    || !Array.isArray(payload.reasonCodes)
+    || typeof payload.rationale !== 'string'
+    || typeof payload.inputHash !== 'string'
+  ) {
+    throw new Error('GenericFlowExecutor: malformed generic certificate envelope');
+  }
+  if (payload.schemaVersion !== certificateSchema) {
+    throw new Error('GenericFlowExecutor: certificate schema does not match its payload');
+  }
+  if (payload.decision !== terminalOutcome) {
+    throw new Error('GenericFlowExecutor: certificate decision does not match terminal outcome');
+  }
+  if (sha256Hex(payload) !== certificateHash) {
+    throw new Error('GenericFlowExecutor: certificate hash does not match its payload');
+  }
+}
+
+function assertReferencedCertificateEnvelope(input: {
+  payload: unknown;
+  certificateHash: string;
+  certificateSchema: string;
+  certificateDecision: string;
+  terminalOutcome: string;
+}): void {
+  if (!input.payload || typeof input.payload !== 'object' || Array.isArray(input.payload)) {
+    throw new Error('GenericFlowExecutor: malformed referenced certificate payload');
+  }
+  const record = input.payload as Record<string, unknown>;
+  const payloadSchema = String(record.schema_version ?? record.schemaVersion ?? '');
+  const payloadDecision = String(record.decision ?? '');
+  if (
+    input.certificateDecision !== input.terminalOutcome
+    || payloadDecision !== input.terminalOutcome
+  ) {
+    throw new Error('GenericFlowExecutor: referenced certificate decision does not match terminal outcome');
+  }
+  if (payloadSchema !== input.certificateSchema) {
+    throw new Error('GenericFlowExecutor: referenced certificate schema does not match its payload');
+  }
+  if (sha256Hex(input.payload) !== input.certificateHash) {
+    throw new Error('GenericFlowExecutor: referenced certificate hash does not match its payload');
   }
 }
 

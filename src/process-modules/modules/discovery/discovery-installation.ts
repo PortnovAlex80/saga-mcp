@@ -29,20 +29,14 @@
 
 import type { KernelHandler } from '../../application/kernel-handler-registry.js';
 import type { LmNodeExecutionPersistence } from '../../application/node-executors/lm-node-executor.js';
+import type { NodeExecutionReceipt } from '../../application/node-executor.js';
 import type { Saga3DiscoveryRuntimePersistence } from '../../../saga3/persistence/saga3-discovery-runtime-port.js';
-import { discoverySettlementPolicyV1 } from '../../../saga3/domain/discovery-settlement-policy.js';
-import {
-  DISCOVERY_SETTLEMENT_INPUT_SCHEMA,
-  buildSettlementInputHash,
-  type DiscoverySettlementInputSnapshot,
-  type SettlementProposalInput,
-  type SettlementReadinessInput,
-  type SettlementPolicyInput,
-  type SettlementReadinessStatus,
-} from '../../../saga3/domain/discovery-settlement-input.js';
-import { normalizeDiscoveryProposalInput } from '../../../saga3/domain/discovery-normalization.js';
+import type { ControlIntentStatus } from '../../../saga3/domain/discovery-normalization-records.js';
+import type { ReadinessControlStatus } from '../../../saga3/domain/discovery-readiness-records.js';
 import { NO_READINESS_HASH } from '../../../saga3/domain/discovery-settlement-input.js';
-import { sha256Hex } from '../../../saga3/shared/discovery-canonical.js';
+import { DISCOVERY_OUTCOME_CERTIFICATE_SCHEMA } from '../../../saga3/domain/discovery-outcome-certificate.js';
+import type { ReadinessShadowResult } from '../../../saga3/domain/discovery-readiness-assessment.js';
+import { Saga3DiscoverySettlementService } from '../../../saga3/application/discovery-settlement-service.js';
 
 /**
  * Deps, которые модуль поставляет из composition-root. Settle handler читает
@@ -63,50 +57,358 @@ export function createDiscoveryKernelHandlers(
   deps: DiscoveryInstallationDeps,
 ): Record<string, KernelHandler> {
   return {
-    'discovery-normalization-kernel': discoveryNormalizationKernelHandler,
+    'discovery-resolve-proposal-submission': createResolveProposalSubmissionHandler(deps.runtimePersistence),
+    'discovery-prepare-normalization': createPrepareNormalizationHandler(deps.runtimePersistence),
+    'discovery-resolve-normalized-proposal': createResolveNormalizedProposalHandler(deps.runtimePersistence),
     'discovery-prepare-readiness': createPrepareReadinessHandler(deps.runtimePersistence),
+    'discovery-resolve-readiness': createResolveReadinessHandler(deps.runtimePersistence),
     'discovery-settlement-policy': createDiscoverySettlementHandler(deps.runtimePersistence),
   };
 }
 
 // ---------------------------------------------------------------------------
-// discovery-normalization-kernel
+// LM receipt -> canonical Discovery products
 // ---------------------------------------------------------------------------
 
-const discoveryNormalizationKernelHandler: KernelHandler = (ctx) => {
-  // ctx.input — production предыдущего LM-узла produce-proposal. В bindings
-  // лежит intentId/taskId воркера; канонический Proposal уже сохранён в БД
-  // через proposal_submit. Здесь мы нормализуем сырой raw_submission (для
-  // D2 deterministic step). Делегируем в чистый детерминированный нормализатор.
-  const production = (ctx.input ?? {}) as { bindings?: Record<string, unknown> };
-  const intentId = Number(production.bindings?.intentId ?? 0);
-  const result = normalizeDiscoveryProposalInput(ctx.input);
-  // disposition → domain event (должно совпадать с FlowTransitionDefinition.on,
-  // теперь с префиксом 'domain.'):
-  //   accepted        → domain.accepted → assess-readiness
-  //   needs_lm        → domain.semantic-ambiguity → normalize-semantic
-  //   rejected_syntax → domain.invalid-json → complete-failed
-  const eventByDisposition: Record<string, string> = {
-    accepted: 'accepted',
-    needs_lm: 'semantic-ambiguity',
-    rejected_syntax: 'invalid-json',
+function requireTaskReceipt(input: unknown, handlerId: string): NodeExecutionReceipt {
+  const receipt = input as Partial<NodeExecutionReceipt> | null;
+  if (
+    !receipt
+    || receipt.kind !== 'task-execution'
+    || receipt.executorKind !== 'lm'
+    || !Number.isInteger(receipt.intentId)
+    || !Number.isInteger(receipt.taskId)
+  ) {
+    throw new Error(`${handlerId}: expected an LM task execution receipt`);
+  }
+  return receipt as NodeExecutionReceipt;
+}
+
+function finishNormalizationControl(
+  runtime: Saga3DiscoveryRuntimePersistence,
+  controlIntentId: number,
+  runtimeStatus: NodeExecutionReceipt['runtimeStatus'],
+): void {
+  const next: ControlIntentStatus = runtimeStatus === 'completed' ? 'concluded' : 'paused';
+  for (const expected of ['open', 'executing', 'paused'] as const) {
+    if (expected !== next) runtime.setControlIntentStatus(controlIntentId, expected, next);
+  }
+}
+
+function finishReadinessControl(
+  runtime: Saga3DiscoveryRuntimePersistence,
+  controlIntentId: number,
+  runtimeStatus: NodeExecutionReceipt['runtimeStatus'],
+): void {
+  const next: ReadinessControlStatus = runtimeStatus === 'completed' ? 'concluded' : 'paused';
+  for (const expected of ['open', 'executing', 'paused'] as const) {
+    if (expected !== next) runtime.setReadinessControlStatus(controlIntentId, expected, next);
+  }
+}
+
+function concludeAuthorityIntent(
+  runtime: Saga3DiscoveryRuntimePersistence,
+  intentId: number,
+): void {
+  for (const expected of ['open', 'executing', 'paused'] as const) {
+    runtime.setIntentStatus(intentId, expected, 'concluded');
+  }
+}
+
+/**
+ * Materialize D1. The worker task is only execution evidence; proposal_submit
+ * is the authority that persisted either a raw submission or a canonical
+ * Proposal. Resolve that exact result by WorkIntent/task and emit a domain
+ * production. No "latest by epic" lookup is allowed.
+ */
+function createResolveProposalSubmissionHandler(
+  runtime: Saga3DiscoveryRuntimePersistence,
+): KernelHandler {
+  return (ctx) => {
+    const receipt = requireTaskReceipt(ctx.input, 'discovery-resolve-proposal-submission');
+    if (!receipt.executionId) {
+      return failedProposalResolution(
+        receipt,
+        'task execution has no durable execution fence',
+      );
+    }
+    const raw = runtime.readRawSubmissionForExecution(
+      receipt.intentId,
+      receipt.taskId,
+      receipt.executionId,
+    );
+    if (!raw || raw.task_id !== receipt.taskId || raw.execution_id !== receipt.executionId) {
+      return failedProposalResolution(
+        receipt,
+        'exact raw submission is missing',
+      );
+    }
+    // The durable submission, rather than the worker process status, closes
+    // the product WorkIntent. This covers a worker that dies after the tool
+    // transaction commits but before worker_done.
+    concludeAuthorityIntent(runtime, receipt.intentId);
+
+    if (raw.status === 'rejected_syntax') {
+      return {
+        event: 'invalid-json',
+        production: {
+          schema: 'saga3.discovery-raw-submission.v1',
+          artifactRef: `raw-submission:${raw.id}`,
+          contentHash: raw.raw_hash,
+          bindings: {
+            sourceIntentId: receipt.intentId,
+            sourceTaskId: receipt.taskId,
+            sourceExecutionId: receipt.executionId,
+            rawSubmissionId: raw.id,
+            rawHash: raw.raw_hash,
+          },
+        },
+      };
+    }
+
+    if (raw.status === 'normalization_required') {
+      return {
+        event: 'normalization-required',
+        production: {
+          schema: 'saga3.discovery-raw-submission.v1',
+          artifactRef: `raw-submission:${raw.id}`,
+          contentHash: raw.raw_hash,
+          bindings: {
+            sourceIntentId: receipt.intentId,
+            sourceTaskId: receipt.taskId,
+            sourceExecutionId: receipt.executionId,
+            rawSubmissionId: raw.id,
+            rawHash: raw.raw_hash,
+          },
+        },
+      };
+    }
+
+    const proposal = runtime.readProposalForExecution(
+      receipt.intentId,
+      receipt.taskId,
+      receipt.executionId,
+    );
+    const sourceSubmissionId = Number(proposal?.provenance?.source_submission_id ?? 0);
+    if (
+      !proposal
+      || proposal.task_id !== receipt.taskId
+      || proposal.execution_id !== receipt.executionId
+      || sourceSubmissionId !== raw.id
+    ) {
+      return failedProposalResolution(
+        receipt,
+        `raw submission ${raw.id} has no exact canonical Proposal`,
+      );
+    }
+    return {
+      event: 'accepted',
+      production: proposalProduction(
+        proposal.id,
+        proposal.content_hash,
+        receipt.intentId,
+        receipt.taskId,
+        receipt.executionId,
+        raw.id,
+      ),
+    };
   };
-  const event = eventByDisposition[result.disposition] ?? 'invalid-json';
+}
+
+function failedProposalResolution(
+  receipt: NodeExecutionReceipt,
+  reason: string,
+) {
   return {
-    event,
+    event: 'failed',
     production: {
-      schema: 'saga3.discovery-normalization-result.v1',
-      artifactRef: `normalization:${intentId}:${result.disposition}`,
+      schema: 'saga3.discovery-proposal-resolution.v1',
+      artifactRef: `task-execution:${receipt.taskId}:${receipt.executionId ?? 'missing'}`,
       contentHash: '',
       bindings: {
-        intentId,
-        disposition: result.disposition,
-        reasonCode: result.reason_code,
+        sourceIntentId: receipt.intentId,
+        sourceTaskId: receipt.taskId,
+        sourceExecutionId: receipt.executionId ?? '',
+        reason,
       },
     },
-    // Не terminal — у normalization-kernel нет emitsOutcome.
   };
-};
+}
+
+/**
+ * Prepare the bounded D2 normalization worker for one immutable raw submission.
+ * The Discovery persistence adapter writes control_intent_id and
+ * source_submission_id into the projected task metadata.
+ */
+function createPrepareNormalizationHandler(
+  runtime: Saga3DiscoveryRuntimePersistence,
+): KernelHandler {
+  return (ctx) => {
+    if (ctx.epicId === null) {
+      throw new Error('discovery-prepare-normalization: epicId is required');
+    }
+    const bindings = ((ctx.input ?? {}) as { bindings?: Record<string, unknown> }).bindings ?? {};
+    const sourceIntentId = Number(bindings.sourceIntentId ?? 0);
+    const sourceTaskId = Number(bindings.sourceTaskId ?? 0);
+    const sourceExecutionId = String(bindings.sourceExecutionId ?? '');
+    const rawSubmissionId = Number(bindings.rawSubmissionId ?? 0);
+    const rawHash = String(bindings.rawHash ?? '');
+    if (!sourceIntentId || !sourceTaskId || !sourceExecutionId || !rawSubmissionId || !rawHash) {
+      throw new Error('discovery-prepare-normalization: exact raw submission lineage is required');
+    }
+    const raw = runtime.readRawSubmission(rawSubmissionId);
+    if (
+      !raw
+      || raw.intent_id !== sourceIntentId
+      || raw.task_id !== sourceTaskId
+      || raw.execution_id !== sourceExecutionId
+      || raw.raw_hash !== rawHash
+      || raw.status !== 'normalization_required'
+    ) {
+      throw new Error(`discovery-prepare-normalization: raw submission ${rawSubmissionId} lineage mismatch`);
+    }
+    const execution = runtime.ensureNormalizationControl({
+      epicId: ctx.epicId,
+      projectId: ctx.projectId,
+      sourceSubmissionId: rawSubmissionId,
+      objective: `Normalize raw discovery submission ${rawSubmissionId}`,
+    });
+    return {
+      event: 'prepared',
+      production: {
+        schema: 'saga3.discovery-normalization-control.v1',
+        artifactRef: `normalization-control:${execution.controlIntentId}`,
+        contentHash: rawHash,
+        bindings: {
+          sourceIntentId,
+          sourceTaskId,
+          sourceExecutionId,
+          rawSubmissionId,
+          rawHash,
+          controlIntentId: execution.controlIntentId,
+          authorityIntentId: execution.authorityIntentId,
+          preProjectedIntentId: execution.authorityIntentId,
+          preProjectedTaskId: execution.taskId,
+        },
+      },
+    };
+  };
+}
+
+/**
+ * Materialize the canonical Proposal created by normalization_submit. The
+ * resolver follows the original product WorkIntent and raw submission, never
+ * the normalizer WorkIntent and never an epic-wide "latest" row.
+ */
+function createResolveNormalizedProposalHandler(
+  runtime: Saga3DiscoveryRuntimePersistence,
+): KernelHandler {
+  return (ctx) => {
+    const receipt = requireTaskReceipt(ctx.input, 'discovery-resolve-normalized-proposal');
+    const prepared = ctx.frame.productions['prepare-normalization'];
+    const bindings = prepared?.bindings ?? {};
+    const sourceIntentId = Number(bindings.sourceIntentId ?? 0);
+    const sourceTaskId = Number(bindings.sourceTaskId ?? 0);
+    const sourceExecutionId = String(bindings.sourceExecutionId ?? '');
+    const rawSubmissionId = Number(bindings.rawSubmissionId ?? 0);
+    const controlIntentId = Number(bindings.controlIntentId ?? 0);
+    if (
+      !sourceIntentId
+      || !sourceTaskId
+      || !sourceExecutionId
+      || !rawSubmissionId
+      || !controlIntentId
+    ) {
+      throw new Error('discovery-resolve-normalized-proposal: normalization lineage is missing');
+    }
+    const raw = runtime.readRawSubmission(rawSubmissionId);
+    const currentNormalization = receipt.executionId
+      ? runtime.readNormalizationProposalForExecution(
+          controlIntentId,
+          receipt.taskId,
+          receipt.executionId,
+        )
+      : null;
+    const normalization = currentNormalization
+      ?? runtime.readLatestNormalizationProposal(controlIntentId);
+    const proposal = runtime.readProposalForExecution(
+      sourceIntentId,
+      sourceTaskId,
+      sourceExecutionId,
+    );
+    const proposalLineage = proposal
+      ? runtime.readProposalForSettlement(proposal.id)
+      : null;
+    const accepted = Boolean(
+      proposal
+      && proposalLineage
+      && raw
+      && normalization
+      && raw.intent_id === sourceIntentId
+      && raw.task_id === sourceTaskId
+      && raw.execution_id === sourceExecutionId
+      && proposalLineage.source_submission_id === rawSubmissionId
+      && proposalLineage.task_id === sourceTaskId
+      && proposalLineage.execution_id === sourceExecutionId
+      && receipt.intentId === Number(bindings.authorityIntentId ?? 0)
+      && normalization.task_id === receipt.taskId
+      && normalization.source_submission_id === rawSubmissionId
+      && normalization.status === 'accepted_by_kernel'
+      && proposalLineage.normalization_proposal_id === normalization.id
+    );
+    finishNormalizationControl(
+      runtime,
+      controlIntentId,
+      accepted ? 'completed' : receipt.runtimeStatus,
+    );
+    if (accepted) concludeAuthorityIntent(runtime, receipt.intentId);
+    if (!accepted || !proposal) {
+      return {
+        event: 'failed',
+        production: {
+          schema: 'saga3.discovery-normalization-result.v1',
+          artifactRef: `raw-submission:${rawSubmissionId}`,
+          contentHash: String(bindings.rawHash ?? ''),
+          bindings: { sourceIntentId, rawSubmissionId, reason: 'canonical-proposal-missing' },
+        },
+      };
+    }
+    return {
+      event: 'accepted',
+      production: proposalProduction(
+        proposal.id,
+        proposal.content_hash,
+        sourceIntentId,
+        sourceTaskId,
+        sourceExecutionId,
+        rawSubmissionId,
+      ),
+    };
+  };
+}
+
+function proposalProduction(
+  proposalId: number,
+  proposalHash: string,
+  sourceIntentId: number,
+  sourceTaskId: number,
+  sourceExecutionId: string,
+  rawSubmissionId: number,
+) {
+  return {
+    schema: 'saga3.discovery-proposal.v1',
+    artifactRef: `proposal:${proposalId}`,
+    contentHash: proposalHash,
+    bindings: {
+      proposalId,
+      proposalHash,
+      sourceIntentId,
+      sourceTaskId,
+      sourceExecutionId,
+      rawSubmissionId,
+    },
+  };
+}
 
 // ---------------------------------------------------------------------------
 // discovery-prepare-readiness (Д5)
@@ -139,29 +441,27 @@ function createPrepareReadinessHandler(
     // случая, когда chain ещё не нёс proposalId; в будущем Д8 сделает это exact).
     const chain = (ctx.input ?? {}) as { bindings?: Record<string, unknown> };
     const bindings = chain.bindings ?? {};
-    const sourceIntentId = Number(bindings.workIntentId ?? bindings.intentId ?? 0);
+    const sourceIntentId = Number(bindings.sourceIntentId ?? 0);
+    const sourceTaskId = Number(bindings.sourceTaskId ?? 0);
+    const sourceExecutionId = String(bindings.sourceExecutionId ?? '');
 
-    let proposalId = Number(bindings.proposalId ?? 0);
-    let proposalHash = String(bindings.proposalHash ?? '');
-
-    if (!proposalId) {
-      // Fallback: найти канонический Proposal для эпика.
-      const summary = runtime.readLatestProposalByEpic(ctx.epicId);
-      if (!summary) {
-        // Нет Proposal — readiness не к чему готовить. Сигнализируем failure;
-        // descriptor ведёт в complete-failed.
-        return {
-          event: 'failed',
-          production: {
-            schema: 'saga3.discovery-prepare-readiness.v1',
-            artifactRef: `prepare-readiness:${ctx.epicId}:no-proposal`,
-            contentHash: '',
-            bindings: { epicId: ctx.epicId, reason: 'no-proposal' },
-          },
-        };
-      }
-      proposalId = summary.id;
-      proposalHash = summary.content_hash;
+    const proposalId = Number(bindings.proposalId ?? 0);
+    const proposalHash = String(bindings.proposalHash ?? '');
+    if (!proposalId || !proposalHash) {
+      throw new Error('discovery-prepare-readiness: exact Proposal id/hash lineage is required');
+    }
+    const proposal = runtime.readProposalForSettlement(proposalId);
+    if (
+      !proposal
+      || proposal.content_hash !== proposalHash
+      || !sourceIntentId
+      || !sourceTaskId
+      || !sourceExecutionId
+      || proposal.intent_id !== sourceIntentId
+      || proposal.task_id !== sourceTaskId
+      || proposal.execution_id !== sourceExecutionId
+    ) {
+      throw new Error(`discovery-prepare-readiness: Proposal ${proposalId} lineage mismatch`);
     }
 
     const execution = runtime.ensureReadinessControl({
@@ -169,7 +469,7 @@ function createPrepareReadinessHandler(
       projectId: ctx.projectId,
       proposalId,
       proposalContentHash: proposalHash,
-      sourceIntentId: sourceIntentId || proposalId,
+      sourceIntentId,
       objective: `Assess readiness of discovery proposal ${proposalId}`,
     });
 
@@ -186,9 +486,106 @@ function createPrepareReadinessHandler(
           // КЛЮЧЕВОЕ: готовый task для LM-узла assess-readiness. LmNodeExecutor
           // переиспользует его вместо создания нового, см. preProjectedTaskId.
           preProjectedTaskId: execution.taskId,
+          preProjectedIntentId: execution.authorityIntentId,
           proposalId,
           proposalHash,
           sourceIntentId,
+          sourceTaskId,
+          sourceExecutionId,
+        },
+      },
+    };
+  };
+}
+
+/**
+ * Materialize D3 after the advisor task. Read the assessment only through the
+ * exact readiness ControlIntent created for the Proposal version. Advisor
+ * execution may finish without an accepted assessment; that is represented as
+ * a durable missing/failed/paused production so settlement can fail closed.
+ */
+function createResolveReadinessHandler(
+  runtime: Saga3DiscoveryRuntimePersistence,
+): KernelHandler {
+  return (ctx) => {
+    const receipt = requireTaskReceipt(ctx.input, 'discovery-resolve-readiness');
+    const prepared = ctx.frame.productions['prepare-readiness'];
+    const bindings = prepared?.bindings ?? {};
+    const controlIntentId = Number(bindings.controlIntentId ?? 0);
+    const authorityIntentId = Number(bindings.authorityIntentId ?? 0);
+    const proposalId = Number(bindings.proposalId ?? 0);
+    const proposalHash = String(bindings.proposalHash ?? '');
+    if (
+      !controlIntentId
+      || !authorityIntentId
+      || receipt.intentId !== authorityIntentId
+      || !proposalId
+      || !proposalHash
+    ) {
+      throw new Error('discovery-resolve-readiness: exact readiness preparation lineage is required');
+    }
+    const currentAssessment = receipt.executionId
+      ? runtime.readReadinessAssessmentForExecution(
+          controlIntentId,
+          receipt.taskId,
+          receipt.executionId,
+        )
+      : null;
+    const assessment = currentAssessment
+      ?? runtime.readLatestReadinessAssessment(controlIntentId);
+    const accepted = Boolean(
+      assessment
+      && assessment.status === 'accepted_by_kernel'
+      && assessment.task_id === receipt.taskId
+      && assessment.proposal_id === proposalId
+      && assessment.proposal_content_hash === proposalHash
+    );
+    finishReadinessControl(
+      runtime,
+      controlIntentId,
+      accepted ? 'completed' : receipt.runtimeStatus,
+    );
+    if (accepted) concludeAuthorityIntent(runtime, receipt.intentId);
+    if (accepted && assessment) {
+      return {
+        event: 'accepted',
+        production: {
+          schema: 'saga3.discovery-readiness-assessment.v1',
+          artifactRef: `readiness-assessment:${assessment.id}`,
+          contentHash: assessment.content_hash,
+          bindings: {
+            proposalId,
+            proposalHash,
+            sourceIntentId: Number(bindings.sourceIntentId ?? 0),
+            controlIntentId,
+            assessmentId: assessment.id,
+            assessmentHash: assessment.content_hash,
+            producerExecutionId: assessment.execution_id,
+            readinessStatus: 'accepted',
+          },
+        },
+      };
+    }
+
+    const readinessStatus = receipt.runtimeStatus === 'paused'
+      ? 'paused'
+      : assessment?.status === 'rejected_by_kernel'
+        ? 'failed'
+        : 'missing';
+    return {
+      event: readinessStatus,
+      production: {
+        schema: 'saga3.discovery-readiness-result.v1',
+        artifactRef: `readiness-control:${controlIntentId}:${readinessStatus}`,
+        contentHash: assessment?.content_hash ?? NO_READINESS_HASH,
+        bindings: {
+          proposalId,
+          proposalHash,
+          sourceIntentId: Number(bindings.sourceIntentId ?? 0),
+          controlIntentId,
+          assessmentId: assessment?.id ?? 0,
+          assessmentHash: assessment?.content_hash ?? '',
+          readinessStatus,
         },
       },
     };
@@ -215,8 +612,10 @@ function createPrepareReadinessHandler(
 function createDiscoverySettlementHandler(
   runtime: Saga3DiscoveryRuntimePersistence,
 ): KernelHandler {
-  const policy = discoverySettlementPolicyV1;
-  return (ctx) => {
+  const settlementService = new Saga3DiscoverySettlementService({
+    runtimePersistence: runtime,
+  });
+  return async (ctx) => {
     if (ctx.epicId === null) {
       throw new Error('discovery-settlement-policy: epicId is required');
     }
@@ -224,106 +623,97 @@ function createDiscoverySettlementHandler(
     // 1. Exact lineage: proposalId из chain bindings предыдущих NodeRun.
     //    chainInput — accumulate предыдущих productions. produce-proposal
     //    кладёт intentId; downstream узлы добавляют proposalId после proposal_submit.
-    const chain = (ctx.input ?? {}) as {
-      bindings?: Record<string, unknown>;
-    };
-    const proposalIdFromChain = Number(chain.bindings?.proposalId ?? 0);
+    const readinessProduction = ctx.frame.productions['resolve-readiness'];
+    const lineage = readinessProduction?.bindings ?? {};
+    const proposalId = Number(lineage.proposalId ?? 0);
+    const proposalHash = String(lineage.proposalHash ?? '');
+    const readinessStatus = String(lineage.readinessStatus ?? 'missing');
+    if (!proposalId || !proposalHash) {
+      throw new Error('discovery-settlement-policy: exact Proposal lineage is required');
+    }
 
-    // 2. Найти канонический Proposal. Если chain дал exact proposalId — читаем
-    //    его; иначе fallback на readLatestProposalByEpic ТОЛЬКО для случая, когда
-    //    chain не дошёл (это бывает на restart без durable output — TODO Д8).
-    let proposalRow = proposalIdFromChain
-      ? runtime.readProposalForSettlement(proposalIdFromChain)
+    const assessmentId = Number(lineage.assessmentId ?? 0);
+    const assessment = assessmentId
+      ? runtime.readReadinessAssessment(assessmentId)
       : null;
-    if (!proposalRow) {
-      const fallback = runtime.readLatestProposalByEpic(ctx.epicId);
-      if (fallback) proposalRow = runtime.readProposalForSettlement(fallback.id);
-    }
-    if (!proposalRow) {
-      throw new Error(`discovery-settlement-policy: no canonical proposal for epic ${ctx.epicId} (chain proposalId=${proposalIdFromChain})`);
-    }
-
-    // 3. Exact readiness lineage: assessmentId из chain bindings, либо latest
-    //    accepted for THIS proposal. Никаких latest-by-epic в authoritative path.
-    const assessmentIdFromChain = Number(chain.bindings?.assessmentId ?? 0);
-    const readinessSlice = findReadinessSlice(
-      runtime,
-      ctx.epicId,
-      proposalRow.id,
-      assessmentIdFromChain,
-    );
+    const readiness: ReadinessShadowResult = readinessStatus === 'accepted' && assessment
+      ? {
+          status: 'completed',
+          authority: 'shadow_advisor',
+          assessmentId: assessment.id,
+          assessmentHash: assessment.content_hash,
+          overallReadiness: assessment.overall_readiness,
+          recommendedNextAction: assessment.recommended_next_action,
+          error: null,
+        }
+      : {
+          status: readinessStatus === 'paused'
+            ? 'paused'
+            : readinessStatus === 'failed'
+              ? 'failed'
+              : 'not_run',
+          authority: 'none',
+          assessmentId: null,
+          assessmentHash: null,
+          overallReadiness: null,
+          recommendedNextAction: null,
+          error: readinessStatus === 'failed'
+            ? 'readiness assessment was rejected'
+            : null,
+        };
 
     // 4. Собрать snapshot + вызвать политику.
-    const proposal: SettlementProposalInput = {
-      id: proposalRow.id,
-      content_hash: proposalRow.content_hash,
-      payload: proposalRow.payload as never,
-      source_intent_id: proposalRow.intent_id,
-      source_submission_id: proposalRow.source_submission_id,
-      normalization_proposal_id: proposalRow.normalization_proposal_id,
-    };
-    const snapshot: DiscoverySettlementInputSnapshot = {
-      schema_version: DISCOVERY_SETTLEMENT_INPUT_SCHEMA,
-      epic_id: ctx.epicId,
-      proposal,
-      readiness: readinessSlice,
-      policy: {
-        version: policy.version,
-        content_hash: policy.contentHash,
-      } satisfies SettlementPolicyInput,
-      captured_at: new Date().toISOString(),
-    };
-    const inputHash = buildSettlementInputHash(snapshot);
-    const evaluation = policy.evaluate(snapshot);
-    const decision = evaluation.decision;
+    const settled = await settlementService.settle({
+      projectId: ctx.projectId,
+      epicId: ctx.epicId,
+      proposalId,
+      proposalHash,
+      readiness,
+    });
 
     // 5. Д6: handler сам формирует AuthoritativeSettlementResult — certificate
     //    payload + hash. Это module content (Discovery schema, policy lineage).
     //    Runtime (GenericFlowExecutor) только валидирует envelope + атомарно
     //    сохраняет (Д7), не реконструируя сертификат заново.
-    const certificatePayload = {
-      schemaVersion: 'saga3.discovery-outcome-certificate.generic.v1',
-      decision: decision.decision,
-      reasonCodes: decision.reason_codes,
-      rationale: decision.rationale,
-      inputHash,
-      payload: {
-        epic_id: ctx.epicId,
-        proposal: { id: proposalRow.id, content_hash: proposalRow.content_hash },
-        readiness: {
-          status: readinessSlice.status,
-          assessment_id: readinessSlice.assessment_id,
-          content_hash: readinessSlice.content_hash,
+    if (settled.status !== 'issued') {
+      return {
+        event: 'failed',
+        production: {
+          schema: 'saga3.discovery-settlement.v1',
+          artifactRef: `settlement:failed:${ctx.epicId}:${proposalId}`,
+          contentHash: '',
+          bindings: { proposalId, proposalHash, reason: settled.error },
         },
-        policy: { version: policy.version, content_hash: policy.contentHash },
-        decision: decision.decision,
-        reason_codes: decision.reason_codes,
-        rationale: decision.rationale,
-        policy_trace: evaluation.trace,
-        settlement_input_hash: inputHash,
-      },
-    };
+      };
+    }
+    const certificate = runtime.readOutcomeCertificate(settled.certificateId);
+    if (!certificate) {
+      throw new Error(
+        `discovery-settlement-policy: issued certificate ${settled.certificateId} is missing`,
+      );
+    }
+    const certificateArtifactPayload = JSON.parse(certificate.certificate_payload) as unknown;
     // certificateHash — SHA-256 над canonical JSON payload. Используем
     // generic helper (Д9 вынесет его в process-modules/shared/).
-    const certificateHash = sha256Hex(certificatePayload);
-
     return {
-      event: decision.decision, // domain.go / domain.clarify / domain.reject
+      event: settled.decision,
       production: {
         schema: 'saga3.discovery-settlement.v1',
-        artifactRef: `settlement:${ctx.epicId}:${proposalRow.id}:${inputHash.slice(0, 12)}`,
-        contentHash: certificateHash,
+        artifactRef: `settlement:${settled.settlementId}`,
+        contentHash: settled.certificateHash,
         bindings: {
           epicId: ctx.epicId,
-          proposalId: proposalRow.id,
-          proposalHash: proposalRow.content_hash,
-          inputHash,
-          decision: decision.decision,
+          proposalId,
+          proposalHash,
+          settlementId: settled.settlementId,
+          decision: settled.decision,
           // Authoritative certificate envelope for the Runtime (Д6).
-          certificatePayload,
-          certificateHash,
-          certificateSchema: certificatePayload.schemaVersion,
-          reasonCodes: decision.reason_codes.join(','),
+          certificateRef: `discovery-certificate:${settled.certificateId}`,
+          certificateArtifactPayload,
+          certificateHash: settled.certificateHash,
+          certificateSchema: DISCOVERY_OUTCOME_CERTIFICATE_SCHEMA,
+          certificateDecision: settled.decision,
+          reasonCodes: settled.reasonCodes.join(','),
           authority: 'discovery_settlement_policy',
         },
       },
@@ -342,43 +732,6 @@ function createDiscoverySettlementHandler(
  * to clarify); the distinction only matters for the idempotency key + audit.
  * Returns the 'missing' slice when no assessment exists.
  */
-function findReadinessSlice(
-  runtime: Saga3DiscoveryRuntimePersistence,
-  epicId: number,
-  _proposalId: number,
-  assessmentIdFromChain: number,
-): SettlementReadinessInput {
-  if (assessmentIdFromChain) {
-    const exact = runtime.readReadinessAssessment(assessmentIdFromChain);
-    if (exact && exact.status === 'accepted_by_kernel') {
-      return {
-        status: 'accepted_by_kernel' satisfies SettlementReadinessStatus,
-        assessment_id: exact.id,
-        content_hash: exact.content_hash,
-        payload: exact.payload as never,
-      };
-    }
-  }
-  // Fallback: latest accepted readiness for the epic. NOTE: readLatestAccepted
-  // ReadinessForEpic filters by epic_id (NOT by proposalId — that was the bug
-  // flagged by the architect; the SQL joins control_intents.epic_id).
-  const hit = runtime.readLatestAcceptedReadinessForEpic(epicId);
-  if (hit) {
-    return {
-      status: 'accepted_by_kernel' satisfies SettlementReadinessStatus,
-      assessment_id: hit.assessment_id,
-      content_hash: hit.content_hash,
-      payload: hit.payload as never,
-    };
-  }
-  return {
-    status: 'missing',
-    assessment_id: null,
-    content_hash: NO_READINESS_HASH,
-    payload: null,
-  };
-}
-
 // ---------------------------------------------------------------------------
 // LmNodeExecutionPersistence adapter over the saga3 runtime
 // ---------------------------------------------------------------------------
@@ -396,6 +749,31 @@ export function createDiscoveryLmNodePersistence(
   runtime: Saga3DiscoveryRuntimePersistence,
 ): LmNodeExecutionPersistence {
   return {
+    ensureExecutionPlan(input) {
+      return runtime.ensureNodeExecutionPlan({
+        intent: {
+          epic_id: input.intent.epicId,
+          kind: input.intent.kind,
+          objective: input.intent.objective,
+          authority_scope: input.intent.authorityScope,
+          output_schema: input.intent.outputSchema,
+          token_budget: input.intent.tokenBudget,
+          retry_budget: input.intent.retryBudget,
+        },
+        task: {
+          epicId: input.task.epicId,
+          projectId: input.task.projectId,
+          objective: input.task.objective,
+          taskKind: input.task.taskKind,
+          executionSkill: input.task.executionSkill,
+          generationKey: input.task.generationKey,
+          workflowStage: input.task.workflowStage,
+          executionMode: input.task.executionMode,
+          titlePrefix: input.task.titlePrefix,
+          metadata: input.task.metadata,
+        },
+      });
+    },
     createIntent(input) {
       const intent = runtime.createIntent({
         epic_id: input.epicId,
@@ -426,6 +804,9 @@ export function createDiscoveryLmNodePersistence(
     setProjectedTask(intentId, taskId) {
       runtime.setProjectedTask(intentId, taskId);
     },
+    bindProjectedTaskProcessContext(input) {
+      runtime.bindProjectedTaskProcessContext(input);
+    },
     setIntentStatus(intentId, expected, next) {
       return runtime.setIntentStatus(intentId, expected as never, next as never);
     },
@@ -435,6 +816,12 @@ export function createDiscoveryLmNodePersistence(
     },
     readTaskState(taskId) {
       return runtime.readTaskState(taskId);
+    },
+    readCurrentExecutionId(taskId) {
+      return runtime.readCurrentExecutionId(taskId);
+    },
+    readLatestExecutionId(taskId) {
+      return runtime.readLatestExecutionId(taskId);
     },
   };
 }

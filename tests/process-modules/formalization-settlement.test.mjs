@@ -19,6 +19,9 @@ const {
 } = await import(
   '../../dist/process-modules/modules/formalization/formalization-schemas.js'
 );
+const { canonicalJson } = await import(
+  '../../dist/process-modules/shared/canonical-json.js'
+);
 
 // --- Fake graph port --------------------------------------------------------
 
@@ -57,22 +60,29 @@ function fakeGraph(overrides = {}) {
   };
 }
 
+function makeBundle(overrides = {}) {
+  const partial = {
+    schemaVersion: 'saga3.solution-contract-certificate.v1',
+    formalizationEpicId: 100,
+    prdArtifactId: 1, frArtifactIds: [10], nfrArtifactIds: [11],
+    ruleArtifactIds: [], ucArtifactIds: [20], acArtifactIds: [30, 31],
+    acceptanceBaselineHash: 'b'.repeat(64),
+    srsArtifactId: 40,
+    ...overrides,
+  };
+  const bundleHash = createHash('sha256').update(canonicalJson(partial)).digest('hex');
+  return { ...partial, bundleHash };
+}
+
 function makeInput(overrides = {}) {
+  const { bundle: bundleOverrides = {}, ...inputOverrides } = overrides;
   return {
     schemaVersion: FORMALIZATION_SETTLEMENT_INPUT_SCHEMA,
     formalizationEpicId: 100,
     discoveryCertificateRef: 'certificate:5',
     discoveryCertificateHash: 'd'.repeat(64),
-    bundle: {
-      schemaVersion: 'saga3.solution-contract-certificate.v1',
-      formalizationEpicId: 100,
-      prdArtifactId: 1, frArtifactIds: [10], nfrArtifactIds: [11],
-      ruleArtifactIds: [], ucArtifactIds: [20], acArtifactIds: [30, 31],
-      acceptanceBaselineHash: 'b'.repeat(64),
-      srsArtifactId: 40,
-      bundleHash: 'x'.repeat(64),
-    },
-    ...overrides,
+    bundle: makeBundle(bundleOverrides),
+    ...inputOverrides,
   };
 }
 
@@ -95,21 +105,30 @@ test('policy returns formalized when the contract graph is complete', () => {
 
 test('policy returns clarification-required when PRD is missing', () => {
   const policy = new ReferenceFormalizationSettlementPolicy();
-  const result = policy.settle(fakeGraph({ prd: null }), makeInput());
+  const result = policy.settle(
+    fakeGraph({ prd: null }),
+    makeInput({ bundle: { prdArtifactId: null } }),
+  );
   assert.equal(result.decision, 'clarification-required');
   assert.ok(result.reasonCodes.includes('prd-missing'));
 });
 
 test('policy returns clarification-required when no AC artifacts exist', () => {
   const policy = new ReferenceFormalizationSettlementPolicy();
-  const result = policy.settle(fakeGraph({ acs: [] }), makeInput());
+  const result = policy.settle(
+    fakeGraph({ acs: [] }),
+    makeInput({ bundle: { acArtifactIds: [] } }),
+  );
   assert.equal(result.decision, 'clarification-required');
   assert.ok(result.reasonCodes.includes('acceptance-empty'));
 });
 
 test('policy returns clarification-required when SRS is missing', () => {
   const policy = new ReferenceFormalizationSettlementPolicy();
-  const result = policy.settle(fakeGraph({ srs: null }), makeInput());
+  const result = policy.settle(
+    fakeGraph({ srs: null }),
+    makeInput({ bundle: { srsArtifactId: null } }),
+  );
   assert.equal(result.decision, 'clarification-required');
   assert.ok(result.reasonCodes.includes('srs-missing'));
 });
@@ -125,12 +144,20 @@ test('policy returns inconsistent when baseline is dirty', () => {
 
 test('policy returns inconsistent when baseline hash in input disagrees with graph', () => {
   const policy = new ReferenceFormalizationSettlementPolicy();
-  const input = makeInput();
-  input.bundle.acceptanceBaselineHash = 'z'.repeat(64); // wrong
+  const input = makeInput({ bundle: { acceptanceBaselineHash: 'z'.repeat(64) } });
   const result = policy.settle(fakeGraph(), input);
   assert.equal(result.decision, 'inconsistent');
   assert.ok(result.reasonCodes.includes('baseline-missing'));
   assert.match(result.rationale, /Baseline hash mismatch/);
+});
+
+test('policy fails closed when bundle ids do not equal the canonical graph', () => {
+  const policy = new ReferenceFormalizationSettlementPolicy();
+  const input = makeInput({ bundle: { frArtifactIds: [10, 999] } });
+  const result = policy.settle(fakeGraph(), input);
+  assert.equal(result.decision, 'failed');
+  assert.ok(result.reasonCodes.includes('infrastructure-error'));
+  assert.match(result.rationale, /exact canonical graph snapshot/);
 });
 
 test('policy returns inconsistent when there is a traceability gap', () => {

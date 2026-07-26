@@ -59,6 +59,23 @@ export interface ProcessRunRepository {
    * already-terminal row.
    */
   update(id: number, input: UpdateProcessRunInput): ProcessRunRecord;
+
+  /**
+   * Acquire a renewable single-driver lease for a ProcessRun. Returns false
+   * when another unexpired owner is already executing the run.
+   */
+  acquireExecutionLease(
+    id: number,
+    owner: string,
+    nowIso: string,
+    expiresAtIso: string,
+  ): boolean;
+
+  /** Renew a lease only while the same owner still holds it. */
+  renewExecutionLease(id: number, owner: string, expiresAtIso: string): boolean;
+
+  /** Best-effort release; a stale owner can never release a newer lease. */
+  releaseExecutionLease(id: number, owner: string): void;
 }
 
 /** Allowed status transitions (from → set of allowed next statuses). */

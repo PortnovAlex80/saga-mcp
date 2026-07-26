@@ -4,6 +4,11 @@ import { logActivity } from '../helpers/activity-logger.js';
 import { validateBrief } from '../validators/brief.js';
 import { artifactDiskHash, refreshArtifactHash } from '../helpers/artifact-file.js';
 import type { Artifact, ArtifactTrace, ToolHandler } from '../types.js';
+import {
+  recordManagedArtifactProduction,
+  recordManagedTraceProduction,
+  resolveManagedExecutionProvenance,
+} from '../process-modules/persistence/sqlite-managed-production-ledger.js';
 
 // ============================================================================
 // Requirements & design artifacts + traceability graph.
@@ -50,6 +55,10 @@ const BRIEF_PAYLOAD_KEY = 'brief_payload';
 
 function handleArtifactCreate(args: Record<string, unknown>): Artifact {
   const db = getDb();
+  const managedExecution = resolveManagedExecutionProvenance(db);
+  if (managedExecution && !db.inTransaction) {
+    return db.transaction(() => handleArtifactCreate(args)).immediate();
+  }
   const projectId = args.project_id as number;
   const epicId = args.epic_id as number;
   const type = args.type as typeof ARTIFACT_TYPES[number];
@@ -222,6 +231,11 @@ function handleArtifactCreate(args: Record<string, unknown>): Artifact {
   }
 
   const artifact = db.prepare('SELECT * FROM artifacts WHERE id=?').get(artifactId) as Artifact;
+  recordManagedArtifactProduction(
+    db,
+    artifact,
+    updatedExisting ? 'upsert' : 'create',
+  );
   logActivity(db, 'artifact', artifact.id, updatedExisting ? 'updated' : 'created', null, null, type,
     `Artifact ${artifact.type}${code ? ` ${code}` : ''} '${title}' ${updatedExisting ? 'updated (upsert)' : 'created'}`);
   return artifact;
@@ -317,6 +331,10 @@ function handleArtifactList(args: Record<string, unknown>): {
 
 function handleArtifactUpdate(args: Record<string, unknown>): Artifact {
   const db = getDb();
+  const managedExecution = resolveManagedExecutionProvenance(db);
+  if (managedExecution && !db.inTransaction) {
+    return db.transaction(() => handleArtifactUpdate(args)).immediate();
+  }
   const id = args.id as number;
   const existing = db.prepare('SELECT * FROM artifacts WHERE id=?').get(id) as Artifact | undefined;
   if (!existing) throw new Error(`Artifact ${id} not found`);
@@ -394,6 +412,7 @@ function handleArtifactUpdate(args: Record<string, unknown>): Artifact {
 
   db.prepare(`UPDATE artifacts SET ${fields.join(', ')} WHERE id=?`).run(...params);
   const updated = db.prepare('SELECT * FROM artifacts WHERE id=?').get(id) as Artifact;
+  recordManagedArtifactProduction(db, updated, 'update');
 
   // logActivity: one summary line; status change is the most interesting
   const statusChanged = trackedFields.some(([f]) => f === 'status');
@@ -411,6 +430,10 @@ function handleArtifactUpdate(args: Record<string, unknown>): Artifact {
 
 function handleTraceAdd(args: Record<string, unknown>): ArtifactTrace {
   const db = getDb();
+  const managedExecution = resolveManagedExecutionProvenance(db);
+  if (managedExecution && !db.inTransaction) {
+    return db.transaction(() => handleTraceAdd(args)).immediate();
+  }
   const sourceId = args.source_id as number;
   const targetType = args.target_type as 'artifact' | 'task';
   const targetId = args.target_id as number;
@@ -492,6 +515,7 @@ function handleTraceAdd(args: Record<string, unknown>): ArtifactTrace {
     'SELECT * FROM artifact_traces WHERE source_id=? AND target_type=? AND target_id=? AND link_type=?',
   ).get(sourceId, targetType, targetId, linkType) as ArtifactTrace;
 
+  recordManagedTraceProduction(db, trace);
   logActivity(db, 'artifact', sourceId, 'updated', 'trace', null, `${linkType}→${targetType}:${targetId}`,
     `Trace ${linkType} added: artifact ${sourceId} → ${targetType} ${targetId}${info.changes === 0 ? ' (already existed)' : ''}`);
   return trace;

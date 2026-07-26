@@ -50,13 +50,20 @@ export const discoveryProcessModule: ProcessModuleDefinition = {
         outputSchema: { id: DISCOVERY_PROPOSAL_SCHEMA },
       },
       {
-        id: 'normalize-deterministic',
-        label: 'Normalize Deterministically',
+        id: 'resolve-proposal-submission',
+        label: 'Resolve Proposal Submission',
         kind: 'kernel',
-        description: 'Parse, remove supported fences and aliases, then validate without an LM call.',
-        handler: 'discovery-normalization-kernel',
-        inputSchema: { id: 'saga3.discovery-raw-submission.v1' },
+        description: 'Materialize the exact raw submission or canonical Proposal persisted by proposal_submit.',
+        handler: 'discovery-resolve-proposal-submission',
         outputSchema: { id: DISCOVERY_PROPOSAL_SCHEMA },
+      },
+      {
+        id: 'prepare-normalization',
+        label: 'Prepare Normalization Control',
+        kind: 'kernel',
+        description: 'Create the exact normalization ControlIntent, authority WorkIntent, and projected task.',
+        handler: 'discovery-prepare-normalization',
+        outputSchema: { id: DISCOVERY_NORMALIZATION_PROPOSAL_SCHEMA },
       },
       {
         id: 'normalize-semantic',
@@ -65,6 +72,14 @@ export const discoveryProcessModule: ProcessModuleDefinition = {
         description: 'Transform only ambiguous source fields without inventing evidence.',
         executionProfile: 'discovery-normalizer',
         outputSchema: { id: DISCOVERY_NORMALIZATION_PROPOSAL_SCHEMA },
+      },
+      {
+        id: 'resolve-normalized-proposal',
+        label: 'Resolve Normalized Proposal',
+        kind: 'kernel',
+        description: 'Materialize the exact canonical Proposal accepted by normalization_submit.',
+        handler: 'discovery-resolve-normalized-proposal',
+        outputSchema: { id: DISCOVERY_PROPOSAL_SCHEMA },
       },
       {
         // Д5: preparation kernel node. Creates the AssessDiscoveryReadiness
@@ -86,6 +101,14 @@ export const discoveryProcessModule: ProcessModuleDefinition = {
         kind: 'lm',
         description: 'Produce an advisory, source-bound readiness assessment for the canonical proposal.',
         executionProfile: 'discovery-readiness-advisor',
+        outputSchema: { id: DISCOVERY_READINESS_ASSESSMENT_SCHEMA },
+      },
+      {
+        id: 'resolve-readiness',
+        label: 'Resolve Readiness Assessment',
+        kind: 'kernel',
+        description: 'Materialize the exact accepted assessment, or an explicit missing/failed/paused readiness result.',
+        handler: 'discovery-resolve-readiness',
         outputSchema: { id: DISCOVERY_READINESS_ASSESSMENT_SCHEMA },
       },
       {
@@ -124,19 +147,33 @@ export const discoveryProcessModule: ProcessModuleDefinition = {
       // the certificate is issued at settlement time. Diagnosis runs as advisory
       // enrichment AFTER ProcessRun completion (separate observer/hook), never
       // influencing the outcome.
-      { from: 'produce-proposal', to: 'normalize-deterministic', on: 'runtime.completed' },
-      { from: 'produce-proposal', to: 'complete-failed', on: 'runtime.failed' },
-      { from: 'normalize-deterministic', to: 'prepare-readiness', on: 'domain.accepted' },
-      { from: 'normalize-deterministic', to: 'normalize-semantic', on: 'domain.semantic-ambiguity' },
-      { from: 'normalize-deterministic', to: 'complete-failed', on: 'domain.invalid-json' },
-      { from: 'normalize-semantic', to: 'prepare-readiness', on: 'runtime.completed' },
-      { from: 'normalize-semantic', to: 'complete-failed', on: 'runtime.failed' },
+      { from: 'produce-proposal', to: 'resolve-proposal-submission', on: 'runtime.completed' },
+      // A physical worker failure may happen after proposal_submit committed.
+      // Always let the module resolver inspect the exact durable execution
+      // before deciding whether the domain product exists.
+      { from: 'produce-proposal', to: 'resolve-proposal-submission', on: 'runtime.failed' },
+      { from: 'produce-proposal', to: 'complete-failed', on: 'runtime.paused' },
+      { from: 'resolve-proposal-submission', to: 'prepare-readiness', on: 'domain.accepted' },
+      { from: 'resolve-proposal-submission', to: 'prepare-normalization', on: 'domain.normalization-required' },
+      { from: 'resolve-proposal-submission', to: 'complete-failed', on: 'domain.invalid-json' },
+      { from: 'resolve-proposal-submission', to: 'complete-failed', on: 'domain.failed' },
+      { from: 'prepare-normalization', to: 'normalize-semantic', on: 'domain.prepared' },
+      { from: 'normalize-semantic', to: 'resolve-normalized-proposal', on: 'runtime.completed' },
+      { from: 'normalize-semantic', to: 'resolve-normalized-proposal', on: 'runtime.paused' },
+      { from: 'normalize-semantic', to: 'resolve-normalized-proposal', on: 'runtime.failed' },
+      { from: 'resolve-normalized-proposal', to: 'prepare-readiness', on: 'domain.accepted' },
+      { from: 'resolve-normalized-proposal', to: 'complete-failed', on: 'domain.failed' },
       // Д5: prepare-readiness creates the ControlIntent + authority WorkIntent +
       // projected advisor task, then assess-readiness LM node runs against them.
       { from: 'prepare-readiness', to: 'assess-readiness', on: 'domain.prepared' },
       { from: 'prepare-readiness', to: 'complete-failed', on: 'domain.failed' },
-      { from: 'assess-readiness', to: 'settle', on: 'runtime.completed' },
-      { from: 'assess-readiness', to: 'settle', on: 'runtime.failed' },
+      { from: 'assess-readiness', to: 'resolve-readiness', on: 'runtime.completed' },
+      { from: 'assess-readiness', to: 'resolve-readiness', on: 'runtime.failed' },
+      { from: 'assess-readiness', to: 'resolve-readiness', on: 'runtime.paused' },
+      { from: 'resolve-readiness', to: 'settle', on: 'domain.accepted' },
+      { from: 'resolve-readiness', to: 'settle', on: 'domain.missing' },
+      { from: 'resolve-readiness', to: 'settle', on: 'domain.failed' },
+      { from: 'resolve-readiness', to: 'settle', on: 'domain.paused' },
       // D4 settlement → terminal outcome directly (Д2). No diagnosis detour.
       { from: 'settle', to: 'complete-go', on: 'domain.go' },
       { from: 'settle', to: 'complete-clarify', on: 'domain.clarify' },

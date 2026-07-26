@@ -32,6 +32,13 @@ import type { ProcessModuleReference } from '../../domain/process-module.js';
 export const FORMALIZATION_CASE_SCHEMA = 'saga3.formalization-case.v1';
 export const SOLUTION_CONTRACT_CERTIFICATE_SCHEMA = 'saga3.solution-contract-certificate.v1';
 export const FORMALIZATION_SETTLEMENT_INPUT_SCHEMA = 'saga3.formalization-settlement-input.v1';
+export const FORMALIZATION_PRODUCT_BUNDLE_SCHEMA = 'saga3.formalization-product-bundle.v1';
+export const FORMALIZATION_USE_CASE_BUNDLE_SCHEMA = 'saga3.formalization-use-case-bundle.v1';
+export const FORMALIZATION_ACCEPTANCE_BUNDLE_SCHEMA = 'saga3.formalization-acceptance-bundle.v1';
+export const FORMALIZATION_RECONCILIATION_SCHEMA = 'saga3.formalization-reconciliation-report.v1';
+export const FORMALIZATION_ARCHITECTURE_BUNDLE_SCHEMA = 'saga3.formalization-architecture-bundle.v1';
+export const ACCEPTANCE_BASELINE_SNAPSHOT_SCHEMA = 'saga3.acceptance-baseline-snapshot.v1';
+export const FORMALIZATION_SRS_SCHEMA = 'saga3.srs.v1';
 export const FORMALIZATION_CERTIFICATE_SCHEMA_VERSION =
   'saga3.solution-contract-certificate.generic.v1';
 
@@ -69,6 +76,52 @@ export interface SolutionContractBundle {
   srsArtifactId: number | null;
   /** SHA-256 over the canonical JSON of the bundle (excluding this field). */
   bundleHash: string;
+}
+
+export interface AcceptanceBaselineSnapshotPayload {
+  schemaVersion: typeof ACCEPTANCE_BASELINE_SNAPSHOT_SCHEMA;
+  processRunId: number;
+  formalizationEpicId: number;
+  sourceReconciliationRef: string;
+  sourceReconciliationHash: string;
+  acArtifactIds: readonly number[];
+  acArtifactHashes: Readonly<Record<string, string>>;
+  baselineHash: string;
+}
+
+/**
+ * Durable module output. The generic ProcessOutcomeCertificate remains a
+ * separate proof object; this payload is the exact solution-contract snapshot
+ * addressed by ProcessModuleRunResult.output.
+ */
+export interface FormalizationSolutionContractPayload {
+  schemaVersion: typeof SOLUTION_CONTRACT_CERTIFICATE_SCHEMA;
+  processRunId: number;
+  formalizationEpicId: number;
+  discoveryCertificateRef: string;
+  discoveryCertificateHash: string;
+  bundle: SolutionContractBundle;
+  artifactHashes: Readonly<Record<string, string>>;
+  traceIds: readonly number[];
+  traceDigest: string;
+  baselineSnapshotRef: string;
+  baselineSnapshotHash: string;
+  /** Exact accepted SRS that authorizes downstream implementation planning. */
+  srs: {
+    schema: typeof FORMALIZATION_SRS_SCHEMA;
+    ref: string;
+    hash: string;
+  };
+  /**
+   * Machine-built DevelopmentCase bindings. These come from the frozen,
+   * canonical AC rows rather than worker-provided output metadata.
+   */
+  acceptanceCriteria: readonly {
+    artifactId: number;
+    code: string | null;
+    acceptedHash: string;
+    implementationRequired: boolean;
+  }[];
 }
 
 /**

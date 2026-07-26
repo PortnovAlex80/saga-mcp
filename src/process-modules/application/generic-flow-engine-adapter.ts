@@ -146,24 +146,33 @@ export class GenericFlowEngineAdapter implements ProcessModuleExecutionAdapter {
       // Д9: authority comes from the RunResult (set by the settlement kernel
       // handler via production.bindings.authority), NOT a discovery literal.
       // Fallback to module.identity.kind when the module did not set one.
-      outcomeAuthority: (result.authority ?? module.identity.kind) as 'worker_proposal' | 'normalized_worker_proposal' | 'discovery_settlement_policy' | 'none',
+      outcomeAuthority: result.authority ?? module.identity.kind,
     };
   }
 
   private projectTerminalRun(
     module: ProcessModuleDefinition,
     command: RunEpisodeCommand,
-    run: { id: number; status: string; localOutcome: string | null; outputRef: string | null; certificateRef: string | null },
+    run: {
+      id: number;
+      status: string;
+      localOutcome: string | null;
+      authority: string | null;
+      outputRef: string | null;
+      certificateRef: string | null;
+      error: string | null;
+      completedAt: string | null;
+    },
     cycles: number,
   ): OrchestrationRunResult {
     return {
       projectId: command.projectId,
       epicId: command.epicId,
       finalStage: this.finalStage || module.identity.kind,
-      endedAt: new Date().toISOString(),
+      endedAt: run.completedAt ?? new Date().toISOString(),
       reason: run.status === 'completed' ? 'completed' : 'failed',
       cycles,
-      lastError: null,
+      lastError: run.error,
       processModule: {
         name: module.identity.name,
         version: module.identity.version,
@@ -172,14 +181,14 @@ export class GenericFlowEngineAdapter implements ProcessModuleExecutionAdapter {
       },
       processOutcome: {
         code: run.localOutcome ?? '',
-        authority: null,
+        authority: run.authority,
         outputRef: run.outputRef ?? run.certificateRef ?? null,
       },
       pipelineScope: module.identity.kind,
       scopeCompleted: run.status === 'completed',
       outcome: run.localOutcome ?? undefined,
       // Д9: replay path has no RunResult authority; fall back to module kind.
-      outcomeAuthority: module.identity.kind as 'worker_proposal' | 'normalized_worker_proposal' | 'discovery_settlement_policy' | 'none',
+      outcomeAuthority: run.authority ?? module.identity.kind,
     };
   }
 }

@@ -37,13 +37,18 @@ test('MCP exposes Process Module catalog + ProcessRun lifecycle tools', () => {
   }
 });
 
-test('process_module_list returns Discovery and Formalization', () => {
+test('process_module_list returns the complete product lifecycle catalog', () => {
   const result = handlers.process_module_list({});
-  assert.equal(result.count, 2);
+  assert.equal(result.count, 4);
   const refs = result.modules.map(
     module => `${module.identity.name}@${module.identity.version}`,
   );
-  assert.deepEqual(refs.sort(), ['product-discovery@3.0.0', 'solution-formalization@1.0.0']);
+  assert.deepEqual(refs.sort(), [
+    'delivery-release@1.0.0',
+    'product-discovery@3.0.0',
+    'solution-development@1.0.0',
+    'solution-formalization@1.0.0',
+  ]);
   assert.ok(result.modules.every(module => module.valid === true));
 });
 
@@ -64,11 +69,16 @@ test('process_module_validate fails closed for unknown module', () => {
   );
 });
 
-test('process_lifecycle_get exposes valid Discovery-to-Formalization Stage Bindings', () => {
+test('process_lifecycle_get exposes all valid product lifecycle Stage Bindings', () => {
   const result = handlers.process_lifecycle_get({});
   assert.equal(result.validation.valid, true, result.validation.errors.join('\n'));
   assert.deepEqual(
     result.lifecycle.stages.map(stage => stage.id),
-    ['initial-discovery', 'solution-formalization'],
+    [
+      'initial-discovery',
+      'solution-formalization',
+      'solution-development',
+      'delivery-release',
+    ],
   );
 });

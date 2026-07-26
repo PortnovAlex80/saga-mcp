@@ -20,7 +20,7 @@
  */
 
 import type { KernelFlowNodeDefinition } from '../domain/process-module.js';
-import type { NodeProduction } from './node-executor.js';
+import type { NodeExecutionFrame, NodeProduction } from './node-executor.js';
 
 /**
  * Контекст, передаваемый в kernel handler при исполнении соответствующего узла.
@@ -36,6 +36,8 @@ export interface KernelHandlerContext {
   node: KernelFlowNodeDefinition;
   /** Декодированный вход узла (validated against node.inputSchema). */
   input: unknown;
+  /** Durable products/receipts keyed by the node that produced them. */
+  frame: NodeExecutionFrame;
   initiatedBy: string;
 }
 

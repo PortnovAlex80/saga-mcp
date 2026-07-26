@@ -196,6 +196,20 @@ export function readLatestReadinessAssessmentForControl(
   return row ? assessmentRowToRecord(row) : null;
 }
 
+export function readReadinessAssessmentForExecution(
+  db: Database.Database,
+  controlIntentId: number,
+  taskId: number,
+  executionId: string,
+): ReadinessAssessmentRecord | null {
+  const row = db.prepare(
+    `SELECT * FROM saga3_readiness_assessments
+      WHERE control_intent_id=? AND task_id=? AND execution_id=?
+      ORDER BY id DESC LIMIT 1`,
+  ).get(controlIntentId, taskId, executionId) as ReadinessAssessmentRow | undefined;
+  return row ? assessmentRowToRecord(row) : null;
+}
+
 /** Latest ACCEPTED assessment for one ControlIntent (the shadow verdict). */
 export function readLatestAcceptedReadinessAssessmentForControl(
   db: Database.Database,

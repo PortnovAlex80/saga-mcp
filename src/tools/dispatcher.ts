@@ -1037,10 +1037,18 @@ function handleWorkerDone(args: Record<string, unknown>): {
   // поэтому оборачиваем явно).
   const completed = withImmediateTransaction(db, completeTask);
   const completedTask = db.prepare(
-    'SELECT task_kind, execution_mode, integration_state FROM tasks WHERE id=?',
-  ).get(taskId) as { task_kind: string | null; execution_mode: string; integration_state: string } | undefined;
+    `SELECT task_kind, execution_mode, integration_state,
+            json_extract(metadata, '$.process_run_id') AS process_run_id
+       FROM tasks WHERE id=?`,
+  ).get(taskId) as {
+    task_kind: string | null;
+    execution_mode: string;
+    integration_state: string;
+    process_run_id: number | null;
+  } | undefined;
   if (
     completed.completed_new_status === 'done'
+    && completedTask?.process_run_id == null
     && (!completedTask?.task_kind || completedTask.execution_mode !== 'git_change')
   ) {
     try {
@@ -1587,7 +1595,11 @@ function handleWorkerMergeRelease(args: Record<string, unknown>): {
     }
   });
 
-  if (outcome === 'merged') {
+  const processManaged = db.prepare(
+    `SELECT json_extract(metadata, '$.process_run_id') AS process_run_id
+       FROM tasks WHERE id=?`,
+  ).get(taskId) as { process_run_id: number | null } | undefined;
+  if (outcome === 'merged' && processManaged?.process_run_id == null) {
     try {
       generateNextForCompletedTask(taskId);
     } catch (error) {

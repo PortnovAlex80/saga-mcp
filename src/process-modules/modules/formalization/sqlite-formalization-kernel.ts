@@ -18,20 +18,98 @@ import {
   type FormalizationSettlementInput,
 } from './formalization-schemas.js';
 import type {
+  FormalizationArtifactSnapshot,
   FormalizationArtifactGraphPort,
+  FormalizationCanonicalGraphPort,
   FormalizationSettlementPolicyPort,
   FormalizationSettlementResult,
+  FormalizationTraceSnapshot,
 } from './formalization-kernel-ports.js';
 
 // ---------------------------------------------------------------------------
 // Artifact graph port (SQLite)
 // ---------------------------------------------------------------------------
 
-export class SqliteFormalizationArtifactGraph implements FormalizationArtifactGraphPort {
+export class SqliteFormalizationArtifactGraph implements
+  FormalizationArtifactGraphPort,
+  FormalizationCanonicalGraphPort {
   private readonly db: Database.Database;
 
   constructor(db: Database.Database) {
     this.db = db;
+  }
+
+  readArtifactsByIds(ids: readonly number[]): readonly FormalizationArtifactSnapshot[] {
+    const unique = [...new Set(ids.filter(Number.isInteger))].sort((a, b) => a - b);
+    if (unique.length === 0) return [];
+    const rows = this.db.prepare(
+      `SELECT id, project_id, epic_id, type, code, status, content_hash,
+              accepted_hash, drift_state, metadata
+         FROM artifacts
+        WHERE id IN (${unique.map(() => '?').join(',')})
+        ORDER BY id`,
+    ).all(...unique) as Array<{
+      id: number;
+      project_id: number;
+      epic_id: number;
+      type: string;
+      code: string | null;
+      status: FormalizationArtifactSnapshot['status'];
+      content_hash: string | null;
+      accepted_hash: string | null;
+      drift_state: string;
+      metadata: string;
+    }>;
+    return rows.map(row => ({
+      id: row.id,
+      projectId: row.project_id,
+      epicId: row.epic_id,
+      type: row.type,
+      code: row.code,
+      status: row.status,
+      contentHash: row.content_hash,
+      acceptedHash: row.accepted_hash,
+      driftState: row.drift_state,
+      metadata: parseMetadata(row.metadata),
+    }));
+  }
+
+  readTracesByIds(ids: readonly number[]): readonly FormalizationTraceSnapshot[] {
+    const unique = [...new Set(ids.filter(Number.isInteger))].sort((a, b) => a - b);
+    if (unique.length === 0) return [];
+    const rows = this.db.prepare(
+      `SELECT id, source_id, target_type, target_id, link_type
+         FROM artifact_traces
+        WHERE id IN (${unique.map(() => '?').join(',')})
+        ORDER BY id`,
+    ).all(...unique) as Array<{
+      id: number;
+      source_id: number;
+      target_type: 'artifact' | 'task';
+      target_id: number;
+      link_type: string;
+    }>;
+    return rows.map(traceRowToSnapshot);
+  }
+
+  readOutgoingArtifactTraces(
+    sourceArtifactIds: readonly number[],
+  ): readonly FormalizationTraceSnapshot[] {
+    const unique = [...new Set(sourceArtifactIds.filter(Number.isInteger))].sort((a, b) => a - b);
+    if (unique.length === 0) return [];
+    const rows = this.db.prepare(
+      `SELECT id, source_id, target_type, target_id, link_type
+         FROM artifact_traces
+        WHERE source_id IN (${unique.map(() => '?').join(',')})
+        ORDER BY id`,
+    ).all(...unique) as Array<{
+      id: number;
+      source_id: number;
+      target_type: 'artifact' | 'task';
+      target_id: number;
+      link_type: string;
+    }>;
+    return rows.map(traceRowToSnapshot);
   }
 
   readAcceptedArtifacts(epicId: number) {
@@ -61,16 +139,17 @@ export class SqliteFormalizationArtifactGraph implements FormalizationArtifactGr
     // Same logic as lifecycle.ts:acceptedBaseline — refresh hashes, then check
     // status=accepted AND accepted_hash=content_hash AND drift_state=clean.
     const rows = this.db.prepare(
-      `SELECT id, accepted_hash, content_hash, drift_state
+      `SELECT id, status, accepted_hash, content_hash, drift_state
         FROM artifacts
         WHERE epic_id=? AND type='AC'
         ORDER BY id`,
     ).all(epicId) as Array<{
-      id: number; accepted_hash: string | null;
+      id: number; status: string; accepted_hash: string | null;
       content_hash: string | null; drift_state: string;
     }>;
     const dirty = rows
-      .filter(r => r.accepted_hash === null
+      .filter(r => r.status !== 'accepted'
+        || r.accepted_hash === null
         || r.content_hash === null
         || r.accepted_hash !== r.content_hash
         || r.drift_state !== 'clean')
@@ -145,11 +224,20 @@ export class SqliteFormalizationArtifactGraph implements FormalizationArtifactGr
       `SELECT id FROM artifacts WHERE epic_id=? AND type='AC' ORDER BY id`,
     ).all(epicId) as Array<{ id: number }>;
     for (const ac of acs) {
-      if (!hasEdgeToType(ac.id, 'derived_from', 'FR') && !hasEdgeToType(ac.id, 'derived_from', 'NFR')) {
+      const hasFr = hasEdgeToType(ac.id, 'derived_from', 'FR');
+      const hasNfr = hasEdgeToType(ac.id, 'derived_from', 'NFR');
+      if (!hasFr && !hasNfr) {
         return {
           artifactType: 'AC', artifactId: ac.id,
           missingEdge: 'derived_from → FR/NFR',
           description: `AC #${ac.id} has no 'derived_from' trace to any FR or NFR.`,
+        };
+      }
+      if (hasFr && !hasEdgeToType(ac.id, 'derived_from', 'UC')) {
+        return {
+          artifactType: 'AC', artifactId: ac.id,
+          missingEdge: 'derived_from → UC',
+          description: `FR-derived AC #${ac.id} has no 'derived_from' trace to a UC.`,
         };
       }
     }
@@ -218,6 +306,37 @@ export class ReferenceFormalizationSettlementPolicy implements FormalizationSett
     }
 
     const artifacts = graph.readAcceptedArtifacts(epicId);
+    const bundle = input.bundle;
+    const expectedBundleHash = createHash('sha256')
+      .update(canonicalJson({
+        schemaVersion: bundle.schemaVersion,
+        formalizationEpicId: bundle.formalizationEpicId,
+        prdArtifactId: bundle.prdArtifactId,
+        frArtifactIds: bundle.frArtifactIds,
+        nfrArtifactIds: bundle.nfrArtifactIds,
+        ruleArtifactIds: bundle.ruleArtifactIds,
+        ucArtifactIds: bundle.ucArtifactIds,
+        acArtifactIds: bundle.acArtifactIds,
+        acceptanceBaselineHash: bundle.acceptanceBaselineHash,
+        srsArtifactId: bundle.srsArtifactId,
+      }))
+      .digest('hex');
+    const bundleMatchesGraph =
+      bundle.formalizationEpicId === epicId
+      && bundle.prdArtifactId === artifacts.prd
+      && bundle.srsArtifactId === artifacts.srs
+      && sameIds(bundle.frArtifactIds, artifacts.frs)
+      && sameIds(bundle.nfrArtifactIds, artifacts.nfrs)
+      && sameIds(bundle.ruleArtifactIds, artifacts.rules)
+      && sameIds(bundle.ucArtifactIds, artifacts.ucs)
+      && sameIds(bundle.acArtifactIds, artifacts.acs);
+    if (!bundleMatchesGraph || bundle.bundleHash !== expectedBundleHash) {
+      return fail(
+        inputHash,
+        ['infrastructure-error'],
+        'Settlement bundle is not the exact canonical graph snapshot or its hash is invalid.',
+      );
+    }
 
     // WHAT-side completeness: PRD + ≥1 AC + baseline required.
     if (artifacts.prd === null) {
@@ -288,4 +407,38 @@ function mapReasonsToDecision(
   }
   // baseline-missing, traceability-gap, tasks-not-ready, invariant-violation
   return 'inconsistent';
+}
+
+function parseMetadata(raw: string): Record<string, unknown> {
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+function traceRowToSnapshot(row: {
+  id: number;
+  source_id: number;
+  target_type: 'artifact' | 'task';
+  target_id: number;
+  link_type: string;
+}): FormalizationTraceSnapshot {
+  return {
+    id: row.id,
+    sourceArtifactId: row.source_id,
+    targetType: row.target_type,
+    targetId: row.target_id,
+    linkType: row.link_type,
+  };
+}
+
+function sameIds(left: readonly number[], right: readonly number[]): boolean {
+  if (left.length !== right.length) return false;
+  const a = [...left].sort((x, y) => x - y);
+  const b = [...right].sort((x, y) => x - y);
+  return a.every((id, index) => id === b[index]);
 }

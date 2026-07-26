@@ -18,6 +18,7 @@ import type {
 import {
   type EnsureDiagnosisControl,
   type EnsureNormalizationControl,
+  type EnsureNodeExecutionPlan,
   type EnsureProjectedTask,
   type EnsureReadinessControl,
   type InsertSettlementPort,
@@ -33,10 +34,18 @@ import {
   canonicalJson,
   hashPayload,
 } from './saga3-proposal-repository.js';
-import { ensureSaga3NormalizationSchema, readLatestRawSubmissionForIntent } from './saga3-normalization-repository.js';
+import {
+  ensureSaga3NormalizationSchema,
+  readLatestNormalizationProposalForControl,
+  readLatestRawSubmissionForIntent,
+  readNormalizationProposalForExecution,
+  readRawSubmission,
+  readRawSubmissionForExecution,
+} from './saga3-normalization-repository.js';
 import {
   ensureSaga3ReadinessSchema,
   readLatestReadinessAssessmentForControl,
+  readReadinessAssessmentForExecution,
   readReadinessAssessment,
   readReadinessControlForProposal as readReadinessControlForProposalRepo,
 } from './saga3-readiness-repository.js';
@@ -136,6 +145,54 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
     ).run(taskId, intentId);
   }
 
+  bindProjectedTaskProcessContext(input: {
+    taskId: number;
+    processRunId: number;
+    nodeId: string;
+    moduleRef: string;
+    processInputHash: string;
+    nodeInput: unknown;
+    nodeInputHash: string;
+  }): void {
+    const db = getDb();
+    const row = db.prepare(
+      'SELECT metadata FROM tasks WHERE id=?',
+    ).get(input.taskId) as { metadata: string } | undefined;
+    if (!row) throw new Error(`saga3: projected task ${input.taskId} not found`);
+    let metadata: Record<string, unknown>;
+    try {
+      const parsed = JSON.parse(row.metadata);
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error();
+      metadata = parsed as Record<string, unknown>;
+    } catch {
+      throw new Error(`saga3: projected task ${input.taskId} metadata is invalid`);
+    }
+    const bindings: Record<string, unknown> = {
+      process_run_id: input.processRunId,
+      process_node_id: input.nodeId,
+      process_module_ref: input.moduleRef,
+      process_input_hash: input.processInputHash,
+      process_node_input: input.nodeInput,
+      process_node_input_hash: input.nodeInputHash,
+    };
+    for (const [key, value] of Object.entries(bindings)) {
+      if (
+        metadata[key] !== undefined
+        && canonicalJson(metadata[key]) !== canonicalJson(value)
+      ) {
+        throw new Error(
+          `saga3: projected task ${input.taskId} reserved metadata.${key} cannot be rebound`,
+        );
+      }
+      metadata[key] = value;
+    }
+    db.prepare(
+      `UPDATE tasks
+          SET metadata=?, updated_at=datetime('now')
+        WHERE id=?`,
+    ).run(JSON.stringify(metadata), input.taskId);
+  }
+
   setIntentStatus(intentId: number, expected: WorkIntentStatus, next: WorkIntentStatus): boolean {
     const info = getDb().prepare(
       `UPDATE saga3_work_intents
@@ -172,7 +229,7 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
     ).run(
       input.epicId,
       `${titlePrefix}${input.objective.slice(0, 80)}`,
-      JSON.stringify({ work_intent_id: input.intentId, objective: input.objective, ...(input.metadata ?? {}) }),
+      JSON.stringify({ objective: input.objective, ...(input.metadata ?? {}), work_intent_id: input.intentId }),
       priority,
       input.taskKind,
       workflowStage,
@@ -180,7 +237,7 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
       executionMode,
       repoId?.id ?? null,
       input.generationKey,
-      JSON.stringify({ work_intent_id: input.intentId, ...(input.metadata ?? {}) }),
+      JSON.stringify({ ...(input.metadata ?? {}), work_intent_id: input.intentId }),
     );
     return Number(info.lastInsertRowid);
   }
@@ -190,6 +247,81 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
       | { status: string }
       | undefined;
     return row?.status ?? null;
+  }
+
+  readCurrentExecutionId(taskId: number): string | null {
+    const row = getDb().prepare(
+      'SELECT current_execution_id FROM tasks WHERE id=?',
+    ).get(taskId) as { current_execution_id: string | null } | undefined;
+    return row?.current_execution_id ?? null;
+  }
+
+  ensureNodeExecutionPlan(input: EnsureNodeExecutionPlan): {
+    intentId: number;
+    taskId: number;
+    replayed: boolean;
+  } {
+    const db = getDb();
+    db.exec('BEGIN IMMEDIATE');
+    try {
+      const existing = db.prepare(
+        `SELECT id, json_extract(metadata, '$.work_intent_id') AS intent_id
+           FROM tasks
+          WHERE epic_id=? AND generation_key=?`,
+      ).get(input.task.epicId, input.task.generationKey) as
+        | { id: number; intent_id: number | null }
+        | undefined;
+      if (existing) {
+        if (!existing.intent_id) {
+          throw new Error(`saga3: projected task ${existing.id} has no work_intent_id binding`);
+        }
+        const intent = this.readIntentStrict(existing.intent_id);
+        if (
+          intent.epic_id !== input.intent.epic_id
+          || intent.kind !== input.intent.kind
+          || intent.output_schema !== input.intent.output_schema
+        ) {
+          throw new Error(`saga3: execution plan ${input.task.generationKey} binding mismatch`);
+        }
+        if (
+          intent.projected_task_id !== null
+          && intent.projected_task_id !== existing.id
+        ) {
+          throw new Error(
+            `saga3: execution plan ${input.task.generationKey} intent ${intent.id} `
+            + `is already projected to task ${intent.projected_task_id}, not ${existing.id}`,
+          );
+        }
+        if (intent.projected_task_id === null) {
+          this.setProjectedTask(intent.id, existing.id);
+        }
+        db.exec('COMMIT');
+        return { intentId: intent.id, taskId: existing.id, replayed: true };
+      }
+
+      const intent = this.createIntent(input.intent);
+      const taskId = this.ensureProjectedTask({
+        ...input.task,
+        intentId: intent.id,
+      });
+      this.setProjectedTask(intent.id, taskId);
+      db.exec('COMMIT');
+      return { intentId: intent.id, taskId, replayed: false };
+    } catch (error) {
+      try { db.exec('ROLLBACK'); } catch { /* no active transaction */ }
+      throw error;
+    }
+  }
+
+  readLatestExecutionId(taskId: number): string | null {
+    const row = getDb().prepare(
+      `SELECT execution_id
+         FROM worker_executions
+        WHERE task_id=?
+        ORDER BY reserved_at DESC, execution_id DESC
+        LIMIT 1`,
+    ).get(taskId) as { execution_id: string } | undefined;
+    return row?.execution_id ?? null;
   }
 
 
@@ -259,7 +391,7 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
       `SELECT json_extract(metadata, '$.work_intent_id') AS intent_id
          FROM tasks WHERE id=?`,
     ).get(taskId) as { intent_id: number | null } | undefined;
-    if (!task || task.intent_id == null) return null;
+    if (!task || task.intent_id === null) return null;
     const row = db.prepare(
       'SELECT * FROM saga3_work_intents WHERE id=?',
     ).get(task.intent_id) as WorkIntentRow | undefined;
@@ -272,6 +404,19 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
         WHERE intent_id=? AND status='submitted'
         ORDER BY id DESC LIMIT 1`,
     ).get(intentId) as ProposalRow | undefined;
+    return row ? rowToRecord(row) : null;
+  }
+
+  readProposalForExecution(
+    intentId: number,
+    taskId: number,
+    executionId: string,
+  ): ProposalRecord | null {
+    const row = getDb().prepare(
+      `SELECT * FROM saga3_proposals
+        WHERE intent_id=? AND task_id=? AND execution_id=? AND status='submitted'
+        ORDER BY id DESC LIMIT 1`,
+    ).get(intentId, taskId, executionId) as ProposalRow | undefined;
     return row ? rowToRecord(row) : null;
   }
 
@@ -308,9 +453,22 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
     return readLatestRawSubmissionForIntent(getDb(), intentId);
   }
 
+  readRawSubmission(submissionId: number) {
+    ensureSaga3NormalizationSchema(getDb());
+    return readRawSubmission(getDb(), submissionId);
+  }
+
+  readRawSubmissionForExecution(intentId: number, taskId: number, executionId: string) {
+    ensureSaga3NormalizationSchema(getDb());
+    return readRawSubmissionForExecution(getDb(), intentId, taskId, executionId);
+  }
+
   ensureNormalizationControl(input: EnsureNormalizationControl): NormalizationControlExecution {
     const db = getDb();
     ensureSaga3NormalizationSchema(db);
+    const ownsTransaction = !db.inTransaction;
+    if (ownsTransaction) db.exec('BEGIN IMMEDIATE');
+    try {
     let control = db.prepare(
       `SELECT id, authority_intent_id, projected_task_id, status FROM saga3_control_intents WHERE source_submission_id=?`,
     ).get(input.sourceSubmissionId) as {
@@ -373,7 +531,7 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
     if (control.projected_task_id !== taskId) {
       db.prepare(`UPDATE saga3_control_intents SET projected_task_id=?, updated_at=datetime('now') WHERE id=?`).run(taskId, control.id);
     }
-    return {
+    const result = {
       controlIntentId: control.id,
       sourceSubmissionId: input.sourceSubmissionId,
       controlStatus: control.status,
@@ -381,6 +539,28 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
       authorityIntentStatus: authority.status,
       taskId,
     };
+    if (ownsTransaction) db.exec('COMMIT');
+    return result;
+    } catch (error) {
+      if (ownsTransaction) {
+        try { db.exec('ROLLBACK'); } catch { /* no active transaction */ }
+      }
+      throw error;
+    }
+  }
+
+  readLatestNormalizationProposal(controlIntentId: number) {
+    ensureSaga3NormalizationSchema(getDb());
+    return readLatestNormalizationProposalForControl(getDb(), controlIntentId);
+  }
+
+  readNormalizationProposalForExecution(
+    controlIntentId: number,
+    taskId: number,
+    executionId: string,
+  ) {
+    ensureSaga3NormalizationSchema(getDb());
+    return readNormalizationProposalForExecution(getDb(), controlIntentId, taskId, executionId);
   }
 
   setControlIntentStatus(controlIntentId: number, expected: ControlIntentStatus, next: ControlIntentStatus): boolean {
@@ -393,6 +573,9 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
   ensureReadinessControl(input: EnsureReadinessControl): ReadinessControlExecution {
     const db = getDb();
     ensureSaga3ReadinessSchema(db);
+    const ownsTransaction = !db.inTransaction;
+    if (ownsTransaction) db.exec('BEGIN IMMEDIATE');
+    try {
     // Idempotent on the immutable Proposal version (proposal_id + content_hash).
     let control = db.prepare(
       `SELECT id, authority_intent_id, projected_task_id, status
@@ -468,7 +651,7 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
         `UPDATE saga3_readiness_control_intents SET projected_task_id=?, updated_at=datetime('now') WHERE id=?`,
       ).run(taskId, control.id);
     }
-    return {
+    const result = {
       controlIntentId: control.id,
       proposalId: input.proposalId,
       proposalContentHash: input.proposalContentHash,
@@ -477,6 +660,14 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
       authorityIntentStatus: authority.status,
       taskId,
     };
+    if (ownsTransaction) db.exec('COMMIT');
+    return result;
+    } catch (error) {
+      if (ownsTransaction) {
+        try { db.exec('ROLLBACK'); } catch { /* no active transaction */ }
+      }
+      throw error;
+    }
   }
 
   setReadinessControlStatus(controlIntentId: number, expected: ReadinessControlStatus, next: ReadinessControlStatus): boolean {
@@ -489,6 +680,15 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
   readLatestReadinessAssessment(controlIntentId: number): ReadinessAssessmentRecord | null {
     ensureSaga3ReadinessSchema(getDb());
     return readLatestReadinessAssessmentForControl(getDb(), controlIntentId);
+  }
+
+  readReadinessAssessmentForExecution(
+    controlIntentId: number,
+    taskId: number,
+    executionId: string,
+  ): ReadinessAssessmentRecord | null {
+    ensureSaga3ReadinessSchema(getDb());
+    return readReadinessAssessmentForExecution(getDb(), controlIntentId, taskId, executionId);
   }
 
   readReadinessControlForProposal(proposalId: number, proposalContentHash: string): ReadinessControlIntentRecord | null {
@@ -515,7 +715,8 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
     // status, or bound to a different epic/project than the request).
     ensureSaga3NormalizationSchema(getDb());
     const row = getDb().prepare(
-      `SELECT p.id, p.intent_id, p.kind, p.schema_version, p.status,
+      `SELECT p.id, p.intent_id, p.task_id, p.execution_id,
+              p.kind, p.schema_version, p.status,
               p.content_hash, p.payload,
               p.source_submission_id, p.normalization_proposal_id,
               wi.epic_id AS epic_id, e.project_id AS project_id
@@ -525,7 +726,8 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
         WHERE p.id=?`,
     ).get(proposalId) as
       | {
-          id: number; intent_id: number; kind: string; schema_version: string;
+          id: number; intent_id: number; task_id: number; execution_id: string;
+          kind: string; schema_version: string;
           status: string; content_hash: string; payload: string;
           source_submission_id: number | null; normalization_proposal_id: number | null;
           epic_id: number; project_id: number;
@@ -537,6 +739,8 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
       epic_id: row.epic_id,
       project_id: row.project_id,
       intent_id: row.intent_id,
+      task_id: row.task_id,
+      execution_id: row.execution_id,
       kind: row.kind,
       schema_version: row.schema_version,
       status: row.status,

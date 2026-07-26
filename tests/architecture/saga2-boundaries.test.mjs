@@ -454,6 +454,7 @@ test('orchestration mode parser rejects unknown values instead of silent fallbac
     ['saga2', 'saga2'],
     ['saga3-discovery', 'saga3-discovery'],
     ['  Saga3-Discovery ', 'saga3-discovery'],
+    ['saga3-lifecycle', 'saga3-lifecycle'],
   ]) {
     assert.equal(parseOrchestrationMode(raw), expected,
       `parseOrchestrationMode('${raw}') === '${expected}'`);
@@ -467,6 +468,7 @@ test('orchestration mode parser rejects unknown values instead of silent fallbac
   assert.equal(requiresBackgroundEngine('v3'), true, 'v3 spawns background engine');
   assert.equal(requiresBackgroundEngine('saga2'), true, 'saga2 spawns background engine');
   assert.equal(requiresBackgroundEngine('saga3-discovery'), true, 'saga3-discovery spawns background engine');
+  assert.equal(requiresBackgroundEngine('saga3-lifecycle'), true, 'saga3-lifecycle spawns background engine');
 });
 
 test('tracker uses extracted ports and preserves the LM Studio hard rule fix', () => {

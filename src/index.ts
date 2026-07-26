@@ -34,6 +34,10 @@ import {
   definitions as processModuleDefs,
   handlers as processModuleHandlers,
 } from './tools/process-modules.js';
+import {
+  definitions as processNodeSubmissionDefs,
+  handlers as processNodeSubmissionHandlers,
+} from './tools/process-node-submissions.js';
 import { createSaga3ProposalHandlers } from './tools/saga3-proposals.js';
 import { createSaga3NormalizationHandlers } from './tools/saga3-normalization.js';
 import { createSaga3ReadinessHandlers } from './tools/saga3-readiness.js';
@@ -87,6 +91,7 @@ const ALL_TOOLS: Tool[] = [
   ...conflictDefs,
   ...providerDefs,
   ...processModuleDefs,
+  ...processNodeSubmissionDefs,
   ...saga3Proposals.definitions,
   ...saga3Normalization.definitions,
   ...saga3Readiness.definitions,
@@ -114,6 +119,7 @@ const ALL_HANDLERS: Record<string, (args: Record<string, unknown>) => unknown> =
   ...conflictHandlers,
   ...providerHandlers,
   ...processModuleHandlers,
+  ...processNodeSubmissionHandlers,
   ...saga3Proposals.handlers,
   ...saga3Normalization.handlers,
   ...saga3Readiness.handlers,

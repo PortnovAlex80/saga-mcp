@@ -1,0 +1,235 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+
+const {
+  createDevelopmentKernelHandlers,
+  DEVELOPMENT_NODE_IDS,
+} = await import(
+  '../../dist/process-modules/modules/development/development-installation.js'
+);
+const {
+  DEVELOPMENT_KERNEL_HANDLER_IDS,
+} = await import(
+  '../../dist/process-modules/modules/development/development-kernel-ports.js'
+);
+const {
+  developmentProcessModule,
+} = await import(
+  '../../dist/process-modules/modules/development/development-process-module.js'
+);
+const {
+  DEVELOPMENT_CASE_SCHEMA,
+  DEVELOPMENT_TASK_GRAPH_PROPOSAL_SCHEMA,
+  DEVELOPMENT_TASK_GRAPH_SCHEMA,
+} = await import(
+  '../../dist/process-modules/modules/development/development-schemas.js'
+);
+const {
+  ReferenceDevelopmentTaskGraphPolicy,
+  hashDevelopmentPolicy,
+} = await import(
+  '../../dist/process-modules/modules/development/development-settlement-policy.js'
+);
+const { sha256Hex } = await import(
+  '../../dist/process-modules/shared/canonical-json.js'
+);
+
+function developmentCase() {
+  const policyBody = { id: 'development-reference', version: '1.0.0' };
+  return {
+    schemaVersion: DEVELOPMENT_CASE_SCHEMA,
+    projectId: 1,
+    epicId: 10,
+    formalizationCertificate: {
+      schema: 'saga3.solution-contract-certificate.v1',
+      ref: 'certificate:formalization:1',
+      hash: 'formal-cert-hash',
+      decision: 'formalized',
+    },
+    solutionContract: {
+      schema: 'saga3.solution-contract-certificate.v1',
+      ref: 'solution-contract:1',
+      hash: 'solution-contract-hash',
+    },
+    acceptanceBaselineHash: 'acceptance-baseline-hash',
+    srs: {
+      schema: 'saga3.srs.v1',
+      ref: 'artifact:201',
+      hash: 'srs-hash',
+    },
+    acceptanceCriteria: [{
+      artifactId: 101,
+      code: 'AC-1',
+      acceptedHash: 'accepted-ac-hash',
+      implementationRequired: true,
+    }],
+    repositories: [{
+      projectRepositoryId: 5,
+      integrationBranch: 'integration/epic-10',
+      expectedBaseCommit: 'base-commit',
+    }],
+    policy: {
+      ...policyBody,
+      contentHash: hashDevelopmentPolicy(policyBody),
+    },
+    initiatedBy: 'test',
+  };
+}
+
+function validProposal() {
+  return {
+    schemaVersion: DEVELOPMENT_TASK_GRAPH_PROPOSAL_SCHEMA,
+    implementationItems: [{
+      key: 'implement-circle',
+      kind: 'implementation',
+      taskKind: 'development.code',
+      executionSkill: 'saga-developer',
+      executionMode: 'git_change',
+      projectRepositoryId: 5,
+      acceptanceCriterionIds: [101],
+      dependsOnKeys: [],
+      required: true,
+    }],
+    verificationItems: [{
+      key: 'verify-ac-1',
+      kind: 'verification',
+      taskKind: 'verification.ac',
+      executionSkill: 'saga-verifier',
+      executionMode: 'read_only_evidence',
+      projectRepositoryId: 5,
+      acceptanceCriterionIds: [101],
+      dependsOnKeys: ['implement-circle'],
+      required: true,
+    }],
+    integrationTargets: [{
+      projectRepositoryId: 5,
+      sourceWorkItemKeys: ['implement-circle'],
+      targetBranch: 'integration/epic-10',
+      expectedBaseCommit: 'base-commit',
+    }],
+  };
+}
+
+function resolverContext(runInput) {
+  return {
+    projectId: 1,
+    epicId: 10,
+    processRunId: 77,
+    node: developmentProcessModule.flow.nodes.find(
+      node => node.id === DEVELOPMENT_NODE_IDS.resolveTaskGraph,
+    ),
+    input: {
+      kind: 'task-execution',
+      executorKind: 'lm',
+      intentId: 501,
+      taskId: 601,
+      executionId: 'execution-701',
+      runtimeStatus: 'completed',
+      replayed: false,
+    },
+    frame: {
+      runInput,
+      productions: {},
+      receipts: {},
+    },
+    initiatedBy: 'test',
+  };
+}
+
+function dependencies(proposal, onMaterialize) {
+  const submission = {
+    submissionId: 1,
+    processRunId: 77,
+    moduleRef: 'solution-development@1.0.0',
+    nodeId: DEVELOPMENT_NODE_IDS.planner,
+    intentId: 501,
+    taskId: 601,
+    executionId: 'execution-701',
+    schema: DEVELOPMENT_TASK_GRAPH_PROPOSAL_SCHEMA,
+    payload: proposal,
+    contentHash: sha256Hex(proposal),
+    artifactRef: 'managed-node-submission:1',
+    submittedAt: '2026-07-26 12:00:00',
+  };
+  const notExecuted = () => {
+    throw new Error('unrelated dependency must not execute');
+  };
+  return {
+    plannerSubmissions: {
+      readExact(query) {
+        assert.deepEqual(query, {
+          processRunId: 77,
+          moduleRef: 'solution-development@1.0.0',
+          nodeId: DEVELOPMENT_NODE_IDS.planner,
+          intentId: 501,
+          taskId: 601,
+          executionId: 'execution-701',
+        });
+        return submission;
+      },
+    },
+    taskGraph: {
+      materializeValidatedTaskGraph: onMaterialize,
+    },
+    taskGraphPolicy: new ReferenceDevelopmentTaskGraphPolicy(),
+    implementationWorkset: { execute: notExecuted },
+    candidateIntegration: { integrateAndFreeze: notExecuted },
+    acceptanceVerification: { verify: notExecuted },
+    settlementState: { buildSettlementInput: notExecuted },
+    outputRepository: {
+      persist: notExecuted,
+      readByProcessRun: notExecuted,
+    },
+    settlementPolicy: { settle: notExecuted },
+  };
+}
+
+test('invalid LM graph is rejected before any task materialization', async () => {
+  const runInput = developmentCase();
+  const proposal = {
+    ...validProposal(),
+    verificationItems: [],
+  };
+  let materializationCalls = 0;
+  const handlers = createDevelopmentKernelHandlers(
+    dependencies(proposal, () => {
+      materializationCalls += 1;
+      throw new Error('must not materialize invalid proposal');
+    }),
+  );
+  const result = await handlers[
+    DEVELOPMENT_KERNEL_HANDLER_IDS.resolveTaskGraph
+  ](resolverContext(runInput));
+  assert.equal(result.event, 'clarification-required');
+  assert.equal(result.production.bindings.resolutionStatus, 'rejected');
+  assert.equal(materializationCalls, 0);
+});
+
+test('kernel validates and canonicalizes before the materializer sees a graph', async () => {
+  const runInput = developmentCase();
+  const proposal = validProposal();
+  let authorizedGraph = null;
+  const handlers = createDevelopmentKernelHandlers(
+    dependencies(proposal, ({ graph }) => {
+      authorizedGraph = graph;
+      return {
+        graph,
+        reference: {
+          schema: DEVELOPMENT_TASK_GRAPH_SCHEMA,
+          ref: `development-task-graph:${graph.graphHash}`,
+          hash: graph.graphHash,
+        },
+      };
+    }),
+  );
+  const result = await handlers[
+    DEVELOPMENT_KERNEL_HANDLER_IDS.resolveTaskGraph
+  ](resolverContext(runInput));
+  assert.equal(result.event, 'valid');
+  assert.equal(result.production.bindings.resolutionStatus, 'valid');
+  assert.equal(authorizedGraph.plannerSubmission.ref, 'managed-node-submission:1');
+  assert.equal(
+    result.production.contentHash,
+    authorizedGraph.graphHash,
+  );
+});

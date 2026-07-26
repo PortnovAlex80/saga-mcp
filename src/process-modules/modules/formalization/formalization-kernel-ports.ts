@@ -28,6 +28,58 @@ import type {
   FormalizationSettlementInput,
   SolutionContractBundle,
 } from './formalization-schemas.js';
+import type {
+  ManagedArtifactProductionRecord,
+  ManagedExecutionProductQuery,
+  ManagedProductionLedger,
+  ManagedTraceProductionRecord,
+} from '../../persistence/sqlite-managed-production-ledger.js';
+
+export type FormalizationArtifactStatus = 'draft' | 'in_review' | 'accepted' | 'superseded';
+
+/**
+ * Canonical tracker row used by the generic-flow resolvers. Unlike the legacy
+ * aggregate graph port below, these reads are exact-id reads: a resolver first
+ * obtains ids from the machine-owned managed-production ledger, then re-reads
+ * only those rows and validates every fence/hash/type itself.
+ */
+export interface FormalizationArtifactSnapshot {
+  id: number;
+  projectId: number;
+  epicId: number;
+  type: string;
+  code: string | null;
+  status: FormalizationArtifactStatus;
+  contentHash: string | null;
+  acceptedHash: string | null;
+  driftState: string;
+  metadata: Record<string, unknown>;
+}
+
+export interface FormalizationTraceSnapshot {
+  id: number;
+  sourceArtifactId: number;
+  targetType: 'artifact' | 'task';
+  targetId: number;
+  linkType: string;
+}
+
+export interface FormalizationCanonicalGraphPort {
+  readArtifactsByIds(ids: readonly number[]): readonly FormalizationArtifactSnapshot[];
+  readTracesByIds(ids: readonly number[]): readonly FormalizationTraceSnapshot[];
+  readOutgoingArtifactTraces(
+    sourceArtifactIds: readonly number[],
+  ): readonly FormalizationTraceSnapshot[];
+}
+
+/**
+ * Formalization names the generic managed-production port in module language,
+ * while keeping byte-for-byte type compatibility with the shared ledger.
+ */
+export type ManagedProductionQuery = ManagedExecutionProductQuery;
+export type ManagedArtifactWriteRecord = ManagedArtifactProductionRecord;
+export type ManagedTraceWriteRecord = ManagedTraceProductionRecord;
+export type FormalizationManagedProductionLedger = ManagedProductionLedger;
 
 /**
  * Read-only view of the formalization artifact graph for one episode.

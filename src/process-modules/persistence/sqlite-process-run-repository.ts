@@ -28,6 +28,7 @@ import {
   processModuleKey,
   type ProcessModuleReference,
 } from '../domain/process-module.js';
+import { canonicalJson, sha256Hex } from '../shared/canonical-json.js';
 import {
   assertTransitionAllowed,
   isTerminalStatus,
@@ -68,6 +69,7 @@ export function ensureSaga3ProcessRunSchema(db: Database.Database): void {
       status                      TEXT NOT NULL DEFAULT 'created'
                                     CHECK (status IN ('created','preparing','running','paused','settling','completed','failed','cancelled')),
       local_outcome               TEXT,                               -- module-local outcome, terminal-only
+      authority                   TEXT,                               -- terminal issuer/policy, write-once
       output_schema               TEXT,
       output_ref                  TEXT,
       output_hash                 TEXT,
@@ -75,6 +77,8 @@ export function ensureSaga3ProcessRunSchema(db: Database.Database): void {
       certificate_ref             TEXT,
       certificate_hash            TEXT,
       executor_run_ref            TEXT,                               -- internal run ref (e.g. WorkIntent id)
+      execution_lease_owner       TEXT,
+      execution_lease_expires_at  TEXT,
       error                       TEXT,
       started_at                  TEXT NOT NULL DEFAULT (datetime('now')),
       completed_at                TEXT,
@@ -101,6 +105,16 @@ export function ensureSaga3ProcessRunSchema(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_saga3_process_runs_status
       ON saga3_process_runs(status, updated_at);
   `);
+  const columns = db.prepare('PRAGMA table_info(saga3_process_runs)').all() as Array<{ name: string }>;
+  if (!columns.some(column => column.name === 'execution_lease_owner')) {
+    db.exec('ALTER TABLE saga3_process_runs ADD COLUMN execution_lease_owner TEXT');
+  }
+  if (!columns.some(column => column.name === 'execution_lease_expires_at')) {
+    db.exec('ALTER TABLE saga3_process_runs ADD COLUMN execution_lease_expires_at TEXT');
+  }
+  if (!columns.some(column => column.name === 'authority')) {
+    db.exec('ALTER TABLE saga3_process_runs ADD COLUMN authority TEXT');
+  }
 }
 
 interface ProcessRunRow {
@@ -118,6 +132,7 @@ interface ProcessRunRow {
   projected_stage: string | null;
   status: ProcessRunStatus;
   local_outcome: string | null;
+  authority: string | null;
   output_schema: string | null;
   output_ref: string | null;
   output_hash: string | null;
@@ -151,6 +166,7 @@ function rowToRecord(row: ProcessRunRow): ProcessRunRecord {
     projectedStage: row.projected_stage,
     status: row.status,
     localOutcome: row.local_outcome,
+    authority: row.authority,
     outputSchema: row.output_schema,
     outputRef: row.output_ref,
     outputHash: row.output_hash,
@@ -186,9 +202,27 @@ export class SqliteProcessRunRepository implements ProcessRunRepository {
   }
 
   start(command: StartProcessModuleCommand): { record: ProcessRunRecord; replayed: boolean } {
+    if (this.db.inTransaction) {
+      return this.startReserved(command);
+    }
+    return this.db.transaction(
+      () => this.startReserved(command),
+    ).immediate();
+  }
+
+  private startReserved(
+    command: StartProcessModuleCommand,
+  ): { record: ProcessRunRecord; replayed: boolean } {
     const moduleRefKey = processModuleKey(command.moduleRef);
-    const inputSnapshot = JSON.stringify(command.input.payload);
+    const inputSnapshot = canonicalJson(command.input.payload);
+    const computedInputHash = sha256Hex(command.input.payload);
     const ctx = command.invocationContext;
+    if (computedInputHash !== command.input.contentHash) {
+      throw new Error(
+        `PROCESS_RUN_INPUT_HASH_MISMATCH: supplied input_hash='${command.input.contentHash}' `
+        + `does not match canonical payload hash='${computedInputHash}' for ${moduleRefKey}`,
+      );
+    }
 
     // Look up any existing run for (project, module, idempotency_key). The
     // idempotency_key names the run; input_hash is the input it was started
@@ -201,13 +235,17 @@ export class SqliteProcessRunRepository implements ProcessRunRepository {
     ).get(ctx.projectId, command.moduleRef.name, command.moduleRef.version, ctx.idempotencyKey) as ProcessRunRow | undefined;
 
     if (existing) {
-      if (existing.input_hash !== command.input.contentHash) {
+      const sameInvocation = existing.input_hash === computedInputHash
+        && existing.input_schema === command.input.schema
+        && existing.module_ref_key === moduleRefKey
+        && existing.executor_kind === command.executorKind
+        && existing.projected_stage === command.projectedStage
+        && existing.epic_id === ctx.epicId;
+      if (!sameInvocation) {
         throw new Error(
           `IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_INPUT: idempotency_key='${ctx.idempotencyKey}' `
-          + `is already bound to input_hash='${existing.input_hash}' `
-          + `for ${moduleRefKey} in project ${ctx.projectId}; `
-          + `received input_hash='${command.input.contentHash}'. `
-          + `Use a different idempotency_key for a different input.`,
+          + `is already bound to a different immutable invocation for `
+          + `${moduleRefKey} in project ${ctx.projectId}`,
         );
       }
       return { record: rowToRecord(existing), replayed: true };
@@ -229,7 +267,7 @@ export class SqliteProcessRunRepository implements ProcessRunRepository {
       command.executorKind,
       command.input.schema,
       inputSnapshot,
-      command.input.contentHash,
+      computedInputHash,
       command.projectedStage,
     );
     const row = readRowById(this.db, Number(info.lastInsertRowid));
@@ -265,6 +303,53 @@ export class SqliteProcessRunRepository implements ProcessRunRepository {
     return rows.map(rowToRecord);
   }
 
+  acquireExecutionLease(
+    id: number,
+    owner: string,
+    nowIso: string,
+    expiresAtIso: string,
+  ): boolean {
+    const info = this.db.prepare(
+      `UPDATE saga3_process_runs
+          SET execution_lease_owner=?,
+              execution_lease_expires_at=?,
+              updated_at=datetime('now')
+        WHERE id=?
+          AND status NOT IN ('completed','failed','cancelled')
+          AND (
+            execution_lease_owner IS NULL
+            OR execution_lease_owner=?
+            OR execution_lease_expires_at IS NULL
+            OR julianday(execution_lease_expires_at)<=julianday(?)
+          )`,
+    ).run(owner, expiresAtIso, id, owner, nowIso);
+    return info.changes === 1;
+  }
+
+  renewExecutionLease(id: number, owner: string, expiresAtIso: string): boolean {
+    const info = this.db.prepare(
+      `UPDATE saga3_process_runs
+          SET execution_lease_expires_at=?,
+              updated_at=datetime('now')
+        WHERE id=?
+          AND execution_lease_owner=?
+          AND execution_lease_expires_at IS NOT NULL
+          AND julianday(execution_lease_expires_at)>julianday('now')
+          AND status NOT IN ('completed','failed','cancelled')`,
+    ).run(expiresAtIso, id, owner);
+    return info.changes === 1;
+  }
+
+  releaseExecutionLease(id: number, owner: string): void {
+    this.db.prepare(
+      `UPDATE saga3_process_runs
+          SET execution_lease_owner=NULL,
+              execution_lease_expires_at=NULL,
+              updated_at=datetime('now')
+        WHERE id=? AND execution_lease_owner=?`,
+    ).run(id, owner);
+  }
+
   update(id: number, input: UpdateProcessRunInput): ProcessRunRecord {
     const current = readRowById(this.db, id);
     if (!current) throw new Error(`saga3: process_run ${id} not found`);
@@ -282,17 +367,36 @@ export class SqliteProcessRunRepository implements ProcessRunRepository {
           `saga3: process_run ${id} is terminal (${current.status}); local_outcome cannot change`,
         );
       }
+      if (input.authority !== undefined && input.authority !== current.authority) {
+        throw new Error(
+          `saga3: process_run ${id} is terminal (${current.status}); authority cannot change`,
+        );
+      }
       if (input.output !== undefined) {
-        const wantRef = input.output?.artifactRef ?? null;
-        if (wantRef !== current.output_ref) {
+        const want = input.output;
+        const matches = want === null
+          ? current.output_schema === null
+            && current.output_ref === null
+            && current.output_hash === null
+          : want.schema === current.output_schema
+            && want.artifactRef === current.output_ref
+            && want.contentHash === current.output_hash;
+        if (!matches) {
           throw new Error(
             `saga3: process_run ${id} is terminal (${current.status}); output cannot change`,
           );
         }
       }
       if (input.certificate !== undefined) {
-        const wantRef = input.certificate?.certificateRef ?? null;
-        if (wantRef !== current.certificate_ref) {
+        const want = input.certificate;
+        const matches = want === null
+          ? current.certificate_schema === null
+            && current.certificate_ref === null
+            && current.certificate_hash === null
+          : want.schema === current.certificate_schema
+            && want.certificateRef === current.certificate_ref
+            && want.certificateHash === current.certificate_hash;
+        if (!matches) {
           throw new Error(
             `saga3: process_run ${id} is terminal (${current.status}); certificate cannot change`,
           );
@@ -314,6 +418,10 @@ export class SqliteProcessRunRepository implements ProcessRunRepository {
       // Only assign when currently NULL OR same value (write-once guard).
       sets.push('local_outcome = COALESCE(local_outcome, ?)');
       params.push(input.localOutcome);
+    }
+    if (input.authority !== undefined) {
+      sets.push('authority = COALESCE(authority, ?)');
+      params.push(input.authority);
     }
     if (input.output !== undefined) {
       if (input.output === null) {
@@ -353,14 +461,18 @@ export class SqliteProcessRunRepository implements ProcessRunRepository {
       sets.push('completed_at = COALESCE(completed_at, datetime(\'now\'))');
     }
 
-    params.push(id);
+    params.push(id, current.status);
     const info = this.db.prepare(
-      `UPDATE saga3_process_runs SET ${sets.join(', ')} WHERE id=?`,
+      `UPDATE saga3_process_runs SET ${sets.join(', ')} WHERE id=? AND status=?`,
     ).run(...params);
 
     if (info.changes === 0) {
-      // Either the row vanished (already checked above) or the UPDATE was a
-      // pure no-op (no fields changed). Re-read to return current state.
+      const concurrent = readRowById(this.db, id);
+      if (!concurrent) throw new Error(`saga3: process_run ${id} vanished during update`);
+      throw new Error(
+        `PROCESS_RUN_CONCURRENT_TRANSITION: process_run ${id} changed from `
+        + `'${current.status}' to '${concurrent.status}' before this update committed`,
+      );
     }
     const after = readRowById(this.db, id);
     if (!after) throw new Error(`saga3: process_run ${id} vanished during update`);

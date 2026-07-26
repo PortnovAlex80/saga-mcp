@@ -1,6 +1,10 @@
 import type { CreateWorkIntent, WorkIntent, WorkIntentStatus } from '../domain/work-intent.js';
 import type { ProposalRecord } from '../domain/proposal.js';
-import type { ControlIntentStatus, RawDiscoverySubmissionRecord } from '../domain/discovery-normalization-records.js';
+import type {
+  ControlIntentStatus,
+  DiscoveryNormalizationProposalRecord,
+  RawDiscoverySubmissionRecord,
+} from '../domain/discovery-normalization-records.js';
 import type {
   ReadinessAssessmentRecord,
   ReadinessControlExecution,
@@ -60,8 +64,33 @@ export interface Saga3DiscoveryRuntimePersistence {
   /** Create a new WorkIntent (status starts 'open'). */
   createIntent(command: CreateWorkIntent): WorkIntent;
 
+  /**
+   * Atomically create or reuse the WorkIntent + projected task pair for one
+   * runtime node generation key. A replay always returns the intent actually
+   * bound in task.metadata, never a newly-created orphan intent.
+   */
+  ensureNodeExecutionPlan(input: EnsureNodeExecutionPlan): {
+    intentId: number;
+    taskId: number;
+    replayed: boolean;
+  };
+
   /** Link the projected board task id onto the intent (idempotent). */
   setProjectedTask(intentId: number, taskId: number): void;
+
+  /**
+   * Bind an exact generic ProcessRun/node identity to a projected task.
+   * These reserved metadata keys are server-owned and immutable once set.
+   */
+  bindProjectedTaskProcessContext(input: {
+    taskId: number;
+    processRunId: number;
+    nodeId: string;
+    moduleRef: string;
+    processInputHash: string;
+    nodeInput: unknown;
+    nodeInputHash: string;
+  }): void;
 
   /**
    * Compare-and-set intent status. Returns true iff a row was updated
@@ -82,6 +111,12 @@ export interface Saga3DiscoveryRuntimePersistence {
   /** Current task status ('todo' | 'in_progress' | 'done' | ...), or null if gone. */
   readTaskState(taskId: number): string | null;
 
+  /** Current worker execution fence while a task is claimed. */
+  readCurrentExecutionId(taskId: number): string | null;
+
+  /** Latest physical worker execution id for one exact projected task. */
+  readLatestExecutionId(taskId: number): string | null;
+
   /** Recover stale assignment/fence and prepare an existing intent/task for restart. */
   prepareIntentForExecution(intentId: number, taskId: number): PrepareIntentForExecutionResult;
 
@@ -95,6 +130,8 @@ export interface Saga3DiscoveryRuntimePersistence {
 
   /** Latest submitted canonical proposal answering the intent, or null if none. */
   readLatestProposal(intentId: number): ProposalRecord | null;
+  /** Latest canonical proposal written by one exact task execution. */
+  readProposalForExecution(intentId: number, taskId: number, executionId: string): ProposalRecord | null;
   /**
    * Latest submitted canonical proposal for an epic (joined through the
    * work intent). P6c: generic-flow settlement handler reads the canonical
@@ -114,8 +151,24 @@ export interface Saga3DiscoveryRuntimePersistence {
   } | null;
   /** Latest immutable raw response for the product WorkIntent. */
   readLatestRawSubmission(intentId: number): RawDiscoverySubmissionRecord | null;
+  /** Immutable raw response by primary key. */
+  readRawSubmission(submissionId: number): RawDiscoverySubmissionRecord | null;
+  /** Last submission made by one exact product task execution. */
+  readRawSubmissionForExecution(
+    intentId: number,
+    taskId: number,
+    executionId: string,
+  ): RawDiscoverySubmissionRecord | null;
   /** Idempotently create/reuse the D2 ControlIntent, authority WorkIntent and task. */
   ensureNormalizationControl(input: EnsureNormalizationControl): NormalizationControlExecution;
+  /** Latest normalization proposal for one exact D2 control intent. */
+  readLatestNormalizationProposal(controlIntentId: number): DiscoveryNormalizationProposalRecord | null;
+  /** Last normalization proposal made by one exact normalizer execution. */
+  readNormalizationProposalForExecution(
+    controlIntentId: number,
+    taskId: number,
+    executionId: string,
+  ): DiscoveryNormalizationProposalRecord | null;
   /** Compare-and-set ControlIntent lifecycle. */
   setControlIntentStatus(controlIntentId: number, expected: ControlIntentStatus, next: ControlIntentStatus): boolean;
 
@@ -129,6 +182,12 @@ export interface Saga3DiscoveryRuntimePersistence {
   setReadinessControlStatus(controlIntentId: number, expected: ReadinessControlStatus, next: ReadinessControlStatus): boolean;
   /** D3: Latest assessment (any status) for one readiness ControlIntent. */
   readLatestReadinessAssessment(controlIntentId: number): ReadinessAssessmentRecord | null;
+  /** D3: Last assessment made by one exact advisor execution. */
+  readReadinessAssessmentForExecution(
+    controlIntentId: number,
+    taskId: number,
+    executionId: string,
+  ): ReadinessAssessmentRecord | null;
 
   /**
    * D4: Read-only lookup of the readiness ControlIntent for an exact immutable
@@ -310,6 +369,8 @@ export interface SettlementProposalRecord {
   epic_id: number;
   project_id: number;
   intent_id: number;
+  task_id: number;
+  execution_id: string;
   kind: string;
   schema_version: string;
   status: string;
@@ -392,6 +453,11 @@ export interface EnsureProjectedTask {
   titlePrefix?: string;
   /** Optional task priority; defaults to "high" for backward compat. */
   priority?: string;
+}
+
+export interface EnsureNodeExecutionPlan {
+  intent: CreateWorkIntent;
+  task: Omit<EnsureProjectedTask, 'intentId'>;
 }
 
 

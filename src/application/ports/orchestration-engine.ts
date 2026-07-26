@@ -2,6 +2,12 @@ export interface RunEpisodeCommand {
   projectId: number;
   epicId: number;
   concurrency?: number;
+  /** Optional explicit Lifecycle input; legacy engines ignore it. */
+  lifecycleInput?: unknown;
+  lifecycleInputSchema?: string;
+  idempotencyKey?: string;
+  initiatedBy?: string;
+  resumePaused?: boolean;
 }
 
 /**
@@ -17,6 +23,7 @@ export interface RunEpisodeCommand {
 export type OrchestrationRunReason =
   | 'completed'
   | 'failed'
+  | 'paused'
   | 'paused_timeout'
   | 'stopped'
   | 'discovery_not_implemented';
@@ -44,6 +51,14 @@ export interface OrchestrationRunResult {
   reason: OrchestrationRunReason;
   cycles: number;
   lastError: string | null;
+  /** Durable whole-lifecycle identity when a Lifecycle adapter handled the run. */
+  lifecycleRun?: {
+    id: number;
+    ref: string;
+    status: string;
+    currentStageId: string | null;
+    terminalStatus: string | null;
+  };
 
   /**
    * Process Module projection. Optional for Saga 2 compatibility. A module
@@ -73,11 +88,12 @@ export interface OrchestrationRunResult {
   pipelineScope?: string;
   scopeCompleted?: boolean;
   outcome?: string;
-  outcomeAuthority?:
-    | 'worker_proposal'
-    | 'normalized_worker_proposal'
-    | 'discovery_settlement_policy'
-    | 'none';
+  /**
+   * Legacy top-level projection retained for callers that predate
+   * processOutcome. It is intentionally open-ended: a generic Process Module
+   * runtime must not enumerate Discovery-specific authorities.
+   */
+  outcomeAuthority?: string;
   proposalId?: number | null;
   proposalHash?: string | null;
 

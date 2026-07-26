@@ -11,13 +11,37 @@ export type TransitionTarget =
   | { type: 'stage'; stageId: string }
   | { type: 'terminal'; status: string };
 
+/**
+ * Lifecycle mappings intentionally support only a small deterministic subset:
+ * JSON-path reads from the durable lifecycle frame, immutable runtime fields,
+ * and literals declared in the Lifecycle Definition. There is no executable
+ * expression language and therefore no place for an LM to invent hand-off
+ * identifiers.
+ */
+export type LifecycleMappingExpression =
+  | string
+  | { readonly literal: unknown }
+  | {
+      readonly runtime:
+        | 'projectId'
+        | 'epicId'
+        | 'lifecycleRunId'
+        | 'stageId'
+        | 'initiatedBy';
+    };
+
 export interface StageBinding {
   id: string;
   displayName: string;
   moduleRef: ProcessModuleReference;
-  inputMapping: Readonly<Record<string, string>>;
-  outputMapping?: Readonly<Record<string, string>>;
+  inputMapping: Readonly<Record<string, LifecycleMappingExpression>>;
+  outputMapping?: Readonly<Record<string, LifecycleMappingExpression>>;
   outcomeRoutes: Readonly<Record<string, TransitionTarget>>;
+  /**
+   * Human-readable contract notes in v1. Executable admission/exit decisions
+   * must be represented by mapped immutable inputs and module outcomes until a
+   * typed lifecycle-guard registry is introduced.
+   */
   entryConditions: readonly string[];
   exitConditions: readonly string[];
 }

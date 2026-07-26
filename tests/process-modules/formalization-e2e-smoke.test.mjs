@@ -112,6 +112,9 @@ function seedGraph(db, epicId, mode) {
   // AC -> FR (derived_from)
   trace.run(30, 'artifact', 10, 'derived_from');
   trace.run(31, 'artifact', 10, 'derived_from');
+  // FR-derived ACs must also trace to the behavioural UC.
+  trace.run(30, 'artifact', 20, 'derived_from');
+  trace.run(31, 'artifact', 20, 'derived_from');
 
   // Formalization tasks — all done+merged unless tasks-not-ready.
   const taskStatus = mode === 'tasks-not-ready' ? 'todo' : 'done';

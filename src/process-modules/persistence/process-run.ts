@@ -121,6 +121,11 @@ export interface ProcessRunRecord {
   projectedStage: string | null;
   /** Local outcome emitted by the module (null until terminal). */
   localOutcome: string | null;
+  /**
+   * Stable issuer/policy authority for the terminal outcome. Persisted
+   * write-once so replay projects the same result as the live execution.
+   */
+  authority: string | null;
   outputSchema: string | null;
   outputRef: string | null;
   outputHash: string | null;
@@ -144,6 +149,7 @@ export interface ProcessRunRecord {
 export interface UpdateProcessRunInput {
   status?: ProcessRunStatus;
   localOutcome?: string | null;
+  authority?: string | null;
   output?: ProcessModuleOutput | null;
   certificate?: ProcessModuleCertificateRef | null;
   executorRunRef?: string | null;

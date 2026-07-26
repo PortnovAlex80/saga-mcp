@@ -13,6 +13,8 @@
 import { ProcessModuleInstallationRegistry } from '../application/process-module-installation-registry.js';
 import type { ProcessModuleInstallation } from '../application/process-module-executor.js';
 import type { KernelHandlerRegistry } from '../application/kernel-handler-registry.js';
+import type { ExternalAdapterRegistry } from '../application/external-adapter-registry.js';
+import type { HumanInteractionRegistry } from '../application/human-interaction-registry.js';
 
 export interface CreateInstallationRegistryOptions {
   /**
@@ -21,15 +23,15 @@ export interface CreateInstallationRegistryOptions {
    * a registered callable. Recommended for generic-flow installations.
    */
   kernelHandlerRegistry?: KernelHandlerRegistry;
+  externalAdapterRegistry?: ExternalAdapterRegistry;
+  humanInteractionRegistry?: HumanInteractionRegistry;
 }
 
 export function createBuiltInProcessModuleInstallationRegistry(
   installations: readonly ProcessModuleInstallation[],
   options: CreateInstallationRegistryOptions = {},
 ): ProcessModuleInstallationRegistry {
-  const registry = options.kernelHandlerRegistry
-    ? new ProcessModuleInstallationRegistry({ kernelHandlerRegistry: options.kernelHandlerRegistry })
-    : new ProcessModuleInstallationRegistry();
+  const registry = new ProcessModuleInstallationRegistry(options);
   for (const installation of installations) {
     registry.register(installation);
   }

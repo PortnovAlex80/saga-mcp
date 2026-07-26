@@ -29,8 +29,10 @@ export function ensureSaga3NodeRunSchema(db: Database.Database): void {
                        CHECK (status IN ('running','completed','failed')),
       event          TEXT,
       output_ref     TEXT,
+      output_schema  TEXT,
       output_hash    TEXT,
       output_bindings TEXT,
+      execution_receipt TEXT,
       error_message  TEXT,
       started_at     TEXT NOT NULL DEFAULT (datetime('now')),
       completed_at   TEXT
@@ -46,6 +48,12 @@ export function ensureSaga3NodeRunSchema(db: Database.Database): void {
   if (!cols.some((c) => c.name === 'output_bindings')) {
     db.exec('ALTER TABLE saga3_node_runs ADD COLUMN output_bindings TEXT');
   }
+  if (!cols.some((c) => c.name === 'execution_receipt')) {
+    db.exec('ALTER TABLE saga3_node_runs ADD COLUMN execution_receipt TEXT');
+  }
+  if (!cols.some((c) => c.name === 'output_schema')) {
+    db.exec('ALTER TABLE saga3_node_runs ADD COLUMN output_schema TEXT');
+  }
 }
 
 interface NodeRunRow {
@@ -57,8 +65,10 @@ interface NodeRunRow {
   status: NodeRunStatus;
   event: string | null;
   output_ref: string | null;
+  output_schema: string | null;
   output_hash: string | null;
   output_bindings: string | null;
+  execution_receipt: string | null;
   error_message: string | null;
   started_at: string;
   completed_at: string | null;
@@ -76,6 +86,17 @@ function rowToRecord(row: NodeRunRow): NodeRunRecord {
       // malformed JSON — treat as null (the row is from a pre-Д8 schema).
     }
   }
+  let executionReceipt: Record<string, unknown> | null = null;
+  if (row.execution_receipt) {
+    try {
+      const parsed = JSON.parse(row.execution_receipt);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        executionReceipt = parsed as Record<string, unknown>;
+      }
+    } catch {
+      // Malformed legacy data is treated as absent execution evidence.
+    }
+  }
   return {
     id: row.id,
     processRunId: row.process_run_id,
@@ -85,8 +106,10 @@ function rowToRecord(row: NodeRunRow): NodeRunRecord {
     status: row.status,
     event: row.event,
     outputRef: row.output_ref,
+    outputSchema: row.output_schema,
     outputHash: row.output_hash,
     outputBindings: bindings,
+    executionReceipt,
     errorMessage: row.error_message,
     startedAt: row.started_at,
     completedAt: row.completed_at,
@@ -118,12 +141,22 @@ export class SqliteNodeRunRepository implements NodeRunRepository {
 
   complete(input: CompleteNodeRunInput): NodeRunRecord {
     const bindingsText = input.outputBindings ? JSON.stringify(input.outputBindings) : null;
+    const receiptText = input.executionReceipt ? JSON.stringify(input.executionReceipt) : null;
     this.db.prepare(
       `UPDATE saga3_node_runs
-          SET status='completed', event=?, output_ref=?, output_hash=?, output_bindings=?,
+          SET status='completed', event=?, output_ref=?, output_schema=?, output_hash=?, output_bindings=?,
+              execution_receipt=?,
               completed_at=datetime('now')
         WHERE id=?`,
-    ).run(input.event, input.outputRef, input.outputHash, bindingsText, input.id);
+    ).run(
+      input.event,
+      input.outputRef,
+      input.outputSchema ?? null,
+      input.outputHash,
+      bindingsText,
+      receiptText,
+      input.id,
+    );
     const row = this.db.prepare(
       'SELECT * FROM saga3_node_runs WHERE id=?',
     ).get(input.id) as NodeRunRow;
@@ -155,6 +188,7 @@ export class SqliteNodeRunRepository implements NodeRunRepository {
     const row = this.db.prepare(
       `SELECT * FROM saga3_node_runs
         WHERE process_run_id=? AND status='completed'
+          AND (event IS NULL OR event<>'runtime.paused')
         ORDER BY id DESC LIMIT 1`,
     ).get(processRunId) as NodeRunRow | undefined;
     return row ? rowToRecord(row) : null;

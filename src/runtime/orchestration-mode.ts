@@ -39,8 +39,11 @@
  *                     adapter. The formalization workers themselves are still
  *                     driven by saga2 (or saga-dispatch); this mode only governs
  *                     the ProcessRun + certificate lifecycle.
+ * - 'saga3-lifecycle' — complete durable Discovery → Formalization →
+ *                     Development → Delivery lifecycle through registered
+ *                     GenericFlow module installations.
  *
- * 'saga3-discovery*', 'saga3-discovery-generic' and 'saga3-formalization' select
+ * 'saga3-discovery*', 'saga3-formalization' and 'saga3-lifecycle' select
  * non-Saga2 engines today. New modes are appended here AND in parseOrchestrationMode;
  * an unrecognised value is an error, never a silent fallback.
  */
@@ -50,10 +53,12 @@ export type OrchestrationMode =
   | 'saga2'
   | 'saga3-discovery'
   | 'saga3-discovery-generic'
-  | 'saga3-formalization';
+  | 'saga3-formalization'
+  | 'saga3-lifecycle';
 
 export const ORCHESTRATION_MODES: readonly OrchestrationMode[] = [
-  'v2', 'v3', 'saga2', 'saga3-discovery', 'saga3-discovery-generic', 'saga3-formalization',
+  'v2', 'v3', 'saga2', 'saga3-discovery', 'saga3-discovery-generic',
+  'saga3-formalization', 'saga3-lifecycle',
 ];
 
 /** The stable default. Never an experimental engine (see header). */
@@ -120,4 +125,9 @@ export function isSaga3DiscoveryGenericMode(mode: OrchestrationMode): boolean {
  */
 export function isSaga3FormalizationMode(mode: OrchestrationMode): boolean {
   return mode === 'saga3-formalization';
+}
+
+/** Does this mode select the complete durable Product Lifecycle? */
+export function isSaga3LifecycleMode(mode: OrchestrationMode): boolean {
+  return mode === 'saga3-lifecycle';
 }

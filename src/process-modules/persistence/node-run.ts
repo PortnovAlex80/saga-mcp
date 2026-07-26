@@ -29,6 +29,7 @@ export interface NodeRunRecord {
   event: string | null;
   /** Reference to the node's output artifact (opaque to the runtime). */
   outputRef: string | null;
+  outputSchema: string | null;
   outputHash: string | null;
   /**
    * Д8: durable NodeProduction bindings (JSON). On restart the walker restores
@@ -39,6 +40,12 @@ export interface NodeRunRecord {
    * the next node loses all upstream context.
    */
   outputBindings: Record<string, unknown> | null;
+  /**
+   * Physical execution evidence, separate from the module's domain production.
+   * A resolver can resume after a crash between worker completion and product
+   * materialization without pretending the task itself is the product.
+   */
+  executionReceipt: Record<string, unknown> | null;
   errorMessage: string | null;
   startedAt: string;
   completedAt: string | null;
@@ -54,9 +61,11 @@ export interface CompleteNodeRunInput {
   id: number;
   event: string;
   outputRef: string | null;
+  outputSchema?: string | null;
   outputHash: string | null;
   /** Д8: durable bindings to persist for restart recovery. */
   outputBindings?: Record<string, unknown> | null;
+  executionReceipt?: Record<string, unknown> | null;
 }
 
 export interface FailNodeRunInput {

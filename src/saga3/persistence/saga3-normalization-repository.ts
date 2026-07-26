@@ -149,6 +149,20 @@ export function readLatestRawSubmissionForIntent(
   return row ? rawRowToRecord(row) : null;
 }
 
+export function readRawSubmissionForExecution(
+  db: Database.Database,
+  intentId: number,
+  taskId: number,
+  executionId: string,
+): RawDiscoverySubmissionRecord | null {
+  const row = db.prepare(
+    `SELECT * FROM saga3_raw_submissions
+      WHERE intent_id=? AND task_id=? AND execution_id=?
+      ORDER BY id DESC LIMIT 1`,
+  ).get(intentId, taskId, executionId) as RawSubmissionRow | undefined;
+  return row ? rawRowToRecord(row) : null;
+}
+
 export interface InsertNormalizationProposal {
   controlIntentId: number;
   sourceSubmissionId: number;
@@ -193,6 +207,20 @@ export function readLatestNormalizationProposalForControl(
 ): DiscoveryNormalizationProposalRecord | null {
   const row = db.prepare(`SELECT * FROM saga3_normalization_proposals WHERE control_intent_id=? ORDER BY id DESC LIMIT 1`)
     .get(controlIntentId) as NormalizationProposalRow | undefined;
+  return row ? normalizationRowToRecord(row) : null;
+}
+
+export function readNormalizationProposalForExecution(
+  db: Database.Database,
+  controlIntentId: number,
+  taskId: number,
+  executionId: string,
+): DiscoveryNormalizationProposalRecord | null {
+  const row = db.prepare(
+    `SELECT * FROM saga3_normalization_proposals
+      WHERE control_intent_id=? AND task_id=? AND execution_id=?
+      ORDER BY id DESC LIMIT 1`,
+  ).get(controlIntentId, taskId, executionId) as NormalizationProposalRow | undefined;
   return row ? normalizationRowToRecord(row) : null;
 }
 
