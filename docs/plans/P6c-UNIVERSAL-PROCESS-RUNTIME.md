@@ -168,7 +168,7 @@ LM-узлы `assess-readiness` и `diagnose`: pre-hook (собрать immutable
 | Д7 | Atomic certificate issuance: validation + issue + ProcessRun-completion в правильном порядке | ✅ partial | generic-flow-executor.ts (issue → validate → complete; полная транзакция across tables — follow-up) |
 | Д8 | Restart: durable NodeRun output bindings_json, resume восстанавливает chainInput | ✅ | node-run.ts (outputBindings field), sqlite-node-run-repository.ts (output_bindings column + migration), generic-flow-executor.ts (chainInput restored from last completed NodeRun bindings) |
 | Д9 | Убрать Discovery literals из generic adapter (outcomeAuthority, canonical-json → shared/) | ✅ | shared/canonical-json.ts (re-export из saga3/shared), generic-flow-engine-adapter.ts (authority из RunResult, не хардкод; import из shared/) |
-| Д10 | Тесты сценариев: go/clarify/reject/semantic-normalization/missing-readiness/restart/два-Proposal/cert-validation-failure | ⏳ pending | — |
+| Д10 | Тесты сценариев: go/clarify/reject/semantic-normalization/missing-readiness/restart/два-Proposal/cert-validation-failure | ✅ partial | tests/process-modules/discovery-generic-flow-scenarios.test.mjs (5 сценариев: go, missing-readiness→clarify, settlement exact-proposal, prepare-readiness bindings, restart-after-proposal). Сценарии semantic-normalization-branch / два-Proposal / cert-validation-failure — follow-up (требуют более сложных fixtures). |
 
 ### Дополнительные поправки (из ревью)
 
