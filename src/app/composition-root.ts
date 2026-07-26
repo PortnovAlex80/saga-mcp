@@ -3,6 +3,8 @@ import type { EngineAdministration } from '../application/ports/engine-administr
 import type { Saga2HostRuntime } from '../application/ports/saga2-host-runtime.js';
 import type { Saga2RuntimePersistence } from '../application/ports/saga2-runtime-persistence.js';
 import type { WorkerExecutorFactory } from '../application/ports/worker-executor.js';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { createSagaApplication, type SagaApplication } from '../application/saga-application.js';
 import { closeDb } from '../db.js';
 import { Saga2Engine } from '../engines/saga2-engine.js';
@@ -403,8 +405,43 @@ function buildDiscoveryWorkerContext(
     epicId: ctx.epicId ?? 0,
     workspaceRoot: process.cwd(),
     dbPath: config.dbPath,
-    sagaEntry: process.argv[1] ?? 'saga',
+    // sagaEntry MUST point at the MCP server (dist/index.js), not at the
+    // currently running script. process.argv[1] is the orchestrate-cli entry
+    // point when the engine is launched as `node dist/orchestrate-cli.js`, and
+    // orchestrate-cli is NOT an MCP server. The runner writes this entry into
+    // the per-execution `--mcp-config` (writeExecutionMcpConfig), claude then
+    // spawns it as the `saga` stdio MCP child, and because orchestrate-cli does
+    // not speak MCP it fails to register — the worker silently loses every
+    // mcp__saga__* tool (task_get / proposal_submit / worker_done / ...).
+    // Verified empirically: spawning dist/index.js with the same env lists
+    // 70+ saga tools; spawning dist/orchestrate-cli.js lists none.
+    // Resolve the entry from package.json bin.saga-mcp so it stays in lockstep
+    // with the published artefact. SAGA_MCP_ENTRY overrides for tests / custom
+    // installs.
+    sagaEntry: resolveSagaMcpEntry(),
     sagaSkillRoot: process.cwd() + '/skills',
     lmStudioUrl: process.env.LM_STUDIO_URL ?? 'http://127.0.0.1:1234',
   };
+}
+
+function resolveSagaMcpEntry(): string {
+  const explicit = process.env.SAGA_MCP_ENTRY;
+  if (explicit) return explicit;
+  try {
+    const pkgUrl = new URL('../../package.json', import.meta.url);
+    const pkg = JSON.parse(readFileSync(fileURLToPath(pkgUrl), 'utf8')) as {
+      bin?: Record<string, string> | string;
+      main?: string;
+    };
+    const binPath = typeof pkg.bin === 'string' ? pkg.bin : pkg.bin?.['saga-mcp'];
+    if (binPath) {
+      return fileURLToPath(new URL(`../../${binPath}`, import.meta.url));
+    }
+    if (pkg.main) {
+      return fileURLToPath(new URL(`../../${pkg.main}`, import.meta.url));
+    }
+  } catch {
+    // fall through to the hard-coded path
+  }
+  return fileURLToPath(new URL('../../dist/index.js', import.meta.url));
 }
