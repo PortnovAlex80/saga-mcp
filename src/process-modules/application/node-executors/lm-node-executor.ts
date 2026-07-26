@@ -161,7 +161,7 @@ export class LmNodeExecutor implements NodeExecutor {
           allowed_tools: [...profile.allowedTools],
           enforcement: 'runtime',
         },
-        outputSchema: profile.workIntentSchema.id,
+        outputSchema: profile.outputSchema.id,
         tokenBudget: 0,
         retryBudget: profile.retryPolicy.maxAttempts,
       });
@@ -187,7 +187,15 @@ export class LmNodeExecutor implements NodeExecutor {
       if (preparation.status === 'done') {
         // Already concluded by a prior run (replay).
         this.persistence.setIntentStatus(intent.id, preparation.intentStatus, 'concluded');
-        return { event: 'done', output: { taskId, replayed: true } };
+        return {
+          runtimeEvent: 'completed',
+          production: {
+            schema: profile.outputSchema.id,
+            artifactRef: `lm:${node.id}:task:${taskId}`,
+            contentHash: '',
+            bindings: { intentId: intent.id, taskId, workIntentId: intent.id, epicId: ctx.epicId ?? 0, replayed: 1 },
+          },
+        };
       }
       if (preparation.status === 'blocked') {
         throw new NodeExecutionError('lm', node.id, `projected task ${taskId} is blocked`);
@@ -247,14 +255,30 @@ export class LmNodeExecutor implements NodeExecutor {
       // 6. Conclude intent + translate terminal verdict.
       if (terminal === 'clean') {
         this.persistence.setIntentStatus(intent.id, 'executing', 'concluded');
-        return { event: 'done', output: { taskId, intentId: intent.id } };
+        // LM nodes emit ONLY runtimeEvent ('completed'). They never emit a
+        // domainEvent — domain semantics (accepted/go/clarify) belong to kernel
+        // nodes. The production carries exact runtime bindings (intentId,
+        // taskId, workIntentId) that downstream kernel handlers use to re-read
+        // the canonical artifact from durable storage. The artifactRef/contentHash
+        // are module-agnostic here: the kernel handler resolves the real
+        // artifact (e.g. proposal:141) from bindings via the runtime persistence.
+        return {
+          runtimeEvent: 'completed',
+          production: {
+            schema: profile.outputSchema.id,
+            artifactRef: `lm:${node.id}:task:${taskId}`,
+            contentHash: '', // kernel handler recomputes from canonical row
+            bindings: {
+              intentId: intent.id,
+              taskId,
+              workIntentId: intent.id,
+              epicId: ctx.epicId ?? 0,
+            },
+          },
+        };
       }
       this.persistence.setIntentStatus(intent.id, 'executing', 'paused');
-      throw new NodeExecutionError(
-        'lm',
-        node.id,
-        `worker did not reach clean closure (terminal=${terminal})`,
-      );
+      return { runtimeEvent: 'paused' };
     } catch (err) {
       if (err instanceof NodeExecutionError) throw err;
       throw new NodeExecutionError('lm', node.id, (err as Error).message, err);

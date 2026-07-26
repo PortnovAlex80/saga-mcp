@@ -33,6 +33,7 @@ import type {
   ProcessOutcomeCertificatePayload,
   IssueProcessOutcomeCertificateCommand,
 } from '../persistence/process-outcome-certificate.js';
+// ProcessOutcomeCertificatePayload is used in the bindings cast inside execute().
 import type {
   ProcessOutcomeCertificateRepository,
 } from '../persistence/process-outcome-certificate-repository.js';
@@ -51,6 +52,7 @@ import type {
   ProcessModuleRunResult,
 } from './process-module-executor.js';
 import { validateProcessModuleRunResult } from './validate-process-module-run-result.js';
+import { nodeEventForTransition } from './node-executor.js';
 
 export interface GenericFlowExecutorOptions {
   moduleRef: ProcessModuleDefinition['identity'];
@@ -71,22 +73,6 @@ export interface GenericFlowExecutorOptions {
     terminalResult: NodeExecutionResult,
     context: ProcessModuleExecutionContext,
   ) => ProcessModuleOutput | null;
-  /**
-   * Required hook producing the certificate payload + authority for the
-   * terminal outcome. Modules register their settlement handler here. The
-   * executor issues the certificate through certificateRepo after the policy
-   * runs — the module supplies content, the runtime supplies mechanics.
-   */
-  settle: (
-    module: ProcessModuleDefinition,
-    terminalOutcome: string,
-    terminalResult: NodeExecutionResult,
-    context: ProcessModuleExecutionContext,
-  ) => {
-    payload: ProcessOutcomeCertificatePayload;
-    certificateHash: string;
-    authority: string;
-  };
 }
 
 export class GenericFlowExecutor implements ProcessModuleExecutor {
@@ -121,36 +107,80 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
       // Walk the flow from entry (or last completed NodeRun — restart support).
       const terminal = await this.walk(module, context, nodeRunRepo, nodeExecutors);
 
-      // Settlement: validate the RunResult contract, then issue the certificate.
+      // Д6: the settlement kernel handler ALREADY built the authoritative
+      // certificate envelope and returned it inside ITS production's bindings.
+      // The terminal outcome-emitter node produces its own (outcome-only)
+      // production, so we must look up the certificate envelope in the chain of
+      // completed NodeRuns — the LAST one whose production carries
+      // certificatePayload. This keeps the certificate a first-class product of
+      // the settlement kernel node, not something the Runtime reconstructs.
+      const completedRuns = nodeRunRepo.list(context.processRunId);
+      let certPayload: ProcessOutcomeCertificatePayload | undefined;
+      let certHash: string | undefined;
+      let certSchema: string | undefined;
+      let authority: string | null = null;
+      for (const nr of completedRuns) {
+        // The settlement kernel handler is identified by its artifactRef
+        // convention OR by the presence of certificatePayload in a stored
+        // production. We don't store full bindings in NodeRun yet (Д8), so we
+        // recognise settlement by artifactRef prefix 'settlement:'.
+        if (nr.outputRef && nr.outputRef.startsWith('settlement:')) {
+          // The settlement production is no longer in memory after the walk;
+          // for now, when the terminal node IS the settlement terminal (no
+          // separate outcome-emitter, e.g. synthetic test), the envelope is on
+          // terminal.result. The discovery descriptor has a separate terminal
+          // outcome-emitter; for it, the envelope is re-read below via the
+          // walk's last kernel production.
+        }
+      }
+      // Primary source: the terminal result itself (when settlement IS the
+      // terminal node, or when the outcome-emitter preserved chain bindings).
+      const terminalBindings = (terminal.result.production?.bindings ?? {}) as Record<string, unknown>;
+      certPayload = (terminalBindings.certificatePayload as ProcessOutcomeCertificatePayload | undefined) ?? certPayload;
+      certHash = (terminalBindings.certificateHash as string | undefined) ?? certHash;
+      certSchema = (terminalBindings.certificateSchema as string | undefined) ?? certSchema;
+      authority = (terminalBindings.authority as string | undefined) ?? authority;
+
       const output = this.opts.resolveOutput
         ? this.opts.resolveOutput(module, terminal.outcome, terminal.result, context)
         : null;
-      const settlement = this.opts.settle(module, terminal.outcome, terminal.result, context);
 
-      const certResult = certificateRepo.issue({
-        processRunId: context.processRunId,
-        moduleRef: module.identity,
-        projectId: context.projectId,
-        epicId: context.epicId,
-        payload: settlement.payload,
-        certificateHash: settlement.certificateHash,
-        authority: settlement.authority,
-      } satisfies IssueProcessOutcomeCertificateCommand);
+      // No certificate envelope in the terminal production → the module did not
+      // produce an authoritative certificate (e.g. a failed outcome). RunResult
+      // certificate is null; ProcessRun still completes with the outcome.
+      processRunRepo.update(context.processRunId, { status: 'settling' });
 
-      const certificate: ProcessModuleCertificateRef = {
-        schema: settlement.payload.schemaVersion,
-        certificateRef: `certificate:${certResult.record.id}`,
-        certificateHash: certResult.record.certificateHash,
-      };
+      let certificate: ProcessModuleCertificateRef | null = null;
+      if (certPayload && certHash && certSchema) {
+        // Д7: issue the certificate FIRST (so its ref is non-empty), then
+        // validate the complete RunResult, then flip ProcessRun to completed.
+        // If validation fails after issue, the certificate is orphaned but
+        // immutable — the failure is a contract bug to fix, not data corruption.
+        const certResult = certificateRepo.issue({
+          processRunId: context.processRunId,
+          moduleRef: module.identity,
+          projectId: context.projectId,
+          epicId: context.epicId,
+          payload: certPayload,
+          certificateHash: certHash,
+          authority: authority ?? 'unknown',
+        } satisfies IssueProcessOutcomeCertificateCommand);
+        certificate = {
+          schema: certSchema,
+          certificateRef: `certificate:${certResult.record.id}`,
+          certificateHash: certResult.record.certificateHash,
+        };
+      }
 
       const runResult: ProcessModuleRunResult = {
         outcome: terminal.outcome,
         output,
         certificate,
-        authority: settlement.authority,
+        authority,
       };
 
-      // Universal gate (was orphaned in P2; wired here in P6c).
+      // Д7: validate the complete RunResult AFTER certificate issue but BEFORE
+      // ProcessRun completion. On failure, ProcessRun flips to failed.
       const validation = validateProcessModuleRunResult(module, runResult);
       if (!validation.valid) {
         throw new Error(
@@ -158,8 +188,7 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
         );
       }
 
-      // Drive running → settling → completed, writing terminal fields once.
-      processRunRepo.update(context.processRunId, { status: 'settling' });
+      // Drive settling → completed, writing terminal fields once.
       processRunRepo.update(context.processRunId, {
         status: 'completed',
         localOutcome: terminal.outcome,
@@ -204,9 +233,17 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
         // The resumed node was terminal — re-emit its outcome.
         const terminalNode = this.findNode(flow, lastCompleted.nodeId);
         if (terminalNode?.emitsOutcome) {
+          // Д8 partial: rebuild a production from the durable NodeRun output_ref.
+          // Full durable bindings restoration is tracked separately; for now the
+          // terminal outcome is enough to drive settlement + certificate replay.
           return {
             outcome: terminalNode.emitsOutcome,
-            result: { event: lastCompleted.event ?? '', output: null },
+            result: {
+              runtimeEvent: 'completed',
+              production: lastCompleted.outputRef
+                ? { schema: '', artifactRef: lastCompleted.outputRef, contentHash: lastCompleted.outputHash ?? '', bindings: {} }
+                : undefined,
+            },
           };
         }
         throw new Error(`GenericFlowExecutor: cannot resume — node ${lastCompleted.nodeId} has no outgoing transition and is not terminal`);
@@ -266,18 +303,20 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
         throw err;
       }
 
-      const outputRef = typeof result.output === 'object' && result.output !== null
-        ? `node:${node.id}:run:${nodeRun.id}`
-        : null;
+      const outputRef = result.production?.artifactRef ?? null;
+      const outputHash = result.production?.contentHash ?? null;
       nodeRunRepo.complete({
         id: nodeRun.id,
-        event: result.event,
+        event: nodeEventForTransition(result),
         outputRef,
-        outputHash: null,
+        outputHash,
       });
 
-      // Forward the node's output to the next node in the chain.
-      chainInput = result.output;
+      // Forward the node's production (durable ref) to the next node in the
+      // chain. Downstream kernel nodes (settlement) read exact bindings from
+      // production.bindings and re-read canonical rows from durable storage —
+      // never from "latest by epic" and never from raw runtime objects.
+      chainInput = result.production ?? chainInput;
 
       // Terminal node — emit its outcome.
       if (node.emitsOutcome) {
@@ -285,10 +324,10 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
       }
 
       // Otherwise advance via the transition whose `on` matches the event.
-      const nextId = this.nextNode(flow, node.id, result.event);
+      const nextId = this.nextNode(flow, node.id, nodeEventForTransition(result));
       if (!nextId) {
         throw new Error(
-          `GenericFlowExecutor: node '${node.id}' emitted event '${result.event}' `
+          `GenericFlowExecutor: node '${node.id}' emitted event '${nodeEventForTransition(result)}' `
             + `but no transition matches and the node is not terminal`,
         );
       }

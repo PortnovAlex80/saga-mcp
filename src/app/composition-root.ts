@@ -48,7 +48,6 @@ import { LmNodeExecutor } from '../process-modules/application/node-executors/lm
 import { GenericFlowExecutor } from '../process-modules/application/generic-flow-executor.js';
 import { GenericFlowEngineAdapter } from '../process-modules/application/generic-flow-engine-adapter.js';
 import { createDiscoveryKernelHandlers, createDiscoveryLmNodePersistence } from '../process-modules/modules/discovery/discovery-installation.js';
-import { sha256Hex } from '../saga3/shared/discovery-canonical.js';
 import { createBuiltInProcessModuleInstallationRegistry } from '../process-modules/modules/installations.js';
 import { getDb } from '../db.js';
 
@@ -293,38 +292,17 @@ function buildDiscoveryGenericEngine(
     ['lm', lmExecutor as unknown as typeof kernelExecutor],
   ]);
 
-  // 4. GenericFlowExecutor with Discovery settlement hook. The settle hook
-  //    projects the settlement handler's output into a generic certificate
-  //    payload — module content (decision/reasonCodes/inputHash) carried in the
-  //    generic envelope. resolveOutput is null: for Discovery the certificate
-  //    IS the authoritative output.
+  // 4. GenericFlowExecutor. Д6: NO settle callback — the Discovery settlement
+  //    kernel handler builds the authoritative certificate envelope itself and
+  //    carries it in the terminal production's bindings. Runtime only validates
+  //    + atomically persists (Д7). resolveOutput is null: for Discovery the
+  //    certificate IS the authoritative output.
   const genericExecutor = new GenericFlowExecutor({
     moduleRef: discoveryModule.identity,
     processRunRepo,
     nodeRunRepo,
     certificateRepo,
     nodeExecutors,
-    settle: (_module, _outcome, terminalResult, _context) => {
-      // terminalResult.output — то, что вернул terminal kernel-узел
-      // (process-outcome-emitter): { outcome }. Сертификат для discovery
-      // строится из решения settlement handler'а, проброшенного через NodeRun
-      // output chain. В минимальной поставке используем детерминированный payload.
-      const outcomeCode = _outcome;
-      const payload = {
-        schemaVersion: 'saga3.discovery-outcome-certificate.generic.v1',
-        decision: outcomeCode,
-        reasonCodes: [],
-        rationale: `Discovery settled with outcome '${outcomeCode}' via GenericFlowExecutor`,
-        inputHash: _context.inputHash,
-        payload: { outcome: outcomeCode, terminalEvent: terminalResult.event },
-      };
-      const certificateHash = sha256Hex(payload);
-      return {
-        payload,
-        certificateHash,
-        authority: 'discovery_settlement_policy',
-      };
-    },
   });
 
   // 5. Installation registry — validates the binding + handler coverage.

@@ -39,6 +39,7 @@ import {
 } from '../../../saga3/domain/discovery-settlement-input.js';
 import { normalizeDiscoveryProposalInput } from '../../../saga3/domain/discovery-normalization.js';
 import { NO_READINESS_HASH } from '../../../saga3/domain/discovery-settlement-input.js';
+import { sha256Hex } from '../../../saga3/shared/discovery-canonical.js';
 
 /**
  * Deps, которые модуль поставляет из composition-root. Settle handler читает
@@ -69,13 +70,18 @@ export function createDiscoveryKernelHandlers(
 // ---------------------------------------------------------------------------
 
 const discoveryNormalizationKernelHandler: KernelHandler = (ctx) => {
-  // ctx.input — сырой worker submission (saga3.discovery-raw-submission.v1).
-  // Делегируем в чистый детерминированный нормализатор — никаких LM, никакого I/O.
+  // ctx.input — production предыдущего LM-узла produce-proposal. В bindings
+  // лежит intentId/taskId воркера; канонический Proposal уже сохранён в БД
+  // через proposal_submit. Здесь мы нормализуем сырой raw_submission (для
+  // D2 deterministic step). Делегируем в чистый детерминированный нормализатор.
+  const production = (ctx.input ?? {}) as { bindings?: Record<string, unknown> };
+  const intentId = Number(production.bindings?.intentId ?? 0);
   const result = normalizeDiscoveryProposalInput(ctx.input);
-  // disposition → event (должно совпадать с FlowTransitionDefinition.on):
-  //   accepted        → assess-readiness
-  //   needs_lm        → normalize-semantic
-  //   rejected_syntax → complete-failed
+  // disposition → domain event (должно совпадать с FlowTransitionDefinition.on,
+  // теперь с префиксом 'domain.'):
+  //   accepted        → domain.accepted → assess-readiness
+  //   needs_lm        → domain.semantic-ambiguity → normalize-semantic
+  //   rejected_syntax → domain.invalid-json → complete-failed
   const eventByDisposition: Record<string, string> = {
     accepted: 'accepted',
     needs_lm: 'semantic-ambiguity',
@@ -84,7 +90,16 @@ const discoveryNormalizationKernelHandler: KernelHandler = (ctx) => {
   const event = eventByDisposition[result.disposition] ?? 'invalid-json';
   return {
     event,
-    output: result,
+    production: {
+      schema: 'saga3.discovery-normalization-result.v1',
+      artifactRef: `normalization:${intentId}:${result.disposition}`,
+      contentHash: '',
+      bindings: {
+        intentId,
+        disposition: result.disposition,
+        reasonCode: result.reason_code,
+      },
+    },
     // Не terminal — у normalization-kernel нет emitsOutcome.
   };
 };
@@ -94,14 +109,17 @@ const discoveryNormalizationKernelHandler: KernelHandler = (ctx) => {
 // ---------------------------------------------------------------------------
 
 /**
- * Settlement handler: строит DiscoverySettlementInputSnapshot из КАНОНИЧЕСКИХ
- * данных в БД (proposal + readiness, сохранённые worker'ами), вызывает
- * детерминированную политику discoverySettlementPolicyV1. Возвращает decision.
+ * Settlement handler (Д4 + Д6 + Д-поправка):
  *
- * GenericFlowExecutor issue'ит сертификат в generic-таблицу по return value;
- * saga3-таблица остаётся для legacy engine. Это разделение mechanics/content:
- * handler = content (policy, snapshot shape, reason codes), executor = mechanics
- * (cert issue, ProcessRun transitions).
+ *   Д4 — exact lineage. Proposal ID/Hash и (опц.) Assessment ID/Hash берутся
+ *        из NodeProduction предыдущих узлов (chain), НЕ из latest-by-epic.
+ *        Рестарт/параллельный запуск не может подсунуть чужой Proposal.
+ *
+ *   Д6 — AuthoritativeSettlementResult. Handler сам строит certificate payload
+ *        + hash (модуль = content), Runtime только атомарно сохраняет (Д7).
+ *        Никакого второго settle callback, реконструирующего сертификат из outcome.
+ *
+ *   поправка — readiness slice ищется по proposalId (через intent), не по epicId.
  */
 function createDiscoverySettlementHandler(
   runtime: Saga3DiscoveryRuntimePersistence,
@@ -112,19 +130,39 @@ function createDiscoverySettlementHandler(
       throw new Error('discovery-settlement-policy: epicId is required');
     }
 
-    // 1. Найти канонический Proposal для эпика. Воркер produce-proposal уже
-    //    сохранил его через proposal_submit; settlement читает из БД, не из chain.
-    const proposalSummary = runtime.readLatestProposalByEpic(ctx.epicId);
-    if (!proposalSummary) {
-      throw new Error(`discovery-settlement-policy: no proposal found for epic ${ctx.epicId}`);
-    }
-    // readProposalForSettlement returns the full lineage (source_intent_id,
-    // source_submission_id, normalization_proposal_id) the snapshot needs.
-    const proposalRow = runtime.readProposalForSettlement(proposalSummary.id);
+    // 1. Exact lineage: proposalId из chain bindings предыдущих NodeRun.
+    //    chainInput — accumulate предыдущих productions. produce-proposal
+    //    кладёт intentId; downstream узлы добавляют proposalId после proposal_submit.
+    const chain = (ctx.input ?? {}) as {
+      bindings?: Record<string, unknown>;
+    };
+    const proposalIdFromChain = Number(chain.bindings?.proposalId ?? 0);
+
+    // 2. Найти канонический Proposal. Если chain дал exact proposalId — читаем
+    //    его; иначе fallback на readLatestProposalByEpic ТОЛЬКО для случая, когда
+    //    chain не дошёл (это бывает на restart без durable output — TODO Д8).
+    let proposalRow = proposalIdFromChain
+      ? runtime.readProposalForSettlement(proposalIdFromChain)
+      : null;
     if (!proposalRow) {
-      throw new Error(`discovery-settlement-policy: proposal ${proposalSummary.id} vanished before settlement`);
+      const fallback = runtime.readLatestProposalByEpic(ctx.epicId);
+      if (fallback) proposalRow = runtime.readProposalForSettlement(fallback.id);
+    }
+    if (!proposalRow) {
+      throw new Error(`discovery-settlement-policy: no canonical proposal for epic ${ctx.epicId} (chain proposalId=${proposalIdFromChain})`);
     }
 
+    // 3. Exact readiness lineage: assessmentId из chain bindings, либо latest
+    //    accepted for THIS proposal. Никаких latest-by-epic в authoritative path.
+    const assessmentIdFromChain = Number(chain.bindings?.assessmentId ?? 0);
+    const readinessSlice = findReadinessSlice(
+      runtime,
+      ctx.epicId,
+      proposalRow.id,
+      assessmentIdFromChain,
+    );
+
+    // 4. Собрать snapshot + вызвать политику.
     const proposal: SettlementProposalInput = {
       id: proposalRow.id,
       content_hash: proposalRow.content_hash,
@@ -133,12 +171,6 @@ function createDiscoverySettlementHandler(
       source_submission_id: proposalRow.source_submission_id,
       normalization_proposal_id: proposalRow.normalization_proposal_id,
     };
-
-    // 2. Найти принятую readiness assessment для proposal (если есть).
-    const readinessSlice = findReadinessSlice(runtime, proposalRow.id);
-
-    // 3. Собрать snapshot и вызвать политику.
-    const capturedAt = new Date().toISOString();
     const snapshot: DiscoverySettlementInputSnapshot = {
       schema_version: DISCOVERY_SETTLEMENT_INPUT_SCHEMA,
       epic_id: ctx.epicId,
@@ -148,35 +180,98 @@ function createDiscoverySettlementHandler(
         version: policy.version,
         content_hash: policy.contentHash,
       } satisfies SettlementPolicyInput,
-      captured_at: capturedAt,
+      captured_at: new Date().toISOString(),
     };
-
     const inputHash = buildSettlementInputHash(snapshot);
     const evaluation = policy.evaluate(snapshot);
     const decision = evaluation.decision;
 
+    // 5. Д6: handler сам формирует AuthoritativeSettlementResult — certificate
+    //    payload + hash. Это module content (Discovery schema, policy lineage).
+    //    Runtime (GenericFlowExecutor) только валидирует envelope + атомарно
+    //    сохраняет (Д7), не реконструируя сертификат заново.
+    const certificatePayload = {
+      schemaVersion: 'saga3.discovery-outcome-certificate.generic.v1',
+      decision: decision.decision,
+      reasonCodes: decision.reason_codes,
+      rationale: decision.rationale,
+      inputHash,
+      payload: {
+        epic_id: ctx.epicId,
+        proposal: { id: proposalRow.id, content_hash: proposalRow.content_hash },
+        readiness: {
+          status: readinessSlice.status,
+          assessment_id: readinessSlice.assessment_id,
+          content_hash: readinessSlice.content_hash,
+        },
+        policy: { version: policy.version, content_hash: policy.contentHash },
+        decision: decision.decision,
+        reason_codes: decision.reason_codes,
+        rationale: decision.rationale,
+        policy_trace: evaluation.trace,
+        settlement_input_hash: inputHash,
+      },
+    };
+    // certificateHash — SHA-256 над canonical JSON payload. Используем
+    // generic helper (Д9 вынесет его в process-modules/shared/).
+    const certificateHash = sha256Hex(certificatePayload);
+
     return {
-      event: decision.decision,
-      output: {
-        snapshot,
-        inputHash,
-        decision,
-        trace: evaluation.trace,
+      event: decision.decision, // domain.go / domain.clarify / domain.reject
+      production: {
+        schema: 'saga3.discovery-settlement.v1',
+        artifactRef: `settlement:${ctx.epicId}:${proposalRow.id}:${inputHash.slice(0, 12)}`,
+        contentHash: certificateHash,
+        bindings: {
+          epicId: ctx.epicId,
+          proposalId: proposalRow.id,
+          proposalHash: proposalRow.content_hash,
+          inputHash,
+          decision: decision.decision,
+          // Authoritative certificate envelope for the Runtime (Д6).
+          certificatePayload,
+          certificateHash,
+          certificateSchema: certificatePayload.schemaVersion,
+          reasonCodes: decision.reason_codes.join(','),
+          authority: 'discovery_settlement_policy',
+        },
       },
     };
   };
 }
 
-/** Build the readiness slice from the latest accepted assessment for the proposal. */
+/**
+ * Build the readiness slice (Д4 + Д-поправка).
+ *
+ * Priority:
+ *   1. Exact assessmentId from chain (downstream NodeRun bound the exact row).
+ *   2. Latest accepted assessment for THIS epic (scoped by proposalId lineage).
+ *
+ * The settlement policy treats missing/failed/paused identically (fail-closed
+ * to clarify); the distinction only matters for the idempotency key + audit.
+ * Returns the 'missing' slice when no assessment exists.
+ */
 function findReadinessSlice(
   runtime: Saga3DiscoveryRuntimePersistence,
-  proposalId: number,
+  epicId: number,
+  _proposalId: number,
+  assessmentIdFromChain: number,
 ): SettlementReadinessInput {
-  // The settlement policy treats missing/failed/paused identically (fail-closed
-  // to clarify); the distinction only matters for the idempotency key + audit.
-  // readLatestAcceptedReadinessForEpic returns the latest accepted assessment
-  // for the epic; null means no assessment exists yet.
-  const hit = runtime.readLatestAcceptedReadinessForEpic(proposalId);
+  if (assessmentIdFromChain) {
+    const exact = runtime.readReadinessAssessment(assessmentIdFromChain);
+    if (exact && exact.status === 'accepted_by_kernel') {
+      return {
+        status: 'accepted_by_kernel' satisfies SettlementReadinessStatus,
+        assessment_id: exact.id,
+        content_hash: exact.content_hash,
+        payload: exact.payload as never,
+      };
+    }
+  }
+  // Fallback: latest accepted readiness for the epic. NOTE: readLatestAccepted
+  // ReadinessForEpic filters by epic_id (NOT by proposalId — that was the bug
+  // flagged by the architect; the SQL joins control_intents.epic_id).
+  const hit = runtime.readLatestAcceptedReadinessForEpic(epicId);
   if (hit) {
     return {
       status: 'accepted_by_kernel' satisfies SettlementReadinessStatus,

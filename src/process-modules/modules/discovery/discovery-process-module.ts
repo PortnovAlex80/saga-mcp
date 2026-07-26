@@ -83,14 +83,11 @@ export const discoveryProcessModule: ProcessModuleDefinition = {
         inputSchema: { id: 'saga3.discovery-settlement-input.v1' },
         outputSchema: { id: 'saga3.discovery-outcome-certificate.v1' },
       },
-      {
-        id: 'diagnose',
-        label: 'Diagnose Outcome',
-        kind: 'lm',
-        description: 'Explain the issued certificate without changing its decision or authority.',
-        executionProfile: 'discovery-diagnosis-advisor',
-        outputSchema: { id: DISCOVERY_DIAGNOSIS_REPORT_SCHEMA },
-      },
+      // Д2: D5 Diagnosis REMOVED from the outcome-critical flow. It is advisory
+      // enrichment that runs AFTER ProcessRun completion (separate observer /
+      // postCompletionHook), never influencing the authoritative outcome or
+      // certificate. The diagnosis-advisor execution profile is still declared
+      // below for the future observer; it just has no flow node here.
       ...[
         'go', 'clarify', 'reject', 'defer', 'inconclusive', 'failed',
       ].map(code => ({
@@ -103,30 +100,32 @@ export const discoveryProcessModule: ProcessModuleDefinition = {
       })),
     ],
     transitions: [
-      // LM nodes emit a generic 'done' event on clean worker closure; the
-      // generic flow executor never emits module-specific events. The 'failed'
-      // event covers non-clean closure.
-      { from: 'produce-proposal', to: 'normalize-deterministic', on: 'done' },
-      { from: 'produce-proposal', to: 'complete-failed', on: 'failed' },
-      { from: 'normalize-deterministic', to: 'assess-readiness', on: 'accepted' },
-      { from: 'normalize-deterministic', to: 'normalize-semantic', on: 'semantic-ambiguity' },
-      { from: 'normalize-deterministic', to: 'complete-failed', on: 'invalid-json' },
-      { from: 'normalize-semantic', to: 'assess-readiness', on: 'done' },
-      { from: 'normalize-semantic', to: 'complete-failed', on: 'failed' },
-      { from: 'assess-readiness', to: 'settle', on: 'done' },
-      { from: 'assess-readiness', to: 'settle', on: 'failed' },
-      { from: 'settle', to: 'diagnose', on: 'go' },
-      { from: 'settle', to: 'diagnose', on: 'clarify' },
-      { from: 'settle', to: 'diagnose', on: 'reject' },
-      { from: 'settle', to: 'diagnose', on: 'defer' },
-      { from: 'settle', to: 'diagnose', on: 'inconclusive' },
-      { from: 'settle', to: 'complete-failed', on: 'failed' },
-      { from: 'diagnose', to: 'complete-go', on: 'done' },
-      { from: 'diagnose', to: 'complete-clarify', on: 'clarify' },
-      { from: 'diagnose', to: 'complete-reject', on: 'reject' },
-      { from: 'diagnose', to: 'complete-defer', on: 'defer' },
-      { from: 'diagnose', to: 'complete-inconclusive', on: 'inconclusive' },
-      { from: 'diagnose', to: 'complete-failed', on: 'failed-without-certificate' },
+      // Д1: event model separates runtime.* (LM physical status) from domain.*
+      // (kernel subject-matter decision). LM nodes emit only runtime.completed /
+      // runtime.failed. Kernel nodes emit domain events (accepted / go / ...).
+      // '*' is a wildcard default edge.
+      //
+      // Д2: D5 Diagnosis is REMOVED from the outcome-critical path. D4 Settlement
+      // emits its authoritative decision directly into the terminal outcome node;
+      // the certificate is issued at settlement time. Diagnosis runs as advisory
+      // enrichment AFTER ProcessRun completion (separate observer/hook), never
+      // influencing the outcome.
+      { from: 'produce-proposal', to: 'normalize-deterministic', on: 'runtime.completed' },
+      { from: 'produce-proposal', to: 'complete-failed', on: 'runtime.failed' },
+      { from: 'normalize-deterministic', to: 'assess-readiness', on: 'domain.accepted' },
+      { from: 'normalize-deterministic', to: 'normalize-semantic', on: 'domain.semantic-ambiguity' },
+      { from: 'normalize-deterministic', to: 'complete-failed', on: 'domain.invalid-json' },
+      { from: 'normalize-semantic', to: 'assess-readiness', on: 'runtime.completed' },
+      { from: 'normalize-semantic', to: 'complete-failed', on: 'runtime.failed' },
+      { from: 'assess-readiness', to: 'settle', on: 'runtime.completed' },
+      { from: 'assess-readiness', to: 'settle', on: 'runtime.failed' },
+      // D4 settlement → terminal outcome directly (Д2). No diagnosis detour.
+      { from: 'settle', to: 'complete-go', on: 'domain.go' },
+      { from: 'settle', to: 'complete-clarify', on: 'domain.clarify' },
+      { from: 'settle', to: 'complete-reject', on: 'domain.reject' },
+      { from: 'settle', to: 'complete-defer', on: 'domain.defer' },
+      { from: 'settle', to: 'complete-inconclusive', on: 'domain.inconclusive' },
+      { from: 'settle', to: 'complete-failed', on: 'domain.failed' },
     ],
     terminalNodeIds: [
       'complete-go',

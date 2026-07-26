@@ -141,6 +141,54 @@ LM-узлы `assess-readiness` и `diagnose`: pre-hook (собрать immutable
 - `node --test tests/process-modules/*.test.mjs` → 104/104 pass (99 ранее + 5 новых).
 - `node --test tests/**/*.test.mjs` → 706/706 pass (полная регрессия: миграция schema, обобщение dispatcher, параметризация projection ничего не сломали).
 
+---
+
+## Архитектурный ревью от 2026-07-26 (после коммита 6f903ab)
+
+Вердикт: коммит — правильный шаг, каркас верный (GenericFlowExecutor + NodeExecutor
++ KernelHandlerRegistry + discovery-installation как Pack/Core boundary), НО
+три моих «точечных фикса» были поверхностными. Главная корректировка:
+
+> Runtime должен передавать между узлами не сырые объекты и не последние записи
+> эпика, а durable, типизированные ссылки на точные продукции конкретных NodeRun
+> и WorkIntent.
+
+Директива: 10 шагов (Д1–Д10). До их завершения `Saga3DiscoveryEngine` удалять нельзя.
+
+### Статус Д-фиксов
+
+| # | Директива | Статус | Где |
+|---|---|---|---|
+| Д1 | Event model: разделить runtimeEvent (completed/failed/paused) и domainEvent (accepted/go/clarify). LM эмитит только runtime, kernel — domain. Flow transitions используют prefixes runtime.*/domain.* | ✅ | node-executor.ts (NodeExecutionResult + nodeEventForTransition), kernel-node-executor.ts, lm-node-executor.ts, discovery-process-module.ts transitions |
+| Д2 | Убрать Diagnosis из outcome-critical path: settle → terminal outcome + certificate напрямую; D5 как advisory enrichment после ProcessRun | ✅ | discovery-process-module.ts (diagnose node removed from flow; settle → complete-* directly) |
+| Д3 | Durable NodeProduction {schema, artifactRef, contentHash, bindings}. LM/kernel возвращают продукцию, не {taskId, intentId} и не raw output | ✅ | node-executor.ts (NodeProduction), kernel-handler-registry.ts (KernelHandlerResult.production), lm-node-executor.ts, discovery-installation.ts |
+| Д4 | Exact lineage в settlement: proposalId/proposalHash/assessmentId из NodeProduction цепочки, НЕ latest-by-epic | ✅ | discovery-installation.ts (createDiscoverySettlementHandler читает bindings.proposalId; fallback readLatestProposalByEpic только когда chain пуст) |
+| Д5 | Preparation nodes для D2/D3/D5 (создают ControlIntent, immutable case, bindings) | ⏳ pending | — |
+| Д6 | Убрать второй settle callback: settlement kernel сам формирует certificate envelope в bindings. Runtime только валидирует + сохраняет | ✅ | generic-flow-executor.ts (settle option удалён; cert читается из terminal.production.bindings.certificatePayload), discovery-installation.ts, process-outcome-emitter.ts (preserves upstream bindings) |
+| Д7 | Atomic certificate issuance: validation + issue + ProcessRun-completion в правильном порядке | ✅ partial | generic-flow-executor.ts (issue → validate → complete; полная транзакция across tables — follow-up) |
+| Д8 | Restart: durable NodeRun output bindings_json, resume восстанавливает chainInput | ⏳ pending | — |
+| Д9 | Убрать Discovery literals из generic adapter (outcomeAuthority, canonical-json → shared/) | ⏳ pending | — |
+| Д10 | Тесты сценариев: go/clarify/reject/semantic-normalization/missing-readiness/restart/два-Proposal/cert-validation-failure | ⏳ pending | — |
+
+### Дополнительные поправки (из ревью)
+
+- ✅ `outputSchema: profile.outputSchema.id` (был `workIntentSchema.id`) — lm-node-executor.ts
+- ✅ `findReadinessSlice` epicId/proposalId баг — теперь принимает (epicId, proposalId, assessmentId) и фильтрует корректно
+- ⏳ `NodeExecutionContext.processInput` + `nodeInput` — пока chainInput один; нужен separate field для module input vs node input (Д8 related)
+- ✅ 5 E2E тестов обновлены под новый event model + NodeProduction
+
+### Что нельзя делать до завершения Д-фиксов
+
+- Удалять `Saga3DiscoveryEngine` / `ExistingOrchestrationEngineAdapter` для Discovery
+- Считать P6c завершённым
+- Запускать live epic 39 ожидая совпадения certificate с baseline #23 (Д5 preparation nodes + Д8 restart ещё не готовы — live прогон остановится на readiness_get/diagnosis_get без control binding)
+
+### Regression status после Д1-Д7 (2026-07-26)
+
+- `tsc --noEmit` GREEN.
+- `node --test tests/process-modules/*.test.mjs` → 104/104 pass.
+- generic-flow-executor.test.mjs: 5/5 pass under new event model + NodeProduction + Д6 (no settle callback).
+
 ## Что НЕ входит (граница scope)
 
 - Human/External/Composite node executors — объявлены, кидают `not implemented` (composite = recursive GenericFlowExecutor вызов, но не в этом этапе).

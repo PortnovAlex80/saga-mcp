@@ -20,6 +20,7 @@
  */
 
 import type { KernelFlowNodeDefinition } from '../domain/process-module.js';
+import type { NodeProduction } from './node-executor.js';
 
 /**
  * Контекст, передаваемый в kernel handler при исполнении соответствующего узла.
@@ -39,14 +40,16 @@ export interface KernelHandlerContext {
 }
 
 /**
- * Результат kernel handler'а — то же, что NodeExecutionResult, но для kernel
- * узлов без `output` концептуально невозможно (есть всегда).
+ * Результат kernel handler'а. Kernel handler эмитит DOMAIN event (предметное
+ * событие — accepted / go / clarify / ...) и возвращает durable production
+ * (типизированную ссылку на продукцию). runtime-event всегда 'completed' для
+ * kernel-узла, вернувшего нормально.
  */
 export interface KernelHandlerResult {
-  /** Эмитированное событие — drives transition selection. */
+  /** Domain event — drives transition selection. */
   event: string;
-  /** Выходной артефакт узла (validated against node.outputSchema). */
-  output: unknown;
+  /** Durable production reference (schema + artifactRef + contentHash + bindings). */
+  production: NodeProduction;
   /** Для terminal-узлов: локальный outcome код (один из module.outcomes). */
   outcome?: string;
 }

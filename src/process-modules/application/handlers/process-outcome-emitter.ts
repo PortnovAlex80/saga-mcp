@@ -21,7 +21,8 @@ import type {
 export const PROCESS_OUTCOME_EMITTER_HANDLER_ID = 'process-outcome-emitter';
 
 /**
- * Generic terminal handler: эмитирует `outcome:<code>` и кладёт код в result.
+ * Generic terminal handler: эмитирует domain event `outcome:<code>` и кладёт
+ * код в production bindings. runtimeEvent всегда 'completed' (kernel node).
  *
  * Контракт:
  *   - узел обязан иметь `emitsOutcome` (это уже проверяет структурный валидатор
@@ -32,15 +33,28 @@ export const PROCESS_OUTCOME_EMITTER_HANDLER_ID = 'process-outcome-emitter';
 export function processOutcomeEmitter(ctx: KernelHandlerContext): KernelHandlerResult {
   const outcome = ctx.node.emitsOutcome;
   if (!outcome) {
-    // Этого не должно случиться — валидатор ловит на установке. Но защищаемся.
     throw new Error(
       `process-outcome-emitter invoked on node '${ctx.node.id}' `
         + `that has no emitsOutcome — definition is structurally invalid`,
     );
   }
+  // The terminal outcome-emitter PRESERVES the certificate envelope from the
+  // upstream settlement kernel node (carried in ctx.input.bindings). Without
+  // this, the GenericFlowExecutor would lose the authoritative certificate
+  // when the terminal node emits its own outcome-only production. The envelope
+  // is opaque to this generic handler — it just forwards what the module's
+  // settlement kernel produced.
+  const upstream = (ctx.input ?? {}) as { bindings?: Record<string, unknown> };
+  const upstreamBindings = upstream.bindings ?? {};
+  const bindings: Record<string, unknown> = { outcome, ...upstreamBindings };
   return {
     event: `outcome:${outcome}`,
-    output: { outcome },
+    production: {
+      schema: 'saga3.process-outcome.v1',
+      artifactRef: `outcome:${outcome}`,
+      contentHash: outcome,
+      bindings,
+    },
     outcome,
   };
 }

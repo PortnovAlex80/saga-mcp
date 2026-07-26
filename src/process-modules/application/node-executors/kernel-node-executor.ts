@@ -11,7 +11,7 @@
 import type {
   KernelFlowNodeDefinition,
 } from '../../domain/process-module.js';
-import type { KernelHandlerRegistry } from '../kernel-handler-registry.js';
+import type { KernelHandlerRegistry, KernelHandlerResult } from '../kernel-handler-registry.js';
 import {
   NodeExecutionError,
   type NodeExecutionContext,
@@ -28,7 +28,7 @@ export class KernelNodeExecutor implements NodeExecutor {
     const node = ctx.node as KernelFlowNodeDefinition;
     const handler = this.handlerRegistry.require(node.handler);
     try {
-      const result = await handler({
+      const result: KernelHandlerResult = await handler({
         projectId: ctx.projectId,
         epicId: ctx.epicId,
         processRunId: ctx.processRunId,
@@ -36,9 +36,13 @@ export class KernelNodeExecutor implements NodeExecutor {
         input: ctx.input,
         initiatedBy: ctx.initiatedBy,
       });
+      // Kernel handlers emit DOMAIN events (accepted / go / clarify / ...).
+      // runtimeEvent is always 'completed' for a kernel node that returned
+      // normally; a handler that wants to signal failure throws.
       return {
-        event: result.event,
-        output: result.output,
+        runtimeEvent: 'completed',
+        domainEvent: result.event,
+        production: result.production,
         outcome: result.outcome,
       };
     } catch (err) {

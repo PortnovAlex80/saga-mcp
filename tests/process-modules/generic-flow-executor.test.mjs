@@ -118,9 +118,10 @@ function syntheticModule(emitEvent = 'accept') {
           emitsOutcome: 'rejected',
         },
       ],
+      // Д1: transitions use prefixed events. Kernel emits domain.* events.
       transitions: [
-        { from: 'decide', to: 'complete-accepted', on: 'accept' },
-        { from: 'decide', to: 'complete-rejected', on: 'fail' },
+        { from: 'decide', to: 'complete-accepted', on: 'domain.accept' },
+        { from: 'decide', to: 'complete-rejected', on: 'domain.fail' },
       ],
       terminalNodeIds: ['complete-accepted', 'complete-rejected'],
     },
@@ -138,31 +139,47 @@ function buildExecutor(module, emitEvent, db) {
 
   const handlerRegistry = new KernelHandlerRegistry();
   handlerRegistry.register(PROCESS_OUTCOME_EMITTER_HANDLER_ID, processOutcomeEmitter);
-  handlerRegistry.register('synthetic-decider', () => ({
-    event: emitEvent,
-    output: { decision: emitEvent },
-  }));
+  // Д6: the kernel handler builds the authoritative certificate envelope itself
+  // and carries it in production.bindings. The Runtime does NOT call a second
+  // settle callback — it reads the envelope from the terminal production.
+  handlerRegistry.register('synthetic-decider', () => {
+    const outcome = emitEvent === 'accept' ? 'accepted' : 'rejected';
+    const payload = {
+      schemaVersion: 'synthetic.certificate.v1',
+      decision: outcome,
+      reasonCodes: [],
+      rationale: `synthetic ${outcome}`,
+      inputHash: 'test-input-hash',
+      payload: { outcome, decision: emitEvent },
+    };
+    return {
+      event: emitEvent, // domain.accept / domain.fail
+      production: {
+        schema: 'synthetic.decision.v1',
+        artifactRef: `decision:${emitEvent}`,
+        contentHash: sha256Hex(payload),
+        bindings: {
+          decision: emitEvent,
+          certificatePayload: payload,
+          certificateHash: sha256Hex(payload),
+          certificateSchema: payload.schemaVersion,
+          authority: 'synthetic-policy',
+        },
+      },
+    };
+  });
 
   const kernelExecutor = new KernelNodeExecutor(handlerRegistry);
   const nodeExecutors = new Map([['kernel', kernelExecutor]]);
 
+  // Д6: NO settle callback. GenericFlowExecutor reads the certificate envelope
+  // from the terminal production's bindings.
   return new GenericFlowExecutor({
     moduleRef: module.identity,
     processRunRepo,
     nodeRunRepo,
     certificateRepo,
     nodeExecutors,
-    settle: (_m, outcome) => {
-      const payload = {
-        schemaVersion: 'synthetic.certificate.v1',
-        decision: outcome,
-        reasonCodes: [],
-        rationale: `synthetic ${outcome}`,
-        inputHash: 'test-input-hash',
-        payload: { outcome },
-      };
-      return { payload, certificateHash: sha256Hex(payload), authority: 'synthetic-policy' };
-    },
   });
 }
 
@@ -226,7 +243,8 @@ test('GenericFlowExecutor walks entry→terminal and issues a certificate (happy
   assert.equal(nodeRuns.length, 2);
   assert.equal(nodeRuns[0].nodeId, 'decide');
   assert.equal(nodeRuns[0].status, 'completed');
-  assert.equal(nodeRuns[0].event, 'accept');
+  // Д1: event is prefixed (domain.* for kernel nodes).
+  assert.equal(nodeRuns[0].event, 'domain.accept');
   assert.equal(nodeRuns[1].nodeId, 'complete-accepted');
   assert.equal(nodeRuns[1].status, 'completed');
 
@@ -288,10 +306,14 @@ test('process-outcome-emitter is generic — does not hardcode any outcome code'
       epicId: 1,
       processRunId: 1,
       node: { id: `complete-${code}`, label: '', kind: 'kernel', description: '', handler: PROCESS_OUTCOME_EMITTER_HANDLER_ID, emitsOutcome: code },
-      input: {},
+      input: { bindings: { upstream: 'preserved' } },
       initiatedBy: 'test',
     });
     assert.equal(result.event, `outcome:${code}`);
     assert.equal(result.outcome, code);
+    // The handler preserves upstream chain bindings (Д6 — certificate envelope
+    // forwarded from the settlement kernel node through the terminal emitter).
+    assert.equal(result.production.bindings.upstream, 'preserved');
+    assert.equal(result.production.bindings.outcome, code);
   }
 });
