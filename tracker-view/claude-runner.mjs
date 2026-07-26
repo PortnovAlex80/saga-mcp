@@ -531,10 +531,22 @@ export class ClaudeBoardRunner {
     // Legacy path (no execution_context / Saga 2) keeps the old single-blacklist.
     const frozenTools = assignment.execution_context?.authority?.allowed_saga_tools;
     if (Array.isArray(frozenTools) && frozenTools.length > 0) {
-      const sagaAllowed = frozenTools.map(t => `mcp__saga__${t}`);
       // Non-saga built-in tools that workers legitimately need (heartbeat, file
       // reads for skill/worktree conventions). These are NOT authority-gated.
+      // The set MUST stay in sync with the builtin names that Process Module
+      // profiles and legacy engines put inside authority_scope.allowed_tools
+      // "for documentation and skill sync, not for gateway enforcement" (see
+      // saga3-discovery-engine DISCOVERY_ALLOWED_TOOLS).
       const builtin = ['Bash', 'Read', 'Write', 'Edit', 'Glob', 'Grep', 'MultiEdit', 'Task'];
+      const builtinSet = new Set(builtin);
+      // Only the actual saga MCP tools get the mcp__saga__ prefix. Mapping the
+      // builtin entries too produced names like `mcp__saga__Write` /
+      // `mcp__saga__Read` that the saga MCP server never exposes — claude then
+      // treats them as missing and the whole saga whitelist silently fails to
+      // load, leaving the worker without task_get / proposal_submit / worker_done.
+      const sagaAllowed = frozenTools
+        .filter(t => typeof t === 'string' && t.trim() !== '' && !builtinSet.has(t))
+        .map(t => `mcp__saga__${t}`);
       args.push('--allowedTools', [...sagaAllowed, ...builtin].join(','));
     } else {
       args.push('--disallowedTools', 'mcp__saga__worker_next');

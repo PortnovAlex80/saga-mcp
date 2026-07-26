@@ -229,7 +229,15 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
     ).run(
       input.epicId,
       `${titlePrefix}${input.objective.slice(0, 80)}`,
-      JSON.stringify({ objective: input.objective, ...(input.metadata ?? {}), work_intent_id: input.intentId }),
+      // Description is the human/worker-facing context the worker reads to
+      // understand WHAT to do. It must NOT carry machine lineage (process_run_id,
+      // process_node_id, process_input_hash, ...) — that lives in the `metadata`
+      // column below, where the managed-production ledger reads it. Mixing them
+      // produced a description like {"objective":...,"process_run_id":6,
+      // "process_node_input":{"objective":...}} where objective was duplicated
+      // and the worker waded through opaque JSON. Keep the legacy shape:
+      // { objective, work_intent_id } only.
+      JSON.stringify({ objective: input.objective, work_intent_id: input.intentId }),
       priority,
       input.taskKind,
       workflowStage,
