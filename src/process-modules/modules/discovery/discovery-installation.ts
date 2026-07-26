@@ -13,15 +13,18 @@
  * Регистрируются:
  *   - 'discovery-normalization-kernel' → pure `normalizeDiscoveryProposalInput`
  *     (детерминированная нормализация, без LM);
+ *   - 'discovery-prepare-readiness' → D5 preparation: создаёт readiness
+ *     ControlIntent + authority WorkIntent + projected advisor task, возвращает
+ *     machine-filled bindings для downstream LM-узла assess-readiness;
  *   - 'discovery-settlement-policy' → `discoverySettlementPolicyV1.evaluate()`
  *     поверх собранного snapshot (content: manifest, reason codes, thresholds).
  *
  * 'process-outcome-emitter' НЕ регистрируется здесь — это generic handler,
  * который сам runtime регистрирует (он не знает про go/clarify/...).
  *
- * LM-узлы (produce-proposal, normalize-semantic, assess-readiness, diagnose)
- * тоже не здесь — они исполняются LmNodeExecutor'ом по executionProfile из
- * descriptor'а. Discovery Pack только объявляет профили (content).
+ * LM-узлы (produce-proposal, normalize-semantic, assess-readiness) тоже не
+ * здесь — они исполняются LmNodeExecutor'ом по executionProfile из descriptor'а.
+ * Discovery Pack только объявляет профили (content).
  */
 
 import type { KernelHandler } from '../../application/kernel-handler-registry.js';
@@ -61,6 +64,7 @@ export function createDiscoveryKernelHandlers(
 ): Record<string, KernelHandler> {
   return {
     'discovery-normalization-kernel': discoveryNormalizationKernelHandler,
+    'discovery-prepare-readiness': createPrepareReadinessHandler(deps.runtimePersistence),
     'discovery-settlement-policy': createDiscoverySettlementHandler(deps.runtimePersistence),
   };
 }
@@ -103,6 +107,93 @@ const discoveryNormalizationKernelHandler: KernelHandler = (ctx) => {
     // Не terminal — у normalization-kernel нет emitsOutcome.
   };
 };
+
+// ---------------------------------------------------------------------------
+// discovery-prepare-readiness (Д5)
+// ---------------------------------------------------------------------------
+
+/**
+ * D5 preparation handler: создаёт readiness ControlIntent + authority
+ * WorkIntent + projected advisor task для EXACT immutable Proposal версии.
+ * Возвращает machine-filled bindings (controlIntentId, authorityIntentId,
+ * taskId, proposalId, proposalHash), которые:
+ *   - LM-узел assess-readiness использует как pre-projected task (LmNodeExecutor
+ *     переиспользует готовый taskId из bindings.preProjectedTaskId вместо
+ *     создания нового);
+ *   - воркер читает через task_get → metadata.control_intent_id → readiness_get.
+ *
+ * Idempotent на (proposalId, proposalContentHash) — повторный запуск для того
+ * же Proposal версии вернёт тот же control + task.
+ */
+function createPrepareReadinessHandler(
+  runtime: Saga3DiscoveryRuntimePersistence,
+): KernelHandler {
+  return (ctx) => {
+    if (ctx.epicId === null) {
+      throw new Error('discovery-prepare-readiness: epicId is required');
+    }
+    // chain bindings от предыдущих узлов. produce-proposal кладёт intentId/
+    // workIntentId/taskId. normalize-deterministic добавляет proposal lineage.
+    // Proposal ID/Hash мы должны разрешить: либо из bindings (если предыдущий
+    // узел его записал), либо из БД (readLatestProposalByEpic — fallback для
+    // случая, когда chain ещё не нёс proposalId; в будущем Д8 сделает это exact).
+    const chain = (ctx.input ?? {}) as { bindings?: Record<string, unknown> };
+    const bindings = chain.bindings ?? {};
+    const sourceIntentId = Number(bindings.workIntentId ?? bindings.intentId ?? 0);
+
+    let proposalId = Number(bindings.proposalId ?? 0);
+    let proposalHash = String(bindings.proposalHash ?? '');
+
+    if (!proposalId) {
+      // Fallback: найти канонический Proposal для эпика.
+      const summary = runtime.readLatestProposalByEpic(ctx.epicId);
+      if (!summary) {
+        // Нет Proposal — readiness не к чему готовить. Сигнализируем failure;
+        // descriptor ведёт в complete-failed.
+        return {
+          event: 'failed',
+          production: {
+            schema: 'saga3.discovery-prepare-readiness.v1',
+            artifactRef: `prepare-readiness:${ctx.epicId}:no-proposal`,
+            contentHash: '',
+            bindings: { epicId: ctx.epicId, reason: 'no-proposal' },
+          },
+        };
+      }
+      proposalId = summary.id;
+      proposalHash = summary.content_hash;
+    }
+
+    const execution = runtime.ensureReadinessControl({
+      epicId: ctx.epicId,
+      projectId: ctx.projectId,
+      proposalId,
+      proposalContentHash: proposalHash,
+      sourceIntentId: sourceIntentId || proposalId,
+      objective: `Assess readiness of discovery proposal ${proposalId}`,
+    });
+
+    return {
+      event: 'prepared', // domain.prepared → assess-readiness
+      production: {
+        schema: 'saga3.discovery-prepare-readiness.v1',
+        artifactRef: `prepare-readiness:${execution.controlIntentId}`,
+        contentHash: proposalHash,
+        bindings: {
+          epicId: ctx.epicId,
+          controlIntentId: execution.controlIntentId,
+          authorityIntentId: execution.authorityIntentId,
+          // КЛЮЧЕВОЕ: готовый task для LM-узла assess-readiness. LmNodeExecutor
+          // переиспользует его вместо создания нового, см. preProjectedTaskId.
+          preProjectedTaskId: execution.taskId,
+          proposalId,
+          proposalHash,
+          sourceIntentId,
+        },
+      },
+    };
+  };
+}
 
 // ---------------------------------------------------------------------------
 // discovery-settlement-policy

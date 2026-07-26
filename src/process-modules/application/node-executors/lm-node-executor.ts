@@ -150,37 +150,59 @@ export class LmNodeExecutor implements NodeExecutor {
         ? inputObj.objective
         : (node.description || node.label);
 
-      // 1. Create the WorkIntent — module content (kind/schema/tools) from the profile.
-      const intent = this.persistence.createIntent({
-        epicId: ctx.epicId,
-        kind: profile.workIntentKind,
-        objective,
-        authorityScope: {
-          snapshot_ref: `process-run:${ctx.processRunId}:node:${node.id}`,
-          scope: profile.semanticSkill,
-          allowed_tools: [...profile.allowedTools],
-          enforcement: 'runtime',
-        },
-        outputSchema: profile.outputSchema.id,
-        tokenBudget: 0,
-        retryBudget: profile.retryPolicy.maxAttempts,
-      });
+      // Д5: a preparation kernel node upstream may have ALREADY created the
+      // WorkIntent + projected task (e.g. discovery-prepare-readiness creates
+      // the readiness ControlIntent + authority WorkIntent + advisor task). In
+      // that case the chain bindings carry preProjectedTaskId +
+      // preProjectedIntentId, and the executor REUSES them instead of creating
+      // its own — so the worker lands on the exact task the control intent
+      // bound to the immutable Proposal version, and readiness_get/
+      // readiness_submit succeed via task metadata.control_intent_id.
+      const prepBindings = (ctx.input as { bindings?: Record<string, unknown> } | null)?.bindings ?? {};
+      const preProjectedTaskId = Number(prepBindings.preProjectedTaskId ?? 0);
+      const preProjectedIntentId = Number(prepBindings.preProjectedIntentId ?? prepBindings.authorityIntentId ?? 0);
 
-      // 2. Project the board task — module content (stage/kind/skill) from the profile.
-      const generationKey = `process-run:${ctx.processRunId}:node:${node.id}`;
-      const taskId = this.persistence.ensureProjectedTask({
-        epicId: ctx.epicId,
-        projectId: ctx.projectId,
-        intentId: intent.id,
-        objective,
-        taskKind: profile.taskKind,
-        executionSkill: profile.executionSkill,
-        generationKey,
-        workflowStage: ctx.module.identity.kind,
-        executionMode: profile.executionMode,
-        titlePrefix: `${ctx.module.identity.displayName}: `,
-      });
-      this.persistence.setProjectedTask(intent.id, taskId);
+      let intent: { id: number };
+      let taskId: number;
+      if (preProjectedTaskId && preProjectedIntentId) {
+        // Preparation node already projected the task — reuse it. The worker
+        // spawned below claims this exact task; its metadata carries the
+        // control_intent_id the module's submit handlers verify.
+        intent = { id: preProjectedIntentId };
+        taskId = preProjectedTaskId;
+      } else {
+        // 1. Create the WorkIntent — module content (kind/schema/tools) from the profile.
+        intent = this.persistence.createIntent({
+          epicId: ctx.epicId,
+          kind: profile.workIntentKind,
+          objective,
+          authorityScope: {
+            snapshot_ref: `process-run:${ctx.processRunId}:node:${node.id}`,
+            scope: profile.semanticSkill,
+            allowed_tools: [...profile.allowedTools],
+            enforcement: 'runtime',
+          },
+          outputSchema: profile.outputSchema.id,
+          tokenBudget: 0,
+          retryBudget: profile.retryPolicy.maxAttempts,
+        });
+
+        // 2. Project the board task — module content (stage/kind/skill) from the profile.
+        const generationKey = `process-run:${ctx.processRunId}:node:${node.id}`;
+        taskId = this.persistence.ensureProjectedTask({
+          epicId: ctx.epicId,
+          projectId: ctx.projectId,
+          intentId: intent.id,
+          objective,
+          taskKind: profile.taskKind,
+          executionSkill: profile.executionSkill,
+          generationKey,
+          workflowStage: ctx.module.identity.kind,
+          executionMode: profile.executionMode,
+          titlePrefix: `${ctx.module.identity.displayName}: `,
+        });
+        this.persistence.setProjectedTask(intent.id, taskId);
+      }
 
       // 3. Prepare (CAS open→executing guard) — handles resume of a stale fence.
       const preparation = this.persistence.prepareIntentForExecution(intent.id, taskId);
@@ -258,21 +280,23 @@ export class LmNodeExecutor implements NodeExecutor {
         // LM nodes emit ONLY runtimeEvent ('completed'). They never emit a
         // domainEvent — domain semantics (accepted/go/clarify) belong to kernel
         // nodes. The production carries exact runtime bindings (intentId,
-        // taskId, workIntentId) that downstream kernel handlers use to re-read
-        // the canonical artifact from durable storage. The artifactRef/contentHash
-        // are module-agnostic here: the kernel handler resolves the real
-        // artifact (e.g. proposal:141) from bindings via the runtime persistence.
+        // taskId, workIntentId) PLUS any upstream bindings forwarded from the
+        // preparation node (proposalId/proposalHash/controlIntentId), so the
+        // downstream settlement kernel can read exact lineage from the chain.
         return {
           runtimeEvent: 'completed',
           production: {
             schema: profile.outputSchema.id,
             artifactRef: `lm:${node.id}:task:${taskId}`,
-            contentHash: '', // kernel handler recomputes from canonical row
+            contentHash: '',
             bindings: {
               intentId: intent.id,
               taskId,
               workIntentId: intent.id,
               epicId: ctx.epicId ?? 0,
+              // Forward upstream preparation bindings (proposalId, proposalHash,
+              // controlIntentId, ...) so settlement kernel can read exact lineage.
+              ...forwardPrepBindings(prepBindings),
             },
           },
         };
@@ -294,4 +318,22 @@ function resolveProfile(
     if (profile.id === profileId) return profile;
   }
   return null;
+}
+
+/**
+ * Forward upstream preparation bindings (from a D5 prepare-* kernel node) so the
+ * downstream settlement kernel can read exact lineage (proposalId/proposalHash/
+ * controlIntentId/assessmentId) from the chain. Internal runtime fields
+ * (preProjectedTaskId/preProjectedIntentId) are dropped — they are consumed by
+ * this executor only.
+ */
+function forwardPrepBindings(
+  prep: Record<string, unknown>,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(prep)) {
+    if (k === 'preProjectedTaskId' || k === 'preProjectedIntentId') continue;
+    out[k] = v;
+  }
+  return out;
 }

@@ -30,6 +30,15 @@ export interface NodeRunRecord {
   /** Reference to the node's output artifact (opaque to the runtime). */
   outputRef: string | null;
   outputHash: string | null;
+  /**
+   * Д8: durable NodeProduction bindings (JSON). On restart the walker restores
+   * chainInput = { bindings: <output_bindings> } from the last completed
+   * NodeRun so the next node sees the exact lineage the previous run produced
+   * (proposalId, controlIntentId, preProjectedTaskId, certificatePayload, …).
+   * Without this, restart re-initialises chainInput from the module input and
+   * the next node loses all upstream context.
+   */
+  outputBindings: Record<string, unknown> | null;
   errorMessage: string | null;
   startedAt: string;
   completedAt: string | null;
@@ -46,6 +55,8 @@ export interface CompleteNodeRunInput {
   event: string;
   outputRef: string | null;
   outputHash: string | null;
+  /** Д8: durable bindings to persist for restart recovery. */
+  outputBindings?: Record<string, unknown> | null;
 }
 
 export interface FailNodeRunInput {

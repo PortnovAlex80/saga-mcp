@@ -67,6 +67,20 @@ export const discoveryProcessModule: ProcessModuleDefinition = {
         outputSchema: { id: DISCOVERY_NORMALIZATION_PROPOSAL_SCHEMA },
       },
       {
+        // Д5: preparation kernel node. Creates the AssessDiscoveryReadiness
+        // ControlIntent + authority WorkIntent + projected advisor task bound
+        // to an EXACT immutable Proposal version, and returns machine-filled
+        // bindings (controlIntentId, authorityIntentId, taskId, proposalId,
+        // proposalHash). The downstream assess-readiness LM node reads these
+        // from its input bindings so readiness_get/readiness_submit succeed.
+        id: 'prepare-readiness',
+        label: 'Prepare Readiness Control',
+        kind: 'kernel',
+        description: 'Create the readiness ControlIntent + authority WorkIntent + projected task for the canonical proposal.',
+        handler: 'discovery-prepare-readiness',
+        outputSchema: { id: DISCOVERY_READINESS_ASSESSMENT_SCHEMA },
+      },
+      {
         id: 'assess-readiness',
         label: 'Assess Readiness',
         kind: 'lm',
@@ -112,11 +126,15 @@ export const discoveryProcessModule: ProcessModuleDefinition = {
       // influencing the outcome.
       { from: 'produce-proposal', to: 'normalize-deterministic', on: 'runtime.completed' },
       { from: 'produce-proposal', to: 'complete-failed', on: 'runtime.failed' },
-      { from: 'normalize-deterministic', to: 'assess-readiness', on: 'domain.accepted' },
+      { from: 'normalize-deterministic', to: 'prepare-readiness', on: 'domain.accepted' },
       { from: 'normalize-deterministic', to: 'normalize-semantic', on: 'domain.semantic-ambiguity' },
       { from: 'normalize-deterministic', to: 'complete-failed', on: 'domain.invalid-json' },
-      { from: 'normalize-semantic', to: 'assess-readiness', on: 'runtime.completed' },
+      { from: 'normalize-semantic', to: 'prepare-readiness', on: 'runtime.completed' },
       { from: 'normalize-semantic', to: 'complete-failed', on: 'runtime.failed' },
+      // Д5: prepare-readiness creates the ControlIntent + authority WorkIntent +
+      // projected advisor task, then assess-readiness LM node runs against them.
+      { from: 'prepare-readiness', to: 'assess-readiness', on: 'domain.prepared' },
+      { from: 'prepare-readiness', to: 'complete-failed', on: 'domain.failed' },
       { from: 'assess-readiness', to: 'settle', on: 'runtime.completed' },
       { from: 'assess-readiness', to: 'settle', on: 'runtime.failed' },
       // D4 settlement → terminal outcome directly (Д2). No diagnosis detour.

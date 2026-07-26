@@ -233,15 +233,20 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
         // The resumed node was terminal — re-emit its outcome.
         const terminalNode = this.findNode(flow, lastCompleted.nodeId);
         if (terminalNode?.emitsOutcome) {
-          // Д8 partial: rebuild a production from the durable NodeRun output_ref.
-          // Full durable bindings restoration is tracked separately; for now the
-          // terminal outcome is enough to drive settlement + certificate replay.
+          // Д8: rebuild production from durable NodeRun output_ref + bindings.
+          // The bindings carry the certificate envelope (Д6) the previous run
+          // produced, so settlement/certificate replay works on restart.
           return {
             outcome: terminalNode.emitsOutcome,
             result: {
               runtimeEvent: 'completed',
-              production: lastCompleted.outputRef
-                ? { schema: '', artifactRef: lastCompleted.outputRef, contentHash: lastCompleted.outputHash ?? '', bindings: {} }
+              production: lastCompleted.outputRef || lastCompleted.outputBindings
+                ? {
+                    schema: '',
+                    artifactRef: lastCompleted.outputRef ?? '',
+                    contentHash: lastCompleted.outputHash ?? '',
+                    bindings: lastCompleted.outputBindings ?? {},
+                  }
                 : undefined,
             },
           };
@@ -260,7 +265,17 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
     // receives the PREVIOUS node's output — this is the data chain that lets a
     // settlement kernel handler read the proposal produced by the LM node
     // upstream, without the executor knowing the module vocabulary.
+    //
+    // Д8: on restart, if a NodeRun already completed in this ProcessRun, the
+    // chainInput is RESTORED from that NodeRun's durable output_bindings — not
+    // re-initialised from the module input. This preserves the exact lineage
+    // (proposalId, controlIntentId, certificatePayload, …) the previous run
+    // produced, so resuming the next node sees the same upstream context.
     let chainInput: unknown = context.inputPayload;
+    const lastCompletedForChain = nodeRunRepo.readLastCompleted(context.processRunId);
+    if (lastCompletedForChain?.outputBindings) {
+      chainInput = { bindings: lastCompletedForChain.outputBindings };
+    }
 
     for (let step = 0; step < maxSteps; step += 1) {
       const node = this.findNode(flow, currentNodeId);
@@ -305,11 +320,13 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
 
       const outputRef = result.production?.artifactRef ?? null;
       const outputHash = result.production?.contentHash ?? null;
+      const outputBindings = result.production?.bindings ?? null;
       nodeRunRepo.complete({
         id: nodeRun.id,
         event: nodeEventForTransition(result),
         outputRef,
         outputHash,
+        outputBindings,
       });
 
       // Forward the node's production (durable ref) to the next node in the

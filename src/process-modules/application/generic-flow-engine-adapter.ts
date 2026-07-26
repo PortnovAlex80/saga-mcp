@@ -31,7 +31,7 @@ import type {
   ProcessOutcomeProjector,
 } from './process-module-runtime-engine.js';
 import type { ProcessRunRepository } from '../persistence/process-run-repository.js';
-import { canonicalJson, sha256Hex } from '../../saga3/shared/discovery-canonical.js';
+import { sha256Hex } from '../shared/canonical-json.js';
 
 export interface GenericFlowEngineAdapterOptions {
   moduleRef: ProcessModuleReference;
@@ -143,7 +143,10 @@ export class GenericFlowEngineAdapter implements ProcessModuleExecutionAdapter {
       pipelineScope: module.identity.kind,
       scopeCompleted: true,
       outcome: result.outcome,
-      outcomeAuthority: 'discovery_settlement_policy',
+      // Д9: authority comes from the RunResult (set by the settlement kernel
+      // handler via production.bindings.authority), NOT a discovery literal.
+      // Fallback to module.identity.kind when the module did not set one.
+      outcomeAuthority: (result.authority ?? module.identity.kind) as 'worker_proposal' | 'normalized_worker_proposal' | 'discovery_settlement_policy' | 'none',
     };
   }
 
@@ -175,7 +178,8 @@ export class GenericFlowEngineAdapter implements ProcessModuleExecutionAdapter {
       pipelineScope: module.identity.kind,
       scopeCompleted: run.status === 'completed',
       outcome: run.localOutcome ?? undefined,
-      outcomeAuthority: 'discovery_settlement_policy',
+      // Д9: replay path has no RunResult authority; fall back to module kind.
+      outcomeAuthority: module.identity.kind as 'worker_proposal' | 'normalized_worker_proposal' | 'discovery_settlement_policy' | 'none',
     };
   }
 }
@@ -185,6 +189,3 @@ const defaultProjector: ProcessOutcomeProjector = (_module, result) => ({
   authority: result.processOutcome?.authority ?? null,
   outputRef: result.processOutcome?.outputRef ?? null,
 });
-
-// Re-export for composition-root convenience (avoids importing canonicalJson there).
-export { canonicalJson };
