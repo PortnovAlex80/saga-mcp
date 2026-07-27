@@ -245,7 +245,15 @@ export class LmNodeExecutor implements NodeExecutor {
               allowed_tools: [...profile.allowedTools],
               enforcement: 'runtime',
             },
-            outputSchema: profile.outputSchema.id,
+            // outputSchema here is the WorkIntent's OWN output contract
+            // (workIntentSchema, e.g. saga3.work-intent.discovery.v1). It is
+            // what proposal_submit / readiness_submit / etc. compare against
+            // in saga3_work_intents.output_schema. Using profile.outputSchema
+            // (the proposal payload schema, e.g. saga3.discovery-proposal.v1)
+            // here produced "intent output_schema mismatch" at proposal_submit:
+            // intent.output_schema ended up as the PROPOSAL schema while the
+            // submit handler compared it against the INTENT schema.
+            outputSchema: profile.workIntentSchema.id,
             tokenBudget: 0,
             retryBudget: profile.retryPolicy.maxAttempts,
           },
