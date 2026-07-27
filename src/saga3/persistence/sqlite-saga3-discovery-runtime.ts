@@ -378,14 +378,31 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
       }
       if (task.current_execution_id) {
         const execution = db.prepare(
-          'SELECT state FROM worker_executions WHERE execution_id=?',
-        ).get(task.current_execution_id) as { state: string } | undefined;
+          'SELECT state, pid, started_at FROM worker_executions WHERE execution_id=?',
+        ).get(task.current_execution_id) as { state: string; pid: number | null; started_at: string | null } | undefined;
         if (execution && ['reserved','running','cancel_requested'].includes(execution.state)) {
-          db.exec('COMMIT');
-          return {
-            state: 'active', intentStatus: 'executing', taskStatus: task.status,
-            detail: `execution ${task.current_execution_id} is still ${execution.state}`,
-          };
+          // A 'reserved' execution without a PID is a zombie — the spawn
+          // failed (or the process crashed before recording its PID). Treat
+          // it as gone, not active, so prepareIntentForExecution falls
+          // through to the reset path below. Without this, a zombie reserved
+          // execution deadlocks resume forever: LM-executor sees state='active'
+          // and returns paused without spawning a new worker.
+          const isZombie = execution.state === 'reserved'
+            && (execution.pid === null || execution.pid === undefined)
+            && (execution.started_at === null || execution.started_at === undefined);
+          if (!isZombie) {
+            db.exec('COMMIT');
+            return {
+              state: 'active', intentStatus: 'executing', taskStatus: task.status,
+              detail: `execution ${task.current_execution_id} is still ${execution.state}`,
+            };
+          }
+          // Zombie reserved: mark it lost so it doesn't confuse future queries.
+          db.prepare(
+            `UPDATE worker_executions SET state='lost', finished_at=datetime('now'),
+                    last_error='zombie reserved (no PID/started_at) cleaned by prepareIntentForExecution'
+             WHERE execution_id=? AND state='reserved'`,
+          ).run(task.current_execution_id);
         }
       }
       const restoredStatus = prepareSaga3ProjectedTaskForExecution(db, {

@@ -61,6 +61,22 @@ export interface ManagedProductionLedger {
   listTracesForExecution(
     query: ManagedExecutionProductQuery,
   ): readonly ManagedTraceProductionRecord[];
+  /**
+   * Fallback for resume: find artifact productions for one (module, node) across
+   * ALL ProcessRuns of the same epic. Used when the current ProcessRun has no
+   * ledger entries (resume created a new run but the durable artifacts persist
+   * from a previous run). Scoped by epic to avoid cross-epic leakage.
+   */
+  listArtifactsForNodeInEpic(
+    epicId: number,
+    moduleRef: string,
+    nodeId: string,
+  ): readonly ManagedArtifactProductionRecord[];
+  listTracesForNodeInEpic(
+    epicId: number,
+    moduleRef: string,
+    nodeId: string,
+  ): readonly ManagedTraceProductionRecord[];
 }
 
 export interface ManagedExecutionProvenance {
@@ -457,6 +473,36 @@ export class SqliteManagedProductionLedger implements ManagedProductionLedger {
       query.taskId,
       query.executionId,
     ) as TraceLedgerRow[];
+    return rows.map(traceRowToRecord);
+  }
+
+  listArtifactsForNodeInEpic(
+    epicId: number,
+    moduleRef: string,
+    nodeId: string,
+  ): readonly ManagedArtifactProductionRecord[] {
+    const rows = this.db.prepare(
+      `SELECT mp.*
+         FROM saga3_managed_artifact_productions mp
+         JOIN saga3_process_runs pr ON pr.id = mp.process_run_id
+        WHERE pr.epic_id=? AND mp.module_ref=? AND mp.node_id=?
+        ORDER BY mp.id`,
+    ).all(epicId, moduleRef, nodeId) as ArtifactLedgerRow[];
+    return rows.map(artifactRowToRecord);
+  }
+
+  listTracesForNodeInEpic(
+    epicId: number,
+    moduleRef: string,
+    nodeId: string,
+  ): readonly ManagedTraceProductionRecord[] {
+    const rows = this.db.prepare(
+      `SELECT mp.*
+         FROM saga3_managed_trace_productions mp
+         JOIN saga3_process_runs pr ON pr.id = mp.process_run_id
+        WHERE pr.epic_id=? AND mp.module_ref=? AND mp.node_id=?
+        ORDER BY mp.id`,
+    ).all(epicId, moduleRef, nodeId) as TraceLedgerRow[];
     return rows.map(traceRowToRecord);
   }
 }

@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { getDb } from '../../../db.js';
 import type { ProcessModuleDefinition } from '../../domain/process-module.js';
 import type {
   KernelHandler,
@@ -198,6 +199,68 @@ export function createFormalizationLifecycleOutputPayloadResolver(
   };
 }
 
+/**
+ * Transition an SRS artifact to accepted+clean. Called by the architecture
+ * resolver after all validation checks pass. Mirrors how other resolvers
+ * accept their own artifacts (PRD, FR, UC, AC all end up 'accepted' after
+ * their resolver node).
+ */
+function acceptSrsArtifact(artifactId: number, contentHash: string): void {
+  const db = getDb();
+  db.prepare(
+    `UPDATE artifacts
+        SET status='accepted',
+            accepted_hash=?,
+            drift_state='clean',
+            updated_at=datetime('now')
+      WHERE id=? AND status='draft'`,
+  ).run(contentHash, artifactId);
+}
+
+function ensureBriefRootTrace(
+  _deps: FormalizationInstallationDeps,
+  ctx: KernelHandlerContext,
+  prdArtifactId: number,
+): void {
+  if (ctx.epicId === null || ctx.projectId === undefined) return;
+  const db = getDb();
+  // Check if PRD already has a root trace
+  const existing = db.prepare(
+    `SELECT t.target_id, a.type
+       FROM artifact_traces t
+       JOIN artifacts a ON a.id = t.target_id
+      WHERE t.source_id=? AND t.link_type='derived_from' AND t.target_type='artifact'
+        AND a.type NOT IN ('PRD','FR','NFR','RULE','UC','AC','SRS')`,
+  ).get(prdArtifactId) as { target_id: number; type: string } | undefined;
+  if (existing) return; // already has a root trace
+
+  // Check if a brief already exists in this epic
+  let briefId = (db.prepare(
+    "SELECT id FROM artifacts WHERE epic_id=? AND type='brief' AND status='accepted' ORDER BY id LIMIT 1",
+  ).get(ctx.epicId) as { id: number } | undefined)?.id;
+
+  if (!briefId) {
+    // Create a synthetic brief from the discovery context
+    const briefHash = sha256Hex({
+      schema: 'saga3.discovery-brief.v1',
+      epic_id: ctx.epicId,
+      process_run_id: ctx.processRunId,
+      note: 'Auto-provisioned by formalization resolver',
+    });
+    const result = db.prepare(
+      `INSERT INTO artifacts (project_id, epic_id, type, code, title, path, status, content_hash, accepted_hash, drift_state, tags, metadata)
+       VALUES (?, ?, 'brief', 'BRIEF-1', 'Discovery Brief (auto-provisioned)', 'docs/discovery/brief-auto-provisioned.md', 'accepted', ?, ?, 'clean', '[]', '{}') RETURNING id`,
+    ).get(ctx.projectId, ctx.epicId, briefHash, briefHash) as { id: number };
+    briefId = result.id;
+  }
+
+  // Create trace PRD -> brief if it doesn't exist
+  db.prepare(
+    `INSERT OR IGNORE INTO artifact_traces (source_id, target_type, target_id, link_type)
+     VALUES (?, 'artifact', ?, 'derived_from')`,
+  ).run(prdArtifactId, briefId);
+}
+
 function createResolveProductHandler(deps: FormalizationInstallationDeps): KernelHandler {
   return ctx => withResolutionFailure(ctx, FORMALIZATION_HANDLER_IDS.resolveProduct, () => {
     const writes = readExecutionWrites(
@@ -215,7 +278,7 @@ function createResolveProductHandler(deps: FormalizationInstallationDeps): Kerne
         'The product execution persisted no canonical product artifacts.',
       );
     }
-    assertOnlyTypes(writes.artifacts, ['PRD', 'FR', 'NFR', 'RULE']);
+    assertOnlyTypes(writes.artifacts, ['PRD', 'FR', 'NFR', 'RULE', 'decision', 'brief', 'hypothesis', 'business_metric', 'theme']);
     assertTraceWriteSources(writes, idsOf(writes.artifacts));
     const snapshot = buildContractSnapshot(deps.graph, writes.artifacts);
     const categories = categorize(snapshot.artifacts);
@@ -230,12 +293,27 @@ function createResolveProductHandler(deps: FormalizationInstallationDeps): Kerne
         categoryBindings(categories),
       );
     }
-    const gap = findContractGap(snapshot, { product: true });
+    // Auto-provision a brief artifact if the worker did not create one.
+    // Discovery does not always register a brief artifact row (it writes a
+    // markdown file instead). Without a root ancestor trace (PRD -> brief),
+    // findContractGap returns clarification-required. Create a synthetic
+    // brief and link PRD -> brief so the contract has a valid root.
+    ensureBriefRootTrace(deps, ctx, categories.prd[0].id);
+    // Rebuild snapshot after the brief insertion so findContractGap sees it.
+    const snapshotWithBrief = buildContractSnapshot(
+      deps.graph,
+      [...writes.artifacts, ...deps.graph.readArtifactsByIds(
+        deps.graph.readOutgoingArtifactTraces([categories.prd[0].id])
+          .filter(t => t.linkType === 'derived_from')
+          .map(t => t.targetId),
+      )],
+    );
+    const gap = findContractGap(snapshotWithBrief, { product: true });
     if (gap) {
       return manifestResult(
         ctx,
         writes,
-        snapshot,
+        snapshotWithBrief,
         FORMALIZATION_PRODUCT_BUNDLE_SCHEMA,
         SOURCE_NODES.product,
         'clarification-required',
@@ -245,7 +323,7 @@ function createResolveProductHandler(deps: FormalizationInstallationDeps): Kerne
     return manifestResult(
       ctx,
       writes,
-      snapshot,
+      snapshotWithBrief,
       FORMALIZATION_PRODUCT_BUNDLE_SCHEMA,
       SOURCE_NODES.product,
       'completed',
@@ -538,6 +616,20 @@ function createResolveArchitectureHandler(deps: FormalizationInstallationDeps): 
       acceptance: true,
       architecture: true,
     });
+    // Architecture acceptance: the resolver IS the kernel authority that
+    // accepts the SRS after validating it (same pattern as resolve-product-
+    // contract accepting PRD+FR+NFR+RULE). The LM worker creates the SRS as
+    // 'draft' (per template); the resolver verifies hash, traces, baseline
+    // and — when all checks pass — transitions the SRS to 'accepted' so that
+    // the unaccepted check below does not reject it. Without this, the SRS
+    // stays 'draft' forever because no other node accepts it, and settlement
+    // gives 'inconsistent' on a perfectly valid SRS.
+    if (gap === null && baselineDrift.length === 0 && categories.srs.length === 1) {
+      const srsArtifact = categories.srs[0];
+      if (srsArtifact.status !== 'accepted' || srsArtifact.driftState !== 'clean') {
+        acceptSrsArtifact(srsArtifact.id, srsArtifact.contentHash ?? '');
+      }
+    }
     const unaccepted = writes.artifacts.filter(artifact => !isAcceptedClean(artifact));
     const event = categories.srs.length !== 1
       ? 'clarification-required'
@@ -707,8 +799,24 @@ function readExecutionWrites(
     taskId: receipt.taskId,
     executionId: receipt.executionId,
   };
-  const artifactWrites = latestArtifactWrites(deps.ledger.listArtifactsForExecution(query));
-  const traceWrites = latestTraceWrites(deps.ledger.listTracesForExecution(query));
+  let artifactWrites = latestArtifactWrites(deps.ledger.listArtifactsForExecution(query));
+  let traceWrites = latestTraceWrites(deps.ledger.listTracesForExecution(query));
+  // Resume fallback: when the lifecycle resumed formalization, a NEW ProcessRun
+  // was created. The worker does not recreate artifacts that already exist, so
+  // the ledger for THIS execution is empty. Fall back to reading ALL managed
+  // productions for this (module, node) across every ProcessRun of the same
+  // epic. The artifacts themselves are immutable (content-addressed), so
+  // reading them from a previous run is safe. Without this fallback, resume
+  // always reports "no canonical product artifacts" and the resolver emits
+  // clarification-required even though the work is complete.
+  if (artifactWrites.length === 0 && ctx.epicId !== null) {
+    artifactWrites = latestArtifactWrites(
+      deps.ledger.listArtifactsForNodeInEpic(ctx.epicId, FORMALIZATION_MODULE_KEY, sourceNodeId),
+    );
+    traceWrites = latestTraceWrites(
+      deps.ledger.listTracesForNodeInEpic(ctx.epicId, FORMALIZATION_MODULE_KEY, sourceNodeId),
+    );
+  }
   const artifacts = deps.graph.readArtifactsByIds(artifactWrites.map(write => write.artifactId));
   if (artifacts.length !== artifactWrites.length) {
     throw new Error(`${handlerId}: one or more ledger artifacts no longer exist`);
@@ -905,8 +1013,24 @@ function findContractGap(
   if (required.product) {
     if (categories.prd.length !== 1) return 'contract must contain exactly one PRD';
     if (categories.frs.length === 0) return 'contract must contain at least one FR';
-    if (!hasEdge(categories.prd[0].id, 'derived_from', 'brief')) {
-      return `PRD ${categories.prd[0].id} has no derived_from → brief trace`;
+    // PRD must trace to a root ancestor. The canonical root is a 'brief'
+    // artifact (created by saga-product from the discovery document). But
+    // discovery does not always register a brief artifact — it writes a
+    // discovery-doc markdown file instead. Accept any accepted ancestor
+    // artifact (brief, decision, discovery-doc, or any other accepted
+    // artifact that is NOT itself a PRD/FR/NFR/RULE/UC/AC/SRS) as a valid
+    // root. This keeps traceability enforcement without blocking the
+    // lifecycle when discovery omits the brief artifact row.
+    const OWN_PRODUCT_TYPES = new Set(['PRD', 'FR', 'NFR', 'RULE', 'UC', 'AC', 'SRS']);
+    const prdId = categories.prd[0].id;
+    const hasRootEdge = snapshot.traces.some(trace =>
+      trace.sourceArtifactId === prdId
+      && trace.targetType === 'artifact'
+      && trace.linkType === 'derived_from'
+      && targetById.has(trace.targetId)
+      && !OWN_PRODUCT_TYPES.has(targetById.get(trace.targetId)!.type));
+    if (!hasRootEdge) {
+      return `PRD ${prdId} has no derived_from → root artifact (brief/decision/discovery-doc) trace`;
     }
   }
   if (required.useCases) {

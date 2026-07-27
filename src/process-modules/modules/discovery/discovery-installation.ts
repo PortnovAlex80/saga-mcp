@@ -31,7 +31,7 @@ import type { KernelHandler } from '../../application/kernel-handler-registry.js
 import type { LmNodeExecutionPersistence } from '../../application/node-executors/lm-node-executor.js';
 import type { NodeExecutionReceipt } from '../../application/node-executor.js';
 import type { Saga3DiscoveryRuntimePersistence } from '../../../saga3/persistence/saga3-discovery-runtime-port.js';
-import type { ControlIntentStatus } from '../../../saga3/domain/discovery-normalization-records.js';
+import type { ControlIntentStatus, RawDiscoverySubmissionRecord } from '../../../saga3/domain/discovery-normalization-records.js';
 import type { ReadinessControlStatus } from '../../../saga3/domain/discovery-readiness-records.js';
 import { NO_READINESS_HASH } from '../../../saga3/domain/discovery-settlement-input.js';
 import { DISCOVERY_OUTCOME_CERTIFICATE_SCHEMA } from '../../../saga3/domain/discovery-outcome-certificate.js';
@@ -138,27 +138,49 @@ function createResolveProposalSubmissionHandler(
       receipt.executionId,
     );
     if (!raw || raw.task_id !== receipt.taskId || raw.execution_id !== receipt.executionId) {
+      // Fallback: the worker may have run in multiple executions (engine retry,
+      // recovery, lease loss). The receipt carries the FIRST execution's fence,
+      // but proposal_submit may have been called in a LATER execution. Fall
+      // back to the latest raw submission for this (intent, task) pair and
+      // accept it if it belongs to the same task. The raw submission is
+      // immutable (content-addressed by raw_hash), so accepting it from a
+      // sibling execution is safe.
+      const fallback = runtime.readLatestRawSubmission(receipt.intentId);
+      if (fallback && fallback.task_id === receipt.taskId) {
+        return resolveAcceptedRaw(runtime, receipt, fallback);
+      }
       return failedProposalResolution(
         receipt,
         'exact raw submission is missing',
       );
     }
-    // The durable submission, rather than the worker process status, closes
-    // the product WorkIntent. This covers a worker that dies after the tool
-    // transaction commits but before worker_done.
-    concludeAuthorityIntent(runtime, receipt.intentId);
+    return resolveAcceptedRaw(runtime, receipt, raw);
+  };
+}
 
-    if (raw.status === 'rejected_syntax') {
-      return {
-        event: 'invalid-json',
-        production: {
+function resolveAcceptedRaw(
+  runtime: Saga3DiscoveryRuntimePersistence,
+  receipt: NodeExecutionReceipt,
+  raw: RawDiscoverySubmissionRecord,
+) {
+  // The durable submission, rather than the worker process status, closes
+  // the product WorkIntent. This covers a worker that dies after the tool
+  // transaction commits but before worker_done.
+  concludeAuthorityIntent(runtime, receipt.intentId);
+
+  const execId = receipt.executionId ?? raw.execution_id;
+
+  if (raw.status === 'rejected_syntax') {
+    return {
+      event: 'invalid-json',
+      production: {
           schema: 'saga3.discovery-raw-submission.v1',
           artifactRef: `raw-submission:${raw.id}`,
           contentHash: raw.raw_hash,
           bindings: {
             sourceIntentId: receipt.intentId,
             sourceTaskId: receipt.taskId,
-            sourceExecutionId: receipt.executionId,
+            sourceExecutionId: execId,
             rawSubmissionId: raw.id,
             rawHash: raw.raw_hash,
           },
@@ -176,7 +198,7 @@ function createResolveProposalSubmissionHandler(
           bindings: {
             sourceIntentId: receipt.intentId,
             sourceTaskId: receipt.taskId,
-            sourceExecutionId: receipt.executionId,
+            sourceExecutionId: execId,
             rawSubmissionId: raw.id,
             rawHash: raw.raw_hash,
           },
@@ -184,16 +206,35 @@ function createResolveProposalSubmissionHandler(
       };
     }
 
-    const proposal = runtime.readProposalForExecution(
+    let proposal = runtime.readProposalForExecution(
       receipt.intentId,
       receipt.taskId,
-      receipt.executionId,
+      execId,
     );
-    const sourceSubmissionId = Number(proposal?.provenance?.source_submission_id ?? 0);
+    let sourceSubmissionId = Number(proposal?.provenance?.source_submission_id ?? 0);
     if (
       !proposal
       || proposal.task_id !== receipt.taskId
-      || proposal.execution_id !== receipt.executionId
+      || proposal.execution_id !== execId
+      || sourceSubmissionId !== raw.id
+    ) {
+      // Same multi-execution fallback as above: the canonical Proposal may
+      // have been written by a sibling execution of the same task. Accept
+      // the latest proposal for this intent if it traces to the same raw
+      // submission.
+      const fallbackProposal = runtime.readLatestProposal(receipt.intentId);
+      if (
+        fallbackProposal
+        && fallbackProposal.task_id === receipt.taskId
+        && Number(fallbackProposal.provenance?.source_submission_id ?? 0) === raw.id
+      ) {
+        proposal = fallbackProposal;
+        sourceSubmissionId = raw.id;
+      }
+    }
+    if (
+      !proposal
+      || proposal.task_id !== receipt.taskId
       || sourceSubmissionId !== raw.id
     ) {
       return failedProposalResolution(
@@ -208,11 +249,10 @@ function createResolveProposalSubmissionHandler(
         proposal.content_hash,
         receipt.intentId,
         receipt.taskId,
-        receipt.executionId,
+        receipt.executionId ?? execId,
         raw.id,
       ),
     };
-  };
 }
 
 function failedProposalResolution(

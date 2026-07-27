@@ -307,6 +307,23 @@ export class ClaudeBoardRunner {
     try { rmSync(this.mcpConfigPath, { force: true }); } catch {}
   }
 
+  /**
+   * Synchronous sleep (blocks the event loop). Used in the pump() retry
+   * back-off to avoid 100 Hz spawn loops that can trigger API rate limits.
+   * Atomics.wait is the only built-in synchronous sleep in Node.js.
+   */
+  syncSleep(ms) {
+    if (ms <= 0) return;
+    try {
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+    } catch {
+      // SharedArrayBuffer may be unavailable in some environments. Fall back
+      // to a busy-wait (less precise, but still prevents tight loops).
+      const end = Date.now() + ms;
+      while (Date.now() < end) { /* spin */ }
+    }
+  }
+
   start({ projectId, epicId, concurrency, claimScope }) {
     const existing = this.runs.get(projectId);
     if (existing && !TERMINAL_RUN_STATES.has(existing.status)) {
@@ -451,8 +468,10 @@ export class ClaudeBoardRunner {
       run.claimed += 1;
       try {
         this.launch(run, assignment, workerId);
+        run.consecutiveSpawnFailures = 0;
       } catch (error) {
         run.failed += 1;
+        run.consecutiveSpawnFailures = (run.consecutiveSpawnFailures ?? 0) + 1;
         run.lastError = error instanceof Error ? error.message : String(error);
         this.recoverAssignment({
           taskId: assignment.task.id,
@@ -464,6 +483,21 @@ export class ClaudeBoardRunner {
         if (assignment.execution_id) {
           markExecutionSpawnFailed(this.dbPath, assignment.execution_id, run.lastError);
         }
+        // CRITICAL: break the retry loop after consecutive spawn failures.
+        // Without this, a persistently failing spawn (missing workspace, bad
+        // config, rate-limited API, etc.) creates thousands of worker_execution
+        // rows per minute — each hitting the LLM API and risking account bans.
+        // 3 consecutive failures = stop the board run, let the operator
+        // investigate. This is fail-fast: better to pause and surface the
+        // error than to hammer the API at 100 Hz.
+        if (run.consecutiveSpawnFailures >= 3) {
+          run.lastError = `Board run stopped after ${run.consecutiveSpawnFailures} consecutive spawn failures. Last error: ${run.lastError}`;
+          this.finish(run, 'failed');
+          return;
+        }
+        // For the first couple of failures, back off briefly before retrying
+        // to avoid hammering the API. One second is the minimum sane interval.
+        try { this.syncSleep(1000); } catch { /* ignore */ }
       }
     }
 
@@ -599,23 +633,22 @@ export class ClaudeBoardRunner {
     } else {
       args.push('--disallowedTools', 'mcp__saga__worker_next');
     }
+    // CRITICAL: On Windows, CreateProcess has a 32767-character command line
+    // limit. Large skills (saga-architect is 38KB + SRS template 16KB) make
+    // the inline prompt exceed this limit, causing spawn to fail silently
+    // (ENOENT or E2BIG) and triggering a 100Hz retry loop that can get the
+    // account banned. Fix: pipe the prompt through stdin instead of passing
+    // it as a command-line argument. Claude CLI `-p` reads stdin when no
+    // positional prompt is given. This removes the prompt from the argument
+    // vector entirely, staying well within the OS limit regardless of prompt
+    // size.
     args.push(
       '--permission-mode', 'bypassPermissions',
       '--dangerously-skip-permissions',
-      // stream-json: one JSON event per line in real time (system/init,
-      // assistant text, tool_use, tool_result, system/api_retry, result).
-      // --verbose is required by stream-json (docs pair them in every example).
-      // --forward-subagent-text (2.1.211+, we run 2.1.212): surfaces subagent
-      // text+thinking so kickstart's 3 parallel assessors are visible in the
-      // JSONL log, not just their tool calls.
-      // SAFE: close handler reads task status from DB (getTaskState, l.343),
-      // not from stdout — so changing output format has zero effect on runner
-      // control flow. JSONL file is write-only (no in-repo consumer).
       '--output-format', 'stream-json',
       '--verbose',
       '--forward-subagent-text',
       '--no-session-persistence',
-      prompt,
     );
     // Inject --effort right after --model so the flag order stays grouped.
     // Spliced here (not inline above) so the LM Studio "omit entirely" rule is
@@ -658,8 +691,20 @@ export class ClaudeBoardRunner {
         SAGA_TASK_TITLE: task.title,
       },
       windowsHide: true,
-      stdio: ['ignore', 'pipe', 'pipe'],
+      stdio: ['pipe', 'pipe', 'pipe'],
     });
+    // Pipe the prompt through stdin instead of passing it as a command-line
+    // argument. This avoids the Windows CreateProcess 32767-char limit that
+    // silently kills spawns for large skills (saga-architect: 38KB skill +
+    // 16KB SRS template). Claude CLI -p reads stdin when no positional prompt
+    // arg is present.
+    try {
+      child.stdin?.write(prompt);
+      child.stdin?.end();
+    } catch {
+      // If stdin write fails, the child still starts — it will just have an
+      // empty prompt and exit quickly. The pump retry-limit will catch it.
+    }
     const logPath = path.join(this.logRoot, safeName(run.id), `task-${task.id}-${safeName(workerId)}.jsonl`);
     const log = createWriteStream(logPath, { flags: 'a' });
     child.stdout?.pipe(log, { end: false });
