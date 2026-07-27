@@ -14,6 +14,7 @@
 - work_intent_id: `{WORK_INTENT_ID}`
 - project_id: `{PROJECT_ID}`
 - epic_id: `{EPIC_ID}`
+- project_repository_id: `{PROJECT_REPOSITORY_ID}`
 - task_id: `{TASK_ID}`
 - execution_id: `{EXECUTION_ID}`
 - worker_id: `{WORKER_ID}`

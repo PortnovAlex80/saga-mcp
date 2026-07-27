@@ -823,5 +823,8 @@ export function createDiscoveryLmNodePersistence(
     readLatestExecutionId(taskId) {
       return runtime.readLatestExecutionId(taskId);
     },
+    readTaskProjectRepositoryId(taskId) {
+      return runtime.readTaskProjectRepositoryId(taskId);
+    },
   };
 }

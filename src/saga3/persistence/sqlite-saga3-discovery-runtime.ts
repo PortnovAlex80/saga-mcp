@@ -153,6 +153,7 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
     processInputHash: string;
     nodeInput: unknown;
     nodeInputHash: string;
+    projectRepositoryId?: number | null;
   }): void {
     const db = getDb();
     const row = db.prepare(
@@ -175,6 +176,15 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
       process_node_input: input.nodeInput,
       process_node_input_hash: input.nodeInputHash,
     };
+    // project_repository_id is a project-level constant (resolved from
+    // tasks.project_repository_id). Stamp it into task.metadata so the worker
+    // can pass it to artifact_create / artifact_update, which require it to
+    // compute content_hash via artifactDiskHash. Without it artifacts end up
+    // with NULL project_repository_id and NULL content_hash, and formalization
+    // resolvers fail closed.
+    if (input.projectRepositoryId !== undefined && input.projectRepositoryId !== null) {
+      bindings.project_repository_id = input.projectRepositoryId;
+    }
     for (const [key, value] of Object.entries(bindings)) {
       if (
         metadata[key] !== undefined
@@ -330,6 +340,13 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
         LIMIT 1`,
     ).get(taskId) as { execution_id: string } | undefined;
     return row?.execution_id ?? null;
+  }
+
+  readTaskProjectRepositoryId(taskId: number): number | null {
+    const row = getDb().prepare(
+      'SELECT project_repository_id FROM tasks WHERE id=?',
+    ).get(taskId) as { project_repository_id: number | null } | undefined;
+    return row?.project_repository_id ?? null;
   }
 
 

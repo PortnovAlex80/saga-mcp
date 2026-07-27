@@ -110,6 +110,8 @@ export interface LmNodeExecutionPersistence {
     processInputHash: string;
     nodeInput: unknown;
     nodeInputHash: string;
+    /** Optional project_repository_id to stamp alongside the lineage. */
+    projectRepositoryId?: number | null;
   }): void;
 
   setIntentStatus(
@@ -130,6 +132,15 @@ export interface LmNodeExecutionPersistence {
 
   /** Latest physical execution for the exact projected task. */
   readLatestExecutionId(taskId: number): string | null;
+
+  /**
+   * project_repository_id bound to the projected task. Workers need this to
+   * resolve artifact file paths and to pass to artifact_create /
+   * artifact_update. Without it, artifacts end up with a NULL
+   * project_repository_id and the formalization resolvers (which validate
+   * content_hash via artifactDiskHash) fail closed.
+   */
+  readTaskProjectRepositoryId(taskId: number): number | null;
 }
 
 export interface LmNodeExecutorOptions {
@@ -212,6 +223,26 @@ export class LmNodeExecutor implements NodeExecutor {
       const prepBindings = (ctx.input as { bindings?: Record<string, unknown> } | null)?.bindings ?? {};
       const preProjectedTaskId = Number(prepBindings.preProjectedTaskId ?? 0);
       const preProjectedIntentId = Number(prepBindings.preProjectedIntentId ?? prepBindings.authorityIntentId ?? 0);
+      // Resolve the project_repository_id ahead of task projection so the
+      // worker receives it in task.metadata alongside the process lineage.
+      // Without it the worker cannot pass project_repository_id to
+      // artifact_create / artifact_update, artifacts end up with NULL
+      // project_repository_id, artifactDiskHash cannot resolve their file
+      // paths, and the formalization resolver fails closed on NULL
+      // content_hash. This is a project-level constant, not a per-stage
+      // decision, so it belongs in task metadata — not in certificate handoff.
+      const resolvedRepositoryId = (() => {
+        // Prefer the pre-projected task's binding (preparation node already
+        // projected the task and stamped project_repository_id on its row).
+        if (preProjectedTaskId) {
+          const fromTask = this.persistence.readTaskProjectRepositoryId(preProjectedTaskId);
+          if (fromTask) return fromTask;
+        }
+        // Fall back to reading it after ensureExecutionPlan below; resolved
+        // there once the task row exists with project_repository_id set by
+        // ensureProjectedTask.
+        return null as number | null;
+      })();
       const processBinding = {
         process_run_id: ctx.processRunId,
         process_node_id: node.id,
@@ -219,6 +250,9 @@ export class LmNodeExecutor implements NodeExecutor {
         process_input_hash: sha256Hex(ctx.frame.runInput),
         process_node_input: ctx.input,
         process_node_input_hash: sha256Hex(ctx.input),
+        ...(resolvedRepositoryId !== null
+          ? { project_repository_id: resolvedRepositoryId }
+          : {}),
       };
 
       let intent: { id: number };
@@ -277,14 +311,26 @@ export class LmNodeExecutor implements NodeExecutor {
       // Preparation nodes may project the task before this generic LM cell is
       // entered. Stamp the same reserved lineage in both paths; the persistence
       // adapter rejects attempts to rebind an existing task to another run.
+      // Also resolve project_repository_id from the freshly projected task row
+      // (ensureProjectedTask sets it from project_repositories) when the
+      // pre-projected path did not supply one, then stamp it alongside the
+      // lineage so the worker can pass it to artifact_create / artifact_update.
+      const finalRepositoryId = resolvedRepositoryId
+        ?? this.persistence.readTaskProjectRepositoryId(taskId);
+      const finalBinding = finalRepositoryId !== null
+        ? { ...processBinding, project_repository_id: finalRepositoryId }
+        : processBinding;
       this.persistence.bindProjectedTaskProcessContext?.({
         taskId,
         processRunId: ctx.processRunId,
         nodeId: node.id,
-        moduleRef: processBinding.process_module_ref,
-        processInputHash: processBinding.process_input_hash,
-        nodeInput: processBinding.process_node_input,
-        nodeInputHash: processBinding.process_node_input_hash,
+        moduleRef: finalBinding.process_module_ref,
+        processInputHash: finalBinding.process_input_hash,
+        nodeInput: finalBinding.process_node_input,
+        nodeInputHash: finalBinding.process_node_input_hash,
+        // bindProjectedTaskProcessContext already accepts arbitrary metadata
+        // keys; project_repository_id is one such reserved key it merges in.
+        projectRepositoryId: finalRepositoryId,
       });
 
       // 3. Prepare (CAS open→executing guard) — handles resume of a stale fence.

@@ -3,6 +3,7 @@
   "arguments": {
     "project_id": "FILL_INTEGER_MACHINE_BOUND_PROJECT_ID",
     "epic_id": "FILL_INTEGER_MACHINE_BOUND_EPIC_ID",
+    "project_repository_id": "FILL_INTEGER_MACHINE_BOUND_PROJECT_REPOSITORY_ID",
     "type": "FILL_NODE_OWNED_ARTIFACT_TYPE",
     "title": "FILL_ARTIFACT_TITLE",
     "path": "FILL_RELATIVE_ARTIFACT_PATH",

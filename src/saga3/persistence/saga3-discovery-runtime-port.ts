@@ -117,6 +117,9 @@ export interface Saga3DiscoveryRuntimePersistence {
   /** Latest physical worker execution id for one exact projected task. */
   readLatestExecutionId(taskId: number): string | null;
 
+  /** project_repository_id bound to the projected task. */
+  readTaskProjectRepositoryId(taskId: number): number | null;
+
   /** Recover stale assignment/fence and prepare an existing intent/task for restart. */
   prepareIntentForExecution(intentId: number, taskId: number): PrepareIntentForExecutionResult;
 
