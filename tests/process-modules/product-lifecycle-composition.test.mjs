@@ -126,3 +126,45 @@ test('composition installs all module capabilities and refuses implicit input/pr
     cleanup(fx.temp);
   }
 });
+
+test('composition supplies standard development mechanics and durable delivery approval', () => {
+  const fx = fixture();
+  try {
+    const notExecuted = () => {
+      throw new Error('test provider must not execute during composition');
+    };
+    const runtime = createProductLifecycleRuntime({
+      db: fx.db,
+      workerExecutorFactory: () => ({
+        start: notExecuted,
+        stop: () => null,
+        status: () => null,
+        setConcurrency: () => {},
+        dispose: () => {},
+      }),
+      resolveWorkerContext: ({ projectId, epicId }) => ({
+        projectId,
+        epicId: epicId ?? 0,
+        workspaceRoot: process.cwd(),
+        dbPath: process.env.DB_PATH,
+        sagaEntry: 'saga',
+        sagaSkillRoot: process.cwd(),
+        lmStudioUrl: 'http://127.0.0.1:1234',
+      }),
+      delivery: {
+        providers: {
+          preflight: { evaluate: notExecuted },
+          actionProviders: {},
+          observeCurrentCandidateHash: notExecuted,
+        },
+      },
+    });
+
+    assert.ok(runtime.runtimes.development);
+    assert.ok(runtime.runtimes.delivery);
+    assert.ok(runtime.interactions.deliveryApprovalInbox);
+    assert.equal(runtime.humanInteractions.list().length, 1);
+  } finally {
+    cleanup(fx.temp);
+  }
+});

@@ -353,6 +353,7 @@ function createImplementationAdapter(
       payloadHash,
       developmentCase,
       taskGraph: graph,
+      heartbeat: ctx.heartbeat,
     });
     assertExternalReceipt(
       result.receipt,
@@ -428,6 +429,7 @@ function createIntegrationAdapter(
       developmentCase,
       taskGraph: graph,
       implementationWorkset: workset,
+      heartbeat: ctx.heartbeat,
     });
     assertExternalReceipt(
       result.receipt,
@@ -517,6 +519,7 @@ function createVerificationAdapter(
       developmentCase,
       taskGraph: graph,
       candidate,
+      heartbeat: ctx.heartbeat,
     });
     assertExternalReceipt(
       result.receipt,

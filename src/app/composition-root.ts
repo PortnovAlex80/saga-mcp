@@ -5,7 +5,12 @@ import type { Saga2RuntimePersistence } from '../application/ports/saga2-runtime
 import type { WorkerExecutorFactory } from '../application/ports/worker-executor.js';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { createSagaApplication, type SagaApplication } from '../application/saga-application.js';
+import {
+  createSagaApplication,
+  createSagaControlApplication as createControlApplication,
+  type SagaApplication,
+  type SagaControlApplication,
+} from '../application/saga-application.js';
 import { closeDb } from '../db.js';
 import { Saga2Engine } from '../engines/saga2-engine.js';
 import { Saga3DiscoveryEngine } from '../engines/saga3-discovery-engine.js';
@@ -75,11 +80,38 @@ export interface Saga2CompositionOverrides {
   board?: BoardProjectionReader;
   engineAdministration?: EngineAdministration;
   /**
-   * Required explicit module/provider ports for saga3-lifecycle mode.
-   * No Git/CI/deployment/human provider is silently selected.
+   * Explicit Delivery provider composition for saga3-lifecycle mode.
+   * Standard Development/SQLite mechanics are supplied by the lifecycle
+   * factory; no deployment success or human decision is silently selected.
    */
   productLifecycle?: ProductLifecycleCompositionOverrides;
   close?: () => void;
+}
+
+export type SagaControlCompositionOverrides = Pick<
+  Saga2CompositionOverrides,
+  'config' | 'board' | 'engineAdministration' | 'close'
+>;
+
+/**
+ * Compose only tracker/admin capabilities.
+ *
+ * The control plane can start an isolated execution CLI without importing or
+ * fabricating that CLI's Delivery providers.
+ */
+export function createSagaControlApplication(
+  env: NodeJS.ProcessEnv = process.env,
+  overrides: SagaControlCompositionOverrides = {},
+): SagaControlApplication {
+  const config = overrides.config ?? loadSagaRuntimeConfig(env);
+  const board = overrides.board ?? new SqliteBoardProjectionReader(config.dbPath);
+  const engineAdministration = overrides.engineAdministration
+    ?? new LegacyEngineAdministration({ config, baseEnv: env });
+  return createControlApplication({
+    board,
+    engineAdministration,
+    close: overrides.close ?? closeDb,
+  });
 }
 
 /**
@@ -154,8 +186,8 @@ function selectEngine(
     if (!productLifecycle) {
       throw new Error(
         'SAGA3_LIFECYCLE_DEPENDENCIES_REQUIRED: createSaga2Application '
-        + 'must receive overrides.productLifecycle with explicit Development '
-        + 'and Delivery provider/state ports',
+        + 'must receive overrides.productLifecycle with explicit Delivery '
+        + 'preflight/publication/observation providers',
       );
     }
     return createProductLifecycleRuntime({

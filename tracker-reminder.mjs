@@ -1,92 +1,55 @@
 #!/usr/bin/env node
-// PostToolUse hook: reads the worker's stage tracker and injects a reminder
-// into the model's context via additionalContext. Runs after EVERY tool call.
+// Generic Process Module PostToolUse hook.
 //
-// stdin: JSON { tool_name, tool_input, tool_result, cwd, ... }
-// stdout: JSON { additionalContext: "..." } or {} (no reminder)
+// The runner passes the exact machine-provisioned tracker path through
+// SAGA_PROCESS_TRACKER_PATH. The hook deliberately never scans docs/: scanning
+// can select another epic/task and inject a false next step into a weak model.
 
-import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, readFileSync } from 'node:fs';
+import path from 'node:path';
 
-let input = '';
 try {
-  input = readFileSync(0, 'utf8');
+  // Consume the hook event even though tracker selection is environment-bound.
+  readFileSync(0, 'utf8');
 } catch {
   process.exit(0);
 }
 
-let event;
-try {
-  event = JSON.parse(input);
-} catch {
-  process.exit(0);
-}
-
-// Find the tracker file in the workspace — works for ANY stage (discovery,
-// formalization, etc.) not just discovery.
-const cwd = event.cwd || process.cwd();
-const discoveryDir = join(cwd, 'docs', 'discovery');
-const projectsDir = join(discoveryDir, 'projects');
-
-// Find any project-*-stage.md tracker. With the per-epic workspace layout
-// (docs/discovery/projects/<N>/project-N-discovery-stage.md) we recurse one
-// level into projects/. Falls back to the legacy flat layout for back-compat.
-let trackerPath = null;
-let trackerContent = null;
-try {
-  const flatten = (dir) => {
-    if (!existsSync(dir)) return [];
-    const out = [];
-    for (const name of readdirSync(dir)) {
-      const p = join(dir, name);
-      try {
-        const st = statSync(p);
-        if (st.isDirectory()) out.push(...readdirSync(p).map(n => join(p, n)));
-        else out.push(p);
-      } catch {}
-    }
-    return out;
-  };
-  // Prefer projects/ subdir; fall back to flat discoveryDir for old epics.
-  const candidates = existsSync(projectsDir) ? flatten(projectsDir) : flatten(discoveryDir);
-  const match = candidates.find(f => f.match(/project-\d+-\w+-stage\.md$/));
-  if (match) {
-    trackerPath = match;
-    trackerContent = readFileSync(trackerPath, 'utf8');
-  }
-} catch {
-  // No tracker yet — that's fine for non-discovery tasks
-}
-
-if (!trackerContent) {
+const trackerPath = process.env.SAGA_PROCESS_TRACKER_PATH || '';
+if (!trackerPath || !path.isAbsolute(trackerPath) || !existsSync(trackerPath)) {
   process.stdout.write('{}');
   process.exit(0);
 }
 
-// Parse current step from tracker
-const stepMatch = trackerContent.match(/## Current Step:\s*(.+)/);
-const currentStep = stepMatch ? stepMatch[1].trim() : 'unknown';
-
-// Parse which steps are done
-const doneSteps = (trackerContent.match(/- \[x\].+/g) || []).map(s => s.replace(/- \[x\]\s*/, '').slice(0, 60));
-const pendingSteps = (trackerContent.match(/- \[ \].+/g) || []).map(s => s.replace(/- \[ \]\s*/, '').slice(0, 60));
-
-// Read the proposal-call template checklist if it exists
-const checklistPath = join(discoveryDir, 'tools', 'proposal-checklist.md');
-let checklistHint = '';
+let trackerContent;
 try {
-  if (existsSync(checklistPath)) {
-    checklistHint = '\n📋 Proposal checklist available at docs/discovery/tools/proposal-checklist.md — read it before submitting.';
-  }
-} catch {}
+  trackerContent = readFileSync(trackerPath, 'utf8');
+} catch {
+  process.stdout.write('{}');
+  process.exit(0);
+}
 
-// Build the reminder
-const reminder = `📊 STAGE TRACKER REMINDER
-File: ${trackerPath}
-Current Step: ${currentStep}
+const explicitStep = trackerContent.match(/## Current Step:\s*(.+)/i)?.[1]?.trim()
+  ?? trackerContent.match(/-\s*current_step:\s*`?([^`\r\n]+)`?/i)?.[1]?.trim()
+  ?? 'unknown';
+const doneSteps = (trackerContent.match(/- \[x\].+/gi) || [])
+  .map(line => line.replace(/- \[x\]\s*/i, '').slice(0, 100));
+const pendingSteps = (trackerContent.match(/- \[ \].+/g) || [])
+  .map(line => line.replace(/- \[ \]\s*/, '').slice(0, 100));
+
+const checklistPaths = (process.env.SAGA_PROCESS_CHECKLIST_PATHS || '')
+  .split(path.delimiter)
+  .filter(Boolean);
+const checklistHint = checklistPaths.length > 0
+  ? `\nChecklists: ${checklistPaths.join(', ')}`
+  : '';
+
+const reminder = `PROCESS TRACKER REMINDER
+Exact file: ${trackerPath}
+Current step: ${explicitStep}
 Completed: ${doneSteps.length > 0 ? doneSteps.join(' | ') : 'none'}
-Next: ${pendingSteps.length > 0 ? pendingSteps[0] : 'all done — call worker_done'}
+Next unchecked step: ${pendingSteps.length > 0 ? pendingSteps[0] : 'none — verify completion state'}
 ${checklistHint}
-ACTION: Update the tracker (mark current step [x], set Current Step to next) if you haven't already.`;
+ACTION: If the last tool completed a step, update this exact tracker now. Read the relevant checklist before every consequential MCP write.`;
 
 process.stdout.write(JSON.stringify({ additionalContext: reminder }));

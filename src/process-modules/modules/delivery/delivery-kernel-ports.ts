@@ -38,6 +38,7 @@ export interface DeliveryPreflightStatePort {
   buildPreflightSnapshot(input: {
     processRunId: number;
     deliveryCase: DeliveryReleaseCase;
+    heartbeat: () => void;
   }): {
     preflight: DeliveryPreflightSnapshot;
     reference: DeliveryContentAddressedReference;
@@ -49,6 +50,7 @@ export interface DeliveryApprovalPort {
     processRunId: number;
     deliveryCase: DeliveryReleaseCase;
     preflight: DeliveryPreflightSnapshot;
+    heartbeat: () => void;
   }): Promise<{
     approval: DeliveryApprovalDecision;
     reference: DeliveryContentAddressedReference;
@@ -66,6 +68,7 @@ export interface DeliveryPublicationPort {
     deliveryCase: DeliveryReleaseCase;
     preflight: DeliveryPreflightSnapshot;
     approval: DeliveryApprovalDecision;
+    heartbeat: () => void;
   }): Promise<{
     publication: DeliveryPublicationSnapshot;
     reference: DeliveryContentAddressedReference;
@@ -77,6 +80,7 @@ export interface DeliveryObservationPort {
     processRunId: number;
     deliveryCase: DeliveryReleaseCase;
     publication: DeliveryPublicationSnapshot;
+    heartbeat: () => void;
   }): Promise<{
     observation: DeliveryObservationSnapshot;
     reference: DeliveryContentAddressedReference;

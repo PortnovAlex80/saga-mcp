@@ -38,6 +38,14 @@ import {
   definitions as processNodeSubmissionDefs,
   handlers as processNodeSubmissionHandlers,
 } from './tools/process-node-submissions.js';
+import {
+  definitions as deliveryApprovalDefs,
+  handlers as deliveryApprovalHandlers,
+} from './tools/delivery-approvals.js';
+import {
+  definitions as lifecycleRunDefs,
+  handlers as lifecycleRunHandlers,
+} from './tools/lifecycle-runs.js';
 import { createSaga3ProposalHandlers } from './tools/saga3-proposals.js';
 import { createSaga3NormalizationHandlers } from './tools/saga3-normalization.js';
 import { createSaga3ReadinessHandlers } from './tools/saga3-readiness.js';
@@ -92,6 +100,8 @@ const ALL_TOOLS: Tool[] = [
   ...providerDefs,
   ...processModuleDefs,
   ...processNodeSubmissionDefs,
+  ...deliveryApprovalDefs,
+  ...lifecycleRunDefs,
   ...saga3Proposals.definitions,
   ...saga3Normalization.definitions,
   ...saga3Readiness.definitions,
@@ -120,6 +130,8 @@ const ALL_HANDLERS: Record<string, (args: Record<string, unknown>) => unknown> =
   ...providerHandlers,
   ...processModuleHandlers,
   ...processNodeSubmissionHandlers,
+  ...deliveryApprovalHandlers,
+  ...lifecycleRunHandlers,
   ...saga3Proposals.handlers,
   ...saga3Normalization.handlers,
   ...saga3Readiness.handlers,

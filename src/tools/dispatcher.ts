@@ -385,6 +385,9 @@ function findNextClaimable(
   const taskIdsClause = taskIds && taskIds.length > 0
     ? `AND t.id IN (${taskIds.map(() => '?').join(',')})`
     : '';
+  const processModuleStageClause = taskIds && taskIds.length > 0
+    ? `OR json_extract(t.metadata, '$.process_run_id') IS NOT NULL`
+    : '';
   const selectSql = `
     SELECT t.* FROM tasks t
     WHERE t.status IN ('todo', 'review')
@@ -395,6 +398,11 @@ function findNextClaimable(
       AND (
         t.workflow_stage IS NULL
         OR t.task_kind = 'summary.stage'   -- bookkeeping: claimable on ANY stage
+        -- A Process Module owns the stage of its exact task projection. The
+        -- legacy episode_workflows.stage column belongs to the Saga 2 pump and
+        -- must not veto a task that is fenced to a Saga 3 ProcessRun and an
+        -- explicit claimScope.
+        ${processModuleStageClause}
         OR NOT EXISTS (SELECT 1 FROM episode_workflows ew WHERE ew.epic_id=t.epic_id)
         OR EXISTS (
           SELECT 1 FROM episode_workflows ew

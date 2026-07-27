@@ -2,8 +2,7 @@
 
 ## Status
 
-This document defines the target separation introduced on the
-`agent/saga3-process-modules` branch.
+This document defines the implemented Process Module separation.
 
 The branch provides:
 
@@ -11,16 +10,21 @@ The branch provides:
 - deterministic module validation;
 - a versioned module registry;
 - Stage Binding and Lifecycle routing contracts;
-- a compatibility Runtime wrapper around existing orchestration engines;
+- one generic Flow Runtime for LM, Kernel, Human and External nodes;
 - Product Discovery represented as `product-discovery@3.0.0`;
 - Solution Formalization represented as `solution-formalization@1.0.0`;
-- a first Discovery → Formalization Lifecycle definition;
-- mandatory templates, skill and checklist for future modules;
+- Solution Development represented as `solution-development@1.0.0`;
+- Delivery/Release represented as `delivery-release@1.0.0`;
+- the complete durable Product Delivery Lifecycle;
+- execution-scoped workspaces, trackers, templates and hook reminders;
+- durable ProcessRun, NodeRun, LifecycleRun, StageRun and transition records;
+- explicit Delivery providers, effect ledger and human approval inbox;
 - static and behavioral architecture tests.
 
-The existing Saga 3 Discovery D1-D5 engine remains the proven execution adapter.
-Its migration to individual generic node executors may happen incrementally without
-changing the Process Module or Lifecycle contracts introduced here.
+The legacy `saga3-discovery` mode remains available behind its feature flag.
+`saga3-discovery-generic` and `saga3-lifecycle` execute Discovery as data through
+the generic Runtime; the complete Lifecycle does not route through the legacy
+Discovery or Formalization engines.
 
 ---
 
@@ -316,10 +320,11 @@ A module emits only a local outcome:
 A Stage Binding decides the route:
 
 ```text
-Discovery go          → Formalization
-Discovery clarify     → terminal clarification-required
-Discovery reject      → terminal rejected
-Formalization accepted → terminal ready-for-development
+Discovery go              → Formalization
+Discovery clarify/reject  → terminal
+Formalization formalized  → Development
+Development verified      → Delivery/Release
+Delivery released         → terminal released
 ```
 
 The same module may be mounted in another lifecycle or another stage with a
@@ -362,15 +367,10 @@ Deterministic Normalization [Kernel]
           Local process outcome
 ```
 
-The current `Saga3DiscoveryEngine` is wrapped by
-`ProcessModuleRuntimeEngine` through `ExistingOrchestrationEngineAdapter` in the
-composition root. This means:
-
-- application-facing execution now has module identity and local process outcome;
-- Discovery is registered and validated as a module;
-- the D1-D5 implementation remains unchanged and regression-protected;
-- later node-by-node extraction can replace the adapter without changing the
-  module, Lifecycle or external orchestration contract.
+In the complete Lifecycle, Discovery runs through `GenericFlowExecutor`.
+Preparatory and resolver kernel nodes create and recover exact durable lineage;
+LM nodes receive execution-scoped trackers/templates and return execution
+receipts; settlement re-reads canonical products by their exact bindings.
 
 ---
 
@@ -410,25 +410,44 @@ The module formalizes the already-existing reordered rule:
 
 > WHAT is reconciled and the acceptance baseline is frozen before HOW/SRS.
 
-The branch defines the module contract, Flow, artifacts, policies, invariants,
-execution profiles, tracker, MCP call templates and checklist. The module is
-registered and connected after Discovery in the first Lifecycle definition.
-
-A generic Formalization node executor and authoritative settlement persistence
-remain the next implementation step; the current Saga 2 skill/task machinery can
-serve as the compatibility adapter in the same way Discovery does.
+The module contract, Flow, execution profiles, workspace assets, artifact graph,
+managed production ledger, baseline freeze, deterministic settlement and
+content-addressed Solution Contract persistence are implemented and registered
+in the complete Lifecycle.
 
 ---
 
-## 12. Automated architecture enforcement
+## 12. Development and Delivery modules
+
+Development absorbs planning, implementation/review, integration/freeze and
+candidate-bound verification into one locally-settled module. The standard
+SQLite runtime projects the kernel-authorized task graph to exact tasks and
+dependencies, runs only that task scope, freezes Git/build observations and
+admits a verified bundle only for the unchanged candidate.
+
+Delivery models external effects explicitly:
+
+- deterministic preflight evidence;
+- candidate/preflight/policy-bound approval;
+- desired-state actions with cross-run idempotency keys;
+- observe-before-retry and post-action authoritative observation;
+- deterministic settlement and Release Record.
+
+The mechanics, ledger and approval inbox are standard. Actual external
+preflight/publication/observation providers are composition inputs and are never
+fabricated by the Runtime.
+
+---
+
+## 13. Automated architecture enforcement
 
 Tests introduced under `tests/process-modules/` verify:
 
-- both built-in modules validate;
+- all four built-in modules validate;
 - every LM node has tracker, call templates, checklist and recovery;
 - every terminal outcome is emitted;
-- registry contains versioned Discovery and Formalization;
-- Discovery `go` routes through Stage Binding to Formalization;
+- registry contains versioned Discovery, Formalization, Development and Delivery;
+- the complete Lifecycle freezes every cross-module handoff;
 - unknown outcomes fail closed;
 - Runtime core does not import module semantics;
 - Discovery and Formalization do not import/start each other;
@@ -439,7 +458,7 @@ The tests convert the architecture from guidance into an executable rule.
 
 ---
 
-## 13. Adding the next Process Module
+## 14. Adding the next Process Module
 
 Use:
 
@@ -464,7 +483,7 @@ The minimum delivery set is:
 
 ---
 
-## 14. Target architecture
+## 15. Extensible architecture
 
 ```text
 Universal Runtime

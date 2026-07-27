@@ -66,14 +66,22 @@ export class LegacyEngineAdministration implements EngineAdministration {
     this.killEngineTree(projectId, command.epicId);
 
     try {
+      const cliArgs = [
+        this.orchestrateCliPath,
+        String(projectId),
+        String(command.epicId),
+        `--concurrency=${concurrency}`,
+      ];
+      if (command.lifecycleInputPath?.trim()) {
+        cliArgs.push(`--lifecycle-input=${command.lifecycleInputPath.trim()}`);
+      }
+      if (command.idempotencyKey?.trim()) {
+        cliArgs.push(`--idempotency-key=${command.idempotencyKey.trim()}`);
+      }
+      if (command.resumePaused) cliArgs.push('--resume');
       const child = this.spawnProcess(
         'node',
-        [
-          this.orchestrateCliPath,
-          String(projectId),
-          String(command.epicId),
-          `--concurrency=${concurrency}`,
-        ],
+        cliArgs,
         {
           detached: true,
           stdio: 'ignore',

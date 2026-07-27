@@ -38,6 +38,8 @@ export interface KernelHandlerContext {
   input: unknown;
   /** Durable products/receipts keyed by the node that produced them. */
   frame: NodeExecutionFrame;
+  /** Renew the owning ProcessRun lease during long deterministic/provider work. */
+  heartbeat: () => void;
   initiatedBy: string;
 }
 

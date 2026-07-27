@@ -155,6 +155,7 @@ function createDeliveryPreflightHandler(
       const built = deps.preflightState.buildPreflightSnapshot({
         processRunId: ctx.processRunId,
         deliveryCase,
+        heartbeat: ctx.heartbeat,
       });
       assertReference(
         built.reference,
@@ -213,6 +214,7 @@ function createApprovalInteraction(
       processRunId: ctx.processRunId,
       deliveryCase,
       preflight,
+      heartbeat: ctx.heartbeat,
     });
     assertReference(
       decided.reference,
@@ -278,6 +280,7 @@ function createPublicationAdapter(
       deliveryCase,
       preflight,
       approval,
+      heartbeat: ctx.heartbeat,
     });
     assertReference(
       published.reference,
@@ -363,6 +366,7 @@ function createObservationAdapter(
       processRunId: ctx.processRunId,
       deliveryCase,
       publication,
+      heartbeat: ctx.heartbeat,
     });
     assertReference(
       observed.reference,

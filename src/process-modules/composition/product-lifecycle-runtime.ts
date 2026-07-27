@@ -36,12 +36,27 @@ import {
   createDeliveryOutputResolver,
 } from '../modules/delivery/delivery-installation.js';
 import type {
+  DeliveryApprovalPort,
+  DeliveryObservationPort,
+  DeliveryPreflightStatePort,
+  DeliveryPublicationPort,
+  DeliverySettlementStatePort,
   DeliveryModuleInstallationDependencies,
   DeliveryOutputRepository,
 } from '../modules/delivery/delivery-kernel-ports.js';
+import type {
+  DeliveryApprovalSource,
+  DeliveryRuntimeProviders,
+} from '../modules/delivery/delivery-provider-ports.js';
 import { SqliteDeliveryOutputRepository } from '../modules/delivery/delivery-persistence.js';
 import { deliveryProcessModule } from '../modules/delivery/delivery-process-module.js';
 import { RELEASE_RECORD_SCHEMA } from '../modules/delivery/delivery-schemas.js';
+import {
+  ReferenceDeliveryPreflightPolicy,
+  ReferenceDeliverySettlementPolicy,
+} from '../modules/delivery/delivery-settlement-policy.js';
+import { SqliteDeliveryApprovalInbox } from '../modules/delivery/sqlite-delivery-approval-inbox.js';
+import { SqliteDeliveryRuntime } from '../modules/delivery/sqlite-delivery-runtime.js';
 import {
   createDevelopmentExternalAdapters,
   createDevelopmentKernelHandlers,
@@ -49,12 +64,25 @@ import {
   createDevelopmentOutputResolver,
 } from '../modules/development/development-installation.js';
 import type {
+  DevelopmentAcceptanceVerificationPort,
+  DevelopmentCandidateIntegrationPort,
+  DevelopmentImplementationWorksetPort,
   DevelopmentModuleInstallationDependencies,
   DevelopmentOutputRepository,
+  DevelopmentSettlementStatePort,
+  DevelopmentTaskGraphPort,
 } from '../modules/development/development-kernel-ports.js';
 import { SqliteDevelopmentOutputRepository } from '../modules/development/development-persistence.js';
 import { developmentProcessModule } from '../modules/development/development-process-module.js';
 import { VERIFIED_INTEGRATION_BUNDLE_SCHEMA } from '../modules/development/development-schemas.js';
+import {
+  ReferenceDevelopmentSettlementPolicy,
+  ReferenceDevelopmentTaskGraphPolicy,
+} from '../modules/development/development-settlement-policy.js';
+import {
+  SqliteDevelopmentRuntime,
+  type SqliteDevelopmentRuntimeOptions,
+} from '../modules/development/sqlite-development-runtime.js';
 import {
   createDiscoveryKernelHandlers,
   createDiscoveryLmNodePersistence,
@@ -85,18 +113,40 @@ import { SqliteNodeRunRepository } from '../persistence/sqlite-node-run-reposito
 import { SqliteProcessOutcomeCertificateRepository } from '../persistence/sqlite-process-outcome-certificate-repository.js';
 import { SqliteProcessRunRepository } from '../persistence/sqlite-process-run-repository.js';
 
-type DevelopmentCompositionDependencies =
-  Omit<
-    DevelopmentModuleInstallationDependencies,
-    'outputRepository' | 'plannerSubmissions'
-  > & {
-    outputRepository?: DevelopmentOutputRepository;
+export interface DevelopmentCompositionDependencies {
+  runtime?: SqliteDevelopmentRuntime;
+  taskGraph?: DevelopmentTaskGraphPort;
+  implementationWorkset?: DevelopmentImplementationWorksetPort;
+  candidateIntegration?: DevelopmentCandidateIntegrationPort;
+  acceptanceVerification?: DevelopmentAcceptanceVerificationPort;
+  settlementState?: DevelopmentSettlementStatePort;
+  taskGraphPolicy?: DevelopmentModuleInstallationDependencies['taskGraphPolicy'];
+  settlementPolicy?: DevelopmentModuleInstallationDependencies['settlementPolicy'];
+  outputRepository?: DevelopmentOutputRepository;
+  runtimeOptions?: Omit<
+    SqliteDevelopmentRuntimeOptions,
+    'workerExecutorFactory' | 'resolveWorkerContext' | 'db'
+  >;
+}
+
+export type DeliveryProviderConfiguration =
+  Omit<DeliveryRuntimeProviders, 'approval'> & {
+    approval?: DeliveryApprovalSource;
   };
 
-type DeliveryCompositionDependencies =
-  Omit<DeliveryModuleInstallationDependencies, 'outputRepository'> & {
-    outputRepository?: DeliveryOutputRepository;
-  };
+export interface DeliveryCompositionDependencies {
+  runtime?: SqliteDeliveryRuntime;
+  providers?: DeliveryProviderConfiguration;
+  approvalInbox?: SqliteDeliveryApprovalInbox;
+  preflightState?: DeliveryPreflightStatePort;
+  approval?: DeliveryApprovalPort;
+  publication?: DeliveryPublicationPort;
+  observation?: DeliveryObservationPort;
+  settlementState?: DeliverySettlementStatePort;
+  preflightPolicy?: DeliveryModuleInstallationDependencies['preflightPolicy'];
+  settlementPolicy?: DeliveryModuleInstallationDependencies['settlementPolicy'];
+  outputRepository?: DeliveryOutputRepository;
+}
 
 export interface ProductLifecycleRuntimeOptions {
   workerExecutorFactory: WorkerExecutorFactory;
@@ -104,7 +154,7 @@ export interface ProductLifecycleRuntimeOptions {
     projectId: number;
     epicId: number | null;
   }) => WorkerExecutorFactoryContext;
-  development: DevelopmentCompositionDependencies;
+  development?: DevelopmentCompositionDependencies;
   delivery: DeliveryCompositionDependencies;
   db?: Database.Database;
   discoveryRuntimePersistence?: Saga3DiscoveryRuntimePersistence;
@@ -114,8 +164,11 @@ export interface ProductLifecycleRuntimeOptions {
  * Explicit composition for the complete product lifecycle.
  *
  * Runtime mechanics are shared. Module handlers/adapters are registrations.
- * Development and Delivery provider/state ports are mandatory: the factory
- * never fabricates a Git, CI, deployment, observation or human authority.
+ * Development's standard SQLite/task/Git adapter and all deterministic
+ * policies are wired by default. Delivery's runtime mechanics and approval
+ * inbox are also standard; only the actual preflight/publication/observation
+ * providers remain explicit because composition must never fabricate an
+ * external success or a human decision.
  */
 export function createProductLifecycleRuntime(
   options: ProductLifecycleRuntimeOptions,
@@ -131,17 +184,84 @@ export function createProductLifecycleRuntime(
   const managedNodeSubmissions =
     new SqliteManagedNodeSubmissionRepository(db);
 
-  const developmentOutputRepository = options.development.outputRepository
+  const developmentConfig = options.development ?? {};
+  const developmentRuntime = developmentConfig.runtime
+    ?? new SqliteDevelopmentRuntime({
+      workerExecutorFactory: options.workerExecutorFactory,
+      resolveWorkerContext: context =>
+        options.resolveWorkerContext(context),
+      db,
+      ...developmentConfig.runtimeOptions,
+    });
+  const developmentTaskGraphPolicy = developmentConfig.taskGraphPolicy
+    ?? new ReferenceDevelopmentTaskGraphPolicy();
+  const developmentOutputRepository = developmentConfig.outputRepository
     ?? new SqliteDevelopmentOutputRepository(db);
-  const deliveryOutputRepository = options.delivery.outputRepository
-    ?? new SqliteDeliveryOutputRepository(db);
   const developmentDeps: DevelopmentModuleInstallationDependencies = {
-    ...options.development,
     plannerSubmissions: managedNodeSubmissions,
+    taskGraph: developmentConfig.taskGraph ?? developmentRuntime,
+    implementationWorkset:
+      developmentConfig.implementationWorkset ?? developmentRuntime,
+    candidateIntegration:
+      developmentConfig.candidateIntegration ?? developmentRuntime,
+    acceptanceVerification:
+      developmentConfig.acceptanceVerification ?? developmentRuntime,
+    settlementState:
+      developmentConfig.settlementState ?? developmentRuntime,
+    taskGraphPolicy: developmentTaskGraphPolicy,
+    settlementPolicy: developmentConfig.settlementPolicy
+      ?? new ReferenceDevelopmentSettlementPolicy(
+        developmentTaskGraphPolicy,
+      ),
     outputRepository: developmentOutputRepository,
   };
+
+  const deliveryConfig = options.delivery;
+  const deliveryApprovalInbox = deliveryConfig.approvalInbox
+    ?? new SqliteDeliveryApprovalInbox(db);
+  const deliveryProviders: DeliveryRuntimeProviders | null =
+    deliveryConfig.providers
+      ? {
+          ...deliveryConfig.providers,
+          approval:
+            deliveryConfig.providers.approval ?? deliveryApprovalInbox,
+        }
+      : null;
+  const deliveryRuntime = deliveryConfig.runtime
+    ?? (deliveryProviders
+      ? new SqliteDeliveryRuntime({
+        db,
+        providers: deliveryProviders,
+      })
+      : null);
+  const deliveryPreflightPolicy = deliveryConfig.preflightPolicy
+    ?? new ReferenceDeliveryPreflightPolicy();
+  const deliveryOutputRepository = deliveryConfig.outputRepository
+    ?? new SqliteDeliveryOutputRepository(db);
   const deliveryDeps: DeliveryModuleInstallationDependencies = {
-    ...options.delivery,
+    preflightState: requireDeliveryPort(
+      deliveryConfig.preflightState ?? deliveryRuntime,
+      'preflightState',
+    ),
+    approval: requireDeliveryPort(
+      deliveryConfig.approval ?? deliveryRuntime,
+      'approval',
+    ),
+    publication: requireDeliveryPort(
+      deliveryConfig.publication ?? deliveryRuntime,
+      'publication',
+    ),
+    observation: requireDeliveryPort(
+      deliveryConfig.observation ?? deliveryRuntime,
+      'observation',
+    ),
+    settlementState: requireDeliveryPort(
+      deliveryConfig.settlementState ?? deliveryRuntime,
+      'settlementState',
+    ),
+    preflightPolicy: deliveryPreflightPolicy,
+    settlementPolicy: deliveryConfig.settlementPolicy
+      ?? new ReferenceDeliverySettlementPolicy(deliveryPreflightPolicy),
     outputRepository: deliveryOutputRepository,
   };
 
@@ -306,6 +426,13 @@ export function createProductLifecycleRuntime(
     externalAdapters,
     humanInteractions,
     executors,
+    runtimes: {
+      development: developmentRuntime,
+      delivery: deliveryRuntime,
+    },
+    interactions: {
+      deliveryApprovalInbox,
+    },
     repositories: {
       processRunRepo,
       nodeRunRepo,
@@ -324,30 +451,7 @@ function assertCompositionDependencies(
   options: ProductLifecycleRuntimeOptions,
 ): void {
   const missing: string[] = [];
-  const requiredDevelopment = [
-    'taskGraph',
-    'implementationWorkset',
-    'candidateIntegration',
-    'acceptanceVerification',
-    'settlementState',
-    'taskGraphPolicy',
-    'settlementPolicy',
-  ] as const;
-  const requiredDelivery = [
-    'preflightState',
-    'approval',
-    'publication',
-    'observation',
-    'settlementState',
-    'preflightPolicy',
-    'settlementPolicy',
-  ] as const;
-  for (const key of requiredDevelopment) {
-    if (!options.development?.[key]) missing.push(`development.${key}`);
-  }
-  for (const key of requiredDelivery) {
-    if (!options.delivery?.[key]) missing.push(`delivery.${key}`);
-  }
+  if (!options.delivery) missing.push('delivery');
   if (!options.workerExecutorFactory) missing.push('workerExecutorFactory');
   if (!options.resolveWorkerContext) missing.push('resolveWorkerContext');
   if (missing.length > 0) {
@@ -355,4 +459,16 @@ function assertCompositionDependencies(
       `PRODUCT_LIFECYCLE_COMPOSITION_INCOMPLETE: ${missing.join(', ')}`,
     );
   }
+}
+
+function requireDeliveryPort<T>(
+  port: T | null | undefined,
+  name: string,
+): T {
+  if (port) return port;
+  throw new Error(
+    `PRODUCT_LIFECYCLE_COMPOSITION_INCOMPLETE: delivery.${name}; `
+    + 'provide a complete Delivery port set, a SqliteDeliveryRuntime, or '
+    + 'delivery.providers for the standard runtime',
+  );
 }

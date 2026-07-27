@@ -1,6 +1,12 @@
 export interface EngineStartCommand {
   epicId: number;
   concurrency?: number;
+  /** JSON input consumed by the product Lifecycle execution plane. */
+  lifecycleInputPath?: string;
+  /** Stable key used to replay/resume the same durable LifecycleRun. */
+  idempotencyKey?: string;
+  /** Explicit controller authority to continue a durable human pause. */
+  resumePaused?: boolean;
 }
 
 export interface EngineStateSnapshot {

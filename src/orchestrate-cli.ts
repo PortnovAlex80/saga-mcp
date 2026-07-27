@@ -15,16 +15,29 @@
  *   SAGA_ORCHESTRATION_LOG — existing runtime log setting
  */
 
-import { createSaga2Application } from './app/composition-root.js';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
+import {
+  createSaga2Application,
+  type ProductLifecycleCompositionOverrides,
+  type Saga2CompositionOverrides,
+} from './app/composition-root.js';
 import type { SagaApplication } from './application/saga-application.js';
 
 function parseArgs(argv: string[]): {
   projectId: number;
   epicId: number;
   concurrency: number;
+  lifecycleInputPath: string | null;
+  idempotencyKey: string | null;
+  resumePaused: boolean;
 } {
   const positional: string[] = [];
   let concurrency = 4;
+  let lifecycleInputPath: string | null = null;
+  let idempotencyKey: string | null = null;
+  let resumePaused = false;
   for (const arg of argv.slice(2)) {
     const m = /^--concurrency=(\d+)$/.exec(arg);
     if (m) {
@@ -34,10 +47,31 @@ function parseArgs(argv: string[]): {
       }
       continue;
     }
+    const lifecycleInput = /^--lifecycle-input=(.+)$/.exec(arg);
+    if (lifecycleInput) {
+      lifecycleInputPath = lifecycleInput[1];
+      continue;
+    }
+    const idempotency = /^--idempotency-key=(.+)$/.exec(arg);
+    if (idempotency) {
+      idempotencyKey = idempotency[1];
+      continue;
+    }
+    if (arg === '--resume') {
+      resumePaused = true;
+      continue;
+    }
     if (arg === '-h' || arg === '--help') {
       process.stdout.write(
-        'Usage: orchestrate-cli.js <project_id> <epic_id> [--concurrency=4]\n' +
-        '  Runs the saga 3.0 autonomous engine until episode completion.\n',
+        'Usage: orchestrate-cli.js <project_id> <epic_id> [options]\n'
+        + '  --concurrency=4\n'
+        + '  --lifecycle-input=path/to/input.json\n'
+        + '  --idempotency-key=stable-key\n'
+        + '  --resume\n'
+        + '\n'
+        + 'For SAGA_ORCHESTRATION_MODE=saga3-lifecycle, set '
+        + 'SAGA_PRODUCT_LIFECYCLE_COMPOSITION to an ESM provider module and '
+        + 'pass --lifecycle-input or SAGA_PRODUCT_LIFECYCLE_INPUT.\n',
       );
       process.exit(0);
     }
@@ -59,11 +93,25 @@ function parseArgs(argv: string[]): {
     process.stderr.write(`epic_id must be a positive integer, got '${positional[1]}'\n`);
     process.exit(2);
   }
-  return { projectId, epicId, concurrency };
+  return {
+    projectId,
+    epicId,
+    concurrency,
+    lifecycleInputPath,
+    idempotencyKey,
+    resumePaused,
+  };
 }
 
 async function main() {
-  const { projectId, epicId, concurrency } = parseArgs(process.argv);
+  const {
+    projectId,
+    epicId,
+    concurrency,
+    lifecycleInputPath,
+    idempotencyKey,
+    resumePaused,
+  } = parseArgs(process.argv);
   if (!process.env.DB_PATH) {
     process.stderr.write(
       'DB_PATH env var is required (path to the saga SQLite database).\n',
@@ -77,11 +125,27 @@ async function main() {
 
   let application: SagaApplication | null = null;
   try {
-    application = createSaga2Application(process.env);
+    const overrides = await loadCompositionOverrides(projectId, epicId);
+    const resolvedLifecycleInputPath = lifecycleInputPath
+      ?? process.env.SAGA_PRODUCT_LIFECYCLE_INPUT
+      ?? null;
+    const lifecycleInput = resolvedLifecycleInputPath
+      ? JSON.parse(
+        readFileSync(path.resolve(resolvedLifecycleInputPath), 'utf8'),
+      ) as unknown
+      : undefined;
+    application = createSaga2Application(process.env, overrides);
     const result = await application.runEpisode({
       projectId,
       epicId,
       concurrency,
+      lifecycleInput,
+      lifecycleInputSchema: lifecycleInput === undefined
+        ? undefined
+        : 'saga3.product-delivery-lifecycle-input.v1',
+      idempotencyKey: idempotencyKey ?? undefined,
+      resumePaused,
+      initiatedBy: process.env.SAGA_INITIATED_BY ?? 'orchestrate-cli',
     });
     process.stdout.write(`[orchestrate-cli] done: ${JSON.stringify(result)}\n`);
     process.exit(result.reason === 'failed' ? 1 : 0);
@@ -95,6 +159,67 @@ async function main() {
   } finally {
     try { application?.close(); } catch { /* best effort */ }
   }
+}
+
+interface ProductLifecycleCompositionModule {
+  createProductLifecycleComposition?: (context: {
+    env: NodeJS.ProcessEnv;
+    cwd: string;
+    projectId: number;
+    epicId: number;
+  }) =>
+    | ProductLifecycleCompositionOverrides
+    | Promise<ProductLifecycleCompositionOverrides>;
+  default?:
+    | ProductLifecycleCompositionOverrides
+    | ((context: {
+      env: NodeJS.ProcessEnv;
+      cwd: string;
+      projectId: number;
+      epicId: number;
+    }) =>
+      | ProductLifecycleCompositionOverrides
+      | Promise<ProductLifecycleCompositionOverrides>);
+}
+
+async function loadCompositionOverrides(
+  projectId: number,
+  epicId: number,
+): Promise<Saga2CompositionOverrides> {
+  if (process.env.SAGA_ORCHESTRATION_MODE !== 'saga3-lifecycle') return {};
+  const configuredPath = process.env.SAGA_PRODUCT_LIFECYCLE_COMPOSITION;
+  if (!configuredPath) {
+    throw new Error(
+      'SAGA_PRODUCT_LIFECYCLE_COMPOSITION_REQUIRED: lifecycle mode requires '
+      + 'an explicit ESM module that supplies real Delivery preflight, '
+      + 'publication and observation providers',
+    );
+  }
+  const absolutePath = path.resolve(configuredPath);
+  const loaded = await import(pathToFileURL(absolutePath).href) as
+    ProductLifecycleCompositionModule;
+  const exported =
+    loaded.createProductLifecycleComposition ?? loaded.default;
+  if (!exported) {
+    throw new Error(
+      `PRODUCT_LIFECYCLE_COMPOSITION_EXPORT_MISSING: ${absolutePath}`,
+    );
+  }
+  const context = {
+    env: process.env,
+    cwd: process.cwd(),
+    projectId,
+    epicId,
+  };
+  const productLifecycle = typeof exported === 'function'
+    ? await exported(context)
+    : exported;
+  if (!productLifecycle?.delivery) {
+    throw new Error(
+      `PRODUCT_LIFECYCLE_DELIVERY_COMPOSITION_MISSING: ${absolutePath}`,
+    );
+  }
+  return { productLifecycle };
 }
 
 main().catch(err => {

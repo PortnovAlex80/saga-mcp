@@ -17,15 +17,22 @@ const { ProcessOutputPayloadRegistry } = await import(
 const { createBuiltInProcessModuleRegistry } = await import(
   '../../dist/process-modules/modules/catalog.js'
 );
-const { productDeliveryLifecycle } = await import(
+const {
+  assertProductDeliveryLifecycleInput,
+  productDeliveryLifecycle,
+} = await import(
   '../../dist/process-modules/lifecycles/product-delivery-lifecycle.js'
 );
 const {
   DEVELOPMENT_CASE_SCHEMA,
   DEVELOPMENT_CERTIFICATE_SCHEMA,
+  INTEGRATED_CANDIDATE_SCHEMA,
   VERIFIED_INTEGRATION_BUNDLE_SCHEMA,
 } = await import(
   '../../dist/process-modules/modules/development/development-schemas.js'
+);
+const { hashDevelopmentPolicy } = await import(
+  '../../dist/process-modules/modules/development/development-settlement-policy.js'
 );
 const {
   DELIVERY_CERTIFICATE_SCHEMA,
@@ -33,6 +40,9 @@ const {
   RELEASE_RECORD_SCHEMA,
 } = await import(
   '../../dist/process-modules/modules/delivery/delivery-schemas.js'
+);
+const { hashDeliveryReleasePolicy } = await import(
+  '../../dist/process-modules/modules/delivery/delivery-settlement-policy.js'
 );
 const {
   FORMALIZATION_CASE_SCHEMA,
@@ -131,13 +141,18 @@ test('durable product lifecycle freezes exact handoffs and terminal replay creat
         implementationRequired: true,
       }],
     };
-    const integratedCandidate = {
+    const integratedCandidatePayload = {
       schemaVersion: 'saga3.integrated-release-candidate.v1',
       repositoryId: 91,
       commitHash: '6b4721e22f780312c3f273ebc732f33d32097f43',
       treeHash: sha256Hex({ files: ['src/circle.ts', 'tests/circle.test.ts'] }),
       buildDigest: 'sha256:circle-build-v7',
     };
+    const integratedCandidate = reference(
+      INTEGRATED_CANDIDATE_SCHEMA,
+      'integrated-candidate:circle:7',
+      integratedCandidatePayload,
+    );
     const verifiedBundlePayload = {
       schemaVersion: VERIFIED_INTEGRATION_BUNDLE_SCHEMA,
       integratedCandidate,
@@ -155,7 +170,7 @@ test('durable product lifecycle freezes exact handoffs and terminal replay creat
       destinations: [{
         kind: 'deployment',
         target: 'school-math-production',
-        observedDigest: integratedCandidate.buildDigest,
+        observedDigest: integratedCandidate.hash,
       }],
     };
 
@@ -288,6 +303,43 @@ test('durable product lifecycle freezes exact handoffs and terminal replay creat
       installationRegistry,
       outputPayloadRegistry,
     });
+    const developmentPolicyBody = {
+      id: 'circle-development-policy',
+      version: '1.0.0',
+      contentHash: '',
+    };
+    const developmentPolicy = {
+      ...developmentPolicyBody,
+      contentHash: hashDevelopmentPolicy(developmentPolicyBody),
+    };
+    const releaseAction = {
+      actionId: 'deploy-circle',
+      kind: 'deployment',
+      target: 'school-math-production',
+      desiredStateHash: sha256Hex({ release: 'circle-v1' }),
+      payloadHash: sha256Hex({ package: 'circle-v1' }),
+      required: true,
+    };
+    const releasePolicyBody = {
+      id: 'circle-release-policy',
+      version: '1.0.0',
+      contentHash: '',
+      channel: 'production',
+      releaseVersion: '1.0.0',
+      releaseTag: 'v1.0.0',
+      humanApprovalRequired: true,
+      requiredPreflightCheckIds: ['candidate-integrity'],
+      actions: [releaseAction],
+    };
+    const releasePolicy = {
+      ...releasePolicyBody,
+      contentHash: hashDeliveryReleasePolicy(releasePolicyBody),
+    };
+    const operatorGrantBody = {
+      requestedBy: 'release-manager',
+      releasePolicyHash: releasePolicy.contentHash,
+      candidateScope: { mode: 'lifecycle-output' },
+    };
     const rootInput = {
       initiative: {
         subject:
@@ -307,27 +359,33 @@ test('durable product lifecycle freezes exact handoffs and terminal replay creat
       },
       development: {
         repositories: [{
-          repositoryId: 91,
-          role: 'implementation',
-          requiredBranch: 'main',
+          projectRepositoryId: 91,
+          integrationBranch: 'main',
+          expectedBaseCommit: integratedCandidatePayload.commitHash,
         }],
-        policy: {
-          requiredChecks: ['unit', 'integration'],
-          requireAllAcceptanceCriteria: true,
-        },
+        policy: developmentPolicy,
       },
       delivery: {
-        policy: {
-          destinations: ['school-math-production'],
-          requireApproval: true,
-        },
+        policy: releasePolicy,
         operatorAuthorization: {
-          authorizationId: 'operator-auth-circle-v7',
-          authorizedBy: 'release-manager',
-          candidateHash: integratedCandidate.commitHash,
+          schema: 'saga3.operator-release-grant.v1',
+          ref: 'operator-release-grant:circle-v1',
+          hash: sha256Hex(operatorGrantBody),
+          ...operatorGrantBody,
         },
       },
     };
+    assert.doesNotThrow(() =>
+      assertProductDeliveryLifecycleInput(rootInput));
+    const impossibleRootAuthorization = structuredClone(rootInput);
+    impossibleRootAuthorization.delivery.operatorAuthorization.candidateScope = {
+      mode: 'exact',
+      candidateHash: integratedCandidate.hash,
+    };
+    assert.throws(
+      () => assertProductDeliveryLifecycleInput(impossibleRootAuthorization),
+      /PRODUCT_LIFECYCLE_DELIVERY_CONFIGURATION_INVALID/,
+    );
     const command = {
       projectId: 1,
       epicId: 10,

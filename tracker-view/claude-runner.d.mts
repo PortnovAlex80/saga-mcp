@@ -10,7 +10,9 @@ export interface RunnerAssignment {
     id: number;
     title: string;
     status: string;
+    epic_id?: number | null;
     task_kind: string | null;
+    metadata?: string | Record<string, unknown> | null;
     execution_mode?: string | null;
     project_repository_id?: number | null;
     tags?: string;

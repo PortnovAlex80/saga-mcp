@@ -5,12 +5,14 @@ import {
   type DeliveryReleaseCase,
   type DeliveryReleasePolicySnapshot,
 } from '../modules/delivery/delivery-schemas.js';
+import { hashDeliveryReleasePolicy } from '../modules/delivery/delivery-settlement-policy.js';
 import { DEVELOPMENT_PROCESS_MODULE_REF } from '../modules/development/development-process-module.js';
 import {
   DEVELOPMENT_CASE_SCHEMA,
   type DevelopmentPolicySnapshot,
   type DevelopmentRepositoryBinding,
 } from '../modules/development/development-schemas.js';
+import { hashDevelopmentPolicy } from '../modules/development/development-settlement-policy.js';
 import { DISCOVERY_PROCESS_MODULE_REF } from '../modules/discovery/discovery-process-module.js';
 import { FORMALIZATION_PROCESS_MODULE_REF } from '../modules/formalization/formalization-process-module.js';
 import { FORMALIZATION_CASE_SCHEMA } from '../modules/formalization/formalization-schemas.js';
@@ -31,7 +33,14 @@ export interface ProductDeliveryLifecycleInput {
   };
   delivery: {
     policy: DeliveryReleasePolicySnapshot;
-    operatorAuthorization: DeliveryReleaseCase['operatorAuthorization'];
+    operatorAuthorization: Omit<
+      DeliveryReleaseCase['operatorAuthorization'],
+      'candidateScope'
+    > & {
+      candidateScope: {
+        mode: 'lifecycle-output';
+      };
+    };
   };
 }
 
@@ -60,12 +69,77 @@ export function assertProductDeliveryLifecycleInput(
   ) {
     throw new Error('PRODUCT_LIFECYCLE_DEVELOPMENT_CONFIGURATION_REQUIRED');
   }
+  const repositories = value.development.repositories;
+  const developmentPolicy = value.development.policy;
+  if (
+    repositories.length === 0
+    || repositories.some(repository =>
+      !isRecord(repository)
+      || !positiveInteger(repository.projectRepositoryId)
+      || !nonEmptyString(repository.integrationBranch)
+      || !nonEmptyString(repository.expectedBaseCommit))
+    || !nonEmptyString(developmentPolicy.id)
+    || !nonEmptyString(developmentPolicy.version)
+    || !nonEmptyString(developmentPolicy.contentHash)
+    || hashDevelopmentPolicy(
+      developmentPolicy as unknown as DevelopmentPolicySnapshot,
+    ) !== developmentPolicy.contentHash
+  ) {
+    throw new Error('PRODUCT_LIFECYCLE_DEVELOPMENT_CONFIGURATION_INVALID');
+  }
   if (
     !isRecord(value.delivery)
     || !isRecord(value.delivery.policy)
     || !isRecord(value.delivery.operatorAuthorization)
   ) {
     throw new Error('PRODUCT_LIFECYCLE_DELIVERY_CONFIGURATION_REQUIRED');
+  }
+  const deliveryPolicy = value.delivery.policy;
+  const authorization = value.delivery.operatorAuthorization;
+  const actions = deliveryPolicy.actions;
+  const checkIds = deliveryPolicy.requiredPreflightCheckIds;
+  if (
+    !nonEmptyString(deliveryPolicy.id)
+    || !nonEmptyString(deliveryPolicy.version)
+    || !nonEmptyString(deliveryPolicy.contentHash)
+    || !nonEmptyString(deliveryPolicy.channel)
+    || !nonEmptyString(deliveryPolicy.releaseVersion)
+    || !nonEmptyString(deliveryPolicy.releaseTag)
+    || typeof deliveryPolicy.humanApprovalRequired !== 'boolean'
+    || !Array.isArray(checkIds)
+    || checkIds.some(checkId => !nonEmptyString(checkId))
+    || new Set(checkIds).size !== checkIds.length
+    || !Array.isArray(actions)
+    || actions.length === 0
+    || !actions.some(action => isRecord(action) && action.required === true)
+    || actions.some(action =>
+      !isRecord(action)
+      || !nonEmptyString(action.actionId)
+      || ![
+        'source-tag',
+        'source-release',
+        'package-publish',
+        'deployment',
+      ].includes(String(action.kind))
+      || !nonEmptyString(action.target)
+      || !nonEmptyString(action.desiredStateHash)
+      || !nonEmptyString(action.payloadHash)
+      || typeof action.required !== 'boolean')
+    || new Set(
+      actions
+        .filter(isRecord)
+        .map(action => String(action.actionId)),
+    ).size !== actions.length
+    || hashDeliveryReleasePolicy(
+      deliveryPolicy as unknown as DeliveryReleasePolicySnapshot,
+    ) !== deliveryPolicy.contentHash
+    || !validReference(authorization)
+    || !nonEmptyString(authorization.requestedBy)
+    || authorization.releasePolicyHash !== deliveryPolicy.contentHash
+    || !isRecord(authorization.candidateScope)
+    || authorization.candidateScope.mode !== 'lifecycle-output'
+  ) {
+    throw new Error('PRODUCT_LIFECYCLE_DELIVERY_CONFIGURATION_INVALID');
   }
 }
 
@@ -272,4 +346,18 @@ export const discoveryToFormalizationLifecycle = productDeliveryLifecycle;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function nonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+function positiveInteger(value: unknown): value is number {
+  return Number.isSafeInteger(value) && Number(value) > 0;
+}
+
+function validReference(value: Record<string, unknown>): boolean {
+  return nonEmptyString(value.schema)
+    && nonEmptyString(value.ref)
+    && nonEmptyString(value.hash);
 }
