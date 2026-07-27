@@ -16,7 +16,10 @@ export const DISCOVERY_PROCESS_MODULE_REF = {
   version: '3.0.0',
 } as const;
 
-const DISCOVERY_TRACKER = 'tool-templates/discovery/stage-tracker.md';
+const DISCOVERY_PROPOSAL_TRACKER = 'tool-templates/discovery/proposal-stage-tracker.md';
+const DISCOVERY_NORMALIZATION_TRACKER = 'tool-templates/discovery/normalization-stage-tracker.md';
+const DISCOVERY_READINESS_TRACKER = 'tool-templates/discovery/readiness-stage-tracker.md';
+const DISCOVERY_DIAGNOSIS_TRACKER = 'tool-templates/discovery/diagnosis-stage-tracker.md';
 const PROCESS_PROTOCOL_SKILL = 'saga-process-module-worker-protocol';
 
 export const discoveryProcessModule: ProcessModuleDefinition = {
@@ -230,7 +233,7 @@ export const discoveryProcessModule: ProcessModuleDefinition = {
         'task_get', 'repository_checkout_list', 'artifact_list', 'note_list',
         'proposal_submit', 'worker_done', 'Write', 'Read', 'Edit', 'Bash', 'Glob', 'Grep',
       ],
-      trackerTemplate: DISCOVERY_TRACKER,
+      trackerTemplate: DISCOVERY_PROPOSAL_TRACKER,
       workspaceTemplates: [
         'tool-templates/discovery/discovery-doc-template.md',
         'tool-templates/discovery/proposal-call-template.json',
@@ -251,7 +254,7 @@ export const discoveryProcessModule: ProcessModuleDefinition = {
       semanticSkill: 'saga-discovery-normalizer',
       executionMode: 'tracker_only',
       allowedTools: ['task_get', 'normalization_get', 'normalization_submit', 'worker_done', 'Read', 'Edit'],
-      trackerTemplate: DISCOVERY_TRACKER,
+      trackerTemplate: DISCOVERY_NORMALIZATION_TRACKER,
       workspaceTemplates: ['tool-templates/discovery/normalization-call-template.json'],
       callTemplates: ['tool-templates/discovery/normalization-call-template.json'],
       checklists: ['tool-templates/discovery/normalization-checklist.md'],
@@ -269,7 +272,7 @@ export const discoveryProcessModule: ProcessModuleDefinition = {
       semanticSkill: 'saga-discovery-readiness-advisor',
       executionMode: 'tracker_only',
       allowedTools: ['task_get', 'readiness_get', 'readiness_submit', 'worker_done', 'Read', 'Edit'],
-      trackerTemplate: DISCOVERY_TRACKER,
+      trackerTemplate: DISCOVERY_READINESS_TRACKER,
       workspaceTemplates: ['tool-templates/discovery/readiness-call-template.json'],
       callTemplates: ['tool-templates/discovery/readiness-call-template.json'],
       checklists: ['tool-templates/discovery/readiness-checklist.md'],
@@ -287,7 +290,7 @@ export const discoveryProcessModule: ProcessModuleDefinition = {
       semanticSkill: 'saga-discovery-diagnosis-advisor',
       executionMode: 'tracker_only',
       allowedTools: ['task_get', 'diagnosis_get', 'diagnosis_submit', 'worker_done', 'Read', 'Edit'],
-      trackerTemplate: DISCOVERY_TRACKER,
+      trackerTemplate: DISCOVERY_DIAGNOSIS_TRACKER,
       workspaceTemplates: ['tool-templates/discovery/diagnosis-call-template.json'],
       callTemplates: ['tool-templates/discovery/diagnosis-call-template.json'],
       checklists: ['tool-templates/discovery/diagnosis-checklist.md'],

@@ -718,7 +718,35 @@ function handleTaskGet(args: Record<string, unknown>) {
   if (isSaga3Task) {
     const epicId = taskRow.epic_id;
     const stage = taskKind.split('.')[0]; // 'discovery', 'formalization', etc.
-    result._workflow_hint = `Saga3 ${stage} task. Maintain your stage tracker: Read docs/${stage}/project-${epicId}-${stage}-stage.md. Update Current Step after every action. Use templates from docs/${stage}/tools/ — copy, fill, verify with checklist, then submit.`;
+    let metadata: Record<string, unknown> = {};
+    if (taskRow.metadata && typeof taskRow.metadata === 'object' && !Array.isArray(taskRow.metadata)) {
+      metadata = taskRow.metadata as Record<string, unknown>;
+    } else if (typeof taskRow.metadata === 'string') {
+      try {
+        const parsed = JSON.parse(taskRow.metadata);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          metadata = parsed as Record<string, unknown>;
+        }
+      } catch {
+        metadata = {};
+      }
+    }
+    const processWorkspace = metadata.process_workspace;
+    if (processWorkspace && typeof processWorkspace === 'object' && !Array.isArray(processWorkspace)) {
+      const workspace = processWorkspace as Record<string, unknown>;
+      const trackerPath = String(workspace.tracker_path ?? '');
+      const callFiles = Array.isArray(workspace.call_files) ? workspace.call_files : [];
+      const checklists = Array.isArray(workspace.checklists) ? workspace.checklists : [];
+      result._workflow_hint =
+        `Process Module ${stage} task. Read the exact machine-provisioned tracker: ${trackerPath}. `
+        + `Update it after every action. Materialized calls: ${JSON.stringify(callFiles)}. `
+        + `Before submitting, read back the call file and apply: ${JSON.stringify(checklists)}.`;
+    } else {
+      result._workflow_hint =
+        `Saga3 ${stage} task. Maintain the stage tracker under `
+        + `docs/${stage}/projects/${epicId}/. Use templates from docs/${stage}/tools/ — `
+        + 'copy, fill, verify with checklist, then submit.';
+    }
   }
   return result;
 }

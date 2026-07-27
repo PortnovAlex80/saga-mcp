@@ -32,7 +32,15 @@ function roleFromTask(task, fallbackSkill) {
   return fallbackSkill === 'saga-reviewer' ? 'reviewer' : 'developer';
 }
 
-function buildPrompt({ assignment, project, workerId, workspaceRoot, sagaSkillRoot, resolveProfile }) {
+function buildPrompt({
+  assignment,
+  project,
+  workerId,
+  workspaceRoot,
+  sagaSkillRoot,
+  resolvedProfile,
+  processWorkspace,
+}) {
   const task = assignment.task;
   const role = roleFromTask(task, assignment.skill);
   const isReview = task.status === 'review' || task.status === 'review_in_progress';
@@ -54,16 +62,10 @@ function buildPrompt({ assignment, project, workerId, workspaceRoot, sagaSkillRo
   // working unchanged while Process Module tasks get the composed prompt.
   let protocolSkillName = null;
   let semanticSkillName = null;
-  if (typeof resolveProfile === 'function') {
-    try {
-      const resolved = resolveProfile(task.task_kind);
-      if (resolved) {
-        protocolSkillName = resolved.protocolSkill ?? null;
-        semanticSkillName = resolved.semanticSkill ?? null;
-      }
-    } catch {
-      // Resolver failure must NEVER block the worker — fall back to legacy.
-    }
+  const executionProfile = resolvedProfile?.profile ?? resolvedProfile;
+  if (executionProfile) {
+    protocolSkillName = executionProfile.protocolSkill ?? null;
+    semanticSkillName = executionProfile.semanticSkill ?? null;
   }
   // Effective semantic skill: profile.semanticSkill overrides assignment.skill
   // when present (the profile is the single source of truth for Process Module
@@ -122,6 +124,8 @@ function buildPrompt({ assignment, project, workerId, workspaceRoot, sagaSkillRo
     `dispatcher_skill=${assignment.skill}`,
     protocolSkillName ? `protocol_skill=${protocolSkillName}` : null,
     semanticSkillName ? `semantic_skill=${semanticSkillName}` : null,
+    processWorkspace ? `process_module_ref=${processWorkspace.moduleRef}` : null,
+    processWorkspace ? `execution_profile=${processWorkspace.profileId}` : null,
     `task_kind=${task.task_kind || 'legacy'}`,
     `workflow_stage=${task.workflow_stage || 'legacy'}`,
     `execution_mode=${task.execution_mode || 'git_change'}`,
@@ -139,6 +143,27 @@ function buildPrompt({ assignment, project, workerId, workspaceRoot, sagaSkillRo
       ? `4. Follow the PROTOCOL SKILL (execution physics) and the SEMANTIC SKILL (domain role) below. SKIP every instruction that claims or selects a task. The protocol is authoritative for HOW you work; the semantic skill is authoritative for WHAT you produce.`
       : `4. Follow the skill workflow below (also at ${skillPath}). SKIP every instruction that claims or selects a task.`,
     skillInline,
+    processWorkspace
+      ? [
+          '',
+          '--- MACHINE-PROVISIONED PROCESS WORKSPACE (mandatory, exact paths) ---',
+          `tracker_path=${processWorkspace.trackerPath}`,
+          `execution_workspace=${processWorkspace.executionDirectory}`,
+          `workspace_files=${JSON.stringify(processWorkspace.workspaceFiles)}`,
+          `materialized_call_files=${JSON.stringify(processWorkspace.callFiles)}`,
+          `checklists=${JSON.stringify(processWorkspace.checklists)}`,
+          '',
+          'Weak-model execution order:',
+          `a. Read ${processWorkspace.trackerPath} before any domain action.`,
+          'b. Read the assigned task with task_get and verify its machine bindings.',
+          'c. Use the listed materialized files; do not invent a call shape from memory.',
+          'd. Before every consequential MCP write, read the listed checklist and the call file back.',
+          'e. Update the exact tracker after every completed step and before worker_done.',
+          'Paths in this section override generic or legacy example paths in semantic skills.',
+          '--- END MACHINE-PROVISIONED PROCESS WORKSPACE ---',
+          '',
+        ].join('\n')
+      : null,
     task.execution_mode === 'git_change'
       ? '5. Use the existing task worktree/branch conventions from the skill.'
       : '5. This task is not a git-change task. Do not create a worktree or merge unless the assigned skill explicitly requires one.',
@@ -192,6 +217,8 @@ export class ClaudeBoardRunner {
     // semantic = domain role). When absent or null, the legacy single-skill
     // path is used. The resolver is injected by the worker-executor factory.
     this.resolveProfile = options.resolveProfile ?? null;
+    // Runtime callback for exact task-scoped trackers/templates/checklists.
+    this.prepareWorkspace = options.prepareWorkspace ?? null;
     this.lmstudioBaseUrl = options.lmstudioBaseUrl
       ?? process.env.SAGA_LMSTUDIO_URL
       ?? 'http://localhost:1234/v1';
@@ -493,6 +520,24 @@ export class ClaudeBoardRunner {
       ? this.writeExecutionMcpConfig(assignment.execution_id, task.id, workerId)
       : this.mcpConfigPath;
 
+    let resolvedProfile = null;
+    if (typeof this.resolveProfile === 'function') {
+      try {
+        resolvedProfile = this.resolveProfile(task.task_kind);
+      } catch {
+        // Resolver failures retain the legacy single-skill path.
+      }
+    }
+    const processWorkspace = resolvedProfile && typeof this.prepareWorkspace === 'function'
+      ? this.prepareWorkspace({
+          assignment,
+          project: { id: run.projectId, name: run.projectName },
+          workerId,
+          workspaceRoot,
+          resolvedProfile,
+        })
+      : null;
+
     const prompt = buildPrompt({
       assignment,
       project: { id: run.projectId, name: run.projectName },
@@ -500,7 +545,8 @@ export class ClaudeBoardRunner {
       executionId: assignment.execution_id || null,
       workspaceRoot,
       sagaSkillRoot: this.sagaSkillRoot,
-      resolveProfile: this.resolveProfile,
+      resolvedProfile,
+      processWorkspace,
     });
     const args = [
       '-p',
@@ -509,12 +555,14 @@ export class ClaudeBoardRunner {
       '--mcp-config', executionMcpConfigPath,
       '--strict-mcp-config',
     ];
-    // PostToolUse hook: after every tool call, inject a tracker reminder into
-    // the model's context so it doesn't forget to update its stage tracker.
-    // The hook script reads docs/discovery/project-*-discovery-stage.md and
-    // returns the current step + next action as additionalContext.
-    const hookPath = path.join(path.dirname(new URL(import.meta.url).pathname.replace(/^\//,'')), 'tracker-reminder.mjs');
-    if (existsSync(hookPath)) {
+    // PostToolUse hook: exact tracker selection is passed through the child
+    // environment. It must never scan and accidentally select another epic.
+    const hookPath = path.resolve(
+      path.dirname(new URL(import.meta.url).pathname.replace(/^\//, '')),
+      '..',
+      'tracker-reminder.mjs',
+    );
+    if (processWorkspace && existsSync(hookPath)) {
       const settings = {
         hooks: {
           PostToolUse: [{ command: `node "${hookPath}"` }],
@@ -602,6 +650,8 @@ export class ClaudeBoardRunner {
         SAGA_WORKER_ID: workerId,
         SAGA_EXECUTION_ID: assignment.execution_id || '',
         SAGA_TASK_ID: String(task.id),
+        SAGA_PROCESS_TRACKER_PATH: processWorkspace?.trackerAbsolutePath || '',
+        SAGA_PROCESS_CHECKLIST_PATHS: processWorkspace?.checklists.join(path.delimiter) || '',
         // Для heartbeat-лога из скилла воркера (см. saga-worker/SKILL.md):
         SAGA_PROJECT_ID: String(run.projectId),
         SAGA_PROJECT_NAME: run.projectName,

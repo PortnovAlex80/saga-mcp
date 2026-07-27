@@ -16,6 +16,11 @@ import {
   type LegacyClaudeBoardRunner,
 } from './claude-board-worker-executor.js';
 import { resolveExecutionProfile } from '../../process-modules/application/execution-profile-resolver.js';
+import type { ResolvedExecutionProfile } from '../../process-modules/application/execution-profile-resolver.js';
+import {
+  prepareProcessExecutionWorkspace,
+  type ProcessExecutionWorkspace,
+} from '../../process-modules/application/process-execution-workspace.js';
 
 /**
  * ClaudeBoardRunnerOptions is exported from the .mjs runner without a formal
@@ -24,10 +29,16 @@ import { resolveExecutionProfile } from '../../process-modules/application/execu
  * annotations.
  */
 type RunnerOptions = ClaudeBoardRunnerOptions & {
-  resolveProfile?: (taskKind: string | null | undefined) => {
-    protocolSkill: string;
-    semanticSkill: string;
-  } | null;
+  resolveProfile?: (
+    taskKind: string | null | undefined,
+  ) => ResolvedExecutionProfile | null;
+  prepareWorkspace?: (input: {
+    assignment: RunnerAssignment;
+    project: { id: number; name: string };
+    workerId: string;
+    workspaceRoot: string;
+    resolvedProfile: ResolvedExecutionProfile;
+  }) => ProcessExecutionWorkspace;
 };
 
 export interface LegacyClaudeWorkerExecutorFactoryOptions {
@@ -92,13 +103,59 @@ export function createLegacyClaudeWorkerExecutorFactory(
       // skill. When the task_kind does not match any module profile, the
       // resolver returns null and the prompt builder falls back to the legacy
       // single-skill path.
-      resolveProfile: (taskKind: string | null | undefined) => {
-        const resolved = resolveExecutionProfile(taskKind);
-        if (!resolved) return null;
-        return {
-          protocolSkill: resolved.profile.protocolSkill,
-          semanticSkill: resolved.profile.semanticSkill,
+      resolveProfile: (taskKind: string | null | undefined) =>
+        resolveExecutionProfile(taskKind),
+      // Materialize the descriptor-owned tracker/templates only after the
+      // exact task has been claimed, when execution_id and worker_id are known.
+      prepareWorkspace: input => {
+        const task = input.assignment.task;
+        const epicId = Number(task.epic_id ?? context.epicId ?? 0);
+        if (!Number.isSafeInteger(epicId) || epicId < 1) {
+          throw new Error(
+            `PROCESS_WORKSPACE_EPIC_REQUIRED: task ${task.id} has no epic scope`,
+          );
+        }
+        const workspace = prepareProcessExecutionWorkspace({
+          workspaceRoot: input.workspaceRoot,
+          module: input.resolvedProfile.module,
+          profile: input.resolvedProfile.profile,
+          projectId: input.project.id,
+          epicId,
+          task,
+          executionId: input.assignment.execution_id ?? null,
+          workerId: input.workerId,
+        });
+
+        const rawMetadata = task.metadata;
+        let metadata: Record<string, unknown> = {};
+        if (rawMetadata && typeof rawMetadata === 'object' && !Array.isArray(rawMetadata)) {
+          metadata = { ...rawMetadata };
+        } else if (typeof rawMetadata === 'string') {
+          try {
+            const parsed = JSON.parse(rawMetadata);
+            if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+              metadata = parsed as Record<string, unknown>;
+            }
+          } catch {
+            metadata = {};
+          }
+        }
+        metadata.process_workspace = {
+          profile_id: workspace.profileId,
+          module_ref: workspace.moduleRef,
+          tracker_path: workspace.trackerPath,
+          execution_directory: workspace.executionDirectory,
+          workspace_files: [...workspace.workspaceFiles],
+          call_files: [...workspace.callFiles],
+          checklists: [...workspace.checklists],
         };
+        getDb().prepare(
+          `UPDATE tasks
+              SET metadata=?, updated_at=datetime('now')
+            WHERE id=?`,
+        ).run(JSON.stringify(metadata), task.id);
+        task.metadata = metadata;
+        return workspace;
       },
     };
 
