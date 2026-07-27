@@ -75,6 +75,8 @@ export interface DevelopmentImplementationWorksetPort {
     payloadHash: string;
     developmentCase: DevelopmentCase;
     taskGraph: DevelopmentTaskGraphSnapshot;
+    /** Renew the owning ProcessRun lease while bounded workers are active. */
+    heartbeat: () => void;
   }): Promise<{
     receipt: DevelopmentExternalActionReceipt;
     workset: DevelopmentImplementationWorkset | null;
@@ -93,6 +95,7 @@ export interface DevelopmentCandidateIntegrationPort {
     developmentCase: DevelopmentCase;
     taskGraph: DevelopmentTaskGraphSnapshot;
     implementationWorkset: DevelopmentImplementationWorkset;
+    heartbeat: () => void;
   }): Promise<{
     receipt: DevelopmentExternalActionReceipt;
     candidate: IntegratedReleaseCandidate | null;
@@ -107,6 +110,7 @@ export interface DevelopmentAcceptanceVerificationPort {
     developmentCase: DevelopmentCase;
     taskGraph: DevelopmentTaskGraphSnapshot;
     candidate: IntegratedReleaseCandidate;
+    heartbeat: () => void;
   }): Promise<{
     receipt: DevelopmentExternalActionReceipt;
     verification: AcceptanceVerificationWorkset | null;

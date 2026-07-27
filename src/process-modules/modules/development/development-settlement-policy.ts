@@ -259,16 +259,30 @@ implements DevelopmentTaskGraphPolicyPort {
       );
     }
     if (
+      graph.implementationItems.some(item =>
+        item.executionMode !== 'git_change'
+        || item.projectRepositoryId === null)
+    ) {
+      pushIssue(
+        reasonCodes,
+        errors,
+        'task-graph-dependency-invalid',
+        'implementation work must use git_change and bind one case repository',
+      );
+    }
+    if (
       graph.verificationItems.some(item =>
         item.kind !== 'verification'
         || item.acceptanceCriterionIds.length !== 1
-        || !item.required)
+        || !item.required
+        || item.taskKind !== 'verification.ac'
+        || item.executionMode !== 'read_only_evidence')
     ) {
       pushIssue(
         reasonCodes,
         errors,
         'verification-plan-coverage-gap',
-        'every verification item must target exactly one acceptance criterion',
+        'every verification item must be a required read_only_evidence verification.ac task for exactly one acceptance criterion',
       );
     }
 
