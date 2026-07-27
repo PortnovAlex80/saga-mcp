@@ -7,7 +7,6 @@ import type {
 import { SqliteExternalEffectLedger } from '../../persistence/sqlite-external-effect-ledger.js';
 import {
   SqliteProcessProductRepository,
-  type ProcessProductRecord,
 } from '../../persistence/sqlite-process-product-repository.js';
 import { sha256Hex } from '../../shared/canonical-json.js';
 import type {
@@ -23,7 +22,6 @@ import {
 import type {
   DeliveryActionExecutionResult,
   DeliveryActionObservationResult,
-  DeliveryActionProvider,
   DeliveryProviderIdentity,
   DeliveryRuntimeProviders,
 } from './delivery-provider-ports.js';
@@ -141,7 +139,7 @@ export class SqliteDeliveryRuntime implements
         ),
       });
     }
-    const body = {
+    const body: Omit<DeliveryPreflightSnapshot, 'preflightHash'> = {
       schemaVersion: DELIVERY_PREFLIGHT_SCHEMA,
       candidateHash: input.deliveryCase.integratedCandidate.hash,
       developmentCertificateHash:
@@ -213,7 +211,7 @@ export class SqliteDeliveryRuntime implements
           sourced.provider,
           ['authorized_decision'],
         );
-    const body = {
+    const body: Omit<DeliveryApprovalDecision, 'approvalHash'> = {
       schemaVersion: DELIVERY_APPROVAL_SCHEMA,
       status: sourced.status,
       candidateHash: input.deliveryCase.integratedCandidate.hash,
@@ -294,7 +292,7 @@ export class SqliteDeliveryRuntime implements
         heartbeat: input.heartbeat,
       }));
     }
-    const body = {
+    const body: Omit<DeliveryPublicationSnapshot, 'publicationHash'> = {
       schemaVersion: DELIVERY_PUBLICATION_SCHEMA,
       candidateHash: input.deliveryCase.integratedCandidate.hash,
       preflightHash: input.preflight.preflightHash,
@@ -369,7 +367,7 @@ export class SqliteDeliveryRuntime implements
       && observations.every(observation =>
         observation.outcome !== 'unknown'
         && observation.outcome !== 'error');
-    const body = {
+    const body: Omit<DeliveryObservationSnapshot, 'observationHash'> = {
       schemaVersion: DELIVERY_OBSERVATION_SCHEMA,
       candidateHash: input.deliveryCase.integratedCandidate.hash,
       publicationHash: input.publication.publicationHash,

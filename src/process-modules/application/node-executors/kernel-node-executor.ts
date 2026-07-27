@@ -35,6 +35,7 @@ export class KernelNodeExecutor implements NodeExecutor {
         node,
         input: ctx.input,
         frame: ctx.frame,
+        heartbeat: ctx.heartbeat,
         initiatedBy: ctx.initiatedBy,
       });
       // Kernel handlers emit DOMAIN events (accepted / go / clarify / ...).

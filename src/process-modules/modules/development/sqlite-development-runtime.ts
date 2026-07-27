@@ -2,7 +2,6 @@ import { spawnSync } from 'node:child_process';
 import os from 'node:os';
 import type Database from 'better-sqlite3';
 import type {
-  WorkerExecutor,
   WorkerExecutorFactory,
   WorkerExecutorFactoryContext,
   WorkerRunSnapshot,
@@ -363,7 +362,7 @@ export class SqliteDevelopmentRuntime implements
           + `:branch:${repository.branch}:commit:${repository.commitSha}`,
         digest: repository.treeHash,
       }));
-      const body = {
+      const body: Omit<IntegratedReleaseCandidate, 'candidateHash'> = {
         schemaVersion: INTEGRATED_CANDIDATE_SCHEMA,
         taskGraphHash: input.taskGraph.graphHash,
         implementationWorksetHash:
@@ -524,7 +523,7 @@ export class SqliteDevelopmentRuntime implements
       .filter(item => item.required).length;
     const complete = runnerFailure === null
       && evidence.length === requiredCount;
-    const body = {
+    const body: Omit<AcceptanceVerificationWorkset, 'verificationHash'> = {
       schemaVersion: ACCEPTANCE_VERIFICATION_SCHEMA,
       acceptanceBaselineHash: input.developmentCase.acceptanceBaselineHash,
       candidateHash: input.candidate.candidateHash,

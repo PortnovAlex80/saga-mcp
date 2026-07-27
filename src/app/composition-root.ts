@@ -75,8 +75,9 @@ export interface Saga2CompositionOverrides {
   board?: BoardProjectionReader;
   engineAdministration?: EngineAdministration;
   /**
-   * Required explicit module/provider ports for saga3-lifecycle mode.
-   * No Git/CI/deployment/human provider is silently selected.
+   * Explicit Delivery provider composition for saga3-lifecycle mode.
+   * Standard Development/SQLite mechanics are supplied by the lifecycle
+   * factory; no deployment success or human decision is silently selected.
    */
   productLifecycle?: ProductLifecycleCompositionOverrides;
   close?: () => void;
@@ -154,8 +155,8 @@ function selectEngine(
     if (!productLifecycle) {
       throw new Error(
         'SAGA3_LIFECYCLE_DEPENDENCIES_REQUIRED: createSaga2Application '
-        + 'must receive overrides.productLifecycle with explicit Development '
-        + 'and Delivery provider/state ports',
+        + 'must receive overrides.productLifecycle with explicit Delivery '
+        + 'preflight/publication/observation providers',
       );
     }
     return createProductLifecycleRuntime({
