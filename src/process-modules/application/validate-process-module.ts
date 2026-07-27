@@ -96,6 +96,27 @@ function reachableNodeIds(module: ProcessModuleDefinition): Set<string> {
   return reached;
 }
 
+function canReachWithoutTerminal(
+  module: ProcessModuleDefinition,
+  fromNodeId: string,
+  targetNodeId: string,
+): boolean {
+  const terminals = new Set(module.flow.terminalNodeIds);
+  const pending = [fromNodeId];
+  const visited = new Set<string>();
+  while (pending.length > 0) {
+    const current = pending.pop();
+    if (current === undefined || visited.has(current)) continue;
+    if (current === targetNodeId) return true;
+    visited.add(current);
+    if (terminals.has(current)) continue;
+    for (const transition of module.flow.transitions) {
+      if (transition.from === current) pending.push(transition.to);
+    }
+  }
+  return false;
+}
+
 export function validateProcessModuleDefinition(
   module: ProcessModuleDefinition,
 ): ProcessModuleValidationResult {
@@ -145,6 +166,75 @@ export function validateProcessModuleDefinition(
     if (!transition.on.trim()) errors.push(`transition '${transition.from}' -> '${transition.to}' has no event`);
     if (terminalSet.has(transition.from)) {
       errors.push(`terminal node '${transition.from}' must not have outgoing transitions`);
+    }
+  }
+
+  const recoveryIds = (module.flow.recovery ?? []).map(policy => policy.id);
+  for (const id of duplicates(recoveryIds)) {
+    errors.push(`duplicate flow recovery policy '${id}'`);
+  }
+  for (const policy of module.flow.recovery ?? []) {
+    if (!IDENTIFIER.test(policy.id)) {
+      errors.push(`flow recovery policy '${policy.id}' has an invalid id`);
+    }
+    if (!nodeIdSet.has(policy.verifyNodeId)) {
+      errors.push(
+        `flow recovery policy '${policy.id}' verifier '${policy.verifyNodeId}' does not exist`,
+      );
+    }
+    if (!nodeIdSet.has(policy.repairNodeId)) {
+      errors.push(
+        `flow recovery policy '${policy.id}' repair node '${policy.repairNodeId}' does not exist`,
+      );
+    }
+    if (terminalSet.has(policy.verifyNodeId)) {
+      errors.push(
+        `flow recovery policy '${policy.id}' cannot use terminal verifier '${policy.verifyNodeId}'`,
+      );
+    }
+    if (terminalSet.has(policy.repairNodeId)) {
+      errors.push(
+        `flow recovery policy '${policy.id}' cannot target terminal repair node '${policy.repairNodeId}'`,
+      );
+    }
+    if (!Number.isInteger(policy.maxAttempts) || policy.maxAttempts < 1) {
+      errors.push(
+        `flow recovery policy '${policy.id}' maxAttempts must be a positive integer`,
+      );
+    }
+    if (policy.triggerEvents.length === 0) {
+      errors.push(`flow recovery policy '${policy.id}' has no triggerEvents`);
+    }
+    if (policy.resolvedEvents.length === 0) {
+      errors.push(`flow recovery policy '${policy.id}' has no resolvedEvents`);
+    }
+    for (const event of duplicates(policy.triggerEvents)) {
+      errors.push(`flow recovery policy '${policy.id}' repeats trigger event '${event}'`);
+    }
+    for (const event of duplicates(policy.resolvedEvents)) {
+      errors.push(`flow recovery policy '${policy.id}' repeats resolved event '${event}'`);
+    }
+    for (const event of policy.triggerEvents) {
+      const route = module.flow.transitions.find(transition =>
+        transition.from === policy.verifyNodeId
+        && transition.on === event
+        && transition.to === policy.repairNodeId);
+      if (!route) {
+        errors.push(
+          `flow recovery policy '${policy.id}' requires transition `
+            + `'${policy.verifyNodeId}' --${event}--> '${policy.repairNodeId}'`,
+        );
+      }
+    }
+    if (
+      nodeIdSet.has(policy.repairNodeId)
+      && nodeIdSet.has(policy.verifyNodeId)
+      && !canReachWithoutTerminal(module, policy.repairNodeId, policy.verifyNodeId)
+    ) {
+      errors.push(
+        `flow recovery policy '${policy.id}' repair path from '${policy.repairNodeId}' `
+          + `does not return to verifier '${policy.verifyNodeId}' before a terminal node`,
+      );
     }
   }
 

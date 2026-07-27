@@ -77,6 +77,9 @@ export function ensureSaga3ProcessRunSchema(db: Database.Database): void {
       certificate_ref             TEXT,
       certificate_hash            TEXT,
       executor_run_ref            TEXT,                               -- internal run ref (e.g. WorkIntent id)
+      active_recovery_case_id     INTEGER,
+      active_issue_ref            TEXT,
+      active_issue_hash           TEXT,
       execution_lease_owner       TEXT,
       execution_lease_expires_at  TEXT,
       error                       TEXT,
@@ -115,6 +118,15 @@ export function ensureSaga3ProcessRunSchema(db: Database.Database): void {
   if (!columns.some(column => column.name === 'authority')) {
     db.exec('ALTER TABLE saga3_process_runs ADD COLUMN authority TEXT');
   }
+  if (!columns.some(column => column.name === 'active_recovery_case_id')) {
+    db.exec('ALTER TABLE saga3_process_runs ADD COLUMN active_recovery_case_id INTEGER');
+  }
+  if (!columns.some(column => column.name === 'active_issue_ref')) {
+    db.exec('ALTER TABLE saga3_process_runs ADD COLUMN active_issue_ref TEXT');
+  }
+  if (!columns.some(column => column.name === 'active_issue_hash')) {
+    db.exec('ALTER TABLE saga3_process_runs ADD COLUMN active_issue_hash TEXT');
+  }
 }
 
 interface ProcessRunRow {
@@ -140,6 +152,9 @@ interface ProcessRunRow {
   certificate_ref: string | null;
   certificate_hash: string | null;
   executor_run_ref: string | null;
+  active_recovery_case_id: number | null;
+  active_issue_ref: string | null;
+  active_issue_hash: string | null;
   error: string | null;
   started_at: string;
   completed_at: string | null;
@@ -174,6 +189,15 @@ function rowToRecord(row: ProcessRunRow): ProcessRunRecord {
     certificateRef: row.certificate_ref,
     certificateHash: row.certificate_hash,
     executorRunRef: row.executor_run_ref,
+    activeIssue: row.active_recovery_case_id === null
+      || row.active_issue_ref === null
+      || row.active_issue_hash === null
+      ? null
+      : {
+          recoveryCaseId: row.active_recovery_case_id,
+          issueRef: row.active_issue_ref,
+          issueHash: row.active_issue_hash,
+        },
     error: row.error,
     startedAt: row.started_at,
     completedAt: row.completed_at,
@@ -447,6 +471,26 @@ export class SqliteProcessRunRepository implements ProcessRunRepository {
     if (input.executorRunRef !== undefined) {
       sets.push('executor_run_ref = ?');
       params.push(input.executorRunRef);
+    }
+    if (input.activeIssue !== undefined) {
+      if (input.activeIssue === null) {
+        sets.push(
+          'active_recovery_case_id = NULL',
+          'active_issue_ref = NULL',
+          'active_issue_hash = NULL',
+        );
+      } else {
+        sets.push(
+          'active_recovery_case_id = ?',
+          'active_issue_ref = ?',
+          'active_issue_hash = ?',
+        );
+        params.push(
+          input.activeIssue.recoveryCaseId,
+          input.activeIssue.issueRef,
+          input.activeIssue.issueHash,
+        );
+      }
     }
     if (input.error !== undefined) {
       sets.push('error = ?');

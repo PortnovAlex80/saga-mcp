@@ -24,6 +24,10 @@ import type {
   LmFlowNodeDefinition,
   ProcessModuleDefinition,
 } from '../../domain/process-module.js';
+import {
+  RECOVERY_FEEDBACK_SCHEMA,
+  type RecoveryFeedback,
+} from '../../domain/recovery.js';
 import type { WorkerExecutor, WorkerExecutorFactory, WorkerExecutorFactoryContext } from '../../../application/ports/worker-executor.js';
 import {
   NodeExecutionError,
@@ -206,11 +210,19 @@ export class LmNodeExecutor implements NodeExecutor {
       // when the input carries no objective (e.g. synthetic test modules).
       const inputObj = (ctx.input ?? {}) as { objective?: string };
       const runInputObj = (ctx.frame.runInput ?? {}) as { objective?: string };
-      const objective = inputObj.objective && inputObj.objective.trim().length > 0
+      const baseObjective = inputObj.objective && inputObj.objective.trim().length > 0
         ? inputObj.objective
         : runInputObj.objective && runInputObj.objective.trim().length > 0
           ? runInputObj.objective
           : (node.description || node.label);
+      const recoveryFeedback = readRecoveryFeedback(ctx.input);
+      const objective = recoveryFeedback
+        ? `${baseObjective}\n\nRecovery attempt ${recoveryFeedback.attempt}/`
+          + `${recoveryFeedback.maxAttempts}: ${recoveryFeedback.issue.summary}. `
+          + 'Read recovery_feedback and recovery-feedback.json, inspect the exact '
+          + 'sourceProduction and subjectRefs, change only allowedChanges, then '
+          + 'complete the ordinary node protocol so the kernel can verify again.'
+        : baseObjective;
 
       // Д5: a preparation kernel node upstream may have ALREADY created the
       // WorkIntent + projected task (e.g. discovery-prepare-readiness creates
@@ -250,6 +262,15 @@ export class LmNodeExecutor implements NodeExecutor {
         process_input_hash: sha256Hex(ctx.frame.runInput),
         process_node_input: ctx.input,
         process_node_input_hash: sha256Hex(ctx.input),
+        ...(recoveryFeedback
+          ? {
+              recovery_case_id: recoveryFeedback.caseId,
+              recovery_attempt: recoveryFeedback.attempt,
+              recovery_issue_ref: recoveryFeedback.issueRef,
+              recovery_issue_hash: recoveryFeedback.issueHash,
+              recovery_feedback: recoveryFeedback,
+            }
+          : {}),
         ...(resolvedRepositoryId !== null
           ? { project_repository_id: resolvedRepositoryId }
           : {}),
@@ -267,14 +288,23 @@ export class LmNodeExecutor implements NodeExecutor {
         // Atomically ensure the WorkIntent + projected task pair. A restart
         // must never create a new intent and then reuse a task whose metadata
         // is still bound to an older intent.
-        const generationKey = `process-run:${ctx.processRunId}:node:${node.id}`;
+        // A physical resume of the same semantic round reuses this key. A new
+        // issue attempt receives a new WorkIntent/task instead of replaying the
+        // already-concluded task from the prior round.
+        const recoveryIdentity = recoveryFeedback
+          ? `:recovery:${recoveryFeedback.caseId}:attempt:${recoveryFeedback.attempt}`
+          : '';
+        const generationKey =
+          `process-run:${ctx.processRunId}:node:${node.id}${recoveryIdentity}`;
+        const snapshotRef =
+          `process-run:${ctx.processRunId}:node:${node.id}${recoveryIdentity}`;
         const plan = this.persistence.ensureExecutionPlan({
           intent: {
             epicId: ctx.epicId,
             kind: profile.workIntentKind,
             objective,
             authorityScope: {
-              snapshot_ref: `process-run:${ctx.processRunId}:node:${node.id}`,
+              snapshot_ref: snapshotRef,
               scope: profile.semanticSkill,
               allowed_tools: [...profile.allowedTools],
               enforcement: 'runtime',
@@ -495,6 +525,28 @@ export class LmNodeExecutor implements NodeExecutor {
       throw new NodeExecutionError('lm', node.id, (err as Error).message, err);
     }
   }
+}
+
+function readRecoveryFeedback(input: unknown): RecoveryFeedback | null {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return null;
+  const record = input as Record<string, unknown>;
+  if (record.schema !== RECOVERY_FEEDBACK_SCHEMA) return null;
+  const bindings = record.bindings;
+  if (!bindings || typeof bindings !== 'object' || Array.isArray(bindings)) return null;
+  const feedback = (bindings as Record<string, unknown>).recoveryFeedback;
+  if (!feedback || typeof feedback !== 'object' || Array.isArray(feedback)) return null;
+  const candidate = feedback as Partial<RecoveryFeedback>;
+  if (
+    candidate.schemaVersion !== RECOVERY_FEEDBACK_SCHEMA
+    || !Number.isInteger(candidate.caseId)
+    || !Number.isInteger(candidate.attempt)
+    || typeof candidate.issueRef !== 'string'
+    || typeof candidate.issueHash !== 'string'
+    || !candidate.issue
+  ) {
+    throw new Error('LM_RECOVERY_FEEDBACK_INVALID: malformed recovery feedback input');
+  }
+  return candidate as RecoveryFeedback;
 }
 
 function resolveProfile(

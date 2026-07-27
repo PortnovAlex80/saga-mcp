@@ -13,6 +13,8 @@
  * records where to find them.
  */
 
+import type { RecoveryIssue } from '../domain/recovery.js';
+
 export type NodeRunStatus = 'running' | 'completed' | 'failed';
 
 export interface NodeRunRecord {
@@ -46,6 +48,8 @@ export interface NodeRunRecord {
    * materialization without pretending the task itself is the product.
    */
   executionReceipt: Record<string, unknown> | null;
+  /** Immutable issue emitted by this completed node, if it entered recovery. */
+  recoveryIssue: RecoveryIssue | null;
   errorMessage: string | null;
   startedAt: string;
   completedAt: string | null;
@@ -66,6 +70,7 @@ export interface CompleteNodeRunInput {
   /** Д8: durable bindings to persist for restart recovery. */
   outputBindings?: Record<string, unknown> | null;
   executionReceipt?: Record<string, unknown> | null;
+  recoveryIssue?: RecoveryIssue | null;
 }
 
 export interface FailNodeRunInput {

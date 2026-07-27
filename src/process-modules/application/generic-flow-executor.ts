@@ -23,13 +23,29 @@
 
 import { randomUUID } from 'node:crypto';
 import { type ProcessModuleDefinition } from '../domain/process-module.js';
-import type { FlowNodeDefinition, FlowTransitionDefinition } from '../domain/process-module.js';
+import type {
+  FlowNodeDefinition,
+  FlowRecoveryDefinition,
+  FlowTransitionDefinition,
+} from '../domain/process-module.js';
+import {
+  RECOVERY_FEEDBACK_SCHEMA,
+  RECOVERY_ISSUE_SCHEMA,
+  type RecoveryFeedback,
+  type RecoveryIssue,
+} from '../domain/recovery.js';
 import type {
   ProcessRunRepository,
 } from '../persistence/process-run-repository.js';
 import type {
   NodeRunRepository,
 } from '../persistence/node-run.js';
+import type {
+  NodeRunRecord,
+} from '../persistence/node-run.js';
+import type {
+  RecoveryCaseRepository,
+} from '../persistence/recovery-case-repository.js';
 import type {
   ProcessOutcomeCertificatePayload,
   IssueProcessOutcomeCertificateCommand,
@@ -66,6 +82,8 @@ export interface GenericFlowExecutorOptions {
   certificateRepo: ProcessOutcomeCertificateRepository;
   /** Node executors keyed by FlowNodeKind. Required: 'kernel'. */
   nodeExecutors: ReadonlyMap<string, NodeExecutor>;
+  /** Durable, module-agnostic issue/repair state. Required by recovery flows. */
+  recoveryCaseRepo?: RecoveryCaseRepository;
   /**
    * Optional hook producing the module's output artifact (ProcessModuleOutput)
    * from the terminal node's result. If absent, output is null. Modules that
@@ -90,9 +108,27 @@ export class ProcessRunBusyError extends Error {
 }
 
 export class ProcessRunPausedError extends Error {
-  constructor(readonly processRunId: number, readonly nodeId: string) {
+  constructor(
+    readonly processRunId: number,
+    readonly nodeId: string,
+    readonly recoveryCaseId: number | null = null,
+  ) {
     super(`ProcessRun ${processRunId} paused at node '${nodeId}' and can be resumed`);
     this.name = 'ProcessRunPausedError';
+  }
+}
+
+export class RecoveryExhaustedError extends Error {
+  constructor(
+    readonly processRunId: number,
+    readonly policyId: string,
+    readonly recoveryCaseId: number,
+  ) {
+    super(
+      `ProcessRun ${processRunId} exhausted recovery policy '${policyId}' `
+        + `(case ${recoveryCaseId})`,
+    );
+    this.name = 'RecoveryExhaustedError';
   }
 }
 
@@ -265,6 +301,7 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
         authority,
         output,
         certificate,
+        activeIssue: null,
       });
 
       return runResult;
@@ -310,12 +347,22 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
     heartbeat: () => void,
   ): Promise<{ outcome: string; result: NodeExecutionResult }> {
     const flow = module.flow;
+    const allRuns = nodeRunRepo.list(context.processRunId);
+    const frame = restoreFrame(context.inputPayload, allRuns);
 
     // Resume support: if the last completed NodeRun exists, start from the
     // transition out of it. Otherwise start at entry.
     const lastCompleted = nodeRunRepo.readLastCompleted(context.processRunId);
     let currentNodeId: string;
+    let resumedRecoveryInput: NodeProduction | null = null;
     if (lastCompleted) {
+      const restoredResult = restoreNodeResult(lastCompleted);
+      resumedRecoveryInput = this.reconcileRecoveryCheckpoint(
+        module,
+        context,
+        lastCompleted,
+        restoredResult,
+      ).feedbackProduction;
       const resumed = this.nextNode(flow, lastCompleted.nodeId, lastCompleted.event ?? '');
       if (resumed === null) {
         // The resumed node was terminal — re-emit its outcome.
@@ -326,20 +373,7 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
           // produced, so settlement/certificate replay works on restart.
           return {
             outcome: terminalNode.emitsOutcome,
-            result: {
-              runtimeEvent: 'completed',
-              receipt: lastCompleted.executionReceipt
-                ? lastCompleted.executionReceipt as unknown as NodeExecutionReceipt
-                : undefined,
-              production: lastCompleted.outputRef || lastCompleted.outputBindings
-                ? {
-                    schema: lastCompleted.outputSchema ?? '',
-                    artifactRef: lastCompleted.outputRef ?? '',
-                    contentHash: lastCompleted.outputHash ?? '',
-                    bindings: lastCompleted.outputBindings ?? {},
-                  }
-                : undefined,
-            },
+            result: restoredResult,
           };
         }
         throw new Error(`GenericFlowExecutor: cannot resume — node ${lastCompleted.nodeId} has no outgoing transition and is not terminal`);
@@ -349,9 +383,13 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
       currentNodeId = flow.entryNodeId;
     }
 
-    // Bound the walk to prevent infinite loops on malformed transitions.
-    const maxSteps = flow.nodes.length * 4 + 10;
-    const frame = restoreFrame(context.inputPayload, nodeRunRepo.list(context.processRunId));
+    // Bound malformed cycles independently from each recovery policy's own
+    // semantic budget. Valid repair paths may revisit several ordinary nodes.
+    const totalRepairBudget = (flow.recovery ?? [])
+      .reduce((total, policy) => total + policy.maxAttempts, 0);
+    const maxSteps = flow.nodes.length * 4
+      + totalRepairBudget * (flow.nodes.length + 2)
+      + 10;
 
     // The first node receives the module input payload. Each subsequent node
     // receives the PREVIOUS node's output — this is the data chain that lets a
@@ -365,7 +403,9 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
     // produced, so resuming the next node sees the same upstream context.
     let chainInput: unknown = context.inputPayload;
     const lastCompletedForChain = nodeRunRepo.readLastCompleted(context.processRunId);
-    if (lastCompletedForChain?.executionReceipt) {
+    if (resumedRecoveryInput) {
+      chainInput = resumedRecoveryInput;
+    } else if (lastCompletedForChain?.executionReceipt) {
       chainInput = lastCompletedForChain.executionReceipt;
     } else if (lastCompletedForChain?.outputBindings || lastCompletedForChain?.outputRef) {
       chainInput = restoreProduction(lastCompletedForChain);
@@ -421,7 +461,7 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
       const outputSchema = result.production?.schema ?? null;
       const outputHash = result.production?.contentHash ?? null;
       const outputBindings = result.production?.bindings ?? null;
-      nodeRunRepo.complete({
+      const completedNodeRun = nodeRunRepo.complete({
         id: nodeRun.id,
         event: nodeEventForTransition(result),
         outputRef,
@@ -429,6 +469,7 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
         outputHash,
         outputBindings,
         executionReceipt: result.receipt as unknown as Record<string, unknown> | undefined,
+        recoveryIssue: result.recoveryIssue,
       });
 
       if (result.runtimeEvent === 'paused') {
@@ -438,11 +479,21 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
       if (result.production) frame.productions[node.id] = result.production;
       if (result.receipt) frame.receipts[node.id] = result.receipt;
 
+      const recovery = this.reconcileRecoveryCheckpoint(
+        module,
+        context,
+        completedNodeRun,
+        result,
+      );
+
       // Forward the node's production (durable ref) to the next node in the
       // chain. Downstream kernel nodes (settlement) read exact bindings from
       // production.bindings and re-read canonical rows from durable storage —
       // never from "latest by epic" and never from raw runtime objects.
-      chainInput = result.production ?? result.receipt ?? chainInput;
+      chainInput = recovery.feedbackProduction
+        ?? result.production
+        ?? result.receipt
+        ?? chainInput;
 
       // Terminal node — emit its outcome.
       if (node.emitsOutcome) {
@@ -463,6 +514,122 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
     throw new Error(
       `GenericFlowExecutor: flow walk exceeded ${maxSteps} steps — possible transition cycle`,
     );
+  }
+
+  private reconcileRecoveryCheckpoint(
+    module: ProcessModuleDefinition,
+    context: ProcessModuleExecutionContext,
+    nodeRun: NodeRunRecord,
+    result: NodeExecutionResult,
+  ): { feedbackProduction: NodeProduction | null } {
+    const event = nodeRun.event ?? nodeEventForTransition(result);
+    const issue = nodeRun.recoveryIssue ?? result.recoveryIssue;
+
+    if (!issue) {
+      this.resolveSuccessfulRecovery(module, context, nodeRun, event);
+      return { feedbackProduction: null };
+    }
+
+    assertRecoveryIssue(issue);
+    if (issue.disposition === 'fatal') {
+      return { feedbackProduction: null };
+    }
+
+    const policy = (module.flow.recovery ?? [])
+      .find(candidate => candidate.id === issue.policyId);
+    if (!policy) {
+      throw new Error(
+        `GenericFlowExecutor: node '${nodeRun.nodeId}' emitted recovery policy `
+          + `'${issue.policyId}' that is not declared by module`,
+      );
+    }
+    assertRecoveryRoute(policy, nodeRun.nodeId, event);
+
+    const recoveryCaseRepo = this.opts.recoveryCaseRepo;
+    if (!recoveryCaseRepo) {
+      throw new Error(
+        `GenericFlowExecutor: module recovery policy '${policy.id}' requires `
+          + 'a RecoveryCaseRepository',
+      );
+    }
+    if (!result.production) {
+      throw new Error(
+        `GenericFlowExecutor: recovery verifier '${nodeRun.nodeId}' must emit `
+          + 'a durable production together with its issue',
+      );
+    }
+
+    const recorded = recoveryCaseRepo.recordIssue({
+      processRunId: context.processRunId,
+      moduleRef: module.identity,
+      sourceNodeRunId: nodeRun.id,
+      verifyNodeId: policy.verifyNodeId,
+      repairNodeId: policy.repairNodeId,
+      maxAttempts: policy.maxAttempts,
+      issue,
+      sourceProduction: result.production,
+    });
+    this.opts.processRunRepo.update(context.processRunId, {
+      activeIssue: {
+        recoveryCaseId: recorded.caseRecord.id,
+        issueRef: recorded.feedback.issueRef,
+        issueHash: recorded.feedback.issueHash,
+      },
+      error: issue.summary,
+    });
+
+    if (issue.disposition === 'human' || recorded.exhausted) {
+      if (recorded.exhausted && policy.onExhausted === 'fail') {
+        throw new RecoveryExhaustedError(
+          context.processRunId,
+          policy.id,
+          recorded.caseRecord.id,
+        );
+      }
+      throw new ProcessRunPausedError(
+        context.processRunId,
+        nodeRun.nodeId,
+        recorded.caseRecord.id,
+      );
+    }
+
+    return {
+      feedbackProduction: recoveryFeedbackProduction(
+        recorded.feedback,
+        recorded.attemptRecord.feedbackHash,
+      ),
+    };
+  }
+
+  private resolveSuccessfulRecovery(
+    module: ProcessModuleDefinition,
+    context: ProcessModuleExecutionContext,
+    nodeRun: NodeRunRecord,
+    event: string,
+  ): void {
+    const recoveryCaseRepo = this.opts.recoveryCaseRepo;
+    if (!recoveryCaseRepo) return;
+    let resolved = false;
+    for (const policy of module.flow.recovery ?? []) {
+      if (
+        policy.verifyNodeId !== nodeRun.nodeId
+        || !policy.resolvedEvents.includes(event)
+      ) {
+        continue;
+      }
+      const record = recoveryCaseRepo.resolveActive(
+        context.processRunId,
+        policy.id,
+        nodeRun.id,
+      );
+      if (record) resolved = true;
+    }
+    if (resolved) {
+      this.opts.processRunRepo.update(context.processRunId, {
+        activeIssue: null,
+        error: null,
+      });
+    }
   }
 
   private findNode(flow: ProcessModuleDefinition['flow'], nodeId: string): FlowNodeDefinition | null {
@@ -487,6 +654,75 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
       if (t.on === '*') fallback = t.to;
     }
     return fallback;
+  }
+}
+
+function restoreNodeResult(run: NodeRunRecord): NodeExecutionResult {
+  return {
+    runtimeEvent: 'completed',
+    receipt: run.executionReceipt
+      ? run.executionReceipt as unknown as NodeExecutionReceipt
+      : undefined,
+    production: run.outputRef || run.outputBindings
+      ? restoreProduction(run)
+      : undefined,
+    recoveryIssue: run.recoveryIssue ?? undefined,
+  };
+}
+
+function recoveryFeedbackProduction(
+  feedback: RecoveryFeedback,
+  feedbackHash: string,
+): NodeProduction {
+  return {
+    schema: RECOVERY_FEEDBACK_SCHEMA,
+    artifactRef: feedback.issueRef,
+    contentHash: feedbackHash,
+    bindings: {
+      recoveryCaseId: feedback.caseId,
+      recoveryAttempt: feedback.attempt,
+      recoveryPolicyId: feedback.issue.policyId,
+      recoveryIssueRef: feedback.issueRef,
+      recoveryIssueHash: feedback.issueHash,
+      recoveryFeedback: feedback,
+    },
+  };
+}
+
+function assertRecoveryIssue(issue: RecoveryIssue): void {
+  if (
+    issue.schemaVersion !== RECOVERY_ISSUE_SCHEMA
+    || typeof issue.policyId !== 'string'
+    || issue.policyId.trim() === ''
+    || typeof issue.reasonCode !== 'string'
+    || issue.reasonCode.trim() === ''
+    || typeof issue.summary !== 'string'
+    || issue.summary.trim() === ''
+    || !['repair', 'retry', 'human', 'fatal'].includes(issue.disposition)
+    || !Array.isArray(issue.findings)
+    || !Array.isArray(issue.subjectRefs)
+    || !Array.isArray(issue.acceptanceCriteria)
+    || !Array.isArray(issue.allowedChanges)
+  ) {
+    throw new Error('GenericFlowExecutor: malformed RecoveryIssue');
+  }
+}
+
+function assertRecoveryRoute(
+  policy: FlowRecoveryDefinition,
+  nodeId: string,
+  event: string,
+): void {
+  if (policy.verifyNodeId !== nodeId) {
+    throw new Error(
+      `GenericFlowExecutor: recovery policy '${policy.id}' belongs to verifier `
+        + `'${policy.verifyNodeId}', not '${nodeId}'`,
+    );
+  }
+  if (!policy.triggerEvents.includes(event)) {
+    throw new Error(
+      `GenericFlowExecutor: recovery policy '${policy.id}' does not handle event '${event}'`,
+    );
   }
 }
 

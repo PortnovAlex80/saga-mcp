@@ -112,6 +112,7 @@ import { SqliteManagedProductionLedger } from '../persistence/sqlite-managed-pro
 import { SqliteNodeRunRepository } from '../persistence/sqlite-node-run-repository.js';
 import { SqliteProcessOutcomeCertificateRepository } from '../persistence/sqlite-process-outcome-certificate-repository.js';
 import { SqliteProcessRunRepository } from '../persistence/sqlite-process-run-repository.js';
+import { SqliteRecoveryCaseRepository } from '../persistence/sqlite-recovery-case-repository.js';
 
 export interface DevelopmentCompositionDependencies {
   runtime?: SqliteDevelopmentRuntime;
@@ -178,6 +179,7 @@ export function createProductLifecycleRuntime(
   const processRunRepo = new SqliteProcessRunRepository(db);
   const nodeRunRepo = new SqliteNodeRunRepository(db);
   const certificateRepo = new SqliteProcessOutcomeCertificateRepository(db);
+  const recoveryCaseRepo = new SqliteRecoveryCaseRepository(db);
   const lifecycleRunRepo = new SqliteLifecycleRunRepository(db);
   const runtimePersistence = options.discoveryRuntimePersistence
     ?? new SqliteSaga3DiscoveryRuntime();
@@ -317,6 +319,7 @@ export function createProductLifecycleRuntime(
       nodeRunRepo,
       certificateRepo,
       nodeExecutors,
+      recoveryCaseRepo,
     }),
     formalization: new GenericFlowExecutor({
       moduleRef: formalizationProcessModule.identity,
@@ -324,6 +327,7 @@ export function createProductLifecycleRuntime(
       nodeRunRepo,
       certificateRepo,
       nodeExecutors,
+      recoveryCaseRepo,
       resolveOutput: createFormalizationOutputResolver(
         formalizationSolutionContractRepository,
       ),
@@ -334,6 +338,7 @@ export function createProductLifecycleRuntime(
       nodeRunRepo,
       certificateRepo,
       nodeExecutors,
+      recoveryCaseRepo,
       resolveOutput: createDevelopmentOutputResolver(
         developmentOutputRepository,
       ),
@@ -344,6 +349,7 @@ export function createProductLifecycleRuntime(
       nodeRunRepo,
       certificateRepo,
       nodeExecutors,
+      recoveryCaseRepo,
       resolveOutput: createDeliveryOutputResolver(deliveryOutputRepository),
     }),
   };

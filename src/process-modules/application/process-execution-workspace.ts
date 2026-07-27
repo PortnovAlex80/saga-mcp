@@ -289,6 +289,23 @@ function unique<T>(items: readonly T[]): T[] {
   return [...new Set(items)];
 }
 
+function recoveryFeedbackFromMetadata(
+  metadata: Record<string, unknown>,
+): Record<string, unknown> | null {
+  const direct = metadata.recovery_feedback;
+  if (direct && typeof direct === 'object' && !Array.isArray(direct)) {
+    return direct as Record<string, unknown>;
+  }
+  const nodeInput = metadata.process_node_input;
+  if (!nodeInput || typeof nodeInput !== 'object' || Array.isArray(nodeInput)) return null;
+  const bindings = (nodeInput as Record<string, unknown>).bindings;
+  if (!bindings || typeof bindings !== 'object' || Array.isArray(bindings)) return null;
+  const nested = (bindings as Record<string, unknown>).recoveryFeedback;
+  return nested && typeof nested === 'object' && !Array.isArray(nested)
+    ? nested as Record<string, unknown>
+    : null;
+}
+
 export function prepareProcessExecutionWorkspace(
   request: PrepareProcessExecutionWorkspaceRequest,
 ): ProcessExecutionWorkspace {
@@ -306,6 +323,19 @@ export function prepareProcessExecutionWorkspace(
   mkdirSync(executionDirectory, { recursive: true });
 
   const bindings = buildMachineBindings(request);
+  const metadata = parseMetadata(request.task.metadata);
+  const recoveryFeedback = recoveryFeedbackFromMetadata(metadata);
+  const recoveryFeedbackPath = recoveryFeedback
+    ? path.join(executionDirectory, 'recovery-feedback.json')
+    : null;
+  if (recoveryFeedbackPath) {
+    // Machine-owned on every semantic attempt: never retain stale findings
+    // from a prior task/work-intent round.
+    writeFileSync(
+      recoveryFeedbackPath,
+      `${JSON.stringify(recoveryFeedback, null, 2)}\n`,
+    );
+  }
   const allAssets = unique([
     ...(request.profile.trackerTemplate ? [request.profile.trackerTemplate] : []),
     ...request.profile.workspaceTemplates,
@@ -383,9 +413,14 @@ export function prepareProcessExecutionWorkspace(
     trackerPath: relativeWorkspacePath(workspaceRoot, trackerAbsolutePath),
     trackerAbsolutePath,
     executionDirectory: relativeWorkspacePath(workspaceRoot, executionDirectory),
-    workspaceFiles: request.profile.workspaceTemplates
-      .map(asset => materializedBySource.get(asset))
-      .filter((value): value is string => Boolean(value)),
+    workspaceFiles: [
+      ...request.profile.workspaceTemplates
+        .map(asset => materializedBySource.get(asset))
+        .filter((value): value is string => Boolean(value)),
+      ...(recoveryFeedbackPath
+        ? [relativeWorkspacePath(workspaceRoot, recoveryFeedbackPath)]
+        : []),
+    ],
     callFiles: request.profile.callTemplates
       .map(asset => materializedBySource.get(asset))
       .filter((value): value is string => Boolean(value)),

@@ -125,6 +125,29 @@ export interface FlowTransitionDefinition {
   condition?: string;
 }
 
+/**
+ * Declarative local repair route.
+ *
+ * The runtime understands only node identities, events and attempt limits.
+ * Module-owned reason codes and findings travel inside a RecoveryIssue and
+ * remain opaque to the runtime.
+ */
+export interface FlowRecoveryDefinition {
+  id: string;
+  /** Node that verifies the result and may emit a RecoveryIssue. */
+  verifyNodeId: string;
+  /** Node that receives the standard recovery feedback production. */
+  repairNodeId: string;
+  /** Events for which the issue is repairable instead of terminal. */
+  triggerEvents: readonly string[];
+  /** Events proving that the repeated verifier resolved the active case. */
+  resolvedEvents: readonly string[];
+  /** Number of semantic repair rounds, excluding physical pause/resume. */
+  maxAttempts: number;
+  /** What the generic runtime does after the semantic budget is exhausted. */
+  onExhausted: 'fail' | 'pause' | 'escalate';
+}
+
 export interface FlowDefinition {
   id: string;
   version: string;
@@ -132,6 +155,8 @@ export interface FlowDefinition {
   nodes: readonly FlowNodeDefinition[];
   transitions: readonly FlowTransitionDefinition[];
   terminalNodeIds: readonly string[];
+  /** Optional module-authored routes interpreted by the generic runtime. */
+  recovery?: readonly FlowRecoveryDefinition[];
 }
 
 export interface ProcessModuleDefinition {

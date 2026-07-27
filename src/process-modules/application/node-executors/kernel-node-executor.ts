@@ -45,6 +45,7 @@ export class KernelNodeExecutor implements NodeExecutor {
         runtimeEvent: 'completed',
         domainEvent: result.event,
         production: result.production,
+        recoveryIssue: result.recoveryIssue,
         outcome: result.outcome,
       };
     } catch (err) {

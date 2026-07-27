@@ -33,6 +33,7 @@ export function ensureSaga3NodeRunSchema(db: Database.Database): void {
       output_hash    TEXT,
       output_bindings TEXT,
       execution_receipt TEXT,
+      recovery_issue TEXT,
       error_message  TEXT,
       started_at     TEXT NOT NULL DEFAULT (datetime('now')),
       completed_at   TEXT
@@ -54,6 +55,9 @@ export function ensureSaga3NodeRunSchema(db: Database.Database): void {
   if (!cols.some((c) => c.name === 'output_schema')) {
     db.exec('ALTER TABLE saga3_node_runs ADD COLUMN output_schema TEXT');
   }
+  if (!cols.some((c) => c.name === 'recovery_issue')) {
+    db.exec('ALTER TABLE saga3_node_runs ADD COLUMN recovery_issue TEXT');
+  }
 }
 
 interface NodeRunRow {
@@ -69,6 +73,7 @@ interface NodeRunRow {
   output_hash: string | null;
   output_bindings: string | null;
   execution_receipt: string | null;
+  recovery_issue: string | null;
   error_message: string | null;
   started_at: string;
   completed_at: string | null;
@@ -97,6 +102,17 @@ function rowToRecord(row: NodeRunRow): NodeRunRecord {
       // Malformed legacy data is treated as absent execution evidence.
     }
   }
+  let recoveryIssue: NodeRunRecord['recoveryIssue'] = null;
+  if (row.recovery_issue) {
+    try {
+      const parsed = JSON.parse(row.recovery_issue);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        recoveryIssue = parsed as NodeRunRecord['recoveryIssue'];
+      }
+    } catch {
+      // Malformed legacy data is treated as absent recovery evidence.
+    }
+  }
   return {
     id: row.id,
     processRunId: row.process_run_id,
@@ -110,6 +126,7 @@ function rowToRecord(row: NodeRunRow): NodeRunRecord {
     outputHash: row.output_hash,
     outputBindings: bindings,
     executionReceipt,
+    recoveryIssue,
     errorMessage: row.error_message,
     startedAt: row.started_at,
     completedAt: row.completed_at,
@@ -142,10 +159,11 @@ export class SqliteNodeRunRepository implements NodeRunRepository {
   complete(input: CompleteNodeRunInput): NodeRunRecord {
     const bindingsText = input.outputBindings ? JSON.stringify(input.outputBindings) : null;
     const receiptText = input.executionReceipt ? JSON.stringify(input.executionReceipt) : null;
+    const recoveryIssueText = input.recoveryIssue ? JSON.stringify(input.recoveryIssue) : null;
     this.db.prepare(
       `UPDATE saga3_node_runs
           SET status='completed', event=?, output_ref=?, output_schema=?, output_hash=?, output_bindings=?,
-              execution_receipt=?,
+              execution_receipt=?, recovery_issue=?,
               completed_at=datetime('now')
         WHERE id=?`,
     ).run(
@@ -155,6 +173,7 @@ export class SqliteNodeRunRepository implements NodeRunRepository {
       input.outputHash,
       bindingsText,
       receiptText,
+      recoveryIssueText,
       input.id,
     );
     const row = this.db.prepare(

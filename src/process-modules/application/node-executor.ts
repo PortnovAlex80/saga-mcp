@@ -21,6 +21,7 @@ import type {
   FlowNodeKind,
   ProcessModuleDefinition,
 } from '../domain/process-module.js';
+import type { RecoveryIssue } from '../domain/recovery.js';
 
 /**
  * Контекст исполнения одного узла.
@@ -88,6 +89,11 @@ export interface NodeExecutionResult {
    */
   receipt?: NodeExecutionReceipt;
   production?: NodeProduction;
+  /**
+   * Standard module-authored issue. Core treats reasonCode/findings as opaque
+   * and only interprets the declared recovery policy.
+   */
+  recoveryIssue?: RecoveryIssue;
   /** Только для terminal-узлов (outcome-emitter). */
   outcome?: string;
 }

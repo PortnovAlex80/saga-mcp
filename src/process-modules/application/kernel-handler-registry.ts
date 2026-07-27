@@ -20,6 +20,7 @@
  */
 
 import type { KernelFlowNodeDefinition } from '../domain/process-module.js';
+import type { RecoveryIssue } from '../domain/recovery.js';
 import type { NodeExecutionFrame, NodeProduction } from './node-executor.js';
 
 /**
@@ -54,6 +55,8 @@ export interface KernelHandlerResult {
   event: string;
   /** Durable production reference (schema + artifactRef + contentHash + bindings). */
   production: NodeProduction;
+  /** Optional standardized issue used by the generic recovery interpreter. */
+  recoveryIssue?: RecoveryIssue;
   /** Для terminal-узлов: локальный outcome код (один из module.outcomes). */
   outcome?: string;
 }

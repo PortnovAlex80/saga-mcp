@@ -72,6 +72,13 @@ export interface ProcessModuleCertificateRef {
   certificateHash: string;
 }
 
+/** Mutable pointer to the durable issue currently suspending/repairing a run. */
+export interface ProcessRunActiveIssue {
+  recoveryCaseId: number;
+  issueRef: string;
+  issueHash: string;
+}
+
 /**
  * The command that starts one ProcessRun. Carries the immutable input envelope
  * + the invocation context that pins the run to one (project, epic, initiator,
@@ -134,6 +141,8 @@ export interface ProcessRunRecord {
   certificateHash: string | null;
   /** Reference to the executor's internal run (e.g. discovery WorkIntent id). */
   executorRunRef: string | null;
+  /** Separate from terminal output_*: cleared only after the verifier passes. */
+  activeIssue: ProcessRunActiveIssue | null;
   error: string | null;
   startedAt: string;
   completedAt: string | null;
@@ -153,6 +162,7 @@ export interface UpdateProcessRunInput {
   output?: ProcessModuleOutput | null;
   certificate?: ProcessModuleCertificateRef | null;
   executorRunRef?: string | null;
+  activeIssue?: ProcessRunActiveIssue | null;
   error?: string | null;
   /** Set to current ISO timestamp when transitioning to a terminal status. */
   completedAt?: string | null;
