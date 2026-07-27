@@ -29,7 +29,16 @@ export interface LifecycleRunRepository {
     idempotencyKey: string,
   ): LifecycleRunRecord | null;
 
+  list(
+    projectId: number,
+    epicId?: number,
+  ): readonly LifecycleRunRecord[];
+
   listStageRuns(lifecycleRunId: number): readonly LifecycleStageRunRecord[];
+
+  listTransitions(
+    lifecycleRunId: number,
+  ): readonly LifecycleTransitionRecord[];
 
   readCurrentStageRun(lifecycleRunId: number): LifecycleStageRunRecord | null;
 

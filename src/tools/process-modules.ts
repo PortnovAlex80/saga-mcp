@@ -416,7 +416,7 @@ export const definitions: Tool[] = [
   {
     name: 'process_lifecycle_get',
     description:
-      'Read and validate the built-in Discovery-to-Formalization Lifecycle. Shows Stage Bindings, input/output mappings and local-outcome routes. Read-only.',
+      'Read and validate the complete built-in Product Delivery Lifecycle: Discovery, Formalization, Development and Delivery/Release. Shows Stage Bindings, exact handoff mappings and local-outcome routes. Read-only.',
     annotations: {
       title: 'Process Lifecycle: Get',
       readOnlyHint: true,

@@ -5,7 +5,12 @@ import type { Saga2RuntimePersistence } from '../application/ports/saga2-runtime
 import type { WorkerExecutorFactory } from '../application/ports/worker-executor.js';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { createSagaApplication, type SagaApplication } from '../application/saga-application.js';
+import {
+  createSagaApplication,
+  createSagaControlApplication as createControlApplication,
+  type SagaApplication,
+  type SagaControlApplication,
+} from '../application/saga-application.js';
 import { closeDb } from '../db.js';
 import { Saga2Engine } from '../engines/saga2-engine.js';
 import { Saga3DiscoveryEngine } from '../engines/saga3-discovery-engine.js';
@@ -81,6 +86,32 @@ export interface Saga2CompositionOverrides {
    */
   productLifecycle?: ProductLifecycleCompositionOverrides;
   close?: () => void;
+}
+
+export type SagaControlCompositionOverrides = Pick<
+  Saga2CompositionOverrides,
+  'config' | 'board' | 'engineAdministration' | 'close'
+>;
+
+/**
+ * Compose only tracker/admin capabilities.
+ *
+ * The control plane can start an isolated execution CLI without importing or
+ * fabricating that CLI's Delivery providers.
+ */
+export function createSagaControlApplication(
+  env: NodeJS.ProcessEnv = process.env,
+  overrides: SagaControlCompositionOverrides = {},
+): SagaControlApplication {
+  const config = overrides.config ?? loadSagaRuntimeConfig(env);
+  const board = overrides.board ?? new SqliteBoardProjectionReader(config.dbPath);
+  const engineAdministration = overrides.engineAdministration
+    ?? new LegacyEngineAdministration({ config, baseEnv: env });
+  return createControlApplication({
+    board,
+    engineAdministration,
+    close: overrides.close ?? closeDb,
+  });
 }
 
 /**

@@ -23,7 +23,7 @@ import { createClaudeBoardRunner } from './claude-runner.mjs';
 import { isProcessAlive } from '../dist/worker-executions.js';
 import { releaseExecutionAtomically } from '../dist/lifecycle/atomic-release.js';
 import { getDb as ensureSagaDb, closeDb as closeSagaDb } from '../dist/db.js';
-import { createSaga2Application } from '../dist/app/composition-root.js';
+import { createSagaControlApplication } from '../dist/app/composition-root.js';
 import { loadSagaRuntimeConfig } from '../dist/runtime/saga-runtime-config.js';
 import { requiresBackgroundEngine, isSaga3DiscoveryMode } from '../dist/runtime/orchestration-mode.js';
 const __filename = fileURLToPath(import.meta.url);
@@ -55,7 +55,7 @@ if (!existsSync(DB_PATH)) {
 const PORT = runtimeConfig.trackerPort;
 const PID_FILE = path.join(__dirname, '.tracker-view.pid');
 const RELOAD_SEC = runtimeConfig.trackerReloadSec;
-const sagaApplication = createSaga2Application(process.env);
+const sagaApplication = createSagaControlApplication(process.env);
 
 const COLS = [
   { key: 'todo',               label: 'Backlog' },
@@ -4993,7 +4993,17 @@ function handleEngineStart(req, res) {
       const concurrency = fields.concurrency === undefined
         ? undefined
         : Number(fields.concurrency);
-      const state = sagaApplication.startEngine({ epicId, concurrency });
+      const state = sagaApplication.startEngine({
+        epicId,
+        concurrency,
+        lifecycleInputPath: typeof fields.lifecycle_input_path === 'string'
+          ? fields.lifecycle_input_path
+          : undefined,
+        idempotencyKey: typeof fields.idempotency_key === 'string'
+          ? fields.idempotency_key
+          : undefined,
+        resumePaused: fields.resume === true || fields.resume === 'true',
+      });
       respondJson(res, 200, {
         ok: true,
         project_id: state.projectId,
@@ -5068,7 +5078,17 @@ function handleEngineRestart(req, res) {
       const concurrency = fields.concurrency === undefined
         ? undefined
         : Number(fields.concurrency);
-      const state = sagaApplication.restartEngine({ epicId, concurrency });
+      const state = sagaApplication.restartEngine({
+        epicId,
+        concurrency,
+        lifecycleInputPath: typeof fields.lifecycle_input_path === 'string'
+          ? fields.lifecycle_input_path
+          : undefined,
+        idempotencyKey: typeof fields.idempotency_key === 'string'
+          ? fields.idempotency_key
+          : undefined,
+        resumePaused: fields.resume === true || fields.resume === 'true',
+      });
       respondJson(res, 200, {
         ok: true,
         project_id: state.projectId,

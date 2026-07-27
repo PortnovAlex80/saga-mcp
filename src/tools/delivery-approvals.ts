@@ -80,6 +80,13 @@ export const definitions: Tool[] = [
     description:
       'List open durable Delivery/Release approval requests. Optional '
       + 'project_id narrows the inbox.',
+    annotations: {
+      title: 'Delivery Approval: List',
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
     inputSchema: {
       type: 'object',
       properties: {
@@ -93,6 +100,13 @@ export const definitions: Tool[] = [
     description:
       'Read one exact Delivery approval request and its immutable candidate, '
       + 'preflight and release-policy binding.',
+    annotations: {
+      title: 'Delivery Approval: Get',
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
     inputSchema: {
       type: 'object',
       properties: {
@@ -108,6 +122,13 @@ export const definitions: Tool[] = [
       'Record one immutable authorized decision for an open Delivery request. '
       + 'The provider_id must identify a trusted authorized_decision provider '
       + 'bound to the same project.',
+    annotations: {
+      title: 'Delivery Approval: Decide',
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
     inputSchema: {
       type: 'object',
       properties: {

@@ -467,12 +467,40 @@ export class SqliteLifecycleRunRepository implements LifecycleRunRepository {
     return row ? runRowToRecord(row) : null;
   }
 
+  list(
+    projectId: number,
+    epicId?: number,
+  ): readonly LifecycleRunRecord[] {
+    const rows = epicId === undefined
+      ? this.db.prepare(
+          `SELECT * FROM saga3_lifecycle_runs
+            WHERE project_id=?
+            ORDER BY id DESC`,
+        ).all(projectId)
+      : this.db.prepare(
+          `SELECT * FROM saga3_lifecycle_runs
+            WHERE project_id=? AND epic_id=?
+            ORDER BY id DESC`,
+        ).all(projectId, epicId);
+    return (rows as LifecycleRunRow[]).map(runRowToRecord);
+  }
+
   listStageRuns(lifecycleRunId: number): readonly LifecycleStageRunRecord[] {
     const rows = this.db.prepare(
       `SELECT * FROM saga3_stage_runs
         WHERE lifecycle_run_id=? ORDER BY ordinal`,
     ).all(lifecycleRunId) as StageRunRow[];
     return rows.map(stageRowToRecord);
+  }
+
+  listTransitions(
+    lifecycleRunId: number,
+  ): readonly LifecycleTransitionRecord[] {
+    const rows = this.db.prepare(
+      `SELECT * FROM saga3_process_transitions
+        WHERE lifecycle_run_id=? ORDER BY id`,
+    ).all(lifecycleRunId) as TransitionRow[];
+    return rows.map(transitionRowToRecord);
   }
 
   readCurrentStageRun(lifecycleRunId: number): LifecycleStageRunRecord | null {

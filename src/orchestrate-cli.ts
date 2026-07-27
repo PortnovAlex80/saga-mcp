@@ -70,7 +70,8 @@ function parseArgs(argv: string[]): {
         + '  --resume\n'
         + '\n'
         + 'For SAGA_ORCHESTRATION_MODE=saga3-lifecycle, set '
-        + 'SAGA_PRODUCT_LIFECYCLE_COMPOSITION to an ESM provider module.\n',
+        + 'SAGA_PRODUCT_LIFECYCLE_COMPOSITION to an ESM provider module and '
+        + 'pass --lifecycle-input or SAGA_PRODUCT_LIFECYCLE_INPUT.\n',
       );
       process.exit(0);
     }
@@ -125,9 +126,12 @@ async function main() {
   let application: SagaApplication | null = null;
   try {
     const overrides = await loadCompositionOverrides(projectId, epicId);
-    const lifecycleInput = lifecycleInputPath
+    const resolvedLifecycleInputPath = lifecycleInputPath
+      ?? process.env.SAGA_PRODUCT_LIFECYCLE_INPUT
+      ?? null;
+    const lifecycleInput = resolvedLifecycleInputPath
       ? JSON.parse(
-        readFileSync(path.resolve(lifecycleInputPath), 'utf8'),
+        readFileSync(path.resolve(resolvedLifecycleInputPath), 'utf8'),
       ) as unknown
       : undefined;
     application = createSaga2Application(process.env, overrides);

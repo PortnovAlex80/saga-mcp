@@ -363,7 +363,13 @@ test('legacy engine administration preserves start/status/concurrency/stop seman
   });
 
   try {
-    const started = admin.start({ epicId: 2, concurrency: 3 });
+    const started = admin.start({
+      epicId: 2,
+      concurrency: 3,
+      lifecycleInputPath: '/cases/product.json',
+      idempotencyKey: 'product-2',
+      resumePaused: true,
+    });
     assert.equal(started.running, true);
     assert.equal(started.alive, true);
     assert.equal(started.pid, 4321);
@@ -371,6 +377,11 @@ test('legacy engine administration preserves start/status/concurrency/stop seman
     assert.equal(spawned[0].options.env.DB_PATH, dbPath);
     assert.equal(spawned[0].options.env.SAGA_ORCHESTRATION_MODE, 'v3');
     assert.equal(spawned[0].options.env.KEEP_ME, '1');
+    assert.deepEqual(spawned[0].args.slice(-3), [
+      '--lifecycle-input=/cases/product.json',
+      '--idempotency-key=product-2',
+      '--resume',
+    ]);
 
     const status = admin.status(2);
     assert.equal(status.alive, true);
@@ -475,7 +486,7 @@ test('tracker uses extracted ports and preserves the LM Studio hard rule fix', (
   const trackerPath = path.join(process.cwd(), 'tracker-view', 'tracker-view.mjs');
   const source = readFileSync(trackerPath, 'utf8');
 
-  assert.match(source, /createSaga2Application/);
+  assert.match(source, /createSagaControlApplication/);
   assert.match(source, /sagaApplication\.listProjects\(\)/);
   assert.match(source, /sagaApplication\.loadProjectBoard/);
   assert.match(source, /sagaApplication\.startEngine/);
