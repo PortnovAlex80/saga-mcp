@@ -1,0 +1,89 @@
+{
+  "control_intent_id": 1219,
+  "execution_id": "exec-45-14680-1785137019723-1",
+  "schema_version": "saga3.discovery-readiness-assessment.v1",
+  "payload": {
+    "proposal_id": 143,
+    "proposal_content_hash": "b035508e6efb71b4b9737ddab2e0d02c609e8180089cbe01b7c402936ca36bfc",
+    "overall_readiness": "conditionally_ready",
+    "dimension_assessments": {
+      "problem_clarity": {
+        "status": "sufficient",
+        "rationale": "Problem statement clearly identifies the core issue: Russian school students struggle to understand 3D molecular structures from flat drawings, compounded by unreliable internet access that blocks cloud-based tools like MolView. The observed context confirms this is a real constraint in the target environment.",
+        "source_refs": [
+          "$.problem_statement",
+          "$.observed_context"
+        ]
+      },
+      "scope_boundedness": {
+        "status": "sufficient",
+        "rationale": "Candidate scope is tightly bounded: MVP covers one offline HTML file with a curated database of 15-20 basic molecules, Three.js/3Dmol.js WebGL rendering with rotation/zoom/model-switching, and Russian-language UI. Explicitly excludes geometry computation from formula, macromolecules, simulations, and accounts — all post-MVP.",
+        "source_refs": [
+          "$.candidate_scope"
+        ]
+      },
+      "stakeholder_coverage": {
+        "status": "sufficient",
+        "rationale": "Four stakeholder groups identified: students (grades 8-11), chemistry teachers, school IT infrastructure, and parents. However, the distribution channel to schools is listed as an unknown rather than a planned approach — schools with blocked internet need a concrete delivery mechanism (USB, local server) that is not yet defined.",
+        "source_refs": [
+          "$.stakeholders_or_actors",
+          "$.unknowns"
+        ]
+      },
+      "assumption_visibility": {
+        "status": "sufficient",
+        "rationale": "Five explicit assumptions documented: Chrome/Firefox WebGL 1.0 support on school PCs, availability of molecular geometry data (PDB/PubChem/textbooks), schools can block external internet so app must work offline, users are non-technical with formula-only input, and Three.js can render 10-20 atoms without lag on school laptops.",
+        "source_refs": [
+          "$.assumptions"
+        ]
+      },
+      "unknowns_manageability": {
+        "status": "sufficient",
+        "rationale": "Four unknowns are identified with clear resolution paths: WebGL support can be tested on target hardware, molecule count can be derived from curriculum standards, library comparison is a formalization task, and distribution strategy needs one decision — all manageable within the project timeline.",
+        "source_refs": [
+          "$.unknowns"
+        ]
+      },
+      "risk_visibility": {
+        "status": "sufficient",
+        "rationale": "Five risks clearly enumerated: WebGL unsupported on old school PCs, Three.js bundle size (~600KB gzipped) problematic on slow internet, manual coordinate encoding is error-prone, geometry errors could misinform students, and teachers may prefer known online tools like MolView. Each risk has an identifiable mitigation path.",
+        "source_refs": [
+          "$.risks"
+        ]
+      },
+      "evidence_grounding": {
+        "status": "sufficient",
+        "rationale": "Evidence references are concrete and verifiable: bootstrap scripts for both cloud (epic 44) and local (epic 45) versions exist, discovery document from epic 44 provides prior research context, previous discoveries from epics 38-39 cover related ideas, and the existence of Three.js/3Dmol.js/NGL Viewer libraries is confirmed.",
+        "source_refs": [
+          "$.evidence_refs[0]",
+          "$.evidence_refs[1]",
+          "$.evidence_refs[2]"
+        ]
+      }
+    },
+    "blocking_gaps": [
+      {
+        "code": "GAP_DISTRIBUTION_STRATEGY",
+        "description": "No concrete distribution plan for schools with blocked internet. The proposal mentions USB, flash drive, and local server as options in the unknowns but does not commit to any delivery mechanism. Without a defined distribution channel, the offline-first value proposition cannot reach end users.",
+        "source_refs": [
+          "$.unknowns",
+          "$.evidence_refs[1]",
+          "$.observed_context"
+        ]
+      }
+    ],
+    "non_blocking_gaps": [
+      {
+        "code": "GAP_LIBRARY_SELECTION",
+        "description": "3Dmol.js vs Three.js library choice is listed as an unknown. Both are viable for the MVP scope; this can be resolved during formalization with a comparison of license compatibility, bundle size, and API suitability for educational use.",
+        "source_refs": [
+          "$.unknowns",
+          "$.evidence_refs[4]"
+        ]
+      }
+    ],
+    "recommended_next_action": "proceed_to_settlement",
+    "confidence": 0.7,
+    "rationale": "The proposal is well-structured with a clear problem statement, bounded MVP scope, documented assumptions and risks, and concrete evidence references. The primary blocker is the undefined distribution strategy for offline schools — this needs resolution before settlement but does not invalidate the core idea. The library selection gap (3Dmol.js vs Three.js) is minor and resolvable during formalization. Confidence is moderate-high given strong evidence grounding and low technical risk, tempered by the unresolved distribution question."
+  }
+}

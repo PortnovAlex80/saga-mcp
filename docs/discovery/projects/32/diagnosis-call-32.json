@@ -1,0 +1,135 @@
+{
+  "control_intent_id": 10,
+  "execution_id": "exec-32-11108-1785003106762-2",
+  "schema_version": "saga3.discovery-diagnosis.v1",
+  "payload": {
+    "target": {
+      "certificate_id": 17,
+      "certificate_hash": "c46900239a7ce4be25976bf0b8623d844a741a19a4fc012bfab14390909e0914",
+      "settlement_input_hash": "12ab889bff8757ffc54c8a03be8891bb3fe79bf3ef1ad193476ba5d39482c161",
+      "decision": "clarify"
+    },
+    "executive_summary": "Certificate 17 issued a CLARIFY decision for the GeoSophia Discovery (epic 32) because the discovery proposal explicitly recommended 'clarify' as its outcome. The policy condition worker_requested_clarify evaluated as passed on the clarify branch, confirming the worker's own assessment that clarification is needed before proceeding. The readiness assessment rated overall_readiness as 'conditionally_ready' with confidence 0.65 and identified two blocking gaps (no empirical evidence collected, regulatory requirements unknown) and two non-blocking gaps (scope not narrowed, no market analysis). The proposal is well-structured on problem clarity, stakeholder coverage, risk visibility, and assumption visibility — but evidence_grounding is insufficient and scope_boundedness/unknowns_manageability are only partial.",
+    "cause_analysis": [
+      {
+        "cause_id": "CAUSE-EVIDENCE",
+        "category": "missing_evidence",
+        "description": "The proposal is entirely hypothesis-driven: no user interviews with geotechnical engineers, no sample PLAXIS export data obtained to verify import feasibility, and no preliminary regulatory inquiry conducted. The readiness assessment identifies this as blocking gap GAP-EVIDENCE-1 — 'No empirical evidence collected despite identifying the need for validation.' The evidence_refs cite only internal task descriptions and the absence of artifacts. This missing evidence is the primary reason the worker recommended clarify.",
+        "severity": "blocking",
+        "reason_codes": ["CLARIFY_WORKER_REQUESTED"],
+        "cited_condition_ids": [],
+        "source_refs": [
+          "$.evidence_refs",
+          "$.evidence_refs[0]",
+          "$.evidence_refs[1]",
+          "$.evidence_refs[2]",
+          "$.recommended_outcome",
+          "assessment.blocking_gaps[0]",
+          "assessment.dimension_assessments.evidence_grounding"
+        ]
+      },
+      {
+        "cause_id": "CAUSE-REGULATORY",
+        "category": "blocking_gap",
+        "description": "Regulatory requirements for shadow verification systems in Russian railway construction are unknown and uninvestigated. Gosexpertiza recognition is listed as a risk but no preliminary inquiry has been made. The readiness assessment identifies this as blocking gap GAP-REGULATORY-1 — without understanding whether shadow system results can be accepted by regulatory bodies, the project cannot proceed to implementation with confidence.",
+        "severity": "blocking",
+        "reason_codes": ["CLARIFY_WORKER_REQUESTED"],
+        "cited_condition_ids": [],
+        "source_refs": [
+          "$.unknowns",
+          "$.risks",
+          "$.recommended_outcome",
+          "assessment.blocking_gaps[1]"
+        ]
+      }
+    ],
+    "information_requests": [
+      {
+        "request_id": "REQ-PLAXIS-DATA",
+        "question": "Can geotechnical engineers from design institutes (e.g. Трансстройпроект, Ленметропроект) provide sample PLAXIS export files showing settlement calculation results in Excel/CSV format?",
+        "resolves_cause_ids": ["CAUSE-EVIDENCE"],
+        "source_refs": [
+          "$.unknowns",
+          "$.assumptions",
+          "assessment.blocking_gaps[0]"
+        ]
+      },
+      {
+        "request_id": "REQ-USER-INTERVIEWS",
+        "question": "What are the actual workflows and pain points of geotechnical engineers when cross-checking settlement calculations between PLAXIS, GEO5, and approved methods?",
+        "resolves_cause_ids": ["CAUSE-EVIDENCE"],
+        "source_refs": [
+          "$.stakeholders_or_actors",
+          "$.rationale",
+          "assessment.blocking_gaps[0]"
+        ]
+      },
+      {
+        "request_id": "REQ-REGULATORY-GUIDANCE",
+        "question": "What are the requirements of Гosexpertiza and Ространснадзор for independent (shadow) verification systems used alongside approved calculation tools in railway embankment design?",
+        "resolves_cause_ids": ["CAUSE-REGULATORY"],
+        "source_refs": [
+          "$.unknowns",
+          "$.risks",
+          "assessment.blocking_gaps[1]"
+        ]
+      },
+      {
+        "request_id": "REQ-HISTORICAL-DATA",
+        "question": "Are there historical HSR embankment projects with measured settlement data available for validating numerical models or training ML approaches?",
+        "resolves_cause_ids": ["CAUSE-EVIDENCE"],
+        "source_refs": [
+          "$.unknowns",
+          "$.assumptions"
+        ]
+      }
+    ],
+    "recommended_actions": [
+      {
+        "action_id": "ACTION-INTERVIEWS",
+        "action": "collect_information",
+        "description": "Conduct 2-3 targeted interviews with geotechnical engineers from named design institutes (Трансстройпроект, Ленметропроект, ВНИИСП) to validate the problem statement, understand current cross-checking workflows, and obtain sample PLAXIS export data.",
+        "resolves_cause_ids": ["CAUSE-EVIDENCE"],
+        "source_refs": [
+          "$.rationale",
+          "$.stakeholders_or_actors"
+        ]
+      },
+      {
+        "action_id": "ACTION-REGULATORY-INQUIRY",
+        "action": "collect_information",
+        "description": "Initiate preliminary inquiry with regulatory bodies (Гosexpertiza, Ространснадзор) or legal consultants specializing in railway construction to understand requirements for shadow verification systems and whether their results can complement approved calculations.",
+        "resolves_cause_ids": ["CAUSE-REGULATORY"],
+        "source_refs": [
+          "$.unknowns",
+          "$.risks"
+        ]
+      },
+      {
+        "action_id": "ACTION-SCOPE-NARROWING",
+        "action": "revise_scope",
+        "description": "Narrow the candidate scope by prioritizing between numerical methods and ML approaches, selecting web vs desktop platform, and defining a minimum viable feature set for MVP.",
+        "resolves_cause_ids": ["CAUSE-EVIDENCE"],
+        "source_refs": [
+          "$.candidate_scope",
+          "assessment.non_blocking_gaps[0]"
+        ]
+      }
+    ],
+    "residual_risks": [
+      {
+        "risk": "Even with clarification, technical accuracy of settlement calculations may be insufficient for complex geological conditions (soil anisotropy, dynamic loads from high-speed trains).",
+        "source_refs": ["$.risks"]
+      },
+      {
+        "risk": "Design institutes are conservative in adopting new tools; even a validated shadow system may require years of demonstration on real projects before gaining trust.",
+        "source_refs": ["$.risks"]
+      },
+      {
+        "risk": "The market for specialized geotechnical verification tools may be too niche to sustain independent development without institutional backing.",
+        "source_refs": ["$.risks", "assessment.non_blocking_gaps[1]"]
+      }
+    ],
+    "confidence": 0.9
+  }
+}

@@ -1,0 +1,114 @@
+{
+  "control_intent_id": 13,
+  "execution_id": "exec-36-21688-1785011822627-1",
+  "schema_version": "saga3.discovery-diagnosis.v1",
+  "payload": {
+    "target": {
+      "certificate_id": 20,
+      "certificate_hash": "4ebcafc7d8f159daf9c9ea26532b3e3b7151c091b81873b096ff7ec48d83a627",
+      "settlement_input_hash": "c7d1a767816ade185760a61f2b11fb3ff8d256b54972a04d7763789f9acbad35",
+      "decision": "clarify"
+    },
+    "executive_summary": "The GeoSophia Settlement Twin concept received a CLARIFY decision because four critical feasibility prerequisites remain unaddressed: (1) no access to real PLAXIS models or field measurements for validation, (2) unknown regulatory acceptance of AI-forecasts in safety-critical HSR design documentation, (3) unproven model accuracy methodology without MAPE thresholds on independent samples, and (4) unresolved PLAXIS integration path (official API vs file parsing). While the problem is real (20-50% settlement exceedance with financial consequences) and the shadow-mode scope is well-bounded, these gaps are feasibility blockers that must be resolved through stakeholder engagement, PLAXIS case acquisition, and regulatory consultation before proceeding to settlement.",
+    "cause_analysis": [
+      {
+        "cause_id": "cause_data_access",
+        "category": "missing_evidence",
+        "description": "No access to real PLAXIS models or field measurements for validation. The system remains theoretical without anonymized PLAXIS cases to test the shadow-forecast accuracy. This is explicitly called out as a high data risk in the proposal.",
+        "severity": "blocking",
+        "reason_codes": ["GAP_DATA_ACCESS"],
+        "cited_condition_ids": [],
+        "source_refs": ["$.unknowns", "$.risks", "assessment.blocking_gaps[0]"]
+      },
+      {
+        "cause_id": "cause_regulatory",
+        "category": "policy_condition",
+        "description": "Regulatory acceptance of AI-forecasts in HSR design documentation is unknown. Roszhelezdornadzor approval cannot be assumed for safety-critical infrastructure without explicit clarification, despite the assumption that regulators permit AI/ML as supplementary tools.",
+        "severity": "blocking",
+        "reason_codes": ["GAP_REGULATORY_CLEARANCE"],
+        "cited_condition_ids": [],
+        "source_refs": ["$.unknowns", "$.risks", "$.assumptions", "assessment.blocking_gaps[1]"]
+      },
+      {
+        "cause_id": "cause_validation",
+        "category": "low_confidence",
+        "description": "No evidence that shadow-forecast accuracy meets utility thresholds. MAPE on independent samples, calibration methodology, and the 15% alert threshold justification are unknowns. Without proven accuracy, the tool cannot provide reliable alerts to engineers.",
+        "severity": "blocking",
+        "reason_codes": ["GAP_MODEL_VALIDATION"],
+        "cited_condition_ids": [],
+        "source_refs": ["$.unknowns", "$.risks", "assessment.blocking_gaps[2]"]
+      },
+      {
+        "cause_id": "cause_integration",
+        "category": "scope_problem",
+        "description": "PLAXIS integration approach is unresolved. Technical feasibility cannot be assured without specifying whether integration will use an official API or file parsing (.plt/.pdx). The proposal lists this as a critical unknown but provides no resolution path.",
+        "severity": "blocking",
+        "reason_codes": ["GAP_INTEGRATION_PATH"],
+        "cited_condition_ids": [],
+        "source_refs": ["$.unknowns", "assessment.blocking_gaps[3]"]
+      }
+    ],
+    "information_requests": [
+      {
+        "request_id": "req_engineer_interviews",
+        "question": "Interview 2-3 HSR geotechnical designers to confirm: (a) willingness to use shadow-mode tools, (b) access to anonymized PLAXIS cases for PoC, (c) typical MAPE expectations for settlement forecasts, and (d) current integration methods with PLAXIS.",
+        "resolves_cause_ids": ["cause_data_access", "cause_validation", "cause_integration"],
+        "source_refs": ["$.stakeholders_or_actors", "$.unknowns", "$.assumptions"]
+      },
+      {
+        "request_id": "req_regulatory_guidance",
+        "question": "Consult Roszhelezdornadzor or legal counsel to determine whether AI/ML-based supplementary forecasts are permissible in HSR design documentation and under what conditions (e.g., full shadow-mode only, certified software requirements, liability allocation).",
+        "resolves_cause_ids": ["cause_regulatory"],
+        "source_refs": ["$.stakeholders_or_actors", "$.unknowns", "$.risks"]
+      },
+      {
+        "request_id": "req_plaxis_poc_access",
+        "question": "Obtain at least one anonymized PLAXIS model of a typical HSR embankment on weak foundation with corresponding field measurements to validate the shadow-forecast concept and quantify MAPE on independent data.",
+        "resolves_cause_ids": ["cause_data_access", "cause_validation"],
+        "source_refs": ["$.unknowns", "$.risks", "assessment.blocking_gaps[0]"]
+      }
+    ],
+    "recommended_actions": [
+      {
+        "action_id": "action_collect_requirements",
+        "action": "collect_information",
+        "description": "Conduct stakeholder interviews with 2-3 geotechnical engineers at HSR design organizations to validate user adoption readiness, data access feasibility, and integration requirements.",
+        "resolves_cause_ids": ["cause_data_access", "cause_validation", "cause_integration"],
+        "source_refs": ["$.stakeholders_or_actors", "$.assumptions", "assessment.non_blocking_gaps[2]"]
+      },
+      {
+        "action_id": "action_acquire_poc_data",
+        "action": "collect_information",
+        "description": "Secure access to anonymized PLAXIS models and field measurements for at least one HSR embankment case to validate the shadow-forecast accuracy and establish MAPE baseline.",
+        "resolves_cause_ids": ["cause_data_access", "cause_validation"],
+        "source_refs": ["$.unknowns", "$.risks", "assessment.blocking_gaps[0]"]
+      },
+      {
+        "action_id": "action_regulatory_consultation",
+        "action": "collect_information",
+        "description": "Seek regulatory guidance from Roszhelezdornadzor or qualified legal counsel on AI/ML permissibility in HSR design documentation and liability frameworks for auxiliary forecasting tools.",
+        "resolves_cause_ids": ["cause_regulatory"],
+        "source_refs": ["$.stakeholders_or_actors", "$.risks", "$.assumptions"]
+      }
+    ],
+    "residual_risks": [
+      {
+        "risk": "Geotechnical engineers may decline to participate in interviews or provide PLAXIS cases due to NDA restrictions, lack of time, or competitive concerns, leaving data access and validation gaps unresolved.",
+        "source_refs": ["$.unknowns", "$.risks", "assessment.blocking_gaps[0]"]
+      },
+      {
+        "risk": "Regulatory guidance may prohibit AI-based forecasts in HSR design documentation altogether or require certification pathways that are infeasible for a shadow-mode prototype, rendering the concept non-viable.",
+        "source_refs": ["$.unknowns", "$.risks", "assessment.blocking_gaps[1]"]
+      },
+      {
+        "risk": "Shadow-forecast accuracy on independent PLAXIS cases may not meet the 15% alert threshold utility requirement, indicating the ML-correction approach is insufficient or requires more training data than available.",
+        "source_refs": ["$.unknowns", "$.risks", "assessment.blocking_gaps[2]"]
+      },
+      {
+        "risk": "PLAXIS integration may require an official API that is unavailable or prohibitively licensed, forcing reliance on brittle file parsing that breaks with PLAXIS updates and limits long-term maintainability.",
+        "source_refs": ["$.unknowns", "assessment.blocking_gaps[3]"]
+      }
+    ],
+    "confidence": 0.75
+  }
+}

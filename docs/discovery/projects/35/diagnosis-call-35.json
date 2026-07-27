@@ -1,0 +1,127 @@
+{
+  "control_intent_id": 12,
+  "execution_id": "exec-35-17696-1785009066027-1",
+  "schema_version": "saga3.discovery-diagnosis.v1",
+  "payload": {
+    "target": {
+      "certificate_id": 19,
+      "certificate_hash": "cf44d74ca96574855043541e13ab7708d0098e8c9be193bb37431549a698b373",
+      "settlement_input_hash": "11ffc70bc799b721ac828b04b733eded728f7e771771273edac1b84d23b265ab",
+      "decision": "clarify"
+    },
+    "executive_summary": "Certificate 19 issued a CLARIFY decision for the GeoSophia Discovery (epic 35) because the discovery worker explicitly recommended 'clarify' — the proposal presents a well-structured shadow-mode settlement monitoring concept for high-speed railway embankments but has two blocking gaps: (1) an unresolved relationship to epic 34 which covered a nearly identical concept, risking scope duplication or conflict, and (2) insufficient evidence grounding with no concrete regulatory references (specific SNiP/GOST codes), market sizing data, or case study validation. The readiness assessment rated the proposal 'conditionally_ready' with a confidence of 0.65 and recommended 'request_clarification'. The kernel's policy trace shows a single contributing condition — worker_requested_clarify — which passed because the proposal's recommended_outcome was 'clarify', triggering reason code CLARIFY_WORKER_REQUESTED.",
+    "cause_analysis": [
+      {
+        "cause_id": "CAUSE-1",
+        "category": "scope_problem",
+        "description": "The relationship to epic 34 is unresolved — the root cause that led the discovery worker to request clarification. Epic 34 covered a nearly identical concept for general railway embankment settlement monitoring. Without clarifying whether this episode is a refinement, continuation, or separate initiative, scope boundaries and formalization artifacts may duplicate or conflict with prior work. This structural ambiguity was identified as GAP-BLOCKING-1 in the readiness assessment (assessment:74). The worker's clarify recommendation ($.recommended_outcome) was driven by this gap.",
+        "severity": "blocking",
+        "reason_codes": ["CLARIFY_WORKER_REQUESTED"],
+        "cited_condition_ids": [],
+        "source_refs": [
+          "$.unknowns",
+          "$.observed_context",
+          "assessment.blocking_gaps[0]",
+          "Previous discovery document docs/discovery/discovery-34.md (epic 34)",
+          "$.recommended_outcome"
+        ]
+      },
+      {
+        "cause_id": "CAUSE-2",
+        "category": "missing_evidence",
+        "description": "Insufficient evidence grounding — the second root cause that led the worker to request clarification. The proposal relies on domain knowledge assertions without concrete regulatory references (specific SNiP/GOST codes for ВСЖД settlement monitoring), market sizing data, or case study validation. Evidence references are limited to a task description, the previous discovery document (epic 34), and general domain knowledge claims. The readiness assessment rated evidence_grounding as 'partial' and identified this as GAP-BLOCKING-2.",
+        "severity": "blocking",
+        "reason_codes": [],
+        "cited_condition_ids": [],
+        "source_refs": [
+          "$.evidence_refs",
+          "$.rationale",
+          "$.recommended_outcome",
+          "assessment.blocking_gaps[1]",
+          "assessment.dimension_assessments.evidence_grounding"
+        ]
+      }
+    ],
+    "information_requests": [
+      {
+        "request_id": "REQ-1",
+        "question": "What is the relationship between epic 35 (high-speed rail / ВСЖД) and epic 34 (general railway embankments)? Is this a refinement adding tighter tolerances, a continuation of prior work, or a separate initiative targeting a different market segment?",
+        "resolves_cause_ids": ["CAUSE-1"],
+        "source_refs": [
+          "$.unknowns",
+          "assessment.blocking_gaps[0]",
+          "Previous discovery document docs/discovery/discovery-34.md (epic 34)"
+        ]
+      },
+      {
+        "request_id": "REQ-2",
+        "question": "What are the specific SNiP and GOST regulatory codes governing settlement monitoring documentation for ВСЖД high-speed railway projects in Russia, and do they recognize supplementary shadow-system outputs as having any formal value?",
+        "resolves_cause_ids": ["CAUSE-2"],
+        "source_refs": [
+          "$.evidence_refs",
+          "$.unknowns",
+          "assessment.blocking_gaps[1]"
+        ]
+      },
+      {
+        "request_id": "REQ-3",
+        "question": "What is the market size for high-speed railway infrastructure in Russia, and are there existing commercial geotechnical monitoring solutions that set market expectations or already address parts of this scope?",
+        "resolves_cause_ids": ["CAUSE-2"],
+        "source_refs": [
+          "$.evidence_refs",
+          "$.unknowns",
+          "assessment.non_blocking_gaps[2]"
+        ]
+      }
+    ],
+    "recommended_actions": [
+      {
+        "action_id": "ACTION-1",
+        "action": "collect_information",
+        "description": "Review epic 34's discovery artifacts and settlement to determine overlap with epic 35. Clarify whether this episode should be merged, differentiated by the ВСЖД high-speed rail dimension, or treated as a separate product line.",
+        "resolves_cause_ids": ["CAUSE-1"],
+        "source_refs": [
+          "$.unknowns",
+          "assessment.blocking_gaps[0]",
+          "Previous discovery document docs/discovery/discovery-34.md (epic 34)"
+        ]
+      },
+      {
+        "action_id": "ACTION-2",
+        "action": "collect_information",
+        "description": "Conduct targeted interviews with RZD engineers and regulatory experts to obtain specific SNiP/GOST codes for ВСЖД settlement monitoring, understand data availability from instrumentation projects, and assess whether shadow-system outputs have recognized supplementary value in the Russian regulatory framework.",
+        "resolves_cause_ids": ["CAUSE-2"],
+        "source_refs": [
+          "$.evidence_refs",
+          "$.unknowns",
+          "assessment.blocking_gaps[1]"
+        ]
+      },
+      {
+        "action_id": "ACTION-3",
+        "action": "collect_information",
+        "description": "Research the Russian high-speed rail market size, existing geotechnical monitoring solutions, and competitive landscape to validate product-market fit and identify differentiation opportunities.",
+        "resolves_cause_ids": ["CAUSE-2"],
+        "source_refs": [
+          "$.unknowns",
+          "assessment.non_blocking_gaps[2]"
+        ]
+      }
+    ],
+    "residual_risks": [
+      {
+        "risk": "Even after clarification, the Russian high-speed rail market may prove too small to sustain a dedicated product; international expansion would be required but introduces additional regulatory complexity.",
+        "source_refs": ["$.risks", "$.unknowns"]
+      },
+      {
+        "risk": "1D Terzaghi consolidation models may produce false positives or negatives in complex geological conditions, limiting the reliability of early-warning divergence detection regardless of clarification outcomes.",
+        "source_refs": ["$.risks", "$.assumptions"]
+      },
+      {
+        "risk": "Railway safety regulations (SNiP, GOST) may fundamentally not recognize shadow-system outputs, making engineers reluctant to act on non-certified warnings even with a well-validated product.",
+        "source_refs": ["$.risks", "$.assumptions"]
+      }
+    ],
+    "confidence": 0.85
+  }
+}

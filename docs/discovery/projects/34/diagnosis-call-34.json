@@ -1,0 +1,113 @@
+{
+  "control_intent_id": 11,
+  "execution_id": "exec-34-19500-1785007206792-2",
+  "schema_version": "saga3.discovery-diagnosis.v1",
+  "payload": {
+    "target": {
+      "certificate_id": 18,
+      "certificate_hash": "df9c52476324e98352eb0210cc7ea8d7711c47e3e694e758f453a4a6292f3eef",
+      "settlement_input_hash": "f7549aacf397d806da6bbf3e3f1dbc987f7504e49ea5f40d9b59dce08e05b942",
+      "decision": "clarify"
+    },
+    "executive_summary": "Certificate 18 issued a CLARIFY decision for the GeoSophia Settlement Twin discovery (epic REQ-34). The kernel's single policy condition 'worker_requested_clarify' passed with reason code CLARIFY_WORKER_REQUESTED because the discovery proposal itself recommended 'clarify' — driven by two blocking gaps identified in the readiness assessment: (1) no evidence on Russian regulatory recognition of shadow-system outputs for settlement monitoring documentation, and (2) unconfirmed PLAXIS machine-readable export capability for model parameters. The proposal is otherwise well-structured with a clear problem statement, bounded scope, comprehensive stakeholder coverage, and honest enumeration of assumptions, unknowns, and risks. Before formalization can proceed, the regulatory landscape and technical integration path must be researched.",
+    "cause_analysis": [
+      {
+        "cause_id": "CAUSE_REGULATORY_GAP",
+        "category": "missing_evidence",
+        "description": "No evidence of Russian regulatory requirements (GOST R, SNiP) for settlement monitoring documentation — whether shadow-system outputs have recognized value is unknown. This affects product viability and output format design. The readiness assessment flagged this as GAP-BLOCK-REGULATORY.",
+        "severity": "blocking",
+        "reason_codes": ["CLARIFY_WORKER_REQUESTED"],
+        "cited_condition_ids": ["worker_requested_clarify"],
+        "source_refs": [
+          "$.unknowns",
+          "$.risks",
+          "assessment.blocking_gaps[0]",
+          "proposal:135"
+        ]
+      },
+      {
+        "cause_id": "CAUSE_PLAXIS_INTEGRATION_GAP",
+        "category": "missing_evidence",
+        "description": "No confirmation that PLAXIS models can be exported in machine-readable format preserving layer parameters. The proposal assumes manual entry is possible but this introduces transcription errors and may not scale. The readiness assessment flagged this as GAP-BLOCK-PLAXIS-INTEGRATION.",
+        "severity": "blocking",
+        "reason_codes": ["CLARIFY_WORKER_REQUESTED"],
+        "cited_condition_ids": ["worker_requested_clarify"],
+        "source_refs": [
+          "$.assumptions",
+          "$.risks",
+          "assessment.blocking_gaps[1]",
+          "proposal:135"
+        ]
+      }
+    ],
+    "information_requests": [
+      {
+        "request_id": "REQ_REGULATORY_RESEARCH",
+        "question": "What are the Russian regulatory requirements (GOST R, SNiP) for settlement monitoring documentation on high-speed railway embankments, and do they recognize outputs from advisory shadow-systems alongside official calculations?",
+        "resolves_cause_ids": ["CAUSE_REGULATORY_GAP"],
+        "source_refs": [
+          "$.unknowns",
+          "$.risks",
+          "assessment.blocking_gaps[0]"
+        ]
+      },
+      {
+        "request_id": "REQ_PLAXIS_EXPORT_CAPABILITY",
+        "question": "Can PLAXIS FEM models be exported in a machine-readable format that preserves layer parameters (soil properties, boundary conditions, loading) for use in automated 1D consolidation calculations?",
+        "resolves_cause_ids": ["CAUSE_PLAXIS_INTEGRATION_GAP"],
+        "source_refs": [
+          "$.assumptions",
+          "$.risks",
+          "assessment.blocking_gaps[1]"
+        ]
+      }
+    ],
+    "recommended_actions": [
+      {
+        "action_id": "ACTION_REGULATORY_RESEARCH",
+        "action": "collect_information",
+        "description": "Research Russian railway regulatory framework (GOST R, SNiP) for settlement monitoring documentation requirements and determine whether advisory shadow-system outputs have recognized value alongside official calculations.",
+        "resolves_cause_ids": ["CAUSE_REGULATORY_GAP"],
+        "source_refs": [
+          "$.unknowns",
+          "assessment.blocking_gaps[0]"
+        ]
+      },
+      {
+        "action_id": "ACTION_PLAXIS_INVESTIGATION",
+        "action": "collect_information",
+        "description": "Investigate PLAXIS export capabilities — review API documentation, contact Bentley Systems support, or consult with PLAXIS users to determine if layer parameters can be extracted in machine-readable format for automated consolidation calculations.",
+        "resolves_cause_ids": ["CAUSE_PLAXIS_INTEGRATION_GAP"],
+        "source_refs": [
+          "$.assumptions",
+          "assessment.blocking_gaps[1]"
+        ]
+      },
+      {
+        "action_id": "ACTION_COMPETITIVE_ANALYSIS",
+        "action": "collect_information",
+        "description": "Research existing commercial solutions for embankment settlement monitoring to understand feature sets, pricing expectations, and market gaps. This addresses the non-blocking competitive landscape gap.",
+        "resolves_cause_ids": [],
+        "source_refs": [
+          "$.unknowns",
+          "assessment.non_blocking_gaps[0]"
+        ]
+      }
+    ],
+    "residual_risks": [
+      {
+        "risk": "Even with regulatory and PLAXIS clarification, 1D consolidation models may produce false positives or negatives in complex geological conditions, leading to engineer distrust or missed warnings.",
+        "source_refs": ["$.risks"]
+      },
+      {
+        "risk": "Geotechnical engineers are a conservative community; convincing them to adopt a shadow-mode advisory product requires rigorous validation against known case studies regardless of regulatory status.",
+        "source_refs": ["$.risks", "$.stakeholders_or_actors"]
+      },
+      {
+        "risk": "Instrumentation failures produce data gaps or outliers requiring graceful handling without generating false alerts — a technical challenge independent of the blocking gaps.",
+        "source_refs": ["$.risks"]
+      }
+    ],
+    "confidence": 0.85
+  }
+}

@@ -1,0 +1,89 @@
+{
+  "control_intent_id": 1214,
+  "execution_id": "exec-36-21688-1785011711227-19",
+  "schema_version": "saga3.discovery-readiness-assessment.v1",
+  "payload": {
+    "proposal_id": 137,
+    "proposal_content_hash": "0935b456d01d2a4f5c52bd9da3f3cc135bc1fbe257d9f72529ab47bc65a3f734",
+    "overall_readiness": "not_ready",
+    "dimension_assessments": {
+      "problem_clarity": {
+        "status": "sufficient",
+        "rationale": "The problem statement clearly articulates the risk of uneven embankment settlement on HSR built over weak soils, identifies limitations of current approaches (SNiP/Eurocode + PLAXIS failing to account for time-dependent creep and secondary consolidation), and quantifies the gap — actual settlement may exceed calculated by 20-50%. The business impact is concrete: speed restrictions, costly track reinforcement, or accidents.",
+        "source_refs": ["$.problem_statement", "$.evidence_refs[2]"]
+      },
+      "scope_boundedness": {
+        "status": "sufficient",
+        "rationale": "Candidate scope is tightly bounded to a single HSR section (1-2 km embankment on weak foundation) in shadow mode. The technical approach is specified: Terzaghi 1D consolidation + empirical creep correlations + ML correction on historical data, with divergence visualization and alerts above 15% threshold. MVP exclusions are explicit: no real-time operation, no SCADA/sensor integration, no regulatory conclusions.",
+        "source_refs": ["$.candidate_scope", "$.observed_context"]
+      },
+      "stakeholder_coverage": {
+        "status": "sufficient",
+        "rationale": "Five stakeholder groups are identified covering the full value chain: primary users (geotechnical engineers at HSR design firms), clients/investors (state railways, infrastructure funds), operational services (embankment monitoring), regulatory bodies (Roszhelezdornadzor), and software ecosystem partners/competitors (PLAXIS, GEO5, ANSYS developers). This spans end-users, payers, regulators, and the competitive landscape.",
+        "source_refs": ["$.stakeholders_or_actors"]
+      },
+      "assumption_visibility": {
+        "status": "sufficient",
+        "rationale": "Five assumptions are explicitly stated covering the critical success factors: PLAXIS model exportability (CSV/JSON), availability of historical settlement data for ML calibration, engineer willingness to adopt a shadow-mode tool, regulatory permissiveness toward AI/ML as supplementary instrument, and compute resource availability. These span technical feasibility, user adoption, legal environment, and infrastructure — the key assumption categories.",
+        "source_refs": ["$.assumptions"]
+      },
+      "unknowns_manageability": {
+        "status": "partial",
+        "rationale": "Six critical unknowns identified: PLAXIS data access (format, volume, NDA restrictions), historical data quality/volume for ML, shadow-forecast accuracy (MAPE) on independent samples, PLAXIS integration approach (official API vs parsing), regulatory status of AI-forecasts in HSR design documentation, and business model clarity. While comprehensively listed, no clear resolution plan or prioritization shown. These are fundamental to feasibility and currently unaddressed.",
+        "source_refs": ["$.unknowns"]
+      },
+      "risk_visibility": {
+        "status": "partial",
+        "rationale": "Five risks identified with severity levels: high technical risk (model sensitivity to input parameters), high trust risk (shadow-forecast discrepancies without field verification), medium legal risk (regulatory AI limitations), medium implementation risk (small HSR designer market), high data risk (system remains prototype without real PLAXIS models). Risk coverage is comprehensive but mitigation strategies are absent. The high-rated risks (data access, model accuracy, regulatory constraints) are show-stoppers without clear mitigation paths.",
+        "source_refs": ["$.risks"]
+      },
+      "evidence_grounding": {
+        "status": "partial",
+        "rationale": "Evidence grounded primarily in domain knowledge (geotechnical standards SNiP 32.02.01, Eurocode 7) and problem statement quantification (20-50% settlement exceedance with financial consequences). However, lacks concrete external evidence: no case studies of shadow-mode geotechnical tools, no validation data on ML-correlation accuracy, no examples of regulatory acceptance of AI in HSR design, no market analysis of designer adoption patterns. Workspace state confirms early stage (no artifacts/repositories), but this underscores the need for external validation before proceeding.",
+        "source_refs": ["$.evidence_refs", "$.problem_statement", "$.observed_context"]
+      }
+    },
+    "blocking_gaps": [
+      {
+        "code": "GAP_DATA_ACCESS",
+        "description": "No access to real PLAXIS models or field measurements. Without access to anonymized PLAXIS cases for validation, the system remains theoretical. The proposal explicitly states this as a high data risk.",
+        "source_refs": ["$.unknowns", "$.risks"]
+      },
+      {
+        "code": "GAP_REGULATORY_CLEARANCE",
+        "description": "Regulatory status of AI-forecasts in HSR design documentation is unknown. Roszhelezdornadzor acceptance cannot be assumed without explicit clarification, given this is safety-critical infrastructure.",
+        "source_refs": ["$.unknowns", "$.risks", "$.assumptions"]
+      },
+      {
+        "code": "GAP_MODEL_VALIDATION",
+        "description": "No evidence that shadow-forecast accuracy meets utility thresholds. MAPE on independent samples and calibration methodology are unknowns. Without proven accuracy, the tool cannot provide reliable alerts.",
+        "source_refs": ["$.unknowns", "$.risks"]
+      },
+      {
+        "code": "GAP_INTEGRATION_PATH",
+        "description": "PLAXIS integration approach is unresolved (official API vs file parsing). Technical feasibility cannot be assured without specifying the integration mechanism.",
+        "source_refs": ["$.unknowns"]
+      }
+    ],
+    "non_blocking_gaps": [
+      {
+        "code": "GAP_MARKET_SIZE",
+        "description": "Small target market (1-2 HSR design organizations in Russia). Market viability and business model clarity are unknowns but not immediate blockers for technical validation.",
+        "source_refs": ["$.unknowns", "$.risks"]
+      },
+      {
+        "code": "GAP_MITIGATION_STRATEGY",
+        "description": "Risks identified but no mitigation strategies provided. While risk visibility is good, lack of mitigation planning increases execution uncertainty.",
+        "source_refs": ["$.risks"]
+      },
+      {
+        "code": "GAP_USER_VALIDATION",
+        "description": "Geotechnical engineer readiness to adopt shadow-mode tools is assumed but not validated through interviews or prototype testing. User adoption risk is unquantified.",
+        "source_refs": ["$.assumptions", "$.stakeholders_or_actors"]
+      }
+    ],
+    "recommended_next_action": "request_clarification",
+    "confidence": 0.7,
+    "rationale": "The proposal demonstrates strong problem clarity (real settlement risk with 20-50% exceedance, measurable financial impact), well-defined scope (shadow-mode for 1-2km section, clear MVP boundaries), comprehensive stakeholder coverage (five groups across value chain), and explicit assumptions. However, four blocking gaps prevent proceeding to settlement: no access to real PLAXIS data for validation, unknown regulatory acceptance of AI in safety-critical HSR design, unproven model accuracy methodology, and unresolved technical integration path. These are feasibility prerequisites that cannot be bypassed. The recommended outcome 'clarify' in the proposal aligns with this assessment — critical unknowns must be resolved through stakeholder interviews (2-3 geotechnical engineers), PLAXIS case acquisition for PoC validation, and regulatory consultation before go/no-go decision. Shadow assessment confidence is high (0.7) because the proposal itself identifies these as critical prerequisites in rationale and recommended_outcome."
+  }
+}
