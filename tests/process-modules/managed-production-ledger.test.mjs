@@ -64,6 +64,11 @@ function fixture() {
         launcher,state,phase,metadata)
      VALUES (?, 'run-1',1,10,?,'worker-1','machine-1','test','running','executing','{}')`,
   ).run(executionId, taskId);
+  db.prepare(
+    `UPDATE tasks
+        SET assigned_to='worker-1',current_execution_id=?
+      WHERE id=?`,
+  ).run(executionId, taskId);
   process.env.SAGA_MANAGED_EXECUTION = '1';
   process.env.SAGA_EXECUTION_ID = executionId;
   process.env.SAGA_TASK_ID = String(taskId);
@@ -162,6 +167,54 @@ test('inconsistent ProcessRun metadata fails before an artifact mutation commits
     );
     assert.equal(
       f.db.prepare(`SELECT COUNT(*) AS n FROM artifacts WHERE code='PRD-BAD'`).get().n,
+      0,
+    );
+  } finally {
+    cleanup(f.temp);
+  }
+});
+
+test('a reviewer or stale execution cannot mutate managed products', () => {
+  const f = fixture();
+  try {
+    const reviewerExecution = 'exec-managed-review-1';
+    f.db.prepare(
+      `UPDATE worker_executions
+          SET state='exited',phase='finishing',finished_at=datetime('now')
+        WHERE execution_id=?`,
+    ).run(f.executionId);
+    f.db.prepare(
+      `INSERT INTO worker_executions
+         (execution_id,run_id,project_id,epic_id,task_id,worker_id,machine_id,
+          launcher,state,phase,metadata)
+       VALUES (?, 'run-2',1,10,?,'reviewer-1','machine-1','test',
+               'running','reviewing','{}')`,
+    ).run(reviewerExecution, f.taskId);
+    f.db.prepare(
+      `UPDATE tasks
+          SET status='review_in_progress',assigned_to='reviewer-1',
+              current_execution_id=?
+        WHERE id=?`,
+    ).run(reviewerExecution, f.taskId);
+    process.env.SAGA_EXECUTION_ID = reviewerExecution;
+
+    assert.throws(
+      () => artifactHandlers.artifact_create({
+        project_id: 1,
+        epic_id: 10,
+        type: 'SRS',
+        title: 'Reviewer must not write',
+        path: 'docs/reviewer-write.md',
+        code: 'SRS-REVIEWER',
+        status: 'draft',
+        content_hash: 'f'.repeat(64),
+      }),
+      /MANAGED_PRODUCTION_FENCE_VIOLATION/,
+    );
+    assert.equal(
+      f.db.prepare(
+        `SELECT COUNT(*) AS n FROM artifacts WHERE code='SRS-REVIEWER'`,
+      ).get().n,
       0,
     );
   } finally {

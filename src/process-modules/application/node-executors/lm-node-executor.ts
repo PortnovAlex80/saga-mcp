@@ -138,6 +138,17 @@ export interface LmNodeExecutionPersistence {
   readLatestExecutionId(taskId: number): string | null;
 
   /**
+   * Exact execution that last persisted a managed product for this ProcessRun
+   * node. On a completed task this differs from readLatestExecutionId because
+   * the latest physical execution is normally the reviewer.
+   */
+  readLatestManagedProductionExecutionId?(
+    taskId: number,
+    processRunId: number,
+    nodeId: string,
+  ): string | null;
+
+  /**
    * project_repository_id bound to the projected task. Workers need this to
    * resolve artifact file paths and to pass to artifact_create /
    * artifact_update. Without it, artifacts end up with a NULL
@@ -375,7 +386,13 @@ export class LmNodeExecutor implements NodeExecutor {
             executorKind: 'lm',
             intentId: intent.id,
             taskId,
-            executionId: this.persistence.readLatestExecutionId(taskId),
+            executionId:
+              this.persistence.readLatestManagedProductionExecutionId?.(
+                taskId,
+                ctx.processRunId,
+                node.id,
+              )
+              ?? this.persistence.readLatestExecutionId(taskId),
             runtimeStatus: 'completed',
             replayed: true,
           },

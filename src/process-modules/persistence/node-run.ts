@@ -48,6 +48,8 @@ export interface NodeRunRecord {
    * materialization without pretending the task itself is the product.
    */
   executionReceipt: Record<string, unknown> | null;
+  /** Immutable exact-candidate gate receipt, separate from domain production. */
+  acceptanceReceipt: Record<string, unknown> | null;
   /** Immutable issue emitted by this completed node, if it entered recovery. */
   recoveryIssue: RecoveryIssue | null;
   errorMessage: string | null;
@@ -70,6 +72,7 @@ export interface CompleteNodeRunInput {
   /** Д8: durable bindings to persist for restart recovery. */
   outputBindings?: Record<string, unknown> | null;
   executionReceipt?: Record<string, unknown> | null;
+  acceptanceReceipt?: Record<string, unknown> | null;
   recoveryIssue?: RecoveryIssue | null;
 }
 

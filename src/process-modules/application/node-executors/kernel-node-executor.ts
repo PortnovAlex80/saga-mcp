@@ -11,6 +11,16 @@
 import type {
   KernelFlowNodeDefinition,
 } from '../../domain/process-module.js';
+import {
+  RECOVERY_ISSUE_SCHEMA,
+  type RecoveryIssue,
+} from '../../domain/recovery.js';
+import {
+  ExactCandidateAcceptanceRejected,
+  type ExactCandidateAcceptance,
+  type ExactCandidateAcceptanceDirective,
+  type ExactCandidateAcceptanceReceipt,
+} from '../exact-candidate-acceptance.js';
 import type { KernelHandlerRegistry, KernelHandlerResult } from '../kernel-handler-registry.js';
 import {
   NodeExecutionError,
@@ -22,13 +32,16 @@ import {
 export class KernelNodeExecutor implements NodeExecutor {
   readonly kind = 'kernel' as const;
 
-  constructor(private readonly handlerRegistry: KernelHandlerRegistry) {}
+  constructor(
+    private readonly handlerRegistry: KernelHandlerRegistry,
+    private readonly candidateAcceptance?: ExactCandidateAcceptance,
+  ) {}
 
   async execute(ctx: NodeExecutionContext): Promise<NodeExecutionResult> {
     const node = ctx.node as KernelFlowNodeDefinition;
     const handler = this.handlerRegistry.require(node.handler);
     try {
-      const result: KernelHandlerResult = await handler({
+      let result: KernelHandlerResult = await handler({
         projectId: ctx.projectId,
         epicId: ctx.epicId,
         processRunId: ctx.processRunId,
@@ -38,6 +51,15 @@ export class KernelNodeExecutor implements NodeExecutor {
         heartbeat: ctx.heartbeat,
         initiatedBy: ctx.initiatedBy,
       });
+      let acceptanceReceipt: ExactCandidateAcceptanceReceipt | undefined;
+      if (result.exactCandidateAcceptance) {
+        const applied = this.applyExactCandidateAcceptance(
+          result,
+          result.exactCandidateAcceptance,
+        );
+        result = applied.result;
+        acceptanceReceipt = applied.receipt;
+      }
       // Kernel handlers emit DOMAIN events (accepted / go / clarify / ...).
       // runtimeEvent is always 'completed' for a kernel node that returned
       // normally; a handler that wants to signal failure throws.
@@ -46,10 +68,119 @@ export class KernelNodeExecutor implements NodeExecutor {
         domainEvent: result.event,
         production: result.production,
         recoveryIssue: result.recoveryIssue,
+        acceptanceReceipt,
         outcome: result.outcome,
       };
     } catch (err) {
       throw new NodeExecutionError('kernel', node.id, (err as Error).message, err);
     }
   }
+
+  private applyExactCandidateAcceptance(
+    result: KernelHandlerResult,
+    directive: ExactCandidateAcceptanceDirective,
+  ): {
+    result: KernelHandlerResult;
+    receipt?: ExactCandidateAcceptanceReceipt;
+  } {
+    if (!this.candidateAcceptance) {
+      throw new Error(
+        'kernel handler requested exact candidate acceptance, but no '
+        + 'ExactCandidateAcceptance port is configured',
+      );
+    }
+    try {
+      const decision = this.candidateAcceptance.accept(directive.command);
+      return {
+        result,
+        receipt: {
+          schemaVersion: decision.schemaVersion,
+          decisionRef: `exact-acceptance:${decision.decisionId}`,
+          decisionHash: decision.decisionHash,
+          candidateSetHash: decision.candidateSetHash,
+          idempotencyKey: decision.idempotencyKey,
+          replayed: decision.replayed,
+        },
+      };
+    } catch (error) {
+      if (!(error instanceof ExactCandidateAcceptanceRejected)) throw error;
+      if (!isRepairableAcceptanceRejection(error)) throw error;
+      return {
+        result: {
+          ...result,
+          event: directive.rejection.event,
+          recoveryIssue: acceptanceRecoveryIssue(directive, error),
+        },
+      };
+    }
+  }
+}
+
+function acceptanceRecoveryIssue(
+  directive: ExactCandidateAcceptanceDirective,
+  rejection: ExactCandidateAcceptanceRejected,
+): RecoveryIssue {
+  return {
+    schemaVersion: RECOVERY_ISSUE_SCHEMA,
+    policyId: directive.rejection.policyId,
+    disposition: acceptanceRejectionDisposition(directive, rejection),
+    reasonCode: rejection.code,
+    summary: `${directive.rejection.summary}: ${rejection.message}`,
+    findings: [{
+      code: rejection.code,
+      severity: 'error',
+      message: rejection.message,
+      subjectRef: directive.rejection.subjectRefs[0]?.ref ?? null,
+      expected: directive.rejection.acceptanceCriteria,
+      actual: rejection.details,
+      evidenceRefs: directive.rejection.subjectRefs.map(subject => subject.ref),
+    }],
+    subjectRefs: directive.rejection.subjectRefs,
+    acceptanceCriteria: directive.rejection.acceptanceCriteria,
+    allowedChanges: directive.rejection.allowedChanges,
+    context: {
+      ...(directive.rejection.context ?? {}),
+      acceptanceIdempotencyKey: directive.command.idempotencyKey,
+      candidateSet: directive.command.candidates,
+    },
+  };
+}
+
+function acceptanceRejectionDisposition(
+  directive: ExactCandidateAcceptanceDirective,
+  rejection: ExactCandidateAcceptanceRejected,
+): RecoveryIssue['disposition'] {
+  // A module may deliberately demand a stronger disposition. Otherwise,
+  // governance failures are not sent to an author who cannot manufacture an
+  // approved review or retroactively attest an out-of-band acceptance.
+  if (
+    directive.rejection.disposition === 'fatal'
+    || directive.rejection.disposition === 'human'
+  ) {
+    return directive.rejection.disposition;
+  }
+  if (
+    rejection.code === 'EXACT_ACCEPTANCE_APPROVED_REVIEW_REQUIRED'
+    || rejection.code
+      === 'EXACT_ACCEPTANCE_PREEXISTING_ACCEPTANCE_UNATTESTED'
+  ) {
+    return 'human';
+  }
+  return directive.rejection.disposition;
+}
+
+function isRepairableAcceptanceRejection(
+  error: ExactCandidateAcceptanceRejected,
+): boolean {
+  return new Set([
+    'EXACT_ACCEPTANCE_CANDIDATE_NOT_PRODUCED',
+    'EXACT_ACCEPTANCE_ARTIFACT_NOT_FOUND',
+    'EXACT_ACCEPTANCE_ARTIFACT_SCOPE_DRIFT',
+    'EXACT_ACCEPTANCE_ARTIFACT_TYPE_DRIFT',
+    'EXACT_ACCEPTANCE_ARTIFACT_HASH_DRIFT',
+    'EXACT_ACCEPTANCE_ARTIFACT_STATE_INVALID',
+    'EXACT_ACCEPTANCE_PREEXISTING_ACCEPTANCE_UNATTESTED',
+    'EXACT_ACCEPTANCE_APPROVED_REVIEW_REQUIRED',
+    'EXACT_ACCEPTANCE_CAS_FAILED',
+  ]).has(error.code);
 }

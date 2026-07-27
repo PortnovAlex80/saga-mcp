@@ -465,7 +465,8 @@ export class SqliteRecoveryCaseRepository implements RecoveryCaseRepository {
     const resolve = (): RecoveryCaseRecord | null => {
       const active = this.db.prepare(
         `SELECT * FROM saga3_recovery_cases
-          WHERE process_run_id=? AND policy_id=? AND status='active'
+          WHERE process_run_id=? AND policy_id=?
+            AND status IN ('active','exhausted')
           ORDER BY id DESC LIMIT 1`,
       ).get(processRunId, policyId) as RecoveryCaseRow | undefined;
       if (!active) return null;
@@ -476,11 +477,11 @@ export class SqliteRecoveryCaseRepository implements RecoveryCaseRepository {
                 resolved_by_node_run_id=?,
                 resolved_at=datetime('now'),
                 updated_at=datetime('now')
-          WHERE id=? AND status='active'`,
+          WHERE id=? AND status IN ('active','exhausted')`,
       ).run(resolvedByNodeRunId, active.id);
       if (info.changes !== 1) {
         throw new Error(
-          `RECOVERY_CASE_CONCURRENT_TRANSITION: case ${active.id} is no longer active`,
+          `RECOVERY_CASE_CONCURRENT_TRANSITION: case ${active.id} is no longer resolvable`,
         );
       }
       const row = readCaseRow(this.db, active.id);

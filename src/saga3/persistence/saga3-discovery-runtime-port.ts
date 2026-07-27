@@ -117,6 +117,13 @@ export interface Saga3DiscoveryRuntimePersistence {
   /** Latest physical worker execution id for one exact projected task. */
   readLatestExecutionId(taskId: number): string | null;
 
+  /** Latest execution that persisted a managed product for this exact node. */
+  readLatestManagedProductionExecutionId(
+    taskId: number,
+    processRunId: number,
+    nodeId: string,
+  ): string | null;
+
   /** project_repository_id bound to the projected task. */
   readTaskProjectRepositoryId(taskId: number): number | null;
 

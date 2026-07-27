@@ -438,6 +438,9 @@ test('LM active execution pauses without constructing or starting another worker
     readLatestExecutionId() {
       return 'execution-old';
     },
+    readTaskProjectRepositoryId() {
+      return null;
+    },
   };
   const executor = new LmNodeExecutor({
     persistence,
@@ -473,4 +476,95 @@ test('LM active execution pauses without constructing or starting another worker
   assert.equal(result.receipt.executionId, 'execution-active');
   assert.equal(factoryCalls, 0);
   assert.equal(statusTransitions, 0);
+});
+
+test('LM done replay returns the producer fence, not the later reviewer execution', async () => {
+  let factoryCalls = 0;
+  const module = moduleWithFlow({
+    id: 'lm-done-replay.flow',
+    version: '1',
+    entryNodeId: 'produce',
+    nodes: [{
+      id: 'produce',
+      label: 'Produce',
+      kind: 'lm',
+      description: 'produce',
+      executionProfile: 'worker',
+    }],
+    transitions: [],
+    terminalNodeIds: [],
+  }, [{
+    id: 'worker',
+    workIntentKind: 'test.produce',
+    workIntentSchema: { id: 'test.produce-intent.v1' },
+    taskKind: 'test.produce',
+    executionSkill: 'test-worker',
+    semanticSkill: 'test-produce',
+    allowedTools: [],
+    outputSchema: { id: 'test.output.v1' },
+    executionMode: 'workspace',
+    retryPolicy: { maxAttempts: 2 },
+  }]);
+  const persistence = {
+    ensureExecutionPlan() {
+      return { intentId: 10, taskId: 20, replayed: true };
+    },
+    createIntent() {
+      throw new Error('not used');
+    },
+    ensureProjectedTask() {
+      throw new Error('not used');
+    },
+    setProjectedTask() {},
+    setIntentStatus() {
+      return true;
+    },
+    prepareIntentForExecution() {
+      return { status: 'done', intentStatus: 'executing' };
+    },
+    readTaskState() {
+      return 'done';
+    },
+    readCurrentExecutionId() {
+      return null;
+    },
+    readLatestExecutionId() {
+      return 'reviewer-execution';
+    },
+    readLatestManagedProductionExecutionId(taskId, processRunId, nodeId) {
+      assert.equal(taskId, 20);
+      assert.equal(processRunId, 77);
+      assert.equal(nodeId, 'produce');
+      return 'producer-execution';
+    },
+    readTaskProjectRepositoryId() {
+      return null;
+    },
+  };
+  const executor = new LmNodeExecutor({
+    persistence,
+    workerExecutorFactory() {
+      factoryCalls += 1;
+      throw new Error('must not construct a worker on replay');
+    },
+    resolveWorkerContext() {
+      throw new Error('must not resolve worker context on replay');
+    },
+  });
+  const result = await executor.execute({
+    projectId: 1,
+    epicId: 70,
+    processRunId: 77,
+    module,
+    node: module.flow.nodes[0],
+    input: { objective: 'produce' },
+    frame: { runInput: {}, productions: {}, receipts: {} },
+    heartbeat() {},
+    initiatedBy: 'test',
+  });
+
+  assert.equal(result.runtimeEvent, 'completed');
+  assert.equal(result.receipt.executionId, 'producer-execution');
+  assert.equal(result.receipt.replayed, true);
+  assert.equal(factoryCalls, 0);
 });

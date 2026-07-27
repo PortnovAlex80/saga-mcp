@@ -168,6 +168,13 @@ test('exact candidate acceptance is atomic, review-backed and idempotent', () =>
       ).get().n,
       1,
     );
+    assert.equal(
+      acceptance.isAcceptedExact(
+        f.command.lineage,
+        f.command.candidates[0],
+      ),
+      true,
+    );
 
     f.db.prepare(
       `UPDATE artifacts SET content_hash=?,drift_state='drifted' WHERE id=?`,
@@ -235,6 +242,32 @@ test('a mismatched member rejects the whole candidate set before any CAS', () =>
     assert.equal(
       f.db.prepare('SELECT status FROM artifacts WHERE id=?').get(secondId).status,
       'draft',
+    );
+    assert.equal(
+      f.db.prepare(
+        'SELECT COUNT(*) AS n FROM saga3_exact_candidate_acceptance_decisions',
+      ).get().n,
+      0,
+    );
+  } finally {
+    cleanup(f.temp);
+  }
+});
+
+test('an accepted artifact without a prior exact decision cannot be attested retroactively', () => {
+  const f = fixture();
+  try {
+    f.db.prepare(
+      `UPDATE artifacts
+          SET status='accepted',accepted_hash=?,drift_state='clean'
+        WHERE id=?`,
+    ).run(f.contentHash, f.artifactId);
+    const acceptance = new SqliteExactCandidateAcceptance(f.db);
+    assert.throws(
+      () => acceptance.accept(f.command),
+      error =>
+        error?.code
+        === 'EXACT_ACCEPTANCE_PREEXISTING_ACCEPTANCE_UNATTESTED',
     );
     assert.equal(
       f.db.prepare(

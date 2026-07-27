@@ -342,6 +342,42 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
     return row?.execution_id ?? null;
   }
 
+  readLatestManagedProductionExecutionId(
+    taskId: number,
+    processRunId: number,
+    nodeId: string,
+  ): string | null {
+    try {
+      const row = getDb().prepare(
+        `SELECT execution_id
+           FROM (
+             SELECT execution_id, recorded_at, id AS ledger_id
+               FROM saga3_managed_artifact_productions
+              WHERE task_id=? AND process_run_id=? AND node_id=?
+             UNION ALL
+             SELECT execution_id, recorded_at, id AS ledger_id
+               FROM saga3_managed_trace_productions
+              WHERE task_id=? AND process_run_id=? AND node_id=?
+           )
+          ORDER BY recorded_at DESC, ledger_id DESC
+          LIMIT 1`,
+      ).get(
+        taskId,
+        processRunId,
+        nodeId,
+        taskId,
+        processRunId,
+        nodeId,
+      ) as { execution_id: string } | undefined;
+      return row?.execution_id ?? null;
+    } catch (error) {
+      // Managed-production tables are additive and may be absent in a legacy
+      // discovery-only database. The caller retains its physical fallback.
+      if (error instanceof Error && error.message.includes('no such table')) return null;
+      throw error;
+    }
+  }
+
   readTaskProjectRepositoryId(taskId: number): number | null {
     const row = getDb().prepare(
       'SELECT project_repository_id FROM tasks WHERE id=?',

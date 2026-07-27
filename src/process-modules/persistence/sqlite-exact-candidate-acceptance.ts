@@ -85,6 +85,7 @@ interface AcceptanceDecisionRow {
   epic_id: number;
   review_required: 0 | 1;
   review_receipt_command_id: string | null;
+  review_receipt_hash: string | null;
   authority: string;
   reason_code: string;
   decision_hash: string;
@@ -134,6 +135,7 @@ export function ensureExactCandidateAcceptanceSchema(
       epic_id                    INTEGER NOT NULL,
       review_required            INTEGER NOT NULL CHECK (review_required IN (0,1)),
       review_receipt_command_id  TEXT,
+      review_receipt_hash        TEXT,
       authority                  TEXT NOT NULL,
       reason_code                TEXT NOT NULL,
       decision_hash              TEXT NOT NULL,
@@ -196,6 +198,15 @@ export function ensureExactCandidateAcceptanceSchema(
         SELECT RAISE(ABORT, 'saga3 exact acceptance items are immutable');
       END;
   `);
+  const decisionColumns = db.prepare(
+    'PRAGMA table_info(saga3_exact_candidate_acceptance_decisions)',
+  ).all() as { name: string }[];
+  if (!decisionColumns.some(column => column.name === 'review_receipt_hash')) {
+    db.exec(
+      'ALTER TABLE saga3_exact_candidate_acceptance_decisions '
+      + 'ADD COLUMN review_receipt_hash TEXT',
+    );
+  }
 }
 
 export class SqliteExactCandidateAcceptance
@@ -227,6 +238,7 @@ implements ExactCandidateAcceptance {
           );
         }
         const replay = this.hydrateDecision(prior, true);
+        this.assertReviewReceiptStillExact(replay);
         this.assertAcceptedDecisionStillExact(replay);
         return replay;
       }
@@ -236,6 +248,9 @@ implements ExactCandidateAcceptance {
         this.prepareCandidate(request.lineage, candidate));
       const reviewReceipt = request.requireApprovedReview
         ? this.requireApprovedReview(request.lineage.taskId)
+        : null;
+      const reviewReceiptHash = reviewReceipt
+        ? hashReviewReceipt(reviewReceipt)
         : null;
 
       for (const item of prepared) {
@@ -251,6 +266,7 @@ implements ExactCandidateAcceptance {
         requestHash,
         candidateSetHash,
         reviewReceiptCommandId: reviewReceipt?.command_id ?? null,
+        reviewReceiptHash,
         items,
       });
 
@@ -259,8 +275,9 @@ implements ExactCandidateAcceptance {
            (schema_version, idempotency_key, request_hash, request_snapshot,
             candidate_set_hash, process_run_id, module_ref, node_id, intent_id,
             task_id, execution_id, project_id, epic_id, review_required,
-            review_receipt_command_id, authority, reason_code, decision_hash)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+            review_receipt_command_id, review_receipt_hash, authority,
+            reason_code, decision_hash)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       ).run(
         EXACT_CANDIDATE_ACCEPTANCE_SCHEMA,
         request.idempotencyKey,
@@ -277,6 +294,7 @@ implements ExactCandidateAcceptance {
         request.lineage.epicId,
         request.requireApprovedReview ? 1 : 0,
         reviewReceipt?.command_id ?? null,
+        reviewReceiptHash,
         request.authority,
         request.reasonCode,
         decisionHash,
@@ -352,10 +370,26 @@ implements ExactCandidateAcceptance {
       'candidate.contentHash',
     );
     const row = this.db.prepare(
-      `SELECT 1
+      `SELECT d.idempotency_key
          FROM saga3_exact_candidate_acceptance_decisions d
          JOIN saga3_exact_candidate_acceptance_items i
            ON i.decision_id=d.id
+         JOIN saga3_process_runs pr
+           ON pr.id=d.process_run_id
+          AND pr.project_id=d.project_id
+          AND pr.epic_id=d.epic_id
+          AND pr.module_ref_key=d.module_ref
+         JOIN saga3_managed_artifact_productions mp
+           ON mp.id=i.ledger_id
+          AND mp.process_run_id=d.process_run_id
+          AND mp.module_ref=d.module_ref
+          AND mp.node_id=d.node_id
+          AND mp.intent_id=d.intent_id
+          AND mp.task_id=d.task_id
+          AND mp.execution_id=d.execution_id
+          AND mp.artifact_id=i.artifact_id
+          AND mp.artifact_type=i.artifact_type
+          AND mp.content_hash=i.expected_content_hash
          JOIN artifacts a
            ON a.id=i.artifact_id
         WHERE d.process_run_id=?
@@ -388,8 +422,18 @@ implements ExactCandidateAcceptance {
       contentHash,
       contentHash,
       contentHash,
-    );
-    return Boolean(row);
+    ) as { idempotency_key: string } | undefined;
+    if (!row) return false;
+
+    // A status/hash match alone is not proof. Re-hydrate the immutable
+    // decision, verify its exact review evidence and check the whole accepted
+    // set so legacy or partially-corrupted receipts cannot authorize replay.
+    const decisionRow = this.readDecisionRow(row.idempotency_key);
+    if (!decisionRow) return false;
+    const decision = this.hydrateDecision(decisionRow, true);
+    this.assertReviewReceiptStillExact(decision);
+    this.assertAcceptedDecisionStillExact(decision);
+    return true;
   }
 
   private assertLineage(lineage: ExactCandidateProductionLineage): void {
@@ -574,6 +618,16 @@ implements ExactCandidateAcceptance {
     const alreadyAccepted = artifact.status === 'accepted'
       && artifact.accepted_hash === candidate.contentHash
       && artifact.drift_state === 'clean';
+    if (alreadyAccepted) {
+      reject(
+        'EXACT_ACCEPTANCE_PREEXISTING_ACCEPTANCE_UNATTESTED',
+        `artifact ${candidate.artifactId} was already accepted without this exact gate decision`,
+        {
+          artifactId: candidate.artifactId,
+          contentHash: candidate.contentHash,
+        },
+      );
+    }
     const disposition: ExactCandidateAcceptanceItemDisposition = alreadyAccepted
       ? 'already-accepted'
       : artifact.accepted_hash === null
@@ -727,6 +781,39 @@ implements ExactCandidateAcceptance {
     }
   }
 
+  private assertReviewReceiptStillExact(
+    decision: ExactCandidateAcceptanceDecision,
+  ): void {
+    if (!decision.requireApprovedReview) return;
+    if (
+      !decision.approvedReviewReceiptCommandId
+      || !decision.approvedReviewReceiptHash
+    ) {
+      reject(
+        'EXACT_ACCEPTANCE_STORED_DECISION_CORRUPT',
+        `decision ${decision.decisionId} has no exact review receipt evidence`,
+        { decisionId: decision.decisionId },
+      );
+    }
+    const receipt = this.db.prepare(
+      `SELECT command_id, execution_id, result_json, accepted_at
+         FROM command_receipts
+        WHERE command_id=? AND accepted=1`,
+    ).get(
+      decision.approvedReviewReceiptCommandId,
+    ) as ApprovedReviewReceiptRow | undefined;
+    if (!receipt || hashReviewReceipt(receipt) !== decision.approvedReviewReceiptHash) {
+      reject(
+        'EXACT_ACCEPTANCE_STORED_DECISION_CORRUPT',
+        `decision ${decision.decisionId} review receipt evidence changed`,
+        {
+          decisionId: decision.decisionId,
+          reviewReceiptCommandId: decision.approvedReviewReceiptCommandId,
+        },
+      );
+    }
+  }
+
   private readDecisionRow(
     idempotencyKey: string,
   ): AcceptanceDecisionRow | undefined {
@@ -746,6 +833,26 @@ implements ExactCandidateAcceptance {
         'EXACT_ACCEPTANCE_STORED_DECISION_CORRUPT',
         `decision ${row.id} has unsupported schema '${row.schema_version}'`,
         { decisionId: row.id, schemaVersion: row.schema_version },
+      );
+    }
+    let requestSnapshot: unknown;
+    try {
+      requestSnapshot = JSON.parse(row.request_snapshot);
+    } catch {
+      reject(
+        'EXACT_ACCEPTANCE_STORED_DECISION_CORRUPT',
+        `decision ${row.id} request snapshot is not valid JSON`,
+        { decisionId: row.id },
+      );
+    }
+    if (
+      canonicalJson(requestSnapshot) !== row.request_snapshot
+      || sha256Hex(requestSnapshot) !== row.request_hash
+    ) {
+      reject(
+        'EXACT_ACCEPTANCE_STORED_DECISION_CORRUPT',
+        `decision ${row.id} request snapshot/hash mismatch`,
+        { decisionId: row.id, storedRequestHash: row.request_hash },
       );
     }
     const itemRows = this.db.prepare(
@@ -777,11 +884,28 @@ implements ExactCandidateAcceptance {
         { decisionId: row.id },
       );
     }
+    const expectedCandidateSetHash = sha256Hex(items.map(item => ({
+      artifactId: item.artifactId,
+      artifactType: item.artifactType,
+      contentHash: item.contentHash,
+    })));
+    if (row.candidate_set_hash !== expectedCandidateSetHash) {
+      reject(
+        'EXACT_ACCEPTANCE_STORED_DECISION_CORRUPT',
+        `decision ${row.id} candidate set hash does not match its items`,
+        {
+          decisionId: row.id,
+          storedCandidateSetHash: row.candidate_set_hash,
+          computedCandidateSetHash: expectedCandidateSetHash,
+        },
+      );
+    }
     const expectedDecisionHash = computeDecisionHash({
       idempotencyKey: row.idempotency_key,
       requestHash: row.request_hash,
       candidateSetHash: row.candidate_set_hash,
       reviewReceiptCommandId: row.review_receipt_command_id,
+      reviewReceiptHash: row.review_receipt_hash,
       items,
     });
     if (row.decision_hash !== expectedDecisionHash) {
@@ -814,6 +938,7 @@ implements ExactCandidateAcceptance {
       },
       requireApprovedReview: row.review_required === 1,
       approvedReviewReceiptCommandId: row.review_receipt_command_id,
+      approvedReviewReceiptHash: row.review_receipt_hash,
       authority: row.authority,
       reasonCode: row.reason_code,
       items,
@@ -990,6 +1115,7 @@ function computeDecisionHash(input: {
   readonly requestHash: string;
   readonly candidateSetHash: string;
   readonly reviewReceiptCommandId: string | null;
+  readonly reviewReceiptHash: string | null;
   readonly items: readonly ExactCandidateAcceptanceItem[];
 }): string {
   return sha256Hex({
@@ -998,6 +1124,7 @@ function computeDecisionHash(input: {
     requestHash: input.requestHash,
     candidateSetHash: input.candidateSetHash,
     reviewReceiptCommandId: input.reviewReceiptCommandId,
+    reviewReceiptHash: input.reviewReceiptHash,
     items: input.items.map(item => ({
       artifactId: item.artifactId,
       artifactType: item.artifactType,
@@ -1011,6 +1138,15 @@ function computeDecisionHash(input: {
       finalAcceptedHash: item.finalAcceptedHash,
       finalDriftState: item.finalDriftState,
     })),
+  });
+}
+
+function hashReviewReceipt(receipt: ApprovedReviewReceiptRow): string {
+  return sha256Hex({
+    commandId: receipt.command_id,
+    executionId: receipt.execution_id,
+    resultJson: receipt.result_json,
+    acceptedAt: receipt.accepted_at,
   });
 }
 

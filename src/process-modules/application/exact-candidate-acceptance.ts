@@ -1,3 +1,8 @@
+import type {
+  RecoveryDisposition,
+  RecoverySubjectRef,
+} from '../domain/recovery.js';
+
 /**
  * Universal acceptance port for an exact set of artifacts produced by one
  * managed Process Module node execution.
@@ -63,6 +68,32 @@ export interface AcceptExactCandidatesCommand {
   readonly context?: Readonly<Record<string, unknown>>;
 }
 
+/**
+ * A module-owned semantic verifier may request the common kernel executor to
+ * commit the exact candidates only after the handler has returned normally.
+ *
+ * This keeps the roles separate:
+ *   - the module handler decides whether the candidate is semantically valid;
+ *   - the generic kernel executor applies the mechanical atomic acceptance;
+ *   - the generic recovery interpreter routes a rejected commit using the
+ *     module-declared policy below.
+ */
+export interface ExactCandidateAcceptanceDirective {
+  readonly command: AcceptExactCandidatesCommand;
+  readonly rejection: {
+    /** Domain event emitted when the common acceptance port rejects the CAS. */
+    readonly event: string;
+    /** Must match one FlowRecoveryDefinition declared by the module. */
+    readonly policyId: string;
+    readonly disposition: RecoveryDisposition;
+    readonly summary: string;
+    readonly acceptanceCriteria: readonly string[];
+    readonly allowedChanges: readonly string[];
+    readonly subjectRefs: readonly RecoverySubjectRef[];
+    readonly context?: Readonly<Record<string, unknown>>;
+  };
+}
+
 export type ExactCandidateAcceptanceItemDisposition =
   | 'accepted'
   | 'reaccepted'
@@ -92,11 +123,22 @@ export interface ExactCandidateAcceptanceDecision {
   readonly lineage: ExactCandidateProductionLineage;
   readonly requireApprovedReview: boolean;
   readonly approvedReviewReceiptCommandId: string | null;
+  readonly approvedReviewReceiptHash: string | null;
   readonly authority: string;
   readonly reasonCode: string;
   readonly items: readonly ExactCandidateAcceptanceItem[];
   readonly decidedAt: string;
   /** True when no write was repeated and the immutable decision was replayed. */
+  readonly replayed: boolean;
+}
+
+/** Durable audit link persisted on the NodeRun that requested the gate. */
+export interface ExactCandidateAcceptanceReceipt {
+  readonly schemaVersion: typeof EXACT_CANDIDATE_ACCEPTANCE_SCHEMA;
+  readonly decisionRef: string;
+  readonly decisionHash: string;
+  readonly candidateSetHash: string;
+  readonly idempotencyKey: string;
   readonly replayed: boolean;
 }
 
@@ -111,6 +153,7 @@ export type ExactCandidateAcceptanceRejectionCode =
   | 'EXACT_ACCEPTANCE_ARTIFACT_TYPE_DRIFT'
   | 'EXACT_ACCEPTANCE_ARTIFACT_HASH_DRIFT'
   | 'EXACT_ACCEPTANCE_ARTIFACT_STATE_INVALID'
+  | 'EXACT_ACCEPTANCE_PREEXISTING_ACCEPTANCE_UNATTESTED'
   | 'EXACT_ACCEPTANCE_APPROVED_REVIEW_REQUIRED'
   | 'EXACT_ACCEPTANCE_CAS_FAILED'
   | 'EXACT_ACCEPTANCE_STORED_DECISION_CORRUPT';

@@ -22,6 +22,7 @@ import type {
   ProcessModuleDefinition,
 } from '../domain/process-module.js';
 import type { RecoveryIssue } from '../domain/recovery.js';
+import type { ExactCandidateAcceptanceReceipt } from './exact-candidate-acceptance.js';
 
 /**
  * Контекст исполнения одного узла.
@@ -94,6 +95,8 @@ export interface NodeExecutionResult {
    * and only interprets the declared recovery policy.
    */
   recoveryIssue?: RecoveryIssue;
+  /** Immutable common-gate decision linked to this node execution. */
+  acceptanceReceipt?: ExactCandidateAcceptanceReceipt;
   /** Только для terminal-узлов (outcome-emitter). */
   outcome?: string;
 }

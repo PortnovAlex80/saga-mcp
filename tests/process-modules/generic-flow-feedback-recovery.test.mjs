@@ -11,6 +11,7 @@ const {
 } = await import('../../dist/process-modules/domain/recovery.js');
 const {
   GenericFlowExecutor,
+  RecoveryFatalError,
   ProcessRunPausedError,
 } = await import(
   '../../dist/process-modules/application/generic-flow-executor.js'
@@ -229,6 +230,7 @@ function executionContext(started) {
 function buildHarness(db, module, {
   reasonCode = 'SYNTHETIC_CONTRACT_BROKEN',
   alwaysReject = false,
+  disposition = 'repair',
 } = {}) {
   const processRunRepo = new SqliteProcessRunRepository(db);
   const nodeRunRepo = new SqliteNodeRunRepository(db);
@@ -237,8 +239,9 @@ function buildHarness(db, module, {
     author: [],
     verifier: [],
   };
-  const emittedIssue = issue(reasonCode);
+  const emittedIssue = { ...issue(reasonCode), disposition };
   const rejectedProduction = sourceProduction(reasonCode);
+  let rejectEveryVerification = alwaysReject;
 
   const nodeExecutors = new Map([
     ['lm', {
@@ -270,7 +273,7 @@ function buildHarness(db, module, {
           };
         }
         calls.verifier.push(ctx);
-        const reject = alwaysReject || calls.verifier.length === 1;
+        const reject = rejectEveryVerification || calls.verifier.length === 1;
         if (reject) {
           return {
             runtimeEvent: 'completed',
@@ -310,6 +313,9 @@ function buildHarness(db, module, {
     processRunRepo,
     recoveryCaseRepo,
     rejectedProduction,
+    setAlwaysReject(value) {
+      rejectEveryVerification = value;
+    },
   };
 }
 
@@ -454,6 +460,88 @@ test('exhausting the semantic repair budget pauses at a durable checkpoint', asy
   }
 });
 
+test('manual resume rechecks an exhausted verifier instead of replaying the pause', async () => {
+  const fx = fixture();
+  try {
+    const module = syntheticModule({ maxAttempts: 1, onExhausted: 'pause' });
+    const harness = buildHarness(fx.db, module, {
+      reasonCode: 'MANUAL_FIX_REQUIRED',
+      alwaysReject: true,
+    });
+    const started = startRun(
+      harness.processRunRepo,
+      module,
+      'feedback-manual-resume',
+    );
+    await assert.rejects(
+      harness.executor.execute(module, executionContext(started)),
+      error => error instanceof ProcessRunPausedError,
+    );
+
+    // Represents an operator fixing the canonical subject and explicitly
+    // resuming the ProcessRun. No extra LM repair round is granted implicitly.
+    harness.setAlwaysReject(false);
+    harness.processRunRepo.update(started.record.id, { status: 'running' });
+    const result = await harness.executor.execute(
+      module,
+      executionContext(started),
+    );
+
+    assert.equal(result.outcome, 'accepted');
+    assert.equal(harness.calls.author.length, 2);
+    assert.equal(harness.calls.verifier.length, 3);
+    const cases = harness.recoveryCaseRepo.listForProcessRun(started.record.id);
+    assert.equal(cases.length, 1);
+    assert.equal(cases[0].status, 'resolved');
+    assert.equal(
+      harness.processRunRepo.read(started.record.id).activeIssue,
+      null,
+    );
+  } finally {
+    cleanup(fx.temp);
+  }
+});
+
+test('manual resume rechecks a human gate after the external decision', async () => {
+  const fx = fixture();
+  try {
+    const module = syntheticModule();
+    const harness = buildHarness(fx.db, module, {
+      reasonCode: 'HUMAN_APPROVAL_REQUIRED',
+      alwaysReject: true,
+      disposition: 'human',
+    });
+    const started = startRun(
+      harness.processRunRepo,
+      module,
+      'feedback-human-resume',
+    );
+    await assert.rejects(
+      harness.executor.execute(module, executionContext(started)),
+      error => error instanceof ProcessRunPausedError,
+    );
+    assert.equal(harness.calls.author.length, 1);
+    assert.equal(harness.calls.verifier.length, 1);
+
+    harness.setAlwaysReject(false);
+    harness.processRunRepo.update(started.record.id, { status: 'running' });
+    const result = await harness.executor.execute(
+      module,
+      executionContext(started),
+    );
+
+    assert.equal(result.outcome, 'accepted');
+    assert.equal(harness.calls.author.length, 1);
+    assert.equal(harness.calls.verifier.length, 2);
+    assert.equal(
+      harness.recoveryCaseRepo.listForProcessRun(started.record.id)[0].status,
+      'resolved',
+    );
+  } finally {
+    cleanup(fx.temp);
+  }
+});
+
 test('reason codes stay opaque: one runtime repairs unrelated module failures identically', async () => {
   for (const reasonCode of ['SRS_NOT_ACCEPTED', 'DEPENDENCY_GRAPH_INCOMPLETE']) {
     const fx = fixture();
@@ -485,5 +573,48 @@ test('reason codes stay opaque: one runtime repairs unrelated module failures id
     } finally {
       cleanup(fx.temp);
     }
+  }
+});
+
+test('a fatal issue fails the run without entering the repair route', async () => {
+  const fx = fixture();
+  try {
+    const module = syntheticModule();
+    const harness = buildHarness(fx.db, module, {
+      reasonCode: 'CANONICAL_STATE_CORRUPTED',
+      alwaysReject: true,
+      disposition: 'fatal',
+    });
+    const started = startRun(
+      harness.processRunRepo,
+      module,
+      'feedback-fatal',
+    );
+
+    await assert.rejects(
+      harness.executor.execute(module, executionContext(started)),
+      error => (
+        error instanceof RecoveryFatalError
+        && error.processRunId === started.record.id
+        && error.nodeId === 'verify-result'
+        && error.reasonCode === 'CANONICAL_STATE_CORRUPTED'
+      ),
+    );
+
+    assert.equal(harness.calls.author.length, 1);
+    assert.equal(harness.calls.verifier.length, 1);
+    assert.equal(harness.processRunRepo.read(started.record.id).status, 'failed');
+    assert.equal(
+      harness.recoveryCaseRepo.listForProcessRun(started.record.id).length,
+      0,
+    );
+    const verifierRun = harness.nodeRunRepo.list(started.record.id)
+      .find(row => row.nodeId === 'verify-result');
+    assert.equal(
+      verifierRun.recoveryIssue.reasonCode,
+      'CANONICAL_STATE_CORRUPTED',
+    );
+  } finally {
+    cleanup(fx.temp);
   }
 });

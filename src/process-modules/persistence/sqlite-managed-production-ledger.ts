@@ -95,6 +95,11 @@ interface ExecutionTaskRow {
   task_id: number;
   execution_project_id: number;
   execution_epic_id: number;
+  execution_worker_id: string;
+  execution_state: string;
+  task_status: string;
+  task_assigned_to: string | null;
+  task_current_execution_id: string | null;
   task_metadata: string;
 }
 
@@ -235,6 +240,7 @@ function requiredString(
 export function resolveManagedExecutionProvenance(
   db: Database.Database,
   env: NodeJS.ProcessEnv = process.env,
+  options: { requireLiveProducer?: boolean } = {},
 ): ManagedExecutionProvenance | null {
   const marker = env.SAGA_MANAGED_EXECUTION;
   if (marker === undefined || marker === '0') return null;
@@ -250,6 +256,11 @@ export function resolveManagedExecutionProvenance(
     `SELECT we.task_id,
             we.project_id AS execution_project_id,
             we.epic_id AS execution_epic_id,
+            we.worker_id AS execution_worker_id,
+            we.state AS execution_state,
+            t.status AS task_status,
+            t.assigned_to AS task_assigned_to,
+            t.current_execution_id AS task_current_execution_id,
             t.metadata AS task_metadata
        FROM worker_executions we
        JOIN tasks t ON t.id=we.task_id
@@ -260,6 +271,17 @@ export function resolveManagedExecutionProvenance(
   }
   if (env.SAGA_TASK_ID !== undefined && String(execution.task_id) !== env.SAGA_TASK_ID) {
     throw new Error('MANAGED_PRODUCTION_CONTEXT_INVALID: execution/task environment mismatch');
+  }
+  if (options.requireLiveProducer && (
+    execution.execution_state !== 'running'
+    || execution.task_status !== 'in_progress'
+    || execution.task_assigned_to !== execution.execution_worker_id
+    || execution.task_current_execution_id !== executionId
+  )) {
+    throw new Error(
+      'MANAGED_PRODUCTION_FENCE_VIOLATION: only the live producer execution '
+      + 'owning an in_progress task may mutate managed products',
+    );
   }
 
   const metadata = parseMetadata(execution.task_metadata, 'task metadata');
@@ -329,7 +351,11 @@ export function recordManagedArtifactProduction(
   artifact: Artifact,
   operation: ManagedArtifactProductionRecord['operation'],
 ): void {
-  const provenance = resolveManagedExecutionProvenance(db);
+  const provenance = resolveManagedExecutionProvenance(
+    db,
+    process.env,
+    { requireLiveProducer: true },
+  );
   if (!provenance) return;
   assertManagedProductScope(provenance, artifact.project_id, artifact.epic_id);
   ensureManagedProductionLedgerSchema(db);
@@ -357,7 +383,11 @@ export function recordManagedTraceProduction(
   db: Database.Database,
   trace: ArtifactTrace,
 ): void {
-  const provenance = resolveManagedExecutionProvenance(db);
+  const provenance = resolveManagedExecutionProvenance(
+    db,
+    process.env,
+    { requireLiveProducer: true },
+  );
   if (!provenance) return;
   const source = db.prepare(
     'SELECT project_id, epic_id FROM artifacts WHERE id=?',

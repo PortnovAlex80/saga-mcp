@@ -132,6 +132,19 @@ export class RecoveryExhaustedError extends Error {
   }
 }
 
+export class RecoveryFatalError extends Error {
+  constructor(
+    readonly processRunId: number,
+    readonly nodeId: string,
+    readonly reasonCode: string,
+  ) {
+    super(
+      `ProcessRun ${processRunId} failed at recovery verifier '${nodeId}': ${reasonCode}`,
+    );
+    this.name = 'RecoveryFatalError';
+  }
+}
+
 export class GenericFlowExecutor implements ProcessModuleExecutor {
   readonly moduleRef;
   readonly kind = 'generic-flow' as const;
@@ -355,15 +368,32 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
     const lastCompleted = nodeRunRepo.readLastCompleted(context.processRunId);
     let currentNodeId: string;
     let resumedRecoveryInput: NodeProduction | null = null;
+    let pausedVerifierInput: unknown;
+    let recheckPausedVerifier = false;
     if (lastCompleted) {
       const restoredResult = restoreNodeResult(lastCompleted);
-      resumedRecoveryInput = this.reconcileRecoveryCheckpoint(
-        module,
+      recheckPausedVerifier = this.shouldRecheckPausedVerifier(
         context,
         lastCompleted,
-        restoredResult,
-      ).feedbackProduction;
-      const resumed = this.nextNode(flow, lastCompleted.nodeId, lastCompleted.event ?? '');
+      );
+      if (recheckPausedVerifier) {
+        currentNodeId = lastCompleted.nodeId;
+        pausedVerifierInput = inputBeforeNodeRun(
+          context.inputPayload,
+          allRuns,
+          lastCompleted.id,
+        );
+      } else {
+        resumedRecoveryInput = this.reconcileRecoveryCheckpoint(
+          module,
+          context,
+          lastCompleted,
+          restoredResult,
+        ).feedbackProduction;
+      }
+      const resumed = recheckPausedVerifier
+        ? lastCompleted.nodeId
+        : this.nextNode(flow, lastCompleted.nodeId, lastCompleted.event ?? '');
       if (resumed === null) {
         // The resumed node was terminal — re-emit its outcome.
         const terminalNode = this.findNode(flow, lastCompleted.nodeId);
@@ -403,7 +433,9 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
     // produced, so resuming the next node sees the same upstream context.
     let chainInput: unknown = context.inputPayload;
     const lastCompletedForChain = nodeRunRepo.readLastCompleted(context.processRunId);
-    if (resumedRecoveryInput) {
+    if (recheckPausedVerifier) {
+      chainInput = pausedVerifierInput;
+    } else if (resumedRecoveryInput) {
       chainInput = resumedRecoveryInput;
     } else if (lastCompletedForChain?.executionReceipt) {
       chainInput = lastCompletedForChain.executionReceipt;
@@ -469,6 +501,8 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
         outputHash,
         outputBindings,
         executionReceipt: result.receipt as unknown as Record<string, unknown> | undefined,
+        acceptanceReceipt: result.acceptanceReceipt as unknown as
+          Record<string, unknown> | undefined,
         recoveryIssue: result.recoveryIssue,
       });
 
@@ -516,6 +550,19 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
     );
   }
 
+  private shouldRecheckPausedVerifier(
+    context: ProcessModuleExecutionContext,
+    nodeRun: NodeRunRecord,
+  ): boolean {
+    const issue = nodeRun.recoveryIssue;
+    if (!issue) return false;
+    if (issue.disposition === 'human') return true;
+    const run = this.opts.processRunRepo.read(context.processRunId);
+    const caseId = run?.activeIssue?.recoveryCaseId;
+    if (!caseId || !this.opts.recoveryCaseRepo) return false;
+    return this.opts.recoveryCaseRepo.readCase(caseId)?.status === 'exhausted';
+  }
+
   private reconcileRecoveryCheckpoint(
     module: ProcessModuleDefinition,
     context: ProcessModuleExecutionContext,
@@ -532,7 +579,11 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
 
     assertRecoveryIssue(issue);
     if (issue.disposition === 'fatal') {
-      return { feedbackProduction: null };
+      throw new RecoveryFatalError(
+        context.processRunId,
+        nodeRun.nodeId,
+        issue.reasonCode,
+      );
     }
 
     const policy = (module.flow.recovery ?? [])
@@ -667,7 +718,24 @@ function restoreNodeResult(run: NodeRunRecord): NodeExecutionResult {
       ? restoreProduction(run)
       : undefined,
     recoveryIssue: run.recoveryIssue ?? undefined,
+    acceptanceReceipt: run.acceptanceReceipt
+      ? run.acceptanceReceipt as unknown as NodeExecutionResult['acceptanceReceipt']
+      : undefined,
   };
+}
+
+function inputBeforeNodeRun(
+  runInput: unknown,
+  allRuns: readonly NodeRunRecord[],
+  nodeRunId: number,
+): unknown {
+  const prior = [...allRuns]
+    .filter(run => run.id < nodeRunId && run.status === 'completed')
+    .sort((left, right) => right.id - left.id)[0];
+  if (!prior) return runInput;
+  if (prior.executionReceipt) return prior.executionReceipt;
+  if (prior.outputBindings || prior.outputRef) return restoreProduction(prior);
+  return runInput;
 }
 
 function recoveryFeedbackProduction(
