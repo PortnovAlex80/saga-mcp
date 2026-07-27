@@ -140,8 +140,11 @@ test('delivery pause resumes the same lifecycle and applies one external effect'
         ref: 'operator-authorization:circle-v1',
         hash: sha256Hex({ operator: 'release-owner', candidateHash }),
         requestedBy: 'release-owner',
-        candidateHash,
         releasePolicyHash: policy.contentHash,
+        candidateScope: {
+          mode: 'exact',
+          candidateHash,
+        },
       },
       initiatedBy: 'test',
     };

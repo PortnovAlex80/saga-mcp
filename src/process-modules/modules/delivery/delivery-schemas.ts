@@ -71,11 +71,25 @@ export interface DeliveryReleaseCase {
   verifiedIntegrationBundle: DeliveryContentAddressedReference;
   integratedCandidate: DeliveryContentAddressedReference;
   policy: DeliveryReleasePolicySnapshot;
-  /** Explicit operator authority for externally-visible release effects. */
+  /**
+   * Explicit operator grant for externally-visible release effects.
+   *
+   * A complete Lifecycle cannot name the candidate hash before Development
+   * produces it. `lifecycle-output` therefore authorizes the exact candidate
+   * handed off by the preceding stage under this immutable release policy.
+   * Standalone Delivery callers may instead bind one already-known hash.
+   */
   operatorAuthorization: DeliveryContentAddressedReference & {
     requestedBy: string;
-    candidateHash: string;
     releasePolicyHash: string;
+    candidateScope:
+      | {
+          mode: 'exact';
+          candidateHash: string;
+        }
+      | {
+          mode: 'lifecycle-output';
+        };
   };
   initiatedBy: string;
 }

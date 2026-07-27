@@ -276,7 +276,7 @@ export const deliveryProcessModule: ProcessModuleDefinition = {
     {
       id: 'delivery.explicit-operator-authorization',
       description:
-        'No externally-visible release action may begin without an explicit operator authorization bound into the case.',
+        'No externally-visible release action may begin without an explicit operator grant bound to the immutable release policy and either the exact candidate or the candidate produced by the same Lifecycle.',
       enforcement: 'policy',
     },
     {

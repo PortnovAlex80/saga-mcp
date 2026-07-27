@@ -258,8 +258,11 @@ function deliveryFixture() {
         'authorization-hash',
       ),
       requestedBy: 'release-operator',
-      candidateHash: 'candidate-hash',
       releasePolicyHash: policy.contentHash,
+      candidateScope: {
+        mode: 'exact',
+        candidateHash: 'candidate-hash',
+      },
     },
     initiatedBy: 'test',
   };
@@ -475,6 +478,24 @@ test('Delivery releases an uncertain response only after authoritative match', (
     result.releaseRecord.recordHash,
   );
   assert.equal(result.releaseRecord.destinations.length, 1);
+});
+
+test('Delivery accepts a Lifecycle-produced candidate grant and rejects a wrong exact hash', () => {
+  const policy = new deliveryPolicy.ReferenceDeliverySettlementPolicy();
+  const lifecycleGrant = deliveryFixture();
+  lifecycleGrant.deliveryCase.operatorAuthorization.candidateScope = {
+    mode: 'lifecycle-output',
+  };
+  assert.equal(policy.settle(lifecycleGrant).decision, 'released');
+
+  const wrongExactGrant = deliveryFixture();
+  wrongExactGrant.deliveryCase.operatorAuthorization.candidateScope = {
+    mode: 'exact',
+    candidateHash: 'another-candidate',
+  };
+  const result = policy.settle(wrongExactGrant);
+  assert.equal(result.decision, 'blocked');
+  assert.deepEqual(result.reasonCodes, ['operator-authorization-missing']);
 });
 
 test('Delivery blocks unknown observation and candidate drift', () => {

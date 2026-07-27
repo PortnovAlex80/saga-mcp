@@ -187,15 +187,31 @@ function invalidCase(deliveryCase: DeliveryReleaseCase): DeliveryReasonCode | nu
   if (
     !validRef(deliveryCase.operatorAuthorization)
     || !deliveryCase.operatorAuthorization.requestedBy.trim()
-    || deliveryCase.operatorAuthorization.candidateHash
-      !== deliveryCase.integratedCandidate.hash
     || deliveryCase.operatorAuthorization.releasePolicyHash
       !== deliveryCase.policy.contentHash
+    || !validCandidateAuthorizationScope(
+      deliveryCase.operatorAuthorization.candidateScope,
+      deliveryCase.integratedCandidate.hash,
+    )
   ) {
     return 'operator-authorization-missing';
   }
   if (invalidPolicy(deliveryCase)) return 'release-policy-invalid';
   return null;
+}
+
+function validCandidateAuthorizationScope(
+  value: unknown,
+  candidateHash: string,
+): boolean {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return false;
+  }
+  const scope = value as Record<string, unknown>;
+  if (scope.mode === 'lifecycle-output') return true;
+  return scope.mode === 'exact'
+    && typeof scope.candidateHash === 'string'
+    && scope.candidateHash === candidateHash;
 }
 
 function referenceMatches(

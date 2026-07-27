@@ -45,13 +45,13 @@ The certificate should bind:
 
 ## Outcomes
 
-- `accepted` — a complete frozen solution contract exists;
+- `formalized` — a complete frozen solution contract exists;
 - `clarification-required` — product/acceptance information is materially missing;
 - `inconsistent` — contract artifacts or trace graph contradict each other;
 - `infeasible` — architecture cannot satisfy the accepted constraints;
 - `failed` — infrastructure could not produce an authoritative result.
 
-The module does not route `accepted` to Development. A Stage Binding owns that route.
+The module does not route `formalized` to Development. A Stage Binding owns that route.
 
 ## Flow
 
@@ -153,13 +153,13 @@ All profiles use the same Runtime mechanics but different task contracts and sem
 - `tool-templates/formalization/worker-done-call-template.json`;
 - `tool-templates/formalization/formalization-node-checklist.md`.
 
-The Runtime must make execution-scoped copies and machine-fill ids, hashes,
-versions and authority. Existing skills must gradually migrate from direct
-remembered MCP calls to these materialized calls.
+The Runtime makes execution-scoped copies and machine-fills ids, hashes,
+versions and authority. Workers re-read these files and their checklists before
+consequential MCP calls.
 
 ## Implementation state
 
-Completed in this branch:
+Implemented:
 
 - versioned module definition;
 - Flow, artifacts, policies and invariants;
@@ -167,18 +167,14 @@ Completed in this branch:
 - tracker, MCP templates and checklist;
 - module registry;
 - Discovery → Formalization Stage Binding;
-- structural and boundary tests.
+- FormalizationCase and SolutionContractCertificate schemas;
+- generic LM execution through managed WorkIntents and execution receipts;
+- kernel artifact resolution and managed production ledger;
+- deterministic acceptance-baseline freeze;
+- deterministic settlement and content-addressed persistence;
+- ProcessRun/NodeRun restart and recovery;
+- connection to Development through the complete Product Delivery Lifecycle;
+- structural, behavioral and smoke tests.
 
-Still required for full execution through the generic node Runtime:
-
-1. FormalizationCase and SolutionContractCertificate domain schemas;
-2. generic artifact-change LM node executor or compatibility adapter around current tasks;
-3. kernel baseline-freeze handler exposed through the Process Module node interface;
-4. deterministic Formalization settlement service and persistence;
-5. process-run/node-run durable tables or adapters;
-6. full restart/recovery tests;
-7. real LM end-to-end smoke.
-
-Until those land, the module is a validated architecture and execution-profile
-package registered for design/composition, not a replacement for the current Saga 2
-formalization pipeline.
+The module is the active generic-flow implementation used by
+`saga3-lifecycle`; it does not depend on the Saga 2 formalization pump.
