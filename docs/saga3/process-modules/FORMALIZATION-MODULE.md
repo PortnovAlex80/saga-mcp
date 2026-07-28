@@ -66,7 +66,7 @@ The module does not route `formalized` to Development. A Stage Binding owns that
    AC derives from UC + FR/NFR
 
 4. Reconcile WHAT [LM: saga-reconciler]
-   repair traces, accept coherent artifacts, expose gaps
+   repair permitted traces, verify the kernel-accepted set, expose gaps
 
 5. Freeze Acceptance Baseline [Kernel]
    immutable baseline hash
@@ -101,6 +101,7 @@ invariant rather than a convention embedded only in role skills.
 
 - WorkIntent creation and lifecycle;
 - task projection;
+- independent reviewer projection from the module execution profile;
 - execution identity/fencing;
 - skill injection;
 - external tracker provisioning;
@@ -108,6 +109,8 @@ invariant rather than a convention embedded only in role skills.
 - materialized MCP call copies;
 - capability enforcement;
 - retries, pause/resume and recovery;
+- exact, kernel-owned candidate acceptance after producer completion and
+  reviewer approval;
 - artifact/event persistence;
 - Flow routing mechanics.
 
@@ -117,33 +120,41 @@ invariant rather than a convention embedded only in role skills.
 
 - task kind: `formalization.prd`;
 - skill: `saga-product`;
+- reviewer: `saga-requirements-reviewer`;
 - output: PRD/FR/NFR/RULE bundle.
 
 ### formalization-use-cases
 
 - task kind: `formalization.uc`;
 - skill: `saga-analyst`;
+- reviewer: `saga-requirements-reviewer`;
 - output: UC bundle.
 
 ### formalization-acceptance
 
 - task kind: `formalization.ac`;
 - skill: `saga-analyst`;
+- reviewer: `saga-requirements-reviewer`;
 - output: AC contract bundle.
 
 ### formalization-reconciler
 
 - task kind: `formalization.reconciliation`;
 - skill: `saga-reconciler`;
+- reviewer: `saga-requirements-reviewer`;
 - output: reconciliation report.
 
 ### formalization-architect
 
 - task kind: `formalization.srs`;
 - skill: `saga-architect`;
+- reviewer: `saga-architecture-reviewer`;
 - output: architecture bundle.
 
-All profiles use the same Runtime mechanics but different task contracts and semantic outputs.
+All profiles use the same Runtime mechanics but different task contracts and
+semantic outputs. Producers and reviewers never self-accept artifacts: the
+module resolver validates semantics and emits an exact candidate directive,
+then the common kernel gate atomically accepts the reviewed ids and hashes.
 
 ## External execution assets
 

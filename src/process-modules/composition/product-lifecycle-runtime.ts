@@ -110,6 +110,7 @@ import {
 } from '../persistence/sqlite-managed-node-submission-repository.js';
 import { SqliteManagedProductionLedger } from '../persistence/sqlite-managed-production-ledger.js';
 import { SqliteNodeRunRepository } from '../persistence/sqlite-node-run-repository.js';
+import { SqliteExactCandidateAcceptance } from '../persistence/sqlite-exact-candidate-acceptance.js';
 import { SqliteProcessOutcomeCertificateRepository } from '../persistence/sqlite-process-outcome-certificate-repository.js';
 import { SqliteProcessRunRepository } from '../persistence/sqlite-process-run-repository.js';
 import { SqliteRecoveryCaseRepository } from '../persistence/sqlite-recovery-case-repository.js';
@@ -273,6 +274,7 @@ export function createProductLifecycleRuntime(
     new SqliteFormalizationSolutionContractRepository(db);
   const formalizationGraph = new SqliteFormalizationArtifactGraph(db);
   const formalizationLedger = new SqliteManagedProductionLedger(db);
+  const exactCandidateAcceptance = new SqliteExactCandidateAcceptance(db);
 
   const kernelHandlers = new KernelHandlerRegistry();
   kernelHandlers.register(
@@ -288,6 +290,7 @@ export function createProductLifecycleRuntime(
     baselineRepository: formalizationBaselineRepository,
     solutionContractRepository: formalizationSolutionContractRepository,
     settlementPolicy: new ReferenceFormalizationSettlementPolicy(),
+    candidateAcceptance: exactCandidateAcceptance,
   }));
   kernelHandlers.registerAll(createDevelopmentKernelHandlers(developmentDeps));
   kernelHandlers.registerAll(createDeliveryKernelHandlers(deliveryDeps));
@@ -302,7 +305,7 @@ export function createProductLifecycleRuntime(
   humanInteractions.registerAll(createDeliveryHumanInteractions(deliveryDeps));
 
   const nodeExecutors = new Map<string, NodeExecutor>([
-    ['kernel', new KernelNodeExecutor(kernelHandlers)],
+    ['kernel', new KernelNodeExecutor(kernelHandlers, exactCandidateAcceptance)],
     ['lm', new LmNodeExecutor({
       persistence: createDiscoveryLmNodePersistence(runtimePersistence),
       workerExecutorFactory: options.workerExecutorFactory,

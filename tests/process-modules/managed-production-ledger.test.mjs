@@ -375,3 +375,48 @@ test('producer replay selection follows completion receipts across ledger tables
     cleanup(f.temp);
   }
 });
+
+test('projected tasks persist reviewer binding and reject reviewer rebinding', () => {
+  const f = fixture();
+  try {
+    const runtime = new SqliteSaga3DiscoveryRuntime();
+    const input = {
+      epicId: 10,
+      projectId: 1,
+      intentId: f.intentId,
+      objective: 'formalize exact product',
+      taskKind: 'formalization.prd',
+      executionSkill: 'saga-product',
+      reviewSkill: 'saga-requirements-reviewer',
+      generationKey: 'managed-product-task',
+      workflowStage: 'formalization',
+      executionMode: 'artifact_change',
+    };
+
+    assert.equal(runtime.ensureProjectedTask(input), f.taskId);
+    assert.equal(
+      f.db.prepare('SELECT review_skill FROM tasks WHERE id=?')
+        .get(f.taskId).review_skill,
+      'saga-requirements-reviewer',
+    );
+    assert.throws(
+      () => runtime.ensureProjectedTask({
+        ...input,
+        reviewSkill: 'saga-architecture-reviewer',
+      }),
+      /review_skill cannot be rebound/,
+    );
+
+    const insertedId = runtime.ensureProjectedTask({
+      ...input,
+      generationKey: 'managed-product-task-with-reviewer',
+    });
+    assert.equal(
+      f.db.prepare('SELECT review_skill FROM tasks WHERE id=?')
+        .get(insertedId).review_skill,
+      'saga-requirements-reviewer',
+    );
+  } finally {
+    cleanup(f.temp);
+  }
+});

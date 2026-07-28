@@ -66,6 +66,7 @@ export interface LmNodeExecutionPersistence {
       objective: string;
       taskKind: string;
       executionSkill: string;
+      reviewSkill?: string | null;
       generationKey: string;
       workflowStage?: string;
       executionMode?: string;
@@ -96,6 +97,7 @@ export interface LmNodeExecutionPersistence {
     objective: string;
     taskKind: string;
     executionSkill: string;
+    reviewSkill?: string | null;
     generationKey: string;
     workflowStage?: string;
     executionMode?: string;
@@ -340,6 +342,7 @@ export class LmNodeExecutor implements NodeExecutor {
             objective,
             taskKind: profile.taskKind,
             executionSkill: profile.executionSkill,
+            reviewSkill: profile.reviewSkill,
             generationKey,
             workflowStage: ctx.module.identity.kind,
             executionMode: profile.executionMode,

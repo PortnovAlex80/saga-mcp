@@ -19,6 +19,12 @@ const { ReferenceFormalizationSettlementPolicy } = await import(
 const { sha256Hex } = await import(
   '../../dist/process-modules/shared/canonical-json.js'
 );
+const { KernelHandlerRegistry } = await import(
+  '../../dist/process-modules/application/kernel-handler-registry.js'
+);
+const { KernelNodeExecutor } = await import(
+  '../../dist/process-modules/application/node-executors/kernel-node-executor.js'
+);
 
 const HASH = {
   brief: '1'.repeat(64),
@@ -186,6 +192,7 @@ function fixture() {
   };
 
   let solutionRecord = null;
+  const acceptanceCalls = [];
   const solutionContractRepository = {
     persist(payload) {
       const contentHash = sha256Hex(payload);
@@ -214,6 +221,57 @@ function fixture() {
     baselineRepository,
     solutionContractRepository,
     settlementPolicy: new ReferenceFormalizationSettlementPolicy(),
+    candidateAcceptance: {
+      accept(command) {
+        acceptanceCalls.push(command);
+        for (const candidate of command.candidates) {
+          const row = artifactById.get(candidate.artifactId);
+          if (row) {
+            row.status = 'accepted';
+            row.acceptedHash = candidate.contentHash;
+            row.driftState = 'clean';
+          }
+        }
+        return {
+          schemaVersion: 'saga3.exact-candidate-acceptance.v2',
+          decisionId: acceptanceCalls.length,
+          idempotencyKey: command.idempotencyKey,
+          requestHash: sha256Hex(command),
+          candidateSetHash: sha256Hex(command.candidates),
+          decisionHash: sha256Hex({
+            idempotencyKey: command.idempotencyKey,
+            candidates: command.candidates,
+          }),
+          lineage: command.lineage,
+          requireApprovedReview: command.requireApprovedReview,
+          producerCompletionReceiptCommandId: 'producer:approved',
+          producerCompletionReceiptHash: 'e'.repeat(64),
+          approvedReviewReceiptCommandId: 'review:approved',
+          approvedReviewReceiptHash: 'f'.repeat(64),
+          authority: command.authority,
+          reasonCode: command.reasonCode,
+          items: command.candidates.map(candidate => ({
+            ...candidate,
+            ledgerId: 1,
+            disposition: 'already-accepted',
+            priorStatus: 'accepted',
+            priorAcceptedHash: candidate.contentHash,
+            priorDriftState: 'clean',
+            finalStatus: 'accepted',
+            finalAcceptedHash: candidate.contentHash,
+            finalDriftState: 'clean',
+          })),
+          decidedAt: '2026-01-01T00:00:00.000Z',
+          replayed: false,
+        };
+      },
+      findByIdempotencyKey() {
+        return null;
+      },
+      isAcceptedExact() {
+        return true;
+      },
+    },
   };
   return {
     deps,
@@ -222,6 +280,7 @@ function fixture() {
     traces,
     nodeWrites,
     queries,
+    acceptanceCalls,
     getBaseline: () => baselineRecord,
     getSolution: () => solutionRecord,
   };
@@ -261,6 +320,23 @@ function context(nodeId, input, frame) {
   };
 }
 
+function executorContext(nodeId, input, frame) {
+  const node = formalizationProcessModule.flow.nodes.find(candidate =>
+    candidate.id === nodeId);
+  assert.ok(node, `missing node ${nodeId}`);
+  return {
+    projectId: 1,
+    epicId: 100,
+    processRunId: 77,
+    module: formalizationProcessModule,
+    node,
+    input,
+    frame,
+    heartbeat() {},
+    initiatedBy: 'test',
+  };
+}
+
 function store(frame, nodeId, result) {
   frame.productions[nodeId] = result.production;
   return result;
@@ -273,7 +349,7 @@ function runThroughSettlement(fx, productRuntimeStatus = 'completed') {
   const product = store(frame, 'resolve-product-contract', handlers[
     FORMALIZATION_HANDLER_IDS.resolveProduct
   ](context('resolve-product-contract', receipt('define-product-contract', productRuntimeStatus), frame)));
-  assert.equal(product.event, 'completed');
+  assert.equal(product.event, 'completed', JSON.stringify(product));
 
   const useCases = store(frame, 'resolve-use-cases', handlers[
     FORMALIZATION_HANDLER_IDS.resolveUseCases
@@ -401,6 +477,144 @@ test('exact ledger flow settles and persists a durable SolutionContract', () => 
   );
 });
 
+test('common kernel gate accepts draft PRD, UC, AC and SRS candidate sets', async () => {
+  const fx = fixture();
+  for (const id of [10, 11, 20, 30, 40]) {
+    const row = fx.artifactById.get(id);
+    row.status = 'draft';
+    row.acceptedHash = null;
+    row.driftState = 'unknown';
+  }
+  const handlers = createFormalizationKernelHandlers(fx.deps);
+  const registry = new KernelHandlerRegistry();
+  registry.registerAll(handlers);
+  const executor = new KernelNodeExecutor(registry, fx.deps.candidateAcceptance);
+  const frame = flowFrame();
+
+  const executeAndStore = async (nodeId, input) => {
+    const result = await executor.execute(executorContext(nodeId, input, frame));
+    if (result.production) frame.productions[nodeId] = result.production;
+    return result;
+  };
+
+  const product = await executeAndStore(
+    'resolve-product-contract',
+    receipt('define-product-contract'),
+  );
+  assert.equal(product.domainEvent, 'completed');
+  assert.match(product.acceptanceReceipt.decisionRef, /^exact-acceptance:/);
+
+  const useCases = await executeAndStore(
+    'resolve-use-cases',
+    receipt('model-use-cases'),
+  );
+  assert.equal(useCases.domainEvent, 'completed');
+
+  const acceptance = await executeAndStore(
+    'resolve-acceptance-contract',
+    receipt('define-acceptance-contract'),
+  );
+  assert.equal(acceptance.domainEvent, 'completed');
+
+  const reconciliation = await executeAndStore(
+    'resolve-reconciliation',
+    receipt('reconcile-what'),
+  );
+  assert.equal(reconciliation.domainEvent, 'reconciled');
+  const baseline = await executeAndStore(
+    'freeze-acceptance-baseline',
+    reconciliation.production,
+  );
+  assert.equal(baseline.domainEvent, 'frozen');
+
+  const architecture = await executeAndStore(
+    'resolve-architecture-contract',
+    receipt('define-architecture-contract'),
+  );
+  assert.equal(architecture.domainEvent, 'completed');
+  assert.match(architecture.acceptanceReceipt.decisionRef, /^exact-acceptance:/);
+
+  assert.equal(fx.acceptanceCalls.length, 4);
+  assert.deepEqual(
+    fx.acceptanceCalls.map(call => call.candidates.map(item => item.artifactType)),
+    [['PRD', 'FR'], ['UC'], ['AC'], ['SRS']],
+  );
+  for (const id of [10, 11, 20, 30, 40]) {
+    assert.equal(fx.artifactById.get(id).status, 'accepted');
+    assert.equal(fx.artifactById.get(id).driftState, 'clean');
+  }
+});
+
+test('product supporting artifacts stay outside the exact contract and gate', () => {
+  const fx = fixture();
+  for (const [id, type, hash] of [
+    [12, 'hypothesis', '7'.repeat(64)],
+    [13, 'business_metric', '8'.repeat(64)],
+  ]) {
+    const row = artifact(id, 100, type, hash);
+    row.status = 'draft';
+    row.acceptedHash = null;
+    row.driftState = 'unknown';
+    fx.artifacts.push(row);
+    fx.artifactById.set(id, row);
+    fx.nodeWrites['define-product-contract'].artifacts.push(id);
+  }
+  const handlers = createFormalizationKernelHandlers(fx.deps);
+  const resolved = handlers[FORMALIZATION_HANDLER_IDS.resolveProduct](
+    context(
+      'resolve-product-contract',
+      receipt('define-product-contract'),
+      flowFrame(),
+    ),
+  );
+  assert.equal(resolved.event, 'completed');
+  assert.deepEqual(resolved.production.bindings.artifactIds, [10, 11]);
+  assert.deepEqual(resolved.production.bindings.supportingArtifactIds, [12, 13]);
+  assert.deepEqual(
+    resolved.exactCandidateAcceptance.command.candidates.map(item => item.artifactId),
+    [10, 11],
+  );
+});
+
+test('reconciliation pauses on an unaccepted artifact owned by an upstream gate', () => {
+  const fx = fixture();
+  const handlers = createFormalizationKernelHandlers(fx.deps);
+  const frame = flowFrame();
+
+  for (const [resolverNodeId, handlerId, sourceNodeId] of [
+    ['resolve-product-contract', FORMALIZATION_HANDLER_IDS.resolveProduct, 'define-product-contract'],
+    ['resolve-use-cases', FORMALIZATION_HANDLER_IDS.resolveUseCases, 'model-use-cases'],
+    ['resolve-acceptance-contract', FORMALIZATION_HANDLER_IDS.resolveAcceptance, 'define-acceptance-contract'],
+  ]) {
+    store(
+      frame,
+      resolverNodeId,
+      handlers[handlerId](context(resolverNodeId, receipt(sourceNodeId), frame)),
+    );
+  }
+
+  const ac = fx.artifactById.get(30);
+  ac.status = 'draft';
+  ac.acceptedHash = null;
+  ac.driftState = 'unknown';
+
+  const resolved = handlers[FORMALIZATION_HANDLER_IDS.resolveReconciliation](
+    context(
+      'resolve-reconciliation',
+      receipt('reconcile-what'),
+      frame,
+    ),
+  );
+
+  assert.equal(resolved.event, 'repair-required');
+  assert.equal(resolved.recoveryIssue.policyId, 'repair-reconciliation');
+  assert.equal(resolved.recoveryIssue.disposition, 'human');
+  assert.deepEqual(
+    resolved.recoveryIssue.findings[0].actual.unacceptedArtifactIds,
+    [30],
+  );
+});
+
 test('runtime.failed still resolves when exact durable writes committed', () => {
   const fx = fixture();
   const result = runThroughSettlement(fx, 'failed');
@@ -409,7 +623,7 @@ test('runtime.failed still resolves when exact durable writes committed', () => 
   assert.equal(result.settlement.event, 'formalized');
 });
 
-test('missing product writes become clarification-required, never latest-by-epic', () => {
+test('missing product writes create exact repair feedback, never latest-by-epic', () => {
   const fx = fixture();
   fx.nodeWrites['define-product-contract'] = { artifacts: [], traces: [] };
   const handlers = createFormalizationKernelHandlers(fx.deps);
@@ -417,8 +631,11 @@ test('missing product writes become clarification-required, never latest-by-epic
   const resolved = handlers[FORMALIZATION_HANDLER_IDS.resolveProduct](
     context('resolve-product-contract', receipt('define-product-contract'), frame),
   );
-  assert.equal(resolved.event, 'clarification-required');
+  assert.equal(resolved.event, 'repair-required');
   assert.match(resolved.production.bindings.reason, /no canonical product artifacts/);
+  assert.equal(resolved.recoveryIssue.policyId, 'repair-product-contract');
+  assert.equal(resolved.recoveryIssue.disposition, 'repair');
+  assert.equal(resolved.recoveryIssue.context.originalEvent, 'clarification-required');
 });
 
 test('ledger/canonical hash mismatch fails the resolver closed', () => {

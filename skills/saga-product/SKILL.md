@@ -17,7 +17,9 @@ canonical; `projectname.txt` is legacy fallback only.
 
 - **Stage (этап):** 2-Formalization (после Discovery, первая роль formalization)
 - **Precondition (предусловие):** Brief artifact accepted (принят; decision=go). Проверь: `artifact_list({type:'decision', epic_id})` → brief со status=accepted.
-- **Postcondition (постусловие):** PRD artifact accepted **+ FR/NFR/RULE artifacts created** (для следующего: saga-analyst UC, который пишет UC по FR из PRD)
+- **Postcondition (постусловие):** PRD/FR/NFR/RULE candidates and required
+  traces created in `draft`/`in_review`; after review, the common kernel gate
+  atomically accepts their exact ids and hashes for saga-analyst.
 - **Called by (вызывается):** saga-orchestrator (Этап 2)
 - **Next enables (что разблокирует):** saga-analyst (UC — пишет use cases из FR) → saga-analyst (AC) → saga-reconciler → saga-architect (SRS после замороженных AC)
 - **Проверь precondition:** если brief не accepted (не принят) или decision≠go → STOP, не пиши PRD
@@ -156,7 +158,7 @@ fr_id = artifact_create({
   title: '<short FR title>',
   path: 'docs/requirements/REQ-NNN-<slug>/00-PRD.md#FR-N',   // ⚠ RELATIVE, anchored
   parent_artifact_id: <PRD artifact id>, // FR hangs off PRD, NOT SRS
-  status: 'accepted'                     // product-owned; reviewer may downgrade later
+  status: 'draft'                        // kernel gate accepts the reviewed exact hash
 }).id
 
 trace_add({
@@ -179,7 +181,7 @@ nfr_id = artifact_create({
   title: '<short NFR title (e.g. p99 latency)>',
   path: 'docs/requirements/REQ-NNN-<slug>/00-PRD.md#NFR-N',
   parent_artifact_id: <PRD artifact id>,
-  status: 'accepted'
+  status: 'draft'
 }).id
 
 trace_add({
@@ -202,7 +204,7 @@ rule_id = artifact_create({
   title: '<one-sentence business rule>',
   path: 'docs/requirements/REQ-NNN-<slug>/00-PRD.md#RULE-N',
   parent_artifact_id: <PRD artifact id>,
-  status: 'accepted'
+  status: 'draft'
 }).id
 
 trace_add({

@@ -88,3 +88,50 @@ test('validator rejects an LM node without an execution profile', () => {
   assert.equal(validation.valid, false);
   assert.match(validation.errors.join('\n'), /missing execution profile/);
 });
+
+test('formalization artifact writers delegate acceptance to the common kernel gate', () => {
+  for (const profile of formalizationProcessModule.executionProfiles) {
+    assert.equal(
+      profile.artifactAcceptanceAuthority,
+      'kernel-gate',
+      profile.id,
+    );
+    assert.ok(profile.reviewSkill, `${profile.id} must declare an independent reviewer`);
+  }
+  assert.equal(
+    formalizationProcessModule.executionProfiles.find(profile =>
+      profile.id === 'formalization-architect').reviewSkill,
+    'saga-architecture-reviewer',
+  );
+});
+
+test('validator rejects ambiguous transitions from one node on one event', () => {
+  const broken = structuredClone(formalizationProcessModule);
+  broken.flow.transitions.push({
+    from: 'resolve-product-contract',
+    to: 'complete-failed',
+    on: 'domain.completed',
+  });
+  const validation = validateProcessModuleDefinition(broken);
+  assert.equal(validation.valid, false);
+  assert.match(validation.errors.join('\n'), /ambiguous transitions/);
+});
+
+test('validator rejects ambiguous and non-resolvable recovery declarations', () => {
+  const broken = structuredClone(formalizationProcessModule);
+  broken.flow.recovery.push({
+    id: 'second-product-repair',
+    verifyNodeId: 'resolve-product-contract',
+    repairNodeId: 'define-product-contract',
+    triggerEvents: ['domain.repair-required'],
+    resolvedEvents: ['domain.repair-required', 'domain.orphan-success'],
+    maxAttempts: 1,
+    onExhausted: 'pause',
+  });
+  const validation = validateProcessModuleDefinition(broken);
+  assert.equal(validation.valid, false);
+  const errors = validation.errors.join('\n');
+  assert.match(errors, /owned by both/);
+  assert.match(errors, /both trigger and resolved event/);
+  assert.match(errors, /orphan-success.*has no transition/);
+});

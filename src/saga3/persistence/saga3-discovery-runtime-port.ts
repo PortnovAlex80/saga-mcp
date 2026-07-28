@@ -448,6 +448,8 @@ export interface EnsureProjectedTask {
   objective: string;
   taskKind: string;
   executionSkill: string;
+  /** Reviewer skill for the independent review phase of non-Discovery tasks. */
+  reviewSkill?: string | null;
   /** generation_key (UNIQUE per epic) for idempotency. */
   generationKey: string;
   metadata?: Record<string, unknown>;

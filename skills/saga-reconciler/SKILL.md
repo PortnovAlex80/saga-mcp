@@ -1,6 +1,6 @@
 ---
 name: saga-reconciler
-description: "Reconciler for the WHAT-side of formalization. Claims the formalization.reconciliation task, accepts draft PRD/FR/NFR/RULE/UC/AC artifacts, repairs missing traceability edges, and stamps the AC baseline hash. SRS comes LATER, after baseline_accepted, and is reconciled separately. One task = one launch."
+description: "Reconciler for the WHAT-side of formalization. Claims the formalization.reconciliation task, verifies the kernel-accepted PRD/FR/NFR/RULE/UC/AC set, repairs permitted traceability edges, and prepares it for the kernel-owned AC baseline snapshot. SRS comes LATER. One task = one launch."
 ---
 
 ## Product-board contract
@@ -10,9 +10,9 @@ Same as saga-worker — use the assignment's product, epic, repository.
 - **Stage (этап):** 4.5-Formalization-reconciliation (between AC done and SRS spawn)
 - **Precondition:** AC task done (`formalization.ac`), PRD + UC + AC artifacts
   written to disk. SRS does NOT exist yet at this stage.
-- **Postcondition:** all WHAT-side artifacts accepted (PRD, FR, NFR, RULE, UC, AC);
-  AC baseline hash stamped; every canonical lineage edge on the WHAT side exists
-  in `artifact_traces`. The episode is now ready for the `baseline_accepted`
+- **Postcondition:** the already kernel-accepted WHAT-side set has complete
+  required traces; contradictions are reported; the AC baseline is ready for
+  the kernel snapshot. The episode is then ready for the `baseline_accepted`
   transition, which spawns the `formalization.srs` task (HOW side).
 - **Called by (вызывается):** saga-engine via `ac_accepted` workflow transition
   (workflow.ts: `formalization.ac` done → spawns `formalization.reconciliation`)
@@ -101,17 +101,11 @@ the SRS, and checked by `assertTraceability` at the formalization→planning gat
 adds that edge later when registering the SRS. `assertTraceability` will check
 it at the formalization→planning gate.
 
-4. **Accept draft WHAT-side artifacts.** For each artifact with
-   `status='draft'` AND a real document on disk at its `path`:
-   ```
-   // First refresh the content_hash from disk (so drift_state is 'clean'):
-   artifact_save({ id, <fields from existing artifact with refreshed path content> })
-   // Then accept:
-   artifact_update({ id, status:'accepted' })
-   ```
-   Skip if the .md file does not exist or is empty — that is a real gap,
-   escalate via `worker_ask_need({ reason:"<artifact type> <code> has no
-   document on disk at <path>" })`.
+4. **Verify acceptance authority.** Every WHAT artifact entering this node
+   must already be `accepted+clean` by its preceding common kernel gate. Never
+   call `artifact_update(... status:'accepted')`. If a draft or drifted item is
+   present, report its exact id/hash as a gap; it must return through its owning
+   author/resolver gate.
 
 5. **Stamp the AC baseline.** The engine's `acceptedBaseline` (lifecycle.ts)
    computes the baseline hash from all accepted ACs after this task completes.
@@ -119,10 +113,11 @@ it at the formalization→planning gate.
    ```
    baseline_hash = sha256(concat of all accepted AC accepted_hash values, ordered by AC id)
    ```
-   You do not need to compute it manually — just ensure:
+   You do not need to compute or stamp it manually — the kernel snapshot node
+   does that. Ensure:
    - Every AC has `status='accepted'`
    - Every AC has `content_hash` (refreshed from disk via `artifact_save`)
-   - `accepted_hash` matches `content_hash` (artifact_save stamps this when status='accepted')
+   - `accepted_hash` matches `content_hash`
 
    This frozen baseline is the input the architect consumes to choose the SRS
    §2.1 architectural style and to write the §D2 AC→Implementation Map.
@@ -156,7 +151,7 @@ it at the formalization→planning gate.
 - **Do NOT call `worker_next`** — you already have exactly one task assigned.
 - **Do NOT call `episode_transition`** — the engine will attempt it after you finish
   (and only after the SRS task is also done).
-- **Do NOT modify artifact content** — your job is to link and accept, not rewrite.
+- **Do NOT modify artifact content** — your job is to verify/link, not accept or rewrite.
   If a document is wrong, escalate via `worker_ask_need`.
 - **Do NOT guess edges.** If a UC body does not name a specific FR, or an AC
   does not name a specific UC/FR, escalate. A wrong edge is worse than a missing one.
@@ -164,7 +159,8 @@ it at the formalization→planning gate.
   is somehow already present, escalate — the pipeline order is wrong.
 - **Idempotent.** Re-running this skill on an already-reconciled epic must be a no-op.
   `trace_add` is idempotent (UNIQUE constraint on source+target+link_type).
-  `artifact_update({status:'accepted'})` on an already-accepted artifact is safe.
+  Never call `artifact_update({status:'accepted'})`; acceptance belongs to the
+  common kernel gate.
 - **One task = one launch.** After `worker_done`, exit. Do not claim another task.
 
 ## Failure modes

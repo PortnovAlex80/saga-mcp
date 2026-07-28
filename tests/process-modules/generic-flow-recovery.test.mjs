@@ -384,6 +384,7 @@ test('terminal adapter replay preserves the live authority exactly', async () =>
 test('LM active execution pauses without constructing or starting another worker', async () => {
   let factoryCalls = 0;
   let statusTransitions = 0;
+  let projectedPlan = null;
   const module = moduleWithFlow({
     id: 'lm-active.flow',
     version: '1',
@@ -403,6 +404,7 @@ test('LM active execution pauses without constructing or starting another worker
     workIntentSchema: { id: 'test.work-intent.v1' },
     taskKind: 'test.work',
     executionSkill: 'test-worker',
+    reviewSkill: 'test-reviewer',
     semanticSkill: 'test-work',
     allowedTools: [],
     outputSchema: { id: 'test.output.v1' },
@@ -410,7 +412,8 @@ test('LM active execution pauses without constructing or starting another worker
     retryPolicy: { maxAttempts: 2 },
   }]);
   const persistence = {
-    ensureExecutionPlan() {
+    ensureExecutionPlan(input) {
+      projectedPlan = input;
       return { intentId: 10, taskId: 20, replayed: true };
     },
     createIntent() {
@@ -474,6 +477,7 @@ test('LM active execution pauses without constructing or starting another worker
 
   assert.equal(result.runtimeEvent, 'paused');
   assert.equal(result.receipt.executionId, 'execution-active');
+  assert.equal(projectedPlan.task.reviewSkill, 'test-reviewer');
   assert.equal(factoryCalls, 0);
   assert.equal(statusTransitions, 0);
 });

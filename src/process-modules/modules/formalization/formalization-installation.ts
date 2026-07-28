@@ -1,6 +1,11 @@
 import { createHash } from 'node:crypto';
 import { getDb } from '../../../db.js';
 import type { ProcessModuleDefinition } from '../../domain/process-module.js';
+import { RECOVERY_ISSUE_SCHEMA, type RecoveryIssue } from '../../domain/recovery.js';
+import {
+  type ExactCandidateAcceptance,
+  type ExactCandidateAcceptanceDirective,
+} from '../../application/exact-candidate-acceptance.js';
 import type {
   KernelHandler,
   KernelHandlerContext,
@@ -91,6 +96,7 @@ export interface FormalizationInstallationDeps {
   baselineRepository: FormalizationBaselineRepository;
   solutionContractRepository: FormalizationSolutionContractRepository;
   settlementPolicy: FormalizationSettlementPolicyPort;
+  candidateAcceptance: Pick<ExactCandidateAcceptance, 'isAcceptedExact'>;
 }
 
 interface ExecutionWrites {
@@ -119,16 +125,185 @@ interface ProductCategories {
   srs: FormalizationArtifactSnapshot[];
 }
 
+const PRODUCT_CONTRACT_TYPES = ['PRD', 'FR', 'NFR', 'RULE'] as const;
+const PRODUCT_SUPPORTING_TYPES = [
+  'decision',
+  'brief',
+  'hypothesis',
+  'business_metric',
+  'theme',
+] as const;
+
+interface FormalizationRecoverySpec {
+  policyId: string;
+  subject: string;
+  acceptanceCriteria: readonly string[];
+  allowedChanges: readonly string[];
+  recoverableEvents: readonly string[];
+}
+
+function recoverySpec(
+  policyId: string,
+  subject: string,
+  acceptanceCriteria: readonly string[],
+  allowedChanges: readonly string[],
+  recoverableEvents: readonly string[] = ['clarification-required', 'inconsistent'],
+): FormalizationRecoverySpec {
+  return {
+    policyId,
+    subject,
+    acceptanceCriteria,
+    allowedChanges,
+    recoverableEvents,
+  };
+}
+
+function withFormalizationRecovery(
+  handler: KernelHandler,
+  spec: FormalizationRecoverySpec,
+): KernelHandler {
+  return ctx => {
+    const returned = handler(ctx);
+    if (returned instanceof Promise) {
+      return returned.then(result => applyFormalizationRecovery(ctx, result, spec));
+    }
+    return applyFormalizationRecovery(ctx, returned, spec);
+  };
+}
+
+function applyFormalizationRecovery(
+  ctx: KernelHandlerContext,
+  result: KernelHandlerResult,
+  spec: FormalizationRecoverySpec,
+): KernelHandlerResult {
+    if (
+      result.recoveryIssue
+      || !spec.recoverableEvents.includes(result.event)
+    ) {
+      return result;
+    }
+    const bindings = result.production.bindings;
+    const baselineDrift = integerArray(bindings.baselineDriftArtifactIds);
+    // Re-baselining is an explicit governance action, not an LM repair. Until
+    // the runtime exposes a durable acknowledge/rebaseline command, preserve
+    // the module's inconsistent outcome instead of opening an unresumable
+    // human recovery case.
+    if (baselineDrift.length > 0) return result;
+    const reason = firstString(
+      bindings.reason,
+      bindings.gap,
+      `${spec.subject} emitted ${result.event}`,
+    );
+    const artifactIds = firstNonEmptyIntegerArray(
+      bindings.dirtyArtifactIds,
+      bindings.unacceptedArtifactIds,
+      bindings.artifactIds,
+    );
+    const artifactHashes = recordBinding(bindings.artifactHashes);
+    const subjectRefs = artifactIds.length > 0
+      ? artifactIds.map(id => ({
+          kind: 'artifact',
+          ref: `artifact:${id}`,
+          contentHash: typeof artifactHashes[String(id)] === 'string'
+            ? artifactHashes[String(id)] as string
+            : null,
+        }))
+      : [{
+          kind: 'node-production',
+          ref: result.production.artifactRef,
+          schema: result.production.schema,
+          contentHash: result.production.contentHash,
+        }];
+    // A reconciliation worker may repair trace edges, but it cannot accept an
+    // artifact that belongs to an earlier author/resolver gate. Pause with the
+    // exact ids so an operator/orchestrator can resume the owning stage; do
+    // not waste repair attempts asking the reconciler to exceed its authority.
+    const unacceptedArtifactIds = integerArray(
+      bindings.unacceptedArtifactIds,
+    );
+    const disposition: RecoveryIssue['disposition'] =
+      unacceptedArtifactIds.length > 0 ? 'human' : 'repair';
+    return {
+      ...result,
+      event: 'repair-required',
+      recoveryIssue: {
+        schemaVersion: RECOVERY_ISSUE_SCHEMA,
+        policyId: spec.policyId,
+        disposition,
+        reasonCode: `${spec.policyId.toUpperCase().replace(/[^A-Z0-9]+/g, '_')}_${
+          result.event.toUpperCase().replace(/[^A-Z0-9]+/g, '_')
+        }`,
+        summary: `Repair ${spec.subject}: ${reason}`,
+        findings: [{
+          code: result.event,
+          severity: 'error',
+          message: reason,
+          subjectRef: subjectRefs[0]?.ref ?? result.production.artifactRef,
+          expected: spec.acceptanceCriteria,
+          actual: {
+            gap: bindings.gap ?? null,
+            reason: bindings.reason ?? null,
+            unacceptedArtifactIds: bindings.unacceptedArtifactIds ?? [],
+            baselineDriftArtifactIds: bindings.baselineDriftArtifactIds ?? [],
+          },
+          evidenceRefs: [result.production.artifactRef],
+        }],
+        subjectRefs,
+        acceptanceCriteria: spec.acceptanceCriteria,
+        allowedChanges: spec.allowedChanges,
+        context: {
+          processRunId: ctx.processRunId,
+          originalEvent: result.event,
+          verifierNodeId: ctx.node.id,
+          productionRef: result.production.artifactRef,
+          productionHash: result.production.contentHash,
+        },
+      },
+    };
+}
+
 export function createFormalizationKernelHandlers(
   deps: FormalizationInstallationDeps,
 ): Record<string, KernelHandler> {
   return {
-    [FORMALIZATION_HANDLER_IDS.resolveProduct]: createResolveProductHandler(deps),
-    [FORMALIZATION_HANDLER_IDS.resolveUseCases]: createResolveUseCasesHandler(deps),
-    [FORMALIZATION_HANDLER_IDS.resolveAcceptance]: createResolveAcceptanceHandler(deps),
-    [FORMALIZATION_HANDLER_IDS.resolveReconciliation]: createResolveReconciliationHandler(deps),
+    [FORMALIZATION_HANDLER_IDS.resolveProduct]: withFormalizationRecovery(
+      createResolveProductHandler(deps),
+      recoverySpec('repair-product-contract', 'product contract', [
+        'Exactly one PRD and at least one FR are present.',
+        'Product artifacts are trace-complete and accepted+clean.',
+      ], ['PRD', 'FR', 'NFR', 'RULE', 'their outgoing traces']),
+    ),
+    [FORMALIZATION_HANDLER_IDS.resolveUseCases]: withFormalizationRecovery(
+      createResolveUseCasesHandler(deps),
+      recoverySpec('repair-use-case-contract', 'use-case contract', [
+        'Every UC derives from the exact PRD and covers an exact FR.',
+        'Use-case artifacts are accepted+clean.',
+      ], ['UC artifacts', 'UC derived_from/covers traces']),
+    ),
+    [FORMALIZATION_HANDLER_IDS.resolveAcceptance]: withFormalizationRecovery(
+      createResolveAcceptanceHandler(deps),
+      recoverySpec('repair-acceptance-contract', 'acceptance contract', [
+        'Every AC derives from an exact FR or NFR.',
+        'FR-derived AC also derives from an exact UC.',
+        'Acceptance artifacts are accepted+clean.',
+      ], ['AC artifacts', 'AC derived_from traces']),
+    ),
+    [FORMALIZATION_HANDLER_IDS.resolveReconciliation]: withFormalizationRecovery(
+      createResolveReconciliationHandler(deps),
+      recoverySpec('repair-reconciliation', 'WHAT reconciliation', [
+        'The exact product, UC and AC set is trace-complete.',
+        'Every contract artifact is accepted+clean.',
+      ], ['reconciliation-owned traces', 'unaccepted WHAT artifacts']),
+    ),
     [FORMALIZATION_HANDLER_IDS.freezeBaseline]: createBaselineFreezerHandler(deps),
-    [FORMALIZATION_HANDLER_IDS.resolveArchitecture]: createResolveArchitectureHandler(deps),
+    [FORMALIZATION_HANDLER_IDS.resolveArchitecture]: withFormalizationRecovery(
+      createResolveArchitectureHandler(deps),
+      recoverySpec('repair-architecture-contract', 'architecture contract', [
+        'Exactly one SRS is produced and traces to the exact PRD.',
+        'The frozen acceptance baseline has not drifted.',
+        'The reviewed SRS candidate is accepted+clean by the kernel gate.',
+      ], ['SRS artifact', 'SRS derived_from traces']),
+    ),
     [FORMALIZATION_HANDLER_IDS.settle]: createSettlementHandler(deps),
   };
 }
@@ -199,30 +374,25 @@ export function createFormalizationLifecycleOutputPayloadResolver(
   };
 }
 
-/**
- * Transition an SRS artifact to accepted+clean. Called by the architecture
- * resolver after all validation checks pass. Mirrors how other resolvers
- * accept their own artifacts (PRD, FR, UC, AC all end up 'accepted' after
- * their resolver node).
- */
-function acceptSrsArtifact(artifactId: number, contentHash: string): void {
-  const db = getDb();
-  db.prepare(
-    `UPDATE artifacts
-        SET status='accepted',
-            accepted_hash=?,
-            drift_state='clean',
-            updated_at=datetime('now')
-      WHERE id=? AND status='draft'`,
-  ).run(contentHash, artifactId);
-}
-
 function ensureBriefRootTrace(
-  _deps: FormalizationInstallationDeps,
+  deps: FormalizationInstallationDeps,
   ctx: KernelHandlerContext,
   prdArtifactId: number,
 ): void {
   if (ctx.epicId === null || ctx.projectId === undefined) return;
+  const existingTargets = deps.graph.readOutgoingArtifactTraces([prdArtifactId])
+    .filter(trace =>
+      trace.targetType === 'artifact'
+      && trace.linkType === 'derived_from')
+    .map(trace => trace.targetId);
+  const existingRoot = deps.graph.readArtifactsByIds(existingTargets)
+    .some(artifact =>
+      artifact.type === 'brief'
+      && artifact.status === 'accepted'
+      && artifact.contentHash !== null
+      && artifact.acceptedHash === artifact.contentHash
+      && artifact.driftState === 'clean');
+  if (existingRoot) return;
   const db = getDb();
   // Check if PRD already has a root trace
   const existing = db.prepare(
@@ -278,9 +448,16 @@ function createResolveProductHandler(deps: FormalizationInstallationDeps): Kerne
         'The product execution persisted no canonical product artifacts.',
       );
     }
-    assertOnlyTypes(writes.artifacts, ['PRD', 'FR', 'NFR', 'RULE', 'decision', 'brief', 'hypothesis', 'business_metric', 'theme']);
+    assertOnlyTypes(writes.artifacts, [
+      ...PRODUCT_CONTRACT_TYPES,
+      ...PRODUCT_SUPPORTING_TYPES,
+    ]);
     assertTraceWriteSources(writes, idsOf(writes.artifacts));
-    const snapshot = buildContractSnapshot(deps.graph, writes.artifacts);
+    const contractArtifacts = writes.artifacts.filter(artifact =>
+      (PRODUCT_CONTRACT_TYPES as readonly string[]).includes(artifact.type));
+    const supportingArtifacts = writes.artifacts.filter(artifact =>
+      (PRODUCT_SUPPORTING_TYPES as readonly string[]).includes(artifact.type));
+    const snapshot = buildContractSnapshot(deps.graph, contractArtifacts);
     const categories = categorize(snapshot.artifacts);
     if (categories.prd.length !== 1 || categories.frs.length === 0) {
       return manifestResult(
@@ -302,7 +479,7 @@ function createResolveProductHandler(deps: FormalizationInstallationDeps): Kerne
     // Rebuild snapshot after the brief insertion so findContractGap sees it.
     const snapshotWithBrief = buildContractSnapshot(
       deps.graph,
-      [...writes.artifacts, ...deps.graph.readArtifactsByIds(
+      [...contractArtifacts, ...deps.graph.readArtifactsByIds(
         deps.graph.readOutgoingArtifactTraces([categories.prd[0].id])
           .filter(t => t.linkType === 'derived_from')
           .map(t => t.targetId),
@@ -313,21 +490,45 @@ function createResolveProductHandler(deps: FormalizationInstallationDeps): Kerne
       return manifestResult(
         ctx,
         writes,
-        snapshotWithBrief,
+        snapshotForOwnedArtifacts(snapshotWithBrief, contractArtifacts),
         FORMALIZATION_PRODUCT_BUNDLE_SCHEMA,
         SOURCE_NODES.product,
         'clarification-required',
         { ...categoryBindings(categories), gap },
       );
     }
-    return manifestResult(
+    const completed = manifestResult(
       ctx,
       writes,
-      snapshotWithBrief,
+      snapshotForOwnedArtifacts(snapshotWithBrief, contractArtifacts),
       FORMALIZATION_PRODUCT_BUNDLE_SCHEMA,
       SOURCE_NODES.product,
       'completed',
-      categoryBindings(categories),
+      {
+        ...categoryBindings(categories),
+        supportingArtifactIds: idsOf(supportingArtifacts),
+      },
+    );
+    return withExactCandidateAcceptance(
+      completed,
+      ctx,
+      writes,
+      contractArtifacts,
+      {
+        sourceNodeId: SOURCE_NODES.product,
+        policyId: 'repair-product-contract',
+        authority: 'formalization-product-gate@1',
+        reasonCode: 'FORMALIZATION_PRODUCT_VALIDATED',
+        summary: 'The exact product contract could not be committed',
+        acceptanceCriteria: [
+          'Exactly one PRD and at least one FR are trace-complete.',
+          'The exact reviewed PRD/FR/NFR/RULE versions are accepted+clean.',
+        ],
+        allowedChanges: [
+          'PRD, FR, NFR and RULE candidates from this execution',
+          'their contract traces',
+        ],
+      },
     );
   });
 }
@@ -364,7 +565,7 @@ function createResolveUseCasesHandler(deps: FormalizationInstallationDeps): Kern
     const event = categories.ucs.length === 0
       ? 'clarification-required'
       : gap ? 'inconsistent' : 'completed';
-    return manifestResult(
+    const resolved = manifestResult(
       ctx,
       writes,
       snapshotForOwnedArtifacts(snapshot, writes.artifacts),
@@ -373,6 +574,26 @@ function createResolveUseCasesHandler(deps: FormalizationInstallationDeps): Kern
       event,
       { ...categoryBindings(categorize(writes.artifacts)), gap },
     );
+    return event === 'completed'
+      ? withExactCandidateAcceptance(
+          resolved,
+          ctx,
+          writes,
+          writes.artifacts,
+          {
+            sourceNodeId: SOURCE_NODES.useCases,
+            policyId: 'repair-use-case-contract',
+            authority: 'formalization-use-case-gate@1',
+            reasonCode: 'FORMALIZATION_USE_CASES_VALIDATED',
+            summary: 'The exact use-case contract could not be committed',
+            acceptanceCriteria: [
+              'Every UC traces to the exact PRD and covers an exact FR.',
+              'The exact reviewed UC versions are accepted+clean.',
+            ],
+            allowedChanges: ['UC candidates and their derived_from/covers traces'],
+          },
+        )
+      : resolved;
   });
 }
 
@@ -416,7 +637,7 @@ function createResolveAcceptanceHandler(deps: FormalizationInstallationDeps): Ke
     const event = categories.acs.length === 0
       ? 'clarification-required'
       : gap ? 'inconsistent' : 'completed';
-    return manifestResult(
+    const resolved = manifestResult(
       ctx,
       writes,
       snapshotForOwnedArtifacts(snapshot, writes.artifacts),
@@ -425,6 +646,26 @@ function createResolveAcceptanceHandler(deps: FormalizationInstallationDeps): Ke
       event,
       { ...categoryBindings(categorize(writes.artifacts)), gap },
     );
+    return event === 'completed'
+      ? withExactCandidateAcceptance(
+          resolved,
+          ctx,
+          writes,
+          writes.artifacts,
+          {
+            sourceNodeId: SOURCE_NODES.acceptance,
+            policyId: 'repair-acceptance-contract',
+            authority: 'formalization-acceptance-gate@1',
+            reasonCode: 'FORMALIZATION_ACCEPTANCE_VALIDATED',
+            summary: 'The exact acceptance contract could not be committed',
+            acceptanceCriteria: [
+              'Every AC traces to an exact FR/NFR and, when required, UC.',
+              'The exact reviewed AC versions are accepted+clean.',
+            ],
+            allowedChanges: ['AC candidates and their derived_from traces'],
+          },
+        )
+      : resolved;
   });
 }
 
@@ -616,25 +857,12 @@ function createResolveArchitectureHandler(deps: FormalizationInstallationDeps): 
       acceptance: true,
       architecture: true,
     });
-    // Architecture acceptance: the resolver IS the kernel authority that
-    // accepts the SRS after validating it (same pattern as resolve-product-
-    // contract accepting PRD+FR+NFR+RULE). The LM worker creates the SRS as
-    // 'draft' (per template); the resolver verifies hash, traces, baseline
-    // and — when all checks pass — transitions the SRS to 'accepted' so that
-    // the unaccepted check below does not reject it. Without this, the SRS
-    // stays 'draft' forever because no other node accepts it, and settlement
-    // gives 'inconsistent' on a perfectly valid SRS.
-    if (gap === null && baselineDrift.length === 0 && categories.srs.length === 1) {
-      const srsArtifact = categories.srs[0];
-      if (srsArtifact.status !== 'accepted' || srsArtifact.driftState !== 'clean') {
-        acceptSrsArtifact(srsArtifact.id, srsArtifact.contentHash ?? '');
-      }
-    }
-    const unaccepted = writes.artifacts.filter(artifact => !isAcceptedClean(artifact));
+    // Semantic validation stays in this module; the common KernelNodeExecutor
+    // owns the exact atomic acceptance transition.
     const event = categories.srs.length !== 1
       ? 'clarification-required'
-      : unaccepted.length > 0 || gap ? 'inconsistent' : 'completed';
-    return manifestResult(
+      : gap ? 'inconsistent' : 'completed';
+    const resolved = manifestResult(
       ctx,
       writes,
       snapshotForOwnedArtifacts(snapshot, writes.artifacts),
@@ -649,6 +877,32 @@ function createResolveArchitectureHandler(deps: FormalizationInstallationDeps): 
         gap,
       },
     );
+    return event === 'completed'
+      ? withExactCandidateAcceptance(
+          resolved,
+          ctx,
+          writes,
+          writes.artifacts,
+          {
+            sourceNodeId: SOURCE_NODES.architecture,
+            policyId: 'repair-architecture-contract',
+            authority: 'formalization-architecture-gate@1',
+            reasonCode: 'FORMALIZATION_ARCHITECTURE_VALIDATED',
+            summary: 'The exact architecture contract could not be committed',
+            acceptanceCriteria: [
+              'Exactly one SRS traces to the exact PRD.',
+              'The frozen acceptance baseline has not drifted.',
+              'The exact reviewed SRS version is accepted+clean.',
+            ],
+            allowedChanges: ['SRS candidate and its derived_from traces'],
+            context: {
+              baselineSnapshotRef: baseline.artifactRef,
+              baselineSnapshotHash: baseline.snapshotHash,
+              acceptanceBaselineHash: baseline.baselineHash,
+            },
+          },
+        )
+      : resolved;
   });
 }
 
@@ -799,24 +1053,8 @@ function readExecutionWrites(
     taskId: receipt.taskId,
     executionId: receipt.executionId,
   };
-  let artifactWrites = latestArtifactWrites(deps.ledger.listArtifactsForExecution(query));
-  let traceWrites = latestTraceWrites(deps.ledger.listTracesForExecution(query));
-  // Resume fallback: when the lifecycle resumed formalization, a NEW ProcessRun
-  // was created. The worker does not recreate artifacts that already exist, so
-  // the ledger for THIS execution is empty. Fall back to reading ALL managed
-  // productions for this (module, node) across every ProcessRun of the same
-  // epic. The artifacts themselves are immutable (content-addressed), so
-  // reading them from a previous run is safe. Without this fallback, resume
-  // always reports "no canonical product artifacts" and the resolver emits
-  // clarification-required even though the work is complete.
-  if (artifactWrites.length === 0 && ctx.epicId !== null) {
-    artifactWrites = latestArtifactWrites(
-      deps.ledger.listArtifactsForNodeInEpic(ctx.epicId, FORMALIZATION_MODULE_KEY, sourceNodeId),
-    );
-    traceWrites = latestTraceWrites(
-      deps.ledger.listTracesForNodeInEpic(ctx.epicId, FORMALIZATION_MODULE_KEY, sourceNodeId),
-    );
-  }
+  const artifactWrites = latestArtifactWrites(deps.ledger.listArtifactsForExecution(query));
+  const traceWrites = latestTraceWrites(deps.ledger.listTracesForExecution(query));
   const artifacts = deps.graph.readArtifactsByIds(artifactWrites.map(write => write.artifactId));
   if (artifacts.length !== artifactWrites.length) {
     throw new Error(`${handlerId}: one or more ledger artifacts no longer exist`);
@@ -830,7 +1068,7 @@ function readExecutionWrites(
       || artifact.projectId !== ctx.projectId
       || artifact.epicId !== ctx.epicId
       || artifact.type !== write.artifactType
-      || artifact.status !== write.artifactStatus
+      || !artifactStatusMatchesManagedWrite(deps, ctx, query, write, artifact)
       || artifact.contentHash !== write.contentHash
       || !isSha256(write.contentHash)
     ) {
@@ -908,6 +1146,40 @@ function latestTraceWrites(
     latest.set(record.traceId, record);
   }
   return [...latest.values()].sort((a, b) => a.traceId - b.traceId);
+}
+
+function artifactStatusMatchesManagedWrite(
+  deps: FormalizationInstallationDeps,
+  ctx: KernelHandlerContext,
+  query: ManagedProductionQuery,
+  write: ManagedArtifactWriteRecord,
+  artifact: FormalizationArtifactSnapshot,
+): boolean {
+  if (artifact.status === write.artifactStatus) return true;
+  if (
+    ctx.epicId === null
+    || !isAcceptedClean(artifact)
+    || !isSha256(write.contentHash)
+  ) {
+    return false;
+  }
+  return deps.candidateAcceptance.isAcceptedExact(
+    {
+      processRunId: query.processRunId,
+      moduleRef: query.moduleRef,
+      nodeId: query.nodeId,
+      intentId: query.intentId,
+      taskId: query.taskId,
+      executionId: query.executionId,
+      projectId: ctx.projectId,
+      epicId: ctx.epicId,
+    },
+    {
+      artifactId: write.artifactId,
+      artifactType: write.artifactType,
+      contentHash: write.contentHash,
+    },
+  );
 }
 
 function matchesExecutionFence(
@@ -1106,6 +1378,105 @@ function manifestResult(
       contentHash,
       bindings: manifest,
     },
+  };
+}
+
+interface ExactAcceptanceSpec {
+  sourceNodeId: string;
+  policyId: string;
+  authority: string;
+  reasonCode: string;
+  summary: string;
+  acceptanceCriteria: readonly string[];
+  allowedChanges: readonly string[];
+  context?: Readonly<Record<string, unknown>>;
+}
+
+function withExactCandidateAcceptance(
+  result: KernelHandlerResult,
+  ctx: KernelHandlerContext,
+  writes: ExecutionWrites,
+  artifacts: readonly FormalizationArtifactSnapshot[],
+  spec: ExactAcceptanceSpec,
+): KernelHandlerResult {
+  if (ctx.epicId === null) {
+    throw new Error(`${ctx.node.id}: exact acceptance requires an epic`);
+  }
+  if (!writes.receipt.executionId) {
+    throw new Error(`${ctx.node.id}: exact acceptance requires an execution fence`);
+  }
+  const candidates = artifacts.map(artifact => {
+    if (!isSha256(artifact.contentHash)) {
+      throw new Error(
+        `${ctx.node.id}: artifact ${artifact.id} has no canonical SHA-256 content hash`,
+      );
+    }
+    return {
+      artifactId: artifact.id,
+      artifactType: artifact.type,
+      contentHash: artifact.contentHash,
+    };
+  }).sort((left, right) => left.artifactId - right.artifactId);
+  if (candidates.length === 0) {
+    throw new Error(`${ctx.node.id}: exact acceptance candidate set is empty`);
+  }
+  const candidateSetHash = sha256Hex(candidates);
+  const subjectRefs = candidates.map(candidate => ({
+    kind: 'artifact',
+    ref: `artifact:${candidate.artifactId}`,
+    schema: candidate.artifactType,
+    contentHash: candidate.contentHash,
+  }));
+  const directive: ExactCandidateAcceptanceDirective = {
+    command: {
+      idempotencyKey:
+        `process-run:${ctx.processRunId}:gate:${ctx.node.id}:`
+        + `execution:${writes.receipt.executionId}:candidates:${candidateSetHash}`,
+      lineage: {
+        processRunId: ctx.processRunId,
+        moduleRef: FORMALIZATION_MODULE_KEY,
+        nodeId: spec.sourceNodeId,
+        intentId: writes.receipt.intentId,
+        taskId: writes.receipt.taskId,
+        executionId: writes.receipt.executionId,
+        projectId: ctx.projectId,
+        epicId: ctx.epicId,
+      },
+      candidates,
+      requireApprovedReview: true,
+      authority: spec.authority,
+      reasonCode: spec.reasonCode,
+      context: {
+        gateNodeId: ctx.node.id,
+        semanticProductionRef: result.production.artifactRef,
+        semanticProductionHash: result.production.contentHash,
+        ...(spec.context ?? {}),
+      },
+    },
+    rejection: {
+      event: 'acceptance-blocked',
+      policyId: spec.policyId,
+      disposition: 'repair',
+      summary: spec.summary,
+      acceptanceCriteria: [
+        'Worker candidates stay draft/in_review; only the common kernel gate sets accepted+clean.',
+        ...spec.acceptanceCriteria,
+      ],
+      allowedChanges: [
+        ...spec.allowedChanges,
+        ...subjectRefs.map(subject => subject.ref),
+      ],
+      subjectRefs,
+      context: {
+        gateNodeId: ctx.node.id,
+        semanticProductionRef: result.production.artifactRef,
+        semanticProductionHash: result.production.contentHash,
+      },
+    },
+  };
+  return {
+    ...result,
+    exactCandidateAcceptance: directive,
   };
 }
 
@@ -1516,6 +1887,34 @@ function numberArrayBinding(
     throw new Error(`production binding '${name}' must be an array of positive integers`);
   }
   return [...new Set(value as number[])].sort((a, b) => a - b);
+}
+
+function integerArray(value: unknown): number[] {
+  return Array.isArray(value)
+    ? [...new Set(value.filter(item => Number.isInteger(item)) as number[])]
+        .sort((a, b) => a - b)
+    : [];
+}
+
+function firstNonEmptyIntegerArray(...values: unknown[]): number[] {
+  for (const value of values) {
+    const items = integerArray(value);
+    if (items.length > 0) return items;
+  }
+  return [];
+}
+
+function recordBinding(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function firstString(...values: unknown[]): string {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim() !== '') return value.trim();
+  }
+  return 'The verifier rejected the candidate without a textual rationale.';
 }
 
 function stringBinding(bindings: Record<string, unknown>, name: string): string {

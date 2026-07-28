@@ -215,9 +215,29 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
   ensureProjectedTask(input: EnsureProjectedTask): number {
     const db = getDb();
     const existing = db.prepare(
-      'SELECT id FROM tasks WHERE epic_id=? AND generation_key=?',
-    ).get(input.epicId, input.generationKey) as { id: number } | undefined;
-    if (existing) return existing.id;
+      'SELECT id, review_skill FROM tasks WHERE epic_id=? AND generation_key=?',
+    ).get(input.epicId, input.generationKey) as
+      | { id: number; review_skill: string | null }
+      | undefined;
+    if (existing) {
+      if (input.reviewSkill && existing.review_skill === null) {
+        db.prepare(
+          `UPDATE tasks
+              SET review_skill=?, updated_at=datetime('now')
+            WHERE id=?`,
+        ).run(input.reviewSkill, existing.id);
+      } else if (
+        input.reviewSkill
+        && existing.review_skill !== null
+        && existing.review_skill !== input.reviewSkill
+      ) {
+        throw new Error(
+          `saga3: projected task ${existing.id} review_skill cannot be rebound `
+          + `from '${existing.review_skill}' to '${input.reviewSkill}'`,
+        );
+      }
+      return existing.id;
+    }
 
     const repoId = db.prepare(
       'SELECT id FROM project_repositories WHERE project_id=? ORDER BY id LIMIT 1',
@@ -234,8 +254,9 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
     const info = db.prepare(
       `INSERT INTO tasks
          (epic_id, title, description, status, priority, task_kind, workflow_stage,
-          execution_skill, execution_mode, project_repository_id, generation_key, tags, metadata)
-       VALUES (?, ?, ?, 'todo', ?, ?, ?, ?, ?, ?, ?, '[]', ?)`,
+          execution_skill, review_skill, execution_mode, project_repository_id,
+          generation_key, tags, metadata)
+       VALUES (?, ?, ?, 'todo', ?, ?, ?, ?, ?, ?, ?, ?, '[]', ?)`,
     ).run(
       input.epicId,
       `${titlePrefix}${input.objective.slice(0, 80)}`,
@@ -252,6 +273,7 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
       input.taskKind,
       workflowStage,
       input.executionSkill,
+      input.reviewSkill ?? null,
       executionMode,
       repoId?.id ?? null,
       input.generationKey,
@@ -312,6 +334,16 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
         }
         if (intent.projected_task_id === null) {
           this.setProjectedTask(intent.id, existing.id);
+        }
+        const reboundTaskId = this.ensureProjectedTask({
+          ...input.task,
+          intentId: intent.id,
+        });
+        if (reboundTaskId !== existing.id) {
+          throw new Error(
+            `saga3: execution plan ${input.task.generationKey} resolved to `
+            + `task ${reboundTaskId}, expected ${existing.id}`,
+          );
         }
         db.exec('COMMIT');
         return { intentId: intent.id, taskId: existing.id, replayed: true };

@@ -35,8 +35,20 @@ function validateExecutionProfile(
   if (!profile.workIntentSchema.id.trim()) errors.push(`execution profile '${profile.id}' has no workIntentSchema`);
   if (!profile.taskKind.trim()) errors.push(`execution profile '${profile.id}' has no taskKind`);
   if (!profile.executionSkill.trim()) errors.push(`execution profile '${profile.id}' has no executionSkill`);
+  if (profile.reviewSkill !== undefined && profile.reviewSkill !== null && !profile.reviewSkill.trim()) {
+    errors.push(`execution profile '${profile.id}' has an empty reviewSkill`);
+  }
   if (!profile.protocolSkill.trim()) errors.push(`execution profile '${profile.id}' has no protocolSkill`);
   if (!profile.semanticSkill.trim()) errors.push(`execution profile '${profile.id}' has no semanticSkill`);
+  if (
+    profile.artifactAcceptanceAuthority !== undefined
+    && profile.artifactAcceptanceAuthority !== 'worker'
+    && profile.artifactAcceptanceAuthority !== 'kernel-gate'
+  ) {
+    errors.push(
+      `execution profile '${profile.id}' has invalid artifactAcceptanceAuthority`,
+    );
+  }
   if (!profile.outputSchema.id.trim()) errors.push(`execution profile '${profile.id}' has no outputSchema`);
   if (profile.retryPolicy.maxAttempts < 1 || !Number.isInteger(profile.retryPolicy.maxAttempts)) {
     errors.push(`execution profile '${profile.id}' retryPolicy.maxAttempts must be a positive integer`);
@@ -160,6 +172,14 @@ export function validateProcessModuleDefinition(
   for (const node of module.flow.nodes) validateNode(node, profileIdSet, errors);
 
   const terminalSet = new Set(module.flow.terminalNodeIds);
+  const transitionKeys = module.flow.transitions.map(transition =>
+    `${transition.from}\u0000${transition.on}`);
+  for (const key of duplicates(transitionKeys)) {
+    const [from, event] = key.split('\u0000');
+    errors.push(
+      `flow has ambiguous transitions from '${from}' on event '${event}'`,
+    );
+  }
   for (const transition of module.flow.transitions) {
     if (!nodeIdSet.has(transition.from)) errors.push(`transition source '${transition.from}' does not exist`);
     if (!nodeIdSet.has(transition.to)) errors.push(`transition target '${transition.to}' does not exist`);
@@ -173,6 +193,7 @@ export function validateProcessModuleDefinition(
   for (const id of duplicates(recoveryIds)) {
     errors.push(`duplicate flow recovery policy '${id}'`);
   }
+  const recoveryTriggerOwners = new Map<string, string>();
   for (const policy of module.flow.recovery ?? []) {
     if (!IDENTIFIER.test(policy.id)) {
       errors.push(`flow recovery policy '${policy.id}' has an invalid id`);
@@ -214,7 +235,34 @@ export function validateProcessModuleDefinition(
     for (const event of duplicates(policy.resolvedEvents)) {
       errors.push(`flow recovery policy '${policy.id}' repeats resolved event '${event}'`);
     }
+    const triggerSet = new Set(policy.triggerEvents);
+    for (const event of policy.resolvedEvents) {
+      if (triggerSet.has(event)) {
+        errors.push(
+          `flow recovery policy '${policy.id}' uses '${event}' as both trigger and resolved event`,
+        );
+      }
+      const resolvedRoute = module.flow.transitions.some(transition =>
+        transition.from === policy.verifyNodeId
+        && transition.on === event);
+      if (!resolvedRoute) {
+        errors.push(
+          `flow recovery policy '${policy.id}' resolved event '${event}' `
+            + `has no transition from verifier '${policy.verifyNodeId}'`,
+        );
+      }
+    }
     for (const event of policy.triggerEvents) {
+      const ownerKey = `${policy.verifyNodeId}\u0000${event}`;
+      const existingOwner = recoveryTriggerOwners.get(ownerKey);
+      if (existingOwner && existingOwner !== policy.id) {
+        errors.push(
+          `flow recovery trigger '${policy.verifyNodeId}' + '${event}' `
+            + `is owned by both '${existingOwner}' and '${policy.id}'`,
+        );
+      } else {
+        recoveryTriggerOwners.set(ownerKey, policy.id);
+      }
       const route = module.flow.transitions.find(transition =>
         transition.from === policy.verifyNodeId
         && transition.on === event

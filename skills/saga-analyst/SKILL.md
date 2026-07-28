@@ -23,8 +23,11 @@ traces.
 - **Stage (этап):** 3-Formalization-UC ИЛИ 4-Formalization-AC (две роли, по типу задачи)
 - **Precondition (UC):** PRD artifact accepted. Verify: `artifact_list({type:'PRD', epic_id})` → status=accepted. PRD MUST already have its FR/NFR/RULE children registered by saga-product.
 - **Precondition (AC):** UC artifact accepted AND PRD accepted (with FR/NFR children). Verify: `artifact_list({type:'UC'})` + `artifact_list({type:'FR'})` + `artifact_list({type:'NFR'})` → all present. **SRS is NOT required** — AC no longer reads SRS; invariants/rules are taken from RULE artifacts under the PRD.
-- **Postcondition (UC):** UC artifact accepted (gates the AC task)
-- **Postcondition (AC):** AC artifact accepted (gates reconciliation → baseline → SRS)
+- **Postcondition (UC):** UC candidates and traces submitted as draft; the
+  resolver + common kernel gate accept the reviewed exact versions.
+- **Postcondition (AC):** AC candidates and traces submitted as draft; the
+  resolver + common kernel gate accept the reviewed exact versions before
+  reconciliation → baseline → SRS.
 - **Called by (вызывается):** saga-orchestrator (Stage 3 for UC right after PRD; Stage 4 for AC after UC; SRS only after baseline)
 - **Next enables:** UC done → saga-analyst (AC). AC done → saga-reconciler (baseline freeze) → saga-architect (SRS).
 - **Verify precondition:** if you are about to write UC but PRD is not accepted → STOP. If you are about to write AC but UC is not accepted → STOP. Never write AC against SRS — SRS does not exist yet at this stage.

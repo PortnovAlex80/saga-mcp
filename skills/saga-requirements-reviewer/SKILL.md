@@ -11,8 +11,9 @@ Same as saga-worker — use the assignment's product, epic, repository.
   review, AC review, reconciliation review
 - **Precondition:** producer (saga-product / saga-analyst / saga-reconciler)
   completed the artifact and the task moved to `review`
-- **Postcondition:** artifact either accepted (status='accepted', traces
-  complete) or returned to producer via `verdict:'changes_requested'`
+- **Postcondition:** reviewer emits `approved` or `changes_requested` with
+  exact findings. The reviewer never mutates artifact acceptance; an approved
+  verdict is evidence consumed by the common kernel gate.
 - **Called by:** saga-engine via `review_skill` field on the task
 
 > **Pipeline (reordered, ADR-013).** FR/NFR/RULE are now children of the PRD
@@ -115,15 +116,12 @@ complete, traceable artifact — not that the prose is pretty.
    SRS document itself is reviewed by `saga-architecture-reviewer` (a
    different skill).
 
-4. **Accept the artifact if all checks pass:**
-   ```
-   artifact_update({ id, status:'accepted' })
-   ```
-   (Only for the artifact under review — not for unrelated ones. The
-   reconciliation task is the only one that bulk-accepts.)
+4. **Do not accept or edit the artifact.** If all checks pass, leave the
+   candidate hash unchanged and emit an approved verdict. The common kernel
+   gate atomically sets `accepted+clean` only for the exact reviewed set.
 
 5. **Complete the task** via `worker_done({task_id, worker_id, verdict, result, execution_id})`:
-   - `verdict:'approved'` — all checks passed, artifact accepted.
+   - `verdict:'approved'` — all checks passed; kernel acceptance may proceed.
    - `verdict:'changes_requested'` — list each specific gap in `result`.
 
 ## Anti-patterns (do NOT do these)

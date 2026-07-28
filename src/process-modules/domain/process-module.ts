@@ -59,6 +59,11 @@ export interface ExecutionProfileDefinition {
   taskKind: string;
   /** Current composed/compatibility skill selected by the existing runner. */
   executionSkill: string;
+  /**
+   * Independent reviewer selected when the projected task enters review.
+   * Omitted/null preserves the dispatcher's legacy generic-reviewer fallback.
+   */
+  reviewSkill?: string | null;
   /** Reusable physical execution protocol: tracker, hooks, MCP and recovery. */
   protocolSkill: string;
   /** Domain-specific semantic role skill for this node. */

@@ -12,9 +12,9 @@ Same as saga-worker — use the assignment's product, epic, repository.
   (architect drafted the SRS after `baseline_accepted`). Verify before claiming:
   the held task's `task_kind='formalization.srs'`, and the episode's accepted
   AC baseline exists.
-- **Postcondition:** SRS either accepted (status='accepted', traces complete,
-  §D present and Complexity-Gate-compliant) or returned to architect via
-  `verdict:'changes_requested'`.
+- **Postcondition:** reviewer emits an exact `approved`/`changes_requested`
+  verdict. The SRS remains the same candidate version; only the common kernel
+  gate may transition its reviewed id/hash to `accepted+clean`.
 
 The SRS no longer contains FR/NFR/RULE (those moved to the PRD, owned by
 saga-product). You do NOT check FR/NFR traceability — that is now
@@ -249,10 +249,9 @@ follow the Complexity Gate inputs from the brief, and must declare a complete
     phase returns `changes_requested` and the SRS is NOT accepted, even if every
     other check in steps 3–11 passed.
 
-13. **Accept the SRS if all checks pass (including the Security review phase):**
-    ```
-    artifact_update({ id:<SRS id>, status: 'accepted' })
-    ```
+13. **Do not accept or edit the SRS.** If every check passes (including the
+    Security review phase), preserve the candidate hash and emit `approved`;
+    the common kernel gate performs the acceptance transition atomically.
 
 14. **Complete the task** via `worker_done`:
     - `verdict:'approved'` — SRS traceable, Complexity-Gate-compliant, §D
