@@ -1,0 +1,46 @@
+{
+  "$comment": "W2-A7 version-collision fixture B. Same identity (name, version) as version-collision/a.json, but DIFFERENT content (different handler ref + different outcome). Installing A after B (or vice versa) MUST trigger MODULE_INSTALLATION_VERSION_COLLISION (plan §3.11, §5.5.8). DATA ONLY.",
+  "manifestFormatVersion": "0.1.0",
+  "source": "W2-A7 version-collision fixture B",
+  "identity": {
+    "name": "synthetic-compliance-check",
+    "version": "0.2.0-collision",
+    "kind": "compliance",
+    "displayName": "Synthetic Compliance Check (collision B)",
+    "description": "W2-A7 version-collision fixture B — distinct content from a.json under the SAME (name, version)."
+  },
+  "inputContract": { "id": "synthetic.compliance.input.v1" },
+  "outputContract": { "id": "synthetic.compliance.output.v1" },
+  "outcomes": [
+    {
+      "code": "compliance-passed-B",
+      "description": "Variant B's outcome code.",
+      "terminal": true
+    }
+  ],
+  "flow": {
+    "id": "synthetic.compliance-check.collision-b",
+    "version": "0.1.0",
+    "entryNodeId": "run-check",
+    "nodes": [
+      {
+        "id": "run-check",
+        "label": "Run Compliance Check (B)",
+        "kind": "kernel",
+        "description": "Variant B — different handler ref from A.",
+        "handler": "compliance-check-handler-B@1.0.0",
+        "inputSchema": { "id": "synthetic.compliance.input.v1" },
+        "outputSchema": { "id": "synthetic.compliance.output.v1" },
+        "emitsOutcome": "compliance-passed-B"
+      }
+    ],
+    "transitions": [],
+    "terminalNodeIds": ["run-check"]
+  },
+  "artifacts": [],
+  "policies": [],
+  "invariants": [],
+  "executionProfiles": [],
+  "resourceIndex": [],
+  "handlerReferences": []
+}
