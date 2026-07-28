@@ -97,7 +97,25 @@ function handleArtifactCreate(args: Record<string, unknown>): Artifact {
   const epicId = args.epic_id as number;
   const type = args.type as typeof ARTIFACT_TYPES[number];
   const title = args.title as string;
-  const projectRepositoryId = (args.project_repository_id as number | undefined) ?? null;
+  let projectRepositoryId = (args.project_repository_id as number | undefined) ?? null;
+  // Server-side fallback: if the worker omitted project_repository_id but we
+  // are running under managed execution, read it from the task's metadata.
+  // Without it, artifactDiskHash cannot resolve the file path and content_hash
+  // ends up NULL — which causes formalization resolvers to reject the artifact
+  // ("does not match its canonical row"). The worker SHOULD pass it (the
+  // template and checklist say so), but models sometimes forget — this guard
+  // makes the infrastructure resilient to that omission.
+  if (projectRepositoryId === null && managedExecution) {
+    const taskRow = db.prepare('SELECT metadata FROM tasks WHERE id=?').get(managedExecution.taskId) as { metadata: string } | undefined;
+    if (taskRow) {
+      try {
+        const taskMeta = JSON.parse(taskRow.metadata) as Record<string, unknown>;
+        if (typeof taskMeta.project_repository_id === 'number') {
+          projectRepositoryId = taskMeta.project_repository_id;
+        }
+      } catch { /* metadata not JSON — ignore */ }
+    }
+  }
   // Workers sometimes write absolute paths (D:\Development\moscito\docs\...md)
   // despite the skill template saying 'docs/...'. On Windows this breaks
   // path.join(root, absPath) downstream (tracker-view resolver, artifactDiskHash).
@@ -408,8 +426,20 @@ function handleArtifactUpdate(args: Record<string, unknown>): Artifact {
 
   const projectRepositoryId = args.project_repository_id as number | null | undefined;
   const effectivePath = path ?? existing.path;
-  const effectiveRepositoryId = projectRepositoryId !== undefined
+  let effectiveRepositoryId = projectRepositoryId !== undefined
     ? projectRepositoryId : existing.project_repository_id;
+  // Server-side fallback: if still null and under managed execution, read from task metadata.
+  if (effectiveRepositoryId == null && managedExecution) {
+    const taskRow = db.prepare('SELECT metadata FROM tasks WHERE id=?').get(managedExecution.taskId) as { metadata: string } | undefined;
+    if (taskRow) {
+      try {
+        const taskMeta = JSON.parse(taskRow.metadata) as Record<string, unknown>;
+        if (typeof taskMeta.project_repository_id === 'number') {
+          effectiveRepositoryId = taskMeta.project_repository_id;
+        }
+      } catch { /* metadata not JSON — ignore */ }
+    }
+  }
   const diskHash = artifactDiskHash(db, effectivePath, effectiveRepositoryId);
   const contentHash = diskHash ?? (args.content_hash as string | null | undefined);
   if (contentHash !== undefined) {
