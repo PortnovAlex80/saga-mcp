@@ -61,5 +61,6 @@ Format:
 - **Decision D-20260728-02** recorded: `canonicalJson` frozen primitive does NOT drop `undefined` object values (emits invalid token `undefined`); manifest fields must be ABSENT-not-UNDEFINED. WAVE1-PURE-SPI-SPEC §1 row 1 + §4 amended. Frozen primitive NOT modified (preserves all lineage hashes).
 - Artifacts: 15 new pure-data files under `src/process-modules/domain/spi/` (canonical-serialization, contract-ref, contract-schema-registry, resource-index, module-manifest, scenario-manifest, node-protocol, execution-envelope, production-envelope, module-completion, recovery-definitions, tool-contribution, agent-assistance, execution-receipt, legacy-adapter, index barrel) + 12 test files under `tests/spi/`. **Zero existing production source modified.**
 - Gate: `npm run build` PASS · Wave 1 SPI gate **238/238 PASS** · ratchet W0-A1 4/4 PASS (KNOWN_VIOLATIONS unchanged at 73 — SPI layer added ZERO new violations) · Wave 0 regression 31/31 PASS.
-- Commit: (pending — checkpoint below)
-- Next: create Wave 1 checkpoint commit, clean worktrees, then stage Wave 2 (Immutable Installation).
+- Commit: `6a349a2` — `refactor(wave-1): pure SPI checkpoint — 15 domain/spi files + 238 tests`
+- Next: stage Wave 2 (Immutable Installation) frozen checkpoint off `6a349a2`.
+- Worktrees `.worktrees/w1-aN` removed (branches `refactor/w1-aN` preserved for audit).
