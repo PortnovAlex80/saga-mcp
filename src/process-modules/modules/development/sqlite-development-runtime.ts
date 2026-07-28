@@ -644,10 +644,34 @@ export class SqliteDevelopmentRuntime implements
     const workflowStage = input.item.kind === 'verification'
       ? 'verification'
       : 'development';
+    // Read the ProcessRun input hash and the planner's WorkIntent so we can
+    // stamp full managed-production provenance onto each projected task.
+    // Without process_input_hash + work_intent_id, workers that call any
+    // managed-production tool (artifact_create, process_node_submit, etc.)
+    // under SAGA_MANAGED_EXECUTION=1 hit MANAGED_PRODUCTION_CONTEXT_INVALID:
+    // "process provenance binding is incomplete" (3 of 4 keys present).
+    // Both values are shared across all tasks of the same ProcessRun — the
+    // planner LM node already established them when it created its WorkIntent.
+    const processRun = this.db.prepare(
+      'SELECT input_hash FROM saga3_process_runs WHERE id=?',
+    ).get(input.processRunId) as { input_hash: string } | undefined;
+    const plannerIntent = this.db.prepare(
+      `SELECT wi.id AS work_intent_id
+         FROM saga3_work_intents wi
+         JOIN tasks t ON t.id = wi.projected_task_id
+        WHERE t.metadata LIKE ?
+          AND t.epic_id = ?
+        ORDER BY wi.id DESC LIMIT 1`,
+    ).get(
+      `%"process_run_id":${input.processRunId}%`,
+      input.developmentCase.epicId,
+    ) as { work_intent_id: number } | undefined;
     const metadata = {
       process_run_id: input.processRunId,
       process_node_id: 'resolve-task-graph',
       process_module_ref: 'solution-development@1.0.0',
+      process_input_hash: processRun?.input_hash ?? null,
+      work_intent_id: plannerIntent?.work_intent_id ?? null,
       task_graph_hash: input.graph.graphHash,
       work_item_key: input.item.key,
       work_item_kind: input.item.kind,

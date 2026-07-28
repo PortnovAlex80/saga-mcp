@@ -67,6 +67,12 @@ inside one launch.
 one `worker_next` + one `worker_done`. The orchestrator decides whether to spawn
 you again. Looping inside one launch burns tokens and blocks the main session.
 
+**NEVER call `process_node_submit`.** That tool is for LM-node tasks only
+(planner, product, analyst, architect — typed Process Module workers). Your
+channel is `worker_done` + merge protocol. Calling `process_node_submit` on a
+development/verification task will fail with `MANAGED_PRODUCTION_CONTEXT_INVALID`
+because your task does not carry LM-node provenance.
+
 ## Step 0 — resolve your project (разреши свой проект; ONCE, before the first worker_next — один раз, перед первым worker_next)
 
 For new products, project identity lives in `.saga/project.json`; the board
