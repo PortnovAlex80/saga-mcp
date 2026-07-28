@@ -1,4 +1,4 @@
-import type { LifecycleDefinition } from '../domain/lifecycle.js';
+import type { LifecycleDefinition, RouteResolver, TransitionTarget } from '../domain/lifecycle.js';
 import { DELIVERY_PROCESS_MODULE_REF } from '../modules/delivery/delivery-process-module.js';
 import {
   DELIVERY_RELEASE_CASE_SCHEMA,
@@ -42,6 +42,23 @@ export interface ProductDeliveryLifecycleInput {
       };
     };
   };
+  /**
+   * Per-run Discovery gate. The operator who starts the lifecycle has ALREADY
+   * decided they want to see the product built; Discovery is therefore an
+   * idea-strength gate (the decision + readiness confidence are recorded in the
+   * certificate), not a build gate.
+   *
+   * - `'permissive'` (default): every Discovery outcome (including weak
+   *   `clarify` / `reject` / `defer` / `inconclusive` / `failed`) is forwarded
+   *   to Formalization. The strength is carried by the certificate.
+   * - `'strict'`: non-`go` Discovery outcomes terminate the lifecycle (legacy
+   *   behavior). Use this for regulated / contractual environments where
+   *   Discovery is a real go/no-go gate.
+   *
+   * The flag lives in input, so it never changes the lifecycle definition hash;
+   * the same definition serves both modes and the operator picks per run.
+   */
+  discoveryGate?: 'permissive' | 'strict';
 }
 
 export function assertProductDeliveryLifecycleInput(
@@ -141,7 +158,47 @@ export function assertProductDeliveryLifecycleInput(
   ) {
     throw new Error('PRODUCT_LIFECYCLE_DELIVERY_CONFIGURATION_INVALID');
   }
+  // discoveryGate is optional; when present it must be a recognized mode.
+  // Default is 'permissive', validated downstream by the route resolver.
+  if (
+    value.discoveryGate !== undefined
+    && value.discoveryGate !== 'permissive'
+    && value.discoveryGate !== 'strict'
+  ) {
+    throw new Error('PRODUCT_LIFECYCLE_DISCOVERY_GATE_INVALID');
+  }
 }
+
+/**
+ * Per-run Discovery gate resolver. The static `outcomeRoutes` table is the
+ * permissive default (every outcome forwards to Formalization); this resolver
+ * only overrides non-`go` Discovery outcomes when the operator set
+ * `discoveryGate: 'strict'` in the lifecycle input. All other stages and
+ * outcomes defer to the static table.
+ *
+ * Returning `undefined` falls through to the static lookup, so this resolver
+ * augments rather than replaces the table.
+ */
+const DISCOVERY_GATE_TERMINAL_STATUSES: Readonly<Record<string, string>> = {
+  clarify: 'clarification-required',
+  reject: 'rejected',
+  defer: 'deferred',
+  inconclusive: 'inconclusive',
+  failed: 'failed',
+};
+
+const resolveProductDeliveryRoute: RouteResolver = ({ stage, outcome, rootInput }) => {
+  // Only the Discovery stage is gated, and only non-go outcomes.
+  if (stage.id !== 'initial-discovery' || outcome === 'go') return undefined;
+  const gate = isRecord(rootInput) && typeof rootInput.discoveryGate === 'string'
+    ? rootInput.discoveryGate
+    : 'permissive';
+  if (gate !== 'strict') return undefined; // permissive: use static routes
+  const terminalStatus = DISCOVERY_GATE_TERMINAL_STATUSES[outcome];
+  if (!terminalStatus) return undefined; // unknown outcome: defer to static table
+  const target: TransitionTarget = { type: 'terminal', status: terminalStatus };
+  return target;
+};
 
 /**
  * Standard product lifecycle. Every stage emits only a local outcome; this
@@ -151,6 +208,7 @@ export function assertProductDeliveryLifecycleInput(
  *   initiative.{subject,context,evidence,constraints}
  *   development.{repositories,policy}
  *   delivery.{policy,operatorAuthorization}
+ *   discoveryGate? ('permissive' default | 'strict')
  *
  * Missing deployment/provider configuration fails at its first required
  * mapping. The lifecycle never invents repositories, policies or authority.
@@ -187,12 +245,16 @@ export const productDeliveryLifecycle: LifecycleDefinition = {
         'certificate.hash': '$.processOutcome.certificateHash',
       },
       outcomeRoutes: {
+        // Every Discovery outcome is forwarded to Formalization. The strength
+        // of the idea is carried by the discovery certificate (decision +
+        // readiness confidence); it does not gate the lifecycle. Formalization
+        // reads the certificate ref/hash and reasons about the contract.
         go: { type: 'stage', stageId: 'solution-formalization' },
-        clarify: { type: 'terminal', status: 'clarification-required' },
-        reject: { type: 'terminal', status: 'rejected' },
-        defer: { type: 'terminal', status: 'deferred' },
-        inconclusive: { type: 'terminal', status: 'inconclusive' },
-        failed: { type: 'terminal', status: 'failed' },
+        clarify: { type: 'stage', stageId: 'solution-formalization' },
+        reject: { type: 'stage', stageId: 'solution-formalization' },
+        defer: { type: 'stage', stageId: 'solution-formalization' },
+        inconclusive: { type: 'stage', stageId: 'solution-formalization' },
+        failed: { type: 'stage', stageId: 'solution-formalization' },
       },
       entryConditions: ['initiative.subject exists'],
       exitConditions: ['Discovery has an immutable local outcome and certificate lineage'],
@@ -228,7 +290,7 @@ export const productDeliveryLifecycle: LifecycleDefinition = {
         infeasible: { type: 'terminal', status: 'infeasible' },
         failed: { type: 'terminal', status: 'failed' },
       },
-      entryConditions: ['Discovery outcome is go', 'Discovery certificate ref and hash exist'],
+      entryConditions: ['Discovery certificate ref and hash exist'],
       exitConditions: ['Formalization has a frozen content-addressed Solution Contract'],
     },
     {
@@ -337,6 +399,16 @@ export const productDeliveryLifecycle: LifecycleDefinition = {
     },
   ],
 };
+// Attach the route resolver as a NON-enumerable property so it is invisible to
+// canonicalJson/JSON serialization (functions are not valid JSON values and
+// would break the persisted definitionSnapshot + its hash). The resolver is
+// still reachable at runtime via `productDeliveryLifecycle.routeResolver` and
+// is covered by the lifecycle identity (name@version), not by the snapshot.
+Object.defineProperty(
+  productDeliveryLifecycle,
+  'routeResolver',
+  { value: resolveProductDeliveryRoute, enumerable: false, writable: false, configurable: false },
+);
 
 /**
  * Backward-compatible export name. It now refers to the complete lifecycle;

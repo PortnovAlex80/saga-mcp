@@ -671,3 +671,37 @@ test('durable product lifecycle freezes exact handoffs and terminal replay creat
     cleanupFixture(fixture);
   }
 });
+
+// A weak product idea must still pass through the lifecycle. Discovery is an
+// idea-strength gate (decision + readiness confidence are recorded in the
+// certificate), not a build gate. Every non-go outcome must route forward to
+// Formalization rather than terminalize the lifecycle run. This test confirms
+// the routing at the lifecycle-definition level: the orchestrator will not be
+// told to stop just because Discovery said "clarify"/"reject"/etc.
+test('product lifecycle forwards weak Discovery outcomes (non-go) to Formalization', () => {
+  const discovery = productDeliveryLifecycle.stages.find(
+    stage => stage.id === 'initial-discovery',
+  );
+  assert.ok(discovery, 'initial-discovery stage must exist');
+  // No Discovery outcome may be terminal — every one must carry the idea
+  // forward so Formalization can reason about the contract on its own merits.
+  for (const outcome of ['go', 'clarify', 'reject', 'defer', 'inconclusive', 'failed']) {
+    const route = discovery.outcomeRoutes[outcome];
+    assert.ok(route, `Discovery must declare a route for outcome '${outcome}'`);
+    assert.equal(
+      route.type,
+      'stage',
+      `outcome '${outcome}' must route to a stage, got ${route.type}`,
+    );
+    assert.equal(
+      route.stageId,
+      'solution-formalization',
+      `outcome '${outcome}' must route to solution-formalization, got ${route.stageId}`,
+    );
+    assert.equal(
+      route.status,
+      undefined,
+      `outcome '${outcome}' must not be terminal (no status), got ${route.status}`,
+    );
+  }
+});

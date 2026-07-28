@@ -225,6 +225,37 @@ test('E2E restart: re-run on the same epic returns the persisted terminal result
   } finally { cleanup(temp); }
 });
 
+// Discovery is a product-idea gate, not a build gate. A weak idea
+// (clarify/reject/defer/inconclusive/failed) must still pass into formalization;
+// the strength of the idea is recorded in the discovery certificate, not used
+// to block settlement. The settlement handler must reason about the contract
+// (PRD/UC/AC/SRS/baseline), not about the discovery decision.
+test('E2E weak idea: non-go discovery outcome still reaches formalization settlement', async () => {
+  const { temp, db } = fixture('complete');
+  try {
+    const processRunRepo = new SqliteProcessRunRepository(db);
+    const certificateRepo = new SqliteProcessOutcomeCertificateRepository(db);
+    const engine = new Saga3FormalizationEngine({
+      db, processRunRepo, certificateRepo,
+      resolveFormalizationCase: command => ({
+        discoveryEpicId: 50,
+        formalizationEpicId: command.epicId,
+        discoveryCertificateRef: 'certificate:5',
+        discoveryCertificateHash: 'd'.repeat(64),
+        // Discovery said "the idea needs clarification". Formalization must
+        // still run settlement on the contract, not reject on the decision.
+        discoveryOutcome: 'clarify',
+        initiatedBy: 'operator',
+      }),
+    });
+    const result = await engine.run({ projectId: 1, epicId: 100 });
+    // Settlement reached a real decision on the contract (formalized),
+    // proving the gate did not throw on the non-go discovery outcome.
+    assert.equal(result.outcome, 'formalized');
+    assert.equal(result.reason, 'completed');
+  } finally { cleanup(temp); }
+});
+
 test('E2E duplicate start: process_run_start with same idempotency_key replays', () => {
   const { temp, db } = fixture('complete');
   try {

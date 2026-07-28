@@ -232,7 +232,12 @@ export class LifecycleOrchestrator {
         }
 
         const persistedResult = processResult.result;
-        const route = routeProcessOutcome(stage, persistedResult.outcome);
+        const route = routeProcessOutcome(
+          stage,
+          persistedResult.outcome,
+          rootInput,
+          definition.routeResolver,
+        );
 
         // outputMapping is a strict, typed hand-off contract. A terminal local
         // outcome does not have a downstream consumer, so it must not be made

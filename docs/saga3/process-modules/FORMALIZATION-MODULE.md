@@ -12,6 +12,20 @@ Convert an accepted Discovery subject into a frozen, traceable and implementable
 solution contract without allowing architecture or implementation choices to
 silently rewrite the accepted product intent.
 
+> Discovery is an idea-strength gate, not a build gate. Every Discovery outcome
+> (including a weak `clarify` / `reject` / `defer` / `inconclusive` / `failed`)
+> is forwarded to Formalization. The strength of the idea is carried by the
+> Discovery outcome certificate (`decision` + readiness confidence) and does not
+> itself block settlement; Formalization reasons about the contract on its own
+> merits. The certificate must still be present and structurally valid.
+>
+> The operator can flip this back to a legacy go/no-go gate per run by setting
+> `discoveryGate: 'strict'` in the lifecycle input. Under `strict`, non-`go`
+> Discovery outcomes terminate the lifecycle (`clarify` →
+> `clarification-required`, `reject` → `rejected`, etc.) instead of forwarding.
+> Default is `'permissive'`. Use `strict` for regulated / contractual
+> environments where Discovery is a real build gate.
+
 ## Input contract
 
 ```text
@@ -20,7 +34,8 @@ saga3.formalization-case.v1
 
 The input must bind:
 
-- authoritative Discovery outcome certificate;
+- authoritative Discovery outcome certificate (any decision; strength is
+  recorded, not blocking);
 - accepted subject snapshot;
 - constraints and non-goals;
 - known evidence and unresolved questions;

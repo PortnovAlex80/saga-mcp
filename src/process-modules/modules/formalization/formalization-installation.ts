@@ -1585,7 +1585,8 @@ function requireFormalizationCase(input: unknown): FormalizationCase {
     || typeof value.discoveryCertificateRef !== 'string'
     || value.discoveryCertificateRef.length === 0
     || !isSha256(value.discoveryCertificateHash)
-    || value.discoveryOutcome !== 'go'
+    || typeof value.discoveryOutcome !== 'string'
+    || value.discoveryOutcome.length === 0
     || typeof value.initiatedBy !== 'string'
   ) {
     throw new Error('formalization settlement received an invalid or unauthorized FormalizationCase');

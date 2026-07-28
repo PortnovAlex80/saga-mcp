@@ -1,6 +1,7 @@
 import type {
   LifecycleDefinition,
   LifecycleRouteResult,
+  RouteResolver,
   StageBinding,
   TransitionTarget,
 } from '../domain/lifecycle.js';
@@ -11,11 +12,24 @@ export interface LifecycleValidationResult {
   errors: string[];
 }
 
+/**
+ * Resolve the transition target for a stage outcome.
+ *
+ * If a `resolver` is supplied, it is asked first and may override the static
+ * `outcomeRoutes` table based on the per-run `rootInput`. A resolver that
+ * returns `undefined` defers to the static table. When no resolver is supplied
+ * (or it defers), the static table is authoritative — preserving the original
+ * behavior for any lifecycle that does not opt into per-run routing.
+ */
 export function routeProcessOutcome(
   stage: StageBinding,
   outcome: string,
+  rootInput?: unknown,
+  resolver?: RouteResolver,
 ): LifecycleRouteResult {
-  const target = stage.outcomeRoutes[outcome];
+  const target = resolver
+    ? resolver({ stage, outcome, rootInput }) ?? stage.outcomeRoutes[outcome]
+    : stage.outcomeRoutes[outcome];
   if (!target) {
     throw new Error(`stage '${stage.id}' has no route for process outcome '${outcome}'`);
   }
