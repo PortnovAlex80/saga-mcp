@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3';
 import { SCHEMA_SQL } from './schema.js';
 import { backfillWorkItemShadow } from './lifecycle/backfill-migration.js';
+import { ensureSaga3ModuleInstallationSchema } from './process-modules/installation/persistence/installation-repository.js';
 
 let db: Database.Database | null = null;
 
@@ -82,7 +83,41 @@ export function getDb(): Database.Database {
   // flow executor can project Formalization tasks.
   migrateExecutionModeArtifactChange(db);
 
+  // Wave 2 (W2-A2, spec §3) — immutable Process Module installations.
+  // W2-A2 is the SINGLE SQL owner this wave (plan §0.5.2, C083). Creates the
+  // saga3_module_installations table + the partial UNIQUE index that enforces
+  // version immutability (at most one active row per (name, version)). NO
+  // ON DELETE SET NULL (plan §5.5.9). Idempotent (CREATE IF NOT EXISTS).
+  ensureSaga3ModuleInstallationSchema(db);
+
+  // Wave 2 (W2-A2, spec §3.2) — pin ProcessRuns to their installation.
+  // Both columns nullable: legacy pre-Wave-2 runs leave them NULL and route
+  // through the legacy adapter (W2-A4). New Wave-2+ runs MUST set both
+  // (enforced in application code, not schema, until Wave 11 hardens NOT NULL).
+  //
+  // NOTE: saga3_process_runs is created LAZILY by ensureSaga3ProcessRunSchema
+  // (in persistence/sqlite-process-run-repository.ts), NOT by SCHEMA_SQL. On a
+  // fresh DB the table does not exist yet at this point, so these ALTERs are
+  // guarded on table existence (clean no-op on fresh DB). The columns are ALSO
+  // added inside ensureSaga3ProcessRunSchema via its existing column-add block —
+  // that is the place that reliably runs when the table springs into existence,
+  // and the established pattern for this table's columns. This dual placement is
+  // the resolution to a spec ambiguity (spec §3.2 assumed the table is in
+  // SCHEMA_SQL; it is not) and is documented for the integrator.
+  if (tableExists(db, 'saga3_process_runs')) {
+    try { db.exec('ALTER TABLE saga3_process_runs ADD COLUMN installation_id INTEGER'); } catch { /* column already exists */ }
+    try { db.exec('ALTER TABLE saga3_process_runs ADD COLUMN package_digest TEXT'); } catch { /* column already exists */ }
+  }
+
   return db;
+}
+
+/** True iff a base table named `name` exists in sqlite_master. */
+function tableExists(db: Database.Database, name: string): boolean {
+  const row = db.prepare(
+    "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+  ).get(name);
+  return row !== undefined;
 }
 
 export function closeDb(): void {

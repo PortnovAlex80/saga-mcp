@@ -127,6 +127,21 @@ export function ensureSaga3ProcessRunSchema(db: Database.Database): void {
   if (!columns.some(column => column.name === 'active_issue_hash')) {
     db.exec('ALTER TABLE saga3_process_runs ADD COLUMN active_issue_hash TEXT');
   }
+  // Wave 2 (W2-A2, spec §3.2) — pin ProcessRuns to their installation. Both
+  // nullable: legacy pre-Wave-2 runs leave them NULL and route through the
+  // legacy adapter (W2-A4). New Wave-2+ runs MUST set both (enforced in
+  // application code, not schema, until Wave 11 hardens NOT NULL). These two
+  // ALTERs mirror the column-add block above; W2-A2 (single SQL owner, plan
+  // §0.5.2 / C083) owns them and ALSO places defensive copies in db.ts for the
+  // existing-DB upgrade path. See db.ts `tableExists` guard for the dual
+  // placement rationale (saga3_process_runs is created lazily here, not by
+  // SCHEMA_SQL — spec §3.2 assumed otherwise).
+  if (!columns.some(column => column.name === 'installation_id')) {
+    db.exec('ALTER TABLE saga3_process_runs ADD COLUMN installation_id INTEGER');
+  }
+  if (!columns.some(column => column.name === 'package_digest')) {
+    db.exec('ALTER TABLE saga3_process_runs ADD COLUMN package_digest TEXT');
+  }
 }
 
 interface ProcessRunRow {
