@@ -9,6 +9,7 @@ import type {
   KernelHandlerContext,
   KernelHandlerResult,
 } from '../../application/kernel-handler-registry.js';
+import { withKernelRecoveryIssue } from '../../application/kernel-recovery-issue.js';
 import type {
   NodeExecutionReceipt,
   NodeExecutionResult,
@@ -74,7 +75,36 @@ export function createDevelopmentKernelHandlers(
 ): Record<string, KernelHandler> {
   return {
     [DEVELOPMENT_KERNEL_HANDLER_IDS.resolveTaskGraph]:
-      createTaskGraphResolver(deps),
+      withKernelRecoveryIssue(
+        createTaskGraphResolver(deps),
+        {
+          policyId: 'repair-development-task-graph',
+          subject: 'development task graph proposal',
+          triggerEvents: ['clarification-required'],
+          reasonBindings: [
+            'errors',
+            'reasonCodes',
+            'resolutionStatus',
+          ],
+          actualBindings: [
+            'errors',
+            'reasonCodes',
+            'resolutionStatus',
+            'proposalSchema',
+            'plannerSubmissionRef',
+            'plannerSubmissionHash',
+          ],
+          acceptanceCriteria: [
+            'The planner submits the declared task-graph proposal schema.',
+            'The graph covers the accepted decomposition and remains acyclic.',
+            'Every task, repository and dependency preserves exact input lineage.',
+          ],
+          allowedChanges: [
+            'development task graph proposal',
+            'task definitions, dependencies and repository bindings in that proposal',
+          ],
+        },
+      ),
     [DEVELOPMENT_KERNEL_HANDLER_IDS.settle]:
       createDevelopmentSettlementHandler(deps),
   };

@@ -105,6 +105,16 @@ test('formalization artifact writers delegate acceptance to the common kernel ga
   );
 });
 
+test('development planner declares reviewer and semantic recovery route', () => {
+  const profile = developmentProcessModule.executionProfiles.find(candidate =>
+    candidate.id === 'development-task-graph-planner');
+  assert.equal(profile.reviewSkill, 'saga-planning-reviewer');
+  assert.deepEqual(
+    developmentProcessModule.flow.recovery.map(policy => policy.id),
+    ['repair-development-task-graph'],
+  );
+});
+
 test('validator rejects ambiguous transitions from one node on one event', () => {
   const broken = structuredClone(formalizationProcessModule);
   broken.flow.transitions.push({

@@ -1,11 +1,14 @@
 import { createHash } from 'node:crypto';
 import { getDb } from '../../../db.js';
 import type { ProcessModuleDefinition } from '../../domain/process-module.js';
-import { RECOVERY_ISSUE_SCHEMA, type RecoveryIssue } from '../../domain/recovery.js';
 import {
   type ExactCandidateAcceptance,
   type ExactCandidateAcceptanceDirective,
 } from '../../application/exact-candidate-acceptance.js';
+import {
+  withKernelRecoveryIssue,
+  type KernelRecoveryIssueSpec,
+} from '../../application/kernel-recovery-issue.js';
 import type {
   KernelHandler,
   KernelHandlerContext,
@@ -134,153 +137,66 @@ const PRODUCT_SUPPORTING_TYPES = [
   'theme',
 ] as const;
 
-interface FormalizationRecoverySpec {
-  policyId: string;
-  subject: string;
-  acceptanceCriteria: readonly string[];
-  allowedChanges: readonly string[];
-  recoverableEvents: readonly string[];
-}
-
 function recoverySpec(
   policyId: string,
   subject: string,
   acceptanceCriteria: readonly string[],
   allowedChanges: readonly string[],
   recoverableEvents: readonly string[] = ['clarification-required', 'inconsistent'],
-): FormalizationRecoverySpec {
+): KernelRecoveryIssueSpec {
   return {
     policyId,
     subject,
     acceptanceCriteria,
     allowedChanges,
-    recoverableEvents,
-  };
-}
-
-function withFormalizationRecovery(
-  handler: KernelHandler,
-  spec: FormalizationRecoverySpec,
-): KernelHandler {
-  return ctx => {
-    const returned = handler(ctx);
-    if (returned instanceof Promise) {
-      return returned.then(result => applyFormalizationRecovery(ctx, result, spec));
-    }
-    return applyFormalizationRecovery(ctx, returned, spec);
-  };
-}
-
-function applyFormalizationRecovery(
-  ctx: KernelHandlerContext,
-  result: KernelHandlerResult,
-  spec: FormalizationRecoverySpec,
-): KernelHandlerResult {
-    if (
-      result.recoveryIssue
-      || !spec.recoverableEvents.includes(result.event)
-    ) {
-      return result;
-    }
-    const bindings = result.production.bindings;
-    const baselineDrift = integerArray(bindings.baselineDriftArtifactIds);
+    triggerEvents: recoverableEvents,
+    reasonBindings: ['reason', 'gap'],
+    subjectIdBindings: [
+      'dirtyArtifactIds',
+      'unacceptedArtifactIds',
+      'artifactIds',
+    ],
+    actualBindings: [
+      'gap',
+      'reason',
+      'unacceptedArtifactIds',
+      'baselineDriftArtifactIds',
+    ],
     // Re-baselining is an explicit governance action, not an LM repair. Until
     // the runtime exposes a durable acknowledge/rebaseline command, preserve
-    // the module's inconsistent outcome instead of opening an unresumable
-    // human recovery case.
-    if (baselineDrift.length > 0) return result;
-    const reason = firstString(
-      bindings.reason,
-      bindings.gap,
-      `${spec.subject} emitted ${result.event}`,
-    );
-    const artifactIds = firstNonEmptyIntegerArray(
-      bindings.dirtyArtifactIds,
-      bindings.unacceptedArtifactIds,
-      bindings.artifactIds,
-    );
-    const artifactHashes = recordBinding(bindings.artifactHashes);
-    const subjectRefs = artifactIds.length > 0
-      ? artifactIds.map(id => ({
-          kind: 'artifact',
-          ref: `artifact:${id}`,
-          contentHash: typeof artifactHashes[String(id)] === 'string'
-            ? artifactHashes[String(id)] as string
-            : null,
-        }))
-      : [{
-          kind: 'node-production',
-          ref: result.production.artifactRef,
-          schema: result.production.schema,
-          contentHash: result.production.contentHash,
-        }];
-    // A reconciliation worker may repair trace edges, but it cannot accept an
-    // artifact that belongs to an earlier author/resolver gate. Pause with the
-    // exact ids so an operator/orchestrator can resume the owning stage; do
-    // not waste repair attempts asking the reconciler to exceed its authority.
-    const unacceptedArtifactIds = integerArray(
-      bindings.unacceptedArtifactIds,
-    );
-    const disposition: RecoveryIssue['disposition'] =
-      unacceptedArtifactIds.length > 0 ? 'human' : 'repair';
-    return {
-      ...result,
-      event: 'repair-required',
-      recoveryIssue: {
-        schemaVersion: RECOVERY_ISSUE_SCHEMA,
-        policyId: spec.policyId,
-        disposition,
-        reasonCode: `${spec.policyId.toUpperCase().replace(/[^A-Z0-9]+/g, '_')}_${
-          result.event.toUpperCase().replace(/[^A-Z0-9]+/g, '_')
-        }`,
-        summary: `Repair ${spec.subject}: ${reason}`,
-        findings: [{
-          code: result.event,
-          severity: 'error',
-          message: reason,
-          subjectRef: subjectRefs[0]?.ref ?? result.production.artifactRef,
-          expected: spec.acceptanceCriteria,
-          actual: {
-            gap: bindings.gap ?? null,
-            reason: bindings.reason ?? null,
-            unacceptedArtifactIds: bindings.unacceptedArtifactIds ?? [],
-            baselineDriftArtifactIds: bindings.baselineDriftArtifactIds ?? [],
-          },
-          evidenceRefs: [result.production.artifactRef],
-        }],
-        subjectRefs,
-        acceptanceCriteria: spec.acceptanceCriteria,
-        allowedChanges: spec.allowedChanges,
-        context: {
-          processRunId: ctx.processRunId,
-          originalEvent: result.event,
-          verifierNodeId: ctx.node.id,
-          productionRef: result.production.artifactRef,
-          productionHash: result.production.contentHash,
-        },
-      },
-    };
+    // the module's inconsistent outcome.
+    skip: ({ bindings }) =>
+      Array.isArray(bindings.baselineDriftArtifactIds)
+      && bindings.baselineDriftArtifactIds.some(Number.isInteger),
+    // A reconciler may repair its own traces, but it cannot accept an artifact
+    // owned by an earlier author/resolver gate.
+    disposition: ({ bindings }) =>
+      Array.isArray(bindings.unacceptedArtifactIds)
+      && bindings.unacceptedArtifactIds.some(Number.isInteger)
+        ? 'human'
+        : 'repair',
+  };
 }
 
 export function createFormalizationKernelHandlers(
   deps: FormalizationInstallationDeps,
 ): Record<string, KernelHandler> {
   return {
-    [FORMALIZATION_HANDLER_IDS.resolveProduct]: withFormalizationRecovery(
+    [FORMALIZATION_HANDLER_IDS.resolveProduct]: withKernelRecoveryIssue(
       createResolveProductHandler(deps),
       recoverySpec('repair-product-contract', 'product contract', [
         'Exactly one PRD and at least one FR are present.',
         'Product artifacts are trace-complete and accepted+clean.',
       ], ['PRD', 'FR', 'NFR', 'RULE', 'their outgoing traces']),
     ),
-    [FORMALIZATION_HANDLER_IDS.resolveUseCases]: withFormalizationRecovery(
+    [FORMALIZATION_HANDLER_IDS.resolveUseCases]: withKernelRecoveryIssue(
       createResolveUseCasesHandler(deps),
       recoverySpec('repair-use-case-contract', 'use-case contract', [
         'Every UC derives from the exact PRD and covers an exact FR.',
         'Use-case artifacts are accepted+clean.',
       ], ['UC artifacts', 'UC derived_from/covers traces']),
     ),
-    [FORMALIZATION_HANDLER_IDS.resolveAcceptance]: withFormalizationRecovery(
+    [FORMALIZATION_HANDLER_IDS.resolveAcceptance]: withKernelRecoveryIssue(
       createResolveAcceptanceHandler(deps),
       recoverySpec('repair-acceptance-contract', 'acceptance contract', [
         'Every AC derives from an exact FR or NFR.',
@@ -288,7 +204,7 @@ export function createFormalizationKernelHandlers(
         'Acceptance artifacts are accepted+clean.',
       ], ['AC artifacts', 'AC derived_from traces']),
     ),
-    [FORMALIZATION_HANDLER_IDS.resolveReconciliation]: withFormalizationRecovery(
+    [FORMALIZATION_HANDLER_IDS.resolveReconciliation]: withKernelRecoveryIssue(
       createResolveReconciliationHandler(deps),
       recoverySpec('repair-reconciliation', 'WHAT reconciliation', [
         'The exact product, UC and AC set is trace-complete.',
@@ -296,7 +212,7 @@ export function createFormalizationKernelHandlers(
       ], ['reconciliation-owned traces', 'unaccepted WHAT artifacts']),
     ),
     [FORMALIZATION_HANDLER_IDS.freezeBaseline]: createBaselineFreezerHandler(deps),
-    [FORMALIZATION_HANDLER_IDS.resolveArchitecture]: withFormalizationRecovery(
+    [FORMALIZATION_HANDLER_IDS.resolveArchitecture]: withKernelRecoveryIssue(
       createResolveArchitectureHandler(deps),
       recoverySpec('repair-architecture-contract', 'architecture contract', [
         'Exactly one SRS is produced and traces to the exact PRD.',
@@ -1887,34 +1803,6 @@ function numberArrayBinding(
     throw new Error(`production binding '${name}' must be an array of positive integers`);
   }
   return [...new Set(value as number[])].sort((a, b) => a - b);
-}
-
-function integerArray(value: unknown): number[] {
-  return Array.isArray(value)
-    ? [...new Set(value.filter(item => Number.isInteger(item)) as number[])]
-        .sort((a, b) => a - b)
-    : [];
-}
-
-function firstNonEmptyIntegerArray(...values: unknown[]): number[] {
-  for (const value of values) {
-    const items = integerArray(value);
-    if (items.length > 0) return items;
-  }
-  return [];
-}
-
-function recordBinding(value: unknown): Record<string, unknown> {
-  return value && typeof value === 'object' && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : {};
-}
-
-function firstString(...values: unknown[]): string {
-  for (const value of values) {
-    if (typeof value === 'string' && value.trim() !== '') return value.trim();
-  }
-  return 'The verifier rejected the candidate without a textual rationale.';
 }
 
 function stringBinding(bindings: Record<string, unknown>, name: string): string {

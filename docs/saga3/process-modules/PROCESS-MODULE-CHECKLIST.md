@@ -49,6 +49,8 @@ For every LM node:
 
 - [ ] One WorkIntent kind and versioned WorkIntent schema are defined.
 - [ ] One task kind and one execution skill are defined.
+- [ ] Independent reviewer skill is declared when the task enters review.
+- [ ] Artifact acceptance authority is explicit (`worker` or `kernel-gate`).
 - [ ] Worker is single-use: one WorkIntent, one task, then exit.
 - [ ] Allowed MCP tools are declared in the execution profile.
 - [ ] The skill mirrors the allowlist exactly.
@@ -144,8 +146,16 @@ For every LM node:
 - [ ] Accepted output prevents duplicate worker launch.
 - [ ] Interrupted control/advisor nodes resume from durable state.
 - [ ] Retry attempts and reasons are durable.
+- [ ] A recoverable verifier uses the common `RecoveryIssue` adapter and
+  declares its verifier/repair route in `flow.recovery`.
+- [ ] Recovery feedback identifies exact subjects, findings, acceptance
+  criteria and allowed changes.
+- [ ] The repair node has authority for every allowed change; otherwise the
+  issue pauses for the owning stage/human instead of wasting attempts.
 - [ ] Timeout, crash, rejected payload and silent loop are distinguishable.
 - [ ] Recovery never fabricates completion evidence.
+- [ ] External side effects are never auto-repeated merely because an LM-style
+  recovery policy exists.
 - [ ] Exhausted policy routes to fail, pause or escalation explicitly.
 
 ## L. Stage Binding and Lifecycle

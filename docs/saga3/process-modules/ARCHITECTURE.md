@@ -188,6 +188,8 @@ workIntentSchema
     ↓
 taskKind
 executionSkill
+reviewSkill
+artifactAcceptanceAuthority
 allowedTools
     ↓
 trackerTemplate
@@ -216,6 +218,8 @@ WorkIntent
 + checklist
 + typed output
 + validation ladder
++ independent review evidence
++ kernel-owned exact acceptance (when declared)
 + durable recovery
 ```
 

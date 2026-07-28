@@ -200,8 +200,17 @@ test('invalid LM graph is rejected before any task materialization', async () =>
   const result = await handlers[
     DEVELOPMENT_KERNEL_HANDLER_IDS.resolveTaskGraph
   ](resolverContext(runInput));
-  assert.equal(result.event, 'clarification-required');
+  assert.equal(result.event, 'repair-required');
   assert.equal(result.production.bindings.resolutionStatus, 'rejected');
+  assert.equal(
+    result.recoveryIssue.policyId,
+    'repair-development-task-graph',
+  );
+  assert.equal(result.recoveryIssue.disposition, 'repair');
+  assert.match(
+    result.recoveryIssue.summary,
+    /verification work for every accepted AC/,
+  );
   assert.equal(materializationCalls, 0);
 });
 

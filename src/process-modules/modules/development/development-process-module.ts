@@ -174,6 +174,11 @@ export const developmentProcessModule: ProcessModuleDefinition = {
       },
       {
         from: 'resolve-task-graph',
+        to: 'plan-task-graph',
+        on: 'domain.repair-required',
+      },
+      {
+        from: 'resolve-task-graph',
         to: 'settle-development',
         on: 'domain.clarification-required',
       },
@@ -223,6 +228,17 @@ export const developmentProcessModule: ProcessModuleDefinition = {
         to: `complete-${code}`,
         on: `domain.${code}`,
       })),
+    ],
+    recovery: [
+      {
+        id: 'repair-development-task-graph',
+        verifyNodeId: 'resolve-task-graph',
+        repairNodeId: 'plan-task-graph',
+        triggerEvents: ['domain.repair-required'],
+        resolvedEvents: ['domain.valid'],
+        maxAttempts: 2,
+        onExhausted: 'pause',
+      },
     ],
     terminalNodeIds: [
       'complete-verified',
@@ -365,6 +381,7 @@ export const developmentProcessModule: ProcessModuleDefinition = {
       },
       taskKind: 'planning.decomposition',
       executionSkill: 'saga-planner',
+      reviewSkill: 'saga-planning-reviewer',
       protocolSkill: PROCESS_PROTOCOL_SKILL,
       semanticSkill: 'saga-planner',
       executionMode: 'tracker_only',
