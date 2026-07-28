@@ -568,6 +568,39 @@ function handleTraceAdd(args: Record<string, unknown>): ArtifactTrace {
   return trace;
 }
 
+function handleTraceDelete(args: Record<string, unknown>): { deleted: boolean } {
+  const db = getDb();
+  const managedExecution = resolveManagedExecutionProvenance(db);
+  if (managedExecution && !db.inTransaction) {
+    return db.transaction(() => handleTraceDelete(args)).immediate();
+  }
+  const sourceId = args.source_id as number;
+  const targetType = args.target_type as 'artifact' | 'task';
+  const targetId = args.target_id as number;
+  const linkType = args.link_type as typeof LINK_TYPES[number];
+
+  if (!['artifact', 'task'].includes(targetType)) {
+    throw new Error(`target_type must be 'artifact' or 'task', got '${targetType}'`);
+  }
+  if (!LINK_TYPES.includes(linkType)) {
+    throw new Error(`link_type must be one of ${LINK_TYPES.join(', ')}, got '${linkType}'`);
+  }
+
+  // Block deletion of verified_by traces — they are derived from passing
+  // verification evidence, not arbitrary worker writes.
+  if (linkType === 'verified_by') {
+    throw new Error('verified_by traces cannot be deleted; they are derived from verification evidence');
+  }
+
+  const info = db.prepare(
+    `DELETE FROM artifact_traces WHERE source_id=? AND target_type=? AND target_id=? AND link_type=?`,
+  ).run(sourceId, targetType, targetId, linkType);
+
+  logActivity(db, 'artifact', sourceId, 'updated', 'trace', null, `${linkType}→${targetType}:${targetId}`,
+    `Trace ${linkType} deleted: artifact ${sourceId} → ${targetType} ${targetId}`);
+  return { deleted: info.changes > 0 };
+}
+
 function handleTraceList(args: Record<string, unknown>): {
   traces: Array<ArtifactTrace & {
     source_type: string | null; source_code: string | null; source_title: string | null;
@@ -775,6 +808,23 @@ export const definitions: Tool[] = [
     },
   },
   {
+    name: 'trace_delete',
+    description:
+      "Delete a directed trace edge. Use to remove stale or duplicate traces left by earlier worker attempts (e.g. hypothesis → old business_metric after creating correct ones). Cannot delete 'verified_by' traces (those are derived from evidence). " +
+      'Call shape: trace_delete({ source_id: <integer>, target_type: "artifact|task", target_id: <integer>, link_type: "covers|implements|implements_spec|derived_from|depends_on|superseded_by" }). Required: all four.',
+    annotations: { title: 'Trace: Delete', readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
+    inputSchema: {
+      type: 'object',
+      properties: {
+        source_id: { type: 'integer', description: 'Source artifact ID.' },
+        target_type: { type: 'string', enum: ['artifact', 'task'] },
+        target_id: { type: 'integer', description: 'Target artifact or task ID.' },
+        link_type: { type: 'string', enum: [...LINK_TYPES.filter(l => l !== 'verified_by')] },
+      },
+      required: ['source_id', 'target_type', 'target_id', 'link_type'],
+    },
+  },
+  {
     name: 'artifact_coverage',
     description:
       "Coverage matrix for an epic (REQ-NNN episode): of the artifacts of a given type (default AC), which are linked via a given link_type (default 'implements') to tasks, and which are gaps (not yet implemented). The core traceability query — use it to see 'AC-3 is not yet implemented by any dev task'. " +
@@ -798,6 +848,7 @@ export const handlers: Record<string, ToolHandler> = {
   artifact_list: handleArtifactList,
   artifact_update: handleArtifactUpdate,
   trace_add: handleTraceAdd,
+  trace_delete: handleTraceDelete,
   trace_list: handleTraceList,
   artifact_coverage: handleArtifactCoverage,
 };
