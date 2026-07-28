@@ -12,6 +12,9 @@ const { SqliteProcessRunRepository } = await import(
 const { SqliteManagedProductionLedger } = await import(
   '../../dist/process-modules/persistence/sqlite-managed-production-ledger.js'
 );
+const { SqliteSaga3DiscoveryRuntime } = await import(
+  '../../dist/saga3/persistence/sqlite-saga3-discovery-runtime.js'
+);
 const { sha256Hex } = await import(
   '../../dist/process-modules/shared/canonical-json.js'
 );
@@ -216,6 +219,157 @@ test('a reviewer or stale execution cannot mutate managed products', () => {
         `SELECT COUNT(*) AS n FROM artifacts WHERE code='SRS-REVIEWER'`,
       ).get().n,
       0,
+    );
+  } finally {
+    cleanup(f.temp);
+  }
+});
+
+test('a kernel-gated producer can draft candidates but cannot self-accept them', () => {
+  const f = fixture();
+  try {
+    f.db.prepare(
+      `UPDATE tasks
+          SET metadata=json_set(
+            metadata,
+            '$.artifact_acceptance_authority',
+            'kernel-gate'
+          )
+        WHERE id=?`,
+    ).run(f.taskId);
+
+    assert.throws(
+      () => artifactHandlers.artifact_create({
+        project_id: 1,
+        epic_id: 10,
+        type: 'SRS',
+        title: 'Self accepted candidate',
+        path: 'docs/self-accepted.md',
+        code: 'SRS-SELF-ACCEPTED',
+        status: 'accepted',
+        content_hash: 'a'.repeat(64),
+      }),
+      /ARTIFACT_ACCEPTANCE_AUTHORITY_VIOLATION/,
+    );
+    assert.equal(
+      f.db.prepare(
+        `SELECT COUNT(*) AS n
+           FROM artifacts
+          WHERE code='SRS-SELF-ACCEPTED'`,
+      ).get().n,
+      0,
+    );
+
+    const draft = artifactHandlers.artifact_create({
+      project_id: 1,
+      epic_id: 10,
+      type: 'SRS',
+      title: 'Kernel-gated candidate',
+      path: 'docs/kernel-gated.md',
+      code: 'SRS-KERNEL-GATED',
+      status: 'draft',
+      content_hash: 'b'.repeat(64),
+    });
+    assert.equal(draft.status, 'draft');
+
+    // Simulate the common gate committing the reviewed version, then prove a
+    // worker cannot mutate that accepted row without explicitly reopening it.
+    f.db.prepare(
+      `UPDATE artifacts
+          SET status='accepted',accepted_hash=content_hash,drift_state='clean'
+        WHERE id=?`,
+    ).run(draft.id);
+    assert.throws(
+      () => artifactHandlers.artifact_update({
+        id: draft.id,
+        title: 'Silent in-place rewrite',
+      }),
+      /ARTIFACT_ACCEPTANCE_AUTHORITY_VIOLATION/,
+    );
+    const reopened = artifactHandlers.artifact_update({
+      id: draft.id,
+      status: 'draft',
+      title: 'Explicit candidate revision',
+    });
+    assert.equal(reopened.status, 'draft');
+  } finally {
+    cleanup(f.temp);
+  }
+});
+
+test('producer replay selection follows completion receipts across ledger tables', () => {
+  const f = fixture();
+  try {
+    const artifact = artifactHandlers.artifact_create({
+      project_id: 1,
+      epic_id: 10,
+      type: 'SRS',
+      title: 'First candidate',
+      path: 'docs/replayed-producer.md',
+      code: 'SRS-REPLAYED-PRODUCER',
+      status: 'draft',
+      content_hash: '1'.repeat(64),
+    });
+    const insertCompletion = (executionId, payloadHash) => {
+      const reply = {
+        completed: f.taskId,
+        completed_new_status: 'review',
+      };
+      f.db.prepare(
+        `INSERT INTO command_receipts
+           (command_id,command_kind,actor_kind,actor_id,execution_id,task_id,
+            payload_hash,accepted,rejection_code,result_json,reply_json)
+         VALUES (?,?,?,?,?,?,?,1,NULL,?,?)`,
+      ).run(
+        `${executionId}:worker-done:approved`,
+        'worker_done',
+        'managed_execution',
+        executionId,
+        executionId,
+        f.taskId,
+        payloadHash,
+        JSON.stringify(reply),
+        JSON.stringify(reply),
+      );
+    };
+    insertCompletion(f.executionId, '2'.repeat(64));
+
+    f.db.prepare(
+      `UPDATE worker_executions
+          SET state='exited',phase='finishing',finished_at=datetime('now')
+        WHERE execution_id=?`,
+    ).run(f.executionId);
+    const reworkExecutionId = 'exec-managed-product-2';
+    f.db.prepare(
+      `INSERT INTO worker_executions
+         (execution_id,run_id,project_id,epic_id,task_id,worker_id,machine_id,
+          launcher,state,phase,metadata)
+       VALUES (?, 'run-rework',1,10,?,'worker-2','machine-1','test',
+               'running','executing','{}')`,
+    ).run(reworkExecutionId, f.taskId);
+    f.db.prepare(
+      `UPDATE tasks
+          SET status='in_progress',assigned_to='worker-2',
+              current_execution_id=?
+        WHERE id=?`,
+    ).run(reworkExecutionId, f.taskId);
+    process.env.SAGA_EXECUTION_ID = reworkExecutionId;
+    artifactHandlers.artifact_update({
+      id: artifact.id,
+      title: 'Second candidate',
+      status: 'draft',
+      content_hash: '3'.repeat(64),
+    });
+    insertCompletion(reworkExecutionId, '4'.repeat(64));
+
+    assert.equal(
+      new SqliteSaga3DiscoveryRuntime()
+        .readLatestManagedProductionExecutionId(
+          f.taskId,
+          f.processRun.id,
+          f.nodeId,
+        ),
+      reworkExecutionId,
     );
   } finally {
     cleanup(f.temp);

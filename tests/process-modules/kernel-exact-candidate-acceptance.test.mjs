@@ -121,7 +121,7 @@ function executor(acceptance) {
 
 function decision(command) {
   return {
-    schemaVersion: 'saga3.exact-candidate-acceptance.v1',
+    schemaVersion: 'saga3.exact-candidate-acceptance.v2',
     decisionId: 9,
     idempotencyKey: command.idempotencyKey,
     requestHash: 'b'.repeat(64),
@@ -129,6 +129,8 @@ function decision(command) {
     decisionHash: 'd'.repeat(64),
     lineage: command.lineage,
     requireApprovedReview: true,
+    producerCompletionReceiptCommandId: 'producer:approved',
+    producerCompletionReceiptHash: 'f'.repeat(64),
     approvedReviewReceiptCommandId: 'review:approved',
     approvedReviewReceiptHash: 'e'.repeat(64),
     authority: command.authority,
@@ -155,15 +157,49 @@ test('kernel executor commits a directive and returns durable decision evidence'
   };
   const result = await executor(acceptance).execute(context());
   assert.equal(calls.length, 1);
+  assert.deepEqual(calls[0].context, {
+    semanticProductionHash: HASH,
+    gateNodeId: 'verify',
+    semanticProductionRef: 'contract:6',
+  });
   assert.equal(result.domainEvent, 'completed');
   assert.deepEqual(result.acceptanceReceipt, {
-    schemaVersion: 'saga3.exact-candidate-acceptance.v1',
+    schemaVersion: 'saga3.exact-candidate-acceptance.v2',
     decisionRef: 'exact-acceptance:9',
     decisionHash: 'd'.repeat(64),
     candidateSetHash: 'c'.repeat(64),
     idempotencyKey: 'run:1:gate:verify:candidates:a',
     replayed: false,
   });
+});
+
+test('kernel executor refuses a valid command for another ProcessRun', async () => {
+  const acceptance = {
+    accept() {
+      assert.fail('cross-run command must be rejected before the port call');
+    },
+    findByIdempotencyKey() {
+      return null;
+    },
+    isAcceptedExact() {
+      return false;
+    },
+  };
+  const registry = new KernelHandlerRegistry();
+  registry.register('verify-handler', () => {
+    const returned = handlerResult();
+    returned.exactCandidateAcceptance.command.lineage = {
+      ...returned.exactCandidateAcceptance.command.lineage,
+      processRunId: 99,
+    };
+    return returned;
+  });
+  await assert.rejects(
+    new KernelNodeExecutor(registry, acceptance).execute(context()),
+    error =>
+      error instanceof NodeExecutionError
+      && /not bound to the current execution/.test(error.message),
+  );
 });
 
 test('repairable gate rejection becomes opaque recovery feedback', async () => {
@@ -283,7 +319,7 @@ test('NodeRun persists the exact acceptance receipt across restart', () => {
       nodeKind: 'kernel',
     });
     const receipt = {
-      schemaVersion: 'saga3.exact-candidate-acceptance.v1',
+      schemaVersion: 'saga3.exact-candidate-acceptance.v2',
       decisionRef: 'exact-acceptance:9',
       decisionHash: 'd'.repeat(64),
       candidateSetHash: 'c'.repeat(64),

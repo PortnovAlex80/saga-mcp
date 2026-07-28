@@ -18,8 +18,13 @@ import type {
  * module-owned artifact types all use the same protocol.
  */
 
-export const EXACT_CANDIDATE_ACCEPTANCE_SCHEMA =
+export const LEGACY_EXACT_CANDIDATE_ACCEPTANCE_SCHEMA =
   'saga3.exact-candidate-acceptance.v1' as const;
+export const EXACT_CANDIDATE_ACCEPTANCE_SCHEMA =
+  'saga3.exact-candidate-acceptance.v2' as const;
+export type ExactCandidateAcceptanceSchema =
+  | typeof LEGACY_EXACT_CANDIDATE_ACCEPTANCE_SCHEMA
+  | typeof EXACT_CANDIDATE_ACCEPTANCE_SCHEMA;
 
 export interface ExactArtifactCandidate {
   /** Artifact row selected by the module-owned semantic gate. */
@@ -114,7 +119,7 @@ export interface ExactCandidateAcceptanceItem {
 }
 
 export interface ExactCandidateAcceptanceDecision {
-  readonly schemaVersion: typeof EXACT_CANDIDATE_ACCEPTANCE_SCHEMA;
+  readonly schemaVersion: ExactCandidateAcceptanceSchema;
   readonly decisionId: number;
   readonly idempotencyKey: string;
   readonly requestHash: string;
@@ -122,6 +127,8 @@ export interface ExactCandidateAcceptanceDecision {
   readonly decisionHash: string;
   readonly lineage: ExactCandidateProductionLineage;
   readonly requireApprovedReview: boolean;
+  readonly producerCompletionReceiptCommandId: string | null;
+  readonly producerCompletionReceiptHash: string | null;
   readonly approvedReviewReceiptCommandId: string | null;
   readonly approvedReviewReceiptHash: string | null;
   readonly authority: string;
@@ -134,7 +141,7 @@ export interface ExactCandidateAcceptanceDecision {
 
 /** Durable audit link persisted on the NodeRun that requested the gate. */
 export interface ExactCandidateAcceptanceReceipt {
-  readonly schemaVersion: typeof EXACT_CANDIDATE_ACCEPTANCE_SCHEMA;
+  readonly schemaVersion: ExactCandidateAcceptanceSchema;
   readonly decisionRef: string;
   readonly decisionHash: string;
   readonly candidateSetHash: string;

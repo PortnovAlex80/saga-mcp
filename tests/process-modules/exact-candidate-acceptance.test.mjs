@@ -11,14 +11,17 @@ const { SqliteProcessRunRepository } = await import(
 const { ensureManagedProductionLedgerSchema } = await import(
   '../../dist/process-modules/persistence/sqlite-managed-production-ledger.js'
 );
-const { SqliteExactCandidateAcceptance } = await import(
+const {
+  ensureExactCandidateAcceptanceSchema,
+  SqliteExactCandidateAcceptance,
+} = await import(
   '../../dist/process-modules/persistence/sqlite-exact-candidate-acceptance.js'
 );
-const { sha256Hex } = await import(
+const { canonicalJson, sha256Hex } = await import(
   '../../dist/process-modules/shared/canonical-json.js'
 );
 
-function fixture() {
+function fixture({ includeProducerReceipt = true } = {}) {
   const temp = mkdtempSync(path.join(os.tmpdir(), 'saga3-exact-acceptance-'));
   process.env.DB_PATH = path.join(temp, 'acceptance.db');
   const db = getDb();
@@ -56,6 +59,14 @@ function fixture() {
         launcher,state,phase,metadata)
      VALUES (?, 'run-1',1,10,?,'producer','machine','test','exited','finishing','{}')`,
   ).run(executionId, taskId);
+  const reviewerExecutionId = 'exec-review-1';
+  db.prepare(
+    `INSERT INTO worker_executions
+       (execution_id,run_id,project_id,epic_id,task_id,worker_id,machine_id,
+        launcher,state,phase,metadata)
+     VALUES (?, 'run-review-1',1,10,?,'reviewer','machine','test',
+             'exited','finishing','{}')`,
+  ).run(reviewerExecutionId, taskId);
 
   ensureManagedProductionLedgerSchema(db);
   const contentHash = 'a'.repeat(64);
@@ -85,12 +96,36 @@ function fixture() {
     'create',
   );
 
+  const producerReply = {
+    completed: taskId,
+    completed_new_status: 'review',
+    stop: true,
+    stop_reason: 'done',
+  };
   const reviewReply = {
     completed: taskId,
     completed_new_status: 'done',
     stop: true,
     stop_reason: 'done',
   };
+  if (includeProducerReceipt) {
+    db.prepare(
+      `INSERT INTO command_receipts
+         (command_id,command_kind,actor_kind,actor_id,execution_id,task_id,
+          payload_hash,accepted,rejection_code,result_json,reply_json)
+       VALUES (?,?,?,?,?,?,?,1,NULL,?,?)`,
+    ).run(
+      `${executionId}:worker-done:approved`,
+      'worker_done',
+      'managed_execution',
+      'producer',
+      executionId,
+      taskId,
+      'c'.repeat(64),
+      JSON.stringify(producerReply),
+      JSON.stringify(producerReply),
+    );
+  }
   db.prepare(
     `INSERT INTO command_receipts
        (command_id,command_kind,actor_kind,actor_id,execution_id,task_id,
@@ -141,7 +176,15 @@ test('exact candidate acceptance is atomic, review-backed and idempotent', () =>
     const acceptance = new SqliteExactCandidateAcceptance(f.db);
     const first = acceptance.accept(f.command);
     assert.equal(first.replayed, false);
+    assert.equal(
+      first.schemaVersion,
+      'saga3.exact-candidate-acceptance.v2',
+    );
     assert.equal(first.items[0].disposition, 'accepted');
+    assert.equal(
+      first.producerCompletionReceiptCommandId,
+      'exec-producer-1:worker-done:approved',
+    );
     assert.equal(
       first.approvedReviewReceiptCommandId,
       'exec-review-1:worker-done:approved',
@@ -275,6 +318,167 @@ test('an accepted artifact without a prior exact decision cannot be attested ret
       ).get().n,
       0,
     );
+  } finally {
+    cleanup(f.temp);
+  }
+});
+
+test('review-required acceptance rejects a done task without exact producer completion', () => {
+  const f = fixture({ includeProducerReceipt: false });
+  try {
+    const acceptance = new SqliteExactCandidateAcceptance(f.db);
+    assert.throws(
+      () => acceptance.accept(f.command),
+      error => error?.code === 'EXACT_ACCEPTANCE_APPROVED_REVIEW_REQUIRED',
+    );
+    assert.equal(
+      f.db.prepare('SELECT status FROM artifacts WHERE id=?')
+        .get(f.artifactId).status,
+      'draft',
+    );
+  } finally {
+    cleanup(f.temp);
+  }
+});
+
+test('a newer changes_requested receipt supersedes an older approval', () => {
+  const f = fixture();
+  try {
+    const reply = {
+      completed: f.command.lineage.taskId,
+      completed_new_status: 'todo',
+      stop: true,
+      stop_reason: 'changes_requested',
+    };
+    f.db.prepare(
+      `INSERT INTO command_receipts
+         (command_id,command_kind,actor_kind,actor_id,execution_id,task_id,
+          payload_hash,accepted,rejection_code,result_json,reply_json)
+       VALUES (?,?,?,?,?,?,?,1,NULL,?,?)`,
+    ).run(
+      'exec-review-2:worker-done:changes_requested',
+      'worker_done',
+      'managed_execution',
+      'reviewer-2',
+      'exec-review-2',
+      f.command.lineage.taskId,
+      'd'.repeat(64),
+      JSON.stringify(reply),
+      JSON.stringify(reply),
+    );
+    const acceptance = new SqliteExactCandidateAcceptance(f.db);
+    assert.throws(
+      () => acceptance.accept(f.command),
+      error => error?.code === 'EXACT_ACCEPTANCE_APPROVED_REVIEW_REQUIRED',
+    );
+  } finally {
+    cleanup(f.temp);
+  }
+});
+
+test('a legacy v1 decision remains exactly replayable after the v2 upgrade', () => {
+  const f = fixture();
+  try {
+    ensureExactCandidateAcceptanceSchema(f.db);
+    const ledgerId = Number(f.db.prepare(
+      `SELECT id
+         FROM saga3_managed_artifact_productions
+        WHERE artifact_id=?`,
+    ).get(f.artifactId).id);
+    const legacyRequest = {
+      schemaVersion: 'saga3.exact-candidate-acceptance.v1',
+      idempotencyKey: f.command.idempotencyKey,
+      lineage: f.command.lineage,
+      candidates: f.command.candidates,
+      requireApprovedReview: true,
+      authority: f.command.authority,
+      reasonCode: f.command.reasonCode,
+      context: f.command.context,
+    };
+    const requestSnapshot = canonicalJson(legacyRequest);
+    const requestHash = sha256Hex(legacyRequest);
+    const candidateSetHash = sha256Hex(f.command.candidates);
+    const item = {
+      artifactId: f.artifactId,
+      artifactType: 'SRS',
+      contentHash: f.contentHash,
+      ledgerId,
+      disposition: 'accepted',
+      priorStatus: 'draft',
+      priorAcceptedHash: null,
+      priorDriftState: 'unknown',
+      finalStatus: 'accepted',
+      finalAcceptedHash: f.contentHash,
+      finalDriftState: 'clean',
+    };
+    const decisionHash = sha256Hex({
+      schemaVersion: 'saga3.exact-candidate-acceptance.v1',
+      idempotencyKey: f.command.idempotencyKey,
+      requestHash,
+      candidateSetHash,
+      reviewReceiptCommandId: 'exec-review-1:worker-done:approved',
+      items: [item],
+    });
+    f.db.prepare(
+      `UPDATE artifacts
+          SET status='accepted',accepted_hash=content_hash,drift_state='clean'
+        WHERE id=?`,
+    ).run(f.artifactId);
+    const decisionId = Number(f.db.prepare(
+      `INSERT INTO saga3_exact_candidate_acceptance_decisions
+         (schema_version,idempotency_key,request_hash,request_snapshot,
+          candidate_set_hash,process_run_id,module_ref,node_id,intent_id,
+          task_id,execution_id,project_id,epic_id,review_required,
+          review_receipt_command_id,authority,reason_code,decision_hash)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+       RETURNING id`,
+    ).get(
+      legacyRequest.schemaVersion,
+      f.command.idempotencyKey,
+      requestHash,
+      requestSnapshot,
+      candidateSetHash,
+      f.command.lineage.processRunId,
+      f.command.lineage.moduleRef,
+      f.command.lineage.nodeId,
+      f.command.lineage.intentId,
+      f.command.lineage.taskId,
+      f.command.lineage.executionId,
+      f.command.lineage.projectId,
+      f.command.lineage.epicId,
+      1,
+      'exec-review-1:worker-done:approved',
+      f.command.authority,
+      f.command.reasonCode,
+      decisionHash,
+    ).id);
+    f.db.prepare(
+      `INSERT INTO saga3_exact_candidate_acceptance_items
+         (decision_id,ordinal,artifact_id,artifact_type,
+          expected_content_hash,ledger_id,disposition,prior_status,
+          prior_accepted_hash,prior_drift_state,final_status,
+          final_accepted_hash,final_drift_state)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    ).run(
+      decisionId,
+      0,
+      item.artifactId,
+      item.artifactType,
+      item.contentHash,
+      item.ledgerId,
+      item.disposition,
+      item.priorStatus,
+      item.priorAcceptedHash,
+      item.priorDriftState,
+      item.finalStatus,
+      item.finalAcceptedHash,
+      item.finalDriftState,
+    );
+
+    const replay = new SqliteExactCandidateAcceptance(f.db).accept(f.command);
+    assert.equal(replay.schemaVersion, legacyRequest.schemaVersion);
+    assert.equal(replay.replayed, true);
+    assert.equal(replay.decisionHash, decisionHash);
   } finally {
     cleanup(f.temp);
   }

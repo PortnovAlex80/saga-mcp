@@ -11,6 +11,7 @@
 import type {
   KernelFlowNodeDefinition,
 } from '../../domain/process-module.js';
+import { processModuleKey } from '../../domain/process-module.js';
 import {
   RECOVERY_ISSUE_SCHEMA,
   type RecoveryIssue,
@@ -54,6 +55,7 @@ export class KernelNodeExecutor implements NodeExecutor {
       let acceptanceReceipt: ExactCandidateAcceptanceReceipt | undefined;
       if (result.exactCandidateAcceptance) {
         const applied = this.applyExactCandidateAcceptance(
+          ctx,
           result,
           result.exactCandidateAcceptance,
         );
@@ -77,6 +79,7 @@ export class KernelNodeExecutor implements NodeExecutor {
   }
 
   private applyExactCandidateAcceptance(
+    ctx: NodeExecutionContext,
     result: KernelHandlerResult,
     directive: ExactCandidateAcceptanceDirective,
   ): {
@@ -89,8 +92,13 @@ export class KernelNodeExecutor implements NodeExecutor {
         + 'ExactCandidateAcceptance port is configured',
       );
     }
+    const command = bindAcceptanceToCurrentExecution(
+      ctx,
+      result,
+      directive,
+    );
     try {
-      const decision = this.candidateAcceptance.accept(directive.command);
+      const decision = this.candidateAcceptance.accept(command);
       return {
         result,
         receipt: {
@@ -114,6 +122,39 @@ export class KernelNodeExecutor implements NodeExecutor {
       };
     }
   }
+}
+
+function bindAcceptanceToCurrentExecution(
+  ctx: NodeExecutionContext,
+  result: KernelHandlerResult,
+  directive: ExactCandidateAcceptanceDirective,
+): ExactCandidateAcceptanceDirective['command'] {
+  const lineage = directive.command.lineage;
+  const expectedModuleRef = processModuleKey(ctx.module.identity);
+  if (
+    lineage.processRunId !== ctx.processRunId
+    || lineage.projectId !== ctx.projectId
+    || lineage.epicId !== ctx.epicId
+    || lineage.moduleRef !== expectedModuleRef
+  ) {
+    throw new Error(
+      'exact candidate acceptance lineage is not bound to the current '
+        + `execution (expected run=${ctx.processRunId}, module=${expectedModuleRef}, `
+        + `project=${ctx.projectId}, epic=${String(ctx.epicId)})`,
+    );
+  }
+  return {
+    ...directive.command,
+    context: {
+      ...(directive.command.context ?? {}),
+      // These fields are kernel-owned evidence. A module handler may add
+      // semantic context but cannot make this executor attest another gate or
+      // another production.
+      gateNodeId: ctx.node.id,
+      semanticProductionRef: result.production.artifactRef,
+      semanticProductionHash: result.production.contentHash,
+    },
+  };
 }
 
 function acceptanceRecoveryIssue(

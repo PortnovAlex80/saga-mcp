@@ -273,6 +273,8 @@ export class LmNodeExecutor implements NodeExecutor {
         process_input_hash: sha256Hex(ctx.frame.runInput),
         process_node_input: ctx.input,
         process_node_input_hash: sha256Hex(ctx.input),
+        artifact_acceptance_authority:
+          profile.artifactAcceptanceAuthority ?? 'worker',
         ...(recoveryFeedback
           ? {
               recovery_case_id: recoveryFeedback.caseId,

@@ -89,6 +89,7 @@ export interface ManagedExecutionProvenance {
   executionId: string;
   projectId: number;
   epicId: number | null;
+  artifactAcceptanceAuthority: 'worker' | 'kernel-gate';
 }
 
 interface ExecutionTaskRow {
@@ -302,6 +303,17 @@ export function resolveManagedExecutionProvenance(
   const moduleRef = requiredString(metadata, 'process_module_ref');
   const processInputHash = requiredString(metadata, 'process_input_hash');
   const intentId = requiredInteger(metadata, 'work_intent_id');
+  const artifactAcceptanceAuthority =
+    metadata.artifact_acceptance_authority ?? 'worker';
+  if (
+    artifactAcceptanceAuthority !== 'worker'
+    && artifactAcceptanceAuthority !== 'kernel-gate'
+  ) {
+    throw new Error(
+      'MANAGED_PRODUCTION_CONTEXT_INVALID: unsupported '
+        + 'artifact_acceptance_authority',
+    );
+  }
 
   const run = db.prepare(
     `SELECT project_id, epic_id, module_ref_key, input_hash
@@ -330,6 +342,7 @@ export function resolveManagedExecutionProvenance(
     executionId,
     projectId: run.project_id,
     epicId: run.epic_id,
+    artifactAcceptanceAuthority,
   };
 }
 

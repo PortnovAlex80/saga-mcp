@@ -8,6 +8,7 @@ import {
   recordManagedArtifactProduction,
   recordManagedTraceProduction,
   resolveManagedExecutionProvenance,
+  type ManagedExecutionProvenance,
 } from '../process-modules/persistence/sqlite-managed-production-ledger.js';
 
 // ============================================================================
@@ -49,6 +50,39 @@ const BUSINESS_PROJECT_NAME = 'business';
 // the metadata key under which the validated BriefPayload is stored.
 const BRIEF_PAYLOAD_KEY = 'brief_payload';
 
+function assertManagedArtifactMutationAuthority(
+  provenance: ManagedExecutionProvenance | null,
+  requestedStatus: typeof ARTIFACT_STATUSES[number] | undefined,
+  existingStatus: string | null = null,
+  hasMutation = true,
+): void {
+  if (
+    !provenance
+    || provenance.artifactAcceptanceAuthority !== 'kernel-gate'
+    || !hasMutation
+  ) {
+    return;
+  }
+  if (requestedStatus === 'accepted') {
+    throw new Error(
+      'ARTIFACT_ACCEPTANCE_AUTHORITY_VIOLATION: this Process Module task '
+        + 'produces candidates only; keep status draft/in_review and let the '
+        + 'common kernel gate commit accepted+clean after validation',
+    );
+  }
+  if (
+    existingStatus === 'accepted'
+    && requestedStatus !== 'draft'
+    && requestedStatus !== 'in_review'
+  ) {
+    throw new Error(
+      'ARTIFACT_ACCEPTANCE_AUTHORITY_VIOLATION: an accepted artifact cannot '
+        + 'be mutated in place by this worker; explicitly reopen it as draft/'
+        + 'in_review so the common kernel gate can validate the new version',
+    );
+  }
+}
+
 // ============================================================================
 // Handlers
 // ============================================================================
@@ -83,6 +117,7 @@ function handleArtifactCreate(args: Record<string, unknown>): Artifact {
   if (!ARTIFACT_STATUSES.includes(status)) {
     throw new Error(`status must be one of ${ARTIFACT_STATUSES.join(', ')}, got '${status}'`);
   }
+  assertManagedArtifactMutationAuthority(managedExecution, status);
   if (title === undefined || title === null || title === '') {
     throw new Error('title and path are required');
   }
@@ -178,9 +213,14 @@ function handleArtifactCreate(args: Record<string, unknown>): Artifact {
 
   if (code !== null) {
     const existing = db.prepare(
-      'SELECT id FROM artifacts WHERE epic_id=? AND type=? AND code=?',
-    ).get(epicId, type, code) as { id: number } | undefined;
+      'SELECT id,status FROM artifacts WHERE epic_id=? AND type=? AND code=?',
+    ).get(epicId, type, code) as { id: number; status: string } | undefined;
     if (existing) {
+      assertManagedArtifactMutationAuthority(
+        managedExecution,
+        status,
+        existing.status,
+      );
       db.prepare(
         `UPDATE artifacts SET project_id=?, title=?, path=?, status=?, parent_artifact_id=?,
                               project_repository_id=?, content_hash=?, accepted_hash=?,
@@ -359,6 +399,7 @@ function handleArtifactUpdate(args: Record<string, unknown>): Artifact {
     }
     fields.push('status=?'); params.push(status); trackedFields.push(['status', 'status']);
   }
+  assertManagedArtifactMutationAuthority(managedExecution, status);
 
   const parentArtifactId = args.parent_artifact_id as number | null | undefined;
   if (parentArtifactId !== undefined) {
@@ -407,6 +448,12 @@ function handleArtifactUpdate(args: Record<string, unknown>): Artifact {
   if (fields.length === 0) {
     return existing; // nothing to update
   }
+  assertManagedArtifactMutationAuthority(
+    managedExecution,
+    status,
+    existing.status,
+    true,
+  );
   fields.push("updated_at=datetime('now')");
   params.push(id);
 

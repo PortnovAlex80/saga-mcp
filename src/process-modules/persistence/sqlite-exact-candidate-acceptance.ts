@@ -1,6 +1,7 @@
 import type Database from 'better-sqlite3';
 import {
   EXACT_CANDIDATE_ACCEPTANCE_SCHEMA,
+  LEGACY_EXACT_CANDIDATE_ACCEPTANCE_SCHEMA,
   ExactCandidateAcceptanceRejected,
   type AcceptExactCandidatesCommand,
   type ExactArtifactCandidate,
@@ -68,6 +69,11 @@ interface ApprovedReviewReceiptRow {
   accepted_at: string;
 }
 
+interface ExactReviewEvidence {
+  producer: ApprovedReviewReceiptRow;
+  reviewer: ApprovedReviewReceiptRow;
+}
+
 interface AcceptanceDecisionRow {
   id: number;
   schema_version: string;
@@ -84,6 +90,8 @@ interface AcceptanceDecisionRow {
   project_id: number;
   epic_id: number;
   review_required: 0 | 1;
+  producer_receipt_command_id: string | null;
+  producer_receipt_hash: string | null;
   review_receipt_command_id: string | null;
   review_receipt_hash: string | null;
   authority: string;
@@ -134,6 +142,8 @@ export function ensureExactCandidateAcceptanceSchema(
       project_id                 INTEGER NOT NULL,
       epic_id                    INTEGER NOT NULL,
       review_required            INTEGER NOT NULL CHECK (review_required IN (0,1)),
+      producer_receipt_command_id TEXT,
+      producer_receipt_hash       TEXT,
       review_receipt_command_id  TEXT,
       review_receipt_hash        TEXT,
       authority                  TEXT NOT NULL,
@@ -207,6 +217,18 @@ export function ensureExactCandidateAcceptanceSchema(
       + 'ADD COLUMN review_receipt_hash TEXT',
     );
   }
+  if (!decisionColumns.some(column => column.name === 'producer_receipt_command_id')) {
+    db.exec(
+      'ALTER TABLE saga3_exact_candidate_acceptance_decisions '
+      + 'ADD COLUMN producer_receipt_command_id TEXT',
+    );
+  }
+  if (!decisionColumns.some(column => column.name === 'producer_receipt_hash')) {
+    db.exec(
+      'ALTER TABLE saga3_exact_candidate_acceptance_decisions '
+      + 'ADD COLUMN producer_receipt_hash TEXT',
+    );
+  }
 }
 
 export class SqliteExactCandidateAcceptance
@@ -225,8 +247,18 @@ implements ExactCandidateAcceptance {
     return this.withImmediateTransaction(() => {
       const prior = this.readDecisionRow(request.idempotencyKey);
       if (prior) {
-        if (prior.request_hash !== requestHash
-          || prior.request_snapshot !== requestSnapshot) {
+        const matchesCurrent = prior.request_hash === requestHash
+          && prior.request_snapshot === requestSnapshot;
+        const legacyRequest = {
+          ...request,
+          schemaVersion: LEGACY_EXACT_CANDIDATE_ACCEPTANCE_SCHEMA,
+        };
+        const legacyRequestSnapshot = canonicalJson(legacyRequest);
+        const matchesLegacy =
+          prior.schema_version === LEGACY_EXACT_CANDIDATE_ACCEPTANCE_SCHEMA
+          && prior.request_hash === sha256Hex(legacyRequest)
+          && prior.request_snapshot === legacyRequestSnapshot;
+        if (!matchesCurrent && !matchesLegacy) {
           reject(
             'EXACT_ACCEPTANCE_IDEMPOTENCY_KEY_REUSED',
             `idempotency key '${request.idempotencyKey}' was used for another request`,
@@ -238,6 +270,7 @@ implements ExactCandidateAcceptance {
           );
         }
         const replay = this.hydrateDecision(prior, true);
+        this.assertLineage(replay.lineage);
         this.assertReviewReceiptStillExact(replay);
         this.assertAcceptedDecisionStillExact(replay);
         return replay;
@@ -246,11 +279,14 @@ implements ExactCandidateAcceptance {
       this.assertLineage(request.lineage);
       const prepared = request.candidates.map(candidate =>
         this.prepareCandidate(request.lineage, candidate));
-      const reviewReceipt = request.requireApprovedReview
-        ? this.requireApprovedReview(request.lineage.taskId)
+      const reviewEvidence = request.requireApprovedReview
+        ? this.requireApprovedReview(request.lineage)
         : null;
-      const reviewReceiptHash = reviewReceipt
-        ? hashReviewReceipt(reviewReceipt)
+      const producerReceiptHash = reviewEvidence
+        ? hashReviewReceipt(reviewEvidence.producer)
+        : null;
+      const reviewReceiptHash = reviewEvidence
+        ? hashReviewReceipt(reviewEvidence.reviewer)
         : null;
 
       for (const item of prepared) {
@@ -265,7 +301,11 @@ implements ExactCandidateAcceptance {
         idempotencyKey: request.idempotencyKey,
         requestHash,
         candidateSetHash,
-        reviewReceiptCommandId: reviewReceipt?.command_id ?? null,
+        producerReceiptCommandId:
+          reviewEvidence?.producer.command_id ?? null,
+        producerReceiptHash,
+        reviewReceiptCommandId:
+          reviewEvidence?.reviewer.command_id ?? null,
         reviewReceiptHash,
         items,
       });
@@ -275,9 +315,10 @@ implements ExactCandidateAcceptance {
            (schema_version, idempotency_key, request_hash, request_snapshot,
             candidate_set_hash, process_run_id, module_ref, node_id, intent_id,
             task_id, execution_id, project_id, epic_id, review_required,
+            producer_receipt_command_id, producer_receipt_hash,
             review_receipt_command_id, review_receipt_hash, authority,
             reason_code, decision_hash)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       ).run(
         EXACT_CANDIDATE_ACCEPTANCE_SCHEMA,
         request.idempotencyKey,
@@ -293,7 +334,9 @@ implements ExactCandidateAcceptance {
         request.lineage.projectId,
         request.lineage.epicId,
         request.requireApprovedReview ? 1 : 0,
-        reviewReceipt?.command_id ?? null,
+        reviewEvidence?.producer.command_id ?? null,
+        producerReceiptHash,
+        reviewEvidence?.reviewer.command_id ?? null,
         reviewReceiptHash,
         request.authority,
         request.reasonCode,
@@ -431,6 +474,7 @@ implements ExactCandidateAcceptance {
     const decisionRow = this.readDecisionRow(row.idempotency_key);
     if (!decisionRow) return false;
     const decision = this.hydrateDecision(decisionRow, true);
+    this.assertLineage(decision.lineage);
     this.assertReviewReceiptStillExact(decision);
     this.assertAcceptedDecisionStillExact(decision);
     return true;
@@ -636,7 +680,10 @@ implements ExactCandidateAcceptance {
     return { candidate, artifact, ledger, disposition };
   }
 
-  private requireApprovedReview(taskId: number): ApprovedReviewReceiptRow {
+  private requireApprovedReview(
+    lineage: ExactCandidateProductionLineage,
+  ): ExactReviewEvidence {
+    const taskId = lineage.taskId;
     const task = this.db.prepare(
       'SELECT id, epic_id, status FROM tasks WHERE id=?',
     ).get(taskId) as TaskIdentityRow | undefined;
@@ -658,31 +705,61 @@ implements ExactCandidateAcceptance {
     // back to an older approval after a newer changes_requested verdict would
     // silently accept a superseded review decision.
     const finalReceipt = receipts[0];
-    const finalReceiptIsApproval = (() => {
-      if (!finalReceipt
-        || !finalReceipt.command_id.endsWith(':worker-done:approved')
-        || finalReceipt.result_json === null) return false;
-      let result: unknown;
-      try {
-        result = JSON.parse(finalReceipt.result_json);
-      } catch {
-        return false;
-      }
-      if (!isRecord(result)) return false;
-      return result.completed === taskId
-        && result.completed_new_status === 'done';
-    })();
-    if (!finalReceipt || !finalReceiptIsApproval) {
+    if (
+      !finalReceipt
+      || !isWorkerDoneReceipt(finalReceipt, taskId, 'done')
+      || finalReceipt.execution_id === null
+      || finalReceipt.execution_id === lineage.executionId
+    ) {
       reject(
         'EXACT_ACCEPTANCE_APPROVED_REVIEW_REQUIRED',
-        `task ${taskId} has no final approved worker_done receipt`,
+        `task ${taskId} has no final approval from a separate reviewer execution`,
         {
           taskId,
+          producerExecutionId: lineage.executionId,
           latestReceiptCommandId: finalReceipt?.command_id ?? null,
+          latestReceiptExecutionId: finalReceipt?.execution_id ?? null,
         },
       );
     }
-    return finalReceipt;
+    const reviewerExecution = this.db.prepare(
+      `SELECT execution_id, project_id, epic_id, task_id
+         FROM worker_executions
+        WHERE execution_id=?`,
+    ).get(finalReceipt.execution_id) as WorkerExecutionIdentityRow | undefined;
+    if (
+      !reviewerExecution
+      || reviewerExecution.task_id !== taskId
+      || reviewerExecution.project_id !== lineage.projectId
+      || reviewerExecution.epic_id !== lineage.epicId
+    ) {
+      reject(
+        'EXACT_ACCEPTANCE_APPROVED_REVIEW_REQUIRED',
+        `task ${taskId} final review receipt has no matching reviewer execution`,
+        {
+          taskId,
+          reviewerExecutionId: finalReceipt.execution_id,
+        },
+      );
+    }
+
+    const producerReceipt = receipts.find(receipt =>
+      receipt.execution_id === lineage.executionId
+      && isWorkerDoneReceipt(receipt, taskId, 'review'));
+    if (!producerReceipt) {
+      reject(
+        'EXACT_ACCEPTANCE_APPROVED_REVIEW_REQUIRED',
+        `task ${taskId} has no producer completion receipt for execution '${lineage.executionId}'`,
+        {
+          taskId,
+          producerExecutionId: lineage.executionId,
+        },
+      );
+    }
+    return {
+      producer: producerReceipt,
+      reviewer: finalReceipt,
+    };
   }
 
   private compareAndSetAccepted(item: PreparedCandidate): void {
@@ -785,30 +862,102 @@ implements ExactCandidateAcceptance {
     decision: ExactCandidateAcceptanceDecision,
   ): void {
     if (!decision.requireApprovedReview) return;
-    if (
-      !decision.approvedReviewReceiptCommandId
-      || !decision.approvedReviewReceiptHash
-    ) {
+    if (!decision.approvedReviewReceiptCommandId) {
       reject(
         'EXACT_ACCEPTANCE_STORED_DECISION_CORRUPT',
         `decision ${decision.decisionId} has no exact review receipt evidence`,
         { decisionId: decision.decisionId },
       );
     }
-    const receipt = this.db.prepare(
+    const reviewReceipt = this.db.prepare(
       `SELECT command_id, execution_id, result_json, accepted_at
          FROM command_receipts
         WHERE command_id=? AND accepted=1`,
     ).get(
       decision.approvedReviewReceiptCommandId,
     ) as ApprovedReviewReceiptRow | undefined;
-    if (!receipt || hashReviewReceipt(receipt) !== decision.approvedReviewReceiptHash) {
+    const reviewHashMatches = reviewReceipt
+      && (
+        decision.schemaVersion === LEGACY_EXACT_CANDIDATE_ACCEPTANCE_SCHEMA
+        && decision.approvedReviewReceiptHash === null
+        || decision.approvedReviewReceiptHash !== null
+        && hashReviewReceipt(reviewReceipt) === decision.approvedReviewReceiptHash
+      );
+    if (
+      !reviewReceipt
+      || !reviewHashMatches
+      || !isWorkerDoneReceipt(reviewReceipt, decision.lineage.taskId, 'done')
+    ) {
       reject(
         'EXACT_ACCEPTANCE_STORED_DECISION_CORRUPT',
         `decision ${decision.decisionId} review receipt evidence changed`,
         {
           decisionId: decision.decisionId,
           reviewReceiptCommandId: decision.approvedReviewReceiptCommandId,
+        },
+      );
+    }
+    if (decision.schemaVersion === LEGACY_EXACT_CANDIDATE_ACCEPTANCE_SCHEMA) {
+      return;
+    }
+    if (
+      !decision.producerCompletionReceiptCommandId
+      || !decision.producerCompletionReceiptHash
+      || reviewReceipt.execution_id === null
+      || reviewReceipt.execution_id === decision.lineage.executionId
+    ) {
+      reject(
+        'EXACT_ACCEPTANCE_STORED_DECISION_CORRUPT',
+        `decision ${decision.decisionId} has no separate exact producer/reviewer chain`,
+        { decisionId: decision.decisionId },
+      );
+    }
+    const reviewerExecution = this.db.prepare(
+      `SELECT execution_id, project_id, epic_id, task_id
+         FROM worker_executions
+        WHERE execution_id=?`,
+    ).get(reviewReceipt.execution_id) as
+      WorkerExecutionIdentityRow | undefined;
+    if (
+      !reviewerExecution
+      || reviewerExecution.task_id !== decision.lineage.taskId
+      || reviewerExecution.project_id !== decision.lineage.projectId
+      || reviewerExecution.epic_id !== decision.lineage.epicId
+    ) {
+      reject(
+        'EXACT_ACCEPTANCE_STORED_DECISION_CORRUPT',
+        `decision ${decision.decisionId} reviewer execution lineage changed`,
+        {
+          decisionId: decision.decisionId,
+          reviewerExecutionId: reviewReceipt.execution_id,
+        },
+      );
+    }
+    const producerReceipt = this.db.prepare(
+      `SELECT command_id, execution_id, result_json, accepted_at
+         FROM command_receipts
+        WHERE command_id=? AND accepted=1`,
+    ).get(
+      decision.producerCompletionReceiptCommandId,
+    ) as ApprovedReviewReceiptRow | undefined;
+    if (
+      !producerReceipt
+      || producerReceipt.execution_id !== decision.lineage.executionId
+      || !isWorkerDoneReceipt(
+        producerReceipt,
+        decision.lineage.taskId,
+        'review',
+      )
+      || hashReviewReceipt(producerReceipt)
+        !== decision.producerCompletionReceiptHash
+    ) {
+      reject(
+        'EXACT_ACCEPTANCE_STORED_DECISION_CORRUPT',
+        `decision ${decision.decisionId} producer completion evidence changed`,
+        {
+          decisionId: decision.decisionId,
+          producerReceiptCommandId:
+            decision.producerCompletionReceiptCommandId,
         },
       );
     }
@@ -828,7 +977,10 @@ implements ExactCandidateAcceptance {
     row: AcceptanceDecisionRow,
     replayed: boolean,
   ): ExactCandidateAcceptanceDecision {
-    if (row.schema_version !== EXACT_CANDIDATE_ACCEPTANCE_SCHEMA) {
+    if (
+      row.schema_version !== EXACT_CANDIDATE_ACCEPTANCE_SCHEMA
+      && row.schema_version !== LEGACY_EXACT_CANDIDATE_ACCEPTANCE_SCHEMA
+    ) {
       reject(
         'EXACT_ACCEPTANCE_STORED_DECISION_CORRUPT',
         `decision ${row.id} has unsupported schema '${row.schema_version}'`,
@@ -900,27 +1052,48 @@ implements ExactCandidateAcceptance {
         },
       );
     }
-    const expectedDecisionHash = computeDecisionHash({
-      idempotencyKey: row.idempotency_key,
-      requestHash: row.request_hash,
-      candidateSetHash: row.candidate_set_hash,
-      reviewReceiptCommandId: row.review_receipt_command_id,
-      reviewReceiptHash: row.review_receipt_hash,
-      items,
-    });
-    if (row.decision_hash !== expectedDecisionHash) {
+    const expectedDecisionHashes =
+      row.schema_version === EXACT_CANDIDATE_ACCEPTANCE_SCHEMA
+        ? [computeDecisionHash({
+            idempotencyKey: row.idempotency_key,
+            requestHash: row.request_hash,
+            candidateSetHash: row.candidate_set_hash,
+            producerReceiptCommandId: row.producer_receipt_command_id,
+            producerReceiptHash: row.producer_receipt_hash,
+            reviewReceiptCommandId: row.review_receipt_command_id,
+            reviewReceiptHash: row.review_receipt_hash,
+            items,
+          })]
+        : [
+            computeLegacyDecisionHash({
+              idempotencyKey: row.idempotency_key,
+              requestHash: row.request_hash,
+              candidateSetHash: row.candidate_set_hash,
+              reviewReceiptCommandId: row.review_receipt_command_id,
+              items,
+            }),
+            computeTransitionalDecisionHash({
+              idempotencyKey: row.idempotency_key,
+              requestHash: row.request_hash,
+              candidateSetHash: row.candidate_set_hash,
+              reviewReceiptCommandId: row.review_receipt_command_id,
+              reviewReceiptHash: row.review_receipt_hash,
+              items,
+            }),
+          ];
+    if (!expectedDecisionHashes.includes(row.decision_hash)) {
       reject(
         'EXACT_ACCEPTANCE_STORED_DECISION_CORRUPT',
         `decision ${row.id} hash does not match its immutable items`,
         {
           decisionId: row.id,
           storedDecisionHash: row.decision_hash,
-          computedDecisionHash: expectedDecisionHash,
+          computedDecisionHashes: expectedDecisionHashes,
         },
       );
     }
     return {
-      schemaVersion: EXACT_CANDIDATE_ACCEPTANCE_SCHEMA,
+      schemaVersion: row.schema_version,
       decisionId: row.id,
       idempotencyKey: row.idempotency_key,
       requestHash: row.request_hash,
@@ -937,6 +1110,9 @@ implements ExactCandidateAcceptance {
         epicId: row.epic_id,
       },
       requireApprovedReview: row.review_required === 1,
+      producerCompletionReceiptCommandId:
+        row.producer_receipt_command_id,
+      producerCompletionReceiptHash: row.producer_receipt_hash,
       approvedReviewReceiptCommandId: row.review_receipt_command_id,
       approvedReviewReceiptHash: row.review_receipt_hash,
       authority: row.authority,
@@ -1114,6 +1290,8 @@ function computeDecisionHash(input: {
   readonly idempotencyKey: string;
   readonly requestHash: string;
   readonly candidateSetHash: string;
+  readonly producerReceiptCommandId: string | null;
+  readonly producerReceiptHash: string | null;
   readonly reviewReceiptCommandId: string | null;
   readonly reviewReceiptHash: string | null;
   readonly items: readonly ExactCandidateAcceptanceItem[];
@@ -1123,6 +1301,8 @@ function computeDecisionHash(input: {
     idempotencyKey: input.idempotencyKey,
     requestHash: input.requestHash,
     candidateSetHash: input.candidateSetHash,
+    producerReceiptCommandId: input.producerReceiptCommandId,
+    producerReceiptHash: input.producerReceiptHash,
     reviewReceiptCommandId: input.reviewReceiptCommandId,
     reviewReceiptHash: input.reviewReceiptHash,
     items: input.items.map(item => ({
@@ -1141,6 +1321,60 @@ function computeDecisionHash(input: {
   });
 }
 
+function computeLegacyDecisionHash(input: {
+  readonly idempotencyKey: string;
+  readonly requestHash: string;
+  readonly candidateSetHash: string;
+  readonly reviewReceiptCommandId: string | null;
+  readonly items: readonly ExactCandidateAcceptanceItem[];
+}): string {
+  return sha256Hex({
+    schemaVersion: LEGACY_EXACT_CANDIDATE_ACCEPTANCE_SCHEMA,
+    idempotencyKey: input.idempotencyKey,
+    requestHash: input.requestHash,
+    candidateSetHash: input.candidateSetHash,
+    reviewReceiptCommandId: input.reviewReceiptCommandId,
+    items: decisionHashItems(input.items),
+  });
+}
+
+function computeTransitionalDecisionHash(input: {
+  readonly idempotencyKey: string;
+  readonly requestHash: string;
+  readonly candidateSetHash: string;
+  readonly reviewReceiptCommandId: string | null;
+  readonly reviewReceiptHash: string | null;
+  readonly items: readonly ExactCandidateAcceptanceItem[];
+}): string {
+  return sha256Hex({
+    schemaVersion: LEGACY_EXACT_CANDIDATE_ACCEPTANCE_SCHEMA,
+    idempotencyKey: input.idempotencyKey,
+    requestHash: input.requestHash,
+    candidateSetHash: input.candidateSetHash,
+    reviewReceiptCommandId: input.reviewReceiptCommandId,
+    reviewReceiptHash: input.reviewReceiptHash,
+    items: decisionHashItems(input.items),
+  });
+}
+
+function decisionHashItems(
+  items: readonly ExactCandidateAcceptanceItem[],
+): readonly Record<string, unknown>[] {
+  return items.map(item => ({
+    artifactId: item.artifactId,
+    artifactType: item.artifactType,
+    contentHash: item.contentHash,
+    ledgerId: item.ledgerId,
+    disposition: item.disposition,
+    priorStatus: item.priorStatus,
+    priorAcceptedHash: item.priorAcceptedHash,
+    priorDriftState: item.priorDriftState,
+    finalStatus: item.finalStatus,
+    finalAcceptedHash: item.finalAcceptedHash,
+    finalDriftState: item.finalDriftState,
+  }));
+}
+
 function hashReviewReceipt(receipt: ApprovedReviewReceiptRow): string {
   return sha256Hex({
     commandId: receipt.command_id,
@@ -1148,6 +1382,28 @@ function hashReviewReceipt(receipt: ApprovedReviewReceiptRow): string {
     resultJson: receipt.result_json,
     acceptedAt: receipt.accepted_at,
   });
+}
+
+function isWorkerDoneReceipt(
+  receipt: ApprovedReviewReceiptRow,
+  taskId: number,
+  expectedStatus: 'review' | 'done',
+): boolean {
+  if (
+    !receipt.command_id.endsWith(':worker-done:approved')
+    || receipt.result_json === null
+  ) {
+    return false;
+  }
+  let result: unknown;
+  try {
+    result = JSON.parse(receipt.result_json);
+  } catch {
+    return false;
+  }
+  return isRecord(result)
+    && result.completed === taskId
+    && result.completed_new_status === expectedStatus;
 }
 
 function requirePositiveInteger(value: unknown, name: string): number {

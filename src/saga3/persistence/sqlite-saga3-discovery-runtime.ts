@@ -348,18 +348,67 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
     nodeId: string,
   ): string | null {
     try {
-      const row = getDb().prepare(
-        `SELECT execution_id
-           FROM (
-             SELECT execution_id, recorded_at, id AS ledger_id
+      const db = getDb();
+      // A completed artifact-producing task normally has a producer
+      // worker_done receipt that moved it to review, followed by a separate
+      // reviewer receipt. Bind replay to that exact producer execution instead
+      // of comparing ids from two independent ledger sequences.
+      const completedProducer = db.prepare(
+        `WITH managed_execution_ids AS (
+           SELECT execution_id
+             FROM saga3_managed_artifact_productions
+            WHERE task_id=? AND process_run_id=? AND node_id=?
+           UNION
+           SELECT execution_id
+             FROM saga3_managed_trace_productions
+            WHERE task_id=? AND process_run_id=? AND node_id=?
+         )
+         SELECT cr.execution_id
+           FROM command_receipts cr
+           JOIN managed_execution_ids managed
+             ON managed.execution_id=cr.execution_id
+          WHERE cr.task_id=?
+            AND cr.command_kind='worker_done'
+            AND cr.accepted=1
+            AND json_valid(cr.result_json)
+            AND json_extract(
+              cr.result_json,
+              '$.completed_new_status'
+            )='review'
+          ORDER BY cr.accepted_at DESC, cr.rowid DESC
+          LIMIT 1`,
+      ).get(
+        taskId,
+        processRunId,
+        nodeId,
+        taskId,
+        processRunId,
+        nodeId,
+        taskId,
+      ) as { execution_id: string } | undefined;
+      if (completedProducer) return completedProducer.execution_id;
+
+      // Active/legacy fallback: rank executions by their own reservation
+      // chronology, then by their latest product timestamp. Never compare a
+      // ledger id from the artifact table with one from the trace table.
+      const row = db.prepare(
+        `WITH managed_products AS (
+             SELECT execution_id, recorded_at
                FROM saga3_managed_artifact_productions
               WHERE task_id=? AND process_run_id=? AND node_id=?
              UNION ALL
-             SELECT execution_id, recorded_at, id AS ledger_id
+             SELECT execution_id, recorded_at
                FROM saga3_managed_trace_productions
               WHERE task_id=? AND process_run_id=? AND node_id=?
            )
-          ORDER BY recorded_at DESC, ledger_id DESC
+         SELECT products.execution_id
+           FROM managed_products products
+           LEFT JOIN worker_executions execution
+             ON execution.execution_id=products.execution_id
+          GROUP BY products.execution_id
+          ORDER BY MAX(COALESCE(execution.started_at, execution.reserved_at)) DESC,
+                   MAX(products.recorded_at) DESC,
+                   products.execution_id DESC
           LIMIT 1`,
       ).get(
         taskId,

@@ -63,6 +63,12 @@ export interface ExecutionProfileDefinition {
   protocolSkill: string;
   /** Domain-specific semantic role skill for this node. */
   semanticSkill: string;
+  /**
+   * Who may transition artifacts produced by this profile to accepted.
+   * Omitted/worker preserves legacy modules; kernel-gate keeps candidates in
+   * draft/in_review until an ExactCandidateAcceptance decision commits them.
+   */
+  artifactAcceptanceAuthority?: 'worker' | 'kernel-gate';
   executionMode: string;
   allowedTools: readonly string[];
   trackerTemplate: string | null;
