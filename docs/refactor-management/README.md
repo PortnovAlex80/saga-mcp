@@ -49,9 +49,10 @@ never edit anything here.
 
 ## Current state
 
-- **Active wave:** Wave 0 (Baseline & Executable Architecture Rules) — being staged.
-- **Last checkpoint:** (none yet — pre-Wave-0 baseline).
-- **Next integrator action:** publish Wave 0 frozen checkpoint, dispatch W0-A1…W0-A8.
+- **Active wave:** Wave 1 (Pure SPI Validation & Proof) — being staged next.
+- **Last completed:** Wave 0 (Baseline & Executable Architecture Rules) — 8/8 lanes done, 146/146 gate tests pass, 0 production lines changed. Checkpoint commit created.
+- **Frozen input commit history:** `eb35510` (pre-HQ baseline) → `fd26fd1` (HQ + Wave 0 frozen input) → Wave 0 checkpoint.
+- **Next integrator action:** stage Wave 1 frozen checkpoint (pure SPI: manifests, ContractRef, envelopes, ModuleCompletion, NodeProtocol, recovery, tools, assistance, identities), then dispatch W1-A1…W1-A8.
 
 ## How to resume after context loss
 

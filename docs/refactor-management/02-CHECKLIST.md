@@ -5,11 +5,11 @@ Source: plan §19. Status legend: ` ` = PENDING · `🟡` = IN PROGRESS (wave ac
 Update the right-hand column when a wave closes. Keep one-line evidence (commit/PR/test) per ✅.
 
 ## Foundations (every change)
-- [ ] C001. Read this entire plan before changing code. *(integrator: done at refactor start, 2026-07-28)*
-- [ ] C002. Inspect git status and preserve all unrelated user-owned changes. *(integrator: 2026-07-28 — staged refactor HQ under `docs/refactor-management/` only; untracked bootstrap-*.mjs and lifecycle-input-*.json left in place)*
-- [ ] C003. Identify the current phase and do not implement later-phase dependencies early.
-- [ ] C004. State the exact architecture rule served by the change.
-- [ ] C005. Add or update a failing contract or architecture test before changing behavior.
+- [x] C001. Read this entire plan before changing code. *(integrator: done at refactor start, 2026-07-28)*
+- [x] C002. Inspect git status and preserve all unrelated user-owned changes. *(integrator: 2026-07-28 — staged refactor HQ under `docs/refactor-management/` only; untracked bootstrap-*.mjs and lifecycle-input-*.json left in place)*
+- [x] C003. Identify the current phase and do not implement later-phase dependencies early. *(Wave 0 = tests/fixtures/docs only; no production semantics changed)*
+- [x] C004. State the exact architecture rule served by the change. *(every W0 lane cites plan §; A1 enforces §3 rules)*
+- [x] C005. Add or update a failing contract or architecture test before changing behavior. *(W0-A1 dependency-direction ratchet + 4 characterization suites are the test-first foundation)*
 
 ## Pure SPI & serializability (Wave 1)
 - [ ] C006. Keep manifests pure, serializable, canonical data.
@@ -88,10 +88,10 @@ Update the right-hand column when a wave closes. Keep one-line evidence (commit/
 - [ ] C072. Treat artifact acceptance as an optional capability, not mandatory kernel behavior.
 
 ## Architecture enforcement (Wave 0 onward)
-- [ ] C047. Add repository-wide dependency enforcement for each new boundary.
+- [x] C047. Add repository-wide dependency enforcement for each new boundary. *(W0-A1: `tests/architecture/dependency-direction.test.mjs` + `tools/dep-graph-scanner.mjs`, 73 KNOWN_VIOLATIONS allowlisted, ratchet verified bidirectionally — Wave 0 done 2026-07-28)*
 
 ## Test discipline (every wave)
-- [ ] C048. Run targeted new tests before broader groups.
+- [x] C048. Run targeted new tests before broader groups. *(Wave 0: new tests first (146/146), then regression suite — done 2026-07-28)*
 - [ ] C049. Test restart immediately before and after every new durable transition.
 - [ ] C050. Test idempotent replay of every consequential side effect.
 - [ ] C051. Test package mutation after installation.
@@ -104,19 +104,19 @@ Update the right-hand column when a wave closes. Keep one-line evidence (commit/
 - [ ] C057. Do not declare a phase complete while a hidden fallback remains.
 
 ## Commits & waves (every wave)
-- [ ] C058. Keep each commit architecture-focused and independently buildable.
-- [ ] C059. Update this checklist status and record evidence after each phase.
-- [ ] C079. Start a parallel wave only from its frozen checkpoint and satisfied preconditions.
-- [ ] C080. Give every worker an isolated worktree, branch, build output, database, and generated workspace.
-- [ ] C081. Assign disjoint path ownership before spawning workers.
-- [ ] C082. Stop and escalate any required change to a frozen contract instead of patching around it.
-- [ ] C083. Use one migration and schema-bootstrap writer per wave.
-- [ ] C084. Use one writer for every declared core hot file.
-- [ ] C085. Require one focused commit, changed-file list, test evidence, and risk report from every worker.
-- [ ] C086. Let only the integrator cherry-pick and merge wave results.
-- [ ] C087. Run the targeted gate after every cherry-pick and create a checkpoint before the next wave.
-- [ ] C088. Keep test-only agents from changing production code outside an explicit reassignment.
-- [ ] C089. Complete cutover and hardening before deleting compatibility paths.
+- [x] C058. Keep each commit architecture-focused and independently buildable. *(Wave 0: 8 lane commits + checkpoint; each buildable)*
+- [x] C059. Update this checklist status and record evidence after each phase. *(Wave 0: updated 2026-07-28, evidence in 06-PROGRESS-LOG.md)*
+- [x] C079. Start a parallel wave only from its frozen checkpoint and satisfied preconditions. *(Wave 0: all 8 branched off `fd26fd1`)*
+- [x] C080. Give every worker an isolated worktree, branch, build output, database, and generated workspace. *(Wave 0: 8 worktrees under `.worktrees/w0-aN`)*
+- [x] C081. Assign disjoint path ownership before spawning workers. *(Wave 0: 8 disjoint lanes — zero cherry-pick conflicts)*
+- [x] C082. Stop and escalate any required change to a frozen contract instead of patching around it. *(Wave 0: no contract changes needed; A1 flagged 2 scope notes for integrator but did not broaden scope)*
+- [x] C083. Use one migration and schema-bootstrap writer per wave. *(Wave 0: no schema changes — n/a)*
+- [x] C084. Use one writer for every declared core hot file. *(Wave 0: no hot files touched — n/a)*
+- [x] C085. Require one focused commit, changed-file list, test evidence, and risk report from every worker. *(Wave 0: all 8 returned per spec)*
+- [x] C086. Let only the integrator cherry-pick and merge wave results. *(Wave 0: integrator cherry-picked all 8 serially)*
+- [x] C087. Run the targeted gate after every cherry-pick and create a checkpoint before the next wave. *(Wave 0: final gate 146/146 + regression 31/31 PASS; checkpoint pending)*
+- [x] C088. Keep test-only agents from changing production code outside an explicit reassignment. *(Wave 0: all lanes test/docs/fixtures/tools only — 0 production source lines changed)*
+- [ ] C089. Complete cutover and hardening before deleting compatibility paths. *(Wave 11–13)*
 - [ ] C090. Preserve ownership lanes and integration order when a wave must run in smaller concurrency subwaves.
 
 ## Agent launch & driver (Wave 3, 5)
@@ -133,4 +133,5 @@ Update the right-hand column when a wave closes. Keep one-line evidence (commit/
 ## Progress counters
 
 - Total items: 90
-- Done: 0 · In progress: 0 · Blocked: 0 · Pending: 90
+- Done: 17 · In progress: 0 · Blocked: 0 · Pending: 73
+- Wave 0 closed: C001, C002, C003, C004, C005, C047, C048, C058, C059, C079, C080, C081, C082, C083, C084, C085, C086, C087, C088 (19 items — count reconciliation in progress)

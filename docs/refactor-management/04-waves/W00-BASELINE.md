@@ -1,7 +1,20 @@
 # Wave 0 — Baseline & Executable Architecture Rules
 
 > Plan mapping: §0.3, §13, §15, §16. Phase 0 (§14.1).
-> **Status:** 🟡 STAGING — frozen checkpoint being published.
+> **Status:** 🟡 RUNNING — 8 subagents dispatched in parallel from `fd26fd1` (2026-07-28).
+
+## Dispatched lanes (tracking)
+
+| Lane | Branch | Worktree | Status | Commit |
+|---|---|---|---|---|
+| W0-A1 | `refactor/w0-a1` | `.worktrees/w0-a1` | ✅ done (`61122f9`) | 4/4 tests pass; 73 KNOWN_VIOLATIONS allowlisted (R1=1, R2=28, R3=9, R4=1, R6=34) with fixing-wave reasons |
+| W0-A2 | `refactor/w0-a2` | `.worktrees/w0-a2` | ✅ done (`baa7a6f`) | 40/40 tests pass; key findings: delivery module invisible to resolver, review task gets author skill (§13.18), builtin tools always granted (§13.17) |
+| W0-A3 | `refactor/w0-a3` | `.worktrees/w0-a3` | ✅ done (`fff6960`) | 21/21 tests pass; 90 MCP tools pinned as Wave 6 compat surface |
+| W0-A4 | `refactor/w0-a4` | `.worktrees/w0-a4` | ✅ done (`3f84a59`) | 41/41 tests pass; 6 Wave 7 smells pinned (resolver-first, hash-drops-body, defineProperty dodge, cumulative-frame) |
+| W0-A5 | `refactor/w0-a5` | `.worktrees/w0-a5` | ✅ done (`614ce8c`) | 15/15 tests pass; 7 §5.6 gaps documented |
+| W0-A6 | `refactor/w0-a6` | `.worktrees/w0-a6` | ✅ done (`04882ee`) | 11/11 tests pass; 9 failure fixtures all with concrete evidence (commits + line numbers) |
+| W0-A7 | `refactor/w0-a7` | `.worktrees/w0-a7` | ✅ done (`0a0f706`) | 14/14 tests pass; 4 synthetic modules + campaign scenario (external-seo reused, §6.8) |
+| W0-A8 | `refactor/w0-a8` | `.worktrees/w0-a8` | ✅ done (`03b0c95`) | 7 ADRs + compatibility inventory (90 tools ✓ matches A3); runner regen 35/35 files; .gitignore |
 
 ## Objective (§0.3.10 serial gate)
 
@@ -36,8 +49,10 @@ by the integrator at checkpoint.
 
 ## Frozen input commit
 
-- **HEAD:** `eb35510935f2317bc1bc7eb8e0b35f943bb0fadd` (branch `agent/saga3-process-modules`)
-- **Plan reference:** `docs/refactor-management/00-PLAN.md` (verbatim frozen copy)
+- **HEAD:** `fd26fd18145a3cb8d63b43c5e620b69f01be7cd4` (branch `agent/saga3-process-modules`)
+  — this commit added the refactor HQ and IS the Wave 0 frozen input commit.
+  (Parent `eb35510` was the pre-HQ baseline used for reconnaissance.)
+- **Plan reference:** `docs/refactor-management/00-PLAN.md` (verbatim frozen copy, md5-verified identical to source)
 - **Baseline:** `docs/refactor-management/01-CODEBASE-BASELINE.md`
 
 ## Test commands (the wave gate)
