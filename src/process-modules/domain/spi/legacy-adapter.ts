@@ -130,9 +130,35 @@ export function adaptLegacyProcessModule(
     runtimeCompatibilityRange: LEGACY_RUNTIME_COMPATIBILITY_RANGE,
   };
 
-  const validation = validateProcessModuleManifest(manifest);
-  if (!validation.ok) {
-    throw new LegacyManifestAdapterError(manifest, validation.errors);
+  // validateProcessModuleManifest (W1-A2) calls assertCanonicalSerializable
+  // (W1-A1) first, which THROWS a CanonicalSerializationError (a plain data
+  // object, not an Error instance) on non-serializable input. We catch BOTH
+  // the canonical-serialization throw and the structural ValidationResult
+  // failure and wrap them uniformly in LegacyManifestAdapterError so callers
+  // get a single typed error surface regardless of which validation phase
+  // rejected the input.
+  try {
+    const validation = validateProcessModuleManifest(manifest);
+    if (!validation.ok) {
+      throw new LegacyManifestAdapterError(manifest, validation.errors);
+    }
+  } catch (e) {
+    if (e instanceof LegacyManifestAdapterError) {
+      throw e;
+    }
+    // CanonicalSerializationError (plain object { code, path, reason }) or
+    // any other thrown validator failure — normalize into our error surface.
+    const canonicalErr =
+      e && typeof e === 'object' && 'code' in e && 'path' in e && 'reason' in e
+        ? (e as { code: string; path: string; reason: string })
+        : { code: 'ADAPTER_VALIDATION_THREW', path: '$', reason: String(e) };
+    throw new LegacyManifestAdapterError(manifest, [
+      {
+        code: canonicalErr.code,
+        path: canonicalErr.path,
+        message: canonicalErr.reason,
+      },
+    ]);
   }
   return manifest;
 }

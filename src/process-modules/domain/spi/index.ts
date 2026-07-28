@@ -29,6 +29,17 @@
  * Plan ref: §0.4.5, §0.4.11, §1 (frozen layout table), §3.5, §14.2.6.
  */
 
+// INTEGRATION NOTE (integrator, Wave 1 cherry-pick): ValidationResult and
+// ValidationError are structurally identical across module-manifest.ts,
+// node-protocol.ts, production-envelope.ts, and scenario-manifest.ts (each lane
+// defined its own copy in isolation). To avoid `export *` re-export collisions
+// (TS2308), we re-export them ONCE from production-envelope.ts (the A6 center)
+// and pull the lane-specific symbols from the other three files by name.
+export {
+  type ValidationError,
+  type ValidationResult,
+} from './production-envelope.js';
+
 // W1-A1 — canonical serialization validator (functions: isCanonicalSerializable,
 // assertCanonicalSerializable, canonicalJsonOrThrow; class CanonicalSerializationError).
 export * from './canonical-serialization.js';
@@ -41,21 +52,45 @@ export * from './contract-schema-registry.js';
 
 // W1-A2 — ProcessModuleManifest + ResourceIndex + validator
 // (ProcessModuleManifest, ResourceIndexEntry, ResourceKind, HandlerRef,
-// validateProcessModuleManifest, ValidationResult, ValidationError).
+// validateProcessModuleManifest; ValidationResult/ValidationError come from
+// production-envelope.ts above to avoid re-export collisions).
 export * from './resource-index.js';
-export * from './module-manifest.js';
+export {
+  type ProcessModuleManifest,
+  type HandlerRef,
+  validateProcessModuleManifest,
+} from './module-manifest.js';
 
 // W1-A3 — LifecycleScenarioManifest (the one genuinely new aggregate) + validator
 // (LifecycleScenarioManifest, ScenarioStageBinding, ModuleSelector,
 // ScenarioPolicies, TransitionBudgets, ReentryBudgets,
-// validateLifecycleScenarioManifest).
-export * from './scenario-manifest.js';
+// validateLifecycleScenarioManifest, isSafeMappingPath).
+export {
+  type LifecycleScenarioManifest,
+  type ScenarioStageBinding,
+  type ModuleSelector,
+  type ScenarioPolicies,
+  type ScenarioPolicyDeclaration,
+  type TransitionBudgets,
+  type ReentryBudgets,
+  validateLifecycleScenarioManifest,
+  isSafeMappingPath,
+} from './scenario-manifest.js';
 
 // W1-A4 — NodeProtocolDefinition + ExecutionContextEnvelope + flow-condition ratchet
 // (NodeProtocolDefinition, ProtocolStep, ProtocolStepTransition,
 // EvidenceRequirement, RetrySemanticsKind, ExecutionContextEnvelope,
 // PackageRef, NodeRef, isSupportedFlowCondition, validateNodeProtocolDefinition).
-export * from './node-protocol.js';
+export {
+  type RetrySemanticsKind,
+  type EvidenceCategory,
+  type EvidenceRequirement,
+  type ProtocolStep,
+  type ProtocolStepTransition,
+  type NodeProtocolDefinition,
+  validateNodeProtocolDefinition,
+  isSupportedFlowCondition,
+} from './node-protocol.js';
 export * from './execution-envelope.js';
 
 // W1-A6 — production envelope, completion, recovery/tool/assistance definitions,

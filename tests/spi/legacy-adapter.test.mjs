@@ -147,7 +147,7 @@ test('createBuiltInProcessModuleRegistry exposes exactly the 4 production module
   const names = builtInModules.map((/** @type {any} */ m) => m.identity.name).sort();
   assert.deepEqual(
     names,
-    ['delivery', 'development', 'discovery', 'formalization'],
+    ['delivery-release', 'product-discovery', 'solution-development', 'solution-formalization'],
     'the 4 production module names',
   );
 });

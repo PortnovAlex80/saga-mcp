@@ -47,3 +47,19 @@ Format:
 - Commit: `b0746cd` — `refactor(wave-0): checkpoint — baseline + architecture rules complete`
 - Next: stage Wave 1 (Pure SPI) frozen checkpoint off `b0746cd`, dispatch W1-A1…W1-A8.
 - Worktrees `.worktrees/w0-aN` removed (branches `refactor/w0-aN` preserved for audit).
+
+## 2026-07-28 — Wave 1 executed (8/8 lanes done) and integrated
+- Wave: W1
+- What: All 8 SPI lanes completed in isolated worktrees off `4eb5733`. Cherry-picked serially onto `agent/saga3-process-modules` in DAG order A1→A5→A6→A2→A4→A3→A7→A8 — zero cherry-pick conflicts (disjoint path ownership). **6 post-cherry-pick integration fixes** by integrator (expected cross-lane reconciliation, plan §0.1.6):
+  1. `node-protocol.ts`: split `AgentAssistanceDefinition` import from `agent-assistance.js` (was wrongly in `tool-contribution.js` per A4 isolation assumption).
+  2. `index.ts` barrel: explicit named re-exports to resolve `ValidationResult`/`ValidationError` collisions (4 lanes each defined their own structurally-identical copy; canonical from `production-envelope.ts`).
+  3. `round-trip-conformance.test.mjs`: 5 validator calls made `async`+`await` (A6 validators are async due to dynamic-import canonical resolver; A2/A3/A4 are sync — isolation divergence).
+  4. `round-trip-conformance.test.mjs`: `NodeProductionEnvelope` fixture updated to A6's real shape (NodeProduction mirror fields `schema`/`artifactRef`/`contentHash`/`bindings` + envelope fields).
+  5. `legacy-adapter.ts`: wrap `assertCanonicalSerializable` throw into `LegacyManifestAdapterError` (A2 validator throws canonical errors before returning ValidationResult; A7 test expected single error surface).
+  6. `legacy-adapter.test.mjs`: correct expected module names to real identity.name values (`delivery-release`/`product-discovery`/`solution-development`/`solution-formalization`, not short names).
+- Lane commits (pre-pick): A1=`0d84110`, A2=`b655e2a`, A3=`002e1ee`, A4=`838f541`, A5=`9adc5c5`, A6=`5f6fcfd`, A7=`fd0faa5`, A8=`da80a05`.
+- **Decision D-20260728-02** recorded: `canonicalJson` frozen primitive does NOT drop `undefined` object values (emits invalid token `undefined`); manifest fields must be ABSENT-not-UNDEFINED. WAVE1-PURE-SPI-SPEC §1 row 1 + §4 amended. Frozen primitive NOT modified (preserves all lineage hashes).
+- Artifacts: 15 new pure-data files under `src/process-modules/domain/spi/` (canonical-serialization, contract-ref, contract-schema-registry, resource-index, module-manifest, scenario-manifest, node-protocol, execution-envelope, production-envelope, module-completion, recovery-definitions, tool-contribution, agent-assistance, execution-receipt, legacy-adapter, index barrel) + 12 test files under `tests/spi/`. **Zero existing production source modified.**
+- Gate: `npm run build` PASS · Wave 1 SPI gate **238/238 PASS** · ratchet W0-A1 4/4 PASS (KNOWN_VIOLATIONS unchanged at 73 — SPI layer added ZERO new violations) · Wave 0 regression 31/31 PASS.
+- Commit: (pending — checkpoint below)
+- Next: create Wave 1 checkpoint commit, clean worktrees, then stage Wave 2 (Immutable Installation).

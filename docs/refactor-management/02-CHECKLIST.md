@@ -12,14 +12,14 @@ Update the right-hand column when a wave closes. Keep one-line evidence (commit/
 - [x] C005. Add or update a failing contract or architecture test before changing behavior. *(W0-A1 dependency-direction ratchet + 4 characterization suites are the test-first foundation)*
 
 ## Pure SPI & serializability (Wave 1)
-- [ ] C006. Keep manifests pure, serializable, canonical data.
-- [ ] C007. Reject any proposed function or closure inside a persisted manifest.
-- [ ] C008. Keep Runtime free of module names, kinds, reason codes, artifacts, and stage vocabulary.
-- [ ] C009. Keep modules free of Runtime adapter and persistence implementation imports.
-- [ ] C010. Keep scenarios free of module implementation imports.
-- [ ] C011. Use exact package, node, profile, protocol, and tool identities; do not use prefix or first-match selection.
-- [ ] C064. Validate every ContractRef through the pinned schema codec.
-- [ ] C065. Reject ignored Flow conditions and unsupported retry declarations.
+- [x] C006. Keep manifests pure, serializable, canonical data. *(W1: 15 pure-data files under domain/spi/; assertCanonicalSerializable enforces; 238/238 tests pass)*
+- [x] C007. Reject any proposed function or closure inside a persisted manifest. *(W1-A1: assertCanonicalSerializable rejects functions/Maps/Sets/closures; LifecycleScenarioManifest structurally forbids routeResolver key per §6.4)*
+- [x] C008. Keep Runtime free of module names, kinds, reason codes, artifacts, and stage vocabulary. *(W1: SPI layer adds ZERO ratchet violations; KNOWN_VIOLATIONS unchanged at 73)*
+- [ ] C009. Keep modules free of Runtime adapter and persistence implementation imports. *(W1: SPI types defined; module migration in W8/W9 enforces on actual module code)*
+- [ ] C010. Keep scenarios free of module implementation imports. *(W1: LifecycleScenarioManifest type defined; W7 enforces on actual scenario code)*
+- [ ] C011. Use exact package, node, profile, protocol, and tool identities; do not use prefix or first-match selection. *(W2/W3 enforce at execution time)*
+- [ ] C064. Validate every ContractRef through the pinned schema codec. *(W1-A5: ContractSchemaRegistry port + InMemoryContractSchemaRegistry adapter; real codec registration in W2)*
+- [x] C065. Reject ignored Flow conditions and unsupported retry declarations. *(W1-A4: isSupportedFlowCondition ratchet seed + NodeProtocolDefinition rejects retrySemantics:'unsupported')*
 
 ## Package installation (Wave 2)
 - [ ] C012. Add every new package resource to the resource index and digest.

@@ -7,7 +7,7 @@
 | Wave | Title | Plan § | Lanes | Status | Precondition owner | Checkpoint commit | Exit gate |
 |---|---|---|---|---|---|---|---|
 | **0** | Baseline & Executable Architecture Rules | 0.3, 13, 15, 16 | 8 | ✅ DONE (8/8 lanes, 146 tests) | integrator | `fd26fd1` → checkpoint | terminology, dep direction, known-debt allowlist, current failure fixtures, synthetic fixture boundaries frozen; no production behavior change |
-| **1** | Pure SPI Validation & Proof | 0.4 (Phase 1) | 8 | ⬜ | integrator (pure SPI checkpoint) | — | all manifests round-trip through canonical JSON; functions/Maps/Sets/undefined/non-enumerable/ignored conditions/unsupported retry fail installation |
+| **1** | Pure SPI Validation & Proof | 0.4 (Phase 1) | 8 | ✅ DONE (8/8 lanes, 238 tests) | integrator (pure SPI checkpoint) | `4eb5733` → checkpoint | all manifests round-trip through canonical JSON; functions/Maps/Sets/undefined/non-enumerable/ignored conditions/unsupported retry fail installation |
 | **2** | Immutable Installation & Registries | 0.5 (Phases 2,3 excl. live LM driver) | 8 | ⬜ | integrator + 1 SQL owner | — | installed bytes replay after source mutation; released version digest immutable; pinned installation not nullifiable; 3rd module installs without catalog edit |
 | **3** | Durable Execution Primitives | 0.6 (Phase 4) | 8 | ⬜ | integrator | — | crash after worker completion resumes from exact receipt+product; no latest-execution/process-scope/task-metadata/magic-binding reconstruction |
 | **4** | Protocol & Universal Recovery | 0.7 (Phase 5) | 8 | ⬜ | integrator | — | exact protocol resume works; required evidence cannot be skipped; one recovery engine repairs two unrelated modules without Runtime semantics |

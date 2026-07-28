@@ -14,7 +14,7 @@ pure serializable data** in `src/process-modules/domain/`:
 - `process-module.ts`: `ProcessModuleReference`, `ProcessModuleIdentity`, `SchemaReference`, `OutcomeDefinition`, `ArtifactTypeDefinition`, `PolicyDefinition`, `InvariantDefinition`, `RetryPolicyDefinition`, `RecoveryPolicyDefinition`, `ExecutionProfileDefinition`, `FlowNodeKind` (`'lm'|'kernel'|'human'|'external'|'composite'`), the 5 node defs + `FlowNodeDefinition` discriminated union, `FlowTransitionDefinition`, `FlowRecoveryDefinition`, `FlowDefinition`, `ProcessModuleDefinition`. **All pure** (only `processModuleKey()` is a function helper).
 - `lifecycle.ts`: `LifecycleIdentity`, `TransitionTarget`, `LifecycleMappingExpression`, `StageBinding`, `LifecycleDefinition`, `LifecycleRouteResult`. **Pure except `routeResolver?: RouteResolver`** (a function — non-serializable; documented).
 - `recovery.ts`: `RecoveryIssue`, `RecoveryFeedback`, `RecoveryFinding`, `RecoverySubjectRef`, schema-id constants. **All pure.**
-- `shared/canonical-json.ts` re-exports `canonicalJson`/`sha256Hex` from `src/saga3/shared/discovery-canonical.ts`. `canonicalJson`: object keys sorted lexicographically via `Object.keys().sort()`, no whitespace, `undefined` object values dropped by `JSON.stringify` semantics. `sha256Hex`: SHA-256 over canonicalJson, lowercase hex. **Frozen primitives — do not change.**
+- `shared/canonical-json.ts` re-exports `canonicalJson`/`sha256Hex` from `src/saga3/shared/discovery-canonical.ts`. `canonicalJson`: object keys sorted lexicographically via `Object.keys().sort()`, no whitespace. **NOTE (Decision D-20260728-02):** `undefined` object values are NOT dropped — the primitive emits the invalid token `undefined` (a divergence from `JSON.stringify` semantics). Manifest authors MUST omit optional fields, not set `undefined`. `sha256Hex`: SHA-256 over canonicalJson, lowercase hex. **Frozen primitives — do not change.**
 - `application/node-executor.ts`: `NodeExecutionResult`, `NodeExecutionReceipt`, `NodeProduction`, `NodeExecutionFrame` are pure; `NodeExecutor` SPI port is behavioral (port).
 - `application/process-module-executor.ts`: `ProcessModuleExecutionContext`, `ProcessModuleRunResult` pure; `ProcessModuleExecutor` SPI behavioral.
 - `application/exact-candidate-acceptance.ts`: `AcceptExactCandidatesCommand`, `ExactCandidateAcceptanceDecision`, `ExactCandidateAcceptanceReceipt` pure; `ExactCandidateAcceptance` port behavioral.
@@ -37,7 +37,7 @@ disjoint from existing files (which other code imports today). Ownership:
 
 | File | Owner | Contents |
 |---|---|---|
-| `domain/spi/canonical-serialization.ts` | W1-A1 | `isCanonicalSerializable(value)`, `assertCanonicalSerializable(value)`, `canonicalJsonOrThrow(value)`. Rejects functions, `Map`, `Set`, `undefined` (in arrays — object-key `undefined` is dropped by canonicalJson intentionally), class instances, non-finite numbers, `Symbol`s. Re-uses `canonicalJson` from `shared/canonical-json.ts`. |
+| `domain/spi/canonical-serialization.ts` | W1-A1 | `isCanonicalSerializable(value)`, `assertCanonicalSerializable(value)`, `canonicalJsonOrThrow(value)`. Rejects functions, `Map`, `Set`, `undefined` (in arrays — object-key `undefined` is ACCEPTED by the validator matching the frozen primitive's actual behavior; manifest authors must omit-not-undef per Decision D-20260728-02), class instances, non-finite numbers, `Symbol`s. Re-uses `canonicalJson` from `shared/canonical-json.ts`. |
 | `domain/spi/contract-ref.ts` | W1-A5 | `ContractRef { schemaId: string; version: string; digest: string }`. Pure. `digest` = `sha256Hex` of the canonical schema document (Wave 1 uses a placeholder/stub digest registry; real codecs in W1-A5). |
 | `domain/spi/contract-schema-registry.ts` | W1-A5 | `ContractSchemaRegistry` PORT (interface) + `InMemoryContractSchemaRegistry` adapter. `register(ref, codec)`, `decode(ref, bytes)`, `encode(ref, value)`, `has(ref)`, `validateOrThrow(ref, value)`. |
 | `domain/spi/module-manifest.ts` | W1-A2 | `ProcessModuleManifest` — pure envelope that wraps a `ProcessModuleDefinition` PLUS the new pure fields: `manifestFormatVersion: string`, `resourceIndex: readonly ResourceIndexEntry[]`, `handlerRefs: readonly HandlerRef[]`, `toolContributions` (typed by W1-A6), `assistance` + `guards` (typed by W1-A6), `capabilityRequirements` (W1-A6), `inputContractRef`/`outputContractRef: ContractRef`, `runtimeCompatibilityRange: string`. **No executor, no factories, no functions.** |
@@ -82,13 +82,15 @@ For each manifest type, Wave 1 must prove REJECTION of:
 - (Flow/NodeProtocol) an unsupported `retrySemantics` declaration (plan §8.2.11 / C065),
 - (Scenario) a `routeResolver` field present (plan §6.4 — must be structurally absent).
 
-## 4. Round-trip contract (plan §0.4.11)
+## 4. Round-trip contract (plan §0.4.11) — AMENDED by Decision D-20260728-02
 
 Every manifest type must satisfy:
 ```
 assertDeepEqual(parse(canonicalJson(m)), m)
 ```
 where `parse` is `JSON.parse`. AND `sha256Hex(m)` is stable across runs (canonicalJson determinism).
+
+**IMPORTANT (Decision D-20260728-02):** The frozen `canonicalJson` primitive does NOT drop `undefined` object values — it emits the invalid JSON token `undefined`, which `JSON.parse` cannot consume. Therefore **manifest authors MUST omit optional fields rather than set them to `undefined`.** A manifest containing an `undefined` object value will fail the round-trip contract by design (this is correct enforcement, not a bug). Validators (W1-A2/A3/A4/A6) need NOT add a separate `noUndefinedObjectValues` check — the round-trip test is the authoritative gate. `assertCanonicalSerializable` (W1-A1) correctly accepts `undefined` object values; it is not the layer that enforces absent-not-undefined.
 
 The W0-A7 synthetic fixtures (`tests/fixtures/synthetic-modules/*`, `tests/fixtures/synthetic-scenarios/campaign/*`) are the round-trip proof targets. W1-A8 wraps them into the new manifest types and asserts round-trip + cross-contract conformance.
 

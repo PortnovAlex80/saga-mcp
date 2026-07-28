@@ -1,6 +1,19 @@
 # Wave 1 — Pure SPI Validation & Proof
 
-> Plan mapping: §0.4 (Phase 1). **Status:** 🟡 STAGING — serial precondition satisfied (`09-contracts/WAVE1-PURE-SPI-SPEC.md`), dispatching 8 lanes.
+> Plan mapping: §0.4 (Phase 1). **Status:** ✅ DONE — 8/8 lanes integrated, 238/238 SPI tests pass, 0 production lines changed.
+
+## Dispatched lanes (tracking)
+
+| Lane | Branch | Worktree | Status | Commit |
+|---|---|---|---|---|
+| W1-A1 | `refactor/w1-a1` | `.worktrees/w1-a1` | ✅ done (`0d84110`) | 19/19 tests pass; ratchet green. **ESCALATION E1**: `canonicalJson({a:undefined})` emits invalid JSON token `undefined` (not dropped as spec claimed) — round-trip will fail for manifests with undefined object values. Integrator resolving. |
+| W1-A2 | `refactor/w1-a2` | `.worktrees/w1-a2` | ✅ done (`b655e2a`) | 28/28 tests pass (with local stubs, removed pre-commit); structural-only ProcessModuleDefinition check (Rule 5 forbids domain→application); ratchet green |
+| W1-A3 | `refactor/w1-a3` | `.worktrees/w1-a3` | ✅ done (`002e1ee`) | 23/23 tests pass (with stubs, removed pre-commit); `ScenarioStageBinding extends StageBinding`; routeResolver key checked BEFORE canonical gate (§6.4 priority); ratchet green |
+| W1-A4 | `refactor/w1-a4` | `.worktrees/w1-a4` | ✅ done (`838f541`) | 36/36 tests pass (with stubs, removed pre-commit); C061 driver-neutral guard `findForbiddenDriverNeutralKeys` + C065 retry/condition ratchets; ratchet green |
+| W1-A5 | `refactor/w1-a5` | `.worktrees/w1-a5` | ✅ done (`9adc5c5`) | 17/17 tests pass; ratchet green (73 unchanged); ContractRef indexed by (schemaId,version), digest not lookup key |
+| W1-A6 | `refactor/w1-a6` | `.worktrees/w1-a6` | ✅ done (`5f6fcfd`) | 75/75 tests pass; 6 source + 4 test files (2724 lines); inline-mirrored NodeProduction (Rule 5 compliance), dynamic-import resolver for A1/A5; ratchet green |
+| W1-A7 | `refactor/w1-a7` | `.worktrees/w1-a7` | ✅ done (`fd0faa5`) | Expected isolated fail (W1-A2/A5 imports); pure `adaptLegacyProcessModule` + LEGACY constants + LegacyManifestAdapterError; ratchet green; validates at integration |
+| W1-A8 | `refactor/w1-a8` | `.worktrees/w1-a8` | ✅ done (`da80a05`) | Expected unresolved-import-fail in isolation (siblings absent); barrel + 21 conformance tests ready; ratchet green; validates at integration |
 
 ## Objective (§0.4.11 serial gate)
 

@@ -27,7 +27,8 @@
  */
 
 import type { ContractRef } from './contract-ref.js';
-import type { AgentAssistanceDefinition, GuardBinding } from './tool-contribution.js';
+import type { AgentAssistanceDefinition } from './agent-assistance.js';
+import type { GuardBinding } from './tool-contribution.js';
 import { assertCanonicalSerializable } from './canonical-serialization.js';
 
 // ---------------------------------------------------------------------------

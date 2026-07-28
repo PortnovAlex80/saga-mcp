@@ -254,11 +254,19 @@ test('contractSchemaRegistryKey: ${schemaId}@${version} format', () => {
 test('assertCanonicalSerializable rejects a ContractRef whose field carries a function', () => {
   // A ContractRef is meant to be pure. If a caller smuggles a function into
   // one of its fields, the canonical-serialization guard must reject it.
+  // assertCanonicalSerializable throws a CanonicalSerializationError plain
+  // object ({ code, path, reason }) — we match on reason, not err.message.
   const bad = { schemaId: 's', version: '1', digest: () => 'nope' };
-  assert.throws(() => assertCanonicalSerializable(bad), /function/);
+  let caught = null;
+  try { assertCanonicalSerializable(bad); } catch (e) { caught = e; }
+  assert.ok(caught, 'must throw');
+  assert.match(String(caught?.reason ?? caught?.message ?? caught), /function/i);
 });
 
 test('assertCanonicalSerializable rejects a ContractRef whose field carries a Symbol', () => {
   const bad = { schemaId: 's', version: '1', digest: Symbol('nope') };
-  assert.throws(() => assertCanonicalSerializable(bad), /symbol/);
+  let caught = null;
+  try { assertCanonicalSerializable(bad); } catch (e) { caught = e; }
+  assert.ok(caught, 'must throw');
+  assert.match(String(caught?.reason ?? caught?.message ?? caught), /symbol/i);
 });

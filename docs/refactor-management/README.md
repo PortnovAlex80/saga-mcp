@@ -49,10 +49,10 @@ never edit anything here.
 
 ## Current state
 
-- **Active wave:** Wave 1 (Pure SPI Validation & Proof) — being staged next.
-- **Last completed:** Wave 0 (Baseline & Executable Architecture Rules) — 8/8 lanes done, 146/146 gate tests pass, 0 production lines changed. Checkpoint commit created.
-- **Frozen input commit history:** `eb35510` (pre-HQ baseline) → `fd26fd1` (HQ + Wave 0 frozen input) → Wave 0 checkpoint.
-- **Next integrator action:** stage Wave 1 frozen checkpoint (pure SPI: manifests, ContractRef, envelopes, ModuleCompletion, NodeProtocol, recovery, tools, assistance, identities), then dispatch W1-A1…W1-A8.
+- **Active wave:** Wave 2 (Immutable Installation & Registries) — being staged next.
+- **Last completed:** Wave 1 (Pure SPI Validation & Proof) — 8/8 lanes done, 238/238 SPI tests pass, 0 production lines changed. Decision D-20260728-02 (canonicalJson divergence) recorded. Checkpoint commit created.
+- **Frozen input commit history:** `eb35510` → `fd26fd1` (Wave 0 input) → `b0746cd` (Wave 0 checkpoint) → `4eb5733` (Wave 1 input) → Wave 1 checkpoint.
+- **Next integrator action:** stage Wave 2 frozen checkpoint (immutable package store, content-addressed adapter, installation persistence under one SQL owner, ProcessRun pinning, registries), then dispatch W2-A1…W2-A8.
 
 ## How to resume after context loss
 
