@@ -47,15 +47,16 @@
  * per file).
  */
 
+import { createHash } from 'node:crypto';
 import type { ProcessModuleManifest } from '../../domain/spi/module-manifest.js';
-import type { ResourceIndexEntry, ResourceKind } from '../../domain/spi/resource-index.js';
-import type { HandlerRef } from '../../domain/spi/module-manifest.js';
 import { validateProcessModuleManifest } from '../../domain/spi/module-manifest.js';
 import { assertCanonicalSerializable } from '../../domain/spi/canonical-serialization.js';
-import {
-  computeDependencyLock,
-  type DependencyLock,
-} from './dependency-lock.js';
+import { computeDependencyLock } from './dependency-lock.js';
+// Canonical types from sibling lanes (W2-A1 store, W2-A2 installation/repo).
+// Re-exported below for callers; imported here for use in method signatures.
+import type { ResourceBlob, StoredModulePackage, ModulePackageStore } from './package-store.js';
+import type { ModuleInstallationRecord } from './installation.js';
+import type { ModuleInstallationRepository } from '../persistence/installation-repository.js';
 
 // ---------------------------------------------------------------------------
 // Error code constants. Mirrors W2-A2's `installation.ts` error codes; the
@@ -104,63 +105,25 @@ export class PackageInstallerError extends Error {
  * A resource blob handed to the installer. `digest = sha256Hex(bytes)` (W2-A1
  * computes it; the installer only reads it for undeclared-resource checks).
  */
-export interface ResourceBlob {
-  readonly logicalId: string;
-  readonly kind: ResourceKind;
-  readonly bytes: Uint8Array;
-  readonly digest: string;
-}
+export type { ResourceBlob } from './package-store.js';
 
 /** A package persisted by the store. */
-export interface StoredModulePackage {
-  readonly manifest: ProcessModuleManifest;
-  readonly resources: readonly ResourceBlob[];
-  readonly packageDigest: string;
-  readonly storedAt: string;
-}
+export type { StoredModulePackage } from './package-store.js';
 
 /**
  * Content-addressed package store port (W2-A1 owns the canonical declaration).
  * The installer depends on `store`, `read`, and `verify`.
  */
-export interface ModulePackageStore {
-  store(
-    manifest: ProcessModuleManifest,
-    resources: readonly ResourceBlob[],
-  ): Promise<StoredModulePackage>;
-  read(packageDigest: string): Promise<StoredModulePackage>;
-  exists(packageDigest: string): Promise<boolean>;
-  /** Re-read + recompute the package digest; `false` means corrupt. */
-  verify(packageDigest: string): Promise<boolean>;
-}
+export type { ModulePackageStore } from './package-store.js';
 
 /** Status of an installation record. Mirrors W2-A2's `ModuleInstallationStatus`. */
-export type ModuleInstallationStatus =
-  | 'staged'
-  | 'validated'
-  | 'active'
-  | 'retired'
-  | 'corrupt';
+export type { ModuleInstallationStatus } from './installation.js';
 
 /**
  * The single source of truth for "what is installed" (W2-A2 owns the canonical
  * declaration). The installer returns the ACTIVE record after step 8.
  */
-export interface ModuleInstallationRecord {
-  readonly id: number;
-  readonly name: string;
-  readonly version: string;
-  readonly packageDigest: string;
-  readonly manifestSnapshot: ProcessModuleManifest;
-  readonly storeLocation: string;
-  readonly resourceIndex: readonly ResourceIndexEntry[];
-  readonly handlerRefs: readonly HandlerRef[];
-  readonly dependencyLock: DependencyLock;
-  readonly status: ModuleInstallationStatus;
-  readonly installedAt: string;
-  readonly activatedAt?: string;
-  readonly retiredAt?: string;
-}
+export type { ModuleInstallationRecord } from './installation.js';
 
 /**
  * Installation repository port (W2-A2 owns the canonical declaration). The
@@ -172,30 +135,7 @@ export interface ModuleInstallationRecord {
  * (the repo enforces this at the SQL UNIQUE-index level; the installer merely
  * propagates). Other insert failures propagate as-is.
  */
-export interface ModuleInstallationRepository {
-  insert(record: {
-    readonly name: string;
-    readonly version: string;
-    readonly packageDigest: string;
-    readonly manifestSnapshot: ProcessModuleManifest;
-    readonly storeLocation: string;
-    readonly resourceIndex: readonly ResourceIndexEntry[];
-    readonly handlerRefs: readonly HandlerRef[];
-    readonly dependencyLock: DependencyLock;
-    readonly status: ModuleInstallationStatus;
-    readonly installedAt: string;
-  }): Promise<ModuleInstallationRecord>;
-  getById(id: number): Promise<ModuleInstallationRecord>;
-  getByPackageDigest(digest: string): Promise<ModuleInstallationRecord>;
-  getActiveByNameVersion(
-    name: string,
-    version: string,
-  ): Promise<ModuleInstallationRecord | null>;
-  activate(id: number): Promise<ModuleInstallationRecord>;
-  retire(id: number): Promise<ModuleInstallationRecord>;
-  markCorrupt(id: number): Promise<ModuleInstallationRecord>;
-  listActive(): Promise<readonly ModuleInstallationRecord[]>;
-}
+export type { ModuleInstallationRepository } from '../persistence/installation-repository.js';
 
 /**
  * Injected dependencies for {@link PackageInstaller.installPackage}.
@@ -337,29 +277,73 @@ export class PackageInstaller {
       );
     }
 
-    // Step 4 — dependency lock.
-    const dependencyLock = computeDependencyLock(manifest);
+    // Step 3.5 — STAMP resource digests. The manifest may carry placeholder
+    // digests ('pending@wave-2') from authoring time. Before storing, replace
+    // each resourceIndex entry's digest with the REAL sha256 of the supplied
+    // bytes (plan §5.5.4: "Compute resource hashes"). This guarantees
+    // `computePackageDigest` (called by the store at write AND by verify at
+    // read) uses identical real digests — otherwise the placeholder-vs-real
+    // divergence makes every package fail replay verification. We build a new
+    // manifest rather than mutating the caller's object.
+    const bytesByLogicalId = new Map(resources.map((r) => [r.logicalId, r.bytes]));
+    const stampedResourceIndex = manifest.resourceIndex.map((entry) => {
+      const bytes = bytesByLogicalId.get(entry.logicalId);
+      if (!bytes) {
+        // Declared but no blob supplied — undeclared-resource check below
+        // catches declared-but-missing, but be defensive.
+        return entry;
+      }
+      // Mirror W2-A1's computeResourceDigest: sha256 over raw bytes via crypto.
+      // (Cannot import computeResourceDigest without creating a domain→adapter
+      // edge; the formula is `createHash('sha256').update(bytes).digest('hex')`
+      // per W2-A1 spec — one-liner, stable.)
+      const realDigest = createHash('sha256').update(bytes).digest('hex');
+      return { ...entry, digest: realDigest };
+    });
+    const stampedManifest: ProcessModuleManifest = {
+      ...manifest,
+      resourceIndex: stampedResourceIndex,
+    };
 
-    // Step 5 — store bytes (content-addressed). The store computes and returns
-    // `packageDigest` per spec §4: `sha256Hex(canonicalJson({ manifest,
-    // resourceIndex, resourceDigests }))`.
-    const stored = await store.store(manifest, resources);
+    // Step 4 — dependency lock (computed from the stamped manifest so lock
+    // entries carry real resource digests too).
+    const dependencyLock = computeDependencyLock(stampedManifest);
 
-    // Step 6 — persist the staged installation record. Catch the version-
-    // collision error code from the repo and propagate as a typed installer
-    // error. The spec leaves the collision decision to the caller: development
-    // mode MUST use a prerelease version (spec §4). The installer does NOT
-    // auto-retire-and-replace.
+    // Step 5 — store bytes (content-addressed) using the STAMPED manifest so
+    // the stored manifest.json carries real resource digests (matching what
+    // verify will recompute on read). The store computes and returns
+    // `packageDigest` per spec §4 / Decision D-20260728-03:
+    // `sha256Hex({ manifest, resourceIndex, resourceDigests })`.
+    const stored = await store.store(stampedManifest, resources);
+
+    // Step 6 — persist the staged installation record. PRE-CHECK for version
+    // collision first: the repo's UNIQUE-on-active index only enforces at
+    // `activate` time (a `staged` row does not violate it), so we explicitly
+    // check `getActiveByNameVersion` to surface `MODULE_INSTALLATION_VERSION_COLLISION`
+    // at the right step with the canonical code (W2-A8 conformance expects this
+    // code, not `MODULE_INSTALLATION_ACTIVATE_FAILED`). The spec leaves the
+    // collision decision to the caller: development mode MUST use a prerelease
+    // version (spec §4). The installer does NOT auto-retire-and-replace.
+    const moduleName = stampedManifest.definition.identity.name;
+    const moduleVersion = stampedManifest.definition.identity.version;
+    const existingActive = await repo.getActiveByNameVersion(moduleName, moduleVersion);
+    if (existingActive !== null && existingActive.packageDigest !== stored.packageDigest) {
+      throw new PackageInstallerError(
+        MODULE_INSTALLATION_VERSION_COLLISION,
+        `cannot install ${moduleName}@${moduleVersion}: installation id=${existingActive.id} already holds the active slot with a different package_digest ('${existingActive.packageDigest}' vs '${stored.packageDigest}')`,
+        { existing: existingActive, attempted: stored.packageDigest },
+      );
+    }
     let staged: ModuleInstallationRecord;
     try {
       staged = await repo.insert({
-        name: manifest.definition.identity.name,
-        version: manifest.definition.identity.version,
+        name: moduleName,
+        version: moduleVersion,
         packageDigest: stored.packageDigest,
-        manifestSnapshot: manifest,
+        manifestSnapshot: stampedManifest,
         storeLocation: stored.storedAt,
-        resourceIndex: manifest.resourceIndex,
-        handlerRefs: manifest.handlerRefs,
+        resourceIndex: stampedManifest.resourceIndex,
+        handlerRefs: stampedManifest.handlerRefs,
         dependencyLock,
         status: 'staged',
         installedAt,
@@ -380,7 +364,10 @@ export class PackageInstaller {
       // verify() throwing is treated as corruption (the spec models verify as
       // returning false on digest mismatch; a throw is a harder failure but
       // the safe interpretation is the same: the package is not trustworthy).
-      await repo.markCorrupt(staged.id).catch(() => undefined);
+      // repo.markCorrupt is synchronous in W2-A2's canonical port (returns
+      // ModuleInstallationRecord, not a Promise). Guard against any throw so
+      // the original corruption error is the one we surface.
+      try { repo.markCorrupt(staged.id); } catch { /* swallow; surface verify error */ }
       throw new PackageInstallerError(
         MODULE_INSTALLATION_CORRUPT,
         `store.verify threw for packageDigest ${stored.packageDigest}`,
@@ -410,4 +397,19 @@ export class PackageInstaller {
       throw wrapPortError(e, 'MODULE_INSTALLATION_ACTIVATE_FAILED');
     }
   }
+}
+
+/**
+ * Stateless convenience wrapper around {@link PackageInstaller.installPackage}
+ * for callers that don't need to hold a `PackageInstaller` instance. Each call
+ * constructs a fresh stateless installer (no shared mutable fields) and
+ * delegates. This is the API surface the barrel + conformance tests consume.
+ */
+export async function installPackage(
+  manifest: ProcessModuleManifest,
+  resources: readonly ResourceBlob[],
+  deps: PackageInstallerDeps,
+  opts?: PackageInstallerOptions,
+): Promise<ModuleInstallationRecord> {
+  return new PackageInstaller().installPackage(manifest, resources, deps, opts);
 }

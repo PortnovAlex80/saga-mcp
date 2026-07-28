@@ -138,7 +138,11 @@ async function loadThirdSyntheticFixture() {
     );
   }
   const definition = fixture.default;
-  const resourceIndex = Array.isArray(fixture.resourceIndex) ? fixture.resourceIndex : [];
+  // W2-A7 exports `complianceCheckResourceIndex` (named), not `resourceIndex`.
+  // Fall back to `resourceIndex` for forward-compat if a future fixture renames.
+  const resourceIndex = Array.isArray(fixture.complianceCheckResourceIndex)
+    ? fixture.complianceCheckResourceIndex
+    : (Array.isArray(fixture.resourceIndex) ? fixture.resourceIndex : []);
 
   // Wrap the legacy definition into a manifest envelope (Wave 1 pattern).
   // Then ENRICH resourceIndex/handlerRefs from the fixture's declared resources
@@ -416,11 +420,20 @@ test('§6.4 + §14.3.7: pinned installation round-trips; legacy NULL run resolve
   const db = sharedEnv.db;
   const adapter = sharedEnv.runAdapter;
 
-  // Insert a NEW process_runs row to pin.
+  // Insert a NEW process_runs row to pin. The table has many NOT NULL columns
+  // (project_id, module_ref_key, idempotency_key, executor_kind, input_schema,
+  // input_snapshot, input_hash) — supply stubs for all of them. project_id
+  // references projects(id); insert a throwaway project first.
+  db.prepare(`INSERT INTO projects (name) VALUES (?)`).run('w2-a8-pin-fixture');
+  const projectId = Number(db.prepare(`SELECT last_insert_rowid() AS id`).get().id);
   const insertRun = db.prepare(
-    `INSERT INTO saga3_process_runs (module_name, module_version) VALUES (?, ?)`,
+    `INSERT INTO saga3_process_runs (
+       project_id, module_name, module_version, module_ref_key, idempotency_key,
+       executor_kind, input_schema, input_snapshot, input_hash
+     ) VALUES (?, ?, ?, ?, ?, 'legacy-adapter', 'stub', '{}', 'stub')`,
   );
-  const info = insertRun.run(sharedRecord.name, sharedRecord.version);
+  const refKey = `${sharedRecord.name}@${sharedRecord.version}`;
+  const info = insertRun.run(projectId, sharedRecord.name, sharedRecord.version, refKey, `w2-a8-pin-${Date.now()}`);
   const runId = Number(info.lastInsertRowid);
 
   // Pin it.
@@ -440,7 +453,7 @@ test('§6.4 + §14.3.7: pinned installation round-trips; legacy NULL run resolve
   // Insert a LEGACY row (NULL installation_id) → getPinnedInstallation returns
   // null, and resolveInstallationForLegacyRun must fall back to the registry
   // by name+version (§14.3.7 compatibility path).
-  const legacyInfo = insertRun.run(sharedRecord.name, sharedRecord.version);
+  const legacyInfo = insertRun.run(projectId, sharedRecord.name, sharedRecord.version, refKey, `w2-a8-legacy-${Date.now()}`);
   const legacyRunId = Number(legacyInfo.lastInsertRowid);
   // Explicitly clear (defensive — the column defaults to NULL).
   db.prepare(`UPDATE saga3_process_runs SET installation_id = NULL, package_digest = NULL WHERE id = ?`)

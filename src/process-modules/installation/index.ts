@@ -109,7 +109,11 @@ export {
 } from './domain/dependency-lock.js';
 
 export {
-  // installPackage(manifest, resources, { store, repo }, opts?) — pure orchestration
+  // PackageInstaller is a stateless class; `installPackage` is a convenience
+  // wrapper that constructs a fresh installer per call. Both are exported so
+  // callers can choose instance or functional style.
+  PackageInstaller,
+  PackageInstallerError,
   installPackage,
   type PackageInstallerDeps,
   type PackageInstallerOptions,

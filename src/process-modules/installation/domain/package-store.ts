@@ -34,7 +34,7 @@
 
 import { createHash } from 'node:crypto';
 
-import { canonicalJson, sha256Hex } from '../../shared/canonical-json.js';
+import { sha256Hex } from '../../shared/canonical-json.js';
 import type {
   ProcessModuleManifest,
   ResourceIndexEntry,
@@ -161,42 +161,38 @@ export function computeResourceDigest(bytes: Uint8Array): string {
 /**
  * Compute the content address (`packageDigest`) of a package.
  *
- * Formula (spec §4, task "What to build"):
+ * Canonical formula (Decision D-20260728-03, reconciled at Wave 2 integration):
  *
  * ```
- *   packageDigest = sha256Hex(canonicalJson({
+ *   packageDigest = sha256Hex({
  *     manifest,
  *     resourceIndex: manifest.resourceIndex,
  *     resourceDigests: resources.map(r => r.digest),
- *   }))
+ *   })
  * ```
  *
- * NOTE on the explicit `canonicalJson` inside `sha256Hex`: the shared
- * `sha256Hex(value)` already canonicalizes internally, so the literal task
- * formula `sha256Hex(canonicalJson({...}))` double-canonicalizes. This is NOT
- * idempotent (canonicalizing a string re-quotes it), so the two readings
- * produce different digests. This function implements the task file's LITERAL
- * formula verbatim (`sha256Hex(canonicalJson({...}))`) because:
- *   1. the task file is the operative instruction and states it explicitly;
- *   2. the "W2-A3 must match" requirement keys off the same task formula.
- * See the return report's "Ambiguities" section. W2-A3 MUST call this function
- * (or replicate this exact formula) so installer and store agree.
+ * The shared `sha256Hex(value)` canonicalizes internally (one canonicalization).
+ * The earlier task-file formula `sha256Hex(canonicalJson({...}))` DOUBLE-
+ * canonicalized (canonicalJson is not idempotent on strings — it re-quotes
+ * them), producing a divergent digest family from every other content hash in
+ * the codebase. D-20260728-03 standardized on single canonicalization to align
+ * packageDigest with the frozen lineage-hash primitive. W2-A1 originally
+ * implemented the double-canonicalization form; this one-line normalization
+ * was applied at Wave 2 checkpoint integration.
  *
- * Stability: the formula is deterministic (canonical JSON key sort + the frozen
- * `sha256Hex`/`canonicalJson` primitives), so identical
- * `{manifest, resources}` inputs always yield the same `packageDigest`.
+ * Stability: deterministic (canonical JSON key sort + the frozen `sha256Hex`
+ * primitive), so identical `{manifest, resources}` inputs always yield the
+ * same `packageDigest`.
  */
 export function computePackageDigest(
   manifest: ProcessModuleManifest,
   resources: readonly ResourceBlob[],
 ): string {
-  return sha256Hex(
-    canonicalJson({
-      manifest,
-      resourceIndex: manifest.resourceIndex as readonly ResourceIndexEntry[],
-      resourceDigests: resources.map((r) => r.digest),
-    }),
-  );
+  return sha256Hex({
+    manifest,
+    resourceIndex: manifest.resourceIndex as readonly ResourceIndexEntry[],
+    resourceDigests: resources.map((r) => r.digest),
+  });
 }
 
 // ---------------------------------------------------------------------------

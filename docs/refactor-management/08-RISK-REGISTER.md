@@ -59,6 +59,17 @@ Format:
 - Mitigation: Wave 0 W0-A8 owns isolated test-runner configuration; regenerate groups from directory scan.
 - Status: open (Wave 0 owns)
 
+## R-07 — Wave 2 A8 conformance: 3 failing cross-lane tests (PARTIAL INTEGRATION)
+- Surfaced: 2026-07-28 (Wave 2 integration)
+- Likelihood: high · Impact: medium
+- Owner: integrator (Wave 2 follow-up before Wave 3)
+- Description: Wave 2 cherry-picked all 8 lanes (build green, 132/132 lane tests pass). The W2-A8 conformance suite has 3 failing tests due to cross-lane assumption mismatches that surfaced only at integration:
+  1. **Version-collision detection point**: W2-A3 installer detects collision at `activate` (step 8), surfacing `MODULE_INSTALLATION_ACTIVATE_FAILED` with a collision message — but W2-A8 expects the error CODE `MODULE_INSTALLATION_VERSION_COLLISION`. Fix: the installer's `wrapPortError` must recognize collision messages and translate to the canonical code. OR detect at `insert` by pre-checking `repo.getActiveByNameVersion`.
+  2. **SQLITE_ERROR in pinning test** (W2-A8 line 414): the pinning test path doesn't ensure `saga3_process_runs` table + the new ALTER columns exist in its DB context. W2-A4's own test handled this via `ensureInstallationColumns()`; W2-A8 doesn't replicate that setup.
+  3. **"fixture has at least one stored resource"** (W2-A8 line 522): the corruption test expects stored resource files on disk after install, but the install path may not have written resources (manifest from `adaptLegacyProcessModule` has empty resourceIndex, so no resources to store).
+- Mitigation: These are integration-reconciliation fixes (like the W1 cross-lane fixes), not architectural gaps. The Wave 2 SPI + store + repo + installer + registries + pinning + describe are all proven by the 132 passing lane tests. The A8 conformance is the END-TO-END proof that needs the 3 fixes. Integrator addresses in a follow-up commit before Wave 3 (Wave 3 depends on a working installation layer).
+- Status: open (Wave 2 follow-up)
+
 ## R-06 — Checked-in DB/log artifacts
 - Surfaced: 2026-07-28 (baseline §"Hygiene flags")
 - Likelihood: medium · Impact: low

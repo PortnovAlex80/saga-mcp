@@ -64,3 +64,20 @@ Format:
 - Commit: `6a349a2` — `refactor(wave-1): pure SPI checkpoint — 15 domain/spi files + 238 tests`
 - Next: stage Wave 2 (Immutable Installation) frozen checkpoint off `6a349a2`.
 - Worktrees `.worktrees/w1-aN` removed (branches `refactor/w1-aN` preserved for audit).
+
+## 2026-07-28 — Wave 2 executed (8/8 lanes done) and PARTIALLY integrated
+- Wave: W2
+- What: All 8 installation lanes completed in isolated worktrees off `2dd386c`. Cherry-picked serially in DAG order A2→A1→A3→A5→A6→A4→A7→A8 — zero cherry-pick conflicts. **Multiple post-cherry-pick integration fixes** by integrator:
+  1. `installer.ts`: replaced 5 local structural type aliases (ResourceBlob/StoredModulePackage/ModulePackageStore/ModuleInstallationRecord/ModuleInstallationRepository/ModuleInstallationStatus) with `import type` from canonical sibling sources (A1/A2).
+  2. `installer.ts`: added standalone `installPackage(...)` helper wrapping `new PackageInstaller().installPackage(...)` (A3 made it a class method; A8 barrel expected a function).
+  3. `installer.ts`: fixed `repo.markCorrupt(...).catch()` — A2's port returns `ModuleInstallationRecord` synchronously, not a Promise. Wrapped in try/catch.
+  4. `index.ts` barrel: explicit `installPackage` + `PackageInstaller` re-exports.
+  5. `installer.ts`: added version-collision PRE-CHECK via `repo.getActiveByNameVersion` before `insert` (A2 UNIQUE-on-active index only enforces at `activate`, surfacing wrong error code `MODULE_INSTALLATION_ACTIVATE_FAILED` instead of `MODULE_INSTALLATION_VERSION_COLLISION`).
+  6. `installer.ts`: added Step 3.5 — STAMP resourceIndex digests with real sha256(bytes) before store (placeholder `'pending@wave-2'` digests broke replay verification).
+  7. `package-store.ts`: applied Decision D-20260728-03 — changed `computePackageDigest` from double-canonicalization `sha256Hex(canonicalJson(...))` to single `sha256Hex(...)`.
+  8. `round-trip-replay-conformance.test.mjs`: fixed `saga3_process_runs` INSERT (added required NOT NULL columns + projects FK); fixed resourceIndex export name (`complianceCheckResourceIndex` not `resourceIndex`).
+- **Decision D-20260728-03** recorded: packageDigest formula standardized on single canonicalization.
+- **Risk R-07** recorded: W2-A8 conformance still has 6 failing tests. Root cause: `store.verify` returns false immediately after install (replay verification fails). The resource-stamping fix (6) and single-canonicalization fix (7) did NOT resolve it — deeper investigation needed into how `read` reconstructs the manifest vs how `store` writes it (possible: manifest.json round-trip through canonicalJson+JSON.parse alters the object shape enough to change the digest). The 7 individual lane test suites (132/132) all PASS — the store/repo/installer/registries work correctly in isolation. The end-to-end conformance needs the verify-mismatch debugged.
+- Gate: `npm run build` PASS · 7 lane suites **132/132 PASS** · A8 conformance **2/8 PASS, 6 FAIL** (R-07) · ratchet 4/4 PASS (73 unchanged) · Wave 1 regression 238/238 PASS.
+- Commit: (pending — partial-integration checkpoint below)
+- Next: checkpoint Wave 2 as partial-integration (build green, lane tests green, A8 conformance deferred to R-07 follow-up). Wave 3 may proceed building on the working lane-level installation surface, but MUST resolve R-07 before depending on end-to-end install+verify.
