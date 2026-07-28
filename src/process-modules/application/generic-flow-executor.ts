@@ -383,6 +383,28 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
           allRuns,
           lastCompleted.id,
         );
+        // An exhausted recovery case is terminal — it must not be mutated by a
+        // re-run of the verifier. Resolve it (and clear activeIssue) so that if
+        // the verifier still rejects on this resume, recordIssue opens a
+        // brand-new case with a fresh attempt budget instead of colliding with
+        // the exhausted one (RECOVERY_SOURCE_NODE_RUN_REUSED_WITH_DIFFERENT_ISSUE).
+        const resumeRun = this.opts.processRunRepo.read(context.processRunId);
+        const caseId = resumeRun?.activeIssue?.recoveryCaseId ?? null;
+        const policy = (module.flow.recovery ?? [])
+          .find(p => p.verifyNodeId === lastCompleted.nodeId);
+        if (
+          caseId
+          && this.opts.recoveryCaseRepo
+          && policy
+          && this.opts.recoveryCaseRepo.readCase(caseId)?.status === 'exhausted'
+        ) {
+          this.opts.recoveryCaseRepo.resolveActive(
+            context.processRunId,
+            policy.id,
+            lastCompleted.id,
+          );
+          this.opts.processRunRepo.update(context.processRunId, { activeIssue: null });
+        }
       } else {
         resumedRecoveryInput = this.reconcileRecoveryCheckpoint(
           module,

@@ -26,9 +26,30 @@ function handleProcessNodeSubmit(args: Record<string, unknown>) {
   if (!Object.prototype.hasOwnProperty.call(args, 'payload')) {
     throw new Error('payload is required');
   }
+  // Defensive: some MCP clients serialize an untyped object argument to a JSON
+  // string before sending. The inputSchema declares `payload` as an object, but
+  // we still parse a string here so a conformant JSON payload is not rejected
+  // as a non-object. Without this, the development task-graph planner would
+  // double-encode its proposal and the resolve-task-graph verifier would see a
+  // string instead of an object ("proposal must be a JSON object").
+  let payload = args.payload;
+  if (typeof payload === 'string') {
+    const trimmed = payload.trim();
+    if (trimmed.length === 0) {
+      throw new Error('payload is required');
+    }
+    try {
+      payload = JSON.parse(trimmed);
+    } catch {
+      throw new Error('payload must be a JSON object (string input was not valid JSON)');
+    }
+  }
+  if (payload === null || typeof payload !== 'object' || Array.isArray(payload)) {
+    throw new Error('payload must be a JSON object');
+  }
   const result = repo().submitForCurrentExecution({
     schema,
-    payload: args.payload,
+    payload,
   });
   return {
     accepted: true,
@@ -68,6 +89,7 @@ export const definitions: Tool[] = [
             'Exact output schema declared by the current execution profile.',
         },
         payload: {
+          type: 'object',
           description: 'The complete JSON product conforming to that schema.',
         },
       },

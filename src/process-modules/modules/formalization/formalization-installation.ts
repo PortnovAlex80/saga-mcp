@@ -915,7 +915,12 @@ function createSettlementHandler(deps: FormalizationInstallationDeps): KernelHan
             artifactId: artifact.id,
             code: artifact.code,
             acceptedHash: acceptedArtifactHash(artifact),
-            implementationRequired: true,
+            // An AC tagged `ac_kind:verification` by the architect (e.g.
+            // performance benchmarks, security scans, accessibility audits) is
+            // verification-only — it does not need an implementation task.
+            // Default to true (implementation required) when no tag is present,
+            // preserving backward compatibility with ACs created before the tag.
+            implementationRequired: !artifactTagsInclude(artifact, 'ac_kind:verification'),
           })),
         };
         const persisted = deps.solutionContractRepository.persist(payload);
@@ -1759,6 +1764,11 @@ function acceptedArtifactHash(artifact: FormalizationArtifactSnapshot): string {
     throw new Error(`artifact ${artifact.id} has no immutable accepted SHA-256 hash`);
   }
   return artifact.acceptedHash;
+}
+
+function artifactTagsInclude(artifact: FormalizationArtifactSnapshot, tag: string): boolean {
+  const tags = artifact.tags;
+  return Array.isArray(tags) && tags.includes(tag);
 }
 
 function artifactHashMap(

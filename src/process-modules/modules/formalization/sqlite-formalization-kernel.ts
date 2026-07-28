@@ -44,7 +44,7 @@ export class SqliteFormalizationArtifactGraph implements
     if (unique.length === 0) return [];
     const rows = this.db.prepare(
       `SELECT id, project_id, epic_id, type, code, status, content_hash,
-              accepted_hash, drift_state, metadata
+              accepted_hash, drift_state, tags, metadata
          FROM artifacts
         WHERE id IN (${unique.map(() => '?').join(',')})
         ORDER BY id`,
@@ -58,6 +58,7 @@ export class SqliteFormalizationArtifactGraph implements
       content_hash: string | null;
       accepted_hash: string | null;
       drift_state: string;
+      tags: string;
       metadata: string;
     }>;
     return rows.map(row => ({
@@ -70,6 +71,7 @@ export class SqliteFormalizationArtifactGraph implements
       contentHash: row.content_hash,
       acceptedHash: row.accepted_hash,
       driftState: row.drift_state,
+      tags: parseTags(row.tags),
       metadata: parseMetadata(row.metadata),
     }));
   }
@@ -417,6 +419,17 @@ function parseMetadata(raw: string): Record<string, unknown> {
       : {};
   } catch {
     return {};
+  }
+}
+
+function parseTags(raw: string): readonly string[] {
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed)
+      ? parsed.filter((t): t is string => typeof t === 'string')
+      : [];
+  } catch {
+    return [];
   }
 }
 

@@ -53,6 +53,7 @@ export interface FormalizationArtifactSnapshot {
   contentHash: string | null;
   acceptedHash: string | null;
   driftState: string;
+  tags: readonly string[];
   metadata: Record<string, unknown>;
 }
 
