@@ -1,0 +1,8 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "synthetic.director.signoff.v1",
+  "title": "Synthetic Director Sign-off Interaction Contract (W0-A7 fixture)",
+  "type": "object",
+  "additionalProperties": true,
+  "description": "Data-only placeholder interaction contract. Wave 1 ContractSchemaRegistry will register a concrete codec behind this id."
+}

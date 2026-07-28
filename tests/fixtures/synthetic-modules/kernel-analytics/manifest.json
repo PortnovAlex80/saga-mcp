@@ -1,0 +1,58 @@
+{
+  "manifestFormatVersion": "0.1.0",
+  "source": "W0-A7 synthetic fixture (data-only)",
+  "identity": {
+    "name": "synthetic-kernel-analytics",
+    "version": "0.1.0",
+    "kind": "kernel-analytics",
+    "displayName": "Synthetic Kernel Analytics",
+    "description": "W0-A7 synthetic Kernel-node fixture. Data-only — no real handler. Proves the SPI is module-kind-agnostic."
+  },
+  "inputContract": { "id": "synthetic.analytics.input.v1" },
+  "outputContract": { "id": "synthetic.analytics.output.v1" },
+  "outcomes": [
+    { "code": "metrics-computed", "description": "Engagement metrics were computed deterministically.", "terminal": true }
+  ],
+  "flow": {
+    "id": "synthetic.kernel-analytics.standard",
+    "version": "0.1.0",
+    "entryNodeId": "compute-metrics",
+    "nodes": [
+      {
+        "id": "compute-metrics",
+        "label": "Compute Metrics",
+        "kind": "kernel",
+        "description": "Deterministically compute engagement metrics from a campaign draft.",
+        "handler": "analytics-compute-handler@1.0.0",
+        "inputSchema": { "id": "synthetic.analytics.input.v1" },
+        "outputSchema": { "id": "synthetic.analytics.output.v1" },
+        "emitsOutcome": "metrics-computed"
+      }
+    ],
+    "transitions": [],
+    "terminalNodeIds": ["compute-metrics"]
+  },
+  "artifacts": [
+    {
+      "type": "synthetic.metrics",
+      "schema": { "id": "synthetic.analytics.output.v1" },
+      "authority": "kernel",
+      "description": "Opaque metrics envelope produced by the Kernel node."
+    }
+  ],
+  "policies": [],
+  "invariants": [
+    {
+      "id": "synthetic.analytics.deterministic",
+      "description": "Compute is purely deterministic for the same input bytes (synthetic contract placeholder).",
+      "enforcement": "test"
+    }
+  ],
+  "executionProfiles": [],
+  "resourceIndex": [
+    { "logicalId": "input-schema", "path": "schemas/analytics-input.schema.json", "kind": "schema" }
+  ],
+  "handlerReferences": [
+    { "nodeId": "compute-metrics", "handlerRef": "analytics-compute-handler@1.0.0" }
+  ]
+}
