@@ -44,5 +44,6 @@ Format:
   - W0-A7: 14/14. 4 synthetic modules (lm-marketing, kernel-analytics, human-director-approval, external-seo) + campaign scenario (5 stages, external-seo reused, proves §6.8). No routeResolver (§6.4). Wave 1/7/10 proof target.
   - W0-A8: 7 ADRs (015–021) + COMPATIBILITY-INVENTORY.md (90 tools, 10 migrations — found `migrateVerificationExecution` not in baseline, 37 tables, composition seam, hard-coded Discovery strings, routeResolver, built-in catalog). `tools/run-process-module-tests.mjs` regenerated to directory scan (35/35 coverage, was stale 29/41). `.gitignore` hygiene appended (tmp DB files already untracked — `git rm --cached` moot).
 - Gate: `npm run build` PASS · Wave 0 gate (7 new test files) **146/146 PASS** · regression `tests/architecture/saga2-boundaries.test.mjs` 20/20 PASS · regression `tests/characterization/saga2-runtime-contracts.test.mjs` 11/11 PASS · `node tools/run-process-module-tests.mjs --list` coverage 35/35.
-- Commit: (pending — checkpoint below)
-- Next: create Wave 0 checkpoint commit, then stage Wave 1 (Pure SPI) frozen checkpoint.
+- Commit: `b0746cd` — `refactor(wave-0): checkpoint — baseline + architecture rules complete`
+- Next: stage Wave 1 (Pure SPI) frozen checkpoint off `b0746cd`, dispatch W1-A1…W1-A8.
+- Worktrees `.worktrees/w0-aN` removed (branches `refactor/w0-aN` preserved for audit).
