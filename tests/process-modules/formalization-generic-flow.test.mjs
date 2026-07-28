@@ -164,9 +164,15 @@ function fixture() {
         };
       });
     },
+    // Retry/recovery fallback: in unit tests the mock always returns [] (no
+    // cross-execution fallback). Real SQLite ledger implements these against
+    // saga3_managed_*_productions. Tests that explicitly verify "no fallback"
+    // rely on this returning empty.
+    listArtifactsForNodeInProcessRun() { return []; },
+    listTracesForNodeInProcessRun() { return []; },
+    listArtifactsForNodeInEpic() { return []; },
+    listTracesForNodeInEpic() { return []; },
   };
-
-  let baselineRecord = null;
   const baselineRepository = {
     freeze(payload) {
       const snapshotHash = sha256Hex(payload);

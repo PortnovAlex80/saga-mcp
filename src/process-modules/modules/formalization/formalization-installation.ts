@@ -974,8 +974,29 @@ function readExecutionWrites(
     taskId: receipt.taskId,
     executionId: receipt.executionId,
   };
-  const artifactWrites = latestArtifactWrites(deps.ledger.listArtifactsForExecution(query));
-  const traceWrites = latestTraceWrites(deps.ledger.listTracesForExecution(query));
+  let artifactWrites = latestArtifactWrites(deps.ledger.listArtifactsForExecution(query));
+  let traceWrites = latestTraceWrites(deps.ledger.listTracesForExecution(query));
+  // Retry/recovery fallback: when a worker retried (review changes_requested,
+  // recovery repair, lease loss), the current execution may have produced NO
+  // managed artifacts — they were created in an EARLIER execution of the same
+  // task/intent. Fall back to the latest productions for this (epic, module,
+  // node). This mirrors the Discovery module's readLatestXxx(intent) pattern.
+  // Each artifact is still validated against the artifact graph below, but with
+  // a relaxed fence (process+module+node+intent+task, NOT executionId).
+  let usedFallback = false;
+  if (artifactWrites.length === 0 && traceWrites.length === 0) {
+    const runArtifacts = deps.ledger.listArtifactsForNodeInProcessRun(
+      ctx.processRunId, FORMALIZATION_MODULE_KEY, sourceNodeId,
+    );
+    const runTraces = deps.ledger.listTracesForNodeInProcessRun(
+      ctx.processRunId, FORMALIZATION_MODULE_KEY, sourceNodeId,
+    );
+    if (runArtifacts.length > 0 || runTraces.length > 0) {
+      artifactWrites = latestArtifactWrites(runArtifacts);
+      traceWrites = latestTraceWrites(runTraces);
+      usedFallback = true;
+    }
+  }
   const artifacts = deps.graph.readArtifactsByIds(artifactWrites.map(write => write.artifactId));
   if (artifacts.length !== artifactWrites.length) {
     throw new Error(`${handlerId}: one or more ledger artifacts no longer exist`);
@@ -984,7 +1005,7 @@ function readExecutionWrites(
   for (const write of artifactWrites) {
     const artifact = artifactsById.get(write.artifactId);
     if (
-      !matchesExecutionFence(write, query)
+      !(usedFallback ? matchesFenceRelaxed(write, query) : matchesExecutionFence(write, query))
       || !artifact
       || artifact.projectId !== ctx.projectId
       || artifact.epicId !== ctx.epicId
@@ -1006,7 +1027,7 @@ function readExecutionWrites(
   for (const write of traceWrites) {
     const trace = tracesById.get(write.traceId);
     if (
-      !matchesExecutionFence(write, query)
+      !(usedFallback ? matchesFenceRelaxed(write, query) : matchesExecutionFence(write, query))
       || !trace
       || trace.sourceArtifactId !== write.sourceId
       || trace.targetType !== write.targetType
@@ -1117,6 +1138,28 @@ function matchesExecutionFence(
     && record.intentId === query.intentId
     && record.taskId === query.taskId
     && record.executionId === query.executionId
+  );
+}
+
+/**
+ * Relaxed fence for retry/recovery fallback: validates process + module + node
+ * + intent + task but NOT executionId. The worker's artifacts were produced in
+ * an earlier execution of the same task/intent; the fence still binds them to
+ * the correct ProcessRun and node, just not to the current execution.
+ */
+function matchesFenceRelaxed(
+  record: Pick<
+    ManagedArtifactWriteRecord | ManagedTraceWriteRecord,
+    'processRunId' | 'moduleRef' | 'nodeId' | 'intentId' | 'taskId' | 'executionId'
+  >,
+  query: ManagedProductionQuery,
+): boolean {
+  return (
+    record.processRunId === query.processRunId
+    && record.moduleRef === query.moduleRef
+    && record.nodeId === query.nodeId
+    && record.intentId === query.intentId
+    && record.taskId === query.taskId
   );
 }
 

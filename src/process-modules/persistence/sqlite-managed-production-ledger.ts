@@ -77,6 +77,23 @@ export interface ManagedProductionLedger {
     moduleRef: string,
     nodeId: string,
   ): readonly ManagedTraceProductionRecord[];
+  /**
+   * Retry/recovery fallback: find artifact productions for one (module, node)
+   * within the SAME ProcessRun but across ALL executions. Used when a worker
+   * retried (review changes_requested, recovery repair, lease loss) and the
+   * current execution produced no managed artifacts — they were created in an
+   * earlier execution of the same task/intent.
+   */
+  listArtifactsForNodeInProcessRun(
+    processRunId: number,
+    moduleRef: string,
+    nodeId: string,
+  ): readonly ManagedArtifactProductionRecord[];
+  listTracesForNodeInProcessRun(
+    processRunId: number,
+    moduleRef: string,
+    nodeId: string,
+  ): readonly ManagedTraceProductionRecord[];
 }
 
 export interface ManagedExecutionProvenance {
@@ -546,6 +563,34 @@ export class SqliteManagedProductionLedger implements ManagedProductionLedger {
         WHERE pr.epic_id=? AND mp.module_ref=? AND mp.node_id=?
         ORDER BY mp.id`,
     ).all(epicId, moduleRef, nodeId) as TraceLedgerRow[];
+    return rows.map(traceRowToRecord);
+  }
+
+  listArtifactsForNodeInProcessRun(
+    processRunId: number,
+    moduleRef: string,
+    nodeId: string,
+  ): readonly ManagedArtifactProductionRecord[] {
+    const rows = this.db.prepare(
+      `SELECT mp.*
+         FROM saga3_managed_artifact_productions mp
+        WHERE mp.process_run_id=? AND mp.module_ref=? AND mp.node_id=?
+        ORDER BY mp.id`,
+    ).all(processRunId, moduleRef, nodeId) as ArtifactLedgerRow[];
+    return rows.map(artifactRowToRecord);
+  }
+
+  listTracesForNodeInProcessRun(
+    processRunId: number,
+    moduleRef: string,
+    nodeId: string,
+  ): readonly ManagedTraceProductionRecord[] {
+    const rows = this.db.prepare(
+      `SELECT mp.*
+         FROM saga3_managed_trace_productions mp
+        WHERE mp.process_run_id=? AND mp.module_ref=? AND mp.node_id=?
+        ORDER BY mp.id`,
+    ).all(processRunId, moduleRef, nodeId) as TraceLedgerRow[];
     return rows.map(traceRowToRecord);
   }
 }
