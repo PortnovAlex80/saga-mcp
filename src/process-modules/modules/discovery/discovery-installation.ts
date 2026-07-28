@@ -37,6 +37,8 @@ import { NO_READINESS_HASH } from '../../../saga3/domain/discovery-settlement-in
 import { DISCOVERY_OUTCOME_CERTIFICATE_SCHEMA } from '../../../saga3/domain/discovery-outcome-certificate.js';
 import type { ReadinessShadowResult } from '../../../saga3/domain/discovery-readiness-assessment.js';
 import { Saga3DiscoverySettlementService } from '../../../saga3/application/discovery-settlement-service.js';
+import { getDb } from '../../../db.js';
+import { sha256Hex } from '../../shared/canonical-json.js';
 
 /**
  * Deps, которые модуль поставляет из composition-root. Settle handler читает
@@ -137,6 +139,7 @@ function createResolveProposalSubmissionHandler(
       receipt.taskId,
       receipt.executionId,
     );
+    let result;
     if (!raw || raw.task_id !== receipt.taskId || raw.execution_id !== receipt.executionId) {
       // Fallback: the worker may have run in multiple executions (engine retry,
       // recovery, lease loss). The receipt carries the FIRST execution's fence,
@@ -147,15 +150,66 @@ function createResolveProposalSubmissionHandler(
       // sibling execution is safe.
       const fallback = runtime.readLatestRawSubmission(receipt.intentId);
       if (fallback && fallback.task_id === receipt.taskId) {
-        return resolveAcceptedRaw(runtime, receipt, fallback);
+        result = resolveAcceptedRaw(runtime, receipt, fallback);
+      } else {
+        return failedProposalResolution(
+          receipt,
+          'exact raw submission is missing',
+        );
       }
-      return failedProposalResolution(
-        receipt,
-        'exact raw submission is missing',
-      );
+    } else {
+      result = resolveAcceptedRaw(runtime, receipt, raw);
     }
-    return resolveAcceptedRaw(runtime, receipt, raw);
+    // When the proposal is accepted, ensure a `brief` artifact exists for this
+    // epic. The generic-flow Discovery worker does not create one (unlike the
+    // legacy saga-kickstart), but Formalization requires PRD → brief lineage.
+    if (result.event === 'accepted' && ctx.epicId !== null) {
+      try {
+        ensureDiscoveryBriefArtifact(ctx.projectId, ctx.epicId, null);
+      } catch {
+        // Non-fatal: the brief is a convenience projection. If it fails
+        // (e.g. race condition), formalization has its own fallback.
+      }
+    }
+    return result;
   };
+}
+
+/**
+ * Ensure a `brief` artifact exists for this epic. The generic-flow Discovery
+ * worker writes a discovery document + proposal but does NOT create a `brief`
+ * artifact row (unlike the legacy saga-kickstart). Downstream Formalization
+ * requires a PRD → brief `derived_from` trace, and the saga-product skill
+ * checks for an accepted brief as a precondition. Without it, the PRD
+ * reviewer loops forever on "missing derived_from → brief".
+ *
+ * This kernel-side projection creates a synthetic accepted brief from the
+ * accepted proposal, idempotently. It runs when the proposal is first accepted.
+ */
+function ensureDiscoveryBriefArtifact(
+  projectId: number,
+  epicId: number,
+  proposalPayload: { problem_statement?: unknown; candidate_scope?: unknown; recommended_outcome?: unknown } | null,
+): void {
+  const db = getDb();
+  // Idempotent: if a brief already exists for this epic, do nothing.
+  const existing = db.prepare(
+    "SELECT id FROM artifacts WHERE epic_id=? AND type='brief' AND status='accepted' ORDER BY id LIMIT 1",
+  ).get(epicId) as { id: number } | undefined;
+  if (existing) return;
+
+  const briefHash = sha256Hex({
+    schema: 'saga3.discovery-brief.v1',
+    epic_id: epicId,
+    problem_statement: proposalPayload?.problem_statement ?? null,
+    candidate_scope: proposalPayload?.candidate_scope ?? null,
+    recommended_outcome: proposalPayload?.recommended_outcome ?? null,
+    note: 'Auto-provisioned by discovery proposal resolver',
+  });
+  db.prepare(
+    `INSERT INTO artifacts (project_id, epic_id, type, code, title, path, status, content_hash, accepted_hash, drift_state, tags, metadata)
+     VALUES (?, ?, 'brief', 'BRIEF-1', 'Discovery Brief', 'docs/discovery/brief-auto-provisioned.md', 'accepted', ?, ?, 'clean', '[]', '{}')`,
+  ).run(projectId, epicId, briefHash, briefHash);
 }
 
 function resolveAcceptedRaw(
