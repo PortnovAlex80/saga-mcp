@@ -1,6 +1,6 @@
 # Wave 3 — Durable Execution Primitives
 
-> Plan mapping: §0.6 (Phase 4). **Status:** 🟡 RUNNING — 5 parallel lanes dispatched (A4,A5,A6,A7,A8); serial chain A1→A2→A3 dispatched after parallel lanes land.
+> Plan mapping: §0.6 (Phase 4). **Status:** ✅ DONE — 8/8 lanes integrated (5 parallel + 3 serial); build green; 464/465 tests pass (1 skip on absent sibling); ratchet 4/4; SPI 238/238; characterization 52/52; installation 140/140.
 
 ## Dispatched lanes (tracking)
 
