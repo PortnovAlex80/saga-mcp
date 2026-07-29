@@ -68,7 +68,7 @@ import { getDb } from '../db.js';
 import {
   createProductLifecycleRuntime,
   type ProductLifecycleRuntimeOptions,
-} from '../process-modules/composition/product-lifecycle-runtime.js';
+} from './product-lifecycle-runtime.js';
 
 export type ProductLifecycleCompositionOverrides = Omit<
   ProductLifecycleRuntimeOptions,

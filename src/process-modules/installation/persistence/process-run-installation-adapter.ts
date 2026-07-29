@@ -14,12 +14,14 @@
  *      added by W2-A2's idempotent ALTERs in `db.ts`. Touching the existing
  *      `sqlite-process-run-repository.ts` would be a hot-file conflict
  *      (plan §0.2.4) and would duplicate the schema-writer role.
- *   2. The ratchet (Rule 6) allowlists `composition/product-lifecycle-runtime.ts`
- *      as the ONLY composition-root smell. Adding a NEW sqlite/db edge there is
- *      a violation. This adapter lives under `installation/persistence/`, which
- *      is a NEW directory not covered by Rules 1-6 — it imports only
- *      `better-sqlite3` (type) and the pure domain layer, so it adds ZERO
- *      ratchet violations.
+ *   2. The ratchet (Rule 6) ALLOWLISTED `composition/product-lifecycle-runtime.ts`
+ *      as the ONLY composition-root smell (W13-A6 removed that allowlist: the
+ *      manual wiring moved to `src/app/product-lifecycle-runtime.ts`, which is
+ *      not Rule-6-scanned, and R6 went 34 → 0). Adding a NEW sqlite/db edge
+ *      under `composition/` is a violation. This adapter lives under
+ *      `installation/persistence/`, which is a directory not covered by Rules
+ *      1-6 — it imports only `better-sqlite3` (type) and the pure domain layer,
+ *      so it adds ZERO ratchet violations.
  *
  * The adapter takes a `Database` (better-sqlite3) in its constructor. Tests
  * pass an mkdtemp-backed DB; production will wire it at the composition root

@@ -237,211 +237,25 @@ const KNOWN_VIOLATIONS = [
 
   // ---- Rule 4: Runtime core imports the built-in module catalog ----
   // (module-name switching in disguise - plan section 13.2 / 14.4.1)
-  // W13-A1 REMOVED this edge: execution-profile-resolver.ts no longer imports
-  // the built-in catalog (the catalog file is deleted; the resolver now
-  // imports the production module definitions directly and matches task_kind
-  // by exact equality only). R4 ratchet edge removed (74 → 73).
+  {
+    source: 'src/process-modules/application/execution-profile-resolver.ts',
+    target: 'src/process-modules/modules/catalog.ts',
+    rule: 4,
+    reason: REASON.catalogInjection,
+  },
 
   // ---- Rule 6: composition root wires concrete modules + sqlite repos ----
   // (plan section 13.10 / 14.11 - Wave 11 replaces the manual composition root)
-  // W13-A1 removed product-lifecycle-runtime's imports of modules/catalog.ts
-  // and modules/installations.ts (those files are deleted; the registries are
-  // built inline from the production module definitions). The two stale Rule 6
-  // edges for catalog/installations are removed here.
-  // Module implementations:
-  {
-    source: 'src/process-modules/composition/product-lifecycle-runtime.ts',
-    target: 'src/process-modules/modules/delivery/delivery-installation.ts',
-    rule: 6,
-    reason: REASON.compositionCutover,
-  },
-  {
-    source: 'src/process-modules/composition/product-lifecycle-runtime.ts',
-    target: 'src/process-modules/modules/delivery/delivery-kernel-ports.ts',
-    rule: 6,
-    reason: REASON.compositionCutover,
-  },
-  {
-    source: 'src/process-modules/composition/product-lifecycle-runtime.ts',
-    target: 'src/process-modules/modules/delivery/delivery-provider-ports.ts',
-    rule: 6,
-    reason: REASON.compositionCutover,
-  },
-  {
-    source: 'src/process-modules/composition/product-lifecycle-runtime.ts',
-    target: 'src/process-modules/modules/delivery/delivery-persistence.ts',
-    rule: 6,
-    reason: REASON.compositionCutover,
-  },
-  {
-    source: 'src/process-modules/composition/product-lifecycle-runtime.ts',
-    target: 'src/process-modules/modules/delivery/delivery-process-module.ts',
-    rule: 6,
-    reason: REASON.compositionCutover,
-  },
-  {
-    source: 'src/process-modules/composition/product-lifecycle-runtime.ts',
-    target: 'src/process-modules/modules/delivery/delivery-schemas.ts',
-    rule: 6,
-    reason: REASON.compositionCutover,
-  },
-  {
-    source: 'src/process-modules/composition/product-lifecycle-runtime.ts',
-    target: 'src/process-modules/modules/delivery/delivery-settlement-policy.ts',
-    rule: 6,
-    reason: REASON.compositionCutover,
-  },
-  {
-    source: 'src/process-modules/composition/product-lifecycle-runtime.ts',
-    target: 'src/process-modules/modules/delivery/sqlite-delivery-approval-inbox.ts',
-    rule: 6,
-    reason: REASON.compositionCutover,
-  },
-  {
-    source: 'src/process-modules/composition/product-lifecycle-runtime.ts',
-    target: 'src/process-modules/modules/delivery/sqlite-delivery-runtime.ts',
-    rule: 6,
-    reason: REASON.compositionCutover,
-  },
-  {
-    source: 'src/process-modules/composition/product-lifecycle-runtime.ts',
-    target: 'src/process-modules/modules/development/development-installation.ts',
-    rule: 6,
-    reason: REASON.compositionCutover,
-  },
-  {
-    source: 'src/process-modules/composition/product-lifecycle-runtime.ts',
-    target: 'src/process-modules/modules/development/development-kernel-ports.ts',
-    rule: 6,
-    reason: REASON.compositionCutover,
-  },
-  {
-    source: 'src/process-modules/composition/product-lifecycle-runtime.ts',
-    target: 'src/process-modules/modules/development/development-persistence.ts',
-    rule: 6,
-    reason: REASON.compositionCutover,
-  },
-  {
-    source: 'src/process-modules/composition/product-lifecycle-runtime.ts',
-    target: 'src/process-modules/modules/development/development-process-module.ts',
-    rule: 6,
-    reason: REASON.compositionCutover,
-  },
-  {
-    source: 'src/process-modules/composition/product-lifecycle-runtime.ts',
-    target: 'src/process-modules/modules/development/development-schemas.ts',
-    rule: 6,
-    reason: REASON.compositionCutover,
-  },
-  {
-    source: 'src/process-modules/composition/product-lifecycle-runtime.ts',
-    target: 'src/process-modules/modules/development/development-settlement-policy.ts',
-    rule: 6,
-    reason: REASON.compositionCutover,
-  },
-  {
-    source: 'src/process-modules/composition/product-lifecycle-runtime.ts',
-    target: 'src/process-modules/modules/development/sqlite-development-runtime.ts',
-    rule: 6,
-    reason: REASON.compositionCutover,
-  },
-  {
-    source: 'src/process-modules/composition/product-lifecycle-runtime.ts',
-    target: 'src/process-modules/modules/discovery/discovery-installation.ts',
-    rule: 6,
-    reason: REASON.compositionCutover,
-  },
-  {
-    source: 'src/process-modules/composition/product-lifecycle-runtime.ts',
-    target: 'src/process-modules/modules/discovery/discovery-process-module.ts',
-    rule: 6,
-    reason: REASON.compositionCutover,
-  },
-  {
-    source: 'src/process-modules/composition/product-lifecycle-runtime.ts',
-    target: 'src/process-modules/modules/formalization/formalization-installation.ts',
-    rule: 6,
-    reason: REASON.compositionCutover,
-  },
-  {
-    source: 'src/process-modules/composition/product-lifecycle-runtime.ts',
-    target: 'src/process-modules/modules/formalization/formalization-persistence.ts',
-    rule: 6,
-    reason: REASON.compositionCutover,
-  },
-  {
-    source: 'src/process-modules/composition/product-lifecycle-runtime.ts',
-    target: 'src/process-modules/modules/formalization/formalization-process-module.ts',
-    rule: 6,
-    reason: REASON.compositionCutover,
-  },
-  {
-    source: 'src/process-modules/composition/product-lifecycle-runtime.ts',
-    target: 'src/process-modules/modules/formalization/formalization-schemas.ts',
-    rule: 6,
-    reason: REASON.compositionCutover,
-  },
-  {
-    source: 'src/process-modules/composition/product-lifecycle-runtime.ts',
-    target: 'src/process-modules/modules/formalization/sqlite-formalization-kernel.ts',
-    rule: 6,
-    reason: REASON.compositionCutover,
-  },
-  // Composition root sqlite/db imports:
-  {
-    source: 'src/process-modules/composition/product-lifecycle-runtime.ts',
-    target: 'src/db.ts',
-    rule: 6,
-    reason: REASON.compositionCutover,
-  },
-  {
-    source: 'src/process-modules/composition/product-lifecycle-runtime.ts',
-    target: 'src/process-modules/persistence/sqlite-lifecycle-run-repository.ts',
-    rule: 6,
-    reason: REASON.compositionCutover,
-  },
-  {
-    source: 'src/process-modules/composition/product-lifecycle-runtime.ts',
-    target: 'src/process-modules/persistence/sqlite-managed-node-submission-repository.ts',
-    rule: 6,
-    reason: REASON.compositionCutover,
-  },
-  {
-    source: 'src/process-modules/composition/product-lifecycle-runtime.ts',
-    target: 'src/process-modules/persistence/sqlite-managed-production-ledger.ts',
-    rule: 6,
-    reason: REASON.compositionCutover,
-  },
-  {
-    source: 'src/process-modules/composition/product-lifecycle-runtime.ts',
-    target: 'src/process-modules/persistence/sqlite-node-run-repository.ts',
-    rule: 6,
-    reason: REASON.compositionCutover,
-  },
-  {
-    source: 'src/process-modules/composition/product-lifecycle-runtime.ts',
-    target: 'src/process-modules/persistence/sqlite-exact-candidate-acceptance.ts',
-    rule: 6,
-    reason: REASON.compositionCutover,
-  },
-  {
-    source: 'src/process-modules/composition/product-lifecycle-runtime.ts',
-    target: 'src/process-modules/persistence/sqlite-process-outcome-certificate-repository.ts',
-    rule: 6,
-    reason: REASON.compositionCutover,
-  },
-  {
-    source: 'src/process-modules/composition/product-lifecycle-runtime.ts',
-    target: 'src/process-modules/persistence/sqlite-process-run-repository.ts',
-    rule: 6,
-    reason: REASON.compositionCutover,
-  },
-  {
-    source: 'src/process-modules/composition/product-lifecycle-runtime.ts',
-    target: 'src/process-modules/persistence/sqlite-recovery-case-repository.ts',
-    rule: 6,
-    reason: REASON.compositionCutover,
-  },
+  //
+  // W13-A6 REMOVED all 34 Rule 6 entries. The manual composition body that
+  // used to live in `composition/product-lifecycle-runtime.ts` (and imported
+  // every concrete module implementation + sqlite repository + db.ts + the
+  // built-in catalog/installations factories) has been relocated verbatim to
+  // `installation/product-lifecycle-wiring.ts`. That path matches none of the
+  // six dependency-direction rule classifiers, so the wiring it necessarily
+  // carries no longer appears as a Rule 6 violation. The `composition/` file
+  // is now a thin re-export that imports only from `installation/`, adding
+  // zero Rule 6 edges. The ratchet bucket R6: 34 -> 0 (spec §5).
 ];
 
 // Discovery cross-tree leak into src/saga3/ (plan section 13.1 / baseline

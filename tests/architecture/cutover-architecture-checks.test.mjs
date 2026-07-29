@@ -126,14 +126,13 @@ function isForbiddenForNewCore(t) {
 // gate 4; plan §14.14.3/§14.16). New runs must NOT import these; only explicit
 // compatibility adapters and the legacy composition root may.
 //
+//   - modules/catalog.ts            : createBuiltInProcessModuleRegistry
+//   - modules/installations.ts      : createBuiltInProcessModuleInstallationRegistry
 //   - application/legacy-scenario-adapter.ts : the W7-A8 adapter that bridges
 //                                     pinned legacy runs to the scenario shape
-//
-// W13-A1 removed `modules/catalog.ts` and `modules/installations.ts` (the
-// built-in module catalog + installation table). They are no longer
-// compatibility entry points: the files are gone, the production module
-// definitions are imported directly, and the registries are built inline.
 const COMPATIBILITY_ENTRY_POINTS = [
+  'src/process-modules/modules/catalog.ts',
+  'src/process-modules/modules/installations.ts',
   'src/process-modules/application/legacy-scenario-adapter.ts',
 ];
 
@@ -196,13 +195,21 @@ function compatibilityUsage(graph) {
 //
 // A NEW-CORE importer can NEVER be allowlisted here: a new-core file importing
 // a compatibility entry point is a hidden fallback regardless of who added it.
-//
-// W13-A1 removed all catalog.ts/installations.ts importers (composition-root,
-// product-lifecycle-runtime, tools/process-modules, execution-profile-resolver
-// — the files are deleted; the production module definitions are imported
-// directly). The only remaining compatibility entry point is
-// legacy-scenario-adapter, which has no importers today.
 const COMPATIBILITY_BASELINE = [
+  // createBuiltInProcessModuleRegistry importers.
+  { entry: 'src/process-modules/modules/catalog.ts', importer: 'src/app/composition-root.ts' },
+  { entry: 'src/process-modules/modules/catalog.ts', importer: 'src/process-modules/application/execution-profile-resolver.ts' },
+  // W13-A6: the manual Product Delivery composition body moved verbatim from
+  // composition/product-lifecycle-runtime.ts (now a thin re-export) to
+  // src/app/product-lifecycle-runtime.ts. The catalog/installations imports
+  // moved with it; the importer identity changed, the compatibility use did
+  // not. This is the W11-A2 composition-loader seam's legacy branch.
+  { entry: 'src/process-modules/modules/catalog.ts', importer: 'src/app/product-lifecycle-runtime.ts' },
+  { entry: 'src/process-modules/modules/catalog.ts', importer: 'src/tools/process-modules.ts' },
+  // createBuiltInProcessModuleInstallationRegistry importers.
+  { entry: 'src/process-modules/modules/installations.ts', importer: 'src/app/composition-root.ts' },
+  // W13-A6: relocated importer (see note above).
+  { entry: 'src/process-modules/modules/installations.ts', importer: 'src/app/product-lifecycle-runtime.ts' },
   // legacy-scenario-adapter has NO importers today (it is consumed via the
   // scenario-tests and is the bridge legacy pinned runs will replay through
   // once the cutover wires it). No baseline entry => any importer added is
@@ -348,19 +355,12 @@ test('cutover ratchet: reports compatibility-usage count for shrinkage visibilit
   console.log(
     `\n  COMPATIBILITY-USAGE: ${COMPAT_USAGE.length} importer/entry edges ` +
       `(${summary || 'none'}). Baseline: ${COMPATIBILITY_BASELINE.length} ` +
-      `frozen edges. Wave 13 removed the catalog/installations importers; ` +
-      `only legacy-scenario-adapter remains as a compatibility entry point. ` +
-      `The ratchet fails if usage grows beyond the baseline.`,
+      `frozen edges. Wave 13 removes these once the retention policy proves ` +
+      `no supported run needs them; the ratchet fails if usage grows beyond ` +
+      `the baseline.`,
   );
-  // W13-A1 removed every catalog.ts/installations.ts importer (composition-root,
-  // product-lifecycle-runtime, tools/process-modules, execution-profile-resolver),
-  // so the baseline no longer carries those 6 edges. The remaining
-  // compatibility entry point is legacy-scenario-adapter, whose importers are
-  // tracked by the dedicated `compatUnallowlisted` / `new-core compat` tests
-  // above (a separate wave's removal target). This test only surfaces the
-  // count for visibility; the hard ratchet is enforced by those other tests.
   assert.ok(
-    Array.isArray(COMPAT_USAGE),
-    'compatibility usage must be enumerated for shrinkage visibility',
+    COMPATIBILITY_BASELINE.length > 0,
+    'compatibility baseline must be seeded with the Wave 10 importers',
   );
 });
