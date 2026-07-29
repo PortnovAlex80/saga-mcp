@@ -76,6 +76,8 @@ const OUTPUT_SCHEMA = 'synthetic.workspace.output.v1';
 const EXECUTION_SKILL_NAME = 'saga-product';
 /** The independent reviewer skill the package ships (kind:'reviewer-skill'). */
 const REVIEWER_SKILL_NAME = 'saga-requirements-reviewer';
+/** Shared execution protocol, intentionally classified as an instruction. */
+const PROTOCOL_SKILL_NAME = 'saga-process-module-worker-protocol';
 
 /**
  * @typedef {import('../../src/process-modules/domain/spi/resource-index.ts').ResourceIndexEntry} ResourceIndexEntry
@@ -94,6 +96,12 @@ const RESOURCE_INDEX = Object.freeze([
   { logicalId: 'submit-call', path: 'templates/submit-call.json', kind: 'mcp-call-template', digest: sha256Hex({ id: 'submit-call' }) },
   { logicalId: 'verify-checklist', path: 'checklists/verify.md', kind: 'checklist', digest: sha256Hex({ id: 'verify-checklist' }) },
   { logicalId: 'node-instructions', path: 'instructions/prd.md', kind: 'instruction', digest: sha256Hex({ id: 'node-instructions' }) },
+  {
+    logicalId: 'module.instruction.process-protocol',
+    path: `skills/${PROTOCOL_SKILL_NAME}/SKILL.md`,
+    kind: 'instruction',
+    digest: sha256Hex({ id: PROTOCOL_SKILL_NAME }),
+  },
   { logicalId: 'prd-schema', path: 'schemas/prd.v1.json', kind: 'schema', digest: sha256Hex({ id: 'prd-schema' }) },
 ]);
 
@@ -143,7 +151,7 @@ const moduleDefinition = {
       taskKind: 'formalization.prd',
       executionSkill: EXECUTION_SKILL_NAME,
       reviewSkill: REVIEWER_SKILL_NAME,
-      protocolSkill: 'saga-tracker',
+      protocolSkill: PROTOCOL_SKILL_NAME,
       semanticSkill: EXECUTION_SKILL_NAME,
       artifactAcceptanceAuthority: 'kernel-gate',
       executionMode: 'git_change',
@@ -265,6 +273,14 @@ test('buildWorkspaceProjection resolves resources from the pinned installation r
     'reviewer skill identity differs from execution skill identity',
   );
 
+  // The protocol profile slot resolves an instruction-classified SKILL.md.
+  assert.equal(proj.skills.protocolSkillName, PROTOCOL_SKILL_NAME);
+  assert.equal(
+    proj.skills.protocolSkillResource?.logicalId,
+    'module.instruction.process-protocol',
+  );
+  assert.equal(proj.skills.protocolSkillResource?.kind, 'instruction');
+
   // Templates include both 'template' and 'mcp-call-template'.
   const templateKinds = proj.templates.map((t) => t.kind).sort();
   assert.deepEqual(templateKinds, ['mcp-call-template', 'template']);
@@ -275,10 +291,12 @@ test('buildWorkspaceProjection resolves resources from the pinned installation r
   assert.equal(proj.checklists[0].logicalId, 'verify-checklist');
 
   // Instructions partitioned.
-  assert.equal(proj.instructions.length, 1);
-  assert.equal(proj.instructions[0].logicalId, 'node-instructions');
+  assert.equal(proj.instructions.length, 2);
+  assert.ok(
+    proj.instructions.some(resource => resource.logicalId === 'node-instructions'),
+  );
 
-  // allResources keeps the full index (7 entries incl. schema).
+  // allResources keeps the full index (including schema + protocol instruction).
   assert.equal(proj.allResources.length, RESOURCE_INDEX.length);
 });
 

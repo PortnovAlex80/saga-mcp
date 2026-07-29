@@ -226,6 +226,14 @@ export interface ResolvedNodeSkills {
   readonly reviewerSkillName?: string;
   /** The pinned package resource for the reviewer skill, if declared in-package. */
   readonly reviewerSkillResource?: ResolvedWorkspaceResource;
+  /** The universal execution-protocol role declared by the profile. */
+  readonly protocolSkillName?: string;
+  /**
+   * Exact pinned protocol resource. A package may classify this SKILL.md as
+   * `skill` or as `instruction`; the profile slot, not the generic kind name,
+   * defines its execution role.
+   */
+  readonly protocolSkillResource?: ResolvedWorkspaceResource;
 }
 
 /**
@@ -455,12 +463,17 @@ export function buildWorkspaceProjection(
     'reviewer-skill',
     profile.reviewSkill,
   );
+  const protocolSkillResource =
+    findNamedResource(allResources, 'skill', profile.protocolSkill)
+    ?? findNamedResource(allResources, 'instruction', profile.protocolSkill);
   const skills: ResolvedNodeSkills = Object.freeze({
     executionSkillName: profile.executionSkill,
     executionSkillResource,
     reviewerSkillName:
       profile.reviewSkill === null ? undefined : profile.reviewSkill,
     reviewerSkillResource,
+    protocolSkillName: profile.protocolSkill,
+    protocolSkillResource,
   });
 
   // Step 7 — partition package-declared templates / checklists / instructions.

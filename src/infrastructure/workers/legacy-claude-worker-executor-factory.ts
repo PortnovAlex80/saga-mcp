@@ -124,14 +124,12 @@ function pinnedSkillResource(
   projection: WorkspaceProjection,
   skillName: string,
 ) {
-  const suffix = `/skills/${skillName}/SKILL.md`;
-  return projection.allResources.find(resource => {
-    const normalized = `/${resource.relativePath.replace(/\\/g, '/')}`;
-    return (
-      resource.kind === 'skill'
-      || resource.kind === 'reviewer-skill'
-    ) && normalized.endsWith(suffix);
-  });
+  const slots = [
+    [projection.skills.executionSkillName, projection.skills.executionSkillResource],
+    [projection.skills.reviewerSkillName, projection.skills.reviewerSkillResource],
+    [projection.skills.protocolSkillName, projection.skills.protocolSkillResource],
+  ] as const;
+  return slots.find(([name]) => name === skillName)?.[1];
 }
 
 /**
