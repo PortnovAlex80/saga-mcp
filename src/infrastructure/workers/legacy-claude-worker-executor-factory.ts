@@ -1,4 +1,8 @@
 import { spawn as nodeSpawn } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { createClaudeBoardRunner } from '../../../tracker-view/claude-runner.mjs';
 import type {
   ClaudeBoardRunnerOptions,
@@ -26,6 +30,20 @@ import type { WorkspacePackageRegistry } from '../../process-modules/application
 import { materializePinnedWorkspace } from '../../process-modules/application/pinned-workspace-materializer.js';
 import type { ModuleInstallationId } from '../../process-modules/installation/index.js';
 import type { StoredModulePackage } from '../../process-modules/installation/index.js';
+import type { WorkspaceProjection } from '../../process-modules/application/workspace-projection.js';
+
+interface RunnerLaunchSpec {
+  readonly installationId: number;
+  readonly strictResources: boolean;
+  readonly role: {
+    readonly executionSkill: string;
+    readonly reviewSkill: string | null;
+    readonly semanticSkill: string;
+    readonly protocolSkill: string;
+  };
+  readonly allowedToolIds: readonly string[];
+  readonly resolveSkill: (skillName: string) => string | null;
+}
 
 /**
  * ClaudeBoardRunnerOptions is exported from the .mjs runner without a formal
@@ -42,8 +60,12 @@ type RunnerOptions = ClaudeBoardRunnerOptions & {
     project: { id: number; name: string };
     workerId: string;
     workspaceRoot: string;
-    resolvedProfile: ResolvedExecutionProfile;
-  }) => ProcessExecutionWorkspace;
+    resolvedProfile: ResolvedExecutionProfile | null;
+  }) => ProcessExecutionWorkspace | null;
+  resolveLaunchSpec?: (input: {
+    assignment: RunnerAssignment;
+    resolvedProfile: ResolvedExecutionProfile | null;
+  }) => RunnerLaunchSpec | null;
 };
 
 export interface LegacyClaudeWorkerExecutorFactoryOptions {
@@ -94,6 +116,60 @@ function readLegacyModelRoute(epicId: number | null) {
   };
 }
 
+function sha256(bytes: Uint8Array): string {
+  return createHash('sha256').update(bytes).digest('hex');
+}
+
+function pinnedSkillResource(
+  projection: WorkspaceProjection,
+  skillName: string,
+) {
+  const suffix = `/skills/${skillName}/SKILL.md`;
+  return projection.allResources.find(resource => {
+    const normalized = `/${resource.relativePath.replace(/\\/g, '/')}`;
+    return (
+      resource.kind === 'skill'
+      || resource.kind === 'reviewer-skill'
+    ) && normalized.endsWith(suffix);
+  });
+}
+
+/**
+ * Materialize one already-verified package skill into a digest-scoped runtime
+ * cache. The runner needs a filesystem path because it inlines SKILL.md into
+ * the Claude prompt; it never reads mutable repository skill paths here.
+ */
+function materializePinnedSkill(
+  projection: WorkspaceProjection,
+  storedPackage: StoredModulePackage,
+  skillName: string,
+): string | null {
+  const resource = pinnedSkillResource(projection, skillName);
+  if (!resource) return null;
+  const blob = storedPackage.resources.find(item => item.logicalId === resource.logicalId);
+  if (!blob || blob.digest !== resource.digest || sha256(blob.bytes) !== resource.digest) {
+    throw new Error(
+      `PINNED_SKILL_DIGEST_MISMATCH: ${skillName} in ${projection.packageDigest}`,
+    );
+  }
+  const safeSkillName = skillName.replace(/[^A-Za-z0-9._-]/g, '_');
+  const target = path.join(
+    os.tmpdir(),
+    'saga-pinned-skills',
+    projection.packageDigest,
+    safeSkillName,
+    'SKILL.md',
+  );
+  mkdirSync(path.dirname(target), { recursive: true });
+  if (
+    !existsSync(target)
+    || sha256(new Uint8Array(readFileSync(target))) !== resource.digest
+  ) {
+    writeFileSync(target, blob.bytes);
+  }
+  return target;
+}
+
 /**
  * Concrete Saga 2 worker-runtime factory.
  *
@@ -110,6 +186,57 @@ export function createLegacyClaudeWorkerExecutorFactory(
   const resolvePackageDigestFn = options.resolvePackageDigest;
   const resolveNodeIdFn = options.resolveNodeId;
   return context => {
+    const resolvePinnedPackage = (
+      assignment: RunnerAssignment,
+    ): {
+      installationId: ModuleInstallationId;
+      projection: WorkspaceProjection;
+      storedPackage: StoredModulePackage;
+    } | null => {
+      const installationId = typeof resolveInstallationIdFn === 'function'
+        ? resolveInstallationIdFn(assignment)
+        : null;
+      if (installationId === null) return null;
+      if (
+        !packageRegistry
+        || !packageSnapshots
+        || typeof resolveNodeIdFn !== 'function'
+        || typeof resolvePackageDigestFn !== 'function'
+      ) {
+        throw new Error(
+          `PINNED_WORKSPACE_RUNTIME_NOT_CONFIGURED: installation ${installationId} `
+          + 'requires packageRegistry, packageSnapshots, resolveNodeId and resolvePackageDigest',
+        );
+      }
+      const nodeId = resolveNodeIdFn(assignment);
+      if (!nodeId) {
+        throw new Error(
+          `PINNED_WORKSPACE_NODE_REQUIRED: task ${assignment.task.id} has installation `
+          + `${installationId} but no process_node_id`,
+        );
+      }
+      const projection = buildWorkspaceProjection(installationId, nodeId, packageRegistry);
+      const expectedPackageDigest = resolvePackageDigestFn(assignment);
+      if (
+        !expectedPackageDigest
+        || expectedPackageDigest !== projection.packageDigest
+      ) {
+        throw new Error(
+          `PROCESS_RUN_PIN_DIGEST_MISMATCH: process run expects `
+          + `${expectedPackageDigest ?? '(missing)'} but installation ${installationId} `
+          + `resolves to ${projection.packageDigest}`,
+        );
+      }
+      const storedPackage = packageSnapshots.get(projection.packageDigest);
+      if (!storedPackage) {
+        throw new Error(
+          `PINNED_PACKAGE_SNAPSHOT_MISSING: no verified package snapshot for `
+          + projection.packageDigest,
+        );
+      }
+      return { installationId, projection, storedPackage };
+    };
+
     const runnerOptions: RunnerOptions = {
       claimTask: (args: Parameters<typeof dispatcherHandlers.worker_next>[0]) =>
         dispatcherHandlers.worker_next(args) as RunnerAssignment | null,
@@ -139,6 +266,33 @@ export function createLegacyClaudeWorkerExecutorFactory(
       // single-skill path.
       resolveProfile: (taskKind: string | null | undefined) =>
         resolveExecutionProfile(taskKind),
+      resolveLaunchSpec: input => {
+        const pinned = resolvePinnedPackage(input.assignment);
+        if (!pinned) return null;
+        const profile = pinned.storedPackage.manifest.definition.executionProfiles
+          .find(candidate => candidate.id === pinned.projection.executionProfileId);
+        if (!profile) {
+          throw new Error(
+            `PINNED_EXECUTION_PROFILE_MISSING: ${pinned.projection.executionProfileId}`,
+          );
+        }
+        return {
+          installationId: pinned.installationId,
+          strictResources: true,
+          role: {
+            executionSkill: profile.executionSkill,
+            reviewSkill: profile.reviewSkill ?? null,
+            semanticSkill: profile.semanticSkill,
+            protocolSkill: profile.protocolSkill,
+          },
+          allowedToolIds: [...profile.allowedTools],
+          resolveSkill: skillName => materializePinnedSkill(
+            pinned.projection,
+            pinned.storedPackage,
+            skillName,
+          ),
+        };
+      },
       // Materialize the descriptor-owned tracker/templates only after the
       // exact task has been claimed, when execution_id and worker_id are known.
       prepareWorkspace: input => {
@@ -153,54 +307,25 @@ export function createLegacyClaudeWorkerExecutorFactory(
         // A non-null installation pin is an integrity boundary: materialize
         // from verified immutable bytes or fail the worker launch. Genuinely
         // unpinned historical runs retain the legacy workspace path.
-        const installationId = typeof resolveInstallationIdFn === 'function'
-          ? resolveInstallationIdFn(input.assignment)
-          : null;
+        const pinned = resolvePinnedPackage(input.assignment);
+        if (!pinned && !input.resolvedProfile) return null;
         let resolvedWorkspace: ProcessExecutionWorkspace;
-        if (installationId !== null) {
-          if (
-            !packageRegistry
-            || !packageSnapshots
-            || typeof resolveNodeIdFn !== 'function'
-            || typeof resolvePackageDigestFn !== 'function'
-          ) {
+        if (pinned) {
+          const pinnedModule = pinned.storedPackage.manifest.definition;
+          const pinnedProfile = pinnedModule.executionProfiles.find(
+            profile => profile.id === pinned.projection.executionProfileId,
+          );
+          if (!pinnedProfile) {
             throw new Error(
-              `PINNED_WORKSPACE_RUNTIME_NOT_CONFIGURED: installation ${installationId} `
-              + 'requires packageRegistry, packageSnapshots, resolveNodeId and resolvePackageDigest',
-            );
-          }
-          const nodeId = resolveNodeIdFn(input.assignment);
-          if (!nodeId) {
-            throw new Error(
-              `PINNED_WORKSPACE_NODE_REQUIRED: task ${task.id} has installation `
-              + `${installationId} but no process_node_id`,
-            );
-          }
-          const projection = buildWorkspaceProjection(installationId, nodeId, packageRegistry);
-          const expectedPackageDigest = resolvePackageDigestFn(input.assignment);
-          if (
-            !expectedPackageDigest
-            || expectedPackageDigest !== projection.packageDigest
-          ) {
-            throw new Error(
-              `PROCESS_RUN_PIN_DIGEST_MISMATCH: process run expects `
-              + `${expectedPackageDigest ?? '(missing)'} but installation ${installationId} `
-              + `resolves to ${projection.packageDigest}`,
-            );
-          }
-          const storedPackage = packageSnapshots.get(projection.packageDigest);
-          if (!storedPackage) {
-            throw new Error(
-              `PINNED_PACKAGE_SNAPSHOT_MISSING: no verified package snapshot for `
-              + projection.packageDigest,
+              `PINNED_EXECUTION_PROFILE_MISSING: ${pinned.projection.executionProfileId}`,
             );
           }
           resolvedWorkspace = materializePinnedWorkspace({
-            projection,
-            storedPackage,
+            projection: pinned.projection,
+            storedPackage: pinned.storedPackage,
             workspaceRoot: input.workspaceRoot,
-            module: input.resolvedProfile.module,
-            profile: input.resolvedProfile.profile,
+            module: pinnedModule,
+            profile: pinnedProfile,
             projectId: input.project.id,
             epicId,
             task,
@@ -208,10 +333,12 @@ export function createLegacyClaudeWorkerExecutorFactory(
             workerId: input.workerId,
           });
         } else {
+          const legacyProfile = input.resolvedProfile;
+          if (!legacyProfile) return null;
           resolvedWorkspace = prepareProcessExecutionWorkspace({
             workspaceRoot: input.workspaceRoot,
-            module: input.resolvedProfile.module,
-            profile: input.resolvedProfile.profile,
+            module: legacyProfile.module,
+            profile: legacyProfile.profile,
             projectId: input.project.id,
             epicId,
             task,

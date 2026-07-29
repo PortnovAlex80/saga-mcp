@@ -25,7 +25,11 @@ import {
 } from './app/composition-root.js';
 import type { SagaApplication } from './application/saga-application.js';
 import { getDb } from './db.js';
-import { installProductionModules } from './process-modules/installation/production-install.js';
+import {
+  installModulePackages,
+  installProductionModules,
+} from './process-modules/installation/production-install.js';
+import { discoveryPackageManifest } from './process-modules/modules/discovery/package/manifest.js';
 
 function parseArgs(argv: string[]): {
   projectId: number;
@@ -188,7 +192,18 @@ async function loadCompositionOverrides(
   projectId: number,
   epicId: number,
 ): Promise<Saga2CompositionOverrides> {
-  if (process.env.SAGA_ORCHESTRATION_MODE !== 'saga3-lifecycle') return {};
+  const orchestrationMode = process.env.SAGA_ORCHESTRATION_MODE;
+  const repoRoot = path.resolve(process.env.SAGA_REPO_ROOT ?? process.cwd());
+  if (orchestrationMode === 'saga3-discovery-generic') {
+    const modulePackages = await installModulePackages(
+      getDb(),
+      repoRoot,
+      [discoveryPackageManifest],
+      process.env.SAGA_PACKAGE_STORE_DIR,
+    );
+    return { modulePackages };
+  }
+  if (orchestrationMode !== 'saga3-lifecycle') return {};
   const configuredPath = process.env.SAGA_PRODUCT_LIFECYCLE_COMPOSITION;
   if (!configuredPath) {
     throw new Error(
@@ -229,14 +244,16 @@ async function loadCompositionOverrides(
   // ProcessRun is pinned to an immutable packageDigest and the workspace
   // materializer resolves resources from pinned bytes. Idempotent across CLI
   // restarts (same DB + unchanged bytes → reuse active records).
-  const repoRoot = process.env.SAGA_REPO_ROOT ?? process.cwd();
   const packageInstallation = await installProductionModules(
     getDb(),
     repoRoot,
     process.env.SAGA_PACKAGE_STORE_DIR,
   );
 
-  return { productLifecycle: { ...productLifecycle, packageInstallation } };
+  return {
+    modulePackages: packageInstallation,
+    productLifecycle: { ...productLifecycle, packageInstallation },
+  };
 }
 
 main().catch(err => {

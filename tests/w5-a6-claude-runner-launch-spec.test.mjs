@@ -101,7 +101,14 @@ function capturingSpawn(captured, states) {
 // `claimedFlag` is a { value: false } holder so claimTask hands the single
 // task out exactly once, then returns null (empty queue) — the pump then
 // finishes the run as completed.
-function makeRunner({ temp, captured, states, resolveLaunchSpec, claimedFlag }) {
+function makeRunner({
+  temp,
+  captured,
+  states,
+  resolveLaunchSpec,
+  claimedFlag,
+  recoverAssignment = () => { throw new Error('recovery should not run'); },
+}) {
   return new ClaudeBoardRunner({
     dbPath: path.join(temp, 'saga.db'),
     sagaEntry: path.join(temp, 'dist', 'index.js'),
@@ -132,7 +139,7 @@ function makeRunner({ temp, captured, states, resolveLaunchSpec, claimedFlag }) 
       };
     },
     getTaskState: id => states.get(id),
-    recoverAssignment: () => { throw new Error('recovery should not run'); },
+    recoverAssignment,
     spawn: capturingSpawn(captured, states),
     resolveLaunchSpec,
   });
@@ -596,6 +603,52 @@ test('W5-A6 robustness: resolveLaunchSpec that throws → legacy path (no crash)
     const { prompt } = captured[0];
     assert.ok(!prompt.includes('launch_spec_installation='),
       'throwing resolver must fall back to legacy (no launch_spec_installation)');
+  } finally {
+    runner.dispose();
+    rmSync(temp, { recursive: true, force: true });
+  }
+});
+
+test('pinned launch spec fails closed when a required package skill is absent', async () => {
+  const temp = mkdtempSync(path.join(os.tmpdir(), 'saga-w5a6-strict-spec-'));
+  const captured = [];
+  const states = new Map();
+  states.set(STATE_TASK_ID, {
+    id: STATE_TASK_ID, status: 'todo', title: 'strict pinned task',
+    task_kind: 'discovery.work', workflow_stage: 'discovery', execution_mode: 'tracker_only',
+    __skill: 'saga-discovery-worker',
+  });
+
+  const runner = makeRunner({
+    temp,
+    captured,
+    states,
+    claimedFlag: { value: false },
+    recoverAssignment: () => {},
+    resolveLaunchSpec: () => ({
+      installationId: 91,
+      strictResources: true,
+      role: {
+        executionSkill: 'saga-discovery-worker',
+        semanticSkill: 'saga-discovery-worker',
+        reviewSkill: null,
+        protocolSkill: 'saga-process-module-worker-protocol',
+      },
+      resolveSkill: () => null,
+      allowedToolIds: [],
+    }),
+  });
+
+  try {
+    runner.start({ projectId: 78, concurrency: 1 });
+    await waitFor(() =>
+      /PINNED_SKILL_NOT_RESOLVED/.test(runner.status(78)?.last_error ?? ''),
+    );
+    assert.equal(captured.length, 0, 'worker must not spawn with a missing pinned skill');
+    assert.match(
+      runner.status(78)?.last_error ?? '',
+      /PINNED_SKILL_NOT_RESOLVED/,
+    );
   } finally {
     runner.dispose();
     rmSync(temp, { recursive: true, force: true });

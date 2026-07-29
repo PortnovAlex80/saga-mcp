@@ -4,6 +4,7 @@ import type { Saga2HostRuntime } from '../application/ports/saga2-host-runtime.j
 import type { Saga2RuntimePersistence } from '../application/ports/saga2-runtime-persistence.js';
 import type { WorkerExecutorFactory } from '../application/ports/worker-executor.js';
 import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   createSagaApplication,
@@ -13,6 +14,7 @@ import {
 } from '../application/saga-application.js';
 import { closeDb } from '../db.js';
 import { asModuleInstallationId } from '../process-modules/installation/domain/installation.js';
+import type { ProductionInstallation } from '../process-modules/installation/production-install.js';
 import { Saga2Engine } from '../engines/saga2-engine.js';
 import { Saga3DiscoveryEngine } from '../engines/saga3-discovery-engine.js';
 import { SqliteSaga3DiscoveryRuntime } from '../saga3/persistence/sqlite-saga3-discovery-runtime.js';
@@ -83,6 +85,8 @@ export interface Saga2CompositionOverrides {
   host?: Saga2HostRuntime;
   board?: BoardProjectionReader;
   engineAdministration?: EngineAdministration;
+  /** Immutable module packages available to standalone generic module runs. */
+  modulePackages?: ProductionInstallation;
   /**
    * Explicit Delivery provider composition for saga3-lifecycle mode.
    * Standard Development/SQLite mechanics are supplied by the lifecycle
@@ -135,17 +139,30 @@ export function createSaga2Application(
     executions: new SqliteExecutionRuntimeRepository(),
     workspaces: new SqliteWorkspaceResolver(),
   };
+  const packageInstallation = overrides.modulePackages
+    ?? overrides.productLifecycle?.packageInstallation;
   const workerExecutorFactory = overrides.workerExecutorFactory
-    ?? createLegacyClaudeWorkerExecutorFactory({
-      modelRouteReader: epicId => persistence.episodes.readWorkerModelRoute(epicId),
-    });
-  const host = overrides.host ?? new NodeSaga2HostRuntime();
+    ?? (packageInstallation
+      ? createPinnedWorkerFactory(persistence, packageInstallation)
+      : createLegacyClaudeWorkerExecutorFactory({
+        modelRouteReader: epicId => persistence.episodes.readWorkerModelRoute(epicId),
+      }));
+  const orchestrationLogRoot = env.SAGA_ORCHESTRATION_LOG?.trim();
+  const host = overrides.host ?? new NodeSaga2HostRuntime({
+    workerPaths: orchestrationLogRoot
+      ? {
+          logRoot: orchestrationLogRoot,
+          heartbeatLog: path.join(orchestrationLogRoot, 'worker-heartbeat.log'),
+        }
+      : undefined,
+  });
   const engine = selectEngine(
     config,
     persistence,
     workerExecutorFactory,
     host,
     overrides.productLifecycle,
+    packageInstallation,
   );
   const board = overrides.board ?? new SqliteBoardProjectionReader(config.dbPath);
   const engineAdministration = overrides.engineAdministration
@@ -185,6 +202,7 @@ function selectEngine(
   workerExecutorFactory: WorkerExecutorFactory,
   host: Saga2HostRuntime,
   productLifecycle: ProductLifecycleCompositionOverrides | undefined,
+  modulePackages: ProductionInstallation | undefined,
 ): OrchestrationEngine {
   if (isSaga3LifecycleMode(config.orchestrationMode)) {
     if (!productLifecycle) {
@@ -194,48 +212,9 @@ function selectEngine(
         + 'preflight/publication/observation providers',
       );
     }
-    // W13-AUDIT §18.9 / bug #4: when the composition loader pre-installed the
-    // production packages (Seam A), rebuild the worker factory WITH pinned-
-    // package workspace resolution so the materializer reads bytes from the
-    // immutable store instead of the legacy workspaceRoot tree. resolveInstallationId
-    // reads the ProcessRun pin set by the orchestrator (Seam B) from task metadata.
-    const pinnedFactory = productLifecycle.packageInstallation
-      ? createLegacyClaudeWorkerExecutorFactory({
-        modelRouteReader: epicId => persistence.episodes.readWorkerModelRoute(epicId),
-        packageRegistry: productLifecycle.packageInstallation.registry,
-        packageSnapshots: productLifecycle.packageInstallation.packages,
-        resolveInstallationId: assignment => {
-          const meta = taskMetadataRecord(assignment);
-          const runId = meta.process_run_id ?? nestedProcessWorkspaceField(meta, 'process_run_id');
-          const n = Number(runId);
-          if (!Number.isFinite(n) || n <= 0) return null;
-          const row = getDb().prepare(
-            'SELECT installation_id FROM saga3_process_runs WHERE id=?',
-          ).get(n) as { installation_id?: number | null } | undefined;
-          // ModuleInstallationId is a branded number; the DB PK is a plain number.
-          const iid = row?.installation_id ?? null;
-          return iid === null ? null : asModuleInstallationId(iid);
-        },
-        resolvePackageDigest: assignment => {
-          const meta = taskMetadataRecord(assignment);
-          const runId = meta.process_run_id ?? nestedProcessWorkspaceField(meta, 'process_run_id');
-          const n = Number(runId);
-          if (!Number.isFinite(n) || n <= 0) return null;
-          const row = getDb().prepare(
-            'SELECT package_digest FROM saga3_process_runs WHERE id=?',
-          ).get(n) as { package_digest?: string | null } | undefined;
-          return row?.package_digest ?? null;
-        },
-        resolveNodeId: assignment => {
-          const meta = taskMetadataRecord(assignment);
-          const nodeId = meta.process_node_id;
-          return typeof nodeId === 'string' && nodeId.length > 0 ? nodeId : null;
-        },
-      })
-      : workerExecutorFactory;
     return createProductLifecycleRuntime({
       ...productLifecycle,
-      workerExecutorFactory: pinnedFactory,
+      workerExecutorFactory,
       resolveWorkerContext: context =>
         buildDiscoveryWorkerContext(config, persistence, host, context),
     }).engine;
@@ -251,7 +230,19 @@ function selectEngine(
   // После зелёного E2E (шаг 7) ветка ниже становится primary, а legacy
   // 'saga3-discovery' branch удаляется (шаг 6).
   if (isSaga3DiscoveryGenericMode(config.orchestrationMode)) {
-    return buildDiscoveryGenericEngine(config, persistence, workerExecutorFactory, host);
+    if (!modulePackages) {
+      throw new Error(
+        'DISCOVERY_MODULE_PACKAGE_REQUIRED: saga3-discovery-generic requires '
+        + 'an installed immutable Discovery package',
+      );
+    }
+    return buildDiscoveryGenericEngine(
+      config,
+      persistence,
+      workerExecutorFactory,
+      host,
+      modulePackages,
+    );
   }
 
   if (isSaga3DiscoveryMode(config.orchestrationMode)) {
@@ -379,12 +370,25 @@ function buildDiscoveryGenericEngine(
   persistence: Saga2RuntimePersistence,
   workerExecutorFactory: WorkerExecutorFactory,
   host: Saga2HostRuntime,
+  modulePackages: ProductionInstallation,
 ): OrchestrationEngine {
   const db = getDb();
   const processRunRepo = new SqliteProcessRunRepository(db);
   const certificateRepo = new SqliteProcessOutcomeCertificateRepository(db);
   const nodeRunRepo = new SqliteNodeRunRepository(db);
   const runtimePersistence = new SqliteSaga3DiscoveryRuntime();
+  const discoveryInstallation = modulePackages.records.get(
+    DISCOVERY_PROCESS_MODULE_REF.name,
+  );
+  if (
+    !discoveryInstallation
+    || discoveryInstallation.version !== DISCOVERY_PROCESS_MODULE_REF.version
+  ) {
+    throw new Error(
+      `DISCOVERY_MODULE_INSTALLATION_MISSING: expected `
+      + `${DISCOVERY_PROCESS_MODULE_REF.name}@${DISCOVERY_PROCESS_MODULE_REF.version}`,
+    );
+  }
 
   // 1. Kernel handler registry — runtime mechanics. Register the runtime-provided
   //    process-outcome-emitter, then let Discovery Pack register its content.
@@ -456,9 +460,14 @@ function buildDiscoveryGenericEngine(
         objective: objective?.description ?? objective?.name ?? '',
       };
     },
-    resolveIdempotencyKey: (command) => `discovery-generic-epic-${command.epicId}`,
+    resolveIdempotencyKey: (command) =>
+      command.idempotencyKey ?? `discovery-generic-epic-${command.epicId}`,
     finalStage: 'discovery',
     initiatedBy: 'generic-flow-runtime',
+    installation: {
+      id: discoveryInstallation.id,
+      packageDigest: discoveryInstallation.packageDigest,
+    },
   });
 
   // 7. Catalog registry holding the discovery module. Wave 13 removed
@@ -481,14 +490,24 @@ function buildDiscoveryGenericEngine(
  */
 function buildDiscoveryWorkerContext(
   config: SagaRuntimeConfig,
-  _persistence: Saga2RuntimePersistence,
-  _host: Saga2HostRuntime,
+  persistence: Saga2RuntimePersistence,
+  host: Saga2HostRuntime,
   ctx: { projectId: number; epicId: number | null },
 ): import('../application/ports/worker-executor.js').WorkerExecutorFactoryContext {
+  const workspace = persistence.workspaces.resolve(ctx.projectId);
+  if (!workspace.projectExists) {
+    throw new Error(`PROJECT_NOT_FOUND: project ${ctx.projectId}`);
+  }
+  if (!workspace.workspaceRoot) {
+    throw new Error(
+      `PROJECT_WORKSPACE_NOT_FOUND: project ${ctx.projectId} has no active local checkout`,
+    );
+  }
+  const sagaRepoRoot = process.env.SAGA_REPO_ROOT ?? process.cwd();
   return {
     projectId: ctx.projectId,
     epicId: ctx.epicId ?? 0,
-    workspaceRoot: process.cwd(),
+    workspaceRoot: workspace.workspaceRoot,
     dbPath: config.dbPath,
     // sagaEntry MUST point at the MCP server (dist/index.js), not at the
     // currently running script. process.argv[1] is the orchestrate-cli entry
@@ -504,8 +523,11 @@ function buildDiscoveryWorkerContext(
     // with the published artefact. SAGA_MCP_ENTRY overrides for tests / custom
     // installs.
     sagaEntry: resolveSagaMcpEntry(),
-    sagaSkillRoot: process.cwd() + '/skills',
-    lmStudioUrl: process.env.LM_STUDIO_URL ?? 'http://127.0.0.1:1234',
+    sagaSkillRoot: `${sagaRepoRoot}/skills`,
+    claudePath: config.claudePath,
+    logRoot: host.workerPaths.logRoot,
+    heartbeatLog: host.workerPaths.heartbeatLog,
+    lmStudioUrl: config.lmStudioUrl,
   };
 }
 
@@ -529,6 +551,53 @@ function resolveSagaMcpEntry(): string {
     // fall through to the hard-coded path
   }
   return fileURLToPath(new URL('../../dist/index.js', import.meta.url));
+}
+
+/**
+ * Build the existing Claude worker adapter against immutable module packages.
+ * This is host wiring shared by standalone module runs and lifecycle scenarios;
+ * module-specific behavior remains in the package definition and handlers.
+ */
+function createPinnedWorkerFactory(
+  persistence: Saga2RuntimePersistence,
+  installation: ProductionInstallation,
+): WorkerExecutorFactory {
+  return createLegacyClaudeWorkerExecutorFactory({
+    modelRouteReader: epicId => persistence.episodes.readWorkerModelRoute(epicId),
+    packageRegistry: installation.registry,
+    packageSnapshots: installation.packages,
+    resolveInstallationId: assignment => {
+      const runId = processRunIdFromAssignment(assignment);
+      if (runId === null) return null;
+      const row = getDb().prepare(
+        'SELECT installation_id FROM saga3_process_runs WHERE id=?',
+      ).get(runId) as { installation_id?: number | null } | undefined;
+      const id = row?.installation_id ?? null;
+      return id === null ? null : asModuleInstallationId(id);
+    },
+    resolvePackageDigest: assignment => {
+      const runId = processRunIdFromAssignment(assignment);
+      if (runId === null) return null;
+      const row = getDb().prepare(
+        'SELECT package_digest FROM saga3_process_runs WHERE id=?',
+      ).get(runId) as { package_digest?: string | null } | undefined;
+      return row?.package_digest ?? null;
+    },
+    resolveNodeId: assignment => {
+      const nodeId = taskMetadataRecord(assignment).process_node_id;
+      return typeof nodeId === 'string' && nodeId.length > 0 ? nodeId : null;
+    },
+  });
+}
+
+function processRunIdFromAssignment(
+  assignment: { task?: { metadata?: unknown } },
+): number | null {
+  const metadata = taskMetadataRecord(assignment);
+  const raw = metadata.process_run_id
+    ?? nestedProcessWorkspaceField(metadata, 'process_run_id');
+  const id = Number(raw);
+  return Number.isSafeInteger(id) && id > 0 ? id : null;
 }
 
 /**

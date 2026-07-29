@@ -125,6 +125,27 @@ export async function installProductionModules(
   repoRoot: string,
   storeRoot?: string,
 ): Promise<ProductionInstallation> {
+  return installModulePackages(
+    db,
+    repoRoot,
+    PRODUCTION_MODULE_MANIFESTS,
+    storeRoot,
+  );
+}
+
+/**
+ * Install an explicit module set. Hosts use this for a partial lifecycle such
+ * as a standalone Discovery run without installing unrelated modules.
+ */
+export async function installModulePackages(
+  db: Database.Database,
+  repoRoot: string,
+  manifests: readonly ProcessModuleManifest[],
+  storeRoot?: string,
+): Promise<ProductionInstallation> {
+  if (manifests.length === 0) {
+    throw new Error('MODULE_PACKAGE_SET_EMPTY: at least one manifest is required');
+  }
   const store = new FilesystemModulePackageStore(
     storeRoot ?? path.join(repoRoot, '.saga', 'package-store'),
   );
@@ -132,7 +153,7 @@ export async function installProductionModules(
   const records = new Map<string, ModuleInstallationRecord>();
   const packages = new Map<string, StoredModulePackage>();
 
-  for (const manifest of PRODUCTION_MODULE_MANIFESTS) {
+  for (const manifest of manifests) {
     const { name } = manifest.definition.identity;
     const resources = readResourceBlobs(manifest, repoRoot);
 

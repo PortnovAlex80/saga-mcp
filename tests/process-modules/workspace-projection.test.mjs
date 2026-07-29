@@ -364,6 +364,41 @@ test('allows a retired installation for exact historical pin replay', () => {
   assert.equal(projection.installationId, 42);
 });
 
+test('buildWorkspaceProjection resolves package-local SKILL.md directory convention', () => {
+  const record = buildRecord({
+    resourceIndex: RESOURCE_INDEX.map(resource => {
+      if (resource.logicalId === EXECUTION_SKILL_NAME) {
+        return {
+          ...resource,
+          logicalId: 'module.skill.product',
+          path: `package/resources/skills/${EXECUTION_SKILL_NAME}/SKILL.md`,
+        };
+      }
+      if (resource.logicalId === REVIEWER_SKILL_NAME) {
+        return {
+          ...resource,
+          logicalId: 'module.skill.requirements-reviewer',
+          path: `package/resources/skills/${REVIEWER_SKILL_NAME}/SKILL.md`,
+        };
+      }
+      return resource;
+    }),
+  });
+  const projection = buildWorkspaceProjection(
+    42,
+    'write-prd',
+    fakeRegistry([record]),
+  );
+  assert.equal(
+    projection.skills.executionSkillResource?.logicalId,
+    'module.skill.product',
+  );
+  assert.equal(
+    projection.skills.reviewerSkillResource?.logicalId,
+    'module.skill.requirements-reviewer',
+  );
+});
+
 test('throws WORKSPACE_INSTALLATION_NOT_ACTIVE for a staged installation', () => {
   const registry = fakeRegistry([buildRecord({ status: 'staged' })]);
   assert.throws(

@@ -322,8 +322,14 @@ function findNamedResource(
   );
   if (exact) return exact;
   const baseName = name.endsWith('.md') ? name : `${name}.md`;
-  return resources.find(
+  const byBaseName = resources.find(
     (r) => r.kind === kind && path.posix.basename(r.relativePath) === baseName,
+  );
+  if (byBaseName) return byBaseName;
+  const skillPathSuffix = `/skills/${name}/SKILL.md`;
+  return resources.find(r =>
+    r.kind === kind
+    && `/${r.relativePath.replace(/\\/g, '/')}`.endsWith(skillPathSuffix),
   );
 }
 

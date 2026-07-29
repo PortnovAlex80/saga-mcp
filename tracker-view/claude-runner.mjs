@@ -155,8 +155,15 @@ function buildPrompt({
       try {
         const pinned = launchSpec.resolveSkill(skillName);
         if (typeof pinned === 'string' && pinned.length > 0) return pinned;
-      } catch {
-        // Resolver failure → fall through to global skill root.
+      } catch (error) {
+        if (launchSpec.strictResources === true) throw error;
+        // Legacy resolver failure → fall through to global skill root.
+      }
+      if (launchSpec.strictResources === true) {
+        throw new Error(
+          `PINNED_SKILL_NOT_RESOLVED: ${skillName} for installation `
+          + `${launchSpec.installationId ?? 'unknown'}`,
+        );
       }
     }
     return path.join(sagaSkillRoot, skillName, 'SKILL.md');
@@ -700,7 +707,7 @@ export class ClaudeBoardRunner {
         launchSpec = null;
       }
     }
-    const processWorkspace = resolvedProfile && typeof this.prepareWorkspace === 'function'
+    const processWorkspace = typeof this.prepareWorkspace === 'function'
       ? this.prepareWorkspace({
           assignment,
           project: { id: run.projectId, name: run.projectName },

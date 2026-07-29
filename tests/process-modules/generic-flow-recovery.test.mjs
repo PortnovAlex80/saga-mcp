@@ -366,9 +366,16 @@ test('terminal adapter replay preserves the live authority exactly', async () =>
       }),
       resolveIdempotencyKey: () => 'authority-replay',
       finalStage: 'recovery',
+      installation: {
+        id: 41,
+        packageDigest: 'a'.repeat(64),
+      },
     });
 
     const live = await adapter.run(module, { projectId: 1, epicId: 70 });
+    const pinnedRun = repo.list(1, 70)[0];
+    assert.equal(pinnedRun.installationId, 41);
+    assert.equal(pinnedRun.packageDigest, 'a'.repeat(64));
     const replay = await adapter.run(module, { projectId: 1, epicId: 70 });
     assert.equal(live.processOutcome.authority, 'stable-policy');
     assert.equal(replay.processOutcome.authority, 'stable-policy');

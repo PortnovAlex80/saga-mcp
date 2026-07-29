@@ -47,6 +47,11 @@ export interface GenericFlowEngineAdapterOptions {
   projectOutcome?: ProcessOutcomeProjector;
   /** initiatedBy audit label. */
   initiatedBy?: string;
+  /** Exact immutable package selected before this adapter is constructed. */
+  installation?: {
+    readonly id: number;
+    readonly packageDigest: string;
+  };
 }
 
 export class GenericFlowEngineAdapter implements ProcessModuleExecutionAdapter {
@@ -58,6 +63,7 @@ export class GenericFlowEngineAdapter implements ProcessModuleExecutionAdapter {
   private readonly finalStage: string;
   private readonly projector: ProcessOutcomeProjector;
   private readonly initiatedBy: string;
+  private readonly installation: GenericFlowEngineAdapterOptions['installation'];
 
   constructor(options: GenericFlowEngineAdapterOptions) {
     this.moduleRef = options.moduleRef;
@@ -68,6 +74,7 @@ export class GenericFlowEngineAdapter implements ProcessModuleExecutionAdapter {
     this.finalStage = options.finalStage ?? '';
     this.projector = options.projectOutcome ?? defaultProjector;
     this.initiatedBy = options.initiatedBy ?? 'generic-flow';
+    this.installation = options.installation;
   }
 
   async run(module: ProcessModuleDefinition, command: RunEpisodeCommand): Promise<OrchestrationRunResult> {
@@ -87,8 +94,8 @@ export class GenericFlowEngineAdapter implements ProcessModuleExecutionAdapter {
       projectedStage: this.finalStage || null,
       // Legacy pre-Wave-2 path: not pinned to an installation (W3-A3, spec §6).
       // Wave 11 cutover sets these from the active installation.
-      installationId: null,
-      packageDigest: null,
+      installationId: this.installation?.id ?? null,
+      packageDigest: this.installation?.packageDigest ?? null,
       invocationContext: {
         projectId: command.projectId,
         epicId: command.epicId,
