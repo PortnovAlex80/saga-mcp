@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "saga3.formalization-reconciliation-report.v1",
+  "title": "Formalization Reconciliation Report (W8-A4)",
+  "description": "Output of the reconcile-what + resolve-reconciliation node pair. Summarizes the audited WHAT-side lineage, repaired trace edges, and any unresolved contradictions. Consumed as input by the freeze-acceptance-baseline kernel node. Concrete codec registered by Wave 2/3 ContractSchemaRegistry behind this id.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["schemaVersion", "formalizationEpicId", "whatLineageComplete"],
+  "properties": {
+    "schemaVersion": {
+      "const": "saga3.formalization-reconciliation-report.v1"
+    },
+    "formalizationEpicId": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "whatLineageComplete": {
+      "type": "boolean",
+      "description": "True iff every accepted WHAT artifact has its required derived_from/covers/enforced_by edges."
+    },
+    "repairedTraceIds": {
+      "type": "array",
+      "items": { "type": "integer", "minimum": 1 }
+    },
+    "unresolvedContradictions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["description"],
+        "properties": {
+          "description": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}

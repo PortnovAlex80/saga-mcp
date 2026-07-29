@@ -1,0 +1,17 @@
+{
+  "tool": "worker_done",
+  "arguments": {
+    "task_id": "FILL_INTEGER_MACHINE_BOUND_TASK_ID",
+    "worker_id": "FILL_MACHINE_BOUND_WORKER_ID",
+    "execution_id": "FILL_MACHINE_BOUND_EXECUTION_ID",
+    "result": "FILL_TRUTHFUL_SUMMARY_WITH_ACCEPTANCE_ARTIFACT_AND_DERIVED_FROM_TRACE_REFS"
+  },
+  "completion_assertions": {
+    "node_id": "define-acceptance-contract",
+    "all_owned_ac_artifacts_read_back": true,
+    "all_required_derived_from_traces_read_back": true,
+    "no_unresolved_FILL_placeholders": true,
+    "no_unreported_errors": true,
+    "srs_not_started": true
+  }
+}

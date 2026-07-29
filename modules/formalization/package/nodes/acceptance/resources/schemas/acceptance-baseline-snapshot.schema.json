@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "saga3.acceptance-baseline-snapshot.v1",
+  "title": "Acceptance Baseline Snapshot (W8-A4)",
+  "description": "Immutable snapshot materialized by the freeze-acceptance-baseline kernel node. Carries the canonical AC artifact ids + per-artifact accepted hashes + the computed baselineHash. The SRS author node (HOW side) reads this snapshot after domain.frozen. Concrete codec registered by Wave 2/3 ContractSchemaRegistry behind this id.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["schemaVersion", "processRunId", "formalizationEpicId", "acArtifactIds", "baselineHash"],
+  "properties": {
+    "schemaVersion": {
+      "const": "saga3.acceptance-baseline-snapshot.v1"
+    },
+    "processRunId": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "formalizationEpicId": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "sourceReconciliationRef": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sourceReconciliationHash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "acArtifactIds": {
+      "type": "array",
+      "items": { "type": "integer", "minimum": 1 },
+      "minItems": 1
+    },
+    "acArtifactHashes": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string",
+        "pattern": "^[0-9a-f]{64}$"
+      }
+    },
+    "baselineHash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "SHA-256 over the canonical JSON of the accepted AC set (sorted by artifact id)."
+    }
+  }
+}

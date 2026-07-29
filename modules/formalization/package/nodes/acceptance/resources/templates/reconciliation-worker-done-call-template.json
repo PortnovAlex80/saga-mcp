@@ -1,0 +1,18 @@
+{
+  "tool": "worker_done",
+  "arguments": {
+    "task_id": "FILL_INTEGER_MACHINE_BOUND_TASK_ID",
+    "worker_id": "FILL_MACHINE_BOUND_WORKER_ID",
+    "execution_id": "FILL_MACHINE_BOUND_EXECUTION_ID",
+    "result": "FILL_TRUTHFUL_SUMMARY_WITH_REPAIRED_TRACE_EDGES_AND_ANY_UNRESOLVED_CONTRADICTION"
+  },
+  "completion_assertions": {
+    "node_id": "reconcile-what",
+    "all_required_what_traces_present": true,
+    "no_what_artifact_created_or_mutated": true,
+    "unresolved_contradictions_surfaced": true,
+    "no_unresolved_FILL_placeholders": true,
+    "no_unreported_errors": true,
+    "baseline_not_frozen_by_worker": true
+  }
+}
