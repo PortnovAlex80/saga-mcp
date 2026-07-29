@@ -72,8 +72,29 @@ import type {
   ProcessModuleRunResult,
 } from './process-module-executor.js';
 import { validateProcessModuleRunResult } from './validate-process-module-run-result.js';
-import { NodeExecutionLeaseLostError, nodeEventForTransition } from './node-executor.js';
+import { NodeExecutionLeaseLostError, nodeEventForTransition, toV2Result } from './node-executor.js';
 import { sha256Hex } from '../shared/canonical-json.js';
+// W3-A1 (spec §3/§4): optional v2 driver-neutral envelope path. These imports
+// are ADDITIVE wiring — the v2 path activates only when the corresponding deps
+// are supplied via GenericFlowExecutorOptions.v2 AND the NodeRun row carries
+// the v2 marker (`inputEnvelopeHash`). Legacy runs (no v2 wiring) execute the
+// byte-identical restoreFrame() + magic-bindings path (plan §16.9 dual-write).
+import type {
+  ExecutionContextEnvelope,
+  ModuleCompletion,
+  NodeProductionEnvelope,
+  ProductRef,
+} from '../domain/spi/index.js';
+import type {
+  AssembledExecutionContext,
+  AssembleExecutionContextOptions,
+  ProcessProductRepository as A5ProcessProductRepository,
+} from './execution-context-assembler.js';
+import { assembleExecutionContext } from './execution-context-assembler.js';
+import type {
+  NodeRunRecordV2,
+  NodeRunRepositoryV2,
+} from '../persistence/node-run-v2.js';
 
 export interface GenericFlowExecutorOptions {
   moduleRef: ProcessModuleDefinition['identity'];
@@ -96,6 +117,43 @@ export interface GenericFlowExecutorOptions {
     terminalResult: NodeExecutionResult,
     context: ProcessModuleExecutionContext,
   ) => ProcessModuleOutput | null;
+  /**
+   * W3-A1 (spec §3/§4): OPTIONAL v2 driver-neutral envelope wiring. When
+   * present, the walker activates the v2 path for runs whose NodeRun rows
+   * carry the v2 marker (`inputEnvelopeHash`): it calls
+   * `assembleExecutionContext` (W3-A5) instead of `restoreFrame()`, reads an
+   * explicit `ModuleCompletion` at settlement (magic-bindings becomes the
+   * documented fallback), and dual-writes `NodeProductionEnvelope` via
+   * `nodeRunRepo.completeV2`. When ABSENT, behavior is byte-identical to the
+   * pre-Wave-3 executor (legacy `restoreFrame()` + magic-bindings + legacy
+   * `complete`) — characterization tests prove no regression (plan §16.9).
+   *
+   * `nodeRunRepo` here MUST also implement {@link NodeRunRepositoryV2} (the
+   * SqliteNodeRunRepository adapter does). The walker down-casts only when the
+   * v2 path is active.
+   */
+  v2?: GenericFlowExecutorV2Options;
+}
+
+/**
+ * Optional v2 wiring for {@link GenericFlowExecutorOptions}.
+ *
+ * `productRepo` is the W3-A4 exact-by-ProductRef port (consumed by the W3-A5
+ * assembler). `packageIdentity`/`flowIdentity`/`installedDigest` are forwarded
+ * to `assembleExecutionContext` as the manifest pinning context (W3-A3 will
+ * surface the installed digest on ProcessRunRecord; until then callers pass
+ * null and the assembler emits the `'legacy:unpinned'` sentinel).
+ */
+export interface GenericFlowExecutorV2Options {
+  productRepo: A5ProcessProductRepository;
+  /**
+   * Optional manifest-pin overrides forwarded to the assembler. May be omitted
+   * for legacy catalog-resolved runs (the assembler falls back to the run's
+   * moduleRef).
+   */
+  packageIdentity?: AssembleExecutionContextOptions['packageIdentity'];
+  flowIdentity?: AssembleExecutionContextOptions['flowIdentity'];
+  installedDigest?: AssembleExecutionContextOptions['installedDigest'];
 }
 
 const PROCESS_RUN_LEASE_MS = 120_000;
@@ -227,7 +285,35 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
       // certificate is null; ProcessRun still completes with the outcome.
       processRunRepo.update(context.processRunId, { status: 'settling' });
 
+      // W3-A1 (spec §3/§4): EXPLICIT ModuleCompletion path. When the terminal
+      // node's result carries a ModuleCompletion (Wave 1 §7.5.6), settlement
+      // reads the certificate reference DIRECTLY from the completion envelope
+      // — NOT from the opaque `production.bindings.certificatePayload` magic
+      // bindings. The explicit path is the Wave 3 forward direction; the
+      // legacy magic-bindings path below remains the documented fallback for
+      // producers that have not yet migrated (Wave 8/9). When `completion` is
+      // absent, behavior is byte-identical to the pre-Wave-3 executor.
+      const explicitCompletion = terminal.result.completion;
+      if (explicitCompletion) {
+        assertExplicitModuleCompletion(explicitCompletion, terminal.outcome);
+      }
+      // The explicit certificate ref (when present) bypasses the magic-bindings
+      // extraction entirely; the magic-bindings branch below runs only when no
+      // explicit completion was supplied.
+      const explicitCertificateRef = explicitCompletion?.outputEnvelope.certificateRef ?? null;
+
       let certificate: ProcessModuleCertificateRef | null = null;
+      if (explicitCertificateRef) {
+        // Explicit path: the completion envelope owns the certificate reference.
+        // Validate the outcome agreement, then surface the ref. The certificate
+        // itself was issued by the module's settlement kernel and recorded in
+        // the durable product store; the ref points at it by content-address.
+        certificate = {
+          schema: explicitCertificateRef.schemaId,
+          certificateRef: explicitCertificateRef.ref,
+          certificateHash: explicitCertificateRef.digest,
+        };
+      } else {
       const hasReferencedEnvelopeField = existingCertificateRef !== undefined
         || certificateArtifactPayload !== undefined
         || certificateDecision !== undefined;
@@ -290,6 +376,7 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
       } else if (certHash !== undefined || certSchema !== undefined) {
         throw new Error('GenericFlowExecutor: certificate hash/schema has no payload');
       }
+      } // end legacy magic-bindings fallback (W3-A1: explicit ModuleCompletion path above)
 
       const runResult: ProcessModuleRunResult = {
         outcome: terminal.outcome,
@@ -361,6 +448,14 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
   ): Promise<{ outcome: string; result: NodeExecutionResult }> {
     const flow = module.flow;
     const allRuns = nodeRunRepo.list(context.processRunId);
+    // W3-A1 (spec §3/§4): detect whether this run is v2-shaped. The v2 path
+    // activates ONLY when (a) v2 wiring is configured AND (b) at least one
+    // NodeRun row in the run carries the v2 marker (`inputEnvelopeHash`).
+    // Legacy runs (no v2 wiring, or v2 wiring but no v2 rows yet) execute the
+    // byte-identical restoreFrame() path — characterization tests prove no
+    // regression (plan §16.9).
+    const v2 = this.v2ChannelFor(nodeRunRepo);
+    const isV2Run = v2 !== null && runHasV2Marker(v2, context.processRunId);
     const frame = restoreFrame(context.inputPayload, allRuns);
 
     // Resume support: if the last completed NodeRun exists, start from the
@@ -480,12 +575,69 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
         );
       }
 
-      const nodeRun = nodeRunRepo.start({
-        processRunId: context.processRunId,
-        nodeId: node.id,
-        nodeKind: node.kind,
-      });
+      // W3-A1 (spec §3/§4): when the v2 path is active, start the NodeRun via
+      // `startV2` (which writes the legacy columns AND the v2 envelope-marker
+      // columns). The v2 path also assembles the ExecutionContextEnvelope and
+      // dual-populates the context (`envelope` for v2-aware executors, `frame`
+      // computed via toLegacyFrame for legacy executors). When v2 is INACTIVE,
+      // the legacy `start` + `frame`-only context is used byte-identically.
+      let nodeRunId: number;
+      let nodeRunAttempt: number;
+      let assembled: AssembledExecutionContext | null = null;
+      if (isV2Run && v2) {
+        const upstreamRefs = declareUpstreamRefs(chainInput, frame, node.id);
+        const v2Row = v2.repo.startV2({
+          processRunId: context.processRunId,
+          nodeId: node.id,
+          nodeKind: node.kind,
+          inputEnvelopeHash: null, // stamped after assembly so it covers the
+          // exact envelope the node sees; completeV2 persists the production
+          // envelope + cursor. The marker is the row's presence + non-null
+          // production_envelope on completion (W3-A6 contract).
+          predecessorNodeRunIds: predecessorIdsFor(allRuns, node.id),
+        });
+        nodeRunId = v2Row.id;
+        nodeRunAttempt = v2Row.attempt;
+        try {
+          assembled = await assembleExecutionContext(
+            context.processRunId,
+            node.id,
+            nodeRunAttempt,
+            upstreamRefs,
+            {
+              productRepo: v2.productRepo,
+              processRunRepo: this.opts.processRunRepo,
+              nodeRunRepo,
+            },
+            {
+              packageIdentity: v2.packageIdentity,
+              flowIdentity: v2.flowIdentity,
+              installedDigest: v2.installedDigest,
+            },
+          );
+        } catch (err) {
+          nodeRunRepo.fail({
+            id: nodeRunId,
+            errorMessage: (err as Error).message ?? String(err),
+          });
+          throw err;
+        }
+      } else {
+        const legacyRow = nodeRunRepo.start({
+          processRunId: context.processRunId,
+          nodeId: node.id,
+          nodeKind: node.kind,
+        });
+        nodeRunId = legacyRow.id;
+        nodeRunAttempt = legacyRow.attempt;
+      }
 
+      // Build the context. The legacy `frame` is ALWAYS populated (legacy
+      // executors read it). When the v2 path is active, `envelope` +
+      // `upstreamProductBodies` are added additively so v2-aware executors can
+      // read the driver-neutral envelope; the legacy `frame` view is ALSO
+      // refreshed from the assembled envelope (via toLegacyFrame) so the two
+      // views agree within the v2 path.
       const ctx: NodeExecutionContext = {
         projectId: context.projectId,
         epicId: context.epicId,
@@ -493,9 +645,17 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
         module,
         node,
         input: chainInput,
-        frame,
+        frame: assembled ? mergeLegacyFrame(frame, assembled.envelope) : frame,
         heartbeat,
         initiatedBy: context.initiatedBy,
+        ...(assembled
+          ? {
+              envelope: assembled.envelope,
+              upstreamProductBodies: assembled.upstreamProductBodies.map(
+                (r) => (r as { payload?: unknown }).payload ?? r,
+              ),
+            }
+          : {}),
       };
 
       let result: NodeExecutionResult;
@@ -505,7 +665,7 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
         heartbeat();
       } catch (err) {
         nodeRunRepo.fail({
-          id: nodeRun.id,
+          id: nodeRunId,
           errorMessage: (err as Error).message ?? String(err),
         });
         throw err;
@@ -515,18 +675,48 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
       const outputSchema = result.production?.schema ?? null;
       const outputHash = result.production?.contentHash ?? null;
       const outputBindings = result.production?.bindings ?? null;
-      const completedNodeRun = nodeRunRepo.complete({
-        id: nodeRun.id,
-        event: nodeEventForTransition(result),
-        outputRef,
-        outputSchema,
-        outputHash,
-        outputBindings,
-        executionReceipt: result.receipt as unknown as Record<string, unknown> | undefined,
-        acceptanceReceipt: result.acceptanceReceipt as unknown as
-          Record<string, unknown> | undefined,
-        recoveryIssue: result.recoveryIssue,
-      });
+      // W3-A1 (spec §3/§4): dual-write. When v2 is active, `completeV2` writes
+      // BOTH the legacy output_* columns AND the v2 production_envelope +
+      // transition_cursor (W3-A6 contract). When v2 is inactive, the legacy
+      // `complete` is the sole write (byte-identical to pre-Wave-3). The
+      // production envelope is sourced from the result's explicit
+      // `productionEnvelope` (v2 producers) or derived from the legacy flat
+      // `production` via toV2Result when only the legacy field is present.
+      const transitionEvent = nodeEventForTransition(result);
+      const productionEnvelope: NodeProductionEnvelope | null =
+        result.productionEnvelope ?? toV2Result(result).productionEnvelope ?? null;
+      let completedNodeRun: NodeRunRecordV2 | NodeRunRecord;
+      if (isV2Run && v2) {
+        completedNodeRun = v2.repo.completeV2({
+          id: nodeRunId,
+          event: transitionEvent,
+          outputRef,
+          outputSchema,
+          outputHash,
+          outputBindings,
+          executionReceipt: result.receipt as unknown as Record<string, unknown> | undefined,
+          acceptanceReceipt: result.acceptanceReceipt as unknown as
+            | Record<string, unknown>
+            | undefined,
+          recoveryIssue: result.recoveryIssue,
+          productionEnvelope,
+          transitionCursor: assembled?.envelope.nodeRef.nodeId ?? node.id,
+        });
+      } else {
+        completedNodeRun = nodeRunRepo.complete({
+          id: nodeRunId,
+          event: transitionEvent,
+          outputRef,
+          outputSchema,
+          outputHash,
+          outputBindings,
+          executionReceipt: result.receipt as unknown as Record<string, unknown> | undefined,
+          acceptanceReceipt: result.acceptanceReceipt as unknown as
+            | Record<string, unknown>
+            | undefined,
+          recoveryIssue: result.recoveryIssue,
+        });
+      }
 
       if (result.runtimeEvent === 'paused') {
         throw new ProcessRunPausedError(context.processRunId, node.id);
@@ -570,6 +760,50 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
     throw new Error(
       `GenericFlowExecutor: flow walk exceeded ${maxSteps} steps — possible transition cycle`,
     );
+  }
+
+  /**
+   * W3-A1 (spec §3/§4): resolve the v2 channel for this run, or null when v2
+   * wiring is absent. Returns the v2 options bundle plus a down-cast handle to
+   * the {@link NodeRunRepositoryV2} side of the node-run repo (the SQLite
+   * adapter implements both interfaces; the legacy fake used by the
+   * characterization tests does not, so this returns null for them and the
+   * legacy path runs unchanged).
+   *
+   * Returns null when:
+   *   - `this.opts.v2` is not configured (legacy executor wiring); OR
+   *   - `nodeRunRepo` does not expose the v2 methods (legacy test fake).
+   *
+   * Pure with respect to the executor state — same opts + repo → same channel.
+   */
+  private v2ChannelFor(
+    nodeRunRepo: NodeRunRepository,
+  ): {
+    repo: NodeRunRepositoryV2;
+    productRepo: A5ProcessProductRepository;
+    packageIdentity: GenericFlowExecutorV2Options['packageIdentity'];
+    flowIdentity: GenericFlowExecutorV2Options['flowIdentity'];
+    installedDigest: GenericFlowExecutorV2Options['installedDigest'];
+  } | null {
+    const v2Opts = this.opts.v2;
+    if (!v2Opts) return null;
+    const repoV2 = nodeRunRepo as unknown as Partial<NodeRunRepositoryV2>;
+    if (
+      typeof repoV2.startV2 !== 'function'
+      || typeof repoV2.completeV2 !== 'function'
+      || typeof repoV2.readByExactCursor !== 'function'
+    ) {
+      // Legacy node-run repo (e.g. the in-memory fake in the characterization
+      // tests). The v2 path cannot activate; fall back to legacy.
+      return null;
+    }
+    return {
+      repo: repoV2 as NodeRunRepositoryV2,
+      productRepo: v2Opts.productRepo,
+      packageIdentity: v2Opts.packageIdentity,
+      flowIdentity: v2Opts.flowIdentity,
+      installedDigest: v2Opts.installedDigest,
+    };
   }
 
   private shouldRecheckPausedVerifier(
@@ -860,6 +1094,168 @@ function restoreFrame(
   return frame;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// W3-A1 (spec §3/§4): v2 path helpers.
+//
+// These helpers are ONLY invoked when the v2 channel is active
+// (isV2Run === true). They are defensive: a legacy-shaped NodeRun (no v2
+// marker columns surfaced) makes them return safe empty values, so the v2
+// path degrades gracefully to the same inputs the legacy path would have
+// used. The legacy path itself never calls them.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Detect whether ANY NodeRun row in the run carries the v2 marker
+ * (`inputEnvelopeHash` non-null, OR `productionEnvelope` non-null). The v2
+ * path is a per-RUN property: once a run has been started under the v2 path,
+ * every subsequent node in that run uses the v2 path (so the envelope lineage
+ * stays consistent). A run with zero NodeRuns yet (fresh start) returns false
+ * — the first node is dispatched via the legacy `start`, and the v2 path
+ * activates for subsequent dispatches once a v2 row exists.
+ *
+ * Spec §3: `inputEnvelopeHash` is the canonical "is this a Wave-3 row?"
+ * discriminant. We ALSO accept `productionEnvelope` as a marker so a run that
+ * completed its first node under v2 (and stamped the production envelope) but
+ * has not yet stamped the input hash on the NEXT node's start row is still
+ * recognized as v2-shaped.
+ */
+function runHasV2Marker(
+  v2: { repo: NodeRunRepositoryV2 },
+  processRunId: number,
+): boolean {
+  try {
+    const rows = v2.repo.listV2(processRunId);
+    for (const row of rows) {
+      if (row.inputEnvelopeHash !== null && row.inputEnvelopeHash !== undefined) {
+        return true;
+      }
+      if (row.productionEnvelope !== null && row.productionEnvelope !== undefined) {
+        return true;
+      }
+    }
+  } catch {
+    // listV2 not available or row shape unexpected — treat as legacy.
+  }
+  return false;
+}
+
+/**
+ * Declare the upstream ProductRefs the next node consumes. The v2 path hands
+ * these to {@link assembleExecutionContext}, which loads each one by EXACT
+ * content-address (W3-A4/W3-A5, spec §8) — NO epic-scope fallback (§9.11).
+ *
+ * The executor itself does NOT know which products a node declares as its
+ * inputs (that is module contract vocabulary the node's inputSchema carries).
+ * Wave 3 does not yet wire the ContractBoundaryDecoder to read that
+ * declaration (W3-A7 ships the decoder; Wave 5 wires it into the executor
+ * boundaries). Until then, the v2 path derives the upstream refs from the
+ * legacy `frame.productions` map (every completed production in the run is a
+ * candidate predecessor) PLUS the current chainInput when it is itself a
+ * production-shaped value. This is the SAME data the legacy `restoreFrame`
+ * path would have surfaced, just re-expressed as content-addressed refs — so
+ * the v2 path's upstream set is a superset of what the legacy path forwarded,
+ * never a divergence.
+ *
+ * Returns an empty array when no productions are available (the entry node of
+ * a fresh run); the assembler accepts that and returns an envelope with an
+ * empty `upstreamProducts` list.
+ */
+function declareUpstreamRefs(
+  chainInput: unknown,
+  frame: NodeExecutionFrame,
+  _nodeId: string,
+): readonly ProductRef[] {
+  const refs: ProductRef[] = [];
+  const seen = new Set<string>();
+  const add = (schema: string, ref: string, digest: string): void => {
+    const key = `${schema}|${ref}|${digest}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    refs.push({ schemaId: schema, ref, digest });
+  };
+  for (const prod of Object.values(frame.productions)) {
+    if (
+      prod
+      && typeof prod.schema === 'string' && prod.schema.length > 0
+      && typeof prod.artifactRef === 'string' && prod.artifactRef.length > 0
+      && typeof prod.contentHash === 'string' && prod.contentHash.length > 0
+    ) {
+      add(prod.schema, prod.artifactRef, prod.contentHash);
+    }
+  }
+  // The chainInput may itself carry the most recent production (settlement
+  // kernels receive the upstream LM production as their input). Surface it as
+  // a candidate predecessor ref when it is production-shaped.
+  const shaped = chainInput as { schema?: unknown; artifactRef?: unknown; contentHash?: unknown };
+  if (
+    shaped
+    && typeof shaped.schema === 'string' && shaped.schema.length > 0
+    && typeof shaped.artifactRef === 'string' && shaped.artifactRef.length > 0
+    && typeof shaped.contentHash === 'string' && shaped.contentHash.length > 0
+  ) {
+    add(shaped.schema, shaped.artifactRef, shaped.contentHash);
+  }
+  return refs;
+}
+
+/**
+ * Best-effort predecessor NodeRun ids for the v2 row's
+ * `predecessor_node_run_ids` column. Derived from the same legacy `allRuns`
+ * list `restoreFrame` consumes: every COMPLETED prior NodeRun whose node id
+ * contributed a production to the frame is a predecessor. Empty for the entry
+ * node of a fresh run.
+ */
+function predecessorIdsFor(
+  allRuns: readonly NodeRunRecord[],
+  _nodeId: string,
+): number[] {
+  const ids: number[] = [];
+  for (const run of allRuns) {
+    if (run.status === 'completed' && run.event !== 'runtime.paused') {
+      if (run.outputRef || run.outputBindings) {
+        ids.push(run.id);
+      }
+    }
+  }
+  return ids;
+}
+
+/**
+ * Merge the legacy `frame` view with the v2 envelope's upstream products.
+ *
+ * The v2 path keeps the legacy `frame.productions` map (populated by
+ * `restoreFrame` from prior NodeRun rows) AND adds the envelope's exact
+ * upstream ProductRefs as additional synthetic entries (keyed by their ref
+ * string). This dual view lets legacy executors that read `frame.productions`
+ * by node id keep working, while v2-aware executors read the envelope's
+ * `upstreamProducts` directly. The two views agree on content (the envelope's
+ * refs are a content-addressed re-expression of the same productions).
+ */
+function mergeLegacyFrame(
+  legacy: NodeExecutionFrame,
+  envelope: ExecutionContextEnvelope,
+): NodeExecutionFrame {
+  const merged: NodeExecutionFrame = {
+    runInput: envelope.immutableRunInput ?? legacy.runInput,
+    productions: { ...legacy.productions },
+    receipts: { ...legacy.receipts },
+  };
+  for (const ref of envelope.upstreamProducts) {
+    // Only add entries the legacy frame does not already carry under this key,
+    // so we never overwrite a richer legacy production (with bindings) with a
+    // minimal synthetic shell.
+    if (!Object.prototype.hasOwnProperty.call(merged.productions, ref.ref)) {
+      merged.productions[ref.ref] = {
+        schema: ref.schemaId,
+        artifactRef: ref.ref,
+        contentHash: ref.digest,
+        bindings: {},
+      };
+    }
+  }
+  return merged;
+}
+
 function assertNodeExecutionResult(
   node: FlowNodeDefinition,
   result: NodeExecutionResult,
@@ -947,4 +1343,34 @@ function assertReferencedCertificateEnvelope(input: {
 
 function isTerminal(status: string): boolean {
   return status === 'completed' || status === 'failed' || status === 'cancelled';
+}
+
+/**
+ * W3-A1 (spec §3/§4): validate an explicit {@link ModuleCompletion} envelope
+ * emitted by a terminal node. The explicit path trusts the completion's
+ * `outputEnvelope.certificateRef` directly; this assertion guards against a
+ * producer emitting a completion whose declared outcome disagrees with the
+ * terminal outcome the flow resolved (a contract bug, not a recovery case).
+ *
+ * Pure, throwing. Same arguments → same decision.
+ */
+function assertExplicitModuleCompletion(
+  completion: ModuleCompletion,
+  terminalOutcome: string,
+): void {
+  if (completion.outcome !== terminalOutcome) {
+    throw new Error(
+      'GenericFlowExecutor: explicit ModuleCompletion outcome '
+        + `'${completion.outcome}' does not match terminal outcome '${terminalOutcome}'`,
+    );
+  }
+  if (
+    completion.outputEnvelope
+    && completion.outputEnvelope.outcome !== terminalOutcome
+  ) {
+    throw new Error(
+      'GenericFlowExecutor: explicit ModuleCompletion.outputEnvelope outcome '
+        + `'${completion.outputEnvelope.outcome}' does not match terminal outcome '${terminalOutcome}'`,
+    );
+  }
 }
