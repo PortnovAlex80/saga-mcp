@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "campaign.input.v1",
+  "title": "Campaign Lifecycle Scenario Root Input (W10-A4)",
+  "type": "object",
+  "additionalProperties": true,
+  "description": "Root input contract for the Campaign Lifecycle Scenario. The scenario reads the initiative brief and audience off the root input frame (initiative.brief, initiative.audience) and the initiator identity off the immutable runtime field (initiatedBy). This document is the contract behind the scenario's inputContractRef (campaign.input.v1); a concrete codec is registered against this id by the ContractSchemaRegistry at install time.",
+  "properties": {
+    "initiative": {
+      "type": "object",
+      "description": "The marketing initiative the campaign drafts against.",
+      "properties": {
+        "brief": { "type": "string", "description": "Free-form brief text fed to the LM marketing draft stage." },
+        "audience": { "type": "string", "description": "Target audience descriptor fed to the LM marketing draft stage." }
+      },
+      "required": ["brief", "audience"]
+    }
+  },
+  "required": ["initiative"]
+}
