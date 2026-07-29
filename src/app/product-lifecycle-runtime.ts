@@ -517,6 +517,23 @@ export function createProductLifecycleRuntime(
     moduleRegistry,
     installationRegistry,
     resolveOutputPayload,
+    // W13-AUDIT §18.5: pin each ProcessRun to the immutable module installation
+    // resolved from the pre-installed production packages. The records map is
+    // keyed by module name (e.g. 'product-discovery'); stage.moduleRef carries
+    // the same name. When packageInstallation was not injected (legacy / test
+    // paths), this resolver is absent and runs start unpinned.
+    ...(packageInstallation
+      ? {
+        resolveModuleInstallation: (moduleRef: { name: string; version: string }) => {
+          const record = packageInstallation!.records.get(moduleRef.name);
+          if (!record) return null;
+          return {
+            installationId: record.id,
+            packageDigest: record.packageDigest,
+          };
+        },
+      }
+      : {}),
   });
   const engine = new LifecycleOrchestrationEngineAdapter({
     definition: productDeliveryLifecycle,

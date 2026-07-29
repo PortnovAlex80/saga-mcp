@@ -89,6 +89,18 @@ export interface LifecycleOrchestratorOptions {
    * refs may omit it. Replaces the deleted `ProcessOutputPayloadRegistry`.
    */
   resolveOutputPayload?: ResolveStageOutputPayload;
+  /**
+   * Resolves the immutable module installation a ProcessRun should be pinned
+   * to, by module reference. When provided, every started ProcessRun carries
+   * the resolved installationId + packageDigest (W13-AUDIT §18.5). When
+   * omitted (legacy / test paths), runs start unpinned (null/null) and the
+   * legacy workspace-root resource lookup remains in effect. Mirrors the
+   * scenario-runner's per-stage lockEntry resolution.
+   */
+  resolveModuleInstallation?: (moduleRef: ProcessModuleReference) => {
+    installationId: number;
+    packageDigest: string;
+  } | null;
   now?: () => Date;
   /** Primarily configurable for deterministic lease/watchdog tests. */
   leaseDurationMs?: number;
@@ -114,6 +126,9 @@ export class LifecycleOrchestrator {
   private readonly moduleRegistry: ProcessModuleRegistry;
   private readonly installationRegistry: ProcessModuleInstallationRegistry;
   private readonly resolveOutputPayload: ResolveStageOutputPayload | null;
+  private readonly resolveModuleInstallation:
+    | NonNullable<LifecycleOrchestratorOptions['resolveModuleInstallation']>
+    | null;
   private readonly now: () => Date;
   private readonly leaseDurationMs: number;
 
@@ -123,6 +138,7 @@ export class LifecycleOrchestrator {
     this.moduleRegistry = options.moduleRegistry;
     this.installationRegistry = options.installationRegistry;
     this.resolveOutputPayload = options.resolveOutputPayload ?? null;
+    this.resolveModuleInstallation = options.resolveModuleInstallation ?? null;
     this.now = options.now ?? (() => new Date());
     this.leaseDurationMs = options.leaseDurationMs ?? LIFECYCLE_LEASE_MS;
     if (!Number.isFinite(this.leaseDurationMs) || this.leaseDurationMs <= 0) {
@@ -220,10 +236,19 @@ export class LifecycleOrchestrator {
           },
           executorKind: installation.executor.kind,
           projectedStage: installation.definition.identity.kind,
-          // Legacy pre-Wave-2 path: not pinned to an installation (W3-A3,
-          // spec §6). Wave 11 cutover sets these from the active installation.
-          installationId: null,
-          packageDigest: null,
+          // W13-AUDIT §18.5: pin the ProcessRun to the immutable module
+          // installation when a resolver is wired (production). Legacy / test
+          // paths without a resolver start unpinned (null/null) and retain the
+          // pre-Wave-2 behavior. Mirrors scenario-runner's lockEntry pinning.
+          ...(this.resolveModuleInstallation
+            ? (() => {
+              const pin = this.resolveModuleInstallation!(stage.moduleRef);
+              return {
+                installationId: pin?.installationId ?? null,
+                packageDigest: pin?.packageDigest ?? null,
+              };
+            })()
+            : { installationId: null, packageDigest: null }),
           invocationContext: {
             projectId: lifecycleRun.projectId,
             epicId: lifecycleRun.epicId,
