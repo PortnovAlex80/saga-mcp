@@ -24,6 +24,8 @@ import {
   type Saga2CompositionOverrides,
 } from './app/composition-root.js';
 import type { SagaApplication } from './application/saga-application.js';
+import { getDb } from './db.js';
+import { installProductionModules } from './process-modules/installation/production-install.js';
 
 function parseArgs(argv: string[]): {
   projectId: number;
@@ -219,7 +221,22 @@ async function loadCompositionOverrides(
       `PRODUCT_LIFECYCLE_DELIVERY_COMPOSITION_MISSING: ${absolutePath}`,
     );
   }
-  return { productLifecycle };
+
+  // W13-AUDIT §18.5/§18.9: install the 4 production modules into the durable
+  // content-addressed package store ONCE before the runtime is constructed
+  // (install is async I/O; createProductLifecycleRuntime stays synchronous).
+  // The resulting ProductionInstallation is threaded through overrides so every
+  // ProcessRun is pinned to an immutable packageDigest and the workspace
+  // materializer resolves resources from pinned bytes. Idempotent across CLI
+  // restarts (same DB + unchanged bytes → reuse active records).
+  const repoRoot = process.env.SAGA_REPO_ROOT ?? process.cwd();
+  const packageInstallation = await installProductionModules(
+    getDb(),
+    repoRoot,
+    process.env.SAGA_PACKAGE_STORE_DIR,
+  );
+
+  return { productLifecycle: { ...productLifecycle, packageInstallation } };
 }
 
 main().catch(err => {

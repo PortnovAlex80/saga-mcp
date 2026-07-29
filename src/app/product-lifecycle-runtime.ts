@@ -126,6 +126,9 @@ import {
   ProcessModuleRegistry,
 } from '../process-modules/application/process-module-registry.js';
 import {
+  type ProductionInstallation,
+} from '../process-modules/installation/production-install.js';
+import {
   createDeliveryExternalAdapters,
   createDeliveryHumanInteractions,
   createDeliveryKernelHandlers,
@@ -254,6 +257,16 @@ export interface ProductLifecycleRuntimeOptions {
   delivery: DeliveryCompositionDependencies;
   db?: Database.Database;
   discoveryRuntimePersistence?: Saga3DiscoveryRuntimePersistence;
+  /**
+   * Pre-installed production module packages (W13-AUDIT §18.5/§18.9). When
+   * provided, every ProcessRun is pinned to the matching installation's
+   * immutable packageDigest and the workspace materializer resolves resources
+   * from pinned bytes. The composition loader (orchestrate-cli) installs the 4
+   * modules ONCE before constructing the runtime and passes the result here.
+   * Omitted in legacy / test paths → runs stay unpinned (null) and workspace
+   * resolution falls back to the legacy workspaceRoot lookup.
+   */
+  packageInstallation?: ProductionInstallation;
 }
 
 /**
@@ -478,6 +491,14 @@ export function createProductLifecycleRuntime(
     installationRegistry.register(inst as any);
   }
 
+  // W13-AUDIT §18.5 / §18.9: the production module packages were installed by
+  // the composition loader (orchestrate-cli) BEFORE this runtime is constructed
+  // (install is async I/O; the runtime itself stays synchronous). When the
+  // caller did not pre-install (legacy / test paths), packageInstallation is
+  // undefined and ProcessRuns stay unpinned (null/null) — the legacy
+  // workspaceRoot lookup remains in effect for those paths.
+  const packageInstallation = options.packageInstallation;
+
   // W13-A3: ProcessOutputPayloadRegistry replaced by injected ResolveStageOutputPayload callback
   const resolversBySchema = new Map<string, ResolveStageOutputPayload>([
     [SOLUTION_CONTRACT_CERTIFICATE_SCHEMA, createFormalizationLifecycleOutputPayloadResolver(formalizationSolutionContractRepository)],
@@ -536,6 +557,7 @@ export function createProductLifecycleRuntime(
     externalAdapters,
     humanInteractions,
     executors,
+    packageInstallation,
     runtimes: {
       development: developmentRuntime,
       delivery: deliveryRuntime,
