@@ -749,10 +749,22 @@ export class ClaudeBoardRunner {
     );
     if (processWorkspace && existsSync(hookPath)) {
       const commandHook = {
-        matcher: '',
+        // Use the documented explicit wildcard for every tool. This avoids
+        // relying on the version-dependent interpretation of an empty matcher.
+        matcher: '*',
         hooks: [{
           type: 'command',
-          command: `node "${hookPath}"`,
+          // Keep both argv and path-bearing data ASCII-only. Claude Code
+          // 2.1.219 corrupts non-ASCII Windows paths in hook commands AND in
+          // the hook subprocess environment (D:\Разработка becomes
+          // D:\??????????). The runner therefore transports the trusted
+          // core-owned hook bytes as base64 and imports that data module.
+          command: 'node',
+          args: [
+            '--input-type=module',
+            '--eval',
+            "await import('data:text/javascript;base64,' + process.env.SAGA_STRUCTURED_CONTEXT_HOOK_SOURCE_B64)",
+          ],
         }],
       };
       const settings = {
@@ -864,6 +876,10 @@ export class ClaudeBoardRunner {
         SAGA_WORKER_ID: workerId,
         SAGA_EXECUTION_ID: assignment.execution_id || '',
         SAGA_TASK_ID: String(task.id),
+        SAGA_STRUCTURED_CONTEXT_HOOK_SOURCE_B64:
+          processWorkspace && existsSync(hookPath)
+            ? readFileSync(hookPath).toString('base64')
+            : '',
         // W13-A2: SAGA_PROCESS_TRACKER_PATH / SAGA_PROCESS_CHECKLIST_PATHS
         // were consumed only by the deleted legacy tracker-reminder.mjs. The
         // W5-A5 structured-context-hook reads the exact execution-scoped

@@ -692,7 +692,15 @@ test('claude-runner wires the structured hook with the current Claude settings s
   const src = readFileSync(path.join(repoRoot, 'tracker-view/claude-runner.mjs'), 'utf8');
   assert.match(src, /PostToolUse: \[commandHook\]/);
   assert.match(src, /PostToolUseFailure: \[commandHook\]/);
+  assert.match(src, /matcher: '\*'/,
+    'the runner should use the documented explicit wildcard for all tools');
   assert.match(src, /type: 'command'/);
+  assert.match(src, /command: 'node'/,
+    'the hook must use exec form so Unicode Windows paths survive');
+  assert.match(src, /data:text\/javascript;base64/,
+    'the hook loader argv must remain ASCII-only');
+  assert.match(src, /SAGA_STRUCTURED_CONTEXT_HOOK_SOURCE_B64:/,
+    'the trusted hook bytes must cross the Claude hook boundary as ASCII base64');
   assert.match(src, /hooks: \[\{/);
   assert.match(src, /SAGA_AGENT_ASSISTANCE_PATH: processWorkspace\?\.agentAssistanceAbsolutePath \|\| ''/);
 });
