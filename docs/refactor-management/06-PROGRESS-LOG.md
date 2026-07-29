@@ -122,6 +122,21 @@ Format:
   task any worker claims. Track empirically whether workers emit the rung comment;
   if not, consider reinforcing via an AGENTS.md note.
 
+**Mirror check (added 2026-07-29, after the two-worlds model was established).**
+EXT-17 was placed ONLY in root `skills/` (saga-worker + saga-code-reviewer), with
+NO package-local mirror — deliberately, not by oversight. Verified: in the
+development production pipeline, `development.code` implementation tasks are
+driven by the `execute-implementation-workset` **external adapter**
+(development-process-module.ts:104, `kind:'external'`), which delegates to the
+legacy dispatcher. The dispatcher resolves the task's `executionSkill` /
+`reviewSkill` from the task-graph proposal — which the planner copies from SRS
+§D2, where the architect writes `saga-worker` / `saga-code-reviewer`
+(saga-planner Step 2a table). So implementation + code-review tasks in BOTH the
+legacy and the production pipeline resolve to the **root `skills/`** entries
+where the ladder already lives. Package-local skills exist only for LM nodes
+(planning/verification/product/acceptance), which do not write production code
+and therefore have no Ponytail-relevant surface. No package mirror is needed.
+
 ## 2026-07-29 — Skills-stream increment: diagnosing-bugs + tdd + wayfinder (EXT-18/19/20)
 - Wave: (parallel skills-stream — NOT a structural wave; no src/ touched)
 - What: Three absorptions from mattpocock/skills (reviewed via issue #663 +
