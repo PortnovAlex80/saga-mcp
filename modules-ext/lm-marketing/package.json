@@ -1,0 +1,39 @@
+{
+  "name": "@saga-modules-ext/lm-marketing",
+  "version": "1.0.0",
+  "description": "W10-A1 arbitrary-extensibility proof: a self-contained LM-node Process Module package proving the saga runtime accepts arbitrary LM modules without source change. Lives at repo root modules-ext/ (NOT src/). Upgrades the W0-A7 lm-marketing synthetic fixture into a real installable package.",
+  "type": "module",
+  "main": "./dist/index.mjs",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.mts",
+      "import": "./dist/index.mjs"
+    },
+    "./manifest.json": "./manifest.json"
+  },
+  "files": [
+    "manifest.json",
+    "dist",
+    "skills",
+    "templates",
+    "schemas",
+    "resources",
+    "README.md"
+  ],
+  "keywords": [
+    "saga",
+    "process-module",
+    "lm-node",
+    "extensibility",
+    "marketing",
+    "wave-10"
+  ],
+  "saga": {
+    "packageKind": "process-module",
+    "moduleKind": "lm-marketing",
+    "runtimeCompatibilityRange": "^3.0.0",
+    "source": "W10-A1 (upgrades W0-A7 synthetic fixture)",
+    "spec": "docs/refactor-management/09-contracts/WAVE10-EXTENSIBILITY-SPEC.md"
+  },
+  "license": "MIT"
+}
