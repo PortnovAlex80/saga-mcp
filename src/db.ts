@@ -3,6 +3,7 @@ import { SCHEMA_SQL } from './schema.js';
 import { backfillWorkItemShadow } from './lifecycle/backfill-migration.js';
 import { ensureSaga3ModuleInstallationSchema } from './process-modules/installation/persistence/installation-repository.js';
 import { ensureSaga3ProtocolRunSchema } from './process-modules/persistence/sqlite-protocol-run-repository.js';
+import { ensureSaga3CallInstanceSchema } from './process-modules/persistence/sqlite-call-instance-repository.js';
 
 let db: Database.Database | null = null;
 
@@ -154,6 +155,22 @@ export function getDb(): Database.Database {
   // placement a no-op, so both paths are idempotent.
   if (tableExists(db, 'saga3_process_runs')) {
     ensureSaga3ProtocolRunSchema(db);
+  }
+
+  // Wave 5 (W5-A2, spec §2) — CallInstance table. W5-A2 is the SINGLE SQL
+  // owner this wave (C083). One ADDITIVE table (saga3_call_instances) with the
+  // status CHECK enum (materialized/edited/validated/submitted/succeeded/
+  // failed/sealed/abandoned) and the step-ledger index. DUAL-PLACEMENT mirrors
+  // the Wave 2/3/4 pattern (spec §2 "Dual-placement in db.ts"): the table is
+  // created LAZILY by ensureSaga3CallInstanceSchema (called from the
+  // SqliteCallInstanceRepository constructor) AND here (the upgrade path for
+  // pre-existing DBs). The call is guarded on saga3_process_runs existing
+  // because saga3_call_instances REFERENCES it; on a fresh DB where the parent
+  // table does not yet exist, the FK target is absent and we defer creation to
+  // the lazy constructor path. CREATE TABLE IF NOT EXISTS makes the second
+  // placement a no-op, so both paths are idempotent.
+  if (tableExists(db, 'saga3_process_runs')) {
+    ensureSaga3CallInstanceSchema(db);
   }
 
   return db;
