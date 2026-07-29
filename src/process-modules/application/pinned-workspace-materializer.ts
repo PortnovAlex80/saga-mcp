@@ -42,6 +42,10 @@ import type {
   ResourceBlob,
   StoredModulePackage,
 } from '../installation/index.js';
+import {
+  renderAgentAssistanceProjection,
+  serializeAgentAssistanceProjection,
+} from './agent-assistance-projection.js';
 
 /**
  * Input to the pinned-package materializer. Mirrors the legacy request shape,
@@ -134,6 +138,32 @@ function executionPathSegment(executionId: string | null, workerId: string): str
     throw new Error('PINNED_WORKSPACE_EXECUTION_ID_INVALID');
   }
   return safe;
+}
+
+function integerBinding(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isInteger(value)) return value;
+  if (typeof value === 'string' && /^\d+$/.test(value)) return Number(value);
+  return null;
+}
+
+function resolveOwningNodeId(
+  module: ProcessModuleDefinition,
+  profile: ExecutionProfileDefinition,
+  metadata: Record<string, unknown>,
+): string {
+  const declared = metadata.process_node_id;
+  if (typeof declared === 'string' && declared.length > 0) return declared;
+
+  const candidates = module.flow.nodes.filter(node =>
+    node.kind === 'lm' && node.executionProfile === profile.id,
+  );
+  if (candidates.length !== 1) {
+    throw new Error(
+      `AGENT_ASSISTANCE_NODE_AMBIGUOUS: profile '${profile.id}' maps to `
+      + `${candidates.length} LM nodes`,
+    );
+  }
+  return candidates[0].id;
 }
 
 /**
@@ -253,12 +283,66 @@ export function materializePinnedWorkspace(
     writeFileSync(trackerAbsolutePath, tracker);
   }
 
-  // 7. Return the same shape consumers already depend on.
+  // 7. Package-owned structured assistance. The runtime hydrates only
+  // machine-known paths/authority and writes it beside the execution tracker;
+  // the generic Claude hook never switches on a module or node name.
+  const assistanceDefinitions = storedPackage.manifest.assistance ?? [];
+  let agentAssistanceAbsolutePath: string | undefined;
+  if (assistanceDefinitions.length > 0) {
+    const nodeId = resolveOwningNodeId(module, profile, metadata);
+    const assistanceDefinition = assistanceDefinitions.find(
+      definition => definition.nodeId === nodeId,
+    );
+    if (!assistanceDefinition) {
+      throw new Error(
+        `AGENT_ASSISTANCE_DEFINITION_MISSING: pinned module `
+        + `${module.identity.name}@${module.identity.version} declares assistance `
+        + `but has no definition for LM node '${nodeId}'`,
+      );
+    }
+    const processRunId = integerBinding(metadata.process_run_id);
+    const attempt = integerBinding(metadata.process_node_attempt)
+      ?? integerBinding(metadata.attempt)
+      ?? 1;
+    agentAssistanceAbsolutePath = path.join(
+      executionDirectory,
+      'agent-assistance.json',
+    );
+    const assistanceProjection = renderAgentAssistanceProjection({
+      definition: assistanceDefinition,
+      executionId: request.executionId,
+      processRunId,
+      nodeId,
+      attempt,
+      bindings: {
+        NODE_ID: nodeId,
+        TRACKER_PATH: relativeWorkspacePath(workspaceRoot, trackerAbsolutePath),
+        CALL_FILES: callTemplates
+          .map(asset => materializedBySource.get(asset))
+          .filter((value): value is string => !!value)
+          .join(', ') || '(none)',
+        CHECKLISTS: checklists
+          .map(asset => relativeWorkspacePath(
+            workspaceRoot,
+            path.join(toolsDirectory, path.basename(asset)),
+          ))
+          .join(', ') || '(none)',
+        ALLOWED_TOOLS: profile.allowedTools.join(', '),
+      },
+    });
+    writeFileSync(
+      agentAssistanceAbsolutePath,
+      serializeAgentAssistanceProjection(assistanceProjection),
+    );
+  }
+
+  // 8. Return exact execution-scoped paths to consumers.
   return {
     profileId: profile.id,
     moduleRef: `${module.identity.name}@${module.identity.version}`,
     trackerPath: relativeWorkspacePath(workspaceRoot, trackerAbsolutePath),
     trackerAbsolutePath,
+    ...(agentAssistanceAbsolutePath ? { agentAssistanceAbsolutePath } : {}),
     executionDirectory: relativeWorkspacePath(workspaceRoot, executionDirectory),
     workspaceFiles: [
       ...workspaceTemplates.map(a => materializedBySource.get(a)).filter((v): v is string => !!v),

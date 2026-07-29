@@ -735,23 +735,30 @@ export class ClaudeBoardRunner {
       '--mcp-config', executionMcpConfigPath,
       '--strict-mcp-config',
     ];
-    // PostToolUse hook: W13-A2 replaced the legacy tracker-reminder.mjs (which
+    // Structured tool-result hooks: W13-A2 replaced tracker-reminder.mjs (which
     // parsed Markdown checkboxes via regex — C027 violation) with the W5-A5
     // structured-context-hook.mjs. The new hook reads a STRUCTURED
     // agent-assistance.json projection (C031) — never scans docs/ and never
     // resolves paths by convention (§13.5). The pinned projection path is
-    // passed through SAGA_AGENT_ASSISTANCE_PATH in the child env below. When no
-    // projection is pinned (legacy tasks, or until W5-A6 wires the W5-A4
-    // renderer to write the file), the hook fails closed to '{}' — the same
-    // surface the platform adapter already depends on.
+    // passed through SAGA_AGENT_ASSISTANCE_PATH in the child env below.
+    // Success and failure events use the same generic command hook. Legacy
+    // tasks without a projection fail closed to '{}'.
     const hookPath = path.resolve(
       path.dirname(new URL(import.meta.url).pathname.replace(/^\//, '')),
       'structured-context-hook.mjs',
     );
     if (processWorkspace && existsSync(hookPath)) {
+      const commandHook = {
+        matcher: '',
+        hooks: [{
+          type: 'command',
+          command: `node "${hookPath}"`,
+        }],
+      };
       const settings = {
         hooks: {
-          PostToolUse: [{ command: `node "${hookPath}"` }],
+          PostToolUse: [commandHook],
+          PostToolUseFailure: [commandHook],
         },
       };
       args.push('--settings', JSON.stringify(settings));
@@ -859,12 +866,9 @@ export class ClaudeBoardRunner {
         SAGA_TASK_ID: String(task.id),
         // W13-A2: SAGA_PROCESS_TRACKER_PATH / SAGA_PROCESS_CHECKLIST_PATHS
         // were consumed only by the deleted legacy tracker-reminder.mjs. The
-        // W5-A5 structured-context-hook reads SAGA_AGENT_ASSISTANCE_PATH
-        // instead; the projection is written by the W5-A4 renderer (wired in
-        // W5-A6). Until then the hook fails closed to '{}' (safe no-op).
-        SAGA_AGENT_ASSISTANCE_PATH: processWorkspace?.trackerAbsolutePath
-          ? path.join(path.dirname(processWorkspace.trackerAbsolutePath), 'agent-assistance.json')
-          : '',
+        // W5-A5 structured-context-hook reads the exact execution-scoped
+        // projection written by the pinned workspace materializer.
+        SAGA_AGENT_ASSISTANCE_PATH: processWorkspace?.agentAssistanceAbsolutePath || '',
         // Для heartbeat-лога из скилла воркера (см. saga-worker/SKILL.md):
         SAGA_PROJECT_ID: String(run.projectId),
         SAGA_PROJECT_NAME: run.projectName,

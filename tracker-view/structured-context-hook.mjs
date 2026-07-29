@@ -1,27 +1,28 @@
 #!/usr/bin/env node
 // W5-A5 — Structured agent context hook (replaces tracker-reminder.mjs).
 //
-// Reads a STRUCTURED agent-assistance.json projection (written by W5-A4
-// AgentAssistanceRenderer from authoritative ProtocolRun state — plan §10.4,
-// §14.7.5, C031) instead of parsing Markdown checkboxes (C027 violation in the
-// legacy hook).
+// Reads a STRUCTURED execution-scoped agent-assistance.json projection instead
+// of parsing Markdown checkboxes (C027 violation in the legacy hook). The
+// current projection is Flow-node scoped; a durable inner NodeProtocol cursor
+// can later replace it with a finer step projection without changing the hook.
 //
-// Contract notes (consumes the W5-A4 snapshot; no Markdown parsing here):
+// Contract notes (consumes package data; no Markdown parsing here):
 //
 //   The runner pins the exact execution-scoped projection path via
-//   SAGA_AGENT_ASSISTANCE_PATH. The file shape is the serialised
-//   AgentAssistanceSnapshot produced by the W5-A4 renderer:
+//   SAGA_AGENT_ASSISTANCE_PATH. A package projection carries one bounded
+//   assistance event list:
 //
 //     {
-//       "schemaVersion": "saga3.agent-assistance.v1",
-//       "stateVersion":  "<monotonic string set by renderer from ProtocolRun>",
-//       "event":         "<step-enter|post-tool-success|post-tool-error|...>",
+//       "schemaVersion": "saga3.agent-assistance-projection.v1",
+//       "stateVersion":  "<hash of execution scope + package definition>",
 //       "executionId":   "<fencing token; cross-execution events are rejected>",
 //       "mode":          "<compact|guided|intensive>",
-//       "blocks": [
-//         { "kind": "<goal|current-step|next-action|resource-path|...>",
-//           "content": "<bounded human-readable text>" },
-//         ...
+//       "events": [
+//         { "event": "<post-tool-success|post-tool-error|...>",
+//           "blocks": [
+//             { "kind": "<goal|current-step|next-action|resource-path|...>",
+//               "content": "<bounded human-readable text>" }
+//           ] }
 //       ]
 //     }
 //
@@ -41,16 +42,16 @@
 //     projection. This bounds repeated-state noise across many tool calls
 //     (§10.9/§10.10 — full content is not repeated after every tool call).
 //
-// Output: `{ "additionalContext": "<bounded structured context>" }` on first
-// sight of a new state version; `{}` when deduped, missing, malformed, or when
+// Output: `{ "hookSpecificOutput": { "hookEventName": "...",
+// "additionalContext": "<bounded structured context>" } }` on first sight of
+// a new state version; `{}` when deduped, missing, malformed, or when
 // the env path is unset/relative/nonexistent (identical fail-closed surface to
 // the legacy hook so the platform adapter needs no change).
 //
-// W13-A2: the legacy tracker-reminder.mjs has been DELETED; this file is now
-// the sole PostToolUse context hook wired by claude-runner.mjs. Until W5-A6
-// wires the W5-A4 AgentAssistanceRenderer to write agent-assistance.json at
-// runtime, the hook fails closed to '{}' — the same surface the platform
-// adapter already depends on (no scan, no shell injection, always exit 0).
+// W13-A2: tracker-reminder.mjs has been deleted. This is the sole
+// PostToolUse/PostToolUseFailure context hook wired by claude-runner.mjs.
+// Missing or invalid projections fail closed to '{}' (no scan, no shell
+// injection, always exit 0).
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
@@ -82,11 +83,18 @@ function emitEmpty() {
   process.exit(0);
 }
 
-// Consume the hook event payload from stdin. The platform adapter passes the
-// PostToolUse event JSON here. We swallow read errors exactly like the legacy
-// hook (stdin closed/empty is non-fatal).
+// Consume the hook event payload from stdin. New package projections may
+// declare separate success/error assistance; the hook selects the physical
+// event without knowing any module or tool vocabulary.
+let hookInput = {};
 try {
-  readFileSync(0, 'utf8');
+  const stdin = readFileSync(0, 'utf8');
+  if (stdin.trim()) {
+    const parsed = JSON.parse(stdin);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      hookInput = parsed;
+    }
+  }
 } catch {
   // stdin optional; continue regardless.
 }
@@ -131,9 +139,38 @@ if (typeof snap !== 'object' || snap === null || Array.isArray(snap)) {
 
 const runnerExecId = process.env.SAGA_EXECUTION_ID || '';
 const snapExecId = typeof snap.executionId === 'string' ? snap.executionId : '';
-if (runnerExecId && snapExecId && runnerExecId !== snapExecId) {
+if (runnerExecId && (!snapExecId || runnerExecId !== snapExecId)) {
   emitEmpty();
 }
+
+function toolFailed(input) {
+  if (!input || typeof input !== 'object') return false;
+  if (input.hook_event_name === 'PostToolUseFailure') return true;
+  if (input.error !== undefined && input.error !== null) return true;
+  const response = input.tool_response;
+  if (!response || typeof response !== 'object') return false;
+  return response.is_error === true
+    || response.success === false
+    || (response.error !== undefined && response.error !== null);
+}
+
+const selectedEvent = toolFailed(hookInput)
+  ? 'post-tool-error'
+  : 'post-tool-success';
+const configuredEvents = Array.isArray(snap.events) ? snap.events : null;
+const selected = configuredEvents
+  ? configuredEvents.find(candidate =>
+      candidate
+      && typeof candidate === 'object'
+      && candidate.event === selectedEvent)
+  : null;
+const effectiveSnap = selected
+  ? {
+      ...snap,
+      event: selectedEvent,
+      blocks: Array.isArray(selected.blocks) ? selected.blocks : [],
+    }
+  : snap;
 
 // ---------------------------------------------------------------------------
 // Dedup by state version (C033, §10.9).
@@ -145,9 +182,13 @@ if (runnerExecId && snapExecId && runnerExecId !== snapExecId) {
 // failure degrades to "emit" (safe default — never silently drop a new state).
 // ---------------------------------------------------------------------------
 
-const stateVersion = typeof snap.stateVersion === 'string' && snap.stateVersion.length > 0
-  ? snap.stateVersion
+const stateVersion = typeof effectiveSnap.stateVersion === 'string' && effectiveSnap.stateVersion.length > 0
+  ? effectiveSnap.stateVersion
   : null;
+const toolName = typeof hookInput.tool_name === 'string' ? hookInput.tool_name : '';
+const dedupVersion = stateVersion === null
+  ? null
+  : `${stateVersion}:${selected ? selectedEvent : effectiveSnap.event || ''}:${toolName}`;
 
 const sidecarPath = assistancePath + '.last-version';
 function readLastVersion() {
@@ -168,9 +209,9 @@ function writeLastVersion(v) {
   }
 }
 
-if (stateVersion !== null) {
+if (dedupVersion !== null) {
   const last = readLastVersion();
-  if (last !== null && last === stateVersion) {
+  if (last !== null && last === dedupVersion) {
     // Repeated state — emit nothing.
     emitEmpty();
   }
@@ -180,9 +221,11 @@ if (stateVersion !== null) {
 // Render the bounded structured context from the snapshot's blocks.
 // ---------------------------------------------------------------------------
 
-const blocks = Array.isArray(snap.blocks) ? snap.blocks : [];
-const mode = typeof snap.mode === 'string' ? snap.mode : 'guided';
-const event = typeof snap.event === 'string' ? snap.event : 'post-tool-success';
+const blocks = Array.isArray(effectiveSnap.blocks) ? effectiveSnap.blocks : [];
+const mode = typeof effectiveSnap.mode === 'string' ? effectiveSnap.mode : 'guided';
+const event = typeof effectiveSnap.event === 'string'
+  ? effectiveSnap.event
+  : selectedEvent;
 
 // Escape any control characters in block content so untrusted error text (e.g.
 // a last-error block sourced from a tool failure) cannot inject newlines or
@@ -252,8 +295,16 @@ lines.push('ACTION: follow the structured blocks above. Do not parse Markdown tr
 const additionalContext = lines.join('\n');
 
 // Record the state version we just emitted so the next identical state dedups.
-if (stateVersion !== null) {
-  writeLastVersion(stateVersion);
+if (dedupVersion !== null) {
+  writeLastVersion(dedupVersion);
 }
 
-process.stdout.write(JSON.stringify({ additionalContext }));
+const hookEventName = toolFailed(hookInput)
+  ? 'PostToolUseFailure'
+  : 'PostToolUse';
+process.stdout.write(JSON.stringify({
+  hookSpecificOutput: {
+    hookEventName,
+    additionalContext,
+  },
+}));

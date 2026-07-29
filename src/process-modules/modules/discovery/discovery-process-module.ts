@@ -13,7 +13,7 @@ import {
 
 export const DISCOVERY_PROCESS_MODULE_REF = {
   name: 'product-discovery',
-  version: '3.0.0',
+  version: '3.0.1',
 } as const;
 
 // W13-A2: resources were moved out of the legacy global root

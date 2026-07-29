@@ -61,6 +61,10 @@ function freshDir(prefix) {
   return mkdtempSync(path.join(os.tmpdir(), prefix));
 }
 
+function contextFromResult(result) {
+  return JSON.parse(result.stdout).hookSpecificOutput?.additionalContext;
+}
+
 // ---------------------------------------------------------------------------
 // Happy path: structured JSON → bounded additionalContext.
 // ---------------------------------------------------------------------------
@@ -83,8 +87,8 @@ test('structured-context-hook: emits bounded context from valid snapshot', () =>
     const r = runHook({ assistancePath: p });
     assert.equal(r.status, 0, `hook exited non-zero: ${r.stderr}`);
     const out = JSON.parse(r.stdout);
-    assert.ok('additionalContext' in out, 'additionalContext missing');
-    const c = out.additionalContext;
+    assert.equal(out.hookSpecificOutput.hookEventName, 'PostToolUse');
+    const c = out.hookSpecificOutput.additionalContext;
     assert.match(c, /AGENT CONTEXT \(structured\)/);
     assert.match(c, /Mode: guided/);
     assert.match(c, /Event: post-tool-success/);
@@ -211,8 +215,8 @@ test('structured-context-hook: dedups repeated state by stateVersion', () => {
     const r1 = runHook({ assistancePath: p });
     assert.equal(r1.status, 0);
     const o1 = JSON.parse(r1.stdout);
-    assert.ok('additionalContext' in o1, 'first emission must contain context');
-    assert.match(o1.additionalContext, /Current step: step-1/);
+    assert.ok(o1.hookSpecificOutput?.additionalContext, 'first emission must contain context');
+    assert.match(o1.hookSpecificOutput.additionalContext, /Current step: step-1/);
 
     // Sidecar last-version file must now exist.
     assert.ok(existsSync(p + '.last-version'), 'sidecar last-version file missing');
@@ -231,8 +235,8 @@ test('structured-context-hook: dedups repeated state by stateVersion', () => {
     const r3 = runHook({ assistancePath: p });
     assert.equal(r3.status, 0);
     const o3 = JSON.parse(r3.stdout);
-    assert.ok('additionalContext' in o3, 'new stateVersion must re-emit');
-    assert.match(o3.additionalContext, /Current step: step-2/);
+    assert.ok(o3.hookSpecificOutput?.additionalContext, 'new stateVersion must re-emit');
+    assert.match(o3.hookSpecificOutput.additionalContext, /Current step: step-2/);
   } finally {
     rmSync(tmp, { recursive: true, force: true });
   }
@@ -248,8 +252,8 @@ test('structured-context-hook: snapshot without stateVersion never dedups', () =
     });
     const r1 = runHook({ assistancePath: p });
     const r2 = runHook({ assistancePath: p });
-    assert.ok('additionalContext' in JSON.parse(r1.stdout));
-    assert.ok('additionalContext' in JSON.parse(r2.stdout));
+    assert.ok(contextFromResult(r1));
+    assert.ok(contextFromResult(r2));
   } finally {
     rmSync(tmp, { recursive: true, force: true });
   }
@@ -287,7 +291,22 @@ test('structured-context-hook: accepts snapshot when executionId matches', () =>
     const r = runHook({ assistancePath: p, executionId: 'exec-current' });
     assert.equal(r.status, 0);
     const out = JSON.parse(r.stdout);
-    assert.match(out.additionalContext, /Current step: fresh-step/);
+    assert.match(out.hookSpecificOutput.additionalContext, /Current step: fresh-step/);
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('structured-context-hook: rejects an unfenced snapshot when the runner pins executionId', () => {
+  const tmp = freshDir('saga-w5a5-exec-missing-');
+  try {
+    const p = writeSnapshot(tmp, 'agent-assistance.json', {
+      stateVersion: 'v1',
+      blocks: [{ kind: 'current-step', content: 'unfenced-step' }],
+    });
+    const r = runHook({ assistancePath: p, executionId: 'exec-current' });
+    assert.equal(r.status, 0);
+    assert.equal(r.stdout, '{}');
   } finally {
     rmSync(tmp, { recursive: true, force: true });
   }
@@ -304,7 +323,58 @@ test('structured-context-hook: lenient when neither side pins an executionId', (
     const r = runHook({ assistancePath: p /* no SAGA_EXECUTION_ID */ });
     assert.equal(r.status, 0);
     const out = JSON.parse(r.stdout);
-    assert.match(out.additionalContext, /Current step: lenient-step/);
+    assert.match(out.hookSpecificOutput.additionalContext, /Current step: lenient-step/);
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('structured-context-hook: selects package success/error events from the tool result', () => {
+  const tmp = freshDir('saga-w5a5-events-');
+  try {
+    const projection = {
+      schemaVersion: 'saga3.agent-assistance-projection.v1',
+      stateVersion: 'v1',
+      executionId: 'exec-current',
+      mode: 'intensive',
+      events: [
+        {
+          event: 'post-tool-success',
+          blocks: [{ kind: 'next-action', content: 'advance normally' }],
+        },
+        {
+          event: 'post-tool-error',
+          blocks: [{ kind: 'retry-instruction', content: 'repair in place' }],
+        },
+      ],
+    };
+    const successPath = writeSnapshot(tmp, 'success.json', projection);
+    const success = runHook({
+      assistancePath: successPath,
+      executionId: 'exec-current',
+      stdin: JSON.stringify({
+        tool_name: 'mcp__saga__proposal_submit',
+        tool_response: { success: true },
+      }),
+    });
+    assert.match(contextFromResult(success), /advance normally/);
+    assert.match(contextFromResult(success), /Event: post-tool-success/);
+
+    const errorPath = writeSnapshot(tmp, 'error.json', projection);
+    const failure = runHook({
+      assistancePath: errorPath,
+      executionId: 'exec-current',
+      stdin: JSON.stringify({
+        tool_name: 'mcp__saga__proposal_submit',
+        tool_response: { is_error: true, error: 'schema rejected' },
+      }),
+    });
+    assert.equal(
+      JSON.parse(failure.stdout).hookSpecificOutput.hookEventName,
+      'PostToolUseFailure',
+    );
+    assert.match(contextFromResult(failure), /repair in place/);
+    assert.match(contextFromResult(failure), /Event: post-tool-error/);
   } finally {
     rmSync(tmp, { recursive: true, force: true });
   }
@@ -330,7 +400,7 @@ test('structured-context-hook: escapes CR/LF/tab and C0 controls in block conten
     const r = runHook({ assistancePath: p });
     assert.equal(r.status, 0);
     const out = JSON.parse(r.stdout);
-    const c = out.additionalContext;
+    const c = out.hookSpecificOutput.additionalContext;
     // Newlines from content must NOT survive into the rendered block line:
     // they are collapsed to spaces so a weak model cannot be line-injected.
     assert.doesNotMatch(c, /line1\nline2/);
@@ -360,7 +430,7 @@ test('structured-context-hook: truncates an over-long block to the block budget'
       extraEnv: { SAGA_AGENT_ASSISTANCE_BUDGET_BLOCK_CHARS: '100' },
     });
     assert.equal(r.status, 0);
-    const c = JSON.parse(r.stdout).additionalContext;
+    const c = contextFromResult(r);
     // Truncation marker present and run bounded.
     assert.match(c, /…\[truncated\]/);
     // No run of 95+ A's survives a 100-char block cap.
@@ -388,7 +458,7 @@ test('structured-context-hook: caps total emitted context at the total budget', 
       extraEnv: { SAGA_AGENT_ASSISTANCE_BUDGET_CHARS: '500' },
     });
     assert.equal(r.status, 0);
-    const c = JSON.parse(r.stdout).additionalContext;
+    const c = contextFromResult(r);
     assert.match(c, /…\[context budget reached\]/);
     assert.ok(c.length < 1000, `total context must be bounded, got ${c.length}`);
   } finally {
@@ -412,7 +482,7 @@ test('structured-context-hook: renders unknown block kinds with their kind as la
     });
     const r = runHook({ assistancePath: p });
     assert.equal(r.status, 0);
-    const c = JSON.parse(r.stdout).additionalContext;
+    const c = contextFromResult(r);
     // Unknown kind is rendered with the kind string itself (sanitized), proving
     // the hook switches on NO module/task vocabulary.
     assert.match(c, /custom-block: module-defined content/);

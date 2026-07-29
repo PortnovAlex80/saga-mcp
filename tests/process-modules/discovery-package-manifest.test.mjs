@@ -55,6 +55,9 @@ import { validateProcessModuleManifest } from '../../dist/process-modules/domain
 import {
   validateNodeProtocolDefinition,
 } from '../../dist/process-modules/domain/spi/node-protocol.js';
+import {
+  validateAgentAssistanceDefinition,
+} from '../../dist/process-modules/domain/spi/agent-assistance.js';
 import { RESOURCE_KINDS } from '../../dist/process-modules/domain/spi/resource-index.js';
 import { canonicalJson, sha256Hex } from '../../dist/process-modules/shared/canonical-json.js';
 
@@ -274,6 +277,34 @@ test('discoveryPackageManifest round-trips through canonical JSON (pure data)', 
   const h2 = sha256Hex(parsed);
   assert.equal(h1, h2);
   assert.match(h1, /^[0-9a-f]{64}$/);
+});
+
+test('package assistance validates and covers every LM flow node exactly once', async () => {
+  const assistance = discoveryPackageManifest.assistance ?? [];
+  const lmNodeIds = discoveryProcessModule.flow.nodes
+    .filter(node => node.kind === 'lm')
+    .map(node => node.id)
+    .sort();
+  assert.deepEqual(
+    assistance.map(definition => definition.nodeId).sort(),
+    lmNodeIds,
+  );
+  for (const definition of assistance) {
+    const result = await validateAgentAssistanceDefinition(definition);
+    assert.equal(
+      result.ok,
+      true,
+      `${definition.nodeId}: ${JSON.stringify(result.errors, null, 2)}`,
+    );
+    assert.ok(
+      definition.events.some(event => event.event === 'post-tool-success'),
+      `${definition.nodeId} lacks post-tool-success assistance`,
+    );
+    assert.ok(
+      definition.events.some(event => event.event === 'post-tool-error'),
+      `${definition.nodeId} lacks post-tool-error assistance`,
+    );
+  }
 });
 
 // ===========================================================================

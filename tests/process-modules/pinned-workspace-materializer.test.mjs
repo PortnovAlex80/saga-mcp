@@ -45,7 +45,29 @@ function request(workspaceRoot, executionId) {
       description: {},
     },
     storedPackage: {
-      manifest: {},
+      manifest: {
+        assistance: [{
+          nodeId: 'author',
+          mode: 'intensive',
+          budgets: { maxTokensPerBlock: 100, maxBlocksPerEvent: 4 },
+          events: [
+            {
+              event: 'post-tool-success',
+              blocks: [
+                { kind: 'current-step', content: 'Continue {NODE_ID} from {TRACKER_PATH}.' },
+                { kind: 'resource-path', content: 'Calls: {CALL_FILES}; checks: {CHECKLISTS}.' },
+                { kind: 'allowed-tools', content: '{ALLOWED_TOOLS}' },
+              ],
+            },
+            {
+              event: 'post-tool-error',
+              blocks: [
+                { kind: 'retry-instruction', content: 'Repair {CALL_FILES} and retry.' },
+              ],
+            },
+          ],
+        }],
+      },
       resources: resources.map(resource => ({
         logicalId: resource.logicalId,
         kind: resource.logicalId === 'checklist' ? 'checklist' : 'template',
@@ -104,6 +126,22 @@ test('pinned materializer uses verified blobs and isolates semantic checkpoints 
       1,
     );
     assert.match(readFileSync(path.join(root, second.checklists[0]), 'utf8'), /valid/);
+    assert.ok(second.agentAssistanceAbsolutePath);
+    const assistance = JSON.parse(
+      readFileSync(second.agentAssistanceAbsolutePath, 'utf8'),
+    );
+    assert.equal(assistance.executionId, 'exec-two');
+    assert.equal(assistance.executionScope.nodeId, 'author');
+    assert.equal(assistance.executionScope.processRunId, 10);
+    assert.deepEqual(
+      assistance.events.map(event => event.event),
+      ['post-tool-success', 'post-tool-error'],
+    );
+    assert.match(
+      assistance.events[0].blocks[0].content,
+      /docs[\\/]formalization[\\/]projects[\\/]1[\\/]executions[\\/]task-1[\\/]exec-two/,
+    );
+    assert.match(assistance.events[0].blocks[2].content, /task_get/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

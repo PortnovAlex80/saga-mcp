@@ -203,7 +203,7 @@ test('process-execution-workspace: returns EXACTLY the documented field set', ()
         'trackerAbsolutePath', 'trackerPath', 'workspaceFiles'].sort(),
     );
     assert.equal(result.profileId, 'discovery-proposal-worker');
-    assert.equal(result.moduleRef, 'product-discovery@3.0.0');
+    assert.equal(result.moduleRef, 'product-discovery@3.0.1');
   } finally {
     rmSync(workspaceRoot, { recursive: true, force: true });
   }
@@ -262,11 +262,11 @@ test('process-execution-workspace: MachineBindings filled from task.metadata ren
     //
     // SURPRISING (§13.3): the renderer wraps STRING values in backticks but
     // emits NUMBERS and JSON-ARRAY values BARE. So `project_id: 7` (no ticks)
-    // vs `process_module_ref: \`product-discovery@3.0.0\`` (ticks). This makes
+    // vs `process_module_ref: \`product-discovery@3.0.1\`` (ticks). This makes
     // the tracker's machine-binding block look inconsistent to a human reader
     // but it is the locked current behavior.
     const trackerContent = readFileSync(result.trackerAbsolutePath, 'utf8');
-    assert.match(trackerContent, /- process_module_ref: `product-discovery@3\.0\.0`/);
+    assert.match(trackerContent, /- process_module_ref: `product-discovery@3\.0\.1`/);
     assert.match(trackerContent, /- process_run_id: `run-1`/);
     assert.match(trackerContent, /- node_id: `node-7`/);
     assert.match(trackerContent, /- work_intent_id: `wi-3`/);
@@ -687,3 +687,12 @@ test('claude-runner launch: §13.17 FIXED — profile allowedTools narrows Claud
 // tests/execution/structured-context-hook.test.mjs (reads
 // SAGA_AGENT_ASSISTANCE_PATH, bounded + deduped, fail-closed '{}', never scans
 // docs/, escapes untrusted text).
+
+test('claude-runner wires the structured hook with the current Claude settings schema for success and failure', () => {
+  const src = readFileSync(path.join(repoRoot, 'tracker-view/claude-runner.mjs'), 'utf8');
+  assert.match(src, /PostToolUse: \[commandHook\]/);
+  assert.match(src, /PostToolUseFailure: \[commandHook\]/);
+  assert.match(src, /type: 'command'/);
+  assert.match(src, /hooks: \[\{/);
+  assert.match(src, /SAGA_AGENT_ASSISTANCE_PATH: processWorkspace\?\.agentAssistanceAbsolutePath \|\| ''/);
+});

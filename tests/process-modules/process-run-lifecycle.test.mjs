@@ -333,7 +333,7 @@ test('process_run_start handler persists a run and rejects unknown modules', () 
   try {
     const out = handlers.process_run_start({
       module_name: 'product-discovery',
-      module_version: '3.0.0',
+      module_version: '3.0.1',
       executor_kind: 'legacy-adapter',
       input_schema: 'saga3.discovery-case.v1',
       input_payload: { subject: 'geo' },
@@ -349,7 +349,7 @@ test('process_run_start handler persists a run and rejects unknown modules', () 
 
     const out2 = handlers.process_run_start({
       module_name: 'product-discovery',
-      module_version: '3.0.0',
+      module_version: '3.0.1',
       executor_kind: 'legacy-adapter',
       input_schema: 'saga3.discovery-case.v1',
       input_payload: { subject: 'geo' },
@@ -381,7 +381,7 @@ test('process_run_start handler persists a run and rejects unknown modules', () 
     assert.throws(
       () => handlers.process_run_start({
         module_name: 'product-discovery',
-        module_version: '3.0.0',
+        module_version: '3.0.1',
         executor_kind: 'legacy-adapter',
         input_schema: 'saga3.discovery-case.v1',
         input_payload: { subject: 'ballistic' },
@@ -401,7 +401,7 @@ test('process_run_set handler drives the lifecycle end-to-end', () => {
   try {
     const start = handlers.process_run_start({
       module_name: 'product-discovery',
-      module_version: '3.0.0',
+      module_version: '3.0.1',
       executor_kind: 'legacy-adapter',
       input_schema: 'saga3.discovery-case.v1',
       input_payload: { s: 1 },
@@ -443,7 +443,7 @@ test('process_run_cancel on a running run records reason and is idempotent on te
   try {
     const start = handlers.process_run_start({
       module_name: 'product-discovery',
-      module_version: '3.0.0',
+      module_version: '3.0.1',
       executor_kind: 'legacy-adapter',
       input_schema: 'saga3.discovery-case.v1',
       input_payload: { s: 2 },
@@ -473,7 +473,7 @@ test('process_run_get reads by id and by (project, module, idempotency_key)', ()
   try {
     const start = handlers.process_run_start({
       module_name: 'product-discovery',
-      module_version: '3.0.0',
+      module_version: '3.0.1',
       executor_kind: 'legacy-adapter',
       input_schema: 'saga3.discovery-case.v1',
       input_payload: { s: 3 },
@@ -490,7 +490,7 @@ test('process_run_get reads by id and by (project, module, idempotency_key)', ()
     const byKey = handlers.process_run_get({
       project_id: 1,
       module_name: 'product-discovery',
-      module_version: '3.0.0',
+      module_version: '3.0.1',
       idempotency_key: 'getrun-1',
     });
     assert.equal(byKey.record.id, id);
@@ -506,7 +506,7 @@ test('process_run_list returns all runs for a project, optionally narrowed by ep
   const { temp } = fixture();
   try {
     handlers.process_run_start({
-      module_name: 'product-discovery', module_version: '3.0.0',
+      module_name: 'product-discovery', module_version: '3.0.1',
       executor_kind: 'legacy-adapter',
       input_schema: 'saga3.discovery-case.v1',
       input_payload: { s: 'a' }, input_hash: hashPayload({ s: 'a' }),
@@ -514,7 +514,7 @@ test('process_run_list returns all runs for a project, optionally narrowed by ep
       initiated_by: 'op', idempotency_key: 'list-1',
     });
     handlers.process_run_start({
-      module_name: 'product-discovery', module_version: '3.0.0',
+      module_name: 'product-discovery', module_version: '3.0.1',
       executor_kind: 'legacy-adapter',
       input_schema: 'saga3.discovery-case.v1',
       input_payload: { s: 'b' }, input_hash: hashPayload({ s: 'b' }),

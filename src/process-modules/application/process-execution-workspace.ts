@@ -52,6 +52,7 @@ export interface ProcessExecutionWorkspace {
   moduleRef: string;
   trackerPath: string;
   trackerAbsolutePath: string;
+  agentAssistanceAbsolutePath?: string;
   executionDirectory: string;
   workspaceFiles: readonly string[];
   callFiles: readonly string[];

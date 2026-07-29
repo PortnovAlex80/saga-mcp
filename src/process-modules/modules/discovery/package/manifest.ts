@@ -60,6 +60,7 @@ import {
 import type { ContractRef } from '../../../domain/spi/contract-ref.js';
 import { CONTRACT_REF_PENDING_DIGEST } from '../../../domain/spi/contract-ref.js';
 import { discoveryProcessModule, DISCOVERY_PROCESS_MODULE_REF } from '../discovery-process-module.js';
+import { DISCOVERY_AGENT_ASSISTANCE } from './assistance.js';
 
 // ---------------------------------------------------------------------------
 // Module key + discovery handler identities.
@@ -424,6 +425,7 @@ export const discoveryPackageManifest: ProcessModuleManifest = (() => {
     inputContractRef: DISCOVERY_INPUT_CONTRACT_REF,
     outputContractRef: DISCOVERY_OUTPUT_CONTRACT_REF,
     runtimeCompatibilityRange: DISCOVERY_RUNTIME_COMPATIBILITY_RANGE,
+    assistance: DISCOVERY_AGENT_ASSISTANCE,
   };
   const validation = validateProcessModuleManifest(manifest);
   if (!validation.ok) {
