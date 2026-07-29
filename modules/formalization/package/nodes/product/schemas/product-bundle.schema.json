@@ -1,0 +1,83 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "saga3.formalization-product-bundle.v1",
+  "title": "Formalization Product Bundle (PRD node output)",
+  "description": "Wave 8 package-local schema (W8-A2) for the output of the define-product-contract formalization node. Declares the WHAT-side root: PRD plus the FR/NFR/RULE family the node owns. Refs only — artifact content lives in the tracker. The kernel resolver resolve-product-contract re-reads these exact ids/hashes before the common kernel gate accepts them.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "formalizationEpicId", "discoveryCertificateRef", "discoveryCertificateHash", "prd", "functionalRequirements"],
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "const": "saga3.formalization-product-bundle.v1"
+    },
+    "processRunId": {
+      "type": "integer",
+      "description": "Machine-bound formalization ProcessRun id."
+    },
+    "formalizationEpicId": {
+      "type": "integer",
+      "description": "The REQ-NNN episode where PRD/FR/NFR/RULE artifacts land."
+    },
+    "discoveryCertificateRef": {
+      "type": "string",
+      "description": "Ref to the accepted discovery certificate authorizing this formalization."
+    },
+    "discoveryCertificateHash": {
+      "type": "string",
+      "description": "sha256Hex of the discovery certificate for traceable lineage."
+    },
+    "prd": {
+      "$ref": "#/$defs/artifactRef",
+      "description": "The Product Requirements Document artifact (required, status draft/in_review until kernel-gate acceptance)."
+    },
+    "functionalRequirements": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/artifactRef" },
+      "description": "FR artifacts hanging off the PRD. At least one is required so UC/AC can trace back to a stable handle."
+    },
+    "nonFunctionalRequirements": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/artifactRef" },
+      "description": "Optional NFR artifacts hanging off the PRD."
+    },
+    "businessRules": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/artifactRef" },
+      "description": "Optional RULE artifacts with explicit enforcement trace."
+    }
+  },
+  "$defs": {
+    "artifactRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifactId", "type", "code", "path", "status", "acceptedHash"],
+      "properties": {
+        "artifactId": { "type": "integer" },
+        "type": {
+          "type": "string",
+          "enum": ["PRD", "FR", "NFR", "RULE"]
+        },
+        "code": {
+          "type": ["string", "null"],
+          "description": "Stable queryable code, e.g. 'PRD', 'FR-3', or null."
+        },
+        "path": {
+          "type": "string",
+          "pattern": "^(?!/|[A-Za-z]:).+$",
+          "description": "Repository-relative path. Must NOT be absolute (no leading slash or drive letter)."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["draft", "in_review"],
+          "description": "Worker creates candidates only; kernel-gate accepts. 'accepted' never appears in worker output."
+        },
+        "acceptedHash": {
+          "type": "string",
+          "description": "sha256Hex read back from Saga, not remembered."
+        }
+      }
+    }
+  }
+}
