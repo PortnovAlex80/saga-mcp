@@ -31,9 +31,31 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-const { createBuiltInProcessModuleRegistry } = await import(
-  '../../dist/process-modules/modules/catalog.js'
+// Wave 13 removed modules/catalog.ts; build the registry inline from the
+// production module definitions imported directly.
+const { ProcessModuleRegistry } = await import(
+  '../../dist/process-modules/application/process-module-registry.js'
 );
+const { discoveryProcessModule } = await import(
+  '../../dist/process-modules/modules/discovery/discovery-process-module.js'
+);
+const { formalizationProcessModule } = await import(
+  '../../dist/process-modules/modules/formalization/formalization-process-module.js'
+);
+const { developmentProcessModule } = await import(
+  '../../dist/process-modules/modules/development/development-process-module.js'
+);
+const { deliveryProcessModule } = await import(
+  '../../dist/process-modules/modules/delivery/delivery-process-module.js'
+);
+function createBuiltInProcessModuleRegistry() {
+  const registry = new ProcessModuleRegistry();
+  registry.register(discoveryProcessModule);
+  registry.register(formalizationProcessModule);
+  registry.register(developmentProcessModule);
+  registry.register(deliveryProcessModule);
+  return registry;
+}
 const {
   adaptLegacyProcessModule,
   LEGACY_CONTRACT_DIGEST,
@@ -141,8 +163,10 @@ function assertLegacyEnvelopeShape(manifest, label) {
 const registry = createBuiltInProcessModuleRegistry();
 const builtInModules = registry.list();
 
-test('createBuiltInProcessModuleRegistry exposes exactly the 4 production modules', () => {
-  // Guard: this test is meaningless if the catalog changes underneath us.
+test('the built-in registry exposes exactly the 4 production modules', () => {
+  // Guard: this test is meaningless if the built-in module set changes
+  // underneath us. Wave 13 replaced the catalog file with inline registration;
+  // the 4 production modules remain the set the legacy adapter must cover.
   assert.equal(builtInModules.length, 4, 'exactly 4 built-in production modules');
   const names = builtInModules.map((/** @type {any} */ m) => m.identity.name).sort();
   assert.deepEqual(

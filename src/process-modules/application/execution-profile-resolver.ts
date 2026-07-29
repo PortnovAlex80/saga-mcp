@@ -1,24 +1,32 @@
 /**
  * Resolve an ExecutionProfileDefinition for a given task.
  *
- * The catalog (ProcessModuleRegistry) holds the module Definitions; each
- * Definition carries executionProfiles. A task's `task_kind` maps to exactly
- * one executionProfile.id within exactly one module (e.g. 'formalization.prd'
- * → module 'solution-formalization' → profile 'formalization-product').
+ * Wave 13 removed the built-in module catalog (`modules/catalog.ts`) and the
+ * prefix/first-match heuristics that lived here. The resolver now imports the
+ * production module definitions DIRECTLY (no catalog, no module-name
+ * switching in disguise) and matches a task's `task_kind` against a profile's
+ * declared `taskKind` by EXACT equality only.
+ *
+ * A task's `task_kind` maps to exactly one executionProfile.id within exactly
+ * one module (e.g. 'formalization.prd' → module 'solution-formalization' →
+ * profile 'formalization-product'). The previous kind-prefix fallback (which
+ * silently routed an unknown `discovery.<anything>` to the first discovery
+ * profile, masking typos) is GONE: an unknown task_kind resolves to null and
+ * the prompt builder falls back to the legacy single-skill path.
  *
  * This resolver is the bridge between the dispatcher (which knows task_kind)
  * and the worker prompt builder (which needs the profile's protocolSkill +
- * semanticSkill). It returns null when no profile matches — the prompt builder
- * then falls back to the legacy single-skill path.
+ * semanticSkill). It returns null when no profile matches.
  */
 
-import { createBuiltInProcessModuleRegistry } from '../modules/catalog.js';
 import type {
   ExecutionProfileDefinition,
   ProcessModuleDefinition,
 } from '../domain/process-module.js';
-
-const registry = createBuiltInProcessModuleRegistry();
+import { discoveryProcessModule } from '../modules/discovery/discovery-process-module.js';
+import { formalizationProcessModule } from '../modules/formalization/formalization-process-module.js';
+import { developmentProcessModule } from '../modules/development/development-process-module.js';
+import { deliveryProcessModule } from '../modules/delivery/delivery-process-module.js';
 
 export interface ResolvedExecutionProfile {
   module: ProcessModuleDefinition;
@@ -26,45 +34,38 @@ export interface ResolvedExecutionProfile {
 }
 
 /**
+ * The production module definitions, imported directly. Wave 13 deleted the
+ * built-in catalog (`modules/catalog.ts`); the resolver no longer reaches for
+ * it. The order of this list is the iteration order for exact-match lookup.
+ */
+const MODULES: readonly ProcessModuleDefinition[] = [
+  discoveryProcessModule,
+  formalizationProcessModule,
+  developmentProcessModule,
+  deliveryProcessModule,
+];
+
+/**
  * Resolve the execution profile for one task_kind. Returns null if no module
- * declares a profile whose workIntentKind or taskKind matches.
+ * declares a profile whose `taskKind` EXACTLY matches.
  *
- * Matching rules (in order):
- *   1. exact task_kind match (profile.taskKind === taskKind) — preferred
- *   2. workIntentKind prefix match (taskKind startsWith profile.workIntentKind)
- *      — covers sub-kinds like 'formalization.prd' vs workIntentKind
- *      'formalization.product' (they don't match exactly, but the module
- *      identity is preserved by the task_kind namespace prefix).
+ * Matching rule (post-Wave-13):
+ *   1. exact task_kind match (profile.taskKind === taskKind) — the ONLY rule.
  *
- * The resolver is module-agnostic: it iterates the catalog. A new module with
- * new profiles is picked up automatically — no registration needed here.
+ * The previous kind-prefix fallback (taskKind.startsWith(module.identity.kind))
+ * is removed: it silently routed an unknown `discovery.<x>` to the first
+ * discovery profile, which hid typos and task_kind drift. An unknown
+ * task_kind now resolves to null so the caller can surface the mismatch.
  */
 export function resolveExecutionProfile(
   taskKind: string | null | undefined,
 ): ResolvedExecutionProfile | null {
   if (!taskKind || typeof taskKind !== 'string') return null;
 
-  for (const module of registry.list()) {
-    // 1. Exact task_kind match.
+  for (const module of MODULES) {
     for (const profile of module.executionProfiles) {
       if (profile.taskKind === taskKind) {
         return { module, profile };
-      }
-    }
-  }
-
-  // 2. Prefix match on the module kind (e.g. task_kind='discovery.work'
-  //    matches module.identity.kind='discovery' → first profile of that
-  //    module). This is the fallback when task_kind does not exactly equal
-  //    any profile.taskKind (true for discovery.work, which uses
-  //    workIntentKind='discovery' as the namespace).
-  const kindPrefix = taskKind.split('.')[0];
-  if (kindPrefix) {
-    for (const module of registry.list()) {
-      if (module.identity.kind === kindPrefix && module.executionProfiles.length > 0) {
-        // Return the FIRST profile of the matching module — for discovery,
-        // discovery-proposal-worker is first and is the entry-point profile.
-        return { module, profile: module.executionProfiles[0] };
       }
     }
   }

@@ -237,28 +237,18 @@ const KNOWN_VIOLATIONS = [
 
   // ---- Rule 4: Runtime core imports the built-in module catalog ----
   // (module-name switching in disguise - plan section 13.2 / 14.4.1)
-  {
-    source: 'src/process-modules/application/execution-profile-resolver.ts',
-    target: 'src/process-modules/modules/catalog.ts',
-    rule: 4,
-    reason: REASON.catalogInjection,
-  },
+  // W13-A1 REMOVED this edge: execution-profile-resolver.ts no longer imports
+  // the built-in catalog (the catalog file is deleted; the resolver now
+  // imports the production module definitions directly and matches task_kind
+  // by exact equality only). R4 ratchet edge removed (74 → 73).
 
   // ---- Rule 6: composition root wires concrete modules + sqlite repos ----
   // (plan section 13.10 / 14.11 - Wave 11 replaces the manual composition root)
+  // W13-A1 removed product-lifecycle-runtime's imports of modules/catalog.ts
+  // and modules/installations.ts (those files are deleted; the registries are
+  // built inline from the production module definitions). The two stale Rule 6
+  // edges for catalog/installations are removed here.
   // Module implementations:
-  {
-    source: 'src/process-modules/composition/product-lifecycle-runtime.ts',
-    target: 'src/process-modules/modules/catalog.ts',
-    rule: 6,
-    reason: REASON.compositionCutover,
-  },
-  {
-    source: 'src/process-modules/composition/product-lifecycle-runtime.ts',
-    target: 'src/process-modules/modules/installations.ts',
-    rule: 6,
-    reason: REASON.compositionCutover,
-  },
   {
     source: 'src/process-modules/composition/product-lifecycle-runtime.ts',
     target: 'src/process-modules/modules/delivery/delivery-installation.ts',

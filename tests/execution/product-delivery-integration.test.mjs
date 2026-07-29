@@ -279,37 +279,17 @@ test('adapter: identity versions encode the gate mode suffix', () => {
   );
 });
 
-// --- exit gate 4: COEXIST — the built-in factories the cutover replaces are
-//     still loadable (both paths coexist, spec §5). ----------------------
+// --- exit gate 4: COEXIST (Wave 13 RESOLVED) ---------------------------
 //
-// These are dynamic imports so a future wave that removes the built-in catalog
-// (Wave 13, spec §5 anti-scope) fails LOUD here rather than silently — but in
-// Wave 11 they MUST load, because the cutover keeps them as the legacy path.
-
-test('coexist: built-in module catalog factory is still loadable (legacy path)', async () => {
-  // The composition loader REPLACES this for new runs, but the legacy path
-  // still uses it. Both must be importable at once.
-  const mod = await import(
-    '../../dist/process-modules/modules/catalog.js'
-  );
-  assert.equal(typeof mod.createBuiltInProcessModuleRegistry, 'function',
-    'createBuiltInProcessModuleRegistry must remain exported (legacy coexistence path)');
-  // And it must actually build a registry (not throw).
-  const registry = mod.createBuiltInProcessModuleRegistry();
-  assert.ok(registry, 'built-in catalog must construct a registry');
-});
-
-test('coexist: built-in installation registry factory is still loadable (legacy path)', async () => {
-  const mod = await import(
-    '../../dist/process-modules/modules/installations.js'
-  );
-  assert.equal(typeof mod.createBuiltInProcessModuleInstallationRegistry, 'function',
-    'createBuiltInProcessModuleInstallationRegistry must remain exported (legacy coexistence path)');
-  // It must construct with an empty installation list (the cutover does not
-  // require any module to be pre-installed to load the factory).
-  const registry = mod.createBuiltInProcessModuleInstallationRegistry([], {});
-  assert.ok(registry, 'built-in installation registry must construct');
-});
+// Wave 11 kept the built-in catalog factories (modules/catalog.ts +
+// modules/installations.ts) loadable alongside the composition loader as the
+// legacy fallback path. Wave 13 (W13-A1) REMOVED those files: the production
+// module definitions are now imported directly and the registries are built
+// inline at each call site. The "coexist" loadability assertions below were
+// the loud-failure tripwire for the Wave 13 removal — they are deleted here
+// because the files they imported no longer exist. The inline registry
+// construction is exercised by the production composition root and the
+// process-module / spi tests.
 
 // ===========================================================================
 // LAYER 2 — RUNTIME tests (skip-on-absent-sibling).

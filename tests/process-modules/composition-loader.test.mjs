@@ -40,25 +40,38 @@ import {
 } from '../../dist/process-modules/application/composition-loader.js';
 import { ProcessModuleRegistry } from '../../dist/process-modules/application/process-module-registry.js';
 import { ProcessModuleInstallationRegistry } from '../../dist/process-modules/application/process-module-installation-registry.js';
-import {
-  createBuiltInProcessModuleRegistry,
-} from '../../dist/process-modules/modules/catalog.js';
-import {
-  createBuiltInProcessModuleInstallationRegistry,
-} from '../../dist/process-modules/modules/installations.js';
+// Wave 13 removed modules/catalog.ts + modules/installations.ts; the legacy
+// built-in factories are reconstructed inline from the production module
+// definitions imported directly.
+import { discoveryProcessModule } from '../../dist/process-modules/modules/discovery/discovery-process-module.js';
+import { formalizationProcessModule } from '../../dist/process-modules/modules/formalization/formalization-process-module.js';
+import { developmentProcessModule } from '../../dist/process-modules/modules/development/development-process-module.js';
+import { deliveryProcessModule } from '../../dist/process-modules/modules/delivery/delivery-process-module.js';
 
 // ---------------------------------------------------------------------------
 // Legacy factory wiring.
 //
-// The loader does NOT import the built-in catalog (Rule 4b ratchet forbids it
-// — application/ must not import modules/catalog.ts). The composition root
-// injects the real built-in factories; tests do the same so the legacy
-// fallback path is exercised against the real catalog.
+// The loader does NOT import a module catalog (Rule 4b ratchet forbids it —
+// application/ must not import modules/*). The composition root injects the
+// real built-in factories; tests do the same so the legacy fallback path is
+// exercised against the real production module set.
 // ---------------------------------------------------------------------------
 
-const realLegacyCatalogFactory = createBuiltInProcessModuleRegistry;
-const realLegacyInstallationRegistryFactory = (installations) =>
-  createBuiltInProcessModuleInstallationRegistry(installations);
+function realLegacyCatalogFactory() {
+  const registry = new ProcessModuleRegistry();
+  registry.register(discoveryProcessModule);
+  registry.register(formalizationProcessModule);
+  registry.register(developmentProcessModule);
+  registry.register(deliveryProcessModule);
+  return registry;
+}
+const realLegacyInstallationRegistryFactory = (installations) => {
+  const registry = new ProcessModuleInstallationRegistry();
+  for (const installation of installations) {
+    registry.register(installation);
+  }
+  return registry;
+};
 
 function makeDeps(moduleRepo, scenarioRepo) {
   return {

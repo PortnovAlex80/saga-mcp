@@ -1,9 +1,13 @@
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 
+import { ProcessModuleRegistry } from '../process-modules/application/process-module-registry.js';
 import { validateLifecycleDefinition } from '../process-modules/application/lifecycle-router.js';
 import { validateProcessModuleDefinition } from '../process-modules/application/validate-process-module.js';
 import { productDeliveryLifecycle } from '../process-modules/lifecycles/product-delivery-lifecycle.js';
-import { createBuiltInProcessModuleRegistry } from '../process-modules/modules/catalog.js';
+import { discoveryProcessModule } from '../process-modules/modules/discovery/discovery-process-module.js';
+import { formalizationProcessModule } from '../process-modules/modules/formalization/formalization-process-module.js';
+import { developmentProcessModule } from '../process-modules/modules/development/development-process-module.js';
+import { deliveryProcessModule } from '../process-modules/modules/delivery/delivery-process-module.js';
 import {
   processModuleKey,
   type ProcessModuleReference,
@@ -37,7 +41,13 @@ import type { ToolHandler } from '../types.js';
 // (mutable, idempotent, write-once terminal) and avoids name collisions in
 // the flat MCP tool namespace.
 
-const registry = createBuiltInProcessModuleRegistry();
+// Wave 13 removed modules/catalog.ts; the catalog is built inline from the
+// production module definitions imported directly above.
+const registry = new ProcessModuleRegistry();
+registry.register(discoveryProcessModule);
+registry.register(formalizationProcessModule);
+registry.register(developmentProcessModule);
+registry.register(deliveryProcessModule);
 
 // P0: repository is constructed lazily so the schema is created only when a
 // ProcessRun tool is actually invoked. This keeps the catalog/validation tools

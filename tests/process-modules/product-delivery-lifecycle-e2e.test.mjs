@@ -11,12 +11,33 @@ const { LifecycleOrchestrator } = await import(
 const { ProcessModuleInstallationRegistry } = await import(
   '../../dist/process-modules/application/process-module-installation-registry.js'
 );
+const { ProcessModuleRegistry } = await import(
+  '../../dist/process-modules/application/process-module-registry.js'
+);
 const { ProcessOutputPayloadRegistry } = await import(
   '../../dist/process-modules/application/process-output-payload-registry.js'
 );
-const { createBuiltInProcessModuleRegistry } = await import(
-  '../../dist/process-modules/modules/catalog.js'
+// Wave 13 removed modules/catalog.ts; build the registry inline.
+const { discoveryProcessModule } = await import(
+  '../../dist/process-modules/modules/discovery/discovery-process-module.js'
 );
+const { formalizationProcessModule } = await import(
+  '../../dist/process-modules/modules/formalization/formalization-process-module.js'
+);
+const { developmentProcessModule } = await import(
+  '../../dist/process-modules/modules/development/development-process-module.js'
+);
+const { deliveryProcessModule } = await import(
+  '../../dist/process-modules/modules/delivery/delivery-process-module.js'
+);
+function createBuiltInProcessModuleRegistry() {
+  const registry = new ProcessModuleRegistry();
+  registry.register(discoveryProcessModule);
+  registry.register(formalizationProcessModule);
+  registry.register(developmentProcessModule);
+  registry.register(deliveryProcessModule);
+  return registry;
+}
 const {
   assertProductDeliveryLifecycleInput,
   productDeliveryLifecycle,

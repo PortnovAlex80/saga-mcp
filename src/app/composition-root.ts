@@ -44,8 +44,11 @@ import {
   ExistingOrchestrationEngineAdapter,
   ProcessModuleRuntimeEngine,
 } from '../process-modules/application/process-module-runtime-engine.js';
-import { createBuiltInProcessModuleRegistry } from '../process-modules/modules/catalog.js';
-import { DISCOVERY_PROCESS_MODULE_REF } from '../process-modules/modules/discovery/discovery-process-module.js';
+import { ProcessModuleRegistry } from '../process-modules/application/process-module-registry.js';
+import {
+  DISCOVERY_PROCESS_MODULE_REF,
+  discoveryProcessModule,
+} from '../process-modules/modules/discovery/discovery-process-module.js';
 import { Saga3FormalizationEngine } from '../engines/saga3-formalization-engine.js';
 import { SqliteProcessRunRepository } from '../process-modules/persistence/sqlite-process-run-repository.js';
 import { SqliteProcessOutcomeCertificateRepository } from '../process-modules/persistence/sqlite-process-outcome-certificate-repository.js';
@@ -60,7 +63,7 @@ import { LmNodeExecutor } from '../process-modules/application/node-executors/lm
 import { GenericFlowExecutor } from '../process-modules/application/generic-flow-executor.js';
 import { GenericFlowEngineAdapter } from '../process-modules/application/generic-flow-engine-adapter.js';
 import { createDiscoveryKernelHandlers, createDiscoveryLmNodePersistence } from '../process-modules/modules/discovery/discovery-installation.js';
-import { createBuiltInProcessModuleInstallationRegistry } from '../process-modules/modules/installations.js';
+import { ProcessModuleInstallationRegistry } from '../process-modules/application/process-module-installation-registry.js';
 import { getDb } from '../db.js';
 import {
   createProductLifecycleRuntime,
@@ -250,7 +253,8 @@ function selectEngine(
       diagnosisService,
     });
 
-    const registry = createBuiltInProcessModuleRegistry();
+    const registry = new ProcessModuleRegistry();
+    registry.register(discoveryProcessModule);
     return new ProcessModuleRuntimeEngine(
       registry,
       DISCOVERY_PROCESS_MODULE_REF,
@@ -350,8 +354,9 @@ function buildDiscoveryGenericEngine(
 
   // 2. Catalog + Installation registries. Installation validation now checks
   //    kernel-handler coverage against the registry (fail-fast at startup).
-  const catalog = createBuiltInProcessModuleRegistry();
-  const discoveryModule = catalog.require(DISCOVERY_PROCESS_MODULE_REF);
+  //    Wave 13 removed modules/catalog.ts; the discovery module definition is
+  //    imported directly and registered inline.
+  const discoveryModule = discoveryProcessModule;
 
   // 3. Node executors keyed by FlowNodeKind. LM executor needs the saga3
   //    runtime persistence (WorkIntent projection) — that adapter is generic by
@@ -382,9 +387,11 @@ function buildDiscoveryGenericEngine(
   });
 
   // 5. Installation registry — validates the binding + handler coverage.
-  const installationRegistry = createBuiltInProcessModuleInstallationRegistry(
-    [{ definition: discoveryModule, executor: genericExecutor }],
+  const installationRegistry = new ProcessModuleInstallationRegistry(
     { kernelHandlerRegistry: handlerRegistry },
+  );
+  installationRegistry.register(
+    { definition: discoveryModule, executor: genericExecutor },
   );
   // Sanity: the installation actually registered.
   installationRegistry.require(DISCOVERY_PROCESS_MODULE_REF);
@@ -413,6 +420,12 @@ function buildDiscoveryGenericEngine(
     finalStage: 'discovery',
     initiatedBy: 'generic-flow-runtime',
   });
+
+  // 7. Catalog registry holding the discovery module. Wave 13 removed
+  //    modules/catalog.ts; the registry is built inline from the discovery
+  //    definition. The runtime engine resolves the module by ref from here.
+  const catalog = new ProcessModuleRegistry();
+  catalog.register(discoveryModule);
 
   return new ProcessModuleRuntimeEngine(
     catalog,

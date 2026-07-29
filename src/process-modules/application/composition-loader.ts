@@ -13,10 +13,12 @@
  * A generic startup loader that builds the runtime registries for NEW runs
  * from INSTALLED packages + scenarios instead of the hard-coded catalog.
  * `createBuiltInProcessModuleRegistry` /
- * `createBuiltInProcessModuleInstallationRegistry` (the legacy composition
- * path in `modules/catalog.ts` + `modules/installations.ts`) stay as the
- * FALLBACK when no scenario is installed — Wave 11 is preparation only, both
- * paths coexist (spec §5 anti-scope; no legacy code is deleted in this wave).
+ * `createBuiltInProcessModuleInstallationRegistry` were the legacy composition
+ * factories in the now-deleted `modules/catalog.ts` + `modules/installations.ts`
+ * (Wave 13 removed those files). The equivalent catalog wiring — building a
+ * `ProcessModuleRegistry` and registering the production module definitions —
+ * is supplied to this loader via INJECTED factories on the `legacy` fallback
+ * path (spec §5 anti-scope; Wave 11 was preparation only).
  *
  * The loader is the generic seam that turns "what is installed?" into "what
  * can the runtime start?". It does NOT select which scenario to run — that is
@@ -51,12 +53,9 @@
  * domain SPI types. It does NOT import any `sqlite-*` adapter, `db.ts`,
  * `schema.ts`, or any `modules/*` implementation. The sqlite-backed
  * repositories are INJECTED via their ports, so this file adds zero edges to
- * the Rule 2 / Rule 6 ratchet. The legacy fallback factories
- * (`createBuiltInProcessModuleRegistry`) are imported lazily inside the
- * `legacy` branch so an `installed`-mode run never pays for them — but the
- * import is a static `import type`/value import resolved by the bundler
- * regardless; it does not introduce a new violation because those factories
- * are the same factories the composition root already imports.
+ * the Rule 2 / Rule 6 ratchet. The legacy fallback factories are INJECTED
+ * (not imported) by the composition root so an `installed`-mode run never
+ * pays for them and the loader stays Rule 4b clean.
  */
 
 // Application-layer registries this loader populates.
@@ -132,13 +131,15 @@ export type ProcessModuleExecutorFactory = (
  * `SqliteScenarioInstallationRepository`); injecting them keeps this file
  * Rule 2 / Rule 6 clean.
  *
- * The two legacy factories are the existing built-in factories
- * (`createBuiltInProcessModuleRegistry` /
- * `createBuiltInProcessModuleInstallationRegistry`) the composition root
- * already imports. They are injected (not imported here) so the loader — an
- * `application/` file — does not import the built-in module catalog, which
- * Rule 4b forbids. The composition root, which is the allowlisted Rule 6
- * writer, supplies them.
+ * The two legacy factories build the legacy built-in catalog (the 4 production
+ * module definitions registered into a `ProcessModuleRegistry`) and the
+ * installation registry over an installations array. Wave 13 deleted
+ * `modules/catalog.ts` / `modules/installations.ts`; the factories are now
+ * supplied inline by the composition root (which imports the production module
+ * definitions directly). They are injected (not imported here) so the loader —
+ * an `application/` file — does not import a module catalog, which Rule 4b
+ * forbids. The composition root, which is the allowlisted Rule 6 writer,
+ * supplies them.
  */
 export interface CompositionLoaderDeps {
   /** Wave 2 — single source of truth for "which module packages are installed". */
@@ -421,10 +422,12 @@ export class CompositionLoader {
    *
    * This is the FALLBACK path (spec §5 anti-scope — legacy stays). It is
    * byte-for-byte the same wiring the composition root used before this wave:
-   * `createBuiltInProcessModuleRegistry` for the catalog, then
-   * `createBuiltInProcessModuleInstallationRegistry` over the legacy
-   * installation list. There is NO behavior change for installations that have
-   * not opted into scenarios.
+   * the injected `legacyCatalogFactory` for the catalog (the production module
+   * definitions registered into a `ProcessModuleRegistry`), then the injected
+   * `legacyInstallationRegistryFactory` over the legacy installation list.
+   * There is NO behavior change for installations that have not opted into
+   * scenarios. Wave 13 deleted `modules/catalog.ts` / `modules/installations.ts`;
+   * the composition root now supplies equivalent inline factories.
    *
    * The legacy installation list is sourced from the catalog via the executor
    * factory, mirroring how the existing composition root builds it. If the
@@ -434,11 +437,12 @@ export class CompositionLoader {
    */
   private loadLegacy(): LegacyCompositionLoad {
     // Defer to the injected legacy factories. The composition root supplies
-    // the real built-in factories (`createBuiltInProcessModuleRegistry` /
-    // `createBuiltInProcessModuleInstallationRegistry`); tests inject fakes.
-    // The installation registry is built from an empty installations array
-    // here — the composition root populates it with the legacy executor
-    // wiring via the same typed factories, mirroring the pre-wave-11 path.
+    // the real built-in catalog wiring (a ProcessModuleRegistry populated with
+    // the production module definitions) and the installation-registry factory;
+    // tests inject fakes. The installation registry is built from an empty
+    // installations array here — the composition root populates it with the
+    // legacy executor wiring via the same typed factories, mirroring the
+    // pre-wave-11 path.
     const catalog = this.legacyCatalogFactory();
     const installationRegistry = this.legacyInstallationRegistryFactory([]);
     return {

@@ -4,8 +4,9 @@ import test from 'node:test';
 const { validateProcessModuleDefinition } = await import(
   '../../dist/process-modules/application/validate-process-module.js'
 );
-const { createBuiltInProcessModuleRegistry } = await import(
-  '../../dist/process-modules/modules/catalog.js'
+// Wave 13 removed modules/catalog.ts; build the registry inline.
+const { ProcessModuleRegistry } = await import(
+  '../../dist/process-modules/application/process-module-registry.js'
 );
 const { discoveryProcessModule } = await import(
   '../../dist/process-modules/modules/discovery/discovery-process-module.js'
@@ -19,6 +20,14 @@ const { developmentProcessModule } = await import(
 const { deliveryProcessModule } = await import(
   '../../dist/process-modules/modules/delivery/delivery-process-module.js'
 );
+function createBuiltInProcessModuleRegistry() {
+  const registry = new ProcessModuleRegistry();
+  registry.register(discoveryProcessModule);
+  registry.register(formalizationProcessModule);
+  registry.register(developmentProcessModule);
+  registry.register(deliveryProcessModule);
+  return registry;
+}
 
 for (const module of [
   discoveryProcessModule,

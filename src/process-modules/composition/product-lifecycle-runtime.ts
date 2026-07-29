@@ -21,13 +21,14 @@ import { ExternalNodeExecutor } from '../application/node-executors/external-nod
 import { HumanNodeExecutor } from '../application/node-executors/human-node-executor.js';
 import { KernelNodeExecutor } from '../application/node-executors/kernel-node-executor.js';
 import { LmNodeExecutor } from '../application/node-executors/lm-node-executor.js';
+import { ProcessModuleInstallationRegistry } from '../application/process-module-installation-registry.js';
+import { ProcessModuleRegistry } from '../application/process-module-registry.js';
 import { ProcessOutputPayloadRegistry } from '../application/process-output-payload-registry.js';
 import {
   PRODUCT_DELIVERY_LIFECYCLE_INPUT_SCHEMA,
   assertProductDeliveryLifecycleInput,
   productDeliveryLifecycle,
 } from '../lifecycles/product-delivery-lifecycle.js';
-import { createBuiltInProcessModuleRegistry } from '../modules/catalog.js';
 import {
   createDeliveryExternalAdapters,
   createDeliveryHumanInteractions,
@@ -103,7 +104,6 @@ import {
   ReferenceFormalizationSettlementPolicy,
   SqliteFormalizationArtifactGraph,
 } from '../modules/formalization/sqlite-formalization-kernel.js';
-import { createBuiltInProcessModuleInstallationRegistry } from '../modules/installations.js';
 import { SqliteLifecycleRunRepository } from '../persistence/sqlite-lifecycle-run-repository.js';
 import {
   SqliteManagedNodeSubmissionRepository,
@@ -357,21 +357,25 @@ export function createProductLifecycleRuntime(
     }),
   };
 
-  const moduleRegistry = createBuiltInProcessModuleRegistry();
-  const installationRegistry =
-    createBuiltInProcessModuleInstallationRegistry([
-      { definition: discoveryProcessModule, executor: executors.discovery },
-      {
-        definition: formalizationProcessModule,
-        executor: executors.formalization,
-      },
-      { definition: developmentProcessModule, executor: executors.development },
-      { definition: deliveryProcessModule, executor: executors.delivery },
-    ], {
-      kernelHandlerRegistry: kernelHandlers,
-      externalAdapterRegistry: externalAdapters,
-      humanInteractionRegistry: humanInteractions,
-    });
+  // Wave 13 removed modules/catalog.ts + modules/installations.ts; the module
+  // definitions are imported directly and the registries built inline.
+  const moduleRegistry = new ProcessModuleRegistry();
+  moduleRegistry.register(discoveryProcessModule);
+  moduleRegistry.register(formalizationProcessModule);
+  moduleRegistry.register(developmentProcessModule);
+  moduleRegistry.register(deliveryProcessModule);
+  const installationRegistry = new ProcessModuleInstallationRegistry({
+    kernelHandlerRegistry: kernelHandlers,
+    externalAdapterRegistry: externalAdapters,
+    humanInteractionRegistry: humanInteractions,
+  });
+  installationRegistry.register({ definition: discoveryProcessModule, executor: executors.discovery });
+  installationRegistry.register({
+    definition: formalizationProcessModule,
+    executor: executors.formalization,
+  });
+  installationRegistry.register({ definition: developmentProcessModule, executor: executors.development });
+  installationRegistry.register({ definition: deliveryProcessModule, executor: executors.delivery });
 
   const outputPayloadRegistry = new ProcessOutputPayloadRegistry();
   outputPayloadRegistry.register(

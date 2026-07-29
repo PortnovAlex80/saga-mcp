@@ -42,9 +42,14 @@ const { processModuleKey } = await import(
 const { ProcessModuleInstallationRegistry } = await import(
   '../../dist/process-modules/application/process-module-installation-registry.js'
 );
-const { createBuiltInProcessModuleInstallationRegistry } = await import(
-  '../../dist/process-modules/modules/installations.js'
-);
+// Wave 13 removed modules/installations.ts; build the registry inline.
+function createBuiltInProcessModuleInstallationRegistry(installations, options = {}) {
+  const registry = new ProcessModuleInstallationRegistry(options);
+  for (const installation of installations) {
+    registry.register(installation);
+  }
+  return registry;
+}
 const { discoveryProcessModule } = await import(
   '../../dist/process-modules/modules/discovery/discovery-process-module.js'
 );

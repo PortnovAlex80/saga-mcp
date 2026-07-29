@@ -42,10 +42,27 @@ test('Formalization module does not import or start Discovery', () => {
 });
 
 test('module asset and skill references exist', async () => {
-  const { createBuiltInProcessModuleRegistry } = await import(
-    '../../dist/process-modules/modules/catalog.js'
+  // Wave 13 removed modules/catalog.ts; build the registry inline.
+  const { ProcessModuleRegistry } = await import(
+    '../../dist/process-modules/application/process-module-registry.js'
   );
-  const registry = createBuiltInProcessModuleRegistry();
+  const { discoveryProcessModule } = await import(
+    '../../dist/process-modules/modules/discovery/discovery-process-module.js'
+  );
+  const { formalizationProcessModule } = await import(
+    '../../dist/process-modules/modules/formalization/formalization-process-module.js'
+  );
+  const { developmentProcessModule } = await import(
+    '../../dist/process-modules/modules/development/development-process-module.js'
+  );
+  const { deliveryProcessModule } = await import(
+    '../../dist/process-modules/modules/delivery/delivery-process-module.js'
+  );
+  const registry = new ProcessModuleRegistry();
+  registry.register(discoveryProcessModule);
+  registry.register(formalizationProcessModule);
+  registry.register(developmentProcessModule);
+  registry.register(deliveryProcessModule);
 
   for (const module of registry.list()) {
     for (const profile of module.executionProfiles) {

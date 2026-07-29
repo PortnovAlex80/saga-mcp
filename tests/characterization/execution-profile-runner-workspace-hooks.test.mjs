@@ -24,7 +24,7 @@ const repoRoot = path.resolve(import.meta.dirname, '..', '..');
 const reminderHookPath = path.resolve(repoRoot, 'tracker-reminder.mjs');
 
 // =============================================================================
-// 1. execution-profile-resolver.ts — exact / prefix / first-match / singleton
+// 1. execution-profile-resolver.ts — exact-match only (Wave 13 removed prefix/first-match)
 // =============================================================================
 
 test('execution-profile-resolver: exact task_kind match returns that exact profile', () => {
@@ -42,43 +42,41 @@ test('execution-profile-resolver: discovery.work exact-matches discovery-proposa
   assert.equal(resolved?.profile?.taskKind, 'discovery.work');
 });
 
-test('execution-profile-resolver: PREFIX fallback resolves discovery.<anything-else> to executionProfiles[0] of the discovery module', () => {
-  // SURPRISING (§13.2): an unknown taskKind like 'discovery.foo' silently
-  // resolves to discovery-proposal-worker via the kind-prefix heuristic, not
-  // to null. This means a typo in a task_kind cannot be detected and is
-  // routed to the proposal worker.
-  const resolved = resolveExecutionProfile('discovery.foo');
-  assert.equal(resolved?.profile?.id, 'discovery-proposal-worker');
-  assert.equal(resolved?.module?.identity?.kind, 'discovery');
-  // The returned profile's taskKind does NOT match the requested taskKind —
-  // it is the first profile, regardless of what the suffix asked for.
-  assert.notEqual(resolved?.profile?.taskKind, 'discovery.foo');
+test('execution-profile-resolver: Wave 13 removed the kind-prefix fallback — unknown discovery.* resolves to null', () => {
+  // Wave 13 (W13-A1) removed the kind-prefix heuristic: an unknown taskKind
+  // like 'discovery.foo' no longer silently resolves to the first discovery
+  // profile. It now resolves to null so a typo in a task_kind is detectable
+  // instead of being routed to the proposal worker.
+  assert.equal(resolveExecutionProfile('discovery.foo'), null);
 });
 
-test('execution-profile-resolver: PREFIX fallback resolves formalization.<unknown> to formalization-product (executionProfiles[0])', () => {
-  // SURPRISING (§13.2): formalization.unknown → formalization-product, the
-  // PRD profile, even though the caller did not ask for a PRD task.
-  const resolved = resolveExecutionProfile('formalization.unknown');
-  assert.equal(resolved?.profile?.id, 'formalization-product');
-  assert.equal(resolved?.module?.identity?.kind, 'formalization');
-  assert.notEqual(resolved?.profile?.taskKind, 'formalization.unknown');
+test('execution-profile-resolver: Wave 13 removed the kind-prefix fallback — unknown formalization.* resolves to null', () => {
+  // 'formalization.unknown' previously fell back to formalization-product
+  // (executionProfiles[0]). Wave 13 removed that fallback; it is now null.
+  assert.equal(resolveExecutionProfile('formalization.unknown'), null);
 });
 
-test('execution-profile-resolver: catalog iteration order is discovery, formalization, development (delivery has no profiles)', () => {
-  // SURPRISING (§13.2): "first-match" is by catalog iteration order, which is
-  // hard-coded in modules/catalog.ts. If two modules ever shared the same
-  // identity.kind, the first-registered one would silently win.
-  // We pin this order via prefix fallback so a future reorder is visible.
-  assert.equal(resolveExecutionProfile('discovery.x')?.module.identity.kind, 'discovery');
-  assert.equal(resolveExecutionProfile('formalization.x')?.module.identity.kind, 'formalization');
-  assert.equal(resolveExecutionProfile('development.x')?.module.identity.kind, 'development');
+test('execution-profile-resolver: every declared task_kind resolves to its exact profile', () => {
+  // With the prefix/first-match heuristics gone, the resolver is driven
+  // purely by exact taskKind equality. Pin every declared task_kind so a
+  // future reorder or rename is visible.
+  const allTaskKinds = [
+    'discovery.work', 'discovery.normalize', 'discovery.assess', 'discovery.diagnose',
+    'formalization.prd', 'formalization.uc', 'formalization.ac',
+    'formalization.reconciliation', 'formalization.srs',
+    'planning.decomposition',
+  ];
+  for (const kind of allTaskKinds) {
+    const resolved = resolveExecutionProfile(kind);
+    assert.ok(resolved, `expected a profile for task_kind '${kind}'`);
+    assert.equal(resolved.profile.taskKind, kind);
+  }
 });
 
-test('execution-profile-resolver: SURPRISING — delivery module has empty executionProfiles, so prefix fallback returns null even for delivery.* kinds', () => {
-  // SURPRISING (§13.2): the delivery module is registered in the catalog but
-  // declares executionProfiles: []. The prefix branch guards with
-  // `executionProfiles.length > 0`, so 'delivery.<anything>' resolves to null
-  // — the delivery module is effectively invisible to this resolver today.
+test('execution-profile-resolver: delivery has no profiles — delivery.* resolves to null', () => {
+  // The delivery module declares executionProfiles: [], so no delivery.*
+  // task_kind matches. (Wave 13: this is no longer a prefix-fallback quirk;
+  // it is the same exact-match result for any kind with no matching profile.)
   assert.equal(resolveExecutionProfile('delivery.x'), null);
   assert.equal(resolveExecutionProfile('delivery.release'), null);
 });
@@ -90,16 +88,15 @@ test('execution-profile-resolver: returns null for null/undefined/empty/non-stri
   assert.equal(resolveExecutionProfile(123), null);
 });
 
-test('execution-profile-resolver: returns null for unknown kind with no matching prefix', () => {
+test('execution-profile-resolver: returns null for unknown kind (no exact match)', () => {
   assert.equal(resolveExecutionProfile('unknownkind.something'), null);
   assert.equal(resolveExecutionProfile('does.not.exist'), null);
 });
 
-test('execution-profile-resolver: built-in catalog is a module-level singleton — resolver is callable with no setup', () => {
-  // The resolver imports createBuiltInProcessModuleRegistry at module scope
-  // (catalog singleton). Calling resolveExecutionProfile with no preparation
-  // returns a real profile for a known taskKind. SURPRISING (§13.2): this
-  // hard-wires every Wave-3 pluggable module into the resolver at import time.
+test('execution-profile-resolver: resolver is callable with no setup — known task_kind returns its profile', () => {
+  // Wave 13: the resolver imports the production module definitions directly
+  // (no built-in catalog). Calling resolveExecutionProfile with no preparation
+  // returns a real profile for a known task_kind.
   const resolved = resolveExecutionProfile('formalization.prd');
   assert.equal(resolved?.profile?.id, 'formalization-product');
 });

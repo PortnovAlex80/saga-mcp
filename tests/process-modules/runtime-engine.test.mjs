@@ -5,12 +5,18 @@ const {
   ExistingOrchestrationEngineAdapter,
   ProcessModuleRuntimeEngine,
 } = await import('../../dist/process-modules/application/process-module-runtime-engine.js');
-const { createBuiltInProcessModuleRegistry } = await import(
-  '../../dist/process-modules/modules/catalog.js'
+// Wave 13 removed modules/catalog.ts; build the registry inline.
+const { ProcessModuleRegistry } = await import(
+  '../../dist/process-modules/application/process-module-registry.js'
 );
-const { DISCOVERY_PROCESS_MODULE_REF } = await import(
+const { DISCOVERY_PROCESS_MODULE_REF, discoveryProcessModule } = await import(
   '../../dist/process-modules/modules/discovery/discovery-process-module.js'
 );
+function createBuiltInProcessModuleRegistry() {
+  const registry = new ProcessModuleRegistry();
+  registry.register(discoveryProcessModule);
+  return registry;
+}
 
 function fakeResult() {
   return {
