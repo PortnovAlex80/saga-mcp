@@ -60,7 +60,7 @@ export interface ProcessExecutionWorkspace {
 
 type MachineBindings = Record<string, unknown>;
 
-function normalizedKey(value: string): string {
+export function normalizedKey(value: string): string {
   return value
     .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
     .replace(/[^a-zA-Z0-9]+/g, '_')
@@ -68,7 +68,7 @@ function normalizedKey(value: string): string {
     .toUpperCase();
 }
 
-function parseMetadata(value: ProcessExecutionWorkspaceTask['metadata']): Record<string, unknown> {
+export function parseMetadata(value: ProcessExecutionWorkspaceTask['metadata']): Record<string, unknown> {
   if (!value) return {};
   if (typeof value === 'object' && !Array.isArray(value)) return value;
   if (typeof value !== 'string') return {};
@@ -82,7 +82,7 @@ function parseMetadata(value: ProcessExecutionWorkspaceTask['metadata']): Record
   }
 }
 
-function collectScalarBindings(
+export function collectScalarBindings(
   value: unknown,
   output: MachineBindings,
   prefix = '',
@@ -105,7 +105,7 @@ function collectScalarBindings(
   }
 }
 
-function buildMachineBindings(
+export function buildMachineBindings(
   request: PrepareProcessExecutionWorkspaceRequest,
 ): MachineBindings {
   const metadata = parseMetadata(request.task.metadata);
@@ -163,7 +163,7 @@ function safeAssetPath(workspaceRoot: string, relativeAssetPath: string): string
   return resolved;
 }
 
-function valueForFillToken(token: string, bindings: MachineBindings): unknown {
+export function valueForFillToken(token: string, bindings: MachineBindings): unknown {
   const normalized = normalizedKey(token.replace(/^FILL_/, ''));
   const aliases: Array<[RegExp, string]> = [
     [/EXECUTION_ID/, 'EXECUTION_ID'],
@@ -193,7 +193,7 @@ function valueForFillToken(token: string, bindings: MachineBindings): unknown {
   return undefined;
 }
 
-function fillKnownPlaceholders(content: string, bindings: MachineBindings): string {
+export function fillKnownPlaceholders(content: string, bindings: MachineBindings): string {
   let result = content.replace(/\{([A-Z][A-Z0-9_]*)\}/g, (full, rawKey: string) => {
     const value = bindings[normalizedKey(rawKey)];
     return value === undefined || value === null ? full : String(value);
@@ -206,7 +206,7 @@ function fillKnownPlaceholders(content: string, bindings: MachineBindings): stri
   return result;
 }
 
-function refreshMarkdownMachineBindings(
+export function refreshMarkdownMachineBindings(
   content: string,
   bindings: MachineBindings,
 ): string {
@@ -241,7 +241,7 @@ function refreshMarkdownMachineBindings(
   return result;
 }
 
-function refreshJsonMachineBindings(
+export function refreshJsonMachineBindings(
   content: string,
   bindings: MachineBindings,
 ): string {
@@ -285,12 +285,12 @@ function refreshJsonMachineBindings(
   }
 }
 
-function materializedName(sourcePath: string): string {
+export function materializedName(sourcePath: string): string {
   const parsed = path.parse(sourcePath);
   return `${parsed.name.replace(/-template$/i, '')}${parsed.ext}`;
 }
 
-function relativeWorkspacePath(workspaceRoot: string, absolutePath: string): string {
+export function relativeWorkspacePath(workspaceRoot: string, absolutePath: string): string {
   return path.relative(path.resolve(workspaceRoot), absolutePath).replace(/\\/g, '/');
 }
 
@@ -298,7 +298,7 @@ function unique<T>(items: readonly T[]): T[] {
   return [...new Set(items)];
 }
 
-function recoveryFeedbackFromMetadata(
+export function recoveryFeedbackFromMetadata(
   metadata: Record<string, unknown>,
 ): Record<string, unknown> | null {
   const direct = metadata.recovery_feedback;

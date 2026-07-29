@@ -21,6 +21,10 @@ import {
   prepareProcessExecutionWorkspace,
   type ProcessExecutionWorkspace,
 } from '../../process-modules/application/process-execution-workspace.js';
+import { buildWorkspaceProjection } from '../../process-modules/application/workspace-projection.js';
+import type { WorkspacePackageRegistry } from '../../process-modules/application/workspace-projection.js';
+import { materializePinnedWorkspace } from '../../process-modules/application/pinned-workspace-materializer.js';
+import type { ModuleInstallationId } from '../../process-modules/installation/index.js';
 
 /**
  * ClaudeBoardRunnerOptions is exported from the .mjs runner without a formal
@@ -44,6 +48,26 @@ type RunnerOptions = ClaudeBoardRunnerOptions & {
 export interface LegacyClaudeWorkerExecutorFactoryOptions {
   spawn?: typeof nodeSpawn;
   modelRouteReader?: WorkerModelRouteReader;
+  /**
+   * Pinned-package workspace resolution (W13-AUDIT §18.9 / bug #4). When BOTH
+   * this registry and {@link resolveInstallationId} are provided and a task
+   * resolves to a non-null installation pin, the workspace is materialized
+   * from the pinned package store (immutable bytes) instead of the legacy
+   * workspaceRoot tree lookup. Absent or null pin → legacy fallback.
+   */
+  packageRegistry?: WorkspacePackageRegistry;
+  /**
+   * Resolves the pinned module installation id for a claimed assignment.
+   * Typically reads task.metadata.process_run_id → saga3_process_runs.installation_id.
+   * Returns null when the run is unpinned (legacy path).
+   */
+  resolveInstallationId?: (assignment: RunnerAssignment) => ModuleInstallationId | null;
+  /**
+   * Resolves the flow node id for a claimed assignment (needed by
+   * buildWorkspaceProjection to locate the LM node's execution profile).
+   * Typically reads task.metadata.process_node_id.
+   */
+  resolveNodeId?: (assignment: RunnerAssignment) => string | null;
 }
 
 function readLegacyModelRoute(epicId: number | null) {
@@ -75,6 +99,9 @@ export function createLegacyClaudeWorkerExecutorFactory(
   options: LegacyClaudeWorkerExecutorFactoryOptions = {},
 ): WorkerExecutorFactory {
   const modelRouteReader = options.modelRouteReader ?? readLegacyModelRoute;
+  const packageRegistry = options.packageRegistry;
+  const resolveInstallationIdFn = options.resolveInstallationId;
+  const resolveNodeIdFn = options.resolveNodeId;
   return context => {
     const runnerOptions: RunnerOptions = {
       claimTask: (args: Parameters<typeof dispatcherHandlers.worker_next>[0]) =>
@@ -115,16 +142,57 @@ export function createLegacyClaudeWorkerExecutorFactory(
             `PROCESS_WORKSPACE_EPIC_REQUIRED: task ${task.id} has no epic scope`,
           );
         }
-        const workspace = prepareProcessExecutionWorkspace({
-          workspaceRoot: input.workspaceRoot,
-          module: input.resolvedProfile.module,
-          profile: input.resolvedProfile.profile,
-          projectId: input.project.id,
-          epicId,
-          task,
-          executionId: input.assignment.execution_id ?? null,
-          workerId: input.workerId,
-        });
+
+        // W13-AUDIT §18.9 / bug #4: when a pinned package registry + installation
+        // resolver are wired AND the task resolves to a non-null installation,
+        // materialize the workspace from the immutable package store instead of
+        // the legacy workspaceRoot tree (which broke when workspaceRoot ≠ the
+        // saga-mcp repo root). Feature-detected: absent registry / null pin /
+        // resolver failure → legacy fallback (byte-for-byte pre-Seam-D path).
+        let workspace: ProcessExecutionWorkspace | undefined;
+        let usedPinned = false;
+        if (
+          packageRegistry
+          && typeof resolveInstallationIdFn === 'function'
+          && typeof resolveNodeIdFn === 'function'
+        ) {
+          try {
+            const installationId = resolveInstallationIdFn(input.assignment);
+            const nodeId = resolveNodeIdFn(input.assignment);
+            if (installationId !== null && nodeId) {
+              const projection = buildWorkspaceProjection(installationId, nodeId, packageRegistry);
+              workspace = materializePinnedWorkspace({
+                projection,
+                workspaceRoot: input.workspaceRoot,
+                module: input.resolvedProfile.module,
+                profile: input.resolvedProfile.profile,
+                projectId: input.project.id,
+                epicId,
+                task,
+                executionId: input.assignment.execution_id ?? null,
+                workerId: input.workerId,
+              });
+              usedPinned = true;
+            }
+          } catch {
+            // Pinned resolution failure → fall back to legacy so a corrupt
+            // store / missing pin never hard-blocks a worker spawn.
+          }
+        }
+        if (!usedPinned) {
+          workspace = prepareProcessExecutionWorkspace({
+            workspaceRoot: input.workspaceRoot,
+            module: input.resolvedProfile.module,
+            profile: input.resolvedProfile.profile,
+            projectId: input.project.id,
+            epicId,
+            task,
+            executionId: input.assignment.execution_id ?? null,
+            workerId: input.workerId,
+          });
+        }
+        // By here exactly one of the pinned or legacy branches assigned workspace.
+        const resolvedWorkspace = workspace!;
 
         const rawMetadata = task.metadata;
         let metadata: Record<string, unknown> = {};
@@ -141,13 +209,13 @@ export function createLegacyClaudeWorkerExecutorFactory(
           }
         }
         metadata.process_workspace = {
-          profile_id: workspace.profileId,
-          module_ref: workspace.moduleRef,
-          tracker_path: workspace.trackerPath,
-          execution_directory: workspace.executionDirectory,
-          workspace_files: [...workspace.workspaceFiles],
-          call_files: [...workspace.callFiles],
-          checklists: [...workspace.checklists],
+          profile_id: resolvedWorkspace.profileId,
+          module_ref: resolvedWorkspace.moduleRef,
+          tracker_path: resolvedWorkspace.trackerPath,
+          execution_directory: resolvedWorkspace.executionDirectory,
+          workspace_files: [...resolvedWorkspace.workspaceFiles],
+          call_files: [...resolvedWorkspace.callFiles],
+          checklists: [...resolvedWorkspace.checklists],
         };
         getDb().prepare(
           `UPDATE tasks
@@ -155,7 +223,7 @@ export function createLegacyClaudeWorkerExecutorFactory(
             WHERE id=?`,
         ).run(JSON.stringify(metadata), task.id);
         task.metadata = metadata;
-        return workspace;
+        return resolvedWorkspace;
       },
     };
 

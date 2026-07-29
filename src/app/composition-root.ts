@@ -12,6 +12,7 @@ import {
   type SagaControlApplication,
 } from '../application/saga-application.js';
 import { closeDb } from '../db.js';
+import { asModuleInstallationId } from '../process-modules/installation/domain/installation.js';
 import { Saga2Engine } from '../engines/saga2-engine.js';
 import { Saga3DiscoveryEngine } from '../engines/saga3-discovery-engine.js';
 import { SqliteSaga3DiscoveryRuntime } from '../saga3/persistence/sqlite-saga3-discovery-runtime.js';
@@ -193,9 +194,37 @@ function selectEngine(
         + 'preflight/publication/observation providers',
       );
     }
+    // W13-AUDIT §18.9 / bug #4: when the composition loader pre-installed the
+    // production packages (Seam A), rebuild the worker factory WITH pinned-
+    // package workspace resolution so the materializer reads bytes from the
+    // immutable store instead of the legacy workspaceRoot tree. resolveInstallationId
+    // reads the ProcessRun pin set by the orchestrator (Seam B) from task metadata.
+    const pinnedFactory = productLifecycle.packageInstallation
+      ? createLegacyClaudeWorkerExecutorFactory({
+        modelRouteReader: epicId => persistence.episodes.readWorkerModelRoute(epicId),
+        packageRegistry: productLifecycle.packageInstallation.registry,
+        resolveInstallationId: assignment => {
+          const meta = taskMetadataRecord(assignment);
+          const runId = meta.process_run_id ?? nestedProcessWorkspaceField(meta, 'process_run_id');
+          const n = Number(runId);
+          if (!Number.isFinite(n) || n <= 0) return null;
+          const row = getDb().prepare(
+            'SELECT installation_id FROM saga3_process_runs WHERE id=?',
+          ).get(n) as { installation_id?: number | null } | undefined;
+          // ModuleInstallationId is a branded number; the DB PK is a plain number.
+          const iid = row?.installation_id ?? null;
+          return iid === null ? null : asModuleInstallationId(iid);
+        },
+        resolveNodeId: assignment => {
+          const meta = taskMetadataRecord(assignment);
+          const nodeId = meta.process_node_id;
+          return typeof nodeId === 'string' && nodeId.length > 0 ? nodeId : null;
+        },
+      })
+      : workerExecutorFactory;
     return createProductLifecycleRuntime({
       ...productLifecycle,
-      workerExecutorFactory,
+      workerExecutorFactory: pinnedFactory,
       resolveWorkerContext: context =>
         buildDiscoveryWorkerContext(config, persistence, host, context),
     }).engine;
@@ -489,4 +518,50 @@ function resolveSagaMcpEntry(): string {
     // fall through to the hard-coded path
   }
   return fileURLToPath(new URL('../../dist/index.js', import.meta.url));
+}
+
+/**
+ * Best-effort JSON parse for task.metadata. Returns null on failure (mirrors
+ * the defensive parse in legacy-claude-worker-executor-factory's prepareWorkspace).
+ */
+function safeParseJson(raw: string): Record<string, unknown> | null {
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      return parsed as Record<string, unknown>;
+    }
+  } catch {
+    // fall through
+  }
+  return null;
+}
+
+/**
+ * Read a task's metadata as a Record (parsing JSON if stored as a string).
+ * RunnerAssignment.task.metadata is loosely typed; this normalizes it.
+ */
+function taskMetadataRecord(assignment: { task?: { metadata?: unknown } }): Record<string, unknown> {
+  const raw = assignment?.task?.metadata;
+  if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+    return raw as Record<string, unknown>;
+  }
+  if (typeof raw === 'string') {
+    return safeParseJson(raw) ?? {};
+  }
+  return {};
+}
+
+/**
+ * Read a field nested under metadata.process_workspace.<field> (the workspace
+ * projection sometimes records the run id there).
+ */
+function nestedProcessWorkspaceField(
+  meta: Record<string, unknown>,
+  field: string,
+): unknown {
+  const pw = meta.process_workspace;
+  if (pw && typeof pw === 'object' && !Array.isArray(pw)) {
+    return (pw as Record<string, unknown>)[field];
+  }
+  return undefined;
 }

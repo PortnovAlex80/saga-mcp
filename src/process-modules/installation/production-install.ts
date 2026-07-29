@@ -25,6 +25,7 @@ import path from 'node:path';
 import type Database from 'better-sqlite3';
 
 import type { ProcessModuleManifest } from '../domain/spi/module-manifest.js';
+import type { WorkspacePackageRegistry } from '../application/workspace-projection.js';
 import {
   FilesystemModulePackageStore,
   SqliteModuleInstallationRepository,
@@ -32,8 +33,8 @@ import {
   installPackage,
   type ModuleInstallationRecord,
   type ResourceBlob,
-  type PackageRegistry,
 } from './index.js';
+import { asModuleInstallationId } from './domain/installation.js';
 
 /**
  * The 4 production manifests, in lifecycle stage order. Imported lazily by the
@@ -88,8 +89,14 @@ export function readResourceBlobs(
  * (workspace projection).
  */
 export interface ProductionInstallation {
-  /** Resolves an active installation by surrogate id (the ProcessRun FK). */
-  readonly registry: PackageRegistry;
+  /**
+   * Resolves active installations by selector (name + semver range) AND by
+   * surrogate id (getById). The workspace materializer needs getById to read
+   * the pinned record; the orchestrator needs the records map. Typed as
+   * WorkspacePackageRegistry (PackageRegistry & InstallationRecordById) so it
+   * plugs directly into buildWorkspaceProjection.
+   */
+  readonly registry: WorkspacePackageRegistry;
   /** The underlying repository (for pin lookups by name@version). */
   readonly repository: SqliteModuleInstallationRepository;
   /** The content-addressed byte store (verified on every read). */
@@ -139,6 +146,14 @@ export async function installProductionModules(
     records.set(name, record);
   }
 
-  const registry = new InstallationBasedPackageRegistry(repository);
+  // WorkspacePackageRegistry = PackageRegistry & InstallationRecordById.
+  // InstallationBasedPackageRegistry implements select/has/listSelectors but
+  // NOT getById (that lives on the repository). Compose both so the result
+  // plugs directly into buildWorkspaceProjection without the caller needing to
+  // know about the split.
+  const baseRegistry = new InstallationBasedPackageRegistry(repository);
+  const registry: WorkspacePackageRegistry = Object.assign(baseRegistry, {
+    getById: (id: number) => repository.getById(asModuleInstallationId(id)),
+  });
   return { registry, repository, store, records };
 }
