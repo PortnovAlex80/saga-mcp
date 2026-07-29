@@ -104,13 +104,14 @@ function makeValidResources() {
 
 /** Reference packageDigest formula (must match package-store.ts exactly). */
 function referencePackageDigest(manifest, resources) {
-  return sha256Hex(
-    canonicalJson({
-      manifest,
-      resourceIndex: manifest.resourceIndex,
-      resourceDigests: resources.map((r) => r.digest),
-    }),
-  );
+  // D-20260728-03: single canonicalization (sha256Hex canonicalizes internally).
+  // The earlier double-canonicalization form `sha256Hex(canonicalJson({...}))`
+  // was standardized away because canonicalJson is not idempotent on strings.
+  return sha256Hex({
+    manifest,
+    resourceIndex: manifest.resourceIndex,
+    resourceDigests: resources.map((r) => r.digest),
+  });
 }
 
 /** Fresh temp rootDir for each test; cleaned in finally. */

@@ -59,16 +59,13 @@ Format:
 - Mitigation: Wave 0 W0-A8 owns isolated test-runner configuration; regenerate groups from directory scan.
 - Status: open (Wave 0 owns)
 
-## R-07 — Wave 2 A8 conformance: 3 failing cross-lane tests (PARTIAL INTEGRATION)
-- Surfaced: 2026-07-28 (Wave 2 integration)
-- Likelihood: high · Impact: medium
-- Owner: integrator (Wave 2 follow-up before Wave 3)
-- Description: Wave 2 cherry-picked all 8 lanes (build green, 132/132 lane tests pass). The W2-A8 conformance suite has 3 failing tests due to cross-lane assumption mismatches that surfaced only at integration:
-  1. **Version-collision detection point**: W2-A3 installer detects collision at `activate` (step 8), surfacing `MODULE_INSTALLATION_ACTIVATE_FAILED` with a collision message — but W2-A8 expects the error CODE `MODULE_INSTALLATION_VERSION_COLLISION`. Fix: the installer's `wrapPortError` must recognize collision messages and translate to the canonical code. OR detect at `insert` by pre-checking `repo.getActiveByNameVersion`.
-  2. **SQLITE_ERROR in pinning test** (W2-A8 line 414): the pinning test path doesn't ensure `saga3_process_runs` table + the new ALTER columns exist in its DB context. W2-A4's own test handled this via `ensureInstallationColumns()`; W2-A8 doesn't replicate that setup.
-  3. **"fixture has at least one stored resource"** (W2-A8 line 522): the corruption test expects stored resource files on disk after install, but the install path may not have written resources (manifest from `adaptLegacyProcessModule` has empty resourceIndex, so no resources to store).
-- Mitigation: These are integration-reconciliation fixes (like the W1 cross-lane fixes), not architectural gaps. The Wave 2 SPI + store + repo + installer + registries + pinning + describe are all proven by the 132 passing lane tests. The A8 conformance is the END-TO-END proof that needs the 3 fixes. Integrator addresses in a follow-up commit before Wave 3 (Wave 3 depends on a working installation layer).
-- Status: open (Wave 2 follow-up)
+## R-07 — Wave 2 A8 conformance: cross-lane digest/SQL mismatches (RESOLVED)
+- Surfaced: 2026-07-28 (Wave 2 integration) · Resolved: 2026-07-29
+- Likelihood: was high · Impact: was medium
+- Owner: integrator
+- Description: W2-A8 conformance had 6/8 failing tests. Root cause (found after deep debug): **resource digest must use raw-bytes `crypto.createHash('sha256').update(bytes).digest('hex')`, NOT `sha256Hex(bytes)`** — because `sha256Hex` canonical-JSON-serializes a `Uint8Array` first (producing `{"0":x,"1":y,...}`), giving a completely different hash. Multiple test files (W2-A1 referencePackageDigest, W2-A3 fake-store verify + digestBytes, W2-A8 fixture loading) independently used `sha256Hex(bytes)` — the WRONG formula for raw bytes. Plus: better-sqlite3 `.get()` misused on UPDATE statements; A8 minimal table missing `updated_at` column; A5 registry `select()` vs A4 adapter `resolve()` API divergence; A8 fixture export name `complianceCheckResourceIndex` vs expected `resourceIndex`.
+- Resolution: All fixed at Wave 2 integration. (1) `computePackageDigest` single-canonicalization per D-20260728-03; (2) all resource-digest computations use crypto raw-bytes sha256; (3) `.run()` for UPDATE; (4) `updated_at` added to minimal test table; (5) fallback registry wrapper; (6) fixture export name corrected. Wave 2 gate now 140/140 PASS including A8 conformance 8/8.
+- Status: closed (resolved 2026-07-29)
 
 ## R-06 — Checked-in DB/log artifacts
 - Surfaced: 2026-07-28 (baseline §"Hygiene flags")

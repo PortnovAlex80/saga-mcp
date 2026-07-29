@@ -30,8 +30,9 @@
 
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { createHash } from 'node:crypto';
 
-const { canonicalJson, sha256Hex } = await import(
+const { sha256Hex } = await import(
   '../../dist/process-modules/shared/canonical-json.js'
 );
 const { adaptLegacyProcessModule } = await import(
@@ -67,13 +68,12 @@ const { default: lmMarketingModule } = await import(
 // (matches W2-A1's FilesystemModulePackageStore.store).
 // ---------------------------------------------------------------------------
 function computePackageDigest(manifest, resources) {
-  return sha256Hex(
-    canonicalJson({
-      manifest,
-      resourceIndex: manifest.resourceIndex,
-      resourceDigests: resources.map((r) => r.digest),
-    }),
-  );
+  // D-20260728-03: single canonicalization (sha256Hex canonicalizes internally).
+  return sha256Hex({
+    manifest,
+    resourceIndex: manifest.resourceIndex,
+    resourceDigests: resources.map((r) => r.digest),
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -135,14 +135,17 @@ function createFakeStore() {
       // re-derive the package digest. Byte corruption (e.g. via _corrupt)
       // makes the recomputed resource digests diverge from the originals, so
       // the recomputed packageDigest no longer matches the recorded one.
-      const recomputedResourceDigests = p.resources.map((r) => sha256Hex(r.bytes));
-      const recomputed = sha256Hex(
-        canonicalJson({
-          manifest: p.manifest,
-          resourceIndex: p.manifest.resourceIndex,
-          resourceDigests: recomputedResourceDigests,
-        }),
+      // Resource digests are raw-bytes sha256 (NOT sha256Hex which canonical-
+      // JSON-serializes a Uint8Array first — see W2-A1 computeResourceDigest).
+      const recomputedResourceDigests = p.resources.map((r) =>
+        createHash('sha256').update(r.bytes).digest('hex'),
       );
+      // D-20260728-03: single canonicalization (sha256Hex canonicalizes internally).
+      const recomputed = sha256Hex({
+        manifest: p.manifest,
+        resourceIndex: p.manifest.resourceIndex,
+        resourceDigests: recomputedResourceDigests,
+      });
       return recomputed === packageDigest;
     },
     /** Test-only: corrupt the stored bytes for a digest. */
@@ -302,9 +305,11 @@ function createFakeRepo() {
 // Fixture builders.
 // ---------------------------------------------------------------------------
 
-/** Compute sha256Hex of raw bytes (matches how W2-A1 computes ResourceBlob.digest). */
+/** Compute sha256 of raw bytes via crypto (matches W2-A1's computeResourceDigest:
+ * raw-bytes hash, NOT sha256Hex which canonical-JSON-serializes a Uint8Array first).
+ * This is the canonical resource-digest formula (plan §5.5.4). */
 function digestBytes(bytes) {
-  return sha256Hex(bytes);
+  return createHash('sha256').update(bytes).digest('hex');
 }
 
 /**
@@ -325,13 +330,17 @@ function buildMarketingManifest({ withResources = true, withHandlers = true } = 
           logicalId: 'semantic-skill',
           path: 'skills/synthetic-marketing-skill.md',
           kind: 'skill',
-          digest: PENDING_LOCK_DIGEST,
+          // Real digest of the default resource bytes ('hello marketing') so the
+          // manifest is internally consistent with buildMarketingResources() —
+          // the installer's resource-digest stamping (step 3.5) then becomes a
+          // no-op and record.packageDigest === computePackageDigest(manifest, resources).
+          digest: digestBytes(new TextEncoder().encode('hello marketing')),
         },
         {
           logicalId: 'campaign-template',
           path: 'templates/campaign-draft-template.md',
           kind: 'template',
-          digest: PENDING_LOCK_DIGEST,
+          digest: digestBytes(new TextEncoder().encode('hello marketing')),
         },
       ]
     : [];

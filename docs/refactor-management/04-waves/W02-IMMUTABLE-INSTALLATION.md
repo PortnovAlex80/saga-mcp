@@ -1,6 +1,6 @@
 # Wave 2 — Immutable Installation & Registries
 
-> Plan mapping: §0.5 (Phases 2, 3 excl. live LM driver). **Status:** 🟡 PARTIAL — 8/8 lanes integrated; build green; 132/132 lane tests pass; A8 conformance 6/8 fail (R-07 — `store.verify` replay mismatch under investigation).
+> Plan mapping: §0.5 (Phases 2, 3 excl. live LM driver). **Status:** ✅ DONE — 8/8 lanes integrated; build green; 140/140 installation tests pass (incl. A8 conformance 8/8); ratchet 4/4; Wave 1 regression 238/238. R-07 resolved (root cause: resource digest must use raw-bytes crypto sha256, NOT sha256Hex which canonical-JSON-serializes Uint8Array).
 
 ## Dispatched lanes (tracking)
 

@@ -55,6 +55,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync } from 'nod
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { createHash } from 'node:crypto';
 
 // Frozen Wave 1 primitives — already built in this worktree (Wave 1 checkpoint 6a349a2).
 import { canonicalJson, sha256Hex } from '../../dist/process-modules/shared/canonical-json.js';
@@ -183,7 +184,10 @@ async function loadThirdSyntheticFixture() {
       logicalId: r.logicalId,
       kind: r.kind,
       bytes,
-      digest: sha256Hex(bytes),
+      // Resource digest = raw-bytes sha256 via crypto (NOT sha256Hex which
+      // canonical-JSON-serializes a Uint8Array first — W2-A1 computeResourceDigest,
+      // R-07 root cause).
+      digest: createHash('sha256').update(bytes).digest('hex'),
     };
   });
 
@@ -228,7 +232,8 @@ function makeIsolatedEnv() {
       module_name TEXT NOT NULL,
       module_version TEXT NOT NULL,
       installation_id INTEGER,
-      package_digest TEXT
+      package_digest TEXT,
+      updated_at TEXT
     );
   `);
   const store = new FilesystemModulePackageStore(storeRoot);
@@ -318,7 +323,7 @@ test('§6.2 + §14.3.8: mutating in-memory source after install does NOT change 
     const mutated = Buffer.from(r.bytes);
     mutated[0] = mutated[0] ^ 0xff;
     r.bytes = mutated;
-    r.digest = sha256Hex(mutated);
+    r.digest = createHash('sha256').update(mutated).digest('hex');
   }
 
   // The store still returns the ORIGINAL package for the original digest.
@@ -420,20 +425,15 @@ test('§6.4 + §14.3.7: pinned installation round-trips; legacy NULL run resolve
   const db = sharedEnv.db;
   const adapter = sharedEnv.runAdapter;
 
-  // Insert a NEW process_runs row to pin. The table has many NOT NULL columns
-  // (project_id, module_ref_key, idempotency_key, executor_kind, input_schema,
-  // input_snapshot, input_hash) — supply stubs for all of them. project_id
-  // references projects(id); insert a throwaway project first.
-  db.prepare(`INSERT INTO projects (name) VALUES (?)`).run('w2-a8-pin-fixture');
-  const projectId = Number(db.prepare(`SELECT last_insert_rowid() AS id`).get().id);
+  // Insert a NEW process_runs row to pin. sharedEnv uses a MINIMAL
+  // saga3_process_runs table (id, module_name, module_version, installation_id,
+  // package_digest) — see makeIsolatedEnv. This is intentional for the §14.4.7
+  // proof (no import of the real sqlite-process-run-repository). The real
+  // table's extra NOT NULL columns are irrelevant to the pinning adapter.
   const insertRun = db.prepare(
-    `INSERT INTO saga3_process_runs (
-       project_id, module_name, module_version, module_ref_key, idempotency_key,
-       executor_kind, input_schema, input_snapshot, input_hash
-     ) VALUES (?, ?, ?, ?, ?, 'legacy-adapter', 'stub', '{}', 'stub')`,
+    `INSERT INTO saga3_process_runs (module_name, module_version) VALUES (?, ?)`,
   );
-  const refKey = `${sharedRecord.name}@${sharedRecord.version}`;
-  const info = insertRun.run(projectId, sharedRecord.name, sharedRecord.version, refKey, `w2-a8-pin-${Date.now()}`);
+  const info = insertRun.run(sharedRecord.name, sharedRecord.version);
   const runId = Number(info.lastInsertRowid);
 
   // Pin it.
@@ -453,17 +453,23 @@ test('§6.4 + §14.3.7: pinned installation round-trips; legacy NULL run resolve
   // Insert a LEGACY row (NULL installation_id) → getPinnedInstallation returns
   // null, and resolveInstallationForLegacyRun must fall back to the registry
   // by name+version (§14.3.7 compatibility path).
-  const legacyInfo = insertRun.run(projectId, sharedRecord.name, sharedRecord.version, refKey, `w2-a8-legacy-${Date.now()}`);
+  const legacyInfo = insertRun.run(sharedRecord.name, sharedRecord.version);
   const legacyRunId = Number(legacyInfo.lastInsertRowid);
   // Explicitly clear (defensive — the column defaults to NULL).
+  // Use .run() not .get() — UPDATE does not return data (better-sqlite3 rule).
   db.prepare(`UPDATE saga3_process_runs SET installation_id = NULL, package_digest = NULL WHERE id = ?`)
-    .get(legacyRunId);
+    .run(legacyRunId);
 
   const legacyPin = adapter.getPinnedInstallation(legacyRunId);
   assert.equal(legacyPin, null, 'legacy run has no pin');
 
   // Build a fallback PackageRegistry backed by the repo + the active record.
-  const fallback = new InstallationBasedPackageRegistry(sharedEnv.repo);
+  // The adapter expects a LegacyInstallationResolver ({ resolve(selector) }),
+  // but InstallationBasedPackageRegistry exposes { select(selector) }. Wrap it.
+  const registry = new InstallationBasedPackageRegistry(sharedEnv.repo);
+  const fallback = { resolve: (selector) => {
+    try { return registry.select(selector); } catch { return null; }
+  }};
   const resolved = adapter.resolveInstallationForLegacyRun(legacyRunId, fallback);
   assert.ok(resolved, 'legacy run resolves via the fallback registry');
   assert.equal(resolved.id, sharedRecord.id, 'legacy fallback resolves to the active installation');
