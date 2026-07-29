@@ -36,7 +36,17 @@ import {
   type NodeExecutionResult,
   type NodeExecutor,
 } from '../node-executor.js';
-import { sha256Hex } from '../../shared/canonical-json.js';
+// W3-A2 (spec §5): board-driver adapter-data builder isolates the snake_case
+// saga3 lineage/receipt stamping behind a named port. The LM executor body
+// stays driver-neutral; this file is the only place that knows the board vocab.
+// sha256Hex moved into the builder (the only consumer of the lineage hashes).
+import {
+  buildSagaBoardLineageBag,
+  buildSagaBoardDriverNeutralReceipt,
+} from './saga-board-adapter-data-builder.js';
+// Type-only import of the Wave 1 driver-neutral receipt shape — pure data type
+// under domain/spi/ (Rule 5 pure). application→domain is ratchet-allowed.
+import type { DriverNeutralExecutionReceipt } from '../../domain/spi/index.js';
 
 /**
  * Subset of the saga3 runtime persistence the LM executor needs. Mirrors the
@@ -196,6 +206,37 @@ export class LmNodeExecutor implements NodeExecutor {
     this.now = options.now ?? (() => new Date());
   }
 
+  /**
+   * W3-A2 (spec §5): build the driver-neutral receipt that travels ALONGSIDE
+   * the legacy `NodeExecutionReceipt`. The LM executor does NOT own the NodeRun
+   * row (the GenericFlowExecutor opens/completes it), so when the v2 envelope
+   * is present we borrow `nodeRunId`/`attempt` from it; otherwise we emit the
+   * 0/1 placeholder that `toV2Result` in `node-executor.ts` also uses, and let
+   * the GenericFlowExecutor's v2 dual-write path stamp the real NodeRun id.
+   *
+   * Pure with respect to inputs: same (envelope, lineage, ids) → same receipt.
+   */
+  private buildDriverNeutralReceipt(args: {
+    intentId: number;
+    taskId: number;
+    executionId: string | null;
+    runtimeStatus: 'completed' | 'failed' | 'paused';
+    replayed: boolean;
+    lineage: ReturnType<typeof buildSagaBoardLineageBag>;
+    envelope: NodeExecutionContext['envelope'];
+  }): DriverNeutralExecutionReceipt {
+    return buildSagaBoardDriverNeutralReceipt({
+      nodeRunId: args.envelope?.nodeRunId ?? 0,
+      attempt: args.envelope?.attempt ?? 1,
+      intentId: args.intentId,
+      taskId: args.taskId,
+      executionId: args.executionId,
+      runtimeStatus: args.runtimeStatus,
+      replayed: args.replayed,
+      lineage: args.lineage,
+    });
+  }
+
   async execute(ctx: NodeExecutionContext): Promise<NodeExecutionResult> {
     const node = ctx.node as LmFlowNodeDefinition;
     const profile = resolveProfile(ctx.module, node.executionProfile);
@@ -216,13 +257,26 @@ export class LmNodeExecutor implements NodeExecutor {
     }
 
     try {
+      // W3-A2 (spec §5): detect A1's v2 driver-neutral context. The
+      // GenericFlowExecutor sets `ctx.envelope` ONLY when the v2 wiring is
+      // active (the run was started with v2 NodeRun columns + an
+      // ExecutionContextAssembler). Legacy runs leave `envelope` undefined and
+      // the executor reads the mutable `ctx.frame` exactly as before (plan
+      // §16.9 — dual-write + fallback paths; no behaviour change for legacy).
+      const envelope = ctx.envelope;
+      const isV2Context = envelope !== undefined;
+      // The lineage bag's process_input_hash must be stable across v1/v2. The
+      // envelope's immutableRunInput IS the same run input, exposed
+      // driver-neutrally; fall back to the legacy frame view when absent.
+      const runInput = isV2Context ? envelope.immutableRunInput : ctx.frame.runInput;
+
       // The worker's product objective comes from the module input payload
       // (the epic's product brief), NOT from the node's technical description.
       // node.description/label describe the node's ROLE in the flow; the worker
       // needs to know WHAT to investigate. Fall back to node description only
       // when the input carries no objective (e.g. synthetic test modules).
       const inputObj = (ctx.input ?? {}) as { objective?: string };
-      const runInputObj = (ctx.frame.runInput ?? {}) as { objective?: string };
+      const runInputObj = (runInput ?? {}) as { objective?: string };
       const baseObjective = inputObj.objective && inputObj.objective.trim().length > 0
         ? inputObj.objective
         : runInputObj.objective && runInputObj.objective.trim().length > 0
@@ -268,28 +322,22 @@ export class LmNodeExecutor implements NodeExecutor {
         // ensureProjectedTask.
         return null as number | null;
       })();
-      const processBinding = {
-        process_run_id: ctx.processRunId,
-        process_node_id: node.id,
-        process_module_ref: `${ctx.module.identity.name}@${ctx.module.identity.version}`,
-        process_input_hash: sha256Hex(ctx.frame.runInput),
-        process_node_input: ctx.input,
-        process_node_input_hash: sha256Hex(ctx.input),
-        artifact_acceptance_authority:
+      // W3-A2 (spec §5): the snake_case saga-board lineage bag is now built
+      // behind SagaBoardAdapterDataBuilder so the LM executor body stays
+      // driver-neutral. The produced bag is byte-identical to the pre-Wave-3
+      // inline literal — the saga3 adapter reads the exact same task metadata.
+      const moduleRef = `${ctx.module.identity.name}@${ctx.module.identity.version}`;
+      const processBinding = buildSagaBoardLineageBag({
+        processRunId: ctx.processRunId,
+        nodeId: node.id,
+        moduleRef,
+        runInput,
+        nodeInput: ctx.input,
+        artifactAcceptanceAuthority:
           profile.artifactAcceptanceAuthority ?? 'worker',
-        ...(recoveryFeedback
-          ? {
-              recovery_case_id: recoveryFeedback.caseId,
-              recovery_attempt: recoveryFeedback.attempt,
-              recovery_issue_ref: recoveryFeedback.issueRef,
-              recovery_issue_hash: recoveryFeedback.issueHash,
-              recovery_feedback: recoveryFeedback,
-            }
-          : {}),
-        ...(resolvedRepositoryId !== null
-          ? { project_repository_id: resolvedRepositoryId }
-          : {}),
-      };
+        recoveryFeedback,
+        projectRepositoryId: resolvedRepositoryId,
+      });
 
       let intent: { id: number };
       let taskId: number;
@@ -384,6 +432,13 @@ export class LmNodeExecutor implements NodeExecutor {
       if (preparation.status === 'done') {
         // Already concluded by a prior run (replay).
         this.persistence.setIntentStatus(intent.id, preparation.intentStatus, 'concluded');
+        const replayedExecutionId =
+          this.persistence.readLatestManagedProductionExecutionId?.(
+            taskId,
+            ctx.processRunId,
+            node.id,
+          )
+          ?? this.persistence.readLatestExecutionId(taskId);
         return {
           runtimeEvent: 'completed',
           receipt: {
@@ -391,19 +446,27 @@ export class LmNodeExecutor implements NodeExecutor {
             executorKind: 'lm',
             intentId: intent.id,
             taskId,
-            executionId:
-              this.persistence.readLatestManagedProductionExecutionId?.(
-                taskId,
-                ctx.processRunId,
-                node.id,
-              )
-              ?? this.persistence.readLatestExecutionId(taskId),
+            executionId: replayedExecutionId,
             runtimeStatus: 'completed',
             replayed: true,
           },
+          // W3-A2 (spec §5): dual-emit the driver-neutral receipt. Board/task/
+          // WorkIntent IDs travel inside adapterData; the legacy receipt is
+          // retained for backward compatibility (dual-write, plan §16.9).
+          driverReceipt: this.buildDriverNeutralReceipt({
+            intentId: intent.id,
+            taskId,
+            executionId: replayedExecutionId,
+            runtimeStatus: 'completed',
+            replayed: true,
+            lineage: finalBinding,
+            envelope,
+          }),
         };
       }
       if (preparation.status === 'active') {
+        const activeExecutionId = this.persistence.readCurrentExecutionId(taskId)
+          ?? this.persistence.readLatestExecutionId(taskId);
         return {
           runtimeEvent: 'paused',
           receipt: {
@@ -411,11 +474,19 @@ export class LmNodeExecutor implements NodeExecutor {
             executorKind: 'lm',
             intentId: intent.id,
             taskId,
-            executionId: this.persistence.readCurrentExecutionId(taskId)
-              ?? this.persistence.readLatestExecutionId(taskId),
+            executionId: activeExecutionId,
             runtimeStatus: 'paused',
             replayed: true,
           },
+          driverReceipt: this.buildDriverNeutralReceipt({
+            intentId: intent.id,
+            taskId,
+            executionId: activeExecutionId,
+            runtimeStatus: 'paused',
+            replayed: true,
+            lineage: finalBinding,
+            envelope,
+          }),
         };
       }
       if (preparation.status === 'blocked') {
@@ -426,6 +497,8 @@ export class LmNodeExecutor implements NodeExecutor {
       // A concurrent driver that loses this CAS must not allocate or start a
       // second worker for the same projected task.
       if (!this.persistence.setIntentStatus(intent.id, preparation.intentStatus, 'executing')) {
+        const lostExecutionId = this.persistence.readCurrentExecutionId(taskId)
+          ?? this.persistence.readLatestExecutionId(taskId);
         return {
           runtimeEvent: 'paused',
           receipt: {
@@ -433,11 +506,19 @@ export class LmNodeExecutor implements NodeExecutor {
             executorKind: 'lm',
             intentId: intent.id,
             taskId,
-            executionId: this.persistence.readCurrentExecutionId(taskId)
-              ?? this.persistence.readLatestExecutionId(taskId),
+            executionId: lostExecutionId,
             runtimeStatus: 'paused',
             replayed: true,
           },
+          driverReceipt: this.buildDriverNeutralReceipt({
+            intentId: intent.id,
+            taskId,
+            executionId: lostExecutionId,
+            runtimeStatus: 'paused',
+            replayed: true,
+            lineage: finalBinding,
+            envelope,
+          }),
         };
       }
       let workerExecutor: WorkerExecutor | null = null;
@@ -513,6 +594,7 @@ export class LmNodeExecutor implements NodeExecutor {
         // taskId, workIntentId) PLUS any upstream bindings forwarded from the
         // preparation node (proposalId/proposalHash/controlIntentId), so the
         // downstream settlement kernel can read exact lineage from the chain.
+        const cleanExecutionId = executionId ?? this.persistence.readLatestExecutionId(taskId);
         return {
           runtimeEvent: 'completed',
           receipt: {
@@ -520,16 +602,26 @@ export class LmNodeExecutor implements NodeExecutor {
             executorKind: 'lm',
             intentId: intent.id,
             taskId,
-            executionId: executionId ?? this.persistence.readLatestExecutionId(taskId),
+            executionId: cleanExecutionId,
             runtimeStatus: 'completed',
             replayed: false,
           },
+          driverReceipt: this.buildDriverNeutralReceipt({
+            intentId: intent.id,
+            taskId,
+            executionId: cleanExecutionId,
+            runtimeStatus: 'completed',
+            replayed: false,
+            lineage: finalBinding,
+            envelope,
+          }),
         };
       }
       this.persistence.setIntentStatus(intent.id, 'executing', 'paused');
       const runtimeEvent = terminal === 'stopped' || terminal === 'timeout'
         ? 'paused'
         : 'failed';
+      const finalExecutionId = executionId ?? this.persistence.readLatestExecutionId(taskId);
       return {
         runtimeEvent,
         receipt: {
@@ -537,10 +629,19 @@ export class LmNodeExecutor implements NodeExecutor {
           executorKind: 'lm',
           intentId: intent.id,
           taskId,
-          executionId: executionId ?? this.persistence.readLatestExecutionId(taskId),
+          executionId: finalExecutionId,
           runtimeStatus: runtimeEvent,
           replayed: false,
         },
+        driverReceipt: this.buildDriverNeutralReceipt({
+          intentId: intent.id,
+          taskId,
+          executionId: finalExecutionId,
+          runtimeStatus: runtimeEvent,
+          replayed: false,
+          lineage: finalBinding,
+          envelope,
+        }),
       };
     } catch (err) {
       if (err instanceof NodeExecutionError || err instanceof NodeExecutionLeaseLostError) throw err;
