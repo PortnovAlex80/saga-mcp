@@ -109,6 +109,35 @@ export function getDb(): Database.Database {
     try { db.exec('ALTER TABLE saga3_process_runs ADD COLUMN package_digest TEXT'); } catch { /* column already exists */ }
   }
 
+  // Wave 3 (W3-A6, spec §9) — NodeRun v2 additive columns. W3-A6 is the SINGLE
+  // SQL owner for saga3_node_runs this wave (C083). Seven nullable columns +
+  // one resume index, all ADDITIVE (no NOT NULL — Wave 11 hardens; no legacy
+  // column removed). DUAL-PLACEMENT mirrors the saga3_process_runs pattern
+  // above (spec §3.2): saga3_node_runs is created LAZILY by
+  // ensureSaga3NodeRunSchema (in persistence/sqlite-node-run-repository.ts),
+  // NOT by SCHEMA_SQL, so on a fresh DB the table does not exist yet here and
+  // these ALTERs are guarded on table existence (clean no-op on fresh DB).
+  // The columns are ALSO added inside ensureSaga3NodeRunSchema — that is the
+  // place that reliably runs when the table springs into existence. Both
+  // placements are idempotent (PRAGMA table_info check / try-catch), so the
+  // second one to run is a no-op. The index is created in both places too
+  // (CREATE UNIQUE INDEX IF NOT EXISTS).
+  if (tableExists(db, 'saga3_node_runs')) {
+    try { db.exec('ALTER TABLE saga3_node_runs ADD COLUMN input_envelope_hash TEXT'); } catch { /* column already exists */ }
+    try { db.exec('ALTER TABLE saga3_node_runs ADD COLUMN node_ref TEXT'); } catch { /* column already exists */ }
+    try { db.exec('ALTER TABLE saga3_node_runs ADD COLUMN package_ref TEXT'); } catch { /* column already exists */ }
+    try { db.exec('ALTER TABLE saga3_node_runs ADD COLUMN predecessor_node_run_ids TEXT'); } catch { /* column already exists */ }
+    try { db.exec('ALTER TABLE saga3_node_runs ADD COLUMN definition_digest TEXT'); } catch { /* column already exists */ }
+    try { db.exec('ALTER TABLE saga3_node_runs ADD COLUMN transition_cursor TEXT'); } catch { /* column already exists */ }
+    try { db.exec('ALTER TABLE saga3_node_runs ADD COLUMN production_envelope TEXT'); } catch { /* column already exists */ }
+    try {
+      db.exec(`
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_saga3_node_runs_exact_cursor
+          ON saga3_node_runs(process_run_id, node_id, attempt);
+      `);
+    } catch { /* index already exists */ }
+  }
+
   return db;
 }
 
