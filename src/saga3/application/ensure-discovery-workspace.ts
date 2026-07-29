@@ -32,8 +32,9 @@
  * without spinning up the whole engine (the engine delegates here).
  *
  * Responsibilities (all idempotent — restart-safe, skips existing files):
- *   1. Copy ALL static templates from tool-templates/discovery/ into
- *      docs/discovery/tools/ (workers read templates from there).
+ *   1. Copy ALL static templates from the discovery package resources
+ *      directory (src/process-modules/modules/discovery/package/resources/)
+ *      into docs/discovery/tools/ (workers read templates from there).
  *   2. Create docs/discovery/project-<epic>-discovery-stage.md from
  *      stage-tracker.md with epic_id/task_id/project_id pre-filled.
  *   3. Create docs/discovery/proposal-call-<epic>.json from
@@ -80,7 +81,18 @@ export function ensureDiscoveryWorkspace(
     templatesDirMissing: false,
   };
 
-  const tmplDir = path.join(workspaceRoot, 'tool-templates', 'discovery');
+  // W13-A2: discovery templates moved from the legacy global root
+  // (`tool-templates/discovery/`) into the discovery package resources
+  // directory. Resolve under workspaceRoot (repo root in production).
+  const tmplDir = path.join(
+    workspaceRoot,
+    'src',
+    'process-modules',
+    'modules',
+    'discovery',
+    'package',
+    'resources',
+  );
   if (!existsSync(tmplDir)) {
     result.templatesDirMissing = true;
     return result;

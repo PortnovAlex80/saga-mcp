@@ -10,8 +10,10 @@
  * of sync (missing stage-tracker.md), and the per-epic stage tracker had to
  * be seeded by hand. This test prevents that regression from recurring.
  *
- * The function under test is pure: it reads tool-templates/discovery/* from
- * the given workspaceRoot and writes docs/discovery/projects/<epicId>/* into it. No DB, no LM.
+ * The function under test is pure: it reads the discovery package resources
+ * directory (src/process-modules/modules/discovery/package/resources/) from the
+ * given workspaceRoot and writes docs/discovery/projects/<epicId>/* into it.
+ * No DB, no LM. (W13-A2 moved the templates out of tool-templates/discovery/.)
  */
 
 import assert from 'node:assert/strict';
@@ -25,12 +27,21 @@ const { ensureDiscoveryWorkspace } = await import(
 );
 
 /**
- * Build a minimal but realistic tool-templates/discovery/ in a temp dir so the
- * test mirrors what a real repo has committed. Mirrors the actual file set in
- * tool-templates/discovery/.
+ * Build a minimal but realistic discovery package resources directory in a temp
+ * dir so the test mirrors what a real repo has committed. W13-A2 relocated the
+ * templates from tool-templates/discovery/ into the package resources dir;
+ * this seeds the package resources dir under the temp workspaceRoot.
  */
 function seedToolTemplates(root) {
-  const tmplDir = path.join(root, 'tool-templates', 'discovery');
+  const tmplDir = path.join(
+    root,
+    'src',
+    'process-modules',
+    'modules',
+    'discovery',
+    'package',
+    'resources',
+  );
   mkdirSync(tmplDir, { recursive: true });
 
   writeFileSync(
@@ -208,10 +219,10 @@ test('D1 workspace: idempotent — second call does NOT overwrite existing files
   }
 });
 
-test('D1 workspace: gracefully handles missing tool-templates dir', () => {
+test('D1 workspace: gracefully handles missing discovery package resources dir', () => {
   const root = mkdtempSync(path.join(os.tmpdir(), 'saga3-ws-'));
   try {
-    // No tool-templates/ seeded.
+    // No discovery package resources dir seeded.
     const result = ensureDiscoveryWorkspace({
       workspaceRoot: root, epicId: 1, projectId: 1, taskId: 1, intentId: 1,
     });

@@ -105,7 +105,7 @@ export const DEVELOPMENT_PLANNING_REVIEWER_SKILL: DevelopmentSkillResource = ski
  */
 export const DEVELOPMENT_PLANNER_SKILL: DevelopmentSkillResource = skillResource({
   logicalId: 'development.skill.planner',
-  path: 'skills/saga-planner/SKILL.md',
+  path: 'src/process-modules/modules/development/package/resources/skills/saga-planner/SKILL.md',
   kind: 'skill',
   pinnedByProfile: 'development-task-graph-planner',
   slot: 'execution',

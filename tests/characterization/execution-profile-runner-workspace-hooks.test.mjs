@@ -116,21 +116,25 @@ test('execution-profile-resolver: resolveProtocolSkill / resolveSemanticSkill re
 
 /**
  * Build a workspaceRoot tmpdir containing the asset paths the discovery-proposal
- * profile references. The profile references these relative paths:
- *   - tool-templates/discovery/discovery-doc-template.md
- *   - tool-templates/discovery/proposal-call-template.json
- *   - tool-templates/discovery/proposal-stage-tracker.md
- *   - tool-templates/discovery/proposal-checklist.md
+ * profile references. W13-A2 moved the discovery resources out of the legacy
+ * global root (`tool-templates/discovery/`) into the discovery package resources
+ * directory; the profile now references these repo-root-relative paths:
+ *   - src/process-modules/modules/discovery/package/resources/discovery-doc-template.md
+ *   - src/process-modules/modules/discovery/package/resources/proposal-call-template.json
+ *   - src/process-modules/modules/discovery/package/resources/proposal-stage-tracker.md
+ *   - src/process-modules/modules/discovery/package/resources/proposal-checklist.md
  * We copy the real ones from the repo so the materializer fills the same
- * placeholders it would in production.
+ * placeholders it would in production. The same relative path serves as both the
+ * repo-root source (under repoRoot) and the workspace-relative target (under the
+ * tmp workspaceRoot) — the materializer resolves it under workspaceRoot.
  */
 function makeWorkspaceRootWithDiscoveryAssets() {
   const root = mkdtempSync(path.join(os.tmpdir(), 'saga-w0a2-ws-'));
   const assetRelativePaths = [
-    'tool-templates/discovery/discovery-doc-template.md',
-    'tool-templates/discovery/proposal-call-template.json',
-    'tool-templates/discovery/proposal-stage-tracker.md',
-    'tool-templates/discovery/proposal-checklist.md',
+    'src/process-modules/modules/discovery/package/resources/discovery-doc-template.md',
+    'src/process-modules/modules/discovery/package/resources/proposal-call-template.json',
+    'src/process-modules/modules/discovery/package/resources/proposal-stage-tracker.md',
+    'src/process-modules/modules/discovery/package/resources/proposal-checklist.md',
   ];
   for (const rel of assetRelativePaths) {
     const src = path.join(repoRoot, rel);
@@ -400,7 +404,7 @@ test('process-execution-workspace: SURPRISING — shared tools dir is per-stage,
     const firstContent = readFileSync(sharedChecklist, 'utf8');
 
     // Mutate the source template on disk to simulate a different content version.
-    const sourceTemplate = path.join(workspaceRoot, 'tool-templates/discovery/proposal-checklist.md');
+    const sourceTemplate = path.join(workspaceRoot, 'src/process-modules/modules/discovery/package/resources/proposal-checklist.md');
     writeFileSync(sourceTemplate, '# DIFFERENT CONTENT\n');
 
     // Second materialization for a different epic — the shared file is NOT

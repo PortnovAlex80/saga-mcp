@@ -77,17 +77,19 @@ const PENDING = 'pending@wave-2';
  */
 export const PROPOSAL_RESOURCE_PATHS = Object.freeze({
   /** Skill fragment: discovery worker investigation + proposal instructions. */
-  WORKER_SKILL: 'skills/saga-discovery-worker/SKILL.md',
+  // W13-A2: module-owned resources moved into the discovery package resources dir.
+  WORKER_SKILL: 'src/process-modules/modules/discovery/package/resources/skills/saga-discovery-worker/SKILL.md',
   /** Shared protocol skill pinned by every discovery execution profile. */
+  // PLATFORM resource: stays at the repo-root skills/ dir (shared by all modules).
   PROTOCOL_SKILL: 'skills/saga-process-module-worker-protocol/SKILL.md',
   /** MCP call template: proposal_submit typed submission. */
-  PROPOSAL_CALL: 'tool-templates/discovery/proposal-call-template.json',
+  PROPOSAL_CALL: 'src/process-modules/modules/discovery/package/resources/proposal-call-template.json',
   /** Workspace template: discovery investigation document. */
-  DISCOVERY_DOC: 'tool-templates/discovery/discovery-doc-template.md',
+  DISCOVERY_DOC: 'src/process-modules/modules/discovery/package/resources/discovery-doc-template.md',
   /** Stage tracker (external program counter + recovery frame). */
-  STAGE_TRACKER: 'tool-templates/discovery/proposal-stage-tracker.md',
+  STAGE_TRACKER: 'src/process-modules/modules/discovery/package/resources/proposal-stage-tracker.md',
   /** LM node pre-submit checklist (proposal-scoped). */
-  CHECKLIST: 'tool-templates/discovery/proposal-checklist.md',
+  CHECKLIST: 'src/process-modules/modules/discovery/package/resources/proposal-checklist.md',
 });
 
 /**

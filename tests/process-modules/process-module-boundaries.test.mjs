@@ -85,9 +85,28 @@ test('module asset and skill references exist', async () => {
         profile.protocolSkill,
         profile.semanticSkill,
       ])) {
-        const skillPath = path.join(ROOT, 'skills', skillName, 'SKILL.md');
+        // W13-A2: module-owned skills were moved out of the legacy global root
+        // (`skills/<name>/`) into each module's package resources dir
+        // (`src/process-modules/modules/<stage>/package/resources/skills/<name>/`).
+        // Platform/shared skills (e.g. saga-process-module-worker-protocol)
+        // remain at the repo-root `skills/` dir. A skill is valid if it resolves
+        // in EITHER location. At runtime skills are resolved from the agent's
+        // catalog (~/.<agent>/skills); this only asserts the source of truth.
+        const platformSkillPath = path.join(ROOT, 'skills', skillName, 'SKILL.md');
+        const packageSkillPath = path.join(
+          ROOT,
+          'src',
+          'process-modules',
+          'modules',
+          module.identity.kind,
+          'package',
+          'resources',
+          'skills',
+          skillName,
+          'SKILL.md',
+        );
         assert.equal(
-          existsSync(skillPath),
+          existsSync(platformSkillPath) || existsSync(packageSkillPath),
           true,
           `${module.identity.name}/${profile.id} references missing skill ${skillName}`,
         );

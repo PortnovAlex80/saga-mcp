@@ -152,32 +152,47 @@ export const DISCOVERY_RUNTIME_COMPATIBILITY_RANGE = '^3.0.0';
 // (WAVE9-PRODUCTION-MIGRATION-SPEC §2).
 // ---------------------------------------------------------------------------
 
-/** Module-relative paths to the resources discovery pins. */
+/**
+ * Repository-root-relative POSIX paths to the resources discovery pins. W13-A2
+ * moved every module-owned resource out of the legacy global root
+ * (`tool-templates/discovery/`, `skills/saga-discovery-*`) into the discovery
+ * package resources directory. The resources physically live under
+ * `src/process-modules/modules/discovery/package/resources/`; the manifest pins
+ * them from the repo root so the workspace materializer + content-addressed
+ * installer resolve them without module-private path knowledge (mirrors the
+ * delivery package pattern). The shared `saga-process-module-worker-protocol`
+ * skill stays a PLATFORM resource under `skills/` (pinned by every process
+ * module); it is intentionally not duplicated into each package.
+ */
+const DISCOVERY_PACKAGE_RESOURCE_ROOT =
+  'src/process-modules/modules/discovery/package/resources';
 const RESOURCE_PATHS = {
   // Execution-profile skills (one per discovery LM node).
-  proposalExecutionSkill: 'skills/saga-discovery-worker/SKILL.md',
-  normalizerExecutionSkill: 'skills/saga-discovery-normalizer/SKILL.md',
-  readinessAdvisorExecutionSkill: 'skills/saga-discovery-readiness-advisor/SKILL.md',
-  diagnosisAdvisorExecutionSkill: 'skills/saga-discovery-diagnosis-advisor/SKILL.md',
+  proposalExecutionSkill: `${DISCOVERY_PACKAGE_RESOURCE_ROOT}/skills/saga-discovery-worker/SKILL.md`,
+  normalizerExecutionSkill: `${DISCOVERY_PACKAGE_RESOURCE_ROOT}/skills/saga-discovery-normalizer/SKILL.md`,
+  readinessAdvisorExecutionSkill: `${DISCOVERY_PACKAGE_RESOURCE_ROOT}/skills/saga-discovery-readiness-advisor/SKILL.md`,
+  diagnosisAdvisorExecutionSkill: `${DISCOVERY_PACKAGE_RESOURCE_ROOT}/skills/saga-discovery-diagnosis-advisor/SKILL.md`,
   // Shared protocol skill pinned by every discovery execution profile.
+  // PLATFORM resource: stays at the repo-root skills/ dir (shared by all
+  // process modules); not duplicated into the package.
   processProtocolSkill: 'skills/saga-process-module-worker-protocol/SKILL.md',
   // Proposal worker workspace templates.
-  proposalDocTemplate: 'tool-templates/discovery/discovery-doc-template.md',
-  proposalCallTemplate: 'tool-templates/discovery/proposal-call-template.json',
-  proposalStageTracker: 'tool-templates/discovery/proposal-stage-tracker.md',
-  proposalChecklist: 'tool-templates/discovery/proposal-checklist.md',
+  proposalDocTemplate: `${DISCOVERY_PACKAGE_RESOURCE_ROOT}/discovery-doc-template.md`,
+  proposalCallTemplate: `${DISCOVERY_PACKAGE_RESOURCE_ROOT}/proposal-call-template.json`,
+  proposalStageTracker: `${DISCOVERY_PACKAGE_RESOURCE_ROOT}/proposal-stage-tracker.md`,
+  proposalChecklist: `${DISCOVERY_PACKAGE_RESOURCE_ROOT}/proposal-checklist.md`,
   // Normalizer worker templates.
-  normalizationCallTemplate: 'tool-templates/discovery/normalization-call-template.json',
-  normalizationStageTracker: 'tool-templates/discovery/normalization-stage-tracker.md',
-  normalizationChecklist: 'tool-templates/discovery/normalization-checklist.md',
+  normalizationCallTemplate: `${DISCOVERY_PACKAGE_RESOURCE_ROOT}/normalization-call-template.json`,
+  normalizationStageTracker: `${DISCOVERY_PACKAGE_RESOURCE_ROOT}/normalization-stage-tracker.md`,
+  normalizationChecklist: `${DISCOVERY_PACKAGE_RESOURCE_ROOT}/normalization-checklist.md`,
   // Readiness advisor templates.
-  readinessCallTemplate: 'tool-templates/discovery/readiness-call-template.json',
-  readinessStageTracker: 'tool-templates/discovery/readiness-stage-tracker.md',
-  readinessChecklist: 'tool-templates/discovery/readiness-checklist.md',
+  readinessCallTemplate: `${DISCOVERY_PACKAGE_RESOURCE_ROOT}/readiness-call-template.json`,
+  readinessStageTracker: `${DISCOVERY_PACKAGE_RESOURCE_ROOT}/readiness-stage-tracker.md`,
+  readinessChecklist: `${DISCOVERY_PACKAGE_RESOURCE_ROOT}/readiness-checklist.md`,
   // Diagnosis advisor templates (advisory-only execution profile).
-  diagnosisCallTemplate: 'tool-templates/discovery/diagnosis-call-template.json',
-  diagnosisStageTracker: 'tool-templates/discovery/diagnosis-stage-tracker.md',
-  diagnosisChecklist: 'tool-templates/discovery/diagnosis-checklist.md',
+  diagnosisCallTemplate: `${DISCOVERY_PACKAGE_RESOURCE_ROOT}/diagnosis-call-template.json`,
+  diagnosisStageTracker: `${DISCOVERY_PACKAGE_RESOURCE_ROOT}/diagnosis-stage-tracker.md`,
+  diagnosisChecklist: `${DISCOVERY_PACKAGE_RESOURCE_ROOT}/diagnosis-checklist.md`,
 } as const;
 
 /**

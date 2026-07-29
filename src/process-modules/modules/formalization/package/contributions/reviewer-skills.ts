@@ -81,7 +81,7 @@ function skillResource(args: {
  */
 export const FORMALIZATION_REQUIREMENTS_REVIEWER_SKILL: FormalizationSkillResource = skillResource({
   logicalId: 'formalization.skill.reviewer.requirements',
-  path: 'skills/saga-requirements-reviewer/SKILL.md',
+  path: 'src/process-modules/modules/formalization/package/resources/skills/saga-requirements-reviewer/SKILL.md',
   kind: 'reviewer-skill',
   pinnedByProfile: 'formalization-product|formalization-use-cases|formalization-acceptance|formalization-reconciler',
   slot: 'review',
@@ -94,7 +94,7 @@ export const FORMALIZATION_REQUIREMENTS_REVIEWER_SKILL: FormalizationSkillResour
  */
 export const FORMALIZATION_ARCHITECTURE_REVIEWER_SKILL: FormalizationSkillResource = skillResource({
   logicalId: 'formalization.skill.reviewer.architecture',
-  path: 'skills/saga-architecture-reviewer/SKILL.md',
+  path: 'src/process-modules/modules/formalization/package/resources/skills/saga-architecture-reviewer/SKILL.md',
   kind: 'reviewer-skill',
   pinnedByProfile: 'formalization-architect',
   slot: 'review',
@@ -110,7 +110,7 @@ export const FORMALIZATION_ARCHITECTURE_REVIEWER_SKILL: FormalizationSkillResour
  */
 export const FORMALIZATION_PRODUCT_SKILL: FormalizationSkillResource = skillResource({
   logicalId: 'formalization.skill.product',
-  path: 'skills/saga-product/SKILL.md',
+  path: 'src/process-modules/modules/formalization/package/resources/skills/saga-product/SKILL.md',
   kind: 'skill',
   pinnedByProfile: 'formalization-product',
   slot: 'execution',
@@ -122,7 +122,7 @@ export const FORMALIZATION_PRODUCT_SKILL: FormalizationSkillResource = skillReso
  */
 export const FORMALIZATION_ANALYST_SKILL: FormalizationSkillResource = skillResource({
   logicalId: 'formalization.skill.analyst',
-  path: 'skills/saga-analyst/SKILL.md',
+  path: 'src/process-modules/modules/formalization/package/resources/skills/saga-analyst/SKILL.md',
   kind: 'skill',
   pinnedByProfile: 'formalization-use-cases|formalization-acceptance',
   slot: 'execution',
@@ -134,7 +134,7 @@ export const FORMALIZATION_ANALYST_SKILL: FormalizationSkillResource = skillReso
  */
 export const FORMALIZATION_ARCHITECT_SKILL: FormalizationSkillResource = skillResource({
   logicalId: 'formalization.skill.architect',
-  path: 'skills/saga-architect/SKILL.md',
+  path: 'src/process-modules/modules/formalization/package/resources/skills/saga-architect/SKILL.md',
   kind: 'skill',
   pinnedByProfile: 'formalization-architect',
   slot: 'execution',
@@ -146,7 +146,7 @@ export const FORMALIZATION_ARCHITECT_SKILL: FormalizationSkillResource = skillRe
  */
 export const FORMALIZATION_RECONCILER_SKILL: FormalizationSkillResource = skillResource({
   logicalId: 'formalization.skill.reconciler',
-  path: 'skills/saga-reconciler/SKILL.md',
+  path: 'src/process-modules/modules/formalization/package/resources/skills/saga-reconciler/SKILL.md',
   kind: 'skill',
   pinnedByProfile: 'formalization-reconciler',
   slot: 'execution',

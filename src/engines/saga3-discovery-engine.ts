@@ -99,7 +99,9 @@ function discoveryGenerationKey(intentId: number): string {
 
 /**
  * Tools the discovery skill is permitted to call. MUST stay in sync with
- * skills/saga-discovery-worker/SKILL.md. Listed here (not invented per call)
+ * skills/saga-discovery-worker/SKILL.md (now under
+ * src/process-modules/modules/discovery/package/resources/skills/).
+ * Listed here (not invented per call)
  * so the WorkIntent contract and the skill document one allowlist.
  */
 const DISCOVERY_ALLOWED_TOOLS = [
@@ -1121,9 +1123,10 @@ const concluded = typeof rt.readConcludedIntentWithProposal === 'function'
 
   /**
    * Create a filled template for a stage (readiness/diagnosis) by copying the
-   * static template from tool-templates/discovery/ and substituting known IDs.
-   * The model reads this file, fills remaining FILL_ placeholders, verifies
-   * against the checklist, and submits. Idempotent: skips if target exists.
+   * static template from the discovery package resources directory and
+   * substituting known IDs. The model reads this file, fills remaining FILL_
+   * placeholders, verifies against the checklist, and submits. Idempotent:
+   * skips if target exists.
    */
   private ensureStageTemplate(
     workspaceRoot: string | undefined,
@@ -1132,7 +1135,17 @@ const concluded = typeof rt.readConcludedIntentWithProposal === 'function'
     values: Record<string, unknown>,
   ): void {
     if (!workspaceRoot) return;
-    const tmplDir = path.join(workspaceRoot, 'tool-templates', 'discovery');
+    // W13-A2: discovery templates moved from the legacy global root
+    // (`tool-templates/discovery/`) into the discovery package resources dir.
+    const tmplDir = path.join(
+      workspaceRoot,
+      'src',
+      'process-modules',
+      'modules',
+      'discovery',
+      'package',
+      'resources',
+    );
     const tmplFile = path.join(tmplDir, `${stage}-call-template.json`);
     if (!existsSync(tmplFile)) return; // templates not installed — skip gracefully
 

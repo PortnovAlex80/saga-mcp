@@ -46,7 +46,7 @@ export const ARCHITECTURE_RESOURCE_IDS = {
   reviewerSkill: 'formalization.architecture.reviewer-skill',
   /** Protocol skill fragment (saga-process-module-worker-protocol). */
   protocolSkill: 'formalization.architecture.protocol-skill',
-  /** Per-node checklist (tool-templates/formalization/formalization-node-checklist.md). */
+  /** Per-node checklist (formalization package resources: formalization-node-checklist.md). */
   checklist: 'formalization.architecture.node-checklist',
   /** Stage tracker template. */
   trackerTemplate: 'formalization.architecture.stage-tracker',

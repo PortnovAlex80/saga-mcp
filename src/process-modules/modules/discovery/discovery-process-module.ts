@@ -16,10 +16,19 @@ export const DISCOVERY_PROCESS_MODULE_REF = {
   version: '3.0.0',
 } as const;
 
-const DISCOVERY_PROPOSAL_TRACKER = 'tool-templates/discovery/proposal-stage-tracker.md';
-const DISCOVERY_NORMALIZATION_TRACKER = 'tool-templates/discovery/normalization-stage-tracker.md';
-const DISCOVERY_READINESS_TRACKER = 'tool-templates/discovery/readiness-stage-tracker.md';
-const DISCOVERY_DIAGNOSIS_TRACKER = 'tool-templates/discovery/diagnosis-stage-tracker.md';
+// W13-A2: resources were moved out of the legacy global root
+// (`tool-templates/discovery/`) into the discovery package resources directory
+// (`src/process-modules/modules/discovery/package/resources/`). These are
+// repo-root-relative POSIX paths — the workspace materializer resolves them
+// under `workspaceRoot` (process.cwd()), matching the delivery/formalization
+// package pattern. See the discovery package manifest for the matching
+// `resourceIndex` declarations.
+const DISCOVERY_RESOURCE_ROOT =
+  'src/process-modules/modules/discovery/package/resources';
+const DISCOVERY_PROPOSAL_TRACKER = `${DISCOVERY_RESOURCE_ROOT}/proposal-stage-tracker.md`;
+const DISCOVERY_NORMALIZATION_TRACKER = `${DISCOVERY_RESOURCE_ROOT}/normalization-stage-tracker.md`;
+const DISCOVERY_READINESS_TRACKER = `${DISCOVERY_RESOURCE_ROOT}/readiness-stage-tracker.md`;
+const DISCOVERY_DIAGNOSIS_TRACKER = `${DISCOVERY_RESOURCE_ROOT}/diagnosis-stage-tracker.md`;
 const PROCESS_PROTOCOL_SKILL = 'saga-process-module-worker-protocol';
 
 export const discoveryProcessModule: ProcessModuleDefinition = {
@@ -235,11 +244,11 @@ export const discoveryProcessModule: ProcessModuleDefinition = {
       ],
       trackerTemplate: DISCOVERY_PROPOSAL_TRACKER,
       workspaceTemplates: [
-        'tool-templates/discovery/discovery-doc-template.md',
-        'tool-templates/discovery/proposal-call-template.json',
+        `${DISCOVERY_RESOURCE_ROOT}/discovery-doc-template.md`,
+        `${DISCOVERY_RESOURCE_ROOT}/proposal-call-template.json`,
       ],
-      callTemplates: ['tool-templates/discovery/proposal-call-template.json'],
-      checklists: ['tool-templates/discovery/proposal-checklist.md'],
+      callTemplates: [`${DISCOVERY_RESOURCE_ROOT}/proposal-call-template.json`],
+      checklists: [`${DISCOVERY_RESOURCE_ROOT}/proposal-checklist.md`],
       outputSchema: { id: DISCOVERY_PROPOSAL_SCHEMA },
       retryPolicy: { maxAttempts: 2, retryOn: ['schema-rejected', 'tool-error'], backoff: 'none' },
       recoveryPolicy: { resumeFromCheckpoint: true, reuseWorkIntent: true, reuseAcceptedOutput: true, onExhausted: 'fail' },
@@ -255,9 +264,9 @@ export const discoveryProcessModule: ProcessModuleDefinition = {
       executionMode: 'tracker_only',
       allowedTools: ['task_get', 'normalization_get', 'normalization_submit', 'worker_done', 'Read', 'Edit'],
       trackerTemplate: DISCOVERY_NORMALIZATION_TRACKER,
-      workspaceTemplates: ['tool-templates/discovery/normalization-call-template.json'],
-      callTemplates: ['tool-templates/discovery/normalization-call-template.json'],
-      checklists: ['tool-templates/discovery/normalization-checklist.md'],
+      workspaceTemplates: [`${DISCOVERY_RESOURCE_ROOT}/normalization-call-template.json`],
+      callTemplates: [`${DISCOVERY_RESOURCE_ROOT}/normalization-call-template.json`],
+      checklists: [`${DISCOVERY_RESOURCE_ROOT}/normalization-checklist.md`],
       outputSchema: { id: DISCOVERY_NORMALIZATION_PROPOSAL_SCHEMA },
       retryPolicy: { maxAttempts: 2, retryOn: ['schema-rejected'], backoff: 'none' },
       recoveryPolicy: { resumeFromCheckpoint: true, reuseWorkIntent: true, reuseAcceptedOutput: true, onExhausted: 'fail' },
@@ -273,9 +282,9 @@ export const discoveryProcessModule: ProcessModuleDefinition = {
       executionMode: 'tracker_only',
       allowedTools: ['task_get', 'readiness_get', 'readiness_submit', 'worker_done', 'Read', 'Edit'],
       trackerTemplate: DISCOVERY_READINESS_TRACKER,
-      workspaceTemplates: ['tool-templates/discovery/readiness-call-template.json'],
-      callTemplates: ['tool-templates/discovery/readiness-call-template.json'],
-      checklists: ['tool-templates/discovery/readiness-checklist.md'],
+      workspaceTemplates: [`${DISCOVERY_RESOURCE_ROOT}/readiness-call-template.json`],
+      callTemplates: [`${DISCOVERY_RESOURCE_ROOT}/readiness-call-template.json`],
+      checklists: [`${DISCOVERY_RESOURCE_ROOT}/readiness-checklist.md`],
       outputSchema: { id: DISCOVERY_READINESS_ASSESSMENT_SCHEMA },
       retryPolicy: { maxAttempts: 2, retryOn: ['schema-rejected'], backoff: 'none' },
       recoveryPolicy: { resumeFromCheckpoint: true, reuseWorkIntent: true, reuseAcceptedOutput: true, onExhausted: 'pause' },
@@ -291,9 +300,9 @@ export const discoveryProcessModule: ProcessModuleDefinition = {
       executionMode: 'tracker_only',
       allowedTools: ['task_get', 'diagnosis_get', 'diagnosis_submit', 'worker_done', 'Read', 'Edit'],
       trackerTemplate: DISCOVERY_DIAGNOSIS_TRACKER,
-      workspaceTemplates: ['tool-templates/discovery/diagnosis-call-template.json'],
-      callTemplates: ['tool-templates/discovery/diagnosis-call-template.json'],
-      checklists: ['tool-templates/discovery/diagnosis-checklist.md'],
+      workspaceTemplates: [`${DISCOVERY_RESOURCE_ROOT}/diagnosis-call-template.json`],
+      callTemplates: [`${DISCOVERY_RESOURCE_ROOT}/diagnosis-call-template.json`],
+      checklists: [`${DISCOVERY_RESOURCE_ROOT}/diagnosis-checklist.md`],
       outputSchema: { id: DISCOVERY_DIAGNOSIS_REPORT_SCHEMA },
       retryPolicy: { maxAttempts: 2, retryOn: ['schema-rejected'], backoff: 'none' },
       recoveryPolicy: { resumeFromCheckpoint: true, reuseWorkIntent: true, reuseAcceptedOutput: true, onExhausted: 'pause' },

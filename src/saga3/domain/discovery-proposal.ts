@@ -7,7 +7,8 @@
  * worker. A valid proposal has every required field and a recommended_outcome
  * drawn from the discovery outcome enumeration.
  *
- * The discovery worker skill (skills/saga-discovery-worker/SKILL.md) instructs
+ * The discovery worker skill (saga-discovery-worker/SKILL.md, now under
+ * src/process-modules/modules/discovery/package/resources/skills/) instructs
  * the LM to build exactly this shape and submit it via proposal_submit.
  */
 

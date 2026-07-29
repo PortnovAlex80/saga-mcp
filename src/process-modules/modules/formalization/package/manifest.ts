@@ -100,25 +100,42 @@ export const FORMALIZATION_RUNTIME_COMPATIBILITY_RANGE = '^3.0.0';
 // (WAVE8-FORMALIZATION-SPEC §2.2).
 // ---------------------------------------------------------------------------
 
-/** Module-relative paths to the resources formalization pins. */
+/**
+ * Repository-root-relative POSIX paths to the resources formalization pins.
+ * W13-A2 moved every module-owned resource out of the legacy global root
+ * (`tool-templates/formalization/`, `skills/saga-product|analyst|reconciler|
+ * architect|requirements-reviewer|architecture-reviewer`) into the formalization
+ * package resources directory. The resources physically live under
+ * `src/process-modules/modules/formalization/package/resources/`; the manifest
+ * pins them from the repo root so the workspace materializer +
+ * content-addressed installer resolve them without module-private path
+ * knowledge (mirrors the delivery package pattern). The shared
+ * `saga-process-module-worker-protocol` skill stays a PLATFORM resource under
+ * `skills/` (pinned by every process module); it is intentionally not
+ * duplicated into each package.
+ */
+const FORMALIZATION_PACKAGE_RESOURCE_ROOT =
+  'src/process-modules/modules/formalization/package/resources';
 const RESOURCE_PATHS = {
   // Execution-profile skills (one per formalization LM node).
-  productExecutionSkill: 'skills/saga-product/SKILL.md',
-  analystExecutionSkill: 'skills/saga-analyst/SKILL.md',
-  reconcilerExecutionSkill: 'skills/saga-reconciler/SKILL.md',
-  architectExecutionSkill: 'skills/saga-architect/SKILL.md',
+  productExecutionSkill: `${FORMALIZATION_PACKAGE_RESOURCE_ROOT}/skills/saga-product/SKILL.md`,
+  analystExecutionSkill: `${FORMALIZATION_PACKAGE_RESOURCE_ROOT}/skills/saga-analyst/SKILL.md`,
+  reconcilerExecutionSkill: `${FORMALIZATION_PACKAGE_RESOURCE_ROOT}/skills/saga-reconciler/SKILL.md`,
+  architectExecutionSkill: `${FORMALIZATION_PACKAGE_RESOURCE_ROOT}/skills/saga-architect/SKILL.md`,
   // Reviewer skills (acceptance gates for each artifact tier).
-  requirementsReviewerSkill: 'skills/saga-requirements-reviewer/SKILL.md',
-  architectureReviewerSkill: 'skills/saga-architecture-reviewer/SKILL.md',
+  requirementsReviewerSkill: `${FORMALIZATION_PACKAGE_RESOURCE_ROOT}/skills/saga-requirements-reviewer/SKILL.md`,
+  architectureReviewerSkill: `${FORMALIZATION_PACKAGE_RESOURCE_ROOT}/skills/saga-architecture-reviewer/SKILL.md`,
   // Shared protocol skill pinned by every formalization execution profile.
+  // PLATFORM resource: stays at the repo-root skills/ dir (shared by all
+  // process modules); not duplicated into the package.
   processProtocolSkill: 'skills/saga-process-module-worker-protocol/SKILL.md',
   // Workspace templates + call templates materialized by every LM node.
-  artifactCreateCallTemplate: 'tool-templates/formalization/artifact-create-call-template.json',
-  traceAddCallTemplate: 'tool-templates/formalization/trace-add-call-template.json',
-  workerDoneCallTemplate: 'tool-templates/formalization/worker-done-call-template.json',
+  artifactCreateCallTemplate: `${FORMALIZATION_PACKAGE_RESOURCE_ROOT}/artifact-create-call-template.json`,
+  traceAddCallTemplate: `${FORMALIZATION_PACKAGE_RESOURCE_ROOT}/trace-add-call-template.json`,
+  workerDoneCallTemplate: `${FORMALIZATION_PACKAGE_RESOURCE_ROOT}/worker-done-call-template.json`,
   // Per-node checklist + stage tracker pinned by every execution profile.
-  nodeChecklist: 'tool-templates/formalization/formalization-node-checklist.md',
-  stageTracker: 'tool-templates/formalization/process-module-stage-tracker.md',
+  nodeChecklist: `${FORMALIZATION_PACKAGE_RESOURCE_ROOT}/formalization-node-checklist.md`,
+  stageTracker: `${FORMALIZATION_PACKAGE_RESOURCE_ROOT}/process-module-stage-tracker.md`,
 } as const;
 
 /**

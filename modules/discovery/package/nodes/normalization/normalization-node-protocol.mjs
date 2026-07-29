@@ -52,15 +52,17 @@ const PENDING = 'pending@wave-2';
  */
 export const NORMALIZATION_RESOURCE_PATHS = Object.freeze({
   /** Skill fragment: normalizer semantic-transformation instructions. */
-  NORMALIZER_SKILL: 'skills/saga-discovery-normalizer/SKILL.md',
+  // W13-A2: module-owned resources moved into the discovery package resources dir.
+  NORMALIZER_SKILL: 'src/process-modules/modules/discovery/package/resources/skills/saga-discovery-normalizer/SKILL.md',
   /** Shared protocol skill pinned by every discovery execution profile. */
+  // PLATFORM resource: stays at the repo-root skills/ dir (shared by all modules).
   PROTOCOL_SKILL: 'skills/saga-process-module-worker-protocol/SKILL.md',
   /** MCP call template: normalization_submit typed submission. */
-  NORMALIZATION_CALL: 'tool-templates/discovery/normalization-call-template.json',
+  NORMALIZATION_CALL: 'src/process-modules/modules/discovery/package/resources/normalization-call-template.json',
   /** Stage tracker (external program counter + recovery frame). */
-  STAGE_TRACKER: 'tool-templates/discovery/normalization-stage-tracker.md',
+  STAGE_TRACKER: 'src/process-modules/modules/discovery/package/resources/normalization-stage-tracker.md',
   /** LM node pre-submit checklist (normalization-scoped). */
-  CHECKLIST: 'tool-templates/discovery/normalization-checklist.md',
+  CHECKLIST: 'src/process-modules/modules/discovery/package/resources/normalization-checklist.md',
 });
 
 /**

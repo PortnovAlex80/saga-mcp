@@ -14,11 +14,14 @@
  * §0.11.10). `ARCHITECTURE_RESOURCE_ENTRIES` is the authoritative set W8-A1
  * merges into the manifest's `resourceIndex`.
  *
- * Resource paths are package-relative (plan §5.5.1). The existing
- * Formalization resources live under `tool-templates/formalization/` and the
- * skills under `skills/`; these are the immutable, content-addressed resources
- * the architecture node resolves at runtime. Wave 8 is additive: legacy
- * workspace-relative resolution is preserved alongside (spec §3 anti-scope).
+ * Resource paths are package-relative (plan §5.5.1). W13-A2 moved the
+ * formalization resources out of the legacy global root
+ * (`tool-templates/formalization/`, `skills/`) into the formalization package
+ * resources directory (`src/process-modules/modules/formalization/package/
+ * resources/`). These repo-root-relative POSIX paths are the immutable,
+ * content-addressed resources the architecture node resolves at runtime. The
+ * shared `saga-process-module-worker-protocol` skill stays a PLATFORM resource
+ * under `skills/` (pinned by every process module).
  *
  * `digest` uses the documented `'pending@wave-2'` placeholder — the Wave 2
  * content-addressed installer replaces it with the real `sha256Hex` of the
@@ -45,13 +48,13 @@ export const ARCHITECTURE_RESOURCE_ENTRIES: readonly ResourceIndexEntry[] = Obje
   // ---- Skills (semantic, execution, review, protocol) ----
   {
     logicalId: ARCHITECTURE_RESOURCE_IDS.architectSkill,
-    path: 'skills/saga-architect/SKILL.md',
+    path: 'src/process-modules/modules/formalization/package/resources/skills/saga-architect/SKILL.md',
     kind: 'skill',
     digest: 'pending@wave-2',
   },
   {
     logicalId: ARCHITECTURE_RESOURCE_IDS.reviewerSkill,
-    path: 'skills/saga-architecture-reviewer/SKILL.md',
+    path: 'src/process-modules/modules/formalization/package/resources/skills/saga-architecture-reviewer/SKILL.md',
     kind: 'reviewer-skill',
     digest: 'pending@wave-2',
   },
@@ -65,13 +68,13 @@ export const ARCHITECTURE_RESOURCE_ENTRIES: readonly ResourceIndexEntry[] = Obje
   // ---- Checklist + stage tracker ----
   {
     logicalId: ARCHITECTURE_RESOURCE_IDS.checklist,
-    path: 'tool-templates/formalization/formalization-node-checklist.md',
+    path: 'src/process-modules/modules/formalization/package/resources/formalization-node-checklist.md',
     kind: 'checklist',
     digest: 'pending@wave-2',
   },
   {
     logicalId: ARCHITECTURE_RESOURCE_IDS.trackerTemplate,
-    path: 'tool-templates/formalization/process-module-stage-tracker.md',
+    path: 'src/process-modules/modules/formalization/package/resources/process-module-stage-tracker.md',
     kind: 'template',
     digest: 'pending@wave-2',
   },
@@ -79,19 +82,19 @@ export const ARCHITECTURE_RESOURCE_ENTRIES: readonly ResourceIndexEntry[] = Obje
   // ---- MCP call templates ----
   {
     logicalId: ARCHITECTURE_RESOURCE_IDS.artifactCallTemplate,
-    path: 'tool-templates/formalization/artifact-create-call-template.json',
+    path: 'src/process-modules/modules/formalization/package/resources/artifact-create-call-template.json',
     kind: 'mcp-call-template',
     digest: 'pending@wave-2',
   },
   {
     logicalId: ARCHITECTURE_RESOURCE_IDS.traceCallTemplate,
-    path: 'tool-templates/formalization/trace-add-call-template.json',
+    path: 'src/process-modules/modules/formalization/package/resources/trace-add-call-template.json',
     kind: 'mcp-call-template',
     digest: 'pending@wave-2',
   },
   {
     logicalId: ARCHITECTURE_RESOURCE_IDS.doneCallTemplate,
-    path: 'tool-templates/formalization/worker-done-call-template.json',
+    path: 'src/process-modules/modules/formalization/package/resources/worker-done-call-template.json',
     kind: 'mcp-call-template',
     digest: 'pending@wave-2',
   },

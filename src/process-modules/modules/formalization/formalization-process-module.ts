@@ -5,11 +5,19 @@ export const FORMALIZATION_PROCESS_MODULE_REF = {
   version: '1.0.0',
 } as const;
 
-const TRACKER = 'tool-templates/formalization/process-module-stage-tracker.md';
-const ARTIFACT_CALL = 'tool-templates/formalization/artifact-create-call-template.json';
-const TRACE_CALL = 'tool-templates/formalization/trace-add-call-template.json';
-const DONE_CALL = 'tool-templates/formalization/worker-done-call-template.json';
-const CHECKLIST = 'tool-templates/formalization/formalization-node-checklist.md';
+// W13-A2: resources were moved out of the legacy global root
+// (`tool-templates/formalization/`) into the formalization package resources
+// directory. These are repo-root-relative POSIX paths — the workspace
+// materializer resolves them under `workspaceRoot` (process.cwd()), matching
+// the delivery package pattern. See the formalization package manifest for the
+// matching `resourceIndex` declarations.
+const FORMALIZATION_RESOURCE_ROOT =
+  'src/process-modules/modules/formalization/package/resources';
+const TRACKER = `${FORMALIZATION_RESOURCE_ROOT}/process-module-stage-tracker.md`;
+const ARTIFACT_CALL = `${FORMALIZATION_RESOURCE_ROOT}/artifact-create-call-template.json`;
+const TRACE_CALL = `${FORMALIZATION_RESOURCE_ROOT}/trace-add-call-template.json`;
+const DONE_CALL = `${FORMALIZATION_RESOURCE_ROOT}/worker-done-call-template.json`;
+const CHECKLIST = `${FORMALIZATION_RESOURCE_ROOT}/formalization-node-checklist.md`;
 const PROCESS_PROTOCOL_SKILL = 'saga-process-module-worker-protocol';
 
 const COMMON_READ_TOOLS = [

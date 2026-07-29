@@ -20,12 +20,19 @@ export const DEVELOPMENT_PROCESS_MODULE_REF = {
 } as const;
 
 const PROCESS_PROTOCOL_SKILL = 'saga-process-module-worker-protocol';
+// W13-A2: resources were moved out of the legacy global root
+// (`tool-templates/development/`) into the development package resources
+// directory. These are repo-root-relative POSIX paths — the workspace
+// materializer resolves them under `workspaceRoot` (process.cwd()), matching
+// the delivery package pattern.
+const DEVELOPMENT_RESOURCE_ROOT =
+  'src/process-modules/modules/development/package/resources';
 const DEVELOPMENT_TRACKER =
-  'tool-templates/development/process-module-stage-tracker.md';
+  `${DEVELOPMENT_RESOURCE_ROOT}/process-module-stage-tracker.md`;
 const DEVELOPMENT_SUBMISSION_CALL =
-  'tool-templates/development/task-graph-submit-call-template.json';
+  `${DEVELOPMENT_RESOURCE_ROOT}/task-graph-submit-call-template.json`;
 const DEVELOPMENT_CHECKLIST =
-  'tool-templates/development/task-graph-planner-checklist.md';
+  `${DEVELOPMENT_RESOURCE_ROOT}/task-graph-planner-checklist.md`;
 
 /**
  * Development is one module, not four independently-settled legacy stages.

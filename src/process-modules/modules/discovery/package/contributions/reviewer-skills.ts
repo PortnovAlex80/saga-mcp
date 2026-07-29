@@ -92,7 +92,7 @@ function skillResource(args: {
  */
 export const DISCOVERY_READINESS_ADVISOR_REVIEWER_SKILL: DiscoverySkillResource = skillResource({
   logicalId: 'discovery.skill.reviewer.readiness',
-  path: 'skills/saga-discovery-readiness-advisor/SKILL.md',
+  path: 'src/process-modules/modules/discovery/package/resources/skills/saga-discovery-readiness-advisor/SKILL.md',
   kind: 'reviewer-skill',
   pinnedByProfile: 'discovery-readiness-advisor',
   slot: 'review',
@@ -106,7 +106,7 @@ export const DISCOVERY_READINESS_ADVISOR_REVIEWER_SKILL: DiscoverySkillResource 
  */
 export const DISCOVERY_DIAGNOSIS_ADVISOR_REVIEWER_SKILL: DiscoverySkillResource = skillResource({
   logicalId: 'discovery.skill.reviewer.diagnosis',
-  path: 'skills/saga-discovery-diagnosis-advisor/SKILL.md',
+  path: 'src/process-modules/modules/discovery/package/resources/skills/saga-discovery-diagnosis-advisor/SKILL.md',
   kind: 'reviewer-skill',
   pinnedByProfile: 'discovery-diagnosis-advisor',
   slot: 'review',
@@ -123,7 +123,7 @@ export const DISCOVERY_DIAGNOSIS_ADVISOR_REVIEWER_SKILL: DiscoverySkillResource 
  */
 export const DISCOVERY_WORKER_SKILL: DiscoverySkillResource = skillResource({
   logicalId: 'discovery.skill.worker',
-  path: 'skills/saga-discovery-worker/SKILL.md',
+  path: 'src/process-modules/modules/discovery/package/resources/skills/saga-discovery-worker/SKILL.md',
   kind: 'skill',
   pinnedByProfile: 'discovery-proposal-worker',
   slot: 'execution',
@@ -136,7 +136,7 @@ export const DISCOVERY_WORKER_SKILL: DiscoverySkillResource = skillResource({
  */
 export const DISCOVERY_NORMALIZER_SKILL: DiscoverySkillResource = skillResource({
   logicalId: 'discovery.skill.normalizer',
-  path: 'skills/saga-discovery-normalizer/SKILL.md',
+  path: 'src/process-modules/modules/discovery/package/resources/skills/saga-discovery-normalizer/SKILL.md',
   kind: 'skill',
   pinnedByProfile: 'discovery-normalizer',
   slot: 'execution',

@@ -53,15 +53,17 @@ const PENDING = 'pending@wave-2';
  */
 export const READINESS_RESOURCE_PATHS = Object.freeze({
   /** Skill fragment: readiness advisor classification instructions. */
-  ADVISOR_SKILL: 'skills/saga-discovery-readiness-advisor/SKILL.md',
+  // W13-A2: module-owned resources moved into the discovery package resources dir.
+  ADVISOR_SKILL: 'src/process-modules/modules/discovery/package/resources/skills/saga-discovery-readiness-advisor/SKILL.md',
   /** Shared protocol skill pinned by every discovery execution profile. */
+  // PLATFORM resource: stays at the repo-root skills/ dir (shared by all modules).
   PROTOCOL_SKILL: 'skills/saga-process-module-worker-protocol/SKILL.md',
   /** MCP call template: readiness_submit typed submission. */
-  READINESS_CALL: 'tool-templates/discovery/readiness-call-template.json',
+  READINESS_CALL: 'src/process-modules/modules/discovery/package/resources/readiness-call-template.json',
   /** Stage tracker (external program counter + recovery frame). */
-  STAGE_TRACKER: 'tool-templates/discovery/readiness-stage-tracker.md',
+  STAGE_TRACKER: 'src/process-modules/modules/discovery/package/resources/readiness-stage-tracker.md',
   /** LM node pre-submit checklist (readiness-scoped). */
-  CHECKLIST: 'tool-templates/discovery/readiness-checklist.md',
+  CHECKLIST: 'src/process-modules/modules/discovery/package/resources/readiness-checklist.md',
 });
 
 /**

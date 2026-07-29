@@ -416,9 +416,18 @@ test('every node-subtree resource path matches the central resourceIndex path fo
 
 /**
  * Map a bare skill name (e.g. 'saga-discovery-worker') to the on-disk SKILL.md
- * path the resourceIndex declares. Discovery execution profiles reference
- * skills by bare name; the package pins them at skills/<name>/SKILL.md.
+ * path the resourceIndex declares. W13-A2 moved module-owned skills out of the
+ * legacy global root (`skills/<name>/`) into the discovery package resources
+ * dir (`src/process-modules/modules/discovery/package/resources/skills/<name>/`).
+ * The shared `saga-process-module-worker-protocol` skill stays a PLATFORM
+ * resource at the repo-root `skills/` dir (pinned by every process module).
  */
+const DISCOVERY_PACKAGE_SKILL_ROOT =
+  'src/process-modules/modules/discovery/package/resources/skills';
+const PLATFORM_SKILLS = new Set(['saga-process-module-worker-protocol']);
 function skillPath(skillName) {
-  return `skills/${skillName}/SKILL.md`;
+  if (PLATFORM_SKILLS.has(skillName)) {
+    return `skills/${skillName}/SKILL.md`;
+  }
+  return `${DISCOVERY_PACKAGE_SKILL_ROOT}/${skillName}/SKILL.md`;
 }
