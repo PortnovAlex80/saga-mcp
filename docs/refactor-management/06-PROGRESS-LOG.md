@@ -174,3 +174,70 @@ and therefore have no Ponytail-relevant surface. No package mirror is needed.
   with unknown cause. Empirically check whether workers emit tautological tests
   despite the new guidance; if so, consider a `[correctness C-tautology]` axis
   check in saga-code-reviewer.
+
+## 2026-07-29 — W13-A7 retention-proof: no obsolete persistence artifact qualifies for drop
+- Wave: 13 (FINAL) — lane A7 (single SQL owner)
+- Spec: docs/refactor-management/09-contracts/WAVE13-LEGACY-REMOVAL-SPEC.md §1 lane A7,
+  docs/refactor-management/05-subagent-tasks/W13-a7.md
+- What: A7 owns "obsolete adapter, table, migration, retained-package cleanup under
+  single persistence owner. Drop unused tables/columns ONLY after retention proof."
+  The retention gate was run exhaustively across the whole persistence surface. It
+  BLOCKS every drop candidate — nothing in the persistence layer is unused. No src/
+  code was deleted; this entry is the retention proof + the reason no ratchet edge
+  moved.
+- Retention proof (the gate output):
+  1. SCANNED the full persistence surface for orphans via tools/dep-graph-scanner.mjs
+     (the same authoritative scanner the architecture ratchet uses):
+       src/process-modules/persistence/ (27 files), src/infrastructure/{persistence,
+       projections,workspaces}/, src/saga3/persistence/, src/db.ts, src/schema.ts.
+     Only ONE persistence file is a static-import orphan:
+       src/process-modules/persistence/sqlite-process-product-repository-v2.ts
+     (its port process-product-repository-v2.ts is imported only by that adapter).
+  2. RETENTION CHECK on that orphan — it is NOT dead code, so the drop is refused:
+     - It is the W3-A4 ProcessProductRepository v2 adapter (exact-by-ProductRef),
+       the concrete SQLite impl of the port that execution-context-assembler.ts
+       (W3-A5) consumes via getByProductRef. The port contract is LIVE and tested
+       (tests/installation/execution-context-assembler.test.mjs fakes it).
+     - It is exercised by 4 test files: tests/installation/process-product-repository-
+       v2.test.mjs (dedicated, 15 tests), tests/execution/exact-product-query.test.mjs,
+       tests/execution/crash-resume-exact-receipt.test.mjs, and tests/execution/
+       hardening-execution-crash.test.mjs (13-test crash-resume hardening suite that
+       treats this adapter as the product-write path).
+     - It is the SOLE provider of the exact-by-ProductRef query; no other adapter
+       implements getByProductRef. Removing it deletes a tested W3 capability, which
+       violates the Wave 13 anti-scope ("NO behavior changes — legacy paths are
+       already dead"). It is unwired-in-production (the composition root wires v1
+       SqliteProcessProductRepository + resolveOutput resolvers, not the v2 channel),
+       i.e. "not-yet-live", NOT "already dead". The distinction is material: the
+       cutover to the v2 exact-cursor resume path is a forward option, not legacy.
+     - Two of its tests use the graceful loadA4() try/catch skip pattern designed for
+       CROSS-LANE worktree isolation (an A8 worktree lacks A4's file); that pattern
+       is NOT a signal that the module is removable in the integrated tree.
+  3. TABLE/COLUMN retention: every saga3_* table created by a persistence adapter is
+     read+written by a live adapter; every column in saga3_process_products
+     (incl. the v2-added node_id) is referenced. No unused table or column exists.
+     All db.ts/schema.ts migrations are live, idempotent schema-evolution paths
+     (they detect old DB snapshots and upgrade them); removing any would break
+     upgrade-from-prior-snapshot. Dropping tables/columns is refused by the
+     "ONLY after retention proof + data migration" clause.
+  4. The v1 ProcessProductRepository port in process-product-repository-v2.ts is
+     STRUCTURALLY DUPLICATED by a same-named local interface in execution-context-
+     assembler.ts; consolidating them is a refactor (not legacy removal) and is out
+     of A7's "remove dead code" scope (it would touch two tested surfaces).
+- Decision: NO DROP. The retention gate (spec §0.16.2 / §4 anti-scope) is honored:
+  each removal is preceded by a retention proof, and every proof failed, so nothing
+  is removed. The forward v2-product cutover decision belongs to W13-A8 (dead-code
+  verification with the full integrated tree) or a later cutover task, not to the
+  SQL-owner lane.
+- Gate: `npm run build` PASS (tsc clean); `node --test
+  tests/architecture/dependency-direction.test.mjs` PASS (ratchet 74: R1=1, R2=29,
+  R3=9, R4=1, R6=34 — unchanged, same as W13-A5: A7's scope has no allowlisted
+  dependency edge, so it adds no violation and fixes none). Relevant persistence
+  tests green: tests/installation/process-product-repository-v2.test.mjs (15 pass),
+  tests/execution/exact-product-query.test.mjs (pass).
+- Commit: (this commit) — refactor(legacy-removal): W13-A7 ... (retention proof; no
+  src/ code removed).
+- Next: W13-A8 (final dead-code + dependency verification) re-evaluates the v2-product
+  channel with the full integrated tree and decides cutover vs. keep. The 74→0
+  convergence remains the cumulative Wave 13 target across all lanes; A7 contributes
+  the retention proof that prevents an unsafe drop.
