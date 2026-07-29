@@ -65,6 +65,20 @@ Format:
 - Next: stage Wave 2 (Immutable Installation) frozen checkpoint off `6a349a2`.
 - Worktrees `.worktrees/w1-aN` removed (branches `refactor/w1-aN` preserved for audit).
 
+## 2026-07-29 — Wave 2 full integration (R-07 resolved)
+- Wave: W2
+- What: R-07 root cause found and fixed — resource digest MUST use raw-bytes `crypto.createHash('sha256').update(bytes).digest('hex')`, NOT `sha256Hex(bytes)` which canonical-JSON-serializes a Uint8Array first. Reconciled 6 cross-lane mismatches across W2-A1/A3/A8.
+- Gate: build PASS · installation **140/140** · ratchet 4/4 · Wave 1 SPI 238/238.
+- Commit: `a415939` — `refactor(wave-2): R-07 resolved — full integration checkpoint (140/140 tests)`
+
+## 2026-07-29 — Wave 3 parallel lanes executed + integrated
+- Wave: W3
+- What: 5 parallel lanes (A4,A5,A6,A7,A8) dispatched off `f0367d1`, all completed and cherry-picked serially onto main (zero conflicts). Serial chain A1→A2→A3 staged next. Parallel integration base = `55bf0a8`.
+- Lane commits (pre-pick): A4=`c5f9626`, A5=`42e52b4`, A6=`8c71c03`, A7=`eb41488`, A8=`c5cd14c`.
+- Gate (parallel): build PASS · 67/67 parallel tests PASS · ratchet 4/4 (73 unchanged).
+- Commit: `55bf0a8` — `refactor(wave-3): integrate 5 parallel lanes (A4,A5,A6,A7,A8) — 67 tests pass`
+- Next: serial chain A1 (core executor) → A2 (LM executor) → A3 (AgentLaunchSpec). A1 launched off `55bf0a8`.
+
 ## 2026-07-28 — Wave 2 executed (8/8 lanes done) and PARTIALLY integrated
 - Wave: W2
 - What: All 8 installation lanes completed in isolated worktrees off `2dd386c`. Cherry-picked serially in DAG order A2→A1→A3→A5→A6→A4→A7→A8 — zero cherry-pick conflicts. **Multiple post-cherry-pick integration fixes** by integrator:
