@@ -32,6 +32,54 @@ function roleFromTask(task, fallbackSkill) {
   return fallbackSkill === 'saga-reviewer' ? 'reviewer' : 'developer';
 }
 
+// --- W5-A6 AgentLaunchSpec integration (plan §10.12–10.16, §13.17–13.18) ------
+//
+// resolveLaunchSpec is an OPTIONAL callback injected by the worker-executor
+// factory. When present it returns a ResolvedLaunchSpec — a feature-detected
+// projection of the Wave 3 `AgentLaunchSpec` (src/process-modules/application/
+// agent-launch-spec.ts) carrying the package-pinned resources + the
+// author/reviewer/semantic/protocol skills resolved from the pinned module
+// installation (NOT the global skill root). When the callback is absent OR
+// returns null, the runner falls back to the legacy single-skill path
+// byte-for-byte (plan §14.3.7 legacy fallback). This keeps the .mjs runner
+// TypeScript-free and preserves every legacy path.
+//
+// The resolved descriptor exposes:
+//   role           { executionSkill, reviewSkill, semanticSkill, protocolSkill }
+//                  — the pinned skills from the installation's execution
+//                    profile. reviewSkill may be null (legacy generic-reviewer
+//                    fallback).
+//   resolveSkill   (skillName) => absolute path | null  — maps a skill name to
+//                  its package-pinned SKILL.md path under the installation's
+//                  content-addressed storeLocation. Built by the factory from
+//                  installation.resourceIndex + installation.storeLocation.
+//   allowedToolIds []                           — the profile's allowedTools
+//                  (effective capability set). When non-empty, §13.17 grants
+//                  only these builtins + the frozen saga MCP tools, instead of
+//                  the hard-coded builtin set.
+//
+// §13.18 fix: for a review-status task, the reviewer skill
+// (role.reviewSkill) is selected INSTEAD of the author semantic skill when the
+// launch spec resolves one. The legacy path still selects profile.semanticSkill
+// for review tasks (the bug §13.18 calls out).
+
+/**
+ * Pick the effective skill name for this assignment under a resolved launch
+ * spec. For review tasks with a declared reviewSkill, that skill wins
+ * (§13.18 fix). Otherwise the semantic skill (author role) is used.
+ */
+function pickLaunchSpecSkillName(launchSpec, isReview) {
+  const role = launchSpec?.role;
+  if (!role) return null;
+  if (isReview && typeof role.reviewSkill === 'string' && role.reviewSkill.length > 0) {
+    return role.reviewSkill;
+  }
+  if (typeof role.semanticSkill === 'string' && role.semanticSkill.length > 0) {
+    return role.semanticSkill;
+  }
+  return null;
+}
+
 function buildPrompt({
   assignment,
   project,
@@ -40,6 +88,7 @@ function buildPrompt({
   sagaSkillRoot,
   resolvedProfile,
   processWorkspace,
+  launchSpec,
 }) {
   const task = assignment.task;
   const role = roleFromTask(task, assignment.skill);
@@ -62,16 +111,57 @@ function buildPrompt({
   // working unchanged while Process Module tasks get the composed prompt.
   let protocolSkillName = null;
   let semanticSkillName = null;
+  let reviewerSkillName = null;
   const executionProfile = resolvedProfile?.profile ?? resolvedProfile;
   if (executionProfile) {
     protocolSkillName = executionProfile.protocolSkill ?? null;
     semanticSkillName = executionProfile.semanticSkill ?? null;
+    reviewerSkillName = executionProfile.reviewSkill ?? null;
   }
-  // Effective semantic skill: profile.semanticSkill overrides assignment.skill
-  // when present (the profile is the single source of truth for Process Module
-  // tasks). Legacy tasks keep assignment.skill.
-  const effectiveSemanticSkill = semanticSkillName ?? assignment.skill ?? `saga-${role}`;
-  const semanticSkillPath = path.join(sagaSkillRoot, effectiveSemanticSkill, 'SKILL.md');
+
+  // W5-A6: when a launch spec resolved pinned package resources, override the
+  // skill selection from the pinned installation's execution profile (plan
+  // §10.13: the runner consumes AgentLaunchSpec and never re-resolves a profile
+  // or skill from task kind). The launch spec's role block is the single source
+  // of truth for the protocol + author semantic + reviewer skills.
+  if (launchSpec?.role) {
+    protocolSkillName = launchSpec.role.protocolSkill || protocolSkillName;
+    semanticSkillName = launchSpec.role.semanticSkill || semanticSkillName;
+    reviewerSkillName = launchSpec.role.reviewSkill ?? reviewerSkillName ?? null;
+  }
+
+  // §13.18 fix: for a review task with a declared reviewer skill, select the
+  // REVIEWER skill instead of the author semantic skill. Without this the
+  // profile.semanticSkill (author skill, e.g. saga-product) overwrites the
+  // reviewer assignment for formalization/review tasks. pickLaunchSpecSkillName
+  // returns null when no launch spec resolved → the legacy precedence below is
+  // preserved byte-for-byte (profile > assignment.skill > saga-<role>).
+  const launchPickedSkill = pickLaunchSpecSkillName(launchSpec, isReview);
+  const effectiveSemanticSkill = launchPickedSkill
+    ?? semanticSkillName
+    ?? assignment.skill
+    ?? `saga-${role}`;
+  const effectiveReviewerSkill = (isReview && reviewerSkillName)
+    ? reviewerSkillName
+    : null;
+
+  // W5-A6: resolve the skill file path from the PINNED installation when the
+  // launch spec supplies a resolveSkill resolver (plan §0.2.7 / §10.12:
+  // resources come from the installation, NOT the global skill root). Fall back
+  // to the global skill root for legacy tasks (no launch spec) and when the
+  // pinned resolver returns no path (resource not declared in the index).
+  const resolvePinnedSkillPath = (skillName) => {
+    if (skillName && typeof launchSpec?.resolveSkill === 'function') {
+      try {
+        const pinned = launchSpec.resolveSkill(skillName);
+        if (typeof pinned === 'string' && pinned.length > 0) return pinned;
+      } catch {
+        // Resolver failure → fall through to global skill root.
+      }
+    }
+    return path.join(sagaSkillRoot, skillName, 'SKILL.md');
+  };
+  const semanticSkillPath = resolvePinnedSkillPath(effectiveSemanticSkill);
   const workerSkillPath = path.join(sagaSkillRoot, 'saga-worker', 'SKILL.md');
   const skillPath = existsSync(semanticSkillPath) ? semanticSkillPath : workerSkillPath;
 
@@ -81,27 +171,40 @@ function buildPrompt({
   // can still Read the files for the canonical version.
   let skillInline = '';
   if (protocolSkillName) {
-    const protocolSkillPath = path.join(sagaSkillRoot, protocolSkillName, 'SKILL.md');
+    const protocolSkillPath = resolvePinnedSkillPath(protocolSkillName);
     let protocolInline = '';
     try {
       protocolInline = readFileSync(protocolSkillPath, 'utf8');
     } catch {
       protocolInline = `(Could not read protocol skill file at ${protocolSkillPath}.)`;
     }
+    // For review tasks, inline the REVIEWER skill (not the author semantic) as
+    // the second section when a reviewer skill resolved (§13.18 fix). The
+    // reviewer skill is the authoritative "what to check" workflow; the author
+    // semantic skill is what the author used to produce the artifact.
+    const reviewerInlineSkillPath = effectiveReviewerSkill
+      ? resolvePinnedSkillPath(effectiveReviewerSkill)
+      : skillPath;
     let semanticInline = '';
     try {
-      semanticInline = readFileSync(skillPath, 'utf8');
+      semanticInline = readFileSync(reviewerInlineSkillPath, 'utf8');
     } catch {
-      semanticInline = `(Could not read semantic skill file at ${skillPath}. Follow the protocol above.)`;
+      semanticInline = `(Could not read semantic skill file at ${reviewerInlineSkillPath}. Follow the protocol above.)`;
     }
+    const semanticSectionTitle = effectiveReviewerSkill
+      ? '--- REVIEWER SKILL BEGIN (review role — what to verify) ---'
+      : '--- SEMANTIC SKILL BEGIN (domain role — what to produce) ---';
+    const semanticSectionEnd = effectiveReviewerSkill
+      ? '--- REVIEWER SKILL END ---'
+      : '--- SEMANTIC SKILL END ---';
     skillInline = [
       '--- PROTOCOL SKILL BEGIN (universal execution physics — apply to every action) ---',
       protocolInline,
       '--- PROTOCOL SKILL END ---',
       '',
-      '--- SEMANTIC SKILL BEGIN (domain role — what to produce) ---',
+      semanticSectionTitle,
       semanticInline,
-      '--- SEMANTIC SKILL END ---',
+      semanticSectionEnd,
     ].join('\n');
   } else {
     // Legacy single-skill path (no Process Module profile resolved).
@@ -124,6 +227,9 @@ function buildPrompt({
     `dispatcher_skill=${assignment.skill}`,
     protocolSkillName ? `protocol_skill=${protocolSkillName}` : null,
     semanticSkillName ? `semantic_skill=${semanticSkillName}` : null,
+    reviewerSkillName ? `reviewer_skill=${reviewerSkillName}` : null,
+    launchSpec ? `launch_spec_installation=${launchSpec.installationId ?? 'legacy'}` : null,
+    effectiveReviewerSkill ? `effective_skill=${effectiveReviewerSkill}` : null,
     processWorkspace ? `process_module_ref=${processWorkspace.moduleRef}` : null,
     processWorkspace ? `execution_profile=${processWorkspace.profileId}` : null,
     `task_kind=${task.task_kind || 'legacy'}`,
@@ -140,7 +246,9 @@ function buildPrompt({
     '3. Read the assigned task and its context through Saga MCP as needed.',
     `   To read your task: task_get({ id: ${task.id} }) — the parameter name is 'id' (NOT 'task_id' or 'taskId').`,
     protocolSkillName
-      ? `4. Follow the PROTOCOL SKILL (execution physics) and the SEMANTIC SKILL (domain role) below. SKIP every instruction that claims or selects a task. The protocol is authoritative for HOW you work; the semantic skill is authoritative for WHAT you produce.`
+      ? (effectiveReviewerSkill
+        ? `4. Follow the PROTOCOL SKILL (execution physics) and the REVIEWER SKILL (what to verify) below. SKIP every instruction that claims or selects a task. The protocol is authoritative for HOW you work; the reviewer skill is authoritative for WHAT you check on this review task.`
+        : `4. Follow the PROTOCOL SKILL (execution physics) and the SEMANTIC SKILL (domain role) below. SKIP every instruction that claims or selects a task. The protocol is authoritative for HOW you work; the semantic skill is authoritative for WHAT you produce.`)
       : `4. Follow the skill workflow below (also at ${skillPath}). SKIP every instruction that claims or selects a task.`,
     skillInline,
     processWorkspace
@@ -217,6 +325,22 @@ export class ClaudeBoardRunner {
     // semantic = domain role). When absent or null, the legacy single-skill
     // path is used. The resolver is injected by the worker-executor factory.
     this.resolveProfile = options.resolveProfile ?? null;
+    // W5-A6 (plan §10.12–§10.16, §13.17–§13.18): optional resolver that turns
+    // a claimed assignment into a package-pinned launch descriptor
+    // (AgentLaunchSpec projection). When present and it returns a non-null
+    // descriptor, the runner:
+    //   - resolves skills from the PINNED installation's resourceIndex (via
+    //     launchSpec.resolveSkill) instead of the global sagaSkillRoot (§0.2.7,
+    //     §10.12 — resources come from the installation, NOT the skill root);
+    //   - selects the REVIEWER skill for review-status tasks when the profile
+    //     declares one (§13.18 fix — reviewer skill separate from author);
+    //   - grants only the profile's allowedTools as Claude builtins, falling
+    //     back to the hard-coded builtin set only when the launch spec carries
+    //     no allowedToolIds (§13.17 fix — respect profile allowedTools).
+    // When absent or null, the runner uses the legacy single-skill path and the
+    // hard-coded builtin set byte-for-byte. Injected by the worker-executor
+    // factory; the .mjs runner never imports the TypeScript AgentLaunchSpec.
+    this.resolveLaunchSpec = options.resolveLaunchSpec ?? null;
     // Runtime callback for exact task-scoped trackers/templates/checklists.
     this.prepareWorkspace = options.prepareWorkspace ?? null;
     this.lmstudioBaseUrl = options.lmstudioBaseUrl
@@ -562,6 +686,20 @@ export class ClaudeBoardRunner {
         // Resolver failures retain the legacy single-skill path.
       }
     }
+    // W5-A6: resolve the package-pinned AgentLaunchSpec projection for this
+    // assignment (plan §10.12–§10.16). Feature-detected: when no resolver is
+    // wired OR it returns null, launchSpec stays null and every legacy path
+    // (global skill root, hard-coded builtins, author semantic skill for
+    // reviews) is preserved byte-for-byte.
+    let launchSpec = null;
+    if (typeof this.resolveLaunchSpec === 'function') {
+      try {
+        launchSpec = this.resolveLaunchSpec({ assignment, resolvedProfile }) ?? null;
+      } catch {
+        // Resolver failures retain the legacy single-skill path.
+        launchSpec = null;
+      }
+    }
     const processWorkspace = resolvedProfile && typeof this.prepareWorkspace === 'function'
       ? this.prepareWorkspace({
           assignment,
@@ -581,6 +719,7 @@ export class ClaudeBoardRunner {
       sagaSkillRoot: this.sagaSkillRoot,
       resolvedProfile,
       processWorkspace,
+      launchSpec,
     });
     const args = [
       '-p',
@@ -613,13 +752,35 @@ export class ClaudeBoardRunner {
     // Legacy path (no execution_context / Saga 2) keeps the old single-blacklist.
     const frozenTools = assignment.execution_context?.authority?.allowed_saga_tools;
     if (Array.isArray(frozenTools) && frozenTools.length > 0) {
-      // Non-saga built-in tools that workers legitimately need (heartbeat, file
-      // reads for skill/worktree conventions). These are NOT authority-gated.
+      // Non-saga built-in Claude tools that workers legitimately need (heartbeat,
+      // file reads for skill/worktree conventions). These are NOT authority-gated.
       // The set MUST stay in sync with the builtin names that Process Module
       // profiles and legacy engines put inside authority_scope.allowed_tools
       // "for documentation and skill sync, not for gateway enforcement" (see
       // saga3-discovery-engine DISCOVERY_ALLOWED_TOOLS).
-      const builtin = ['Bash', 'Read', 'Write', 'Edit', 'Glob', 'Grep', 'MultiEdit', 'Task'];
+      const DEFAULT_BUILTIN = ['Bash', 'Read', 'Write', 'Edit', 'Glob', 'Grep', 'MultiEdit', 'Task'];
+      // §13.17 fix (W5-A6): when a launch spec resolved an effective capability
+      // set with allowedToolIds, the PROFILE owns the Claude builtin surface.
+      // We grant only the builtins the profile declares (intersected with the
+      // frozen builtin names) instead of the hard-coded DEFAULT_BUILTIN set.
+      // This lets a narrow profile (e.g. only Read+Edit) actually restrict the
+      // agent's builtin tools. When the launch spec carries no allowedToolIds
+      // (legacy task, or a profile that does not constrain builtins), the
+      // DEFAULT_BUILTIN set is granted — the pre-W5-A6 behavior, byte-for-byte.
+      let builtin;
+      const profileAllowed = Array.isArray(launchSpec?.allowedToolIds)
+        ? launchSpec.allowedToolIds
+        : null;
+      if (profileAllowed && profileAllowed.length > 0) {
+        const profileSet = new Set(profileAllowed.filter(t => typeof t === 'string'));
+        builtin = DEFAULT_BUILTIN.filter(b => profileSet.has(b));
+        // Defensive: a profile that declares NO recognized builtins would leave
+        // the worker unable to read files or run the heartbeat. Fall back to the
+        // default set in that case rather than launch a crippled agent.
+        if (builtin.length === 0) builtin = [...DEFAULT_BUILTIN];
+      } else {
+        builtin = [...DEFAULT_BUILTIN];
+      }
       const builtinSet = new Set(builtin);
       // Only the actual saga MCP tools get the mcp__saga__ prefix. Mapping the
       // builtin entries too produced names like `mcp__saga__Write` /

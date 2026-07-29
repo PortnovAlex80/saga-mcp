@@ -470,20 +470,38 @@ test('process-execution-workspace: SURPRISING — recovery_feedback in metadata 
 test('claude-runner.mjs: source still contains the locked literals being characterized', () => {
   // This guards against silent drift: if the runner is edited, this test fails
   // and forces the editor to update the parallel assertions below.
+  //
+  // W5-A6 (plan §13.17–§13.18): the §13.17 hardcoded-builtin literal and the
+  // §13.18 author-overwrites-reviewer precedence were the FIX TARGETS of this
+  // wave. The literals they pinned are gone; the guard now pins the FIXED
+  // behavior: (a) the DEFAULT_BUILTIN fallback set is still present for the
+  // legacy path, (b) a launch-spec allowedToolIds branch narrows it (§13.17),
+  // (c) the reviewer-skill selection branch exists (§13.18), and (d) the
+  // legacy effectiveSemanticSkill precedence is still present as the fallback
+  // when no launch spec resolves. The legacy PROTOCOL/SEMANTIC markers and
+  // roleFromTask branches are unchanged.
   const src = readFileSync(path.join(repoRoot, 'tracker-view/claude-runner.mjs'), 'utf8');
   // roleFromTask: role:<value> tag → value; else 'reviewer' if fallbackSkill is saga-reviewer; else 'developer'.
   assert.match(src, /roleTag\.slice\('role:'\.length\)/, 'roleFromTask role-tag slice missing');
   assert.match(src, /fallbackSkill === 'saga-reviewer' \? 'reviewer' : 'developer'/,
     'roleFromTask reviewer/developer fallback missing');
-  // effectiveSemanticSkill precedence: profile.semanticSkill ?? assignment.skill ?? `saga-${role}`
-  assert.match(src, /semanticSkillName \?\? assignment\.skill \?\? `saga-\$\{role\}`/,
-    'effectiveSemanticSkill precedence missing');
-  // Hard-coded builtin tool set granted alongside saga tools.
-  assert.match(src, /\['Bash', 'Read', 'Write', 'Edit', 'Glob', 'Grep', 'MultiEdit', 'Task'\]/,
-    'hard-coded builtin tool set missing');
-  // Prompt assembly: protocol skill section BEFORE semantic skill section.
+  // Legacy effectiveSemanticSkill precedence is still the fallback branch
+  // (after the launch-spec pick). W5-A6 prepended `launchPickedSkill ??` to it.
+  assert.match(src, /semanticSkillName\s*\n\s*\?\? assignment\.skill\s*\n\s*\?\? `saga-\$\{role\}`/,
+    'effectiveSemanticSkill legacy precedence fallback missing');
+  // §13.17 fix: the default builtin set is now named DEFAULT_BUILTIN (still the
+  // legacy fallback), AND a launch-spec allowedToolIds branch narrows it.
+  assert.match(src, /const DEFAULT_BUILTIN = \['Bash', 'Read', 'Write', 'Edit', 'Glob', 'Grep', 'MultiEdit', 'Task'\];/,
+    'DEFAULT_BUILTIN fallback set missing');
+  assert.match(src, /const profileAllowed = Array\.isArray\(launchSpec\?\.allowedToolIds\)/,
+    '§13.17 profile allowedToolIds branch missing');
+  // §13.18 fix: reviewer skill selection branch exists for review tasks.
+  assert.match(src, /const effectiveReviewerSkill = \(isReview && reviewerSkillName\)/,
+    '§13.18 reviewer skill selection missing');
+  // Prompt assembly: protocol skill section BEFORE semantic/reviewer section.
   assert.match(src, /PROTOCOL SKILL BEGIN/, 'protocol skill section marker missing');
   assert.match(src, /SEMANTIC SKILL BEGIN/, 'semantic skill section marker missing');
+  assert.match(src, /REVIEWER SKILL BEGIN/, 'reviewer skill section marker missing');
 });
 
 /**
@@ -541,65 +559,115 @@ test('claude-runner effectiveSemanticSkill: precedence is profile > assignment.s
     'saga-reviewer');
 });
 
-test('claude-runner effectiveSemanticSkill: SURPRISING — reviewer assignment is overwritten by author semanticSkill (§13.18)', () => {
-  // SURPRISING (§13.18): when a Process Module profile is resolved for a
-  // review task, the profile.semanticSkill (AUTHOR skill, e.g. 'saga-product')
-  // is selected even though the task is in 'review' status. The reviewer's
-  // own reviewSkill (e.g. 'saga-requirements-reviewer') is NOT consulted by
-  // buildPrompt — it lives only inside the profile and is unused at prompt
-  // assembly time. This is the bug §13.18 calls out.
+test('claude-runner effectiveSemanticSkill: §13.18 FIXED — reviewer skill wins for review tasks when launch spec resolves one', () => {
+  // W5-A6 (plan §13.18): this was the §13.18 SURPRISING test. The bug — that a
+  // reviewer assignment was overwritten by the author semanticSkill — is FIXED
+  // for tasks whose launch spec resolved a package-pinned AgentLaunchSpec with
+  // a non-null reviewSkill. The runner's pickLaunchSpecSkillName now returns
+  // role.reviewSkill for review tasks. Replicates the fixed branch.
+  function pickLaunchSpecSkillName(role, isReview) {
+    if (!role) return null;
+    if (isReview && typeof role.reviewSkill === 'string' && role.reviewSkill.length > 0) {
+      return role.reviewSkill;
+    }
+    if (typeof role.semanticSkill === 'string' && role.semanticSkill.length > 0) {
+      return role.semanticSkill;
+    }
+    return null;
+  }
+  // A formalization.prd review task with a pinned launch spec: the reviewer
+  // skill is selected, NOT the author semanticSkill.
+  const skill = pickLaunchSpecSkillName(
+    { semanticSkill: 'saga-product', reviewSkill: 'saga-requirements-reviewer' },
+    true,
+  );
+  assert.equal(skill, 'saga-requirements-reviewer');
+  assert.notEqual(skill, 'saga-product');
+  // A non-review task still gets the author semantic skill.
+  assert.equal(
+    pickLaunchSpecSkillName({ semanticSkill: 'saga-product', reviewSkill: 'saga-requirements-reviewer' }, false),
+    'saga-product',
+  );
+  // A review task whose profile declares NO reviewSkill falls through to the
+  // author semantic skill (legacy generic-reviewer behavior preserved).
+  assert.equal(
+    pickLaunchSpecSkillName({ semanticSkill: 'saga-product', reviewSkill: null }, true),
+    'saga-product',
+  );
+});
+
+test('claude-runner effectiveSemanticSkill: §13.18 legacy path still overwrites reviewer when no launch spec resolves', () => {
+  // W5-A6: the LEGACY path (no launch spec) is preserved byte-for-byte. When
+  // resolveLaunchSpec is absent or returns null, the runner still uses the
+  // pre-fix precedence `semanticSkillName ?? assignment.skill ?? saga-<role>`,
+  // so a review task with a resolved profile.semanticSkill still gets the
+  // author skill. This is intentional — the fix is feature-detected.
   function effectiveSemanticSkill({ semanticSkillName, assignmentSkill, role }) {
     return semanticSkillName ?? assignmentSkill ?? `saga-${role}`;
   }
-  // A formalization.prd task in 'review' status with assignment.skill='saga-reviewer'.
-  // The resolved profile.semanticSkill is 'saga-product' (the AUTHOR skill).
-  // The reviewer gets the author skill, not 'saga-requirements-reviewer'.
   const skill = effectiveSemanticSkill({
-    semanticSkillName: 'saga-product', // profile.semanticSkill for formalization-product
-    assignmentSkill: 'saga-reviewer',   // dispatcher assigned reviewer
+    semanticSkillName: 'saga-product',
+    assignmentSkill: 'saga-reviewer',
     role: 'reviewer',
   });
   assert.equal(skill, 'saga-product');
   assert.notEqual(skill, 'saga-requirements-reviewer');
 });
 
-test('claude-runner buildPrompt: when a profile resolves, prompt inlines PROTOCOL section BEFORE SEMANTIC section', () => {
-  // We construct the smallest possible ClaudeBoardRunner-shaped stub and call
-  // the unexported buildPrompt by importing the module and reading its source
-  // is not enough — buildPrompt is module-private. So we inline-call it via a
-  // tiny shim that re-uses the real function via dynamic rewrite.
+test('claude-runner buildPrompt: when a profile resolves, prompt inlines PROTOCOL section BEFORE SEMANTIC/REVIEWER section', () => {
+  // W5-A6: the structural invariant is unchanged for author tasks (PROTOCOL
+  // before SEMANTIC). For review tasks with a resolved reviewer skill, the
+  // second section is REVIEWER instead of SEMANTIC (§13.18).
   //
-  // TODO W3/W5: full integration characterization of buildPrompt via
-  // constructor stub (plan §13.4 / §13.16). For Wave 0 we pin the structural
-  // invariant: when both protocolSkillName and semanticSkillName are non-null,
-  // the assembled prompt template string contains PROTOCOL before SEMANTIC.
-  // The literals are extracted from claude-runner.mjs buildPrompt.
-  const expectedOrder = [
+  // The assembled prompt array literal in buildPrompt places PROTOCOL markers
+  // first, then the semanticSectionTitle/semanticSectionEnd variables (which
+  // resolve to either SEMANTIC or REVIEWER markers). Because the ternaries
+  // that DEFINE those markers sit textually above the array, a plain indexOf
+  // ordering check on the source no longer reflects the assembled order. We
+  // instead assert: (a) all six marker literals are present, (b) the array
+  // literal order is PROTOCOL BEGIN ... PROTOCOL END ... semanticSectionTitle
+  // ... semanticSectionEnd (the runtime join order).
+  const src = readFileSync(path.join(repoRoot, 'tracker-view/claude-runner.mjs'), 'utf8');
+  const markers = [
     '--- PROTOCOL SKILL BEGIN (universal execution physics — apply to every action) ---',
     '--- PROTOCOL SKILL END ---',
     '--- SEMANTIC SKILL BEGIN (domain role — what to produce) ---',
     '--- SEMANTIC SKILL END ---',
+    '--- REVIEWER SKILL BEGIN (review role — what to verify) ---',
+    '--- REVIEWER SKILL END ---',
   ];
-  const src = readFileSync(path.join(repoRoot, 'tracker-view/claude-runner.mjs'), 'utf8');
-  const positions = expectedOrder.map(marker => src.indexOf(marker));
-  for (const p of positions) assert.ok(p >= 0, `marker missing in source: ${p}`);
-  // Strictly increasing positions → protocol block is before semantic block.
-  assert.ok(positions[0] < positions[1], 'PROTOCOL BEGIN not before PROTOCOL END');
-  assert.ok(positions[1] < positions[2], 'PROTOCOL END not before SEMANTIC BEGIN');
-  assert.ok(positions[2] < positions[3], 'SEMANTIC BEGIN not before SEMANTIC END');
+  for (const m of markers) {
+    assert.ok(src.indexOf(m) >= 0, `marker missing in source: ${m}`);
+  }
+  // The array literal that joins into skillInline must place the PROTOCOL
+  // markers before the semanticSectionTitle/semanticSectionEnd variables.
+  const arrayStart = src.indexOf("'--- PROTOCOL SKILL BEGIN");
+  assert.ok(arrayStart >= 0, 'PROTOCOL SKILL BEGIN array entry not found');
+  const arrayEnd = src.indexOf('semanticSectionEnd,', arrayStart);
+  assert.ok(arrayEnd >= 0, 'semanticSectionEnd array entry not found after PROTOCOL BEGIN');
+  const protoEndInArray = src.indexOf("'--- PROTOCOL SKILL END ---',", arrayStart);
+  const semanticTitleInArray = src.indexOf('semanticSectionTitle,', arrayStart);
+  assert.ok(protoEndInArray > arrayStart && protoEndInArray < semanticTitleInArray,
+    'in the skillInline array, PROTOCOL END must come before semanticSectionTitle');
 });
 
-test('claude-runner launch: SURPRISING — fixed Claude builtin tools are ALWAYS granted alongside saga tools (§13.17)', () => {
-  // SURPRISING (§13.17): when frozen authority supplies allowed_saga_tools, the
-  // runner grants `[...sagaAllowed, ...builtin]`. The builtin set is hard-coded
-  // and added UNCONDITIONALLY — even when a profile declares a narrower set
-  // (e.g. only Read/Edit). The profile's allowedTools has no effect on Claude
-  // builtins; per-step restriction is left to the agent driver or sandbox.
+test('claude-runner launch: §13.17 FIXED — profile allowedTools narrows Claude builtins; legacy path keeps the default set', () => {
+  // W5-A6 (plan §13.17): this was the §13.17 SURPRISING test. The bug — that a
+  // fixed Claude builtin set was granted UNCONDITIONALLY even when a profile
+  // declared a narrower set — is FIXED. The runner now:
+  //   - keeps DEFAULT_BUILTIN as the LEGACY fallback (no launch spec, or a
+  //     profile that declares no allowedToolIds → grant all defaults);
+  //   - narrows the granted builtins to the intersection of DEFAULT_BUILTIN and
+  //     the launch spec's allowedToolIds when the profile constrains them.
   const src = readFileSync(path.join(repoRoot, 'tracker-view/claude-runner.mjs'), 'utf8');
-  // The builtin constant lives inside the launch() method body.
-  assert.match(src, /const builtin = \['Bash', 'Read', 'Write', 'Edit', 'Glob', 'Grep', 'MultiEdit', 'Task'\];/,
-    'builtin constant not pinned inside launch');
-  // The literal args.push uses spread of sagaAllowed then builtin.
+  // The default builtin set is now named DEFAULT_BUILTIN (legacy fallback).
+  assert.match(src, /const DEFAULT_BUILTIN = \['Bash', 'Read', 'Write', 'Edit', 'Glob', 'Grep', 'MultiEdit', 'Task'\];/,
+    'DEFAULT_BUILTIN legacy fallback set missing');
+  // §13.17 narrowing branch: profileAllowed from the launch spec intersects
+  // DEFAULT_BUILTIN to compute the granted builtins.
+  assert.match(src, /builtin = DEFAULT_BUILTIN\.filter\(b => profileSet\.has\(b\)\)/,
+    '§13.17 builtin narrowing (intersection) missing');
+  // The args.push order is unchanged: [...sagaAllowed, ...builtin].
   assert.match(src, /args\.push\('--allowedTools', \[\.\.\.sagaAllowed, \.\.\.builtin\]\.join\(','\)\)/,
     '--allowedTools push order changed');
 });
