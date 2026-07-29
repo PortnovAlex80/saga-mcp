@@ -63,9 +63,12 @@ const {
   validateAgentAssistanceDefinition,
 } = await import('../../dist/process-modules/domain/spi/agent-assistance.js');
 
-// The legacy hook (frozen at e87809b) — the C027-violating fallback W5-A5
-// replaces. Layer-1 security tests exercise it directly.
-const LEGACY_HOOK_PATH = path.join(REPO_ROOT, 'tracker-reminder.mjs');
+// W13-A2: the legacy tracker-reminder.mjs (frozen at e87809b) has been
+// DELETED — it was the C027-violating Markdown-parsing fallback W5-A5
+// replaced. The structured-context-hook.mjs is now the sole PostToolUse
+// context hook. Its security surface (fail-closed '{}', never echoes untrusted
+// text into a shell command, never spawns) is covered by
+// tests/execution/structured-context-hook.test.mjs.
 
 // ===========================================================================
 // Layer-1 fixtures: synthetic ProtocolRun state + AgentAssistanceDefinition.
@@ -247,7 +250,15 @@ function skipReason(surface, lane) {
 // LAYER 1 — FIXTURE / PURE tests (always run).
 // ===========================================================================
 
-// --- §4 Hook security: legacy tracker-reminder is a safe fallback ----------
+// --- §4 Hook security -----------------------------------------------------
+//
+// W13-A2: the legacy tracker-reminder.mjs security tests were removed along
+// with the file. The replacement structured-context-hook.mjs preserves the
+// same fail-closed surface ('{}' on missing/invalid input, JSON.stringify'd
+// output so untrusted text can never break into a shell command, never
+// spawns). Those guarantees are now covered directly by
+// tests/execution/structured-context-hook.test.mjs (emits {} for missing
+// path; escapes CR/LF/tab + C0 controls; never scans docs/).
 
 test('fixture/assistance-definition: Wave 1 SPI accepts a valid compact definition', async () => {
   const result = await validateAgentAssistanceDefinition(sampleAssistanceDefinition());
@@ -276,49 +287,6 @@ test('fixture/assistance-vocabulary: modes + events + block-kinds are the frozen
   assert.ok(ASSISTANCE_EVENT_NAMES.has('step-enter'));
   assert.ok(ASSISTANCE_EVENT_NAMES.has('recovery-enter'));
   assert.ok(ASSISTANCE_BLOCK_KINDS.has('next-action'));
-});
-
-test('fixture/legacy-hook: emits empty JSON when tracker path env is absent', () => {
-  // The legacy hook is the C027-violating fallback W5-A5 replaces. It must
-  // remain SAFE in the meantime: no SAGA_PROCESS_TRACKER_PATH → '{}' (never
-  // crash, never inject untrusted text into a shell).
-  const out = runLegacyHook({}, '');
-  assert.equal(out, '{}');
-});
-
-test('fixture/legacy-hook: never echoes untrusted tracker content into a command', () => {
-  // SECURITY: even though the legacy hook regex-parses Markdown, it writes its
-  // output as JSON.stringify({ additionalContext }) — the additionalContext is
-  // a DATA value, never concatenated into a shell command. A malicious tracker
-  // with shell metacharacters must NOT break out of the JSON string. We assert
-  // the output parses back to JSON and the dangerous payload survives as inert
-  // text (it is reminder content, not an executed command).
-  const evil = '## Current Step: `; rm -rf /; echo pwned`';
-  const dir = mkdtempSync(path.join(os.tmpdir(), 'saga-w5a8-evil-'));
-  const trackerPath = path.join(dir, 'tracker.md');
-  writeFileSync(trackerPath, evil, 'utf8');
-  try {
-    const out = runLegacyHook(
-      { SAGA_PROCESS_TRACKER_PATH: trackerPath },
-      '',
-    );
-    assert.notEqual(out, '{}', 'hook should have produced a reminder');
-    const parsed = JSON.parse(out);
-    assert.equal(typeof parsed.additionalContext, 'string');
-    // The shell metacharacters MUST appear only as inert text inside the
-    // JSON string value — they are not executed by the hook (it never spawns).
-    assert.ok(parsed.additionalContext.includes('rm -rf'));
-    assert.ok(parsed.additionalContext.includes('Current step: '));
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-test('fixture/legacy-hook: consumes hook stdin and exits 0 on read failure', () => {
-  // The hook reads stdin (the tool event JSON). A broken stdin must not crash
-  // it — it writes '{}' and exits 0 so the agent driver never blocks.
-  const out = runLegacyHook({}, null, true);
-  assert.equal(out, '{}');
 });
 
 // --- §1 Workspace placeholder filling (existing surface, always present) ----
@@ -956,41 +924,6 @@ function cleanupDb(ctx) {
 
 function tableColumns(db, table) {
   return db.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name);
-}
-
-/**
- * Run the legacy tracker-reminder hook with controlled stdin/env and return its
- * stdout. `stdin=null` + `breakStdin=true` simulates a broken stdin read.
- */
-function runLegacyHook(env, stdin, breakStdin = false) {
-  const childEnv = { ...process.env, ...env };
-  // The hook keys off SAGA_PROCESS_TRACKER_PATH; clear any inherited value so
-  // the "absent" case is deterministic.
-  delete childEnv.SAGA_PROCESS_TRACKER_PATH;
-  delete childEnv.SAGA_PROCESS_CHECKLIST_PATHS;
-  Object.assign(childEnv, env);
-  try {
-    if (breakStdin) {
-      // Broken stdin: do not write anything; the hook catches and exits 0.
-      return execFileSync(process.execPath, [LEGACY_HOOK_PATH], {
-        env: childEnv,
-        input: '',
-        encoding: 'utf8',
-        timeout: 10000,
-      });
-    }
-    return execFileSync(process.execPath, [LEGACY_HOOK_PATH], {
-      env: childEnv,
-      input: stdin ?? '',
-      encoding: 'utf8',
-      timeout: 10000,
-    });
-  } catch (e) {
-    // The hook writes '{}' and exits 0 on every defensive path; if the process
-    // somehow exits non-zero we surface the empty-JSON contract the driver
-    // depends on rather than crashing the test runner.
-    return '{}';
-  }
 }
 
 /**

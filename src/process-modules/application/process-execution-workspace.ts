@@ -6,6 +6,15 @@
  * assets safely, copying them into a project-scoped workspace, filling known
  * machine bindings and returning exact paths for the prompt and hook.
  *
+ * W13-A2 legacy-removal note: the global-skill-root special-case paths that
+ * previously lived here (resolving skills from a global skill root or built-in
+ * catalog) are GONE. Pinned-installation skill/template resource resolution
+ * now lives in `workspace-projection.ts` (W5-A1, via
+ * `buildWorkspaceProjection`). This file keeps ONLY the legacy claude-worker
+ * path that materializes tracker templates from `workspaceRoot` — the legacy
+ * `legacy-claude-worker-executor-factory.ts` is still wired and active. When
+ * that factory is retired, this file can be deleted entirely.
+ *
  * No module-specific symbol or path is imported here.
  */
 

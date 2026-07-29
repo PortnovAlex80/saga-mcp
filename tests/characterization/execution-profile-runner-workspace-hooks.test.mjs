@@ -11,17 +11,18 @@
  */
 
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync, readdirSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { spawnSync } from 'node:child_process';
 import test from 'node:test';
 
 import { resolveExecutionProfile, resolveProtocolSkill, resolveSemanticSkill } from '../../dist/process-modules/application/execution-profile-resolver.js';
 import { prepareProcessExecutionWorkspace } from '../../dist/process-modules/application/process-execution-workspace.js';
 
 const repoRoot = path.resolve(import.meta.dirname, '..', '..');
-const reminderHookPath = path.resolve(repoRoot, 'tracker-reminder.mjs');
+// W13-A2: the legacy tracker-reminder.mjs hook path constant was removed
+// along with the file (replaced by tracker-view/structured-context-hook.mjs).
+// The full section-4 characterization of the legacy hook was deleted too.
 
 // =============================================================================
 // 1. execution-profile-resolver.ts — exact-match only (Wave 13 removed prefix/first-match)
@@ -670,240 +671,15 @@ test('claude-runner launch: §13.17 FIXED — profile allowedTools narrows Claud
 });
 
 // =============================================================================
-// 4. tracker-reminder.mjs — PostToolUse hook
+// 4. PostToolUse context hook — characterization removed (W13-A2)
 // =============================================================================
 //
-// tracker-reminder.mjs is a script, not a module. We invoke it via `node` as a
-// subprocess and read its stdout JSON. The hook reads SAGA_PROCESS_TRACKER_PATH
-// and SAGA_PROCESS_CHECKLIST_PATHS from env and writes JSON to stdout.
-
-function runReminderHook({ trackerPath, checklistPaths, stdin = '{}' }) {
-  const env = {
-    ...process.env,
-    SAGA_PROCESS_TRACKER_PATH: trackerPath ?? '',
-    SAGA_PROCESS_CHECKLIST_PATHS: checklistPaths ?? '',
-  };
-  const result = spawnSync(process.execPath, [reminderHookPath], {
-    env,
-    input: stdin,
-    encoding: 'utf8',
-    timeout: 10000,
-  });
-  return result;
-}
-
-test('tracker-reminder: emits reminder with file/step/checkboxes from env-bound tracker path', () => {
-  const tmp = mkdtempSync(path.join(os.tmpdir(), 'saga-w0a2-hook-'));
-  try {
-    const tracker = path.join(tmp, 'stage-tracker.md');
-    writeFileSync(tracker, [
-      '# Stage Tracker',
-      '',
-      '## Current Step: Build the proposal call',
-      '',
-      'Progress:',
-      '- [x] Read the assigned task',
-      '- [x] Sketch problem statement',
-      '- [ ] Compose proposal JSON',
-      '- [ ] Submit via proposal_submit',
-      '',
-    ].join('\n'));
-    const r = runReminderHook({ trackerPath: tracker });
-    assert.equal(r.status, 0, `hook exited non-zero: ${r.stderr}`);
-    const out = JSON.parse(r.stdout);
-    assert.ok('additionalContext' in out, 'additionalContext missing');
-    const c = out.additionalContext;
-    assert.match(c, /PROCESS TRACKER REMINDER/);
-    assert.match(c, new RegExp(`Exact file: ${tracker.replace(/\\/g, '\\\\')}`));
-    assert.match(c, /Current step: Build the proposal call/);
-    assert.match(c, /Read the assigned task/);
-    assert.match(c, /Sketch problem statement/);
-    assert.match(c, /Compose proposal JSON/);   // next unchecked
-    // Already-completed and not-yet-next items behave as expected:
-    assert.doesNotMatch(c, /Submit via proposal_submit/); // not the FIRST unchecked
-  } finally {
-    rmSync(tmp, { recursive: true, force: true });
-  }
-});
-
-test('tracker-reminder: emits {} for missing SAGA_PROCESS_TRACKER_PATH', () => {
-  const r = runReminderHook({ trackerPath: '' });
-  assert.equal(r.status, 0);
-  assert.equal(r.stdout, '{}');
-});
-
-test('tracker-reminder: emits {} for relative tracker path (must be absolute)', () => {
-  // SURPRISING defense (§13.5): the hook REQUIRES an absolute path. A relative
-  // path — even if it would resolve to an existing file — yields {}. This is
-  // deliberate fail-closed: it prevents a worker whose cwd changed from
-  // silently reading the wrong tracker.
-  const r = runReminderHook({ trackerPath: 'docs/some-tracker.md' });
-  assert.equal(r.status, 0);
-  assert.equal(r.stdout, '{}');
-});
-
-test('tracker-reminder: emits {} for absolute-but-nonexistent tracker path', () => {
-  const r = runReminderHook({ trackerPath: path.join(os.tmpdir(), 'definitely-not-here.md') });
-  assert.equal(r.status, 0);
-  assert.equal(r.stdout, '{}');
-});
-
-test('tracker-reminder: emits {} when tracker file exists but is unreadable', () => {
-  // Pointing at a directory triggers readFileSync throw → caught → '{}'.
-  const tmp = mkdtempSync(path.join(os.tmpdir(), 'saga-w0a2-dir-'));
-  try {
-    const r = runReminderHook({ trackerPath: tmp });
-    assert.equal(r.status, 0);
-    assert.equal(r.stdout, '{}');
-  } finally {
-    rmSync(tmp, { recursive: true, force: true });
-  }
-});
-
-test('tracker-reminder: SURPRISING — does NOT scan docs/, only the exact env path is read', () => {
-  // SURPRISING (§13.5): even if docs/ contains a tempting stage tracker file,
-  // the hook ignores it because SAGA_PROCESS_TRACKER_PATH is empty/missing.
-  // This is the explicit anti-scan invariant. We construct a fake docs/ tree
-  // and assert the hook still emits {} when the env path is unset.
-  const tmp = mkdtempSync(path.join(os.tmpdir(), 'saga-w0a2-noscan-'));
-  try {
-    const fakeDocs = path.join(tmp, 'docs', 'discovery', 'projects', '99');
-    mkdirSync(fakeDocs, { recursive: true });
-    const tempting = path.join(fakeDocs, 'project-99-discovery-stage-1234.md');
-    writeFileSync(tempting, [
-      '## Current Step: TEMPTING-NEVER-EMITTED',
-      '- [ ] Tempting unchecked',
-    ].join('\n'));
-    // Run with cwd inside tmp but no env path → must NOT discover the file.
-    const r = spawnSync(process.execPath, [reminderHookPath], {
-      cwd: tmp,
-      env: { ...process.env, SAGA_PROCESS_TRACKER_PATH: '', SAGA_PROCESS_CHECKLIST_PATHS: '' },
-      input: '{}',
-      encoding: 'utf8',
-      timeout: 10000,
-    });
-    assert.equal(r.status, 0);
-    assert.equal(r.stdout, '{}');
-  } finally {
-    rmSync(tmp, { recursive: true, force: true });
-  }
-});
-
-test('tracker-reminder: checklist paths are read from SAGA_PROCESS_CHECKLIST_PATHS (path-delimited)', () => {
-  const tmp = mkdtempSync(path.join(os.tmpdir(), 'saga-w0a2-cl-'));
-  try {
-    const tracker = path.join(tmp, 'stage-tracker.md');
-    writeFileSync(tracker, '## Current Step: step1\n- [ ] todo\n');
-    const cl1 = path.join(tmp, 'cl-1.md');
-    const cl2 = path.join(tmp, 'cl-2.md');
-    writeFileSync(cl1, '# c1');
-    writeFileSync(cl2, '# c2');
-    // Use path.delimiter so the test is correct on both POSIX (:) and win32 (;).
-    const r = runReminderHook({
-      trackerPath: tracker,
-      checklistPaths: [cl1, cl2].join(path.delimiter),
-    });
-    const out = JSON.parse(r.stdout);
-    assert.match(out.additionalContext, new RegExp(`Checklists: .*${cl1.replace(/\\/g, '\\\\')}.*`));
-    assert.match(out.additionalContext, new RegExp(`Checklists: .*${cl2.replace(/\\/g, '\\\\')}.*`));
-  } finally {
-    rmSync(tmp, { recursive: true, force: true });
-  }
-});
-
-test('tracker-reminder: checklist section is omitted entirely when env var is empty', () => {
-  const tmp = mkdtempSync(path.join(os.tmpdir(), 'saga-w0a2-nocl-'));
-  try {
-    const tracker = path.join(tmp, 'stage-tracker.md');
-    writeFileSync(tracker, '## Current Step: step1\n- [ ] todo\n');
-    const r = runReminderHook({ trackerPath: tracker, checklistPaths: '' });
-    const out = JSON.parse(r.stdout);
-    assert.doesNotMatch(out.additionalContext, /Checklists:/);
-  } finally {
-    rmSync(tmp, { recursive: true, force: true });
-  }
-});
-
-test('tracker-reminder: Current Step fallback chain — header → yaml-line → unknown', () => {
-  const tmp = mkdtempSync(path.join(os.tmpdir(), 'saga-w0a2-step-'));
-  try {
-    // 1. Header form: `## Current Step: <value>`
-    const t1 = path.join(tmp, 'header.md');
-    writeFileSync(t1, '## Current Step: Header Form\n');
-    assert.match(JSON.parse(runReminderHook({ trackerPath: t1 }).stdout).additionalContext,
-      /Current step: Header Form/);
-
-    // 2. YAML-ish line form: `- current_step: <value>` (with optional backticks)
-    const t2 = path.join(tmp, 'yaml.md');
-    writeFileSync(t2, '- current_step: `YAML Form`\n');
-    assert.match(JSON.parse(runReminderHook({ trackerPath: t2 }).stdout).additionalContext,
-      /Current step: YAML Form/);
-
-    // 3. Neither → 'unknown'.
-    const t3 = path.join(tmp, 'none.md');
-    writeFileSync(t3, '# just a title\nnothing useful\n');
-    assert.match(JSON.parse(runReminderHook({ trackerPath: t3 }).stdout).additionalContext,
-      /Current step: unknown/);
-  } finally {
-    rmSync(tmp, { recursive: true, force: true });
-  }
-});
-
-test('tracker-reminder: SURPRISING — pending-step regex is case-sensitive (- [ ]) but done-step regex is case-insensitive (- [X])', () => {
-  // SURPRISING (§13.5): the two checkbox regexes have different flags:
-  //   doneSteps: /- \[x\].+/gi   (case-insensitive: matches [x] and [X])
-  //   pendingSteps: /- \[ \].+/g (NO i flag: only the literal lower-case space)
-  // A pending checkbox written as `- [ ]` matches; one written as `- [  ]`
-  // (double space, common authoring mistake) does not. And an upper-case
-  // variant of done like `- [X]` matches but there is no `- [O]` pending form.
-  const tmp = mkdtempSync(path.join(os.tmpdir(), 'saga-w0a2-cb-'));
-  try {
-    const tracker = path.join(tmp, 'stage-tracker.md');
-    writeFileSync(tracker, [
-      '## Current Step: s1',
-      '- [x] lower-done',
-      '- [X] UPPER-DONE',
-      '- [ ] pending',
-    ].join('\n'));
-    const c = JSON.parse(runReminderHook({ trackerPath: tracker }).stdout).additionalContext;
-    // Both done casings are recognized (2 completed).
-    assert.match(c, /Completed: lower-done \| UPPER-DONE/);
-    // Pending picks the only `- [ ]` line.
-    assert.match(c, /Next unchecked step: pending/);
-  } finally {
-    rmSync(tmp, { recursive: true, force: true });
-  }
-});
-
-test('tracker-reminder: checkbox lines truncated to 100 chars', () => {
-  const tmp = mkdtempSync(path.join(os.tmpdir(), 'saga-w0a2-trunc-'));
-  try {
-    const tracker = path.join(tmp, 'stage-tracker.md');
-    const longText = 'X'.repeat(200);
-    writeFileSync(tracker, `## Current Step: s\n- [ ] ${longText}\n`);
-    const c = JSON.parse(runReminderHook({ trackerPath: tracker }).stdout).additionalContext;
-    // .slice(0, 100) truncates the step text to exactly 100 chars.
-    assert.match(c, new RegExp(`Next unchecked step: ${'X'.repeat(100)}`));
-    assert.doesNotMatch(c, new RegExp(`${'X'.repeat(101)}`));
-  } finally {
-    rmSync(tmp, { recursive: true, force: true });
-  }
-});
-
-test('tracker-reminder: hook still emits reminder when stdin is empty (readFileSync(0) may fail but is swallowed)', () => {
-  // The hook reads stdin via readFileSync(0,...) wrapped in try/catch. When
-  // stdin is closed/empty the read throws but exit is NOT forced (the catch
-  // only process.exit(0)s when the read throws; on success it continues). We
-  // feed a minimal valid JSON object to satisfy the read.
-  const tmp = mkdtempSync(path.join(os.tmpdir(), 'saga-w0a2-stdin-'));
-  try {
-    const tracker = path.join(tmp, 't.md');
-    writeFileSync(tracker, '## Current Step: s\n- [ ] p\n');
-    const r = runReminderHook({ trackerPath: tracker, stdin: '{"tool":"Edit"}' });
-    assert.equal(r.status, 0);
-    const out = JSON.parse(r.stdout);
-    assert.match(out.additionalContext, /Current step: s/);
-  } finally {
-    rmSync(tmp, { recursive: true, force: true });
-  }
-});
+// W13-A2 deleted the legacy tracker-reminder.mjs (C027 violation — regex
+// parsing of Markdown checkboxes) and wired tracker-view/structured-context-hook.mjs
+// (W5-A5) in its place. The full characterization of the legacy hook's exact
+// regex semantics, fail-closed surface, env vars (SAGA_PROCESS_TRACKER_PATH /
+// SAGA_PROCESS_CHECKLIST_PATHS), and 100-char truncation was removed with it.
+// The replacement hook's contract is covered by
+// tests/execution/structured-context-hook.test.mjs (reads
+// SAGA_AGENT_ASSISTANCE_PATH, bounded + deduped, fail-closed '{}', never scans
+// docs/, escapes untrusted text).

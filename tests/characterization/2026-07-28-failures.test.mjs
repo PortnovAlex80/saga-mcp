@@ -293,10 +293,15 @@ test('fixture mutable-tracker: tracker Markdown is worker-maintained, reminder i
     workspace.includes('refreshMarkdownMachineBindings'),
     'workspace must refresh machine bindings in-place into the Markdown',
   );
-  const reminder = readSrc('tracker-reminder.mjs');
+  // W13-A2: the legacy tracker-reminder.mjs (C027 violation — regex Markdown
+  // parsing) was DELETED and replaced by tracker-view/structured-context-hook.mjs
+  // (W5-A5). The new hook reads SAGA_AGENT_ASSISTANCE_PATH (a STRUCTURED JSON
+  // projection) and never parses Markdown. It is still a generic
+  // additionalContext injector, NOT a context-blocker.
+  const reminder = readSrc('tracker-view/structured-context-hook.mjs');
   assert.ok(
-    reminder.includes('SAGA_PROCESS_TRACKER_PATH'),
-    'reminder must read the env-bound tracker path',
+    reminder.includes('SAGA_AGENT_ASSISTANCE_PATH'),
+    'replacement structured-context hook must read the env-bound assistance path',
   );
   // Reminder is a generic additionalContext injector, NOT a context-blocker.
   assert.ok(

@@ -46,8 +46,11 @@
 // the env path is unset/relative/nonexistent (identical fail-closed surface to
 // the legacy hook so the platform adapter needs no change).
 //
-// The legacy tracker-reminder.mjs stays as fallback until the Wave 5 gate
-// passes (spec §4 anti-scope). This file is the forward path.
+// W13-A2: the legacy tracker-reminder.mjs has been DELETED; this file is now
+// the sole PostToolUse context hook wired by claude-runner.mjs. Until W5-A6
+// wires the W5-A4 AgentAssistanceRenderer to write agent-assistance.json at
+// runtime, the hook fails closed to '{}' — the same surface the platform
+// adapter already depends on (no scan, no shell injection, always exit 0).
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
