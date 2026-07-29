@@ -166,6 +166,18 @@ const KNOWN_VIOLATIONS = [
     rule: 2,
     reason: REASON.modulePorts,
   },
+  // W8-A6: the SQLite-backed package port adapter bridges the module-local
+  // FormalizationManagedProductionPort to the shared ManagedProductionLedger.
+  // This is the module-local adapter that ISOLATES the substrate — the whole
+  // point of the ports/adapter split. Same classification as the sibling
+  // sqlite-formalization-kernel.ts. Wave 11 cutover wires the port-injected
+  // path and removes the legacy formalization-installation.ts getDb() entry.
+  {
+    source: 'src/process-modules/modules/formalization/package/ports/sqlite-formalization-package-adapters.ts',
+    target: 'src/process-modules/persistence/sqlite-managed-production-ledger.ts',
+    rule: 2,
+    reason: REASON.modulePorts,
+  },
 
   // ---- Rule 3: lifecycle scenario imports module implementation ----
   {
