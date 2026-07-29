@@ -283,6 +283,12 @@ export class LmNodeExecutor implements NodeExecutor {
           ? runInputObj.objective
           : (node.description || node.label);
       const recoveryFeedback = readRecoveryFeedback(ctx.input);
+      const effectiveAllowedTools = [
+        ...new Set([
+          ...profile.allowedTools,
+          ...(recoveryFeedback?.issue.requiredTools ?? []),
+        ]),
+      ];
       const objective = recoveryFeedback
         ? `${baseObjective}\n\nRecovery attempt ${recoveryFeedback.attempt}/`
           + `${recoveryFeedback.maxAttempts}: ${recoveryFeedback.issue.summary}. `
@@ -369,7 +375,7 @@ export class LmNodeExecutor implements NodeExecutor {
             authorityScope: {
               snapshot_ref: snapshotRef,
               scope: profile.semanticSkill,
-              allowed_tools: [...profile.allowedTools],
+              allowed_tools: effectiveAllowedTools,
               enforcement: 'runtime',
             },
             // outputSchema here is the WorkIntent's OWN output contract

@@ -406,7 +406,7 @@ test('LM active execution pauses without constructing or starting another worker
     executionSkill: 'test-worker',
     reviewSkill: 'test-reviewer',
     semanticSkill: 'test-work',
-    allowedTools: [],
+    allowedTools: ['task_get'],
     outputSchema: { id: 'test.output.v1' },
     executionMode: 'workspace',
     retryPolicy: { maxAttempts: 2 },
@@ -469,7 +469,23 @@ test('LM active execution pauses without constructing or starting another worker
     processRunId: 1,
     module,
     node: module.flow.nodes[0],
-    input: { objective: 'work' },
+    input: {
+      schema: 'saga3.recovery-feedback.v1',
+      bindings: {
+        recoveryFeedback: {
+          schemaVersion: 'saga3.recovery-feedback.v1',
+          caseId: 9,
+          attempt: 1,
+          maxAttempts: 2,
+          issueRef: 'recovery-issue:9',
+          issueHash: 'a'.repeat(64),
+          issue: {
+            summary: 'remove the invalid trace',
+            requiredTools: ['trace_delete'],
+          },
+        },
+      },
+    },
     frame: { runInput: {}, productions: {}, receipts: {} },
     heartbeat() {},
     initiatedBy: 'test',
@@ -478,6 +494,11 @@ test('LM active execution pauses without constructing or starting another worker
   assert.equal(result.runtimeEvent, 'paused');
   assert.equal(result.receipt.executionId, 'execution-active');
   assert.equal(projectedPlan.task.reviewSkill, 'test-reviewer');
+  assert.deepEqual(
+    projectedPlan.intent.authorityScope.allowed_tools,
+    ['task_get', 'trace_delete'],
+    'recovery-only capabilities must be added to the frozen attempt authority',
+  );
   assert.equal(factoryCalls, 0);
   assert.equal(statusTransitions, 0);
 });

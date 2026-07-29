@@ -70,6 +70,12 @@ export interface RecoveryIssue {
   acceptanceCriteria: readonly string[];
   allowedChanges: readonly string[];
   /**
+   * Additional capabilities required only for this repair attempt. The
+   * runtime unions these with the producer profile when freezing authority;
+   * ordinary executions do not receive them.
+   */
+  requiredTools?: readonly string[];
+  /**
    * Optional module-owned immutable context needed by the repair worker.
    * Generic recovery persists and forwards it without interpreting its keys.
    */

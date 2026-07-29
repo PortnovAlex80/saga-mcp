@@ -54,7 +54,12 @@ import { assertCanonicalSerializable } from '../../domain/spi/canonical-serializ
 import { computeDependencyLock } from './dependency-lock.js';
 // Canonical types from sibling lanes (W2-A1 store, W2-A2 installation/repo).
 // Re-exported below for callers; imported here for use in method signatures.
-import type { ResourceBlob, StoredModulePackage, ModulePackageStore } from './package-store.js';
+import {
+  computePackageDigest,
+  type ResourceBlob,
+  type StoredModulePackage,
+  type ModulePackageStore,
+} from './package-store.js';
 import type { ModuleInstallationRecord } from './installation.js';
 import type { ModuleInstallationRepository } from '../persistence/installation-repository.js';
 
@@ -309,6 +314,33 @@ export class PackageInstaller {
     // entries carry real resource digests too).
     const dependencyLock = computeDependencyLock(stampedManifest);
 
+    // Immutable identity, idempotency and replay verification belong here,
+    // not in individual composition roots. Reusing name@version without
+    // comparing the attempted digest would silently hide source mutation.
+    const attemptedPackageDigest = computePackageDigest(stampedManifest, resources);
+    const moduleName = stampedManifest.definition.identity.name;
+    const moduleVersion = stampedManifest.definition.identity.version;
+    const existingActive = await repo.getActiveByNameVersion(moduleName, moduleVersion);
+    if (existingActive !== null) {
+      if (existingActive.packageDigest !== attemptedPackageDigest) {
+        throw new PackageInstallerError(
+          MODULE_INSTALLATION_VERSION_COLLISION,
+          `cannot install ${moduleName}@${moduleVersion}: installation id=${existingActive.id} already holds the active slot with a different package_digest ('${existingActive.packageDigest}' vs '${attemptedPackageDigest}')`,
+          { existing: existingActive, attempted: attemptedPackageDigest },
+        );
+      }
+      const verified = await store.verify(existingActive.packageDigest);
+      if (!verified) {
+        try { await repo.markCorrupt(existingActive.id); } catch { /* preserve primary error */ }
+        throw new PackageInstallerError(
+          MODULE_INSTALLATION_CORRUPT,
+          `active installation id=${existingActive.id} references corrupt package ${existingActive.packageDigest}`,
+          { existing: existingActive },
+        );
+      }
+      return existingActive;
+    }
+
     // Step 5 — store bytes (content-addressed) using the STAMPED manifest so
     // the stored manifest.json carries real resource digests (matching what
     // verify will recompute on read). The store computes and returns
@@ -324,16 +356,6 @@ export class PackageInstaller {
     // code, not `MODULE_INSTALLATION_ACTIVATE_FAILED`). The spec leaves the
     // collision decision to the caller: development mode MUST use a prerelease
     // version (spec §4). The installer does NOT auto-retire-and-replace.
-    const moduleName = stampedManifest.definition.identity.name;
-    const moduleVersion = stampedManifest.definition.identity.version;
-    const existingActive = await repo.getActiveByNameVersion(moduleName, moduleVersion);
-    if (existingActive !== null && existingActive.packageDigest !== stored.packageDigest) {
-      throw new PackageInstallerError(
-        MODULE_INSTALLATION_VERSION_COLLISION,
-        `cannot install ${moduleName}@${moduleVersion}: installation id=${existingActive.id} already holds the active slot with a different package_digest ('${existingActive.packageDigest}' vs '${stored.packageDigest}')`,
-        { existing: existingActive, attempted: stored.packageDigest },
-      );
-    }
     let staged: ModuleInstallationRecord;
     try {
       staged = await repo.insert({

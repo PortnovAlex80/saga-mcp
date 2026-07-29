@@ -509,6 +509,43 @@ test('installPackage: packageDigest stable for identical input (deterministic st
   assert.equal(r1.packageDigest, computePackageDigest(manifest, resources));
 });
 
+test('installPackage: identical active reinstall is idempotent and reuses the same row', async () => {
+  const store = createFakeStore();
+  const repo = createFakeRepo();
+  const installer = new PackageInstaller();
+  const manifest = buildMarketingManifest();
+  const resources = buildMarketingResources();
+
+  const first = await installer.installPackage(manifest, resources, { store, repo });
+  const replay = await installer.installPackage(manifest, resources, { store, repo });
+
+  assert.equal(replay.id, first.id);
+  assert.equal(replay.packageDigest, first.packageDigest);
+  assert.equal((await repo.listActive()).length, 1);
+  assert.equal(repo._rows().length, 1, 'idempotent replay must not create a staged duplicate');
+});
+
+test('installPackage: identical active reinstall fails closed when stored bytes are corrupt', async () => {
+  const store = createFakeStore();
+  const repo = createFakeRepo();
+  const installer = new PackageInstaller();
+  const manifest = buildMarketingManifest();
+  const resources = buildMarketingResources();
+
+  const first = await installer.installPackage(manifest, resources, { store, repo });
+  store._corrupt(first.packageDigest);
+
+  await assert.rejects(
+    () => installer.installPackage(manifest, resources, { store, repo }),
+    (err) => {
+      assert.ok(err instanceof PackageInstallerError);
+      assert.equal(err.code, MODULE_INSTALLATION_CORRUPT);
+      return true;
+    },
+  );
+  assert.equal(repo._rows().find(row => row.id === first.id)?.status, 'corrupt');
+});
+
 test('installPackage: negative — same (name,version) DIFFERENT resources → VERSION_COLLISION', async () => {
   const store = createFakeStore();
   const repo = createFakeRepo();

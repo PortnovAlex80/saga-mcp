@@ -33,6 +33,7 @@ import {
   installPackage,
   type ModuleInstallationRecord,
   type ResourceBlob,
+  type StoredModulePackage,
 } from './index.js';
 import { asModuleInstallationId } from './domain/installation.js';
 
@@ -103,6 +104,8 @@ export interface ProductionInstallation {
   readonly store: FilesystemModulePackageStore;
   /** One record per production module, keyed by module name. */
   readonly records: ReadonlyMap<string, ModuleInstallationRecord>;
+  /** Verified immutable package snapshots keyed by package digest. */
+  readonly packages: ReadonlyMap<string, StoredModulePackage>;
 }
 
 /**
@@ -127,23 +130,18 @@ export async function installProductionModules(
   );
   const repository = new SqliteModuleInstallationRepository(db);
   const records = new Map<string, ModuleInstallationRecord>();
+  const packages = new Map<string, StoredModulePackage>();
 
   for (const manifest of PRODUCTION_MODULE_MANIFESTS) {
-    const { name, version } = manifest.definition.identity;
+    const { name } = manifest.definition.identity;
     const resources = readResourceBlobs(manifest, repoRoot);
 
-    // Idempotency pre-check: if an active record for this name@version already
-    // exists with the SAME packageDigest, reuse it (no re-install). A DIFFERENT
-    // digest under the same name@version is an immutable-identity violation —
-    // let installPackage throw MODULE_INSTALLATION_VERSION_COLLISION loudly.
-    const existing = repository.getActiveByNameVersion(name, version);
-    if (existing) {
-      records.set(name, existing);
-      continue;
-    }
-
+    // The installer owns immutable identity, idempotency and replay
+    // verification. A name@version-only shortcut would hide changed source
+    // bytes and corrupt package-store entries on restart.
     const record = await installPackage(manifest, resources, { store, repo: repository });
     records.set(name, record);
+    packages.set(record.packageDigest, await store.read(record.packageDigest));
   }
 
   // WorkspacePackageRegistry = PackageRegistry & InstallationRecordById.
@@ -155,5 +153,5 @@ export async function installProductionModules(
   const registry: WorkspacePackageRegistry = Object.assign(baseRegistry, {
     getById: (id: number) => repository.getById(asModuleInstallationId(id)),
   });
-  return { registry, repository, store, records };
+  return { registry, repository, store, records, packages };
 }

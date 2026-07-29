@@ -1027,6 +1027,7 @@ function assertRecoveryIssue(issue: RecoveryIssue): void {
     || !Array.isArray(issue.subjectRefs)
     || !Array.isArray(issue.acceptanceCriteria)
     || !Array.isArray(issue.allowedChanges)
+    || (issue.requiredTools !== undefined && !Array.isArray(issue.requiredTools))
   ) {
     throw new Error('GenericFlowExecutor: malformed RecoveryIssue');
   }

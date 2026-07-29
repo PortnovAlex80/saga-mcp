@@ -16,6 +16,7 @@ export interface KernelRecoveryIssueSpec {
   readonly triggerEvents: readonly string[];
   readonly acceptanceCriteria: readonly string[];
   readonly allowedChanges: readonly string[];
+  readonly requiredTools?: readonly string[];
   readonly recoveryEvent?: string;
   readonly reasonBindings?: readonly string[];
   readonly subjectIdBindings?: readonly string[];
@@ -129,6 +130,7 @@ export function applyKernelRecoveryIssue(
     subjectRefs,
     acceptanceCriteria: spec.acceptanceCriteria,
     allowedChanges: spec.allowedChanges,
+    requiredTools: spec.requiredTools,
     context: {
       processRunId: handlerContext.processRunId,
       originalEvent: result.event,

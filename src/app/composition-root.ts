@@ -203,6 +203,7 @@ function selectEngine(
       ? createLegacyClaudeWorkerExecutorFactory({
         modelRouteReader: epicId => persistence.episodes.readWorkerModelRoute(epicId),
         packageRegistry: productLifecycle.packageInstallation.registry,
+        packageSnapshots: productLifecycle.packageInstallation.packages,
         resolveInstallationId: assignment => {
           const meta = taskMetadataRecord(assignment);
           const runId = meta.process_run_id ?? nestedProcessWorkspaceField(meta, 'process_run_id');
@@ -214,6 +215,16 @@ function selectEngine(
           // ModuleInstallationId is a branded number; the DB PK is a plain number.
           const iid = row?.installation_id ?? null;
           return iid === null ? null : asModuleInstallationId(iid);
+        },
+        resolvePackageDigest: assignment => {
+          const meta = taskMetadataRecord(assignment);
+          const runId = meta.process_run_id ?? nestedProcessWorkspaceField(meta, 'process_run_id');
+          const n = Number(runId);
+          if (!Number.isFinite(n) || n <= 0) return null;
+          const row = getDb().prepare(
+            'SELECT package_digest FROM saga3_process_runs WHERE id=?',
+          ).get(n) as { package_digest?: string | null } | undefined;
+          return row?.package_digest ?? null;
         },
         resolveNodeId: assignment => {
           const meta = taskMetadataRecord(assignment);

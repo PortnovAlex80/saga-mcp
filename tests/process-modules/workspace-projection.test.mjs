@@ -250,8 +250,8 @@ test('buildWorkspaceProjection resolves resources from the pinned installation r
   assert.equal(proj.skills.executionSkillName, EXECUTION_SKILL_NAME);
   assert.equal(proj.skills.executionSkillResource?.logicalId, EXECUTION_SKILL_NAME);
   assert.equal(
-    proj.skills.executionSkillResource?.absolutePath,
-    `${record.storeLocation}/skills/${EXECUTION_SKILL_NAME}.md`,
+    proj.skills.executionSkillResource?.relativePath,
+    `skills/${EXECUTION_SKILL_NAME}.md`,
   );
   assert.equal(proj.skills.executionSkillResource?.kind, 'skill');
 
@@ -260,9 +260,9 @@ test('buildWorkspaceProjection resolves resources from the pinned installation r
   assert.equal(proj.skills.reviewerSkillResource?.logicalId, REVIEWER_SKILL_NAME);
   assert.equal(proj.skills.reviewerSkillResource?.kind, 'reviewer-skill');
   assert.notEqual(
-    proj.skills.executionSkillResource?.absolutePath,
-    proj.skills.reviewerSkillResource?.absolutePath,
-    'reviewer skill path differs from execution skill path',
+    proj.skills.executionSkillResource?.logicalId,
+    proj.skills.reviewerSkillResource?.logicalId,
+    'reviewer skill identity differs from execution skill identity',
   );
 
   // Templates include both 'template' and 'mcp-call-template'.
@@ -282,7 +282,7 @@ test('buildWorkspaceProjection resolves resources from the pinned installation r
   assert.equal(proj.allResources.length, RESOURCE_INDEX.length);
 });
 
-test('pinned record is the SOLE source: two different storeLocations yield different absolutePaths', () => {
+test('workspace projection does not expose adapter-private package paths', () => {
   // The W5-A1 core invariant — same nodeId/profile, different pinned
   // installation → different skill bytes location. No global skill root.
   const recordA = buildRecord({ id: 1, storeLocation: '/packages/A' });
@@ -292,19 +292,16 @@ test('pinned record is the SOLE source: two different storeLocations yield diffe
   const projA = buildWorkspaceProjection(1, 'write-prd', registry);
   const projB = buildWorkspaceProjection(2, 'write-prd', registry);
 
-  assert.notEqual(
-    projA.skills.executionSkillResource?.absolutePath,
-    projB.skills.executionSkillResource?.absolutePath,
-    'different pinned installations must yield different skill paths',
+  assert.equal(
+    projA.skills.executionSkillResource?.relativePath,
+    'skills/saga-product.md',
   );
   assert.equal(
-    projA.skills.executionSkillResource?.absolutePath,
-    '/packages/A/skills/saga-product.md',
+    projB.skills.executionSkillResource?.relativePath,
+    'skills/saga-product.md',
   );
-  assert.equal(
-    projB.skills.executionSkillResource?.absolutePath,
-    '/packages/B/skills/saga-product.md',
-  );
+  assert.equal('absolutePath' in projA.skills.executionSkillResource, false);
+  assert.equal('absolutePath' in projB.skills.executionSkillResource, false);
 });
 
 test('a skill named in the profile but NOT shipped in-package surfaces its name only', () => {
@@ -326,21 +323,6 @@ test('a skill named in the profile but NOT shipped in-package surfaces its name 
   );
   // Reviewer skill is still in-package.
   assert.equal(proj.skills.reviewerSkillResource?.logicalId, REVIEWER_SKILL_NAME);
-});
-
-test('absolutePath strips trailing separators from storeLocation and POSIX-joins the relative path', () => {
-  // The package store (W2-A1) produces clean POSIX store locations; the
-  // projection only strips trailing separators and joins the module-relative
-  // resource path with a forward slash. A storeLocation with a trailing '/'
-  // must NOT produce a double slash in the absolute path.
-  const record = buildRecord({ storeLocation: '/var/saga/pkg//' });
-  const registry = fakeRegistry([record]);
-  const proj = buildWorkspaceProjection(42, 'write-prd', registry);
-  assert.equal(
-    proj.skills.executionSkillResource?.absolutePath,
-    '/var/saga/pkg/skills/saga-product.md',
-    'no double slash after trailing-separator strip',
-  );
 });
 
 test('buildWorkspaceProjection is a pure deterministic projection', () => {
@@ -376,8 +358,14 @@ test('throws WORKSPACE_INSTALLATION_NOT_FOUND for an unknown pinned id', () => {
   );
 });
 
-test('throws WORKSPACE_INSTALLATION_NOT_ACTIVE for a retired/legacy installation', () => {
+test('allows a retired installation for exact historical pin replay', () => {
   const registry = fakeRegistry([buildRecord({ status: 'retired' })]);
+  const projection = buildWorkspaceProjection(42, 'write-prd', registry);
+  assert.equal(projection.installationId, 42);
+});
+
+test('throws WORKSPACE_INSTALLATION_NOT_ACTIVE for a staged installation', () => {
+  const registry = fakeRegistry([buildRecord({ status: 'staged' })]);
   assert.throws(
     () => buildWorkspaceProjection(42, 'write-prd', registry),
     (err) => err instanceof WorkspaceProjectionError

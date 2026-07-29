@@ -25,6 +25,7 @@ import { buildWorkspaceProjection } from '../../process-modules/application/work
 import type { WorkspacePackageRegistry } from '../../process-modules/application/workspace-projection.js';
 import { materializePinnedWorkspace } from '../../process-modules/application/pinned-workspace-materializer.js';
 import type { ModuleInstallationId } from '../../process-modules/installation/index.js';
+import type { StoredModulePackage } from '../../process-modules/installation/index.js';
 
 /**
  * ClaudeBoardRunnerOptions is exported from the .mjs runner without a formal
@@ -56,12 +57,16 @@ export interface LegacyClaudeWorkerExecutorFactoryOptions {
    * workspaceRoot tree lookup. Absent or null pin → legacy fallback.
    */
   packageRegistry?: WorkspacePackageRegistry;
+  /** Verified immutable package snapshots keyed by package digest. */
+  packageSnapshots?: ReadonlyMap<string, StoredModulePackage>;
   /**
    * Resolves the pinned module installation id for a claimed assignment.
    * Typically reads task.metadata.process_run_id → saga3_process_runs.installation_id.
    * Returns null when the run is unpinned (legacy path).
    */
   resolveInstallationId?: (assignment: RunnerAssignment) => ModuleInstallationId | null;
+  /** Reads the denormalized package digest frozen on the same ProcessRun. */
+  resolvePackageDigest?: (assignment: RunnerAssignment) => string | null;
   /**
    * Resolves the flow node id for a claimed assignment (needed by
    * buildWorkspaceProjection to locate the LM node's execution profile).
@@ -100,7 +105,9 @@ export function createLegacyClaudeWorkerExecutorFactory(
 ): WorkerExecutorFactory {
   const modelRouteReader = options.modelRouteReader ?? readLegacyModelRoute;
   const packageRegistry = options.packageRegistry;
+  const packageSnapshots = options.packageSnapshots;
   const resolveInstallationIdFn = options.resolveInstallationId;
+  const resolvePackageDigestFn = options.resolvePackageDigest;
   const resolveNodeIdFn = options.resolveNodeId;
   return context => {
     const runnerOptions: RunnerOptions = {
@@ -143,44 +150,65 @@ export function createLegacyClaudeWorkerExecutorFactory(
           );
         }
 
-        // W13-AUDIT §18.9 / bug #4: when a pinned package registry + installation
-        // resolver are wired AND the task resolves to a non-null installation,
-        // materialize the workspace from the immutable package store instead of
-        // the legacy workspaceRoot tree (which broke when workspaceRoot ≠ the
-        // saga-mcp repo root). Feature-detected: absent registry / null pin /
-        // resolver failure → legacy fallback (byte-for-byte pre-Seam-D path).
-        let workspace: ProcessExecutionWorkspace | undefined;
-        let usedPinned = false;
-        if (
-          packageRegistry
-          && typeof resolveInstallationIdFn === 'function'
-          && typeof resolveNodeIdFn === 'function'
-        ) {
-          try {
-            const installationId = resolveInstallationIdFn(input.assignment);
-            const nodeId = resolveNodeIdFn(input.assignment);
-            if (installationId !== null && nodeId) {
-              const projection = buildWorkspaceProjection(installationId, nodeId, packageRegistry);
-              workspace = materializePinnedWorkspace({
-                projection,
-                workspaceRoot: input.workspaceRoot,
-                module: input.resolvedProfile.module,
-                profile: input.resolvedProfile.profile,
-                projectId: input.project.id,
-                epicId,
-                task,
-                executionId: input.assignment.execution_id ?? null,
-                workerId: input.workerId,
-              });
-              usedPinned = true;
-            }
-          } catch {
-            // Pinned resolution failure → fall back to legacy so a corrupt
-            // store / missing pin never hard-blocks a worker spawn.
+        // A non-null installation pin is an integrity boundary: materialize
+        // from verified immutable bytes or fail the worker launch. Genuinely
+        // unpinned historical runs retain the legacy workspace path.
+        const installationId = typeof resolveInstallationIdFn === 'function'
+          ? resolveInstallationIdFn(input.assignment)
+          : null;
+        let resolvedWorkspace: ProcessExecutionWorkspace;
+        if (installationId !== null) {
+          if (
+            !packageRegistry
+            || !packageSnapshots
+            || typeof resolveNodeIdFn !== 'function'
+            || typeof resolvePackageDigestFn !== 'function'
+          ) {
+            throw new Error(
+              `PINNED_WORKSPACE_RUNTIME_NOT_CONFIGURED: installation ${installationId} `
+              + 'requires packageRegistry, packageSnapshots, resolveNodeId and resolvePackageDigest',
+            );
           }
-        }
-        if (!usedPinned) {
-          workspace = prepareProcessExecutionWorkspace({
+          const nodeId = resolveNodeIdFn(input.assignment);
+          if (!nodeId) {
+            throw new Error(
+              `PINNED_WORKSPACE_NODE_REQUIRED: task ${task.id} has installation `
+              + `${installationId} but no process_node_id`,
+            );
+          }
+          const projection = buildWorkspaceProjection(installationId, nodeId, packageRegistry);
+          const expectedPackageDigest = resolvePackageDigestFn(input.assignment);
+          if (
+            !expectedPackageDigest
+            || expectedPackageDigest !== projection.packageDigest
+          ) {
+            throw new Error(
+              `PROCESS_RUN_PIN_DIGEST_MISMATCH: process run expects `
+              + `${expectedPackageDigest ?? '(missing)'} but installation ${installationId} `
+              + `resolves to ${projection.packageDigest}`,
+            );
+          }
+          const storedPackage = packageSnapshots.get(projection.packageDigest);
+          if (!storedPackage) {
+            throw new Error(
+              `PINNED_PACKAGE_SNAPSHOT_MISSING: no verified package snapshot for `
+              + projection.packageDigest,
+            );
+          }
+          resolvedWorkspace = materializePinnedWorkspace({
+            projection,
+            storedPackage,
+            workspaceRoot: input.workspaceRoot,
+            module: input.resolvedProfile.module,
+            profile: input.resolvedProfile.profile,
+            projectId: input.project.id,
+            epicId,
+            task,
+            executionId: input.assignment.execution_id ?? null,
+            workerId: input.workerId,
+          });
+        } else {
+          resolvedWorkspace = prepareProcessExecutionWorkspace({
             workspaceRoot: input.workspaceRoot,
             module: input.resolvedProfile.module,
             profile: input.resolvedProfile.profile,
@@ -191,8 +219,6 @@ export function createLegacyClaudeWorkerExecutorFactory(
             workerId: input.workerId,
           });
         }
-        // By here exactly one of the pinned or legacy branches assigned workspace.
-        const resolvedWorkspace = workspace!;
 
         const rawMetadata = task.metadata;
         let metadata: Record<string, unknown> = {};

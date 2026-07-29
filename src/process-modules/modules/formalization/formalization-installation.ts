@@ -149,6 +149,7 @@ function recoverySpec(
     subject,
     acceptanceCriteria,
     allowedChanges,
+    requiredTools: ['trace_delete'],
     triggerEvents: recoverableEvents,
     reasonBindings: ['reason', 'gap'],
     subjectIdBindings: [

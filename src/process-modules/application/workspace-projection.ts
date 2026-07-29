@@ -183,21 +183,9 @@ export type WorkspacePackageRegistry = PackageRegistry & InstallationRecordById;
 // ---------------------------------------------------------------------------
 
 /**
- * One resource resolved from the pinned installation, with its absolute
- * package-rooted path. `absolutePath` joins the installation's immutable
- * `storeLocation` (the content-addressed package directory, W2-A1) with the
- * resource's module-relative `path` using POSIX separators — the same
- * convention the package store uses on disk. `relativePath` is the verbatim
- * module-relative path from the manifest's `resourceIndex` (POSIX-normalized).
- *
- * Both paths use forward slashes regardless of platform: package resources are
- * declared module-relative POSIX in the manifest, and the content-addressed
- * store location is itself a POSIX-style path. Producing platform-native
- * separators here would make the projection non-deterministic across OSes
- * (a Windows runner vs a Linux runner would yield different `absolutePath`
- * strings for the same pinned record) — violating the "pinned ⇒ identical
- * bytes" contract. Consumers that need a native path call `path.normalize`
- * at the filesystem edge (W5-A6 runner), not here.
+ * One resource identity resolved from the pinned installation. It deliberately
+ * exposes no filesystem path: consumers fetch verified bytes through the
+ * package-store port using the installation package digest and logical id.
  */
 export interface ResolvedWorkspaceResource {
   /** Stable, module-namespaced logical id from the resource index. */
@@ -206,11 +194,6 @@ export interface ResolvedWorkspaceResource {
   readonly kind: ResourceKind;
   /** Verbatim module-relative POSIX path from the resource index. */
   readonly relativePath: string;
-  /**
-   * `storeLocation` + `relativePath`, POSIX-joined. Points at the immutable
-   * byte bundle for this resource under the pinned installation.
-   */
-  readonly absolutePath: string;
   /** Content digest (`sha256Hex`) of the resource bytes, from the index. */
   readonly digest: string;
 }
@@ -290,46 +273,31 @@ export interface WorkspaceProjection {
  * time; this is belt-and-braces so a corrupt/edited manifest can never yield a
  * path that escapes the package root.
  *
- * Returns a POSIX string (forward slashes) for cross-platform determinism —
- * see {@link ResolvedWorkspaceResource.absolutePath}.
+ * Resource paths remain package-relative identities; adapter-private storage
+ * layout never crosses this application boundary.
  */
-function joinPackagePath(storeLocation: string, relativeResourcePath: string): string {
-  if (path.isAbsolute(relativeResourcePath)) {
-    throw new WorkspaceProjectionError(
-      'WORKSPACE_RESOURCE_PATH_ABSOLUTE',
-      `resource path '${relativeResourcePath}' is absolute; package resources must be module-relative`,
-    );
-  }
-  // POSIX join: normalize to forward slashes regardless of platform so the
-  // pinned projection is byte-identical across OSes. We use path.posix (which
-  // is platform-independent) after asserting the relative path is not absolute.
-  const root = storeLocation.replace(/[\\/]+$/, '');
-  const rel = relativeResourcePath.replace(/\\/g, '/').replace(/^\.?\//, '');
-  const joined = path.posix.join(root, rel);
-  // Defense in depth: after join, the relative portion must not escape root.
-  const relAfter = path.posix.relative(root, joined);
-  if (relAfter.startsWith('..') || path.posix.isAbsolute(relAfter)) {
-    throw new WorkspaceProjectionError(
-      'WORKSPACE_RESOURCE_PATH_TRAVERSAL',
-      `resource path '${relativeResourcePath}' escapes the package root '${storeLocation}'`,
-    );
-  }
-  return joined;
-}
-
 /**
- * Build a {@link ResolvedWorkspaceResource} from an index entry + the pinned
- * record's store location. Pure.
+ * Build a resource identity from the immutable index. Consumers read bytes
+ * through ModulePackageStore by package digest; store filesystem layout is an
+ * adapter-private detail and is deliberately not projected as a path.
  */
 function resolveResource(
   entry: ResourceIndexEntry,
-  storeLocation: string,
 ): ResolvedWorkspaceResource {
+  const normalized = entry.path.replace(/\\/g, '/');
+  if (
+    path.posix.isAbsolute(normalized)
+    || normalized.split('/').includes('..')
+  ) {
+    throw new WorkspaceProjectionError(
+      'WORKSPACE_RESOURCE_PATH_TRAVERSAL',
+      `resource path '${entry.path}' is not package-relative`,
+    );
+  }
   return Object.freeze({
     logicalId: entry.logicalId,
     kind: entry.kind,
     relativePath: entry.path,
-    absolutePath: joinPackagePath(storeLocation, entry.path),
     digest: entry.digest,
   });
 }
@@ -426,16 +394,16 @@ export function buildWorkspaceProjection(
   }
 
   // Step 2 — only active installations are selectable for new executions.
-  if (record.status !== 'active') {
+  if (record.status !== 'active' && record.status !== 'retired') {
     throw new WorkspaceProjectionError(
       WORKSPACE_INSTALLATION_NOT_ACTIVE,
-      `${WORKSPACE_INSTALLATION_NOT_ACTIVE}: installation id=${installationId} (${record.name}@${record.version}) has status '${record.status}', expected 'active'`,
+      `${WORKSPACE_INSTALLATION_NOT_ACTIVE}: installation id=${installationId} (${record.name}@${record.version}) has status '${record.status}', expected 'active' or 'retired'`,
     );
   }
 
   // Step 3 — resolve every resource index entry under the immutable package root.
   const allResources: ResolvedWorkspaceResource[] = record.resourceIndex.map(
-    (entry) => resolveResource(entry, record.storeLocation),
+    (entry) => resolveResource(entry),
   );
 
   const manifest = record.manifestSnapshot;

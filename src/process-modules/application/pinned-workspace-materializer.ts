@@ -3,8 +3,8 @@
  *
  * Replaces the legacy `safeAssetPath(workspaceRoot, asset)` resource lookup in
  * `prepareProcessExecutionWorkspace` with a pinned-package source: reads bytes
- * from the immutable content-addressed store (`WorkspaceProjection.storeLocation`
- * + resource `absolutePath`) instead of the project workspace tree. This closes
+ * from a verified `ModulePackageStore.read(packageDigest)` result instead of
+ * reconstructing filesystem paths or reading the project tree. This closes
  * W13-AUDIT bug #4 (`PROCESS_WORKSPACE_ASSET_MISSING` when workspaceRoot ≠ the
  * saga-mcp repo root) and W13-AUDIT §18.9 (resources ship with the owning
  * package, resolved from pinned bytes).
@@ -18,11 +18,8 @@
  *
  * Source resolution difference vs legacy:
  *   legacy:  safeAssetPath(workspaceRoot, asset)  → reads from project tree
- *   pinned:  resolveResourceAbsolute(projection, assetPath) → reads from
- *            projection.allResources[].absolutePath (storeLocation-rooted POSIX)
- *
- * On Windows the projection's absolutePath is POSIX (forward slashes); the fs
- * edge normalizes via path.resolve before readFileSync.
+ *   pinned:  resolveResource(projection, storedPackage, assetPath) reads the
+ *            exact logicalId blob already verified by the package-store port.
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -41,6 +38,10 @@ import {
   parseMetadata,
 } from './process-execution-workspace.js';
 import type { ProcessModuleDefinition, ExecutionProfileDefinition } from '../domain/process-module.js';
+import type {
+  ResourceBlob,
+  StoredModulePackage,
+} from '../installation/index.js';
 
 /**
  * Input to the pinned-package materializer. Mirrors the legacy request shape,
@@ -50,6 +51,8 @@ import type { ProcessModuleDefinition, ExecutionProfileDefinition } from '../dom
 export interface MaterializePinnedWorkspaceRequest {
   /** The pinned-package projection (skills/templates/checklists/tracker). */
   readonly projection: WorkspaceProjection;
+  /** Verified bytes returned by ModulePackageStore.read(packageDigest). */
+  readonly storedPackage: StoredModulePackage;
   /** Project workspace root — targets are materialized under here (docs/...). */
   readonly workspaceRoot: string;
   /** The module definition (for identity.kind = stage directory name). */
@@ -66,7 +69,7 @@ export interface MaterializePinnedWorkspaceRequest {
 /**
  * Resolve a module-relative resource path (as declared in the profile, e.g.
  * `src/.../package/resources/proposal-stage-tracker.md` OR a package-relative
- * `proposal-stage-tracker.md`) to its pinned-store absolutePath via the
+ * `proposal-stage-tracker.md`) to its verified package blob via the
  * projection's allResources. Matches by exact relativePath, then by basename.
  *
  * The profile's trackerTemplate/workspaceTemplates/callTemplates/checklists
@@ -75,23 +78,62 @@ export interface MaterializePinnedWorkspaceRequest {
  * installer does not rewrite them), so an exact match is the common case.
  * Basename fallback covers package-relative profile pointers.
  */
-function resolveResourceAbsolute(
+function resolveResource(
   projection: WorkspaceProjection,
+  storedPackage: StoredModulePackage,
   declaredPath: string,
-): string {
+): ResourceBlob {
+  if (storedPackage.packageDigest !== projection.packageDigest) {
+    throw new Error(
+      `PINNED_PACKAGE_DIGEST_MISMATCH: projection expects ${projection.packageDigest} `
+      + `but store returned ${storedPackage.packageDigest}`,
+    );
+  }
   // Exact relativePath match.
   const exact = projection.allResources.find(r => r.relativePath === declaredPath);
-  if (exact) return exact.absolutePath;
   // Basename fallback.
   const base = path.posix.basename(declaredPath);
-  const byBase = projection.allResources.find(r => path.posix.basename(r.relativePath) === base);
-  if (byBase) return byBase.absolutePath;
+  const resolved = exact
+    ?? projection.allResources.find(r => path.posix.basename(r.relativePath) === base);
+  if (resolved) {
+    const blob = storedPackage.resources.find(resource => resource.logicalId === resolved.logicalId);
+    if (!blob) {
+      throw new Error(
+        `PINNED_RESOURCE_BYTES_MISSING: package ${projection.packageDigest} has no bytes `
+        + `for logicalId '${resolved.logicalId}'`,
+      );
+    }
+    if (blob.digest !== resolved.digest) {
+      throw new Error(
+        `PINNED_RESOURCE_DIGEST_MISMATCH: logicalId '${resolved.logicalId}' expected `
+        + `${resolved.digest} but store returned ${blob.digest}`,
+      );
+    }
+    return blob;
+  }
   throw new Error(
     `PINNED_RESOURCE_NOT_IN_PACKAGE: profile references '${declaredPath}' but the pinned `
     + `installation ${projection.installationId} (${projection.moduleRef}) has no resource `
     + `with that path or basename. Declared resources: `
     + projection.allResources.map(r => r.relativePath).join(', '),
   );
+}
+
+function readPinnedText(
+  projection: WorkspaceProjection,
+  storedPackage: StoredModulePackage,
+  declaredPath: string,
+): string {
+  return new TextDecoder().decode(resolveResource(projection, storedPackage, declaredPath).bytes);
+}
+
+function executionPathSegment(executionId: string | null, workerId: string): string {
+  const raw = executionId ?? `worker-${workerId}`;
+  const safe = raw.replace(/[^A-Za-z0-9._-]/g, '_');
+  if (safe.length === 0 || safe === '.' || safe === '..') {
+    throw new Error('PINNED_WORKSPACE_EXECUTION_ID_INVALID');
+  }
+  return safe;
 }
 
 /**
@@ -107,15 +149,20 @@ function resolveResourceAbsolute(
 export function materializePinnedWorkspace(
   request: MaterializePinnedWorkspaceRequest,
 ): ProcessExecutionWorkspace {
-  const { projection, module, profile, task } = request;
+  const { projection, storedPackage, module, profile, task } = request;
   const workspaceRoot = path.resolve(request.workspaceRoot);
   const stage = module.identity.kind;
 
   // 1. Target directory physics — identical to legacy.
   const stageRoot = path.join(workspaceRoot, 'docs', stage);
-  const toolsDirectory = path.join(stageRoot, 'tools');
   const projectDirectory = path.join(stageRoot, 'projects', String(request.epicId));
-  const executionDirectory = path.join(projectDirectory, 'executions', `task-${task.id}`);
+  const executionDirectory = path.join(
+    projectDirectory,
+    'executions',
+    `task-${task.id}`,
+    executionPathSegment(request.executionId, request.workerId),
+  );
+  const toolsDirectory = path.join(executionDirectory, 'tools');
   mkdirSync(toolsDirectory, { recursive: true });
   mkdirSync(executionDirectory, { recursive: true });
 
@@ -152,16 +199,9 @@ export function materializePinnedWorkspace(
     ...checklists,
   ])];
   for (const asset of allAssets) {
-    const source = path.resolve(resolveResourceAbsolute(projection, asset));
-    if (!existsSync(source)) {
-      throw new Error(
-        `PINNED_RESOURCE_BYTES_MISSING: '${asset}' resolved to '${source}' in store `
-        + `${projection.storeLocation} but the file is absent (corrupt package store?).`,
-      );
-    }
     const sharedTarget = path.join(toolsDirectory, path.basename(asset));
     if (!existsSync(sharedTarget)) {
-      writeFileSync(sharedTarget, readFileSync(source, 'utf8'));
+      writeFileSync(sharedTarget, readPinnedText(projection, storedPackage, asset));
     }
   }
 
@@ -169,9 +209,8 @@ export function materializePinnedWorkspace(
   //    retry-idempotency (reuse the legacy helpers verbatim).
   const materializedBySource = new Map<string, string>();
   for (const asset of [...new Set([...workspaceTemplates, ...callTemplates])]) {
-    const source = path.resolve(resolveResourceAbsolute(projection, asset));
     const target = path.join(executionDirectory, materializedName(asset));
-    const sourceContent = readFileSync(source, 'utf8');
+    const sourceContent = readPinnedText(projection, storedPackage, asset);
     if (!existsSync(target)) {
       const prepared = path.extname(target).toLowerCase() === '.json'
         ? refreshJsonMachineBindings(sourceContent, bindings)
@@ -191,20 +230,18 @@ export function materializePinnedWorkspace(
   if (!profile.trackerTemplate) {
     throw new Error(`PROCESS_WORKSPACE_TRACKER_MISSING: profile '${profile.id}' has no tracker template`);
   }
-  const trackerSource = path.resolve(resolveResourceAbsolute(projection, profile.trackerTemplate));
-  if (!existsSync(trackerSource)) {
-    throw new Error(
-      `PINNED_RESOURCE_BYTES_MISSING: tracker '${profile.trackerTemplate}' resolved to `
-      + `'${trackerSource}' but the file is absent.`,
-    );
-  }
+  const trackerSourceContent = readPinnedText(
+    projection,
+    storedPackage,
+    profile.trackerTemplate,
+  );
   const trackerAbsolutePath = path.join(
-    projectDirectory,
+    executionDirectory,
     `project-${request.epicId}-${stage}-stage-${task.id}.md`,
   );
   if (!existsSync(trackerAbsolutePath)) {
     const tracker = refreshMarkdownMachineBindings(
-      readFileSync(trackerSource, 'utf8'),
+      trackerSourceContent,
       bindings,
     );
     writeFileSync(trackerAbsolutePath, tracker);
