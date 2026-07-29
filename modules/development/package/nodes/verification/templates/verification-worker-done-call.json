@@ -1,0 +1,22 @@
+{
+  "tool": "worker_done",
+  "node": "verify-acceptance-workset",
+  "arguments": {
+    "task_id": "FILL_INTEGER_MACHINE_BOUND_TASK_ID",
+    "worker_id": "FILL_MACHINE_BOUND_WORKER_ID",
+    "execution_id": "FILL_MACHINE_BOUND_EXECUTION_ID",
+    "result": "FILL_TRUTHFUL_SUMMARY_WITH_VERIFIED_AC_ID_CANDIDATE_HASH_AND_OUTCOME_PER_AC"
+  },
+  "completion_assertions": {
+    "tracker_current_step": 6,
+    "candidate_immutability_confirmed": true,
+    "evidence_pins_both_ac_hash_and_candidate_hash": true,
+    "all_verification_records_read_back": true,
+    "unknown_or_error_denials_reported_truthfully": true,
+    "did_not_transition_ac_to_accepted": true,
+    "did_not_mutate_candidate": true,
+    "no_unresolved_FILL_placeholders": true,
+    "no_unreported_errors": true,
+    "did_not_start_downstream_module": true
+  }
+}

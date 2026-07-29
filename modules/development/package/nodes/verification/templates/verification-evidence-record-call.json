@@ -1,0 +1,28 @@
+{
+  "tool": "verification_record",
+  "node": "verify-acceptance-workset",
+  "arguments": {
+    "task_id": "FILL_INTEGER_MACHINE_BOUND_TASK_ID",
+    "artifact_id": "FILL_INTEGER_ACCEPTANCE_CRITERION_ARTIFACT_ID",
+    "outcome": "FILL_ONE_OF_passed_failed_unknown_error",
+    "evidence": "FILL_TRUTHFUL_EVIDENCE_SUMMARY_PINNED_TO_AC_AND_CANDIDATE",
+    "content_hash": "FILL_AC_ACCEPTED_HASH",
+    "recorded_by": "FILL_MACHINE_BOUND_WORKER_ID",
+    "provider": "FILL_TRUSTED_PROVIDER_IDENTITY",
+    "execution_id": "FILL_MACHINE_BOUND_EXECUTION_ID"
+  },
+  "candidate_binding": {
+    "candidate_hash": "FILL_EXACT_FROZEN_CANDIDATE_HASH",
+    "note": "Every acceptance record pins BOTH the AC acceptedHash (content_hash) AND the exact frozen candidate hash. Evidence for any other candidate hash is inadmissible (invariant development.evidence-pins-candidate)."
+  },
+  "completion_assertions": {
+    "outcome_is_one_of_passed_failed_unknown_error": true,
+    "ac_artifact_id_and_accepted_hash_machine_read": true,
+    "candidate_hash_equals_frozen_candidateHash": true,
+    "provider_is_trusted_deterministic_evidence": true,
+    "unknown_or_error_treated_as_denial_not_pass": true,
+    "did_not_transition_ac_to_accepted": true,
+    "did_not_mutate_candidate": true,
+    "no_unresolved_FILL_placeholders": true
+  }
+}
