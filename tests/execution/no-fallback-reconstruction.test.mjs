@@ -69,7 +69,10 @@ function makeDeps({ withProduct } = {}) {
         return null; // the predecessor is MISSING
       },
       // A WRONG epic-scope fallback the assembler MUST NOT call. If the
-      // assembler ever invokes this, the test fails (sentinel thrown).
+      // assembler ever invokes this, the test fails (sentinel thrown). W13-A4
+      // removed `listArtifactsForNodeInEpic` from the production
+      // ManagedProductionLedger port (§9.11 retired); this sentinel stays as a
+      // regression guard against re-introduction on any product-resolver shape.
       listArtifactsForNodeInEpic: () => {
         throw new Error(
           'TEST_GUARD: assembler must NOT call listArtifactsForNodeInEpic (§9.11 retired fallback)',

@@ -170,8 +170,8 @@ function fixture() {
     // rely on this returning empty.
     listArtifactsForNodeInProcessRun() { return []; },
     listTracesForNodeInProcessRun() { return []; },
-    listArtifactsForNodeInEpic() { return []; },
-    listTracesForNodeInEpic() { return []; },
+    // W13-A4: listArtifactsForNodeInEpic / listTracesForNodeInEpic removed
+    // from the ManagedProductionLedger port (epic-scope fallback retired §9.11).
   };
   const baselineRepository = {
     freeze(payload) {

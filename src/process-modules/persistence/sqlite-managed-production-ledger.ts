@@ -61,22 +61,12 @@ export interface ManagedProductionLedger {
   listTracesForExecution(
     query: ManagedExecutionProductQuery,
   ): readonly ManagedTraceProductionRecord[];
-  /**
-   * Fallback for resume: find artifact productions for one (module, node) across
-   * ALL ProcessRuns of the same epic. Used when the current ProcessRun has no
-   * ledger entries (resume created a new run but the durable artifacts persist
-   * from a previous run). Scoped by epic to avoid cross-epic leakage.
-   */
-  listArtifactsForNodeInEpic(
-    epicId: number,
-    moduleRef: string,
-    nodeId: string,
-  ): readonly ManagedArtifactProductionRecord[];
-  listTracesForNodeInEpic(
-    epicId: number,
-    moduleRef: string,
-    nodeId: string,
-  ): readonly ManagedTraceProductionRecord[];
+  // W13-A4: the epic-scope `listArtifactsForNodeInEpic` /
+  // `listTracesForNodeInEpic` fallbacks (§9.11 "latest artifact in epic") were
+  // REMOVED. They had no production callers — the ExecutionContextAssembler
+  // (W3-A5) resolves upstream products exclusively by exact `ProductRef`
+  // (`getByProductRef`, §9.11 retirement). A missing predecessor now surfaces
+  // as `UPSTREAM_PRODUCT_NOT_FOUND` instead of a silent nearest-match.
   /**
    * Retry/recovery fallback: find artifact productions for one (module, node)
    * within the SAME ProcessRun but across ALL executions. Used when a worker
@@ -536,35 +526,9 @@ export class SqliteManagedProductionLedger implements ManagedProductionLedger {
     return rows.map(traceRowToRecord);
   }
 
-  listArtifactsForNodeInEpic(
-    epicId: number,
-    moduleRef: string,
-    nodeId: string,
-  ): readonly ManagedArtifactProductionRecord[] {
-    const rows = this.db.prepare(
-      `SELECT mp.*
-         FROM saga3_managed_artifact_productions mp
-         JOIN saga3_process_runs pr ON pr.id = mp.process_run_id
-        WHERE pr.epic_id=? AND mp.module_ref=? AND mp.node_id=?
-        ORDER BY mp.id`,
-    ).all(epicId, moduleRef, nodeId) as ArtifactLedgerRow[];
-    return rows.map(artifactRowToRecord);
-  }
-
-  listTracesForNodeInEpic(
-    epicId: number,
-    moduleRef: string,
-    nodeId: string,
-  ): readonly ManagedTraceProductionRecord[] {
-    const rows = this.db.prepare(
-      `SELECT mp.*
-         FROM saga3_managed_trace_productions mp
-         JOIN saga3_process_runs pr ON pr.id = mp.process_run_id
-        WHERE pr.epic_id=? AND mp.module_ref=? AND mp.node_id=?
-        ORDER BY mp.id`,
-    ).all(epicId, moduleRef, nodeId) as TraceLedgerRow[];
-    return rows.map(traceRowToRecord);
-  }
+  // W13-A4: listArtifactsForNodeInEpic / listTracesForNodeInEpic removed
+  // (epic-scope "latest of kind" fallback, §9.11). No production callers; the
+  // ExecutionContextAssembler resolves upstream products by exact ProductRef.
 
   listArtifactsForNodeInProcessRun(
     processRunId: number,
