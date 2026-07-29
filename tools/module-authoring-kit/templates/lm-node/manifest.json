@@ -1,0 +1,102 @@
+{
+  "manifestFormatVersion": "1",
+  "definition": {
+    "identity": {
+      "name": "{{MODULE_NAME}}",
+      "version": "{{MODULE_VERSION}}",
+      "kind": "{{MODULE_KIND}}",
+      "displayName": "{{MODULE_DISPLAY_NAME}}",
+      "description": "{{MODULE_DESCRIPTION}}"
+    },
+    "inputContract": { "id": "{{MODULE_NAME}}.input.v1" },
+    "outputContract": { "id": "{{MODULE_NAME}}.output.v1" },
+    "outcomes": [
+      { "code": "drafted", "description": "A typed draft envelope was produced.", "terminal": true }
+    ],
+    "flow": {
+      "id": "{{MODULE_NAME}}.standard",
+      "version": "{{MODULE_VERSION}}",
+      "entryNodeId": "draft",
+      "nodes": [
+        {
+          "id": "draft",
+          "label": "Draft",
+          "kind": "lm",
+          "description": "Produce a typed draft envelope from the input brief.",
+          "executionProfile": "author",
+          "inputSchema": { "id": "{{MODULE_NAME}}.input.v1" },
+          "outputSchema": { "id": "{{MODULE_NAME}}.output.v1" },
+          "emitsOutcome": "drafted"
+        }
+      ],
+      "transitions": [],
+      "terminalNodeIds": ["draft"]
+    },
+    "artifacts": [
+      {
+        "type": "{{MODULE_NAME}}.draft",
+        "schema": { "id": "{{MODULE_NAME}}.output.v1" },
+        "authority": "worker",
+        "description": "Opaque draft envelope produced by the LM node."
+      }
+    ],
+    "policies": [],
+    "invariants": [],
+    "executionProfiles": [
+      {
+        "id": "author",
+        "workIntentKind": "{{MODULE_NAME}}.draft",
+        "workIntentSchema": { "id": "{{MODULE_NAME}}.work-intent.v1" },
+        "taskKind": "{{MODULE_NAME}}.draft",
+        "executionSkill": "{{MODULE_NAME}}-execution-skill",
+        "reviewSkill": "{{MODULE_NAME}}-review-skill",
+        "protocolSkill": "{{MODULE_NAME}}-worker-protocol",
+        "semanticSkill": "resources/execution-skill.md",
+        "executionMode": "git_change",
+        "allowedTools": ["Read", "Write", "Edit"],
+        "trackerTemplate": "resources/tracker.md",
+        "workspaceTemplates": [],
+        "callTemplates": [],
+        "checklists": [],
+        "outputSchema": { "id": "{{MODULE_NAME}}.output.v1" },
+        "retryPolicy": {
+          "maxAttempts": 2,
+          "retryOn": ["draft-rejected"],
+          "backoff": "fixed"
+        },
+        "recoveryPolicy": {
+          "resumeFromCheckpoint": true,
+          "reuseWorkIntent": false,
+          "reuseAcceptedOutput": false,
+          "onExhausted": "pause"
+        }
+      }
+    ]
+  },
+  "resourceIndex": [
+    {
+      "logicalId": "execution-skill",
+      "path": "resources/execution-skill.md",
+      "kind": "skill",
+      "digest": "pending@wave-2"
+    },
+    {
+      "logicalId": "tracker",
+      "path": "resources/tracker.md",
+      "kind": "template",
+      "digest": "pending@wave-2"
+    }
+  ],
+  "handlerRefs": [],
+  "inputContractRef": {
+    "schemaId": "{{MODULE_NAME}}.input.v1",
+    "version": "1.0.0",
+    "digest": "pending@wave-2"
+  },
+  "outputContractRef": {
+    "schemaId": "{{MODULE_NAME}}.output.v1",
+    "version": "1.0.0",
+    "digest": "pending@wave-2"
+  },
+  "runtimeCompatibilityRange": "^3.0.0"
+}
