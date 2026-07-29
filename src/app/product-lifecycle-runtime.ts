@@ -105,13 +105,26 @@ import { ExternalNodeExecutor } from '../process-modules/application/node-execut
 import { HumanNodeExecutor } from '../process-modules/application/node-executors/human-node-executor.js';
 import { KernelNodeExecutor } from '../process-modules/application/node-executors/kernel-node-executor.js';
 import { LmNodeExecutor } from '../process-modules/application/node-executors/lm-node-executor.js';
-import { ProcessOutputPayloadRegistry } from '../process-modules/application/process-output-payload-registry.js';
 import {
   PRODUCT_DELIVERY_LIFECYCLE_INPUT_SCHEMA,
   assertProductDeliveryLifecycleInput,
   productDeliveryLifecycle,
 } from '../process-modules/lifecycles/product-delivery-lifecycle.js';
-import { createBuiltInProcessModuleRegistry } from '../process-modules/modules/catalog.js';
+import {
+  discoveryProcessModule,
+} from '../process-modules/modules/discovery/discovery-process-module.js';
+import {
+  formalizationProcessModule,
+} from '../process-modules/modules/formalization/formalization-process-module.js';
+import {
+  developmentProcessModule,
+} from '../process-modules/modules/development/development-process-module.js';
+import {
+  deliveryProcessModule,
+} from '../process-modules/modules/delivery/delivery-process-module.js';
+import {
+  ProcessModuleRegistry,
+} from '../process-modules/application/process-module-registry.js';
 import {
   createDeliveryExternalAdapters,
   createDeliveryHumanInteractions,
@@ -133,7 +146,6 @@ import type {
   DeliveryRuntimeProviders,
 } from '../process-modules/modules/delivery/delivery-provider-ports.js';
 import { SqliteDeliveryOutputRepository } from '../process-modules/modules/delivery/delivery-persistence.js';
-import { deliveryProcessModule } from '../process-modules/modules/delivery/delivery-process-module.js';
 import { RELEASE_RECORD_SCHEMA } from '../process-modules/modules/delivery/delivery-schemas.js';
 import {
   ReferenceDeliveryPreflightPolicy,
@@ -157,7 +169,6 @@ import type {
   DevelopmentTaskGraphPort,
 } from '../process-modules/modules/development/development-kernel-ports.js';
 import { SqliteDevelopmentOutputRepository } from '../process-modules/modules/development/development-persistence.js';
-import { developmentProcessModule } from '../process-modules/modules/development/development-process-module.js';
 import { VERIFIED_INTEGRATION_BUNDLE_SCHEMA } from '../process-modules/modules/development/development-schemas.js';
 import {
   ReferenceDevelopmentSettlementPolicy,
@@ -171,7 +182,6 @@ import {
   createDiscoveryKernelHandlers,
   createDiscoveryLmNodePersistence,
 } from '../process-modules/modules/discovery/discovery-installation.js';
-import { discoveryProcessModule } from '../process-modules/modules/discovery/discovery-process-module.js';
 import {
   createFormalizationKernelHandlers,
   createFormalizationLifecycleOutputPayloadResolver,
@@ -181,13 +191,13 @@ import {
   SqliteFormalizationBaselineRepository,
   SqliteFormalizationSolutionContractRepository,
 } from '../process-modules/modules/formalization/formalization-persistence.js';
-import { formalizationProcessModule } from '../process-modules/modules/formalization/formalization-process-module.js';
 import { SOLUTION_CONTRACT_CERTIFICATE_SCHEMA } from '../process-modules/modules/formalization/formalization-schemas.js';
 import {
   ReferenceFormalizationSettlementPolicy,
   SqliteFormalizationArtifactGraph,
 } from '../process-modules/modules/formalization/sqlite-formalization-kernel.js';
-import { createBuiltInProcessModuleInstallationRegistry } from '../process-modules/modules/installations.js';
+import { ProcessModuleInstallationRegistry } from '../process-modules/application/process-module-installation-registry.js';
+import type { ResolveStageOutputPayload } from '../process-modules/application/lifecycle-orchestrator.js';
 import { SqliteLifecycleRunRepository } from '../process-modules/persistence/sqlite-lifecycle-run-repository.js';
 import {
   SqliteManagedNodeSubmissionRepository,
@@ -448,44 +458,44 @@ export function createProductLifecycleRuntime(
     }),
   };
 
-  const moduleRegistry = createBuiltInProcessModuleRegistry();
+  const moduleRegistry = new ProcessModuleRegistry();
+  moduleRegistry.register(discoveryProcessModule);
+  moduleRegistry.register(formalizationProcessModule);
+  moduleRegistry.register(developmentProcessModule);
+  moduleRegistry.register(deliveryProcessModule);
   const installationRegistry =
-    createBuiltInProcessModuleInstallationRegistry([
-      { definition: discoveryProcessModule, executor: executors.discovery },
-      {
-        definition: formalizationProcessModule,
-        executor: executors.formalization,
-      },
-      { definition: developmentProcessModule, executor: executors.development },
-      { definition: deliveryProcessModule, executor: executors.delivery },
-    ], {
+    new ProcessModuleInstallationRegistry({
       kernelHandlerRegistry: kernelHandlers,
       externalAdapterRegistry: externalAdapters,
       humanInteractionRegistry: humanInteractions,
     });
+  for (const inst of [
+    { definition: discoveryProcessModule, executor: executors.discovery },
+    { definition: formalizationProcessModule, executor: executors.formalization },
+    { definition: developmentProcessModule, executor: executors.development },
+    { definition: deliveryProcessModule, executor: executors.delivery },
+  ]) {
+    installationRegistry.register(inst as any);
+  }
 
-  const outputPayloadRegistry = new ProcessOutputPayloadRegistry();
-  outputPayloadRegistry.register(
-    SOLUTION_CONTRACT_CERTIFICATE_SCHEMA,
-    createFormalizationLifecycleOutputPayloadResolver(
-      formalizationSolutionContractRepository,
-    ),
-  );
-  outputPayloadRegistry.register(
-    VERIFIED_INTEGRATION_BUNDLE_SCHEMA,
-    createDevelopmentOutputPayloadResolver(developmentOutputRepository),
-  );
-  outputPayloadRegistry.register(
-    RELEASE_RECORD_SCHEMA,
-    createDeliveryOutputPayloadResolver(deliveryOutputRepository),
-  );
+  // W13-A3: ProcessOutputPayloadRegistry replaced by injected ResolveStageOutputPayload callback
+  const resolversBySchema = new Map<string, ResolveStageOutputPayload>([
+    [SOLUTION_CONTRACT_CERTIFICATE_SCHEMA, createFormalizationLifecycleOutputPayloadResolver(formalizationSolutionContractRepository)],
+    [VERIFIED_INTEGRATION_BUNDLE_SCHEMA, createDevelopmentOutputPayloadResolver(developmentOutputRepository)],
+    [RELEASE_RECORD_SCHEMA, createDeliveryOutputPayloadResolver(deliveryOutputRepository)],
+  ]);
+  const resolveOutputPayload: ResolveStageOutputPayload = async (params) => {
+    const resolver = resolversBySchema.get(params.output.schema);
+    if (!resolver) throw new Error(`no output payload resolver for schema ${params.output.schema}`);
+    return resolver(params);
+  };
 
   const orchestrator = new LifecycleOrchestrator({
     lifecycleRunRepo,
     processRunRepo,
     moduleRegistry,
     installationRegistry,
-    outputPayloadRegistry,
+    resolveOutputPayload,
   });
   const engine = new LifecycleOrchestrationEngineAdapter({
     definition: productDeliveryLifecycle,
@@ -521,7 +531,7 @@ export function createProductLifecycleRuntime(
     orchestrator,
     moduleRegistry,
     installationRegistry,
-    outputPayloadRegistry,
+    resolveOutputPayload,
     kernelHandlers,
     externalAdapters,
     humanInteractions,
