@@ -1,0 +1,58 @@
+{
+  "manifestFormatVersion": "0.1.0",
+  "source": "W10-A6 Scenario Authoring Kit template",
+  "identity": {
+    "name": "{{SCENARIO_NAME}}",
+    "version": "0.1.0",
+    "displayName": "{{SCENARIO_DISPLAY_NAME}}",
+    "description": "{{SCENARIO_DESCRIPTION}}"
+  },
+  "inputContract": { "id": "{{SCENARIO_NAME}}.input.v1" },
+  "outputContract": { "id": "{{SCENARIO_NAME}}.output.v1" },
+  "entryStageId": "{{ENTRY_STAGE_ID}}",
+  "terminalStatuses": [
+    "{{TERMINAL_STATUS_OK}}",
+    "{{TERMINAL_STATUS_FAIL}}"
+  ],
+  "moduleRefs": [
+    { "name": "{{MODULE_NAME_1}}", "version": "{{MODULE_VERSION_1}}" },
+    { "name": "{{MODULE_NAME_2}}", "version": "{{MODULE_VERSION_2}}" }
+  ],
+  "stages": [
+    {
+      "id": "{{ENTRY_STAGE_ID}}",
+      "displayName": "{{ENTRY_STAGE_DISPLAY_NAME}}",
+      "moduleRef": { "name": "{{MODULE_NAME_1}}", "version": "{{MODULE_VERSION_1}}" },
+      "inputMapping": {
+        "field1": "initiative.field1"
+      },
+      "outputMapping": {
+        "result1": "output.result1"
+      },
+      "outcomeRoutes": {
+        "{{OUTCOME_1}}": { "type": "stage", "stageId": "{{STAGE_2_ID}}" }
+      },
+      "entryConditions": ["Scenario root input present"],
+      "exitConditions": ["{{OUTCOME_1}} outcome emitted"]
+    },
+    {
+      "id": "{{STAGE_2_ID}}",
+      "displayName": "{{STAGE_2_DISPLAY_NAME}}",
+      "moduleRef": { "name": "{{MODULE_NAME_2}}", "version": "{{MODULE_VERSION_2}}" },
+      "inputMapping": {
+        "result1": "stages.{{ENTRY_STAGE_ID}}.output.result1"
+      },
+      "outputMapping": {
+        "result2": "output.result2"
+      },
+      "outcomeRoutes": {
+        "{{OUTCOME_2_OK}}": { "type": "terminal", "status": "{{TERMINAL_STATUS_OK}}" },
+        "{{OUTCOME_2_FAIL}}": { "type": "terminal", "status": "{{TERMINAL_STATUS_FAIL}}" }
+      },
+      "entryConditions": ["{{ENTRY_STAGE_ID}} stage produced output"],
+      "exitConditions": ["{{OUTCOME_2_OK}} or {{OUTCOME_2_FAIL}} outcome emitted"]
+    }
+  ],
+  "routeResolverPresent": false,
+  "_routeResolverNote": "Intentionally absent (plan §6.4): routes are declarative static outcomeRoutes only; there is no executable closure anywhere in a LifecycleScenarioManifest."
+}
