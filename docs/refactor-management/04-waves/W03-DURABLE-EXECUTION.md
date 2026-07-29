@@ -11,9 +11,9 @@
 | W3-A6 (SQL OWNER) | `refactor/w3-a6` | `.worktrees/w3-a6` | ✅ done (`8c71c03`) | 20/20 tests + 26 regression; 7 additive columns + exact-cursor UNIQUE index; dual-placement (db.ts + ensureSchema); ratchet green |
 | W3-A7 | `refactor/w3-a7` | `.worktrees/w3-a7` | ✅ done (`eb41488`) | 22/22 tests pass; WorkerExecutionPort (driver-neutral) + ContractBoundaryDecoder (5 boundaries, canonicalizing round-trip); ratchet green |
 | W3-A8 | `refactor/w3-a8` | `.worktrees/w3-a8` | ✅ done (`c5cd14c`) | 2/10 pass + 8 skip-on-absent-siblings (dynamic imports); 3 exit-gate test files ready; ratchet green |
-| W3-A1 (SERIAL 1st) | — | — | ⬜ pending (after parallel) | — |
-| W3-A2 (SERIAL 2nd) | — | — | ⬜ pending (after A1) | — |
-| W3-A3 (SERIAL 3rd) | — | — | ⬜ pending (after A2) | — |
+| W3-A1 (SERIAL 1st) | `refactor/w3-a1` | integrated (`5f7cd30`) | ✅ done (`83880e1`) | 51/51 gate tests; v2 context/result types + ModuleCompletion explicit + dual-write; legacy preserved; ratchet green |
+| W3-A2 (SERIAL 2nd) | `refactor/w3-a2` | integrated (`9e743c3`) | ✅ done (`1ee9e64`) | 53/53 gate tests; dual-emit DriverNeutralExecutionReceipt + SagaBoardAdapterDataBuilder; legacy preserved; ratchet green |
+| W3-A3 (SERIAL 3rd) | `refactor/w3-a3` | `.worktrees/w3-a3` | 🟡 running | — |
 
 ## Objective (§0.6.12 serial gate)
 

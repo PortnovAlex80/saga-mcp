@@ -87,14 +87,17 @@ export interface ProcessProductRepository {
  * "latest in run" search; a missing predecessor product is a hard stop that
  * surfaces a recovery issue, never a silent reconstruction.
  */
+export const UPSTREAM_PRODUCT_NOT_FOUND = 'UPSTREAM_PRODUCT_NOT_FOUND' as const;
+
 export class UpstreamProductNotFoundError extends Error {
+  readonly code = UPSTREAM_PRODUCT_NOT_FOUND;
   constructor(
     readonly processRunId: number,
     readonly nodeId: string,
     readonly missingRef: ProductRef,
   ) {
     super(
-      `ExecutionContextAssembler: upstream product not found for `
+      `${UPSTREAM_PRODUCT_NOT_FOUND}: upstream product not found for `
         + `processRun=${processRunId} node='${nodeId}' `
         + `(schemaId='${missingRef.schemaId}' ref='${missingRef.ref}' `
         + `digest='${missingRef.digest}') — no epic-scope fallback (spec §9.11)`,
@@ -102,9 +105,6 @@ export class UpstreamProductNotFoundError extends Error {
     this.name = 'UpstreamProductNotFoundError';
   }
 }
-
-/** Re-exported error code string for callers that switch on `error.code`. */
-export const UPSTREAM_PRODUCT_NOT_FOUND = 'UPSTREAM_PRODUCT_NOT_FOUND' as const;
 
 /**
  * Raised when the ProcessRun row is missing (deleted / never started). The
