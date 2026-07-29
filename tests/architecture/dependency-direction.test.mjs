@@ -235,16 +235,9 @@ const KNOWN_VIOLATIONS = [
     reason: REASON.lifecycleContracts,
   },
 
-  // ---- Rule 4: Runtime core imports the built-in module catalog ----
-  // (module-name switching in disguise - plan section 13.2 / 14.4.1)
-  {
-    source: 'src/process-modules/application/execution-profile-resolver.ts',
-    target: 'src/process-modules/modules/catalog.ts',
-    rule: 4,
-    reason: REASON.catalogInjection,
-  },
+  // ---- Rule 4: removed in W13-A1 (catalog deleted, resolver no longer imports it) ----
 
-  // ---- Rule 6: composition root wires concrete modules + sqlite repos ----
+  // ---- Rule 6: removed in W13-A6 (composition root relocated to src/app/) ----
   // (plan section 13.10 / 14.11 - Wave 11 replaces the manual composition root)
   //
   // W13-A6 REMOVED all 34 Rule 6 entries. The manual composition body that
