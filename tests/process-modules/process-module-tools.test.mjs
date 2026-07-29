@@ -45,7 +45,7 @@ test('process_module_list returns the complete product lifecycle catalog', () =>
   );
   assert.deepEqual(refs.sort(), [
     'delivery-release@1.0.0',
-    'product-discovery@3.0.1',
+    'product-discovery@3.0.2',
     'solution-development@1.0.0',
     'solution-formalization@1.0.0',
   ]);
@@ -55,7 +55,7 @@ test('process_module_list returns the complete product lifecycle catalog', () =>
 test('process_module_get returns complete definition and validation', () => {
   const result = handlers.process_module_get({
     name: 'product-discovery',
-    version: '3.0.1',
+    version: '3.0.2',
   });
   assert.equal(result.module.identity.kind, 'discovery');
   assert.equal(result.validation.valid, true);

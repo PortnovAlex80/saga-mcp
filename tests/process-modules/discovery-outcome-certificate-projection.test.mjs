@@ -73,7 +73,7 @@ test('projection reads a discovery certificate and reshapes it to the generic sh
     const proj = new DiscoveryOutcomeCertificateProjection(db);
     const cert = proj.read(1, 1);
     assert.ok(cert);
-    assert.equal(cert.moduleRefKey, 'product-discovery@3.0.1');
+    assert.equal(cert.moduleRefKey, 'product-discovery@3.0.2');
     assert.equal(cert.decision, 'go');
     assert.equal(cert.schemaVersion, DISCOVERY_GENERIC_CERTIFICATE_SCHEMA_VERSION);
     assert.equal(cert.authority, 'discovery_settlement_policy');

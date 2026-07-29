@@ -50,7 +50,10 @@ import { createSaga3ProposalHandlers } from './tools/saga3-proposals.js';
 import { createSaga3NormalizationHandlers } from './tools/saga3-normalization.js';
 import { createSaga3ReadinessHandlers } from './tools/saga3-readiness.js';
 import { createSaga3DiagnosisHandlers } from './tools/saga3-diagnosis.js';
-import { authorizeSagaToolCall } from './saga3/authority/authorize-saga-tool-call.js';
+import {
+  authorizeSagaToolCall,
+  visibleSagaToolNames,
+} from './saga3/authority/authorize-saga-tool-call.js';
 import { closeDb, getDb } from './db.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -144,7 +147,12 @@ const server = new Server(
 );
 
 server.setRequestHandler(ListToolsRequestSchema, async () => {
-  return { tools: ALL_TOOLS };
+  const visibleNames = visibleSagaToolNames(getDb());
+  return {
+    tools: visibleNames === null
+      ? ALL_TOOLS
+      : ALL_TOOLS.filter(tool => visibleNames.has(tool.name)),
+  };
 });
 
 function friendlyError(msg: string): string {

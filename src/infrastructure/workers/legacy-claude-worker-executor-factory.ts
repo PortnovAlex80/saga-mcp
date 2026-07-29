@@ -364,6 +364,9 @@ export function createLegacyClaudeWorkerExecutorFactory(
           module_ref: resolvedWorkspace.moduleRef,
           tracker_path: resolvedWorkspace.trackerPath,
           agent_assistance_path: resolvedWorkspace.agentAssistanceAbsolutePath ?? null,
+          agent_assistance_hook_state_path: resolvedWorkspace.agentAssistanceAbsolutePath
+            ? `${resolvedWorkspace.agentAssistanceAbsolutePath}.hook-state.json`
+            : null,
           execution_directory: resolvedWorkspace.executionDirectory,
           workspace_files: [...resolvedWorkspace.workspaceFiles],
           call_files: [...resolvedWorkspace.callFiles],

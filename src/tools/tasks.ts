@@ -716,7 +716,6 @@ function handleTaskGet(args: Record<string, unknown>) {
   const isSaga3Task = taskKind.includes('.');
   const result: Record<string, unknown> = { ...taskRow, subtasks, notes, comments, depends_on: dependsOn, dependents };
   if (isSaga3Task) {
-    const epicId = taskRow.epic_id;
     const stage = taskKind.split('.')[0]; // 'discovery', 'formalization', etc.
     let metadata: Record<string, unknown> = {};
     if (taskRow.metadata && typeof taskRow.metadata === 'object' && !Array.isArray(taskRow.metadata)) {
@@ -743,9 +742,9 @@ function handleTaskGet(args: Record<string, unknown>) {
         + `Before submitting, read back the call file and apply: ${JSON.stringify(checklists)}.`;
     } else {
       result._workflow_hint =
-        `Saga3 ${stage} task. Maintain the stage tracker under `
-        + `docs/${stage}/projects/${epicId}/. Use templates from docs/${stage}/tools/ — `
-        + 'copy, fill, verify with checklist, then submit.';
+        `Saga3 ${stage} task has no machine-provisioned process_workspace. `
+        + 'Do not guess tracker, template, or call-file paths. Stop this execution '
+        + 'and let the controller rematerialize the pinned process-module workspace.';
     }
   }
   return result;

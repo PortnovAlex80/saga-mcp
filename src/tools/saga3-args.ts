@@ -192,8 +192,9 @@ const PAYLOAD_FIELD_SOURCES: Record<string, Record<string, string>> = {
  * own refs and never see a `docs/discovery/...` literal.
  */
 export const DISCOVERY_WORKFLOW_REFS = {
-  trackerRef: 'docs/discovery/project-<N>-discovery-stage.md',
-  resumeStep: '4c',
+  trackerRef: 'the exact tracker_path returned by task_get._workflow_hint',
+  checklistRef: 'the exact checklist path returned by task_get._workflow_hint',
+  resumeStep: 'the rejected operation after repairing and re-reading the materialized call file',
 } as const;
 
 /**

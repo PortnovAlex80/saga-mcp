@@ -191,6 +191,38 @@ const dedupVersion = stateVersion === null
   : `${stateVersion}:${selected ? selectedEvent : effectiveSnap.event || ''}:${toolName}`;
 
 const sidecarPath = assistancePath + '.last-version';
+const observationPath = assistancePath + '.hook-state.json';
+
+function recordHookObservation(emitted) {
+  try {
+    let previous = null;
+    if (existsSync(observationPath)) {
+      const parsed = JSON.parse(readFileSync(observationPath, 'utf8'));
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        previous = parsed;
+      }
+    }
+    const invocationCount = Number.isInteger(previous?.invocationCount)
+      ? previous.invocationCount + 1
+      : 1;
+    const emittedCount = (Number.isInteger(previous?.emittedCount)
+      ? previous.emittedCount
+      : 0) + (emitted ? 1 : 0);
+    writeFileSync(observationPath, `${JSON.stringify({
+      schemaVersion: 'saga3.agent-assistance-hook-state.v1',
+      executionId: snapExecId || null,
+      event: selectedEvent,
+      toolName: toolName || null,
+      stateVersion,
+      emitted,
+      invocationCount,
+      emittedCount,
+    }, null, 2)}\n`, 'utf8');
+  } catch {
+    // Observability is best-effort and must never block the worker.
+  }
+}
+
 function readLastVersion() {
   try {
     const v = readFileSync(sidecarPath, 'utf8');
@@ -213,6 +245,7 @@ if (dedupVersion !== null) {
   const last = readLastVersion();
   if (last !== null && last === dedupVersion) {
     // Repeated state — emit nothing.
+    recordHookObservation(false);
     emitEmpty();
   }
 }
@@ -298,6 +331,7 @@ const additionalContext = lines.join('\n');
 if (dedupVersion !== null) {
   writeLastVersion(dedupVersion);
 }
+recordHookObservation(true);
 
 const hookEventName = toolFailed(hookInput)
   ? 'PostToolUseFailure'

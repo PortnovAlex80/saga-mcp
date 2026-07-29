@@ -272,6 +272,48 @@ test('catalog: pinned sorted tool-name set (Wave 6 compatibility surface)', asyn
   );
 });
 
+test('catalog authority: managed Saga 3 sees only the frozen allowed Saga tools', async () => {
+  const { authority } = await loadModules();
+  const db = await buildManagedAuthorityDb({
+    allowedTools: ['task_get', 'worker_done', 'Read'],
+  });
+  const visible = authority.visibleSagaToolNames(db, {
+    SAGA_MANAGED_EXECUTION: '1',
+    SAGA_EXECUTION_ID: 'exec-1',
+    SAGA_TASK_ID: '1',
+    SAGA_WORKER_ID: 'worker-1',
+  });
+  assert.deepEqual([...visible].sort(), ['Read', 'task_get', 'worker_done']);
+  const { ALL_TOOLS } = await loadModules();
+  assert.deepEqual(
+    ALL_TOOLS.filter(tool => visible.has(tool.name)).map(tool => tool.name).sort(),
+    ['task_get', 'worker_done'],
+    'Claude built-ins may be present in authority but never appear in Saga MCP tools/list',
+  );
+});
+
+test('catalog authority: malformed or cross-worker managed identity exposes no Saga tools', async () => {
+  const { authority } = await loadModules();
+  const db = await buildManagedAuthorityDb({ allowedTools: ['task_get'] });
+  const visible = authority.visibleSagaToolNames(db, {
+    SAGA_MANAGED_EXECUTION: '1',
+    SAGA_EXECUTION_ID: 'exec-1',
+    SAGA_TASK_ID: '1',
+    SAGA_WORKER_ID: 'another-worker',
+  });
+  assert.deepEqual([...visible], []);
+});
+
+test('catalog authority: interactive and explicit non-managed MCP retain the full catalog', async () => {
+  const { authority } = await loadModules();
+  const db = await buildManagedAuthorityDb({ allowedTools: ['task_get'] });
+  assert.equal(authority.visibleSagaToolNames(db, {}), null);
+  assert.equal(
+    authority.visibleSagaToolNames(db, { SAGA_MANAGED_EXECUTION: '0' }),
+    null,
+  );
+});
+
 // ===================================================================================
 // Area 2 — Authority `authorizeSagaToolCall`
 // ===================================================================================
@@ -479,19 +521,15 @@ test('structured errors: SAGA3_TOOL_CALL_SHAPES covers all 7 saga3 tools', async
 
 test('structured errors: parameterized Discovery workflow hint is appended by enrichPayloadErrors (W13-A5)', async () => {
   const { args } = await loadModules();
-  // W13-A5: the hard-coded `docs/discovery/...` literal that used to live in
-  // saga3-args.ts is GONE. `enrichPayloadErrors` now appends a PARAMETERIZED
-  // `[Workflow: ...]` sentence built from DISCOVERY_WORKFLOW_REFS via
-  // renderWorkflowHint (W6-A5 ActionableToolError). The tracker path token
-  // still comes from the Discovery refs (these four tools ARE Discovery
-  // tools), but the platform helper no longer bakes any module name. This
-  // test pins the new observed shape so any further change is a visible diff.
+  // The hint must route the worker back to the exact paths already returned
+  // by task_get. It must never guess a legacy project path.
   const WORKFLOW_HINT =
-    '[Workflow: Read your stage tracker docs/discovery/project-<N>-discovery-stage.md, resume at 4c, retry.]';
+    '[Workflow: Read your stage tracker the exact tracker_path returned by task_get._workflow_hint, verify checklist the exact checklist path returned by task_get._workflow_hint, resume at the rejected operation after repairing and re-reading the materialized call file, retry.]';
   const enriched = args.enrichPayloadErrors('proposal_submit', ["field 'rationale' must be a non-empty string"]);
   assert.ok(enriched.includes(WORKFLOW_HINT), `parameterized Discovery workflow hint lost:\n${WORKFLOW_HINT}`);
   // The hint is always the second-to-last element (shape is last when present).
   assert.equal(enriched[enriched.length - 2], WORKFLOW_HINT);
+  assert.equal(WORKFLOW_HINT.includes('docs/discovery'), false);
 });
 
 test('structured errors: enrichPayloadErrors workflow hint is parameterized — caller refs override Discovery defaults (W13-A5)', async () => {

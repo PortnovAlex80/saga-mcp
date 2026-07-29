@@ -51,7 +51,7 @@ function fakeLegacyEngine(result) {
   return { run: async () => result };
 }
 
-const DISCOVERY_REF = { name: 'product-discovery', version: '3.0.1' };
+const DISCOVERY_REF = { name: 'product-discovery', version: '3.0.2' };
 const FORMALIZATION_REF = { name: 'solution-formalization', version: '1.0.0' };
 
 // --- validateProcessModuleInstallation --------------------------------------
@@ -97,7 +97,7 @@ test('Installation registry accepts a valid Definition + executor binding', () =
   });
   const got = registry.require(DISCOVERY_REF);
   assert.equal(got.definition.identity.name, 'product-discovery');
-  assert.equal(got.executor.moduleRef.version, '3.0.1');
+  assert.equal(got.executor.moduleRef.version, '3.0.2');
 });
 
 test('Installation registry re-validates the Definition at register time', () => {

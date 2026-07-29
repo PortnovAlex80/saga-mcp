@@ -782,8 +782,9 @@ export class ClaudeBoardRunner {
     // produce AUTHORITY_DENIED. Non-saga tools (Bash, Read, Write, Glob, Grep,
     // etc.) are always allowed — the saga authority covers only mcp__saga__*.
     // Legacy path (no execution_context / Saga 2) keeps the old single-blacklist.
-    const frozenTools = assignment.execution_context?.authority?.allowed_saga_tools;
-    if (Array.isArray(frozenTools) && frozenTools.length > 0) {
+    const frozenAuthority = assignment.execution_context?.authority;
+    const frozenTools = frozenAuthority?.allowed_saga_tools;
+    if (frozenAuthority && Array.isArray(frozenTools)) {
       // Non-saga built-in Claude tools that workers legitimately need (heartbeat,
       // file reads for skill/worktree conventions). These are NOT authority-gated.
       // The set MUST stay in sync with the builtin names that Process Module
@@ -803,24 +804,20 @@ export class ClaudeBoardRunner {
       const profileAllowed = Array.isArray(launchSpec?.allowedToolIds)
         ? launchSpec.allowedToolIds
         : null;
-      if (profileAllowed && profileAllowed.length > 0) {
+      if (profileAllowed) {
         const profileSet = new Set(profileAllowed.filter(t => typeof t === 'string'));
         builtin = DEFAULT_BUILTIN.filter(b => profileSet.has(b));
-        // Defensive: a profile that declares NO recognized builtins would leave
-        // the worker unable to read files or run the heartbeat. Fall back to the
-        // default set in that case rather than launch a crippled agent.
-        if (builtin.length === 0) builtin = [...DEFAULT_BUILTIN];
       } else {
         builtin = [...DEFAULT_BUILTIN];
       }
-      const builtinSet = new Set(builtin);
+      const knownBuiltinSet = new Set(DEFAULT_BUILTIN);
       // Only the actual saga MCP tools get the mcp__saga__ prefix. Mapping the
       // builtin entries too produced names like `mcp__saga__Write` /
       // `mcp__saga__Read` that the saga MCP server never exposes — claude then
       // treats them as missing and the whole saga whitelist silently fails to
       // load, leaving the worker without task_get / proposal_submit / worker_done.
       const sagaAllowed = frozenTools
-        .filter(t => typeof t === 'string' && t.trim() !== '' && !builtinSet.has(t))
+        .filter(t => typeof t === 'string' && t.trim() !== '' && !knownBuiltinSet.has(t))
         .map(t => `mcp__saga__${t}`);
       args.push('--allowedTools', [...sagaAllowed, ...builtin].join(','));
     } else {

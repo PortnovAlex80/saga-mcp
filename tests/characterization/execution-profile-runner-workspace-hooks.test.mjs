@@ -203,7 +203,7 @@ test('process-execution-workspace: returns EXACTLY the documented field set', ()
         'trackerAbsolutePath', 'trackerPath', 'workspaceFiles'].sort(),
     );
     assert.equal(result.profileId, 'discovery-proposal-worker');
-    assert.equal(result.moduleRef, 'product-discovery@3.0.1');
+    assert.equal(result.moduleRef, 'product-discovery@3.0.2');
   } finally {
     rmSync(workspaceRoot, { recursive: true, force: true });
   }
@@ -262,11 +262,11 @@ test('process-execution-workspace: MachineBindings filled from task.metadata ren
     //
     // SURPRISING (§13.3): the renderer wraps STRING values in backticks but
     // emits NUMBERS and JSON-ARRAY values BARE. So `project_id: 7` (no ticks)
-    // vs `process_module_ref: \`product-discovery@3.0.1\`` (ticks). This makes
+    // vs `process_module_ref: \`product-discovery@3.0.2\`` (ticks). This makes
     // the tracker's machine-binding block look inconsistent to a human reader
     // but it is the locked current behavior.
     const trackerContent = readFileSync(result.trackerAbsolutePath, 'utf8');
-    assert.match(trackerContent, /- process_module_ref: `product-discovery@3\.0\.1`/);
+    assert.match(trackerContent, /- process_module_ref: `product-discovery@3\.0\.2`/);
     assert.match(trackerContent, /- process_run_id: `run-1`/);
     assert.match(trackerContent, /- node_id: `node-7`/);
     assert.match(trackerContent, /- work_intent_id: `wi-3`/);
@@ -669,6 +669,12 @@ test('claude-runner launch: §13.17 FIXED — profile allowedTools narrows Claud
   // DEFAULT_BUILTIN to compute the granted builtins.
   assert.match(src, /builtin = DEFAULT_BUILTIN\.filter\(b => profileSet\.has\(b\)\)/,
     '§13.17 builtin narrowing (intersection) missing');
+  assert.match(src, /if \(frozenAuthority && Array\.isArray\(frozenTools\)\)/,
+    'empty managed authority must not fall back to the legacy catalog');
+  assert.doesNotMatch(src, /if \(builtin\.length === 0\) builtin = \[\.\.\.DEFAULT_BUILTIN\]/,
+    'an intentionally empty managed builtin surface must remain empty');
+  assert.match(src, /!knownBuiltinSet\.has\(t\)/,
+    'known builtins excluded by the profile must not be rewritten as Saga MCP names');
   // The args.push order is unchanged: [...sagaAllowed, ...builtin].
   assert.match(src, /args\.push\('--allowedTools', \[\.\.\.sagaAllowed, \.\.\.builtin\]\.join\(','\)\)/,
     '--allowedTools push order changed');

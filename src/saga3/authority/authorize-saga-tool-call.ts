@@ -47,6 +47,52 @@ export interface AuthorizeSagaToolCallInput {
   workerId?: string;
 }
 
+/**
+ * Resolve the Saga MCP catalog visible to the current process.
+ *
+ * `null` means compatibility/full catalog (interactive calls and valid Saga 2
+ * snapshots). A Set means a managed Saga 3 execution and contains the exact
+ * frozen allow-list. An empty Set is fail-closed for malformed or stale
+ * managed identity.
+ *
+ * This is deliberately separate from call authorization: catalog filtering
+ * reduces weak-model cognitive load, while {@link authorizeSagaToolCall}
+ * remains the mandatory security boundary on every call.
+ */
+export function visibleSagaToolNames(
+  db: Database,
+  env: NodeJS.ProcessEnv = process.env,
+): ReadonlySet<string> | null {
+  const marker = env.SAGA_MANAGED_EXECUTION;
+  const executionId = env.SAGA_EXECUTION_ID;
+
+  if (marker === undefined) {
+    return executionId ? new Set<string>() : null;
+  }
+  if (marker === '0') {
+    return executionId ? new Set<string>() : null;
+  }
+  if (marker !== '1' || !executionId) {
+    return new Set<string>();
+  }
+
+  const strict = readExecutionContextStrict(db, executionId);
+  if (!strict.ok) return new Set<string>();
+  if (env.SAGA_TASK_ID !== undefined
+      && String(strict.row.task_id) !== String(env.SAGA_TASK_ID)) {
+    return new Set<string>();
+  }
+  if (env.SAGA_WORKER_ID !== undefined
+      && strict.row.worker_id !== env.SAGA_WORKER_ID) {
+    return new Set<string>();
+  }
+
+  const authority = strict.snapshot.authority;
+  return authority === null
+    ? null
+    : new Set(authority.allowed_saga_tools);
+}
+
 interface ExecutionRow {
   metadata: string;
   task_id: number;

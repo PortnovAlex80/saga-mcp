@@ -297,6 +297,53 @@ test('structured-context-hook: accepts snapshot when executionId matches', () =>
   }
 });
 
+test('structured-context-hook: writes bounded execution-scoped observability state', () => {
+  const tmp = freshDir('saga-w5a5-observe-');
+  try {
+    const p = writeSnapshot(tmp, 'agent-assistance.json', {
+      stateVersion: 'observe-v1',
+      executionId: 'exec-current',
+      blocks: [{ kind: 'next-action', content: 'Use the exact call file.' }],
+    });
+    const stdin = JSON.stringify({
+      hook_event_name: 'PostToolUse',
+      tool_name: 'Read',
+      tool_response: { ok: true },
+    });
+    const first = runHook({
+      assistancePath: p,
+      executionId: 'exec-current',
+      stdin,
+    });
+    assert.equal(first.status, 0);
+    const observationPath = `${p}.hook-state.json`;
+    assert.equal(existsSync(observationPath), true);
+    assert.deepEqual(JSON.parse(readFileSync(observationPath, 'utf8')), {
+      schemaVersion: 'saga3.agent-assistance-hook-state.v1',
+      executionId: 'exec-current',
+      event: 'post-tool-success',
+      toolName: 'Read',
+      stateVersion: 'observe-v1',
+      emitted: true,
+      invocationCount: 1,
+      emittedCount: 1,
+    });
+
+    const second = runHook({
+      assistancePath: p,
+      executionId: 'exec-current',
+      stdin,
+    });
+    assert.equal(second.status, 0);
+    const state = JSON.parse(readFileSync(observationPath, 'utf8'));
+    assert.equal(state.emitted, false);
+    assert.equal(state.invocationCount, 2);
+    assert.equal(state.emittedCount, 1);
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
 test('structured-context-hook: rejects an unfenced snapshot when the runner pins executionId', () => {
   const tmp = freshDir('saga-w5a5-exec-missing-');
   try {

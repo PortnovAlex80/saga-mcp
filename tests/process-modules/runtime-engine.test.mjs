@@ -63,9 +63,9 @@ test('runtime wrapper projects versioned module identity and local outcome', asy
   const result = await runtime.run({ projectId: 1, epicId: 2 });
   assert.deepEqual(result.processModule, {
     name: 'product-discovery',
-    version: '3.0.1',
+    version: '3.0.2',
     kind: 'discovery',
-    ref: 'product-discovery@3.0.1',
+    ref: 'product-discovery@3.0.2',
   });
   assert.deepEqual(result.processOutcome, {
     code: 'go',
