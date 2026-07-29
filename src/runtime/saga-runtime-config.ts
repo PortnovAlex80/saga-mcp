@@ -5,6 +5,7 @@ import {
 
 export interface SagaRuntimeConfig {
   dbPath: string;
+  orchestrationLogRoot?: string;
   claudePath?: string;
   lmStudioUrl: string;
   zaiBaseUrl: string;
@@ -36,6 +37,7 @@ export function loadSagaRuntimeConfig(
 
   return {
     dbPath,
+    orchestrationLogRoot: env.SAGA_ORCHESTRATION_LOG?.trim() || undefined,
     claudePath: env.SAGA_CLAUDE_PATH?.trim() || undefined,
     lmStudioUrl: env.SAGA_LMSTUDIO_URL?.trim() || 'http://localhost:1234/v1',
     zaiBaseUrl: env.SAGA_ZAI_BASE_URL?.trim() || 'https://api.z.ai/api/anthropic',

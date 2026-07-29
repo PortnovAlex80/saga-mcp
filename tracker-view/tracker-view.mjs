@@ -9,7 +9,7 @@
 //   /api/heartbeat          → JSON { last } — timestamp последней активности
 //   POST /api/artifact/save → сохранить .md + metadata (JSON body)
 import http from 'node:http';
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync, unlinkSync, statSync, openSync, readSync, closeSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync, unlinkSync, statSync, openSync, readSync, closeSync, realpathSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
@@ -20,6 +20,10 @@ import { handlers as dispatcherHandlers } from '../dist/tools/dispatcher.js';
 import { handlers as repositoryHandlers } from '../dist/tools/repositories.js';
 import { handlers as lifecycleHandlers } from '../dist/tools/lifecycle.js';
 import { createClaudeBoardRunner } from './claude-runner.mjs';
+import {
+  artifactFallbackDocument,
+  orderedArtifactTypes,
+} from './artifact-presentation.mjs';
 import { isProcessAlive } from '../dist/worker-executions.js';
 import { releaseExecutionAtomically } from '../dist/lifecycle/atomic-release.js';
 import { getDb as ensureSagaDb, closeDb as closeSagaDb } from '../dist/db.js';
@@ -36,6 +40,30 @@ const Database = require(path.join(__dirname, '..', 'node_modules', 'better-sqli
 // ОДИН источник конфигурации для tracker/runtime adapters.
 const runtimeConfig = loadSagaRuntimeConfig(process.env);
 const DB_PATH = runtimeConfig.dbPath;
+const DEFAULT_WORKER_LOG_ROOT = path.join(os.homedir(), '.zcode', 'cli', 'board-runs');
+const WORKER_LOG_ROOTS = [...new Set(
+  [runtimeConfig.orchestrationLogRoot, DEFAULT_WORKER_LOG_ROOT]
+    .filter(Boolean)
+    .map(root => path.resolve(root)),
+)];
+
+function canonicalAllowedWorkerLogPath(requestedPath) {
+  if (!requestedPath) return null;
+  const resolved = path.resolve(requestedPath);
+  if (!existsSync(resolved)) return null;
+  const canonical = realpathSync(resolved);
+  for (const configuredRoot of WORKER_LOG_ROOTS) {
+    if (!existsSync(configuredRoot)) continue;
+    const canonicalRoot = realpathSync(configuredRoot);
+    const relative = path.relative(canonicalRoot, canonical);
+    if (relative === '' || (
+      relative !== '..'
+      && !relative.startsWith(`..${path.sep}`)
+      && !path.isAbsolute(relative)
+    )) return canonical;
+  }
+  return null;
+}
 
 // Файл saga.db создаётся лениво MCP-сервером при первом вызове инструмента.
 // Если tracker-view запускается первым, инициализируем ту же schema/migrations.
@@ -293,6 +321,7 @@ const boardRunner = createClaudeBoardRunner({
   sagaSkillRoot: path.join(__dirname, '..', 'skills'),
   claudePath: runtimeConfig.claudePath,
   lmstudioBaseUrl: runtimeConfig.lmStudioUrl,
+  logRoot: runtimeConfig.orchestrationLogRoot,
   // Provider + effort routing for the board-run path (mirrors the engine's
   // legacy-claude-worker-executor-factory.ts). Reads $.active_model /
   // $.active_provider / $.active_model_effort from the episode's metadata so
@@ -604,65 +633,26 @@ function renderIndex(projects, flash = null) {
 // --- HTML: канбан одного проекта ---
 
 /**
- * Read engine_concurrency from any of the project's episode_workflows rows.
- * The engine writes this on start (orchestrate.ts writeEpisodeMeta), so the
- * UI selector can pre-select the actual current value. Falls back to null
- * (caller defaults) when the engine has never run for this project.
+ * Read state owned by one episode. The control panel must not infer it from
+ * another, more recently updated epic in the same project.
  */
-function engineConcurrencyForProject(projectId) {
+function engineControlStateForEpic(epicId) {
   try {
     const row = withDb(db => db.prepare(
-      `SELECT json_extract(ew.metadata, '$.engine_concurrency') AS c
-       FROM episode_workflows ew
-       JOIN epics e ON e.id=ew.epic_id
-       WHERE e.project_id=?
-       ORDER BY ew.updated_at DESC LIMIT 1`,
-    ).get(projectId));
-    const c = row?.c;
-    return (typeof c === 'number' && c >= 1 && c <= 10) ? c : null;
-  } catch { return null; }
-}
-
-/**
- * Read the persisted engine_running flag for a project's most-recent episode.
- * Used by the kanban render to decide whether the Start/Pause button shows ▶
- * (stopped) or ⏸ (running). Falls back to false (stopped) — safer default,
- * prevents accidental UI hint that an engine is running when it isn't.
- */
-function engineRunningForProject(projectId) {
-  try {
-    const row = withDb(db => db.prepare(
-      `SELECT json_extract(ew.metadata, '$.engine_running') AS r
-       FROM episode_workflows ew
-       JOIN epics e ON e.id=ew.epic_id
-       WHERE e.project_id=?
-       ORDER BY ew.updated_at DESC LIMIT 1`,
-    ).get(projectId));
-    return row?.r === 1 || row?.r === true;
-  } catch { return false; }
-}
-
-/**
- * Read the user's chosen model for a project's most-recent episode from saga.db
- * ($.active_model). Used by the kanban render to pre-select the model selector
- * — so F5 (page reload) preserves the choice, instead of resetting to the
- * process-wide WORKER_MODEL constant.
- *
- * Returns null when no model has been set for this project (caller falls back
- * to the process-wide WORKER_MODEL resolved from ~/.claude/settings.json).
- */
-function activeModelForProject(projectId) {
-  try {
-    const row = withDb(db => db.prepare(
-      `SELECT json_extract(ew.metadata, '$.active_model') AS m
-       FROM episode_workflows ew
-       JOIN epics e ON e.id=ew.epic_id
-       WHERE e.project_id=?
-       ORDER BY ew.updated_at DESC LIMIT 1`,
-    ).get(projectId));
-    const m = row?.m;
-    return (typeof m === 'string' && m.length > 0) ? m : null;
-  } catch { return null; }
+      `SELECT json_extract(metadata, '$.engine_concurrency') AS concurrency,
+              json_extract(metadata, '$.engine_running') AS running,
+              json_extract(metadata, '$.active_model') AS model
+         FROM episode_workflows WHERE epic_id=?`,
+    ).get(epicId));
+    return {
+      concurrency: Number.isInteger(row?.concurrency) && row.concurrency >= 1 && row.concurrency <= 10
+        ? row.concurrency : 4,
+      running: row?.running === 1 || row?.running === true,
+      model: typeof row?.model === 'string' && row.model ? row.model : null,
+    };
+  } catch {
+    return { concurrency: 4, running: false, model: null };
+  }
 }
 
 /**
@@ -690,6 +680,14 @@ function renderBoard(projectId, allProjects) {
   if (!proj) return page('Проект не найден', '<div class="empty-box"><h2>Проект не найден</h2></div>');
 
   const data = loadBoard(projectId);
+  const controlEpics = Object.values(data.epicById || {}).sort((a, b) => Number(b.id) - Number(a.id));
+  const controlEpic = controlEpics.find(epic => engineControlStateForEpic(epic.id).running)
+    || controlEpics[0]
+    || null;
+  const controlState = engineControlStateForEpic(controlEpic?.id);
+  const controlEpicOptions = controlEpics.map(epic =>
+    `<option value="${epic.id}"${epic.id === controlEpic?.id ? ' selected' : ''}>#${epic.id} ${esc(epic.name)}</option>`
+  ).join('');
 
   const opts = allProjects.map(p => `<option value="${p.id}"${String(p.id)===String(projectId)?' selected':''}>${esc(p.name)}</option>`).join('');
   const header = `
@@ -706,10 +704,13 @@ function renderBoard(projectId, allProjects) {
       <span style="flex:1"></span>
       <div class="agent-runner" id="agent-runner" title="Управление движком эпизода. ▶ старт / ⏸ пауза.">
         <span class="agent-icon">🤖</span>
+        <select id="agent-epic-select" aria-label="Epic controlled by this panel"${controlEpic ? '' : ' disabled'}>
+          ${controlEpicOptions || '<option value="">no epics</option>'}
+        </select>
         <button id="agent-engine-toggle" class="engine-toggle${
-          engineRunningForProject(projectId) ? ' engine-running' : ''
-        }" type="button" aria-label="Запуск / пауза движка" title="Запуск / пауза движка этого эпизода">${
-          engineRunningForProject(projectId) ? '⏸' : '▶'
+          controlState.running ? ' engine-running' : ''
+        }" type="button"${controlEpic ? '' : ' disabled'} aria-label="Запуск / пауза движка" title="Запуск / пауза движка этого эпизода">${
+          controlState.running ? '⏸' : '▶'
         }</button>
         <select id="agent-concurrency" aria-label="Количество одновременных воркеров движка">
           ${Array.from({ length: 10 }, (_, i) => {
@@ -718,7 +719,7 @@ function renderBoard(projectId, allProjects) {
             // this, hot-reload of tracker-view loses the user's last choice —
             // selector defaults to 1, and any change would restart the engine
             // at concurrency=1, killing the parallel cohort mid-flight.
-            const conc = engineConcurrencyForProject(projectId) || 4;
+            const conc = controlState.concurrency;
             return `<option value="${i + 1}"${i + 1 === conc ? ' selected' : ''}>${i + 1}</option>`;
           }).join('')}
         </select>
@@ -727,7 +728,7 @@ function renderBoard(projectId, allProjects) {
             // Read the per-epic choice from saga.db so F5 preserves it.
             // Without this the selector reset to the process-wide WORKER_MODEL
             // constant on every page reload, losing the user's last selection.
-            const chosen = activeModelForProject(projectId) || WORKER_MODEL;
+            const chosen = controlState.model || WORKER_MODEL;
             const zaiOpts = ZAI_MODELS.map(m =>
               `<option value="${m.id}" data-limit="${m.limit}" data-provider="zai"${m.id === chosen ? ' selected' : ''}>${m.id} (×${m.limit}${m.note ? ' · ' + m.note : ''})</option>`
             ).join('');
@@ -879,7 +880,7 @@ function renderBoard(projectId, allProjects) {
     </div>
     <div class="board">${columnsHtml}</div>
     <script>
-    window.__sagaEpicId = ${Object.values(epicById)[0]?.id || 'null'};
+    window.__sagaEpicId = ${controlEpic?.id || 'null'};
     let activeFilter = '__all__';
     let activeRepo = '__all__';
     let activeStage = '__all__';
@@ -1344,11 +1345,37 @@ function renderBoard(projectId, allProjects) {
     setInterval(refreshPipeline, ${RELOAD_SEC * 1000});
     refreshPipeline();
 
-    async function fetchRunnerStatus() {
+    async function fetchEngineStatus() {
+      const epicId = window.__sagaEpicId;
+      if (!epicId) {
+        runnerStatus.textContent = 'нет эпика';
+        return;
+      }
       try {
-        const r = await fetch('/api/board-run/status?project_id=${projectId}');
-        if (r.ok) applyRunnerState((await r.json()).run);
-      } catch {}
+        const r = await fetch('/api/engine/status?epic_id=' + epicId);
+        const state = await r.json();
+        if (!r.ok || !state.ok) throw new Error(state.error || 'status unavailable');
+        syncEngineToggleButton(state.running && state.alive);
+        if (runnerConcurrency && state.concurrency) {
+          runnerConcurrency.value = String(state.concurrency);
+        }
+        if (modelSelect && state.model) modelSelect.value = state.model;
+        const effective = state.model_limit
+          ? Math.min(state.concurrency || 1, state.model_limit)
+          : state.concurrency;
+        runnerStatus.textContent = (state.running && state.alive ? 'работает' : 'остановлен')
+          + ' · concurrency=' + state.concurrency
+          + (effective !== state.concurrency ? ' (effective ' + effective + ')' : '');
+      } catch (error) {
+        runnerStatus.textContent = 'статус недоступен';
+      }
+    }
+    const epicSelect = document.getElementById('agent-epic-select');
+    if (epicSelect) {
+      epicSelect.addEventListener('change', () => {
+        window.__sagaEpicId = Number(epicSelect.value) || null;
+        fetchEngineStatus();
+      });
     }
     // Concurrency selector — on change, restart engine with new value.
     // Engine state (tasks, artifacts, episode stage) is preserved across
@@ -1375,7 +1402,7 @@ function renderBoard(projectId, allProjects) {
       } catch (e) {
         alert('Смена concurrency: ' + e.message);
         runnerStatus.textContent = 'ошибка';
-        syncConcurrencyFromEngine();
+        fetchEngineStatus();
       } finally {
         runnerConcurrency.disabled = false;
       }
@@ -1506,28 +1533,8 @@ function renderBoard(projectId, allProjects) {
         }
       });
     }
-    // Sync selector + status from engine state in episode_workflows.metadata.
-    async function syncConcurrencyFromEngine() {
-      try {
-        const epicId = window.__sagaEpicId;
-        if (!epicId) return;
-        const r = await fetch('/api/episode/pipeline?epic_id=' + epicId);
-        const j = await r.json();
-        // engine_concurrency comes through pipeline endpoint via metadata.
-        // We didn't expose it explicitly — read via a quick raw meta fetch.
-      } catch {}
-      // Direct DB read via a tiny endpoint is overkill; instead use the
-      // workers/active count as a proxy signal that engine is alive, and
-      // keep the selector at whatever the user picked. Engine_concurrency
-      // is persisted in episode_workflows.metadata.engine_concurrency but
-      // we don't expose it through pipeline yet — leave as TBD.
-    }
-    // Apply initial status: read from a one-shot endpoint would be cleanest,
-    // but for now just mark "engine running" if workers come back non-empty
-    // via refreshDbWorkers (already running every 2s).
-    runnerStatus.textContent = 'concurrency=2 (running)';
-    fetchRunnerStatus();
-    setInterval(fetchRunnerStatus, 2000);
+    fetchEngineStatus();
+    setInterval(fetchEngineStatus, 2000);
     // Apply the streaming pulse to kanban cards whose worker is actively
     // writing to its JSONL log. Called (a) from renderWorkersList whenever
     // /api/workers/active returns fresh data, and (b) from refreshBoard
@@ -1675,7 +1682,7 @@ function renderArtifacts(projectId, allProjects) {
   // Pipeline order (ADR-014): PRD → UC → AC → Reconcile → SRS. FR/NFR/RULE
   // are children of PRD now; SRS sits after the AC baseline. Chips display
   // in canonical pipeline order, not the pre-reorder PRD/SRS/UC sequence.
-  const typeOrder = ['PRD','FR','NFR','RULE','UC','AC','SRS','decision','theme','brief'];
+  const typeOrder = orderedArtifactTypes(artifacts);
   const summaryChips = typeOrder
     .filter(t => byType[t])
     .map(t => `<span class="tchip" style="border-color:${TYPE_COLORS[t]};color:${TYPE_COLORS[t]}">${TYPE_LABEL[t]||t}: ${byType[t]}</span>`)
@@ -1759,7 +1766,7 @@ function renderArtifacts(projectId, allProjects) {
       const glyph = LINK_GLYPH[link] || link;
       const targets = byLink[link].map(t => {
         if (t.target_type === 'artifact') {
-          return `<span class="tg">${esc(t.target_code || ('#'+t.target_id))}</span>`;
+          return `<a class="tg tg-link" href="/?artifact=${t.target_id}">${esc(t.target_code || ('#'+t.target_id))}</a>`;
         }
         // task
         const task = tasks[t.target_id];
@@ -1806,7 +1813,9 @@ function renderArtifacts(projectId, allProjects) {
           orphansByType[t].map(o => `<div class="anode shallow"><div class="anode-head">
             <span class="atype" style="background:${TYPE_COLORS[t]}">${TYPE_LABEL[t]||t}</span>
             <span class="acode">${o.code?esc(o.code):'—'}</span>
-            <span class="atitle">${esc(o.title)}</span>
+            <a class="atitle" href="/?artifact=${o.id}">${esc(o.title)}</a>
+            <span class="astatus" style="color:${STATUS_COLOR[o.status]||'#8b949e'}">${STATUS_LABEL[o.status]||o.status}</span>
+            <a class="aedit" href="/artifact/${o.id}/edit" title="Редактировать .md">✎</a>
           </div></div>`).join('')
         }</div>`).join('')}
     </div>
@@ -1882,11 +1891,14 @@ function renderArtifactView(artifactId, allProjects) {
   const proj = allProjects.find(p => String(p.id) === String(art.project_id));
   const projColor = proj?.color || '#8b949e';
   const resolved = resolveArtifactFile(art.path, art.project_name, art.repository_path);
-  let md = '', mdError = '';
+  let md = '', mdError = '', fallbackSource = '';
   if (resolved) {
     try { md = readFileSync(resolved.abs, 'utf8'); }
     catch (e) { mdError = `Ошибка чтения файла: ${e.message}`; }
   } else {
+    const fallback = artifactFallbackDocument(art);
+    md = fallback.markdown;
+    fallbackSource = fallback.source;
     mdError = `Файл не найден в репо проекта «${esc(art.project_name)}». Путь в БД: <code>${esc(art.path)}</code>`;
   }
 
@@ -1955,7 +1967,11 @@ function renderArtifactView(artifactId, allProjects) {
     </div>
     ${tracesHtml ? `<div class="wiki-traces">${tracesHtml}</div>` : ''}
     <div class="wiki-content">
-      ${mdError && !resolved ? `<div class="md-error">${mdError}</div>` : renderMarkdown(md)}
+      ${mdError && !resolved
+        ? `<div class="flash-warn">${mdError}. Showing ${esc(fallbackSource)}.</div>${renderMarkdown(md)}`
+        : mdError
+          ? `<div class="md-error">${esc(mdError)}</div>`
+          : renderMarkdown(md)}
     </div>`;
 
   return page(`${art.code || art.type} · ${art.title}`, header + bodyHtml);
@@ -4669,19 +4685,21 @@ function createSummaryTask(epicRow, stage, code) {
 // guard). Each JSONL line is parsed minimally — we surface type, tool name
 // (for tool_use), and a short text snippet. Never return raw content.
 function handleWorkerTail(req, res, url) {
-  const logRoot = path.join(os.homedir(), '.zcode', 'cli', 'board-runs');
   const requestedPath = url.searchParams.get('log_path');
   const lines = Math.min(Math.max(Number(url.searchParams.get('lines')) || 8, 1), 50);
   if (!requestedPath) return respondJson(res, 400, { ok:false, error:'log_path required' });
 
-  // Resolve and verify the path is contained under logRoot.
-  const resolved = path.resolve(requestedPath);
-  const resolvedRoot = path.resolve(logRoot);
-  if (!resolved.startsWith(resolvedRoot + path.sep) && resolved !== resolvedRoot) {
-    return respondJson(res, 403, { ok:false, error:'log_path outside board-runs root' });
-  }
-  if (!existsSync(resolved)) {
+  if (!existsSync(path.resolve(requestedPath))) {
     return respondJson(res, 404, { ok:false, error:'log file not found (worker may not have written yet)' });
+  }
+  // Accept only the platform-configured orchestration log root and the
+  // backwards-compatible board-runs root. realpath prevents symlink escape.
+  const resolved = canonicalAllowedWorkerLogPath(requestedPath);
+  if (!resolved) {
+    return respondJson(res, 403, {
+      ok:false,
+      error:'log_path outside configured worker log roots',
+    });
   }
 
   try {
@@ -4812,7 +4830,6 @@ function handleWorkersActive(req, res, url) {
   const projectId = Number(url.searchParams.get('project_id'));
   if (!projectId) return respondJson(res, 400, { ok:false, error:'project_id required' });
   try {
-    const logRoot = path.join(os.homedir(), '.zcode', 'cli', 'board-runs');
     const rows = withDb(db => db.prepare(
       `SELECT we.execution_id, we.task_id AS id, we.worker_id AS assigned_to,
               we.pid, we.machine_id, we.phase, we.started_at AS worker_started_at,
@@ -4850,17 +4867,23 @@ function handleWorkersActive(req, res, url) {
     // The newest matching file wins (workers reuse IDs across runs).
     const workers = rows.map(r => {
       const taskFilePattern = `task-${r.id}-${r.assigned_to.replace(/[^a-zA-Z0-9._-]+/g, '-')}.jsonl`;
-      let logPath = r.log_path || null;
-      try {
-        const runDirs = readdirSync(logRoot)
-          .filter(d => d.startsWith(`board-${projectId}-`))
-          .map(d => ({ d, full: path.join(logRoot, d), mtime: statSync(path.join(logRoot, d)).mtimeMs }))
-          .sort((a, b) => b.mtime - a.mtime);
+      let logPath = r.log_path ? canonicalAllowedWorkerLogPath(r.log_path) : null;
+      if (!logPath) {
+        const runDirs = [];
+        for (const logRoot of WORKER_LOG_ROOTS) {
+          try {
+            runDirs.push(...readdirSync(logRoot)
+              .filter(d => d.startsWith(`board-${projectId}-`))
+              .map(d => ({ full: path.join(logRoot, d), mtime: statSync(path.join(logRoot, d)).mtimeMs })));
+          } catch { /* configured root missing or unreadable */ }
+        }
+        runDirs.sort((a, b) => b.mtime - a.mtime);
         for (const rd of runDirs) {
           const candidate = path.join(rd.full, taskFilePattern);
-          if (existsSync(candidate)) { logPath = candidate; break; }
+          const allowed = existsSync(candidate) ? canonicalAllowedWorkerLogPath(candidate) : null;
+          if (allowed) { logPath = allowed; break; }
         }
-      } catch { /* logRoot missing or unreadable */ }
+      }
       // Prefer worker_started_at (written by claude-runner.mjs on spawn)
       // over updated_at — the latter bumps on any status/metadata change
       // and doesn't reflect when the current worker subprocess started.
@@ -5057,6 +5080,12 @@ function handleEngineStatus(req, res, url) {
     const state = sagaApplication.getEngineStatus(
       Number(url.searchParams.get('epic_id')),
     );
+    const route = withDb(db => db.prepare(
+      `SELECT json_extract(metadata, '$.active_model') AS model,
+              json_extract(metadata, '$.active_provider') AS provider,
+              json_extract(metadata, '$.active_model_limit') AS model_limit
+         FROM episode_workflows WHERE epic_id=?`,
+    ).get(state.epicId));
     respondJson(res, 200, {
       ok: true,
       epic_id: state.epicId,
@@ -5065,6 +5094,9 @@ function handleEngineStatus(req, res, url) {
       concurrency: state.concurrency,
       started_at: state.startedAt,
       alive: state.alive,
+      model: route?.model ?? null,
+      provider: route?.provider ?? null,
+      model_limit: route?.model_limit ?? null,
     });
   } catch (error) {
     respondEngineError(res, error);

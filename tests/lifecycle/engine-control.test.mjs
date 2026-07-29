@@ -23,7 +23,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, mkdirSync } from 'node:fs';
+import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
@@ -186,11 +186,38 @@ test('http: /api/engine/status rejects unknown epic', async (t) => {
   }
 });
 
+test('http: worker tail accepts configured orchestration log root and rejects outside files', async (t) => {
+  const logRoot = path.join(temp, 'configured-worker-logs');
+  mkdirSync(logRoot);
+  const allowedLog = path.join(logRoot, 'worker.jsonl');
+  const outsideLog = path.join(temp, 'outside.jsonl');
+  writeFileSync(allowedLog, `${JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: 'working' }] } })}\n`);
+  writeFileSync(outsideLog, `${JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: 'secret' }] } })}\n`);
+  const server = await startTrackerView(t, dbPath, {
+    SAGA_ORCHESTRATION_LOG: logRoot,
+  });
+  try {
+    const allowed = await fetch(
+      `http://127.0.0.1:${server.port}/api/worker/tail?lines=5&log_path=${encodeURIComponent(allowedLog)}`,
+    );
+    const allowedBody = await allowed.json();
+    assert.equal(allowed.status, 200);
+    assert.equal(allowedBody.events[0].snippet, 'working');
+
+    const outside = await fetch(
+      `http://127.0.0.1:${server.port}/api/worker/tail?lines=5&log_path=${encodeURIComponent(outsideLog)}`,
+    );
+    assert.equal(outside.status, 403);
+  } finally {
+    server.stop();
+  }
+});
+
 // ---------------------------------------------------------------------------
 // Helper: spawn tracker-view on a random port, return { port, stop }.
 // ---------------------------------------------------------------------------
 
-async function startTrackerView(t, dbPath) {
+async function startTrackerView(t, dbPath, extraEnv = {}) {
   // Find a free port.
   const net = await import('node:net');
   const port = await new Promise((resolve) => {
@@ -205,6 +232,7 @@ async function startTrackerView(t, dbPath) {
     ...process.env,
     DB_PATH: dbPath,
     PORT: String(port),
+    ...extraEnv,
   };
   const child = spawn('node', [
     path.join(import.meta.dirname, '..', '..', 'tracker-view', 'tracker-view.mjs'),

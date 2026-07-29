@@ -30,6 +30,7 @@ const { NodeSaga2HostRuntime } = await import(
 
 const fullConfig = (overrides = {}) => ({
   dbPath: '/tmp/saga.db',
+  orchestrationLogRoot: undefined,
   claudePath: '/opt/claude',
   lmStudioUrl: 'http://localhost:1234/v1',
   zaiBaseUrl: 'https://api.z.ai/api/anthropic',
@@ -45,6 +46,7 @@ const fullConfig = (overrides = {}) => ({
 test('runtime config preserves Saga 2 defaults and environment precedence', () => {
   const config = loadSagaRuntimeConfig({
     DB_PATH: '/tmp/saga.db',
+    SAGA_ORCHESTRATION_LOG: '/tmp/saga-worker-logs',
     SAGA_CLAUDE_PATH: '/opt/claude',
     SAGA_LMSTUDIO_URL: 'http://127.0.0.1:1234/v1',
     SAGA_ZAI_BASE_URL: 'https://zai.example/anthropic',
@@ -58,6 +60,7 @@ test('runtime config preserves Saga 2 defaults and environment precedence', () =
 
   assert.deepEqual(config, {
     dbPath: '/tmp/saga.db',
+    orchestrationLogRoot: '/tmp/saga-worker-logs',
     claudePath: '/opt/claude',
     lmStudioUrl: 'http://127.0.0.1:1234/v1',
     zaiBaseUrl: 'https://zai.example/anthropic',

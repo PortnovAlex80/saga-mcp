@@ -147,12 +147,11 @@ export function createSaga2Application(
       : createLegacyClaudeWorkerExecutorFactory({
         modelRouteReader: epicId => persistence.episodes.readWorkerModelRoute(epicId),
       }));
-  const orchestrationLogRoot = env.SAGA_ORCHESTRATION_LOG?.trim();
   const host = overrides.host ?? new NodeSaga2HostRuntime({
-    workerPaths: orchestrationLogRoot
+    workerPaths: config.orchestrationLogRoot
       ? {
-          logRoot: orchestrationLogRoot,
-          heartbeatLog: path.join(orchestrationLogRoot, 'worker-heartbeat.log'),
+          logRoot: config.orchestrationLogRoot,
+          heartbeatLog: path.join(config.orchestrationLogRoot, 'worker-heartbeat.log'),
         }
       : undefined,
   });
