@@ -20,14 +20,16 @@ function workspace(root) {
   };
 }
 
-function fixture() {
+function fixture({ policy = 'learn', createDraft = true, content = '# Existing use cases\n' } = {}) {
   const root = mkdtempSync(path.join(os.tmpdir(), 'saga-warm-start-'));
   const execution = path.join(root, 'docs', 'formalization', 'execution');
   const draft = path.join(root, 'docs', 'requirements', 'use-cases.md');
   mkdirSync(execution, { recursive: true });
   mkdirSync(path.dirname(draft), { recursive: true });
-  writeFileSync(draft, '# Existing use cases\n');
-  const hash = createHash('sha256').update(readFileSync(draft)).digest('hex');
+  if (createDraft) writeFileSync(draft, content);
+  const hash = createDraft
+    ? createHash('sha256').update(readFileSync(draft)).digest('hex')
+    : null;
   const fixturePath = path.join(root, 'fixture.json');
   writeFileSync(fixturePath, JSON.stringify({
     schemaVersion: 'saga3.test-warm-start-fixture.v1',
@@ -36,7 +38,11 @@ function fixture() {
       moduleRef: 'solution-formalization@1.0.0',
       nodeId: 'model-use-cases',
       mode: 'verify-and-submit-existing-draft',
-      drafts: [{ path: 'docs/requirements/use-cases.md', sha256: hash }],
+      drafts: [{
+        path: 'docs/requirements/use-cases.md',
+        policy,
+        ...(policy === 'locked' ? { sha256: hash } : {}),
+      }],
     }],
   }));
   return { root, fixturePath };
@@ -69,6 +75,7 @@ test('warm start exposes verified drafts without completing protocol work', () =
   assert.deepEqual(result.testWarmStart.draftFiles, [
     'docs/requirements/use-cases.md',
   ]);
+  assert.deepEqual(result.testWarmStart.coldStartFiles, []);
   assert.match(result.testWarmStart.instruction, /normal materialized MCP calls/);
   const receipt = JSON.parse(readFileSync(
     path.join(f.root, result.testWarmStart.receiptPath),
@@ -78,8 +85,30 @@ test('warm start exposes verified drafts without completing protocol work', () =
   assert.equal('completedSteps' in receipt, false);
 });
 
-test('warm start fails closed on one-key enablement and hash drift', () => {
-  const f = fixture();
+test('learn policy treats missing and empty files as cold starts', () => {
+  for (const f of [
+    fixture({ createDraft: false }),
+    fixture({ content: '   \n' }),
+  ]) {
+    const result = applyTestWarmStart({
+      env: {
+        SAGA_TEST_WARM_START: '1',
+        SAGA_TEST_WARM_START_FIXTURE: f.fixturePath,
+      },
+      workspaceRoot: f.root,
+      moduleRef: 'solution-formalization@1.0.0',
+      nodeId: 'model-use-cases',
+      processWorkspace: workspace(f.root),
+    });
+    assert.deepEqual(result.testWarmStart.draftFiles, []);
+    assert.deepEqual(result.testWarmStart.coldStartFiles, [
+      'docs/requirements/use-cases.md',
+    ]);
+  }
+});
+
+test('warm start fails closed on one-key enablement and locked hash drift', () => {
+  const f = fixture({ policy: 'locked' });
   const request = {
     workspaceRoot: f.root,
     moduleRef: 'solution-formalization@1.0.0',

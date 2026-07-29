@@ -9,7 +9,7 @@
       "drafts": [
         {
           "path": "docs/discovery/projects/1/executions/task-1/exec-1-22052-1785354564636-1/discovery-doc.md",
-          "sha256": "f14aeaa0d8478474090a6baeef51b9900871733ceb83731c69625e1f9a83853a"
+          "policy": "learn"
         }
       ],
       "instruction": "Use the provided prior draft as a candidate reference for the current materialized discovery document. Verify it against the current task and input, copy only applicable content into the current execution files, then submit through the normal proposal call."
@@ -21,11 +21,11 @@
       "drafts": [
         {
           "path": "docs/requirements/REQ-001-hex-button-autism-ui/00-PRD.md",
-          "sha256": "c37bf34336f1312392f671004c183a9d7a726c2a9f688ea3387e19e5449bfa29"
+          "policy": "learn"
         },
         {
           "path": "docs/requirements/REQ-001-hex-button-autism-ui/00-metrics.md",
-          "sha256": "943e33ff756cfe419bc54506dd5f0f3ecbde6c5b0d9ba9dcc244826ae3345a97"
+          "policy": "learn"
         }
       ],
       "instruction": "The product contract draft already exists. Read it, make only corrections required by the current discovery certificate, then idempotently register the PRD, FR, NFR, RULE and required traces through the normal MCP calls."
@@ -37,10 +37,34 @@
       "drafts": [
         {
           "path": "docs/requirements/REQ-001-hex-button-autism-ui/02-use-cases.md",
-          "sha256": "70400c188119674ea9a5a1544775ddf456feae2dd3874d72caf0c768b80bb072"
+          "policy": "learn"
         }
       ],
       "instruction": "The use-case draft already exists. Do not redesign it. Verify coverage against the accepted FR set, make only necessary corrections, then idempotently register each UC and its exact required traces through the normal MCP calls."
+    },
+    {
+      "moduleRef": "solution-formalization@1.0.0",
+      "nodeId": "define-acceptance-contract",
+      "mode": "verify-and-submit-existing-draft",
+      "drafts": [
+        {
+          "path": "docs/requirements/REQ-001-hex-button-autism-ui/03-acceptance-criteria.md",
+          "policy": "learn"
+        }
+      ],
+      "instruction": "If the acceptance draft is reusable, verify and minimally repair it. If it is missing or empty, create it normally at the declared path. Register every AC and exact required trace through the normal MCP calls so later failed test runs can reuse the file."
+    },
+    {
+      "moduleRef": "solution-formalization@1.0.0",
+      "nodeId": "define-architecture-contract",
+      "mode": "verify-and-submit-existing-draft",
+      "drafts": [
+        {
+          "path": "docs/requirements/REQ-001-hex-button-autism-ui/01-SRS.md",
+          "policy": "learn"
+        }
+      ],
+      "instruction": "If the SRS draft is reusable, validate it against the frozen acceptance baseline and make only necessary corrections. If it is missing or empty, create it normally at the declared path. Register the SRS and exact trace through normal MCP calls; never bypass the architecture gate."
     }
   ]
 }

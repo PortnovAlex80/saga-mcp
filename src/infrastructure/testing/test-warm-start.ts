@@ -22,6 +22,11 @@ const MODE = 'verify-and-submit-existing-draft' as const;
 
 interface DraftSpec {
   readonly path: string;
+  /**
+   * learn: missing/empty is a cold start; later runs reuse the populated file.
+   * locked: the file must exist and match sha256 exactly.
+   */
+  readonly policy?: 'learn' | 'locked';
   readonly sha256?: string;
 }
 
@@ -98,10 +103,14 @@ function parseFixture(raw: string): FixtureDocument {
     for (const draft of node.drafts) {
       if (
         !draft
-        || typeof draft !== 'object'
-        || typeof draft.path !== 'string'
+      || typeof draft !== 'object'
+      || typeof draft.path !== 'string'
+        || (draft.policy !== undefined
+          && draft.policy !== 'learn'
+          && draft.policy !== 'locked')
         || (draft.sha256 !== undefined
           && !/^[a-f0-9]{64}$/i.test(draft.sha256))
+        || (draft.policy === 'locked' && draft.sha256 === undefined)
       ) {
         throw new Error('TEST_WARM_START_DRAFT_INVALID');
       }
@@ -148,18 +157,35 @@ export function applyTestWarmStart(
   }
 
   const match = matches[0];
-  const draftFiles = match.drafts.map(draft => {
+  const draftFiles: string[] = [];
+  const coldStartFiles: string[] = [];
+  const draftReceipts = match.drafts.map(draft => {
     const absolute = containedPath(request.workspaceRoot, draft.path);
+    const relative = draft.path.replace(/\\/g, '/');
+    const policy = draft.policy ?? (draft.sha256 ? 'locked' : 'learn');
     if (!existsSync(absolute)) {
-      throw new Error(`TEST_WARM_START_DRAFT_MISSING: '${draft.path}'`);
+      if (policy === 'locked') {
+        throw new Error(`TEST_WARM_START_DRAFT_MISSING: '${draft.path}'`);
+      }
+      coldStartFiles.push(relative);
+      return { path: relative, policy, state: 'missing' as const, sha256: null };
     }
+    const bytes = readFileSync(absolute);
     const actualHash = sha256File(absolute);
-    if (draft.sha256 && actualHash !== draft.sha256.toLowerCase()) {
+    if (policy === 'locked' && actualHash !== draft.sha256!.toLowerCase()) {
       throw new Error(
         `TEST_WARM_START_DRAFT_HASH_MISMATCH: '${draft.path}'`,
       );
     }
-    return draft.path.replace(/\\/g, '/');
+    if (bytes.toString('utf8').trim() === '') {
+      if (policy === 'locked') {
+        throw new Error(`TEST_WARM_START_DRAFT_EMPTY: '${draft.path}'`);
+      }
+      coldStartFiles.push(relative);
+      return { path: relative, policy, state: 'empty' as const, sha256: actualHash };
+    }
+    draftFiles.push(relative);
+    return { path: relative, policy, state: 'reusable' as const, sha256: actualHash };
   });
 
   const executionDirectory = containedPath(
@@ -173,10 +199,7 @@ export function applyTestWarmStart(
     moduleRef: request.moduleRef,
     nodeId: request.nodeId,
     mode: MODE,
-    drafts: match.drafts.map((draft, index) => ({
-      path: draftFiles[index],
-      sha256: sha256File(containedPath(request.workspaceRoot, draft.path)),
-    })),
+    drafts: draftReceipts,
   };
   writeFileSync(receiptPath, `${JSON.stringify(receipt, null, 2)}\n`);
 
@@ -198,8 +221,9 @@ export function applyTestWarmStart(
       mode: MODE,
       nodeId: request.nodeId,
       draftFiles,
+      coldStartFiles,
       instruction: match.instruction?.trim()
-        || 'Treat the listed files as provided candidate drafts. Verify them against the current task, make only necessary corrections, then register them with the normal materialized MCP calls and complete the task.',
+        || 'Reuse every available candidate draft after verifying it against the current task. Create missing or empty cold-start files normally. Make only necessary corrections, then register outputs with the normal materialized MCP calls and complete the task.',
       receiptPath: relativeReceipt,
     },
   };

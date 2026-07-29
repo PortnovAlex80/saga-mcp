@@ -66,6 +66,7 @@ export interface ProcessExecutionWorkspace {
     readonly mode: 'verify-and-submit-existing-draft';
     readonly nodeId: string;
     readonly draftFiles: readonly string[];
+    readonly coldStartFiles: readonly string[];
     readonly instruction: string;
     readonly receiptPath: string;
   };
