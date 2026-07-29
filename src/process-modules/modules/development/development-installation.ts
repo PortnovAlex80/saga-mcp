@@ -16,7 +16,7 @@ import type {
 } from '../../application/node-executor.js';
 import type {
   ProcessOutputPayloadResolver,
-} from '../../application/process-output-payload-registry.js';
+} from '../../application/lifecycle-orchestrator.js';
 import type {
   ProcessModuleExecutionContext,
 } from '../../application/process-module-executor.js';

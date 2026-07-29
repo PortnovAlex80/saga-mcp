@@ -101,43 +101,11 @@ const {
 } = await import(
   '../../dist/process-modules/lifecycles/product-delivery-lifecycle.js'
 );
-// Wave 13 removed modules/catalog.ts + modules/installations.ts; build the
-// registries inline from the production module definitions imported directly.
-const { ProcessModuleRegistry } = await import(
-  '../../dist/process-modules/application/process-module-registry.js'
+const { createBuiltInProcessModuleRegistry } = await import(
+  '../../dist/process-modules/modules/catalog.js'
 );
-const { ProcessModuleInstallationRegistry } = await import(
-  '../../dist/process-modules/application/process-module-installation-registry.js'
-);
-const { discoveryProcessModule } = await import(
-  '../../dist/process-modules/modules/discovery/discovery-process-module.js'
-);
-const { formalizationProcessModule } = await import(
-  '../../dist/process-modules/modules/formalization/formalization-process-module.js'
-);
-const { developmentProcessModule } = await import(
-  '../../dist/process-modules/modules/development/development-process-module.js'
-);
-const { deliveryProcessModule } = await import(
-  '../../dist/process-modules/modules/delivery/delivery-process-module.js'
-);
-function createBuiltInProcessModuleRegistry() {
-  const registry = new ProcessModuleRegistry();
-  registry.register(discoveryProcessModule);
-  registry.register(formalizationProcessModule);
-  registry.register(developmentProcessModule);
-  registry.register(deliveryProcessModule);
-  return registry;
-}
-function createBuiltInProcessModuleInstallationRegistry(installations, options = {}) {
-  const registry = new ProcessModuleInstallationRegistry(options);
-  for (const installation of installations) {
-    registry.register(installation);
-  }
-  return registry;
-}
-const { ProcessOutputPayloadRegistry } = await import(
-  '../../dist/process-modules/application/process-output-payload-registry.js'
+const { createBuiltInProcessModuleInstallationRegistry } = await import(
+  '../../dist/process-modules/modules/installations.js'
 );
 const { hashDevelopmentPolicy } = await import(
   '../../dist/process-modules/modules/development/development-settlement-policy.js'
@@ -151,11 +119,13 @@ const { hashDeliveryReleasePolicy } = await import(
 //
 // Each production module's stub executor returns an output whose contentHash
 // is sha256Hex(payload) and whose schema is the module's real output contract.
-// The ProcessOutputPayloadRegistry resolves the same payload, so the
-// orchestrator's hash-mismatch gate (process-output-payload-registry.ts:50-54)
-// passes exactly. The payloads carry the minimum fields the DOWNSTREAM stage
-// input mappings read (e.g. formalization's bundle.acceptanceBaselineHash,
-// srs, acceptanceCriteria consumed by development's inputMapping).
+// W13-A3: the deleted ProcessOutputPayloadRegistry is replaced by a single
+// injected resolveOutputPayload callback. The callback resolves the same
+// payload, so the orchestrator's hash-mismatch gate
+// (lifecycle-orchestrator.ts resolveStageOutputPayload) passes exactly. The
+// payloads carry the minimum fields the DOWNSTREAM stage input mappings read
+// (e.g. formalization's bundle.acceptanceBaselineHash, srs, acceptanceCriteria
+// consumed by development's inputMapping).
 // ---------------------------------------------------------------------------
 const DISCOVERY_PAYLOAD = Object.freeze({
   schemaVersion: 'saga3.discovery-certificate.v1',
@@ -374,10 +344,21 @@ function buildOrchestrator(db, { executeCounter } = {}) {
     installations,
     {},
   );
-  const payloadRegistry = new ProcessOutputPayloadRegistry();
+  // W13-A3: the deleted ProcessOutputPayloadRegistry is replaced by a single
+  // injected resolveOutputPayload callback (schema-keyed dispatch inline).
+  const resolversBySchema = new Map();
   for (const mo of Object.values(MODULE_OUTPUTS)) {
-    payloadRegistry.register(mo.schema, () => mo.payload);
+    resolversBySchema.set(mo.schema, () => mo.payload);
   }
+  const resolveOutputPayload = context => {
+    const resolver = resolversBySchema.get(context.output.schema);
+    if (!resolver) {
+      throw new Error(
+        `process output resolver for schema '${context.output.schema}' is not registered`,
+      );
+    }
+    return resolver(context);
+  };
   const lifecycleRunRepo = new SqliteLifecycleRunRepository(db);
 
   const orchestrator = new LifecycleOrchestrator({
@@ -385,7 +366,7 @@ function buildOrchestrator(db, { executeCounter } = {}) {
     processRunRepo,
     moduleRegistry: catalog,
     installationRegistry,
-    outputPayloadRegistry: payloadRegistry,
+    resolveOutputPayload,
   });
   return { orchestrator, lifecycleRunRepo, processRunRepo };
 }

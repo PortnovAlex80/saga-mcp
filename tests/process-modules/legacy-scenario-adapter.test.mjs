@@ -512,25 +512,29 @@ test('W7-A8: legacyProductDeliveryScenarioFor returns a frozen manifest constant
 });
 
 // ---------------------------------------------------------------------------
-// Section 9: regression — the legacy lifecycle itself still has its resolver.
+// Section 9: W13-A3 — the legacy lifecycle's routeResolver has been REMOVED.
 //
-// The adapter is a compatibility bridge, NOT a replacement. Wave 11/13 own
-// the cutover. This test pins that the legacy definition still carries its
-// routeResolver so a Wave 7 manifest consumer that falls back to the legacy
-// orchestrator keeps working.
+// Wave 13 deleted the runtime routeResolver function field and the
+// Object.defineProperty({enumerable:false}) dodge. The runtime
+// productDeliveryLifecycle is now purely declarative (permissive: every
+// Discovery outcome forwards to Formalization). The legacy strict go/no-go
+// gate survives ONLY as the separate declarative manifest
+// `LEGACY_PRODUCT_DELIVERY_SCENARIO_STRICT` produced by this adapter — it does
+// NOT live on the runtime lifecycle definition anymore.
 // ---------------------------------------------------------------------------
 
-test('W7-A8 regression: legacy productDeliveryLifecycle still exposes its routeResolver', () => {
-  // The resolver is non-enumerable but reachable via the property.
+test('W13-A3: legacy productDeliveryLifecycle exposes NO routeResolver', () => {
   assert.equal(
-    typeof productDeliveryLifecycle.routeResolver,
-    'function',
-    'legacy lifecycle lost its routeResolver — adapter must not mutate the source',
+    productDeliveryLifecycle.routeResolver,
+    undefined,
+    'runtime lifecycle must not carry a routeResolver after W13-A3',
   );
-  // And it is still non-enumerable (does not leak into JSON).
+  assert.equal(
+    Object.prototype.hasOwnProperty.call(productDeliveryLifecycle, 'routeResolver'),
+    false,
+  );
   const json = canonicalJson(productDeliveryLifecycle);
-  // canonicalJson drops functions, so 'routeResolver' should not appear as a key.
-  assert.ok(!json.includes('"routeResolver"'), 'legacy resolver leaked into canonical JSON');
+  assert.ok(!json.includes('routeResolver'), 'resolver key leaked into canonical JSON');
 });
 
 test('W7-A8 regression: legacy lifecycle still has 4 stages in canonical order', () => {

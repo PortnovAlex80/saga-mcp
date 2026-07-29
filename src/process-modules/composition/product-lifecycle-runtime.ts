@@ -16,19 +16,18 @@ import { HumanInteractionRegistry } from '../application/human-interaction-regis
 import { KernelHandlerRegistry } from '../application/kernel-handler-registry.js';
 import { LifecycleOrchestrationEngineAdapter } from '../application/lifecycle-orchestration-engine-adapter.js';
 import { LifecycleOrchestrator } from '../application/lifecycle-orchestrator.js';
+import type { ResolveStageOutputPayload } from '../application/lifecycle-orchestrator.js';
 import type { NodeExecutor } from '../application/node-executor.js';
 import { ExternalNodeExecutor } from '../application/node-executors/external-node-executor.js';
 import { HumanNodeExecutor } from '../application/node-executors/human-node-executor.js';
 import { KernelNodeExecutor } from '../application/node-executors/kernel-node-executor.js';
 import { LmNodeExecutor } from '../application/node-executors/lm-node-executor.js';
-import { ProcessModuleInstallationRegistry } from '../application/process-module-installation-registry.js';
-import { ProcessModuleRegistry } from '../application/process-module-registry.js';
-import { ProcessOutputPayloadRegistry } from '../application/process-output-payload-registry.js';
 import {
   PRODUCT_DELIVERY_LIFECYCLE_INPUT_SCHEMA,
   assertProductDeliveryLifecycleInput,
   productDeliveryLifecycle,
 } from '../lifecycles/product-delivery-lifecycle.js';
+import { createBuiltInProcessModuleRegistry } from '../modules/catalog.js';
 import {
   createDeliveryExternalAdapters,
   createDeliveryHumanInteractions,
@@ -104,6 +103,7 @@ import {
   ReferenceFormalizationSettlementPolicy,
   SqliteFormalizationArtifactGraph,
 } from '../modules/formalization/sqlite-formalization-kernel.js';
+import { createBuiltInProcessModuleInstallationRegistry } from '../modules/installations.js';
 import { SqliteLifecycleRunRepository } from '../persistence/sqlite-lifecycle-run-repository.js';
 import {
   SqliteManagedNodeSubmissionRepository,
@@ -357,48 +357,45 @@ export function createProductLifecycleRuntime(
     }),
   };
 
-  // Wave 13 removed modules/catalog.ts + modules/installations.ts; the module
-  // definitions are imported directly and the registries built inline.
-  const moduleRegistry = new ProcessModuleRegistry();
-  moduleRegistry.register(discoveryProcessModule);
-  moduleRegistry.register(formalizationProcessModule);
-  moduleRegistry.register(developmentProcessModule);
-  moduleRegistry.register(deliveryProcessModule);
-  const installationRegistry = new ProcessModuleInstallationRegistry({
-    kernelHandlerRegistry: kernelHandlers,
-    externalAdapterRegistry: externalAdapters,
-    humanInteractionRegistry: humanInteractions,
-  });
-  installationRegistry.register({ definition: discoveryProcessModule, executor: executors.discovery });
-  installationRegistry.register({
-    definition: formalizationProcessModule,
-    executor: executors.formalization,
-  });
-  installationRegistry.register({ definition: developmentProcessModule, executor: executors.development });
-  installationRegistry.register({ definition: deliveryProcessModule, executor: executors.delivery });
+  const moduleRegistry = createBuiltInProcessModuleRegistry();
+  const installationRegistry =
+    createBuiltInProcessModuleInstallationRegistry([
+      { definition: discoveryProcessModule, executor: executors.discovery },
+      {
+        definition: formalizationProcessModule,
+        executor: executors.formalization,
+      },
+      { definition: developmentProcessModule, executor: executors.development },
+      { definition: deliveryProcessModule, executor: executors.delivery },
+    ], {
+      kernelHandlerRegistry: kernelHandlers,
+      externalAdapterRegistry: externalAdapters,
+      humanInteractionRegistry: humanInteractions,
+    });
 
-  const outputPayloadRegistry = new ProcessOutputPayloadRegistry();
-  outputPayloadRegistry.register(
-    SOLUTION_CONTRACT_CERTIFICATE_SCHEMA,
-    createFormalizationLifecycleOutputPayloadResolver(
-      formalizationSolutionContractRepository,
-    ),
-  );
-  outputPayloadRegistry.register(
-    VERIFIED_INTEGRATION_BUNDLE_SCHEMA,
-    createDevelopmentOutputPayloadResolver(developmentOutputRepository),
-  );
-  outputPayloadRegistry.register(
-    RELEASE_RECORD_SCHEMA,
-    createDeliveryOutputPayloadResolver(deliveryOutputRepository),
-  );
+  // Wave 13 (W13-A3): the deleted `ProcessOutputPayloadRegistry` is replaced by
+  // a single injected callback. The lifecycle core never knows HOW a payload is
+  // stored; it asks this resolver for the exact content-addressed ref and then
+  // re-checks the canonical hash itself (orchestrator.resolveStageOutputPayload).
+  // The schema-keyed dispatch that the registry encapsulated now lives here, at
+  // the composition root, alongside the other module-specific wiring.
+  const resolveOutputPayload = makeProductDeliveryOutputPayloadResolver({
+    [SOLUTION_CONTRACT_CERTIFICATE_SCHEMA]:
+      createFormalizationLifecycleOutputPayloadResolver(
+        formalizationSolutionContractRepository,
+      ),
+    [VERIFIED_INTEGRATION_BUNDLE_SCHEMA]:
+      createDevelopmentOutputPayloadResolver(developmentOutputRepository),
+    [RELEASE_RECORD_SCHEMA]:
+      createDeliveryOutputPayloadResolver(deliveryOutputRepository),
+  });
 
   const orchestrator = new LifecycleOrchestrator({
     lifecycleRunRepo,
     processRunRepo,
     moduleRegistry,
     installationRegistry,
-    outputPayloadRegistry,
+    resolveOutputPayload,
   });
   const engine = new LifecycleOrchestrationEngineAdapter({
     definition: productDeliveryLifecycle,
@@ -434,7 +431,7 @@ export function createProductLifecycleRuntime(
     orchestrator,
     moduleRegistry,
     installationRegistry,
-    outputPayloadRegistry,
+    resolveOutputPayload,
     kernelHandlers,
     externalAdapters,
     humanInteractions,
@@ -484,4 +481,28 @@ function requireDeliveryPort<T>(
     + 'provide a complete Delivery port set, a SqliteDeliveryRuntime, or '
     + 'delivery.providers for the standard runtime',
   );
+}
+
+/**
+ * Build the single {@link ResolveStageOutputPayload} callback for the product
+ * delivery lifecycle from the per-schema dereferencers each module ships.
+ *
+ * This replaces the deleted `ProcessOutputPayloadRegistry`: the schema→resolver
+ * dispatch table is now a plain object assembled at the composition root (the
+ * only place that knows every module's storage), and the lifecycle core calls
+ * one callback instead of a registry. The orchestrator still re-checks the
+ * canonical hash of whatever the resolver returns.
+ */
+function makeProductDeliveryOutputPayloadResolver(
+  resolversBySchema: Readonly<Record<string, ResolveStageOutputPayload>>,
+): ResolveStageOutputPayload {
+  return context => {
+    const resolver = resolversBySchema[context.output.schema];
+    if (!resolver) {
+      throw new Error(
+        `process output resolver for schema '${context.output.schema}' is not registered`,
+      );
+    }
+    return resolver(context);
+  };
 }

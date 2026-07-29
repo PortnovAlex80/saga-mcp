@@ -4,6 +4,7 @@ import type {
   StageBinding,
   TransitionTarget,
 } from '../domain/lifecycle.js';
+import type { ProcessModuleReference } from '../domain/process-module.js';
 import type {
   ProcessModuleCertificateRef,
   ProcessModuleOutput,
@@ -26,9 +27,36 @@ import {
   mapLifecycleValues,
   type LifecycleMappingRuntime,
 } from './lifecycle-mapper.js';
-import type { ProcessOutputPayloadRegistry } from './process-output-payload-registry.js';
 
 const LIFECYCLE_LEASE_MS = 120_000;
+
+/**
+ * Resolves the complete immutable output payload for one stage's
+ * {@link ProcessModuleOutput}, so the declarative output mappings may read its
+ * body during the hand-off. The orchestrator never knows HOW a SolutionContract
+ * or release bundle is stored; it asks this resolver for the exact ref and then
+ * independently re-checks the canonical hash before any mapping may read it.
+ *
+ * Replaces the deleted `ProcessOutputPayloadRegistry` (plan §13.12): a single
+ * injected callback per lifecycle runtime instead of a schema-keyed registry
+ * object.
+ */
+export type ResolveStageOutputPayload = (params: {
+  processRunId: number;
+  moduleRef: ProcessModuleReference;
+  projectId: number;
+  epicId: number | null;
+  output: ProcessModuleOutput;
+}) => Promise<unknown> | unknown;
+
+/**
+ * Backward-compatible alias for {@link ResolveStageOutputPayload}. Module
+ * installation files ship per-schema dereferencers typed against this name;
+ * the deleted `ProcessOutputPayloadRegistry` was the original consumer. The
+ * composition root now wires these dereferencers into a single
+ * `ResolveStageOutputPayload` callback (W13-A3).
+ */
+export type ProcessOutputPayloadResolver = ResolveStageOutputPayload;
 
 export interface RunLifecycleCommand {
   projectId: number;
@@ -54,7 +82,13 @@ export interface LifecycleOrchestratorOptions {
   processRunRepo: ProcessRunRepository;
   moduleRegistry: ProcessModuleRegistry;
   installationRegistry: ProcessModuleInstallationRegistry;
-  outputPayloadRegistry?: ProcessOutputPayloadRegistry;
+  /**
+   * Resolves the complete immutable output payload for one stage's output, so
+   * the declarative output mappings may read its body during the hand-off.
+   * Optional: a lifecycle whose mappings read only runtime fields / output
+   * refs may omit it. Replaces the deleted `ProcessOutputPayloadRegistry`.
+   */
+  resolveOutputPayload?: ResolveStageOutputPayload;
   now?: () => Date;
   /** Primarily configurable for deterministic lease/watchdog tests. */
   leaseDurationMs?: number;
@@ -79,7 +113,7 @@ export class LifecycleOrchestrator {
   private readonly processRunRepo: ProcessRunRepository;
   private readonly moduleRegistry: ProcessModuleRegistry;
   private readonly installationRegistry: ProcessModuleInstallationRegistry;
-  private readonly outputPayloadRegistry: ProcessOutputPayloadRegistry | null;
+  private readonly resolveOutputPayload: ResolveStageOutputPayload | null;
   private readonly now: () => Date;
   private readonly leaseDurationMs: number;
 
@@ -88,7 +122,7 @@ export class LifecycleOrchestrator {
     this.processRunRepo = options.processRunRepo;
     this.moduleRegistry = options.moduleRegistry;
     this.installationRegistry = options.installationRegistry;
-    this.outputPayloadRegistry = options.outputPayloadRegistry ?? null;
+    this.resolveOutputPayload = options.resolveOutputPayload ?? null;
     this.now = options.now ?? (() => new Date());
     this.leaseDurationMs = options.leaseDurationMs ?? LIFECYCLE_LEASE_MS;
     if (!Number.isFinite(this.leaseDurationMs) || this.leaseDurationMs <= 0) {
@@ -239,8 +273,6 @@ export class LifecycleOrchestrator {
         const route = routeProcessOutcome(
           stage,
           persistedResult.outcome,
-          rootInput,
-          definition.routeResolver,
         );
 
         // outputMapping is a strict, typed hand-off contract. A terminal local
@@ -250,14 +282,13 @@ export class LifecycleOrchestrator {
         const needsHandoff = route.target.type === 'stage';
         const outputPayload = needsHandoff
           && persistedResult.output
-          && this.outputPayloadRegistry
-          ? await this.outputPayloadRegistry.resolve({
-              processRunId: processStart.record.id,
-              moduleRef: stage.moduleRef,
-              projectId: lifecycleRun.projectId,
-              epicId: lifecycleRun.epicId,
-              output: persistedResult.output,
-            })
+          && this.resolveOutputPayload
+          ? await this.resolveStageOutputPayload(
+              processStart.record.id,
+              stage.moduleRef,
+              lifecycleRun,
+              persistedResult.output,
+            )
           : undefined;
         const outcomeFrame = {
           ...durableFrame,
@@ -461,6 +492,37 @@ export class LifecycleOrchestrator {
       lifecycleInput: rootInput,
       stages,
     };
+  }
+
+  /**
+   * Delegates to the injected {@link ResolveStageOutputPayload} callback and
+   * independently re-checks the canonical hash before any declarative mapping
+   * may read the payload — the boundary check the deleted registry performed.
+   * The lifecycle core never trusts the resolver's bytes; it only trusts the
+   * content-addressed ref it asked for.
+   */
+  private async resolveStageOutputPayload(
+    processRunId: number,
+    moduleRef: ProcessModuleReference,
+    lifecycleRun: LifecycleRunRecord,
+    output: ProcessModuleOutput,
+  ): Promise<unknown> {
+    if (!this.resolveOutputPayload) return undefined;
+    const payload = await this.resolveOutputPayload({
+      processRunId,
+      moduleRef,
+      projectId: lifecycleRun.projectId,
+      epicId: lifecycleRun.epicId,
+      output,
+    });
+    const actualHash = sha256Hex(payload);
+    if (actualHash !== output.contentHash) {
+      throw new Error(
+        `PROCESS_OUTPUT_PAYLOAD_HASH_MISMATCH: '${output.artifactRef}' `
+        + `resolved to '${actualHash}', expected '${output.contentHash}'`,
+      );
+    }
+    return payload;
   }
 
   private mappingRuntime(

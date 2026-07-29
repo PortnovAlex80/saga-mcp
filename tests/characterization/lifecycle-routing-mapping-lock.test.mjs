@@ -7,14 +7,14 @@
 //   - transactional stage completion + next-stage creation;
 //   - the common executor shape; restricted mapping; idempotency.
 //
-// And it PINS for Wave 7 (§13.8–13.11, §13.21):
-//   - routeResolver function field on the serializable LifecycleDefinition;
-//   - definitionHash that drops the resolver function body (present/absent bit);
-//   - product-delivery-lifecycle's Object.defineProperty({enumerable:false}) dodge;
+// And it PINS for Wave 13 (§13.8–13.11, §13.21):
+//   - W13-A3 REMOVED the routeResolver function field, the definitionHash
+//     function-dropping dodge, and the Object.defineProperty({enumerable:false})
+//     dodge. Routing is now purely declarative (static outcomeRoutes only).
 //   - cumulative-frame handoff (root input + all prior stage payloads).
 //
-// Each pin is marked with `// WAVE 7 WILL CHANGE THIS` so the eventual diff
-// is obvious. Pure characterization — production source is untouched.
+// Each W13-A3 change is marked with `// W13-A3 CHANGED THIS` so the diff is
+// obvious. Pure characterization — production source is untouched.
 
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -167,39 +167,36 @@ const mappingRuntime = {
 // fallback, validation rejections.
 // ===========================================================================
 
-test('lifecycle-router: routeResolver is called FIRST and its result wins over the static table', () => {
-  // WAVE 7 WILL CHANGE THIS — the resolver function field is the non-serializable
-  // behaviour Wave 7 replaces with an explicit, serializable transition contract.
+test('lifecycle-router: routing is purely declarative — the static outcomeRoutes table is the single source of truth', () => {
+  // W13-A3 CHANGED THIS — the routeResolver function field is deleted. Routing
+  // is purely declarative (plan §13.8): routeProcessOutcome(stage, outcome)
+  // consults ONLY the static outcomeRoutes table. There is no resolver argument
+  // and no per-run override; the strict/permissive gate variants are now
+  // distinct declarative Lifecycle Scenario Packages.
   const staticRoute = { type: 'terminal', status: 'static-done' };
-  const override = { type: 'terminal', status: 'resolver-overrode' };
-  const resolver = ({ stage, outcome }) => {
-    if (stage.id === 'stage-one' && outcome === 'done') return override;
-    return undefined;
-  };
   const binding = stage({
     outcomeRoutes: { done: staticRoute },
   });
-  const result = routeProcessOutcome(binding, 'done', { root: 'input' }, resolver);
+  // Same stage + outcome ALWAYS yields the static target — no override exists.
   assert.deepEqual(
-    result,
-    { stageId: 'stage-one', outcome: 'done', target: override },
-    'resolver result MUST win over the static outcomeRoutes entry',
+    routeProcessOutcome(binding, 'done'),
+    { stageId: 'stage-one', outcome: 'done', target: staticRoute },
+  );
+  assert.deepEqual(
+    routeProcessOutcome(binding, 'done'),
+    routeProcessOutcome(binding, 'done'),
+    'declarative routing is deterministic',
   );
 });
 
-test('lifecycle-router: resolver returning undefined falls through to the static table', () => {
-  const staticRoute = { type: 'terminal', status: 'static-done' };
-  const resolver = () => undefined;
-  const binding = stage({ outcomeRoutes: { done: staticRoute } });
-  const result = routeProcessOutcome(binding, 'done', {}, resolver);
-  assert.equal(result.target, staticRoute, 'undefined resolver result defers to static table');
-});
-
-test('lifecycle-router: with no resolver, the static outcomeRoutes table is authoritative', () => {
+test('lifecycle-router: routeProcessOutcome takes only (stage, outcome) — no resolver/rootInput', () => {
+  // W13-A3 CHANGED THIS — pin the declarative arity so a closure-based
+  // resolver cannot sneak back in. The deleted signature took
+  // (stage, outcome, rootInput?, resolver?); the new one is (stage, outcome).
+  assert.equal(routeProcessOutcome.length, 2);
   const staticRoute = { type: 'terminal', status: 'static-done' };
   const binding = stage({ outcomeRoutes: { done: staticRoute } });
-  const result = routeProcessOutcome(binding, 'done');
-  assert.deepEqual(result.target, staticRoute);
+  assert.deepEqual(routeProcessOutcome(binding, 'done').target, staticRoute);
   assert.throws(
     () => routeProcessOutcome(binding, 'unknown'),
     /has no route for process outcome 'unknown'/,
@@ -569,53 +566,27 @@ test('lifecycle-mapper: detects target collision when an existing value is not a
 // function body, lease acquisition, restart resume.
 // ===========================================================================
 
-test('lifecycle-orchestrator: definitionHash via canonicalJson drops the resolver function body (present/absent bit only)', () => {
-  // WAVE 7 WILL CHANGE THIS — §13.9/§13.11: the hash silently drops function
-  // resolvers. This test pins BOTH halves of the dodge:
-  //   (a) a PLAIN enumerable `routeResolver` function property becomes
-  //       `routeResolver: undefined` under canonicalJson (functions are not
-  //       valid JSON values), so the resolver body never reaches the hash.
-  //   (b) the only way to make the hash truly identical with-vs-without the
-  //       resolver is `Object.defineProperty({enumerable:false})` (the dodge
-  //       product-delivery-lifecycle uses, pinned separately in AREA 4).
+test('lifecycle-orchestrator: W13-A3 removed the routeResolver — the definition is plain serializable data', () => {
+  // W13-A3 CHANGED THIS — §13.9/§13.11: the routeResolver function field and
+  // the Object.defineProperty({enumerable:false}) dodge are deleted. The
+  // lifecycle definition is now plain JSON data with no function properties,
+  // so canonicalJson/JSON.stringify produce a stable, parseable snapshot and
+  // the definition hash is deterministic with nothing to "drop".
   const base = {
     identity: { name: 'l', version: '1.0.0' },
     entryStageId: 's',
     stages: [],
   };
-  const resolverA = () => ({ type: 'terminal', status: 'a' });
-  const resolverB = () => ({ type: 'terminal', status: 'b' /* different body */ });
-
-  const withA = { ...base, routeResolver: resolverA };
-  const withB = { ...base, routeResolver: resolverB };
-
-  // (a) Both bodies serialize to the SAME canonicalJson string — the function
-  // body is dropped to `undefined`, but the key is still present (because the
-  // property is enumerable here). What matters for the hash is the function
-  // NEVER contributes its body.
-  assert.equal(canonicalJson(withA), canonicalJson(withB));
-  assert.equal(sha256Hex(withA), sha256Hex(withB));
-  // Different bodies, identical hashes — the body is invisible to the hash.
+  // No resolver key exists on a lifecycle definition anymore.
   assert.equal(
-    sha256Hex({ ...base, routeResolver: resolverA }),
-    sha256Hex({ ...base, routeResolver: resolverB }),
+    Object.prototype.hasOwnProperty.call(base, 'routeResolver'),
+    false,
   );
-
-  // (b) To make the hash FULLY identical to the no-resolver baseline, the
-  // property must be non-enumerable — that is the dodge Wave 7 removes.
-  const withNonEnum = { ...base };
-  Object.defineProperty(withNonEnum, 'routeResolver', {
-    value: resolverA,
-    enumerable: false,
-    writable: false,
-    configurable: false,
-  });
-  assert.equal(
-    canonicalJson(withNonEnum),
-    canonicalJson(base),
-    'non-enumerable resolver makes the snapshot identical to the no-resolver baseline',
-  );
-  assert.equal(sha256Hex(withNonEnum), sha256Hex(base));
+  // canonicalJson of plain data is deterministic and parseable.
+  const snap = canonicalJson(base);
+  assert.equal(snap, JSON.parse(snap) ? snap : snap);
+  assert.equal(sha256Hex(base), sha256Hex(base));
+  assert.ok(!snap.includes('routeResolver'));
 });
 
 test('lifecycle-orchestrator: lease token shape is {owner, fence} and fence is monotonic', () => {
@@ -726,90 +697,60 @@ test('lifecycle-orchestrator: a paused LifecycleRun reloads and resumes from its
 // dodge, discoveryGate switch, stage order.
 // ===========================================================================
 
-test('product-delivery-lifecycle: routeResolver is attached non-enumerably (the defineProperty dodge)', () => {
-  // WAVE 7 WILL CHANGE THIS — §13.9: Object.defineProperty({enumerable:false})
-  // is the dodge that lets the resolver coexist with canonicalJson. Wave 7
-  // removes the resolver function field entirely.
+test('product-delivery-lifecycle: W13-A3 removed the routeResolver — no defineProperty dodge remains', () => {
+  // W13-A3 CHANGED THIS — §13.9: the Object.defineProperty({enumerable:false})
+  // dodge AND the routeResolver function field are deleted. The definition is
+  // plain data; there is no resolver to hide from canonicalJson.
   const def = productDeliveryLifecycle;
-
-  // The resolver is reachable at runtime but invisible to enumeration.
   assert.equal(
-    Object.prototype.propertyIsEnumerable.call(def, 'routeResolver'),
+    Object.prototype.hasOwnProperty.call(def, 'routeResolver'),
     false,
-    'routeResolver MUST be non-enumerable so canonicalJson/JSON skip it',
+    'runtime lifecycle must not carry a routeResolver after W13-A3',
   );
-  assert.equal(typeof def.routeResolver, 'function');
+  assert.equal(def.routeResolver, undefined);
   assert.ok(!Object.keys(def).includes('routeResolver'));
   assert.ok(!JSON.stringify(def).includes('routeResolver'));
 });
 
-test('product-delivery-lifecycle: a definition without the resolver hashes identically', () => {
-  // WAVE 7 WILL CHANGE THIS — same pin as §13.11: hash drops the function.
+test('product-delivery-lifecycle: the plain-data definition hashes deterministically', () => {
+  // W13-A3 CHANGED THIS — with the function gone, the definition is plain data
+  // and the hash is trivially deterministic (nothing to drop).
   const def = productDeliveryLifecycle;
+  assert.equal(sha256Hex(def), sha256Hex(def));
+  assert.equal(canonicalJson(def), canonicalJson(def));
   const { identity, entryStageId, stages } = def;
-  const withoutResolver = { identity, entryStageId, stages };
-  assert.equal(sha256Hex(withoutResolver), sha256Hex(def));
-  assert.equal(canonicalJson(withoutResolver), canonicalJson(def));
+  assert.equal(sha256Hex({ identity, entryStageId, stages }), sha256Hex(def));
 });
 
-test('product-delivery-lifecycle: discoveryGate switch routes permissively by default and strictly when set', () => {
+test('product-delivery-lifecycle: routing is purely declarative — every Discovery outcome forwards (permissive)', () => {
+  // W13-A3 CHANGED THIS — the per-run discoveryGate resolver is gone. The
+  // runtime lifecycle is purely permissive: every Discovery outcome forwards to
+  // Formalization. The legacy strict go/no-go gate survives ONLY as the
+  // separate declarative manifest LEGACY_PRODUCT_DELIVERY_SCENARIO_STRICT.
   const discovery = productDeliveryLifecycle.stages.find(
     s => s.id === 'initial-discovery',
   );
-  const resolver = productDeliveryLifecycle.routeResolver;
   assert.ok(discovery);
-  assert.ok(resolver);
-
-  // Default (no flag) and unknown flag values fall through to permissive.
-  for (const outcome of ['clarify', 'reject', 'defer', 'inconclusive', 'failed']) {
+  // Every outcome — go and every non-go — forwards to Formalization.
+  for (const outcome of ['go', 'clarify', 'reject', 'defer', 'inconclusive', 'failed']) {
     assert.deepEqual(
-      routeProcessOutcome(discovery, outcome, {}, resolver).target,
+      routeProcessOutcome(discovery, outcome).target,
       { type: 'stage', stageId: 'solution-formalization' },
-      `${outcome} forwards under permissive default`,
+      `${outcome} forwards under declarative permissive routing`,
     );
   }
-  // 'go' always forwards to Formalization regardless of gate.
-  assert.deepEqual(
-    routeProcessOutcome(discovery, 'go', { discoveryGate: 'strict' }, resolver).target,
-    { type: 'stage', stageId: 'solution-formalization' },
-  );
-
-  // Strict gate routes each non-go outcome to its legacy terminal status.
-  const expectedStrict = {
-    clarify: 'clarification-required',
-    reject: 'rejected',
-    defer: 'deferred',
-    inconclusive: 'inconclusive',
-    failed: 'failed',
-  };
-  for (const [outcome, status] of Object.entries(expectedStrict)) {
-    assert.deepEqual(
-      routeProcessOutcome(discovery, outcome, { discoveryGate: 'strict' }, resolver).target,
-      { type: 'terminal', status },
-      `strict gate terminates ${outcome} → ${status}`,
-    );
-  }
-
-  // Unknown gate value fails safe (forward), even though the upstream input
-  // validator would reject it.
-  assert.equal(
-    routeProcessOutcome(discovery, 'reject', { discoveryGate: 'bogus' }, resolver).target.type,
-    'stage',
-  );
 });
 
-test('product-delivery-lifecycle: the resolver only overrides the Discovery stage', () => {
-  const resolver = productDeliveryLifecycle.routeResolver;
-  const strictInput = { discoveryGate: 'strict' };
+test('product-delivery-lifecycle: declarative routing for Formalization/Development/Delivery', () => {
   const formalization = productDeliveryLifecycle.stages.find(
     s => s.id === 'solution-formalization',
   );
   assert.deepEqual(
-    routeProcessOutcome(formalization, 'formalized', strictInput, resolver).target,
+    routeProcessOutcome(formalization, 'formalized').target,
     { type: 'stage', stageId: 'solution-development' },
   );
   assert.deepEqual(
-    routeProcessOutcome(formalization, 'inconsistent', strictInput, resolver).target,
+    routeProcessOutcome(formalization, 'inconsistent').target,
     { type: 'terminal', status: 'formalization-inconsistent' },
   );
 });
@@ -1114,7 +1055,6 @@ test('cumulative-frame handoff: stage 3 input envelope contains data from stage 
     processRunRepo,
     moduleRegistry,
     installationRegistry,
-    outputPayloadRegistry: null,
   });
 
   const result = await orchestrator.run(definition, {

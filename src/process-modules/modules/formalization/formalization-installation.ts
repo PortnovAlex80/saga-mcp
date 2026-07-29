@@ -24,7 +24,7 @@ import type {
 } from '../../application/process-module-executor.js';
 import type {
   ProcessOutputPayloadResolver,
-} from '../../application/process-output-payload-registry.js';
+} from '../../application/lifecycle-orchestrator.js';
 import type { ProcessModuleOutput } from '../../persistence/process-run.js';
 import { canonicalJson, sha256Hex } from '../../shared/canonical-json.js';
 import type {

@@ -80,129 +80,72 @@ test('Discovery non-go outcomes also route to Formalization (idea strength is re
   }
 });
 
-// The permissive default above is overridable per run. An operator who starts
-// the lifecycle with `discoveryGate: 'strict'` gets the legacy go/no-go gate:
-// non-go Discovery outcomes terminate (regulated/contractual environments).
-// `go` always forwards regardless of the flag.
-test('Discovery strict gate: non-go outcomes terminate, go still forwards', () => {
+// W13-A3: routing is now purely declarative. The runtime product-delivery
+// lifecycle has NO per-run routeResolver and NO discoveryGate override — every
+// Discovery outcome forwards to Formalization (permissive). The legacy strict
+// go/no-go gate survives as a separate declarative Lifecycle Scenario Package
+// (`LEGACY_PRODUCT_DELIVERY_SCENARIO_STRICT`), not as a runtime resolver hook.
+test('product-delivery lifecycle exposes NO routeResolver (declarative routing only)', () => {
+  const def = discoveryToFormalizationLifecycle;
+  assert.equal(
+    Object.prototype.hasOwnProperty.call(def, 'routeResolver'),
+    false,
+    'runtime lifecycle must not carry a routeResolver after W13-A3',
+  );
+  assert.equal(def.routeResolver, undefined);
+  assert.ok(!Object.keys(def).includes('routeResolver'));
+  assert.ok(!JSON.stringify(def).includes('routeResolver'));
+});
+
+test('declarative routing is invariant: same stage+outcome always yields the same target', () => {
+  // There is no rootInput parameter and no resolver — routing cannot be
+  // influenced by any per-run value. Mutate a would-be rootInput and confirm
+  // the route is unchanged (the hallmark of declarative routing).
   const discovery = discoveryToFormalizationLifecycle.stages.find(
     stage => stage.id === 'initial-discovery',
   );
   assert.ok(discovery);
-  const resolver = discoveryToFormalizationLifecycle.routeResolver;
-  assert.ok(resolver, 'lifecycle must declare a routeResolver for the gate');
-  const strictInput = { discoveryGate: 'strict' };
-
-  // go always forwards to Formalization, even under strict.
   assert.deepEqual(
-    routeProcessOutcome(discovery, 'go', strictInput, resolver),
-    {
-      stageId: 'initial-discovery',
-      outcome: 'go',
-      target: { type: 'stage', stageId: 'solution-formalization' },
-    },
+    routeProcessOutcome(discovery, 'clarify'),
+    routeProcessOutcome(discovery, 'clarify'),
   );
-
-  // Each non-go outcome terminates with its legacy status.
-  const expectedTerminalStatus = {
-    clarify: 'clarification-required',
-    reject: 'rejected',
-    defer: 'deferred',
-    inconclusive: 'inconclusive',
-    failed: 'failed',
-  };
-  for (const [outcome, status] of Object.entries(expectedTerminalStatus)) {
+  // 'go' and every non-go outcome route forward to Formalization (permissive).
+  for (const outcome of ['go', 'clarify', 'reject', 'defer', 'inconclusive', 'failed']) {
     assert.deepEqual(
-      routeProcessOutcome(discovery, outcome, strictInput, resolver),
-      {
-        stageId: 'initial-discovery',
-        outcome,
-        target: { type: 'terminal', status },
-      },
-      `strict gate should terminate ${outcome} → ${status}`,
+      routeProcessOutcome(discovery, outcome).target,
+      { type: 'stage', stageId: 'solution-formalization' },
+      `${outcome} must route forward to solution-formalization`,
     );
   }
 });
 
-test('Discovery gate defaults to permissive when the flag is absent or unknown', () => {
-  const discovery = discoveryToFormalizationLifecycle.stages.find(
-    stage => stage.id === 'initial-discovery',
-  );
-  assert.ok(discovery);
-  const resolver = discoveryToFormalizationLifecycle.routeResolver;
-  // No discoveryGate field → permissive → forward.
-  assert.equal(
-    routeProcessOutcome(discovery, 'clarify', {}, resolver).target.type,
-    'stage',
-  );
-  // Unknown gate value → permissive (validator rejects it upstream, but the
-  // resolver must fail safe to forward rather than terminate).
-  assert.equal(
-    routeProcessOutcome(discovery, 'reject', { discoveryGate: 'bogus' }, resolver).target.type,
-    'stage',
-  );
+test('routeProcessOutcome accepts no resolver/rootInput override arguments', () => {
+  // The deleted signature took (stage, outcome, rootInput?, resolver?). The
+  // declarative signature is (stage, outcome) only — pin the arity so a future
+  // closure-based resolver cannot sneak back in.
+  assert.equal(routeProcessOutcome.length, 2);
 });
 
-test('Discovery gate resolver only affects the Discovery stage, not Formalization/Development/Delivery', () => {
-  const resolver = discoveryToFormalizationLifecycle.routeResolver;
-  const strictInput = { discoveryGate: 'strict' };
-  // Formalization, Development, Delivery routes must be unchanged by the flag.
-  const formalization = discoveryToFormalizationLifecycle.stages.find(
-    stage => stage.id === 'solution-formalization',
-  );
-  assert.deepEqual(
-    routeProcessOutcome(formalization, 'formalized', strictInput, resolver).target,
-    { type: 'stage', stageId: 'solution-development' },
-  );
-  assert.deepEqual(
-    routeProcessOutcome(formalization, 'inconsistent', strictInput, resolver).target,
-    { type: 'terminal', status: 'formalization-inconsistent' },
-  );
-});
-
-// The lifecycle definition is pinned by hash for the lifetime of a run, so the
-// routeResolver (a function) must NOT appear in the serialized form. It is
-// attached as a non-enumerable property, so canonicalJson (which iterates
-// Object.keys) skips it entirely. Two consequences this test guards:
-//   1. The definition snapshot stays valid JSON (no `undefined` values), so
-//      JSON.parse on the persisted snapshot does not throw.
-//   2. The definition hash is identical whether or not a resolver is attached,
-//      so existing in-flight lifecycle runs can be replayed after this feature
-//      ships without LIFECYCLE_DEFINITION_CHANGED_FOR_REPLAY.
-test('routeResolver is non-enumerable and does not break definition-hash replay', () => {
+// The lifecycle definition is pinned by hash for the lifetime of a run. With the
+// resolver gone, the definition is plain serializable data — no function needs
+// hiding from canonicalJson. The hash is deterministic and replay-stable.
+test('definition is plain serializable data with a deterministic, replay-stable hash', () => {
   const def = discoveryToFormalizationLifecycle;
 
-  // The resolver is reachable at runtime but invisible to serialization.
-  assert.equal(
-    Object.prototype.propertyIsEnumerable.call(def, 'routeResolver'),
-    false,
-    'routeResolver must be non-enumerable so canonicalJson skips it',
-  );
-  assert.equal(typeof def.routeResolver, 'function', 'resolver must still be callable');
-
-  // Same object hashed twice → identical hash (replay-stable).
   const hash1 = sha256Hex(def);
   const hash2 = sha256Hex(def);
   assert.equal(hash1, hash2, 'definition hash must be deterministic across calls');
 
-  // A definition constructed without the resolver must hash the SAME as the
-  // real definition — the resolver is not part of the serialized identity.
-  const { identity, entryStageId, stages } = def;
-  const withoutResolver = { identity, entryStageId, stages };
-  assert.equal(
-    sha256Hex(withoutResolver),
-    hash1,
-    'resolver presence must not change the definition hash (replay compatibility)',
-  );
-
-  // The serialized snapshot must be valid JSON (parseable), proving the
-  // non-enumerable attachment removed the function from the persisted form.
+  // The serialized snapshot is valid JSON (parseable) and carries no function.
   const snapshot = JSON.parse(JSON.stringify(def));
   assert.equal(
     Object.prototype.hasOwnProperty.call(snapshot, 'routeResolver'),
     false,
     'serialized snapshot must not contain routeResolver',
   );
+  for (const value of Object.values(snapshot)) {
+    assert.notEqual(typeof value, 'function');
+  }
 });
 
 test('Formalization formalized routes to Development', () => {

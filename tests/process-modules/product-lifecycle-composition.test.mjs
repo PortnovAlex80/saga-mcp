@@ -98,13 +98,50 @@ test('composition installs all module capabilities and refuses implicit input/pr
     );
     assert.equal(runtime.externalAdapters.list().length, 5);
     assert.equal(runtime.humanInteractions.list().length, 1);
-    assert.deepEqual(
-      [...runtime.outputPayloadRegistry.listSchemas()].sort(),
-      [
-        'saga3.release-record.v1',
-        'saga3.solution-contract-certificate.v1',
-        'saga3.verified-integration-bundle.v1',
-      ].sort(),
+    // W13-A3: the deleted ProcessOutputPayloadRegistry is replaced by a single
+    // injected resolveOutputPayload callback. The three module output schemas
+    // are still wired (formalization/development/delivery); an unknown schema
+    // is rejected by the dispatch closure, and the orchestrator re-checks the
+    // returned payload hash itself.
+    const resolveOutputPayload = runtime.resolveOutputPayload;
+    assert.equal(typeof resolveOutputPayload, 'function');
+    for (const schema of [
+      'saga3.release-record.v1',
+      'saga3.solution-contract-certificate.v1',
+      'saga3.verified-integration-bundle.v1',
+    ]) {
+      // Each registered schema is accepted (dispatch finds a resolver); the
+      // per-module resolver then validates the ref against storage and throws
+      // because the artifact does not exist in this empty fixture DB. The
+      // key assertion: it is NOT the dispatch "is not registered" error.
+      let dispatchError = false;
+      try {
+        await resolveOutputPayload({
+          processRunId: 999,
+          moduleRef: { name: 'any', version: '1.0.0' },
+          projectId: 1,
+          epicId: 10,
+          output: { schema, artifactRef: 'no-such-artifact', contentHash: '0'.repeat(64) },
+        });
+      } catch (err) {
+        dispatchError = /is not registered/.test(err.message);
+      }
+      assert.equal(
+        dispatchError,
+        false,
+        `schema '${schema}' must be wired to a per-module resolver (not the dispatch error)`,
+      );
+    }
+    // An unknown schema is rejected by the dispatch closure itself.
+    await assert.rejects(
+      async () => resolveOutputPayload({
+        processRunId: 999,
+        moduleRef: { name: 'any', version: '1.0.0' },
+        projectId: 1,
+        epicId: 10,
+        output: { schema: 'saga3.unknown.v1', artifactRef: 'x', contentHash: '0'.repeat(64) },
+      }),
+      /is not registered/,
     );
     await assert.rejects(
       runtime.engine.run({ projectId: 1, epicId: 10 }),

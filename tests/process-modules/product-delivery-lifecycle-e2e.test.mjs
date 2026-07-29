@@ -11,6 +11,7 @@ const { LifecycleOrchestrator } = await import(
 const { ProcessModuleInstallationRegistry } = await import(
   '../../dist/process-modules/application/process-module-installation-registry.js'
 );
+<<<<<<< HEAD
 const { ProcessModuleRegistry } = await import(
   '../../dist/process-modules/application/process-module-registry.js'
 );
@@ -20,6 +21,10 @@ const { ProcessOutputPayloadRegistry } = await import(
 // Wave 13 removed modules/catalog.ts; build the registry inline.
 const { discoveryProcessModule } = await import(
   '../../dist/process-modules/modules/discovery/discovery-process-module.js'
+=======
+const { createBuiltInProcessModuleRegistry } = await import(
+  '../../dist/process-modules/modules/catalog.js'
+>>>>>>> 71d4a20 (refactor(legacy-removal): W13-A3 Remove routeResolver + output payload registry)
 );
 const { formalizationProcessModule } = await import(
   '../../dist/process-modules/modules/formalization/formalization-process-module.js'
@@ -135,7 +140,6 @@ test('durable product lifecycle freezes exact handoffs and terminal replay creat
   try {
     const moduleRegistry = createBuiltInProcessModuleRegistry();
     const installationRegistry = new ProcessModuleInstallationRegistry();
-    const outputPayloadRegistry = new ProcessOutputPayloadRegistry();
     const executionCalls = [];
     const resolverCalls = [];
     const outputPayloads = new Map();
@@ -298,11 +302,16 @@ test('durable product lifecycle freezes exact handoffs and terminal replay creat
       });
     }
 
+    // W13-A3: the deleted ProcessOutputPayloadRegistry is replaced by a single
+    // injected resolveOutputPayload callback. The schema-keyed dispatch the
+    // registry encapsulated is now an inline closure; the orchestrator still
+    // re-checks the returned payload hash itself.
+    const resolversBySchema = new Map();
     for (const schema of [
       SOLUTION_CONTRACT_CERTIFICATE_SCHEMA,
       VERIFIED_INTEGRATION_BUNDLE_SCHEMA,
     ]) {
-      outputPayloadRegistry.register(schema, context => {
+      resolversBySchema.set(schema, context => {
         resolverCalls.push({
           schema,
           processRunId: context.processRunId,
@@ -316,13 +325,22 @@ test('durable product lifecycle freezes exact handoffs and terminal replay creat
         return payload;
       });
     }
+    const resolveOutputPayload = context => {
+      const resolver = resolversBySchema.get(context.output.schema);
+      if (!resolver) {
+        throw new Error(
+          `process output resolver for schema '${context.output.schema}' is not registered`,
+        );
+      }
+      return resolver(context);
+    };
 
     const orchestrator = new LifecycleOrchestrator({
       lifecycleRunRepo: fixture.lifecycleRepo,
       processRunRepo: fixture.processRepo,
       moduleRegistry,
       installationRegistry,
-      outputPayloadRegistry,
+      resolveOutputPayload,
     });
     const developmentPolicyBody = {
       id: 'circle-development-policy',
