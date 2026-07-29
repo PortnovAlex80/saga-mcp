@@ -2,6 +2,7 @@ import Database from 'better-sqlite3';
 import { SCHEMA_SQL } from './schema.js';
 import { backfillWorkItemShadow } from './lifecycle/backfill-migration.js';
 import { ensureSaga3ModuleInstallationSchema } from './process-modules/installation/persistence/installation-repository.js';
+import { ensureSaga3ScenarioInstallationSchema } from './process-modules/installation/persistence/sqlite-scenario-installation-repository.js';
 import { ensureSaga3ProtocolRunSchema } from './process-modules/persistence/sqlite-protocol-run-repository.js';
 import { ensureSaga3CallInstanceSchema } from './process-modules/persistence/sqlite-call-instance-repository.js';
 
@@ -91,6 +92,26 @@ export function getDb(): Database.Database {
   // version immutability (at most one active row per (name, version)). NO
   // ON DELETE SET NULL (plan §5.5.9). Idempotent (CREATE IF NOT EXISTS).
   ensureSaga3ModuleInstallationSchema(db);
+
+  // Wave 7 (W7-A1, spec WAVE7-SCENARIO-SPEC.md Lanes row W7-A1) — immutable
+  // Lifecycle Scenario installations + per-stage scenario module locks. W7-A1
+  // is the SINGLE SQL owner for these two tables this wave (C083). Creates
+  // saga3_scenario_installations + saga3_scenario_module_locks. The scenario
+  // installations table carries the partial UNIQUE active index (scenario
+  // version immutability, mirrors W2-A2 §4); the module locks table UNIQUE-
+  // indexes (scenario_installation_id, stage_id) so the lock is one durable
+  // pin per stage (plan §6.6-6.7). DUAL-PLACEMENT mirrors the Wave 2/3/4/5
+  // pattern: the tables are created LAZILY by ensureSaga3ScenarioInstallationSchema
+  // (called from the SqliteScenarioInstallationRepository constructor) AND here
+  // (the upgrade path for pre-existing DBs). The call is placed AFTER
+  // ensureSaga3ModuleInstallationSchema because saga3_scenario_module_locks
+  // REFERENCES saga3_module_installations(id); on any DB where the parent
+  // already exists (it does — the line above just ran), the FK target is
+  // present. CREATE TABLE IF NOT EXISTS makes the second placement a no-op, so
+  // both paths are idempotent. NO ON DELETE SET NULL on the installation
+  // (plan §5.5.9); the module-locks table uses ON DELETE CASCADE
+  // (defence-in-depth, never triggered — there is no installation delete path).
+  ensureSaga3ScenarioInstallationSchema(db);
 
   // Wave 2 (W2-A2, spec §3.2) — pin ProcessRuns to their installation.
   // Both columns nullable: legacy pre-Wave-2 runs leave them NULL and route
