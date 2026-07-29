@@ -1,6 +1,19 @@
 # Wave 3 — Durable Execution Primitives
 
-> Plan mapping: §0.6 (Phase 4). **Status:** 🟡 STAGING — serial precondition satisfied (`09-contracts/WAVE3-DURABLE-EXECUTION-SPEC.md`), dispatching lanes.
+> Plan mapping: §0.6 (Phase 4). **Status:** 🟡 RUNNING — 5 parallel lanes dispatched (A4,A5,A6,A7,A8); serial chain A1→A2→A3 dispatched after parallel lanes land.
+
+## Dispatched lanes (tracking)
+
+| Lane | Branch | Worktree | Status | Commit |
+|---|---|---|---|---|
+| W3-A4 | `refactor/w3-a4` | `.worktrees/w3-a4` | ✅ done (`c5f9626`) | 12/12 tests pass; exact-by-ProductRef (no epic fallback §9.11); owns saga3_process_products (no conflict with A6); ratchet green |
+| W3-A5 | `refactor/w3-a5` | `.worktrees/w3-a5` | ✅ done (`42e52b4`) | 13/13 tests pass (with fake productRepo); assembleExecutionContext with UPSTREAM_PRODUCT_NOT_FOUND throw (no epic fallback); driver-neutral enforced via findForbiddenDriverNeutralKeys; ratchet green |
+| W3-A6 (SQL OWNER) | `refactor/w3-a6` | `.worktrees/w3-a6` | ✅ done (`8c71c03`) | 20/20 tests + 26 regression; 7 additive columns + exact-cursor UNIQUE index; dual-placement (db.ts + ensureSchema); ratchet green |
+| W3-A7 | `refactor/w3-a7` | `.worktrees/w3-a7` | ✅ done (`eb41488`) | 22/22 tests pass; WorkerExecutionPort (driver-neutral) + ContractBoundaryDecoder (5 boundaries, canonicalizing round-trip); ratchet green |
+| W3-A8 | `refactor/w3-a8` | `.worktrees/w3-a8` | ✅ done (`c5cd14c`) | 2/10 pass + 8 skip-on-absent-siblings (dynamic imports); 3 exit-gate test files ready; ratchet green |
+| W3-A1 (SERIAL 1st) | — | — | ⬜ pending (after parallel) | — |
+| W3-A2 (SERIAL 2nd) | — | — | ⬜ pending (after A1) | — |
+| W3-A3 (SERIAL 3rd) | — | — | ⬜ pending (after A2) | — |
 
 ## Objective (§0.6.12 serial gate)
 
