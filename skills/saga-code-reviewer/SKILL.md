@@ -89,7 +89,11 @@ The axes are:
    I/O, resource leaks, sync-on-hot-path, reactivity/memoization, cold-start
    bloat.
 3. **Maintainability** (M1–M6) — naming, dead code, file cohesion, magic
-   values, doc on public surface, neighbor-consistency.
+   values, doc on public surface, neighbor-consistency. Includes the
+   **MINIMALISM audit** (see Layer B MINIMALISM block below): the Builder ran
+   the Ponytail ladder before coding and recorded the chosen rung in a
+   comment. A new dependency / new module where a lower rung held is a
+   maintainability `fail`.
 4. **Correctness** (craft-level, C1–C6) — error handling, nullish access,
    boundary conditions, concurrency, type-port contract, idempotency.
    (Behavior-correctness against the AC is the L3 verifier's job, NOT this
@@ -311,6 +315,34 @@ in [`frameworks.md`](./frameworks.md) §"How to pick the profile":
 Record the chosen profile(s) — the `result` MUST include a `Profile:` line.
 If ambiguous, apply TypeScript only and flag the ambiguity as `advisory` under
 maintainability.
+
+### Step 12.5. Layer B — MINIMALISM audit (Ponytail rung check)
+
+<!-- source: EXT-17 DietrichGebert/ponytail — reviewer-side mirror of the saga-worker MINIMALISM GATE. The Builder must have recorded the chosen ladder rung in a comment before coding (see saga-worker §`skill: saga-developer` step 3). -->
+
+Audit whether the Builder took the **smallest sufficient step**, not the biggest
+familiar one. Read the task comments for the rung record, then verify it against
+the diff:
+
+- Find the Builder's rung comment (e.g. `"AC-3: rung 4 — native <input type=date>"`).
+  If **no rung comment exists** → `advisory` under maintainability
+  ("MINIMALISM gate not recorded — no rung comment"), do not hard-fail unless
+  the diff also introduces new surface (below).
+- If the diff **adds a new dependency** (`package.json`/`Cargo.toml`/etc.): the
+  Builder should be at rung 7 AND name the new dep in the comment AND state why
+  no lower rung held (no stdlib / native / installed alternative). Missing this
+  rationale → **maintainability `fail`** `[maint M-ponytail]` "new dep added
+  without justifying why rung 5 (installed dep) did not hold".
+- If the diff **adds a new module/file** where the capability already exists
+  elsewhere in the codebase → **maintainability `fail`** `[maint M-ponytail]`
+  "rung 2 (reuse) held — duplicated existing capability at <path>".
+- If the rung comment claims rung 1 (YAGNI / no-op) but the diff is non-empty →
+  **correctness/maintainability `fail`** — the comment contradicts the diff.
+
+This audit NEVER lowers the bar on validation / error handling / security /
+accessibility — those are covered by their own axes and craft checks; the
+ladder only reduces code *volume*, not *correctness*. Findings here tag as
+`[maint M-ponytail]` and combine into the verdict per Step 14.
 
 ### Step 13. Layer B — apply the four axes
 

@@ -450,11 +450,36 @@ The dispatcher's `skill` field tells you your role for THIS task:
 Implement it — **in your worktree** (see WORKTREE LIFECYCLE: CLAIM).
 1. `task_get({ id })` — description, comments (prior context), `depends_on`, subtasks (these are your DoD), `metadata.acceptance_criteria`. The acceptance criteria are the contract.
 2. `cd .worktrees/task-<id>` and read the code at `source_ref` plus the project's `AGENTS.md` / conventions before editing.
-3. Implement + write/update tests. **Run the Build-gate (see "Build-gate" section
+3. **MINIMALISM GATE (run BEFORE writing any code — Ponytail ladder).**
+   <!-- source: EXT-17 DietrichGebert/ponytail — minimalism ladder. Adapted: forced via the dispatcher-loaded SKILL (not an opt-in skill, which JetBrains found the model ignores); the selected rung is recorded in a comment so the reviewer can audit the choice. -->
+   Climb the ladder in order, **stop at the first rung that holds**, and implement only
+   what that rung dictates:
+
+   | Rung | Question | If yes |
+   |---|---|---|
+   | 1 | Does this need to exist at all? | No → skip (YAGNI). Close via `worker_done` with result "no-op: YAGNI". |
+   | 2 | Already in this codebase? | Reuse it — do not rewrite or wrap it. |
+   | 3 | Does the stdlib do it? | Use the stdlib. |
+   | 4 | Native platform feature? | Use the native feature (e.g. `<input type="date">`, not a date-picker lib). |
+   | 5 | An already-installed dependency does it? | Use that dependency — do not add a new one. |
+   | 6 | One line solves it? | Write one line. |
+   | 7 | Only then | The minimum volume of new code that satisfies the AC. |
+
+   **Never on the chopping block** (the ladder reduces *volume*, never *correctness*):
+   validation, error handling, security, and accessibility. Cutting these to hit a lower
+   rung is a failed gate, not minimalism.
+
+   This gate runs **after** you understand the problem (step 2) and **before** you
+   generate code. Record the chosen rung + rationale in a `comment_add` so the reviewer
+   can audit it — e.g. `"AC-3: rung 4 — used native <input type=date>, not a new dep"`,
+   or `"AC-5: rung 7 — no stdlib/native/installed option covers the etalon, minimal
+   new calc added"`. If you are at rung 7 and reach for a **new** dependency, name it
+   explicitly and why no lower rung held — the reviewer will challenge this first.
+4. Implement + write/update tests. **Run the Build-gate (see "Build-gate" section
    below — read SRS §9, run all 4 commands, paste output into `result`) before
    claiming done.** Abstract "run tests" is not enough; the gate is the 4 explicit
    commands from the stack declaration.
-4. Leave breadcrumbs via `comment_add` for anything non-obvious (a gotcha, a decision, why you took a path).
+5. Leave breadcrumbs via `comment_add` for anything non-obvious (a gotcha, a decision, why you took a path).
 
 ### `skill: "saga-reviewer"` (task was in `review` buffer, claim moved it to `review_in_progress`)
 Verify it — you did NOT write this code. Diff the branch (see WORKTREE LIFECYCLE: REVIEW).

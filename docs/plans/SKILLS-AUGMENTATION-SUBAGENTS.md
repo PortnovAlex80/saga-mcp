@@ -34,6 +34,7 @@ the linked SKILL.md before editing ours.
 | EXT-14 | mcpmarket github-actions-manager | https://mcpmarket.com/tools/skills/github-actions-manager |
 | EXT-15 | mcpmarket best-practices-audit | https://mcpmarket.com/tools/skills/best-practices-audit |
 | EXT-16 | levnikolaevich safe-repo-publishing | https://github.com/levnikolaevich/claude-code-skills |
+| EXT-17 | DietrichGebert/ponytail (minimalism / anti-overengineering ladder) | https://github.com/DietrichGebert/ponytail |
 
 ## How to read an external skill before editing ours
 

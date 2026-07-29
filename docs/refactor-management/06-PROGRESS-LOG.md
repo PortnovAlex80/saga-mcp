@@ -95,3 +95,29 @@ Format:
 - Gate: `npm run build` PASS · 7 lane suites **132/132 PASS** · A8 conformance **2/8 PASS, 6 FAIL** (R-07) · ratchet 4/4 PASS (73 unchanged) · Wave 1 regression 238/238 PASS.
 - Commit: (pending — partial-integration checkpoint below)
 - Next: checkpoint Wave 2 as partial-integration (build green, lane tests green, A8 conformance deferred to R-07 follow-up). Wave 3 may proceed building on the working lane-level installation surface, but MUST resolve R-07 before depending on end-to-end install+verify.
+
+## 2026-07-29 — Skills-stream increment: Ponytail minimalism ladder (EXT-17)
+- Wave: (parallel skills-stream — NOT a structural wave; does not enter Wave 0-13 src/ scope)
+- What: Absorbed the Ponytail anti-overengineering ladder (DietrichGebert/ponytail,
+  Habr coverage) into the skills layer. The ladder forces the Builder to take the
+  smallest sufficient step before generating code (YAGNI → reuse → stdlib → native →
+  installed dep → one line → minimum) and NEVER cuts validation/error-handling/
+  security/accessibility. Two skill edits, both carrying `<!-- source: EXT-17 -->`:
+  1. `skills/saga-worker/SKILL.md` — new step 3 "MINIMALISM GATE" in the
+     `skill: saga-developer` section, run after reading code (step 2) and before
+     Implement (step 4). The chosen rung is recorded in a `comment_add` so the
+     reviewer can audit it. Critically injected via the dispatcher-loaded SKILL
+     (not as an opt-in skill) — the Habr/JetBrains finding that the model ignores
+     a merely-installed SKILL.md informed this placement.
+  2. `skills/saga-code-reviewer/SKILL.md` — reviewer-side mirror: Step 12.5
+     "MINIMALISM audit" checks the Builder's rung comment against the diff; a new
+     dependency/module where a lower rung held is a maintainability fail
+     (`[maint M-ponytail]`). Maintainability axis description updated to name it.
+- EXT-17 registered in the source inventory of `docs/plans/SKILLS-AUGMENTATION-SUBAGENTS.md`.
+- Gate: n/a (skills content only — no `src/` touched, no build/test impact).
+- Commit: (this commit) — follows the skills-augmentation convention
+  `skills(<skill>): augment with <EXT-N>`, NOT `refactor(wave-N)` — this work is
+  outside the structural Wave 0-13 scope (which owns `src/` process-modules).
+- Next: no follow-up required. The ladder activates for the next `development.code`
+  task any worker claims. Track empirically whether workers emit the rung comment;
+  if not, consider reinforcing via an AGENTS.md note.
