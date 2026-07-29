@@ -28,7 +28,11 @@ import {
 import { buildWorkspaceProjection } from '../../process-modules/application/workspace-projection.js';
 import type { WorkspacePackageRegistry } from '../../process-modules/application/workspace-projection.js';
 import { materializePinnedWorkspace } from '../../process-modules/application/pinned-workspace-materializer.js';
-import { applyTestWarmStart } from '../testing/test-warm-start.js';
+import {
+  applyTestWarmStart,
+  captureTestWarmStart,
+  type TestWarmStartCaptureOutcome,
+} from '../testing/test-warm-start.js';
 import type { ModuleInstallationId } from '../../process-modules/installation/index.js';
 import type { StoredModulePackage } from '../../process-modules/installation/index.js';
 import type { WorkspaceProjection } from '../../process-modules/application/workspace-projection.js';
@@ -67,6 +71,11 @@ type RunnerOptions = ClaudeBoardRunnerOptions & {
     assignment: RunnerAssignment;
     resolvedProfile: ResolvedExecutionProfile | null;
   }) => RunnerLaunchSpec | null;
+  captureWorkspace?: (input: {
+    workspaceRoot: string;
+    processWorkspace: ProcessExecutionWorkspace | null;
+    outcome: TestWarmStartCaptureOutcome;
+  }) => void;
 };
 
 export interface LegacyClaudeWorkerExecutorFactoryOptions {
@@ -367,8 +376,15 @@ export function createLegacyClaudeWorkerExecutorFactory(
           resolvedWorkspace = applyTestWarmStart({
             env: process.env,
             workspaceRoot: input.workspaceRoot,
+            epicId,
             moduleRef: resolvedWorkspace.moduleRef,
             nodeId: processNodeId,
+            packageDigest: pinned?.projection.packageDigest ?? null,
+            inputHash: typeof metadata.process_node_input_hash === 'string'
+              ? metadata.process_node_input_hash
+              : typeof metadata.process_input_hash === 'string'
+                ? metadata.process_input_hash
+                : null,
             processWorkspace: resolvedWorkspace,
           });
         }
@@ -393,6 +409,13 @@ export function createLegacyClaudeWorkerExecutorFactory(
         ).run(JSON.stringify(metadata), task.id);
         task.metadata = metadata;
         return resolvedWorkspace;
+      },
+      captureWorkspace: input => {
+        captureTestWarmStart(
+          input.workspaceRoot,
+          input.processWorkspace,
+          input.outcome,
+        );
       },
     };
 

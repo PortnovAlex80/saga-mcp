@@ -1,6 +1,7 @@
 {
   "schemaVersion": "saga3.test-warm-start-fixture.v1",
   "fixtureId": "autism-buttons-existing-drafts-2026-07-29",
+  "epicId": 1,
   "nodes": [
     {
       "moduleRef": "product-discovery@3.0.2",
@@ -8,7 +9,9 @@
       "mode": "verify-and-submit-existing-draft",
       "drafts": [
         {
-          "path": "docs/discovery/projects/1/executions/task-1/exec-1-22052-1785354564636-1/discovery-doc.md",
+          "slot": "discovery-document",
+          "workspaceFile": "discovery-doc.md",
+          "seedPath": "docs/discovery/projects/1/executions/task-1/exec-1-22052-1785354564636-1/discovery-doc.md",
           "policy": "learn"
         }
       ],
@@ -20,11 +23,15 @@
       "mode": "verify-and-submit-existing-draft",
       "drafts": [
         {
+          "slot": "product-contract",
           "path": "docs/requirements/REQ-001-hex-button-autism-ui/00-PRD.md",
+          "seedPath": "docs/requirements/REQ-001-hex-button-autism-ui/00-PRD.md",
           "policy": "learn"
         },
         {
+          "slot": "product-metrics",
           "path": "docs/requirements/REQ-001-hex-button-autism-ui/00-metrics.md",
+          "seedPath": "docs/requirements/REQ-001-hex-button-autism-ui/00-metrics.md",
           "policy": "learn"
         }
       ],
@@ -36,7 +43,9 @@
       "mode": "verify-and-submit-existing-draft",
       "drafts": [
         {
+          "slot": "use-cases",
           "path": "docs/requirements/REQ-001-hex-button-autism-ui/02-use-cases.md",
+          "seedPath": "docs/requirements/REQ-001-hex-button-autism-ui/02-use-cases.md",
           "policy": "learn"
         }
       ],
@@ -48,6 +57,7 @@
       "mode": "verify-and-submit-existing-draft",
       "drafts": [
         {
+          "slot": "acceptance-contract",
           "path": "docs/requirements/REQ-001-hex-button-autism-ui/03-acceptance-criteria.md",
           "policy": "learn"
         }
@@ -60,6 +70,7 @@
       "mode": "verify-and-submit-existing-draft",
       "drafts": [
         {
+          "slot": "architecture-contract",
           "path": "docs/requirements/REQ-001-hex-button-autism-ui/01-SRS.md",
           "policy": "learn"
         }

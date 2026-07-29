@@ -285,11 +285,14 @@ function buildPrompt({
           '--- TEST WARM START (explicit fixture; normal gates still apply) ---',
           `fixture_id=${processWorkspace.testWarmStart.fixtureId}`,
           `fixture_receipt=${processWorkspace.testWarmStart.receiptPath}`,
+          `epic_draft_cache=${processWorkspace.testWarmStart.cacheRoot}`,
           `reusable_draft_files=${JSON.stringify(processWorkspace.testWarmStart.draftFiles)}`,
           `cold_start_files=${JSON.stringify(processWorkspace.testWarmStart.coldStartFiles)}`,
+          `force_rewrite_slots=${JSON.stringify(processWorkspace.testWarmStart.forceRewriteSlots)}`,
           processWorkspace.testWarmStart.instruction,
           'Do not recreate reusable drafts from scratch. Read and verify them first.',
           'A missing or empty cold-start file is not an error: create it normally; a later test run will reuse it.',
+          'If a slot is listed in force_rewrite_slots, prior attempts repeated the same rejected content: rewrite that slot substantially instead of making another minimal edit.',
           'Do not claim that fixture preparation was model-generated work.',
           'No protocol step is pre-completed: use the normal MCP writes, traces, checklist, and worker_done.',
           '--- END TEST WARM START ---',
@@ -367,6 +370,9 @@ export class ClaudeBoardRunner {
     this.resolveLaunchSpec = options.resolveLaunchSpec ?? null;
     // Runtime callback for exact task-scoped trackers/templates/checklists.
     this.prepareWorkspace = options.prepareWorkspace ?? null;
+    // Optional test-only sidecar. Captures epic-scoped draft slots after the
+    // worker exits; it never participates in task settlement or routing.
+    this.captureWorkspace = options.captureWorkspace ?? null;
     this.lmstudioBaseUrl = options.lmstudioBaseUrl
       ?? process.env.SAGA_LMSTUDIO_URL
       ?? 'http://localhost:1234/v1';
@@ -975,6 +981,28 @@ export class ClaudeBoardRunner {
         task.status === 'review' &&
         taskState?.status === 'todo' &&
         !taskState.assigned_to;
+      const captureOutcome = completed && code === 0
+        ? 'completed'
+        : changesRequested
+          ? 'changes_requested'
+          : 'failed';
+
+      if (typeof this.captureWorkspace === 'function') {
+        try {
+          this.captureWorkspace({
+            workspaceRoot,
+            processWorkspace,
+            outcome: captureOutcome,
+          });
+        } catch (error) {
+          this.heartbeat(
+            run,
+            execution,
+            'ERROR',
+            `test draft cache capture failed: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+      }
 
       if (completed && code === 0) {
         run.completed += 1;
