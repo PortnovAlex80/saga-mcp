@@ -569,6 +569,42 @@ architecture-reviewer verifies this (one row per accepted AC) before approving.
 > `implementationRequired: true` and the development planning verifier will
 > reject the task graph for missing implementation coverage on NFR-style ACs.
 
+#### §D2 DAG lens — frontier, fog, and the ticket-vs-fog test
+
+<!-- source: EXT-20 mattpocock/skills — engineering/wayfinder/SKILL.md (frontier, fog-of-war, ticket-vs-fog test, "plan, don't do"). Adapted: our planning unit is the §D2 row (one AC → one task), the tracker already encodes blocking natively via depends_on, and the architect (not the planner) owns the DAG. CGAD terms preserved (AC/episode/baseline/SRS §D). -->
+
+The `depends_on` edges you draw in §D2 are a **dependency DAG**. Wayfinder's
+topological vocabulary sharpens how you draw it:
+
+- **The frontier** is every AC whose `depends_on` is already satisfied (scaffold
+  built, parent AC implemented). When you sequence `depends_on`, think in terms
+  of *what unblocks what*: each edge should be the minimum set that makes the
+  child takeable only after its real prerequisites. Over-constraining (adding
+  edges that do not reflect a true prerequisite) shrinks the frontier and
+  serialises work that could have run in parallel — the planner copies your DAG
+  verbatim, so a spurious edge forces a real serialisation downstream.
+- **Fog-of-war** — decisions you can *tell are coming* but cannot yet phrase
+  sharply. In §D terms: if you cannot state an AC's implementation slice
+  precisely now (files/functions/types unclear, or it depends on an unresolved
+  architectural choice), **do not pre-slice it into a §D2 row**. Record it in
+  `§8 Out-of-scope` or as an Open Question instead. A premature §D2 row is a
+  task the planner will faithfully materialise — and a worker will faithfully
+  fail to implement, because the slice was never sharp.
+- **Ticket-vs-fog test:** a §D2 row belongs when the AC's implementation slice
+  is already sharp (even if it must wait on a dependency), **not** merely when
+  the AC exists. An accepted AC with no §D2 row is a gap the architecture
+  reviewer flags; an accepted AC whose §D2 row was written from fog is worse —
+  it looks complete but encodes an unimplementable slice.
+- **"Plan, don't do."** §D is a plan, not an implementation. If you catch
+  yourself writing solution code or detailed algorithms into §D2 fields, stop —
+  that belongs in the implementing task's worktree, not in the contract. The
+  pull to "just specify the mechanism" is usually the signal you've reached the
+  edge of §D's job.
+
+Apply this lens when you finish the §D2 blocks: walk the `depends_on` edges and
+confirm each is a true prerequisite (frontier-preserving), and confirm every row
+encodes a sharp slice (no fog smuggled in as a task).
+
 ### §D3. Priority Rationale (critical path)
 
 List AC priority with reason. Priority drives task creation order and

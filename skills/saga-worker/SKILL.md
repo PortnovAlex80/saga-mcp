@@ -479,6 +479,36 @@ Implement it — **in your worktree** (see WORKTREE LIFECYCLE: CLAIM).
    below — read SRS §9, run all 4 commands, paste output into `result`) before
    claiming done.** Abstract "run tests" is not enough; the gate is the 4 explicit
    commands from the stack declaration.
+
+   #### Test quality — TDD anti-patterns (apply to every test you write)
+   <!-- source: EXT-19 mattpocock/skills — engineering/tdd/SKILL.md (tautological test, correct seam, vertical vs horizontal slicing). Adapted: the AC's etalon is our independent source of truth for expected values; reuses the saga-reviewer AC-assertion check. -->
+   A green Build-gate is meaningless if the tests pass by construction. Before
+   claiming done, check every test you wrote against these three failure modes:
+
+   - **Tautological test** — the assertion recomputes the expected value the way
+     the code does (`expect(add(a,b)).toBe(a+b)`, a snapshot derived the same way,
+     a constant asserted equal to itself). It passes by construction and can
+     never disagree with the code. **Expected values must come from an
+     independent source of truth** — the AC's etalon, a known-good literal, a
+     worked example, the RULE. This is the same standard the reviewer's
+     AC-assertion check enforces; catch it here first.
+   - **Wrong seam** — the test exercises a boundary that does NOT replicate the
+     real call path that triggers the behavior. A single-caller unit test when
+     the bug/feature needs multiple callers; a shallow test that can't reproduce
+     the chain. It gives false confidence. Test at the **correct seam**: the
+     public boundary where the behavior is observed as it occurs at the call
+     site. If no correct seam exists for an algorithmic AC, note it — that is an
+     architecture gap, not a reason to write a shallow test.
+   - **Horizontal slicing** — writing all tests first, then all implementation.
+     Bulk tests verify *imagined* behavior and commit to test structure before
+     you understand the implementation. Work in **vertical slices** instead: one
+     test → one minimal implementation → repeat. Each test is a tracer bullet
+     that responds to what the last cycle taught you.
+
+   When the task `implements` an AC, the test must assert the AC's **etalon
+   values** (e.g. AC-1 `100000@12%/12m → 112682.50` → `toBe(112682.50)`), not a
+   value derived by running the code under test. A test that derives its expected
+   value from the implementation is tautological and fails this check.
 5. Leave breadcrumbs via `comment_add` for anything non-obvious (a gotcha, a decision, why you took a path).
 
 ### `skill: "saga-reviewer"` (task was in `review` buffer, claim moved it to `review_in_progress`)

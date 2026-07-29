@@ -63,6 +63,24 @@ Three arrays, all keys non-empty and unique across BOTH item arrays:
 - Implementation items depend ONLY on implementation items.
 - The graph is acyclic.
 
+### DAG lens — frontier and the ticket-vs-fog test
+
+<!-- source: EXT-20 mattpocock/skills — engineering/wayfinder (frontier, fog-of-war, ticket-vs-fog). Adapted: the planning unit is the implementation/verification item, blocking is expressed via dependsOnKeys, and the planner proposes (the kernel materialises). The SRS §D2 author (architect) owns the underlying decomposition; this lens is how you sanity-check the proposal you derive from it. -->
+
+- **Frontier** — an item is takeable when every item in its `dependsOnKeys` is
+  done. Treat `dependsOnKeys` as a true-prerequisite DAG: each edge must be the
+  minimum set that makes the child takeable only after a real prerequisite.
+  Over-constraining (edges that do not reflect a real dependency) shrinks the
+  frontier and serialises work the kernel could otherwise run in parallel. You
+  derive the edges from the frozen lineage; if the lineage's §D2 declares a
+  dependency that looks spurious, surface it in your submission rationale
+  rather than silently propagating it — but do not drop edges the SRS declares.
+- **Ticket-vs-fog** — propose an item only when its implementation slice is
+  sharp (the SRS §D2 row pins files/functions/types). If the lineage leaves an
+  AC's slice unspecified, that is fog: do NOT fabricate a plausible item to
+  cover the gap. Surface the gap instead — the kernel will reject an
+  under-specified proposal, and a guessed one wastes a fenced execution.
+
 ## Authority and completion
 
 You submit once with `process_node_submit` (schema

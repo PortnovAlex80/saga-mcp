@@ -121,3 +121,41 @@ Format:
 - Next: no follow-up required. The ladder activates for the next `development.code`
   task any worker claims. Track empirically whether workers emit the rung comment;
   if not, consider reinforcing via an AGENTS.md note.
+
+## 2026-07-29 — Skills-stream increment: diagnosing-bugs + tdd + wayfinder (EXT-18/19/20)
+- Wave: (parallel skills-stream — NOT a structural wave; no src/ touched)
+- What: Three absorptions from mattpocock/skills (reviewed via issue #663 +
+  recent commits: grilling/batch-grill-me dual-mode, wayfinder decision-tickets,
+  tdd anti-patterns, diagnosing-bugs feedback loop). Scope decision logged below.
+  1. EXT-18 diagnosing-bugs → NEW skill `skills/saga-bug-diagnostician/`. Fills
+     the gap that `saga-diagnostician` (T-011 engine-loop analysis) leaves: a
+     disciplined loop for a concrete PRODUCT bug/regression/flakiness. Phase 1
+     "build a tight red-capable feedback loop" is the core; 10 loop-construction
+     tactics, minimisation, 3-5 ranked falsifiable hypotheses, `[DEBUG-xxxx]`
+     tagged instrumentation, correct-seam regression test. CGAD-adapted: one
+     diagnosis per launch, NO self-authorised production fix (hands root cause to
+     a worker/recovery task against the frozen AC).
+  2. EXT-19 tdd anti-patterns → `skills/saga-worker/SKILL.md` Build-gate section:
+     tautological test (assertion recomputes expected the way code does — must use
+     AC etalon as independent truth), wrong seam (test boundary doesn't replicate
+     the real call path), horizontal slicing (all-tests-then-all-impl). Reinforces
+     the existing AC-assertion check.
+  3. EXT-20 wayfinder → `skills/saga-architect/SKILL.md` §D2 (frontier/fog-of-war/
+     ticket-vs-fog lens for the depends_on DAG) PLUS mirrored into the production
+     package-local `modules/development/.../planning-semantic-skill.md` (frontier
+     + ticket-vs-fog for dependsOnKeys). NOTE: saga-planner is a "dumb copier" of
+     §D2 — it does not own the DAG, so wayfinder landed in the architect (who
+     writes §D) and the package planner skill (who proposes the task graph), not
+     in skills/saga-planner.
+- Scope note (two skill worlds): production LM-nodes (formalization/development
+  planning+verification) resolve skills from pinned packages
+  (`modules/*/package/.../skills/*.md`, enforced by workspace-projection Step 6);
+  dev/reviewer/dispatch still resolve from root `skills/`. EXT-19 (worker) is
+  legacy-path only (no package analog exists — development.code is not an LM
+  node). EXT-20 was mirrored into BOTH paths. EXT-18 is a new standalone skill.
+- Gate: n/a (skills + package-resource markdown only; no src/, no build impact).
+- Commit: (this commit) — `skills(...): augment with EXT-18/19/20`, skills-stream.
+- Next: bug-diagnostician activates when a worker/reviewer reports a product bug
+  with unknown cause. Empirically check whether workers emit tautological tests
+  despite the new guidance; if so, consider a `[correctness C-tautology]` axis
+  check in saga-code-reviewer.

@@ -35,6 +35,9 @@ the linked SKILL.md before editing ours.
 | EXT-15 | mcpmarket best-practices-audit | https://mcpmarket.com/tools/skills/best-practices-audit |
 | EXT-16 | levnikolaevich safe-repo-publishing | https://github.com/levnikolaevich/claude-code-skills |
 | EXT-17 | DietrichGebert/ponytail (minimalism / anti-overengineering ladder) | https://github.com/DietrichGebert/ponytail |
+| EXT-18 | mattpocock/skills — engineering/diagnosing-bugs (feedback-loop bug diagnosis) | https://github.com/mattpocock/skills |
+| EXT-19 | mattpocock/skills — engineering/tdd (tautological test, correct seam, vertical slicing) | https://github.com/mattpocock/skills |
+| EXT-20 | mattpocock/skills — engineering/wayfinder (frontier, fog-of-war, ticket-vs-fog) | https://github.com/mattpocock/skills |
 
 ## How to read an external skill before editing ours
 
