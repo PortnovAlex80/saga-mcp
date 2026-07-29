@@ -57,6 +57,18 @@ export interface ProcessExecutionWorkspace {
   workspaceFiles: readonly string[];
   callFiles: readonly string[];
   checklists: readonly string[];
+  /**
+   * Optional test-only warm-start projection produced by an outer
+   * infrastructure adapter. Process modules never read or create it.
+   */
+  testWarmStart?: {
+    readonly fixtureId: string;
+    readonly mode: 'verify-and-submit-existing-draft';
+    readonly nodeId: string;
+    readonly draftFiles: readonly string[];
+    readonly instruction: string;
+    readonly receiptPath: string;
+  };
 }
 
 type MachineBindings = Record<string, unknown>;

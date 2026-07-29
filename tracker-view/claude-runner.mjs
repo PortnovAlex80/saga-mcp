@@ -279,6 +279,21 @@ function buildPrompt({
           '',
         ].join('\n')
       : null,
+    processWorkspace?.testWarmStart
+      ? [
+          '',
+          '--- TEST WARM START (explicit fixture; normal gates still apply) ---',
+          `fixture_id=${processWorkspace.testWarmStart.fixtureId}`,
+          `fixture_receipt=${processWorkspace.testWarmStart.receiptPath}`,
+          `provided_draft_files=${JSON.stringify(processWorkspace.testWarmStart.draftFiles)}`,
+          processWorkspace.testWarmStart.instruction,
+          'Do not recreate these drafts from scratch. Read and verify them first.',
+          'Do not claim that fixture preparation was model-generated work.',
+          'No protocol step is pre-completed: use the normal MCP writes, traces, checklist, and worker_done.',
+          '--- END TEST WARM START ---',
+          '',
+        ].join('\n')
+      : null,
     task.execution_mode === 'git_change'
       ? '5. Use the existing task worktree/branch conventions from the skill.'
       : '5. This task is not a git-change task. Do not create a worktree or merge unless the assigned skill explicitly requires one.',

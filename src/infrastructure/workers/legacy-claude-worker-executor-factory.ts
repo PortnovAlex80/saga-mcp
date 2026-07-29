@@ -28,6 +28,7 @@ import {
 import { buildWorkspaceProjection } from '../../process-modules/application/workspace-projection.js';
 import type { WorkspacePackageRegistry } from '../../process-modules/application/workspace-projection.js';
 import { materializePinnedWorkspace } from '../../process-modules/application/pinned-workspace-materializer.js';
+import { applyTestWarmStart } from '../testing/test-warm-start.js';
 import type { ModuleInstallationId } from '../../process-modules/installation/index.js';
 import type { StoredModulePackage } from '../../process-modules/installation/index.js';
 import type { WorkspaceProjection } from '../../process-modules/application/workspace-projection.js';
@@ -359,6 +360,18 @@ export function createLegacyClaudeWorkerExecutorFactory(
             metadata = {};
           }
         }
+        const processNodeId = typeof metadata.process_node_id === 'string'
+          ? metadata.process_node_id
+          : null;
+        if (processNodeId) {
+          resolvedWorkspace = applyTestWarmStart({
+            env: process.env,
+            workspaceRoot: input.workspaceRoot,
+            moduleRef: resolvedWorkspace.moduleRef,
+            nodeId: processNodeId,
+            processWorkspace: resolvedWorkspace,
+          });
+        }
         metadata.process_workspace = {
           profile_id: resolvedWorkspace.profileId,
           module_ref: resolvedWorkspace.moduleRef,
@@ -371,6 +384,7 @@ export function createLegacyClaudeWorkerExecutorFactory(
           workspace_files: [...resolvedWorkspace.workspaceFiles],
           call_files: [...resolvedWorkspace.callFiles],
           checklists: [...resolvedWorkspace.checklists],
+          test_warm_start: resolvedWorkspace.testWarmStart ?? null,
         };
         getDb().prepare(
           `UPDATE tasks
