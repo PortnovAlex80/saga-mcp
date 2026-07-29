@@ -15,8 +15,9 @@
  *   3. Identity guard `assertManagedExecutionIdentity` — marker/exec-id
  *      pairing rules and the AUTHORITY_CONTEXT_INVALID error code.
  *   4. Structured errors `actionableError` + `SAGA3_TOOL_CALL_SHAPES` +
- *      `enrichPayloadErrors` — error shape, hard-coded Discovery workflow
- *      hint literal, recommended_outcome / recommended_next_action lists.
+ *      `enrichPayloadErrors` — error shape, parameterized workflow hint
+ *      (W13-A5; was a hard-coded Discovery literal), recommended_outcome /
+ *      recommended_next_action lists.
  *   5. Error normalization `friendlyError` — SQLite UNIQUE / NOT NULL / FK /
  *      no-such-table mappings.
  *
@@ -476,16 +477,46 @@ test('structured errors: SAGA3_TOOL_CALL_SHAPES covers all 7 saga3 tools', async
   }
 });
 
-test('structured errors: hard-coded Discovery workflow hint literal is appended by enrichPayloadErrors', async () => {
+test('structured errors: parameterized Discovery workflow hint is appended by enrichPayloadErrors (W13-A5)', async () => {
   const { args } = await loadModules();
-  // This is EXACTLY the literal Wave 6 must parameterize (plan §13.13). Lock
-  // it so the change is visible.
+  // W13-A5: the hard-coded `docs/discovery/...` literal that used to live in
+  // saga3-args.ts is GONE. `enrichPayloadErrors` now appends a PARAMETERIZED
+  // `[Workflow: ...]` sentence built from DISCOVERY_WORKFLOW_REFS via
+  // renderWorkflowHint (W6-A5 ActionableToolError). The tracker path token
+  // still comes from the Discovery refs (these four tools ARE Discovery
+  // tools), but the platform helper no longer bakes any module name. This
+  // test pins the new observed shape so any further change is a visible diff.
   const WORKFLOW_HINT =
-    '[Workflow: Read your stage tracker docs/discovery/project-<N>-discovery-stage.md, fix the field, verify checklist, retry.]';
+    '[Workflow: Read your stage tracker docs/discovery/project-<N>-discovery-stage.md, resume at 4c, retry.]';
   const enriched = args.enrichPayloadErrors('proposal_submit', ["field 'rationale' must be a non-empty string"]);
-  assert.ok(enriched.includes(WORKFLOW_HINT), `hard-coded Discovery workflow hint lost:\n${WORKFLOW_HINT}`);
+  assert.ok(enriched.includes(WORKFLOW_HINT), `parameterized Discovery workflow hint lost:\n${WORKFLOW_HINT}`);
   // The hint is always the second-to-last element (shape is last when present).
   assert.equal(enriched[enriched.length - 2], WORKFLOW_HINT);
+});
+
+test('structured errors: enrichPayloadErrors workflow hint is parameterized — caller refs override Discovery defaults (W13-A5)', async () => {
+  const { args } = await loadModules();
+  // A non-Discovery caller passes its own refs; the hint must NOT mention the
+  // discovery path. This is the §13.13 anti-regression: no module name is
+  // baked into the platform helper.
+  const enriched = args.enrichPayloadErrors('proposal_submit', ['something wrong'], {
+    trackerRef: 'docs/formalization/project-9-formalization-stage.md',
+    resumeStep: '2b',
+  });
+  const hint = enriched[enriched.length - 2];
+  assert.match(hint, /docs\/formalization\/project-9-formalization-stage\.md/);
+  assert.equal(hint.includes('discovery'), false, 'parameterized hint must not bake discovery');
+});
+
+test('structured errors: enrichPayloadErrors omits the workflow sentence when caller supplies no refs (W13-A5)', async () => {
+  const { args } = await loadModules();
+  // renderWorkflowHint({}) returns '' → no workflow element is appended; only
+  // the Expected shape (when present) follows the raw errors.
+  const enriched = args.enrichPayloadErrors('proposal_submit', ['something wrong'], {});
+  const last = enriched[enriched.length - 1];
+  assert.match(last, /^\[Expected proposal_submit shape:/);
+  assert.ok(!enriched.some((e) => e.startsWith('[Workflow:')),
+    `unexpected workflow sentence when no refs supplied: ${JSON.stringify(enriched)}`);
 });
 
 test('structured errors: enrichPayloadErrors appends the Expected <tool> shape last', async () => {

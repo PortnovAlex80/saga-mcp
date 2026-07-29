@@ -2,7 +2,8 @@ import { createHash } from 'node:crypto';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import { getDb } from '../db.js';
 import { withImmediateTransaction } from './dispatcher.js';
-import { argInt, argStr, SAGA3_TOOL_CALL_SHAPES, SAGA3_ARG_SOURCES, enrichPayloadErrors } from './saga3-args.js';
+import { argInt, argStr, SAGA3_TOOL_CALL_SHAPES, SAGA3_ARG_SOURCES, enrichPayloadErrors, DISCOVERY_WORKFLOW_REFS } from './saga3-args.js';
+import { renderWorkflowHint } from '../application/actionable-tool-error.js';
 import type { ToolHandler } from '../types.js';
 import { DISCOVERY_INTENT_KIND, DISCOVERY_WORK_INTENT_SCHEMA } from '../saga3/domain/work-intent.js';
 import { DISCOVERY_PROPOSAL_SCHEMA } from '../saga3/domain/discovery-proposal.js';
@@ -173,7 +174,16 @@ export function createSaga3ProposalHandlers(
         deterministic_trace: deterministic.trace,
         validation_errors: [],
         alias_conflicts: [],
-        _workflow_hint: '✅ Proposal accepted! Update your stage tracker: Read docs/discovery/project-<N>-discovery-stage.md, mark step 4c [x], set Current Step: 5. Then call worker_done with your task_id and execution_id.',
+        // W13-A5: the success hint is built from the Discovery workflow refs
+        // (the same {@link DISCOVERY_WORKFLOW_REFS} used by the error path) via
+        // the parameterized {@link renderWorkflowHint}, so no hard-coded
+        // `docs/discovery/...` literal lives in this handler. A non-Discovery
+        // module would pass its own trackerRef/resumeStep here.
+        _workflow_hint:
+          `✅ Proposal accepted! ${renderWorkflowHint({
+            trackerRef: DISCOVERY_WORKFLOW_REFS.trackerRef,
+            resumeStep: '5',
+          })} Then call worker_done with your task_id and execution_id.`,
       } satisfies D2ProposalSubmitResult;
     });
   };

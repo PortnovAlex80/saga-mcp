@@ -26,7 +26,16 @@
  * MCP-error format must not leak into domain code. The precedent is
  * `src/tools/dispatcher.ts`, which already exports `withImmediateTransaction`
  * shared across all saga3 handlers.
+ *
+ * W13-A5: the workflow hint appended by `enrichPayloadErrors` is now
+ * PARAMETERIZED via {@link renderWorkflowHint} from the W6-A5
+ * `ActionableToolError` platform module. The hard-coded Discovery tracker
+ * literal that used to live here is gone; each calling site passes its own
+ * module's `trackerRef`/`checklistRef`/`resumeStep`. The four saga3 handlers
+ * are Discovery tools, so they share {@link DISCOVERY_WORKFLOW_REFS}.
  */
+
+import { renderWorkflowHint } from '../application/actionable-tool-error.js';
 
 /**
  * Build an actionable error message. The `message` MUST contain the original
@@ -175,6 +184,19 @@ const PAYLOAD_FIELD_SOURCES: Record<string, Record<string, string>> = {
 };
 
 /**
+ * Workflow references for the Discovery module's saga3 tools. W13-A5: the four
+ * saga3 handlers all belong to the Discovery Process Module, so they share one
+ * set of tracker/checklist/resume refs. Passing these into {@link enrichPayloadErrors}
+ * (and into the proposal_submit success hint) keeps the Discovery path tokens
+ * out of the platform helpers — a Formalization or Delivery tool would pass its
+ * own refs and never see a `docs/discovery/...` literal.
+ */
+export const DISCOVERY_WORKFLOW_REFS = {
+  trackerRef: 'docs/discovery/project-<N>-discovery-stage.md',
+  resumeStep: '4c',
+} as const;
+
+/**
  * Enrich raw payload-validator errors with actionable context for the model.
  * The validators return terse diagnostics like "field 'proposal_id' must be an
  * integer" — this appends a Source hint telling the worker WHERE to get the
@@ -184,8 +206,18 @@ const PAYLOAD_FIELD_SOURCES: Record<string, Record<string, string>> = {
  *
  * Applied ONLY at the handler→model boundaries (the DB copy stays raw for
  * kernel audit). The pure validators are untouched.
+ *
+ * W13-A5: the trailing `[Workflow: ...]` sentence is PARAMETERIZED via
+ * {@link renderWorkflowHint}. Callers pass their module's own
+ * tracker/checklist/resume refs (`workflowRefs`); when omitted, no workflow
+ * sentence is appended (the caller had nothing actionable to point at). The
+ * hard-coded Discovery literal that used to be appended here is removed.
  */
-export function enrichPayloadErrors(tool: string, errors: string[]): string[] {
+export function enrichPayloadErrors(
+  tool: string,
+  errors: string[],
+  workflowRefs: { trackerRef?: string; checklistRef?: string; resumeStep?: string } = DISCOVERY_WORKFLOW_REFS,
+): string[] {
   if (!errors || errors.length === 0) return errors;
   const sources = PAYLOAD_FIELD_SOURCES[tool];
   const shape = (SAGA3_TOOL_CALL_SHAPES as Record<string, string>)[tool];
@@ -220,7 +252,8 @@ export function enrichPayloadErrors(tool: string, errors: string[]): string[] {
 
   // Keep the expected shape as the final, highest-value recovery instruction.
   // Tests and weak-model skills rely on this stable last element.
-  enriched.push('[Workflow: Read your stage tracker docs/discovery/project-<N>-discovery-stage.md, fix the field, verify checklist, retry.]');
+  const workflowHint = renderWorkflowHint(workflowRefs);
+  if (workflowHint) enriched.push(workflowHint);
   if (shape) enriched.push(`[Expected ${tool} shape: ${shape}]`);
   return enriched;
 }
