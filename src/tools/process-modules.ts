@@ -197,11 +197,33 @@ function handleProcessRunStart(args: Record<string, unknown>) {
     }
     projectedStage = projectedStageRaw;
   }
+  // Wave 2 installation pin (W3-A3, spec §6). Both optional: omitted → null
+  // (legacy run). When both are supplied the run is pinned to the immutable
+  // module installation; the executor resolves package resources via the
+  // Wave 2 PackageRegistry instead of the built-in catalog.
+  const installationIdRaw = args.installation_id;
+  let installationId: number | null = null;
+  if (installationIdRaw !== undefined && installationIdRaw !== null) {
+    if (typeof installationIdRaw !== 'number' || !Number.isInteger(installationIdRaw)) {
+      throw new Error('installation_id must be an integer when provided');
+    }
+    installationId = installationIdRaw;
+  }
+  const packageDigestRaw = args.package_digest;
+  let packageDigest: string | null = null;
+  if (packageDigestRaw !== undefined && packageDigestRaw !== null) {
+    if (typeof packageDigestRaw !== 'string') {
+      throw new Error('package_digest must be a string when provided');
+    }
+    packageDigest = packageDigestRaw;
+  }
   const result = repo().start({
     moduleRef,
     executorKind,
     input,
     projectedStage,
+    installationId,
+    packageDigest,
     invocationContext: { projectId, epicId, initiatedBy, idempotencyKey },
   });
   return {

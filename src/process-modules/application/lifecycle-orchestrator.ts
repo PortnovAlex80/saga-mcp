@@ -186,6 +186,10 @@ export class LifecycleOrchestrator {
           },
           executorKind: installation.executor.kind,
           projectedStage: installation.definition.identity.kind,
+          // Legacy pre-Wave-2 path: not pinned to an installation (W3-A3,
+          // spec §6). Wave 11 cutover sets these from the active installation.
+          installationId: null,
+          packageDigest: null,
           invocationContext: {
             projectId: lifecycleRun.projectId,
             epicId: lifecycleRun.epicId,

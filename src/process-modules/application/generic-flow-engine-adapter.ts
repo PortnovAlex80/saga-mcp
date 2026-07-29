@@ -85,6 +85,10 @@ export class GenericFlowEngineAdapter implements ProcessModuleExecutionAdapter {
       },
       executorKind: 'generic-flow',
       projectedStage: this.finalStage || null,
+      // Legacy pre-Wave-2 path: not pinned to an installation (W3-A3, spec §6).
+      // Wave 11 cutover sets these from the active installation.
+      installationId: null,
+      packageDigest: null,
       invocationContext: {
         projectId: command.projectId,
         epicId: command.epicId,

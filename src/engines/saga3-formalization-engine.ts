@@ -101,6 +101,9 @@ export class Saga3FormalizationEngine implements OrchestrationEngine {
         contentHash: inputHash,
       },
       projectedStage: 'formalization',
+      // Legacy pre-Wave-2 path: not pinned to an installation (W3-A3, spec §6).
+      installationId: null,
+      packageDigest: null,
       invocationContext: {
         projectId,
         epicId,

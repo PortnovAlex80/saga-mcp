@@ -158,6 +158,9 @@ interface ProcessRunRow {
   input_hash: string;
   projected_stage: string | null;
   status: ProcessRunStatus;
+  // Wave 2 (W3-A3 surface, spec §6): both nullable — legacy runs leave NULL.
+  installation_id: number | null;
+  package_digest: string | null;
   local_outcome: string | null;
   authority: string | null;
   output_schema: string | null;
@@ -195,6 +198,8 @@ function rowToRecord(row: ProcessRunRow): ProcessRunRecord {
     inputHash: row.input_hash,
     projectedStage: row.projected_stage,
     status: row.status,
+    installationId: row.installation_id,
+    packageDigest: row.package_digest,
     localOutcome: row.local_outcome,
     authority: row.authority,
     outputSchema: row.output_schema,
@@ -262,6 +267,14 @@ export class SqliteProcessRunRepository implements ProcessRunRepository {
         + `does not match canonical payload hash='${computedInputHash}' for ${moduleRefKey}`,
       );
     }
+    // Normalize the Wave 2 installation pin so absent (undefined) values — from
+    // pre-Wave-3 callers that do not yet know about the two fields — behave
+    // identically to an explicit null (the legacy-run pin shape). This keeps
+    // replay-equality and INSERT binding byte-stable across the cutover: a row
+    // stored with NULL installation_id stays equal to a replay command that
+    // omits the field entirely. W3-A3, spec §6.
+    const installationId = command.installationId ?? null;
+    const packageDigest = command.packageDigest ?? null;
 
     // Look up any existing run for (project, module, idempotency_key). The
     // idempotency_key names the run; input_hash is the input it was started
@@ -279,7 +292,9 @@ export class SqliteProcessRunRepository implements ProcessRunRepository {
         && existing.module_ref_key === moduleRefKey
         && existing.executor_kind === command.executorKind
         && existing.projected_stage === command.projectedStage
-        && existing.epic_id === ctx.epicId;
+        && existing.epic_id === ctx.epicId
+        && existing.installation_id === installationId
+        && existing.package_digest === packageDigest;
       if (!sameInvocation) {
         throw new Error(
           `IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_INPUT: idempotency_key='${ctx.idempotencyKey}' `
@@ -294,8 +309,8 @@ export class SqliteProcessRunRepository implements ProcessRunRepository {
       `INSERT INTO saga3_process_runs
          (project_id, epic_id, module_name, module_version, module_ref_key,
           idempotency_key, executor_kind, input_schema, input_snapshot,
-          input_hash, projected_stage, status)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,'created')`,
+          input_hash, projected_stage, status, installation_id, package_digest)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,'created',?,?)`,
     ).run(
       ctx.projectId,
       ctx.epicId,
@@ -308,6 +323,8 @@ export class SqliteProcessRunRepository implements ProcessRunRepository {
       inputSnapshot,
       computedInputHash,
       command.projectedStage,
+      installationId,
+      packageDigest,
     );
     const row = readRowById(this.db, Number(info.lastInsertRowid));
     if (!row) throw new Error('saga3: process_run vanished after insert');

@@ -90,6 +90,17 @@ export interface StartProcessModuleCommand {
   executorKind: ExecutorKind;
   /** Where to project legacy episode_workflows.stage (null = no projection). */
   projectedStage: string | null;
+  /**
+   * Wave 2 installation pin (W3-A3, spec §6). When BOTH are set the run is
+   * pinned to an immutable module installation (`saga3_module_installations`).
+   * When BOTH are null the run is a legacy pre-Wave-2 run that routes through
+   * the legacy nullable adapter (plan §14.3.7). No NOT NULL enforcement until
+   * Wave 11. The caller (composition root / Wave 11 cutover) sets these when
+   * starting a run via the installation path; legacy call sites omit them and
+   * both default to null.
+   */
+  installationId: number | null;
+  packageDigest: string | null;
   invocationContext: {
     projectId: number;
     epicId: number | null;
@@ -126,6 +137,16 @@ export interface ProcessRunRecord {
   executorKind: ExecutorKind;
   /** Stage to project into episode_workflows when this run completes. */
   projectedStage: string | null;
+  /**
+   * Wave 2 installation pin (W3-A3, spec §6). Mirrors the two nullable
+   * `installation_id` / `package_digest` columns on `saga3_process_runs`.
+   * BOTH set → the run is pinned to an immutable module installation; BOTH
+   * null → legacy pre-Wave-2 run (routes through the legacy nullable adapter,
+   * plan §14.3.7). The Wave 3 `AgentLaunchSpec` resolver reads
+   * `installationId` to decide pinned-package resolution vs catalog fallback.
+   */
+  installationId: number | null;
+  packageDigest: string | null;
   /** Local outcome emitted by the module (null until terminal). */
   localOutcome: string | null;
   /**
