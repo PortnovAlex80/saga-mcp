@@ -11,20 +11,15 @@ const { LifecycleOrchestrator } = await import(
 const { ProcessModuleInstallationRegistry } = await import(
   '../../dist/process-modules/application/process-module-installation-registry.js'
 );
-<<<<<<< HEAD
 const { ProcessModuleRegistry } = await import(
   '../../dist/process-modules/application/process-module-registry.js'
 );
-const { ProcessOutputPayloadRegistry } = await import(
-  '../../dist/process-modules/application/process-output-payload-registry.js'
-);
-// Wave 13 removed modules/catalog.ts; build the registry inline.
+// Wave 13 removed modules/catalog.ts (W13-A1) and the ProcessOutputPayloadRegistry
+// (W13-A3); the registry is built inline from per-module definitions, and the
+// payload dispatch the registry encapsulated is now an injected
+// resolveOutputPayload callback (see further below).
 const { discoveryProcessModule } = await import(
   '../../dist/process-modules/modules/discovery/discovery-process-module.js'
-=======
-const { createBuiltInProcessModuleRegistry } = await import(
-  '../../dist/process-modules/modules/catalog.js'
->>>>>>> 71d4a20 (refactor(legacy-removal): W13-A3 Remove routeResolver + output payload registry)
 );
 const { formalizationProcessModule } = await import(
   '../../dist/process-modules/modules/formalization/formalization-process-module.js'
