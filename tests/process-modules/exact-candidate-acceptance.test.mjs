@@ -231,6 +231,39 @@ test('exact candidate acceptance is atomic, review-backed and idempotent', () =>
   }
 });
 
+test('acceptance may use an earlier write from the same reviewed task', () => {
+  const f = fixture();
+  try {
+    f.db.prepare(
+      `UPDATE saga3_managed_artifact_productions
+          SET execution_id='exec-earlier-same-task'
+        WHERE artifact_id=?`,
+    ).run(f.artifactId);
+    const decision = new SqliteExactCandidateAcceptance(f.db).accept(f.command);
+    assert.equal(decision.items[0].artifactId, f.artifactId);
+    assert.equal(decision.items[0].disposition, 'accepted');
+  } finally {
+    cleanup(f.temp);
+  }
+});
+
+test('acceptance never adopts a candidate written by another recovery task', () => {
+  const f = fixture();
+  try {
+    f.db.prepare(
+      `UPDATE saga3_managed_artifact_productions
+          SET task_id=999
+        WHERE artifact_id=?`,
+    ).run(f.artifactId);
+    assert.throws(
+      () => new SqliteExactCandidateAcceptance(f.db).accept(f.command),
+      error => error?.code === 'EXACT_ACCEPTANCE_CANDIDATE_NOT_PRODUCED',
+    );
+  } finally {
+    cleanup(f.temp);
+  }
+});
+
 test('a mismatched member rejects the whole candidate set before any CAS', () => {
   const f = fixture();
   try {

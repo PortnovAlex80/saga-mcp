@@ -967,20 +967,9 @@ function readExecutionWrites(
   if (!receipt.executionId) {
     throw new Error(`${handlerId}: task execution has no durable execution fence`);
   }
-  // Query the managed-production ledger at the NODE level (process_run +
-  // module + node), NOT at the execution level. Artifacts and traces produced
-  // by a node survive multiple review loops and recovery attempts: the same
-  // artifact is created in exec#1, edited in exec#3, finalized in exec#5.
-  // Querying by a single executionId returns a STALE snapshot (the first or
-  // any single version), and the fence validation below then mismatches the
-  // live artifact row. The node-level query returns ALL managed productions
-  // for this node, and latestArtifactWrites/latestTraceWrites deduplicate by
-  // artifact/trace id, keeping the latest (highest ledger id) version — which
-  // always matches the current live artifact row.
-  //
-  // The receipt.executionId is still required above as a durability fence
-  // (the kernel must only resolve after a durable worker execution), but it
-  // is NOT used as a query filter.
+  // The reviewed task is the durable product aggregate. Author and reviewer
+  // retries may use several execution fences while advancing the same draft.
+  // Task scope retains that history without adopting another recovery task.
   const query: ManagedProductionQuery = {
     processRunId: ctx.processRunId,
     moduleRef: FORMALIZATION_MODULE_KEY,
@@ -989,19 +978,12 @@ function readExecutionWrites(
     taskId: receipt.taskId,
     executionId: receipt.executionId,
   };
-  let artifactWrites = latestArtifactWrites(deps.ledger.listArtifactsForNodeInProcessRun(
-    ctx.processRunId, FORMALIZATION_MODULE_KEY, sourceNodeId,
+  const artifactWrites = latestArtifactWrites(deps.ledger.listArtifactsForTaskInProcessRun(
+    ctx.processRunId, FORMALIZATION_MODULE_KEY, sourceNodeId, receipt.taskId,
   ));
-  let traceWrites = latestTraceWrites(deps.ledger.listTracesForNodeInProcessRun(
-    ctx.processRunId, FORMALIZATION_MODULE_KEY, sourceNodeId,
+  const traceWrites = latestTraceWrites(deps.ledger.listTracesForTaskInProcessRun(
+    ctx.processRunId, FORMALIZATION_MODULE_KEY, sourceNodeId, receipt.taskId,
   ));
-  if (artifactWrites.length === 0 && traceWrites.length === 0) {
-    // No node-level productions at all — the worker produced nothing durable.
-    // This is distinct from "produced in a different execution" (handled by
-    // the node-level query above) and means the LM node genuinely wrote no
-    // managed output. Return empty; the caller decides whether that is a
-    // semantic error (e.g. "persisted no canonical AC artifacts").
-  }
   const artifacts = deps.graph.readArtifactsByIds(artifactWrites.map(write => write.artifactId));
   if (artifacts.length !== artifactWrites.length) {
     throw new Error(`${handlerId}: one or more ledger artifacts no longer exist`);
@@ -1010,7 +992,7 @@ function readExecutionWrites(
   for (const write of artifactWrites) {
     const artifact = artifactsById.get(write.artifactId);
     if (
-      !matchesFenceRelaxed(write, query)
+      !matchesTaskFence(write, query)
       || !artifact
       || artifact.projectId !== ctx.projectId
       || artifact.epicId !== ctx.epicId
@@ -1032,7 +1014,7 @@ function readExecutionWrites(
   for (const write of traceWrites) {
     const trace = tracesById.get(write.traceId);
     if (
-      !matchesFenceRelaxed(write, query)
+      !matchesTaskFence(write, query)
       || !trace
       || trace.sourceArtifactId !== write.sourceId
       || trace.targetType !== write.targetType
@@ -1130,18 +1112,13 @@ function artifactStatusMatchesManagedWrite(
 }
 
 /**
- * Relaxed fence for retry/recovery fallback: validates process + module + node
- * but NOT executionId, intent or task — recovery creates new intent/task for
- * the same node. The original artifacts were produced under the original
- * intent/task; the recovery kernel resolver runs under a fresh intent/task for
- * the same node in the same ProcessRun. Matching only process + module + node
- * (the same boundary used by listArtifactsForNodeInProcessRun) keeps legitimate
- * artifacts reachable across the recovery boundary.
+ * Retry executions may differ, but another task is a separate product
+ * attempt. Never relax this fence to node scope.
  */
-function matchesFenceRelaxed(
+function matchesTaskFence(
   record: Pick<
     ManagedArtifactWriteRecord | ManagedTraceWriteRecord,
-    'processRunId' | 'moduleRef' | 'nodeId'
+    'processRunId' | 'moduleRef' | 'nodeId' | 'taskId'
   >,
   query: ManagedProductionQuery,
 ): boolean {
@@ -1149,6 +1126,7 @@ function matchesFenceRelaxed(
     record.processRunId === query.processRunId
     && record.moduleRef === query.moduleRef
     && record.nodeId === query.nodeId
+    && record.taskId === query.taskId
   );
 }
 

@@ -293,6 +293,14 @@ test('W8-A6: SqliteFormalizationManagedProduction delegates to the shared ledger
         traceHash: 'b'.repeat(64), recordedAt: 't',
       }];
     },
+    listArtifactsForTaskInProcessRun(pr, mod, node, task) {
+      calls.push(['artifacts-task', pr, mod, node, task]);
+      return [];
+    },
+    listTracesForTaskInProcessRun(pr, mod, node, task) {
+      calls.push(['traces-task', pr, mod, node, task]);
+      return [];
+    },
     listArtifactsForNodeInProcessRun(pr, mod, node) {
       calls.push(['artifacts-run', pr, mod, node]);
       return [];
@@ -309,6 +317,8 @@ test('W8-A6: SqliteFormalizationManagedProduction delegates to the shared ledger
   };
   const arts = adapter.listArtifactsForExecution(query);
   const traces = adapter.listTracesForExecution(query);
+  adapter.listArtifactsForTaskInProcessRun(7, 'm', 'n', 22);
+  adapter.listTracesForTaskInProcessRun(7, 'm', 'n', 22);
   adapter.listArtifactsForNodeInProcessRun(7, 'm', 'n');
   adapter.listTracesForNodeInProcessRun(7, 'm', 'n');
 
@@ -326,8 +336,10 @@ test('W8-A6: SqliteFormalizationManagedProduction delegates to the shared ledger
   assert.equal(traces[0].linkType, 'derived_from');
 
   // The run-scoped fallbacks forwarded too.
-  assert.equal(calls[2][0], 'artifacts-run');
-  assert.equal(calls[3][0], 'traces-run');
+  assert.equal(calls[2][0], 'artifacts-task');
+  assert.equal(calls[3][0], 'traces-task');
+  assert.equal(calls[4][0], 'artifacts-run');
+  assert.equal(calls[5][0], 'traces-run');
 });
 
 // ---------------------------------------------------------------------------
@@ -475,6 +487,8 @@ test('W8-A6: createFormalizationPackageHandlerAdapter wraps the product handler 
     ledger: {
       listArtifactsForExecution: () => [],
       listTracesForExecution: () => [],
+      listArtifactsForTaskInProcessRun: () => [],
+      listTracesForTaskInProcessRun: () => [],
       listArtifactsForNodeInProcessRun: () => [],
       listTracesForNodeInProcessRun: () => [],
     },
@@ -520,6 +534,8 @@ test('W8-A6: buildSqliteFormalizationPackagePorts wires all three ports', () => 
     const stubLedger = {
       listArtifactsForExecution: () => [],
       listTracesForExecution: () => [],
+      listArtifactsForTaskInProcessRun: () => [],
+      listTracesForTaskInProcessRun: () => [],
       listArtifactsForNodeInProcessRun: () => [],
       listTracesForNodeInProcessRun: () => [],
     };

@@ -230,6 +230,38 @@ implements FormalizationManagedProductionPort {
       .map(toManagedTraceWrite);
   }
 
+  listArtifactsForTaskInProcessRun(
+    processRunId: number,
+    moduleRef: string,
+    nodeId: string,
+    taskId: number,
+  ): readonly FormalizationManagedArtifactWrite[] {
+    return this.ledger
+      .listArtifactsForTaskInProcessRun(
+        processRunId,
+        moduleRef,
+        nodeId,
+        taskId,
+      )
+      .map(toManagedArtifactWrite);
+  }
+
+  listTracesForTaskInProcessRun(
+    processRunId: number,
+    moduleRef: string,
+    nodeId: string,
+    taskId: number,
+  ): readonly FormalizationManagedTraceWrite[] {
+    return this.ledger
+      .listTracesForTaskInProcessRun(
+        processRunId,
+        moduleRef,
+        nodeId,
+        taskId,
+      )
+      .map(toManagedTraceWrite);
+  }
+
   listArtifactsForNodeInProcessRun(
     processRunId: number,
     moduleRef: string,

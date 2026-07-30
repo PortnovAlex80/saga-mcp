@@ -61,19 +61,30 @@ export interface ManagedProductionLedger {
   listTracesForExecution(
     query: ManagedExecutionProductQuery,
   ): readonly ManagedTraceProductionRecord[];
+  /**
+   * Read the durable product accumulated by one reviewed task across its
+   * author/reviewer retry executions. A different recovery task is a new
+   * product attempt and must write or carry an explicit product reference.
+   */
+  listArtifactsForTaskInProcessRun(
+    processRunId: number,
+    moduleRef: string,
+    nodeId: string,
+    taskId: number,
+  ): readonly ManagedArtifactProductionRecord[];
+  listTracesForTaskInProcessRun(
+    processRunId: number,
+    moduleRef: string,
+    nodeId: string,
+    taskId: number,
+  ): readonly ManagedTraceProductionRecord[];
   // W13-A4: the epic-scope `listArtifactsForNodeInEpic` /
   // `listTracesForNodeInEpic` fallbacks (§9.11 "latest artifact in epic") were
   // REMOVED. They had no production callers — the ExecutionContextAssembler
   // (W3-A5) resolves upstream products exclusively by exact `ProductRef`
   // (`getByProductRef`, §9.11 retirement). A missing predecessor now surfaces
   // as `UPSTREAM_PRODUCT_NOT_FOUND` instead of a silent nearest-match.
-  /**
-   * Retry/recovery fallback: find artifact productions for one (module, node)
-   * within the SAME ProcessRun but across ALL executions. Used when a worker
-   * retried (review changes_requested, recovery repair, lease loss) and the
-   * current execution produced no managed artifacts — they were created in an
-   * earlier execution of the same task/intent.
-   */
+  /** Node-wide audit query. Product resolvers must not use it as fallback. */
   listArtifactsForNodeInProcessRun(
     processRunId: number,
     moduleRef: string,
@@ -523,6 +534,38 @@ export class SqliteManagedProductionLedger implements ManagedProductionLedger {
       query.taskId,
       query.executionId,
     ) as TraceLedgerRow[];
+    return rows.map(traceRowToRecord);
+  }
+
+  listArtifactsForTaskInProcessRun(
+    processRunId: number,
+    moduleRef: string,
+    nodeId: string,
+    taskId: number,
+  ): readonly ManagedArtifactProductionRecord[] {
+    const rows = this.db.prepare(
+      `SELECT mp.*
+         FROM saga3_managed_artifact_productions mp
+        WHERE mp.process_run_id=? AND mp.module_ref=? AND mp.node_id=?
+          AND mp.task_id=?
+        ORDER BY mp.id`,
+    ).all(processRunId, moduleRef, nodeId, taskId) as ArtifactLedgerRow[];
+    return rows.map(artifactRowToRecord);
+  }
+
+  listTracesForTaskInProcessRun(
+    processRunId: number,
+    moduleRef: string,
+    nodeId: string,
+    taskId: number,
+  ): readonly ManagedTraceProductionRecord[] {
+    const rows = this.db.prepare(
+      `SELECT mp.*
+         FROM saga3_managed_trace_productions mp
+        WHERE mp.process_run_id=? AND mp.module_ref=? AND mp.node_id=?
+          AND mp.task_id=?
+        ORDER BY mp.id`,
+    ).all(processRunId, moduleRef, nodeId, taskId) as TraceLedgerRow[];
     return rows.map(traceRowToRecord);
   }
 

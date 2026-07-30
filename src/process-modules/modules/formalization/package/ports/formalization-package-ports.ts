@@ -212,8 +212,8 @@ export interface FormalizationManagedTraceWrite {
  * The method set mirrors exactly what `formalization-installation.ts`
  * `readExecutionWrites` calls on the ledger:
  *   listArtifactsForExecution / listTracesForExecution (execution-fenced), and
- *   listArtifactsForNodeInProcessRun / listTracesForNodeInProcessRun (the
- *   retry/recovery relaxed-fence fallback).
+ *   listArtifactsForTaskInProcessRun / listTracesForTaskInProcessRun (review
+ *   retry aggregation without crossing another recovery task).
  */
 export interface FormalizationManagedProductionPort {
   listArtifactsForExecution(
@@ -224,6 +224,21 @@ export interface FormalizationManagedProductionPort {
     query: FormalizationManagedProductionQuery,
   ): readonly FormalizationManagedTraceWrite[];
 
+  listArtifactsForTaskInProcessRun(
+    processRunId: number,
+    moduleRef: string,
+    nodeId: string,
+    taskId: number,
+  ): readonly FormalizationManagedArtifactWrite[];
+
+  listTracesForTaskInProcessRun(
+    processRunId: number,
+    moduleRef: string,
+    nodeId: string,
+    taskId: number,
+  ): readonly FormalizationManagedTraceWrite[];
+
+  /** Node-wide audit query. Product resolvers must not use it as fallback. */
   listArtifactsForNodeInProcessRun(
     processRunId: number,
     moduleRef: string,

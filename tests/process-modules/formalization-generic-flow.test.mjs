@@ -164,6 +164,38 @@ function fixture() {
         };
       });
     },
+    listArtifactsForTaskInProcessRun(
+      processRunId,
+      moduleRef,
+      nodeId,
+      taskId,
+    ) {
+      const producer = receipt(nodeId);
+      return this.listArtifactsForExecution({
+        processRunId,
+        moduleRef,
+        nodeId,
+        intentId: producer.intentId,
+        taskId,
+        executionId: producer.executionId,
+      });
+    },
+    listTracesForTaskInProcessRun(
+      processRunId,
+      moduleRef,
+      nodeId,
+      taskId,
+    ) {
+      const producer = receipt(nodeId);
+      return this.listTracesForExecution({
+        processRunId,
+        moduleRef,
+        nodeId,
+        intentId: producer.intentId,
+        taskId,
+        executionId: producer.executionId,
+      });
+    },
     // Retry/recovery fallback: in unit tests the mock always returns [] (no
     // cross-execution fallback). Real SQLite ledger implements these against
     // saga3_managed_*_productions. Tests that explicitly verify "no fallback"
@@ -173,6 +205,7 @@ function fixture() {
     // W13-A4: listArtifactsForNodeInEpic / listTracesForNodeInEpic removed
     // from the ManagedProductionLedger port (epic-scope fallback retired §9.11).
   };
+  let baselineRecord = null;
   const baselineRepository = {
     freeze(payload) {
       const snapshotHash = sha256Hex(payload);
@@ -375,7 +408,7 @@ function runThroughSettlement(fx, productRuntimeStatus = 'completed') {
   const baseline = store(frame, 'freeze-acceptance-baseline', handlers[
     FORMALIZATION_HANDLER_IDS.freezeBaseline
   ](context('freeze-acceptance-baseline', reconciliation.production, frame)));
-  assert.equal(baseline.event, 'frozen');
+  assert.equal(baseline.event, 'frozen', JSON.stringify(baseline));
 
   const architecture = store(frame, 'resolve-architecture-contract', handlers[
     FORMALIZATION_HANDLER_IDS.resolveArchitecture
@@ -657,11 +690,11 @@ test('ledger/canonical hash mismatch fails the resolver closed', () => {
   assert.match(resolved.production.bindings.reason, /does not match its canonical row/);
 });
 
-test('ledger rows outside the exact execution fence fail the resolver closed', () => {
+test('ledger rows from another task fail the resolver closed', () => {
   const fx = fixture();
   const original = fx.deps.ledger.listArtifactsForExecution;
   fx.deps.ledger.listArtifactsForExecution = query => original(query).map(row =>
-    row.artifactId === 10 ? { ...row, executionId: 'different-execution' } : row);
+    row.artifactId === 10 ? { ...row, taskId: 999 } : row);
   const handlers = createFormalizationKernelHandlers(fx.deps);
   const resolved = handlers[FORMALIZATION_HANDLER_IDS.resolveProduct](
     context('resolve-product-contract', receipt('define-product-contract'), flowFrame()),
