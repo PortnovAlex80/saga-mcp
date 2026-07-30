@@ -5,14 +5,16 @@
  * Usage:
  *   node dist/orchestrate-cli.js <project_id> <epic_id> [--concurrency=4]
  *
- * The CLI now depends on the engine-neutral SagaApplication boundary. The
- * composition root currently selects Saga2Engine, which wraps the proven
- * orchestration pump without changing its behavior.
+ * The CLI now depends on the engine-neutral SagaApplication boundary. After the
+ * saga4 cutover the composition root always returns the Product Lifecycle
+ * runtime; the legacy Saga2Engine is no longer reachable from here.
  *
  * Env:
  *   DB_PATH             — saga SQLite database (required; same as saga server)
  *   SAGA_CLAUDE_PATH    — path to the claude CLI binary (default: 'claude')
  *   SAGA_ORCHESTRATION_LOG — existing runtime log setting
+ *   SAGA_PRODUCT_LIFECYCLE_COMPOSITION — ESM module supplying Delivery providers
+ *                         (required; the lifecycle runtime is the only engine)
  */
 
 import { readFileSync } from 'node:fs';
@@ -26,10 +28,8 @@ import {
 import type { SagaApplication } from './application/saga-application.js';
 import { getDb } from './db.js';
 import {
-  installModulePackages,
   installProductionModules,
 } from './process-modules/installation/production-install.js';
-import { discoveryPackageManifest } from './process-modules/modules/discovery/package/manifest.js';
 
 function parseArgs(argv: string[]): {
   projectId: number;
@@ -75,9 +75,8 @@ function parseArgs(argv: string[]): {
         + '  --idempotency-key=stable-key\n'
         + '  --resume\n'
         + '\n'
-        + 'For SAGA_ORCHESTRATION_MODE=saga3-lifecycle, set '
-        + 'SAGA_PRODUCT_LIFECYCLE_COMPOSITION to an ESM provider module and '
-        + 'pass --lifecycle-input or SAGA_PRODUCT_LIFECYCLE_INPUT.\n',
+        + 'SAGA_PRODUCT_LIFECYCLE_COMPOSITION is required (lifecycle is the only '
+        + 'engine). Pass --lifecycle-input or set SAGA_PRODUCT_LIFECYCLE_INPUT.\n',
       );
       process.exit(0);
     }
@@ -192,24 +191,15 @@ async function loadCompositionOverrides(
   projectId: number,
   epicId: number,
 ): Promise<Saga2CompositionOverrides> {
-  const orchestrationMode = process.env.SAGA_ORCHESTRATION_MODE;
+  // saga4 cutover: the CLI always runs the Product Lifecycle runtime.
+  // SAGA_PRODUCT_LIFECYCLE_COMPOSITION is mandatory.
   const repoRoot = path.resolve(process.env.SAGA_REPO_ROOT ?? process.cwd());
-  if (orchestrationMode === 'saga3-discovery-generic') {
-    const modulePackages = await installModulePackages(
-      getDb(),
-      repoRoot,
-      [discoveryPackageManifest],
-      process.env.SAGA_PACKAGE_STORE_DIR,
-    );
-    return { modulePackages };
-  }
-  if (orchestrationMode !== 'saga3-lifecycle') return {};
   const configuredPath = process.env.SAGA_PRODUCT_LIFECYCLE_COMPOSITION;
   if (!configuredPath) {
     throw new Error(
-      'SAGA_PRODUCT_LIFECYCLE_COMPOSITION_REQUIRED: lifecycle mode requires '
-      + 'an explicit ESM module that supplies real Delivery preflight, '
-      + 'publication and observation providers',
+      'SAGA_PRODUCT_LIFECYCLE_COMPOSITION_REQUIRED: the lifecycle runtime is '
+      + 'the only engine; an explicit ESM module supplying real Delivery '
+      + 'preflight, publication and observation providers is mandatory',
     );
   }
   const absolutePath = path.resolve(configuredPath);

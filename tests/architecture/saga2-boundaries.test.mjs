@@ -43,7 +43,7 @@ const fullConfig = (overrides = {}) => ({
   ...overrides,
 });
 
-test('runtime config preserves Saga 2 defaults and environment precedence', () => {
+test('runtime config preserves defaults and environment precedence', () => {
   const config = loadSagaRuntimeConfig({
     DB_PATH: '/tmp/saga.db',
     SAGA_ORCHESTRATION_LOG: '/tmp/saga-worker-logs',
@@ -55,7 +55,7 @@ test('runtime config preserves Saga 2 defaults and environment precedence', () =
     TRACKER_NO_BROWSER: '1',
     PORT: '5000',
     RELOAD_SEC: '7',
-    SAGA_ORCHESTRATION_MODE: 'v3',
+    SAGA_ORCHESTRATION_MODE: 'saga3-lifecycle',
   });
 
   assert.deepEqual(config, {
@@ -69,7 +69,7 @@ test('runtime config preserves Saga 2 defaults and environment precedence', () =
     trackerReloadSec: 7,
     trackerSpawned: true,
     trackerNoBrowser: true,
-    orchestrationMode: 'v3',
+    orchestrationMode: 'saga3-lifecycle',
   });
 
   assert.throws(() => loadSagaRuntimeConfig({}), /DB_PATH env var is required/);
@@ -420,7 +420,7 @@ test('engine spawn propagates config.orchestrationMode (no hardcoded mode)', () 
     db.close();
   }
 
-  for (const mode of ['v3', 'saga3-discovery']) {
+  for (const mode of ['saga3-discovery', 'saga3-lifecycle']) {
     const spawned = [];
     const admin = new LegacyEngineAdministration({
       config: fullConfig({ dbPath, orchestrationMode: mode }),
@@ -444,15 +444,12 @@ test('engine spawn propagates config.orchestrationMode (no hardcoded mode)', () 
   rmSync(temp, { recursive: true, force: true });
 });
 
-test('runtime config defaults orchestration mode to the stable v2 mode', () => {
-  // A branch must NOT silently switch the default to an experimental engine.
-  // The default stays the stable Saga 2 mode; saga3-discovery requires explicit
-  // SAGA_ORCHESTRATION_MODE selection. (Mode-ownership correction: previously
-  // the default was 'saga3-discovery', which silently changed behaviour for any
-  // install of the branch without the env var.)
+test('runtime config defaults orchestration mode to the product lifecycle engine', () => {
+  // saga4 cutover: the Product Lifecycle runtime is the unconditional default.
+  // The legacy 'v2'/'v3'/'saga2' modes have been removed from the union.
   const config = loadSagaRuntimeConfig({ DB_PATH: '/tmp/saga.db' });
-  assert.equal(config.orchestrationMode, 'v2',
-    'default orchestration mode must remain the stable v2; experimental engines require explicit env');
+  assert.equal(config.orchestrationMode, 'saga3-lifecycle',
+    'default orchestration mode must be the product lifecycle runtime');
 });
 
 test('orchestration mode parser rejects unknown values instead of silent fallback', async () => {
@@ -461,26 +458,24 @@ test('orchestration mode parser rejects unknown values instead of silent fallbac
   );
   // Recognised modes parse (case/whitespace normalised).
   for (const [raw, expected] of [
-    [undefined, 'v2'],
-    ['', 'v2'],
-    ['v2', 'v2'],
-    ['v3', 'v3'],
-    ['saga2', 'saga2'],
+    [undefined, 'saga3-lifecycle'],
+    ['', 'saga3-lifecycle'],
     ['saga3-discovery', 'saga3-discovery'],
     ['  Saga3-Discovery ', 'saga3-discovery'],
     ['saga3-lifecycle', 'saga3-lifecycle'],
+    [' Saga3-Lifecycle ', 'saga3-lifecycle'],
   ]) {
     assert.equal(parseOrchestrationMode(raw), expected,
       `parseOrchestrationMode('${raw}') === '${expected}'`);
   }
-  // Unknown mode throws — never a silent fallback to the wrong engine.
+  // Removed legacy modes are now unknown and must throw — never a silent fallback.
+  assert.throws(() => parseOrchestrationMode('v2'), /Unknown SAGA_ORCHESTRATION_MODE/);
+  assert.throws(() => parseOrchestrationMode('v3'), /Unknown SAGA_ORCHESTRATION_MODE/);
+  assert.throws(() => parseOrchestrationMode('saga2'), /Unknown SAGA_ORCHESTRATION_MODE/);
   assert.throws(() => parseOrchestrationMode('saga3-discovry'), /Unknown SAGA_ORCHESTRATION_MODE/);
   assert.throws(() => parseOrchestrationMode('v4'), /Unknown SAGA_ORCHESTRATION_MODE/);
 
   // requiresBackgroundEngine is the single source of truth for spawning.
-  assert.equal(requiresBackgroundEngine('v2'), false, 'v2 has no background engine');
-  assert.equal(requiresBackgroundEngine('v3'), true, 'v3 spawns background engine');
-  assert.equal(requiresBackgroundEngine('saga2'), true, 'saga2 spawns background engine');
   assert.equal(requiresBackgroundEngine('saga3-discovery'), true, 'saga3-discovery spawns background engine');
   assert.equal(requiresBackgroundEngine('saga3-lifecycle'), true, 'saga3-lifecycle spawns background engine');
 });
@@ -539,30 +534,25 @@ test('worker model route preserves provider and effort from episode persistence'
 // and WITHOUT altering Saga 2 behaviour.
 // ---------------------------------------------------------------------------
 
-test('composition root selects engine by orchestration mode without branching infrastructure', () => {
-  // Structural guard: the engine switch lives in exactly one place and reuses
-  // the shared persistence/worker/board/admin wiring. (Engine-selection
-  // behaviour itself is proven by the two runEpisode tests below.)
+test('composition root selects the lifecycle engine unconditionally', () => {
+  // saga4 cutover structural guard: selectEngine returns ONLY the Product
+  // Lifecycle runtime. The legacy Saga2Engine / Saga3DiscoveryEngine /
+  // Saga3FormalizationEngine branches are gone from the composition root.
+  // (Engine-selection behaviour is proven by the lifecycle runEpisode test
+  // below; this locks the source structure against regression.)
   const compositionSrc = readFileSync(
     path.resolve(import.meta.dirname, '..', '..', 'src', 'app', 'composition-root.ts'),
     'utf8',
   );
 
-  assert.match(compositionSrc, /isSaga3DiscoveryMode/);
-  assert.match(compositionSrc, /Saga3DiscoveryEngine/);
-  assert.match(compositionSrc, /Saga2Engine/);
-  // The engine is constructed in exactly one place (single switch).
-  assert.equal(
-    (compositionSrc.match(/new Saga3DiscoveryEngine/g) || []).length, 1,
-    'Saga3DiscoveryEngine is constructed in exactly one place',
-  );
-  // No second board reader / second worker factory / second admin for Saga 3 —
-  // the same wiring feeds both engines.
-  assert.doesNotMatch(
-    compositionSrc,
-    /new SqliteBoardProjectionReader[\s\S]*saga3-discovery[\s\S]*new SqliteBoardProjectionReader/,
-    'must NOT add a second board reader for Saga 3',
-  );
+  assert.match(compositionSrc, /createProductLifecycleRuntime/);
+  assert.doesNotMatch(compositionSrc, /new Saga2Engine/);
+  assert.doesNotMatch(compositionSrc, /new Saga3DiscoveryEngine/);
+  assert.doesNotMatch(compositionSrc, /new Saga3FormalizationEngine/);
+  // No parallel engine construction in selectEngine — the lifecycle runtime
+  // is the only path.
+  assert.doesNotMatch(compositionSrc, /isSaga3DiscoveryGenericMode/);
+  assert.doesNotMatch(compositionSrc, /isSaga3FormalizationMode/);
 });
 
 test('D1: saga3-discovery engine reuses worker substrate without duplicating Saga 2 pump logic', () => {
@@ -679,37 +669,35 @@ test('composition root selects the engine through the real wiring, not a source 
   assert.equal(heartbeats.some(([e]) => e === 'DUPLICATE_EXIT'), true, 'D1 engine emitted its DUPLICATE_EXIT heartbeat');
 });
 
-test('composition root falls through to Saga 2 engine for non-saga3 modes', async () => {
-  // Mirror of the above for the Saga 2 path: explicit saga2 mode must select
-  // Saga2Engine, observable by its distinct behaviour (here: duplicate-lock
-  // detection). This proves selectEngine routes correctly, not just that the
-  // source contains the right string.
+test('composition root throws PRODUCT_LIFECYCLE_DEPENDENCIES_REQUIRED without productLifecycle override', async () => {
+  // saga4 cutover: there is no Saga2Engine fall-through anymore. The lifecycle
+  // runtime is the only engine, so calling the application factory without the
+  // productLifecycle override must fail-loud instead of silently selecting a
+  // legacy engine.
   const { createSaga2Application } = await import(
     '../../dist/app/composition-root.js'
   );
-  const app = createSaga2Application(
-    { DB_PATH: '/tmp/saga.db', SAGA_ORCHESTRATION_MODE: 'saga2' },
-    {
-      config: fullConfig({ orchestrationMode: 'saga2' }),
-      host: {
-        processId: 7,
-        workerPaths: { sagaEntry: '/e', sagaSkillRoot: '/s' },
-        now: () => 0,
-        sleep: async () => {},
-        heartbeat: () => {},
-        acquireEngineLock: () => ({ status: 'duplicate', ownerPid: 999 }),
-        releaseEngineLock: () => { throw new Error('must not release another owner lock'); },
-        scanRateLimitSignals: () => 0,
+  assert.throws(
+    () => createSaga2Application(
+      { DB_PATH: '/tmp/saga.db' },
+      {
+        config: fullConfig(),
+        host: {
+          processId: 7,
+          workerPaths: { sagaEntry: '/e', sagaSkillRoot: '/s' },
+          now: () => 0,
+          sleep: async () => {},
+          heartbeat: () => {},
+          acquireEngineLock: () => ({ status: 'acquired', ownerPid: 7 }),
+          releaseEngineLock: () => {},
+          scanRateLimitSignals: () => 0,
+        },
+        persistence: {
+          episodes: {}, tasks: {}, executions: {}, workspaces: {},
+        },
+        workerExecutorFactory: () => { throw new Error('must not build a worker'); },
       },
-      persistence: {
-        episodes: { readTargetConcurrency: (_e, f) => f, patchMetadata: () => {}, currentStage: () => 'development' },
-        tasks: {}, executions: {}, workspaces: {},
-      },
-      workerExecutorFactory: () => { throw new Error('duplicate engine must not build a worker'); },
-    },
+    ),
+    /PRODUCT_LIFECYCLE_DEPENDENCIES_REQUIRED/,
   );
-  const result = await app.runEpisode({ projectId: 11, epicId: 22, concurrency: 1 });
-  // Saga2Engine duplicate-lock path: reason='failed', error mentions the owner PID.
-  assert.equal(result.reason, 'failed');
-  assert.match(result.lastError, /PID 999/);
 });

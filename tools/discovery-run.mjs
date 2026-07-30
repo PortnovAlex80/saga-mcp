@@ -297,17 +297,20 @@ async function preflight(options) {
     process.env.DB_PATH = configuration.dbPath;
     process.env.SAGA_REPO_ROOT = configuration.repoRoot;
     process.env.SAGA_PACKAGE_STORE_DIR = configuration.packageStore;
-    process.env.SAGA_ORCHESTRATION_MODE = 'saga3-discovery-generic';
+    // saga4 cutover: 'saga3-discovery-generic' is no longer a reachable mode
+    // from createSaga2Application — the composition root always returns the
+    // Product Lifecycle runtime. This harness proved the generic-flow discovery
+    // composition during P6c; that goal is complete. The check now verifies
+    // that the discovery module package still installs cleanly (its manifest +
+    // resources are intact) without asserting engine selection.
     const [
       { getDb },
       { installModulePackages },
       { discoveryPackageManifest },
-      { createSaga2Application },
     ] = await Promise.all([
       import('../dist/db.js'),
       import('../dist/process-modules/installation/production-install.js'),
       import('../dist/process-modules/modules/discovery/package/manifest.js'),
-      import('../dist/app/composition-root.js'),
     ]);
     const modulePackages = await installModulePackages(
       getDb(),
@@ -315,17 +318,17 @@ async function preflight(options) {
       [discoveryPackageManifest],
       configuration.packageStore,
     );
-    const application = createSaga2Application(process.env, { modulePackages });
-    application.close();
+    const installed = modulePackages.records.has(discoveryPackageManifest.name);
     checks.push({
-      name: 'generic Discovery composition',
-      target: 'saga3-discovery-generic',
-      ok: true,
+      name: 'Discovery module package install',
+      target: discoveryPackageManifest.name,
+      ok: installed,
+      detail: installed ? undefined : 'package not in installation records after install',
     });
   } catch (error) {
     checks.push({
-      name: 'generic Discovery composition',
-      target: 'saga3-discovery-generic',
+      name: 'Discovery module package install',
+      target: 'saga.product.discovery',
       ok: false,
       detail: error instanceof Error ? error.message : String(error),
     });

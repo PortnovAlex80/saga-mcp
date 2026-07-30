@@ -15,13 +15,6 @@ import {
 import { closeDb } from '../db.js';
 import { asModuleInstallationId } from '../process-modules/installation/domain/installation.js';
 import type { ProductionInstallation } from '../process-modules/installation/production-install.js';
-import { Saga2Engine } from '../engines/saga2-engine.js';
-import { Saga3DiscoveryEngine } from '../engines/saga3-discovery-engine.js';
-import { SqliteSaga3DiscoveryRuntime } from '../saga3/persistence/sqlite-saga3-discovery-runtime.js';
-import { Saga3DiscoveryNormalizationService } from '../saga3/application/discovery-normalization-service.js';
-import { Saga3DiscoveryReadinessService } from '../saga3/application/discovery-readiness-service.js';
-import { Saga3DiscoverySettlementService } from '../saga3/application/discovery-settlement-service.js';
-import { Saga3DiscoveryDiagnosisService } from '../saga3/application/discovery-diagnosis-service.js';
 import type { OrchestrationEngine } from '../application/ports/orchestration-engine.js';
 import { LegacyEngineAdministration } from '../infrastructure/engine/legacy-engine-administration.js';
 import {
@@ -38,35 +31,8 @@ import {
   type SagaRuntimeConfig,
 } from '../runtime/saga-runtime-config.js';
 import {
-  isSaga3DiscoveryMode,
-  isSaga3DiscoveryGenericMode,
-  isSaga3FormalizationMode,
   isSaga3LifecycleMode,
 } from '../runtime/orchestration-mode.js';
-import {
-  ExistingOrchestrationEngineAdapter,
-  ProcessModuleRuntimeEngine,
-} from '../process-modules/application/process-module-runtime-engine.js';
-import { ProcessModuleRegistry } from '../process-modules/application/process-module-registry.js';
-import {
-  DISCOVERY_PROCESS_MODULE_REF,
-  discoveryProcessModule,
-} from '../process-modules/modules/discovery/discovery-process-module.js';
-import { Saga3FormalizationEngine } from '../engines/saga3-formalization-engine.js';
-import { SqliteProcessRunRepository } from '../process-modules/persistence/sqlite-process-run-repository.js';
-import { SqliteProcessOutcomeCertificateRepository } from '../process-modules/persistence/sqlite-process-outcome-certificate-repository.js';
-import { SqliteNodeRunRepository } from '../process-modules/persistence/sqlite-node-run-repository.js';
-import { KernelHandlerRegistry } from '../process-modules/application/kernel-handler-registry.js';
-import {
-  PROCESS_OUTCOME_EMITTER_HANDLER_ID,
-  processOutcomeEmitter,
-} from '../process-modules/application/handlers/process-outcome-emitter.js';
-import { KernelNodeExecutor } from '../process-modules/application/node-executors/kernel-node-executor.js';
-import { LmNodeExecutor } from '../process-modules/application/node-executors/lm-node-executor.js';
-import { GenericFlowExecutor } from '../process-modules/application/generic-flow-executor.js';
-import { GenericFlowEngineAdapter } from '../process-modules/application/generic-flow-engine-adapter.js';
-import { createDiscoveryKernelHandlers, createDiscoveryLmNodePersistence } from '../process-modules/modules/discovery/discovery-installation.js';
-import { ProcessModuleInstallationRegistry } from '../process-modules/application/process-module-installation-registry.js';
 import { getDb } from '../db.js';
 import {
   prepareDevelopmentWorkspaceTemplate,
@@ -181,22 +147,11 @@ export function createSaga2Application(
 /**
  * Selects the concrete orchestration engine behind the OrchestrationEngine port.
  *
- * This is the single composition-root switch (roadmap §5.2):
- *
- *   SAGA_ORCHESTRATION_MODE=saga3-discovery     -> ProcessModuleRuntimeEngine
- *                                                  -> Product Discovery module
- *                                                  -> Saga3DiscoveryEngine adapter
- *   SAGA_ORCHESTRATION_MODE=saga3-formalization -> Saga3FormalizationEngine
- *                                                  -> Formalization module
- *                                                  -> LegacyFormalizationProcessAdapter
- *                                                     (settlement + certificate shim)
- *   SAGA_ORCHESTRATION_MODE=v2|v3|saga2         -> Saga2Engine
- *
- * Both saga3-* modes mount a Process Module through the same
- * OrchestrationEngine port — the SPI universality proof. New modules can be
- * registered without extending the application-facing OrchestrationEngine
- * contract: each gets its own composition-root branch and its own
- * ProcessModuleExecutor implementation.
+ * saga4 cutover: the Product Lifecycle runtime is the SOLE engine. The
+ * discovery / discovery-generic / formalization / saga2 branches were removed —
+ * those engines are reachable only by direct construction in tests now.
+ * `SAGA_PRODUCT_LIFECYCLE_COMPOSITION` must be set so `overrides.productLifecycle`
+ * carries the explicit Delivery preflight/publication/observation providers.
  */
 function selectEngine(
   config: SagaRuntimeConfig,
@@ -204,285 +159,24 @@ function selectEngine(
   workerExecutorFactory: WorkerExecutorFactory,
   host: Saga2HostRuntime,
   productLifecycle: ProductLifecycleCompositionOverrides | undefined,
-  modulePackages: ProductionInstallation | undefined,
+  _modulePackages: ProductionInstallation | undefined,
 ): OrchestrationEngine {
-  if (isSaga3LifecycleMode(config.orchestrationMode)) {
-    if (!productLifecycle) {
-      throw new Error(
-        'SAGA3_LIFECYCLE_DEPENDENCIES_REQUIRED: createSaga2Application '
-        + 'must receive overrides.productLifecycle with explicit Delivery '
-        + 'preflight/publication/observation providers',
-      );
-    }
-    return createProductLifecycleRuntime({
-      ...productLifecycle,
-      workerExecutorFactory,
-      resolveWorkerContext: context =>
-        buildDiscoveryWorkerContext(config, persistence, host, context),
-    }).engine;
-  }
-
-  // P6c: Universal ProcessModuleRuntime. Discovery исполняется как DATA через
-  // GenericFlowExecutor — никакого Saga3DiscoveryEngine. Composition-root строит:
-  //   1. KernelHandlerRegistry + регистрирует runtime-provided process-outcome-emitter;
-  //   2. Discovery Pack подключает своё содержание через createDiscoveryKernelHandlers;
-  //   3. Node executors (kernel + lm) поверх registry + WorkIntent projection;
-  //   4. GenericFlowExecutor + GenericFlowEngineAdapter (bridge к OrchestrationEngine);
-  //   5. ProcessModuleInstallationRegistry (handler-coverage валидируется при установке).
-  // После зелёного E2E (шаг 7) ветка ниже становится primary, а legacy
-  // 'saga3-discovery' branch удаляется (шаг 6).
-  if (isSaga3DiscoveryGenericMode(config.orchestrationMode)) {
-    if (!modulePackages) {
-      throw new Error(
-        'DISCOVERY_MODULE_PACKAGE_REQUIRED: saga3-discovery-generic requires '
-        + 'an installed immutable Discovery package',
-      );
-    }
-    return buildDiscoveryGenericEngine(
-      config,
-      persistence,
-      workerExecutorFactory,
-      host,
-      modulePackages,
-    );
-  }
-
-  if (isSaga3DiscoveryMode(config.orchestrationMode)) {
-    const runtimePersistence = new SqliteSaga3DiscoveryRuntime();
-    const normalizationService = new Saga3DiscoveryNormalizationService({
-      config,
-      workerExecutorFactory,
-      host,
-      runtimePersistence,
-    });
-    const readinessService = new Saga3DiscoveryReadinessService({
-      config,
-      workerExecutorFactory,
-      host,
-      runtimePersistence,
-    });
-    // D4: kernel-only settlement service — no worker executor, no LM client.
-    const settlementService = new Saga3DiscoverySettlementService({
-      runtimePersistence,
-    });
-    // D5: advisory diagnosis service. Mirrors the readiness/settlement service
-    // wiring: a bounded worker lifecycle over the runtime persistence port. The
-    // diagnosis is ADVISORY ONLY — it never changes the D4 authoritative result.
-    const diagnosisService = new Saga3DiscoveryDiagnosisService({
-      config,
-      workerExecutorFactory,
-      host,
-      runtimePersistence,
-    });
-    const discoveryEngine = new Saga3DiscoveryEngine({
-      config,
-      workerExecutorFactory,
-      persistence,
-      host,
-      runtimePersistence,
-      normalizationService,
-      readinessService,
-      settlementService,
-      diagnosisService,
-    });
-
-    const registry = new ProcessModuleRegistry();
-    registry.register(discoveryProcessModule);
-    return new ProcessModuleRuntimeEngine(
-      registry,
-      DISCOVERY_PROCESS_MODULE_REF,
-      new ExistingOrchestrationEngineAdapter(
-        DISCOVERY_PROCESS_MODULE_REF,
-        discoveryEngine,
-        (_module, result) => {
-          const certificateId = result.settlement?.certificateId;
-          const proposalId = result.proposalId;
-          return {
-            code: result.outcome ?? result.reason,
-            authority: result.outcomeAuthority ?? null,
-            outputRef: certificateId !== undefined && certificateId !== null
-              ? `certificate:${certificateId}`
-              : proposalId !== undefined && proposalId !== null
-                ? `proposal:${proposalId}`
-                : null,
-          };
-        },
-      ),
-    );
-  }
-
-  // saga3-formalization mode. Mounts the Formalization Process Module and runs
-  // the settlement+certificate THIN SHIM (one-shot, no poll-loop). The
-  // formalization workers themselves are still driven by saga2 or saga-dispatch
-  // — this branch only governs the ProcessRun + certificate lifecycle. This is
-  // the universality proof: the SAME OrchestrationEngine port, the SAME
-  // composition-root switch shape, NO changes to ProcessModuleRuntimeEngine.
-  if (isSaga3FormalizationMode(config.orchestrationMode)) {
-    const db = getDb();
-    const processRunRepo = new SqliteProcessRunRepository(db);
-    const certificateRepo = new SqliteProcessOutcomeCertificateRepository(db);
-    // The default case resolver: assumes the command's epicId is the formalization
-    // epic; the discovery lineage is supplied via the command's metadata. This
-    // is the operator-driven path (manual composition Discovery→Formalization).
-    // The Lifecycle Orchestrator (P12) will automate this.
-    return new Saga3FormalizationEngine({
-      db,
-      processRunRepo,
-      certificateRepo,
-      resolveFormalizationCase: command => {
-        const meta = (command as { metadata?: Record<string, unknown> }).metadata ?? {};
-        const discoveryEpicId = Number(meta.discoveryEpicId ?? 0);
-        const discoveryCertificateRef = String(meta.discoveryCertificateRef ?? '');
-        const discoveryCertificateHash = String(meta.discoveryCertificateHash ?? '');
-        const discoveryOutcome = String(meta.discoveryOutcome ?? 'go');
-        return {
-          discoveryEpicId,
-          formalizationEpicId: command.epicId,
-          discoveryCertificateRef,
-          discoveryCertificateHash,
-          discoveryOutcome,
-          initiatedBy: String(meta.initiatedBy ?? 'operator'),
-        };
-      },
-    });
-  }
-  // Every other recognised mode (v2 / v3 / saga2) selects Saga2Engine. An
-  // unknown mode never reaches here — parseOrchestrationMode rejects it at
-  // config-load time, so there is no silent fallback to the wrong engine.
-  return new Saga2Engine({
-    config,
-    workerExecutorFactory,
-    persistence,
-    host,
-  });
-}
-
-/**
- * P6c: build the Universal ProcessModuleRuntime for Discovery.
- *
- * The runtime core (GenericFlowExecutor + node executors + handler registry)
- * contains ZERO references to discovery-specific symbols. Discovery Pack plugs
- * its content in via createDiscoveryKernelHandlers (registered under the ids
- * declared in the descriptor) and via the execution profiles declared in
- * discoveryProcessModule. The same build path will serve Formalization,
- * Verification, … — only the module ref + handler registrations change.
- */
-function buildDiscoveryGenericEngine(
-  config: SagaRuntimeConfig,
-  persistence: Saga2RuntimePersistence,
-  workerExecutorFactory: WorkerExecutorFactory,
-  host: Saga2HostRuntime,
-  modulePackages: ProductionInstallation,
-): OrchestrationEngine {
-  const db = getDb();
-  const processRunRepo = new SqliteProcessRunRepository(db);
-  const certificateRepo = new SqliteProcessOutcomeCertificateRepository(db);
-  const nodeRunRepo = new SqliteNodeRunRepository(db);
-  const runtimePersistence = new SqliteSaga3DiscoveryRuntime();
-  const discoveryInstallation = modulePackages.records.get(
-    DISCOVERY_PROCESS_MODULE_REF.name,
-  );
-  if (
-    !discoveryInstallation
-    || discoveryInstallation.version !== DISCOVERY_PROCESS_MODULE_REF.version
-  ) {
+  void isSaga3LifecycleMode; // retained predicate; now trivially true
+  if (!productLifecycle) {
     throw new Error(
-      `DISCOVERY_MODULE_INSTALLATION_MISSING: expected `
-      + `${DISCOVERY_PROCESS_MODULE_REF.name}@${DISCOVERY_PROCESS_MODULE_REF.version}`,
+      'PRODUCT_LIFECYCLE_DEPENDENCIES_REQUIRED: createSaga2Application '
+      + 'must receive overrides.productLifecycle with explicit Delivery '
+      + 'preflight/publication/observation providers. After the saga4 cutover '
+      + 'the lifecycle runtime is the only engine; SAGA_PRODUCT_LIFECYCLE_COMPOSITION '
+      + 'must be set (see orchestrate-cli.ts).',
     );
   }
-
-  // 1. Kernel handler registry — runtime mechanics. Register the runtime-provided
-  //    process-outcome-emitter, then let Discovery Pack register its content.
-  const handlerRegistry = new KernelHandlerRegistry();
-  handlerRegistry.register(PROCESS_OUTCOME_EMITTER_HANDLER_ID, processOutcomeEmitter);
-  handlerRegistry.registerAll(createDiscoveryKernelHandlers({ runtimePersistence }));
-
-  // 2. Catalog + Installation registries. Installation validation now checks
-  //    kernel-handler coverage against the registry (fail-fast at startup).
-  //    Wave 13 removed modules/catalog.ts; the discovery module definition is
-  //    imported directly and registered inline.
-  const discoveryModule = discoveryProcessModule;
-
-  // 3. Node executors keyed by FlowNodeKind. LM executor needs the saga3
-  //    runtime persistence (WorkIntent projection) — that adapter is generic by
-  //    shape (parameterised in P6c step 2), only lives in saga3/ physically.
-  const lmPersistence = createDiscoveryLmNodePersistence(runtimePersistence);
-  const lmExecutor = new LmNodeExecutor({
-    persistence: lmPersistence,
+  return createProductLifecycleRuntime({
+    ...productLifecycle,
     workerExecutorFactory,
-    resolveWorkerContext: (ctx) => buildDiscoveryWorkerContext(config, persistence, host, ctx),
-  });
-  const kernelExecutor = new KernelNodeExecutor(handlerRegistry);
-  const nodeExecutors = new Map<string, typeof kernelExecutor>([
-    ['kernel', kernelExecutor],
-    ['lm', lmExecutor as unknown as typeof kernelExecutor],
-  ]);
-
-  // 4. GenericFlowExecutor. Д6: NO settle callback — the Discovery settlement
-  //    kernel handler builds the authoritative certificate envelope itself and
-  //    carries it in the terminal production's bindings. Runtime only validates
-  //    + atomically persists (Д7). resolveOutput is null: for Discovery the
-  //    certificate IS the authoritative output.
-  const genericExecutor = new GenericFlowExecutor({
-    moduleRef: discoveryModule.identity,
-    processRunRepo,
-    nodeRunRepo,
-    certificateRepo,
-    nodeExecutors,
-  });
-
-  // 5. Installation registry — validates the binding + handler coverage.
-  const installationRegistry = new ProcessModuleInstallationRegistry(
-    { kernelHandlerRegistry: handlerRegistry },
-  );
-  installationRegistry.register(
-    { definition: discoveryModule, executor: genericExecutor },
-  );
-  // Sanity: the installation actually registered.
-  installationRegistry.require(DISCOVERY_PROCESS_MODULE_REF);
-
-  // 6. Bridge GenericFlowExecutor → OrchestrationEngine via the runtime wrapper.
-  //    The module input payload carries the EPIC's product objective (real
-  //    task description from the epic row) — not a hardcoded placeholder. The
-  //    LM-node executor reads it from ctx.input so the worker sees the actual
-  //    product brief the operator wrote when bootstrapping the epic.
-  const adapter = new GenericFlowEngineAdapter({
-    moduleRef: DISCOVERY_PROCESS_MODULE_REF,
-    executor: genericExecutor,
-    processRunRepo,
-    resolveInputPayload: (command) => {
-      const objective = runtimePersistence.readEpicObjective(command.epicId);
-      return {
-        epicId: command.epicId,
-        projectId: command.projectId,
-        epicName: objective?.name ?? '',
-        // The epic description IS the product brief — what to discover. Empty
-        // fallback is fine; the worker skill handles missing context.
-        objective: objective?.description ?? objective?.name ?? '',
-      };
-    },
-    resolveIdempotencyKey: (command) =>
-      command.idempotencyKey ?? `discovery-generic-epic-${command.epicId}`,
-    finalStage: 'discovery',
-    initiatedBy: 'generic-flow-runtime',
-    installation: {
-      id: discoveryInstallation.id,
-      packageDigest: discoveryInstallation.packageDigest,
-    },
-  });
-
-  // 7. Catalog registry holding the discovery module. Wave 13 removed
-  //    modules/catalog.ts; the registry is built inline from the discovery
-  //    definition. The runtime engine resolves the module by ref from here.
-  const catalog = new ProcessModuleRegistry();
-  catalog.register(discoveryModule);
-
-  return new ProcessModuleRuntimeEngine(
-    catalog,
-    DISCOVERY_PROCESS_MODULE_REF,
-    adapter,
-  );
+    resolveWorkerContext: context =>
+      buildDiscoveryWorkerContext(config, persistence, host, context),
+  }).engine;
 }
 
 /**
