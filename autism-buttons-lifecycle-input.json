@@ -19,22 +19,22 @@
   "development": {
     "repositories": [
       {
-        "projectRepositoryId": 1,
-        "integrationBranch": "dev",
+        "projectRepositoryId": 65,
+        "integrationBranch": "main",
         "expectedBaseCommit": "0000000000000000000000000000000000000000"
       }
     ],
     "policy": {
-      "id": "hex-button-policy",
+      "id": "autism-buttons-dev-policy",
       "version": "1.0.0",
       "maxAttempts": 2,
       "onExhausted": "pause",
-      "contentHash": "1a852fd1f5ec24bf73ae8d2c656ad6cf98eea0affceeafc6f7409a216be4faa1"
+      "contentHash": "91d91d9d74cc121bf549c04dbc4058177f4bc15ad776d36e5b9275241cedb9a5"
     }
   },
   "delivery": {
     "policy": {
-      "id": "hex-delivery-policy",
+      "id": "autism-buttons-delivery-policy",
       "version": "1.0.0",
       "channel": "npm",
       "releaseVersion": "1.0.0",
@@ -44,7 +44,7 @@
         {
           "actionId": "publish-npm",
           "kind": "package-publish",
-          "target": "npm:hex-button-autism-ui",
+          "target": "npm:autism-button-library",
           "desiredStateHash": "0000000000000000000000000000000000000000000000000000000000000000",
           "payloadHash": "0000000000000000000000000000000000000000000000000000000000000000",
           "required": true
@@ -55,14 +55,14 @@
         "test",
         "build"
       ],
-      "contentHash": "81d805f81e60cf3c873dc4d285c5c59d32906c1c8dcfb7c4e751f78c977ffa90"
+      "contentHash": "ca6459b8a914ef0326a4e22e3d71826e0a4687f6f35c7a50f48d1815c742ee4f"
     },
     "operatorAuthorization": {
       "schema": "saga3.delivery-authorization.v1",
-      "ref": "auth:hex-operator",
+      "ref": "auth:autism-buttons-operator",
       "hash": "0000000000000000000000000000000000000000000000000000000000000000",
       "requestedBy": "test-operator",
-      "releasePolicyHash": "81d805f81e60cf3c873dc4d285c5c59d32906c1c8dcfb7c4e751f78c977ffa90",
+      "releasePolicyHash": "ca6459b8a914ef0326a4e22e3d71826e0a4687f6f35c7a50f48d1815c742ee4f",
       "candidateScope": {
         "mode": "lifecycle-output"
       }

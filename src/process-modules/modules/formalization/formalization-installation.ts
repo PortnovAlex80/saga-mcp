@@ -967,6 +967,20 @@ function readExecutionWrites(
   if (!receipt.executionId) {
     throw new Error(`${handlerId}: task execution has no durable execution fence`);
   }
+  // Query the managed-production ledger at the NODE level (process_run +
+  // module + node), NOT at the execution level. Artifacts and traces produced
+  // by a node survive multiple review loops and recovery attempts: the same
+  // artifact is created in exec#1, edited in exec#3, finalized in exec#5.
+  // Querying by a single executionId returns a STALE snapshot (the first or
+  // any single version), and the fence validation below then mismatches the
+  // live artifact row. The node-level query returns ALL managed productions
+  // for this node, and latestArtifactWrites/latestTraceWrites deduplicate by
+  // artifact/trace id, keeping the latest (highest ledger id) version — which
+  // always matches the current live artifact row.
+  //
+  // The receipt.executionId is still required above as a durability fence
+  // (the kernel must only resolve after a durable worker execution), but it
+  // is NOT used as a query filter.
   const query: ManagedProductionQuery = {
     processRunId: ctx.processRunId,
     moduleRef: FORMALIZATION_MODULE_KEY,
@@ -975,28 +989,18 @@ function readExecutionWrites(
     taskId: receipt.taskId,
     executionId: receipt.executionId,
   };
-  let artifactWrites = latestArtifactWrites(deps.ledger.listArtifactsForExecution(query));
-  let traceWrites = latestTraceWrites(deps.ledger.listTracesForExecution(query));
-  // Retry/recovery fallback: when a worker retried (review changes_requested,
-  // recovery repair, lease loss), the current execution may have produced NO
-  // managed artifacts — they were created in an EARLIER execution of the same
-  // task/intent. Fall back to the latest productions for this (epic, module,
-  // node). This mirrors the Discovery module's readLatestXxx(intent) pattern.
-  // Each artifact is still validated against the artifact graph below, but with
-  // a relaxed fence (process+module+node+intent+task, NOT executionId).
-  let usedFallback = false;
+  let artifactWrites = latestArtifactWrites(deps.ledger.listArtifactsForNodeInProcessRun(
+    ctx.processRunId, FORMALIZATION_MODULE_KEY, sourceNodeId,
+  ));
+  let traceWrites = latestTraceWrites(deps.ledger.listTracesForNodeInProcessRun(
+    ctx.processRunId, FORMALIZATION_MODULE_KEY, sourceNodeId,
+  ));
   if (artifactWrites.length === 0 && traceWrites.length === 0) {
-    const runArtifacts = deps.ledger.listArtifactsForNodeInProcessRun(
-      ctx.processRunId, FORMALIZATION_MODULE_KEY, sourceNodeId,
-    );
-    const runTraces = deps.ledger.listTracesForNodeInProcessRun(
-      ctx.processRunId, FORMALIZATION_MODULE_KEY, sourceNodeId,
-    );
-    if (runArtifacts.length > 0 || runTraces.length > 0) {
-      artifactWrites = latestArtifactWrites(runArtifacts);
-      traceWrites = latestTraceWrites(runTraces);
-      usedFallback = true;
-    }
+    // No node-level productions at all — the worker produced nothing durable.
+    // This is distinct from "produced in a different execution" (handled by
+    // the node-level query above) and means the LM node genuinely wrote no
+    // managed output. Return empty; the caller decides whether that is a
+    // semantic error (e.g. "persisted no canonical AC artifacts").
   }
   const artifacts = deps.graph.readArtifactsByIds(artifactWrites.map(write => write.artifactId));
   if (artifacts.length !== artifactWrites.length) {
@@ -1006,7 +1010,7 @@ function readExecutionWrites(
   for (const write of artifactWrites) {
     const artifact = artifactsById.get(write.artifactId);
     if (
-      !(usedFallback ? matchesFenceRelaxed(write, query) : matchesExecutionFence(write, query))
+      !matchesFenceRelaxed(write, query)
       || !artifact
       || artifact.projectId !== ctx.projectId
       || artifact.epicId !== ctx.epicId
@@ -1028,7 +1032,7 @@ function readExecutionWrites(
   for (const write of traceWrites) {
     const trace = tracesById.get(write.traceId);
     if (
-      !(usedFallback ? matchesFenceRelaxed(write, query) : matchesExecutionFence(write, query))
+      !matchesFenceRelaxed(write, query)
       || !trace
       || trace.sourceArtifactId !== write.sourceId
       || trace.targetType !== write.targetType
@@ -1125,33 +1129,19 @@ function artifactStatusMatchesManagedWrite(
   );
 }
 
-function matchesExecutionFence(
-  record: Pick<
-    ManagedArtifactWriteRecord | ManagedTraceWriteRecord,
-    'processRunId' | 'moduleRef' | 'nodeId' | 'intentId' | 'taskId' | 'executionId'
-  >,
-  query: ManagedProductionQuery,
-): boolean {
-  return (
-    record.processRunId === query.processRunId
-    && record.moduleRef === query.moduleRef
-    && record.nodeId === query.nodeId
-    && record.intentId === query.intentId
-    && record.taskId === query.taskId
-    && record.executionId === query.executionId
-  );
-}
-
 /**
  * Relaxed fence for retry/recovery fallback: validates process + module + node
- * + intent + task but NOT executionId. The worker's artifacts were produced in
- * an earlier execution of the same task/intent; the fence still binds them to
- * the correct ProcessRun and node, just not to the current execution.
+ * but NOT executionId, intent or task — recovery creates new intent/task for
+ * the same node. The original artifacts were produced under the original
+ * intent/task; the recovery kernel resolver runs under a fresh intent/task for
+ * the same node in the same ProcessRun. Matching only process + module + node
+ * (the same boundary used by listArtifactsForNodeInProcessRun) keeps legitimate
+ * artifacts reachable across the recovery boundary.
  */
 function matchesFenceRelaxed(
   record: Pick<
     ManagedArtifactWriteRecord | ManagedTraceWriteRecord,
-    'processRunId' | 'moduleRef' | 'nodeId' | 'intentId' | 'taskId' | 'executionId'
+    'processRunId' | 'moduleRef' | 'nodeId'
   >,
   query: ManagedProductionQuery,
 ): boolean {
@@ -1159,8 +1149,6 @@ function matchesFenceRelaxed(
     record.processRunId === query.processRunId
     && record.moduleRef === query.moduleRef
     && record.nodeId === query.nodeId
-    && record.intentId === query.intentId
-    && record.taskId === query.taskId
   );
 }
 

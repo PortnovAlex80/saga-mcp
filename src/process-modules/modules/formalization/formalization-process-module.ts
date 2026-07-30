@@ -27,7 +27,8 @@ const COMMON_READ_TOOLS = [
 
 const COMMON_WRITE_TOOLS = [
   ...COMMON_READ_TOOLS,
-  'artifact_create', 'artifact_update', 'trace_add', 'worker_done', 'Write', 'Edit', 'Bash',
+  'artifact_create', 'artifact_update', 'trace_add', 'trace_delete', 'worker_done',
+  'Write', 'Edit', 'Bash',
 ] as const;
 
 export const formalizationProcessModule: ProcessModuleDefinition = {
