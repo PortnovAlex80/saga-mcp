@@ -186,3 +186,58 @@ test('managed node submission refuses a lost execution or ProcessRun fence', () 
     cleanup(f.temp);
   }
 });
+
+test('a fresh execution may submit a correction while exact and reviewed-task reads stay distinct', () => {
+  const f = fixture();
+  try {
+    const repository = new SqliteManagedNodeSubmissionRepository(f.db);
+    const first = repository.submitForCurrentExecution({
+      schema: 'test.node-product.v1',
+      payload: { revision: 1 },
+    }).record;
+
+    f.db.prepare(
+      `UPDATE worker_executions SET state='exited'
+        WHERE execution_id=?`,
+    ).run(f.executionId);
+    const secondExecutionId = 'exec-node-submit-2';
+    f.db.prepare(
+      `INSERT INTO worker_executions
+         (execution_id,run_id,project_id,epic_id,task_id,worker_id,machine_id,
+          launcher,state,phase,metadata)
+       VALUES (?,'run-2',1,10,?,'worker-2','machine-1','test',
+               'running','executing','{}')`,
+    ).run(secondExecutionId, f.taskId);
+    f.db.prepare(
+      'UPDATE tasks SET current_execution_id=?, assigned_to=? WHERE id=?',
+    ).run(secondExecutionId, 'worker-2', f.taskId);
+    process.env.SAGA_EXECUTION_ID = secondExecutionId;
+
+    const secondQuery = {
+      processRunId: f.processRun.id,
+      moduleRef: f.moduleRef,
+      nodeId: f.nodeId,
+      intentId: f.intentId,
+      taskId: f.taskId,
+      executionId: secondExecutionId,
+    };
+    assert.equal(repository.readExact(secondQuery), null);
+    assert.equal(
+      repository.readLatestForTask(secondQuery).submissionId,
+      first.submissionId,
+    );
+
+    const second = repository.submitForCurrentExecution({
+      schema: 'test.node-product.v1',
+      payload: { revision: 2 },
+    }).record;
+    assert.notEqual(second.submissionId, first.submissionId);
+    assert.equal(repository.readExact(secondQuery).submissionId, second.submissionId);
+    assert.equal(
+      repository.readLatestForTask(secondQuery).submissionId,
+      second.submissionId,
+    );
+  } finally {
+    cleanup(f.temp);
+  }
+});

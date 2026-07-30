@@ -36,6 +36,12 @@ import {
 import type { ModuleInstallationId } from '../../process-modules/installation/index.js';
 import type { StoredModulePackage } from '../../process-modules/installation/index.js';
 import type { WorkspaceProjection } from '../../process-modules/application/workspace-projection.js';
+import type {
+  ProcessWorkspaceTemplatePreparerRegistry,
+} from '../../process-modules/application/process-workspace-preparation.js';
+import {
+  SqliteManagedNodeSubmissionRepository,
+} from '../../process-modules/persistence/sqlite-managed-node-submission-repository.js';
 
 interface RunnerLaunchSpec {
   readonly installationId: number;
@@ -105,6 +111,12 @@ export interface LegacyClaudeWorkerExecutorFactoryOptions {
    * Typically reads task.metadata.process_node_id.
    */
   resolveNodeId?: (assignment: RunnerAssignment) => string | null;
+  /**
+   * Module-owned semantic template preparers, selected by immutable module
+   * reference. The host owns IO and persistence; preparers only transform
+   * declared template contents from the frozen node input.
+   */
+  workspaceTemplatePreparers?: ProcessWorkspaceTemplatePreparerRegistry;
 }
 
 function readLegacyModelRoute(epicId: number | null) {
@@ -193,6 +205,7 @@ export function createLegacyClaudeWorkerExecutorFactory(
   const resolveInstallationIdFn = options.resolveInstallationId;
   const resolvePackageDigestFn = options.resolvePackageDigest;
   const resolveNodeIdFn = options.resolveNodeId;
+  const workspaceTemplatePreparers = options.workspaceTemplatePreparers;
   return context => {
     const resolvePinnedPackage = (
       assignment: RunnerAssignment,
@@ -317,9 +330,41 @@ export function createLegacyClaudeWorkerExecutorFactory(
         // unpinned historical runs retain the legacy workspace path.
         const pinned = resolvePinnedPackage(input.assignment);
         if (!pinned && !input.resolvedProfile) return null;
+        const module = pinned
+          ? pinned.storedPackage.manifest.definition
+          : input.resolvedProfile!.module;
+        const moduleRef = `${module.identity.name}@${module.identity.version}`;
+        const templatePreparer = workspaceTemplatePreparers?.get(moduleRef);
+
+        const taskMetadata = parseTaskMetadata(task.metadata);
+        const processRunId = positiveInteger(taskMetadata.process_run_id);
+        const nodeId = typeof taskMetadata.process_node_id === 'string'
+          ? taskMetadata.process_node_id
+          : null;
+        const workIntentId = positiveInteger(
+          taskMetadata.work_intent_id
+          ?? taskMetadata.pre_projected_intent_id
+          ?? taskMetadata.authority_intent_id,
+        );
+        let additionalBindings: Readonly<Record<string, unknown>> | undefined;
+        if (processRunId !== null && nodeId && workIntentId !== null) {
+          const submission = new SqliteManagedNodeSubmissionRepository(getDb())
+            .readLatestForTask({
+              processRunId,
+              moduleRef,
+              nodeId,
+              taskId: task.id,
+            });
+          additionalBindings = {
+            SUBMISSION_STATE: submission ? 'submitted' : 'not-submitted',
+            SUBMISSION_REF: submission?.artifactRef ?? '',
+            SUBMISSION_HASH: submission?.contentHash ?? '',
+          };
+        }
+
         let resolvedWorkspace: ProcessExecutionWorkspace;
         if (pinned) {
-          const pinnedModule = pinned.storedPackage.manifest.definition;
+          const pinnedModule = module;
           const pinnedProfile = pinnedModule.executionProfiles.find(
             profile => profile.id === pinned.projection.executionProfileId,
           );
@@ -339,6 +384,8 @@ export function createLegacyClaudeWorkerExecutorFactory(
             task,
             executionId: input.assignment.execution_id ?? null,
             workerId: input.workerId,
+            additionalBindings,
+            templatePreparer,
           });
         } else {
           const legacyProfile = input.resolvedProfile;
@@ -352,23 +399,12 @@ export function createLegacyClaudeWorkerExecutorFactory(
             task,
             executionId: input.assignment.execution_id ?? null,
             workerId: input.workerId,
+            additionalBindings,
+            templatePreparer,
           });
         }
 
-        const rawMetadata = task.metadata;
-        let metadata: Record<string, unknown> = {};
-        if (rawMetadata && typeof rawMetadata === 'object' && !Array.isArray(rawMetadata)) {
-          metadata = { ...rawMetadata };
-        } else if (typeof rawMetadata === 'string') {
-          try {
-            const parsed = JSON.parse(rawMetadata);
-            if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-              metadata = parsed as Record<string, unknown>;
-            }
-          } catch {
-            metadata = {};
-          }
-        }
+        const metadata: Record<string, unknown> = { ...taskMetadata };
         const processNodeId = typeof metadata.process_node_id === 'string'
           ? metadata.process_node_id
           : null;
@@ -424,4 +460,28 @@ export function createLegacyClaudeWorkerExecutorFactory(
       runner as unknown as LegacyClaudeBoardRunner,
     );
   };
+}
+
+function parseTaskMetadata(value: unknown): Record<string, unknown> {
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  if (typeof value !== 'string') return {};
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+function positiveInteger(value: unknown): number | null {
+  const candidate = typeof value === 'number'
+    ? value
+    : typeof value === 'string' && /^\d+$/.test(value)
+      ? Number(value)
+      : Number.NaN;
+  return Number.isSafeInteger(candidate) && candidate > 0 ? candidate : null;
 }

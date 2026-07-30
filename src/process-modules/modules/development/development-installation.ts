@@ -220,13 +220,11 @@ function createTaskGraphResolver(
           },
         );
       }
-      const submission = deps.plannerSubmissions.readExact({
+      const submission = deps.plannerSubmissions.readLatestForTask({
         processRunId: ctx.processRunId,
         moduleRef: processModuleKey(DEVELOPMENT_PROCESS_MODULE_REF),
         nodeId: DEVELOPMENT_NODE_IDS.planner,
-        intentId: receipt.intentId,
         taskId: receipt.taskId,
-        executionId: receipt.executionId,
       });
       if (submission === null) {
         return taskGraphResolutionManifest(

@@ -34,4 +34,20 @@ export interface ManagedNodeSubmissionReader {
   readExact(
     query: ManagedNodeSubmissionQuery,
   ): ManagedNodeSubmissionRecord | null;
+
+  /**
+   * Read the latest immutable submission produced inside one reviewed task.
+   *
+   * Author and reviewer executions share the same task but have different
+   * execution fences. A resolver which runs after review therefore resolves
+   * the reviewed task product through this explicit task-level operation and
+   * receives the exact producer execution in the returned record.
+   *
+   * This is deliberately narrower than "latest for node": recovery creates a
+   * fresh task and must submit a fresh product instead of silently inheriting
+   * an unrelated earlier task's value.
+   */
+  readLatestForTask(
+    query: Omit<ManagedNodeSubmissionQuery, 'intentId' | 'executionId'>,
+  ): ManagedNodeSubmissionRecord | null;
 }

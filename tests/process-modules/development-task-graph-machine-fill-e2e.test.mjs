@@ -1,137 +1,192 @@
-// End-to-end integration: prepareProcessExecutionWorkspace must OVERWRITE the
-// freshly-materialized placeholder task-graph template with a DB-backed
-// complete proposal skeleton when the module is Development and the DB has
-// accepted ACs + an active repository binding.
-//
-// The machine-fill directly addresses the two planner bugs:
-//   1. AC-15 and AC-16 were dropped (the LM treated them as verification-only
-//      and skipped implementation items).
-//   2. The wrong projectRepositoryId was emitted.
-//
-// getDb() caches a process-wide singleton, so the workspace materializer runs
-// in a child process (fixtures/machine-fill-child.mjs) with its own DB_PATH to
-// keep DB state hermetic.
-
-import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import assert from 'node:assert/strict';
+import {
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import process from 'node:process';
-import { fileURLToPath } from 'node:url';
-import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import Database from 'better-sqlite3';
-import { SCHEMA_SQL } from '../../dist/schema.js';
+import { materializePinnedWorkspace } from '../../dist/process-modules/application/pinned-workspace-materializer.js';
+import { prepareDevelopmentWorkspaceTemplate } from '../../dist/process-modules/modules/development/development-workspace-preparation.js';
 
-const CHILD_SCRIPT = path.join(
-  path.dirname(fileURLToPath(import.meta.url)),
-  'fixtures',
-  'machine-fill-child.mjs',
-);
+const encoder = new TextEncoder();
+const trackerPath = 'resources/process-module-stage-tracker.md';
+const callPath = 'resources/task-graph-submit-call-template.json';
+const resources = [
+  {
+    logicalId: 'tracker',
+    relativePath: trackerPath,
+    kind: 'template',
+    content: [
+      '# Development',
+      '- submission_state: `not-submitted`',
+      '- submission_ref:',
+      '- submission_hash:',
+      '',
+    ].join('\n'),
+  },
+  {
+    logicalId: 'call',
+    relativePath: callPath,
+    kind: 'template',
+    content: '{"tool":"process_node_submit","arguments":{"schema":"saga3.development-task-graph-proposal.v1","payload":{"schemaVersion":"saga3.development-task-graph-proposal.v1","implementationItems":[],"verificationItems":[],"integrationTargets":[]}}}\n',
+  },
+].map(resource => ({
+  ...resource,
+  digest: `${resource.logicalId}-digest`,
+  bytes: encoder.encode(resource.content),
+}));
 
-function makeTempDb() {
-  const dir = mkdtempSync(path.join(os.tmpdir(), 'saga-machiefill-e2e-'));
-  const dbPath = path.join(dir, 'test.db');
-  const db = new Database(dbPath);
-  db.pragma('foreign_keys = ON');
-  db.exec(SCHEMA_SQL);
-  return { dir, dbPath, db };
-}
+const developmentCase = {
+  schemaVersion: 'saga3.development-case.v1',
+  projectId: 1,
+  epicId: 1,
+  formalizationCertificate: {
+    schema: 'certificate',
+    ref: 'certificate:1',
+    hash: 'cert-hash',
+    decision: 'formalized',
+  },
+  solutionContract: {
+    schema: 'contract',
+    ref: 'contract:1',
+    hash: 'contract-hash',
+  },
+  acceptanceBaselineHash: 'baseline-hash',
+  srs: { schema: 'srs', ref: 'artifact:1', hash: 'srs-hash' },
+  acceptanceCriteria: [{
+    artifactId: 101,
+    code: 'AC-1',
+    acceptedHash: 'ac-hash',
+    implementationRequired: true,
+  }],
+  repositories: [{
+    projectRepositoryId: 65,
+    integrationBranch: 'integration',
+    expectedBaseCommit: 'base-commit',
+  }],
+  policy: { id: 'policy', version: '1', contentHash: 'policy-hash' },
+  initiatedBy: 'test',
+};
 
-function seed(db) {
-  db.prepare("INSERT INTO projects (name) VALUES ('p')").run();
-  const projectId = db.prepare("SELECT id FROM projects WHERE name='p'").get().id;
-  db.prepare("INSERT INTO epics (project_id, name) VALUES (?, 'e')").run(projectId);
-  const epicId = db.prepare("SELECT id FROM epics WHERE name='e'").get().id;
-  db.prepare("INSERT INTO repositories (name, default_branch) VALUES ('r','main')").run();
-  const repoId = db.prepare('SELECT id FROM repositories ORDER BY id DESC LIMIT 1').get().id;
-  db.prepare(
-    `INSERT INTO project_repositories (project_id, repository_id, integration_branch, status)
-     VALUES (?, ?, 'dev', 'active')`,
-  ).run(projectId, repoId);
-  const prId = db.prepare(
-    'SELECT id FROM project_repositories WHERE project_id=? ORDER BY id DESC LIMIT 1',
-  ).get(projectId).id;
-  // 16 accepted ACs, including AC-15 and AC-16 (the double-digit tail that the
-  // LM historically dropped).
-  for (let i = 1; i <= 16; i++) {
-    db.prepare(
-      `INSERT INTO artifacts (project_id, epic_id, type, code, title, path, status)
-       VALUES (?, ?, 'AC', ?, ?, ?, 'accepted')`,
-    ).run(projectId, epicId, 'AC-' + i, 'AC-' + i + ' title', 'docs/ac' + i + '.md');
-  }
-  return { projectId, epicId, prId };
-}
-
-function runChild(mode, dbPath, workspaceRoot, projectId, epicId) {
-  return spawnSync(process.execPath, [CHILD_SCRIPT, mode, workspaceRoot, String(projectId), String(epicId)], {
-    encoding: 'utf8',
-    env: {
-      ...process.env,
-      DB_PATH: dbPath,
+function request(root, executionId, additionalBindings = {}) {
+  const projectionResources = resources.map(({ content: _content, bytes: _bytes, ...item }) => item);
+  return {
+    projection: {
+      installationId: 1,
+      moduleRef: 'solution-development@1.0.0',
+      packageDigest: 'development-digest',
+      storeLocation: 'unused',
+      nodeId: 'plan-task-graph',
+      executionProfileId: 'development-task-graph-planner',
+      skills: {},
+      templates: projectionResources,
+      checklists: [],
+      instructions: [],
+      allResources: projectionResources,
+      description: {},
     },
-    windowsHide: true,
-  });
+    storedPackage: {
+      manifest: { definition: {}, assistance: [] },
+      resources: resources.map(({ relativePath: _path, content: _content, ...item }) => item),
+      packageDigest: 'development-digest',
+      storedAt: 'memory',
+    },
+    workspaceRoot: root,
+    module: {
+      identity: {
+        name: 'solution-development',
+        version: '1.0.0',
+        kind: 'development',
+      },
+      flow: { nodes: [] },
+    },
+    profile: {
+      id: 'development-task-graph-planner',
+      trackerTemplate: trackerPath,
+      workspaceTemplates: [],
+      callTemplates: [callPath],
+      checklists: [],
+      outputSchema: { id: 'saga3.development-task-graph-proposal.v1' },
+      allowedTools: ['task_get', 'process_node_submit', 'worker_done'],
+      semanticSkill: 'saga-planner',
+      retryPolicy: { maxAttempts: 15 },
+    },
+    projectId: 1,
+    epicId: 1,
+    task: {
+      id: 8,
+      metadata: {
+        process_run_id: 98,
+        process_node_id: 'plan-task-graph',
+        process_node_input: developmentCase,
+      },
+    },
+    executionId,
+    workerId: `worker-${executionId}`,
+    additionalBindings,
+    templatePreparer: prepareDevelopmentWorkspaceTemplate,
+  };
 }
 
-test('prepareProcessExecutionWorkspace replaces the placeholder template with a complete DB-backed skeleton', () => {
-  const { dir, dbPath, db } = makeTempDb();
-  let workspaceRoot;
+test('pinned workspace machine-fills the exact call file read by the reviewer', () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), 'saga-pinned-development-'));
   try {
-    const { projectId, epicId, prId } = seed(db);
-    db.close();
-
-    workspaceRoot = mkdtempSync(path.join(os.tmpdir(), 'saga-ws-'));
-    const r = runChild('fresh', dbPath, workspaceRoot, projectId, epicId);
-    assert.equal(r.status, 0, 'child failed: ' + (r.stderr || r.stdout));
-    const call = JSON.parse(r.stdout);
-
-    // No FILL_ placeholders survived.
-    const serialized = JSON.stringify(call);
-    assert.ok(!serialized.includes('FILL_'), 'placeholder token survived the machine-fill');
-
-    // Bug #1: AC-15 and AC-16 have implementation AND verification items.
-    assert.equal(call.arguments.payload.implementationItems.length, 16, 'one impl per AC');
-    assert.equal(call.arguments.payload.verificationItems.length, 16, 'one verify per AC');
-
-    // Bug #2: the REAL repository id from the DB, not a placeholder.
-    for (const item of call.arguments.payload.implementationItems) {
-      assert.equal(item.projectRepositoryId, prId, 'impl item repo id is the real DB id');
-    }
-    for (const item of call.arguments.payload.verificationItems) {
-      assert.equal(item.projectRepositoryId, prId, 'verify item repo id is the real DB id');
-    }
-    assert.equal(call.arguments.payload.integrationTargets[0].projectRepositoryId, prId);
-    assert.equal(call.arguments.payload.integrationTargets[0].targetBranch, 'dev');
+    const workspace = materializePinnedWorkspace(
+      request(root, 'exec-1', {
+        SUBMISSION_STATE: 'not-submitted',
+        SUBMISSION_REF: '',
+        SUBMISSION_HASH: '',
+      }),
+    );
+    const call = JSON.parse(
+      readFileSync(path.join(root, workspace.callFiles[0]), 'utf8'),
+    );
+    assert.equal(
+      call.arguments.payload.integrationTargets[0].projectRepositoryId,
+      65,
+    );
+    assert.deepEqual(
+      call.arguments.payload.verificationItems[0].acceptanceCriterionIds,
+      [101],
+    );
+    assert.ok(!JSON.stringify(call).includes('FILL_'));
   } finally {
-    try { db.close(); } catch { /* already closed */ }
-    try { rmSync(dir, { recursive: true, force: true }); } catch { /* */ }
-    if (workspaceRoot) {
-      try { rmSync(workspaceRoot, { recursive: true, force: true }); } catch { /* */ }
-    }
+    rmSync(root, { recursive: true, force: true });
   }
 });
 
-test('prepareProcessExecutionWorkspace preserves a carry-over draft and does NOT machine-fill it', () => {
-  const { dir, dbPath, db } = makeTempDb();
-  let workspaceRoot;
+test('a retry replaces inherited wrong-lineage content and projects submission state', () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), 'saga-pinned-development-retry-'));
   try {
-    const { projectId, epicId } = seed(db);
-    db.close();
+    const first = materializePinnedWorkspace(request(root, 'exec-1'));
+    writeFileSync(
+      path.join(root, first.callFiles[0]),
+      '{"tool":"process_node_submit","arguments":{"schema":"saga3.development-task-graph-proposal.v1","payload":{"schemaVersion":"saga3.development-task-graph-proposal.v1","implementationItems":[],"verificationItems":[],"integrationTargets":[{"projectRepositoryId":77}]}}}\n',
+    );
 
-    workspaceRoot = mkdtempSync(path.join(os.tmpdir(), 'saga-ws-co-'));
-    const r = runChild('carry', dbPath, workspaceRoot, projectId, epicId);
-    assert.equal(r.status, 0, 'child failed: ' + (r.stderr || r.stdout));
-    const call = JSON.parse(r.stdout);
-    assert.equal(call.preserved_carry_over, true, 'carry-over draft must be preserved');
-    assert.equal(call.machine_filled, false, 'machine-fill must not clobber a carry-over draft');
-    assert.equal(call.implementationItems, undefined, 'no DB skeleton was written over the draft');
+    const second = materializePinnedWorkspace(
+      request(root, 'exec-2', {
+        SUBMISSION_STATE: 'submitted',
+        SUBMISSION_REF: 'managed-node-submission:35',
+        SUBMISSION_HASH: 'submission-hash',
+      }),
+    );
+    const call = JSON.parse(
+      readFileSync(path.join(root, second.callFiles[0]), 'utf8'),
+    );
+    assert.equal(
+      call.arguments.payload.integrationTargets[0].projectRepositoryId,
+      65,
+      'frozen DevelopmentCase wins over mutable/current repository state',
+    );
+    const tracker = readFileSync(second.trackerAbsolutePath, 'utf8');
+    assert.match(tracker, /submission_state: `submitted`/);
+    assert.match(tracker, /submission_ref: `managed-node-submission:35`/);
   } finally {
-    try { db.close(); } catch { /* already closed */ }
-    try { rmSync(dir, { recursive: true, force: true }); } catch { /* */ }
-    if (workspaceRoot) {
-      try { rmSync(workspaceRoot, { recursive: true, force: true }); } catch { /* */ }
-    }
+    rmSync(root, { recursive: true, force: true });
   }
 });

@@ -156,14 +156,12 @@ function dependencies(proposal, onMaterialize) {
   };
   return {
     plannerSubmissions: {
-      readExact(query) {
+      readLatestForTask(query) {
         assert.deepEqual(query, {
           processRunId: 77,
           moduleRef: 'solution-development@1.0.0',
           nodeId: DEVELOPMENT_NODE_IDS.planner,
-          intentId: 501,
           taskId: 601,
-          executionId: 'execution-701',
         });
         return submission;
       },

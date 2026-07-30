@@ -69,6 +69,9 @@ import { createDiscoveryKernelHandlers, createDiscoveryLmNodePersistence } from 
 import { ProcessModuleInstallationRegistry } from '../process-modules/application/process-module-installation-registry.js';
 import { getDb } from '../db.js';
 import {
+  prepareDevelopmentWorkspaceTemplate,
+} from '../process-modules/modules/development/development-workspace-preparation.js';
+import {
   createProductLifecycleRuntime,
   type ProductLifecycleRuntimeOptions,
 } from './product-lifecycle-runtime.js';
@@ -586,6 +589,9 @@ function createPinnedWorkerFactory(
       const nodeId = taskMetadataRecord(assignment).process_node_id;
       return typeof nodeId === 'string' && nodeId.length > 0 ? nodeId : null;
     },
+    workspaceTemplatePreparers: new Map([
+      ['solution-development@1.0.0', prepareDevelopmentWorkspaceTemplate],
+    ]),
   });
 }
 

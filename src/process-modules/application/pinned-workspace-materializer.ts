@@ -22,7 +22,14 @@
  *            exact logicalId blob already verified by the package-store port.
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import path from 'node:path';
 
 import type { WorkspaceProjection } from './workspace-projection.js';
@@ -46,6 +53,9 @@ import {
   renderAgentAssistanceProjection,
   serializeAgentAssistanceProjection,
 } from './agent-assistance-projection.js';
+import type {
+  ProcessWorkspaceTemplatePreparer,
+} from './process-workspace-preparation.js';
 
 /**
  * Input to the pinned-package materializer. Mirrors the legacy request shape,
@@ -68,6 +78,8 @@ export interface MaterializePinnedWorkspaceRequest {
   readonly task: ProcessExecutionWorkspaceTask;
   readonly executionId: string | null;
   readonly workerId: string;
+  readonly additionalBindings?: Readonly<Record<string, unknown>>;
+  readonly templatePreparer?: ProcessWorkspaceTemplatePreparer;
 }
 
 /**
@@ -205,6 +217,7 @@ export function materializePinnedWorkspace(
     task,
     executionId: request.executionId,
     workerId: request.workerId,
+    additionalBindings: request.additionalBindings,
   });
   const metadata = parseMetadata(task.metadata);
 
@@ -220,6 +233,36 @@ export function materializePinnedWorkspace(
   const workspaceTemplates = profile.workspaceTemplates ?? [];
   const callTemplates = profile.callTemplates ?? [];
   const checklists = profile.checklists ?? [];
+
+  // A review/retry execution of the SAME task inherits its latest semantic
+  // draft. Scope is deliberately task-local: a different recovery task must
+  // submit a fresh value or receive an explicit product receipt, never inherit
+  // an unrelated node-wide "latest" file.
+  const taskDirectory = path.dirname(executionDirectory);
+  const expectedMaterializedFiles = [...new Set([
+    ...workspaceTemplates,
+    ...callTemplates,
+  ])].map(materializedName);
+  let previousExecutionDirectories: string[] = [];
+  try {
+    previousExecutionDirectories = readdirSync(taskDirectory)
+      .map(name => path.join(taskDirectory, name))
+      .filter(candidate =>
+        candidate !== executionDirectory
+        && existsSync(candidate)
+        && statSync(candidate).isDirectory())
+      .sort((left, right) => statSync(right).mtimeMs - statSync(left).mtimeMs);
+  } catch {
+    previousExecutionDirectories = [];
+  }
+  for (const fileName of expectedMaterializedFiles) {
+    const target = path.join(executionDirectory, fileName);
+    if (existsSync(target)) continue;
+    const source = previousExecutionDirectories
+      .map(directory => path.join(directory, fileName))
+      .find(candidate => existsSync(candidate));
+    if (source) writeFileSync(target, readFileSync(source));
+  }
 
   // 4. Stage shared copies into tools/ — first-writer-wins (idempotent).
   const allAssets = [...new Set([
@@ -241,7 +284,8 @@ export function materializePinnedWorkspace(
   for (const asset of [...new Set([...workspaceTemplates, ...callTemplates])]) {
     const target = path.join(executionDirectory, materializedName(asset));
     const sourceContent = readPinnedText(projection, storedPackage, asset);
-    if (!existsSync(target)) {
+    const isFresh = !existsSync(target);
+    if (isFresh) {
       const prepared = path.extname(target).toLowerCase() === '.json'
         ? refreshJsonMachineBindings(sourceContent, bindings)
         : fillKnownPlaceholders(sourceContent, bindings);
@@ -250,6 +294,25 @@ export function materializePinnedWorkspace(
       // Retry: preserve semantic work, refresh only execution-scoped fields.
       const existing = readFileSync(target, 'utf8');
       writeFileSync(target, refreshJsonMachineBindings(existing, bindings));
+    }
+    if (request.templatePreparer) {
+      const currentContent = readFileSync(target, 'utf8');
+      const prepared = request.templatePreparer({
+        module,
+        profile,
+        task,
+        projectId: request.projectId,
+        epicId: request.epicId,
+        nodeId: typeof bindings.NODE_ID === 'string' ? bindings.NODE_ID : null,
+        declaredPath: asset,
+        materializedName: path.basename(target),
+        sourceContent,
+        currentContent,
+        isFresh,
+      });
+      if (prepared !== null && prepared !== currentContent) {
+        writeFileSync(target, prepared);
+      }
     }
     materializedBySource.set(asset, relativeWorkspacePath(workspaceRoot, target));
   }

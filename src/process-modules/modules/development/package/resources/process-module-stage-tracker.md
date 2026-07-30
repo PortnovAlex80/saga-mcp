@@ -26,7 +26,7 @@
 
 - [ ] 1. Read this tracker and the assigned task with `task_get`.
 - [ ] 2. Verify the machine binding against immutable task metadata.
-- [ ] 3. Read the exact accepted SRS, AC set, repository bindings and policy.
+- [ ] 3. Read the frozen DevelopmentCase and exact workspace paths from task metadata.
 - [ ] 4. Propose implementation work covering every implementation-required AC.
 - [ ] 5. Propose one required verification item for every accepted AC.
 - [ ] 6. Match integration targets exactly to the bound repositories and bases.
@@ -37,9 +37,9 @@
 
 ## Submission checkpoint
 
-- submission_ref:
-- submission_hash:
-- submission_state: `not-submitted`
+- submission_ref: `{SUBMISSION_REF}`
+- submission_hash: `{SUBMISSION_HASH}`
+- submission_state: `{SUBMISSION_STATE}`
 
 If submission is rejected, do not invent ids or widen tool authority. Record the
 error and let the controller start a fresh fenced execution.
