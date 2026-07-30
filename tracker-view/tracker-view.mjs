@@ -29,6 +29,8 @@ import { getDb as ensureSagaDb, closeDb as closeSagaDb } from '../dist/db.js';
 import { createSagaControlApplication } from '../dist/app/composition-root.js';
 import { loadSagaRuntimeConfig } from '../dist/runtime/saga-runtime-config.js';
 import { requiresBackgroundEngine } from '../dist/runtime/orchestration-mode.js';
+import { startProductLifecycleFromIdea } from '../dist/app/start-product-lifecycle-from-idea.js';
+import { createSpawnCliLifecycleRunStarter } from '../dist/app/product-lifecycle-run-starter.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const require = createRequire(import.meta.url);
@@ -4163,7 +4165,7 @@ function handleEpicCreate(req, res) {
 function handleProjectCreateFromIdea(req, res) {
   let chunks = [];
   req.on('data', c => chunks.push(c));
-  req.on('end', () => {
+  req.on('end', async () => {
     const raw = Buffer.concat(chunks).toString('utf8');
     let fields;
     const ct = req.headers['content-type'] || '';
@@ -4241,21 +4243,37 @@ function handleProjectCreateFromIdea(req, res) {
         console.error(`[create-from-idea] mkdir ${localPath} failed: ${e.message}`);
       }
 
-      // Engine process control is owned by EngineAdministration.
+      // saga4 cutover: the lifecycle runtime requires a full validated
+      // ProductDeliveryLifecycleInput before Discovery can run. The bare idea
+      // is assembled into that input by startProductLifecycleFromIdea (scenario-
+      // owned assembler), which resolves the REAL repository binding + current
+      // git HEAD, builds a fail-closed local-dry-run delivery profile, and
+      // starts the LifecycleRun through the application port. The spawn-cli
+      // starter passes the validated input INLINE via env — it does NOT write a
+      // JSON file and does NOT pass --lifecycle-input/lifecycleInputPath.
       const mode = runtimeConfig.orchestrationMode;
-      let engineSpawned = false;
-      let enginePid = null;
-      // Spawn the background orchestrate-cli process for any mode that requires
-      // one. requiresBackgroundEngine is the single source of truth — the
-      // engine administration and the composition root agree on it, so a typo'd
-      // or unknown mode (rejected at config-load) can never split-brain here.
+      let lifecycleStarted = false;
+      let lifecycleRunId = null;
+      let startError = null;
       if (requiresBackgroundEngine(mode)) {
         try {
-          const state = sagaApplication.startEngine({ epicId: result.epicId });
-          engineSpawned = state.running;
-          enginePid = state.pid;
+          const starter = createSpawnCliLifecycleRunStarter({
+            dbPath: DB_PATH,
+            baseEnv: process.env,
+          });
+          const started = await startProductLifecycleFromIdea({
+            projectId: result.projectId,
+            epicId: result.epicId,
+            idea,
+            initiatedBy: `create-from-idea:${result.projectId}`,
+            concurrency: 4,
+            starter,
+          });
+          lifecycleStarted = true;
+          lifecycleRunId = started.lifecycleRunId || null;
         } catch (e) {
-          console.error(`[create-from-idea] engine spawn failed: ${e.message}`);
+          console.error(`[create-from-idea] lifecycle start failed: ${e.message}`);
+          startError = e.message;
         }
       }
 
@@ -4266,8 +4284,9 @@ function handleProjectCreateFromIdea(req, res) {
         epic_id: result.epicId,
         task_id: result.taskId,
         orchestration_mode: mode,
-        engine_spawned: engineSpawned,
-        engine_pid: enginePid,
+        lifecycle_started: lifecycleStarted,
+        lifecycle_run_id: lifecycleRunId,
+        start_error: startError,
         local_path: localPath,
       });
     } catch (e) {

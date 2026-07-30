@@ -131,14 +131,27 @@ async function main() {
   let application: SagaApplication | null = null;
   try {
     const overrides = await loadCompositionOverrides(projectId, epicId);
+    // The lifecycle input may be supplied three ways. The preferred in-process
+    // path is SAGA_PRODUCT_LIFECYCLE_INPUT_JSON: the parent (e.g. the tracker-
+    // view "start from idea" route) assembles and validates the
+    // ProductDeliveryLifecycleInput in its own memory and hands the JSON inline
+    // to this child via env — no JSON file is written to disk and no
+    // --lifecycle-input path is passed. The runtime's resolveInput re-validates
+    // it (assertProductDeliveryLifecycleInput) before Discovery runs.
+    const inlineLifecycleInputJson =
+      process.env.SAGA_PRODUCT_LIFECYCLE_INPUT_JSON?.trim()
+        ? process.env.SAGA_PRODUCT_LIFECYCLE_INPUT_JSON
+        : null;
     const resolvedLifecycleInputPath = lifecycleInputPath
       ?? process.env.SAGA_PRODUCT_LIFECYCLE_INPUT
       ?? null;
-    const lifecycleInput = resolvedLifecycleInputPath
-      ? JSON.parse(
-        readFileSync(path.resolve(resolvedLifecycleInputPath), 'utf8'),
-      ) as unknown
-      : undefined;
+    const lifecycleInput = inlineLifecycleInputJson !== null
+      ? JSON.parse(inlineLifecycleInputJson) as unknown
+      : resolvedLifecycleInputPath
+        ? JSON.parse(
+          readFileSync(path.resolve(resolvedLifecycleInputPath), 'utf8'),
+        ) as unknown
+        : undefined;
     application = createSaga2Application(process.env, overrides);
     const result = await application.runEpisode({
       projectId,
