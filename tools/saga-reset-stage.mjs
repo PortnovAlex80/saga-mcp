@@ -280,12 +280,12 @@ const tx = db.transaction(() => {
 
   // Reset StageRun to planned
   if (stageRun) {
-    db.prepare(`UPDATE saga3_stage_runs SET status='planned', process_run_id=NULL, updated_at=datetime('now') WHERE id=${stageRun.id}`).run();
-    console.log(`  reset stage_run #${stageRun.id} → planned`);
+    db.prepare(`UPDATE saga3_stage_runs SET status='created', process_run_id=NULL, updated_at=datetime('now') WHERE id=${stageRun.id}`).run();
+    console.log(`  reset stage_run #${stageRun.id} → created`);
   }
 
   // Reset lifecycle_run current_stage_id back to this stage
-  db.prepare(`UPDATE saga3_lifecycle_runs SET status='running', current_stage_id=?, terminal_status=NULL, execution_lease_token=NULL, execution_lease_expires_at=NULL, updated_at=datetime('now') WHERE id=${lifecycleRun.id}`).run(stage);
+  db.prepare(`UPDATE saga3_lifecycle_runs SET status='running', current_stage_id=?, terminal_status=NULL, execution_lease_owner='', execution_lease_fence='', execution_lease_expires_at=datetime('now'), updated_at=datetime('now') WHERE id=${lifecycleRun.id}`).run(stage);
   console.log(`  reset lifecycle_run #${lifecycleRun.id} → running, stage=${stage}`);
 
   // Reset sqlite_sequence for tasks so new tasks don't collide

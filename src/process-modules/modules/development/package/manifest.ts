@@ -104,17 +104,15 @@ const RESOURCE_PATHS = {
   // Execution-profile skills (development-owned, migrated into the package).
   plannerExecutionSkill: `${DEVELOPMENT_PACKAGE_RESOURCE_ROOT}/skills/saga-planner/SKILL.md`,
   workerExecutionSkill: `${DEVELOPMENT_PACKAGE_RESOURCE_ROOT}/skills/saga-worker/SKILL.md`,
+  // Planning reviewer skill — reviews the planner's task graph proposal.
+  // Owned by the development package (mirrors formalization's reviewer skills).
+  planningReviewerSkill: `${DEVELOPMENT_PACKAGE_RESOURCE_ROOT}/skills/saga-planning-reviewer/SKILL.md`,
   // Shared protocol skill pinned by every development execution profile.
   // PLATFORM resource: stays at the repo-root skills/ dir (shared by all
   // process modules); not duplicated into the package.
   processProtocolSkill: 'skills/saga-process-module-worker-protocol/SKILL.md',
   // Reviewer skills: saga-verifier is a real platform skill (exists at
-  // skills/saga-verifier/SKILL.md) — pinned by path. saga-planning-reviewer
-  // is NOT pinned by the package: it does not exist as a shipped skill, so the
-  // planning profile's `reviewSkill: 'saga-planning-reviewer'` resolves via the
-  // agent's skills directory (by name), not via package bytes. Adding a ghost
-  // resourceIndex entry for it would fail install (every declared resource must
-  // exist on disk). If a real planning-reviewer skill ships later, add it here.
+  // skills/saga-verifier/SKILL.md) — pinned by path.
   verifierReviewerSkill: 'skills/saga-verifier/SKILL.md',
   // Call template materialized by the planning LM node.
   taskGraphSubmitCallTemplate: `${DEVELOPMENT_PACKAGE_RESOURCE_ROOT}/task-graph-submit-call-template.json`,
@@ -150,6 +148,12 @@ export const DEVELOPMENT_RESOURCE_INDEX: readonly ResourceIndexEntry[] = [
     digest: PENDING_DIGEST,
   },
   // --- Reviewer skills (PLATFORM — pinned by path, not duplicated) -------
+  {
+    logicalId: 'development.skill.planning-reviewer',
+    path: RESOURCE_PATHS.planningReviewerSkill,
+    kind: 'reviewer-skill',
+    digest: PENDING_DIGEST,
+  },
   {
     logicalId: 'development.skill.verifier',
     path: RESOURCE_PATHS.verifierReviewerSkill,

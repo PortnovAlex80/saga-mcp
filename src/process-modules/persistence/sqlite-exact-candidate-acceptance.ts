@@ -605,20 +605,28 @@ implements ExactCandidateAcceptance {
       );
     }
 
+    // Query the managed-production ledger at the NODE level (process_run +
+    // module + node), NOT at the execution level. During recovery, the AC
+    // artifacts were created in the ORIGINAL producer execution (task#5), while
+    // the kernel's lineage points to the recovery execution (task#7). A strict
+    // intent+task+execution fence returns no match and acceptance fails with
+    // EXACT_ACCEPTANCE_CANDIDATE_NOT_PRODUCED. The node-level boundary is the
+    // same one used by listArtifactsForNodeInProcessRun / readExecutionWrites
+    // (see formalization-installation.ts:matchesFenceRelaxed), which proved to
+    // keep legitimate artifacts reachable across the recovery boundary. The
+    // LATEST managed production for this artifact in this node still has the
+    // correct type and hash, which the checks below verify.
     const ledger = this.db.prepare(
       `SELECT id, artifact_type, artifact_status, content_hash
          FROM saga3_managed_artifact_productions
         WHERE process_run_id=? AND module_ref=? AND node_id=?
-          AND intent_id=? AND task_id=? AND execution_id=? AND artifact_id=?
+          AND artifact_id=?
         ORDER BY id DESC
         LIMIT 1`,
     ).get(
       lineage.processRunId,
       lineage.moduleRef,
       lineage.nodeId,
-      lineage.intentId,
-      lineage.taskId,
-      lineage.executionId,
       candidate.artifactId,
     ) as ManagedArtifactProductionRow | undefined;
     if (!ledger
