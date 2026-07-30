@@ -75,6 +75,20 @@ function seedTraceabilityPyramid(product, epic, acArtifactId) {
   return { brief, prdArt, srsArt, frArt, ucArt };
 }
 
+// saga4 Phase 4 cutover helper: worker_next now requires
+// tasks.metadata.process_run_id IS NOT NULL for a task to be claimable
+// (only module-projected tasks enter the worker queue — see
+// src/process-modules/application/node-executors/saga-board-adapter-data-builder.ts).
+// These tests create tasks directly via task_create (no module), so they must
+// stamp a synthetic process_run_id to make the task claimable. The value is
+// arbitrary; presence is all the invariant checks.
+function stampRunId(taskId) {
+  getDb().prepare(
+    `UPDATE tasks SET metadata=json_set(coalesce(metadata,'{}'),'$.process_run_id',999) WHERE id=?`,
+  ).run(taskId);
+}
+
+
 test('one logical product registers multiple repositories idempotently', () => {
   const product = projects.project_create({ name: 'Workflow Product' });
   const a = repositories.repository_register({
@@ -131,10 +145,11 @@ test('machine checkout overrides legacy repository path during dispatch', () => 
     project_repository_id: repo.id, machine_id: 'builder-01', local_path: machinePath,
   });
   const epic = epics.epic_create({ project_id: product.id, name: 'REQ-machine' });
-  tasks.task_create({
+  const machineTask = tasks.task_create({
     epic_id: epic.id, title: 'Machine task', priority: 'critical',
     project_repository_id: repo.id,
   });
+  stampRunId(machineTask.id);
   const assignment = dispatcher.worker_next({
     project_id: product.id, worker_id: 'machine-worker', machine_id: 'builder-01',
   });
@@ -402,12 +417,13 @@ test('dispatcher returns typed skill and task repository workspace', () => {
     project_id: product.id, name: 'routing-repo', local_path: repoAPath,
   });
   const epic = epics.epic_create({ project_id: product.id, name: 'REQ-routing' });
-  tasks.task_create({
+  const srsTask = tasks.task_create({
     epic_id: epic.id, title: 'Typed SRS', priority: 'critical',
     task_kind: 'formalization.srs', workflow_stage: 'formalization',
     execution_skill: 'saga-architect', review_skill: 'saga-architecture-reviewer',
     project_repository_id: repo.id,
   });
+  stampRunId(srsTask.id);
   const assignment = dispatcher.worker_next({ worker_id: 'typed-agent', project_id: product.id });
   assert.ok(assignment.task);
   assert.equal(assignment.skill, 'saga-architect');
@@ -422,7 +438,7 @@ test('review routing uses review_skill instead of producer role', () => {
     project_id: product.id, name: 'review-repo', local_path: repoBPath,
   });
   const epic = epics.epic_create({ project_id: product.id, name: 'REQ-review' });
-  tasks.task_create({
+  const reviewTask = tasks.task_create({
     epic_id: epic.id,
     title: 'Review AC',
     status: 'review',
@@ -433,12 +449,18 @@ test('review routing uses review_skill instead of producer role', () => {
     project_repository_id: repo.id,
     tags: ['role:analyst'],
   });
+  stampRunId(reviewTask.id);
   const assignment = dispatcher.worker_next({ worker_id: 'requirements-reviewer', project_id: product.id });
   assert.equal(assignment.skill, 'saga-requirements-reviewer');
   assert.equal(assignment.task.status, 'review');
 });
 
-test('typed git work generates downstream only after repository integration', () => {
+// saga4 Phase 4 cutover: the old behavior was "worker_done/merge auto-generates
+// downstream work after repository integration". Phase 4 removed that —
+// worker_done and merge are now pure state transitions; only a module-owned
+// node/settlement may generate work. This test now asserts the new contract:
+// a completed+merged task produces NO downstream tasks from the worker tools.
+test('typed git work: worker_done and merge do NOT auto-generate downstream (saga4 Phase 4)', () => {
   const product = projects.project_create({ name: 'Automatic Flow Product' });
   const repo = repositories.repository_register({
     project_id: product.id, name: 'auto-repo', local_path: repoAPath, role: 'control',
@@ -455,6 +477,7 @@ test('typed git work generates downstream only after repository integration', ()
     review_skill: 'saga-requirements-reviewer',
     project_repository_id: repo.id,
   });
+  stampRunId(prd.id);
   const assignment = dispatcher.worker_next({ worker_id: 'auto-reviewer', project_id: product.id });
   assert.equal(assignment.task.id, prd.id);
   const completed = dispatcher.worker_done({
@@ -467,12 +490,18 @@ test('typed git work generates downstream only after repository integration', ()
   dispatcher.worker_merge_release({
     task_id: prd.id, worker_id: 'auto-reviewer', result: 'merged', commit_sha: 'abc123',
   });
-  // ADR-013: prd_accepted emits EXACTLY ONE downstream task — UC. SRS now
-  // appears later via baseline_accepted after the AC baseline is frozen.
+  // saga4 Phase 4 cutover: worker_done no longer auto-generates downstream
+  // tasks (and neither does merge). Only a module-owned node/settlement may
+  // generate work — a completed task is evidence consumed by its owning
+  // Process Module node. So after both worker_done(approved) AND merge, NO
+  // downstream task is generated by these worker tools. The legacy
+  // prd_accepted→UC ladder is now driven by the lifecycle orchestrator, not
+  // by worker side-effects.
   assert.deepEqual(
     tasks.task_list({ epic_id: epic.id }).filter(t => t.generated_from_task_id === prd.id)
       .map(t => t.task_kind).sort(),
-    ['formalization.uc'],
+    [],
+    'worker_done/merge must NOT auto-generate downstream (saga4 Phase 4: module-owned generation)',
   );
 });
 
@@ -648,9 +677,26 @@ test('initialized episodes enforce downstream provenance and auto-advance ready 
     task_kind: 'development.code', workflow_stage: 'development',
     source_artifact_ids: [ac.id],
   });
+  // saga4 Phase 4 cutover: worker_next now requires
+  // tasks.metadata.process_run_id IS NOT NULL for a task to be claimable
+  // (only module-projected tasks enter the worker queue). Stamp a synthetic
+  // process_run_id so this task is claimable in the test.
+  getDb().prepare(
+    `UPDATE tasks SET metadata=json_set(coalesce(metadata,'{}'),'$.process_run_id',999) WHERE id=?`,
+  ).run(dev.id);
+  // saga4 Phase 4 cutover: worker_next is a PURE claim — it must NOT advance
+  // lifecycle stages. Stage advancement is now a module-owned settlement
+  // decision routed through the lifecycle orchestrator, never a worker
+  // side-effect. The episode was transitioned to 'planning' above and must
+  // stay there after the claim.
+  const stageBeforeClaim = lifecycle.episode_status({ epic_id: epic.id }).workflow.stage;
   const assignment = dispatcher.worker_next({ project_id: product.id, worker_id: 'auto-stage' });
-  assert.equal(assignment.task.id, dev.id);
-  assert.equal(lifecycle.episode_status({ epic_id: epic.id }).workflow.stage, 'development');
+  assert.equal(assignment.task.id, dev.id, 'traced dev task is claimable (provenance satisfied)');
+  assert.equal(
+    lifecycle.episode_status({ epic_id: epic.id }).workflow.stage,
+    stageBeforeClaim,
+    'worker_next must NOT advance the episode stage (saga4 Phase 4: pure claim)',
+  );
 });
 
 test('development.scaffold is exempt from per-AC provenance gate (infrastructure)', () => {
@@ -710,6 +756,7 @@ test('verified_by is backed by immutable passing evidence for the accepted AC re
     workflow_stage: 'verification', execution_mode: 'read_only_evidence',
     source_artifact_ids: [ac.id],
   });
+  stampRunId(verify.id);
   const held = dispatcher.worker_next({ project_id: product.id, worker_id: 'verifier' });
   assert.equal(held.task.id, verify.id);
   assert.throws(
@@ -761,6 +808,7 @@ test('verification evidence is immutable per fenced execution, so a new holder c
     workflow_stage: 'verification', execution_mode: 'read_only_evidence',
     source_artifact_ids: [ac.id],
   });
+  stampRunId(verify.id);
   const common = {
     project_id: product.id,
     epic_id: epic.id,
@@ -861,6 +909,7 @@ test('worker reconciliation uses OS liveness, not silent logs or task-status gue
   const task = tasks.task_create({
     epic_id: epic.id, title: 'Long silent verification work', priority: 'high',
   });
+  stampRunId(task.id);
   dispatcher.worker_next({
     project_id: product.id, epic_id: epic.id, worker_id: 'silent-worker',
     machine_id: os.hostname(), execution_id: 'silent-execution', run_id: 'silent-run',
@@ -932,6 +981,7 @@ test('verification review cannot approve before passing evidence exists', () => 
     execution_mode: 'read_only_evidence', source_artifact_ids: [ac.id],
     tags: ['needs-human'],
   });
+  stampRunId(verify.id);
   dispatcher.worker_next({ project_id: product.id, worker_id: 'verification-reviewer' });
   assert.throws(
     () => dispatcher.worker_done({
@@ -972,6 +1022,8 @@ test('typed dependencies wait for merge and repository merge locks do not block 
     task_kind: 'development.code', workflow_stage: 'development',
     project_repository_id: repoB.id, depends_on: [upstream.id],
   });
+  stampRunId(upstream.id);
+  stampRunId(downstream.id);
   const review = dispatcher.worker_next({ project_id: product.id, worker_id: 'repo-a-reviewer' });
   assert.equal(review.task.id, upstream.id);
   dispatcher.worker_done({
@@ -1003,14 +1055,16 @@ test('typed dependencies wait for merge and repository merge locks do not block 
 test('legacy tasks retain developer and reviewer routing', () => {
   const product = projects.project_create({ name: 'Legacy Product' });
   const epic = epics.epic_create({ project_id: product.id, name: 'Legacy epic' });
-  tasks.task_create({ epic_id: epic.id, title: 'Legacy todo', priority: 'critical' });
+  const legacyTodo = tasks.task_create({ epic_id: epic.id, title: 'Legacy todo', priority: 'critical' });
+  stampRunId(legacyTodo.id);
   const todo = dispatcher.worker_next({ worker_id: 'legacy-dev', project_id: product.id });
   assert.equal(todo.skill, 'saga-developer');
   assert.equal(todo.repository, null);
 
   const reviewProduct = projects.project_create({ name: 'Legacy Review Product' });
   const reviewEpic = epics.epic_create({ project_id: reviewProduct.id, name: 'Legacy review epic' });
-  tasks.task_create({ epic_id: reviewEpic.id, title: 'Legacy review', status: 'review', priority: 'critical' });
+  const legacyReview = tasks.task_create({ epic_id: reviewEpic.id, title: 'Legacy review', status: 'review', priority: 'critical' });
+  stampRunId(legacyReview.id);
   const review = dispatcher.worker_next({ worker_id: 'legacy-review', project_id: reviewProduct.id });
   assert.equal(review.skill, 'saga-reviewer');
 });
@@ -1030,6 +1084,7 @@ test('cross-repository dependency blocks downstream and invalid generation is at
     project_repository_id: repoB.id, depends_on: [upstream.id],
   });
   assert.equal(downstream.status, 'blocked');
+  stampRunId(upstream.id);
   const assignment = dispatcher.worker_next({ worker_id: 'dep-agent', project_id: product.id });
   assert.equal(assignment.task.id, upstream.id);
   assert.equal(assignment.repository.id, repoA.id);
@@ -1088,6 +1143,7 @@ test('REQ-008: outcome unknown is accepted by verification_record but does NOT c
     workflow_stage: 'verification', execution_mode: 'read_only_evidence',
     source_artifact_ids: [ac.id],
   });
+  stampRunId(verify.id);
   dispatcher.worker_next({ project_id: product.id, worker_id: 'verifier-u' });
   // UNKNOWN must be storable (caller reports insufficient inputs).
   lifecycle.verification_record({
@@ -1118,6 +1174,7 @@ test('REQ-008: outcome error is accepted and does NOT admit the integration gate
     workflow_stage: 'verification', execution_mode: 'read_only_evidence',
     source_artifact_ids: [ac.id],
   });
+  stampRunId(verify.id);
   dispatcher.worker_next({ project_id: product.id, worker_id: 'verifier-e' });
   lifecycle.verification_record({
     task_id: verify.id, artifact_id: ac.id, outcome: 'error',
@@ -1166,6 +1223,7 @@ test('REQ-008: outcome failed blocks verified_by (regression — failed was alre
     workflow_stage: 'verification', execution_mode: 'read_only_evidence',
     source_artifact_ids: [ac.id],
   });
+  stampRunId(verify.id);
   dispatcher.worker_next({ project_id: product.id, worker_id: 'verifier-f' });
   lifecycle.verification_record({
     task_id: verify.id, artifact_id: ac.id, outcome: 'failed',
@@ -1188,6 +1246,7 @@ test('REQ-008: provider column is optional and defaults to NULL for backward com
     workflow_stage: 'verification', execution_mode: 'read_only_evidence',
     source_artifact_ids: [ac.id],
   });
+  stampRunId(verify.id);
   dispatcher.worker_next({ project_id: product.id, worker_id: 'verifier-np' });
   // No provider passed — backward-compatible with existing callers.
   lifecycle.verification_record({

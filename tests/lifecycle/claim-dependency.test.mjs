@@ -198,22 +198,30 @@ test('dep-reconcile: blocked task with all deps met is unblocked to todo', () =>
 
 test('claimability: worker_next and a count query use the same predicate', () => {
   const { product, epic } = makeProject();
-  // Two tasks, but only one is claimable.
+  // Two tasks, but only one is claimable. Both carry a process_run_id (saga4
+  // cutover: a task is claimable ONLY if bound to an active Process Module node).
   const claimable = makeTask(epic.id);
   const blockedByHumanRequest = makeTask(epic.id);
+  const stampProcessRun = (taskId) => getDb().prepare(
+    `UPDATE tasks SET metadata=json_set(coalesce(metadata,'{}'),'$.process_run_id',999) WHERE id=?`,
+  ).run(taskId);
+  stampProcessRun(claimable.id);
+  stampProcessRun(blockedByHumanRequest.id);
   // Inject an open human_request on the second.
   getDb().prepare(
     `INSERT INTO human_requests (request_id, task_id, resume_phase, question, state)
      VALUES (?, ?, 'implementation', 'q', 'open')`,
   ).run(`hr-${blockedByHumanRequest.id}`, blockedByHumanRequest.id);
 
-  // Count claimable using the same SQL shape worker_next uses.
+  // Count claimable using the same SQL shape worker_next uses (includes the
+  // saga4 process_run_id binding requirement).
   const count = getDb().prepare(
     `SELECT COUNT(*) AS c FROM tasks t
       WHERE t.status IN ('todo','review')
         AND (t.assigned_to IS NULL OR t.assigned_to = '')
         AND t.priority IN ('critical','high','medium')
         AND t.epic_id IN (SELECT id FROM epics WHERE project_id = ?)
+        AND json_extract(t.metadata, '$.process_run_id') IS NOT NULL
         AND t.current_execution_id IS NULL
         AND NOT EXISTS (SELECT 1 FROM worker_executions we
                          WHERE we.task_id=t.id

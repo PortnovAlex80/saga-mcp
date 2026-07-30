@@ -34,11 +34,15 @@ db.prepare("INSERT INTO epics (project_id, name) VALUES (?, 'race-epic')").run(p
 const epicId = db.prepare("SELECT id FROM epics WHERE name='race-epic'").get().id;
 
 const insert = db.prepare(
-  "INSERT INTO tasks (epic_id, title, status, priority, assigned_to) VALUES (?, ?, 'todo', ?, NULL)"
+  "INSERT INTO tasks (epic_id, title, status, priority, assigned_to, metadata) VALUES (?, ?, 'todo', ?, NULL, ?)"
 );
 const priorities = ['critical', 'high', 'medium', 'low'];
+// saga4 cutover: a task is claimable ONLY if bound to a Process Module node via
+// metadata.process_run_id. Stamp a synthetic run id so the race fixture stays
+// claimable under the new single-authority dispatcher.
+const metadata = JSON.stringify({ process_run_id: 999 });
 for (let i = 1; i <= numTasks; i++) {
-  insert.run(epicId, `task-${i}`, priorities[i % priorities.length]);
+  insert.run(epicId, `task-${i}`, priorities[i % priorities.length], metadata);
 }
 
 // Sidecar with project_id + name so claim.mjs can pass project_id to worker_next.

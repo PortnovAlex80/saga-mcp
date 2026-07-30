@@ -66,9 +66,14 @@ function makeTask(epicId) {
 }
 
 function claimWithFence(taskId, workerId, executionId, status = 'in_progress') {
+  // saga4 Phase 4 cutover: a task is only claimable via worker_next if
+  // tasks.metadata.process_run_id IS NOT NULL. A task the runner fences here
+  // would carry that stamp, so stamp it for any task that flows through this
+  // helper (otherwise later worker_next claims in these tests return null).
   const db = getDb();
   db.prepare(
     `UPDATE tasks SET status=?, assigned_to=?, current_execution_id=?,
+                       metadata=json_set(coalesce(metadata,'{}'),'$.process_run_id',999),
                        updated_at=datetime('now') WHERE id=?`,
   ).run(status, workerId, executionId, taskId);
   db.prepare(

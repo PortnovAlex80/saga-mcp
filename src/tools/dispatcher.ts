@@ -5,8 +5,6 @@ import { logActivity } from '../helpers/activity-logger.js';
 import { assertExecutionFence, updateExecutionPhase, isProcessAlive } from '../worker-executions.js';
 import { reevaluateDownstream } from './tasks.js';
 import type { Task, ToolHandler } from '../types.js';
-import { generateNextForCompletedTask } from './workflow.js';
-import { advanceReadyEpisodes } from './lifecycle.js';
 import { releaseExecutionAtomically } from '../lifecycle/atomic-release.js';
 import { buildExecutionContext } from '../saga3/authority/build-execution-context.js';
 import { executionContextHash } from '../saga3/domain/execution-context.js';
@@ -385,9 +383,6 @@ function findNextClaimable(
   const taskIdsClause = taskIds && taskIds.length > 0
     ? `AND t.id IN (${taskIds.map(() => '?').join(',')})`
     : '';
-  const processModuleStageClause = taskIds && taskIds.length > 0
-    ? `OR json_extract(t.metadata, '$.process_run_id') IS NOT NULL`
-    : '';
   const selectSql = `
     SELECT t.* FROM tasks t
     WHERE t.status IN ('todo', 'review')
@@ -396,18 +391,13 @@ function findNextClaimable(
       ${epicClause}
       ${taskIdsClause}
       AND (
-        t.workflow_stage IS NULL
-        OR t.task_kind = 'summary.stage'   -- bookkeeping: claimable on ANY stage
-        -- A Process Module owns the stage of its exact task projection. The
-        -- legacy episode_workflows.stage column belongs to the Saga 2 pump and
-        -- must not veto a task that is fenced to a Saga 3 ProcessRun and an
-        -- explicit claimScope.
-        ${processModuleStageClause}
-        OR NOT EXISTS (SELECT 1 FROM episode_workflows ew WHERE ew.epic_id=t.epic_id)
-        OR EXISTS (
-          SELECT 1 FROM episode_workflows ew
-          WHERE ew.epic_id=t.epic_id AND ew.stage=t.workflow_stage
-        )
+        -- saga4 cutover (Phase 4): a task is claimable ONLY if it is bound to
+        -- an active Process Module node. The discriminator is
+        -- tasks.metadata.process_run_id (stamped by the module's node executor
+        -- at projection time). The legacy stage-gating clauses
+        -- (workflow_stage IS NULL, episode_workflows.stage match) were removed —
+        -- workflow_stage is now a module-owned UI label, not an authority gate.
+        json_extract(t.metadata, '$.process_run_id') IS NOT NULL
       )
       ${excludeClause}
       ${roleClause}
@@ -441,15 +431,16 @@ function findNextClaimable(
         -- Узкий фильтр: только git_change задачи с integration_state РОВНО
         -- 'pending' или 'conflict'. 'not_required' / '' / NULL нас не касается
         -- (это tracker_only / recovery / read-only — они не пишут код).
-        -- Также ограничиваем тем же workflow_stage, чтобы verification-задачи
-        -- не блокировались development pending-merge'ами.
+        -- saga4 cutover: scoped by process_run_id equality (not workflow_stage)
+        -- — two tasks from the same ProcessRun on the same file serialize.
         SELECT 1 FROM tasks other
         JOIN task_conflict_keys k1 ON k1.task_id = t.id
         JOIN task_conflict_keys k2 ON k2.key_type = k1.key_type
                                    AND k2.key_value = k1.key_value
         WHERE other.id = k2.task_id
           AND other.id != t.id
-          AND other.workflow_stage = t.workflow_stage
+          AND json_extract(other.metadata, '$.process_run_id')
+              = json_extract(t.metadata, '$.process_run_id')
           AND other.execution_mode = 'git_change'
           AND other.integration_state IN ('pending', 'conflict')
       )
@@ -628,7 +619,11 @@ function handleWorkerNext(args: Record<string, unknown>): {
   if (!exists) {
     throw new Error(`project_id ${projectId} not found. Run project_list to see valid IDs, or project_resolve_by_name to (re)create by name from ./projectname.txt.`);
   }
-  advanceReadyEpisodes(projectId);
+  // saga4 cutover (Phase 4): worker_next is a PURE claim — it must not advance
+  // lifecycle stages. The previous advanceReadyEpisodes(projectId) call let a
+  // worker tool mutate episode_workflows.stage as a side-effect of claiming
+  // work. Stage advancement is now a module-owned settlement decision routed
+  // through the lifecycle orchestrator, never a worker side-effect.
 
   // role (опционально): фильтрует очередь по тегу `role:<name>` на задаче.
   // Применение: проект требований, где задачи тегированы role:product / role:analyst
@@ -1106,30 +1101,11 @@ function handleWorkerDone(args: Record<string, unknown>): {
   // BEGIN IMMEDIATE — сериализация писателей (db.transaction тут DEFERRED,
   // поэтому оборачиваем явно).
   const completed = withImmediateTransaction(db, completeTask);
-  const completedTask = db.prepare(
-    `SELECT task_kind, execution_mode, integration_state,
-            json_extract(metadata, '$.process_run_id') AS process_run_id
-       FROM tasks WHERE id=?`,
-  ).get(taskId) as {
-    task_kind: string | null;
-    execution_mode: string;
-    integration_state: string;
-    process_run_id: number | null;
-  } | undefined;
-  if (
-    completed.completed_new_status === 'done'
-    && completedTask?.process_run_id == null
-    && (!completedTask?.task_kind || completedTask.execution_mode !== 'git_change')
-  ) {
-    try {
-      const generated = generateNextForCompletedTask(taskId);
-      if (generated) completed.workflow_generation = generated;
-    } catch (error) {
-      completed.workflow_generation_error = error instanceof Error ? error.message : String(error);
-      logActivity(db, 'task', taskId, 'updated', 'workflow_generation', null, 'failed',
-        `Automatic downstream generation failed: ${completed.workflow_generation_error}`);
-    }
-  }
+  // saga4 cutover (Phase 4): worker_done no longer auto-generates downstream
+  // tasks. The task-kind ladder (generateNextForCompletedTask) was a legacy
+  // escape hatch where generic task status produced new work. After the
+  // cutover only a module-owned node/settlement may generate work; a completed
+  // task is evidence consumed by its owning Process Module node.
   return completed;
 }
 
@@ -1665,18 +1641,9 @@ function handleWorkerMergeRelease(args: Record<string, unknown>): {
     }
   });
 
-  const processManaged = db.prepare(
-    `SELECT json_extract(metadata, '$.process_run_id') AS process_run_id
-       FROM tasks WHERE id=?`,
-  ).get(taskId) as { process_run_id: number | null } | undefined;
-  if (outcome === 'merged' && processManaged?.process_run_id == null) {
-    try {
-      generateNextForCompletedTask(taskId);
-    } catch (error) {
-      logActivity(db, 'task', taskId, 'updated', 'workflow_generation', null, 'failed',
-        `Automatic downstream generation after merge failed: ${error instanceof Error ? error.message : String(error)}`);
-    }
-  }
+  // saga4 cutover (Phase 4): worker_merge_release no longer auto-generates
+  // downstream tasks via the task-kind ladder. The owning Process Module node
+  // settles the merge result and decides whether to advance.
   return { task_id: taskId, result: outcome, merged_commit: outcome === 'merged' ? commitSha : null };
 }
 
