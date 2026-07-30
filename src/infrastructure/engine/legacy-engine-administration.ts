@@ -262,12 +262,12 @@ export class LegacyEngineAdministration implements EngineAdministration {
             + `foreach ($o in $orphans) { $toKill += $o.ProcessId } ; `
             + `$toKill = $toKill | Sort-Object -Unique; `
             + `foreach ($p in $toKill) { taskkill /F /PID $p 2>$null }`],
-          { encoding: 'utf8' },
+          { encoding: 'utf8', windowsHide: true },
         );
         this.spawnProcessSync(
           'timeout',
           ['/T', '1', '/NOBREAK'],
-          { encoding: 'utf8', stdio: 'ignore' },
+          { encoding: 'utf8', stdio: 'ignore', windowsHide: true },
         );
       } else {
         this.spawnProcessSync(
@@ -290,7 +290,7 @@ export class LegacyEngineAdministration implements EngineAdministration {
             `$es = Get-CimInstance Win32_Process -Filter "name='node.exe'" | `
             + `  Where-Object { $_.CommandLine -like '*orchestrate-cli.js ${projectId} ${epicId}*' }; `
             + `if ($es) { 'alive' } else { 'dead' }`],
-          { encoding: 'utf8' },
+          { encoding: 'utf8', windowsHide: true },
         );
         return String(result.stdout || '').trim() === 'alive';
       }
