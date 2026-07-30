@@ -178,18 +178,21 @@ implements ManagedNodeSubmissionReader {
   private readRow(
     query: ManagedNodeSubmissionQuery,
   ): SubmissionRow | undefined {
+    // Node-level query: find the LATEST submission for this node in this
+    // process run, regardless of which execution/task/intent produced it.
+    // Recovery creates new task/intent/execution, but the submission is the
+    // same canonical product. This matches the node-level pattern used in
+    // readExecutionWrites (formalization) and accept CAS.
     return this.db.prepare(
       `SELECT *
          FROM saga3_managed_node_submissions
         WHERE process_run_id=? AND module_ref=? AND node_id=?
-          AND intent_id=? AND task_id=? AND execution_id=?`,
+        ORDER BY id DESC
+        LIMIT 1`,
     ).get(
       query.processRunId,
       query.moduleRef,
       query.nodeId,
-      query.intentId,
-      query.taskId,
-      query.executionId,
     ) as SubmissionRow | undefined;
   }
 

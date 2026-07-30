@@ -18,6 +18,7 @@
  * No module-specific symbol or path is imported here.
  */
 
+import { spawnSync } from 'node:child_process';
 import {
   existsSync,
   mkdirSync,
@@ -27,6 +28,8 @@ import {
   writeFileSync,
 } from 'node:fs';
 import path from 'node:path';
+import type Database from 'better-sqlite3';
+import { getDb } from '../../db.js';
 import type {
   ExecutionProfileDefinition,
   ProcessModuleDefinition,
@@ -342,6 +345,231 @@ export function recoveryFeedbackFromMetadata(
     : null;
 }
 
+// ---------------------------------------------------------------------------
+// Machine-fill of the Development task-graph submit template.
+//
+// The planning LM historically failed to fill the placeholder template
+// `task-graph-submit-call-template.json` correctly: it (a) skipped
+// verification-only ACs because it could not distinguish "implementation
+// required" from "always verify", and (b) picked the wrong
+// `projectRepositoryId`. The fix is to read the authoritative state from the
+// DB (accepted ACs + active repository bindings) and emit a COMPLETE proposal
+// skeleton with correct integer ids, one implementation + one verification
+// item per accepted AC (T-014 hard rule: every AC gets verification), and one
+// integration target per bound repository. The LM only reviews/edits content.
+//
+// Constants mirror the planner skill (§2a ac_kind mapping + T-014 rule) so the
+// machine skeleton matches what a correct manual planner would submit.
+// ---------------------------------------------------------------------------
+
+const DEVELOPMENT_PLANNING_MODULE_KIND = 'development';
+const DEVELOPMENT_TASK_GRAPH_PROPOSAL_SCHEMA =
+  'saga3.development-task-graph-proposal.v1';
+const DEVELOPMENT_TASK_GRAPH_TEMPLATE_BASENAME =
+  'task-graph-submit-call-template.json';
+const DEVELOPMENT_TASK_GRAPH_TEMPLATE_MATERIALIZED =
+  'task-graph-submit-call.json';
+
+const PLANNING_IMPLEMENTATION_TASK_KIND = 'development.code';
+const PLANNING_IMPLEMENTATION_EXECUTION_SKILL = 'saga-worker';
+const PLANNING_VERIFICATION_TASK_KIND = 'verification.ac';
+const PLANNING_VERIFICATION_EXECUTION_SKILL = 'saga-verifier';
+
+interface AcceptedAcRow {
+  id: number;
+  code: string | null;
+}
+
+interface ProjectRepositoryRow {
+  id: number;
+  integration_branch: string;
+  local_path: string | null;
+}
+
+/**
+ * Read the HEAD commit sha for the repo at `repoPath`. Returns an empty
+ * string when git is unavailable or the path is not a checkout so the
+ * template stays submittable (the planner LM can still read §D2 and patch
+ * it). Never throws — the workspace materializer must stay robust.
+ */
+function resolveHeadCommit(repoPath: string): string {
+  try {
+    if (!repoPath || !existsSync(repoPath)) return '';
+    const r = spawnSync('git', ['-C', repoPath, 'rev-parse', 'HEAD'], {
+      encoding: 'utf8',
+      windowsHide: true,
+    });
+    if (r.status !== 0 || r.error) return '';
+    return (r.stdout || '').trim();
+  } catch {
+    return '';
+  }
+}
+
+function compareAcCode(a: AcceptedAcRow, b: AcceptedAcRow): number {
+  // Natural sort so AC-2 sorts before AC-10/AC-15/AC-16. Falls back to id.
+  const sa = (a.code ?? '').toLowerCase();
+  const sb = (b.code ?? '').toLowerCase();
+  if (sa && sb && sa !== sb) return sa.localeCompare(sb, undefined, { numeric: true });
+  if (sa && !sb) return -1;
+  if (!sa && sb) return 1;
+  return a.id - b.id;
+}
+
+/**
+ * Build the filled Development task-graph submit call as a plain object, or
+ * `null` when the DB state cannot support a complete skeleton (no accepted
+ * ACs or no active repository bindings). Returning null leaves the LM to fill
+ * the placeholder template by hand — the same behaviour as before this
+ * machine-fill existed.
+ *
+ * `db` is accepted as a parameter so the function is testable without the
+ * process-wide singleton; the public entry point resolves it via `getDb()`.
+ */
+export function buildDevelopmentTaskGraphSubmitCall(
+  db: Database.Database,
+  projectId: number,
+  epicId: number,
+): {
+  tool: 'process_node_submit';
+  arguments: {
+    schema: typeof DEVELOPMENT_TASK_GRAPH_PROPOSAL_SCHEMA;
+    payload: {
+      schemaVersion: typeof DEVELOPMENT_TASK_GRAPH_PROPOSAL_SCHEMA;
+      implementationItems: unknown[];
+      verificationItems: unknown[];
+      integrationTargets: unknown[];
+    };
+  };
+} | null {
+  const acs = (db.prepare(
+    `SELECT id, code FROM artifacts
+       WHERE project_id=? AND epic_id=? AND type='AC' AND status='accepted'`,
+  ).all(projectId, epicId) as AcceptedAcRow[]).sort(compareAcCode);
+
+  const repositories = db.prepare(
+    `SELECT id, integration_branch, local_path
+       FROM project_repositories
+      WHERE project_id=? AND status='active'
+      ORDER BY id`,
+  ).all(projectId) as ProjectRepositoryRow[];
+
+  if (acs.length === 0 || repositories.length === 0) return null;
+
+  // Single bound repository is the overwhelmingly common case (one epic → one
+  // physical repo). When the development-case input binds more than one repo,
+  // the planner LM owns the per-AC repo assignment; here we attribute every AC
+  // to the primary (lowest-id active) repository so the skeleton is internally
+  // consistent and submittable, and the LM re-routes items as needed.
+  const primaryRepository = repositories[0]!;
+  const primaryRepositoryId = primaryRepository.id;
+
+  const implementationItems: unknown[] = [];
+  const verificationItems: unknown[] = [];
+  const implementationKeys: string[] = [];
+
+  for (const ac of acs) {
+    const suffix = (ac.code ?? `id${ac.id}`).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+    const implKey = suffix ? `impl-ac-${suffix}` : `impl-ac-${ac.id}`;
+    const verifyKey = suffix ? `verify-ac-${suffix}` : `verify-ac-${ac.id}`;
+
+    implementationItems.push({
+      key: implKey,
+      kind: 'implementation',
+      taskKind: PLANNING_IMPLEMENTATION_TASK_KIND,
+      executionSkill: PLANNING_IMPLEMENTATION_EXECUTION_SKILL,
+      executionMode: 'git_change',
+      projectRepositoryId: primaryRepositoryId,
+      acceptanceCriterionIds: [ac.id],
+      dependsOnKeys: [],
+      required: true,
+    });
+    implementationKeys.push(implKey);
+
+    // T-014: every accepted AC gets exactly one required verification item,
+    // regardless of its ac_kind (implementation ACs are NOT exempt).
+    verificationItems.push({
+      key: verifyKey,
+      kind: 'verification',
+      taskKind: PLANNING_VERIFICATION_TASK_KIND,
+      executionSkill: PLANNING_VERIFICATION_EXECUTION_SKILL,
+      executionMode: 'read_only_evidence',
+      projectRepositoryId: primaryRepositoryId,
+      acceptanceCriterionIds: [ac.id],
+      dependsOnKeys: [implKey],
+      required: true,
+    });
+  }
+
+  const integrationTargets = repositories.map(repo => ({
+    projectRepositoryId: repo.id,
+    sourceWorkItemKeys: repo.id === primaryRepositoryId
+      ? implementationKeys
+      : [],
+    targetBranch: repo.integration_branch,
+    expectedBaseCommit: resolveHeadCommit(repo.local_path ?? ''),
+  }));
+
+  return {
+    tool: 'process_node_submit',
+    arguments: {
+      schema: DEVELOPMENT_TASK_GRAPH_PROPOSAL_SCHEMA,
+      payload: {
+        schemaVersion: DEVELOPMENT_TASK_GRAPH_PROPOSAL_SCHEMA,
+        implementationItems,
+        verificationItems,
+        integrationTargets,
+      },
+    },
+  };
+}
+
+/**
+ * Materialize a DB-backed, COMPLETE task-graph submit call for the Development
+ * planning LM, REPLACING the placeholder template the LM would otherwise have
+ * to fill by hand. Idempotent and carry-over aware:
+ *
+ *  - Only fires when `module.identity.kind === 'development'` AND the profile's
+ *    callTemplates reference the Development task-graph template.
+ *  - `overwriteFreshPlaceholder` must be `true` to write. The caller sets it
+ *    only when the materialized target did NOT exist before this invocation
+ *    (i.e. the materializer loop just emitted the placeholder template). When
+ *    it is `false` the target is either a recovery carry-over (the LM-edited
+ *    draft from the previous attempt, copied in earlier in this function) or a
+ *    replay within the same attempt — the LM owns the working copy and the
+ *    machine never clobbers semantic work.
+ *  - Skipped silently when DB state cannot produce a complete skeleton (no
+ *    accepted ACs or no active repository bindings); the LM then fills the
+ *    placeholder template manually — identical to pre-machine-fill behaviour.
+ *
+ * Returns the basename of the materialized file when it (re)wrote it, or
+ * `null` when it did not.
+ */
+export function machineFillPlanningTemplate(
+  request: PrepareProcessExecutionWorkspaceRequest,
+  executionDirectory: string,
+  overwriteFreshPlaceholder: boolean,
+): string | null {
+  if (request.module.identity.kind !== DEVELOPMENT_PLANNING_MODULE_KIND) {
+    return null;
+  }
+  if (!overwriteFreshPlaceholder) return null;
+  const hasTaskGraphTemplate = request.profile.callTemplates.some(asset =>
+    path.basename(asset) === DEVELOPMENT_TASK_GRAPH_TEMPLATE_BASENAME);
+  if (!hasTaskGraphTemplate) return null;
+
+  const filled = buildDevelopmentTaskGraphSubmitCall(
+    getDb(),
+    request.projectId,
+    request.epicId,
+  );
+  if (!filled) return null;
+
+  const target = path.join(executionDirectory, DEVELOPMENT_TASK_GRAPH_TEMPLATE_MATERIALIZED);
+  writeFileSync(target, `${JSON.stringify(filled, null, 2)}\n`);
+  return DEVELOPMENT_TASK_GRAPH_TEMPLATE_MATERIALIZED;
+}
+
 export function prepareProcessExecutionWorkspace(
   request: PrepareProcessExecutionWorkspaceRequest,
 ): ProcessExecutionWorkspace {
@@ -428,6 +656,7 @@ export function prepareProcessExecutionWorkspace(
   }
 
   const materializedBySource = new Map<string, string>();
+  const freshPlaceholderTargets = new Set<string>();
   for (const asset of unique([
     ...request.profile.workspaceTemplates,
     ...request.profile.callTemplates,
@@ -440,6 +669,7 @@ export function prepareProcessExecutionWorkspace(
         ? refreshJsonMachineBindings(sourceContent, bindings)
         : fillKnownPlaceholders(sourceContent, bindings);
       writeFileSync(target, prepared);
+      freshPlaceholderTargets.add(target);
     } else if (path.extname(target).toLowerCase() === '.json') {
       // Preserve semantic work on retry, but refresh execution-fenced fields.
       const existing = readFileSync(target, 'utf8');
@@ -447,6 +677,18 @@ export function prepareProcessExecutionWorkspace(
     }
     materializedBySource.set(asset, relativeWorkspacePath(workspaceRoot, target));
   }
+
+  // Machine-fill the Development planning submit template: emit a COMPLETE,
+  // DB-backed task-graph proposal skeleton instead of the placeholder template
+  // the LM would otherwise fill by hand. Only overwrites the FRESH placeholder
+  // the loop just emitted (carry-over / replay drafts are preserved).
+  machineFillPlanningTemplate(
+    request,
+    executionDirectory,
+    freshPlaceholderTargets.has(
+      path.join(executionDirectory, DEVELOPMENT_TASK_GRAPH_TEMPLATE_MATERIALIZED),
+    ),
+  );
 
   if (!request.profile.trackerTemplate) {
     throw new Error(
