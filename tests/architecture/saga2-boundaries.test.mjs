@@ -360,7 +360,8 @@ test('legacy engine administration preserves start/status/concurrency/stop seman
 
 test('engine spawn propagates config.orchestrationMode (no hardcoded mode)', () => {
   // D0 spawn-path fix: spawned orchestrate-cli env MUST equal config.orchestrationMode,
-  // not a hardcoded 'v3'. Otherwise saga3-discovery branch never reaches Saga3DiscoveryEngine.
+  // not a hardcoded 'v3'. After the saga4 cutover there is exactly ONE mode
+  // ('saga3-lifecycle'); the spawned env must still equal config.orchestrationMode.
   const temp = mkdtempSync(path.join(os.tmpdir(), 'saga-spawn-mode-'));
   const dbPath = path.join(temp, 'saga.db');
   const db = new Database(dbPath);
@@ -375,7 +376,7 @@ test('engine spawn propagates config.orchestrationMode (no hardcoded mode)', () 
     db.close();
   }
 
-  for (const mode of ['saga3-discovery', 'saga3-lifecycle']) {
+  for (const mode of ['saga3-lifecycle']) {
     const spawned = [];
     const admin = new LegacyEngineAdministration({
       config: fullConfig({ dbPath, orchestrationMode: mode }),
@@ -411,12 +412,10 @@ test('orchestration mode parser rejects unknown values instead of silent fallbac
   const { parseOrchestrationMode, requiresBackgroundEngine } = await import(
     '../../dist/runtime/orchestration-mode.js'
   );
-  // Recognised modes parse (case/whitespace normalised).
+  // The sole recognised mode parses (case/whitespace normalised).
   for (const [raw, expected] of [
     [undefined, 'saga3-lifecycle'],
     ['', 'saga3-lifecycle'],
-    ['saga3-discovery', 'saga3-discovery'],
-    ['  Saga3-Discovery ', 'saga3-discovery'],
     ['saga3-lifecycle', 'saga3-lifecycle'],
     [' Saga3-Lifecycle ', 'saga3-lifecycle'],
   ]) {
@@ -429,9 +428,13 @@ test('orchestration mode parser rejects unknown values instead of silent fallbac
   assert.throws(() => parseOrchestrationMode('saga2'), /Unknown SAGA_ORCHESTRATION_MODE/);
   assert.throws(() => parseOrchestrationMode('saga3-discovry'), /Unknown SAGA_ORCHESTRATION_MODE/);
   assert.throws(() => parseOrchestrationMode('v4'), /Unknown SAGA_ORCHESTRATION_MODE/);
+  // The saga3-discovery / discovery-generic / formalization modes were removed
+  // from the union; they must now throw (dead configuration collapsed).
+  assert.throws(() => parseOrchestrationMode('saga3-discovery'), /Unknown SAGA_ORCHESTRATION_MODE/);
+  assert.throws(() => parseOrchestrationMode('saga3-discovery-generic'), /Unknown SAGA_ORCHESTRATION_MODE/);
+  assert.throws(() => parseOrchestrationMode('saga3-formalization'), /Unknown SAGA_ORCHESTRATION_MODE/);
 
   // requiresBackgroundEngine is the single source of truth for spawning.
-  assert.equal(requiresBackgroundEngine('saga3-discovery'), true, 'saga3-discovery spawns background engine');
   assert.equal(requiresBackgroundEngine('saga3-lifecycle'), true, 'saga3-lifecycle spawns background engine');
 });
 

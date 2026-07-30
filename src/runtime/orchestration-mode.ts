@@ -2,42 +2,28 @@
  * Orchestration mode ownership — the single source of truth for the
  * SAGA_ORCHESTRATION_MODE value.
  *
- * saga4 cutover: the Product Lifecycle runtime is the SOLE engine. The legacy
- * 'v2'/'v3'/'saga2' modes (which selected Saga2Engine) have been removed from
- * the union. The remaining modes are all background-engine modes; 'saga3-lifecycle'
- * is the unconditional default and the complete durable lifecycle.
+ * saga4 cutover: the Product Lifecycle runtime is the SOLE engine. There is
+ * exactly ONE mode: 'saga3-lifecycle' — the complete durable Discovery →
+ * Formalization → Development → Delivery lifecycle through registered
+ * GenericFlow module installations.
  *
- * The discovery / discovery-generic / formalization modes are retained in the
- * union for backward-compatibility with existing operator config and tests that
- * construct those engines directly, but the composition root now ALWAYS returns
- * the lifecycle runtime regardless of mode. They will be removed in a later
- * cleanup phase once all direct-construction tests are migrated.
+ * The legacy 'v2'/'v3'/'saga2' modes (which selected Saga2Engine) and the
+ * earlier 'saga3-discovery' / 'saga3-discovery-generic' / 'saga3-formalization'
+ * modes have all been removed. The composition root ALWAYS returns the lifecycle
+ * runtime regardless of mode; those three were dead configuration that misled
+ * operators into thinking a different engine would run.
  */
 
 /**
  * The complete enumeration of recognised orchestration modes.
  *
- * - 'saga3-discovery'        — retained; engine constructible directly by tests.
- * - 'saga3-discovery-generic' — retained; engine constructible directly by tests.
- * - 'saga3-formalization'    — retained; engine constructible directly by tests.
- * - 'saga3-lifecycle'        — the unconditional default. Complete durable
- *                              Discovery → Formalization → Development → Delivery
- *                              lifecycle through registered GenericFlow module
- *                              installations.
- *
- * An unrecognised value is an error, never a silent fallback. The removed
- * 'v2'/'v3'/'saga2' values are now unknown and will throw at parse time.
+ * An unrecognised value is an error, never a silent fallback — a typo must
+ * surface, not silently select the wrong engine. Whitespace and case are
+ * normalised so `SAGA_ORCHESTRATION_MODE= Saga3-Lifecycle ` still resolves.
  */
-export type OrchestrationMode =
-  | 'saga3-discovery'
-  | 'saga3-discovery-generic'
-  | 'saga3-formalization'
-  | 'saga3-lifecycle';
+export type OrchestrationMode = 'saga3-lifecycle';
 
-export const ORCHESTRATION_MODES: readonly OrchestrationMode[] = [
-  'saga3-discovery', 'saga3-discovery-generic',
-  'saga3-formalization', 'saga3-lifecycle',
-];
+export const ORCHESTRATION_MODES: readonly OrchestrationMode[] = ['saga3-lifecycle'];
 
 /**
  * The unconditional default. After the saga4 cutover the Product Lifecycle

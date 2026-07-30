@@ -3786,9 +3786,10 @@ function renderAdmin(projects, flash) {
         <label class="ed-field"><span>Локальный путь (опц.)</span><input type="text" name="local_path" placeholder="по умолч. D:/Development/&lt;name&gt;" autocomplete="off"></label>
         <div class="admin-hint">
           Создаёт project + repo + epic + discovery.kickstart задачу одной транзакцией.
-          При <code>SAGA_ORCHESTRATION_MODE=v3</code> запускает автономный движок в background
-          (он сам прогонит kickstart → PRD → UC/AC → SRS → planning → dev → verify → integration, ADR-014).
-          При <code>v2</code> движок не стартует — воркеры запускаются вручную через board-run.
+          Запускает автономный движок в background — он сам прогонит
+          kickstart → PRD → UC/AC → SRS → planning → dev → verify → integration, ADR-014.
+          (После cutover saga4 существует один режим <code>saga3-lifecycle</code>;
+          движок стартует всегда.)
         </div>
         <button type="submit" class="btn primary">🚀 Создать и запустить</button>
       </form>
@@ -3808,15 +3809,15 @@ function renderAdmin(projects, flash) {
         if (j.ok) {
           if (action === 'project') location.href = '/?created=' + encodeURIComponent('проект «'+(j.name||'')+'»');
           else if (action === 'idea') {
-            const mode = j.orchestration_mode || 'v2';
-            // Mirrors server-side requiresBackgroundEngine(): any mode except
-            // 'v2' spawns a background engine. 'v3'/'saga2' → Saga2Engine,
-            // 'saga3-discovery' → Saga3 engine. Display-only; the server is the
-            // authority on whether the engine actually started.
-            const hasBgEngine = mode !== 'v2';
+            const mode = j.orchestration_mode || 'saga3-lifecycle';
+            // Mirrors server-side requiresBackgroundEngine(): after the saga4
+            // cutover there is exactly ONE mode ('saga3-lifecycle') and it
+            // always spawns the background engine. Display-only; the server is
+            // the authority on whether the engine actually started.
+            const hasBgEngine = true;
             const engineMsg = hasBgEngine
               ? (j.engine_spawned ? 'движок запущен (' + mode + ', pid=' + j.engine_pid + ')' : 'движок НЕ запущен — проверь лог')
-              : 'движок не стартует в v2 режиме — запусти board-run вручную';
+              : '';
             alert('Проект создан. project=' + j.project_id + ' epic=' + j.epic_id + ' task=' + j.task_id + '\\n' + engineMsg);
             location.href = '?project=' + j.project_id + '&created=' + encodeURIComponent('idea → ' + engineMsg);
           }
@@ -4151,9 +4152,9 @@ function handleEpicCreate(req, res) {
 //   4. episode_workflows row (stage=discovery) — INSERT OR IGNORE
 //   5. discovery.kickstart task (workflow_stage=discovery, exec=saga-kickstart,
 //      tracker_only, priority=critical)
-// Затем, если SAGA_ORCHESTRATION_MODE !== 'v2', spawn'ит orchestrate-cli.js
-// как detached background process. v2 режим — движок не запускается (поведение
-// v2 не меняется, ADR-008/plan §Feature flag).
+// Затем spawn'ит orchestrate-cli.js как detached background process. После
+// cutover saga4 существует один режим 'saga3-lifecycle', и requiresBackgroundEngine()
+// всегда true — движок стартует всегда (раньше v2 режим движок не запускал).
 //
 // Git init НЕ делается здесь — saga-kickstart воркер сам создаст коммит после
 // регистрации brief artifact (см. saga-kickstart SKILL). Это сознательное
