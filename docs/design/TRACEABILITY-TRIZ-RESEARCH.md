@@ -4,6 +4,10 @@
 
 # Архитектурный анализ трассировки артефактов в saga-mcp (ТРИЗ + системный дизайн)
 
+> **Сверка с кодом: 2026-07-30.** Диагноз полностью подтверждён.
+> Найдены 2 ошибки в готовности кодовой базы (см. §9 ниже).
+> Исправления внесены в текст.
+
 ## 0. Фактическая модель (по результатам чтения кода)
 
 Прежде чем формулировать ИКР, зафиксирую факты из кода, потому что они меняют диагноз.
@@ -282,5 +286,50 @@ trace_add(stable_source="req-007/UC/UC-1",
 - `D:\Разработка\saga-mcp\src\process-modules\persistence\sqlite-managed-production-ledger.ts` — `saga3_managed_trace_productions` (стать provenance-event-логом)
 - `D:\Разработка\saga-mcp\src\process-modules\persistence\sqlite-exact-candidate-acceptance.ts:398-481` — `isAcceptedExact` (добавить stable_key join; CAS уже сравнивает content_hash)
 - `D:\Разработка\saga-mcp\src\process-modules\domain\spi\production-envelope.ts:179-183` — `ProductRef` (образец content-addressed reference для реюза)
-- `D:\Разработка\saga-mcp\tracker-view\docs-graph\lib\graph-snapshot.mjs` + `paths.mjs` — существующий path-based identity-слой (кандидат на source-of-truth в Фазе 4)
+- `D:\Разработка\saga-mcp\tracker-view\docs-graph\lib\graph-snapshot.mjs` + `paths.mjs` — path-based identity-слой (wiki-link extraction — TODO, требует реализации перед Фазой 4)
 - `D:\Разработка\saga-mcp\reset-saga-db.mjs` — индикатор корневой проблемы; должен перестать срывать трассировку
+
+---
+
+## §9. Сверка с кодом (2026-07-30)
+
+### Подтверждённые диагнозы (объективно доказаны кодом)
+
+| Утверждение | Доказательство |
+|---|---|
+| Артефакты content-addressable: `artifactDiskHash` SHA-256 от `.md` | `src/helpers/artifact-file.ts:6,30,33`; вызов `artifacts.ts:311` |
+| `ProductRef { schemaId, ref, digest }` — content-addressed, сериализуемый | `production-envelope.ts:179-183` |
+| `matchesFenceRelaxed` существует только ради recovery | 3 вхождения в `src/`, все recovery-контекст |
+| Нет write-time валидации пар типов → UC→UC-1 возможен | `handleTraceAdd` (`artifacts.ts:508-599`) проверяет существование target, не тип |
+| Контракт пар типов — acceptance-time фильтр, не enforcement | `buildContractSnapshot` (`formalization-installation.ts:1178-1218`) |
+
+### 🔴 Ошибка 1: `epic.generation_key` не существует
+
+Документ §8 предлагает использовать `epic.generation_key` как стабильный ключ.
+Поля `generation_key` в таблице `epics` **нет** — оно есть только в `tasks`.
+**Следствие:** для StableKey нужен новый стабильный slug эпизода. Это
+неучтённая работа.
+
+### 🔴 Ошибка 2: docs-graph wiki-link extraction не реализован
+
+Документ §3 (приём #25) и Фаза 4 утверждают, что `tracker-view/docs-graph`
+уже сканирует `.md` через wiki-links. Реальность: `graph-snapshot.mjs:171-174`
+— wiki-link extraction явный TODO. Граф рёбер строится из БД, не из `.md`.
+**Следствие:** Фаза 4 требует реализации wiki-link extraction, не может
+опираться на существующий код.
+
+### 🟡 Неточность 3: `handleTraceAdd` — валидация пар типов
+
+`handleTraceAdd` (`artifacts.ts:508-599`) НЕ проверяет тип target при записи.
+Неверное ребро UC→UC-1 **запишется без ошибки** и проживёт до formalization gate.
+Сам диагноз документа это понимает, но формулировку §6.3 п.2 нужно уточнить:
+валидация пар — **gate-time фильтр**, не write-time enforcement.
+
+### Действия перед использованием документа как план работ
+
+1. §8: `epic.generation_key` → ввести стабильный slug эпизода (новая задача)
+2. §3/#25 и Фаза 4: пометить wiki-link extraction как **требующий реализации**
+3. §6.3 п.2: уточнить — валидация пар сегодня gate-time, не write-time
+4. §7: миграция затрагивает skills + их package-зеркала + call-templates;
+   "принимать оба формата" (id и code) обязательно
+5. Номера строк: `FormalizationCanonicalGraphPort` → 68; `handleTraceAdd` → 508-599
