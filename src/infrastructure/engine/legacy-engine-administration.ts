@@ -2,6 +2,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import Database from 'better-sqlite3';
+import { isProcessAlive } from '../../worker-executions.js';
 import {
   EngineAdministrationError,
   type EngineAdministration,
@@ -41,6 +42,18 @@ export class LegacyEngineAdministration implements EngineAdministration {
   private readonly spawnProcessSync: typeof spawnSync;
   private readonly now: () => Date;
   private readonly platform: NodeJS.Platform;
+
+  /**
+   * Short-lived liveness cache keyed by `${projectId}:${epicId}`. The browser
+   * polls /api/engine/status every ~2s; without this cache, Windows would spawn
+   * a PowerShell subprocess on EVERY tick to verify the engine process tree,
+   * flashing a console window even though `windowsHide:true` is set. The cache
+   * throttles the expensive command-line verification so it runs at most once
+   * per ALIVE_CACHE_MS, while the cheap `process.kill(pid,0)` path still runs
+   * every call and clears the cache instantly when the process dies.
+   */
+  private readonly aliveCache = new Map<string, { at: number; alive: boolean }>();
+  private static readonly ALIVE_CACHE_MS = 5000;
 
   constructor(options: LegacyEngineAdministrationOptions) {
     this.config = options.config;
@@ -282,6 +295,30 @@ export class LegacyEngineAdministration implements EngineAdministration {
   }
 
   private isEngineAlive(projectId: number, epicId: number): boolean {
+    // Fast path: a cheap `process.kill(pid, 0)` check against the persisted
+    // engine PID. This spawns NO subprocess on any platform, so it cannot flash
+    // a console window on the browser's 2s status poll. If the PID is gone, the
+    // engine is definitively dead — invalidate the throttle cache and return.
+    const persisted = this.readPersisted(epicId);
+    const fastAlive = isProcessAlive(persisted.pid);
+    if (!fastAlive) {
+      this.aliveCache.delete(this.aliveCacheKey(projectId, epicId));
+      return false;
+    }
+
+    // The PID exists, but on Windows a PID can be reused by an unrelated
+    // process after the engine died. Verify the command line, but throttle that
+    // expensive verification so PowerShell spawns at most once per ALIVE_CACHE_MS
+    // instead of on every poll tick. `process.kill(pid,0)` already proved the
+    // PID is live, so a cached "alive" within the TTL is still correct.
+    const cacheKey = this.aliveCacheKey(projectId, epicId);
+    const cached = this.aliveCache.get(cacheKey);
+    const nowMs = this.now().getTime();
+    if (cached && nowMs - cached.at < LegacyEngineAdministration.ALIVE_CACHE_MS) {
+      return cached.alive;
+    }
+
+    let verified: boolean = fastAlive;
     try {
       if (this.platform === 'win32') {
         const result = this.spawnProcessSync(
@@ -292,17 +329,24 @@ export class LegacyEngineAdministration implements EngineAdministration {
             + `if ($es) { 'alive' } else { 'dead' }`],
           { encoding: 'utf8', windowsHide: true },
         );
-        return String(result.stdout || '').trim() === 'alive';
+        verified = String(result.stdout || '').trim() === 'alive';
+      } else {
+        const result = this.spawnProcessSync(
+          'pgrep',
+          ['-f', `orchestrate-cli.js ${projectId} ${epicId}`],
+          { encoding: 'utf8' },
+        );
+        verified = result.status === 0;
       }
-      const result = this.spawnProcessSync(
-        'pgrep',
-        ['-f', `orchestrate-cli.js ${projectId} ${epicId}`],
-        { encoding: 'utf8' },
-      );
-      return result.status === 0;
     } catch {
-      return false;
+      verified = false;
     }
+    this.aliveCache.set(cacheKey, { at: nowMs, alive: verified });
+    return verified;
+  }
+
+  private aliveCacheKey(projectId: number, epicId: number): string {
+    return `${projectId}:${epicId}`;
   }
 
   private timestamp(): string {
