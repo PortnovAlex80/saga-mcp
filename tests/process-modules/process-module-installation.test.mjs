@@ -9,8 +9,9 @@
 //       • invalid kind → rejected
 //       • re-registration of same ref → rejected
 //       • catalogued-but-not-installed → require() throws "not installed"
-//   - LegacyEngineExecutorAdapter: thin shim delegates to engine.run + projector
-//   - Helpers: certificateOnlyResult, outputOnlyResult
+//
+// saga4 cutover: the LegacyEngineExecutorAdapter tests were removed (the shim
+// is deleted). The SPI/registry/validation coverage is retained.
 
 import assert from 'node:assert/strict';
 import test from 'node:test';
@@ -20,13 +21,6 @@ const { ProcessModuleInstallationRegistry } = await import(
 );
 const { validateProcessModuleInstallation } = await import(
   '../../dist/process-modules/application/validate-process-module-installation.js'
-);
-const {
-  LegacyEngineExecutorAdapter,
-  certificateOnlyResult,
-  outputOnlyResult,
-} = await import(
-  '../../dist/process-modules/application/legacy-engine-executor-adapter.js'
 );
 const { discoveryProcessModule } = await import(
   '../../dist/process-modules/modules/discovery/discovery-process-module.js'
@@ -45,10 +39,6 @@ function fakeExecutor({ moduleRef, kind = 'legacy-adapter' } = {}) {
       return { outcome: 'go', output: null, certificate: null, authority: null };
     },
   };
-}
-
-function fakeLegacyEngine(result) {
-  return { run: async () => result };
 }
 
 const DISCOVERY_REF = { name: 'product-discovery', version: '3.0.2' };
@@ -160,64 +150,4 @@ test('list() returns all registered installations', () => {
     executor: fakeExecutor({ moduleRef: FORMALIZATION_REF }),
   });
   assert.equal(registry.list().length, 2);
-});
-
-// --- LegacyEngineExecutorAdapter --------------------------------------------
-
-test('LegacyEngineExecutorAdapter is a thin shim: delegates to engine.run + projector', async () => {
-  const engineResult = {
-    projectId: 1, epicId: 2, finalStage: 'discovery', endedAt: 'now',
-    reason: 'completed', cycles: 3, lastError: null,
-    outcome: 'go', outcomeAuthority: 'discovery_settlement_policy',
-    settlement: {
-      status: 'issued', settlementId: 10, certificateId: 11,
-      certificateHash: 'a'.repeat(64), policyVersion: '1.0.0',
-      decision: 'go', reasonCodes: [], error: null,
-    },
-  };
-  const adapter = new LegacyEngineExecutorAdapter({
-    moduleRef: DISCOVERY_REF,
-    engine: fakeLegacyEngine(engineResult),
-    translateCommand: (_module, ctx) => ({
-      projectId: ctx.projectId, epicId: ctx.epicId ?? 0,
-    }),
-    projectOutcome: (_module, result, _ctx) => certificateOnlyResult(
-      'go',
-      {
-        schema: 'saga3.discovery-outcome-certificate.v1',
-        certificateRef: `certificate:${result.settlement.certificateId}`,
-        certificateHash: result.settlement.certificateHash,
-      },
-      'discovery_settlement_policy',
-    ),
-  });
-  assert.equal(adapter.kind, 'legacy-adapter');
-  const runResult = await adapter.execute(discoveryProcessModule, {
-    projectId: 1, epicId: 2, processRunId: 99,
-    inputPayload: {}, inputHash: '0'.repeat(64), initiatedBy: 'test',
-  });
-  assert.equal(runResult.outcome, 'go');
-  assert.equal(runResult.certificate?.certificateRef, 'certificate:11');
-  assert.equal(runResult.authority, 'discovery_settlement_policy');
-  assert.equal(runResult.output, null);
-});
-
-// --- Result helpers ---------------------------------------------------------
-
-test('certificateOnlyResult and outputOnlyResult shape the RunResult correctly', () => {
-  const cert = certificateOnlyResult(
-    'accepted',
-    { schema: 's', certificateRef: 'c:1', certificateHash: 'h' },
-    'formalization_settlement_policy',
-  );
-  assert.equal(cert.output, null);
-  assert.equal(cert.certificate?.certificateRef, 'c:1');
-
-  const out = outputOnlyResult(
-    'completed',
-    { schema: 's', artifactRef: 'a:1', contentHash: 'h' },
-    null,
-  );
-  assert.equal(out.certificate, null);
-  assert.equal(out.output?.artifactRef, 'a:1');
 });

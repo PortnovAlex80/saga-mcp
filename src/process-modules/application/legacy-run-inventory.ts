@@ -108,8 +108,12 @@ export const COMPATIBILITY_PATHS = Object.freeze({
    */
   LEGACY_SCENARIO_ADAPTER: 'legacy-scenario-adapter',
   /**
-   * `application/legacy-engine-executor-adapter.ts`: bridges the legacy
-   * process-module engine into the new node-executor surface.
+   * `application/legacy-engine-executor-adapter.ts`: RETIRED in the saga4
+   * cutover (Phase 3 deleted the adapter — it was dead code with zero value
+   * importers). Kept in the enum as a HISTORICAL record so the append-only
+   * inventory ledger can still classify uses recorded before the retirement
+   * without breaking the `(path, reason)` contract. No live run can record a
+   * new use of this path.
    */
   LEGACY_ENGINE_EXECUTOR: 'legacy-engine-executor-adapter',
   /**

@@ -8,7 +8,6 @@ import Database from 'better-sqlite3';
 const { loadSagaRuntimeConfig } = await import(
   '../../dist/runtime/saga-runtime-config.js'
 );
-const { Saga2Engine } = await import('../../dist/engines/saga2-engine.js');
 const { createSagaApplication } = await import(
   '../../dist/application/saga-application.js'
 );
@@ -73,50 +72,6 @@ test('runtime config preserves defaults and environment precedence', () => {
   });
 
   assert.throws(() => loadSagaRuntimeConfig({}), /DB_PATH env var is required/);
-});
-
-test('Saga2Engine owns the pump and consumes only injected runtime ports', async () => {
-  const heartbeats = [];
-  const patches = [];
-  let workerFactoryCalls = 0;
-  const host = {
-    processId: 77,
-    workerPaths: { sagaEntry: '/dist/index.js', sagaSkillRoot: '/skills' },
-    now: () => Date.parse('2026-07-23T00:00:00.000Z'),
-    sleep: async () => {},
-    heartbeat(context, event, message) { heartbeats.push([context, event, message]); },
-    acquireEngineLock: () => ({ status: 'duplicate', ownerPid: 123 }),
-    releaseEngineLock: () => { throw new Error('duplicate run must not release another owner lock'); },
-    scanRateLimitSignals: () => 0,
-  };
-  const persistence = {
-    episodes: {
-      readTargetConcurrency: (_epicId, fallback) => fallback,
-      patchMetadata: (epicId, patch) => patches.push([epicId, patch]),
-      currentStage: () => 'development',
-    },
-    tasks: {},
-    executions: {},
-    workspaces: {},
-  };
-  const engine = new Saga2Engine({
-    config: fullConfig(),
-    host,
-    persistence,
-    workerExecutorFactory: () => {
-      workerFactoryCalls += 1;
-      throw new Error('duplicate engine must not construct worker runtime');
-    },
-  });
-
-  const result = await engine.run({ projectId: 11, epicId: 22, concurrency: 3 });
-  assert.equal(result.reason, 'failed');
-  assert.equal(result.finalStage, 'development');
-  assert.match(result.lastError, /PID 123/);
-  assert.equal(workerFactoryCalls, 0);
-  assert.equal(heartbeats[0][1], 'DUPLICATE_EXIT');
-  assert.equal(patches[0][0], 22);
-  assert.equal(patches[0][1].engine_rejected, true);
 });
 
 test('Node Saga2 host runtime owns lock, heartbeat and rate-limit telemetry', () => {
@@ -501,18 +456,6 @@ test('tracker uses extracted ports and preserves the LM Studio hard rule fix', (
   assert.match(source, /CLAUDE_SETTINGS_LMSTUDIO_TPL/);
 });
 
-
-test('orchestration pump has no direct persistence access after Phase B item 5', () => {
-  const source = readFileSync(path.resolve(import.meta.dirname, '..', '..', 'src', 'orchestrate.ts'), 'utf8');
-  assert.doesNotMatch(source, /\bgetDb\b/);
-  assert.doesNotMatch(source, /\.prepare\s*\(/);
-  assert.doesNotMatch(source, /reconcileWorkerExecutions/);
-  assert.match(source, /Saga2RuntimePersistence/);
-  assert.match(source, /persistence\.episodes/);
-  assert.match(source, /persistence\.tasks/);
-  assert.match(source, /persistence\.executions/);
-  assert.match(source, /persistence\.workspaces/);
-});
 
 test('worker model route preserves provider and effort from episode persistence', () => {
   const port = readFileSync(path.resolve(import.meta.dirname, '..', '..', 'src', 'application', 'ports', 'worker-executor.ts'), 'utf8');

@@ -3,6 +3,13 @@ import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
 
+// saga4 cutover: this file characterises the SHARED runtime infrastructure
+// (host runtime, persistence repositories, worker factory, model route,
+// tracker-view board projection). The pump-characterisation tests
+// (src/orchestrate.ts, src/engines/saga2-engine.ts, tests/e2e-pipeline.test.mjs)
+// were removed in Phase 3 — the legacy Saga2 engine is gone; saga3 e2e coverage
+// lives in tests/execution/* and tests/process-modules/*.
+
 const root = path.resolve(import.meta.dirname, '..', '..');
 const read = relativePath => readFileSync(path.join(root, relativePath), 'utf8');
 
@@ -10,7 +17,6 @@ const requiredFiles = [
   'src/index.ts',
   'src/db.ts',
   'src/schema.ts',
-  'src/orchestrate.ts',
   'src/orchestrate-cli.ts',
   'src/tools/dispatcher.ts',
   'src/tools/lifecycle.ts',
@@ -27,7 +33,6 @@ const requiredFiles = [
   'tracker-view/claude-runner.mjs',
   'tests/mock-claude.mjs',
   'tests/product-workflow.test.mjs',
-  'tests/e2e-pipeline.test.mjs',
 ];
 
 function assertIncludesAll(text, values, surface) {
@@ -46,53 +51,16 @@ test('Saga 2 package entrypoints remain compatible', () => {
   assert.equal(pkg.scripts.tracker, 'node tracker-view/tracker-view.mjs');
   assert.equal(pkg.scripts['docs-graph'], 'node tracker-view/docs-graph/server.mjs');
   assert.equal(pkg.scripts.test, 'tsc && node --test');
-  assert.equal(pkg.scripts['test:e2e'], 'tsc && node --test tests/e2e-pipeline.test.mjs');
   assert.equal(
     pkg.scripts['mock:run'],
     'SAGA_CLAUDE_PATH="node tests/mock-claude.mjs" node dist/orchestrate-cli.js',
   );
 });
 
-test('Saga 2 cross-process runtime files remain present', () => {
+test('Shared runtime files remain present', () => {
   for (const relativePath of requiredFiles) {
     assert.ok(existsSync(path.join(root, relativePath)), `missing stable runtime surface: ${relativePath}`);
   }
-});
-
-test('orchestration keeps its stable decision and lifecycle anchors', () => {
-  const source = read('src/orchestrate.ts');
-  assertIncludesAll(source, [
-    'workerExecutorFactory',
-    'persistence',
-    'host: Saga2HostRuntime',
-    'opts.host.acquireEngineLock(context)',
-    'opts.host.releaseEngineLock(context)',
-    'opts.host.scanRateLimitSignals',
-    'generateNextForCompletedTask',
-    'lifecycleHandlers',
-    "discovery: 'formalization'",
-    "formalization: 'planning'",
-    "planning: 'development'",
-    "development: 'verification'",
-    "verification: 'integration'",
-    "integration: 'completed'",
-  ], 'src/orchestrate.ts');
-});
-
-test('orchestration pump contains decisions but no host implementation mechanics', () => {
-  const source = read('src/orchestrate.ts');
-  for (const forbidden of [
-    "from 'node:fs'", "from 'node:os'", "from 'node:path'",
-    'process.pid', 'process.kill', 'Date.now', 'setTimeout(',
-    'readFileSync(', 'writeFileSync(', 'readdirSync(', 'openSync(',
-  ]) {
-    assert.ok(!source.includes(forbidden), `orchestrate.ts retained host mechanic: ${forbidden}`);
-  }
-  const engine = read('src/engines/saga2-engine.ts');
-  assertIncludesAll(engine, [
-    'orchestrate({', 'workerExecutorFactory', 'persistence', 'host',
-  ], 'src/engines/saga2-engine.ts');
-  assert.ok(!engine.includes('LegacySaga2Runner'), 'Saga2Engine still depends on legacy bridge');
 });
 
 test('Node host adapter preserves PID, heartbeat and JSONL contracts', () => {
@@ -191,16 +159,7 @@ test('tracker keeps the stable board, artifact, workflow, and worker projection'
   ], 'tracker-view/tracker-view.mjs');
 });
 
-test('existing behavioral suites remain part of the Phase A safety net', () => {
-  const e2e = read('tests/e2e-pipeline.test.mjs');
-  assertIncludesAll(e2e, [
-    'verification',
-    'integration',
-    "assert.equal(episode.stage, 'completed'",
-    "assert.equal(v.status, 'done'",
-    "assert.equal(i.status, 'done'",
-  ], 'tests/e2e-pipeline.test.mjs');
-
+test('product-workflow characterization suite remains present', () => {
   const workflow = read('tests/product-workflow.test.mjs');
   assert.ok(workflow.length > 1000, 'product workflow characterization suite unexpectedly disappeared');
 });
