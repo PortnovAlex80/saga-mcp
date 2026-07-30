@@ -25,7 +25,6 @@ import { definitions as exportImportDefs, handlers as exportImportHandlers } fro
 import { definitions as dispatcherDefs, handlers as dispatcherHandlers } from './tools/dispatcher.js';
 import { definitions as artifactDefs, handlers as artifactHandlers } from './tools/artifacts.js';
 import { definitions as repositoryDefs, handlers as repositoryHandlers } from './tools/repositories.js';
-import { definitions as workflowDefs, handlers as workflowHandlers } from './tools/workflow.js';
 import { definitions as lifecycleDefs, handlers as lifecycleHandlers } from './tools/lifecycle.js';
 import { definitions as observationDefs, handlers as observationHandlers } from './tools/observations.js';
 import { definitions as conflictDefs, handlers as conflictHandlers } from './tools/conflicts.js';
@@ -96,7 +95,6 @@ const ALL_TOOLS: Tool[] = [
   ...dispatcherDefs,
   ...artifactDefs,
   ...repositoryDefs,
-  ...workflowDefs,
   ...lifecycleDefs,
   ...observationDefs,
   ...conflictDefs,
@@ -126,7 +124,6 @@ const ALL_HANDLERS: Record<string, (args: Record<string, unknown>) => unknown> =
   ...dispatcherHandlers,
   ...artifactHandlers,
   ...repositoryHandlers,
-  ...workflowHandlers,
   ...lifecycleHandlers,
   ...observationHandlers,
   ...conflictHandlers,

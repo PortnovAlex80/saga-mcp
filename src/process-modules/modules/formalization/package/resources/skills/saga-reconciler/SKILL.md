@@ -14,19 +14,23 @@ Same as saga-worker — use the assignment's product, epic, repository.
   required traces; contradictions are reported; the AC baseline is ready for
   the kernel snapshot. The episode is then ready for the `baseline_accepted`
   transition, which spawns the `formalization.srs` task (HOW side).
-- **Called by (вызывается):** saga-engine via `ac_accepted` workflow transition
-  (workflow.ts: `formalization.ac` done → spawns `formalization.reconciliation`)
-- **Next enables (что разблокирует):** `baseline_accepted` transition →
-  spawns `formalization.srs` task → after SRS accepted → episode_transition
-  (formalization → planning).
+- **Called by (вызывается):** the Formalization Process Module flow. After AC
+  work is done, the `resolve-reconciliation` kernel node runs and drives this
+  reconciliation task.
+- **Next enables (что разблокирует):** when the reconciliation kernel node
+  returns `domain.reconciled`, the AC baseline is frozen and the
+  `settle-formalization` kernel node runs the settlement policy. If the full
+  graph (including SRS, written after baseline) is complete and consistent, the
+  settlement issues a `formalized` certificate and the Lifecycle Orchestrator
+  routes to Development.
 
 > **Pipeline (reordered, ADR-013).** Baseline AC is frozen BEFORE SRS exists.
 > The architect then writes SRS with full knowledge of the frozen AC + the
-> brief's complexity.tshirt. The formalization→planning episode_transition
-> gate runs LATER, after the SRS task is also done — and `assertTasksReady
-> ('formalization')` enforces that the SRS task reached `done`. The
-> `assertTraceability` gate at formalization→planning then checks ALL edges
-> including SRS → PRD (the architect must add that edge when registering SRS).
+> brief's complexity.tshirt. The Formalization settlement policy
+> (`findFirstTraceabilityGap` in `sqlite-formalization-kernel.ts`) runs at
+> certificate time — it checks ALL edges including SRS → PRD (the architect
+> must add that edge when registering SRS). If any edge is missing, the
+> decision is `inconsistent` and no `formalized` certificate is issued.
 
 ## Why this skill exists
 
@@ -50,9 +54,10 @@ PRD
 
 Producer-skills (saga-product/analyst) are supposed to create these edges via
 `trace_add` at artifact creation time. In practice, edges sometimes get skipped
-(LLM omits a step, worker crashes mid-task, manual edits). The
-formalization→planning gate (`assertTraceability` in lifecycle.ts) then rejects
-the transition with a specific gap message.
+(LLM omits a step, worker crashes mid-task, manual edits). The Formalization
+settlement policy (`findFirstTraceabilityGap` in `sqlite-formalization-kernel.ts`)
+then detects the gap at certificate time and returns `inconsistent` — no
+`formalized` certificate is issued until the gap is repaired.
 
 This skill is the repair path for the WHAT side. It:
 1. Enumerates every WHAT-side artifact in the epic (brief, PRD, FR, NFR, RULE,
@@ -60,12 +65,13 @@ This skill is the repair path for the WHAT side. It:
 2. Checks each canonical edge against `artifact_traces`.
 3. Adds missing edges via `trace_add` where the parent is unambiguous.
 4. Accepts draft WHAT-side artifacts after traces are complete.
-5. Stamps the AC baseline hash (computed by `acceptedBaseline` from all accepted
-   AC `accepted_hash` values).
+5. Stamps the AC baseline hash (computed by `readAcceptanceBaselineHash` from
+   all accepted AC `accepted_hash` values).
 6. Reports what it did via `worker_done`.
 
 SRS lineage (SRS → PRD) is repaired LATER by saga-architect when registering
-the SRS, and checked by `assertTraceability` at the formalization→planning gate.
+the SRS, and checked by the settlement policy's `findFirstTraceabilityGap` at
+certificate time.
 
 ## Procedure
 

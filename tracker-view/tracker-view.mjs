@@ -18,7 +18,6 @@ import { createHash } from 'node:crypto';
 import os from 'node:os';
 import { handlers as dispatcherHandlers } from '../dist/tools/dispatcher.js';
 import { handlers as repositoryHandlers } from '../dist/tools/repositories.js';
-import { handlers as lifecycleHandlers } from '../dist/tools/lifecycle.js';
 import { createClaudeBoardRunner } from './claude-runner.mjs';
 import {
   artifactFallbackDocument,
@@ -29,7 +28,7 @@ import { releaseExecutionAtomically } from '../dist/lifecycle/atomic-release.js'
 import { getDb as ensureSagaDb, closeDb as closeSagaDb } from '../dist/db.js';
 import { createSagaControlApplication } from '../dist/app/composition-root.js';
 import { loadSagaRuntimeConfig } from '../dist/runtime/saga-runtime-config.js';
-import { requiresBackgroundEngine, isSaga3DiscoveryMode } from '../dist/runtime/orchestration-mode.js';
+import { requiresBackgroundEngine } from '../dist/runtime/orchestration-mode.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const require = createRequire(import.meta.url);
@@ -2862,11 +2861,6 @@ function handleSagaOperation(req, res, operation) {
           ...fields,
           project_repository_id: Number(fields.project_repository_id),
         });
-      } else if (operation === 'episode_transition') {
-        result = lifecycleHandlers.episode_transition({
-          epic_id: Number(fields.epic_id),
-          to_stage: fields.to_stage,
-        });
       } else {
         throw new Error(`Unknown operation ${operation}`);
       }
@@ -4220,35 +4214,18 @@ function handleProjectCreateFromIdea(req, res) {
         // 4. episode_workflows — discovery stage
         db.prepare('INSERT OR IGNORE INTO episode_workflows (epic_id) VALUES (?)').run(epicId);
 
-        // 5. Discovery task projection. For v2/v3/saga2 (legacy flow): create
-        //    the discovery.kickstart task; the saga-orchestrator/kickstart skill
-        //    drives the rest. For saga3-discovery: the bootstrap creates NO
-        //    task — the Saga3DiscoveryEngine projects its own discovery.work
-        //    task from a WorkIntent. Creating a legacy kickstart here would let
-        //    the board runner claim it instead of the engine's task (race), so
-        //    it is deliberately skipped.
-        let taskId = null;
-        if (!isSaga3DiscoveryMode(runtimeConfig.orchestrationMode)) {
-          const taskInfo = db.prepare(
-            `INSERT INTO tasks
-               (epic_id, title, description, status, priority, task_kind, workflow_stage,
-                execution_skill, review_skill, execution_mode, tags, metadata)
-             VALUES (?, ?, ?, 'todo', 'critical', 'discovery.kickstart', 'discovery',
-                     'saga-kickstart', 'saga-requirements-reviewer', 'tracker_only', ?, '{}')`,
-          ).run(
-            epicId,
-            `Discovery: ${idea}`,
-            JSON.stringify({ idea }),
-            JSON.stringify(['stage:discovery', 'kind:discovery.kickstart', 'role:discovery']),
-          );
-          taskId = Number(taskInfo.lastInsertRowid);
-        }
-
+        // saga4 cutover: the legacy discovery.kickstart task is NO LONGER
+        // created by the bootstrap. After the cutover the Lifecycle Orchestrator
+        // (spawned below via orchestrate-cli = lifecycle runtime) owns task
+        // projection: the Discovery Process Module projects its own discovery
+        // WorkIntent/task from the lifecycle input. A legacy kickstart here
+        // would be an unclaimable orphan (no process_run_id) and a parallel
+        // path to the lifecycle Discovery node.
         db.prepare(
           "INSERT INTO activity_log (entity_type, entity_id, action, summary) VALUES ('project', ?, 'created', ?)"
         ).run(projectId, `Создан проект «${name}» через веб-форму idea → engine`);
 
-        return { projectId, repoId, epicId, taskId };
+        return { projectId, repoId, epicId, taskId: null };
       });
 
       if (result.dup) {

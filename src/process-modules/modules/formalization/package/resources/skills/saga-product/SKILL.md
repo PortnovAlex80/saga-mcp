@@ -20,7 +20,7 @@ canonical; `projectname.txt` is legacy fallback only.
 - **Postcondition (постусловие):** PRD/FR/NFR/RULE candidates and required
   traces created in `draft`/`in_review`; after review, the common kernel gate
   atomically accepts their exact ids and hashes for saga-analyst.
-- **Called by (вызывается):** saga-orchestrator (Этап 2)
+- **Called by (вызывается):** the Lifecycle Orchestrator via the Formalization module flow (Этап 2 — PRD)
 - **Next enables (что разблокирует):** saga-analyst (UC — пишет use cases из FR) → saga-analyst (AC) → saga-reconciler → saga-architect (SRS после замороженных AC)
 - **Проверь precondition:** если brief не accepted (не принят) или decision≠go → STOP, не пиши PRD
 

@@ -28,7 +28,7 @@ traces.
 - **Postcondition (AC):** AC candidates and traces submitted as draft; the
   resolver + common kernel gate accept the reviewed exact versions before
   reconciliation → baseline → SRS.
-- **Called by (вызывается):** saga-orchestrator (Stage 3 for UC right after PRD; Stage 4 for AC after UC; SRS only after baseline)
+- **Called by (вызывается):** the Lifecycle Orchestrator via the Formalization module flow (UC right after PRD; AC after UC; SRS only after baseline)
 - **Next enables:** UC done → saga-analyst (AC). AC done → saga-reconciler (baseline freeze) → saga-architect (SRS).
 - **Verify precondition:** if you are about to write UC but PRD is not accepted → STOP. If you are about to write AC but UC is not accepted → STOP. Never write AC against SRS — SRS does not exist yet at this stage.
 - **Role-collision guard (защита от конфликта ролей):** never write AC during a UC task (and vice versa). One task = one role.

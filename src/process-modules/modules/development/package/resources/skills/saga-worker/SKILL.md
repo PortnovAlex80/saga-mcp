@@ -10,7 +10,7 @@ description: "Execute exactly one dispatcher-assigned task for one logical produ
 - **Stage (этап):** 6-Execution (рой, после planning) ИЛИ 7-AC-verification (role:reviewer, tag:ac-verification)
 - **Precondition (предусловие):** dev-задачи в статусе todo (созданы planner'ом). Проверь: `task_list({status:'todo', epic_id})` → не пусто.
 - **Postcondition (постусловие):** задача done + merged в dev (для dev-задачи) ИЛИ verified_by trace (для AC-verification)
-- **Called by (вызывается):** saga-dispatch (execution loop — цикл выполнения) ИЛИ saga-orchestrator напрямую (одна задача)
+- **Called by (вызывается):** saga-dispatch (execution loop — цикл выполнения) ИЛИ the Lifecycle Orchestrator (одна задача — one task = one launch)
 - **Next enables (что разблокирует):** следующая задача в очереди (через worker_next). AC-verification → INTEGRATE.
 - **Проверь precondition:** если очередь пуста → сообщи "no tasks" (нет задач), не выдумывай работу.
 - **Solo-worker (соло-воркер):** один launch (запуск) = одна задача (claim → work → done → stop). Цикл = saga-dispatch.

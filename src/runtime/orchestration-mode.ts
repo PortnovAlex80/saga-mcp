@@ -74,17 +74,6 @@ export function requiresBackgroundEngine(_mode: OrchestrationMode): boolean {
 }
 
 /**
- * Does this mode select the Saga 3 Discovery engine? Retained as a named
- * helper because tracker-view imports it to suppress the legacy kickstart task
- * in discovery mode. The composition root no longer branches on it — the
- * lifecycle runtime is always returned — but the frontend spawn path still
- * reads it.
- */
-export function isSaga3DiscoveryMode(mode: OrchestrationMode): boolean {
-  return mode === 'saga3-discovery' || mode === 'saga3-discovery-generic';
-}
-
-/**
  * The composition root always builds the Product Lifecycle runtime now. Kept as
  * a named predicate so the composition-root call site stays self-documenting.
  */

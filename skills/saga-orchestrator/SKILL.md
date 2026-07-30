@@ -1,9 +1,18 @@
 ---
 name: saga-orchestrator
-description: "Orchestrate one logical product from Discovery through formalization, planning, repository-scoped execution, verification, and integration. Use when the user asks to start or continue the complete Saga flow."
+description: "DEPRECATED after saga4 cutover. Orchestrate one logical product from Discovery through formalization, planning, repository-scoped execution, verification, and integration. Use when the user asks to start or continue the complete Saga flow."
 ---
 
 # saga-orchestrator — единый запуск saga-flow
+
+> **DEPRECATED (saga4 cutover).** This skill drove the legacy Saga 2 stage
+> machine via `episode_transition` MCP calls and the `workflow_generate_next`
+> task-kind ladder. Both are DELETED. After the cutover, the Lifecycle
+> Orchestrator (a runtime component, not a skill) moves an epic through its
+> stages; the Process Modules (Discovery/Formalization/Development/Delivery)
+> own task projection and settlement. Do NOT follow the `episode_transition`
+> instructions below — they reference a tool that no longer exists. This file
+> is retained only as historical documentation of the legacy flow.
 
 ## Typed product workflow (типизированный продуктовый рабочий процесс; REQ-007)
 

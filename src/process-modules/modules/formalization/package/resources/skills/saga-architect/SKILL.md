@@ -19,22 +19,21 @@ live inside the PRD. You produce the **SRS only** (architectural contract +
 ## Flow position (saga-flow — позиция в потоке)
 
 - **Stage (этап):** Formalization Part 2 (HOW — **после** formalization Part 1 / WHAT).
-- **Precondition (предусловие):** `baseline_accepted` — AC baseline is frozen AND
-  accepted. Pipeline order is:
-  `discovery.kickstart → formalization.prd → formalization.uc → formalization.ac
-   → formalization.reconciliation → baseline_accepted → formalization.srs`
-  (this task). Verify before claiming:
+- **Precondition (предусловие):** the AC baseline is frozen (the Formalization
+  reconciliation kernel node returned `domain.reconciled`). Pipeline order is:
+  `Discovery → Formalization (PRD → UC → AC → reconciliation → SRS)`. The
+  Formalization module flow projects this SRS task after the reconciliation
+  kernel node completes. Verify before claiming:
   ```
   artifact_list({ epic_id, type:'AC', status:'accepted' })
   ```
-  must return ≥1 accepted AC, and `episode_status({ epic_id })` must report
-  the executable stage past `baseline_accepted`.
+  must return ≥1 accepted AC with a frozen baseline hash.
 - **Postcondition (постусловие):** SRS artifact drafted (status='in_review'),
   containing §2.1 (style chosen by Complexity Gate), §2.2 (module manifest),
   §2b (ports if any), §2.3 (invariants), §2.5 (test strategy), §7 (glossary),
   §9 (tech stack), and **§D Decomposition** (§D1 file tree, §D2 AC→impl map,
   §D3 priority rationale, §D4 pattern selection). One `derived_from` edge → PRD.
-- **Called by (вызывается):** saga-orchestrator (Formalization Part 2 stage)
+- **Called by (вызывается):** the Lifecycle Orchestrator via the Formalization module flow (Part 2 — SRS, after baseline)
 - **Parallel with (параллельно с):** nothing. SRS is now sequential after the
   AC baseline; saga-analyst's UC/AC work is already done.
 - **Next enables (что разблокирует):** `srs_accepted` transition, which spawns

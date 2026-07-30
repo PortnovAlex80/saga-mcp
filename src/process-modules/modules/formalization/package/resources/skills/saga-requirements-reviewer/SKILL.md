@@ -39,8 +39,9 @@ complete, traceable artifact — not that the prose is pretty.
 > `artifact_traces` is `source_id=AC.id, target_id=FR.id, link_type='derived_from'`.
 > The gate queries by `target.type='FR'` within the epic — it does not care
 > whether that FR's parent is the PRD or the SRS. After ADR-013 the FR's parent
-> is the PRD; the edge itself is identical. **No change to `assertTraceability`
-> is required for AC→FR.** The only thing that changed is WHO creates the FR
+> is the PRD; the edge itself is identical. **No change to the Formalization
+> settlement policy (`findFirstTraceabilityGap`) is required for AC→FR.** The
+> only thing that changed is WHO creates the FR
 > (saga-product instead of saga-architect) and WHERE in the pyramid it lives.
 
 ## Review procedure
@@ -110,9 +111,9 @@ complete, traceable artifact — not that the prose is pretty.
    All must return `gaps: []`.
 
    **Do NOT check SRS coverage at reconciliation time.** The SRS does not
-   exist yet — it is spawned by the `baseline_accepted` transition AFTER the
-   reconciler finishes. SRS lineage (SRS → PRD) is checked much later, by
-   `assertTraceability` at the formalization→planning episode gate, and the
+   exist yet — it is projected by the Formalization flow AFTER the reconciler
+   finishes. SRS lineage (SRS → PRD) is checked at certificate time by the
+   Formalization settlement policy (`findFirstTraceabilityGap`), and the
    SRS document itself is reviewed by `saga-architecture-reviewer` (a
    different skill).
 
@@ -142,8 +143,8 @@ complete, traceable artifact — not that the prose is pretty.
   AC must read SRS §2.3 Invariant Registry is gone — invariants now come from
   RULE artifacts under the PRD.
 - **Do not require FR/NFR to be children of SRS.** FR/NFR are children of PRD
-  (saga-product registers them). The `target.type='FR'` check in
-  `assertTraceability` does not care about the FR's parent.
+  (saga-product registers them). The `target.type='FR'` check in the settlement
+  policy's `findFirstTraceabilityGap` does not care about the FR's parent.
 - **Do not call `worker_next`.** You have exactly one task.
 - **Do not modify the artifact document.** If content is wrong, return
   `changes_requested` with file:line specifics.
