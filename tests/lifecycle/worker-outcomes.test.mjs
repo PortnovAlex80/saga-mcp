@@ -256,6 +256,56 @@ test('audit-fix: after changes_requested, a different worker can claim the task'
   assert.notEqual(after.current_execution_id, 'exec-rev-2', 'fresh execution, not the reviewer\'s');
 });
 
+test('managed review budget blocks a non-converging task after exhaustion', () => {
+  const { epic } = makeProject();
+  const t = makeTask(epic.id);
+  getDb().prepare(
+    `UPDATE tasks
+        SET metadata=json_set(COALESCE(metadata, '{}'), '$.managed_review_budget', 2)
+      WHERE id=?`,
+  ).run(t.id);
+
+  claimWithFence(t.id, 'reviewer-budget-1', 'exec-budget-1', 'review_in_progress');
+  const first = dispatcher.worker_done({
+    task_id: t.id,
+    worker_id: 'reviewer-budget-1',
+    result: 'first actionable rejection',
+    verdict: 'changes_requested',
+    execution_id: 'exec-budget-1',
+  });
+  assert.equal(first.completed_new_status, 'todo');
+
+  getDb().prepare(
+    `UPDATE worker_executions SET state='exited', finished_at=datetime('now')
+      WHERE execution_id='exec-budget-1'`,
+  ).run();
+  claimWithFence(t.id, 'reviewer-budget-2', 'exec-budget-2', 'review_in_progress');
+  const second = dispatcher.worker_done({
+    task_id: t.id,
+    worker_id: 'reviewer-budget-2',
+    result: 'second actionable rejection',
+    verdict: 'changes_requested',
+    execution_id: 'exec-budget-2',
+  });
+
+  assert.equal(second.completed_new_status, 'blocked');
+  assert.match(second.stop_reason, /budget exhausted/);
+  const row = getDb().prepare(
+    `SELECT status, assigned_to,
+            json_extract(metadata, '$.managed_review_rejections') rejections,
+            json_extract(metadata, '$.managed_review_last_feedback') feedback,
+            json_extract(metadata, '$.managed_review_exhausted') exhausted
+       FROM tasks WHERE id=?`,
+  ).get(t.id);
+  assert.deepEqual(row, {
+    status: 'blocked',
+    assigned_to: null,
+    rejections: 2,
+    feedback: 'second actionable rejection',
+    exhausted: 1,
+  });
+});
+
 // ---------------------------------------------------------------------------
 // 7. Unit tests for the idempotency helpers themselves.
 // ---------------------------------------------------------------------------

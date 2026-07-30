@@ -981,9 +981,13 @@ export class ClaudeBoardRunner {
         task.status === 'review' &&
         taskState?.status === 'todo' &&
         !taskState.assigned_to;
+      const reviewExhausted = code === 0 &&
+        task.status === 'review' &&
+        taskState?.status === 'blocked' &&
+        !taskState.assigned_to;
       const captureOutcome = completed && code === 0
         ? 'completed'
-        : changesRequested
+        : changesRequested || reviewExhausted
           ? 'changes_requested'
           : 'failed';
 
@@ -1012,6 +1016,10 @@ export class ClaudeBoardRunner {
         run.completed += 1;
         this.heartbeat(run, execution, 'CLOSED',
           `exit=0 changes_requested → returned to dev queue`);
+      } else if (reviewExhausted) {
+        run.completed += 1;
+        this.heartbeat(run, execution, 'CLOSED',
+          'exit=0 changes_requested → review budget exhausted; task blocked');
       } else {
         run.failed += 1;
         run.lastError = `Task ${task.id} Claude process exited with code ${code} before terminal worker_done`;

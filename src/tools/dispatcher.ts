@@ -720,9 +720,33 @@ function handleWorkerNext(args: Record<string, unknown>): {
   };
 }
 
+function parseTaskMetadataRecord(raw: string | null | undefined): Record<string, unknown> {
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+function positiveIntegerOrNull(value: unknown): number | null {
+  return typeof value === 'number' && Number.isInteger(value) && value > 0
+    ? value
+    : null;
+}
+
+function nonNegativeInteger(value: unknown): number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0
+    ? value
+    : 0;
+}
+
 function handleWorkerDone(args: Record<string, unknown>): {
   completed: number;
-  completed_new_status: 'review' | 'done' | 'todo';
+  completed_new_status: 'review' | 'done' | 'todo' | 'blocked';
   active_tasks?: Array<{
     task_id: number;
     title: string;
@@ -818,7 +842,7 @@ function handleWorkerDone(args: Record<string, unknown>): {
     //    задачу в todo (это создаёт бесконечный цикл — verifier не может
     //    фиксить product bugs). Вместо этого задача закрывается как done с
     //    пометкой verification_outcome=failed в metadata.
-    let newStatus: 'review' | 'done' | 'todo';
+    let newStatus: 'review' | 'done' | 'todo' | 'blocked';
     let newAssignedTo: string | null; // кому уходит задача после перевода
     if (task.status === 'in_progress') {
       // Discovery-only tasks (discovery.work, discovery.assess, discovery.diagnose,
@@ -863,8 +887,44 @@ function handleWorkerDone(args: Record<string, unknown>): {
             newAssignedTo = null;
           }
         } else {
-          newStatus = 'todo';          // non-verification: normal changes_requested
+          const metadata = parseTaskMetadataRecord(task.metadata);
+          const reviewBudget = positiveIntegerOrNull(
+            metadata.managed_review_budget,
+          );
+          const historical = db.prepare(
+            `SELECT COUNT(*) AS count
+               FROM command_receipts
+              WHERE task_id=?
+                AND command_kind='worker_done'
+                AND accepted=1
+                AND command_id LIKE '%:worker-done:changes_requested'`,
+          ).get(taskId) as { count: number };
+          const rejectionCount =
+            Math.max(
+              nonNegativeInteger(metadata.managed_review_rejections),
+              historical.count,
+            ) + 1;
+          const exhausted =
+            reviewBudget !== null && rejectionCount >= reviewBudget;
+          newStatus = exhausted ? 'blocked' : 'todo';
           newAssignedTo = null;
+          db.prepare(
+            `UPDATE tasks
+                SET metadata=json_set(
+                  CASE WHEN json_valid(metadata) THEN metadata ELSE '{}' END,
+                  '$.managed_review_rejections', ?,
+                  '$.managed_review_last_feedback', ?,
+                  '$.managed_review_last_execution_id', ?,
+                  '$.managed_review_exhausted', ?
+                )
+              WHERE id=?`,
+          ).run(
+            rejectionCount,
+            result,
+            args.execution_id ?? null,
+            exhausted ? 1 : 0,
+            taskId,
+          );
         }
       } else {
         newStatus = 'done';            // цикл ревью завершён (APPROVED)
@@ -1021,7 +1081,9 @@ function handleWorkerDone(args: Record<string, unknown>): {
       // отдаёт следующую задачу — без этого сигнала воркер мог бы попытаться
       // продолжить цикл. Сага говорит чётко: стоп.
       stop: true,
-      stop_reason: 'task completed — stop now and return your summary',
+      stop_reason: newStatus === 'blocked'
+        ? 'review correction budget exhausted — task blocked; stop now'
+        : 'task completed — stop now and return your summary',
     };
 
     // Slice 4: record the receipt inside this transaction so the side effects

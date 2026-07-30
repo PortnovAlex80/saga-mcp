@@ -128,6 +128,8 @@ export interface LmNodeExecutionPersistence {
     nodeInputHash: string;
     /** Optional project_repository_id to stamp alongside the lineage. */
     projectRepositoryId?: number | null;
+    /** Optional generic reviewer-correction budget. */
+    managedReviewBudget?: number | null;
   }): void;
 
   setIntentStatus(
@@ -343,6 +345,9 @@ export class LmNodeExecutor implements NodeExecutor {
           profile.artifactAcceptanceAuthority ?? 'worker',
         recoveryFeedback,
         projectRepositoryId: resolvedRepositoryId,
+        managedReviewBudget: profile.reviewSkill
+          ? profile.retryPolicy.maxAttempts
+          : null,
       });
 
       let intent: { id: number };
@@ -431,6 +436,9 @@ export class LmNodeExecutor implements NodeExecutor {
         // bindProjectedTaskProcessContext already accepts arbitrary metadata
         // keys; project_repository_id is one such reserved key it merges in.
         projectRepositoryId: finalRepositoryId,
+        managedReviewBudget: profile.reviewSkill
+          ? profile.retryPolicy.maxAttempts
+          : null,
       });
 
       // 3. Prepare (CAS open→executing guard) — handles resume of a stale fence.
@@ -624,7 +632,10 @@ export class LmNodeExecutor implements NodeExecutor {
         };
       }
       this.persistence.setIntentStatus(intent.id, 'executing', 'paused');
-      const runtimeEvent = terminal === 'stopped' || terminal === 'timeout'
+      const runtimeEvent =
+        terminal === 'stopped'
+        || terminal === 'timeout'
+        || terminal === 'task_blocked'
         ? 'paused'
         : 'failed';
       const finalExecutionId = executionId ?? this.persistence.readLatestExecutionId(taskId);

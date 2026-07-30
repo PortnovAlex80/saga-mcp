@@ -154,6 +154,7 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
     nodeInput: unknown;
     nodeInputHash: string;
     projectRepositoryId?: number | null;
+    managedReviewBudget?: number | null;
   }): void {
     const db = getDb();
     const row = db.prepare(
@@ -184,6 +185,9 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
     // resolvers fail closed.
     if (input.projectRepositoryId !== undefined && input.projectRepositoryId !== null) {
       bindings.project_repository_id = input.projectRepositoryId;
+    }
+    if (input.managedReviewBudget !== undefined && input.managedReviewBudget !== null) {
+      bindings.managed_review_budget = input.managedReviewBudget;
     }
     for (const [key, value] of Object.entries(bindings)) {
       if (

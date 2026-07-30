@@ -67,6 +67,8 @@ export interface SagaBoardLineageBag {
   recovery_feedback?: RecoveryFeedback;
   /** Present when the projected task's repository was resolved. */
   project_repository_id?: number;
+  /** Generic reviewer-correction budget enforced by the task substrate. */
+  managed_review_budget?: number;
   /**
    * Index signature: this bag is stamped onto the projected task's
    * `metadata: Record<string, unknown>` and onto the driver-neutral receipt's
@@ -121,6 +123,8 @@ export interface SagaBoardLineageInputs {
   recoveryFeedback: RecoveryFeedback | null;
   /** Resolved project_repository_id, or null when unknown at build time. */
   projectRepositoryId: number | null;
+  /** Null when this execution profile has no separate reviewer. */
+  managedReviewBudget: number | null;
 }
 
 /**
@@ -155,6 +159,9 @@ export function buildSagaBoardLineageBag(
   }
   if (inputs.projectRepositoryId !== null) {
     bag.project_repository_id = inputs.projectRepositoryId;
+  }
+  if (inputs.managedReviewBudget !== null) {
+    bag.managed_review_budget = inputs.managedReviewBudget;
   }
   return bag;
 }

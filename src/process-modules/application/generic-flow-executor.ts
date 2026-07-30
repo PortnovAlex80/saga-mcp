@@ -465,13 +465,17 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
     let resumedRecoveryInput: NodeProduction | null = null;
     let pausedVerifierInput: unknown;
     let recheckPausedVerifier = false;
+    let reexecutePausedNode = false;
     if (lastCompleted) {
       const restoredResult = restoreNodeResult(lastCompleted);
       recheckPausedVerifier = this.shouldRecheckPausedVerifier(
         context,
         lastCompleted,
       );
-      if (recheckPausedVerifier) {
+      reexecutePausedNode =
+        recheckPausedVerifier
+        || lastCompleted.event === 'runtime.paused';
+      if (reexecutePausedNode) {
         currentNodeId = lastCompleted.nodeId;
         pausedVerifierInput = inputBeforeNodeRun(
           context.inputPayload,
@@ -483,22 +487,24 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
         // the verifier still rejects on this resume, recordIssue opens a
         // brand-new case with a fresh attempt budget instead of colliding with
         // the exhausted one (RECOVERY_SOURCE_NODE_RUN_REUSED_WITH_DIFFERENT_ISSUE).
-        const resumeRun = this.opts.processRunRepo.read(context.processRunId);
-        const caseId = resumeRun?.activeIssue?.recoveryCaseId ?? null;
-        const policy = (module.flow.recovery ?? [])
-          .find(p => p.verifyNodeId === lastCompleted.nodeId);
-        if (
-          caseId
-          && this.opts.recoveryCaseRepo
-          && policy
-          && this.opts.recoveryCaseRepo.readCase(caseId)?.status === 'exhausted'
-        ) {
-          this.opts.recoveryCaseRepo.resolveActive(
-            context.processRunId,
-            policy.id,
-            lastCompleted.id,
-          );
-          this.opts.processRunRepo.update(context.processRunId, { activeIssue: null });
+        if (recheckPausedVerifier) {
+          const resumeRun = this.opts.processRunRepo.read(context.processRunId);
+          const caseId = resumeRun?.activeIssue?.recoveryCaseId ?? null;
+          const policy = (module.flow.recovery ?? [])
+            .find(p => p.verifyNodeId === lastCompleted.nodeId);
+          if (
+            caseId
+            && this.opts.recoveryCaseRepo
+            && policy
+            && this.opts.recoveryCaseRepo.readCase(caseId)?.status === 'exhausted'
+          ) {
+            this.opts.recoveryCaseRepo.resolveActive(
+              context.processRunId,
+              policy.id,
+              lastCompleted.id,
+            );
+            this.opts.processRunRepo.update(context.processRunId, { activeIssue: null });
+          }
         }
       } else {
         resumedRecoveryInput = this.reconcileRecoveryCheckpoint(
@@ -508,7 +514,7 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
           restoredResult,
         ).feedbackProduction;
       }
-      const resumed = recheckPausedVerifier
+      const resumed = reexecutePausedNode
         ? lastCompleted.nodeId
         : this.nextNode(flow, lastCompleted.nodeId, lastCompleted.event ?? '');
       if (resumed === null) {
@@ -550,7 +556,7 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
     // produced, so resuming the next node sees the same upstream context.
     let chainInput: unknown = context.inputPayload;
     const lastCompletedForChain = nodeRunRepo.readLastCompleted(context.processRunId);
-    if (recheckPausedVerifier) {
+    if (reexecutePausedNode) {
       chainInput = pausedVerifierInput;
     } else if (resumedRecoveryInput) {
       chainInput = resumedRecoveryInput;
