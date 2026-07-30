@@ -15,12 +15,24 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Package source snapshot
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Baseline build
+        run: npm run build
+        continue-on-error: true
+      - name: Package source and dependencies
         run: |
           git archive --format=zip --output=saga4-source.zip HEAD
+          tar -czf saga4-node_modules.tgz node_modules
       - uses: actions/upload-artifact@v4
         with:
           name: saga4-source
-          path: saga4-source.zip
+          path: |
+            saga4-source.zip
+            saga4-node_modules.tgz
           if-no-files-found: error
           retention-days: 1
