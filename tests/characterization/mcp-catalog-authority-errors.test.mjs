@@ -57,10 +57,14 @@ async function loadModules() {
     // Catalog sources (same 27 as src/index.ts ALL_TOOLS assembly).
     catalogPromise: import('../../dist/tools/projects.js'),
   };
+  // saga4 cutover: src/tools/workflow.ts (generateNextForCompletedTask +
+  // workflow_generate_next MCP tool) and the episode_status/episode_transition
+  // MCP tools were deleted (commit face6ad). src/index.ts no longer imports a
+  // workflow module, so this re-assembly mirrors it by dropping that source.
   const [
     projects, epics, tasks, subtasks, notes, comments, templates, dashboard,
     search, activity, exportImport, dispatcher, artifacts, repositories,
-    workflow, lifecycle, observations, conflicts, providers, processModules,
+    lifecycle, observations, conflicts, providers, processModules,
     processNodeSubmissions, deliveryApprovals, lifecycleRuns,
     saga3ProposalsMod, saga3NormalizationMod, saga3ReadinessMod, saga3DiagnosisMod,
   ] = await Promise.all([
@@ -78,7 +82,6 @@ async function loadModules() {
     import('../../dist/tools/dispatcher.js'),
     import('../../dist/tools/artifacts.js'),
     import('../../dist/tools/repositories.js'),
-    import('../../dist/tools/workflow.js'),
     import('../../dist/tools/lifecycle.js'),
     import('../../dist/tools/observations.js'),
     import('../../dist/tools/conflicts.js'),
@@ -97,6 +100,8 @@ async function loadModules() {
   const saga3Readiness = saga3ReadinessMod.createSaga3ReadinessHandlers();
   const saga3Diagnosis = saga3DiagnosisMod.createSaga3DiagnosisHandlers();
   // EXACT mirror of src/index.ts:81 ALL_TOOLS assembly (same sources, same order).
+  // saga4 cutover: the workflow source was removed (see note above); it is no
+  // longer spread here.
   const ALL_TOOLS = [
     ...projects.definitions,
     ...epics.definitions,
@@ -112,7 +117,6 @@ async function loadModules() {
     ...dispatcher.definitions,
     ...artifacts.definitions,
     ...repositories.definitions,
-    ...workflow.definitions,
     ...lifecycle.definitions,
     ...observations.definitions,
     ...conflicts.definitions,
@@ -145,7 +149,15 @@ async function loadModules() {
  * the diff is stable regardless of assembly order.
  *
  * Sourced by re-assembling ALL_TOOLS identically to src/index.ts:81 (verified
- * at frozen commit fd26fd1). Count: 90 tools, 0 duplicates.
+ * at frozen commit fd26fd1). Count: 87 tools, 0 duplicates.
+ *
+ * saga4 cutover (commit face6ad): three legacy execution-surface tools were
+ * DELETED and are intentionally absent from this set —
+ *   episode_status, episode_transition (src/tools/lifecycle.ts stage-machine)
+ *   workflow_generate_next  (src/tools/workflow.ts task-kind ladder)
+ * The formalization→planning gate they implemented now lives in the
+ * Formalization Process Module settlement policy
+ * (sqlite-formalization-kernel.ts findFirstTraceabilityGap + areTasksReady).
  */
 const EXPECTED_SORTED_TOOL_NAMES = [
   'activity_log',
@@ -169,8 +181,6 @@ const EXPECTED_SORTED_TOOL_NAMES = [
   'epic_create',
   'epic_list',
   'epic_update',
-  'episode_status',
-  'episode_transition',
   'lifecycle_run_get',
   'lifecycle_run_list',
   'normalization_get',
@@ -237,7 +247,6 @@ const EXPECTED_SORTED_TOOL_NAMES = [
   'worker_merge_acquire',
   'worker_merge_release',
   'worker_next',
-  'workflow_generate_next',
 ];
 
 test('catalog: ALL_TOOLS is a flat array of descriptors with name/description/inputSchema', async () => {
