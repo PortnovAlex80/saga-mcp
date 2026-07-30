@@ -21,7 +21,9 @@
 import {
   existsSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
+  statSync,
   writeFileSync,
 } from 'node:fs';
 import path from 'node:path';
@@ -369,6 +371,41 @@ export function prepareProcessExecutionWorkspace(
       recoveryFeedbackPath,
       `${JSON.stringify(recoveryFeedback, null, 2)}\n`,
     );
+  }
+  if (recoveryFeedback) {
+    // Carry over previous attempt's materialized files so the worker fixes
+    // existing work instead of starting from a blank template. A recovery
+    // attempt gets a NEW task id -> NEW execution directory, so without this
+    // carry-over the "preserve semantic work on retry" branch below would
+    // never fire (the target file does not exist in the new directory) and
+    // the worker would loop on the same mistakes.
+    const currentTaskDir = `task-${request.task.id}`;
+    const expectedFiles = unique([
+      ...request.profile.workspaceTemplates,
+      ...request.profile.callTemplates,
+    ]).map(asset => materializedName(asset));
+
+    let prevDirs: string[] = [];
+    try {
+      prevDirs = readdirSync(path.join(projectDirectory, 'executions'))
+        .filter(d => d.startsWith('task-') && d !== currentTaskDir)
+        .map(d => path.join(projectDirectory, 'executions', d))
+        .filter(d => existsSync(d))
+        .sort((a, b) => statSync(b).mtimeMs - statSync(a).mtimeMs); // newest first
+    } catch {
+      /* no previous dirs */
+    }
+
+    for (const prevDir of prevDirs) {
+      for (const expectedFile of expectedFiles) {
+        const target = path.join(executionDirectory, expectedFile);
+        if (existsSync(target)) continue; // already have it
+        const source = path.join(prevDir, expectedFile);
+        if (existsSync(source)) {
+          writeFileSync(target, readFileSync(source, 'utf8'));
+        }
+      }
+    }
   }
   const allAssets = unique([
     ...(request.profile.trackerTemplate ? [request.profile.trackerTemplate] : []),
