@@ -187,6 +187,22 @@ function loadBoard(projectId) {
   return sagaApplication.loadProjectBoard(Number(projectId));
 }
 
+// --- Lifecycle Pipeline (Saga 3 process-modules) ---------------------------
+// Generic, data-driven pipeline adapter. All business logic lives in the
+// application layer (dist/process-modules/application/lifecycle-pipeline-query.js);
+// this wiring is the only seam that touches the monolith. The concrete Sqlite
+// repo is constructed at this boundary (dependency inversion: the query service
+// accepts the repository INTERFACE, never this concrete class).
+import { createLifecyclePipelineApi } from './lifecycle-pipeline/pipeline-api.mjs';
+import { SqliteLifecycleRunRepository } from '../dist/process-modules/persistence/sqlite-lifecycle-run-repository.js';
+const lifecyclePipelineApi = createLifecyclePipelineApi({
+  repo: new SqliteLifecycleRunRepository(),
+  resolveProjectId: (epicId) => withDb(db => {
+    const row = db.prepare('SELECT project_id FROM epics WHERE id=?').get(epicId);
+    return row ? row.project_id : null;
+  }),
+});
+
 function esc(s){ return String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 
 // --- Repo-root resolver: проект saga → физический репо, где лежат .md файлы ---
@@ -1157,6 +1173,10 @@ function renderBoard(projectId, allProjects) {
       try {
         const r = await fetch('/api/episode/pipeline?epic_id=' + epicId);
         const j = await r.json();
+        // A legacy request may have started just before the lifecycle
+        // controller took ownership. Do not let its stale response overwrite
+        // the authoritative lifecycle projection.
+        if (window.__lifecyclePipeline?.ownsPipelineContainer?.()) return;
         if (!j.ok) { stagesEl.innerHTML = '<span class="worker-empty">' + esc(j.error || 'err') + '</span>'; return; }
         const icons = { completed:'✓', in_progress:'●', needs_human:'⚠', pending:'○' };
         // Clickable stages: completed / in_progress / needs_human.
@@ -1342,8 +1362,20 @@ function renderBoard(projectId, allProjects) {
       const h = Math.floor(m / 60);
       return h + 'h' + (m % 60) + 'm';
     }
-    setInterval(refreshPipeline, ${RELOAD_SEC * 1000});
-    refreshPipeline();
+    // Pipeline polling: the lifecycle controller is the SINGLE poller for the
+    // shared #pipeline-stages container. When the backend reports a Saga 3
+    // LifecycleRun for this epic (source:'lifecycle') it renders the generic
+    // lifecycle bar; otherwise it yields to the legacy refreshPipeline above.
+    // Dynamic import() works from a classic script; if it fails, we fall back
+    // to the legacy poll loop so the board always has a pipeline.
+    import('/lifecycle-pipeline/mount.js').then(mod => {
+      window.__lifecyclePipeline = mod; // expose for the epic-switch handler
+      mod.configureLegacyPipeline(refreshPipeline);
+      mod.mountLifecyclePipeline(window.__sagaEpicId, ${RELOAD_SEC * 1000});
+    }).catch(() => {
+      setInterval(refreshPipeline, ${RELOAD_SEC * 1000});
+      refreshPipeline();
+    });
 
     async function fetchEngineStatus() {
       const epicId = window.__sagaEpicId;
@@ -1375,6 +1407,12 @@ function renderBoard(projectId, allProjects) {
       epicSelect.addEventListener('change', () => {
         window.__sagaEpicId = Number(epicSelect.value) || null;
         fetchEngineStatus();
+        // Remount the lifecycle controller for the newly-selected epic. If the
+        // module is still loading or absent, this is a safe no-op (mount is a
+        // no-op without an epicId; legacy poller covers the gap).
+        if (window.__lifecyclePipeline) {
+          window.__lifecyclePipeline.mountLifecyclePipeline(window.__sagaEpicId, ${RELOAD_SEC * 1000});
+        }
       });
     }
     // Concurrency selector — on change, restart engine with new value.
@@ -2700,7 +2738,8 @@ function page(title, body) {
     .worker-tail .evt.system .evt-tag{color:#f85149}
     .worker-tail .evt-sub{font-size:9px;color:#f85149;margin-left:6px}
     .worker-empty{color:#8b949e;font-size:11px;padding:8px 0;text-align:center}
-  </style></head>
+  </style>
+  <link rel="stylesheet" href="/lifecycle-pipeline/pipeline.css"></head>
   <body class="with-monitor">${body}
   <aside class="monitor-panel" id="monitor-panel">
     <div class="mp-section mp-pipeline">
@@ -5561,6 +5600,16 @@ const server = http.createServer((req, res) => {
   }
   if (req.method === 'GET' && url.pathname === '/api/episode/pipeline') {
     return handleEpisodePipeline(req, res, url);
+  }
+  // Saga 3 lifecycle pipeline (process-modules). Coexists with the legacy
+  // episode pipeline: returns source:'lifecycle' when a LifecycleRun exists for
+  // the epic, else source:'legacy' so the client falls back gracefully.
+  if (req.method === 'GET' && url.pathname === '/api/lifecycle/pipeline') {
+    return lifecyclePipelineApi.handlePipeline(req, res, url);
+  }
+  // Static client assets for the lifecycle-pipeline widget (CSS/JS/HTML).
+  if (req.method === 'GET' && url.pathname.startsWith('/lifecycle-pipeline/')) {
+    return lifecyclePipelineApi.handleStatic(req, res, url);
   }
   if (req.method === 'GET' && url.pathname === '/api/episode/stage-summary') {
     return handleStageSummary(req, res, url);
