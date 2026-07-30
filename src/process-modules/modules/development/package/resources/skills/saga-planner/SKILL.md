@@ -78,6 +78,10 @@ incomplete. Report `worker_ask_need` with the gap; do not guess.
 - Resolving `depends_on` references (AC codes or `scaffold:<module>` refs) to
   task IDs.
 - Idempotency: do not duplicate tasks on re-runs.
+- **Submitting the proposal via `process_node_submit`** (Step 7). Creating tasks
+  in Steps 2–6 is necessary but NOT sufficient — the kernel and the reviewer
+  only see a `saga3.development-task-graph-proposal.v1` proposal persisted
+  through `process_node_submit`. This is a core responsibility, not a footnote.
 
 ## Inputs
 
@@ -290,7 +294,98 @@ the planning task describing the collision; if §D4 already specified a scaffold
 or sequencing for the cluster, the collision is expected (different files within
 the same module) — verify each task's `metadata.target_file` differs.
 
+## Step 7 — REQUIRED: Submit the task graph proposal via `process_node_submit`
+
+> **This step is NOT optional.** Steps 2–6 created the task records in the
+> tracker, but **creating tasks is not enough.** The kernel cannot see your plan
+> until you submit a typed `DevelopmentTaskGraphProposal` through
+> `process_node_submit`. Without this call, the reviewer will reject your work
+> with **"No saga3.development-task-graph-proposal.v1 proposal found in the
+> tracker"** and you will loop forever. This is a hard, non-negotiable action —
+> the same status as `task_create`, `trace_add`, and `worker_done`.
+
+### What to do
+
+1. **Read the materialized call template:**
+
+   ```
+   src/process-modules/modules/development/package/resources/task-graph-submit-call-template.json
+   ```
+
+   This file is a ready-to-fill `process_node_submit` invocation. Load it, then
+   replace every `FILL_*` placeholder with real values derived from the tasks
+   you created in Steps 2–6 (and the SRS §D2 / repository bindings you read).
+
+2. **Set the fixed fields exactly:**
+
+   - `tool` = `"process_node_submit"`
+   - `arguments.schema` = `"saga3.development-task-graph-proposal.v1"`
+   - `arguments.payload.schemaVersion` =
+     `"saga3.development-task-graph-proposal.v1"`
+
+3. **Fill the three arrays.** These are the heart of the proposal. Every AC you
+   planned a task for in Steps 2–6 MUST appear in exactly one of them:
+
+   - **`implementationItems`** — one entry per `ac_kind: implementation` AC.
+     Each item (kind: `"implementation"`) must carry:
+     - `key` — a stable, unique string (reuse the `generation_key` from Step 2e,
+       e.g. `"<epic_id>:<AC>:<repo_id>:implementation"`).
+     - `taskKind`, `executionSkill`, `executionMode` (`"git_change"`),
+       `projectRepositoryId` (the bound integer repo id — non-null for
+       implementation), copied from the task you created.
+     - `acceptanceCriterionIds` — the accepted AC artifact id(s) this item
+       implements.
+     - `dependsOnKeys` — keys of OTHER `implementationItems` it waits on
+       (implementation items depend ONLY on implementation items). Leave `[]`
+       if none.
+     - `required: true`.
+
+   - **`verificationItems`** — one entry per **EVERY accepted AC** (T-014: this
+     includes ACs whose `ac_kind` is `implementation`, not only
+     `ac_kind: verification`). Each item (kind: `"verification"`) must carry:
+     - `key` — stable, unique (e.g. `"<epic_id>:<AC>:verification"`).
+     - `taskKind: "verification.ac"`, `executionSkill` (`"saga-verifier"` for ACs
+       with a `properties` block, else `"saga-worker"`),
+       `executionMode: "read_only_evidence"`.
+     - `acceptanceCriterionIds` — **exactly ONE** accepted AC artifact id.
+     - `dependsOnKeys` — keys of the `implementationItems` that cover this AC.
+     - `required: true`.
+
+   - **`integrationTargets`** — one entry per repository bound to the
+     development case. Each target carries `projectRepositoryId`,
+     `sourceWorkItemKeys` (only REQUIRED `implementationItems` keys — never
+     verification keys), `targetBranch` (the repo's `integration_branch`,
+     copied verbatim — do not invent), and `expectedBaseCommit` (the repo's
+     `expected_base_commit`, copied verbatim).
+
+   Read `task-graph-planner-checklist.md` before submitting and walk through it
+   field by field — it is the exact pre-flight the kernel enforces.
+
+4. **Execute the call.** Run the filled `process_node_submit` invocation. The
+   call schema/lineage is derived by the server from the live fence; you do not
+   pass `project_id`/`epic_id`/`task_id` — only `schema` + `payload`. Equal
+   replay is idempotent; a different second payload is rejected (needs a fresh
+   execution).
+
+5. **Confirm the receipt.** The kernel accepts a policy-valid graph and rejects
+   an invalid one. If it rejects, read the reason, fix the offending array /
+   field / dependency, and re-submit. Do NOT proceed to `worker_done` with an
+   unsubmitted or rejected proposal.
+
+### Why this is the load-bearing step
+
+Development is **lm-proposes-kernel-authorizes**. Steps 2–6 produced the
+planner-side task records; this step is what makes the graph visible to the
+resolver kernel and to `saga-planning-reviewer`. Skipping it is the single
+most common planner failure mode: tasks exist, but the proposal does not, and
+the reviewer bounces every iteration with "No proposal found".
+
 ## Stop (стоп)
+
+**Precondition for stopping:** you have completed Step 7 and
+`process_node_submit` accepted the `saga3.development-task-graph-proposal.v1`
+proposal. If you have NOT submitted the proposal, do NOT call `worker_done` —
+go back to Step 7.
 
 Call `worker_done` for the held planning task, then return:
 
@@ -302,6 +397,8 @@ Planned REQ-NNN: N entries in SRS §D2 →
   - <W> merge_with entries (absorbed into parents)
   - 0 coverage gaps on AC implements
   - conflict_check: <report summary>
+  - proposal submitted via process_node_submit (schema saga3.development-task-graph-proposal.v1):
+      implementationItems=<X>, verificationItems=<Y>, integrationTargets=<K>
 ```
 
 Then stop. Do NOT spawn workers, do NOT call worker_next — that's the
@@ -320,6 +417,11 @@ orchestrator's job after you finish.
 - **Idempotency.** Re-running on an already-bridged episode must be a no-op.
   Match by `generation_key`.
 - **Coverage is your exit criterion**, not "I think I did all of them".
+- **Submit the proposal before `worker_done`.** `process_node_submit` with
+  schema `saga3.development-task-graph-proposal.v1` is REQUIRED (Step 7).
+  Without it the reviewer rejects with "No proposal found in the tracker" and
+  the task loops indefinitely. Creating tasks is never a substitute for
+  submitting the proposal.
 
 ## AC-verification tasks (created mechanically from §D2)
 
