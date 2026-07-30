@@ -88,6 +88,22 @@ function stampRunId(taskId) {
   ).run(taskId);
 }
 
+// saga4 cutover helper: the legacy episode_transition/episode_status MCP tools
+// were deleted (the traceability/tasks/baseline gate is now enforced by the
+// Formalization Process Module settlement policy — see
+// src/process-modules/modules/formalization/sqlite-formalization-kernel.ts:371).
+// Tests that previously used episode_transition(...) as FIXTURE SETUP to move
+// an episode into a stage now seed the episode_workflows projection row
+// directly. The provenance gate in task_create only checks that an
+// episode_workflows row EXISTS for the epic (not its stage value), so creating
+// the row is sufficient to arm the downstream-provenance gate.
+function seedEpisodeWorkflow(epicId, stage = 'planning') {
+  getDb().prepare(
+    `INSERT INTO episode_workflows (epic_id, stage, metadata) VALUES (?, ?, '{}')
+     ON CONFLICT(epic_id) DO UPDATE SET stage=excluded.stage`,
+  ).run(epicId, stage);
+}
+
 
 test('one logical product registers multiple repositories idempotently', () => {
   const product = projects.project_create({ name: 'Workflow Product' });
@@ -505,43 +521,15 @@ test('typed git work: worker_done and merge do NOT auto-generate downstream (sag
   );
 });
 
-test('episode planning gate requires an accepted, hash-pinned, drift-free AC baseline', () => {
-  const product = projects.project_create({ name: 'Hard Gate Product' });
-  const epic = epics.epic_create({ project_id: product.id, name: 'REQ-hard-gate' });
-  assert.equal(lifecycle.episode_status({ epic_id: epic.id }).workflow.stage, 'discovery');
-  lifecycle.episode_transition({ epic_id: epic.id, to_stage: 'formalization' });
-  // First throw: no AC artifacts AND no formalization tasks. The gate runs
-  // assertTasksReady BEFORE acceptedBaseline, so the tasks-gate fires first.
-  assert.throws(
-    () => lifecycle.episode_transition({ epic_id: epic.id, to_stage: 'planning' }),
-    /no formalization tasks exist/,
-  );
-  // Seed a done reconciliation task to satisfy the tasks-gate, then re-throw
-  // on the AC-artifact gate (acceptedBaseline).
-  tasks.task_create({
-    epic_id: epic.id, title: 'PRD', status: 'done', priority: 'high',
-    task_kind: 'formalization.prd', workflow_stage: 'formalization',
-    execution_skill: 'saga-product', review_skill: 'saga-requirements-reviewer',
-    execution_mode: 'tracker_only',
-  });
-  assert.throws(
-    () => lifecycle.episode_transition({ epic_id: epic.id, to_stage: 'planning' }),
-    /no AC artifacts/,
-  );
-  const ac = artifacts.artifact_create({
-    project_id: product.id, epic_id: epic.id, type: 'AC', code: 'AC-1',
-    title: 'Pinned criterion', path: 'docs/ac.md', status: 'accepted', content_hash: 'hash-v1',
-  });
-  // Seed the canonical traceability pyramid so the assertTraceability gate passes.
-  seedTraceabilityPyramid(product, epic, ac.id);
-  const advanced = lifecycle.episode_transition({
-    epic_id: epic.id, to_stage: 'planning', baseline_artifact_id: ac.id,
-  });
-  assert.equal(advanced.workflow.stage, 'planning');
-  assert.ok(advanced.workflow.baseline_hash);
-  const drifted = artifacts.artifact_update({ id: ac.id, content_hash: 'hash-v2' });
-  assert.equal(drifted.drift_state, 'drifted');
-});
+// saga4 cutover: DELETED test "episode planning gate requires an accepted,
+// hash-pinned, drift-free AC baseline". Its entire purpose was to exercise the
+// legacy episode_transition formalization→planning stage gate
+// (assertTasksReady + acceptedBaseline + assertTraceability). That stage-machine
+// MCP tool was deleted: the traceability/tasks/baseline gate is now enforced by
+// the Formalization Process Module settlement policy
+// (sqlite-formalization-kernel.ts:371 — findFirstTraceabilityGap,
+// readAcceptanceBaselineHash, areTasksReady). Coverage of the module-owned gate
+// lives in tests/process-modules/formalization-settlement.test.mjs.
 
 test('artifact hash is read from repository file and out-of-band edits produce drift', () => {
   const product = projects.project_create({ name: 'Disk Hash Product' });
@@ -559,7 +547,9 @@ test('artifact hash is read from repository file and out-of-band edits produce d
   assert.ok(ac.content_hash);
   assert.equal(ac.content_hash, ac.accepted_hash);
   writeFileSync(file, 'version two');
-  lifecycle.episode_status({ epic_id: epic.id });
+  // saga4 cutover: drift is recomputed from disk inside artifact_get itself
+  // (refreshArtifactHash, src/helpers/artifact-file.ts:33), so no separate
+  // episode_status refresh call is needed.
   assert.equal(artifacts.artifact_get({ id: ac.id }).artifact.drift_state, 'drifted');
 });
 
@@ -606,23 +596,16 @@ test('artifact_create stamps accepted_hash + clean drift AND computes content_ha
     'drift_state must be "clean" immediately after accepted creation');
 
   // The planning gate should admit the episode without any status cycling.
-  // Note: formalization gate (slice 3 of formalization-mechanics fix) now also
-  // calls assertTasksReady('formalization') AND assertTraceability, so we seed
-  // a done reconciliation task + a complete traceability pyramid to satisfy
-  // both gates while this test focuses on the AC-artifact gate.
-  lifecycle.episode_transition({ epic_id: epic.id, to_stage: 'formalization' });
-  tasks.task_create({
-    epic_id: epic.id, title: 'PRD', status: 'done', priority: 'high',
-    task_kind: 'formalization.prd', workflow_stage: 'formalization',
-    execution_skill: 'saga-product', review_skill: 'saga-requirements-reviewer',
-    execution_mode: 'tracker_only',
-  });
-  seedTraceabilityPyramid(product, epic, ac.id);
-  assert.doesNotThrow(() => {
-    lifecycle.episode_transition({
-      epic_id: epic.id, to_stage: 'planning', baseline_artifact_id: ac.id,
-    });
-  }, 'planning gate must accept an accepted+clean AC created in one step');
+  // saga4 cutover: the episode_transition planning gate was deleted; the
+  // artifact_create handler now stamps accepted_hash + drift_state='clean' on
+  // accepted creation (Bug-1 fix above), so the AC is immediately admissible.
+  // We assert the invariants the old gate checked directly: accepted_hash is
+  // set and drift_state is clean. The module-owned Formalization settlement
+  // policy (sqlite-formalization-kernel.ts:371) is what enforces the gate now.
+  assert.equal(ac.accepted_hash, ac.content_hash,
+    'accepted_hash equals content_hash — admissible baseline with no status cycle');
+  assert.equal(ac.drift_state, 'clean',
+    'drift_state is clean — admissible baseline with no status cycle');
 
   // Bug 2 in isolation: a draft artifact with a path but no content_hash must
   // still get its content_hash computed from disk (accepted_hash stays null,
@@ -644,26 +627,14 @@ test('artifact_create stamps accepted_hash + clean drift AND computes content_ha
 test('initialized episodes enforce downstream provenance and auto-advance ready stages', () => {
   const product = projects.project_create({ name: 'Provenance Product' });
   const epic = epics.epic_create({ project_id: product.id, name: 'REQ-provenance' });
-  lifecycle.episode_status({ epic_id: epic.id });
-  lifecycle.episode_transition({ epic_id: epic.id, to_stage: 'formalization' });
-  // Seed a done formalization.prd task to satisfy the formalization gate
-  // (slice 3 — assertTasksReady now runs alongside acceptedBaseline).
-  tasks.task_create({
-    epic_id: epic.id, title: 'PRD', status: 'done', priority: 'high',
-    task_kind: 'formalization.prd', workflow_stage: 'formalization',
-    execution_skill: 'saga-product', review_skill: 'saga-requirements-reviewer',
-    execution_mode: 'tracker_only',
-  });
+  // saga4 cutover: episode_status/episode_transition were deleted. The
+  // provenance gate in task_create only checks that an episode_workflows row
+  // EXISTS for the epic — stage value is irrelevant. Seed the projection row
+  // directly.
+  seedEpisodeWorkflow(epic.id, 'planning');
   const ac = artifacts.artifact_create({
     project_id: product.id, epic_id: epic.id, type: 'AC', code: 'AC-P',
     title: 'Provenance criterion', path: 'ac-p.md', status: 'accepted', content_hash: 'p-hash',
-  });
-  seedTraceabilityPyramid(product, epic, ac.id);
-  lifecycle.episode_transition({ epic_id: epic.id, to_stage: 'planning' });
-  tasks.task_create({
-    epic_id: epic.id, title: 'Plan', status: 'done',
-    task_kind: 'planning.decomposition', workflow_stage: 'planning',
-    execution_mode: 'tracker_only',
   });
   assert.throws(
     () => tasks.task_create({
@@ -681,19 +652,20 @@ test('initialized episodes enforce downstream provenance and auto-advance ready 
   // tasks.metadata.process_run_id IS NOT NULL for a task to be claimable
   // (only module-projected tasks enter the worker queue). Stamp a synthetic
   // process_run_id so this task is claimable in the test.
-  getDb().prepare(
-    `UPDATE tasks SET metadata=json_set(coalesce(metadata,'{}'),'$.process_run_id',999) WHERE id=?`,
-  ).run(dev.id);
+  stampRunId(dev.id);
   // saga4 Phase 4 cutover: worker_next is a PURE claim — it must NOT advance
   // lifecycle stages. Stage advancement is now a module-owned settlement
   // decision routed through the lifecycle orchestrator, never a worker
-  // side-effect. The episode was transitioned to 'planning' above and must
-  // stay there after the claim.
-  const stageBeforeClaim = lifecycle.episode_status({ epic_id: epic.id }).workflow.stage;
+  // side-effect. The episode_workflows row was seeded to 'planning' above and
+  // must stay there after the claim. With episode_status deleted, read the
+  // projection stage directly from the DB.
+  const stageBeforeClaim = getDb().prepare(
+    'SELECT stage FROM episode_workflows WHERE epic_id=?',
+  ).get(epic.id).stage;
   const assignment = dispatcher.worker_next({ project_id: product.id, worker_id: 'auto-stage' });
   assert.equal(assignment.task.id, dev.id, 'traced dev task is claimable (provenance satisfied)');
   assert.equal(
-    lifecycle.episode_status({ epic_id: epic.id }).workflow.stage,
+    getDb().prepare('SELECT stage FROM episode_workflows WHERE epic_id=?').get(epic.id).stage,
     stageBeforeClaim,
     'worker_next must NOT advance the episode stage (saga4 Phase 4: pure claim)',
   );
@@ -702,24 +674,16 @@ test('initialized episodes enforce downstream provenance and auto-advance ready 
 test('development.scaffold is exempt from per-AC provenance gate (infrastructure)', () => {
   const product = projects.project_create({ name: 'Scaffold Provenance Product' });
   const epic = epics.epic_create({ project_id: product.id, name: 'REQ-scaffold-provenance' });
-  lifecycle.episode_status({ epic_id: epic.id });
-  lifecycle.episode_transition({ epic_id: epic.id, to_stage: 'formalization' });
-  tasks.task_create({
-    epic_id: epic.id, title: 'PRD', status: 'done', priority: 'high',
-    task_kind: 'formalization.prd', workflow_stage: 'formalization',
-    execution_skill: 'saga-product', review_skill: 'saga-requirements-reviewer',
-    execution_mode: 'tracker_only',
-  });
+  // saga4 cutover: episode_status/episode_transition were deleted; the
+  // per-AC provenance gate in task_create only requires an episode_workflows
+  // row to exist for the epic. Seed the projection row directly. (The
+  // formalization/traceability/plan setup below was only there to satisfy the
+  // deleted episode_transition planning gate; the provenance gate itself does
+  // not check any of it.)
+  seedEpisodeWorkflow(epic.id, 'planning');
   const acS = artifacts.artifact_create({
     project_id: product.id, epic_id: epic.id, type: 'AC', code: 'AC-S',
     title: 'Scaffold criterion', path: 'ac-s.md', status: 'accepted', content_hash: 's-hash',
-  });
-  seedTraceabilityPyramid(product, epic, acS.id);
-  lifecycle.episode_transition({ epic_id: epic.id, to_stage: 'planning' });
-  tasks.task_create({
-    epic_id: epic.id, title: 'Plan', status: 'done',
-    task_kind: 'planning.decomposition', workflow_stage: 'planning',
-    execution_mode: 'tracker_only',
   });
   // Scaffold is infrastructure that materializes stubs for ALL ACs — no
   // source_artifact_ids required. It must SUCCEED even though it's a typed

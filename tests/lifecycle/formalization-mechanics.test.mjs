@@ -26,9 +26,11 @@ const { handlers: projects } = await import('../../dist/tools/projects.js');
 const { handlers: epics } = await import('../../dist/tools/epics.js');
 const { handlers: tasks } = await import('../../dist/tools/tasks.js');
 const { handlers: workflow } = await import('../../dist/tools/workflow.js');
-const { handlers: lifecycle } = await import('../../dist/tools/lifecycle.js');
-const { handlers: artifacts } = await import('../../dist/tools/artifacts.js');
-const { closeDb, getDb } = await import('../../dist/db.js');
+// saga4 cutover: lifecycle (episode_transition/episode_status) and the
+// artifact/getDb helpers used only by the deleted Tests 4 & 5 were removed.
+// The formalization→planning gate is now enforced by the Formalization Process
+// Module settlement policy (see cutover note where Tests 4 & 5 were deleted).
+const { closeDb } = await import('../../dist/db.js');
 
 let product, repo;
 
@@ -279,128 +281,34 @@ test('workflow: srs_accepted spawns planning.decomposition', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Test 4: episode_transition(formalization→planning) rejects when
-//         formalization tasks not all done.
+// saga4 cutover: DELETED Test 4 + Test 5
+//   "gate: formalization→planning rejects when formalization.prd not done"
+//   "gate: formalization→planning succeeds when gateable tasks done"
+//
+// Both tests' entire purpose was to exercise the legacy
+// episode_transition(formalization→planning) stage gate
+// (assertTasksReady + acceptedBaseline + assertTraceability). That stage-machine
+// MCP tool was deleted: the formalization→planning gate is now enforced by the
+// Formalization Process Module settlement policy
+// (src/process-modules/modules/formalization/sqlite-formalization-kernel.ts:371),
+// which calls the SAME module-owned helpers these tests probed —
+// areTasksReady(), readAcceptanceBaselineHash(), findFirstTraceabilityGap().
+// Coverage of the module-owned gate lives in:
+//   - tests/process-modules/formalization-settlement.test.mjs
+//       (decision=inconsistent + traceability-gap / tasks-not-ready /
+//        baseline-missing reason codes, against a fake graph port)
+//   - tests/process-modules/formalization-e2e-smoke.test.mjs
+//       (tasks-not-ready / baseline-missing / traceability-gap modes against
+//        the real SQLite graph port + acceptance bundle)
+//
+// NOTE (minor gap): the bookkeeping-task exclusion
+// (task_kind ∈ {summary.stage, recovery.heal} is NOT gateable) is implemented
+// in sqlite-formalization-kernel.ts:258-259 and was previously exercised only
+// through episode_transition here. It is no longer directly asserted in a unit
+// test. The e2e smoke exercises areTasksReady end-to-end via the
+// tasks-not-ready mode but does not seed bookkeeping tasks. The src behavior is
+// intact; flag this as thin coverage if hardening is desired later.
 // ---------------------------------------------------------------------------
-
-test('gate: formalization→planning rejects when formalization.prd not done', () => {
-  const epic = makeEpic();
-  // Seed episode_workflows with stage='formalization'.
-  lifecycle.episode_transition({ epic_id: epic, to_stage: 'formalization' });
-  // PRD still 'todo' — not done.
-  tasks.task_create({
-    epic_id: epic,
-    title: 'PRD: gate-test',
-    status: 'todo',
-    priority: 'high',
-    task_kind: 'formalization.prd',
-    workflow_stage: 'formalization',
-    execution_skill: 'saga-product',
-    review_skill: 'saga-requirements-reviewer',
-    execution_mode: 'tracker_only',
-  });
-  assert.throws(
-    () => lifecycle.episode_transition({ epic_id: epic, to_stage: 'planning' }),
-    /formalization gate failed: tasks not completed/i,
-    'gate must reject when formalization.prd is still todo',
-  );
-});
-
-// ---------------------------------------------------------------------------
-// Test 5: episode_transition(formalization→planning) succeeds when
-//         gateable formalization tasks are all done. (summary.stage and
-//         recovery.heal are excluded — they should not block.)
-// ---------------------------------------------------------------------------
-
-test('gate: formalization→planning succeeds when gateable tasks done', () => {
-  const epic = makeEpic();
-  lifecycle.episode_transition({ epic_id: epic, to_stage: 'formalization' });
-
-  // Simulate a complete ADR-013 formalization pipeline at the task level.
-  //   PRD → UC → AC → reconciliation → SRS (post-baseline)
-  const prd = makeDoneTask({ epic_id: epic, title: 'PRD: success', task_kind: 'formalization.prd' });
-  const ucOnly = workflow.workflow_generate_next({
-    epic_id: epic, source_task_id: prd.id, transition: 'prd_accepted',
-  });
-  const uc = ucOnly.tasks.find(t => t.task_kind === 'formalization.uc');
-  setStatus(uc.id, 'done');
-  const ac = workflow.workflow_generate_next({
-    epic_id: epic, source_task_id: uc.id, transition: 'uc_accepted',
-  });
-  setStatus(ac.tasks[0].id, 'done');
-  const recon = workflow.workflow_generate_next({
-    epic_id: epic, source_task_id: ac.tasks[0].id, transition: 'ac_accepted',
-  });
-  setStatus(recon.tasks[0].id, 'done');
-  const srs = workflow.workflow_generate_next({
-    epic_id: epic, source_task_id: recon.tasks[0].id, transition: 'baseline_accepted',
-  });
-  setStatus(srs.tasks[0].id, 'done');
-
-  // Also add a summary.stage and a recovery.heal task — these MUST NOT
-  // block the gate (they are bookkeeping, not deliverables).
-  tasks.task_create({
-    epic_id: epic, title: 'Summary', status: 'review', priority: 'high',
-    task_kind: 'summary.stage', workflow_stage: 'formalization',
-    execution_skill: 'saga-worker',
-  });
-  tasks.task_create({
-    epic_id: epic, title: 'Recovery', status: 'review', priority: 'high',
-    task_kind: 'recovery.heal', workflow_stage: 'formalization',
-    execution_skill: 'saga-worker', execution_mode: 'tracker_only',
-  });
-
-  // To pass the gate we also need accepted AC artifacts with clean hashes
-  // (acceptedBaseline) AND canonical lineage edges (assertTraceability).
-  // Build a minimal pyramid: brief → PRD → SRS+FR+UC → AC, with traces.
-  const brief = artifacts.artifact_create({
-    project_id: product.id, epic_id: epic, type: 'brief', code: 'BRIEF-1',
-    title: 'Brief', path: `docs/test/brief-${epic}.md`, status: 'accepted',
-    metadata: { brief_payload: {
-      classification: 'tech-task', complexity: { tshirt: 'S', risk_triggers: [] },
-      decision: 'go', reasoning: 'test', affected_projects: [product.id],
-      topology_hint: 'sequence', scaffold_artifacts: [], shared_mutation_risk: false,
-      completeness: 'high', degraded: false,
-    } },
-  });
-  const prdArt = artifacts.artifact_create({
-    project_id: product.id, epic_id: epic, type: 'PRD', code: null,
-    title: 'PRD', path: `docs/test/prd-${epic}.md`, status: 'accepted',
-  });
-  artifacts.trace_add({ source_id: prdArt.id, target_type: 'artifact', target_id: brief.id, link_type: 'derived_from' });
-  const srsArt = artifacts.artifact_create({
-    project_id: product.id, epic_id: epic, type: 'SRS', code: 'SRS-1',
-    title: 'SRS', path: `docs/test/srs-${epic}.md`, status: 'accepted',
-  });
-  artifacts.trace_add({ source_id: srsArt.id, target_type: 'artifact', target_id: prdArt.id, link_type: 'derived_from' });
-  const frArt = artifacts.artifact_create({
-    project_id: product.id, epic_id: epic, type: 'FR', code: 'FR-1',
-    title: 'FR', path: `docs/test/srs-${epic}.md#FR-1`, status: 'accepted',
-  });
-  const ucArt = artifacts.artifact_create({
-    project_id: product.id, epic_id: epic, type: 'UC', code: 'UC-1',
-    title: 'UC', path: `docs/test/uc-${epic}.md#UC-1`, status: 'accepted',
-  });
-  artifacts.trace_add({ source_id: ucArt.id, target_type: 'artifact', target_id: prdArt.id, link_type: 'derived_from' });
-  artifacts.trace_add({ source_id: ucArt.id, target_type: 'artifact', target_id: frArt.id, link_type: 'covers' });
-  const acArtifact = artifacts.artifact_create({
-    project_id: product.id, epic_id: epic, type: 'AC', code: 'AC-1',
-    title: 'Test AC', path: `docs/test/ac-${epic}.md#AC-1`, status: 'accepted',
-  });
-  artifacts.trace_add({ source_id: acArtifact.id, target_type: 'artifact', target_id: ucArt.id, link_type: 'derived_from' });
-  artifacts.trace_add({ source_id: acArtifact.id, target_type: 'artifact', target_id: frArt.id, link_type: 'derived_from' });
-  // Pin accepted_hash = content_hash to satisfy acceptedBaseline's clean check.
-  const db = getDb();
-  const hash = '0'.repeat(64);
-  db.prepare(
-    `UPDATE artifacts SET content_hash=?, accepted_hash=?, drift_state='clean' WHERE id=?`,
-  ).run(hash, hash, acArtifact.id);
-
-  assert.doesNotThrow(
-    () => lifecycle.episode_transition({ epic_id: epic, to_stage: 'planning' }),
-    'gate must succeed when all gateable formalization tasks done + AC baseline accepted + traces complete',
-  );
-});
 
 // ---------------------------------------------------------------------------
 // Test 6: formalization task_specs always emit execution_mode='tracker_only'.

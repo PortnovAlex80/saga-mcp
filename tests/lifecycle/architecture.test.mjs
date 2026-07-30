@@ -119,7 +119,8 @@ test('architecture: no direct lifecycle UPDATE outside sanctioned writers', () =
   //   - src/tools/tasks.ts       (evaluateAndUpdateDependencies — the reconciler)
   //   - src/db.ts                (migrations)
   //   - src/schema.ts            (DDL only, no UPDATE — included for completeness)
-  //   - src/tools/lifecycle.ts   (episode_transition, verification_record)
+  //   - src/tools/lifecycle.ts   (verification_record; saga4 cutover removed
+  //                               the legacy episode_transition stage-machine)
   //   - src/orchestrate.ts       (engine recovery — recoverAssignment)
   //   - tracker-view/**          (recoverRunnerAssignment)
   //
@@ -263,7 +264,14 @@ test('architecture: lifecycle infrastructure modules exist (regression guard)', 
 // ---------------------------------------------------------------------------
 
 test('architecture: saga-worker SKILL.md documents ASK as terminal', () => {
-  const skillPath = path.join(ROOT, 'skills', 'saga-worker', 'SKILL.md');
+  // W13-A2 (commit 5f7a1e1) migrated the saga-worker skill out of the repo's
+  // top-level skills/ tree into the development Process Module package
+  // resources. This is unrelated to the saga4 episode_transition cutover; the
+  // path is updated here to follow the migration.
+  const skillPath = path.join(
+    SRC, 'process-modules', 'modules', 'development', 'package', 'resources',
+    'skills', 'saga-worker', 'SKILL.md',
+  );
   const src = readFileSync(skillPath, 'utf8');
   // The Slice 3 rewrite replaced the obsolete 'STAYS with you' instruction.
   assert.doesNotMatch(
