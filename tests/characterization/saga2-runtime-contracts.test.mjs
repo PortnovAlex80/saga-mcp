@@ -20,7 +20,6 @@ const requiredFiles = [
   'src/orchestrate-cli.ts',
   'src/tools/dispatcher.ts',
   'src/tools/lifecycle.ts',
-  'src/tools/workflow.ts',
   'src/worker-executions.ts',
   'src/application/ports/worker-executor.ts',
   'src/application/ports/saga2-host-runtime.ts',
