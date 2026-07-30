@@ -57,10 +57,13 @@ A product may later attach any number of repositories while keeping one board.
 8. During Discovery/Architecture, register every additional repository with
    `repository_register`. One repository may be `planned` and have no
    `local_path` yet.
-9. Once an epic exists, initialize it with `episode_status({epic_id})`.
-   After a `go` decision, call
-   `episode_transition({epic_id,to_stage:"formalization"})` before dispatching
-   formalization tasks.
+9. Once an epic exists, the Lifecycle Orchestrator owns its stage advancement.
+   Do not attempt to call `episode_status` or `episode_transition` — both were
+   deleted in the saga4 cutover. After a `go` decision, the Lifecycle
+   Orchestrator routes the epic into formalization (the Formalization module's
+   settlement policy is the gate); read the stage via
+   `lifecycle_run_list({project_id, epic_id})` if you need to confirm it before
+   dispatching formalization tasks.
 
 ## Hard rules
 

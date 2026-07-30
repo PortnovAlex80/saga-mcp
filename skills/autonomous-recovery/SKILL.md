@@ -3,6 +3,18 @@ name: autonomous-recovery
 description: "Autonomous recovery skill — runs a structured decision loop (Cynefin triage + MCDA + pre-mortem + Red Team) to FIX saga engine failures without escalating to a human. Used by recovery.heal tasks when a stage gate fails or a producer worker left artifacts in a bad state. Can move tasks backwards (status=todo) to force rework. The agent has more context than the human sponsor — asking the human to rubber-stamp an engineering trade-off is an anti-pattern."
 ---
 
+> **DEPRECATED after the saga4 cutover.** This skill was written for the legacy
+> Saga 2 stage-machine. The references to `episode_transition`,
+> `workflow_generate_next`, and the `assertTraceability` lifecycle gate below
+> describe tools/gates that were DELETED in the cutover (see
+> `src/tools/lifecycle.ts` header). Stage advancement is now owned by the
+> Lifecycle Orchestrator (a runtime component, not a skill); traceability is
+> enforced by the Formalization settlement policy `findFirstTraceabilityGap` in
+> `src/process-modules/modules/formalization/sqlite-formalization-kernel.ts`.
+> This file is retained only as historical documentation of the legacy recovery
+> flow — do NOT follow the deleted-tool instructions literally. The general
+> Cynefin/MCDA decision discipline (Steps 2-6) is still sound.
+
 ## What this skill is for
 
 The saga engine's default failure mode is **stop and ask the human** every time a stage gate fails, a worker leaves artifacts in a bad state, or traces are missing. Each stop breaks the pipeline, costs a round-trip, and usually the human either rubber-stamps whatever the agent proposed or has less context than the agent does.

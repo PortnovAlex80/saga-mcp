@@ -1,5 +1,16 @@
 # Delegation Contract — one task, one subagent, one returned result
 
+> **DEPRECATED after the saga4 cutover** (the parent skill `saga-orchestrator`
+> is itself deprecated). The body below still references MCP tools that were
+> DELETED: `episode_transition`, `episode_status`, and `workflow_generate_next`.
+> Stage advancement is now owned by the Lifecycle Orchestrator (a runtime
+> component, not a skill); per-stage checkpoints are enforced by Process Module
+> settlement policies, not by `episode_transition` calls. This file is retained
+> only as historical documentation of the legacy delegation discipline — the
+> general "one task = one launch = one result" contract (Sections 1, 3, 4) is
+> still sound and is honoured by the current worker protocol; the deleted-tool
+> references in Sections 2 and 6 are not to be followed literally.
+
 > One-page spec of how the saga-orchestrator delegates exactly one task to
 > exactly one subagent (a `saga-*` worker skill), and what the worker owes
 > back before the orchestrator considers the delegation complete.

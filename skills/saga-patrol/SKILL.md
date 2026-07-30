@@ -32,7 +32,7 @@ description: "Read-only patrol of a running saga instance. Collects an express s
 **Эндпоинты, которые patrol НЕ дёргает** (они мутируют состояние):
 - `/api/episode/stage-summary` — может spawn'уть `summary.stage` задачу.
 - Любой `POST /api/...` — переход эпизода, старт/стоп engine, set model, save artifact.
-- Любой MCP `mcp__saga__*` с write-семантикой (`task_update`, `worker_done`, `episode_transition`, …).
+- Любой MCP `mcp__saga__*` с write-семантикой (`task_update`, `worker_done`, `episode_transition`, …). Примечание: инструменты `episode_*` удалены в ходе саги4, но patrol всё равно никогда их не вызывает — изменение стадии теперь owned by Lifecycle Orchestrator.
 
 ## Параметры окружения
 
@@ -505,7 +505,7 @@ curl -s "http://localhost:1234/api/v0/models" 2>/dev/null \
 
 - ❌ Не запускает `npm install`, `npm test`, `npm run build` — они пишут на диск и качают пакеты.
 - ❌ Не запускает `tsc` без `--noEmit`.
-- ❌ Не вызывает MCP write-tools (`task_update`, `worker_*`, `episode_*`).
+- ❌ Не вызывает MCP write-tools (`task_update`, `worker_*`, `episode_*` — последние удалены в саге4, стадиями теперь управляет Lifecycle Orchestrator, patrol их и не трогал).
 - ❌ Не дёргает POST-эндпоинты tracker-view.
 - ❌ Не перезапускает engine, не убивает воркеров, не чистит worktrees.
 - ❌ Не правит `settings.json`, не переключает модель.
