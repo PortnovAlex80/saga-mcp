@@ -54,6 +54,7 @@ export function getDb(): Database.Database {
   migrateVerificationExecution(db);
   migrateRiskClass(db);
   migrateEpisodeTrack(db);
+  migrateEpicSlug(db);
   // Slice 2 (ADR-011): populate work-item shadow tables for existing tasks.
   // Idempotent — skips tasks that already have shadow rows. Tables themselves
   // are created by SCHEMA_SQL (CREATE IF NOT EXISTS).
@@ -810,4 +811,31 @@ export function migrateEpisodeTrack(db: Database.Database): void {
   } catch { /* metadata column missing — pre-migration DB, skip */ }
   db.exec('CREATE INDEX IF NOT EXISTS idx_episode_workflows_track ON episode_workflows(track)');
 }
+
+/**
+ * saga4 Phase 6 prerequisite: add a stable `slug` column to epics.
+ *
+ * Numeric epic ids are not portable across reset/import. A slug (derived from
+ * the epic name) gives durable cross-module/export references a stable key.
+ * Nullable during rollout; populated lazily here from the name for existing
+ * rows, and on creation going forward.
+ */
+export function migrateEpicSlug(db: Database.Database): void {
+  try {
+    db.exec('ALTER TABLE epics ADD COLUMN slug TEXT');
+  } catch { /* column already exists */ }
+  // Backfill slug from name for existing rows that lack one. Slug = lowercased
+  // name with non-alphanumerics collapsed to hyphens. Idempotent.
+  db.exec(
+    `UPDATE epics SET slug = lower(
+       trim(replace(replace(replace(replace(replace(name,
+         ' ', '-'), '/', '-'), '\\', '-'), '.', '-'), '_', '-'))
+     )
+     WHERE slug IS NULL AND name IS NOT NULL`,
+  );
+  // Uniqueness is NOT enforced yet (two epics with the same name produce the
+  // same slug); a unique constraint requires full migration of all references.
+  // The Phase 6 full rollout will add UNIQUE(project_id, slug).
+}
+
 

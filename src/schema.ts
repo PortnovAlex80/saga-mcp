@@ -59,6 +59,10 @@ CREATE TABLE IF NOT EXISTS epics (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
   project_id    INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
   name          TEXT NOT NULL,
+  -- saga4 Phase 6 prerequisite: stable slug for cross-module/export-import
+  -- references that must survive a reset/import. Nullable during the rollout;
+  -- populated lazily by the migration + on epic creation.
+  slug          TEXT,
   description   TEXT,
   status        TEXT NOT NULL DEFAULT 'planned'
                   CHECK (status IN ('planned', 'in_progress', 'completed', 'cancelled')),
