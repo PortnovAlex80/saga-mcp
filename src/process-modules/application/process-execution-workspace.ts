@@ -720,6 +720,49 @@ export function prepareProcessExecutionWorkspace(
     writeFileSync(trackerAbsolutePath, tracker);
   }
 
+  // Machine-fill submission state from DB: if a proposal was submitted in a
+  // previous execution of this node, update the tracker so the reviewer (who
+  // reads the tracker markdown, not the DB) sees submission_state: submitted.
+  // Without this, every review-loop execution regenerates tracker with
+  // not-submitted, causing the reviewer to reject with "No proposal found".
+  if (request.module.identity.kind === 'development') {
+    try {
+      const db = getDb();
+      const nodeId = parseMetadata(request.task.metadata).process_node_id;
+      if (nodeId) {
+        const submission = db.prepare(
+          `SELECT id, content_hash FROM saga3_managed_node_submissions
+            WHERE process_run_id=? AND node_id=?
+            ORDER BY id DESC LIMIT 1`,
+        ).get(
+          parseMetadata(request.task.metadata).process_run_id,
+          nodeId,
+        ) as { id: number; content_hash: string } | undefined;
+        if (submission) {
+          const trackerContent = readFileSync(trackerAbsolutePath, 'utf8');
+          const updated = trackerContent
+            .replace(
+              /submission_state:\s*`not-submitted`/g,
+              `submission_state: \`submitted\``,
+            )
+            .replace(
+              /submission_ref:\s*$/m,
+              `submission_ref: managed-node-submission:${submission.id}`,
+            )
+            .replace(
+              /submission_hash:\s*$/m,
+              `submission_hash: ${submission.content_hash}`,
+            );
+          if (updated !== trackerContent) {
+            writeFileSync(trackerAbsolutePath, updated);
+          }
+        }
+      }
+    } catch {
+      // Non-fatal: if DB read fails, tracker stays as-is (not-submitted).
+    }
+  }
+
   return {
     profileId: request.profile.id,
     moduleRef: `${request.module.identity.name}@${request.module.identity.version}`,
