@@ -10,7 +10,6 @@ import { DEVELOPMENT_PROCESS_MODULE_REF } from '../modules/development/developme
 import {
   DEVELOPMENT_CASE_SCHEMA,
   type DevelopmentPolicySnapshot,
-  type DevelopmentRepositoryBinding,
 } from '../modules/development/development-schemas.js';
 import { hashDevelopmentPolicy } from '../modules/development/development-settlement-policy.js';
 import { DISCOVERY_PROCESS_MODULE_REF } from '../modules/discovery/discovery-process-module.js';
@@ -28,7 +27,9 @@ export interface ProductDeliveryLifecycleInput {
     constraints: unknown;
   };
   development: {
-    repositories: readonly DevelopmentRepositoryBinding[];
+    repositories: readonly (
+      ProductDeliveryRepositoryBinding | LegacyProductDeliveryRepositoryBinding
+    )[];
     policy: DevelopmentPolicySnapshot;
   };
   delivery: {
@@ -42,6 +43,33 @@ export interface ProductDeliveryLifecycleInput {
       };
     };
   };
+}
+
+/**
+ * Portable repository identity stored in the durable LifecycleRun input.
+ * SQLite project_repositories.id is deliberately absent: it is a runtime
+ * capability and may change after import, fixture restore, or reprovisioning.
+ */
+export interface ProductDeliveryRepositoryRef {
+  repositoryName: string;
+  role: string;
+}
+
+export interface ProductDeliveryRepositoryBinding {
+  repositoryRef: ProductDeliveryRepositoryRef;
+  integrationBranch: string;
+  expectedBaseCommit: string;
+}
+
+/**
+ * Input-only compatibility shape. The composition root converts it to a
+ * ProductDeliveryRepositoryBinding before LifecycleRun persistence. A stale
+ * or foreign id is rejected; it is never copied into a durable snapshot.
+ */
+export interface LegacyProductDeliveryRepositoryBinding {
+  projectRepositoryId: number;
+  integrationBranch: string;
+  expectedBaseCommit: string;
 }
 
 export function assertProductDeliveryLifecycleInput(
@@ -75,7 +103,14 @@ export function assertProductDeliveryLifecycleInput(
     repositories.length === 0
     || repositories.some(repository =>
       !isRecord(repository)
-      || !positiveInteger(repository.projectRepositoryId)
+      || !(
+        (
+          isRecord(repository.repositoryRef)
+          && nonEmptyString(repository.repositoryRef.repositoryName)
+          && nonEmptyString(repository.repositoryRef.role)
+        )
+        || positiveInteger(repository.projectRepositoryId)
+      )
       || !nonEmptyString(repository.integrationBranch)
       || !nonEmptyString(repository.expectedBaseCommit))
     || !nonEmptyString(developmentPolicy.id)

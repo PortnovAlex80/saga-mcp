@@ -101,6 +101,16 @@ export interface LifecycleOrchestratorOptions {
     installationId: number;
     packageDigest: string;
   } | null;
+  /**
+   * Converts portable lifecycle values into execution-local capabilities
+   * immediately before a StageRun input is frozen. It is never reapplied to
+   * an existing StageRun, preserving immutable replay.
+   */
+  resolveStageInput?: (params: {
+    lifecycleRun: LifecycleRunRecord;
+    stage: StageBinding;
+    input: unknown;
+  }) => Promise<unknown> | unknown;
   now?: () => Date;
   /** Primarily configurable for deterministic lease/watchdog tests. */
   leaseDurationMs?: number;
@@ -129,6 +139,9 @@ export class LifecycleOrchestrator {
   private readonly resolveModuleInstallation:
     | NonNullable<LifecycleOrchestratorOptions['resolveModuleInstallation']>
     | null;
+  private readonly resolveStageInput:
+    | NonNullable<LifecycleOrchestratorOptions['resolveStageInput']>
+    | null;
   private readonly now: () => Date;
   private readonly leaseDurationMs: number;
 
@@ -139,6 +152,7 @@ export class LifecycleOrchestrator {
     this.installationRegistry = options.installationRegistry;
     this.resolveOutputPayload = options.resolveOutputPayload ?? null;
     this.resolveModuleInstallation = options.resolveModuleInstallation ?? null;
+    this.resolveStageInput = options.resolveStageInput ?? null;
     this.now = options.now ?? (() => new Date());
     this.leaseDurationMs = options.leaseDurationMs ?? LIFECYCLE_LEASE_MS;
     if (!Number.isFinite(this.leaseDurationMs) || this.leaseDurationMs <= 0) {
@@ -206,13 +220,20 @@ export class LifecycleOrchestrator {
         const durableFrame = this.buildFrame(rootInput, lifecycleRun.id);
         const runtime = this.mappingRuntime(lifecycleRun, stage.id);
         const frozenStageRun = this.lifecycleRunRepo.readCurrentStageRun(lifecycleRun.id);
-        const stageInput = frozenStageRun
+        const mappedStageInput = frozenStageRun
           ? JSON.parse(frozenStageRun.inputSnapshot) as unknown
           : mapLifecycleValues(
               stage.inputMapping,
               durableFrame,
               runtime,
             );
+        const stageInput = frozenStageRun || !this.resolveStageInput
+          ? mappedStageInput
+          : await this.resolveStageInput({
+              lifecycleRun,
+              stage,
+              input: mappedStageInput,
+            });
         const bindingSnapshot = canonicalJson(stage);
         const ensuredStage = this.lifecycleRunRepo.ensureStageRun({
           lifecycleRunId: lifecycleRun.id,

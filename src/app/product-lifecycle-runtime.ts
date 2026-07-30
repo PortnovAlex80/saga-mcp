@@ -111,6 +111,11 @@ import {
   productDeliveryLifecycle,
 } from '../process-modules/lifecycles/product-delivery-lifecycle.js';
 import {
+  canonicalizeProductDeliveryLifecycleInput,
+  resolveProductDeliveryRepositories,
+  resolveProductDeliveryStageInput,
+} from './product-lifecycle-repository-bindings.js';
+import {
   discoveryProcessModule,
 } from '../process-modules/modules/discovery/discovery-process-module.js';
 import {
@@ -517,6 +522,12 @@ export function createProductLifecycleRuntime(
     moduleRegistry,
     installationRegistry,
     resolveOutputPayload,
+    resolveStageInput: ({ lifecycleRun, stage, input }) =>
+      resolveProductDeliveryStageInput(db, {
+        projectId: lifecycleRun.projectId,
+        stage,
+        input,
+      }),
     // W13-AUDIT §18.5: pin each ProcessRun to the immutable module installation
     // resolved from the pre-installed production packages. The records map is
     // keyed by module name (e.g. 'product-discovery'); stage.moduleRef carries
@@ -553,9 +564,21 @@ export function createProductLifecycleRuntime(
         );
       }
       assertProductDeliveryLifecycleInput(command.lifecycleInput);
+      const portableInput = canonicalizeProductDeliveryLifecycleInput(
+        db,
+        command.projectId,
+        command.lifecycleInput,
+      );
+      // Fail before Discovery (and before any LM token is spent) when a
+      // portable repository reference cannot be bound in this runtime.
+      resolveProductDeliveryRepositories(
+        db,
+        command.projectId,
+        portableInput.development.repositories,
+      );
       return {
         schema,
-        payload: command.lifecycleInput,
+        payload: portableInput,
         initiatedBy: command.initiatedBy ?? 'product-lifecycle-orchestrator',
         idempotencyKey:
           command.idempotencyKey ?? `product-delivery:epic:${command.epicId}`,
