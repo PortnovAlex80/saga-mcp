@@ -1258,16 +1258,17 @@ function findContractGap(
       return `PRD ${prdId} has no derived_from → root artifact (brief/decision/discovery-doc) trace`;
     }
   }
+  const gaps: string[] = [];
   if (required.useCases) {
     if (categories.ucs.length === 0) return 'contract must contain at least one UC';
     const prdIds = new Set(idsOf(categories.prd));
     const frIds = new Set(idsOf(categories.frs));
     for (const uc of categories.ucs) {
       if (!hasEdge(uc.id, 'derived_from', 'PRD', prdIds)) {
-        return `UC ${uc.id} has no derived_from → exact PRD trace`;
+        gaps.push(`UC ${uc.id} has no derived_from → exact PRD trace`);
       }
       if (!hasEdge(uc.id, 'covers', 'FR', frIds)) {
-        return `UC ${uc.id} has no covers → exact FR trace`;
+        gaps.push(`UC ${uc.id} has no covers → exact FR trace`);
       }
     }
   }
@@ -1280,10 +1281,10 @@ function findContractGap(
       const hasFr = hasEdge(ac.id, 'derived_from', 'FR', frIds);
       const hasNfr = hasEdge(ac.id, 'derived_from', 'NFR', nfrIds);
       if (!hasFr && !hasNfr) {
-        return `AC ${ac.id} has no derived_from → exact FR/NFR trace`;
+        gaps.push(`AC ${ac.id} has no derived_from → exact FR/NFR trace`);
       }
       if (hasFr && !hasEdge(ac.id, 'derived_from', 'UC', ucIds)) {
-        return `FR-derived AC ${ac.id} has no derived_from → exact UC trace`;
+        gaps.push(`FR-derived AC ${ac.id} has no derived_from → exact UC trace`);
       }
     }
   }
@@ -1294,7 +1295,7 @@ function findContractGap(
       return `SRS ${categories.srs[0].id} has no derived_from → exact PRD trace`;
     }
   }
-  return null;
+  return gaps.length > 0 ? gaps.join('; ') : null;
 }
 
 function manifestResult(
