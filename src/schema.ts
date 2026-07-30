@@ -72,8 +72,21 @@ CREATE TABLE IF NOT EXISTS epics (
   updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
--- Executable state machine for one REQ/product episode. Kept separate from
--- epics.status so legacy boards retain their coarse lifecycle unchanged.
+-- saga4 cutover note: after Phases 2-7 this table is NO LONGER an executable
+-- state machine. The columns split by ownership:
+--   - metadata (SHARED control plane): engine_running / engine_pid /
+--     engine_concurrency / active_model / needs-human / last_gate_error. Read
+--     and written by LegacyEngineAdministration (generic process spawner) and
+--     the board projection. NOT legacy-engine-specific.
+--   - stage / track / baseline_* (LIFECYCLE PROJECTION TARGET): the saga3
+--     ProcessRun runtime projects its stage here (process_run.projected_stage →
+--     episode_workflows.stage) so the board-projection-reader can render the
+--     coarse lifecycle bar. The legacy pump that DROVE these columns is gone;
+--     they are now a read-only mirror of the lifecycle runtime. The episode
+--    _transition MCP tool (orchestrator/operator-owned after Phase 7) is the
+--     only explicit writer; no worker tool or legacy pump writes them.
+-- Phase 8 cleanup task: once the board-projection-reader reads
+-- lifecycle_stage_runs directly, these columns can be dropped.
 CREATE TABLE IF NOT EXISTS episode_workflows (
   epic_id              INTEGER PRIMARY KEY REFERENCES epics(id) ON DELETE CASCADE,
   stage                TEXT NOT NULL DEFAULT 'discovery'
