@@ -2,8 +2,8 @@
 /**
  * Reset the main saga.db to a clean state for a fresh project.
  * Wipes all saga3_* process data + tracker data (tasks, artifacts, projects,
- * epics, etc) but KEEPS the schema and saga3_module_installations (so installed
- * packages survive — they are immutable infrastructure, not run data).
+ * epics, etc) but keeps the schema. Module installations are cleared because
+ * local package bytes may have changed between test runs.
  *
  * Usage: node reset-saga-db.mjs
  * Target: C:/Users/user/.zcode/saga.db (override via DB_PATH)
@@ -17,7 +17,10 @@ db.pragma('foreign_keys = OFF');
 // Tables to wipe completely (run data).
 const runDataTables = [
   // Tracker core
-  'subtasks', 'comments', 'notes', 'traces',
+  'work_attempts', 'task_work_items',
+  'lifecycle_events', 'human_requests', 'integration_intents',
+  'task_dependencies', 'task_conflict_keys', 'runtime_observations',
+  'subtasks', 'comments', 'notes', 'artifact_traces',
   'verification_evidence',
   'tasks', 'artifacts',
   'episode_workflows',
@@ -87,7 +90,7 @@ const tx = db.transaction(() => {
   // For a test reset we need to bypass them: drop the triggers, delete, and
   // let the next getDb() migration recreate them.
   const immutableTriggers = db.prepare(
-    "SELECT name FROM sqlite_master WHERE type='trigger' AND sql LIKE '%ABORT%'",
+    "SELECT name, sql FROM sqlite_master WHERE type='trigger' AND sql LIKE '%ABORT%'",
   ).all();
   for (const t of immutableTriggers) {
     db.exec(`DROP TRIGGER IF EXISTS ${t.name}`);
@@ -109,6 +112,18 @@ const tx = db.transaction(() => {
   }
   // Reset autoincrement sequences so new projects start at id=1.
   try { db.exec("DELETE FROM sqlite_sequence WHERE name IN ('projects','epics','repositories','tasks','artifacts')"); } catch {}
+
+  for (const trigger of immutableTriggers) {
+    if (typeof trigger.sql === 'string' && trigger.sql.trim()) {
+      db.exec(trigger.sql);
+    }
+  }
+  const foreignKeyViolations = db.pragma('foreign_key_check');
+  if (foreignKeyViolations.length > 0) {
+    throw new Error(
+      `RESET_FOREIGN_KEY_VIOLATION: ${JSON.stringify(foreignKeyViolations)}`,
+    );
+  }
 });
 tx();
 

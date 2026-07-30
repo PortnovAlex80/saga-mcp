@@ -18,7 +18,7 @@
  *
  * Env: DB_PATH (default C:/Users/user/.zcode/saga.db)
  *
- * Format: saga3.snapshot.v1. The snapshot stores raw table rows with their
+ * Format: saga3.formalization-checkpoint.v2. The snapshot stores raw table rows with their
  * original ids — restore uses id preservation (INSERT with explicit id), NOT
  * ref-remapping. This is the simpler, deterministic variant of §4.3/§4.4 of the
  * design: it is valid only over a freshly-reset DB (so the same ids cannot
@@ -31,7 +31,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
 const DB_PATH = process.env.DB_PATH ?? 'C:/Users/user/.zcode/saga.db';
-const SCHEMA_VERSION = 'saga3.snapshot.v1';
+const SCHEMA_VERSION = 'saga3.formalization-checkpoint.v2';
 
 const FORMALIZATION_STAGES = ['initial-discovery', 'solution-formalization'];
 
@@ -84,13 +84,20 @@ function resolveLifecycle(db, epicId) {
   if (!lr) throw new Error(`No saga3_lifecycle_runs row for epic ${epicId}`);
   // The formalization process_run = process_run_id of the solution-formalization stage_run.
   const frSr = db.prepare(
-    `SELECT sr.id AS stage_run_id, sr.process_run_id
+    `SELECT sr.id AS stage_run_id, sr.process_run_id, sr.status,
+            sr.local_outcome
        FROM saga3_stage_runs sr
       WHERE sr.lifecycle_run_id=? AND sr.stage_id='solution-formalization'
       ORDER BY sr.id DESC LIMIT 1`,
   ).get(lr.id);
   if (!frSr) throw new Error(`No solution-formalization stage_run for lifecycle_run ${lr.id} (epic ${epicId})`);
   if (!frSr.process_run_id) throw new Error(`solution-formalization stage_run ${frSr.stage_run_id} has no bound process_run`);
+  if (frSr.status !== 'completed' || frSr.local_outcome !== 'formalized') {
+    throw new Error(
+      `Formalization checkpoint is not reusable: stage_run ${frSr.stage_run_id} `
+      + `has status='${frSr.status}', local_outcome='${frSr.local_outcome}'`,
+    );
+  }
   return { lifecycleRunId: lr.id, lifecycleRun: lr, formalizationStageRunId: frSr.stage_run_id, formalizationProcessRunId: frSr.process_run_id };
 }
 
@@ -143,6 +150,24 @@ function captureArtifactSnapshot(db, epicId) {
   const processRuns = processRunIds.length
     ? db.prepare(`SELECT * FROM saga3_process_runs WHERE id IN (${processRunIds.join(',')}) ORDER BY id`).all()
     : [];
+  const moduleInstallationIds = [...new Set(
+    processRuns.map(row => row.installation_id).filter(Number.isInteger),
+  )];
+  const moduleInstallations = moduleInstallationIds.length
+    ? db.prepare(
+        `SELECT * FROM saga3_module_installations
+          WHERE id IN (${moduleInstallationIds.join(',')})
+          ORDER BY id`,
+      ).all()
+    : [];
+  if (moduleInstallations.length !== moduleInstallationIds.length) {
+    const found = new Set(moduleInstallations.map(row => row.id));
+    throw new Error(
+      `Checkpoint source has missing module installations: ${
+        moduleInstallationIds.filter(id => !found.has(id)).join(', ')
+      }`,
+    );
+  }
 
   const nodeRuns = processRunIds.length
     ? db.prepare(`SELECT * FROM saga3_node_runs WHERE process_run_id IN (${processRunIds.join(',')}) ORDER BY id`).all()
@@ -191,6 +216,48 @@ function captureArtifactSnapshot(db, epicId) {
   const commandReceipts = formalizationTaskIds.length
     ? db.prepare(`SELECT * FROM command_receipts WHERE task_id IN (${formalizationTaskIds.join(',')}) ORDER BY command_id`).all()
     : [];
+  const workIntentIds = [...new Set(formalizationTasks.map(task => {
+    try {
+      return JSON.parse(task.metadata).work_intent_id;
+    } catch {
+      return null;
+    }
+  }).filter(Number.isInteger))];
+  const workIntents = workIntentIds.length
+    ? db.prepare(
+        `SELECT * FROM saga3_work_intents
+          WHERE id IN (${workIntentIds.join(',')})
+          ORDER BY id`,
+      ).all()
+    : [];
+  const workerExecutionIds = [...new Set(
+    commandReceipts.map(row => row.execution_id).filter(
+      value => typeof value === 'string' && value.length > 0,
+    ),
+  )];
+  const workerExecutions = workerExecutionIds.length
+    ? db.prepare(
+        `SELECT * FROM worker_executions
+          WHERE execution_id IN (${workerExecutionIds.map(() => '?').join(',')})
+          ORDER BY execution_id`,
+      ).all(...workerExecutionIds)
+    : [];
+  if (workIntents.length !== workIntentIds.length) {
+    const found = new Set(workIntents.map(row => row.id));
+    throw new Error(
+      `Checkpoint source has missing work intents: ${
+        workIntentIds.filter(id => !found.has(id)).join(', ')
+      }`,
+    );
+  }
+  if (workerExecutions.length !== workerExecutionIds.length) {
+    const found = new Set(workerExecutions.map(row => row.execution_id));
+    throw new Error(
+      `Checkpoint source has missing worker executions: ${
+        workerExecutionIds.filter(id => !found.has(id)).join(', ')
+      }`,
+    );
+  }
 
   const snapshot = {
     schemaVersion: SCHEMA_VERSION,
@@ -209,6 +276,7 @@ function captureArtifactSnapshot(db, epicId) {
     formalizationTasks,
     stageRuns,
     processRuns,
+    moduleInstallations,
     nodeRuns,
     transitions,
     lifecycleRun: lifecycleRuns,
@@ -219,6 +287,8 @@ function captureArtifactSnapshot(db, epicId) {
     managedArtifactProductions,
     managedTraceProductions,
     managedNodeSubmissions,
+    workIntents,
+    workerExecutions,
     commandReceipts,
   };
   // snapshotHash over the canonical JSON without the hash field itself.
@@ -254,6 +324,7 @@ function runCapture(opts) {
     console.log(`  formalization tasks:             ${snapshot.formalizationTasks.length}`);
     console.log(`  stage_runs (disc+form):          ${snapshot.stageRuns.length}`);
     console.log(`  process_runs:                   ${snapshot.processRuns.length}`);
+    console.log(`  module installations:           ${snapshot.moduleInstallations.length}`);
     console.log(`  node_runs:                      ${snapshot.nodeRuns.length}`);
     console.log(`  process_transitions:            ${snapshot.transitions.length}`);
     console.log(`  acceptance decisions:           ${snapshot.acceptanceDecisions.length}`);
@@ -263,6 +334,8 @@ function runCapture(opts) {
     console.log(`  managed artifact productions:   ${snapshot.managedArtifactProductions.length}`);
     console.log(`  managed trace productions:      ${snapshot.managedTraceProductions.length}`);
     console.log(`  managed node submissions:       ${snapshot.managedNodeSubmissions.length}`);
+    console.log(`  work intents:                   ${snapshot.workIntents.length}`);
+    console.log(`  worker executions:              ${snapshot.workerExecutions.length}`);
     console.log(`  command_receipts:               ${snapshot.commandReceipts.length}`);
     console.log(`  snapshotHash: ${snapshot.snapshotHash}`);
   } finally {
@@ -406,6 +479,49 @@ function bumpSequence(db, name) {
   db.prepare('INSERT OR REPLACE INTO sqlite_sequence (name, seq) VALUES (?, ?)').run(name, nextSeq);
 }
 
+function insertRawRows(db, table, rows) {
+  if (!Array.isArray(rows) || rows.length === 0) return;
+  const allowed = new Set(
+    db.prepare(`PRAGMA table_info("${table}")`).all().map(column => column.name),
+  );
+  for (const row of rows) {
+    const columns = Object.keys(row);
+    if (columns.length === 0 || columns.some(column => !allowed.has(column))) {
+      throw new Error(`SNAPSHOT_ROW_SCHEMA_MISMATCH: ${table}`);
+    }
+    const quoted = columns.map(column => `"${column}"`).join(', ');
+    const parameters = columns.map(column => `@${column}`).join(', ');
+    db.prepare(
+      `INSERT INTO "${table}" (${quoted}) VALUES (${parameters})`,
+    ).run(row);
+  }
+}
+
+function resolveResumeStage(snapshot) {
+  let definition;
+  try {
+    definition = JSON.parse(snapshot.lifecycleRun.definition_snapshot);
+  } catch {
+    throw new Error('SNAPSHOT_LIFECYCLE_DEFINITION_INVALID');
+  }
+  const source = definition?.stages?.find(
+    stage => stage.id === 'solution-formalization',
+  );
+  const outcome = snapshot.stageRuns.find(
+    stage => stage.stage_id === 'solution-formalization',
+  )?.local_outcome;
+  const route = source?.outcomeRoutes?.[outcome];
+  if (!route || route.type !== 'stage' || typeof route.stageId !== 'string') {
+    throw new Error(
+      `SNAPSHOT_RESUME_ROUTE_MISSING: solution-formalization/${String(outcome)}`,
+    );
+  }
+  if (!definition.stages.some(stage => stage.id === route.stageId)) {
+    throw new Error(`SNAPSHOT_RESUME_STAGE_UNKNOWN: ${route.stageId}`);
+  }
+  return route.stageId;
+}
+
 /**
  * Restore the snapshot into a freshly-reset DB with full id preservation.
  *
@@ -417,6 +533,7 @@ function bumpSequence(db, name) {
  */
 function restoreArtifactSnapshot(db, snapshot) {
   const capturedAt = snapshot.capturedAt ?? new Date().toISOString();
+  const resumeStageId = resolveResumeStage(snapshot);
 
   const triggerDefs = collectAbortTriggers(db);
 
@@ -508,6 +625,17 @@ function restoreArtifactSnapshot(db, snapshot) {
     );
     for (const t of snapshot.formalizationTasks) insertTask.run(t);
 
+    insertRawRows(db, 'saga3_work_intents', snapshot.workIntents);
+    insertRawRows(db, 'worker_executions', snapshot.workerExecutions);
+
+    // ProcessRun pins are part of the immutable replay contract. Restore the
+    // exact installation rows before restoring runs that reference them.
+    insertRawRows(
+      db,
+      'saga3_module_installations',
+      snapshot.moduleInstallations,
+    );
+
     // 7. saga3 process layer (id preserved across all saga3 tables).
     const insertProcessRun = db.prepare(
       `INSERT INTO saga3_process_runs (id, project_id, epic_id, module_name, module_version,
@@ -543,13 +671,12 @@ function restoreArtifactSnapshot(db, snapshot) {
                @execution_lease_owner, @execution_lease_fence, @execution_lease_expires_at, @error,
                @started_at, @completed_at, @created_at, @updated_at)`,
     );
-    // Insert the lifecycle_run but tune the cursor/lease for resume: status='paused',
-    // current_stage_id='solution-development', current_stage_run_id NULL (development
-    // stage_run does not exist yet — the orchestrator creates it on resume).
+    // Tune the cursor/lease for resume using the route frozen in the lifecycle
+    // definition, not a hard-coded product lifecycle stage name.
     insertLifecycleRun.run({
       ...snapshot.lifecycleRun,
       status: 'paused',
-      current_stage_id: 'solution-development',
+      current_stage_id: resumeStageId,
       current_stage_run_id: null,
       terminal_status: null,
       execution_lease_owner: null,
@@ -700,16 +827,21 @@ function restoreArtifactSnapshot(db, snapshot) {
       'saga3_formalization_acceptance_baselines', 'saga3_formalization_solution_contracts',
       'saga3_managed_artifact_productions', 'saga3_managed_trace_productions',
       'saga3_managed_node_submissions',
+      'saga3_work_intents', 'saga3_module_installations',
     ]) {
       try { bumpSequence(db, table); } catch { /* table has no AUTOINCREMENT row yet */ }
     }
+
+    recreateAbortTriggers(db, triggerDefs);
+    const violations = db.pragma('foreign_key_check');
+    if (violations.length > 0) {
+      throw new Error(
+        `SNAPSHOT_FOREIGN_KEY_VIOLATION: ${JSON.stringify(violations)}`,
+      );
+    }
   });
   tx();
-
-  // 12. Recreate the ABORT triggers (also recreated on next getDb(); this closes
-  //     the §6.6 window so the DB is not left unprotected between restore and
-  //     the next saga-server startup).
-  recreateAbortTriggers(db, triggerDefs);
+  return { resumeStageId };
 }
 
 function runRestore(opts) {
@@ -720,6 +852,15 @@ function runRestore(opts) {
   const snapshot = JSON.parse(readFileSync(opts.in, 'utf8'));
   if (snapshot.schemaVersion !== SCHEMA_VERSION) {
     console.error(`Unsupported snapshot schemaVersion '${snapshot.schemaVersion}' (expected ${SCHEMA_VERSION})`);
+    process.exit(1);
+  }
+  const { snapshotHash, ...snapshotBody } = snapshot;
+  const computedSnapshotHash = sha256Hex(JSON.stringify(snapshotBody));
+  if (
+    typeof snapshotHash !== 'string'
+    || snapshotHash !== computedSnapshotHash
+  ) {
+    console.error('Snapshot integrity check failed: snapshotHash mismatch.');
     process.exit(1);
   }
   if (snapshot.epicId !== opts.epic) {
@@ -752,6 +893,7 @@ function runRestore(opts) {
   }
 
   if (!opts.confirm) {
+    const resumeStageId = resolveResumeStage(snapshot);
     console.log('=== RESTORE PREVIEW ===');
     console.log(`Snapshot: ${opts.in}`);
     console.log(`Captured: ${snapshot.capturedAt}  epic ${snapshot.epicId}  lifecycle_run ${snapshot.lifecycleRunId}`);
@@ -763,15 +905,17 @@ function runRestore(opts) {
     console.log(`  saga3_lifecycle_runs:            1`);
     console.log(`  saga3_stage_runs:                ${snapshot.stageRuns.length}`);
     console.log(`  saga3_process_runs:              ${snapshot.processRuns.length}`);
+    console.log(`  saga3_module_installations:      ${snapshot.moduleInstallations.length}`);
     console.log(`  saga3_node_runs:                 ${snapshot.nodeRuns.length}`);
     console.log(`  saga3_process_transitions:       ${snapshot.transitions.length}`);
     console.log(`  acceptance decisions/items:      ${snapshot.acceptanceDecisions.length} / ${snapshot.acceptanceItems.length}`);
     console.log(`  acceptance baselines/contracts:  ${snapshot.acceptanceBaselines.length} / ${snapshot.solutionContracts.length}`);
     console.log(`  managed productions:             ${snapshot.managedArtifactProductions.length} art / ${snapshot.managedTraceProductions.length} trace / ${snapshot.managedNodeSubmissions.length} node-sub`);
     console.log(`  command_receipts:                ${snapshot.commandReceipts.length}`);
+    console.log(`  work_intents / worker_executions:${snapshot.workIntents.length} / ${snapshot.workerExecutions.length}`);
     console.log('');
     console.log('Post-restore state:');
-    console.log(`  lifecycle_run: status='paused', current_stage_id='solution-development'`);
+    console.log(`  lifecycle_run: status='paused', current_stage_id='${resumeStageId}'`);
     console.log(`  episode_workflows: stage='development', track='${snapshot.episodeWorkflow?.track ?? 'formal'}'`);
     console.log('');
     console.log('Re-run with --confirm to apply.');
@@ -780,12 +924,12 @@ function runRestore(opts) {
   }
 
   try {
-    restoreArtifactSnapshot(db, snapshot);
+    const restored = restoreArtifactSnapshot(db, snapshot);
     db.pragma('foreign_keys = ON');
 
     console.log('=== RESTORE COMPLETE ===');
     console.log(`Epic ${snapshot.epicId} (lifecycle_run ${snapshot.lifecycleRunId}) restored with id preservation.`);
-    console.log(`lifecycle_run -> status='paused', current_stage_id='solution-development'`);
+    console.log(`lifecycle_run -> status='paused', current_stage_id='${restored.resumeStageId}'`);
     console.log(`episode_workflows -> stage='development'`);
 
     // Quick verification counts.
@@ -818,5 +962,10 @@ function runRestore(opts) {
 // ============================================================================
 
 const opts = parseArgs(process.argv);
-if (opts.command === 'capture') runCapture(opts);
-else if (opts.command === 'restore') runRestore(opts);
+try {
+  if (opts.command === 'capture') runCapture(opts);
+  else if (opts.command === 'restore') runRestore(opts);
+} catch (error) {
+  console.error(`Snapshot ${opts.command} failed: ${error.message}`);
+  process.exitCode = 1;
+}

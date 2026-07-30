@@ -284,12 +284,15 @@ if (prId === null && !rewindTo) {
 // Collect what will be deleted / updated (for reporting)
 // ---------------------------------------------------------------------------
 
-// Drop immutable ABORT triggers for the duration of this transaction. Mirrors
-// reset-saga-db.mjs:89-94. They are recreated idempotently on the next
-// ensureSaga3*Schema call by any saga server / orchestrate-cli startup.
+// Drop immutable ABORT triggers only inside the transaction and recreate the
+// exact definitions before commit.
 const immutableTriggers = db.prepare(
-  "SELECT name FROM sqlite_master WHERE type='trigger' AND sql LIKE '%ABORT%'",
-).all().map(r => r.name);
+  "SELECT name, sql FROM sqlite_master WHERE type='trigger' AND sql LIKE '%ABORT%'",
+).all();
+const initialForeignKeyViolations = new Set(
+  db.pragma('foreign_key_check').map(row =>
+    `${row.table}:${row.rowid}:${row.parent}:${row.fkid}`),
+);
 
 // Build the deletion plan as a list of [table, whereClause, optionalNote].
 // The ORDER matters for the FK-RESTRICT columns, but because we disable FKs
@@ -476,8 +479,8 @@ if (!confirm) {
 
 const tx = db.transaction(() => {
   // 0. Drop immutable ABORT triggers (they will be recreated on next startup).
-  for (const name of immutableTriggers) {
-    db.exec(`DROP TRIGGER IF EXISTS ${name}`);
+  for (const trigger of immutableTriggers) {
+    db.exec(`DROP TRIGGER IF EXISTS ${trigger.name}`);
   }
 
   let totalDeleted = 0;
@@ -503,6 +506,13 @@ const tx = db.transaction(() => {
   //    exists; with FKs off it is informational, but order is still safe).
   if (commandReceiptCount > 0) {
     try {
+      db.prepare(
+        `DELETE FROM lifecycle_events
+          WHERE command_id IN (
+            SELECT command_id FROM command_receipts
+             WHERE task_id IN (${taskIds.join(',')})
+          )`,
+      ).run();
       logDel('command_receipts', db.prepare(`DELETE FROM command_receipts WHERE task_id IN (${taskIds.join(',')})`).run());
     } catch (e) { console.log(`  SKIP command_receipts: ${e.message}`); }
   }
@@ -510,6 +520,13 @@ const tx = db.transaction(() => {
   // 3. worker_executions for the tasks (lets dispatcher re-schedule).
   if (workerExecutionCount > 0) {
     try {
+      db.prepare(
+        `DELETE FROM work_attempts
+          WHERE execution_id IN (
+            SELECT execution_id FROM worker_executions
+             WHERE task_id IN (${taskIds.join(',')})
+          )`,
+      ).run();
       logDel('worker_executions', db.prepare(`DELETE FROM worker_executions WHERE task_id IN (${taskIds.join(',')})`).run());
     } catch (e) { console.log(`  SKIP worker_executions: ${e.message}`); }
   }
@@ -524,6 +541,31 @@ const tx = db.transaction(() => {
   // 5. tasks
   if (taskIds.length > 0) {
     try {
+      db.prepare(
+        `DELETE FROM work_attempts
+          WHERE work_item_id IN (
+            SELECT work_item_id FROM task_work_items
+             WHERE task_id IN (${taskIds.join(',')})
+          )`,
+      ).run();
+      for (const [table, predicate] of [
+        ['task_work_items', `task_id IN (${taskIds.join(',')})`],
+        ['task_dependencies', `task_id IN (${taskIds.join(',')}) OR depends_on_task_id IN (${taskIds.join(',')})`],
+        ['subtasks', `task_id IN (${taskIds.join(',')})`],
+        ['comments', `task_id IN (${taskIds.join(',')})`],
+        ['notes', `task_id IN (${taskIds.join(',')})`],
+        ['task_conflict_keys', `task_id IN (${taskIds.join(',')})`],
+        ['verification_evidence', `task_id IN (${taskIds.join(',')})`],
+        ['human_requests', `task_id IN (${taskIds.join(',')})`],
+        ['integration_intents', `task_id IN (${taskIds.join(',')})`],
+        ['runtime_observations', `task_id IN (${taskIds.join(',')})`],
+      ]) {
+        try {
+          db.prepare(`DELETE FROM ${table} WHERE ${predicate}`).run();
+        } catch (error) {
+          if (!String(error.message).includes('no such table')) throw error;
+        }
+      }
       logDel('tasks', db.prepare(`DELETE FROM tasks WHERE id IN (${taskIds.join(',')})`).run());
     } catch (e) { console.log(`  SKIP tasks: ${e.message}`); }
   }
@@ -618,6 +660,21 @@ const tx = db.transaction(() => {
         WHERE id=${lifecycleRun.id}`,
     ).run();
     console.log(`  reset lifecycle_run #${lifecycleRun.id} -> lease cleared (cursor untouched)`);
+  }
+
+  for (const trigger of immutableTriggers) {
+    if (typeof trigger.sql === 'string' && trigger.sql.trim()) {
+      db.exec(trigger.sql);
+    }
+  }
+  const newViolations = db.pragma('foreign_key_check').filter(row =>
+    !initialForeignKeyViolations.has(
+      `${row.table}:${row.rowid}:${row.parent}:${row.fkid}`,
+    ));
+  if (newViolations.length > 0) {
+    throw new Error(
+      `PARTIAL_RESET_FOREIGN_KEY_VIOLATION: ${JSON.stringify(newViolations)}`,
+    );
   }
 
   console.log(`\nTotal rows deleted: ${totalDeleted}`);
