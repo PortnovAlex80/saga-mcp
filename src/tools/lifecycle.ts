@@ -338,51 +338,14 @@ function handleEpisodeTransition(args: Record<string, unknown>) {
   return { changed: true, workflow: getOrCreate(epicId) };
 }
 
-export function advanceReadyEpisodes(projectId: number): Array<{
-  epic_id: number; from: Stage; to: Stage;
-}> {
-  const db = getDb();
-  const rows = db.prepare(
-    `SELECT ew.epic_id, ew.stage
-     FROM episode_workflows ew JOIN epics e ON e.id=ew.epic_id
-     WHERE e.project_id=? AND ew.stage NOT IN ('discovery','completed','cancelled')`,
-  ).all(projectId) as Array<{ epic_id: number; stage: Stage }>;
-  const advanced: Array<{ epic_id: number; from: Stage; to: Stage }> = [];
-  for (const row of rows) {
-    let stage = row.stage;
-    for (let guard = 0; guard < 5; guard += 1) {
-      const to = NEXT[stage];
-      if (!to) break;
-      try {
-        const result = handleEpisodeTransition({ epic_id: row.epic_id, to_stage: to }) as {
-          changed: boolean; workflow: { stage: Stage };
-        };
-        if (!result.changed) break;
-        db.prepare(
-          `UPDATE episode_workflows
-           SET metadata=json_remove(metadata,'$.last_gate_error','$.last_gate_from','$.last_gate_to'),
-               updated_at=datetime('now')
-           WHERE epic_id=?`,
-        ).run(row.epic_id);
-        advanced.push({ epic_id: row.epic_id, from: stage, to });
-        stage = result.workflow.stage;
-      } catch (error) {
-        db.prepare(
-          `UPDATE episode_workflows
-           SET metadata=json_set(metadata,
-             '$.last_gate_error',?,
-             '$.last_gate_from',?,
-             '$.last_gate_to',?,
-             '$.last_gate_checked_at',datetime('now')),
-             updated_at=datetime('now')
-           WHERE epic_id=?`,
-        ).run(error instanceof Error ? error.message : String(error), stage, to, row.epic_id);
-        break;
-      }
-    }
-  }
-  return advanced;
-}
+// saga4 cutover (Phase 5): advanceReadyEpisodes was REMOVED. It was platform
+// orchestration recovery logic — a loop over episode_workflows that advanced
+// stages via handleEpisodeTransition as a side-effect of worker_next. After
+// Phase 4 worker_next is a pure claim; stage advancement is now a module-owned
+// settlement decision routed through the lifecycle orchestrator. The
+// handleEpisodeTransition primitive below is KEPT (it backs the explicit
+// episode_transition MCP tool / orchestrator-owned transitions); only the
+// implicit auto-advance-from-worker-call wrapper is gone.
 
 function handleVerificationRecord(args: Record<string, unknown>) {
   const db = getDb();

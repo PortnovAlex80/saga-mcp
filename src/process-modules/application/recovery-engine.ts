@@ -1,6 +1,20 @@
 /**
  * W4-A4 — Universal recovery engine.
  *
+ * @deprecated saga4 cutover (Phase 5 audit): this SPI layer is DEAD CODE. The
+ * `UniversalRecoveryEngine` and `routeRecoveryAction` exports have ZERO
+ * production consumers — no module runtime imports them. The canonical, wired,
+ * bounded recovery mechanism is `flow.recovery[]` (FlowRecoveryDefinition)
+ * executed by `generic-flow-executor.reconcileRecoveryCheckpoint` through the
+ * `RecoveryCaseRepository` port. The per-module `*_RECOVERY_POLICY_BINDINGS`
+ * declared in `package/contributions/recovery-policies.ts` are likewise never
+ * read by any validation or runtime path.
+ *
+ * This file + recovery-policies.ts + their contributions/index.ts re-exports
+ * are retained only because removing them touches 7 test files; deletion is a
+ * tracked cleanup task. Do NOT add new consumers of this SPI — use
+ * `flow.recovery[]` in the module definition instead.
+ *
  * Spec: docs/refactor-management/09-contracts/WAVE4-PROTOCOL-RECOVERY-SPEC.md
  *       (Wave 4 Lane A4). Plan §8.10 (RecoveryAction union).
  *
