@@ -17,7 +17,12 @@ const { handlers: projects } = await import('../dist/tools/projects.js');
 const { handlers: epics } = await import('../dist/tools/epics.js');
 const { handlers: tasks } = await import('../dist/tools/tasks.js');
 const { handlers: repositories } = await import('../dist/tools/repositories.js');
-const { handlers: workflow } = await import('../dist/tools/workflow.js');
+// saga4 cutover: src/tools/workflow.ts is DELETED (the generateNextForCompletedTask
+// ladder). The conditional import keeps non-ladder tests (~49 of 65) runnable
+// after a clean rebuild; the ~16 ladder-characterization tests that call
+// workflow.workflow_generate_next will throw if reached (they are being phased out).
+let workflow = {};
+try { workflow = (await import('../dist/tools/workflow.js')).handlers; } catch { /* orphan gone after clean rebuild */ }
 const { handlers: dispatcher } = await import('../dist/tools/dispatcher.js');
 const { handlers: exportImport } = await import('../dist/tools/export-import.js');
 const { handlers: lifecycle } = await import('../dist/tools/lifecycle.js');
@@ -172,7 +177,7 @@ test('machine checkout overrides legacy repository path during dispatch', () => 
   assert.equal(assignment.repository.local_path, path.resolve(machinePath));
 });
 
-test('typed PRD generates UC exactly once and the ADR-013 chain runs end-to-end', () => {
+test({ skip: 'saga4 cutover: generateNextForCompletedTask ladder deleted' }, 'typed PRD generates UC exactly once and the ADR-013 chain runs end-to-end', () => {
   // ADR-013 (pipeline-reorder-srs-after-ac) reshapes the typed flow:
   //   PRD → UC → AC → reconciliation → SRS → planning.decomposition
   // SRS is no longer a parallel sibling of UC — it appears AFTER the AC
@@ -268,7 +273,7 @@ test('typed PRD generates UC exactly once and the ADR-013 chain runs end-to-end'
   assert.equal(planning.tasks[0].workflow_stage, 'planning');
 });
 
-test('ADR-008: brief_accepted seeds EXACTLY ONE formalization.prd (not PRD+SRS parallel)', () => {
+test({ skip: 'saga4 cutover: ladder deleted' }, 'ADR-008: brief_accepted seeds EXACTLY ONE formalization.prd (not PRD+SRS parallel)', () => {
   // The 3.0 plan draft said "brief → PRD+SRS parallel". That breaks the
   // sibling() lookup in srs_accepted (workflow.ts:108), so ADR-008 reduced
   // brief_accepted to seed only the PRD; prd_accepted then creates SRS+UC
@@ -359,7 +364,7 @@ test('ADR-008: brief_accepted seeds EXACTLY ONE formalization.prd (not PRD+SRS p
     'SRS must NOT appear in prd_accepted downstream under ADR-013');
 });
 
-test('ADR-008: brief_accepted decision-guard — non-go decisions seed NO PRD', () => {
+test({ skip: 'saga4 cutover: ladder deleted' }, 'ADR-008: brief_accepted decision-guard — non-go decisions seed NO PRD', () => {
   const product = projects.project_list({}).find(p => p.name === 'Workflow Product');
   const repo = repositories.repository_list({ project_id: product.id }).repositories[0];
 
@@ -412,7 +417,7 @@ test('ADR-008: brief_accepted decision-guard — non-go decisions seed NO PRD', 
   assert.equal(rejectResult.tasks.length, 0);
 });
 
-test('ADR-008: brief_accepted throws when source task_kind is not discovery.kickstart', () => {
+test({ skip: 'saga4 cutover: ladder deleted' }, 'ADR-008: brief_accepted throws when source task_kind is not discovery.kickstart', () => {
   const product = projects.project_list({}).find(p => p.name === 'Workflow Product');
   const epic = epics.epic_create({ project_id: product.id, name: 'REQ-brief-wrongkind' });
   const notKickstart = tasks.task_create({
@@ -1033,7 +1038,7 @@ test('legacy tasks retain developer and reviewer routing', () => {
   assert.equal(review.skill, 'saga-reviewer');
 });
 
-test('cross-repository dependency blocks downstream and invalid generation is atomic', () => {
+test({ skip: 'saga4 cutover: ladder deleted' }, 'cross-repository dependency blocks downstream and invalid generation is atomic', () => {
   const product = projects.project_create({ name: 'Dependency Product' });
   const [repoA, repoB] = [
     repositories.repository_register({ project_id: product.id, name: 'dep-a', local_path: repoAPath }),
@@ -1062,7 +1067,7 @@ test('cross-repository dependency blocks downstream and invalid generation is at
   assert.equal(tasks.task_list({ epic_id: epic.id }).length, 2);
 });
 
-test('project export/import 1.4 preserves repository bindings and typed task fields', () => {
+test({ skip: 'saga4 cutover: depends on ladder-generated tasks' }, 'project export/import 1.4 preserves repository bindings and typed task fields', () => {
   const source = projects.project_list({}).find(p => p.name === 'Workflow Product');
   const exported = exportImport.tracker_export({ project_id: source.id });
   assert.equal(exported.format_version, '1.4');
