@@ -15,13 +15,12 @@
 //   handlePipeline(req, res, url)   GET /api/lifecycle/pipeline?epic_id=N
 //   handleStatic(req, res, url)     GET /lifecycle-pipeline/<asset>
 //
-// Pipeline response shape (the single source-of-truth for which pipeline the
-// UI renders):
-//   { ok:true, source:'lifecycle', view: <PipelineView> }  // render new bar
-//   { ok:true, source:'legacy' }                            // defer to legacy pipeline
-// `source:'legacy'` is emitted when no LifecycleRun exists for the epic (the
-// projection returns null) — the client then yields the shared container to the
-// legacy refreshPipeline(). This is the coexistence/fallback contract.
+// Pipeline response shape (saga4 cutover: the only source is the lifecycle
+// runtime):
+//   { ok:true, source:'lifecycle', view: <PipelineView> }  // render the bar
+//   { ok:true, source:'lifecycle', view: null }            // empty state (no run)
+// An epic with no LifecycleRun renders an explicit empty state, never a legacy
+// bar. The former `source:'legacy'` coexistence signal was removed.
 
 import { readFile, realpath } from 'node:fs/promises';
 import path from 'node:path';
@@ -58,19 +57,15 @@ export function createLifecyclePipelineApi({ repo, resolveProjectId, publicDir }
     }
     try {
       const projectId = resolveProjectId(epicId);
-      // No project for this epic (or epic gone) → no lifecycle run possible.
+      // No project for this epic (or epic gone) → empty lifecycle state.
       if (projectId === null || projectId === undefined) {
-        return respondJson(res, 200, { ok: true, source: 'legacy' });
+        return respondJson(res, 200, { ok: true, source: 'lifecycle', view: null });
       }
       const view = buildPipelineView(projectId, epicId, repo);
-      if (view === null) {
-        // No LifecycleRun for this epic → defer to the legacy pipeline.
-        return respondJson(res, 200, { ok: true, source: 'legacy' });
-      }
+      // No LifecycleRun for this epic → empty lifecycle state (not a legacy bar).
       return respondJson(res, 200, { ok: true, source: 'lifecycle', view });
     } catch (e) {
-      // Honest failure: a genuine read error must not be silently masked. The
-      // client treats non-ok as "yield to legacy" so the board keeps working.
+      // Honest failure: a genuine read error must not be silently masked.
       return respondJson(res, 500, { ok: false, error: 'lifecycle-pipeline: ' + e.message });
     }
   }

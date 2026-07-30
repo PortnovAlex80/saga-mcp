@@ -1,6 +1,10 @@
-// Controller for coexistence between the generic Saga 3 lifecycle bar and the
-// legacy episode pipeline. It owns orchestration only; pipeline.js owns DOM
-// rendering and the single live-duration timer.
+// Controller for the Saga 3 lifecycle pipeline bar. Owns polling orchestration;
+// pipeline.js owns DOM rendering and the single live-duration timer.
+//
+// saga4 cutover (Phase 7): the legacy episode-pipeline coexistence / fallback
+// was removed. mount.js is now the SOLE pipeline renderer — there is no legacy
+// refresh to yield to. An epic with no LifecycleRun renders an explicit empty
+// state (handled in pipeline.js), never a legacy bar.
 
 import { renderPipeline } from './pipeline.js';
 
@@ -8,16 +12,7 @@ let owned = false;
 let pollTimer = null;
 let currentEpicId = null;
 let generation = 0;
-let legacyRefresh = () => {};
 
-export function configureLegacyPipeline(fn) {
-  legacyRefresh = typeof fn === 'function' ? fn : () => {};
-}
-
-/**
- * Start one non-overlapping polling chain for an epic. A generation token
- * prevents a slow response for a previously selected epic from reaching DOM.
- */
 export function mountLifecyclePipeline(epicId, intervalMs = 5000) {
   stop();
   currentEpicId = epicId;
@@ -47,31 +42,21 @@ export function stop() {
 async function poll(token, epicId, intervalMs) {
   if (token !== generation || currentEpicId !== epicId) return;
 
-  let response = null;
   try {
     const httpResponse = await fetch(
       '/api/lifecycle/pipeline?epic_id=' + encodeURIComponent(epicId),
     );
-    response = await httpResponse.json();
+    const response = await httpResponse.json();
+    if (token !== generation || currentEpicId !== epicId) return;
+
+    // The lifecycle projection is authoritative. Render it whenever present
+    // (including a null/empty view for epics with no LifecycleRun). There is no
+    // legacy fallback anymore.
+    owned = true;
+    const container = document.getElementById('pipeline-stages');
+    if (container) renderPipeline(container, response?.view ?? null);
   } catch {
     // Keep the last authoritative lifecycle render on transient failures.
-    // Before lifecycle ownership, let the legacy path try to render.
-    if (token === generation && currentEpicId === epicId && !owned) {
-      legacyRefresh();
-    }
-  }
-
-  if (token !== generation || currentEpicId !== epicId) return;
-
-  if (response) {
-    if (response.ok && response.source === 'lifecycle' && response.view) {
-      owned = true;
-      const container = document.getElementById('pipeline-stages');
-      if (container) renderPipeline(container, response.view);
-    } else {
-      releaseOwnership();
-      legacyRefresh();
-    }
   }
 
   if (token === generation && currentEpicId === epicId) {
@@ -80,12 +65,4 @@ async function poll(token, epicId, intervalMs) {
       intervalMs,
     );
   }
-}
-
-function releaseOwnership() {
-  if (owned) {
-    const container = document.getElementById('pipeline-stages');
-    if (container) renderPipeline(container, null);
-  }
-  owned = false;
 }

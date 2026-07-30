@@ -794,7 +794,6 @@ function renderBoard(projectId, allProjects) {
       ${e.gate_error ? `<span class="task-badge" style="color:#f85149" title="${esc(e.gate_error)}">gate blocked</span>` : ''}
       ${e.needs_human === 1 ? `
         <span class="task-badge" style="color:#f85149;background:rgba(231,76,60,.15)" title="${esc(e.pause_reason || 'engine paused')}">⚠ engine paused</span>
-        <button type="button" class="btn episode-resume" data-epic="${e.id}" title="Снять needs-human — движок продолжит">▶ Resume</button>
       ` : ''}
     </div>`).join('');
   const repoBindings = withDb(db => db.prepare(`
@@ -804,16 +803,6 @@ function renderBoard(projectId, allProjects) {
   `).all(projectId));
   const bootstrapOptions = repoBindings.map(r =>
     `<option value="${r.id}">${esc(r.name)} (${esc(r.status)})</option>`).join('');
-  const nextStage = {
-    formalization:'planning', planning:'development',
-    development:'verification', verification:'integration', integration:'completed',
-  };
-  const transitionButtons = Object.values(epicById).map(e => {
-    const next = nextStage[e.episode_stage];
-    return next
-      ? `<button type="button" class="episode-advance btn" data-epic="${e.id}" data-to="${next}">${esc(e.name)}: ${esc(e.episode_stage)} → ${next}</button>`
-      : '';
-  }).join('');
 
   const cards = tasks.map(t => {
     const e = epicById[t.epic_id];
@@ -880,7 +869,6 @@ function renderBoard(projectId, allProjects) {
           <input type="text" name="local_path" required placeholder="empty clone destination">
           <button class="btn" type="submit">Clone & register checkout</button>
         </form>
-        <div class="inline-op episode-ops">${transitionButtons || '<span class="muted">No manual transition available</span>'}</div>
       </div>
     </details>
     <div class="filter-bar">
@@ -948,34 +936,6 @@ function renderBoard(projectId, allProjects) {
       p.project_repository_id=Number(p.project_repository_id);
       try { await postOperation('/api/repository/bootstrap',p,'This will run git clone into the explicit destination. Continue?'); } catch(err){ alert(err.message); }
     });
-    document.querySelectorAll('.episode-advance').forEach(button => button.addEventListener('click', async () => {
-      try {
-        await postOperation('/api/episode/transition',{
-          epic_id:Number(button.dataset.epic),to_stage:button.dataset.to,
-        },'Advance this episode through its hard gate?');
-      } catch(err) { alert('Gate rejected: '+err.message); }
-    }));
-    document.querySelectorAll('.episode-resume').forEach(button => button.addEventListener('click', async () => {
-      try {
-        const epicId = Number(button.dataset.epic);
-        const r = await fetch('/api/episode/resume', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ epic_id: epicId }),
-        });
-        const j = await r.json();
-        if (j.ok) {
-          if (j.was_paused) {
-            alert('Флаг needs-human снят. Если движок запущен — он продолжит в течение 10 сек.');
-          } else {
-            alert('Флаг needs-human уже был снят. Если движок не запущен — запусти orchestrate-cli вручную.');
-          }
-          location.reload();
-        } else {
-          alert('Ошибка: ' + (j.error || 'неизвестная'));
-        }
-      } catch (err) { alert('Сеть: ' + err.message); }
-    }));
     const runnerConcurrency = document.getElementById('agent-concurrency');
     const runnerStatus = document.getElementById('agent-run-status');
     function applyRunnerState(run) {
@@ -1164,51 +1124,6 @@ function renderBoard(projectId, allProjects) {
       document.querySelectorAll('.worker-row.expanded').forEach(row => loadWorkerTail(row));
     }, 3000);
 
-    // Pipeline bar — refresh every RELOAD_SEC.
-    async function refreshPipeline() {
-      const stagesEl = document.getElementById('pipeline-stages');
-      if (!stagesEl) return;
-      const epicId = window.__sagaEpicId;
-      if (!epicId) return;
-      try {
-        const r = await fetch('/api/episode/pipeline?epic_id=' + epicId);
-        const j = await r.json();
-        // A legacy request may have started just before the lifecycle
-        // controller took ownership. Do not let its stale response overwrite
-        // the authoritative lifecycle projection.
-        if (window.__lifecyclePipeline?.ownsPipelineContainer?.()) return;
-        if (!j.ok) { stagesEl.innerHTML = '<span class="worker-empty">' + esc(j.error || 'err') + '</span>'; return; }
-        const icons = { completed:'✓', in_progress:'●', needs_human:'⚠', pending:'○' };
-        // Clickable stages: completed / in_progress / needs_human.
-        // Pending is muted and not clickable (no data-stage, no click handler).
-        stagesEl.innerHTML = j.stages.map((s, i) => {
-          const cls = s.status;
-          const icon = icons[s.status] || '?';
-          const name = s.name.charAt(0).toUpperCase() + s.name.slice(1);
-          const dur = s.duration_s != null ? formatDur(s.duration_s) : '';
-          const clickable = s.status !== 'pending';
-          const attrs = clickable ? (' data-stage="' + esc(s.name) + '" title="Click for stage detail"') : '';
-          const stage = '<div class="pipeline-stage ' + cls + '"' + attrs + '>' +
-            '<span class="ps-icon">' + icon + '</span>' +
-            '<span class="ps-name">' + name + '</span>' +
-            '<span class="ps-dur">' + dur + '</span>' +
-          '</div>';
-          const arrow = (i < j.stages.length - 1) ? '<div class="pipeline-arrow">→</div>' : '';
-          return stage + arrow;
-        }).join('');
-        // Wire click handlers on clickable stages (event delegation would also
-        // work, but attaching once per refresh is cheap and survives the
-        // innerHTML swap cleanly).
-        stagesEl.querySelectorAll('.pipeline-stage[data-stage]').forEach(el => {
-          el.addEventListener('click', () => {
-            // Open stage detail as a separate page (new tab). More reliable
-            // than overlay — no z-index/DOM timing issues.
-            const epicId = window.__sagaEpicId;
-            if (epicId) window.open('/stage?epic=' + epicId + '&stage=' + el.dataset.stage, '_blank');
-          });
-        });
-      } catch {}
-    }
     // --- Stage detail overlay (clickable pipeline) ---
     // Shows a stage SUMMARY (markdown) generated on demand by a summary.stage
     // worker task. First click for a stage spawns the task; subsequent clicks
@@ -1362,19 +1277,16 @@ function renderBoard(projectId, allProjects) {
       const h = Math.floor(m / 60);
       return h + 'h' + (m % 60) + 'm';
     }
-    // Pipeline polling: the lifecycle controller is the SINGLE poller for the
-    // shared #pipeline-stages container. When the backend reports a Saga 3
-    // LifecycleRun for this epic (source:'lifecycle') it renders the generic
-    // lifecycle bar; otherwise it yields to the legacy refreshPipeline above.
-    // Dynamic import() works from a classic script; if it fails, we fall back
-    // to the legacy poll loop so the board always has a pipeline.
+    // Pipeline polling: the lifecycle controller is the SOLE poller for the
+    // shared #pipeline-stages container (saga4 cutover: legacy fallback removed).
+    // It renders the lifecycle bar for epics with a LifecycleRun and an explicit
+    // empty state otherwise. Dynamic import() works from a classic script.
     import('/lifecycle-pipeline/mount.js').then(mod => {
       window.__lifecyclePipeline = mod; // expose for the epic-switch handler
-      mod.configureLegacyPipeline(refreshPipeline);
       mod.mountLifecyclePipeline(window.__sagaEpicId, ${RELOAD_SEC * 1000});
     }).catch(() => {
-      setInterval(refreshPipeline, ${RELOAD_SEC * 1000});
-      refreshPipeline();
+      // mount.js load failed — log; no legacy pipeline to fall back to.
+      console.error('lifecycle-pipeline/mount.js failed to load');
     });
 
     async function fetchEngineStatus() {
@@ -1623,29 +1535,12 @@ function renderBoard(projectId, allProjects) {
         const oldBoard = document.querySelector('.board');
         const newBoard = tmp.querySelector('.board');
         if (oldBoard && newBoard) oldBoard.replaceWith(newBoard);
-        // ...and the episode-progress-bar (so Resume button / needs-human
-        // badge / gate-blocked badge update without a full page reload).
+        // ...and the episode-progress-bar (so the needs-human badge /
+        // gate-blocked badge update without a full page reload).
         const oldBar = document.querySelector('.episode-progress-bar');
         const newBar = tmp.querySelector('.episode-progress-bar');
         if (oldBar && newBar) {
           oldBar.replaceWith(newBar);
-          // Re-bind click handlers on the freshly inserted Resume buttons
-          // (replaceWith drops any listeners attached to the old nodes).
-          document.querySelectorAll('.episode-resume').forEach(button => button.addEventListener('click', async () => {
-            try {
-              const epicId = Number(button.dataset.epic);
-              const r2 = await fetch('/api/episode/resume', {
-                method: 'POST', headers: {'Content-Type':'application/json'},
-                body: JSON.stringify({epic_id: epicId}),
-              });
-              const j2 = await r2.json();
-              if (j2.ok) {
-                alert(j2.was_paused
-                  ? 'Флаг needs-human снят. Движок продолжит в течение 10 сек.'
-                  : 'Флаг уже снят.');
-              } else { alert('Ошибка: ' + (j2.error||'?')); }
-            } catch (err) { alert('Сеть: ' + err.message); }
-          }));
         }
         applyFilter();
         // .board was just swapped — re-stamp streaming dots on the fresh
@@ -4403,127 +4298,6 @@ function handleProjectCreateFromIdea(req, res) {
   });
 }
 
-// --- POST /api/episode/resume: снять needs-human флаг эпизода ---
-// Плане §4 (Risks): когда episode_workflows.metadata.needs-human === true,
-// движок остановился и ждёт. Эта ручка снимает флаг — движок (если запущен)
-// на следующем poll'е (10 сек) увидит изменение и продолжит.
-// Если движок не запущен (paused_timeout / процесс убит), endpoint НЕ
-// перезапускает его — пользователь должен запустить orchestrate-cli вручную
-// или пересоздать через веб-форму.
-function handleEpisodeResume(req, res) {
-  let chunks = [];
-  req.on('data', c => chunks.push(c));
-  req.on('end', () => {
-    const raw = Buffer.concat(chunks).toString('utf8');
-    let fields;
-    const ct = req.headers['content-type'] || '';
-    if (ct.includes('application/json')) {
-      try { fields = JSON.parse(raw); } catch { fields = {}; }
-    } else {
-      fields = Object.fromEntries(new URLSearchParams(raw));
-    }
-    const epicId = Number(fields.epic_id);
-    if (!epicId) return respondJson(res, 400, { ok:false, error: 'epic_id обязательное поле' });
-
-    try {
-      const changes = withDbWrite(db => {
-        const before = db.prepare(
-          `SELECT json_extract(metadata,'$.needs-human') AS nh FROM episode_workflows WHERE epic_id=?`,
-        ).get(epicId);
-        db.prepare(
-          `UPDATE episode_workflows
-             SET metadata=json_remove(metadata, '$.needs-human', '$.pause_reason', '$.paused_at'),
-                 updated_at=datetime('now')
-           WHERE epic_id=?`,
-        ).run(epicId);
-        return { was_paused: before?.nh === 1 };
-      });
-      respondJson(res, 200, { ok:true, epic_id: epicId, ...changes });
-    } catch (e) {
-      respondJson(res, 500, { ok:false, error: 'db: ' + e.message });
-    }
-  });
-}
-
-// --- GET /api/episode/pipeline?epic_id=N ---
-// Pipeline progress data per docs/saga-mcp-3.0-pipeline-ui-spec.md.
-// Computes per-stage status + timestamps FROM activity_log (no new tables).
-// activity_log rows are written by lifecycle.ts:150 on every episode_transition
-// (field_name='episode_stage', old_value=<from>, new_value=<to>).
-function handleEpisodePipeline(req, res, url) {
-  const epicId = Number(url.searchParams.get('epic_id'));
-  if (!epicId) return respondJson(res, 400, { ok:false, error:'epic_id required' });
-  try {
-    const STAGES = ['discovery','formalization','planning','development','verification','integration','completed'];
-    const ew = withDb(db => db.prepare('SELECT stage, metadata, created_at FROM episode_workflows WHERE epic_id=?').get(epicId));
-    if (!ew) return respondJson(res, 404, { ok:false, error:'episode not found' });
-
-    // Find all stage transitions from activity_log, oldest first.
-    const transitions = withDb(db => db.prepare(
-      `SELECT old_value, new_value, created_at FROM activity_log
-       WHERE entity_type='epic' AND entity_id=? AND field_name='episode_stage'
-       ORDER BY created_at ASC`
-    ).all(epicId));
-
-    const meta = (() => { try { return JSON.parse(ew.metadata || '{}'); } catch { return {}; } })();
-    const needsHuman = meta['needs-human'] === true || meta['needs-human'] === 1;
-    const gateError = meta.last_gate_error || null;
-
-    const currentIdx = STAGES.indexOf(ew.stage);
-    const stages = STAGES.map((name, i) => {
-      // Entry transition: first time activity_log shows new_value=<name>.
-      // For the initial stage (no enter record — episode_workflows was
-      // INSERT-OR-IGNORE'd at creation, no activity_log entry), fall back
-      // to episode_workflows.created_at as the enter timestamp.
-      const enter = transitions.find(t => t.new_value === name)
-        || (name === STAGES[0] ? { created_at: ew.created_at } : null);
-      // Exit transition: first time activity_log shows old_value=<name>.
-      const exit = transitions.find(t => t.old_value === name);
-      // For the current stage with no exit yet, duration is "running" — show
-      // time elapsed since enter so the user sees live progress.
-      let status = 'pending';
-      if (i < currentIdx) status = 'completed';
-      else if (i === currentIdx) {
-        // 'completed' and 'cancelled' are terminal stages — once entered,
-        // they ARE the end state, not "in progress". Without this exception
-        // the pipeline bar shows the final stage as a pulsing blue ● forever,
-        // because there is no next stage for it to advance to.
-        if (ew.stage === 'completed' || ew.stage === 'cancelled') {
-          status = needsHuman ? 'needs_human' : 'completed';
-        } else {
-          status = needsHuman ? 'needs_human' : 'in_progress';
-        }
-      }
-      // cancelled stage is mutually exclusive; treat as terminal-pending unless stage===cancelled
-      let duration_s = null;
-      if (enter && exit) {
-        duration_s = Math.round((new Date(exit.created_at + 'Z') - new Date(enter.created_at + 'Z')) / 1000);
-      } else if (enter && i === currentIdx) {
-        // Live duration for current stage (time since enter until now).
-        duration_s = Math.round((Date.now() - new Date(enter.created_at + 'Z').getTime()) / 1000);
-      }
-      return {
-        name,
-        status,
-        started_at: enter?.created_at || null,
-        completed_at: exit?.created_at || null,
-        duration_s,
-      };
-    });
-
-    respondJson(res, 200, {
-      ok: true,
-      epic_id: epicId,
-      stage: ew.stage,
-      stages,
-      needs_human: needsHuman,
-      last_gate_error: gateError,
-    });
-  } catch (e) {
-    respondJson(res, 500, { ok:false, error: 'db: ' + e.message });
-  }
-}
-
 // --- GET /api/episode/stage-summary?epic_id=N&stage=formalization ---
 // Stage-summary-via-task-spawn: when the user clicks a pipeline stage, this
 // endpoint returns the markdown body of an accepted `summary` artifact for
@@ -5576,9 +5350,6 @@ const server = http.createServer((req, res) => {
   if (req.method === 'POST' && url.pathname === '/api/project/create-from-idea') {
     return handleProjectCreateFromIdea(req, res);
   }
-  if (req.method === 'POST' && url.pathname === '/api/episode/resume') {
-    return handleEpisodeResume(req, res);
-  }
   if (req.method === 'POST' && url.pathname === '/api/board-run/start') {
     return handleBoardRunStart(req, res);
   }
@@ -5591,19 +5362,11 @@ const server = http.createServer((req, res) => {
   if (req.method === 'POST' && url.pathname === '/api/repository/bootstrap') {
     return handleSagaOperation(req, res, 'repository_bootstrap');
   }
-  if (req.method === 'POST' && url.pathname === '/api/episode/transition') {
-    return handleSagaOperation(req, res, 'episode_transition');
-  }
   if (req.method === 'GET' && url.pathname === '/api/board-run/status') {
     const projectId = Number(url.searchParams.get('project_id'));
     return respondJson(res, 200, { ok:true, run:boardRunner.status(projectId) });
   }
-  if (req.method === 'GET' && url.pathname === '/api/episode/pipeline') {
-    return handleEpisodePipeline(req, res, url);
-  }
-  // Saga 3 lifecycle pipeline (process-modules). Coexists with the legacy
-  // episode pipeline: returns source:'lifecycle' when a LifecycleRun exists for
-  // the epic, else source:'legacy' so the client falls back gracefully.
+  // Saga 3 lifecycle pipeline (process-modules).
   if (req.method === 'GET' && url.pathname === '/api/lifecycle/pipeline') {
     return lifecyclePipelineApi.handlePipeline(req, res, url);
   }
@@ -5721,9 +5484,9 @@ const server = http.createServer((req, res) => {
   }
   res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
   // partial=1: episode-progress-bar + .board (AJAX-рефреш).
-  // episode-progress-bar включён чтобы кнопка Resume / needs-human badge /
-  // gate-blocked badge обновлялись без F5. frontend (refreshBoard) находит
-  // оба элемента в ответе и replaceWith'ит их по отдельности.
+  // episode-progress-bar включён чтобы needs-human badge / gate-blocked
+  // badge обновлялись без F5. frontend (refreshBoard) находит оба элемента
+  // в ответе и replaceWith'ит их по отдельности.
   if (partial === '1' && projectId) {
     const bar = extractDiv(html, 'episode-progress-bar');
     const board = extractDiv(html, 'board');

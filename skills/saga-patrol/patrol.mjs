@@ -131,7 +131,7 @@ function collectBoards(db) {
 async function collectEngineApi(epicId) {
   return {
     engine_status: await getJSON(`${SAGA_API}/api/engine/status?epic_id=${epicId}`),
-    pipeline: await getJSON(`${SAGA_API}/api/episode/pipeline?epic_id=${epicId}`),
+    pipeline: await getJSON(`${SAGA_API}/api/lifecycle/pipeline?epic_id=${epicId}`),
   };
 }
 
