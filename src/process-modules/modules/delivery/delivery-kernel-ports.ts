@@ -6,10 +6,13 @@
  */
 
 import type {
+  AuthorizedDeliveryReleaseCase,
   DeliveryApprovalDecision,
+  DeliveryApprovalStatus,
   DeliveryObservationSnapshot,
   DeliveryPreflightSnapshot,
   DeliveryPublicationSnapshot,
+  DeliveryProviderBinding,
   DeliveryReleaseCase,
   DeliverySettlementInput,
   DeliveryContentAddressedReference,
@@ -37,7 +40,7 @@ export const DELIVERY_EXTERNAL_ADAPTER_IDS = {
 export interface DeliveryPreflightStatePort {
   buildPreflightSnapshot(input: {
     processRunId: number;
-    deliveryCase: DeliveryReleaseCase;
+    deliveryCase: AuthorizedDeliveryReleaseCase;
     heartbeat: () => void;
   }): {
     preflight: DeliveryPreflightSnapshot;
@@ -48,12 +51,13 @@ export interface DeliveryPreflightStatePort {
 export interface DeliveryApprovalPort {
   decide(input: {
     processRunId: number;
-    deliveryCase: DeliveryReleaseCase;
-    preflight: DeliveryPreflightSnapshot;
+    deliveryCase: AuthorizedDeliveryReleaseCase;
+    preflightHash: string;
     heartbeat: () => void;
   }): Promise<{
-    approval: DeliveryApprovalDecision;
-    reference: DeliveryContentAddressedReference;
+    status: DeliveryApprovalStatus;
+    decision: DeliveryContentAddressedReference | null;
+    provider: DeliveryProviderBinding | null;
   }>;
 }
 
@@ -65,7 +69,7 @@ export interface DeliveryPublicationPort {
    */
   publishAndDeploy(input: {
     processRunId: number;
-    deliveryCase: DeliveryReleaseCase;
+    deliveryCase: AuthorizedDeliveryReleaseCase;
     preflight: DeliveryPreflightSnapshot;
     approval: DeliveryApprovalDecision;
     heartbeat: () => void;
@@ -78,7 +82,7 @@ export interface DeliveryPublicationPort {
 export interface DeliveryObservationPort {
   observe(input: {
     processRunId: number;
-    deliveryCase: DeliveryReleaseCase;
+    deliveryCase: AuthorizedDeliveryReleaseCase;
     publication: DeliveryPublicationSnapshot;
     heartbeat: () => void;
   }): Promise<{

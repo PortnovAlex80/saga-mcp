@@ -54,8 +54,10 @@ const deliveryOnlyLifecycle = {
       developmentCertificate: '$.developmentCertificate',
       verifiedIntegrationBundle: '$.verifiedIntegrationBundle',
       integratedCandidate: '$.integratedCandidate',
+      deliveryMode: '$.deliveryMode',
       policy: '$.policy',
       operatorAuthorization: '$.operatorAuthorization',
+      deferredProfile: '$.deferredProfile',
       initiatedBy: '$.initiatedBy',
     },
     outcomeRoutes: {
@@ -134,6 +136,7 @@ test('delivery pause resumes the same lifecycle and applies one external effect'
         ref: 'integrated-candidate:circle-v1',
         hash: candidateHash,
       },
+      deliveryMode: 'authorized',
       policy,
       operatorAuthorization: {
         schema: 'saga3.operator-authorization.v1',
@@ -146,6 +149,7 @@ test('delivery pause resumes the same lifecycle and applies one external effect'
           candidateHash,
         },
       },
+      deferredProfile: null,
       initiatedBy: 'test',
     };
 

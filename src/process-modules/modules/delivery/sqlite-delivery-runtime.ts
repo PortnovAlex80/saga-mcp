@@ -31,9 +31,11 @@ import {
   DELIVERY_PREFLIGHT_SCHEMA,
   DELIVERY_PUBLICATION_SCHEMA,
   DELIVERY_SETTLEMENT_INPUT_SCHEMA,
+  type AuthorizedDeliveryReleaseCase,
   type DeliveryActionObservation,
   type DeliveryActionReceipt,
   type DeliveryApprovalDecision,
+  type DeliveryApprovalStatus,
   type DeliveryContentAddressedReference,
   type DeliveryObservationSnapshot,
   type DeliveryPreflightCheck,
@@ -101,7 +103,7 @@ export class SqliteDeliveryRuntime implements
 
   buildPreflightSnapshot(input: {
     processRunId: number;
-    deliveryCase: DeliveryReleaseCase;
+    deliveryCase: AuthorizedDeliveryReleaseCase;
     heartbeat: () => void;
   }): {
     preflight: DeliveryPreflightSnapshot;
@@ -173,12 +175,13 @@ export class SqliteDeliveryRuntime implements
 
   async decide(input: {
     processRunId: number;
-    deliveryCase: DeliveryReleaseCase;
-    preflight: DeliveryPreflightSnapshot;
+    deliveryCase: AuthorizedDeliveryReleaseCase;
+    preflightHash: string;
     heartbeat: () => void;
   }): Promise<{
-    approval: DeliveryApprovalDecision;
-    reference: DeliveryContentAddressedReference;
+    status: DeliveryApprovalStatus;
+    decision: DeliveryContentAddressedReference | null;
+    provider: DeliveryProviderBinding | null;
   }> {
     const finalReplay = this.products.read<DeliveryApprovalDecision>(
       input.processRunId,
@@ -186,8 +189,9 @@ export class SqliteDeliveryRuntime implements
     );
     if (finalReplay) {
       return {
-        approval: finalReplay.payload,
-        reference: finalReplay.reference,
+        status: finalReplay.payload.status,
+        decision: finalReplay.reference,
+        provider: finalReplay.payload.provider,
       };
     }
 
@@ -196,7 +200,7 @@ export class SqliteDeliveryRuntime implements
       ? await this.providers.approval.decide({
           processRunId: input.processRunId,
           deliveryCase: input.deliveryCase,
-          preflightHash: input.preflight.preflightHash,
+          preflightHash: input.preflightHash,
           heartbeat: input.heartbeat,
         })
       : {
@@ -215,7 +219,7 @@ export class SqliteDeliveryRuntime implements
       schemaVersion: DELIVERY_APPROVAL_SCHEMA,
       status: sourced.status,
       candidateHash: input.deliveryCase.integratedCandidate.hash,
-      preflightHash: input.preflight.preflightHash,
+      preflightHash: input.preflightHash,
       releasePolicyHash: input.deliveryCase.policy.contentHash,
       decision: sourced.decision,
       provider,
@@ -243,8 +247,9 @@ export class SqliteDeliveryRuntime implements
         );
       }
       return {
-        approval: pending.payload,
-        reference: pending.reference,
+        status: pending.payload.status,
+        decision: pending.reference,
+        provider: pending.payload.provider,
       };
     }
     const stored = this.products.persist({
@@ -256,14 +261,15 @@ export class SqliteDeliveryRuntime implements
       artifactRefPrefix: 'delivery-approval',
     });
     return {
-      approval,
-      reference: stored.record.reference,
+      status: approval.status,
+      decision: stored.record.reference,
+      provider: approval.provider,
     };
   }
 
   async publishAndDeploy(input: {
     processRunId: number;
-    deliveryCase: DeliveryReleaseCase;
+    deliveryCase: AuthorizedDeliveryReleaseCase;
     preflight: DeliveryPreflightSnapshot;
     approval: DeliveryApprovalDecision;
     heartbeat: () => void;
@@ -323,7 +329,7 @@ export class SqliteDeliveryRuntime implements
 
   async observe(input: {
     processRunId: number;
-    deliveryCase: DeliveryReleaseCase;
+    deliveryCase: AuthorizedDeliveryReleaseCase;
     publication: DeliveryPublicationSnapshot;
     heartbeat: () => void;
   }): Promise<{
@@ -426,8 +432,9 @@ export class SqliteDeliveryRuntime implements
       approval: approval?.payload ?? null,
       publication: publication?.payload ?? null,
       observation: observation?.payload ?? null,
-      currentCandidateHash:
-        this.providers.observeCurrentCandidateHash(input.deliveryCase),
+      currentCandidateHash: input.deliveryCase.deliveryMode === 'authorized'
+        ? this.providers.observeCurrentCandidateHash(input.deliveryCase)
+        : null,
       productReferences: {
         preflight: preflight?.reference ?? null,
         approval: approval?.reference ?? null,
@@ -439,7 +446,7 @@ export class SqliteDeliveryRuntime implements
 
   private async executeAction(input: {
     processRunId: number;
-    deliveryCase: DeliveryReleaseCase;
+    deliveryCase: AuthorizedDeliveryReleaseCase;
     action: ReleaseActionDefinition;
     heartbeat: () => void;
   }): Promise<DeliveryActionReceipt> {
@@ -595,7 +602,7 @@ export class SqliteDeliveryRuntime implements
 
   private async observeAction(input: {
     processRunId: number;
-    deliveryCase: DeliveryReleaseCase;
+    deliveryCase: AuthorizedDeliveryReleaseCase;
     action: ReleaseActionDefinition;
     externalRef: string | null;
     heartbeat: () => void;

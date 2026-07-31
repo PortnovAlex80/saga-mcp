@@ -39,6 +39,7 @@ import {
   DELIVERY_RELEASE_CASE_SCHEMA,
   DELIVERY_SETTLEMENT_INPUT_SCHEMA,
   RELEASE_RECORD_SCHEMA,
+  type AuthorizedDeliveryReleaseCase,
   type DeliveryApprovalDecision,
   type DeliveryContentAddressedReference,
   type DeliveryPreflightSnapshot,
@@ -151,6 +152,9 @@ function createDeliveryPreflightHandler(
 ): KernelHandler {
   return ctx => {
     const deliveryCase = requireDeliveryCase(ctx);
+    if (deliveryCase.deliveryMode === 'deferred') {
+      return deferredDeliveryManifest(ctx, deliveryCase.deferredProfile.profileHash);
+    }
     try {
       const built = deps.preflightState.buildPreflightSnapshot({
         processRunId: ctx.processRunId,
@@ -199,7 +203,7 @@ function createApprovalInteraction(
   deps: DeliveryModuleInstallationDependencies,
 ): HumanInteractionAdapter {
   return async ctx => {
-    const deliveryCase = requireDeliveryCase(ctx);
+    const deliveryCase = requireAuthorizedDeliveryCase(ctx);
     const state = readExactSettlementState(deps, ctx, deliveryCase);
     const preflight = requireExactProduct(
       ctx,
@@ -213,35 +217,50 @@ function createApprovalInteraction(
     const decided = await deps.approval.decide({
       processRunId: ctx.processRunId,
       deliveryCase,
-      preflight,
+      preflightHash: preflight.preflightHash,
       heartbeat: ctx.heartbeat,
     });
-    assertReference(
-      decided.reference,
-      DELIVERY_APPROVAL_SCHEMA,
-      decided.approval.approvalHash,
-      'Delivery approval',
-    );
-    assertApprovalSnapshot(deliveryCase, preflight.preflightHash, decided.approval);
-    const production = {
-      schema: decided.reference.schema,
-      artifactRef: decided.reference.ref,
-      contentHash: decided.reference.hash,
-      bindings: {
-        approvalHash: decided.approval.approvalHash,
-        candidateHash: decided.approval.candidateHash,
-        approvalStatus: decided.approval.status,
-      },
-    };
-    if (decided.approval.status === 'pending') {
+    if (decided.status === 'pending') {
+      // No approval yet — pause the run. The production carries the pending
+      // status so the settlement node can route to approval-required.
+      const production = {
+        schema: DELIVERY_APPROVAL_SCHEMA,
+        artifactRef: `approval-pending:${preflight.preflightHash}`,
+        contentHash: preflight.preflightHash,
+        bindings: {
+          approvalHash: null,
+          candidateHash: deliveryCase.integratedCandidate.hash,
+          approvalStatus: 'pending',
+        },
+      };
       return {
         runtimeEvent: 'paused',
         production,
       };
     }
-    const domainEvent = decided.approval.status === 'expired'
+    // A decision exists (approved/denied/expired) — validate it.
+    if (!decided.decision) {
+      throw new Error(`${ctx.node.id}: approval decided but no decision reference`);
+    }
+    assertReference(
+      decided.decision,
+      DELIVERY_APPROVAL_SCHEMA,
+      decided.decision.hash,
+      'Delivery approval',
+    );
+    const production = {
+      schema: decided.decision.schema,
+      artifactRef: decided.decision.ref,
+      contentHash: decided.decision.hash,
+      bindings: {
+        approvalHash: decided.decision.hash,
+        candidateHash: deliveryCase.integratedCandidate.hash,
+        approvalStatus: decided.status,
+      },
+    };
+    const domainEvent = decided.status === 'expired'
       ? 'approval-required'
-      : decided.approval.status;
+      : decided.status;
     return {
       runtimeEvent: 'completed',
       domainEvent,
@@ -254,7 +273,7 @@ function createPublicationAdapter(
   deps: DeliveryModuleInstallationDependencies,
 ): ExternalAdapter {
   return async ctx => {
-    const deliveryCase = requireDeliveryCase(ctx);
+    const deliveryCase = requireAuthorizedDeliveryCase(ctx);
     const state = readExactSettlementState(deps, ctx, deliveryCase);
     const preflight = requireExactProduct(
       ctx,
@@ -327,7 +346,7 @@ function createObservationAdapter(
   deps: DeliveryModuleInstallationDependencies,
 ): ExternalAdapter {
   return async ctx => {
-    const deliveryCase = requireDeliveryCase(ctx);
+    const deliveryCase = requireAuthorizedDeliveryCase(ctx);
     const state = readExactSettlementState(deps, ctx, deliveryCase);
     const preflight = requireExactProduct(
       ctx,
@@ -419,7 +438,10 @@ function createDeliverySettlementHandler(
         ctx.frame.productions[DELIVERY_NODE_IDS.preflight];
       let settled: DeliverySettlementResult;
       let input: DeliverySettlementInput;
-      if (preflightProduction?.bindings.preflightStatus === 'failed'
+      if (preflightProduction?.bindings.authorizationRequired === true) {
+        input = emptySettlementInput(deliveryCase);
+        settled = deps.settlementPolicy.settle(input);
+      } else if (preflightProduction?.bindings.preflightStatus === 'failed'
         && preflightProduction.bindings.preflightFailure === true) {
         input = emptySettlementInput(deliveryCase);
         settled = {
@@ -541,7 +563,10 @@ function deliverySettlementFailure(
     developmentCertificateHash: stringValue(developmentCertificate.hash),
     verifiedIntegrationBundleHash: stringValue(bundle.hash),
     candidateHash: stringValue(candidate.hash),
-    releasePolicyHash: stringValue(policy.contentHash),
+    releasePolicyHash: stringValue(policy.contentHash) || null,
+    deferredProfileHash: isRecord(runInput.deferredProfile)
+      ? stringValue(runInput.deferredProfile.profileHash) || null
+      : null,
     preflightHash: null,
     approvalHash: null,
     publicationHash: null,
@@ -575,6 +600,29 @@ function deliverySettlementFailure(
   };
 }
 
+function deferredDeliveryManifest(
+  ctx: KernelHandlerContext,
+  deferredProfileHash: string,
+): KernelHandlerResult {
+  const body = {
+    schemaVersion: DELIVERY_PREFLIGHT_SCHEMA,
+    processRunId: ctx.processRunId,
+    preflightStatus: 'authorization-required',
+    authorizationRequired: true,
+    deferredProfileHash,
+  };
+  const contentHash = sha256Hex(body);
+  return {
+    event: 'blocked',
+    production: {
+      schema: DELIVERY_PREFLIGHT_SCHEMA,
+      artifactRef: `delivery-authorization-required:${ctx.processRunId}:${contentHash}`,
+      contentHash,
+      bindings: body,
+    },
+  };
+}
+
 function preflightFailureManifest(
   ctx: KernelHandlerContext,
   reason: string,
@@ -599,7 +647,7 @@ function preflightFailureManifest(
 }
 
 function assertApprovalSnapshot(
-  deliveryCase: DeliveryReleaseCase,
+  deliveryCase: AuthorizedDeliveryReleaseCase,
   preflightHash: string,
   approval: DeliveryApprovalDecision,
 ): void {
@@ -618,7 +666,7 @@ function assertApprovalSnapshot(
 
 function assertReadyPreflight(
   deps: DeliveryModuleInstallationDependencies,
-  deliveryCase: DeliveryReleaseCase,
+  deliveryCase: AuthorizedDeliveryReleaseCase,
   preflight: DeliveryPreflightSnapshot,
 ): void {
   const evaluated = deps.preflightPolicy.evaluate(deliveryCase, preflight);
@@ -630,7 +678,7 @@ function assertReadyPreflight(
 }
 
 function assertReleaseAuthorized(
-  deliveryCase: DeliveryReleaseCase,
+  deliveryCase: AuthorizedDeliveryReleaseCase,
   approval: DeliveryApprovalDecision,
 ): void {
   const admissible = deliveryCase.policy.humanApprovalRequired
@@ -662,7 +710,7 @@ function assertReleaseAuthorized(
 }
 
 function assertPublicationSnapshot(
-  deliveryCase: DeliveryReleaseCase,
+  deliveryCase: AuthorizedDeliveryReleaseCase,
   preflightHash: string,
   approvalHash: string,
   publication: DeliveryPublicationSnapshot,
@@ -773,6 +821,19 @@ function requireDeliveryCase(
     throw new Error(`${ctx.node.id}: invalid or mismatched DeliveryReleaseCase`);
   }
   return value as unknown as DeliveryReleaseCase;
+}
+
+function requireAuthorizedDeliveryCase(
+  ctx:
+    | KernelHandlerContext
+    | HumanInteractionContext
+    | ExternalAdapterContext,
+): AuthorizedDeliveryReleaseCase {
+  const deliveryCase = requireDeliveryCase(ctx);
+  if (deliveryCase.deliveryMode !== 'authorized') {
+    throw new Error(`${ctx.node.id}: deferred Delivery cannot execute release effects`);
+  }
+  return deliveryCase;
 }
 
 function emptySettlementInput(
