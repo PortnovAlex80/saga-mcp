@@ -79,7 +79,7 @@ export interface DeliveryReleaseCase {
    * handed off by the preceding stage under this immutable release policy.
    * Standalone Delivery callers may instead bind one already-known hash.
    */
-  operatorAuthorization: DeliveryContentAddressedReference & {
+  operatorAuthorization: (DeliveryContentAddressedReference & {
     requestedBy: string;
     releasePolicyHash: string;
     candidateScope:
@@ -90,7 +90,7 @@ export interface DeliveryReleaseCase {
       | {
           mode: 'lifecycle-output';
         };
-  };
+  }) | null;
   initiatedBy: string;
 }
 

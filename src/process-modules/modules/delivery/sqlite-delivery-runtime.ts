@@ -444,6 +444,10 @@ export class SqliteDeliveryRuntime implements
     heartbeat: () => void;
   }): Promise<DeliveryActionReceipt> {
     const actionKey = deliveryActionKey(input.deliveryCase, input.action);
+    const authorization = input.deliveryCase.operatorAuthorization;
+    if (authorization === null) {
+      throw new Error('DELIVERY_OPERATOR_AUTHORIZATION_REQUIRED');
+    }
     const provider = this.providers.actionProviders[input.action.kind];
     if (!provider) {
       return missingProviderReceipt(input.action, actionKey);
@@ -458,8 +462,7 @@ export class SqliteDeliveryRuntime implements
       action: input.action,
       candidateHash: input.deliveryCase.integratedCandidate.hash,
       releasePolicyHash: input.deliveryCase.policy.contentHash,
-      operatorAuthorizationHash:
-        input.deliveryCase.operatorAuthorization.hash,
+      operatorAuthorizationHash: authorization.hash,
     };
     const ledgerActionKey =
       `${actionKey}:process-run:${input.processRunId}`;
@@ -598,6 +601,10 @@ export class SqliteDeliveryRuntime implements
     heartbeat: () => void;
   }): Promise<DeliveryActionObservation> {
     const actionKey = deliveryActionKey(input.deliveryCase, input.action);
+    const authorization = input.deliveryCase.operatorAuthorization;
+    if (authorization === null) {
+      throw new Error('DELIVERY_OPERATOR_AUTHORIZATION_REQUIRED');
+    }
     const provider = this.providers.actionProviders[input.action.kind];
     if (!provider) {
       const body = {

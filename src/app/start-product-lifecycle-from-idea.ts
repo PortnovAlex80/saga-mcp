@@ -1,41 +1,16 @@
 /**
  * Application use case: start a Product Delivery Lifecycle from a bare idea.
  *
- * saga4 cutover: the lifecycle runtime requires a full
- * `ProductDeliveryLifecycleInput` (initiative + development.repositories +
- * development.policy + delivery.policy + delivery.operatorAuthorization)
- * validated by `assertProductDeliveryLifecycleInput` BEFORE Discovery runs.
- * The frontend "Start new project from idea" only has
- * `{ idea, projectId, epicId, repositoryId }`. This use case is the
- * scenario-owned assembler that fills the gap WITHOUT fabricating any
- * externally-visible authority:
+ * A bare idea has no release policy grant and no operator authorization. The
+ * assembler therefore persists `operatorAuthorization: null` explicitly. It
+ * never fabricates a grant merely to satisfy the lifecycle input contract.
+ * Delivery may run its deterministic checks, but settlement must stop at
+ * `approval-required` until a real authorization is supplied.
  *
- *  - The repository binding is resolved from the REAL project_repositories row
- *    and the REAL current git HEAD (never a zero hash, never invented).
- *  - The development policy is a deterministic ReferenceDevelopmentPolicy
- *    snapshot (its hash is computed by the canonical hashing, not invented).
- *  - The delivery policy is a `local-dry-run` snapshot: it carries the shape
- *    the assert requires, but declares a single required publication action
- *    whose provider is intentionally NOT wired for publication.
- *  - The operator authorization is a MINIMAL dry-run/unauthorized grant: it
- *    binds the dry-run release policy hash and scopes to `lifecycle-output`.
- *    It is valid enough to pass the assert, but the actual publication provider
- *    (local-dry-run composition) fails CLOSED at the Delivery boundary.
- *
- * Fail-closed guarantees (never fabricate):
- *  1. No operator authorization that grants publication is synthesized — the
- *     authorization explicitly marks itself `dry-run` / unauthorized-for-
- *     publication via its requestedBy identity and the dry-run policy it binds.
- *  2. No repository id, expected commit, delivery channel, release version or
- *     publication success is invented — all come from real DB/git state, and
- *     the dry-run policy's identifiers are static constants, not observed
- *     external state.
- *  3. The publication provider fails CLOSED with a typed outcome
- *     `delivery-provider-not-configured` (see product-delivery-composition.mjs),
- *     never `released`.
- *  4. A missing or dry-run-only Delivery provider does NOT block Discovery,
- *     Formalization or Development — only the Delivery boundary, because the
- *     dry-run publication throws before any external effect.
+ * Repository identity and expected base commit still come from real DB/Git
+ * state. The local dry-run policy remains an inert release profile for this
+ * migration slice; removing that placeholder policy is a separate cutover
+ * step.
  */
 
 import type Database from 'better-sqlite3';
@@ -56,10 +31,6 @@ import type {
 import { hashDeliveryReleasePolicy } from '../process-modules/modules/delivery/delivery-settlement-policy.js';
 import { sha256Hex } from '../process-modules/shared/canonical-json.js';
 
-/** Schema string for the synthesized dry-run operator authorization reference. */
-export const DRY_RUN_OPERATOR_AUTHORIZATION_SCHEMA =
-  'saga3.operator-authorization.v1';
-
 /**
  * Stable identity of the synthesized dry-run release policy. These are STATIC
  * CONSTANTS (not observed external state): they name the dry-run intent and
@@ -68,9 +39,6 @@ export const DRY_RUN_OPERATOR_AUTHORIZATION_SCHEMA =
  */
 export const LOCAL_DRY_RUN_DELIVERY_POLICY_ID = 'local-dry-run-delivery';
 export const LOCAL_DRY_RUN_DELIVERY_POLICY_VERSION = '1';
-/** Identity of the dry-run requestor; explicitly NOT a publication authority. */
-export const DRY_RUN_OPERATOR_REQUESTED_BY = 'local-dry-run-startup';
-
 /**
  * Single required publication action declared by the dry-run policy. It has the
  * full shape the assert requires (actionId/kind/target/desiredStateHash/
@@ -87,22 +55,6 @@ export const LOCAL_DRY_RUN_PUBLICATION_ACTION: ReleaseActionDefinition = {
   payloadHash: sha256Hex({ dryRun: 'no-payload' }),
   required: true,
 };
-
-/**
- * The dry-run operator authorization reference hash. This binds the dry-run
- * release policy via `releasePolicyHash` (filled in by the assembler after the
- * policy hash is computed). It is content-addressed itself and explicitly marks
- * its unauthorized-for-publication intent inside the hashed body.
- */
-export function dryRunOperatorAuthorizationHash(releasePolicyHash: string): string {
-  return sha256Hex({
-    schema: DRY_RUN_OPERATOR_AUTHORIZATION_SCHEMA,
-    requestedBy: DRY_RUN_OPERATOR_REQUESTED_BY,
-    releasePolicyHash,
-    mode: 'lifecycle-output',
-    authorization: 'dry-run-unauthorized-for-publication',
-  });
-}
 
 /**
  * Build the deterministic `local-dry-run` DeliveryReleasePolicySnapshot.
@@ -248,9 +200,6 @@ export function assembleProductLifecycleInput(params: {
 
   const developmentPolicy = buildReferenceDevelopmentPolicy();
   const deliveryPolicy = buildLocalDryRunDeliveryPolicy();
-  const authorizationHash = dryRunOperatorAuthorizationHash(
-    deliveryPolicy.contentHash,
-  );
 
   const input: ProductDeliveryLifecycleInput = {
     initiative: {
@@ -265,16 +214,7 @@ export function assembleProductLifecycleInput(params: {
     },
     delivery: {
       policy: deliveryPolicy,
-      operatorAuthorization: {
-        schema: DRY_RUN_OPERATOR_AUTHORIZATION_SCHEMA,
-        ref: `operator-authorization:dry-run:${deliveryPolicy.contentHash}`,
-        hash: authorizationHash,
-        requestedBy: DRY_RUN_OPERATOR_REQUESTED_BY,
-        releasePolicyHash: deliveryPolicy.contentHash,
-        candidateScope: {
-          mode: 'lifecycle-output',
-        },
-      },
+      operatorAuthorization: null,
     },
   };
 
@@ -344,8 +284,8 @@ export interface StartProductLifecycleFromIdeaParams {
  *
  * Verifies the epic belongs to the project, resolves the real repository
  * binding + current git HEAD, assembles and validates the full
- * `ProductDeliveryLifecycleInput` (with a fail-closed dry-run delivery
- * profile), and starts the LifecycleRun through the injected application port.
+ * `ProductDeliveryLifecycleInput` (with explicit missing release
+ * authorization), and starts the LifecycleRun through the injected application port.
  */
 export async function startProductLifecycleFromIdea(
   params: StartProductLifecycleFromIdeaParams,

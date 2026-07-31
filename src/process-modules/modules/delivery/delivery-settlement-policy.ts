@@ -184,13 +184,14 @@ function invalidCase(deliveryCase: DeliveryReleaseCase): DeliveryReasonCode | nu
   ) {
     return 'development-certificate-invalid';
   }
+  const authorization = deliveryCase.operatorAuthorization;
   if (
-    !validRef(deliveryCase.operatorAuthorization)
-    || !deliveryCase.operatorAuthorization.requestedBy.trim()
-    || deliveryCase.operatorAuthorization.releasePolicyHash
-      !== deliveryCase.policy.contentHash
+    authorization === null
+    || !validRef(authorization)
+    || !authorization.requestedBy.trim()
+    || authorization.releasePolicyHash !== deliveryCase.policy.contentHash
     || !validCandidateAuthorizationScope(
-      deliveryCase.operatorAuthorization.candidateScope,
+      authorization.candidateScope,
       deliveryCase.integratedCandidate.hash,
     )
   ) {
@@ -394,6 +395,14 @@ implements DeliverySettlementPolicyPort {
         'failed',
         ['invalid-input-contract'],
         'Delivery settlement input schema is invalid.',
+        inputHash,
+      );
+    }
+    if (input.deliveryCase.operatorAuthorization === null) {
+      return settlementResult(
+        'approval-required',
+        ['operator-authorization-missing'],
+        'A real operator authorization is required before release effects may begin.',
         inputHash,
       );
     }

@@ -34,14 +34,14 @@ export interface ProductDeliveryLifecycleInput {
   };
   delivery: {
     policy: DeliveryReleasePolicySnapshot;
-    operatorAuthorization: Omit<
-      DeliveryReleaseCase['operatorAuthorization'],
+    operatorAuthorization: (Omit<
+      NonNullable<DeliveryReleaseCase['operatorAuthorization']>,
       'candidateScope'
     > & {
       candidateScope: {
         mode: 'lifecycle-output';
       };
-    };
+    }) | null;
   };
 }
 
@@ -125,7 +125,7 @@ export function assertProductDeliveryLifecycleInput(
   if (
     !isRecord(value.delivery)
     || !isRecord(value.delivery.policy)
-    || !isRecord(value.delivery.operatorAuthorization)
+    || !Object.hasOwn(value.delivery, 'operatorAuthorization')
   ) {
     throw new Error('PRODUCT_LIFECYCLE_DELIVERY_CONFIGURATION_REQUIRED');
   }
@@ -168,11 +168,14 @@ export function assertProductDeliveryLifecycleInput(
     || hashDeliveryReleasePolicy(
       deliveryPolicy as unknown as DeliveryReleasePolicySnapshot,
     ) !== deliveryPolicy.contentHash
-    || !validReference(authorization)
-    || !nonEmptyString(authorization.requestedBy)
-    || authorization.releasePolicyHash !== deliveryPolicy.contentHash
-    || !isRecord(authorization.candidateScope)
-    || authorization.candidateScope.mode !== 'lifecycle-output'
+    || (authorization !== null && (
+      !isRecord(authorization)
+      || !validReference(authorization)
+      || !nonEmptyString(authorization.requestedBy)
+      || authorization.releasePolicyHash !== deliveryPolicy.contentHash
+      || !isRecord(authorization.candidateScope)
+      || authorization.candidateScope.mode !== 'lifecycle-output'
+    ))
   ) {
     throw new Error('PRODUCT_LIFECYCLE_DELIVERY_CONFIGURATION_INVALID');
   }
@@ -376,7 +379,7 @@ export const productDeliveryLifecycle: LifecycleDefinition = {
       },
       entryConditions: [
         'Development outcome is verified',
-        'Operator authorization binds the exact candidate and release policy',
+        'Release authorization is explicit, or Delivery terminates as approval-required',
       ],
       exitConditions: ['Every required external action has authoritative observed state'],
     },

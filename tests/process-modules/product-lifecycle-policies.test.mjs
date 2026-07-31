@@ -480,6 +480,17 @@ test('Delivery releases an uncertain response only after authoritative match', (
   assert.equal(result.releaseRecord.destinations.length, 1);
 });
 
+
+test('Delivery requests approval when no operator authorization exists', () => {
+  const input = deliveryFixture();
+  input.deliveryCase.operatorAuthorization = null;
+  const result = new deliveryPolicy.ReferenceDeliverySettlementPolicy()
+    .settle(input);
+  assert.equal(result.decision, 'approval-required');
+  assert.deepEqual(result.reasonCodes, ['operator-authorization-missing']);
+  assert.equal(result.releaseRecord, null);
+});
+
 test('Delivery accepts a Lifecycle-produced candidate grant and rejects a wrong exact hash', () => {
   const policy = new deliveryPolicy.ReferenceDeliverySettlementPolicy();
   const lifecycleGrant = deliveryFixture();

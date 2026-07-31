@@ -10,7 +10,6 @@ const {
   assembleProductLifecycleInput,
   startProductLifecycleFromIdea,
   buildLocalDryRunDeliveryPolicy,
-  DRY_RUN_OPERATOR_REQUESTED_BY,
   LOCAL_DRY_RUN_DELIVERY_POLICY_ID,
 } = await import('../../dist/app/start-product-lifecycle-from-idea.js');
 const { LifecycleOrchestrator } = await import(
@@ -476,7 +475,7 @@ test('a missing/dry-run Delivery provider does NOT block Discovery startup, and 
   }
 });
 
-test('no operator authorization that grants publication is synthesized', () => {
+test('bare idea persists no synthetic operator authorization', () => {
   const repo = createRealGitRepo();
   const fixture = createFixture(repo.repoDir);
   try {
@@ -486,19 +485,12 @@ test('no operator authorization that grants publication is synthesized', () => {
       idea: 'The authorization must be dry-run / unauthorized.',
       db: fixture.db,
     });
-    const auth = input.delivery.operatorAuthorization;
-    // The authorization is a minimal dry-run grant bound to the dry-run policy.
-    assert.equal(auth.releasePolicyHash, input.delivery.policy.contentHash);
-    assert.equal(auth.candidateScope.mode, 'lifecycle-output');
-    // The requestedBy identity is explicitly the dry-run startup identity — NOT
-    // a release manager, deployer, or any publication authority.
-    assert.equal(auth.requestedBy, DRY_RUN_OPERATOR_REQUESTED_BY);
-    assert.match(auth.requestedBy, /dry-run/i);
-    // The bound policy is the local-dry-run policy, not a real production one.
+    assert.equal(input.delivery.operatorAuthorization, null);
+    // This migration slice retains an inert local profile, but it carries no
+    // grant and cannot be mistaken for an operator decision.
     assert.equal(input.delivery.policy.id, LOCAL_DRY_RUN_DELIVERY_POLICY_ID);
     assert.equal(input.delivery.policy.channel, 'local-dry-run');
     assert.equal(input.delivery.policy.humanApprovalRequired, true);
-    // The authorization hash embeds its dry-run/unauthorized intent.
     assert.doesNotThrow(() => assertProductDeliveryLifecycleInput(input));
   } finally {
     cleanupFixture(fixture);
