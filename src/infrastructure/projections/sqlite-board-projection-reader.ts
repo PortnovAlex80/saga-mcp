@@ -60,17 +60,28 @@ export class SqliteBoardProjectionReader implements BoardProjectionReader {
   loadProjectBoard(projectId: number): ProjectBoardProjection {
     return this.withDb(db => {
       const epics = db.prepare(`
-        SELECT e.id, e.name, e.project_id, ew.stage AS episode_stage,
-          json_extract(ew.metadata,'$.last_gate_error') AS gate_error,
-          json_extract(ew.metadata,'$.needs-human') AS needs_human,
-          json_extract(ew.metadata,'$.pause_reason') AS pause_reason,
+        SELECT e.id, e.name, e.project_id,
+          COALESCE(
+            lr.current_stage_id,
+            lr.terminal_status,
+            CASE WHEN lr.status='created' THEN lr.entry_stage_id ELSE lr.status END
+          ) AS episode_stage,
+          CASE WHEN lr.status='failed' THEN lr.error ELSE NULL END AS gate_error,
+          CASE WHEN lr.status='paused' THEN 1 ELSE 0 END AS needs_human,
+          CASE WHEN lr.status='paused' THEN lr.error ELSE NULL END AS pause_reason,
           (SELECT count(*) FROM artifacts a
             WHERE a.epic_id=e.id AND a.status='accepted' AND a.drift_state='drifted') AS drift_count,
           (SELECT count(*) FROM verification_evidence v
             JOIN artifacts a ON a.id=v.artifact_id
             WHERE a.epic_id=e.id AND v.outcome='passed') AS evidence_count
         FROM epics e
-        LEFT JOIN episode_workflows ew ON ew.epic_id=e.id
+        LEFT JOIN saga3_lifecycle_runs lr ON lr.id=(
+          SELECT candidate.id
+            FROM saga3_lifecycle_runs candidate
+           WHERE candidate.epic_id=e.id
+           ORDER BY candidate.id DESC
+           LIMIT 1
+        )
         WHERE e.project_id=?
         ORDER BY e.id
       `).all(projectId) as BoardEpicProjection[];
