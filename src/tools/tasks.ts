@@ -446,11 +446,12 @@ function handleTaskCreate(args: Record<string, unknown>) {
       throw new Error(`generated_from_task_id ${generatedFromTaskId} must belong to epic ${epicId}`);
     }
   }
-  const episodeInitialized = Boolean(
-    db.prepare('SELECT 1 FROM episode_workflows WHERE epic_id=?').get(epicId),
-  );
-  const provenanceRequired = episodeInitialized
-    && ['development', 'verification', 'integration'].includes(workflowStage ?? '');
+  // Saga4 task provenance is a property of the typed workflow stage, not of
+  // whether a legacy episode_workflows row happens to exist. New lifecycle-owned
+  // projects intentionally have no such row, so consulting it here silently
+  // disabled the provenance gate for development/verification/integration work.
+  const provenanceRequired = ['development', 'verification', 'integration']
+    .includes(workflowStage ?? '');
   // Scaffold is infrastructure that materializes stubs for ALL accepted ACs in the
   // episode — it is not a per-AC implementation, so it is exempt from the per-AC
   // provenance gate. A scaffold CAN still carry source_artifact_ids if the caller
