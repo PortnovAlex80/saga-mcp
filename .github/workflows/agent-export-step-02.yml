@@ -1,9 +1,9 @@
 name: Export Saga4 step 02 workspace
 
 on:
-  push:
+  pull_request:
     branches:
-      - agent/saga4-step-02-deferred-delivery
+      - saga4
 
 permissions:
   contents: read
