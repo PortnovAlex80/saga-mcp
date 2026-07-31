@@ -39,14 +39,17 @@ function seedProject(name = 'Delete-Me') {
     local_path: `/tmp/repo-${project.id}`,
   });
   const epic = epics.epic_create({ project_id: project.id, name: `REQ-${project.id}` });
+  // saga4: provenance is always required for typed dev tasks. Create the AC
+  // artifact first, then bind the task to it via source_artifact_ids.
+  const artifact = artifacts.artifact_create({
+    project_id: project.id, epic_id: epic.id, type: 'AC', code: 'AC-1',
+    title: 'Test AC', path: `docs/test-${project.id}.md#AC-1`, status: 'accepted',
+  });
   const task = tasks.task_create({
     epic_id: epic.id, title: 'Dev task', priority: 'high',
     task_kind: 'development.code', workflow_stage: 'development',
     project_repository_id: repo.id,
-  });
-  const artifact = artifacts.artifact_create({
-    project_id: project.id, epic_id: epic.id, type: 'AC', code: 'AC-1',
-    title: 'Test AC', path: `docs/test-${project.id}.md#AC-1`, status: 'accepted',
+    source_artifact_ids: [artifact.id],
   });
   return { project, repo, epic, task, artifact };
 }
