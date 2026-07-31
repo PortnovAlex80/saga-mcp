@@ -1,4 +1,4 @@
-name: Export missing Saga4 step 02 patch
+name: Export Saga4 signature fix files
 
 on:
   pull_request:
@@ -7,29 +7,25 @@ on:
 
 permissions:
   contents: read
-  issues: read
 
 jobs:
   export:
     runs-on: ubuntu-latest
-    env:
-      GH_TOKEN: ${{ github.token }}
-      PAYLOAD_COMMENT_ID: '5140460239'
-      PATCH_SHA256: 1621e234ccd9cfd448dcb1785bd88cdc55f94de03a553d03a59c712358a7d78c
     steps:
       - uses: actions/checkout@v4
-      - name: Decode verified step 02 patch
+        with:
+          ref: saga4
+      - name: Pack fixed files
         shell: bash
         run: |
           set -euo pipefail
-          gh api "repos/${GITHUB_REPOSITORY}/issues/comments/${PAYLOAD_COMMENT_ID}" \
-            --jq '.body | split("\n")[1]' > /tmp/saga4-step-02.patch.xz.b64
-          test -s /tmp/saga4-step-02.patch.xz.b64
-          base64 --decode /tmp/saga4-step-02.patch.xz.b64 > /tmp/saga4-step-02.patch.xz
-          echo "${PATCH_SHA256}  /tmp/saga4-step-02.patch.xz" | sha256sum --check
-          xz --decompress --stdout /tmp/saga4-step-02.patch.xz > /tmp/saga4-step-02.patch
+          tar -czf /tmp/saga4-signature-fix-files.tgz \
+            src/process-modules/modules/delivery/delivery-installation.ts \
+            src/process-modules/modules/delivery/delivery-kernel-ports.ts \
+            src/process-modules/modules/delivery/sqlite-delivery-runtime.ts \
+            tests/process-modules/delivery-lifecycle-resume.test.mjs
       - uses: actions/upload-artifact@v4
         with:
-          name: saga4-missing-step-02-patch
-          path: /tmp/saga4-step-02.patch
+          name: saga4-signature-fix-files
+          path: /tmp/saga4-signature-fix-files.tgz
           retention-days: 1
