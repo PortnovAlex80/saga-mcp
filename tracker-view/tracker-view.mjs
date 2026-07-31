@@ -3930,7 +3930,7 @@ function handleProjectArchive(req, res) {
 // Возвращает deregistered_checkouts — список (machine_id, local_path),
 // которые были отвязаны, чтобы оператор мог подчистить диск отдельно.
 //
-// Safety: rejects (409) если engine_running=1 для любого эпика проекта.
+// Safety: rejects (409) while a durable Product Lifecycle is created/running.
 // Не трогает: repositories rows (P17), activity_log (P12), command_receipts,
 // on-disk .md artifact files.
 function handleProjectDelete(req, res) {
@@ -3954,12 +3954,13 @@ function handleProjectDelete(req, res) {
         const row = db.prepare('SELECT name FROM projects WHERE id=?').get(projectId);
         if (!row) return { notFound: true };
 
-        // Engine guard: reject if any epic has engine_running=1.
+        // Saga4 guard: LifecycleRun is the execution authority. Do not
+        // delete a project while an orchestrator may still own its ProcessRuns.
         const running = db.prepare(
-          `SELECT ew.epic_id FROM episode_workflows ew
-            JOIN epics e ON e.id = ew.epic_id
-           WHERE e.project_id = ?
-             AND json_extract(ew.metadata, '$.engine_running') = 1`,
+          `SELECT DISTINCT epic_id
+             FROM saga3_lifecycle_runs
+            WHERE project_id = ?
+              AND status IN ('created','running')`,
         ).all(projectId);
         if (running.length > 0) {
           return { engineRunning: running.map(r => r.epic_id) };
@@ -3994,7 +3995,7 @@ function handleProjectDelete(req, res) {
       if (result.engineRunning) {
         return respondJson(res, 409, {
           ok:false,
-          error: `Сначала остановите движок для эпика(ов): ${result.engineRunning.join(', ')}`,
+          error: `Сначала завершите или отмените Product Lifecycle для scope: ${result.engineRunning.map(id => id ?? '<project>').join(', ')}`,
           running_epics: result.engineRunning,
         });
       }
@@ -4016,8 +4017,8 @@ function handleProjectDelete(req, res) {
 // CASCADE). Returns the per-project outcome + the global seed rows preserved.
 //
 // Safety:
-//   - rejects (409) if ANY epic anywhere has engine_running=1 — operator must
-//     stop engines first (else claude.exe worker processes orphan);
+//   - rejects (409) if ANY durable Product Lifecycle is created/running —
+//     operator must complete or cancel it before destructive cleanup;
 //   - never deletes platform_policies / global trusted_providers (NULL
 //     project_id) — saga needs those at bootstrap;
 //   - does NOT touch on-disk .md files or machine checkouts; returns the list
@@ -4032,11 +4033,12 @@ function handleAdminPurgeAllProjects(req, res) {
   req.on('end', () => {
     try {
       const result = withDbWrite(db => {
-        // Global guard: no running engine for ANY epic.
+        // Global Saga4 guard: lifecycle state, not episode metadata, owns
+        // whether destructive cleanup is safe.
         const running = db.prepare(
-          `SELECT ew.epic_id, e.project_id FROM episode_workflows ew
-             JOIN epics e ON e.id = ew.epic_id
-            WHERE json_extract(ew.metadata, '$.engine_running') = 1`,
+          `SELECT DISTINCT epic_id, project_id
+             FROM saga3_lifecycle_runs
+            WHERE status IN ('created','running')`,
         ).all();
         if (running.length > 0) {
           return { engineRunning: running };

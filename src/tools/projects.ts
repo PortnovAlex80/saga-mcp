@@ -260,20 +260,20 @@ function handleProjectDelete(args: Record<string, unknown>): {
     throw new Error('project_id must be a positive integer');
   }
 
-  // Safety guard: reject if any engine is running for an epic in this
-  // project. Killing a running engine via DB delete would orphan claude.exe
-  // worker processes. The user must stop engines explicitly first.
+  // Safety guard: durable lifecycle execution owns run activity in Saga4.
+  // Reject while a lifecycle is created/running so deleting the project cannot
+  // orphan the orchestrator or workers attached to its ProcessRuns.
   const runningEpics = db.prepare(
-    `SELECT ew.epic_id FROM episode_workflows ew
-      JOIN epics e ON e.id = ew.epic_id
-      WHERE e.project_id = ?
-        AND json_extract(ew.metadata, '$.engine_running') = 1`,
-  ).all(projectId) as Array<{ epic_id: number }>;
+    `SELECT DISTINCT epic_id
+       FROM saga3_lifecycle_runs
+      WHERE project_id = ?
+        AND status IN ('created','running')`,
+  ).all(projectId) as Array<{ epic_id: number | null }>;
   if (runningEpics.length > 0) {
-    const ids = runningEpics.map((r) => r.epic_id).join(', ');
+    const ids = runningEpics.map((r) => r.epic_id ?? '<project-scope>').join(', ');
     throw new Error(
-      `Cannot delete project ${projectId}: engine is running for epic(s) ${ids}. ` +
-      `Stop engine(s) first via worker tools or /api/engine/stop.`,
+      `Cannot delete project ${projectId}: Product Lifecycle is active for scope(s) ${ids}. ` +
+      `Wait for completion or cancel the lifecycle run first.`,
     );
   }
 
