@@ -307,6 +307,7 @@ function buildProductDeliveryInput(subject) {
       policy: devPolicy,
     },
     delivery: {
+      mode: 'authorized',
       policy: deliveryPolicy,
       operatorAuthorization: {
         schema: 'saga3.delivery-authorization.v1',
@@ -316,6 +317,7 @@ function buildProductDeliveryInput(subject) {
         releasePolicyHash: deliveryPolicy.contentHash,
         candidateScope: { mode: 'lifecycle-output' },
       },
+      deferredProfile: null,
     },
   };
 }

@@ -250,6 +250,7 @@ function deliveryFixture() {
       'candidate',
       'candidate-hash',
     ),
+    deliveryMode: 'authorized',
     policy,
     operatorAuthorization: {
       ...ref(
@@ -264,6 +265,7 @@ function deliveryFixture() {
         candidateHash: 'candidate-hash',
       },
     },
+    deferredProfile: null,
     initiatedBy: 'test',
   };
   const preflightBody = {
@@ -481,9 +483,43 @@ test('Delivery releases an uncertain response only after authoritative match', (
 });
 
 
-test('Delivery requests approval when no operator authorization exists', () => {
+test('Delivery requests approval for an explicit deferred release profile', () => {
   const input = deliveryFixture();
-  input.deliveryCase.operatorAuthorization = null;
+  const profileBody = {
+    schemaVersion: deliverySchemas.DELIVERY_DEFERRED_PROFILE_SCHEMA,
+    reason: 'authorization-required',
+    source: 'start-from-idea',
+  };
+  input.deliveryCase = {
+    schemaVersion: deliverySchemas.DELIVERY_RELEASE_CASE_SCHEMA,
+    projectId: input.deliveryCase.projectId,
+    epicId: input.deliveryCase.epicId,
+    developmentCertificate: input.deliveryCase.developmentCertificate,
+    verifiedIntegrationBundle: input.deliveryCase.verifiedIntegrationBundle,
+    integratedCandidate: input.deliveryCase.integratedCandidate,
+    deliveryMode: 'deferred',
+    policy: null,
+    operatorAuthorization: null,
+    deferredProfile: {
+      ...profileBody,
+      profileHash: deliveryPolicy.hashDeliveryDeferredProfile({
+        ...profileBody,
+        profileHash: '',
+      }),
+    },
+    initiatedBy: input.deliveryCase.initiatedBy,
+  };
+  input.preflight = null;
+  input.approval = null;
+  input.publication = null;
+  input.observation = null;
+  input.currentCandidateHash = null;
+  input.productReferences = {
+    preflight: null,
+    approval: null,
+    publication: null,
+    observation: null,
+  };
   const result = new deliveryPolicy.ReferenceDeliverySettlementPolicy()
     .settle(input);
   assert.equal(result.decision, 'approval-required');

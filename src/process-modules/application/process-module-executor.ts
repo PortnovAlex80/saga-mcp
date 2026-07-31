@@ -107,8 +107,23 @@ export interface ProcessModuleExecutor {
  * against) before its executor exists — essential for the module-authoring kit
  * (P7-P9) where a designer skill produces a Definition that only later gets an
  * executor (generic-flow in P6c, or a legacy adapter).
+ *
+ * P-PM-1 adds an OPTIONAL `package` field. When present, the installation is
+ * hash-pinned: every shipped resource (skill, template, checklist) and every
+ * handler version is captured in `package.packageDigest`, and ProcessRuns
+ * started against this installation pin that digest via the
+ * `saga3_process_module_installations` row. This closes the "skill edited,
+ * version unchanged" replay attack. During migration, installations without a
+ * package continue to work (legacy path); once a module is fully migrated
+ * (P-PM-6+), `package` becomes required.
  */
 export interface ProcessModuleInstallation {
   readonly definition: ProcessModuleDefinition;
   readonly executor: ProcessModuleExecutor;
+  /**
+   * Hash-pinned delivery unit. Optional during migration; the Runtime stores
+   * it in `saga3_process_module_installations` when present and pins
+   * `packageDigest` to every ProcessRun started against this installation.
+   */
+  readonly package?: import('../domain/process-module.js').ProcessModulePackage;
 }

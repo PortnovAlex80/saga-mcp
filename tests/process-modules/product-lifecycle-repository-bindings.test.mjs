@@ -41,8 +41,10 @@ function input(repository) {
       policy: { id: 'p', version: '1', contentHash: 'hash' },
     },
     delivery: {
+      mode: 'authorized',
       policy: {},
       operatorAuthorization: {},
+      deferredProfile: null,
     },
   };
 }

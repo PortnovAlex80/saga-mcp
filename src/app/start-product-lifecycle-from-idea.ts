@@ -1,16 +1,13 @@
 /**
  * Application use case: start a Product Delivery Lifecycle from a bare idea.
  *
- * A bare idea has no release policy grant and no operator authorization. The
- * assembler therefore persists `operatorAuthorization: null` explicitly. It
- * never fabricates a grant merely to satisfy the lifecycle input contract.
- * Delivery may run its deterministic checks, but settlement must stop at
- * `approval-required` until a real authorization is supplied.
+ * A bare idea has no release policy and no operator authorization. The
+ * assembler records an explicit, content-addressed deferred Delivery profile.
+ * Delivery can therefore settle as `approval-required` without inventing a
+ * release channel, version, action plan or provider call.
  *
  * Repository identity and expected base commit still come from real DB/Git
- * state. The local dry-run policy remains an inert release profile for this
- * migration slice; removing that placeholder policy is a separate cutover
- * step.
+ * state.
  */
 
 import type Database from 'better-sqlite3';
@@ -24,60 +21,27 @@ import {
 } from '../process-modules/lifecycles/product-delivery-lifecycle.js';
 import type { DevelopmentPolicySnapshot } from '../process-modules/modules/development/development-schemas.js';
 import { hashDevelopmentPolicy } from '../process-modules/modules/development/development-settlement-policy.js';
-import type {
-  DeliveryReleasePolicySnapshot,
-  ReleaseActionDefinition,
+import {
+  DELIVERY_DEFERRED_PROFILE_SCHEMA,
+  type DeliveryDeferredProfile,
 } from '../process-modules/modules/delivery/delivery-schemas.js';
-import { hashDeliveryReleasePolicy } from '../process-modules/modules/delivery/delivery-settlement-policy.js';
-import { sha256Hex } from '../process-modules/shared/canonical-json.js';
+import { hashDeliveryDeferredProfile } from '../process-modules/modules/delivery/delivery-settlement-policy.js';
 
 /**
- * Stable identity of the synthesized dry-run release policy. These are STATIC
- * CONSTANTS (not observed external state): they name the dry-run intent and
- * are part of the dry-run policy's content-addressed hash. They never claim a
- * real delivery channel, registry publication or deployment success.
+ * Build a deterministic deferred Delivery profile. It carries no release
+ * policy, action plan or authorization and therefore cannot grant effects.
  */
-export const LOCAL_DRY_RUN_DELIVERY_POLICY_ID = 'local-dry-run-delivery';
-export const LOCAL_DRY_RUN_DELIVERY_POLICY_VERSION = '1';
-/**
- * Single required publication action declared by the dry-run policy. It has the
- * full shape the assert requires (actionId/kind/target/desiredStateHash/
- * payloadHash/required) so the policy passes structural validation, but its
- * target and hashes are static dry-run placeholders. The corresponding
- * publication provider (local-dry-run composition) never executes this action:
- * it fails closed before any external effect.
- */
-export const LOCAL_DRY_RUN_PUBLICATION_ACTION: ReleaseActionDefinition = {
-  actionId: 'dry-run-no-publish',
-  kind: 'deployment',
-  target: 'local-dry-run:do-not-publish',
-  desiredStateHash: sha256Hex({ dryRun: 'no-desired-state' }),
-  payloadHash: sha256Hex({ dryRun: 'no-payload' }),
-  required: true,
-};
-
-/**
- * Build the deterministic `local-dry-run` DeliveryReleasePolicySnapshot.
- *
- * `humanApprovalRequired: true` makes the Delivery settlement require an
- * explicit human approval that the dry-run flow will never satisfy — a second
- * fail-closed belt. The publication provider throws before that point anyway.
- */
-export function buildLocalDryRunDeliveryPolicy(): DeliveryReleasePolicySnapshot {
-  // `hashDeliveryReleasePolicy` deletes `contentHash` before hashing, so the
-  // placeholder value does not affect the result; it only satisfies the type.
-  const snapshot: DeliveryReleasePolicySnapshot = {
-    id: LOCAL_DRY_RUN_DELIVERY_POLICY_ID,
-    version: LOCAL_DRY_RUN_DELIVERY_POLICY_VERSION,
-    contentHash: '',
-    channel: 'local-dry-run',
-    releaseVersion: '0.0.0-dry-run',
-    releaseTag: 'dry-run',
-    humanApprovalRequired: true,
-    requiredPreflightCheckIds: ['dry-run-no-preflight-required'],
-    actions: [LOCAL_DRY_RUN_PUBLICATION_ACTION],
+export function buildDeferredDeliveryProfile(): DeliveryDeferredProfile {
+  const profile: DeliveryDeferredProfile = {
+    schemaVersion: DELIVERY_DEFERRED_PROFILE_SCHEMA,
+    reason: 'authorization-required',
+    source: 'start-from-idea',
+    profileHash: '',
   };
-  return { ...snapshot, contentHash: hashDeliveryReleasePolicy(snapshot) };
+  return {
+    ...profile,
+    profileHash: hashDeliveryDeferredProfile(profile),
+  };
 }
 
 /**
@@ -199,7 +163,7 @@ export function assembleProductLifecycleInput(params: {
   };
 
   const developmentPolicy = buildReferenceDevelopmentPolicy();
-  const deliveryPolicy = buildLocalDryRunDeliveryPolicy();
+  const deferredProfile = buildDeferredDeliveryProfile();
 
   const input: ProductDeliveryLifecycleInput = {
     initiative: {
@@ -213,8 +177,10 @@ export function assembleProductLifecycleInput(params: {
       policy: developmentPolicy,
     },
     delivery: {
-      policy: deliveryPolicy,
+      mode: 'deferred',
+      policy: null,
       operatorAuthorization: null,
+      deferredProfile,
     },
   };
 

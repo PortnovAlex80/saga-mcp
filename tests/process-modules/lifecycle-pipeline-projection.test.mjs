@@ -147,7 +147,7 @@ function baseRun(overrides = {}) {
     epicId: 1,
     initiatedBy: 'operator',
     idempotencyKey: 'idem-26',
-    inputSchema: 'saga3.product-delivery-lifecycle-input.v1',
+    inputSchema: 'saga3.product-delivery-lifecycle-input.v2',
     inputSnapshot: '{}',
     inputHash: 'cafebabe',
     status: 'running',

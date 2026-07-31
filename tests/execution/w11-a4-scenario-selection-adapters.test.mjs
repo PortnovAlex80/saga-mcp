@@ -273,7 +273,7 @@ test('command: buildScenarioCommand forwards scope, input, idempotency', () => {
   const cmd = buildScenarioCommand({
     projectId: 7, epicId: 9,
     lifecycleInput: { brief: 'x' },
-    lifecycleInputSchema: 'saga3.product-delivery-lifecycle-input.v1',
+    lifecycleInputSchema: 'saga3.product-delivery-lifecycle-input.v2',
     idempotencyKey: 'k-1',
     initiatedBy: 'op',
     resumePaused: true,
@@ -281,7 +281,7 @@ test('command: buildScenarioCommand forwards scope, input, idempotency', () => {
   assert.equal(cmd.projectId, 7);
   assert.equal(cmd.epicId, 9);
   assert.deepEqual(cmd.inputPayload, { brief: 'x' });
-  assert.equal(cmd.inputSchema, 'saga3.product-delivery-lifecycle-input.v1');
+  assert.equal(cmd.inputSchema, 'saga3.product-delivery-lifecycle-input.v2');
   assert.equal(cmd.idempotencyKey, 'k-1');
   assert.equal(cmd.initiatedBy, 'op');
   assert.equal(cmd.resumePaused, true);

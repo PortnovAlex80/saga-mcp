@@ -9,8 +9,7 @@ const { closeDb, getDb } = await import('../../dist/db.js');
 const {
   assembleProductLifecycleInput,
   startProductLifecycleFromIdea,
-  buildLocalDryRunDeliveryPolicy,
-  LOCAL_DRY_RUN_DELIVERY_POLICY_ID,
+  buildDeferredDeliveryProfile,
 } = await import('../../dist/app/start-product-lifecycle-from-idea.js');
 const { LifecycleOrchestrator } = await import(
   '../../dist/process-modules/application/lifecycle-orchestrator.js'
@@ -32,6 +31,9 @@ const { developmentProcessModule } = await import(
 );
 const { deliveryProcessModule } = await import(
   '../../dist/process-modules/modules/delivery/delivery-process-module.js'
+);
+const { DELIVERY_CERTIFICATE_SCHEMA } = await import(
+  '../../dist/process-modules/modules/delivery/delivery-schemas.js'
 );
 const {
   assertProductDeliveryLifecycleInput,
@@ -242,19 +244,16 @@ test('assembler fails closed when the local checkout has no resolvable HEAD', ()
 
 /**
  * Build a full product-delivery orchestrator with deterministic stub products
- * for Discovery, Formalization and Development (all succeeding), and a Delivery
- * executor that FAILS CLOSED — modelling the local-dry-run publication profile
- * which throws `delivery-provider-not-configured` and never publishes.
+ * for Discovery, Formalization and Development (all succeeding), and an
+ * explicitly deferred Delivery outcome. No release provider is called.
  *
  * Mirrors the proven stub pattern in product-delivery-lifecycle-e2e.test.mjs so
  * the full `productDeliveryLifecycle` runs end-to-end. This lets a single run
  * prove BOTH:
- *   - Discovery / Formalization / Development start and complete even though the
- *     Delivery publication provider is missing/dry-run (the failure is isolated
- *     to the Delivery boundary);
- *   - the dry-run publication can NEVER emit `released`.
+ *   - Discovery / Formalization / Development start and complete before Delivery;
+ *   - deferred Delivery terminates as `approval-required`, never `released`.
  */
-function buildFullDryRunOrchestrator(fixture) {
+function buildDeferredOrchestrator(fixture) {
   const moduleRegistry = new ProcessModuleRegistry();
   moduleRegistry.register(discoveryProcessModule);
   moduleRegistry.register(formalizationProcessModule);
@@ -345,6 +344,16 @@ function buildFullDryRunOrchestrator(fixture) {
       authority: 'development-settlement@1.0.0',
       outputPayload: verifiedBundlePayload,
     },
+    'delivery-release': {
+      outcome: 'approval-required',
+      output: null,
+      certificate: {
+        schema: DELIVERY_CERTIFICATE_SCHEMA,
+        certificateRef: 'delivery-certificate:idea:approval-required',
+        certificateHash: sha256Hex({ decision: 'approval-required' }),
+      },
+      authority: 'delivery-settlement@1.0.0',
+    },
   };
 
   const outputPayloads = new Map();
@@ -363,15 +372,6 @@ function buildFullDryRunOrchestrator(fixture) {
         execute: async (_definition, context) => {
           fixture.processRepo.update(context.processRunId, { status: 'running' });
           executionLog.push(module.identity.name);
-          if (module.identity.name === 'delivery-release') {
-            // The dry-run publication provider FAILS CLOSED here. It must NEVER
-            // emit a released outcome or fabricate a publication/externalRef.
-            const err = new Error(
-              'delivery-provider-not-configured: the local-dry-run profile does not publish.',
-            );
-            err.code = 'delivery-provider-not-configured';
-            throw err;
-          }
           const product = products[module.identity.name];
           fixture.processRepo.update(context.processRunId, {
             status: 'completed',
@@ -404,7 +404,7 @@ function buildFullDryRunOrchestrator(fixture) {
   return { orchestrator, executionLog, installationRegistry };
 }
 
-test('a missing/dry-run Delivery provider does NOT block Discovery startup, and delivery never emits released', async () => {
+test('deferred Delivery does not block upstream stages and terminates approval-required', async () => {
   const repo = createRealGitRepo();
   const fixture = createFixture(repo.repoDir);
   try {
@@ -414,48 +414,32 @@ test('a missing/dry-run Delivery provider does NOT block Discovery startup, and 
       idea: 'Discovery must start; delivery must fail closed, never release.',
       db: fixture.db,
     });
-    const { orchestrator, executionLog } = buildFullDryRunOrchestrator(fixture);
+    const { orchestrator, executionLog } = buildDeferredOrchestrator(fixture);
 
     const result = await orchestrator.run(productDeliveryLifecycle, {
       projectId: 1,
       epicId: 10,
-      inputSchema: 'saga3.product-delivery-lifecycle-input.v1',
+      inputSchema: 'saga3.product-delivery-lifecycle-input.v2',
       inputPayload: input,
       initiatedBy: 'start-from-idea-test',
       idempotencyKey: 'start-from-idea-dry-run-full',
     });
 
-    // Discovery / Formalization / Development all started and completed even
-    // though the Delivery publication provider fails closed. The execution log
-    // proves the upstream stages ran; the missing/dry-run Delivery provider
-    // cannot block them — it only blocks the Delivery boundary.
     assert.deepEqual(
       executionLog,
       ['product-discovery', 'solution-formalization', 'solution-development', 'delivery-release'],
-      'Discovery/Formalization/Development must all run before Delivery fails',
+      'all upstream stages must complete before deferred Delivery settles',
     );
     const byStage = new Map(result.stageRuns.map(s => [s.stageId, s]));
     assert.equal(byStage.get('initial-discovery').status, 'completed');
     assert.equal(byStage.get('initial-discovery').localOutcome, 'go');
     assert.equal(byStage.get('solution-formalization').status, 'completed');
     assert.equal(byStage.get('solution-development').status, 'completed');
-
-    // The Delivery boundary failed because the dry-run publication threw
-    // (fail-closed). The whole lifecycle run is therefore terminal-failed — but
-    // it must NEVER be 'released'. The failure is isolated to the Delivery
-    // stage: the three upstream stages all completed first.
-    assert.equal(result.status, 'failed');
+    assert.equal(byStage.get('delivery-release').status, 'completed');
+    assert.equal(byStage.get('delivery-release').localOutcome, 'approval-required');
+    assert.equal(result.status, 'completed');
+    assert.equal(result.terminalStatus, 'approval-required');
     assert.notEqual(result.terminalStatus, 'released');
-    assert.equal(
-      result.stageRuns.find(s => s.stageId === 'delivery-release')?.status,
-      'failed',
-      'the delivery stage must fail, never release',
-    );
-    assert.match(
-      result.lifecycleRun.error,
-      /delivery-provider-not-configured/,
-      'the delivery failure must carry the typed fail-closed reason code',
-    );
 
     // Fail-closed guarantee: no release record may be persisted. The delivery
     // outputs table is created lazily; if it does not exist yet there are
@@ -485,12 +469,12 @@ test('bare idea persists no synthetic operator authorization', () => {
       idea: 'The authorization must be dry-run / unauthorized.',
       db: fixture.db,
     });
+    assert.equal(input.delivery.mode, 'deferred');
+    assert.equal(input.delivery.policy, null);
     assert.equal(input.delivery.operatorAuthorization, null);
-    // This migration slice retains an inert local profile, but it carries no
-    // grant and cannot be mistaken for an operator decision.
-    assert.equal(input.delivery.policy.id, LOCAL_DRY_RUN_DELIVERY_POLICY_ID);
-    assert.equal(input.delivery.policy.channel, 'local-dry-run');
-    assert.equal(input.delivery.policy.humanApprovalRequired, true);
+    assert.equal(input.delivery.deferredProfile.reason, 'authorization-required');
+    assert.equal(input.delivery.deferredProfile.source, 'start-from-idea');
+    assert.ok(input.delivery.deferredProfile.profileHash.length > 0);
     assert.doesNotThrow(() => assertProductDeliveryLifecycleInput(input));
   } finally {
     cleanupFixture(fixture);
@@ -525,7 +509,7 @@ test('startProductLifecycleFromIdea starts a LifecycleRun through the injected p
       assertProductDeliveryLifecycleInput(captured.lifecycleInput));
     assert.equal(
       captured.lifecycleInputSchema,
-      'saga3.product-delivery-lifecycle-input.v1',
+      'saga3.product-delivery-lifecycle-input.v2',
     );
     assert.equal(captured.projectId, 1);
     assert.equal(captured.epicId, 10);
@@ -536,16 +520,11 @@ test('startProductLifecycleFromIdea starts a LifecycleRun through the injected p
   }
 });
 
-test('buildLocalDryRunDeliveryPolicy produces a deterministic, content-hashed policy', () => {
-  const policy = buildLocalDryRunDeliveryPolicy();
-  // Two calls produce identical bytes → identical hash (deterministic, not
-  // invented per call).
-  const again = buildLocalDryRunDeliveryPolicy();
-  assert.deepEqual(policy, again);
-  assert.equal(policy.id, LOCAL_DRY_RUN_DELIVERY_POLICY_ID);
-  assert.equal(policy.channel, 'local-dry-run');
-  assert.equal(policy.releaseVersion, '0.0.0-dry-run');
-  assert.equal(policy.actions.length, 1);
-  assert.equal(policy.actions[0].required, true);
-  assert.ok(policy.contentHash.length > 0);
+test('buildDeferredDeliveryProfile produces a deterministic content-addressed profile', () => {
+  const profile = buildDeferredDeliveryProfile();
+  const again = buildDeferredDeliveryProfile();
+  assert.deepEqual(profile, again);
+  assert.equal(profile.reason, 'authorization-required');
+  assert.equal(profile.source, 'start-from-idea');
+  assert.ok(profile.profileHash.length > 0);
 });

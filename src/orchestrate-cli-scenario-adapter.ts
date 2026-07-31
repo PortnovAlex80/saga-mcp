@@ -337,7 +337,7 @@ export async function resolveCliScenarioSelection(
  * legacy engine accept the same input shape during the cutover.
  */
 export const SCENARIO_INPUT_SCHEMA_DEFAULT =
-  'saga3.product-delivery-lifecycle-input.v1';
+  'saga3.product-delivery-lifecycle-input.v2';
 
 /**
  * Build the scenario `RunScenarioCommand` from the legacy `RunEpisodeCommand`.

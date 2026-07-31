@@ -76,7 +76,8 @@ function parseArgs(argv: string[]): {
         + '  --resume\n'
         + '\n'
         + 'SAGA_PRODUCT_LIFECYCLE_COMPOSITION is required (lifecycle is the only '
-        + 'engine). Pass --lifecycle-input or set SAGA_PRODUCT_LIFECYCLE_INPUT.\n',
+        + 'engine). Pass --lifecycle-input, set SAGA_PRODUCT_LIFECYCLE_INPUT '
+        + '(path), or set SAGA_PRODUCT_LIFECYCLE_INPUT_JSON (inline JSON).\n',
       );
       process.exit(0);
     }
@@ -184,7 +185,7 @@ async function main() {
       lifecycleInput,
       lifecycleInputSchema: lifecycleInput === undefined
         ? undefined
-        : 'saga3.product-delivery-lifecycle-input.v1',
+        : 'saga3.product-delivery-lifecycle-input.v2',
       idempotencyKey: idempotencyKey ?? undefined,
       resumePaused,
       initiatedBy: process.env.SAGA_INITIATED_BY ?? 'orchestrate-cli',
