@@ -235,7 +235,11 @@ test('SQLite board reader preserves the tracker project and board projection', (
     db.exec(`
       CREATE TABLE projects (id INTEGER PRIMARY KEY, name TEXT, status TEXT);
       CREATE TABLE epics (id INTEGER PRIMARY KEY, name TEXT, project_id INTEGER);
-      CREATE TABLE episode_workflows (epic_id INTEGER, stage TEXT, metadata TEXT);
+      CREATE TABLE saga3_lifecycle_runs (
+        id INTEGER PRIMARY KEY, project_id INTEGER, epic_id INTEGER,
+        status TEXT, entry_stage_id TEXT, current_stage_id TEXT,
+        terminal_status TEXT, error TEXT
+      );
       CREATE TABLE artifacts (id INTEGER PRIMARY KEY, epic_id INTEGER, status TEXT, drift_state TEXT);
       CREATE TABLE verification_evidence (id INTEGER PRIMARY KEY, artifact_id INTEGER, outcome TEXT);
       CREATE TABLE repositories (id INTEGER PRIMARY KEY, name TEXT);
@@ -246,11 +250,12 @@ test('SQLite board reader preserves the tracker project and board projection', (
         execution_mode TEXT, assigned_to TEXT, integration_state TEXT,
         sort_order INTEGER, project_repository_id INTEGER
       );
-      CREATE TABLE task_dependencies (task_id INTEGER, depends_on_task_id INTEGER);
+      CREATE TABLE task_dependencies (task_id, depends_on_task_id INTEGER);
     `);
     db.prepare(`INSERT INTO projects VALUES (1, 'Stable', 'active')`).run();
     db.prepare(`INSERT INTO epics VALUES (10, 'REQ-10', 1)`).run();
-    db.prepare(`INSERT INTO episode_workflows VALUES (10, 'development', '{}')`).run();
+    // saga4: board reads stage from saga3_lifecycle_runs, not episode_workflows.
+    db.prepare(`INSERT INTO saga3_lifecycle_runs VALUES (1, 1, 10, 'running', 'initial-discovery', 'solution-development', NULL, NULL)`).run();
     db.prepare(`INSERT INTO repositories VALUES (20, 'product')`).run();
     db.prepare(`INSERT INTO project_repositories VALUES (30, 1, 20)`).run();
     db.prepare(`INSERT INTO tasks VALUES (40, 10, 'Build', 'in_progress', 'development.code', 'development', 'saga-worker', 'git_change', 'worker-1', 'pending', 1, 30)`).run();
@@ -269,7 +274,7 @@ test('SQLite board reader preserves the tracker project and board projection', (
 
     const projection = reader.loadProjectBoard(1);
     assert.equal(projection.epics.length, 1);
-    assert.equal(projection.epics[0].episode_stage, 'development');
+    assert.equal(projection.epics[0].episode_stage, 'solution-development');
     assert.equal(projection.tasks.length, 1);
     assert.equal(projection.tasks[0].task_kind, 'development.code');
     assert.equal(projection.tasks[0].repository_name, 'product');
