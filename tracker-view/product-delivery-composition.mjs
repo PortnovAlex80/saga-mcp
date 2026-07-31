@@ -54,12 +54,12 @@ export function createProductLifecycleComposition(_context) {
     // Typed marker so the assembler / tests can confirm which profile is bound.
     deliveryProfile: DRY_RUN_DELIVERY_PROFILE,
 
-    // Delivery: the runtime wires SQLite runtime/approval-inbox/output-repo and
-    // the Reference settlement/preflight policies as defaults. We supply
-    // explicit fail-closed external-effect providers so the lifecycle can run
-    // through Discovery + Formalization + Development WITHOUT ever silently
-    // publishing. The Delivery boundary reaches publication and fails closed.
+    // Delivery: pass `providers: {}` so the runtime constructs a
+    // SqliteDeliveryRuntime (with SQLite approval inbox + default preflight).
+    // Then override publication with fail-closed and observation with advisory.
+    // The runtime fills preflightState/approval/settlementState from the runtime.
     delivery: {
+      providers: {},
       publication: {
         async publishAndDeploy() {
           // Fail CLOSED. The port's return type only allows a complete success
