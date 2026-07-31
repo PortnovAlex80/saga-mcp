@@ -59,27 +59,30 @@ test('Discovery go routes to Formalization through Stage Binding', () => {
   });
 });
 
-// Discovery is a product idea gate, not a build gate. Every outcome is forwarded
-// to Formalization; the strength of the idea (decision + readiness confidence)
-// is recorded in the discovery certificate and does not block the lifecycle.
-test('Discovery non-go outcomes terminate (saga4: strict routing, not permissive)', () => {
-  // saga4 cutover: non-go Discovery outcomes (clarify/reject/defer/inconclusive/failed)
-  // are TERMINAL, not permissive-forward. The old permissive routing let weak ideas
-  // through to Formalization; the cutover made the gate strict — only 'go' advances.
+// Discovery is a product idea-STRENGTH gate, not a build gate. An operator who
+// starts the lifecycle has already decided to see the product built. Every
+// Discovery outcome (including non-go) forwards to Formalization; the strength
+// of the idea is recorded in the discovery certificate and does NOT block the
+// conveyor (commit 2af9709 — permissive discovery gate). Formalization is the
+// real go/no-go gate: its non-formalized outcomes terminate there.
+test('Discovery forwards every outcome to Formalization (permissive gate; risks in certificate)', () => {
+  // The strict "non-go terminates" behaviour was a regression of this contract
+  // and was reverted. Every Discovery outcome advances to Formalization so the
+  // conveyor can reason about the contract on its own merits.
   const discovery = discoveryToFormalizationLifecycle.stages.find(
     stage => stage.id === 'initial-discovery',
   );
   assert.ok(discovery);
-  for (const outcome of ['clarify', 'reject', 'defer', 'inconclusive', 'failed']) {
+  for (const outcome of ['go', 'clarify', 'reject', 'defer', 'inconclusive', 'failed']) {
     const route = routeProcessOutcome(discovery, outcome);
-    assert.equal(route.target.type, 'terminal',
-      `${outcome} must terminate (strict gate), got ${JSON.stringify(route.target)}`);
+    assert.deepEqual(
+      route.target,
+      { type: 'stage', stageId: 'solution-formalization' },
+      `${outcome} must forward to solution-formalization, got ${JSON.stringify(route.target)}`,
+    );
+    assert.equal(route.target.status, undefined,
+      `${outcome} must not be terminal (no status)`);
   }
-  // Only 'go' routes forward to Formalization.
-  assert.deepEqual(
-    routeProcessOutcome(discovery, 'go').target,
-    { type: 'stage', stageId: 'solution-formalization' },
-  );
 });
 
 // W13-A3: routing is now purely declarative. The runtime product-delivery
@@ -111,17 +114,13 @@ test('declarative routing is invariant: same stage+outcome always yields the sam
     routeProcessOutcome(discovery, 'clarify'),
     routeProcessOutcome(discovery, 'clarify'),
   );
-  // saga4: only 'go' routes forward; non-go outcomes are terminal (strict gate).
-  assert.deepEqual(
-    routeProcessOutcome(discovery, 'go').target,
-    { type: 'stage', stageId: 'solution-formalization' },
-    'go must route forward to solution-formalization',
-  );
-  for (const outcome of ['clarify', 'reject', 'defer', 'inconclusive', 'failed']) {
-    assert.equal(
-      routeProcessOutcome(discovery, outcome).target.type,
-      'terminal',
-      `${outcome} must be terminal`,
+  // saga4: every Discovery outcome routes forward to Formalization (permissive
+  // gate — risks are carried by the discovery certificate, not by blocking).
+  for (const outcome of ['go', 'clarify', 'reject', 'defer', 'inconclusive', 'failed']) {
+    assert.deepEqual(
+      routeProcessOutcome(discovery, outcome).target,
+      { type: 'stage', stageId: 'solution-formalization' },
+      `${outcome} must route forward to solution-formalization`,
     );
   }
 });

@@ -710,40 +710,35 @@ test('durable product lifecycle freezes exact handoffs and terminal replay creat
   }
 });
 
-// saga4 cutover: Discovery is a real go/no-go gate, not an idea-strength gate.
-// The lifecycle definition is now the single source of truth and it routes
-// strict — only 'go' forwards the idea to Formalization; every weak outcome
-// (clarify/reject/defer/inconclusive/failed) terminates the run. A weak idea
-// must NOT be laundered downstream. The decision strength is recorded in the
-// discovery certificate; the routing gate is what enforces the no-go.
-// Mirrors the contract proven in lifecycle-routing.test.mjs (commit 02186d0)
-// and the comment in product-delivery-lifecycle.ts.
-test('product lifecycle terminates weak Discovery outcomes (saga4 strict gate)', () => {
+// Discovery is an idea-STRENGTH gate, not a build gate. An operator who starts
+// the lifecycle has already decided to see the product built. Every Discovery
+// outcome (including non-go) forwards to Formalization; the strength of the
+// idea is recorded in the discovery certificate and carried forward, NOT used
+// to block the conveyor (commit 2af9709). Formalization is the real go/no-go
+// gate: its non-formalized outcomes terminate there.
+test('product lifecycle forwards every Discovery outcome to Formalization (permissive gate)', () => {
   const discovery = productDeliveryLifecycle.stages.find(
     stage => stage.id === 'initial-discovery',
   );
   assert.ok(discovery, 'initial-discovery stage must exist');
-  // Only 'go' may carry the idea forward to Formalization.
-  const goRoute = discovery.outcomeRoutes.go;
-  assert.ok(goRoute, "Discovery must declare a route for outcome 'go'");
-  assert.equal(goRoute.type, 'stage', "'go' must route to a stage");
-  assert.equal(
-    goRoute.stageId,
-    'solution-formalization',
-    "'go' must route to solution-formalization",
-  );
-  // Every weak outcome must terminate — no laundering downstream.
-  for (const outcome of ['clarify', 'reject', 'defer', 'inconclusive', 'failed']) {
+  // Every outcome carries the idea forward to Formalization.
+  for (const outcome of ['go', 'clarify', 'reject', 'defer', 'inconclusive', 'failed']) {
     const route = discovery.outcomeRoutes[outcome];
     assert.ok(route, `Discovery must declare a route for outcome '${outcome}'`);
     assert.equal(
       route.type,
-      'terminal',
-      `weak outcome '${outcome}' must terminate (strict gate), got ${route.type}`,
+      'stage',
+      `outcome '${outcome}' must route to a stage (permissive), got ${route.type}`,
     );
-    assert.ok(
+    assert.equal(
+      route.stageId,
+      'solution-formalization',
+      `outcome '${outcome}' must route to solution-formalization`,
+    );
+    assert.equal(
       route.status,
-      `weak outcome '${outcome}' must carry a terminal status`,
+      undefined,
+      `outcome '${outcome}' must not be terminal (no status), got ${route.status}`,
     );
   }
 });

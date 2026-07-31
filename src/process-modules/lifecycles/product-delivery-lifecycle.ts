@@ -1,11 +1,16 @@
 import type { LifecycleDefinition } from '../domain/lifecycle.js';
 import { DELIVERY_PROCESS_MODULE_REF } from '../modules/delivery/delivery-process-module.js';
 import {
+  DELIVERY_DEFERRED_PROFILE_SCHEMA,
   DELIVERY_RELEASE_CASE_SCHEMA,
-  type DeliveryReleaseCase,
+  type AuthorizedDeliveryReleaseCase,
+  type DeliveryDeferredProfile,
   type DeliveryReleasePolicySnapshot,
 } from '../modules/delivery/delivery-schemas.js';
-import { hashDeliveryReleasePolicy } from '../modules/delivery/delivery-settlement-policy.js';
+import {
+  hashDeliveryDeferredProfile,
+  hashDeliveryReleasePolicy,
+} from '../modules/delivery/delivery-settlement-policy.js';
 import { DEVELOPMENT_PROCESS_MODULE_REF } from '../modules/development/development-process-module.js';
 import {
   DEVELOPMENT_CASE_SCHEMA,
@@ -17,7 +22,7 @@ import { FORMALIZATION_PROCESS_MODULE_REF } from '../modules/formalization/forma
 import { FORMALIZATION_CASE_SCHEMA } from '../modules/formalization/formalization-schemas.js';
 
 export const PRODUCT_DELIVERY_LIFECYCLE_INPUT_SCHEMA =
-  'saga3.product-delivery-lifecycle-input.v1';
+  'saga3.product-delivery-lifecycle-input.v2';
 
 export interface ProductDeliveryLifecycleInput {
   initiative: {
@@ -32,17 +37,26 @@ export interface ProductDeliveryLifecycleInput {
     )[];
     policy: DevelopmentPolicySnapshot;
   };
-  delivery: {
-    policy: DeliveryReleasePolicySnapshot;
-    operatorAuthorization: (Omit<
-      NonNullable<DeliveryReleaseCase['operatorAuthorization']>,
-      'candidateScope'
-    > & {
-      candidateScope: {
-        mode: 'lifecycle-output';
+  delivery:
+    | {
+        mode: 'authorized';
+        policy: DeliveryReleasePolicySnapshot;
+        operatorAuthorization: Omit<
+          AuthorizedDeliveryReleaseCase['operatorAuthorization'],
+          'candidateScope'
+        > & {
+          candidateScope: {
+            mode: 'lifecycle-output';
+          };
+        };
+        deferredProfile: null;
+      }
+    | {
+        mode: 'deferred';
+        policy: null;
+        operatorAuthorization: null;
+        deferredProfile: DeliveryDeferredProfile;
       };
-    }) | null;
-  };
 }
 
 /**
@@ -124,17 +138,44 @@ export function assertProductDeliveryLifecycleInput(
   }
   if (
     !isRecord(value.delivery)
-    || !isRecord(value.delivery.policy)
+    || !nonEmptyString(value.delivery.mode)
+    || !Object.hasOwn(value.delivery, 'policy')
     || !Object.hasOwn(value.delivery, 'operatorAuthorization')
+    || !Object.hasOwn(value.delivery, 'deferredProfile')
   ) {
     throw new Error('PRODUCT_LIFECYCLE_DELIVERY_CONFIGURATION_REQUIRED');
   }
+  if (value.delivery.mode === 'deferred') {
+    const profile = value.delivery.deferredProfile;
+    if (
+      value.delivery.policy !== null
+      || value.delivery.operatorAuthorization !== null
+      || !isRecord(profile)
+      || profile.schemaVersion !== DELIVERY_DEFERRED_PROFILE_SCHEMA
+      || profile.reason !== 'authorization-required'
+      || !['start-from-idea', 'operator-deferred'].includes(String(profile.source))
+      || !nonEmptyString(profile.profileHash)
+      || hashDeliveryDeferredProfile(
+        profile as unknown as DeliveryDeferredProfile,
+      ) !== profile.profileHash
+    ) {
+      throw new Error('PRODUCT_LIFECYCLE_DELIVERY_CONFIGURATION_INVALID');
+    }
+    return;
+  }
+  if (value.delivery.mode !== 'authorized') {
+    throw new Error('PRODUCT_LIFECYCLE_DELIVERY_CONFIGURATION_INVALID');
+  }
   const deliveryPolicy = value.delivery.policy;
   const authorization = value.delivery.operatorAuthorization;
+  if (!isRecord(deliveryPolicy) || !isRecord(authorization)) {
+    throw new Error('PRODUCT_LIFECYCLE_DELIVERY_CONFIGURATION_INVALID');
+  }
   const actions = deliveryPolicy.actions;
   const checkIds = deliveryPolicy.requiredPreflightCheckIds;
   if (
-    !nonEmptyString(deliveryPolicy.id)
+    value.delivery.deferredProfile !== null
+    || !nonEmptyString(deliveryPolicy.id)
     || !nonEmptyString(deliveryPolicy.version)
     || !nonEmptyString(deliveryPolicy.contentHash)
     || !nonEmptyString(deliveryPolicy.channel)
@@ -168,14 +209,11 @@ export function assertProductDeliveryLifecycleInput(
     || hashDeliveryReleasePolicy(
       deliveryPolicy as unknown as DeliveryReleasePolicySnapshot,
     ) !== deliveryPolicy.contentHash
-    || (authorization !== null && (
-      !isRecord(authorization)
-      || !validReference(authorization)
-      || !nonEmptyString(authorization.requestedBy)
-      || authorization.releasePolicyHash !== deliveryPolicy.contentHash
-      || !isRecord(authorization.candidateScope)
-      || authorization.candidateScope.mode !== 'lifecycle-output'
-    ))
+    || !validReference(authorization)
+    || !nonEmptyString(authorization.requestedBy)
+    || authorization.releasePolicyHash !== deliveryPolicy.contentHash
+    || !isRecord(authorization.candidateScope)
+    || authorization.candidateScope.mode !== 'lifecycle-output'
   ) {
     throw new Error('PRODUCT_LIFECYCLE_DELIVERY_CONFIGURATION_INVALID');
   }
@@ -194,7 +232,7 @@ export function assertProductDeliveryLifecycleInput(
  * Root input contract (documented structurally by the mappings):
  *   initiative.{subject,context,evidence,constraints}
  *   development.{repositories,policy}
- *   delivery.{policy,operatorAuthorization}
+ *   delivery.{mode,policy,operatorAuthorization,deferredProfile}
  *
  * Missing deployment/provider configuration fails at its first required
  * mapping. The lifecycle never invents repositories, policies or authority.
@@ -231,16 +269,24 @@ export const productDeliveryLifecycle: LifecycleDefinition = {
         'certificate.hash': '$.processOutcome.certificateHash',
       },
       outcomeRoutes: {
-        // Discovery is a real lifecycle gate. Only an authoritative `go`
-        // certificate may spend Formalization/Development capacity. Every
-        // non-go result terminates with its exact business status instead of
-        // laundering a rejected or inconclusive initiative downstream.
+        // Discovery is an idea-STRENGTH gate, not a build gate: an operator who
+        // starts the lifecycle has already decided to see the product built
+        // (commit 2af9709). The strength of the idea (go / clarify / reject /
+        // defer / inconclusive / failed) is recorded in the discovery
+        // certificate and carried forward, NOT used to block the conveyor.
+        // Every Discovery outcome therefore forwards to Formalization, which
+        // then reasons about the contract on its own merits and is itself the
+        // real go/no-go gate (its non-formalized outcomes terminate). The
+        // strict-gate variant lives in the separate declarative
+        // LEGACY_PRODUCT_DELIVERY_SCENARIO_STRICT scenario package for
+        // regulated/contractual environments; the production lifecycle is
+        // permissive by default.
         go: { type: 'stage', stageId: 'solution-formalization' },
-        clarify: { type: 'terminal', status: 'clarify' },
-        reject: { type: 'terminal', status: 'rejected' },
-        defer: { type: 'terminal', status: 'deferred' },
-        inconclusive: { type: 'terminal', status: 'inconclusive' },
-        failed: { type: 'terminal', status: 'failed' },
+        clarify: { type: 'stage', stageId: 'solution-formalization' },
+        reject: { type: 'stage', stageId: 'solution-formalization' },
+        defer: { type: 'stage', stageId: 'solution-formalization' },
+        inconclusive: { type: 'stage', stageId: 'solution-formalization' },
+        failed: { type: 'stage', stageId: 'solution-formalization' },
       },
       entryConditions: ['initiative.subject exists'],
       exitConditions: ['Discovery has an immutable local outcome and certificate lineage'],
@@ -356,8 +402,10 @@ export const productDeliveryLifecycle: LifecycleDefinition = {
           '$.stages.solution-development.verifiedBundle.hash',
         integratedCandidate:
           '$.stages.solution-development.verifiedBundlePayload.integratedCandidate',
+        deliveryMode: '$.delivery.mode',
         policy: '$.delivery.policy',
         operatorAuthorization: '$.delivery.operatorAuthorization',
+        deferredProfile: '$.delivery.deferredProfile',
         initiatedBy: { runtime: 'initiatedBy' },
       },
       outputMapping: {
