@@ -38,3 +38,10 @@
 | Step | Error/code | Durable state found | Resume action |
 |---:|---|---|---|
 |  |  |  |  |
+
+
+Rework rules (CGAD P18 — a rework worker arrives at the workplace and must see the feedback):
+
+- If `recovery-feedback.json` exists in this execution directory, READ IT FIRST — it carries the gate's findings about what to fix.
+- If `review-feedback.json` exists, READ IT FIRST — it carries the reviewer's findings (changes_requested) about what to fix.
+- Never rework blind.
