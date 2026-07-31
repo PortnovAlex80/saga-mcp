@@ -159,6 +159,23 @@ export interface PackageInstallerOptions {
    * `new Date().toISOString()` at call time. Tests inject a fixed clock.
    */
   readonly now?: string;
+  /**
+   * When the active installation slot for (name, version) already holds a
+   * DIFFERENT package_digest, retire the old installation and install the new
+   * one instead of throwing `MODULE_INSTALLATION_VERSION_COLLISION`.
+   *
+   * CGAD P18 (conveyor model): a run's WORK (artifacts/traces/submissions/
+   * tasks) lives in the durable DB, not inside the package. The package is the
+   * toolset/instructions. Coupling resume-correctness to `package_digest`
+   * equality treats the toolset version as if it owned the work — same mistake
+   * as coupling a gate's read to transient task identity. A toolset change must
+   * not block resuming the workplace's existing work.
+   *
+   * When the new installation replaces the old, ProcessRuns that pinned the old
+   * installation resolve the workplace's work by node-scope regardless of the
+   * pinned id — so resume continues against the existing card/desk.
+   */
+  readonly replaceOnDigestChange?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -323,22 +340,31 @@ export class PackageInstaller {
     const existingActive = await repo.getActiveByNameVersion(moduleName, moduleVersion);
     if (existingActive !== null) {
       if (existingActive.packageDigest !== attemptedPackageDigest) {
-        throw new PackageInstallerError(
-          MODULE_INSTALLATION_VERSION_COLLISION,
-          `cannot install ${moduleName}@${moduleVersion}: installation id=${existingActive.id} already holds the active slot with a different package_digest ('${existingActive.packageDigest}' vs '${attemptedPackageDigest}')`,
-          { existing: existingActive, attempted: attemptedPackageDigest },
-        );
+        if (opts?.replaceOnDigestChange) {
+          // CGAD P18 — resume-tolerant reinstall: the toolset changed, but the
+          // workplace's work (artifacts/traces/submissions/tasks) is in the DB,
+          // unchanged. Retire the old installation and proceed to install the
+          // new one; the run resumes against the existing work by node-scope.
+          try { await repo.retire(existingActive.id); } catch { /* best-effort; INSERT path handles the slot */ }
+        } else {
+          throw new PackageInstallerError(
+            MODULE_INSTALLATION_VERSION_COLLISION,
+            `cannot install ${moduleName}@${moduleVersion}: installation id=${existingActive.id} already holds the active slot with a different package_digest ('${existingActive.packageDigest}' vs '${attemptedPackageDigest}')`,
+            { existing: existingActive, attempted: attemptedPackageDigest },
+          );
+        }
+      } else {
+        const verified = await store.verify(existingActive.packageDigest);
+        if (!verified) {
+          try { await repo.markCorrupt(existingActive.id); } catch { /* preserve primary error */ }
+          throw new PackageInstallerError(
+            MODULE_INSTALLATION_CORRUPT,
+            `active installation id=${existingActive.id} references corrupt package ${existingActive.packageDigest}`,
+            { existing: existingActive },
+          );
+        }
+        return existingActive;
       }
-      const verified = await store.verify(existingActive.packageDigest);
-      if (!verified) {
-        try { await repo.markCorrupt(existingActive.id); } catch { /* preserve primary error */ }
-        throw new PackageInstallerError(
-          MODULE_INSTALLATION_CORRUPT,
-          `active installation id=${existingActive.id} references corrupt package ${existingActive.packageDigest}`,
-          { existing: existingActive },
-        );
-      }
-      return existingActive;
     }
 
     // Step 5 — store bytes (content-addressed) using the STAMPED manifest so

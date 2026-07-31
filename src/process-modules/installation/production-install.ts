@@ -159,8 +159,14 @@ export async function installModulePackages(
 
     // The installer owns immutable identity, idempotency and replay
     // verification. A name@version-only shortcut would hide changed source
-    // bytes and corrupt package-store entries on restart.
-    const record = await installPackage(manifest, resources, { store, repo: repository });
+    // bytes and corrupt package-store entries on restart. When the toolset
+    // changed since the last run, retire the old slot and reinstall (CGAD P18:
+    // resume is about the work on the card, not the toolset version — the
+    // workplace's artifacts/submissions/tasks in the DB are unchanged).
+    const record = await installPackage(
+      manifest, resources, { store, repo: repository },
+      { replaceOnDigestChange: true },
+    );
     records.set(name, record);
     packages.set(record.packageDigest, await store.read(record.packageDigest));
   }
