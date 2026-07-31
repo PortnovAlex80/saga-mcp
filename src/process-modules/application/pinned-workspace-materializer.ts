@@ -42,6 +42,7 @@ import {
   materializedName,
   relativeWorkspacePath,
   recoveryFeedbackFromMetadata,
+  reviewFeedbackFromMetadata,
   parseMetadata,
 } from './process-execution-workspace.js';
 import type { ProcessModuleDefinition, ExecutionProfileDefinition } from '../domain/process-module.js';
@@ -235,6 +236,17 @@ export function materializePinnedWorkspace(
     recoveryFeedbackPath = path.join(executionDirectory, 'recovery-feedback.json');
     writeFileSync(recoveryFeedbackPath, `${JSON.stringify(recoveryFeedback, null, 2)}\n`);
   }
+  // CGAD P18 — review-loop is a rework cycle, same model as recovery: a worker
+  // arrives at the workplace and must see the reviewer's feedback about what to
+  // fix. The dispatcher records the reviewer's `result` in
+  // managed_review_last_feedback on changes_requested; this surfaces it on the
+  // desk so the author never reworks blind. Mirrors recovery-feedback.json.
+  let reviewFeedbackPath: string | null = null;
+  const reviewFeedback = reviewFeedbackFromMetadata(metadata);
+  if (reviewFeedback) {
+    reviewFeedbackPath = path.join(executionDirectory, 'review-feedback.json');
+    writeFileSync(reviewFeedbackPath, `${JSON.stringify(reviewFeedback, null, 2)}\n`);
+  }
 
   // 3. Asset lists from the profile (same fields the legacy path reads).
   const workspaceTemplates = profile.workspaceTemplates ?? [];
@@ -420,6 +432,7 @@ export function materializePinnedWorkspace(
     workspaceFiles: [
       ...workspaceTemplates.map(a => materializedBySource.get(a)).filter((v): v is string => !!v),
       ...(recoveryFeedbackPath ? [relativeWorkspacePath(workspaceRoot, recoveryFeedbackPath)] : []),
+      ...(reviewFeedbackPath ? [relativeWorkspacePath(workspaceRoot, reviewFeedbackPath)] : []),
     ],
     callFiles: callTemplates
       .map(a => materializedBySource.get(a))

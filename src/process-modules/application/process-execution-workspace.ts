@@ -354,6 +354,36 @@ export function recoveryFeedbackFromMetadata(
     : null;
 }
 
+/**
+ * Read the most recent reviewer feedback (CGAD P18 — review-loop is a rework
+ * cycle, same model as recovery: a worker comes to the workplace and must see
+ * the feedback about what to fix). The dispatcher records the reviewer's
+ * `result` text in `managed_review_last_feedback` when it returns
+ * `changes_requested` (dispatcher.ts worker_done). This reader surfaces it as a
+ * machine-owned feedback object so the materializer can write it to the desk,
+ * mirroring recovery-feedback.json. Returns null when no prior review rejection
+ * is recorded (first author pass, or an approved review).
+ */
+export function reviewFeedbackFromMetadata(
+  metadata: Record<string, unknown>,
+): { attempt: number; budget: number; rejections: number; feedback: string } | null {
+  const feedback = metadata.managed_review_last_feedback;
+  if (typeof feedback !== 'string' || feedback.trim().length === 0) return null;
+  const rejections = typeof metadata.managed_review_rejections === 'number'
+    ? metadata.managed_review_rejections
+    : 0;
+  if (rejections <= 0) return null;
+  const budget = typeof metadata.managed_review_budget === 'number'
+    ? metadata.managed_review_budget
+    : 0;
+  return {
+    attempt: rejections,
+    budget,
+    rejections,
+    feedback,
+  };
+}
+
 export function prepareProcessExecutionWorkspace(
   request: PrepareProcessExecutionWorkspaceRequest,
 ): ProcessExecutionWorkspace {
@@ -393,6 +423,18 @@ export function prepareProcessExecutionWorkspace(
     writeFileSync(
       recoveryFeedbackPath,
       `${JSON.stringify(recoveryFeedback, null, 2)}\n`,
+    );
+  }
+  // CGAD P18 — review-loop is a rework cycle too: surface the reviewer's
+  // feedback on the desk so the author never reworks blind (mirrors recovery).
+  const reviewFeedback = reviewFeedbackFromMetadata(metadata);
+  const reviewFeedbackPath = reviewFeedback
+    ? path.join(executionDirectory, 'review-feedback.json')
+    : null;
+  if (reviewFeedbackPath) {
+    writeFileSync(
+      reviewFeedbackPath,
+      `${JSON.stringify(reviewFeedback, null, 2)}\n`,
     );
   }
   const allAssets = unique([
@@ -498,6 +540,9 @@ export function prepareProcessExecutionWorkspace(
         .filter((value): value is string => Boolean(value)),
       ...(recoveryFeedbackPath
         ? [relativeWorkspacePath(workspaceRoot, recoveryFeedbackPath)]
+        : []),
+      ...(reviewFeedbackPath
+        ? [relativeWorkspacePath(workspaceRoot, reviewFeedbackPath)]
         : []),
     ],
     callFiles: request.profile.callTemplates
