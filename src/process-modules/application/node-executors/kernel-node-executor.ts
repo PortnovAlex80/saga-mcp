@@ -51,6 +51,7 @@ export class KernelNodeExecutor implements NodeExecutor {
         frame: ctx.frame,
         heartbeat: ctx.heartbeat,
         initiatedBy: ctx.initiatedBy,
+        nodeProducts: ctx.nodeProducts,
       });
       let acceptanceReceipt: ExactCandidateAcceptanceReceipt | undefined;
       if (result.exactCandidateAcceptance) {

@@ -23,6 +23,7 @@ import type {
 } from '../domain/process-module.js';
 import type { RecoveryIssue } from '../domain/recovery.js';
 import type { ExactCandidateAcceptanceReceipt } from './exact-candidate-acceptance.js';
+import type { ManagedNodeSubmissionRecord } from './managed-node-submission.js';
 // Wave 3 (W3-A1): driver-neutral SPI types from the Wave 1 pure-SPI layer.
 // Type-only import — these are pure data types (interfaces) defined under
 // domain/spi/ (Rule 5 pure). No runtime edge; application→domain is allowed.
@@ -77,6 +78,49 @@ export interface NodeExecutionContext {
    * this undefined.
    */
   readonly upstreamProductBodies?: readonly unknown[];
+  /**
+   * CGAD P18 — centralized node-scoped worker products for THIS node, read by
+   * the GenericFlowExecutor before invoking any handler. Contains the latest
+   * managed artifacts, traces, and submission produced by the workplace (node)
+   * regardless of which worker (task) produced them. Kernel handlers read this
+   * instead of querying the ledger themselves, so every module inherits P18
+   * automatically and no future module can reintroduce a task-scoped read.
+   * Optional (absent ⇒ legacy run without the centralized seam).
+   */
+  readonly nodeProducts?: NodeProducts;
+}
+
+/**
+ * Durable worker products for one workplace (node), centralized by the executor
+ * (CGAD P18). Each array is scoped by process_run + module + node, never by
+ * task — so a gate can never be blinded to a prior worker's product.
+ */
+export interface NodeProducts {
+  /** Latest managed artifacts written by the LM node (formalization-style). */
+  readonly artifacts: readonly ManagedArtifactWriteSummary[];
+  /** Latest managed traces written by the LM node. */
+  readonly traces: readonly ManagedTraceWriteSummary[];
+  /** Latest typed submission written by the LM node (development/discovery-style). */
+  readonly submission: ManagedNodeSubmissionRecord | null;
+}
+
+export interface ManagedArtifactWriteSummary {
+  readonly ledgerId: number;
+  readonly artifactId: number;
+  readonly artifactType: string;
+  readonly artifactStatus: string;
+  readonly contentHash: string;
+  readonly operation: string;
+}
+
+export interface ManagedTraceWriteSummary {
+  readonly ledgerId: number;
+  readonly traceId: number;
+  readonly sourceId: number;
+  readonly targetType: string;
+  readonly targetId: number;
+  readonly linkType: string;
+  readonly traceHash: string;
 }
 
 /**

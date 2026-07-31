@@ -470,6 +470,22 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
     return row?.project_repository_id ?? null;
   }
 
+  readTaskReviewFeedback(taskId: number): { attempt: number; feedback: string } | null {
+    // CGAD P18 — surface the reviewer's last changes_requested feedback so the
+    // LM cell can fold it into the objective (symmetry with recovery feedback).
+    const row = getDb().prepare(
+      `SELECT json_extract(metadata, '$.managed_review_last_feedback') AS feedback,
+              json_extract(metadata, '$.managed_review_rejections') AS rejections
+         FROM tasks WHERE id=?`,
+    ).get(taskId) as { feedback: string | null; rejections: number | null } | undefined;
+    if (!row || typeof row.feedback !== 'string' || row.feedback.trim().length === 0) {
+      return null;
+    }
+    const rejections = Number(row.rejections ?? 0);
+    if (rejections <= 0) return null;
+    return { attempt: rejections, feedback: row.feedback };
+  }
+
 
   prepareIntentForExecution(intentId: number, taskId: number): PrepareIntentForExecutionResult {
     const db = getDb();

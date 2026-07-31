@@ -22,7 +22,7 @@
 import type { KernelFlowNodeDefinition } from '../domain/process-module.js';
 import type { RecoveryIssue } from '../domain/recovery.js';
 import type { ExactCandidateAcceptanceDirective } from './exact-candidate-acceptance.js';
-import type { NodeExecutionFrame, NodeProduction } from './node-executor.js';
+import type { NodeExecutionFrame, NodeProducts, NodeProduction } from './node-executor.js';
 
 /**
  * Контекст, передаваемый в kernel handler при исполнении соответствующего узла.
@@ -43,6 +43,12 @@ export interface KernelHandlerContext {
   /** Renew the owning ProcessRun lease during long deterministic/provider work. */
   heartbeat: () => void;
   initiatedBy: string;
+  /**
+   * CGAD P18 — centralized node-scoped worker products for THIS node. Read by
+   * the executor before invoking this handler, so the handler never queries the
+   * ledger by transient task identity. Absent on legacy runs (without the seam).
+   */
+  nodeProducts?: NodeProducts;
 }
 
 /**

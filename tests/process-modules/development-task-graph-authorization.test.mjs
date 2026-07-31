@@ -156,6 +156,10 @@ function dependencies(proposal, onMaterialize) {
   };
   return {
     plannerSubmissions: {
+      // CGAD P18: node-scoped read returns null here so the handler falls back
+      // to the task-scoped read (legacy path) — this test exercises the
+      // task-scoped fallback explicitly.
+      readLatestForNode() { return null; },
       readLatestForTask(query) {
         assert.deepEqual(query, {
           processRunId: 77,

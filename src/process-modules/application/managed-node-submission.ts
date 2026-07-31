@@ -53,4 +53,18 @@ export interface ManagedNodeSubmissionReader {
   readLatestForTask(
     query: Omit<ManagedNodeSubmissionQuery, 'intentId' | 'executionId'>,
   ): ManagedNodeSubmissionRecord | null;
+
+  /**
+   * Read the latest immutable submission produced by the WORKPLACE (node),
+   * independent of which worker (task) produced it. This is the canonical
+   * CGAD P18 read: a kernel gate resolves the workplace's product by durable
+   * node-scope (processRunId + moduleRef + nodeId), so it can never be blinded
+   * to a prior worker's product even if task identity changes across recovery
+   * or review-loop rounds. Returns the most recent submission by submissionId.
+   */
+  readLatestForNode(
+    processRunId: number,
+    moduleRef: string,
+    nodeId: string,
+  ): ManagedNodeSubmissionRecord | null;
 }

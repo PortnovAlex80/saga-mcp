@@ -100,7 +100,7 @@ import { HumanInteractionRegistry } from '../process-modules/application/human-i
 import { KernelHandlerRegistry } from '../process-modules/application/kernel-handler-registry.js';
 import { LifecycleOrchestrationEngineAdapter } from '../process-modules/application/lifecycle-orchestration-engine-adapter.js';
 import { LifecycleOrchestrator } from '../process-modules/application/lifecycle-orchestrator.js';
-import type { NodeExecutor } from '../process-modules/application/node-executor.js';
+import type { NodeExecutor, NodeProducts } from '../process-modules/application/node-executor.js';
 import { ExternalNodeExecutor } from '../process-modules/application/node-executors/external-node-executor.js';
 import { HumanNodeExecutor } from '../process-modules/application/node-executors/human-node-executor.js';
 import { KernelNodeExecutor } from '../process-modules/application/node-executors/kernel-node-executor.js';
@@ -442,6 +442,46 @@ export function createProductLifecycleRuntime(
     ['human', new HumanNodeExecutor(humanInteractions)],
   ]);
 
+  // CGAD P18 — centralized node-products resolver: reads the workplace's (node's)
+  // durable worker products by node-scope (processRunId + moduleRef + nodeId),
+  // never by task. Shared across all module executors so every kernel handler
+  // receives ctx.nodeProducts and no module can reintroduce a task-scoped read.
+  const centralLedger = new SqliteManagedProductionLedger(db);
+  const resolveNodeProducts = (
+    processRunId: number,
+    moduleRef: string,
+    nodeId: string,
+  ): NodeProducts | null => {
+    const artifacts = centralLedger.listArtifactsForNodeInProcessRun(processRunId, moduleRef, nodeId);
+    const traces = centralLedger.listTracesForNodeInProcessRun(processRunId, moduleRef, nodeId);
+    const submission = managedNodeSubmissions.readLatestForNode(processRunId, moduleRef, nodeId);
+    if (artifacts.length === 0 && traces.length === 0 && submission === null) {
+      return null;
+    }
+    return {
+      artifacts: artifacts
+        .filter((a): a is typeof a & { contentHash: string } => a.contentHash !== null)
+        .map(a => ({
+          ledgerId: a.ledgerId,
+          artifactId: a.artifactId,
+          artifactType: a.artifactType,
+          artifactStatus: a.artifactStatus,
+          contentHash: a.contentHash,
+          operation: a.operation,
+        })),
+      traces: traces.map(t => ({
+        ledgerId: t.ledgerId,
+        traceId: t.traceId,
+        sourceId: t.sourceId,
+        targetType: t.targetType,
+        targetId: t.targetId,
+        linkType: t.linkType,
+        traceHash: t.traceHash,
+      })),
+      submission,
+    };
+  };
+
   const executors = {
     discovery: new GenericFlowExecutor({
       moduleRef: discoveryProcessModule.identity,
@@ -450,6 +490,7 @@ export function createProductLifecycleRuntime(
       certificateRepo,
       nodeExecutors,
       recoveryCaseRepo,
+      resolveNodeProducts,
     }),
     formalization: new GenericFlowExecutor({
       moduleRef: formalizationProcessModule.identity,
@@ -458,6 +499,7 @@ export function createProductLifecycleRuntime(
       certificateRepo,
       nodeExecutors,
       recoveryCaseRepo,
+      resolveNodeProducts,
       resolveOutput: createFormalizationOutputResolver(
         formalizationSolutionContractRepository,
       ),
@@ -469,6 +511,7 @@ export function createProductLifecycleRuntime(
       certificateRepo,
       nodeExecutors,
       recoveryCaseRepo,
+      resolveNodeProducts,
       resolveOutput: createDevelopmentOutputResolver(
         developmentOutputRepository,
       ),
@@ -480,6 +523,7 @@ export function createProductLifecycleRuntime(
       certificateRepo,
       nodeExecutors,
       recoveryCaseRepo,
+      resolveNodeProducts,
       resolveOutput: createDeliveryOutputResolver(deliveryOutputRepository),
     }),
   };

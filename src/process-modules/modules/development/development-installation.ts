@@ -220,12 +220,24 @@ function createTaskGraphResolver(
           },
         );
       }
-      const submission = deps.plannerSubmissions.readLatestForTask({
-        processRunId: ctx.processRunId,
-        moduleRef: processModuleKey(DEVELOPMENT_PROCESS_MODULE_REF),
-        nodeId: DEVELOPMENT_NODE_IDS.planner,
-        taskId: receipt.taskId,
-      });
+      // CGAD P18 — read the workplace's (planner node's) product via the
+      // centralized node-scoped products when available, so the gate can never
+      // be blinded to the planner's prior submission by a transient task
+      // identity. Falls back to the task-scoped read on legacy runs without the
+      // centralized seam.
+      const moduleRef = processModuleKey(DEVELOPMENT_PROCESS_MODULE_REF);
+      const submission = ctx.nodeProducts?.submission
+        ?? deps.plannerSubmissions.readLatestForNode(
+          ctx.processRunId,
+          moduleRef,
+          DEVELOPMENT_NODE_IDS.planner,
+        )
+        ?? deps.plannerSubmissions.readLatestForTask({
+          processRunId: ctx.processRunId,
+          moduleRef,
+          nodeId: DEVELOPMENT_NODE_IDS.planner,
+          taskId: receipt.taskId,
+        });
       if (submission === null) {
         return taskGraphResolutionManifest(
           ctx,

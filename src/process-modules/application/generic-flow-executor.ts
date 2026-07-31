@@ -22,7 +22,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { type ProcessModuleDefinition } from '../domain/process-module.js';
+import { type ProcessModuleDefinition, processModuleKey } from '../domain/process-module.js';
 import type {
   FlowNodeDefinition,
   FlowRecoveryDefinition,
@@ -64,6 +64,7 @@ import type {
   NodeExecutionReceipt,
   NodeExecutor,
   NodeExecutionResult,
+  NodeProducts,
   NodeProduction,
 } from './node-executor.js';
 import type {
@@ -133,6 +134,20 @@ export interface GenericFlowExecutorOptions {
    * v2 path is active.
    */
   v2?: GenericFlowExecutorV2Options;
+  /**
+   * CGAD P18 — OPTIONAL centralized resolver that reads the workplace's (node's)
+   * durable worker products (artifacts/traces/submission) scoped by
+   * processRunId + moduleRef + nodeId, NEVER by task. When present, the executor
+   * populates `ctx.nodeProducts` for every kernel node, so handlers read the
+   * centralized products instead of querying the ledger themselves — every
+   * module inherits P18 automatically. Absent ⇒ legacy run (handlers that still
+   * query themselves keep working; formalization already does node-scope).
+   */
+  resolveNodeProducts?: (
+    processRunId: number,
+    moduleRef: string,
+    nodeId: string,
+  ) => NodeProducts | null;
 }
 
 /**
@@ -660,6 +675,18 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
               upstreamProductBodies: assembled.upstreamProductBodies.map(
                 (r) => (r as { payload?: unknown }).payload ?? r,
               ),
+            }
+          : {}),
+        // CGAD P18 — centralized node-scoped worker products. Resolved once per
+        // node execution by the executor, so kernel handlers read ctx.nodeProducts
+        // instead of querying the ledger by transient task identity.
+        ...(this.opts.resolveNodeProducts && node.kind === 'kernel'
+          ? {
+              nodeProducts: this.opts.resolveNodeProducts(
+                context.processRunId,
+                processModuleKey(module.identity),
+                node.id,
+              ) ?? undefined,
             }
           : {}),
       };

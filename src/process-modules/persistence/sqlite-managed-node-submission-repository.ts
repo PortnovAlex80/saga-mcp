@@ -193,6 +193,24 @@ implements ManagedNodeSubmissionReader {
     return row ? rowToRecord(row) : null;
   }
 
+  readLatestForNode(
+    processRunId: number,
+    moduleRef: string,
+    nodeId: string,
+  ): ManagedNodeSubmissionRecord | null {
+    // CGAD P18 — durable node-scope read: the workplace's product, independent
+    // of which worker (task) produced it. This never blinds a gate to a prior
+    // worker's submission.
+    const row = this.db.prepare(
+      `SELECT *
+         FROM saga3_managed_node_submissions
+        WHERE process_run_id=? AND module_ref=? AND node_id=?
+        ORDER BY id DESC
+        LIMIT 1`,
+    ).get(processRunId, moduleRef, nodeId) as SubmissionRow | undefined;
+    return row ? rowToRecord(row) : null;
+  }
+
   private readExactRow(
     query: ManagedNodeSubmissionQuery,
   ): SubmissionRow | undefined {
