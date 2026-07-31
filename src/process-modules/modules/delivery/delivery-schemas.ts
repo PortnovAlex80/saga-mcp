@@ -7,7 +7,9 @@
  * deterministic key and every retry observes the target before acting.
  */
 
-export const DELIVERY_RELEASE_CASE_SCHEMA = 'saga3.delivery-release-case.v1';
+export const DELIVERY_RELEASE_CASE_SCHEMA = 'saga3.delivery-release-case.v2';
+export const DELIVERY_DEFERRED_PROFILE_SCHEMA =
+  'saga3.delivery-deferred-profile.v1';
 export const DELIVERY_PREFLIGHT_SCHEMA = 'saga3.delivery-preflight.v1';
 export const DELIVERY_APPROVAL_SCHEMA = 'saga3.delivery-approval-decision.v1';
 export const DELIVERY_PUBLICATION_SCHEMA = 'saga3.delivery-publication.v1';
@@ -15,7 +17,7 @@ export const DELIVERY_OBSERVATION_SCHEMA = 'saga3.delivery-observation.v1';
 export const RELEASE_RECORD_SCHEMA = 'saga3.release-record.v1';
 export const DELIVERY_SETTLEMENT_INPUT_SCHEMA =
   'saga3.delivery-settlement-input.v1';
-export const DELIVERY_CERTIFICATE_SCHEMA = 'saga3.delivery-certificate.v1';
+export const DELIVERY_CERTIFICATE_SCHEMA = 'saga3.delivery-certificate.v2';
 
 export interface DeliveryContentAddressedReference {
   schema: string;
@@ -61,7 +63,14 @@ export interface DeliveryReleasePolicySnapshot {
   actions: readonly ReleaseActionDefinition[];
 }
 
-export interface DeliveryReleaseCase {
+export interface DeliveryDeferredProfile {
+  schemaVersion: typeof DELIVERY_DEFERRED_PROFILE_SCHEMA;
+  reason: 'authorization-required';
+  source: 'start-from-idea' | 'operator-deferred';
+  profileHash: string;
+}
+
+interface DeliveryReleaseCaseBase {
   schemaVersion: typeof DELIVERY_RELEASE_CASE_SCHEMA;
   projectId: number;
   epicId: number | null;
@@ -70,6 +79,11 @@ export interface DeliveryReleaseCase {
   };
   verifiedIntegrationBundle: DeliveryContentAddressedReference;
   integratedCandidate: DeliveryContentAddressedReference;
+  initiatedBy: string;
+}
+
+export interface AuthorizedDeliveryReleaseCase extends DeliveryReleaseCaseBase {
+  deliveryMode: 'authorized';
   policy: DeliveryReleasePolicySnapshot;
   /**
    * Explicit operator grant for externally-visible release effects.
@@ -79,7 +93,7 @@ export interface DeliveryReleaseCase {
    * handed off by the preceding stage under this immutable release policy.
    * Standalone Delivery callers may instead bind one already-known hash.
    */
-  operatorAuthorization: (DeliveryContentAddressedReference & {
+  operatorAuthorization: DeliveryContentAddressedReference & {
     requestedBy: string;
     releasePolicyHash: string;
     candidateScope:
@@ -90,9 +104,20 @@ export interface DeliveryReleaseCase {
       | {
           mode: 'lifecycle-output';
         };
-  }) | null;
-  initiatedBy: string;
+  };
+  deferredProfile: null;
 }
+
+export interface DeferredDeliveryReleaseCase extends DeliveryReleaseCaseBase {
+  deliveryMode: 'deferred';
+  policy: null;
+  operatorAuthorization: null;
+  deferredProfile: DeliveryDeferredProfile;
+}
+
+export type DeliveryReleaseCase =
+  | AuthorizedDeliveryReleaseCase
+  | DeferredDeliveryReleaseCase;
 
 export type GuardOutcome = 'passed' | 'failed' | 'unknown' | 'error';
 
@@ -264,7 +289,8 @@ export interface DeliveryCertificatePayload {
   developmentCertificateHash: string;
   verifiedIntegrationBundleHash: string;
   candidateHash: string;
-  releasePolicyHash: string;
+  releasePolicyHash: string | null;
+  deferredProfileHash: string | null;
   preflightHash: string | null;
   approvalHash: string | null;
   publicationHash: string | null;

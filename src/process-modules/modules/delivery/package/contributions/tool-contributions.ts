@@ -117,7 +117,7 @@ export const DELIVERY_TOOL_RESOURCE_IDS = {
 export const DELIVERY_PREFLIGHT_RELEASE_CONTRIBUTION: ModuleToolContribution = {
   logicalId: `${DELIVERY_TOOL_NAMESPACE}.preflight_release`,
   version: '1.0.0',
-  inputContractRef: contractRef('saga3.delivery-release-case.v1', '1.0.0'),
+  inputContractRef: contractRef('saga3.delivery-release-case.v2', '2.0.0'),
   outputContractRef: contractRef('saga3.delivery-preflight.v1', '1.0.0'),
   handlerRef: 'capability.saga.delivery-preflight',
   callTemplateRef: DELIVERY_TOOL_RESOURCE_IDS.preflightInstructions,
@@ -244,7 +244,7 @@ export const DELIVERY_SETTLE_DELIVERY_CONTRIBUTION: ModuleToolContribution = {
   logicalId: `${DELIVERY_TOOL_NAMESPACE}.settle_delivery`,
   version: '1.0.0',
   inputContractRef: contractRef('saga3.delivery-observation.v1', '1.0.0'),
-  outputContractRef: contractRef('saga3.delivery-certificate.v1', '1.0.0'),
+  outputContractRef: contractRef('saga3.delivery-certificate.v2', '2.0.0'),
   handlerRef: 'capability.saga.delivery-settlement',
   callTemplateRef: DELIVERY_TOOL_RESOURCE_IDS.settlementInstructions,
   errorHintRef: DELIVERY_TOOL_RESOURCE_IDS.errorHints,

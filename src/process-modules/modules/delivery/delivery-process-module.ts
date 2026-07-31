@@ -211,7 +211,7 @@ export const deliveryProcessModule: ProcessModuleDefinition = {
       schema: { id: DELIVERY_RELEASE_CASE_SCHEMA },
       authority: 'kernel',
       description:
-        'Immutable release request bound to a verified Development certificate, candidate, policy and operator authorization.',
+        'Immutable Delivery request bound to a verified Development candidate and either a real release policy plus operator authorization or an explicit deferred profile.',
     },
     {
       type: 'delivery-preflight',

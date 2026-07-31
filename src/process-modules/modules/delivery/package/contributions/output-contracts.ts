@@ -58,12 +58,12 @@ function contractRef(schemaId: string, version: string): ContractRef {
 
 /**
  * The module's input contract: one `DeliveryReleaseCase` binding a verified
- * Development certificate, an integrated candidate, an immutable release
- * policy and an explicit operator authorization to a delivery episode.
- * Matches `saga3.delivery-release-case.v1`.
+ * Development certificate and integrated candidate to either an authorized
+ * immutable release policy or an explicit content-addressed deferred profile.
+ * Matches `saga3.delivery-release-case.v2`.
  */
 export const DELIVERY_INPUT_CONTRACT: ContractRef = contractRef(
-  'saga3.delivery-release-case.v1',
+  'saga3.delivery-release-case.v2',
   '1.0.0',
 );
 
@@ -139,11 +139,11 @@ export const DELIVERY_RELEASE_RECORD_CONTRACT: ContractRef = contractRef(
 /**
  * The module's terminal certificate contract: the immutable delivery
  * settlement decision and exact product-lineage hashes. Matches
- * `saga3.delivery-certificate.v1`. Emitted on every terminal outcome
+ * `saga3.delivery-certificate.v2`. Emitted on every terminal outcome
  * (released / approval-required / blocked / failed).
  */
 export const DELIVERY_OUTPUT_CONTRACT: ContractRef = contractRef(
-  'saga3.delivery-certificate.v1',
+  'saga3.delivery-certificate.v2',
   '1.0.0',
 );
 

@@ -15,6 +15,7 @@ import {
 } from '../development/development-schemas.js';
 import {
   DELIVERY_APPROVAL_SCHEMA,
+  DELIVERY_DEFERRED_PROFILE_SCHEMA,
   DELIVERY_CERTIFICATE_SCHEMA,
   DELIVERY_OBSERVATION_SCHEMA,
   DELIVERY_PREFLIGHT_SCHEMA,
@@ -22,10 +23,12 @@ import {
   DELIVERY_RELEASE_CASE_SCHEMA,
   DELIVERY_SETTLEMENT_INPUT_SCHEMA,
   RELEASE_RECORD_SCHEMA,
+  type AuthorizedDeliveryReleaseCase,
   type DeliveryApprovalDecision,
   type DeliveryCertificatePayload,
   type DeliveryContentAddressedReference,
   type DeliveryDecision,
+  type DeliveryDeferredProfile,
   type DeliveryObservationSnapshot,
   type DeliveryPreflightSnapshot,
   type DeliveryPublicationSnapshot,
@@ -46,7 +49,7 @@ export interface DeliveryPreflightResult {
 
 export interface DeliveryPreflightPolicyPort {
   evaluate(
-    deliveryCase: DeliveryReleaseCase,
+    deliveryCase: AuthorizedDeliveryReleaseCase,
     preflight: DeliveryPreflightSnapshot,
   ): DeliveryPreflightResult;
 }
@@ -103,13 +106,19 @@ export function hashDeliveryReleasePolicy(
   return hashWithoutField(policy, 'contentHash');
 }
 
+export function hashDeliveryDeferredProfile(
+  profile: DeliveryDeferredProfile,
+): string {
+  return hashWithoutField(profile, 'profileHash');
+}
+
 /**
  * Exact, cross-run idempotency key for an externally-visible desired state.
  * It deliberately excludes ProcessRun id: a second run for the same immutable
  * candidate/action must observe and reuse the first run's already-applied state.
  */
 export function deliveryActionKey(
-  deliveryCase: DeliveryReleaseCase,
+  deliveryCase: AuthorizedDeliveryReleaseCase,
   action: ReleaseActionDefinition,
 ): string {
   const identityHash = sha256Hex({
@@ -129,13 +138,17 @@ function unique<T>(values: readonly T[]): boolean {
   return new Set(values).size === values.length;
 }
 
-function validRef(reference: DeliveryContentAddressedReference): boolean {
-  return reference.schema.trim().length > 0
+function validRef(
+  reference: DeliveryContentAddressedReference | null | undefined,
+): boolean {
+  return reference !== null
+    && reference !== undefined
+    && reference.schema.trim().length > 0
     && reference.ref.trim().length > 0
     && reference.hash.trim().length > 0;
 }
 
-function invalidPolicy(deliveryCase: DeliveryReleaseCase): boolean {
+function invalidPolicy(deliveryCase: AuthorizedDeliveryReleaseCase): boolean {
   const policy = deliveryCase.policy;
   return !policy.id.trim()
     || !policy.version.trim()
@@ -163,7 +176,9 @@ function invalidPolicy(deliveryCase: DeliveryReleaseCase): boolean {
       || typeof action.required !== 'boolean');
 }
 
-function invalidCase(deliveryCase: DeliveryReleaseCase): DeliveryReasonCode | null {
+function invalidCommonCase(
+  deliveryCase: DeliveryReleaseCase,
+): DeliveryReasonCode | null {
   if (
     deliveryCase.schemaVersion !== DELIVERY_RELEASE_CASE_SCHEMA
     || deliveryCase.projectId <= 0
@@ -184,10 +199,25 @@ function invalidCase(deliveryCase: DeliveryReleaseCase): DeliveryReasonCode | nu
   ) {
     return 'development-certificate-invalid';
   }
+  return null;
+}
+
+function validDeferredProfile(profile: DeliveryDeferredProfile): boolean {
+  return profile.schemaVersion === DELIVERY_DEFERRED_PROFILE_SCHEMA
+    && profile.reason === 'authorization-required'
+    && ['start-from-idea', 'operator-deferred'].includes(profile.source)
+    && profile.profileHash.trim().length > 0
+    && hashDeliveryDeferredProfile(profile) === profile.profileHash;
+}
+
+function invalidAuthorizedCase(
+  deliveryCase: AuthorizedDeliveryReleaseCase,
+): DeliveryReasonCode | null {
+  const common = invalidCommonCase(deliveryCase);
+  if (common) return common;
   const authorization = deliveryCase.operatorAuthorization;
   if (
-    authorization === null
-    || !validRef(authorization)
+    !validRef(authorization)
     || !authorization.requestedBy.trim()
     || authorization.releasePolicyHash !== deliveryCase.policy.contentHash
     || !validCandidateAuthorizationScope(
@@ -229,11 +259,11 @@ function referenceMatches(
 export class ReferenceDeliveryPreflightPolicy
 implements DeliveryPreflightPolicyPort {
   evaluate(
-    deliveryCase: DeliveryReleaseCase,
+    deliveryCase: AuthorizedDeliveryReleaseCase,
     preflight: DeliveryPreflightSnapshot,
   ): DeliveryPreflightResult {
     const inputHash = sha256Hex(deliveryCase);
-    const invalid = invalidCase(deliveryCase);
+    const invalid = invalidAuthorizedCase(deliveryCase);
     if (invalid) {
       return {
         event: 'failed',
@@ -389,7 +419,8 @@ implements DeliverySettlementPolicyPort {
   ) {}
 
   settle(input: DeliverySettlementInput): DeliverySettlementResult {
-    const inputHash = sha256Hex(input.deliveryCase);
+    const deliveryCase = input.deliveryCase;
+    const inputHash = sha256Hex(deliveryCase);
     if (input.schemaVersion !== DELIVERY_SETTLEMENT_INPUT_SCHEMA) {
       return settlementResult(
         'failed',
@@ -398,25 +429,42 @@ implements DeliverySettlementPolicyPort {
         inputHash,
       );
     }
-    if (input.deliveryCase.operatorAuthorization === null) {
+    const commonInvalid = invalidCommonCase(deliveryCase);
+    if (commonInvalid) {
       return settlementResult(
-        'approval-required',
-        ['operator-authorization-missing'],
-        'A real operator authorization is required before release effects may begin.',
+        'failed',
+        [commonInvalid],
+        'DeliveryReleaseCase failed common contract validation.',
         inputHash,
       );
     }
-    const invalid = invalidCase(input.deliveryCase);
+    if (deliveryCase.deliveryMode === 'deferred') {
+      if (!validDeferredProfile(deliveryCase.deferredProfile)) {
+        return settlementResult(
+          'failed',
+          ['invalid-input-contract'],
+          'Deferred Delivery profile failed integrity validation.',
+          inputHash,
+        );
+      }
+      return settlementResult(
+        'approval-required',
+        ['operator-authorization-missing'],
+        'Delivery was explicitly deferred until a real release policy and operator authorization are supplied.',
+        inputHash,
+      );
+    }
+    const invalid = invalidAuthorizedCase(deliveryCase);
     if (invalid) {
       return settlementResult(
         invalid === 'operator-authorization-missing' ? 'blocked' : 'failed',
         [invalid],
-        'DeliveryReleaseCase failed contract validation.',
+        'Authorized DeliveryReleaseCase failed contract validation.',
         inputHash,
       );
     }
     if (
-      input.currentCandidateHash !== input.deliveryCase.integratedCandidate.hash
+      input.currentCandidateHash !== deliveryCase.integratedCandidate.hash
     ) {
       return settlementResult(
         'blocked',
@@ -450,7 +498,7 @@ implements DeliverySettlementPolicyPort {
       );
     }
     const preflightResult = this.preflightPolicy.evaluate(
-      input.deliveryCase,
+      deliveryCase,
       preflight,
     );
     if (preflightResult.event !== 'ready') {
@@ -488,9 +536,9 @@ implements DeliverySettlementPolicyPort {
       );
     }
     if (
-      approval.candidateHash !== input.deliveryCase.integratedCandidate.hash
+      approval.candidateHash !== deliveryCase.integratedCandidate.hash
       || approval.preflightHash !== preflight.preflightHash
-      || approval.releasePolicyHash !== input.deliveryCase.policy.contentHash
+      || approval.releasePolicyHash !== deliveryCase.policy.contentHash
     ) {
       return settlementResult(
         'failed',
@@ -500,7 +548,7 @@ implements DeliverySettlementPolicyPort {
       );
     }
 
-    if (input.deliveryCase.policy.humanApprovalRequired) {
+    if (deliveryCase.policy.humanApprovalRequired) {
       if (approval.status === 'pending' || approval.status === 'not-required') {
         return settlementResult(
           'approval-required',
@@ -544,7 +592,7 @@ implements DeliverySettlementPolicyPort {
         );
       }
     } else if (
-      !input.deliveryCase.policy.humanApprovalRequired
+      !deliveryCase.policy.humanApprovalRequired
       && approval.status !== 'not-required'
     ) {
       if (approval.status === 'denied') {
@@ -591,7 +639,7 @@ implements DeliverySettlementPolicyPort {
       );
     }
     if (
-      publication.candidateHash !== input.deliveryCase.integratedCandidate.hash
+      publication.candidateHash !== deliveryCase.integratedCandidate.hash
       || publication.preflightHash !== preflight.preflightHash
       || publication.approvalHash !== approval.approvalHash
     ) {
@@ -605,7 +653,7 @@ implements DeliverySettlementPolicyPort {
     if (
       !actionPlansMatch(
         publication.plannedActions,
-        input.deliveryCase.policy.actions,
+        deliveryCase.policy.actions,
       )
     ) {
       return settlementResult(
@@ -617,7 +665,7 @@ implements DeliverySettlementPolicyPort {
     }
 
     const actionById = new Map(
-      input.deliveryCase.policy.actions.map(action => [action.actionId, action]),
+      deliveryCase.policy.actions.map(action => [action.actionId, action]),
     );
     const receiptByActionId = new Map(
       publication.receipts.map(receipt => [receipt.actionId, receipt]),
@@ -630,7 +678,7 @@ implements DeliverySettlementPolicyPort {
         inputHash,
       );
     }
-    for (const action of input.deliveryCase.policy.actions) {
+    for (const action of deliveryCase.policy.actions) {
       const receipt = receiptByActionId.get(action.actionId);
       if (!receipt) {
         if (!action.required) continue;
@@ -642,7 +690,7 @@ implements DeliverySettlementPolicyPort {
         );
       }
       if (
-        receipt.actionKey !== deliveryActionKey(input.deliveryCase, action)
+        receipt.actionKey !== deliveryActionKey(deliveryCase, action)
         || receipt.kind !== action.kind
         || receipt.target !== action.target
         || receipt.payloadHash !== action.payloadHash
@@ -702,9 +750,9 @@ implements DeliverySettlementPolicyPort {
     }
     if (
       observation.candidateHash
-        !== input.deliveryCase.integratedCandidate.hash
+        !== deliveryCase.integratedCandidate.hash
       || observation.currentCandidateHash
-        !== input.deliveryCase.integratedCandidate.hash
+        !== deliveryCase.integratedCandidate.hash
       || observation.publicationHash !== publication.publicationHash
     ) {
       return settlementResult(
@@ -727,8 +775,8 @@ implements DeliverySettlementPolicyPort {
       );
     }
     const actionByKey = new Map(
-      input.deliveryCase.policy.actions.map(action => [
-        deliveryActionKey(input.deliveryCase, action),
+      deliveryCase.policy.actions.map(action => [
+        deliveryActionKey(deliveryCase, action),
         action,
       ]),
     );
@@ -777,9 +825,9 @@ implements DeliverySettlementPolicyPort {
       }
     }
 
-    for (const action of input.deliveryCase.policy.actions) {
+    for (const action of deliveryCase.policy.actions) {
       if (!action.required) continue;
-      const key = deliveryActionKey(input.deliveryCase, action);
+      const key = deliveryActionKey(deliveryCase, action);
       const item = observationByKey.get(key);
       const receipt = receiptByActionId.get(action.actionId);
       if (!item || !receipt) {
@@ -883,10 +931,10 @@ implements DeliverySettlementPolicyPort {
       );
     }
 
-    const destinations = input.deliveryCase.policy.actions.flatMap(action => {
+    const destinations = deliveryCase.policy.actions.flatMap(action => {
       const receipt = receiptByActionId.get(action.actionId);
       const observed = observationByKey.get(
-        deliveryActionKey(input.deliveryCase, action),
+        deliveryActionKey(deliveryCase, action),
       );
       if (
         !receipt?.externalRef
@@ -905,10 +953,10 @@ implements DeliverySettlementPolicyPort {
     });
     const recordBody: Omit<ReleaseRecord, 'recordHash'> = {
       schemaVersion: RELEASE_RECORD_SCHEMA,
-      developmentCertificate: input.deliveryCase.developmentCertificate,
-      verifiedIntegrationBundle: input.deliveryCase.verifiedIntegrationBundle,
-      integratedCandidate: input.deliveryCase.integratedCandidate,
-      policy: input.deliveryCase.policy,
+      developmentCertificate: deliveryCase.developmentCertificate,
+      verifiedIntegrationBundle: deliveryCase.verifiedIntegrationBundle,
+      integratedCandidate: deliveryCase.integratedCandidate,
+      policy: deliveryCase.policy,
       preflight: preflightRef,
       approval: approvalRef,
       publication: publicationRef,
@@ -934,18 +982,23 @@ export function buildDeliveryCertificatePayload(
   settlement: DeliverySettlementResult,
   input: DeliverySettlementInput,
 ): DeliveryCertificatePayload {
+  const deliveryCase = input.deliveryCase;
   return {
     schemaVersion: DELIVERY_CERTIFICATE_SCHEMA,
     decision: settlement.decision,
     reasonCodes: settlement.reasonCodes,
     rationale: settlement.rationale,
     inputHash: settlement.inputHash,
-    developmentCertificateHash:
-      input.deliveryCase.developmentCertificate.hash,
+    developmentCertificateHash: deliveryCase.developmentCertificate.hash,
     verifiedIntegrationBundleHash:
-      input.deliveryCase.verifiedIntegrationBundle.hash,
-    candidateHash: input.deliveryCase.integratedCandidate.hash,
-    releasePolicyHash: input.deliveryCase.policy.contentHash,
+      deliveryCase.verifiedIntegrationBundle.hash,
+    candidateHash: deliveryCase.integratedCandidate.hash,
+    releasePolicyHash: deliveryCase.deliveryMode === 'authorized'
+      ? deliveryCase.policy.contentHash
+      : null,
+    deferredProfileHash: deliveryCase.deliveryMode === 'deferred'
+      ? deliveryCase.deferredProfile.profileHash
+      : null,
     preflightHash: input.preflight?.preflightHash ?? null,
     approvalHash: input.approval?.approvalHash ?? null,
     publicationHash: input.publication?.publicationHash ?? null,

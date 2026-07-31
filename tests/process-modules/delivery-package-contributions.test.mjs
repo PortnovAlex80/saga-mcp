@@ -260,8 +260,8 @@ test('W9-A6 acceptance capabilities: no-default-provider + push-is-not-release +
 // ---------------------------------------------------------------------------
 
 test('W9-A6 output contracts: input + output contract refs are the saga3 delivery schemas', () => {
-  assert.equal(DELIVERY_INPUT_CONTRACT.schemaId, 'saga3.delivery-release-case.v1');
-  assert.equal(DELIVERY_OUTPUT_CONTRACT.schemaId, 'saga3.delivery-certificate.v1');
+  assert.equal(DELIVERY_INPUT_CONTRACT.schemaId, 'saga3.delivery-release-case.v2');
+  assert.equal(DELIVERY_OUTPUT_CONTRACT.schemaId, 'saga3.delivery-certificate.v2');
   assert.equal(DELIVERY_RELEASE_RECORD_CONTRACT.schemaId, 'saga3.release-record.v1');
 });
 

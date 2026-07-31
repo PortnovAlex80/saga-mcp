@@ -6,7 +6,7 @@ import type {
   DeliveryApprovalSourceResult,
   DeliveryProviderIdentity,
 } from './delivery-provider-ports.js';
-import type { DeliveryReleaseCase } from './delivery-schemas.js';
+import type { AuthorizedDeliveryReleaseCase } from './delivery-schemas.js';
 
 export const DELIVERY_APPROVAL_RECORD_SCHEMA =
   'saga3.delivery-approval-record.v1';
@@ -49,7 +49,7 @@ export class SqliteDeliveryApprovalInbox implements DeliveryApprovalSource {
 
   decide(input: {
     processRunId: number;
-    deliveryCase: DeliveryReleaseCase;
+    deliveryCase: AuthorizedDeliveryReleaseCase;
     preflightHash: string;
     heartbeat: () => void;
   }): DeliveryApprovalSourceResult {
@@ -228,7 +228,7 @@ export class SqliteDeliveryApprovalInbox implements DeliveryApprovalSource {
 
   private ensureRequest(input: {
     processRunId: number;
-    deliveryCase: DeliveryReleaseCase;
+    deliveryCase: AuthorizedDeliveryReleaseCase;
     preflightHash: string;
   }): DeliveryApprovalRequestRecord {
     const requestId = `delivery-approval-request:${input.processRunId}`;

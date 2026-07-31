@@ -1,8 +1,8 @@
 import type {
+  AuthorizedDeliveryReleaseCase,
   DeliveryApprovalStatus,
   DeliveryContentAddressedReference,
   DeliveryProviderBinding,
-  DeliveryReleaseCase,
   GuardOutcome,
   ReleaseActionDefinition,
 } from './delivery-schemas.js';
@@ -22,7 +22,7 @@ export interface DeliveryPreflightCheckResult {
 export interface DeliveryPreflightCheckProvider {
   evaluate(input: {
     processRunId: number;
-    deliveryCase: DeliveryReleaseCase;
+    deliveryCase: AuthorizedDeliveryReleaseCase;
     checkId: string;
     heartbeat: () => void;
   }): DeliveryPreflightCheckResult;
@@ -41,7 +41,7 @@ export interface DeliveryApprovalSourceResult {
 export interface DeliveryApprovalSource {
   decide(input: {
     processRunId: number;
-    deliveryCase: DeliveryReleaseCase;
+    deliveryCase: AuthorizedDeliveryReleaseCase;
     preflightHash: string;
     heartbeat: () => void;
   }): Promise<DeliveryApprovalSourceResult> | DeliveryApprovalSourceResult;
@@ -84,7 +84,7 @@ export interface DeliveryActionProvider {
 
   execute(input: {
     processRunId: number;
-    deliveryCase: DeliveryReleaseCase;
+    deliveryCase: AuthorizedDeliveryReleaseCase;
     action: ReleaseActionDefinition;
     actionKey: string;
     heartbeat: () => void;
@@ -92,7 +92,7 @@ export interface DeliveryActionProvider {
 
   observe(input: {
     processRunId: number;
-    deliveryCase: DeliveryReleaseCase;
+    deliveryCase: AuthorizedDeliveryReleaseCase;
     action: ReleaseActionDefinition;
     actionKey: string;
     externalRef: string | null;
@@ -111,6 +111,6 @@ export interface DeliveryRuntimeProviders {
    * after the observation node. Null denies release.
    */
   observeCurrentCandidateHash(
-    deliveryCase: DeliveryReleaseCase,
+    deliveryCase: AuthorizedDeliveryReleaseCase,
   ): string | null;
 }
