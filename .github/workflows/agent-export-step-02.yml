@@ -1,0 +1,28 @@
+name: Export Saga4 step 02 workspace
+
+on:
+  push:
+    branches:
+      - agent/saga4-step-02-deferred-delivery
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Pack workspace
+        run: |
+          tar --exclude=.git --exclude=.github/workflows/agent-export-step-02.yml -czf /tmp/saga4-step-02-workspace.tgz .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: saga4-step-02-workspace
+          path: /tmp/saga4-step-02-workspace.tgz
+          retention-days: 1
