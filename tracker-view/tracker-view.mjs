@@ -4146,13 +4146,29 @@ function handleEpicCreate(req, res) {
 }
 
 
-// --- POST /api/project/create-from-idea: one-shot bootstrap для 3.0 engine ---
+// --- POST /api/project/create-from-idea: one-shot bootstrap для Saga4 ---
 // Поля: name (обяз.), idea (обяз.), local_path (опц., по умолчанию DEV_ROOT/<name>).
 //
 // Создаёт project/repository/epic, инициализирует реальный Git checkout с
 // первым commit (если HEAD ещё отсутствует), затем запускает единственный
-// Product Lifecycle runtime. Git bootstrap обязателен: lifecycle input всегда
-// pin'ит настоящий expectedBaseCommit и никогда не подставляет zero hash.
+// Product Lifecycle runtime. `episode_workflows` здесь не создаётся: durable
+// LifecycleRun является единственной записью оркестрации нового проекта.
+function rollbackCreatedProjectAggregate({ projectId, repoId }) {
+  withDbWrite(db => {
+    db.prepare(
+      "DELETE FROM activity_log WHERE entity_type='project' AND entity_id=?",
+    ).run(projectId);
+    db.prepare('DELETE FROM projects WHERE id=?').run(projectId);
+    db.prepare(
+      `DELETE FROM repositories
+        WHERE id=?
+          AND NOT EXISTS (
+            SELECT 1 FROM project_repositories WHERE repository_id=?
+          )`,
+    ).run(repoId, repoId);
+  });
+}
+
 function handleProjectCreateFromIdea(req, res) {
   let chunks = [];
   req.on('data', c => chunks.push(c));
@@ -4205,20 +4221,10 @@ function handleProjectCreateFromIdea(req, res) {
         ).run(projectId, `REQ-001-${name}`, `Discovery: ${idea}`);
         const epicId = Number(epicInfo.lastInsertRowid);
 
-        // 4. episode_workflows — discovery stage
-        db.prepare('INSERT OR IGNORE INTO episode_workflows (epic_id) VALUES (?)').run(epicId);
-
-        // saga4 cutover: the legacy discovery.kickstart task is NO LONGER
-        // created by the bootstrap. After the cutover the Lifecycle Orchestrator
-        // (spawned below via orchestrate-cli = lifecycle runtime) owns task
-        // projection: the Discovery Process Module projects its own discovery
-        // WorkIntent/task from the lifecycle input. A legacy kickstart here
-        // would be an unclaimable orphan (no process_run_id) and a parallel
-        // path to the lifecycle Discovery node.
-        db.prepare(
-          "INSERT INTO activity_log (entity_type, entity_id, action, summary) VALUES ('project', ?, 'created', ?)"
-        ).run(projectId, `Создан проект «${name}» через веб-форму idea → engine`);
-
+        // No episode_workflows row and no legacy discovery.kickstart task.
+        // The Product Lifecycle owns orchestration state and task projection.
+        // Activity is recorded only after the durable LifecycleRun has started,
+        // so a failed bootstrap leaves no successful-creation audit record.
         return { projectId, repoId, epicId, taskId: null };
       });
 
@@ -4230,10 +4236,10 @@ function handleProjectCreateFromIdea(req, res) {
       try {
         ensureInitializedGitRepository(localPath, name);
       } catch (e) {
-        // The DB aggregate is not usable without the repository capability.
-        // Delete it atomically (cascades repository binding, epic and workflow).
+        // The aggregate is unusable without a repository capability. Remove
+        // project/epic/binding and the now-unreferenced repository registry row.
         try {
-          withDbWrite(db => db.prepare('DELETE FROM projects WHERE id=?').run(result.projectId));
+          rollbackCreatedProjectAggregate(result);
         } catch (cleanupError) {
           console.error(
             `[create-from-idea] rollback project ${result.projectId} failed: ${cleanupError.message}`,
@@ -4245,18 +4251,13 @@ function handleProjectCreateFromIdea(req, res) {
         });
       }
 
-      // saga4 cutover: the lifecycle runtime requires a full validated
-      // ProductDeliveryLifecycleInput before Discovery can run. The bare idea
-      // is assembled into that input by startProductLifecycleFromIdea (scenario-
-      // owned assembler), which resolves the REAL repository binding + current
-      // git HEAD, builds a fail-closed local-dry-run delivery profile, and
-      // starts the LifecycleRun through the application port. The spawn-cli
-      // starter passes the validated input INLINE via env — it does NOT write a
-      // JSON file and does NOT pass --lifecycle-input/lifecycleInputPath.
+      // The bare idea is assembled into a validated Product Delivery input,
+      // including the real repository binding/current Git HEAD and an explicit
+      // deferred Delivery profile. The spawn starter acknowledges only after
+      // the LifecycleRun has been durably persisted.
       const mode = runtimeConfig.orchestrationMode;
       let lifecycleStarted = false;
       let lifecycleRunId = null;
-      let startError = null;
       if (requiresBackgroundEngine(mode)) {
         try {
           const starter = createSpawnCliLifecycleRunStarter({
@@ -4272,12 +4273,29 @@ function handleProjectCreateFromIdea(req, res) {
             starter,
           });
           lifecycleStarted = true;
-          lifecycleRunId = started.lifecycleRunId || null;
+          lifecycleRunId = started.lifecycleRunId;
         } catch (e) {
           console.error(`[create-from-idea] lifecycle start failed: ${e.message}`);
-          startError = e.message;
+          try {
+            rollbackCreatedProjectAggregate(result);
+          } catch (cleanupError) {
+            console.error(
+              `[create-from-idea] rollback project ${result.projectId} failed: ${cleanupError.message}`,
+            );
+          }
+          return respondJson(res, 500, {
+            ok: false,
+            error: `lifecycle start: ${e.message}`,
+          });
         }
       }
+
+      withDbWrite(db => db.prepare(
+        "INSERT INTO activity_log (entity_type, entity_id, action, summary) VALUES ('project', ?, 'created', ?)",
+      ).run(
+        result.projectId,
+        `Создан проект «${name}» через веб-форму idea → Product Lifecycle`,
+      ));
 
       respondJson(res, 200, {
         ok: true,
@@ -4288,7 +4306,7 @@ function handleProjectCreateFromIdea(req, res) {
         orchestration_mode: mode,
         lifecycle_started: lifecycleStarted,
         lifecycle_run_id: lifecycleRunId,
-        start_error: startError,
+        start_error: null,
         local_path: localPath,
       });
     } catch (e) {
