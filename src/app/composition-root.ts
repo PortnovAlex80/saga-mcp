@@ -176,6 +176,7 @@ function selectEngine(
     workerExecutorFactory,
     resolveWorkerContext: context =>
       buildDiscoveryWorkerContext(config, persistence, host, context),
+    concurrency: positiveConcurrency(process.env.SAGA_CONCURRENCY),
   }).engine;
 }
 
@@ -343,4 +344,10 @@ function nestedProcessWorkspaceField(
     return (pw as Record<string, unknown>)[field];
   }
   return undefined;
+}
+
+function positiveConcurrency(raw: string | undefined): number | undefined {
+  if (!raw) return undefined;
+  const n = Number(raw);
+  return Number.isInteger(n) && n >= 1 ? n : undefined;
 }

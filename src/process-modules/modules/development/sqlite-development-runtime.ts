@@ -1,11 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import os from 'node:os';
 import type Database from 'better-sqlite3';
-import type {
-  WorkerExecutorFactory,
-  WorkerExecutorFactoryContext,
-  WorkerRunSnapshot,
-} from '../../../application/ports/worker-executor.js';
 import { getDb } from '../../../db.js';
 import {
   SqliteProcessProductRepository,
@@ -20,6 +15,7 @@ import type {
   DevelopmentImplementationWorksetPort,
   DevelopmentSettlementStatePort,
   DevelopmentTaskGraphPort,
+  ScopedWorksetRunnerPort,
 } from './development-kernel-ports.js';
 import {
   ACCEPTANCE_VERIFICATION_SCHEMA,
@@ -59,17 +55,9 @@ const PRODUCT_KINDS = {
 } as const;
 
 export interface SqliteDevelopmentRuntimeOptions {
-  workerExecutorFactory: WorkerExecutorFactory;
-  resolveWorkerContext: (context: {
-    projectId: number;
-    epicId: number;
-  }) => WorkerExecutorFactoryContext;
+  /** CGAD P18 — infrastructure owns worker hiring; the module only declares its load. */
+  scopedWorksetRunner: ScopedWorksetRunnerPort;
   db?: Database.Database;
-  concurrency?: number;
-  pollMs?: number;
-  maxRunMs?: number;
-  sleep?: (ms: number) => Promise<void>;
-  now?: () => Date;
 }
 
 interface ProjectedTaskRow {
@@ -107,30 +95,12 @@ export class SqliteDevelopmentRuntime implements
   DevelopmentSettlementStatePort {
   private readonly db: Database.Database;
   private readonly products: SqliteProcessProductRepository;
-  private readonly workerExecutorFactory: WorkerExecutorFactory;
-  private readonly resolveWorkerContext: SqliteDevelopmentRuntimeOptions[
-    'resolveWorkerContext'
-  ];
-  private readonly concurrency: number;
-  private readonly pollMs: number;
-  private readonly maxRunMs: number;
-  private readonly sleep: (ms: number) => Promise<void>;
-  private readonly now: () => Date;
+  private readonly scopedWorksetRunner: ScopedWorksetRunnerPort;
 
   constructor(options: SqliteDevelopmentRuntimeOptions) {
     this.db = options.db ?? getDb();
     this.products = new SqliteProcessProductRepository(this.db);
-    this.workerExecutorFactory = options.workerExecutorFactory;
-    this.resolveWorkerContext = options.resolveWorkerContext;
-    this.concurrency = boundedConcurrency(options.concurrency ?? 2);
-    this.pollMs = positiveInteger(options.pollMs ?? 2_000, 'pollMs');
-    this.maxRunMs = positiveInteger(
-      options.maxRunMs ?? 4 * 60 * 60 * 1_000,
-      'maxRunMs',
-    );
-    this.sleep = options.sleep
-      ?? (ms => new Promise(resolve => setTimeout(resolve, ms)));
-    this.now = options.now ?? (() => new Date());
+    this.scopedWorksetRunner = options.scopedWorksetRunner;
     ensureDevelopmentRuntimeSchema(this.db);
   }
 
@@ -240,12 +210,15 @@ export class SqliteDevelopmentRuntime implements
 
     let runnerFailure: string | null = null;
     try {
-      await this.runScopedTasks({
+      const outcome = await this.runScopedTasks({
         projectId: input.developmentCase.projectId,
         epicId: input.developmentCase.epicId,
         taskIds: projections.map(row => row.task_id),
         heartbeat: input.heartbeat,
       });
+      if (outcome?.failed) {
+        runnerFailure = outcome.error ?? 'worker-substrate-unavailable';
+      }
     } catch (error) {
       runnerFailure = errorMessage(error);
     }
@@ -459,12 +432,15 @@ export class SqliteDevelopmentRuntime implements
 
     let runnerFailure: string | null = null;
     try {
-      await this.runScopedTasks({
+      const outcome = await this.runScopedTasks({
         projectId: input.developmentCase.projectId,
         epicId: input.developmentCase.epicId,
         taskIds: projections.map(row => row.task_id),
         heartbeat: input.heartbeat,
       });
+      if (outcome?.failed) {
+        runnerFailure = outcome.error ?? 'worker-substrate-unavailable';
+      }
     } catch (error) {
       runnerFailure = errorMessage(error);
     }
@@ -898,50 +874,12 @@ export class SqliteDevelopmentRuntime implements
     epicId: number;
     taskIds: number[];
     heartbeat: () => void;
-  }): Promise<WorkerRunSnapshot | null> {
+  }): Promise<{ failed: boolean; error: string | null } | null> {
     if (input.taskIds.length === 0) return null;
     if (this.tasksAreTerminal(input.taskIds)) return null;
-
-    const workerContext = this.resolveWorkerContext({
-      projectId: input.projectId,
-      epicId: input.epicId,
-    });
-    const executor = this.workerExecutorFactory(workerContext);
-    let terminal: WorkerRunSnapshot | null = null;
-    try {
-      input.heartbeat();
-      executor.start({
-        projectId: input.projectId,
-        epicId: input.epicId,
-        concurrency: Math.min(this.concurrency, input.taskIds.length),
-        claimScope: { taskIds: input.taskIds },
-      });
-      const startedAt = this.now().getTime();
-      while (true) {
-        input.heartbeat();
-        terminal = executor.status(input.projectId);
-        if (terminal === null) {
-          throw new Error('DEVELOPMENT_WORKER_EXECUTOR_DISAPPEARED');
-        }
-        if (terminal.status === 'completed') break;
-        if (terminal.status === 'failed' || terminal.status === 'stopped') {
-          throw new Error(
-            `DEVELOPMENT_WORKER_RUN_${terminal.status.toUpperCase()}: `
-            + (terminal.last_error ?? 'no error detail'),
-          );
-        }
-        if (this.now().getTime() - startedAt > this.maxRunMs) {
-          throw new Error('DEVELOPMENT_WORKER_RUN_TIMEOUT');
-        }
-        await this.sleep(this.pollMs);
-      }
-      return terminal;
-    } finally {
-      if (terminal?.status !== 'completed') {
-        try { executor.stop(input.projectId); } catch { /* best effort */ }
-      }
-      try { executor.dispose(); } catch { /* best effort */ }
-    }
+    // CGAD P18 — delegate to the infrastructure port. The module does not own
+    // workerExecutorFactory, concurrency, or spawn logic.
+    return this.scopedWorksetRunner.runScopedTasks(input);
   }
 
   private tasksAreTerminal(taskIds: number[]): boolean {
@@ -1577,20 +1515,6 @@ function gitOk(repoPath: string, args: string[]): boolean {
     ['-C', repoPath, ...args],
     { encoding: 'utf8', windowsHide: true },
   ).status === 0;
-}
-
-function boundedConcurrency(value: number): number {
-  if (!Number.isInteger(value) || value < 1 || value > 10) {
-    throw new Error('development concurrency must be an integer from 1 to 10');
-  }
-  return value;
-}
-
-function positiveInteger(value: number, label: string): number {
-  if (!Number.isInteger(value) || value < 1) {
-    throw new Error(`development ${label} must be a positive integer`);
-  }
-  return value;
 }
 
 function errorMessage(error: unknown): string {

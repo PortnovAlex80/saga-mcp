@@ -175,6 +175,7 @@ import type {
   DevelopmentOutputRepository,
   DevelopmentSettlementStatePort,
   DevelopmentTaskGraphPort,
+  ScopedWorksetRunnerPort,
 } from '../process-modules/modules/development/development-kernel-ports.js';
 import { SqliteDevelopmentOutputRepository } from '../process-modules/modules/development/development-persistence.js';
 import { VERIFIED_INTEGRATION_BUNDLE_SCHEMA } from '../process-modules/modules/development/development-schemas.js';
@@ -259,6 +260,8 @@ export interface ProductLifecycleRuntimeOptions {
     projectId: number;
     epicId: number | null;
   }) => WorkerExecutorFactoryContext;
+  /** Global concurrency knob (--concurrency=N). Used by the ScopedWorksetRunner adapter. */
+  concurrency?: number;
   development?: DevelopmentCompositionDependencies;
   delivery: DeliveryCompositionDependencies;
   db?: Database.Database;
@@ -315,11 +318,50 @@ export function createProductLifecycleRuntime(
     new SqliteManagedNodeSubmissionRepository(db);
 
   const developmentConfig = options.development ?? {};
+  // CGAD P18 — infrastructure adapter: implements ScopedWorksetRunnerPort using
+  // the global worker pool (workerExecutorFactory + --concurrency). The module
+  // receives only the port, never the factory.
+  const scopedWorksetRunner: ScopedWorksetRunnerPort = {
+    async runScopedTasks(input) {
+      const workerContext = options.resolveWorkerContext({
+        projectId: input.projectId,
+        epicId: input.epicId,
+      });
+      const executor = options.workerExecutorFactory(workerContext);
+      try {
+        input.heartbeat();
+        executor.start({
+          projectId: input.projectId,
+          epicId: input.epicId,
+          concurrency: Math.min(options.concurrency ?? 1, input.taskIds.length),
+          claimScope: { taskIds: [...input.taskIds] },
+        });
+        while (true) {
+          input.heartbeat();
+          const terminal = executor.status(input.projectId);
+          if (terminal === null) {
+            return { failed: true, error: 'DEVELOPMENT_WORKER_EXECUTOR_DISAPPEARED' };
+          }
+          if (terminal.status === 'completed') break;
+          if (terminal.status === 'failed' || terminal.status === 'stopped') {
+            return {
+              failed: true,
+              error: `DEVELOPMENT_WORKER_RUN_${terminal.status.toUpperCase()}: ${terminal.last_error ?? 'no error detail'}`,
+            };
+          }
+          await new Promise(resolve => setTimeout(resolve, 2000));
+        }
+        return { failed: false, error: null };
+      } catch (error) {
+        return { failed: true, error: (error as Error).message ?? String(error) };
+      } finally {
+        try { executor.dispose(); } catch { /* best effort */ }
+      }
+    },
+  };
   const developmentRuntime = developmentConfig.runtime
     ?? new SqliteDevelopmentRuntime({
-      workerExecutorFactory: options.workerExecutorFactory,
-      resolveWorkerContext: context =>
-        options.resolveWorkerContext(context),
+      scopedWorksetRunner,
       db,
       ...developmentConfig.runtimeOptions,
     });

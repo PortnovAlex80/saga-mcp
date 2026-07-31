@@ -117,6 +117,28 @@ export interface DevelopmentAcceptanceVerificationPort {
   }>;
 }
 
+/**
+ * CGAD P18 (conveyor model) — the development runtime declares WHAT it needs
+ * (run a scoped set of tasks to terminal), NOT HOW (workerExecutorFactory,
+ * concurrency, spawn). The infrastructure adapter implements this port using
+ * the global worker pool (`--concurrency=N`). A module MUST NOT own a
+ * workerExecutorFactory; it only declares its work-load.
+ */
+export interface ScopedWorksetRunnerPort {
+  /**
+   * Drive the given task ids to a terminal state (done/blocked) using the
+   * infrastructure's worker pool. Resolves when all tasks reach terminal or
+   * the run fails/times out. Returns whether the run failed (with an error
+   * message); null error means success.
+   */
+  runScopedTasks(input: {
+    projectId: number;
+    epicId: number;
+    taskIds: readonly number[];
+    heartbeat: () => void;
+  }): Promise<{ failed: boolean; error: string | null }>;
+}
+
 export interface DevelopmentSettlementStatePort {
   /**
    * Re-read exact durable products by refs/hashes carried through the run and
