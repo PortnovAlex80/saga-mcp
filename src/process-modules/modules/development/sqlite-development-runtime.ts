@@ -184,14 +184,17 @@ export class SqliteDevelopmentRuntime implements
       input.processRunId,
       PRODUCT_KINDS.implementationWorkset,
     );
-    if (replay) {
+    if (replay && worksetReceiptStatus(replay.payload) === 'succeeded') {
+      // Only a SUCCEEDED workset is a legitimate replay (idempotency: don't
+      // redo completed work). A failed/blocked workset means the previous run
+      // could not complete — resume must re-execute, not replay the failure.
       return {
         receipt: receiptFromProduct(
           'implementation-workset',
           input.actionKey,
           input.payloadHash,
           replay,
-          worksetReceiptStatus(replay.payload),
+          'succeeded',
           true,
         ),
         workset: replay.payload,
