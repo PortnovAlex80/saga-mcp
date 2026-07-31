@@ -56,6 +56,37 @@ not two.
 - ~~A gate reads the card by **worker identity**~~ → it is blinded to the
   workplace's prior work on every repair round.
 
+## Resume must not be coupled to package digest
+
+A run's **work** (the card's accepted artifacts/traces/submissions and the
+projected tasks on the kanban) lives in the durable database, keyed by
+process-run + node. It does **not** live inside the module package. The package
+is the **toolset and instructions** (templates, skills, schemas, tracker rules)
+the workers use — it is a separate concern from the work they produced.
+
+A ProcessRun pins an `installation_id` + `package_digest` so a run is
+reproducible against the exact bytes it started with. But this pin is an
+**integrity boundary for toolset versioning**, not a gate on whether the run's
+work can be resumed. When the toolset changes (e.g. a tracker rule or a skill is
+updated), `PackageInstaller.installPackage` recomputes the digest and a naive
+resume throws "already holds the active slot with a different package_digest" —
+even though every artifact, trace, submission and task on the workplace's card
+is unchanged and still valid.
+
+The correct behaviour: **resume is about the work on the card, not the toolset
+version.** If the package changed, the runtime reinstalls the new version (or
+records the drift) and resumes against the existing work. The card, the desk,
+the accepted artifacts, the submissions and the kanban tasks all survive a
+toolset change. Coupling resume-correctness to `package_digest` equality is the
+same class of mistake as coupling a gate's read to transient task identity: it
+treats an ancillary identity (which tools; which worker) as if it owned the
+work, when the workplace owns the work.
+
+(In practice today this is mitigated by clearing stale installations before
+resume so the new digest installs cleanly. The deeper fix is for the runtime to
+tolerate a digest change on resume — reinstating the installation rather than
+rejecting the resume — and record the drift for audit.)
+
 ## Why Discovery is permissive (the market is the real gate)
 
 A user who enters a hypothesis into the conveyor wants to see it built — **even
