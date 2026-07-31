@@ -98,7 +98,6 @@ export const FLOW_NODE_KINDS: ReadonlySet<FlowNodeKind> = new Set([
   'lm',
   'kernel',
   'human',
-  'external',
   'composite',
 ]);
 

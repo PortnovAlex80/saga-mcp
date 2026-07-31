@@ -90,7 +90,6 @@ import type {
 import { getDb } from '../db.js';
 import type { Saga3DiscoveryRuntimePersistence } from '../saga3/persistence/saga3-discovery-runtime-port.js';
 import { SqliteSaga3DiscoveryRuntime } from '../saga3/persistence/sqlite-saga3-discovery-runtime.js';
-import { ExternalAdapterRegistry } from '../process-modules/application/external-adapter-registry.js';
 import { GenericFlowExecutor } from '../process-modules/application/generic-flow-executor.js';
 import {
   PROCESS_OUTCOME_EMITTER_HANDLER_ID,
@@ -101,7 +100,6 @@ import { KernelHandlerRegistry } from '../process-modules/application/kernel-han
 import { LifecycleOrchestrationEngineAdapter } from '../process-modules/application/lifecycle-orchestration-engine-adapter.js';
 import { LifecycleOrchestrator } from '../process-modules/application/lifecycle-orchestrator.js';
 import type { NodeExecutor, NodeProducts } from '../process-modules/application/node-executor.js';
-import { ExternalNodeExecutor } from '../process-modules/application/node-executors/external-node-executor.js';
 import { HumanNodeExecutor } from '../process-modules/application/node-executors/human-node-executor.js';
 import { KernelNodeExecutor } from '../process-modules/application/node-executors/kernel-node-executor.js';
 import { LmNodeExecutor } from '../process-modules/application/node-executors/lm-node-executor.js';
@@ -134,7 +132,6 @@ import {
   type ProductionInstallation,
 } from '../process-modules/installation/production-install.js';
 import {
-  createDeliveryExternalAdapters,
   createDeliveryHumanInteractions,
   createDeliveryKernelHandlers,
   createDeliveryOutputPayloadResolver,
@@ -162,20 +159,16 @@ import {
 import { SqliteDeliveryApprovalInbox } from '../process-modules/modules/delivery/sqlite-delivery-approval-inbox.js';
 import { SqliteDeliveryRuntime } from '../process-modules/modules/delivery/sqlite-delivery-runtime.js';
 import {
-  createDevelopmentExternalAdapters,
   createDevelopmentKernelHandlers,
   createDevelopmentOutputPayloadResolver,
   createDevelopmentOutputResolver,
 } from '../process-modules/modules/development/development-installation.js';
 import type {
-  DevelopmentAcceptanceVerificationPort,
-  DevelopmentCandidateIntegrationPort,
-  DevelopmentImplementationWorksetPort,
+  DevelopmentCanonicalGraphPort,
   DevelopmentModuleInstallationDependencies,
   DevelopmentOutputRepository,
   DevelopmentSettlementStatePort,
   DevelopmentTaskGraphPort,
-  ScopedWorksetRunnerPort,
 } from '../process-modules/modules/development/development-kernel-ports.js';
 import { SqliteDevelopmentOutputRepository } from '../process-modules/modules/development/development-persistence.js';
 import { VERIFIED_INTEGRATION_BUNDLE_SCHEMA } from '../process-modules/modules/development/development-schemas.js';
@@ -183,10 +176,7 @@ import {
   ReferenceDevelopmentSettlementPolicy,
   ReferenceDevelopmentTaskGraphPolicy,
 } from '../process-modules/modules/development/development-settlement-policy.js';
-import {
-  SqliteDevelopmentRuntime,
-  type SqliteDevelopmentRuntimeOptions,
-} from '../process-modules/modules/development/sqlite-development-runtime.js';
+import { SqliteDevelopmentModuleStore } from '../process-modules/modules/development/sqlite-development-settlement-state.js';
 import {
   createDiscoveryKernelHandlers,
   createDiscoveryLmNodePersistence,
@@ -220,19 +210,22 @@ import { SqliteProcessRunRepository } from '../process-modules/persistence/sqlit
 import { SqliteRecoveryCaseRepository } from '../process-modules/persistence/sqlite-recovery-case-repository.js';
 
 export interface DevelopmentCompositionDependencies {
-  runtime?: SqliteDevelopmentRuntime;
+  /**
+   * The declarative module store: persists the validated task graph +
+   * projects kanban tasks (DevelopmentTaskGraphPort) AND re-reads tracker state
+   * to reconstruct the settlement input (DevelopmentSettlementStatePort). Under
+   * the Formalization mechanical pattern there are no executive ports here —
+   * workers claim projected tasks through the shared worker_next queue, merge
+   * via worker_merge_release and record evidence via verification_record.
+   */
+  store?: DevelopmentCanonicalGraphPort
+    & DevelopmentTaskGraphPort
+    & DevelopmentSettlementStatePort;
   taskGraph?: DevelopmentTaskGraphPort;
-  implementationWorkset?: DevelopmentImplementationWorksetPort;
-  candidateIntegration?: DevelopmentCandidateIntegrationPort;
-  acceptanceVerification?: DevelopmentAcceptanceVerificationPort;
   settlementState?: DevelopmentSettlementStatePort;
   taskGraphPolicy?: DevelopmentModuleInstallationDependencies['taskGraphPolicy'];
   settlementPolicy?: DevelopmentModuleInstallationDependencies['settlementPolicy'];
   outputRepository?: DevelopmentOutputRepository;
-  runtimeOptions?: Omit<
-    SqliteDevelopmentRuntimeOptions,
-    'workerExecutorFactory' | 'resolveWorkerContext' | 'db'
-  >;
 }
 
 export type DeliveryProviderConfiguration =
@@ -260,7 +253,7 @@ export interface ProductLifecycleRuntimeOptions {
     projectId: number;
     epicId: number | null;
   }) => WorkerExecutorFactoryContext;
-  /** Global concurrency knob (--concurrency=N). Used by the ScopedWorksetRunner adapter. */
+  /** Global concurrency knob (--concurrency=N). Used by the LM executor. */
   concurrency?: number;
   development?: DevelopmentCompositionDependencies;
   delivery: DeliveryCompositionDependencies;
@@ -318,68 +311,26 @@ export function createProductLifecycleRuntime(
     new SqliteManagedNodeSubmissionRepository(db);
 
   const developmentConfig = options.development ?? {};
-  // CGAD P18 — infrastructure adapter: implements ScopedWorksetRunnerPort using
-  // the global worker pool (workerExecutorFactory + --concurrency). The module
-  // receives only the port, never the factory.
-  const scopedWorksetRunner: ScopedWorksetRunnerPort = {
-    async runScopedTasks(input) {
-      const workerContext = options.resolveWorkerContext({
-        projectId: input.projectId,
-        epicId: input.epicId,
-      });
-      const executor = options.workerExecutorFactory(workerContext);
-      try {
-        input.heartbeat();
-        executor.start({
-          projectId: input.projectId,
-          epicId: input.epicId,
-          concurrency: Math.min(options.concurrency ?? 1, input.taskIds.length),
-          claimScope: { taskIds: [...input.taskIds] },
-        });
-        while (true) {
-          input.heartbeat();
-          const terminal = executor.status(input.projectId);
-          if (terminal === null) {
-            return { failed: true, error: 'DEVELOPMENT_WORKER_EXECUTOR_DISAPPEARED' };
-          }
-          if (terminal.status === 'completed') break;
-          if (terminal.status === 'failed' || terminal.status === 'stopped') {
-            return {
-              failed: true,
-              error: `DEVELOPMENT_WORKER_RUN_${terminal.status.toUpperCase()}: ${terminal.last_error ?? 'no error detail'}`,
-            };
-          }
-          await new Promise(resolve => setTimeout(resolve, 2000));
-        }
-        return { failed: false, error: null };
-      } catch (error) {
-        return { failed: true, error: (error as Error).message ?? String(error) };
-      } finally {
-        try { executor.dispose(); } catch { /* best effort */ }
-      }
-    },
-  };
-  const developmentRuntime = developmentConfig.runtime
-    ?? new SqliteDevelopmentRuntime({
-      scopedWorksetRunner,
-      db,
-      ...developmentConfig.runtimeOptions,
-    });
+  // Development uses the Formalization mechanical pattern: the module's Flow is
+  // lm+kernel only and its installation deps are purely declarative (read /
+  // persist / decide). The SqliteDevelopmentModuleStore persists the validated
+  // task graph, projects its kanban tasks (which workers then claim through the
+  // shared worker_next queue), and re-reads tracker state to reconstruct the
+  // settlement input. There is no ScopedWorksetRunner / no executive port: the
+  // module never hires, merges or tests — that is infrastructure's job.
+  const developmentLedger = new SqliteManagedProductionLedger(db);
+  const developmentGraph = developmentConfig.store
+    ?? new SqliteDevelopmentModuleStore(db);
   const developmentTaskGraphPolicy = developmentConfig.taskGraphPolicy
     ?? new ReferenceDevelopmentTaskGraphPolicy();
   const developmentOutputRepository = developmentConfig.outputRepository
     ?? new SqliteDevelopmentOutputRepository(db);
   const developmentDeps: DevelopmentModuleInstallationDependencies = {
     plannerSubmissions: managedNodeSubmissions,
-    taskGraph: developmentConfig.taskGraph ?? developmentRuntime,
-    implementationWorkset:
-      developmentConfig.implementationWorkset ?? developmentRuntime,
-    candidateIntegration:
-      developmentConfig.candidateIntegration ?? developmentRuntime,
-    acceptanceVerification:
-      developmentConfig.acceptanceVerification ?? developmentRuntime,
-    settlementState:
-      developmentConfig.settlementState ?? developmentRuntime,
+    ledger: developmentLedger,
+    graph: developmentGraph,
+    taskGraph: developmentConfig.taskGraph ?? developmentGraph,
+    settlementState: developmentConfig.settlementState ?? developmentGraph,
     taskGraphPolicy: developmentTaskGraphPolicy,
     settlementPolicy: developmentConfig.settlementPolicy
       ?? new ReferenceDevelopmentSettlementPolicy(
@@ -464,12 +415,6 @@ export function createProductLifecycleRuntime(
   kernelHandlers.registerAll(createDevelopmentKernelHandlers(developmentDeps));
   kernelHandlers.registerAll(createDeliveryKernelHandlers(deliveryDeps));
 
-  const externalAdapters = new ExternalAdapterRegistry();
-  externalAdapters.registerAll(
-    createDevelopmentExternalAdapters(developmentDeps),
-  );
-  externalAdapters.registerAll(createDeliveryExternalAdapters(deliveryDeps));
-
   const humanInteractions = new HumanInteractionRegistry();
   humanInteractions.registerAll(createDeliveryHumanInteractions(deliveryDeps));
 
@@ -480,7 +425,6 @@ export function createProductLifecycleRuntime(
       workerExecutorFactory: options.workerExecutorFactory,
       resolveWorkerContext: options.resolveWorkerContext,
     })],
-    ['external', new ExternalNodeExecutor(externalAdapters)],
     ['human', new HumanNodeExecutor(humanInteractions)],
   ]);
 
@@ -578,7 +522,6 @@ export function createProductLifecycleRuntime(
   const installationRegistry =
     new ProcessModuleInstallationRegistry({
       kernelHandlerRegistry: kernelHandlers,
-      externalAdapterRegistry: externalAdapters,
       humanInteractionRegistry: humanInteractions,
     });
   for (const inst of [
@@ -714,12 +657,14 @@ export function createProductLifecycleRuntime(
     installationRegistry,
     resolveOutputPayload,
     kernelHandlers,
-    externalAdapters,
     humanInteractions,
     executors,
     packageInstallation,
     runtimes: {
-      development: developmentRuntime,
+      // Development has no executive runtime under the Formalization mechanical
+      // pattern — its store (task-graph persistence + settlement-state reader)
+      // is exposed above as `developmentGraph` and wired via `developmentDeps`.
+      development: developmentGraph,
       delivery: deliveryRuntime,
     },
     interactions: {

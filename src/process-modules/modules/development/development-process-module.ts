@@ -1,8 +1,5 @@
 import type { ProcessModuleDefinition } from '../../domain/process-module.js';
-import {
-  DEVELOPMENT_EXTERNAL_ADAPTER_IDS,
-  DEVELOPMENT_KERNEL_HANDLER_IDS,
-} from './development-kernel-ports.js';
+import { DEVELOPMENT_KERNEL_HANDLER_IDS } from './development-kernel-ports.js';
 import {
   ACCEPTANCE_VERIFICATION_SCHEMA,
   DEVELOPMENT_CASE_SCHEMA,
@@ -33,12 +30,51 @@ const DEVELOPMENT_SUBMISSION_CALL =
   `${DEVELOPMENT_RESOURCE_ROOT}/task-graph-submit-call-template.json`;
 const DEVELOPMENT_CHECKLIST =
   `${DEVELOPMENT_RESOURCE_ROOT}/task-graph-planner-checklist.md`;
+const IMPLEMENTATION_TRACKER =
+  `${DEVELOPMENT_RESOURCE_ROOT}/implementation-task-tracker.md`;
+const IMPLEMENTATION_CHECKLIST =
+  `${DEVELOPMENT_RESOURCE_ROOT}/implementation-worker-checklist.md`;
+
+const COMMON_READ_TOOLS = [
+  'task_get', 'task_list', 'artifact_list', 'trace_list', 'repository_list',
+  'repository_checkout_list', 'Read', 'Glob', 'Grep',
+] as const;
+
+const COMMON_WRITE_TOOLS = [
+  ...COMMON_READ_TOOLS,
+  'worker_done',
+  'worker_merge_acquire', 'worker_merge_release',
+  'verification_record',
+  'Write', 'Edit', 'Bash',
+] as const;
 
 /**
  * Development is one module, not four independently-settled legacy stages.
- * Planning is advisory; the kernel resolves its proposal. Implementation and
- * integration execute before the candidate is frozen. Verification then binds
- * to that exact candidate and no downstream node may mutate it.
+ *
+ * Mechanical pattern (cloned from Formalization): lm-node proposes, kernel-node
+ * resolves/authorizes, then the single settlement kernel-node decides. There
+ * are NO external nodes inside this Flow.
+ *
+ *   plan-task-graph (lm: saga-planner) proposes the task graph.
+ *   resolve-task-graph (kernel) validates + persists the canonical graph and
+ *     materializes its projected implementation/verification/integration tasks
+ *     onto the kanban (declarative persistence — legitimate kernel work, same
+ *     tier as Formalization persisting a contract).
+ *
+ * Implementation, integration and verification are NOT Flow nodes. The
+ * projected tasks are ordinary kanban tasks. Workers claim them through the
+ * shared worker_next queue (infrastructure), execute code, merge through
+ * worker_merge_release and record verification evidence. The module never
+ * hires, merges or tests.
+ *
+ *   settle-development (kernel) re-reads exact durable products via
+ *     settlementState, reconstructs the implementation workset / integrated
+ *     release candidate / acceptance-verification workset as INNER data of the
+ *     DevelopmentSettlementInput, runs the deterministic settlement policy and
+ *     issues the development certificate + verified integration bundle.
+ *
+ * Verification evidence binds to the unchanged frozen candidate. A changed
+ * commit/tree/build digest is a different candidate and requires new evidence.
  */
 export const developmentProcessModule: ProcessModuleDefinition = {
   identity: {
@@ -102,50 +138,19 @@ export const developmentProcessModule: ProcessModuleDefinition = {
         label: 'Resolve and Validate Task Graph',
         kind: 'kernel',
         description:
-          'Read the exact planner submission, validate lineage/coverage/DAG constraints and materialize canonical tasks idempotently.',
+          'Read the exact planner submission, validate lineage/coverage/DAG constraints and materialize the canonical task graph and its projected kanban tasks idempotently.',
         handler: DEVELOPMENT_KERNEL_HANDLER_IDS.resolveTaskGraph,
         inputSchema: { id: DEVELOPMENT_TASK_GRAPH_PROPOSAL_SCHEMA },
         outputSchema: { id: DEVELOPMENT_TASK_GRAPH_SCHEMA },
-      },
-      {
-        id: 'execute-implementation-workset',
-        label: 'Execute Implementation Workset',
-        kind: 'external',
-        description:
-          'Drive the bounded implementation and independent review workset using durable work items and execution fences.',
-        adapter:
-          DEVELOPMENT_EXTERNAL_ADAPTER_IDS.executeImplementationWorkset,
-        inputSchema: { id: DEVELOPMENT_TASK_GRAPH_SCHEMA },
-        outputSchema: { id: DEVELOPMENT_IMPLEMENTATION_WORKSET_SCHEMA },
-      },
-      {
-        id: 'integrate-release-candidate',
-        label: 'Integrate and Freeze Candidate',
-        kind: 'external',
-        description:
-          'Integrate only reviewed source commits with observable intents/CAS, then freeze exact repository trees and build digests.',
-        adapter: DEVELOPMENT_EXTERNAL_ADAPTER_IDS.integrateReleaseCandidate,
-        inputSchema: { id: DEVELOPMENT_IMPLEMENTATION_WORKSET_SCHEMA },
-        outputSchema: { id: INTEGRATED_CANDIDATE_SCHEMA },
-      },
-      {
-        id: 'verify-acceptance-workset',
-        label: 'Verify Frozen Candidate',
-        kind: 'external',
-        description:
-          'Execute independent acceptance verification against the exact frozen candidate hash; unknown/error are denials.',
-        adapter: DEVELOPMENT_EXTERNAL_ADAPTER_IDS.verifyAcceptanceWorkset,
-        inputSchema: { id: INTEGRATED_CANDIDATE_SCHEMA },
-        outputSchema: { id: ACCEPTANCE_VERIFICATION_SCHEMA },
       },
       {
         id: 'settle-development',
         label: 'Settle Development',
         kind: 'kernel',
         description:
-          'Re-read exact durable products, re-observe candidate immutability, build the verified bundle and issue the development certificate.',
+          'Re-read exact durable products — the validated task graph, projected tracker tasks and integration state — reconstruct the implementation workset, integrated release candidate and acceptance-verification workset as inner settlement data, then run the deterministic settlement policy and issue the development certificate.',
         handler: DEVELOPMENT_KERNEL_HANDLER_IDS.settle,
-        inputSchema: { id: ACCEPTANCE_VERIFICATION_SCHEMA },
+        inputSchema: { id: DEVELOPMENT_TASK_GRAPH_SCHEMA },
         outputSchema: { id: DEVELOPMENT_CERTIFICATE_SCHEMA },
       },
       ...[
@@ -164,6 +169,11 @@ export const developmentProcessModule: ProcessModuleDefinition = {
       })),
     ],
     transitions: [
+      // LM node emits only physical runtime events. Even runtime.failed reaches
+      // the resolver because the worker may have committed durable MCP writes
+      // (the planner submission) before its process died. The resolver decides
+      // whether a domain product exists by reading the exact managed-execution
+      // provenance ledger.
       {
         from: 'plan-task-graph',
         to: 'resolve-task-graph',
@@ -174,16 +184,30 @@ export const developmentProcessModule: ProcessModuleDefinition = {
         to: 'resolve-task-graph',
         on: 'runtime.failed',
       },
+
+      // Resolver success → settlement. The settlement kernel re-reads tracker
+      // state (projected tasks, integration_state) and decides the outcome.
+      // NOTE: there is intentionally NO await-implementation node between
+      // resolve and settle. The conveyor (orchestrate-cli main loop /
+      // LifecycleOrchestrator) drives the impl tasks through the shared
+      // worker_next queue; the ProcessRun does not advance to settle-development
+      // until those tasks reach terminal state. The GenericFlowExecutor has no
+      // condition-wait primitive, so any "wait" must be owned by the conveyor,
+      // not by a Flow node. settle-development assumes the impl workset is
+      // already terminal when it runs.
       {
         from: 'resolve-task-graph',
-        to: 'execute-implementation-workset',
+        to: 'settle-development',
         on: 'domain.valid',
       },
+      // Semantic repair loop: the planner must revise the proposal.
       {
         from: 'resolve-task-graph',
         to: 'plan-task-graph',
         on: 'domain.repair-required',
       },
+      // Unrecoverable resolution outcomes route straight to settlement, which
+      // records them deterministically and emits the terminal outcome.
       {
         from: 'resolve-task-graph',
         to: 'settle-development',
@@ -194,36 +218,8 @@ export const developmentProcessModule: ProcessModuleDefinition = {
         to: 'settle-development',
         on: 'domain.failed',
       },
-      {
-        from: 'execute-implementation-workset',
-        to: 'integrate-release-candidate',
-        on: 'runtime.completed',
-      },
-      {
-        from: 'execute-implementation-workset',
-        to: 'settle-development',
-        on: 'runtime.failed',
-      },
-      {
-        from: 'integrate-release-candidate',
-        to: 'verify-acceptance-workset',
-        on: 'runtime.completed',
-      },
-      {
-        from: 'integrate-release-candidate',
-        to: 'settle-development',
-        on: 'runtime.failed',
-      },
-      {
-        from: 'verify-acceptance-workset',
-        to: 'settle-development',
-        on: 'runtime.completed',
-      },
-      {
-        from: 'verify-acceptance-workset',
-        to: 'settle-development',
-        on: 'runtime.failed',
-      },
+
+      // Settlement emits the five local outcomes.
       ...[
         'verified',
         'rework-required',
@@ -280,23 +276,23 @@ export const developmentProcessModule: ProcessModuleDefinition = {
     {
       type: 'development-implementation-workset',
       schema: { id: DEVELOPMENT_IMPLEMENTATION_WORKSET_SCHEMA },
-      authority: 'external',
+      authority: 'kernel',
       description:
-        'Durable implementation and independent review results keyed to the task graph.',
+        'Implementation and independent review results, reconstructed at settlement from the exact projected tracker tasks and integration state.',
     },
     {
       type: 'integrated-release-candidate',
       schema: { id: INTEGRATED_CANDIDATE_SCHEMA },
-      authority: 'external',
+      authority: 'kernel',
       description:
-        'Frozen repository commits, tree hashes and build digests produced before verification.',
+        'Frozen repository commits, tree hashes and build digests, reconstructed at settlement from integration state.',
     },
     {
       type: 'acceptance-verification-workset',
       schema: { id: ACCEPTANCE_VERIFICATION_SCHEMA },
-      authority: 'external',
+      authority: 'kernel',
       description:
-        'Trusted evidence for every accepted AC bound to the exact frozen candidate hash.',
+        'Trusted evidence for every accepted AC bound to the exact frozen candidate hash, reconstructed at settlement from recorded verification evidence.',
     },
     {
       type: 'verified-integration-bundle',
@@ -415,6 +411,44 @@ export const developmentProcessModule: ProcessModuleDefinition = {
       retryPolicy: {
         maxAttempts: 2,
         retryOn: ['schema-rejected', 'lineage-gap'],
+        backoff: 'none',
+      },
+      recoveryPolicy: {
+        resumeFromCheckpoint: true,
+        reuseWorkIntent: true,
+        reuseAcceptedOutput: true,
+        onExhausted: 'pause',
+      },
+    },
+    {
+      // Implementation workers are NOT driven by a Flow node. After
+      // resolve-task-graph materializes the projected implementation tasks
+      // onto the kanban, workers claim them through the shared worker_next
+      // queue (infrastructure), execute code, review and merge via
+      // worker_merge_release. This profile teaches the dispatcher how to run
+      // those tasks: the saga-worker skill, git_change execution mode, and the
+      // tools a code-changing task needs. The module Flow itself contains no
+      // implementation node.
+      id: 'development-implementation-worker',
+      workIntentKind: 'development.implementation',
+      workIntentSchema: {
+        id: 'saga3.work-intent.development-implementation.v1',
+      },
+      taskKind: 'implementation.feature',
+      executionSkill: 'saga-worker',
+      reviewSkill: 'saga-worker',
+      protocolSkill: PROCESS_PROTOCOL_SKILL,
+      semanticSkill: 'saga-worker',
+      executionMode: 'git_change',
+      allowedTools: COMMON_WRITE_TOOLS,
+      trackerTemplate: IMPLEMENTATION_TRACKER,
+      workspaceTemplates: [IMPLEMENTATION_CHECKLIST],
+      callTemplates: [],
+      checklists: [IMPLEMENTATION_CHECKLIST],
+      outputSchema: { id: DEVELOPMENT_IMPLEMENTATION_WORKSET_SCHEMA },
+      retryPolicy: {
+        maxAttempts: 2,
+        retryOn: ['review-rejected', 'merge-conflict'],
         backoff: 'none',
       },
       recoveryPolicy: {

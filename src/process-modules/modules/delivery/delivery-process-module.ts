@@ -1,6 +1,5 @@
 import type { ProcessModuleDefinition } from '../../domain/process-module.js';
 import {
-  DELIVERY_EXTERNAL_ADAPTER_IDS,
   DELIVERY_HUMAN_ADAPTER_IDS,
   DELIVERY_KERNEL_HANDLER_IDS,
 } from './delivery-kernel-ports.js';
@@ -90,20 +89,20 @@ export const deliveryProcessModule: ProcessModuleDefinition = {
       {
         id: 'publish-deploy',
         label: 'Publish and Deploy',
-        kind: 'external',
+        kind: 'kernel',
         description:
-          'Apply immutable desired-state actions through explicit providers using deterministic cross-run action keys.',
-        adapter: DELIVERY_EXTERNAL_ADAPTER_IDS.publishDeploy,
+          'Apply immutable desired-state actions through explicit providers using deterministic cross-run action keys. Deterministic external-system calls (git push, deploy), not worker hiring.',
+        handler: DELIVERY_KERNEL_HANDLER_IDS.publishDeploy,
         inputSchema: { id: DELIVERY_APPROVAL_SCHEMA },
         outputSchema: { id: DELIVERY_PUBLICATION_SCHEMA },
       },
       {
         id: 'observe-release',
         label: 'Observe Release',
-        kind: 'external',
+        kind: 'kernel',
         description:
-          'Read authoritative target state after every publish/deploy response, including uncertain and failed responses.',
-        adapter: DELIVERY_EXTERNAL_ADAPTER_IDS.observeRelease,
+          'Read authoritative target state after every publish/deploy response, including uncertain and failed responses. Deterministic external-system observation, not worker hiring.',
+        handler: DELIVERY_KERNEL_HANDLER_IDS.observeRelease,
         inputSchema: { id: DELIVERY_PUBLICATION_SCHEMA },
         outputSchema: { id: DELIVERY_OBSERVATION_SCHEMA },
       },
@@ -175,22 +174,22 @@ export const deliveryProcessModule: ProcessModuleDefinition = {
       {
         from: 'publish-deploy',
         to: 'observe-release',
-        on: 'runtime.completed',
+        on: 'domain.completed',
       },
       {
         from: 'publish-deploy',
         to: 'observe-release',
-        on: 'runtime.failed',
+        on: 'domain.failed',
       },
       {
         from: 'observe-release',
         to: 'settle-delivery',
-        on: 'runtime.completed',
+        on: 'domain.completed',
       },
       {
         from: 'observe-release',
         to: 'settle-delivery',
-        on: 'runtime.failed',
+        on: 'domain.failed',
       },
       ...['released', 'approval-required', 'blocked', 'failed'].map(code => ({
         from: 'settle-delivery',
@@ -230,16 +229,16 @@ export const deliveryProcessModule: ProcessModuleDefinition = {
     {
       type: 'delivery-publication',
       schema: { id: DELIVERY_PUBLICATION_SCHEMA },
-      authority: 'external',
+      authority: 'kernel',
       description:
-        'Durable desired-state action receipts, including uncertain external responses.',
+        'Durable desired-state action receipts, including uncertain external responses. Produced by a deterministic kernel handler that calls the publication provider.',
     },
     {
       type: 'delivery-observation',
       schema: { id: DELIVERY_OBSERVATION_SCHEMA },
-      authority: 'external',
+      authority: 'kernel',
       description:
-        'Authoritative post-action state observations used to settle external effects safely.',
+        'Authoritative post-action state observations used to settle external effects safely. Produced by a deterministic kernel handler that calls the observation provider.',
     },
     {
       type: 'release-record',

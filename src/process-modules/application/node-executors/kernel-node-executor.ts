@@ -64,11 +64,17 @@ export class KernelNodeExecutor implements NodeExecutor {
         acceptanceReceipt = applied.receipt;
       }
       // Kernel handlers emit DOMAIN events (accepted / go / clarify / ...).
-      // runtimeEvent is always 'completed' for a kernel node that returned
-      // normally; a handler that wants to signal failure throws.
+      // runtimeEvent is 'completed' for a kernel node that returned normally; a
+      // handler that wants to signal failure throws. A handler MAY override
+      // runtimeEvent to 'paused' to release the run to the conveyor without
+      // finishing (e.g. Development settle-development while projected impl
+      // tasks are still being drained by the shared worker_next queue): the
+      // executor surfaces runtime.paused, ProcessRun pauses, and on resume the
+      // generic-flow-executor re-executes the SAME node so the handler can
+      // re-check and proceed.
       return {
-        runtimeEvent: 'completed',
-        domainEvent: result.event,
+        runtimeEvent: result.runtimeEvent ?? 'completed',
+        domainEvent: result.runtimeEvent === 'paused' ? undefined : result.event,
         production: result.production,
         recoveryIssue: result.recoveryIssue,
         acceptanceReceipt,

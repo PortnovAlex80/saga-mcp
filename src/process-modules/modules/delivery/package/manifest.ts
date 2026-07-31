@@ -68,7 +68,6 @@ import type { ContractRef } from '../../../domain/spi/contract-ref.js';
 import { CONTRACT_REF_PENDING_DIGEST } from '../../../domain/spi/contract-ref.js';
 import { deliveryProcessModule } from '../delivery-process-module.js';
 import {
-  DELIVERY_EXTERNAL_ADAPTER_IDS,
   DELIVERY_HUMAN_ADAPTER_IDS,
   DELIVERY_KERNEL_HANDLER_IDS,
 } from '../delivery-kernel-ports.js';
@@ -241,23 +240,21 @@ function deliveryHandlerRef(logicalId: string): HandlerRef {
  */
 export const DELIVERY_KERNEL_HANDLER_REFS: readonly HandlerRef[] = [
   deliveryHandlerRef(DELIVERY_KERNEL_HANDLER_IDS.preflight),
+  deliveryHandlerRef(DELIVERY_KERNEL_HANDLER_IDS.publishDeploy),
+  deliveryHandlerRef(DELIVERY_KERNEL_HANDLER_IDS.observeRelease),
   deliveryHandlerRef(DELIVERY_KERNEL_HANDLER_IDS.settle),
-];
-
-/**
- * The complete set of external adapter references for the delivery package.
- * Each `logicalId` matches the `adapter:` field on the external flow nodes and
- * the keys registered in `DELIVERY_EXTERNAL_ADAPTER_IDS`.
- */
-export const DELIVERY_EXTERNAL_ADAPTER_REFS: readonly HandlerRef[] = [
-  deliveryHandlerRef(DELIVERY_EXTERNAL_ADAPTER_IDS.publishDeploy),
-  deliveryHandlerRef(DELIVERY_EXTERNAL_ADAPTER_IDS.observeRelease),
 ];
 
 /**
  * The complete set of human interaction adapter references for the delivery
  * package. Each `logicalId` matches the `interactionContract:` field on the
  * human approval node and the key registered in `DELIVERY_HUMAN_ADAPTER_IDS`.
+ *
+ * Delivery has no `external` flow nodes anymore (CGAD P18: the `external` node
+ * kind was a backdoor that let modules self-hire workers or call external
+ * systems through an opaque adapter). publish-deploy and observe-release now
+ * run as KERNEL handlers backed by deterministic provider ports
+ * (DeliveryPublicationPort / DeliveryObservationPort) injected at composition.
  */
 export const DELIVERY_HUMAN_ADAPTER_REFS: readonly HandlerRef[] = [
   deliveryHandlerRef(DELIVERY_HUMAN_ADAPTER_IDS.approval),
@@ -270,7 +267,6 @@ export const DELIVERY_HUMAN_ADAPTER_REFS: readonly HandlerRef[] = [
  */
 export const DELIVERY_HANDLER_REFS: readonly HandlerRef[] = [
   ...DELIVERY_KERNEL_HANDLER_REFS,
-  ...DELIVERY_EXTERNAL_ADAPTER_REFS,
   ...DELIVERY_HUMAN_ADAPTER_REFS,
 ];
 

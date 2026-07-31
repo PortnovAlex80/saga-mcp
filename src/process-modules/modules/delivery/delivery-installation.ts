@@ -1,9 +1,5 @@
 import type { ProcessModuleDefinition } from '../../domain/process-module.js';
 import type {
-  ExternalAdapter,
-  ExternalAdapterContext,
-} from '../../application/external-adapter-registry.js';
-import type {
   HumanInteractionAdapter,
   HumanInteractionContext,
 } from '../../application/human-interaction-registry.js';
@@ -22,7 +18,6 @@ import type {
 import type { ProcessModuleOutput } from '../../persistence/process-run.js';
 import { sha256Hex } from '../../shared/canonical-json.js';
 import {
-  DELIVERY_EXTERNAL_ADAPTER_IDS,
   DELIVERY_HUMAN_ADAPTER_IDS,
   DELIVERY_KERNEL_HANDLER_IDS,
   type DeliveryModuleInstallationDependencies,
@@ -72,19 +67,12 @@ export function createDeliveryKernelHandlers(
   return {
     [DELIVERY_KERNEL_HANDLER_IDS.preflight]:
       createDeliveryPreflightHandler(deps),
+    [DELIVERY_KERNEL_HANDLER_IDS.publishDeploy]:
+      createPublicationHandler(deps),
+    [DELIVERY_KERNEL_HANDLER_IDS.observeRelease]:
+      createObservationHandler(deps),
     [DELIVERY_KERNEL_HANDLER_IDS.settle]:
       createDeliverySettlementHandler(deps),
-  };
-}
-
-export function createDeliveryExternalAdapters(
-  deps: DeliveryModuleInstallationDependencies,
-): Record<string, ExternalAdapter> {
-  return {
-    [DELIVERY_EXTERNAL_ADAPTER_IDS.publishDeploy]:
-      createPublicationAdapter(deps),
-    [DELIVERY_EXTERNAL_ADAPTER_IDS.observeRelease]:
-      createObservationAdapter(deps),
   };
 }
 
@@ -269,9 +257,9 @@ function createApprovalInteraction(
   };
 }
 
-function createPublicationAdapter(
+function createPublicationHandler(
   deps: DeliveryModuleInstallationDependencies,
-): ExternalAdapter {
+): KernelHandler {
   return async ctx => {
     const deliveryCase = requireAuthorizedDeliveryCase(ctx);
     const state = readExactSettlementState(deps, ctx, deliveryCase);
@@ -323,8 +311,9 @@ function createPublicationAdapter(
       action.required && !receiptById.has(action.actionId));
     const uncertain = published.publication.receipts.some(receipt =>
       receipt.status !== 'succeeded');
+    const event = incomplete || uncertain ? 'failed' : 'completed';
     return {
-      runtimeEvent: incomplete || uncertain ? 'failed' : 'completed',
+      event,
       production: {
         schema: published.reference.schema,
         artifactRef: published.reference.ref,
@@ -342,9 +331,9 @@ function createPublicationAdapter(
   };
 }
 
-function createObservationAdapter(
+function createObservationHandler(
   deps: DeliveryModuleInstallationDependencies,
-): ExternalAdapter {
+): KernelHandler {
   return async ctx => {
     const deliveryCase = requireAuthorizedDeliveryCase(ctx);
     const state = readExactSettlementState(deps, ctx, deliveryCase);
@@ -412,7 +401,7 @@ function createObservationAdapter(
       || observed.observation.observations.some(item =>
         item.outcome === 'unknown' || item.outcome === 'error');
     return {
-      runtimeEvent: uncertain ? 'failed' : 'completed',
+      event: uncertain ? 'failed' : 'completed',
       production: {
         schema: observed.reference.schema,
         artifactRef: observed.reference.ref,
@@ -756,8 +745,7 @@ function readExactSettlementState(
   deps: DeliveryModuleInstallationDependencies,
   ctx:
     | KernelHandlerContext
-    | HumanInteractionContext
-    | ExternalAdapterContext,
+    | HumanInteractionContext,
   deliveryCase: DeliveryReleaseCase,
 ): DeliverySettlementInput {
   const state = deps.settlementState.buildSettlementInput({
@@ -777,7 +765,9 @@ function readExactSettlementState(
 }
 
 function requireExactProduct<T>(
-  ctx: HumanInteractionContext | ExternalAdapterContext,
+  ctx:
+    | KernelHandlerContext
+    | HumanInteractionContext,
   value: T | null,
   reference: DeliveryContentAddressedReference | null,
   producerNodeId: string,
@@ -803,8 +793,7 @@ function requireExactProduct<T>(
 function requireDeliveryCase(
   ctx:
     | KernelHandlerContext
-    | HumanInteractionContext
-    | ExternalAdapterContext,
+    | HumanInteractionContext,
 ): DeliveryReleaseCase {
   const value = ctx.frame.runInput;
   if (
@@ -826,8 +815,7 @@ function requireDeliveryCase(
 function requireAuthorizedDeliveryCase(
   ctx:
     | KernelHandlerContext
-    | HumanInteractionContext
-    | ExternalAdapterContext,
+    | HumanInteractionContext,
 ): AuthorizedDeliveryReleaseCase {
   const deliveryCase = requireDeliveryCase(ctx);
   if (deliveryCase.deliveryMode !== 'authorized') {

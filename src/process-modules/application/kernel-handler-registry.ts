@@ -58,10 +58,26 @@ export interface KernelHandlerContext {
  * kernel-узла, вернувшего нормально.
  */
 export interface KernelHandlerResult {
-  /** Domain event — drives transition selection. */
+  /**
+   * Domain event — drives transition selection. When `runtimeEvent` is
+   * 'paused', this event is ignored for transition matching (the executor
+   * raises ProcessRunPausedError instead); it is kept purely for audit /
+   * terminal bindings replay on resume.
+   */
   event: string;
   /** Durable production reference (schema + artifactRef + contentHash + bindings). */
   production: NodeProduction;
+  /**
+   * Optional physical runtime event override. Kernel handlers default to
+   * 'completed' (the executor sets it). A handler returns 'paused' to release
+   * the run to the conveyor without finishing — used by Development's
+   * settle-development node when projected impl tasks are not yet terminal:
+   * the conveyor (orchestrate-cli / LifecycleOrchestrator) then drains the
+   * shared worker_next queue, and once all waited tasks reach terminal it
+   * resumes the run; the generic-flow-executor re-executes the SAME node
+   * (see `reexecutePausedNode`), the handler re-checks, and proceeds.
+   */
+  runtimeEvent?: 'paused';
   /** Optional standardized issue used by the generic recovery interpreter. */
   recoveryIssue?: RecoveryIssue;
   /**

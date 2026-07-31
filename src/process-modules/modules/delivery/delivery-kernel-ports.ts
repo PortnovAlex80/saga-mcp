@@ -25,16 +25,13 @@ import type {
 
 export const DELIVERY_KERNEL_HANDLER_IDS = {
   preflight: 'delivery-preflight-policy',
+  publishDeploy: 'delivery-publish-deploy',
+  observeRelease: 'delivery-observe-release',
   settle: 'delivery-settlement-policy',
 } as const;
 
 export const DELIVERY_HUMAN_ADAPTER_IDS = {
   approval: 'delivery-release-approval',
-} as const;
-
-export const DELIVERY_EXTERNAL_ADAPTER_IDS = {
-  publishDeploy: 'delivery-publish-deploy',
-  observeRelease: 'delivery-observe-release',
 } as const;
 
 export interface DeliveryPreflightStatePort {

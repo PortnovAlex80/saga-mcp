@@ -183,9 +183,6 @@ export interface CompositionLoaderOptions {
     readonly kernelHandlerRegistry?: ConstructorParameters<typeof ProcessModuleInstallationRegistry>[0] extends infer O
       ? O extends { readonly kernelHandlerRegistry?: infer K } ? K : never
       : never;
-    readonly externalAdapterRegistry?: ConstructorParameters<typeof ProcessModuleInstallationRegistry>[0] extends infer O
-      ? O extends { readonly externalAdapterRegistry?: infer E } ? E : never
-      : never;
     readonly humanInteractionRegistry?: ConstructorParameters<typeof ProcessModuleInstallationRegistry>[0] extends infer O
       ? O extends { readonly humanInteractionRegistry?: infer H } ? H : never
       : never;

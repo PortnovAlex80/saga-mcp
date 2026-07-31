@@ -1,10 +1,6 @@
 import type { ProcessModuleDefinition } from '../../domain/process-module.js';
 import { processModuleKey } from '../../domain/process-module.js';
 import type {
-  ExternalAdapter,
-  ExternalAdapterContext,
-} from '../../application/external-adapter-registry.js';
-import type {
   KernelHandler,
   KernelHandlerContext,
   KernelHandlerResult,
@@ -23,36 +19,24 @@ import type {
 import type { ProcessModuleOutput } from '../../persistence/process-run.js';
 import { sha256Hex } from '../../shared/canonical-json.js';
 import {
-  DEVELOPMENT_EXTERNAL_ADAPTER_IDS,
   DEVELOPMENT_KERNEL_HANDLER_IDS,
-  type DevelopmentExternalActionKind,
-  type DevelopmentExternalActionReceipt,
   type DevelopmentModuleInstallationDependencies,
   type DevelopmentOutputRecord,
   type DevelopmentOutputRepository,
 } from './development-kernel-ports.js';
 import {
-  ACCEPTANCE_VERIFICATION_SCHEMA,
   DEVELOPMENT_CERTIFICATE_SCHEMA,
-  DEVELOPMENT_IMPLEMENTATION_WORKSET_SCHEMA,
   DEVELOPMENT_TASK_GRAPH_PROPOSAL_SCHEMA,
   DEVELOPMENT_TASK_GRAPH_SCHEMA,
-  INTEGRATED_CANDIDATE_SCHEMA,
   VERIFIED_INTEGRATION_BUNDLE_SCHEMA,
   type ContentAddressedReference,
   type DevelopmentCase,
-  type DevelopmentImplementationWorkset,
   type DevelopmentSettlementInput,
-  type DevelopmentTaskGraphSnapshot,
-  type IntegratedReleaseCandidate,
 } from './development-schemas.js';
 import {
   buildDevelopmentCertificatePayload,
-  hashAcceptanceVerification,
-  hashImplementationWorkset,
-  hashIntegratedCandidate,
-  hashVerifiedIntegrationBundle,
   hashDevelopmentTaskGraph,
+  hashVerifiedIntegrationBundle,
   type DevelopmentSettlementResult,
 } from './development-settlement-policy.js';
 import { DEVELOPMENT_PROCESS_MODULE_REF } from './development-process-module.js';
@@ -64,12 +48,23 @@ import {
 export const DEVELOPMENT_NODE_IDS = {
   planner: 'plan-task-graph',
   resolveTaskGraph: 'resolve-task-graph',
-  implementation: 'execute-implementation-workset',
-  integration: 'integrate-release-candidate',
-  verification: 'verify-acceptance-workset',
   settlement: 'settle-development',
 } as const;
 
+/**
+ * Build the kernel handlers for the Development module Flow.
+ *
+ * The Flow is lm+kernel only (mechanical pattern cloned from Formalization):
+ *
+ *   plan-task-graph (lm)   → resolve-task-graph (kernel) → settle-development (kernel)
+ *
+ * Implementation, integration and verification are NOT Flow nodes. The
+ * resolver materializes the projected kanban tasks (declarative persistence);
+ * workers then claim them through the shared worker_next queue
+ * (infrastructure) and settle-development re-reads the resulting tracker state.
+ *
+ * There are no external adapters — the module never hires, merges or tests.
+ */
 export function createDevelopmentKernelHandlers(
   deps: DevelopmentModuleInstallationDependencies,
 ): Record<string, KernelHandler> {
@@ -107,19 +102,6 @@ export function createDevelopmentKernelHandlers(
       ),
     [DEVELOPMENT_KERNEL_HANDLER_IDS.settle]:
       createDevelopmentSettlementHandler(deps),
-  };
-}
-
-export function createDevelopmentExternalAdapters(
-  deps: DevelopmentModuleInstallationDependencies,
-): Record<string, ExternalAdapter> {
-  return {
-    [DEVELOPMENT_EXTERNAL_ADAPTER_IDS.executeImplementationWorkset]:
-      createImplementationAdapter(deps),
-    [DEVELOPMENT_EXTERNAL_ADAPTER_IDS.integrateReleaseCandidate]:
-      createIntegrationAdapter(deps),
-    [DEVELOPMENT_EXTERNAL_ADAPTER_IDS.verifyAcceptanceWorkset]:
-      createVerificationAdapter(deps),
   };
 }
 
@@ -179,26 +161,6 @@ export function createDevelopmentOutputPayloadResolver(
       context.output,
     ).payload;
   };
-}
-
-/**
- * Cross-run idempotency key for one immutable Development side effect.
- * ProcessRun id is deliberately excluded.
- */
-export function developmentExternalActionKey(
-  kind: DevelopmentExternalActionKind,
-  developmentCase: DevelopmentCase,
-  payloadHash: string,
-): string {
-  return `development:${kind}:${sha256Hex({
-    kind,
-    payloadHash,
-    formalizationCertificateHash:
-      developmentCase.formalizationCertificate.hash,
-    solutionContractHash: developmentCase.solutionContract.hash,
-    acceptanceBaselineHash: developmentCase.acceptanceBaselineHash,
-    policyHash: developmentCase.policy.contentHash,
-  })}`;
 }
 
 function createTaskGraphResolver(
@@ -311,7 +273,9 @@ function createTaskGraphResolver(
 
       // Authorization boundary: this is the first call allowed to create task
       // projections. Invalid LM output returned above without touching the
-      // materializer.
+      // materializer. Materializing the projected kanban tasks is declarative
+      // persistence — it makes work CLAIMABLE by workers through the shared
+      // worker_next queue (infrastructure); the module never hires them.
       const materialized = deps.taskGraph.materializeValidatedTaskGraph({
         processRunId: ctx.processRunId,
         developmentCase,
@@ -362,243 +326,6 @@ function createTaskGraphResolver(
   };
 }
 
-function createImplementationAdapter(
-  deps: DevelopmentModuleInstallationDependencies,
-): ExternalAdapter {
-  return async ctx => {
-    const developmentCase = requireDevelopmentCase(ctx);
-    const settlementInput = readExactSettlementState(deps, ctx, developmentCase);
-    const graph = requireExactProduct(
-      ctx,
-      settlementInput.taskGraph,
-      settlementInput.productReferences.taskGraph,
-      DEVELOPMENT_NODE_IDS.resolveTaskGraph,
-      DEVELOPMENT_TASK_GRAPH_SCHEMA,
-      'task graph',
-    );
-    assertExecutableTaskGraph(deps, developmentCase, graph);
-    const payloadHash = sha256Hex({
-      action: 'implementation-workset',
-      developmentCaseHash: sha256Hex(developmentCase),
-      taskGraphHash: graph.graphHash,
-    });
-    const actionKey = developmentExternalActionKey(
-      'implementation-workset',
-      developmentCase,
-      payloadHash,
-    );
-    const result = await deps.implementationWorkset.execute({
-      processRunId: ctx.processRunId,
-      actionKey,
-      payloadHash,
-      developmentCase,
-      taskGraph: graph,
-      heartbeat: ctx.heartbeat,
-    });
-    assertExternalReceipt(
-      result.receipt,
-      'implementation-workset',
-      actionKey,
-      payloadHash,
-    );
-    if (result.workset !== null) {
-      if (
-        result.workset.schemaVersion
-          !== DEVELOPMENT_IMPLEMENTATION_WORKSET_SCHEMA
-        || result.workset.taskGraphHash !== graph.graphHash
-        || hashImplementationWorkset(result.workset)
-          !== result.workset.worksetHash
-        || result.receipt.resultHash !== result.workset.worksetHash
-      ) {
-        throw new Error(
-          'development implementation adapter returned a workset with invalid lineage',
-        );
-      }
-    } else if (result.receipt.status === 'succeeded') {
-      throw new Error(
-        'development implementation adapter succeeded without a durable workset',
-      );
-    }
-    return externalProductionResult(
-      result.receipt,
-      DEVELOPMENT_IMPLEMENTATION_WORKSET_SCHEMA,
-      { worksetHash: result.workset?.worksetHash ?? null },
-    );
-  };
-}
-
-function createIntegrationAdapter(
-  deps: DevelopmentModuleInstallationDependencies,
-): ExternalAdapter {
-  return async ctx => {
-    const developmentCase = requireDevelopmentCase(ctx);
-    const settlementInput = readExactSettlementState(deps, ctx, developmentCase);
-    const graph = requireExactProduct(
-      ctx,
-      settlementInput.taskGraph,
-      settlementInput.productReferences.taskGraph,
-      DEVELOPMENT_NODE_IDS.resolveTaskGraph,
-      DEVELOPMENT_TASK_GRAPH_SCHEMA,
-      'task graph',
-    );
-    const workset = requireExactProduct(
-      ctx,
-      settlementInput.implementationWorkset,
-      settlementInput.productReferences.implementationWorkset,
-      DEVELOPMENT_NODE_IDS.implementation,
-      DEVELOPMENT_IMPLEMENTATION_WORKSET_SCHEMA,
-      'implementation workset',
-    );
-    assertExecutableTaskGraph(deps, developmentCase, graph);
-    assertImplementationReady(graph, workset);
-    const payloadHash = sha256Hex({
-      action: 'candidate-integration',
-      developmentCaseHash: sha256Hex(developmentCase),
-      taskGraphHash: graph.graphHash,
-      implementationWorksetHash: workset.worksetHash,
-    });
-    const actionKey = developmentExternalActionKey(
-      'candidate-integration',
-      developmentCase,
-      payloadHash,
-    );
-    const result = await deps.candidateIntegration.integrateAndFreeze({
-      processRunId: ctx.processRunId,
-      actionKey,
-      payloadHash,
-      developmentCase,
-      taskGraph: graph,
-      implementationWorkset: workset,
-      heartbeat: ctx.heartbeat,
-    });
-    assertExternalReceipt(
-      result.receipt,
-      'candidate-integration',
-      actionKey,
-      payloadHash,
-    );
-    if (result.candidate !== null) {
-      if (
-        result.candidate.schemaVersion !== INTEGRATED_CANDIDATE_SCHEMA
-        || result.candidate.taskGraphHash !== graph.graphHash
-        || result.candidate.implementationWorksetHash !== workset.worksetHash
-        || hashIntegratedCandidate(result.candidate)
-          !== result.candidate.candidateHash
-        || result.receipt.resultHash !== result.candidate.candidateHash
-      ) {
-        throw new Error(
-          'development integration adapter returned a candidate with invalid lineage',
-        );
-      }
-    } else if (result.receipt.status === 'succeeded') {
-      throw new Error(
-        'development integration adapter succeeded without a frozen candidate',
-      );
-    }
-    return externalProductionResult(
-      result.receipt,
-      INTEGRATED_CANDIDATE_SCHEMA,
-      { candidateHash: result.candidate?.candidateHash ?? null },
-    );
-  };
-}
-
-function createVerificationAdapter(
-  deps: DevelopmentModuleInstallationDependencies,
-): ExternalAdapter {
-  return async ctx => {
-    const developmentCase = requireDevelopmentCase(ctx);
-    const settlementInput = readExactSettlementState(deps, ctx, developmentCase);
-    const graph = requireExactProduct(
-      ctx,
-      settlementInput.taskGraph,
-      settlementInput.productReferences.taskGraph,
-      DEVELOPMENT_NODE_IDS.resolveTaskGraph,
-      DEVELOPMENT_TASK_GRAPH_SCHEMA,
-      'task graph',
-    );
-    const workset = requireExactProduct(
-      ctx,
-      settlementInput.implementationWorkset,
-      settlementInput.productReferences.implementationWorkset,
-      DEVELOPMENT_NODE_IDS.implementation,
-      DEVELOPMENT_IMPLEMENTATION_WORKSET_SCHEMA,
-      'implementation workset',
-    );
-    const candidate = requireExactProduct(
-      ctx,
-      settlementInput.integratedCandidate,
-      settlementInput.productReferences.integratedCandidate,
-      DEVELOPMENT_NODE_IDS.integration,
-      INTEGRATED_CANDIDATE_SCHEMA,
-      'integrated candidate',
-    );
-    assertExecutableTaskGraph(deps, developmentCase, graph);
-    assertImplementationReady(graph, workset);
-    assertFrozenCandidate(
-      graph,
-      workset,
-      candidate,
-      settlementInput.observedCandidateHash,
-    );
-    const payloadHash = sha256Hex({
-      action: 'acceptance-verification',
-      developmentCaseHash: sha256Hex(developmentCase),
-      taskGraphHash: graph.graphHash,
-      candidateHash: candidate.candidateHash,
-    });
-    const actionKey = developmentExternalActionKey(
-      'acceptance-verification',
-      developmentCase,
-      payloadHash,
-    );
-    const result = await deps.acceptanceVerification.verify({
-      processRunId: ctx.processRunId,
-      actionKey,
-      payloadHash,
-      developmentCase,
-      taskGraph: graph,
-      candidate,
-      heartbeat: ctx.heartbeat,
-    });
-    assertExternalReceipt(
-      result.receipt,
-      'acceptance-verification',
-      actionKey,
-      payloadHash,
-    );
-    if (result.verification !== null) {
-      if (
-        result.verification.schemaVersion !== ACCEPTANCE_VERIFICATION_SCHEMA
-        || result.verification.acceptanceBaselineHash
-          !== developmentCase.acceptanceBaselineHash
-        || result.verification.candidateHash !== candidate.candidateHash
-        || hashAcceptanceVerification(result.verification)
-          !== result.verification.verificationHash
-        || result.receipt.resultHash
-          !== result.verification.verificationHash
-      ) {
-        throw new Error(
-          'development verification adapter returned evidence with invalid lineage',
-        );
-      }
-    } else if (result.receipt.status === 'succeeded') {
-      throw new Error(
-        'development verification adapter succeeded without durable evidence',
-      );
-    }
-    return externalProductionResult(
-      result.receipt,
-      ACCEPTANCE_VERIFICATION_SCHEMA,
-      {
-        candidateHash: candidate.candidateHash,
-        verificationHash:
-          result.verification?.verificationHash ?? null,
-      },
-    );
-  };
-}
-
 function createDevelopmentSettlementHandler(
   deps: DevelopmentModuleInstallationDependencies,
 ): KernelHandler {
@@ -608,6 +335,43 @@ function createDevelopmentSettlementHandler(
       const resolution = ctx.frame.productions[
         DEVELOPMENT_NODE_IDS.resolveTaskGraph
       ];
+
+      // Conveyor gate (resolve-task-graph produced a valid graph and projected
+      // impl/integration/verification tasks onto the kanban). When those tasks
+      // are not all terminal yet, RELEASE the run to the conveyor: return
+      // runtimeEvent 'paused'. The GenericFlowExecutor raises
+      // ProcessRunPausedError and the run pauses; orchestrate-cli /
+      // LifecycleOrchestrator then drains the shared worker_next queue
+      // (workers claim the projected todo tasks, execute, review, merge, record
+      // evidence), and once every projected task reaches terminal state it
+      // resumes the run. The generic-flow-executor RE-EXECUTES this same node
+      // (see `reexecutePausedNode`), so the gate re-checks and proceeds.
+      //
+      // Skipped when resolution already failed/needs-clarification — in those
+      // cases there is nothing to wait for; settle records the terminal
+      // outcome directly.
+      if (resolution?.bindings.resolutionStatus === 'valid') {
+        if (!deps.settlementState.areProjectedTasksTerminal({
+          processRunId: ctx.processRunId,
+          developmentCase,
+        })) {
+          return {
+            event: 'await-implementation',
+            runtimeEvent: 'paused',
+            production: {
+              schema: DEVELOPMENT_CERTIFICATE_SCHEMA,
+              artifactRef:
+                `development-await:${ctx.processRunId}:${resolution.contentHash}`,
+              contentHash: resolution.contentHash,
+              bindings: {
+                awaitReason: 'projected-implementation-tasks-not-terminal',
+                taskGraphHash: resolution.bindings.graphHash,
+              },
+            },
+          };
+        }
+      }
+
       let settled: DevelopmentSettlementResult;
       if (resolution?.bindings.resolutionStatus === 'failed') {
         settled = {
@@ -618,6 +382,11 @@ function createDevelopmentSettlementHandler(
           bundle: null,
         };
       } else {
+        // The implementation workset, integrated release candidate and
+        // acceptance-verification workset are reconstructed INSIDE
+        // settlementState.buildSettlementInput by reading exact tracker state
+        // (projected tasks, integration_state, recorded evidence). They are no
+        // longer produced by dedicated external Flow nodes.
         const settlementInput = readExactSettlementState(
           deps,
           ctx,
@@ -805,125 +574,9 @@ function taskGraphResolutionManifest(
   };
 }
 
-function externalProductionResult(
-  receipt: DevelopmentExternalActionReceipt,
-  schema: string,
-  bindings: Record<string, unknown>,
-): NodeExecutionResult {
-  return {
-    runtimeEvent: receipt.status === 'succeeded' ? 'completed' : 'failed',
-    production: {
-      schema,
-      artifactRef: receipt.resultRef,
-      contentHash: receipt.resultHash,
-      bindings: {
-        actionKey: receipt.actionKey,
-        actionKind: receipt.actionKind,
-        payloadHash: receipt.payloadHash,
-        externalStatus: receipt.status,
-        resultHash: receipt.resultHash,
-        replayed: receipt.replayed,
-        ...bindings,
-      },
-    },
-  };
-}
-
-function assertExternalReceipt(
-  receipt: DevelopmentExternalActionReceipt,
-  kind: DevelopmentExternalActionKind,
-  actionKey: string,
-  payloadHash: string,
-): void {
-  if (
-    receipt.actionKind !== kind
-    || receipt.actionKey !== actionKey
-    || receipt.payloadHash !== payloadHash
-    || !['succeeded', 'failed', 'blocked', 'uncertain'].includes(
-      receipt.status,
-    )
-    || !receipt.resultRef.trim()
-    || !receipt.resultHash.trim()
-    || typeof receipt.replayed !== 'boolean'
-  ) {
-    throw new Error(
-      `development external adapter returned an invalid ${kind} receipt`,
-    );
-  }
-}
-
-function assertExecutableTaskGraph(
-  deps: DevelopmentModuleInstallationDependencies,
-  developmentCase: DevelopmentCase,
-  graph: DevelopmentTaskGraphSnapshot,
-): void {
-  const validation = deps.taskGraphPolicy.validate(developmentCase, graph);
-  if (!validation.valid) {
-    throw new Error(
-      `Development task graph is no longer executable: ${validation.errors.join('; ')}`,
-    );
-  }
-}
-
-function assertImplementationReady(
-  graph: DevelopmentTaskGraphSnapshot,
-  workset: DevelopmentImplementationWorkset,
-): void {
-  const resultByKey = new Map(
-    workset.results.map(result => [result.key, result]),
-  );
-  const required = graph.implementationItems
-    .filter(item => item.required)
-    .map(item => item.key);
-  if (
-    workset.schemaVersion !== DEVELOPMENT_IMPLEMENTATION_WORKSET_SCHEMA
-    || hashImplementationWorkset(workset) !== workset.worksetHash
-    || workset.taskGraphHash !== graph.graphHash
-    || !workset.complete
-    || workset.blockingItemKeys.length > 0
-    || !unique(workset.results.map(result => result.key))
-    || required.some(key => resultByKey.get(key)?.status !== 'succeeded')
-    || workset.results.some(result =>
-      result.status === 'succeeded'
-      && (
-        !result.implementationExecutionId?.trim()
-        || !result.reviewExecutionId?.trim()
-        || !result.reviewedSourceCommit?.trim()
-        || result.result === null
-        || !result.result.schema.trim()
-        || !result.result.ref.trim()
-        || !result.result.hash.trim()
-      ))
-  ) {
-    throw new Error(
-      'Development implementation workset is not complete, reviewed and immutable',
-    );
-  }
-}
-
-function assertFrozenCandidate(
-  graph: DevelopmentTaskGraphSnapshot,
-  workset: DevelopmentImplementationWorkset,
-  candidate: IntegratedReleaseCandidate,
-  observedCandidateHash: string | null,
-): void {
-  if (
-    candidate.schemaVersion !== INTEGRATED_CANDIDATE_SCHEMA
-    || hashIntegratedCandidate(candidate) !== candidate.candidateHash
-    || candidate.taskGraphHash !== graph.graphHash
-    || candidate.implementationWorksetHash !== workset.worksetHash
-    || candidate.frozen !== true
-    || observedCandidateHash !== candidate.candidateHash
-  ) {
-    throw new Error(
-      'Development candidate is not the unchanged frozen integration product',
-    );
-  }
-}
-
 function readExactSettlementState(
   deps: DevelopmentModuleInstallationDependencies,
-  ctx: KernelHandlerContext | ExternalAdapterContext,
+  ctx: KernelHandlerContext,
   developmentCase: DevelopmentCase,
 ): DevelopmentSettlementInput {
   const state = deps.settlementState.buildSettlementInput({
@@ -942,32 +595,8 @@ function readExactSettlementState(
   return state;
 }
 
-function requireExactProduct<T>(
-  ctx: KernelHandlerContext | ExternalAdapterContext,
-  value: T | null,
-  reference: ContentAddressedReference | null,
-  producerNodeId: string,
-  schema: string,
-  label: string,
-): T {
-  const production = ctx.frame.productions[producerNodeId];
-  if (value === null || reference === null || !production) {
-    throw new Error(`${ctx.node.id}: exact ${label} is missing`);
-  }
-  assertReference(reference, schema, production.contentHash, label);
-  if (
-    production.schema !== reference.schema
-    || production.artifactRef !== reference.ref
-  ) {
-    throw new Error(
-      `${ctx.node.id}: ${label} durable production reference mismatch`,
-    );
-  }
-  return value;
-}
-
 function requireDevelopmentCase(
-  ctx: KernelHandlerContext | ExternalAdapterContext,
+  ctx: KernelHandlerContext,
 ): DevelopmentCase {
   const value = ctx.frame.runInput;
   if (
@@ -1107,10 +736,6 @@ function stringBinding(
 
 function stringValue(value: unknown): string {
   return typeof value === 'string' ? value : '';
-}
-
-function unique<T>(values: readonly T[]): boolean {
-  return new Set(values).size === values.length;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

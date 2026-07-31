@@ -82,9 +82,6 @@ function validateNode(
   if (node.kind === 'kernel' && !node.handler.trim()) {
     errors.push(`kernel node '${node.id}' has no handler`);
   }
-  if (node.kind === 'external' && !node.adapter.trim()) {
-    errors.push(`external node '${node.id}' has no adapter`);
-  }
   if (node.kind === 'human' && !node.interactionContract.id.trim()) {
     errors.push(`human node '${node.id}' has no interaction contract`);
   }

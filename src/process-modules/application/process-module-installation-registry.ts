@@ -24,7 +24,6 @@ import {
 } from './validate-process-module-installation.js';
 import type { ProcessModuleInstallation } from './process-module-executor.js';
 import type { KernelHandlerRegistry } from './kernel-handler-registry.js';
-import type { ExternalAdapterRegistry } from './external-adapter-registry.js';
 import type { HumanInteractionRegistry } from './human-interaction-registry.js';
 
 export class ProcessModuleInstallationRegistrationError extends Error {
@@ -42,16 +41,13 @@ export class ProcessModuleInstallationRegistrationError extends Error {
 export class ProcessModuleInstallationRegistry {
   private readonly installations = new Map<string, ProcessModuleInstallation>();
   private readonly kernelHandlerRegistry: KernelHandlerRegistry | null;
-  private readonly externalAdapterRegistry: ExternalAdapterRegistry | null;
   private readonly humanInteractionRegistry: HumanInteractionRegistry | null;
 
   constructor(options: {
     kernelHandlerRegistry?: KernelHandlerRegistry;
-    externalAdapterRegistry?: ExternalAdapterRegistry;
     humanInteractionRegistry?: HumanInteractionRegistry;
   } = {}) {
     this.kernelHandlerRegistry = options.kernelHandlerRegistry ?? null;
-    this.externalAdapterRegistry = options.externalAdapterRegistry ?? null;
     this.humanInteractionRegistry = options.humanInteractionRegistry ?? null;
   }
 
@@ -84,9 +80,6 @@ export class ProcessModuleInstallationRegistry {
     const validationOptions: ValidateProcessModuleInstallationOptions = {};
     if (this.kernelHandlerRegistry) {
       validationOptions.kernelHandlerRegistry = this.kernelHandlerRegistry;
-    }
-    if (this.externalAdapterRegistry) {
-      validationOptions.externalAdapterRegistry = this.externalAdapterRegistry;
     }
     if (this.humanInteractionRegistry) {
       validationOptions.humanInteractionRegistry = this.humanInteractionRegistry;

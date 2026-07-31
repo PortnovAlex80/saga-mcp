@@ -39,7 +39,7 @@ export interface OutcomeDefinition {
 export interface ArtifactTypeDefinition {
   type: string;
   schema: SchemaReference;
-  authority: 'worker' | 'advisor' | 'kernel' | 'human' | 'external';
+  authority: 'worker' | 'advisor' | 'kernel' | 'human';
   description: string;
 }
 
@@ -102,7 +102,27 @@ export interface ExecutionProfileDefinition {
   recoveryPolicy: RecoveryPolicyDefinition;
 }
 
-export type FlowNodeKind = 'lm' | 'kernel' | 'human' | 'external' | 'composite';
+/**
+ * The physical kind of a flow node.
+ *
+ * 'external' is DELIBERATELY ABSENT. It was a backdoor that let a module
+ * self-hire workers / call external systems through an opaque adapter,
+ * bypassing the kernel-authorizes and worker_next-hires discipline. Closed
+ * 2026-07-31. Modules now use only:
+ *   - 'lm'        — an LM worker hired by the infrastructure LmNodeExecutor
+ *                   through the shared worker_next queue;
+ *   - 'kernel'    — a deterministic kernel handler (may call injected ports:
+ *                   DB reads/writes, deterministic external providers via
+ *                   declared ports, never worker hiring);
+ *   - 'human'     — a durable human interaction (delivery approval, etc.);
+ *   - 'composite' — a sub-module reference.
+ *
+ * A module that needs to call an external system (git push, deploy, observe)
+ * declares the provider as a PORT on its InstallationDeps and calls it from a
+ * KERNEL node handler. There is no node kind that hides hiring or external
+ * effects behind a string id.
+ */
+export type FlowNodeKind = 'lm' | 'kernel' | 'human' | 'composite';
 
 interface BaseFlowNodeDefinition {
   id: string;
@@ -129,11 +149,6 @@ export interface HumanFlowNodeDefinition extends BaseFlowNodeDefinition {
   interactionContract: SchemaReference;
 }
 
-export interface ExternalFlowNodeDefinition extends BaseFlowNodeDefinition {
-  kind: 'external';
-  adapter: string;
-}
-
 export interface CompositeFlowNodeDefinition extends BaseFlowNodeDefinition {
   kind: 'composite';
   moduleRef: ProcessModuleReference;
@@ -143,7 +158,6 @@ export type FlowNodeDefinition =
   | LmFlowNodeDefinition
   | KernelFlowNodeDefinition
   | HumanFlowNodeDefinition
-  | ExternalFlowNodeDefinition
   | CompositeFlowNodeDefinition;
 
 export interface FlowTransitionDefinition {
