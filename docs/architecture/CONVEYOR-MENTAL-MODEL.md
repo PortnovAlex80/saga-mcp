@@ -25,6 +25,25 @@ game.
 | **Card** (карточка) | the projected `task` row | durable — belongs to the workplace | Carries the work done so far. |
 | **Desk** (стол) | the execution workspace directory | durable — belongs to the workplace | Holds the worker's drafts/tools. |
 
+### Who does what — the hard boundary
+
+- **Worker (модель + skill):** knows ONLY how to do the work described in its
+  skill. That is all. It does not hire, does not spawn, does not decide how many
+  workers run, does not manage infrastructure. It arrives, reads the card/desk,
+  does the work, calls `worker_done`, leaves.
+- **Infrastructure (конвейер):** hires workers, decides how many to run,
+  provides the desk, manages fencing/heartbeat/persistence. A module declares
+  WHAT work its workplaces need (via its Flow + execution profiles); the
+  infrastructure decides HOW to staff it.
+
+A module MUST NOT hire workers itself. `workerExecutorFactory`,
+`runScopedTasks`, `executor.start` belong to infrastructure, never to a module.
+The development module currently violates this (it reaches into
+`SqliteDevelopmentRuntimeOptions.workerExecutorFactory` and spawns workers from
+inside the module) — that is the leak to fix. Discovery, Formalization and
+Delivery are clean: they declare LM nodes in their Flow and let the
+infrastructure's `LmNodeExecutor` staff them.
+
 **The workplace is the primary entity.** The worker is a one-shot guest on it.
 The card and the desk are property of the **workplace**, not the worker, and
 survive a worker change.
