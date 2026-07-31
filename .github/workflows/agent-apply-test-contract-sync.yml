@@ -1,4 +1,4 @@
-name: Apply Saga4 test contract sync
+name: Export missing Saga4 step 02 patch
 
 on:
   pull_request:
@@ -6,59 +6,30 @@ on:
       - saga4
 
 permissions:
-  contents: write
-  issues: write
+  contents: read
+  issues: read
 
 jobs:
-  apply:
+  export:
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ github.token }}
-      BASE_SHA: 8bae45aa93e8bb4c6537a3f31f49e14f531ad0b5
-      HEAD_BRANCH: ${{ github.head_ref }}
-      PAYLOAD_COMMENT_ID: '5141176578'
-      PATCH_SHA256: 47fe4e721e44ffb3d784e7fd9b7dd2d794993babf9df48de966cab2bd39146e8
+      PAYLOAD_COMMENT_ID: '5140460239'
+      PATCH_SHA256: 1621e234ccd9cfd448dcb1785bd88cdc55f94de03a553d03a59c712358a7d78c
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          fetch-depth: 0
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-      - name: Restore base and apply verified patch
+      - name: Decode verified step 02 patch
         shell: bash
         run: |
           set -euo pipefail
-          git reset --hard "${BASE_SHA}"
           gh api "repos/${GITHUB_REPOSITORY}/issues/comments/${PAYLOAD_COMMENT_ID}" \
-            --jq '.body | split("\n")[1]' > /tmp/test-sync.patch.xz.b64
-          test -s /tmp/test-sync.patch.xz.b64
-          base64 --decode /tmp/test-sync.patch.xz.b64 > /tmp/test-sync.patch.xz
-          echo "${PATCH_SHA256}  /tmp/test-sync.patch.xz" | sha256sum --check
-          xz --decompress --stdout /tmp/test-sync.patch.xz > /tmp/test-sync.patch
-          git apply --binary --index /tmp/test-sync.patch
-          git diff --cached --check
-      - name: Validate
-        run: |
-          set -euo pipefail
-          npm ci
-          npm run build
-          node --test \
-            tests/process-modules/product-delivery-lifecycle-e2e.test.mjs \
-            tests/process-modules/product-lifecycle-composition.test.mjs \
-            tests/process-modules/delivery-lifecycle-resume.test.mjs \
-            tests/process-modules/start-from-idea.test.mjs \
-            tests/process-modules/product-lifecycle-policies.test.mjs
-      - name: Replace transport history with one test commit
-        shell: bash
-        run: |
-          set -euo pipefail
-          git config user.name "Saga4 Cleanup Bot"
-          git config user.email "saga4-cleanup@users.noreply.github.com"
-          git commit -m "test(saga4): align lifecycle contract expectations"
-          git push --force origin "HEAD:${HEAD_BRANCH}"
-          gh api --method PATCH \
-            "repos/${GITHUB_REPOSITORY}/issues/comments/${PAYLOAD_COMMENT_ID}" \
-            -f body='Saga4 test contract sync payload consumed and removed.' >/dev/null
+            --jq '.body | split("\n")[1]' > /tmp/saga4-step-02.patch.xz.b64
+          test -s /tmp/saga4-step-02.patch.xz.b64
+          base64 --decode /tmp/saga4-step-02.patch.xz.b64 > /tmp/saga4-step-02.patch.xz
+          echo "${PATCH_SHA256}  /tmp/saga4-step-02.patch.xz" | sha256sum --check
+          xz --decompress --stdout /tmp/saga4-step-02.patch.xz > /tmp/saga4-step-02.patch
+      - uses: actions/upload-artifact@v4
+        with:
+          name: saga4-missing-step-02-patch
+          path: /tmp/saga4-step-02.patch
+          retention-days: 1
