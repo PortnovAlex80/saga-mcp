@@ -44,6 +44,22 @@ inside the module) — that is the leak to fix. Discovery, Formalization and
 Delivery are clean: they declare LM nodes in their Flow and let the
 infrastructure's `LmNodeExecutor` staff them.
 
+### One queue, one concurrency knob
+
+There is exactly **one** queue and **one** concurrency control: `--concurrency=N`.
+Tasks are picked from the `todo` AND `review` queue by N workers — nowhere
+else. No module runs its own dispatch loop, no module has a second concurrency
+parameter. The queue ordering is:
+
+1. **`review` tasks FIRST** — existing code in review gets priority so it
+   reaches commit/merge faster. Never start new `todo` work while reviewed code
+   is waiting.
+2. **`todo` tasks** — new work, in priority then sort order.
+
+This is already implemented in `findNextClaimable` (`dispatcher.ts:451`:
+`CASE WHEN t.status = 'review' THEN 0 ELSE 1 END`). The principle: close what
+is started before opening new work.
+
 **The workplace is the primary entity.** The worker is a one-shot guest on it.
 The card and the desk are property of the **workplace**, not the worker, and
 survive a worker change.
