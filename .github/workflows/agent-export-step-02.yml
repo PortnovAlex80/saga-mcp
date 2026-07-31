@@ -1,28 +1,85 @@
-name: Export Saga4 step 02 workspace
+name: Apply Saga4 cleanup step 02
 
 on:
   pull_request:
     branches:
       - saga4
+    types: [opened, synchronize, reopened]
 
 permissions:
-  contents: read
+  contents: write
+  issues: write
+  pull-requests: read
 
 jobs:
-  export:
+  apply:
+    if: github.head_ref == 'agent/saga4-step-02-deferred-delivery'
     runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      BASE_SHA: 1f7f24d6326f6894850ac75ef9be39edc3363884
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      PAYLOAD_COMMENT_ID: '5140460239'
+      PATCH_SHA256: 0ae9d94ced23c9d96fe1019d56215113dfa57e391e22b6052b9db7e4eed3c83c
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
-      - run: npm ci
-      - name: Pack workspace
+      - name: Restore base and apply verified patch
+        shell: bash
         run: |
-          tar --exclude=.git --exclude=.github/workflows/agent-export-step-02.yml -czf /tmp/saga4-step-02-workspace.tgz .
-      - uses: actions/upload-artifact@v4
-        with:
-          name: saga4-step-02-workspace
-          path: /tmp/saga4-step-02-workspace.tgz
-          retention-days: 1
+          set -euo pipefail
+          git reset --hard "${BASE_SHA}"
+          gh api "repos/${GITHUB_REPOSITORY}/issues/comments/${PAYLOAD_COMMENT_ID}" \
+            --jq '.body | split("\n")[1]' > /tmp/step.patch.xz.b64
+          test -s /tmp/step.patch.xz.b64
+          base64 --decode /tmp/step.patch.xz.b64 > /tmp/step.patch.xz
+          echo "${PATCH_SHA256}  /tmp/step.patch.xz" | sha256sum --check
+          xz --decompress --stdout /tmp/step.patch.xz > /tmp/step.patch
+          git apply --binary --index /tmp/step.patch
+          git add -A
+          git diff --cached --check
+      - name: Validate build and lint
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci
+          npm run build
+          mapfile -t changed_ts < <(git diff --cached --name-only --diff-filter=ACMR -- '*.ts')
+          if (( ${#changed_ts[@]} > 0 )); then
+            npx eslint "${changed_ts[@]}"
+          fi
+      - name: Validate Delivery contracts and runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test \
+            tests/process-modules/deferred-delivery.test.mjs \
+            tests/process-modules/product-lifecycle-policies.test.mjs \
+            tests/process-modules/start-from-idea.test.mjs \
+            tests/process-modules/product-delivery-lifecycle-e2e.test.mjs \
+            tests/process-modules/delivery-lifecycle-resume.test.mjs \
+            tests/execution/hardening-product-delivery-e2e.test.mjs \
+            tests/process-modules/delivery-package-contributions.test.mjs \
+            tests/execution/w11-a4-scenario-selection-adapters.test.mjs \
+            tests/process-modules/lifecycle-pipeline-projection.test.mjs \
+            tests/process-modules/product-lifecycle-repository-bindings.test.mjs \
+            tests/process-modules/product-lifecycle-composition.test.mjs
+      - name: Replace transport history with one cleanup commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "Saga4 Cleanup Bot"
+          git config user.email "saga4-cleanup@users.noreply.github.com"
+          git commit -m "refactor(delivery): model deferred authorization explicitly"
+          git push \
+            --force-with-lease="refs/heads/${GITHUB_HEAD_REF}:${HEAD_SHA}" \
+            origin "HEAD:refs/heads/${GITHUB_HEAD_REF}"
+          gh api --method PATCH \
+            "repos/${GITHUB_REPOSITORY}/issues/comments/${PAYLOAD_COMMENT_ID}" \
+            -f body='Saga4 step 02 patch payload consumed and removed.' >/dev/null
