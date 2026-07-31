@@ -19,6 +19,7 @@ import os from 'node:os';
 import { handlers as dispatcherHandlers } from '../dist/tools/dispatcher.js';
 import { handlers as repositoryHandlers } from '../dist/tools/repositories.js';
 import { createClaudeBoardRunner } from './claude-runner.mjs';
+import { ensureInitializedGitRepository } from './git-bootstrap.mjs';
 import {
   artifactFallbackDocument,
   orderedArtifactTypes,
@@ -4144,24 +4145,14 @@ function handleEpicCreate(req, res) {
   });
 }
 
+
 // --- POST /api/project/create-from-idea: one-shot bootstrap для 3.0 engine ---
 // Поля: name (обяз.), idea (обяз.), local_path (опц., по умолчанию DEV_ROOT/<name>).
 //
-// Атомарно (одна withDbWrite транзакция) создаёт:
-//   1. project (status=active)
-//   2. repository_register (control repo, local_path, default_branch=main, integration_branch=dev)
-//   3. epic (REQ-001-<name>, status=planned, priority=high)
-//   4. episode_workflows row (stage=discovery) — INSERT OR IGNORE
-//   5. discovery.kickstart task (workflow_stage=discovery, exec=saga-kickstart,
-//      tracker_only, priority=critical)
-// Затем spawn'ит orchestrate-cli.js как detached background process. После
-// cutover saga4 существует один режим 'saga3-lifecycle', и requiresBackgroundEngine()
-// всегда true — движок стартует всегда (раньше v2 режим движок не запускал).
-//
-// Git init НЕ делается здесь — saga-kickstart воркер сам создаст коммит после
-// регистрации brief artifact (см. saga-kickstart SKILL). Это сознательное
-// упрощение: идея может быть уточнена/отклонена на discovery, тогда git init
-// не нужен.
+// Создаёт project/repository/epic, инициализирует реальный Git checkout с
+// первым commit (если HEAD ещё отсутствует), затем запускает единственный
+// Product Lifecycle runtime. Git bootstrap обязателен: lifecycle input всегда
+// pin'ит настоящий expectedBaseCommit и никогда не подставляет zero hash.
 function handleProjectCreateFromIdea(req, res) {
   let chunks = [];
   req.on('data', c => chunks.push(c));
@@ -4205,7 +4196,7 @@ function handleProjectCreateFromIdea(req, res) {
           `INSERT INTO project_repositories
              (project_id, repository_id, role, local_path,
               integration_branch, status)
-           VALUES (?, ?, 'control', ?, 'dev', 'active')`,
+           VALUES (?, ?, 'control', ?, 'main', 'active')`,
         ).run(projectId, repoId, localPath);
 
         // 3. epic
@@ -4235,12 +4226,23 @@ function handleProjectCreateFromIdea(req, res) {
         return respondJson(res, 409, { ok:false, error: `Проект «${name}» уже существует` });
       }
 
-      // Создаём директорию репозитория (если её нет) — без git init.
+      // Lifecycle input pins a real Git HEAD before Discovery starts.
       try {
-        if (!existsSync(localPath)) mkdirSync(localPath, { recursive: true });
+        ensureInitializedGitRepository(localPath, name);
       } catch (e) {
-        // Не блокируем ответ — ворер kickstart получит осмысленную ошибку при старте.
-        console.error(`[create-from-idea] mkdir ${localPath} failed: ${e.message}`);
+        // The DB aggregate is not usable without the repository capability.
+        // Delete it atomically (cascades repository binding, epic and workflow).
+        try {
+          withDbWrite(db => db.prepare('DELETE FROM projects WHERE id=?').run(result.projectId));
+        } catch (cleanupError) {
+          console.error(
+            `[create-from-idea] rollback project ${result.projectId} failed: ${cleanupError.message}`,
+          );
+        }
+        return respondJson(res, 500, {
+          ok: false,
+          error: `git bootstrap: ${e.message}`,
+        });
       }
 
       // saga4 cutover: the lifecycle runtime requires a full validated

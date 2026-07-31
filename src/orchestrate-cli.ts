@@ -17,7 +17,7 @@
  *                         (required; the lifecycle runtime is the only engine)
  */
 
-import { readFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import {
@@ -106,6 +106,30 @@ function parseArgs(argv: string[]): {
     idempotencyKey,
     resumePaused,
   };
+}
+
+
+function writeLifecycleStartReceipt(run: {
+  id: number;
+  status: string;
+  createdAt: string;
+}): void {
+  const configured = process.env.SAGA_LIFECYCLE_START_RECEIPT?.trim();
+  if (!configured) return;
+  const receiptPath = path.resolve(configured);
+  mkdirSync(path.dirname(receiptPath), { recursive: true });
+  const temporaryPath = `${receiptPath}.${process.pid}.tmp`;
+  writeFileSync(
+    temporaryPath,
+    JSON.stringify({
+      lifecycleRunId: run.id,
+      status: run.status,
+      createdAt: run.createdAt,
+      acknowledgedAt: new Date().toISOString(),
+    }),
+    { encoding: 'utf8', flag: 'wx' },
+  );
+  renameSync(temporaryPath, receiptPath);
 }
 
 async function main() {
@@ -255,7 +279,11 @@ async function loadCompositionOverrides(
 
   return {
     modulePackages: packageInstallation,
-    productLifecycle: { ...productLifecycle, packageInstallation },
+    productLifecycle: {
+      ...productLifecycle,
+      packageInstallation,
+      onLifecycleStarted: writeLifecycleStartReceipt,
+    },
   };
 }
 

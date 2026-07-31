@@ -21,7 +21,10 @@
  *    result.
  */
 
-import { spawn } from 'node:child_process';
+import { spawn, type ChildProcess } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
+import { existsSync, readFileSync, rmSync } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { OrchestrationRunResult } from '../application/ports/orchestration-engine.js';
@@ -56,16 +59,23 @@ export interface SpawnCliLifecycleRunStarterOptions {
   baseEnv?: NodeJS.ProcessEnv;
   /** Injected spawn (tests). Defaults to node:child_process spawn. */
   spawnProcess?: typeof spawn;
+  /**
+   * Maximum time to wait for the child to acknowledge a durable LifecycleRun.
+   * A successful OS spawn alone is not a successful Saga start.
+   */
+  startReceiptTimeoutMs?: number;
+  /** Poll interval for the durable start receipt. */
+  startReceiptPollMs?: number;
 }
 
 /**
  * Spawns `orchestrate-cli` detached with the validated lifecycle input passed
- * INLINE via env (no JSON file, no --lifecycle-input path). Resolves once the
- * child is spawned (unref'd); the run continues in the background. The
- * lifecycleRunId is not known at spawn time (the child creates it), so this
- * adapter resolves `lifecycleRunId: 0` and the frontend discovers the run via
- * the lifecycle_run_list poll, exactly as it does for the existing engine
- * control flow.
+ * INLINE via env (no JSON file, no --lifecycle-input path).
+ *
+ * The adapter does not report success merely because the OS accepted spawn().
+ * The child writes an atomic one-shot receipt immediately after the durable
+ * LifecycleRun is created/replayed and before the first stage executes. This
+ * method resolves only after reading and validating that positive run id.
  */
 export function createSpawnCliLifecycleRunStarter(
   options: SpawnCliLifecycleRunStarterOptions,
@@ -74,13 +84,26 @@ export function createSpawnCliLifecycleRunStarter(
   const orchestrateCliPath = options.orchestrateCliPath
     ?? path.join(here, '..', '..', 'orchestrate-cli.js');
   const spawnProcess = options.spawnProcess ?? spawn;
+  const startReceiptTimeoutMs = options.startReceiptTimeoutMs ?? 15_000;
+  const startReceiptPollMs = options.startReceiptPollMs ?? 50;
+  if (!Number.isFinite(startReceiptTimeoutMs) || startReceiptTimeoutMs <= 0) {
+    throw new Error('startReceiptTimeoutMs must be positive');
+  }
+  if (!Number.isFinite(startReceiptPollMs) || startReceiptPollMs <= 0) {
+    throw new Error('startReceiptPollMs must be positive');
+  }
   return {
     async start(params) {
+      const receiptPath = path.join(
+        os.tmpdir(),
+        `saga-lifecycle-start-${randomUUID()}.json`,
+      );
       const childEnv: NodeJS.ProcessEnv = {
         ...(options.baseEnv ?? {}),
         DB_PATH: options.dbPath,
         SAGA_PRODUCT_LIFECYCLE_INPUT_JSON: JSON.stringify(params.lifecycleInput),
         SAGA_INITIATED_BY: params.initiatedBy,
+        SAGA_LIFECYCLE_START_RECEIPT: receiptPath,
       };
       const cliArgs = [
         orchestrateCliPath,
@@ -91,14 +114,94 @@ export function createSpawnCliLifecycleRunStarter(
       if (params.idempotencyKey?.trim()) {
         cliArgs.push(`--idempotency-key=${params.idempotencyKey.trim()}`);
       }
-      spawnProcess('node', cliArgs, {
+      const child = spawnProcess('node', cliArgs, {
         detached: true,
         stdio: 'ignore',
         env: childEnv,
-      }).unref();
-      return { lifecycleRunId: 0 };
+      });
+      child.unref();
+      try {
+        return await waitForLifecycleStartReceipt({
+          child,
+          receiptPath,
+          timeoutMs: startReceiptTimeoutMs,
+          pollMs: startReceiptPollMs,
+        });
+      } finally {
+        rmSync(receiptPath, { force: true });
+      }
     },
   };
+}
+
+
+interface LifecycleStartReceipt {
+  lifecycleRunId: number;
+  status: string;
+  createdAt: string;
+  acknowledgedAt: string;
+}
+
+export async function waitForLifecycleStartReceipt(params: {
+  child: ChildProcess;
+  receiptPath: string;
+  timeoutMs: number;
+  pollMs: number;
+}): Promise<{ lifecycleRunId: number }> {
+  const startedAt = Date.now();
+  const state: {
+    spawnError: Error | null;
+    earlyExit: { code: number | null; signal: NodeJS.Signals | null } | null;
+  } = {
+    spawnError: null,
+    earlyExit: null,
+  };
+  const onError = (error: Error) => {
+    state.spawnError = error;
+  };
+  const onExit = (code: number | null, signal: NodeJS.Signals | null) => {
+    state.earlyExit = { code, signal };
+  };
+  params.child.once('error', onError);
+  params.child.once('exit', onExit);
+  try {
+    while (Date.now() - startedAt < params.timeoutMs) {
+      if (existsSync(params.receiptPath)) {
+        const receipt = JSON.parse(
+          readFileSync(params.receiptPath, 'utf8'),
+        ) as Partial<LifecycleStartReceipt>;
+        if (
+          !Number.isSafeInteger(receipt.lifecycleRunId)
+          || Number(receipt.lifecycleRunId) <= 0
+        ) {
+          throw new Error(
+            'LIFECYCLE_START_RECEIPT_INVALID: lifecycleRunId must be positive',
+          );
+        }
+        return { lifecycleRunId: Number(receipt.lifecycleRunId) };
+      }
+      if (state.spawnError) {
+        throw new Error(
+          `LIFECYCLE_START_SPAWN_FAILED: ${state.spawnError.message}`,
+        );
+      }
+      if (state.earlyExit) {
+        throw new Error(
+          'LIFECYCLE_START_CHILD_EXITED_BEFORE_RECEIPT: '
+          + `code=${state.earlyExit.code ?? 'null'} `
+          + `signal=${state.earlyExit.signal ?? 'null'}`,
+        );
+      }
+      await new Promise(resolve => setTimeout(resolve, params.pollMs));
+    }
+    throw new Error(
+      `LIFECYCLE_START_RECEIPT_TIMEOUT: no durable run acknowledgement after `
+      + `${params.timeoutMs}ms`,
+    );
+  } finally {
+    params.child.off('error', onError);
+    params.child.off('exit', onExit);
+  }
 }
 
 /**

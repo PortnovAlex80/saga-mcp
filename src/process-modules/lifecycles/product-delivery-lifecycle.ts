@@ -228,16 +228,16 @@ export const productDeliveryLifecycle: LifecycleDefinition = {
         'certificate.hash': '$.processOutcome.certificateHash',
       },
       outcomeRoutes: {
-        // Every Discovery outcome is forwarded to Formalization. The strength
-        // of the idea is carried by the discovery certificate (decision +
-        // readiness confidence); it does not gate the lifecycle. Formalization
-        // reads the certificate ref/hash and reasons about the contract.
+        // Discovery is a real lifecycle gate. Only an authoritative `go`
+        // certificate may spend Formalization/Development capacity. Every
+        // non-go result terminates with its exact business status instead of
+        // laundering a rejected or inconclusive initiative downstream.
         go: { type: 'stage', stageId: 'solution-formalization' },
-        clarify: { type: 'stage', stageId: 'solution-formalization' },
-        reject: { type: 'stage', stageId: 'solution-formalization' },
-        defer: { type: 'stage', stageId: 'solution-formalization' },
-        inconclusive: { type: 'stage', stageId: 'solution-formalization' },
-        failed: { type: 'stage', stageId: 'solution-formalization' },
+        clarify: { type: 'terminal', status: 'clarify' },
+        reject: { type: 'terminal', status: 'rejected' },
+        defer: { type: 'terminal', status: 'deferred' },
+        inconclusive: { type: 'terminal', status: 'inconclusive' },
+        failed: { type: 'terminal', status: 'failed' },
       },
       entryConditions: ['initiative.subject exists'],
       exitConditions: ['Discovery has an immutable local outcome and certificate lineage'],

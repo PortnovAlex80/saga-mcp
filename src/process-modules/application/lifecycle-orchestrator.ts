@@ -111,6 +111,12 @@ export interface LifecycleOrchestratorOptions {
     stage: StageBinding;
     input: unknown;
   }) => Promise<unknown> | unknown;
+  /**
+   * Called exactly after the durable LifecycleRun row is created or replayed,
+   * before any stage execution begins. Hosts use this to acknowledge startup
+   * without mistaking a successful OS spawn for a durable Saga run.
+   */
+  onLifecycleStarted?: (run: LifecycleRunRecord) => Promise<void> | void;
   now?: () => Date;
   /** Primarily configurable for deterministic lease/watchdog tests. */
   leaseDurationMs?: number;
@@ -142,6 +148,9 @@ export class LifecycleOrchestrator {
   private readonly resolveStageInput:
     | NonNullable<LifecycleOrchestratorOptions['resolveStageInput']>
     | null;
+  private readonly onLifecycleStarted:
+    | NonNullable<LifecycleOrchestratorOptions['onLifecycleStarted']>
+    | null;
   private readonly now: () => Date;
   private readonly leaseDurationMs: number;
 
@@ -153,6 +162,7 @@ export class LifecycleOrchestrator {
     this.resolveOutputPayload = options.resolveOutputPayload ?? null;
     this.resolveModuleInstallation = options.resolveModuleInstallation ?? null;
     this.resolveStageInput = options.resolveStageInput ?? null;
+    this.onLifecycleStarted = options.onLifecycleStarted ?? null;
     this.now = options.now ?? (() => new Date());
     this.leaseDurationMs = options.leaseDurationMs ?? LIFECYCLE_LEASE_MS;
     if (!Number.isFinite(this.leaseDurationMs) || this.leaseDurationMs <= 0) {
@@ -183,6 +193,8 @@ export class LifecycleOrchestrator {
         idempotencyKey: command.idempotencyKey,
       },
     } satisfies StartLifecycleCommand);
+
+    await this.onLifecycleStarted?.(started.record);
 
     if (isLifecycleTerminal(started.record.status)) {
       return this.result(started.record);

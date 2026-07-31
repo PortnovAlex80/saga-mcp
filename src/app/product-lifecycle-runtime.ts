@@ -272,6 +272,13 @@ export interface ProductLifecycleRuntimeOptions {
    * resolution falls back to the legacy workspaceRoot lookup.
    */
   packageInstallation?: ProductionInstallation;
+  /**
+   * Host acknowledgement hook invoked after the durable LifecycleRun is
+   * created/replayed and before the first stage starts.
+   */
+  onLifecycleStarted?: (
+    run: import('../process-modules/persistence/lifecycle-run.js').LifecycleRunRecord,
+  ) => Promise<void> | void;
 }
 
 /**
@@ -518,6 +525,7 @@ export function createProductLifecycleRuntime(
 
   const orchestrator = new LifecycleOrchestrator({
     lifecycleRunRepo,
+    onLifecycleStarted: options.onLifecycleStarted,
     processRunRepo,
     moduleRegistry,
     installationRegistry,
