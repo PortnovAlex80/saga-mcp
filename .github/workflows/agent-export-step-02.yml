@@ -20,7 +20,7 @@ jobs:
       BASE_SHA: 1f7f24d6326f6894850ac75ef9be39edc3363884
       HEAD_SHA: ${{ github.event.pull_request.head.sha }}
       PAYLOAD_COMMENT_ID: '5140460239'
-      PATCH_SHA256: 0ae9d94ced23c9d96fe1019d56215113dfa57e391e22b6052b9db7e4eed3c83c
+      PATCH_SHA256: 1621e234ccd9cfd448dcb1785bd88cdc55f94de03a553d03a59c712358a7d78c
     steps:
       - uses: actions/checkout@v4
         with:
