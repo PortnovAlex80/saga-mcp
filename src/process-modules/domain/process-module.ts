@@ -3,6 +3,23 @@ export interface ProcessModuleReference {
   version: string;
 }
 
+/**
+ * Module-relative path into the package resources/ tree.
+ *
+ * Introduced in P-PM-1 as the canonical reference shape for everything the
+ * module ships inside its folder: skills, templates, checklists, call
+ * templates, schemas, error hints. The Runtime resolves a ResourceRef against
+ * the installed package root and pins the resolved file's content hash into
+ * `ProcessModulePackage.resourceHashes`, so editing a resource without bumping
+ * the module version changes the package digest and breaks replay.
+ *
+ * Paths are forward-slash relative, never absolute, never escape the package
+ * root (Runtime validates with the same escape check used for workspace assets).
+ */
+export interface ResourceRef {
+  path: string;
+}
+
 export interface ProcessModuleIdentity extends ProcessModuleReference {
   kind: string;
   displayName: string;
@@ -142,6 +159,20 @@ export interface FlowTransitionDefinition {
  * The runtime understands only node identities, events and attempt limits.
  * Module-owned reason codes and findings travel inside a RecoveryIssue and
  * remain opaque to the runtime.
+ *
+ * CGAD P18 — Node-Durable Identity Invariant. The "workplace" (a node in a
+ * ProcessRun) is the primary durable entity of the conveyor; the "worker" (a
+ * task / LM execution) is a one-shot guest on it. The card (projected task) and
+ * the desk (execution workspace) belong to the WORKPLACE, not the worker, and
+ * survive a worker change. A repair round therefore brings a NEW worker to the
+ * SAME workplace: the worker reuses the workplace's existing card (so its prior
+ * work is visible to the verifying gate) and continues on the same desk (so its
+ * prior drafts survive). This mirrors the proven physical-resume path
+ * (generic-flow-executor restoreFrame), not a forked "fresh task per attempt"
+ * path. Each repair attempt still records its OWN NodeRun (keyed on
+ * process_run + node + attempt), so per-attempt audit/lineage is preserved
+ * orthogonally to task identity. Recovery feedback is the LOOP input and is not
+ * part of the workplace's stable node-input hash.
  */
 export interface FlowRecoveryDefinition {
   id: string;
@@ -184,4 +215,56 @@ export interface ProcessModuleDefinition {
 
 export function processModuleKey(reference: ProcessModuleReference): string {
   return `${reference.name}@${reference.version}`;
+}
+
+/**
+ * A versioned, hash-pinned delivery unit. Introduced in P-PM-1.
+ *
+ * A `ProcessModuleDefinition` alone is structural — it knows the module's
+ * contracts, flow, policies, but it does NOT know which concrete skill text,
+ * template bytes, or kernel handler versions it shipped with. That binding is
+ * established at installation time and captured here.
+ *
+ * Two digests:
+ *
+ *   `definitionDigest` — SHA-256 over the canonical JSON of the definition.
+ *     Deterministic across rebuilds; excludes the non-enumerable `routeResolver`
+ *     (lifecycle-owned, see domain/lifecycle.ts). Registered in the catalog and
+ *     persisted in `saga3_process_module_installations.definition_digest`.
+ *
+ *   `packageDigest` — SHA-256 over the canonical JSON of
+ *     `{definitionDigest, resourceHashes, handlerVersions}`. This is what a
+ *     ProcessRun pins via `installation_id` FK. Editing any shipped resource
+ *     (skill, template, checklist) WITHOUT bumping the module version changes
+ *     the package digest, which makes the replay observable and prevents silent
+ *     skill drift (the root cause of 4 of the 10 bugs catalogued on
+ *     2026-07-28).
+ *
+ * Resource hashes are resolved at installation time by the Runtime reading each
+ * `ResourceRef` referenced anywhere in the definition (skills, templates,
+ * checklists, call templates, module tool contributions). The Runtime trusts
+ * the filesystem, not the caller — this closes the "skill edited, version
+ * unchanged" replay attack.
+ */
+export interface ProcessModulePackage {
+  readonly definition: ProcessModuleDefinition;
+  /** ResourceRef.path → SHA-256 of the resolved file content. Resolved at installation time. */
+  readonly resourceHashes: ReadonlyMap<string, string>;
+  /** kernelHandlerId / adapterId / toolContribution.id → declared version. */
+  readonly handlerVersions: ReadonlyMap<string, string>;
+  readonly definitionDigest: string;
+  readonly packageDigest: string;
+}
+
+/**
+ * Input shape for digest computation. The Runtime assembles this after
+ * resolving all ResourceRefs against the installed package root. Resource hashes
+ * and handler versions are NOT part of the definition itself (the definition
+ * declares names; the Runtime resolves concrete contents), so digest
+ * computation takes them as a separate input.
+ */
+export interface ProcessModuleDigestInput {
+  readonly definition: ProcessModuleDefinition;
+  readonly resourceHashes: ReadonlyMap<string, string>;
+  readonly handlerVersions: ReadonlyMap<string, string>;
 }

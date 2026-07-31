@@ -209,11 +209,13 @@ export interface FormalizationManagedTraceWrite {
  * module-local port lets a handler depend on a formalization-owned capability
  * instead, with the SQLite adapter bridging to the shared ledger.
  *
- * The method set mirrors exactly what `formalization-installation.ts`
- * `readExecutionWrites` calls on the ledger:
- *   listArtifactsForExecution / listTracesForExecution (execution-fenced), and
- *   listArtifactsForTaskInProcessRun / listTracesForTaskInProcessRun (review
- *   retry aggregation without crossing another recovery task).
+ * The method set mirrors what `formalization-installation.ts`
+ * `readExecutionWrites` calls on the ledger. Per CGAD P18, product resolvers
+ * read by DURABLE node-scope (listArtifactsForNodeInProcessRun /
+ * listTracesForNodeInProcessRun); the execution- and task-scoped variants are
+ * retained for diagnostics and explicit single-fence views, but are NOT the
+ * authoritative channel — filtering by transient task/execution would blind a
+ * gate to artifacts produced in an earlier fence of the same node.
  */
 export interface FormalizationManagedProductionPort {
   listArtifactsForExecution(
@@ -238,7 +240,14 @@ export interface FormalizationManagedProductionPort {
     taskId: number,
   ): readonly FormalizationManagedTraceWrite[];
 
-  /** Node-wide audit query. Product resolvers must not use it as fallback. */
+  /**
+   * Durable node-scope read — the AUTHORITATIVE channel for product resolvers.
+   * Per CGAD P18 (Artifact Durability Invariant), a managed artifact/trace is a
+   * durable aggregate whose identity survives recovery cycles; gates read by
+   * processRunId + moduleRef + nodeId, never by transient task/execution. The
+   * task-scoped reads above remain available only where a caller explicitly
+   * needs a single task's view (e.g. diagnostics); product resolvers use these.
+   */
   listArtifactsForNodeInProcessRun(
     processRunId: number,
     moduleRef: string,

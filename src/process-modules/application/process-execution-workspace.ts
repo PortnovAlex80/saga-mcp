@@ -362,10 +362,20 @@ export function prepareProcessExecutionWorkspace(
   const stageRoot = path.join(workspaceRoot, 'docs', stage);
   const toolsDirectory = path.join(stageRoot, 'tools');
   const projectDirectory = path.join(stageRoot, 'projects', String(request.epicId));
+  // CGAD P18 — Node-Durable Identity: the desk is keyed by the NODE (workplace),
+  // not the task (worker), so a repair worker reuses the producer's desk.
+  // Mirrors the pinned materializer's node-stable layout. (This legacy
+  // materializer is deprecated in favour of materializePinnedWorkspace; kept
+  // for unpinned historical runs.)
+  const deskMetadata = parseMetadata(request.task.metadata);
+  const deskNodeId = typeof deskMetadata.process_node_id === 'string'
+    && deskMetadata.process_node_id.length > 0
+    ? deskMetadata.process_node_id
+    : `task-${request.task.id}`;
   const executionDirectory = path.join(
     projectDirectory,
     'executions',
-    `task-${request.task.id}`,
+    `node-${deskNodeId}`,
   );
   mkdirSync(toolsDirectory, { recursive: true });
   mkdirSync(executionDirectory, { recursive: true });
@@ -377,8 +387,9 @@ export function prepareProcessExecutionWorkspace(
     ? path.join(executionDirectory, 'recovery-feedback.json')
     : null;
   if (recoveryFeedbackPath) {
-    // Machine-owned on every semantic attempt: never retain stale findings
-    // from a prior task/work-intent round.
+    // The recovery-feedback file is the machine-owned LOOP input and is
+    // overwritten each round (CGAD P18: it is not the workplace's durable
+    // desk state — the worker's drafts, which live alongside, are preserved).
     writeFileSync(
       recoveryFeedbackPath,
       `${JSON.stringify(recoveryFeedback, null, 2)}\n`,

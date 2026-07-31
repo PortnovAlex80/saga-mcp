@@ -194,14 +194,21 @@ export function materializePinnedWorkspace(
   const { projection, storedPackage, module, profile, task } = request;
   const workspaceRoot = path.resolve(request.workspaceRoot);
   const stage = module.identity.kind;
+  const metadata = parseMetadata(task.metadata);
+  // CGAD P18 — Node-Durable Identity: the workplace (node) is the primary
+  // durable entity. The execution directory is keyed by the NODE, not the task,
+  // so a repair worker reuses the SAME desk as the producer and its prior
+  // drafts survive. The per-execution segment (executionId/workerId) still
+  // isolates individual worker runs underneath the node desk.
+  const nodeId = resolveOwningNodeId(module, profile, metadata);
 
-  // 1. Target directory physics — identical to legacy.
+  // 1. Target directory physics — node-stable desk (CGAD P18).
   const stageRoot = path.join(workspaceRoot, 'docs', stage);
   const projectDirectory = path.join(stageRoot, 'projects', String(request.epicId));
   const executionDirectory = path.join(
     projectDirectory,
     'executions',
-    `task-${task.id}`,
+    `node-${nodeId}`,
     executionPathSegment(request.executionId, request.workerId),
   );
   const toolsDirectory = path.join(executionDirectory, 'tools');
@@ -219,9 +226,9 @@ export function materializePinnedWorkspace(
     workerId: request.workerId,
     additionalBindings: request.additionalBindings,
   });
-  const metadata = parseMetadata(task.metadata);
+  // (metadata parsed above for nodeId resolution — CGAD P18)
 
-  // 2. recovery-feedback.json — always overwritten (machine-owned, no retry preserve).
+  // 2. recovery-feedback.json — always overwritten (machine-owned loop input).
   let recoveryFeedbackPath: string | null = null;
   const recoveryFeedback = recoveryFeedbackFromMetadata(metadata);
   if (recoveryFeedback) {
@@ -234,10 +241,10 @@ export function materializePinnedWorkspace(
   const callTemplates = profile.callTemplates ?? [];
   const checklists = profile.checklists ?? [];
 
-  // A review/retry execution of the SAME task inherits its latest semantic
-  // draft. Scope is deliberately task-local: a different recovery task must
-  // submit a fresh value or receive an explicit product receipt, never inherit
-  // an unrelated node-wide "latest" file.
+  // CGAD P18 — draft inheritance is now NODE-scoped: the desk directory
+  // (`executions/node-<nodeId>/`) holds every worker run of this workplace, so
+  // a repair worker naturally inherits the producer's prior drafts. The guard
+  // excludes only the current execution; siblings are all same-node runs.
   const taskDirectory = path.dirname(executionDirectory);
   const expectedMaterializedFiles = [...new Set([
     ...workspaceTemplates,
@@ -328,9 +335,12 @@ export function materializePinnedWorkspace(
     storedPackage,
     profile.trackerTemplate,
   );
+  // CGAD P18: tracker filename is node-stable (one tracker per workplace),
+  // so a repair worker continues the producer's tracker rather than starting
+  // a fresh file each round.
   const trackerAbsolutePath = path.join(
     executionDirectory,
-    `project-${request.epicId}-${stage}-stage-${task.id}.md`,
+    `project-${request.epicId}-${stage}-node-${nodeId}.md`,
   );
   if (!existsSync(trackerAbsolutePath)) {
     const tracker = refreshMarkdownMachineBindings(

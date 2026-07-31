@@ -362,16 +362,20 @@ export class LmNodeExecutor implements NodeExecutor {
         // Atomically ensure the WorkIntent + projected task pair. A restart
         // must never create a new intent and then reuse a task whose metadata
         // is still bound to an older intent.
-        // A physical resume of the same semantic round reuses this key. A new
-        // issue attempt receives a new WorkIntent/task instead of replaying the
-        // already-concluded task from the prior round.
-        const recoveryIdentity = recoveryFeedback
-          ? `:recovery:${recoveryFeedback.caseId}:attempt:${recoveryFeedback.attempt}`
-          : '';
+        // CGAD P18 — Node-Durable Identity: the workplace (node) is the primary
+        // durable entity; the card (projected task) belongs to the workplace,
+        // not the worker. A repair round therefore reuses the SAME generationKey
+        // as the original producer (no `:recovery:caseId:attempt:N` suffix), so
+        // ensureNodeExecutionPlan reclaims the workplace's existing card and the
+        // verifying gate sees the prior work. This converges semantic recovery
+        // with the proven physical-resume path (generic-flow-executor
+        // restoreFrame), which already reuses this exact key. Each repair
+        // attempt still records its own NodeRun (keyed on process_run + node +
+        // attempt), preserving per-attempt audit orthogonally to task identity.
         const generationKey =
-          `process-run:${ctx.processRunId}:node:${node.id}${recoveryIdentity}`;
+          `process-run:${ctx.processRunId}:node:${node.id}`;
         const snapshotRef =
-          `process-run:${ctx.processRunId}:node:${node.id}${recoveryIdentity}`;
+          `process-run:${ctx.processRunId}:node:${node.id}`;
         const plan = this.persistence.ensureExecutionPlan({
           intent: {
             epicId: ctx.epicId,

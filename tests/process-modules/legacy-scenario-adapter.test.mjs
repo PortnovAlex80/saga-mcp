@@ -185,16 +185,47 @@ test('W7-A8: permissive and strict manifests hash to DIFFERENT digests', () => {
 // core compatibility guarantee: every legacy route is preserved.
 // ---------------------------------------------------------------------------
 
-test('W7-A8: permissive manifest preserves every legacy stage outcome route', () => {
+// saga4 cutover: the legacy lifecycle definition (productDeliveryLifecycle) is
+// now the single source of truth and routes Discovery STRICT — non-go outcomes
+// terminate. The permissive manifest, however, is the compatibility bridge that
+// preserves the PRE-cutover legacy behavior (every Discovery outcome forwards to
+// Formalization) so existing scenario-package installs keep their observable
+// routing. The two therefore AGREE on every non-Discovery stage (verbatim
+// faithful) and INTENTIONALLY DIVERGE only on the Discovery stage, where the
+// manifest carries the legacy-permissive table the definition no longer holds.
+// This split is the contract; collapsing the manifest to strict is a separate,
+// larger cutover (it changes the production default in 3 files) and is out of
+// scope here.
+test('W7-A8: permissive manifest is faithful on non-Discovery stages and intentionally diverges on Discovery (saga4)', () => {
   const legacyIndex = legacyStageIndex();
   for (const manifestStage of LEGACY_PRODUCT_DELIVERY_SCENARIO_PERMISSIVE.stageBindings) {
     const legacyStage = legacyIndex.get(manifestStage.id);
     assert.ok(legacyStage, `manifest stage ${manifestStage.id} not in legacy definition`);
-    assert.deepEqual(
-      manifestStage.outcomeRoutes,
-      legacyStage.outcomeRoutes,
-      `stage ${manifestStage.id} outcomeRoutes differ from legacy`,
-    );
+    if (manifestStage.id === DISCOVERY_STAGE_ID) {
+      // Intentional divergence: the permissive manifest keeps the legacy
+      // forward-everything Discovery table; the saga4 definition routes strict.
+      // Every permissive Discovery route must still forward to Formalization.
+      for (const outcome of Object.keys(manifestStage.outcomeRoutes)) {
+        const route = manifestStage.outcomeRoutes[outcome];
+        assert.equal(
+          route.type,
+          'stage',
+          `permissive Discovery '${outcome}' must forward to a stage`,
+        );
+        assert.equal(
+          route.stageId,
+          'solution-formalization',
+          `permissive Discovery '${outcome}' must forward to solution-formalization`,
+        );
+      }
+    } else {
+      // Non-Discovery stages remain verbatim faithful to the legacy definition.
+      assert.deepEqual(
+        manifestStage.outcomeRoutes,
+        legacyStage.outcomeRoutes,
+        `stage ${manifestStage.id} outcomeRoutes differ from legacy`,
+      );
+    }
   }
 });
 

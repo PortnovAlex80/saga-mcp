@@ -140,13 +140,24 @@ export interface SagaBoardLineageInputs {
 export function buildSagaBoardLineageBag(
   inputs: SagaBoardLineageInputs,
 ): SagaBoardLineageBag {
+  // CGAD P18 — Node-Durable Identity: process_node_input is the STABLE view of
+  // the node's input (the workplace context), excluding the transient recovery
+  // loop input. Recovery feedback is the LOOP input and travels in its own
+  // `recovery_feedback` field; it must NOT perturb `process_node_input_hash`,
+  // because a repair round reuses the workplace's existing card and that card's
+  // reserved metadata must compare equal across attempts. Without this split,
+  // bindProjectedTaskProcessContext throws "cannot be rebound" on every repair
+  // round (the recovery chainInput carries recoveryFeedback, so the raw hash
+  // differs from the producer's). The stable view is the nodeInput with the
+  // recoveryFeedback binding removed.
+  const stableNodeInput = stripRecoveryFeedback(inputs.nodeInput);
   const bag: SagaBoardLineageBag = {
     process_run_id: inputs.processRunId,
     process_node_id: inputs.nodeId,
     process_module_ref: inputs.moduleRef,
     process_input_hash: sha256Hex(inputs.runInput),
-    process_node_input: inputs.nodeInput,
-    process_node_input_hash: sha256Hex(inputs.nodeInput),
+    process_node_input: stableNodeInput,
+    process_node_input_hash: sha256Hex(stableNodeInput),
     artifact_acceptance_authority: inputs.artifactAcceptanceAuthority,
   };
   if (inputs.recoveryFeedback) {
@@ -164,6 +175,27 @@ export function buildSagaBoardLineageBag(
     bag.managed_review_budget = inputs.managedReviewBudget;
   }
   return bag;
+}
+
+/**
+ * Return a shallow copy of `nodeInput` with any `bindings.recoveryFeedback`
+ * removed, so the workplace's stable node-input hash excludes the transient
+ * recovery loop input. Pure; non-object inputs are returned as-is.
+ */
+function stripRecoveryFeedback(nodeInput: unknown): unknown {
+  if (!nodeInput || typeof nodeInput !== 'object' || Array.isArray(nodeInput)) {
+    return nodeInput;
+  }
+  const input = nodeInput as { bindings?: Record<string, unknown> };
+  if (!input.bindings || typeof input.bindings !== 'object') {
+    return nodeInput;
+  }
+  if (!('recoveryFeedback' in input.bindings)) {
+    return nodeInput;
+  }
+  const strippedBindings = { ...input.bindings };
+  delete strippedBindings.recoveryFeedback;
+  return { ...input, bindings: strippedBindings };
 }
 
 /** Inputs for the adapter-data receipt builder. */

@@ -53,3 +53,16 @@ Wave 3 (plan §0.6) makes the exact receipt and product authoritative, so
 execution-scoped reads stop being a load-bearing channel and the fallback is
 no longer needed. This fixture records the fallback so the Wave 3 exit gate
 can prove it was removed, not widened.
+
+## Closed by CGAD P18 (Artifact Durability Invariant)
+
+This failure class is now closed by a formal contract, not an ad-hoc fallback.
+CGAD P18 codifies that managed artifact identity is durable across recovery
+cycles: kernel gates read by durable node-scope (processRunId + moduleRef +
+nodeId), and task/intent/execution are durability fences only, never query
+filters. The regression that reintroduced task-scoped reads
+(`listArtifactsForTaskInProcessRun` + `matchesTaskFence`, with a self-defensive
+"Never relax this fence" comment) violated P18 and reopened the exact
+infinite repair-loop this fixture documents. The node-scope read is the
+authoritative channel; the fallback duality this fixture described is
+forbidden by contract.

@@ -207,6 +207,7 @@ import {
 import { ProcessModuleInstallationRegistry } from '../process-modules/application/process-module-installation-registry.js';
 import type { ResolveStageOutputPayload } from '../process-modules/application/lifecycle-orchestrator.js';
 import { SqliteLifecycleRunRepository } from '../process-modules/persistence/sqlite-lifecycle-run-repository.js';
+import { lifecycleRefKey } from '../process-modules/persistence/lifecycle-run.js';
 import {
   SqliteManagedNodeSubmissionRepository,
 } from '../process-modules/persistence/sqlite-managed-node-submission-repository.js';
@@ -558,10 +559,35 @@ export function createProductLifecycleRuntime(
     definition: productDeliveryLifecycle,
     orchestrator,
     resolveInput(command) {
-      if (command.lifecycleInput === undefined) {
-        throw new Error(
-          'PRODUCT_LIFECYCLE_INPUT_REQUIRED: pass RunEpisodeCommand.lifecycleInput',
+      // Resume restores the persisted input from the durable LifecycleRun
+      // record instead of demanding the caller re-supply it. A paused run
+      // already froze its input at start time (input_snapshot); the
+      // orchestrator re-reads it from the snapshot on every stage turn, and
+      // start()'s idempotency check compares the input_hash. So for a resume
+      // we hydrate the exact persisted input by idempotency key and let it
+      // flow through the same validation/portable-binding path. An explicit
+      // caller-supplied lifecycleInput still wins (a caller may override).
+      let lifecycleInput = command.lifecycleInput;
+      if (lifecycleInput === undefined) {
+        if (!command.resumePaused) {
+          throw new Error(
+            'PRODUCT_LIFECYCLE_INPUT_REQUIRED: pass RunEpisodeCommand.lifecycleInput',
+          );
+        }
+        const idempotencyKey =
+          command.idempotencyKey ?? `product-delivery:epic:${command.epicId}`;
+        const existing = lifecycleRunRepo.readByIdempotencyKey(
+          command.projectId,
+          lifecycleRefKey(productDeliveryLifecycle.identity),
+          idempotencyKey,
         );
+        if (!existing || existing.inputSnapshot === null) {
+          throw new Error(
+            'PRODUCT_LIFECYCLE_INPUT_REQUIRED: --resume was requested but no durable '
+              + `LifecycleRun input is persisted for idempotency key '${idempotencyKey}'`,
+          );
+        }
+        lifecycleInput = JSON.parse(existing.inputSnapshot) as unknown;
       }
       const schema = command.lifecycleInputSchema
         ?? PRODUCT_DELIVERY_LIFECYCLE_INPUT_SCHEMA;
@@ -571,11 +597,11 @@ export function createProductLifecycleRuntime(
           + `'${PRODUCT_DELIVERY_LIFECYCLE_INPUT_SCHEMA}', got '${schema}'`,
         );
       }
-      assertProductDeliveryLifecycleInput(command.lifecycleInput);
+      assertProductDeliveryLifecycleInput(lifecycleInput);
       const portableInput = canonicalizeProductDeliveryLifecycleInput(
         db,
         command.projectId,
-        command.lifecycleInput,
+        lifecycleInput,
       );
       // Fail before Discovery (and before any LM token is spent) when a
       // portable repository reference cannot be bound in this runtime.

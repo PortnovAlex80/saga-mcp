@@ -196,14 +196,33 @@ function fixture() {
         executionId: producer.executionId,
       });
     },
-    // Retry/recovery fallback: in unit tests the mock always returns [] (no
-    // cross-execution fallback). Real SQLite ledger implements these against
-    // saga3_managed_*_productions. Tests that explicitly verify "no fallback"
-    // rely on this returning empty.
-    listArtifactsForNodeInProcessRun() { return []; },
-    listTracesForNodeInProcessRun() { return []; },
-    // W13-A4: listArtifactsForNodeInEpic / listTracesForNodeInEpic removed
-    // from the ManagedProductionLedger port (epic-scope fallback retired §9.11).
+    // CGAD P18: node-scope is now the AUTHORITATIVE channel for product
+    // resolvers (durable across recovery cycles). In these unit tests every
+    // node has a single producer task, so node-scope returns the same writes as
+    // the task-scoped read against that producer. This mirrors how the real
+    // SQLite ledger behaves when only one task has written for a node.
+    listArtifactsForNodeInProcessRun(processRunId, moduleRef, nodeId) {
+      const producer = receipt(nodeId);
+      return this.listArtifactsForExecution({
+        processRunId,
+        moduleRef,
+        nodeId,
+        intentId: producer.intentId,
+        taskId: producer.taskId,
+        executionId: producer.executionId,
+      });
+    },
+    listTracesForNodeInProcessRun(processRunId, moduleRef, nodeId) {
+      const producer = receipt(nodeId);
+      return this.listTracesForExecution({
+        processRunId,
+        moduleRef,
+        nodeId,
+        intentId: producer.intentId,
+        taskId: producer.taskId,
+        executionId: producer.executionId,
+      });
+    },
   };
   let baselineRecord = null;
   const baselineRepository = {
@@ -690,17 +709,27 @@ test('ledger/canonical hash mismatch fails the resolver closed', () => {
   assert.match(resolved.production.bindings.reason, /does not match its canonical row/);
 });
 
-test('ledger rows from another task fail the resolver closed', () => {
+test('CGAD P18: ledger rows from another (recovery) task are accepted — artifact identity is durable', () => {
+  // The old "another task fails the resolver closed" asserted a task-equality
+  // fence. CGAD P18 reverses that: a managed artifact is a durable aggregate
+  // whose identity survives recovery cycles, so a ledger row written by a
+  // DIFFERENT task of the same node MUST be accepted (that is exactly the
+  // recovery case — the repair task edits artifacts created by the producer
+  // task). This test now proves the gate accepts the cross-task durable row
+  // instead of failing closed.
   const fx = fixture();
-  const original = fx.deps.ledger.listArtifactsForExecution;
-  fx.deps.ledger.listArtifactsForExecution = query => original(query).map(row =>
-    row.artifactId === 10 ? { ...row, taskId: 999 } : row);
+  const ledger = fx.deps.ledger;
+  const originalNode = ledger.listArtifactsForNodeInProcessRun.bind(ledger);
+  ledger.listArtifactsForNodeInProcessRun = (processRunId, moduleRef, nodeId) =>
+    originalNode(processRunId, moduleRef, nodeId).map(row =>
+      row.artifactId === 10 ? { ...row, taskId: 999 } : row);
   const handlers = createFormalizationKernelHandlers(fx.deps);
   const resolved = handlers[FORMALIZATION_HANDLER_IDS.resolveProduct](
     context('resolve-product-contract', receipt('define-product-contract'), flowFrame()),
   );
-  assert.equal(resolved.event, 'failed');
-  assert.match(resolved.production.bindings.reason, /does not match its canonical row/);
+  // Under P18 a cross-task row is durable, not a fence violation.
+  assert.equal(resolved.event, 'completed',
+    `cross-task durable row must be accepted (P18); got ${resolved.event}`);
 });
 
 test('ledger trace digests are verified before accepting canonical traces', () => {

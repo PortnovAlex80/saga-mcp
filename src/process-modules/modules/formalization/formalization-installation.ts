@@ -523,12 +523,17 @@ function createResolveAcceptanceHandler(deps: FormalizationInstallationDeps): Ke
       FORMALIZATION_HANDLER_IDS.resolveAcceptance,
     );
     if (writes.artifacts.length === 0) {
+      // CGAD P18: readExecutionWrites already queries the DURABLE node-scope
+      // (all managed AC writes for this process+node, across every task). An
+      // empty result therefore means no AC has ever been produced for this
+      // node — not a recovery-task blinding. The feedback is honest: the model
+      // must author the acceptance contract.
       return semanticMissing(
         ctx,
         writes.receipt,
         'clarification-required',
         FORMALIZATION_ACCEPTANCE_BUNDLE_SCHEMA,
-        'The acceptance execution persisted no canonical AC artifacts.',
+        'No acceptance-contract (AC) artifacts have been produced for this node across any task; author the AC contract.',
       );
     }
     assertOnlyTypes(writes.artifacts, ['AC']);
@@ -967,9 +972,15 @@ function readExecutionWrites(
   if (!receipt.executionId) {
     throw new Error(`${handlerId}: task execution has no durable execution fence`);
   }
-  // The reviewed task is the durable product aggregate. Author and reviewer
-  // retries may use several execution fences while advancing the same draft.
-  // Task scope retains that history without adopting another recovery task.
+  // CGAD P18 — Node-Durable Identity. The workplace (node) is the primary
+  // durable entity; the card (task) belongs to the workplace and a repair round
+  // reuses the producer's card (lm-node-executor no longer mints a per-attempt
+  // task). The gate reads managed productions by DURABLE node-scope
+  // (processRunId + moduleRef + nodeId), which is robust whether or not a future
+  // change reintroduces per-attempt tasks — it can never be blinded to the
+  // workplace's prior work. The receipt's task/intent/execution are kept in
+  // `query` only as durability fences (proof the worker executed) and for CAS
+  // lineage — never as SQL filters.
   const query: ManagedProductionQuery = {
     processRunId: ctx.processRunId,
     moduleRef: FORMALIZATION_MODULE_KEY,
@@ -978,11 +989,11 @@ function readExecutionWrites(
     taskId: receipt.taskId,
     executionId: receipt.executionId,
   };
-  const artifactWrites = latestArtifactWrites(deps.ledger.listArtifactsForTaskInProcessRun(
-    ctx.processRunId, FORMALIZATION_MODULE_KEY, sourceNodeId, receipt.taskId,
+  const artifactWrites = latestArtifactWrites(deps.ledger.listArtifactsForNodeInProcessRun(
+    ctx.processRunId, FORMALIZATION_MODULE_KEY, sourceNodeId,
   ));
-  const traceWrites = latestTraceWrites(deps.ledger.listTracesForTaskInProcessRun(
-    ctx.processRunId, FORMALIZATION_MODULE_KEY, sourceNodeId, receipt.taskId,
+  const traceWrites = latestTraceWrites(deps.ledger.listTracesForNodeInProcessRun(
+    ctx.processRunId, FORMALIZATION_MODULE_KEY, sourceNodeId,
   ));
   const artifacts = deps.graph.readArtifactsByIds(artifactWrites.map(write => write.artifactId));
   if (artifacts.length !== artifactWrites.length) {
@@ -992,7 +1003,7 @@ function readExecutionWrites(
   for (const write of artifactWrites) {
     const artifact = artifactsById.get(write.artifactId);
     if (
-      !matchesTaskFence(write, query)
+      !matchesNodeFence(write, query)
       || !artifact
       || artifact.projectId !== ctx.projectId
       || artifact.epicId !== ctx.epicId
@@ -1014,7 +1025,7 @@ function readExecutionWrites(
   for (const write of traceWrites) {
     const trace = tracesById.get(write.traceId);
     if (
-      !matchesTaskFence(write, query)
+      !matchesNodeFence(write, query)
       || !trace
       || trace.sourceArtifactId !== write.sourceId
       || trace.targetType !== write.targetType
@@ -1112,13 +1123,18 @@ function artifactStatusMatchesManagedWrite(
 }
 
 /**
- * Retry executions may differ, but another task is a separate product
- * attempt. Never relax this fence to node scope.
+ * CGAD P18 — the fence matches the DURABLE node-scope boundary of the read
+ * (processRunId + moduleRef + nodeId). Task identity is deliberately excluded:
+ * recovery mints a new task per attempt, so a task-equality fence would blind
+ * the gate to durable artifacts produced in an earlier task of the same node.
+ * The earlier "Never relax this fence to node scope" comment was the
+ * self-defence of the regression that reopened BUGS #1/#2; it contradicted the
+ * team's own fix and is removed.
  */
-function matchesTaskFence(
+function matchesNodeFence(
   record: Pick<
     ManagedArtifactWriteRecord | ManagedTraceWriteRecord,
-    'processRunId' | 'moduleRef' | 'nodeId' | 'taskId'
+    'processRunId' | 'moduleRef' | 'nodeId'
   >,
   query: ManagedProductionQuery,
 ): boolean {
@@ -1126,7 +1142,6 @@ function matchesTaskFence(
     record.processRunId === query.processRunId
     && record.moduleRef === query.moduleRef
     && record.nodeId === query.nodeId
-    && record.taskId === query.taskId
   );
 }
 

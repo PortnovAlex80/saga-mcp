@@ -43,9 +43,12 @@ export interface ManagedNodeSubmissionReader {
    * the reviewed task product through this explicit task-level operation and
    * receives the exact producer execution in the returned record.
    *
-   * This is deliberately narrower than "latest for node": recovery creates a
-   * fresh task and must submit a fresh product instead of silently inheriting
-   * an unrelated earlier task's value.
+   * CGAD P18 — Node-Durable Identity: the card belongs to the workplace (node),
+   * and a repair round reuses the producer's card (lm-node-executor no longer
+   * mints a per-attempt task). So `readLatestForTask` for the receipt's task
+   * naturally returns the workplace's prior submission. The narrower-than-node
+   * scope is still correct: there is exactly one card per workplace now, so
+   * task-scope and node-scope agree.
    */
   readLatestForTask(
     query: Omit<ManagedNodeSubmissionQuery, 'intentId' | 'executionId'>,

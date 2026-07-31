@@ -341,6 +341,16 @@ P17. Разделение жизненных циклов
 
 Состояния различных сущностей не должны смешиваться ради удобства одного workflow.
 
+P18. Долговечность identity управляемых произведений
+
+Управляемый артефакт или trace — это долговечный aggregate (durable aggregate). Его identity (artifact_id / trace_id) переживает recovery-циклы, review-loop'ы и потерю lease: одна и та же сущность создаётся однажды и далее только изменяется через разрешённые transitions (P11, P2).
+
+Kernel-gate читает управляемые произведения по долговечному идентификатору скоупа: processRunId + moduleRef + nodeId (node-scope). Task, intent и execution — это durability-fences, доказывающие, что worker действительно выполнял работу; они НЕ являются query-фильтрами. Gate не имеет права ослепнуть на артефакты, созданные в более раннем fence того же node.
+
+Recovery feedback обязан быть grounded: он ссылается на существующие долговечные артефакты (subjectRefs: artifact:N), а не на failure-envelope. Gate не имеет права выдать слепой «no artifacts» issue, если для его node-scope существуют долговечные артефакты.
+
+Нарушение этого принципа (фильтрация по transient task_id внутри kernel-gate) приводит к бесконечному repair-циклу: recovery создаёт новый task, gate не видит произведений, feedback деградирует до слепого, модель не может сойтись.
+
 9. РАЗДЕЛЕНИЕ ВЛАДЕНИЯ ПРОВЕРКОЙ
 
 Builder отвечает за:

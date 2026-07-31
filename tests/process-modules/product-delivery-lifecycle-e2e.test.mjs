@@ -400,6 +400,7 @@ test('durable product lifecycle freezes exact handoffs and terminal replay creat
         policy: developmentPolicy,
       },
       delivery: {
+        mode: 'authorized',
         policy: releasePolicy,
         operatorAuthorization: {
           schema: 'saga3.operator-release-grant.v1',
@@ -407,6 +408,7 @@ test('durable product lifecycle freezes exact handoffs and terminal replay creat
           hash: sha256Hex(operatorGrantBody),
           ...operatorGrantBody,
         },
+        deferredProfile: null,
       },
     };
     assert.doesNotThrow(() =>
@@ -540,8 +542,10 @@ test('durable product lifecycle freezes exact handoffs and terminal replay creat
         hash: products['solution-development'].output.contentHash,
       },
       integratedCandidate,
+      deliveryMode: 'authorized',
       policy: rootInput.delivery.policy,
       operatorAuthorization: rootInput.delivery.operatorAuthorization,
+      deferredProfile: null,
       initiatedBy: 'product-owner',
     };
     const expectedInputs = [
@@ -706,36 +710,40 @@ test('durable product lifecycle freezes exact handoffs and terminal replay creat
   }
 });
 
-// A weak product idea must still pass through the lifecycle. Discovery is an
-// idea-strength gate (decision + readiness confidence are recorded in the
-// certificate), not a build gate. Every non-go outcome must route forward to
-// Formalization rather than terminalize the lifecycle run. This test confirms
-// the routing at the lifecycle-definition level: the orchestrator will not be
-// told to stop just because Discovery said "clarify"/"reject"/etc.
-test('product lifecycle forwards weak Discovery outcomes (non-go) to Formalization', () => {
+// saga4 cutover: Discovery is a real go/no-go gate, not an idea-strength gate.
+// The lifecycle definition is now the single source of truth and it routes
+// strict — only 'go' forwards the idea to Formalization; every weak outcome
+// (clarify/reject/defer/inconclusive/failed) terminates the run. A weak idea
+// must NOT be laundered downstream. The decision strength is recorded in the
+// discovery certificate; the routing gate is what enforces the no-go.
+// Mirrors the contract proven in lifecycle-routing.test.mjs (commit 02186d0)
+// and the comment in product-delivery-lifecycle.ts.
+test('product lifecycle terminates weak Discovery outcomes (saga4 strict gate)', () => {
   const discovery = productDeliveryLifecycle.stages.find(
     stage => stage.id === 'initial-discovery',
   );
   assert.ok(discovery, 'initial-discovery stage must exist');
-  // No Discovery outcome may be terminal — every one must carry the idea
-  // forward so Formalization can reason about the contract on its own merits.
-  for (const outcome of ['go', 'clarify', 'reject', 'defer', 'inconclusive', 'failed']) {
+  // Only 'go' may carry the idea forward to Formalization.
+  const goRoute = discovery.outcomeRoutes.go;
+  assert.ok(goRoute, "Discovery must declare a route for outcome 'go'");
+  assert.equal(goRoute.type, 'stage', "'go' must route to a stage");
+  assert.equal(
+    goRoute.stageId,
+    'solution-formalization',
+    "'go' must route to solution-formalization",
+  );
+  // Every weak outcome must terminate — no laundering downstream.
+  for (const outcome of ['clarify', 'reject', 'defer', 'inconclusive', 'failed']) {
     const route = discovery.outcomeRoutes[outcome];
     assert.ok(route, `Discovery must declare a route for outcome '${outcome}'`);
     assert.equal(
       route.type,
-      'stage',
-      `outcome '${outcome}' must route to a stage, got ${route.type}`,
+      'terminal',
+      `weak outcome '${outcome}' must terminate (strict gate), got ${route.type}`,
     );
-    assert.equal(
-      route.stageId,
-      'solution-formalization',
-      `outcome '${outcome}' must route to solution-formalization, got ${route.stageId}`,
-    );
-    assert.equal(
+    assert.ok(
       route.status,
-      undefined,
-      `outcome '${outcome}' must not be terminal (no status), got ${route.status}`,
+      `weak outcome '${outcome}' must carry a terminal status`,
     );
   }
 });

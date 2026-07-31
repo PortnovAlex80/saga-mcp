@@ -114,7 +114,9 @@ test('pinned materializer uses verified blobs and isolates semantic checkpoints 
   const root = mkdtempSync(path.join(tmpdir(), 'saga-pinned-workspace-'));
   try {
     const first = materializePinnedWorkspace(request(root, 'exec-one'));
-    assert.match(first.executionDirectory, /task-1\/exec-one|task-1\\exec-one/);
+    // CGAD P18: the desk is keyed by the NODE (workplace), not the task.
+    // nodeId for this fixture is 'author' (see executionScope below).
+    assert.match(first.executionDirectory, /node-author\/exec-one|node-author\\exec-one/);
     assert.match(readFileSync(first.trackerAbsolutePath, 'utf8'), /Task: 1/);
     writeFileSync(first.trackerAbsolutePath, '# Tracker\n- [x] stale completion\n');
 
@@ -139,7 +141,7 @@ test('pinned materializer uses verified blobs and isolates semantic checkpoints 
     );
     assert.match(
       assistance.events[0].blocks[0].content,
-      /docs[\\/]formalization[\\/]projects[\\/]1[\\/]executions[\\/]task-1[\\/]exec-two/,
+      /docs[\\/]formalization[\\/]projects[\\/]1[\\/]executions[\\/]node-author[\\/]exec-two/,
     );
     assert.match(assistance.events[0].blocks[2].content, /task_get/);
   } finally {
