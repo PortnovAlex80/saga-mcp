@@ -56,6 +56,32 @@ not two.
 - ~~A gate reads the card by **worker identity**~~ → it is blinded to the
   workplace's prior work on every repair round.
 
+## Why Discovery is permissive (the market is the real gate)
+
+A user who enters a hypothesis into the conveyor wants to see it built — **even
+if the conveyor's own assessment judges the idea weak**. Discovery is an
+idea-strength gate, not a build gate: its job is to record how strong the idea
+looks (go / clarify / reject / defer / inconclusive / failed) into the discovery
+certificate, **not** to block the conveyor.
+
+The reasoning is product-level: **the only real validation of an idea is the
+market.** An expert assessment that "this idea is bad" is itself a hypothesis —
+it can be wrong, and history is full of ideas experts dismissed that succeeded.
+The conveyor must not impose that judgement as a hard block, because doing so
+privileges one assessor's opinion over the market's verdict.
+
+So every Discovery outcome forwards to Formalization. The strength of the idea
+travels in the certificate (so downstream stages know the assessed risk), but it
+never terminates the run. Formalization is the conveyor's real go/no-go gate:
+it reasons about whether a *contract* can be built from the idea, and its
+non-formalized outcomes terminate there — but even that is about buildability,
+not about whether the idea is "good".
+
+The strict-gate variant (non-go Discovery terminates) survives as a separate
+declarative scenario package (`LEGACY_PRODUCT_DELIVERY_SCENARIO_STRICT`) for
+regulated/contractual environments where an explicit go/no-go gate is legally
+required. The production lifecycle is permissive by default.
+
 ## How this is enforced (CGAD P18)
 
 - **Card reuse:** `LmNodeExecutor` computes the generationKey WITHOUT a
