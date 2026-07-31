@@ -89,21 +89,25 @@ test('project_delete: cascades through epics, tasks, artifacts, traces', () => {
 // Test 2: project_delete throws when engine_running=1 for any epic.
 // ---------------------------------------------------------------------------
 
-test('project_delete: rejects when engine is running', () => {
-  const { project, epic } = seedProject('Engine-Running');
+test('project_delete: rejects when a lifecycle run is active', () => {
+  const { project, epic } = seedProject('Lifecycle-Running');
   const db = getDb();
 
-  // episode_workflows row is created lazily by lifecycle.getOrCreate —
-  // epic_create does NOT seed it. Insert one explicitly with engine_running=1.
+  // saga4: the guard checks saga3_lifecycle_runs.status, not episode_workflows.
+  // Seed a lifecycle run in 'running' state for this epic.
   db.prepare(
-    `INSERT INTO episode_workflows (epic_id, stage, metadata)
-     VALUES (?, 'discovery', '{"engine_running":1}')`,
-  ).run(epic.id);
+    `INSERT INTO saga3_lifecycle_runs
+       (lifecycle_name, lifecycle_version, lifecycle_ref_key, display_name, description,
+        definition_snapshot, definition_hash, project_id, epic_id, initiated_by,
+        idempotency_key, input_schema, input_snapshot, input_hash, status, entry_stage_id)
+     VALUES ('test','1.0.0','test@1.0.0','T','test','{}','hash', ?, ?, 'test',
+             'key-1','test-input','{}','ihash','running','discovery')`,
+  ).run(project.id, epic.id);
 
   assert.throws(
     () => projects.project_delete({ project_id: project.id }),
-    /engine is running for epic/i,
-    'must reject when engine_running=1',
+    /Product Lifecycle is active/i,
+    'must reject when a lifecycle run is running',
   );
 
   // Project must still exist (delete was rejected before any DB change).

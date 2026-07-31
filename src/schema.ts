@@ -957,6 +957,45 @@ CREATE INDEX IF NOT EXISTS idx_saga3_proposals_kind ON saga3_proposals(kind);
 -- inserts normally (the engine reads the latest by id).
 CREATE UNIQUE INDEX IF NOT EXISTS idx_saga3_proposals_idempotency
   ON saga3_proposals(intent_id, execution_id, content_hash);
+-- saga4: saga3_lifecycle_runs is now read by production code (project_delete
+-- safety guard), so it must exist in the base schema, not just as a lazy
+-- CREATE in the lifecycle-run-repository constructor.
+CREATE TABLE IF NOT EXISTS saga3_lifecycle_runs (
+  id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+  lifecycle_name        TEXT NOT NULL,
+  lifecycle_version     TEXT NOT NULL,
+  lifecycle_ref_key     TEXT NOT NULL,
+  display_name          TEXT NOT NULL,
+  description           TEXT NOT NULL,
+  definition_snapshot   TEXT NOT NULL,
+  definition_hash       TEXT NOT NULL,
+  project_id            INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  epic_id               INTEGER REFERENCES epics(id) ON DELETE CASCADE,
+  initiated_by          TEXT NOT NULL,
+  idempotency_key       TEXT NOT NULL,
+  input_schema          TEXT NOT NULL,
+  input_snapshot        TEXT NOT NULL,
+  input_hash            TEXT NOT NULL,
+  status                TEXT NOT NULL DEFAULT 'created'
+                          CHECK (status IN ('created','running','paused','completed','failed','cancelled')),
+  entry_stage_id        TEXT NOT NULL,
+  current_stage_id      TEXT,
+  current_stage_run_id  INTEGER,
+  terminal_status       TEXT,
+  version               INTEGER NOT NULL DEFAULT 0,
+  execution_lease_owner TEXT,
+  execution_lease_fence INTEGER NOT NULL DEFAULT 0,
+  execution_lease_expires_at TEXT,
+  error                 TEXT,
+  started_at            TEXT NOT NULL DEFAULT (datetime('now')),
+  completed_at          TEXT,
+  created_at            TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at            TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_saga3_lifecycle_runs_idem
+  ON saga3_lifecycle_runs(project_id, lifecycle_ref_key, idempotency_key);
+CREATE INDEX IF NOT EXISTS idx_saga3_lifecycle_runs_status
+  ON saga3_lifecycle_runs(project_id, status);
 `;
 
 // ----------------------------------------------------------------------------
