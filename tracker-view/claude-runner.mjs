@@ -415,7 +415,7 @@ export class ClaudeBoardRunner {
           command: 'node',
           args: [this.sagaEntry],
           env: {
-            DB_PATH: this.dbPath,
+            DB_PATH: path.resolve(this.dbPath),
             TRACKER_AUTOSTART: '0',
             SAGA_MANAGED_EXECUTION: '0',
           },
@@ -442,7 +442,7 @@ export class ClaudeBoardRunner {
           command: 'node',
           args: [this.sagaEntry],
           env: {
-            DB_PATH: this.dbPath,
+            DB_PATH: path.resolve(this.dbPath),
             TRACKER_AUTOSTART: '0',
             SAGA_MANAGED_EXECUTION: '1',
             SAGA_EXECUTION_ID: executionId || '',
