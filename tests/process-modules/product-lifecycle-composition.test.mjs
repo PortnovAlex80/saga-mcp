@@ -141,7 +141,7 @@ test('composition installs all module capabilities and refuses implicit input/pr
         epicId: 10,
         output: { schema: 'saga3.unknown.v1', artifactRef: 'x', contentHash: '0'.repeat(64) },
       }),
-      /is not registered/,
+      /no output payload resolver/,
     );
     await assert.rejects(
       runtime.engine.run({ projectId: 1, epicId: 10 }),
