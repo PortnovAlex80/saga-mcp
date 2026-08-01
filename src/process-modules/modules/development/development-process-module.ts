@@ -42,7 +42,6 @@ const COMMON_READ_TOOLS = [
 
 const COMMON_WRITE_TOOLS = [
   ...COMMON_READ_TOOLS,
-  'worker_next',
   'worker_done',
   'worker_merge_acquire', 'worker_merge_release',
   'verification_record',

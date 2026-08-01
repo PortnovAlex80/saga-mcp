@@ -28,13 +28,17 @@ game.
 ### Who does what — the hard boundary
 
 - **Worker (модель + skill):** knows ONLY how to do the work described in its
-  skill. That is all. It does not hire, does not spawn, does not decide how many
-  workers run, does not manage infrastructure. It arrives, reads the card/desk,
-  does the work, calls `worker_done`, leaves.
-- **Infrastructure (конвейер):** hires workers, decides how many to run,
-  provides the desk, manages fencing/heartbeat/persistence. A module declares
-  WHAT work its workplaces need (via its Flow + execution profiles); the
-  infrastructure decides HOW to staff it.
+  skill. That is all. It does not hire, does not spawn, does not pick tasks,
+  does not decide how many workers run, does not manage infrastructure. It
+  arrives at the desk where the infrastructure has ALREADY placed the card,
+  reads it, does the work, calls `worker_done`, leaves. The worker never calls
+  `worker_next` — the infrastructure assigns the card before the worker arrives.
+- **Infrastructure (конвейер):** hires workers, decides how many to run, picks
+  tasks from the queue (review first, then todo), puts the exact card on the
+  desk BEFORE the worker arrives, provides the desk, manages
+  fencing/heartbeat/persistence. A module declares WHAT work its workplaces need
+  (via its Flow + execution profiles); the infrastructure decides HOW to staff
+  it and WHICH task each worker gets.
 
 A module MUST NOT hire workers itself. `workerExecutorFactory`,
 `runScopedTasks`, `executor.start` belong to infrastructure, never to a module.
@@ -44,17 +48,24 @@ inside the module) — that is the leak to fix. Discovery, Formalization and
 Delivery are clean: they declare LM nodes in their Flow and let the
 infrastructure's `LmNodeExecutor` staff them.
 
-### One queue, one concurrency knob
+### One queue, one concurrency knob, infrastructure assigns cards
 
 There is exactly **one** queue and **one** concurrency control: `--concurrency=N`.
-Tasks are picked from the `todo` AND `review` queue by N workers — nowhere
-else. No module runs its own dispatch loop, no module has a second concurrency
-parameter. The queue ordering is:
+The **infrastructure** picks tasks from the `todo` AND `review` queue (review
+first) and **assigns** each task to a hired worker. The worker never searches
+for work — the infrastructure puts the exact card on the desk before the worker
+arrives. No module runs its own dispatch loop, no module has a second
+concurrency parameter. The queue ordering is:
 
 1. **`review` tasks FIRST** — existing code in review gets priority so it
    reaches commit/merge faster. Never start new `todo` work while reviewed code
    is waiting.
 2. **`todo` tasks** — new work, in priority then sort order.
+
+The infrastructure (dispatch-loop) selects a task, hires a worker via
+`WorkerExecutorFactory` with `claimScope.taskIds=[taskId]`, and provides the
+desk. The worker reads the card, does the work, calls `worker_done`, leaves.
+The worker does NOT call `worker_next` — that is the infrastructure's job.
 
 This is already implemented in `findNextClaimable` (`dispatcher.ts:451`:
 `CASE WHEN t.status = 'review' THEN 0 ELSE 1 END`). The principle: close what

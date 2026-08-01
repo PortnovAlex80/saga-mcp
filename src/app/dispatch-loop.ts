@@ -1,14 +1,19 @@
 /**
  * Conveyor dispatch loop — distributes queued kanban tasks to workers.
  *
- * Called by orchestrate-cli between lifecycle resume cycles. When a ProcessRun
- * pauses (e.g. development settle-development waiting for impl tasks to drain),
- * the CLI invokes this to spawn workers through the SAME WorkerExecutorFactory
- * that LM-node workers use. This gives impl workers the same desk, hooks, fence
- * and authority as Flow-node workers — one spawn path, one mechanic.
+ * The infrastructure (this loop) is the factory operator: it picks tasks from
+ * the queue (review first, then todo), and for EACH task hires ONE worker
+ * through the WorkerExecutorFactory with claimScope.taskIds=[taskId]. The
+ * worker receives the exact card (task), gets a pinned desk, does the work,
+ * calls worker_done, and leaves. One card per worker — the worker never
+ * searches for work itself.
  *
- * Phase 2 (LEGO-CONTRACTS.md): unified worker spawn. Replaces the previous
- * direct `spawn(claudePath, ...)` reimplementation with the real factory.
+ * CONVEYOR-MENTAL-MODEL.md: "Worker arrives, reads the card/desk, does the
+ * work, calls worker_done, leaves. Infrastructure hires workers, decides
+ * how many to run, provides the desk."
+ *
+ * Phase 2 (LEGO-CONTRACTS): one spawn path, one mechanic. Impl-task workers
+ * get the SAME desk, hooks, fence and authority as Flow-node LM workers.
  */
 
 import type { WorkerExecutor, WorkerExecutorFactory } from '../application/ports/worker-executor.js';
@@ -18,9 +23,7 @@ export interface DispatchLoopInput {
   projectId: number;
   epicId: number;
   concurrency: number;
-  /** The factory that creates WorkerExecutor — same one used by LM nodes. */
   workerExecutorFactory: WorkerExecutorFactory;
-  /** Context for the factory (workspace, dbPath, etc). */
   factoryContext: {
     projectId: number;
     epicId: number;
@@ -35,34 +38,47 @@ export interface DispatchLoopInput {
   };
 }
 
-interface QueuedCounts {
-  todo: number;
-  review: number;
-}
-
-function countQueuedTasks(projectId: number): QueuedCounts {
-  const db = getDb();
-  const row = db.prepare(
-    `SELECT
-       SUM(CASE WHEN t.status='todo' THEN 1 ELSE 0 END) AS todo,
-       SUM(CASE WHEN t.status='review' THEN 1 ELSE 0 END) AS review
-     FROM tasks t
-     JOIN epics e ON e.id = t.epic_id
-     WHERE e.project_id = ?
-       AND t.status IN ('todo','review')`,
-  ).get(projectId) as { todo: number; review: number } | undefined;
-  return {
-    todo: row?.todo ?? 0,
-    review: row?.review ?? 0,
-  };
+interface TaskSummary {
+  id: number;
+  status: string;
 }
 
 /**
- * Distribute queued tasks to workers using the SAME WorkerExecutorFactory that
- * LM-node workers use. Each call to `executor.start()` spawns `concurrency`
- * workers (each claims one task via worker_next from the shared queue, gets a
- * pinned workplace desk with tracker/assistance/hooks, executes, and exits).
- * Blocks until all workers in the batch finish. Repeats until queue is empty.
+ * Read up to `limit` claimable tasks (review first, then todo) for a project.
+ * Mirrors findNextClaimable ordering.
+ */
+function readClaimableTasks(projectId: number, limit: number): TaskSummary[] {
+  const db = getDb();
+  const rows = db.prepare(
+    `SELECT t.id, t.status
+     FROM tasks t
+     JOIN epics e ON e.id = t.epic_id
+     WHERE e.project_id = ?
+       AND t.status IN ('todo','review')
+       AND (t.assigned_to IS NULL OR t.assigned_to = '')
+     ORDER BY CASE WHEN t.status = 'review' THEN 0 ELSE 1 END,
+              t.priority DESC, t.sort_order ASC
+     LIMIT ?`,
+  ).all(projectId, limit) as TaskSummary[];
+  return rows;
+}
+
+function countClaimable(projectId: number): number {
+  const db = getDb();
+  const row = db.prepare(
+    `SELECT count(*) as n
+     FROM tasks t JOIN epics e ON e.id = t.epic_id
+     WHERE e.project_id = ? AND t.status IN ('todo','review')
+       AND (t.assigned_to IS NULL OR t.assigned_to = '')`,
+  ).get(projectId) as { n: number };
+  return row.n;
+}
+
+/**
+ * Hire workers for claimable tasks. For EACH task, spawn one worker via
+ * WorkerExecutorFactory with claimScope.taskIds=[taskId] — the worker receives
+ * the exact card, not a queue to browse. Workers run in parallel up to
+ * `concurrency` at a time.
  */
 export async function distributeQueuedTasks(
   input: DispatchLoopInput,
@@ -74,43 +90,51 @@ export async function distributeQueuedTasks(
   try {
     while (true) {
       round++;
-      const counts = countQueuedTasks(input.projectId);
-      const queued = counts.todo + counts.review;
-      if (queued === 0) {
+      const claimable = countClaimable(input.projectId);
+      if (claimable === 0) {
         process.stdout.write(`[dispatch] round ${round}: queue empty\n`);
         break;
       }
 
-      const workerCount = Math.min(input.concurrency, queued);
+      // Pick up to `concurrency` tasks for this round (review-first).
+      const batch = readClaimableTasks(input.projectId, input.concurrency);
       process.stdout.write(
-        `[dispatch] round ${round}: ${queued} queued (${counts.todo} todo, ${counts.review} review). `
-        + `Spawning ${workerCount} workers via WorkerExecutorFactory...\n`,
+        `[dispatch] round ${round}: ${claimable} claimable, hiring ${batch.length} workers `
+        + `(review-first, claimScope per task)\n`,
       );
 
-      // start() blocks until all workers finish. claimScope=undefined means
-      // workers pick ANY task from the shared queue (review-first, then todo).
-      executor.start({
-        projectId: input.projectId,
-        epicId: input.epicId,
-        concurrency: workerCount,
-        // No claimScope — queue-mode: workers take whatever is available.
-      });
+      // Spawn one worker per task. Each worker gets claimScope.taskIds=[taskId]
+      // — infrastructure assigns the card, worker does NOT call worker_next.
+      // start() blocks until the worker finishes.
+      let roundDispatched = 0;
+      for (const task of batch) {
+        try {
+          executor.start({
+            projectId: input.projectId,
+            epicId: input.epicId,
+            concurrency: 1,
+            claimScope: { taskIds: [task.id] },
+          });
+          roundDispatched++;
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : String(error);
+          process.stderr.write(
+            `[dispatch] worker for task ${task.id} failed: ${msg}\n`,
+          );
+        }
+      }
 
-      // Count progress
-      const after = countQueuedTasks(input.projectId);
-      const remaining = after.todo + after.review;
-      const dispatched = queued - remaining;
-      totalDispatched += Math.max(0, dispatched);
-
+      const remaining = countClaimable(input.projectId);
+      totalDispatched += roundDispatched;
       process.stdout.write(
-        `[dispatch] round ${round}: ${dispatched} tasks drained, ${remaining} remaining\n`,
+        `[dispatch] round ${round}: ${roundDispatched} workers done, ${remaining} remaining\n`,
       );
 
-      if (remaining === 0) {
+      if (roundDispatched === 0) {
+        process.stdout.write('[dispatch] no progress — stopping\n');
         break;
       }
-      if (dispatched === 0) {
-        process.stdout.write('[dispatch] no progress — stopping\n');
+      if (remaining === 0) {
         break;
       }
     }
