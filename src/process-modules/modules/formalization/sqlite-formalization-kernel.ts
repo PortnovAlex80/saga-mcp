@@ -12,7 +12,10 @@
 
 import type Database from 'better-sqlite3';
 import { createHash } from 'node:crypto';
-import { canonicalJson } from '../../../saga3/shared/discovery-canonical.js';
+// CONVEYOR Wave 7 — saga3 cross-tree leak elimination: canonicalJson is
+// re-exported by the process-modules shared layer, so this module no longer
+// reaches into src/saga3/shared/**.
+import { canonicalJson } from '../../shared/canonical-json.js';
 import {
   FORMALIZATION_SETTLEMENT_INPUT_SCHEMA,
   type FormalizationSettlementInput,

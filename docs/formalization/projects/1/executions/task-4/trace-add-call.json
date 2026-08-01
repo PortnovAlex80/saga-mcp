@@ -1,0 +1,19 @@
+{
+  "tool": "trace_add",
+  "arguments": {
+    "source_id": 27,
+    "target_type": "artifact",
+    "target_id": 2,
+    "link_type": "covers"
+  },
+  "call_provenance": {
+    "process_module_ref": "solution-formalization@1.0.0",
+    "process_run_id": 2,
+    "node_id": "model-use-cases",
+    "work_intent_id": 4,
+    "task_id": 4,
+    "execution_id": "exec-1-19776-1785339418710-6",
+    "input_snapshot_hash": "28e48f370157d0f40a2dc356d8ff68c20c45b0fb70392628f01873be51889402",
+    "note": "Adding correct covers trace from UC-1 to FR-1 to repair contract"
+  }
+}

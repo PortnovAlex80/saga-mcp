@@ -8,23 +8,37 @@
  * ## What this file owns
  *
  * This is the INSTALLED Product Delivery Lifecycle Scenario package: the single
- * artifact that turns Wave 7's scenario runtime + Wave 7's legacy Product
- * Delivery compatibility manifest (W7-A8) into a scenario the Wave 11 cutover
- * can switch NEW runs onto. It is the installable counterpart to the
+ * artifact that turns Wave 7's scenario runtime into a scenario the Wave 11
+ * cutover can switch NEW runs onto. It is the installable counterpart to the
  * third-party `scenarios-ext/campaign` package (W10-A4): where the campaign
  * package proves arbitrary extensibility with EXTERNAL modules, this package
  * proves the built-in lifecycle is installable through the SAME Wave 7
  * `ScenarioInstaller` surface using the four PRODUCTION modules
  * (discovery + formalization + development + delivery).
  *
- * The package composes three existing Wave 7 lanes — NO new runtime, NO new
+ * ## Canonical manifest producer (cutover ratchet rule 1)
+ *
+ * This package is the CANONICAL home of the Product Delivery scenario
+ * `LifecycleScenarioManifest`. It builds the manifest directly from the frozen
+ * `productDeliveryLifecycle` definition (pure data construction — no functions,
+ * no `routeResolver`, plan §6.4). The legacy compatibility bridge
+ * (`application/legacy-scenario-adapter.ts`) RE-EXPORTS these manifests under
+ * the legacy names so existing consumers (and the Wave 13 removal target) are
+ * not broken; it does NOT duplicate the construction.
+ *
+ * This ownership direction is mandated by the cutover ratchet (see
+ * `tests/architecture/cutover-architecture-checks.test.mjs` rule 1 + the "no
+ * new-core file imports a compatibility entry point" rule): NEW runs route
+ * through INSTALLED scenarios, so the installed package must own the manifest
+ * identity. A new-core file reaching back into the compatibility bridge for the
+ * manifest would be a hidden fallback — the cutover silently routing new runs
+ * through the legacy surface instead of the installed scenario. Building the
+ * manifest here, from the pure lifecycle definition, keeps the new execution
+ * lane self-contained.
+ *
+ * The package composes two existing Wave 7 lanes — NO new runtime, NO new
  * persistence, NO legacy code deletion (spec §5 anti-scope):
  *
- *   - W7-A8 `application/legacy-scenario-adapter.ts` — produces the frozen
- *     `LifecycleScenarioManifest` view of the legacy `productDeliveryLifecycle`
- *     (two gate modes: permissive = legacy default, strict = regulated). This
- *     package selects the PRODUCTION manifest (permissive, the legacy default)
- *     and re-exposes both for operators that need the strict gate.
  *   - W7-A6 `application/scenario-runner.ts` — the `ScenarioInstaller`
  *     (compile → resolve lock → bind installations → persist lock → return
  *     `InstalledScenario`). This package's `installProductDeliveryScenario`
@@ -37,11 +51,11 @@
  *
  * "Installs the 4 production modules + scenario lock" (task brief) is exactly
  * what `ScenarioInstaller.install` does: it resolves the manifest's
- * `requiredModuleSelectors` (the four `~<version>` selectors W7-A8 derived
- * from the legacy stage `moduleRef`s) to four exact installed module
- * identities, persists the resulting `ScenarioModuleLock` (one pin per stage),
- * and binds each stage to its `ProcessModuleInstallation`. The four production
- * modules are exposed here as `PRODUCT_DELIVERY_REQUIRED_MODULE_SELECTORS` so
+ * `requiredModuleSelectors` (the four `~<version>` selectors derived from the
+ * legacy stage `moduleRef`s) to four exact installed module identities,
+ * persists the resulting `ScenarioModuleLock` (one pin per stage), and binds
+ * each stage to its `ProcessModuleInstallation`. The four production module
+ * selectors are exposed here as `PRODUCT_DELIVERY_REQUIRED_MODULE_SELECTORS` so
  * the Wave 11 composition loader (W11-A2) and the integration tests (W11-A6)
  * can pre-install exactly the modules this scenario needs.
  *
@@ -49,41 +63,44 @@
  *
  * This file lives at `installation/product-delivery-scenario-package.ts` — a
  * sibling of `installation/index.ts`, NOT under `domain/`, `modules/`,
- * `application/`, `persistence/`, `composition/`, or `lifecycles/`. The six
+ * `application/`, `persistence/`, `composition/`, or `infrastructure/`. The six
  * dependency-direction rules classify files by those prefixes; this file
  * matches none of them, so it adds zero new rule-1..6 edges. Its imports are:
  *   - `../domain/spi/*` — pure manifest + contract-ref types (Rule 5 source is
  *     `domain/`, not this file; reading domain from here is permitted).
- *   - `../application/legacy-scenario-adapter.js` (W7-A8) — the manifest
- *     producer. Importing `application/` from `installation/` is permitted
- *     (Rule 5 forbids the reverse — `domain/` → application — only).
+ *   - `../lifecycles/product-delivery-lifecycle.js` — the frozen lifecycle
+ *     definition this manifest is derived from. `lifecycles/` is not a
+ *     forbidden import for new-core (the cutover ratchet forbids `modules/`,
+ *     `composition/`, `db.ts`, `schema.ts` only); reading the pure lifecycle
+ *     data is the canonical source of the manifest, not a hidden fallback.
  *   - `../application/scenario-runner.js` (W7-A6) — the `ScenarioInstaller`
  *     type + the `InstalledScenario` / `ScenarioInstallerDeps` ports.
  *
  * It imports NO sqlite adapter, NO `db.ts`/`schema.ts`, NO `modules/*`
- * implementation, NO composition root. The four production module selectors
- * are pure data carried verbatim off the W7-A8 manifest; no module-name
- * switching (Rule 4) is introduced.
+ * implementation, NO composition root, NO compatibility entry point. The four
+ * production module selectors are pure data derived from the lifecycle's stage
+ * `moduleRef`s; no module-name switching (Rule 4) is introduced.
  *
  * ## Purity / serializability
  *
- * The exported manifest is plain JSON-serializable data (it is the W7-A8
- * manifest, which is already canonically serializable and eager-validated at
- * its own module load). The `installProductDeliveryScenario` function is a
- * thin orchestrator over the injected `ScenarioInstaller` — it holds no
- * mutable state and performs no I/O of its own.
+ * The exported manifest is plain JSON-serializable data (it is derived from the
+ * frozen `productDeliveryLifecycle`, which is already canonically serializable).
+ * The manifest is eager-validated at module load by
+ * `validateLifecycleScenarioManifest`. The `installProductDeliveryScenario`
+ * function is a thin orchestrator over the injected `ScenarioInstaller` — it
+ * holds no mutable state and performs no I/O of its own.
  */
 
-// W7-A8 — the frozen legacy Product Delivery compatibility manifests. This
-// package's job is to INSTALL one of them; W7-A8 owns the manifest shape and
-// the eager `validateLifecycleScenarioManifest` check at module load.
-import {
-  LEGACY_PRODUCT_DELIVERY_SCENARIO_PERMISSIVE,
-  LEGACY_PRODUCT_DELIVERY_SCENARIO_STRICT,
-  LEGACY_PRODUCT_DELIVERY_SCENARIOS,
-  legacyProductDeliveryScenarioFor,
-  LEGACY_PRODUCT_DELIVERY_MANIFEST_FORMAT_VERSION,
-} from '../application/legacy-scenario-adapter.js';
+import type { LifecycleDefinition } from '../domain/lifecycle.js';
+import type { StageBinding } from '../domain/lifecycle.js';
+import type { TransitionTarget } from '../domain/lifecycle.js';
+import type { LifecycleScenarioManifest } from '../domain/spi/scenario-manifest.js';
+import type { ScenarioStageBinding } from '../domain/spi/scenario-manifest.js';
+import type { ModuleSelector } from '../domain/spi/scenario-manifest.js';
+import { validateLifecycleScenarioManifest } from '../domain/spi/scenario-manifest.js';
+import { CONTRACT_REF_PENDING_DIGEST, type ContractRef } from '../domain/spi/contract-ref.js';
+import { productDeliveryLifecycle } from '../lifecycles/product-delivery-lifecycle.js';
+import { PRODUCT_DELIVERY_LIFECYCLE_INPUT_SCHEMA } from '../lifecycles/product-delivery-lifecycle.js';
 
 // W7-A6 — the Wave 7 ScenarioInstaller + the InstalledScenario / deps ports
 // it produces. This package drives the installer with the Product Delivery
@@ -94,63 +111,368 @@ import type {
   ScenarioInstallerDeps,
 } from '../application/scenario-runner.js';
 
-// Wave 1 SPI — the manifest + selector + contract-ref types, re-exported so
-// consumers of the package (the Wave 11 composition loader, integration tests)
-// import the scenario surface from one place.
-import type {
-  LifecycleScenarioManifest,
-  ModuleSelector,
-} from '../domain/spi/scenario-manifest.js';
-
 // ---------------------------------------------------------------------------
-// Discovery gate selection.
+// Manifest envelope identity.
 //
-// The W7-A8 adapter emits TWO manifests (permissive = legacy default, strict =
-// regulated) because the manifest surface is structurally incapable of carrying
-// the legacy per-run `routeResolver` (plan §6.4). The operator/installer picks
-// one at scenario-install time. The package's default is PERMISSIVE — the
-// legacy default — which is what production Product Delivery runs used before
-// the cutover. A caller that needs the regulated strict gate passes
-// `{ discoveryGate: 'strict' }`.
+// The scenario carries its OWN identity (it is the installed package), but the
+// `version` is derived from the frozen lifecycle version so a future lifecycle
+// bump produces a different manifest identity. The `+permissive` / `+strict`
+// suffix encodes the Discovery gate mode (plan §6.4 — the manifest surface
+// carries no executable resolver, so the two gate modes are two distinct
+// manifests).
 // ---------------------------------------------------------------------------
 
 /**
- * The two values the legacy `discoveryGate` flag can take, mirrored from W7-A8.
- * Used to select which legacy compatibility manifest this package installs.
+ * Schema version of the manifest ENVELOPE itself (independent of any module or
+ * lifecycle version). Bumped only when the `LifecycleScenarioManifest` shape
+ * changes. Wave 1 froze the shape; this is `1`.
  */
-export type ProductDeliveryDiscoveryGate = 'permissive' | 'strict';
+export const PRODUCT_DELIVERY_SCENARIO_MANIFEST_FORMAT_VERSION = '1';
 
 /**
- * Options for {@link installProductDeliveryScenario}.
- *
- * @property discoveryGate Which legacy compatibility manifest to install.
- *                         `'permissive'` (default) installs the manifest where
- *                         every Discovery outcome forwards to Formalization
- *                         (the legacy default). `'strict'` installs the
- *                         manifest where non-go Discovery outcomes terminate
- *                         (the regulated-environment legacy variant). This is
- *                         the explicit, declarative equivalent of the legacy
- *                         per-run `discoveryGate` flag (spec §6.4 — the
- *                         manifest surface carries no executable resolver).
+ * Distinct identity for the permissive scenario (legacy default). The `version`
+ * carries the lifecycle version so a future lifecycle bump produces a different
+ * manifest identity.
  */
-export interface InstallProductDeliveryScenarioOptions {
-  readonly discoveryGate?: ProductDeliveryDiscoveryGate;
+const PERMISSIVE_IDENTITY = {
+  name: 'legacy-product-delivery',
+  version: `${productDeliveryLifecycle.identity.version}+permissive`,
+  displayName: 'Legacy Product Delivery (permissive Discovery gate)',
+  description:
+    'Compatibility scenario wrapping the legacy productDeliveryLifecycle ' +
+    'definition. Every Discovery outcome forwards to Formalization; the ' +
+    'strength of the idea is carried by the discovery certificate, not by a ' +
+    'routing gate. Equivalent to the legacy lifecycle with discoveryGate ' +
+    "omitted or set to 'permissive'.",
+} as const;
+
+/**
+ * Distinct identity for the strict scenario. Same stages and mappings as
+ * permissive; only the Discovery stage's outcomeRoutes differ (non-go outcomes
+ * terminate).
+ */
+const STRICT_IDENTITY = {
+  name: 'legacy-product-delivery',
+  version: `${productDeliveryLifecycle.identity.version}+strict`,
+  displayName: 'Legacy Product Delivery (strict Discovery gate)',
+  description:
+    'Compatibility scenario wrapping the legacy productDeliveryLifecycle ' +
+    'definition with the strict Discovery gate: non-go Discovery outcomes ' +
+    'terminate the lifecycle. Equivalent to the legacy lifecycle with ' +
+    "discoveryGate: 'strict'. Use this for regulated / contractual " +
+    'environments where Discovery is a real go/no-go gate.',
+} as const;
+
+// ---------------------------------------------------------------------------
+// Discovery gate routing (legacy `resolveProductDeliveryRoute` translated to
+// static outcomeRoutes tables).
+//
+// The legacy resolver only overrides non-go Discovery outcomes when the
+// operator set discoveryGate: 'strict'. Permissive mode falls through to the
+// static outcomeRoutes (every outcome forwards to Formalization). Strict mode
+// terminates non-go outcomes. We encode both statically here.
+// ---------------------------------------------------------------------------
+
+/**
+ * Discovery outcomes the legacy lifecycle knows how to forward (the union of
+ * `outcomeRoutes` keys on the Discovery stage).
+ */
+const DISCOVERY_OUTCOMES = [
+  'go',
+  'clarify',
+  'reject',
+  'defer',
+  'inconclusive',
+  'failed',
+] as const;
+
+/**
+ * Terminal status the strict gate assigns to each non-go Discovery outcome.
+ * Mirrors `DISCOVERY_GATE_TERMINAL_STATUSES` in `product-delivery-lifecycle.ts`
+ * verbatim. Duplicated here as plain data so the manifest is self-describing
+ * and does not reach into the lifecycle's private constant.
+ */
+const STRICT_DISCOVERY_GATE_TERMINALS: Readonly<Record<string, string>> = {
+  clarify: 'clarification-required',
+  reject: 'rejected',
+  defer: 'deferred',
+  inconclusive: 'inconclusive',
+  failed: 'failed',
+};
+
+/**
+ * The Discovery stage id in the lifecycle. Captured once so the manifest is
+ * robust to a future stage-id rename.
+ */
+const DISCOVERY_STAGE_ID = 'initial-discovery';
+const FORMALIZATION_STAGE_ID = 'solution-formalization';
+
+/**
+ * Build the Discovery stage's permissive outcomeRoutes: every outcome forwards
+ * to Formalization. Identical to the legacy static table.
+ */
+function permissiveDiscoveryRoutes(): Record<string, TransitionTarget> {
+  const routes: Record<string, TransitionTarget> = {};
+  for (const outcome of DISCOVERY_OUTCOMES) {
+    routes[outcome] = { type: 'stage', stageId: FORMALIZATION_STAGE_ID };
+  }
+  return routes;
+}
+
+/**
+ * Build the Discovery stage's strict outcomeRoutes: `go` forwards to
+ * Formalization; every non-go outcome terminates with the gate's terminal
+ * status. Equivalent to the legacy resolver's strict-mode branch.
+ */
+function strictDiscoveryRoutes(): Record<string, TransitionTarget> {
+  const routes: Record<string, TransitionTarget> = {};
+  routes.go = { type: 'stage', stageId: FORMALIZATION_STAGE_ID };
+  for (const outcome of DISCOVERY_OUTCOMES) {
+    if (outcome === 'go') continue;
+    const terminal = STRICT_DISCOVERY_GATE_TERMINALS[outcome];
+    if (terminal) {
+      routes[outcome] = { type: 'terminal', status: terminal };
+    } else {
+      // Unknown outcome: legacy resolver falls through to the static table,
+      // which forwards to Formalization. Preserve that behavior.
+      routes[outcome] = { type: 'stage', stageId: FORMALIZATION_STAGE_ID };
+    }
+  }
+  return routes;
 }
 
 // ---------------------------------------------------------------------------
-// Production manifest + module selectors.
+// Terminal status set.
 //
-// `PRODUCT_DELIVERY_SCENARIO_MANIFEST` is the manifest NEW Product Delivery
-// runs switch onto at the Wave 11 cutover (spec §3). It is the W7-A8
-// permissive manifest — the legacy default — re-exported under the package's
-// own name so consumers depend on the installable package, not the W7-A8
-// compatibility bridge directly.
+// Every terminal status any stage in the lifecycle can reach, plus the
+// strict-gate terminals (which only the strict scenario can actually route to,
+// but they are declared here once so both manifests share a complete terminal
+// set — declaring a terminal that no route reaches is harmless; missing one
+// would be a validation error).
+// ---------------------------------------------------------------------------
+
+/**
+ * Complete terminal status set across both gate modes. Computed once from the
+ * lifecycle definition so the manifest tracks any future terminal additions
+ * automatically.
+ */
+const TERMINAL_STATUSES: readonly string[] = collectTerminalStatuses(
+  productDeliveryLifecycle,
+  Object.values(STRICT_DISCOVERY_GATE_TERMINALS),
+);
+
+// ---------------------------------------------------------------------------
+// Module selectors required by the scenario.
 //
-// `PRODUCT_DELIVERY_REQUIRED_MODULE_SELECTORS` is the four-module dependency
-// closure the installer resolves + pins (one pin per stage). Exposed so the
-// Wave 11 composition loader can pre-install exactly these four production
-// modules before installing the scenario, and so integration tests can assert
-// the cutover depends on no other module contract.
+// The manifest must declare every distinct module contract it depends on
+// (plan §6.10). We derive these from the lifecycle stages' `moduleRef` fields —
+// each `ProcessModuleReference { name, version }` becomes a `ModuleSelector`.
+// ---------------------------------------------------------------------------
+
+/**
+ * Build the canonical `ModuleSelector` for a stage. The version range is
+ * `~${version}`: patch upgrades only, no minor/major drift. This matches the
+ * freeze guarantee the lifecycle already gives (every stage pins a concrete
+ * module identity; the scenario permits only patch-level upgrades against the
+ * contract the author validated).
+ */
+function moduleSelectorFor(stage: StageBinding): ModuleSelector {
+  return {
+    name: stage.moduleRef.name,
+    versionRange: `~${stage.moduleRef.version}`,
+  };
+}
+
+/**
+ * Every distinct module contract the lifecycle depends on. Order matches the
+ * stage declaration order (discovery, formalization, development, delivery);
+ * duplicates (if any) are de-duped by `name@versionRange`.
+ */
+const REQUIRED_MODULE_SELECTORS: readonly ModuleSelector[] = (() => {
+  const seen = new Set<string>();
+  const out: ModuleSelector[] = [];
+  for (const stage of productDeliveryLifecycle.stages) {
+    const selector = moduleSelectorFor(stage);
+    const key = `${selector.name}@${selector.versionRange}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      out.push(selector);
+    }
+  }
+  return out;
+})();
+
+// ---------------------------------------------------------------------------
+// Contract refs.
+//
+// The manifest type requires `inputContractRef` and `outputContractRef`. The
+// `ContractRef` doc prescribes `CONTRACT_REF_PENDING_DIGEST` until concrete
+// codecs are registered. The `schemaId`/`version` carry the logical identity
+// of the lifecycle input contract.
+// ---------------------------------------------------------------------------
+
+const INPUT_CONTRACT_REF: ContractRef = {
+  schemaId: PRODUCT_DELIVERY_LIFECYCLE_INPUT_SCHEMA,
+  version: productDeliveryLifecycle.identity.version,
+  digest: CONTRACT_REF_PENDING_DIGEST,
+};
+
+/**
+ * The lifecycle has no distinct terminal-output contract (terminals carry status
+ * strings only, no payload schema). We name the slot explicitly with a
+ * placeholder so the manifest type is satisfied.
+ */
+const OUTPUT_CONTRACT_REF: ContractRef = {
+  schemaId: `${PRODUCT_DELIVERY_LIFECYCLE_INPUT_SCHEMA}.terminal`,
+  version: productDeliveryLifecycle.identity.version,
+  digest: CONTRACT_REF_PENDING_DIGEST,
+};
+
+// ---------------------------------------------------------------------------
+// Budgets and policies.
+//
+// The lifecycle has no explicit transition/reentry budgets (the orchestrator
+// imposes its own loop guard). The manifest surface requires them, so we
+// declare conservative defaults that match the legacy behavior.
+// ---------------------------------------------------------------------------
+
+const TRANSITION_BUDGETS = {
+  maxTransitions: 32,
+} as const;
+
+const REENTRY_BUDGETS = {
+  maxReentries: 0,
+} as const;
+
+/**
+ * Scenario-level policy declarations. Wave 1 declares the SHAPES only; Wave 7
+ * binds `kind` to a registered strategy.
+ */
+const SCENARIO_POLICIES = {
+  retry: { kind: 'legacy', params: { maxAttempts: 1 } },
+  pause: { kind: 'legacy' },
+  cancellation: { kind: 'legacy' },
+  escalation: { kind: 'legacy' },
+} as const;
+
+/**
+ * Scenario-level outcomeRoutes. The lifecycle routes every outcome from WITHIN a
+ * stage; there is no scenario-level handoff. The manifest surface requires the
+ * `outcomeRoutes` slot, so we declare it empty.
+ */
+const SCENARIO_OUTCOME_ROUTES: Readonly<Record<string, TransitionTarget>> = {};
+
+// ---------------------------------------------------------------------------
+// Stage binding wrapping.
+// ---------------------------------------------------------------------------
+
+/**
+ * Wrap a `StageBinding` into a `ScenarioStageBinding` for the permissive
+ * scenario. The base fields are inherited verbatim; only the Discovery stage's
+ * `outcomeRoutes` are replaced (with the permissive table).
+ */
+function wrapStagePermissive(stage: StageBinding): ScenarioStageBinding {
+  if (stage.id === DISCOVERY_STAGE_ID) {
+    return {
+      ...stage,
+      outcomeRoutes: permissiveDiscoveryRoutes(),
+      moduleSelector: moduleSelectorFor(stage),
+    };
+  }
+  return {
+    ...stage,
+    moduleSelector: moduleSelectorFor(stage),
+  };
+}
+
+/**
+ * Wrap a `StageBinding` into a `ScenarioStageBinding` for the strict scenario.
+ * Identical to the permissive wrap except the Discovery stage's `outcomeRoutes`
+ * are replaced with the strict table (non-go outcomes terminate).
+ */
+function wrapStageStrict(stage: StageBinding): ScenarioStageBinding {
+  if (stage.id === DISCOVERY_STAGE_ID) {
+    return {
+      ...stage,
+      outcomeRoutes: strictDiscoveryRoutes(),
+      moduleSelector: moduleSelectorFor(stage),
+    };
+  }
+  return {
+    ...stage,
+    moduleSelector: moduleSelectorFor(stage),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Internal helpers.
+// ---------------------------------------------------------------------------
+
+/**
+ * Collect every terminal status reachable from any stage in the lifecycle, plus
+ * the extra terminals supplied by the caller (the strict-gate set).
+ */
+function collectTerminalStatuses(
+  definition: LifecycleDefinition,
+  extras: readonly string[],
+): readonly string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const stage of definition.stages) {
+    for (const target of Object.values(stage.outcomeRoutes)) {
+      if (target.type === 'terminal' && !seen.has(target.status)) {
+        seen.add(target.status);
+        out.push(target.status);
+      }
+    }
+  }
+  for (const status of extras) {
+    if (!seen.has(status)) {
+      seen.add(status);
+      out.push(status);
+    }
+  }
+  return out;
+}
+
+/**
+ * Build the manifest's stageBindings for a given gate mode. Pure; called once
+ * per manifest construction.
+ */
+function buildStageBindings(
+  definition: LifecycleDefinition,
+  mode: 'permissive' | 'strict',
+): readonly ScenarioStageBinding[] {
+  const wrap = mode === 'permissive' ? wrapStagePermissive : wrapStageStrict;
+  return definition.stages.map(wrap);
+}
+
+/**
+ * Build the full manifest for a gate mode. Pure: produces a new manifest object
+ * derived entirely from the frozen lifecycle definition.
+ */
+function buildManifest(mode: 'permissive' | 'strict'): LifecycleScenarioManifest {
+  const identity = mode === 'permissive' ? PERMISSIVE_IDENTITY : STRICT_IDENTITY;
+  return {
+    manifestFormatVersion: PRODUCT_DELIVERY_SCENARIO_MANIFEST_FORMAT_VERSION,
+    identity,
+    inputContractRef: INPUT_CONTRACT_REF,
+    outputContractRef: OUTPUT_CONTRACT_REF,
+    entryStageId: productDeliveryLifecycle.entryStageId,
+    stageBindings: buildStageBindings(productDeliveryLifecycle, mode),
+    outcomeRoutes: SCENARIO_OUTCOME_ROUTES,
+    inputMappings: {},
+    outputMappings: {},
+    terminalStatuses: TERMINAL_STATUSES,
+    scenarioPolicies: SCENARIO_POLICIES,
+    requiredModuleSelectors: REQUIRED_MODULE_SELECTORS,
+    transitionBudgets: TRANSITION_BUDGETS,
+    reentryBudgets: REENTRY_BUDGETS,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Public manifest exports.
 // ---------------------------------------------------------------------------
 
 /**
@@ -158,12 +480,11 @@ export interface InstallProductDeliveryScenarioOptions {
  * gate (legacy default). This is the manifest new Product Delivery runs use
  * after the Wave 11 cutover.
  *
- * Pure data: a re-export of `LEGACY_PRODUCT_DELIVERY_SCENARIO_PERMISSIVE`
- * (W7-A8), which is eager-validated canonically-serializable data wrapping the
- * frozen `productDeliveryLifecycle`. No functions, no `routeResolver`.
+ * Pure data: derived from the frozen `productDeliveryLifecycle`. No functions,
+ * no `routeResolver`. Eager-validated at module load (see below).
  */
 export const PRODUCT_DELIVERY_SCENARIO_MANIFEST: LifecycleScenarioManifest =
-  LEGACY_PRODUCT_DELIVERY_SCENARIO_PERMISSIVE;
+  buildManifest('permissive');
 
 /**
  * The strict-gate variant (regulated environments). Install this manifest via
@@ -171,45 +492,35 @@ export const PRODUCT_DELIVERY_SCENARIO_MANIFEST: LifecycleScenarioManifest =
  * for operators and tests that need to assert both gate modes are installable.
  */
 export const PRODUCT_DELIVERY_SCENARIO_MANIFEST_STRICT: LifecycleScenarioManifest =
-  LEGACY_PRODUCT_DELIVERY_SCENARIO_STRICT;
+  buildManifest('strict');
 
 /**
  * The four production module contracts the Product Delivery scenario depends
  * on, in stage-declaration order (discovery, formalization, development,
- * delivery). Each is a `ModuleSelector { name; versionRange }` derived by
- * W7-A8 from the legacy stage `moduleRef` (`~<version>` = patch upgrades only).
+ * delivery). Each is a `ModuleSelector { name; versionRange }` derived from the
+ * lifecycle stage `moduleRef` (`~<version>` = patch upgrades only).
  *
  * The Wave 7 `ScenarioInstaller` resolves each selector to an exact installed
- * module identity and writes one `ScenarioModuleLockEntry` per stage. This is
- * the "installs the 4 production modules + scenario lock" surface from the
- * task brief: the closure is pure data the installer pins, not a name switch.
+ * module identity and writes one `ScenarioModuleLockEntry` per stage.
  *
- * De-duplicated by `name@versionRange` (a single module reused across stages
- * would appear once); for Product Delivery each stage binds a distinct module,
- * so all four selectors are present.
+ * De-duplicated by `name@versionRange`; for Product Delivery each stage binds a
+ * distinct module, so all four selectors are present.
  */
 export const PRODUCT_DELIVERY_REQUIRED_MODULE_SELECTORS: readonly ModuleSelector[] =
   PRODUCT_DELIVERY_SCENARIO_MANIFEST.requiredModuleSelectors;
 
 /**
- * Manifest envelope format version, re-exported from W7-A8 so consumers do not
- * depend on the compatibility bridge for the package's own version surface.
- */
-export const PRODUCT_DELIVERY_SCENARIO_MANIFEST_FORMAT_VERSION: string =
-  LEGACY_PRODUCT_DELIVERY_MANIFEST_FORMAT_VERSION;
-
-/**
  * Resolve the Product Delivery scenario manifest for a given Discovery gate
- * mode. Delegates to W7-A8's `legacyProductDeliveryScenarioFor`; exposed under
- * the package's own name so a caller selects the manifest through the
- * installable package rather than the compatibility bridge.
+ * mode.
  *
  * Pure: returns one of the two frozen manifest constants; allocates nothing.
  */
 export function productDeliveryScenarioManifestFor(
   gate: ProductDeliveryDiscoveryGate | undefined,
 ): LifecycleScenarioManifest {
-  return legacyProductDeliveryScenarioFor(gate);
+  return gate === 'strict'
+    ? PRODUCT_DELIVERY_SCENARIO_MANIFEST_STRICT
+    : PRODUCT_DELIVERY_SCENARIO_MANIFEST;
 }
 
 /**
@@ -219,7 +530,65 @@ export function productDeliveryScenarioManifestFor(
  */
 export const PRODUCT_DELIVERY_SCENARIO_MANIFESTS: Readonly<
   Record<ProductDeliveryDiscoveryGate, LifecycleScenarioManifest>
-> = LEGACY_PRODUCT_DELIVERY_SCENARIOS;
+> = {
+  permissive: PRODUCT_DELIVERY_SCENARIO_MANIFEST,
+  strict: PRODUCT_DELIVERY_SCENARIO_MANIFEST_STRICT,
+};
+
+// ---------------------------------------------------------------------------
+// Discovery gate selection.
+//
+// The manifest surface is structurally incapable of carrying the legacy per-run
+// `routeResolver` (plan §6.4), so the two gate modes are two distinct manifests.
+// The operator/installer picks one at scenario-install time. The package's
+// default is PERMISSIVE — the legacy default.
+// ---------------------------------------------------------------------------
+
+/**
+ * The two values the legacy `discoveryGate` flag can take. Used to select which
+ * manifest this package installs.
+ */
+export type ProductDeliveryDiscoveryGate = 'permissive' | 'strict';
+
+/**
+ * Options for {@link installProductDeliveryScenario}.
+ *
+ * @property discoveryGate Which manifest to install. `'permissive'` (default)
+ *                         installs the manifest where every Discovery outcome
+ *                         forwards to Formalization (the legacy default).
+ *                         `'strict'` installs the manifest where non-go
+ *                         Discovery outcomes terminate (the regulated-
+ *                         environment legacy variant). This is the explicit,
+ *                         declarative equivalent of the legacy per-run
+ *                         `discoveryGate` flag (spec §6.4).
+ */
+export interface InstallProductDeliveryScenarioOptions {
+  readonly discoveryGate?: ProductDeliveryDiscoveryGate;
+}
+
+// ---------------------------------------------------------------------------
+// Self-validation (eager).
+//
+// Both manifests are constructed from the frozen lifecycle definition using a
+// pure function. We validate them once at module load so a future lifecycle
+// change that produces an invalid manifest fails LOUD at the first import, not
+// silently at scenario-install time.
+// ---------------------------------------------------------------------------
+function assertManifestValid(
+  manifest: LifecycleScenarioManifest,
+  label: string,
+): void {
+  const result = validateLifecycleScenarioManifest(manifest);
+  if (!result.ok) {
+    throw new Error(
+      `${label} failed manifest validation at module load: ` +
+        result.errors.map((e) => `${e.path}: ${e.message}`).join('; '),
+    );
+  }
+}
+
+assertManifestValid(PRODUCT_DELIVERY_SCENARIO_MANIFEST, 'PRODUCT_DELIVERY_SCENARIO_MANIFEST');
+assertManifestValid(PRODUCT_DELIVERY_SCENARIO_MANIFEST_STRICT, 'PRODUCT_DELIVERY_SCENARIO_MANIFEST_STRICT');
 
 // ---------------------------------------------------------------------------
 // Install entry point.
@@ -239,9 +608,7 @@ export const PRODUCT_DELIVERY_SCENARIO_MANIFESTS: Readonly<
 //
 // All four ports are INJECTED: this package owns no storage, no sqlite, no
 // module implementation. The composition root (Wave 11 W11-A2 composition
-// loader) wires the concrete sqlite-backed ports; tests inject fakes. This
-// mirrors exactly how `PackageInstaller` (W2-A3) and `ScenarioInstaller`
-// (W7-A6) are consumed — pure orchestration over injected ports.
+// loader) wires the concrete sqlite-backed ports; tests inject fakes.
 // ---------------------------------------------------------------------------
 
 /**
@@ -259,19 +626,10 @@ export type ProductDeliveryScenarioInstallerDeps = ScenarioInstallerDeps;
  *
  * Selects the manifest for `options.discoveryGate` (default `'permissive'` =
  * legacy default) and delegates to `ScenarioInstaller.install`. The installer
- * compiles the manifest, resolves the four production module selectors to
- * exact installed identities, writes the scenario module lock (one pin per
- * stage), binds each stage to its `ProcessModuleInstallation`, and returns the
+ * compiles the manifest, resolves the four production module selectors to exact
+ * installed identities, writes the scenario module lock (one pin per stage),
+ * binds each stage to its `ProcessModuleInstallation`, and returns the
  * `InstalledScenario` the Wave 11 cutover routes new runs through.
- *
- * Failure modes surface as `ScenarioInstallerError` with a stable code (see
- * W7-A6): `SCENARIO_INSTALL_MANIFEST_INVALID`,
- * `SCENARIO_INSTALL_MODULE_UNRESOLVED`, `SCENARIO_INSTALL_NOT_INSTALLED`,
- * `SCENARIO_INSTALL_LOCK_WRITE_FAILED`. A common cause at cutover time is
- * `SCENARIO_INSTALL_NOT_INSTALLED`: the four production modules are not yet
- * installed in the `ProcessModuleInstallationRegistry` — the composition loader
- * (W11-A2) must pre-install them (use
- * {@link PRODUCT_DELIVERY_REQUIRED_MODULE_SELECTORS} as the install closure).
  *
  * @param deps   The Wave 7 installer ports (compiler, lockResolver, lockStore,
  *               installationRegistry). Injected by the composition root.
@@ -294,10 +652,7 @@ export async function installProductDeliveryScenario(
 
 /**
  * Stateless convenience: install the PERMISSIVE (legacy-default) Product
- * Delivery scenario. Identical to
- * `installProductDeliveryScenario(deps, { discoveryGate: 'permissive' })`;
- * provided because the permissive gate is the production default and the
- * overwhelming majority of cutover runs use it.
+ * Delivery scenario.
  */
 export async function installProductDeliveryScenarioPermissive(
   deps: ProductDeliveryScenarioInstallerDeps,
@@ -307,8 +662,8 @@ export async function installProductDeliveryScenarioPermissive(
 
 /**
  * Stateless convenience: install the STRICT (regulated) Product Delivery
- * scenario. Use for contractual environments where Discovery is a real
- * go/no-go gate (non-go outcomes terminate).
+ * scenario. Use for contractual environments where Discovery is a real go/no-go
+ * gate (non-go outcomes terminate).
  */
 export async function installProductDeliveryScenarioStrict(
   deps: ProductDeliveryScenarioInstallerDeps,

@@ -19,6 +19,8 @@
  * SqliteSaga3DiscoveryRuntime. Реализация в шаге 4 оборачивает тот же адаптер.
  */
 
+import os from 'node:os';
+
 import type {
   ExecutionProfileDefinition,
   LmFlowNodeDefinition,
@@ -28,7 +30,13 @@ import {
   RECOVERY_FEEDBACK_SCHEMA,
   type RecoveryFeedback,
 } from '../../domain/recovery.js';
-import type { WorkerExecutor, WorkerExecutorFactory, WorkerExecutorFactoryContext } from '../../../application/ports/worker-executor.js';
+import type {
+  AssignedWork,
+  WorkAssignmentPort,
+  WorkerExecutor,
+  WorkerExecutorFactory,
+  WorkerExecutorFactoryContext,
+} from '../../../application/ports/worker-executor.js';
 import {
   NodeExecutionError,
   NodeExecutionLeaseLostError,
@@ -179,6 +187,21 @@ export interface LmNodeExecutorOptions {
   workerExecutorFactory: WorkerExecutorFactory;
   /** Build the factory context for one node's worker spawn. */
   resolveWorkerContext: (ctx: NodeExecutionContext) => WorkerExecutorFactoryContext;
+  /**
+   * Atomic card-assignment port (CONVEYOR-MENTAL-MODEL §"Required outbound
+   * ports": infrastructure assigns the exact card BEFORE launching the worker).
+   *
+   * When wired, the executor generates a fence token (workerExecutionId) and
+   * calls `workAssignment.assignTask` BEFORE `workerExecutor.start()`, passing
+   * the resulting {@link AssignedWork} as `assignment`. This is the ONE
+   * assignment path (doc line 291): the runner's `claimTask`/`claimScope` path
+   * is bypassed entirely.
+   *
+   * When NOT wired (legacy/tests), the executor falls back to passing
+   * `claimScope: { taskIds: [taskId] }` so the runner assigns the card itself.
+   * That fallback is DEPRECATED — production always wires this port.
+   */
+  workAssignment?: WorkAssignmentPort;
   /** Polling interval for worker status. Default 2000ms. */
   pollMs?: number;
   /** Hard wall-clock cap on one LM-node execution. Default 30min. */
@@ -195,15 +218,23 @@ export class LmNodeExecutor implements NodeExecutor {
   private readonly persistence: LmNodeExecutionPersistence;
   private readonly workerExecutorFactory: WorkerExecutorFactory;
   private readonly resolveWorkerContext: (ctx: NodeExecutionContext) => WorkerExecutorFactoryContext;
+  private readonly workAssignment: WorkAssignmentPort | undefined;
   private readonly pollMs: number;
   private readonly maxRunMs: number;
   private readonly sleep: (ms: number) => Promise<void>;
   private readonly now: () => Date;
+  /**
+   * Monotonic sequence number feeding the worker execution-id fence token
+   * (mirrors the runner's `this.sequence` pattern). Ensures unique tokens even
+   * when two LM nodes finish in the same millisecond on the same pid.
+   */
+  private executionSequence = 0;
 
   constructor(options: LmNodeExecutorOptions) {
     this.persistence = options.persistence;
     this.workerExecutorFactory = options.workerExecutorFactory;
     this.resolveWorkerContext = options.resolveWorkerContext;
+    this.workAssignment = options.workAssignment;
     this.pollMs = options.pollMs ?? 2000;
     this.maxRunMs = options.maxRunMs ?? 30 * 60 * 1000;
     this.sleep = options.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
@@ -551,11 +582,79 @@ export class LmNodeExecutor implements NodeExecutor {
         const workerCtx = this.resolveWorkerContext(ctx);
         workerExecutor = this.workerExecutorFactory(workerCtx);
         ctx.heartbeat();
+        // CONVEYOR-MENTAL-MODEL (doc line 291): "infrastructure atomically
+        // assigns the exact card before launching a worker". When the
+        // WorkAssignmentPort is wired, this LM cell generates the fence token
+        // (workerExecutionId) + worker identity BEFORE start(), calls
+        // assignTask (status flip + fence creation in ONE transaction), and
+        // hands the resulting AssignedWork to start() as `assignment`. The
+        // runner then launches the worker directly — NO claimTask, NO
+        // claimScope. This collapses the two assignment paths into ONE.
+        //
+        // The fence token MUST exist before assignTask: it becomes
+        // tasks.current_execution_id and worker_executions.execution_id in the
+        // same atomic transaction. Pattern mirrors the runner's pump
+        // (exec-${projectId}-${pid}-${ts}-${seq}) so tokens stay shape-stable
+        // across both spawn paths.
+        let preassignedWork: AssignedWork | null = null;
+        let fallbackClaimScope: { taskIds: number[] } | undefined;
+        if (this.workAssignment) {
+          const seq = ++this.executionSequence;
+          const workerExecutionId =
+            `exec-${ctx.projectId}-${process.pid}-${Date.now()}-${seq}`;
+          const workerId =
+            `lm-${ctx.projectId}-${ctx.processRunId}-${node.id}-${seq}`;
+          const runId = `process-run-${ctx.processRunId}`;
+          const machineId = safeMachineId();
+          preassignedWork = this.workAssignment.assignTask({
+            projectId: ctx.projectId,
+            epicId: ctx.epicId ?? undefined,
+            workerId,
+            workerExecutionId,
+            runId,
+            machineId,
+            taskIds: [taskId],
+          });
+          if (preassignedWork === null) {
+            // The exact card could not be assigned (already claimed, fenced,
+            // dependency-blocked, or no longer claimable under this scope).
+            // Treat as a lost-race pause: the intent goes back to 'paused' and
+            // the lifecycle may resume the node later. Do NOT fall through to
+            // the claimScope path — that would re-introduce the two-path
+            // divergence this refactor removes.
+            throw new NodeExecutionError(
+              'lm',
+              node.id,
+              `assignTask returned no card for task ${taskId} (lost race or ` +
+                'blocked); the LM node cannot launch a worker without an ' +
+                'atomic pre-assignment.',
+            );
+          }
+        } else {
+          // DEPRECATED fallback: no WorkAssignmentPort wired. The runner's
+          // claimTask callback (inside start()) assigns the card via the
+          // factory's port. Kept only for callers that have not yet wired the
+          // port (tests / legacy). Production always wires it.
+          fallbackClaimScope = { taskIds: [taskId] };
+        }
         workerExecutor.start({
           projectId: ctx.projectId,
           epicId: ctx.epicId,
+          // CONVEYOR Wave 4: concurrency=1 here is NOT a competing global
+          // budget — it is the conveyor model: one LM workplace launches
+          // exactly one worker for its one assigned card. The global
+          // --concurrency=N budget governs the dispatch-loop path
+          // (development/review cards); lifecycle Flow nodes and the dispatch
+          // loop run strictly sequentially (orchestrate-cli awaits runEpisode,
+          // then awaits distributeQueuedTasks), so the two launch paths never
+          // compete for slots. One global N, one active path at a time.
           concurrency: 1,
-          claimScope: { taskIds: [taskId] },
+          // ONE assignment path: when the port is wired the card is already
+          // assigned + fenced atomically above; the runner receives it and
+          // launches directly. Otherwise the deprecated claimScope tells the
+          // runner to self-claim (legacy/tests only).
+          ...(preassignedWork ? { assignment: preassignedWork } : {}),
+          ...(fallbackClaimScope ? { claimScope: fallbackClaimScope } : {}),
         });
       } catch (error) {
         this.persistence.setIntentStatus(intent.id, 'executing', 'paused');
@@ -708,6 +807,20 @@ function resolveProfile(
     if (profile.id === profileId) return profile;
   }
   return null;
+}
+
+/**
+ * Resolve the machine id for the WorkAssignmentPort call. Mirrors the runner's
+ * `os.hostname()` usage; guarded so a thrown/empty hostname still yields a
+ * stable, non-empty token (the port stores it verbatim on worker_executions).
+ */
+function safeMachineId(): string {
+  try {
+    const name = os.hostname();
+    return name && name.length > 0 ? name : 'unknown';
+  } catch {
+    return 'unknown';
+  }
 }
 
 /**

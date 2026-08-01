@@ -11,13 +11,13 @@ description: "Execute exactly one dispatcher-assigned task for one logical produ
 - **Precondition (предусловие):** dev-задачи в статусе todo (созданы planner'ом). Проверь: `task_list({status:'todo', epic_id})` → не пусто.
 - **Postcondition (постусловие):** задача done + merged в dev (для dev-задачи) ИЛИ verified_by trace (для AC-verification)
 - **Called by (вызывается):** saga-dispatch (execution loop — цикл выполнения) ИЛИ the Lifecycle Orchestrator (одна задача — one task = one launch)
-- **Next enables (что разблокирует):** следующая задача в очереди (через worker_next). AC-verification → INTEGRATE.
+- **Next enables (что разблокирует):** следующая задача (назначается диспатчером на следующем launch'е). AC-verification → INTEGRATE.
 - **Проверь precondition:** если очередь пуста → сообщи "no tasks" (нет задач), не выдумывай работу.
-- **Solo-worker (соло-воркер):** один launch (запуск) = одна задача (claim → work → done → stop). Цикл = saga-dispatch.
+- **Solo-worker (соло-воркер):** один launch (запуск) = одна задача (карточка назначается диспатчером до запуска → work → done → stop). Цикл = saga-dispatch.
 
 You do not manage the board. You do not pick or create tasks yourself. You do
-not ask "should I continue?" You run **one loop** against the dispatcher. That
-is your entire job.
+not ask "should I continue?" You run **one task** against the dispatcher's
+pre-assigned card. That is your entire job.
 
 You share the repository with other workers. **Every task you take runs inside
 its own git worktree** (`git worktree`) on a dedicated branch — so your edits
@@ -37,7 +37,7 @@ echo "$(date -u +%FT%TZ) pid=$$ worker=$SAGA_WORKER_ID project=$SAGA_PROJECT_ID 
 работаю» — оператор смотрит через `tail -f ~/.zcode/cli/worker-heartbeat.log`.
 Переменные `SAGA_*` выставляет saga-runner в окружении процесса. Если их нет
 (запуск не через board-runner), подставь `worker_id`/`task.id`/`project_id`
-вручную из ответа `worker_next`.
+вручную из своего назначения (карточка уже предопределена диспатчером).
 
 Дополнительно, на ключевых шагах (опционально, не чаще раза в минуту):
 
@@ -54,8 +54,9 @@ inside one launch.
 ```
 [once per launch]
   resolve project_id (Step 0)            ← only if you don't have it yet
-  worker_next({worker_id, project_id})
-    → task + skill + active_tasks[]      (or { task: null } → report "queue empty", STOP)
+  the dispatcher PRE-ASSIGNED your card BEFORE launch
+    → read it via task_get({ id: <SAGA_TASK_ID> })   (task is already in_progress, assigned_to you)
+    → its skill tells you your role (saga-developer / saga-reviewer / ac-verification)
   do the work IN YOUR WORKTREE (see below)
   worker_done({task_id, worker_id, result, verdict?})
     → completed_new_status + active_tasks[]
@@ -63,9 +64,11 @@ inside one launch.
   return a one-line summary ("task #N: <what you did>") and STOP.
 ```
 
-**Critical:** do NOT call `worker_next` again after `worker_done`. One launch =
-one `worker_next` + one `worker_done`. The orchestrator decides whether to spawn
-you again. Looping inside one launch burns tokens and blocks the main session.
+**Critical:** you NEVER call `worker_next` — it is disabled (the card is
+pre-assigned by the dispatcher before this launch). One launch = one
+pre-assigned card + one `worker_done`. The orchestrator decides whether to
+spawn you again. Looping inside one launch burns tokens and blocks the main
+session.
 
 **NEVER call `process_node_submit`.** That tool is for LM-node tasks only
 (planner, product, analyst, architect — typed Process Module workers). Your
@@ -73,7 +76,7 @@ channel is `worker_done` + merge protocol. Calling `process_node_submit` on a
 development/verification task will fail with `MANAGED_PRODUCTION_CONTEXT_INVALID`
 because your task does not carry LM-node provenance.
 
-## Step 0 — resolve your project (разреши свой проект; ONCE, before the first worker_next — один раз, перед первым worker_next)
+## Step 0 — resolve your project (разреши свой проект; ONCE, before reading your pre-assigned card — один раз, перед чтением назначенной карточки)
 
 For new products, project identity lives in `.saga/project.json`; the board
 runner may also pass the resolved `project_id` and repository binding directly.
@@ -94,25 +97,27 @@ never guess identity from the directory name.
      product/repository binding.
    - The user's answer is the ONLY legitimate source of the project name — never
      infer it from the folder name, AGENTS.md, or any other file.
-4. **Immediately proceed to ONE TASK PER LAUNCH** — call `worker_next({ worker_id, project_id })` right away.
-   Do NOT report the resolved project_id back and wait for confirmation. Do NOT ask
-   "ready to start?". Resolving the project IS the start — the next action is `worker_next`.
+4. **Immediately proceed to ONE TASK PER LAUNCH** — your card is already
+   assigned by the dispatcher; read it via `task_get({ id: <SAGA_TASK_ID> })`
+   right away. Do NOT report the resolved project_id back and wait for
+   confirmation. Do NOT ask "ready to start?". Resolving the project IS the
+   start — the next action is `task_get`.
 
-If you skip Step 0 and call `worker_next` without `project_id`, it throws — the
-error gives these exact steps; follow them.
+If you skip Step 0 and call `task_get` without `project_id`, you can still read
+the task — but without a confirmed project you risk working in the wrong place,
+so resolve it first.
 
 **Do NOT pre-check the dashboard.** Do not call `tracker_dashboard` /
-`project_list` / `task_list` "to see what's there" before entering the loop.
-The dispatcher is the source of truth about available work — call `worker_next`
-immediately after Step 0. If the queue is empty, it returns `{task: null}` and
-the QUEUE_EMPTY probe (below) handles that. Pre-checking the board wastes a
-turn and tempts you to stop and ask "should I proceed?" — don't. Just call
-`worker_next`.
+`project_list` / `task_list` "to see what's there" before reading your
+pre-assigned card. The dispatcher is the source of truth about your assignment —
+read it via `task_get({ id: <SAGA_TASK_ID> })` immediately after Step 0. If the
+SAGA_TASK_ID is missing entirely (no pre-assigned card), that is a runner wiring
+error — report it in one sentence and stop. Pre-checking the board wastes a turn
+and tempts you to stop and ask "should I proceed?" — don't. Just read your card.
 
 You also do NOT create projects, epics, or tasks (`project_create`,
-`epic_create`, `task_create`) — that is the planner role. If `worker_next`
-returns null and the QUEUE_EMPTY probe confirms the project genuinely has no
-claimable work, report that in one sentence and stop. Do not fabricate work.
+`epic_create`, `task_create`) — that is the planner role. If no card was
+pre-assigned to you, report that in one sentence and stop. Do not fabricate work.
 
 ## WORKTREE LIFECYCLE (жизненный цикл рабочей копии) — изоляция, слияние обратно, восстановление
 
@@ -140,9 +145,11 @@ git add -A && git commit -m "chore: init integration branch"
 Only one worker should do this — if a sibling raced you, `git rev-parse` will
 now succeed for everyone (shared `.git`). Do NOT re-init.
 
-### On CLAIM (worker_next gave you a `todo` task → `in_progress`)
+### On CLAIM (the dispatcher assigned you the card; it moved todo → in_progress BEFORE launch)
 
-Create your isolated workspace before touching any code:
+Your card is already assigned and its status flipped to `in_progress` by the
+dispatcher before this launch. Create your isolated workspace before touching
+any code:
 
 ```bash
 git fetch . dev:dev 2>/dev/null          # make sure dev is current
@@ -156,12 +163,13 @@ Stay there until the task is done.
 
 ### Parallel awareness — read `active_tasks[]`
 
-Every `worker_next` and `worker_done` response carries `active_tasks[]`: a list
-of every other task currently `in_progress` or `review`, with its `worker_id`,
-`status`, **`branch`**, and `epic_name`. Before editing a file, glance at it —
-if a sibling is in the same area/branch, you may collide at merge time. Use the
-80% rule by default (proceed, note the overlap in a comment); only `worker_ask_need`
-if the overlap makes your work genuinely impossible without a decision.
+The `worker_done` response (and your pre-assigned `AssignedWork`) carries
+`active_tasks[]`: a list of every other task currently `in_progress` or
+`review`, with its `worker_id`, `status`, **`branch`**, and `epic_name`. Before
+editing a file, glance at it — if a sibling is in the same area/branch, you may
+collide at merge time. Use the 80% rule by default (proceed, note the overlap in
+a comment); only `worker_ask_need` if the overlap makes your work genuinely
+impossible without a decision.
 
 ### DEV-DONE (worker_done, `in_progress → review`) — commit ONLY, do NOT merge
 
@@ -364,8 +372,8 @@ git diff dev...task/<id>          # clean per-task diff (three-dot)
 # in a throwaway worktree, or in the dev's worktree if it still exists
 ```
 
-Verdict via `worker_done` (task must be in `review_in_progress` — you claimed it
-via `worker_next` from the `review` buffer):
+Verdict via `worker_done` (task must be in `review_in_progress` — the dispatcher
+assigned it to you in that status):
 - **APPROVED** → `worker_done({ task_id, worker_id, result: "APPROVED — <why>" })`.
   The task moves `review_in_progress → done`; its `metadata.worktree.merged_into`
   becomes `"pending"` (awaiting integration — see MERGE-BACK below).
@@ -531,7 +539,7 @@ Verify it — you did NOT write this code. Diff the branch (see WORKTREE LIFECYC
 > GUARDRAILS Sign 006, `docs/ac-verification.md`. Planner создаёт эти задачи
 > ПОСЛЕ dev-задач (см. saga-planner SKILL — "AC-verification задачи").
 
-Когда `worker_next` выдаёт задачу с тегом `ac-verification` и `role:reviewer`,
+Когда тебе назначена (диспетчером, до launch'а) задача с тегом `ac-verification` и `role:reviewer`,
 это **содержательная** сверка AC (не обычная dev-review). Делай:
 
 1. Прочитай AC из описания задачи (или через `artifact_get(<AC-id>)`) — там
@@ -599,7 +607,8 @@ worker_done({ task_id, worker_id, result, verdict? })
 - `verdict` is only meaningful for a task in `review`: `"approved"` (default) or
   `"changes_requested"`. Omit it for the dev phase (in_progress→review).
 - saga moves the task and returns `completed_new_status` + `active_tasks[]`.
-  It does NOT return a next task — call `worker_next` to get one.
+  It does NOT return a next task — and you do NOT call `worker_next` (it is
+  disabled; the dispatcher assigns your next card on the next launch).
 - **Do NOT call `task_update({status:...})` to move a task.** Status is the dispatcher's exclusive zone; `task_update` will silently ignore it and warn you. Only `worker_done` advances status.
 
 ### Two-phase completion (IMPORTANT — this is how review works)
@@ -610,22 +619,22 @@ Statuses around review:
 
 Every task goes through **two** `worker_done` calls:
 
-1. **Dev phase** (task was `todo`, you claimed it → `in_progress`): you implement
-   **in your worktree**, commit (no merge), then
+1. **Dev phase** (task was `todo`, the dispatcher assigned it to you →
+   `in_progress`): you implement **in your worktree**, commit (no merge), then
    `worker_done({ task_id, worker_id, result: "what I did" })`. saga moves it to
    `review` buffer (assigned_to cleared) AND returns `stop: true` — you MUST stop
    here, return your summary, and end this launch. The orchestrator spawns you
-   again for the next task (which may or may not be this same task's review).
+   again for the next card (which may or may not be this same task's review).
 
-2. **Review phase** (task is in `review` buffer): when the dispatcher hands it to
-   you via `worker_next` (with `skill: "saga-reviewer"`), claiming it moves the
-   task from `review` → `review_in_progress` (`assigned_to=you`). Then you review
-   and deliver a verdict via `worker_done`.
+2. **Review phase** (task is in `review` buffer): when the dispatcher assigns it
+   to you on a fresh launch (with `skill: "saga-reviewer"`), the assignment
+   moves the task from `review` → `review_in_progress` (`assigned_to=you`). Then
+   you review and deliver a verdict via `worker_done`.
 
-   **You can ONLY deliver a verdict on a task you claimed** — `worker_done`
+   **You can ONLY deliver a verdict on a task assigned to you** — `worker_done`
    expects status `review_in_progress`. There is no "direct close a free review
-   task" path anymore: you must `worker_next` it first. (Old Path B was removed
-   when `review` became a pure buffer.)
+   task" path: the task must be assigned to you first (by the dispatcher, before
+   launch). (Old Path B was removed when `review` became a pure buffer.)
 
    `result` is the verdict text; `verdict` selects what happens next:
 
@@ -639,27 +648,28 @@ Every task goes through **two** `worker_done` calls:
 
 **Solo worker pattern (you are the only agent):** after your dev-phase
 `worker_done` puts the task in `review` buffer, you MUST stop (the response says
-so). On the next launch, `worker_next` will hand the same task back to you with
-`skill: "saga-reviewer"` (FIFO) — claim it, self-review, deliver verdict. Do not
-try to close it from the same launch as the dev-phase.
+so). On the next launch, the dispatcher assigns the same task back to you with
+`skill: "saga-reviewer"` (FIFO) — read it via `task_get`, self-review, deliver
+verdict. Do not try to close it from the same launch as the dev-phase.
 
 **Multi-worker pattern:** the developer's `worker_done` puts the task in
-`review`; another worker's `worker_next` will hand it out with
+`review`; on a fresh launch the dispatcher assigns it to another worker with
 `skill: "saga-reviewer"`; that worker reviews and delivers the verdict via
 `worker_done`.
 
 > Real failure this prevents: an agent called `worker_done` (→ review), then
 > tried `task_update({status:"done"})` (ignored) and a second `worker_done`
 > (rejected under old code). The task hung in review. The fix (#59) lets the
-> second `worker_done` through on a free review task; and Path A (worker_next
-> → reviewer) works regardless. Either way, close the review — don't stall.
+> second `worker_done` through on a free review task; and the pre-assigned path
+> (dispatcher assigns review → reviewer) works regardless. Either way, close the
+> review — don't stall.
 
 ## AUTONOMY (автономность) — do not ask to continue (не спрашивай разрешения продолжать; and NEVER go zombie — и НИКОГДА не зависай)
 
 This is critical. You are one of potentially many workers; humans are not
 watching each step.
 
-- After `worker_done` completes a task, **return your one-line summary and STOP.** Do NOT call `worker_next` again in this launch — the orchestrator spawns you again for the next task. Do not ask *"should I continue?"*, *"want me to take this?"*, *"shall I review the previous task first?"*. None of that. One launch = one task.
+- After `worker_done` completes a task, **return your one-line summary and STOP.** You do NOT call `worker_next` at all (it is disabled) — the orchestrator spawns you again for the next pre-assigned card. Do not ask *"should I continue?"*, *"want me to take this?"*, *"shall I review the previous task first?"*. None of that. One launch = one task.
 - **Task size / complexity is NOT a reason to ask.** A task being large, long, or open-ended research does NOT license a check-in. Work it to completion (or to a genuine block — see ASK flow). "This is a big task, want me to keep going?" is the #1 wrong question — the answer is always yes, so don't ask.
 - **NEVER end a turn holding a task.** If you are holding a task (it's `in_progress`, assigned to you), you MUST finish it via `worker_done` before this conversation ends. Holding a task and stopping = a **zombie** (the task is locked, no other worker can take it, nothing happens). This is the worst failure mode. If you must stop mid-task: call `worker_done` with `result: "PARTIAL: <what's done, what remains>"` so the task is freed and the next worker can pick up the comment trail. Do NOT leave `in_progress` tasks dangling.
 - The ONLY times you address the human:
@@ -672,13 +682,13 @@ Most "clarifications" are laziness, not real doubt. Default to action:
 - If **~80%+ clear** → do the most reasonable interpretation, **record your assumption in a `comment_add`** ("Assumed X because Y; revert if wrong"), and proceed. Stopping to ask costs more than a reversible assumption.
 - Only if **genuinely 0 usable information** (e.g. task references a file that doesn't exist and no interpretation makes sense) → use the ASK flow.
 
-## QUEUE_EMPTY (очередь пуста) — verify before you declare "done" (проверь прежде чем объявить «готово»)
+## NO ASSIGNED CARD (карточка не назначена) — verify before you declare "done" (проверь прежде чем объявить «готово»)
 
-When `worker_next` returns `{task: null}`:
+When you launch and there is NO pre-assigned card (`SAGA_TASK_ID` missing, or
+`task_get` returns nothing assigned to you):
 
-**Do NOT immediately announce "all done".** An empty result has multiple causes —
-all tasks done, all blocked, all `low` priority, OR you resolved the wrong
-project. Run this probe:
+**Do NOT immediately announce "all done".** A missing card has multiple causes —
+all tasks done, all blocked, OR you resolved the wrong project. Run this probe:
 
 ```
 task_list({ epic_id: <any epic in your project>, limit: 50 })   # or tracker_dashboard({project_id})
@@ -734,7 +744,7 @@ where a wrong guess is more expensive than restarting.
   hard stop and ask the user; never infer a product from the folder name.
 - **worker_id**: use exactly the id you were given (e.g. `agent-1`). It is how the board shows who does what.
 - **One task at a time.** Only the task whose `assigned_to` == your `worker_id` is yours.
-- **Never hold two tasks at once.** You get a task via `worker_next`, finish it via `worker_done`, then STOP — return your summary. The next task comes from a fresh `worker_next` on your next launch (the orchestrator spawns you again), never from `worker_done` (it no longer returns one).
+- **Never hold two tasks at once.** Your card is assigned by the dispatcher before launch; finish it via `worker_done`, then STOP — return your summary. The next task comes from a fresh pre-assigned card on your next launch (the orchestrator spawns you again), never from `worker_done` (it no longer returns one).
 - **Never go zombie.** If you hold a task (`in_progress`, assigned to you), you MUST close it with `worker_done` before stopping. Holding a task and stopping locks it forever — no other worker can take it. If you must stop mid-task: `worker_done` with `result: "PARTIAL: <done so far, what remains>"` to free it. A partial close is always better than a zombie.
 - **Never create projects/epics/tasks** (`project_create`, `epic_create`, `task_create`) — that is the planner role, not yours. This applies ALWAYS, including when the project looks empty or you "want to have something to do". Empty project → report and stop.
 - **Never move status yourself** (`task_update({status})`) — it's ignored; use `worker_done`.

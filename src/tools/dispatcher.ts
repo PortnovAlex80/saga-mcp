@@ -6,12 +6,15 @@ import { assertExecutionFence, updateExecutionPhase, isProcessAlive } from '../w
 import { reevaluateDownstream } from './tasks.js';
 import type { Task, ToolHandler } from '../types.js';
 import { releaseExecutionAtomically } from '../lifecycle/atomic-release.js';
-import { buildExecutionContext } from '../saga3/authority/build-execution-context.js';
-import { executionContextHash } from '../saga3/domain/execution-context.js';
+// CONVEYOR #7: the atomic assignment core lives in lifecycle/work-assignment-core.ts.
+// This module imports it for internal use AND re-exports it (below) so existing
+// consumers (tasks.ts, saga3-* tools) keep their './dispatcher.js' imports.
 import {
-  type AuthorityScope,
-  type WorkIntent,
-} from '../saga3/domain/work-intent.js';
+  withImmediateTransaction,
+  skillForTask,
+  findNextClaimable,
+  type WorkerSkill,
+} from '../lifecycle/work-assignment-core.js';
 import {
   checkReceipt,
   storeReceipt,
@@ -33,59 +36,25 @@ import {
 // только assigned_to. Так worker_done отличает циклы по ТЕКУЩЕМУ статусу задачи.
 // ============================================================================
 
-const PRIORITY_ORDER = "CASE t.priority WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 END";
-
-// Верхняя граница попыток claim в findNextClaimable. Под IMMEDIATE-локом retry
-// срабатывает крайне редко (мы держим эксклюзивный lock), но лимит страховает
-// от livelock и от удержания глобального write-lock'а сколь угодно долго.
-const MAX_CLAIM_ATTEMPTS = 10;
-
-// better-sqlite3 db.transaction(fn) всегда DEFERRED и не принимает mode (типы
-// @types/better-sqlite3 в форке: transaction<F>(fn: F): Transaction<F>). Нам же
-// нужен BEGIN IMMEDIATE — write-lock всей БД с старта транзакции (аналог
-// SELECT FOR UPDATE, которого нет в SQLite), чтобы сериализовать писателей.
-// Поэтому оборачиваем логику в явные BEGIN IMMEDIATE / COMMIT / ROLLBACK.
-// Exported so other handlers (e.g. task_update RMW sequence) can wrap their
-// own read-modify-write critical sections in the same atomic boundary.
-export function withImmediateTransaction<T>(db: Database.Database, fn: () => T): T {
-  db.exec('BEGIN IMMEDIATE');
-  try {
-    const result = fn();
-    db.exec('COMMIT');
-    return result;
-  } catch (err) {
-    // Если транзакция ещё активна — откатить. ROLLBACK без активной tx бросит
-    // ошибку, глотаем её (мы и так в пути ошибки).
-    try {
-      db.exec('ROLLBACK');
-    } catch {
-      /* ignore — tx could not be active */
-    }
-    throw err;
-  }
-}
-
-type WorkerSkill = string;
-
-/** Central workflow routing with a strict legacy fallback. */
-function skillForTask(task: Task, sourceStatus: string): WorkerSkill {
-  const review = sourceStatus === 'review' || sourceStatus === 'review_in_progress';
-  if (review && task.review_skill) return task.review_skill;
-  if (!review && task.execution_skill) return task.execution_skill;
-
-  let tags: string[] = [];
-  try {
-    const parsed = JSON.parse(task.tags || '[]');
-    if (Array.isArray(parsed)) tags = parsed.filter((value): value is string => typeof value === 'string');
-  } catch { /* malformed legacy tags: use status fallback */ }
-  const explicit = tags.find(tag => tag.startsWith(review ? 'review-skill:' : 'skill:'));
-  if (explicit) return explicit.slice(explicit.indexOf(':') + 1);
-  if (!review) {
-    const role = tags.find(tag => tag.startsWith('role:'))?.slice('role:'.length);
-    if (role) return `saga-${role}`;
-  }
-  return review ? 'saga-reviewer' : 'saga-developer';
-}
+// CONVEYOR #7: the atomic assignment core lives in lifecycle/work-assignment-core.ts
+// (infrastructure-side, away from the MCP/tool layer — see CONVEYOR-MENTAL-MODEL
+// §"Adapter rules"). This module re-exports it so existing consumers
+// (tasks.ts, saga3-* tools, the adapter) keep importing from './dispatcher.js'
+// without churn; the canonical home is the lifecycle module.
+export {
+  withImmediateTransaction,
+  skillForTask,
+  findNextClaimable,
+  buildAssignedWorkFromClaim,
+  readModelRouteAtClaim,
+  readWorkIntentForTaskClaim,
+  strictAuthorityScope,
+  claimRowToIntent,
+  WORKER_LEASE_TTL_MS,
+  MAX_CLAIM_ATTEMPTS,
+  PRIORITY_ORDER,
+  type WorkIntentClaimRow,
+} from '../lifecycle/work-assignment-core.js';
 
 // ============================================================================
 // Worktree-изоляция: каждый воркер работает в своём git worktree на ветке
@@ -207,354 +176,18 @@ function addTag(db: Database.Database, taskId: number, tag: string): void {
 // transaction so the snapshot is internally consistent with the atomic claim.
 // ============================================================================
 
-/** Read the active model route for an episode once (single source of truth). */
-function readModelRouteAtClaim(
-  db: Database.Database,
-  epicId: number,
-): { provider: string; model: string | null; effort: string | null } {
-  const row = db.prepare(
-    `SELECT model_name AS m, model_provider AS p, model_effort AS e
-       FROM lifecycle_execution_controls WHERE epic_id=?`,
-  ).get(epicId) as { m: string | null; p: string | null; e: string | null } | undefined;
-  return { model: row?.m ?? null, provider: row?.p ?? 'zai', effort: row?.e ?? null };
-}
-
-/**
- * Read the WorkIntent bound to a task for the authority snapshot, or null for a
- * legacy Saga 2 task (no work_intent_id). Accepts the already-parsed task
- * metadata to avoid a re-read; falls back to a SQL read when metadata is a
- * string (the Task type may carry it either way depending on call site).
- */
-function strictAuthorityScope(raw: unknown): AuthorityScope {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
-    throw new Error('AUTHORITY_BINDING_INVALID: authority_scope must be an object');
-  }
-  const scope = raw as Record<string, unknown>;
-  if (typeof scope.snapshot_ref !== 'string' || scope.snapshot_ref.trim() === '') {
-    throw new Error('AUTHORITY_BINDING_INVALID: authority_scope.snapshot_ref is required');
-  }
-  if (typeof scope.scope !== 'string' || scope.scope.trim() === '') {
-    throw new Error('AUTHORITY_BINDING_INVALID: authority_scope.scope is required');
-  }
-  if (!Array.isArray(scope.allowed_tools)
-      || !scope.allowed_tools.every(x => typeof x === 'string' && x.trim() !== '')
-      || new Set(scope.allowed_tools).size !== scope.allowed_tools.length) {
-    throw new Error('AUTHORITY_BINDING_INVALID: authority_scope.allowed_tools must be a unique string array');
-  }
-  if (scope.enforcement !== 'runtime' && scope.enforcement !== 'advisory') {
-    throw new Error('AUTHORITY_BINDING_INVALID: authority_scope.enforcement must be advisory|runtime');
-  }
-  return {
-    snapshot_ref: scope.snapshot_ref,
-    scope: scope.scope,
-    allowed_tools: [...scope.allowed_tools] as string[],
-    enforcement: scope.enforcement,
-  };
-}
-
-function readWorkIntentForTaskClaim(
-  db: Database.Database,
-  task: Task,
-): WorkIntent | null {
-  // P6c: the discriminator for "managed execution with frozen authority" is
-  // the presence of `work_intent_id` in task metadata — NOT a discovery-specific
-  // task_kind/skill literal. Any task whose metadata carries a work_intent_id
-  // MUST have a valid, claimable WorkIntent binding; tasks without one take the
-  // legacy null-authority path. This lets the generic flow executor project
-  // tasks for any module (Discovery, Formalization, …) without the dispatcher
-  // knowing the module name.
-  let metadata: Record<string, unknown> = {};
-  if (task.metadata && typeof task.metadata === 'object') {
-    metadata = task.metadata as Record<string, unknown>;
-  } else if (typeof task.metadata === 'string') {
-    try {
-      const parsed = JSON.parse(task.metadata);
-      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) metadata = parsed;
-    } catch {
-      // fall through — intentId lookup below will detect a missing binding.
-    }
-  }
-  let intentId = Number.isInteger(metadata.work_intent_id) ? metadata.work_intent_id as number : null;
-  if (intentId == null) {
-    const row = db.prepare(
-      `SELECT json_extract(metadata, '$.work_intent_id') AS intent_id FROM tasks WHERE id=?`,
-    ).get(task.id) as { intent_id: number | null } | undefined;
-    intentId = row?.intent_id ?? null;
-  }
-  if (intentId == null) {
-    // No work_intent_id → legacy/manual task, no frozen authority. Allowed.
-    return null;
-  }
-  const row = db.prepare('SELECT * FROM saga3_work_intents WHERE id=?').get(intentId) as WorkIntentClaimRow | undefined;
-  if (!row) throw new Error(`AUTHORITY_BINDING_INVALID: WorkIntent ${intentId} referenced by task ${task.id} does not exist`);
-  if (row.epic_id !== task.epic_id) {
-    throw new Error(`AUTHORITY_BINDING_INVALID: WorkIntent ${intentId} epic ${row.epic_id} != task epic ${task.epic_id}`);
-  }
-  if (row.projected_task_id !== task.id) {
-    throw new Error(`AUTHORITY_BINDING_INVALID: WorkIntent ${intentId} projected_task_id ${row.projected_task_id} != task ${task.id}`);
-  }
-  if (row.status !== 'open' && row.status !== 'executing') {
-    throw new Error(`AUTHORITY_BINDING_INVALID: WorkIntent ${intentId} status '${row.status}' is not claimable`);
-  }
-  let rawAuthority: unknown;
-  try { rawAuthority = JSON.parse(row.authority_scope); }
-  catch { throw new Error(`AUTHORITY_BINDING_INVALID: WorkIntent ${intentId} authority_scope is malformed JSON`); }
-  const authority = strictAuthorityScope(rawAuthority);
-  // The module that created the WorkIntent owns its kind/output_schema; the
-  // dispatcher does not validate module-specific schema identity here. The
-  // module's submit handlers (proposal_submit / readiness_submit / …) re-check
-  // the binding against their own contract before accepting any submission.
-  return claimRowToIntent(row, authority);
-}
-
-interface WorkIntentClaimRow {
-  id: number;
-  epic_id: number;
-  kind: string;
-  objective: string;
-  authority_scope: string;
-  output_schema: string;
-  token_budget: number;
-  retry_budget: number;
-  projected_task_id: number | null;
-  status: string;
-  created_at: string;
-  updated_at: string;
-}
-
-function claimRowToIntent(row: WorkIntentClaimRow, authorityScope?: AuthorityScope): WorkIntent {
-  return {
-    id: row.id,
-    epic_id: row.epic_id,
-    kind: row.kind,
-    objective: row.objective,
-    authority_scope: authorityScope ?? strictAuthorityScope(JSON.parse(row.authority_scope)),
-    output_schema: row.output_schema,
-    token_budget: row.token_budget,
-    retry_budget: row.retry_budget,
-    projected_task_id: row.projected_task_id,
-    status: row.status as WorkIntent['status'],
-    created_at: row.created_at,
-  };
-}
+// D1.1 claim-time snapshot helpers (readModelRouteAtClaim, strictAuthorityScope,
+// readWorkIntentForTaskClaim, claimRowToIntent, WorkIntentClaimRow) now live in
+// lifecycle/work-assignment-core.ts and are re-exported above. Kept out of this
+// MCP/tool module so the outbound SQLite adapter depends only on the lifecycle
+// core, not on the tool layer (CONVEYOR-MENTAL-MODEL §"Adapter rules").
 
 // ============================================================================
-function findNextClaimable(
-  db: Database.Database,
-  workerId: string,
-  projectId: number,
-  excludeTaskId?: number,
-  attempt: number = 0,
-  role?: string,
-  epicId?: number,
-  reservation?: {
-    executionId: string;
-    runId: string;
-    machineId: string;
-  },
-  taskIds?: number[],
-): Task | null {
-  // Стоп через MAX_CLAIM_ATTEMPTS: под IMMEDIATE-локом контентция редка, но
-  // бесконечная рекурсия могла бы livelock'нуть глобальный write-lock.
-  if (attempt >= MAX_CLAIM_ATTEMPTS) return null;
-  // 1. SELECT кандидата: статус todo/review, свободна, без невыполненных deps.
-  //    Шаблон NOT EXISTS сверен с tasks.ts:139-145 и blocked_by_count (tasks.ts:279-281).
-  //    project-фильтр через tasks.epic_id → epics.project_id (precedent в dashboard.ts).
-  //    Готовые индексы: idx_tasks_epic_id, idx_epics_project_id.
-  //
-  //    Priority: раздаём ЛЮБЫЕ приоритеты (critical/high/medium/low). ORDER BY
-  //    PRIORITY_ORDER сохраняет предпочтение (critical раньше low), но low не
-  //    блокируется. Это снимает dead-lock «задача готова, depend_on выполнены,
-  //    но не выдаётся потому что priority=low» — saga-planner имеет право
-  //    ставить low для extension-задач, и pipeline всё равно должен их выдать.
-  //    Применяется к todo И review единообразно.
-  //
-  //    role (опционально): фильтр по тегу `role:<name>` (например role:analyst).
-  //    Теги хранятся JSON-массивом; json_each разворачивает, EXISTS проверяет.
-  //    Без role — обратная совместимость: любой тег подходит.
-  const excludeClause = excludeTaskId !== undefined ? 'AND t.id != ?' : '';
-  const roleClause = role ? `AND EXISTS (SELECT 1 FROM json_each(t.tags) WHERE json_each.value = ?)` : '';
-  const epicClause = epicId !== undefined ? 'AND t.epic_id = ?' : '';
-  // Claim scope (Saga 3 engine): restrict candidates to an explicit task-id
-  // allowlist. Follows the same conditional-clause pattern as epic/exclude.
-  // When unset, any claimable task in the project/epic may be claimed (legacy).
-  const taskIdsClause = taskIds && taskIds.length > 0
-    ? `AND t.id IN (${taskIds.map(() => '?').join(',')})`
-    : '';
-  const selectSql = `
-    SELECT t.* FROM tasks t
-    WHERE t.status IN ('todo', 'review')
-      AND (t.assigned_to IS NULL OR t.assigned_to = '')
-      AND t.epic_id IN (SELECT id FROM epics WHERE project_id = ?)
-      ${epicClause}
-      ${taskIdsClause}
-      AND (
-        -- saga4 cutover (Phase 4): a task is claimable ONLY if it is bound to
-        -- an active Process Module node. The discriminator is
-        -- tasks.metadata.process_run_id (stamped by the module's node executor
-        -- at projection time). The legacy stage-gating clauses
-        -- (workflow_stage IS NULL, episode_workflows.stage match) were removed —
-        -- workflow_stage is now a module-owned UI label, not an authority gate.
-        json_extract(t.metadata, '$.process_run_id') IS NOT NULL
-      )
-      ${excludeClause}
-      ${roleClause}
-      AND t.current_execution_id IS NULL
-      AND NOT EXISTS (
-        SELECT 1 FROM worker_executions we
-        WHERE we.task_id=t.id AND we.state IN ('reserved','running','cancel_requested')
-      )
-      AND NOT EXISTS (
-        SELECT 1 FROM human_requests hr
-        WHERE hr.task_id = t.id AND hr.state = 'open'
-      )
-      AND NOT EXISTS (
-        SELECT 1 FROM task_dependencies d
-        JOIN tasks dep ON dep.id = d.depends_on_task_id
-        WHERE d.task_id = t.id AND (
-          dep.status != 'done'
-          OR (
-            dep.task_kind IS NOT NULL
-            AND dep.execution_mode = 'git_change'
-            AND dep.integration_state != 'merged'
-          )
-        )
-      )
-      AND NOT EXISTS (
-        -- T-008 kanban: НЕ выдаём dev-задачу, если есть другая task с тем же
-        -- conflict_key, ещё не слитая в integration-ветку. Ждём, пока pending-merge
-        -- закроется — иначе параллельные задачи на один файл (single-file monolith)
-        -- гарантированно конфликтуют.
-        --
-        -- Узкий фильтр: только git_change задачи с integration_state РОВНО
-        -- 'pending' или 'conflict'. 'not_required' / '' / NULL нас не касается
-        -- (это tracker_only / recovery / read-only — они не пишут код).
-        -- saga4 cutover: scoped by process_run_id equality (not workflow_stage)
-        -- — two tasks from the same ProcessRun on the same file serialize.
-        SELECT 1 FROM tasks other
-        JOIN task_conflict_keys k1 ON k1.task_id = t.id
-        JOIN task_conflict_keys k2 ON k2.key_type = k1.key_type
-                                   AND k2.key_value = k1.key_value
-        WHERE other.id = k2.task_id
-          AND other.id != t.id
-          AND json_extract(other.metadata, '$.process_run_id')
-              = json_extract(t.metadata, '$.process_run_id')
-          AND other.execution_mode = 'git_change'
-          AND other.integration_state IN ('pending', 'conflict')
-      )
-    ORDER BY
-      -- T-008 kanban: review задачи выдаются РАНЬШЕ todo при равном priority.
-      -- Принцип: «сначала закрой начатое». Пока задача висит в review, она
-      -- блокирует очередь (новые todo на тот же conflict_key ждут её merge).
-      CASE WHEN t.status = 'review' THEN 0 ELSE 1 END,
-      ${PRIORITY_ORDER},
-      t.created_at
-    LIMIT 1
-  `;
-  // Сбор параметров в порядке появления ? в SQL.
-  const params: unknown[] = [projectId];
-  if (epicId !== undefined) params.push(epicId);
-  if (taskIds && taskIds.length > 0) params.push(...taskIds);
-  if (excludeTaskId !== undefined) params.push(excludeTaskId);
-  if (role) params.push(`role:${role}`);
-  const task = db.prepare(selectSql).get(...params) as Task | undefined;
+// findNextClaimable + buildAssignedWorkFromClaim now live in
+// lifecycle/work-assignment-core.ts and are re-exported above. This module
+// keeps only the MCP handlers (handleWorkerNext etc.); the atomic assignment
+// transaction is infrastructure-side, not an MCP/tool concern.
 
-  if (!task) return null;
-
-  // 2. Conditional-UPDATE — защита от гонок (defence in depth):
-  //    даже если SELECT вернул кандидата, другой процесс мог занять его
-  //    между SELECT и UPDATE. WHERE ... AND assigned_to IS NULL|'' это отсечёт.
-  //    Tolerant к пустой строке (saga-API может записать '' вместо NULL при
-  //    ручном обновлении; инвариант todo/done ⇒ NULL ловит основную массу,
-  //    это — страховка на случай stale-данных).
-  let info: Database.RunResult;
-  if (task.status === 'todo') {
-    // Цикл разработки: задача уходит в работу.
-    info = db
-      .prepare(
-         `UPDATE tasks SET status='in_progress', assigned_to=?, current_execution_id=?,
-                           updated_at=datetime('now')
-          WHERE id=? AND status='todo' AND (assigned_to IS NULL OR assigned_to = '')`,
-       )
-      .run(workerId, reservation?.executionId ?? null, task.id);
-  } else {
-    // Цикл ревью: задача из буфера review (ждёт ревьюера) переходит в
-    // review_in_progress (ревьюер работает). Зеркало todo→in_progress для
-    // ревью-фазы. assigned_to = reviewer.
-    info = db
-      .prepare(
-         `UPDATE tasks SET status='review_in_progress', assigned_to=?, current_execution_id=?,
-                           updated_at=datetime('now')
-          WHERE id=? AND status='review' AND (assigned_to IS NULL OR assigned_to = '')`,
-       )
-      .run(workerId, reservation?.executionId ?? null, task.id);
-  }
-
-  // 3. Кто-то успел занять под носом — ищем следующего кандидата,
-  //    с ограничением попыток (см. MAX_CLAIM_ATTEMPTS выше). projectId и role пробрасываем.
-  if (info.changes !== 1) {
-    return findNextClaimable(
-      db, workerId, projectId, excludeTaskId, attempt + 1, role, epicId, reservation, taskIds,
-    );
-  }
-
-  if (reservation) {
-    // D1.1: freeze the IMMUTABLE execution context snapshot at claim. The model
-    // route is read ONCE here (single source of truth) — spawn-side and
-    // proposal-provenance-side both consume the frozen value from
-    // worker_executions.metadata.execution_context, eliminating the D1
-    // claim↔spawn model-route race. Authority is frozen from the WorkIntent
-    // bound to the task (via tasks.metadata.work_intent_id); a WorkIntent
-    // mutated AFTER claim does not change this snapshot, so the worker cannot
-    // expand its own authority mid-run.
-    //
-    // Read inside the same IMMEDIATE transaction so the snapshot reflects the
-    // state at the atomic claim instant.
-    const modelRoute = readModelRouteAtClaim(db, task.epic_id);
-    const workIntent = readWorkIntentForTaskClaim(db, task);
-    const executionContext = buildExecutionContext({
-      modelRoute,
-      workIntent,
-      capturedAt: new Date().toISOString(),
-    });
-    const executionContextHashValue = executionContextHash(executionContext);
-    const metadataJson = JSON.stringify({
-      execution_context: executionContext,
-      execution_context_hash: executionContextHashValue,
-    });
-    db.prepare(
-      `INSERT INTO worker_executions
-        (execution_id,run_id,project_id,epic_id,task_id,worker_id,machine_id,phase,metadata)
-       VALUES (?,?,?,?,?,?,?,?,?)`,
-    ).run(
-      reservation.executionId,
-      reservation.runId,
-      projectId,
-      task.epic_id,
-      task.id,
-      workerId,
-      reservation.machineId,
-      task.status === 'review' ? 'reviewing' : 'executing',
-      metadataJson,
-    );
-  }
-
-  // logActivity на назначение. Оба цикла (dev: todo→in_progress, review:
-  // review→review_in_progress) меняют статус — логируем как status_changed.
-  const newClaimedStatus = task.status === 'todo' ? 'in_progress' : 'review_in_progress';
-  logActivity(
-    db,
-    'task',
-    task.id,
-    'status_changed',
-    'status',
-    task.status,
-    newClaimedStatus,
-    `Task '${task.title}' claimed by ${workerId} (from ${task.status} to ${newClaimedStatus})`,
-  );
-
-  return task;
-}
 
 // ============================================================================
 // Handlers

@@ -1,6 +1,5 @@
 import type Database from 'better-sqlite3';
 import { canonicalJson, sha256Hex } from '../../shared/canonical-json.js';
-import { ensureSaga3ProcessRunSchema } from '../../persistence/sqlite-process-run-repository.js';
 import {
   type DeliveryOutputRecord,
   type DeliveryOutputRepository,
@@ -11,8 +10,13 @@ import {
   type ReleaseRecord,
 } from './delivery-schemas.js';
 
+/**
+ * Wave 7 hex extraction: the parent `saga3_process_runs` table is ensured by
+ * the composition root, which constructs `SqliteProcessRunRepository(db)`
+ * before this repository. Delivery's own tables are created here; the module
+ * no longer imports the concrete process-run SQLite adapter.
+ */
 export function ensureDeliveryPersistenceSchema(db: Database.Database): void {
-  ensureSaga3ProcessRunSchema(db);
   db.exec(`
     CREATE TABLE IF NOT EXISTS saga3_delivery_outputs (
       id               INTEGER PRIMARY KEY AUTOINCREMENT,

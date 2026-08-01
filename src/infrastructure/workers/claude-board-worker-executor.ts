@@ -1,4 +1,5 @@
 import type {
+  AssignedWork,
   WorkerExecutor,
   WorkerExecutorStart,
   WorkerRunSnapshot,
@@ -12,6 +13,7 @@ export interface LegacyClaudeBoardRunner {
     claimScope?: {
       taskIds?: number[];
     };
+    assignment?: AssignedWork;
   }): WorkerRunSnapshot;
   stop(projectId: number): WorkerRunSnapshot | null;
   status(projectId: number): WorkerRunSnapshot | null;

@@ -38,12 +38,6 @@
  */
 
 import type Database from 'better-sqlite3';
-import type {
-  ManagedArtifactProductionRecord,
-  ManagedExecutionProductQuery,
-  ManagedProductionLedger,
-  ManagedTraceProductionRecord,
-} from '../../../../persistence/sqlite-managed-production-ledger.js';
 import { sha256Hex } from '../../../../shared/canonical-json.js';
 import type {
   FormalizationBriefProvisioningContext,
@@ -56,7 +50,13 @@ import type {
   FormalizationPackagePorts,
   FormalizationPrdRootRead,
 } from './formalization-package-ports.js';
-import type { FormalizationCanonicalGraphPort } from '../../formalization-kernel-ports.js';
+import type {
+  FormalizationCanonicalGraphPort,
+  ManagedArtifactProductionRecord,
+  ManagedExecutionProductQuery,
+  ManagedProductionLedger,
+  ManagedTraceProductionRecord,
+} from '../../formalization-kernel-ports.js';
 
 // ---------------------------------------------------------------------------
 // Brief provisioning adapter.

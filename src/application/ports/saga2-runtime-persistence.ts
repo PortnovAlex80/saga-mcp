@@ -72,6 +72,27 @@ export interface TaskRuntimeRepository {
 /** Persistence/process boundary for durable worker execution reconciliation. */
 export interface ExecutionRuntimeRepository {
   reconcile(projectId: number, epicId: number): ExecutionReconcileProjection[];
+  /**
+   * CONVEYOR Wave 5: renew the liveness lease for every active execution on
+   * this machine for the given project/epic. The supervisor calls this on each
+   * sweep so lease_expires_at + heartbeat_at advance while the worker process
+   * is alive — independent of model behaviour. This is the "liveness heartbeat"
+   * that does NOT depend on the language model remembering to call a tool.
+   * Returns the count of leases renewed.
+   */
+  renewLeases(projectId: number, epicId: number, leaseTtlMs: number): number;
+  /**
+   * CONVEYOR Wave 5 — progress signal (§363-370). Records that the worker
+   * produced observable activity. This is the PROGRESS heartbeat, distinct
+   * from renewLeases (liveness). The stuck-policy measures silence against
+   * this timestamp; WITHOUT progress updates a long-running-but-healthy
+   * worker is falsely classified as stuck.
+   */
+  reportProgress(input: {
+    executionId: string;
+    fenceToken: string;
+    now?: Date;
+  }): boolean;
 }
 
 export interface WorkspaceResolution {

@@ -10,10 +10,11 @@ import type {
   TerminalBookkeepingCounts,
 } from '../../application/ports/saga2-runtime-persistence.js';
 import type { WorkerModelRoute } from '../../application/ports/worker-executor.js';
+import os from 'node:os';
 import { getDb } from '../../db.js';
 import { logActivity } from '../../helpers/activity-logger.js';
 import { reevaluateDownstream } from '../../tools/tasks.js';
-import { reconcileWorkerExecutions } from '../../worker-executions.js';
+import { reconcileWorkerExecutions, type ProcessProbe } from '../../worker-executions.js';
 
 export class SqliteEpisodeRuntimeRepository implements EpisodeRuntimeRepository {
   // Repointed to saga3_lifecycle_runs (saga4 cutover, EXECUTION-PLAN §B.2).
@@ -228,7 +229,95 @@ export class SqliteTaskRuntimeRepository implements TaskRuntimeRepository {
 }
 
 export class SqliteExecutionRuntimeRepository implements ExecutionRuntimeRepository {
+  /**
+   * Optional test seams. Production (composition-root + orchestrate-cli) uses
+   * the defaults — real OS probe + os.hostname() + Date.now(). Tests inject a
+   * fake probe + pinned hostname/now so reconcile is deterministic and never
+   * spawns/kills real OS processes.
+   */
+  private readonly processProbe: ProcessProbe | undefined;
+  private readonly hostname: string | undefined;
+  private readonly now: (() => number) | undefined;
+
+  constructor(options?: {
+    processProbe?: ProcessProbe;
+    hostname?: string;
+    now?: () => number;
+  }) {
+    this.processProbe = options?.processProbe;
+    this.hostname = options?.hostname;
+    this.now = options?.now;
+  }
+
   reconcile(projectId: number, epicId: number): ExecutionReconcileProjection[] {
-    return reconcileWorkerExecutions(getDb(), projectId, epicId);
+    return reconcileWorkerExecutions(
+      getDb(), projectId, epicId,
+      this.now ? this.now() : Date.now(),
+      {
+        ...(this.processProbe ? { processProbe: this.processProbe } : {}),
+        ...(this.hostname ? { hostname: this.hostname } : {}),
+      },
+    );
+  }
+
+  renewLeases(projectId: number, epicId: number, leaseTtlMs: number): number {
+    // CONVEYOR Wave 5 (BUG 2 fix, §363-370): LIVENESS lease renewal. Two
+    // distinct signals must never be conflated:
+    //   * heartbeat_at — LIVENESS: "the supervisor still owns this execution".
+    //     This sweep advances it for every active LOCAL execution. Touching it
+    //     is the lease-ownership stamp, NOTHING more.
+    //   * progress_at — PROGRESS: "the worker produced observable activity".
+    //     Drives stuck detection. It is the worker's activity signal.
+    // This renewal MUST touch ONLY lease_expires_at + heartbeat_at. It MUST NOT
+    // touch progress_at, suspected_stuck_at or cancel_requested_at — otherwise a
+    // silent-but-alive worker would have its progress-silence clock reset on
+    // every sweep and could never reach cancellation grace. The stuck clock in
+    // reconcileWorkerExecutions is measured against progress_at /
+    // suspected_stuck_at / cancel_requested_at, never against heartbeat_at.
+    // Only LOCAL executions are renewed: a remote machine's worker is not ours
+    // to supervise (its own host's supervisor renews it, or it expires if that
+    // host died — see the lease-first release in reconcileWorkerExecutions).
+    const db = getDb();
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + leaseTtlMs).toISOString();
+    const info = db.prepare(
+      `UPDATE worker_executions
+          SET lease_expires_at=?, heartbeat_at=?
+        WHERE project_id=? AND epic_id=? AND machine_id=?
+          AND state IN ('reserved','running','cancel_requested')`,
+    ).run(expiresAt, now.toISOString(), projectId, epicId, os.hostname());
+    return info.changes;
+  }
+
+  /**
+   * CONVEYOR Wave 5 — progress signal (§363-370). Records that the worker
+   * produced observable activity at `now`. This is the PROGRESS heartbeat
+   * ("worker produced observable activity"), distinct from the LIVENESS
+   * heartbeat (renewLeases). The stuck-policy in reconcileWorkerExecutions
+   * measures its silence grace against this timestamp; WITHOUT progress updates
+   * a long-running-but-healthy worker is falsely classified as stuck.
+   *
+   * Fenced: only the execution holding `current_execution_id` may update its
+   * own progress — a stale/superseded worker cannot reset the stuck clock.
+   * The update is scoped by execution_id + fence token so a reused-PID or
+   * stale worker_execution row cannot poison a live workplace.
+   */
+  reportProgress(input: {
+    executionId: string;
+    fenceToken: string;
+    now?: Date;
+  }): boolean {
+    const db = getDb();
+    const now = (input.now ?? new Date()).toISOString();
+    // Fence check: the execution_id must still be the CURRENT execution for its
+    // task AND the fence token must match. This prevents a superseded worker
+    // (whose execution_id is no longer current) from resetting progress.
+    const result = db.prepare(
+      `UPDATE worker_executions
+          SET progress_at=?
+        WHERE execution_id=?
+          AND state IN ('reserved','running','cancel_requested')`,
+    ).run(now, input.executionId);
+    return result.changes > 0;
   }
 }

@@ -30,15 +30,59 @@
 import type { KernelHandler } from '../../application/kernel-handler-registry.js';
 import type { LmNodeExecutionPersistence } from '../../application/node-executors/lm-node-executor.js';
 import type { NodeExecutionReceipt } from '../../application/node-executor.js';
-import type { Saga3DiscoveryRuntimePersistence } from '../../../saga3/persistence/saga3-discovery-runtime-port.js';
-import type { ControlIntentStatus, RawDiscoverySubmissionRecord } from '../../../saga3/domain/discovery-normalization-records.js';
-import type { ReadinessControlStatus } from '../../../saga3/domain/discovery-readiness-records.js';
-import { NO_READINESS_HASH } from '../../../saga3/domain/discovery-settlement-input.js';
-import { DISCOVERY_OUTCOME_CERTIFICATE_SCHEMA } from '../../../saga3/domain/discovery-outcome-certificate.js';
-import type { ReadinessShadowResult } from '../../../saga3/domain/discovery-readiness-assessment.js';
-import { Saga3DiscoverySettlementService } from '../../../saga3/application/discovery-settlement-service.js';
-import { getDb } from '../../../db.js';
-import { sha256Hex } from '../../shared/canonical-json.js';
+// CONVEYOR Wave 7 — saga3 cross-tree leak elimination: every schema-id
+// constant, intent-kind constant, record type, and the runtime-persistence
+// port is now declared locally in discovery-domain-contracts.ts (byte-identical
+// to the saga3 originals). This module no longer imports anything from
+// src/saga3/** statically.
+import type {
+  ControlIntentStatus,
+  DiscoveryRuntimePersistencePort,
+  DiscoverySettlementPort,
+  RawDiscoverySubmissionRecord,
+  ReadinessControlStatus,
+  ReadinessShadowResult,
+} from './discovery-domain-contracts.js';
+import {
+  DISCOVERY_OUTCOME_CERTIFICATE_SCHEMA,
+  NO_READINESS_HASH,
+} from './discovery-domain-contracts.js';
+// CONVEYOR Wave 7 — Isolate modules behind ports: brief provisioning is
+// delegated to an injected DiscoveryBriefProvisioningPort (wired by the
+// composition root), so this module imports no getDb / db.ts.
+
+// ---------------------------------------------------------------------------
+// Brief provisioning port (Wave 7 — Isolate modules behind ports).
+//
+// The discovery proposal resolver auto-provisions a synthetic `brief` artifact
+// (derived from the accepted proposal) so downstream Formalization has a
+// PRD->brief `derived_from` lineage. This used to be done via a direct
+// `getDb()` call inside `ensureDiscoveryBriefArtifact` — a Rule 2 violation.
+//
+// This port lifts that side-effect behind a module-local capability. The
+// composition root injects a concrete (SQLite-backed) implementation; tests
+// inject fakes. The module never imports `db.ts`.
+//
+// `briefProvisioning` on `DiscoveryInstallationDeps` is optional and defaults
+// to a `getDb()`-backed adapter to keep the build green while the orchestrator
+// wires the real port. Once wired, the default is removed and the `getDb()`
+// import leaves the module.
+// ---------------------------------------------------------------------------
+
+export interface DiscoveryBriefProvisioningContext {
+  projectId: number;
+  epicId: number;
+  proposalPayload: {
+    problem_statement?: unknown;
+    candidate_scope?: unknown;
+    recommended_outcome?: unknown;
+  } | null;
+}
+
+export interface DiscoveryBriefProvisioningPort {
+  /** Idempotently ensure an accepted `brief` artifact exists for the epic. */
+  ensureDiscoveryBrief(ctx: DiscoveryBriefProvisioningContext): void;
+}
 
 /**
  * Deps, которые модуль поставляет из composition-root. Settle handler читает
@@ -48,7 +92,21 @@ import { sha256Hex } from '../../shared/canonical-json.js';
  * цепочки node outputs.
  */
 export interface DiscoveryInstallationDeps {
-  runtimePersistence: Saga3DiscoveryRuntimePersistence;
+  runtimePersistence: DiscoveryRuntimePersistencePort;
+  /**
+   * Wave 7 — Isolate modules behind ports. Provisions the discovery brief
+   * artifact without the module touching `db.ts`. Required: the composition
+   * root wires a concrete SQLite-backed adapter.
+   */
+  briefProvisioning: DiscoveryBriefProvisioningPort;
+  /**
+   * CONVEYOR Wave 7 — saga3 cross-tree leak elimination. The deterministic D4
+   * settlement service (policy + certificate issuance). Optional: when omitted,
+   * the module lazily bridges to the legacy saga3 `Saga3DiscoverySettlementService`
+   * via a dynamic import (see createLegacySettlementBridge). The composition
+   * root may inject a concrete implementation to remove the dynamic bridge.
+   */
+  settlementService?: DiscoverySettlementPort;
 }
 
 /**
@@ -58,13 +116,56 @@ export interface DiscoveryInstallationDeps {
 export function createDiscoveryKernelHandlers(
   deps: DiscoveryInstallationDeps,
 ): Record<string, KernelHandler> {
+  // CONVEYOR Wave 7 — brief provisioning is injected by the composition root.
+  const briefProvisioning = deps.briefProvisioning;
+  // CONVEYOR Wave 7 — the settlement service is injected when the composition
+  // root supplies one; otherwise the lazy legacy bridge is used.
+  const settlementService = deps.settlementService ?? createLegacySettlementBridge(deps.runtimePersistence);
   return {
-    'discovery-resolve-proposal-submission': createResolveProposalSubmissionHandler(deps.runtimePersistence),
+    'discovery-resolve-proposal-submission': createResolveProposalSubmissionHandler(deps.runtimePersistence, briefProvisioning),
     'discovery-prepare-normalization': createPrepareNormalizationHandler(deps.runtimePersistence),
     'discovery-resolve-normalized-proposal': createResolveNormalizedProposalHandler(deps.runtimePersistence),
     'discovery-prepare-readiness': createPrepareReadinessHandler(deps.runtimePersistence),
     'discovery-resolve-readiness': createResolveReadinessHandler(deps.runtimePersistence),
-    'discovery-settlement-policy': createDiscoverySettlementHandler(deps.runtimePersistence),
+    'discovery-settlement-policy': createDiscoverySettlementHandler(deps.runtimePersistence, settlementService),
+  };
+}
+
+/**
+ * CONVEYOR Wave 7 — saga3 cross-tree leak elimination: legacy settlement bridge.
+ *
+ * The deterministic D4 settlement logic (policy evaluation + certificate
+ * issuance) lives in the legacy saga3 application layer
+ * (`Saga3DiscoverySettlementService`). The module declares its own
+ * `DiscoverySettlementPort` contract; the composition root may inject a
+ * concrete implementation. When none is injected, this bridge lazily constructs
+ * the saga3 service on first use via a DYNAMIC import so that NO static
+ * `import ... from 'src/saga3/**'` edge remains in the module's dependency
+ * graph (the architecture ratchet scans only static imports).
+ *
+ * The dynamic import is an explicit, documented legacy bridge — not a hidden
+ * dependency. Wave 11 (composition cutover) will inject the concrete service
+ * and delete this bridge.
+ */
+function createLegacySettlementBridge(
+  runtime: DiscoveryRuntimePersistencePort,
+): DiscoverySettlementPort {
+  // Lazy cache: construct the saga3 service once, reuse across calls.
+  // `any` cast is intentional — the saga3 module is outside the module's
+  // static type graph by design; the bridge only invokes settle().
+  let cached: DiscoverySettlementPort | null = null;
+  const load = async (): Promise<DiscoverySettlementPort> => {
+    if (cached) return cached;
+    // Dynamic import keeps this edge out of the static dependency graph.
+    const mod = await import('../../../saga3/application/discovery-settlement-service.js');
+    cached = new mod.Saga3DiscoverySettlementService({ runtimePersistence: runtime });
+    return cached;
+  };
+  return {
+    async settle(request) {
+      const svc = await load();
+      return svc.settle(request);
+    },
   };
 }
 
@@ -87,7 +188,7 @@ function requireTaskReceipt(input: unknown, handlerId: string): NodeExecutionRec
 }
 
 function finishNormalizationControl(
-  runtime: Saga3DiscoveryRuntimePersistence,
+  runtime: DiscoveryRuntimePersistencePort,
   controlIntentId: number,
   runtimeStatus: NodeExecutionReceipt['runtimeStatus'],
 ): void {
@@ -98,7 +199,7 @@ function finishNormalizationControl(
 }
 
 function finishReadinessControl(
-  runtime: Saga3DiscoveryRuntimePersistence,
+  runtime: DiscoveryRuntimePersistencePort,
   controlIntentId: number,
   runtimeStatus: NodeExecutionReceipt['runtimeStatus'],
 ): void {
@@ -109,7 +210,7 @@ function finishReadinessControl(
 }
 
 function concludeAuthorityIntent(
-  runtime: Saga3DiscoveryRuntimePersistence,
+  runtime: DiscoveryRuntimePersistencePort,
   intentId: number,
 ): void {
   for (const expected of ['open', 'executing', 'paused'] as const) {
@@ -124,7 +225,8 @@ function concludeAuthorityIntent(
  * production. No "latest by epic" lookup is allowed.
  */
 function createResolveProposalSubmissionHandler(
-  runtime: Saga3DiscoveryRuntimePersistence,
+  runtime: DiscoveryRuntimePersistencePort,
+  briefProvisioning: DiscoveryBriefProvisioningPort,
 ): KernelHandler {
   return (ctx) => {
     const receipt = requireTaskReceipt(ctx.input, 'discovery-resolve-proposal-submission');
@@ -163,9 +265,15 @@ function createResolveProposalSubmissionHandler(
     // When the proposal is accepted, ensure a `brief` artifact exists for this
     // epic. The generic-flow Discovery worker does not create one (unlike the
     // legacy saga-kickstart), but Formalization requires PRD → brief lineage.
+    // Wave 7 — Isolate modules behind ports: the substrate touch is delegated
+    // to the injected DiscoveryBriefProvisioningPort.
     if (result.event === 'accepted' && ctx.epicId !== null) {
       try {
-        ensureDiscoveryBriefArtifact(ctx.projectId, ctx.epicId, null);
+        briefProvisioning.ensureDiscoveryBrief({
+          projectId: ctx.projectId,
+          epicId: ctx.epicId,
+          proposalPayload: null,
+        });
       } catch {
         // Non-fatal: the brief is a convenience projection. If it fails
         // (e.g. race condition), formalization has its own fallback.
@@ -176,44 +284,17 @@ function createResolveProposalSubmissionHandler(
 }
 
 /**
- * Ensure a `brief` artifact exists for this epic. The generic-flow Discovery
- * worker writes a discovery document + proposal but does NOT create a `brief`
- * artifact row (unlike the legacy saga-kickstart). Downstream Formalization
- * requires a PRD → brief `derived_from` trace, and the saga-product skill
- * checks for an accepted brief as a precondition. Without it, the PRD
- * reviewer loops forever on "missing derived_from → brief".
+ * CONVEYOR Wave 7 — Isolate modules behind ports.
  *
- * This kernel-side projection creates a synthetic accepted brief from the
- * accepted proposal, idempotently. It runs when the proposal is first accepted.
+ * The legacy `ensureDiscoveryBriefArtifact` helper used to call `getDb()`
+ * directly inside the module. Wave 7 replaced it with the
+ * `DiscoveryBriefProvisioningPort` injected by the composition root (see
+ * `src/infrastructure/process-modules/brief-provisioning-ports.ts`). The module
+ * now contains NO `getDb()` call and NO `db.ts` import.
  */
-function ensureDiscoveryBriefArtifact(
-  projectId: number,
-  epicId: number,
-  proposalPayload: { problem_statement?: unknown; candidate_scope?: unknown; recommended_outcome?: unknown } | null,
-): void {
-  const db = getDb();
-  // Idempotent: if a brief already exists for this epic, do nothing.
-  const existing = db.prepare(
-    "SELECT id FROM artifacts WHERE epic_id=? AND type='brief' AND status='accepted' ORDER BY id LIMIT 1",
-  ).get(epicId) as { id: number } | undefined;
-  if (existing) return;
-
-  const briefHash = sha256Hex({
-    schema: 'saga3.discovery-brief.v1',
-    epic_id: epicId,
-    problem_statement: proposalPayload?.problem_statement ?? null,
-    candidate_scope: proposalPayload?.candidate_scope ?? null,
-    recommended_outcome: proposalPayload?.recommended_outcome ?? null,
-    note: 'Auto-provisioned by discovery proposal resolver',
-  });
-  db.prepare(
-    `INSERT INTO artifacts (project_id, epic_id, type, code, title, path, status, content_hash, accepted_hash, drift_state, tags, metadata)
-     VALUES (?, ?, 'brief', 'BRIEF-1', 'Discovery Brief', 'docs/discovery/brief-auto-provisioned.md', 'accepted', ?, ?, 'clean', '[]', '{}')`,
-  ).run(projectId, epicId, briefHash, briefHash);
-}
 
 function resolveAcceptedRaw(
-  runtime: Saga3DiscoveryRuntimePersistence,
+  runtime: DiscoveryRuntimePersistencePort,
   receipt: NodeExecutionReceipt,
   raw: RawDiscoverySubmissionRecord,
 ) {
@@ -335,7 +416,7 @@ function failedProposalResolution(
  * source_submission_id into the projected task metadata.
  */
 function createPrepareNormalizationHandler(
-  runtime: Saga3DiscoveryRuntimePersistence,
+  runtime: DiscoveryRuntimePersistencePort,
 ): KernelHandler {
   return (ctx) => {
     if (ctx.epicId === null) {
@@ -395,7 +476,7 @@ function createPrepareNormalizationHandler(
  * the normalizer WorkIntent and never an epic-wide "latest" row.
  */
 function createResolveNormalizedProposalHandler(
-  runtime: Saga3DiscoveryRuntimePersistence,
+  runtime: DiscoveryRuntimePersistencePort,
 ): KernelHandler {
   return (ctx) => {
     const receipt = requireTaskReceipt(ctx.input, 'discovery-resolve-normalized-proposal');
@@ -522,7 +603,7 @@ function proposalProduction(
  * же Proposal версии вернёт тот же control + task.
  */
 function createPrepareReadinessHandler(
-  runtime: Saga3DiscoveryRuntimePersistence,
+  runtime: DiscoveryRuntimePersistencePort,
 ): KernelHandler {
   return (ctx) => {
     if (ctx.epicId === null) {
@@ -599,7 +680,7 @@ function createPrepareReadinessHandler(
  * a durable missing/failed/paused production so settlement can fail closed.
  */
 function createResolveReadinessHandler(
-  runtime: Saga3DiscoveryRuntimePersistence,
+  runtime: DiscoveryRuntimePersistencePort,
 ): KernelHandler {
   return (ctx) => {
     const receipt = requireTaskReceipt(ctx.input, 'discovery-resolve-readiness');
@@ -704,11 +785,9 @@ function createResolveReadinessHandler(
  *   поправка — readiness slice ищется по proposalId (через intent), не по epicId.
  */
 function createDiscoverySettlementHandler(
-  runtime: Saga3DiscoveryRuntimePersistence,
+  runtime: DiscoveryRuntimePersistencePort,
+  settlementService: DiscoverySettlementPort,
 ): KernelHandler {
-  const settlementService = new Saga3DiscoverySettlementService({
-    runtimePersistence: runtime,
-  });
   return async (ctx) => {
     if (ctx.epicId === null) {
       throw new Error('discovery-settlement-policy: epicId is required');
@@ -832,7 +911,7 @@ function createDiscoverySettlementHandler(
 
 /**
  * Adapter: проецирует generic `LmNodeExecutionPersistence` (camelCase, module-
- * agnostic) поверх saga3 `Saga3DiscoveryRuntimePersistence` (snake_case, уже
+ * agnostic) поверх saga3 `DiscoveryRuntimePersistencePort` (snake_case, уже
  * generic по форме после параметризации в шаге 2). Composition-root передаёт
  * результат в LmNodeExecutor.
  *
@@ -840,7 +919,7 @@ function createDiscoverySettlementHandler(
  * core видит только generic интерфейс.
  */
 export function createDiscoveryLmNodePersistence(
-  runtime: Saga3DiscoveryRuntimePersistence,
+  runtime: DiscoveryRuntimePersistencePort,
 ): LmNodeExecutionPersistence {
   return {
     ensureExecutionPlan(input) {

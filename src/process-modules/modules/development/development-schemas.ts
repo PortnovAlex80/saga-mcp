@@ -13,7 +13,13 @@
  * a different candidate and requires a new verification snapshot.
  */
 
-export const DEVELOPMENT_CASE_SCHEMA = 'saga3.development-case.v1';
+// CONVEYOR Wave 7: this schema-id string is a lifecycle-referenced contract
+// whose canonical home is the lifecycle contracts module (Rule 3). Re-exported
+// here so the module's own consumers keep a single import surface.
+export {
+  DEVELOPMENT_CASE_SCHEMA,
+} from '../../lifecycles/product-delivery-module-contracts.js';
+import { DEVELOPMENT_CASE_SCHEMA } from '../../lifecycles/product-delivery-module-contracts.js';
 export const DEVELOPMENT_TASK_GRAPH_PROPOSAL_SCHEMA =
   'saga3.development-task-graph-proposal.v1';
 export const DEVELOPMENT_TASK_GRAPH_SCHEMA = 'saga3.development-task-graph.v1';

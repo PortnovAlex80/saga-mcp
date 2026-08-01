@@ -9,11 +9,6 @@
 
 import { sha256Hex } from '../../shared/canonical-json.js';
 import {
-  DEVELOPMENT_CERTIFICATE_SCHEMA,
-  INTEGRATED_CANDIDATE_SCHEMA,
-  VERIFIED_INTEGRATION_BUNDLE_SCHEMA,
-} from '../development/development-schemas.js';
-import {
   DELIVERY_APPROVAL_SCHEMA,
   DELIVERY_DEFERRED_PROFILE_SCHEMA,
   DELIVERY_CERTIFICATE_SCHEMA,
@@ -39,6 +34,20 @@ import {
   type ReleaseActionDefinition,
   type ReleaseRecord,
 } from './delivery-schemas.js';
+
+/**
+ * Wave 7 module isolation — these three schema identifiers are the immutable
+ * string identities of the Development-module products a Delivery case binds to
+ * (a verified development certificate, an integrated release candidate, and a
+ * verified integration bundle). They are owned by the development-schemas
+ * module but are pure string literals used here only for lineage validation.
+ * Inlined as delivery-local constants so Delivery no longer imports the
+ * development module (Rule 1). The values MUST stay byte-for-byte identical to
+ * development-schemas.ts; if either changes the lineage check breaks at runtime.
+ */
+const DEVELOPMENT_CERTIFICATE_SCHEMA = 'saga3.development-certificate.v1';
+const INTEGRATED_CANDIDATE_SCHEMA = 'saga3.integrated-release-candidate.v1';
+const VERIFIED_INTEGRATION_BUNDLE_SCHEMA = 'saga3.verified-integration-bundle.v1';
 
 export interface DeliveryPreflightResult {
   event: 'ready' | 'blocked' | 'failed';

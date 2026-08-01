@@ -28,12 +28,17 @@ import {
 import type { SagaApplication } from './application/saga-application.js';
 import type { WorkerExecutorFactory } from './application/ports/worker-executor.js';
 import { createLegacyClaudeWorkerExecutorFactory } from './infrastructure/workers/legacy-claude-worker-executor-factory.js';
+import { SqliteWorkAssignmentAdapter } from './infrastructure/work/sqlite-work-assignment-adapter.js';
 import { asModuleInstallationId } from './process-modules/installation/domain/installation.js';
 import type { ProductionInstallation } from './process-modules/installation/production-install.js';
 import { getDb } from './db.js';
 import {
   installProductionModules,
 } from './process-modules/installation/production-install.js';
+import { discoveryPackageManifest } from './process-modules/modules/discovery/package/manifest.js';
+import { formalizationPackageManifest } from './process-modules/modules/formalization/package/manifest.js';
+import { developmentPackageManifest } from './process-modules/modules/development/package/manifest.js';
+import { deliveryPackageManifest } from './process-modules/modules/delivery/package/manifest.js';
 
 function parseArgs(argv: string[]): {
   projectId: number;
@@ -162,6 +167,10 @@ function createPinnedWorkerFactoryForDispatch(
       const nodeId = md.process_node_id;
       return typeof nodeId === 'string' && nodeId.length > 0 ? nodeId : null;
     },
+    // CONVEYOR: atomic card assignment before spawn. Same port wired in
+    // composition-root; the dispatch loop and LM-node workers share one
+    // assignment path.
+    workAssignment: new SqliteWorkAssignmentAdapter(getDb()),
   });
 }
 
@@ -209,6 +218,7 @@ async function main() {
   );
 
   let application: SagaApplication | null = null;
+  let supervision: { stop(): void } | null = null;
   try {
     const overrides = await loadCompositionOverrides(projectId, epicId);
     // The lifecycle input may be supplied three ways. The preferred in-process
@@ -233,6 +243,21 @@ async function main() {
         ) as unknown
         : undefined;
     application = createSaga2Application(process.env, overrides);
+
+    // CONVEYOR Wave 5 — start the watchman. The supervision service reconciles
+    // durable worker executions on startup (catching orphans from a prior
+    // runtime crash) and periodically while the conveyor is alive, returning
+    // fenced cards from dead/zombie workers to their queues without operator
+    // intervention. reconcileWorkerExecutions already existed but had no
+    // production scheduling call — this is that call.
+    const { startWorkerSupervision } = await import('./infrastructure/work/worker-supervision-service.js');
+    const { SqliteExecutionRuntimeRepository } = await import('./infrastructure/persistence/sqlite-saga2-runtime-repositories.js');
+    const supervisionHandle = startWorkerSupervision({
+      executionRuntime: new SqliteExecutionRuntimeRepository(),
+      projectId,
+      epicId,
+    });
+    supervision = supervisionHandle;
 
     // CGAD P18 — Conveyor dispatch loop. The CLI is the factory operator: it
     // runs the lifecycle (which pauses when a module waits for kanban tasks to
@@ -281,6 +306,11 @@ async function main() {
         projectId,
         epicId,
         concurrency,
+        // Conveyor model: the application reads claimable-card counts through
+        // the WorkAssignmentPort, never the global DB directly (CONVEYOR-MENTAL-
+        // MODEL §"Required outbound ports"). The authoritative claim still
+        // happens inside the runner via the factory's claimTask callback.
+        workAssignment: new SqliteWorkAssignmentAdapter(getDb()),
         workerExecutorFactory: overrides.workerExecutorFactory
           ?? createPinnedWorkerFactoryForDispatch(overrides.modulePackages),
         factoryContext: {
@@ -316,6 +346,7 @@ async function main() {
     }
     process.exit(1);
   } finally {
+    try { supervision?.stop(); } catch { /* best effort */ }
     try { application?.close(); } catch { /* best effort */ }
   }
 }
@@ -388,9 +419,19 @@ async function loadCompositionOverrides(
   // ProcessRun is pinned to an immutable packageDigest and the workspace
   // materializer resolves resources from pinned bytes. Idempotent across CLI
   // restarts (same DB + unchanged bytes → reuse active records).
+  // CONVEYOR Wave 9 cutover: the installation layer is generic machinery and
+  // must NOT import module implementations (cutover ratchet "no hidden
+  // fallbacks"). The composition layer (this file) owns the decision about
+  // WHICH modules exist and supplies the manifest set explicitly.
   const packageInstallation = await installProductionModules(
     getDb(),
     repoRoot,
+    [
+      discoveryPackageManifest,
+      formalizationPackageManifest,
+      developmentPackageManifest,
+      deliveryPackageManifest,
+    ],
     process.env.SAGA_PACKAGE_STORE_DIR,
   );
 

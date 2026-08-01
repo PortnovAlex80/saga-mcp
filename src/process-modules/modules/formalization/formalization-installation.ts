@@ -1,5 +1,7 @@
 import { createHash } from 'node:crypto';
-import { getDb } from '../../../db.js';
+// CONVEYOR Wave 7 — Isolate modules behind ports: the brief-provisioning
+// substrate touch is delegated to an injected BriefProvisioningPort (wired by
+// the composition root), so this module imports no getDb / db.ts.
 import type { ProcessModuleDefinition } from '../../domain/process-module.js';
 import {
   type ExactCandidateAcceptance,
@@ -28,6 +30,7 @@ import type {
 import type { ProcessModuleOutput } from '../../persistence/process-run.js';
 import { canonicalJson, sha256Hex } from '../../shared/canonical-json.js';
 import type {
+  BriefProvisioningPort,
   FormalizationArtifactGraphPort,
   FormalizationArtifactSnapshot,
   FormalizationCanonicalGraphPort,
@@ -100,6 +103,12 @@ export interface FormalizationInstallationDeps {
   solutionContractRepository: FormalizationSolutionContractRepository;
   settlementPolicy: FormalizationSettlementPolicyPort;
   candidateAcceptance: Pick<ExactCandidateAcceptance, 'isAcceptedExact'>;
+  /**
+   * Wave 7 — Isolate modules behind ports. Provisions the PRD root-ancestor
+   * (brief) trace without the module touching `db.ts`. Required: the composition
+   * root wires a concrete SQLite-backed adapter.
+   */
+  briefProvisioning: BriefProvisioningPort;
 }
 
 interface ExecutionWrites {
@@ -297,6 +306,8 @@ function ensureBriefRootTrace(
   prdArtifactId: number,
 ): void {
   if (ctx.epicId === null || ctx.projectId === undefined) return;
+  // Dependency-clean pre-check via the graph port: if the PRD already has an
+  // accepted brief ancestor, no provisioning is needed.
   const existingTargets = deps.graph.readOutgoingArtifactTraces([prdArtifactId])
     .filter(trace =>
       trace.targetType === 'artifact'
@@ -310,42 +321,16 @@ function ensureBriefRootTrace(
       && artifact.acceptedHash === artifact.contentHash
       && artifact.driftState === 'clean');
   if (existingRoot) return;
-  const db = getDb();
-  // Check if PRD already has a root trace
-  const existing = db.prepare(
-    `SELECT t.target_id, a.type
-       FROM artifact_traces t
-       JOIN artifacts a ON a.id = t.target_id
-      WHERE t.source_id=? AND t.link_type='derived_from' AND t.target_type='artifact'
-        AND a.type NOT IN ('PRD','FR','NFR','RULE','UC','AC','SRS')`,
-  ).get(prdArtifactId) as { target_id: number; type: string } | undefined;
-  if (existing) return; // already has a root trace
-
-  // Check if a brief already exists in this epic
-  let briefId = (db.prepare(
-    "SELECT id FROM artifacts WHERE epic_id=? AND type='brief' AND status='accepted' ORDER BY id LIMIT 1",
-  ).get(ctx.epicId) as { id: number } | undefined)?.id;
-
-  if (!briefId) {
-    // Create a synthetic brief from the discovery context
-    const briefHash = sha256Hex({
-      schema: 'saga3.discovery-brief.v1',
-      epic_id: ctx.epicId,
-      process_run_id: ctx.processRunId,
-      note: 'Auto-provisioned by formalization resolver',
-    });
-    const result = db.prepare(
-      `INSERT INTO artifacts (project_id, epic_id, type, code, title, path, status, content_hash, accepted_hash, drift_state, tags, metadata)
-       VALUES (?, ?, 'brief', 'BRIEF-1', 'Discovery Brief (auto-provisioned)', 'docs/discovery/brief-auto-provisioned.md', 'accepted', ?, ?, 'clean', '[]', '{}') RETURNING id`,
-    ).get(ctx.projectId, ctx.epicId, briefHash, briefHash) as { id: number };
-    briefId = result.id;
-  }
-
-  // Create trace PRD -> brief if it doesn't exist
-  db.prepare(
-    `INSERT OR IGNORE INTO artifact_traces (source_id, target_type, target_id, link_type)
-     VALUES (?, 'artifact', ?, 'derived_from')`,
-  ).run(prdArtifactId, briefId);
+  // Wave 7 — Isolate modules behind ports. The substrate touch (find/create the
+  // brief + attach the derived_from trace) is delegated to the injected
+  // BriefProvisioningPort. The composition root wires a concrete SQLite adapter;
+  // the module never touches db.ts.
+  deps.briefProvisioning.ensureBriefRoot({
+    projectId: ctx.projectId,
+    epicId: ctx.epicId,
+    processRunId: ctx.processRunId,
+    prdArtifactId,
+  });
 }
 
 function createResolveProductHandler(deps: FormalizationInstallationDeps): KernelHandler {

@@ -1,5 +1,6 @@
 import type Database from 'better-sqlite3';
-import { getDb } from '../../../db.js';
+// CONVEYOR Wave 7 — Isolate modules behind ports: the db handle is injected by
+// the composition root / tools adapter. This module imports no getDb / db.ts.
 import { canonicalJson, sha256Hex } from '../../shared/canonical-json.js';
 import type {
   DeliveryApprovalSource,
@@ -42,7 +43,9 @@ export interface RecordDeliveryApprovalDecision {
 export class SqliteDeliveryApprovalInbox implements DeliveryApprovalSource {
   private readonly db: Database.Database;
 
-  constructor(db: Database.Database = getDb()) {
+  // CONVEYOR Wave 7 — Isolate modules behind ports: the db handle is injected
+  // by the composition root / tools adapter. Required constructor param.
+  constructor(db: Database.Database) {
     this.db = db;
     ensureDeliveryApprovalInboxSchema(db);
   }

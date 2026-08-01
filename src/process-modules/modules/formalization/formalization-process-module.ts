@@ -1,9 +1,10 @@
 import type { ProcessModuleDefinition } from '../../domain/process-module.js';
-
-export const FORMALIZATION_PROCESS_MODULE_REF = {
-  name: 'solution-formalization',
-  version: '1.0.0',
-} as const;
+// CONVEYOR Wave 7: the module identity ref is a CANONICAL contract owned by the
+// lifecycle (Rule 3). This module imports it back — inward direction, allowed.
+// (Resolves the prior duplicate definition that also lived in
+// formalization-schemas.ts; one canonical home now.)
+import { FORMALIZATION_PROCESS_MODULE_REF } from '../../lifecycles/product-delivery-module-contracts.js';
+export { FORMALIZATION_PROCESS_MODULE_REF };
 
 // W13-A2: resources were moved out of the legacy global root
 // (`tool-templates/formalization/`) into the formalization package resources

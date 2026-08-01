@@ -1,4 +1,8 @@
 import type { ProcessModuleDefinition } from '../../domain/process-module.js';
+// CONVEYOR Wave 7: the module identity ref + lifecycle-referenced schema-id
+// strings are CANONICAL contracts owned by the lifecycle (Rule 3). This module
+// imports them back from the contracts module — inward direction, allowed.
+import { DELIVERY_PROCESS_MODULE_REF } from '../../lifecycles/product-delivery-module-contracts.js';
 import {
   DELIVERY_HUMAN_ADAPTER_IDS,
   DELIVERY_KERNEL_HANDLER_IDS,
@@ -13,10 +17,7 @@ import {
   RELEASE_RECORD_SCHEMA,
 } from './delivery-schemas.js';
 
-export const DELIVERY_PROCESS_MODULE_REF = {
-  name: 'delivery-release',
-  version: '1.0.0',
-} as const;
+export { DELIVERY_PROCESS_MODULE_REF };
 
 /**
  * Delivery is the only standard process module authorized to create

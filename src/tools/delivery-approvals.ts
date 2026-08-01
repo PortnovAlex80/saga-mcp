@@ -1,11 +1,14 @@
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import { SqliteDeliveryApprovalInbox } from '../process-modules/modules/delivery/sqlite-delivery-approval-inbox.js';
+import { getDb } from '../db.js';
 import type { ToolHandler } from '../types.js';
 
 let approvalInbox: SqliteDeliveryApprovalInbox | null = null;
 
 function inbox(): SqliteDeliveryApprovalInbox {
-  approvalInbox ??= new SqliteDeliveryApprovalInbox();
+  // CONVEYOR Wave 7 — the module no longer defaults to getDb(); the tools
+  // adapter (infrastructure) owns concrete construction and passes the handle.
+  approvalInbox ??= new SqliteDeliveryApprovalInbox(getDb());
   return approvalInbox;
 }
 

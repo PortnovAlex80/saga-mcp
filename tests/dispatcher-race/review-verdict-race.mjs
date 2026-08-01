@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
-import Database from 'file:///D:/Development/saga-mcp/node_modules/better-sqlite3/lib/index.js';
+import Database from 'better-sqlite3';
 
 const thisDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = dirname(dirname(thisDir));
@@ -36,7 +36,10 @@ setup.prepare("INSERT INTO projects (name) VALUES ('verdict-race')").run();
 const pid = setup.prepare("SELECT id FROM projects WHERE name='verdict-race'").get().id;
 setup.prepare("INSERT INTO epics (project_id, name) VALUES (?, 'e')").run(pid);
 const eid = setup.prepare("SELECT id FROM epics WHERE name='e'").get().id;
-setup.prepare("INSERT INTO tasks (epic_id, title, status, assigned_to) VALUES (?, 'T', 'review', NULL)").run(eid);
+// saga4 authority gate (findNextClaimable): a card is claimable ONLY if
+// metadata.process_run_id IS NOT NULL. Stamp it so worker_next can claim the
+// review card into review_in_progress and create the worker_executions fence.
+setup.prepare("INSERT INTO tasks (epic_id, title, status, assigned_to, metadata) VALUES (?, 'T', 'review', NULL, ?)").run(eid, JSON.stringify({ process_run_id: 3001 }));
 setup.close();
 
 const taskId = 1;
@@ -63,8 +66,14 @@ const results = await Promise.all(
 );
 
 console.log('=== RESULTS ===');
+// All callers reuse the SAME fenced execution_id (one holder, many retries).
+// Under the saga4 idempotency layer the FIRST worker_done transitions
+// review_in_progress→done and stores a command_receipt; every later call is a
+// REPLAY (same command_id + payload hash) and returns the stored 'done' reply
+// WITHOUT mutating state again. So "winners" here = callers that observed the
+// done verdict (the leader + its replays); "errors" = none expected.
 const winners = results.filter(r => r.parsed?.verdict === 'done');
-const losers = results.filter(r => r.parsed?.error);
+const errors = results.filter(r => r.parsed?.error);
 for (const r of results) console.log(r.line);
 
 console.log('\n=== ASSERTIONS ===');
@@ -72,22 +81,29 @@ console.log('\n=== ASSERTIONS ===');
 const check = new Database(dbPath, { readonly: true });
 const finalTask = check.prepare('SELECT status, assigned_to FROM tasks WHERE id=?').get(taskId);
 const commentCount = check.prepare('SELECT COUNT(*) n FROM comments WHERE task_id=?').get(taskId).n;
+// command_receipts: exactly ONE accepted worker_done row proves a single state
+// mutation under contention — the core no-double-done invariant.
+let receiptCount = 0;
+try {
+  receiptCount = check.prepare("SELECT COUNT(*) n FROM command_receipts WHERE task_id=? AND command_kind='worker_done' AND accepted=1").get(taskId).n;
+} catch { /* command_receipts absent in a stripped schema — count stays 0 */ }
 check.close();
 
-const okOneWinner = winners.length === 1;
+const okAllSeeDone = winners.length === numWorkers && errors.length === 0;
 const okFinalDone = finalTask.status === 'done';
 const okFinalUnassigned = finalTask.assigned_to === null;
-// Comments: 1 per winner (the verdict comment). Losers threw before inserting.
-const okComments = commentCount === 1 && commentCount === winners.length;
+// Exactly ONE comment + ONE accepted receipt = exactly one mutation, regardless
+// of how many replays observed the done verdict.
+const okOneMutation = commentCount === 1 && receiptCount === 1;
 
-console.log(`winners (review→done): ${winners.length} (expect 1)         ${okOneWinner ? 'PASS ✅' : 'FAIL ❌'}`);
-console.log(`losers (got clean error): ${losers.length} (expect ${numWorkers - 1})  ${losers.length === numWorkers - 1 ? 'PASS ✅' : 'FAIL ❌'}`);
+console.log(`callers observing done (leader + replays): ${winners.length}/${numWorkers}  ${okAllSeeDone ? 'PASS ✅' : 'FAIL ❌'}`);
+console.log(`callers erroring:                         ${errors.length} (expect 0)   ${errors.length === 0 ? 'PASS ✅' : 'FAIL ❌'}`);
 console.log(`final task status: ${finalTask.status} (expect done)        ${okFinalDone ? 'PASS ✅' : 'FAIL ❌'}`);
 console.log(`final assigned_to: ${finalTask.assigned_to} (expect null)   ${okFinalUnassigned ? 'PASS ✅' : 'FAIL ❌'}`);
-console.log(`comments inserted: ${commentCount} (expect 1, the winner's) ${okComments ? 'PASS ✅' : 'FAIL ❌'}`);
+console.log(`single mutation (1 comment, 1 receipt):    ${okOneMutation ? 'PASS ✅' : 'FAIL ❌'}  [comments=${commentCount}, receipts=${receiptCount}]`);
 
-const allPass = okOneWinner && okFinalDone && okFinalUnassigned && okComments && losers.length === numWorkers - 1;
-console.log(allPass ? '\n✅✅✅ NO DOUBLE-DONE — exactly one verdict wins, rest get clean errors.\n'
+const allPass = okAllSeeDone && okFinalDone && okFinalUnassigned && okOneMutation;
+console.log(allPass ? '\n✅✅✅ NO DOUBLE-DONE — exactly one state mutation under contention; replays are idempotent.\n'
                    : '\n❌❌❌ RACE BUG.\n');
 process.exit(allPass ? 0 : 1);
 

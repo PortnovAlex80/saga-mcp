@@ -7,9 +7,17 @@
  * deterministic key and every retry observes the target before acting.
  */
 
-export const DELIVERY_RELEASE_CASE_SCHEMA = 'saga3.delivery-release-case.v2';
-export const DELIVERY_DEFERRED_PROFILE_SCHEMA =
-  'saga3.delivery-deferred-profile.v1';
+// CONVEYOR Wave 7: these two schema-id strings are lifecycle-referenced
+// contracts whose canonical home is the lifecycle contracts module (Rule 3).
+// Re-exported here so the module's own consumers keep a single import surface.
+export {
+  DELIVERY_RELEASE_CASE_SCHEMA,
+  DELIVERY_DEFERRED_PROFILE_SCHEMA,
+} from '../../lifecycles/product-delivery-module-contracts.js';
+import {
+  DELIVERY_RELEASE_CASE_SCHEMA,
+  DELIVERY_DEFERRED_PROFILE_SCHEMA,
+} from '../../lifecycles/product-delivery-module-contracts.js';
 export const DELIVERY_PREFLIGHT_SCHEMA = 'saga3.delivery-preflight.v1';
 export const DELIVERY_APPROVAL_SCHEMA = 'saga3.delivery-approval-decision.v1';
 export const DELIVERY_PUBLICATION_SCHEMA = 'saga3.delivery-publication.v1';

@@ -5,6 +5,7 @@ import { spawn as nodeSpawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import {
   markExecutionExited,
+  markExecutionProgress,
   markExecutionRunning,
   markExecutionSpawnFailed,
   readProcessBirthToken,
@@ -326,6 +327,7 @@ export class ClaudeBoardRunner {
     this.claimTask = options.claimTask;
     this.getProject = options.getProject;
     this.getTaskState = options.getTaskState;
+    this.getTask = options.getTask ?? null;
     this.recoverAssignment = options.recoverAssignment;
     this.resolveWorkspace = options.resolveWorkspace;
     this.spawn = options.spawn ?? nodeSpawn;
@@ -478,7 +480,7 @@ export class ClaudeBoardRunner {
     }
   }
 
-  start({ projectId, epicId, concurrency, claimScope }) {
+  start({ projectId, epicId, concurrency, claimScope, assignment }) {
     const existing = this.runs.get(projectId);
     if (existing && !TERMINAL_RUN_STATES.has(existing.status)) {
       throw new Error(`Project ${projectId} already has an active board run`);
@@ -502,6 +504,12 @@ export class ClaudeBoardRunner {
       claimTaskIds: Array.isArray(claimScope?.taskIds) && claimScope.taskIds.length > 0
         ? claimScope.taskIds
         : null,
+      // Conveyor model (WORK-ASSIGNMENT-REFACTOR-SPEC §2.3): when the dispatcher
+      // pre-assigned a card (assignTask already flipped status + set the fence),
+      // the runner stores it here and pump() launches the worker directly WITHOUT
+      // calling claimTask — the assignment is done. This is the target path;
+      // claimScope above is the legacy fallback for MCP-direct / role-based workers.
+      preassignedWork: assignment ?? null,
       projectName: project.name,
       workspaceRoot,
       concurrency,
@@ -593,6 +601,42 @@ export class ClaudeBoardRunner {
       return;
     }
 
+    // Conveyor model (WORK-ASSIGNMENT-REFACTOR-SPEC §4 Wave B): when the
+    // dispatcher pre-assigned a card, the claim + fence already happened
+    // atomically BEFORE start() was called. pump() converts the AssignedWork
+    // into the launch()-shaped assignment and launches the worker directly —
+    // NO claimTask call, NO worker_next. One pre-assigned card = one worker;
+    // after launching, the run waits for that worker to finish (the close
+    // handler re-pumps, sees preassignedWork consumed, and completes the run).
+    if (run.preassignedWork) {
+      const work = run.preassignedWork;
+      // Consume it so a re-pump (after the worker closes) does not relaunch.
+      run.preassignedWork = null;
+      const workerId = work.workerId;
+      const assignment = this.assignmentFromAssignedWork(work);
+      run.claimed += 1;
+      try {
+        this.launch(run, assignment, workerId);
+        run.consecutiveSpawnFailures = 0;
+      } catch (error) {
+        run.failed += 1;
+        run.lastError = error instanceof Error ? error.message : String(error);
+        // The dispatcher's assignTask created the fence; a spawn failure must
+        // release it so the card returns to the queue. recoverAssignment +
+        // markExecutionSpawnFailed mirror the legacy claim path.
+        this.recoverAssignment({
+          taskId: work.taskId,
+          workerId,
+          originalStatus: work.status === 'review_in_progress' ? 'review' : 'todo',
+          executionId: work.workerExecutionId,
+          reason: `Claude spawn failed (pre-assigned): ${run.lastError}`,
+        });
+        markExecutionSpawnFailed(this.dbPath, work.workerExecutionId, run.lastError);
+        this.finish(run, 'failed');
+      }
+      return;
+    }
+
     let claimedAny = false;
     while (run.active.size < run.concurrency && run.status === 'running') {
       const workerId = `board-${run.projectId}-${Date.now()}-${++this.sequence}`;
@@ -659,6 +703,34 @@ export class ClaudeBoardRunner {
       run.emptyChecks += 1;
       this.finish(run, run.failed > 0 && run.completed === 0 ? 'failed' : 'completed');
     }
+  }
+
+  /**
+   * Convert a pre-assigned AssignedWork (built by WorkAssignmentPort.assignTask
+   * before spawn) into the launch()-shaped assignment object. launch() expects
+   * { task, repository, execution_context, execution_id } — the same shape the
+   * worker_next claim path produces. We rebuild it from the typed AssignedWork
+   * so the launch path is shared byte-for-byte between pre-assigned and legacy
+   * claim runs.
+   *
+   * `task` is fetched fresh from the DB so launch() sees the post-claim status
+   * (in_progress / review_in_progress) and the full task row (task_kind,
+   * execution_skill, …) that resolveProfile / resolveLaunchSpec need.
+   */
+  assignmentFromAssignedWork(work) {
+    if (!this.getTask) {
+      throw new Error('PREASSIGNED_WORK_REQUIRES_GET_TASK: the runner was constructed without a getTask callback, which is required to launch a pre-assigned card.');
+    }
+    const task = this.getTask(work.taskId);
+    if (!task) {
+      throw new Error(`Pre-assigned task ${work.taskId} not found (was it deleted between assignTask and launch?)`);
+    }
+    return {
+      task,
+      repository: work.repository,
+      execution_context: work.executionContext,
+      execution_id: work.workerExecutionId,
+    };
   }
 
   launch(run, assignment, workerId) {
@@ -929,6 +1001,26 @@ export class ClaudeBoardRunner {
     const log = createWriteStream(logPath, { flags: 'a' });
     child.stdout?.pipe(log, { end: false });
     child.stderr?.pipe(log, { end: false });
+
+    // CONVEYOR Wave 5 — progress signal (§363-370). Observable worker activity
+    // (stdout) updates progress_at so the stuck-policy distinguishes a
+    // long-running-but-healthy worker from a dead one. Throttled to ≤1 update /
+    // 30s: stdout can be high-frequency, but progress_at only needs coarse
+    // freshness for stuck detection (STUCK_SILENCE_MS = 10min).
+    if (assignment.execution_id) {
+      let lastProgressAt = 0;
+      const PROGRESS_THROTTLE_MS = 30_000;
+      const progressDbPath = this.dbPath;
+      const progressExecId = assignment.execution_id;
+      const onProgressData = () => {
+        const now = Date.now();
+        if (now - lastProgressAt < PROGRESS_THROTTLE_MS) return;
+        lastProgressAt = now;
+        try { markExecutionProgress(progressDbPath, progressExecId); } catch { /* best-effort */ }
+      };
+      child.stdout?.on('data', onProgressData);
+      child.stderr?.on('data', onProgressData);
+    }
 
     const execution = {
       taskId: task.id,

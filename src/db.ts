@@ -55,6 +55,20 @@ export function getDb(): Database.Database {
   migrateRiskClass(db);
   migrateEpicSlug(db);
   migrateLifecycleExecutionControls(db);
+  // CONVEYOR Wave 5 supervision columns (see schema.ts for the rationale).
+  // Idempotent ADD COLUMN — safe on fresh DBs (columns already in CREATE TABLE)
+  // and on existing DBs (added here).
+  try { db.exec('ALTER TABLE worker_executions ADD COLUMN lease_expires_at TEXT'); } catch { /* column already exists */ }
+  try { db.exec('ALTER TABLE worker_executions ADD COLUMN heartbeat_at TEXT'); } catch { /* column already exists */ }
+  try { db.exec('ALTER TABLE worker_executions ADD COLUMN progress_at TEXT'); } catch { /* column already exists */ }
+  try { db.exec("ALTER TABLE worker_executions ADD COLUMN stuck_state TEXT NOT NULL DEFAULT 'active' CHECK (stuck_state IN ('active','suspected_stuck','cancel_requested'))"); } catch { /* column already exists */ }
+  // CONVEYOR Wave 5 stuck-policy timestamps. The stuck clock is driven by
+  // progress_at aging (BUG 2 fix): when progress falls silent the execution
+  // enters suspected_stuck and suspected_stuck_at records when that happened.
+  // cancel_requested_at records when cancellation was requested. Both are NULL
+  // on pre-migration rows and back-filled by reconcile on the first firing.
+  try { db.exec('ALTER TABLE worker_executions ADD COLUMN suspected_stuck_at TEXT'); } catch { /* column already exists */ }
+  try { db.exec('ALTER TABLE worker_executions ADD COLUMN cancel_requested_at TEXT'); } catch { /* column already exists */ }
   // Slice 2 (ADR-011): populate work-item shadow tables for existing tasks.
   // Idempotent — skips tasks that already have shadow rows. Tables themselves
   // are created by SCHEMA_SQL (CREATE IF NOT EXISTS).

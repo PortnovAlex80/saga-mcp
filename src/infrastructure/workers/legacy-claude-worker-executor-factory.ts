@@ -9,8 +9,10 @@ import type {
   RunnerAssignment,
 } from '../../../tracker-view/claude-runner.mjs';
 import type {
+  AssignedWork,
   WorkerExecutorFactory,
   WorkerModelRouteReader,
+  WorkAssignmentPort,
 } from '../../application/ports/worker-executor.js';
 import { getDb } from '../../db.js';
 import { recoverLegacyAssignment } from '../../lifecycle/legacy-assignment-recovery.js';
@@ -113,6 +115,14 @@ export interface LegacyClaudeWorkerExecutorFactoryOptions {
    * declared template contents from the frozen node input.
    */
   workspaceTemplatePreparers?: ProcessWorkspaceTemplatePreparerRegistry;
+  /**
+   * CONVEYOR Wave 9 — the atomic card-assignment port is now REQUIRED. The
+   * card is assigned + fenced in one transaction by the infrastructure before
+   * the worker is launched; the legacy worker_next fallback (worker-driven
+   * claim) has been removed. Every caller (dispatch-loop + LM-node lifecycle)
+   * wires this port via the composition root.
+   */
+  workAssignment: WorkAssignmentPort;
 }
 
 function readLegacyModelRoute(epicId: number | null) {
@@ -191,7 +201,7 @@ function materializePinnedSkill(
  * Lifecycle mutations are delegated to the lifecycle boundary.
  */
 export function createLegacyClaudeWorkerExecutorFactory(
-  options: LegacyClaudeWorkerExecutorFactoryOptions = {},
+  options: LegacyClaudeWorkerExecutorFactoryOptions,
 ): WorkerExecutorFactory {
   const modelRouteReader = options.modelRouteReader ?? readLegacyModelRoute;
   const packageRegistry = options.packageRegistry;
@@ -200,6 +210,7 @@ export function createLegacyClaudeWorkerExecutorFactory(
   const resolvePackageDigestFn = options.resolvePackageDigest;
   const resolveNodeIdFn = options.resolveNodeId;
   const workspaceTemplatePreparers = options.workspaceTemplatePreparers;
+  const workAssignment = options.workAssignment;
   return context => {
     const resolvePinnedPackage = (
       assignment: RunnerAssignment,
@@ -253,14 +264,72 @@ export function createLegacyClaudeWorkerExecutorFactory(
     };
 
     const runnerOptions: RunnerOptions = {
-      claimTask: (args: Parameters<typeof dispatcherHandlers.worker_next>[0]) =>
-        dispatcherHandlers.worker_next(args) as RunnerAssignment | null,
+      claimTask: (args: Parameters<typeof dispatcherHandlers.worker_next>[0]) => {
+        // CONVEYOR PATH (work-assignment port wired): assign the card through
+        // the atomic WorkAssignmentPort — status flip + fence creation in one
+        // IMMEDIATE transaction, BEFORE the worker process is spawned. This is
+        // the target production path. The legacy worker_next path below is kept
+        // only for callers that did not wire a port.
+        const projectId = args.project_id as number;
+        const workerId = args.worker_id as string;
+        const executionId = args.execution_id as string | undefined;
+        const epicId = args.epic_id as number | undefined;
+        const runId = args.run_id as string | undefined;
+        const machineId = args.machine_id as string | undefined;
+        const rawTaskIds = args.task_ids;
+        const taskIds = Array.isArray(rawTaskIds)
+          ? rawTaskIds.filter((id): id is number => Number.isInteger(id))
+          : undefined;
+        // CONVEYOR Wave 9: the legacy worker_next fallback is removed. Every
+        // claim goes through the atomic WorkAssignmentPort — the card is
+        // assigned + fenced in one transaction BEFORE the worker is launched.
+        if (!executionId) {
+          throw new Error(
+            'EXECUTION_ID_REQUIRED: the conveyor model requires a fence token '
+            + 'for every card assignment. The legacy worker_next path (no '
+            + 'execution id) was removed in Wave 9.',
+          );
+        }
+        const work: AssignedWork | null = workAssignment.assignTask({
+          projectId,
+          epicId,
+          workerId,
+          workerExecutionId: executionId,
+          runId: runId ?? executionId,
+          machineId: machineId ?? 'unknown',
+          taskIds,
+        });
+        if (!work) return null;
+        // Rebuild the RunnerAssignment shape the runner expects from the typed
+        // AssignedWork. The task row is read fresh so launch() sees the
+        // post-claim status and the full row (task_kind, skills, …).
+        const task = getDb().prepare('SELECT * FROM tasks WHERE id=?').get(work.taskId) as RunnerAssignment['task'];
+        return {
+          task,
+          skill: work.skill,
+          execution_id: work.workerExecutionId,
+          repository: work.repository
+            ? {
+                id: work.repository.id,
+                name: work.repository.name,
+                local_path: work.repository.local_path,
+                integration_branch: work.repository.integration_branch,
+                default_branch: work.repository.default_branch,
+              }
+            : null,
+        } as RunnerAssignment;
+      },
       getProject: (id: number) =>
         getDb().prepare('SELECT * FROM projects WHERE id=?').get(id),
       getTaskState: (taskId: number) =>
         getDb().prepare(
           'SELECT id, status, assigned_to, tags, integration_state FROM tasks WHERE id=?',
         ).get(taskId),
+      // Pre-assigned-card path (WORK-ASSIGNMENT-REFACTOR-SPEC §4 Wave B):
+      // full task row for rebuilding the launch()-shaped assignment from an
+      // AssignedWork without an in-process claim.
+      getTask: (taskId: number) =>
+        getDb().prepare('SELECT * FROM tasks WHERE id=?').get(taskId),
       recoverAssignment: (command: Parameters<typeof recoverLegacyAssignment>[1]) =>
         recoverLegacyAssignment(getDb(), command),
       resolveWorkspace: () => context.workspaceRoot,

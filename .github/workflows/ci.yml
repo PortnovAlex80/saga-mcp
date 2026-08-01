@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [dev, main, saga2-refactoring]
+    branches: [dev, main, saga2-refactoring, saga4]
   pull_request:
-    branches: [dev, main, saga2-refactoring]
+    branches: [dev, main, saga2-refactoring, saga4]
 
 jobs:
   quality:
@@ -30,6 +30,18 @@ jobs:
 
       - name: Tests
         run: npm test
+
+      - name: Architecture gate
+        # Dependency-direction ratchet + cutover checks + conveyor boundaries.
+        # Must stay green; the ratchet only ever tightens (no unallowlisted new,
+        # no stale allowlist entries).
+        run: npm run test:architecture
+
+      - name: Dispatcher race gate
+        # Concurrent worker_next must never double-claim a card. The suite is
+        # not auto-discovered by `node --test` (plain .mjs scripts), so it has
+        # its own npm script.
+        run: npm run test:dispatcher-race
 
       - name: cgad-spec-lint self-check
         run: node tools/cgad-spec-lint.mjs tools/cgad-spec-lint.test.mjs || true

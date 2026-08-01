@@ -56,7 +56,7 @@ const __dirname = path.dirname(__filename);
 //  - W3-A1: NodeRunRecordV2 (the v2 record carrying productionEnvelope etc.).
 
 /** @typedef {{ NodeRunRecordV2: any }} A1Surface */
-/** @typedef {{ SqliteNodeRunRepositoryV2: any }} A6Surface */
+/** @typedef {{ SqliteNodeRunRepository: any }} A6Surface */
 /** @typedef {{ SqliteProcessProductRepositoryV2: any }} A4Surface */
 /** @typedef {{ assembleExecutionContext: any }} A5Surface */
 
@@ -75,7 +75,7 @@ async function loadSiblingSurface() {
     out.a6 = await import(
       '../../dist/process-modules/persistence/sqlite-node-run-repository.js'
     );
-    if (!out.a6?.SqliteNodeRunRepositoryV2) out.a6 = null;
+    if (!out.a6?.SqliteNodeRunRepository) out.a6 = null;
   } catch { out.a6 = null; }
   try {
     out.a4 = await import(

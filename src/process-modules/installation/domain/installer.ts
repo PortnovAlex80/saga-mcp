@@ -52,6 +52,7 @@ import type { ProcessModuleManifest } from '../../domain/spi/module-manifest.js'
 import { validateProcessModuleManifest } from '../../domain/spi/module-manifest.js';
 import { assertCanonicalSerializable } from '../../domain/spi/canonical-serialization.js';
 import { computeDependencyLock } from './dependency-lock.js';
+import { classifyResumeCompatibility } from './resume-compatibility-policy.js';
 // Canonical types from sibling lanes (W2-A1 store, W2-A2 installation/repo).
 // Re-exported below for callers; imported here for use in method signatures.
 import {
@@ -79,6 +80,13 @@ export const MODULE_INSTALLATION_CORRUPT = 'MODULE_INSTALLATION_CORRUPT';
 export const MODULE_INSTALLATION_UNDECLARED_RESOURCE = 'MODULE_INSTALLATION_UNDECLARED_RESOURCE';
 /** `validateProcessModuleManifest` returned `{ ok: false }`. */
 export const MODULE_INSTALLATION_MANIFEST_INVALID = 'MODULE_INSTALLATION_MANIFEST_INVALID';
+/**
+ * CONVEYOR Wave 8 — the package digest drifted AND the module contract changed
+ * (identity version, input/output schema, or handler surface). A resumed
+ * workplace would see a different contract; the runtime must pause without
+ * mutating existing work.
+ */
+export const MODULE_INSTALLATION_INCOMPATIBLE_DRIFT = 'MODULE_INSTALLATION_INCOMPATIBLE_DRIFT';
 
 /**
  * Error thrown by {@link PackageInstaller.installPackage}. Carries a stable
@@ -340,11 +348,32 @@ export class PackageInstaller {
     const existingActive = await repo.getActiveByNameVersion(moduleName, moduleVersion);
     if (existingActive !== null) {
       if (existingActive.packageDigest !== attemptedPackageDigest) {
+        // CONVEYOR Wave 8 — ResumeCompatibilityPolicy. The drift decision is
+        // now EXPLICIT: classify whether the digest change is a compatible
+        // toolset update (contract stable → retire old, install new, resume) or
+        // an incompatible contract change (→ pause, surface operator action).
+        // This replaces raw digest equality with a structured verdict, so an
+        // incompatible upgrade never silently replaces a contract a running
+        // workplace depends on.
+        const compatibility = classifyResumeCompatibility(
+          existingActive,
+          attemptedPackageDigest,
+          stampedManifest,
+        );
+        if (compatibility.outcome === 'incompatible') {
+          throw new PackageInstallerError(
+            MODULE_INSTALLATION_INCOMPATIBLE_DRIFT,
+            `${moduleName}@${moduleVersion}: package digest drifted AND the module contract changed `
+            + `(${compatibility.changedFields.join('; ')}). A resumed workplace would see a different `
+            + `contract — pause without mutating existing work (CONVEYOR Wave 8).`,
+            { existing: existingActive, attempted: attemptedPackageDigest, compatibility },
+          );
+        }
         if (opts?.replaceOnDigestChange) {
-          // CGAD P18 — resume-tolerant reinstall: the toolset changed, but the
-          // workplace's work (artifacts/traces/submissions/tasks) is in the DB,
-          // unchanged. Retire the old installation and proceed to install the
-          // new one; the run resumes against the existing work by node-scope.
+          // CGAD P18 — resume-tolerant reinstall: the policy classified this as
+          // `compatible` (contract stable, only toolset bytes changed). Retire
+          // the old installation and proceed to install the new one; the run
+          // resumes against the existing work by node-scope.
           try { await repo.retire(existingActive.id); } catch { /* best-effort; INSERT path handles the slot */ }
         } else {
           throw new PackageInstallerError(

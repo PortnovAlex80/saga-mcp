@@ -25,13 +25,7 @@
  * store; settlement consumes them in memory.
  */
 
-import { spawnSync } from 'node:child_process';
-import os from 'node:os';
 import type Database from 'better-sqlite3';
-import { getDb } from '../../../db.js';
-import {
-  SqliteProcessProductRepository,
-} from '../../persistence/sqlite-process-product-repository.js';
 import { canonicalJson, sha256Hex } from '../../shared/canonical-json.js';
 import type {
   DevelopmentArtifactSnapshot,
@@ -39,6 +33,9 @@ import type {
   DevelopmentSettlementStatePort,
   DevelopmentTaskGraphPort,
   DevelopmentTraceSnapshot,
+  GitPort,
+  MachinePort,
+  ProcessProductRepositoryPort,
 } from './development-kernel-ports.js';
 import {
   ACCEPTANCE_VERIFICATION_SCHEMA,
@@ -104,11 +101,22 @@ export class SqliteDevelopmentModuleStore implements
   DevelopmentSettlementStatePort,
   DevelopmentCanonicalGraphPort {
   private readonly db: Database.Database;
-  private readonly products: SqliteProcessProductRepository;
+  private readonly products: ProcessProductRepositoryPort;
+  private readonly git: GitPort;
+  private readonly machine: MachinePort;
 
-  constructor(db: Database.Database = getDb()) {
+  constructor(
+    db: Database.Database,
+    products: ProcessProductRepositoryPort,
+    git: GitPort,
+    machine: MachinePort,
+  ) {
     this.db = db;
-    this.products = new SqliteProcessProductRepository(db);
+    this.products = products;
+    // Wave 7 hex extraction: git shell-outs and machine identity are injected
+    // as ports — the module has no child_process / node:os imports.
+    this.git = git;
+    this.machine = machine;
     ensureDevelopmentStoreSchema(db);
   }
 
@@ -684,7 +692,7 @@ export class SqliteDevelopmentModuleStore implements
     }
     const repository = this.readRepositoryPath(task.project_repository_id);
     if (!repository) return null;
-    return gitText(repository.localPath, [
+    return this.git.read(repository.localPath, [
       'rev-parse',
       `refs/heads/task/${task.id}`,
     ]);
@@ -705,7 +713,7 @@ export class SqliteDevelopmentModuleStore implements
           AND rc.machine_id=?
           AND rc.status='active'
         WHERE pr.id=? AND pr.status='active'`,
-    ).get(os.hostname(), projectRepositoryId) as {
+    ).get(this.machine.hostname(), projectRepositoryId) as {
       project_id: number;
       local_path: string | null;
     } | undefined;
@@ -726,7 +734,7 @@ export class SqliteDevelopmentModuleStore implements
         `DEVELOPMENT_REPOSITORY_CHECKOUT_MISSING: ${projectRepositoryId}`,
       );
     }
-    const commitSha = gitText(repository.localPath, [
+    const commitSha = this.git.read(repository.localPath, [
       'rev-parse',
       `refs/heads/${branch}`,
     ]);
@@ -737,7 +745,7 @@ export class SqliteDevelopmentModuleStore implements
       );
     }
     if (
-      !gitOk(repository.localPath, [
+      !this.git.ok(repository.localPath, [
         'merge-base',
         '--is-ancestor',
         expectedBaseCommit,
@@ -748,7 +756,7 @@ export class SqliteDevelopmentModuleStore implements
         `DEVELOPMENT_REPOSITORY_BASE_MISMATCH: ${projectRepositoryId}`,
       );
     }
-    const treeHash = gitText(repository.localPath, [
+    const treeHash = this.git.read(repository.localPath, [
       'rev-parse',
       `${commitSha}^{tree}`,
     ]);
@@ -767,12 +775,12 @@ export class SqliteDevelopmentModuleStore implements
       const repositories = candidate.repositories.map(repository => {
         const binding = this.readRepositoryPath(repository.projectRepositoryId);
         if (!binding) throw new Error('checkout missing');
-        const commitSha = gitText(binding.localPath, [
+        const commitSha = this.git.read(binding.localPath, [
           'rev-parse',
           `refs/heads/${repository.branch}`,
         ]);
         if (!commitSha) throw new Error('branch missing');
-        const treeHash = gitText(binding.localPath, [
+        const treeHash = this.git.read(binding.localPath, [
           'rev-parse',
           `${commitSha}^{tree}`,
         ]);
@@ -1300,25 +1308,6 @@ function requireMapValue<K, V>(map: ReadonlyMap<K, V>, key: K): V {
     throw new Error(`DEVELOPMENT_MAP_VALUE_MISSING: ${String(key)}`);
   }
   return value;
-}
-
-function gitText(repoPath: string, args: string[]): string | null {
-  const result = spawnSync(
-    'git',
-    ['-C', repoPath, ...args],
-    { encoding: 'utf8', windowsHide: true },
-  );
-  if (result.status !== 0) return null;
-  const value = (result.stdout ?? '').trim();
-  return value.length > 0 ? value : null;
-}
-
-function gitOk(repoPath: string, args: string[]): boolean {
-  return spawnSync(
-    'git',
-    ['-C', repoPath, ...args],
-    { encoding: 'utf8', windowsHide: true },
-  ).status === 0;
 }
 
 function parseTags(raw: string): readonly string[] {

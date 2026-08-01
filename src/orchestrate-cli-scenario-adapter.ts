@@ -48,8 +48,9 @@
  *     - the scenario runtime surface (`InstalledScenario`, `RunScenarioCommand`,
  *       `ScenarioExecutionResult`, `ScenarioRunner`) — all already present
  *       since Wave 7;
- *     - the legacy scenario adapter manifest
- *       (`legacyProductDeliveryScenarioFor`) so the legacy fallback path can
+ *     - the installed scenario manifest
+ *       (`productDeliveryScenarioManifestFor`, from the W11-A1 installed
+ *       Product Delivery scenario package) so the legacy fallback path can
  *       name which compatibility manifest it would have used (for the
  *       compatibility record), WITHOUT executing through it.
  *   It does NOT import the Wave 11 sibling lanes (W11-A1 scenario package,
@@ -72,7 +73,14 @@ import type { RunScenarioCommand } from './process-modules/application/scenario-
 import type { ScenarioExecutionResult } from './process-modules/application/scenario-runner.js';
 import type { ScenarioRunner } from './process-modules/application/scenario-runner.js';
 import type { LifecycleScenarioManifest } from './process-modules/domain/spi/scenario-manifest.js';
-import { legacyProductDeliveryScenarioFor } from './process-modules/application/legacy-scenario-adapter.js';
+// The CANONICAL manifest producer is the installed Product Delivery scenario
+// package (W11-A1). New-core must NOT import the legacy compatibility bridge
+// (`application/legacy-scenario-adapter.ts`) — that is the cutover ratchet's
+// "no new-core file imports a compatibility entry point" rule: new runs route
+// through INSTALLED scenarios, not the legacy surface. The installed package
+// owns the manifest identity, so this adapter resolves the legacy-equivalent
+// manifest through it.
+import { productDeliveryScenarioManifestFor } from './process-modules/installation/product-delivery-scenario-package.js';
 
 // ---------------------------------------------------------------------------
 // Compatibility-use recording (W11-A5 hook).
@@ -266,7 +274,7 @@ export async function resolveCliScenarioSelection(
   inputs: ResolveSelectionInputs,
 ): Promise<CliScenarioSelection> {
   const gate = inputs.discoveryGate ?? 'permissive';
-  const equivalentLegacy = legacyProductDeliveryScenarioFor(gate);
+  const equivalentLegacy = productDeliveryScenarioManifestFor(gate);
 
   if (inputs.forceLegacy) {
     return {

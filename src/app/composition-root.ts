@@ -25,6 +25,7 @@ import {
 import { SqliteBoardProjectionReader } from '../infrastructure/projections/sqlite-board-projection-reader.js';
 import { NodeSaga2HostRuntime } from '../infrastructure/runtime/node-saga2-host-runtime.js';
 import { createLegacyClaudeWorkerExecutorFactory } from '../infrastructure/workers/legacy-claude-worker-executor-factory.js';
+import { SqliteWorkAssignmentAdapter } from '../infrastructure/work/sqlite-work-assignment-adapter.js';
 import { SqliteWorkspaceResolver } from '../infrastructure/workspaces/sqlite-workspace-resolver.js';
 import {
   loadSagaRuntimeConfig,
@@ -299,6 +300,10 @@ function createPinnedWorkerFactory(
     workspaceTemplatePreparers: new Map([
       ['solution-development@1.0.0', prepareDevelopmentWorkspaceTemplate],
     ]),
+    // CONVEYOR: route card assignment through the atomic WorkAssignmentPort —
+    // the card is assigned + fenced in one IMMEDIATE transaction before the
+    // worker process is spawned, closing the loose-preselector race window.
+    workAssignment: new SqliteWorkAssignmentAdapter(getDb()),
   });
 }
 

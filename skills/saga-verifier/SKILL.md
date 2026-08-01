@@ -60,7 +60,9 @@ COVERAGE-GAPS:
 
 ## Phase 1 — Producing independent verification
 
-1. Claim task via worker_next({role:'reviewer'}) — then run Phase 0 above first.
+1. Your verification task is pre-assigned by the dispatcher — read it via
+   `task_get({ id: <SAGA_TASK_ID> })`; do NOT call `worker_next` (it is
+   disabled). Then run Phase 0 above first.
 2. Read the AC artifact (artifact_get) — especially the YAML properties block.
 3. Read the function signature from code (grep the public API in `src/`).
 4. DO NOT read the `tests/` tree (Builder's tests are off-limits — see the
@@ -84,7 +86,7 @@ COVERAGE-GAPS:
 - Your test layer (L3) MUST differ from Builder's (L2). This is structural independence.
 - If AC has no properties block → verification_record outcome='unknown' with reason "no contract-as-data in AC"
 - tests/verifier/ directory is YOUR territory. Builder does not touch it.
-- Never worker_next again after worker_done.
+- Do NOT call `worker_next` at all — your card is pre-assigned by the dispatcher.
 
 ## NEVER call worker_ask_need
 

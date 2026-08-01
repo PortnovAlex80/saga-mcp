@@ -182,7 +182,35 @@ CREATE TABLE IF NOT EXISTS worker_executions (
   finished_at     TEXT,
   exit_code       INTEGER,
   last_error      TEXT,
-  metadata        TEXT NOT NULL DEFAULT '{}'
+  metadata        TEXT NOT NULL DEFAULT '{}',
+  -- CONVEYOR Wave 5 supervision columns (CONVEYOR-MENTAL-MODEL §"Shift, pass,
+  -- lease and heartbeat" + §"Safe automatic recovery"). TWO DISTINCT SIGNALS
+  -- (§363-370) that must not be conflated — liveness renewal must NOT reset the
+  -- progress-silence clock:
+  --   * lease_expires_at — authority deadline. The supervisor renews it; when it
+  --     passes, the execution loses the right to mutate (a stale worker cannot
+  --     clear a newer fence). Independent of model behaviour.
+  --   * heartbeat_at — LIVENESS timestamp: "the supervisor still owns this
+  --     execution". The watchman advances it on every sweep. Touching it MUST
+  --     NOT advance progress_at or the stuck clocks.
+  --   * progress_at — PROGRESS timestamp: "the worker produced observable
+  --     activity" (stdout/tool/stream). Drives stuck detection. Independent of
+  --     lease renewal — a worker that never calls a tool keeps its lease but its
+  --     progress clock keeps aging.
+  --   * suspected_stuck_at — when the progress-silence grace first fired and the
+  --     execution entered suspected_stuck. Drives the cancel-grace window.
+  --   * cancel_requested_at — when cancellation was requested. Drives the
+  --     terminate-after-grace window.
+  -- An alive-but-silent worker is not released solely because progress_at is
+  -- old; the stuck policy first records suspected_stuck, requests cancellation,
+  -- waits a grace period, then terminates only a verified process identity.
+  lease_expires_at  TEXT,
+  heartbeat_at      TEXT,
+  progress_at       TEXT,
+  suspected_stuck_at TEXT,
+  cancel_requested_at TEXT,
+  stuck_state       TEXT NOT NULL DEFAULT 'active'
+                     CHECK (stuck_state IN ('active','suspected_stuck','cancel_requested'))
 );
 
 CREATE TABLE IF NOT EXISTS subtasks (

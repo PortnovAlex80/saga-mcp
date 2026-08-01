@@ -41,6 +41,9 @@ const {
 } = await import(
   '../../dist/process-modules/lifecycles/product-delivery-lifecycle.js'
 );
+const { lifecycleInputPolicyValidation } = await import(
+  '../../dist/infrastructure/process-modules/lifecycle-input-policy-validation.js'
+);
 const { SqliteLifecycleRunRepository } = await import(
   '../../dist/process-modules/persistence/sqlite-lifecycle-run-repository.js'
 );
@@ -132,7 +135,7 @@ test('assembler builds a validated input from a bare idea with no lifecycleInput
       idea: 'A school program that draws a circle with sine and cosine.',
       db: fixture.db,
     });
-    assert.doesNotThrow(() => assertProductDeliveryLifecycleInput(input));
+    assert.doesNotThrow(() => assertProductDeliveryLifecycleInput(input, lifecycleInputPolicyValidation));
     assert.equal(input.initiative.subject, 'A school program that draws a circle with sine and cosine.');
   } finally {
     cleanupFixture(fixture);
@@ -475,7 +478,7 @@ test('bare idea persists no synthetic operator authorization', () => {
     assert.equal(input.delivery.deferredProfile.reason, 'authorization-required');
     assert.equal(input.delivery.deferredProfile.source, 'start-from-idea');
     assert.ok(input.delivery.deferredProfile.profileHash.length > 0);
-    assert.doesNotThrow(() => assertProductDeliveryLifecycleInput(input));
+    assert.doesNotThrow(() => assertProductDeliveryLifecycleInput(input, lifecycleInputPolicyValidation));
   } finally {
     cleanupFixture(fixture);
     rmSync(repo.repoDir, { recursive: true, force: true });
@@ -506,7 +509,7 @@ test('startProductLifecycleFromIdea starts a LifecycleRun through the injected p
     assert.ok(captured, 'the starter must have been called');
     // The validated input handed to the port passes the assert.
     assert.doesNotThrow(() =>
-      assertProductDeliveryLifecycleInput(captured.lifecycleInput));
+      assertProductDeliveryLifecycleInput(captured.lifecycleInput, lifecycleInputPolicyValidation));
     assert.equal(
       captured.lifecycleInputSchema,
       'saga3.product-delivery-lifecycle-input.v2',

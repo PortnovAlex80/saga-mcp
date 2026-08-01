@@ -79,6 +79,10 @@ test('Node Saga2 host runtime owns lock and heartbeat', () => {
   const context = { projectId: 1, epicId: 2 };
   const cliRoot = path.join(temp, '.zcode', 'cli');
   const lockPath = path.join(cliRoot, 'engine-1-2.pid');
+  // The host runtime treats the lock dir as pre-existing (the real CLI creates
+  // ~/.zcode/cli on install). mkdtempSync does not create nested subdirs, so
+  // materialize the parent before seeding the stale-lock fixture.
+  mkdirSync(cliRoot, { recursive: true });
   writeFileSync(lockPath, '999', 'utf8');
 
   try {
@@ -288,6 +292,23 @@ test('legacy engine administration preserves start/status/concurrency/stop seman
         metadata TEXT,
         updated_at TEXT
       );
+      -- saga4: LegacyEngineAdministration now reads per-epic engine state from
+      -- lifecycle_execution_controls (migrated out of episode_workflows.metadata).
+      CREATE TABLE lifecycle_execution_controls (
+        epic_id INTEGER PRIMARY KEY REFERENCES epics(id) ON DELETE CASCADE,
+        engine_state TEXT NOT NULL DEFAULT 'stopped'
+          CHECK (engine_state IN ('running','stopped','unknown')),
+        engine_pid INTEGER,
+        concurrency INTEGER,
+        started_at TEXT,
+        stopped_at TEXT,
+        concurrency_changed_at TEXT,
+        model_provider TEXT,
+        model_name TEXT,
+        model_effort TEXT,
+        model_concurrency_limit INTEGER,
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
     `);
     db.prepare('INSERT INTO epics VALUES (2, 1)').run();
     db.prepare(`INSERT INTO episode_workflows VALUES (2, '{}', datetime('now'))`).run();
@@ -304,6 +325,10 @@ test('legacy engine administration preserves start/status/concurrency/stop seman
     orchestrateCliPath: '/dist/orchestrate-cli.js',
     platform: 'linux',
     now: () => new Date('2026-07-23T01:02:03.000Z'),
+    // Inject the liveness probe so the test does not depend on a real OS
+    // process matching the spawned mock PID 4321. While `alive` is true the
+    // probe reports the engine PID as live; pkill flips alive to false.
+    isProcessAlive: pid => alive && pid === 4321,
     spawnProcess(command, args, options) {
       spawned.push({ command, args, options });
       alive = true;
@@ -366,6 +391,21 @@ test('engine spawn propagates config.orchestrationMode (no hardcoded mode)', () 
     db.exec(`
       CREATE TABLE epics (id INTEGER PRIMARY KEY, project_id INTEGER);
       CREATE TABLE episode_workflows (epic_id INTEGER PRIMARY KEY, metadata TEXT, updated_at TEXT);
+      CREATE TABLE lifecycle_execution_controls (
+        epic_id INTEGER PRIMARY KEY REFERENCES epics(id) ON DELETE CASCADE,
+        engine_state TEXT NOT NULL DEFAULT 'stopped'
+          CHECK (engine_state IN ('running','stopped','unknown')),
+        engine_pid INTEGER,
+        concurrency INTEGER,
+        started_at TEXT,
+        stopped_at TEXT,
+        concurrency_changed_at TEXT,
+        model_provider TEXT,
+        model_name TEXT,
+        model_effort TEXT,
+        model_concurrency_limit INTEGER,
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
     `);
     db.prepare('INSERT INTO epics VALUES (2, 1)').run();
     db.prepare(`INSERT INTO episode_workflows VALUES (2, '{}', datetime('now'))`).run();

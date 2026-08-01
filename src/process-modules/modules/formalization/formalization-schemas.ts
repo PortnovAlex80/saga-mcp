@@ -27,9 +27,15 @@
  * validation logic.
  */
 
-import type { ProcessModuleReference } from '../../domain/process-module.js';
-
-export const FORMALIZATION_CASE_SCHEMA = 'saga3.formalization-case.v1';
+// CONVEYOR Wave 7: FORMALIZATION_CASE_SCHEMA is a lifecycle-referenced contract
+// whose canonical home is the lifecycle contracts module (Rule 3). Re-exported
+// here so the module's own consumers keep a single import surface. The
+// `ProcessModuleReference` type import below is retained for the duplicate
+// FORMALIZATION_PROCESS_MODULE_REF removal (now canonical in contracts).
+export {
+  FORMALIZATION_CASE_SCHEMA,
+} from '../../lifecycles/product-delivery-module-contracts.js';
+import { FORMALIZATION_CASE_SCHEMA } from '../../lifecycles/product-delivery-module-contracts.js';
 export const SOLUTION_CONTRACT_CERTIFICATE_SCHEMA = 'saga3.solution-contract-certificate.v1';
 export const FORMALIZATION_SETTLEMENT_INPUT_SCHEMA = 'saga3.formalization-settlement-input.v1';
 export const FORMALIZATION_PRODUCT_BUNDLE_SCHEMA = 'saga3.formalization-product-bundle.v1';
@@ -172,11 +178,7 @@ export interface FormalizationCertificatePayload {
   acceptanceBaselineHash: string;
 }
 
-/**
- * Reference to the formalization module, reused across the SPI. Matches the
- * catalog entry identity.
- */
-export const FORMALIZATION_PROCESS_MODULE_REF: ProcessModuleReference = {
-  name: 'solution-formalization',
-  version: '1.0.0',
-};
+// CONVEYOR Wave 7: FORMALIZATION_PROCESS_MODULE_REF was duplicated here. It now
+// has one canonical home in the lifecycle contracts module; this file re-exports
+// it so existing SPI consumers keep a single import surface.
+export { FORMALIZATION_PROCESS_MODULE_REF } from '../../lifecycles/product-delivery-module-contracts.js';

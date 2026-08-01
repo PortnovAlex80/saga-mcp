@@ -1,0 +1,23 @@
+{
+  "tool": "artifact_create",
+  "arguments": {
+    "project_id": 1,
+    "epic_id": 1,
+    "project_repository_id": 1,
+    "type": "FILL_NODE_OWNED_ARTIFACT_TYPE",
+    "title": "FILL_ARTIFACT_TITLE",
+    "path": "FILL_RELATIVE_ARTIFACT_PATH",
+    "code": "FILL_STABLE_CODE_OR_NULL",
+    "status": "draft",
+    "parent_artifact_id": "FILL_INTEGER_PARENT_ID_OR_NULL",
+    "metadata": {
+      "process_module_ref": "solution-formalization@1.0.0",
+      "process_run_id": 2,
+      "node_id": "model-use-cases",
+      "work_intent_id": 4,
+      "task_id": 4,
+      "execution_id": "exec-1-19776-1785339418710-6",
+      "input_snapshot_hash": "28e48f370157d0f40a2dc356d8ff68c20c45b0fb70392628f01873be51889402"
+    }
+  }
+}

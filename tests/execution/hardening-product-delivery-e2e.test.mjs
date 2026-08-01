@@ -101,6 +101,9 @@ const {
 } = await import(
   '../../dist/process-modules/lifecycles/product-delivery-lifecycle.js'
 );
+const { lifecycleInputPolicyValidation } = await import(
+  '../../dist/infrastructure/process-modules/lifecycle-input-policy-validation.js'
+);
 // Wave 13 removed modules/catalog.ts + modules/installations.ts (W13-A1); the
 // dist files only survive as a stale leftover and vanish on a clean rebuild.
 // Build the registries inline from the production module definitions, exactly
@@ -706,7 +709,7 @@ test('W12-A7 e2e: synthetic Product Delivery input passes the real lifecycle val
   for (const subject of ['idea-A', 'idea-B', 'idea-replay', 'idea-restart']) {
     const input = buildProductDeliveryInput(subject);
     assert.doesNotThrow(
-      () => assertProductDeliveryLifecycleInput(input),
+      () => assertProductDeliveryLifecycleInput(input, lifecycleInputPolicyValidation),
       `input for ${subject} must pass assertProductDeliveryLifecycleInput`,
     );
     // The four stage module names are exactly the catalog's production modules.

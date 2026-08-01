@@ -1,0 +1,37 @@
+{
+  "tool": "artifact_update",
+  "calls": [
+    {
+      "id": 27,
+      "status": "accepted"
+    },
+    {
+      "id": 28,
+      "status": "accepted"
+    },
+    {
+      "id": 29,
+      "status": "accepted"
+    },
+    {
+      "id": 30,
+      "status": "accepted"
+    },
+    {
+      "id": 31,
+      "status": "accepted"
+    },
+    {
+      "id": 32,
+      "status": "accepted"
+    },
+    {
+      "id": 33,
+      "status": "accepted"
+    },
+    {
+      "id": 34,
+      "status": "accepted"
+    }
+  ]
+}

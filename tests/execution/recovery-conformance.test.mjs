@@ -82,7 +82,7 @@ async function loadRecoveryEngine() {
   // dynamic import resolves individually per lane.
   try {
     const mod = await import(
-      '../../dist/application/recovery-engine.js'
+      '../../dist/process-modules/application/recovery-engine.js'
     );
     if (typeof mod.routeRecoveryAction !== 'function') return null;
     return mod;

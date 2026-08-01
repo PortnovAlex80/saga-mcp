@@ -1,20 +1,24 @@
 import type { ProcessModuleDefinition } from '../../domain/process-module.js';
-import { DISCOVERY_DIAGNOSIS_REPORT_SCHEMA } from '../../../saga3/domain/discovery-diagnosis-report.js';
-import { DISCOVERY_NORMALIZATION_PROPOSAL_SCHEMA } from '../../../saga3/domain/discovery-normalization-proposal.js';
-import { DISCOVERY_PROPOSAL_SCHEMA } from '../../../saga3/domain/discovery-proposal.js';
-import { DISCOVERY_READINESS_ASSESSMENT_SCHEMA } from '../../../saga3/domain/discovery-readiness-assessment.js';
+// CONVEYOR Wave 7 — saga3 cross-tree leak elimination: the schema-id constants
+// and intent-kind constants are now declared locally in the discovery module
+// (discovery-domain-contracts.ts), byte-identical to the saga3 originals. The
+// module no longer reaches into src/saga3/domain/**.
 import {
+  DISCOVERY_DIAGNOSIS_REPORT_SCHEMA,
+  DISCOVERY_NORMALIZATION_PROPOSAL_SCHEMA,
+  DISCOVERY_PROPOSAL_SCHEMA,
+  DISCOVERY_READINESS_ASSESSMENT_SCHEMA,
   DISCOVERY_DIAGNOSIS_INTENT_KIND,
   DISCOVERY_INTENT_KIND,
   DISCOVERY_NORMALIZATION_INTENT_KIND,
   DISCOVERY_READINESS_INTENT_KIND,
   DISCOVERY_WORK_INTENT_SCHEMA,
-} from '../../../saga3/domain/work-intent.js';
+} from './discovery-domain-contracts.js';
 
-export const DISCOVERY_PROCESS_MODULE_REF = {
-  name: 'product-discovery',
-  version: '3.0.2',
-} as const;
+// CONVEYOR Wave 7: the module identity ref is a CANONICAL contract owned by the
+// lifecycle (Rule 3). This module imports it back — inward direction, allowed.
+import { DISCOVERY_PROCESS_MODULE_REF } from '../../lifecycles/product-delivery-module-contracts.js';
+export { DISCOVERY_PROCESS_MODULE_REF };
 
 // W13-A2: resources were moved out of the legacy global root
 // (`tool-templates/discovery/`) into the discovery package resources directory

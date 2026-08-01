@@ -138,6 +138,23 @@ test('architecture: no direct lifecycle UPDATE outside sanctioned writers', () =
     'src/lifecycle/idempotency.ts',
     'src/lifecycle/invariant-scanner.ts',
     'src/lifecycle/legacy-assignment-recovery.ts',
+    // Sanctioned atomic-assignment writer (WorkAssignmentPort core). The
+    // UPDATE tasks here is the claim primitive shared by worker_next and the
+    // dispatcher; it is legitimate because:
+    //   1. CAS guard — both branches gate on status AND assigned_to NULL/empty:
+    //        todo       -> WHERE id=? AND status='todo'
+    //                        AND (assigned_to IS NULL OR assigned_to = '')
+    //        review     -> WHERE id=? AND status='review'
+    //                        AND (assigned_to IS NULL OR assigned_to = '')
+    //      so a stale claim races no one (info.changes !== 1 => retry).
+    //   2. Fence — every claim stamps current_execution_id on the row, fixing
+    //      the live execution identity for all downstream worker_* calls.
+    //   3. Atomicity — findNextClaimable is only ever invoked inside
+    //      withImmediateTransaction (BEGIN IMMEDIATE), and the INSERT into
+    //      worker_executions runs in that same transaction (all-or-nothing).
+    //   4. Transition correctness — only legal claim transitions are emitted:
+    //      todo -> in_progress, review -> review_in_progress.
+    'src/lifecycle/work-assignment-core.ts',
     'src/tools/dispatcher.ts',
     'src/tools/tasks.ts',
     'src/tools/lifecycle.ts',

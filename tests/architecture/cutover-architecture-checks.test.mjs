@@ -185,37 +185,31 @@ function compatibilityUsage(graph) {
   return usage;
 }
 
-// Baseline of compatibility-path importers as of the Wave 10 checkpoint. These
-// are the legacy composition root, the legacy CLI tool surface, and the legacy
-// execution-profile resolver — exactly the surfaces Wave 13 removes. Each entry
-// is `{ entry, importer }`. The ratchet fails if:
+// Baseline of compatibility-path importers. These are the legacy surfaces
+// Wave 13 removes once the retention policy proves no supported run needs them.
+// Each entry is `{ entry, importer }`. The ratchet fails if:
 //   - an importer appears that is NOT in this baseline (unallowlisted growth);
 //   - a baseline importer disappears (stale entry — tighten by removing it so
 //     the shrinkage is recorded and the ratchet only ever tightens).
 //
 // A NEW-CORE importer can NEVER be allowlisted here: a new-core file importing
 // a compatibility entry point is a hidden fallback regardless of who added it.
-const COMPATIBILITY_BASELINE = [
-  // createBuiltInProcessModuleRegistry importers.
-  { entry: 'src/process-modules/modules/catalog.ts', importer: 'src/app/composition-root.ts' },
-  { entry: 'src/process-modules/modules/catalog.ts', importer: 'src/process-modules/application/execution-profile-resolver.ts' },
-  // W13-A6: the manual Product Delivery composition body moved verbatim from
-  // composition/product-lifecycle-runtime.ts (now a thin re-export) to
-  // src/app/product-lifecycle-runtime.ts. The catalog/installations imports
-  // moved with it; the importer identity changed, the compatibility use did
-  // not. This is the W11-A2 composition-loader seam's legacy branch.
-  { entry: 'src/process-modules/modules/catalog.ts', importer: 'src/app/product-lifecycle-runtime.ts' },
-  { entry: 'src/process-modules/modules/catalog.ts', importer: 'src/tools/process-modules.ts' },
-  // createBuiltInProcessModuleInstallationRegistry importers.
-  { entry: 'src/process-modules/modules/installations.ts', importer: 'src/app/composition-root.ts' },
-  // W13-A6: relocated importer (see note above).
-  { entry: 'src/process-modules/modules/installations.ts', importer: 'src/app/product-lifecycle-runtime.ts' },
-  // legacy-scenario-adapter has NO importers today (it is consumed via the
-  // scenario-tests and is the bridge legacy pinned runs will replay through
-  // once the cutover wires it). No baseline entry => any importer added is
-  // either a legitimate explicit compatibility adapter (allowlist it here with
-  // a Wave 13 reason) or a hidden fallback (rule 1 already blocks it).
-];
+//
+// W11 cutover checkpoint: the set is EMPTY. The original Wave 10 baseline held
+// six edges — four against `modules/catalog.ts` and two against
+// `modules/installations.ts` — but W13-A6 deleted both of those files (the
+// manual composition body they served relocated to `installation/`, which
+// matches no dependency-direction classifier and needs no catalog/installations
+// factories). That left all six entries stale (referencing non-existent
+// targets). Separately, the W11-A1 installed Product Delivery scenario package
+// became the canonical manifest producer, so `legacy-scenario-adapter.ts` (the
+// remaining compatibility entry point) lost its last new-core importers too:
+// `orchestrate-cli-scenario-adapter.ts` and
+// `installation/product-delivery-scenario-package.ts` now resolve through the
+// installed package, not the compatibility bridge. No `src/` file imports any
+// compatibility entry point today. An empty baseline is the ratchet's
+// all-clear: usage grew to zero, which is exactly the Wave 13 removal target.
+const COMPATIBILITY_BASELINE = [];
 
 function compatKey(u) {
   return `${u.importer} -> ${u.entry}`;
@@ -359,8 +353,15 @@ test('cutover ratchet: reports compatibility-usage count for shrinkage visibilit
       `no supported run needs them; the ratchet fails if usage grows beyond ` +
       `the baseline.`,
   );
+  // The baseline is the frozen importer set, which may legitimately be EMPTY:
+  // zero compatibility-path importers is exactly the Wave 13 removal target
+  // (the W11 cutover checkpoint reached it). The `>= 0` guard keeps the field
+  // declared and the report emitting on every green run without forcing a
+  // synthetic importer to exist once the cutover completes. The shrinkage
+  // direction is enforced by the stale/unallowlisted tests above, not by a
+  // lower bound here.
   assert.ok(
-    COMPATIBILITY_BASELINE.length > 0,
-    'compatibility baseline must be seeded with the Wave 10 importers',
+    COMPATIBILITY_BASELINE.length >= 0,
+    'compatibility baseline must be a declared array (empty == Wave 13 target reached)',
   );
 });

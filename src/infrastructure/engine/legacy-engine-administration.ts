@@ -19,6 +19,13 @@ export interface LegacyEngineAdministrationOptions {
   spawnProcessSync?: typeof spawnSync;
   now?: () => Date;
   platform?: NodeJS.Platform;
+  /**
+   * Process-liveness probe injected for testability. The fast-path in
+   * isEngineAlive calls this against the persisted engine PID. In production it
+   * defaults to the real process.kill(pid,0) check; tests inject a stub so they
+   * do not depend on a real OS process matching the spawned mock PID.
+   */
+  isProcessAlive?: (pid: number | null) => boolean;
 }
 
 interface PersistedEngineState {
@@ -42,6 +49,7 @@ export class LegacyEngineAdministration implements EngineAdministration {
   private readonly spawnProcessSync: typeof spawnSync;
   private readonly now: () => Date;
   private readonly platform: NodeJS.Platform;
+  private readonly isProcessAlive: (pid: number | null) => boolean;
 
   /**
    * Short-lived liveness cache keyed by `${projectId}:${epicId}`. The browser
@@ -62,6 +70,7 @@ export class LegacyEngineAdministration implements EngineAdministration {
     this.spawnProcessSync = options.spawnProcessSync ?? spawnSync;
     this.now = options.now ?? (() => new Date());
     this.platform = options.platform ?? process.platform;
+    this.isProcessAlive = options.isProcessAlive ?? isProcessAlive;
 
     const here = path.dirname(fileURLToPath(import.meta.url));
     this.orchestrateCliPath = options.orchestrateCliPath
@@ -304,7 +313,7 @@ export class LegacyEngineAdministration implements EngineAdministration {
     // a console window on the browser's 2s status poll. If the PID is gone, the
     // engine is definitively dead — invalidate the throttle cache and return.
     const persisted = this.readPersisted(epicId);
-    const fastAlive = isProcessAlive(persisted.pid);
+    const fastAlive = this.isProcessAlive(persisted.pid);
     if (!fastAlive) {
       this.aliveCache.delete(this.aliveCacheKey(projectId, epicId));
       return false;

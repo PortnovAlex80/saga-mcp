@@ -28,12 +28,101 @@ import type {
   FormalizationSettlementInput,
   SolutionContractBundle,
 } from './formalization-schemas.js';
-import type {
-  ManagedArtifactProductionRecord,
-  ManagedExecutionProductQuery,
-  ManagedProductionLedger,
-  ManagedTraceProductionRecord,
-} from '../../persistence/sqlite-managed-production-ledger.js';
+
+// ---------------------------------------------------------------------------
+// Managed-production ledger interfaces (Wave 7 type-leak fix).
+//
+// These pure interface definitions previously lived in
+// `persistence/sqlite-managed-production-ledger.ts`, which forced this module
+// to import a concrete persistence adapter (a Rule 2 violation). They are now
+// inlined here as a CANONICAL module-local declaration. The concrete SQLite
+// implementation imports its canonical copy from the development module's
+// kernel-ports and `implements ManagedProductionLedger` — infrastructure
+// depends inward (dependency inversion), which is allowed. TypeScript's
+// structural typing means the concrete impl satisfies this module-local
+// declaration byte-for-byte (the shapes are identical), so a Formalization
+// handler typed against these local interfaces accepts the shared ledger
+// instance the composition root injects.
+// ---------------------------------------------------------------------------
+
+export interface ManagedExecutionProductQuery {
+  processRunId: number;
+  moduleRef: string;
+  nodeId: string;
+  intentId: number;
+  taskId: number;
+  executionId: string;
+}
+
+export interface ManagedArtifactProductionRecord {
+  ledgerId: number;
+  processRunId: number;
+  moduleRef: string;
+  nodeId: string;
+  intentId: number;
+  taskId: number;
+  executionId: string;
+  artifactId: number;
+  artifactType: string;
+  artifactStatus: string;
+  contentHash: string | null;
+  operation: 'create' | 'upsert' | 'update';
+  recordedAt: string;
+}
+
+export interface ManagedTraceProductionRecord {
+  ledgerId: number;
+  processRunId: number;
+  moduleRef: string;
+  nodeId: string;
+  intentId: number;
+  taskId: number;
+  executionId: string;
+  traceId: number;
+  sourceId: number;
+  targetType: 'artifact' | 'task';
+  targetId: number;
+  linkType: string;
+  traceHash: string;
+  recordedAt: string;
+}
+
+export interface ManagedProductionLedger {
+  listArtifactsForExecution(
+    query: ManagedExecutionProductQuery,
+  ): readonly ManagedArtifactProductionRecord[];
+  listTracesForExecution(
+    query: ManagedExecutionProductQuery,
+  ): readonly ManagedTraceProductionRecord[];
+  /**
+   * Read the durable product accumulated by one reviewed task across its
+   * author/reviewer retry executions. A different recovery task is a new
+   * product attempt and must write or carry an explicit product reference.
+   */
+  listArtifactsForTaskInProcessRun(
+    processRunId: number,
+    moduleRef: string,
+    nodeId: string,
+    taskId: number,
+  ): readonly ManagedArtifactProductionRecord[];
+  listTracesForTaskInProcessRun(
+    processRunId: number,
+    moduleRef: string,
+    nodeId: string,
+    taskId: number,
+  ): readonly ManagedTraceProductionRecord[];
+  /** Node-wide audit query. Product resolvers must not use it as fallback. */
+  listArtifactsForNodeInProcessRun(
+    processRunId: number,
+    moduleRef: string,
+    nodeId: string,
+  ): readonly ManagedArtifactProductionRecord[];
+  listTracesForNodeInProcessRun(
+    processRunId: number,
+    moduleRef: string,
+    nodeId: string,
+  ): readonly ManagedTraceProductionRecord[];
+}
 
 export type FormalizationArtifactStatus = 'draft' | 'in_review' | 'accepted' | 'superseded';
 
@@ -174,4 +263,40 @@ export function buildFormalizationCertificatePayload(
     bundleHash: bundle.bundleHash,
     acceptanceBaselineHash: bundle.acceptanceBaselineHash,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Brief provisioning port (Wave 7 — Isolate modules behind ports).
+//
+// The formalization product resolver auto-provisions a synthetic `brief`
+// artifact + PRD->brief `derived_from` trace when discovery did not register a
+// brief artifact row. This used to be done via a direct `getDb()` call inside
+// `ensureBriefRootTrace` (formalization-installation.ts) — a Rule 2 violation.
+//
+// This port lifts that side-effect behind a module-local capability. The
+// composition root injects a concrete (SQLite-backed) implementation; tests
+// inject fakes. The module never imports `db.ts`.
+//
+// The optional `BriefProvisioningPort` on `FormalizationInstallationDeps`
+// currently defaults to a `getDb()`-backed adapter to keep the build green
+// while the orchestrator wires the real port. Once wired, the default is
+// removed and the `getDb()` import leaves the module.
+// ---------------------------------------------------------------------------
+
+export interface BriefProvisioningContext {
+  projectId: number;
+  epicId: number;
+  processRunId: number;
+  /** The PRD artifact id that needs a root ancestor trace. */
+  prdArtifactId: number;
+}
+
+/**
+ * Idempotently ensure a PRD has an accepted non-product root ancestor trace.
+ * Returns silently when the PRD already has one; otherwise provisions a brief
+ * (reusing a pre-existing accepted brief in the epic when one exists, else
+ * creating a synthetic one) and attaches the `derived_from` trace.
+ */
+export interface BriefProvisioningPort {
+  ensureBriefRoot(ctx: BriefProvisioningContext): void;
 }

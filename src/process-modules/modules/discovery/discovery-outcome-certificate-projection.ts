@@ -22,8 +22,12 @@
  */
 
 import type Database from 'better-sqlite3';
-import { readOutcomeCertificate } from '../../../saga3/persistence/saga3-settlement-repository.js';
-import type { OutcomeCertificateRecord } from '../../../saga3/domain/discovery-settlement-records.js';
+// CONVEYOR Wave 7 — saga3 cross-tree leak elimination: OutcomeCertificateRecord
+// is now declared locally in the discovery module (byte-identical to the saga3
+// original). The readOutcomeCertificate SQL was inlined from
+// src/saga3/persistence/saga3-settlement-repository.ts so this projection no
+// longer reaches outside src/process-modules/.
+import type { OutcomeCertificateRecord } from './discovery-domain-contracts.js';
 import { DISCOVERY_PROCESS_MODULE_REF } from './discovery-process-module.js';
 import { processModuleKey } from '../../domain/process-module.js';
 import type { ProcessOutcomeCertificate } from '../../persistence/process-outcome-certificate.js';
@@ -36,6 +40,70 @@ import type { ProcessOutcomeCertificate } from '../../persistence/process-outcom
  */
 export const DISCOVERY_GENERIC_CERTIFICATE_SCHEMA_VERSION =
   'saga3.discovery-outcome-certificate.generic.v1';
+
+// ---------------------------------------------------------------------------
+// Inlined readOutcomeCertificate (Wave 7 saga3 leak elimination).
+//
+// Previously imported from
+// src/saga3/persistence/saga3-settlement-repository.ts. That function is a
+// single read-only SELECT over saga3_discovery_outcome_certificates + a
+// row-to-record mapping. Inlined here verbatim so the projection no longer
+// reaches outside src/process-modules/. The saga3 layer keeps its own copy.
+// ---------------------------------------------------------------------------
+
+interface DiscoveryCertificateRow {
+  id: number;
+  settlement_id: number;
+  epic_id: number;
+  proposal_id: number;
+  proposal_content_hash: string;
+  readiness_assessment_id: number | null;
+  readiness_assessment_hash: string;
+  policy_version: string;
+  policy_hash: string;
+  decision: 'go' | 'clarify' | 'reject';
+  reason_codes: string;
+  input_hash: string;
+  certificate_payload: string;
+  certificate_hash: string;
+  issued_at: string;
+}
+
+function discoveryCertificateRowToRecord(
+  row: DiscoveryCertificateRow,
+): OutcomeCertificateRecord {
+  return {
+    id: row.id,
+    settlement_id: row.settlement_id,
+    epic_id: row.epic_id,
+    proposal_id: row.proposal_id,
+    proposal_content_hash: row.proposal_content_hash,
+    readiness_assessment_id: row.readiness_assessment_id,
+    readiness_assessment_hash: row.readiness_assessment_hash,
+    policy_version: row.policy_version,
+    policy_hash: row.policy_hash,
+    decision: row.decision,
+    reason_codes: JSON.parse(row.reason_codes ?? '[]'),
+    input_hash: row.input_hash,
+    certificate_payload: row.certificate_payload,
+    certificate_hash: row.certificate_hash,
+    issued_at: row.issued_at,
+  };
+}
+
+/**
+ * Read an outcome certificate by its exact discovery-internal id. Read-only.
+ * Returns null if no such row. Inlined from the saga3 settlement repository.
+ */
+function readDiscoveryOutcomeCertificate(
+  db: Database.Database,
+  certificateId: number,
+): OutcomeCertificateRecord | null {
+  const row = db.prepare(
+    'SELECT * FROM saga3_discovery_outcome_certificates WHERE id=?',
+  ).get(certificateId) as DiscoveryCertificateRow | undefined;
+  return row ? discoveryCertificateRowToRecord(row) : null;
+}
 
 /**
  * Map a discovery OutcomeCertificateRecord to the generic shape. Pure function
@@ -98,7 +166,7 @@ export class DiscoveryOutcomeCertificateProjection {
 
   /** Project one discovery certificate by its discovery-internal id. */
   read(certificateId: number, projectId: number): ProcessOutcomeCertificate | null {
-    const cert = readOutcomeCertificate(this.db, certificateId);
+    const cert = readDiscoveryOutcomeCertificate(this.db, certificateId);
     return cert ? projectDiscoveryCertificate(cert, projectId) : null;
   }
 

@@ -44,6 +44,9 @@ const {
 } = await import(
   '../../dist/process-modules/lifecycles/product-delivery-lifecycle.js'
 );
+const { lifecycleInputPolicyValidation } = await import(
+  '../../dist/infrastructure/process-modules/lifecycle-input-policy-validation.js'
+);
 const {
   DEVELOPMENT_CASE_SCHEMA,
   DEVELOPMENT_CERTIFICATE_SCHEMA,
@@ -412,14 +415,14 @@ test('durable product lifecycle freezes exact handoffs and terminal replay creat
       },
     };
     assert.doesNotThrow(() =>
-      assertProductDeliveryLifecycleInput(rootInput));
+      assertProductDeliveryLifecycleInput(rootInput, lifecycleInputPolicyValidation));
     const impossibleRootAuthorization = structuredClone(rootInput);
     impossibleRootAuthorization.delivery.operatorAuthorization.candidateScope = {
       mode: 'exact',
       candidateHash: integratedCandidate.hash,
     };
     assert.throws(
-      () => assertProductDeliveryLifecycleInput(impossibleRootAuthorization),
+      () => assertProductDeliveryLifecycleInput(impossibleRootAuthorization, lifecycleInputPolicyValidation),
       /PRODUCT_LIFECYCLE_DELIVERY_CONFIGURATION_INVALID/,
     );
     const command = {

@@ -57,6 +57,9 @@ export interface ClaudeBoardRunnerOptions {
   claimTask: (args: { worker_id: string; project_id: number; machine_id?: string; epic_id?: number; execution_id?: string; run_id?: string }) => RunnerAssignment | null;
   getProject: (projectId: number) => unknown;
   getTaskState: (taskId: number) => unknown;
+  /** Read the full task row. Used by the pre-assigned-card path to rebuild the
+   *  launch()-shaped assignment from an AssignedWork without an in-process claim. */
+  getTask?: (taskId: number) => unknown;
   recoverAssignment: (args: {
     taskId: number;
     workerId: string;
@@ -84,7 +87,7 @@ export interface ClaudeBoardRunnerOptions {
 }
 
 export interface ClaudeBoardRunner {
-  start(args: { projectId: number; epicId?: number; concurrency: number }): RunnerRunSnapshot;
+  start(args: { projectId: number; epicId?: number; concurrency: number; claimScope?: { taskIds?: number[] }; assignment?: unknown }): RunnerRunSnapshot;
   stop(projectId: number): RunnerRunSnapshot | null;
   status(projectId: number): RunnerRunSnapshot | null;
   setConcurrency(projectId: number, concurrency: number): void;

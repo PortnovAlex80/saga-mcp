@@ -43,7 +43,6 @@ import {
   DELIVERY_RESOURCE_INDEX,
   DELIVERY_HANDLER_REFS,
   DELIVERY_KERNEL_HANDLER_REFS,
-  DELIVERY_EXTERNAL_ADAPTER_REFS,
   DELIVERY_HUMAN_ADAPTER_REFS,
   DELIVERY_INPUT_CONTRACT_REF,
   DELIVERY_OUTPUT_CONTRACT_REF,
@@ -57,7 +56,6 @@ import {
 import { deliveryProcessModule } from '../../dist/process-modules/modules/delivery/delivery-process-module.js';
 import {
   DELIVERY_KERNEL_HANDLER_IDS,
-  DELIVERY_EXTERNAL_ADAPTER_IDS,
   DELIVERY_HUMAN_ADAPTER_IDS,
 } from '../../dist/process-modules/modules/delivery/delivery-kernel-ports.js';
 import {
@@ -174,11 +172,12 @@ test('handlerRefs is non-empty and exported under the same array', () => {
   assert.equal(deliveryPackageManifest.handlerRefs, DELIVERY_HANDLER_REFS);
 });
 
-test('handlerRefs is the union of kernel + external + human adapter refs', () => {
+test('handlerRefs is the union of kernel + human adapter refs', () => {
+  // Commit 0088685 ("remove external node kind") removed the external adapter
+  // concept entirely; handlerRefs are now the union of kernel + human only.
   assert.equal(
     DELIVERY_HANDLER_REFS.length,
     DELIVERY_KERNEL_HANDLER_REFS.length +
-      DELIVERY_EXTERNAL_ADAPTER_REFS.length +
       DELIVERY_HUMAN_ADAPTER_REFS.length,
   );
 });
@@ -195,12 +194,9 @@ test('handlerRefs cover every kernel handler declared in the delivery definition
   }
 });
 
-test('handlerRefs cover every external adapter declared in the delivery definition', () => {
-  const declared = new Set(DELIVERY_HANDLER_REFS.map((h) => h.logicalId));
-  for (const id of Object.values(DELIVERY_EXTERNAL_ADAPTER_IDS)) {
-    assert.ok(declared.has(id), `external adapter not pinned in handlerRefs: ${id}`);
-  }
-});
+// (Commit 0088685 removed the external-adapter concept; the corresponding
+// "handlerRefs cover every external adapter" test is deleted — no external
+// adapters exist anymore.)
 
 test('handlerRefs cover every human interaction adapter declared in the delivery definition', () => {
   const declared = new Set(DELIVERY_HANDLER_REFS.map((h) => h.logicalId));

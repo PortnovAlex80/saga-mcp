@@ -1,18 +1,16 @@
 import type Database from 'better-sqlite3';
-import { getDb } from '../../../db.js';
-import type {
-  ExternalEffectActionRecord,
-  ExternalEffectLedger,
-} from '../../persistence/external-effect-ledger.js';
-import { SqliteExternalEffectLedger } from '../../persistence/sqlite-external-effect-ledger.js';
-import {
-  SqliteProcessProductRepository,
-} from '../../persistence/sqlite-process-product-repository.js';
+// CONVEYOR Wave 7 — Isolate modules behind ports: the process-product
+// repository and external-effect ledger are INJECTED by the composition root
+// (see src/infrastructure/process-modules/delivery-ports.ts). This module
+// imports no getDb, no Sqlite* concrete adapter.
 import { sha256Hex } from '../../shared/canonical-json.js';
 import type {
   DeliveryApprovalPort,
+  DeliveryExternalEffectActionRecord,
+  DeliveryExternalEffectLedgerPort,
   DeliveryObservationPort,
   DeliveryPreflightStatePort,
+  DeliveryProcessProductRepositoryPort,
   DeliveryPublicationPort,
   DeliverySettlementStatePort,
 } from './delivery-kernel-ports.js';
@@ -67,8 +65,17 @@ const EFFECT_LEASE_SECONDS = 300;
 
 export interface SqliteDeliveryRuntimeOptions {
   providers: DeliveryRuntimeProviders;
-  db?: Database.Database;
-  effectLedger?: ExternalEffectLedger;
+  db: Database.Database;
+  /**
+   * Wave 7 hex extraction — injected process-product repository port. Required:
+   * the composition root constructs the concrete SQLite adapter.
+   */
+  products: DeliveryProcessProductRepositoryPort;
+  /**
+   * Wave 7 hex extraction — injected external-effect ledger port. Required:
+   * the composition root constructs the concrete SQLite adapter.
+   */
+  effectLedger: DeliveryExternalEffectLedgerPort;
   effectOwner?: string;
 }
 
@@ -86,16 +93,17 @@ export class SqliteDeliveryRuntime implements
   DeliveryObservationPort,
   DeliverySettlementStatePort {
   private readonly db: Database.Database;
-  private readonly products: SqliteProcessProductRepository;
-  private readonly ledger: ExternalEffectLedger;
+  private readonly products: DeliveryProcessProductRepositoryPort;
+  private readonly ledger: DeliveryExternalEffectLedgerPort;
   private readonly providers: DeliveryRuntimeProviders;
   private readonly effectOwner: string;
 
   constructor(options: SqliteDeliveryRuntimeOptions) {
-    this.db = options.db ?? getDb();
-    this.products = new SqliteProcessProductRepository(this.db);
-    this.ledger = options.effectLedger
-      ?? new SqliteExternalEffectLedger(this.db);
+    // CONVEYOR Wave 7 — Isolate modules behind ports: db + products + ledger
+    // are all injected by the composition root. No getDb() / no Sqlite* here.
+    this.db = options.db;
+    this.products = options.products;
+    this.ledger = options.effectLedger;
     this.providers = options.providers;
     this.effectOwner = options.effectOwner?.trim()
       || `delivery-runtime:${process.pid}`;
@@ -770,7 +778,7 @@ function executionStatus(
 }
 
 function replaySucceededReceipt(
-  record: ExternalEffectActionRecord,
+  record: DeliveryExternalEffectActionRecord,
   action: ReleaseActionDefinition,
   actionKey: string,
   provider: DeliveryProviderBinding,
@@ -798,7 +806,7 @@ function replaySucceededReceipt(
 }
 
 function receiptFromLedgerTerminal(
-  record: ExternalEffectActionRecord,
+  record: DeliveryExternalEffectActionRecord,
   action: ReleaseActionDefinition,
   actionKey: string,
   provider: DeliveryProviderBinding,
@@ -835,7 +843,7 @@ function receiptFromLedgerTerminal(
 }
 
 function parseExecutionResult(
-  record: ExternalEffectActionRecord,
+  record: DeliveryExternalEffectActionRecord,
 ): Record<string, unknown> | null {
   if (!record.executionResultSnapshot) return null;
   try {

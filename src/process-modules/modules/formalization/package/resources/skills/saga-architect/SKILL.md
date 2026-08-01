@@ -51,8 +51,11 @@ pattern) that the planner will copy verbatim into tasks.
 
 ## One task per launch (одна задача за запуск)
 
-- `worker_next({ worker_id, project_id, role: 'architect' })` — claim the SRS task.
-- If `{task: null}` → report "queue empty" and stop.
+- Your SRS task is **pre-assigned by the dispatcher** based on your `architect`
+  role BEFORE launch — the role-based selection is the dispatcher's job, not
+  yours. Read it via `task_get({ id: <task_id> })` — the task id is passed by
+  the dispatcher (runtime `SAGA_TASK_ID`).
+- Do NOT call `worker_next` — it is disabled for pre-assigned workers.
 
 > ### ⚠ PATH MUST BE RELATIVE
 > When you call `artifact_create({path: ...})`, ALWAYS use a **relative** path:
@@ -739,7 +742,9 @@ you may create.
   content belongs in the PRD.
 - Do not write ACs — those are saga-analyst's job. But each AC must appear in
   your §D2 with a target file and pattern.
-- Never `worker_next` again after `worker_done`.
+- Do NOT call `worker_next` at all — it is disabled for pre-assigned workers.
+  Your card is assigned by the dispatcher before launch; read it via `task_get`
+  and complete it with `worker_done`.
 
 ## Architectural guidance (архитектурное руководство; soft recommendations — мягкие рекомендации, not hard gates — не жёсткие шлюзы)
 

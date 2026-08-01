@@ -40,9 +40,12 @@ handle.
 
 ## One task per launch (одна задача за запуск)
 
-- `worker_next({ worker_id, project_id, role: 'product' })` — claim the PRD task.
-- If `{task: null}` → report "queue empty" and stop.
-- Otherwise: write the PRD, register the artifact, `worker_done`, stop on `stop:true`.
+- Your PRD task is **pre-assigned by the dispatcher** based on your `product`
+  role BEFORE launch — the role-based selection is the dispatcher's job, not
+  yours. Read it via `task_get({ id: <task_id> })` — the task id is passed by
+  the dispatcher (runtime `SAGA_TASK_ID`).
+- Do NOT call `worker_next` — it is disabled for pre-assigned workers.
+- Write the PRD, register the artifact, `worker_done`, stop on `stop:true`.
 
 > ### ⚠ PATH MUST BE RELATIVE
 > When you call `artifact_create({path: ...})`, ALWAYS use a **relative** path:
@@ -388,7 +391,9 @@ lint time.
 - One PRD per REQ episode. If scope grew, split the episode into two REQs.
 - Never create downstream artifacts (UC/AC/SRS) — those are other roles' jobs.
   saga-product owns PRD + FR + NFR + RULE; nothing else in the artifact graph.
-- Never use `worker_next` again after `worker_done` in the same launch.
+- Do NOT call `worker_next` at all — it is disabled for pre-assigned workers.
+  Your card is assigned by the dispatcher before launch; read it via `task_get`
+  and complete it with `worker_done`.
 - For `product`-classified episodes, the `## Hypotheses` section is REQUIRED
   and every row MUST materialise as a `hypothesis` artifact + a
   `business_metric` artifact. For `tech-task` episodes the section is omitted.

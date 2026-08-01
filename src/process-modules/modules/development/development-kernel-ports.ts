@@ -36,18 +36,105 @@ import type {
   ManagedNodeSubmissionReader,
 } from '../../application/managed-node-submission.js';
 import type {
-  ManagedArtifactProductionRecord,
-  ManagedExecutionProductQuery,
-  ManagedProductionLedger,
-  ManagedTraceProductionRecord,
-} from '../../persistence/sqlite-managed-production-ledger.js';
-import type {
   DevelopmentSettlementInput,
   DevelopmentTaskGraphSnapshot,
   VerifiedIntegrationBundle,
   ContentAddressedReference,
   DevelopmentCase,
 } from './development-schemas.js';
+
+// ---------------------------------------------------------------------------
+// Managed-production ledger interfaces (Wave 7 type-leak fix).
+//
+// These pure interface definitions previously lived in
+// `persistence/sqlite-managed-production-ledger.ts`, which forced this module
+// to import a concrete persistence adapter (a Rule 2 violation). They are now
+// inlined here as the CANONICAL source of truth. The concrete SQLite
+// implementation in `persistence/sqlite-managed-production-ledger.ts` imports
+// them from here and `implements ManagedProductionLedger` — infrastructure
+// depends inward (dependency inversion), which is allowed. Each module that
+// needs the ledger contract re-declares it inline (structurally identical) so
+// no module ever imports the concrete persistence file.
+// ---------------------------------------------------------------------------
+
+export interface ManagedExecutionProductQuery {
+  processRunId: number;
+  moduleRef: string;
+  nodeId: string;
+  intentId: number;
+  taskId: number;
+  executionId: string;
+}
+
+export interface ManagedArtifactProductionRecord {
+  ledgerId: number;
+  processRunId: number;
+  moduleRef: string;
+  nodeId: string;
+  intentId: number;
+  taskId: number;
+  executionId: string;
+  artifactId: number;
+  artifactType: string;
+  artifactStatus: string;
+  contentHash: string | null;
+  operation: 'create' | 'upsert' | 'update';
+  recordedAt: string;
+}
+
+export interface ManagedTraceProductionRecord {
+  ledgerId: number;
+  processRunId: number;
+  moduleRef: string;
+  nodeId: string;
+  intentId: number;
+  taskId: number;
+  executionId: string;
+  traceId: number;
+  sourceId: number;
+  targetType: 'artifact' | 'task';
+  targetId: number;
+  linkType: string;
+  traceHash: string;
+  recordedAt: string;
+}
+
+export interface ManagedProductionLedger {
+  listArtifactsForExecution(
+    query: ManagedExecutionProductQuery,
+  ): readonly ManagedArtifactProductionRecord[];
+  listTracesForExecution(
+    query: ManagedExecutionProductQuery,
+  ): readonly ManagedTraceProductionRecord[];
+  /**
+   * Read the durable product accumulated by one reviewed task across its
+   * author/reviewer retry executions. A different recovery task is a new
+   * product attempt and must write or carry an explicit product reference.
+   */
+  listArtifactsForTaskInProcessRun(
+    processRunId: number,
+    moduleRef: string,
+    nodeId: string,
+    taskId: number,
+  ): readonly ManagedArtifactProductionRecord[];
+  listTracesForTaskInProcessRun(
+    processRunId: number,
+    moduleRef: string,
+    nodeId: string,
+    taskId: number,
+  ): readonly ManagedTraceProductionRecord[];
+  /** Node-wide audit query. Product resolvers must not use it as fallback. */
+  listArtifactsForNodeInProcessRun(
+    processRunId: number,
+    moduleRef: string,
+    nodeId: string,
+  ): readonly ManagedArtifactProductionRecord[];
+  listTracesForNodeInProcessRun(
+    processRunId: number,
+    moduleRef: string,
+    nodeId: string,
+  ): readonly ManagedTraceProductionRecord[];
+}
 import type {
   DevelopmentSettlementPolicyPort,
   DevelopmentTaskGraphPolicyPort,
@@ -189,6 +276,63 @@ export interface DevelopmentOutputRepository {
     replayed: boolean;
   };
   readByProcessRun(processRunId: number): DevelopmentOutputRecord | null;
+}
+
+/**
+ * Driver-neutral port for the v1 process-product repository (keyed by
+ * processRunId + productKind). Development's settlement state reads/writes its
+ * task-graph product through this surface; the concrete SQLite implementation
+ * is supplied by the composition root. Defined inline (record types only) so
+ * the module does not import the concrete `SqliteProcessProductRepository`
+ * adapter — Wave 7 hex extraction.
+ */
+export interface ProcessProductReference {
+  schema: string;
+  ref: string;
+  hash: string;
+}
+
+export interface ProcessProductRecord<T = unknown> {
+  processRunId: number;
+  productKind: string;
+  reference: ProcessProductReference;
+  payload: T;
+  payloadHash: string;
+  createdAt: string;
+}
+
+export interface ProcessProductRepositoryPort {
+  persist<T>(input: {
+    processRunId: number;
+    productKind: string;
+    schema: string;
+    productHash: string;
+    payload: T;
+    artifactRefPrefix: string;
+  }): { record: ProcessProductRecord<T>; replayed: boolean };
+  read<T>(processRunId: number, productKind: string): ProcessProductRecord<T> | null;
+}
+
+/**
+ * Driver-neutral git side-effect port (Wave 7 hex extraction). Development's
+ * settlement reads commit/tree hashes from a repository checkout; this port
+ * isolates the `git` shell-out so the module has no `child_process` import.
+ * Implementations live in infrastructure; the module speaks only read-only git
+ * queries (no writes — committing/merging is the worker's job, not the module).
+ */
+export interface GitPort {
+  /** Run `git -C repoPath <args>` and return trimmed stdout, or null on failure. */
+  read(repoPath: string, args: readonly string[]): string | null;
+  /** Run `git -C repoPath <args>` and return whether it exited 0. */
+  ok(repoPath: string, args: readonly string[]): boolean;
+}
+
+/**
+ * Driver-neutral machine-identity port (Wave 7). Replaces `os.hostname()`
+ * inside the module so it has no `node:os` import.
+ */
+export interface MachinePort {
+  hostname(): string;
 }
 
 /**

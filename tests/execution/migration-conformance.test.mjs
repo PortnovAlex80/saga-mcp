@@ -596,7 +596,7 @@ test('W9-A8 exact-output discovery: certificate projection is a pure function (s
   assert.equal(a.inputHash, 'i'.repeat(64));
   assert.equal(a.certificateHash, 'c'.repeat(64));
   assert.equal(a.moduleRef.name, 'product-discovery');
-  assert.equal(a.moduleRef.version, '3.0.0');
+  assert.equal(a.moduleRef.version, '3.0.2');
 });
 
 // ===========================================================================

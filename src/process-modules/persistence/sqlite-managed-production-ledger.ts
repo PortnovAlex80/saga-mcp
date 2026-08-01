@@ -11,91 +11,25 @@
 import type Database from 'better-sqlite3';
 import type { Artifact, ArtifactTrace } from '../../types.js';
 import { sha256Hex } from '../shared/canonical-json.js';
+import type {
+  ManagedArtifactProductionRecord,
+  ManagedExecutionProductQuery,
+  ManagedProductionLedger,
+  ManagedTraceProductionRecord,
+} from '../modules/development/development-kernel-ports.js';
 
-export interface ManagedExecutionProductQuery {
-  processRunId: number;
-  moduleRef: string;
-  nodeId: string;
-  intentId: number;
-  taskId: number;
-  executionId: string;
-}
-
-export interface ManagedArtifactProductionRecord {
-  ledgerId: number;
-  processRunId: number;
-  moduleRef: string;
-  nodeId: string;
-  intentId: number;
-  taskId: number;
-  executionId: string;
-  artifactId: number;
-  artifactType: string;
-  artifactStatus: string;
-  contentHash: string | null;
-  operation: 'create' | 'upsert' | 'update';
-  recordedAt: string;
-}
-
-export interface ManagedTraceProductionRecord {
-  ledgerId: number;
-  processRunId: number;
-  moduleRef: string;
-  nodeId: string;
-  intentId: number;
-  taskId: number;
-  executionId: string;
-  traceId: number;
-  sourceId: number;
-  targetType: 'artifact' | 'task';
-  targetId: number;
-  linkType: string;
-  traceHash: string;
-  recordedAt: string;
-}
-
-export interface ManagedProductionLedger {
-  listArtifactsForExecution(
-    query: ManagedExecutionProductQuery,
-  ): readonly ManagedArtifactProductionRecord[];
-  listTracesForExecution(
-    query: ManagedExecutionProductQuery,
-  ): readonly ManagedTraceProductionRecord[];
-  /**
-   * Read the durable product accumulated by one reviewed task across its
-   * author/reviewer retry executions. A different recovery task is a new
-   * product attempt and must write or carry an explicit product reference.
-   */
-  listArtifactsForTaskInProcessRun(
-    processRunId: number,
-    moduleRef: string,
-    nodeId: string,
-    taskId: number,
-  ): readonly ManagedArtifactProductionRecord[];
-  listTracesForTaskInProcessRun(
-    processRunId: number,
-    moduleRef: string,
-    nodeId: string,
-    taskId: number,
-  ): readonly ManagedTraceProductionRecord[];
-  // W13-A4: the epic-scope `listArtifactsForNodeInEpic` /
-  // `listTracesForNodeInEpic` fallbacks (§9.11 "latest artifact in epic") were
-  // REMOVED. They had no production callers — the ExecutionContextAssembler
-  // (W3-A5) resolves upstream products exclusively by exact `ProductRef`
-  // (`getByProductRef`, §9.11 retirement). A missing predecessor now surfaces
-  // as `UPSTREAM_PRODUCT_NOT_FOUND` instead of a silent nearest-match.
-  /** Node-wide audit query. Product resolvers must not use it as fallback. */
-  listArtifactsForNodeInProcessRun(
-    processRunId: number,
-    moduleRef: string,
-    nodeId: string,
-  ): readonly ManagedArtifactProductionRecord[];
-  listTracesForNodeInProcessRun(
-    processRunId: number,
-    moduleRef: string,
-    nodeId: string,
-  ): readonly ManagedTraceProductionRecord[];
-}
+// Wave 7 type-leak fix: the managed-production ledger INTERFACES now live as
+// the canonical source of truth inside each module's *-kernel-ports.ts (the
+// file above). This concrete SQLite adapter imports them and `implements` —
+// infrastructure depends inward (dependency inversion), which is allowed by
+// the dependency-direction rules. Re-exported here so existing imports of
+// these types from the persistence path keep compiling.
+export type {
+  ManagedArtifactProductionRecord,
+  ManagedExecutionProductQuery,
+  ManagedProductionLedger,
+  ManagedTraceProductionRecord,
+} from '../modules/development/development-kernel-ports.js';
 
 export interface ManagedExecutionProvenance {
   processRunId: number;

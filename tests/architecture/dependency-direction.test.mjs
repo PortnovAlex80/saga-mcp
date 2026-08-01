@@ -90,150 +90,54 @@ const REASON = {
   catalogInjection: 'Phase 3 PackageRegistry replaces built-in catalog lookup',
 };
 
+// Versioned baseline for the KNOWN_VIOLATIONS allowlist size — the ratchet's
+// irreversibility anchor (plan section 14.1.3 exit gate / CONVEYOR-MENTAL-MODEL
+// "can only shrink"). The shrinkage test asserts
+// `KNOWN_VIOLATIONS.length <= ALLOWLIST_BASELINE`, so growth is caught even
+// when a new edge is paired with its allowlist entry (the :371 unallowlisted
+// test only catches an entry without a real edge). To raise the baseline, a
+// wave must bump this constant deliberately with owner + date + a
+// removal-plan comment, making every allowlist growth a visible, reviewed
+// baseline change rather than a silent entry append.
+//   Bump history:
+//     2026-08-01  baseline = 0  (post-CONVEYOR/W13: all known violations fixed)
+const ALLOWLIST_BASELINE = 0;
+
 const KNOWN_VIOLATIONS = [
   // ---- Rule 1: module imports another module implementation ----
-  {
-    source: 'src/process-modules/modules/delivery/delivery-settlement-policy.ts',
-    target: 'src/process-modules/modules/development/development-schemas.ts',
-    rule: 1,
-    reason: REASON.moduleIsolation,
-  },
+  // (delivery→development-schemas removed in CONVEYOR Wave 7: schema-id constants inlined)
 
   // ---- Rule 2: module imports Runtime persistence adapter / infra / db ----
-  {
-    source: 'src/process-modules/modules/delivery/delivery-persistence.ts',
-    target: 'src/process-modules/persistence/sqlite-process-run-repository.ts',
-    rule: 2,
-    reason: REASON.modulePorts,
-  },
-  {
-    source: 'src/process-modules/modules/delivery/sqlite-delivery-approval-inbox.ts',
-    target: 'src/db.ts',
-    rule: 2,
-    reason: REASON.modulePorts,
-  },
-  {
-    source: 'src/process-modules/modules/delivery/sqlite-delivery-runtime.ts',
-    target: 'src/db.ts',
-    rule: 2,
-    reason: REASON.modulePorts,
-  },
-  {
-    source: 'src/process-modules/modules/delivery/sqlite-delivery-runtime.ts',
-    target: 'src/process-modules/persistence/sqlite-external-effect-ledger.ts',
-    rule: 2,
-    reason: REASON.modulePorts,
-  },
-  {
-    source: 'src/process-modules/modules/delivery/sqlite-delivery-runtime.ts',
-    target: 'src/process-modules/persistence/sqlite-process-product-repository.ts',
-    rule: 2,
-    reason: REASON.modulePorts,
-  },
-  {
-    source: 'src/process-modules/modules/development/development-persistence.ts',
-    target: 'src/process-modules/persistence/sqlite-process-run-repository.ts',
-    rule: 2,
-    reason: REASON.modulePorts,
-  },
-  {
-    source: 'src/process-modules/modules/development/sqlite-development-runtime.ts',
-    target: 'src/db.ts',
-    rule: 2,
-    reason: REASON.modulePorts,
-  },
-  {
-    source: 'src/process-modules/modules/development/sqlite-development-runtime.ts',
-    target: 'src/process-modules/persistence/sqlite-process-product-repository.ts',
-    rule: 2,
-    reason: REASON.modulePorts,
-  },
-  {
-    source: 'src/process-modules/modules/discovery/discovery-installation.ts',
-    target: 'src/db.ts',
-    rule: 2,
-    reason: REASON.discoverySelfContained,
-  },
-  {
-    source: 'src/process-modules/modules/formalization/formalization-installation.ts',
-    target: 'src/db.ts',
-    rule: 2,
-    reason: REASON.modulePorts,
-  },
-  {
-    source: 'src/process-modules/modules/formalization/formalization-kernel-ports.ts',
-    target: 'src/process-modules/persistence/sqlite-managed-production-ledger.ts',
-    rule: 2,
-    reason: REASON.modulePorts,
-  },
-  // W8-A6: the SQLite-backed package port adapter bridges the module-local
-  // FormalizationManagedProductionPort to the shared ManagedProductionLedger.
-  // This is the module-local adapter that ISOLATES the substrate — the whole
-  // point of the ports/adapter split. Same classification as the sibling
-  // sqlite-formalization-kernel.ts. Wave 11 cutover wires the port-injected
-  // path and removes the legacy formalization-installation.ts getDb() entry.
-  {
-    source: 'src/process-modules/modules/formalization/package/ports/sqlite-formalization-package-adapters.ts',
-    target: 'src/process-modules/persistence/sqlite-managed-production-ledger.ts',
-    rule: 2,
-    reason: REASON.modulePorts,
-  },
+  // CONVEYOR Wave 7 — Isolate modules behind ports: ALL module→infra/db
+  // violations are now gone. Every module (development, delivery, discovery,
+  // formalization) speaks driver-neutral ports; the composition root wires
+  // concrete SQLite adapters and injects them. Removed entries:
+  //  - delivery/sqlite-delivery-approval-inbox → db.ts (db injected)
+  //  - delivery/sqlite-delivery-runtime → db.ts (db injected)
+  //  - delivery/sqlite-delivery-runtime → sqlite-external-effect-ledger (port)
+  //  - delivery/sqlite-delivery-runtime → sqlite-process-product-repository (port)
+  //  - development/development-persistence → sqlite-process-run-repository (parent table ensured by composition root)
+  //  - discovery/discovery-installation → db.ts (BriefProvisioningPort injected)
+  //  - formalization/formalization-installation → db.ts (BriefProvisioningPort injected)
+  //  - delivery-persistence → sqlite-process-run-repository (parent table ensured by composition root)
+  //  - development-kernel-ports → sqlite-managed-production-ledger (interface moved inline)
+  //  - formalization-kernel-ports → sqlite-managed-production-ledger (interface moved inline)
+  //  - formalization-package-adapters → sqlite-managed-production-ledger (interface moved inline)
+  // No Rule-2 entries remain.
 
   // ---- Rule 3: lifecycle scenario imports module implementation ----
-  {
-    source: 'src/process-modules/lifecycles/product-delivery-lifecycle.ts',
-    target: 'src/process-modules/modules/delivery/delivery-process-module.ts',
-    rule: 3,
-    reason: REASON.lifecycleContracts,
-  },
-  {
-    source: 'src/process-modules/lifecycles/product-delivery-lifecycle.ts',
-    target: 'src/process-modules/modules/delivery/delivery-schemas.ts',
-    rule: 3,
-    reason: REASON.lifecycleContracts,
-  },
-  {
-    source: 'src/process-modules/lifecycles/product-delivery-lifecycle.ts',
-    target: 'src/process-modules/modules/delivery/delivery-settlement-policy.ts',
-    rule: 3,
-    reason: REASON.lifecycleContracts,
-  },
-  {
-    source: 'src/process-modules/lifecycles/product-delivery-lifecycle.ts',
-    target: 'src/process-modules/modules/development/development-process-module.ts',
-    rule: 3,
-    reason: REASON.lifecycleContracts,
-  },
-  {
-    source: 'src/process-modules/lifecycles/product-delivery-lifecycle.ts',
-    target: 'src/process-modules/modules/development/development-schemas.ts',
-    rule: 3,
-    reason: REASON.lifecycleContracts,
-  },
-  {
-    source: 'src/process-modules/lifecycles/product-delivery-lifecycle.ts',
-    target: 'src/process-modules/modules/development/development-settlement-policy.ts',
-    rule: 3,
-    reason: REASON.lifecycleContracts,
-  },
-  {
-    source: 'src/process-modules/lifecycles/product-delivery-lifecycle.ts',
-    target: 'src/process-modules/modules/discovery/discovery-process-module.ts',
-    rule: 3,
-    reason: REASON.lifecycleContracts,
-  },
-  {
-    source: 'src/process-modules/lifecycles/product-delivery-lifecycle.ts',
-    target: 'src/process-modules/modules/formalization/formalization-process-module.ts',
-    rule: 3,
-    reason: REASON.lifecycleContracts,
-  },
-  {
-    source: 'src/process-modules/lifecycles/product-delivery-lifecycle.ts',
-    target: 'src/process-modules/modules/formalization/formalization-schemas.ts',
-    rule: 3,
-    reason: REASON.lifecycleContracts,
-  },
+  // CONVEYOR Wave 7 — Isolate modules behind ports: ALL 9 lifecycle→module
+  // edges are gone. The lifecycle now imports only its sibling contracts module
+  // (`product-delivery-module-contracts.ts`) for the 4 `*_PROCESS_MODULE_REF`
+  // identity refs + 4 schema-id strings (durable contracts, not implementation),
+  // and reaches the 3 module policy-hashing functions only through the injected
+  // `LifecycleInputPolicyValidationPort` (composition root wires a concrete
+  // adapter). Removed entries:
+  //  - delivery/delivery-process-module, delivery-schemas, delivery-settlement-policy
+  //  - development/development-process-module, development-schemas, development-settlement-policy
+  //  - discovery/discovery-process-module
+  //  - formalization/formalization-process-module, formalization-schemas
+  // No Rule-3 entries remain.
 
   // ---- Rule 4: removed in W13-A1 (catalog deleted, resolver no longer imports it) ----
 
@@ -255,27 +159,22 @@ const KNOWN_VIOLATIONS = [
 // "modules/discovery/ also reaches back into src/saga3/domain/"). These are
 // Rule 2/3 periphery - a module package reaching outside process-modules
 // entirely. Allowlisted against Wave 9.
-const discoveryLeaks = [
-  ['src/process-modules/modules/discovery/discovery-installation.ts', 'src/saga3/persistence/saga3-discovery-runtime-port.ts'],
-  ['src/process-modules/modules/discovery/discovery-installation.ts', 'src/saga3/domain/discovery-normalization-records.ts'],
-  ['src/process-modules/modules/discovery/discovery-installation.ts', 'src/saga3/domain/discovery-readiness-records.ts'],
-  ['src/process-modules/modules/discovery/discovery-installation.ts', 'src/saga3/domain/discovery-settlement-input.ts'],
-  ['src/process-modules/modules/discovery/discovery-installation.ts', 'src/saga3/domain/discovery-outcome-certificate.ts'],
-  ['src/process-modules/modules/discovery/discovery-installation.ts', 'src/saga3/domain/discovery-readiness-assessment.ts'],
-  ['src/process-modules/modules/discovery/discovery-installation.ts', 'src/saga3/application/discovery-settlement-service.ts'],
-  ['src/process-modules/modules/discovery/discovery-outcome-certificate-projection.ts', 'src/saga3/persistence/saga3-settlement-repository.ts'],
-  ['src/process-modules/modules/discovery/discovery-outcome-certificate-projection.ts', 'src/saga3/domain/discovery-settlement-records.ts'],
-  ['src/process-modules/modules/discovery/discovery-process-module.ts', 'src/saga3/domain/discovery-diagnosis-report.ts'],
-  ['src/process-modules/modules/discovery/discovery-process-module.ts', 'src/saga3/domain/discovery-normalization-proposal.ts'],
-  ['src/process-modules/modules/discovery/discovery-process-module.ts', 'src/saga3/domain/discovery-proposal.ts'],
-  ['src/process-modules/modules/discovery/discovery-process-module.ts', 'src/saga3/domain/discovery-readiness-assessment.ts'],
-  ['src/process-modules/modules/discovery/discovery-process-module.ts', 'src/saga3/domain/work-intent.ts'],
-  // Discovery port leak through the legacy saga3 worker-executor port.
-  ['src/process-modules/modules/development/sqlite-development-runtime.ts', 'src/application/ports/worker-executor.ts'],
-  // Formalization reaches into the saga3 canonical-hash shim and shared util.
-  ['src/process-modules/modules/formalization/legacy-formalization-process-adapter.ts', 'src/saga3/shared/discovery-canonical.ts'],
-  ['src/process-modules/modules/formalization/sqlite-formalization-kernel.ts', 'src/saga3/shared/discovery-canonical.ts'],
-];
+//
+// CONVEYOR Wave 7 ELIMINATED ALL 16 saga3 cross-tree leaks. The discovery and
+// formalization modules no longer reach into src/saga3/**:
+//   - discovery-process-module.ts: schema-id + intent-kind constants moved into
+//     discovery-domain-contracts.ts (byte-identical string values).
+//   - discovery-installation.ts: record types + the runtime-persistence port
+//     moved into discovery-domain-contracts.ts; the Saga3DiscoverySettlementService
+//     is now an injected DiscoverySettlementPort with a lazy dynamic-import
+//     legacy bridge (no static saga3 edge).
+//   - discovery-outcome-certificate-projection.ts: OutcomeCertificateRecord moved
+//     into discovery-domain-contracts.ts; readOutcomeCertificate SQL inlined.
+//   - formalization (legacy-formalization-process-adapter.ts,
+//     sqlite-formalization-kernel.ts): canonicalJson now imported from
+//     ../../shared/canonical-json.js instead of saga3/shared.
+// The discoveryLeaks array is empty; the ratchet records zero Rule-2 entries.
+const discoveryLeaks = [];
 for (const [source, target] of discoveryLeaks) {
   KNOWN_VIOLATIONS.push({ source, target, rule: 2, reason: REASON.discoverySelfContained });
 }
@@ -508,7 +407,9 @@ test('dependency-direction ratchet: zero stale allowlist entries', () => {
 
 test('dependency-direction ratchet: prints allowlist count for shrinkage visibility', () => {
   // This test exists so the count is surfaced on every green run. The plan
-  // (section 14.1.3 exit gate) requires shrinkage to be visible.
+  // (section 14.1.3 exit gate) requires shrinkage to be visible. A ratchet
+  // reaches its clean state when KNOWN_VIOLATIONS is empty (every violation
+  // fixed AND its entry removed) — that is the success condition, not a failure.
   const byRule = {};
   for (const v of KNOWN_VIOLATIONS) {
     byRule[v.rule] = (byRule[v.rule] || 0) + 1;
@@ -516,8 +417,13 @@ test('dependency-direction ratchet: prints allowlist count for shrinkage visibil
   // eslint-disable-next-line no-console
   console.log(
     `\n  KNOWN_VIOLATIONS: ${KNOWN_VIOLATIONS.length} allowlisted edges ` +
-      `(by rule: ${Object.entries(byRule).map(([r, c]) => `R${r}=${c}`).join(', ')}). ` +
+      `(by rule: ${Object.entries(byRule).map(([r, c]) => `R${r}=${c}`).join(', ') || 'none'}). ` +
       `Ratchet tightens when later waves both fix an import AND remove its entry.`,
   );
-  assert.ok(KNOWN_VIOLATIONS.length > 0, 'allowlist must be seeded');
+  assert.ok(
+    KNOWN_VIOLATIONS.length <= ALLOWLIST_BASELINE,
+    `allowlist grew to ${KNOWN_VIOLATIONS.length} (> baseline ${ALLOWLIST_BASELINE}) ` +
+      `— allowlist can only shrink; to raise the baseline, bump ALLOWLIST_BASELINE ` +
+      `with owner + date + a removal-plan comment.`,
+  );
 });

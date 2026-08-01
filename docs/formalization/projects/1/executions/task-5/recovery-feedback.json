@@ -1,0 +1,80 @@
+{
+  "schemaVersion": "saga3.recovery-feedback.v1",
+  "caseId": 1,
+  "processRunId": 2,
+  "moduleRef": {
+    "name": "solution-formalization",
+    "version": "1.0.0",
+    "kind": "formalization",
+    "displayName": "Solution Formalization",
+    "description": "Converts an accepted discovery subject into a frozen, traceable and implementable solution contract."
+  },
+  "sourceNodeRunId": 9,
+  "verifyNodeId": "resolve-use-cases",
+  "repairNodeId": "model-use-cases",
+  "attempt": 2,
+  "maxAttempts": 2,
+  "issueRef": "recovery-case:1:attempt:2",
+  "issueHash": "5793d5af48d56303d89ab3a306fd5e33c9391e59554a04bc808ca176b50e562e",
+  "issue": {
+    "schemaVersion": "saga3.recovery-issue.v1",
+    "policyId": "repair-use-case-contract",
+    "disposition": "repair",
+    "reasonCode": "REPAIR_USE_CASE_CONTRACT_CLARIFICATION_REQUIRED",
+    "summary": "Repair use-case contract: The use-case execution persisted no canonical UC artifacts.",
+    "findings": [
+      {
+        "code": "clarification-required",
+        "severity": "error",
+        "message": "The use-case execution persisted no canonical UC artifacts.",
+        "subjectRef": "formalization-resolution:2:resolve-use-cases:a6685b0e772e6a1c3845609a06e0cfcf6aae902949dc6db8420be4972e2984ef",
+        "expected": [
+          "Every UC derives from the exact PRD and covers an exact FR.",
+          "Use-case artifacts are accepted+clean."
+        ],
+        "actual": {
+          "reason": "The use-case execution persisted no canonical UC artifacts."
+        },
+        "evidenceRefs": [
+          "formalization-resolution:2:resolve-use-cases:a6685b0e772e6a1c3845609a06e0cfcf6aae902949dc6db8420be4972e2984ef"
+        ]
+      }
+    ],
+    "subjectRefs": [
+      {
+        "kind": "node-production",
+        "ref": "formalization-resolution:2:resolve-use-cases:a6685b0e772e6a1c3845609a06e0cfcf6aae902949dc6db8420be4972e2984ef",
+        "schema": "saga3.formalization-use-case-bundle.v1",
+        "contentHash": "a6685b0e772e6a1c3845609a06e0cfcf6aae902949dc6db8420be4972e2984ef"
+      }
+    ],
+    "acceptanceCriteria": [
+      "Every UC derives from the exact PRD and covers an exact FR.",
+      "Use-case artifacts are accepted+clean."
+    ],
+    "allowedChanges": [
+      "UC artifacts",
+      "UC derived_from/covers traces"
+    ],
+    "context": {
+      "processRunId": 2,
+      "originalEvent": "clarification-required",
+      "verifierNodeId": "resolve-use-cases",
+      "productionRef": "formalization-resolution:2:resolve-use-cases:a6685b0e772e6a1c3845609a06e0cfcf6aae902949dc6db8420be4972e2984ef",
+      "productionHash": "a6685b0e772e6a1c3845609a06e0cfcf6aae902949dc6db8420be4972e2984ef"
+    }
+  },
+  "sourceProduction": {
+    "schema": "saga3.formalization-use-case-bundle.v1",
+    "artifactRef": "formalization-resolution:2:resolve-use-cases:a6685b0e772e6a1c3845609a06e0cfcf6aae902949dc6db8420be4972e2984ef",
+    "contentHash": "a6685b0e772e6a1c3845609a06e0cfcf6aae902949dc6db8420be4972e2984ef",
+    "bindings": {
+      "processRunId": 2,
+      "resolverNodeId": "resolve-use-cases",
+      "sourceIntentId": 4,
+      "sourceTaskId": 4,
+      "sourceExecutionId": "exec-1-19776-1785338683717-1",
+      "reason": "The use-case execution persisted no canonical UC artifacts."
+    }
+  }
+}

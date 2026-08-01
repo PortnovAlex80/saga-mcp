@@ -36,9 +36,11 @@ setup.prepare("INSERT INTO projects (name) VALUES ('wt-test')").run();
 const projId = setup.prepare("SELECT id FROM projects WHERE name='wt-test'").get().id;
 setup.prepare("INSERT INTO epics (project_id, name) VALUES (?, 'wt-epic')").run(projId);
 const epicId = setup.prepare("SELECT id FROM epics WHERE name='wt-epic'").get().id;
-// Two medium-priority todo tasks so both are claimable.
-setup.prepare("INSERT INTO tasks (epic_id, title, status, priority, assigned_to) VALUES (?, 'task-A', 'todo', 'medium', NULL)").run(epicId);
-setup.prepare("INSERT INTO tasks (epic_id, title, status, priority, assigned_to) VALUES (?, 'task-B', 'todo', 'medium', NULL)").run(epicId);
+// Two medium-priority todo tasks so both are claimable. Stamp process_run_id
+// (saga4 authority gate: findNextClaimable requires it or the card is skipped).
+const wtRun = JSON.stringify({ process_run_id: 7001 });
+setup.prepare("INSERT INTO tasks (epic_id, title, status, priority, assigned_to, metadata) VALUES (?, 'task-A', 'todo', 'medium', NULL, ?)").run(epicId, wtRun);
+setup.prepare("INSERT INTO tasks (epic_id, title, status, priority, assigned_to, metadata) VALUES (?, 'task-B', 'todo', 'medium', NULL, ?)").run(epicId, wtRun);
 setup.close();
 
 // Point the dispatcher's getDb at our test DB.
@@ -140,7 +142,8 @@ check('needs-human cleared on successful merge', !JSON.parse(getDb().prepare('SE
 
 console.log('\n=== TEST 7: review_in_progress status — claim moves review→review_in_progress; stop signal in worker_done ===');
 // New task C, walk it to the review buffer via dev-done. Insert via getDb (setup is closed).
-getDb().prepare("INSERT INTO tasks (epic_id, title, status, priority, assigned_to) VALUES (?, 'task-C', 'todo', 'medium', NULL)").run(epicId);
+// process_run_id stamped so the saga4 authority gate admits the card.
+getDb().prepare("INSERT INTO tasks (epic_id, title, status, priority, assigned_to, metadata) VALUES (?, 'task-C', 'todo', 'medium', NULL, ?)").run(epicId, JSON.stringify({ process_run_id: 7001 }));
 const nextC = handlers.worker_next({ worker_id: 'agent-C', project_id: projId });
 check('agent-C claimed task-C', nextC.task?.title === 'task-C', `got ${nextC.task?.title}`);
 const devDoneC = handlers.worker_done({ task_id: nextC.task.id, worker_id: 'agent-C', result: 'impl C' });

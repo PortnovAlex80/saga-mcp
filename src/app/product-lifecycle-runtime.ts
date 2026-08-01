@@ -84,6 +84,7 @@
 
 import type Database from 'better-sqlite3';
 import type {
+  WorkAssignmentPort,
   WorkerExecutorFactory,
   WorkerExecutorFactoryContext,
 } from '../application/ports/worker-executor.js';
@@ -108,6 +109,7 @@ import {
   assertProductDeliveryLifecycleInput,
   productDeliveryLifecycle,
 } from '../process-modules/lifecycles/product-delivery-lifecycle.js';
+import { lifecycleInputPolicyValidation } from '../infrastructure/process-modules/lifecycle-input-policy-validation.js';
 import {
   canonicalizeProductDeliveryLifecycleInput,
   resolveProductDeliveryRepositories,
@@ -177,6 +179,16 @@ import {
   ReferenceDevelopmentTaskGraphPolicy,
 } from '../process-modules/modules/development/development-settlement-policy.js';
 import { SqliteDevelopmentModuleStore } from '../process-modules/modules/development/sqlite-development-settlement-state.js';
+import { createGitPort, createMachinePort } from '../infrastructure/process-modules/git-machine-ports.js';
+import { SqliteWorkAssignmentAdapter } from '../infrastructure/work/sqlite-work-assignment-adapter.js';
+import {
+  createDeliveryProcessProductPort,
+  createDeliveryExternalEffectLedgerPort,
+} from '../infrastructure/process-modules/delivery-ports.js';
+import {
+  SqliteFormalizationBriefProvisioning,
+  SqliteDiscoveryBriefProvisioning,
+} from '../infrastructure/process-modules/brief-provisioning-ports.js';
 import {
   createDiscoveryKernelHandlers,
   createDiscoveryLmNodePersistence,
@@ -203,6 +215,7 @@ import {
   SqliteManagedNodeSubmissionRepository,
 } from '../process-modules/persistence/sqlite-managed-node-submission-repository.js';
 import { SqliteManagedProductionLedger } from '../process-modules/persistence/sqlite-managed-production-ledger.js';
+import { SqliteProcessProductRepository } from '../process-modules/persistence/sqlite-process-product-repository.js';
 import { SqliteNodeRunRepository } from '../process-modules/persistence/sqlite-node-run-repository.js';
 import { SqliteExactCandidateAcceptance } from '../process-modules/persistence/sqlite-exact-candidate-acceptance.js';
 import { SqliteProcessOutcomeCertificateRepository } from '../process-modules/persistence/sqlite-process-outcome-certificate-repository.js';
@@ -255,6 +268,20 @@ export interface ProductLifecycleRuntimeOptions {
   }) => WorkerExecutorFactoryContext;
   /** Global concurrency knob (--concurrency=N). Used by the LM executor. */
   concurrency?: number;
+  /**
+   * Atomic card-assignment port for LM-node worker launches
+   * (CONVEYOR-MENTAL-MODEL doc line 291: "infrastructure atomically assigns
+   * the exact card before launching a worker"). When wired, the LmNodeExecutor
+   * pre-assigns the projected task through this port BEFORE calling
+   * workerExecutor.start(), passing the AssignedWork as `assignment` — ONE
+   * assignment path instead of two (pre-assigned vs claimScope-pinned).
+   *
+   * When omitted, the LM executor falls back to the deprecated claimScope path
+   * (the runner's claimTask callback assigns inside start()). Production
+   * (orchestrate-cli / composition-root) always wires this — the same
+   * SqliteWorkAssignmentAdapter the dispatch-loop path uses.
+   */
+  workAssignment?: WorkAssignmentPort;
   development?: DevelopmentCompositionDependencies;
   delivery: DeliveryCompositionDependencies;
   db?: Database.Database;
@@ -319,8 +346,14 @@ export function createProductLifecycleRuntime(
   // settlement input. There is no ScopedWorksetRunner / no executive port: the
   // module never hires, merges or tests — that is infrastructure's job.
   const developmentLedger = new SqliteManagedProductionLedger(db);
+  // Wave 7: inject the concrete process-product repository + git/machine ports
+  // from the composition root so the Development module imports no SQLite
+  // adapter, child_process, or node:os.
+  const developmentProcessProducts = new SqliteProcessProductRepository(db);
+  const developmentGit = createGitPort();
+  const developmentMachine = createMachinePort();
   const developmentGraph = developmentConfig.store
-    ?? new SqliteDevelopmentModuleStore(db);
+    ?? new SqliteDevelopmentModuleStore(db, developmentProcessProducts, developmentGit, developmentMachine);
   const developmentTaskGraphPolicy = developmentConfig.taskGraphPolicy
     ?? new ReferenceDevelopmentTaskGraphPolicy();
   const developmentOutputRepository = developmentConfig.outputRepository
@@ -355,6 +388,10 @@ export function createProductLifecycleRuntime(
       ? new SqliteDeliveryRuntime({
         db,
         providers: deliveryProviders,
+        // CONVEYOR Wave 7: injected concrete adapters (composition root owns
+        // construction) so the Delivery module imports no getDb/Sqlite*.
+        products: createDeliveryProcessProductPort(db),
+        effectLedger: createDeliveryExternalEffectLedgerPort(db),
       })
       : null);
   const deliveryPreflightPolicy = deliveryConfig.preflightPolicy
@@ -403,6 +440,9 @@ export function createProductLifecycleRuntime(
   );
   kernelHandlers.registerAll(createDiscoveryKernelHandlers({
     runtimePersistence,
+    // CONVEYOR Wave 7: injected brief-provisioning port so the Discovery module
+    // imports no getDb. Composition root owns concrete construction.
+    briefProvisioning: new SqliteDiscoveryBriefProvisioning(db),
   }));
   kernelHandlers.registerAll(createFormalizationKernelHandlers({
     ledger: formalizationLedger,
@@ -411,6 +451,9 @@ export function createProductLifecycleRuntime(
     solutionContractRepository: formalizationSolutionContractRepository,
     settlementPolicy: new ReferenceFormalizationSettlementPolicy(),
     candidateAcceptance: exactCandidateAcceptance,
+    // CONVEYOR Wave 7: injected brief-provisioning port so the Formalization
+    // module imports no getDb. Composition root owns concrete construction.
+    briefProvisioning: new SqliteFormalizationBriefProvisioning(db),
   }));
   kernelHandlers.registerAll(createDevelopmentKernelHandlers(developmentDeps));
   kernelHandlers.registerAll(createDeliveryKernelHandlers(deliveryDeps));
@@ -424,6 +467,15 @@ export function createProductLifecycleRuntime(
       persistence: createDiscoveryLmNodePersistence(runtimePersistence),
       workerExecutorFactory: options.workerExecutorFactory,
       resolveWorkerContext: options.resolveWorkerContext,
+      // CONVEYOR-MENTAL-MODEL (doc line 291): pre-assign the LM node's card
+      // through the atomic WorkAssignmentPort BEFORE launching the worker, so
+      // there is ONE assignment path. The dispatch-loop path uses the same
+      // port (via the factory's claimTask callback); this closes the LM-node
+      // divergence. We default-construct the same SqliteWorkAssignmentAdapter
+      // the dispatch path uses (overridable via options for tests), so every
+      // production LM-node launch pre-assigns even when the external
+      // composition module did not supply one explicitly.
+      workAssignment: options.workAssignment ?? new SqliteWorkAssignmentAdapter(db),
     })],
     ['human', new HumanNodeExecutor(humanInteractions)],
   ]);
@@ -626,7 +678,7 @@ export function createProductLifecycleRuntime(
           + `'${PRODUCT_DELIVERY_LIFECYCLE_INPUT_SCHEMA}', got '${schema}'`,
         );
       }
-      assertProductDeliveryLifecycleInput(lifecycleInput);
+      assertProductDeliveryLifecycleInput(lifecycleInput, lifecycleInputPolicyValidation);
       const portableInput = canonicalizeProductDeliveryLifecycleInput(
         db,
         command.projectId,

@@ -1,25 +1,74 @@
 import type { LifecycleDefinition } from '../domain/lifecycle.js';
-import { DELIVERY_PROCESS_MODULE_REF } from '../modules/delivery/delivery-process-module.js';
+// CONVEYOR Wave 7 — Isolate modules behind ports (Rule 3):
+// a Lifecycle Scenario references module *contracts* and *installed package
+// identities* only, never module implementation classes. The four
+// `*_PROCESS_MODULE_REF` identity refs and the schema-id strings are durable
+// contracts whose canonical home is the sibling contracts module. The three
+// policy-hashing functions are module-internal validation logic and are reached
+// ONLY through the injected `LifecycleInputPolicyValidationPort` (composed by
+// the application root); the lifecycle imports no module implementation file.
 import {
-  DELIVERY_DEFERRED_PROFILE_SCHEMA,
+  DELIVERY_PROCESS_MODULE_REF,
   DELIVERY_RELEASE_CASE_SCHEMA,
-  type AuthorizedDeliveryReleaseCase,
-  type DeliveryDeferredProfile,
-  type DeliveryReleasePolicySnapshot,
-} from '../modules/delivery/delivery-schemas.js';
-import {
-  hashDeliveryDeferredProfile,
-  hashDeliveryReleasePolicy,
-} from '../modules/delivery/delivery-settlement-policy.js';
-import { DEVELOPMENT_PROCESS_MODULE_REF } from '../modules/development/development-process-module.js';
-import {
+  DELIVERY_DEFERRED_PROFILE_SCHEMA,
+  DEVELOPMENT_PROCESS_MODULE_REF,
   DEVELOPMENT_CASE_SCHEMA,
-  type DevelopmentPolicySnapshot,
-} from '../modules/development/development-schemas.js';
-import { hashDevelopmentPolicy } from '../modules/development/development-settlement-policy.js';
-import { DISCOVERY_PROCESS_MODULE_REF } from '../modules/discovery/discovery-process-module.js';
-import { FORMALIZATION_PROCESS_MODULE_REF } from '../modules/formalization/formalization-process-module.js';
-import { FORMALIZATION_CASE_SCHEMA } from '../modules/formalization/formalization-schemas.js';
+  DISCOVERY_PROCESS_MODULE_REF,
+  FORMALIZATION_PROCESS_MODULE_REF,
+  FORMALIZATION_CASE_SCHEMA,
+} from './product-delivery-module-contracts.js';
+
+/**
+ * Minimal structural shapes the lifecycle input assertion needs. These mirror
+ * the module-side `*PolicySnapshot` / `*Profile` types but are defined locally
+ * so the lifecycle imports no module schema file. The injected policy validator
+ * (below) does its own hash computation against the real module types; the
+ * lifecycle only reads a few string fields here.
+ */
+interface LifecycleDevelopmentPolicyShape {
+  id: string;
+  version: string;
+  contentHash: string;
+}
+interface LifecycleDeliveryReleasePolicyShape {
+  id: string;
+  version: string;
+  contentHash: string;
+  channel: string;
+  releaseVersion: string;
+  releaseTag: string;
+  humanApprovalRequired: boolean;
+  requiredPreflightCheckIds: readonly string[];
+  actions: readonly {
+    actionId: string;
+    kind: string;
+    target: string;
+    desiredStateHash: string;
+    payloadHash: string;
+    required: boolean;
+  }[];
+}
+interface LifecycleDeliveryDeferredProfileShape {
+  schemaVersion: typeof DELIVERY_DEFERRED_PROFILE_SCHEMA;
+  reason: 'authorization-required';
+  source: 'start-from-idea' | 'operator-deferred';
+  profileHash: string;
+}
+
+/**
+ * Validates the cryptographic content hashes of the lifecycle input's policy
+ * snapshots by delegating to the module's pure hashing functions. The lifecycle
+ * must NOT import module policy implementation directly (Rule 3); the
+ * composition root injects a concrete adapter. Methods take `unknown` and cast
+ * internally so the lifecycle's local shapes stay decoupled from the module's
+ * full type hierarchy.
+ */
+export interface LifecycleInputPolicyValidationPort {
+  hashDevelopmentPolicy(policy: unknown): string;
+  hashDeliveryReleasePolicy(policy: unknown): string;
+  hashDeliveryDeferredProfile(profile: unknown): string;
+}
+
 
 export const PRODUCT_DELIVERY_LIFECYCLE_INPUT_SCHEMA =
   'saga3.product-delivery-lifecycle-input.v2';
@@ -35,16 +84,19 @@ export interface ProductDeliveryLifecycleInput {
     repositories: readonly (
       ProductDeliveryRepositoryBinding | LegacyProductDeliveryRepositoryBinding
     )[];
-    policy: DevelopmentPolicySnapshot;
+    policy: LifecycleDevelopmentPolicyShape;
   };
   delivery:
     | {
         mode: 'authorized';
-        policy: DeliveryReleasePolicySnapshot;
-        operatorAuthorization: Omit<
-          AuthorizedDeliveryReleaseCase['operatorAuthorization'],
-          'candidateScope'
-        > & {
+        policy: LifecycleDeliveryReleasePolicyShape;
+        // operatorAuthorization carries the operator's grant for the externally-
+        // visible release effect; only the two scalar fields the lifecycle
+        // validates are modelled here (the module's full type lives in schemas).
+        operatorAuthorization: {
+          requestedBy: string;
+          releasePolicyHash: string;
+        } & {
           candidateScope: {
             mode: 'lifecycle-output';
           };
@@ -55,7 +107,7 @@ export interface ProductDeliveryLifecycleInput {
         mode: 'deferred';
         policy: null;
         operatorAuthorization: null;
-        deferredProfile: DeliveryDeferredProfile;
+        deferredProfile: LifecycleDeliveryDeferredProfileShape;
       };
 }
 
@@ -88,6 +140,7 @@ export interface LegacyProductDeliveryRepositoryBinding {
 
 export function assertProductDeliveryLifecycleInput(
   value: unknown,
+  policyValidator: LifecycleInputPolicyValidationPort,
 ): asserts value is ProductDeliveryLifecycleInput {
   if (!isRecord(value)) throw new Error('PRODUCT_LIFECYCLE_INPUT_OBJECT_REQUIRED');
   if (
@@ -130,8 +183,8 @@ export function assertProductDeliveryLifecycleInput(
     || !nonEmptyString(developmentPolicy.id)
     || !nonEmptyString(developmentPolicy.version)
     || !nonEmptyString(developmentPolicy.contentHash)
-    || hashDevelopmentPolicy(
-      developmentPolicy as unknown as DevelopmentPolicySnapshot,
+    || policyValidator.hashDevelopmentPolicy(
+      developmentPolicy,
     ) !== developmentPolicy.contentHash
   ) {
     throw new Error('PRODUCT_LIFECYCLE_DEVELOPMENT_CONFIGURATION_INVALID');
@@ -155,8 +208,8 @@ export function assertProductDeliveryLifecycleInput(
       || profile.reason !== 'authorization-required'
       || !['start-from-idea', 'operator-deferred'].includes(String(profile.source))
       || !nonEmptyString(profile.profileHash)
-      || hashDeliveryDeferredProfile(
-        profile as unknown as DeliveryDeferredProfile,
+      || policyValidator.hashDeliveryDeferredProfile(
+        profile,
       ) !== profile.profileHash
     ) {
       throw new Error('PRODUCT_LIFECYCLE_DELIVERY_CONFIGURATION_INVALID');
@@ -206,8 +259,8 @@ export function assertProductDeliveryLifecycleInput(
         .filter(isRecord)
         .map(action => String(action.actionId)),
     ).size !== actions.length
-    || hashDeliveryReleasePolicy(
-      deliveryPolicy as unknown as DeliveryReleasePolicySnapshot,
+    || policyValidator.hashDeliveryReleasePolicy(
+      deliveryPolicy,
     ) !== deliveryPolicy.contentHash
     || !validReference(authorization)
     || !nonEmptyString(authorization.requestedBy)

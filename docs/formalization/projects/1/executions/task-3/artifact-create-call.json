@@ -1,0 +1,23 @@
+{
+  "tool": "artifact_create",
+  "arguments": {
+    "project_id": 1,
+    "epic_id": 1,
+    "project_repository_id": 1,
+    "type": "UC",
+    "title": "UC-8: Install and Import Package",
+    "path": "docs/requirements/REQ-001-hex-button-autism-ui/02-use-cases.md#UC-8",
+    "code": "UC-8",
+    "status": "draft",
+    "parent_artifact_id": 1,
+    "metadata": {
+      "process_module_ref": "solution-formalization@1.0.0",
+      "process_run_id": 2,
+      "node_id": "model-use-cases",
+      "work_intent_id": 3,
+      "task_id": 3,
+      "execution_id": "exec-1-19776-1785338618378-2",
+      "input_snapshot_hash": "d6ff31723ffcb79b716f68965e1f1ccb54e4eea765d480f6f6917d7b329adfaf"
+    }
+  }
+}

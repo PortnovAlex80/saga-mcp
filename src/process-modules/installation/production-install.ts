@@ -2,7 +2,7 @@
  * Production package installation helper.
  *
  * Bridges the existing Wave 2 content-addressed installer SPI to the
- * composition root: reads the 4 production ProcessModuleManifests' declared
+ * composition root: reads the caller-supplied ProcessModuleManifests' declared
  * resources from disk, installs each into the durable ModulePackageStore +
  * ModuleInstallationRepository, and returns the PackageRegistry the workspace
  * materializer + ProcessRun pinning consume.
@@ -10,6 +10,16 @@
  * W13-AUDIT §18.5 / §18.9: until this wiring existed, ProcessRuns carried
  * `installation_id: null` / `package_digest: null` (the SPI was built and
  * tested but never called from production). This module closes that gap.
+ *
+ * Architecture (cutover ratchet / CONVEYOR-MENTAL-MODEL §"Workshop"): this
+ * installation layer is GENERIC machinery — it installs whatever manifests it
+ * is handed. The SET of manifests to install is a composition-layer decision
+ * (which modules exist), not an installation-layer decision. This file
+ * therefore does NOT import any `modules/*` implementation: doing so would be
+ * a hidden fallback (the cutover ratchet's rule 1) — the new execution lane
+ * silently reaching back into concrete module implementations. Callers in the
+ * composition layer (e.g. `orchestrate-cli.ts`) supply the ordered manifest
+ * list; this helper only reads their declared resources and persists them.
  *
  * Idempotency: a second call against the SAME DB + store with UNCHANGED module
  * bytes is a no-op (the active record already matches the computed
@@ -36,23 +46,6 @@ import {
   type StoredModulePackage,
 } from './index.js';
 import { asModuleInstallationId } from './domain/installation.js';
-
-/**
- * The 4 production manifests, in lifecycle stage order. Imported lazily by the
- * composition root; re-exported here so the install helper owns the canonical
- * ordered list the scenario installer / orchestrator also need.
- */
-import { discoveryPackageManifest } from '../modules/discovery/package/manifest.js';
-import { formalizationPackageManifest } from '../modules/formalization/package/manifest.js';
-import { developmentPackageManifest } from '../modules/development/package/manifest.js';
-import { deliveryPackageManifest } from '../modules/delivery/package/manifest.js';
-
-export const PRODUCTION_MODULE_MANIFESTS: readonly ProcessModuleManifest[] = [
-  discoveryPackageManifest,
-  formalizationPackageManifest,
-  developmentPackageManifest,
-  deliveryPackageManifest,
-];
 
 /**
  * Read the resources declared in a manifest's `resourceIndex` from disk and
@@ -109,7 +102,7 @@ export interface ProductionInstallation {
 }
 
 /**
- * Install (or reuse) all 4 production module packages against the given DB +
+ * Install (or reuse) a set of production module packages against the given DB +
  * store root.
  *
  * @param db         Open saga SQLite handle (the same one the rest of the
@@ -117,18 +110,24 @@ export interface ProductionInstallation {
  *                   if absent).
  * @param repoRoot   Absolute path to the saga-mcp repository root. Manifest
  *                   resource paths are repo-root-relative POSIX.
+ * @param manifests  The ordered production ProcessModuleManifests to install.
+ *                   Supplied by the composition-layer caller (which owns the
+ *                   decision about which modules exist); this helper does not
+ *                   import any module implementation, so it cannot derive the
+ *                   set itself (cutover ratchet rule 1 — see file header).
  * @param storeRoot  Directory under which content-addressed package bytes are
  *                   persisted. Defaults to `<repoRoot>/.saga/package-store`.
  */
 export async function installProductionModules(
   db: Database.Database,
   repoRoot: string,
+  manifests: readonly ProcessModuleManifest[],
   storeRoot?: string,
 ): Promise<ProductionInstallation> {
   return installModulePackages(
     db,
     repoRoot,
-    PRODUCTION_MODULE_MANIFESTS,
+    manifests,
     storeRoot,
   );
 }

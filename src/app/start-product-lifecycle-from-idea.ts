@@ -19,6 +19,7 @@ import {
   type ProductDeliveryLifecycleInput,
   type ProductDeliveryRepositoryBinding,
 } from '../process-modules/lifecycles/product-delivery-lifecycle.js';
+import { lifecycleInputPolicyValidation } from '../infrastructure/process-modules/lifecycle-input-policy-validation.js';
 import type { DevelopmentPolicySnapshot } from '../process-modules/modules/development/development-schemas.js';
 import { hashDevelopmentPolicy } from '../process-modules/modules/development/development-settlement-policy.js';
 import {
@@ -186,7 +187,7 @@ export function assembleProductLifecycleInput(params: {
 
   // Fail closed BEFORE any LifecycleRun is created: the assembled input must
   // satisfy the exact structural contract the runtime's resolveInput enforces.
-  assertProductDeliveryLifecycleInput(input);
+  assertProductDeliveryLifecycleInput(input, lifecycleInputPolicyValidation);
   return input;
 }
 

@@ -1,4 +1,7 @@
 import type { ProcessModuleDefinition } from '../../domain/process-module.js';
+// CONVEYOR Wave 7: the module identity ref is a CANONICAL contract owned by the
+// lifecycle (Rule 3). This module imports it back — inward direction, allowed.
+import { DEVELOPMENT_PROCESS_MODULE_REF } from '../../lifecycles/product-delivery-module-contracts.js';
 import { DEVELOPMENT_KERNEL_HANDLER_IDS } from './development-kernel-ports.js';
 import {
   ACCEPTANCE_VERIFICATION_SCHEMA,
@@ -11,10 +14,7 @@ import {
   VERIFIED_INTEGRATION_BUNDLE_SCHEMA,
 } from './development-schemas.js';
 
-export const DEVELOPMENT_PROCESS_MODULE_REF = {
-  name: 'solution-development',
-  version: '1.0.0',
-} as const;
+export { DEVELOPMENT_PROCESS_MODULE_REF };
 
 const PROCESS_PROTOCOL_SKILL = 'saga-process-module-worker-protocol';
 // W13-A2: resources were moved out of the legacy global root

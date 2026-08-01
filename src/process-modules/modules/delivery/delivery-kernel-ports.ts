@@ -135,3 +135,160 @@ export interface DeliveryModuleInstallationDependencies {
   preflightPolicy: DeliveryPreflightPolicyPort;
   settlementPolicy: DeliverySettlementPolicyPort;
 }
+
+// ---------------------------------------------------------------------------
+// Wave 7 hex-extraction ports (driver-neutral, inline). Mirror the Development
+// module: these ports let the Delivery module's SQLite adapters accept their
+// concrete dependencies as injected ports instead of constructing them with
+// getDb()/Sqlite* internally. Defined inline (record types only) so the module
+// imports neither the concrete adapters nor db.ts. The concrete implementations
+// live in infrastructure (src/infrastructure/process-modules/delivery-ports.ts)
+// and are injected by the composition root.
+// ---------------------------------------------------------------------------
+
+/**
+ * ProcessRun schema-ensure port. Replaces the direct
+ * `ensureSaga3ProcessRunSchema` import from the shared SQLite process-run
+ * repository. Delivery's own tables reference saga3_process_runs; this port
+ * guarantees that parent table exists before delivery's tables are created,
+ * without the module importing the concrete SQLite repository.
+ */
+export interface ProcessRunSchemaEnsurePort {
+  ensure(db: unknown): void;
+}
+
+/**
+ * Driver-neutral port for the v1 process-product repository (keyed by
+ * processRunId + productKind). Delivery's runtime reads/writes its durable
+ * preflight/approval/publication/observation products through this surface;
+ * the concrete SQLite implementation is supplied by the composition root.
+ * Identical shape to Development's ProcessProductRepositoryPort.
+ */
+export interface DeliveryProcessProductReference {
+  schema: string;
+  ref: string;
+  hash: string;
+}
+
+export interface DeliveryProcessProductRecord<T = unknown> {
+  processRunId: number;
+  productKind: string;
+  reference: DeliveryProcessProductReference;
+  payload: T;
+  payloadHash: string;
+  createdAt: string;
+}
+
+export interface DeliveryProcessProductRepositoryPort {
+  persist<T>(input: {
+    processRunId: number;
+    productKind: string;
+    schema: string;
+    productHash: string;
+    payload: T;
+    artifactRefPrefix: string;
+  }): {
+    record: DeliveryProcessProductRecord<T>;
+    replayed: boolean;
+  };
+  read<T>(
+    processRunId: number,
+    productKind: string,
+  ): DeliveryProcessProductRecord<T> | null;
+}
+
+/**
+ * Driver-neutral external-effect ledger port. Delivery's runtime records
+ * publish/deploy action execution results through this surface; the concrete
+ * SQLite implementation is supplied by the composition root. Mirrors the
+ * ExternalEffectLedger interface from persistence/external-effect-ledger.ts
+ * but defined here in module-local terms so the module imports no concrete
+ * adapter.
+ */
+export interface DeliveryExternalEffectActionRecord {
+  id: number;
+  providerNamespace: string;
+  actionKey: string;
+  processRunId: number;
+  moduleRef: { name: string; version: string };
+  moduleRefKey: string;
+  nodeId: string;
+  requestSnapshot: string;
+  requestHash: string;
+  state:
+    | 'new'
+    | 'executing'
+    | 'succeeded'
+    | 'failed'
+    | 'unknown'
+    | 'retry-authorized'
+    | 'blocked';
+  claimFence: number;
+  activeClaimKind: 'execution' | 'observation' | null;
+  activeClaimOwner: string | null;
+  activeClaimExpiresAt: string | null;
+  executionAttempts: number;
+  providerEffectId: string | null;
+  lastError: string | null;
+  lastExecutionFence: number | null;
+  lastExecutionOwner: string | null;
+  executionResultSnapshot: string | null;
+  executionResultHash: string | null;
+  lastObservationFence: number | null;
+  lastObservationOwner: string | null;
+  observationSnapshot: string | null;
+  observationHash: string | null;
+  createdAt: string;
+  updatedAt: string;
+  completedAt: string | null;
+}
+
+export interface DeliveryExternalEffectClaim {
+  actionId: number;
+  kind: 'execution' | 'observation';
+  owner: string;
+  fence: number;
+  expiresAt: string;
+}
+
+export type DeliveryExternalEffectExecutionResult =
+  | {
+      outcome: 'succeeded';
+      receipt: Record<string, unknown>;
+      providerEffectId?: string | null;
+    }
+  | {
+      outcome: 'failed' | 'unknown';
+      error: string;
+      details?: Record<string, unknown>;
+      providerEffectId?: string | null;
+    };
+
+export interface DeliveryExternalEffectLedgerPort {
+  start(command: {
+    providerNamespace: string;
+    actionKey: string;
+    processRunId: number;
+    moduleRef: { name: string; version: string };
+    nodeId: string;
+    request: Record<string, unknown>;
+    requestHash: string;
+  }): {
+    record: DeliveryExternalEffectActionRecord;
+    replayed: boolean;
+  };
+
+  claim(command: {
+    actionId: number;
+    owner: string;
+    leaseSeconds: number;
+  }): {
+    record: DeliveryExternalEffectActionRecord;
+    claim: DeliveryExternalEffectClaim;
+  } | null;
+
+  recordExecutionResult(command: {
+    claim: DeliveryExternalEffectClaim;
+    result: DeliveryExternalEffectExecutionResult;
+  }): DeliveryExternalEffectActionRecord;
+}

@@ -1,0 +1,23 @@
+{
+  "tool": "artifact_create",
+  "arguments": {
+    "project_id": 1,
+    "epic_id": 1,
+    "project_repository_id": 1,
+    "type": "FR",
+    "title": "FR-1: Configurable Reduced Motion",
+    "path": "docs/requirements/REQ-001-hex-button-autism-ui/00-PRD.md#FR-1",
+    "code": "FR-1",
+    "status": "draft",
+    "parent_artifact_id": 1,
+    "metadata": {
+      "process_module_ref": "solution-formalization@1.0.0",
+      "process_run_id": 2,
+      "node_id": "define-product-contract",
+      "work_intent_id": 2,
+      "task_id": 2,
+      "execution_id": "exec-1-19776-1785338290926-2",
+      "input_snapshot_hash": "3b6d1608d5acfe850ba74f22152cb3090ea9d44f1ce595544e13469d2b7cf6b3"
+    }
+  }
+}
