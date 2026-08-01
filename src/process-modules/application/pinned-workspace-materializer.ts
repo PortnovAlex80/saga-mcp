@@ -33,7 +33,7 @@ import {
 import path from 'node:path';
 
 import type { WorkspaceProjection } from './workspace-projection.js';
-import type { ProcessExecutionWorkspace, ProcessExecutionWorkspaceTask } from './process-execution-workspace.js';
+import type { ProcessExecutionWorkspaceTask } from './process-execution-workspace.js';
 import {
   buildMachineBindings,
   fillKnownPlaceholders,
@@ -45,6 +45,133 @@ import {
   reviewFeedbackFromMetadata,
   parseMetadata,
 } from './process-execution-workspace.js';
+
+/**
+ * saga4 LEGO contract — Layer 1 (Workplace Desk).
+ *
+ * Replaces the loose {@link ProcessExecutionWorkspace} struct that pinned and
+ * legacy creators previously shared. After the saga4 cutover the pinned
+ * materializer is the SOLE desk creator, so the contract is owned here and the
+ * legacy interface can be deleted from `process-execution-workspace.ts`.
+ *
+ * INVARIANTS (enforced by {@link assertDeskInvariants} before every return):
+ *   I1. trackerAbsolutePath endsWith `node-${nodeId}.md` (node-stable tracker).
+ *   I2. executionDirectory includes `node-${nodeId}` (desk keyed by node, P18).
+ *   I3. agentAssistance.required === true  → path !== null.
+ *   I4. recoveryFeedback.present === true   → path !== null.
+ *   I5. reviewFeedback.present === true     → path !== null.
+ *
+ * Backward-compatibility slots ({@link workspaceFiles},
+ * {@link agentAssistanceAbsolutePath}, {@link testWarmStart}) are kept so the
+ * existing consumers (`legacy-claude-worker-executor-factory.ts`,
+ * `tracker-view/claude-runner.mjs`, `test-warm-start.ts`) need no edits. They
+ * will be removed once those consumers migrate to the strict fields.
+ */
+export interface WorkplaceDesk {
+  // IDENTITY (REQUIRED)
+  readonly nodeId: string;
+  readonly profileId: string;
+  readonly moduleRef: string;
+
+  // PATHS (REQUIRED)
+  readonly trackerPath: string;
+  readonly trackerAbsolutePath: string;
+  readonly executionDirectory: string;
+
+  // CONTENT (REQUIRED arrays)
+  readonly callFiles: readonly string[];
+  readonly checklists: readonly string[];
+
+  // FEEDBACK (explicit presence)
+  readonly recoveryFeedback: { readonly present: boolean; readonly path: string | null };
+  readonly reviewFeedback: { readonly present: boolean; readonly path: string | null };
+
+  // HOOKS (invariant I3)
+  readonly agentAssistance: { readonly required: boolean; readonly path: string | null };
+
+  // -- Backward-compatibility slots (consumers migrate later) --
+  /**
+   * Computed = {@link callFiles} + non-null feedback paths. Kept for the
+   * claude-runner prompt that inlines `workspace_files=...` and for
+   * `test-warm-start.ts` which looks up slots by basename against this set.
+   */
+  readonly workspaceFiles: readonly string[];
+  /** Absolute path to agent-assistance.json, or undefined when not required. */
+  readonly agentAssistanceAbsolutePath?: string;
+  /**
+   * Optional test-only warm-start projection produced by an outer infrastructure
+   * adapter. Process modules never read or create it.
+   */
+  readonly testWarmStart?: {
+    readonly fixtureId: string;
+    readonly mode: 'verify-and-submit-existing-draft';
+    readonly nodeId: string;
+    readonly draftFiles: readonly string[];
+    readonly coldStartFiles: readonly string[];
+    readonly forceRewriteSlots: readonly string[];
+    readonly instruction: string;
+    readonly receiptPath: string;
+    readonly cacheRoot: string;
+    readonly cacheEntries: readonly {
+      readonly slot: string;
+      readonly policy: 'learn' | 'locked';
+      readonly targetPath: string;
+      readonly cachePath: string | null;
+      readonly metadataPath: string | null;
+      readonly packageDigest: string | null;
+      readonly inputHash: string | null;
+    }[];
+  };
+}
+
+/**
+ * Verify the WorkplaceDesk contract before returning it to a worker. Each
+ * invariant maps to a CGAD P18 (node-durable identity) or feedback-promise
+ * guarantee. Throws with a code prefix so the failing assertion is obvious in
+ * logs. Run this immediately before `return` in every desk creator.
+ */
+export function assertDeskInvariants(desk: WorkplaceDesk): void {
+  // I1: trackerAbsolutePath endsWith `node-${nodeId}.md`
+  const expectedTrackerSuffix = `node-${desk.nodeId}.md`;
+  if (!desk.trackerAbsolutePath.endsWith(expectedTrackerSuffix)) {
+    throw new Error(
+      `WORKPLACE_DESK_TRACKER_NOT_NODE_STABLE: trackerAbsolutePath `
+      + `'${desk.trackerAbsolutePath}' must end with '${expectedTrackerSuffix}' `
+      + `(nodeId='${desk.nodeId}'). CGAD P18 requires one tracker per workplace.`,
+    );
+  }
+  // I2: executionDirectory includes `node-${nodeId}`
+  const expectedDirSegment = `node-${desk.nodeId}`;
+  if (!desk.executionDirectory.includes(expectedDirSegment)) {
+    throw new Error(
+      `WORKPLACE_DESK_DIR_NOT_NODE_KEYED: executionDirectory `
+      + `'${desk.executionDirectory}' must include '${expectedDirSegment}' `
+      + `(nodeId='${desk.nodeId}'). The desk directory is keyed by node, not task.`,
+    );
+  }
+  // I3: agentAssistance.required === true → path !== null
+  if (desk.agentAssistance.required && desk.agentAssistance.path === null) {
+    throw new Error(
+      `WORKPLACE_DESK_ASSISTANCE_REQUIRED_BUT_MISSING: pinned module declares `
+      + `assistance for node '${desk.nodeId}' but no agent-assistance.json path `
+      + `was materialized on the desk.`,
+    );
+  }
+  // I4: recoveryFeedback.present === true → path !== null
+  if (desk.recoveryFeedback.present && desk.recoveryFeedback.path === null) {
+    throw new Error(
+      `WORKPLACE_DESK_RECOVERY_PRESENT_BUT_NO_PATH: recoveryFeedback.present `
+      + `is true for node '${desk.nodeId}' but path is null.`,
+    );
+  }
+  // I5: reviewFeedback.present === true → path !== null
+  if (desk.reviewFeedback.present && desk.reviewFeedback.path === null) {
+    throw new Error(
+      `WORKPLACE_DESK_REVIEW_PRESENT_BUT_NO_PATH: reviewFeedback.present `
+      + `is true for node '${desk.nodeId}' but path is null.`,
+    );
+  }
+}
 import type { ProcessModuleDefinition, ExecutionProfileDefinition } from '../domain/process-module.js';
 import type {
   ResourceBlob,
@@ -192,15 +319,19 @@ function resolveOwningNodeId(
  * Materialize the pinned-package workspace into the project tree.
  *
  * Produces the same directory layout, tracker filename, and metadata shape as
- * `prepareProcessExecutionWorkspace` so downstream consumers
+ * the legacy creator so downstream consumers
  * (`legacy-claude-worker-executor-factory.ts`, `tasks.ts:734`,
  * `claude-runner.mjs`) need NO changes. The only difference is the SOURCE of
  * the template/checklist/tracker bytes: pinned storeLocation instead of the
  * workspace tree.
+ *
+ * saga4 cutover: returns the strict {@link WorkplaceDesk} contract. The
+ * invariants are enforced by {@link assertDeskInvariants} before this function
+ * returns, so no caller can ever observe a desk that violates I1–I5.
  */
 export function materializePinnedWorkspace(
   request: MaterializePinnedWorkspaceRequest,
-): ProcessExecutionWorkspace {
+): WorkplaceDesk {
   const { projection, storedPackage, module, profile, task } = request;
   const workspaceRoot = path.resolve(request.workspaceRoot);
   const stage = module.identity.kind;
@@ -381,9 +512,13 @@ export function materializePinnedWorkspace(
   // machine-known paths/authority and writes it beside the execution tracker;
   // the generic Claude hook never switches on a module or node name.
   const assistanceDefinitions = storedPackage.manifest.assistance ?? [];
+  // saga4 WorkplaceDesk I3: `required` is true iff the package declares ANY
+  // assistance definition (the package's authority surface). When required,
+  // a definition for THIS node must exist and a path must be materialized;
+  // assertDeskInvariants enforces the path promise (non-null iff required).
+  const agentAssistanceRequired = assistanceDefinitions.length > 0;
   let agentAssistanceAbsolutePath: string | undefined;
-  if (assistanceDefinitions.length > 0) {
-    const nodeId = resolveOwningNodeId(module, profile, metadata);
+  if (agentAssistanceRequired) {
     const assistanceDefinition = assistanceDefinitions.find(
       definition => definition.nodeId === nodeId,
     );
@@ -430,24 +565,54 @@ export function materializePinnedWorkspace(
     );
   }
 
-  // 8. Return exact execution-scoped paths to consumers.
-  return {
+  // 8. Build the strict WorkplaceDesk (saga4 LEGO contract, Layer 1).
+  //    `workspaceFiles` is the computed backward-compatible flat list:
+  //    workspace call files + recovery/review feedback paths (when present).
+  const materializedCallFiles = callTemplates
+    .map(a => materializedBySource.get(a))
+    .filter((v): v is string => !!v);
+  const recoveryFeedbackRelative = recoveryFeedbackPath
+    ? relativeWorkspacePath(workspaceRoot, recoveryFeedbackPath)
+    : null;
+  const reviewFeedbackRelative = reviewFeedbackPath
+    ? relativeWorkspacePath(workspaceRoot, reviewFeedbackPath)
+    : null;
+  const desk: WorkplaceDesk = {
+    nodeId,
     profileId: profile.id,
     moduleRef: `${module.identity.name}@${module.identity.version}`,
     trackerPath: relativeWorkspacePath(workspaceRoot, trackerAbsolutePath),
     trackerAbsolutePath,
-    ...(agentAssistanceAbsolutePath ? { agentAssistanceAbsolutePath } : {}),
     executionDirectory: relativeWorkspacePath(workspaceRoot, executionDirectory),
-    workspaceFiles: [
-      ...workspaceTemplates.map(a => materializedBySource.get(a)).filter((v): v is string => !!v),
-      ...(recoveryFeedbackPath ? [relativeWorkspacePath(workspaceRoot, recoveryFeedbackPath)] : []),
-      ...(reviewFeedbackPath ? [relativeWorkspacePath(workspaceRoot, reviewFeedbackPath)] : []),
-    ],
-    callFiles: callTemplates
-      .map(a => materializedBySource.get(a))
-      .filter((v): v is string => !!v),
+    callFiles: materializedCallFiles,
     checklists: checklists.map(asset =>
       relativeWorkspacePath(workspaceRoot, path.join(toolsDirectory, path.basename(asset))),
     ),
+    recoveryFeedback: {
+      present: recoveryFeedbackPath !== null,
+      path: recoveryFeedbackRelative,
+    },
+    reviewFeedback: {
+      present: reviewFeedbackPath !== null,
+      path: reviewFeedbackRelative,
+    },
+    agentAssistance: {
+      required: agentAssistanceRequired,
+      path: agentAssistanceAbsolutePath
+        ? relativeWorkspacePath(workspaceRoot, agentAssistanceAbsolutePath)
+        : null,
+    },
+    // Backward-compatibility slots. `workspaceFiles` matches the legacy flat
+    // list shape exactly (workspace templates + feedback paths).
+    workspaceFiles: [
+      ...workspaceTemplates.map(a => materializedBySource.get(a)).filter((v): v is string => !!v),
+      ...(recoveryFeedbackRelative ? [recoveryFeedbackRelative] : []),
+      ...(reviewFeedbackRelative ? [reviewFeedbackRelative] : []),
+    ],
+    ...(agentAssistanceAbsolutePath ? { agentAssistanceAbsolutePath } : {}),
   };
+  // saga4: enforce I1–I5 before the desk reaches any consumer. A failing
+  // invariant here is a contract bug in the materializer, not a runtime fault.
+  assertDeskInvariants(desk);
+  return desk;
 }

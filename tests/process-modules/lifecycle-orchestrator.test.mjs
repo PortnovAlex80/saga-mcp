@@ -391,3 +391,261 @@ for (const recoverableErrorName of ['ProcessRunBusyError', 'NodeExecutionLeaseLo
     assert.equal(harness.state.released, true);
   });
 }
+
+// --- Phase 4 / F3: transition budget ---
+
+const { DEFAULT_MAX_TRANSITIONS } = await import(
+  '../../dist/process-modules/domain/lifecycle.js'
+);
+
+/**
+ * F3 budget tests use a dedicated self-looping harness: a single stage whose
+ * only outcome routes back to itself, and a completeStage stub that keeps the
+ * LifecycleRun non-terminal so the orchestrator keeps transitioning. This is
+ * the minimal cycle that the transition budget must detect and stop.
+ */
+function loopingLifecycleDefinition({ maxTransitions } = {}) {
+  const def = {
+    identity: {
+      name: 'loop-lifecycle',
+      version: '1.0.0',
+      displayName: 'Loop',
+      description: 'Self-looping lifecycle.',
+    },
+    entryStageId: 'loop',
+    stages: [{
+      id: 'loop',
+      displayName: 'Loop',
+      moduleRef: {
+        name: moduleDefinition.identity.name,
+        version: moduleDefinition.identity.version,
+      },
+      inputMapping: { value: '$.value' },
+      outcomeRoutes: {
+        // Routes back to the same stage → the only terminal escape is the
+        // transition budget.
+        done: { type: 'stage', stageId: 'loop' },
+      },
+      entryConditions: [],
+      exitConditions: [],
+    }],
+  };
+  if (maxTransitions !== undefined) def.maxTransitions = maxTransitions;
+  return def;
+}
+
+function loopingHarness({ definition = loopingLifecycleDefinition(), processId = 7 } = {}) {
+  const lifecycle = {
+    id: 2,
+    lifecycle: definition.identity,
+    lifecycleRefKey: `${definition.identity.name}@${definition.identity.version}`,
+    definitionSnapshot: canonicalJson(definition),
+    definitionHash: sha256Hex(definition),
+    projectId: 1,
+    epicId: 2,
+    initiatedBy: 'test',
+    idempotencyKey: 'loop-run',
+    inputSchema: 'loop.input.v1',
+    inputSnapshot: canonicalJson({ value: 'v' }),
+    inputHash: sha256Hex({ value: 'v' }),
+    status: 'created',
+    entryStageId: definition.entryStageId,
+    currentStageId: definition.entryStageId,
+    currentStageRunId: null,
+    terminalStatus: null,
+    version: 0,
+    leaseFence: 0,
+    error: null,
+    startedAt: new Date().toISOString(),
+    completedAt: null,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+  const stage = {
+    id: 21,
+    lifecycleRunId: 2,
+    ordinal: 1,
+    stageId: definition.entryStageId,
+    attempt: 1,
+    moduleRef: definition.stages[0].moduleRef,
+    bindingSnapshot: canonicalJson(definition.stages[0]),
+    bindingHash: sha256Hex(definition.stages[0]),
+    inputSchema: moduleDefinition.inputContract.id,
+    inputSnapshot: canonicalJson({ value: 'v' }),
+    inputHash: sha256Hex({ value: 'v' }),
+    status: 'created',
+    processRunId: null,
+    localOutcome: null,
+    authority: null,
+    output: null,
+    certificate: null,
+    mappedOutput: null,
+    resultSnapshot: null,
+    error: null,
+    startedAt: new Date().toISOString(),
+    completedAt: null,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+  let nextProcessId = processId;
+  let process = null;
+  let lastFailError = null;
+
+  const lifecycleRunRepo = {
+    start: () => ({ record: lifecycle, replayed: false }),
+    read: () => lifecycle,
+    readByIdempotencyKey: () => lifecycle,
+    listStageRuns: () => [stage],
+    readCurrentStageRun: () => stage,
+    ensureStageRun: (command) => {
+      stage.inputPayload = command.inputPayload;
+      return { record: stage, replayed: false };
+    },
+    bindProcessRun: (_lr, _sr, processRunId) => {
+      stage.processRunId = processRunId;
+      return stage;
+    },
+    markStageRunning: () => {
+      stage.status = 'running';
+      lifecycle.status = 'running';
+      return stage;
+    },
+    pauseStage: () => lifecycle,
+    fail: (_lr, _sr, error) => {
+      lastFailError = error;
+      lifecycle.status = 'failed';
+      lifecycle.error = error;
+      return lifecycle;
+    },
+    resume: () => lifecycle,
+    cancel: () => lifecycle,
+    listRecoverable: () => [],
+    // Keep the run alive after every transition: the self-loop routes to the
+    // same stage, so we just clear the StageRun so ensureStageRun can recreate
+    // it on the next loop turn.
+    completeStage: (command) => {
+      stage.status = 'completed';
+      stage.localOutcome = command.outcome;
+      stage.mappedOutput = command.mappedOutput;
+      stage.resultSnapshot = command.resultSnapshot;
+      // NON-terminal: status stays running so the orchestrator loops again.
+      lifecycle.status = 'running';
+      // Reset the StageRun so the next iteration re-creates it.
+      stage.status = 'created';
+      stage.processRunId = null;
+      stage.localOutcome = null;
+      return {
+        lifecycleRun: lifecycle,
+        stageRun: stage,
+        transition: {
+          id: 1,
+          lifecycleRunId: 2,
+          fromStageRunId: stage.id,
+          transitionKey: command.transitionKey,
+          outcome: command.outcome,
+          target: command.target,
+          toStageRunId: stage.id,
+          handoffSnapshot: command.handoffSnapshot,
+          handoffHash: command.handoffHash,
+          decisionHash: command.decisionHash,
+          createdAt: new Date().toISOString(),
+        },
+        replayed: false,
+      };
+    },
+    acquireExecutionLease: (_id, owner) => {
+      lifecycle.status = 'running';
+      return { owner, fence: 1 };
+    },
+    renewExecutionLease: () => true,
+    releaseExecutionLease: () => {},
+  };
+  const processRunRepo = {
+    start: () => {
+      process = {
+        ...completedProcess(nextProcessId),
+        status: 'created',
+        localOutcome: null,
+        authority: null,
+      };
+      nextProcessId += 1;
+      return { record: process, replayed: false };
+    },
+    read: () => {
+      // Each read returns a freshly-completed process so executeOrReplayProcess
+      // sees a completed run and proceeds to routing each iteration.
+      if (process) Object.assign(process, completedProcess(process.id));
+      return process;
+    },
+  };
+  const executor = {
+    moduleRef: definition.stages[0].moduleRef,
+    kind: 'test',
+    execute: async () => {
+      Object.assign(process, completedProcess(process.id));
+      return {
+        outcome: 'done',
+        output: null,
+        certificate: null,
+        authority: 'test-policy',
+      };
+    },
+  };
+  const moduleRegistry = { get: () => moduleDefinition, require: () => moduleDefinition };
+  const installationRegistry = { require: () => ({ definition: moduleDefinition, executor }) };
+  return {
+    lastFailError: () => lastFailError,
+    orchestrator: new LifecycleOrchestrator({
+      lifecycleRunRepo,
+      processRunRepo,
+      moduleRegistry,
+      installationRegistry,
+    }),
+    command: {
+      projectId: 1,
+      epicId: 2,
+      inputSchema: 'loop.input.v1',
+      inputPayload: { value: 'v' },
+      initiatedBy: 'test',
+      idempotencyKey: 'loop-run',
+    },
+  };
+}
+
+test('F3: a self-looping lifecycle is failed when it exceeds its transition budget', async () => {
+  const harness = loopingHarness({
+    definition: loopingLifecycleDefinition({ maxTransitions: 3 }),
+  });
+
+  const result = await harness.orchestrator.run(
+    loopingLifecycleDefinition({ maxTransitions: 3 }),
+    harness.command,
+  );
+
+  assert.equal(result.status, 'failed');
+  assert.match(
+    harness.lastFailError(),
+    /exceeded its transition budget of 3/,
+  );
+});
+
+test('F3: an invalid maxTransitions throws at run start', async () => {
+  const harness = loopingHarness({
+    definition: loopingLifecycleDefinition({ maxTransitions: 0 }),
+  });
+  await assert.rejects(
+    () => harness.orchestrator.run(
+      loopingLifecycleDefinition({ maxTransitions: 0 }),
+      harness.command,
+    ),
+    /maxTransitions must be a positive integer/,
+  );
+});
+
+test('F3: DEFAULT_MAX_TRANSITIONS is exported and is a sensible positive integer', () => {
+  assert.equal(typeof DEFAULT_MAX_TRANSITIONS, 'number');
+  assert.ok(Number.isInteger(DEFAULT_MAX_TRANSITIONS));
+  assert.ok(DEFAULT_MAX_TRANSITIONS > 0);
+  // Generously above the longest real lifecycle (4 stages).
+  assert.ok(DEFAULT_MAX_TRANSITIONS > 4);
+});

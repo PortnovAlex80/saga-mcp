@@ -21,13 +21,9 @@ import {
 } from './claude-board-worker-executor.js';
 import { resolveExecutionProfile } from '../../process-modules/application/execution-profile-resolver.js';
 import type { ResolvedExecutionProfile } from '../../process-modules/application/execution-profile-resolver.js';
-import {
-  prepareProcessExecutionWorkspace,
-  type ProcessExecutionWorkspace,
-} from '../../process-modules/application/process-execution-workspace.js';
 import { buildWorkspaceProjection } from '../../process-modules/application/workspace-projection.js';
 import type { WorkspacePackageRegistry } from '../../process-modules/application/workspace-projection.js';
-import { materializePinnedWorkspace } from '../../process-modules/application/pinned-workspace-materializer.js';
+import { materializePinnedWorkspace, type WorkplaceDesk } from '../../process-modules/application/pinned-workspace-materializer.js';
 import {
   applyTestWarmStart,
   captureTestWarmStart,
@@ -72,14 +68,14 @@ type RunnerOptions = ClaudeBoardRunnerOptions & {
     workerId: string;
     workspaceRoot: string;
     resolvedProfile: ResolvedExecutionProfile | null;
-  }) => ProcessExecutionWorkspace | null;
+  }) => WorkplaceDesk | null;
   resolveLaunchSpec?: (input: {
     assignment: RunnerAssignment;
     resolvedProfile: ResolvedExecutionProfile | null;
   }) => RunnerLaunchSpec | null;
   captureWorkspace?: (input: {
     workspaceRoot: string;
-    processWorkspace: ProcessExecutionWorkspace | null;
+    processWorkspace: WorkplaceDesk | null;
     outcome: TestWarmStartCaptureOutcome;
   }) => void;
 };
@@ -323,14 +319,22 @@ export function createLegacyClaudeWorkerExecutorFactory(
           );
         }
 
-        // A non-null installation pin is an integrity boundary: materialize
-        // from verified immutable bytes or fail the worker launch. Genuinely
-        // unpinned historical runs retain the legacy workspace path.
+        // saga4 cutover (LEGO-CONTRACTS.md §"Слой 1: СТОЛ"): a non-null
+        // installation pin is a STRICT integrity boundary. The legacy fallback
+        // path (materialize from the workspace tree) is GONE — every Process
+        // Module execution MUST resolve from an immutable pinned package
+        // snapshot, enforced by the WorkplaceDesk contract. A task with no
+        // pinned package is a configuration error, not a silent fallback.
         const pinned = resolvePinnedPackage(input.assignment);
-        if (!pinned && !input.resolvedProfile) return null;
-        const module = pinned
-          ? pinned.storedPackage.manifest.definition
-          : input.resolvedProfile!.module;
+        if (!pinned) {
+          throw new Error(
+            'WORKPLACE_DESK_PINNED_PACKAGE_REQUIRED: task ' + task.id
+            + ' has no pinned module installation. After the saga4 cutover '
+            + 'every Process Module execution must resolve from an immutable '
+            + 'package snapshot.',
+          );
+        }
+        const module = pinned.storedPackage.manifest.definition;
         const moduleRef = `${module.identity.name}@${module.identity.version}`;
         const templatePreparer = workspaceTemplatePreparers?.get(moduleRef);
 
@@ -360,47 +364,30 @@ export function createLegacyClaudeWorkerExecutorFactory(
           };
         }
 
-        let resolvedWorkspace: ProcessExecutionWorkspace;
-        if (pinned) {
-          const pinnedModule = module;
-          const pinnedProfile = pinnedModule.executionProfiles.find(
-            profile => profile.id === pinned.projection.executionProfileId,
+        let resolvedWorkspace: WorkplaceDesk;
+        const pinnedModule = module;
+        const pinnedProfile = pinnedModule.executionProfiles.find(
+          profile => profile.id === pinned.projection.executionProfileId,
+        );
+        if (!pinnedProfile) {
+          throw new Error(
+            `PINNED_EXECUTION_PROFILE_MISSING: ${pinned.projection.executionProfileId}`,
           );
-          if (!pinnedProfile) {
-            throw new Error(
-              `PINNED_EXECUTION_PROFILE_MISSING: ${pinned.projection.executionProfileId}`,
-            );
-          }
-          resolvedWorkspace = materializePinnedWorkspace({
-            projection: pinned.projection,
-            storedPackage: pinned.storedPackage,
-            workspaceRoot: input.workspaceRoot,
-            module: pinnedModule,
-            profile: pinnedProfile,
-            projectId: input.project.id,
-            epicId,
-            task,
-            executionId: input.assignment.execution_id ?? null,
-            workerId: input.workerId,
-            additionalBindings,
-            templatePreparer,
-          });
-        } else {
-          const legacyProfile = input.resolvedProfile;
-          if (!legacyProfile) return null;
-          resolvedWorkspace = prepareProcessExecutionWorkspace({
-            workspaceRoot: input.workspaceRoot,
-            module: legacyProfile.module,
-            profile: legacyProfile.profile,
-            projectId: input.project.id,
-            epicId,
-            task,
-            executionId: input.assignment.execution_id ?? null,
-            workerId: input.workerId,
-            additionalBindings,
-            templatePreparer,
-          });
         }
+        resolvedWorkspace = materializePinnedWorkspace({
+          projection: pinned.projection,
+          storedPackage: pinned.storedPackage,
+          workspaceRoot: input.workspaceRoot,
+          module: pinnedModule,
+          profile: pinnedProfile,
+          projectId: input.project.id,
+          epicId,
+          task,
+          executionId: input.assignment.execution_id ?? null,
+          workerId: input.workerId,
+          additionalBindings,
+          templatePreparer,
+        });
 
         const metadata: Record<string, unknown> = { ...taskMetadata };
         const processNodeId = typeof metadata.process_node_id === 'string'

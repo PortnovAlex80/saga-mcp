@@ -154,3 +154,127 @@ test('validator rejects ambiguous and non-resolvable recovery declarations', () 
   assert.match(errors, /both trigger and resolved event/);
   assert.match(errors, /orphan-success.*has no transition/);
 });
+
+// --- Phase 3 / C1: composite node must declare a moduleRef ---
+
+test('C1: validator rejects a composite node with no moduleRef', () => {
+  const broken = structuredClone(discoveryProcessModule);
+  const target = broken.flow.nodes.find(node => node.id === broken.flow.entryNodeId);
+  assert.ok(target, 'entry node must exist for the test');
+  // Replace the entry node with a composite node lacking a moduleRef. Make it
+  // terminal and emit the first outcome so the rest of the validator stays
+  // quiet about outcomes; this isolates the composite check.
+  const outcome = broken.outcomes[0].code;
+  Object.assign(target, {
+    kind: 'composite',
+    moduleRef: undefined,
+    emitsOutcome: outcome,
+  });
+  broken.flow.terminalNodeIds = [target.id];
+  broken.flow.transitions = [];
+
+  const validation = validateProcessModuleDefinition(broken);
+  assert.equal(validation.valid, false);
+  assert.match(validation.errors.join('\n'), /composite node '.*' must declare moduleRef/);
+});
+
+test('C1: validator accepts a composite node with a valid moduleRef', () => {
+  const broken = structuredClone(discoveryProcessModule);
+  const target = broken.flow.nodes.find(node => node.id === broken.flow.entryNodeId);
+  assert.ok(target);
+  const outcome = broken.outcomes[0].code;
+  Object.assign(target, {
+    kind: 'composite',
+    moduleRef: { name: 'sub-module', version: '1.0.0' },
+    emitsOutcome: outcome,
+  });
+  broken.flow.terminalNodeIds = [target.id];
+  broken.flow.transitions = [];
+
+  const validation = validateProcessModuleDefinition(broken);
+  const compositeError = validation.errors
+    .find(error => /composite node.*must declare moduleRef/.test(error));
+  assert.equal(compositeError, undefined, 'valid composite moduleRef must not error');
+});
+
+// --- Phase 3 / C2: LM nodes require a non-empty executionProfiles array ---
+
+test('C2: validator rejects LM nodes when executionProfiles is empty', () => {
+  const broken = structuredClone(discoveryProcessModule);
+  // discoveryProcessModule has at least one LM node.
+  assert.ok(
+    broken.flow.nodes.some(node => node.kind === 'lm'),
+    'discovery module must have an LM node for this test',
+  );
+  broken.executionProfiles = [];
+
+  const validation = validateProcessModuleDefinition(broken);
+  assert.equal(validation.valid, false);
+  assert.match(
+    validation.errors.join('\n'),
+    /module has LM nodes but no execution profiles/,
+  );
+});
+
+test('C2: validator does not require executionProfiles when no LM nodes exist', () => {
+  // Formalization-style modules all use LM nodes, so synthesize a kernel-only
+  // module from scratch to confirm the C2 check is skipped without LM nodes.
+  const kernelOnly = {
+    identity: {
+      name: 'kernel-only',
+      version: '1.0.0',
+      kind: 'development',
+      displayName: 'Kernel Only',
+      description: 'Kernel-only module.',
+    },
+    inputContract: { id: 'in.v1' },
+    outputContract: { id: 'out.v1' },
+    outcomes: [{ code: 'done', description: 'done', terminal: true }],
+    flow: {
+      id: 'flow',
+      version: '1.0.0',
+      entryNodeId: 'k',
+      nodes: [
+        { id: 'k', label: 'Kernel', kind: 'kernel', handler: 'do-it', description: 'kernel' },
+      ],
+      transitions: [],
+      terminalNodeIds: ['k'],
+    },
+    artifacts: [],
+    policies: [],
+    invariants: [],
+    executionProfiles: [],
+  };
+  const validation = validateProcessModuleDefinition(kernelOnly);
+  assert.equal(
+    validation.errors
+      .some(error => /module has LM nodes but no execution profiles/.test(error)),
+    false,
+    'kernel-only module must not trip the C2 LM/profiles check',
+  );
+});
+
+// --- Phase 3 / C3: identity.kind closed set (warning, not error) ---
+
+test('C3: validator warns when identity.kind is outside the standard set', () => {
+  const broken = structuredClone(discoveryProcessModule);
+  broken.identity.kind = 'formalisation'; // British spelling typo, not in set
+
+  const validation = validateProcessModuleDefinition(broken);
+  assert.equal(validation.valid, true, 'non-standard kind is a warning, not an error');
+  assert.match(
+    validation.warnings.join('\n'),
+    /identity.kind 'formalisation' is not in the standard set/,
+  );
+});
+
+test('C3: validator does not warn for a standard identity.kind', () => {
+  for (const kind of ['discovery', 'formalization', 'development', 'delivery']) {
+    const module = structuredClone(discoveryProcessModule);
+    module.identity.kind = kind;
+    const validation = validateProcessModuleDefinition(module);
+    const kindWarning = validation.warnings
+      .find(warning => /identity.kind.*is not in the standard set/.test(warning));
+    assert.equal(kindWarning, undefined, `standard kind '${kind}' must not warn`);
+  }
+});

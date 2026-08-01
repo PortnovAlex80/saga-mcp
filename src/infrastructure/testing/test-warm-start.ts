@@ -17,7 +17,7 @@ import {
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 
-import type { ProcessExecutionWorkspace } from '../../process-modules/application/process-execution-workspace.js';
+import type { WorkplaceDesk } from '../../process-modules/application/pinned-workspace-materializer.js';
 
 const SCHEMA = 'saga3.test-warm-start-fixture.v1';
 const CACHE_SCHEMA = 'saga3.test-draft-cache-entry.v1';
@@ -81,7 +81,7 @@ export interface ApplyTestWarmStartRequest {
   readonly nodeId: string;
   readonly packageDigest?: string | null;
   readonly inputHash?: string | null;
-  readonly processWorkspace: ProcessExecutionWorkspace;
+  readonly processWorkspace: WorkplaceDesk;
 }
 
 function safeSegment(value: string, label: string): string {
@@ -198,7 +198,7 @@ function readMetadata(metadataPath: string): CacheMetadata | null {
 
 function resolveTarget(
   workspaceRoot: string,
-  processWorkspace: ProcessExecutionWorkspace,
+  processWorkspace: WorkplaceDesk,
   draft: DraftSpec,
 ): { absolute: string; relative: string } {
   if (draft.path) {
@@ -260,7 +260,7 @@ function writeCacheContent(
  */
 export function applyTestWarmStart(
   request: ApplyTestWarmStartRequest,
-): ProcessExecutionWorkspace {
+): WorkplaceDesk {
   const enabled = request.env.SAGA_TEST_WARM_START === '1';
   const fixturePath = request.env.SAGA_TEST_WARM_START_FIXTURE?.trim();
   if (!enabled && !fixturePath) return request.processWorkspace;
@@ -293,7 +293,7 @@ export function applyTestWarmStart(
   const coldStartFiles: string[] = [];
   const forceRewriteSlots: string[] = [];
   const cacheEntries: NonNullable<
-    ProcessExecutionWorkspace['testWarmStart']
+    WorkplaceDesk['testWarmStart']
   >['cacheEntries'][number][] = [];
   let cacheRoot: string | null = null;
 
@@ -442,7 +442,7 @@ export function applyTestWarmStart(
  */
 export function captureTestWarmStart(
   workspaceRoot: string,
-  processWorkspace: ProcessExecutionWorkspace | null,
+  processWorkspace: WorkplaceDesk | null,
   outcome: TestWarmStartCaptureOutcome,
 ): void {
   const warm = processWorkspace?.testWarmStart;

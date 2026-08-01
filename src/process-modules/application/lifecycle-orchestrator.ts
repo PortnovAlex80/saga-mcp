@@ -4,6 +4,7 @@ import type {
   StageBinding,
   TransitionTarget,
 } from '../domain/lifecycle.js';
+import { DEFAULT_MAX_TRANSITIONS } from '../domain/lifecycle.js';
 import type { ProcessModuleReference } from '../domain/process-module.js';
 import type {
   ProcessModuleCertificateRef,
@@ -215,8 +216,30 @@ export class LifecycleOrchestrator {
     if (!lease) throw new LifecycleRunBusyError(runnable.id);
 
     try {
-      const maxStages = definition.stages.length * 4 + 8;
+      // F3: a hard transition budget protects against an accidental cycle in
+      // the declarative routing table (or a self-looping recovery policy)
+      // spinning the conveyor forever. The default is generous; legitimate
+      // lifecycles (the longest built-in DAG is 4 stages) never reach it. The
+      // loop counter doubles as the budget: each iteration is one stage
+      // transition attempt. We still keep the older stages*4+8 upper bound so
+      // a misconfigured (tiny) maxTransitions cannot deadlock the run early.
+      const transitionBudget = resolveMaxTransitions(definition.maxTransitions);
+      const maxStages = Math.max(transitionBudget, definition.stages.length * 4 + 8);
+      let transitions = 0;
       for (let step = 0; step < maxStages; step += 1) {
+        // F3: count each stage execution attempt as one transition. Exceeding
+        // the budget means the routing table has a cycle and the run would
+        // spin forever; fail it with a distinct, attributable message.
+        transitions += 1;
+        if (transitions > transitionBudget) {
+          const failed = this.lifecycleRunRepo.fail(
+            started.record.id,
+            this.lifecycleRunRepo.readCurrentStageRun(started.record.id)?.id ?? null,
+            `Lifecycle exceeded its transition budget of ${transitionBudget}`,
+            lease,
+          );
+          return this.result(failed);
+        }
         // A successful completeStage atomically terminalizes the LifecycleRun.
         // Terminal rows intentionally reject lease renewal, so observe the
         // durable terminal state before heartbeating on the next loop turn.
@@ -653,6 +676,10 @@ export class LifecycleOrchestrator {
     if (!validation.valid) {
       throw new Error(`Lifecycle definition is invalid: ${validation.errors.join('; ')}`);
     }
+    // F3: validate the transition budget up front (before any lease is taken)
+    // so a misconfigured lifecycle fails loudly at run start instead of being
+    // swallowed by the run's catch-all fail handler.
+    resolveMaxTransitions(definition.maxTransitions);
     for (const stage of definition.stages) {
       this.installationRegistry.require(stage.moduleRef);
     }
@@ -774,4 +801,20 @@ function errorMessage(error: unknown): string {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+/**
+ * Resolves a lifecycle's transition budget, defaulting to
+ * {@link DEFAULT_MAX_TRANSITIONS} and rejecting a non-positive / non-integer
+ * declaration up front so a misconfigured lifecycle fails loudly at run start
+ * instead of deadlocking.
+ */
+function resolveMaxTransitions(declared: number | undefined): number {
+  if (declared === undefined) return DEFAULT_MAX_TRANSITIONS;
+  if (!Number.isInteger(declared) || declared <= 0) {
+    throw new Error(
+      `LifecycleDefinition.maxTransitions must be a positive integer, got ${declared}`,
+    );
+  }
+  return declared;
 }

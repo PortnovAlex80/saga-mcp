@@ -13,6 +13,16 @@ export interface ProcessModuleValidationResult {
 const SEMVER = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
 const IDENTIFIER = /^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$/;
 
+// C3: the closed set of standard lifecycle module kinds. identity.kind outside
+// this set is a warning, not an error — custom modules remain expressible, but
+// a typo is surfaced before the module is silently dropped from routing.
+const STANDARD_MODULE_KINDS = new Set<string>([
+  'discovery',
+  'formalization',
+  'development',
+  'delivery',
+]);
+
 function duplicates(values: readonly string[]): string[] {
   const seen = new Set<string>();
   const repeated = new Set<string>();
@@ -85,6 +95,21 @@ function validateNode(
   if (node.kind === 'human' && !node.interactionContract.id.trim()) {
     errors.push(`human node '${node.id}' has no interaction contract`);
   }
+  // C1: a composite node delegates to another ProcessModule, so it must
+  // declare that module's versioned identity. A composite node without a
+  // moduleRef is a leaf that routes nowhere — a structural hole in the flow.
+  if (node.kind === 'composite') {
+    const ref = node.moduleRef;
+    if (
+      ref === undefined
+      || ref === null
+      || typeof ref !== 'object'
+      || !IDENTIFIER.test(ref.name ?? '')
+      || !SEMVER.test(ref.version ?? '')
+    ) {
+      errors.push(`composite node '${node.id}' must declare moduleRef`);
+    }
+  }
 }
 
 function reachableNodeIds(module: ProcessModuleDefinition): Set<string> {
@@ -135,6 +160,16 @@ export function validateProcessModuleDefinition(
   if (!IDENTIFIER.test(module.identity.name)) errors.push(`module name '${module.identity.name}' is invalid`);
   if (!SEMVER.test(module.identity.version)) errors.push(`module version '${module.identity.version}' is not semantic versioning`);
   if (!IDENTIFIER.test(module.identity.kind)) errors.push(`module kind '${module.identity.kind}' is invalid`);
+  // C3: identity.kind is a small closed set. A well-formed identifier that is
+  // not in the standard set still type-checks, but it is almost always a
+  // typo (e.g. 'formalisation' vs 'formalization') that silently drops the
+  // module out of lifecycle routing. Warn, do not error, so custom modules
+  // remain expressible.
+  if (!STANDARD_MODULE_KINDS.has(module.identity.kind)) {
+    warnings.push(
+      `identity.kind '${module.identity.kind}' is not in the standard set {discovery,formalization,development,delivery}`,
+    );
+  }
   if (!module.identity.displayName.trim()) errors.push('module displayName is required');
   if (!module.identity.description.trim()) errors.push('module description is required');
   if (!module.inputContract.id.trim()) errors.push('inputContract.id is required');
@@ -167,6 +202,16 @@ export function validateProcessModuleDefinition(
     if (!nodeIdSet.has(terminalId)) errors.push(`terminal node '${terminalId}' does not exist`);
   }
   for (const node of module.flow.nodes) validateNode(node, profileIdSet, errors);
+
+  // C2: an LM node is executed by an infrastructure LmNodeExecutor that looks
+  // up its executionProfile in the module's own profile table. A module that
+  // declares LM nodes but ships an empty executionProfiles array therefore
+  // cannot run any of its LM nodes — a high-risk structural hole that would
+  // otherwise fail only at runtime with a confusing missing-profile error.
+  const hasLmNode = module.flow.nodes.some(node => node.kind === 'lm');
+  if (hasLmNode && module.executionProfiles.length === 0) {
+    errors.push('module has LM nodes but no execution profiles');
+  }
 
   const terminalSet = new Set(module.flow.terminalNodeIds);
   const transitionKeys = module.flow.transitions.map(transition =>

@@ -280,13 +280,17 @@ test('fixture/assistance-vocabulary: modes + events + block-kinds are the frozen
 // --- §1 Workspace placeholder filling (existing surface, always present) ----
 
 test('fixture/workspace: prepareProcessExecutionWorkspace fills machine bindings', () => {
-  // The EXISTING process-execution-workspace.ts (frozen) is the surface W5-A1
-  // extends with pinned-package resolution. We assert the frozen behaviour it
-  // must preserve: bindings like MODULE_REF/EPIC_ID/TASK_ID are filled, and an
-  // absolute asset path is rejected (path-escape guard).
+  // saga4 cutover (LEGO-CONTRACTS.md §"Слой 1: СТОЛ"): the legacy
+  // `prepareProcessExecutionWorkspace` was REMOVED in D2; the pinned
+  // materializer (`materializePinnedWorkspace`) is the sole desk creator now.
+  // This Layer-1 fixture was written shape-drift-safe (`if (!fn) return`), so
+  // after the cutover it gracefully skips rather than fails. The machine-
+  // binding + path-escape contract it characterised is now covered by the
+  // rewritten tests/process-modules/process-execution-workspace.test.mjs
+  // against the strict WorkplaceDesk returned by the pinned creator.
   const { prepareProcessExecutionWorkspace } = requireWorkspace();
   if (!prepareProcessExecutionWorkspace) {
-    // Dist shape drift — skip gracefully rather than fail the layer-1 gate.
+    // Post-saga4-cutover: symbol intentionally removed — skip gracefully.
     return;
   }
   const root = mkdtempSync(path.join(os.tmpdir(), 'saga-w5a8-ws-'));

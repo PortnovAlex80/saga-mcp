@@ -1,29 +1,24 @@
 /**
- * Machine-provisioned workspace for one Process Module LM execution.
+ * Machine-provisioned workspace helpers for Process Module LM executions.
  *
- * The Process Module descriptor owns the content (tracker/template/checklist
- * paths). This service owns the reusable execution physics: resolving those
- * assets safely, copying them into a project-scoped workspace, filling known
- * machine bindings and returning exact paths for the prompt and hook.
+ * saga4 cutover (LEGO-CONTRACTS.md §"Слой 1: СТОЛ"): the legacy
+ * `prepareProcessExecutionWorkspace` function and the loose
+ * `ProcessExecutionWorkspace` interface have been REMOVED. After the saga4
+ * cutover, `materializePinnedWorkspace` (in
+ * `pinned-workspace-materializer.ts`) is the SOLE desk creator and returns the
+ * strict {@link WorkplaceDesk} contract enforced by `assertDeskInvariants`.
  *
- * W13-A2 legacy-removal note: the global-skill-root special-case paths that
- * previously lived here (resolving skills from a global skill root or built-in
- * catalog) are GONE. Pinned-installation skill/template resource resolution
- * now lives in `workspace-projection.ts` (W5-A1, via
- * `buildWorkspaceProjection`). This file keeps ONLY the legacy claude-worker
- * path that materializes tracker templates from `workspaceRoot` — the legacy
- * `legacy-claude-worker-executor-factory.ts` is still wired and active. When
- * that factory is retired, this file can be deleted entirely.
+ * This file now keeps ONLY the reusable helpers the pinned materializer shares
+ * with the broader runtime: metadata parsing, machine-binding construction,
+ * placeholder refresh (markdown + JSON), materialized-name derivation, the
+ * project-relative path helper, and the recovery/review feedback readers. The
+ * pinned materializer imports these directly so the 15-key markdown allowlist
+ * and 13-key JSON allowlist that define "what gets refreshed on retry" stay
+ * single-source.
  *
  * No module-specific symbol or path is imported here.
  */
 
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  writeFileSync,
-} from 'node:fs';
 import path from 'node:path';
 import type {
   ExecutionProfileDefinition,
@@ -39,6 +34,12 @@ export interface ProcessExecutionWorkspaceTask {
   metadata?: string | Record<string, unknown> | null;
 }
 
+/**
+ * Input shape for {@link buildMachineBindings}. Historically also used by the
+ * deleted `prepareProcessExecutionWorkspace`; only the binding builder reads
+ * it now (the pinned materializer builds its own request shape and forwards
+ * into this helper).
+ */
 export interface PrepareProcessExecutionWorkspaceRequest {
   workspaceRoot: string;
   module: ProcessModuleDefinition;
@@ -52,42 +53,6 @@ export interface PrepareProcessExecutionWorkspaceRequest {
   additionalBindings?: Readonly<Record<string, unknown>>;
   /** Optional module-owned semantic template preparation. */
   templatePreparer?: ProcessWorkspaceTemplatePreparer;
-}
-
-export interface ProcessExecutionWorkspace {
-  profileId: string;
-  moduleRef: string;
-  trackerPath: string;
-  trackerAbsolutePath: string;
-  agentAssistanceAbsolutePath?: string;
-  executionDirectory: string;
-  workspaceFiles: readonly string[];
-  callFiles: readonly string[];
-  checklists: readonly string[];
-  /**
-   * Optional test-only warm-start projection produced by an outer
-   * infrastructure adapter. Process modules never read or create it.
-   */
-  testWarmStart?: {
-    readonly fixtureId: string;
-    readonly mode: 'verify-and-submit-existing-draft';
-    readonly nodeId: string;
-    readonly draftFiles: readonly string[];
-    readonly coldStartFiles: readonly string[];
-    readonly forceRewriteSlots: readonly string[];
-    readonly instruction: string;
-    readonly receiptPath: string;
-    readonly cacheRoot: string;
-    readonly cacheEntries: readonly {
-      readonly slot: string;
-      readonly policy: 'learn' | 'locked';
-      readonly targetPath: string;
-      readonly cachePath: string | null;
-      readonly metadataPath: string | null;
-      readonly packageDigest: string | null;
-      readonly inputHash: string | null;
-    }[];
-  };
 }
 
 type MachineBindings = Record<string, unknown>;
@@ -183,19 +148,6 @@ export function buildMachineBindings(
   return bindings;
 }
 
-function safeAssetPath(workspaceRoot: string, relativeAssetPath: string): string {
-  if (path.isAbsolute(relativeAssetPath)) {
-    throw new Error(`PROCESS_WORKSPACE_ASSET_INVALID: absolute path '${relativeAssetPath}'`);
-  }
-  const root = path.resolve(workspaceRoot);
-  const resolved = path.resolve(root, relativeAssetPath);
-  const relative = path.relative(root, resolved);
-  if (relative.startsWith('..') || path.isAbsolute(relative)) {
-    throw new Error(`PROCESS_WORKSPACE_ASSET_INVALID: path escapes workspace '${relativeAssetPath}'`);
-  }
-  return resolved;
-}
-
 export function valueForFillToken(token: string, bindings: MachineBindings): unknown {
   const normalized = normalizedKey(token.replace(/^FILL_/, ''));
   const aliases: Array<[RegExp, string]> = [
@@ -204,7 +156,6 @@ export function valueForFillToken(token: string, bindings: MachineBindings): unk
     [/WORK_INTENT_ID/, 'WORK_INTENT_ID'],
     [/(^|_)TASK_ID($|_)/, 'TASK_ID'],
     [/(^|_)PROJECT_ID($|_)/, 'PROJECT_ID'],
-    [/(^|_)EPIC_ID($|_)/, 'EPIC_ID'],
     [/PROCESS_RUN_ID/, 'PROCESS_RUN_ID'],
     [/(^|_)NODE_ID($|_)/, 'NODE_ID'],
     [/INPUT_(SNAPSHOT_)?HASH/, 'INPUT_SNAPSHOT_HASH'],
@@ -333,10 +284,6 @@ export function relativeWorkspacePath(workspaceRoot: string, absolutePath: strin
   return path.relative(path.resolve(workspaceRoot), absolutePath).replace(/\\/g, '/');
 }
 
-function unique<T>(items: readonly T[]): T[] {
-  return [...new Set(items)];
-}
-
 export function recoveryFeedbackFromMetadata(
   metadata: Record<string, unknown>,
 ): Record<string, unknown> | null {
@@ -381,177 +328,5 @@ export function reviewFeedbackFromMetadata(
     budget,
     rejections,
     feedback,
-  };
-}
-
-export function prepareProcessExecutionWorkspace(
-  request: PrepareProcessExecutionWorkspaceRequest,
-): ProcessExecutionWorkspace {
-  const workspaceRoot = path.resolve(request.workspaceRoot);
-  const stage = request.module.identity.kind;
-  const stageRoot = path.join(workspaceRoot, 'docs', stage);
-  const toolsDirectory = path.join(stageRoot, 'tools');
-  const projectDirectory = path.join(stageRoot, 'projects', String(request.epicId));
-  // CGAD P18 — Node-Durable Identity: the desk is keyed by the NODE (workplace),
-  // not the task (worker), so a repair worker reuses the producer's desk.
-  // Mirrors the pinned materializer's node-stable layout. (This legacy
-  // materializer is deprecated in favour of materializePinnedWorkspace; kept
-  // for unpinned historical runs.)
-  const deskMetadata = parseMetadata(request.task.metadata);
-  const deskNodeId = typeof deskMetadata.process_node_id === 'string'
-    && deskMetadata.process_node_id.length > 0
-    ? deskMetadata.process_node_id
-    : `task-${request.task.id}`;
-  const executionDirectory = path.join(
-    projectDirectory,
-    'executions',
-    `node-${deskNodeId}`,
-  );
-  mkdirSync(toolsDirectory, { recursive: true });
-  mkdirSync(executionDirectory, { recursive: true });
-
-  const bindings = buildMachineBindings(request);
-  const metadata = parseMetadata(request.task.metadata);
-  const recoveryFeedback = recoveryFeedbackFromMetadata(metadata);
-  const recoveryFeedbackPath = recoveryFeedback
-    ? path.join(executionDirectory, 'recovery-feedback.json')
-    : null;
-  if (recoveryFeedbackPath) {
-    // The recovery-feedback file is the machine-owned LOOP input and is
-    // overwritten each round (CGAD P18: it is not the workplace's durable
-    // desk state — the worker's drafts, which live alongside, are preserved).
-    writeFileSync(
-      recoveryFeedbackPath,
-      `${JSON.stringify(recoveryFeedback, null, 2)}\n`,
-    );
-  }
-  // CGAD P18 — review-loop is a rework cycle too: surface the reviewer's
-  // feedback on the desk so the author never reworks blind (mirrors recovery).
-  const reviewFeedback = reviewFeedbackFromMetadata(metadata);
-  const reviewFeedbackPath = reviewFeedback
-    ? path.join(executionDirectory, 'review-feedback.json')
-    : null;
-  if (reviewFeedbackPath) {
-    writeFileSync(
-      reviewFeedbackPath,
-      `${JSON.stringify(reviewFeedback, null, 2)}\n`,
-    );
-  }
-  const allAssets = unique([
-    ...(request.profile.trackerTemplate ? [request.profile.trackerTemplate] : []),
-    ...request.profile.workspaceTemplates,
-    ...request.profile.callTemplates,
-    ...request.profile.checklists,
-  ]);
-
-  for (const asset of allAssets) {
-    const source = safeAssetPath(workspaceRoot, asset);
-    if (!existsSync(source)) {
-      throw new Error(
-        `PROCESS_WORKSPACE_ASSET_MISSING: profile '${request.profile.id}' references '${asset}'`,
-      );
-    }
-    const sharedTarget = path.join(toolsDirectory, path.basename(asset));
-    if (!existsSync(sharedTarget)) {
-      writeFileSync(sharedTarget, readFileSync(source, 'utf8'));
-    }
-  }
-
-  const materializedBySource = new Map<string, string>();
-  for (const asset of unique([
-    ...request.profile.workspaceTemplates,
-    ...request.profile.callTemplates,
-  ])) {
-    const source = safeAssetPath(workspaceRoot, asset);
-    const target = path.join(executionDirectory, materializedName(asset));
-    const sourceContent = readFileSync(source, 'utf8');
-    const isFresh = !existsSync(target);
-    if (isFresh) {
-      const prepared = path.extname(target).toLowerCase() === '.json'
-        ? refreshJsonMachineBindings(sourceContent, bindings)
-        : fillKnownPlaceholders(sourceContent, bindings);
-      writeFileSync(target, prepared);
-    } else if (path.extname(target).toLowerCase() === '.json') {
-      // Preserve semantic work on retry, but refresh execution-fenced fields.
-      const existing = readFileSync(target, 'utf8');
-      writeFileSync(target, refreshJsonMachineBindings(existing, bindings));
-    }
-    if (request.templatePreparer) {
-      const currentContent = readFileSync(target, 'utf8');
-      const prepared = request.templatePreparer({
-        module: request.module,
-        profile: request.profile,
-        task: request.task,
-        projectId: request.projectId,
-        epicId: request.epicId,
-        nodeId: typeof bindings.NODE_ID === 'string' ? bindings.NODE_ID : null,
-        declaredPath: asset,
-        materializedName: path.basename(target),
-        sourceContent,
-        currentContent,
-        isFresh,
-      });
-      if (prepared !== null && prepared !== currentContent) {
-        writeFileSync(target, prepared);
-      }
-    }
-    materializedBySource.set(asset, relativeWorkspacePath(workspaceRoot, target));
-  }
-
-  if (!request.profile.trackerTemplate) {
-    throw new Error(
-      `PROCESS_WORKSPACE_TRACKER_MISSING: profile '${request.profile.id}' has no tracker template`,
-    );
-  }
-  const trackerSource = safeAssetPath(workspaceRoot, request.profile.trackerTemplate);
-  if (!existsSync(trackerSource)) {
-    throw new Error(
-      `PROCESS_WORKSPACE_ASSET_MISSING: tracker '${request.profile.trackerTemplate}'`,
-    );
-  }
-  const trackerAbsolutePath = path.join(
-    projectDirectory,
-    `project-${request.epicId}-${stage}-stage-${request.task.id}.md`,
-  );
-  if (!existsSync(trackerAbsolutePath)) {
-    const tracker = refreshMarkdownMachineBindings(
-      readFileSync(trackerSource, 'utf8'),
-      bindings,
-    );
-    writeFileSync(trackerAbsolutePath, tracker);
-  } else {
-    // Retry/restart: retain checkpoints and only refresh machine-owned fields.
-    const tracker = refreshMarkdownMachineBindings(
-      readFileSync(trackerAbsolutePath, 'utf8'),
-      bindings,
-    );
-    writeFileSync(trackerAbsolutePath, tracker);
-  }
-
-  return {
-    profileId: request.profile.id,
-    moduleRef: `${request.module.identity.name}@${request.module.identity.version}`,
-    trackerPath: relativeWorkspacePath(workspaceRoot, trackerAbsolutePath),
-    trackerAbsolutePath,
-    executionDirectory: relativeWorkspacePath(workspaceRoot, executionDirectory),
-    workspaceFiles: [
-      ...request.profile.workspaceTemplates
-        .map(asset => materializedBySource.get(asset))
-        .filter((value): value is string => Boolean(value)),
-      ...(recoveryFeedbackPath
-        ? [relativeWorkspacePath(workspaceRoot, recoveryFeedbackPath)]
-        : []),
-      ...(reviewFeedbackPath
-        ? [relativeWorkspacePath(workspaceRoot, reviewFeedbackPath)]
-        : []),
-    ],
-    callFiles: request.profile.callTemplates
-      .map(asset => materializedBySource.get(asset))
-      .filter((value): value is string => Boolean(value)),
-    checklists: request.profile.checklists.map(asset =>
-      relativeWorkspacePath(
-        workspaceRoot,
-        path.join(toolsDirectory, path.basename(asset)),
-      )),
   };
 }

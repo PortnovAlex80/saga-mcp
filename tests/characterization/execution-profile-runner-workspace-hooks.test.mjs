@@ -11,13 +11,12 @@
  */
 
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
-import os from 'node:os';
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
 
 import { resolveExecutionProfile, resolveProtocolSkill, resolveSemanticSkill } from '../../dist/process-modules/application/execution-profile-resolver.js';
-import { prepareProcessExecutionWorkspace } from '../../dist/process-modules/application/process-execution-workspace.js';
+import * as legacyWorkspace from '../../dist/process-modules/application/process-execution-workspace.js';
 
 const repoRoot = path.resolve(import.meta.dirname, '..', '..');
 // W13-A2: the legacy tracker-reminder.mjs hook path constant was removed
@@ -111,349 +110,55 @@ test('execution-profile-resolver: resolveProtocolSkill / resolveSemanticSkill re
 });
 
 // =============================================================================
-// 2. process-execution-workspace.ts — materialization + MachineBindings + return fields
+// 2. process-execution-workspace.ts — saga4 cutover: legacy creator REMOVED
 // =============================================================================
+//
+// saga4 cutover (LEGO-CONTRACTS.md §"Слой 1: СТОЛ"): the legacy
+// `prepareProcessExecutionWorkspace` function and the loose
+// `ProcessExecutionWorkspace` interface were REMOVED. The whole
+// section-2 characterization block (§13.3 workspace materialization,
+// per-task tracker pattern, per-stage shared tools dir, recovery_feedback
+// leak) characterised the LEGACY path and is therefore deleted with it.
+//
+// The equivalent characterization for the new strict `WorkplaceDesk` contract
+// lives in tests/process-modules/process-execution-workspace.test.mjs (covers
+// materializePinnedWorkspace + assertDeskInvariants I1–I5 + surviving helpers).
+// What remains HERE is a single ratchet that pins the removal: the legacy
+// symbols must not return.
 
-/**
- * Build a workspaceRoot tmpdir containing the asset paths the discovery-proposal
- * profile references. W13-A2 moved the discovery resources out of the legacy
- * global root (`tool-templates/discovery/`) into the discovery package resources
- * directory; the profile now references these repo-root-relative paths:
- *   - src/process-modules/modules/discovery/package/resources/discovery-doc-template.md
- *   - src/process-modules/modules/discovery/package/resources/proposal-call-template.json
- *   - src/process-modules/modules/discovery/package/resources/proposal-stage-tracker.md
- *   - src/process-modules/modules/discovery/package/resources/proposal-checklist.md
- * We copy the real ones from the repo so the materializer fills the same
- * placeholders it would in production. The same relative path serves as both the
- * repo-root source (under repoRoot) and the workspace-relative target (under the
- * tmp workspaceRoot) — the materializer resolves it under workspaceRoot.
- */
-function makeWorkspaceRootWithDiscoveryAssets() {
-  const root = mkdtempSync(path.join(os.tmpdir(), 'saga-w0a2-ws-'));
-  const assetRelativePaths = [
-    'src/process-modules/modules/discovery/package/resources/discovery-doc-template.md',
-    'src/process-modules/modules/discovery/package/resources/proposal-call-template.json',
-    'src/process-modules/modules/discovery/package/resources/proposal-stage-tracker.md',
-    'src/process-modules/modules/discovery/package/resources/proposal-checklist.md',
-  ];
-  for (const rel of assetRelativePaths) {
-    const src = path.join(repoRoot, rel);
-    const dst = path.join(root, rel);
-    mkdirSync(path.dirname(dst), { recursive: true });
-    writeFileSync(dst, readFileSync(src, 'utf8'));
-  }
-  return root;
-}
-
-test('process-execution-workspace: materializes tracker and templates at project-scoped paths under workspaceRoot', () => {
-  const workspaceRoot = makeWorkspaceRootWithDiscoveryAssets();
-  try {
-    const resolved = resolveExecutionProfile('discovery.work');
-    const result = prepareProcessExecutionWorkspace({
-      workspaceRoot,
-      module: resolved.module,
-      profile: resolved.profile,
-      projectId: 7,
-      epicId: 42,
-      task: { id: 999, epic_id: 42, metadata: {} },
-      executionId: 'exec-1',
-      workerId: 'w-1',
-    });
-
-    // Stage directory is derived from module.identity.kind = 'discovery'.
-    // Project directory is keyed by epicId. Execution directory by task.id.
-    assert.equal(result.trackerPath, 'docs/discovery/projects/42/project-42-discovery-stage-999.md');
-    assert.equal(result.executionDirectory, 'docs/discovery/projects/42/executions/task-999');
-    // workspaceFiles live under executionDirectory; checklists/tools live under docs/<stage>/tools/.
-    for (const f of result.workspaceFiles) {
-      assert.ok(f.startsWith('docs/discovery/projects/42/executions/task-999/'),
-        `workspaceFile not under execution dir: ${f}`);
-      assert.ok(existsSync(path.join(workspaceRoot, f)), `materialized workspace file missing: ${f}`);
-    }
-    for (const f of result.callFiles) {
-      assert.ok(existsSync(path.join(workspaceRoot, f)), `materialized call file missing: ${f}`);
-    }
-    for (const f of result.checklists) {
-      assert.ok(f.startsWith('docs/discovery/tools/'), `checklist not in tools dir: ${f}`);
-      assert.ok(existsSync(path.join(workspaceRoot, f)), `checklist file missing: ${f}`);
-    }
-    assert.ok(existsSync(result.trackerAbsolutePath), 'tracker absolute path not written');
-  } finally {
-    rmSync(workspaceRoot, { recursive: true, force: true });
-  }
-});
-
-test('process-execution-workspace: returns EXACTLY the documented field set', () => {
-  const workspaceRoot = makeWorkspaceRootWithDiscoveryAssets();
-  try {
-    const resolved = resolveExecutionProfile('discovery.work');
-    const result = prepareProcessExecutionWorkspace({
-      workspaceRoot,
-      module: resolved.module,
-      profile: resolved.profile,
-      projectId: 7,
-      epicId: 42,
-      task: { id: 999, epic_id: 42, metadata: {} },
-      executionId: 'exec-1',
-      workerId: 'w-1',
-    });
-    assert.deepEqual(
-      Object.keys(result).sort(),
-      ['callFiles', 'checklists', 'executionDirectory', 'moduleRef', 'profileId',
-        'trackerAbsolutePath', 'trackerPath', 'workspaceFiles'].sort(),
+test('saga4 cutover: legacy prepareProcessExecutionWorkspace and ProcessExecutionWorkspace are GONE from the public surface', () => {
+  // The cutover deletes the legacy desk creator + loose interface; only the
+  // reusable helpers + the task shape survive. A future re-introduction of
+  // these symbols would re-open the silent-fallback hole D2 closed.
+  assert.equal(
+    typeof legacyWorkspace.prepareProcessExecutionWorkspace,
+    'undefined',
+    'prepareProcessExecutionWorkspace must be removed after the saga4 cutover',
+  );
+  assert.equal(
+    legacyWorkspace.ProcessExecutionWorkspace,
+    undefined,
+    'ProcessExecutionWorkspace interface must be removed (replaced by WorkplaceDesk)',
+  );
+  // The reusable helpers ARE still exported (single-source for the pinned
+  // materializer). Pin them so an accidental cleanup does not strand the
+  // pinned creator.
+  for (const helper of [
+    'parseMetadata',
+    'buildMachineBindings',
+    'fillKnownPlaceholders',
+    'refreshMarkdownMachineBindings',
+    'refreshJsonMachineBindings',
+    'materializedName',
+    'relativeWorkspacePath',
+    'recoveryFeedbackFromMetadata',
+    'reviewFeedbackFromMetadata',
+  ]) {
+    assert.equal(
+      typeof legacyWorkspace[helper],
+      'function',
+      `surviving helper ${helper} must remain exported for the pinned materializer`,
     );
-    assert.equal(result.profileId, 'discovery-proposal-worker');
-    assert.equal(result.moduleRef, 'product-discovery@3.0.2');
-  } finally {
-    rmSync(workspaceRoot, { recursive: true, force: true });
-  }
-});
-
-test('process-execution-workspace: tracker filename pattern is project-<epic>-<stage>-stage-<task>.md', () => {
-  const workspaceRoot = makeWorkspaceRootWithDiscoveryAssets();
-  try {
-    const resolved = resolveExecutionProfile('discovery.work');
-    const result = prepareProcessExecutionWorkspace({
-      workspaceRoot,
-      module: resolved.module,
-      profile: resolved.profile,
-      projectId: 7,
-      epicId: 42,
-      task: { id: 999, epic_id: 42, metadata: {} },
-      executionId: 'exec-1',
-      workerId: 'w-1',
-    });
-    // SURPRISING (§13.3): tracker is per-epic per-stage per-task — every
-    // (epic,task) pair gets its own tracker file. There is no per-run tracker
-    // rollup; a board with N tasks materializes N trackers.
-    assert.equal(path.basename(result.trackerAbsolutePath),
-      'project-42-discovery-stage-999.md');
-  } finally {
-    rmSync(workspaceRoot, { recursive: true, force: true });
-  }
-});
-
-test('process-execution-workspace: MachineBindings filled from task.metadata render into the materialized tracker', () => {
-  const workspaceRoot = makeWorkspaceRootWithDiscoveryAssets();
-  try {
-    const resolved = resolveExecutionProfile('discovery.work');
-    // Metadata may be a JSON string OR an object — the parser accepts both.
-    const metadataObject = {
-      process_run_id: 'run-1',
-      process_node_id: 'node-7',
-      work_intent_id: 'wi-3',
-      process_node_input: { bindings: { input_snapshot_hash: 'abc123' } },
-    };
-    const result = prepareProcessExecutionWorkspace({
-      workspaceRoot,
-      module: resolved.module,
-      profile: resolved.profile,
-      projectId: 7,
-      epicId: 42,
-      task: { id: 999, epic_id: 42, metadata: metadataObject },
-      executionId: 'exec-1',
-      workerId: 'w-1',
-    });
-
-    // The discovery stage tracker has a `## Machine binding` block with one
-    // `- <key>: <value>` line per binding. refreshMarkdownMachineBindings
-    // replaces each line whose key matches a known binding. The metadata-
-    // sourced values must show up there.
-    //
-    // SURPRISING (§13.3): the renderer wraps STRING values in backticks but
-    // emits NUMBERS and JSON-ARRAY values BARE. So `project_id: 7` (no ticks)
-    // vs `process_module_ref: \`product-discovery@3.0.2\`` (ticks). This makes
-    // the tracker's machine-binding block look inconsistent to a human reader
-    // but it is the locked current behavior.
-    const trackerContent = readFileSync(result.trackerAbsolutePath, 'utf8');
-    assert.match(trackerContent, /- process_module_ref: `product-discovery@3\.0\.2`/);
-    assert.match(trackerContent, /- process_run_id: `run-1`/);
-    assert.match(trackerContent, /- node_id: `node-7`/);
-    assert.match(trackerContent, /- work_intent_id: `wi-3`/);
-    assert.match(trackerContent, /- project_id: 7\r?\n/);          // number → bare
-    assert.match(trackerContent, /- epic_id: 42\r?\n/);            // number → bare
-    assert.match(trackerContent, /- task_id: 999\r?\n/);           // number → bare
-    assert.match(trackerContent, /- execution_id: `exec-1`/);
-    assert.match(trackerContent, /- worker_id: `w-1`/);
-    assert.match(trackerContent, /- input_snapshot_hash: `abc123`/);
-    // allowed_tools is JSON.stringify-ed → starts with '[' → bare (no backticks).
-    assert.match(trackerContent, /- allowed_tools: \["task_get"/);
-
-    // The JSON call file gets intent_id/task_id/execution_id overwritten via
-    // the JSON machine-binding machinery (recognized key list).
-    const callContent = readFileSync(path.join(workspaceRoot, result.callFiles[0]), 'utf8');
-    assert.match(callContent, /"intent_id": "wi-3"/);
-    assert.match(callContent, /"task_id": 999/);
-    assert.match(callContent, /"execution_id": "exec-1"/);
-
-    // No recovery feedback for this fixture.
-    assert.ok(!result.workspaceFiles.some(f => f.endsWith('recovery-feedback.json')),
-      'no recovery_feedback expected for this fixture');
-  } finally {
-    rmSync(workspaceRoot, { recursive: true, force: true });
-  }
-});
-
-test('process-execution-workspace: accepts string metadata (JSON) the same as object metadata', () => {
-  const workspaceRoot = makeWorkspaceRootWithDiscoveryAssets();
-  try {
-    const resolved = resolveExecutionProfile('discovery.work');
-    const metadataObject = {
-      process_run_id: 'run-2',
-      process_node_id: 'node-8',
-      work_intent_id: 'wi-4',
-    };
-    const result = prepareProcessExecutionWorkspace({
-      workspaceRoot,
-      module: resolved.module,
-      profile: resolved.profile,
-      projectId: 7,
-      epicId: 42,
-      task: { id: 1000, epic_id: 42, metadata: JSON.stringify(metadataObject) },
-      executionId: 'exec-2',
-      workerId: 'w-2',
-    });
-    const trackerContent = readFileSync(result.trackerAbsolutePath, 'utf8');
-    assert.match(trackerContent, /- process_run_id: `run-2`/);
-    assert.match(trackerContent, /- node_id: `node-8`/);
-  } finally {
-    rmSync(workspaceRoot, { recursive: true, force: true });
-  }
-});
-
-test('process-execution-workspace: SURPRISING — missing metadata bindings leave the {PLACEHOLDER} intact in the tracker', () => {
-  // SURPRISING (§13.3): when a metadata-sourced binding is null (absent from
-  // metadata), refreshMarkdownMachineBindings skips the line rewrite, leaving
-  // the literal `{PROCESS_RUN_ID}` placeholder in the worker-facing tracker.
-  // The worker is expected to either fill it themselves or treat it as
-  // "not applicable for this execution mode".
-  const workspaceRoot = makeWorkspaceRootWithDiscoveryAssets();
-  try {
-    const resolved = resolveExecutionProfile('discovery.work');
-    const result = prepareProcessExecutionWorkspace({
-      workspaceRoot,
-      module: resolved.module,
-      profile: resolved.profile,
-      projectId: 7,
-      epicId: 70,
-      task: { id: 4001, epic_id: 70, metadata: {} },
-      executionId: 'exec-empty',
-      workerId: 'w-empty',
-    });
-    const trackerContent = readFileSync(result.trackerAbsolutePath, 'utf8');
-    // process_run_id and node_id were not provided → placeholder survives,
-    // INCLUDING the surrounding backticks from the template literal.
-    assert.match(trackerContent, /- process_run_id: `\{PROCESS_RUN_ID\}`/);
-    assert.match(trackerContent, /- node_id: `\{NODE_ID\}`/);
-    // But path-level bindings (project_id, epic_id, task_id) ARE always filled
-    // (numbers render bare — see the binding-renderer test above).
-    assert.match(trackerContent, /- project_id: 7\r?\n/);
-    assert.match(trackerContent, /- task_id: 4001\r?\n/);
-  } finally {
-    rmSync(workspaceRoot, { recursive: true, force: true });
-  }
-});
-
-test('process-execution-workspace: performs REAL filesystem writes (tracker + tools are on disk)', () => {
-  const workspaceRoot = makeWorkspaceRootWithDiscoveryAssets();
-  try {
-    const resolved = resolveExecutionProfile('discovery.work');
-    const result = prepareProcessExecutionWorkspace({
-      workspaceRoot,
-      module: resolved.module,
-      profile: resolved.profile,
-      projectId: 7,
-      epicId: 43,
-      task: { id: 1001, epic_id: 43, metadata: {} },
-      executionId: 'exec-3',
-      workerId: 'w-3',
-    });
-    // Real fs writes happened — files exist with non-zero size.
-    const trackerStat = readFileSync(result.trackerAbsolutePath, 'utf8');
-    assert.ok(trackerStat.length > 0, 'tracker file is empty');
-    // The shared tools directory receives the proposal-checklist.md (basename only).
-    const toolChecklist = path.join(workspaceRoot, 'docs/discovery/tools/proposal-checklist.md');
-    assert.ok(existsSync(toolChecklist), 'shared tools dir checklist was not materialized');
-  } finally {
-    rmSync(workspaceRoot, { recursive: true, force: true });
-  }
-});
-
-test('process-execution-workspace: SURPRISING — shared tools dir is per-stage, NOT per-epic or per-task', () => {
-  // SURPRISING (§13.3): the path `docs/<stage>/tools/<basename>` is shared
-  // across all epics/tasks of the same stage. Two tasks with templates that
-  // share a basename would silently overwrite each other's tool copy on the
-  // SECOND task (the writer checks existsSync and skips). The existence check
-  // means the first materialization wins forever.
-  const workspaceRoot = makeWorkspaceRootWithDiscoveryAssets();
-  try {
-    const resolved = resolveExecutionProfile('discovery.work');
-
-    // First materialization writes proposal-checklist.md to docs/discovery/tools/.
-    prepareProcessExecutionWorkspace({
-      workspaceRoot,
-      module: resolved.module,
-      profile: resolved.profile,
-      projectId: 7,
-      epicId: 50,
-      task: { id: 2001, epic_id: 50, metadata: {} },
-      executionId: 'exec-a',
-      workerId: 'w-a',
-    });
-    const sharedChecklist = path.join(workspaceRoot, 'docs/discovery/tools/proposal-checklist.md');
-    const firstContent = readFileSync(sharedChecklist, 'utf8');
-
-    // Mutate the source template on disk to simulate a different content version.
-    const sourceTemplate = path.join(workspaceRoot, 'src/process-modules/modules/discovery/package/resources/proposal-checklist.md');
-    writeFileSync(sourceTemplate, '# DIFFERENT CONTENT\n');
-
-    // Second materialization for a different epic — the shared file is NOT
-    // overwritten because existsSync(sharedTarget) is true. The first write wins.
-    prepareProcessExecutionWorkspace({
-      workspaceRoot,
-      module: resolved.module,
-      profile: resolved.profile,
-      projectId: 7,
-      epicId: 51,
-      task: { id: 2002, epic_id: 51, metadata: {} },
-      executionId: 'exec-b',
-      workerId: 'w-b',
-    });
-    const secondContent = readFileSync(sharedChecklist, 'utf8');
-    assert.equal(secondContent, firstContent,
-      'shared tool dir was not first-write-wins (existence check changed)');
-  } finally {
-    rmSync(workspaceRoot, { recursive: true, force: true });
-  }
-});
-
-test('process-execution-workspace: SURPRISING — recovery_feedback in metadata triggers recovery-feedback.json write', () => {
-  // SURPRISING (§13.3): the workspace peeks into metadata.recovery_feedback
-  // (or process_node_input.bindings.recoveryFeedback) and writes a
-  // board-shaped JSON file. This is board-specific vocabulary leaking into the
-  // supposedly module-agnostic workspace service.
-  const workspaceRoot = makeWorkspaceRootWithDiscoveryAssets();
-  try {
-    const resolved = resolveExecutionProfile('discovery.work');
-    const result = prepareProcessExecutionWorkspace({
-      workspaceRoot,
-      module: resolved.module,
-      profile: resolved.profile,
-      projectId: 7,
-      epicId: 60,
-      task: {
-        id: 3001, epic_id: 60,
-        metadata: { recovery_feedback: { issue_id: 'ISSUE-1', severity: 'blocking' } },
-      },
-      executionId: 'exec-r',
-      workerId: 'w-r',
-    });
-    const recoveryFile = result.workspaceFiles.find(f => f.endsWith('recovery-feedback.json'));
-    assert.ok(recoveryFile, 'recovery-feedback.json was not added to workspaceFiles');
-    const recovery = JSON.parse(readFileSync(path.join(workspaceRoot, recoveryFile), 'utf8'));
-    assert.deepEqual(recovery, { issue_id: 'ISSUE-1', severity: 'blocking' });
-  } finally {
-    rmSync(workspaceRoot, { recursive: true, force: true });
   }
 });
 

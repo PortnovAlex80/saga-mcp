@@ -29,6 +29,10 @@ function createBuiltInProcessModuleRegistry() {
 const { discoveryToFormalizationLifecycle } = await import(
   '../../dist/process-modules/lifecycles/product-delivery-lifecycle.js'
 );
+const { DISCOVERY_PROCESS_MODULE_REF } = await import(
+  '../../dist/process-modules/modules/discovery/discovery-process-module.js'
+);
+const DISCOVERY_MODULE_REF = DISCOVERY_PROCESS_MODULE_REF;
 const { routeProcessOutcome, validateLifecycleDefinition } = await import(
   '../../dist/process-modules/application/lifecycle-router.js'
 );
@@ -216,15 +220,91 @@ test('lifecycle mapping rejects prototype-mutating target paths', () => {
       {},
       mappingRuntime,
     ),
-    /LIFECYCLE_MAPPING_INVALID_TARGET/,
-  );
+      /LIFECYCLE_MAPPING_INVALID_TARGET/,
+    );
   assert.throws(
     () => mapLifecycleValues(
       { 'constructor.prototype.polluted': { literal: true } },
       {},
       mappingRuntime,
     ),
-    /LIFECYCLE_MAPPING_INVALID_TARGET/,
-  );
+      /LIFECYCLE_MAPPING_INVALID_TARGET/,
+    );
   assert.equal({}.polluted, undefined);
+});
+
+// --- Phase 4 / F1: stages must be reachable from the entry stage ---
+
+test('F1: validator rejects a stage that is unreachable from the entry stage', () => {
+  const broken = structuredClone(discoveryToFormalizationLifecycle);
+  // Append an orphan stage no outcome route ever targets. It references the
+  // discovery module so the moduleRef check passes; only reachability fails.
+  broken.stages.push({
+    id: 'orphan-stage',
+    displayName: 'Orphan',
+    moduleRef: DISCOVERY_MODULE_REF,
+    inputMapping: { subject: '$.initiative.subject' },
+    outcomeRoutes: {
+      go: { type: 'terminal', status: 'orphan-done' },
+    },
+    entryConditions: [],
+    exitConditions: [],
+  });
+
+  const validation = validateLifecycleDefinition(broken, registry);
+  assert.equal(validation.valid, false);
+  assert.match(
+    validation.errors.join('\n'),
+    /stage 'orphan-stage' is unreachable from entry stage/,
+  );
+});
+
+test('F1: validator still passes the built-in product-delivery lifecycle (all reachable)', () => {
+  const validation = validateLifecycleDefinition(discoveryToFormalizationLifecycle, registry);
+  assert.equal(validation.valid, true, validation.errors.join('\n'));
+  const reachabilityError = validation.errors
+    .find(error => /is unreachable from entry stage/.test(error));
+  assert.equal(reachabilityError, undefined);
+});
+
+// --- Phase 4 / F2: inputMapping must reference stages that exist ---
+
+test('F2: validator rejects an inputMapping referencing an unknown stage', () => {
+  const broken = structuredClone(discoveryToFormalizationLifecycle);
+  const formalization = broken.stages.find(stage => stage.id === 'solution-formalization');
+  assert.ok(formalization);
+  // Point discoveryCertificateRef at a stage id that does not exist.
+  formalization.inputMapping.discoveryCertificateRef =
+    '$.stages.nonexistent-discovery.certificate.ref';
+
+  const validation = validateLifecycleDefinition(broken, registry);
+  assert.equal(validation.valid, false);
+  assert.match(
+    validation.errors.join('\n'),
+    /inputMapping references unknown stage 'nonexistent-discovery'/,
+  );
+});
+
+test('F2: validator accepts an inputMapping referencing an existing stage', () => {
+  const validation = validateLifecycleDefinition(discoveryToFormalizationLifecycle, registry);
+  const refError = validation.errors
+    .find(error => /inputMapping references unknown stage/.test(error));
+  assert.equal(refError, undefined, validation.errors.join('\n'));
+  assert.equal(validation.valid, true);
+});
+
+test('F2: validator ignores literal and runtime mappings (no stage references)', () => {
+  // A stage whose inputMapping uses only literal/runtime expressions must not
+  // produce any unknown-stage error, even though it has no $.stages.* path.
+  const broken = structuredClone(discoveryToFormalizationLifecycle);
+  const discovery = broken.stages.find(stage => stage.id === 'initial-discovery');
+  assert.ok(discovery);
+  discovery.inputMapping = {
+    projectId: { runtime: 'projectId' },
+    schemaVersion: { literal: 'saga3.case.v1' },
+  };
+  const validation = validateLifecycleDefinition(broken, registry);
+  const refError = validation.errors
+    .find(error => /inputMapping references unknown stage/.test(error));
+  assert.equal(refError, undefined);
 });

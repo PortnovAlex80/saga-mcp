@@ -50,7 +50,23 @@ export interface LifecycleDefinition {
   identity: LifecycleIdentity;
   entryStageId: string;
   stages: readonly StageBinding[];
+  /**
+   * F3: maximum number of stage transitions a single lifecycle run may make
+   * before the orchestrator declares the run failed. Guards against a cycle in
+   * the declarative routing table (or a self-looping recovery policy) spinning
+   * forever. Defaults to {@link DEFAULT_MAX_TRANSITIONS} when omitted. The
+   * orchestrator counts one transition per loop iteration of its run.
+   */
+  maxTransitions?: number;
 }
+
+/**
+ * Default transition budget for a lifecycle run when the definition omits
+ * {@link LifecycleDefinition.maxTransitions}. Chosen generously above the
+ * realistic longest DAG (product-delivery has 4 stages) so legitimate lifecycles
+ * never hit it, while an accidental cycle is bounded.
+ */
+export const DEFAULT_MAX_TRANSITIONS = 100;
 
 export interface LifecycleRouteResult {
   stageId: string;

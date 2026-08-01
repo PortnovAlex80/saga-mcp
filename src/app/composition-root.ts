@@ -110,12 +110,24 @@ export function createSaga2Application(
   };
   const packageInstallation = overrides.modulePackages
     ?? overrides.productLifecycle?.packageInstallation;
+  // saga4 cutover (LEGO-CONTRACTS.md §"Слой 1: СТОЛ"): the legacy unpinned
+  // Claude worker factory is GONE — the only legal desk creator is
+  // `materializePinnedWorkspace`, which resolves from an immutable package
+  // snapshot. A missing packageInstallation is now a configuration error
+  // (e.g. tests that did not wire `modulePackages`/`productLifecycle`).
+  // Callers may still inject `overrides.workerExecutorFactory` to bypass.
   const workerExecutorFactory = overrides.workerExecutorFactory
     ?? (packageInstallation
       ? createPinnedWorkerFactory(persistence, packageInstallation)
-      : createLegacyClaudeWorkerExecutorFactory({
-        modelRouteReader: epicId => persistence.episodes.readWorkerModelRoute(epicId),
-      }));
+      : (() => {
+        throw new Error(
+          'PACKAGE_INSTALLATION_REQUIRED: createSaga2Application did not receive '
+          + 'overrides.modulePackages or overrides.productLifecycle.packageInstallation. '
+          + 'After the saga4 cutover every Process Module execution resolves its '
+          + 'WorkplaceDesk from an immutable pinned package snapshot; the legacy '
+          + 'unpinned worker factory has been removed.',
+        );
+      })());
   const host = overrides.host ?? new NodeSaga2HostRuntime({
     workerPaths: config.orchestrationLogRoot
       ? {
