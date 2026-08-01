@@ -16,10 +16,6 @@
 //   4. Hook security: the structured context hook reads agent-assistance.json
 //      (not Markdown), is bounded + deduped, and untrusted error text never
 //      escapes into shell output (C031/C032/C033, W5-A5).
-//   5. Context budget: agent-assistance blocks are bounded + deduped by state
-//      version (C033, W5-A4).
-//   6. Weak-model assistance: the rendered snapshot is bounded + ordered so a
-//      weak model always sees the next action first (W5-A4).
 //   Plus (gate items 6 + 7):
 //   - Reviewer skill resolved separately from the author skill (§13.18, W5-A6).
 //   - Agent builtins separated from MCP tool grants (C067, W5-A7).
@@ -160,14 +156,12 @@ function sampleAssistanceDefinition(overrides = {}) {
 //            ensureSaga3CallInstanceSchema, CallInstanceState constants
 //   W5-A3: application/tracker-renderer.ts
 //          → renderTracker, TrackerRenderer
-//   W5-A4: application/agent-assistance-renderer.ts
-//          → renderAssistanceSnapshot, AgentAssistanceSnapshot
 //   W5-A5: tracker-view/structured-context-hook.mjs
 //   W5-A6: tracker-view/claude-runner.mjs (EDIT) — AgentLaunchSpec integration
 //   W5-A7: application/capability-enforcement.ts
 //          → enforceCapabilitySet, EffectiveCapabilitySet
 
-/** @typedef {{ a1?: any, a2?: any, a3?: any, a4?: any, a5?: any, a7?: any }} Wave5Surface */
+/** @typedef {{ a1?: any, a2?: any, a3?: any, a5?: any, a7?: any }} Wave5Surface */
 
 async function tryImport(specifier) {
   try {
@@ -186,7 +180,7 @@ async function tryImport(specifier) {
  * @returns {Promise<Wave5Surface>}
  */
 async function loadWave5Surface() {
-  const out = { a1: null, a2: null, a3: null, a4: null, a5: null, a7: null };
+  const out = { a1: null, a2: null, a3: null, a5: null, a7: null };
 
   // W5-A1 — WorkspaceProjection (pinned package resources).
   const a1 = await tryImport('../../dist/process-modules/application/workspace-projection.js');
@@ -211,12 +205,6 @@ async function loadWave5Surface() {
   const a3 = await tryImport('../../dist/process-modules/application/tracker-renderer.js');
   if (a3 && (typeof a3.renderTracker === 'function' || a3.TrackerRenderer)) {
     out.a3 = a3;
-  }
-
-  // W5-A4 — AgentAssistanceRenderer.
-  const a4 = await tryImport('../../dist/process-modules/application/agent-assistance-renderer.js');
-  if (a4 && (typeof a4.renderAssistanceSnapshot === 'function' || a4.AgentAssistanceSnapshot)) {
-    out.a4 = a4;
   }
 
   // W5-A5 — structured-context-hook.mjs (a CLI hook, not a dist module).
@@ -607,97 +595,6 @@ test('sibling/tracker-renderer: deterministic — same state yields byte-identic
   const a = renderTracker(protocolRun, stepRuns, moduleDef);
   const b = renderTracker(protocolRun, stepRuns, moduleDef);
   assert.equal(a, b, 'renderTracker must be a pure deterministic projection');
-});
-
-// --- §5 Context budget + §6 Weak-model assistance (W5-A4) ------------------
-
-test('sibling/assistance-renderer: snapshot bounded by maxBlocksPerEvent (C033)', async (t) => {
-  const surface = await loadWave5Surface();
-  if (!surface.a4) {
-    t.diagnostic(skipReason(surface, 'W5-A4'));
-    t.skip();
-    return;
-  }
-  const { renderAssistanceSnapshot } = surface.a4;
-  assert.equal(typeof renderAssistanceSnapshot, 'function', 'A4 must export renderAssistanceSnapshot');
-
-  // Definition declares 5 blocks for step-enter but budgets maxBlocksPerEvent=3.
-  const definition = sampleAssistanceDefinition({
-    events: [
-      {
-        event: 'step-enter',
-        blocks: [
-          { kind: 'goal', content: 'g' },
-          { kind: 'current-step', content: 's' },
-          { kind: 'next-action', content: 'n' },
-          { kind: 'completion-criteria', content: 'c' },
-          { kind: 'resource-path', content: 'r' },
-        ],
-      },
-    ],
-    budgets: { maxBlocksPerEvent: 3 },
-  });
-  const snapshot = renderAssistanceSnapshot(
-    activeProtocolRun(),
-    definition,
-    'step-enter',
-  );
-  const blocks = snapshot.blocks ?? snapshot.renderedBlocks ?? [];
-  assert.ok(
-    Array.isArray(blocks) && blocks.length <= 3,
-    `C033: rendered blocks must be bounded by maxBlocksPerEvent=3, got ${blocks.length}`,
-  );
-});
-
-test('sibling/assistance-renderer: dedups by state version — same state re-rendered is identical (C033)', async (t) => {
-  const surface = await loadWave5Surface();
-  if (!surface.a4) {
-    t.diagnostic(skipReason(surface, 'W5-A4'));
-    t.skip();
-    return;
-  }
-  const { renderAssistanceSnapshot } = surface.a4;
-  const definition = sampleAssistanceDefinition();
-  const run = activeProtocolRun();
-  const a = renderAssistanceSnapshot(run, definition, 'step-enter');
-  const b = renderAssistanceSnapshot(run, definition, 'step-enter');
-  // C033 dedup: the snapshot for the SAME ProtocolRun state is structurally
-  // equal — repeated hooks do not produce divergent content.
-  assert.deepEqual(a, b, 'same state must render identical snapshots (dedup by state version)');
-});
-
-test('sibling/assistance-renderer: weak-model order — next-action surfaces the immediate action', async (t) => {
-  const surface = await loadWave5Surface();
-  if (!surface.a4) {
-    t.diagnostic(skipReason(surface, 'W5-A4'));
-    t.skip();
-    return;
-  }
-  const { renderAssistanceSnapshot } = surface.a4;
-  const definition = sampleAssistanceDefinition({
-    mode: 'guided',
-    events: [
-      {
-        event: 'step-enter',
-        blocks: [
-          { kind: 'goal', content: 'Produce the discovery proposal.' },
-          { kind: 'current-step', content: 'draft' },
-          { kind: 'next-action', content: 'Call proposal_submit with the canonical payload.' },
-        ],
-      },
-    ],
-  });
-  const snapshot = renderAssistanceSnapshot(
-    activeProtocolRun(),
-    definition,
-    'step-enter',
-  );
-  // A weak model needs the immediate action surfaced. The snapshot must be
-  // serializable (the hook writes agent-assistance.json) and bounded.
-  const json = JSON.stringify(snapshot);
-  assert.ok(json.includes('proposal_submit'), 'next-action content must be present');
-  // agent-assistance.json contract: the snapshot must round-trip through JSON.
-  assert.deepEqual(JSON.parse(json), snapshot);
 });
 
 // --- §4 Hook security (W5-A5) ----------------------------------------------

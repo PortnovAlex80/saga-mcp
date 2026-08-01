@@ -1,13 +1,8 @@
 import {
   appendFileSync,
-  closeSync,
   existsSync,
   mkdirSync,
-  openSync,
   readFileSync,
-  readdirSync,
-  readSync,
-  statSync,
   unlinkSync,
   writeFileSync,
 } from 'node:fs';
@@ -20,10 +15,6 @@ import type {
   Saga2HostRuntime,
   Saga2WorkerRuntimePaths,
 } from '../../application/ports/saga2-host-runtime.js';
-import type { RateLimitTaskProjection } from '../../application/ports/saga2-runtime-persistence.js';
-
-const RATE_LIMIT_LOG_TAIL_BYTES = 8192;
-const RATE_LIMIT_PATTERN = /api_retry[^\n]*"error_status":429[^\n]*"error":"rate_limit"/;
 
 export interface NodeSaga2HostRuntimeOptions {
   processId?: number;
@@ -141,37 +132,6 @@ export class NodeSaga2HostRuntime implements Saga2HostRuntime {
     }
   }
 
-  scanRateLimitSignals(
-    context: Saga2HostContext,
-    tasks: readonly RateLimitTaskProjection[],
-  ): number {
-    let rateLimited = 0;
-    for (const task of tasks) {
-      const logPath = this.resolveWorkerLogPath(
-        task.id,
-        task.assigned_to,
-        context.projectId,
-      );
-      if (!logPath || !existsSync(logPath)) continue;
-      try {
-        const stat = statSync(logPath);
-        const tailBytes = Math.min(stat.size, RATE_LIMIT_LOG_TAIL_BYTES);
-        if (tailBytes <= 0) continue;
-        const fd = openSync(logPath, 'r');
-        try {
-          const buffer = Buffer.alloc(tailBytes);
-          readSync(fd, buffer, 0, tailBytes, Math.max(0, stat.size - tailBytes));
-          if (RATE_LIMIT_PATTERN.test(buffer.toString('utf8'))) rateLimited += 1;
-        } finally {
-          closeSync(fd);
-        }
-      } catch {
-        // A concurrently rotating/missing log is simply absent telemetry.
-      }
-    }
-    return rateLimited;
-  }
-
   private lockFile(context: Saga2HostContext): string {
     return path.join(
       this.homeDirectory,
@@ -179,32 +139,5 @@ export class NodeSaga2HostRuntime implements Saga2HostRuntime {
       'cli',
       `engine-${context.projectId}-${context.epicId}.pid`,
     );
-  }
-
-  private resolveWorkerLogPath(
-    taskId: number,
-    workerId: string,
-    projectId: number,
-  ): string | null {
-    const logRoot = this.workerPaths.logRoot
-      ?? path.join(this.homeDirectory, '.zcode', 'cli', 'board-runs');
-    const safeWorker = workerId.replace(/[^a-zA-Z0-9._-]+/g, '-');
-    const fileName = `task-${taskId}-${safeWorker}.jsonl`;
-    try {
-      const directories = readdirSync(logRoot)
-        .filter(directory => directory.startsWith(`board-${projectId}-`))
-        .map(directory => ({
-          full: path.join(logRoot, directory),
-          mtime: statSync(path.join(logRoot, directory)).mtimeMs,
-        }))
-        .sort((left, right) => right.mtime - left.mtime);
-      for (const directory of directories) {
-        const candidate = path.join(directory.full, fileName);
-        if (existsSync(candidate)) return candidate;
-      }
-    } catch {
-      // Missing/rotating log root means no rate-limit telemetry for this task.
-    }
-    return null;
   }
 }

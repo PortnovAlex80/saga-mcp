@@ -74,19 +74,12 @@ test('runtime config preserves defaults and environment precedence', () => {
   assert.throws(() => loadSagaRuntimeConfig({}), /DB_PATH env var is required/);
 });
 
-test('Node Saga2 host runtime owns lock, heartbeat and rate-limit telemetry', () => {
+test('Node Saga2 host runtime owns lock and heartbeat', () => {
   const temp = mkdtempSync(path.join(os.tmpdir(), 'saga-host-runtime-'));
   const context = { projectId: 1, epicId: 2 };
   const cliRoot = path.join(temp, '.zcode', 'cli');
   const lockPath = path.join(cliRoot, 'engine-1-2.pid');
-  const runDir = path.join(cliRoot, 'board-runs', 'board-1-100');
-  mkdirSync(runDir, { recursive: true });
   writeFileSync(lockPath, '999', 'utf8');
-  writeFileSync(
-    path.join(runDir, 'task-7-worker-1.jsonl'),
-    JSON.stringify({ type: 'api_retry', error_status: 429, error: 'rate_limit' }) + '\n',
-    'utf8',
-  );
 
   try {
     const host = new NodeSaga2HostRuntime({
@@ -105,7 +98,6 @@ test('Node Saga2 host runtime owns lock, heartbeat and rate-limit telemetry', ()
     const heartbeat = readFileSync(path.join(cliRoot, 'engine-heartbeat.log'), 'utf8');
     assert.match(heartbeat, /2026-07-23T01:02:03.000Z engine project=1 epic=2 CYCLE stage=development/);
 
-    assert.equal(host.scanRateLimitSignals(context, [{ id: 7, assigned_to: 'worker-1' }]), 1);
     host.releaseEngineLock(context);
     assert.equal(existsSync(lockPath), false);
   } finally {
@@ -597,7 +589,6 @@ test('composition root selects the engine through the real wiring, not a source 
         heartbeat: (_ctx, event, msg) => heartbeats.push([event, msg]),
         acquireEngineLock: () => ({ status: 'duplicate', ownerPid: 888 }),
         releaseEngineLock: () => { throw new Error('duplicate run must not release another owner lock'); },
-        scanRateLimitSignals: () => 0,
       },
     }),
     board: { listProjects: () => [], loadProjectBoard: () => ({ epics: [], epicById: {}, tasks: [] }) },
@@ -641,7 +632,6 @@ test('composition root throws PRODUCT_LIFECYCLE_DEPENDENCIES_REQUIRED without pr
           heartbeat: () => {},
           acquireEngineLock: () => ({ status: 'acquired', ownerPid: 7 }),
           releaseEngineLock: () => {},
-          scanRateLimitSignals: () => 0,
         },
         persistence: {
           episodes: {}, tasks: {}, executions: {}, workspaces: {},

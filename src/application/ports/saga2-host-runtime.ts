@@ -1,5 +1,3 @@
-import type { RateLimitTaskProjection } from './saga2-runtime-persistence.js';
-
 export interface Saga2HostContext {
   projectId: number;
   epicId: number;
@@ -34,9 +32,4 @@ export interface Saga2HostRuntime {
 
   acquireEngineLock(context: Saga2HostContext): EngineLockAcquisition;
   releaseEngineLock(context: Saga2HostContext): void;
-
-  scanRateLimitSignals(
-    context: Saga2HostContext,
-    tasks: readonly RateLimitTaskProjection[],
-  ): number;
 }
