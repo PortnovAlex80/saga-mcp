@@ -19,7 +19,7 @@
 
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
   createSaga2Application,
   type ProductLifecycleCompositionOverrides,
@@ -178,18 +178,56 @@ async function main() {
         ) as unknown
         : undefined;
     application = createSaga2Application(process.env, overrides);
-    const result = await application.runEpisode({
-      projectId,
-      epicId,
-      concurrency,
-      lifecycleInput,
-      lifecycleInputSchema: lifecycleInput === undefined
-        ? undefined
-        : 'saga3.product-delivery-lifecycle-input.v2',
-      idempotencyKey: idempotencyKey ?? undefined,
-      resumePaused,
-      initiatedBy: process.env.SAGA_INITIATED_BY ?? 'orchestrate-cli',
-    });
+
+    // CGAD P18 — Conveyor dispatch loop. The CLI is the factory operator: it
+    // runs the lifecycle (which pauses when a module waits for kanban tasks to
+    // drain), then distributes queued tasks to workers, then resumes. Repeat
+    // until the lifecycle reaches a terminal state (completed/failed) or no
+    // more tasks remain to dispatch.
+    let lastResult: Awaited<ReturnType<SagaApplication['runEpisode']>> | null = null;
+    let isFirstCycle = true;
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      const result = await application.runEpisode({
+        projectId,
+        epicId,
+        concurrency,
+        lifecycleInput: isFirstCycle ? lifecycleInput : undefined,
+        lifecycleInputSchema: isFirstCycle && lifecycleInput !== undefined
+          ? 'saga3.product-delivery-lifecycle-input.v2'
+          : undefined,
+        idempotencyKey: idempotencyKey ?? undefined,
+        resumePaused: !isFirstCycle || resumePaused,
+        initiatedBy: process.env.SAGA_INITIATED_BY ?? 'orchestrate-cli',
+      });
+      lastResult = result;
+      isFirstCycle = false;
+      process.stdout.write(`[orchestrate-cli] cycle: ${JSON.stringify({ reason: result.reason, stage: result.finalStage })}\n`);
+
+      // Terminal — lifecycle finished (completed/failed/stopped).
+      if (result.reason !== 'paused') break;
+
+      // Paused — the lifecycle is waiting for kanban tasks (impl/verify) to drain.
+      // Distribute them to workers, then resume.
+      const { distributeQueuedTasks } = await import('./app/dispatch-loop.js');
+      const sagaEntry = path.resolve(path.dirname(fileURLToPath(import.meta.url)), 'index.js');
+      const claudePath = process.env.SAGA_CLAUDE_PATH ?? 'claude';
+      const dispatched = await distributeQueuedTasks({
+        projectId,
+        epicId,
+        concurrency,
+        claudePath,
+        sagaEntry,
+        dbPath: process.env.DB_PATH,
+      });
+      if (dispatched === 0) {
+        // No tasks to dispatch but lifecycle still paused — stuck (needs-human or
+        // unresolved). Don't loop forever.
+        process.stdout.write('[orchestrate-cli] paused with empty queue — stopping\n');
+        break;
+      }
+    }
+    const result = lastResult!;
     process.stdout.write(`[orchestrate-cli] done: ${JSON.stringify(result)}\n`);
     process.exit(result.reason === 'failed' ? 1 : 0);
   } catch (err) {
