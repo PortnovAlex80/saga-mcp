@@ -155,6 +155,7 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
     nodeInputHash: string;
     projectRepositoryId?: number | null;
     managedReviewBudget?: number | null;
+    recoveryFeedback?: unknown;
   }): void {
     const db = getDb();
     const row = db.prepare(
@@ -177,6 +178,16 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
       process_node_input: input.nodeInput,
       process_node_input_hash: input.nodeInputHash,
     };
+    // CGAD P18 — recovery_feedback is a SEPARATE metadata field, not inside
+    // process_node_input (which is stripped for hash stability). The materializer
+    // reads metadata.recovery_feedback to write recovery-feedback.json.
+    if (input.recoveryFeedback !== undefined) {
+      bindings.recovery_feedback = input.recoveryFeedback;
+    } else if (metadata.recovery_feedback !== undefined) {
+      // Clear stale feedback from a prior recovery when the current execution
+      // is NOT a recovery cycle (worker re-entered normally).
+      bindings.recovery_feedback = null;
+    }
     // project_repository_id is a project-level constant (resolved from
     // tasks.project_repository_id). Stamp it into task.metadata so the worker
     // can pass it to artifact_create / artifact_update, which require it to

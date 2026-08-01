@@ -92,6 +92,7 @@ export interface Saga3DiscoveryRuntimePersistence {
     nodeInputHash: string;
     projectRepositoryId?: number | null;
     managedReviewBudget?: number | null;
+    recoveryFeedback?: unknown;
   }): void;
 
   /**

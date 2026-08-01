@@ -130,6 +130,8 @@ export interface LmNodeExecutionPersistence {
     projectRepositoryId?: number | null;
     /** Optional generic reviewer-correction budget. */
     managedReviewBudget?: number | null;
+    /** CGAD P18 — recovery feedback for the repair worker (separate field). */
+    recoveryFeedback?: unknown;
   }): void;
 
   setIntentStatus(
@@ -443,6 +445,11 @@ export class LmNodeExecutor implements NodeExecutor {
         managedReviewBudget: profile.reviewSkill
           ? profile.retryPolicy.maxAttempts
           : null,
+        // CGAD P18 — recovery feedback travels in its own metadata field
+        // (recovery_feedback), NOT inside process_node_input (which is stripped
+        // for hash stability). Without this, the materializer cannot write
+        // recovery-feedback.json and the repair worker arrives blind.
+        recoveryFeedback: finalBinding.recovery_feedback ?? undefined,
       });
 
       // 3. Prepare (CAS open→executing guard) — handles resume of a stale fence.
