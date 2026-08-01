@@ -212,13 +212,11 @@ function readModelRouteAtClaim(
   db: Database.Database,
   epicId: number,
 ): { provider: string; model: string | null; effort: string | null } {
-  const ew = db.prepare(
-    `SELECT json_extract(metadata, '$.active_model') AS m,
-            json_extract(metadata, '$.active_provider') AS p,
-            json_extract(metadata, '$.active_model_effort') AS e
-       FROM episode_workflows WHERE epic_id=?`,
+  const row = db.prepare(
+    `SELECT model_name AS m, model_provider AS p, model_effort AS e
+       FROM lifecycle_execution_controls WHERE epic_id=?`,
   ).get(epicId) as { m: string | null; p: string | null; e: string | null } | undefined;
-  return { model: ew?.m ?? null, provider: ew?.p ?? 'zai', effort: ew?.e ?? null };
+  return { model: row?.m ?? null, provider: row?.p ?? 'zai', effort: row?.e ?? null };
 }
 
 /**

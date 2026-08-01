@@ -107,9 +107,8 @@ export class SqliteEpisodeRuntimeRepository implements EpisodeRuntimeRepository 
 
   readTargetConcurrency(epicId: number, fallbackConcurrency: number): number {
     const row = getDb().prepare(
-      `SELECT json_extract(metadata, '$.engine_concurrency') AS c,
-              json_extract(metadata, '$.active_model_limit') AS lim
-       FROM episode_workflows WHERE epic_id=?`,
+      `SELECT concurrency AS c, model_concurrency_limit AS lim
+       FROM lifecycle_execution_controls WHERE epic_id=?`,
     ).get(epicId) as { c: number | null; lim: number | null } | undefined;
     const engineConcurrency = typeof row?.c === 'number' && row.c >= 1 && row.c <= 10
       ? row.c
@@ -125,10 +124,8 @@ export class SqliteEpisodeRuntimeRepository implements EpisodeRuntimeRepository 
   readWorkerModelRoute(epicId: number | null): WorkerModelRoute {
     if (!epicId) return { model: null, provider: 'zai', effort: null };
     const row = getDb().prepare(
-      `SELECT json_extract(metadata, '$.active_model') AS m,
-              json_extract(metadata, '$.active_provider') AS p,
-              json_extract(metadata, '$.active_model_effort') AS e
-       FROM episode_workflows WHERE epic_id=?`,
+      `SELECT model_name AS m, model_provider AS p, model_effort AS e
+       FROM lifecycle_execution_controls WHERE epic_id=?`,
     ).get(epicId) as {
       m: string | null;
       p: string | null;

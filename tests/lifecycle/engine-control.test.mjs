@@ -46,38 +46,81 @@ repositories.repository_register({ project_id: product.id, name: 'r', local_path
 const epic = epics.epic_create({ project_id: product.id, name: 'E' });
 const epicId = epic.id;
 
-// Seed an episode_workflows row (it's normally created by saga-orchestrator).
+// saga4: seed both tables. lifecycle_execution_controls is now the source of
+// truth for engine state (write directly rather than relying on the
+// episode_workflows backfill migration, which has already run by the time we
+// get here on this fresh DB and so would NOT pick up an epic inserted after
+// getDb()). episode_workflows is kept only to carry model metadata
+// (active_model) for the roundtrip test below.
 getDb().prepare(
   `INSERT INTO episode_workflows (epic_id, stage, metadata) VALUES (?, 'planning', '{}')`,
+).run(epicId);
+getDb().prepare(
+  `INSERT INTO lifecycle_execution_controls (epic_id, engine_state) VALUES (?, 'stopped')`,
 ).run(epicId);
 
 // --- Direct metadata helper tests (mirror the tracker-view helpers) -------
 // tracker-view.mjs doesn't export its helpers, so we re-implement the
 // read/write against the same schema to verify the contract end-to-end.
 
+// saga4: engine state now lives in lifecycle_execution_controls (not
+// episode_workflows.metadata). Mirrors LegacyEngineAdministration.readPersisted.
 function readEngineStateDirect(epicId) {
   const row = getDb().prepare(
-    `SELECT json_extract(metadata, '$.engine_running')    AS running,
-            json_extract(metadata, '$.engine_pid')         AS pid,
-            json_extract(metadata, '$.engine_concurrency') AS concurrency,
-            json_extract(metadata, '$.engine_started_at') AS started_at
-       FROM episode_workflows WHERE epic_id=?`,
+    `SELECT engine_state, engine_pid, concurrency, started_at
+       FROM lifecycle_execution_controls WHERE epic_id=?`,
   ).get(epicId);
+  if (!row) return { running: false, pid: null, concurrency: null, started_at: null };
   return {
-    running: row?.running === 1 || row?.running === true,
-    pid: row?.pid ?? null,
-    concurrency: row?.concurrency ?? null,
-    started_at: row?.started_at ?? null,
+    running: row.engine_state === 'running',
+    pid: row.engine_pid,
+    concurrency: row.concurrency,
+    started_at: row.started_at,
   };
 }
 
+// saga4: engine fields route to lifecycle_execution_controls columns; model
+// fields (active_model*) stay in episode_workflows.metadata (the tracker-view
+// /api/model/set endpoint has not moved yet). Mirrors the column mapping in
+// LegacyEngineAdministration.upsertControl. engine_state must be one of
+// 'running' | 'stopped' | 'unknown' — never 0/1 (CHECK constraint).
 function setEngineMetaDirect(epicId, patch) {
-  const current = getDb().prepare('SELECT metadata FROM episode_workflows WHERE epic_id=?').get(epicId);
-  const meta = JSON.parse(current?.metadata || '{}');
-  for (const k of Object.keys(patch)) meta[k] = patch[k];
-  getDb().prepare(
-    `UPDATE episode_workflows SET metadata=?, updated_at=datetime('now') WHERE epic_id=?`,
-  ).run(JSON.stringify(meta), epicId);
+  const controlPatch = {};
+  const metaPatch = {};
+  for (const [k, v] of Object.entries(patch)) {
+    if (k === 'engine_running') {
+      controlPatch.engine_state = v === 1 || v === true ? 'running' : 'stopped';
+    } else if (k === 'engine_pid') {
+      controlPatch.engine_pid = v;
+    } else if (k === 'engine_concurrency') {
+      controlPatch.concurrency = v;
+    } else if (k === 'engine_started_at') {
+      controlPatch.started_at = v;
+    } else {
+      // Non-engine keys (e.g. active_model) still ride in episode_workflows.
+      metaPatch[k] = v;
+    }
+  }
+
+  if (Object.keys(controlPatch).length) {
+    const cols = Object.keys(controlPatch);
+    const sets = cols.map(c => `${c}=@${c}`);
+    const params = { ...controlPatch, epic_id: epicId };
+    getDb().prepare(
+      `INSERT INTO lifecycle_execution_controls (epic_id, ${cols.join(', ')})
+       VALUES (@epic_id, ${cols.map(c => `@${c}`).join(', ')})
+       ON CONFLICT(epic_id) DO UPDATE SET ${sets.join(', ')}, updated_at=datetime('now')`,
+    ).run(params);
+  }
+
+  if (Object.keys(metaPatch).length) {
+    const cur = getDb().prepare('SELECT metadata FROM episode_workflows WHERE epic_id=?').get(epicId);
+    const meta = JSON.parse(cur?.metadata || '{}');
+    for (const k of Object.keys(metaPatch)) meta[k] = metaPatch[k];
+    getDb().prepare(
+      `UPDATE episode_workflows SET metadata=?, updated_at=datetime('now') WHERE epic_id=?`,
+    ).run(JSON.stringify(meta), epicId);
+  }
 }
 
 test('engine-state: fresh episode has running=false', () => {
@@ -109,7 +152,9 @@ test('engine-state: flag survives across metadata roundtrips (no key loss)', () 
   const s = readEngineStateDirect(epicId);
   assert.equal(s.running, true, 'running flag preserved after later writes');
   assert.equal(s.concurrency, 4, 'concurrency preserved');
-  // And the model-set path's key is still there.
+  // And the model-set path's key is still there. active_model still lives in
+  // episode_workflows.metadata (only engine_* fields migrated to
+  // lifecycle_execution_controls), so we read it back from there.
   const meta = JSON.parse(getDb().prepare('SELECT metadata FROM episode_workflows WHERE epic_id=?').get(epicId).metadata);
   assert.equal(meta.active_model, 'glm-5.2');
 });

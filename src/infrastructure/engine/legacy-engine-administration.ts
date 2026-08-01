@@ -107,11 +107,11 @@ export class LegacyEngineAdministration implements EngineAdministration {
       );
       child.unref();
       const startedAt = this.timestamp();
-      this.setMeta(command.epicId, {
-        engine_running: 1,
+      this.upsertControl(command.epicId, {
+        engine_state: 'running',
         engine_pid: child.pid ?? null,
-        engine_concurrency: concurrency,
-        engine_started_at: startedAt,
+        concurrency,
+        started_at: startedAt,
       });
       return {
         projectId,
@@ -133,9 +133,9 @@ export class LegacyEngineAdministration implements EngineAdministration {
   stop(epicId: number): EngineStateSnapshot {
     const projectId = this.projectIdForEpic(epicId);
     this.killEngineTree(projectId, epicId);
-    this.setMeta(epicId, {
-      engine_running: 0,
-      engine_stopped_at: this.timestamp(),
+    this.upsertControl(epicId, {
+      engine_state: 'stopped',
+      stopped_at: this.timestamp(),
     });
     const persisted = this.readPersisted(epicId);
     return {
@@ -161,9 +161,9 @@ export class LegacyEngineAdministration implements EngineAdministration {
       );
     }
     const projectId = this.projectIdForEpic(epicId);
-    this.setMeta(epicId, {
-      engine_concurrency: concurrency,
-      engine_concurrency_changed_at: this.timestamp(),
+    this.upsertControl(epicId, {
+      concurrency,
+      concurrency_changed_at: this.timestamp(),
     });
     const persisted = this.readPersisted(epicId);
     return {
@@ -182,7 +182,7 @@ export class LegacyEngineAdministration implements EngineAdministration {
     const persisted = this.readPersisted(epicId);
     const alive = this.isEngineAlive(projectId, epicId);
     if (persisted.running && !alive) {
-      this.setMeta(epicId, { engine_running: 0 });
+      this.upsertControl(epicId, { engine_state: 'stopped' });
       persisted.running = false;
     }
     return {
@@ -218,38 +218,42 @@ export class LegacyEngineAdministration implements EngineAdministration {
   private readPersisted(epicId: number): PersistedEngineState {
     return this.withDb(db => {
       const row = db.prepare(
-        `SELECT json_extract(metadata, '$.engine_running') AS running,
-                json_extract(metadata, '$.engine_pid') AS pid,
-                json_extract(metadata, '$.engine_concurrency') AS concurrency,
-                json_extract(metadata, '$.engine_started_at') AS started_at
-           FROM episode_workflows WHERE epic_id=?`,
+        `SELECT engine_state, engine_pid, concurrency, started_at
+           FROM lifecycle_execution_controls WHERE epic_id=?`,
       ).get(epicId) as {
-        running: number | boolean | null;
-        pid: number | null;
+        engine_state: string | null;
+        engine_pid: number | null;
         concurrency: number | null;
         started_at: string | null;
       } | undefined;
       return {
-        running: row?.running === 1 || row?.running === true,
-        pid: row?.pid ?? null,
+        running: row?.engine_state === 'running',
+        pid: row?.engine_pid ?? null,
         concurrency: row?.concurrency ?? null,
         startedAt: row?.started_at ?? null,
       };
     });
   }
 
-  private setMeta(epicId: number, patch: Record<string, unknown>): void {
+  /**
+   * Targeted upsert into lifecycle_execution_controls (the saga4 home for engine
+   * + model state). Replaces the old generic JSON-metadata patch on the legacy
+   * workflows table.
+   * Each caller writes only the concrete columns it owns; engine_state must be a
+   * valid CHECK constraint value ('running' | 'stopped' | 'unknown') — never 0/1.
+   */
+  private upsertControl(epicId: number, patch: Partial<{
+    engine_state: string; engine_pid: number | null; concurrency: number;
+    started_at: string; stopped_at: string; concurrency_changed_at: string;
+  }>): void {
     this.withDb(db => {
-      const current = db.prepare(
-        'SELECT metadata FROM episode_workflows WHERE epic_id=?',
-      ).get(epicId) as { metadata: string | null } | undefined;
-      const metadata = JSON.parse(current?.metadata || '{}') as Record<string, unknown>;
-      Object.assign(metadata, patch);
+      const sets = Object.entries(patch).map(([k]) => `${k}=@${k}`);
+      const params: Record<string, unknown> = { ...patch, epic_id: epicId };
       db.prepare(
-        `UPDATE episode_workflows
-            SET metadata=?, updated_at=datetime('now')
-          WHERE epic_id=?`,
-      ).run(JSON.stringify(metadata), epicId);
+        `INSERT INTO lifecycle_execution_controls (epic_id, ${Object.keys(patch).join(', ')})
+         VALUES (@epic_id, ${Object.keys(patch).map(k => `@${k}`).join(', ')})
+         ON CONFLICT(epic_id) DO UPDATE SET ${sets.join(', ')}, updated_at=datetime('now')`,
+      ).run(params);
     }, false);
   }
 

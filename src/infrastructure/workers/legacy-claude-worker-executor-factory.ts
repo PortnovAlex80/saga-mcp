@@ -122,10 +122,8 @@ export interface LegacyClaudeWorkerExecutorFactoryOptions {
 function readLegacyModelRoute(epicId: number | null) {
   if (!epicId) return { model: null, provider: 'zai', effort: null };
   const row = getDb().prepare(
-    `SELECT json_extract(metadata, '$.active_model') AS m,
-            json_extract(metadata, '$.active_provider') AS p,
-            json_extract(metadata, '$.active_model_effort') AS e
-       FROM episode_workflows WHERE epic_id=?`,
+    `SELECT model_name AS m, model_provider AS p, model_effort AS e
+       FROM lifecycle_execution_controls WHERE epic_id=?`,
   ).get(epicId) as {
     m: string | null;
     p: string | null;
