@@ -341,18 +341,18 @@ const boardRunner = createClaudeBoardRunner({
   lmstudioBaseUrl: runtimeConfig.lmStudioUrl,
   logRoot: runtimeConfig.orchestrationLogRoot,
   // Provider + effort routing for the board-run path (mirrors the engine's
-  // legacy-claude-worker-executor-factory.ts). Reads $.active_model /
-  // $.active_provider / $.active_model_effort from the episode's metadata so
-  // the runner can point the worker at LM Studio and omit --effort for it.
-  // Returns the zai/null default when the episode has no chosen model yet.
+  // legacy-claude-worker-executor-factory.ts and
+  // sqlite-saga2-runtime-repositories.readWorkerModelRoute). Reads
+  // model_name / model_provider / model_effort from the episode's
+  // lifecycle_execution_controls row so the runner can point the worker at
+  // LM Studio and omit --effort for it. Returns the zai/null default when the
+  // episode has no chosen model yet.
   getActiveModel: epicId => {
     if (!epicId) return { model: null, provider: 'zai', effort: null };
     try {
       const row = withDb(db => db.prepare(
-        `SELECT json_extract(metadata, '$.active_model') AS m,
-                json_extract(metadata, '$.active_provider') AS p,
-                json_extract(metadata, '$.active_model_effort') AS e
-           FROM episode_workflows WHERE epic_id=?`,
+        `SELECT model_name AS m, model_provider AS p, model_effort AS e
+           FROM lifecycle_execution_controls WHERE epic_id=?`,
       ).get(epicId));
       return { model: row?.m ?? null, provider: row?.p ?? 'zai', effort: row?.e ?? null };
     } catch { return { model: null, provider: 'zai', effort: null }; }
@@ -657,15 +657,15 @@ function renderIndex(projects, flash = null) {
 function engineControlStateForEpic(epicId) {
   try {
     const row = withDb(db => db.prepare(
-      `SELECT json_extract(metadata, '$.engine_concurrency') AS concurrency,
-              json_extract(metadata, '$.engine_running') AS running,
-              json_extract(metadata, '$.active_model') AS model
-         FROM episode_workflows WHERE epic_id=?`,
+      `SELECT concurrency AS concurrency,
+              engine_state AS running_state,
+              model_name AS model
+         FROM lifecycle_execution_controls WHERE epic_id=?`,
     ).get(epicId));
     return {
       concurrency: Number.isInteger(row?.concurrency) && row.concurrency >= 1 && row.concurrency <= 10
         ? row.concurrency : 4,
-      running: row?.running === 1 || row?.running === true,
+      running: row?.running_state === 'running',
       model: typeof row?.model === 'string' && row.model ? row.model : null,
     };
   } catch {
@@ -733,7 +733,7 @@ function renderBoard(projectId, allProjects) {
         <select id="agent-concurrency" aria-label="Количество одновременных воркеров движка">
           ${Array.from({ length: 10 }, (_, i) => {
             // Pre-select the option matching the engine's current concurrency,
-            // read from episode_workflows.metadata.engine_concurrency. Without
+            // read from lifecycle_execution_controls.concurrency. Without
             // this, hot-reload of tracker-view loses the user's last choice —
             // selector defaults to 1, and any change would restart the engine
             // at concurrency=1, killing the parallel cohort mid-flight.
@@ -1362,7 +1362,7 @@ function renderBoard(projectId, allProjects) {
     // --- Engine Start/Pause toggle button ---
     //▶ starts the engine (spawn orchestrate-cli with current concurrency).
     //⏸ stops the engine + workers (kill tree, no respawn). Persists
-    // $.engine_running in episode_workflows.metadata so the next page load
+    // $.engine_running in lifecycle_execution_controls.engine_state so the next page load
     // shows the right icon. Token-safety: the engine only starts when the
     // user explicitly presses ▶ — never automatically.
     const engineToggle = document.getElementById('agent-engine-toggle');
@@ -4347,8 +4347,20 @@ function handleStageSummary(req, res, url) {
     // Resolve epic -> project_id + name + current_stage (needed to build the
     // artifact path and to give the worker the right workflow_stage).
     const epicRow = withDb(db => db.prepare(
-      `SELECT e.id, e.project_id, e.name, ew.stage AS current_stage
-         FROM epics e LEFT JOIN episode_workflows ew ON ew.epic_id=e.id
+      `SELECT e.id, e.project_id, e.name,
+              COALESCE(
+                lr.current_stage_id,
+                lr.terminal_status,
+                CASE WHEN lr.status='created' THEN lr.entry_stage_id ELSE lr.status END
+              ) AS current_stage
+         FROM epics e
+         LEFT JOIN saga3_lifecycle_runs lr ON lr.id=(
+           SELECT candidate.id
+             FROM saga3_lifecycle_runs candidate
+            WHERE candidate.epic_id=e.id
+            ORDER BY candidate.id DESC
+            LIMIT 1
+         )
         WHERE e.id=?`
     ).get(epicId));
     if (!epicRow) return respondJson(res, 404, { ok:false, error:'epic not found' });
@@ -4913,10 +4925,10 @@ function handleEngineStatus(req, res, url) {
       Number(url.searchParams.get('epic_id')),
     );
     const route = withDb(db => db.prepare(
-      `SELECT json_extract(metadata, '$.active_model') AS model,
-              json_extract(metadata, '$.active_provider') AS provider,
-              json_extract(metadata, '$.active_model_limit') AS model_limit
-         FROM episode_workflows WHERE epic_id=?`,
+      `SELECT model_name AS model,
+              model_provider AS provider,
+              model_concurrency_limit AS model_limit
+         FROM lifecycle_execution_controls WHERE epic_id=?`,
     ).get(state.epicId));
     respondJson(res, 200, {
       ok: true,
@@ -5070,9 +5082,9 @@ function handleModelsList(req, res) {
   let current = WORKER_MODEL;
   try {
     const row = withDb(db => db.prepare(
-      `SELECT json_extract(metadata, '$.active_model') AS m
-       FROM episode_workflows
-       WHERE json_extract(metadata, '$.active_model') IS NOT NULL
+      `SELECT model_name AS m
+       FROM lifecycle_execution_controls
+       WHERE model_name IS NOT NULL AND model_name <> ''
        ORDER BY updated_at DESC LIMIT 1`,
     ).get());
     if (typeof row?.m === 'string' && row.m.length > 0) current = row.m;
@@ -5211,8 +5223,8 @@ function getOrCreateLmstudioTemplate() {
 // Patch ~/.claude/settings.json so NEW workers (spawned after this call) read
 // the new model. Active workers keep the old model — they've already started
 // `claude -p` and won't re-read settings.json. NO engine kill, NO spawn, NO
-// restart. We only persist the model info into episode_workflows.metadata; the
-// engine's pump loop reads `active_model_limit` and uses min(concurrency, limit)
+// restart. We only persist the model info into lifecycle_execution_controls; the
+// engine's pump loop reads `model_concurrency_limit` and uses min(concurrency, limit)
 // as the effective ceiling, so concurrency naturally converges to the new
 // model's limit as old workers finish and new ones spawn.
 function handleModelSet(req, res) {
@@ -5306,32 +5318,34 @@ function handleModelSet(req, res) {
       return respondJson(res, 500, { ok:false, error:'settings.json switch failed: ' + e.message });
     }
 
-    // 2. Persist model info into episode_workflows.metadata. The engine's pump
-    //    loop reads $.active_model_limit on every cycle and uses
-    //    min(opts.concurrency, active_model_limit) as the effective ceiling —
+    // 2. Upsert model info into lifecycle_execution_controls. The engine's pump
+    //    loop reads model_concurrency_limit on every cycle and uses
+    //    min(opts.concurrency, model_concurrency_limit) as the effective ceiling —
     //    active workers keep running on the old model, but no NEW workers spawn
     //    until the active count drops below the new limit.
-    //    $.active_provider tells claude-runner whether to add LM Studio env to
+    //    model_provider tells claude-runner whether to add LM Studio env to
     //    the spawn ('lmstudio') or keep the z.ai legacy path ('zai').
-    //    $.active_model_effort is the model-config reasoning effort (e.g. 'high'
+    //    model_effort is the model-config reasoning effort (e.g. 'high'
     //    for z.ai cloud). LM Studio models have no effort field → null is
     //    written, which the runner reads as "omit --effort entirely" so the
     //    local chat template picks its own reasoning default.
+    //    updated_at (the durable engine-control timestamp) doubles as the
+    //    model-changed marker that /api/model/current keys off.
     if (epicId) {
       try {
         withDbWrite(db => db.prepare(
-          `UPDATE episode_workflows
-             SET metadata=json_set(COALESCE(metadata,'{}'),
-                   '$.active_model', ?,
-                   '$.active_model_limit', ?,
-                   '$.active_provider', ?,
-                   '$.active_model_effort', ?,
-                   '$.model_changed_at', datetime('now')),
-                 updated_at=datetime('now')
-             WHERE epic_id=?`
-        ).run(modelId, model.limit, provider, model.effort ?? null, epicId));
+          `INSERT INTO lifecycle_execution_controls
+             (epic_id, model_name, model_concurrency_limit, model_provider, model_effort)
+           VALUES (?, ?, ?, ?, ?)
+           ON CONFLICT(epic_id) DO UPDATE SET
+             model_name=excluded.model_name,
+             model_concurrency_limit=excluded.model_concurrency_limit,
+             model_provider=excluded.model_provider,
+             model_effort=excluded.model_effort,
+             updated_at=datetime('now')`
+        ).run(epicId, modelId, model.limit, provider, model.effort ?? null));
       } catch (e) {
-        return respondJson(res, 500, { ok:false, error:'metadata write failed: ' + e.message });
+        return respondJson(res, 500, { ok:false, error:'control write failed: ' + e.message });
       }
     }
 

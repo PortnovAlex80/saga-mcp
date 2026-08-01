@@ -1,6 +1,4 @@
 import type {
-  BriefDecision,
-  EpisodeHealMetadata,
   EpisodeRuntimeRepository,
   ExecutionReconcileProjection,
   ExecutionRuntimeRepository,
@@ -18,14 +16,28 @@ import { reevaluateDownstream } from '../../tools/tasks.js';
 import { reconcileWorkerExecutions } from '../../worker-executions.js';
 
 export class SqliteEpisodeRuntimeRepository implements EpisodeRuntimeRepository {
-  ensureWorkflow(epicId: number): void {
-    getDb().prepare('INSERT OR IGNORE INTO episode_workflows (epic_id) VALUES (?)').run(epicId);
-  }
-
+  // Repointed to saga3_lifecycle_runs (saga4 cutover, EXECUTION-PLAN §B.2).
+  // episode_workflows.stage is no longer the source of truth — the latest
+  // LifecycleRun owns the current stage. SQL mirrors the projection reader
+  // (sqlite-board-projection-reader.ts:62-87): pick the highest-id run for the
+  // epic and resolve the stage through the same COALESCE ladder.
   currentStage(epicId: number): string | null {
     const row = getDb().prepare(
-      'SELECT stage FROM episode_workflows WHERE epic_id=?',
-    ).get(epicId) as { stage: string } | undefined;
+      `SELECT COALESCE(
+         lr.current_stage_id,
+         lr.terminal_status,
+         CASE WHEN lr.status='created' THEN lr.entry_stage_id ELSE lr.status END
+       ) AS stage
+       FROM epics e
+       LEFT JOIN saga3_lifecycle_runs lr ON lr.id=(
+         SELECT candidate.id
+           FROM saga3_lifecycle_runs candidate
+          WHERE candidate.epic_id=e.id
+          ORDER BY candidate.id DESC
+          LIMIT 1
+       )
+       WHERE e.id=?`,
+    ).get(epicId) as { stage: string | null } | undefined;
     return row?.stage ?? null;
   }
 
@@ -34,75 +46,6 @@ export class SqliteEpisodeRuntimeRepository implements EpisodeRuntimeRepository 
       'SELECT project_id FROM epics WHERE id=?',
     ).get(epicId) as { project_id: number } | undefined;
     return row?.project_id ?? null;
-  }
-
-  pause(epicId: number, reason: string): void {
-    const db = getDb();
-    db.prepare(
-      `UPDATE episode_workflows
-       SET metadata=json_set(COALESCE(metadata,'{}'),
-         '$.needs-human', true,
-         '$.pause_reason', ?,
-         '$.paused_at', datetime('now')),
-         updated_at=datetime('now')
-       WHERE epic_id=?`,
-    ).run(reason, epicId);
-    logActivity(
-      db,
-      'epic',
-      epicId,
-      'updated',
-      'needs-human',
-      null,
-      'true',
-      `Engine paused: ${reason}`,
-    );
-  }
-
-  clearNeedsHuman(epicId: number): void {
-    getDb().prepare(
-      `UPDATE episode_workflows
-       SET metadata=json_remove(metadata, '$.needs-human', '$.pause_reason', '$.paused_at'),
-           updated_at=datetime('now')
-       WHERE epic_id=?`,
-    ).run(epicId);
-  }
-
-  isNeedsHuman(epicId: number): boolean {
-    const row = getDb().prepare(
-      `SELECT json_extract(metadata,'$.needs-human') AS nh
-       FROM episode_workflows WHERE epic_id=?`,
-    ).get(epicId) as { nh: number | null } | undefined;
-    return row?.nh === 1;
-  }
-
-  readLatestBriefDecision(epicId: number): BriefDecision | null {
-    const row = getDb().prepare(
-      `SELECT metadata FROM artifacts
-       WHERE epic_id=? AND type='brief' ORDER BY id DESC LIMIT 1`,
-    ).get(epicId) as { metadata: string | null } | undefined;
-    if (!row?.metadata) return null;
-    try {
-      const decision = JSON.parse(row.metadata)?.brief_payload?.decision;
-      return typeof decision === 'string'
-        && ['go', 'fast-track', 'clarify', 'reject'].includes(decision)
-        ? decision as BriefDecision
-        : null;
-    } catch {
-      return null;
-    }
-  }
-
-  readHealMetadata(epicId: number): EpisodeHealMetadata {
-    const row = getDb().prepare(
-      `SELECT json_extract(metadata, '$.lastHealError') AS e,
-              json_extract(metadata, '$.lastHealAttempt') AS a
-       FROM episode_workflows WHERE epic_id=?`,
-    ).get(epicId) as { e: string | null; a: string | null } | undefined;
-    return {
-      lastHealError: row?.e ?? null,
-      lastHealAttempt: row?.a ?? null,
-    };
   }
 
   readTargetConcurrency(epicId: number, fallbackConcurrency: number): number {
@@ -136,18 +79,6 @@ export class SqliteEpisodeRuntimeRepository implements EpisodeRuntimeRepository 
       provider: row?.p ?? 'zai',
       effort: row?.e ?? null,
     };
-  }
-
-  patchMetadata(epicId: number, patch: Record<string, unknown>): void {
-    let sql = "UPDATE episode_workflows SET metadata=json_set(COALESCE(metadata,'{}')";
-    const params: unknown[] = [];
-    for (const [key, value] of Object.entries(patch)) {
-      sql += `,'$.${key}',?`;
-      params.push(value);
-    }
-    sql += "), updated_at=datetime('now') WHERE epic_id=?";
-    params.push(epicId);
-    getDb().prepare(sql).run(...params);
   }
 }
 

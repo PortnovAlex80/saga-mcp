@@ -578,7 +578,7 @@ test('composition root selects the engine through the real wiring, not a source 
       config: fullConfig(),
       workerExecutorFactory: () => { workerFactoryCalls += 1; throw new Error('must not build worker on duplicate lock'); },
       persistence: {
-        episodes: { currentStage: () => 'discovery', ensureWorkflow: () => {}, readOpenIntentByEpic: () => null },
+        episodes: { currentStage: () => 'discovery', readOpenIntentByEpic: () => null },
         tasks: {}, executions: {}, workspaces: {},
       },
       host: {

@@ -1,12 +1,5 @@
 import type { WorkerModelRoute } from './worker-executor.js';
 
-export type BriefDecision = 'go' | 'fast-track' | 'clarify' | 'reject';
-
-export interface EpisodeHealMetadata {
-  lastHealError: string | null;
-  lastHealAttempt: string | null;
-}
-
 export interface StageTaskCounts {
   claimable: number;
   inFlight: number;
@@ -46,19 +39,21 @@ export interface ExecutionReconcileProjection {
   reason: string;
 }
 
-/** Persistence boundary for episode workflow state and metadata. */
+/**
+ * Persistence boundary for episode workflow state and metadata.
+ *
+ * saga4 cutover (EXECUTION-PLAN §B.1): the legacy `episode_workflows` writers
+ * (`ensureWorkflow`, `pause`, `clearNeedsHuman`, `isNeedsHuman`, `patchMetadata`,
+ * `readLatestBriefDecision`, `readHealMetadata`) were removed. Lifecycle pause
+ * owns needs-human (LifecycleRun.status='paused'), brief decisions live on the
+ * brief artifact, heal metadata lives on the recovery task. The only surviving
+ * reader is `currentStage`, repointed at `saga3_lifecycle_runs`.
+ */
 export interface EpisodeRuntimeRepository {
-  ensureWorkflow(epicId: number): void;
   currentStage(epicId: number): string | null;
   projectIdForEpic(epicId: number): number | null;
-  pause(epicId: number, reason: string): void;
-  clearNeedsHuman(epicId: number): void;
-  isNeedsHuman(epicId: number): boolean;
-  readLatestBriefDecision(epicId: number): BriefDecision | null;
-  readHealMetadata(epicId: number): EpisodeHealMetadata;
   readTargetConcurrency(epicId: number, fallbackConcurrency: number): number;
   readWorkerModelRoute(epicId: number | null): WorkerModelRoute;
-  patchMetadata(epicId: number, patch: Record<string, unknown>): void;
 }
 
 /** Persistence boundary for orchestration-visible task state. */

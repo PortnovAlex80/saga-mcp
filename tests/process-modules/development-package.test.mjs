@@ -113,10 +113,12 @@ test('W9-A3: manifest is canonical-serializable and round-trips', () => {
 // 2. Protocols validate + are canonical-serializable.
 // ---------------------------------------------------------------------------
 
-test('W9-A3: package exposes exactly the planning + verification protocols', () => {
-  assert.equal(DEVELOPMENT_NODE_PROTOCOLS.length, 2, 'expected exactly two node protocols');
+test('W9-A3: package exposes exactly the planning protocol', () => {
+  // saga4 cutover: verification/integration external nodes removed; Flow is
+  // lm+kernel only. Only the planning node has a protocol.
+  assert.equal(DEVELOPMENT_NODE_PROTOCOLS.length, 1, 'expected exactly one node protocol (plan-task-graph)');
   const ids = DEVELOPMENT_NODE_PROTOCOLS.map((p) => p.owningFlowNodeId).sort();
-  assert.deepEqual(ids, [PLANNING_NODE_ID, VERIFICATION_NODE_ID].sort());
+  assert.deepEqual(ids, [PLANNING_NODE_ID].sort());
 });
 
 test('W9-A3: every protocol validates ok', () => {
@@ -179,10 +181,9 @@ test('W9-A3: every owningFlowNodeId exists in the frozen development Flow', () =
 
 test('W9-A3: every owningFlowNodeId matches the flow node kind contract', () => {
   const flowNodeById = new Map(developmentProcessModule.flow.nodes.map((n) => [n.id, n]));
-  // plan-task-graph is an LM node; verify-acceptance-workset is an external node.
+  // saga4 cutover: Flow is lm+kernel only. plan-task-graph is the sole LM node.
   const expected = new Map([
     [PLANNING_NODE_ID, 'lm'],
-    [VERIFICATION_NODE_ID, 'external'],
   ]);
   for (const proto of DEVELOPMENT_NODE_PROTOCOLS) {
     const flowNode = flowNodeById.get(proto.owningFlowNodeId);
@@ -190,7 +191,7 @@ test('W9-A3: every owningFlowNodeId matches the flow node kind contract', () => 
     assert.equal(
       flowNode.kind,
       want,
-      `flow node ${proto.owningFlowNodeId} expected kind ${want}, got ${flowNode.kind}`,
+      `flow node ${proto.owningFlowNodeId} expected kind ${want}, got ${flowNode?.kind}`,
     );
   }
 });

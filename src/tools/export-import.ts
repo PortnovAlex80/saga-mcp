@@ -119,7 +119,10 @@ function handleExport(args: Record<string, unknown>) {
       branch: epic.branch,
       tags: epic.tags,
       metadata: epic.metadata,
-      workflow: db.prepare('SELECT * FROM episode_workflows WHERE epic_id=?').get(epic.id),
+      // saga4 cutover (EXECUTION-PLAN §B.1 #8): the `episode_workflows` row
+      // snapshot used to be serialized here. Lifecycle runs are now the source
+      // of truth, so the writer is gone and this reader is dropped to match.
+      // Imports relying on the legacy `workflow` field ignore it.
       tasks: taskData,
     };
   });
@@ -402,13 +405,10 @@ function handleImport(args: Record<string, unknown>) {
           commentCount++;
         }
       }
-      const workflow = epicData.workflow as Record<string, unknown> | undefined;
-      if (workflow) {
-        db.prepare(
-          `INSERT INTO episode_workflows (epic_id,stage,baseline_hash,metadata)
-           VALUES (?,?,?,?)`,
-        ).run(newEpicId, workflow.stage ?? 'discovery', workflow.baseline_hash ?? null, workflow.metadata ?? '{}');
-      }
+      // saga4 cutover (EXECUTION-PLAN §B.1 #8a): the `episode_workflows` INSERT
+      // that mirrored the exported `workflow` row is gone — lifecycle runs own
+      // the stage now and are serialized outside this legacy field. The
+      // `workflow` field on imported epics (if present) is simply ignored.
     }
 
     // 6. Create dependencies with ID remapping
@@ -491,15 +491,11 @@ function handleImport(args: Record<string, unknown>) {
           evidence.created_at ?? new Date().toISOString());
       }
     }
-    for (const epicData of epics) {
-      const workflow = epicData.workflow as Record<string, unknown> | undefined;
-      if (!workflow?.baseline_artifact_id) continue;
-      const epic = epicIdMap.get(epicData._original_id as number);
-      const baseline = artifactIdMap.get(workflow.baseline_artifact_id as number);
-      if (epic && baseline) {
-        db.prepare('UPDATE episode_workflows SET baseline_artifact_id=? WHERE epic_id=?').run(baseline, epic);
-      }
-    }
+    // saga4 cutover (EXECUTION-PLAN §B.1 #8b): the `episode_workflows`
+    // `baseline_artifact_id` backfill UPDATE is gone — that column lived on the
+    // legacy row that the export no longer snapshots. Baseline hashes now ride
+    // on accepted AC artifacts themselves (accepted_hash), which are remapped
+    // above through `artifactIdMap`.
 
     // 8. Create notes with ID remapping
     const importNotes = (data.notes as Array<Record<string, unknown>>) ?? [];
