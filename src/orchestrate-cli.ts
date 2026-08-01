@@ -26,6 +26,10 @@ import {
   type Saga2CompositionOverrides,
 } from './app/composition-root.js';
 import type { SagaApplication } from './application/saga-application.js';
+import type { WorkerExecutorFactory } from './application/ports/worker-executor.js';
+import { createLegacyClaudeWorkerExecutorFactory } from './infrastructure/workers/legacy-claude-worker-executor-factory.js';
+import { asModuleInstallationId } from './process-modules/installation/domain/installation.js';
+import type { ProductionInstallation } from './process-modules/installation/production-install.js';
 import { getDb } from './db.js';
 import {
   installProductionModules,
@@ -109,6 +113,57 @@ function parseArgs(argv: string[]): {
   };
 }
 
+
+/**
+ * Create a pinned WorkerExecutorFactory for the dispatch loop — identical to
+ * what composition-root creates for LM-node workers. This ensures impl-task
+ * workers get the SAME desk (materializer, hooks, fence, authority) as
+ * Flow-node workers. One spawn path, one mechanic.
+ */
+function createPinnedWorkerFactoryForDispatch(
+  installation: ProductionInstallation | undefined,
+): WorkerExecutorFactory {
+  if (!installation) {
+    throw new Error(
+      'PACKAGE_INSTALLATION_REQUIRED: dispatch loop needs a ProductionInstallation '
+      + 'to create pinned worker desks.',
+    );
+  }
+  return createLegacyClaudeWorkerExecutorFactory({
+    packageRegistry: installation.registry,
+    packageSnapshots: installation.packages,
+    resolveInstallationId: assignment => {
+      const md = typeof assignment.task?.metadata === 'string'
+        ? JSON.parse(assignment.task.metadata) as Record<string, unknown>
+        : (assignment.task?.metadata as Record<string, unknown>) ?? {};
+      const runId = typeof md.process_run_id === 'number' ? md.process_run_id : null;
+      if (runId === null) return null;
+      const row = getDb().prepare(
+        'SELECT installation_id FROM saga3_process_runs WHERE id=?',
+      ).get(runId) as { installation_id?: number | null } | undefined;
+      const id = row?.installation_id ?? null;
+      return id === null ? null : asModuleInstallationId(id);
+    },
+    resolvePackageDigest: assignment => {
+      const md = typeof assignment.task?.metadata === 'string'
+        ? JSON.parse(assignment.task.metadata) as Record<string, unknown>
+        : (assignment.task?.metadata as Record<string, unknown>) ?? {};
+      const runId = typeof md.process_run_id === 'number' ? md.process_run_id : null;
+      if (runId === null) return null;
+      const row = getDb().prepare(
+        'SELECT package_digest FROM saga3_process_runs WHERE id=?',
+      ).get(runId) as { package_digest?: string | null } | undefined;
+      return row?.package_digest ?? null;
+    },
+    resolveNodeId: assignment => {
+      const md = typeof assignment.task?.metadata === 'string'
+        ? JSON.parse(assignment.task.metadata) as Record<string, unknown>
+        : (assignment.task?.metadata as Record<string, unknown>) ?? {};
+      const nodeId = md.process_node_id;
+      return typeof nodeId === 'string' && nodeId.length > 0 ? nodeId : null;
+    },
+  });
+}
 
 function writeLifecycleStartReceipt(run: {
   id: number;
@@ -208,17 +263,40 @@ async function main() {
       if (result.reason !== 'paused') break;
 
       // Paused — the lifecycle is waiting for kanban tasks (impl/verify) to drain.
-      // Distribute them to workers, then resume.
+      // Distribute them to workers through the SAME WorkerExecutorFactory that
+      // LM-node workers use — one spawn path, one desk, one mechanic.
       const { distributeQueuedTasks } = await import('./app/dispatch-loop.js');
+      const { loadSagaRuntimeConfig } = await import('./runtime/saga-runtime-config.js');
+      const dispatchConfig = loadSagaRuntimeConfig(process.env);
       const sagaEntry = path.resolve(path.dirname(fileURLToPath(import.meta.url)), 'index.js');
-      const claudePath = process.env.SAGA_CLAUDE_PATH ?? 'claude';
+      const workspaceRoot = (() => {
+        const row = getDb().prepare(
+          'SELECT pr.local_path FROM project_repositories pr WHERE pr.project_id=? AND pr.status=? ORDER BY pr.id LIMIT 1',
+        ).get(projectId, 'active') as { local_path: string } | undefined;
+        return row?.local_path ?? process.cwd();
+      })();
+      // overrides.modulePackages IS the ProductionInstallation — use it to
+      // create the same pinned factory that composition-root uses for LM nodes.
       const dispatched = await distributeQueuedTasks({
         projectId,
         epicId,
         concurrency,
-        claudePath,
-        sagaEntry,
-        dbPath: process.env.DB_PATH,
+        workerExecutorFactory: overrides.workerExecutorFactory
+          ?? createPinnedWorkerFactoryForDispatch(overrides.modulePackages),
+        factoryContext: {
+          projectId,
+          epicId,
+          workspaceRoot,
+          dbPath: process.env.DB_PATH!,
+          sagaEntry,
+          sagaSkillRoot: process.cwd(),
+          claudePath: process.env.SAGA_CLAUDE_PATH,
+          logRoot: dispatchConfig.orchestrationLogRoot,
+          heartbeatLog: dispatchConfig.orchestrationLogRoot
+            ? path.join(dispatchConfig.orchestrationLogRoot, 'worker-heartbeat.log')
+            : undefined,
+          lmStudioUrl: dispatchConfig.lmStudioUrl,
+        },
       });
       if (dispatched === 0) {
         // No tasks to dispatch but lifecycle still paused — stuck (needs-human or
