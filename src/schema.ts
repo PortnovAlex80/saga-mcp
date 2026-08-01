@@ -996,6 +996,27 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_saga3_lifecycle_runs_idem
   ON saga3_lifecycle_runs(project_id, lifecycle_ref_key, idempotency_key);
 CREATE INDEX IF NOT EXISTS idx_saga3_lifecycle_runs_status
   ON saga3_lifecycle_runs(project_id, status);
+
+-- saga4: lifecycle_execution_controls — per-epic engine state + model route,
+-- the new home for fields being migrated out of episode_workflows.metadata.
+-- See docs/design/saga4-cutover/EXECUTION-PLAN.md blocks A.1 + A.2.
+CREATE TABLE IF NOT EXISTS lifecycle_execution_controls (
+  epic_id              INTEGER PRIMARY KEY REFERENCES epics(id) ON DELETE CASCADE,
+  engine_state         TEXT NOT NULL DEFAULT 'stopped'
+                         CHECK (engine_state IN ('running','stopped','unknown')),
+  engine_pid           INTEGER,
+  concurrency          INTEGER,
+  started_at           TEXT,
+  stopped_at           TEXT,
+  concurrency_changed_at TEXT,
+  model_provider       TEXT,
+  model_name           TEXT,
+  model_effort         TEXT,
+  model_concurrency_limit INTEGER,
+  updated_at           TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_lifecycle_execution_controls_state
+  ON lifecycle_execution_controls(engine_state);
 `;
 
 // ----------------------------------------------------------------------------

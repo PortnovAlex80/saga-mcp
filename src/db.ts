@@ -55,6 +55,7 @@ export function getDb(): Database.Database {
   migrateRiskClass(db);
   migrateEpisodeTrack(db);
   migrateEpicSlug(db);
+  migrateLifecycleExecutionControls(db);
   // Slice 2 (ADR-011): populate work-item shadow tables for existing tasks.
   // Idempotent — skips tasks that already have shadow rows. Tables themselves
   // are created by SCHEMA_SQL (CREATE IF NOT EXISTS).
@@ -836,6 +837,55 @@ export function migrateEpicSlug(db: Database.Database): void {
   // Uniqueness is NOT enforced yet (two epics with the same name produce the
   // same slug); a unique constraint requires full migration of all references.
   // The Phase 6 full rollout will add UNIQUE(project_id, slug).
+}
+
+/**
+ * saga4 cutover (EXECUTION-PLAN.md A.2): per-epic engine state + model route,
+ * migrated out of episode_workflows.metadata into a dedicated control table.
+ *
+ * CREATE TABLE is a no-op when SCHEMA_SQL has already run (it does on every
+ * getDb()), so this migration is safe on both fresh and pre-saga4 databases.
+ * The one-shot backfill copies engine_* and active_model_* fields out of
+ * episode_workflows.metadata via INSERT OR IGNORE (idempotent — safe to re-run).
+ */
+export function migrateLifecycleExecutionControls(db: Database.Database): void {
+  // CREATE TABLE — no-op if schema.ts already created it (SCHEMA_SQL runs first).
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS lifecycle_execution_controls (
+      epic_id              INTEGER PRIMARY KEY REFERENCES epics(id) ON DELETE CASCADE,
+      engine_state         TEXT NOT NULL DEFAULT 'stopped'
+                             CHECK (engine_state IN ('running','stopped','unknown')),
+      engine_pid           INTEGER,
+      concurrency          INTEGER,
+      started_at           TEXT,
+      stopped_at           TEXT,
+      concurrency_changed_at TEXT,
+      model_provider       TEXT,
+      model_name           TEXT,
+      model_effort         TEXT,
+      model_concurrency_limit INTEGER,
+      updated_at           TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_lifecycle_execution_controls_state
+      ON lifecycle_execution_controls(engine_state);
+  `);
+  // One-shot backfill: copy engine_* and active_model_* from episode_workflows.metadata.
+  // INSERT OR IGNORE — idempotent, safe on re-run.
+  db.exec(`
+    INSERT OR IGNORE INTO lifecycle_execution_controls
+      (epic_id, engine_state, engine_pid, concurrency, started_at,
+       model_provider, model_name, model_effort, model_concurrency_limit)
+    SELECT ew.epic_id,
+      CASE WHEN json_extract(ew.metadata,'$.engine_running')=1 THEN 'running' ELSE 'stopped' END,
+      json_extract(ew.metadata,'$.engine_pid'),
+      json_extract(ew.metadata,'$.engine_concurrency'),
+      json_extract(ew.metadata,'$.engine_started_at'),
+      json_extract(ew.metadata,'$.active_provider'),
+      json_extract(ew.metadata,'$.active_model'),
+      json_extract(ew.metadata,'$.active_model_effort'),
+      json_extract(ew.metadata,'$.active_model_limit')
+    FROM episode_workflows ew;
+  `);
 }
 
 

@@ -170,15 +170,6 @@ export interface LmNodeExecutionPersistence {
    * content_hash via artifactDiskHash) fail closed.
    */
   readTaskProjectRepositoryId(taskId: number): number | null;
-
-  /**
-   * Optional: read the most recent reviewer feedback recorded on the projected
-   * task (managed_review_last_feedback), so the LM cell can fold it into the
-   * objective when this is a review-loop rework (CGAD P18 — same model as
-   * recovery: a worker arrives and must see the feedback about what to fix).
-   * Returns null when no prior review rejection is recorded.
-   */
-  readTaskReviewFeedback?(taskId: number): { attempt: number; feedback: string } | null;
 }
 
 export interface LmNodeExecutorOptions {
