@@ -194,9 +194,21 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
         metadata[key] !== undefined
         && canonicalJson(metadata[key]) !== canonicalJson(value)
       ) {
-        throw new Error(
-          `saga3: projected task ${input.taskId} reserved metadata.${key} cannot be rebound`,
-        );
+        // CGAD P18 — Node-Durable Identity: the task belongs to the workplace
+        // (processRun + node). When the same node re-executes (recovery, repair,
+        // re-entry from a prior incomplete attempt), the node input may carry
+        // updated chain context (e.g. recoveryFeedback). Allow rebind when the
+        // task is already owned by the SAME processRun + nodeId — the workplace
+        // is updating its own card, not stealing another node's card.
+        const sameWorkplace =
+          metadata.process_run_id === input.processRunId
+          && metadata.process_node_id === input.nodeId;
+        if (!sameWorkplace) {
+          throw new Error(
+            `saga3: projected task ${input.taskId} reserved metadata.${key} cannot be rebound`,
+          );
+        }
+        // Same workplace — allow the rebind (node input evolved between attempts).
       }
       metadata[key] = value;
     }
