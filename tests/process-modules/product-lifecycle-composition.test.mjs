@@ -96,7 +96,8 @@ test('composition installs all module capabilities and refuses implicit input/pr
         'delivery-release',
       ],
     );
-    assert.equal(runtime.externalAdapters.list().length, 5);
+    // externalAdapters removed in saga4 cutover (external node kind deleted);
+    // delivery publish-deploy/observe-release are now kernel handlers.
     assert.equal(runtime.humanInteractions.list().length, 1);
     // W13-A3: the deleted ProcessOutputPayloadRegistry is replaced by a single
     // injected resolveOutputPayload callback. The three module output schemas

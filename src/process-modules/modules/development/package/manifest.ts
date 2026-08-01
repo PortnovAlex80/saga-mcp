@@ -48,6 +48,7 @@ import {
 import type { ContractRef } from '../../../domain/spi/contract-ref.js';
 import { CONTRACT_REF_PENDING_DIGEST } from '../../../domain/spi/contract-ref.js';
 import { developmentProcessModule } from '../development-process-module.js';
+import { DEVELOPMENT_AGENT_ASSISTANCE } from './assistance.js';
 import { DEVELOPMENT_KERNEL_HANDLER_IDS } from '../development-kernel-ports.js';
 import {
   DEVELOPMENT_CASE_SCHEMA,
@@ -269,6 +270,7 @@ export const developmentPackageManifest: ProcessModuleManifest = (() => {
     inputContractRef: DEVELOPMENT_INPUT_CONTRACT_REF,
     outputContractRef: DEVELOPMENT_OUTPUT_CONTRACT_REF,
     runtimeCompatibilityRange: DEVELOPMENT_RUNTIME_COMPATIBILITY_RANGE,
+    assistance: DEVELOPMENT_AGENT_ASSISTANCE,
   };
   const validation = validateProcessModuleManifest(manifest);
   if (!validation.ok) {

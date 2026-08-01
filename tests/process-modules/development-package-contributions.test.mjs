@@ -387,9 +387,11 @@ test('W9-A4 legacy adapter: exposes the development handler + node ids', () => {
   assert.equal(DEVELOPMENT_PACKAGE_HANDLER_IDS.resolveTaskGraph, 'development-resolve-task-graph');
   assert.equal(DEVELOPMENT_PACKAGE_HANDLER_IDS.settle, 'development-settlement-policy');
   // Flow node ids live under `nodes` (disjoint from the handler-id keys).
+  // saga4 cutover: verification/integration external nodes removed; Flow is
+  // lm+kernel only (plan-task-graph -> resolve-task-graph -> settle-development).
   assert.equal(DEVELOPMENT_PACKAGE_HANDLER_IDS.nodes.settlement, 'settle-development');
-  assert.equal(DEVELOPMENT_PACKAGE_HANDLER_IDS.nodes.verification, 'verify-acceptance-workset');
   assert.equal(DEVELOPMENT_PACKAGE_HANDLER_IDS.nodes.resolveTaskGraph, 'resolve-task-graph');
+  assert.equal(DEVELOPMENT_PACKAGE_HANDLER_IDS.nodes.planner, 'plan-task-graph');
 });
 
 test('W9-A4 legacy adapter: fake candidate-observation port records calls', () => {

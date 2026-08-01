@@ -47,6 +47,7 @@ reconstruct the implementation workset. No external Flow node drives this work.
 
 Rework rules (CGAD P18 — a rework worker arrives at the workplace and must see the feedback):
 
+- If `recovery-feedback.json` exists, READ IT FIRST — it carries the gate/kernel rejection (settlement or task-graph repair feedback).
 - If `review-feedback.json` exists, READ IT FIRST — it carries the reviewer's findings (changes_requested).
 - If `merge-conflict.json` exists, READ IT FIRST — it carries the conflict detail from `worker_merge_release(result="conflict")`.
 - Never rework blind.

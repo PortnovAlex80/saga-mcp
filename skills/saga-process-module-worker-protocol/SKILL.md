@@ -23,12 +23,22 @@ It must be combined with exactly one semantic Process Module skill.
 Before domain work:
 
 1. Read the machine-provisioned external tracker.
-2. Verify process module, process run, Stage Binding, stage, node, WorkIntent, task, execution and worker bindings against `task_get`.
-3. Verify input snapshot ref/hash, output schema, allowed tools and retry budget.
-4. Record startup/checkpoint state in the tracker.
-5. Read the semantic role skill supplied by the execution profile.
+2. **Read `recovery-feedback.json` or `review-feedback.json` FIRST when either is present** beside the tracker — they contain the exact fields a gate or reviewer rejected. Resume from the rejection, not from scratch.
+3. Verify process module, process run, Stage Binding, stage, node, WorkIntent, task, execution and worker bindings against `task_get`.
+4. Verify input snapshot ref/hash, output schema, allowed tools and retry budget.
+5. Record startup/checkpoint state in the tracker.
+6. Read the semantic role skill supplied by the execution profile.
 
 If a binding differs, stop and report a fenced-context error. Do not repair machine-filled values yourself.
+
+## Structured assistance
+
+An `agent-assistance.json` may be materialized beside the tracker. When present,
+the platform injects its structured context blocks (goal, current-step,
+next-action, completion-criteria) after each tool call. Treat these blocks as
+authoritative guidance for the current Flow node — they tell you WHAT step you
+are on and WHAT completion looks like. They do NOT override the tracker (which
+remains the precise inner-step program counter) or the allowed-tools gate.
 
 ## External memory rule
 

@@ -170,13 +170,22 @@ function resolveOwningNodeId(
   const candidates = module.flow.nodes.filter(node =>
     node.kind === 'lm' && node.executionProfile === profile.id,
   );
-  if (candidates.length !== 1) {
-    throw new Error(
-      `AGENT_ASSISTANCE_NODE_AMBIGUOUS: profile '${profile.id}' maps to `
-      + `${candidates.length} LM nodes`,
-    );
+  if (candidates.length === 1) return candidates[0].id;
+
+  // CGAD P18 — Node-Durable Identity for flow-less profiles: some execution
+  // profiles (e.g. development-implementation-worker) are claimed through the
+  // shared worker_next queue and have NO matching Flow LM node. Their "workplace"
+  // is a stable virtual node keyed by the profile id, so a worker returning to
+  // the same profile reuses the same desk + card. The virtual id is namespaced
+  // by the module kind to avoid collisions across modules.
+  if (candidates.length === 0) {
+    return `profile:${module.identity.kind}:${profile.id}`;
   }
-  return candidates[0].id;
+
+  throw new Error(
+    `AGENT_ASSISTANCE_NODE_AMBIGUOUS: profile '${profile.id}' maps to `
+    + `${candidates.length} LM nodes`,
+  );
 }
 
 /**

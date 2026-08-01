@@ -58,6 +58,7 @@ import {
 import type { ContractRef } from '../../../domain/spi/contract-ref.js';
 import { CONTRACT_REF_PENDING_DIGEST } from '../../../domain/spi/contract-ref.js';
 import { formalizationProcessModule } from '../formalization-process-module.js';
+import { FORMALIZATION_AGENT_ASSISTANCE } from './assistance.js';
 import {
   FORMALIZATION_HANDLER_IDS,
   FORMALIZATION_MODULE_KEY,
@@ -329,6 +330,7 @@ export const formalizationPackageManifest: ProcessModuleManifest = (() => {
     inputContractRef: FORMALIZATION_INPUT_CONTRACT_REF,
     outputContractRef: FORMALIZATION_OUTPUT_CONTRACT_REF,
     runtimeCompatibilityRange: FORMALIZATION_RUNTIME_COMPATIBILITY_RANGE,
+    assistance: FORMALIZATION_AGENT_ASSISTANCE,
   };
   const validation = validateProcessModuleManifest(manifest);
   if (!validation.ok) {
