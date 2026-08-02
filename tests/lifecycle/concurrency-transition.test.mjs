@@ -56,14 +56,15 @@ const product = projects.project_create({ name: 'Conc Test' });
 repositories.repository_register({ project_id: product.id, name: 'r', local_path: repoPath });
 const epic = epics.epic_create({ project_id: product.id, name: 'E' });
 const epicId = epic.id;
-// saga4: seed both tables. lifecycle_execution_controls is now the source of
-// truth for engine state (the /api/engine/concurrency endpoint routes through
-// LegacyEngineAdministration.setConcurrency, which writes the `concurrency`
-// column there). episode_workflows.metadata still carries the active_model*
-// fields (the /api/model/set endpoint has not migrated yet). We write to
-// lifecycle_execution_controls directly rather than relying on the
-// episode_workflows backfill migration, which has already run on this fresh DB
-// by the time we reach this point and so would NOT pick up this epic.
+// saga4: seed both tables. lifecycle_execution_controls is now the SOLE source
+// of truth for engine AND model state. The /api/engine/concurrency endpoint
+// routes through LegacyEngineAdministration.setConcurrency, which writes the
+// `concurrency` column there; commit ef067da (Block B) repointed /api/model/set
+// to upsert model_name / model_concurrency_limit / model_provider / model_effort
+// into the same control table (it no longer writes episode_workflows.metadata).
+// We still seed an episode_workflows row for the cascade/row-presence
+// invariants and so the hybrid readMeta() below can fall back to its metadata,
+// but the operational read path for active_model* is now the control table.
 getDb().prepare(
   `INSERT INTO episode_workflows (epic_id, stage, metadata) VALUES (?, 'development', '{}')`,
 ).run(epicId);
@@ -71,19 +72,34 @@ getDb().prepare(
   `INSERT INTO lifecycle_execution_controls (epic_id, engine_state) VALUES (?, 'stopped')`,
 ).run(epicId);
 
-// Hybrid reader: engine fields come from lifecycle_execution_controls columns,
-// model fields still come from episode_workflows.metadata. Returns the legacy
-// key names (engine_concurrency, active_model, ...) so existing assertions
-// keep working — only the storage layer moved.
+// Hybrid reader: engine AND model fields come from lifecycle_execution_controls
+// columns. Commit ef067da (Block B) killed every episode_workflows writer —
+// /api/model/set now upserts model_name / model_concurrency_limit /
+// model_provider / model_effort into lifecycle_execution_controls (it no
+// longer touches episode_workflows.metadata). episode_workflows.metadata is
+// still seeded above for the cascade/row-presence invariants but is no longer
+// the operational read path for active_model*. We map the new columns back to
+// the legacy key names (engine_concurrency, active_model, active_model_limit,
+// active_model_effort) so existing assertions keep working — only the storage
+// layer moved.
 function readMeta() {
   const ctl = getDb().prepare(
-    `SELECT concurrency, engine_state FROM lifecycle_execution_controls WHERE epic_id=?`,
+    `SELECT concurrency, engine_state,
+            model_name, model_concurrency_limit, model_provider, model_effort
+     FROM lifecycle_execution_controls WHERE epic_id=?`,
   ).get(epicId);
   const ew = getDb().prepare('SELECT metadata FROM episode_workflows WHERE epic_id=?').get(epicId);
   const meta = JSON.parse(ew?.metadata || '{}');
   if (ctl) {
     meta.engine_concurrency = ctl.concurrency;
     meta.engine_running = ctl.engine_state === 'running';
+    // Model fields moved to the control table (commit ef067da Block B). Map the
+    // new column names onto the legacy key names the assertions were written
+    // against, preserving the old read contract.
+    meta.active_model = ctl.model_name;
+    meta.active_model_limit = ctl.model_concurrency_limit;
+    meta.active_model_provider = ctl.model_provider;
+    meta.active_model_effort = ctl.model_effort;
   }
   return meta;
 }

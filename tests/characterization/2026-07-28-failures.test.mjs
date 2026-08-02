@@ -197,7 +197,11 @@ test('fixture missing-brief-production: brief is a kernel side-effect projection
 
 test('fixture incomplete-provenance: provenance keys are best-effort nullable metadata', () => {
   const f = manifests.find(m => m.data.id === 'incomplete-provenance');
-  const dev = readSrc('src/process-modules/modules/development/sqlite-development-runtime.ts');
+  // The development runtime was renamed+moved during the saga4 cutover. The old
+  // path src/process-modules/modules/development/sqlite-development-runtime.ts
+  // is ENOENT; the settlement-state runtime now hosts these provenance keys
+  // (byte-identical literals at the new path :1005-1006).
+  const dev = readSrc('src/infrastructure/process-modules/development/sqlite-development-settlement-state.ts');
   // Both newly-stamped keys fall back to null on lookup miss — the boundary
   // is still fragile even after commit fd52982.
   assert.ok(
@@ -290,12 +294,19 @@ test('fixture no-op-port: composition wires declared ports to throw-stubs', () =
 
 test('fixture mutable-tracker: tracker Markdown is worker-maintained, reminder is non-blocking', () => {
   const f = manifests.find(m => m.data.id === 'mutable-tracker');
+  // The tracker filename template moved out of process-execution-workspace.ts
+  // during the saga4 cutover. The per-node tracker is now node-stable
+  // (commit c1e47d6, CGAD P18: one tracker per workplace, keyed by node not
+  // task): the filename is `node-${nodeId}.md`, pinned by an endsWith
+  // invariant in pinned-workspace-materializer.ts. The legacy
+  // project-<x>-stage-<y>.md regex no longer matches anywhere.
+  const materializer = readSrc('src/process-modules/application/pinned-workspace-materializer.ts');
+  assert.ok(
+    materializer.includes("node-${desk.nodeId}.md"),
+    'materializer must pin a node-stable tracker filename (node-${nodeId}.md)',
+  );
   const workspace = readSrc('src/process-modules/application/process-execution-workspace.ts');
   // The tracker is a per-task Markdown file written/refreshed from a template.
-  assert.ok(
-    /project-.*-stage-.*\.md/.test(workspace),
-    'workspace must materialize a per-task tracker Markdown file',
-  );
   assert.ok(
     workspace.includes('refreshMarkdownMachineBindings'),
     'workspace must refresh machine bindings in-place into the Markdown',
@@ -351,10 +362,19 @@ test('fixture null-content-hash: schema column is nullable + index uses COALESCE
 test('fixture skill-drift: profile.semanticSkill overrides reviewer assignment', () => {
   const f = manifests.find(m => m.data.id === 'skill-drift');
   const runner = readSrc('tracker-view/claude-runner.mjs');
-  // The precedence chain that lets the author semantic skill win.
+  // W5-A6 (commit d8c5d82, §13.18 fix: reviewer skill wins): the precedence
+  // chain now starts with the launch-picked skill so the reviewer skill can
+  // override the author semantic skill. The old chain
+  // `semanticSkillName ?? assignment.skill` is superseded by
+  // `launchPickedSkill ?? semanticSkillName ?? assignment.skill`.
+  // Regression test: execution-profile-runner-workspace-hooks.test.mjs:269.
   assert.ok(
-    runner.includes('effectiveSemanticSkill = semanticSkillName ?? assignment.skill'),
-    'claude-runner must resolve effectiveSemanticSkill with profile-first precedence',
+    runner.includes('launchPickedSkill = pickLaunchSpecSkillName(launchSpec, isReview)'),
+    'claude-runner must resolve the launch-picked skill name first (W5-A6 reviewer-wins)',
+  );
+  assert.ok(
+    /effectiveSemanticSkill\s*=\s*launchPickedSkill\s*\n?\s*\?\?\s*semanticSkillName\s*\?\?\s*assignment\.skill/.test(runner),
+    'claude-runner must resolve effectiveSemanticSkill with launch-picked → semanticSkill → assignment precedence',
   );
   // A single semantic skill is inlined for both author and reviewer runs.
   assert.ok(

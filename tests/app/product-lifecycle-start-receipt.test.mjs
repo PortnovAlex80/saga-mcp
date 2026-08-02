@@ -62,6 +62,12 @@ test('spawn starter rejects child exit before durable acknowledgement', async ()
 });
 
 test('Discovery is a real gate: only go routes to Formalization', () => {
+  // Commit 12b4390 "Discovery is permissive": Discovery is an idea-STRENGTH
+  // gate, not a build gate. The outcome strength is recorded in the discovery
+  // certificate and carried forward; it must NOT block the conveyor. Every
+  // Discovery outcome now forwards to Formalization (the real go/no-go gate),
+  // not to terminal. Regression test:
+  // tests/characterization/lifecycle-routing-mapping-lock.test.mjs:758-775.
   const discovery = productDeliveryLifecycle.stages.find(
     stage => stage.id === 'initial-discovery',
   );
@@ -71,6 +77,9 @@ test('Discovery is a real gate: only go routes to Formalization', () => {
     stageId: 'solution-formalization',
   });
   for (const outcome of ['clarify', 'reject', 'defer', 'inconclusive', 'failed']) {
-    assert.equal(discovery.outcomeRoutes[outcome].type, 'terminal');
+    assert.deepEqual(discovery.outcomeRoutes[outcome], {
+      type: 'stage',
+      stageId: 'solution-formalization',
+    });
   }
 });

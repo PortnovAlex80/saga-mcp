@@ -589,14 +589,18 @@ test('§18.3: Runtime core (domain/ + application/) imports NO concrete module/s
   // CURRENT STATE (Wave-12 checkpoint, this worktree's base): two Runtime-
   // core files still statically reach a concrete module/scenario impl. Both
   // are the documented W13-A1..A7 removal target (spec §5 R3 + R4):
-  //   - execution-profile-resolver.ts -> modules/catalog.ts
-  //       (R4: W13-A1 removes when resolver uses PackageRegistry)
+  //   - execution-profile-resolver.ts -> modules/{discovery,formalization,
+  //     development,delivery}-process-module.ts
+  //       (R4: commit 4d8fa16 / W13-A1 deleted modules/catalog.ts and made
+  //        the resolver import the 4 module definitions directly. These 4
+  //        edges replace the single former catalog.ts edge and remain until
+  //        the resolver uses PackageRegistry.)
   //   - legacy-scenario-adapter.ts    -> lifecycles/product-delivery-lifecycle.ts
   //       (R3: W13-A3 removes when the legacy adapter retires)
   // These are DOCUMENTED GAPS, not regressions. The integrator's full
   // Wave-13 gate run (cleanups applied) asserts this set is EMPTY. Here we
   // pin the exact documented gap so any NEW Runtime-core→impl edge is caught
-  // as a regression while the two known edges are visible for removal.
+  // as a regression while the five known edges are visible for removal.
   const runtimeCorePrefixes = [DOMAIN_DIR, APPLICATION_DIR];
   const violations = [];
   for (const [src, targets] of Object.entries(GRAPH)) {
@@ -609,16 +613,19 @@ test('§18.3: Runtime core (domain/ + application/) imports NO concrete module/s
     }
   }
   const documentedGap = new Set([
-    'src/process-modules/application/execution-profile-resolver.ts -> src/process-modules/modules/catalog.ts',
+    'src/process-modules/application/execution-profile-resolver.ts -> src/process-modules/modules/discovery/discovery-process-module.ts',
+    'src/process-modules/application/execution-profile-resolver.ts -> src/process-modules/modules/formalization/formalization-process-module.ts',
+    'src/process-modules/application/execution-profile-resolver.ts -> src/process-modules/modules/development/development-process-module.ts',
+    'src/process-modules/application/execution-profile-resolver.ts -> src/process-modules/modules/delivery/delivery-process-module.ts',
     'src/process-modules/application/legacy-scenario-adapter.ts -> src/process-modules/lifecycles/product-delivery-lifecycle.ts',
   ]);
-  // Every actual violation MUST be one of the two documented gaps.
+  // Every actual violation MUST be one of the five documented gaps.
   for (const v of violations) {
     const key = `${v.source} -> ${v.target}`;
     assert.ok(documentedGap.has(key),
       `§18.3 NEW Runtime-core→impl edge (regression, not in Wave-12 baseline): ${key}`);
   }
-  // The two documented gaps ARE present (Wave-12 checkpoint state). When the
+  // The five documented gaps ARE present (Wave-12 checkpoint state). When the
   // integrator applies W13-A1 + W13-A3, these disappear and this assertion
   // flips to "violations.length === 0" (the §18.3 closure target).
   assert.equal(violations.length, documentedGap.size,
@@ -1468,32 +1475,25 @@ test('item 13: repository-wide — no global module resources (modules ship thei
   }
 });
 
-test('item 14: ratchet — KNOWN_VIOLATIONS target is 0; DOCUMENTED CURRENT STATE is 74 (Wave 12 checkpoint)', () => {
-  // spec §5: "Starting from 74 allowlisted edges (current), Wave 13 target
-  // is 0 remaining violations."
+test('item 14: ratchet — KNOWN_VIOLATIONS target is 0; DOCUMENTED CURRENT STATE is 0 (post-CONVEYOR/W13)', () => {
+  // spec §5 originally: "Starting from 74 allowlisted edges (current), Wave 13
+  // target is 0 remaining violations."
   //
-  // This worktree branches off dd05068 (the Wave 12 checkpoint) — the W13-A1
-  // through A7 legacy-removal cherry-picks are NOT applied here. The ratchet
-  // is therefore DOCUMENTED at its current state (74 edges) and the test
-  // asserts the closure TARGET: when the integrator's full Wave-13 gate run
-  // lands (all cleanups applied), the ratchet MUST read 0.
+  // That target has now been MET. Commit 6f1f249 (CONVEYOR Wave 7) inlined the
+  // delivery→development schema-id constants — the last Rule-1 edge is gone —
+  // and the module→infra/db edges (Rule 2/6) were dissolved behind ports. The
+  // authoritative ratchet in tests/architecture/dependency-direction.test.mjs
+  // records ALLOWLIST_BASELINE = 0 (2026-08-01 bump history: "post-CONVEYOR/W13:
+  // all known violations fixed"), with KNOWN_VIOLATIONS now empty.
   //
-  // We re-derive the ratchet from the authoritative
-  // dependency-direction.test.mjs KNOWN_VIOLATIONS enumeration by importing
-  // the count that test surfaces. To avoid duplicating the 74-edge list here
-  // (single source of truth: dependency-direction.test.mjs), we assert the
-  // DOCUMENTED current state and pin the target.
+  // We re-derive the Rule 1 count from the live graph to prove the documented
+  // state is accurate (not a stale claim): it MUST now read 0.
   const RATCHET_TARGET = 0;
-  const RATCHET_DOCUMENTED_CURRENT = 74;
+  const RATCHET_DOCUMENTED_CURRENT = 0;
 
-  // The breakdown per spec §5:
-  //   R1 (1 edge)  — delivery→development schema import
-  //   R2 (29 edges) — module→persistence/cross-tree
-  //   R3 (9 edges)  — lifecycle→module-impl
-  //   R4 (1 edge)   — execution-profile-resolver→catalog
-  //   R6 (34 edges) — composition-root→modules/sqlite
-  //   Total: 74.
-  const expectedByRule = { 1: 1, 2: 29, 3: 9, 4: 1, 6: 34 };
+  // All rule buckets are now 0 (post-CONVEYOR/W13). Live re-derivation of
+  // Rule 1 below is the irreversibility anchor.
+  const expectedByRule = { 1: 0, 2: 0, 3: 0, 4: 0, 6: 0 };
 
   // Independently re-derive the Rule 1 count from the live graph to prove
   // the documented state is accurate (not a stale claim).
@@ -1510,13 +1510,11 @@ test('item 14: ratchet — KNOWN_VIOLATIONS target is 0; DOCUMENTED CURRENT STAT
     `Rule 1 live count (${liveRule1}) must match the documented current state (${expectedByRule[1]}). ` +
     `If this fails the ratchet has moved — update RATCHET_DOCUMENTED_CURRENT and expectedByRule.`);
 
-  // The closure target is 0; the integrator's full Wave-13 gate run asserts
-  // KNOWN_VIOLATIONS.length === 0 there. This test PASSES at 74 because the
-  // Wave-12 checkpoint is the documented current state; it would FAIL if the
-  // count grew beyond the documented baseline (a regression).
+  // The closure target is 0 and the documented current is now 0; this test
+  // would FAIL if any Rule-1 module→module edge re-appeared (a regression).
   assert.ok(
-    RATCHET_DOCUMENTED_CURRENT === 74,
-    'ratchet documented current state is 74 (spec §5 baseline)',
+    RATCHET_DOCUMENTED_CURRENT === 0,
+    'ratchet documented current state is 0 (post-CONVEYOR/W13, commit 6f1f249)',
   );
   assert.equal(RATCHET_TARGET, 0, 'ratchet closure target is 0 (spec §5)');
 
@@ -1525,8 +1523,7 @@ test('item 14: ratchet — KNOWN_VIOLATIONS target is 0; DOCUMENTED CURRENT STAT
     `\n  RATCHET (spec §5): documented current = ${RATCHET_DOCUMENTED_CURRENT} allowlisted edges ` +
     `(R1=${expectedByRule[1]}, R2=${expectedByRule[2]}, R3=${expectedByRule[3]}, ` +
     `R4=${expectedByRule[4]}, R6=${expectedByRule[6]}). Target = ${RATCHET_TARGET}. ` +
-    `W13-A1..A7 cherry-picks each remove an allowlisted edge AND its entry; the ` +
-    `integrator's full Wave-13 gate run asserts KNOWN_VIOLATIONS === 0.`,
+    `Authoritative baseline: dependency-direction.test.mjs ALLOWLIST_BASELINE = 0.`,
   );
 });
 

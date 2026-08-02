@@ -64,18 +64,25 @@ test('Shared runtime files remain present', () => {
 
 test('Node host adapter preserves PID, heartbeat and JSONL contracts', () => {
   const source = read('src/infrastructure/runtime/node-saga2-host-runtime.ts');
+  // Commit e03d613 (D.4) removed dead scanRateLimitSignals: the RATE_LIMIT_PATTERN
+  // (which carried 'error_status":429') and the 'board-runs' logRoot fallback were
+  // both deleted from this surface. 'board-runs' is still pinned where it lives —
+  // against tracker-view/claude-runner.mjs / tracker-view.mjs (the tracker view's
+  // JSONL log root). Only the durable PID/heartbeat/lock anchors remain here.
   assertIncludesAll(source, [
     "flag: 'wx'",
     'process.kill(pid, 0)',
     'engine-heartbeat.log',
-    'board-runs',
-    'error_status":429',
     'releaseEngineLock',
   ], 'node-saga2-host-runtime.ts');
 });
 
 test('persistence adapters keep the moved SQLite and execution anchors', () => {
   const source = read('src/infrastructure/persistence/sqlite-saga2-runtime-repositories.ts');
+  // Commit f6c26a5: readWorkerModelRoute now reads model effort from the
+  // lifecycle_execution_controls columns (model_name / model_provider /
+  // model_effort) instead of the legacy episode_workflows.metadata
+  // 'active_model_effort' key. The anchor is the new column name.
   assertIncludesAll(source, [
     'episode_workflows',
     'worker_executions',
@@ -83,7 +90,7 @@ test('persistence adapters keep the moved SQLite and execution anchors', () => {
     'createRecoveryTask',
     'reconcileWorkerExecutions',
     'reevaluateDownstream',
-    'active_model_effort',
+    'model_effort',
     'readWorkerModelRoute',
   ], 'sqlite-saga2-runtime-repositories.ts');
 });
