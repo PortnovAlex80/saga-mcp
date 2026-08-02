@@ -20,6 +20,7 @@ import type { AssignedWork } from '../application/ports/worker-executor.js';
 import type { AuthorityScope, WorkIntent } from '../saga3/domain/work-intent.js';
 import { buildExecutionContext } from '../saga3/authority/build-execution-context.js';
 import { executionContextHash } from '../saga3/domain/execution-context.js';
+import { asCardId, asExecutionId, asFenceToken } from './domain/ids.js';
 
 export const PRIORITY_ORDER = "CASE t.priority WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 END";
 
@@ -359,10 +360,10 @@ export function buildAssignedWorkFromClaim(args: {
     catch { executionContext = undefined; }
   }
   return {
-    taskId: task.id, epicId: task.epic_id, projectId,
+    taskId: asCardId(task.id), epicId: task.epic_id, projectId,
     status: task.status === 'review' ? 'review_in_progress' : 'in_progress',
     skill: skillForTask(task, task.status),
-    workerExecutionId, fenceToken: workerExecutionId, runId, workerId,
+    workerExecutionId: asExecutionId(workerExecutionId), fenceToken: asFenceToken(workerExecutionId), runId, workerId,
     machineId: machineId ?? 'unknown', repository: repository ?? null, executionContext,
   };
 }

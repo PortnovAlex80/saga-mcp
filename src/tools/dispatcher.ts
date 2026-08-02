@@ -2,7 +2,7 @@ import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type Database from 'better-sqlite3';
 import { getDb } from '../db.js';
 import { logActivity } from '../helpers/activity-logger.js';
-import { assertExecutionFence, updateExecutionPhase, isProcessAlive } from '../worker-executions.js';
+import { assertExecutionFence, updateExecutionPhase, isProcessAlive, ACTIVE_EXECUTION_STATES } from '../worker-executions.js';
 import { reevaluateDownstream } from './tasks.js';
 import type { Task, ToolHandler } from '../types.js';
 import { releaseExecutionAtomically } from '../lifecycle/atomic-release.js';
@@ -227,6 +227,45 @@ function handleWorkerNext(args: Record<string, unknown>): {
   const db = getDb();
   const workerId = args.worker_id as string;
   const machineId = args.machine_id == null ? null : String(args.machine_id);
+
+  // WAVE-3 server-side fence rejection (conveyor-wave-review
+  // ПОВТОРНАЯ ПРОВЕРКА 2026-08-02). "One launch = one card": if this calling
+  // execution ALREADY holds an active assignment, worker_next must be REJECTED
+  // BEFORE the queue is read, regardless of which client or launcher issued the
+  // call. The per-launcher --disallowedTools flag only constrains ONE launcher;
+  // this check is the single server-side chokepoint covering MCP-direct, every
+  // launcher, and tests.
+  //
+  // Detection: when execution_id is present AND either (a) an active
+  // worker_executions row exists for it, or (b) some task row carries it as
+  // current_execution_id, the execution already holds a card. We probe BOTH
+  // signals because the assignment writes them atomically in one transaction
+  // (findNextClaimable): a half-written state should still reject rather than
+  // hand out a second card. The probe is a read-only SELECT — it runs BEFORE
+  // findNextClaimable, so no claim SQL executes for a fenced execution.
+  const fenceExecutionId = args.execution_id as string | undefined;
+  if (typeof fenceExecutionId === 'string' && fenceExecutionId !== '') {
+    const placeholders = ACTIVE_EXECUTION_STATES.map(() => '?').join(',');
+    const holdsActiveExecution = db.prepare(
+      `SELECT 1 FROM worker_executions
+        WHERE execution_id=? AND state IN (${placeholders})
+        LIMIT 1`,
+    ).get(fenceExecutionId, ...ACTIVE_EXECUTION_STATES);
+    const holdsFencedTask = holdsActiveExecution
+      ? undefined
+      : db.prepare(
+          'SELECT 1 FROM tasks WHERE current_execution_id=? LIMIT 1',
+        ).get(fenceExecutionId);
+    if (holdsActiveExecution || holdsFencedTask) {
+      throw new Error(
+        `AUTHORITY_DENIED: execution '${fenceExecutionId}' already holds an active card; ` +
+        `one launch = one card. worker_next is forbidden for an execution that already has ` +
+        `an assignment — finish the current card via worker_done/worker_ask_need and let the ` +
+        `controller launch a fresh execution for the next card. This rejection is enforced ` +
+        `server-side before the queue is read, independent of any client --disallowedTools flag.`,
+      );
+    }
+  }
 
   // project_id REQUIRED — иначе в общей БД агенту подсовывается чужая задача.
   // Бросаем actionable-ошибку (НЕ через required inputSchema): так агент

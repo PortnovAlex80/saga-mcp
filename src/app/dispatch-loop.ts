@@ -17,6 +17,7 @@ import type {
   WorkAssignmentPort,
 } from '../application/ports/worker-executor.js';
 import type { IdGeneratorPort } from '../application/ports/conveyor-ports.js';
+import { asExecutionId } from '../lifecycle/domain/ids.js';
 
 export interface DispatchLoopInput {
   projectId: number;
@@ -74,7 +75,7 @@ export async function distributeQueuedTasks(
       projectId: input.projectId,
       epicId: input.epicId,
       workerId,
-      workerExecutionId,
+      workerExecutionId: asExecutionId(workerExecutionId),
       runId: dispatchRunId,
       machineId: input.machineId,
     });

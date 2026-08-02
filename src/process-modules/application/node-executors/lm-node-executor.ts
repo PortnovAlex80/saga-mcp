@@ -55,6 +55,7 @@ import {
 // Type-only import of the Wave 1 driver-neutral receipt shape — pure data type
 // under domain/spi/ (Rule 5 pure). application→domain is ratchet-allowed.
 import type { DriverNeutralExecutionReceipt } from '../../domain/spi/index.js';
+import { asExecutionId } from '../../../lifecycle/domain/ids.js';
 
 /**
  * Subset of the saga3 runtime persistence the LM executor needs. Mirrors the
@@ -624,7 +625,7 @@ export class LmNodeExecutor implements NodeExecutor {
             projectId: ctx.projectId,
             epicId: ctx.epicId ?? undefined,
             workerId,
-            workerExecutionId,
+            workerExecutionId: asExecutionId(workerExecutionId),
             runId,
             machineId,
             taskIds: [taskId],

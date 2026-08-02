@@ -24,6 +24,13 @@
  */
 
 import type { AssignedWork } from './worker-executor.js';
+// Wave 1 re-check 2026-08-02: the value objects below now carry branded
+// CardId / ExecutionId / FenceToken where they refer to a card identity, a
+// worker-attempt identity, or the fence capability. These brands are erased at
+// runtime; they exist so a plain number/string cannot flow into a mutating
+// boundary by accident. Construct via asCardId / asExecutionId / asFenceToken
+// at the boundary (lifecycle/domain/ids.ts).
+import type { CardId, ExecutionId, FenceToken } from '../../lifecycle/domain/ids.js';
 
 // ===========================================================================
 // Value objects — the "ubiquitous language" identity types (Wave 1 §706-720).
@@ -37,9 +44,11 @@ export interface WorkplaceRef {
   readonly nodeId: string;
 }
 
-/** Durable reference to a card (projected task). */
+/** Durable reference to a card (projected task). The card identity is a
+ *  branded `CardId` so it cannot be confused with epicId / processRunId /
+ *  repositoryId at any call site. */
 export interface CardRef {
-  readonly taskId: number;
+  readonly taskId: CardId;
 }
 
 /** Durable reference to a desk (node-scoped workspace directory). */
@@ -64,11 +73,13 @@ export interface Product {
   readonly bindings: Record<string, unknown>;
 }
 
-/** A fenced execution reference — identifies one live worker execution + fence. */
+/** A fenced execution reference — identifies one live worker execution + fence.
+ *  All three identities are branded so a stale or foreign value cannot be
+ *  smuggled in as a plain string/number. */
 export interface FencedExecutionRef {
-  readonly executionId: string;
-  readonly taskId: number;
-  readonly fenceToken: string;
+  readonly executionId: ExecutionId;
+  readonly taskId: CardId;
+  readonly fenceToken: FenceToken;
 }
 
 /** A fenced progress observation — execution + observed activity timestamp. */
@@ -84,29 +95,29 @@ export interface FencedCompletion extends FencedExecutionRef {
 
 /** A lease granted/renewed for an execution. */
 export interface Lease {
-  readonly executionId: string;
+  readonly executionId: ExecutionId;
   readonly leaseExpiresAt: string;
 }
 
 /** Result of completing work — what the assignment port returns on completion. */
 export interface CompletionResult {
-  readonly taskId: number;
+  readonly taskId: CardId;
   readonly finalStatus: string;
   readonly accepted: boolean;
 }
 
 /** Result of a release/reconcile — whether the card was returned to the queue. */
 export interface ReleaseResult {
-  readonly executionId: string;
-  readonly taskId: number;
+  readonly executionId: ExecutionId;
+  readonly taskId: CardId;
   readonly action: 'released' | 'kept' | 'lost' | 'remote_unknown';
   readonly reason: string;
 }
 
 /** Observation of a process exit — what the close callback / reaper produces. */
 export interface ProcessExitObservation {
-  readonly executionId: string;
-  readonly taskId: number;
+  readonly executionId: ExecutionId;
+  readonly taskId: CardId;
   readonly exitCode: number | null;
   readonly signal: string | null;
 }
@@ -121,8 +132,8 @@ export interface RecoveryIssue {
 
 /** Per-execution reconcile result row. */
 export interface ReconcileResult {
-  readonly executionId: string;
-  readonly taskId: number;
+  readonly executionId: ExecutionId;
+  readonly taskId: CardId;
   readonly action: string;
   readonly released: boolean;
   readonly reason: string;

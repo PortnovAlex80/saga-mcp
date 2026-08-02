@@ -45,8 +45,10 @@
  *                                       trace_add/list/delete, artifact_coverage
  *   - `platform.repository`          → repository_register/list/get/update,
  *                                       repository_checkout_*
- *   - `platform.worker-completion`   → worker_next/done/ask_need/ask_done,
+ *   - `platform.worker-completion`   → worker_done/ask_need/ask_done,
  *                                       worker_merge_acquire/release, worker_health
+ *                                       (worker_next EXCLUDED since WAVE-3:
+ *                                       one launch = one card)
  *   - `platform.protocol-checkpoint` → runtime.protocol.step_complete (W4-A5)
  *
  * Each tool's `idempotency` / `sideEffect` classification is derived from the
@@ -399,12 +401,21 @@ export const PLATFORM_WORKER_COMPLETION_CAPABILITY_ID =
 const WORKER_SCHEMA_STEM = 'saga3.platform.worker-completion';
 
 function buildWorkerCompletionPackage(): CapabilityPackage {
+  // WAVE-3 (conveyor-wave-review ПОВТОРНАЯ ПРОВЕРКА 2026-08-02): `worker_next`
+  // is REMOVED from the assigned-worker capability package. "One launch = one
+  // card": a worker that already holds an assigned execution must NOT be granted
+  // the self-claim tool. The dispatcher (`saga-dispatch`, the board runner) does
+  // not pull `worker_next` from THIS package — it invokes the raw MCP tool
+  // directly — so dropping it here breaks no dispatcher surface. The remaining
+  // six tools are the completion/ask/merge/health surface an assigned worker
+  // legitimately needs to finish the ONE card it was launched with.
+  //
+  // The server-side fence rejection in handleWorkerNext (src/tools/dispatcher.ts)
+  // is the hard guarantee: even if a client reacquires worker_next through some
+  // other path, an execution that already holds a card is rejected before the
+  // queue is read. This package change removes the platform-level GRANT so the
+  // tool is not advertised to assigned workers in the first place.
   const tools: readonly ModuleToolContribution[] = [
-    platformTool(
-      'platform.worker-completion.worker_next',
-      `${WORKER_SCHEMA_STEM}.worker_next`,
-      IDEMPOTENT_WRITE, // atomic claim: idempotent per (worker, fence)
-    ),
     platformTool(
       'platform.worker-completion.worker_done',
       `${WORKER_SCHEMA_STEM}.worker_done`,
@@ -443,10 +454,12 @@ function buildWorkerCompletionPackage(): CapabilityPackage {
     runtimeCompatibilityRange: '^3.0.0',
     tools: Object.freeze([...tools]),
     description:
-      'Platform worker-completion capability: the dispatcher fence '
-      + '(worker_next/done/ask_need/ask_done) plus the merge-lock protocol '
-      + '(worker_merge_acquire/release) and worker_health. The regulated '
-      + 'lifecycle-state surface every managed worker routes through.',
+      'Platform worker-completion capability: the assigned-worker completion '
+      + 'fence (worker_done/ask_need/ask_done) plus the merge-lock protocol '
+      + '(worker_merge_acquire/release) and worker_health. worker_next is '
+      + 'intentionally EXCLUDED — one launch = one card; an assigned worker '
+      + 'must not re-enter the dispatch queue (WAVE-3). The dispatcher surface '
+      + 'invokes worker_next as a raw MCP tool, not through this package.',
   });
 }
 
@@ -506,8 +519,11 @@ export const PLATFORM_REPOSITORY_PACKAGE: CapabilityPackage =
 
 /**
  * The `platform.worker-completion` capability package. Surfaced tools:
- * worker_next/done/ask_need/ask_done, worker_merge_acquire/release,
- * worker_health.
+ * worker_done/ask_need/ask_done, worker_merge_acquire/release, worker_health.
+ * `worker_next` is intentionally EXCLUDED (WAVE-3): an assigned worker that
+ * already holds a card must not re-enter the dispatch queue — one launch = one
+ * card. The dispatcher invokes worker_next as a raw MCP tool, not via this
+ * package.
  */
 export const PLATFORM_WORKER_COMPLETION_PACKAGE: CapabilityPackage =
   buildWorkerCompletionPackage();

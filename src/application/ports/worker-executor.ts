@@ -7,9 +7,25 @@
  * workplace. The dispatcher selected it, flipped its status, set the fence
  * (current_execution_id), and froze the execution context — all in one atomic
  * transaction before hiring the worker.
+ *
+ * Wave 1 re-check 2026-08-02: identity fields are now branded. `taskId` is a
+ * `CardId` (distinct from any other number), `workerExecutionId` is an
+ * `ExecutionId`, and `fenceToken` is a `FenceToken`. The fence token and the
+ * worker execution id are the SAME runtime value (see Wave 1 remarks: "fence
+ * token equals the worker execution id"); we keep `fenceToken` as a typed
+ * alias expressing the *capability* the worker must present on mutating calls,
+ * rather than deleting it and forcing every consumer to re-derive the role.
+ * Builders MUST construct both from the same source string via the `as*`
+ * constructors in lifecycle/domain/ids.ts (e.g. `asExecutionId(x)` and
+ * `asFenceToken(x)`).
  */
+import type { CardId, ExecutionId, FenceToken } from '../../lifecycle/domain/ids.js';
+
 export interface AssignedWork {
-  taskId: number;
+  /** Durable card identity (the projected task). Branded so it cannot be
+   *  confused with epicId / projectId / processRunId / repositoryId at any
+   *  call site. Construct via `asCardId(task.id)` at the boundary. */
+  taskId: CardId;
   epicId: number;
   projectId: number;
   /** Post-assignment status: the claim already flipped todo→in_progress or
@@ -17,12 +33,16 @@ export interface AssignedWork {
   status: 'in_progress' | 'review_in_progress';
   /** Execution or review skill resolved for this card. */
   skill: string;
-  /** Worker execution id — equals the fence token stamped on
-   *  tasks.current_execution_id and the worker_executions row. */
-  workerExecutionId: string;
-  /** Fence token (same value as workerExecutionId). The worker must present it
-   *  on every mutating call (worker_done / worker_merge_*). */
-  fenceToken: string;
+  /** Worker execution id — canonical identity of this one attempt. Equals the
+   *  fence token stamped on tasks.current_execution_id and the
+   *  worker_executions row. Branded `ExecutionId`. */
+  workerExecutionId: ExecutionId;
+  /** Fence token — the CAPABILITY the worker must present on every mutating
+   *  call (worker_done / worker_merge_*). At runtime this === workerExecutionId
+   *  (same string); the distinct brand expresses the role so a plain string
+   *  cannot flow into a mutating call by accident. Construct via
+   *  `asFenceToken(workerExecutionId)` at the boundary. */
+  fenceToken: FenceToken;
   runId: string;
   workerId: string;
   machineId: string;
@@ -50,8 +70,10 @@ export interface AssignTaskInput {
   epicId?: number;
   workerId: string;
   /** Caller-generated fence token. Becomes tasks.current_execution_id and
-   *  worker_executions.execution_id. */
-  workerExecutionId: string;
+   *  worker_executions.execution_id. Branded `ExecutionId` (the canonical
+   *  worker-attempt identity); construct via `asExecutionId(...)` at the
+   *  boundary. */
+  workerExecutionId: ExecutionId;
   runId: string;
   machineId: string;
   /** Scope restrict to one specific card (the dispatcher preselected it).
@@ -99,8 +121,8 @@ export interface WorkAssignmentPort {
    * the card is already released or owned by a different execution.
    */
   releaseAssignment(input: {
-    taskId: number;
-    workerExecutionId: string;
+    taskId: CardId;
+    workerExecutionId: ExecutionId;
     reason: string;
   }): void;
 }

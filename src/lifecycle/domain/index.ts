@@ -15,6 +15,8 @@ export type {
   ExecutionId,
   IntegrationId,
   HumanRequestId,
+  FenceToken,
+  CardId,
 } from './ids.js';
 
 export {
@@ -22,6 +24,8 @@ export {
   asExecutionId,
   asIntegrationId,
   asHumanRequestId,
+  asFenceToken,
+  asCardId,
 } from './ids.js';
 
 export type {
