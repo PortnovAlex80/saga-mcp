@@ -19,6 +19,7 @@
 
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
   createSaga2Application,
@@ -32,6 +33,7 @@ import { SqliteWorkAssignmentAdapter } from './infrastructure/work/sqlite-work-a
 import { asModuleInstallationId } from './process-modules/installation/domain/installation.js';
 import type { ProductionInstallation } from './process-modules/installation/production-install.js';
 import { getDb } from './db.js';
+import { uuidIdGenerator } from './infrastructure/conveyor/conveyor-adapters.js';
 import {
   installProductionModules,
 } from './process-modules/installation/production-install.js';
@@ -306,11 +308,13 @@ async function main() {
         projectId,
         epicId,
         concurrency,
-        // Conveyor model: the application reads claimable-card counts through
-        // the WorkAssignmentPort, never the global DB directly (CONVEYOR-MENTAL-
-        // MODEL §"Required outbound ports"). The authoritative claim still
-        // happens inside the runner via the factory's claimTask callback.
+        // Conveyor model: this application service owns dispatch and the
+        // global concurrency budget. It atomically assigns each exact card
+        // before constructing the worker process; the runner only hosts the
+        // already-assigned worker and never searches the queue.
         workAssignment: new SqliteWorkAssignmentAdapter(getDb()),
+        idGenerator: uuidIdGenerator,
+        machineId: os.hostname(),
         workerExecutorFactory: overrides.workerExecutorFactory
           ?? createPinnedWorkerFactoryForDispatch(overrides.modulePackages),
         factoryContext: {

@@ -1,47 +1,36 @@
 /**
- * Conveyor dispatch loop — distributes queued kanban tasks to workers.
+ * Conveyor dispatch application service.
  *
- * The infrastructure (this loop) is the factory operator: it hires workers
- * through the WorkerExecutorFactory, ONE run with concurrency=N, and the runner's
- * pump atomically assigns each card (status flip + fence creation in ONE
- * transaction) before launching each worker. The worker receives the exact,
- * already-assigned card — it never searches for work, never calls worker_next.
+ * This service owns queue scheduling and the global concurrency budget. It
+ * atomically assigns a card through WorkAssignmentPort BEFORE constructing a
+ * worker process, then gives one immutable AssignedWork to one executor.
  *
- * CONVEYOR-MENTAL-MODEL.md: "Worker arrives, reads the card/desk, does the
- * work, calls worker_done, leaves. Infrastructure hires workers, decides
- * how many to run, provides the desk."
- *
- * WORK-ASSIGNMENT-REFACTOR-SPEC §4: the runner's claimTask callback is wired
- * (via the factory) to WorkAssignmentPort.assignTask — the same atomic
- * findNextClaimable SQL proven by tests/dispatcher-race/run.mjs. This closes
- * the loose-preselector divergence: there is no separate readClaimableTasks
- * authority; the atomic claim is the only selector. Two dispatcher processes
- * calling assignTask for overlapping scopes never get the same card.
+ * The runner is therefore a process host, not a second dispatcher. It never
+ * chooses a card for this production path and never owns the global queue.
  */
 
 import type {
+  AssignedWork,
   WorkerExecutor,
   WorkerExecutorFactory,
+  WorkerRunSnapshot,
   WorkAssignmentPort,
 } from '../application/ports/worker-executor.js';
-// Fallback only: used when a caller did not wire a WorkAssignmentPort. The
-// production path (orchestrate-cli) always wires the port, so this import is
-// not exercised in production; tests inject a port or accept the fallback.
-import { getDb } from '../db.js';
+import type { IdGeneratorPort } from '../application/ports/conveyor-ports.js';
 
 export interface DispatchLoopInput {
   projectId: number;
   epicId: number;
   concurrency: number;
   workerExecutorFactory: WorkerExecutorFactory;
-  /**
-   * Atomic card-assignment port (CONVEYOR-MENTAL-MODEL §"Required outbound
-   * ports": the application must not read the global DB directly). Used for the
-   * batch-planning count; the authoritative claim happens inside the runner via
-   * the factory's claimTask callback (wired to the same port). When omitted,
-   * the loop falls back to direct DB access — kept only for tests/legacy.
-   */
-  workAssignment?: WorkAssignmentPort;
+  /** Single authority for selecting and fencing cards. */
+  workAssignment: WorkAssignmentPort;
+  /** Infrastructure identity source; keeps Date/random/process details outside the use case. */
+  idGenerator: IdGeneratorPort;
+  /** Stable identity of the host that owns the worker execution. */
+  machineId: string;
+  /** Polling interval for one assigned worker. Default 1000ms. */
+  pollMs?: number;
   factoryContext: {
     projectId: number;
     epicId: number;
@@ -56,95 +45,151 @@ export interface DispatchLoopInput {
   };
 }
 
-/**
- * Count claimable cards via the port when wired, else fall back to a direct
- * query (legacy/tests). The application layer must not read the global DB
- * directly in production — the port is the conveyor seam.
- */
-function countClaimable(projectId: number, port?: WorkAssignmentPort): number {
-  if (port) return port.countClaimable(projectId);
-  // Fallback for callers that did not wire a port (kept for tests/legacy).
-  const row = getDb().prepare(
-    `SELECT count(*) as n
-     FROM tasks t JOIN epics e ON e.id = t.epic_id
-     WHERE e.project_id = ? AND t.status IN ('todo','review')
-       AND (t.assigned_to IS NULL OR t.assigned_to = '')`,
-  ).get(projectId) as { n: number };
-  return row.n;
+interface ActiveAssignedWorker {
+  readonly assignment: AssignedWork;
+  readonly completion: Promise<number>;
 }
 
+const TERMINAL_RUN_STATES = new Set(['completed', 'stopped', 'failed']);
+
 /**
- * Hire workers for claimable tasks. Starts ONE run with concurrency=N; the
- * runner's pump assigns each card atomically (via the factory's claimTask
- * callback, wired to WorkAssignmentPort.assignTask) and launches a worker per
- * slot. Workers run in parallel up to `concurrency` at a time.
- *
- * This function is BLOCKING with respect to the run: it polls `status()` until
- * the run reaches a terminal state (completed/stopped/failed) before returning.
- * The orchestrate-cli lifecycle loop depends on this — it resumes the lifecycle
- * only after the dispatched workers have actually finished, otherwise it would
- * re-pause immediately on an empty-but-inflight queue and exit. The original
- * implementation relied on `start()` blocking; under the conveyor model
- * `start()` returns immediately (it schedules `queueMicrotask(pump)`), so the
- * poll loop here is the awaitable contract the caller needs.
- *
- * Race safety does not depend on this loop: the atomic claim inside the runner
- * (findNextClaimable under BEGIN IMMEDIATE) is the single source of truth —
- * two dispatcher processes cannot obtain the same card even if both reach the
- * claim simultaneously. This loop only decides how many workers to hire and
- * waits for them to drain.
+ * Drain all currently assignable cards with one application-owned concurrency
+ * budget. A slot is acquired only after assignTask succeeds. When one worker
+ * completes, assignment is retried because its completion may have unblocked a
+ * dependent card.
  */
 export async function distributeQueuedTasks(
   input: DispatchLoopInput,
 ): Promise<number> {
-  const executor: WorkerExecutor = input.workerExecutorFactory(input.factoryContext);
-  try {
-    const claimable = countClaimable(input.projectId, input.workAssignment);
-    if (claimable === 0) {
-      process.stdout.write(`[dispatch] queue empty — nothing to hire\n`);
-      return 0;
-    }
-    process.stdout.write(
-      `[dispatch] ${claimable} claimable, hiring run with concurrency=${input.concurrency} `
-      + `(runner assigns cards atomically via assignTask)\n`,
-    );
+  assertConcurrency(input.concurrency);
+  const pollMs = input.pollMs ?? 1000;
+  const dispatchRunId = input.idGenerator.newTypedId('dispatch-run');
+  const active = new Set<Promise<number>>();
+  let terminalWorkers = 0;
 
-    // One run, concurrency=N. The runner pump hires up to N workers in
-    // parallel, each atomically claiming one card through the factory's
-    // claimTask callback (WorkAssignmentPort.assignTask). start() returns a
-    // snapshot immediately (non-blocking) and pump runs on a microtask.
-    executor.start({
+  const startOne = (): ActiveAssignedWorker | null => {
+    const workerExecutionId = input.idGenerator.newTypedId('worker-execution');
+    const workerId = input.idGenerator.newTypedId('worker');
+    const assignment = input.workAssignment.assignTask({
       projectId: input.projectId,
       epicId: input.epicId,
-      concurrency: input.concurrency,
+      workerId,
+      workerExecutionId,
+      runId: dispatchRunId,
+      machineId: input.machineId,
     });
+    if (!assignment) return null;
 
-    // Awaitable contract: poll status() until the run terminates. The caller
-    // (lifecycle resume loop) needs all dispatched workers to finish before it
-    // resumes the lifecycle; without this wait it would see an empty queue
-    // (workers still inflight) and exit prematurely.
-    const terminalStates = new Set(['completed', 'stopped', 'failed']);
-    const pollIntervalMs = 1000;
-    let totalCompleted = 0;
-    while (true) {
-      await sleep(pollIntervalMs);
-      const snapshot = executor.status(input.projectId);
-      if (!snapshot) break; // run gone
-      if (terminalStates.has(snapshot.status)) {
-        totalCompleted = snapshot.completed + snapshot.failed;
-        process.stdout.write(
-          `[dispatch] run ${snapshot.status}: ${snapshot.completed} completed, `
-          + `${snapshot.failed} failed, ${snapshot.claimed} claimed\n`,
-        );
+    const executor = input.workerExecutorFactory(input.factoryContext);
+    try {
+      // One assigned card, one worker process. Concurrency belongs to this
+      // service; the process host receives a local ceiling of one.
+      executor.start({
+        projectId: input.projectId,
+        epicId: input.epicId,
+        concurrency: 1,
+        assignment,
+      });
+    } catch (error) {
+      try {
+        input.workAssignment.releaseAssignment({
+          taskId: assignment.taskId,
+          workerExecutionId: assignment.workerExecutionId,
+          reason: `Worker start failed before supervision: ${errorMessage(error)}`,
+        });
+      } finally {
+        executor.dispose();
+      }
+      throw error;
+    }
+
+    const completion = waitForAssignedWorker({
+      executor,
+      projectId: input.projectId,
+      assignment,
+      pollMs,
+    });
+    return { assignment, completion };
+  };
+
+  while (true) {
+    let queueExhaustedForNow = false;
+
+    while (active.size < input.concurrency) {
+      const launched = startOne();
+      if (!launched) {
+        queueExhaustedForNow = true;
         break;
       }
+      process.stdout.write(
+        `[dispatch] assigned task=${launched.assignment.taskId} `
+        + `execution=${launched.assignment.workerExecutionId}\n`,
+      );
+      let tracked!: Promise<number>;
+      tracked = launched.completion
+        .then((count) => {
+          terminalWorkers += count;
+          return count;
+        })
+        .finally(() => active.delete(tracked));
+      active.add(tracked);
     }
-    return totalCompleted;
+
+    if (active.size === 0) {
+      if (queueExhaustedForNow) break;
+      continue;
+    }
+
+    // A completion may satisfy dependencies and make another card claimable.
+    await Promise.race(active);
+  }
+
+  process.stdout.write(
+    `[dispatch] drain complete: ${terminalWorkers} worker execution(s) terminal\n`,
+  );
+  return terminalWorkers;
+}
+
+async function waitForAssignedWorker(input: {
+  executor: WorkerExecutor;
+  projectId: number;
+  assignment: AssignedWork;
+  pollMs: number;
+}): Promise<number> {
+  try {
+    while (true) {
+      await sleep(input.pollMs);
+      const snapshot = input.executor.status(input.projectId);
+      if (snapshot === null) return 1;
+      if (TERMINAL_RUN_STATES.has(snapshot.status)) {
+        logTerminal(input.assignment, snapshot);
+        return snapshot.completed + snapshot.failed > 0
+          ? snapshot.completed + snapshot.failed
+          : 1;
+      }
+    }
   } finally {
-    executor.dispose();
+    input.executor.dispose();
   }
 }
 
+function logTerminal(assignment: AssignedWork, snapshot: WorkerRunSnapshot): void {
+  process.stdout.write(
+    `[dispatch] task=${assignment.taskId} run=${snapshot.status}: `
+    + `${snapshot.completed} completed, ${snapshot.failed} failed\n`,
+  );
+}
+
+function assertConcurrency(value: number): void {
+  if (!Number.isInteger(value) || value < 1 || value > 10) {
+    throw new Error(`concurrency must be an integer 1..10, got '${value}'`);
+  }
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
