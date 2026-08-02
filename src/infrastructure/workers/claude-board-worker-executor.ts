@@ -10,10 +10,7 @@ export interface LegacyClaudeBoardRunner {
     projectId: number;
     epicId?: number | null;
     concurrency: number;
-    claimScope?: {
-      taskIds?: number[];
-    };
-    assignment?: AssignedWork;
+    assignment: AssignedWork;
   }): WorkerRunSnapshot;
   stop(projectId: number): WorkerRunSnapshot | null;
   status(projectId: number): WorkerRunSnapshot | null;

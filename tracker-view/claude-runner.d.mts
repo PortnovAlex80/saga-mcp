@@ -54,7 +54,10 @@ export interface RunnerRunSnapshot {
 }
 
 export interface ClaudeBoardRunnerOptions {
-  claimTask: (args: { worker_id: string; project_id: number; machine_id?: string; epic_id?: number; execution_id?: string; run_id?: string }) => RunnerAssignment | null;
+  /** @deprecated Slice 1 Zones 1-4: the runner is strictly one-card and no
+   *  longer calls back to claimTask. Kept optional for type compatibility with
+   *  runners that still carry a no-op callback; the pump path never invokes it. */
+  claimTask?: (args: { worker_id: string; project_id: number; machine_id?: string; epic_id?: number; execution_id?: string; run_id?: string }) => RunnerAssignment | null;
   getProject: (projectId: number) => unknown;
   getTaskState: (taskId: number) => unknown;
   /** Read the full task row. Used by the pre-assigned-card path to rebuild the
@@ -87,7 +90,7 @@ export interface ClaudeBoardRunnerOptions {
 }
 
 export interface ClaudeBoardRunner {
-  start(args: { projectId: number; epicId?: number; concurrency: number; claimScope?: { taskIds?: number[] }; assignment?: unknown }): RunnerRunSnapshot;
+  start(args: { projectId: number; epicId?: number; concurrency: number; assignment: unknown }): RunnerRunSnapshot;
   stop(projectId: number): RunnerRunSnapshot | null;
   status(projectId: number): RunnerRunSnapshot | null;
   setConcurrency(projectId: number, concurrency: number): void;

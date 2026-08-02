@@ -480,7 +480,7 @@ export class ClaudeBoardRunner {
     }
   }
 
-  start({ projectId, epicId, concurrency, claimScope, assignment }) {
+  start({ projectId, epicId, concurrency, assignment }) {
     const existing = this.runs.get(projectId);
     if (existing && !TERMINAL_RUN_STATES.has(existing.status)) {
       throw new Error(`Project ${projectId} already has an active board run`);
@@ -498,17 +498,12 @@ export class ClaudeBoardRunner {
       id: runId,
       projectId,
       epicId: epicId ?? null,
-      // Claim scope: when set, the runner only claims one of these task ids.
-      // The Saga 3 engine uses this to dispatch exactly its projected discovery
-      // task and never a co-existing legacy discovery.kickstart task.
-      claimTaskIds: Array.isArray(claimScope?.taskIds) && claimScope.taskIds.length > 0
-        ? claimScope.taskIds
-        : null,
-      // Conveyor model (WORK-ASSIGNMENT-REFACTOR-SPEC §2.3): when the dispatcher
-      // pre-assigned a card (assignTask already flipped status + set the fence),
-      // the runner stores it here and pump() launches the worker directly WITHOUT
-      // calling claimTask — the assignment is done. This is the target path;
-      // claimScope above is the legacy fallback for MCP-direct / role-based workers.
+      // Conveyor model (Slice 1 Zones 1-4 refactor — node-breaker): the
+      // dispatcher ALWAYS pre-assigns a card (assignTask already flipped status
+      // + set the fence) before start(). The runner stores it here and pump()
+      // launches the worker directly WITHOUT calling claimTask — the assignment
+      // is done. One pre-assigned card = one worker. The legacy claimScope /
+      // in-process worker_next self-claim path is removed.
       preassignedWork: assignment ?? null,
       projectName: project.name,
       workspaceRoot,
@@ -601,13 +596,19 @@ export class ClaudeBoardRunner {
       return;
     }
 
-    // Conveyor model (WORK-ASSIGNMENT-REFACTOR-SPEC §4 Wave B): when the
-    // dispatcher pre-assigned a card, the claim + fence already happened
-    // atomically BEFORE start() was called. pump() converts the AssignedWork
-    // into the launch()-shaped assignment and launches the worker directly —
-    // NO claimTask call, NO worker_next. One pre-assigned card = one worker;
-    // after launching, the run waits for that worker to finish (the close
-    // handler re-pumps, sees preassignedWork consumed, and completes the run).
+    // Slice 1 Zones 1-4 (conveyor refactor — node-breaker): the runner is now
+    // strictly one-card. The dispatcher ALWAYS pre-assigns the card (claim +
+    // fence happened atomically BEFORE start() was called). pump() converts
+    // the AssignedWork into the launch()-shaped assignment and launches the
+    // worker directly — NO claimTask call, NO worker_next. One pre-assigned
+    // card = one worker; after launching, the run waits for that worker to
+    // finish (the close handler re-pumps, sees preassignedWork consumed, and
+    // completes the run). The legacy in-process self-claim while-loop is
+    // removed.
+    //
+    // Defensive null-guard: assignment is now mandatory on start(), so
+    // preassignedWork is never null at pump time — but keep the guard so a
+    // future caller cannot crash silently if the contract is loosened.
     if (run.preassignedWork) {
       const work = run.preassignedWork;
       // Consume it so a re-pump (after the worker closes) does not relaunch.
@@ -637,69 +638,12 @@ export class ClaudeBoardRunner {
       return;
     }
 
-    let claimedAny = false;
-    while (run.active.size < run.concurrency && run.status === 'running') {
-      const workerId = `board-${run.projectId}-${Date.now()}-${++this.sequence}`;
-      const executionId = `exec-${run.projectId}-${process.pid}-${Date.now()}-${this.sequence}`;
-      let assignment;
-      try {
-        assignment = this.claimTask({
-          worker_id: workerId,
-          project_id: run.projectId,
-          machine_id: os.hostname(),
-          epic_id: run.epicId ?? undefined,
-          execution_id: executionId,
-          run_id: run.id,
-          // Forward the claim scope so worker_next restricts candidates to these
-          // task ids (null → no restriction, legacy behaviour).
-          task_ids: run.claimTaskIds,
-        });
-      } catch (error) {
-        run.lastError = error instanceof Error ? error.message : String(error);
-        run.failed += 1;
-        this.finish(run, 'failed');
-        return;
-      }
-
-      if (!assignment?.task) break;
-      claimedAny = true;
-      run.claimed += 1;
-      try {
-        this.launch(run, assignment, workerId);
-        run.consecutiveSpawnFailures = 0;
-      } catch (error) {
-        run.failed += 1;
-        run.consecutiveSpawnFailures = (run.consecutiveSpawnFailures ?? 0) + 1;
-        run.lastError = error instanceof Error ? error.message : String(error);
-        this.recoverAssignment({
-          taskId: assignment.task.id,
-          workerId,
-          originalStatus: assignment.task.status,
-          executionId: assignment.execution_id || null,
-          reason: `Claude spawn failed: ${run.lastError}`,
-        });
-        if (assignment.execution_id) {
-          markExecutionSpawnFailed(this.dbPath, assignment.execution_id, run.lastError);
-        }
-        // CRITICAL: break the retry loop after consecutive spawn failures.
-        // Without this, a persistently failing spawn (missing workspace, bad
-        // config, rate-limited API, etc.) creates thousands of worker_execution
-        // rows per minute — each hitting the LLM API and risking account bans.
-        // 3 consecutive failures = stop the board run, let the operator
-        // investigate. This is fail-fast: better to pause and surface the
-        // error than to hammer the API at 100 Hz.
-        if (run.consecutiveSpawnFailures >= 3) {
-          run.lastError = `Board run stopped after ${run.consecutiveSpawnFailures} consecutive spawn failures. Last error: ${run.lastError}`;
-          this.finish(run, 'failed');
-          return;
-        }
-        // For the first couple of failures, back off briefly before retrying
-        // to avoid hammering the API. One second is the minimum sane interval.
-        try { this.syncSleep(1000); } catch { /* ignore */ }
-      }
-    }
-
-    if (!claimedAny && run.active.size === 0) {
+    // No pre-assigned card and nothing active: the one-card run is done. This
+    // branch is reached after the single worker closes and re-pumps (its
+    // preassignedWork was consumed on the first pump). It also covers the
+    // defensive case where start() was called without an assignment (should
+    // be impossible under the mandatory contract).
+    if (run.active.size === 0) {
       run.emptyChecks += 1;
       this.finish(run, run.failed > 0 && run.completed === 0 ? 'failed' : 'completed');
     }

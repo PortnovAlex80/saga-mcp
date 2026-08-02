@@ -110,23 +110,17 @@ export interface WorkerExecutorStart {
   epicId?: number | null;
   concurrency: number;
   /**
-   * Pre-assigned card (conveyor model). When present, the runner SKIPS the
-   * in-process claim and launches the worker directly on this card — the
-   * assignment + fence already happened atomically before start() was called.
-   * This is the target path: infrastructure assigns, worker receives.
+   * Pre-assigned card (conveyor model). The runner SKIPS the in-process claim
+   * and launches the worker directly on this card — the assignment + fence
+   * already happened atomically before start() was called. This is the only
+   * assignment path: infrastructure assigns, worker receives.
+   *
+   * REQUIRED as of Slice 1 Zones 1-4 of the conveyor refactor (the
+   * node-breaker): every caller must pre-assign via the WorkAssignmentPort
+   * before launching a worker. The legacy `claimScope` self-claim path is
+   * removed.
    */
-  assignment?: AssignedWork;
-  /**
-   * Optional claim scope (legacy / MCP-direct path). When taskIds is provided
-   * and no `assignment` is set, the worker substrate claims one of the listed
-   * tasks itself via worker_next — never any other task in the episode, even
-   * one of higher priority. Used by the Saga 3 engine to dispatch exactly the
-   * discovery task projected from its WorkIntent, and by requirements-project
-   * role-based agents that still self-claim.
-   */
-  claimScope?: {
-    taskIds?: number[];
-  };
+  assignment: AssignedWork;
 }
 
 export interface WorkerModelRoute {

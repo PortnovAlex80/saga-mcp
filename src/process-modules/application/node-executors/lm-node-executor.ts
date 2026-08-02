@@ -191,17 +191,14 @@ export interface LmNodeExecutorOptions {
    * Atomic card-assignment port (CONVEYOR-MENTAL-MODEL §"Required outbound
    * ports": infrastructure assigns the exact card BEFORE launching the worker).
    *
-   * When wired, the executor generates a fence token (workerExecutionId) and
-   * calls `workAssignment.assignTask` BEFORE `workerExecutor.start()`, passing
-   * the resulting {@link AssignedWork} as `assignment`. This is the ONE
-   * assignment path (doc line 291): the runner's `claimTask`/`claimScope` path
-   * is bypassed entirely.
-   *
-   * When NOT wired (legacy/tests), the executor falls back to passing
-   * `claimScope: { taskIds: [taskId] }` so the runner assigns the card itself.
-   * That fallback is DEPRECATED — production always wires this port.
+   * REQUIRED as of Slice 1 Zones 1-4 (conveyor refactor — node-breaker): the
+   * executor generates a fence token (workerExecutionId) and calls
+   * `workAssignment.assignTask` BEFORE `workerExecutor.start()`, passing the
+   * resulting {@link AssignedWork} as `assignment`. This is the ONE assignment
+   * path (doc line 291): the runner's `claimTask`/`claimScope` path is removed.
+   * Every caller (LM-node lifecycle) must wire this port.
    */
-  workAssignment?: WorkAssignmentPort;
+  workAssignment: WorkAssignmentPort;
   /** Polling interval for worker status. Default 2000ms. */
   pollMs?: number;
   /** Hard wall-clock cap on one LM-node execution. Default 30min. */
@@ -218,7 +215,7 @@ export class LmNodeExecutor implements NodeExecutor {
   private readonly persistence: LmNodeExecutionPersistence;
   private readonly workerExecutorFactory: WorkerExecutorFactory;
   private readonly resolveWorkerContext: (ctx: NodeExecutionContext) => WorkerExecutorFactoryContext;
-  private readonly workAssignment: WorkAssignmentPort | undefined;
+  private readonly workAssignment: WorkAssignmentPort;
   private readonly pollMs: number;
   private readonly maxRunMs: number;
   private readonly sleep: (ms: number) => Promise<void>;
@@ -596,9 +593,26 @@ export class LmNodeExecutor implements NodeExecutor {
         // same atomic transaction. Pattern mirrors the runner's pump
         // (exec-${projectId}-${pid}-${ts}-${seq}) so tokens stay shape-stable
         // across both spawn paths.
+        // CONVEYOR-MENTAL-MODEL (doc line 291): "infrastructure atomically
+        // assigns the exact card before launching a worker". This LM cell
+        // generates the fence token (workerExecutionId) + worker identity
+        // BEFORE start(), calls assignTask (status flip + fence creation in ONE
+        // transaction), and hands the resulting AssignedWork to start() as
+        // `assignment`. The runner then launches the worker directly — NO
+        // claimTask, NO claimScope. This is the ONE assignment path.
+        //
+        // The fence token MUST exist before assignTask: it becomes
+        // tasks.current_execution_id and worker_executions.execution_id in the
+        // same atomic transaction. Pattern mirrors the runner's pump
+        // (exec-${projectId}-${pid}-${ts}-${seq}) so tokens stay shape-stable
+        // across both spawn paths.
+        //
+        // Slice 1 Zones 1-4 (node-breaker): workAssignment is now REQUIRED, so
+        // there is no fallback claimScope branch. The lost-race throw below
+        // stays — assignTask may still return null when another driver won the
+        // CAS for the same card.
         let preassignedWork: AssignedWork | null = null;
-        let fallbackClaimScope: { taskIds: number[] } | undefined;
-        if (this.workAssignment) {
+        {
           const seq = ++this.executionSequence;
           const workerExecutionId =
             `exec-${ctx.projectId}-${process.pid}-${Date.now()}-${seq}`;
@@ -619,9 +633,7 @@ export class LmNodeExecutor implements NodeExecutor {
             // The exact card could not be assigned (already claimed, fenced,
             // dependency-blocked, or no longer claimable under this scope).
             // Treat as a lost-race pause: the intent goes back to 'paused' and
-            // the lifecycle may resume the node later. Do NOT fall through to
-            // the claimScope path — that would re-introduce the two-path
-            // divergence this refactor removes.
+            // the lifecycle may resume the node later.
             throw new NodeExecutionError(
               'lm',
               node.id,
@@ -630,12 +642,6 @@ export class LmNodeExecutor implements NodeExecutor {
                 'atomic pre-assignment.',
             );
           }
-        } else {
-          // DEPRECATED fallback: no WorkAssignmentPort wired. The runner's
-          // claimTask callback (inside start()) assigns the card via the
-          // factory's port. Kept only for callers that have not yet wired the
-          // port (tests / legacy). Production always wires it.
-          fallbackClaimScope = { taskIds: [taskId] };
         }
         workerExecutor.start({
           projectId: ctx.projectId,
@@ -649,12 +655,9 @@ export class LmNodeExecutor implements NodeExecutor {
           // then awaits distributeQueuedTasks), so the two launch paths never
           // compete for slots. One global N, one active path at a time.
           concurrency: 1,
-          // ONE assignment path: when the port is wired the card is already
-          // assigned + fenced atomically above; the runner receives it and
-          // launches directly. Otherwise the deprecated claimScope tells the
-          // runner to self-claim (legacy/tests only).
-          ...(preassignedWork ? { assignment: preassignedWork } : {}),
-          ...(fallbackClaimScope ? { claimScope: fallbackClaimScope } : {}),
+          // ONE assignment path: the card is already assigned + fenced
+          // atomically above; the runner receives it and launches directly.
+          assignment: preassignedWork,
         });
       } catch (error) {
         this.persistence.setIntentStatus(intent.id, 'executing', 'paused');
