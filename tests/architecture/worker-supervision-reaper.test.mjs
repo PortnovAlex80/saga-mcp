@@ -27,6 +27,8 @@ import { handlers as dispatcher } from '../../dist/tools/dispatcher.js';
 import { SqliteExecutionRuntimeRepository } from '../../dist/infrastructure/persistence/sqlite-saga2-runtime-repositories.js';
 import { startWorkerSupervision } from '../../dist/infrastructure/work/worker-supervision-service.js';
 import { reconcileWorkerExecutions } from '../../dist/worker-executions.js';
+import { releaseExecutionAtomically } from '../../dist/lifecycle/atomic-release.js';
+import { decide } from '../../dist/lifecycle/domain/evolve.js';
 
 const temp = mkdtempSync(path.join(os.tmpdir(), 'saga-sv-'));
 process.env.DB_PATH = path.join(temp, 'sv.db');
@@ -769,6 +771,163 @@ test('fenced progress: superseded execution cannot reset progress_at', () => {
   ).get(execA).progress_at;
   assert.equal(aProgressFinal, '2026-08-02T12:00:01.000Z',
     'A progress_at advanced once it is the current execution again');
+});
+
+// ---------------------------------------------------------------------------
+// Wave 5 re-check 2026-08-02 — system-reaper vs admin_override audit-event
+// distinction (WAVE-5-REMARKS.txt §"ПОВТОРНАЯ ПРОВЕРКА").
+//
+// The re-check requires an explicit test proving the system reaper event and
+// the admin_override_lifecycle event produce DIFFERENT lifecycle_events rows
+// (and different command_receipts actor provenance). Wave 5 §5: "admin_override
+// нельзя использовать как обычное действие автоматики, потому что это смешивает
+// системное восстановление с ручным вмешательством" — system recovery and human
+// override MUST be distinguishable in the audit trail.
+//
+// The two paths:
+//   * SYSTEM REAPER  — releaseExecutionAtomically writes lifecycle_events
+//     event_kind='TaskReleased' + command_receipts actor_kind='controller',
+//     actor_id='reconciler', command_kind='ObserveProcessExited'
+//     (atomic-release.ts:315-338). Automated, no human in the loop.
+//   * ADMIN OVERRIDE — the domain decide() for AdminOverrideLifecycle (with an
+//     actor of kind 'admin') produces a DomainEvent kind='AdminOverrideApplied'
+//     (evolve.ts:709-725). An executor persists it to lifecycle_events with
+//     event_kind='AdminOverrideApplied' + command_receipts actor_kind='admin'
+//     (the actor that authorized the manual intervention).
+//
+// This test drives BOTH paths against the same DB and asserts the two
+// lifecycle_events rows differ in event_kind AND the two command_receipts rows
+// differ in actor_kind / actor_id / command_kind — so a later audit can tell
+// "the watchman reaped this automatically" apart from "an operator forced this".
+// ---------------------------------------------------------------------------
+test('audit distinction: system reaper event vs admin_override event produce different lifecycle_events rows', () => {
+  const db = getDb();
+  const { projectId, epicId } = setupProject();
+
+  // --- SYSTEM REAPER PATH --------------------------------------------------
+  // Create a fenced zombie and release it via the atomic-release primitive the
+  // reaper uses. This writes the TaskReleased audit event.
+  const zombie = createZombie(projectId, epicId);
+  const reaperOutcome = releaseExecutionAtomically(db, {
+    executionId: zombie.executionId,
+    terminalState: 'lost',
+    reason: 'OS process is not alive',
+  });
+  assert.equal(reaperOutcome.taskReleased, true, 'reaper released the zombie card');
+
+  const reaperEvent = db.prepare(
+    `SELECT event_kind, payload_json FROM lifecycle_events
+      WHERE command_id IN (
+        SELECT command_id FROM command_receipts
+         WHERE actor_kind='controller' AND actor_id='reconciler')
+      AND event_kind='TaskReleased' AND task_id=?`,
+  ).get(zombie.taskId);
+  assert.ok(reaperEvent, 'a TaskReleased lifecycle_event was written by the reaper');
+  assert.equal(reaperEvent.event_kind, 'TaskReleased');
+  const reaperPayload = JSON.parse(reaperEvent.payload_json);
+  assert.equal(reaperPayload.kind, 'TaskReleased');
+
+  const reaperReceipt = db.prepare(
+    `SELECT command_kind, actor_kind, actor_id FROM command_receipts
+      WHERE actor_id='reconciler' AND task_id=?`,
+  ).get(zombie.taskId);
+  assert.ok(reaperReceipt, 'a command_receipt was written by the reaper');
+  assert.equal(reaperReceipt.actor_kind, 'controller');
+  assert.equal(reaperReceipt.actor_id, 'reconciler');
+  assert.equal(reaperReceipt.command_kind, 'ObserveProcessExited');
+
+  // --- ADMIN OVERRIDE PATH -------------------------------------------------
+  // A SEPARATE task: an operator forces it to 'completed' via
+  // AdminOverrideLifecycle. The domain decide() emits AdminOverrideApplied;
+  // we persist it the way an executor does (the command_receipts +
+  // lifecycle_events rows with actor_kind='admin').
+  const adminTask = tasks.task_create({ epic_id: epicId, title: 'admin-forced' });
+  stampProcessRun(adminTask.id);
+  const adminCommandId = `cmd-admin-${adminTask.id}-${Date.now()}`;
+  const adminDecision = decide(
+    { tasks: {}, workItems: {}, workAttempts: {}, executions: {} },
+    {
+      commandId: adminCommandId,
+      actor: { kind: 'admin', id: 'operator-alice', reason: 'manual recovery: stuck review' },
+      command: {
+        kind: 'AdminOverrideLifecycle',
+        taskId: adminTask.id,
+        expectedStateFence: 'review_in_progress',
+        target: 'completed',
+      },
+    },
+  );
+  assert.equal(adminDecision.ok, true, 'admin override is authorized by an admin actor');
+  assert.equal(adminDecision.events.length, 1);
+  assert.equal(adminDecision.events[0].kind, 'AdminOverrideApplied');
+
+  // Persist the admin decision the way the command-bus executor does: a
+  // command_receipt with actor_kind='admin' + a lifecycle_events row carrying
+  // the AdminOverrideApplied event.
+  db.prepare(
+    `INSERT INTO command_receipts
+       (command_id, command_kind, actor_kind, actor_id, task_id,
+        payload_hash, accepted, result_json, reply_json)
+     VALUES (?, 'AdminOverrideLifecycle', 'admin', 'operator-alice', ?,
+             ?, 1, ?, ?)`,
+  ).run(
+    adminCommandId,
+    adminTask.id,
+    'sha256:admin-override',
+    JSON.stringify(adminDecision.result),
+    JSON.stringify(adminDecision.result),
+  );
+  db.prepare(
+    `INSERT INTO lifecycle_events (command_id, seq, event_kind, task_id, payload_json)
+     VALUES (?, 0, 'AdminOverrideApplied', ?, ?)`,
+  ).run(adminCommandId, adminTask.id, JSON.stringify(adminDecision.events[0]));
+
+  const adminEvent = db.prepare(
+    `SELECT event_kind, payload_json FROM lifecycle_events
+      WHERE event_kind='AdminOverrideApplied' AND task_id=?`,
+  ).get(adminTask.id);
+  assert.ok(adminEvent, 'an AdminOverrideApplied lifecycle_event was written');
+  assert.equal(adminEvent.event_kind, 'AdminOverrideApplied');
+  const adminPayload = JSON.parse(adminEvent.payload_json);
+  assert.equal(adminPayload.kind, 'AdminOverrideApplied');
+  assert.equal(adminPayload.target, 'completed');
+
+  const adminReceipt = db.prepare(
+    `SELECT command_kind, actor_kind, actor_id FROM command_receipts
+      WHERE command_id=?`,
+  ).get(adminCommandId);
+  assert.equal(adminReceipt.actor_kind, 'admin');
+  assert.equal(adminReceipt.actor_id, 'operator-alice');
+  assert.equal(adminReceipt.command_kind, 'AdminOverrideLifecycle');
+
+  // --- THE DISTINCTION (the load-bearing assertion) ------------------------
+  // The two paths produce DIFFERENT event_kind values AND DIFFERENT actor
+  // provenance. An audit reader can tell automated reaping from manual
+  // override — they are never conflated.
+  assert.notEqual(reaperEvent.event_kind, adminEvent.event_kind,
+    'reaper (TaskReleased) and admin override (AdminOverrideApplied) emit DIFFERENT event_kind');
+  assert.notEqual(reaperReceipt.actor_kind, adminReceipt.actor_kind,
+    'reaper (controller) and admin override (admin) carry DIFFERENT actor_kind');
+  assert.notEqual(reaperReceipt.command_kind, adminReceipt.command_kind,
+    'reaper (ObserveProcessExited) and admin override (AdminOverrideLifecycle) carry DIFFERENT command_kind');
+  assert.notEqual(reaperReceipt.actor_id, adminReceipt.actor_id,
+    'reaper (reconciler) and admin override (operator id) carry DIFFERENT actor_id');
+  // No admin override event is ever labelled as a controller/reconciler action
+  // and vice-versa — the provenance is structurally distinct.
+  const adminEventsFromReconciler = db.prepare(
+    `SELECT COUNT(*) AS n FROM lifecycle_events le
+      JOIN command_receipts cr ON le.command_id = cr.command_id
+      WHERE le.event_kind='AdminOverrideApplied' AND cr.actor_id='reconciler'`,
+  ).get().n;
+  assert.equal(adminEventsFromReconciler, 0,
+    'no AdminOverrideApplied event is ever attributed to the reconciler');
+  const reaperEventsFromAdmin = db.prepare(
+    `SELECT COUNT(*) AS n FROM lifecycle_events le
+      JOIN command_receipts cr ON le.command_id = cr.command_id
+      WHERE le.event_kind='TaskReleased' AND cr.actor_kind='admin'`,
+  ).get().n;
+  assert.equal(reaperEventsFromAdmin, 0,
+    'no TaskReleased event is ever attributed to an admin actor');
 });
 
 

@@ -1045,6 +1045,36 @@ CREATE TABLE IF NOT EXISTS lifecycle_execution_controls (
 );
 CREATE INDEX IF NOT EXISTS idx_lifecycle_execution_controls_state
   ON lifecycle_execution_controls(engine_state);
+
+-- ---------------------------------------------------------------------------
+-- Cross-process supervision advisory lease (Wave 5 re-check 2026-08-02).
+-- The in-process single-flight guard (a module-scoped Set of
+-- "<projectId>:<epicId>" keys in worker-supervision-service.ts) only prevents
+-- two sweeps within ONE Node process. Two separate orchestrate-cli processes on
+-- the same DB can still reconcile the same (projectId, epicId) scope
+-- simultaneously. SQLite has no native advisory-lock primitive, so this table
+-- implements a compare-and-swap advisory lease:
+--   - scope_key   — the supervised scope, "<projectId>:<epicId>".
+--   - holder_id   — a unique per-process id (os.hostname()+pid+random) so the
+--                   row owner can be identified and re-enter its own lease.
+--   - expires_at  — lease deadline. A row past expires_at is stale and may be
+--                   claimed by another process; the holder renews on every sweep.
+-- Acquire: INSERT a row only if no UNEXPIRED row exists for scope_key, OR the
+-- unexpired row is already mine (WHERE holder_id = me). On conflict the CAS
+-- fails and the sweep is skipped (another process owns the scope).
+-- Release: DELETE WHERE holder_id = me (sweep exit, finally).
+-- Purely additive; starts empty. The atomic-release fenced-CAS idempotency of
+-- releaseExecutionAtomically remains the ultimate convergence guarantee, so a
+-- lease bug can cause double bookkeeping but never a double release of one card.
+CREATE TABLE IF NOT EXISTS supervision_locks (
+  scope_key    TEXT PRIMARY KEY,
+  holder_id    TEXT NOT NULL,
+  expires_at   TEXT NOT NULL,
+  created_at   TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at   TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_supervision_locks_holder ON supervision_locks(holder_id);
+CREATE INDEX IF NOT EXISTS idx_supervision_locks_expires ON supervision_locks(expires_at);
 `;
 
 // ----------------------------------------------------------------------------
