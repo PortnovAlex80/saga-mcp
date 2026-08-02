@@ -23,7 +23,12 @@
  * this interface declaration).
  */
 import type { Saga2HostRuntime } from '../../application/ports/saga2-host-runtime.js';
-import type { WorkerExecutorFactory } from '../../application/ports/worker-executor.js';
+import type {
+  AssignedWork,
+  WorkerExecutorFactory,
+  WorkAssignmentPort,
+} from '../../application/ports/worker-executor.js';
+import type { IdGeneratorPort } from '../../application/ports/conveyor-ports.js';
 import type { SagaRuntimeConfig } from '../../runtime/saga-runtime-config.js';
 import type { Saga3DiscoveryRuntimePersistence } from '../persistence/saga3-discovery-runtime-port.js';
 
@@ -106,6 +111,12 @@ export interface Saga3DiscoveryDiagnosisServiceDependencies {
   workerExecutorFactory: WorkerExecutorFactory;
   host: Saga2HostRuntime;
   runtimePersistence: Saga3DiscoveryRuntimePersistence;
+  /** Single authority for selecting and fencing the projected card. */
+  workAssignment: WorkAssignmentPort;
+  /** Infrastructure identity source for workerExecutionId / workerId / runId. */
+  idGenerator: IdGeneratorPort;
+  /** Stable identity of the host that owns the worker execution. */
+  machineId: string;
   now?: () => Date;
   sleep?: (ms: number) => Promise<void>;
   maxRunSeconds?: number;
@@ -160,6 +171,10 @@ import {
   verifyDiscoveryCertificateBundle,
   type VerifiedCertificateBundle,
 } from './discovery-certificate-bundle.js';
+import {
+  assignOneCard,
+  releaseOneCardIfAssigned,
+} from './assign-one-card.js';
 
 /**
  * Thrown when the diagnosis target cannot be verified (missing certificate,
@@ -475,14 +490,40 @@ export class Saga3DiscoveryDiagnosisService implements DiscoveryDiagnosisService
     const startedAt = this.now().getTime();
     let terminal: 'clean' | 'failed' | 'stopped' | 'timeout' | 'blocked' = 'timeout';
     let caughtError: string | null = null;
+    let assignment: AssignedWork | null = null;
+    /** Whether the control/intent were advanced to 'executing' (release gate). */
+    let workerLaunched = false;
 
     try {
+      // Conveyor model (Slice 1 Zones 1-4): assign the projected diagnosis
+      // card BEFORE the worker is launched. A null assignment means the card
+      // was not claimable (lost race / already claimed / unmet deps / fence
+      // held) — treat it like the existing 'blocked' preparation path: pause
+      // the control and do NOT spawn a worker (no fence to leak).
+      assignment = assignOneCard({
+        workAssignment: this.deps.workAssignment,
+        idGenerator: this.deps.idGenerator,
+        machineId: this.deps.machineId,
+        projectId: request.projectId,
+        epicId: request.epicId,
+        taskId: control.taskId,
+        runPrefix: 'diagnosis-run',
+      });
+      if (!assignment) {
+        rt.setIntentStatus(control.authorityIntentId, preparation.intentStatus, 'paused');
+        rt.setDiagnosisControlStatus(control.controlIntentId, controlStatus, 'paused');
+        return {
+          terminal: 'failed',
+          error: `diagnosis card task=${control.taskId} was not assignable (lost race or fence held)`,
+        };
+      }
       executor.start({
         projectId: request.projectId,
         epicId: request.epicId,
         concurrency: 1,
-        claimScope: { taskIds: [control.taskId] },
+        assignment,
       });
+      workerLaunched = true;
       rt.setIntentStatus(control.authorityIntentId, preparation.intentStatus, 'executing');
       rt.setDiagnosisControlStatus(control.controlIntentId, controlStatus, 'executing');
 
@@ -502,7 +543,17 @@ export class Saga3DiscoveryDiagnosisService implements DiscoveryDiagnosisService
       terminal = 'failed';
       caughtError = error instanceof Error ? error.message : String(error);
     } finally {
-      if (terminal !== 'clean') {
+      // Only a clean closure leaves the card released (worker_done handled it).
+      // On start/spawn failure the card is still fenced to this execution —
+      // release it BEFORE disposing the executor so it is not stranded. The
+      // release is gated on workerLaunched so a null-assignment early return
+      // (no card obtained) never calls releaseAssignment.
+      if (workerLaunched && terminal !== 'clean') {
+        releaseOneCardIfAssigned(
+          this.deps.workAssignment,
+          assignment,
+          `diagnosis worker ${terminal}: ${caughtError ?? 'non-clean closure'}`,
+        );
         try { executor.stop(request.projectId); } catch { /* best effort */ }
       }
       try { executor.dispose(); } catch { /* best effort */ }

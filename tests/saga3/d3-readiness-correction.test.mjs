@@ -36,6 +36,11 @@ const { ensureSaga3ReadinessSchema } = await import(
   '../../dist/saga3/persistence/saga3-readiness-repository.js'
 );
 const { canonicalJson } = await import('../../dist/saga3/persistence/saga3-normalization-repository.js');
+const {
+  fakeWorkAssignment,
+  fakeIdGenerator,
+  TEST_MACHINE_ID,
+} = await import('./_conveyor-fakes.mjs');
 
 function fixture() {
   const temp = mkdtempSync(path.join(os.tmpdir(), 'saga3-d3-fix-'));
@@ -183,7 +188,9 @@ test('P0-2: rejected assessment is observable in the shadow matrix (service)', a
     };
     const svc = new Saga3DiscoveryReadinessService({
       config: { dbPath: '/d', claudePath: 'c', lmStudioUrl: 'http://x/v1' },
-      workerExecutorFactory: () => ({}), host: { workerPaths: {} }, runtimePersistence: fakeRt,
+      workerExecutorFactory: () => ({}), host: { workerPaths: {} },
+    workAssignment: fakeWorkAssignment(), idGenerator: fakeIdGenerator(), machineId: TEST_MACHINE_ID, runtimePersistence: fakeRt,
+      workAssignment: fakeWorkAssignment(), idGenerator: fakeIdGenerator(), machineId: TEST_MACHINE_ID,
     });
     const out = await svc.assess({ projectId: 1, epicId: 10, proposalId: 50, proposalContentHash: PROPOSAL_HASH, sourceIntentId: 1, objective: 'o', workspaceRoot: '/w', heartbeat: () => {} });
     assert.equal(out.shadow.status, 'failed');
@@ -202,6 +209,7 @@ test('P0-1: advisor task done + no assessment → readiness.failed (never not_ru
   const svc = new Saga3DiscoveryReadinessService({
     config: { dbPath: '/d', claudePath: 'c', lmStudioUrl: 'http://x/v1' },
     workerExecutorFactory: () => ({}), host: { workerPaths: {} },
+    workAssignment: fakeWorkAssignment(), idGenerator: fakeIdGenerator(), machineId: TEST_MACHINE_ID,
     runtimePersistence: {
       // ensureReadinessControl succeeds; task already done; NO assessment row.
       ensureReadinessControl: () => ({ controlIntentId: 1, proposalId: 50, proposalContentHash: PROPOSAL_HASH, controlStatus: 'executing', authorityIntentId: 2, authorityIntentStatus: 'executing', taskId: 200 }),
@@ -220,6 +228,7 @@ test('P0-1: accepted assessment → readiness.completed; verdict carried', async
   const svc = new Saga3DiscoveryReadinessService({
     config: { dbPath: '/d', claudePath: 'c', lmStudioUrl: 'http://x/v1' },
     workerExecutorFactory: () => ({}), host: { workerPaths: {} },
+    workAssignment: fakeWorkAssignment(), idGenerator: fakeIdGenerator(), machineId: TEST_MACHINE_ID,
     runtimePersistence: {
       ensureReadinessControl: () => ({ controlIntentId: 1, proposalId: 50, proposalContentHash: PROPOSAL_HASH, controlStatus: 'executing', authorityIntentId: 2, authorityIntentStatus: 'executing', taskId: 200 }),
       prepareIntentForExecution: () => ({ state: 'done', intentStatus: 'executing', taskStatus: 'done' }),
@@ -282,7 +291,7 @@ test('P0-3: readiness service throws → discovery result preserved, readiness.f
     workerExecutorFactory: () => executor,
     persistence: { episodes: { currentStage: () => 'discovery' }, workspaces: { resolve: () => ({ workspaceRoot: '/w' }) } },
     host: { acquireEngineLock: () => ({ status: 'acquired', ownerPid: 42 }), releaseEngineLock: () => {}, workerPaths: { sagaEntry: '/e', sagaSkillRoot: '/s', logRoot: '/l', heartbeatLog: '/h' }, heartbeat: () => {} },
-    runtimePersistence: runtime, pollMs: 0, readinessService: throwingReadiness,
+    runtimePersistence: runtime, workAssignment: fakeWorkAssignment(), idGenerator: fakeIdGenerator(), machineId: TEST_MACHINE_ID, pollMs: 0, readinessService: throwingReadiness,
   });
   const result = await engine.run({ projectId: 1, epicId: 10, concurrency: 1 });
   // Discovery succeeded — NOT rewritten to failed.

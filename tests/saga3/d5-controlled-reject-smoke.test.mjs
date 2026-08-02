@@ -32,6 +32,11 @@ const { ensureSaga3SettlementSchema } = await import('../../dist/saga3/persisten
 const { Saga3DiscoverySettlementService } = await import('../../dist/saga3/application/discovery-settlement-service.js');
 const { Saga3DiscoveryDiagnosisService } = await import('../../dist/saga3/application/discovery-diagnosis-service.js');
 const { SqliteSaga3DiscoveryRuntime } = await import('../../dist/saga3/persistence/sqlite-saga3-discovery-runtime.js');
+const {
+  fakeWorkAssignment,
+  fakeIdGenerator,
+  TEST_MACHINE_ID,
+} = await import('./_conveyor-fakes.mjs');
 const { DISCOVERY_DIAGNOSIS_REPORT_SCHEMA } = await import('../../dist/saga3/domain/discovery-diagnosis-report.js');
 
 function fixture() {
@@ -231,6 +236,9 @@ test('D5 controlled smoke C: real D4 REJECT -> real D5 accepted diagnosis', asyn
       workerExecutorFactory: () => executor,
       host: { processId: 42, workerPaths: { sagaEntry: '/e', sagaSkillRoot: '/s', logRoot: '/l', heartbeatLog: '/h' } },
       runtimePersistence: runtime,
+      workAssignment: fakeWorkAssignment(),
+      idGenerator: fakeIdGenerator(),
+      machineId: TEST_MACHINE_ID,
       now: () => new Date('2026-07-24T00:00:00.000Z'),
       sleep: async () => {}, pollMs: 0, maxRunSeconds: 60,
     });

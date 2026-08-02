@@ -22,6 +22,11 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 const { Saga3DiscoveryEngine } = await import('../../dist/engines/saga3-discovery-engine.js');
+const {
+  fakeWorkAssignment,
+  fakeIdGenerator,
+  TEST_MACHINE_ID,
+} = await import('./_conveyor-fakes.mjs');
 
 function validPayload(outcome = 'go') {
   return {
@@ -182,7 +187,7 @@ async function runEngine({ proposalPayload, settlementStatus, settlementDecision
   const engine = new Saga3DiscoveryEngine({
     config: fullConfig(), workerExecutorFactory: () => executor,
     persistence: { episodes: { currentStage: () => 'discovery' }, workspaces: { resolve: () => ({ workspaceRoot: '/w' }) } },
-    host: fakeHost(), runtimePersistence: runtime, pollMs: 0,
+    host: fakeHost(), runtimePersistence: runtime, workAssignment: fakeWorkAssignment(), idGenerator: fakeIdGenerator(), machineId: TEST_MACHINE_ID, pollMs: 0,
     readinessService: readiness, settlementService: settlement,
   });
   const result = await engine.run({ projectId: 1, epicId: 10, concurrency: 1 });
@@ -292,7 +297,7 @@ test('D4 engine: no settlementService wired -> settlement not_run, backward comp
   const engine = new Saga3DiscoveryEngine({
     config: fullConfig(), workerExecutorFactory: () => executor,
     persistence: { episodes: { currentStage: () => 'discovery' }, workspaces: { resolve: () => ({ workspaceRoot: '/w' }) } },
-    host: fakeHost(), runtimePersistence: runtime, pollMs: 0,
+    host: fakeHost(), runtimePersistence: runtime, workAssignment: fakeWorkAssignment(), idGenerator: fakeIdGenerator(), machineId: TEST_MACHINE_ID, pollMs: 0,
     readinessService: readiness,
     // settlementService intentionally omitted.
   });
@@ -411,7 +416,7 @@ async function runRecoveryEngine({ controlStatus, assessment }) {
   const engine = new Saga3DiscoveryEngine({
     config: fullConfig(), workerExecutorFactory: () => executor,
     persistence: { episodes: { currentStage: () => 'discovery' }, workspaces: { resolve: () => ({ workspaceRoot: '/w' }) } },
-    host: fakeHost(), runtimePersistence: runtime, pollMs: 0,
+    host: fakeHost(), runtimePersistence: runtime, workAssignment: fakeWorkAssignment(), idGenerator: fakeIdGenerator(), machineId: TEST_MACHINE_ID, pollMs: 0,
     readinessService, settlementService,
   });
   const result = await engine.run({ projectId: 1, epicId: 10, concurrency: 1 });

@@ -5,6 +5,11 @@ const { Saga3DiscoveryNormalizationService } = await import(
   '../../dist/saga3/application/discovery-normalization-service.js'
 );
 const { Saga3DiscoveryEngine } = await import('../../dist/engines/saga3-discovery-engine.js');
+const {
+  fakeWorkAssignment,
+  fakeIdGenerator,
+  TEST_MACHINE_ID,
+} = await import('./_conveyor-fakes.mjs');
 
 const config = {
   dbPath: '/tmp/saga.db', claudePath: '/claude', lmStudioUrl: 'http://lm/v1',
@@ -51,6 +56,9 @@ test('D2 normalization service pauses both intents when executor status throws',
     workerExecutorFactory: () => executor,
     host: host(),
     runtimePersistence: runtime,
+    workAssignment: fakeWorkAssignment(),
+    idGenerator: fakeIdGenerator(),
+    machineId: TEST_MACHINE_ID,
     sleep: async () => {},
   });
   const result = await service.normalize({
@@ -115,6 +123,9 @@ test('D2 engine restart resumes normalization when product task is already done'
     },
     host: host(),
     runtimePersistence: runtime,
+    workAssignment: fakeWorkAssignment(),
+    idGenerator: fakeIdGenerator(),
+    machineId: TEST_MACHINE_ID,
     normalizationService,
     sleep: async () => {},
   });

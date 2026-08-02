@@ -630,6 +630,11 @@ test('composition root selects the engine through the real wiring, not a source 
         acquireEngineLock: () => ({ status: 'duplicate', ownerPid: 888 }),
         releaseEngineLock: () => { throw new Error('duplicate run must not release another owner lock'); },
       },
+      // Conveyor deps (Slice 1 Zones 5-7): required by the engine deps
+      // interface even though the duplicate-lock path never reaches assignTask.
+      workAssignment: { assignTask: () => null, releaseAssignment: () => {}, countClaimable: () => 0 },
+      idGenerator: { newId: () => 'id', newTypedId: (p) => `${p}:1` },
+      machineId: 'test-host',
     }),
     board: { listProjects: () => [], loadProjectBoard: () => ({ epics: [], epicById: {}, tasks: [] }) },
     engineAdministration: {

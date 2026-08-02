@@ -22,6 +22,11 @@ import test from 'node:test';
 const { Saga3DiscoveryEngine } = await import(
   '../../dist/engines/saga3-discovery-engine.js'
 );
+const {
+  fakeWorkAssignment,
+  fakeIdGenerator,
+  TEST_MACHINE_ID,
+} = await import('./_conveyor-fakes.mjs');
 
 // --- fakes -----------------------------------------------------------------
 
@@ -190,7 +195,7 @@ test('engine waits for worker_done after proposal; does not kill the worker (no 
   const engine = new Saga3DiscoveryEngine({
     config: fullConfig(), workerExecutorFactory: () => executor,
     persistence: { episodes: { currentStage: () => 'discovery' }, workspaces: { resolve: () => ({ workspaceRoot: '/w' }) } },
-    host, runtimePersistence: runtime, pollMs: 0,
+    host, runtimePersistence: runtime, workAssignment: fakeWorkAssignment(), idGenerator: fakeIdGenerator(), machineId: TEST_MACHINE_ID, pollMs: 0,
   });
 
   const result = await engine.run({ projectId: 1, epicId: 10, concurrency: 1 });
@@ -213,7 +218,7 @@ test('scopeCompleted is decoupled from business outcome: valid inconclusive + do
   const engine = new Saga3DiscoveryEngine({
     config: fullConfig(), workerExecutorFactory: () => executor,
     persistence: { episodes: { currentStage: () => 'discovery' }, workspaces: { resolve: () => ({ workspaceRoot: '/w' }) } },
-    host: fakeHost(), runtimePersistence: runtime, pollMs: 0,
+    host: fakeHost(), runtimePersistence: runtime, workAssignment: fakeWorkAssignment(), idGenerator: fakeIdGenerator(), machineId: TEST_MACHINE_ID, pollMs: 0,
   });
 
   const result = await engine.run({ projectId: 1, epicId: 10, concurrency: 1 });
@@ -232,7 +237,7 @@ test('task done without a proposal → honest incomplete (scopeCompleted=false, 
   const engine = new Saga3DiscoveryEngine({
     config: fullConfig(), workerExecutorFactory: () => executor,
     persistence: { episodes: { currentStage: () => 'discovery' }, workspaces: { resolve: () => ({ workspaceRoot: '/w' }) } },
-    host: fakeHost(), runtimePersistence: runtime, pollMs: 0,
+    host: fakeHost(), runtimePersistence: runtime, workAssignment: fakeWorkAssignment(), idGenerator: fakeIdGenerator(), machineId: TEST_MACHINE_ID, pollMs: 0,
   });
 
   const result = await engine.run({ projectId: 1, epicId: 10, concurrency: 1 });
@@ -246,7 +251,7 @@ test('CAS intent transitions: open → executing → concluded', async () => {
   const engine = new Saga3DiscoveryEngine({
     config: fullConfig(), workerExecutorFactory: () => executor,
     persistence: { episodes: { currentStage: () => 'discovery' }, workspaces: { resolve: () => ({ workspaceRoot: '/w' }) } },
-    host: fakeHost(), runtimePersistence: runtime, pollMs: 0,
+    host: fakeHost(), runtimePersistence: runtime, workAssignment: fakeWorkAssignment(), idGenerator: fakeIdGenerator(), machineId: TEST_MACHINE_ID, pollMs: 0,
   });
 
   await engine.run({ projectId: 1, epicId: 10, concurrency: 1 });
@@ -262,7 +267,7 @@ test('run result carries provisional outcome authority + proposal provenance', a
   const engine = new Saga3DiscoveryEngine({
     config: fullConfig(), workerExecutorFactory: () => executor,
     persistence: { episodes: { currentStage: () => 'discovery' }, workspaces: { resolve: () => ({ workspaceRoot: '/w' }) } },
-    host: fakeHost(), runtimePersistence: runtime, pollMs: 0,
+    host: fakeHost(), runtimePersistence: runtime, workAssignment: fakeWorkAssignment(), idGenerator: fakeIdGenerator(), machineId: TEST_MACHINE_ID, pollMs: 0,
   });
 
   const result = await engine.run({ projectId: 1, epicId: 10, concurrency: 1 });
@@ -281,7 +286,7 @@ test('engine does not call executor.stop on timeout when task already terminal (
   const engine = new Saga3DiscoveryEngine({
     config: fullConfig(), workerExecutorFactory: () => executor,
     persistence: { episodes: { currentStage: () => 'discovery' }, workspaces: { resolve: () => ({ workspaceRoot: '/w' }) } },
-    host: fakeHost(), runtimePersistence: runtime, pollMs: 0, maxRunSeconds: 60,
+    host: fakeHost(), runtimePersistence: runtime, workAssignment: fakeWorkAssignment(), idGenerator: fakeIdGenerator(), machineId: TEST_MACHINE_ID, pollMs: 0, maxRunSeconds: 60,
   });
 
   const result = await engine.run({ projectId: 1, epicId: 10, concurrency: 1 });
@@ -302,7 +307,7 @@ test('executor failed without terminal task → reason=failed, executor.stop() c
   const engine = new Saga3DiscoveryEngine({
     config: fullConfig(), workerExecutorFactory: () => executor,
     persistence: { episodes: { currentStage: () => 'discovery' }, workspaces: { resolve: () => ({ workspaceRoot: '/w' }) } },
-    host: fakeHost(), runtimePersistence: runtime, pollMs: 0, maxRunSeconds: 60,
+    host: fakeHost(), runtimePersistence: runtime, workAssignment: fakeWorkAssignment(), idGenerator: fakeIdGenerator(), machineId: TEST_MACHINE_ID, pollMs: 0, maxRunSeconds: 60,
   });
   const result = await engine.run({ projectId: 1, epicId: 10, concurrency: 1 });
   assert.equal(result.reason, 'failed');
@@ -322,7 +327,7 @@ test('executor completed without worker_done (task unclaimed) → reason=failed,
   const engine = new Saga3DiscoveryEngine({
     config: fullConfig(), workerExecutorFactory: () => executor,
     persistence: { episodes: { currentStage: () => 'discovery' }, workspaces: { resolve: () => ({ workspaceRoot: '/w' }) } },
-    host: fakeHost(), runtimePersistence: runtime, pollMs: 0, maxRunSeconds: 60,
+    host: fakeHost(), runtimePersistence: runtime, workAssignment: fakeWorkAssignment(), idGenerator: fakeIdGenerator(), machineId: TEST_MACHINE_ID, pollMs: 0, maxRunSeconds: 60,
   });
   const result = await engine.run({ projectId: 1, epicId: 10, concurrency: 1 });
   assert.equal(result.reason, 'failed');
@@ -339,7 +344,7 @@ test('executor status null (run vanished) → reason=failed, terminal=executor_d
   const engine = new Saga3DiscoveryEngine({
     config: fullConfig(), workerExecutorFactory: () => executor,
     persistence: { episodes: { currentStage: () => 'discovery' }, workspaces: { resolve: () => ({ workspaceRoot: '/w' }) } },
-    host: fakeHost(), runtimePersistence: runtime, pollMs: 0,
+    host: fakeHost(), runtimePersistence: runtime, workAssignment: fakeWorkAssignment(), idGenerator: fakeIdGenerator(), machineId: TEST_MACHINE_ID, pollMs: 0,
   });
   const result = await engine.run({ projectId: 1, epicId: 10, concurrency: 1 });
   assert.equal(result.reason, 'failed');
@@ -354,7 +359,7 @@ test('timeout → reason=paused_timeout (not completed), executor.stop() called'
   const engine = new Saga3DiscoveryEngine({
     config: fullConfig(), workerExecutorFactory: () => makeFakeExecutor(() => {}, execLog),
     persistence: { episodes: { currentStage: () => 'discovery' }, workspaces: { resolve: () => ({ workspaceRoot: '/w' }) } },
-    host: fakeHost(), runtimePersistence: runtime, pollMs: 0, maxRunSeconds: 0,
+    host: fakeHost(), runtimePersistence: runtime, workAssignment: fakeWorkAssignment(), idGenerator: fakeIdGenerator(), machineId: TEST_MACHINE_ID, pollMs: 0, maxRunSeconds: 0,
   });
   const result = await engine.run({ projectId: 1, epicId: 10, concurrency: 1 });
   assert.equal(result.reason, 'paused_timeout');
@@ -391,7 +396,7 @@ test('clean closure requires the worker process to leave run.active (not just ta
   const engine = new Saga3DiscoveryEngine({
     config: fullConfig(), workerExecutorFactory: () => executor,
     persistence: { episodes: { currentStage: () => 'discovery' }, workspaces: { resolve: () => ({ workspaceRoot: '/w' }) } },
-    host: fakeHost(), runtimePersistence: runtime, pollMs: 0,
+    host: fakeHost(), runtimePersistence: runtime, workAssignment: fakeWorkAssignment(), idGenerator: fakeIdGenerator(), machineId: TEST_MACHINE_ID, pollMs: 0,
   });
   const result = await engine.run({ projectId: 1, epicId: 10, concurrency: 1 });
   assert.ok(pollCount >= 2, 'engine polled at least twice — waited for the process to leave run.active');
@@ -411,7 +416,7 @@ test('blocked task + valid proposal + inactive worker → reason=failed, scopeCo
   const engine = new Saga3DiscoveryEngine({
     config: fullConfig(), workerExecutorFactory: () => executor,
     persistence: { episodes: { currentStage: () => 'discovery' }, workspaces: { resolve: () => ({ workspaceRoot: '/w' }) } },
-    host: fakeHost(), runtimePersistence: runtime, pollMs: 0,
+    host: fakeHost(), runtimePersistence: runtime, workAssignment: fakeWorkAssignment(), idGenerator: fakeIdGenerator(), machineId: TEST_MACHINE_ID, pollMs: 0,
   });
   const result = await engine.run({ projectId: 1, epicId: 10, concurrency: 1 });
   assert.equal(result.reason, 'failed');
@@ -447,7 +452,7 @@ test('task done + run.status=failed + active=[] → reason=failed (runFailed che
   const engine = new Saga3DiscoveryEngine({
     config: fullConfig(), workerExecutorFactory: () => executor,
     persistence: { episodes: { currentStage: () => 'discovery' }, workspaces: { resolve: () => ({ workspaceRoot: '/w' }) } },
-    host: fakeHost(), runtimePersistence: runtime, pollMs: 0, maxRunSeconds: 5,
+    host: fakeHost(), runtimePersistence: runtime, workAssignment: fakeWorkAssignment(), idGenerator: fakeIdGenerator(), machineId: TEST_MACHINE_ID, pollMs: 0, maxRunSeconds: 5,
   });
   const result = await engine.run({ projectId: 1, epicId: 10, concurrency: 1 });
   assert.equal(result.reason, 'failed', 'runFailed must win over clean when task=done + run.status=failed');
@@ -461,7 +466,7 @@ test('non-clean executor failure pauses intent instead of concluding it', async 
   const engine = new Saga3DiscoveryEngine({
     config: fullConfig(), workerExecutorFactory: () => makeFakeExecutor(() => {}, [], failedRun),
     persistence: { episodes: { currentStage: () => 'discovery' }, workspaces: { resolve: () => ({ workspaceRoot: '/w' }) } },
-    host: fakeHost(), runtimePersistence: runtime, pollMs: 0,
+    host: fakeHost(), runtimePersistence: runtime, workAssignment: fakeWorkAssignment(), idGenerator: fakeIdGenerator(), machineId: TEST_MACHINE_ID, pollMs: 0,
   });
   const result = await engine.run({ projectId: 1, epicId: 10, concurrency: 1 });
   assert.equal(result.reason, 'failed');
@@ -475,14 +480,14 @@ test('restart reuses paused intent and projected task, then concludes cleanly', 
   const first = new Saga3DiscoveryEngine({
     config: fullConfig(), workerExecutorFactory: () => makeFakeExecutor(() => {}, [], failedRun),
     persistence: { episodes: { currentStage: () => 'discovery' }, workspaces: { resolve: () => ({ workspaceRoot: '/w' }) } },
-    host: fakeHost(), runtimePersistence: runtime, pollMs: 0,
+    host: fakeHost(), runtimePersistence: runtime, workAssignment: fakeWorkAssignment(), idGenerator: fakeIdGenerator(), machineId: TEST_MACHINE_ID, pollMs: 0,
   });
   await first.run({ projectId: 1, epicId: 10, concurrency: 1 });
   const secondExecutor = makeFakeExecutor(() => runtime._simulateWorkerTick(), []);
   const second = new Saga3DiscoveryEngine({
     config: fullConfig(), workerExecutorFactory: () => secondExecutor,
     persistence: { episodes: { currentStage: () => 'discovery' }, workspaces: { resolve: () => ({ workspaceRoot: '/w' }) } },
-    host: fakeHost(), runtimePersistence: runtime, pollMs: 0,
+    host: fakeHost(), runtimePersistence: runtime, workAssignment: fakeWorkAssignment(), idGenerator: fakeIdGenerator(), machineId: TEST_MACHINE_ID, pollMs: 0,
   });
   const result = await second.run({ projectId: 1, epicId: 10, concurrency: 1 });
   assert.equal(result.reason, 'completed');

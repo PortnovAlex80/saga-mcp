@@ -66,6 +66,11 @@ const { Saga3DiscoverySettlementService } = await import(
 const { SqliteSaga3DiscoveryRuntime } = await import(
   '../../dist/saga3/persistence/sqlite-saga3-discovery-runtime.js'
 );
+const {
+  fakeWorkAssignment,
+  fakeIdGenerator,
+  TEST_MACHINE_ID,
+} = await import('./_conveyor-fakes.mjs');
 
 // ---------------------------------------------------------------------------
 // Fixture scaffolding (mirrors d4-settlement-recovery.test.mjs)
@@ -312,6 +317,9 @@ function makeService(executor) {
     workerExecutorFactory: () => executor,
     host: fakeHost(),
     runtimePersistence: runtime,
+    workAssignment: fakeWorkAssignment(),
+    idGenerator: fakeIdGenerator(),
+    machineId: TEST_MACHINE_ID,
     now: () => new Date('2026-07-24T00:00:00.000Z'),
     sleep: async () => {},
     pollMs: 0,

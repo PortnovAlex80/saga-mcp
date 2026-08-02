@@ -85,6 +85,11 @@ const { SqliteSaga3DiscoveryRuntime } = await import(
   '../../dist/saga3/persistence/sqlite-saga3-discovery-runtime.js'
 );
 const { Saga3DiscoveryEngine } = await import('../../dist/engines/saga3-discovery-engine.js');
+const {
+  fakeWorkAssignment,
+  fakeIdGenerator,
+  TEST_MACHINE_ID,
+} = await import('./_conveyor-fakes.mjs');
 
 // ---------------------------------------------------------------------------
 // Fixture scaffolding (mirrors d5-diagnosis-service.test.mjs)
@@ -407,6 +412,9 @@ function makeService(executor) {
     workerExecutorFactory: () => executor,
     host: fakeHost(),
     runtimePersistence: runtime,
+    workAssignment: fakeWorkAssignment(),
+    idGenerator: fakeIdGenerator(),
+    machineId: TEST_MACHINE_ID,
     now: () => new Date('2026-07-24T00:00:00.000Z'),
     sleep: async () => {},
     pollMs: 0,
@@ -1251,7 +1259,7 @@ function buildEngineWithDiagnosis({ diagnosisStatus, stageBefore = 'discovery' }
       heartbeat: () => {},
       scanRateLimitSignals: () => 0,
     },
-    runtimePersistence: fakeRuntime, pollMs: 0,
+    runtimePersistence: fakeRuntime, workAssignment: fakeWorkAssignment(), idGenerator: fakeIdGenerator(), machineId: TEST_MACHINE_ID, pollMs: 0,
     readinessService, settlementService, diagnosisService,
   });
 }

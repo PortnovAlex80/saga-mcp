@@ -52,6 +52,11 @@ import path from 'node:path';
 import test from 'node:test';
 
 const { Saga3DiscoveryEngine } = await import('../../dist/engines/saga3-discovery-engine.js');
+const {
+  fakeWorkAssignment,
+  fakeIdGenerator,
+  TEST_MACHINE_ID,
+} = await import('./_conveyor-fakes.mjs');
 
 // ===========================================================================
 // Harness A — fake runtime + fake services (D1, D2, D3, D8, D9, D10)
@@ -274,7 +279,7 @@ async function runEngine({
   const engine = new Saga3DiscoveryEngine({
     config: fullConfig(), workerExecutorFactory: () => executor,
     persistence: { episodes: { currentStage: () => 'discovery' }, workspaces: { resolve: () => ({ workspaceRoot: '/w' }) } },
-    host: fakeHost(), runtimePersistence: runtime, pollMs: 0,
+    host: fakeHost(), runtimePersistence: runtime, workAssignment: fakeWorkAssignment(), idGenerator: fakeIdGenerator(), machineId: TEST_MACHINE_ID, pollMs: 0,
     readinessService: readiness, settlementService: settlement,
     diagnosisService: withDiagnosisService ? diagnosis : undefined,
   });
@@ -451,7 +456,7 @@ test('D5 engine: no diagnosisService wired -> diagnosis not_run, backward compat
   const engine = new Saga3DiscoveryEngine({
     config: fullConfig(), workerExecutorFactory: () => executor,
     persistence: { episodes: { currentStage: () => 'discovery' }, workspaces: { resolve: () => ({ workspaceRoot: '/w' }) } },
-    host: fakeHost(), runtimePersistence: runtime, pollMs: 0,
+    host: fakeHost(), runtimePersistence: runtime, workAssignment: fakeWorkAssignment(), idGenerator: fakeIdGenerator(), machineId: TEST_MACHINE_ID, pollMs: 0,
     readinessService: readiness, settlementService: settlement,
     // diagnosisService intentionally omitted.
   });
@@ -787,6 +792,9 @@ async function realSqliteHarness() {
         workerPaths: { sagaEntry: '/e', sagaSkillRoot: '/s', logRoot: '/l', heartbeatLog: '/h' },
       },
       runtimePersistence: diagRuntime,
+      workAssignment: fakeWorkAssignment(),
+      idGenerator: fakeIdGenerator(),
+      machineId: TEST_MACHINE_ID,
       now: () => new Date('2026-07-24T00:00:00.000Z'),
       sleep: async () => {},
       pollMs: 0,
@@ -811,6 +819,9 @@ async function realSqliteHarness() {
         scanRateLimitSignals: () => 0,
       },
       runtimePersistence: makeFakeEngineRuntime(),
+      workAssignment: fakeWorkAssignment(),
+      idGenerator: fakeIdGenerator(),
+      machineId: TEST_MACHINE_ID,
       pollMs: 0,
       normalizationService: { async normalize() { return { cycles: 0, error: null }; } },
       readinessService: {

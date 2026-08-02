@@ -7,7 +7,12 @@ import type {
 } from '../application/ports/orchestration-engine.js';
 import type { Saga2HostRuntime } from '../application/ports/saga2-host-runtime.js';
 import type { Saga2RuntimePersistence } from '../application/ports/saga2-runtime-persistence.js';
-import type { WorkerExecutorFactory } from '../application/ports/worker-executor.js';
+import type {
+  AssignedWork,
+  WorkerExecutorFactory,
+  WorkAssignmentPort,
+} from '../application/ports/worker-executor.js';
+import type { IdGeneratorPort } from '../application/ports/conveyor-ports.js';
 import type { SagaRuntimeConfig } from '../runtime/saga-runtime-config.js';
 import {
   DISCOVERY_INTENT_KIND,
@@ -31,6 +36,10 @@ import type {
 } from '../saga3/application/discovery-diagnosis-service.js';
 import type { ReadinessShadowResult } from '../saga3/domain/discovery-readiness-assessment.js';
 import type { ReadinessAssessmentRecord, ReadinessControlIntentRecord } from '../saga3/domain/discovery-readiness-records.js';
+import {
+  assignOneCard,
+  releaseOneCardIfAssigned,
+} from '../saga3/application/assign-one-card.js';
 
 /**
  * The settlement view the engine threads through runResult. Extends the
@@ -145,6 +154,12 @@ export interface Saga3DiscoveryEngineDependencies {
   host: Saga2HostRuntime;
   /** Saga 3 runtime persistence port (the only data access the engine uses). */
   runtimePersistence: Saga3DiscoveryRuntimePersistence;
+  /** Single authority for selecting and fencing the projected discovery card. */
+  workAssignment: WorkAssignmentPort;
+  /** Infrastructure identity source for workerExecutionId / workerId / runId. */
+  idGenerator: IdGeneratorPort;
+  /** Stable identity of the host that owns the worker execution. */
+  machineId: string;
   normalizationService: DiscoveryNormalizationService;
   /**
    * D3 shadow readiness advisor. Optional so D1/D2 engine tests that do not
@@ -510,9 +525,9 @@ const concluded = typeof rt.readConcludedIntentWithProposal === 'function'
         persistence.episodes.currentStage(epicId) ?? 'discovery', false);
     }
 
-    // 3. Start the worker-execution substrate ONCE. concurrency=1 AND
-    //    claim-scoped to exactly this task — the runner will not pick up any
-    //    other task in the episode (e.g. a legacy discovery.kickstart).
+    // 3. Start the worker-execution substrate ONCE. concurrency=1 AND scoped
+    //    to exactly this task — the runner will not pick up any other task in
+    //    the episode (e.g. a legacy discovery.kickstart).
     const executor = workerExecutorFactory({
       projectId,
       epicId,
@@ -526,18 +541,43 @@ const concluded = typeof rt.readConcludedIntentWithProposal === 'function'
       lmStudioUrl: this.deps.config.lmStudioUrl,
     });
 
+    // Conveyor model (Slice 1 Zones 1-4): assign the projected discovery card
+    // BEFORE the worker is launched. Tracked across the poll loop so the
+    // non-clean cleanup below can release it (no fence leak). A null assignment
+    // means the card was not claimable — pause the intent and fail closed.
+    let assignment: AssignedWork | null = null;
     try {
+      assignment = assignOneCard({
+        workAssignment: this.deps.workAssignment,
+        idGenerator: this.deps.idGenerator,
+        machineId: this.deps.machineId,
+        projectId,
+        epicId,
+        taskId,
+        runPrefix: 'discovery-run',
+      });
+      if (!assignment) {
+        const blockedMsg = `discovery card task=${taskId} was not assignable (lost race or fence held)`;
+        if (intent.status === 'executing') rt.setIntentStatus(intent.id, 'executing', 'paused');
+        else if (intent.status === 'open') rt.setIntentStatus(intent.id, 'open', 'paused');
+        heartbeat('EXECUTOR_FAILED', blockedMsg);
+        return this.runResult(projectId, epicId, 'failed', 0, blockedMsg,
+          { outcome: 'failed', outcomeAuthority: 'none', proposalId: null, proposalHash: null });
+      }
       // Start the substrate. An "already has an active board run" is NOT a
       // recoverable case for the Saga 3 engine: the factory builds a fresh
       // runner per executor, so this error signals a stray run from another
-      // intent/process with unknown claimScope. Treat it as a conflict and
-      // fail rather than poll an unknown runner (review P1).
-      executor.start({ projectId, epicId, concurrency: 1, claimScope: { taskIds: [taskId] } });
+      // intent/process. Treat it as a conflict and fail rather than poll an
+      // unknown runner (review P1).
+      executor.start({ projectId, epicId, concurrency: 1, assignment });
       // open/paused → executing once the substrate has accepted the run.
       rt.setIntentStatus(intent.id, preparation.intentStatus, 'executing');
-      heartbeat('EXECUTOR_STARTED', `task=${taskId}`);
+      heartbeat('EXECUTOR_STARTED', `task=${taskId} execution=${assignment.workerExecutionId}`);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      // Start/assign failure: the card is still fenced to this execution if it
+      // was obtained — release it before failing closed (no fence leak).
+      releaseOneCardIfAssigned(this.deps.workAssignment, assignment, `discovery worker start failed: ${msg}`);
       return this.runResult(projectId, epicId, 'failed', 0, msg,
         { outcome: 'failed', outcomeAuthority: 'none', proposalId: null, proposalHash: null });
     }
@@ -628,7 +668,15 @@ const concluded = typeof rt.readConcludedIntentWithProposal === 'function'
 
     // Only stop the substrate on a HARD exit. On a clean closure the worker
     // already exited on its own; stop() is reserved for timeout/dead/failed.
+    // On a hard exit the card is still fenced to this execution — release it
+    // BEFORE stop() so it is not stranded (clean closure already released via
+    // worker_done). No fence leak: a clean terminal leaves the card alone.
     if (terminal !== 'clean') {
+      releaseOneCardIfAssigned(
+        this.deps.workAssignment,
+        assignment,
+        `discovery worker ${terminal}`,
+      );
       try { executor.stop(projectId); } catch { /* best effort */ }
     }
 
