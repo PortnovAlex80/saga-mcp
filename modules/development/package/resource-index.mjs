@@ -5,15 +5,15 @@
  * Spec: `docs/refactor-management/09-contracts/WAVE9-PRODUCTION-MIGRATION-SPEC.md`.
  * Task: `docs/refactor-management/05-subagent-tasks/W09-a3.md`.
  * Plan: §0.12.5 + §0.12.10 — this lane owns the central Development manifest;
- * the planning/verification node subtrees submit their resource declarations
- * here and this file stitches them into the module-wide `resourceIndex`.
+ * the planning node subtree submits its resource declarations here and this
+ * file stitches them into the module-wide `resourceIndex`.
  *
  * Each entry mirrors `ResourceIndexEntry` from
  * `src/process-modules/domain/spi/resource-index.ts`:
  *   - `logicalId`  stable, module-namespaced id (unique within the package).
  *   - `path`       PACKAGE-RELATIVE POSIX path under the Development package
- *                  root (`modules/development/package/`). Node subtrees declare
- *                  node-relative paths; this index prefixes them with
+ *                  root (`modules/development/package/`). The node subtree
+ *                  declares node-relative paths; this index prefixes them with
  *                  `nodes/<name>/` so every path resolves under the package root.
  *   - `kind`       one of the frozen `RESOURCE_KINDS`.
  *   - `digest`     the documented placeholder `'pending@wave-2'` until the Wave
@@ -26,20 +26,25 @@
  * Anti-scope: W9-A4 owns the contributions subtree
  * (`modules/development/package/contributions/`); it contributes handler
  * adapters, not package resources, so it does not extend this index.
+ *
+ * saga4 cutover (REAL-BUG #11): the dead `verificationNodeProtocol` orphan was
+ * removed. The live verification pipeline runs through projected kanban tasks
+ * (`taskKind: 'verification.ac'` + the `saga-verifier` skill), NOT through a
+ * NodeProtocolDefinition — the `verify-acceptance-workset` Flow node was deleted
+ * in the saga4 cutover and the external-adapter infrastructure is gone. Only the
+ * planning node protocol remains here.
  */
 
 import { planningNodeResources } from './nodes/planning/node-protocol.mjs';
-import { verificationNodeResources } from './nodes/verification/node-protocol.mjs';
 
 /**
- * On-disk node subtree directory names (under `nodes/`). These are the
- * physical package directories, distinct from the Flow node ids
- * (`plan-task-graph`, `verify-acceptance-workset`): a node id names the Flow
- * node; the directory names the package subtree that owns it. Kept explicit so
- * the path-prefix step cannot drift if a node id is later renamed.
+ * On-disk node subtree directory name (under `nodes/`). This is the physical
+ * package directory, distinct from the Flow node id (`plan-task-graph`): a node
+ * id names the Flow node; the directory names the package subtree that owns it.
+ * Kept explicit so the path-prefix step cannot drift if a node id is later
+ * renamed.
  */
 const PLANNING_NODE_DIR = 'planning';
-const VERIFICATION_NODE_DIR = 'verification';
 
 /**
  * @typedef {import('../../../src/process-modules/domain/spi/resource-index.ts').ResourceIndexEntry} ResourceIndexEntry
@@ -70,10 +75,10 @@ function prefixWithNodeDir(nodeDir, nodeResources) {
 
 /**
  * The package-wide resource index: every package-local resource the Development
- * planning + verification node protocols reference. Every protocol step
- * `resources[]` logicalId MUST appear here exactly once — the W9-A8 package
- * isolation conformance test asserts that closure (no protocol references an
- * undeclared resource, no declared resource is unreferenced).
+ * planning node protocol references. Every protocol step `resources[]`
+ * logicalId MUST appear here exactly once — the W9-A8 package isolation
+ * conformance test asserts that closure (no protocol references an undeclared
+ * resource, no declared resource is unreferenced).
  *
  * `digest` uses the documented `'pending@wave-2'` placeholder for every entry:
  * Wave 2's content-addressed installer replaces it with the real `sha256Hex`
@@ -83,7 +88,6 @@ function prefixWithNodeDir(nodeDir, nodeResources) {
  */
 export const DEVELOPMENT_PACKAGE_RESOURCE_INDEX = Object.freeze([
   ...prefixWithNodeDir(PLANNING_NODE_DIR, planningNodeResources),
-  ...prefixWithNodeDir(VERIFICATION_NODE_DIR, verificationNodeResources),
 ]);
 
 /**
@@ -99,10 +103,9 @@ export const DEVELOPMENT_PACKAGE_RESOURCE_LOGICAL_IDS = Object.freeze(
 );
 
 // Node protocol definitions are pure frozen data; importing them eagerly at
-// module load is safe. Importing from each node-protocol source keeps the join
+// module load is safe. Importing from the node-protocol source keeps the join
 // key (owningFlowNodeId) authoritative in exactly one place.
 import { planningNodeProtocol } from './nodes/planning/node-protocol.mjs';
-import { verificationNodeProtocol } from './nodes/verification/node-protocol.mjs';
 
 /**
  * Node-protocol registry: the Development package's NodeProtocolDefinitions.
@@ -110,9 +113,12 @@ import { verificationNodeProtocol } from './nodes/verification/node-protocol.mjs
  * declares them, W9-A4 binds handler adapters behind the handler refs each
  * node declares.
  *
+ * saga4 cutover (REAL-BUG #11): the dead `verificationNodeProtocol` orphan was
+ * removed — only the planning node protocol remains. The verification pipeline
+ * runs through projected kanban tasks, not a NodeProtocolDefinition.
+ *
  * @type {readonly import('../../../src/process-modules/domain/spi/node-protocol.ts').NodeProtocolDefinition[]}
  */
 export const DEVELOPMENT_NODE_PROTOCOLS = Object.freeze([
   planningNodeProtocol,
-  verificationNodeProtocol,
 ]);

@@ -16,9 +16,9 @@
  * It wraps the existing pure `developmentProcessModule` definition (reused, not
  * redefined) and surfaces the package-wide `resourceIndex` + `handlerRefs` +
  * rich input/output `ContractRef`s that Wave 9 pins. The `resourceIndex` is
- * stitched from the planning + verification node subtrees via
- * `./resource-index.mjs`; the handler refs come from each node's declared
- * downstream handler.
+ * stitched from the planning node subtree via `./resource-index.mjs`; the
+ * handler refs come from the planning node's declared downstream handler plus
+ * the module-level settlement handler.
  *
  * The TypeScript ProcessModuleManifest type lives in
  * `src/process-modules/domain/spi/module-manifest.ts`. This `.mjs` mirror is the
@@ -46,7 +46,6 @@ import {
   DEVELOPMENT_NODE_PROTOCOLS,
 } from './resource-index.mjs';
 import { planningNodeHandlerRefs } from './nodes/planning/node-protocol.mjs';
-import { verificationNodeHandlerRefs } from './nodes/verification/node-protocol.mjs';
 
 /**
  * @typedef {import('../../../src/process-modules/domain/spi/module-manifest.ts').ProcessModuleManifest} ProcessModuleManifest
@@ -56,6 +55,27 @@ import { verificationNodeHandlerRefs } from './nodes/verification/node-protocol.
 
 /** Placeholder digest Wave 9 callers use until the Wave 2 installer computes the real hash. */
 const PENDING = 'pending@wave-2';
+
+/**
+ * Module-level kernel handler refs NOT owned by any node subtree.
+ *
+ * `development-settlement-policy` is the kernel handler that re-reads exact
+ * durable products and issues the development certificate
+ * (`DEVELOPMENT_KERNEL_HANDLER_IDS.settle`, wired to the `settle-development`
+ * Flow node). saga4 cutover (REAL-BUG #11): this handler ref was previously
+ * contributed by the now-deleted `verificationNodeHandlerRefs` orphan; it was
+ * re-homed here because settlement is a REAL kernel handler whose ref must
+ * survive the orphan cleanup. It is a module-level handler (the settle Flow
+ * node is not driven by a node-protocol LM/external node), so it belongs at the
+ * package manifest level rather than under a node subtree.
+ */
+const DEVELOPMENT_MODULE_HANDLER_REFS = Object.freeze([
+  {
+    logicalId: 'development-settlement-policy',
+    version: '1.0.0',
+    digest: PENDING,
+  },
+]);
 
 /**
  * Rich input contract reference for the Development module
@@ -83,15 +103,16 @@ const DEVELOPMENT_OUTPUT_CONTRACT_REF = Object.freeze({
 });
 
 /**
- * Stable handler refs the Development module declares. Concatenated from each
- * node subtree's downstream kernel handler. W9-A4 binds the real handler
- * adapters behind these logical ids. `logicalId` is unique within the package.
+ * Stable handler refs the Development module declares. Concatenated from the
+ * planning node subtree's downstream kernel handler plus the module-level
+ * settlement handler. W9-A4 binds the real handler adapters behind these
+ * logical ids. `logicalId` is unique within the package.
  *
  * @type {readonly HandlerRef[]}
  */
 const DEVELOPMENT_HANDLER_REFS = Object.freeze([
   ...planningNodeHandlerRefs,
-  ...verificationNodeHandlerRefs,
+  ...DEVELOPMENT_MODULE_HANDLER_REFS,
 ]);
 
 /**
@@ -129,14 +150,5 @@ export {
   planningNodeResources,
   planningNodeHandlerRefs,
 } from './nodes/planning/node-protocol.mjs';
-
-export {
-  VERIFICATION_NODE_ID,
-  VERIFICATION_ADAPTER_ID,
-  VERIFICATION_OUTPUT_SCHEMA,
-  verificationNodeProtocol,
-  verificationNodeResources,
-  verificationNodeHandlerRefs,
-} from './nodes/verification/node-protocol.mjs';
 
 export default developmentPackageManifest;

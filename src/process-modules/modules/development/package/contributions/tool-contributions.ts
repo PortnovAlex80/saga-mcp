@@ -83,9 +83,13 @@ function contractRef(schemaId: string, version: string): ToolContractRef {
  * package-relative paths; this file references them by logical id so the
  * declaration stays path-stable even if the package is relocated.
  *
- * The ids mirror the `PLANNING_RESOURCE_IDS` / `VERIFICATION_RESOURCE_IDS`
- * declared by W9-A3's node protocols so a tool contribution and its node
- * protocol reference the SAME resource.
+ * The planning ids mirror the `PLANNING_RESOURCE_IDS` declared by W9-A3's
+ * planning node protocol so a planning tool contribution and its node protocol
+ * reference the SAME resource. The verification ids back the live
+ * `verification.ac` task pipeline (the `saga-verifier` skill) — they are NOT
+ * tied to a node protocol: saga4 cutover (REAL-BUG #11) removed the dead
+ * `verificationNodeProtocol` orphan; verification runs through projected kanban
+ * tasks, not a NodeProtocolDefinition.
  */
 export const DEVELOPMENT_TOOL_RESOURCE_IDS = {
   planningSubmissionCallTemplate: 'planning-task-graph-submit-call',

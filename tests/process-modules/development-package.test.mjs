@@ -1,11 +1,17 @@
 // tests/process-modules/development-package.test.mjs
 //
-// W9-A3 — Development package manifest + planning/verification node protocols +
+// W9-A3 — Development package manifest + planning node protocol +
 // package-local resources + central exports.
 //
 // Spec: docs/refactor-management/09-contracts/WAVE9-PRODUCTION-MIGRATION-SPEC.md.
 // Task: docs/refactor-management/05-subagent-tasks/W09-a3.md.
 // Plan: §0.12.5 + §0.12.12 (Development runs through pinned package resources).
+//
+// saga4 cutover (REAL-BUG #11): the dead `verificationNodeProtocol` orphan was
+// removed. This test is the canary that caught it. The live verification
+// pipeline runs through projected kanban tasks (`taskKind: 'verification.ac'` +
+// the `saga-verifier` skill), NOT through a NodeProtocolDefinition. Only the
+// planning node protocol remains under test here.
 //
 // This test is the W9-A3 lane's verification surface. It imports:
 //   - the W1-A4 NodeProtocolDefinition validator from dist/ (compiled src);
@@ -18,7 +24,7 @@
 // Coverage:
 //   1. The central manifest validates { ok: true } against
 //      validateProcessModuleManifest (plan §3.5 / spec §1 row 5).
-//   2. Every protocol (planning + verification) validates { ok: true } against
+//   2. Every protocol (planning) validates { ok: true } against
 //      validateNodeProtocolDefinition (plan §8.2.11) and is canonical-
 //      serializable + round-trip stable.
 //   3. Every protocol owningFlowNodeId matches a node declared in the frozen
@@ -31,8 +37,7 @@
 //      the resource index; every declared resource is referenced by at least
 //      one protocol step (or is a reviewer skill — none here, all are authoring).
 //   6. Authority boundaries: planning is tracker_only (no task_create / no
-//      Git mutation tools); verification is read_only_evidence (no artifact
-//      mutation, no AC acceptance transition).
+//      Git mutation tools).
 //   7. The on-disk resource files exist for every declared resource path and
 //      every JSON resource parses as valid JSON with the matching schema $id.
 
@@ -54,9 +59,7 @@ import {
   DEVELOPMENT_PACKAGE_RESOURCE_LOGICAL_IDS,
   DEVELOPMENT_NODE_PROTOCOLS,
   planningNodeProtocol,
-  verificationNodeProtocol,
   PLANNING_NODE_ID,
-  VERIFICATION_NODE_ID,
 } from '../../modules/development/package/index.mjs';
 
 const REPO_ROOT = path.resolve(import.meta.dirname, '..', '..');
@@ -242,8 +245,8 @@ test('W9-A3: every resource path is package-relative POSIX (no absolute / traver
     assert.ok(!p.includes('..'), `resource ${entry.logicalId} path must not traverse parent, got "${p}"`);
     assert.ok(!p.includes('\\'), `resource ${entry.logicalId} path must be POSIX (forward slashes), got "${p}"`);
     assert.ok(
-      p.startsWith('nodes/planning/') || p.startsWith('nodes/verification/'),
-      `resource ${entry.logicalId} path must sit under a node subtree, got "${p}"`,
+      p.startsWith('nodes/planning/'),
+      `resource ${entry.logicalId} path must sit under the planning node subtree, got "${p}"`,
     );
   }
 });
@@ -314,26 +317,15 @@ test('W9-A3: planning protocol is tracker_only (no task_create / no Git mutation
   assert.ok(allTools.has('worker_done'), 'planner must be able to complete');
 });
 
-test('W9-A3: verification protocol is read_only_evidence (no artifact mutation / no AC acceptance)', () => {
-  const forbidden = ['artifact_create', 'artifact_update', 'task_create', 'task_update', 'Write', 'Edit', 'Bash'];
-  for (const step of verificationNodeProtocol.steps) {
-    for (const tool of forbidden) {
-      assert.ok(
-        !step.allowedTools.includes(tool),
-        `verification step ${step.id} must NOT allow ${tool} (read_only_evidence authority)`,
-      );
-    }
-  }
-  const allTools = new Set(verificationNodeProtocol.steps.flatMap((s) => s.allowedTools));
-  assert.ok(allTools.has('verification_record'), 'verifier must be able to record evidence');
-  assert.ok(allTools.has('worker_done'), 'verifier must be able to complete');
-});
-
 test('W9-A3: handler refs are unique and surface the kernel downstream handlers', () => {
   const ids = developmentPackageManifest.handlerRefs.map((h) => h.logicalId);
   assert.equal(new Set(ids).size, ids.length, 'handler ref logicalId must be unique');
   assert.ok(ids.includes('development-resolve-task-graph'), 'planning downstream resolver handler missing');
-  assert.ok(ids.includes('development-settlement-policy'), 'verification downstream settlement handler missing');
+  // `development-settlement-policy` is the module-level settlement kernel handler
+  // (DEVELOPMENT_KERNEL_HANDLER_IDS.settle, wired to settle-development). It was
+  // re-homed from the deleted verificationNodeHandlerRefs orphan to the package
+  // manifest level in REAL-BUG #11.
+  assert.ok(ids.includes('development-settlement-policy'), 'settlement kernel handler ref missing');
   for (const h of developmentPackageManifest.handlerRefs) {
     assert.equal(h.digest, 'pending@wave-2');
   }
@@ -363,9 +355,11 @@ test('W9-A3: every JSON resource file parses as valid JSON', () => {
 });
 
 test('W9-A3: every JSON schema resource carries the matching $id', () => {
+  // saga4 cutover (REAL-BUG #11): the `verification-workset-schema` entry was
+  // removed along with the deleted verification node protocol orphan; only the
+  // planning proposal schema remains in the package resource index.
   const schemaIdByLogicalId = new Map([
     ['planning-task-graph-proposal-schema', 'saga3.development-task-graph-proposal.v1'],
-    ['verification-workset-schema', 'saga3.acceptance-verification-workset.v1'],
   ]);
   for (const entry of DEVELOPMENT_PACKAGE_RESOURCE_INDEX) {
     const expectedId = schemaIdByLogicalId.get(entry.logicalId);

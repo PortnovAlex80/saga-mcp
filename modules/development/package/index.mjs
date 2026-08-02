@@ -14,11 +14,16 @@
  *   - `developmentPackageManifest`       — the canonical ProcessModuleManifest.
  *   - `DEVELOPMENT_PACKAGE_RESOURCE_INDEX` — package-wide ResourceIndexEntry[].
  *   - `DEVELOPMENT_NODE_PROTOCOLS`         — NodeProtocolDefinition[] for the
- *                                            planning + verification nodes.
- *   - planning/verification node protocol, resources, handler refs, ids,
- *     schemas.
+ *                                            planning node.
+ *   - planning node protocol, resources, handler refs, ids, schemas.
  *   - `DEVELOPMENT_PACKAGE_IDS`            — stable id constants join-keyed to
  *                                            the development Flow node ids.
+ *
+ * saga4 cutover (REAL-BUG #11): the dead `verificationNodeProtocol` orphan and
+ * its `nodes/verification/` subtree were removed. The live verification pipeline
+ * runs through projected kanban tasks (`taskKind: 'verification.ac'` + the
+ * `saga-verifier` skill), NOT through a NodeProtocolDefinition. Only the
+ * planning node protocol surface remains here.
  */
 
 export { developmentPackageManifest } from './manifest.mjs';
@@ -40,26 +45,18 @@ export {
   planningNodeHandlerRefs,
 } from './nodes/planning/index.mjs';
 
-export {
-  VERIFICATION_NODE_ID,
-  VERIFICATION_ADAPTER_ID,
-  VERIFICATION_OUTPUT_SCHEMA,
-  VERIFICATION_RESOURCE_IDS,
-  verificationNodeProtocol,
-  verificationNodeResources,
-  verificationNodeHandlerRefs,
-} from './nodes/verification/index.mjs';
-
 /**
  * Stable id constants join-keyed to the development Flow node ids. The
  * composition root uses these to bind the runtime worker to each node without
  * switching on module-name strings (plan §3.6).
+ *
+ * saga4 cutover (REAL-BUG #11): the verification entries were removed along
+ * with the dead `verify-acceptance-workset` node protocol orphan; that Flow
+ * node no longer exists and is not driven by a node protocol. Settlement runs
+ * as a kernel node without an LM/external-node protocol.
  */
 export const DEVELOPMENT_PACKAGE_IDS = Object.freeze({
   planningNodeId: 'plan-task-graph',
   planningExecutionProfile: 'development-task-graph-planner',
   planningOutputSchema: 'saga3.development-task-graph-proposal.v1',
-  verificationNodeId: 'verify-acceptance-workset',
-  verificationAdapterId: 'development-verify-acceptance-workset',
-  verificationOutputSchema: 'saga3.acceptance-verification-workset.v1',
 });
