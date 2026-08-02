@@ -1,13 +1,18 @@
 # Кибернетический анализ saga-mcp
 
-> Анализ архитектуры saga-mcp через призму кибернетики, теории управления
-> и науки об автономных агентных системах. Базируется на полном обзоре
-> кодовой базы (≈890k токенов контекста, все ключевые файлы ветки saga4).
+> Архитектурные **гипотезы**, не «теоретический оптимум».
+> Базируется на полном обзоре кодовой базы (≈890k токенов контекста, все
+> ключевые файлы ветки saga4).
 >
-> Цель: определить, какая архитектура **правильна** для класса задач,
-> который решает saga-mcp — управления неопределёнными автономными
-> акторами (LLM-агентами), — и где текущий дизайн совпадает или
-> расходится с теоретически обоснованным оптимумом.
+> **Внимание:** ряд выводов этого документа скорректирован в
+> `REPLY-TO-CYBERNETICIAN.md` после фактической сверки с кодом. Теоретические
+> направления остаются, но буквальные технические рекомендации (typed
+> capabilities заменяют gateway, AC как function, Kleisli composition,
+> «вынести S3 наверх») признаны преждевременными или неточными.
+>
+> Принятая формулировка цели:
+> **Module-owned semantic decisions, platform-owned authority and atomic
+> completion, durable functional decision cores.**
 
 ## Постановка задачи
 
@@ -43,27 +48,22 @@ LLM-агенты имеют практически бесконечное пов
 Контрольная система никогда не перечислит все отказы. Это фундаментальный
 стеклянный потолок: **правила всегда отстают от способов их обойти.**
 
-### Элегантная альтернатива: Variety reduction
+### Элегантная альтернатива: Variety reduction (с поправками)
 
 Не ловить ошибки, а сделать их **невыразимыми**. Не «агенту запрещено
 вызывать `worker_next`» (он может попытаться), а «агент не имеет операции
 `worker_next` в своём словаре». Authority gateway уже делает это
-(allowlist), но частично. Полная реализация — **typed capability
-surface**:
+(allowlist), но частично.
 
-```typescript
-// Вместо 90 инструментов, 80 из которых запрещены каждому воркеру:
-type WorkerCapability =
-  | { kind: 'read_task'; taskId: number }
-  | { kind: 'write_artifact'; artifact: ArtifactInput }
-  | { kind: 'complete_task'; result: string; verdict?: Verdict }
-  | { kind: 'merge'; commitSha: string }
+**Внимание (поправка из REPLY-TO-CYBERNETICIAN.md):** TypeScript-типы
+стираются при компиляции. LLM отправляет недоверенный JSON. Типы не
+заменяют authority gateway — они **дополняют** его. Рабочая формула:
 
-// Агент физически не может выразить недопустимое действие —
-// тип не позволяет. Invalid state is unrepresentable.
-```
+> Invalid state unrepresentable **внутри trusted core**; invalid input
+> **безусловно отклоняется** на trust boundary.
 
-Не «не вызывай это», а «это не существует в твоём мире».
+Элегантный подход: выводить TS-типы, MCP surface, runtime schema и
+gateway policy из **одного capability catalog** (single source of truth).
 
 ---
 
@@ -80,26 +80,24 @@ type WorkerCapability =
 проходят, но AC не удовлетворён (GUARDRAILS Sign 006). Модель говорит
 «implemented + verified», реальность — «не работает».
 
-### Элегантная альтернатива: Executable specification
+### Элегантная альтернатива (с поправками)
 
-Модель ЕСТЬ спецификация ЕСТЬ тест. Не три отдельные сущности
-(AC-документ → код → property test), а одна:
+**Внимание (поправка из REPLY-TO-CYBERNETICIAN.md):** Из теоремы хорошего
+регулятора **не следует** `model = specification = test`. Artifact graph —
+только часть модели. Также нужны state machine, leases, authority
+snapshot, policy version, causal transitions и состояние `unknown`.
 
-```typescript
-// AC — это не markdown. Это тип, который одновременно:
-//   - описывает требование
-//   - генерирует property test
-//   - является оракулом для верификации
-type AC = {
-  invariant: (input: Input, output: Output) => boolean
-  examples: Example[]
-  properties: Property[]
-}
-```
+Предложенный ниже `AC { invariant: function }` имеет критические
+дефекты: не сериализуем, не content-addressable, не создаёт generators
+и shrinkers, порождает common-mode failure (один ошибочный predicate
+одновременно gate и oracle).
 
-Сейчас property test — отдельный шаг, который verifier пишет вручную. В
-элегантной архитектуре AC генерирует property test автоматически из своего
-типа.
+**Правильнее:** immutable `AcceptanceContractRef`, декларативная схема,
+`policyId/version/hash` и независимо зарегистрированный evaluator.
+Producer не должен самостоятельно объявлять свой результат проверенным.
+
+~~модель ЕСТЬ спецификация ЕСТЬ тест~~ — эта формулировка слишком
+буквальна.~~
 
 ---
 
@@ -115,28 +113,24 @@ VSM описывает любую жизнеспособную систему ч
 | **S4** Intelligence | сканирует среду, планирует | Discovery, hypothesis cycle | **неполный** |
 | **S5** Policy/identity | задаёт нормы | CGAD Constitution | **частично prose** |
 
-### Главное нарушение
+### Главное нарушение (с поправками)
 
-S3 (regulation) встроена в S1 (operations). Settlement policy живёт
-внутри kernel handler'а модуля (formalization-installation.ts:843-995 —
-settlement handler в том же файле, что и operational resolvers). В VSM
-эти слои **разделены**: S3 наблюдает за S1 сверху, S1 не знает о
-существовании S3.
+**Внимание (поправка из REPLY-TO-CYBERNETICIAN.md):** VSM рекурсивна —
+нужно сначала определить system-in-focus. На уровне платформы все четыре
+Process Modules — S1-единицы. Сам факт нахождения settlement policy и
+kernel handler в одном файле **не доказывает** S1/S3 confusion:
+Formalization уже вызывает injected policy
+(`formalization-installation.ts:891`).
 
-### Элегантная альтернатива: Разделение S1 и S3
+Реальный долг: handler одновременно собирает snapshot, читает порты,
+принимает решение, сохраняет SolutionContract, выдаёт сертификат и
+строит completion. Settlement нужно разделять на уровни:
 
-```
-S1 — операционный (выполняет работу, возвращает результат):
-  kernel-handler: (input) → Production + ModuleCompletion
-  // «Я произвёл эти артефакты, вот доказательства»
-
-S3 — регулятор (проверяет, решает):
-  settlement-policy: (Production, Evidence, Baseline) → Decision
-  // «Произведённое соответствует или нет стандарту»
-```
-
-В saga-mcp эти две функции в одном файле. Разделение = тестирование
-каждой независимо + понятность каждой в отдельности.
+| Уровень | Функция |
+|---|---|
+| **Локальный регулятор модуля** | `settle(immutableSnapshot, policyRef) → SemanticDecision` |
+| **Глобальный S3** | Проверяет authority, schema, lineage, digest; атомарно фиксирует completion |
+| **S3\*** | Независимый audit / reconciliation / reaper |
 
 ---
 
@@ -152,35 +146,56 @@ L1: Worker (one task execution)
 L0: SQLite / Git / claude -p (substrate)
 ```
 
-### Нарушение
+### Нарушение (с поправками)
 
-Development module's `areProjectedTasksTerminal` — это L1/L2 узел
-(settle-development), принимающий L3 решение (ждать пока все задачи
-завершатся). Нарушение иерархии: уровень 1 лезет в координацию уровня 3.
-GenericFlowExecutor не имеет condition-wait, поэтому модуль эмулирует его
-через `runtimeEvent: 'paused'` — и orchestrate-cli в цикле drain'ит
-worker_next очередь.
+**Внимание (поправка из REPLY-TO-CYBERNETICIAN.md):** Runtime не должен
+самостоятельно понимать Development tasks — иначе доменная семантика
+утечёт в conveyor. Модуль должен возвращать типизированное durable
+ожидание:
 
-### Элегантная альтернатива
+```typescript
+type StepDecision =
+  | { kind: 'continue'; effects: EffectRequest[] }
+  | { kind: 'await'; condition: ConditionRef }
+  | { kind: 'complete'; completion: ProposedCompletion }
+```
 
-Conveyor (L3) сам проверяет, завершены ли projected tasks. Модуль (L2)
-только декларирует «я нуждаюсь в этих задачах», а conveyor решает когда
-продолжить. Это разделяет ответственность: модуль описывает семантику,
-conveyor управляет потоком.
+Модуль определяет смысл условия. Runtime сохраняет его, подписывается
+на изменения и идемпотентно возобновляет run.
 
 ---
 
-## 5. Целевая архитектура: Pure Functional Pipeline + Tagless Final
+## 5. Целевая архитектура (с поправками)
 
-> Весь жизненный цикл продукта — **чистая функция** от идеи до
-> проверенного продукта.
+> **Внимание (поправка из REPLY-TO-CYBERNETICIAN.md):** Полный tagless
+> final нативно не типизируется в TypeScript без HKT-эмуляции. Порты
+> проекта уже дают большую часть пользы algebra/interpreter.
+>
+> Kleisli-цепочка `discovery >=> formalization >=> ...` скрывает
+> checkpoints, ожидания, retries, cancellation и idempotency.
+>
+> Принятая формулировка цели:
+> **Module-owned semantic decisions, platform-owned authority and atomic
+> completion, durable functional decision cores.**
 
-### Базовая идея
+### Для crash-resume правильнее event-sourced decision core:
 
-Доменный слой — чистые функции. Они ничего не читают из БД, не вызывают
-claude, не пишут в Git. Они берут вход и возвращают выход.
+```text
+decode + authorize
+load immutable snapshot
+decide(state, command, policy) → events + effect requests
+interpret effects through ports
+persist receipts
+settle(snapshot, receipts, policyRef)
+atomically commit completion
+```
 
-Побочные эффекты — на краях, через алгебру (tagless final):
+### Базовая идея (ослабленная)
+
+Доменный слой — чистые функции для **decision kernels** (settlement
+policy уже pure). Побочные эффекты — через порты. Полный tagless final
+имеет смысл только если действительно нужны production, simulation и
+replay interpreters для небольшого workflow DSL.
 
 ```typescript
 // Алгебра — интерфейс эффектов, которые нужны домену
@@ -269,27 +284,10 @@ product = discovery >=> formalization >=> development >=> delivery
 
 ## 6. Влияние на стеклянный потолок
 
-Стеклянный потолок текущей архитектуры — не одна точка, а кумулятивная
-нагрузка. Каждый файл на 30-40% длиннее из-за Wave-археологии в
-комментариях; каждый модуль требует чтения saga3/; composition root — 780
-строк. Сумма этих overhead'ов делает систему непостижимой для агента с
-ограниченным контекстом.
-
-### Метрика: на сколько снижается контекстная нагрузка
-
-| Вопрос агенту | Сейчас (строк) | После (строк) |
-|---|---|---|
-| «Почему formalization не выдал сертификат?» | 3300 в 4 директориях | 300 в одной |
-| «Как добавить пятый модуль?» | 7 файлов, 600+ строк | 1 директория, 1 строка в composition |
-| «Что делает вся система?» | недоступно (<1M контекста) | `product-delivery.ts` — 10 строк |
-| «Что делает один модуль?» | 8-12 файлов, 4 директории | 4-6 файлов, 1 директория |
-
-После рефакторинга:
-- Агент с **64k контекста** может работать с одним модулем целиком
-- Агент с **200k контекстом** может работать с 2-3 модулями + runtime core
-- Агент с **200k контекстом** может добавить новый модуль, не читая
-  остальные
-- Composition root читается за один взгляд
+> **Внимание (поправка из REPLY-TO-CYBERNETICIAN.md):** Раннее утверждение
+> «на 40-60%» было необоснованным — нет метрики, нет baseline.
+> Качественный вывод остаётся: контекстная нагрузка снизится при очистке
+> accidental complexity. Количественная оценка требует измерения.
 
 ---
 
