@@ -21,3 +21,21 @@
 Критерий завершения:
 
 Во всём runtime существует один владелец dispatch loop и один глобальный concurrency budget. При N=2 две карточки реально выполняются одновременно. Максимальное число активных workers никогда не превышает N при смешанном запуске Flow и Development. Ошибка старта и shutdown возвращают незапущенную карточку в очередь с audit event.
+
+ПОВТОРНАЯ ПРОВЕРКА 2026-08-02
+
+Новый статус: реализация появилась, но Wave 4 не принята.
+
+Что изменилось:
+
+src/app/dispatch-loop.ts содержит bounded active set, заполняет его до concurrency, запускает только pre-assigned work и освобождает assignment при start failure. Это правильная основа глобального dispatcher.
+
+Что остаётся:
+
+Два теста, которые должны доказывать overlap при N больше или равно 2 и отсутствие overlap при N равно 1, явно помечены test.skip. В самом файле указано, что эквивалентный dispatch-loop overlap test ещё не реализован. Поэтому зелёный architecture gate не подтверждает главную физику Wave 4.
+
+Существует отдельный src/saga3/application/assign-one-card.ts, который по собственному комментарию зеркалирует startOne из dispatch-loop. LM node executor также самостоятельно вызывает assignment и executor.start с concurrency 1. Это означает несколько orchestration paths, а утверждение об одном dispatcher и одном глобальном бюджете пока не доказано.
+
+Исследовать и исправить:
+
+Написать тест непосредственно для distributeQueuedTasks с управляемыми promises: N=2 даёт реальное временное перекрытие, N=1 остаётся последовательным, maxAlive никогда не превышает N. Убрать skip из обязательного gate. Свести assign-one-card, LM node launches и Development queue к одному владельцу глобального permit либо доказать общим semaphore, что они не могут выполняться параллельно сверх N. Добавить shutdown и async start-failure тесты.

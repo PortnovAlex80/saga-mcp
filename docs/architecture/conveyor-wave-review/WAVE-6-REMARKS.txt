@@ -23,3 +23,23 @@
 Критерий завершения:
 
 Recovery не создаёт новую карточку и чистый desk. Новая execution видит и исправляет продукт предыдущей попытки. Verifier читает точную ссылку, а не последний найденный результат. Число попыток ограничено durable RecoveryCase. Exhaustion всегда даёт ожидаемый pause или fail. P18 и полный recovery end-to-end проходят.
+
+ПОВТОРНАЯ ПРОВЕРКА 2026-08-02
+
+Новый статус: основной новый recovery path работает, удаление fallback не завершено.
+
+Подтверждено:
+
+Целевой набор из 86 workspace, recovery, crash-resume, structured-hook и settlement tests проходит. Доказаны exact receipt и production envelope после crash, отдельный recovery feedback, повторное использование node-stable desk, bounded attempts, deterministic pause/fail, manual resume и P18.
+
+Уточнение предыдущего замечания:
+
+UniversalRecoveryEngine намеренно помечен dead deprecated SPI. Production использует flow.recovery через generic-flow-executor и RecoveryCaseRepository. Поэтому его не требуется подключать; требуется удалить dead SPI и не оставлять две конкурирующие модели recovery.
+
+Что остаётся:
+
+generic-flow-executor всё ещё содержит живой legacy restoreFrame path. Development и Formalization ports, shared ledger и formalization package adapter всё ещё имеют listArtifactsForExecution и listTracesForExecution. Это противоречит работе Wave 6 по удалению execution-scoped product lookup fallbacks, даже если новый v2 path использует exact refs.
+
+Исследовать и исправить:
+
+Удалить deprecated UniversalRecoveryEngine и неиспользуемые module recovery-policy bindings после переноса нужных тестов на flow.recovery. Завершить cutover всех production runs на execution-context assembler и exact ProductRef. Удалить restoreFrame и listArtifactsForExecution/listTracesForExecution после явного migration gate для legacy rows. Добавить архитектурный запрет на повторное появление execution-scoped product lookup.

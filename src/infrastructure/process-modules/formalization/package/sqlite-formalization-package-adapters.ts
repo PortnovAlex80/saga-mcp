@@ -45,7 +45,6 @@ import type {
   FormalizationBriefProvisioningPort,
   FormalizationManagedArtifactWrite,
   FormalizationManagedProductionPort,
-  FormalizationManagedProductionQuery,
   FormalizationManagedTraceWrite,
   FormalizationPackagePorts,
   FormalizationPrdRootRead,
@@ -53,7 +52,6 @@ import type {
 import type {
   FormalizationCanonicalGraphPort,
   ManagedArtifactProductionRecord,
-  ManagedExecutionProductQuery,
   ManagedProductionLedger,
   ManagedTraceProductionRecord,
 } from '../../../../process-modules/modules/formalization/formalization-kernel-ports.js';
@@ -214,21 +212,10 @@ export class SqliteFormalizationManagedProduction
 implements FormalizationManagedProductionPort {
   constructor(private readonly ledger: ManagedProductionLedger) {}
 
-  listArtifactsForExecution(
-    query: FormalizationManagedProductionQuery,
-  ): readonly FormalizationManagedArtifactWrite[] {
-    return this.ledger
-      .listArtifactsForExecution(toSharedQuery(query))
-      .map(toManagedArtifactWrite);
-  }
-
-  listTracesForExecution(
-    query: FormalizationManagedProductionQuery,
-  ): readonly FormalizationManagedTraceWrite[] {
-    return this.ledger
-      .listTracesForExecution(toSharedQuery(query))
-      .map(toManagedTraceWrite);
-  }
+  // WAVE 6 CUTOVER: listArtifactsForExecution / listTracesForExecution were
+  // removed (execution-scoped product lookup fallbacks). The node-scope
+  // variants below are the canonical path. See
+  // tests/architecture/no-execution-scoped-lookup.test.mjs.
 
   listArtifactsForTaskInProcessRun(
     processRunId: number,
@@ -281,22 +268,6 @@ implements FormalizationManagedProductionPort {
       .listTracesForNodeInProcessRun(processRunId, moduleRef, nodeId)
       .map(toManagedTraceWrite);
   }
-}
-
-function toSharedQuery(
-  query: FormalizationManagedProductionQuery,
-): ManagedExecutionProductQuery {
-  // Structural cast — the two types are intentionally identical. Done
-  // explicitly (not via `as any`) so a field rename in either place surfaces
-  // as a compile error here, at the bridge.
-  return {
-    processRunId: query.processRunId,
-    moduleRef: query.moduleRef,
-    nodeId: query.nodeId,
-    intentId: query.intentId,
-    taskId: query.taskId,
-    executionId: query.executionId,
-  };
 }
 
 function toManagedArtifactWrite(

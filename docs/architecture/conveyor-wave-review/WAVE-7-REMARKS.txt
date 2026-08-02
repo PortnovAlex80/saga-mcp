@@ -37,3 +37,21 @@ src/process-modules/modules/formalization/package/ports/sqlite-formalization-pac
 Критерий завершения:
 
 В src/process-modules/modules нет импортов better-sqlite3, getDb, concrete persistence repositories и классов Sqlite. Все concrete adapters находятся в infrastructure и создаются только composition root. Lifecycle зависит только от contracts/package references. Rule 1-3 allowlist равен нулю и дополнительный physical-placement gate проходит. Каждый модуль проходит contract tests с fake ports. Новый синтетический пакет устанавливается и выполняется без изменения runtime-core.
+
+ПОВТОРНАЯ ПРОВЕРКА 2026-08-02
+
+Новый статус: прежние блокирующие замечания сохраняются.
+
+Подтверждено:
+
+Dependency ratchet по Rule 1-3 проходит с нулевым allowlist. Lifecycle implementation imports очищены. Concrete construction централизован в app composition. Fake-port и module conformance tests в основном проходят.
+
+Что остаётся:
+
+В modules по-прежнему находятся и компилируются SQLite реализации Development, Delivery и Formalization. Поиск всё ещё находит better-sqlite3 и Sqlite-классы в development-persistence, sqlite-development-settlement-state, delivery-persistence, sqlite-delivery-runtime, sqlite-delivery-approval-inbox, formalization-persistence, sqlite-formalization-kernel и sqlite-formalization-package-adapters. Ratchet их не замечает из-за физического расположения внутри module tree.
+
+Extensibility acceptance остаётся красным. external-seo package test ожидает отсутствующий external-adapter-registry. Static external-seo manifest не соответствует ожидаемому полному ProcessModuleManifest. D6 по-прежнему сравнивает всю текущую ветку со старым W10 base и сообщает сотни src changes, поэтому этот тест не измеряет локальность добавления нового модуля корректным экспериментом.
+
+Исследовать и исправить:
+
+Предыдущий план Wave 7 остаётся актуальным: перенести concrete SQLite adapters в infrastructure, усилить physical-placement gate, определить один актуальный external extension SPI, исправить external-seo package и заменить D6 изолированным тестом установки нового пакета без правок runtime-core.

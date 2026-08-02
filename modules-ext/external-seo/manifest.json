@@ -1,101 +1,103 @@
 {
   "manifestFormatVersion": "1",
-  "source": "W10-A2 installable package (modules-ext/external-seo). Live-validated rendering; resource/handler digests are real sha256Hex values computed at load.",
-  "identity": {
-    "name": "external-seo",
-    "version": "1.0.0",
-    "kind": "external-seo",
-    "displayName": "External SEO/Analytics",
-    "description": "Installable External-node package: fetches keyword ranking snapshots from an external SEO provider. Upgrades the W0-A7 synthetic fixture into a real package with a real adapter and node protocol."
-  },
-  "inputContract": {
-    "id": "ext.external-seo.ranking-input.v1"
-  },
-  "outputContract": {
-    "id": "ext.external-seo.ranking-snapshot.v1"
-  },
-  "outcomes": [
-    {
-      "code": "ranking-fetched",
-      "description": "A ranking snapshot was fetched from the external SEO provider and content-addressed.",
-      "terminal": true
-    }
-  ],
-  "flow": {
-    "id": "ext.external-seo.standard",
-    "version": "1.0.0",
-    "entryNodeId": "fetch-ranking",
-    "nodes": [
+  "source": "W10-A2 installable package (modules-ext/external-seo). Static rendering of the live manifest.mjs; matches the ProcessModuleManifest shape validated by validateProcessModuleManifest (definition + resourceIndex + handlerRefs + contract refs + runtimeCompatibilityRange). The module-shaped fields (identity/inputContract/outputContract/outcomes/flow/artifacts/policies/invariants/executionProfiles) are nested under `definition`, mirroring the live manifest.mjs which wraps `definition: externalSeoProcessModule`. Resource/handler digests are real sha256Hex values computed at load; they match the bytes shipped under schemas/ and resources/.",
+  "definition": {
+    "identity": {
+      "name": "external-seo",
+      "version": "1.0.0",
+      "kind": "external-seo",
+      "displayName": "External SEO/Analytics",
+      "description": "Installable External-node package: fetches keyword ranking snapshots from an external SEO provider. Upgrades the W0-A7 synthetic fixture into a real package with a real adapter and node protocol."
+    },
+    "inputContract": {
+      "id": "ext.external-seo.ranking-input.v1"
+    },
+    "outputContract": {
+      "id": "ext.external-seo.ranking-snapshot.v1"
+    },
+    "outcomes": [
       {
-        "id": "fetch-ranking",
-        "label": "Fetch Ranking",
-        "kind": "external",
-        "description": "Fetch current search-engine ranking for the campaign keywords from an external SEO provider and produce a content-addressed ranking snapshot.",
-        "adapter": "seo-ranking-adapter@1.0.0",
-        "inputSchema": {
-          "id": "ext.external-seo.ranking-input.v1"
-        },
-        "outputSchema": {
-          "id": "ext.external-seo.ranking-snapshot.v1"
-        },
-        "emitsOutcome": "ranking-fetched"
+        "code": "ranking-fetched",
+        "description": "A ranking snapshot was fetched from the external SEO provider and content-addressed.",
+        "terminal": true
       }
     ],
-    "transitions": [],
-    "terminalNodeIds": [
-      "fetch-ranking"
-    ]
+    "flow": {
+      "id": "ext.external-seo.standard",
+      "version": "1.0.0",
+      "entryNodeId": "fetch-ranking",
+      "nodes": [
+        {
+          "id": "fetch-ranking",
+          "label": "Fetch Ranking",
+          "kind": "external",
+          "description": "Fetch current search-engine ranking for the campaign keywords from an external SEO provider and produce a content-addressed ranking snapshot.",
+          "adapter": "seo-ranking-adapter@1.0.0",
+          "inputSchema": {
+            "id": "ext.external-seo.ranking-input.v1"
+          },
+          "outputSchema": {
+            "id": "ext.external-seo.ranking-snapshot.v1"
+          },
+          "emitsOutcome": "ranking-fetched"
+        }
+      ],
+      "transitions": [],
+      "terminalNodeIds": [
+        "fetch-ranking"
+      ]
+    },
+    "artifacts": [
+      {
+        "type": "ext.ranking-snapshot",
+        "schema": {
+          "id": "ext.external-seo.ranking-snapshot.v1"
+        },
+        "authority": "external",
+        "description": "Content-addressed ranking snapshot envelope produced by the External node."
+      }
+    ],
+    "policies": [],
+    "invariants": [
+      {
+        "id": "ext.external-seo.adapter-pinned",
+        "description": "The fetch-ranking node must reference the exact versioned adapter seo-ranking-adapter@1.0.0; the runtime must resolve it through the ExternalAdapterRegistry and never through module-name lookup.",
+        "enforcement": "static"
+      }
+    ],
+    "executionProfiles": []
   },
-  "artifacts": [
-    {
-      "type": "ext.ranking-snapshot",
-      "schema": {
-        "id": "ext.external-seo.ranking-snapshot.v1"
-      },
-      "authority": "external",
-      "description": "Content-addressed ranking snapshot envelope produced by the External node."
-    }
-  ],
-  "policies": [],
-  "invariants": [
-    {
-      "id": "ext.external-seo.adapter-pinned",
-      "description": "The fetch-ranking node must reference the exact versioned adapter seo-ranking-adapter@1.0.0; the runtime must resolve it through the ExternalAdapterRegistry and never through module-name lookup.",
-      "enforcement": "static"
-    }
-  ],
-  "executionProfiles": [],
   "resourceIndex": [
     {
       "logicalId": "external-seo.schema.input",
       "path": "schemas/seo-ranking-input.schema.json",
       "kind": "schema",
-      "digest": "26c03ec85e60ea907535b252365d9812539fd9726cf6687101a0b82f8671a2c0"
+      "digest": "564cb35f874dbc28441515e84335c34082f4a48663f6ae47b281ba4adc9ca7f7"
     },
     {
       "logicalId": "external-seo.schema.output",
       "path": "schemas/seo-ranking-output.schema.json",
       "kind": "schema",
-      "digest": "0bba9079083d089defdccbf70aa074bb5a2a6929595d288793e990fae9d7133c"
+      "digest": "17c025e22fb0cba9d70c3142fd2759a1a57bb2a6392df6bf13279ab337bae235"
     },
     {
       "logicalId": "external-seo.checklist.fetch-ranking",
       "path": "resources/fetch-ranking-checklist.md",
       "kind": "checklist",
-      "digest": "9394cc27cecc3b62d0295d93b5f89728ba38d4f8f750e34174c23d0f4e42f80c"
+      "digest": "7b422a5e96dfcebeac269310de51a5d3d9f9f8029284d9b0be5e1b2ac9b8ee4f"
     },
     {
       "logicalId": "external-seo.description.package",
       "path": "resources/package-description.md",
       "kind": "description",
-      "digest": "9af7e06fd4d6e99514515761d867a0efbcbe7a5732d110fa1f61b9196bac951d"
+      "digest": "4411e212ccc0a76e960b36b52b5832588a042f5deeedc5c594aa5ffbf60f872a"
     }
   ],
   "handlerRefs": [
     {
       "logicalId": "seo-ranking-adapter@1.0.0",
       "version": "1.0.0",
-      "digest": "3377b18a433d88c08aff992a5db1483595f092c8104729196a74b63eeecbf2eb"
+      "digest": "daa9f52e6dbc6e1e45162f9cd6d3a50cd2932ef00bfc3cbc4c55e0d19496bde6"
     }
   ],
   "inputContractRef": {

@@ -21,3 +21,17 @@
 Критерий завершения:
 
 Два конкурирующих процесса получают ровно одного победителя. Проигравший не создаёт execution или lease. До commit рабочий не запускается. После любого rollback карточка снова доступна. Карточка с незавершёнными зависимостями или из другого проекта никогда не назначается. Review имеет приоритет при одновременной доступности review и implementation.
+
+ПОВТОРНАЯ ПРОВЕРКА 2026-08-02
+
+Новый статус: критерии Wave 2 выполнены.
+
+Подтверждено:
+
+SqliteWorkAssignmentAdapter выполняет select, проверку gates, status update, fence и insert worker_executions внутри одной IMMEDIATE transaction. AssignedWork строится после commit. Ошибка его построения вызывает fenced release. Dispatch loop вызывает executor.start только после успешного assignTask и освобождает карточку при синхронной ошибке запуска.
+
+Architecture gate и отдельные race tests проходят. Пять процессов, соревнующиеся за одну карточку, дают одного победителя. Проверены review-first, unmet dependencies, project isolation, process_run authority и releaseAssignment.
+
+Исследовать и исправить:
+
+Wave 2 можно закрыть. Оставить regression tests обязательными в CI. Дополнительно полезно добавить fault-injection после commit и перед executor.start, хотя этот сценарий уже должен закрываться startup supervision из Wave 5.

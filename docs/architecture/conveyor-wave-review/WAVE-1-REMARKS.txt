@@ -21,3 +21,19 @@
 Критерий завершения:
 
 Все production launchers принимают AssignedWork. Карточка и execution являются разными типами. Несовместимые workplace, card, desk, execution и fence отклоняются тестами. Domain-код не импортирует adapters, database или infrastructure. В публичных контрактах попытка рабочего нигде не называется task.
+
+ПОВТОРНАЯ ПРОВЕРКА 2026-08-02
+
+Новый статус: выполнено частично, есть существенный прогресс.
+
+Что изменилось:
+
+AssignedWork теперь обязателен в WorkerExecutorStart, а claimScope удалён из исполняемого кода. Architecture gate подтверждает наличие всех заявленных портов и value-object интерфейсов.
+
+Что остаётся:
+
+WorkplaceRef, CardRef, DeskRef, ProductRef и Lease в основном существуют как объявления в application/ports/conveyor-ports.ts и почти не используются production-кодом. ExecutionId брендирован отдельно в lifecycle/domain/ids.ts, но AssignedWork по-прежнему содержит обычные string и number. Отдельного брендированного FenceToken нет, workerExecutionId и fenceToken дублируются как две строки. Поэтому несовместимые ссылки всё ещё можно перепутать на границе компиляции и runtime.
+
+Исследовать и исправить:
+
+Перевести команды и порты production path на брендированные CardRef, ExecutionId, FenceToken и WorkplaceRef. Добавить конструкторы с runtime validation. Устранить дублирование workerExecutionId и fenceToken либо выразить их связь одним типом. Добавить отрицательные unit-тесты на смешение card, execution, workplace и fence. Не считать тест, который только находит имена интерфейсов в исходнике, доказательством применения доменной модели.

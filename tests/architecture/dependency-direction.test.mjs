@@ -101,7 +101,28 @@ const REASON = {
 // baseline change rather than a silent entry append.
 //   Bump history:
 //     2026-08-01  baseline = 0  (post-CONVEYOR/W13: all known violations fixed)
-const ALLOWLIST_BASELINE = 0;
+//     2026-08-02  baseline = 8  (Wave 7 re-check: physical extraction of the 8
+//                SQLite adapters to src/infrastructure/process-modules/. The
+//                concrete implementations no longer live inside the module
+//                tree — the physical-placement gate
+//                (tests/architecture/no-sqlite-in-modules.test.mjs) now forbids
+//                any better-sqlite3 import / Sqlite* class / sqlite-*.ts impl
+//                file under modules/. To preserve import resolution for the 4
+//                non-owned src/ files and ~15 tests that still import the
+//                historical paths during the parallel-agent refactor window,
+//                each old path is a PURE re-export shim that points at the
+//                infrastructure adapter. The scanner sees each shim→infra edge
+//                as a Rule 2 violation (a module file importing a persistence
+//                adapter); these 8 edges are allowlisted here so the ratchet
+//                makes them VISIBLE and REQUIRE their removal. Removal plan:
+//                each shim is deleted once every importer (sibling modules,
+//                saga3-formalization-engine.ts, tools/delivery-approvals.ts,
+//                formalization/package/ports/index.ts, formalization-installation.ts,
+//                and the relevant tests) migrates to the infrastructure path
+//                directly; each migrated importer lets one allowlist entry +
+//                its shim be deleted, shrinking the baseline back to 0. Owner:
+//                Wave 7 re-check lane.)
+const ALLOWLIST_BASELINE = 8;
 
 const KNOWN_VIOLATIONS = [
   // ---- Rule 1: module imports another module implementation ----
@@ -124,6 +145,46 @@ const KNOWN_VIOLATIONS = [
   //  - formalization-kernel-ports → sqlite-managed-production-ledger (interface moved inline)
   //  - formalization-package-adapters → sqlite-managed-production-ledger (interface moved inline)
   // No Rule-2 entries remain.
+  //
+  // W7-RECHECK (2026-08-02) — the 8 concrete SQLite adapters were physically
+  // extracted from the module tree to src/infrastructure/process-modules/
+  // (development/delivery/formalization/{,*-persistence,sqlite-*}). To keep
+  // every historical import path resolving during the parallel-agent refactor
+  // window (4 non-owned src/ importers + ~15 tests still import the old
+  // paths), each old path is now a PURE re-export shim pointing at the
+  // infrastructure adapter. The scanner sees each shim→infra edge as a Rule 2
+  // violation; the 8 edges below are allowlisted so the ratchet makes them
+  // VISIBLE and REQUIRES their removal. The physical-placement gate
+  // (tests/architecture/no-sqlite-in-modules.test.mjs) independently forbids
+  // any NEW sqlite substrate under modules/ — these shims are the ONLY module
+  // files that may reference infrastructure, and only as pure re-exports.
+  // Removal plan: delete each shim (and its allowlist entry) once every
+  // importer migrates to the infrastructure path. See ALLOWLIST_BASELINE bump
+  // comment above for the per-shim owner list.
+  { source: 'src/process-modules/modules/development/development-persistence.ts',
+    target: 'src/infrastructure/process-modules/development/development-persistence.ts',
+    rule: 2, reason: REASON.modulePorts },
+  { source: 'src/process-modules/modules/development/sqlite-development-settlement-state.ts',
+    target: 'src/infrastructure/process-modules/development/sqlite-development-settlement-state.ts',
+    rule: 2, reason: REASON.modulePorts },
+  { source: 'src/process-modules/modules/delivery/delivery-persistence.ts',
+    target: 'src/infrastructure/process-modules/delivery/delivery-persistence.ts',
+    rule: 2, reason: REASON.modulePorts },
+  { source: 'src/process-modules/modules/delivery/sqlite-delivery-approval-inbox.ts',
+    target: 'src/infrastructure/process-modules/delivery/sqlite-delivery-approval-inbox.ts',
+    rule: 2, reason: REASON.modulePorts },
+  { source: 'src/process-modules/modules/delivery/sqlite-delivery-runtime.ts',
+    target: 'src/infrastructure/process-modules/delivery/sqlite-delivery-runtime.ts',
+    rule: 2, reason: REASON.modulePorts },
+  { source: 'src/process-modules/modules/formalization/formalization-persistence.ts',
+    target: 'src/infrastructure/process-modules/formalization/formalization-persistence.ts',
+    rule: 2, reason: REASON.modulePorts },
+  { source: 'src/process-modules/modules/formalization/sqlite-formalization-kernel.ts',
+    target: 'src/infrastructure/process-modules/formalization/sqlite-formalization-kernel.ts',
+    rule: 2, reason: REASON.modulePorts },
+  { source: 'src/process-modules/modules/formalization/package/ports/sqlite-formalization-package-adapters.ts',
+    target: 'src/infrastructure/process-modules/formalization/package/sqlite-formalization-package-adapters.ts',
+    rule: 2, reason: REASON.modulePorts },
 
   // ---- Rule 3: lifecycle scenario imports module implementation ----
   // CONVEYOR Wave 7 — Isolate modules behind ports: ALL 9 lifecycle→module

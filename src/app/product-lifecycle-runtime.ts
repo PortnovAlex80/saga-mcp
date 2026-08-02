@@ -152,14 +152,14 @@ import type {
   DeliveryApprovalSource,
   DeliveryRuntimeProviders,
 } from '../process-modules/modules/delivery/delivery-provider-ports.js';
-import { SqliteDeliveryOutputRepository } from '../process-modules/modules/delivery/delivery-persistence.js';
+import { SqliteDeliveryOutputRepository } from '../infrastructure/process-modules/delivery/delivery-persistence.js';
 import { RELEASE_RECORD_SCHEMA } from '../process-modules/modules/delivery/delivery-schemas.js';
 import {
   ReferenceDeliveryPreflightPolicy,
   ReferenceDeliverySettlementPolicy,
 } from '../process-modules/modules/delivery/delivery-settlement-policy.js';
-import { SqliteDeliveryApprovalInbox } from '../process-modules/modules/delivery/sqlite-delivery-approval-inbox.js';
-import { SqliteDeliveryRuntime } from '../process-modules/modules/delivery/sqlite-delivery-runtime.js';
+import { SqliteDeliveryApprovalInbox } from '../infrastructure/process-modules/delivery/sqlite-delivery-approval-inbox.js';
+import { SqliteDeliveryRuntime } from '../infrastructure/process-modules/delivery/sqlite-delivery-runtime.js';
 import {
   createDevelopmentKernelHandlers,
   createDevelopmentOutputPayloadResolver,
@@ -172,13 +172,13 @@ import type {
   DevelopmentSettlementStatePort,
   DevelopmentTaskGraphPort,
 } from '../process-modules/modules/development/development-kernel-ports.js';
-import { SqliteDevelopmentOutputRepository } from '../process-modules/modules/development/development-persistence.js';
+import { SqliteDevelopmentOutputRepository } from '../infrastructure/process-modules/development/development-persistence.js';
 import { VERIFIED_INTEGRATION_BUNDLE_SCHEMA } from '../process-modules/modules/development/development-schemas.js';
 import {
   ReferenceDevelopmentSettlementPolicy,
   ReferenceDevelopmentTaskGraphPolicy,
 } from '../process-modules/modules/development/development-settlement-policy.js';
-import { SqliteDevelopmentModuleStore } from '../process-modules/modules/development/sqlite-development-settlement-state.js';
+import { SqliteDevelopmentModuleStore } from '../infrastructure/process-modules/development/sqlite-development-settlement-state.js';
 import { createGitPort, createMachinePort } from '../infrastructure/process-modules/git-machine-ports.js';
 import { SqliteWorkAssignmentAdapter } from '../infrastructure/work/sqlite-work-assignment-adapter.js';
 import {
@@ -201,12 +201,12 @@ import {
 import {
   SqliteFormalizationBaselineRepository,
   SqliteFormalizationSolutionContractRepository,
-} from '../process-modules/modules/formalization/formalization-persistence.js';
+} from '../infrastructure/process-modules/formalization/formalization-persistence.js';
 import { SOLUTION_CONTRACT_CERTIFICATE_SCHEMA } from '../process-modules/modules/formalization/formalization-schemas.js';
 import {
   ReferenceFormalizationSettlementPolicy,
   SqliteFormalizationArtifactGraph,
-} from '../process-modules/modules/formalization/sqlite-formalization-kernel.js';
+} from '../infrastructure/process-modules/formalization/sqlite-formalization-kernel.js';
 import { ProcessModuleInstallationRegistry } from '../process-modules/application/process-module-installation-registry.js';
 import type { ResolveStageOutputPayload } from '../process-modules/application/lifecycle-orchestrator.js';
 import { SqliteLifecycleRunRepository } from '../process-modules/persistence/sqlite-lifecycle-run-repository.js';

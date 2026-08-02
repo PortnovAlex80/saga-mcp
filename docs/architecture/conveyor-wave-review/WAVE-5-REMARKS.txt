@@ -25,3 +25,21 @@
 Критерий завершения:
 
 Replacement worker получает тот же desk и видит старые черновики. Cross-run path traversal невозможен. Устаревший fence запрещает любое изменение. Мёртвый worker и мёртвый supervisor автоматически возвращают работу. Живой молчащий процесс не освобождается ошибочно. Reaper работает без tracker UI и без callback от модели. Системное восстановление и ручной admin override имеют разные audit events.
+
+ПОВТОРНАЯ ПРОВЕРКА 2026-08-02
+
+Новый статус: supervision и zombie reaping в основном реализованы, вся Wave 5 ещё не закрыта.
+
+Подтверждено:
+
+Startup sweep и periodic supervision работают. Проверены dead PID, expired remote lease, alive-but-silent worker, progress отдельно от liveness, cancellation chain, PID birth token, stale-fence progress и idempotent second sweep. Atomic release пишет lifecycle audit event. Pinned workspace materializer сохраняет node-stable desk и наследует черновики предыдущей execution. Специализированные workspace и structured-context-hook тесты проходят.
+
+Что остаётся:
+
+Single-flight guard является только module-scoped Set внутри одного Node process. Документ требует single-flight или advisory lock, защищающий от двух runtime процессов. Два supervisor процесса могут одновременно выполнять sweep.
+
+Полный workspace-tracker-hook acceptance suite красный: несовместимый PackageRegistry fake, SQLite ошибки CallInstance, tracker renderer ожидает другую форму module.steps, два structured-hook сценария и capability-enforcement не проходят. Часть тестов может быть устаревшей, но до их классификации exit gate остаётся красным.
+
+Исследовать и исправить:
+
+Добавить межпроцессный SQLite advisory lease для supervisor sweep. Сохранить in-process guard как оптимизацию. Разобрать каждый failure workspace-tracker-hook: обновить устаревший fixture либо production contract, но не исключать тест без замены. Добавить явный тест различия system reaper event и admin_override_lifecycle event. Проверить stale fence для всех mutating tools, а не только progress и completion.

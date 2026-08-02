@@ -21,3 +21,19 @@
 Критерий завершения:
 
 Каждый production worker стартует с точными card, workplace, desk, execution и fence. Вызов worker_next из назначенной execution возвращает запрещённую операцию ещё до обращения к очереди. Один launch обрабатывает ровно одну карточку, вызывает worker_done и заканчивается. End-to-end тесты показывают ноль compatibility-path calls.
+
+ПОВТОРНАЯ ПРОВЕРКА 2026-08-02
+
+Новый статус: почти выполнено, но формальный exit criterion ещё не закрыт.
+
+Что изменилось:
+
+WorkerExecutorStart.assignment теперь обязательный. В исполняемом src отсутствует claimScope. ClaudeBoardRunner запускает одну заранее назначенную карточку и добавляет mcp__saga__worker_next в disallowedTools. Архитектурный тест no-claim-scope проходит. Основные skills Development и Formalization прямо запрещают worker_next.
+
+Что остаётся:
+
+Capability package platform.worker-completion всё ещё включает worker_next. В общих skills saga-code-reviewer, saga-readiness-checker, saga-perf-tuner, saga-type-fixer, saga-tracker и saga-dispatch по-прежнему описан self-claim через worker_next. Это может быть отдельный ручной MCP режим, но документ требует удалить worker_next из worker allowed tools и capability packages. Запрет через аргумент конкретного Claude launcher не доказывает запрет для любого другого launcher или MCP клиента с execution fence.
+
+Исследовать и исправить:
+
+Разделить dispatcher capability и assigned-worker capability. Удалить worker_next из пакета, выдаваемого назначенной execution. Добавить server-side authorization test: запрос worker_next с действующим assigned executionId или fence отклоняется до чтения очереди независимо от клиента и launcher. Классифицировать оставшиеся self-claim skills как legacy/manual dispatcher surface либо переписать их. Доказать ноль compatibility вызовов end-to-end.
