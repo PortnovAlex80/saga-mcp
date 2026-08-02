@@ -981,15 +981,23 @@ test('typed dependencies wait for merge and repository merge locks do not block 
     project_id: product.id, name: 'gate-b', local_path: repoBPath, integration_branch: 'develop-b',
   });
   const epic = epics.epic_create({ project_id: product.id, name: 'REQ-repo-gates' });
+  // saga4 cutover: typed development.code tasks require provenance — an accepted
+  // AC via source_artifact_ids (the per-AC implementation gate in task_create).
+  // This mirrors the established pattern used by the other typed dev tests.
+  const ac = artifacts.artifact_create({
+    project_id: product.id, epic_id: epic.id, type: 'AC', code: 'AC-GATE',
+    title: 'Repository gate criterion', path: 'ac-gate.md',
+    status: 'accepted', content_hash: 'gate-hash',
+  });
   const upstream = tasks.task_create({
     epic_id: epic.id, title: 'Typed upstream', status: 'review', priority: 'critical',
     task_kind: 'development.code', workflow_stage: 'development',
-    project_repository_id: repoA.id,
+    project_repository_id: repoA.id, source_artifact_ids: [ac.id],
   });
   const downstream = tasks.task_create({
     epic_id: epic.id, title: 'Typed downstream', priority: 'critical',
     task_kind: 'development.code', workflow_stage: 'development',
-    project_repository_id: repoB.id, depends_on: [upstream.id],
+    project_repository_id: repoB.id, depends_on: [upstream.id], source_artifact_ids: [ac.id],
   });
   stampRunId(upstream.id);
   stampRunId(downstream.id);
@@ -1003,7 +1011,7 @@ test('typed dependencies wait for merge and repository merge locks do not block 
   const independent = tasks.task_create({
     epic_id: epic.id, title: 'Independent repo B merge', status: 'done',
     task_kind: 'development.code', workflow_stage: 'development',
-    project_repository_id: repoB.id,
+    project_repository_id: repoB.id, source_artifact_ids: [ac.id],
   });
   assert.equal(dispatcher.worker_merge_acquire({
     task_id: upstream.id, worker_id: 'repo-a-reviewer',

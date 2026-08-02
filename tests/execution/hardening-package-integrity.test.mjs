@@ -550,7 +550,7 @@ test('W12-A1 §3 version upgrade: 0.2.0 coexists with 0.1.0; same-version overwr
       );
 
       // ──────────────────────────────────────────────────────────────────────
-      // BUG DOCUMENTED (W12-A1, test-only wave §4 — return to owning subsystem).
+      // IDEMPOTENT REPLAY (Wave 1A fix — formerly a documented BUG).
       // ──────────────────────────────────────────────────────────────────────
       // Expected behavior (WAVE2-IMMUTABLE-INSTALLATION-SPEC §4 + the repo
       // docstring on `insert`/`activate`): re-installing the EXACT same bytes
@@ -560,36 +560,31 @@ test('W12-A1 §3 version upgrade: 0.2.0 coexists with 0.1.0; same-version overwr
       // `repo.insert({status:'active'})` IS idempotent (same digest → returns
       // the existing active row).
       //
-      // ACTUAL behavior: the full `installPackage` pipeline is NOT idempotent.
-      // The installer's step-6 pre-check (installer.ts:329-336) only throws
-      // when the digests DIFFER; when they are the SAME it falls through and
-      // inserts a NEW `staged` row (status='staged', which does not violate the
-      // partial UNIQUE-on-active index). Step 8 then calls `repo.activate(id)`
-      // on the NEW staged row, and `activate` (installation-repository.ts:375-
-      // 385) throws MODULE_INSTALLATION_VERSION_COLLISION because a DIFFERENT
-      // row (the original v1) already holds the active slot for (name,version).
-      // The installer wraps that as MODULE_INSTALLATION_ACTIVATE_FAILED and the
-      // staged row is orphaned in the DB (status='staged', never cleaned up).
-      //
-      // The fix belongs in the installer (installation/domain/installer.ts):
-      // when `existingActive.packageDigest === stored.packageDigest`, short-
-      // circuit and return `existingActive` instead of inserting a new staged
-      // row. This test characterizes the buggy behavior so the owning subsystem
-      // can fix it serially; it does NOT patch production code (§0.15.2).
-      const replayErr = await installPackage(
+      // The fix lives in the installer (installation/domain/installer.ts):
+      // the pre-check computes `attemptedPackageDigest` BEFORE touching the
+      // store, looks up `existingActive = repo.getActiveByNameVersion(...)`,
+      // and when `existingActive.packageDigest === attemptedPackageDigest` it
+      // short-circuits — verifying the existing package and returning the
+      // existing active record WITHOUT inserting a new staged row (which would
+      // collide at `activate` time). This was previously a characterized bug
+      // (replay threw MODULE_INSTALLATION_ACTIVATE_FAILED via a wrapped
+      // VERSION_COLLISION); the installer now returns the active record.
+      const replayResult = await installPackage(
         makeManifest('0.1.0'),
         makeResources(),
         { store, repo: opened.repo },
       ).catch((e) => e);
       assert.ok(
-        replayErr instanceof Error,
-        'BUG: idempotent replay through installPackage throws instead of returning the active record',
+        !(replayResult instanceof Error),
+        'idempotent replay through installPackage returns the active record (does not throw)',
       );
       assert.equal(
-        String(replayErr.code ?? replayErr.message),
-        'MODULE_INSTALLATION_ACTIVATE_FAILED',
-        'BUG: replay fails at the activate step with ACTIVATE_FAILED (wrapped VERSION_COLLISION)',
+        replayResult.id,
+        v1.id,
+        'idempotent replay returns the SAME active installation record',
       );
+      assert.equal(replayResult.status, 'active');
+      assert.equal(replayResult.packageDigest, v1.packageDigest);
 
       // The original v1 active record is still intact (no silent replacement).
       const stillV1 = opened.repo.getActiveByNameVersion(v1.name, '0.1.0');
