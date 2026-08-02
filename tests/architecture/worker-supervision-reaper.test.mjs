@@ -660,3 +660,115 @@ test('Wave 2 #1: reserved execution survives early sweeps, released only after 6
   );
 });
 
+/**
+ * Wave 5 #6 — reportProgress must check the fence. The UPDATE accepts a
+ * fenceToken parameter but historically filtered only on execution_id + active
+ * state, so a SUPERSEDED worker (its worker_executions row still in an active
+ * state while tasks.current_execution_id was reassigned away from it) could
+ * refresh progress_at and keep itself alive past the stuck-policy grace.
+ *
+ * This mirrors markExecutionProgress's EXISTS(tasks.current_execution_id=...)
+ * fence: only the CURRENT execution (the one the task's fence points to) may
+ * update progress.
+ *
+ * Schema invariant: at most ONE active execution per task
+ * (idx_worker_executions_one_active_task). So the realistic supersession
+ * window is: execution A's row is still active, but the task's fence has been
+ * moved to a NEW execution_id (B) that does not yet have its own active row
+ * for this task — e.g. the recover/re-claim path reassigns the fence before
+ * A's stale row is swept. In that window A is notionally alive and must NOT be
+ * able to reset its own progress clock.
+ */
+test('fenced progress: superseded execution cannot reset progress_at', () => {
+  const { projectId, epicId } = setupProject();
+  const db = getDb();
+  const executionRuntime = new SqliteExecutionRuntimeRepository();
+
+  const task = tasks.task_create({ epic_id: epicId, title: 'fenced-progress' });
+  stampProcessRun(task.id);
+
+  // 1. Claim the card with execution A → fence = A, A's row active.
+  const execA = `exec-A-${task.id}`;
+  const claimedA = dispatcher.worker_next({
+    worker_id: 'worker-A',
+    project_id: projectId,
+    machine_id: os.hostname(),
+    execution_id: execA,
+    run_id: 'run-A',
+    task_ids: [task.id],
+  });
+  assert.ok(claimedA.task, 'worker_next must claim the card for execution A');
+
+  // Sanity: fence points at A and A's execution row is active.
+  const afterA = db.prepare(
+    'SELECT current_execution_id, status, assigned_to FROM tasks WHERE id=?',
+  ).get(task.id);
+  assert.equal(afterA.current_execution_id, execA, 'fence points at A after claim');
+  const rowA = db.prepare(
+    "SELECT state, progress_at FROM worker_executions WHERE execution_id=?",
+  ).get(execA);
+  assert.ok(['reserved', 'running', 'cancel_requested'].includes(rowA.state),
+    'A starts in an active state');
+
+  // Make A's row provably 'running' (the stale/superseded-but-alive state) and
+  // pin its progress_at to a known old instant so a reset is detectable.
+  const oldProgress = '2020-01-01T00:00:00.000Z';
+  db.prepare(
+    `UPDATE worker_executions SET state='running', progress_at=? WHERE execution_id=?`,
+  ).run(oldProgress, execA);
+
+  // 2. SUPERSEDE: the task's fence is reassigned to a NEW execution_id (execB),
+  //    while A's row is intentionally LEFT active. This is the stale-row window
+  //    the fence must defend against: A is no longer the current execution, so
+  //    it must not be able to refresh progress_at. (We do NOT insert execB as an
+  //    active row — the schema forbids two active executions per task, and the
+  //    fence guard must hold regardless of whether B has a row yet.)
+  const execB = `exec-B-${task.id}`;
+  db.prepare(
+    `UPDATE tasks SET current_execution_id=? WHERE id=?`,
+  ).run(execB, task.id);
+
+  // Confirm the superseded state: the fence moved to B, A's row is still active.
+  const superseded = db.prepare(
+    'SELECT current_execution_id FROM tasks WHERE id=?',
+  ).get(task.id);
+  assert.equal(superseded.current_execution_id, execB, 'fence now points at B');
+  const aState = db.prepare('SELECT state, progress_at FROM worker_executions WHERE execution_id=?').get(execA);
+  assert.equal(aState.state, 'running', "A's stale row is still active (superseded)");
+
+  // 3. THE BUG: A (superseded) attempts to report progress. It MUST fail and
+  //    MUST NOT reset progress_at, because A is no longer the current execution.
+  const movedA = executionRuntime.reportProgress({
+    executionId: execA,
+    fenceToken: execA,
+    now: new Date('2026-08-02T12:00:00.000Z'),
+  });
+  assert.equal(movedA, false, 'superseded execution A cannot report progress');
+
+  const aProgressAfter = db.prepare(
+    'SELECT progress_at FROM worker_executions WHERE execution_id=?',
+  ).get(execA).progress_at;
+  assert.equal(aProgressAfter, oldProgress,
+    'A progress_at was NOT reset by the superseded reportProgress call');
+
+  // 4. Restore the fence to A and confirm the CURRENT execution CAN report
+  //    progress (positive control — the fence guard does not block the
+  //    legitimate current execution).
+  db.prepare(
+    `UPDATE tasks SET current_execution_id=? WHERE id=?`,
+  ).run(execA, task.id);
+
+  const movedA2 = executionRuntime.reportProgress({
+    executionId: execA,
+    fenceToken: execA,
+    now: new Date('2026-08-02T12:00:01.000Z'),
+  });
+  assert.equal(movedA2, true, 'current execution A can report progress once fence is restored');
+  const aProgressFinal = db.prepare(
+    'SELECT progress_at FROM worker_executions WHERE execution_id=?',
+  ).get(execA).progress_at;
+  assert.equal(aProgressFinal, '2026-08-02T12:00:01.000Z',
+    'A progress_at advanced once it is the current execution again');
+});
+
+

@@ -310,13 +310,20 @@ export class SqliteExecutionRuntimeRepository implements ExecutionRuntimeReposit
     const db = getDb();
     const now = (input.now ?? new Date()).toISOString();
     // Fence check: the execution_id must still be the CURRENT execution for its
-    // task AND the fence token must match. This prevents a superseded worker
-    // (whose execution_id is no longer current) from resetting progress.
+    // task. A superseded worker (its execution_id no longer pointed at by
+    // tasks.current_execution_id) must NOT be able to reset progress_at and
+    // keep itself alive past the stuck-policy grace. This mirrors the fence in
+    // markExecutionProgress (worker-executions.ts) — only the execution the
+    // task's fence points to may update progress.
     const result = db.prepare(
       `UPDATE worker_executions
           SET progress_at=?
         WHERE execution_id=?
-          AND state IN ('reserved','running','cancel_requested')`,
+          AND state IN ('reserved','running','cancel_requested')
+          AND EXISTS (
+            SELECT 1 FROM tasks
+             WHERE tasks.current_execution_id = worker_executions.execution_id
+          )`,
     ).run(now, input.executionId);
     return result.changes > 0;
   }
