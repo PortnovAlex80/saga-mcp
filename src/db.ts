@@ -168,6 +168,7 @@ export function getDb(): Database.Database {
     try { db.exec('ALTER TABLE saga3_node_runs ADD COLUMN definition_digest TEXT'); } catch { /* column already exists */ }
     try { db.exec('ALTER TABLE saga3_node_runs ADD COLUMN transition_cursor TEXT'); } catch { /* column already exists */ }
     try { db.exec('ALTER TABLE saga3_node_runs ADD COLUMN production_envelope TEXT'); } catch { /* column already exists */ }
+    try { db.exec('ALTER TABLE saga3_node_runs ADD COLUMN completion TEXT'); } catch { /* column already exists */ }
     try {
       db.exec(`
         CREATE UNIQUE INDEX IF NOT EXISTS idx_saga3_node_runs_exact_cursor

@@ -21,6 +21,7 @@
 
 import type { KernelFlowNodeDefinition } from '../domain/process-module.js';
 import type { RecoveryIssue } from '../domain/recovery.js';
+import type { ModuleCompletion } from '../domain/spi/module-completion.js';
 import type { ExactCandidateAcceptanceDirective } from './exact-candidate-acceptance.js';
 import type { NodeExecutionFrame, NodeProducts, NodeProduction } from './node-executor.js';
 
@@ -87,6 +88,18 @@ export interface KernelHandlerResult {
   exactCandidateAcceptance?: ExactCandidateAcceptanceDirective;
   /** Для terminal-узлов: локальный outcome код (один из module.outcomes). */
   outcome?: string;
+  /**
+   * W3-A1 / FU-A Wave 3 (spec §3/§4): OPTIONAL explicit terminal envelope
+   * (Wave 1 §7.5.6). When a terminal kernel handler returns `completion`, the
+   * executor forwards it onto the NodeExecutionResult, persists it to the
+   * NodeRun v2 row, and settlement reads the certificate reference DIRECTLY
+   * from `completion.outputEnvelope.certificateRef` — bypassing the legacy
+   * `production.bindings.certificatePayload` magic bindings. Additive: existing
+   * kernel handlers that do not set `completion` are unaffected (they continue
+   * to settle via the documented magic-bindings fallback until Wave 4 migrates
+   * them, then Wave 5 deletes that branch).
+   */
+  completion?: ModuleCompletion;
 }
 
 /**

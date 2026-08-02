@@ -104,6 +104,16 @@ export function ensureSaga3NodeRunSchema(db: Database.Database): void {
   if (!cols.some((c) => c.name === 'production_envelope')) {
     db.exec('ALTER TABLE saga3_node_runs ADD COLUMN production_envelope TEXT');
   }
+  // FU-A Wave 3 (W3-A1 spec §3/§4): 8th additive nullable column. The explicit
+  // `ModuleCompletion` envelope a terminal node emitted — persisted so crash-
+  // resume can rebuild the NodeExecutionResult.completion without which
+  // settlement cannot read the explicit certificate ref (and would silently
+  // fall back to magic bindings, losing the certificate on restart). Additive:
+  // legacy rows surface it as null; the legacy `complete` path does not write
+  // it. Idempotent ALTER guarded by PRAGMA table_info, mirroring the 7 v2 cols.
+  if (!cols.some((c) => c.name === 'completion')) {
+    db.exec('ALTER TABLE saga3_node_runs ADD COLUMN completion TEXT');
+  }
   // Resume index: exact-cursor lookup by (process_run_id, node_id, attempt).
   // The attempt column is 1-based and unique per (run, node), so this index
   // makes readByExactCursor an equality probe (§9.11).
@@ -139,6 +149,8 @@ interface NodeRunRow {
   definition_digest?: string | null;
   transition_cursor?: string | null;
   production_envelope?: string | null;
+  // FU-A Wave 3: explicit ModuleCompletion JSON column.
+  completion?: string | null;
 }
 
 function rowToRecord(row: NodeRunRow): NodeRunRecord {
@@ -258,6 +270,7 @@ function rowToRecordV2(row: NodeRunRow): NodeRunRecordV2 {
     productionEnvelope: parseJsonObject<NodeRunRecordV2['productionEnvelope']>(
       row.production_envelope,
     ),
+    completion: parseJsonObject<NodeRunRecordV2['completion']>(row.completion),
   };
 }
 
@@ -398,14 +411,18 @@ export class SqliteNodeRunRepository implements NodeRunRepository, NodeRunReposi
     const envelopeText = input.productionEnvelope
       ? JSON.stringify(input.productionEnvelope)
       : null;
+    const completionText = input.completion ? JSON.stringify(input.completion) : null;
     // DUAL-WRITE: legacy output_* columns AND the v2 production_envelope +
-    // transition_cursor. The legacy columns keep pre-Wave-3 readers working;
-    // the v2 columns let Wave-3 readers resume by exact cursor (§9.11).
+    // transition_cursor + completion. The legacy columns keep pre-Wave-3
+    // readers working; the v2 columns let Wave-3 readers resume by exact
+    // cursor (§9.11). `completion` (FU-A Wave 3) carries the explicit
+    // terminal envelope so crash-resume rebuilds NodeExecutionResult.completion
+    // without falling back to magic bindings.
     this.db.prepare(
       `UPDATE saga3_node_runs
           SET status='completed', event=?, output_ref=?, output_schema=?, output_hash=?, output_bindings=?,
               execution_receipt=?, acceptance_receipt=?, recovery_issue=?,
-              production_envelope=?, transition_cursor=?,
+              production_envelope=?, transition_cursor=?, completion=?,
               completed_at=datetime('now')
         WHERE id=?`,
     ).run(
@@ -419,6 +436,7 @@ export class SqliteNodeRunRepository implements NodeRunRepository, NodeRunReposi
       recoveryIssueText,
       envelopeText,
       input.transitionCursor ?? null,
+      completionText,
       input.id,
     );
     const row = this.db.prepare(

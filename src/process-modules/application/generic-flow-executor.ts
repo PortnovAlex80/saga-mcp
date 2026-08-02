@@ -485,7 +485,15 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
 
     // Resume support: if the last completed NodeRun exists, start from the
     // transition out of it. Otherwise start at entry.
-    const lastCompleted = nodeRunRepo.readLastCompleted(context.processRunId);
+    // FU-A Wave 3: prefer the v2-shaped read when the v2 channel is active so
+    // the persisted `completion` column (explicit ModuleCompletion) is visible
+    // to restoreNodeResult — without it, crash-resume after a terminal node
+    // would lose the certificate and silently fall back to magic bindings.
+    // Legacy fakes (no v2 methods) keep the legacy read; `lastCompleted` is
+    // always a valid NodeRunRecord, and a v2 row is a superset.
+    const lastCompleted: NodeRunRecord | NodeRunRecordV2 | null = (v2 && isV2Run)
+      ? (v2.repo.readLastCompletedV2(context.processRunId) ?? nodeRunRepo.readLastCompleted(context.processRunId))
+      : nodeRunRepo.readLastCompleted(context.processRunId);
     let currentNodeId: string;
     let resumedRecoveryInput: NodeProduction | null = null;
     let pausedVerifierInput: unknown;
@@ -744,6 +752,12 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
           recoveryIssue: result.recoveryIssue,
           productionEnvelope,
           transitionCursor: assembled?.envelope.nodeRef.nodeId ?? node.id,
+          // FU-A Wave 3: persist the explicit ModuleCompletion so crash-resume
+          // can rebuild NodeExecutionResult.completion and settlement reads the
+          // explicit certificate ref instead of falling back to magic bindings.
+          // Additive: undefined when the node did not emit completion (all 4
+          // modules until Wave 4 migrates them) — persisted as NULL.
+          completion: result.completion,
         });
       } else {
         completedNodeRun = nodeRunRepo.complete({
@@ -1007,7 +1021,16 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
   }
 }
 
-function restoreNodeResult(run: NodeRunRecord): NodeExecutionResult {
+function restoreNodeResult(run: NodeRunRecord | NodeRunRecordV2): NodeExecutionResult {
+  // FU-A Wave 3: restore the explicit ModuleCompletion from the persisted v2
+  // `completion` column when present. This is the crash-resume linchpin: a
+  // crash AFTER a terminal node wrote its completion MUST be resumable with
+  // the completion intact, otherwise settlement silently falls back to magic
+  // bindings and loses the certificate (the §0.6.12 contract). Legacy rows
+  // (NodeRunRecord without the v2 field, or v2 row with completion=null)
+  // surface completion as undefined — byte-identical to the pre-Wave-3 path.
+  const v2Run = run as NodeRunRecordV2;
+  const completion = v2Run.completion ?? undefined;
   return {
     runtimeEvent: 'completed',
     receipt: run.executionReceipt
@@ -1020,6 +1043,7 @@ function restoreNodeResult(run: NodeRunRecord): NodeExecutionResult {
     acceptanceReceipt: run.acceptanceReceipt
       ? run.acceptanceReceipt as unknown as NodeExecutionResult['acceptanceReceipt']
       : undefined,
+    completion,
   };
 }
 

@@ -79,6 +79,13 @@ export class KernelNodeExecutor implements NodeExecutor {
         recoveryIssue: result.recoveryIssue,
         acceptanceReceipt,
         outcome: result.outcome,
+        // FU-A Wave 3: forward the explicit ModuleCompletion (W3-A1 spec §3/§4)
+        // from the kernel handler onto the NodeExecutionResult. This is the
+        // linchpin that lets a terminal settlement kernel emit `completion` and
+        // have it reach persistence + settlement without touching magic bindings.
+        // Additive: handlers that do not set `completion` forward `undefined`,
+        // leaving the legacy magic-bindings settlement path byte-identical.
+        completion: result.completion,
       };
     } catch (err) {
       throw new NodeExecutionError('kernel', node.id, (err as Error).message, err);

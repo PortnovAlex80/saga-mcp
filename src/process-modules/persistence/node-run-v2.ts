@@ -46,6 +46,7 @@
  */
 
 import type { RecoveryIssue } from '../domain/recovery.js';
+import type { ModuleCompletion } from '../domain/spi/module-completion.js';
 import type {
   NodeProductionEnvelope,
   NodeRef,
@@ -88,6 +89,14 @@ export interface NodeRunRecordV2 extends NodeRunRecord {
   transitionCursor: string | null;
   /** Durable NodeProductionEnvelope with lineage. Null on legacy rows. */
   productionEnvelope: NodeProductionEnvelope | null;
+  /**
+   * FU-A Wave 3 (W3-A1 spec §3/§4): explicit terminal envelope the node
+   * emitted. Persisted so crash-resume can rebuild NodeExecutionResult.
+   * completion and settlement can read the explicit certificate ref instead
+   * of falling back to magic bindings (which would silently lose the
+   * certificate on restart). Null on legacy rows / non-terminal nodes.
+   */
+  completion: ModuleCompletion | null;
 }
 
 /**
@@ -138,6 +147,12 @@ export interface CompleteNodeRunV2Input {
   productionEnvelope?: NodeProductionEnvelope | null;
   /** Wave-3 transition cursor stamped on resolve. */
   transitionCursor?: string | null;
+  /**
+   * FU-A Wave 3: explicit terminal envelope. When present, persisted to the
+   * `completion` column so crash-resume rebuilds NodeExecutionResult.completion
+   * and settlement reads the explicit certificate ref (no magic bindings).
+   */
+  completion?: ModuleCompletion | null;
 }
 
 /**
