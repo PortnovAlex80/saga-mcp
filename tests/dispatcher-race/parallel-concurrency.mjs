@@ -13,8 +13,16 @@
 //
 // They are SKIPped here to keep test:architecture green. The equivalent
 // invariant for the NEW dispatcher (temporal overlap of >=2 executions at
-// N>=2, max-alive <= N) is tracked as Wave 4 REAL-GAP #4 and must be
-// re-implemented as a dispatch-loop overlap test. Do NOT re-add a
+// N>=2, max-alive <= N) is now PROVEN by the dispatch-loop overlap test in
+// tests/dispatcher-race/dispatch-loop-overlap.test.mjs (Wave 4 REAL-GAP #4
+// closed 2026-08-02: that file drives distributeQueuedTasks directly with a
+// fake WorkerExecutorFactory whose executors report controlled lifetimes,
+// asserting aliveNow>=2 at N=2, maxAlive==1 at N=1, and maxAlive<=N for all N).
+// The global single-budget claim (runEpisode and distributeQueuedTasks never
+// overlap) is proven by tests/dispatcher-race/orchestrate-global-budget.test.mjs.
+// These two scenarios stay SKIPped because rewriting them to target
+// distributeQueuedTasks would duplicate that file; keeping them preserves the
+// historical note about the removed runner contract. Do NOT re-add a
 // claimTask/pump-loop test — that model is gone by design (see
 // tests/architecture/no-claim-scope.test.mjs).
 import assert from 'node:assert/strict';
