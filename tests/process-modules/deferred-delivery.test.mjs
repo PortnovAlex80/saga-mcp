@@ -127,34 +127,34 @@ test('deferred Delivery settles approval-required before preflight or external e
       evaluate: forbidden('preflight policy'),
     },
     settlementPolicy: new deliveryPolicy.ReferenceDeliverySettlementPolicy(),
-    // Wave 4: the settlement kernel now issues its ProcessOutcomeCertificate
-    // itself (instead of relying on the executor's magic-bindings path). The
-    // deferred approval-required settlement is terminal, so issue() is called
-    // exactly once. A minimal fake is sufficient — the test only asserts the
-    // outcome and certificate payload bindings, not the issued row.
-    certificateRepo: {
-      issue(command) {
-        return {
-          record: {
-            id: 9001,
-            certificateHash: command.certificateHash,
-            processRunId: command.processRunId,
-            moduleRef: command.moduleRef,
-            moduleRefKey: `${command.moduleRef.name}@${command.moduleRef.version}`,
-            projectId: command.projectId,
-            epicId: command.epicId,
-            schemaVersion: command.payload.schemaVersion,
-            decision: command.payload.decision,
-            reasonCodes: command.payload.reasonCodes,
-            rationale: command.payload.rationale,
-            inputHash: command.payload.inputHash,
-            certificatePayload: command.payload,
-            authority: command.authority,
-            issuedAt: '1970-01-01T00:00:00.000Z',
-          },
-          replayed: false,
-        };
-      },
+  };
+  // Wave 4: the settlement kernel now issues its ProcessOutcomeCertificate
+  // itself (instead of relying on the executor's magic-bindings path). The
+  // deferred approval-required settlement is terminal, so issue() is called
+  // exactly once. The fake captures the issued command so the test can
+  // assert on the certificate payload (the sole source of truth after Wave 5
+  // removed the magic certificate bindings from production.bindings).
+  let issuedCertificate = null;
+  deps.certificateRepo = {
+    issue(command) {
+      issuedCertificate = {
+        id: 9001,
+        certificateHash: command.certificateHash,
+        processRunId: command.processRunId,
+        moduleRef: command.moduleRef,
+        moduleRefKey: `${command.moduleRef.name}@${command.moduleRef.version}`,
+        projectId: command.projectId,
+        epicId: command.epicId,
+        schemaVersion: command.payload.schemaVersion,
+        decision: command.payload.decision,
+        reasonCodes: command.payload.reasonCodes,
+        rationale: command.payload.rationale,
+        inputHash: command.payload.inputHash,
+        certificatePayload: command.payload,
+        authority: command.authority,
+        issuedAt: '1970-01-01T00:00:00.000Z',
+      };
+      return { record: issuedCertificate, replayed: false };
     },
   };
 
@@ -175,16 +175,30 @@ test('deferred Delivery settles approval-required before preflight or external e
     ),
   );
   assert.equal(settlement.event, 'approval-required');
+  // WAVE 5 CUTOVER: the certificate envelope is no longer carried in
+  // `production.bindings`. The kernel issues its own certificate and emits an
+  // explicit ModuleCompletion whose certificateRef points at the issued row.
+  // The certificate payload (reasonCodes, releasePolicyHash,
+  // deferredProfileHash) is read from the ISSUED certificate record — the
+  // sole source of truth.
+  assert.ok(settlement.completion, 'settlement must emit an explicit ModuleCompletion');
+  assert.ok(issuedCertificate, 'settlement must issue a ProcessOutcomeCertificate');
+  const issuedCert = issuedCertificate;
+  assert.equal(
+    settlement.completion.outputEnvelope.certificateRef.digest,
+    issuedCert.certificateHash,
+    'completion certificateRef digest must match the issued certificate hash',
+  );
   assert.deepEqual(
-    settlement.production.bindings.certificatePayload.reasonCodes,
+    issuedCert.certificatePayload.reasonCodes,
     ['operator-authorization-missing'],
   );
   assert.equal(
-    settlement.production.bindings.certificatePayload.payload.releasePolicyHash,
+    issuedCert.certificatePayload.payload.releasePolicyHash,
     null,
   );
   assert.equal(
-    settlement.production.bindings.certificatePayload.payload.deferredProfileHash,
+    issuedCert.certificatePayload.payload.deferredProfileHash,
     runInput.deferredProfile.profileHash,
   );
   assert.equal(preflightCalls, 0);

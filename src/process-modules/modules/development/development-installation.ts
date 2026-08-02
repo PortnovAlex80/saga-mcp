@@ -563,28 +563,26 @@ function developmentSettlementProduction(
       artifactRef:
         `development-settlement:${ctx.processRunId}:${certificateHash}`,
       contentHash: certificateHash,
-      // KEPT for Wave 5 (the executor's magic-bindings settlement branch still
-      // reads these to re-issue the cert idempotently during the additive
-      // cutover — process-outcome-emitter forwards them to the terminal node,
-      // and the terminal node is what the executor's settlement step sees).
-      // Once Wave 5 deletes that branch and wires the terminal node to forward
-      // `completion`, these bindings become dead and are removed.
+      // WAVE 5 CUTOVER — the certificate envelope is no longer duplicated into
+      // `production.bindings`. The kernel issues its own certificate (above)
+      // and emits an explicit ModuleCompletion whose certificateRef points at
+      // the issued row; settlement reads it from there. The legacy magic keys
+      // (certificatePayload / certificateHash / certificateSchema) are removed.
+      // `outputBindings` (verifiedBundleRef etc.) and `authority` are
+      // non-certificate bindings and are retained.
       bindings: {
         ...outputBindings,
-        certificatePayload,
-        certificateHash,
-        certificateSchema: DEVELOPMENT_CERTIFICATE_SCHEMA,
         authority: 'development_settlement_policy',
       },
     },
     // W3-A1 / Uncle Bob Wave 4 — explicit terminal envelope. The executor
     // forwards this onto NodeExecutionResult.completion, persists it to the
     // NodeRun v2 `completion` column, and on crash-resume reads the certificate
-    // reference DIRECTLY from here (bypassing the magic-bindings fallback). The
-    // certificate was just issued above; this ref points at it by content-
-    // address. `terminal: true` mirrors OutcomeDefinition.terminal for all five
-    // development outcomes (verified / rework-required / clarification-required
-    // / blocked / failed — every declared outcome is terminal).
+    // reference DIRECTLY from here. The certificate was just issued above; this
+    // ref points at it by content-address. `terminal: true` mirrors
+    // OutcomeDefinition.terminal for all five development outcomes (verified /
+    // rework-required / clarification-required / blocked / failed — every
+    // declared outcome is terminal).
     completion: buildDevelopmentModuleCompletion(settled.decision, certificateRef),
   };
 }
@@ -658,11 +656,10 @@ function developmentSettlementFailure(
       artifactRef:
         `development-settlement:${ctx.processRunId}:${certificateHash}`,
       contentHash: certificateHash,
-      // KEPT for Wave 5 (additive cutover — see developmentSettlementProduction).
+      // WAVE 5 CUTOVER — certificate envelope removed from bindings (see
+      // developmentSettlementProduction). `authority` + `settlementError` are
+      // non-certificate bindings and are retained.
       bindings: {
-        certificatePayload,
-        certificateHash,
-        certificateSchema: DEVELOPMENT_CERTIFICATE_SCHEMA,
         authority: 'development_settlement_policy',
         settlementError: reason,
       },

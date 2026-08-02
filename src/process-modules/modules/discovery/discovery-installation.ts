@@ -870,21 +870,15 @@ function createDiscoverySettlementHandler(
         `discovery-settlement-policy: issued certificate ${settled.certificateId} is missing`,
       );
     }
-    const certificateArtifactPayload = JSON.parse(certificate.certificate_payload) as unknown;
-    // certificateHash — SHA-256 над canonical JSON payload. Используем
-    // generic helper (Д9 вынесет его в process-modules/shared/).
-    //
-    // Uncle Bob Wave 4 / FU-A: emit the EXPLICIT ModuleCompletion envelope
-    // (plan §7.5.6, W3-A1 spec §3/§4) ALONGSIDE the legacy magic certificate
-    // bindings. Discovery pre-issues its own certificate, so this is the
-    // lightest of the four module migrations: we lift the existing
-    // `discovery-certificate:${id}` ref + hash into the completion envelope.
-    //
-    // ADDITIVE: the magic-bindings writes below (certificateRef/
-    // certificateArtifactPayload/certificateHash/certificateSchema/
-    // certificateDecision in production.bindings) are KEPT — Wave 5 deletes
-    // them. Both paths run in parallel; the explicit path wins when present
-    // (generic-flow-executor.ts reads `terminal.result.completion` first).
+    // WAVE 5 CUTOVER — the certificate envelope is no longer duplicated into
+    // `production.bindings`. Discovery pre-issues its own certificate (the
+    // settlement service does it), then emits an explicit ModuleCompletion
+    // whose `outputEnvelope.certificateRef` points at the issued row by
+    // content-address. Settlement (generic-flow-executor.ts) reads the
+    // certificate reference DIRECTLY from the completion envelope; the legacy
+    // magic-bindings keys (certificateRef / certificateArtifactPayload /
+    // certificateHash / certificateSchema / certificateDecision) are removed.
+    // The completion is the sole certificate channel.
     const certificateRef = `discovery-certificate:${settled.certificateId}`;
     return {
       event: settled.decision,
@@ -898,23 +892,17 @@ function createDiscoverySettlementHandler(
           proposalHash,
           settlementId: settled.settlementId,
           decision: settled.decision,
-          // Authoritative certificate envelope for the Runtime (Д6).
-          certificateRef,
-          certificateArtifactPayload,
-          certificateHash: settled.certificateHash,
-          certificateSchema: DISCOVERY_OUTCOME_CERTIFICATE_SCHEMA,
-          certificateDecision: settled.decision,
           reasonCodes: settled.reasonCodes.join(','),
           authority: 'discovery_settlement_policy',
         },
       },
       // Uncle Bob Wave 4: explicit terminal envelope. The completion carries
-      // the same content-addressed certificate pointer the magic bindings do,
-      // expressed as a typed ProductRef (schemaId/ref/digest). `outcome` mirrors
-      // the settlement decision so assertExplicitModuleCompletion agrees with
-      // the terminal outcome; `terminal: true` because the settle kernel's
-      // decision is final. settlement reads `outputEnvelope.certificateRef`
-      // to bypass the magic bindings.
+      // the content-addressed certificate pointer, expressed as a typed
+      // ProductRef (schemaId/ref/digest). `outcome` mirrors the settlement
+      // decision so assertExplicitModuleCompletion agrees with the terminal
+      // outcome; `terminal: true` because the settle kernel's decision is
+      // final. Settlement reads `outputEnvelope.certificateRef` to resolve the
+      // certificate (the sole path after Wave 5).
       //
       // The `ProcessModuleOutputEnvelope.completion` back-reference forms a
       // type-only cycle with `ModuleCompletion.outputEnvelope` (production-

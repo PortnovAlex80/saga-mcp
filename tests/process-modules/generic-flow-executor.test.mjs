@@ -139,10 +139,15 @@ function buildExecutor(module, emitEvent, db) {
 
   const handlerRegistry = new KernelHandlerRegistry();
   handlerRegistry.register(PROCESS_OUTCOME_EMITTER_HANDLER_ID, processOutcomeEmitter);
-  // Д6: the kernel handler builds the authoritative certificate envelope itself
-  // and carries it in production.bindings. The Runtime does NOT call a second
-  // settle callback — it reads the envelope from the terminal production.
-  handlerRegistry.register('synthetic-decider', () => {
+  // WAVE 5 CUTOVER: the kernel handler is now the AUTHORITY for its own
+  // certificate (Uncle Bob Wave 4). It issues the cert itself and emits an
+  // explicit ModuleCompletion whose `outputEnvelope.certificateRef` points at
+  // the issued row. The executor resolves the certificate from the completion
+  // envelope (the sole path after Wave 5) — it no longer reads a certificate
+  // envelope from `production.bindings`. The legacy magic-bindings keys
+  // (certificatePayload / certificateHash / certificateSchema) are GONE from
+  // the bindings bag; only `decision` + `authority` remain there.
+  handlerRegistry.register('synthetic-decider', (ctx) => {
     const outcome = emitEvent === 'accept' ? 'accepted' : 'rejected';
     const payload = {
       schemaVersion: 'synthetic.certificate.v1',
@@ -152,18 +157,45 @@ function buildExecutor(module, emitEvent, db) {
       inputHash: 'test-input-hash',
       payload: { outcome, decision: emitEvent },
     };
+    const certificateHash = sha256Hex(payload);
+    // Kernel issues its own certificate (mirrors the 4 real settlement kernels
+    // post-Wave-4). The repo is idempotent on certificateHash.
+    const issued = certificateRepo.issue({
+      processRunId: ctx.processRunId,
+      moduleRef: module.identity,
+      projectId: ctx.projectId,
+      epicId: ctx.epicId,
+      payload,
+      certificateHash,
+      authority: 'synthetic-policy',
+    });
+    const certificateRef = `certificate:${issued.record.id}`;
     return {
       event: emitEvent, // domain.accept / domain.fail
       production: {
         schema: 'synthetic.decision.v1',
         artifactRef: `decision:${emitEvent}`,
-        contentHash: sha256Hex(payload),
+        contentHash: certificateHash,
         bindings: {
           decision: emitEvent,
-          certificatePayload: payload,
-          certificateHash: sha256Hex(payload),
-          certificateSchema: payload.schemaVersion,
           authority: 'synthetic-policy',
+        },
+      },
+      // Explicit terminal envelope — the sole certificate channel. The
+      // certificateRef digest is the content-addressed pointer the executor
+      // surfaces on the run result.
+      completion: {
+        outcome,
+        terminal: true,
+        outputEnvelope: {
+          outcome,
+          productions: [],
+          certificateRef: {
+            schemaId: payload.schemaVersion,
+            ref: certificateRef,
+            digest: certificateHash,
+          },
+          completion: null,
         },
       },
     };
@@ -172,8 +204,9 @@ function buildExecutor(module, emitEvent, db) {
   const kernelExecutor = new KernelNodeExecutor(handlerRegistry);
   const nodeExecutors = new Map([['kernel', kernelExecutor]]);
 
-  // Д6: NO settle callback. GenericFlowExecutor reads the certificate envelope
-  // from the terminal production's bindings.
+  // WAVE 5: NO certificate-issuance callback at settlement. The executor
+  // reads the certificate reference from the completion envelope emitted by
+  // the kernel above.
   return new GenericFlowExecutor({
     moduleRef: module.identity,
     processRunRepo,

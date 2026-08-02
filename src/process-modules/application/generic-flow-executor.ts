@@ -47,11 +47,6 @@ import type {
   RecoveryCaseRepository,
 } from '../persistence/recovery-case-repository.js';
 import type {
-  ProcessOutcomeCertificatePayload,
-  IssueProcessOutcomeCertificateCommand,
-} from '../persistence/process-outcome-certificate.js';
-// ProcessOutcomeCertificatePayload is used in the bindings cast inside execute().
-import type {
   ProcessOutcomeCertificateRepository,
 } from '../persistence/process-outcome-certificate-repository.js';
 import type {
@@ -74,7 +69,6 @@ import type {
 } from './process-module-executor.js';
 import { validateProcessModuleRunResult } from './validate-process-module-run-result.js';
 import { NodeExecutionLeaseLostError, nodeEventForTransition, toV2Result } from './node-executor.js';
-import { sha256Hex } from '../shared/canonical-json.js';
 // W3-A1 (spec §3/§4): optional v2 driver-neutral envelope path. These imports
 // are ADDITIVE wiring — the v2 path activates only when the corresponding deps
 // are supplied via GenericFlowExecutorOptions.v2 AND the NodeRun row carries
@@ -234,7 +228,7 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
     module: ProcessModuleDefinition,
     context: ProcessModuleExecutionContext,
   ): Promise<ProcessModuleRunResult> {
-    const { processRunRepo, nodeRunRepo, certificateRepo, nodeExecutors } = this.opts;
+    const { processRunRepo, nodeRunRepo, nodeExecutors } = this.opts;
     const run = processRunRepo.read(context.processRunId);
     if (!run) {
       throw new Error(`GenericFlowExecutor: process_run ${context.processRunId} not found`);
@@ -279,16 +273,18 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
         renewLease,
       );
 
-      // The settlement production owns the certificate envelope. A separate
-      // outcome-emitter preserves those bindings, and terminal replay rebuilds
-      // the same production from the durable NodeRun checkpoint.
+      // The settlement production carries the authority binding (Д6) and, for
+      // non-terminal kernels, the durable productions the data chain needs.
+      // WAVE 5 CUTOVER: the certificate envelope is NO LONGER read from
+      // `production.bindings`. Settlement kernels emit an explicit
+      // `ModuleCompletion` (Wave 4); Wave 4.5 propagates it through the node
+      // chain to `terminal.result.completion`; settlement reads the certificate
+      // reference DIRECTLY from there. The legacy magic-bindings branch
+      // (certificatePayload / certificateHash / certificateSchema /
+      // certificateRef / certificateArtifactPayload / certificateDecision) is
+      // GONE. When no explicit completion carries a certificateRef, the run
+      // result has `certificate = null` — that is the clean contract.
       const terminalBindings = (terminal.result.production?.bindings ?? {}) as Record<string, unknown>;
-      const certPayload = terminalBindings.certificatePayload as ProcessOutcomeCertificatePayload | undefined;
-      const certHash = terminalBindings.certificateHash as string | undefined;
-      const certSchema = terminalBindings.certificateSchema as string | undefined;
-      const existingCertificateRef = terminalBindings.certificateRef as string | undefined;
-      const certificateArtifactPayload = terminalBindings.certificateArtifactPayload;
-      const certificateDecision = terminalBindings.certificateDecision as string | undefined;
       const authority = (terminalBindings.authority as string | undefined) ?? null;
 
       const output = this.opts.resolveOutput
@@ -300,21 +296,30 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
       // certificate is null; ProcessRun still completes with the outcome.
       processRunRepo.update(context.processRunId, { status: 'settling' });
 
-      // W3-A1 (spec §3/§4): EXPLICIT ModuleCompletion path. When the terminal
-      // node's result carries a ModuleCompletion (Wave 1 §7.5.6), settlement
-      // reads the certificate reference DIRECTLY from the completion envelope
-      // — NOT from the opaque `production.bindings.certificatePayload` magic
-      // bindings. The explicit path is the Wave 3 forward direction; the
-      // legacy magic-bindings path below remains the documented fallback for
-      // producers that have not yet migrated (Wave 8/9). When `completion` is
-      // absent, behavior is byte-identical to the pre-Wave-3 executor.
+      // WAVE 5 CUTOVER — the certificate resolution is now a SINGLE path.
+      //
+      // Wave 4 made every settlement kernel emit an explicit ModuleCompletion
+      // (the `completion` field on its KernelHandlerResult). Wave 4.5 propagates
+      // that completion through the node chain to `terminal.result.completion`
+      // (the terminal process-outcome-emitter does not emit its own; the
+      // executor merges the last non-terminal completion as a side-channel).
+      // Settlement therefore reads the certificate reference DIRECTLY from the
+      // completion envelope's `outputEnvelope.certificateRef` — a typed
+      // content-addressed ProductRef — and surfaces it on the run result.
+      //
+      // The previous magic-bindings branch (extracting certificatePayload /
+      // certificateHash / certificateSchema / certificateRef /
+      // certificateArtifactPayload / certificateDecision from opaque
+      // `production.bindings`, then `certificateRepo.issue`-ing here) is GONE.
+      // Kernels issue their own certificates (Wave 4); the executor no longer
+      // issues certs at settlement time. When no completion carries a
+      // certificateRef, `certificate` stays null — the run completes with the
+      // outcome but no authoritative certificate (the clean contract for a
+      // module that did not produce one, e.g. a non-certified failure path).
       const explicitCompletion = terminal.result.completion;
       if (explicitCompletion) {
         assertExplicitModuleCompletion(explicitCompletion, terminal.outcome);
       }
-      // The explicit certificate ref (when present) bypasses the magic-bindings
-      // extraction entirely; the magic-bindings branch below runs only when no
-      // explicit completion was supplied.
       const explicitCertificateRef = explicitCompletion?.outputEnvelope.certificateRef ?? null;
 
       let certificate: ProcessModuleCertificateRef | null = null;
@@ -328,70 +333,7 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
           certificateRef: explicitCertificateRef.ref,
           certificateHash: explicitCertificateRef.digest,
         };
-      } else {
-      const hasReferencedEnvelopeField = existingCertificateRef !== undefined
-        || certificateArtifactPayload !== undefined
-        || certificateDecision !== undefined;
-      const hasGenericEnvelopeField = certPayload !== undefined;
-      if (hasReferencedEnvelopeField && hasGenericEnvelopeField) {
-        throw new Error(
-          'GenericFlowExecutor: certificate envelope is ambiguous (both referenced and generic)',
-        );
       }
-      if (hasReferencedEnvelopeField) {
-        if (
-          !existingCertificateRef
-          || certificateArtifactPayload === undefined
-          || !certHash
-          || !certSchema
-          || !certificateDecision
-        ) {
-          throw new Error('GenericFlowExecutor: referenced certificate envelope is incomplete');
-        }
-        assertReferencedCertificateEnvelope({
-          payload: certificateArtifactPayload,
-          certificateHash: certHash,
-          certificateSchema: certSchema,
-          certificateDecision,
-          terminalOutcome: terminal.outcome,
-        });
-        certificate = {
-          schema: certSchema,
-          certificateRef: existingCertificateRef,
-          certificateHash: certHash,
-        };
-      } else if (hasGenericEnvelopeField) {
-        if (!certPayload || !certHash || !certSchema) {
-          throw new Error('GenericFlowExecutor: generic certificate envelope is incomplete');
-        }
-        assertGenericCertificateEnvelope(
-          certPayload,
-          certHash,
-          certSchema,
-          terminal.outcome,
-        );
-        // Д7: issue the certificate FIRST (so its ref is non-empty), then
-        // validate the complete RunResult, then flip ProcessRun to completed.
-        // If validation fails after issue, the certificate is orphaned but
-        // immutable — the failure is a contract bug to fix, not data corruption.
-        const certResult = certificateRepo.issue({
-          processRunId: context.processRunId,
-          moduleRef: module.identity,
-          projectId: context.projectId,
-          epicId: context.epicId,
-          payload: certPayload,
-          certificateHash: certHash,
-          authority: authority ?? 'unknown',
-        } satisfies IssueProcessOutcomeCertificateCommand);
-        certificate = {
-          schema: certSchema,
-          certificateRef: `certificate:${certResult.record.id}`,
-          certificateHash: certResult.record.certificateHash,
-        };
-      } else if (certHash !== undefined || certSchema !== undefined) {
-        throw new Error('GenericFlowExecutor: certificate hash/schema has no payload');
-      }
-      } // end legacy magic-bindings fallback (W3-A1: explicit ModuleCompletion path above)
 
       const runResult: ProcessModuleRunResult = {
         outcome: terminal.outcome,
@@ -1515,61 +1457,6 @@ function assertNodeExecutionResult(
     || (receipt.executionId !== null && typeof receipt.executionId !== 'string')
   ) {
     throw new Error(`GenericFlowExecutor: node '${node.id}' returned an invalid execution receipt`);
-  }
-}
-
-function assertGenericCertificateEnvelope(
-  payload: ProcessOutcomeCertificatePayload,
-  certificateHash: string,
-  certificateSchema: string,
-  terminalOutcome: string,
-): void {
-  if (
-    !payload
-    || typeof payload !== 'object'
-    || typeof payload.schemaVersion !== 'string'
-    || typeof payload.decision !== 'string'
-    || !Array.isArray(payload.reasonCodes)
-    || typeof payload.rationale !== 'string'
-    || typeof payload.inputHash !== 'string'
-  ) {
-    throw new Error('GenericFlowExecutor: malformed generic certificate envelope');
-  }
-  if (payload.schemaVersion !== certificateSchema) {
-    throw new Error('GenericFlowExecutor: certificate schema does not match its payload');
-  }
-  if (payload.decision !== terminalOutcome) {
-    throw new Error('GenericFlowExecutor: certificate decision does not match terminal outcome');
-  }
-  if (sha256Hex(payload) !== certificateHash) {
-    throw new Error('GenericFlowExecutor: certificate hash does not match its payload');
-  }
-}
-
-function assertReferencedCertificateEnvelope(input: {
-  payload: unknown;
-  certificateHash: string;
-  certificateSchema: string;
-  certificateDecision: string;
-  terminalOutcome: string;
-}): void {
-  if (!input.payload || typeof input.payload !== 'object' || Array.isArray(input.payload)) {
-    throw new Error('GenericFlowExecutor: malformed referenced certificate payload');
-  }
-  const record = input.payload as Record<string, unknown>;
-  const payloadSchema = String(record.schema_version ?? record.schemaVersion ?? '');
-  const payloadDecision = String(record.decision ?? '');
-  if (
-    input.certificateDecision !== input.terminalOutcome
-    || payloadDecision !== input.terminalOutcome
-  ) {
-    throw new Error('GenericFlowExecutor: referenced certificate decision does not match terminal outcome');
-  }
-  if (payloadSchema !== input.certificateSchema) {
-    throw new Error('GenericFlowExecutor: referenced certificate schema does not match its payload');
-  }
-  if (sha256Hex(input.payload) !== input.certificateHash) {
-    throw new Error('GenericFlowExecutor: referenced certificate hash does not match its payload');
   }
 }
 

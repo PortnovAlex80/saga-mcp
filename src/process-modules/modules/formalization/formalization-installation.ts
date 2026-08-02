@@ -953,13 +953,15 @@ function createSettlementHandler(deps: FormalizationInstallationDeps): KernelHan
       }
       // Wave 4 (Uncle Bob): issue the ProcessOutcomeCertificate IN THE KERNEL
       // so the explicit ModuleCompletion can carry a content-addressed
-      // certificateRef. Mirrors what generic-flow-executor.ts:363-390 does for
-      // the generic-envelope magic-bindings path. The SolutionContract-bearing
-      // production above is unchanged and stays the module `output` (resolved
-      // via resolveOutput / the lifecycle output payload resolver); the
-      // certificate completion is the NEW additive path. The legacy magic
-      // bindings below (certificatePayload / certificateHash /
-      // certificateSchema) are KEPT (additive) until Wave 5 deletes that branch.
+      // certificateRef. The SolutionContract-bearing production above is
+      // unchanged and stays the module `output` (resolved via resolveOutput /
+      // the lifecycle output payload resolver); the certificate completion is
+      // the certificate channel. WAVE 5 CUTOVER: the legacy magic bindings
+      // (certificatePayload / certificateHash / certificateSchema) are removed
+      // from `production.bindings` — the completion envelope is the sole
+      // certificate channel. `solutionBindings` (solutionContractRef etc.),
+      // `authority`, `bundleHash` and `acceptanceBaselineHash` are non-
+      // certificate bindings and are retained.
       const issuedCertificate = issueFormalizationCertificate(
         deps,
         ctx,
@@ -974,9 +976,6 @@ function createSettlementHandler(deps: FormalizationInstallationDeps): KernelHan
           contentHash,
           bindings: {
             ...solutionBindings,
-            certificatePayload,
-            certificateHash,
-            certificateSchema: FORMALIZATION_CERTIFICATE_SCHEMA_VERSION,
             authority: 'formalization_settlement_policy',
             bundleHash: bundle.bundleHash,
             acceptanceBaselineHash: baseline.baselineHash,
@@ -1595,10 +1594,10 @@ function settlementFailure(
       schema: SOLUTION_CONTRACT_CERTIFICATE_SCHEMA,
       artifactRef: `formalization-settlement:${ctx.processRunId}:${certificateHash}`,
       contentHash: certificateHash,
+      // WAVE 5 CUTOVER — certificate envelope removed from bindings (see the
+      // success path above). `authority` + `settlementError` are non-certificate
+      // bindings and are retained.
       bindings: {
-        certificatePayload,
-        certificateHash,
-        certificateSchema: FORMALIZATION_CERTIFICATE_SCHEMA_VERSION,
         authority: 'formalization_settlement_policy',
         settlementError: reason,
       },

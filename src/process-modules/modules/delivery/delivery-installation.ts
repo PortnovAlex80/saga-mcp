@@ -633,11 +633,13 @@ function deliverySettlementProduction(
       artifactRef:
         `delivery-settlement:${ctx.processRunId}:${certificateHash}`,
       contentHash: certificateHash,
+      // WAVE 5 CUTOVER — certificate envelope removed from bindings. The kernel
+      // issues its own certificate (above) and emits an explicit
+      // ModuleCompletion whose certificateRef points at the issued row;
+      // settlement reads it from there. `outputBindings` (releaseRecordRef
+      // etc.) and `authority` are non-certificate bindings and are retained.
       bindings: {
         ...outputBindings,
-        certificatePayload,
-        certificateHash,
-        certificateSchema: DELIVERY_CERTIFICATE_SCHEMA,
         authority: 'delivery_settlement_policy',
       },
     },
@@ -719,10 +721,10 @@ function deliverySettlementFailure(
       artifactRef:
         `delivery-settlement:${ctx.processRunId}:${certificateHash}`,
       contentHash: certificateHash,
+      // WAVE 5 CUTOVER — certificate envelope removed from bindings (see
+      // deliverySettlementProduction). `authority` + `settlementError` are
+      // non-certificate bindings and are retained.
       bindings: {
-        certificatePayload,
-        certificateHash,
-        certificateSchema: DELIVERY_CERTIFICATE_SCHEMA,
         authority: 'delivery_settlement_policy',
         settlementError: reason,
       },

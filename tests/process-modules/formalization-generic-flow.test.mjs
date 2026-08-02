@@ -485,9 +485,29 @@ test('exact ledger flow settles and persists a durable SolutionContract', () => 
   const result = runThroughSettlement(fx);
   assert.equal(result.settlement.event, 'formalized');
   assert.equal(result.settlement.production.bindings.authority, 'formalization_settlement_policy');
+  // WAVE 5 CUTOVER: the certificate envelope is no longer carried in
+  // `production.bindings`. The settlement kernel issues its own certificate
+  // (fx.getCertificate()) and emits an explicit ModuleCompletion whose
+  // `outputEnvelope.certificateRef.digest` is the content-addressed pointer.
+  // The certificate hash is still the sha256 of the certificate payload —
+  // read from the issued certificate record (the sole source of truth).
+  assert.ok(result.settlement.completion, 'settlement must emit an explicit ModuleCompletion');
+  const issuedCert = fx.getCertificate();
+  assert.ok(issuedCert, 'settlement must issue a ProcessOutcomeCertificate');
   assert.equal(
-    result.settlement.production.bindings.certificateHash,
-    sha256Hex(result.settlement.production.bindings.certificatePayload),
+    result.settlement.completion.outputEnvelope.certificateRef.digest,
+    issuedCert.certificateHash,
+    'completion certificateRef digest must match the issued certificate hash',
+  );
+  assert.equal(
+    issuedCert.certificateHash,
+    sha256Hex(issuedCert.certificatePayload),
+    'issued certificate hash must be the sha256 of the certificate payload',
+  );
+  assert.equal(
+    result.settlement.completion.outputEnvelope.certificateRef.schemaId,
+    issuedCert.schemaVersion,
+    'completion certificateRef schemaId must match the issued certificate schema',
   );
   assert.equal(result.reconciliation.production.bindings.artifactIds.includes(999), false);
   assert.deepEqual(

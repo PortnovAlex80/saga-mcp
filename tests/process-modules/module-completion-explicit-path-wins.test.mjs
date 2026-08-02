@@ -17,6 +17,15 @@
 // settlement kernel's completion surface as terminal.result.completion. This
 // test PROVES the explicit path now wins.
 //
+// WAVE 5 CUTOVER (2026-08-02): the magic-bindings certificate-resolution
+// branch was DELETED from generic-flow-executor.ts. The explicit
+// ModuleCompletion path is now the ONLY certificate channel. This test's
+// mismatch proof is now the proof that the SOLE path works; the previous
+// second sub-test ("magic-bindings fallback still resolves when no completion
+// is emitted") was removed — it asserted the now-deleted additive fallback.
+// When no completion carries a certificateRef, the run result has
+// `certificate = null` by design (the clean contract).
+//
 // THE MISMATCH PROOF (the ONLY reliable proof):
 //   The test injects a MISMATCH between the magic-bindings certificateHash and
 //   the completion's certificateRef digest. If the resolved certificate matches
@@ -140,19 +149,19 @@ function mismatchModule() {
 }
 
 /**
- * The CRITICAL mismatch: the magic-bindings certificateHash and the completion's
- * certificateRef digest are DIFFERENT values. Whichever the executor resolves
- * tells us which path won.
+ * The CRITICAL mismatch: the hash the deleted magic-bindings path WOULD have
+ * produced, and the digest the explicit completion path DOES produce, are
+ * DIFFERENT values. Whichever the executor resolves tells us which path won.
  *
  *   EXPLICIT_DIGEST  = 'sha256:explicit-wins-AAAA...`  (completion path)
- *   MAGIC_HASH       = sha256Hex(magicPayload)         (magic-bindings path)
+ *   MAGIC_HASH       = sha256Hex(magicPayload)         (what the deleted magic
+ *                       path would have produced, were it still present)
  *
- * MAGIC_HASH must equal the real sha256 of the magic certificate payload so the
- * magic path's own validator (`assertGenericCertificateEnvelope`) passes — that
- * is the only way the magic path could reach issue(). EXPLICIT_DIGEST is an
- * arbitrary distinct value (the explicit path surfaces the ref/digest directly
- * and does NOT re-hash any payload). The two deliberately differ, so whichever
- * the executor resolves is unambiguous proof.
+ * WAVE 5 CUTOVER: the magic-bindings branch is GONE, so the executor can now
+ * ONLY resolve the explicit digest. MAGIC_HASH is retained purely as the
+ * distinct sentinel the resolved hash must NOT equal — the mismatch guard
+ * that makes the proof unambiguous. The handler below emits ONLY the explicit
+ * completion (the live path); it no longer fabricates inert magic bindings.
  */
 const magicPayloadForHash = {
   schemaVersion: 'mismatch.certificate.v1',
@@ -174,18 +183,14 @@ function buildExecutor(module, db) {
   const handlerRegistry = new KernelHandlerRegistry();
   handlerRegistry.register(PROCESS_OUTCOME_EMITTER_HANDLER_ID, processOutcomeEmitter);
 
-  // The settlement kernel emits BOTH paths — exactly as the 4 real modules do
-  // post-Wave-4 (additive). The completion carries EXPLICIT_DIGEST; the magic
-  // bindings carry MAGIC_HASH. They deliberately mismatch.
+  // WAVE 5: the settlement kernel emits ONLY the explicit ModuleCompletion
+  // envelope (the sole certificate channel). The completion's certificateRef
+  // digest is EXPLICIT_DIGEST; MAGIC_HASH is the distinct sentinel the
+  // resolved hash must NOT equal. The handler no longer fabricates inert
+  // magic-bindings keys (certificatePayload / certificateHash /
+  // certificateSchema) — those were the deleted path's inputs.
   handlerRegistry.register('mismatch-settler', () => {
     const outcome = 'accepted';
-    const magicPayload = {
-      schemaVersion: EXPLICIT_CERT_SCHEMA,
-      decision: outcome,
-      reasonCodes: [],
-      rationale: 'magic payload (should NOT win)',
-      inputHash: 'test-input-hash',
-    };
     return {
       event: 'accept',
       production: {
@@ -194,15 +199,11 @@ function buildExecutor(module, db) {
         contentHash: EXPLICIT_DIGEST,
         bindings: {
           decision: 'accept',
-          // MAGIC certificate envelope — the legacy path. Uses a DIFFERENT hash.
-          certificatePayload: magicPayload,
-          certificateHash: MAGIC_HASH,
-          certificateSchema: EXPLICIT_CERT_SCHEMA,
           authority: 'mismatch-settlement-policy',
         },
       },
-      // EXPLICIT terminal envelope — the Wave 4 path. Its digest differs from
-      // MAGIC_HASH, so whichever the executor resolves is unambiguous proof.
+      // EXPLICIT terminal envelope — the sole certificate channel. Its digest
+      // is EXPLICIT_DIGEST, deliberately distinct from MAGIC_HASH.
       completion: {
         outcome,
         terminal: true,
@@ -323,107 +324,4 @@ test('Wave 4.5: explicit ModuleCompletion path WINS — resolved certificate mat
     EXPLICIT_CERT_SCHEMA,
     'certificate schema must come from completion.outputEnvelope.certificateRef.schemaId',
   );
-});
-
-// ===========================================================================
-// SANITY: when no completion is emitted (pre-Wave-4 handler), the magic path
-// still resolves the certificate — proving the fix is additive (magic remains
-// a working fallback until Wave 5 deletes it).
-// ===========================================================================
-
-test('Wave 4.5: magic-bindings fallback still resolves when no completion is emitted (additive — Wave 5 deletes this)', async () => {
-  const ctx = fixture();
-  try {
-    const db = ctx.db;
-    const processRunRepo = new SqliteProcessRunRepository(db);
-    const certificateRepo = new SqliteProcessOutcomeCertificateRepository(db);
-    const nodeRunRepo = new SqliteNodeRunRepository(db);
-
-    const handlerRegistry = new KernelHandlerRegistry();
-    handlerRegistry.register(PROCESS_OUTCOME_EMITTER_HANDLER_ID, processOutcomeEmitter);
-    // Pre-Wave-4 handler: NO completion emitted. Magic bindings only.
-    handlerRegistry.register('mismatch-settler', () => {
-      const outcome = 'accepted';
-      const magicPayload = {
-        schemaVersion: EXPLICIT_CERT_SCHEMA,
-        decision: outcome,
-        reasonCodes: [],
-        rationale: 'magic only',
-        inputHash: 'test-input-hash',
-      };
-      // The magic path's validator asserts sha256Hex(payload) === certificateHash,
-      // so the hash MUST be derived from THIS payload (not the shared MAGIC_HASH
-      // constant, which hashes a different payload object).
-      const magicHash = sha256Hex(magicPayload);
-      return {
-        event: 'accept',
-        production: {
-          schema: 'mismatch.settlement.v1',
-          artifactRef: 'settlement:magic-only',
-          contentHash: magicHash,
-          bindings: {
-            decision: 'accept',
-            certificatePayload: magicPayload,
-            certificateHash: magicHash,
-            certificateSchema: EXPLICIT_CERT_SCHEMA,
-            authority: 'mismatch-settlement-policy',
-          },
-        },
-        // No completion — pre-Wave-4 shape.
-      };
-    });
-
-    const kernelExecutor = new KernelNodeExecutor(handlerRegistry);
-    const executor = new GenericFlowExecutor({
-      moduleRef: mismatchModule().identity,
-      processRunRepo,
-      nodeRunRepo,
-      certificateRepo,
-      nodeExecutors: new Map([['kernel', kernelExecutor]]),
-    });
-
-    const module = mismatchModule();
-    const inputPayload = { epicId: 70, projectId: 1 };
-    const inputHash = createHash('sha256').update(JSON.stringify(inputPayload)).digest('hex');
-    const { record: run } = processRunRepo.start({
-      moduleRef: module.identity,
-      input: { schema: module.inputContract.id, payload: inputPayload, contentHash: inputHash },
-      executorKind: 'generic-flow',
-      projectedStage: 'mismatch',
-      invocationContext: {
-        projectId: 1,
-        epicId: 70,
-        initiatedBy: 'test',
-        idempotencyKey: 'mismatch-magic-only-70',
-      },
-    });
-
-    const result = await executor.execute(module, {
-      projectId: 1,
-      epicId: 70,
-      processRunId: run.id,
-      inputPayload,
-      inputHash,
-      initiatedBy: 'test',
-    });
-
-    // Magic path resolved the certificate (hash recomputed by issue()).
-    assert.ok(result.certificate, 'magic path must still resolve a certificate');
-    // The certificate was issued with the magic payload, whose sha256 must match.
-    // (Computed from the SAME payload shape the handler used.)
-    const expectedMagicHash = sha256Hex({
-      schemaVersion: EXPLICIT_CERT_SCHEMA,
-      decision: 'accepted',
-      reasonCodes: [],
-      rationale: 'magic only',
-      inputHash: 'test-input-hash',
-    });
-    assert.equal(
-      result.certificate.certificateHash,
-      expectedMagicHash,
-      'magic path: certificate hash must be the sha256 of the magic payload',
-    );
-  } finally {
-    cleanup(ctx.temp);
-  }
 });
