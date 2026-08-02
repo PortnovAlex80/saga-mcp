@@ -47,101 +47,35 @@ import type {
 } from './development-schemas.js';
 
 // ---------------------------------------------------------------------------
-// Managed-production ledger interfaces (Wave 7 type-leak fix).
+// Managed-production ledger interfaces (Wave 7 type-leak fix / refactoring A4).
 //
-// These pure interface definitions previously lived in
-// `persistence/sqlite-managed-production-ledger.ts`, which forced this module
-// to import a concrete persistence adapter (a Rule 2 violation). They are now
-// inlined here as the CANONICAL source of truth. The concrete SQLite
-// implementation in `persistence/sqlite-managed-production-ledger.ts` imports
-// them from here and `implements ManagedProductionLedger` — infrastructure
-// depends inward (dependency inversion), which is allowed. Each module that
-// needs the ledger contract re-declares it inline (structurally identical) so
-// no module ever imports the concrete persistence file.
+// These pure interface definitions previously lived inlined in this file and in
+// `formalization-kernel-ports.ts` (structurally identical duplicates). They are
+// now centralized as the CANONICAL source of truth in
+// `shared/managed-production.ts`. This module re-exports them so existing
+// imports keep compiling; the module-local aliases below
+// (DevelopmentManagedProductionLedger, etc.) preserve module-local naming.
+//
+// The concrete SQLite implementation in
+// `persistence/sqlite-managed-production-ledger.ts` imports them and
+// `implements ManagedProductionLedger` — infrastructure depends inward
+// (dependency inversion), which is allowed. No module ever imports the
+// concrete persistence file.
 // ---------------------------------------------------------------------------
 
-export interface ManagedExecutionProductQuery {
-  processRunId: number;
-  moduleRef: string;
-  nodeId: string;
-  intentId: number;
-  taskId: number;
-  executionId: string;
-}
+import type {
+  ManagedExecutionProductQuery,
+  ManagedArtifactProductionRecord,
+  ManagedTraceProductionRecord,
+  ManagedProductionLedger,
+} from '../../shared/managed-production.js';
 
-export interface ManagedArtifactProductionRecord {
-  ledgerId: number;
-  processRunId: number;
-  moduleRef: string;
-  nodeId: string;
-  intentId: number;
-  taskId: number;
-  executionId: string;
-  artifactId: number;
-  artifactType: string;
-  artifactStatus: string;
-  contentHash: string | null;
-  operation: 'create' | 'upsert' | 'update';
-  recordedAt: string;
-}
-
-export interface ManagedTraceProductionRecord {
-  ledgerId: number;
-  processRunId: number;
-  moduleRef: string;
-  nodeId: string;
-  intentId: number;
-  taskId: number;
-  executionId: string;
-  traceId: number;
-  sourceId: number;
-  targetType: 'artifact' | 'task';
-  targetId: number;
-  linkType: string;
-  traceHash: string;
-  recordedAt: string;
-}
-
-export interface ManagedProductionLedger {
-  // WAVE 6 CUTOVER: listArtifactsForExecution / listTracesForExecution were
-  // REMOVED. They were the execution-scoped (intentId/taskId/executionId)
-  // product-resolution fallback the exact-ProductRef cutover retires
-  // (execution-context-assembler §9.11: no epic-scope / latest-in-run / by-
-  // execution fallback). The live product-resolution path is
-  // listArtifactsForNodeInProcessRun (durable node-scope, CGAD P18) and the
-  // exact-by-ProductRef ProcessProductRepository.getByProductRef. The task-
-  // scoped variants remain for the reviewed-task product lineage. Re-introducing
-  // an execution-scoped lookup is forbidden by
-  // tests/architecture/no-execution-scoped-lookup.test.mjs.
-  /**
-   * Read the durable product accumulated by one reviewed task across its
-   * author/reviewer retry executions. A different recovery task is a new
-   * product attempt and must write or carry an explicit product reference.
-   */
-  listArtifactsForTaskInProcessRun(
-    processRunId: number,
-    moduleRef: string,
-    nodeId: string,
-    taskId: number,
-  ): readonly ManagedArtifactProductionRecord[];
-  listTracesForTaskInProcessRun(
-    processRunId: number,
-    moduleRef: string,
-    nodeId: string,
-    taskId: number,
-  ): readonly ManagedTraceProductionRecord[];
-  /** Node-wide audit query. Product resolvers must not use it as fallback. */
-  listArtifactsForNodeInProcessRun(
-    processRunId: number,
-    moduleRef: string,
-    nodeId: string,
-  ): readonly ManagedArtifactProductionRecord[];
-  listTracesForNodeInProcessRun(
-    processRunId: number,
-    moduleRef: string,
-    nodeId: string,
-  ): readonly ManagedTraceProductionRecord[];
-}
+export type {
+  ManagedExecutionProductQuery,
+  ManagedArtifactProductionRecord,
+  ManagedTraceProductionRecord,
+  ManagedProductionLedger,
+} from '../../shared/managed-production.js';
 import type {
   DevelopmentSettlementPolicyPort,
   DevelopmentTaskGraphPolicyPort,

@@ -30,14 +30,17 @@ import type {
 } from './formalization-schemas.js';
 
 // ---------------------------------------------------------------------------
-// Managed-production ledger interfaces (Wave 7 type-leak fix).
+// Managed-production ledger interfaces (Wave 7 type-leak fix / refactoring A4).
 //
-// These pure interface definitions previously lived in
-// `persistence/sqlite-managed-production-ledger.ts`, which forced this module
-// to import a concrete persistence adapter (a Rule 2 violation). They are now
-// inlined here as a CANONICAL module-local declaration. The concrete SQLite
-// implementation imports its canonical copy from the development module's
-// kernel-ports and `implements ManagedProductionLedger` — infrastructure
+// These pure interface definitions previously lived inlined in this file and in
+// `development-kernel-ports.ts` (structurally identical duplicates). They are
+// now centralized as the CANONICAL source of truth in
+// `shared/managed-production.ts`. This module re-exports them so existing
+// imports keep compiling; the module-local aliases below
+// (FormalizationManagedProductionLedger, etc.) preserve module-local naming.
+//
+// The concrete SQLite implementation imports its canonical copy from the
+// shared module and `implements ManagedProductionLedger` — infrastructure
 // depends inward (dependency inversion), which is allowed. TypeScript's
 // structural typing means the concrete impl satisfies this module-local
 // declaration byte-for-byte (the shapes are identical), so a Formalization
@@ -45,85 +48,19 @@ import type {
 // instance the composition root injects.
 // ---------------------------------------------------------------------------
 
-export interface ManagedExecutionProductQuery {
-  processRunId: number;
-  moduleRef: string;
-  nodeId: string;
-  intentId: number;
-  taskId: number;
-  executionId: string;
-}
+import type {
+  ManagedExecutionProductQuery,
+  ManagedArtifactProductionRecord,
+  ManagedTraceProductionRecord,
+  ManagedProductionLedger,
+} from '../../shared/managed-production.js';
 
-export interface ManagedArtifactProductionRecord {
-  ledgerId: number;
-  processRunId: number;
-  moduleRef: string;
-  nodeId: string;
-  intentId: number;
-  taskId: number;
-  executionId: string;
-  artifactId: number;
-  artifactType: string;
-  artifactStatus: string;
-  contentHash: string | null;
-  operation: 'create' | 'upsert' | 'update';
-  recordedAt: string;
-}
-
-export interface ManagedTraceProductionRecord {
-  ledgerId: number;
-  processRunId: number;
-  moduleRef: string;
-  nodeId: string;
-  intentId: number;
-  taskId: number;
-  executionId: string;
-  traceId: number;
-  sourceId: number;
-  targetType: 'artifact' | 'task';
-  targetId: number;
-  linkType: string;
-  traceHash: string;
-  recordedAt: string;
-}
-
-export interface ManagedProductionLedger {
-  // WAVE 6 CUTOVER: listArtifactsForExecution / listTracesForExecution were
-  // REMOVED (execution-scoped product-resolution fallback retired by the
-  // exact-ProductRef cutover — execution-context-assembler §9.11). The live
-  // product-resolution path is listArtifactsForNodeInProcessRun (durable node-
-  // scope, CGAD P18) and ProcessProductRepository.getByProductRef. Re-
-  // introducing an execution-scoped lookup is forbidden by
-  // tests/architecture/no-execution-scoped-lookup.test.mjs.
-  /**
-   * Read the durable product accumulated by one reviewed task across its
-   * author/reviewer retry executions. A different recovery task is a new
-   * product attempt and must write or carry an explicit product reference.
-   */
-  listArtifactsForTaskInProcessRun(
-    processRunId: number,
-    moduleRef: string,
-    nodeId: string,
-    taskId: number,
-  ): readonly ManagedArtifactProductionRecord[];
-  listTracesForTaskInProcessRun(
-    processRunId: number,
-    moduleRef: string,
-    nodeId: string,
-    taskId: number,
-  ): readonly ManagedTraceProductionRecord[];
-  /** Node-wide audit query. Product resolvers must not use it as fallback. */
-  listArtifactsForNodeInProcessRun(
-    processRunId: number,
-    moduleRef: string,
-    nodeId: string,
-  ): readonly ManagedArtifactProductionRecord[];
-  listTracesForNodeInProcessRun(
-    processRunId: number,
-    moduleRef: string,
-    nodeId: string,
-  ): readonly ManagedTraceProductionRecord[];
-}
+export type {
+  ManagedExecutionProductQuery,
+  ManagedArtifactProductionRecord,
+  ManagedTraceProductionRecord,
+  ManagedProductionLedger,
+} from '../../shared/managed-production.js';
 
 export type FormalizationArtifactStatus = 'draft' | 'in_review' | 'accepted' | 'superseded';
 
