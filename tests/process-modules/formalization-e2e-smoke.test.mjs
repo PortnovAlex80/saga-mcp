@@ -39,7 +39,7 @@ const {
   '../../dist/process-modules/modules/formalization/legacy-formalization-process-adapter.js'
 );
 const { ReferenceFormalizationSettlementPolicy, SqliteFormalizationArtifactGraph } = await import(
-  '../../dist/process-modules/modules/formalization/sqlite-formalization-kernel.js'
+  '../../dist/infrastructure/process-modules/formalization/sqlite-formalization-kernel.js'
 );
 const { FORMALIZATION_CASE_SCHEMA } = await import(
   '../../dist/process-modules/modules/formalization/formalization-schemas.js'

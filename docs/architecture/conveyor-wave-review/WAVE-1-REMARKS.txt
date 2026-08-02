@@ -37,3 +37,21 @@ WorkplaceRef, CardRef, DeskRef, ProductRef и Lease в основном суще
 Исследовать и исправить:
 
 Перевести команды и порты production path на брендированные CardRef, ExecutionId, FenceToken и WorkplaceRef. Добавить конструкторы с runtime validation. Устранить дублирование workerExecutionId и fenceToken либо выразить их связь одним типом. Добавить отрицательные unit-тесты на смешение card, execution, workplace и fence. Не считать тест, который только находит имена интерфейсов в исходнике, доказательством применения доменной модели.
+
+ТРЕТЬЯ ПРОВЕРКА 2026-08-02
+
+Новый статус: Wave 1 можно принять по критериям текущего документа.
+
+CardId и FenceToken стали отдельными branded types с runtime-validating конструкторами. AssignedWork использует CardId, ExecutionId и FenceToken. Production assignment boundary вызывает asCardId, asExecutionId и asFenceToken. Добавлены отрицательные rejection tests. AssignedWork обязателен для запуска, claimScope отсутствует.
+
+Исследовать и исправить:
+
+Wave 1 закрыть. Оставить type-level и runtime rejection tests обязательными. Дальнейшее расширение branded types на epicId и projectId является улучшением, но не блокирует текущие exit criteria.
+
+ЧЕТВЁРТАЯ ПРОВЕРКА 2026-08-02
+
+Статус не изменился: Wave 1 принята. Build и architecture gate проходят. Новых нарушений AssignedWork, CardId, ExecutionId и FenceToken не обнаружено.
+
+Исследовать и исправить:
+
+Новых обязательных исправлений нет. Сохранять rejection tests и запрет claimScope в CI.

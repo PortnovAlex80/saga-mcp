@@ -52,7 +52,7 @@ const {
   ReferenceFormalizationSettlementPolicy,
   SqliteFormalizationArtifactGraph,
 } = await import(
-  '../../dist/process-modules/modules/formalization/sqlite-formalization-kernel.js'
+  '../../dist/infrastructure/process-modules/formalization/sqlite-formalization-kernel.js'
 );
 const { routeProcessOutcome } = await import(
   '../../dist/process-modules/application/lifecycle-router.js'

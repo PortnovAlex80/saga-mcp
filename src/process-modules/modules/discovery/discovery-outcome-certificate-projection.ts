@@ -21,7 +21,27 @@
  * projection makes those rows visible generically.
  */
 
-import type Database from 'better-sqlite3';
+// W7-THIRD-AUDIT (2026-08-02) — driver-neutral handle type.
+//
+// This projection lives inside the module tree. The concrete SQLite handle is
+// injected by the composition root (infrastructure), so the module never needs
+// to name `better-sqlite3`. A previous revision carried an
+// `import type Database from 'better-sqlite3'` purely for the `Database.Database`
+// namespace annotation on the injected handle. That made the module's
+// application contract depend on the concrete driver type, which the
+// physical-placement gate (`tests/architecture/no-sqlite-in-modules.test.mjs`)
+// now forbids even as a type-only import. The alias below is the minimal
+// structural surface this read-only projection actually exercises
+// (`prepare(...).get(...)`), so the module no longer names better-sqlite3 at
+// all while remaining structurally compatible with the real injected handle.
+type SqliteStatement = {
+  get(...params: unknown[]): unknown;
+  run(...params: unknown[]): unknown;
+  all(...params: unknown[]): unknown[];
+};
+type SqliteDb = {
+  prepare(sql: string): SqliteStatement;
+};
 // CONVEYOR Wave 7 — saga3 cross-tree leak elimination: OutcomeCertificateRecord
 // is now declared locally in the discovery module (byte-identical to the saga3
 // original). The readOutcomeCertificate SQL was inlined from
@@ -96,7 +116,7 @@ function discoveryCertificateRowToRecord(
  * Returns null if no such row. Inlined from the saga3 settlement repository.
  */
 function readDiscoveryOutcomeCertificate(
-  db: Database.Database,
+  db: SqliteDb,
   certificateId: number,
 ): OutcomeCertificateRecord | null {
   const row = db.prepare(
@@ -158,9 +178,9 @@ export function projectDiscoveryCertificate(
  * own settlement service. Calling them throws.
  */
 export class DiscoveryOutcomeCertificateProjection {
-  private readonly db: Database.Database;
+  private readonly db: SqliteDb;
 
-  constructor(db: Database.Database) {
+  constructor(db: SqliteDb) {
     this.db = db;
   }
 

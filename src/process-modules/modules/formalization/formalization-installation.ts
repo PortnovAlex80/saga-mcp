@@ -46,7 +46,7 @@ import type {
   AcceptanceBaselineSnapshotRecord,
   FormalizationBaselineRepository,
   FormalizationSolutionContractRepository,
-} from './formalization-persistence.js';
+} from './formalization-persistence-contracts.js';
 import {
   ACCEPTANCE_BASELINE_SNAPSHOT_SCHEMA,
   FORMALIZATION_ACCEPTANCE_BUNDLE_SCHEMA,

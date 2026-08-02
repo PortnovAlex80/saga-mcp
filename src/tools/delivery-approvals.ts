@@ -1,5 +1,5 @@
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
-import { SqliteDeliveryApprovalInbox } from '../process-modules/modules/delivery/sqlite-delivery-approval-inbox.js';
+import { SqliteDeliveryApprovalInbox } from '../infrastructure/process-modules/delivery/sqlite-delivery-approval-inbox.js';
 import { getDb } from '../db.js';
 import type { ToolHandler } from '../types.js';
 

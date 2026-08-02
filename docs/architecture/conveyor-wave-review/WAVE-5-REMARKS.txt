@@ -43,3 +43,27 @@ Single-flight guard является только module-scoped Set внутри
 Исследовать и исправить:
 
 Добавить межпроцессный SQLite advisory lease для supervisor sweep. Сохранить in-process guard как оптимизацию. Разобрать каждый failure workspace-tracker-hook: обновить устаревший fixture либо production contract, но не исключать тест без замены. Добавить явный тест различия system reaper event и admin_override_lifecycle event. Проверить stale fence для всех mutating tools, а не только progress и completion.
+
+ТРЕТЬЯ ПРОВЕРКА 2026-08-02
+
+Новый статус: Wave 5 в основном соответствует exit criteria; остаётся один тестовый пробел.
+
+Добавлена таблица supervision_locks и cross-process compare-and-set advisory lease поверх SQLite, сохранился in-process fast guard. Workspace, CallInstance, tracker renderer, structured hook и capability tests теперь проходят. Reaper tests подтверждают dead PID, expired lease, live silent worker, PID reuse, stuck chain, startup sweep, fenced progress и различие system reaper и admin override audit events.
+
+Оставшееся замечание:
+
+В test suite нет отдельного конкурентного теста с двумя supervisor instances или процессами, который доказывает, что advisory lease реально допускает только один sweep и корректно передаётся после expiry. Реализация есть, но межпроцессная физика проверена только чтением кода.
+
+Исследовать и исправить:
+
+Добавить тест двух независимых SQLite connections: один holder получает lease, второй пропускает sweep, после expiry второй получает lease, старый holder не может удалить lease нового владельца. После этого Wave 5 можно закрыть без оговорки.
+
+ЧЕТВЁРТАЯ ПРОВЕРКА 2026-08-02
+
+Новый статус: Wave 5 можно принять.
+
+Добавлен supervision-lease-concurrency test с независимыми SQLite connections. Проверены пять обязательных свойств: второй holder не получает живой lease, получает его после expiry, старый holder не удаляет lease нового владельца, повторный вход владельца разрешён, разные scopes независимы. Все пять тестов входят в architecture gate и проходят.
+
+Исследовать и исправить:
+
+Wave 5 закрыть. Сохранить cross-process lease tests, reaper tests и различие system audit versus admin override обязательными.

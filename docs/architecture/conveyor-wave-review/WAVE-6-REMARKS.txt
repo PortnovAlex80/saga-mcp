@@ -43,3 +43,37 @@ generic-flow-executor всё ещё содержит живой legacy restoreFr
 Исследовать и исправить:
 
 Удалить deprecated UniversalRecoveryEngine и неиспользуемые module recovery-policy bindings после переноса нужных тестов на flow.recovery. Завершить cutover всех production runs на execution-context assembler и exact ProductRef. Удалить restoreFrame и listArtifactsForExecution/listTracesForExecution после явного migration gate для legacy rows. Добавить архитектурный запрет на повторное появление execution-scoped product lookup.
+
+ТРЕТЬЯ ПРОВЕРКА 2026-08-02
+
+Новый статус: выполнена почти полностью, но legacy resume path остаётся.
+
+Удалены UniversalRecoveryEngine и неиспользуемые per-module recovery policy bindings. Удалены listArtifactsForExecution и listTracesForExecution. Добавлен архитектурный запрет их повторного появления. Recovery conformance перенесён на production flow.recovery path и targeted recovery tests проходят.
+
+Оставшееся замечание:
+
+generic-flow-executor всё ещё содержит и вызывает restoreFrame для legacy rows. Architecture output прямо сообщает, что restoreFrame намеренно не запрещён и остаётся live production path до отдельного v2 cutover. Следовательно, утверждение о полном схождении resume на exact durable context пока верно не для всех поддерживаемых запусков.
+
+Исследовать и исправить:
+
+Определить retention policy для legacy NodeRun rows, выполнить migration или явный compatibility adapter на границе, затем удалить restoreFrame и magic bindings из generic-flow-executor. Добавить restoreFrame в forbidden fallback ratchet. После этого Wave 6 закрыть полностью.
+
+ЧЕТВЁРТАЯ ПРОВЕРКА 2026-08-02
+
+Новый статус: Wave 6 всё ещё не принята.
+
+Появился assembleFrameFromDurableNodeRuns и набор тестов его детерминированности. Однако исправление не завершает заявленное удаление restoreFrame:
+
+generic-flow-executor.walk по-прежнему вызывает restoreFrame(context.inputPayload, allRuns).
+
+Функция restoreFrame по-прежнему существует и только делегирует в assembleFrameFromDurableNodeRuns.
+
+Новый тест с названием restore-frame-removal прямо закрепляет наличие wrapper и проверяет его делегирование. Это тест совместимости, а не тест удаления.
+
+Комментарий утверждает, что walk вызывает adapter напрямую, но фактическая строка вызывает restoreFrame. Architecture output также прямо говорит, что restoreFrame остаётся live production path и пока не включён в forbidden set.
+
+Кроме того, legacy magic-bindings fallback остаётся в generic-flow-executor. Поэтому все поддерживаемые resume paths ещё не сведены к одному exact durable contract.
+
+Исследовать и исправить:
+
+Заменить вызов в walk на assembleFrameFromDurableNodeRuns(context.inputPayload, allRuns). Удалить функцию restoreFrame, блокирующие комментарии и тест, закрепляющий wrapper. Обновить устаревший characterization test, который ищет текст функции. Добавить restoreFrame и legacy magic-binding reconstruction в forbidden-fallback architecture gate. Удалить magic bindings после переноса оставшихся consumers на ModuleCompletion и exact refs. Не называть тест removal, пока удаляемый production symbol всё ещё существует.

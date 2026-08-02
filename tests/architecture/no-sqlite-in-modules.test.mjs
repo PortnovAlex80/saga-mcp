@@ -16,7 +16,9 @@
 // `.ts` file under `src/process-modules/modules/` and FAILS if any file:
 //
 //   (a) imports `better-sqlite3` (the SQLite driver — only infrastructure
-//       adapters may touch it);
+//       adapters may touch it; this includes `import type` references, since
+//       the module application contract must not name the concrete driver
+//       type even at the type level);
 //   (b) imports `getDb` from `db.ts` (the global DB singleton — modules must
 //       receive the handle via a constructor port);
 //   (c) declares a `class Sqlite*` (concrete adapter classes belong in
@@ -114,35 +116,35 @@ function stripComments(src) {
   return out;
 }
 
-// A VALUE import of better-sqlite3 pulls the native SQLite driver into the
-// module's runtime graph — that is the substrate edge Wave 7 forbids inside
-// src/process-modules/modules/. A pure `import type Database from 'better-
-// sqlite3'` is ERASED at compile time (it only types a constructor parameter)
-// and carries no runtime edge, so it is allowed — mirroring how the moved
-// development/delivery/formalization adapters used `import type` before their
-// extraction and how the discovery module types its injected handle today.
+// ANY import of better-sqlite3 — value OR type-only — is forbidden inside
+// src/process-modules/modules/. A value import pulls the native driver into
+// the module's runtime graph; an `import type Database from 'better-sqlite3'`
+// is erased at compile time and carries no runtime edge, but it still makes
+// the module's application contract name the concrete driver type. Wave 7's
+// third audit required the modules to depend on a driver-neutral port type
+// (the concrete handle is constructor-injected by infrastructure), so even
+// the type-only reference is now banned. This mirrors how the moved
+// development/delivery/formalization adapters and the discovery certificate
+// projection type their injected handle with a local minimal alias instead of
+// naming better-sqlite3.
 //
-// We match every `import ... from 'better-sqlite3'` and require each to be
-// preceded by the `type` modifier (either `import type ...` or a per-binding
-// `type` qualifier when default + named mix). The simplest correct check: an
-// import is a VALUE import iff it starts with `import` (not `import type`)
-// and binds at least one non-type value.
+// We match every `import ... from 'better-sqlite3'` (with or without the
+// `type` modifier) and flag all of them.
 const SQLITE_IMPORT_RE =
-  /import\s+(type\s+)?(?:[^'"]+?)\s+from\s*['"]better-sqlite3['"]/g;
+  /import\s+(?:type\s+)?(?:[^'"]+?)\s+from\s*['"]better-sqlite3['"]/g;
 
 /**
- * Does `stripped` (comment-stripped) source contain a VALUE import of
- * better-sqlite3 (a runtime driver edge)? Pure `import type` imports are
- * erased and do not count.
+ * Does `stripped` (comment-stripped) source import better-sqlite3 in ANY form
+ * (value or type-only)? Both are forbidden inside the module tree.
  * @param {string} stripped
  * @returns {boolean}
  */
-function hasSqliteDriverValueImport(stripped) {
-  for (const match of stripped.matchAll(SQLITE_IMPORT_RE)) {
-    const isTypeOnly = match[1] !== undefined; // the optional `type ` group
-    if (!isTypeOnly) return true;
-  }
-  return false;
+function hasSqliteImport(stripped) {
+  // SQLITE_IMPORT_RE carries the global flag (used elsewhere with matchAll),
+  // which makes .test() stateful (lastIndex advances). Reset before each test
+  // so repeated calls are deterministic.
+  SQLITE_IMPORT_RE.lastIndex = 0;
+  return SQLITE_IMPORT_RE.test(stripped);
 }
 
 const GETDB_RE = /\bgetDb\b/;
@@ -186,7 +188,7 @@ const TYPE_IMPORT_STMT_RE =
  * @returns {boolean}
  */
 function isPureReexportShim(stripped) {
-  if (hasSqliteDriverValueImport(stripped)) return false;
+  if (hasSqliteImport(stripped)) return false;
   if (GETDB_RE.test(stripped)) return false;
   if (SQLITE_CLASS_DECL_RE.test(stripped)) return false;
   // Any own declaration disqualifies the shim (the re-export + import-type
@@ -231,13 +233,14 @@ function collectViolations() {
     const stripped = stripComments(raw);
     const filename = path.basename(rel);
 
-    // (a) better-sqlite3 VALUE import (runtime driver edge; `import type` is
-    //     erased and allowed — it only types an injected constructor handle).
-    if (hasSqliteDriverValueImport(stripped)) {
+    // (a) better-sqlite3 import in ANY form (value OR type-only). The driver
+    //     belongs in src/infrastructure/; a module types its injected handle
+    //     with a driver-neutral local alias, never by naming better-sqlite3.
+    if (hasSqliteImport(stripped)) {
       violations.push({
         file: rel,
         rule: 'no-better-sqlite3-import',
-        detail: "imports 'better-sqlite3' (value import) — the SQLite driver belongs in src/infrastructure/, not inside a module; use `import type` for a constructor-handle type",
+        detail: "imports 'better-sqlite3' (value or type-only) — the SQLite driver belongs in src/infrastructure/, not inside a module; type the injected handle with a driver-neutral local alias",
       });
     }
 
@@ -308,24 +311,27 @@ test('no-sqlite-in-modules: gate detects the four violation kinds (self-test)', 
   // snippet below must be classified as a violation by exactly one rule.
   const positiveCases = [
     { rule: 'no-better-sqlite3-import', src: `import Database from 'better-sqlite3';\n` },
+    { rule: 'no-better-sqlite3-import', src: `import type Database from 'better-sqlite3';\n` },
     { rule: 'no-getdb-import', src: `import { getDb } from '../../db.js';\n` },
     { rule: 'no-sqlite-class-declaration', src: `export class SqliteFoo { constructor() {} }\n` },
   ];
   for (const { rule, src } of positiveCases) {
     const stripped = stripComments(src);
     let hit = false;
-    if (rule === 'no-better-sqlite3-import' && hasSqliteDriverValueImport(stripped)) hit = true;
+    if (rule === 'no-better-sqlite3-import' && hasSqliteImport(stripped)) hit = true;
     if (rule === 'no-getdb-import' && GETDB_RE.test(stripped)) hit = true;
     if (rule === 'no-sqlite-class-declaration' && SQLITE_CLASS_DECL_RE.test(stripped)) hit = true;
-    assert.ok(hit, `classifier must catch ${rule}`);
+    assert.ok(hit, `classifier must catch ${rule} for: ${src.trim()}`);
   }
-  // `import type` is ERASED — it carries no runtime driver edge and must NOT
-  // be flagged. This mirrors how the discovery module types its injected
-  // Database handle today and how the moved adapters used `import type` before
-  // extraction.
-  const typeOnly = stripComments(`import type Database from 'better-sqlite3';\n`);
-  assert.equal(hasSqliteDriverValueImport(typeOnly), false,
-    '`import type` better-sqlite3 is erased and must NOT be flagged as a value import');
+  // A driver-NEUTRAL local type alias for the injected handle is the
+  // ALLOWED replacement. It does NOT name better-sqlite3 and must NOT be
+  // flagged. This mirrors how the discovery certificate projection now types
+  // its injected handle after the Wave 7 third-audit fix.
+  const neutralAlias = stripComments(
+    `type SqliteDb = { prepare(sql: string): { get(...p: unknown[]): unknown } };\n`,
+  );
+  assert.equal(hasSqliteImport(neutralAlias), false,
+    'a driver-neutral local type alias must NOT be flagged (no better-sqlite3 reference)');
   // Pure re-export shim (single-line AND multi-line) must NOT be flagged as a
   // violating impl.
   const shimSingle = stripComments(

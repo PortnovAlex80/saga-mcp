@@ -37,3 +37,21 @@ Capability package platform.worker-completion всё ещё включает wor
 Исследовать и исправить:
 
 Разделить dispatcher capability и assigned-worker capability. Удалить worker_next из пакета, выдаваемого назначенной execution. Добавить server-side authorization test: запрос worker_next с действующим assigned executionId или fence отклоняется до чтения очереди независимо от клиента и launcher. Классифицировать оставшиеся self-claim skills как legacy/manual dispatcher surface либо переписать их. Доказать ноль compatibility вызовов end-to-end.
+
+ТРЕТЬЯ ПРОВЕРКА 2026-08-02
+
+Новый статус: Wave 3 можно принять.
+
+worker_next удалён из capability package назначенного рабочего. Server-side handler отклоняет worker_next, если execution активна или владеет task fence. Контрольные тесты подтверждают, что dispatcher без assigned fence продолжает назначать работу. ClaimScope отсутствует, runner получает обязательный AssignedWork и запускает одну карточку.
+
+Исследовать и исправить:
+
+Wave 3 закрыть. Сохранить server-side fence rejection главным инвариантом, потому что client-side disallowedTools является только дополнительной защитой.
+
+ЧЕТВЁРТАЯ ПРОВЕРКА 2026-08-02
+
+Статус не изменился: Wave 3 принята. Server-side worker_next rejection и no-claim-scope gate проходят повторно.
+
+Исследовать и исправить:
+
+Новых обязательных исправлений нет. Не заменять server-side authority check одним client-side disallowedTools.

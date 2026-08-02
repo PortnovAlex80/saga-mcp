@@ -9,7 +9,7 @@ import { createHash } from 'node:crypto';
 import test from 'node:test';
 
 const { ReferenceFormalizationSettlementPolicy } = await import(
-  '../../dist/process-modules/modules/formalization/sqlite-formalization-kernel.js'
+  '../../dist/infrastructure/process-modules/formalization/sqlite-formalization-kernel.js'
 );
 const { buildFormalizationCertificatePayload } = await import(
   '../../dist/process-modules/modules/formalization/formalization-kernel-ports.js'

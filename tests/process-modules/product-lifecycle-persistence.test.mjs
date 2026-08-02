@@ -9,10 +9,10 @@ const { SqliteProcessRunRepository } = await import(
   '../../dist/process-modules/persistence/sqlite-process-run-repository.js'
 );
 const { SqliteDevelopmentOutputRepository } = await import(
-  '../../dist/process-modules/modules/development/development-persistence.js'
+  '../../dist/infrastructure/process-modules/development/development-persistence.js'
 );
 const { SqliteDeliveryOutputRepository } = await import(
-  '../../dist/process-modules/modules/delivery/delivery-persistence.js'
+  '../../dist/infrastructure/process-modules/delivery/delivery-persistence.js'
 );
 const {
   VERIFIED_INTEGRATION_BUNDLE_SCHEMA,

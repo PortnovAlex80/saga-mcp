@@ -39,3 +39,21 @@ src/app/dispatch-loop.ts содержит bounded active set, заполняет
 Исследовать и исправить:
 
 Написать тест непосредственно для distributeQueuedTasks с управляемыми promises: N=2 даёт реальное временное перекрытие, N=1 остаётся последовательным, maxAlive никогда не превышает N. Убрать skip из обязательного gate. Свести assign-one-card, LM node launches и Development queue к одному владельцу глобального permit либо доказать общим semaphore, что они не могут выполняться параллельно сверх N. Добавить shutdown и async start-failure тесты.
+
+ТРЕТЬЯ ПРОВЕРКА 2026-08-02
+
+Новый статус: Wave 4 можно принять по текущим exit criteria.
+
+Добавлены реальные тесты distributeQueuedTasks. N=2 даёт overlap, N=1 остаётся последовательным, maxAlive проверяется для N от 1 до 4. Start failure освобождает assignment. Отдельный orchestration test доказывает, что runEpisode и drain queue не перекрываются и используют один последовательный глобальный бюджет. Новые тесты входят в test:architecture и проходят без skip.
+
+Исследовать и исправить:
+
+Wave 4 закрыть. Старые два runner pump tests остаются skip как тесты удалённой модели, но их replacement tests активны и обязательны. В дальнейшем не допускать нового launcher path вне общего permit или доказанной последовательной orchestration phase.
+
+ЧЕТВЁРТАЯ ПРОВЕРКА 2026-08-02
+
+Статус не изменился: Wave 4 принята. Активные replacement tests снова подтверждают overlap при N=2, последовательность при N=1, maxAlive не выше N и отсутствие перекрытия orchestration phases.
+
+Исследовать и исправить:
+
+Новых обязательных исправлений нет. Старые skip tests относятся к удалённому runner pump и не должны считаться текущим доказательством; доказательством являются активные dispatch-loop tests.

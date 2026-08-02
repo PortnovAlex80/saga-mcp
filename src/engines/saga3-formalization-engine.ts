@@ -33,7 +33,7 @@ import { LegacyFormalizationProcessAdapter } from '../process-modules/modules/fo
 import {
   ReferenceFormalizationSettlementPolicy,
   SqliteFormalizationArtifactGraph,
-} from '../process-modules/modules/formalization/sqlite-formalization-kernel.js';
+} from '../infrastructure/process-modules/formalization/sqlite-formalization-kernel.js';
 import { FORMALIZATION_PROCESS_MODULE_REF } from '../process-modules/modules/formalization/formalization-schemas.js';
 import { FORMALIZATION_CASE_SCHEMA } from '../process-modules/modules/formalization/formalization-schemas.js';
 import { processModuleKey } from '../process-modules/domain/process-module.js';

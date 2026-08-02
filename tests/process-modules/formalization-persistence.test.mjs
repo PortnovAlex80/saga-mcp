@@ -13,7 +13,7 @@ const {
   SqliteFormalizationBaselineRepository,
   SqliteFormalizationSolutionContractRepository,
 } = await import(
-  '../../dist/process-modules/modules/formalization/formalization-persistence.js'
+  '../../dist/infrastructure/process-modules/formalization/formalization-persistence.js'
 );
 
 function fixture() {

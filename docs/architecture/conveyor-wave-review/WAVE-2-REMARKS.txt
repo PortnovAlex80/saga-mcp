@@ -35,3 +35,21 @@ Architecture gate и отдельные race tests проходят. Пять п
 Исследовать и исправить:
 
 Wave 2 можно закрыть. Оставить regression tests обязательными в CI. Дополнительно полезно добавить fault-injection после commit и перед executor.start, хотя этот сценарий уже должен закрываться startup supervision из Wave 5.
+
+ТРЕТЬЯ ПРОВЕРКА 2026-08-02
+
+Новый статус: Wave 2 остаётся принятой.
+
+Atomic assignment, review-first, dependency gate, project isolation, fence creation, race safety и release-on-start-failure проходят повторно. Новых замечаний по критериям Wave 2 не обнаружено.
+
+Исследовать и исправить:
+
+Только поддерживать regression gate. Не изменять атомарную границу select, status transition, fence и worker_executions insert.
+
+ЧЕТВЁРТАЯ ПРОВЕРКА 2026-08-02
+
+Статус не изменился: Wave 2 принята. Межпроцессный assignment race снова даёт одного победителя, review-first и dependency gates проходят.
+
+Исследовать и исправить:
+
+Новых обязательных исправлений нет. Не разделять атомарную транзакцию назначения.

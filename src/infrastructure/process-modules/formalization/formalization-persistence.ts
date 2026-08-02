@@ -6,41 +6,22 @@ import {
   type AcceptanceBaselineSnapshotPayload,
   type FormalizationSolutionContractPayload,
 } from '../../../process-modules/modules/formalization/formalization-schemas.js';
-
-export interface AcceptanceBaselineSnapshotRecord {
-  id: number;
-  processRunId: number;
-  formalizationEpicId: number;
-  payload: AcceptanceBaselineSnapshotPayload;
-  baselineHash: string;
-  snapshotHash: string;
-  artifactRef: string;
-  createdAt: string;
-}
-
-export interface FormalizationSolutionContractRecord {
-  id: number;
-  processRunId: number;
-  formalizationEpicId: number;
-  payload: FormalizationSolutionContractPayload;
-  contentHash: string;
-  artifactRef: string;
-  createdAt: string;
-}
-
-export interface FormalizationBaselineRepository {
-  freeze(
-    payload: AcceptanceBaselineSnapshotPayload,
-  ): { record: AcceptanceBaselineSnapshotRecord; replayed: boolean };
-  readByProcessRun(processRunId: number): AcceptanceBaselineSnapshotRecord | null;
-}
-
-export interface FormalizationSolutionContractRepository {
-  persist(
-    payload: FormalizationSolutionContractPayload,
-  ): { record: FormalizationSolutionContractRecord; replayed: boolean };
-  readByProcessRun(processRunId: number): FormalizationSolutionContractRecord | null;
-}
+// W7-THIRD-AUDIT — the port contracts (record + repository interfaces) are now
+// owned by the module tree and re-imported here. Infrastructure implements
+// module-owned ports; it must not define them (that would force module
+// consumers to import infrastructure, a Rule 2 edge).
+export type {
+  AcceptanceBaselineSnapshotRecord,
+  FormalizationSolutionContractRecord,
+  FormalizationBaselineRepository,
+  FormalizationSolutionContractRepository,
+} from '../../../process-modules/modules/formalization/formalization-persistence-contracts.js';
+import type {
+  AcceptanceBaselineSnapshotRecord,
+  FormalizationSolutionContractRecord,
+  FormalizationBaselineRepository,
+  FormalizationSolutionContractRepository,
+} from '../../../process-modules/modules/formalization/formalization-persistence-contracts.js';
 
 export function ensureFormalizationPersistenceSchema(db: Database.Database): void {
   db.exec(`

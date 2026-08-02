@@ -75,7 +75,7 @@ const { formalizationProcessModule, FORMALIZATION_PROCESS_MODULE_REF } = await i
 const {
   ReferenceFormalizationSettlementPolicy,
 } = await import(
-  '../../dist/process-modules/modules/formalization/sqlite-formalization-kernel.js'
+  '../../dist/infrastructure/process-modules/formalization/sqlite-formalization-kernel.js'
 );
 const {
   buildFormalizationCertificatePayload,
@@ -415,7 +415,7 @@ test('W8-A8 restart: acceptance baseline is write-once — same hash replays, di
     '../../dist/process-modules/persistence/sqlite-process-run-repository.js'
   );
   const { SqliteFormalizationBaselineRepository } = await import(
-    '../../dist/process-modules/modules/formalization/formalization-persistence.js'
+    '../../dist/infrastructure/process-modules/formalization/formalization-persistence.js'
   );
 
   const temp = mkdtempSync(path.join(os.tmpdir(), 'saga3-w8a8-restart-baseline-'));
@@ -480,7 +480,7 @@ test('W8-A8 restart: solution contract is write-once — same hash replays, diff
     '../../dist/process-modules/persistence/sqlite-process-run-repository.js'
   );
   const { SqliteFormalizationSolutionContractRepository } = await import(
-    '../../dist/process-modules/modules/formalization/formalization-persistence.js'
+    '../../dist/infrastructure/process-modules/formalization/formalization-persistence.js'
   );
 
   const temp = mkdtempSync(path.join(os.tmpdir(), 'saga3-w8a8-restart-contract-'));
