@@ -22,6 +22,9 @@ import type {
   DeliveryPreflightPolicyPort,
   DeliverySettlementPolicyPort,
 } from './delivery-settlement-policy.js';
+import type {
+  ProcessOutcomeCertificateRepository,
+} from '../../persistence/process-outcome-certificate-repository.js';
 
 export const DELIVERY_KERNEL_HANDLER_IDS = {
   preflight: 'delivery-preflight-policy',
@@ -134,6 +137,15 @@ export interface DeliveryModuleInstallationDependencies {
   outputRepository: DeliveryOutputRepository;
   preflightPolicy: DeliveryPreflightPolicyPort;
   settlementPolicy: DeliverySettlementPolicyPort;
+  /**
+   * Wave 4 (Uncle Bob) — the settlement kernel now issues the
+   * ProcessOutcomeCertificate ITSELF and emits an explicit ModuleCompletion
+   * whose outputEnvelope.certificateRef points at the issued row. This replaces
+   * the legacy reliance on the generic-flow-executor's magic-bindings
+   * certificateRepo.issue (generic-flow-executor.ts:377). The magic bindings
+   * are KEPT alongside (additive) until Wave 5 deletes that branch.
+   */
+  certificateRepo: ProcessOutcomeCertificateRepository;
 }
 
 // ---------------------------------------------------------------------------

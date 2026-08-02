@@ -370,6 +370,12 @@ export function createProductLifecycleRuntime(
         developmentTaskGraphPolicy,
       ),
     outputRepository: developmentOutputRepository,
+    // Uncle Bob Wave 4: the development settlement kernel now AUTHORS its own
+    // certificate (issuing it through this repo) and emits an explicit
+    // ModuleCompletion pointing at the resulting certificateRef. Previously the
+    // generic-flow-executor's magic-bindings branch issued the certificate at
+    // settlement time on the kernel's behalf; Wave 5 deletes that branch.
+    certificateRepository: certificateRepo,
   };
 
   const deliveryConfig = options.delivery;
@@ -423,6 +429,11 @@ export function createProductLifecycleRuntime(
     settlementPolicy: deliveryConfig.settlementPolicy
       ?? new ReferenceDeliverySettlementPolicy(deliveryPreflightPolicy),
     outputRepository: deliveryOutputRepository,
+    // Wave 4: the delivery settlement kernel issues its own
+    // ProcessOutcomeCertificate and emits an explicit ModuleCompletion. The
+    // generic-flow-executor's magic-bindings certificateRepo.issue is now the
+    // additive fallback (Wave 5 deletes it).
+    certificateRepo,
   };
 
   const formalizationBaselineRepository =
@@ -454,6 +465,11 @@ export function createProductLifecycleRuntime(
     // CONVEYOR Wave 7: injected brief-provisioning port so the Formalization
     // module imports no getDb. Composition root owns concrete construction.
     briefProvisioning: new SqliteFormalizationBriefProvisioning(db),
+    // Wave 4: the formalization settlement kernel issues its own
+    // ProcessOutcomeCertificate and emits an explicit ModuleCompletion. The
+    // generic-flow-executor's magic-bindings certificateRepo.issue is now the
+    // additive fallback (Wave 5 deletes it).
+    certificateRepo,
   }));
   kernelHandlers.registerAll(createDevelopmentKernelHandlers(developmentDeps));
   kernelHandlers.registerAll(createDeliveryKernelHandlers(deliveryDeps));

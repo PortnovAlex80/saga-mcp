@@ -220,6 +220,7 @@ function fixture() {
   };
 
   let solutionRecord = null;
+  let certificateRecord = null;
   const acceptanceCalls = [];
   const solutionContractRepository = {
     persist(payload) {
@@ -300,6 +301,49 @@ function fixture() {
         return true;
       },
     },
+    // Wave 4 (Uncle Bob): the settlement kernel now issues its own
+    // ProcessOutcomeCertificate and emits an explicit ModuleCompletion whose
+    // certificateRef points at the issued row. This fake mirrors the
+    // idempotency contract of SqliteProcessOutcomeCertificateRepository:
+    // re-issuing the SAME hash returns the existing row (replayed=true).
+    certificateRepo: {
+      issue(command) {
+        const replayed = certificateRecord !== null;
+        certificateRecord ??= {
+          id: 909,
+          processRunId: command.processRunId,
+          moduleRef: command.moduleRef,
+          moduleRefKey: `${command.moduleRef.name}@${command.moduleRef.version}`,
+          projectId: command.projectId,
+          epicId: command.epicId,
+          schemaVersion: command.payload.schemaVersion,
+          decision: command.payload.decision,
+          reasonCodes: command.payload.reasonCodes,
+          rationale: command.payload.rationale,
+          inputHash: command.payload.inputHash,
+          certificatePayload: command.payload,
+          certificateHash: command.certificateHash,
+          authority: command.authority,
+          issuedAt: '2026-01-01T00:00:00.000Z',
+        };
+        return { record: certificateRecord, replayed };
+      },
+      read(id) {
+        return certificateRecord?.id === id ? certificateRecord : null;
+      },
+      readByProcessRun(processRunId) {
+        return certificateRecord?.processRunId === processRunId ? certificateRecord : null;
+      },
+      readByHash(hash) {
+        return certificateRecord?.certificateHash === hash ? certificateRecord : null;
+      },
+      list() {
+        return certificateRecord === null ? [] : [certificateRecord];
+      },
+      readByModuleRun() {
+        return certificateRecord;
+      },
+    },
   };
   return {
     deps,
@@ -311,6 +355,7 @@ function fixture() {
     acceptanceCalls,
     getBaseline: () => baselineRecord,
     getSolution: () => solutionRecord,
+    getCertificate: () => certificateRecord,
   };
 }
 

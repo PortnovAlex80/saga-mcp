@@ -30,6 +30,11 @@
 import type { KernelHandler } from '../../application/kernel-handler-registry.js';
 import type { LmNodeExecutionPersistence } from '../../application/node-executors/lm-node-executor.js';
 import type { NodeExecutionReceipt } from '../../application/node-executor.js';
+// Uncle Bob Wave 4 / FU-A: explicit ModuleCompletion envelope emitted alongside
+// the legacy magic certificate bindings (additive; Wave 5 deletes the magic).
+// `import type` keeps this a domain→domain edge (Rule 5 permits it); the SPI
+// types are pure data, erased at compile time.
+import type { ModuleCompletion } from '../../domain/spi/module-completion.js';
 // CONVEYOR Wave 7 — saga3 cross-tree leak elimination: every schema-id
 // constant, intent-kind constant, record type, and the runtime-persistence
 // port is now declared locally in discovery-domain-contracts.ts (byte-identical
@@ -868,6 +873,19 @@ function createDiscoverySettlementHandler(
     const certificateArtifactPayload = JSON.parse(certificate.certificate_payload) as unknown;
     // certificateHash — SHA-256 над canonical JSON payload. Используем
     // generic helper (Д9 вынесет его в process-modules/shared/).
+    //
+    // Uncle Bob Wave 4 / FU-A: emit the EXPLICIT ModuleCompletion envelope
+    // (plan §7.5.6, W3-A1 spec §3/§4) ALONGSIDE the legacy magic certificate
+    // bindings. Discovery pre-issues its own certificate, so this is the
+    // lightest of the four module migrations: we lift the existing
+    // `discovery-certificate:${id}` ref + hash into the completion envelope.
+    //
+    // ADDITIVE: the magic-bindings writes below (certificateRef/
+    // certificateArtifactPayload/certificateHash/certificateSchema/
+    // certificateDecision in production.bindings) are KEPT — Wave 5 deletes
+    // them. Both paths run in parallel; the explicit path wins when present
+    // (generic-flow-executor.ts reads `terminal.result.completion` first).
+    const certificateRef = `discovery-certificate:${settled.certificateId}`;
     return {
       event: settled.decision,
       production: {
@@ -881,7 +899,7 @@ function createDiscoverySettlementHandler(
           settlementId: settled.settlementId,
           decision: settled.decision,
           // Authoritative certificate envelope for the Runtime (Д6).
-          certificateRef: `discovery-certificate:${settled.certificateId}`,
+          certificateRef,
           certificateArtifactPayload,
           certificateHash: settled.certificateHash,
           certificateSchema: DISCOVERY_OUTCOME_CERTIFICATE_SCHEMA,
@@ -890,6 +908,41 @@ function createDiscoverySettlementHandler(
           authority: 'discovery_settlement_policy',
         },
       },
+      // Uncle Bob Wave 4: explicit terminal envelope. The completion carries
+      // the same content-addressed certificate pointer the magic bindings do,
+      // expressed as a typed ProductRef (schemaId/ref/digest). `outcome` mirrors
+      // the settlement decision so assertExplicitModuleCompletion agrees with
+      // the terminal outcome; `terminal: true` because the settle kernel's
+      // decision is final. settlement reads `outputEnvelope.certificateRef`
+      // to bypass the magic bindings.
+      //
+      // The `ProcessModuleOutputEnvelope.completion` back-reference forms a
+      // type-only cycle with `ModuleCompletion.outputEnvelope` (production-
+      // envelope.ts §circular-type-reference). The back-reference is never read
+      // at runtime (settlement reads only `outputEnvelope.certificateRef`, and
+      // neither validateModuleCompletion nor the production path recurses into
+      // it), and a real reference cycle would break JSON persistence
+      // (`completeV2` → `JSON.stringify`). We therefore emit the same
+      // serializable envelope shape proven by the Wave 3 crash-resume fixture
+      // (tests/process-modules/module-completion-persistence.test.mjs, which
+      // uses `completion: null` for the inner back-reference and round-trips
+      // byte-identical through `sha256Hex` + DB reopen). The targeted cast
+      // satisfies the required (non-optional) `completion: ModuleCompletion`
+      // field without inventing a runtime cycle.
+      completion: {
+        outcome: settled.decision,
+        terminal: true,
+        outputEnvelope: {
+          outcome: settled.decision,
+          productions: [],
+          certificateRef: {
+            schemaId: DISCOVERY_OUTCOME_CERTIFICATE_SCHEMA,
+            ref: certificateRef,
+            digest: settled.certificateHash,
+          },
+          completion: null as unknown as ModuleCompletion,
+        },
+      } satisfies ModuleCompletion,
     };
   };
 }

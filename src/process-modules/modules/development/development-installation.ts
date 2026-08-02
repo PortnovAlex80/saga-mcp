@@ -17,7 +17,17 @@ import type {
   ProcessModuleExecutionContext,
 } from '../../application/process-module-executor.js';
 import type { ProcessModuleOutput } from '../../persistence/process-run.js';
+import type {
+  IssueProcessOutcomeCertificateCommand,
+} from '../../persistence/process-outcome-certificate.js';
 import { sha256Hex } from '../../shared/canonical-json.js';
+import type {
+  ModuleCompletion,
+} from '../../domain/spi/module-completion.js';
+import type {
+  ProcessModuleOutputEnvelope,
+  ProductRef,
+} from '../../domain/spi/production-envelope.js';
 import {
   DEVELOPMENT_KERNEL_HANDLER_IDS,
   type DevelopmentModuleInstallationDependencies,
@@ -408,8 +418,55 @@ function createDevelopmentSettlementHandler(
         settled,
       );
     } catch (error) {
-      return developmentSettlementFailure(ctx, errorMessage(error));
+      return developmentSettlementFailure(deps, ctx, errorMessage(error));
     }
+  };
+}
+
+/**
+ * Uncle Bob Wave 4 — build the explicit {@link ModuleCompletion} envelope the
+ * settlement kernel emits alongside its (still-present) magic-bindings writes.
+ *
+ * `outcome` is the development decision the kernel just settled (verified /
+ * rework-required / clarification-required / blocked / failed). `certificateRef`
+ * is the content-addressed pointer to the certificate the kernel just issued.
+ *
+ * The output envelope is minimal-but-conformant: it carries the outcome, an
+ * empty productions list (the durable productions live in NodeRun rows and the
+ * output artifact store; the envelope's role here is to host the certificate
+ * ref the executor's explicit settlement path reads), the certificateRef, and
+ * a `completion` slot. All five development outcomes are terminal, so
+ * `terminal` is always true.
+ *
+ * SERIALIZABILITY: the ModuleCompletion ↔ ProcessModuleOutputEnvelope type
+ * cycle is a COMPILE-TIME type relationship, NOT a runtime back-reference. The
+ * SQLite NodeRun repo persists `completion` via `JSON.stringify`
+ * (sqlite-node-run-repository.ts ~line 414), so a true runtime cycle would
+ * throw "Converting circular structure to JSON". The envelope's `completion`
+ * slot is therefore set to `null` — the executor's explicit settlement path
+ * reads only `outputEnvelope.certificateRef` (generic-flow-executor.ts
+ * ~line 318), never `outputEnvelope.completion`. This mirrors the convention
+ * in the module-completion-persistence test fixture (`sampleModuleCompletion`
+ * sets `completion: null` inside the envelope for the same reason).
+ *
+ * Pure: same (outcome, certificateRef) → same ModuleCompletion.
+ */
+function buildDevelopmentModuleCompletion(
+  outcome: string,
+  certificateRef: ProductRef,
+): ModuleCompletion {
+  const outputEnvelope: ProcessModuleOutputEnvelope = {
+    outcome,
+    productions: [],
+    certificateRef,
+    // Intentionally NOT a back-reference to this completion: see the
+    // SERIALIZABILITY note above. The type cycle is compile-time only.
+    completion: null as unknown as ModuleCompletion,
+  };
+  return {
+    outcome,
+    outputEnvelope,
+    terminal: true,
   };
 }
 
@@ -470,6 +527,35 @@ function developmentSettlementProduction(
     payload: developmentPayload,
   };
   const certificateHash = sha256Hex(certificatePayload);
+
+  // Uncle Bob Wave 4 — the settlement kernel is now the AUTHORITY for its own
+  // certificate. Previously the generic-flow-executor's magic-bindings branch
+  // called certificateRepo.issue on the kernel's behalf at settlement time
+  // (generic-flow-executor.ts ~line 377). Wave 5 will delete that branch; the
+  // kernel issuing its own cert now is what makes the explicit ModuleCompletion
+  // path authoritative and keeps the magic-bindings writes a pure fallback.
+  //
+  // Mirrors the executor's generic-envelope issuance exactly:
+  //   certificateRepo.issue({ processRunId, moduleRef, projectId, epicId,
+  //     payload, certificateHash, authority }).
+  // The repo is idempotent on certificate_hash (re-issuing the same hash returns
+  // the existing row with replayed=true), so the executor's magic-bindings
+  // branch re-issuing the same payload during the additive cutover is safe.
+  const certResult = deps.certificateRepository.issue({
+    processRunId: ctx.processRunId,
+    moduleRef: DEVELOPMENT_PROCESS_MODULE_REF,
+    projectId: ctx.projectId,
+    epicId: ctx.epicId,
+    payload: certificatePayload,
+    certificateHash,
+    authority: 'development_settlement_policy',
+  } satisfies IssueProcessOutcomeCertificateCommand);
+  const certificateRef: ProductRef = {
+    schemaId: DEVELOPMENT_CERTIFICATE_SCHEMA,
+    ref: `certificate:${certResult.record.id}`,
+    digest: certResult.record.certificateHash,
+  };
+
   return {
     event: settled.decision,
     production: {
@@ -477,6 +563,12 @@ function developmentSettlementProduction(
       artifactRef:
         `development-settlement:${ctx.processRunId}:${certificateHash}`,
       contentHash: certificateHash,
+      // KEPT for Wave 5 (the executor's magic-bindings settlement branch still
+      // reads these to re-issue the cert idempotently during the additive
+      // cutover — process-outcome-emitter forwards them to the terminal node,
+      // and the terminal node is what the executor's settlement step sees).
+      // Once Wave 5 deletes that branch and wires the terminal node to forward
+      // `completion`, these bindings become dead and are removed.
       bindings: {
         ...outputBindings,
         certificatePayload,
@@ -485,10 +577,20 @@ function developmentSettlementProduction(
         authority: 'development_settlement_policy',
       },
     },
+    // W3-A1 / Uncle Bob Wave 4 — explicit terminal envelope. The executor
+    // forwards this onto NodeExecutionResult.completion, persists it to the
+    // NodeRun v2 `completion` column, and on crash-resume reads the certificate
+    // reference DIRECTLY from here (bypassing the magic-bindings fallback). The
+    // certificate was just issued above; this ref points at it by content-
+    // address. `terminal: true` mirrors OutcomeDefinition.terminal for all five
+    // development outcomes (verified / rework-required / clarification-required
+    // / blocked / failed — every declared outcome is terminal).
+    completion: buildDevelopmentModuleCompletion(settled.decision, certificateRef),
   };
 }
 
 function developmentSettlementFailure(
+  deps: DevelopmentModuleInstallationDependencies,
   ctx: KernelHandlerContext,
   reason: string,
 ): KernelHandlerResult {
@@ -531,6 +633,24 @@ function developmentSettlementFailure(
     payload: developmentPayload,
   };
   const certificateHash = sha256Hex(certificatePayload);
+  // Uncle Bob Wave 4 — the failure path is also authoritative for its own
+  // certificate (it emits the 'failed' terminal outcome). Same issuance as the
+  // success path; the repo is idempotent so the executor's magic-bindings
+  // re-issue during the additive cutover is safe.
+  const certResult = deps.certificateRepository.issue({
+    processRunId: ctx.processRunId,
+    moduleRef: DEVELOPMENT_PROCESS_MODULE_REF,
+    projectId: ctx.projectId,
+    epicId: ctx.epicId,
+    payload: certificatePayload,
+    certificateHash,
+    authority: 'development_settlement_policy',
+  } satisfies IssueProcessOutcomeCertificateCommand);
+  const certificateRef: ProductRef = {
+    schemaId: DEVELOPMENT_CERTIFICATE_SCHEMA,
+    ref: `certificate:${certResult.record.id}`,
+    digest: certResult.record.certificateHash,
+  };
   return {
     event: 'failed',
     production: {
@@ -538,6 +658,7 @@ function developmentSettlementFailure(
       artifactRef:
         `development-settlement:${ctx.processRunId}:${certificateHash}`,
       contentHash: certificateHash,
+      // KEPT for Wave 5 (additive cutover — see developmentSettlementProduction).
       bindings: {
         certificatePayload,
         certificateHash,
@@ -546,6 +667,8 @@ function developmentSettlementFailure(
         settlementError: reason,
       },
     },
+    // Uncle Bob Wave 4 — explicit terminal envelope for the failure outcome.
+    completion: buildDevelopmentModuleCompletion('failed', certificateRef),
   };
 }
 

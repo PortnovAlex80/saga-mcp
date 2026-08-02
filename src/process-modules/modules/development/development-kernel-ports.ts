@@ -36,6 +36,9 @@ import type {
   ManagedNodeSubmissionReader,
 } from '../../application/managed-node-submission.js';
 import type {
+  ProcessOutcomeCertificateRepository,
+} from '../../persistence/process-outcome-certificate-repository.js';
+import type {
   DevelopmentSettlementInput,
   DevelopmentTaskGraphSnapshot,
   VerifiedIntegrationBundle,
@@ -354,4 +357,16 @@ export interface DevelopmentModuleInstallationDependencies {
   outputRepository: DevelopmentOutputRepository;
   taskGraphPolicy: DevelopmentTaskGraphPolicyPort;
   settlementPolicy: DevelopmentSettlementPolicyPort;
+  /**
+   * Uncle Bob Wave 4 — the settlement kernel now AUTHORS its own certificate
+   * (issuing it through this repo) and emits an explicit ModuleCompletion that
+   * points at the resulting certificateRef. Previously the generic-flow-executor
+   * issued the certificate from the magic-bindings branch on settlement's
+   * behalf; Wave 5 will delete that branch. The kernel became the single
+   * authority for its certificate the moment it started emitting completion.
+   *
+   * Mirrors how Discovery already issues its certificate through its own
+   * settlement service before binding the ref.
+   */
+  certificateRepository: ProcessOutcomeCertificateRepository;
 }

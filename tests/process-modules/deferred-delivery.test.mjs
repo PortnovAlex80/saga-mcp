@@ -127,6 +127,35 @@ test('deferred Delivery settles approval-required before preflight or external e
       evaluate: forbidden('preflight policy'),
     },
     settlementPolicy: new deliveryPolicy.ReferenceDeliverySettlementPolicy(),
+    // Wave 4: the settlement kernel now issues its ProcessOutcomeCertificate
+    // itself (instead of relying on the executor's magic-bindings path). The
+    // deferred approval-required settlement is terminal, so issue() is called
+    // exactly once. A minimal fake is sufficient — the test only asserts the
+    // outcome and certificate payload bindings, not the issued row.
+    certificateRepo: {
+      issue(command) {
+        return {
+          record: {
+            id: 9001,
+            certificateHash: command.certificateHash,
+            processRunId: command.processRunId,
+            moduleRef: command.moduleRef,
+            moduleRefKey: `${command.moduleRef.name}@${command.moduleRef.version}`,
+            projectId: command.projectId,
+            epicId: command.epicId,
+            schemaVersion: command.payload.schemaVersion,
+            decision: command.payload.decision,
+            reasonCodes: command.payload.reasonCodes,
+            rationale: command.payload.rationale,
+            inputHash: command.payload.inputHash,
+            certificatePayload: command.payload,
+            authority: command.authority,
+            issuedAt: '1970-01-01T00:00:00.000Z',
+          },
+          replayed: false,
+        };
+      },
+    },
   };
 
   const handlers = createDeliveryKernelHandlers(deps);

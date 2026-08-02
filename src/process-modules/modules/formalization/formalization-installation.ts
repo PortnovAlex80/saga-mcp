@@ -3,6 +3,24 @@ import { createHash } from 'node:crypto';
 // substrate touch is delegated to an injected BriefProvisioningPort (wired by
 // the composition root), so this module imports no getDb / db.ts.
 import type { ProcessModuleDefinition } from '../../domain/process-module.js';
+// Wave 4 (Uncle Bob): the formalization settlement kernel now issues its own
+// ProcessOutcomeCertificate and emits an explicit ModuleCompletion whose
+// outputEnvelope.certificateRef points at the issued row. This replaces the
+// legacy reliance on the generic-flow-executor's magic-bindings
+// certificateRepo.issue (generic-flow-executor.ts:363-390). Type-only imports
+// from the Wave 1 pure-SPI layer — application→domain is allowed; no runtime
+// edge. The magic bindings are KEPT alongside (additive) until Wave 5 deletes
+// that branch.
+import type {
+  ModuleCompletion,
+} from '../../domain/spi/module-completion.js';
+import type {
+  ProcessModuleOutputEnvelope,
+  ProductRef,
+} from '../../domain/spi/production-envelope.js';
+import type {
+  ProcessOutcomeCertificateRepository,
+} from '../../persistence/process-outcome-certificate-repository.js';
 import {
   type ExactCandidateAcceptance,
   type ExactCandidateAcceptanceDirective,
@@ -109,6 +127,15 @@ export interface FormalizationInstallationDeps {
    * root wires a concrete SQLite-backed adapter.
    */
   briefProvisioning: BriefProvisioningPort;
+  /**
+   * Wave 4 (Uncle Bob) — the settlement kernel now issues the
+   * ProcessOutcomeCertificate ITSELF and emits an explicit ModuleCompletion
+   * whose outputEnvelope.certificateRef points at the issued row. This replaces
+   * the legacy reliance on the generic-flow-executor's magic-bindings
+   * certificateRepo.issue (generic-flow-executor.ts:377). The magic bindings
+   * are KEPT alongside (additive) until Wave 5 deletes that branch.
+   */
+  certificateRepo: ProcessOutcomeCertificateRepository;
 }
 
 interface ExecutionWrites {
@@ -924,6 +951,21 @@ function createSettlementHandler(deps: FormalizationInstallationDeps): KernelHan
           solutionContractReplayed: persisted.replayed,
         };
       }
+      // Wave 4 (Uncle Bob): issue the ProcessOutcomeCertificate IN THE KERNEL
+      // so the explicit ModuleCompletion can carry a content-addressed
+      // certificateRef. Mirrors what generic-flow-executor.ts:363-390 does for
+      // the generic-envelope magic-bindings path. The SolutionContract-bearing
+      // production above is unchanged and stays the module `output` (resolved
+      // via resolveOutput / the lifecycle output payload resolver); the
+      // certificate completion is the NEW additive path. The legacy magic
+      // bindings below (certificatePayload / certificateHash /
+      // certificateSchema) are KEPT (additive) until Wave 5 deletes that branch.
+      const issuedCertificate = issueFormalizationCertificate(
+        deps,
+        ctx,
+        certificatePayload,
+        certificateHash,
+      );
       return {
         event: decision.decision,
         production: {
@@ -940,9 +982,15 @@ function createSettlementHandler(deps: FormalizationInstallationDeps): KernelHan
             acceptanceBaselineHash: baseline.baselineHash,
           },
         },
+        completion: buildFormalizationModuleCompletion(
+          decision.decision,
+          certificatePayload,
+          certificateHash,
+          issuedCertificate,
+        ),
       };
     } catch (error) {
-      return settlementFailure(ctx, errorMessage(error));
+      return settlementFailure(deps, ctx, errorMessage(error));
     }
   };
 }
@@ -1494,6 +1542,7 @@ function kernelFailure(
 }
 
 function settlementFailure(
+  deps: FormalizationInstallationDeps,
   ctx: KernelHandlerContext,
   reason: string,
 ): KernelHandlerResult {
@@ -1522,6 +1571,24 @@ function settlementFailure(
     payload: formalizationPayload,
   };
   const certificateHash = sha256Hex(certificatePayload);
+  // Wave 4 (Uncle Bob): issue the failure certificate IN THE KERNEL too — the
+  // failure outcome is terminal and historically was certified via the
+  // executor's magic-bindings path. Now the explicit ModuleCompletion carries
+  // the content-addressed certificateRef. Best-effort: if the certificate issue
+  // itself throws (it should not for a deterministic failure path), we still
+  // surface the failure production WITHOUT a completion — the executor's magic-
+  // bindings fallback then issues the certificate (additive contract holds).
+  let issuedCertificate: { id: number; certificateHash: string } | null = null;
+  try {
+    issuedCertificate = issueFormalizationCertificate(
+      deps,
+      ctx,
+      certificatePayload,
+      certificateHash,
+    );
+  } catch {
+    issuedCertificate = null;
+  }
   return {
     event: 'failed',
     production: {
@@ -1536,7 +1603,116 @@ function settlementFailure(
         settlementError: reason,
       },
     },
+    completion: issuedCertificate === null
+      ? undefined
+      : buildFormalizationModuleCompletion(
+        'failed',
+        certificatePayload,
+        certificateHash,
+        issuedCertificate,
+      ),
   };
+}
+
+/**
+ * Wave 4 (Uncle Bob) — issue the Formalization ProcessOutcomeCertificate IN
+ * THE KERNEL. This mirrors what the generic-flow-executor's magic-bindings
+ * path does (generic-flow-executor.ts:363-390): the kernel becomes the
+ * certificate issuer so the explicit ModuleCompletion can carry a content-
+ * addressed certificateRef that points at the issued row. Idempotent on
+ * certificateHash (the repository returns the existing row on replay).
+ *
+ * Returns the issued certificate's durable id + hash, which the caller wraps
+ * into a ProductRef for the completion envelope.
+ */
+function issueFormalizationCertificate(
+  deps: FormalizationInstallationDeps,
+  ctx: KernelHandlerContext,
+  certificatePayload: {
+    schemaVersion: string;
+    decision: string;
+    reasonCodes: readonly string[];
+    rationale: string;
+    inputHash: string;
+    payload: unknown;
+  },
+  certificateHash: string,
+): { id: number; certificateHash: string } {
+  const result = deps.certificateRepo.issue({
+    processRunId: ctx.processRunId,
+    moduleRef: FORMALIZATION_PROCESS_MODULE_REF,
+    projectId: ctx.projectId,
+    epicId: ctx.epicId,
+    payload: certificatePayload,
+    certificateHash,
+    authority: 'formalization_settlement_policy',
+  });
+  return {
+    id: result.record.id,
+    certificateHash: result.record.certificateHash,
+  };
+}
+
+/**
+ * Wave 4 (Uncle Bob) — build the explicit ModuleCompletion envelope that
+ * replaces the legacy magic certificate bindings (plan §7.5.6). The
+ * outputEnvelope.certificateRef is the content-addressed pointer settlement
+ * reads to bypass the magic-bindings fallback entirely (Wave 5 deletes that
+ * branch). `terminal` mirrors the formalization outcome definitions: every
+ * settlement decision (formalized / clarification-required / inconsistent /
+ * failed) is terminal.
+ *
+ * The `productions` array is left empty here because the completion envelope's
+ * contract only requires the certificateRef for settlement; the durable
+ * NodeProduction (the SolutionContract-bearing production) is already persisted
+ * by the executor on the NodeRun row and surfaced via `output` through the
+ * resolveOutput hook. This matches the shape proven by
+ * tests/process-modules/module-completion-persistence.test.mjs
+ * (sampleModuleCompletion: productions: []).
+ */
+function buildFormalizationModuleCompletion(
+  outcome: string,
+  _certificatePayload: unknown,
+  certificateHash: string,
+  issuedCertificate: { id: number; certificateHash: string },
+): ModuleCompletion {
+  const certificateRef: ProductRef = {
+    schemaId: FORMALIZATION_CERTIFICATE_SCHEMA_VERSION,
+    ref: `certificate:${issuedCertificate.id}`,
+    digest: issuedCertificate.certificateHash,
+  };
+  // The ProcessModuleOutputEnvelope ↔ ModuleCompletion pair forms a type cycle
+  // (production-envelope.ts:267 / module-completion.ts:114). Both fields are
+  // `readonly`, so the cycle cannot be closed by mutation after construction.
+  // We build it via a single object literal that references itself: `envelope`
+  // is declared first as a mutable holder, then `completion.outputEnvelope`
+  // points at it, and finally `envelope.completion` is assigned in the same
+  // expression that produces `completion`. Because JS object literals evaluate
+  // property values eagerly but the back-reference is a property of `envelope`
+  // itself (assigned after `completion` exists), the cycle resolves at runtime.
+  // The local `Envelopelike` type widens `completion` to allow the single
+  // closing assignment; the returned values are asserted back to the readonly
+  // SPI types (which they structurally satisfy — no mutation occurs afterwards).
+  type Envelopelike = {
+    outcome: string;
+    productions: readonly never[];
+    certificateRef: ProductRef;
+    completion: ModuleCompletion;
+  };
+  const envelope: Envelopelike = {
+    outcome,
+    productions: [],
+    certificateRef,
+    completion: undefined as unknown as ModuleCompletion,
+  };
+  const completion: ModuleCompletion = {
+    outcome,
+    outputEnvelope: envelope as unknown as ProcessModuleOutputEnvelope,
+    terminal: true,
+  };
+  envelope.completion = completion;
+  void certificateHash;
+  return completion;
 }
 
 function createBoundedSettlementGraph(

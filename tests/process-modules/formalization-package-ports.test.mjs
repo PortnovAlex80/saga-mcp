@@ -491,6 +491,10 @@ test('W8-A6: createFormalizationPackageHandlerAdapter wraps the product handler 
     solutionContractRepository: { persist: () => { throw new Error('not used'); }, readByProcessRun: () => null },
     settlementPolicy: { settle: () => { throw new Error('not used'); } },
     candidateAcceptance: { isAcceptedExact: () => false },
+    // Wave 4: the settlement kernel now issues its own certificate and emits a
+    // ModuleCompletion. This stub satisfies the FormalizationInstallationDeps
+    // contract; it is never invoked by the product-handler test below.
+    certificateRepo: { issue: () => { throw new Error('not used'); } },
   };
 
   const handlers = createFormalizationPackageHandlerAdapter({ legacyDeps, ports });

@@ -1,5 +1,12 @@
 import type { ProcessModuleDefinition } from '../../domain/process-module.js';
 import type {
+  ProcessModuleOutputEnvelope,
+  ProductRef,
+} from '../../domain/spi/production-envelope.js';
+import type {
+  ModuleCompletion,
+} from '../../domain/spi/module-completion.js';
+import type {
   HumanInteractionAdapter,
   HumanInteractionContext,
 } from '../../application/human-interaction-registry.js';
@@ -449,9 +456,107 @@ function createDeliverySettlementHandler(
       }
       return deliverySettlementProduction(deps, ctx, input, settled);
     } catch (error) {
-      return deliverySettlementFailure(ctx, errorMessage(error));
+      return deliverySettlementFailure(deps, ctx, errorMessage(error));
     }
   };
+}
+
+/**
+ * Wave 4 (Uncle Bob) — issue the Delivery ProcessOutcomeCertificate IN THE
+ * KERNEL. This mirrors what the generic-flow-executor's magic-bindings path
+ * does (generic-flow-executor.ts:363-390): the kernel becomes the certificate
+ * issuer so the explicit ModuleCompletion can carry a content-addressed
+ * certificateRef that points at the issued row. Idempotent on certificateHash
+ * (the repository returns the existing row on replay).
+ *
+ * Returns the issued certificate's durable id + hash, which the caller wraps
+ * into a ProductRef for the completion envelope.
+ */
+function issueDeliveryCertificate(
+  deps: DeliveryModuleInstallationDependencies,
+  ctx: KernelHandlerContext,
+  certificatePayload: {
+    schemaVersion: string;
+    decision: string;
+    reasonCodes: readonly string[];
+    rationale: string;
+    inputHash: string;
+    payload: unknown;
+  },
+  certificateHash: string,
+): { id: number; certificateHash: string } {
+  const result = deps.certificateRepo.issue({
+    processRunId: ctx.processRunId,
+    moduleRef: DELIVERY_PROCESS_MODULE_REF,
+    projectId: ctx.projectId,
+    epicId: ctx.epicId,
+    payload: certificatePayload,
+    certificateHash,
+    authority: 'delivery_settlement_policy',
+  });
+  return {
+    id: result.record.id,
+    certificateHash: result.record.certificateHash,
+  };
+}
+
+/**
+ * Wave 4 (Uncle Bob) — build the explicit ModuleCompletion envelope that
+ * replaces the legacy magic certificate bindings (plan §7.5.6). The
+ * outputEnvelope.certificateRef is the content-addressed pointer settlement
+ * reads to bypass the magic-bindings fallback entirely (Wave 5 deletes that
+ * branch). `terminal` mirrors the Delivery outcome definitions: all four
+ * (released / approval-required / blocked / failed) are terminal.
+ *
+ * The `productions` array is left empty here because the completion envelope's
+ * contract only requires the certificateRef for settlement; the durable
+ * NodeProduction is already persisted by the executor on the NodeRun row. This
+ * matches the shape proven by tests/process-modules/module-completion-
+ * persistence.test.mjs (sampleModuleCompletion: productions: []).
+ */
+function buildDeliveryModuleCompletion(
+  outcome: string,
+  _certificatePayload: unknown,
+  certificateHash: string,
+  issuedCertificate: { id: number; certificateHash: string },
+): ModuleCompletion {
+  const certificateRef: ProductRef = {
+    schemaId: DELIVERY_CERTIFICATE_SCHEMA,
+    ref: `certificate:${issuedCertificate.id}`,
+    digest: issuedCertificate.certificateHash,
+  };
+  // The ProcessModuleOutputEnvelope ↔ ModuleCompletion pair forms a type cycle
+  // (production-envelope.ts:267 / module-completion.ts:114). Both fields are
+  // `readonly`, so the cycle cannot be closed by mutation after construction.
+  // We build it via a single object literal that references itself: `envelope`
+  // is declared first as a mutable holder, then `completion.outputEnvelope`
+  // points at it, and finally `envelope.completion` is assigned in the same
+  // expression that produces `completion`. Because JS object literals evaluate
+  // property values eagerly but the back-reference is a property of `envelope`
+  // itself (assigned after `completion` exists), the cycle resolves at runtime.
+  // The local `Envelopelike` type widens `completion` to allow the single
+  // closing assignment; the returned values are asserted back to the readonly
+  // SPI types (which they structurally satisfy — no mutation occurs afterwards).
+  type Envelopelike = {
+    outcome: string;
+    productions: readonly never[];
+    certificateRef: ProductRef;
+    completion: ModuleCompletion;
+  };
+  const envelope: Envelopelike = {
+    outcome,
+    productions: [],
+    certificateRef,
+    completion: undefined as unknown as ModuleCompletion,
+  };
+  const completion: ModuleCompletion = {
+    outcome,
+    outputEnvelope: envelope as unknown as ProcessModuleOutputEnvelope,
+    terminal: true,
+  };
+  envelope.completion = completion;
+  void certificateHash;
+  return completion;
 }
 
 function deliverySettlementProduction(
@@ -510,6 +615,17 @@ function deliverySettlementProduction(
     payload: deliveryPayload,
   };
   const certificateHash = sha256Hex(certificatePayload);
+  // Wave 4 (Uncle Bob): issue the ProcessOutcomeCertificate IN THE KERNEL so
+  // the explicit ModuleCompletion can carry a content-addressed certificateRef.
+  // Mirrors what generic-flow-executor.ts:363-390 does for the generic-envelope
+  // magic-bindings path. The legacy magic bindings below are KEPT (additive)
+  // until Wave 5 deletes that branch.
+  const issuedCertificate = issueDeliveryCertificate(
+    deps,
+    ctx,
+    certificatePayload,
+    certificateHash,
+  );
   return {
     event: settled.decision,
     production: {
@@ -525,10 +641,17 @@ function deliverySettlementProduction(
         authority: 'delivery_settlement_policy',
       },
     },
+    completion: buildDeliveryModuleCompletion(
+      settled.decision,
+      certificatePayload,
+      certificateHash,
+      issuedCertificate,
+    ),
   };
 }
 
 function deliverySettlementFailure(
+  deps: DeliveryModuleInstallationDependencies,
   ctx: KernelHandlerContext,
   reason: string,
 ): KernelHandlerResult {
@@ -571,6 +694,24 @@ function deliverySettlementFailure(
     payload: deliveryPayload,
   };
   const certificateHash = sha256Hex(certificatePayload);
+  // Wave 4 (Uncle Bob): issue the failure certificate IN THE KERNEL too — the
+  // failure outcome is terminal and historically was certified via the
+  // executor's magic-bindings path. Now the explicit ModuleCompletion carries
+  // the content-addressed certificateRef. Best-effort: if the certificate issue
+  // itself throws (it should not for a deterministic failure path), we still
+  // surface the failure production WITHOUT a completion — the executor's magic-
+  // bindings fallback then issues the certificate (additive contract holds).
+  let issuedCertificate: { id: number; certificateHash: string } | null = null;
+  try {
+    issuedCertificate = issueDeliveryCertificate(
+      deps,
+      ctx,
+      certificatePayload,
+      certificateHash,
+    );
+  } catch {
+    issuedCertificate = null;
+  }
   return {
     event: 'failed',
     production: {
@@ -586,6 +727,14 @@ function deliverySettlementFailure(
         settlementError: reason,
       },
     },
+    completion: issuedCertificate === null
+      ? undefined
+      : buildDeliveryModuleCompletion(
+        'failed',
+        certificatePayload,
+        certificateHash,
+        issuedCertificate,
+      ),
   };
 }
 
