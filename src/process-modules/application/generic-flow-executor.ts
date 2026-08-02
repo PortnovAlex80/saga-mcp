@@ -483,6 +483,12 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
     // the forbidden-fallback gate (no-execution-scoped-lookup.test.mjs).
     const frame = assembleFrameFromDurableNodeRuns(context.inputPayload, allRuns);
 
+    // Wave 4.5 bridge: side-channel for the LAST non-terminal ModuleCompletion
+    // seen across the node chain. Declared here (before the resume block) so the
+    // resume path can seed it from durable rows. See the comment above the walk
+    // loop for the full rationale.
+    let pendingCompletion: ModuleCompletion | undefined;
+
     // Resume support: if the last completed NodeRun exists, start from the
     // transition out of it. Otherwise start at entry.
     // FU-A Wave 3: prefer the v2-shaped read when the v2 channel is active so
@@ -508,6 +514,21 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
       reexecutePausedNode =
         recheckPausedVerifier
         || lastCompleted.event === 'runtime.paused';
+      // Wave 4.5 bridge: seed pendingCompletion for the resume paths. When a
+      // crash happens AFTER a settlement kernel wrote its completion but BEFORE
+      // the terminal emitter ran (or AFTER the emitter ran but before ProcessRun
+      // reached 'completed'), the resume must still surface the upstream
+      // completion as terminal.result.completion so settlement reads the explicit
+      // certificate ref. We scan the durable rows for the LAST non-terminal
+      // completion, which converges crash-resume and fresh runs on the same
+      // terminal.result.completion. The reexecutePausedNode branch (verifier/
+      // paused re-run) is excluded: a re-executed node may emit a fresh
+      // completion the loop captures instead.
+      if (!reexecutePausedNode) {
+        pendingCompletion = restoreLastNonTerminalCompletion(
+            flow, allRuns, v2, context.processRunId)
+          ?? restoredResult.completion;
+      }
       if (reexecutePausedNode) {
         currentNodeId = lastCompleted.nodeId;
         pausedVerifierInput = inputBeforeNodeRun(
@@ -557,6 +578,9 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
           // Д8: rebuild production from durable NodeRun output_ref + bindings.
           // The bindings carry the certificate envelope (Д6) the previous run
           // produced, so settlement/certificate replay works on restart.
+          // Wave 4.5 bridge: restoreNodeResult already surfaces completion from
+          // the durable v2 column, so the resume terminal path inherits the same
+          // explicit completion the fresh terminal path does — no merge needed.
           return {
             outcome: terminalNode.emitsOutcome,
             result: restoredResult,
@@ -576,6 +600,27 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
     const maxSteps = flow.nodes.length * 4
       + totalRepairBudget * (flow.nodes.length + 2)
       + 10;
+
+    // Wave 4.5 (Uncle Bob bridge): executor-side completion tracking. The four
+    // module settlement kernels emit `completion: ModuleCompletion` in their
+    // KernelHandlerResult (Wave 4). Wave 3 persists it to the NodeRun + restores
+    // it on crash-resume. BUT the terminal node (complete-<code>) is served by
+    // the runtime-owned `process-outcome-emitter`, which does NOT emit a
+    // completion (it is generic — it forwards upstream bindings, not the typed
+    // completion envelope). Without this side-channel merge, the executor reads
+    // `terminal.result.completion` as undefined → the explicitCertificateRef
+    // branch at execute() does not engage → certificate resolves via magic
+    // bindings → Wave 5 (magic-bindings deletion) is unsafe.
+    //
+    // The fix tracks the LAST non-terminal `completion` seen across the node
+    // chain as a side-channel (it does NOT pollute chainInput — completion is a
+    // settlement-time concern, not a data-chain value). When the terminal step
+    // completes without its own completion, the executor merges the tracked
+    // completion onto `terminal.result.completion` so execute()'s explicit path
+    // engages. This makes the settlement kernel's completion surface as
+    // terminal.result.completion, which is the linchpin Wave 5 needs to delete
+    // the magic-bindings branch. (`pendingCompletion` is declared above, before
+    // the resume block, so the resume path can seed it too.)
 
     // The first node receives the module input payload. Each subsequent node
     // receives the PREVIOUS node's output — this is the data chain that lets a
@@ -798,8 +843,33 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
         ?? result.receipt
         ?? chainInput;
 
+      // Wave 4.5 bridge: track the LAST non-terminal completion as a side-channel.
+      // Settlement kernels emit `completion` (Wave 4); the terminal outcome-emitter
+      // does not. By capturing it here (before the terminal check), the merge below
+      // can surface it as terminal.result.completion. This does NOT pollute
+      // chainInput — completion is a settlement concern, not a data-chain value.
+      // The terminal-emitter node is excluded by the `node.emitsOutcome` guard
+      // below: terminal nodes never reach this branch (they return early), so
+      // only settlement/intermediate kernel completions are tracked.
+      if (!node.emitsOutcome && result.completion) {
+        pendingCompletion = result.completion;
+      }
+
       // Terminal node — emit its outcome.
       if (node.emitsOutcome) {
+        // Wave 4.5 bridge: merge the tracked upstream completion onto the
+        // terminal result when the terminal emitter produced none. The
+        // process-outcome-emitter is generic and forwards bindings, not the
+        // typed completion envelope, so terminal.result.completion is otherwise
+        // undefined and settlement would fall back to magic bindings. Merging
+        // here makes execute()'s explicitCertificateRef branch engage — the
+        // linchpin Wave 5 needs to delete the magic-bindings branch. We do NOT
+        // overwrite a completion the terminal emitter itself may one day emit
+        // (defensive: a future terminal handler that sets its own completion
+        // wins over the tracked upstream one).
+        if (!result.completion && pendingCompletion) {
+          result = { ...result, completion: pendingCompletion };
+        }
         return { outcome: node.emitsOutcome, result };
       }
 
@@ -1045,6 +1115,50 @@ function restoreNodeResult(run: NodeRunRecord | NodeRunRecordV2): NodeExecutionR
       : undefined,
     completion,
   };
+}
+
+/**
+ * Wave 4.5 bridge — find the LAST non-terminal completion persisted in the
+ * durable NodeRun rows, for crash-resume seeding of `pendingCompletion`.
+ *
+ * Scans the v2 rows (which carry the `completion` column) in descending order
+ * and returns the first non-null completion whose node is NOT a terminal
+ * outcome-emitter (terminal nodes never carry an authoritative completion —
+ * process-outcome-emitter does not emit one). This is the same side-channel the
+ * fresh-run loop tracks, so crash-resume and fresh runs converge on the same
+ * `terminal.result.completion`. Returns `undefined` when there is no v2 channel,
+ * no rows, or no non-terminal completion (the common case for a fresh run with
+ * no prior settlement node).
+ *
+ * Pure: same (flow, runs, v2, processRunId) → same completion.
+ */
+function restoreLastNonTerminalCompletion(
+  flow: ProcessModuleDefinition['flow'],
+  _allRuns: readonly NodeRunRecord[],
+  v2: ReturnType<GenericFlowExecutor['v2ChannelFor']> extends infer C ? C : null,
+  processRunId: number,
+): ModuleCompletion | undefined {
+  if (!v2) return undefined;
+  // Build a quick lookup of which nodes are terminal (emitsOutcome set).
+  const terminalNodeIds = new Set<string>();
+  for (const n of flow.nodes) {
+    if (n.emitsOutcome) terminalNodeIds.add(n.id);
+  }
+  let rows: readonly NodeRunRecordV2[];
+  try {
+    rows = v2.repo.listV2(processRunId);
+  } catch {
+    return undefined;
+  }
+  // Descending by id so the LAST persisted completion wins (matches the loop's
+  // "track the latest" semantics).
+  const sorted = [...rows].sort((a, b) => b.id - a.id);
+  for (const row of sorted) {
+    if (row.status !== 'completed') continue;
+    if (terminalNodeIds.has(row.nodeId)) continue;
+    if (row.completion) return row.completion;
+  }
+  return undefined;
 }
 
 function inputBeforeNodeRun(
