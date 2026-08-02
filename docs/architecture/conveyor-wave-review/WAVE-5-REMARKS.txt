@@ -1,0 +1,27 @@
+ВОЛНА 5. СТАБИЛЬНЫЕ СТОЛЫ, ХУКИ, НАДЗОР И УБОРКА ЗОМБИ
+
+Статус проверки: выполнено частично; эксплуатационная безопасность не доказана.
+
+Основные замечания:
+
+1. Workspace и hook abstractions появились, но необходимо доказать, что все production paths создают стол только через WorkspacePort и используют стабильный workplace key. Новый execution не должен получать новый чистый каталог вместо прежнего стола.
+
+2. Heartbeat от модели нельзя считать достаточным сигналом жизни. Нужен supervisor-owned lease renewal, независимый от ответов модели, tracker UI и worker process.
+
+3. Необходимо различать молчащего, но живого рабочего и мёртвый процесс. Один idle timeout без проверки PID, времени рождения процесса, lease authority или child close создаёт ложное убийство живой работы.
+
+4. Все причины потери рабочего должны сходиться в один atomic fenced release service: child close, dead PID, expired lease, failed heartbeat, cancellation timeout и supervisor restart.
+
+5. Zombie reaper должен запускаться при старте runtime и периодически, работать single-flight и оставлять системный audit event. admin_override_lifecycle нельзя использовать как обычное действие автоматики, потому что это смешивает системное восстановление с ручным вмешательством.
+
+6. Stale fence должен отклоняться каждым mutating tool, а не только worker_done. Повторы pre-tool, post-tool и completion hooks не должны дублировать продукты и завершение.
+
+7. Нужен сценарий dead supervisor: новый процесс runtime после старта находит истёкшие leases и возвращает незавершённые карточки без участия оператора.
+
+Исследовать и исправить:
+
+Проверить WorkspacePort, lease schema, progress timestamps, heartbeat ownership, supervisor loop, reaper scheduling и все mutating tool guards. Реализовать периодическое продление lease из supervisor. Добавить PID birth verification или эквивалентное доказательство владения процессом. Создать единый fenced release use case и отдельный system audit event. Добавить single-flight lock для reconciliation. Проверить идемпотентность всех hooks и completion.
+
+Критерий завершения:
+
+Replacement worker получает тот же desk и видит старые черновики. Cross-run path traversal невозможен. Устаревший fence запрещает любое изменение. Мёртвый worker и мёртвый supervisor автоматически возвращают работу. Живой молчащий процесс не освобождается ошибочно. Reaper работает без tracker UI и без callback от модели. Системное восстановление и ручной admin override имеют разные audit events.

@@ -1,0 +1,39 @@
+ВОЛНА 7. ИЗОЛЯЦИЯ МОДУЛЕЙ ЗА ПОРТАМИ
+
+Статус проверки: выполнено примерно на 65-70 процентов; принимать нельзя.
+
+Основные замечания:
+
+1. SQLite-адаптеры остались внутри каталогов доменных модулей. Это прямо противоречит требованию удалить getDb, Sqlite-классы и concrete repositories из Development, Delivery и Formalization.
+
+Оставшиеся примеры:
+src/process-modules/modules/development/development-persistence.ts
+src/process-modules/modules/development/sqlite-development-settlement-state.ts
+src/process-modules/modules/delivery/delivery-persistence.ts
+src/process-modules/modules/delivery/sqlite-delivery-runtime.ts
+src/process-modules/modules/delivery/sqlite-delivery-approval-inbox.ts
+src/process-modules/modules/formalization/formalization-persistence.ts
+src/process-modules/modules/formalization/sqlite-formalization-kernel.ts
+src/process-modules/modules/formalization/package/ports/sqlite-formalization-package-adapters.ts
+
+Эти файлы импортируют better-sqlite3 и объявляют Sqlite-классы. Их место в src/infrastructure/process-modules, а внутри модулей должны остаться порты, domain policies и application use cases.
+
+2. Dependency ratchet показывает KNOWN_VIOLATIONS равным нулю, но его классификатор не распознаёт SQLite-реализацию, если она физически лежит внутри modules. Он запрещает ссылки на central persistence, infrastructure, db.ts и schema.ts, но разрешает модулю содержать собственный sqlite-файл. Поэтому нулевой allowlist пока не доказывает чистую границу.
+
+3. Concrete construction действительно перенесён в src/app/product-lifecycle-runtime.ts, а lifecycle implementation imports очищены. Это положительная часть волны.
+
+4. Fake-port тесты Development, Delivery и Formalization проходят в выбранном наборе. Однако нужно сохранить их после физического переноса адаптеров и проверить реальные contracts, а не только текст файлов.
+
+5. Критерий подключения синтетического модуля без изменения runtime-core не закрыт. Extensibility proof красный. Статический modules-ext/external-seo/manifest.json не содержит обязательного поля definition, хотя передаётся в validateProcessModuleManifest.
+
+6. Тест external-seo-package ожидает отсутствующий process-modules/application/external-adapter-registry. Нужно определить единый текущий extension SPI: вернуть публичный registry либо перевести пакет и тест на новый механизм. Красный acceptance test нельзя считать доказательством расширяемости.
+
+7. Проверка D6 с требованием ноль изменений src относительно старого W10 commit непригодна как gate во время текущего рефакторинга. Она должна проверять отдельный эксперимент добавления нового пакета к зафиксированному runtime, а не запрещать все изменения текущей ветки.
+
+Исследовать и исправить:
+
+Перенести все SQLite-реализации Development, Delivery и Formalization в infrastructure. Оставить в модулях только module-local ports и чистые application/domain реализации. Обновить composition root imports. Усилить architecture test запретом better-sqlite3, getDb, файлов sqlite-*.ts и классов Sqlite* внутри modules. Исправить production external-seo manifest и определить актуальный extension registry contract. Переделать extensibility fixture так, чтобы тест создавал новый пакет вне runtime, устанавливал и исполнял его без изменений runtime source.
+
+Критерий завершения:
+
+В src/process-modules/modules нет импортов better-sqlite3, getDb, concrete persistence repositories и классов Sqlite. Все concrete adapters находятся в infrastructure и создаются только composition root. Lifecycle зависит только от contracts/package references. Rule 1-3 allowlist равен нулю и дополнительный physical-placement gate проходит. Каждый модуль проходит contract tests с fake ports. Новый синтетический пакет устанавливается и выполняется без изменения runtime-core.

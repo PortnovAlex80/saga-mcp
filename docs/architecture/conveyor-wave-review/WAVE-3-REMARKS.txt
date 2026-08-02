@@ -1,0 +1,23 @@
+ВОЛНА 3. РАБОЧИЙ ПОЛУЧАЕТ РАБОТУ И НЕ ДИСПЕТЧЕРИЗУЕТ
+
+Статус проверки: выполнено частично.
+
+Основные замечания:
+
+1. Новые launch-пути используют AssignedWork, но старый worker_next и связанный claimScope ещё сохраняются как compatibility path. Пока назначенный рабочий способен снова обратиться к выдаче работы, принцип одного запуска на одну карточку не обеспечен.
+
+2. Ограничение worker_next должно действовать на уровне capability/tool authorization. Удаление текста из skill или инструкции не является защитой.
+
+3. Нужно проверить все launcher implementations, включая Claude runner, legacy adapters, тестовые runner paths и запуск из process modules. Один старый launcher с taskId вместо AssignedWork сохраняет обход архитектуры.
+
+4. Не доказано, что worker_done завершает текущую execution и после этого процесс не получает следующую карточку тем же запуском.
+
+5. Compatibility adapter должен находиться только на infrastructure boundary, иметь telemetry и конкретное условие удаления. Наличие claimScope без счётчика использования не позволяет доказать нулевое применение.
+
+Исследовать и исправить:
+
+Найти все упоминания worker_next, claimScope, readClaimableTasks и старых launcher signatures. Для execution с AssignedWork запретить worker_next в авторизаторе инструментов. Удалить worker_next из capability packages и skills Development и Formalization. Оставшийся compatibility adapter снабдить audit event и метрикой, затем доказать ноль вызовов в end-to-end тестах и удалить адаптер.
+
+Критерий завершения:
+
+Каждый production worker стартует с точными card, workplace, desk, execution и fence. Вызов worker_next из назначенной execution возвращает запрещённую операцию ещё до обращения к очереди. Один launch обрабатывает ровно одну карточку, вызывает worker_done и заканчивается. End-to-end тесты показывают ноль compatibility-path calls.

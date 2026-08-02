@@ -1,0 +1,25 @@
+ВОЛНА 6. СХОЖДЕНИЕ RECOVERY И RESUME
+
+Статус проверки: основная структура создана, но волна не закрыта формально.
+
+Основные замечания:
+
+1. UniversalRecoveryEngine и декларативные recovery policy bindings существуют, но не доказано их использование production executors. Объявленный механизм без production consumer не меняет фактический recovery path.
+
+2. Сохраняются старые scoped lookup API и execution-scoped product fallbacks. Это позволяет verifier найти продукт текущей попытки вместо точного продукта карточки или durable workplace production.
+
+3. Необходимо проверить restoreFrame и остальные resume assemblers. Восстановление cumulative или execution-local frame может потерять точные ссылки на продукт предыдущей попытки.
+
+4. Стол местами всё ещё привязан к execution, а не к workplace/card. При semantic repair новый execution рискует получить чистый desk, хотя должен продолжить ту же физическую работу.
+
+5. RecoveryCase и RecoveryIssue реализованы, но полный production путь issue -> policy -> bounded attempt -> action -> resume не доказан end-to-end тестом.
+
+6. Exhaustion должен детерминированно приводить к pause или fail согласно pinned policy. Нельзя оставлять это решению конкретного executor или свободному тексту ошибки.
+
+Исследовать и исправить:
+
+Найти production consumers UniversalRecoveryEngine, routeRecoveryAction и всех recovery policy bindings. Если consumers отсутствуют, встроить механизм в единый execution path. Удалить latest-execution, process-scope и execution-scoped product fallbacks. Перевести verifiers на exact ProductRef или durable workplace production. Сделать desk идентичным для первоначальной попытки, crash resume и semantic repair. Добавить полный end-to-end тест с первой неудачной попыткой, сохранённым черновиком, новой execution, исправлением прежнего продукта и успешной проверкой.
+
+Критерий завершения:
+
+Recovery не создаёт новую карточку и чистый desk. Новая execution видит и исправляет продукт предыдущей попытки. Verifier читает точную ссылку, а не последний найденный результат. Число попыток ограничено durable RecoveryCase. Exhaustion всегда даёт ожидаемый pause или fail. P18 и полный recovery end-to-end проходят.
