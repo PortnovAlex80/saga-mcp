@@ -10,7 +10,6 @@
 //   - acceptance capabilities: capability requirements + guard bindings.
 //   - output contracts: input/output contract refs + declared outcomes.
 //   - reviewer skills: pinned skill resource index entries.
-//   - recovery policies: per-node recovery action maps (valid actions only).
 //   - legacy engine adapter: port-injected candidate-observation wrapper.
 //
 // These tests run against the compiled dist/ output (the contributions are
@@ -27,10 +26,6 @@ import {
   validateCapabilityRequirement,
   validateGuardBinding,
 } from '../../dist/process-modules/domain/spi/tool-contribution.js';
-import {
-  validateRecoveryPolicyBinding,
-  RECOVERY_ACTIONS,
-} from '../../dist/process-modules/domain/spi/recovery-definitions.js';
 import { RESOURCE_KINDS } from '../../dist/process-modules/domain/spi/resource-index.js';
 
 import {
@@ -68,11 +63,6 @@ import {
   DEVELOPMENT_PLANNER_SKILL,
   DEVELOPMENT_VERIFIER_SKILL,
 } from '../../dist/process-modules/modules/development/package/contributions/reviewer-skills.js';
-
-import {
-  DEVELOPMENT_RECOVERY_POLICY_BINDINGS,
-  DEVELOPMENT_RECOVERY_TRIGGERS,
-} from '../../dist/process-modules/modules/development/package/contributions/recovery-policies.js';
 
 import {
   DEVELOPMENT_PACKAGE_HANDLER_IDS,
@@ -308,77 +298,6 @@ test('W9-A4 reviewer skills: resource index entries strip package-local metadata
 });
 
 // ---------------------------------------------------------------------------
-// Recovery policies.
-// ---------------------------------------------------------------------------
-
-test('W9-A4 recovery policies: every binding validates against the Wave 1 SPI', async () => {
-  for (const b of DEVELOPMENT_RECOVERY_POLICY_BINDINGS) {
-    const r = await validateRecoveryPolicyBinding(b);
-    assert.ok(r.ok, `invalid binding ${b.nodeId}: ${JSON.stringify(r.errors)}`);
-  }
-});
-
-test('W9-A4 recovery policies: declares one binding per verifier node', () => {
-  const nodeIds = DEVELOPMENT_RECOVERY_POLICY_BINDINGS.map((b) => b.nodeId).sort();
-  assert.deepEqual(nodeIds, [
-    'execute-implementation-workset',
-    'integrate-release-candidate',
-    'resolve-task-graph',
-    'settle-development',
-    'verify-acceptance-workset',
-  ]);
-});
-
-test('W9-A4 recovery policies: every action is a valid RecoveryAction', () => {
-  for (const b of DEVELOPMENT_RECOVERY_POLICY_BINDINGS) {
-    assert.ok(b.nodeId.length > 0, 'nodeId must be non-empty');
-    for (const [key, action] of Object.entries(b.actionMap)) {
-      assert.ok(
-        RECOVERY_ACTIONS.has(action),
-        `${b.nodeId}.${key} has invalid action: ${action}`,
-      );
-    }
-  }
-});
-
-test('W9-A4 recovery policies: repair-required routes the resolver back to the planner', () => {
-  const resolver = DEVELOPMENT_RECOVERY_POLICY_BINDINGS.find(
-    (b) => b.nodeId === 'resolve-task-graph',
-  );
-  assert.ok(resolver);
-  assert.equal(
-    resolver.actionMap[DEVELOPMENT_RECOVERY_TRIGGERS.repairRequired],
-    'return-to-producer',
-  );
-});
-
-test('W9-A4 recovery policies: candidate-drifted terminates (post-freeze mutation is unrecoverable)', () => {
-  const integrate = DEVELOPMENT_RECOVERY_POLICY_BINDINGS.find(
-    (b) => b.nodeId === 'integrate-release-candidate',
-  );
-  assert.ok(integrate);
-  assert.equal(
-    integrate.actionMap[DEVELOPMENT_RECOVERY_TRIGGERS.candidateDrifted],
-    'terminate',
-  );
-  const verify = DEVELOPMENT_RECOVERY_POLICY_BINDINGS.find(
-    (b) => b.nodeId === 'verify-acceptance-workset',
-  );
-  assert.ok(verify);
-  assert.equal(
-    verify.actionMap[DEVELOPMENT_RECOVERY_TRIGGERS.candidateDrifted],
-    'terminate',
-  );
-});
-
-test('W9-A4 recovery policies: settlement decision outcomes are terminal', () => {
-  const settle = DEVELOPMENT_RECOVERY_POLICY_BINDINGS.find((b) => b.nodeId === 'settle-development');
-  assert.ok(settle);
-  assert.equal(settle.actionMap[DEVELOPMENT_RECOVERY_TRIGGERS.reworkRequired], 'terminate');
-  assert.equal(settle.actionMap[DEVELOPMENT_RECOVERY_TRIGGERS.blocked], 'terminate');
-});
-
-// ---------------------------------------------------------------------------
 // Legacy engine adapter.
 // ---------------------------------------------------------------------------
 
@@ -491,8 +410,6 @@ test('W9-A4 barrel: re-exports all five contribution categories + the adapter', 
   assert.ok(typeof barrel.DEVELOPMENT_DECLARED_OUTCOMES === 'object');
   // Reviewer skills.
   assert.ok(typeof barrel.DEVELOPMENT_SKILL_RESOURCE_INDEX_ENTRIES === 'object');
-  // Recovery policies.
-  assert.ok(typeof barrel.DEVELOPMENT_RECOVERY_POLICY_BINDINGS === 'object');
   // Legacy engine adapter.
   assert.equal(typeof barrel.createDevelopmentPackageHandlerAdapter, 'function');
   assert.equal(typeof barrel.createFakeDevelopmentCandidateObservationPort, 'function');
@@ -503,5 +420,4 @@ test('W9-A4 barrel: re-exported aggregates match the per-file aggregates', () =>
   assert.equal(barrel.DEVELOPMENT_TOOL_CONTRIBUTIONS, DEVELOPMENT_TOOL_CONTRIBUTIONS);
   assert.equal(barrel.DEVELOPMENT_CAPABILITY_REQUIREMENTS, DEVELOPMENT_CAPABILITY_REQUIREMENTS);
   assert.equal(barrel.DEVELOPMENT_GUARD_BINDINGS, DEVELOPMENT_GUARD_BINDINGS);
-  assert.equal(barrel.DEVELOPMENT_RECOVERY_POLICY_BINDINGS, DEVELOPMENT_RECOVERY_POLICY_BINDINGS);
 });

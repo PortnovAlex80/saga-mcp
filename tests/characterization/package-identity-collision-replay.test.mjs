@@ -303,14 +303,18 @@ test('3a. ManagedArtifactProductionRecord shape: carries contentHash, determinis
     });
 
     const ledger = new SqliteManagedProductionLedger(db);
-    const rows = ledger.listArtifactsForExecution({
+    // WAVE 6 CUTOVER: the execution-scoped listArtifactsForExecution method was
+    // removed (execution-context-assembler §9.11: no by-execution fallback).
+    // The canonical durable read is listArtifactsForNodeInProcessRun (CGAD P18).
+    // This fixture writes one row keyed by (processRunId, moduleRef, nodeId) +
+    // board/task vocab, so the node-scope read returns that same row — the
+    // record-shape pin below still holds (intentId/taskId/executionId remain
+    // columns on the returned record, just no longer SQL filters).
+    const rows = ledger.listArtifactsForNodeInProcessRun(
       processRunId,
-      moduleRef: 'product-discovery@3.0.0',
-      nodeId: 'discovery-lm',
-      intentId: 7,
-      taskId: 11,
-      executionId: 'exec-A',
-    });
+      'product-discovery@3.0.0',
+      'discovery-lm',
+    );
     assert.equal(rows.length, 1);
     const rec = rows[0];
 
@@ -346,14 +350,11 @@ test('3a. ManagedArtifactProductionRecord shape: carries contentHash, determinis
       operation: 'create',
     });
     const ledger2 = new SqliteManagedProductionLedger(db);
-    const rows2 = ledger2.listArtifactsForExecution({
-      processRunId: processRunId2,
-      moduleRef: 'product-discovery@3.0.0',
-      nodeId: 'discovery-lm',
-      intentId: 7,
-      taskId: 12,
-      executionId: 'exec-B',
-    });
+    const rows2 = ledger2.listArtifactsForNodeInProcessRun(
+      processRunId2,
+      'product-discovery@3.0.0',
+      'discovery-lm',
+    );
     assert.equal(rows2[0].contentHash, rows[0].contentHash);
 
     db.close();

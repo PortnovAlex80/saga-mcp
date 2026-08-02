@@ -269,30 +269,15 @@ test('W8-A6: provisionBriefRoot reuses a pre-existing accepted brief in the epic
 // ---------------------------------------------------------------------------
 
 test('W8-A6: SqliteFormalizationManagedProduction delegates to the shared ledger', () => {
-  // Use a stub ledger to prove the adapter is a pure pass-through that
-  // translates the query shape. No DB needed for this contract check.
+  // WAVE 6 CUTOVER: the adapter's execution-scoped methods
+  // (listArtifactsForExecution / listTracesForExecution) were removed alongside
+  // the shared ledger's. The adapter now exposes ONLY the durable node-scope
+  // reads (canonical product-resolution channel, CGAD P18) and the task-scope
+  // reads (single-task diagnostics). This test proves the adapter is a pure
+  // pass-through that forwards each surviving method to the shared ledger and
+  // normalizes records to the module-local write shape. No DB needed.
   const calls = [];
   const stubLedger = {
-    listArtifactsForExecution(query) {
-      calls.push(['artifacts-exec', query]);
-      return [{
-        ledgerId: 1, processRunId: query.processRunId, moduleRef: query.moduleRef,
-        nodeId: query.nodeId, intentId: query.intentId, taskId: query.taskId,
-        executionId: query.executionId, artifactId: 100, artifactType: 'PRD',
-        artifactStatus: 'accepted', contentHash: 'a'.repeat(64),
-        operation: 'create', recordedAt: 't',
-      }];
-    },
-    listTracesForExecution(query) {
-      calls.push(['traces-exec', query]);
-      return [{
-        ledgerId: 2, processRunId: query.processRunId, moduleRef: query.moduleRef,
-        nodeId: query.nodeId, intentId: query.intentId, taskId: query.taskId,
-        executionId: query.executionId, traceId: 200, sourceId: 100,
-        targetType: 'artifact', targetId: 50, linkType: 'derived_from',
-        traceHash: 'b'.repeat(64), recordedAt: 't',
-      }];
-    },
     listArtifactsForTaskInProcessRun(pr, mod, node, task) {
       calls.push(['artifacts-task', pr, mod, node, task]);
       return [];
@@ -303,29 +288,42 @@ test('W8-A6: SqliteFormalizationManagedProduction delegates to the shared ledger
     },
     listArtifactsForNodeInProcessRun(pr, mod, node) {
       calls.push(['artifacts-run', pr, mod, node]);
-      return [];
+      return [{
+        ledgerId: 1, processRunId: pr, moduleRef: mod,
+        nodeId: node, intentId: 11, taskId: 22,
+        executionId: 'exec-1', artifactId: 100, artifactType: 'PRD',
+        artifactStatus: 'accepted', contentHash: 'a'.repeat(64),
+        operation: 'create', recordedAt: 't',
+      }];
     },
     listTracesForNodeInProcessRun(pr, mod, node) {
       calls.push(['traces-run', pr, mod, node]);
-      return [];
+      return [{
+        ledgerId: 2, processRunId: pr, moduleRef: mod,
+        nodeId: node, intentId: 11, taskId: 22,
+        executionId: 'exec-1', traceId: 200, sourceId: 100,
+        targetType: 'artifact', targetId: 50, linkType: 'derived_from',
+        traceHash: 'b'.repeat(64), recordedAt: 't',
+      }];
     },
   };
   const adapter = new SqliteFormalizationManagedProduction(stubLedger);
-  const query = {
-    processRunId: 7, moduleRef: 'solution-formalization@1.0.0', nodeId: 'define-product-contract',
-    intentId: 11, taskId: 22, executionId: 'exec-1',
-  };
-  const arts = adapter.listArtifactsForExecution(query);
-  const traces = adapter.listTracesForExecution(query);
+  // The durable node-scope channel is the AUTHORITATIVE product-resolution
+  // path. Drive it with a concrete (processRunId, moduleRef, nodeId).
+  const processRunId = 7;
+  const moduleRef = 'solution-formalization@1.0.0';
+  const nodeId = 'define-product-contract';
+  const arts = adapter.listArtifactsForNodeInProcessRun(processRunId, moduleRef, nodeId);
+  const traces = adapter.listTracesForNodeInProcessRun(processRunId, moduleRef, nodeId);
   adapter.listArtifactsForTaskInProcessRun(7, 'm', 'n', 22);
   adapter.listTracesForTaskInProcessRun(7, 'm', 'n', 22);
-  adapter.listArtifactsForNodeInProcessRun(7, 'm', 'n');
-  adapter.listTracesForNodeInProcessRun(7, 'm', 'n');
 
-  // The query was forwarded with identical field values.
-  assert.equal(calls[0][0], 'artifacts-exec');
-  assert.equal(calls[0][1].processRunId, 7);
-  assert.equal(calls[0][1].executionId, 'exec-1');
+  // The node-scope calls forwarded the arguments verbatim.
+  assert.equal(calls[0][0], 'artifacts-run');
+  assert.equal(calls[0][1], 7);
+  assert.equal(calls[0][2], moduleRef);
+  assert.equal(calls[0][3], nodeId);
+  assert.equal(calls[1][0], 'traces-run');
 
   // Records were normalized to the module-local write shape.
   assert.equal(arts.length, 1);
@@ -335,11 +333,9 @@ test('W8-A6: SqliteFormalizationManagedProduction delegates to the shared ledger
   assert.equal(traces[0].traceId, 200);
   assert.equal(traces[0].linkType, 'derived_from');
 
-  // The run-scoped fallbacks forwarded too.
+  // The task-scoped diagnostics forwarded too.
   assert.equal(calls[2][0], 'artifacts-task');
   assert.equal(calls[3][0], 'traces-task');
-  assert.equal(calls[4][0], 'artifacts-run');
-  assert.equal(calls[5][0], 'traces-run');
 });
 
 // ---------------------------------------------------------------------------
@@ -485,8 +481,6 @@ test('W8-A6: createFormalizationPackageHandlerAdapter wraps the product handler 
   // enough to construct the map.
   const legacyDeps = {
     ledger: {
-      listArtifactsForExecution: () => [],
-      listTracesForExecution: () => [],
       listArtifactsForTaskInProcessRun: () => [],
       listTracesForTaskInProcessRun: () => [],
       listArtifactsForNodeInProcessRun: () => [],
@@ -532,8 +526,6 @@ test('W8-A6: buildSqliteFormalizationPackagePorts wires all three ports', () => 
   const { temp, db, prdId } = briefFixture();
   try {
     const stubLedger = {
-      listArtifactsForExecution: () => [],
-      listTracesForExecution: () => [],
       listArtifactsForTaskInProcessRun: () => [],
       listTracesForTaskInProcessRun: () => [],
       listArtifactsForNodeInProcessRun: () => [],

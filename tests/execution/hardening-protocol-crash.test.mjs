@@ -12,9 +12,15 @@
 //     1. ProtocolRun  — the step state machine (Wave 4 ProtocolRuntime +
 //        SqliteProtocolRunRepository). Crash between startStep /
 //        completeStep / advance / completion.
-//     2. Recovery     — the recovery decision loop (Wave 4
-//        UniversalRecoveryEngine + SqliteRecoveryCaseRepository). Crash
-//        before/after recordIssue, around exhaustion, and across restart.
+//     2. Recovery     — the durable recovery-case loop (Wave 3
+//        SqliteRecoveryCaseRepository, driven directly via recordIssue).
+//        Crash before/after recordIssue, around exhaustion, and across
+//        restart. (Wave 6 cutover: the dead UniversalRecoveryEngine SPI was
+//        removed; production recovery is flow.recovery[] executed by
+//        generic-flow-executor.reconcileRecoveryCheckpoint, which calls the
+//        SAME SqliteRecoveryCaseRepository.recordIssue port these tests now
+//        drive directly. The crash-durability contract under test is the
+//        repository's, not the deleted engine wrapper's.)
 //     3. CallInstance  — the consequential-call lifecycle (Wave 5
 //        SqliteCallInstanceRepository): materialize -> edit -> validate ->
 //        submit -> succeed -> seal. Crash at every transition boundary.
@@ -22,7 +28,7 @@
 // HOW CRASHES ARE INJECTED (spec §5 "Test design principles")
 //   - Use the REAL infrastructure: a real SQLite FILE (not :memory:), the
 //     real repositories, the real ProtocolRuntime state machine, the real
-//     UniversalRecoveryEngine. No mocks of the durable surface.
+//     SqliteRecoveryCaseRepository. No mocks of the durable surface.
 //   - "Process death" = closeDb() (closes the DB handle and clears the
 //     src/db.ts singleton) and drop every in-memory object (runtime,
 //     engine, repository instances). The next getDb() reopens a FRESH
@@ -54,11 +60,6 @@ import test from 'node:test';
 // ---------------------------------------------------------------------------
 
 import { ProtocolRuntime } from '../../dist/process-modules/application/protocol-runtime.js';
-import {
-  UniversalRecoveryEngine,
-  routeRecoveryAction,
-  routeRecoveryActionOnExhaustion,
-} from '../../dist/process-modules/application/recovery-engine.js';
 import { SqliteProtocolRunRepository } from '../../dist/process-modules/persistence/sqlite-protocol-run-repository.js';
 import { SqliteCallInstanceRepository } from '../../dist/process-modules/persistence/sqlite-call-instance-repository.js';
 import { SqliteRecoveryCaseRepository } from '../../dist/process-modules/persistence/sqlite-recovery-case-repository.js';
@@ -587,18 +588,22 @@ test('§2 Recovery: crash AFTER recordIssue is an idempotent replay (no double-s
   let processRunId;
   try {
     // --- session 1: record one verifier failure, then crash ---
+    // Wave 6 cutover: drive SqliteRecoveryCaseRepository.recordIssue directly
+    // (the exact port generic-flow-executor.reconcileRecoveryCheckpoint calls).
+    // The deleted UniversalRecoveryEngine only wrapped this port + a pure
+    // disposition router; the crash-durability contract under test is the
+    // repository's.
     let db = await world.open();
     processRunId = await seedProcessRun(db);
     const src1 = freshNodeRun(db, processRunId);
     const recoveryRepo = new SqliteRecoveryCaseRepository(db);
-    const engine = new UniversalRecoveryEngine(recoveryRepo);
-    const decision1 = engine.recordAndRoute(
+    const recorded1 = recoveryRepo.recordIssue(
       buildRecoveryInput(processRunId, src1, 'OFF_TARGET', 3),
     );
-    assert.equal(decision1.replayed, false, 'first recording is not a replay');
-    assert.equal(decision1.exhausted, false, 'first attempt within budget');
-    assert.equal(decision1.action, 'return-to-producer', 'repair disposition -> producer');
-    const caseId = decision1.recorded.caseRecord.id;
+    assert.equal(recorded1.replayed, false, 'first recording is not a replay');
+    assert.equal(recorded1.exhausted, false, 'first attempt within budget');
+    assert.equal(recorded1.caseRecord.status, 'active', 'case stays active for a repair round');
+    const caseId = recorded1.caseRecord.id;
 
     // CRASH after the durable recordIssue returned.
     world.kill();
@@ -606,22 +611,21 @@ test('§2 Recovery: crash AFTER recordIssue is an idempotent replay (no double-s
     // --- session 2: re-record the SAME (source NodeRun + issue) -> idempotent replay ---
     db = await world.open();
     const recoveryRepo2 = new SqliteRecoveryCaseRepository(db);
-    const engine2 = new UniversalRecoveryEngine(recoveryRepo2);
-    const decision2 = engine2.recordAndRoute(
+    const recorded2 = recoveryRepo2.recordIssue(
       buildRecoveryInput(processRunId, src1, 'OFF_TARGET', 3),
     );
-    assert.equal(decision2.replayed, true, 'same source + same issue replays');
-    assert.equal(decision2.exhausted, false, 'replay does not consume the budget');
-    assert.equal(decision2.recorded.caseRecord.id, caseId, 'same case row');
+    assert.equal(recorded2.replayed, true, 'same source + same issue replays');
+    assert.equal(recorded2.exhausted, false, 'replay does not consume the budget');
+    assert.equal(recorded2.caseRecord.id, caseId, 'same case row');
     assert.equal(
-      decision2.recorded.caseRecord.attemptCount,
-      decision1.recorded.caseRecord.attemptCount,
+      recorded2.caseRecord.attemptCount,
+      recorded1.caseRecord.attemptCount,
       'attempt counter NOT incremented on replay (no lost/skipped accounting)',
     );
     // The feedback envelope is byte-identical (content-addressed).
     assert.equal(
-      sha256Hex(decision2.feedback),
-      sha256Hex(decision1.feedback),
+      sha256Hex(recorded2.feedback),
+      sha256Hex(recorded1.feedback),
       'feedback envelope stable across crash (byte-level replay equality)',
     );
   } finally {
@@ -639,11 +643,11 @@ test('§2 Recovery: exhaustion accounting survives a crash between repair rounds
     const maxAttempts = 2;
     // Round 1: fresh source NodeRun #1 (attempt 1 <= max → active, not exhausted).
     const src1 = freshNodeRun(db, processRunId);
-    let engine = new UniversalRecoveryEngine(new SqliteRecoveryCaseRepository(db));
-    const d1 = engine.recordAndRoute(
+    let recoveryRepo = new SqliteRecoveryCaseRepository(db);
+    const r1 = recoveryRepo.recordIssue(
       buildRecoveryInput(processRunId, src1, 'STILL_OFF', maxAttempts),
     );
-    assert.equal(d1.exhausted, false, 'attempt 1 of 2 not exhausted');
+    assert.equal(r1.exhausted, false, 'attempt 1 of 2 not exhausted');
 
     // CRASH between round 1 and round 2.
     world.kill();
@@ -652,12 +656,12 @@ test('§2 Recovery: exhaustion accounting survives a crash between repair rounds
     // a repair round, NOT exhausted — exhaustion fires at attempt > max).
     db = await world.open();
     const src2 = freshNodeRun(db, processRunId);
-    engine = new UniversalRecoveryEngine(new SqliteRecoveryCaseRepository(db));
-    const d2 = engine.recordAndRoute(
+    recoveryRepo = new SqliteRecoveryCaseRepository(db);
+    const r2 = recoveryRepo.recordIssue(
       buildRecoveryInput(processRunId, src2, 'STILL_OFF', maxAttempts),
     );
-    assert.equal(d2.exhausted, false, 'attempt 2 == maxAttempts is still a repair round');
-    assert.equal(d2.recorded.caseRecord.attemptCount, 2, 'round 2 accounted across the crash');
+    assert.equal(r2.exhausted, false, 'attempt 2 == maxAttempts is still a repair round');
+    assert.equal(r2.caseRecord.attemptCount, 2, 'round 2 accounted across the crash');
 
     // CRASH between round 2 and the exhausting round 3.
     world.kill();
@@ -665,13 +669,15 @@ test('§2 Recovery: exhaustion accounting survives a crash between repair rounds
     // Round 3 on a fresh process: attempt 3 > max → exhausted, case terminal.
     db = await world.open();
     const src3 = freshNodeRun(db, processRunId);
-    engine = new UniversalRecoveryEngine(new SqliteRecoveryCaseRepository(db));
-    const d3 = engine.recordAndRoute(
+    recoveryRepo = new SqliteRecoveryCaseRepository(db);
+    const r3 = recoveryRepo.recordIssue(
       buildRecoveryInput(processRunId, src3, 'STILL_OFF', maxAttempts),
     );
-    assert.equal(d3.exhausted, true, 'attempt 3 > 2 IS exhausted (budget tracked across two crashes)');
-    assert.equal(d3.action, 'escalate', 'exhaustion promotes repair -> escalate');
-    const caseRow = d3.recorded.caseRecord;
+    assert.equal(r3.exhausted, true, 'attempt 3 > 2 IS exhausted (budget tracked across two crashes)');
+    // The terminal outcome is the case status, not a routed action — the deleted
+    // engine's 'escalate' promotion was advisory; the durable contract is the
+    // exhausted case (FlowRecoveryDefinition.onExhausted reads this status).
+    const caseRow = r3.caseRecord;
     assert.equal(caseRow.status, 'exhausted', 'case is terminal exhausted');
     assert.equal(caseRow.attemptCount, 3, 'all three attempts accounted for, none lost');
 
@@ -680,12 +686,12 @@ test('§2 Recovery: exhaustion accounting survives a crash between repair rounds
     // (the exhausted case is immutable history). This is the durable
     // contract: exhaustion is terminal-for-that-case, never silently extended.
     const src4 = freshNodeRun(db, processRunId);
-    const d4 = engine.recordAndRoute(
+    const r4 = recoveryRepo.recordIssue(
       buildRecoveryInput(processRunId, src4, 'STILL_OFF', maxAttempts),
     );
-    assert.notEqual(d4.recorded.caseRecord.id, caseRow.id, 'a fresh source opens a NEW case');
-    assert.equal(d4.recorded.caseRecord.status, 'active', 'the new case is active (not the exhausted one)');
-    assert.equal(d4.recorded.caseRecord.attemptCount, 1, 'new case restarts the attempt budget at 1');
+    assert.notEqual(r4.caseRecord.id, caseRow.id, 'a fresh source opens a NEW case');
+    assert.equal(r4.caseRecord.status, 'active', 'the new case is active (not the exhausted one)');
+    assert.equal(r4.caseRecord.attemptCount, 1, 'new case restarts the attempt budget at 1');
     // The exhausted case is unchanged (immutable history).
     const exhaustedCase = new SqliteRecoveryCaseRepository(db).readCase(caseRow.id);
     assert.equal(exhaustedCase.status, 'exhausted', 'exhausted case stays terminal');
@@ -696,24 +702,52 @@ test('§2 Recovery: exhaustion accounting survives a crash between repair rounds
   }
 });
 
-test('§2 Recovery: routeRecoveryAction is pure — same issue+binding yields the same action pre- and post-crash', () => {
-  // The router is stateless and content-addressed; this pins that property so
-  // a crash between deciding the action and recording it cannot diverge.
-  const issue = {
-    schemaVersion: 'saga3.recovery-issue.v1',
-    policyId: 'p',
-    reasonCode: 'XYZ',
-    disposition: 'retry',
-    message: 'm',
-  };
-  const binding = { actionMap: { XYZ: 'retry-current-node' } };
-  const before = routeRecoveryAction(issue, binding);
-  const after = routeRecoveryAction(issue, binding);
-  assert.equal(before, 'retry-current-node');
-  assert.equal(before, after, 'pure router: deterministic across the crash boundary');
-  // Exhaustion ladder is also pure.
-  assert.equal(routeRecoveryActionOnExhaustion('retry-current-node'), 'escalate');
-  assert.equal(routeRecoveryActionOnExhaustion('request-human'), 'request-human');
+test('§2 Recovery: recordIssue is deterministic — same issue+source yields the same durable envelope pre- and post-crash', async () => {
+  // Wave 6 cutover: the deleted routeRecoveryAction was a pure router over
+  // (issue, policyBinding). The crash-durability invariant it pinned — "the
+  // same inputs yield the same outputs across the crash boundary" — now lives
+  // in the durable repository: recordIssue is idempotent on (source NodeRun,
+  // immutable issue) and content-addresses the feedback envelope. This test
+  // pins that property so a crash between recording and resuming cannot
+  // diverge. The closed RecoveryAction union the old router returned is still
+  // asserted by recovery-conformance's spi-sanity test (the union lives in
+  // the Wave 1 SPI, which is retained).
+  const { world, dir } = makeWorld('reco-pure');
+  let processRunId;
+  try {
+    let db = await world.open();
+    processRunId = await seedProcessRun(db);
+    const src = freshNodeRun(db, processRunId);
+    const recoveryRepo = new SqliteRecoveryCaseRepository(db);
+    const input = buildRecoveryInput(processRunId, src, 'DETERMINISTIC', 3);
+    const before = recoveryRepo.recordIssue(input);
+
+    world.kill();
+
+    db = await world.open();
+    const recoveryRepo2 = new SqliteRecoveryCaseRepository(db);
+    const after = recoveryRepo2.recordIssue(input);
+    // Same source + same issue -> same durable envelope (replay), byte-identical.
+    assert.equal(after.replayed, true, 'second recording is an idempotent replay');
+    assert.equal(
+      sha256Hex(after.feedback),
+      sha256Hex(before.feedback),
+      'feedback envelope is byte-identical pre- and post-crash (deterministic, content-addressed)',
+    );
+    assert.equal(
+      after.caseRecord.id,
+      before.caseRecord.id,
+      'same durable case row across the crash boundary',
+    );
+    assert.equal(
+      after.caseRecord.attemptCount,
+      before.caseRecord.attemptCount,
+      'attempt counter unchanged across the crash boundary',
+    );
+  } finally {
+    world.kill();
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 // ===========================================================================

@@ -8,7 +8,6 @@
 //   - tool contributions: every ModuleToolContribution validates.
 //   - acceptance capabilities: capability requirements + guard bindings.
 //   - output contracts: input/output contract refs + declared outcomes.
-//   - recovery policies: per-node recovery action maps (valid actions only).
 //   - external-effects subtree: publish-deploy / observe-release adapters.
 //   - human-approval subtree: approve-release adapter + statuses.
 //   - idempotency subtree: cross-run action-key strategy.
@@ -53,11 +52,6 @@ import {
   DELIVERY_DECLARED_OUTCOMES,
   DELIVERY_OUTCOME_CODES,
 } from '../../dist/process-modules/modules/delivery/package/contributions/output-contracts.js';
-
-import {
-  DELIVERY_RECOVERY_POLICY_BINDINGS,
-  DELIVERY_RECOVERY_TRIGGERS,
-} from '../../dist/process-modules/modules/delivery/package/contributions/recovery-policies.js';
 
 import {
   DELIVERY_EXTERNAL_EFFECT_ADAPTER_CONTRIBUTIONS,
@@ -290,84 +284,6 @@ test('W9-A6 output contracts: declared outcomes are all terminal and match the d
     assert.equal(o.terminal, true, `${o.outcome} must be terminal`);
     assert.ok(o.description.length > 0, `${o.outcome} needs a description`);
   }
-});
-
-// ---------------------------------------------------------------------------
-// Recovery policies.
-// ---------------------------------------------------------------------------
-
-const VALID_RECOVERY_ACTIONS = new Set([
-  'retry-current-node',
-  'return-to-producer',
-  'enter-recovery-node',
-  'request-human',
-  'pause-external',
-  'escalate',
-  'terminate',
-]);
-
-test('W9-A6 recovery policies: declares one binding per flow node', () => {
-  const nodeIds = DELIVERY_RECOVERY_POLICY_BINDINGS.map((b) => b.nodeId).sort();
-  assert.deepEqual(nodeIds, [
-    'approve-release',
-    'observe-release',
-    'preflight-release',
-    'publish-deploy',
-    'settle-delivery',
-  ]);
-});
-
-test('W9-A6 recovery policies: every action is a valid RecoveryAction', () => {
-  for (const b of DELIVERY_RECOVERY_POLICY_BINDINGS) {
-    assert.ok(b.nodeId.length > 0, 'nodeId must be non-empty');
-    for (const [key, action] of Object.entries(b.actionMap)) {
-      assert.ok(
-        VALID_RECOVERY_ACTIONS.has(action),
-        `${b.nodeId}.${key} has invalid action: ${action}`,
-      );
-    }
-  }
-});
-
-test('W9-A6 recovery policies: approval-required parks for a human decision', () => {
-  const approval = DELIVERY_RECOVERY_POLICY_BINDINGS.find((b) => b.nodeId === 'approve-release');
-  assert.ok(approval);
-  assert.equal(
-    approval.actionMap[DELIVERY_RECOVERY_TRIGGERS.approvalRequired],
-    'request-human',
-  );
-});
-
-test('W9-A6 recovery policies: action-uncertain pauses external (observe before retry)', () => {
-  const publish = DELIVERY_RECOVERY_POLICY_BINDINGS.find((b) => b.nodeId === 'publish-deploy');
-  assert.ok(publish);
-  assert.equal(
-    publish.actionMap[DELIVERY_RECOVERY_TRIGGERS.actionUncertain],
-    'pause-external',
-  );
-  const observe = DELIVERY_RECOVERY_POLICY_BINDINGS.find((b) => b.nodeId === 'observe-release');
-  assert.ok(observe);
-  assert.equal(
-    observe.actionMap[DELIVERY_RECOVERY_TRIGGERS.actionUncertain],
-    'pause-external',
-  );
-});
-
-test('W9-A6 recovery policies: candidate-drifted terminates (requires fresh Development verification)', () => {
-  const preflight = DELIVERY_RECOVERY_POLICY_BINDINGS.find((b) => b.nodeId === 'preflight-release');
-  assert.ok(preflight);
-  assert.equal(
-    preflight.actionMap[DELIVERY_RECOVERY_TRIGGERS.candidateDrifted],
-    'terminate',
-  );
-});
-
-test('W9-A6 recovery policies: settlement decision outcomes are terminal', () => {
-  const settle = DELIVERY_RECOVERY_POLICY_BINDINGS.find((b) => b.nodeId === 'settle-delivery');
-  assert.ok(settle);
-  assert.equal(settle.actionMap[DELIVERY_RECOVERY_TRIGGERS.released], 'terminate');
-  assert.equal(settle.actionMap[DELIVERY_RECOVERY_TRIGGERS.approvalRequired], 'terminate');
-  assert.equal(settle.actionMap[DELIVERY_RECOVERY_TRIGGERS.blocked], 'terminate');
 });
 
 // ---------------------------------------------------------------------------
@@ -622,8 +538,6 @@ test('W9-A6 barrel: re-exports all contribution categories', () => {
   assert.ok(typeof barrel.DELIVERY_INPUT_CONTRACT === 'object');
   assert.ok(typeof barrel.DELIVERY_OUTPUT_CONTRACT === 'object');
   assert.ok(typeof barrel.DELIVERY_DECLARED_OUTCOMES === 'object');
-  // Recovery policies.
-  assert.ok(typeof barrel.DELIVERY_RECOVERY_POLICY_BINDINGS === 'object');
   // External-effects.
   assert.ok(typeof barrel.DELIVERY_EXTERNAL_EFFECT_ADAPTER_CONTRIBUTIONS === 'object');
   // Human-approval.
@@ -640,7 +554,6 @@ test('W9-A6 barrel: re-exported aggregates match the per-file aggregates', () =>
   assert.equal(barrel.DELIVERY_TOOL_CONTRIBUTIONS, DELIVERY_TOOL_CONTRIBUTIONS);
   assert.equal(barrel.DELIVERY_CAPABILITY_REQUIREMENTS, DELIVERY_CAPABILITY_REQUIREMENTS);
   assert.equal(barrel.DELIVERY_GUARD_BINDINGS, DELIVERY_GUARD_BINDINGS);
-  assert.equal(barrel.DELIVERY_RECOVERY_POLICY_BINDINGS, DELIVERY_RECOVERY_POLICY_BINDINGS);
   assert.equal(barrel.DELIVERY_EXTERNAL_EFFECT_ADAPTER_CONTRIBUTIONS, DELIVERY_EXTERNAL_EFFECT_ADAPTER_CONTRIBUTIONS);
   assert.equal(barrel.DELIVERY_HUMAN_APPROVAL_ADAPTER_CONTRIBUTIONS, DELIVERY_HUMAN_APPROVAL_ADAPTER_CONTRIBUTIONS);
   assert.equal(barrel.DELIVERY_IDEMPOTENCY_STRATEGY_CONTRIBUTIONS, DELIVERY_IDEMPOTENCY_STRATEGY_CONTRIBUTIONS);

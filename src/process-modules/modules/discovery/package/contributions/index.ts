@@ -101,16 +101,13 @@ export {
   type DiscoverySkillResource,
 } from './reviewer-skills.js';
 
-// Recovery policies — per-verifier-node recovery action maps.
-export {
-  DISCOVERY_RECOVERY_TRIGGERS,
-  DISCOVERY_RECOVERY_PROPOSAL_SUBMISSION,
-  DISCOVERY_RECOVERY_NORMALIZED_PROPOSAL,
-  DISCOVERY_RECOVERY_READINESS,
-  DISCOVERY_RECOVERY_SETTLEMENT,
-  DISCOVERY_RECOVERY_DIAGNOSIS,
-  DISCOVERY_RECOVERY_POLICY_BINDINGS,
-} from './recovery-policies.js';
+// Recovery policies — REMOVED (Wave 6 cutover). The per-verifier
+// `*_RECOVERY_POLICY_BINDINGS` + `*_RECOVERY_TRIGGERS` constants and this
+// barrel's re-exports were dead code: consumed ONLY by the dead
+// `UniversalRecoveryEngine` SPI (`application/recovery-engine.ts`, also
+// deleted) and by tests of that SPI. Production recovery routing is
+// `flow.recovery[]` executed by `generic-flow-executor.reconcileRecoveryCheckpoint`
+// through the `RecoveryCaseRepository` port.
 
 // Legacy engine adapter — port-injected handler wrapper + brief-provisioning
 // port (mirrors W8-A6's formalization handler adapter).

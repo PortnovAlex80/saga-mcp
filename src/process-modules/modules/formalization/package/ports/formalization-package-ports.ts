@@ -212,20 +212,16 @@ export interface FormalizationManagedTraceWrite {
  * The method set mirrors what `formalization-installation.ts`
  * `readExecutionWrites` calls on the ledger. Per CGAD P18, product resolvers
  * read by DURABLE node-scope (listArtifactsForNodeInProcessRun /
- * listTracesForNodeInProcessRun); the execution- and task-scoped variants are
- * retained for diagnostics and explicit single-fence views, but are NOT the
- * authoritative channel — filtering by transient task/execution would blind a
- * gate to artifacts produced in an earlier fence of the same node.
+ * listTracesForNodeInProcessRun); the execution-scoped variants were REMOVED
+ * in the Wave 6 exact-ProductRef cutover (execution-context-assembler §9.11:
+ * no epic-scope / latest-in-run / by-execution fallback). Filtering by
+ * transient task/execution would blind a gate to artifacts produced in an
+ * earlier fence of the same node. `readExecutionWrites` now reads ONLY the
+ * durable node-scope channel. The task-scoped variants remain available only
+ * where a caller explicitly needs a single task's view (e.g. diagnostics);
+ * they are NOT the authoritative channel.
  */
 export interface FormalizationManagedProductionPort {
-  listArtifactsForExecution(
-    query: FormalizationManagedProductionQuery,
-  ): readonly FormalizationManagedArtifactWrite[];
-
-  listTracesForExecution(
-    query: FormalizationManagedProductionQuery,
-  ): readonly FormalizationManagedTraceWrite[];
-
   listArtifactsForTaskInProcessRun(
     processRunId: number,
     moduleRef: string,

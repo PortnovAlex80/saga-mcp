@@ -100,16 +100,14 @@ export {
   type DeliveryDeclaredOutcome,
 } from './output-contracts.js';
 
-// Recovery policies — per-verifier-node recovery action maps.
-export {
-  DELIVERY_RECOVERY_TRIGGERS,
-  DELIVERY_RECOVERY_PREFLIGHT,
-  DELIVERY_RECOVERY_APPROVAL,
-  DELIVERY_RECOVERY_PUBLICATION,
-  DELIVERY_RECOVERY_OBSERVATION,
-  DELIVERY_RECOVERY_SETTLEMENT,
-  DELIVERY_RECOVERY_POLICY_BINDINGS,
-} from './recovery-policies.js';
+// Recovery policies — REMOVED (Wave 6 cutover). The per-verifier
+// `*_RECOVERY_POLICY_BINDINGS` + `*_RECOVERY_TRIGGERS` constants and this
+// barrel's re-exports were dead code: they were consumed ONLY by the dead
+// `UniversalRecoveryEngine` SPI (`application/recovery-engine.ts`, also
+// deleted) and by tests of that SPI. Production recovery routing is
+// `flow.recovery[]` (FlowRecoveryDefinition) executed by
+// `generic-flow-executor.reconcileRecoveryCheckpoint` through the
+// `RecoveryCaseRepository` port. No production consumer read these constants.
 
 // External-effects contribution subtree — publish-deploy / observe-release
 // adapter declarations + external-receipt evidence + action-kind coverage.

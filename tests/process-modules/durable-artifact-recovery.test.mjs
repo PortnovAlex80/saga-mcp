@@ -185,8 +185,9 @@ const ledger = {
     taskScopeCalls.push({ kind: 'trace', taskId });
     return taskId === ACCEPTANCE_PRODUCER_TASK ? acTraceWrites : [];
   },
-  listArtifactsForExecution() { return acWrites; },
-  listTracesForExecution() { return acTraceWrites; },
+  // WAVE 6 CUTOVER: listArtifactsForExecution / listTracesForExecution were
+  // removed (execution-scoped product lookup). The acceptance gate reads ONLY
+  // the durable node-scope channel above, so no execution-scoped stub remains.
 };
 
 const graph = {

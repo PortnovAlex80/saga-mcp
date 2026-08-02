@@ -10,7 +10,6 @@
 //   - acceptance capabilities: capability requirements + guard bindings.
 //   - output contracts: input/output contract refs + declared outcomes.
 //   - reviewer skills: pinned skill resource index entries.
-//   - recovery policies: per-node recovery action maps (valid actions only).
 //   - legacy engine adapter: port-injected brief-provisioning wrapper.
 //
 // These tests run against the compiled dist/ output (the contributions are
@@ -55,11 +54,6 @@ import {
   DISCOVERY_READINESS_ADVISOR_REVIEWER_SKILL,
   DISCOVERY_DIAGNOSIS_ADVISOR_REVIEWER_SKILL,
 } from '../../dist/process-modules/modules/discovery/package/contributions/reviewer-skills.js';
-
-import {
-  DISCOVERY_RECOVERY_POLICY_BINDINGS,
-  DISCOVERY_RECOVERY_TRIGGERS,
-} from '../../dist/process-modules/modules/discovery/package/contributions/recovery-policies.js';
 
 import {
   DISCOVERY_PACKAGE_HANDLER_IDS,
@@ -281,68 +275,6 @@ test('W9-A2 reviewer skills: resource index entries strip package-local metadata
 });
 
 // ---------------------------------------------------------------------------
-// Recovery policies.
-// ---------------------------------------------------------------------------
-
-const VALID_RECOVERY_ACTIONS = new Set([
-  'retry-current-node',
-  'return-to-producer',
-  'enter-recovery-node',
-  'request-human',
-  'pause-external',
-  'escalate',
-  'terminate',
-]);
-
-test('W9-A2 recovery policies: declares one binding per verifier node + diagnosis observer', () => {
-  const nodeIds = DISCOVERY_RECOVERY_POLICY_BINDINGS.map((b) => b.nodeId).sort();
-  assert.deepEqual(nodeIds, [
-    'diagnosis-advisor',
-    'resolve-normalized-proposal',
-    'resolve-proposal-submission',
-    'resolve-readiness',
-    'settle',
-  ]);
-});
-
-test('W9-A2 recovery policies: every action is a valid RecoveryAction', () => {
-  for (const b of DISCOVERY_RECOVERY_POLICY_BINDINGS) {
-    assert.ok(b.nodeId.length > 0, 'nodeId must be non-empty');
-    for (const [key, action] of Object.entries(b.actionMap)) {
-      assert.ok(
-        VALID_RECOVERY_ACTIONS.has(action),
-        `${b.nodeId}.${key} has invalid action: ${action}`,
-      );
-    }
-  }
-});
-
-test('W9-A2 recovery policies: normalization-required routes to enter-recovery-node', () => {
-  const proposal = DISCOVERY_RECOVERY_POLICY_BINDINGS.find(
-    (b) => b.nodeId === 'resolve-proposal-submission',
-  );
-  assert.ok(proposal);
-  assert.equal(
-    proposal.actionMap[DISCOVERY_RECOVERY_TRIGGERS.normalizationRequired],
-    'enter-recovery-node',
-  );
-});
-
-test('W9-A2 recovery policies: settlement decision outcomes are terminal', () => {
-  const settle = DISCOVERY_RECOVERY_POLICY_BINDINGS.find((b) => b.nodeId === 'settle');
-  assert.ok(settle);
-  assert.equal(settle.actionMap[DISCOVERY_RECOVERY_TRIGGERS.go], 'terminate');
-  assert.equal(settle.actionMap[DISCOVERY_RECOVERY_TRIGGERS.clarify], 'terminate');
-  assert.equal(settle.actionMap[DISCOVERY_RECOVERY_TRIGGERS.reject], 'terminate');
-});
-
-test('W9-A2 recovery policies: diagnosis failed terminates without touching the certificate', () => {
-  const diagnosis = DISCOVERY_RECOVERY_POLICY_BINDINGS.find((b) => b.nodeId === 'diagnosis-advisor');
-  assert.ok(diagnosis);
-  assert.equal(diagnosis.actionMap[DISCOVERY_RECOVERY_TRIGGERS.failed], 'terminate');
-});
-
-// ---------------------------------------------------------------------------
 // Legacy engine adapter.
 // ---------------------------------------------------------------------------
 
@@ -465,8 +397,6 @@ test('W9-A2 barrel: re-exports all five contribution categories + the adapter', 
   assert.ok(typeof barrel.DISCOVERY_DECLARED_OUTCOMES === 'object');
   // Reviewer skills.
   assert.ok(typeof barrel.DISCOVERY_SKILL_RESOURCE_INDEX_ENTRIES === 'object');
-  // Recovery policies.
-  assert.ok(typeof barrel.DISCOVERY_RECOVERY_POLICY_BINDINGS === 'object');
   // Legacy engine adapter.
   assert.equal(typeof barrel.createDiscoveryPackageHandlerAdapter, 'function');
   assert.equal(typeof barrel.createFakeDiscoveryBriefProvisioningPort, 'function');
@@ -477,5 +407,4 @@ test('W9-A2 barrel: re-exported aggregates match the per-file aggregates', () =>
   assert.equal(barrel.DISCOVERY_TOOL_CONTRIBUTIONS, DISCOVERY_TOOL_CONTRIBUTIONS);
   assert.equal(barrel.DISCOVERY_CAPABILITY_REQUIREMENTS, DISCOVERY_CAPABILITY_REQUIREMENTS);
   assert.equal(barrel.DISCOVERY_GUARD_BINDINGS, DISCOVERY_GUARD_BINDINGS);
-  assert.equal(barrel.DISCOVERY_RECOVERY_POLICY_BINDINGS, DISCOVERY_RECOVERY_POLICY_BINDINGS);
 });

@@ -126,16 +126,19 @@ test('artifact and trace tools machine-stamp the exact worker execution', () => 
       link_type: 'derived_from',
     });
     const ledger = new SqliteManagedProductionLedger(f.db);
-    const query = {
-      processRunId: f.processRun.id,
-      moduleRef: f.moduleRef,
-      nodeId: f.nodeId,
-      intentId: f.intentId,
-      taskId: f.taskId,
-      executionId: f.executionId,
-    };
-    const artifacts = ledger.listArtifactsForExecution(query);
-    const traces = ledger.listTracesForExecution(query);
+    // WAVE 6 CUTOVER: the execution-scoped listArtifactsForExecution /
+    // listTracesForExecution methods were removed (execution-context-assembler
+    // §9.11: no by-execution fallback). The canonical durable read is the
+    // node-scope API (CGAD P18). This fixture writes under a single
+    // (processRunId, moduleRef, nodeId), so the node-scope read returns the
+    // same rows the execution-scoped read did — proving the exact worker
+    // execution's writes are visible through the durable channel.
+    const artifacts = ledger.listArtifactsForNodeInProcessRun(
+      f.processRun.id, f.moduleRef, f.nodeId,
+    );
+    const traces = ledger.listTracesForNodeInProcessRun(
+      f.processRun.id, f.moduleRef, f.nodeId,
+    );
     assert.deepEqual(artifacts.map(row => row.artifactId), [prd.id, fr.id]);
     assert.deepEqual(artifacts.map(row => row.operation), ['create', 'create']);
     assert.equal(traces.length, 1);

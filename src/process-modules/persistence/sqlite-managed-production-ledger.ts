@@ -13,7 +13,6 @@ import type { Artifact, ArtifactTrace } from '../../types.js';
 import { sha256Hex } from '../shared/canonical-json.js';
 import type {
   ManagedArtifactProductionRecord,
-  ManagedExecutionProductQuery,
   ManagedProductionLedger,
   ManagedTraceProductionRecord,
 } from '../modules/development/development-kernel-ports.js';
@@ -431,45 +430,18 @@ export class SqliteManagedProductionLedger implements ManagedProductionLedger {
     ensureManagedProductionLedgerSchema(db);
   }
 
-  listArtifactsForExecution(
-    query: ManagedExecutionProductQuery,
-  ): readonly ManagedArtifactProductionRecord[] {
-    const rows = this.db.prepare(
-      `SELECT *
-         FROM saga3_managed_artifact_productions
-        WHERE process_run_id=? AND module_ref=? AND node_id=?
-          AND intent_id=? AND task_id=? AND execution_id=?
-        ORDER BY id`,
-    ).all(
-      query.processRunId,
-      query.moduleRef,
-      query.nodeId,
-      query.intentId,
-      query.taskId,
-      query.executionId,
-    ) as ArtifactLedgerRow[];
-    return rows.map(artifactRowToRecord);
-  }
-
-  listTracesForExecution(
-    query: ManagedExecutionProductQuery,
-  ): readonly ManagedTraceProductionRecord[] {
-    const rows = this.db.prepare(
-      `SELECT *
-         FROM saga3_managed_trace_productions
-        WHERE process_run_id=? AND module_ref=? AND node_id=?
-          AND intent_id=? AND task_id=? AND execution_id=?
-        ORDER BY id`,
-    ).all(
-      query.processRunId,
-      query.moduleRef,
-      query.nodeId,
-      query.intentId,
-      query.taskId,
-      query.executionId,
-    ) as TraceLedgerRow[];
-    return rows.map(traceRowToRecord);
-  }
+  // WAVE 6 CUTOVER: listArtifactsForExecution / listTracesForExecution were
+  // REMOVED. They were the execution-scoped (intentId/taskId/executionId)
+  // product-resolution fallback the exact-ProductRef cutover retires
+  // (execution-context-assembler §9.11). The live product-resolution path is
+  // listArtifactsForNodeInProcessRun / listTracesForNodeInProcessRun (durable
+  // node-scope, CGAD P18) and ProcessProductRepository.getByProductRef. Re-
+  // introducing an execution-scoped lookup is forbidden by
+  // tests/architecture/no-execution-scoped-lookup.test.mjs. Out-of-zone tests
+  // that still call these (managed-production-ledger.test.mjs,
+  // characterization/package-identity-collision-replay.test.mjs) and the
+  // infrastructure formalization adapter that delegates to them are tracked
+  // cross-file breakage to be migrated by their owning lanes.
 
   listArtifactsForTaskInProcessRun(
     processRunId: number,

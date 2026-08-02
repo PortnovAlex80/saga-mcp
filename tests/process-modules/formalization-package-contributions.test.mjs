@@ -9,7 +9,6 @@
 //   - acceptance capabilities: capability requirements + guard bindings.
 //   - output contracts: input/output contract refs + declared outcomes.
 //   - reviewer skills: pinned skill resource index entries.
-//   - recovery policies: per-node recovery action maps (valid actions only).
 //
 // These tests run against the compiled dist/ output (the contributions are
 // pure data, so this is a structural + cross-reference conformance check).
@@ -48,11 +47,6 @@ import {
   FORMALIZATION_REQUIREMENTS_REVIEWER_SKILL,
   FORMALIZATION_ARCHITECTURE_REVIEWER_SKILL,
 } from '../../dist/process-modules/modules/formalization/package/contributions/reviewer-skills.js';
-
-import {
-  FORMALIZATION_RECOVERY_POLICY_BINDINGS,
-  FORMALIZATION_RECOVERY_TRIGGERS,
-} from '../../dist/process-modules/modules/formalization/package/contributions/recovery-policies.js';
 
 // Barrel re-exports everything from one path — verify that too.
 import * as barrel from '../../dist/process-modules/modules/formalization/package/contributions/index.js';
@@ -226,64 +220,6 @@ test('W8-A7 reviewer skills: resource index entries strip package-local metadata
 });
 
 // ---------------------------------------------------------------------------
-// Recovery policies.
-// ---------------------------------------------------------------------------
-
-const VALID_RECOVERY_ACTIONS = new Set([
-  'retry-current-node',
-  'return-to-producer',
-  'enter-recovery-node',
-  'request-human',
-  'pause-external',
-  'escalate',
-  'terminate',
-]);
-
-test('W8-A7 recovery policies: declares one binding per verifier node', () => {
-  const nodeIds = FORMALIZATION_RECOVERY_POLICY_BINDINGS.map((b) => b.nodeId).sort();
-  assert.deepEqual(nodeIds, [
-    'freeze-acceptance-baseline',
-    'resolve-acceptance-contract',
-    'resolve-architecture-contract',
-    'resolve-product-contract',
-    'resolve-reconciliation',
-    'resolve-use-cases',
-    'settle-formalization',
-  ]);
-});
-
-test('W8-A7 recovery policies: every action is a valid RecoveryAction', () => {
-  for (const b of FORMALIZATION_RECOVERY_POLICY_BINDINGS) {
-    assert.ok(b.nodeId.length > 0, 'nodeId must be non-empty');
-    for (const [key, action] of Object.entries(b.actionMap)) {
-      assert.ok(
-        VALID_RECOVERY_ACTIONS.has(action),
-        `${b.nodeId}.${key} has invalid action: ${action}`,
-      );
-    }
-  }
-});
-
-test('W8-A7 recovery policies: repair-required routes to return-to-producer for resolver nodes', () => {
-  const trigger = FORMALIZATION_RECOVERY_TRIGGERS.repairRequired;
-  const producerRouted = FORMALIZATION_RECOVERY_POLICY_BINDINGS
-    .filter((b) => b.nodeId.startsWith('resolve-') && b.nodeId !== 'resolve-reconciliation')
-    .filter((b) => b.actionMap[trigger] !== undefined);
-  assert.ok(producerRouted.length >= 3, 'expected at least 3 resolvers routing repair-required to producer');
-  for (const b of producerRouted) {
-    assert.equal(b.actionMap[trigger], 'return-to-producer');
-  }
-});
-
-test('W8-A7 recovery policies: baseline freezer drift is terminal (unrecoverable)', () => {
-  const freezer = FORMALIZATION_RECOVERY_POLICY_BINDINGS.find(
-    (b) => b.nodeId === 'freeze-acceptance-baseline',
-  );
-  assert.ok(freezer);
-  assert.equal(freezer.actionMap[FORMALIZATION_RECOVERY_TRIGGERS.driftDetected], 'terminate');
-});
-
-// ---------------------------------------------------------------------------
 // Barrel.
 // ---------------------------------------------------------------------------
 
@@ -299,13 +235,10 @@ test('W8-A7 barrel: re-exports all five contribution categories', () => {
   assert.ok(typeof barrel.FORMALIZATION_DECLARED_OUTCOMES === 'object');
   // Reviewer skills.
   assert.ok(typeof barrel.FORMALIZATION_SKILL_RESOURCE_INDEX_ENTRIES === 'object');
-  // Recovery policies.
-  assert.ok(typeof barrel.FORMALIZATION_RECOVERY_POLICY_BINDINGS === 'object');
 });
 
 test('W8-A7 barrel: re-exported aggregates match the per-file aggregates', () => {
   assert.equal(barrel.FORMALIZATION_TOOL_CONTRIBUTIONS, FORMALIZATION_TOOL_CONTRIBUTIONS);
   assert.equal(barrel.FORMALIZATION_CAPABILITY_REQUIREMENTS, FORMALIZATION_CAPABILITY_REQUIREMENTS);
   assert.equal(barrel.FORMALIZATION_GUARD_BINDINGS, FORMALIZATION_GUARD_BINDINGS);
-  assert.equal(barrel.FORMALIZATION_RECOVERY_POLICY_BINDINGS, FORMALIZATION_RECOVERY_POLICY_BINDINGS);
 });

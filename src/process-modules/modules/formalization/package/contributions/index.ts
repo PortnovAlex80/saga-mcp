@@ -92,15 +92,10 @@ export {
   type FormalizationSkillResource,
 } from './reviewer-skills.js';
 
-// Recovery policies — per-verifier-node recovery action maps.
-export {
-  FORMALIZATION_RECOVERY_TRIGGERS,
-  FORMALIZATION_RECOVERY_PRODUCT,
-  FORMALIZATION_RECOVERY_USE_CASES,
-  FORMALIZATION_RECOVERY_ACCEPTANCE,
-  FORMALIZATION_RECOVERY_RECONCILIATION,
-  FORMALIZATION_RECOVERY_BASELINE_FREEZER,
-  FORMALIZATION_RECOVERY_ARCHITECTURE,
-  FORMALIZATION_RECOVERY_SETTLEMENT,
-  FORMALIZATION_RECOVERY_POLICY_BINDINGS,
-} from './recovery-policies.js';
+// Recovery policies — REMOVED (Wave 6 cutover). The per-verifier
+// `*_RECOVERY_POLICY_BINDINGS` + `*_RECOVERY_TRIGGERS` constants and this
+// barrel's re-exports were dead code: consumed ONLY by the dead
+// `UniversalRecoveryEngine` SPI (`application/recovery-engine.ts`, also
+// deleted) and by tests of that SPI. Production recovery routing is
+// `flow.recovery[]` executed by `generic-flow-executor.reconcileRecoveryCheckpoint`
+// through the `RecoveryCaseRepository` port.

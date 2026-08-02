@@ -123,15 +123,25 @@ function fixture() {
     'define-architecture-contract': { artifacts: [40], traces: [106] },
   };
   const queries = [];
+  // WAVE 6 CUTOVER: the fake ledger is keyed by the DURABLE node-scope channel
+  // (listArtifactsForNodeInProcessRun / listTracesForNodeInProcessRun), which is
+  // now the AUTHORITATIVE product-resolution path (CGAD P18) and the only one
+  // readExecutionWrites actually calls. The execution-scoped methods were
+  // removed; the task-scope variants remain for single-task diagnostics and
+  // delegate to the node-scope storage (every node has a single producer task
+  // in these unit tests, so task-scope and node-scope return the same writes —
+  // mirroring the real SQLite ledger's behavior for a one-producer node).
   const ledger = {
-    listArtifactsForExecution(query) {
-      queries.push({ kind: 'artifact', ...query });
-      const ids = nodeWrites[query.nodeId]?.artifacts ?? [];
+    listArtifactsForNodeInProcessRun(processRunId, moduleRef, nodeId) {
+      queries.push({ kind: 'artifact', processRunId, moduleRef, nodeId });
+      const ids = nodeWrites[nodeId]?.artifacts ?? [];
       return ids.map((id, offset) => {
         const row = artifactById.get(id);
         return {
           ledgerId: 1000 + id + offset,
-          ...query,
+          processRunId,
+          moduleRef,
+          nodeId,
           artifactId: id,
           artifactType: row.type,
           artifactStatus: row.status,
@@ -141,14 +151,16 @@ function fixture() {
         };
       });
     },
-    listTracesForExecution(query) {
-      queries.push({ kind: 'trace', ...query });
-      const ids = nodeWrites[query.nodeId]?.traces ?? [];
+    listTracesForNodeInProcessRun(processRunId, moduleRef, nodeId) {
+      queries.push({ kind: 'trace', processRunId, moduleRef, nodeId });
+      const ids = nodeWrites[nodeId]?.traces ?? [];
       return ids.map((id, offset) => {
         const row = traceById.get(id);
         return {
           ledgerId: 2000 + id + offset,
-          ...query,
+          processRunId,
+          moduleRef,
+          nodeId,
           traceId: id,
           sourceId: row.sourceArtifactId,
           targetType: row.targetType,
@@ -168,60 +180,18 @@ function fixture() {
       processRunId,
       moduleRef,
       nodeId,
-      taskId,
+      _taskId,
     ) {
-      const producer = receipt(nodeId);
-      return this.listArtifactsForExecution({
-        processRunId,
-        moduleRef,
-        nodeId,
-        intentId: producer.intentId,
-        taskId,
-        executionId: producer.executionId,
-      });
+      // Single-producer-per-node fixture: task-scope matches node-scope.
+      return this.listArtifactsForNodeInProcessRun(processRunId, moduleRef, nodeId);
     },
     listTracesForTaskInProcessRun(
       processRunId,
       moduleRef,
       nodeId,
-      taskId,
+      _taskId,
     ) {
-      const producer = receipt(nodeId);
-      return this.listTracesForExecution({
-        processRunId,
-        moduleRef,
-        nodeId,
-        intentId: producer.intentId,
-        taskId,
-        executionId: producer.executionId,
-      });
-    },
-    // CGAD P18: node-scope is now the AUTHORITATIVE channel for product
-    // resolvers (durable across recovery cycles). In these unit tests every
-    // node has a single producer task, so node-scope returns the same writes as
-    // the task-scoped read against that producer. This mirrors how the real
-    // SQLite ledger behaves when only one task has written for a node.
-    listArtifactsForNodeInProcessRun(processRunId, moduleRef, nodeId) {
-      const producer = receipt(nodeId);
-      return this.listArtifactsForExecution({
-        processRunId,
-        moduleRef,
-        nodeId,
-        intentId: producer.intentId,
-        taskId: producer.taskId,
-        executionId: producer.executionId,
-      });
-    },
-    listTracesForNodeInProcessRun(processRunId, moduleRef, nodeId) {
-      const producer = receipt(nodeId);
-      return this.listTracesForExecution({
-        processRunId,
-        moduleRef,
-        nodeId,
-        intentId: producer.intentId,
-        taskId: producer.taskId,
-        executionId: producer.executionId,
-      });
+      return this.listTracesForNodeInProcessRun(processRunId, moduleRef, nodeId);
     },
   };
   let baselineRecord = null;
@@ -698,9 +668,12 @@ test('missing product writes create exact repair feedback, never latest-by-epic'
 
 test('ledger/canonical hash mismatch fails the resolver closed', () => {
   const fx = fixture();
-  const original = fx.deps.ledger.listArtifactsForExecution;
-  fx.deps.ledger.listArtifactsForExecution = query => original(query).map(row =>
-    row.artifactId === 10 ? { ...row, contentHash: 'f'.repeat(64) } : row);
+  // WAVE 6 CUTOVER: readExecutionWrites reads via the durable node-scope
+  // channel, so the mismatch is injected there.
+  const original = fx.deps.ledger.listArtifactsForNodeInProcessRun.bind(fx.deps.ledger);
+  fx.deps.ledger.listArtifactsForNodeInProcessRun = (processRunId, moduleRef, nodeId) =>
+    original(processRunId, moduleRef, nodeId).map(row =>
+      row.artifactId === 10 ? { ...row, contentHash: 'f'.repeat(64) } : row);
   const handlers = createFormalizationKernelHandlers(fx.deps);
   const resolved = handlers[FORMALIZATION_HANDLER_IDS.resolveProduct](
     context('resolve-product-contract', receipt('define-product-contract'), flowFrame()),
@@ -734,9 +707,12 @@ test('CGAD P18: ledger rows from another (recovery) task are accepted — artifa
 
 test('ledger trace digests are verified before accepting canonical traces', () => {
   const fx = fixture();
-  const original = fx.deps.ledger.listTracesForExecution;
-  fx.deps.ledger.listTracesForExecution = query => original(query).map(row =>
-    row.traceId === 101 ? { ...row, traceHash: 'f'.repeat(64) } : row);
+  // WAVE 6 CUTOVER: readExecutionWrites reads traces via the durable node-scope
+  // channel, so the digest mutation is injected there.
+  const original = fx.deps.ledger.listTracesForNodeInProcessRun.bind(fx.deps.ledger);
+  fx.deps.ledger.listTracesForNodeInProcessRun = (processRunId, moduleRef, nodeId) =>
+    original(processRunId, moduleRef, nodeId).map(row =>
+      row.traceId === 101 ? { ...row, traceHash: 'f'.repeat(64) } : row);
   const handlers = createFormalizationKernelHandlers(fx.deps);
   const resolved = handlers[FORMALIZATION_HANDLER_IDS.resolveProduct](
     context('resolve-product-contract', receipt('define-product-contract'), flowFrame()),

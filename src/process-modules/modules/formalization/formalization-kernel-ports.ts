@@ -88,12 +88,13 @@ export interface ManagedTraceProductionRecord {
 }
 
 export interface ManagedProductionLedger {
-  listArtifactsForExecution(
-    query: ManagedExecutionProductQuery,
-  ): readonly ManagedArtifactProductionRecord[];
-  listTracesForExecution(
-    query: ManagedExecutionProductQuery,
-  ): readonly ManagedTraceProductionRecord[];
+  // WAVE 6 CUTOVER: listArtifactsForExecution / listTracesForExecution were
+  // REMOVED (execution-scoped product-resolution fallback retired by the
+  // exact-ProductRef cutover — execution-context-assembler §9.11). The live
+  // product-resolution path is listArtifactsForNodeInProcessRun (durable node-
+  // scope, CGAD P18) and ProcessProductRepository.getByProductRef. Re-
+  // introducing an execution-scoped lookup is forbidden by
+  // tests/architecture/no-execution-scoped-lookup.test.mjs.
   /**
    * Read the durable product accumulated by one reviewed task across its
    * author/reviewer retry executions. A different recovery task is a new

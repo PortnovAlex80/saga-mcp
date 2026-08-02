@@ -1111,6 +1111,26 @@ function restoreFrame(
     executionReceipt: Record<string, unknown> | null;
   }[],
 ): NodeExecutionFrame {
+  // ── WAVE 6 AUDIT NOTE (2026-08-02) ───────────────────────────────────────
+  // This function is NOT dead code and is NOT the "legacy restoreFrame path"
+  // the Wave 6 re-check targets for removal. It is the LIVE data source for
+  // the v2 execution-context-assembler path:
+  //   - `walk()` calls it unconditionally (line ~474) to build the
+  //     NodeExecutionFrame every node executor reads (legacy `frame`).
+  //   - The v2 path's `declareUpstreamRefs(chainInput, frame, nodeId)` derives
+  //     its content-addressed ProductRefs FROM `frame.productions`.
+  //   - `mergeLegacyFrame(frame, assembled.envelope)` bridges this frame into
+  //     the v2 envelope so legacy + v2 executors agree.
+  // execution-context-assembler.ts's docstring expresses the INTENT to retire
+  // restoreFrame once the assembler can fully reconstruct upstream refs from
+  // durable NodeRun rows alone — but the current wiring still feeds it
+  // restoreFrame's output, so removing it now would break BOTH the legacy and
+  // the v2 path. The genuine crash-resume path (line ~525) already uses
+  // `reconcileRecoveryCheckpoint` (reads persisted RecoveryFeedback), NOT this
+  // function. Full removal is a larger Wave 3+ refactor that must re-plumb
+  // declareUpstreamRefs to read NodeRun rows directly; it is out of Wave 6's
+  // scope. Do NOT delete this function without that re-plumb.
+  // ─────────────────────────────────────────────────────────────────────────
   const frame: NodeExecutionFrame = {
     runInput,
     productions: {},

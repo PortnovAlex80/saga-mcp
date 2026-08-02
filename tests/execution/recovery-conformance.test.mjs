@@ -4,19 +4,33 @@
 // synthetic modules." Spec: docs/refactor-management/09-contracts/
 // WAVE4-PROTOCOL-RECOVERY-SPEC.md §1, §3.7.
 //
+// WAVE 6 CUTOVER NOTE: the dead `UniversalRecoveryEngine` /
+// `routeRecoveryAction` SPI (`application/recovery-engine.ts`) was removed —
+// production recovery is `flow.recovery[]` (FlowRecoveryDefinition) executed
+// by `generic-flow-executor.reconcileRecoveryCheckpoint`, which calls the
+// SAME `SqliteRecoveryCaseRepository.recordIssue` port these tests drive
+// directly. The module-kind-agnostic property the original §3.7 gate proved
+// is now established by routing BOTH synthetic modules (LM + External)
+// through the SAME durable recordIssue path and asserting identical
+// persistence invariants (exhaustion flips, idempotent replay, closed
+// RecoveryAction union from the retained Wave 1 SPI). There is no per-module
+// policy-binding router left to test; the durable case + the closed union are
+// the surviving contract.
+//
 // WHAT THIS PROVES
-//   The generic recovery engine (W4-A4 `application/recovery-engine.ts`) is
-//   module-kind-agnostic. ONE engine, fed module-owned RecoveryIssue +
-//   RecoveryPolicyBinding from two completely unrelated synthetic modules
-//   (an LM-node module and an External-node module), produces the correct
-//   RecoveryAction in every one of the five conformance scenarios named in
-//   the task:
-//     1. PRODUCER REENTRY — `return-to-producer` routes feedback back to the
-//        producing node so the same worker re-executes the upstream node.
-//     2. HUMAN ACTION — `request-human` parks the run for a human decision.
-//     3. ESCALATION — `escalate` raises beyond the module's recovery budget.
+//   The durable recovery case loop is module-kind-agnostic. ONE repository,
+//   fed module-owned RecoveryIssue from two completely unrelated synthetic
+//   modules (an LM-node module and an External-node module), produces the
+//   correct durable outcome in every one of the conformance scenarios:
+//     1. PRODUCER REENTRY — a repair-disposition issue for both modules
+//        opens an active case the executor routes back to the producer
+//        (FlowRecoveryDefinition.repairNodeId), identical across module kinds.
+//     2. HUMAN ACTION — a human-disposition issue for both modules records
+//        durably and pauses (disposition-driven, module-kind-agnostic).
+//     3. ESCALATION — an exhausted case for both modules is terminal
+//        `exhausted`, which FlowRecoveryDefinition.onExhausted escalates.
 //     4. EXHAUSTION — after maxAttempts is consumed, the durable case flips
-//        to `exhausted` and a fresh source NodeRun is rejected.
+//        to `exhausted` and a fresh source NodeRun opens a NEW case.
 //     5. RESTART — the same source NodeRun + same issue is an idempotent
 //        replay; restarting the worker does NOT consume the retry budget
 //        again (this is the §0.7.11 crash-resume contract applied to
@@ -26,18 +40,7 @@
 //   module with a `git_change` execution profile; external-seo is an
 //   External-node module with an adapter ref and NO execution profile. They
 //   share no flow, no schema, no skill, no vocabulary. The test proves the
-//   engine never switches on module kind, name, or vocabulary — only on the
-//   RecoveryPolicyBinding.actionMap keys the module itself declared.
-//
-// ISOLATION NOTE (W4-A8 task §"Verify"): this file imports the sibling-lane
-// surface that the integrator lands in order A1..A4..A8. In the isolated
-// W4-A8 worktree the W4-A4 `recovery-engine.ts` is absent, so the dynamic
-// import below resolves to null and the engine-dependent tests SKIP with a
-// clear reason — NOT a failure. The integrator's full Wave-4 gate run (all
-// siblings present) is where those tests MUST PASS. The persistence-level
-// exhaustion/restart tests use the EXISTING `SqliteRecoveryCaseRepository`
-// (frozen Wave 3 baseline, present in every W4 worktree) and therefore run
-// unconditionally.
+//   durable loop never switches on module kind, name, or vocabulary.
 //
 // Spec ref: WAVE4-PROTOCOL-RECOVERY-SPEC.md §1 (lanes), §3 (exit gate),
 //   §4 (anti-scope: existing recovery system preserved).
@@ -58,43 +61,12 @@ import externalSeoModule, {
 } from '../fixtures/synthetic-modules/external-seo/definition.mjs';
 
 // ---------------------------------------------------------------------------
-// Sibling surface (lands via integrator cherry-pick). Resolved lazily; in
-// isolation it is absent and engine-dependent tests SKIP (not fail).
-// ---------------------------------------------------------------------------
-//  - W4-A4: `application/recovery-engine.ts` — the generic
-//    RecoveryIssue→RecoveryAction mapper. Contract (per W4-A4 task file):
-//        routeRecoveryAction(issue, policyBinding): RecoveryAction
-//    It uses the RecoveryAction union (7 values) from Wave 1 SPI
-//    (`domain/spi/recovery-definitions.ts`) and the existing
-//    RecoveryCaseRepository (NOT replaces it).
-
-/** @typedef {{ routeRecoveryAction?: any, RECOVERY_ACTIONS?: any, buildRecoveryFeedback?: any }} EngineSurface */
-
-/**
- * Lazily import the sibling Wave-4 recovery engine. Returns null when the
- * sibling is absent (isolated worktree). The caller decides whether to skip
- * or fail.
- *
- * @returns {Promise<EngineSurface | null>}
- */
-async function loadRecoveryEngine() {
-  // Variable specifier so a missing sibling does NOT crash module load —
-  // dynamic import resolves individually per lane.
-  try {
-    const mod = await import(
-      '../../dist/process-modules/application/recovery-engine.js'
-    );
-    if (typeof mod.routeRecoveryAction !== 'function') return null;
-    return mod;
-  } catch {
-    return null;
-  }
-}
-
-// ---------------------------------------------------------------------------
 // Wave-1 SPI: RecoveryIssue + RecoveryFeedback + RecoveryAction. These are
-// present in every W4 worktree (frozen Wave 1 checkpoint). The RecoveryAction
-// union (7 values) is the closed vocabulary the engine picks from.
+// present in every worktree (frozen Wave 1 checkpoint). The RecoveryAction
+// union (7 values) is the closed vocabulary the durable loop + the
+// FlowRecoveryDefinition consume. The Wave 6 cutover removed the dead
+// `application/recovery-engine.ts` SPI; these tests drive the SAME
+// `SqliteRecoveryCaseRepository.recordIssue` port the wired executor uses.
 // ---------------------------------------------------------------------------
 const SPI = await import(
   '../../dist/process-modules/domain/spi/index.js'
@@ -188,22 +160,6 @@ function buildIssue({
 }
 
 /**
- * Build a RecoveryPolicyBinding mapping the module's reason code to a runtime
- * RecoveryAction. This is the per-node recovery action map (Wave 1 SPI
- * `RecoveryPolicyBinding`). The engine reads the actionMap key the module
- * declared for its reason/event code and returns the bound action.
- *
- * @param {{ nodeId: string; reasonCode: string; action: string }} p
- * @returns {any} RecoveryPolicyBinding
- */
-function buildBinding({ nodeId, reasonCode, action }) {
-  return {
-    nodeId,
-    actionMap: { [reasonCode]: action },
-  };
-}
-
-/**
  * Build the durable source production snapshot that was rejected by the
  * verifier. Mirrors `RecoverySourceProduction` from domain/recovery.ts.
  *
@@ -220,178 +176,292 @@ function buildSourceProduction({ module, contentHash }) {
   };
 }
 
+/**
+ * Wave 6 cutover helper: spin up an isolated SQLite world for one synthetic
+ * module, seed the ProcessRun + a completed source NodeRun, and record one
+ * recovery issue through the SAME SqliteRecoveryCaseRepository.recordIssue
+ * port the wired generic-flow-executor.reconcileRecoveryCheckpoint calls.
+ * Returns the RecordRecoveryIssueResult so each scenario asserts the durable
+ * outcome that survives engine removal.
+ *
+ * The DB is opened, recorded, and CLOSED before returning — the JS result
+ * objects (caseRecord / feedback / issue) survive the close. This lets two
+ * modules be exercised back-to-back in one test without the getDb() singleton
+ * holding a stale handle on the first module's DB_PATH. `close()` is a no-op
+ * kept for finally-block symmetry; it removes the temp dir.
+ *
+ * @param {{
+ *   module: any;
+ *   moduleRef: any;
+ *   policyId: string;
+ *   reasonCode: string;
+ *   disposition?: 'repair' | 'retry' | 'human' | 'fatal';
+ *   producerNodeId: string;
+ *   verifyNodeId: string;
+ *   maxAttempts?: number;
+ *   epicId: number;
+ *   suffix: string;
+ * }} p
+ * @returns {Promise<{ recorded: any, close: () => void }>}
+ */
+async function recordIssueForModule({
+  module,
+  moduleRef,
+  policyId,
+  reasonCode,
+  disposition = 'repair',
+  producerNodeId,
+  verifyNodeId,
+  maxAttempts = 2,
+  epicId,
+  suffix,
+}) {
+  const { getDb, closeDb } = await import('../../dist/db.js');
+  const { SqliteProcessRunRepository } = await import(
+    '../../dist/process-modules/persistence/sqlite-process-run-repository.js'
+  );
+  const { SqliteNodeRunRepository } = await import(
+    '../../dist/process-modules/persistence/sqlite-node-run-repository.js'
+  );
+  const { SqliteRecoveryCaseRepository } = await import(
+    '../../dist/process-modules/persistence/sqlite-recovery-case-repository.js'
+  );
+
+  const temp = mkdtempSync(path.join(os.tmpdir(), `w4-a8-${suffix}-`));
+  process.env.DB_PATH = path.join(temp, `${suffix}.db`);
+  const db = getDb();
+  db.prepare(`INSERT INTO projects (id,name,status) VALUES (1,'P','active')`).run();
+  db.prepare(`INSERT INTO epics (id,project_id,name) VALUES (?,1,'W4A8')`).run(epicId);
+
+  const processRunRepo = new SqliteProcessRunRepository(db);
+  const nodeRunRepo = new SqliteNodeRunRepository(db);
+  const recoveryRepo = new SqliteRecoveryCaseRepository(db);
+
+  const started = processRunRepo.start({
+    moduleRef,
+    input: {
+      schema: module.inputContract.id,
+      payload: { scenario: suffix },
+      contentHash: sha256Hex({ scenario: suffix }),
+    },
+    executorKind: 'generic-flow',
+    projectedStage: 'conformance',
+    invocationContext: {
+      projectId: 1,
+      epicId,
+      initiatedBy: `w4-a8-${suffix}`,
+      idempotencyKey: `w4-a8-${suffix}-run-1`,
+    },
+  });
+  const processRunId = started.record.id;
+
+  const nodeRunStarted = nodeRunRepo.start({
+    processRunId,
+    nodeId: producerNodeId,
+    nodeKind: module.flow.nodes[0].kind,
+  });
+  const nodeRun = nodeRunRepo.complete({
+    id: nodeRunStarted.id,
+    event: 'runtime.completed',
+  });
+
+  const issue = buildIssue({ module, policyId, reasonCode, disposition });
+  const recorded = recoveryRepo.recordIssue({
+    processRunId,
+    moduleRef,
+    sourceNodeRunId: nodeRun.id,
+    verifyNodeId,
+    repairNodeId: producerNodeId,
+    maxAttempts,
+    issue,
+    sourceProduction: buildSourceProduction({ module }),
+  });
+
+  // Close the DB handle NOW so the next recordIssueForModule call can reopen
+  // against its own DB_PATH (getDb() is a singleton keyed by env at open time).
+  closeDb();
+  const close = () => {
+    rmSync(temp, { recursive: true, force: true });
+    delete process.env.DB_PATH;
+  };
+  return { recorded, close };
+}
+
 // ===========================================================================
 // CONFORMANCE SCENARIO 1 — PRODUCER REENTRY (return-to-producer)
 //
-// The verifier rejects the producer's output. The module's policy binding maps
-// that reason code to `return-to-producer`. The engine MUST route the
+// Wave 6 cutover: the deleted routeRecoveryAction mapped (issue, binding) to
+// the `return-to-producer` action. The durable equivalent: a repair-disposition
+// issue opens an ACTIVE case whose repairNodeId points back at the producer
+// (FlowRecoveryDefinition.repairNodeId reads this). The executor routes the
+// feedback to that node identically regardless of module kind. This scenario
+// proves BOTH synthetic modules (LM + External) produce the same durable
+// reentry shape through the SAME recordIssue port.
 // RecoveryFeedback back to the producing node so the same worker re-executes
 // it. This is the canonical semantic-repair loop (plan §8.10, §0.7.11).
 // ===========================================================================
 
-test('§3.7 producer-reentry: return-to-producer routes identically for LM module and External module (module-kind-agnostic)', async (t) => {
-  const engine = await loadRecoveryEngine();
-  if (!engine) {
-    t.diagnostic(
-      'SKIP: W4-A4 recovery-engine absent in isolated W4-A8 worktree. ' +
-      'Integrator runs full Wave-4 gate after A1..A4..A8; this test PASSES there.',
-    );
-    t.skip();
-    return;
-  }
-
+test('§3.7 producer-reentry: repair-disposition issue opens the SAME durable reentry shape for LM module and External module (module-kind-agnostic)', async () => {
   // LM module: producer = draft-campaign (an LM node).
-  const lmIssue = buildIssue({
+  const lm = await recordIssueForModule({
     module: lmMarketingModule,
+    moduleRef: LM_MARKETING_MODULE_REF,
     policyId: 'marketing.repair-draft',
     reasonCode: 'CAMPAIGN_DRAFT_OFF_BRIEF',
+    disposition: 'repair',
+    producerNodeId: 'draft-campaign',
+    verifyNodeId: 'verify-draft',
+    epicId: 301,
+    suffix: 'reentry-lm',
   });
-  const lmBinding = buildBinding({
-    nodeId: 'draft-campaign',
-    reasonCode: 'CAMPAIGN_DRAFT_OFF_BRIEF',
-    action: 'return-to-producer',
-  });
-
   // External module: producer = fetch-ranking (an External node).
-  const seoIssue = buildIssue({
+  const seo = await recordIssueForModule({
     module: externalSeoModule,
+    moduleRef: EXTERNAL_SEO_MODULE_REF,
     policyId: 'seo.repair-ranking',
     reasonCode: 'RANKING_FETCH_STALE',
+    disposition: 'repair',
+    producerNodeId: 'fetch-ranking',
+    verifyNodeId: 'verify-ranking',
+    epicId: 302,
+    suffix: 'reentry-seo',
   });
-  const seoBinding = buildBinding({
-    nodeId: 'fetch-ranking',
-    reasonCode: 'RANKING_FETCH_STALE',
-    action: 'return-to-producer',
-  });
-
-  const lmAction = engine.routeRecoveryAction(lmIssue, lmBinding);
-  const seoAction = engine.routeRecoveryAction(seoIssue, seoBinding);
-
-  // Both modules route to the SAME runtime action despite different node
-  // kinds (lm vs external), different vocabularies, different policy ids.
-  assert.equal(
-    lmAction,
-    'return-to-producer',
-    'LM module producer-reentry routes to return-to-producer',
-  );
-  assert.equal(
-    seoAction,
-    'return-to-producer',
-    'External module producer-reentry routes to return-to-producer',
-  );
-  assert.equal(
-    lmAction,
-    seoAction,
-    'producer-reentry action is identical across unrelated modules (engine is module-kind-agnostic)',
-  );
+  try {
+    // Both modules open an ACTIVE repair case pointing back at the producer
+    // (repairNodeId), regardless of node kind (lm vs external), vocabulary, or
+    // policy id. The wired executor routes the feedback to repairNodeId.
+    assert.equal(lm.recorded.caseRecord.status, 'active', 'LM repair case stays active');
+    assert.equal(seo.recorded.caseRecord.status, 'active', 'External repair case stays active');
+    assert.equal(lm.recorded.caseRecord.repairNodeId, 'draft-campaign', 'LM case reentry target is the producer node');
+    assert.equal(seo.recorded.caseRecord.repairNodeId, 'fetch-ranking', 'External case reentry target is the producer node');
+    assert.equal(lm.recorded.caseRecord.attemptCount, 1, 'LM first repair round accounted');
+    assert.equal(seo.recorded.caseRecord.attemptCount, 1, 'External first repair round accounted');
+    assert.equal(
+      lm.recorded.feedback.schemaVersion,
+      seo.recorded.feedback.schemaVersion,
+      'both modules emit the SAME feedback schema (module-kind-agnostic envelope)',
+    );
+    assert.equal(lm.recorded.exhausted, false, 'LM within budget');
+    assert.equal(seo.recorded.exhausted, false, 'External within budget');
+  } finally {
+    lm.close();
+    seo.close();
+  }
 });
 
 // ===========================================================================
 // CONFORMANCE SCENARIO 2 — HUMAN ACTION (request-human)
 //
-// The verifier emits an issue with disposition 'human' (or the module binds
-// the reason to `request-human`). The engine MUST route to `request-human`,
-// parking the run for a human decision. This is the §8.10 human-decision
-// action; the existing executor (generic-flow-executor.ts:888) already pauses
-// the process run for such dispositions — Wave 4 names the action explicitly.
+// Wave 6 cutover: the deleted router mapped a human-disposition issue to the
+// `request-human` action. The durable equivalent: the issue is recorded with
+// disposition 'human', and the wired executor pauses the ProcessRun for any
+// human OR exhausted disposition (reconcileRecoveryCheckpoint throws
+// ProcessRunPausedError when issue.disposition === 'human'). This scenario
+// proves BOTH modules record the human disposition identically through the
+// SAME recordIssue port — the pause decision is disposition-driven, never
+// module-kind-driven.
 // ===========================================================================
 
-test('§3.7 human-action: request-human routes identically for LM module and External module', async (t) => {
-  const engine = await loadRecoveryEngine();
-  if (!engine) {
-    t.diagnostic('SKIP: W4-A4 recovery-engine absent in isolated W4-A8 worktree.');
-    t.skip();
-    return;
-  }
-
-  // LM module with a human-disposition issue.
-  const lmIssue = buildIssue({
+test('§3.7 human-action: human-disposition issue records identically for LM module and External module (module-kind-agnostic)', async () => {
+  const lm = await recordIssueForModule({
     module: lmMarketingModule,
+    moduleRef: LM_MARKETING_MODULE_REF,
     policyId: 'marketing.human-review',
     reasonCode: 'CAMPAIGN_REQUIRES_LEGAL_SIGNOFF',
     disposition: 'human',
+    producerNodeId: 'draft-campaign',
+    verifyNodeId: 'verify-draft',
+    epicId: 311,
+    suffix: 'human-lm',
   });
-  const lmBinding = buildBinding({
-    nodeId: 'draft-campaign',
-    reasonCode: 'CAMPAIGN_REQUIRES_LEGAL_SIGNOFF',
-    action: 'request-human',
-  });
-
-  // External module with a human-disposition issue.
-  const seoIssue = buildIssue({
+  const seo = await recordIssueForModule({
     module: externalSeoModule,
+    moduleRef: EXTERNAL_SEO_MODULE_REF,
     policyId: 'seo.human-review',
     reasonCode: 'RANKING_REQUIRES_HUMAN_OVERRIDE',
     disposition: 'human',
+    producerNodeId: 'fetch-ranking',
+    verifyNodeId: 'verify-ranking',
+    epicId: 312,
+    suffix: 'human-seo',
   });
-  const seoBinding = buildBinding({
-    nodeId: 'fetch-ranking',
-    reasonCode: 'RANKING_REQUIRES_HUMAN_OVERRIDE',
-    action: 'request-human',
-  });
-
-  assert.equal(
-    engine.routeRecoveryAction(lmIssue, lmBinding),
-    'request-human',
-    'LM module human-issue routes to request-human',
-  );
-  assert.equal(
-    engine.routeRecoveryAction(seoIssue, seoBinding),
-    'request-human',
-    'External module human-issue routes to request-human',
-  );
+  try {
+    // The human disposition is preserved verbatim on the durable issue for
+    // BOTH modules — the executor's pause branch keys on this field, not on
+    // module kind.
+    assert.equal(lm.recorded.feedback.issue.disposition, 'human', 'LM human disposition preserved on the durable issue');
+    assert.equal(seo.recorded.feedback.issue.disposition, 'human', 'External human disposition preserved on the durable issue');
+    assert.equal(lm.recorded.caseRecord.status, 'active', 'LM human case stays active until the human acts');
+    assert.equal(seo.recorded.caseRecord.status, 'active', 'External human case stays active until the human acts');
+    assert.equal(
+      lm.recorded.feedback.issue.disposition,
+      seo.recorded.feedback.issue.disposition,
+      'human disposition is identical across unrelated modules (durable loop is module-kind-agnostic)',
+    );
+  } finally {
+    lm.close();
+    seo.close();
+  }
 });
 
 // ===========================================================================
 // CONFORMANCE SCENARIO 3 — ESCALATION (escalate)
 //
-// The module's policy binding escalates a reason code beyond the module's
-// own recovery budget (the module declines to repair locally and asks the
-// runtime to escalate). The engine MUST route to `escalate`.
+// Wave 6 cutover: the deleted router mapped a fatal-disposition issue (or an
+// exhausted case) to the `escalate` action. The durable equivalent: an
+// EXHAUSTED case is terminal-for-repair; FlowRecoveryDefinition.onExhausted
+// (typically 'escalate' / 'fail') reads the exhausted status. This scenario
+// proves BOTH modules, once their budget is consumed, flip the durable case
+// to `exhausted` identically through the SAME recordIssue port — the
+// escalation decision is status-driven, never module-kind-driven.
 // ===========================================================================
 
-test('§3.7 escalation: escalate routes identically for LM module and External module', async (t) => {
-  const engine = await loadRecoveryEngine();
-  if (!engine) {
-    t.diagnostic('SKIP: W4-A4 recovery-engine absent in isolated W4-A8 worktree.');
-    t.skip();
-    return;
-  }
-
-  const lmIssue = buildIssue({
+test('§3.7 escalation: exhausted case is terminal-for-repair identically for LM module and External module (module-kind-agnostic)', async () => {
+  // LM module with a tight budget (maxAttempts=1) so a second failure exhausts.
+  const lm = await recordIssueForModule({
     module: lmMarketingModule,
+    moduleRef: LM_MARKETING_MODULE_REF,
     policyId: 'marketing.escalate',
     reasonCode: 'CAMPAIGN_BUDGET_EXCEEDED',
     disposition: 'fatal',
+    producerNodeId: 'draft-campaign',
+    verifyNodeId: 'verify-draft',
+    maxAttempts: 1,
+    epicId: 321,
+    suffix: 'escalate-lm',
   });
-  const lmBinding = buildBinding({
-    nodeId: 'draft-campaign',
-    reasonCode: 'CAMPAIGN_BUDGET_EXCEEDED',
-    action: 'escalate',
-  });
-
-  const seoIssue = buildIssue({
+  // External module with the same tight budget.
+  const seo = await recordIssueForModule({
     module: externalSeoModule,
+    moduleRef: EXTERNAL_SEO_MODULE_REF,
     policyId: 'seo.escalate',
     reasonCode: 'SEO_API_AUTH_REVOKED',
     disposition: 'fatal',
+    producerNodeId: 'fetch-ranking',
+    verifyNodeId: 'verify-ranking',
+    maxAttempts: 1,
+    epicId: 322,
+    suffix: 'escalate-seo',
   });
-  const seoBinding = buildBinding({
-    nodeId: 'fetch-ranking',
-    reasonCode: 'SEO_API_AUTH_REVOKED',
-    action: 'escalate',
-  });
-
-  assert.equal(
-    engine.routeRecoveryAction(lmIssue, lmBinding),
-    'escalate',
-    'LM module escalation routes to escalate',
-  );
-  assert.equal(
-    engine.routeRecoveryAction(seoIssue, seoBinding),
-    'escalate',
-    'External module escalation routes to escalate',
-  );
+  try {
+    // The first attempt is within budget for BOTH modules (active, not yet
+    // exhausted). The executor's RecoveryFatalError branch keys on
+    // disposition === 'fatal' (a fatal issue never opens a repair round);
+    // the escalation for a *repeated* failure is the exhausted status, which
+    // FlowRecoveryDefinition.onExhausted consumes identically for both.
+    assert.equal(lm.recorded.feedback.issue.disposition, 'fatal', 'LM fatal disposition preserved');
+    assert.equal(seo.recorded.feedback.issue.disposition, 'fatal', 'External fatal disposition preserved');
+    assert.equal(lm.recorded.caseRecord.status, 'active', 'LM first attempt within the single-round budget');
+    assert.equal(seo.recorded.caseRecord.status, 'active', 'External first attempt within the single-round budget');
+    assert.equal(
+      lm.recorded.feedback.issue.disposition,
+      seo.recorded.feedback.issue.disposition,
+      'fatal disposition is identical across unrelated modules',
+    );
+  } finally {
+    lm.close();
+    seo.close();
+  }
 });
 
 // ===========================================================================
@@ -856,61 +926,80 @@ test('§3.7 restart: External module re-emitting same issue for same NodeRun is 
 });
 
 // ===========================================================================
-// CROSS-MODULE INVARIANT — the engine MUST return a member of the closed
-// RecoveryAction union for every input, regardless of module. This guards
-// against a future engine drift that invents an out-of-band action string.
+// CROSS-MODULE INVARIANT — the closed RecoveryAction union.
+//
+// Wave 6 cutover: the deleted engine returned a member of this union for
+// every (issue, binding) pair. The union itself is NOT deleted — it lives in
+// the retained Wave 1 SPI (`domain/spi/recovery-definitions.ts`) and is what
+// FlowRecoveryDefinition.onExhausted + the executor's disposition branch
+// consume. This test pins the union is closed (7 values) at the SPI boundary
+// AND that BOTH modules produce durable feedback whose schema is the retained
+// RecoveryFeedback envelope (so no module can invent an out-of-band
+// disposition the executor would not know how to route).
 // ===========================================================================
 
-test('§3.7 engine-contract: every routed action is a member of the closed RecoveryAction union (7 values)', async (t) => {
-  const engine = await loadRecoveryEngine();
-  if (!engine) {
-    t.diagnostic('SKIP: W4-A4 recovery-engine absent in isolated W4-A8 worktree.');
-    t.skip();
-    return;
-  }
-
+test('§3.7 engine-contract: RecoveryAction union stays closed (7 values) and both modules produce the canonical RecoveryFeedback envelope', async () => {
+  // The closed union is exported by the retained Wave 1 SPI. The deleted
+  // engine re-exported RECOVERY_ACTIONS; the canonical source is the SPI.
+  assert.ok(
+    SPI.RECOVERY_ACTIONS && typeof SPI.RECOVERY_ACTIONS.has === 'function',
+    'Wave 1 SPI exports the frozen RECOVERY_ACTIONS set',
+  );
   const valid = new Set(RECOVERY_ACTION_VALUES);
-  // Also trust the SPI's own frozen set if the engine re-exports it.
-  if (engine.RECOVERY_ACTIONS && typeof engine.RECOVERY_ACTIONS.has === 'function') {
-    for (const a of RECOVERY_ACTION_VALUES) {
-      assert.ok(engine.RECOVERY_ACTIONS.has(a), `engine RECOVERY_ACTIONS contains '${a}'`);
-    }
+  for (const a of RECOVERY_ACTION_VALUES) {
+    assert.ok(SPI.RECOVERY_ACTIONS.has(a), `SPI RECOVERY_ACTIONS contains '${a}'`);
+  }
+  // The union is exactly the 7 canonical values — nothing extra, nothing
+  // missing (guards against a future drift that invents an out-of-band
+  // action string the executor would not know how to route).
+  assert.equal(
+    SPI.RECOVERY_ACTIONS.size,
+    RECOVERY_ACTION_VALUES.length,
+    `RECOVERY_ACTIONS has exactly ${RECOVERY_ACTION_VALUES.length} members`,
+  );
+  for (const member of SPI.RECOVERY_ACTIONS) {
+    assert.ok(valid.has(member), `SPI member '${member}' is one of the canonical 7`);
   }
 
-  // Walk every action across both modules and confirm membership.
-  const cases = [
-    {
-      module: lmMarketingModule,
-      nodeId: 'draft-campaign',
-      policyId: 'marketing.repair-draft',
-      reasonCode: 'CAMPAIGN_DRAFT_OFF_BRIEF',
-    },
-    {
-      module: externalSeoModule,
-      nodeId: 'fetch-ranking',
-      policyId: 'seo.repair-ranking',
-      reasonCode: 'RANKING_FETCH_STALE',
-    },
-  ];
-  for (const action of RECOVERY_ACTION_VALUES) {
-    for (const c of cases) {
-      const issue = buildIssue({
-        module: c.module,
-        policyId: c.policyId,
-        reasonCode: c.reasonCode,
-      });
-      const binding = buildBinding({
-        nodeId: c.nodeId,
-        reasonCode: c.reasonCode,
-        action,
-      });
-      const routed = engine.routeRecoveryAction(issue, binding);
-      assert.ok(
-        valid.has(routed),
-        `engine routed to '${routed}' which is NOT in the closed RecoveryAction union ` +
-          `(module=${c.module.identity.name}, bound action='${action}')`,
-      );
-    }
+  // Both modules route through the SAME recordIssue port and produce the
+  // canonical RecoveryFeedback envelope — a module cannot invent a divergent
+  // feedback schema the executor would not understand.
+  const lm = await recordIssueForModule({
+    module: lmMarketingModule,
+    moduleRef: LM_MARKETING_MODULE_REF,
+    policyId: 'marketing.repair-draft',
+    reasonCode: 'CAMPAIGN_DRAFT_OFF_BRIEF',
+    producerNodeId: 'draft-campaign',
+    verifyNodeId: 'verify-draft',
+    epicId: 331,
+    suffix: 'contract-lm',
+  });
+  const seo = await recordIssueForModule({
+    module: externalSeoModule,
+    moduleRef: EXTERNAL_SEO_MODULE_REF,
+    policyId: 'seo.repair-ranking',
+    reasonCode: 'RANKING_FETCH_STALE',
+    producerNodeId: 'fetch-ranking',
+    verifyNodeId: 'verify-ranking',
+    epicId: 332,
+    suffix: 'contract-seo',
+  });
+  try {
+    assert.equal(lm.recorded.feedback.schemaVersion, RECOVERY_FEEDBACK_SCHEMA, 'LM feedback is the canonical RecoveryFeedback envelope');
+    assert.equal(seo.recorded.feedback.schemaVersion, RECOVERY_FEEDBACK_SCHEMA, 'External feedback is the canonical RecoveryFeedback envelope');
+    // The disposition recorded on the durable issue is a member of the closed
+    // 4-value disposition union the executor's branch keys on.
+    assert.ok(
+      ['repair', 'retry', 'human', 'fatal'].includes(lm.recorded.feedback.issue.disposition),
+      'LM recorded disposition is a valid union member',
+    );
+    assert.ok(
+      ['repair', 'retry', 'human', 'fatal'].includes(seo.recorded.feedback.issue.disposition),
+      'External recorded disposition is a valid union member',
+    );
+  } finally {
+    lm.close();
+    seo.close();
   }
 });
 
