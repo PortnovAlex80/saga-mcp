@@ -186,10 +186,14 @@ test('platform.repository surfaces repository + checkout tools', () => {
   ]);
 });
 
-test('platform.worker-completion surfaces the dispatcher + merge fence', () => {
+test('platform.worker-completion surfaces the completion + merge fence (NO worker_next)', () => {
+  // WAVE-3 (conveyor-wave-review ПОВТОРНАЯ ПРОВЕРКА 2026-08-02): worker_next is
+  // removed from the assigned-worker capability package. One launch = one card:
+  // an assigned worker must not re-enter the dispatch queue. The dispatcher
+  // invokes worker_next as a raw MCP tool, not via this package, and the
+  // server-side fence rejection in handleWorkerNext is the hard guarantee.
   const ids = PLATFORM_WORKER_COMPLETION_PACKAGE.tools.map((t) => t.logicalId);
   assert.deepEqual(ids, [
-    'platform.worker-completion.worker_next',
     'platform.worker-completion.worker_done',
     'platform.worker-completion.worker_ask_need',
     'platform.worker-completion.worker_ask_done',
@@ -197,6 +201,12 @@ test('platform.worker-completion surfaces the dispatcher + merge fence', () => {
     'platform.worker-completion.worker_merge_release',
     'platform.worker-completion.worker_health',
   ]);
+  // Explicit negative assertion: worker_next must NOT be granted to assigned
+  // workers through this package.
+  assert.ok(
+    !ids.includes('platform.worker-completion.worker_next'),
+    'worker_next must not appear in the assigned-worker capability package',
+  );
 });
 
 test('platform.protocol-checkpoint surfaces exactly the W4-A5 protocol tool', () => {
