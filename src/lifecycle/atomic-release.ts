@@ -1,4 +1,44 @@
 /**
+ * ════════════════════════════════════════════════════════════════════════════
+ * WRITER INVARIANT (Uncle Bob Wave 1B / FU-B).
+ * ════════════════════════════════════════════════════════════════════════════
+ * This module is ONE of the ONLY legal direct writers of the owner columns
+ * `tasks.{status, assigned_to, current_execution_id}`. The single-writer set
+ * for those columns is exactly:
+ *
+ *   - src/lifecycle/work-assignment-core.ts    (the claim path)
+ *   - src/lifecycle/atomic-release.ts          (this module — releaseExecutionAtomically)
+ *   - src/lifecycle/legacy-assignment-recovery.ts
+ *
+ *   PLUS the documented exception:
+ *   - src/worker-executions.ts:202  (markExecutionExited clears
+ *     current_execution_id while zeroing worker_pid metadata — FU-D will
+ *     consolidate this duplicate writer into releaseExecutionAtomically)
+ *
+ * `releaseExecutionAtomically` terminalizes an execution AND releases its
+ * task in a single `BEGIN IMMEDIATE` transaction with a fence CAS on
+ * `current_execution_id`. This direct-SQL release path CANNOT be replaced
+ * by a not-yet-existing command bus (Slice 1.C — see "No command bus yet"
+ * below) because the bus cannot serialize the two-table terminalize+release
+ * into a single hardware-level write lock the way SQLite's BEGIN IMMEDIATE
+ * does here.
+ *
+ * ALL OTHER `UPDATE tasks` writes in the codebase must touch NON-owner
+ * columns only (metadata, tags, risk, integration_state, etc.).
+ *
+ * Enforcement: tests/architecture/tasks-writer-invariant.test.mjs is a
+ * source-level lint gate that fails any NEW file issuing
+ * `UPDATE tasks SET status=|assigned_to=|current_execution_id=` outside the
+ * allowed set above.
+ *
+ * FORWARD PATH (when the command bus lands in Slice 1.C): the release will
+ * route through the bus as a single ReleaseCard command, and this module's
+ * direct SQL collapses into the command's handler. Until then, this module
+ * IS the single writer for the release transition.
+ * ════════════════════════════════════════════════════════════════════════════
+ */
+
+/**
  * Atomic execution terminalization + task release.
  *
  * Source: blueprint §16 Slice 1 (docs/architecture/passive-worker-kernel-blueprint.md:829-845)

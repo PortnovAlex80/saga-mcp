@@ -1,3 +1,43 @@
+/**
+ * ════════════════════════════════════════════════════════════════════════════
+ * WRITER INVARIANT (Uncle Bob Wave 1B / FU-B).
+ * ════════════════════════════════════════════════════════════════════════════
+ * This module is ONE of the ONLY legal direct writers of the owner columns
+ * `tasks.{status, assigned_to, current_execution_id}`. The single-writer set
+ * for those columns is exactly:
+ *
+ *   - src/lifecycle/work-assignment-core.ts    (the claim path)
+ *   - src/lifecycle/atomic-release.ts          (releaseExecutionAtomically)
+ *   - src/lifecycle/legacy-assignment-recovery.ts   (this module)
+ *
+ *   PLUS the documented exception:
+ *   - src/worker-executions.ts:202  (markExecutionExited — FU-D will
+ *     consolidate this duplicate writer into releaseExecutionAtomically)
+ *
+ * This module owns the legacy (pre-ADR-009, unfenced) recovery path: a
+ * worker process died holding an assignment that has NO execution fence.
+ * The conditional UPDATE here (status/assigned_to/current_execution_id with
+ * a CAS on the old owner) is the only safe way to release such a row — it
+ * MUST run as direct SQL because no command bus (Slice 1.C) exists yet to
+ * serialize this, and the fenced branch delegates to
+ * `releaseExecutionAtomically` (atomic-release.ts) which itself runs inside
+ * BEGIN IMMEDIATE.
+ *
+ * ALL OTHER `UPDATE tasks` writes in the codebase must touch NON-owner
+ * columns only (metadata, tags, risk, integration_state, etc.).
+ *
+ * Enforcement: tests/architecture/tasks-writer-invariant.test.mjs is a
+ * source-level lint gate that fails any NEW file issuing
+ * `UPDATE tasks SET status=|assigned_to=|current_execution_id=` outside the
+ * allowed set above.
+ *
+ * FORWARD PATH (when the command bus lands in Slice 1.C): legacy recovery
+ * will route through the bus as a single RecoverLegacyAssignment command,
+ * and this module's direct SQL collapses into the command's handler. Until
+ * then, this module IS the single writer for the legacy-recovery transition.
+ * ════════════════════════════════════════════════════════════════════════════
+ */
+
 import type Database from 'better-sqlite3';
 import { logActivity } from '../helpers/activity-logger.js';
 import { releaseExecutionAtomically } from './atomic-release.js';

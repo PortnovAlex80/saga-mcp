@@ -1,4 +1,47 @@
 /**
+ * ════════════════════════════════════════════════════════════════════════════
+ * WRITER INVARIANT (Uncle Bob Wave 1B / FU-B).
+ * ════════════════════════════════════════════════════════════════════════════
+ * This module is ONE of the ONLY legal direct writers of the owner columns
+ * `tasks.{status, assigned_to, current_execution_id}`. The single-writer set
+ * for those columns is exactly:
+ *
+ *   - src/lifecycle/work-assignment-core.ts    (this module — the claim path)
+ *   - src/lifecycle/atomic-release.ts          (releaseExecutionAtomically)
+ *   - src/lifecycle/legacy-assignment-recovery.ts
+ *
+ *   PLUS the documented exception:
+ *   - src/worker-executions.ts:202  (markExecutionExited clears
+ *     current_execution_id while zeroing worker_pid metadata — FU-D will
+ *     consolidate this duplicate into releaseExecutionAtomically)
+ *
+ * The claim path here MUST keep using direct SQL inside a BEGIN IMMEDIATE
+ * transaction (SELECT claimable card + INSERT fence row + UPDATE status-flip
+ * in ONE tx). Atomicity is non-negotiable: a not-yet-existing command bus
+ * (Slice 1.C — see atomic-release.ts:31) cannot replace this because the bus
+ * cannot serialize the claim+fence+status-flip into a single hardware-level
+ * write lock. SQLite's BEGIN IMMEDIATE is the analog of SELECT FOR UPDATE
+ * here; there is no other correct serialization point.
+ *
+ * ALL OTHER `UPDATE tasks` writes in the codebase must touch NON-owner
+ * columns only: metadata, tags, risk (declared_risk/derived_risk/
+ * policy_minimum/final_risk), integration_state, integrated_at,
+ * integrated_commit, verification_target_artifact_id, actual_hours,
+ * review_skill, generation_key, generated_from_task_id, etc.
+ *
+ * Enforcement: tests/architecture/tasks-writer-invariant.test.mjs is a
+ * source-level lint gate that fails any NEW file issuing
+ * `UPDATE tasks SET status=|assigned_to=|current_execution_id=` outside the
+ * allowed set above.
+ *
+ * FORWARD PATH (when the command bus lands in Slice 1.C): the claim will
+ * route through the bus as a single ClaimCard command, and this module's
+ * direct SQL collapses into the command's handler. Until then, this module
+ * IS the single writer for the claim transition.
+ * ════════════════════════════════════════════════════════════════════════════
+ */
+
+/**
  * Work-assignment core — the atomic card-selection + fence-creation logic.
  *
  * CONVEYOR-MENTAL-MODEL §"Adapter rules": "SQLite adapters implement
