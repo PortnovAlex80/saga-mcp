@@ -1,0 +1,20 @@
+name: Export glass ceiling workspace
+on:
+  push:
+    branches: [agent/saga4-glass-ceiling-fix]
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: saga4-glass-ceiling-source
+          path: |
+            .
+            !node_modules
+            !.git
+          retention-days: 1
+          include-hidden-files: true
