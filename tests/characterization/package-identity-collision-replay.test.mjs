@@ -71,6 +71,23 @@ const {
 } = await import(
   '../../dist/process-modules/persistence/sqlite-managed-production-ledger.js'
 );
+// Wave 0A (Uncle Bob Wave 1E): the four process-module identity refs are
+// CANONICAL contracts owned by `lifecycles/product-delivery-module-contracts.ts`
+// (CONVEYOR Wave 7 — single source of truth). The test DERIVES its DISCOVERY_REF
+// from this compiled dist export instead of hardcoding a version literal, so a
+// future version bump cannot silently orphan this characterization suite.
+// Background: the suite previously hardcoded `'3.0.0'` while production had
+// already moved to `3.0.2` (commit 6f1f249), causing 7 ADR-DRIFT failures.
+// ADR-015: version is a human handle, not a content address — deriving from the
+// single canonical source keeps the test version-agnostic.
+const {
+  DISCOVERY_PROCESS_MODULE_REF,
+  FORMALIZATION_PROCESS_MODULE_REF,
+  DEVELOPMENT_PROCESS_MODULE_REF,
+  DELIVERY_PROCESS_MODULE_REF,
+} = await import(
+  '../../dist/process-modules/lifecycles/product-delivery-module-contracts.js'
+);
 
 // --- Fixtures ---------------------------------------------------------------
 
@@ -85,19 +102,16 @@ function fakeExecutor({ moduleRef, kind = 'legacy-adapter', marker = 'A' } = {})
   };
 }
 
-const DISCOVERY_REF = { name: 'product-discovery', version: '3.0.0' };
-const FORMALIZATION_REF = { name: 'solution-formalization', version: '1.0.0' };
-const DEVELOPMENT_REF = { name: 'solution-development', version: '1.0.0' };
-const DELIVERY_REF = { name: 'delivery-release', version: '1.0.0' };
-
-// Identity strings of the four production module packages. See baseline §"Modules"
-// (4 production packages).
-const PRODUCTION_MODULE_KEYS = [
-  'product-discovery@3.0.0',
-  'solution-formalization@1.0.0',
-  'solution-development@1.0.0',
-  'delivery-release@1.0.0',
-];
+// Wave 0A: identity refs are DERIVED from the canonical module-contract source
+// (DISCOVERY_PROCESS_MODULE_REF in lifecycles/product-delivery-module-contracts.ts)
+// rather than hardcoded version literals. Deep-copied so test mutations cannot
+// leak into the shared frozen export. Version is a human handle (ADR-015); the
+// derivation keeps this characterization test version-agnostic so a bump like
+// 3.0.0 → 3.0.2 (commit 6f1f249) can never silently orphan it again.
+const DISCOVERY_REF = { ...DISCOVERY_PROCESS_MODULE_REF };
+const FORMALIZATION_REF = { ...FORMALIZATION_PROCESS_MODULE_REF };
+const DEVELOPMENT_REF = { ...DEVELOPMENT_PROCESS_MODULE_REF };
+const DELIVERY_REF = { ...DELIVERY_PROCESS_MODULE_REF };
 
 const PRODUCTION_MODULES = [
   discoveryProcessModule,
@@ -105,6 +119,12 @@ const PRODUCTION_MODULES = [
   developmentProcessModule,
   deliveryProcessModule,
 ];
+
+// Identity strings of the four production module packages. See baseline §"Modules"
+// (4 production packages). Wave 0A: DERIVED from the real module identities via
+// processModuleKey, not hardcoded — stays in sync with production automatically.
+const DISCOVERY_KEY = processModuleKey(DISCOVERY_REF);
+const PRODUCTION_MODULE_KEYS = PRODUCTION_MODULES.map((m) => processModuleKey(m.identity));
 
 // A minimal but valid generic-flow-style executor that wires to a definition
 // with at least one kernel node. Used to exercise the fail-fast coverage path.
@@ -230,9 +250,12 @@ test('1d. GAP: registry is in-memory only — two instances are independent, no 
 // ===========================================================================
 
 test('2a. processModuleKey has the shape name@version', () => {
+  // Wave 0A: assert the shape against the DERIVED production identity so this
+  // stays version-agnostic (a future bump cannot break it). The pure-shape
+  // property `name + '@' + version` is still exercised by construction.
   assert.equal(
-    processModuleKey({ name: 'product-discovery', version: '3.0.0' }),
-    'product-discovery@3.0.0',
+    processModuleKey({ name: DISCOVERY_REF.name, version: DISCOVERY_REF.version }),
+    DISCOVERY_KEY,
   );
   assert.equal(
     processModuleKey({ name: 'solution-formalization', version: '1.0.0' }),
@@ -262,7 +285,7 @@ test('2b. GAP: two modules with same name+version but different content produce 
   const keyB = processModuleKey(modB.identity);
 
   assert.equal(keyA, keyB, 'same name@version yields same key regardless of content');
-  assert.equal(keyA, 'product-discovery@3.0.0');
+  assert.equal(keyA, DISCOVERY_KEY);
 
   // And the key is a pure function of name+version — no third component.
   assert.equal(
@@ -287,10 +310,12 @@ test('3a. ManagedArtifactProductionRecord shape: carries contentHash, determinis
 
     // Insert two ledger rows with the same artifact content_hash. The
     // recorded contentHash must be byte-identical.
-    const processRunId = seedProcessRun(db, { epicId: 1, projectId: 1, moduleRef: 'product-discovery@3.0.0' });
+    // Wave 0A: moduleRef uses the DERIVED discovery key so the fixture is
+    // version-agnostic (production moved 3.0.0 → 3.0.2, commit 6f1f249).
+    const processRunId = seedProcessRun(db, { epicId: 1, projectId: 1, moduleRef: DISCOVERY_KEY });
     insertArtifactLedgerRow(db, {
       processRunId,
-      moduleRef: 'product-discovery@3.0.0',
+      moduleRef: DISCOVERY_KEY,
       nodeId: 'discovery-lm',
       intentId: 7,
       taskId: 11,
@@ -312,7 +337,7 @@ test('3a. ManagedArtifactProductionRecord shape: carries contentHash, determinis
     // columns on the returned record, just no longer SQL filters).
     const rows = ledger.listArtifactsForNodeInProcessRun(
       processRunId,
-      'product-discovery@3.0.0',
+      DISCOVERY_KEY,
       'discovery-lm',
     );
     assert.equal(rows.length, 1);
@@ -321,7 +346,7 @@ test('3a. ManagedArtifactProductionRecord shape: carries contentHash, determinis
     // Pin the record shape.
     assert.equal(typeof rec.ledgerId, 'number');
     assert.equal(rec.processRunId, processRunId);
-    assert.equal(rec.moduleRef, 'product-discovery@3.0.0');
+    assert.equal(rec.moduleRef, DISCOVERY_KEY);
     assert.equal(rec.nodeId, 'discovery-lm');
     assert.equal(rec.intentId, 7);
     assert.equal(rec.taskId, 11);
@@ -335,10 +360,10 @@ test('3a. ManagedArtifactProductionRecord shape: carries contentHash, determinis
 
     // Determinism: same artifact content_hash inserted twice (different
     // artifact id) keeps identical contentHash — hashing is over stored bytes.
-    const processRunId2 = seedProcessRun(db, { epicId: 1, projectId: 1, moduleRef: 'product-discovery@3.0.0' });
+    const processRunId2 = seedProcessRun(db, { epicId: 1, projectId: 1, moduleRef: DISCOVERY_KEY });
     insertArtifactLedgerRow(db, {
       processRunId: processRunId2,
-      moduleRef: 'product-discovery@3.0.0',
+      moduleRef: DISCOVERY_KEY,
       nodeId: 'discovery-lm',
       intentId: 7,
       taskId: 12,
@@ -352,7 +377,7 @@ test('3a. ManagedArtifactProductionRecord shape: carries contentHash, determinis
     const ledger2 = new SqliteManagedProductionLedger(db);
     const rows2 = ledger2.listArtifactsForNodeInProcessRun(
       processRunId2,
-      'product-discovery@3.0.0',
+      DISCOVERY_KEY,
       'discovery-lm',
     );
     assert.equal(rows2[0].contentHash, rows[0].contentHash);
@@ -476,8 +501,9 @@ test('4b. GAP: collision check is keyed by name@version only, not by content/dig
     executor: fakeExecutor({ moduleRef: DISCOVERY_REF, marker: 'mutated' }),
   });
 
-  // Both instances claim to hold product-discovery@3.0.0 with different
-  // underlying Definitions — neither knows the other exists.
+  // Both instances claim to hold the discovery module key (derived from
+  // DISCOVERY_PROCESS_MODULE_REF) with different underlying Definitions —
+  // neither knows the other exists.
   assert.equal(
     a.require(DISCOVERY_REF).definition.identity.description,
     discoveryProcessModule.identity.description,
@@ -577,36 +603,46 @@ test('5c. GAP: no source-file hashing path in process-modules — all hashing is
 // 6. Replay behavior (current gap)
 // ===========================================================================
 
-test('6a. GAP: there is NO replay-from-immutable-bytes path today (ModulePackageStore absent)', async () => {
-  // WAVE 2 WILL FIX: Plan §5.5.7 ("Verify stored bytes against the digest
-  // before activation and replay"). Today there is no ModulePackageStore,
-  // no content-addressed store directory, no installation table — so there
-  // is no replay-from-immutable-bytes path.
+test('6a. WAVE 2 CLOSED: ModulePackageStore PORT + FilesystemModulePackageStore now exist; remaining gaps (SQL table, ledger replay) still open', async () => {
+  // REAL-DRIFT (Wave 0A triage). This test previously asserted the ABSENCE of
+  // a ModulePackageStore symbol (a "WAVE 2 WILL FIX" gap). Wave 2 DELIVERED it:
+  //   - commit 1d6c104 feat(installation): W2-A1 ModulePackageStore port +
+  //     FilesystemModulePackageStore (content-addressed, immutable)
+  //   - commit 708098b feat(installation): production package install wiring
+  //     (SPI cutover Seam A)
+  //   - commit 8b93103 fix(runtime): enforce immutable pinned recovery workspaces
+  // All three are ancestors of HEAD (saga4). The store/PORT now lives in
+  // src/process-modules/installation/{domain/package-store.ts, adapters/
+  // filesystem-package-store.ts} and is barrel-exported from installation/index.ts.
   //
-  // Assert the absence of the symbol across both source and built dist.
+  // The characterization is flipped to ASSERT PRESENCE so the suite tracks the
+  // closed gap (a "WAVE 2 WILL FIX" tag that is no longer a gap). The OTHER two
+  // sub-pins below (no saga3_process_module_installations SQL table; no replay
+  // method on ManagedProductionLedger) are STILL OPEN gaps and remain pinned.
   for (const sub of ['src/process-modules', 'dist/process-modules']) {
     const dir = path.join(root, sub);
     if (!existsSync(dir)) continue;
-    const offenders = readdirRecursive(dir).filter((f) =>
+    const present = readdirRecursive(dir).filter((f) =>
       /ModulePackageStore|ContentAddressedStore|package-store/i.test(asTextSafe(f)),
     );
-    assert.equal(
-      offenders.length,
-      0,
-      `no ModulePackageStore symbol in ${sub} today (plan §5.5.7 / §5.6)`,
+    assert.ok(
+      present.length > 0,
+      `Wave 2 delivered ModulePackageStore in ${sub} (commits 1d6c104, 708098b, 8b93103) — expected the symbol to be PRESENT`,
     );
   }
 
-  // And no saga3_process_module_installations table in the canonical schema.
+  // REMAINING GAP (still open): no saga3_process_module_installations table in
+  // the canonical schema. Wave 2's bytes store is filesystem content-addressed,
+  // not a SQL installation row.
   const schemaSql = readSchemaSql();
   assert.ok(
     !/saga3_process_module_installations/i.test(schemaSql),
-    'no persisted installation table today — replay-bytes cannot be pinned to a row',
+    'no persisted installation table today — replay-bytes cannot be pinned to a SQL row',
   );
 
-  // And the ManagedProductionLedger (the closest thing to a "production
-  // record with contentHash") exposes NO method to fetch content by digest —
-  // it can only list production records by execution key.
+  // REMAINING GAP (still open): the ManagedProductionLedger (the closest thing
+  // to a "production record with contentHash") exposes NO method to fetch
+  // content by digest — it can only list production records by execution key.
   const ledgerProto = Object.getPrototypeOf(new SqliteManagedProductionLedger(noopDbHandle()));
   const methods = Object.getOwnPropertyNames(ledgerProto);
   const replayish = methods.filter((m) =>
