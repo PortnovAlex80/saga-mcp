@@ -1,36 +1,21 @@
 /**
- * CONVEYOR Wave — production adapters for the formal outbound ports declared
- * in `src/application/ports/conveyor-ports.ts`.
+ * Conveyor Wave — production + test adapters for the SURVIVING global port
+ * surface declared in `src/application/ports/conveyor-ports.ts`.
  *
- * Each adapter here wraps an EXISTING proven concrete implementation so the
- * formal port surface is satisfied without behavioral change. The composition
- * root may construct these and inject them where a port is required.
+ * After the Wave 1C (FU-E) dead-port inventory + ADR-022, the only global
+ * port is `IdGeneratorPort` (the one genuinely cross-module concern). The
+ * previous `ClockPort` and `ProcessLivenessPort` adapters
+ * (`systemClock` / `fixedClock` / `systemProcessLiveness`) had ZERO
+ * production consumers and were removed: a narrow local `SupervisionClock`
+ * (FU-D's job) is preferred over a global clock abstraction, and
+ * `ProcessProbe` (worker-executions.ts:34) is the live liveness contract.
+ *
+ * What remains: the id-generator adapters that production
+ * (`orchestrate-cli.ts`) and tests actually consume.
  */
 
 import { randomUUID } from 'node:crypto';
-import type {
-  ClockPort,
-  IdGeneratorPort,
-  ProcessLivenessPort,
-} from '../../application/ports/conveyor-ports.js';
-import { isProcessAlive, readProcessBirthToken } from '../../worker-executions.js';
-
-// ---------------------------------------------------------------------------
-// ClockPort — production wall-clock adapter.
-// ---------------------------------------------------------------------------
-
-export const systemClock: ClockPort = {
-  now: () => new Date(),
-  nowIso: () => new Date().toISOString(),
-  nowMs: () => Date.now(),
-};
-
-/** Fixed clock for tests — deterministic time. */
-export function fixedClock(time: Date): ClockPort {
-  const iso = time.toISOString();
-  const ms = time.getTime();
-  return { now: () => time, nowIso: () => iso, nowMs: () => ms };
-}
+import type { IdGeneratorPort } from '../../application/ports/conveyor-ports.js';
 
 // ---------------------------------------------------------------------------
 // IdGeneratorPort — production UUID adapter.
@@ -49,15 +34,3 @@ export function sequentialIdGenerator(prefix = 'id'): IdGeneratorPort {
     newTypedId: (p: string) => `${p}-${++n}`,
   };
 }
-
-// ---------------------------------------------------------------------------
-// ProcessLivenessPort — wraps the existing OS process inspection functions.
-// The domain receives observations; termination (kill) stays behind
-// ProcessProbe in worker-executions.ts — this port deliberately exposes only
-// read-only liveness + birth-token (doc line 638-639).
-// ---------------------------------------------------------------------------
-
-export const systemProcessLiveness: ProcessLivenessPort = {
-  isAlive: (pid: number) => isProcessAlive(pid),
-  readBirthToken: (pid: number) => readProcessBirthToken(pid),
-};

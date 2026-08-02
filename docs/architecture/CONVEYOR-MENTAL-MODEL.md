@@ -591,52 +591,42 @@ contain SQL or domain transition logic.
 
 ### Required outbound ports
 
-Names may follow repository conventions, but responsibilities must remain
-separate:
+> **Updated by ADR-022 (2026-08-02): module-local ports over global catalog.**
+> The responsibilities below are MANDATORY, but they no longer live in a single
+> global `ports/` file. Each responsibility is owned by the module that
+> implements it; the module-local interface is the canonical declaration. Only
+> `IdGeneratorPort` remains a global port, because identity creation spans every
+> conveyor module. See `docs/architecture/decisions/022-module-local-ports-over-global-catalog.md`
+> for the per-port live location and the evidence that drove the inversion.
 
-```ts
-interface WorkAssignmentPort {
-  assignNext(input: {
-    projectId: number;
-    processRunId: number;
-    executionId: string;
-    now: string;
-  }): Promise<AssignedWork | null>;
+Names may follow repository conventions, and **declarations may live at the
+module boundary rather than in a shared catalog** (ADR-022). Responsibilities
+must remain separate. The responsibility→live-location map:
 
-  renew(input: FencedExecutionRef): Promise<Lease>;
-  complete(input: FencedCompletion): Promise<CompletionResult>;
-  expire(input: FencedExecutionRef): Promise<void>;
-}
+| Responsibility | Canonical declaration |
+| --- | --- |
+| Assign / renew / complete / expire work | `WorkAssignmentPort` — `application/ports/worker-executor.ts` |
+| Launch / stop a worker process | `ClaudeBoardRunner` run-lifecycle surface — `tracker-view/claude-runner.mjs` |
+| Supervise (lease renewal, progress, exit, reconcile) | `startWorkerSupervision` + runtime repo + `reconcileWorkerExecutions` — `infrastructure/work/worker-supervision-service.ts`, `worker-executions.ts` |
+| Materialize the desk / write recovery feedback | `materializePinnedWorkspace` — `process-modules/application/pinned-workspace-materializer.ts` |
+| Read / append immutable products | `ProcessProductRepository(V2)` SPI — `process-modules/persistence/` |
+| Resolve module selectors to installed entries | `PackageRegistry` SPI — `process-modules/installation/domain/package-registry.ts` |
+| Append-only journal (receipts / events) | `command_receipts` via `lifecycle/idempotency.ts` |
+| Inspect OS process liveness (read-only) | `ProcessProbe` — `worker-executions.ts` (the domain never calls `process.kill`) |
+| Generate ids (cross-module) | `IdGeneratorPort` — `application/ports/conveyor-ports.ts` (the ONE global port) |
 
-interface WorkerLauncherPort {
-  start(work: AssignedWork, context: WorkerLaunchContext): Promise<LaunchRef>;
-  stop(launch: LaunchRef): Promise<void>;
-}
+The illustrative interface shapes that previously appeared here (worked
+examples of `WorkAssignmentPort`, `WorkerLauncherPort`,
+`WorkerSupervisionPort`, `WorkspacePort`, `ProductRepositoryPort`) are
+preserved in the git history and in ADR-022's context; they are NOT a
+requirement that all five be re-declared in one shared file. The
+responsibility matters, not the file it lives in.
 
-interface WorkerSupervisionPort {
-  renewLease(input: FencedExecutionRef): Promise<Lease>;
-  recordProgress(input: FencedProgress): Promise<void>;
-  observeProcessExit(input: ProcessExitObservation): Promise<ReleaseResult>;
-  reconcile(now: string): Promise<readonly ReconcileResult[]>;
-}
-
-interface WorkspacePort {
-  materialize(workplace: WorkplaceRef): Promise<DeskRef>;
-  writeRecoveryFeedback(desk: DeskRef, issue: RecoveryIssue): Promise<void>;
-}
-
-interface ProductRepositoryPort {
-  getExact(ref: ProductRef): Promise<Product>;
-  listAcceptedByWorkplace(ref: WorkplaceRef): Promise<readonly Product[]>;
-  append(product: Product): Promise<void>;
-}
-```
-
-Additional ports are `ProcessRunRepository`, `NodeRunRepository`,
-`RecoveryCaseRepository`, `ModuleCatalogPort`, `InstallationRepository`,
-`ExecutionJournalPort`, `ProcessLivenessPort`, `ClockPort` and
-`IdGeneratorPort`. `ProcessLivenessPort` may inspect local OS process identity;
-the domain receives observations and never calls `process.kill` itself.
+Additional repositories are formalized at their module boundary:
+`ProcessRunRepository`, `NodeRunRepository`, `RecoveryCaseRepository`, and
+`ModuleInstallationRepository`. `ClockPort` is intentionally NOT a global port
+(ADR-022): temporal logic that needs determinism uses a narrow local clock
+(FU-D's `SupervisionClock`), not a conveyor-wide abstraction.
 
 ### Adapter rules
 
