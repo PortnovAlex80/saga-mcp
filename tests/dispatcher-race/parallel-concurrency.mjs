@@ -1,17 +1,22 @@
 // Wave 4 / mandatory scenario 2: with concurrency=N, no more than N workers
 // run AND at least two run concurrently when two cards are available.
 //
-// This is an in-process test of ClaudeBoardRunner.pump(): it injects a fake
-// `spawn` that records a launch timestamp, stays "alive" for a controlled
-// window, then emits a close event. We then assert:
-//   (1) at most `concurrency` workers were ever simultaneously alive, and
-//   (2) when concurrency >= 2 and >= 2 cards exist, two workers overlapped
-//       in time (their [launch, close] windows intersect).
+// HISTORICAL NOTE (Slice 1, saga4): this file used to test the concurrency
+// loop INSIDE ClaudeBoardRunner.pump() — the `while (run.active.size <
+// run.concurrency)` branch that claimed cards via the `claimTask` callback.
+// Slice 1 removed that branch entirely: the runner is now a strictly
+// one-card process host, and the global concurrency budget lives in
+// src/app/dispatch-loop.ts (distributeQueuedTasks loops
+// `while (active.size < concurrency)` calling assignTask then start with
+// concurrency:1). These two tests therefore target a contract that no
+// longer exists in the runner.
 //
-// The runner enforces `run.active.size < run.concurrency` (claude-runner.mjs
-// pump loop); this test makes that invariant executable so a future change
-// that serializes the pump (e.g. an accidental `await` before re-pump) fails
-// loudly.
+// They are SKIPped here to keep test:architecture green. The equivalent
+// invariant for the NEW dispatcher (temporal overlap of >=2 executions at
+// N>=2, max-alive <= N) is tracked as Wave 4 REAL-GAP #4 and must be
+// re-implemented as a dispatch-loop overlap test. Do NOT re-add a
+// claimTask/pump-loop test — that model is gone by design (see
+// tests/architecture/no-claim-scope.test.mjs).
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import Database from 'better-sqlite3';
@@ -55,7 +60,9 @@ function seedTwoCards(db) {
 // tick, stays alive until .kill() is called (the runner kills on completion),
 // and emits 'close' asynchronously. We control timing with process.uptime() as
 // a monotonic clock so the test is deterministic regardless of wall-clock.
-test('scenario 2: concurrency=3 with 2 cards launches 2 workers that overlap in time', async () => {
+test.skip('scenario 2: concurrency=3 with 2 cards launches 2 workers that overlap in time', async () => {
+  // SKIPPED (Slice 1): tested the runner's internal pump-loop concurrency,
+  // which was removed. See file header. Rewrite target: dispatch-loop overlap.
   const dbPath = join(__dirname, 'parallel-concurrency.db');
   const db = makeDb(dbPath);
   const { projId } = seedTwoCards(db);
@@ -176,7 +183,9 @@ test('scenario 2: concurrency=3 with 2 cards launches 2 workers that overlap in 
   console.log(`[scenario-2] launches=${launches.length} maxAlive=${maxAlive} overlap=PASS`);
 });
 
-test('scenario 2: concurrency=1 with 2 cards never overlaps (serial)', () => {
+test.skip('scenario 2: concurrency=1 with 2 cards never overlaps (serial)', () => {
+  // SKIPPED (Slice 1): tested the runner's internal pump-loop concurrency,
+  // which was removed. See file header. Rewrite target: dispatch-loop serial.
   const dbPath = join(__dirname, 'parallel-concurrency-serial.db');
   const db = makeDb(dbPath);
   const { projId } = seedTwoCards(db);
