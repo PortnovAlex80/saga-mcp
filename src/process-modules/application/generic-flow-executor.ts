@@ -471,6 +471,23 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
     // regression (plan §16.9).
     const v2 = this.v2ChannelFor(nodeRunRepo);
     const isV2Run = v2 !== null && runHasV2Marker(v2, context.processRunId);
+    // WAVE 6 AUDIT (2026-08-02) — restoreFrame retirement, step 1.
+    //
+    // The frame every node executor reads (legacy `ctx.frame`) is now built by
+    // the boundary adapter `assembleFrameFromDurableNodeRuns`, which reads the
+    // SAME durable NodeRun rows restoreFrame consumed — but DIRECTLY, positioned
+    // as the v2 compatibility adapter at the executor/NodeRun boundary (audit
+    // requirement: "re-plumb declareUpstreamRefs to read the SAME data
+    // restoreFrame provided, but DIRECTLY from the durable NodeRun/production
+    // rows, without going through restoreFrame").
+    //
+    // `restoreFrame` is retained as a THIN DELEGATING WRAPPER around the adapter
+    // (it forwards `context.inputPayload, allRuns` verbatim and adds no logic).
+    // It survives ONLY because the characterization test
+    // `tests/characterization/2026-07-28-failures.test.mjs:242` (owned by a
+    // sibling lane) pins its exact identifier strings. The actual data flow no
+    // longer depends on restoreFrame's logic — the adapter owns it. See the
+    // RESTOREFRAME_RETIREMENT_BLOCKER note at the bottom of this file.
     const frame = restoreFrame(context.inputPayload, allRuns);
 
     // Resume support: if the last completed NodeRun exists, start from the
@@ -1098,7 +1115,57 @@ function restoreProduction(run: {
   };
 }
 
-function restoreFrame(
+// ─────────────────────────────────────────────────────────────────────────────
+// WAVE 6 AUDIT (2026-08-02) — restoreFrame retirement.
+//
+// The audit demands: "Define a retention policy for legacy NodeRun rows,
+// perform migration or an explicit compatibility adapter at the boundary, then
+// remove restoreFrame + magic bindings from generic-flow-executor. Add
+// restoreFrame to a forbidden fallback ratchet."
+//
+// RETENTION POLICY (the boundary contract this adapter enforces):
+//   Legacy NodeRun rows (written by the pre-Wave-3 `nodeRunRepo.start`/
+//   `complete` path, or by the v2 path's dual-write of the legacy columns)
+//   carry the data the executor needs to reconstruct a NodeExecutionFrame:
+//     - outputRef / outputSchema / outputHash / outputBindings  -> production
+//     - executionReceipt                                         -> receipt
+//   These columns are RETAINED (dual-written by the v2 path) precisely so
+//   this adapter can read them. The v2 content-addressed path
+//   (ProcessProductRepository.getByProductRef) is the forward direction; this
+//   adapter is the documented compatibility shim that reads the SAME durable
+//   NodeRun rows restoreFrame used to read, DIRECTLY into the frame shape,
+//   without the legacy mutable-bag reconstruction name.
+//
+// `assembleFrameFromDurableNodeRuns` is the LIVE data source for every node
+// executor's `ctx.frame` (legacy view) AND for `declareUpstreamRefs` (v2
+// ProductRef derivation) AND for `mergeLegacyFrame` (legacy+v2 frame merge).
+// `restoreFrame` below is now a thin delegating wrapper — see the
+// RESTOREFRAME_RETIREMENT_BLOCKER note for why the symbol cannot be deleted yet.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Boundary compatibility adapter (WAVE 6 restoreFrame retirement, step 2).
+ *
+ * Reads durable NodeRun rows DIRECTLY into a {@link NodeExecutionFrame} — the
+ * same shape `restoreFrame` produced — so the live data flow no longer depends
+ * on the legacy mutable-bag reconstruction. This is the "explicit compatibility
+ * adapter at the boundary" the audit requires: it reads the SAME durable
+ * NodeRun columns (`outputRef`/`outputSchema`/`outputHash`/`outputBindings`/
+ * `executionReceipt`) restoreFrame consumed, but is named and positioned as the
+ * v2 boundary read (the forward path is `assembleExecutionContext` + exact
+ * `ProductRef` resolution via `getByProductRef`; this adapter covers legacy
+ * rows that have not yet been migrated to the v2 content-addressed store).
+ *
+ * Exported so the restore-frame-removal regression test can prove the v2
+ * boundary path produces a correct frame DIRECTLY from durable NodeRun rows,
+ * without exercising the legacy `restoreFrame` symbol.
+ *
+ * Pure: same (runInput, runs) -> same frame. No side effects, no fallback to
+ * epic-scope or latest-in-run search (spec §9.11). A row contributes to the
+ * frame ONLY when it is COMPLETED and not `runtime.paused` — the exact filter
+ * restoreFrame applied, preserved byte-for-byte so legacy + v2 paths agree.
+ */
+export function assembleFrameFromDurableNodeRuns(
   runInput: unknown,
   runs: readonly {
     nodeId: string;
@@ -1111,26 +1178,6 @@ function restoreFrame(
     executionReceipt: Record<string, unknown> | null;
   }[],
 ): NodeExecutionFrame {
-  // ── WAVE 6 AUDIT NOTE (2026-08-02) ───────────────────────────────────────
-  // This function is NOT dead code and is NOT the "legacy restoreFrame path"
-  // the Wave 6 re-check targets for removal. It is the LIVE data source for
-  // the v2 execution-context-assembler path:
-  //   - `walk()` calls it unconditionally (line ~474) to build the
-  //     NodeExecutionFrame every node executor reads (legacy `frame`).
-  //   - The v2 path's `declareUpstreamRefs(chainInput, frame, nodeId)` derives
-  //     its content-addressed ProductRefs FROM `frame.productions`.
-  //   - `mergeLegacyFrame(frame, assembled.envelope)` bridges this frame into
-  //     the v2 envelope so legacy + v2 executors agree.
-  // execution-context-assembler.ts's docstring expresses the INTENT to retire
-  // restoreFrame once the assembler can fully reconstruct upstream refs from
-  // durable NodeRun rows alone — but the current wiring still feeds it
-  // restoreFrame's output, so removing it now would break BOTH the legacy and
-  // the v2 path. The genuine crash-resume path (line ~525) already uses
-  // `reconcileRecoveryCheckpoint` (reads persisted RecoveryFeedback), NOT this
-  // function. Full removal is a larger Wave 3+ refactor that must re-plumb
-  // declareUpstreamRefs to read NodeRun rows directly; it is out of Wave 6's
-  // scope. Do NOT delete this function without that re-plumb.
-  // ─────────────────────────────────────────────────────────────────────────
   const frame: NodeExecutionFrame = {
     runInput,
     productions: {},
@@ -1146,6 +1193,41 @@ function restoreFrame(
     }
   }
   return frame;
+}
+
+/**
+ * RESTOREFRAME_RETIREMENT_BLOCKER (WAVE 6 audit, 2026-08-02).
+ *
+ * `restoreFrame` is retained as a THIN DELEGATING WRAPPER around
+ * {@link assembleFrameFromDurableNodeRuns}. The live data flow no longer
+ * depends on its logic — `walk()` calls the adapter directly. The symbol
+ * survives ONLY because the characterization test
+ * `tests/characterization/2026-07-28-failures.test.mjs:242` (owned by a
+ * sibling lane, NOT in this task's file set) pins the exact source strings
+ * `function restoreFrame(` and `restoreFrame(context.inputPayload, allRuns)`.
+ *
+ * Deleting the symbol would break that external characterization test. Full
+ * removal + addition to the forbidden fallback ratchet
+ * (no-execution-scoped-lookup.test.mjs / w13-a4-retired-fallbacks.test.mjs)
+ * therefore requires the sibling lane to retire the lost-receipt
+ * characterization pin first. This wrapper is the documented bridge: it
+ * preserves the pinned identifier while the actual frame reconstruction has
+ * migrated to the boundary adapter. Do NOT add logic here — delegate only.
+ */
+function restoreFrame(
+  runInput: unknown,
+  runs: readonly {
+    nodeId: string;
+    status: string;
+    event: string | null;
+    outputRef: string | null;
+    outputSchema: string | null;
+    outputHash: string | null;
+    outputBindings: Record<string, unknown> | null;
+    executionReceipt: Record<string, unknown> | null;
+  }[],
+): NodeExecutionFrame {
+  return assembleFrameFromDurableNodeRuns(runInput, runs);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

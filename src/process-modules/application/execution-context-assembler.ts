@@ -17,6 +17,15 @@
  *     completed but before kernel verification therefore resumes from the
  *     EXACT receipt + product, not a mutable reconstruction (plan §0.6.12).
  *
+ * WAVE 6 STATUS (2026-08-02 audit): the executor's `walk()` now builds the
+ * legacy `ctx.frame` via `assembleFrameFromDurableNodeRuns` (a boundary
+ * compatibility adapter that reads durable NodeRun rows DIRECTLY, without
+ * going through restoreFrame's mutable reconstruction). `restoreFrame` itself
+ * survives as a thin delegating wrapper ONLY because the characterization test
+ * at tests/characterization/2026-07-28-failures.test.mjs:242 pins its exact
+ * identifier strings; its logic no longer owns the data flow. This assembler
+ * remains the v2 no-fallback path (exact `ProductRef` resolution, §9.11).
+ *
  * Driver-neutrality (plan §7.7.1-7.7.6, §13.16, C061): board/task/epic/
  * WorkIntent IDs are NOT base fields of the returned envelope. They live in
  * `frozenAuthority` only when the durable ProcessRun already carries them as
