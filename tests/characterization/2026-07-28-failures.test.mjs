@@ -237,10 +237,17 @@ test('fixture execution-scoped-read: process-run fallback exists (commit 9229f14
 test('fixture lost-receipt: receipt is a nullable JSON blob reconstructed each walk()', () => {
   const f = manifests.find(m => m.data.id === 'lost-receipt');
   const exec = readSrc('src/process-modules/application/generic-flow-executor.ts');
-  // restoreFrame reconstructs the frame on every walk().
+  // WAVE 6 (fourth audit 2026-08-02): restoreFrame was removed; walk() now
+  // calls the boundary adapter assembleFrameFromDurableNodeRuns directly,
+  // which reconstructs the frame on every walk() from the durable NodeRun
+  // rows. The retired symbol is forbidden by no-execution-scoped-lookup.
   assert.ok(
-    exec.includes('function restoreFrame(') && exec.includes('restoreFrame(context.inputPayload, allRuns)'),
-    'restoreFrame must be defined and invoked at the top of walk()',
+    exec.includes('assembleFrameFromDurableNodeRuns(context.inputPayload, allRuns)'),
+    'walk() must invoke the durable boundary adapter at the top of the frame build',
+  );
+  assert.ok(
+    !exec.includes('function restoreFrame('),
+    'restoreFrame symbol must be removed (forbidden-fallback gate)',
   );
   const nodeRun = readSrc('src/process-modules/persistence/sqlite-node-run-repository.ts');
   // execution_receipt is a nullable TEXT column added by ALTER TABLE.

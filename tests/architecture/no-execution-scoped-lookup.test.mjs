@@ -49,13 +49,19 @@ const __dirname = path.dirname(__filename);
 const REPO_ROOT = path.resolve(__dirname, '..', '..');
 const PROCESS_MODULES_ROOT = path.join(REPO_ROOT, 'src', 'process-modules');
 
-// The two method names the Wave 6 cutover retired. Matched as whole-word
+// The identifiers the Wave 6 cutover retired. Matched as whole-word
 // identifiers (word boundaries on both sides) so a substring like
 // 'listArtifactsForExecutionFoo' or 'mylistArtifactsForExecution' is NOT a
 // false positive.
+//
+// `restoreFrame` was added at the fourth audit (2026-08-02): the live
+// executor data flow now calls `assembleFrameFromDurableNodeRuns` directly,
+// and the `restoreFrame` symbol was fully removed. Forbidding it here
+// prevents it from drifting back into owning frame-reconstruction logic.
 const BANNED_IDENTIFIERS = Object.freeze([
   'listArtifactsForExecution',
   'listTracesForExecution',
+  'restoreFrame',
 ]);
 
 // ---------------------------------------------------------------------------

@@ -467,28 +467,21 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
     // activates ONLY when (a) v2 wiring is configured AND (b) at least one
     // NodeRun row in the run carries the v2 marker (`inputEnvelopeHash`).
     // Legacy runs (no v2 wiring, or v2 wiring but no v2 rows yet) execute the
-    // byte-identical restoreFrame() path — characterization tests prove no
+    // byte-identical durable-frame path — characterization tests prove no
     // regression (plan §16.9).
     const v2 = this.v2ChannelFor(nodeRunRepo);
     const isV2Run = v2 !== null && runHasV2Marker(v2, context.processRunId);
-    // WAVE 6 AUDIT (2026-08-02) — restoreFrame retirement, step 1.
+    // WAVE 6 (fourth audit 2026-08-02) — restoreFrame fully retired.
     //
-    // The frame every node executor reads (legacy `ctx.frame`) is now built by
-    // the boundary adapter `assembleFrameFromDurableNodeRuns`, which reads the
-    // SAME durable NodeRun rows restoreFrame consumed — but DIRECTLY, positioned
-    // as the v2 compatibility adapter at the executor/NodeRun boundary (audit
-    // requirement: "re-plumb declareUpstreamRefs to read the SAME data
-    // restoreFrame provided, but DIRECTLY from the durable NodeRun/production
-    // rows, without going through restoreFrame").
-    //
-    // `restoreFrame` is retained as a THIN DELEGATING WRAPPER around the adapter
-    // (it forwards `context.inputPayload, allRuns` verbatim and adds no logic).
-    // It survives ONLY because the characterization test
-    // `tests/characterization/2026-07-28-failures.test.mjs:242` (owned by a
-    // sibling lane) pins its exact identifier strings. The actual data flow no
-    // longer depends on restoreFrame's logic — the adapter owns it. See the
-    // RESTOREFRAME_RETIREMENT_BLOCKER note at the bottom of this file.
-    const frame = restoreFrame(context.inputPayload, allRuns);
+    // The frame every node executor reads (legacy `ctx.frame`) is built
+    // DIRECTLY by the boundary adapter `assembleFrameFromDurableNodeRuns`,
+    // which reads the SAME durable NodeRun columns the former restoreFrame
+    // consumed (outputRef/outputSchema/outputHash/outputBindings/
+    // executionReceipt) — positioned as the v2 compatibility adapter at the
+    // executor/NodeRun boundary. The former `restoreFrame` wrapper symbol was
+    // removed: walk() calls the adapter by name, and `restoreFrame` is now in
+    // the forbidden-fallback gate (no-execution-scoped-lookup.test.mjs).
+    const frame = assembleFrameFromDurableNodeRuns(context.inputPayload, allRuns);
 
     // Resume support: if the last completed NodeRun exists, start from the
     // transition out of it. Otherwise start at entry.
@@ -1193,41 +1186,6 @@ export function assembleFrameFromDurableNodeRuns(
     }
   }
   return frame;
-}
-
-/**
- * RESTOREFRAME_RETIREMENT_BLOCKER (WAVE 6 audit, 2026-08-02).
- *
- * `restoreFrame` is retained as a THIN DELEGATING WRAPPER around
- * {@link assembleFrameFromDurableNodeRuns}. The live data flow no longer
- * depends on its logic — `walk()` calls the adapter directly. The symbol
- * survives ONLY because the characterization test
- * `tests/characterization/2026-07-28-failures.test.mjs:242` (owned by a
- * sibling lane, NOT in this task's file set) pins the exact source strings
- * `function restoreFrame(` and `restoreFrame(context.inputPayload, allRuns)`.
- *
- * Deleting the symbol would break that external characterization test. Full
- * removal + addition to the forbidden fallback ratchet
- * (no-execution-scoped-lookup.test.mjs / w13-a4-retired-fallbacks.test.mjs)
- * therefore requires the sibling lane to retire the lost-receipt
- * characterization pin first. This wrapper is the documented bridge: it
- * preserves the pinned identifier while the actual frame reconstruction has
- * migrated to the boundary adapter. Do NOT add logic here — delegate only.
- */
-function restoreFrame(
-  runInput: unknown,
-  runs: readonly {
-    nodeId: string;
-    status: string;
-    event: string | null;
-    outputRef: string | null;
-    outputSchema: string | null;
-    outputHash: string | null;
-    outputBindings: Record<string, unknown> | null;
-    executionReceipt: Record<string, unknown> | null;
-  }[],
-): NodeExecutionFrame {
-  return assembleFrameFromDurableNodeRuns(runInput, runs);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

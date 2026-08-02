@@ -1,6 +1,6 @@
 // tests/process-modules/restore-frame-removal.test.mjs
 //
-// WAVE 6 AUDIT (2026-08-02) — third-audit restoreFrame retirement proof.
+// WAVE 6 (fourth audit 2026-08-02) — restoreFrame retirement proof.
 //
 // PURPOSE
 //   The Wave 6 audit demands that the live executor data flow NO LONGER
@@ -10,26 +10,22 @@
 //   SAME data restoreFrame provided, but DIRECTLY from the durable
 //   NodeRun/production rows, without going through restoreFrame").
 //
-//   generic-flow-executor.ts now exposes `assembleFrameFromDurableNodeRuns` —
-//   the boundary adapter that owns the frame-reconstruction logic. This test
-//   proves that adapter produces a CORRECT frame directly from durable NodeRun
-//   rows, exercising the SAME data paths the live walk() uses:
-//     - the legacy `ctx.frame` view consumed by every node executor; and
-//     - the v2 `declareUpstreamRefs` ProductRef derivation; and
-//     - the `mergeLegacyFrame` legacy+v2 frame merge.
+//   generic-flow-executor.ts exposes `assembleFrameFromDurableNodeRuns` —
+//   the boundary adapter that owns the frame-reconstruction logic. walk()
+//   calls it directly. The `restoreFrame` SYMBOL IS FULLY REMOVED and is in
+//   the forbidden-fallback gate (no-execution-scoped-lookup.test.mjs).
 //
-//   `restoreFrame` itself survives as a thin delegating wrapper ONLY because
-//   the characterization test at tests/characterization/2026-07-28-failures.
-//   test.mjs:242 (owned by a sibling lane) pins its exact identifier strings.
-//   This test asserts that delegation is faithful (restoreFrame's output is
-//   byte-identical to the adapter's) so the wrapper cannot drift back into
-//   owning logic.
+//   This test proves the adapter produces a CORRECT frame directly from
+//   durable NodeRun rows, exercising the SAME data paths the live walk()
+//   uses, AND that the retired symbol is genuinely absent from the executor
+//   source (so it cannot drift back into owning logic).
 //
 // Run: node --test tests/process-modules/restore-frame-removal.test.mjs
 // (after `npm run build`).
 
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { readFileSync } from 'node:fs';
 
 const {
   assembleFrameFromDurableNodeRuns,
@@ -347,4 +343,24 @@ test('restoreFrame is a pure delegating wrapper: its output is byte-identical to
   assert.deepEqual(frame.productions, { author: AUTHOR_PRODUCTION });
   assert.deepEqual(frame.receipts, { author: AUTHOR_RECEIPT });
   assert.equal(frame.runInput, RUN_INPUT);
+});
+
+// ===========================================================================
+// WAVE 6 fourth-audit gate: the retired `restoreFrame` symbol is GONE.
+// walk() calls the adapter by name; the symbol cannot drift back.
+// ===========================================================================
+
+test('restoreFrame retirement: the symbol is absent from generic-flow-executor source', () => {
+  const src = readFileSync(
+    new URL('../../src/process-modules/application/generic-flow-executor.ts', import.meta.url),
+    'utf8',
+  );
+  assert.ok(
+    !src.includes('function restoreFrame('),
+    'restoreFrame must be removed — it is in the forbidden-fallback gate',
+  );
+  assert.ok(
+    src.includes('assembleFrameFromDurableNodeRuns(context.inputPayload, allRuns)'),
+    'walk() must call the boundary adapter by name at the top of the frame build',
+  );
 });
