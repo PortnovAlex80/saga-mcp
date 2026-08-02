@@ -405,9 +405,18 @@ test('two unchanged failed captures force a substantial rewrite on the next run'
 });
 
 test('runner invokes post-worker capture even when the worker exits before worker_done', async () => {
+  // Slice 1 (saga4, commit 49ac316) adaptation: the runner is now a one-card
+  // host — start() REQUIRES `assignment: AssignedWork` and no longer calls
+  // claimTask. This test asserts the captureWorkspace callback fires on a
+  // failed worker exit; that path still exists in the close handler. Only the
+  // harness changed: we now build a minimal AssignedWork for taskId=1 and pass
+  // it to start(), plus a getTask callback (required by
+  // assignmentFromAssignedWork). execution_id is intentionally empty so the
+  // markExecutionRunning/markExecutionExited DB writes (which need a real
+  // saga.db + OS birth token) are skipped — the capture behavior under test
+  // does not depend on the execution fence.
   const root = mkdtempSync(path.join(os.tmpdir(), 'saga-warm-runner-'));
   mkdirSync(path.join(root, 'logs'), { recursive: true });
-  let claimed = false;
   const captures = [];
   const runner = new ClaudeBoardRunner({
     dbPath: path.join(root, 'saga.db'),
@@ -416,20 +425,12 @@ test('runner invokes post-worker capture even when the worker exits before worke
     logRoot: path.join(root, 'logs'),
     getProject: id => ({ id, name: 'warm-runner' }),
     resolveWorkspace: () => root,
-    claimTask: ({ worker_id }) => {
-      if (claimed) return { task: null, skill: null };
-      claimed = true;
-      return {
-        task: {
-          id: 1,
-          title: 'Interrupted draft',
-          status: 'todo',
-          assigned_to: worker_id,
-          tags: '[]',
-        },
-        skill: 'saga-worker',
-      };
-    },
+    // Slice 1: claimTask is no longer called by the runner; kept for shape.
+    claimTask: () => ({ task: null, skill: null }),
+    getTask: () => ({
+      id: 1, title: 'Interrupted draft', status: 'in_progress',
+      assigned_to: 'worker', tags: '[]',
+    }),
     getTaskState: () => ({
       id: 1,
       status: 'in_progress',
@@ -459,7 +460,21 @@ test('runner invokes post-worker capture even when the worker exits before worke
     },
   });
   try {
-    runner.start({ projectId: 1, epicId: 1, concurrency: 1 });
+    const assignment = {
+      taskId: 1,
+      epicId: 1,
+      projectId: 1,
+      status: 'in_progress',
+      skill: 'saga-worker',
+      workerExecutionId: '',
+      fenceToken: '',
+      runId: 'warm-run',
+      workerId: 'worker',
+      machineId: 'test-host',
+      repository: null,
+      executionContext: null,
+    };
+    runner.start({ projectId: 1, epicId: 1, concurrency: 1, assignment });
     await waitFor(() => captures.length === 1);
     assert.equal(captures[0].outcome, 'failed');
     assert.equal(captures[0].workspaceRoot, root);

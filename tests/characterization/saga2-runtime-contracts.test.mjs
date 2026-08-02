@@ -104,9 +104,17 @@ test('model route remains model-config-driven across the worker boundary', () =>
 
 test('worker infrastructure keeps claim, recovery and concrete runner anchors', () => {
   const source = read('src/infrastructure/workers/legacy-claude-worker-executor-factory.ts');
+  // Slice 1 (saga4, commit 49ac316) removed the runner's internal claimTask
+  // callback — the runner is now a one-card host and the dispatcher pre-assigns
+  // the card via WorkAssignmentPort before launch. The old
+  // `dispatcherHandlers.worker_next` anchor (which lived inside the deleted
+  // claimTask callback) is therefore replaced by `workAssignment`, the new
+  // pre-assignment port the factory wires into the runner. `getTask` is also
+  // asserted (required by assignmentFromAssignedWork).
   assertIncludesAll(source, [
     'createClaudeBoardRunner',
-    'dispatcherHandlers.worker_next',
+    'workAssignment',
+    'getTask',
     'recoverLegacyAssignment',
     'getActiveModel',
     'lmstudioBaseUrl',
