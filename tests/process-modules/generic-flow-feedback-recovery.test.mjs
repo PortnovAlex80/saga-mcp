@@ -304,6 +304,72 @@ function buildHarness(db, module, {
     }],
   ]);
 
+  // v1 dead-path deletion — v2 wiring is now MANDATORY (the v1 frame/
+  // completion path is deleted). The productRepo bridge falls back to NodeRun
+  // rows for settlement productions not in the content-addressed product
+  // store (mirrors v2-production-completion-roundtrip.test.mjs), and ALSO
+  // resolves recovery-feedback products from saga3_recovery_attempts — those
+  // are content-addressed control-plane products the executor forwards as
+  // chainInput to the repair node, persisted in the recovery tables rather
+  // than the product/NodeRun stores.
+  const lookupProduction = db.prepare(
+    `SELECT output_schema AS schema, output_ref AS ref, output_hash AS hash,
+            output_bindings AS bindingsText
+       FROM saga3_node_runs
+      WHERE output_schema=? AND output_ref=? AND output_hash=?
+        AND status='completed'
+      LIMIT 1`,
+  );
+  // Lazy + defensive: saga3_recovery_attempts only exists when a
+  // SqliteRecoveryCaseRepository was constructed (this harness does construct
+  // one, but the lazy guard keeps the bridge reusable for scenarios that do
+  // not).
+  let lookupRecoveryFeedback = null;
+  const getRecoveryFeedbackLookup = () => {
+    if (lookupRecoveryFeedback === null) {
+      try {
+        lookupRecoveryFeedback = db.prepare(
+          `SELECT issue_ref AS ref, feedback_hash AS hash, feedback_snapshot AS snapshot
+             FROM saga3_recovery_attempts
+            WHERE issue_ref=? AND feedback_hash=?
+            LIMIT 1`,
+        );
+      } catch {
+        lookupRecoveryFeedback = false;
+      }
+    }
+    return lookupRecoveryFeedback || null;
+  };
+  const productRepo = {
+    getByProductRef(ref) {
+      const nr = lookupProduction.get(ref.schemaId, ref.ref, ref.digest);
+      if (nr !== undefined && nr.schema !== null && nr.ref !== null && nr.hash !== null) {
+        const bindings = nr.bindingsText ? JSON.parse(nr.bindingsText) : {};
+        return {
+          productRef: { schemaId: nr.schema, ref: nr.ref, digest: nr.hash },
+          payload: { schema: nr.schema, artifactRef: nr.ref, contentHash: nr.hash, bindings },
+        };
+      }
+      const feedbackLookup = getRecoveryFeedbackLookup();
+      if (feedbackLookup) {
+        const rf = feedbackLookup.get(ref.ref, ref.digest);
+        if (rf !== undefined && rf.ref !== null && rf.hash !== null) {
+          const feedback = JSON.parse(rf.snapshot);
+          return {
+            productRef: { schemaId: ref.schemaId, ref: rf.ref, digest: rf.hash },
+            payload: {
+              schema: ref.schemaId,
+              artifactRef: rf.ref,
+              contentHash: rf.hash,
+              bindings: { recoveryFeedback: feedback },
+            },
+          };
+        }
+      }
+      return null;
+    },
+  };
+
   const executor = new GenericFlowExecutor({
     moduleRef: module.identity,
     processRunRepo,
@@ -311,6 +377,7 @@ function buildHarness(db, module, {
     recoveryCaseRepo,
     certificateRepo: new SqliteProcessOutcomeCertificateRepository(db),
     nodeExecutors,
+    v2: { productRepo },
   });
 
   return {

@@ -98,16 +98,90 @@ function buildExecutor(db, module, nodeExecutors, options = {}) {
     certificateRepo: new SqliteProcessOutcomeCertificateRepository(db),
     nodeExecutors,
   };
+  // v1 dead-path deletion — v2 wiring is now MANDATORY (the v1 frame/
+  // completion path is deleted). When the caller does not supply a
+  // productRepo, default to the NodeRun-row bridge (the pattern in
+  // v2-production-completion-roundtrip.test.mjs) so settlement productions
+  // resolve without the content-addressed product store. The bridge also
+  // resolves recovery-feedback products from saga3_recovery_attempts
+  // (content-addressed control-plane products persisted in the recovery
+  // tables). Callers that need a custom bridge still pass
+  // `{ v2: { productRepo } }`.
   if (options.v2) {
-    // WAVE 8 HIGH 3 — when the durable NodeRun rows carry a `completion`
-    // column (written via completeV2), the executor MUST take the v2 path so
-    // the resume read surfaces the completion. Otherwise the legacy
-    // readLastCompleted returns a NodeRunRecord without the completion field
-    // and the SETTLEMENT_COMPLETION_MISSING guard trips. The productRepo
-    // bridge mirrors v2-production-completion-roundtrip.test.mjs.
     opts.v2 = { productRepo: options.v2.productRepo };
+  } else {
+    opts.v2 = { productRepo: buildBridgeProductRepo(db) };
   }
   return new GenericFlowExecutor(opts);
+}
+
+/**
+ * Build the bridge productRepo for v2 wiring: resolves content-addressed
+ * products from NodeRun output rows (settlement productions) AND from
+ * saga3_recovery_attempts (recovery-feedback control-plane products). Mirrors
+ * the production assemblerProductRepo fallback in product-lifecycle-runtime.ts
+ * plus the recovery-feedback table that production resolves via the same
+ * exact-(schema,ref,digest) match.
+ */
+function buildBridgeProductRepo(db) {
+  const lookupProduction = db.prepare(
+    `SELECT output_schema AS schema, output_ref AS ref, output_hash AS hash,
+            output_bindings AS bindingsText
+       FROM saga3_node_runs
+      WHERE output_schema=? AND output_ref=? AND output_hash=?
+        AND status='completed'
+      LIMIT 1`,
+  );
+  // Lazy + defensive: saga3_recovery_attempts only exists when a
+  // SqliteRecoveryCaseRepository was constructed (its migration creates the
+  // table). Tests that never exercise recovery would otherwise throw
+  // SQLITE_ERROR at prepare time. We prepare on first use and tolerate a
+  // missing table by treating it as "no recovery-feedback product found".
+  let lookupRecoveryFeedback = null;
+  const getRecoveryFeedbackLookup = () => {
+    if (lookupRecoveryFeedback === null) {
+      try {
+        lookupRecoveryFeedback = db.prepare(
+          `SELECT issue_ref AS ref, feedback_hash AS hash, feedback_snapshot AS snapshot
+             FROM saga3_recovery_attempts
+            WHERE issue_ref=? AND feedback_hash=?
+            LIMIT 1`,
+        );
+      } catch {
+        lookupRecoveryFeedback = false;
+      }
+    }
+    return lookupRecoveryFeedback || null;
+  };
+  return {
+    getByProductRef(ref) {
+      const nr = lookupProduction.get(ref.schemaId, ref.ref, ref.digest);
+      if (nr !== undefined && nr.schema !== null && nr.ref !== null && nr.hash !== null) {
+        const bindings = nr.bindingsText ? JSON.parse(nr.bindingsText) : {};
+        return {
+          productRef: { schemaId: nr.schema, ref: nr.ref, digest: nr.hash },
+          payload: { schema: nr.schema, artifactRef: nr.ref, contentHash: nr.hash, bindings },
+        };
+      }
+      const feedbackLookup = getRecoveryFeedbackLookup();
+      if (feedbackLookup) {
+        const rf = feedbackLookup.get(ref.ref, ref.digest);
+        if (rf !== undefined && rf.ref !== null && rf.hash !== null) {
+          const feedback = JSON.parse(rf.snapshot);
+          return {
+            productRef: { schemaId: ref.schemaId, ref: rf.ref, digest: rf.hash },
+            payload: {
+              schema: ref.schemaId,
+              artifactRef: rf.ref,
+              contentHash: rf.hash,
+              bindings: { recoveryFeedback: feedback },
+            },
+          };
+        }
+      }
+      return null;
+    },
+  };
 }
 
 function executionContext(started) {
@@ -334,27 +408,6 @@ test('settling restart replays the durable terminal NodeRun and finalizes once',
     // productRepo bridge falls back to NodeRun rows for settlement productions
     // not in the content-addressed product store (mirrors
     // v2-production-completion-roundtrip.test.mjs).
-    const lookupProduction = ctx.db.prepare(
-      `SELECT output_schema AS schema, output_ref AS ref, output_hash AS hash,
-              output_bindings AS bindingsText
-         FROM saga3_node_runs
-        WHERE output_schema=? AND output_ref=? AND output_hash=?
-          AND status='completed'
-        LIMIT 1`,
-    );
-    const productRepo = {
-      getByProductRef(ref) {
-        const nr = lookupProduction.get(ref.schemaId, ref.ref, ref.digest);
-        if (nr === undefined || nr.schema === null || nr.ref === null || nr.hash === null) {
-          return null;
-        }
-        const bindings = nr.bindingsText ? JSON.parse(nr.bindingsText) : {};
-        return {
-          productRef: { schemaId: nr.schema, ref: nr.ref, digest: nr.hash },
-          payload: { schema: nr.schema, artifactRef: nr.ref, contentHash: nr.hash, bindings },
-        };
-      },
-    };
     const executor = buildExecutor(ctx.db, module, new Map([
       ['kernel', {
         kind: 'kernel',
@@ -363,7 +416,7 @@ test('settling restart replays the durable terminal NodeRun and finalizes once',
           throw new Error('terminal node must be replayed, not dispatched');
         },
       }],
-    ]), { v2: { productRepo } });
+    ]), { v2: { productRepo: buildBridgeProductRepo(ctx.db) } });
 
     const result = await executor.execute(module, executionContext(started));
     assert.equal(result.outcome, 'accepted');

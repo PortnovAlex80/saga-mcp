@@ -651,12 +651,38 @@ function buildExecutor({ db, runtime, lmExecutor }) {
     ['kernel', kernelExecutor],
     ['lm', lmExecutor],
   ]);
+  // v1 dead-path deletion — v2 wiring is now MANDATORY (the v1 frame/
+  // completion path is deleted). The productRepo bridge falls back to NodeRun
+  // rows for settlement productions not in the content-addressed product
+  // store (mirrors v2-production-completion-roundtrip.test.mjs).
+  const lookupProduction = db.prepare(
+    `SELECT output_schema AS schema, output_ref AS ref, output_hash AS hash,
+            output_bindings AS bindingsText
+       FROM saga3_node_runs
+      WHERE output_schema=? AND output_ref=? AND output_hash=?
+        AND status='completed'
+      LIMIT 1`,
+  );
+  const productRepo = {
+    getByProductRef(ref) {
+      const nr = lookupProduction.get(ref.schemaId, ref.ref, ref.digest);
+      if (nr === undefined || nr.schema === null || nr.ref === null || nr.hash === null) {
+        return null;
+      }
+      const bindings = nr.bindingsText ? JSON.parse(nr.bindingsText) : {};
+      return {
+        productRef: { schemaId: nr.schema, ref: nr.ref, digest: nr.hash },
+        payload: { schema: nr.schema, artifactRef: nr.ref, contentHash: nr.hash, bindings },
+      };
+    },
+  };
   const executor = new GenericFlowExecutor({
     moduleRef: discoveryProcessModule.identity,
     processRunRepo,
     nodeRunRepo,
     certificateRepo,
     nodeExecutors,
+    v2: { productRepo },
   });
   return {
     executor,

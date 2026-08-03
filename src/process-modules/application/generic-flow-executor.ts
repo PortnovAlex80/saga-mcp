@@ -69,11 +69,6 @@ import type {
 } from './process-module-executor.js';
 import { validateProcessModuleRunResult } from './validate-process-module-run-result.js';
 import { NodeExecutionLeaseLostError, nodeEventForTransition, toV2Result } from './node-executor.js';
-// W3-A1 (spec §3/§4): optional v2 driver-neutral envelope path. These imports
-// are ADDITIVE wiring — the v2 path activates only when the corresponding deps
-// are supplied via GenericFlowExecutorOptions.v2 AND the NodeRun row carries
-// the v2 marker (`inputEnvelopeHash`). Legacy runs (no v2 wiring) execute the
-// byte-identical restoreFrame() + magic-bindings path (plan §16.9 dual-write).
 import type {
   ExecutionContextEnvelope,
   ModuleCompletion,
@@ -113,21 +108,19 @@ export interface GenericFlowExecutorOptions {
     context: ProcessModuleExecutionContext,
   ) => ProcessModuleOutput | null;
   /**
-   * W3-A1 (spec §3/§4): OPTIONAL v2 driver-neutral envelope wiring. When
-   * present, the walker activates the v2 path for runs whose NodeRun rows
-   * carry the v2 marker (`inputEnvelopeHash`): it calls
-   * `assembleExecutionContext` (W3-A5) instead of `restoreFrame()`, reads an
-   * explicit `ModuleCompletion` at settlement (magic-bindings becomes the
-   * documented fallback), and dual-writes `NodeProductionEnvelope` via
-   * `nodeRunRepo.completeV2`. When ABSENT, behavior is byte-identical to the
-   * pre-Wave-3 executor (legacy `restoreFrame()` + magic-bindings + legacy
-   * `complete`) — characterization tests prove no regression (plan §16.9).
+   * MANDATORY v2 driver-neutral envelope wiring. The walker activates the v2
+   * path unconditionally: it calls `assembleExecutionContext` (driver-neutral
+   * envelope), reads an explicit `ModuleCompletion` at settlement, and
+   * dual-writes `NodeProductionEnvelope` via `nodeRunRepo.completeV2`. The
+   * legacy `restoreFrame()` + legacy `complete` path has been deleted — the v2
+   * path is the ONLY frame/completion path now.
    *
    * `nodeRunRepo` here MUST also implement {@link NodeRunRepositoryV2} (the
-   * SqliteNodeRunRepository adapter does). The walker down-casts only when the
-   * v2 path is active.
+   * SqliteNodeRunRepository adapter does). {@link resolveV2Channel} throws
+   * `NODE_RUN_REPO_V2_REQUIRED` when the repo lacks the v2 methods rather than
+   * silently falling back.
    */
-  v2?: GenericFlowExecutorV2Options;
+  v2: GenericFlowExecutorV2Options;
   /**
    * CGAD P18 — OPTIONAL centralized resolver that reads the workplace's (node's)
    * durable worker products (artifacts/traces/submission) scoped by
@@ -147,22 +140,36 @@ export interface GenericFlowExecutorOptions {
 /**
  * Optional v2 wiring for {@link GenericFlowExecutorOptions}.
  *
- * `productRepo` is the W3-A4 exact-by-ProductRef port (consumed by the W3-A5
- * assembler). `packageIdentity`/`flowIdentity`/`installedDigest` are forwarded
- * to `assembleExecutionContext` as the manifest pinning context (W3-A3 will
- * surface the installed digest on ProcessRunRecord; until then callers pass
- * null and the assembler emits the `'legacy:unpinned'` sentinel).
+ * `productRepo` is the exact-by-ProductRef port (consumed by the assembler).
+ * `packageIdentity`/`flowIdentity`/`installedDigest` are forwarded to
+ * `assembleExecutionContext` as the manifest pinning context. Callers without
+ * an installation pin pass null and the assembler emits the
+ * `'legacy:unpinned'` sentinel.
  */
 export interface GenericFlowExecutorV2Options {
   productRepo: A5ProcessProductRepository;
   /**
-   * Optional manifest-pin overrides forwarded to the assembler. May be omitted
-   * for legacy catalog-resolved runs (the assembler falls back to the run's
-   * moduleRef).
+   * Optional manifest-pin overrides forwarded to the assembler. May be omitted;
+   * the assembler falls back to the run's moduleRef.
    */
   packageIdentity?: AssembleExecutionContextOptions['packageIdentity'];
   flowIdentity?: AssembleExecutionContextOptions['flowIdentity'];
   installedDigest?: AssembleExecutionContextOptions['installedDigest'];
+}
+
+/**
+ * The resolved v2 channel the walker uses to run the driver-neutral envelope
+ * path. Materialized by {@link GenericFlowExecutor.resolveV2Channel} from
+ * {@link GenericFlowExecutorV2Options} plus a down-cast handle to the
+ * {@link NodeRunRepositoryV2} side of the node-run repo (the SQLite adapter
+ * implements both interfaces).
+ */
+interface V2Channel {
+  repo: NodeRunRepositoryV2;
+  productRepo: A5ProcessProductRepository;
+  packageIdentity: AssembleExecutionContextOptions['packageIdentity'];
+  flowIdentity: AssembleExecutionContextOptions['flowIdentity'];
+  installedDigest: AssembleExecutionContextOptions['installedDigest'];
 }
 
 const PROCESS_RUN_LEASE_MS = 120_000;
@@ -273,16 +280,10 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
         renewLease,
       );
 
-      // The settlement production carries the authority binding (Д6) and, for
+      // The settlement production carries the authority binding and, for
       // non-terminal kernels, the durable productions the data chain needs.
-      // WAVE 5 CUTOVER + WAVE 8 HIGH 3: the certificate envelope is NO LONGER
-      // read from `production.bindings` AND a terminal completion is MANDATORY.
-      // Settlement kernels emit an explicit `ModuleCompletion` (Wave 4); Wave
-      // 4.5 propagates it through the node chain to `terminal.result.completion`;
-      // settlement reads the certificate reference DIRECTLY from there. The
-      // legacy magic-bindings branch is GONE. After Wave 5 deletion, completion
-      // is the SOLE certificate channel — a terminal run without one is a hard
-      // error (SETTLEMENT_COMPLETION_MISSING), not silent degradation.
+      // The certificate envelope is resolved from the MANDATORY terminal
+      // `ModuleCompletion` (see below), NOT from `production.bindings`.
       const terminalBindings = (terminal.result.production?.bindings ?? {}) as Record<string, unknown>;
       const authority = (terminalBindings.authority as string | undefined) ?? null;
 
@@ -297,20 +298,17 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
       // deterministic failure that legitimately produced no certificate).
       processRunRepo.update(context.processRunId, { status: 'settling' });
 
-      // WAVE 8 HIGH 3 (mandatory completion) — the certificate resolution is a
-      // SINGLE path AND a terminal run MUST produce an explicit
-      // ModuleCompletion. Wave 5 deleted the magic-bindings fallback; the
-      // completion envelope is now the SOLE certificate channel. A terminal
-      // node that reaches settlement WITHOUT a completion is therefore a
-      // CONTRACT VIOLATION — the kernel forgot to emit completion (a bug), or
-      // the failure-path swallowed a certificate-issuance error and returned
-      // `completion: undefined` (HIGH 3 also removes those swallows). The
+      // The certificate resolution has a SINGLE path: a terminal run MUST
+      // produce an explicit ModuleCompletion. A terminal node that reaches
+      // settlement WITHOUT a completion is a CONTRACT VIOLATION — the kernel
+      // forgot to emit completion (a bug), or the failure-path swallowed a
+      // certificate-issuance error and returned `completion: undefined`. The
       // executor MUST NOT silently degrade to `certificate = null`: that is
       // silent data loss. Throw loudly so the kernel bug surfaces.
       //
-      // Note: a terminal completion WITHOUT `certificateRef` is still valid —
-      // it represents a non-certified outcome (e.g. a deterministic failure
-      // that legitimately produced no certificate). The mandatory field is the
+      // A terminal completion WITHOUT `certificateRef` is still valid — it
+      // represents a non-certified outcome (e.g. a deterministic failure that
+      // legitimately produced no certificate). The mandatory field is the
       // completion envelope itself, not the certificateRef.
       const explicitCompletion = terminal.result.completion;
       if (!explicitCompletion) {
@@ -326,7 +324,7 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
       if (explicitCertificateRef) {
         // Explicit path: the completion envelope owns the certificate reference.
         // The completion was already validated by assertExplicitModuleCompletion
-        // (HIGH 4 — terminal flag + certificateRef shape). Surface the ref. The
+        // (terminal flag + certificateRef shape). Surface the ref. The
         // certificate itself was issued by the module's settlement kernel and
         // recorded in the durable product store; the ref points at it by
         // content-address.
@@ -407,55 +405,32 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
   ): Promise<{ outcome: string; nodeId: string; result: NodeExecutionResult }> {
     const flow = module.flow;
     const allRuns = nodeRunRepo.list(context.processRunId);
-    // W3-A1 (spec §3/§4) + Wave 8 BLOCKER 1: detect whether this run is v2-shaped.
-    //
-    // The v2 path activates when v2 wiring is configured (this.opts.v2 present)
-    // AND the node-run repo exposes the v2 methods (startV2/completeV2/
-    // readByExactCursor). The previous implementation ALSO required at least one
-    // NodeRun row to carry the v2 marker (inputEnvelopeHash/productionEnvelope)
-    // — but that created a chicken-and-egg: a FRESH run has zero rows, so the
-    // first node was dispatched via legacy `start` (which never writes the
-    // marker), so the v2 path never engaged. Production ran the legacy path
-    // forever and ModuleCompletion never persisted via completeV2.
-    //
-    // The marker check was backward-compat for runs that started WITHOUT v2
-    // wiring (legacy test fakes + pre-Wave-3 rows). In production every saga4
-    // run is fresh and this executor owns the entire run, so when v2 wiring is
-    // present the v2 path activates UNCONDITIONALLY. The first node now uses
-    // startV2, which writes the marker, so every subsequent node sees it too.
-    // Legacy in-memory fakes (no v2 methods) still fall back via v2ChannelFor
-    // returning null — characterization tests prove no regression (plan §16.9).
-    const v2 = this.v2ChannelFor(nodeRunRepo);
-    const isV2Run = v2 !== null;
-    // WAVE 6 (fourth audit 2026-08-02) — restoreFrame fully retired.
-    //
+    // The v2 channel is mandatory (the legacy path is deleted). resolveV2Channel
+    // throws V2_WIRING_REQUIRED / NODE_RUN_REPO_V2_REQUIRED on misconfiguration
+    // instead of silently degrading to the v1 path.
+    const v2 = this.resolveV2Channel(nodeRunRepo);
     // The frame every node executor reads (legacy `ctx.frame`) is built
     // DIRECTLY by the boundary adapter `assembleFrameFromDurableNodeRuns`,
-    // which reads the SAME durable NodeRun columns the former restoreFrame
-    // consumed (outputRef/outputSchema/outputHash/outputBindings/
-    // executionReceipt) — positioned as the v2 compatibility adapter at the
-    // executor/NodeRun boundary. The former `restoreFrame` wrapper symbol was
-    // removed: walk() calls the adapter by name, and `restoreFrame` is now in
-    // the forbidden-fallback gate (no-execution-scoped-lookup.test.mjs).
+    // which reads the durable NodeRun columns (outputRef/outputSchema/
+    // outputHash/outputBindings/executionReceipt).
     const frame = assembleFrameFromDurableNodeRuns(context.inputPayload, allRuns);
 
-    // Wave 4.5 bridge: side-channel for the LAST non-terminal ModuleCompletion
-    // seen across the node chain. Declared here (before the resume block) so the
-    // resume path can seed it from durable rows. See the comment above the walk
-    // loop for the full rationale.
+    // Side-channel for the LAST non-terminal ModuleCompletion seen across the
+    // node chain. Declared here (before the resume block) so the resume path
+    // can seed it from durable rows. See the comment above the walk loop for
+    // the full rationale.
     let pendingCompletion: ModuleCompletion | undefined;
 
     // Resume support: if the last completed NodeRun exists, start from the
-    // transition out of it. Otherwise start at entry.
-    // FU-A Wave 3: prefer the v2-shaped read when the v2 channel is active so
-    // the persisted `completion` column (explicit ModuleCompletion) is visible
-    // to restoreNodeResult — without it, crash-resume after a terminal node
-    // would lose the certificate and silently fall back to magic bindings.
-    // Legacy fakes (no v2 methods) keep the legacy read; `lastCompleted` is
-    // always a valid NodeRunRecord, and a v2 row is a superset.
-    const lastCompleted: NodeRunRecord | NodeRunRecordV2 | null = (v2 && isV2Run)
-      ? (v2.repo.readLastCompletedV2(context.processRunId) ?? nodeRunRepo.readLastCompleted(context.processRunId))
-      : nodeRunRepo.readLastCompleted(context.processRunId);
+    // transition out of it. Otherwise start at entry. The v2-shaped read
+    // surfaces the persisted `completion` column (explicit ModuleCompletion)
+    // so restoreNodeResult sees it — without it, crash-resume after a
+    // terminal node would lose the certificate. The legacy fallback
+    // (readLastCompleted) covers a row written before the v2 cutover; a v2
+    // row is a superset of NodeRunRecord.
+    const lastCompleted: NodeRunRecord | NodeRunRecordV2 | null =
+      v2.repo.readLastCompletedV2(context.processRunId)
+      ?? nodeRunRepo.readLastCompleted(context.processRunId);
     let currentNodeId: string;
     let resumedRecoveryInput: NodeProduction | null = null;
     let pausedVerifierInput: unknown;
@@ -470,13 +445,13 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
       reexecutePausedNode =
         recheckPausedVerifier
         || lastCompleted.event === 'runtime.paused';
-      // Wave 4.5 bridge: seed pendingCompletion for the resume paths. When a
-      // crash happens AFTER a settlement kernel wrote its completion but BEFORE
-      // the terminal emitter ran (or AFTER the emitter ran but before ProcessRun
-      // reached 'completed'), the resume must still surface the upstream
-      // completion as terminal.result.completion so settlement reads the explicit
-      // certificate ref. We scan the durable rows for the LAST non-terminal
-      // completion, which converges crash-resume and fresh runs on the same
+      // Seed pendingCompletion for the resume paths. When a crash happens
+      // AFTER a settlement kernel wrote its completion but BEFORE the terminal
+      // emitter ran (or AFTER the emitter ran but before ProcessRun reached
+      // 'completed'), the resume must still surface the upstream completion as
+      // terminal.result.completion so settlement reads the explicit certificate
+      // ref. We scan the durable rows for the LAST non-terminal completion,
+      // which converges crash-resume and fresh runs on the same
       // terminal.result.completion. The reexecutePausedNode branch (verifier/
       // paused re-run) is excluded: a re-executed node may emit a fresh
       // completion the loop captures instead.
@@ -531,12 +506,12 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
         // The resumed node was terminal — re-emit its outcome.
         const terminalNode = this.findNode(flow, lastCompleted.nodeId);
         if (terminalNode?.emitsOutcome) {
-          // Д8: rebuild production from durable NodeRun output_ref + bindings.
-          // The bindings carry the certificate envelope (Д6) the previous run
+          // Rebuild production from durable NodeRun output_ref + bindings.
+          // The bindings carry the certificate envelope the previous run
           // produced, so settlement/certificate replay works on restart.
-          // Wave 4.5 bridge: restoreNodeResult already surfaces completion from
-          // the durable v2 column, so the resume terminal path inherits the same
-          // explicit completion the fresh terminal path does — no merge needed.
+          // restoreNodeResult already surfaces completion from the durable v2
+          // column, so the resume terminal path inherits the same explicit
+          // completion the fresh terminal path does — no merge needed.
           return {
             outcome: terminalNode.emitsOutcome,
             nodeId: lastCompleted.nodeId,
@@ -558,33 +533,30 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
       + totalRepairBudget * (flow.nodes.length + 2)
       + 10;
 
-    // Wave 4.5 (Uncle Bob bridge): executor-side completion tracking. The four
-    // module settlement kernels emit `completion: ModuleCompletion` in their
-    // KernelHandlerResult (Wave 4). Wave 3 persists it to the NodeRun + restores
-    // it on crash-resume. BUT the terminal node (complete-<code>) is served by
-    // the runtime-owned `process-outcome-emitter`, which does NOT emit a
-    // completion (it is generic — it forwards upstream bindings, not the typed
-    // completion envelope). Without this side-channel merge, the executor reads
-    // `terminal.result.completion` as undefined → the explicitCertificateRef
-    // branch at execute() does not engage → certificate resolves via magic
-    // bindings → Wave 5 (magic-bindings deletion) is unsafe.
+    // Executor-side completion tracking (side-channel). The module settlement
+    // kernels emit `completion: ModuleCompletion` in their KernelHandlerResult,
+    // and it is persisted to the NodeRun + restored on crash-resume. BUT the
+    // terminal node (complete-<code>) is served by the runtime-owned
+    // `process-outcome-emitter`, which does NOT emit a completion (it is
+    // generic — it forwards upstream bindings, not the typed completion
+    // envelope). Without this side-channel merge, the executor would read
+    // `terminal.result.completion` as undefined and could not resolve the
+    // explicit certificate ref.
     //
     // The fix tracks the LAST non-terminal `completion` seen across the node
     // chain as a side-channel (it does NOT pollute chainInput — completion is a
     // settlement-time concern, not a data-chain value). When the terminal step
     // completes without its own completion, the executor merges the tracked
-    // completion onto `terminal.result.completion` so execute()'s explicit path
-    // engages. This makes the settlement kernel's completion surface as
-    // terminal.result.completion, which is the linchpin Wave 5 needs to delete
-    // the magic-bindings branch. (`pendingCompletion` is declared above, before
-    // the resume block, so the resume path can seed it too.)
+    // completion onto `terminal.result.completion` so execute()'s explicit
+    // path engages. (`pendingCompletion` is declared above, before the resume
+    // block, so the resume path can seed it too.)
 
     // The first node receives the module input payload. Each subsequent node
     // receives the PREVIOUS node's output — this is the data chain that lets a
     // settlement kernel handler read the proposal produced by the LM node
     // upstream, without the executor knowing the module vocabulary.
     //
-    // Д8: on restart, if a NodeRun already completed in this ProcessRun, the
+    // On restart, if a NodeRun already completed in this ProcessRun, the
     // chainInput is RESTORED from that NodeRun's durable output_bindings — not
     // re-initialised from the module input. This preserves the exact lineage
     // (proposalId, controlIntentId, certificatePayload, …) the previous run
@@ -616,69 +588,55 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
         );
       }
 
-      // W3-A1 (spec §3/§4): when the v2 path is active, start the NodeRun via
-      // `startV2` (which writes the legacy columns AND the v2 envelope-marker
-      // columns). The v2 path also assembles the ExecutionContextEnvelope and
-      // dual-populates the context (`envelope` for v2-aware executors, `frame`
-      // computed via toLegacyFrame for legacy executors). When v2 is INACTIVE,
-      // the legacy `start` + `frame`-only context is used byte-identically.
-      let nodeRunId: number;
-      let nodeRunAttempt: number;
-      let assembled: AssembledExecutionContext | null = null;
-      if (isV2Run && v2) {
-        const upstreamRefs = declareUpstreamRefs(chainInput, frame, node.id);
-        const v2Row = v2.repo.startV2({
-          processRunId: context.processRunId,
-          nodeId: node.id,
-          nodeKind: node.kind,
-          inputEnvelopeHash: null, // stamped after assembly so it covers the
-          // exact envelope the node sees; completeV2 persists the production
-          // envelope + cursor. The marker is the row's presence + non-null
-          // production_envelope on completion (W3-A6 contract).
-          predecessorNodeRunIds: predecessorIdsFor(allRuns, node.id),
+      // Start the NodeRun via `startV2` (which writes the legacy columns AND
+      // the v2 envelope-marker columns). The v2 path also assembles the
+      // ExecutionContextEnvelope and dual-populates the context (`envelope` for
+      // v2-aware executors, `frame` computed via mergeLegacyFrame for legacy
+      // executors).
+      const upstreamRefs = declareUpstreamRefs(chainInput, frame, node.id);
+      const v2Row = v2.repo.startV2({
+        processRunId: context.processRunId,
+        nodeId: node.id,
+        nodeKind: node.kind,
+        inputEnvelopeHash: null, // stamped after assembly so it covers the
+        // exact envelope the node sees; completeV2 persists the production
+        // envelope + cursor. The marker is the row's presence + non-null
+        // production_envelope on completion.
+        predecessorNodeRunIds: predecessorIdsFor(allRuns, node.id),
+      });
+      const nodeRunId = v2Row.id;
+      const nodeRunAttempt = v2Row.attempt;
+      let assembled: AssembledExecutionContext;
+      try {
+        assembled = await assembleExecutionContext(
+          context.processRunId,
+          node.id,
+          nodeRunAttempt,
+          upstreamRefs,
+          {
+            productRepo: v2.productRepo,
+            processRunRepo: this.opts.processRunRepo,
+            nodeRunRepo,
+          },
+          {
+            packageIdentity: v2.packageIdentity,
+            flowIdentity: v2.flowIdentity,
+            installedDigest: v2.installedDigest,
+          },
+        );
+      } catch (err) {
+        nodeRunRepo.fail({
+          id: nodeRunId,
+          errorMessage: (err as Error).message ?? String(err),
         });
-        nodeRunId = v2Row.id;
-        nodeRunAttempt = v2Row.attempt;
-        try {
-          assembled = await assembleExecutionContext(
-            context.processRunId,
-            node.id,
-            nodeRunAttempt,
-            upstreamRefs,
-            {
-              productRepo: v2.productRepo,
-              processRunRepo: this.opts.processRunRepo,
-              nodeRunRepo,
-            },
-            {
-              packageIdentity: v2.packageIdentity,
-              flowIdentity: v2.flowIdentity,
-              installedDigest: v2.installedDigest,
-            },
-          );
-        } catch (err) {
-          nodeRunRepo.fail({
-            id: nodeRunId,
-            errorMessage: (err as Error).message ?? String(err),
-          });
-          throw err;
-        }
-      } else {
-        const legacyRow = nodeRunRepo.start({
-          processRunId: context.processRunId,
-          nodeId: node.id,
-          nodeKind: node.kind,
-        });
-        nodeRunId = legacyRow.id;
-        nodeRunAttempt = legacyRow.attempt;
+        throw err;
       }
 
       // Build the context. The legacy `frame` is ALWAYS populated (legacy
-      // executors read it). When the v2 path is active, `envelope` +
-      // `upstreamProductBodies` are added additively so v2-aware executors can
-      // read the driver-neutral envelope; the legacy `frame` view is ALSO
-      // refreshed from the assembled envelope (via toLegacyFrame) so the two
-      // views agree within the v2 path.
+      // executors read it) and refreshed from the assembled envelope via
+      // mergeLegacyFrame so the legacy and v2 views agree. `envelope` +
+      // `upstreamProductBodies` are always present so v2-aware executors can
+      // read the driver-neutral envelope.
       const ctx: NodeExecutionContext = {
         projectId: context.projectId,
         epicId: context.epicId,
@@ -686,17 +644,13 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
         module,
         node,
         input: chainInput,
-        frame: assembled ? mergeLegacyFrame(frame, assembled.envelope) : frame,
+        frame: mergeLegacyFrame(frame, assembled.envelope),
         heartbeat,
         initiatedBy: context.initiatedBy,
-        ...(assembled
-          ? {
-              envelope: assembled.envelope,
-              upstreamProductBodies: assembled.upstreamProductBodies.map(
-                (r) => (r as { payload?: unknown }).payload ?? r,
-              ),
-            }
-          : {}),
+        envelope: assembled.envelope,
+        upstreamProductBodies: assembled.upstreamProductBodies.map(
+          (r) => (r as { payload?: unknown }).payload ?? r,
+        ),
         // CGAD P18 — centralized node-scoped worker products. Resolved once per
         // node execution by the executor, so kernel handlers read ctx.nodeProducts
         // instead of querying the ledger by transient task identity.
@@ -728,54 +682,34 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
       const outputSchema = result.production?.schema ?? null;
       const outputHash = result.production?.contentHash ?? null;
       const outputBindings = result.production?.bindings ?? null;
-      // W3-A1 (spec §3/§4): dual-write. When v2 is active, `completeV2` writes
-      // BOTH the legacy output_* columns AND the v2 production_envelope +
-      // transition_cursor (W3-A6 contract). When v2 is inactive, the legacy
-      // `complete` is the sole write (byte-identical to pre-Wave-3). The
-      // production envelope is sourced from the result's explicit
-      // `productionEnvelope` (v2 producers) or derived from the legacy flat
-      // `production` via toV2Result when only the legacy field is present.
+      // Dual-write. `completeV2` writes BOTH the legacy output_* columns AND
+      // the v2 production_envelope + transition_cursor. The production
+      // envelope is sourced from the result's explicit `productionEnvelope`
+      // (v2 producers) or derived from the legacy flat `production` via
+      // toV2Result when only the legacy field is present.
       const transitionEvent = nodeEventForTransition(result);
       const productionEnvelope: NodeProductionEnvelope | null =
         result.productionEnvelope ?? toV2Result(result).productionEnvelope ?? null;
-      let completedNodeRun: NodeRunRecordV2 | NodeRunRecord;
-      if (isV2Run && v2) {
-        completedNodeRun = v2.repo.completeV2({
-          id: nodeRunId,
-          event: transitionEvent,
-          outputRef,
-          outputSchema,
-          outputHash,
-          outputBindings,
-          executionReceipt: result.receipt as unknown as Record<string, unknown> | undefined,
-          acceptanceReceipt: result.acceptanceReceipt as unknown as
-            | Record<string, unknown>
-            | undefined,
-          recoveryIssue: result.recoveryIssue,
-          productionEnvelope,
-          transitionCursor: assembled?.envelope.nodeRef.nodeId ?? node.id,
-          // FU-A Wave 3: persist the explicit ModuleCompletion so crash-resume
-          // can rebuild NodeExecutionResult.completion and settlement reads the
-          // explicit certificate ref instead of falling back to magic bindings.
-          // Additive: undefined when the node did not emit completion (all 4
-          // modules until Wave 4 migrates them) — persisted as NULL.
-          completion: result.completion,
-        });
-      } else {
-        completedNodeRun = nodeRunRepo.complete({
-          id: nodeRunId,
-          event: transitionEvent,
-          outputRef,
-          outputSchema,
-          outputHash,
-          outputBindings,
-          executionReceipt: result.receipt as unknown as Record<string, unknown> | undefined,
-          acceptanceReceipt: result.acceptanceReceipt as unknown as
-            | Record<string, unknown>
-            | undefined,
-          recoveryIssue: result.recoveryIssue,
-        });
-      }
+      const completedNodeRun: NodeRunRecordV2 | NodeRunRecord = v2.repo.completeV2({
+        id: nodeRunId,
+        event: transitionEvent,
+        outputRef,
+        outputSchema,
+        outputHash,
+        outputBindings,
+        executionReceipt: result.receipt as unknown as Record<string, unknown> | undefined,
+        acceptanceReceipt: result.acceptanceReceipt as unknown as
+          | Record<string, unknown>
+          | undefined,
+        recoveryIssue: result.recoveryIssue,
+        productionEnvelope,
+        transitionCursor: assembled.envelope.nodeRef.nodeId,
+        // Persist the explicit ModuleCompletion so crash-resume can rebuild
+        // NodeExecutionResult.completion and settlement reads the explicit
+        // certificate ref. Undefined when the node did not emit a completion
+        // — persisted as NULL.
+        completion: result.completion,
+      });
 
       if (result.runtimeEvent === 'paused') {
         throw new ProcessRunPausedError(context.processRunId, node.id);
@@ -800,28 +734,26 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
         ?? result.receipt
         ?? chainInput;
 
-      // Wave 4.5 bridge: track the LAST non-terminal completion as a side-channel.
-      // Settlement kernels emit `completion` (Wave 4); the terminal outcome-emitter
-      // does not. By capturing it here (before the terminal check), the merge below
-      // can surface it as terminal.result.completion. This does NOT pollute
-      // chainInput — completion is a settlement concern, not a data-chain value.
-      // The terminal-emitter node is excluded by the `node.emitsOutcome` guard
-      // below: terminal nodes never reach this branch (they return early), so
-      // only settlement/intermediate kernel completions are tracked.
+      // Track the LAST non-terminal completion as a side-channel. Settlement
+      // kernels emit `completion`; the terminal outcome-emitter does not. By
+      // capturing it here (before the terminal check), the merge below can
+      // surface it as terminal.result.completion. This does NOT pollute
+      // chainInput — completion is a settlement concern, not a data-chain
+      // value. The terminal-emitter node is excluded by the `node.emitsOutcome`
+      // guard below: terminal nodes never reach this branch (they return
+      // early), so only settlement/intermediate kernel completions are tracked.
       if (!node.emitsOutcome && result.completion) {
         pendingCompletion = result.completion;
       }
 
       // Terminal node — emit its outcome.
       if (node.emitsOutcome) {
-        // Wave 4.5 bridge: merge the tracked upstream completion onto the
-        // terminal result when the terminal emitter produced none. The
-        // process-outcome-emitter is generic and forwards bindings, not the
-        // typed completion envelope, so terminal.result.completion is otherwise
-        // undefined and settlement would fall back to magic bindings. Merging
-        // here makes execute()'s explicitCertificateRef branch engage — the
-        // linchpin Wave 5 needs to delete the magic-bindings branch. We do NOT
-        // overwrite a completion the terminal emitter itself may one day emit
+        // Merge the tracked upstream completion onto the terminal result when
+        // the terminal emitter produced none. The process-outcome-emitter is
+        // generic and forwards bindings, not the typed completion envelope, so
+        // terminal.result.completion is otherwise undefined. Merging here makes
+        // execute()'s explicitCertificateRef branch engage. We do NOT overwrite
+        // a completion the terminal emitter itself may one day emit
         // (defensive: a future terminal handler that sets its own completion
         // wins over the tracked upstream one).
         if (!result.completion && pendingCompletion) {
@@ -847,39 +779,44 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
   }
 
   /**
-   * W3-A1 (spec §3/§4): resolve the v2 channel for this run, or null when v2
-   * wiring is absent. Returns the v2 options bundle plus a down-cast handle to
-   * the {@link NodeRunRepositoryV2} side of the node-run repo (the SQLite
-   * adapter implements both interfaces; the legacy fake used by the
-   * characterization tests does not, so this returns null for them and the
-   * legacy path runs unchanged).
+   * Resolve the MANDATORY v2 channel for this run. Returns the v2 options
+   * bundle plus a down-cast handle to the {@link NodeRunRepositoryV2} side of
+   * the node-run repo (the SQLite adapter implements both interfaces).
    *
-   * Returns null when:
-   *   - `this.opts.v2` is not configured (legacy executor wiring); OR
-   *   - `nodeRunRepo` does not expose the v2 methods (legacy test fake).
+   * Throws (clear failure, NOT silent v1 fallback) when:
+   *   - `this.opts.v2` is absent → `V2_WIRING_REQUIRED` (the executor was
+   *     constructed without v2 wiring; the v1 path is deleted so this is a
+   *     wiring bug, not a recoverable legacy state).
+   *   - `nodeRunRepo` lacks the v2 methods → `NODE_RUN_REPO_V2_REQUIRED`
+   *     (e.g. an in-memory fake that did not implement NodeRunRepositoryV2).
    *
    * Pure with respect to the executor state — same opts + repo → same channel.
    */
-  private v2ChannelFor(
-    nodeRunRepo: NodeRunRepository,
-  ): {
-    repo: NodeRunRepositoryV2;
-    productRepo: A5ProcessProductRepository;
-    packageIdentity: GenericFlowExecutorV2Options['packageIdentity'];
-    flowIdentity: GenericFlowExecutorV2Options['flowIdentity'];
-    installedDigest: GenericFlowExecutorV2Options['installedDigest'];
-  } | null {
+  private resolveV2Channel(nodeRunRepo: NodeRunRepository): V2Channel {
     const v2Opts = this.opts.v2;
-    if (!v2Opts) return null;
+    if (!v2Opts) {
+      throw new Error(
+        'V2_WIRING_REQUIRED: GenericFlowExecutor was constructed without v2 '
+          + 'wiring, but the v1 frame/completion path has been deleted. Pass '
+          + '`v2: { productRepo }` (the pattern in '
+          + 'v2-production-completion-roundtrip.test.mjs) when constructing '
+          + 'the executor.',
+      );
+    }
     const repoV2 = nodeRunRepo as unknown as Partial<NodeRunRepositoryV2>;
     if (
       typeof repoV2.startV2 !== 'function'
       || typeof repoV2.completeV2 !== 'function'
       || typeof repoV2.readByExactCursor !== 'function'
     ) {
-      // Legacy node-run repo (e.g. the in-memory fake in the characterization
-      // tests). The v2 path cannot activate; fall back to legacy.
-      return null;
+      throw new Error(
+        'NODE_RUN_REPO_V2_REQUIRED: GenericFlowExecutor.v2 is configured but '
+          + 'nodeRunRepo does not implement NodeRunRepositoryV2 '
+          + '(startV2/completeV2/readByExactCursor). The SQLite adapter '
+          + 'implements both; an in-memory fake must expose the v2 methods. '
+          + 'The v1 frame/completion path has been deleted — there is no '
+          + 'silent fallback.',
+      );
     }
     return {
       repo: repoV2 as NodeRunRepositoryV2,
@@ -1049,13 +986,12 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
 }
 
 function restoreNodeResult(run: NodeRunRecord | NodeRunRecordV2): NodeExecutionResult {
-  // FU-A Wave 3: restore the explicit ModuleCompletion from the persisted v2
-  // `completion` column when present. This is the crash-resume linchpin: a
-  // crash AFTER a terminal node wrote its completion MUST be resumable with
-  // the completion intact, otherwise settlement silently falls back to magic
-  // bindings and loses the certificate (the §0.6.12 contract). Legacy rows
+  // Restore the explicit ModuleCompletion from the persisted v2 `completion`
+  // column when present. This is the crash-resume linchpin: a crash AFTER a
+  // terminal node wrote its completion MUST be resumable with the completion
+  // intact, otherwise settlement loses the certificate. Legacy rows
   // (NodeRunRecord without the v2 field, or v2 row with completion=null)
-  // surface completion as undefined — byte-identical to the pre-Wave-3 path.
+  // surface completion as undefined.
   const v2Run = run as NodeRunRecordV2;
   const completion = v2Run.completion ?? undefined;
   return {
@@ -1075,27 +1011,28 @@ function restoreNodeResult(run: NodeRunRecord | NodeRunRecordV2): NodeExecutionR
 }
 
 /**
- * Wave 4.5 bridge — find the LAST non-terminal completion persisted in the
- * durable NodeRun rows, for crash-resume seeding of `pendingCompletion`.
+ * Find the LAST non-terminal completion persisted in the durable NodeRun rows,
+ * for crash-resume seeding of `pendingCompletion`.
  *
  * Scans the v2 rows (which carry the `completion` column) in descending order
  * and returns the first non-null completion whose node is NOT a terminal
  * outcome-emitter (terminal nodes never carry an authoritative completion —
- * process-outcome-emitter does not emit one). This is the same side-channel the
- * fresh-run loop tracks, so crash-resume and fresh runs converge on the same
- * `terminal.result.completion`. Returns `undefined` when there is no v2 channel,
- * no rows, or no non-terminal completion (the common case for a fresh run with
- * no prior settlement node).
+ * process-outcome-emitter does not emit one). This is the same side-channel
+ * the fresh-run loop tracks, so crash-resume and fresh runs converge on the
+ * same `terminal.result.completion`. Returns `undefined` when there are no
+ * rows or no non-terminal completion (the common case for a fresh run with no
+ * prior settlement node).
  *
- * Pure: same (flow, runs, v2, processRunId) → same completion.
+ * The v2 channel is mandatory (non-null) — the caller resolves it via
+ * resolveV2Channel before invoking this. Pure: same (flow, v2, processRunId)
+ * → same completion.
  */
 function restoreLastNonTerminalCompletion(
   flow: ProcessModuleDefinition['flow'],
   _allRuns: readonly NodeRunRecord[],
-  v2: ReturnType<GenericFlowExecutor['v2ChannelFor']> extends infer C ? C : null,
+  v2: V2Channel,
   processRunId: number,
 ): ModuleCompletion | undefined {
-  if (!v2) return undefined;
   // Build a quick lookup of which nodes are terminal (emitsOutcome set).
   const terminalNodeIds = new Set<string>();
   for (const n of flow.nodes) {
@@ -1203,55 +1140,27 @@ function restoreProduction(run: {
   };
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// WAVE 6 AUDIT (2026-08-02) — restoreFrame retirement.
-//
-// The audit demands: "Define a retention policy for legacy NodeRun rows,
-// perform migration or an explicit compatibility adapter at the boundary, then
-// remove restoreFrame + magic bindings from generic-flow-executor. Add
-// restoreFrame to a forbidden fallback ratchet."
-//
-// RETENTION POLICY (the boundary contract this adapter enforces):
-//   Legacy NodeRun rows (written by the pre-Wave-3 `nodeRunRepo.start`/
-//   `complete` path, or by the v2 path's dual-write of the legacy columns)
-//   carry the data the executor needs to reconstruct a NodeExecutionFrame:
-//     - outputRef / outputSchema / outputHash / outputBindings  -> production
-//     - executionReceipt                                         -> receipt
-//   These columns are RETAINED (dual-written by the v2 path) precisely so
-//   this adapter can read them. The v2 content-addressed path
-//   (ProcessProductRepository.getByProductRef) is the forward direction; this
-//   adapter is the documented compatibility shim that reads the SAME durable
-//   NodeRun rows restoreFrame used to read, DIRECTLY into the frame shape,
-//   without the legacy mutable-bag reconstruction name.
-//
-// `assembleFrameFromDurableNodeRuns` is the LIVE data source for every node
-// executor's `ctx.frame` (legacy view) AND for `declareUpstreamRefs` (v2
-// ProductRef derivation) AND for `mergeLegacyFrame` (legacy+v2 frame merge).
-// `restoreFrame` below is now a thin delegating wrapper — see the
-// RESTOREFRAME_RETIREMENT_BLOCKER note for why the symbol cannot be deleted yet.
-// ─────────────────────────────────────────────────────────────────────────────
+// PRIMARY frame construction path: reads durable NodeRun rows DIRECTLY into a
+// NodeExecutionFrame. `assembleFrameFromDurableNodeRuns` is the LIVE data
+// source for every node executor's `ctx.frame` (legacy view) AND for
+// `declareUpstreamRefs` (v2 ProductRef derivation) AND for `mergeLegacyFrame`
+// (legacy+v2 frame merge).
 
 /**
- * Boundary compatibility adapter (WAVE 6 restoreFrame retirement, step 2).
+ * PRIMARY frame construction path.
  *
  * Reads durable NodeRun rows DIRECTLY into a {@link NodeExecutionFrame} — the
- * same shape `restoreFrame` produced — so the live data flow no longer depends
- * on the legacy mutable-bag reconstruction. This is the "explicit compatibility
- * adapter at the boundary" the audit requires: it reads the SAME durable
- * NodeRun columns (`outputRef`/`outputSchema`/`outputHash`/`outputBindings`/
- * `executionReceipt`) restoreFrame consumed, but is named and positioned as the
- * v2 boundary read (the forward path is `assembleExecutionContext` + exact
- * `ProductRef` resolution via `getByProductRef`; this adapter covers legacy
- * rows that have not yet been migrated to the v2 content-addressed store).
- *
- * Exported so the restore-frame-removal regression test can prove the v2
- * boundary path produces a correct frame DIRECTLY from durable NodeRun rows,
- * without exercising the legacy `restoreFrame` symbol.
+ * same shape the former `restoreFrame` produced — without the legacy
+ * mutable-bag reconstruction. It reads the durable NodeRun columns
+ * (`outputRef`/`outputSchema`/`outputHash`/`outputBindings`/
+ * `executionReceipt`). The forward path is `assembleExecutionContext` + exact
+ * `ProductRef` resolution via `getByProductRef`; this builder feeds both
+ * `mergeLegacyFrame` (the `frame` view) and `declareUpstreamRefs` (the v2
+ * ref derivation) from the same durable rows.
  *
  * Pure: same (runInput, runs) -> same frame. No side effects, no fallback to
- * epic-scope or latest-in-run search (spec §9.11). A row contributes to the
- * frame ONLY when it is COMPLETED and not `runtime.paused` — the exact filter
- * restoreFrame applied, preserved byte-for-byte so legacy + v2 paths agree.
+ * epic-scope or latest-in-run search. A row contributes to the frame ONLY
+ * when it is COMPLETED and not `runtime.paused`.
  */
 export function assembleFrameFromDurableNodeRuns(
   runInput: unknown,
@@ -1283,42 +1192,26 @@ export function assembleFrameFromDurableNodeRuns(
   return frame;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// W3-A1 (spec §3/§4): v2 path helpers.
-//
-// These helpers are ONLY invoked when the v2 channel is active
-// (isV2Run === true). They are defensive: a legacy-shaped NodeRun (no v2
-// marker columns surfaced) makes them return safe empty values, so the v2
-// path degrades gracefully to the same inputs the legacy path would have
-// used. The legacy path itself never calls them.
-// ─────────────────────────────────────────────────────────────────────────────
-
-// NOTE (Wave 8 BLOCKER 1): the former `runHasV2Marker` helper was removed. It
-// gated v2 activation on a pre-existing v2-marker NodeRun row, which created a
-// chicken-and-egg: a fresh run had no such row, so the first node used the
-// legacy `start` path and the marker was never written — production never
-// entered the v2 path. v2 now activates unconditionally when wiring is present
-// (see the `isV2Run` assignment in walk()). The marker columns
-// (inputEnvelopeHash / productionEnvelope) are still WRITTEN by startV2/
-// completeV2 and still READ by the resume path; they just no longer gate
-// activation.
+// v2 path helpers. The v2 channel is always active (the v1 path is deleted,
+// so resolveV2Channel always returns a channel or throws). These helpers are
+// defensive: a legacy-shaped NodeRun (no v2 marker columns surfaced) makes
+// them return safe empty values, so a row written before the v2 cutover does
+// not break the walk.
 
 /**
  * Declare the upstream ProductRefs the next node consumes. The v2 path hands
  * these to {@link assembleExecutionContext}, which loads each one by EXACT
- * content-address (W3-A4/W3-A5, spec §8) — NO epic-scope fallback (§9.11).
+ * content-address — NO epic-scope fallback.
  *
  * The executor itself does NOT know which products a node declares as its
  * inputs (that is module contract vocabulary the node's inputSchema carries).
- * Wave 3 does not yet wire the ContractBoundaryDecoder to read that
- * declaration (W3-A7 ships the decoder; Wave 5 wires it into the executor
- * boundaries). Until then, the v2 path derives the upstream refs from the
- * legacy `frame.productions` map (every completed production in the run is a
- * candidate predecessor) PLUS the current chainInput when it is itself a
- * production-shaped value. This is the SAME data the legacy `restoreFrame`
- * path would have surfaced, just re-expressed as content-addressed refs — so
- * the v2 path's upstream set is a superset of what the legacy path forwarded,
- * never a divergence.
+ * The ContractBoundaryDecoder reads that declaration; until it is wired in,
+ * the v2 path derives the upstream refs from the legacy `frame.productions`
+ * map (every completed production in the run is a candidate predecessor)
+ * PLUS the current chainInput when it is itself a production-shaped value.
+ * This is the SAME data the legacy frame path would have surfaced, just
+ * re-expressed as content-addressed refs — so the v2 path's upstream set is
+ * a superset of what the legacy path forwarded, never a divergence.
  *
  * Returns an empty array when no productions are available (the entry node of
  * a fresh run); the assembler accepts that and returns an envelope with an
@@ -1364,8 +1257,8 @@ function declareUpstreamRefs(
 
 /**
  * Best-effort predecessor NodeRun ids for the v2 row's
- * `predecessor_node_run_ids` column. Derived from the same legacy `allRuns`
- * list `restoreFrame` consumes: every COMPLETED prior NodeRun whose node id
+ * `predecessor_node_run_ids` column. Derived from the same `allRuns` list the
+ * frame adapter consumes: every COMPLETED prior NodeRun whose node id
  * contributed a production to the frame is a predecessor. Empty for the entry
  * node of a fresh run.
  */
@@ -1387,8 +1280,8 @@ function predecessorIdsFor(
 /**
  * Merge the legacy `frame` view with the v2 envelope's upstream products.
  *
- * The v2 path keeps the legacy `frame.productions` map (populated by
- * `restoreFrame` from prior NodeRun rows) AND adds the envelope's exact
+ * The v2 path keeps the legacy `frame.productions` map (populated by the
+ * frame adapter from prior NodeRun rows) AND adds the envelope's exact
  * upstream ProductRefs as additional synthetic entries (keyed by their ref
  * string). This dual view lets legacy executors that read `frame.productions`
  * by node id keep working, while v2-aware executors read the envelope's
@@ -1455,17 +1348,16 @@ function isTerminal(status: string): boolean {
 }
 
 /**
- * W3-A1 (spec §3/§4) + WAVE 8 HIGH 4: validate an explicit
- * {@link ModuleCompletion} envelope emitted by a terminal node. The explicit
- * path trusts the completion's `outputEnvelope.certificateRef` directly; this
- * assertion guards against:
+ * Validate an explicit {@link ModuleCompletion} envelope emitted by a terminal
+ * node. The explicit path trusts the completion's
+ * `outputEnvelope.certificateRef` directly; this assertion guards against:
  *   - a producer emitting a completion whose declared outcome disagrees with
  *     the terminal outcome the flow resolved (a contract bug);
- *   - a completion that is not flagged terminal (HIGH 4 — settlement reached,
- *     so the kernel is asserting this outcome is final);
- *   - a malformed certificateRef shape (HIGH 4 — when present, it MUST be a
- *     valid content-addressed ProductRef: schemaId/ref/digest all non-empty
- *     strings, since the executor resolves the certificate by these three).
+ *   - a completion that is not flagged terminal (settlement reached, so the
+ *     kernel is asserting this outcome is final);
+ *   - a malformed certificateRef shape (when present, it MUST be a valid
+ *     content-addressed ProductRef: schemaId/ref/digest all non-empty strings,
+ *     since the executor resolves the certificate by these three).
  *
  * `certificateRef` is OPTIONAL — a non-certified outcome (e.g. a deterministic
  * failure that produced no certificate) emits a completion without it. When
@@ -1491,19 +1383,19 @@ function assertExplicitModuleCompletion(
         + `'${completion.outputEnvelope.outcome}' does not match terminal outcome '${terminalOutcome}'`,
     );
   }
-  // WAVE 8 HIGH 4 — terminal flag must be true at settlement. The executor
-  // reached a terminal node; the kernel is asserting this outcome is final. A
-  // `terminal: false` completion here is a contract bug.
+  // Terminal flag must be true at settlement. The executor reached a terminal
+  // node; the kernel is asserting this outcome is final. A `terminal: false`
+  // completion here is a contract bug.
   if (completion.terminal !== true) {
     throw new Error(
       'GenericFlowExecutor: explicit ModuleCompletion.terminal must be true at '
         + `settlement (got '${String(completion.terminal)}' for outcome '${terminalOutcome}')`,
     );
   }
-  // WAVE 8 HIGH 4 — when certificateRef is present, validate the
-  // content-addressed ProductRef shape (schemaId/ref/digest all non-empty).
-  // The executor resolves the certificate by exactly these three values; a
-  // malformed ref would silently produce a null certificate or a wrong lookup.
+  // When certificateRef is present, validate the content-addressed ProductRef
+  // shape (schemaId/ref/digest all non-empty). The executor resolves the
+  // certificate by exactly these three values; a malformed ref would silently
+  // produce a null certificate or a wrong lookup.
   const certRef = completion.outputEnvelope?.certificateRef;
   if (certRef !== undefined && certRef !== null) {
     if (

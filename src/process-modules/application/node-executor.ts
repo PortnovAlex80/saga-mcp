@@ -24,9 +24,9 @@ import type {
 import type { RecoveryIssue } from '../domain/recovery.js';
 import type { ExactCandidateAcceptanceReceipt } from './exact-candidate-acceptance.js';
 import type { ManagedNodeSubmissionRecord } from './managed-node-submission.js';
-// Wave 3 (W3-A1): driver-neutral SPI types from the Wave 1 pure-SPI layer.
-// Type-only import — these are pure data types (interfaces) defined under
-// domain/spi/ (Rule 5 pure). No runtime edge; application→domain is allowed.
+// Driver-neutral SPI types from the pure-SPI layer. Type-only import — these
+// are pure data types (interfaces) defined under domain/spi/. No runtime edge;
+// application→domain is allowed.
 import type {
   DriverNeutralExecutionReceipt,
   ExecutionContextEnvelope,
@@ -62,20 +62,19 @@ export interface NodeExecutionContext {
   /** Идентификатор инициатора для аудита. */
   initiatedBy: string;
   /**
-   * W3-A1 (spec §3): OPTIONAL driver-neutral execution envelope. Present only
-   * when the GenericFlowExecutor's v2 wiring is active (the run was started
-   * with v2 NodeRun columns and an ExecutionContextAssembler is configured).
-   * v2-aware NodeExecutors read `ctx.envelope` directly; legacy executors
-   * ignore it and read `ctx.frame` (which is dual-populated via
-   * {@link toLegacyFrame} when the envelope is present). Absent ⇒ legacy run,
-   * `frame` is the sole execution-context surface.
+   * OPTIONAL driver-neutral execution envelope. Present only when the
+   * GenericFlowExecutor's v2 wiring is active (the run was started with v2
+   * NodeRun columns and an ExecutionContextAssembler is configured). v2-aware
+   * NodeExecutors read `ctx.envelope` directly; legacy executors ignore it and
+   * read `ctx.frame` (which is dual-populated via {@link toLegacyFrame} when
+   * the envelope is present). Absent ⇒ legacy run, `frame` is the sole
+   * execution-context surface.
    */
   readonly envelope?: ExecutionContextEnvelope;
   /**
-   * W3-A1 (spec §3): OPTIONAL upstream product bodies loaded by exact
-   * `ProductRef` (W3-A5). Present alongside `envelope` when the v2 path is
-   * active; forwarded to the node's input contract decoder. Legacy path leaves
-   * this undefined.
+   * OPTIONAL upstream product bodies loaded by exact `ProductRef`. Present
+   * alongside `envelope` when the v2 path is active; forwarded to the node's
+   * input contract decoder. Legacy path leaves this undefined.
    */
   readonly upstreamProductBodies?: readonly unknown[];
   /**
@@ -171,27 +170,24 @@ export interface NodeExecutionResult {
   /** Только для terminal-узлов (outcome-emitter). */
   outcome?: string;
   /**
-   * W3-A1 (spec §3/§4): OPTIONAL explicit terminal envelope (Wave 1 §7.5.6).
-   * When a terminal node returns `completion`, settlement reads
-   * `completion.outputEnvelope` / `completion.outputEnvelope.certificateRef`
-   * directly instead of extracting certificate fields from opaque
-   * `production.bindings.certificatePayload`. The legacy magic-bindings path
-   * remains the fallback when `completion` is absent (spec §3). Additive:
-   * legacy producers that omit this field settle through the existing path.
+   * OPTIONAL explicit terminal envelope. When a terminal node returns
+   * `completion`, settlement reads `completion.outputEnvelope` /
+   * `completion.outputEnvelope.certificateRef` directly instead of extracting
+   * certificate fields from opaque `production.bindings.certificatePayload`.
+   * Legacy producers that omit this field settle through the existing path.
    */
   completion?: ModuleCompletion;
   /**
-   * W3-A1 (spec §3): OPTIONAL driver-neutral production envelope (Wave 1
-   * §7.6). When present, the GenericFlowExecutor dual-writes it to the NodeRun
-   * v2 `production_envelope` column (via `completeV2`) alongside the legacy
-   * flat `output_*` fields derived from `production`. Additive: legacy
-   * producers that emit only `production` behave identically.
+   * OPTIONAL driver-neutral production envelope. When present, the
+   * GenericFlowExecutor dual-writes it to the NodeRun v2
+   * `production_envelope` column (via `completeV2`) alongside the legacy flat
+   * `output_*` fields derived from `production`. Legacy producers that emit
+   * only `production` behave identically.
    */
   productionEnvelope?: NodeProductionEnvelope;
   /**
-   * W3-A1 (spec §3): OPTIONAL driver-neutral execution receipt (Wave 1). When
-   * present, dual-written to NodeRun v2. Additive: legacy producers that emit
-   * only `receipt` behave identically.
+   * OPTIONAL driver-neutral execution receipt. When present, dual-written to
+   * NodeRun v2. Legacy producers that emit only `receipt` behave identically.
    */
   driverReceipt?: DriverNeutralExecutionReceipt;
 }
@@ -269,37 +265,28 @@ export interface NodeExecutor {
   execute(ctx: NodeExecutionContext): Promise<NodeExecutionResult>;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// W3-A1 — v2 driver-neutral executor SPI (spec §3).
-//
-// The v2 types ADD the Wave 1 pure-SPI envelope/receipt shapes alongside the
-// legacy `NodeExecutionContext` / `NodeExecutionResult`. They are ADDITIVE:
-// nothing is removed from the legacy types, and the GenericFlowExecutor only
-// hands the v2 context to a NodeExecutor when v2 wiring is present (an
-// `envelope` field is set on the context). Existing node executors that read
-// only the legacy `frame` keep working because `toLegacyFrame(envelope)`
-// computes the legacy `NodeExecutionFrame` from the envelope's
-// `upstreamProducts` (so the v2 path remains backward-compatible until Wave 5
-// migrates consumers — plan §16.9).
-//
-// A2 consumes this SPI: `NodeExecutionContextV2` + `NodeExecutionResultV2` +
-// `toV2Result(...)` + `toLegacyFrame(...)`.
-// ─────────────────────────────────────────────────────────────────────────────
+// v2 driver-neutral executor SPI. The v2 types ADD the pure-SPI
+// envelope/receipt shapes alongside the legacy `NodeExecutionContext` /
+// `NodeExecutionResult`. They are ADDITIVE: nothing is removed from the
+// legacy types, and the GenericFlowExecutor only hands the v2 context to a
+// NodeExecutor when v2 wiring is present (an `envelope` field is set on the
+// context). Existing node executors that read only the legacy `frame` keep
+// working because `toLegacyFrame(envelope)` computes the legacy
+// `NodeExecutionFrame` from the envelope's `upstreamProducts`.
 
 /**
- * v2 node-execution context (spec §3).
+ * v2 node-execution context.
  *
  * Replaces the mutable `frame: NodeExecutionFrame` field on the legacy
  * {@link NodeExecutionContext} with an immutable, driver-neutral
- * {@link ExecutionContextEnvelope} assembled from durable state by W3-A5's
+ * {@link ExecutionContextEnvelope} assembled from durable state by
  * `assembleExecutionContext`. The envelope carries the exact declared
  * predecessor `ProductRef`s (loaded by content-address, NOT by mutable-bag
- * reconstruction), the frozen authority snapshot, and the pinned
- * package/node identity — see WAVE1-PURE-SPI-SPEC §1 + WAVE3 §3/§8.
+ * reconstruction), the frozen authority snapshot, and the pinned package/node
+ * identity.
  *
  * The legacy board-vocab identities (`projectId` / `epicId` / `processRunId` /
- * `initiatedBy`) are carried over unchanged for backward compatibility; Wave 5
- * moves them into `envelope.frozenAuthority` only (plan §13.16, C061). They
+ * `initiatedBy`) are carried over unchanged for backward compatibility. They
  * stay as base fields here so existing node executors compile and behave
  * identically whether the v2 path is active or not.
  *
@@ -310,12 +297,12 @@ export interface NodeExecutor {
  * absent, so legacy-only executors see no change).
  */
 export interface NodeExecutionContextV2 {
-  /** Driver-neutral execution envelope (W3-A5, Wave 1 §7.7). */
+  /** Driver-neutral execution envelope. */
   readonly envelope: ExecutionContextEnvelope;
-  /** Upstream product bodies loaded by exact ProductRef (W3-A5). Forwarded to
-   *  the node's input contract decoder; the envelope carries only the refs. */
+  /** Upstream product bodies loaded by exact ProductRef. Forwarded to the
+   *  node's input contract decoder; the envelope carries only the refs. */
   readonly upstreamProductBodies: readonly unknown[];
-  // ── Legacy identities, retained for backward compat (Wave 5 narrows). ──
+  // Legacy identities, retained for backward compat.
   readonly projectId: number;
   readonly epicId: number | null;
   readonly processRunId: number;
@@ -327,17 +314,17 @@ export interface NodeExecutionContextV2 {
 }
 
 /**
- * v2 node-execution result (spec §3).
+ * v2 node-execution result.
  *
  * Replaces the legacy flat `NodeProduction` + board-coupled
- * `NodeExecutionReceipt` with the Wave 1 driver-neutral shapes:
+ * `NodeExecutionReceipt` with the driver-neutral shapes:
  * {@link NodeProductionEnvelope} (carries lineage) and
  * {@link DriverNeutralExecutionReceipt} (board/task/WorkIntent live in
  * `adapterData`). The optional {@link ModuleCompletion} is the EXPLICIT
  * terminal envelope that replaces the legacy magic certificate bindings
- * (`production.bindings.certificatePayload` — WAVE3 §3/§4): when a node
- * returns `completion`, settlement reads `outputEnvelope`/`certificateRef`
- * directly instead of extracting them from opaque bindings.
+ * (`production.bindings.certificatePayload`): when a node returns
+ * `completion`, settlement reads `outputEnvelope`/`certificateRef` directly
+ * instead of extracting them from opaque bindings.
  *
  * Legacy fields (`runtimeEvent` / `domainEvent` / `recoveryIssue` /
  * `acceptanceReceipt` / `outcome`) are retained on the v2 shape so a v2-aware
@@ -348,22 +335,21 @@ export interface NodeExecutionResultV2 {
   readonly runtimeEvent: 'completed' | 'failed' | 'paused';
   readonly domainEvent?: string;
   /**
-   * Driver-neutral execution receipt (Wave 1). Present for LM/external/human
-   * nodes; absent for kernel nodes that emit `productionEnvelope`. Replaces the
+   * Driver-neutral execution receipt. Present for LM/external/human nodes;
+   * absent for kernel nodes that emit `productionEnvelope`. Replaces the
    * legacy board-coupled `NodeExecutionReceipt`.
    */
   readonly driverReceipt?: DriverNeutralExecutionReceipt;
   /**
-   * Durable, content-addressed production with lineage (Wave 1 §7.6). Present
-   * for kernel / terminal nodes. Replaces the legacy flat `NodeProduction`.
+   * Durable, content-addressed production with lineage. Present for kernel /
+   * terminal nodes. Replaces the legacy flat `NodeProduction`.
    */
   readonly productionEnvelope?: NodeProductionEnvelope;
   /**
-   * EXPLICIT terminal envelope (Wave 1 §7.5.6). When present on a terminal
-   * node's result, settlement reads `completion.outputEnvelope` /
+   * EXPLICIT terminal envelope. When present on a terminal node's result,
+   * settlement reads `completion.outputEnvelope` /
    * `completion.outputEnvelope.certificateRef` directly instead of extracting
-   * certificate fields from opaque `bindings.certificatePayload` (WAVE3 §4).
-   * The legacy magic-bindings path remains as a fallback (spec §3).
+   * certificate fields from opaque `bindings.certificatePayload`.
    */
   readonly completion?: ModuleCompletion;
   readonly recoveryIssue?: RecoveryIssue;
@@ -383,9 +369,8 @@ export interface NodeExecutionResultV2 {
  * `'__upstream__'` entry under `productions` (each ref materialized into a
  * minimal `NodeProduction` shell) plus `runInput` from
  * `envelope.immutableRunInput`. This is a READ-ONLY compatibility view for
- * node executors that have not yet migrated to read the envelope directly
- * (Wave 5 migrates them). The v2-aware executors read `ctx.envelope` directly
- * and ignore this bridge.
+ * node executors that have not yet migrated to read the envelope directly.
+ * The v2-aware executors read `ctx.envelope` directly and ignore this bridge.
  *
  * This function is pure: same envelope → same frame.
  */
@@ -424,8 +409,7 @@ export function toLegacyFrame(
  * `completion` magic-bindings case (production.bindings.certificatePayload) is
  * NOT reverse-engineered into a `ModuleCompletion` here — settlement continues
  * to read the magic bindings as the documented fallback when a node returns a
- * legacy-shaped result (spec §3/§4). Wave 5/8/9 migrate producers to emit
- * `ModuleCompletion` directly.
+ * legacy-shaped result.
  *
  * Pure: same legacy result → same v2 result.
  */
@@ -452,8 +436,8 @@ export function toV2Result(legacy: NodeExecutionResult): NodeExecutionResultV2 {
   const driverReceipt: DriverNeutralExecutionReceipt | undefined = legacy.receipt
     ? (() => {
         const r = legacy.receipt;
-        // Board/task/intent ids move into adapterData (plan §13.16, C061). The
-        // driver-neutral base fields are the physical ones the runtime switches on.
+        // Board/task/intent ids move into adapterData. The driver-neutral base
+        // fields are the physical ones the runtime switches on.
         return {
           schemaVersion: 'saga3.driver-neutral-receipt.v1',
           nodeRunId: 0,
