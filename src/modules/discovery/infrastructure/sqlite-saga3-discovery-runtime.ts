@@ -1,7 +1,7 @@
 import { getDb } from '../../../db.js';
 import { prepareSaga3ProjectedTaskForExecution } from '../../../lifecycle/legacy-assignment-recovery.js';
 import type { CreateWorkIntent, WorkIntent, WorkIntentStatus } from '../../../shared/work-intent.js';
-import type { ProposalRecord } from '../../../saga3/domain/proposal.js';
+import type { ProposalRecord } from '../domain/proposal.js';
 import { DISCOVERY_NORMALIZATION_INTENT_KIND, DISCOVERY_READINESS_INTENT_KIND } from '../../../shared/work-intent.js';
 import { DISCOVERY_NORMALIZATION_PROPOSAL_SCHEMA } from '../domain/discovery-normalization-proposal.js';
 import { DISCOVERY_READINESS_ASSESSMENT_SCHEMA } from '../domain/discovery-readiness-assessment.js';

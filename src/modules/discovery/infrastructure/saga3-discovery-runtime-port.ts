@@ -1,5 +1,5 @@
 import type { CreateWorkIntent, WorkIntent, WorkIntentStatus } from '../../../shared/work-intent.js';
-import type { ProposalRecord } from '../../../saga3/domain/proposal.js';
+import type { ProposalRecord } from '../domain/proposal.js';
 import type {
   ControlIntentStatus,
   DiscoveryNormalizationProposalRecord,

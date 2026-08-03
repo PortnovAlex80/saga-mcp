@@ -5,7 +5,7 @@ import type {
   RawDiscoverySubmissionRecord,
   RawDiscoverySubmissionStatus,
 } from '../domain/discovery-normalization-records.js';
-import type { ProposalProvenance } from '../../../saga3/domain/proposal.js';
+import type { ProposalProvenance } from '../domain/proposal.js';
 import { canonicalJson } from '../../../shared/canonical-json.js';
 
 export function ensureSaga3NormalizationSchema(db: Database.Database): void {

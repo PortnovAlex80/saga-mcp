@@ -24,7 +24,7 @@ import {
   validateReadinessAssessment,
   type ReadinessAssessmentPayload,
 } from '../modules/discovery/domain/discovery-readiness-assessment.js';
-import type { ProposalProvenance } from '../saga3/domain/proposal.js';
+import type { ProposalProvenance } from '../modules/discovery/domain/proposal.js';
 import { validateDiscoveryProposal, type DiscoveryProposalPayload } from '../modules/discovery/domain/discovery-proposal.js';
 import {
   ensureSaga3ReadinessSchema,

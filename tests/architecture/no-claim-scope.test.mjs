@@ -140,7 +140,7 @@ test('no executable code under src/ references the removed claimScope contract',
         `'claimScope' contract under src/. The conveyor refactor (Slice 1 Zones ` +
         `1-7) deleted claimScope from WorkerExecutorStart: every caller must now ` +
         `pre-assign via WorkAssignmentPort BEFORE launching a worker (see ` +
-        `src/saga3/application/assign-one-card.ts and src/app/dispatch-loop.ts ` +
+        `src/shared/conveyor/assign-one-card.ts and src/app/dispatch-loop.ts ` +
         `startOne()). Reintroducing claimScope would silently restore the ` +
         `two-path model the node-breaker collapsed:\n  ` +
         violations.join('\n  '),

@@ -21,7 +21,7 @@ import type { ReadinessShadowResult } from '../domain/discovery-readiness-assess
 import {
   assignOneCard,
   releaseOneCardIfAssigned,
-} from '../../../saga3/application/assign-one-card.js';
+} from '../../../shared/conveyor/assign-one-card.js';
 
 export interface ReadinessAssessRequest {
   projectId: number;

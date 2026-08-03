@@ -143,7 +143,7 @@ export interface ReadinessShadowResult {
 export type DiagnosisDecision = 'go' | 'clarify' | 'reject';
 
 // ---------------------------------------------------------------------------
-// Provenance (mirrors saga3/domain/proposal.ts — record shape only).
+// Provenance (mirrors modules/discovery/domain/proposal.ts — record shape only).
 // ---------------------------------------------------------------------------
 
 export interface ExecutionProvenance {

@@ -10,7 +10,7 @@ import {
   validateDiscoveryNormalizationProposal,
   type DiscoveryNormalizationProposalPayload,
 } from '../modules/discovery/domain/discovery-normalization-proposal.js';
-import type { ProposalProvenance } from '../saga3/domain/proposal.js';
+import type { ProposalProvenance } from '../modules/discovery/domain/proposal.js';
 import {
   canonicalJson,
   ensureSaga3NormalizationSchema,

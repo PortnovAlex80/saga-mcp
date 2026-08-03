@@ -1,4 +1,4 @@
-import type { ProposalProvenance } from '../../../saga3/domain/proposal.js';
+import type { ProposalProvenance } from './proposal.js';
 
 export type RawDiscoverySubmissionStatus =
   | 'accepted_deterministically'

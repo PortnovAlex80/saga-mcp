@@ -10,7 +10,7 @@ import type { Saga3DiscoveryRuntimePersistence } from '../infrastructure/saga3-d
 import {
   assignOneCard,
   releaseOneCardIfAssigned,
-} from '../../../saga3/application/assign-one-card.js';
+} from '../../../shared/conveyor/assign-one-card.js';
 
 export interface DiscoveryNormalizationRequest {
   projectId: number;

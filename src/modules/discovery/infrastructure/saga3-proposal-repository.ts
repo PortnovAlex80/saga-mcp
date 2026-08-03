@@ -7,7 +7,7 @@ import type {
   ProposalStatus,
   SubmitProposal,
   SubmittedProposalResult,
-} from '../../../saga3/domain/proposal.js';
+} from '../domain/proposal.js';
 
 /**
  * Canonical JSON stringify for content hashing. Keys are sorted so the same

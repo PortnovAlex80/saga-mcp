@@ -8,7 +8,7 @@ import type { ToolHandler } from '../types.js';
 import { DISCOVERY_INTENT_KIND, DISCOVERY_WORK_INTENT_SCHEMA } from '../shared/work-intent.js';
 import { DISCOVERY_PROPOSAL_SCHEMA } from '../modules/discovery/domain/discovery-proposal.js';
 import { normalizeDiscoveryProposalInput } from '../modules/discovery/domain/discovery-normalization.js';
-import type { ProposalProvenance, SubmitProposal } from '../saga3/domain/proposal.js';
+import type { ProposalProvenance, SubmitProposal } from '../modules/discovery/domain/proposal.js';
 import { readExecutionContextStrict } from '../shared/authority/authorize-tool-call.js';
 import {
   canonicalJson,

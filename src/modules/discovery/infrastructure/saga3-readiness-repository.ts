@@ -19,7 +19,7 @@ import type {
   ReadinessAssessmentStatus,
   ReadinessControlIntentRecord,
 } from '../domain/discovery-readiness-records.js';
-import type { ProposalProvenance } from '../../../saga3/domain/proposal.js';
+import type { ProposalProvenance } from '../domain/proposal.js';
 
 /** Idempotently create the D3 readiness tables if absent. */
 export function ensureSaga3ReadinessSchema(db: Database.Database): void {

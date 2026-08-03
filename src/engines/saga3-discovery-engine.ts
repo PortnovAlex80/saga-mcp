@@ -35,7 +35,7 @@ import type { ReadinessAssessmentRecord, ReadinessControlIntentRecord } from '..
 import {
   assignOneCard,
   releaseOneCardIfAssigned,
-} from '../saga3/application/assign-one-card.js';
+} from '../shared/conveyor/assign-one-card.js';
 
 /**
  * The settlement view the engine threads through runResult. Extends the
