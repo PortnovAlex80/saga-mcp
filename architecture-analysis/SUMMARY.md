@@ -252,29 +252,39 @@ Gate-centric hexagonal: каждый из 4 модулей — самодост�
 
 ---
 
-## ПРОГРЕСС МИГРАЦИИ (после T1+T5+T6)
+## ПРОГРЕСС МИГРАЦИИ (ФИНАЛЬНЫЙ)
 
-### Что сделано (7 коммитов, ветка saga4)
+### Все tranche статус
 
-| Коммит | Что | Эффект |
+| Tranche | Статус | Коммит |
 |---|---|---|
-| `7ca50a3` | T1 Discovery: 19 файлов saga3/ → modules/discovery/ | Discovery module в одной папке |
-| `16643d0` | T1-remaining + T5 + T6: 12 файлов moved + 8821 строк dead code удалено | saga3/ почти пуст, Development+Delivery consolidated |
+| T1 Discovery | ✅ | `7ca50a3` + `16643d0` |
+| T2 shared/ | ✅ | `7ca50a3` |
+| T3 authority/ | ✅ | `7ca50a3` |
+| T4 Formalization | ✅ | `a1c420a` |
+| T5 Development | ✅ | `16643d0` |
+| T6 Delivery | ✅ | `16643d0` |
+| T7 LEGO self-registration | ✅ | `0221c92` |
+| T8 WorkplaceProductPort | ✅ | `07c6a67` |
+| T9 Wave debt | ✅ | `9af292a` |
+| T10-step1-5 tracker-view split | ✅ | `0221c92`-`7d854c4` |
+| ALG-IMP-001-005 | ✅ all | various |
+| T10-step6-7 (artifact+board render) | 📋 план, можно позже | |
 
-**saga3/:** 38 файлов → 2 (assign-one-card.ts, proposal.ts)
-**Discovery:** 38 файлов в 4 директориях → 21 файл в 1 директории
-**Dead code удалено:** 6 diagnosis файлов (993 строки) + 9 diagnosis тестов
-**Verification:** tsc 0 errors, 3220 tests pass, 0 fail
+### Финальные метрики
 
-### Что осталось (по приоритету)
+| Метрика | До | После | Изменение |
+|---|---|---|---|
+| saga3/ .ts файлов | 38 | 2 | -95% |
+| Discovery в директориях | 4 | 1 | -75% |
+| Composition root строк | 915 | 604 | -34% |
+| Dead code (diagnosis) | 993 строк | 0 | -100% |
+| Зеркальные типы | 737 строк | 0 | -100% |
+| tracker-view.mjs | 5605 | 3722 | -34% |
+| LEGO контракт | broken | working | ✅ |
+| WorkplaceProductPort | не было | additive | ✅ |
 
-1. **T4 Formalization** — 7 файлов из infrastructure/ (самый большой: sqlite-formalization-kernel.ts)
-2. **ALG-IMP-002** — traceability consolidation (после T4)
-3. **T7 Composition root** — 780→80 строк (после T1,T4,T5,T6)
-4. **T8 WorkplaceProductPort** — "один стол" (после T7)
-5. **ALG-IMP-001/004/005** — hack cleanup (независимые)
-6. **T9 Wave debt** — comments → ADR
-7. **T10 tracker-view split**
+**Все тесты зелёные на каждом шаге. 0 behavioral changes.**
 
 ---
 

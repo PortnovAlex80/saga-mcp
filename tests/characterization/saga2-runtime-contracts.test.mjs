@@ -153,6 +153,11 @@ test('worker runner keeps the assignment, fencing, provider, logging, and MCP pr
 });
 
 test('tracker keeps the stable board, artifact, workflow, and worker projection', () => {
+  // T10 step 7: the board-rendering HTML moved to tracker-view/board-render.mjs.
+  // The HTTP core (COLS map, routes, DB_PATH) stays in tracker-view.mjs; the
+  // board tokens that live inside the rendered HTML (episode_stage, gate_error,
+  // needs_human, evidence_count) moved with the renderers. Assert each set
+  // against the file that now owns it.
   const source = read('tracker-view/tracker-view.mjs');
   assertIncludesAll(source, [
     "{ key: 'todo'",
@@ -161,16 +166,20 @@ test('tracker keeps the stable board, artifact, workflow, and worker projection'
     "{ key: 'review_in_progress'",
     "{ key: 'done'",
     "{ key: 'blocked'",
-    'episode_stage',
-    'gate_error',
-    'needs_human',
-    'evidence_count',
     'artifact_traces',
     '/api/worker/tail',
     '/api/engine/',
     '/api/model/',
     'DB_PATH',
   ], 'tracker-view/tracker-view.mjs');
+  const boardSource = read('tracker-view/board-render.mjs');
+  assertIncludesAll(boardSource, [
+    'episode_stage',
+    'gate_error',
+    'needs_human',
+    'evidence_count',
+    'artifact_traces',
+  ], 'tracker-view/board-render.mjs');
 });
 
 test('product-workflow characterization suite remains present', () => {

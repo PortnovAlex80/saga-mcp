@@ -74,18 +74,21 @@ test('artifact fallback never invents missing product content', () => {
 });
 
 test('tracker artifact tree links orphan titles and uses the complete dynamic type order', () => {
-  const trackerSource = readFileSync(
-    path.join(import.meta.dirname, '..', '..', 'tracker-view', 'tracker-view.mjs'),
+  // T10 step 6: renderArtifacts (which contains these patterns) was extracted
+  // from tracker-view.mjs into tracker-view/artifact-render.mjs. Assert against
+  // the extracted module.
+  const renderSource = readFileSync(
+    path.join(import.meta.dirname, '..', '..', 'tracker-view', 'artifact-render.mjs'),
     'utf8',
   );
 
-  assert.match(trackerSource, /const typeOrder = orderedArtifactTypes\(artifacts\)/);
+  assert.match(renderSource, /const typeOrder = orderedArtifactTypes\(artifacts\)/);
   assert.match(
-    trackerSource,
+    renderSource,
     /<a class="atitle" href="\/\?artifact=\$\{o\.id\}">\$\{esc\(o\.title\)\}<\/a>/,
   );
   assert.match(
-    trackerSource,
+    renderSource,
     /<a class="tg tg-link" href="\/\?artifact=\$\{t\.target_id\}">/,
   );
 });

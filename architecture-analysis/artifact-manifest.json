@@ -1,104 +1,73 @@
 {
-  "artifact-manifest": {
-    "protocol": "Architecture Reconstruction and Redecomposition Protocol",
-    "project": "saga-mcp",
-    "branch": "saga4",
-    "execution_mode": "PHASE",
-    "current_phase": "Phase Zero",
-    "artifacts": [
-      {
-        "artifact_id": "ART-PHASE0-FILE-MANIFEST",
-        "type": "File Manifest (JSONL)",
-        "path": "architecture-analysis/phase-0/file-manifest.jsonl",
-        "status": "evidence-complete",
-        "version": "1.0",
-        "records": 1544
-      },
-      {
-        "artifact_id": "ART-PHASE0-MODULE-INVENTORY",
-        "type": "Module and Component Inventory",
-        "path": "architecture-analysis/phase-0/module-inventory.md",
-        "status": "evidence-incomplete",
-        "version": "1.0"
-      },
-      {
-        "artifact_id": "ART-PHASE0-EVIDENCE-LEDGER",
-        "type": "Evidence Ledger",
-        "path": "architecture-analysis/phase-0/evidence-ledger.jsonl",
-        "status": "evidence-incomplete",
-        "version": "1.0",
-        "records": 26
-      },
-      {
-        "artifact_id": "ART-PHASE0-EXECUTABLE-TOPOLOGY",
-        "type": "Executable Topology and Reachability Map",
-        "path": "architecture-analysis/phase-0/executable-topology.md",
-        "status": "evidence-incomplete",
-        "version": "1.0"
-      },
-      {
-        "artifact_id": "ART-PHASE0-COVERAGE-STATEMENT",
-        "type": "Coverage and Unresolved Regions Statement",
-        "path": "architecture-analysis/phase-0/coverage-statement.md",
-        "status": "evidence-incomplete",
-        "version": "1.0"
-      },
-      {
-        "artifact_id": "ART-PHASE1-OPERATIONAL-PURPOSE",
-        "type": "Reconstructed Operational Purpose",
-        "path": "architecture-analysis/phase-1/operational-purpose.md",
-        "status": "evidence-incomplete",
-        "version": "1.0"
-      },
-      {
-        "artifact_id": "ART-PHASE3-CORE-MODEL",
-        "type": "Reconstructed Core Model",
-        "path": "architecture-analysis/phase-3/reconstructed-core-model.md",
-        "status": "evidence-incomplete",
-        "version": "1.0"
-      },
-      {
-        "artifact_id": "ART-PHASE3-RULE-CATALOG",
-        "type": "Rule and Invariant Catalog",
-        "path": "architecture-analysis/phase-3/rule-catalog.jsonl",
-        "status": "evidence-incomplete",
-        "version": "1.0",
-        "records": 18
-      },
-      {
-        "artifact_id": "ART-PHASE4-SEAM-MAP",
-        "type": "Seam Map",
-        "path": "architecture-analysis/phase-4/seam-map.md",
-        "status": "evidence-incomplete",
-        "version": "1.0",
-        "records": 16
-      },
-      {
-        "artifact_id": "ART-PHASE5-WORKLOAD-PROFILE",
-        "type": "Workload and Algorithm Profile",
-        "path": "architecture-analysis/phase-5/workload-algorithm-profile.md",
-        "status": "evidence-incomplete",
-        "version": "1.0",
-        "records": 11
-      }
-    ],
-    "open_questions": [
-      "QUESTION-001", "QUESTION-002", "QUESTION-003", "QUESTION-004",
-      "QUESTION-005", "QUESTION-006", "QUESTION-007",
-      "QUESTION-008", "QUESTION-009"
-    ],
-    "findings": [
-      "FINDING-001 (four-desks gap confirmed in production paths)",
-      "FINDING-002 (center of gravity is the transition gate, not the artifact)",
-      "FINDING-003 (system is a state-machine engine for governing external LLM workers)"
-    ],
-    "hypotheses": [
-      "HYPOTHESIS-001 (governance platform — strong)",
-      "HYPOTHESIS-002 (one machine one material — plausible but unverified)",
-      "HYPOTHESIS-003 (glass ceiling is accidental — partially verified)",
-      "HYPOTHESIS-004 (evolving to autonomous factory — weak)"
-    ],
-    "contradictions": ["CONTRADICTION-001"],
-    "next_phase": "Phase Three — Extract the Real Core"
-  }
+  "analysis_id": "saga-mcp-architecture-reconstruction",
+  "branch": "saga4",
+  "created": "2026-08-03",
+  "phases": {
+    "phase-0": {
+      "status": "evidence-complete",
+      "artifacts": [
+        {
+          "id": "ART-PHASE0-FILE-MANIFEST",
+          "path": "architecture-analysis/phase-0/file-manifest.jsonl",
+          "version": 1,
+          "status": "evidence-complete"
+        },
+        {
+          "id": "ART-PHASE0-MODULE-INVENTORY",
+          "path": "architecture-analysis/phase-0/module-inventory-v2.md",
+          "version": 2,
+          "status": "evidence-complete",
+          "supersedes": "module-inventory.md (v1, stale paths)"
+        },
+        {
+          "id": "ART-PHASE0-EXECUTABLE-TOPOLOGY",
+          "path": "architecture-analysis/phase-0/executable-topology.md",
+          "version": 1,
+          "status": "evidence-incomplete",
+          "note": "v1 contains stale saga3/ paths; needs v2 supersession. Content structurally correct but references pre-dissolution locations."
+        },
+        {
+          "id": "ART-PHASE0-COVERAGE",
+          "path": "architecture-analysis/phase-0/coverage-statement-v2.md",
+          "version": 2,
+          "status": "evidence-complete",
+          "supersedes": "coverage-statement.md (v1)"
+        },
+        {
+          "id": "ART-PHASE0-EVIDENCE-LEDGER",
+          "path": "architecture-analysis/phase-0/evidence-ledger.jsonl",
+          "version": 1,
+          "status": "evidence-incomplete",
+          "note": "v1 created from parent session; needs reconciliation with v2 path corrections"
+        }
+      ]
+    }
+  },
+  "pending_phases": [
+    "phase-1", "phase-2", "phase-3", "phase-4", "phase-5",
+    "phase-5.5", "phase-6", "phase-7", "phase-8", "phase-9", "phase-10"
+  ],
+  "contradictions": [
+    {
+      "id": "CONTRADICTION-V2-001",
+      "description": "v1 referenced src/saga3/authority/ for authorizeSagaToolCall; actual location is src/shared/authority/",
+      "resolved": true,
+      "evidence": "index.ts import: from './shared/authority/authorize-tool-call.js'"
+    },
+    {
+      "id": "CONTRADICTION-V2-002",
+      "description": "v1 referenced src/saga3/domain/ for discovery-settlement-policy; actual location is src/modules/discovery/domain/",
+      "resolved": true
+    },
+    {
+      "id": "CONTRADICTION-V2-003",
+      "description": "v1 described 780-line composition root; actual is 616 lines with LEGO contract",
+      "resolved": true
+    },
+    {
+      "id": "CONTRADICTION-V2-004",
+      "description": "v1 described separate saga3/ bounded context; saga3/ dissolved to 2 remnant files",
+      "resolved": true
+    }
+  ]
 }

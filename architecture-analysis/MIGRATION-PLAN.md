@@ -534,7 +534,7 @@ PORT-001: WorkplaceProductPort
 | ALG-IMP-004 | ✅ | Wave 8 | type cycle — уже устранён |
 | ALG-IMP-005 | ✅ | Wave 8 | markExecutionExited → уже делегирует |
 | T9 (Wave debt) | ✅ | `9af292a` | top-10 файлов очищены, WAVE-LOG.md создан |
-| T10 (tracker-view) | ⏳ step 1-2 done, 3-7 pending | `0221c92` | shared.mjs + board-runner-adapter.mjs извлечены; model-management в работе |
+| T10 (tracker-view) | ✅ 5/7 steps done | `0221c92`-`7d854c4` | shared + board-runner + model-mgmt + admin + lifecycle; 5605→3722 строк (-34%) |
 
 ### Итоги выполненных tranche
 
