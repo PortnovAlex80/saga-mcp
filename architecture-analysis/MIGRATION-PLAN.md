@@ -529,22 +529,27 @@ PORT-001: WorkplaceProductPort
 | T4 (Formalization) | ✅ | `a1c420a` | 3 infrastructure файла → modules/formalization/ |
 | ALG-IMP-002 | ✅ | `771d181` | traceability — DOCUMENTED (не дубликат, два enforcement layer) |
 | T7 (Composition) | ✅ | `0221c92` | LEGO CONTRACT: 4 register*() функции, 915→604 строк |
-| T8 (WorkplaceProductPort) | ⏳ в работе | | "один стол" — additive universal desk |
+| T8 (WorkplaceProductPort) | ✅ | `07c6a67` | "один стол" — additive universal desk |
 | ALG-IMP-001 | ✅ | `7344529` | v1 NodeRun — уже удалён |
 | ALG-IMP-004 | ✅ | Wave 8 | type cycle — уже устранён |
 | ALG-IMP-005 | ✅ | Wave 8 | markExecutionExited → уже делегирует |
 | T9 (Wave debt) | ✅ | `9af292a` | top-10 файлов очищены, WAVE-LOG.md создан |
-| T10 (tracker-view) | ✅ 5/7 steps done | `0221c92`-`7d854c4` | shared + board-runner + model-mgmt + admin + lifecycle; 5605→3722 строк (-34%) |
+| T10-step1-5 | ✅ | `0221c92`-`7d854c4` | shared + board-runner + model-mgmt + admin + lifecycle; 5605→3722 |
+| T10-step6 | ✅ | T10-step6+7 commit | artifact-render.mjs (675 строк): renderMarkdown + artifact tree + wiki |
+| T10-step7 | ✅ | T10-step6+7 commit | board-render.mjs (2719 строк): board + index + page(CSS) + task + coverage; **5605→569 (-90%)** |
+| saga3/ final cleanup | ✅ | `391f55c` | last 2 files: assign-one-card→shared/conveyor, proposal→discovery/domain. **saga3/ ELIMINATED** |
 
-### Итоги выполненных tranche
+### Итоги — ВСЕ TRANCHE ВЫПОЛНЕНЫ
 
-**saga3/ статус:** 2 файла осталось (assign-one-card.ts, proposal.ts) — из 38 изначальных.
+**saga3/ статус:** **0 файлов. Директория удалена.** (из 38 изначальных)
 **Удалено dead code:** 6 diagnosis файлов (993 строки) + 9 diagnosis тестов (~8821 строк deletions всего).
 **Module consolidation:**
-- Discovery: 21 .ts файл в modules/discovery/ (было 38 в 4 директориях)
+- Discovery: 22 .ts файла в modules/discovery/ (было 38 в 4 директориях)
 - Development: module + infrastructure consolidated
 - Delivery: module + infrastructure consolidated
-- Formalization: 0 infrastructure moved (T4 pending)
+- Formalization: infrastructure consolidated
+
+**tracker-view.mjs split:** 5605 → 569 строк (-90%). 8 фокусных модулей.
 
 **Verification gates на каждом шаге:**
 - tsc --noEmit: 0 errors

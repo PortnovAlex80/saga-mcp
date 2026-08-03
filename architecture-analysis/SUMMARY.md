@@ -268,29 +268,55 @@ Gate-centric hexagonal: каждый из 4 модулей — самодост�
 | T8 WorkplaceProductPort | ✅ | `07c6a67` |
 | T9 Wave debt | ✅ | `9af292a` |
 | T10-step1-5 tracker-view split | ✅ | `0221c92`-`7d854c4` |
+| T10-step6 artifact-render | ✅ | `_T10-step6+7_` |
+| T10-step7 board-render | ✅ | `_T10-step6+7_` |
 | ALG-IMP-001-005 | ✅ all | various |
-| T10-step6-7 (artifact+board render) | 📋 план, можно позже | |
+| saga3/ final cleanup | ✅ | `391f55c` |
 
 ### Финальные метрики
 
 | Метрика | До | После | Изменение |
 |---|---|---|---|
-| saga3/ .ts файлов | 38 | 2 | -95% |
+| saga3/ .ts файлов | 38 | **0** (директория удалена) | **-100%** |
 | Discovery в директориях | 4 | 1 | -75% |
 | Composition root строк | 915 | 604 | -34% |
 | Dead code (diagnosis) | 993 строк | 0 | -100% |
 | Зеркальные типы | 737 строк | 0 | -100% |
-| tracker-view.mjs | 5605 | 3722 | -34% |
+| tracker-view.mjs | 5605 | **569** | **-90%** |
 | LEGO контракт | broken | working | ✅ |
 | WorkplaceProductPort | не было | additive | ✅ |
 
-**Все тесты зелёные на каждом шаге. 0 behavioral changes.**
+### tracker-view.mjs split — финальная карта
+
+| Модуль | Строк | Что внутри |
+|---|---|---|
+| `tracker-view.mjs` | 569 | HTTP core: импорты, константы, color maps, composition root, роутинг, PID/browser |
+| `shared.mjs` | 257 | withDb, esc, parseTs, resolveArtifactFile, extractDiv, … |
+| `board-runner-adapter.mjs` | 125 | ClaudeBoardRunner wiring + recovery |
+| `model-management.mjs` | 400 | /api/models + /api/model/set + LM Studio |
+| `admin-endpoints.mjs` | 620 | project/epic CRUD + create-from-idea |
+| `lifecycle-endpoints.mjs` | 774 | engine control + stage-summary + workers |
+| `artifact-render.mjs` | 675 | renderMarkdown + artifact tree + wiki view + editor |
+| `board-render.mjs` | 2719 | renderBoard + renderIndex + page() (CSS) + renderTaskView + coverage + acceptance |
+
+### saga3/ → 0 — последний шаг
+
+Два оставшихся файла нашли свои дома:
+- `assign-one-card.ts` → `src/shared/conveyor/` (cross-cutting conveyor physics)
+- `proposal.ts` → `src/modules/discovery/domain/` (Discovery domain type)
+
+**Директория `src/saga3/` полностью удалена.**
+
+**Все тесты зелёные на каждом шаге. 0 behavioral changes. 3220 pass, 0 fail, 37 skipped.**
 
 ---
 
 ## СТАТУС
 
-**T1-T6 + ALG-IMP-003: ВЫПОЛНЕНО. tsc green, tests green.**
-T4+T7+T8: recommended-pending-approval (следующий шаг).
+### ✅ ВСЕ TRANCHE ВЫПОЛНЕНЫ
 
-Целевая архитектура и first migration tranche готовы к ревью. Код не модифицировался. Изменения могут начаться только после human approval.
+T1-T10 + ALG-IMP-001-005 + saga3/ cleanup — **полностью выполнено**.
+
+tsc: 0 errors. Tests: 3220 pass, 0 fail, 37 skipped. Каждый коммит верифицирован.
+
+**Migration blueprint выполнен от Phase 0 до финального коммита.**
