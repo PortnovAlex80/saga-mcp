@@ -45,6 +45,10 @@ import {
   definitions as lifecycleRunDefs,
   handlers as lifecycleRunHandlers,
 } from './tools/lifecycle-runs.js';
+import {
+  definitions as settlementDebugDefs,
+  handlers as settlementDebugHandlers,
+} from './tools/settlement-debug.js';
 import { createSaga3ProposalHandlers } from './tools/discovery-proposal-tools.js';
 import { createSaga3NormalizationHandlers } from './tools/discovery-normalization-tools.js';
 import { createSaga3ReadinessHandlers } from './tools/discovery-readiness-tools.js';
@@ -101,6 +105,7 @@ const ALL_TOOLS: Tool[] = [
   ...processNodeSubmissionDefs,
   ...deliveryApprovalDefs,
   ...lifecycleRunDefs,
+  ...settlementDebugDefs,
   ...saga3Proposals.definitions,
   ...saga3Normalization.definitions,
   ...saga3Readiness.definitions,
@@ -129,6 +134,7 @@ const ALL_HANDLERS: Record<string, (args: Record<string, unknown>) => unknown> =
   ...processNodeSubmissionHandlers,
   ...deliveryApprovalHandlers,
   ...lifecycleRunHandlers,
+  ...settlementDebugHandlers,
   ...saga3Proposals.handlers,
   ...saga3Normalization.handlers,
   ...saga3Readiness.handlers,
