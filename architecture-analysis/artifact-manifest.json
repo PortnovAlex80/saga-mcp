@@ -72,6 +72,14 @@
         "status": "evidence-incomplete",
         "version": "1.0",
         "records": 16
+      },
+      {
+        "artifact_id": "ART-PHASE5-WORKLOAD-PROFILE",
+        "type": "Workload and Algorithm Profile",
+        "path": "architecture-analysis/phase-5/workload-algorithm-profile.md",
+        "status": "evidence-incomplete",
+        "version": "1.0",
+        "records": 11
       }
     ],
     "open_questions": [
