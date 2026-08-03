@@ -230,8 +230,14 @@ export function readWorkIntentForTaskClaim(
   if (row.projected_task_id !== task.id) {
     throw new Error(`AUTHORITY_BINDING_INVALID: WorkIntent ${intentId} projected_task_id ${row.projected_task_id} != task ${task.id}`);
   }
-  if (row.status !== 'open' && row.status !== 'executing') {
-    throw new Error(`AUTHORITY_BINDING_INVALID: WorkIntent ${intentId} status '${row.status}' is not claimable`);
+  // WorkIntent 'paused' is claimable when the task is in 'review' — the
+  // LM-executor pauses the run after the producer finishes and the task
+  // goes to review. The reviewer claims this task while the intent is
+  // paused. Only 'concluded' (terminal) intents are truly unclaimable.
+  const isClaimableIntentStatus = row.status === 'open' || row.status === 'executing'
+    || (row.status === 'paused' && task.status === 'review');
+  if (!isClaimableIntentStatus) {
+    throw new Error(`AUTHORITY_BINDING_INVALID: WorkIntent ${intentId} status '${row.status}' is not claimable (task status='${task.status}')`);
   }
   let rawAuthority: unknown;
   try { rawAuthority = JSON.parse(row.authority_scope); }
