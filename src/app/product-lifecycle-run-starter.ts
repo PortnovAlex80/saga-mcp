@@ -82,7 +82,11 @@ export function createSpawnCliLifecycleRunStarter(
 ): LifecycleRunStarter {
   const here = path.dirname(fileURLToPath(import.meta.url));
   const orchestrateCliPath = options.orchestrateCliPath
-    ?? path.join(here, '..', '..', 'orchestrate-cli.js');
+    // `here` resolves to <repo>/dist/app (the compiled location of this file).
+    // orchestrate-cli.js is a sibling at <repo>/dist/orchestrate-cli.js, so only
+    // one '..' is needed. The previous '..','..' resolved to <repo>/root and
+    // produced MODULE_NOT_FOUND when the engine child tried to require it.
+    ?? path.join(here, '..', 'orchestrate-cli.js');
   const spawnProcess = options.spawnProcess ?? spawn;
   const startReceiptTimeoutMs = options.startReceiptTimeoutMs ?? 15_000;
   const startReceiptPollMs = options.startReceiptPollMs ?? 50;
