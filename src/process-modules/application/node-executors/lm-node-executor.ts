@@ -677,7 +677,8 @@ export class LmNodeExecutor implements NodeExecutor {
         | 'executor_dead'
         | 'stopped'
         | 'timeout'
-        | 'task_unclaimed' = 'timeout';
+        | 'task_unclaimed'
+        | 'review_paused' = 'timeout';
       let executionId = this.persistence.readCurrentExecutionId(taskId);
       try {
         while (true) {
@@ -686,6 +687,7 @@ export class LmNodeExecutor implements NodeExecutor {
           const taskStatus = this.persistence.readTaskState(taskId);
           const taskDone = taskStatus === 'done';
           const taskBlocked = taskStatus === 'blocked';
+          const taskInReview = taskStatus === 'review';
           const run = executor.status(ctx.projectId);
           const runIsNull = run === null;
           const runStatus = run?.status ?? null;
@@ -699,7 +701,17 @@ export class LmNodeExecutor implements NodeExecutor {
           if (runStopped) { terminal = 'stopped'; break; }
           if (taskDone && !taskStillActive) { terminal = 'clean'; break; }
           if (taskBlocked && !taskStillActive) { terminal = 'task_blocked'; break; }
-          if (runCompleted && !taskDone) { terminal = 'task_unclaimed'; break; }
+          // UNIVERSAL CONVEYOR PHYSICS (CONVEYOR-MENTAL-MODEL §"One queue"):
+          // When worker_done sends the task to 'review' (not 'done'), the
+          // workplace needs a SEPARATE reviewer worker. The LM-executor must
+          // PAUSE here — not wait for 'done' (which only arrives after the
+          // reviewer approves through the dispatch-loop). This is the same
+          // pattern Development uses: produce → pause → dispatch drains review
+          // → resume. Previously this was a hardcoded isDiscoveryOnly skip;
+          // now it's universal: any task_kind with a reviewSkill goes through
+          // review → pause; tasks without reviewSkill skip straight to done.
+          if (taskInReview && !taskStillActive) { terminal = 'review_paused'; break; }
+          if (runCompleted && !taskDone && !taskInReview) { terminal = 'task_unclaimed'; break; }
           if (this.now().getTime() - startedAt > this.maxRunMs) { terminal = 'timeout'; break; }
           await this.sleep(this.pollMs);
         }
@@ -750,6 +762,7 @@ export class LmNodeExecutor implements NodeExecutor {
         terminal === 'stopped'
         || terminal === 'timeout'
         || terminal === 'task_blocked'
+        || terminal === 'review_paused'
         ? 'paused'
         : 'failed';
       const finalExecutionId = executionId ?? this.persistence.readLatestExecutionId(taskId);

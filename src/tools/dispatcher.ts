@@ -510,17 +510,23 @@ function handleWorkerDone(args: Record<string, unknown>): {
     let newStatus: 'review' | 'done' | 'todo' | 'blocked';
     let newAssignedTo: string | null; // кому уходит задача после перевода
     if (task.status === 'in_progress') {
-      // Discovery-only tasks (discovery.work, discovery.assess, discovery.diagnose,
-      // discovery.normalize) skip the review loop — they are tracker_only tasks
-      // with no code to review. Sending them to review creates a spawn-loop
-      // (no reviewer worker can close them) that causes OOM (32k+ executions).
-      const isDiscoveryOnly = task.task_kind?.startsWith('discovery.');
-      if (isDiscoveryOnly) {
-        newStatus = 'done';            // discovery-only: close immediately
+      // UNIVERSAL CONVEYOR (CONVEYOR-MENTAL-MODEL §"One queue"):
+      // Runtime core does NOT switch on module names (line 254 of the model
+      // doc). Instead, the task's DECLARED review_skill determines the path:
+      //   - review_skill IS NULL → no reviewer needed → done immediately
+      //     (tracker_only tasks: discovery.work, discovery.assess, etc.)
+      //   - review_skill IS SET → needs review → goes to 'review' buffer.
+      //     The LM-executor detects 'review' and pauses the run; orchestrate-cli
+      //     drains the review queue through dispatch-loop; the reviewer worker
+      //     approves; the run resumes and re-reads the settled task.
+      // This replaces the old isDiscoveryOnly hardcode (task_kind.startsWith).
+      const hasReviewSkill = !!task.review_skill;
+      if (!hasReviewSkill) {
+        newStatus = 'done';            // no reviewer declared: close immediately
         newAssignedTo = null;
       } else {
-        newStatus = 'review';          // цикл разработки завершён → буфер ревью
-        newAssignedTo = null;          // в очереди на ревью (без исполнителя)
+        newStatus = 'review';          // review declared: buffer for reviewer
+        newAssignedTo = null;
       }
     } else if (task.status === 'review_in_progress') {
       if (verdict === 'changes_requested') {
