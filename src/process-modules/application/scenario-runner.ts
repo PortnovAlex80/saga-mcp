@@ -383,10 +383,10 @@ export class ScenarioInstaller {
       );
     }
 
-    // Step 2 — resolve module selectors against the package registry. W7-A2
-    // produces one ScenarioModuleLockEntry per stage binding; an unresolved
-    // selector (no active installation in range) throws a typed error which
-    // we wrap as SCENARIO_INSTALL_MODULE_UNRESOLVED.
+    // Step 2 — resolve module selectors against the package registry. The
+    // resolver produces one ScenarioModuleLockEntry per stage binding; an
+    // unresolved selector (no active installation in range) throws a typed
+    // error which we wrap as SCENARIO_INSTALL_MODULE_UNRESOLVED.
     let lock: ScenarioModuleLock;
     try {
       lock = await deps.lockResolver(manifest);
@@ -403,9 +403,9 @@ export class ScenarioInstaller {
       );
     }
 
-    // Defensive: the lock MUST cover every stage. W7-A2 enforces this, but we
-    // re-check here so a buggy resolver cannot produce a runnable-but-broken
-    // scenario.
+    // Defensive: the lock MUST cover every stage. The lock resolver enforces
+    // this, but we re-check here so a buggy resolver cannot produce a
+    // runnable-but-broken scenario.
     const expectedStageIds = new Set(manifest.stageBindings.map((s) => s.id));
     const resolvedStageIds = new Set(lock.entries.map((e) => e.stageId));
     for (const stageId of expectedStageIds) {
@@ -507,7 +507,7 @@ export interface RunScenarioCommand {
 
 /**
  * Result of one scenario run. Mirrors `LifecycleExecutionResult` so a caller
- * can treat the new and legacy surfaces uniformly during the Wave 11 cutover.
+ * can treat the new and legacy surfaces uniformly.
  */
 export interface ScenarioExecutionResult {
   readonly lifecycleRun: LifecycleRunRecord;
@@ -515,7 +515,7 @@ export interface ScenarioExecutionResult {
   readonly status: LifecycleRunRecord['status'];
   readonly terminalStatus: string | null;
   readonly pausedAtStageId: string | null;
-  /** Public outputs produced during this run (W7-A5). */
+  /** Public outputs produced during this run. */
   readonly outputs: readonly ScenarioStageOutputRecord[];
 }
 
@@ -525,9 +525,9 @@ export interface ScenarioExecutionResult {
 export interface ScenarioRunnerDeps {
   readonly lifecycleRunRepo: LifecycleRunRepository;
   readonly processRunRepo: ProcessRunRepository;
-  /** W7-A4 declarative router (NO routeResolver function — spec §6.4). */
+  /** Declarative router (NO routeResolver function). */
   readonly router: ScenarioRouter;
-  /** W7-A5 public stage-output store. */
+  /** Public stage-output store. */
   readonly outputStore: ScenarioOutputStore;
   readonly now?: () => Date;
   /** Primarily configurable for deterministic lease/watchdog tests. */
@@ -563,15 +563,13 @@ const SCENARIO_LEASE_MS = 120_000;
  * an {@link InstalledScenario}, drives each stage's
  * `ProcessModuleExecutor.execute(...)` (the existing SPI — NO Runtime
  * change), routes outcomes through the static `outcomeRoutes` table via the
- * W7-A4 router (NO `routeResolver` function), persists each public output
- * once via the W7-A5 store (NO cumulative frame), and stops at the first
+ * injected router (NO `routeResolver` function), persists each public output
+ * once via the output store (NO cumulative frame), and stops at the first
  * terminal outcome.
  *
  * The runner reuses the EXISTING `LifecycleRunRepository` +
  * `ProcessRunRepository` ports so durability, lease management, and replay
- * semantics are byte-compatible with the legacy orchestrator. This is the
- * spec §3 anti-scope contract: "No `lifecycle-orchestrator.ts` rewrite — the
- * new ScenarioRunner is alongside."
+ * semantics are byte-compatible with the legacy orchestrator.
  *
  * Lease / watchdog / failure handling mirror the legacy orchestrator's
  * proven implementation; the genuinely new behavior is (a) no
@@ -656,7 +654,7 @@ export class ScenarioRunner {
     );
     if (!lease) throw new ScenarioRunBusyError(runnable.id);
 
-    // Per-run router history + reentry counters (used by the W7-A4 router for
+    // Per-run router history + reentry counters (used by the router for
     // budget enforcement). Built up as stages complete.
     const transitionHistory: ScenarioTransitionRecord[] = [];
     const reentryCounts: Record<string, number> = {};
@@ -688,7 +686,7 @@ export class ScenarioRunner {
         // 3. Build the stage input. Reuse the legacy pattern: if a StageRun
         //    already exists with frozen input (replay after pause/crash), use
         //    that; otherwise map from the durable frame. The frame is built
-        //    from the W7-A5 output store (public outputs only — NO cumulative
+        //    from the output store (public outputs only — NO cumulative
         //    frame) plus the root input.
         const rootInput = JSON.parse(lifecycleRun.inputSnapshot) as unknown;
         const runtime = this.mappingRuntime(lifecycleRun, stage.id);
@@ -713,8 +711,7 @@ export class ScenarioRunner {
 
         // 4. Start (or replay) the ProcessRun for this stage. The run is
         //    pinned to the scenario module lock via installationId +
-        //    packageDigest (W3-A3 / spec §6) so the in-flight module identity
-        //    cannot drift.
+        //    packageDigest so the in-flight module identity cannot drift.
         const lockEntry = scenario.lock.entries.find((e) => e.stageId === stage.id);
         const processStart = this.processRunRepo.start({
           moduleRef: stage.moduleRef,
@@ -776,8 +773,8 @@ export class ScenarioRunner {
 
         const persistedResult = processResult.result;
 
-        // 6. Route the outcome through the STATIC table via W7-A4. NO
-        //    routeResolver function is consulted anywhere (spec §6.4). The
+        // 6. Route the outcome through the STATIC table via the injected
+        //    router. NO routeResolver function is consulted anywhere. The
         //    router enforces transition + reentry budgets declared on the
         //    manifest.
         let route: TransitionTarget;
@@ -802,9 +799,9 @@ export class ScenarioRunner {
           throw e;
         }
 
-        // 7. Store the public stage output ONCE via W7-A5 (NO cumulative
-        //    frame). The outputMapping produces the public payload; the store
-        //    content-addresses it and deduplicates on hash.
+        // 7. Store the public stage output ONCE via the output store (NO
+        //    cumulative frame). The outputMapping produces the public payload;
+        //    the store content-addresses it and deduplicates on hash.
         const needsHandoff = route.type === 'stage';
         const outcomeFrame = {
           ...durableFrame,
@@ -1030,16 +1027,16 @@ export class ScenarioRunner {
   }
 
   /**
-   * Build the durable mapping frame from the W7-A5 output store (public
-   * outputs only — NO cumulative frame, spec §13.21) plus the root input.
+   * Build the durable mapping frame from the output store (public outputs
+   * only — NO cumulative frame) plus the root input.
    *
    * The frame shape is intentionally the SAME shape the legacy orchestrator
    * produces (`{ ...root, lifecycleInput, stages: { [stageId]: {...} } }`)
    * so existing `LifecycleMappingExpression` paths like
    * `stages.draft.output.campaignDraft` keep resolving identically. The
-   * genuinely new behavior is that the per-stage entries are sourced from the
-   * W7-A5 store (one row per public output) rather than from a monolithic
-   * cumulative frame that re-persists every prior stage on every transition.
+   * per-stage entries are sourced from the output store (one row per public
+   * output) rather than from a monolithic cumulative frame that re-persists
+   * every prior stage on every transition.
    */
   private async buildFrame(
     rootInput: unknown,
@@ -1187,8 +1184,7 @@ export class ScenarioRunner {
  * sibling-port surface uniform and avoids a structural edge into the legacy
  * orchestrator's helper file). The implementation is byte-identical to the
  * canonical `mapLifecycleValues` — same path semantics, same unsafe-segment
- * guard, same literal/runtime expression handling. At Wave 11 cutover the
- * integrator MAY replace this with an import from `lifecycle-mapper.ts`.
+ * guard, same literal/runtime expression handling.
  */
 interface LifecycleMappingRuntime {
   projectId: number;
@@ -1355,9 +1351,9 @@ function withStageOutput(
   const existingStages = isRecord(frame.stages) ? frame.stages : {};
   // The per-stage entry exposes the mapped public output BOTH at the top level
   // (legacy `stages.<id>.<field>` convention) AND under an explicit `output`
-  // key (`stages.<id>.output.<field>`, the convention the W0-A7 campaign
-  // fixture and W7-A5 stage-output store use). Both path shapes resolve
-  // identically because `output` aliases the same payload object.
+  // key (`stages.<id>.output.<field>`, the convention the stage-output store
+  // uses). Both path shapes resolve identically because `output` aliases the
+  // same payload object.
   const snapshot = resultSnapshot(result);
   return {
     ...frame,

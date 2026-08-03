@@ -1,28 +1,20 @@
 /**
- * W6-A2 — Versioned platform Capability Packages for shared MCP tools.
+ * Versioned platform Capability Packages for shared MCP tools.
  *
- * Spec: docs/refactor-management/09-contracts/WAVE6-MCP-GUARDS-SPEC.md
- *        Lane W6-A2, §1 table, §2 exit-gate item 2 ("Synthetic module
- *        contributes a tool without gateway source changes") + item 4
- *        ("Collision detection works").
- * Plan: §0.9 / Phase 7. Key finding §0: `src/index.ts` hardcodes ALL_TOOLS +
- *       ALL_HANDLERS; Wave 6 introduces a contributable surface so a module
- *       can register a tool without the gateway source changing. This file
- *       owns the PLATFORM half of that surface — the shared, runtime-owned
- *       tool bundles every managed worker needs.
+ * This module defines the versioned platform Capability Packages: the shared
+ * MCP tool bundles the Runtime contributes on its own behalf (NOT module-
+ * owned). They declare, as `ModuleToolContribution`s, the legacy shared tools
+ * the platform has always surfaced — `task_*`, `artifact_*`, `trace_*`,
+ * `repository_*`, `worker_*` — plus the protocol checkpoint tool. Packaging
+ * them as Capability Packages lets the `tool-contribution-installer` install
+ * them through the SAME namespace/collision/validation pipeline as module-
+ * contributed tools, so the gateway no longer needs a hand-maintained
+ * `ALL_TOOLS` array.
  *
- * OWNED FILE. This module defines the versioned platform Capability Packages:
- * the shared MCP tool bundles the Runtime contributes on its own behalf (NOT
- * module-owned). They declare, as `ModuleToolContribution`s, the legacy
- * shared tools the platform has always surfaced — `task_*`, `artifact_*`,
- * `trace_*`, `repository_*`, `worker_*` — plus the Wave-4 protocol
- * checkpoint tool. Packaging them as Capability Packages lets the Wave 6
- * `tool-contribution-installer` (W6-A1) install them through the SAME
- * namespace/collision/validation pipeline as module-contributed tools, so the
- * gateway no longer needs a hand-maintained `ALL_TOOLS` array (Wave 11
- * cutover reads from the registry instead).
+ * See `docs/architecture/WAVE-LOG.md` (Wave 6) for the contributable-surface
+ * history.
  *
- * ── What a Capability Package is ───────────────────────────────────────────
+ * # What a Capability Package is
  *
  * A `CapabilityPackage` is a pure, serializable description of ONE versioned
  * bundle of runtime-owned tools. It carries:
@@ -35,11 +27,10 @@
  * The package is pure data: it declares tools but binds no handler (handlers
  * are bound by the composition root, exactly as for module contributions).
  *
- * ── Why these five packages ────────────────────────────────────────────────
+ * # Why these five packages
  *
- * The task names the five shared-tool surfaces: tasks, artifact graph,
- * repository, worker completion, protocol checkpointing. These map onto the
- * legacy tool families in `src/tools/*.ts` plus the Wave-4 protocol tool:
+ * The five shared-tool surfaces map onto the legacy tool families in
+ * `src/tools/*.ts` plus the protocol tool:
  *   - `platform.tasks`               → task_create/list/get/update
  *   - `platform.artifact-graph`      → artifact_create/get/list/update,
  *                                       trace_add/list/delete, artifact_coverage
@@ -47,26 +38,26 @@
  *                                       repository_checkout_*
  *   - `platform.worker-completion`   → worker_done/ask_need/ask_done,
  *                                       worker_merge_acquire/release, worker_health
- *                                       (worker_next EXCLUDED since WAVE-3:
- *                                       one launch = one card)
- *   - `platform.protocol-checkpoint` → runtime.protocol.step_complete (W4-A5)
+ *                                       (worker_next EXCLUDED: one launch = one
+ *                                       card)
+ *   - `platform.protocol-checkpoint` → runtime.protocol.step_complete
  *
  * Each tool's `idempotency` / `sideEffect` classification is derived from the
  * tool's READ vs WRITE vs IDEMPOTENT semantics (the same classification the
- * Wave 1 SPI `ToolIdempotency` / `ToolSideEffect` enums express). These are
- * the ONLY fields the gateway guard (W6-A3) and the contribution installer
- * (W6-A1) switch on — so declaring them here moves the classification off the
- * hardcoded gateway path and onto the contributed, versioned surface.
+ * SPI `ToolIdempotency` / `ToolSideEffect` enums express). These are the ONLY
+ * fields the gateway guard and the contribution installer switch on — so
+ * declaring them here moves the classification off the hardcoded gateway path
+ * and onto the contributed, versioned surface.
  *
- * ── Dependency direction (Rule 4b ratchet) ────────────────────────────────
+ * # Dependency direction (Rule 4b ratchet)
  *
  * This file lives under `src/process-modules/application/`, which the
  * dependency-direction ratchet treats as Runtime core (Rule 4b: application/
  * must not import the built-in module catalog). It imports ONLY from:
- *   - the Wave 1 pure SPI barrel (`../domain/spi/index.js`) — pure types +
- *     the `CONTRACT_REF_PENDING_DIGEST` placeholder + the tool-contribution
+ *   - the pure SPI barrel (`../domain/spi/index.js`) — pure types + the
+ *     `CONTRACT_REF_PENDING_DIGEST` placeholder + the tool-contribution
  *     validator;
- *   - the Wave 4 protocol-checkpoint service (`./protocol-checkpoint-service.js`)
+ *   - the protocol-checkpoint service (`./protocol-checkpoint-service.js`)
  *     — a sibling application file, to re-use its already-declared
  *     `protocol_step_complete` contribution rather than re-declaring it.
  *
@@ -90,36 +81,36 @@ import { buildProtocolStepCompleteToolContribution } from './protocol-checkpoint
 
 /**
  * Format version of the `CapabilityPackage` envelope (independent of any
- * package's own `version`). Wave 6 uses `'0.1.0'`, mirroring the manifest
- * envelope convention from W1-A2.
+ * package's own `version`). Uses `'0.1.0'`, mirroring the manifest envelope
+ * convention.
  */
 export const CAPABILITY_PACKAGE_FORMAT_VERSION = '0.1.0' as const;
 
 /**
- * Version of every Wave-6 platform capability package. Bumped when a package's
- * tool set, classification, or contract refs change. The gateway guard keys
+ * Version of every platform capability package. Bumped when a package's tool
+ * set, classification, or contract refs change. The gateway guard keys
  * authority off `(capabilityId, version)` pairs; bumping the version is how a
  * breaking change to a shared tool is surfaced as a collision the installer
- * (W6-A1) catches rather than a silent behavior shift.
+ * catches rather than a silent behavior shift.
  */
 export const PLATFORM_CAPABILITY_PACKAGE_VERSION = '1.0.0' as const;
 
 /**
  * Stable, content-neutral contract-ref version carried on every platform tool
  * contribution. Real per-schema digests are pinned by the ContractSchemaRegistry
- * (W1-A5) at install time; until then contributions carry the platform
- * placeholder digest (`CONTRACT_REF_PENDING_DIGEST`), exactly as W4-A5's
+ * at install time; until then contributions carry the platform placeholder
+ * digest (`CONTRACT_REF_PENDING_DIGEST`), exactly as
  * `buildProtocolStepCompleteToolContribution` does. This keeps contributions
  * canonical-serializable without inventing fake hashes.
  */
 const PLATFORM_CONTRACT_VERSION = PLATFORM_CAPABILITY_PACKAGE_VERSION;
 
 /**
- * Build a provisional `ToolContractRef` for a platform tool. Mirrors W4-A5's
- * `provisionalContractRef` helper, but lives here so the five platform
- * packages declare their contract refs uniformly. The placeholder digest is
- * the documented Wave-1 pending token; the gateway treats contract refs as
- * opaque identity at Wave 6 (W6-A3 authority keys off logicalId, not digest).
+ * Build a provisional `ToolContractRef` for a platform tool. Mirrors the
+ * protocol-checkpoint service's `provisionalContractRef` helper, but lives
+ * here so the five platform packages declare their contract refs uniformly.
+ * The placeholder digest is the documented pending token; the gateway treats
+ * contract refs as opaque identity (authority keys off logicalId, not digest).
  */
 function platformContractRef(schemaId: string): ToolContractRef {
   return Object.freeze({
@@ -140,7 +131,7 @@ function platformContractRef(schemaId: string): ToolContractRef {
  * Pure, canonically-serializable data. The package declares tools but binds no
  * handler — the composition root binds handlers (the existing
  * `src/tools/*.ts` handlers, or `applyCheckpoint` for the protocol tool) when
- * it installs the package via the Wave 6 contribution installer (W6-A1).
+ * it installs the package via the contribution installer.
  *
  * @property formatVersion             Envelope format version
  *                                     ({@link CAPABILITY_PACKAGE_FORMAT_VERSION}).
@@ -171,9 +162,9 @@ export interface CapabilityPackage {
 
 /**
  * Classification of one platform tool: its idempotency and side-effect
- * semantics. These map 1:1 onto the Wave 1 SPI enums and are the ONLY
- * classification fields the gateway guard (W6-A3) switches on, so centralizing
- * them here removes hardcoded gateway branching.
+ * semantics. These map 1:1 onto the SPI enums and are the ONLY classification
+ * fields the gateway guard switches on, so centralizing them here removes
+ * hardcoded gateway branching.
  */
 interface PlatformToolClass {
   readonly idempotency: ToolIdempotency;
@@ -190,8 +181,8 @@ interface PlatformToolClass {
  * module identity, e.g. `discovery.proposal_submit`).
  *
  * Contract refs use the platform placeholder digest (see
- * {@link platformContractRef}); guard bindings are empty at Wave 6 — the
- * gateway guard (W6-A3) attaches authority to the `'call'` scope when it lands.
+ * {@link platformContractRef}); guard bindings are empty — the gateway guard
+ * attaches authority to the `'call'` scope when wired.
  */
 function platformTool(
   logicalId: string,
@@ -234,8 +225,8 @@ const IDEMPOTENT_WRITE: PlatformToolClass = Object.freeze({
 
 /**
  * Stable logical id for the tasks capability package. Namespace `platform.*`
- * marks it Runtime-owned; the contribution installer (W6-A1) reserves this
- * namespace for the platform so a module cannot squat it.
+ * marks it Runtime-owned; the contribution installer reserves this namespace
+ * for the platform so a module cannot squat it.
  */
 export const PLATFORM_TASKS_CAPABILITY_ID = 'platform.tasks' as const;
 
@@ -401,14 +392,14 @@ export const PLATFORM_WORKER_COMPLETION_CAPABILITY_ID =
 const WORKER_SCHEMA_STEM = 'saga3.platform.worker-completion';
 
 function buildWorkerCompletionPackage(): CapabilityPackage {
-  // WAVE-3 (conveyor-wave-review ПОВТОРНАЯ ПРОВЕРКА 2026-08-02): `worker_next`
-  // is REMOVED from the assigned-worker capability package. "One launch = one
-  // card": a worker that already holds an assigned execution must NOT be granted
-  // the self-claim tool. The dispatcher (`saga-dispatch`, the board runner) does
-  // not pull `worker_next` from THIS package — it invokes the raw MCP tool
-  // directly — so dropping it here breaks no dispatcher surface. The remaining
-  // six tools are the completion/ask/merge/health surface an assigned worker
-  // legitimately needs to finish the ONE card it was launched with.
+  // `worker_next` is intentionally REMOVED from the assigned-worker capability
+  // package. "One launch = one card": a worker that already holds an assigned
+  // execution must NOT be granted the self-claim tool. The dispatcher
+  // (`saga-dispatch`, the board runner) does not pull `worker_next` from THIS
+  // package — it invokes the raw MCP tool directly — so dropping it here
+  // breaks no dispatcher surface. The remaining six tools are the completion
+  // / ask / merge / health surface an assigned worker legitimately needs to
+  // finish the ONE card it was launched with.
   //
   // The server-side fence rejection in handleWorkerNext (src/tools/dispatcher.ts)
   // is the hard guarantee: even if a client reacquires worker_next through some
@@ -458,7 +449,7 @@ function buildWorkerCompletionPackage(): CapabilityPackage {
       + 'fence (worker_done/ask_need/ask_done) plus the merge-lock protocol '
       + '(worker_merge_acquire/release) and worker_health. worker_next is '
       + 'intentionally EXCLUDED — one launch = one card; an assigned worker '
-      + 'must not re-enter the dispatch queue (WAVE-3). The dispatcher surface '
+      + 'must not re-enter the dispatch queue. The dispatcher surface '
       + 'invokes worker_next as a raw MCP tool, not through this package.',
   });
 }
@@ -471,12 +462,13 @@ export const PLATFORM_PROTOCOL_CHECKPOINT_CAPABILITY_ID =
   'platform.protocol-checkpoint' as const;
 
 function buildProtocolCheckpointPackage(): CapabilityPackage {
-  // Re-use the W4-A5 contribution verbatim rather than re-declaring the
-  // protocol step-complete tool. The contribution's logicalId is already
-  // namespaced under `runtime.protocol.*`; the package surfaces it unchanged
-  // so there is exactly ONE declaration of the protocol checkpoint tool in
-  // the platform (single source of truth — avoids the collision W6-A1 would
-  // otherwise flag if this package re-declared it under `platform.*`).
+  // Re-use the protocol-checkpoint contribution verbatim rather than
+  // re-declaring the protocol step-complete tool. The contribution's
+  // logicalId is already namespaced under `runtime.protocol.*`; the package
+  // surfaces it unchanged so there is exactly ONE declaration of the protocol
+  // checkpoint tool in the platform (single source of truth — avoids the
+  // collision the installer would otherwise flag if this package re-declared
+  // it under `platform.*`).
   const protocolTool = buildProtocolStepCompleteToolContribution();
   const tools: readonly ModuleToolContribution[] = [protocolTool];
   return Object.freeze({
@@ -487,8 +479,8 @@ function buildProtocolCheckpointPackage(): CapabilityPackage {
     tools: Object.freeze([...tools]),
     description:
       'Platform protocol-checkpoint capability: the runtime.protocol.step_complete '
-      + 'tool (W4-A5) every managed NodeProtocol worker calls once per completed '
-      + 'step with its durable evidence. Idempotent replay-safe checkpointing.',
+      + 'tool every managed NodeProtocol worker calls once per completed step '
+      + 'with its durable evidence. Idempotent replay-safe checkpointing.',
   });
 }
 
@@ -520,17 +512,16 @@ export const PLATFORM_REPOSITORY_PACKAGE: CapabilityPackage =
 /**
  * The `platform.worker-completion` capability package. Surfaced tools:
  * worker_done/ask_need/ask_done, worker_merge_acquire/release, worker_health.
- * `worker_next` is intentionally EXCLUDED (WAVE-3): an assigned worker that
- * already holds a card must not re-enter the dispatch queue — one launch = one
- * card. The dispatcher invokes worker_next as a raw MCP tool, not via this
- * package.
+ * `worker_next` is intentionally EXCLUDED: an assigned worker that already
+ * holds a card must not re-enter the dispatch queue — one launch = one card.
+ * The dispatcher invokes worker_next as a raw MCP tool, not via this package.
  */
 export const PLATFORM_WORKER_COMPLETION_PACKAGE: CapabilityPackage =
   buildWorkerCompletionPackage();
 
 /**
  * The `platform.protocol-checkpoint` capability package. Surfaced tool:
- * runtime.protocol.step_complete (the W4-A5 checkpoint tool).
+ * runtime.protocol.step_complete (the protocol checkpoint tool).
  */
 export const PLATFORM_PROTOCOL_CHECKPOINT_PACKAGE: CapabilityPackage =
   buildProtocolCheckpointPackage();
@@ -541,10 +532,10 @@ export const PLATFORM_PROTOCOL_CHECKPOINT_PACKAGE: CapabilityPackage =
 
 /**
  * All five platform capability packages, in stable declaration order. The
- * Wave 6 contribution installer (W6-A1) installs every package in this list
- * through the same namespace/collision pipeline as module contributions, so
- * the gateway can read the full platform tool surface from the registry
- * instead of a hand-maintained `ALL_TOOLS` array (Wave 11 cutover).
+ * contribution installer installs every package in this list through the same
+ * namespace/collision pipeline as module contributions, so the gateway can
+ * read the full platform tool surface from the registry instead of a
+ * hand-maintained `ALL_TOOLS` array.
  *
  * Order is significant only for deterministic test snapshots; the installer
  * does not depend on it.
@@ -574,10 +565,10 @@ export function getPlatformCapabilityPackage(
 
 /**
  * Flatten every platform package's tools into one deterministic list. The
- * composition root feeds this list to the Wave 6 `ModuleToolRegistry`
- * (W2-A6) so the surfaced MCP namespace resolves platform tools alongside
- * module tools uniformly. Order is platform-package order, then declaration
- * order within each package.
+ * composition root feeds this list to the `ModuleToolRegistry` so the
+ * surfaced MCP namespace resolves platform tools alongside module tools
+ * uniformly. Order is platform-package order, then declaration order within
+ * each package.
  */
 export function listPlatformToolContributions(): readonly ModuleToolContribution[] {
   const out: ModuleToolContribution[] = [];
@@ -592,8 +583,8 @@ export function listPlatformToolContributions(): readonly ModuleToolContribution
 /**
  * Resolve a single platform tool contribution by its `logicalId`. Returns
  * `undefined` when no platform tool carries that id. Used by the gateway guard
- * (W6-A3) to classify an incoming tool call (idempotency / sideEffect) without
- * a hardcoded switch. Pure.
+ * to classify an incoming tool call (idempotency / sideEffect) without a
+ * hardcoded switch. Pure.
  */
 export function getPlatformToolContribution(
   logicalId: string,
@@ -609,7 +600,7 @@ export function getPlatformToolContribution(
 // ---------------------------------------------------------------------------
 
 /**
- * One validation failure for a capability package. Mirrors the Wave 1
+ * One validation failure for a capability package. Mirrors the
  * `ValidationError` shape so callers can aggregate platform-package errors
  * with module-contribution errors uniformly.
  */
@@ -653,10 +644,10 @@ function isNonEmptyString(v: unknown): v is string {
  *     unique `logicalId`s (no namespace squatting inside one package).
  *
  * Does NOT re-validate each `ModuleToolContribution` structurally — that is the
- * Wave 1 SPI validator's job (`validateModuleToolContribution`). Here we only
- * enforce the package-envelope invariants and the within-package logicalId
- * uniqueness that the SPI validator cannot see (it validates one contribution
- * at a time, not a bundle).
+ * SPI validator's job (`validateModuleToolContribution`). Here we only enforce
+ * the package-envelope invariants and the within-package logicalId uniqueness
+ * that the SPI validator cannot see (it validates one contribution at a time,
+ * not a bundle).
  */
 export function validateCapabilityPackage(
   pkg: unknown,
@@ -798,10 +789,10 @@ export function validateCapabilityPackage(
  * `logicalId`. The latter is the platform-wide collision guard: even though
  * each package's internal uniqueness is checked by
  * {@link validateCapabilityPackage}, a tool `logicalId` collision ACROSS
- * packages would still collide in the surfaced MCP namespace. The Wave 6
- * contribution installer (W6-A1) relies on this property — every platform
- * tool `logicalId` is globally unique so the `ModuleToolRegistry` namespace
- * never sees a platform-vs-platform collision.
+ * packages would still collide in the surfaced MCP namespace. The
+ * contribution installer relies on this property — every platform tool
+ * `logicalId` is globally unique so the `ModuleToolRegistry` namespace never
+ * sees a platform-vs-platform collision.
  *
  * Returns the union of per-package errors plus cross-package collisions. Pure.
  */
@@ -875,7 +866,7 @@ const _platformSelfCheck = validatePlatformCapabilityPackages(
 if (!_platformSelfCheck.ok) {
   // A platform package is malformed — this is a programmer error, not a data
   // error. Throw synchronously at module load so the defect is impossible to
-  // miss (mirrors the W1-A1 assertCanonicalSerializable throw-on-impurity
+  // miss (mirrors the assertCanonicalSerializable throw-on-impurity
   // discipline).
   throw new Error(
     `PLATFORM_CAPABILITY_PACKAGES_SELF_CHECK_FAILED: ${JSON.stringify(_platformSelfCheck.errors)}`,
@@ -883,8 +874,9 @@ if (!_platformSelfCheck.ok) {
 }
 
 // Re-export the protocol tool's logical id constant so consumers of the
-// platform surface can reference it without importing the W4-A5 service
-// directly (keeps the platform tool surface addressable from one module).
+// platform surface can reference it without importing the protocol-checkpoint
+// service directly (keeps the platform tool surface addressable from one
+// module).
 export {
   PROTOCOL_STEP_COMPLETE_TOOL_LOGICAL_ID,
 } from './protocol-checkpoint-service.js';

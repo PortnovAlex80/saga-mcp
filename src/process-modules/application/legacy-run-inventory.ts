@@ -1,17 +1,12 @@
 /**
- * W11-A5 — Legacy-run inventory, migration, rollback, package-retention.
+ * Legacy-run inventory, migration, rollback, package-retention.
  *
- * Spec: `docs/refactor-management/09-contracts/WAVE11-CUTOVER-SPEC.md`
- *   §0  Objective (§0.14.11 serial gate): old pinned runs still replay through
- *       explicit compatibility adapters; no legacy code is deleted in Wave 11.
- *   §2  Lane A5 — "legacy-run inventory, migration, rollback, and
- *       package-retention tooling. Records every compatibility-path use.
- *       Defines the retention condition required before Wave 13 removal."
- *   §3  Anti-scope: NO legacy code deletion (Wave 13); NO NOT NULL enforcement
- *       on installation_id (Wave 13); NO removal of built-in catalog (Wave 13).
- *   §4  Exit gate bullet 4: "Legacy-run inventory records every
- *       compatibility-path use."
- * Task: `docs/refactor-management/05-subagent-tasks/W11-a5.md`.
+ * The cutover objective: old pinned runs still replay through explicit
+ * compatibility adapters; no legacy code is deleted while the cutover is
+ * preparing. This file is the observability + planning layer that the removal
+ * step acts on.
+ *
+ * See `docs/architecture/WAVE-LOG.md` (Wave 11) for the cutover history.
  *
  * ============================================================================
  * WHAT THIS FILE OWNS (the four tools named in the lane)
@@ -24,16 +19,16 @@
  *      `process-run-installation-adapter` nullable fallback) plus the reason
  *      the new installed-scenario path could not serve it. The inventory also
  *      tracks the known set of legacy `LegacyRunRecord`s (runs created before
- *      the cutover with a NULL `installation_id`). This is the §4-exit-gate
+ *      the cutover with a NULL `installation_id`). This is the exit-gate
  *      deliverable: "records every compatibility-path use."
  *
  *   2. MIGRATION — `planLegacyRunMigration`: a PURE planner that reads the
  *      inventory and emits a `LegacyRunMigrationPlan` describing, per legacy
  *      run, the steps to replay it through an installed scenario (pin the
  *      `installation_id`, select the matching scenario manifest, replay). It
- *      does NOT execute the migration (Wave 13 owns execution); it produces an
- *      auditable, reviewable plan whose completion is a precondition for Wave
- *      13 removal.
+ *      does NOT execute the migration; it produces an auditable, reviewable
+ *      plan whose completion is a precondition for compatibility-package
+ *      removal.
  *
  *   3. ROLLBACK — `planLegacyRunRollback`: a PURE planner that, given a
  *      migration plan, emits the inverse `LegacyRunRollbackPlan` (un-pin,
@@ -42,25 +37,25 @@
  *      installed during the retention window. It is declarative data only.
  *
  *   4. PACKAGE-RETENTION — `evaluatePackageRetentionCondition`: the single
- *      PURE predicate that defines the condition which MUST hold before Wave
- *      13 may remove the compatibility packages (legacy-scenario-adapter,
+ *      PURE predicate that defines the condition which MUST hold before the
+ *      compatibility packages (legacy-scenario-adapter,
  *      legacy-engine-executor-adapter, the nullable installation adapter, the
- *      built-in catalog). The condition is: ZERO un-migrated legacy runs,
- *      ZERO compatibility-path uses recorded inside the configured retention
- *      window, AND the rollback grace window has elapsed. Until it holds, the
- *      retention policy FORBIDS removal. This is the gate Wave 13 must check.
+ *      built-in catalog) may be removed. The condition is: ZERO un-migrated
+ *      legacy runs, ZERO compatibility-path uses recorded inside the
+ *      configured retention window, AND the rollback grace window has
+ *      elapsed. Until it holds, the retention policy FORBIDS removal.
  *
  * ============================================================================
- * WHY THIS FILE IS A NEW, PURE APPLICATION FILE (spec §3 anti-scope)
+ * WHY THIS FILE IS A NEW, PURE APPLICATION FILE
  * ============================================================================
  *
- * Wave 11 is PREPARATION only (spec §3). It must not delete legacy code, must
- * not enforce NOT NULL on `installation_id`, and must not remove the built-in
- * catalog — those are Wave 13. This file therefore provides the OBSERVABILITY
- * + PLANNING layer that Wave 13 will act on: it records what is still using
- * the compatibility path, plans how to migrate it, plans how to roll it back,
- * and names the exact condition under which removal becomes safe. Nothing
- * here mutates the live execution path or any persisted run row.
+ * The cutover-prep lane must not delete legacy code, must not enforce NOT
+ * NULL on `installation_id`, and must not remove the built-in catalog — those
+ * are the removal step. This file therefore provides the OBSERVABILITY +
+ * PLANNING layer that the removal step will act on: it records what is still
+ * using the compatibility path, plans how to migrate it, plans how to roll it
+ * back, and names the exact condition under which removal becomes safe.
+ * Nothing here mutates the live execution path or any persisted run row.
  *
  * ============================================================================
  * PURITY / DEPENDENCY TIER
@@ -72,13 +67,13 @@
  * (`LegacyRunInventoryStore`), exactly mirroring the sibling-port declaration
  * policy documented in `scenario-runner.ts`. It does NOT import any
  * `sqlite-*` adapter, `db.ts`, `schema.ts`, or any `modules/*` module
- * implementation. The W0-A1 dependency-direction ratchet
+ * implementation. The dependency-direction ratchet
  * (`tests/architecture/dependency-direction.test.mjs`) verifies this — this
  * file introduces ZERO new dependency-direction edges.
  *
  * The injected store makes the inventory testable with an in-memory
- * implementation and lets Wave 13 bind a real SQLite-backed store without
- * touching this file (single writer per file).
+ * implementation and lets the production binding bind a real SQLite-backed
+ * store without touching this file (single writer per file).
  */
 
 import type { LifecycleScenarioManifest } from '../domain/spi/scenario-manifest.js';
@@ -92,24 +87,23 @@ import type { ModuleSelector } from '../domain/spi/scenario-manifest.js';
  * The well-known compatibility adapters that serve legacy runs. Each is an
  * explicit, named path — NEVER a silent fallback. Recording the exact adapter
  * on every `CompatibilityPathUse` is what makes the inventory auditable and is
- * the §4 exit-gate deliverable.
+ * the exit-gate deliverable.
  *
- * Keep this list in sync with the adapters enumerated in
- * `WAVE11-CUTOVER-SPEC.md` §1/§3. Adding a new compatibility adapter is a
- * reviewable change (a new member here); removing one is itself a Wave 13
- * signal (the retention condition can never become true while a removed
- * adapter is still recorded as in use).
+ * Keep this list in sync with the adapters enumerated in the cutover spec.
+ * Adding a new compatibility adapter is a reviewable change (a new member
+ * here); removing one is itself a removal signal (the retention condition can
+ * never become true while a removed adapter is still recorded as in use).
  */
 export const COMPATIBILITY_PATHS = Object.freeze({
   /**
-   * `application/legacy-scenario-adapter.ts` (W7-A8): serves a legacy Product
-   * Delivery run by wrapping the legacy `productDeliveryLifecycle` definition
-   * into a manifest the Wave 7 scenario runtime can consume.
+   * `application/legacy-scenario-adapter.ts`: serves a legacy Product Delivery
+   * run by wrapping the legacy `productDeliveryLifecycle` definition into a
+   * manifest the scenario runtime can consume.
    */
   LEGACY_SCENARIO_ADAPTER: 'legacy-scenario-adapter',
   /**
    * `application/legacy-engine-executor-adapter.ts`: RETIRED in the saga4
-   * cutover (Phase 3 deleted the adapter — it was dead code with zero value
+   * cutover (the adapter was deleted — it was dead code with zero value
    * importers). Kept in the enum as a HISTORICAL record so the append-only
    * inventory ledger can still classify uses recorded before the retirement
    * without breaking the `(path, reason)` contract. No live run can record a
@@ -119,14 +113,14 @@ export const COMPATIBILITY_PATHS = Object.freeze({
   /**
    * `installation/persistence/process-run-installation-adapter.ts` nullable
    * fallback: resolves a module installation by `module_name`+`module_version`
-   * for a pre-Wave-2 run whose `installation_id` is NULL (W2-A4 §14.3.7).
+   * for a pre-pinning run whose `installation_id` is NULL.
    */
   NULLABLE_INSTALLATION_FALLBACK: 'process-run-installation-adapter',
   /**
    * `modules/installations.ts` built-in catalog: the hard-coded registry of
-   * the four production modules. Wave 13 removes it; until then a run that
-   * resolves through the catalog instead of an installed package is on the
-   * compatibility path.
+   * the four production modules. The removal step removes it; until then a run
+   * that resolves through the catalog instead of an installed package is on
+   * the compatibility path.
    */
   BUILT_IN_CATALOG: 'built-in-module-catalog',
 } as const);
@@ -140,7 +134,7 @@ export type CompatibilityPath =
  * by reason across versions.
  */
 export const COMPATIBILITY_USE_REASONS = Object.freeze({
-  /** The run predates Wave 2 and carries a NULL `installation_id`. */
+  /** The run predates the pinning layer and carries a NULL `installation_id`. */
   NULL_INSTALLATION_PIN: 'null-installation-pin',
   /** The run was created before any scenario was installed for its lifecycle. */
   NO_INSTALLED_SCENARIO: 'no-installed-scenario',
@@ -159,7 +153,7 @@ export type CompatibilityUseReason =
 
 /**
  * One immutable record of a single use of the compatibility path. This IS the
- * "records every compatibility-path use" deliverable (§4 exit gate bullet 4).
+ * "records every compatibility-path use" deliverable.
  *
  * Append-only: once recorded, a use is never mutated or deleted. The store
  * rejects a duplicate `(runId, recordedAt, path, reason)` tuple so a retry
@@ -188,7 +182,7 @@ export interface CompatibilityPathUse {
  * A run known to be on the legacy path — created before the cutover, carrying
  * a NULL `installation_id` (W2-A4 §14.3.7) or resolved through the built-in
  * catalog. The inventory tracks the KNOWN SET so the migration planner can
- * enumerate every run that must be migrated before Wave 13 removal.
+ * enumerate every run that must be migrated before compatibility-package removal.
  */
 export interface LegacyRunRecord {
   readonly runId: number;
@@ -213,7 +207,7 @@ export interface LegacyRunRecord {
 
 /**
  * Lifecycle of a single legacy run through the migration process. Stored on
- * the `LegacyRunRecord` and advanced by the migration executor (Wave 13).
+ * the `LegacyRunRecord` and advanced by the migration executor.
  */
 export const LEGACY_RUN_MIGRATION_STATUS = Object.freeze({
   /** Not yet planned or not yet started. Default for newly inventoried runs. */
@@ -239,7 +233,7 @@ export type LegacyRunMigrationStatus =
 
 /**
  * One step in a legacy-run migration plan. Steps are ordered; the migration
- * executor (Wave 13) performs them in sequence and records the result.
+ * executor performs them in sequence and records the result.
  */
 export interface LegacyRunMigrationStep {
   readonly stepId: string;
@@ -253,7 +247,7 @@ export interface LegacyRunMigrationStep {
 
 /**
  * A migration plan for a single legacy run. Pure data; produced by
- * `planLegacyRunMigration`, consumed by the Wave 13 executor.
+ * `planLegacyRunMigration`, consumed by the migration executor.
  */
 export interface LegacyRunMigrationEntry {
   readonly runId: number;
@@ -263,7 +257,7 @@ export interface LegacyRunMigrationEntry {
   };
   readonly requiredModuleSelectors: readonly ModuleSelector[];
   readonly steps: readonly LegacyRunMigrationStep[];
-  /** True if the run cannot be migrated as-is (blocks Wave 13 removal). */
+  /** True if the run cannot be migrated as-is (blocks compatibility-package removal). */
   readonly blocking: boolean;
   readonly blockReason?: string;
 }
@@ -274,7 +268,7 @@ export interface LegacyRunMigrationEntry {
 export interface LegacyRunMigrationPlan {
   readonly plannedAt: string;
   readonly entries: readonly LegacyRunMigrationEntry[];
-  /** Run ids that block Wave 13 removal until migrated. */
+  /** Run ids that block compatibility-package removal until migrated. */
   readonly blockingRunIds: readonly number[];
 }
 
@@ -304,7 +298,7 @@ export interface LegacyRunRollbackPlan {
 }
 
 // ---------------------------------------------------------------------------
-// Package-retention condition (the Wave 13 removal gate).
+// Package-retention condition (the removal gate).
 // ---------------------------------------------------------------------------
 
 /**
@@ -346,7 +340,7 @@ export const DEFAULT_PACKAGE_RETENTION_POLICY: PackageRetentionPolicy = Object.f
 /**
  * The set of clauses that make up the retention condition, each evaluated
  * independently so a `false` result explains exactly which clause failed.
- * This is the auditable evidence Wave 13 must present before removing code.
+ * This is the auditable evidence to present before removing code.
  */
 export interface PackageRetentionEvaluation {
   /** Overall: may the compatibility packages be removed? False = retain. */
@@ -393,7 +387,7 @@ export const LEGACY_INVENTORY_ERROR_CODES = Object.freeze({
 //
 // Mirrors the sibling-port declaration policy in scenario-runner.ts: the
 // inventory needs to read the known legacy runs, append compatibility-path
-// uses, and read them back. A Wave 13 SQLite adapter implements this struct;
+// uses, and read them back. The production SQLite adapter implements this struct;
 // tests use an in-memory implementation. This file stays free of sqlite/db.
 // ---------------------------------------------------------------------------
 
@@ -536,7 +530,7 @@ export function buildLegacyRunRecord(input: {
 }
 
 // ---------------------------------------------------------------------------
-// LegacyRunInventory — the recording service (§4 exit gate deliverable).
+// LegacyRunInventory — the recording service.
 // ---------------------------------------------------------------------------
 
 /**
@@ -547,7 +541,7 @@ export function buildLegacyRunRecord(input: {
  * Every call to `recordUse` appends an immutable `CompatibilityPathUse` to the
  * store. The store is append-only; this service enforces the value contract
  * (validation + duplicate `useId` rejection) so the recorded ledger is
- * trustworthy as the basis for the Wave 13 retention gate.
+ * trustworthy as the basis for the retention gate.
  *
  * Pure with respect to its inputs: the only side effect is the delegated
  * `store.recordCompatibilityUse` call. Constructed once per process (or per
@@ -566,7 +560,7 @@ export class LegacyRunInventory {
    * `useId` (the store enforces idempotency; this service surfaces the code).
    *
    * This is THE method the compatibility adapters call when they serve a
-   * legacy run — the §4 exit-gate "records every compatibility-path use"
+   * legacy run — the "records every compatibility-path use"
    * requirement is satisfied by routing every adapter through this call.
    */
   recordUse(input: {
@@ -777,7 +771,7 @@ export function planLegacyRunRollback(
 }
 
 // ---------------------------------------------------------------------------
-// Package-retention condition (the Wave 13 removal gate).
+// Package-retention condition (the removal gate).
 // ---------------------------------------------------------------------------
 
 /**
@@ -825,9 +819,9 @@ export function parseRetentionDurationToMs(
 }
 
 /**
- * Evaluate the package-retention condition. This is THE gate Wave 13 must
- * check before removing any compatibility package. `removalPermitted` is true
- * ONLY when every clause passes; a `false` result names the failing clauses
+ * Evaluate the package-retention condition. This is THE gate the removal step
+ * must check before removing any compatibility package. `removalPermitted` is
+ * true ONLY when every clause passes; a `false` result names the failing clauses
  * in `summary` so the operator knows exactly what remains.
  *
  * Inputs:
@@ -948,14 +942,14 @@ export function evaluatePackageRetentionCondition(
 // ---------------------------------------------------------------------------
 // Convenience: in-memory store (used by tests and by tools that want a
 // throwaway inventory without binding sqlite). Lives here so the pure module
-// is self-contained and runnable; the production adapter lives in Wave 13.
+// is self-contained and runnable; the production adapter binds SQLite.
 // ---------------------------------------------------------------------------
 
 /**
  * Simple in-memory implementation of `LegacyRunInventoryStore`. Append-only
  * for uses; duplicate `useId` is rejected with `DUPLICATE_USE`. Provided so
  * this module is testable and usable in isolation; the production store binds
- * SQLite in Wave 13.
+ * SQLite via the production adapter.
  */
 export class InMemoryLegacyRunInventoryStore implements LegacyRunInventoryStore {
   private readonly runs: LegacyRunRecord[] = [];

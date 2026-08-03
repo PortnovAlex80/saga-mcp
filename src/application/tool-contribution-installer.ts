@@ -1,61 +1,57 @@
 /**
- * W6-A1 — Module tool contribution installer (application layer).
- *
- * Spec: docs/refactor-management/09-contracts/WAVE6-MCP-GUARDS-SPEC.md
- *       §1 row W6-A1, §2 exit gate, §3 anti-scope.
- * Plan: §0.9.3, §11.4 (ModuleToolContribution), §11.5 (installation validates
- *       tool collisions, handler coverage, capability dependencies, schema
- *       availability, and resource availability), §14.8.1.
- * Task: docs/refactor-management/05-subagent-tasks/W06-a1.md
+ * Module tool contribution installer (application layer).
  *
  * `installModuleToolContributions` is the single application-layer entry point
  * the composition root calls at startup to surface a package's
- * `ModuleToolContribution`s into the Wave 2 `ModuleToolRegistry`
+ * `ModuleToolContribution`s into the `ModuleToolRegistry`
  * (`installation/domain/registries.ts`). It:
  *
- *   1. validates every contribution structurally (reuses the Wave 1 SPI
+ *   1. validates every contribution structurally (reuses the SPI
  *      `validateModuleToolContribution`);
- *   2. validates the namespaced `logicalId` (plan §11.4.1: a namespaced
- *      logical identifier) — at least one namespace separator, a non-empty
- *      namespace (alias) segment and a non-empty tool-name segment, restricted
- *      to the surfaced namespace alphabet;
- *   3. validates the exact semver `version` (plan §11.4.1);
+ *   2. validates the namespaced `logicalId` (a namespaced logical identifier)
+ *      — at least one namespace separator, a non-empty namespace (alias)
+ *      segment and a non-empty tool-name segment, restricted to the surfaced
+ *      namespace alphabet;
+ *   3. validates the exact semver `version`;
  *   4. resolves each contribution's live handler from a `HandlerRegistry` by
- *      the contribution's `handlerRef` (handler coverage — plan §11.5);
+ *      the contribution's `handlerRef` (handler coverage);
  *   5. registers each `(contribution, handler)` into the `ModuleToolRegistry`,
- *      which rejects a namespace collision (plan §11.5; token
+ *      which rejects a namespace collision (token
  *      `MODULE_TOOL_NAMESPACE_COLLISION`) at register time.
  *
- * The installer is a thin orchestration over the Wave 2 registry layer: it
- * adds no new collision policy, no new registry state, and no gateway source
- * change (anti-scope §3). It is fail-fast: a batch with ANY structural,
- * namespace, version, or handler-coverage defect installs NOTHING and throws
+ * The installer is a thin orchestration over the registry layer: it adds no
+ * new collision policy, no new registry state, and no gateway source change.
+ * It is fail-fast: a batch with ANY structural, namespace, version, or
+ * handler-coverage defect installs NOTHING and throws
  * `MODULE_TOOL_INSTALL_FAILED` carrying every reason. Only an all-valid batch
  * reaches the registry, so a partial install (some contributions registered,
  * others not) is impossible. Collision detection happens during the register
  * loop and is reported on the first colliding contribution with the registry's
  * own token.
  *
- * ── Anti-scope (frozen spec §3) ─────────────────────────────────────────────
+ * # Anti-scope
  *
- *   - No `src/index.ts` rewrite (Wave 11 cutover). The integrator wires this
- *     service into the gateway at the Wave 6 checkpoint; this file only
- *     exposes the function + types via the application surface.
- *   - No removal of existing tools (Wave 13).
- *   - No module migration (Wave 8/9).
+ *   - No `src/index.ts` rewrite. The integrator wires this service into the
+ *     gateway; this file only exposes the function + types via the application
+ *     surface.
+ *   - No removal of existing tools.
+ *   - No module migration.
  *
- * ── Dependency direction (W0-A1 ratchet) ─────────────────────────────────────
+ * See `docs/architecture/WAVE-LOG.md` (Wave 6) for the contributable-surface
+ * history.
  *
- * This file lives at `src/application/tool-contribution-installer.ts` (top-level
- * application layer), NOT under `src/process-modules/`. The ratchet's rule
- * classifiers (MODULE_DIR / DOMAIN_DIR / PERSISTENCE_DIR / COMPOSITION_DIR /
- * LIFECYCLES_DIR / APPLICATION_DIR) all anchor on `src/process-modules/...`, so
- * a top-level `src/application/` file is outside every rule's source-side
- * predicate and adds zero new ratchet edges. It imports only from the Wave 1
- * SPI barrel (pure types + the reused validator), the Wave 2 registry layer
- * (the `ModuleToolRegistry`/`HandlerRegistry` ports + their error tokens), and
- * Node built-ins — no `modules/`, no `persistence/` adapters, no `db.ts`, no
- * `composition/`. Keeps the ratchet green.
+ * # Dependency direction (ratchet)
+ *
+ * This file lives at `src/application/tool-contribution-installer.ts`
+ * (top-level application layer), NOT under `src/process-modules/`. The
+ * ratchet's rule classifiers (MODULE_DIR / DOMAIN_DIR / PERSISTENCE_DIR /
+ * COMPOSITION_DIR / LIFECYCLES_DIR / APPLICATION_DIR) all anchor on
+ * `src/process-modules/...`, so a top-level `src/application/` file is outside
+ * every rule's source-side predicate and adds zero new ratchet edges. It
+ * imports only from the SPI barrel (pure types + the reused validator), the
+ * registry layer (the `ModuleToolRegistry`/`HandlerRegistry` ports + their
+ * error tokens), and Node built-ins — no `modules/`, no `persistence/`
+ * adapters, no `db.ts`, no `composition/`. Keeps the ratchet green.
  */
 
 import type {
@@ -65,8 +61,8 @@ import type {
 import { validateModuleToolContribution } from '../process-modules/domain/spi/index.js';
 
 // Registry PORTs + their error tokens. The PORTs are re-exported through the
-// Wave 2 barrel (`installation/index.js`); the collision/lookup TOKENS are
-// declared on `installation/domain/registries.ts` and intentionally NOT
+// installation barrel (`installation/index.js`); the collision/lookup TOKENS
+// are declared on `installation/domain/registries.ts` and intentionally NOT
 // re-exported through the barrel (the barrel surfaces only the port +
 // adapter types). We import the tokens from their owner file directly so we
 // surface them verbatim without redefining the literals.
@@ -83,7 +79,7 @@ import {
 
 // Re-exported so consumers can import the error tokens from a single surface.
 export {
-  // Wave 2 registry collision/lookup tokens — surfaced verbatim.
+  // Registry collision/lookup tokens — surfaced verbatim.
   MODULE_TOOL_NAMESPACE_COLLISION,
   MODULE_TOOL_NOT_REGISTERED,
   HANDLER_NOT_REGISTERED,
@@ -102,7 +98,7 @@ export {
 export const MODULE_TOOL_INSTALL_FAILED = 'MODULE_TOOL_INSTALL_FAILED';
 
 // ---------------------------------------------------------------------------
-// Namespace alphabet + shape validation (plan §11.4.1).
+// Namespace alphabet + shape validation.
 // ---------------------------------------------------------------------------
 
 /**
@@ -116,18 +112,18 @@ const LOGICAL_ID_ALPHABET_RE = /^[a-z0-9._-]+$/;
 /**
  * Minimum number of namespace separators (`.`) a logical id must carry. `1`
  * means the id is `namespace.tool` at minimum — a bare `tool` with no
- * namespace (alias) segment is an authoring error (plan §11.4.1 "namespaced
- * logical identifier") because it would squat the global root and collide with
- * any future platform tool.
+ * namespace (alias) segment is an authoring error (a "namespaced logical
+ * identifier" is required) because it would squat the global root and collide
+ * with any future platform tool.
  */
 const MIN_NAMESPACE_SEPARATORS = 1;
 
 /**
- * Exact-semver pattern for a tool `version` (plan §11.4.1). Mirrors the
- * `parseSemver` shape used by the Wave 2 PackageRegistry
- * (`installation/domain/package-registry.ts`): digits-only `x.y.z`, no
- * prerelease/build suffixes. Tool versions are pinned exact at install time;
- * range resolution is the package-registry's concern, not the installer's.
+ * Exact-semver pattern for a tool `version`. Mirrors the `parseSemver` shape
+ * used by the PackageRegistry (`installation/domain/package-registry.ts`):
+ * digits-only `x.y.z`, no prerelease/build suffixes. Tool versions are pinned
+ * exact at install time; range resolution is the package-registry's concern,
+ * not the installer's.
  */
 const TOOL_VERSION_RE = /^\d+\.\d+\.\d+$/;
 
@@ -137,13 +133,13 @@ const TOOL_VERSION_RE = /^\d+\.\d+\.\d+$/;
 
 /**
  * A single reason the installer rejected a contribution. Pure serializable
- * data (plan §3.5): no functions, no class instances. Carried in aggregate on
- * an {@link ModuleToolInstallError}.
+ * data: no functions, no class instances. Carried in aggregate on an
+ * {@link ModuleToolInstallError}.
  *
  * @property code       Stable machine-readable reason code.
  * @property logicalId  The contribution's logicalId (empty string if the
  *                      contribution was so malformed it had none).
- * @property field      Dot-path of the offending field, mirroring the Wave 1
+ * @property field      Dot-path of the offending field, mirroring the
  *                      `ValidationError.path` convention.
  * @property message    Human-readable explanation.
  */
@@ -198,7 +194,7 @@ export interface ModuleToolInstallResult {
 // ---------------------------------------------------------------------------
 
 /**
- * Validate the namespaced shape of a tool `logicalId` (plan §11.4.1).
+ * Validate the namespaced shape of a tool `logicalId`.
  *
  * Rules:
  *   1. Non-empty string.
@@ -256,7 +252,7 @@ function validateNamespacedLogicalId(
 }
 
 /**
- * Validate a tool `version` is an exact semver `x.y.z` (plan §11.4.1).
+ * Validate a tool `version` is an exact semver `x.y.z`.
  */
 function validateToolVersion(
   version: string,
@@ -272,9 +268,9 @@ function validateToolVersion(
 }
 
 /**
- * Reduce a Wave 1 {@link ValidationResult} into installer reasons. The Wave 1
- * validator returns one {@link ValidationError} per defect; this maps each onto
- * an {@link ModuleToolInstallReason} anchored at the contribution's logicalId.
+ * Reduce a {@link ValidationResult} into installer reasons. The validator
+ * returns one {@link ValidationError} per defect; this maps each onto an
+ * {@link ModuleToolInstallReason} anchored at the contribution's logicalId.
  */
 function reasonsFromValidationResult(
   logicalId: string,
@@ -295,16 +291,16 @@ function reasonsFromValidationResult(
 
 /**
  * Install a batch of {@link ModuleToolContribution}s from a package into the
- * Wave 2 {@link ModuleToolRegistry}, binding each to its live handler resolved
- * from the {@link HandlerRegistry} by the contribution's `handlerRef`.
+ * {@link ModuleToolRegistry}, binding each to its live handler resolved from
+ * the {@link HandlerRegistry} by the contribution's `handlerRef`.
  *
  * Validation order (fail-fast over the WHOLE batch):
- *   1. Structural — `validateModuleToolContribution` (Wave 1 SPI, reused).
+ *   1. Structural — `validateModuleToolContribution` (SPI, reused).
  *   2. Namespace  — `logicalId` is namespaced with a non-empty namespace
  *      (alias) segment and tool-name segment, alphabet-restricted.
  *   3. Version    — exact semver `x.y.z`.
  *   4. Handler    — `handlerRef` resolves to a live handler in the
- *      {@link HandlerRegistry} (handler coverage, plan §11.5).
+ *      {@link HandlerRegistry} (handler coverage).
  *
  * If any of 1-4 fails for ANY contribution, NOTHING is registered and a
  * {@link ModuleToolInstallError} carrying every reason is thrown. This makes a
@@ -314,21 +310,21 @@ function reasonsFromValidationResult(
  * array order. Registration delegates collision detection to
  * `ModuleToolRegistry.register`, which throws with the
  * `MODULE_TOOL_NAMESPACE_COLLISION` token if a DIFFERENT contribution is
- * already bound under the same `logicalId` (plan §11.5). Re-registering the
- * exact same contribution + handler is a documented no-op (idempotent) and is
- * reported in `result.idempotent`, NOT `result.installed`.
+ * already bound under the same `logicalId`. Re-registering the exact same
+ * contribution + handler is a documented no-op (idempotent) and is reported
+ * in `result.idempotent`, NOT `result.installed`.
  *
  * Note on atomicity: structural/namespace/version/handler validation is
  * all-or-nothing (the batch is rejected wholesale before any register call).
  * Collision detection, by contrast, happens DURING the register loop and is
  * surfaced on the first colliding contribution. A collision therefore leaves
  * the contributions registered BEFORE it in the registry. This mirrors the
- * Wave 2 registry's own contract (it is the single owner of the surfaced
- * namespace and rejects collisions at register time) and the plan §11.5
- * placement of collision detection at "installation" — i.e. at register time,
- * not at pre-validation time. Operators resolve a collision by fixing the
- * offending manifest and re-running; the registry's idempotent re-register
- * makes a re-run safe for the already-installed contributions.
+ * registry's own contract (it is the single owner of the surfaced namespace
+ * and rejects collisions at register time) and the placement of collision
+ * detection at "installation" — i.e. at register time, not at pre-validation
+ * time. Operators resolve a collision by fixing the offending manifest and
+ * re-running; the registry's idempotent re-register makes a re-run safe for
+ * the already-installed contributions.
  *
  * @param contributions  The package's tool contributions to install. May be
  *                       empty (a no-op install returning count 0 is valid).
@@ -363,8 +359,8 @@ export async function installModuleToolContributions(
   for (let i = 0; i < contributions.length; i++) {
     const contribution = contributions[i];
 
-    // 1. Structural validation (Wave 1 SPI, reused — canonical serializability
-    //    + every field + enum enforcement on idempotency/sideEffect).
+    // 1. Structural validation (SPI, reused — canonical serializability +
+    //    every field + enum enforcement on idempotency/sideEffect).
     const logicalIdForReport =
       contribution && typeof contribution === 'object' && typeof contribution.logicalId === 'string'
         ? contribution.logicalId
@@ -440,10 +436,10 @@ export async function installModuleToolContributions(
     const contribution = contributions[i];
     const handler = resolvedHandlers[i] as HandlerInstance;
     const wasPresent = registries.moduleToolRegistry.has(contribution.logicalId);
-    // ModuleToolRegistry.register is the single owner of collision detection
-    // (plan §11.5). It throws MODULE_TOOL_NAMESPACE_COLLISION on a different
-    // contribution under the same logicalId; it is a no-op on the exact same
-    // contribution + handler. We let both behaviors propagate verbatim.
+    // ModuleToolRegistry.register is the single owner of collision detection.
+    // It throws MODULE_TOOL_NAMESPACE_COLLISION on a different contribution
+    // under the same logicalId; it is a no-op on the exact same contribution
+    // + handler. We let both behaviors propagate verbatim.
     registries.moduleToolRegistry.register(contribution, handler);
     if (wasPresent) {
       idempotent.push(contribution.logicalId);

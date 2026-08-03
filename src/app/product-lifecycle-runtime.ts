@@ -1,23 +1,19 @@
 /**
- * W13-A6 — Concrete Product Delivery lifecycle wiring (composition-loader seam).
+ * Concrete Product Delivery lifecycle wiring (composition-root seam).
  *
- * Spec: `docs/refactor-management/09-contracts/WAVE13-LEGACY-REMOVAL-SPEC.md`
- *   lane W13-A6, §5 (ratchet convergence R6: 34 → 0).
- * Task: `docs/refactor-management/05-subagent-tasks/W13-a6.md`.
- * Plan: §0.16 / Phase 13 final (§0.16.11 serial gate), §18 DoD items 18.1-18.3.
- *
- * ## What this file owns
+ * # What this file owns
  *
  * The concrete manual wiring for the Product Delivery lifecycle: the four
  * production Process Module definitions + executors, the SQLite repositories,
  * the kernel-handler / external-adapter / human-interaction registries, and the
  * `LifecycleOrchestrator` that drives the lifecycle. This wiring USED TO live
  * in `composition/product-lifecycle-runtime.ts` (the manual composition root,
- * and the source of all 34 Rule 6 edges). Wave 13-A6 moves it here so the
+ * and the source of all 34 Rule 6 edges); it was relocated here so the
  * `composition/` directory no longer carries Rule 6 edges — the wiring is
- * consumed via the W11-A2 composition-loader seam instead.
+ * consumed via the composition-loader seam instead. See
+ * `docs/architecture/WAVE-LOG.md` (Wave 13) for the relocation history.
  *
- * ## Why `src/app/` is the correct home
+ * # Why `src/app/` is the correct home
  *
  * `src/app/` is the composition-root layer: `composition-root.ts` already lives
  * here and already imports the built-in module catalog + installations (it is
@@ -26,54 +22,38 @@
  *   - `src/app/` is NOT scanned by Rule 6 (Rule 6 scans
  *     `src/process-modules/composition/` only), so the wiring's module/sqlite
  *     imports do not appear as Rule 6 violations.
- *   - `src/app/` is NOT in the W11 cutover NEW_CORE set
+ *   - `src/app/` is NOT in the cutover NEW_CORE set
  *     (`tests/architecture/cutover-architecture-checks.test.mjs`), so the
  *     wiring's catalog/module imports are not "hidden fallbacks" — they are the
- *     legitimate legacy composition surface Wave 13 is ratcheting down.
+ *     legitimate legacy composition surface.
  *
  * This mirrors how `src/app/composition-root.ts` already carries the
  * `createBuiltInProcessModuleRegistry` / `createBuiltInProcessModuleInstallationRegistry`
  * imports for the saga3-discovery + saga3-lifecycle branches. The Product
  * Delivery wiring is the same kind of decision, just larger.
  *
- * ## Why a separate file (not inlining into composition-root.ts)
+ * # Why a separate file (not inlining into composition-root.ts)
  *
  * The public surface `createProductLifecycleRuntime(options)` is consumed by:
  *   - `src/app/composition-root.ts` (the saga3-lifecycle engine branch);
  *   - `tests/process-modules/product-lifecycle-composition.test.mjs`;
  *   - `tests/process-modules/delivery-lifecycle-resume.test.mjs`.
- * Behaviour MUST NOT change (Wave 13 anti-scope §4: "NO behavior changes —
- * legacy paths are already dead"). Keeping the function in its own module
- * (rather than inlining into `composition-root.ts`) preserves the import path
+ * Behaviour MUST NOT change. Keeping the function in its own module (rather
+ * than inlining into `composition-root.ts`) preserves the import path
  * `process-modules/composition/product-lifecycle-runtime.js` via a thin re-export
  * shim, so existing import sites keep resolving without edit.
  *
- * ## Dependency direction (ratchet, W0-A1)
+ * # The composition-loader seam
  *
- * The imports below are exactly the imports the composition root used to carry.
- * None of them are NEW: every edge already existed, allowlisted under Rule 6
- * `compositionCutover`. By moving the wiring here, those edges no longer
- * originate from a Rule-6-scanned file, so the corresponding KNOWN_VIOLATIONS
- * entries are removed and the ratchet shrinks (R6: 34 → 0). The edges
- * themselves are unchanged — the scanner still sees `modules/*` and
- * `persistence/sqlite-*` imports, just sourced from `src/app/` which the
- * dependency-direction rules do not classify as a composition root.
+ * The composition root consumes the wiring through the composition-loader seam
+ * (`application/composition-loader.ts`): the loader's `legacy` branch delegates
+ * to the `createBuiltInProcessModuleRegistry` /
+ * `createBuiltInProcessModuleInstallationRegistry` factories this wiring body
+ * invokes. New runs that have an active scenario installation route through the
+ * loader's `installed` branch instead (`product-delivery-scenario-package.ts`);
+ * legacy runs keep using this wiring. Both paths coexist.
  *
- * ## The W11-A2 composition-loader seam
- *
- * The relocation is the physical half of the W13-A6 task. The logical half is
- * that the composition root now consumes the wiring through the W11-A2
- * `CompositionLoader` seam (`application/composition-loader.ts`): the loader's
- * `legacy` branch delegates to the
- * `createBuiltInProcessModuleRegistry` /
- * `createBuiltInProcessModuleInstallationRegistry` factories, which this wiring
- * body invokes. New runs that have an active scenario installation route
- * through the loader's `installed` branch instead (W11-A1
- * `product-delivery-scenario-package.ts`); legacy runs keep using this wiring.
- * Both paths coexist — Wave 13 only removes the manual composition root's Rule
- * 6 footprint, not the wiring itself.
- *
- * ## Purity
+ * # Purity
  *
  * This file is NOT pure: it constructs concrete SQLite repositories, concrete
  * module runtimes, and concrete settlement policies. That is its purpose — it
@@ -272,12 +252,11 @@ export interface ProductLifecycleRuntimeOptions {
   /** Global concurrency knob (--concurrency=N). Used by the LM executor. */
   concurrency?: number;
   /**
-   * Atomic card-assignment port for LM-node worker launches
-   * (CONVEYOR-MENTAL-MODEL doc line 291: "infrastructure atomically assigns
-   * the exact card before launching a worker"). When wired, the LmNodeExecutor
-   * pre-assigns the projected task through this port BEFORE calling
-   * workerExecutor.start(), passing the AssignedWork as `assignment` — ONE
-   * assignment path instead of two (pre-assigned vs claimScope-pinned).
+   * Atomic card-assignment port for LM-node worker launches: "infrastructure
+   * atomically assigns the exact card before launching a worker". When wired,
+   * the LmNodeExecutor pre-assigns the projected task through this port BEFORE
+   * calling workerExecutor.start(), passing the AssignedWork as `assignment` —
+   * ONE assignment path instead of two (pre-assigned vs claimScope-pinned).
    *
    * When omitted, the LM executor falls back to the deprecated claimScope path
    * (the runner's claimTask callback assigns inside start()). Production
@@ -290,13 +269,13 @@ export interface ProductLifecycleRuntimeOptions {
   db?: Database.Database;
   discoveryRuntimePersistence?: Saga3DiscoveryRuntimePersistence;
   /**
-   * Pre-installed production module packages (W13-AUDIT §18.5/§18.9). When
-   * provided, every ProcessRun is pinned to the matching installation's
-   * immutable packageDigest and the workspace materializer resolves resources
-   * from pinned bytes. The composition loader (orchestrate-cli) installs the 4
-   * modules ONCE before constructing the runtime and passes the result here.
-   * Omitted in legacy / test paths → runs stay unpinned (null) and workspace
-   * resolution falls back to the legacy workspaceRoot lookup.
+   * Pre-installed production module packages. When provided, every ProcessRun
+   * is pinned to the matching installation's immutable packageDigest and the
+   * workspace materializer resolves resources from pinned bytes. The
+   * composition loader (orchestrate-cli) installs the 4 modules ONCE before
+   * constructing the runtime and passes the result here. Omitted in legacy /
+   * test paths → runs stay unpinned (null) and workspace resolution falls back
+   * to the legacy workspaceRoot lookup.
    */
   packageInstallation?: ProductionInstallation;
   /**
@@ -318,12 +297,12 @@ export interface ProductLifecycleRuntimeOptions {
  * providers remain explicit because composition must never fabricate an
  * external success or a human decision.
  *
- * W13-A6: this body was relocated verbatim from
+ * W13: this body was relocated verbatim from
  * `composition/product-lifecycle-runtime.ts` so the `composition/` directory
  * no longer carries Rule 6 edges. The composition root consumes it via the
- * W11-A2 composition-loader seam (the loader's `legacy` path delegates to
- * these factories); see `composition/product-lifecycle-runtime.ts` for the
- * thin re-export that preserves the historical import path.
+ * composition-loader seam (the loader's `legacy` path delegates to these
+ * factories); see `composition/product-lifecycle-runtime.ts` for the thin
+ * re-export that preserves the historical import path.
  */
 export function createProductLifecycleRuntime(
   options: ProductLifecycleRuntimeOptions,
@@ -335,43 +314,34 @@ export function createProductLifecycleRuntime(
   const certificateRepo = new SqliteProcessOutcomeCertificateRepository(db);
   const recoveryCaseRepo = new SqliteRecoveryCaseRepository(db);
   const lifecycleRunRepo = new SqliteLifecycleRunRepository(db);
-  // Wave 8 BLOCKER 1 — production v2 cutover wiring.
-  //
-  // The v2 path (driver-neutral execution-context envelopes + explicit
-  // ModuleCompletion persistence via completeV2) was ADDITIVE in Wave 3 but
-  // never ACTIVATED in production: the four executors below were constructed
-  // without `v2:` options, so `v2ChannelFor` returned null and every
-  // ProcessRun ran the legacy `start`/`complete` path. ModuleCompletion was
-  // therefore never persisted by the production path, and a crash between
-  // settlement and the terminal emitter lost the certificate.
-  //
-  // The fix wires v2 into ALL FOUR executors. `SqliteNodeRunRepository`
-  // implements `NodeRunRepositoryV2` (startV2/completeV2/readByExactCursor), so
-  // `v2ChannelFor` now returns a live channel and (with the bootstrap fix in
-  // generic-flow-executor.ts) the v2 path activates unconditionally for fresh
-  // runs. `processProductRepoV2` is the W3-A4 exact-by-ProductRef port
-  // (`getByProductRef`) the assembler consumes — it shares the same
-  // `saga3_process_products` table as the v1 repo. Manifest pins are left to
-  // the packageInstallation resolver (forwarded by the assembler's legacy
-  // fallback) — null here is the documented 'legacy:unpinned' sentinel until
-  // W3-A3 surfaces the installed digest on ProcessRunRecord.
+  // Wire the v2 driver-neutral envelope path (driver-neutral execution-context
+  // envelopes + explicit ModuleCompletion persistence via completeV2) into all
+  // four executors below. `SqliteNodeRunRepository` implements
+  // `NodeRunRepositoryV2` (startV2/completeV2/readByExactCursor), so
+  // `v2ChannelFor` returns a live channel and the v2 path activates
+  // unconditionally for fresh runs. `processProductRepoV2` is the
+  // exact-by-ProductRef port (`getByProductRef`) the assembler consumes — it
+  // shares the same `saga3_process_products` table as the v1 repo. Manifest
+  // pins are left to the packageInstallation resolver (forwarded by the
+  // assembler's legacy fallback) — null here is the documented
+  // 'legacy:unpinned' sentinel when the installed digest is not surfaced on
+  // ProcessRunRecord.
   const processProductRepo = new SqliteProcessProductRepository(db);
   const processProductRepoV2 = new SqliteProcessProductRepositoryV2(db);
-  // Wave 8 BLOCKER 1: bridge the W3-A4 `SqliteProcessProductRepositoryV2`
-  // (returns `ProcessProductRecordV2` with `reference.{schema,ref,hash}`) to
-  // the W3-A5 assembler's `ProcessProductRepository` port (expects
-  // `UpstreamProductRecord` with `productRef.{schemaId,ref,digest}`).
+  // Bridge the `SqliteProcessProductRepositoryV2` (returns
+  // `ProcessProductRecordV2` with `reference.{schema,ref,hash}`) to the
+  // assembler's `ProcessProductRepository` port (expects `UpstreamProductRecord`
+  // with `productRef.{schemaId,ref,digest}`).
   //
-  // The two ports were defined in separate lanes with structurally-different
-  // record shapes. In addition to normalizing field names, this adapter falls
-  // back to the durable NodeRun rows when the content-addressed product store
+  // In addition to normalizing field names, this adapter falls back to the
+  // durable NodeRun rows when the content-addressed product store
   // (`saga3_process_products`) does not contain a product. This is required
   // because the four modules persist their settlement productions on the
   // NodeRun `output_*` columns (via completeV2 dual-write), NOT in the product
   // store — the product store is only populated by modules that explicitly
   // call `recordProduct`. Without this fallback the v2 assembler's strict
-  // exact-product-store lookup (spec §9.11) throws UPSTREAM_PRODUCT_NOT_FOUND
-  // for every terminal node whose upstream is a settlement production.
+  // exact-product-store lookup throws UPSTREAM_PRODUCT_NOT_FOUND for every
+  // terminal node whose upstream is a settlement production.
   //
   // The fallback is a content-addressed global query over completed NodeRun
   // rows matching the full (schema, ref, hash) triple. Content-addressing
@@ -466,11 +436,11 @@ export function createProductLifecycleRuntime(
   // settlement input. There is no ScopedWorksetRunner / no executive port: the
   // module never hires, merges or tests — that is infrastructure's job.
   const developmentLedger = new SqliteManagedProductionLedger(db);
-  // Wave 7: inject the concrete process-product repository + git/machine ports
-  // from the composition root so the Development module imports no SQLite
-  // adapter, child_process, or node:os. Wave 8 BLOCKER 1: reuse the shared
-  // `processProductRepo` (constructed above for the v2 executor wiring) instead
-  // of a second instance over the same DB.
+  // Inject the concrete process-product repository + git/machine ports from
+  // the composition root so the Development module imports no SQLite adapter,
+  // child_process, or node:os. Reuse the shared `processProductRepo`
+  // (constructed above for the v2 executor wiring) instead of a second
+  // instance over the same DB.
   const developmentProcessProducts = processProductRepo;
   const developmentGit = createGitPort();
   const developmentMachine = createMachinePort();
@@ -492,11 +462,9 @@ export function createProductLifecycleRuntime(
         developmentTaskGraphPolicy,
       ),
     outputRepository: developmentOutputRepository,
-    // Uncle Bob Wave 4: the development settlement kernel now AUTHORS its own
-    // certificate (issuing it through this repo) and emits an explicit
-    // ModuleCompletion pointing at the resulting certificateRef. Previously the
-    // generic-flow-executor's magic-bindings branch issued the certificate at
-    // settlement time on the kernel's behalf; Wave 5 deletes that branch.
+    // The development settlement kernel AUTHORS its own certificate (issuing
+    // it through this repo) and emits an explicit ModuleCompletion pointing at
+    // the resulting certificateRef.
     certificateRepository: certificateRepo,
   };
 
@@ -516,8 +484,8 @@ export function createProductLifecycleRuntime(
       ? new SqliteDeliveryRuntime({
         db,
         providers: deliveryProviders,
-        // CONVEYOR Wave 7: injected concrete adapters (composition root owns
-        // construction) so the Delivery module imports no getDb/Sqlite*.
+        // Injected concrete adapters (composition root owns construction) so
+        // the Delivery module imports no getDb/Sqlite*.
         products: createDeliveryProcessProductPort(db),
         effectLedger: createDeliveryExternalEffectLedgerPort(db),
       })
@@ -551,10 +519,8 @@ export function createProductLifecycleRuntime(
     settlementPolicy: deliveryConfig.settlementPolicy
       ?? new ReferenceDeliverySettlementPolicy(deliveryPreflightPolicy),
     outputRepository: deliveryOutputRepository,
-    // Wave 4: the delivery settlement kernel issues its own
-    // ProcessOutcomeCertificate and emits an explicit ModuleCompletion. The
-    // generic-flow-executor's magic-bindings certificateRepo.issue is now the
-    // additive fallback (Wave 5 deletes it).
+    // The delivery settlement kernel issues its own ProcessOutcomeCertificate
+    // and emits an explicit ModuleCompletion.
     certificateRepo,
   };
 
@@ -573,16 +539,16 @@ export function createProductLifecycleRuntime(
   );
   kernelHandlers.registerAll(createDiscoveryKernelHandlers({
     runtimePersistence,
-    // CONVEYOR Wave 7: injected brief-provisioning port so the Discovery module
-    // imports no getDb. Composition root owns concrete construction.
+    // Injected brief-provisioning port so the Discovery module imports no
+    // getDb. Composition root owns concrete construction.
     briefProvisioning: new SqliteDiscoveryBriefProvisioning(db),
-    // Wave 8 MEDIUM 7: the deterministic D4 settlement service is now an
-    // EXPLICIT injected port. The composition root constructs the concrete
-    // saga3 implementation and injects it; the Discovery module no longer
-    // self-provisions it via a dynamic import (which hid the runtime
-    // dependency from the static dependency graph). The bounded-context edge
-    // (composition root → saga3/application) lives in src/app/, which is
-    // outside src/process-modules/modules/, so it is not a Rule 2 violation.
+    // The deterministic D4 settlement service is an EXPLICIT injected port.
+    // The composition root constructs the concrete saga3 implementation and
+    // injects it; the Discovery module no longer self-provisions it via a
+    // dynamic import (which hid the runtime dependency from the static
+    // dependency graph). The bounded-context edge (composition root →
+    // saga3/application) lives in src/app/, which is outside
+    // src/process-modules/modules/, so it is not a Rule 2 violation.
     settlementService: new Saga3DiscoverySettlementService({ runtimePersistence }),
   }));
   kernelHandlers.registerAll(createFormalizationKernelHandlers({
@@ -592,13 +558,11 @@ export function createProductLifecycleRuntime(
     solutionContractRepository: formalizationSolutionContractRepository,
     settlementPolicy: new ReferenceFormalizationSettlementPolicy(),
     candidateAcceptance: exactCandidateAcceptance,
-    // CONVEYOR Wave 7: injected brief-provisioning port so the Formalization
-    // module imports no getDb. Composition root owns concrete construction.
+    // Injected brief-provisioning port so the Formalization module imports no
+    // getDb. Composition root owns concrete construction.
     briefProvisioning: new SqliteFormalizationBriefProvisioning(db),
-    // Wave 4: the formalization settlement kernel issues its own
-    // ProcessOutcomeCertificate and emits an explicit ModuleCompletion. The
-    // generic-flow-executor's magic-bindings certificateRepo.issue is now the
-    // additive fallback (Wave 5 deletes it).
+    // The formalization settlement kernel issues its own
+    // ProcessOutcomeCertificate and emits an explicit ModuleCompletion.
     certificateRepo,
   }));
   kernelHandlers.registerAll(createDevelopmentKernelHandlers(developmentDeps));
@@ -613,14 +577,14 @@ export function createProductLifecycleRuntime(
       persistence: createDiscoveryLmNodePersistence(runtimePersistence),
       workerExecutorFactory: options.workerExecutorFactory,
       resolveWorkerContext: options.resolveWorkerContext,
-      // CONVEYOR-MENTAL-MODEL (doc line 291): pre-assign the LM node's card
-      // through the atomic WorkAssignmentPort BEFORE launching the worker, so
-      // there is ONE assignment path. The dispatch-loop path uses the same
-      // port (via the factory's claimTask callback); this closes the LM-node
-      // divergence. We default-construct the same SqliteWorkAssignmentAdapter
-      // the dispatch path uses (overridable via options for tests), so every
-      // production LM-node launch pre-assigns even when the external
-      // composition module did not supply one explicitly.
+      // Pre-assign the LM node's card through the atomic WorkAssignmentPort
+      // BEFORE launching the worker, so there is ONE assignment path. The
+      // dispatch-loop path uses the same port (via the factory's claimTask
+      // callback); this closes the LM-node divergence. We default-construct
+      // the same SqliteWorkAssignmentAdapter the dispatch path uses
+      // (overridable via options for tests), so every production LM-node
+      // launch pre-assigns even when the external composition module did not
+      // supply one explicitly.
       workAssignment: options.workAssignment ?? new SqliteWorkAssignmentAdapter(db),
     })],
     ['human', new HumanNodeExecutor(humanInteractions)],
@@ -675,8 +639,8 @@ export function createProductLifecycleRuntime(
       nodeExecutors,
       recoveryCaseRepo,
       resolveNodeProducts,
-      // Wave 8 BLOCKER 1: activate the v2 path (explicit ModuleCompletion
-      // persistence via completeV2) in production.
+      // Activate the v2 path (explicit ModuleCompletion persistence via
+      // completeV2) in production.
       v2: executorV2Options,
     }),
     formalization: new GenericFlowExecutor({
@@ -737,15 +701,15 @@ export function createProductLifecycleRuntime(
     installationRegistry.register(inst as any);
   }
 
-  // W13-AUDIT §18.5 / §18.9: the production module packages were installed by
-  // the composition loader (orchestrate-cli) BEFORE this runtime is constructed
-  // (install is async I/O; the runtime itself stays synchronous). When the
-  // caller did not pre-install (legacy / test paths), packageInstallation is
-  // undefined and ProcessRuns stay unpinned (null/null) — the legacy
-  // workspaceRoot lookup remains in effect for those paths.
+  // The production module packages were installed by the composition loader
+  // (orchestrate-cli) BEFORE this runtime is constructed (install is async
+  // I/O; the runtime itself stays synchronous). When the caller did not
+  // pre-install (legacy / test paths), packageInstallation is undefined and
+  // ProcessRuns stay unpinned (null/null) — the legacy workspaceRoot lookup
+  // remains in effect for those paths.
   const packageInstallation = options.packageInstallation;
 
-  // W13-A3: ProcessOutputPayloadRegistry replaced by injected ResolveStageOutputPayload callback
+  // ProcessOutputPayloadRegistry replaced by injected ResolveStageOutputPayload callback.
   const resolversBySchema = new Map<string, ResolveStageOutputPayload>([
     [SOLUTION_CONTRACT_CERTIFICATE_SCHEMA, createFormalizationLifecycleOutputPayloadResolver(formalizationSolutionContractRepository)],
     [VERIFIED_INTEGRATION_BUNDLE_SCHEMA, createDevelopmentOutputPayloadResolver(developmentOutputRepository)],
@@ -770,10 +734,10 @@ export function createProductLifecycleRuntime(
         stage,
         input,
       }),
-    // W13-AUDIT §18.5: pin each ProcessRun to the immutable module installation
-    // resolved from the pre-installed production packages. The records map is
-    // keyed by module name (e.g. 'product-discovery'); stage.moduleRef carries
-    // the same name. When packageInstallation was not injected (legacy / test
+    // Pin each ProcessRun to the immutable module installation resolved from
+    // the pre-installed production packages. The records map is keyed by
+    // module name (e.g. 'product-discovery'); stage.moduleRef carries the
+    // same name. When packageInstallation was not injected (legacy / test
     // paths), this resolver is absent and runs start unpinned.
     ...(packageInstallation
       ? {

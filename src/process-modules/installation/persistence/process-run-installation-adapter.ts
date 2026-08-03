@@ -1,49 +1,43 @@
 /**
  * ProcessRunInstallationAdapter — reads/writes the `installation_id` +
  * `package_digest` columns on `saga3_process_runs` via RAW SQL, and provides
- * the LEGACY NULLABLE ADAPTER (plan §14.3.7) for pre-Wave-2 runs.
+ * the LEGACY NULLABLE ADAPTER for pre-pinning runs.
  *
- * Wave 2 immutable-installation layer (W2-A4). See
- * `installation/domain/process-run-pinning.ts` for the pure value layer and
- * `WAVE2-IMMUTABLE-INSTALLATION-SPEC.md` §1 rows 7,8, §3 (the ALTERs), §4
- * (pinning rules), §5 (anti-scope — "No edits to existing
- * sqlite-process-run-repository.ts").
+ * Immutable-installation pinning layer. See
+ * `installation/domain/process-run-pinning.ts` for the pure value layer.
  *
  * Why raw SQL instead of extending `SqliteProcessRunRepository`:
- *   1. W2-A2 is the SINGLE SQL writer (C083, spec §3). The two new columns are
- *      added by W2-A2's idempotent ALTERs in `db.ts`. Touching the existing
- *      `sqlite-process-run-repository.ts` would be a hot-file conflict
- *      (plan §0.2.4) and would duplicate the schema-writer role.
- *   2. The ratchet (Rule 6) ALLOWLISTED `composition/product-lifecycle-runtime.ts`
- *      as the ONLY composition-root smell (W13-A6 removed that allowlist: the
- *      manual wiring moved to `src/app/product-lifecycle-runtime.ts`, which is
- *      not Rule-6-scanned, and R6 went 34 → 0). Adding a NEW sqlite/db edge
- *      under `composition/` is a violation. This adapter lives under
- *      `installation/persistence/`, which is a directory not covered by Rules
- *      1-6 — it imports only `better-sqlite3` (type) and the pure domain layer,
- *      so it adds ZERO ratchet violations.
+ *   1. The persistence lane is the SINGLE SQL writer for these columns. The
+ *      two new columns are added by idempotent ALTERs in `db.ts`. Touching the
+ *      existing `sqlite-process-run-repository.ts` would be a hot-file
+ *      conflict and would duplicate the schema-writer role.
+ *   2. This adapter lives under `installation/persistence/`, which is a
+ *      directory not covered by Rules 1-6 — it imports only `better-sqlite3`
+ *      (type) and the pure domain layer, so it adds ZERO ratchet violations.
+ *      (Adding a NEW sqlite/db edge under `composition/` would be a
+ *      violation.)
  *
  * The adapter takes a `Database` (better-sqlite3) in its constructor. Tests
- * pass an mkdtemp-backed DB; production will wire it at the composition root
- * (Wave 11 cutover — not this lane).
+ * pass an mkdtemp-backed DB; production wires it at the composition root.
  *
- * Legacy nullable adapter (plan §14.3.7):
- *   Pre-Wave-2 ProcessRuns have BOTH `installation_id` and `package_digest`
+ * Legacy nullable adapter:
+ *   Pre-pinning ProcessRuns have BOTH `installation_id` and `package_digest`
  *   NULL. `getPinnedInstallation` returns `null` for those rows, and
  *   `resolveInstallationForLegacyRun` resolves the installation by the run's
- *   `module_name`+`module_version` through an injected fallback registry
- *   (W2-A5's `PackageRegistry` port, or any `(name, version) => record`
- *   callable). Wave 13 removes this path entirely once all runs are pinned.
+ *   `module_name`+`module_version` through an injected fallback registry (the
+ *   `PackageRegistry` port, or any `(name, version) => record` callable). The
+ *   nullable path is removed entirely once all runs are pinned at start.
  *
- * INTEGRATION NOTE (integrator, Wave 2 cherry-pick): `ModuleInstallationRecord`
- * and the `LegacyInstallationResolver` shape are defined here ONLY because W2-A4
- * runs in isolation and W2-A2/W2-A5 have not landed in this worktree. The
- * canonical `ModuleInstallationRecord` lives in W2-A2's
- * `installation/domain/installation.ts`; the canonical `PackageRegistry` lives
- * in W2-A5's `installation/domain/package-registry.ts`. At cherry-pick, either
- * re-export the canonical types from here or rewrite these imports to point at
- * the canonical files and delete the local definitions. The local shapes are
- * structural subsets so the swap is mechanical.
+ * INTEGRATION NOTE: `ModuleInstallationRecord` and the
+ * `LegacyInstallationResolver` shape are defined here ONLY because this lane
+ * runs in isolation and the sibling installation lanes have not landed in
+ * this worktree. The canonical `ModuleInstallationRecord` lives in
+ * `installation/domain/installation.ts`; the canonical `PackageRegistry`
+ * lives in `installation/domain/package-registry.ts`. At cherry-pick, either
+ * re-export the canonical types from here or rewrite these imports to point
+ * at the canonical files and delete the local definitions. The local shapes
+ * are structural subsets so the swap is mechanical. See
+ * `docs/architecture/WAVE-LOG.md` (Wave 2) for the parallel-lane context.
  */
 
 import type Database from 'better-sqlite3';
@@ -55,15 +49,15 @@ import {
 
 // ---------------------------------------------------------------------------
 // LegacyInstallationResolver — the fallback port injected into
-// `resolveInstallationForLegacyRun`. Structural subset of W2-A5's
+// `resolveInstallationForLegacyRun`. Structural subset of the
 // PackageRegistry (`select(selector): ModuleInstallationRecord`).
 // ---------------------------------------------------------------------------
 
 /**
  * Selector used to resolve a legacy run's installation by module identity.
- * Structural subset of W2-A5's `ModuleSelector { name; versionRange }`. We
- * only ever pass an EXACT version (legacy runs always carry an exact
- * `module_version`), so `versionRange` is the pinned version string.
+ * Structural subset of `ModuleSelector { name; versionRange }`. We only ever
+ * pass an EXACT version (legacy runs always carry an exact `module_version`),
+ * so `versionRange` is the pinned version string.
  */
 export interface LegacyInstallationSelector {
   readonly name: string;
@@ -74,32 +68,33 @@ export interface LegacyInstallationSelector {
 /**
  * Minimal resolver port injected into `resolveInstallationForLegacyRun`.
  *
- * This is a structural subset of W2-A5's `PackageRegistry` port — the adapter
+ * This is a structural subset of the `PackageRegistry` port — the adapter
  * depends only on "given (name, version), return the active installation
- * record or null". W2-A5's `InstallationBasedPackageRegistry` satisfies this
- * shape (its `select(selector)` returns `ModuleInstallationRecord`); tests
- * pass a plain object/function.
+ * record or null". `InstallationBasedPackageRegistry` satisfies this shape
+ * (its `select(selector)` returns `ModuleInstallationRecord`); tests pass a
+ * plain object/function.
  *
- * Using a structural subset (rather than importing W2-A5's port directly) is
- * required because W2-A4 runs in isolation and W2-A5 has not landed. At
- * cherry-pick the integrator MAY narrow this to import W2-A5's port directly.
+ * Using a structural subset (rather than importing the canonical port
+ * directly) is required because this lane runs in isolation and the sibling
+ * lane has not landed. At cherry-pick the integrator MAY narrow this to
+ * import the canonical port directly.
  */
 export interface LegacyInstallationResolver {
   /**
    * Resolve the active installation for the given selector, or `null` if no
-   * active installation matches. Must NOT perform module-name switching
-   * (plan §14.4.1).
+   * active installation matches. Must NOT perform module-name switching.
    */
   resolve(selector: LegacyInstallationSelector): ModuleInstallationRecord | null;
 }
 
 // ---------------------------------------------------------------------------
-// ModuleInstallationRecord (local isolation copy — canonical owner is W2-A2).
+// ModuleInstallationRecord (local isolation copy — canonical owner is the
+// installation domain lane).
 // ---------------------------------------------------------------------------
 
 /**
- * Status of a module installation row (W2-A2 §3 schema). The ProcessRun pinning
- * layer does not enforce status transitions — it only READS the record.
+ * Status of a module installation row. The ProcessRun pinning layer does not
+ * enforce status transitions — it only READS the record.
  */
 export type ModuleInstallationStatus =
   | 'staged'
@@ -110,15 +105,15 @@ export type ModuleInstallationStatus =
 
 /**
  * Minimal projection of a `saga3_module_installations` row sufficient for the
- * legacy resolver to return. This is a STRUCTURAL SUBSET of W2-A2's canonical
+ * legacy resolver to return. This is a STRUCTURAL SUBSET of the canonical
  * `ModuleInstallationRecord` (which also carries `manifestSnapshot`,
  * `storeLocation`, `resourceIndex`, `handlerRefs`, `dependencyLock`,
  * `installedAt`, `activatedAt`). The pinning layer only needs identity +
  * digest + status to (a) name the resolved installation and (b) let the caller
- * (Wave 3 executor) verify the pinned digest against the resolved record's
+ * (the executor) verify the pinned digest against the resolved record's
  * digest.
  *
- * Canonical owner: W2-A2 `installation/domain/installation.ts`.
+ * Canonical owner: `installation/domain/installation.ts`.
  */
 export interface ModuleInstallationRecord {
   readonly id: ModuleInstallationId;
@@ -151,9 +146,9 @@ interface ModuleRefRow {
  * Read/write the `installation_id` + `package_digest` columns on
  * `saga3_process_runs` via raw SQL, plus the legacy nullable resolver.
  *
- * Does NOT import or extend `SqliteProcessRunRepository` (spec §5 anti-scope).
- * Does NOT create the columns — W2-A2's `db.ts` ALTERs own the schema
- * (C083). The adapter assumes the columns exist on the supplied `db` (they
+ * Does NOT import or extend `SqliteProcessRunRepository` (anti-scope).
+ * Does NOT create the columns — the persistence lane's `db.ts` ALTERs own the
+ * schema. The adapter assumes the columns exist on the supplied `db` (they
  * are added idempotently at `getDb()` time).
  *
  * The adapter is stateless beyond the injected `db` handle; all methods are
@@ -171,11 +166,11 @@ export class ProcessRunInstallationAdapter {
    *
    * `UPDATE saga3_process_runs SET installation_id=?, package_digest=? WHERE id=?`.
    * Idempotent: re-pinning the same run with new values overwrites the
-   * previous pin (this is the documented "re-pin (update)" path, spec W2-A4).
-   * Returns the number of rows affected (0 if the run does not exist — caller
-   * decides whether to treat that as an error; this method is a no-op on a
-   * missing row, matching the "no-op or error (document your choice)" option
-   * in the task spec — we choose no-op + count so callers can detect it).
+   * previous pin (this is the documented "re-pin (update)" path). Returns the
+   * number of rows affected (0 if the run does not exist — caller decides
+   * whether to treat that as an error; this method is a no-op on a missing
+   * row, matching the "no-op or error (document your choice)" option — we
+   * choose no-op + count so callers can detect it).
    */
   setPinnedInstallation(
     processRunId: number,
@@ -209,11 +204,11 @@ export class ProcessRunInstallationAdapter {
    * `SELECT installation_id, package_digest FROM saga3_process_runs WHERE id=?`.
    * Returns `null` when:
    *   - the run row does not exist, OR
-   *   - BOTH columns are NULL (legacy pre-Wave-2 run, plan §14.3.7).
+   *   - BOTH columns are NULL (legacy pre-pinning run).
    *
    * A row with exactly one of the two columns NULL is treated as corrupt and
    * throws `PROCESS_RUN_PIN_PARTIAL` — the schema invariant is "both set or
-   * both NULL" (spec §4, §14.3.7). New Wave-2+ runs set both atomically.
+   * both NULL". New pinned runs set both atomically.
    */
   getPinnedInstallation(processRunId: number): PinnedInstallation | null {
     const row = this.db
@@ -258,9 +253,9 @@ export class ProcessRunInstallationAdapter {
   }
 
   /**
-   * LEGACY NULLABLE ADAPTER (plan §14.3.7). For a ProcessRun whose
-   * `installation_id` is NULL, resolve the installation by the run's
-   * `module_name`+`module_version` through the injected fallback resolver.
+   * LEGACY NULLABLE ADAPTER. For a ProcessRun whose `installation_id` is
+   * NULL, resolve the installation by the run's `module_name`+
+   * `module_version` through the injected fallback resolver.
    *
    * Behavior:
    *   - If the run row does not exist → return null.
@@ -271,8 +266,7 @@ export class ProcessRunInstallationAdapter {
    *     Returns whatever the fallback returns (a record or null if no active
    *     installation matches).
    *
-   * Wave 13 removes this method entirely once all runs are pinned at start
-   * time (plan §16.9, §14.3.7).
+   * This method is removed entirely once all runs are pinned at start time.
    */
   resolveInstallationForLegacyRun(
     processRunId: number,

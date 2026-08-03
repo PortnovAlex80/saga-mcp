@@ -1,22 +1,15 @@
 /**
- * W4-A5 — Generic protocol checkpoint application service.
+ * Generic protocol checkpoint application service.
  *
- * Spec: docs/refactor-management/09-contracts/WAVE4-PROTOCOL-RECOVERY-SPEC.md
- *       (Lane W4-A5, §1 table; exit gate §3 items 2/3/6; ADR-019 §3).
- * Plan: §8.3 (Runtime owns protocol state), §8.4 (evidence before advance),
- *       §8.6 (worker issues generic `protocol_step_complete`), §8.7 (survives
- *       worker death), §9.7 (explicit state transitions).
- *
- * OWNED FILE. This is the application-layer entry point a `protocol_step_complete`
+ * This is the application-layer entry point a `protocol_step_complete`
  * MCP tool contribution dispatches to. It is the ONLY place that:
  *
  *   1. loads the active ProtocolRun + the canonical NodeProtocolDefinition,
- *   2. confirms the step is the run's current step (stale-state rejection,
- *      ADR-019 §3, plan §8.7),
- *   3. runs the before-complete evidence gate (W4-A3 verifier contract; plan
- *      §8.4 / C026 — required evidence CANNOT be skipped),
- *   4. delegates the transition decision to the pure W4-A2 ProtocolRuntime
- *      state machine (linear / branch / repeat),
+ *   2. confirms the step is the run's current step (stale-state rejection),
+ *   3. runs the before-complete evidence gate (required evidence CANNOT be
+ *      skipped),
+ *   4. delegates the transition decision to the pure ProtocolRuntime state
+ *      machine (linear / branch / repeat),
  *   5. persists the completed step + advances the run inside one atomic port
  *      call,
  *   6. records durable evidence on the step run,
@@ -24,39 +17,25 @@
  *      to the worker.
  *
  * It owns NO module semantics (no knowledge of "SRS", "proposal", "release").
- * Module-specific evidence meaning lives in the W4-A3 verifier binding the
- * package registers; this service only invokes that binding by reference.
+ * Module-specific evidence meaning lives in the verifier binding the package
+ * registers; this service only invokes that binding by reference.
  *
- * ── Isolation (parallel lane) ──────────────────────────────────────────────
+ * # Isolation (structural aliases)
  *
- * The sibling Wave 4 lanes own:
- *   - W4-A1: `persistence/protocol-run.ts` port + types + sqlite adapter
- *     (ProtocolRunRepository, ProtocolRunRecord, ProtocolStepRunRecord, …).
- *   - W4-A2: `application/protocol-runtime.ts` pure transition state machine.
- *   - W4-A3: `application/protocol-evidence.ts` evidence categories + verifier
- *     registry (`verifyStepEvidence`).
+ * The sibling protocol lanes own: the `ProtocolRunRepository` port + types
+ * + sqlite adapter, the pure transition state machine, and the evidence
+ * categories + verifier registry. This file declares LOCAL STRUCTURAL PORT
+ * INTERFACES mirroring those contracts verbatim so the file compiles in
+ * isolation. The structural aliases are marked `LOCAL_ISOLATION_ALIAS` so a
+ * future mechanical migration can find them. See
+ * `docs/architecture/WAVE-LOG.md` (Wave 4) for the parallel-lane context.
  *
- * These files are NOT present in this isolated W4-A5 worktree (parallel lanes
- * have not landed). Importing them by relative path would fail `tsc`. The same
- * isolation discipline the Wave 1 lanes used applies here: this file declares
- * LOCAL STRUCTURAL PORT INTERFACES whose field names mirror the spec verbatim
- * (§2 schema, ADR-019 §3, plan §8.2/§8.4/§9.7). When the sibling lanes land,
- * the integrator either (a) swaps the local aliases for the real imports, or
- * (b) leaves the structural aliases in place — both compile because the shapes
- * are identical. Call sites do not change. This is the same pattern
- * `domain/spi/tool-contribution.ts` (W1-A6) used for `ToolContractRef` vs the
- * real `ContractRef`.
+ * # Dependency direction (ratchet)
  *
- * The structural aliases are marked `LOCAL_ISOLATION_ALIAS` so a future
- * mechanical migration can find them.
- *
- * ── Dependency direction (ratchet) ────────────────────────────────────────
- *
- * `application/` → `persistence/` ports allowed (rule 2 only forbids this from
- * MODULE code; application core is permitted). `application/` → `domain/` and
- * `application/` → `domain/spi/` allowed. No imports from `modules/`,
- * `composition/`, or `infrastructure/`. The Wave 4 spec §0 ratchet note
- * explicitly states: "no friction for new ProtocolRun files".
+ * `application/` → `persistence/` ports allowed (rule 2 only forbids this
+ * from MODULE code; application core is permitted). `application/` →
+ * `domain/` and `application/` → `domain/spi/` allowed. No imports from
+ * `modules/`, `composition/`, or `infrastructure/`.
  */
 
 import type {
@@ -91,7 +70,7 @@ export const PROTOCOL_STEP_COMPLETE_OUTPUT_SCHEMA =
 /**
  * Stable logical id for the protocol step completion tool. Namespaced under
  * `runtime.protocol.*` so a module does not own it; Runtime contributes it on
- * behalf of every managed protocol (plan §8.6, §11.4).
+ * behalf of every managed protocol.
  */
 export const PROTOCOL_STEP_COMPLETE_TOOL_LOGICAL_ID =
   'runtime.protocol.step_complete' as const;
@@ -107,7 +86,7 @@ export const PROTOCOL_STEP_COMPLETE_HANDLER_REF =
   'runtime:protocol-checkpoint-service:applyCheckpoint' as const;
 
 // ---------------------------------------------------------------------------
-// Step-run + protocol-run status enums (mirror spec §2 CHECK constraints).
+// Step-run + protocol-run status enums (mirror the schema CHECK constraints).
 // ---------------------------------------------------------------------------
 
 export const PROTOCOL_RUN_STATUSES = [
@@ -145,18 +124,18 @@ export const TERMINAL_STEP_RUN_STATUSES: ReadonlySet<ProtocolStepRunStatus> = ne
 // ---------------------------------------------------------------------------
 // LOCAL_ISOLATION_ALIAS — structural aliases for sibling-lane types.
 //
-// These mirror the field names of the W4-A1 persistence records (ProtocolRunRecord,
-// ProtocolStepRunRecord) and the W4-A2/W4-A3 runtime/evidence contracts. They
-// exist ONLY because the sibling lanes have not landed in this worktree. The
-// integrator swaps them for real imports after cherry-pick; the field shapes
-// are identical so call sites are unchanged.
+// These mirror the field names of the persistence records (ProtocolRunRecord,
+// ProtocolStepRunRecord) and the runtime/evidence contracts. They exist ONLY
+// because the sibling lanes have not landed in this worktree. The integrator
+// swaps them for real imports after cherry-pick; the field shapes are
+// identical so call sites are unchanged.
 // ---------------------------------------------------------------------------
 
 /**
- * LOCAL_ISOLATION_ALIAS for W4-A1 `ProtocolRunRecord`.
+ * LOCAL_ISOLATION_ALIAS for the persistence `ProtocolRunRecord`.
  *
- * Mirrors spec §2 `saga3_protocol_runs` columns. Field names are
- * camelCase of the SQL column names.
+ * Mirrors the `saga3_protocol_runs` columns. Field names are camelCase of
+ * the SQL column names.
  */
 export interface ProtocolRunRecord {
   readonly id: number;
@@ -174,9 +153,9 @@ export interface ProtocolRunRecord {
 }
 
 /**
- * LOCAL_ISOLATION_ALIAS for W4-A1 `ProtocolStepRunRecord`.
+ * LOCAL_ISOLATION_ALIAS for the persistence `ProtocolStepRunRecord`.
  *
- * Mirrors spec §2 `saga3_protocol_step_runs` columns.
+ * Mirrors the `saga3_protocol_step_runs` columns.
  */
 export interface ProtocolStepRunRecord {
   readonly id: number;
@@ -192,28 +171,29 @@ export interface ProtocolStepRunRecord {
 /**
  * One piece of durable evidence a worker submits with a step-complete call.
  *
- * `category` is the standard Runtime category (plan §8.4); Runtime understands
- * the category but never the domain meaning. `value` is the canonical evidence
- * payload (a tool receipt id, an artifact reference, a trace id, …) — its shape
- * is governed by the matching `EvidenceRequirement.contractRef` for the step.
+ * `category` is the standard Runtime category; Runtime understands the
+ * category but never the domain meaning. `value` is the canonical evidence
+ * payload (a tool receipt id, an artifact reference, a trace id, …) — its
+ * shape is governed by the matching `EvidenceRequirement.contractRef` for
+ * the step.
  */
 export interface StepEvidenceItem {
   readonly category: EvidenceCategory;
-  /** ContractRef this evidence claims to satisfy (W1-A5 shape). */
+  /** ContractRef this evidence claims to satisfy. */
   readonly contractRef: ToolContractRef;
   /**
-   * Canonical-serializable evidence value. The W4-A3 verifier binding inspects
-   * it; Runtime persists the canonical-JSON form verbatim and never interprets
+   * Canonical-serializable evidence value. The verifier binding inspects it;
+   * Runtime persists the canonical-JSON form verbatim and never interprets
    * the keys.
    */
   readonly value: unknown;
 }
 
 /**
- * Result of one before-complete evidence verification (W4-A3 contract).
+ * Result of one before-complete evidence verification.
  *
  * LOCAL_ISOLATION_ALIAS — the real type lives in
- * `application/protocol-evidence.ts` once W4-A3 lands. Field names match.
+ * `application/protocol-evidence.ts`. Field names match.
  */
 export interface EvidenceVerificationResult {
   readonly ok: boolean;
@@ -228,8 +208,8 @@ export interface EvidenceVerificationFailure {
 }
 
 /**
- * The next transition the W4-A2 ProtocolRuntime state machine selected for the
- * run after a step completes. LOCAL_ISOLATION_ALIAS.
+ * The next transition the ProtocolRuntime state machine selected for the run
+ * after a step completes. LOCAL_ISOLATION_ALIAS.
  *
  *   `nextStep === null`     — the protocol has no further step; the run is
  *                             ready to be marked completed (caller decides).
@@ -246,7 +226,7 @@ export interface ProtocolTransitionDecision {
 }
 
 /**
- * Verifier binding the package registers for a step (W4-A3 contract).
+ * Verifier binding the package registers for a step.
  *
  * LOCAL_ISOLATION_ALIAS. The binding receives the canonical protocol step
  * definition and the worker-submitted evidence, and returns whether the step's
@@ -259,13 +239,13 @@ export type StepEvidenceVerifier = (
 ) => EvidenceVerificationResult;
 
 // ---------------------------------------------------------------------------
-// LOCAL_ISOLATION_ALIAS — the W4-A1 ProtocolRunRepository port.
+// LOCAL_ISOLATION_ALIAS — the ProtocolRunRepository port.
 //
-// Mirror of the port surface W4-A1 owns. Methods this service actually calls
-// are spelled out; the rest are omitted (the real port has more methods —
-// `startProtocol`, `pauseProtocol`, `resumeProtocol`, `readByExactStep`,
-// `listSteps`, … — that this service does not invoke). When W4-A1 lands the
-// real port is a strict superset of this structural alias.
+// Mirror of the port surface owned by the persistence lane. Methods this
+// service actually calls are spelled out; the rest are omitted (the real
+// port has more methods — `startProtocol`, `pauseProtocol`, `resumeProtocol`,
+// `readByExactStep`, `listSteps`, … — that this service does not invoke).
+// The real port is a strict superset of this structural alias.
 // ---------------------------------------------------------------------------
 
 /**
@@ -289,7 +269,7 @@ export interface CompleteStepResult {
 }
 
 /**
- * LOCAL_ISOLATION_ALIAS for the W4-A1 `ProtocolRunRepository` port. Only the
+ * LOCAL_ISOLATION_ALIAS for the `ProtocolRunRepository` port. Only the
  * methods this service consumes are declared.
  */
 export interface ProtocolRunRepository {
@@ -303,7 +283,7 @@ export interface ProtocolRunRepository {
 }
 
 /**
- * LOCAL_ISOLATION_ALIAS for the W4-A1 `NodeProtocolDefinition` resolver. The
+ * LOCAL_ISOLATION_ALIAS for the `NodeProtocolDefinition` resolver. The
  * runtime resolves `nodeProtocolId` + `nodeProtocolVersion` to the canonical
  * installed definition. In production this is backed by the package registry;
  * for tests it is a plain map.
@@ -316,7 +296,7 @@ export interface NodeProtocolResolver {
 }
 
 /**
- * LOCAL_ISOLATION_ALIAS for the W4-A2 ProtocolRuntime transition resolver.
+ * LOCAL_ISOLATION_ALIAS for the ProtocolRuntime transition resolver.
  *
  * Given the protocol definition and the just-completed step id, returns the
  * next step (or `terminal: true`). The pure state machine owns transition
@@ -331,7 +311,7 @@ export interface ProtocolTransitionResolver {
 }
 
 /**
- * LOCAL_ISOLATION_ALIAS for the W4-A3 evidence verifier registry. Looks up the
+ * LOCAL_ISOLATION_ALIAS for the evidence verifier registry. Looks up the
  * verifier binding registered for `(nodeProtocolId, stepId)`. Returns null when
  * no module verifier is registered — in that case Runtime falls back to the
  * standard category+contractRef shape check (see {@link defaultEvidenceVerifier}).
@@ -368,8 +348,8 @@ export interface CheckpointResult {
   readonly protocolCompleted: boolean;
   /**
    * The run's new current step, or null when the protocol is now complete.
-   * The worker reads this to know what to do next (plan §8.7: a fresh worker
-   * resumes from durable Runtime rows).
+   * The worker reads this to know what to do next (a fresh worker resumes
+   * from durable Runtime rows).
    */
   readonly nextStep: string | null;
   readonly runStatus: ProtocolRunStatus;
@@ -415,7 +395,7 @@ export class UnknownProtocolStepError extends CheckpointError {
 /**
  * The submitted step is not the run's `currentStep`. A stale worker (crashed,
  * resumed from an old envelope, or racing a second worker) tried to checkpoint
- * a step the run has already moved past. Rejected per ADR-019 §3 / plan §8.7.
+ * a step the run has already moved past. Rejected.
  */
 export class StaleStepError extends CheckpointError {
   public readonly code = 'PROTOCOL_STEP_STALE';
@@ -447,7 +427,7 @@ export class TerminalStepRunError extends CheckpointError {
   }
 }
 
-/** The step's required evidence was not satisfied (plan §8.4 / C026). */
+/** The step's required evidence was not satisfied. */
 export class EvidenceGateError extends CheckpointError {
   public readonly code = 'PROTOCOL_EVIDENCE_GATE_FAILED';
   public readonly missingCategories: readonly EvidenceCategory[];
@@ -498,9 +478,9 @@ function contractRefsEqual(
  * For each REQUIRED `EvidenceRequirement` on the step, the verifier requires at
  * least one submitted evidence item with the same category and a matching
  * contractRef. Optional requirements are NOT enforced (the worker MAY submit
- * them, but their absence is not a failure). This mirrors plan §8.4 / §8.5:
- * Runtime understands the standard category+contract shape; the module verifier
- * (when registered) is the only thing that can give that shape domain meaning.
+ * them, but their absence is not a failure). Runtime understands the standard
+ * category+contract shape; the module verifier (when registered) is the only
+ * thing that can give that shape domain meaning.
  *
  * A module verifier that needs stricter semantics replaces this verifier via
  * the {@link StepEvidenceVerifierRegistry}.
@@ -586,7 +566,7 @@ export interface ApplyCheckpointArgs {
 
 /**
  * Dependencies {@link applyCheckpoint} consumes. In production these are the
- * real Wave 4 sibling-lane services; in tests they are fakes/mocks.
+ * real sibling-lane services; in tests they are fakes/mocks.
  *
  * `now` is injectable so tests are deterministic. Defaults to ISO-now.
  */
@@ -609,15 +589,14 @@ export interface ApplyCheckpointDeps {
  *   3. Resolve the canonical NodeProtocolDefinition; reject if missing.
  *   4. Confirm the submitted step exists in the protocol definition.
  *   5. Load the step run row; if it is already terminal, return an idempotent
- *      replay receipt (plan §8.7: a resumed worker re-submitting the same
- *      checkpoint must not error, even if the run has since advanced past it).
- *      This check runs BEFORE the stale-step check so a lost receipt never
- *      blocks crash-resume.
+ *      replay receipt (a resumed worker re-submitting the same checkpoint must
+ *      not error, even if the run has since advanced past it). This check runs
+ *      BEFORE the stale-step check so a lost receipt never blocks crash-resume.
  *   6. Confirm the submitted step IS the run's current step
- *      (stale-state rejection, ADR-019 §3).
+ *      (stale-state rejection).
  *   7. Run the before-complete evidence gate. Reject if required evidence is
- *      missing (plan §8.4 / C026 — required evidence CANNOT be skipped).
- *   8. Ask the W4-A2 ProtocolRuntime for the next transition.
+ *      missing (required evidence CANNOT be skipped).
+ *   8. Ask the ProtocolRuntime for the next transition.
  *   9. Atomically persist: mark the step completed + its evidence + advance the
  *      run's currentStep (or mark the run completed if terminal).
  *  10. Return the canonical {@link CheckpointResult} receipt.
@@ -666,11 +645,11 @@ export function applyCheckpoint(
 
   // (5) Idempotent replay: a terminal step row means a resumed worker is
   // re-submitting a checkpoint that already succeeded. Return a replay receipt
-  // rather than erroring (plan §8.7: protocol survives worker death). This
-  // check runs BEFORE the stale-step check so a crash between persist and
-  // worker-receipt never blocks the resume — the run may have already advanced
-  // past this step, and the lost receipt must not be treated as a fresh
-  // (stale) checkpoint.
+  // rather than erroring — the protocol survives worker death. This check runs
+  // BEFORE the stale-step check so a crash between persist and worker-receipt
+  // never blocks the resume — the run may have already advanced past this
+  // step, and the lost receipt must not be treated as a fresh (stale)
+  // checkpoint.
   const existingStep = deps.runs.readStep(run.id, args.stepId, attempt);
   if (existingStep && TERMINAL_STEP_RUN_STATUSES.has(existingStep.status)) {
     // The run may have already advanced past this step. If so, the run's
@@ -697,7 +676,7 @@ export function applyCheckpoint(
     throw new StaleStepError(args.stepId, run.currentStep, run.id);
   }
 
-  // (7) Before-complete evidence gate (plan §8.4 / C026).
+  // (7) Before-complete evidence gate.
   const verifier =
     deps.verifiers.resolve(protocol.id, args.stepId) ?? defaultEvidenceVerifier;
   const verdict = verifier(step, evidence);
@@ -705,7 +684,7 @@ export function applyCheckpoint(
     throw new EvidenceGateError(verdict);
   }
 
-  // (8) Ask the W4-A2 ProtocolRuntime for the next transition.
+  // (8) Ask the ProtocolRuntime for the next transition.
   const decision = deps.transitions.decideNextStep(protocol, args.stepId);
 
   // (9) Atomically persist step completion + run advance.
@@ -740,8 +719,8 @@ export function applyCheckpoint(
 // ---------------------------------------------------------------------------
 
 /**
- * Stable zero-digest used for the tool contribution contract refs at Wave 4
- * registration time. The real digests are computed by the W1-A5
+ * Stable zero-digest used for the tool contribution contract refs at
+ * registration time. The real digests are computed by the
  * ContractSchemaRegistry when the schemas are pinned; until then the runtime
  * treats the contract refs as opaque. Using a fixed digest makes the
  * contribution canonical-serializable (a real digest is a 64-char hex string;
@@ -759,7 +738,7 @@ function provisionalContractRef(schemaId: string): ToolContractRef {
 
 /**
  * The `protocol_step_complete` MCP tool contribution Runtime registers on
- * behalf of every managed NodeProtocol (plan §8.6, §11.4, ADR-019 §3).
+ * behalf of every managed NodeProtocol.
  *
  * A worker invokes this tool once per completed step. The runtime dispatches
  * the call into {@link applyCheckpoint} with the resolved
@@ -769,11 +748,11 @@ function provisionalContractRef(schemaId: string): ToolContractRef {
  *   - `logicalId` is namespaced under `runtime.protocol.*` (Runtime-owned, not
  *     module-owned).
  *   - `idempotency` is `'idempotent'` because a resumed worker re-submitting
- *     the same (run, step, attempt) checkpoint returns a replay receipt, not an
- *     error (plan §8.7).
+ *     the same (run, step, attempt) checkpoint returns a replay receipt, not
+ *     an error.
  *   - `sideEffect` is `'write'` because the call persists step + evidence rows.
- *   - `guardBindings` is empty at Wave 4; W4-A6 (per-step authority) attaches
- *     the authority guard to the `'call'` scope when it lands.
+ *   - `guardBindings` is empty; the per-step authority guard attaches to the
+ *     `'call'` scope when wired.
  */
 export function buildProtocolStepCompleteToolContribution(): ModuleToolContribution {
   return {

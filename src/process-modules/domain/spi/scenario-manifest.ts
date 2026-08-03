@@ -1,9 +1,6 @@
 /**
- * W1-A3 — LifecycleScenarioManifest (the one genuinely new domain aggregate).
- *
- * Plan ref: §1 row 6, §3.5 (canonical-serialization), §6.2 (manifest fields),
- * §6.3.2 (ScenarioStageBinding), §6.4 (NO routeResolver — structural absence),
- * §6.9.5 (safe mapping paths), §0.4.11 (serial gate).
+ * LifecycleScenarioManifest — the one genuinely new domain aggregate of its
+ * lane.
  *
  * This file owns the LifecycleScenarioManifest aggregate plus its validator.
  * It deliberately REUSES the existing pure lifecycle types via import — it
@@ -11,23 +8,22 @@
  * or `LifecycleMappingExpression` (those live in `domain/lifecycle.ts` and are
  * shared with the legacy LifecycleDefinition surface). The genuinely new
  * contribution is the *scenario envelope*: a frozen, route-resolver-free,
- * budgeted, terminal-aware manifest that Wave 7's scenario runtime consumes.
+ * budgeted, terminal-aware manifest that the scenario runtime consumes.
  *
- * Purity contract (plan §3.5):
+ * Purity contract:
  *   - Every field is plain JSON-serializable data.
- *   - NO function fields (in particular, NO `routeResolver` — §6.4).
+ *   - NO function fields (in particular, NO `routeResolver` — see the
+ *     `ROUTE_RESOLVER_FORBIDDEN` validation rule).
  *   - `validateLifecycleScenarioManifest` calls `assertCanonicalSerializable`
  *     first, so a manifest carrying a Map/Set/Symbol/function/undefined-in-array
  *     /class-instance/non-finite-number is rejected before any structural rule.
  *
- * Sibling dependencies (built in parallel Wave 1 lanes; absent from this
- * worktree but present after Wave 1 integration):
- *   - `./canonical-serialization.js` (W1-A1) — `assertCanonicalSerializable`.
- *   - `./contract-ref.js`               (W1-A5) — `ContractRef`.
- *   - `./tool-contribution.js`          (W1-A6) — `CapabilityRequirement`.
+ * Sibling dependencies (declared in sibling lanes):
+ *   - `./canonical-serialization.js` — `assertCanonicalSerializable`.
+ *   - `./contract-ref.js`            — `ContractRef`.
+ *   - `./tool-contribution.js`       — `CapabilityRequirement`.
  *
- * Anti-scope: Wave 1 only DEFINES + VALIDATES the manifest. The scenario
- * runtime (install, execute) is Wave 7.
+ * See `docs/architecture/WAVE-LOG.md` (Wave 1) for the parallel-lane context.
  */
 
 import type { LifecycleIdentity } from '../lifecycle.js';
@@ -52,36 +48,35 @@ export type {
 } from '../lifecycle.js';
 
 // ---------------------------------------------------------------------------
-// ModuleSelector (plan §6.2, §6.3.2).
+// ModuleSelector.
 //
 // A scenario stage binds to a MODULE CONTRACT by name + semver range, NOT to a
 // concrete installed package. The exact installed identity is resolved at
-// install time (Wave 7) against the package registry (Wave 2). This keeps the
-// manifest stable across patch upgrades and is what lets a single scenario
-// reuse the same module package in two stages with different mappings (§6.8).
+// install time against the package registry. This keeps the manifest stable
+// across patch upgrades and is what lets a single scenario reuse the same
+// module package in two stages with different mappings.
 // ---------------------------------------------------------------------------
 
 /**
  * Reference to a module contract by name + semver range. Resolved to an exact
- * installed package identity in Wave 7. Pure string pair — no behavior.
+ * installed package identity at install time. Pure string pair — no behavior.
  */
 export interface ModuleSelector {
   /** Module name (matches `ProcessModuleReference.name`). */
   readonly name: string;
-  /** Semver range string (e.g. `^1.0.0`, `~2.3.0`, `*`). Resolved in Wave 7. */
+  /** Semver range string (e.g. `^1.0.0`, `~2.3.0`, `*`). Resolved at install time. */
   readonly versionRange: string;
 }
 
 // ---------------------------------------------------------------------------
-// ScenarioStageBinding (plan §6.3.2).
+// ScenarioStageBinding.
 //
 // Extends `StageBinding` (the existing domain type) with a `moduleSelector`.
 // We EXTEND rather than compose so existing `StageBinding` consumers are not
 // broken and the contract-by-name is structural on the base type. The added
 // field carries the semver RANGE; `moduleRef` on the base still carries the
 // concrete version the scenario author validated against (kept for
-// traceability and so the W0-A7 fixture, which only populates `moduleRef`,
-// maps cleanly).
+// traceability and so a fixture that only populates `moduleRef` maps cleanly).
 // ---------------------------------------------------------------------------
 
 /**
@@ -91,23 +86,24 @@ export interface ModuleSelector {
  * outcomeRoutes, entryConditions, exitConditions).
  */
 export interface ScenarioStageBinding extends StageBinding {
-  /** Contract selector this stage resolves against at install time (Wave 7). */
+  /** Contract selector this stage resolves against at install time. */
   readonly moduleSelector: ModuleSelector;
 }
 
 // ---------------------------------------------------------------------------
-// Policies (plan §6.2.7).
+// Policies.
 //
-// Wave 1 declares the field SHAPES only; Wave 7 implements the runtime
+// The manifest declares the field SHAPES only; the runtime implements the
 // behaviors. Each policy is a tagged union stub `{ kind; params? }` so the
 // manifest can name a strategy without binding to an executor. `kind` is a
-// free-form string for now (registered strategy names arrive with Wave 7);
-// `params` is an opaque readonly record of plain-serializable values.
+// free-form string for now (registered strategy names arrive with the runtime
+// binding); `params` is an opaque readonly record of plain-serializable
+// values.
 // ---------------------------------------------------------------------------
 
 /**
- * Tagged policy stub. Wave 1 carries the declaration; Wave 7 binds `kind` to
- * a registered strategy and interprets `params`. Pure data.
+ * Tagged policy stub. The manifest carries the declaration; the runtime binds
+ * `kind` to a registered strategy and interprets `params`. Pure data.
  */
 export interface ScenarioPolicyDeclaration {
   readonly kind: string;
@@ -127,7 +123,7 @@ export interface ScenarioPolicies {
 }
 
 // ---------------------------------------------------------------------------
-// Budgets (plan §6.2.10, §6.2.11).
+// Budgets.
 // ---------------------------------------------------------------------------
 
 /**
@@ -151,21 +147,21 @@ export interface ReentryBudgets {
 }
 
 // ---------------------------------------------------------------------------
-// LifecycleScenarioManifest (plan §6.2) — the aggregate.
+// LifecycleScenarioManifest — the aggregate.
 //
 // Read-only by construction. Every field is plain serializable data. The type
 // is intentionally written as a flat interface (not a class instance) so it
-// survives canonical JSON round-trip byte-identically (plan §0.4.11).
+// survives canonical JSON round-trip byte-identically.
 // ---------------------------------------------------------------------------
 
 /**
- * The one genuinely new domain aggregate of Wave 1. A frozen, declarative,
+ * The one genuinely new domain aggregate of its lane. A frozen, declarative,
  * route-resolver-free description of a multi-stage lifecycle scenario.
  *
- * The manifest is the single artifact a scenario author writes; Wave 7's
- * runtime installs it (resolving module selectors against the package
- * registry) and executes it (looking transitions up in the static
- * `outcomeRoutes` tables — there is NO executable resolver anywhere).
+ * The manifest is the single artifact a scenario author writes; the runtime
+ * installs it (resolving module selectors against the package registry) and
+ * executes it (looking transitions up in the static `outcomeRoutes` tables —
+ * there is NO executable resolver anywhere).
  */
 export interface LifecycleScenarioManifest {
   /** Schema version of this manifest envelope itself. */
@@ -174,9 +170,9 @@ export interface LifecycleScenarioManifest {
   /** Scenario identity. Reused verbatim from `domain/lifecycle.ts`. */
   readonly identity: LifecycleIdentity;
 
-  /** Input contract the scenario root input must conform to (W1-A5). */
+  /** Input contract the scenario root input must conform to. */
   readonly inputContractRef: ContractRef;
-  /** Output contract the terminal productions must conform to (W1-A5). */
+  /** Output contract the terminal productions must conform to. */
   readonly outputContractRef: ContractRef;
 
   /** Stage id where execution begins. MUST exist in `stageBindings`. */
@@ -187,7 +183,7 @@ export interface LifecycleScenarioManifest {
 
   /**
    * Scenario-level outcome routes (terminal handoffs out of the whole
-   * scenario). Deterministic static table — no resolver (§6.4).
+   * scenario). Deterministic static table — no resolver.
    */
   readonly outcomeRoutes: Readonly<Record<string, TransitionTarget>>;
 
@@ -198,30 +194,30 @@ export interface LifecycleScenarioManifest {
   readonly inputMappings: Readonly<Record<string, LifecycleMappingExpression>>;
   readonly outputMappings: Readonly<Record<string, LifecycleMappingExpression>>;
 
-  /** Declared terminal statuses (plan §6.2.9). MUST be non-empty. */
+  /** Declared terminal statuses. MUST be non-empty. */
   readonly terminalStatuses: readonly string[];
 
-  /** Scenario-level policy bundle (declared in Wave 1, run in Wave 7). */
+  /** Scenario-level policy bundle (declared here, run by the runtime). */
   readonly scenarioPolicies: ScenarioPolicies;
 
-  /** Every distinct module contract this scenario depends on (§6.10). */
+  /** Every distinct module contract this scenario depends on. */
   readonly requiredModuleSelectors: readonly ModuleSelector[];
 
-  /** Optional capability requirements imported from W1-A6. */
+  /** Optional capability requirements imported from tool-contribution.js. */
   readonly capabilityRequirements?: readonly CapabilityRequirement[];
 
   /** Hard caps protecting against runaway transitions / re-entries. */
   readonly transitionBudgets: TransitionBudgets;
   readonly reentryBudgets: ReentryBudgets;
 
-  // Intentionally NO `routeResolver` field. Plan §6.4 — the type must be
-  // structurally incapable of carrying an executable route resolver. The
-  // validator additionally rejects any object that has a `routeResolver` own
-  // key (defense-in-depth against plain-object literals smuggled in).
+  // Intentionally NO `routeResolver` field. The type must be structurally
+  // incapable of carrying an executable route resolver. The validator
+  // additionally rejects any object that has a `routeResolver` own key
+  // (defense-in-depth against plain-object literals smuggled in).
 }
 
 // ---------------------------------------------------------------------------
-// ValidationResult (mirrors the Wave 1 SPI validator contract, §2).
+// ValidationResult (mirrors the SPI validator contract).
 // ---------------------------------------------------------------------------
 
 export interface ValidationError {
@@ -248,7 +244,7 @@ function err(code: string, path: string, message: string): ValidationError {
 }
 
 // ---------------------------------------------------------------------------
-// isSafeMappingPath (plan §6.9.5).
+// isSafeMappingPath.
 //
 // A mapping path is a dotted own-property traversal (e.g.
 // `stages.draft.output.campaignDraft`). It MUST NOT traverse the prototype
@@ -282,15 +278,15 @@ export function isSafeMappingPath(path: unknown): boolean {
 }
 
 // ---------------------------------------------------------------------------
-// validateLifecycleScenarioManifest (plan §6.2, §6.4, §3.5, §0.4.11).
+// validateLifecycleScenarioManifest.
 //
 // Order of checks:
-//   1. assertCanonicalSerializable — rejects functions/Maps/Sets/Symbols/
-//      undefined-in-arrays/class-instances/non-finite-numbers (plan §3.5).
-//      Throws on the first forbidden value (the canonical-serialization
-//      contract is fail-fast); we translate the throw into a ValidationFailure.
-//   2. Structural absence of `routeResolver` (§6.4) — reject any object that
-//      carries the key, even if its value is undefined/null.
+//   1. Structural absence of `routeResolver` — reject any object that carries
+//      the key, even if its value is undefined/null.
+//   2. assertCanonicalSerializable — rejects functions/Maps/Sets/Symbols/
+//      undefined-in-arrays/class-instances/non-finite-numbers. Throws on the
+//      first forbidden value (the canonical-serialization contract is
+//      fail-fast); we translate the throw into a ValidationFailure.
 //   3. entryStageId exists in stageBindings.
 //   4. terminalStatuses non-empty.
 //   5. Every outcomeRoutes target resolves to a declared stage or terminal.
@@ -304,23 +300,23 @@ export function isSafeMappingPath(path: unknown): boolean {
 const ROUTE_RESOLVER_KEY = 'routeResolver';
 
 /**
- * Validate a `LifecycleScenarioManifest`-shaped value against every Wave 1
- * serial + structural rule. Pure: returns a `ValidationResult`, throws
- * nothing. The canonical-serialization pre-check (plan §3.5) is delegated to
- * `assertCanonicalSerializable` from W1-A1.
+ * Validate a `LifecycleScenarioManifest`-shaped value against every serial +
+ * structural rule. Pure: returns a `ValidationResult`, throws nothing. The
+ * canonical-serialization pre-check is delegated to
+ * `assertCanonicalSerializable` from `canonical-serialization.js`.
  *
  * Check ordering rationale:
- *   (1) `routeResolver` KEY absence (§6.4) is checked FIRST, before the
- *       canonical-serializability gate. §6.4 is a manifest-SHAPE rule: the
- *       type must be structurally incapable of carrying a route resolver. A
- *       manifest that smuggles a `routeResolver` key is malformed even if the
- *       key's value happens to be a non-serializable function (the function is
- *       a second, independent violation). Checking the key first guarantees
- *       the §6.4 rule always produces its own error code, regardless of what
- *       the value is.
- *   (2) Canonical serializability (§3.5) runs second and short-circuits the
- *       remaining value-level structural checks — there is no point checking
- *       budget numbers if a value somewhere is already a Map/Symbol/function.
+ *   (1) `routeResolver` KEY absence is checked FIRST, before the canonical-
+ *       serializability gate. The routeResolver-forbidden rule is a manifest-
+ *       SHAPE rule: the type must be structurally incapable of carrying a
+ *       route resolver. A manifest that smuggles a `routeResolver` key is
+ *       malformed even if the key's value happens to be a non-serializable
+ *       function (the function is a second, independent violation). Checking
+ *       the key first guarantees the rule always produces its own error code,
+ *       regardless of what the value is.
+ *   (2) Canonical serializability runs second and short-circuits the remaining
+ *       value-level structural checks — there is no point checking budget
+ *       numbers if a value somewhere is already a Map/Symbol/function.
  */
 export function validateLifecycleScenarioManifest(
   m: unknown,
@@ -334,22 +330,22 @@ export function validateLifecycleScenarioManifest(
 
   const manifest = m as Record<string, unknown>;
 
-  // (1) Structural absence of routeResolver — plan §6.4. Checked BEFORE the
-  // canonical gate so the §6.4 rule fires with its own error code even when
-  // the smuggled value is itself non-serializable.
+  // (1) Structural absence of routeResolver. Checked BEFORE the canonical
+  // gate so the routeResolver-forbidden rule fires with its own error code
+  // even when the smuggled value is itself non-serializable.
   if (Object.prototype.hasOwnProperty.call(manifest, ROUTE_RESOLVER_KEY)) {
     errors.push(
       err(
         'ROUTE_RESOLVER_FORBIDDEN',
         '$.routeResolver',
-        'plan §6.4: a LifecycleScenarioManifest must not carry a routeResolver ' +
-          'key (routes are declarative static outcomeRoutes only)',
+        'a LifecycleScenarioManifest must not carry a routeResolver key ' +
+          '(routes are declarative static outcomeRoutes only)',
       ),
     );
   }
 
-  // (2) Canonical serializability — plan §3.5 / §0.4.11 serial gate. Runs
-  // after the §6.4 key check; short-circuits the remaining value-level rules.
+  // (2) Canonical serializability serial gate. Runs after the routeResolver
+  // key check; short-circuits the remaining value-level rules.
   try {
     assertCanonicalSerializable(m);
   } catch (e) {
@@ -402,7 +398,7 @@ export function validateLifecycleScenarioManifest(
       err(
         'TERMINAL_STATUSES_EMPTY',
         '$.terminalStatuses',
-        'terminalStatuses must declare at least one terminal status (plan §6.2.9)',
+        'terminalStatuses must declare at least one terminal status',
       ),
     );
   }
@@ -574,7 +570,7 @@ function collectMappingPathErrors(
           'UNSAFE_MAPPING_PATH',
           `${basePath}.${key}`,
           `mapping path "${value}" traverses a forbidden segment ` +
-            '(__proto__|prototype|constructor) — plan §6.9.5',
+            '(__proto__|prototype|constructor)',
         ),
       );
     }
