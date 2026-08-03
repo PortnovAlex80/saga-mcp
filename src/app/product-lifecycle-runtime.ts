@@ -112,6 +112,7 @@ import {
 import { SqliteManagedProductionLedger } from '../process-modules/persistence/sqlite-managed-production-ledger.js';
 import { SqliteProcessProductRepository } from '../process-modules/persistence/sqlite-process-product-repository.js';
 import { SqliteProcessProductRepositoryV2 } from '../process-modules/persistence/sqlite-process-product-repository-v2.js';
+import { SqliteWorkplaceProductAdapter } from '../process-modules/persistence/sqlite-workplace-product-adapter.js';
 import { SqliteNodeRunRepository } from '../process-modules/persistence/sqlite-node-run-repository.js';
 import { SqliteExactCandidateAcceptance } from '../process-modules/persistence/sqlite-exact-candidate-acceptance.js';
 import { SqliteProcessOutcomeCertificateRepository } from '../process-modules/persistence/sqlite-process-outcome-certificate-repository.js';
@@ -225,6 +226,16 @@ export function createProductLifecycleRuntime(
   const lifecycleRunRepo = new SqliteLifecycleRunRepository(db);
   const processProductRepo = new SqliteProcessProductRepository(db);
   const processProductRepoV2 = new SqliteProcessProductRepositoryV2(db);
+  // T8 — WorkplaceProductPort: universal cross-module product handoff ("one
+  // desk for all workshops"). A THIN WRAPPER over the existing
+  // saga3_process_products table (via SqliteProcessProductRepositoryV2). Purely
+  // ADDITIVE — no new tables, no schema changes, no change to the four legacy
+  // submit tools. Constructed here and shared via sharedDeps so future module
+  // code CAN submit/read cross-module products through one lingua-franca port.
+  const workplaceProductPort = new SqliteWorkplaceProductAdapter(
+    db,
+    processProductRepoV2,
+  );
   // Wire the v2 driver-neutral envelope path (driver-neutral execution-context
   // envelopes + explicit ModuleCompletion persistence via completeV2) into all
   // four executors below. `SqliteNodeRunRepository` implements
@@ -410,6 +421,7 @@ export function createProductLifecycleRuntime(
     executorV2Options,
     runtimePersistence,
     exactCandidateAcceptance,
+    workplaceProductPort,
   };
   const registries: ModuleRegistries = {
     kernelHandlers,

@@ -41,6 +41,7 @@ import type { SqliteProcessProductRepository } from '../process-modules/persiste
 import type { SqliteExactCandidateAcceptance } from '../process-modules/persistence/sqlite-exact-candidate-acceptance.js';
 import type { Saga3DiscoveryRuntimePersistence } from './discovery/infrastructure/saga3-discovery-runtime-port.js';
 import type { ProductRef } from '../process-modules/domain/spi/index.js';
+import type { WorkplaceProductPort } from '../process-modules/application/workplace-product-port.js';
 
 /**
  * The four registries that register functions populate. Constructed once in
@@ -95,4 +96,14 @@ export interface ModuleSharedDeps {
   readonly runtimePersistence: Saga3DiscoveryRuntimePersistence;
   /** Exact-candidate acceptance — needed by the shared kernel executor. */
   readonly exactCandidateAcceptance: SqliteExactCandidateAcceptance;
+
+  /**
+   * T8 — Universal cross-module product handoff port ("one desk for all
+   * workshops"). Backed by the existing `saga3_process_products` table via
+   * `SqliteWorkplaceProductAdapter`. Purely ADDITIVE: future module code MAY
+   * use it for cross-module submit + read; existing submit tools and their
+   * tables are unchanged. Optional so legacy/test paths that do not construct
+   * the adapter keep working — modules should feature-detect before use.
+   */
+  readonly workplaceProductPort?: WorkplaceProductPort;
 }

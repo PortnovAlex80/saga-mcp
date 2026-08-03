@@ -479,11 +479,19 @@ test('tracker uses extracted ports and preserves the LM Studio hard rule fix', (
   const trackerPath = path.join(process.cwd(), 'tracker-view', 'tracker-view.mjs');
   const source = readFileSync(trackerPath, 'utf8');
 
+  // Core application wiring stays in tracker-view.mjs.
   assert.match(source, /createSagaControlApplication/);
   assert.match(source, /sagaApplication\.listProjects\(\)/);
   assert.match(source, /sagaApplication\.loadProjectBoard/);
   assert.match(source, /sagaApplication\.startEngine/);
   assert.doesNotMatch(source, /function killEngineTree\(/);
+
+  // T10 step 3: the model-management code (LM Studio hard rule + settings.json
+  // templates) was extracted into tracker-view/model-management.mjs. The
+  // `payload.env.<SLOT> = modelId` assignments and CLAUDE_SETTINGS_LMSTUDIO_TPL
+  // now live there; assert against the extracted module instead of the core file.
+  const modelMgmtPath = path.join(process.cwd(), 'tracker-view', 'model-management.mjs');
+  const modelMgmt = readFileSync(modelMgmtPath, 'utf8');
 
   for (const slot of [
     'ANTHROPIC_DEFAULT_HAIKU_MODEL',
@@ -491,9 +499,9 @@ test('tracker uses extracted ports and preserves the LM Studio hard rule fix', (
     'ANTHROPIC_DEFAULT_OPUS_MODEL',
     'CLAUDE_CODE_SUBAGENT_MODEL',
   ]) {
-    assert.match(source, new RegExp(`payload\\.env\\.${slot} = modelId`));
+    assert.match(modelMgmt, new RegExp(`payload\\.env\\.${slot} = modelId`));
   }
-  assert.match(source, /CLAUDE_SETTINGS_LMSTUDIO_TPL/);
+  assert.match(modelMgmt, /CLAUDE_SETTINGS_LMSTUDIO_TPL/);
 });
 
 
