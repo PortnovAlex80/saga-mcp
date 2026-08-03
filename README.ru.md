@@ -126,6 +126,8 @@ saga-mcp **не заменяет** классическую архитектур
 
 ## Скиллы
 
+22 скилла в каталоге `skills/`. Основные роли:
+
 | Скилл | Роль | Когда |
 |---|---|---|
 | **saga-start** | Создание проекта + привязка репозитория | Первый запуск |
@@ -142,12 +144,14 @@ saga-mcp **не заменяет** классическую архитектур
 | **saga-release** | Чеклист релиза (10 секций) | Подготовка релиза |
 | **senior-analyst** | Референс-методология (BABOK/Wiegers) | Загружается оркестратором |
 
+Дополнительные скиллы: saga-patrol (мониторинг), saga-explorer (исследование кода), autonomous-recovery (автовосстановление), saga-bug-diagnostician, saga-diagnostician, saga-code-reviewer, saga-perf-tuner, saga-readiness-checker, saga-retrospective. Полный список — в `skills/`.
+
 ---
 
 ## Тестирование
 
 ```bash
-npm test                    # 163 теста
+npm test                    # 3170+ тестов
 npm run cgad-lint -- <db>   # 18 правил контроля (cgad-spec-lint v1.4.0)
 ```
 

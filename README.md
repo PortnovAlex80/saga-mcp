@@ -92,7 +92,7 @@ A governance platform for parallel LLM coding agents. SQLite-backed, MCP-native,
 > - **Dispatcher** (worker_next/worker_done/merge-lock) for parallel agent orchestration
 > - **Episode state machine** (7 stages with hard gates: discovery→formalization→planning→development→verification→integration→completed)
 > - **CGAD enforcement layer** (Contract-Governed Agentic Development): 18 lint rules, 4-valued verdict, RiskClass computation, semantic conflict detection, runtime observations
-> - **13 skills** (saga-start, saga-kickstart, saga-product, saga-architect, saga-analyst, saga-planner, saga-worker, saga-verifier, saga-orchestrator, saga-dispatch, saga-tracker, saga-release, senior-analyst)
+> - **22 skills** (saga-start, saga-kickstart, saga-product, saga-architect, saga-analyst, saga-planner, saga-worker, saga-verifier, saga-orchestrator, saga-dispatch, saga-tracker, saga-release, senior-analyst + 9 diagnostic/patrol/recovery skills)
 > - **14 artifact types**, **7 trace link types**, **trusted provider registry**
 > - **Product discovery cycle**: hypothesis → metric → observation → hit/kill
 >
@@ -316,8 +316,8 @@ mcp__saga__worker_next({ worker_id: "smoke", project_id: 1 })
 ## Testing
 
 ```bash
-npm test                    # 163 tests (tsc + node --test)
-npm run cgad-lint -- <db>   # Run cgad-spec-lint v1.3.0 (16 rules)
+npm test                    # 3170+ tests (tsc + node --test)
+npm run cgad-lint -- <db>   # Run cgad-spec-lint v1.4.0 (18 rules)
 ```
 
 ---
