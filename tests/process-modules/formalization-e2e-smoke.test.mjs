@@ -1,19 +1,25 @@
 // P6 tests: Formalization E2E smoke against a real artifact graph.
 //
-// Unlike P5 (which uses a fake graph port), these tests seed REAL artifact
-// rows + traces + tasks into the saga DB and run the FULL Saga3FormalizationEngine
-// (composition-root entry point) end-to-end. This proves the universality claim:
-// Formalization mounts through the same OrchestrationEngine port, hits the same
-// ProcessRun persistence, and issues the same generic certificate — no special-
-// casing, no module-specific code paths in the Runtime.
+// These tests seed REAL artifact rows + traces + tasks into the saga DB and
+// drive the Formalization Process Module end-to-end through
+// LegacyFormalizationProcessAdapter.execute() (the settlement+certificate step
+// the composition root mounts via the ProcessModuleExecutor SPI). This proves
+// the universality claim: Formalization hits the same ProcessRun persistence
+// and issues the same generic certificate — no special-casing, no module-
+// specific code paths in the Runtime.
+//
+// (The retired Saga3FormalizationEngine was a one-shot wrapper around exactly
+// this adapter call: process_run_start -> adapter.execute -> project result.
+// After the saga4 cutover the engine file is gone; these tests now exercise
+// the adapter directly, which is the real settlement boundary.)
 //
 // Scenarios:
-//   - happy path: complete graph → outcome 'formalized' + certificate issued
-//   - clarification-required: missing PRD → outcome 'clarification-required'
-//   - inconsistent: missing trace edge → outcome 'inconsistent'
-//   - restart: re-run on the same epic → existing run + certificate replay
-//   - duplicate start: process_run_start with the same key → replayed=true
-//   - certificate replay: re-issue same hash → replayed=true, no second row
+//   - happy path: complete graph -> outcome 'formalized' + certificate issued
+//   - clarification-required: missing PRD -> outcome 'clarification-required'
+//   - inconsistent: missing trace edge -> outcome 'inconsistent'
+//   - restart: re-run on the same epic -> existing terminal run (no second row)
+//   - duplicate start: process_run_start with the same key -> replayed=true
+//   - certificate replay: re-issue same hash -> replayed=true, no second row
 
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -29,9 +35,6 @@ const { SqliteProcessRunRepository } = await import(
 const { SqliteProcessOutcomeCertificateRepository } = await import(
   '../../dist/process-modules/persistence/sqlite-process-outcome-certificate-repository.js'
 );
-const { Saga3FormalizationEngine } = await import(
-  '../../dist/engines/saga3-formalization-engine.js'
-);
 const {
   LegacyFormalizationProcessAdapter,
   hashFormalizationCase,
@@ -41,9 +44,16 @@ const {
 const { ReferenceFormalizationSettlementPolicy, SqliteFormalizationArtifactGraph } = await import(
   '../../dist/modules/formalization/infrastructure/sqlite-formalization-kernel.js'
 );
-const { FORMALIZATION_CASE_SCHEMA } = await import(
+const {
+  FORMALIZATION_CASE_SCHEMA,
+  FORMALIZATION_PROCESS_MODULE_REF,
+} = await import(
   '../../dist/process-modules/modules/formalization/formalization-schemas.js'
 );
+
+const PROJECT_ID = 1;
+const DISCOVERY_EPIC_ID = 50;
+const FORMALIZATION_EPIC_ID = 100;
 
 function fixture(graphSeed = 'complete') {
   const temp = mkdtempSync(path.join(os.tmpdir(), 'saga3-forme2e-'));
@@ -125,102 +135,147 @@ function seedGraph(db, epicId, mode) {
   ).run(70, epicId, 'PRD task', taskStatus, 'high', taskIntegration);
 }
 
-function buildEngine(db) {
+/**
+ * Default FormalizationCase: discovery said 'go'. Individual tests can override
+ * discoveryOutcome by passing a partial case-fields override.
+ */
+function defaultCase(overrides = {}) {
+  return {
+    schemaVersion: FORMALIZATION_CASE_SCHEMA,
+    discoveryEpicId: DISCOVERY_EPIC_ID,
+    formalizationEpicId: FORMALIZATION_EPIC_ID,
+    discoveryCertificateRef: 'certificate:5',
+    discoveryCertificateHash: 'd'.repeat(64),
+    discoveryOutcome: 'go',
+    initiatedBy: 'operator',
+    ...overrides,
+  };
+}
+
+/**
+ * Drive one Formalization settlement end-to-end via the adapter:
+ *   1. process_run_start (find-or-create the ProcessRun).
+ *   2. If the run is already terminal, short-circuit (restart path).
+ *   3. Otherwise LegacyFormalizationProcessAdapter.execute() runs settlement +
+ *      issues the certificate + drives the run to completed.
+ * Returns the ProcessRun row, the certificate (if any), and the adapter
+ * ProcessModuleRunResult (null on the restart short-circuit).
+ */
+async function runSettlement(db, casePayload = defaultCase()) {
   const processRunRepo = new SqliteProcessRunRepository(db);
   const certificateRepo = new SqliteProcessOutcomeCertificateRepository(db);
-  const engine = new Saga3FormalizationEngine({
-    db, processRunRepo, certificateRepo,
-    resolveFormalizationCase: command => ({
-      discoveryEpicId: 50,
-      formalizationEpicId: command.epicId,
-      discoveryCertificateRef: 'certificate:5',
-      discoveryCertificateHash: 'd'.repeat(64),
-      discoveryOutcome: 'go',
-      initiatedBy: 'operator',
-    }),
+  const graph = new SqliteFormalizationArtifactGraph(db);
+  const policy = new ReferenceFormalizationSettlementPolicy();
+  const adapter = new LegacyFormalizationProcessAdapter({
+    graph, policy, processRunRepo, certificateRepo,
   });
-  return { engine, processRunRepo, certificateRepo };
+  const inputHash = hashFormalizationCase(casePayload);
+  const startResult = processRunRepo.start({
+    moduleRef: FORMALIZATION_PROCESS_MODULE_REF,
+    executorKind: 'legacy-adapter',
+    input: { schema: FORMALIZATION_CASE_SCHEMA, payload: casePayload, contentHash: inputHash },
+    projectedStage: 'formalization',
+    installationId: null,
+    packageDigest: null,
+    invocationContext: {
+      projectId: PROJECT_ID,
+      epicId: FORMALIZATION_EPIC_ID,
+      initiatedBy: casePayload.initiatedBy,
+      idempotencyKey: `formalization-epic-${FORMALIZATION_EPIC_ID}`,
+    },
+  });
+  const runId = startResult.record.id;
+
+  // Restart short-circuit: a terminal run already has its outcome + certificate.
+  if (['completed', 'failed', 'cancelled'].includes(startResult.record.status)) {
+    return {
+      run: processRunRepo.read(runId),
+      certificate: certificateRepo.readByProcessRun(runId),
+      runResult: null,
+      processRunRepo, certificateRepo,
+    };
+  }
+
+  const runResult = await adapter.execute(undefined, {
+    projectId: PROJECT_ID,
+    epicId: FORMALIZATION_EPIC_ID,
+    processRunId: runId,
+    inputPayload: casePayload,
+    inputHash,
+    initiatedBy: casePayload.initiatedBy,
+  });
+  return {
+    run: processRunRepo.read(runId),
+    certificate: certificateRepo.readByProcessRun(runId),
+    runResult,
+    processRunRepo, certificateRepo,
+  };
 }
 
 // --- Tests ------------------------------------------------------------------
 
-test('E2E happy path: complete graph → formalized + certificate', async () => {
+test('E2E happy path: complete graph -> formalized + certificate', async () => {
   const { temp, db } = fixture('complete');
   try {
-    const { engine, processRunRepo, certificateRepo } = buildEngine(db);
-    const result = await engine.run({ projectId: 1, epicId: 100 });
-    assert.equal(result.outcome, 'formalized');
-    assert.equal(result.finalStage, 'formalization');
-    assert.equal(result.reason, 'completed');
-    assert.equal(result.processModule.kind, 'formalization');
-    assert.equal(result.processOutcome.authority, 'formalization_settlement_policy');
+    const { run, certificate, runResult } = await runSettlement(db);
+    assert.equal(runResult.outcome, 'formalized');
+    assert.equal(run.status, 'completed');
+    assert.equal(run.localOutcome, 'formalized');
+    assert.ok(run.certificateHash);
 
-    // The ProcessRun is terminal + has a certificate.
-    const runs = processRunRepo.list(1, 100);
-    assert.equal(runs.length, 1);
-    assert.equal(runs[0].status, 'completed');
-    assert.equal(runs[0].localOutcome, 'formalized');
-    assert.ok(runs[0].certificateHash);
-
-    const cert = certificateRepo.readByProcessRun(runs[0].id);
-    assert.ok(cert);
-    assert.equal(cert.decision, 'formalized');
-    assert.equal(cert.authority, 'formalization_settlement_policy');
+    assert.ok(certificate);
+    assert.equal(certificate.decision, 'formalized');
+    assert.equal(certificate.authority, 'formalization_settlement_policy');
   } finally { cleanup(temp); }
 });
 
 test('E2E clarification-required: missing PRD', async () => {
   const { temp, db } = fixture('no-prd');
   try {
-    const { engine } = buildEngine(db);
-    const result = await engine.run({ projectId: 1, epicId: 100 });
-    assert.equal(result.outcome, 'clarification-required');
-    assert.equal(result.processOutcome.code, 'clarification-required');
+    const { runResult } = await runSettlement(db);
+    assert.equal(runResult.outcome, 'clarification-required');
   } finally { cleanup(temp); }
 });
 
 test('E2E clarification-required: missing SRS', async () => {
   const { temp, db } = fixture('no-srs');
   try {
-    const { engine } = buildEngine(db);
-    const result = await engine.run({ projectId: 1, epicId: 100 });
-    assert.equal(result.outcome, 'clarification-required');
+    const { runResult } = await runSettlement(db);
+    assert.equal(runResult.outcome, 'clarification-required');
   } finally { cleanup(temp); }
 });
 
-test('E2E inconsistent: traceability gap (UC missing covers→FR)', async () => {
+test('E2E inconsistent: traceability gap (UC missing covers->FR)', async () => {
   const { temp, db } = fixture('trace-gap-uc-fr');
   try {
-    const { engine } = buildEngine(db);
-    const result = await engine.run({ projectId: 1, epicId: 100 });
-    assert.equal(result.outcome, 'inconsistent');
+    const { runResult } = await runSettlement(db);
+    assert.equal(runResult.outcome, 'inconsistent');
   } finally { cleanup(temp); }
 });
 
 test('E2E inconsistent: formalization tasks not ready', async () => {
   const { temp, db } = fixture('tasks-not-ready');
   try {
-    const { engine } = buildEngine(db);
-    const result = await engine.run({ projectId: 1, epicId: 100 });
-    assert.equal(result.outcome, 'inconsistent');
+    const { runResult } = await runSettlement(db);
+    assert.equal(runResult.outcome, 'inconsistent');
   } finally { cleanup(temp); }
 });
 
 test('E2E restart: re-run on the same epic returns the persisted terminal result', async () => {
   const { temp, db } = fixture('complete');
   try {
-    const { engine, processRunRepo, certificateRepo } = buildEngine(db);
-    const first = await engine.run({ projectId: 1, epicId: 100 });
-    assert.equal(first.outcome, 'formalized');
+    const first = await runSettlement(db);
+    assert.equal(first.runResult.outcome, 'formalized');
 
-    // Re-run — the ProcessRun is already terminal, the engine short-circuits
+    // Re-run — the ProcessRun is already terminal, runSettlement short-circuits
     // and returns the persisted outcome. No second certificate is issued.
-    const second = await engine.run({ projectId: 1, epicId: 100 });
-    assert.equal(second.outcome, 'formalized');
+    const second = await runSettlement(db);
+    assert.equal(second.run.localOutcome, 'formalized');
+    assert.equal(second.runResult, null, 'restart short-circuited without re-running settlement');
 
-    const runs = processRunRepo.list(1, 100);
+    const runs = first.processRunRepo.list(PROJECT_ID, FORMALIZATION_EPIC_ID);
     assert.equal(runs.length, 1, 'no second ProcessRun row');
-    const certs = certificateRepo.list(1, 100);
+    const certs = first.certificateRepo.list(PROJECT_ID, FORMALIZATION_EPIC_ID);
     assert.equal(certs.length, 1, 'no second certificate');
   } finally { cleanup(temp); }
 });
@@ -233,26 +288,14 @@ test('E2E restart: re-run on the same epic returns the persisted terminal result
 test('E2E weak idea: non-go discovery outcome still reaches formalization settlement', async () => {
   const { temp, db } = fixture('complete');
   try {
-    const processRunRepo = new SqliteProcessRunRepository(db);
-    const certificateRepo = new SqliteProcessOutcomeCertificateRepository(db);
-    const engine = new Saga3FormalizationEngine({
-      db, processRunRepo, certificateRepo,
-      resolveFormalizationCase: command => ({
-        discoveryEpicId: 50,
-        formalizationEpicId: command.epicId,
-        discoveryCertificateRef: 'certificate:5',
-        discoveryCertificateHash: 'd'.repeat(64),
-        // Discovery said "the idea needs clarification". Formalization must
-        // still run settlement on the contract, not reject on the decision.
-        discoveryOutcome: 'clarify',
-        initiatedBy: 'operator',
-      }),
-    });
-    const result = await engine.run({ projectId: 1, epicId: 100 });
+    const { runResult } = await runSettlement(db, defaultCase({
+      // Discovery said "the idea needs clarification". Formalization must
+      // still run settlement on the contract, not reject on the decision.
+      discoveryOutcome: 'clarify',
+    }));
     // Settlement reached a real decision on the contract (formalized),
     // proving the gate did not throw on the non-go discovery outcome.
-    assert.equal(result.outcome, 'formalized');
-    assert.equal(result.reason, 'completed');
+    assert.equal(runResult.outcome, 'formalized');
   } finally { cleanup(temp); }
 });
 
@@ -260,20 +303,16 @@ test('E2E duplicate start: process_run_start with same idempotency_key replays',
   const { temp, db } = fixture('complete');
   try {
     const processRunRepo = new SqliteProcessRunRepository(db);
-    const casePayload = {
-      schemaVersion: FORMALIZATION_CASE_SCHEMA,
-      discoveryEpicId: 50, formalizationEpicId: 100,
-      discoveryCertificateRef: 'certificate:5',
-      discoveryCertificateHash: 'd'.repeat(64),
-      discoveryOutcome: 'go', initiatedBy: 'operator',
-    };
+    const casePayload = defaultCase();
     const start = (key) => processRunRepo.start({
-      moduleRef: { name: 'solution-formalization', version: '1.0.0' },
+      moduleRef: FORMALIZATION_PROCESS_MODULE_REF,
       executorKind: 'legacy-adapter',
       input: { schema: FORMALIZATION_CASE_SCHEMA, payload: casePayload,
         contentHash: hashFormalizationCase(casePayload) },
       projectedStage: 'formalization',
-      invocationContext: { projectId: 1, epicId: 100, initiatedBy: 'operator', idempotencyKey: key },
+      installationId: null,
+      packageDigest: null,
+      invocationContext: { projectId: PROJECT_ID, epicId: FORMALIZATION_EPIC_ID, initiatedBy: 'operator', idempotencyKey: key },
     });
     const a = start('formalization-epic-100');
     const b = start('formalization-epic-100');
@@ -285,26 +324,24 @@ test('E2E duplicate start: process_run_start with same idempotency_key replays',
 test('E2E certificate replay: re-issue same hash returns replayed=true', async () => {
   const { temp, db } = fixture('complete');
   try {
-    const { engine, certificateRepo } = buildEngine(db);
-    await engine.run({ projectId: 1, epicId: 100 });
-    const cert = certificateRepo.list(1, 100)[0];
+    const { certificate, certificateRepo } = await runSettlement(db);
     // Re-issue the exact same payload + hash.
     const { replayed } = certificateRepo.issue({
-      processRunId: cert.processRunId,
-      moduleRef: { name: 'solution-formalization', version: '1.0.0' },
-      projectId: 1, epicId: 100,
-      payload: cert.certificatePayload,
-      certificateHash: cert.certificateHash,
+      processRunId: certificate.processRunId,
+      moduleRef: FORMALIZATION_PROCESS_MODULE_REF,
+      projectId: PROJECT_ID, epicId: FORMALIZATION_EPIC_ID,
+      payload: certificate.certificatePayload,
+      certificateHash: certificate.certificateHash,
       authority: 'formalization_settlement_policy',
     });
     assert.equal(replayed, true);
-    assert.equal(certificateRepo.list(1, 100).length, 1);
+    assert.equal(certificateRepo.list(PROJECT_ID, FORMALIZATION_EPIC_ID).length, 1);
   } finally { cleanup(temp); }
 });
 
 test('E2E: adapter drives the ProcessRun through the full lifecycle', async () => {
-  // Direct adapter invocation (not through the engine) — verifies the
-  // preparing→running→settling→completed path on a fresh ProcessRun.
+  // Direct adapter invocation — verifies the
+  // preparing->running->settling->completed path on a fresh ProcessRun.
   const { temp, db } = fixture('complete');
   try {
     const processRunRepo = new SqliteProcessRunRepository(db);
@@ -314,24 +351,20 @@ test('E2E: adapter drives the ProcessRun through the full lifecycle', async () =
     const adapter = new LegacyFormalizationProcessAdapter({
       graph, policy, processRunRepo, certificateRepo,
     });
-    const casePayload = {
-      schemaVersion: FORMALIZATION_CASE_SCHEMA,
-      discoveryEpicId: 50, formalizationEpicId: 100,
-      discoveryCertificateRef: 'certificate:5',
-      discoveryCertificateHash: 'd'.repeat(64),
-      discoveryOutcome: 'go', initiatedBy: 'operator',
-    };
+    const casePayload = defaultCase();
     const { record } = processRunRepo.start({
-      moduleRef: { name: 'solution-formalization', version: '1.0.0' },
+      moduleRef: FORMALIZATION_PROCESS_MODULE_REF,
       executorKind: 'legacy-adapter',
       input: { schema: FORMALIZATION_CASE_SCHEMA, payload: casePayload,
         contentHash: hashFormalizationCase(casePayload) },
       projectedStage: 'formalization',
-      invocationContext: { projectId: 1, epicId: 100, initiatedBy: 'operator', idempotencyKey: 'k' },
+      installationId: null,
+      packageDigest: null,
+      invocationContext: { projectId: PROJECT_ID, epicId: FORMALIZATION_EPIC_ID, initiatedBy: 'operator', idempotencyKey: 'k' },
     });
     assert.equal(record.status, 'created');
     const result = await adapter.execute(undefined, {
-      projectId: 1, epicId: 100, processRunId: record.id,
+      projectId: PROJECT_ID, epicId: FORMALIZATION_EPIC_ID, processRunId: record.id,
       inputPayload: casePayload,
       inputHash: hashFormalizationCase(casePayload),
       initiatedBy: 'operator',

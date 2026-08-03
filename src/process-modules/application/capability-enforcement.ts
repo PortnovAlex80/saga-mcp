@@ -80,10 +80,11 @@
  *
  * This list MUST stay in sync with:
  *   - the inline `builtin` array previously in `tracker-view/claude-runner.mjs`,
- *   - the file-tool entries inside `src/engines/saga3-discovery-engine.ts`
- *     `DISCOVERY_ALLOWED_TOOLS` (the `Write`/`Read`/`Edit`/`Bash`/`Glob`/
+ *   - the file-tool rows that the retired `src/engines/saga3-discovery-engine.ts`
+ *     `DISCOVERY_ALLOWED_TOOLS` carried (the `Write`/`Read`/`Edit`/`Bash`/`Glob`/
  *     `Grep` rows, kept there "for documentation and skill sync, not for
- *     gateway enforcement"),
+ *     gateway enforcement"); that engine is gone (saga4 cutover) but the
+ *     canonical builtin surface lives on here,
  *   - any Process Module execution profile that lists builtins inside its
  *     `allowedTools` for documentation/skill-sync purposes.
  *

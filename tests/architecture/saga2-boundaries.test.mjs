@@ -549,50 +549,6 @@ test('composition root selects the lifecycle engine unconditionally', () => {
   assert.doesNotMatch(compositionSrc, /isSaga3FormalizationMode/);
 });
 
-test('D1: saga3-discovery engine reuses worker substrate without duplicating Saga 2 pump logic', () => {
-  // D1 boundary: the engine legitimately imports WorkerExecutorFactory +
-  // persistence (it dispatches one discovery worker through the existing
-  // ClaudeBoardRunner substrate — that is the whole point of reusing infra).
-  // But it must NOT carry Saga 2 product-orchestrator concerns: no stage
-  // transition logic, no recovery tree, no advisor, no settlement policy. Those
-  // belong to later D-slices. This test guards the engine against silently
-  // becoming a second Saga 2 pump.
-  const engineSrc = readFileSync(
-    path.resolve(import.meta.dirname, '..', '..', 'src', 'engines', 'saga3-discovery-engine.ts'),
-    'utf8',
-  );
-  // Reuses the existing worker-execution substrate (roadmap §8.D1).
-  assert.match(engineSrc, /WorkerExecutorFactory/);
-  assert.match(engineSrc, /workerExecutorFactory/);
-  assert.match(engineSrc, /concurrency: 1/);
-  // Must NOT import Saga 2 product-policy modules.
-  assert.doesNotMatch(engineSrc, /from\s+['"][^'"]*orchestrate(\.js)?['"]/);
-  assert.doesNotMatch(engineSrc, /generateNextForCompletedTask|workflow_generate_next/);
-  assert.doesNotMatch(engineSrc, /episode_transition|tryAdvanceStage/);
-  // D2/D3/D4/D5 concerns are explicitly deferred (no advisor/settlement/normalize).
-  assert.doesNotMatch(engineSrc, /AssessDiscoveryReadiness|DiscoveryOutcomeCertificate|SettlementPolicy/);
-  // It implements the shared port, not a parallel one.
-  assert.match(engineSrc, /implements OrchestrationEngine/);
-  assert.match(engineSrc, /discovery_only/);
-});
-
-test('D1: saga3-discovery engine is pure — no direct SQLite / getDb / concrete repository', () => {
-  // Phase B pure-engine boundary, restored by the D1 correction. The engine
-  // must consume the Saga3DiscoveryRuntimePersistence PORT only — no getDb,
-  // no .prepare, no concrete Saga3ProposalRepository construction. This guard
-  // fails the moment someone reintroduces inline SQL into the engine.
-  const engineSrc = readFileSync(
-    path.resolve(import.meta.dirname, '..', '..', 'src', 'engines', 'saga3-discovery-engine.ts'),
-    'utf8',
-  );
-  assert.doesNotMatch(engineSrc, /\bgetDb\b/);
-  assert.doesNotMatch(engineSrc, /\.prepare\s*\(/);
-  assert.doesNotMatch(engineSrc, /new Saga3ProposalRepository/);
-  // The port is the only persistence surface the engine is allowed.
-  assert.match(engineSrc, /runtimePersistence/);
-  assert.match(engineSrc, /Saga3DiscoveryRuntimePersistence/);
-});
-
 test('D0: OrchestrationRunResult contract is extended backward-compatibly for partial-pipeline runs', () => {
   const portSrc = readFileSync(
     path.resolve(import.meta.dirname, '..', '..', 'src', 'application', 'ports', 'orchestration-engine.ts'),
@@ -606,65 +562,6 @@ test('D0: OrchestrationRunResult contract is extended backward-compatibly for pa
   assert.match(portSrc, /pipelineScope\?/);
   assert.match(portSrc, /scopeCompleted\?/);
   assert.match(portSrc, /outcome\?/);
-});
-
-test('composition root selects the engine through the real wiring, not a source regex (saga3-discovery)', async () => {
-  // Real selection test: build the application with an explicit mode and run an
-  // episode. This catches wiring errors a source-regex test cannot. We inject
-  // fakes so no real process/worker/DB is touched.
-  const { Saga3DiscoveryEngine } = await import('../../dist/engines/saga3-discovery-engine.js');
-  const { createSagaApplication } = await import(
-    '../../dist/application/saga-application.js'
-  );
-
-  let workerFactoryCalls = 0;
-  const heartbeats = [];
-  // D1 Saga3DiscoveryEngine: observable through its OWN distinct behaviour — the
-  // duplicate-lock exit path. This proves the engine was selected and its run()
-  // executed (not just that the source contains the right string). A duplicate
-  // lock makes the engine exit before touching the worker substrate, so the
-  // worker factory is never constructed.
-  const app = createSagaApplication({
-    engine: new Saga3DiscoveryEngine({
-      config: fullConfig(),
-      workerExecutorFactory: () => { workerFactoryCalls += 1; throw new Error('must not build worker on duplicate lock'); },
-      persistence: {
-        episodes: { currentStage: () => 'discovery', readOpenIntentByEpic: () => null },
-        tasks: {}, executions: {}, workspaces: {},
-      },
-      host: {
-        processId: 7,
-        workerPaths: { sagaEntry: '/e', sagaSkillRoot: '/s' },
-        now: () => 0,
-        sleep: async () => {},
-        heartbeat: (_ctx, event, msg) => heartbeats.push([event, msg]),
-        acquireEngineLock: () => ({ status: 'duplicate', ownerPid: 888 }),
-        releaseEngineLock: () => { throw new Error('duplicate run must not release another owner lock'); },
-      },
-      // Conveyor deps (Slice 1 Zones 5-7): required by the engine deps
-      // interface even though the duplicate-lock path never reaches assignTask.
-      workAssignment: { assignTask: () => null, releaseAssignment: () => {}, countClaimable: () => 0 },
-      idGenerator: { newId: () => 'id', newTypedId: (p) => `${p}:1` },
-      machineId: 'test-host',
-    }),
-    board: { listProjects: () => [], loadProjectBoard: () => ({ epics: [], epicById: {}, tasks: [] }) },
-    engineAdministration: {
-      start() { return { projectId: 1, epicId: 2, running: true, alive: true, pid: 1, concurrency: 1, startedAt: 'x' }; },
-      stop() { return { projectId: 1, epicId: 2, running: false, alive: false, pid: null, concurrency: null, startedAt: null }; },
-      restart() { return { projectId: 1, epicId: 2, running: true, alive: true, pid: 1, concurrency: 1, startedAt: 'x' }; },
-      setConcurrency() {}, status() { return { projectId: 1, epicId: 2, running: false, alive: false, pid: null, concurrency: null, startedAt: null }; },
-      dispose() {},
-    },
-    close: () => {},
-  });
-
-  const result = await app.runEpisode({ projectId: 1, epicId: 2, concurrency: 1 });
-  // D1 engine owns its own lock check — the DUPLICATE_EXIT heartbeat is its
-  // signature, distinct from Saga 2's identical-path but proving selection.
-  assert.equal(result.reason, 'failed');
-  assert.match(result.lastError, /PID 888/);
-  assert.equal(workerFactoryCalls, 0, 'duplicate lock must short-circuit before worker substrate');
-  assert.equal(heartbeats.some(([e]) => e === 'DUPLICATE_EXIT'), true, 'D1 engine emitted its DUPLICATE_EXIT heartbeat');
 });
 
 test('composition root throws PRODUCT_LIFECYCLE_DEPENDENCIES_REQUIRED without productLifecycle override', async () => {

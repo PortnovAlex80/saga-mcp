@@ -667,8 +667,9 @@ export class LmNodeExecutor implements NodeExecutor {
       }
       const executor = workerExecutor;
 
-      // 5. Poll loop — copied from Saga3DiscoveryEngine. The terminal verdict
-      //    combines task status + worker substrate state + wall clock.
+      // 5. Poll loop — originally patterned on the retired Saga3DiscoveryEngine.
+      //    The terminal verdict combines task status + worker substrate state +
+      //    wall clock.
       const startedAt = this.now().getTime();
       let terminal:
         | 'clean'

@@ -4,9 +4,9 @@
  * The Saga 3 discovery settlement (D4 authoritative discovery settlement)
  * layer must stay kernel-only and pure: no getDb(), no inline SQL, no worker
  * executor, no LM client, no tools-layer import. SQLite is an adapter only;
- * the engine/domain depend on ports, not on adapters. Workers must never be
- * able to mint OutcomeCertificates via an MCP handler, and the certificates
- * table has no mutation path. D4 must also not introduce a stage transition.
+ * the domain depends on ports, not on adapters. Workers must never be able to
+ * mint OutcomeCertificates via an MCP handler, and the certificates table has
+ * no mutation path. Settlement must also not introduce a stage transition.
  * This mirrors the boundary the D3 Phase B tests already guard.
  */
 import assert from 'node:assert/strict';
@@ -24,10 +24,6 @@ function assertNoDbInSource(file, label) {
   assert.doesNotMatch(source, /\b(CREATE TABLE|INSERT INTO|UPDATE\s+\w+\s+SET|DELETE FROM)\b/i,
     `${label} must not contain inline SQL`);
 }
-
-test('D4 architecture: discovery engine stays db-free (no getDb, no inline SQL)', () => {
-  assertNoDbInSource(['engines', 'saga3-discovery-engine.ts'], 'saga3-discovery-engine');
-});
 
 test('D4 architecture: settlement service stays db-free (no getDb, no inline SQL)', () => {
   assertNoDbInSource(['modules', 'discovery', 'application', 'discovery-settlement-service.ts'], 'discovery-settlement-service');
@@ -91,8 +87,8 @@ test('D4 architecture: outcome certificates table has no mutation (UPDATE) path'
     'settlement repository must not UPDATE the outcome certificates table (certificates are immutable)');
 });
 
-test('D4 architecture: D4 must NOT add a stage transition', () => {
-  const source = readFileSync(SRC('engines', 'saga3-discovery-engine.ts'), 'utf8');
+test('D4 architecture: settlement service must NOT reference a stage transition', () => {
+  const source = readFileSync(SRC('modules', 'discovery', 'application', 'discovery-settlement-service.ts'), 'utf8');
   assert.doesNotMatch(source, /episode_transition|finalStage.*formalization|'formalization'/,
-    'D4 must not introduce a stage transition in the discovery engine');
+    'settlement service must not introduce a stage transition');
 });

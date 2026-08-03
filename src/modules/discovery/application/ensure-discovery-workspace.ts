@@ -27,9 +27,11 @@
  * green.
  * ============================================================================
  *
- * Pure workspace-seeding logic for one discovery epic. Extracted from
- * saga3-discovery-engine.ensureDiscoveryWorkspace so it can be unit-tested
- * without spinning up the whole engine (the engine delegates here).
+ * Pure workspace-seeding logic for one discovery epic. Originally extracted
+ * from the retired saga3-discovery-engine.ensureDiscoveryWorkspace so it could
+ * be unit-tested without spinning up the whole engine; the engine is gone
+ * (saga4 cutover) but this logic is still invoked by the discovery workspace
+ * materializer.
  *
  * Responsibilities (all idempotent — restart-safe, skips existing files):
  *   1. Copy ALL static templates from the discovery package resources

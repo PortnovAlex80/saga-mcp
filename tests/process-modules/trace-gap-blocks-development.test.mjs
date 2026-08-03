@@ -13,18 +13,21 @@
 //
 //   Half A (real SQLite graph + full settlement):
 //     Seed a formalization episode with a deliberately broken canonical trace
-//     edge. Drive the REAL Saga3FormalizationEngine (composition-root entry
-//     point) end-to-end. Assert: findFirstTraceabilityGap detects the gap;
-//     the settlement decision is `inconsistent`; no `formalized` certificate is
-//     issued; the persisted ProcessRun outcome is `inconsistent` (not formalized).
+//     edge. Drive the Formalization settlement step end-to-end via
+//     LegacyFormalizationProcessAdapter.execute() (the SPI the composition root
+//     mounts — the retired Saga3FormalizationEngine was a one-shot wrapper
+//     around exactly this start+execute sequence). Assert:
+//     findFirstTraceabilityGap detects the gap; the settlement decision is
+//     `inconsistent`; no `formalized` certificate is issued; the persisted
+//     ProcessRun outcome is `inconsistent` (not formalized).
 //
 //   Half B (declarative routing invariant):
 //     Assert directly against the canonical Product Delivery Lifecycle that an
 //     `inconsistent` Formalization outcome routes to a TERMINAL target — not a
 //     stage — so the orchestrator can never build a Development next-stage
-//     command. Then assert empirically that running the formalization engine for
-//     the broken-graph epic leaves zero ProcessRun rows projected onto the
-//     development stage.
+//     command. Then assert empirically that running the formalization
+//     settlement for the broken-graph epic leaves zero ProcessRun rows
+//     projected onto the development stage.
 //
 // The harness mirrors tests/process-modules/formalization-e2e-smoke.test.mjs:
 // getDb() bootstraps the full schema from DB_PATH, we seed fixtures, then clean
@@ -45,14 +48,23 @@ const { SqliteProcessRunRepository } = await import(
 const { SqliteProcessOutcomeCertificateRepository } = await import(
   '../../dist/process-modules/persistence/sqlite-process-outcome-certificate-repository.js'
 );
-const { Saga3FormalizationEngine } = await import(
-  '../../dist/engines/saga3-formalization-engine.js'
+const {
+  LegacyFormalizationProcessAdapter,
+  hashFormalizationCase,
+} = await import(
+  '../../dist/process-modules/modules/formalization/legacy-formalization-process-adapter.js'
 );
 const {
   ReferenceFormalizationSettlementPolicy,
   SqliteFormalizationArtifactGraph,
 } = await import(
   '../../dist/modules/formalization/infrastructure/sqlite-formalization-kernel.js'
+);
+const {
+  FORMALIZATION_CASE_SCHEMA,
+  FORMALIZATION_PROCESS_MODULE_REF,
+} = await import(
+  '../../dist/process-modules/modules/formalization/formalization-schemas.js'
 );
 const { routeProcessOutcome } = await import(
   '../../dist/process-modules/application/lifecycle-router.js'
@@ -158,21 +170,63 @@ function seedCompleteGraphExcept(db, brokenEdge) {
   ).run(70, FORMALIZATION_EPIC_ID, 'PRD task', 'done', 'high', 'merged');
 }
 
-function buildEngine(db) {
+/**
+ * Drive one Formalization settlement end-to-end via the adapter, mirroring what
+ * the retired Saga3FormalizationEngine.run() did: resolve the case, start the
+ * ProcessRun, run LegacyFormalizationProcessAdapter.execute(), return a result
+ * shaped like the engine's OrchestrationRunResult (outcome + processModule +
+ * processOutcome). Returns the adapter RunResult so callers can inspect the
+ * raw outcome; the persisted ProcessRun + certificate are observable via the
+ * returned repositories.
+ */
+async function runSettlement(db) {
   const processRunRepo = new SqliteProcessRunRepository(db);
   const certificateRepo = new SqliteProcessOutcomeCertificateRepository(db);
-  const engine = new Saga3FormalizationEngine({
-    db, processRunRepo, certificateRepo,
-    resolveFormalizationCase: () => ({
-      discoveryEpicId: DISCOVERY_EPIC_ID,
-      formalizationEpicId: FORMALIZATION_EPIC_ID,
-      discoveryCertificateRef: 'certificate:5',
-      discoveryCertificateHash: 'd'.repeat(64),
-      discoveryOutcome: 'go',
-      initiatedBy: 'operator',
-    }),
+  const graph = new SqliteFormalizationArtifactGraph(db);
+  const policy = new ReferenceFormalizationSettlementPolicy();
+  const adapter = new LegacyFormalizationProcessAdapter({
+    graph, policy, processRunRepo, certificateRepo,
   });
-  return { engine, processRunRepo, certificateRepo };
+  const casePayload = {
+    schemaVersion: FORMALIZATION_CASE_SCHEMA,
+    discoveryEpicId: DISCOVERY_EPIC_ID,
+    formalizationEpicId: FORMALIZATION_EPIC_ID,
+    discoveryCertificateRef: 'certificate:5',
+    discoveryCertificateHash: 'd'.repeat(64),
+    discoveryOutcome: 'go',
+    initiatedBy: 'operator',
+  };
+  const inputHash = hashFormalizationCase(casePayload);
+  const startResult = processRunRepo.start({
+    moduleRef: FORMALIZATION_PROCESS_MODULE_REF,
+    executorKind: 'legacy-adapter',
+    input: { schema: FORMALIZATION_CASE_SCHEMA, payload: casePayload, contentHash: inputHash },
+    projectedStage: 'formalization',
+    installationId: null,
+    packageDigest: null,
+    invocationContext: {
+      projectId: PROJECT_ID,
+      epicId: FORMALIZATION_EPIC_ID,
+      initiatedBy: 'operator',
+      idempotencyKey: `formalization-epic-${FORMALIZATION_EPIC_ID}`,
+    },
+  });
+  const runResult = await adapter.execute(undefined, {
+    projectId: PROJECT_ID,
+    epicId: FORMALIZATION_EPIC_ID,
+    processRunId: startResult.record.id,
+    inputPayload: casePayload,
+    inputHash,
+    initiatedBy: 'operator',
+  });
+  // Engine-shaped projection for tests that asserted on result.outcome /
+  // processModule.kind / processOutcome.authority.
+  const projected = {
+    outcome: runResult.outcome,
+    processModule: { kind: 'formalization' },
+    processOutcome: { authority: runResult.authority },
+  };
+  return { result: projected, processRunRepo, certificateRepo };
 }
 
 // ============================================================================
@@ -205,12 +259,11 @@ test('Half A: graph port detects the broken UC->FR covers edge', () => {
   } finally { cleanup(temp); }
 });
 
-test('Half A: full Saga3FormalizationEngine returns `inconsistent` for the broken graph', async () => {
+test('Half A: full Formalization settlement returns `inconsistent` for the broken graph', async () => {
   const { temp, db } = makeTempDb();
   try {
     seedCompleteGraphExcept(db, 'ac-to-fr');
-    const { engine } = buildEngine(db);
-    const result = await engine.run({ projectId: PROJECT_ID, epicId: FORMALIZATION_EPIC_ID });
+    const { result } = await runSettlement(db);
     assert.equal(result.outcome, 'inconsistent');
     assert.equal(result.processModule.kind, 'formalization');
     assert.equal(result.processOutcome.authority, 'formalization_settlement_policy');
@@ -272,8 +325,7 @@ test('Half A: no `formalized` certificate is issued for the broken-graph epic', 
   const { temp, db } = makeTempDb();
   try {
     seedCompleteGraphExcept(db, 'ac-to-fr');
-    const { engine, certificateRepo } = buildEngine(db);
-    await engine.run({ projectId: PROJECT_ID, epicId: FORMALIZATION_EPIC_ID });
+    const { certificateRepo } = await runSettlement(db);
 
     const certs = certificateRepo.list(PROJECT_ID, FORMALIZATION_EPIC_ID);
     assert.equal(certs.length, 1, 'a certificate is issued for every terminal outcome');
@@ -288,8 +340,7 @@ test('Half A: persisted ProcessRun outcome is `inconsistent`, not `formalized`',
   const { temp, db } = makeTempDb();
   try {
     seedCompleteGraphExcept(db, 'ac-to-fr');
-    const { engine, processRunRepo } = buildEngine(db);
-    await engine.run({ projectId: PROJECT_ID, epicId: FORMALIZATION_EPIC_ID });
+    const { processRunRepo } = await runSettlement(db);
 
     const runs = processRunRepo.list(PROJECT_ID, FORMALIZATION_EPIC_ID);
     assert.equal(runs.length, 1);
@@ -324,12 +375,11 @@ test('Half B: lifecycle routes `inconsistent` Formalization outcome to a termina
   assert.equal(formalizedRoute.target.stageId, 'solution-development');
 });
 
-test('Half B: running the formalization engine for a broken-graph epic leaves zero Development ProcessRuns', async () => {
+test('Half B: running the formalization settlement for a broken-graph epic leaves zero Development ProcessRuns', async () => {
   const { temp, db } = makeTempDb();
   try {
     seedCompleteGraphExcept(db, 'uc-to-fr');
-    const { engine, processRunRepo } = buildEngine(db);
-    await engine.run({ projectId: PROJECT_ID, epicId: FORMALIZATION_EPIC_ID });
+    const { processRunRepo } = await runSettlement(db);
 
     const allRuns = processRunRepo.list(PROJECT_ID, null); // unscoped: every run for the project
     const devRuns = allRuns.filter(

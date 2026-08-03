@@ -827,9 +827,11 @@ export class ClaudeBoardRunner {
       // Non-saga built-in Claude tools that workers legitimately need (heartbeat,
       // file reads for skill/worktree conventions). These are NOT authority-gated.
       // The set MUST stay in sync with the builtin names that Process Module
-      // profiles and legacy engines put inside authority_scope.allowed_tools
-      // "for documentation and skill sync, not for gateway enforcement" (see
-      // saga3-discovery-engine DISCOVERY_ALLOWED_TOOLS).
+      // profiles put inside authority_scope.allowed_tools "for documentation and
+      // skill sync, not for gateway enforcement" (the retired
+      // saga3-discovery-engine DISCOVERY_ALLOWED_TOOLS was the historical source
+      // of this list; the engine is gone but the canonical surface lives on in
+      // capability-enforcement.ts).
       const DEFAULT_BUILTIN = ['Bash', 'Read', 'Write', 'Edit', 'Glob', 'Grep', 'MultiEdit', 'Task'];
       // §13.17 fix (W5-A6): when a launch spec resolved an effective capability
       // set with allowedToolIds, the PROFILE owns the Claude builtin surface.

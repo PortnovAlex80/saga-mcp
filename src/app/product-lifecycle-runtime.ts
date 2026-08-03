@@ -258,15 +258,27 @@ export function createProductLifecycleRuntime(
   );
   const assemblerProductRepo = {
     getByProductRef: (ref: ProductRef) => {
-      const row = processProductRepoV2.getByProductRef(ref);
-      if (row !== null) {
+      // T8 — Primary path routed through WorkplaceProductPort.readProduct,
+      // closing the "port has no consumers" finding. The port delegates to the
+      // SAME SqliteProcessProductRepositoryV2.getByProductRef over the SAME
+      // saga3_process_products table — the lookup is identical; only the read
+      // surface changes. The port's exact-match guarantee means the returned
+      // schema/contentHash equal the matched row's reference.schema/hash, and
+      // the matched artifact_ref equals the queried ref.ref (so productRef.ref
+      // is reconstructed from the input ref, not the port's narrower return).
+      // content maps 1:1 to row.payload for executor-written products: the
+      // port's unwrapBindings only transforms workplace-port-submitted
+      // primitives ({value: x} shape), which assembler predecessor refs never
+      // target (they point to recordProduct-written envelopes).
+      const product = workplaceProductPort.readProduct(ref);
+      if (product !== null) {
         return {
           productRef: {
-            schemaId: row.reference.schema,
-            ref: row.reference.ref,
-            digest: row.reference.hash,
+            schemaId: product.schema,
+            ref: ref.ref,
+            digest: product.contentHash,
           },
-          payload: row.payload,
+          payload: product.content,
         };
       }
       // Fallback: resolve from durable NodeRun rows (settlement productions).

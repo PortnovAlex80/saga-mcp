@@ -14,11 +14,11 @@
  * What SURVIVES here, and why:
  *
  * - `IdGeneratorPort` — the ONE genuinely cross-module global concern. It is
- *   imported by 6 production files (dispatch-loop, saga3-discovery-engine,
- *   and four saga3 application services) because identity creation spans the
- *   whole conveyor (every module assigns ids). It is not a module-local
- *   responsibility, so it stays global. The test below proves the import
- *   graph so this declaration cannot silently go dead again.
+ *   imported by 5 production files (dispatch-loop and four saga3 application
+ *   services) because identity creation spans the whole conveyor (every module
+ *   assigns ids). It is not a module-local responsibility, so it stays global.
+ *   The test below proves the import graph so this declaration cannot silently
+ *   go dead again.
  *
  * Everything else named in the old doc (`WorkerLauncherPort`,
  * `WorkerSupervisionPort`, `WorkspacePort`, `ProductRepositoryPort`,

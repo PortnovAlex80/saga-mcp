@@ -6,8 +6,6 @@
  *     validation_errors, the advisor proposal is never silently discarded;
  *   - correct shadow matrix (P0-1): task-done-without-assessment → failed,
  *     never masked as not_run; rejected → failed;
- *   - engine isolation (P0-3): a throwing readiness phase cannot rewrite a
- *     successful discovery result;
  *   - non-empty source_refs grounding (P1-1);
  *   - strict Proposal target re-validation (P1-2): intent_id/epic/hash binding;
  *   - execution-independent idempotency (P1-3): same content, new execution →
@@ -246,62 +244,6 @@ test('P0-1: accepted assessment → readiness.completed; verdict carried', async
   assert.equal(out.shadow.status, 'completed');
   assert.equal(out.shadow.authority, 'shadow_advisor');
   assert.equal(out.shadow.overallReadiness, 'ready');
-});
-
-// ---------------------------------------------------------------------------
-// P0-3: engine isolation — a throwing readiness phase must not fail discovery
-// ---------------------------------------------------------------------------
-
-test('P0-3: readiness service throws → discovery result preserved, readiness.failed', async () => {
-  const { Saga3DiscoveryEngine } = await import('../../dist/engines/saga3-discovery-engine.js');
-  // Reuse the d1-engine fakes minimally: discovery must complete cleanly.
-  const validPayload = PROPOSAL_PAYLOAD;
-  let proposal = null;
-  let task = null;
-  const runtime = {
-    readEpicObjective: () => ({ name: 'e', description: 'd' }),
-    readOpenIntent: (_e, kind) => null,
-    createIntent(c) { return { id: 1, epic_id: c.epic_id, kind: c.kind, objective: c.objective, authority_scope: c.authority_scope, output_schema: c.output_schema, projected_task_id: null, status: 'open', created_at: 't' }; },
-    setProjectedTask: () => {},
-    setIntentStatus: () => true,
-    ensureProjectedTask() { task = { id: 100, status: 'todo' }; return 100; },
-    readTaskState: () => task ? task.status : null,
-    prepareIntentForExecution: () => ({ state: 'ready', intentStatus: 'open', taskStatus: 'todo' }),
-    readWorkIntentForTask: () => null,
-    readLatestProposal: () => proposal,
-    readLatestRawSubmission: () => null,
-    ensureNormalizationControl: () => ({ controlIntentId: 1, controlStatus: 'concluded', authorityIntentId: 2, authorityIntentStatus: 'concluded', taskId: 100 }),
-    setControlIntentStatus: () => true,
-    ensureReadinessControl: () => { throw new Error('readiness persistence exploded'); },
-    setReadinessControlStatus: () => true,
-    readLatestReadinessAssessment: () => null,
-    _tick() {
-      if (!proposal) { proposal = { id: 50, payload: validPayload, content_hash: PROPOSAL_HASH, provenance: null }; }
-      if (task) task.status = 'done';
-    },
-  };
-  let executorStopped = false;
-  const executor = {
-    start() {}, status() { if (!executorStopped) runtime._tick(); return { status: 'running', active: [] }; },
-    stop() { executorStopped = true; }, dispose() {}, setConcurrency() {},
-  };
-  const throwingReadiness = { assess: async () => { throw new Error('boom'); } };
-  const engine = new Saga3DiscoveryEngine({
-    config: { dbPath: '/d', claudePath: 'c', lmStudioUrl: 'http://x/v1' },
-    workerExecutorFactory: () => executor,
-    persistence: { episodes: { currentStage: () => 'discovery' }, workspaces: { resolve: () => ({ workspaceRoot: '/w' }) } },
-    host: { acquireEngineLock: () => ({ status: 'acquired', ownerPid: 42 }), releaseEngineLock: () => {}, workerPaths: { sagaEntry: '/e', sagaSkillRoot: '/s', logRoot: '/l', heartbeatLog: '/h' }, heartbeat: () => {} },
-    runtimePersistence: runtime, workAssignment: fakeWorkAssignment(), idGenerator: fakeIdGenerator(), machineId: TEST_MACHINE_ID, pollMs: 0, readinessService: throwingReadiness,
-  });
-  const result = await engine.run({ projectId: 1, epicId: 10, concurrency: 1 });
-  // Discovery succeeded — NOT rewritten to failed.
-  assert.equal(result.outcome, 'clarify');
-  assert.equal(result.outcomeAuthority, 'worker_proposal');
-  assert.equal(result.scopeCompleted, true);
-  assert.equal(result.reason, 'completed');
-  // Readiness reported the failure separately.
-  assert.equal(result.readiness.status, 'failed');
-  assert.equal(result.readiness.error, 'boom');
 });
 
 // ---------------------------------------------------------------------------
