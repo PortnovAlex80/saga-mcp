@@ -32,23 +32,23 @@
  */
 import { createHash } from 'node:crypto';
 
-import type { DiscoveryProposalPayload } from './discovery-proposal.js';
-import type { ReadinessAssessmentPayload } from './discovery-readiness-assessment.js';
-import type { DiscoverySettlementReasonCode } from './discovery-settlement-policy.js';
+import type { DiscoveryProposalPayload } from '../../modules/discovery/domain/discovery-proposal.js';
+import type { ReadinessAssessmentPayload } from '../../modules/discovery/domain/discovery-readiness-assessment.js';
+import type { DiscoverySettlementReasonCode } from '../../modules/discovery/domain/discovery-settlement-policy.js';
 import {
   discoverySettlementPolicyV1,
   DISCOVERY_SETTLEMENT_POLICY_VERSION,
   POLICY_V1_CONTENT_HASH,
-} from './discovery-settlement-policy.js';
+} from '../../modules/discovery/domain/discovery-settlement-policy.js';
 import type {
   DiscoverySettlementInputSnapshot,
   SettlementProposalInput,
   SettlementReadinessInput,
   SettlementReadinessStatus,
-} from './discovery-settlement-input.js';
-import { DISCOVERY_SETTLEMENT_INPUT_SCHEMA } from './discovery-settlement-input.js';
-import type { SettlementConditionTrace } from './discovery-settlement-policy.js';
-import { canonicalJson, collectDiscoverySourceRefs } from '../shared/discovery-canonical.js';
+} from '../../modules/discovery/domain/discovery-settlement-input.js';
+import { DISCOVERY_SETTLEMENT_INPUT_SCHEMA } from '../../modules/discovery/domain/discovery-settlement-input.js';
+import type { SettlementConditionTrace } from '../../modules/discovery/domain/discovery-settlement-policy.js';
+import { canonicalJson, collectDiscoverySourceRefs } from '../../shared/canonical-json.js';
 
 /** Schema version for the diagnosis case. */
 export const DISCOVERY_DIAGNOSIS_CASE_SCHEMA = 'saga3.discovery-diagnosis-case.v1';

@@ -314,7 +314,7 @@ test('W9-A7 cross-module isolation: clean graph (no inter-module imports) passes
   const graph = {
     'src/process-modules/modules/discovery/discovery-process-module.ts': [
       'src/process-modules/domain/process-module.js',
-      'src/saga3/domain/work-intent.js',
+      'src/shared/work-intent.js',
     ],
     'src/process-modules/modules/formalization/formalization-process-module.ts': [
       'src/process-modules/domain/process-module.js',

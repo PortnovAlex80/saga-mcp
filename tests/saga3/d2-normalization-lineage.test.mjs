@@ -6,21 +6,21 @@ import test from 'node:test';
 
 const { closeDb, getDb } = await import('../../dist/db.js');
 const { buildExecutionContext } = await import(
-  '../../dist/saga3/authority/build-execution-context.js'
+  '../../dist/shared/authority/build-execution-context.js'
 );
 const { executionContextHash } = await import(
-  '../../dist/saga3/domain/execution-context.js'
+  '../../dist/shared/authority/execution-context.js'
 );
 const {
   DISCOVERY_INTENT_KIND,
   DISCOVERY_NORMALIZATION_INTENT_KIND,
   DISCOVERY_WORK_INTENT_SCHEMA,
-} = await import('../../dist/saga3/domain/work-intent.js');
+} = await import('../../dist/shared/work-intent.js');
 const { DISCOVERY_PROPOSAL_SCHEMA } = await import(
-  '../../dist/saga3/domain/discovery-proposal.js'
+  '../../dist/modules/discovery/domain/discovery-proposal.js'
 );
 const { DISCOVERY_NORMALIZATION_PROPOSAL_SCHEMA } = await import(
-  '../../dist/saga3/domain/discovery-normalization-proposal.js'
+  '../../dist/modules/discovery/domain/discovery-normalization-proposal.js'
 );
 const {
   ensureSaga3NormalizationSchema,

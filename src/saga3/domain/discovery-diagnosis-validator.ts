@@ -41,7 +41,7 @@ import {
   FORBIDDEN_DIAGNOSIS_FIELDS,
 } from './discovery-diagnosis-report.js';
 import type { DiscoveryDiagnosisCase } from './discovery-diagnosis-case.js';
-import type { SettlementConditionTrace } from './discovery-settlement-policy.js';
+import type { SettlementConditionTrace } from '../../modules/discovery/domain/discovery-settlement-policy.js';
 
 export interface DiagnosisValidation {
   valid: boolean;

@@ -5,11 +5,11 @@ import { withImmediateTransaction } from './dispatcher.js';
 import { argInt, argStr, SAGA3_TOOL_CALL_SHAPES, SAGA3_ARG_SOURCES, enrichPayloadErrors, DISCOVERY_WORKFLOW_REFS } from './saga3-args.js';
 import { renderWorkflowHint } from '../application/actionable-tool-error.js';
 import type { ToolHandler } from '../types.js';
-import { DISCOVERY_INTENT_KIND, DISCOVERY_WORK_INTENT_SCHEMA } from '../saga3/domain/work-intent.js';
-import { DISCOVERY_PROPOSAL_SCHEMA } from '../saga3/domain/discovery-proposal.js';
-import { normalizeDiscoveryProposalInput } from '../saga3/domain/discovery-normalization.js';
+import { DISCOVERY_INTENT_KIND, DISCOVERY_WORK_INTENT_SCHEMA } from '../shared/work-intent.js';
+import { DISCOVERY_PROPOSAL_SCHEMA } from '../modules/discovery/domain/discovery-proposal.js';
+import { normalizeDiscoveryProposalInput } from '../modules/discovery/domain/discovery-normalization.js';
 import type { ProposalProvenance, SubmitProposal } from '../saga3/domain/proposal.js';
-import { readExecutionContextStrict } from '../saga3/authority/authorize-saga-tool-call.js';
+import { readExecutionContextStrict } from '../shared/authority/authorize-tool-call.js';
 import {
   canonicalJson,
   ensureSaga3NormalizationSchema,

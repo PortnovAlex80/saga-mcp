@@ -16,7 +16,7 @@
 import { createHash } from 'node:crypto';
 
 import type { DiscoverySettlementDecision } from './discovery-settlement-policy.js';
-import { canonicalJson } from '../shared/discovery-canonical.js';
+import { canonicalJson } from '../../../shared/canonical-json.js';
 
 /**
  * Schema version for the outcome certificate payload.

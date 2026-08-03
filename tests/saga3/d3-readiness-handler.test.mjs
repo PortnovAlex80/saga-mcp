@@ -6,17 +6,17 @@ import path from 'node:path';
 import test from 'node:test';
 
 const { closeDb, getDb } = await import('../../dist/db.js');
-const { buildExecutionContext } = await import('../../dist/saga3/authority/build-execution-context.js');
-const { executionContextHash } = await import('../../dist/saga3/domain/execution-context.js');
+const { buildExecutionContext } = await import('../../dist/shared/authority/build-execution-context.js');
+const { executionContextHash } = await import('../../dist/shared/authority/execution-context.js');
 const {
   DISCOVERY_INTENT_KIND,
   DISCOVERY_READINESS_INTENT_KIND,
   DISCOVERY_WORK_INTENT_SCHEMA,
-} = await import('../../dist/saga3/domain/work-intent.js');
-const { DISCOVERY_PROPOSAL_SCHEMA } = await import('../../dist/saga3/domain/discovery-proposal.js');
+} = await import('../../dist/shared/work-intent.js');
+const { DISCOVERY_PROPOSAL_SCHEMA } = await import('../../dist/modules/discovery/domain/discovery-proposal.js');
 const { canonicalJson } = await import('../../dist/saga3/persistence/saga3-normalization-repository.js');
 const { DISCOVERY_READINESS_ASSESSMENT_SCHEMA, READINESS_DIMENSIONS } = await import(
-  '../../dist/saga3/domain/discovery-readiness-assessment.js'
+  '../../dist/modules/discovery/domain/discovery-readiness-assessment.js'
 );
 const { ensureSaga3ReadinessSchema } = await import('../../dist/saga3/persistence/saga3-readiness-repository.js');
 

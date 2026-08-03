@@ -36,7 +36,7 @@
 
 import { createHash } from 'node:crypto';
 
-import type { Saga3DiscoveryRuntimePersistence, SettlementInputKey, SettlementProposalRecord, IssueCertificateAtomicallyInput } from '../persistence/saga3-discovery-runtime-port.js';
+import type { Saga3DiscoveryRuntimePersistence, SettlementInputKey, SettlementProposalRecord, IssueCertificateAtomicallyInput } from '../infrastructure/saga3-discovery-runtime-port.js';
 import type { SettlementRecord, OutcomeCertificateRecord } from '../domain/discovery-settlement-records.js';
 import type { ReadinessAssessmentRecord } from '../domain/discovery-readiness-records.js';
 import type { ReadinessShadowResult } from '../domain/discovery-readiness-assessment.js';
@@ -62,7 +62,7 @@ import {
   buildOutcomeCertificatePayload,
   hashOutcomeCertificate,
 } from '../domain/discovery-outcome-certificate.js';
-import { canonicalJson, collectDiscoverySourceRefs } from '../shared/discovery-canonical.js';
+import { canonicalJson, collectDiscoverySourceRefs } from '../../../shared/canonical-json.js';
 // P0-3: the certificate/snapshot/readiness verification discipline is now shared
 // with the D5 diagnosis service via discovery-certificate-bundle. D4 keeps its
 // observable SettlementValidationError identity by wrapping the shared helpers

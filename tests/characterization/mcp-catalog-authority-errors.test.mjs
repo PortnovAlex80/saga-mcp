@@ -131,8 +131,8 @@ async function loadModules() {
     ...saga3Diagnosis.definitions,
   ];
   const args = await import('../../dist/tools/saga3-args.js');
-  const authority = await import('../../dist/saga3/authority/authorize-saga-tool-call.js');
-  const ctxDomain = await import('../../dist/saga3/domain/execution-context.js');
+  const authority = await import('../../dist/shared/authority/authorize-tool-call.js');
+  const ctxDomain = await import('../../dist/shared/authority/execution-context.js');
   const dbMod = await import('../../dist/db.js');
   dynamic = { ALL_TOOLS, args, authority, ctxDomain, dbMod };
   return dynamic;

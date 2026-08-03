@@ -35,7 +35,7 @@
  *   the real import without touching call sites.
  *
  *   The mirrored shape matches `ExecutionAuthority` in
- *   `src/saga3/domain/execution-context.ts` (enforcement + allowed_saga_tools
+ *   `src/shared/authority/execution-context.ts` (enforcement + allowed_saga_tools
  *   + work_intent_id are the fields a PreToolUse projection consumes).
  *
  * This file is PURE: data types + a pure decision function. No I/O, no DB, no
@@ -48,7 +48,7 @@
 
 /**
  * The subset of `ExecutionAuthority` that a PreToolUse projection consumes.
- * Mirrors `src/saga3/domain/execution-context.ts`:
+ * Mirrors `src/shared/authority/execution-context.ts`:
  *   - `enforcement`            — 'advisory' | 'runtime'.
  *   - `allowed_saga_tools`     — frozen allow-list granted to this execution.
  *   - `work_intent_id`         — cited in the denial for traceability.

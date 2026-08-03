@@ -22,7 +22,7 @@ import {
   buildDiagnosisCase,
 } from '../../dist/saga3/domain/discovery-diagnosis-case.js';
 import { validateDiagnosisReport } from '../../dist/saga3/domain/discovery-diagnosis-validator.js';
-import { READINESS_DIMENSIONS } from '../../dist/saga3/domain/discovery-readiness-assessment.js';
+import { READINESS_DIMENSIONS } from '../../dist/modules/discovery/domain/discovery-readiness-assessment.js';
 
 // ---- fixtures --------------------------------------------------------------
 

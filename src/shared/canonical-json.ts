@@ -1,8 +1,8 @@
 /**
  * Shared canonicalization + hashing utilities for the Saga 3 Discovery Edition.
  *
- * This module lives in a NEUTRAL layer (src/saga3/shared) so that BOTH the
- * domain layer (settlement policy, input snapshot, certificate) and the
+ * This module lives in a NEUTRAL cross-cutting layer (src/shared) so that BOTH
+ * the domain layer (settlement policy, input snapshot, certificate) and the
  * persistence layer (proposal/normalization/readiness/settlement repositories)
  * can hash inputs byte-identically. Previously canonicalJson lived in the
  * persistence layer and the domain imported it — an inverted dependency that
@@ -17,7 +17,7 @@
  */
 
 import { createHash } from 'node:crypto';
-import type { DiscoveryProposalPayload } from '../domain/discovery-proposal.js';
+import type { DiscoveryProposalPayload } from '../modules/discovery/domain/discovery-proposal.js';
 
 /**
  * Deterministic, recursive canonical JSON serialization: object keys sorted

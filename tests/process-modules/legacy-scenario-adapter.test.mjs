@@ -28,7 +28,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { canonicalJson, sha256Hex } from '../../dist/saga3/shared/discovery-canonical.js';
+import { canonicalJson, sha256Hex } from '../../dist/shared/canonical-json.js';
 import { validateLifecycleScenarioManifest } from
   '../../dist/process-modules/domain/spi/scenario-manifest.js';
 import { productDeliveryLifecycle } from

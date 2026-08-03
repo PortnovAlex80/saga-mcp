@@ -18,24 +18,24 @@ import {
   DISCOVERY_INTENT_KIND,
   DISCOVERY_WORK_INTENT_SCHEMA,
   type CreateWorkIntent,
-} from '../saga3/domain/work-intent.js';
+} from '../shared/work-intent.js';
 import {
   provisionalOutcomeFromProposal,
   validateDiscoveryProposal,
   type DiscoveryOutcome,
   type DiscoveryProposalPayload,
-} from '../saga3/domain/discovery-proposal.js';
-import type { Saga3DiscoveryRuntimePersistence } from '../saga3/persistence/saga3-discovery-runtime-port.js';
+} from '../modules/discovery/domain/discovery-proposal.js';
+import type { Saga3DiscoveryRuntimePersistence } from '../modules/discovery/infrastructure/saga3-discovery-runtime-port.js';
 import type { DiscoveryNormalizationService } from '../saga3/application/discovery-normalization-service.js';
 import { ensureDiscoveryWorkspace } from '../saga3/application/ensure-discovery-workspace.js';
 import type { DiscoveryReadinessService } from '../saga3/application/discovery-readiness-service.js';
-import type { DiscoverySettlementService, DiscoverySettlementResult, ProvisionalOutcome } from '../saga3/application/discovery-settlement-service.js';
+import type { DiscoverySettlementService, DiscoverySettlementResult, ProvisionalOutcome } from '../modules/discovery/application/discovery-settlement-service.js';
 import type {
   DiscoveryDiagnosisResult,
   DiscoveryDiagnosisService,
 } from '../saga3/application/discovery-diagnosis-service.js';
-import type { ReadinessShadowResult } from '../saga3/domain/discovery-readiness-assessment.js';
-import type { ReadinessAssessmentRecord, ReadinessControlIntentRecord } from '../saga3/domain/discovery-readiness-records.js';
+import type { ReadinessShadowResult } from '../modules/discovery/domain/discovery-readiness-assessment.js';
+import type { ReadinessAssessmentRecord, ReadinessControlIntentRecord } from '../modules/discovery/domain/discovery-readiness-records.js';
 import {
   assignOneCard,
   releaseOneCardIfAssigned,

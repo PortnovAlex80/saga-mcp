@@ -32,14 +32,14 @@ import {
   DIAGNOSE_DISCOVERY_OUTCOME_KIND,
   DISCOVERY_DIAGNOSIS_INTENT_KIND,
   DISCOVERY_DIAGNOSIS_WORK_INTENT_SCHEMA,
-} from '../domain/work-intent.js';
+} from '../../shared/work-intent.js';
 import type {
   DiagnosisControlIntentRecord,
   DiagnosisControlStatus,
   DiagnosisReportRecord,
   DiagnosisReportStatus,
 } from '../domain/discovery-diagnosis-records.js';
-import { canonicalJson, sha256Hex } from '../shared/discovery-canonical.js';
+import { canonicalJson, sha256Hex } from '../../shared/canonical-json.js';
 import {
   diagnosisCaseHash,
   DISCOVERY_DIAGNOSIS_CASE_SCHEMA,

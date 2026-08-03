@@ -32,17 +32,17 @@ const { closeDb, getDb } = await import('../../dist/db.js');
 
 // Pure-domain imports — no DB needed.
 const { validateDiscoveryProposal, DISCOVERY_OUTCOMES } = await import(
-  '../../dist/saga3/domain/discovery-proposal.js'
+  '../../dist/modules/discovery/domain/discovery-proposal.js'
 );
 const {
   DISCOVERY_INTENT_KIND,
   DISCOVERY_WORK_INTENT_SCHEMA,
-} = await import('../../dist/saga3/domain/work-intent.js');
+} = await import('../../dist/shared/work-intent.js');
 const { DISCOVERY_PROPOSAL_SCHEMA } = await import(
-  '../../dist/saga3/domain/discovery-proposal.js'
+  '../../dist/modules/discovery/domain/discovery-proposal.js'
 );
-const { buildExecutionContext } = await import('../../dist/saga3/authority/build-execution-context.js');
-const { executionContextHash } = await import('../../dist/saga3/domain/execution-context.js');
+const { buildExecutionContext } = await import('../../dist/shared/authority/build-execution-context.js');
+const { executionContextHash } = await import('../../dist/shared/authority/execution-context.js');
 
 // ---------------------------------------------------------------------------
 // 1. validateDiscoveryProposal — deterministic structural gate.

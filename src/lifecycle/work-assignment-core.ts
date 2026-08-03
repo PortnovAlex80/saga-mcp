@@ -59,9 +59,9 @@
 import type Database from 'better-sqlite3';
 import type { Task } from '../types.js';
 import type { AssignedWork } from '../application/ports/worker-executor.js';
-import type { AuthorityScope, WorkIntent } from '../saga3/domain/work-intent.js';
-import { buildExecutionContext } from '../saga3/authority/build-execution-context.js';
-import { executionContextHash } from '../saga3/domain/execution-context.js';
+import type { AuthorityScope, WorkIntent } from '../shared/work-intent.js';
+import { buildExecutionContext } from '../shared/authority/build-execution-context.js';
+import { executionContextHash } from '../shared/authority/execution-context.js';
 import { asCardId, asExecutionId, asFenceToken } from './domain/ids.js';
 
 export const PRIORITY_ORDER = "CASE t.priority WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 END";

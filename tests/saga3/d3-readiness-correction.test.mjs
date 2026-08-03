@@ -21,16 +21,16 @@ import path from 'node:path';
 import test from 'node:test';
 
 const { closeDb, getDb } = await import('../../dist/db.js');
-const { buildExecutionContext } = await import('../../dist/saga3/authority/build-execution-context.js');
-const { executionContextHash } = await import('../../dist/saga3/domain/execution-context.js');
+const { buildExecutionContext } = await import('../../dist/shared/authority/build-execution-context.js');
+const { executionContextHash } = await import('../../dist/shared/authority/execution-context.js');
 const {
   DISCOVERY_INTENT_KIND,
   DISCOVERY_READINESS_INTENT_KIND,
   DISCOVERY_WORK_INTENT_SCHEMA,
-} = await import('../../dist/saga3/domain/work-intent.js');
-const { DISCOVERY_PROPOSAL_SCHEMA } = await import('../../dist/saga3/domain/discovery-proposal.js');
+} = await import('../../dist/shared/work-intent.js');
+const { DISCOVERY_PROPOSAL_SCHEMA } = await import('../../dist/modules/discovery/domain/discovery-proposal.js');
 const { DISCOVERY_READINESS_ASSESSMENT_SCHEMA, READINESS_DIMENSIONS } = await import(
-  '../../dist/saga3/domain/discovery-readiness-assessment.js'
+  '../../dist/modules/discovery/domain/discovery-readiness-assessment.js'
 );
 const { ensureSaga3ReadinessSchema } = await import(
   '../../dist/saga3/persistence/saga3-readiness-repository.js'
@@ -309,7 +309,7 @@ test('P0-3: readiness service throws → discovery result preserved, readiness.f
 // ---------------------------------------------------------------------------
 
 test('P1-1: empty dimension source_refs rejected (grounding required)', async () => {
-  const { validateReadinessAssessment } = await import('../../dist/saga3/domain/discovery-readiness-assessment.js');
+  const { validateReadinessAssessment } = await import('../../dist/modules/discovery/domain/discovery-readiness-assessment.js');
   const a = validAssessment();
   a.dimension_assessments.problem_clarity.source_refs = [];
   const r = validateReadinessAssessment(a, 50, PROPOSAL_HASH, ['$.problem_statement']);
@@ -318,7 +318,7 @@ test('P1-1: empty dimension source_refs rejected (grounding required)', async ()
 });
 
 test('P1-1: empty gap source_refs rejected', async () => {
-  const { validateReadinessAssessment } = await import('../../dist/saga3/domain/discovery-readiness-assessment.js');
+  const { validateReadinessAssessment } = await import('../../dist/modules/discovery/domain/discovery-readiness-assessment.js');
   const a = validAssessment();
   a.blocking_gaps = [{ code: 'G1', description: 'gap', source_refs: [] }];
   const r = validateReadinessAssessment(a, 50, PROPOSAL_HASH, ['$.unknowns']);

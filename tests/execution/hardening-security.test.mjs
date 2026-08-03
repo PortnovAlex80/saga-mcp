@@ -132,16 +132,16 @@ const {
 const {
   validateDiscoveryProposal,
   DISCOVERY_OUTCOMES,
-} = await import('../../dist/saga3/domain/discovery-proposal.js');
+} = await import('../../dist/modules/discovery/domain/discovery-proposal.js');
 
 // --- Authority gateway (D1.1) ---------------------------------------------
 const { SCHEMA_SQL } = await import('../../dist/schema.js');
 const { closeDb, getDb } = await import('../../dist/db.js');
 const { authorizeSagaToolCall } = await import(
-  '../../dist/saga3/authority/authorize-saga-tool-call.js'
+  '../../dist/shared/authority/authorize-tool-call.js'
 );
 const { authorityHash, executionContextHash } = await import(
-  '../../dist/saga3/domain/execution-context.js'
+  '../../dist/shared/authority/execution-context.js'
 );
 
 // ---------------------------------------------------------------------------

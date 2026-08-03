@@ -2,7 +2,7 @@
  * D1.1 — Saga MCP authority gateway unit tests.
  *
  * Covers the authorizeSagaToolCall decision matrix (see
- * src/saga3/authority/authorize-saga-tool-call.ts):
+ * src/shared/authority/authorize-tool-call.ts):
  *   1. allowed task_get passes (runtime, in allowlist)
  *   2. allowed proposal_submit passes (runtime, in allowlist)
  *   3. disallowed task_create is denied BEFORE the handler runs
@@ -30,10 +30,10 @@ import Database from 'better-sqlite3';
 import { SCHEMA_SQL } from '../../dist/schema.js';
 const { closeDb, getDb } = await import('../../dist/db.js');
 const { authorizeSagaToolCall } = await import(
-  '../../dist/saga3/authority/authorize-saga-tool-call.js'
+  '../../dist/shared/authority/authorize-tool-call.js'
 );
 const { authorityHash, executionContextHash } = await import(
-  '../../dist/saga3/domain/execution-context.js'
+  '../../dist/shared/authority/execution-context.js'
 );
 
 const ALLOWED = ['task_get', 'repository_checkout_list', 'artifact_list', 'note_list', 'proposal_submit', 'worker_done'];

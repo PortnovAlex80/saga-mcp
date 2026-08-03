@@ -21,8 +21,8 @@ import {
   DISCOVERY_DIAGNOSIS_CONTRACT_VERSION,
   DISCOVERY_DIAGNOSIS_CASE_SCHEMA,
 } from '../../dist/saga3/domain/discovery-diagnosis-case.js';
-import { READINESS_DIMENSIONS } from '../../dist/saga3/domain/discovery-readiness-assessment.js';
-import { GO_MIN_CONFIDENCE } from '../../dist/saga3/domain/discovery-settlement-policy.js';
+import { READINESS_DIMENSIONS } from '../../dist/modules/discovery/domain/discovery-readiness-assessment.js';
+import { GO_MIN_CONFIDENCE } from '../../dist/modules/discovery/domain/discovery-settlement-policy.js';
 
 // ---- fixture builders ------------------------------------------------------
 

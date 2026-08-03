@@ -13,12 +13,12 @@ import { canonicalJson } from './saga3-normalization-repository.js';
 import type {
   OverallReadiness,
   RecommendedNextAction,
-} from '../domain/discovery-readiness-assessment.js';
+} from '../../modules/discovery/domain/discovery-readiness-assessment.js';
 import type {
   ReadinessAssessmentRecord,
   ReadinessAssessmentStatus,
   ReadinessControlIntentRecord,
-} from '../domain/discovery-readiness-records.js';
+} from '../../modules/discovery/domain/discovery-readiness-records.js';
 import type { ProposalProvenance } from '../domain/proposal.js';
 
 /** Idempotently create the D3 readiness tables if absent. */

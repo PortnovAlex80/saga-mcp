@@ -1,5 +1,5 @@
-import type { CreateWorkIntent, WorkIntent, WorkIntentStatus } from '../domain/work-intent.js';
-import type { ProposalRecord } from '../domain/proposal.js';
+import type { CreateWorkIntent, WorkIntent, WorkIntentStatus } from '../../../shared/work-intent.js';
+import type { ProposalRecord } from '../../../saga3/domain/proposal.js';
 import type {
   ControlIntentStatus,
   DiscoveryNormalizationProposalRecord,
@@ -20,7 +20,7 @@ import type {
   DiagnosisControlIntentRecord,
   DiagnosisControlStatus,
   DiagnosisReportRecord,
-} from '../domain/discovery-diagnosis-records.js';
+} from '../../../saga3/domain/discovery-diagnosis-records.js';
 
 /**
  * Runtime-persistence boundary for the Saga 3 Discovery Edition engine.

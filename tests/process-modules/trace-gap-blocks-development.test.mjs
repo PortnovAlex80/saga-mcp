@@ -37,7 +37,7 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 
-const { canonicalJson } = await import('../../dist/saga3/shared/discovery-canonical.js');
+const { canonicalJson } = await import('../../dist/shared/canonical-json.js');
 const { closeDb, getDb } = await import('../../dist/db.js');
 const { SqliteProcessRunRepository } = await import(
   '../../dist/process-modules/persistence/sqlite-process-run-repository.js'

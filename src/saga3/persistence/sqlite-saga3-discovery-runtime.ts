@@ -1,13 +1,13 @@
 import { getDb } from '../../db.js';
 import { prepareSaga3ProjectedTaskForExecution } from '../../lifecycle/legacy-assignment-recovery.js';
-import type { CreateWorkIntent, WorkIntent, WorkIntentStatus } from '../domain/work-intent.js';
+import type { CreateWorkIntent, WorkIntent, WorkIntentStatus } from '../../shared/work-intent.js';
 import type { ProposalRecord } from '../domain/proposal.js';
-import { DISCOVERY_DIAGNOSIS_INTENT_KIND, DIAGNOSE_DISCOVERY_OUTCOME_KIND, DISCOVERY_DIAGNOSIS_WORK_INTENT_SCHEMA, DISCOVERY_NORMALIZATION_INTENT_KIND, DISCOVERY_READINESS_INTENT_KIND } from '../domain/work-intent.js';
-import { DISCOVERY_NORMALIZATION_PROPOSAL_SCHEMA } from '../domain/discovery-normalization-proposal.js';
-import { DISCOVERY_READINESS_ASSESSMENT_SCHEMA } from '../domain/discovery-readiness-assessment.js';
-import type { ControlIntentStatus } from '../domain/discovery-normalization-records.js';
-import type { ReadinessAssessmentRecord, ReadinessControlExecution, ReadinessControlIntentRecord, ReadinessControlStatus } from '../domain/discovery-readiness-records.js';
-import type { OutcomeCertificateRecord, SettlementRecord } from '../domain/discovery-settlement-records.js';
+import { DISCOVERY_DIAGNOSIS_INTENT_KIND, DIAGNOSE_DISCOVERY_OUTCOME_KIND, DISCOVERY_DIAGNOSIS_WORK_INTENT_SCHEMA, DISCOVERY_NORMALIZATION_INTENT_KIND, DISCOVERY_READINESS_INTENT_KIND } from '../../shared/work-intent.js';
+import { DISCOVERY_NORMALIZATION_PROPOSAL_SCHEMA } from '../../modules/discovery/domain/discovery-normalization-proposal.js';
+import { DISCOVERY_READINESS_ASSESSMENT_SCHEMA } from '../../modules/discovery/domain/discovery-readiness-assessment.js';
+import type { ControlIntentStatus } from '../../modules/discovery/domain/discovery-normalization-records.js';
+import type { ReadinessAssessmentRecord, ReadinessControlExecution, ReadinessControlIntentRecord, ReadinessControlStatus } from '../../modules/discovery/domain/discovery-readiness-records.js';
+import type { OutcomeCertificateRecord, SettlementRecord } from '../../modules/discovery/domain/discovery-settlement-records.js';
 import { diagnosisCaseHash } from '../domain/discovery-diagnosis-case.js';
 import type {
   DiagnosisControlExecution,
@@ -29,7 +29,7 @@ import {
   type SettlementInputKey,
   type SettlementProposalRecord,
   type SubmitDiagnosisReportInput,
-} from './saga3-discovery-runtime-port.js';
+} from '../../modules/discovery/infrastructure/saga3-discovery-runtime-port.js';
 import {
   canonicalJson,
   hashPayload,
@@ -59,7 +59,7 @@ import {
   readOutcomeCertificate as readOutcomeCertificateRepo,
   readSettlement as readSettlementRepo,
   reconcileExistingCertificate as reconcileExistingCertificateRepo,
-} from './saga3-settlement-repository.js';
+} from '../../modules/discovery/infrastructure/saga3-settlement-repository.js';
 import {
   ensureSaga3DiagnosisSchema,
   findDiagnosisControlByTarget as findDiagnosisControlByTargetRepo,

@@ -15,11 +15,11 @@ import test from 'node:test';
 
 const { closeDb, getDb } = await import('../../dist/db.js');
 const { canonicalJson } = await import('../../dist/saga3/persistence/saga3-normalization-repository.js');
-const { sha256Hex } = await import('../../dist/saga3/shared/discovery-canonical.js');
-const { ensureSaga3SettlementSchema, insertSettlement, findSettlementByInputKey, readCertificateForSettlement } = await import('../../dist/saga3/persistence/saga3-settlement-repository.js');
-const { DISCOVERY_SETTLEMENT_POLICY_VERSION, POLICY_V1_CONTENT_HASH } = await import('../../dist/saga3/domain/discovery-settlement-policy.js');
-const { DISCOVERY_SETTLEMENT_INPUT_SCHEMA } = await import('../../dist/saga3/domain/discovery-settlement-input.js');
-const { buildOutcomeCertificatePayload, hashOutcomeCertificate } = await import('../../dist/saga3/domain/discovery-outcome-certificate.js');
+const { sha256Hex } = await import('../../dist/shared/canonical-json.js');
+const { ensureSaga3SettlementSchema, insertSettlement, findSettlementByInputKey, readCertificateForSettlement } = await import('../../dist/modules/discovery/infrastructure/saga3-settlement-repository.js');
+const { DISCOVERY_SETTLEMENT_POLICY_VERSION, POLICY_V1_CONTENT_HASH } = await import('../../dist/modules/discovery/domain/discovery-settlement-policy.js');
+const { DISCOVERY_SETTLEMENT_INPUT_SCHEMA } = await import('../../dist/modules/discovery/domain/discovery-settlement-input.js');
+const { buildOutcomeCertificatePayload, hashOutcomeCertificate } = await import('../../dist/modules/discovery/domain/discovery-outcome-certificate.js');
 
 function fixture() {
   const temp = mkdtempSync(path.join(os.tmpdir(), 'saga3-d4-atomic-'));

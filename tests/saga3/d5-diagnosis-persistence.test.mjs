@@ -35,9 +35,9 @@ const { closeDb, getDb } = await import('../../dist/db.js');
 const {
   canonicalJson,
   sha256Hex,
-} = await import('../../dist/saga3/shared/discovery-canonical.js');
+} = await import('../../dist/shared/canonical-json.js');
 const { ensureSaga3SettlementSchema } = await import(
-  '../../dist/saga3/persistence/saga3-settlement-repository.js'
+  '../../dist/modules/discovery/infrastructure/saga3-settlement-repository.js'
 );
 const {
   DISCOVERY_DIAGNOSIS_CONTRACT_VERSION,
@@ -61,7 +61,7 @@ const { SqliteSaga3DiscoveryRuntime } = await import(
   '../../dist/saga3/persistence/sqlite-saga3-discovery-runtime.js'
 );
 const { READINESS_DIMENSIONS } = await import(
-  '../../dist/saga3/domain/discovery-readiness-assessment.js'
+  '../../dist/modules/discovery/domain/discovery-readiness-assessment.js'
 );
 
 // ---------------------------------------------------------------------------

@@ -32,11 +32,11 @@ test('D3 architecture: readiness service stays db-free (no getDb, no inline SQL)
 });
 
 test('D3 architecture: readiness domain has no DB import', () => {
-  assertNoDbInSource(['saga3', 'domain', 'discovery-readiness-assessment.ts'], 'discovery-readiness-assessment domain');
+  assertNoDbInSource(['modules', 'discovery', 'domain', 'discovery-readiness-assessment.ts'], 'discovery-readiness-assessment domain');
 });
 
 test('D3 architecture: readiness records have no DB import', () => {
-  assertNoDbInSource(['saga3', 'domain', 'discovery-readiness-records.ts'], 'discovery-readiness-records domain');
+  assertNoDbInSource(['modules', 'discovery', 'domain', 'discovery-readiness-records.ts'], 'discovery-readiness-records domain');
 });
 
 test('D3 architecture: readiness repository does NOT import from application/engine layer (no upward dependency)', () => {

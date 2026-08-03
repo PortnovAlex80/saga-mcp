@@ -52,7 +52,7 @@ import { createSaga3DiagnosisHandlers } from './tools/saga3-diagnosis.js';
 import {
   authorizeSagaToolCall,
   visibleSagaToolNames,
-} from './saga3/authority/authorize-saga-tool-call.js';
+} from './shared/authority/authorize-tool-call.js';
 import { closeDb, getDb } from './db.js';
 
 const __filename = fileURLToPath(import.meta.url);

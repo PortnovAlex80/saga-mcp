@@ -19,8 +19,8 @@ import {
   EXECUTION_CONTEXT_POLICY_VERSION,
   type ExecutionContextSnapshot,
   type ExecutionModelRoute,
-} from '../domain/execution-context.js';
-import type { WorkIntent } from '../domain/work-intent.js';
+} from './execution-context.js';
+import type { WorkIntent } from '../work-intent.js';
 
 export interface BuildExecutionContextInput {
   /** Model route read ONCE by the caller (dispatcher) inside its claim transaction. */

@@ -45,14 +45,14 @@ import type {
   Saga3DiscoveryRuntimePersistence,
   SettlementInputKey,
   SettlementProposalRecord,
-} from '../persistence/saga3-discovery-runtime-port.js';
+} from '../infrastructure/saga3-discovery-runtime-port.js';
 import type {
   OutcomeCertificateRecord,
   SettlementRecord,
 } from '../domain/discovery-settlement-records.js';
 import type { ReadinessAssessmentRecord } from '../domain/discovery-readiness-records.js';
-import type { WorkIntent } from '../domain/work-intent.js';
-import { DISCOVERY_READINESS_INTENT_KIND } from '../domain/work-intent.js';
+import type { WorkIntent } from '../../../shared/work-intent.js';
+import { DISCOVERY_READINESS_INTENT_KIND } from '../../../shared/work-intent.js';
 import type { DiscoveryProposalPayload } from '../domain/discovery-proposal.js';
 import { DISCOVERY_PROPOSAL_SCHEMA, validateDiscoveryProposal } from '../domain/discovery-proposal.js';
 import {
@@ -73,7 +73,7 @@ import {
   buildOutcomeCertificatePayload,
   hashOutcomeCertificate,
 } from '../domain/discovery-outcome-certificate.js';
-import { canonicalJson, collectDiscoverySourceRefs, sha256Hex } from '../shared/discovery-canonical.js';
+import { canonicalJson, collectDiscoverySourceRefs, sha256Hex } from '../../../shared/canonical-json.js';
 
 /**
  * The verified bundle returned by verifyDiscoveryCertificateBundle. Every field

@@ -140,7 +140,7 @@ export class Saga3FormalizationEngine implements OrchestrationEngine {
 
   private async hashCase(casePayload: unknown): Promise<string> {
     const { createHash } = await import('node:crypto');
-    const { canonicalJson } = await import('../saga3/shared/discovery-canonical.js');
+    const { canonicalJson } = await import('../shared/canonical-json.js');
     return createHash('sha256').update(canonicalJson(casePayload)).digest('hex');
   }
 

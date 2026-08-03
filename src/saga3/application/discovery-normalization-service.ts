@@ -6,7 +6,7 @@ import type {
 } from '../../application/ports/worker-executor.js';
 import type { IdGeneratorPort } from '../../application/ports/conveyor-ports.js';
 import type { SagaRuntimeConfig } from '../../runtime/saga-runtime-config.js';
-import type { Saga3DiscoveryRuntimePersistence } from '../persistence/saga3-discovery-runtime-port.js';
+import type { Saga3DiscoveryRuntimePersistence } from '../../modules/discovery/infrastructure/saga3-discovery-runtime-port.js';
 import {
   assignOneCard,
   releaseOneCardIfAssigned,

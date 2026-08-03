@@ -494,17 +494,17 @@ async function loadRealDeps() {
   DB_DEPS.loaded = true;
   DB_DEPS.closeDb = (await import('../../dist/db.js')).closeDb;
   DB_DEPS.getDb = (await import('../../dist/db.js')).getDb;
-  DB_DEPS.DISCOVERY_PROPOSAL_SCHEMA = (await import('../../dist/saga3/domain/discovery-proposal.js')).DISCOVERY_PROPOSAL_SCHEMA;
-  const wi = await import('../../dist/saga3/domain/work-intent.js');
+  DB_DEPS.DISCOVERY_PROPOSAL_SCHEMA = (await import('../../dist/modules/discovery/domain/discovery-proposal.js')).DISCOVERY_PROPOSAL_SCHEMA;
+  const wi = await import('../../dist/shared/work-intent.js');
   DB_DEPS.DISCOVERY_INTENT_KIND = wi.DISCOVERY_INTENT_KIND;
   DB_DEPS.DISCOVERY_READINESS_INTENT_KIND = wi.DISCOVERY_READINESS_INTENT_KIND;
   DB_DEPS.DISCOVERY_WORK_INTENT_SCHEMA = wi.DISCOVERY_WORK_INTENT_SCHEMA;
-  const ra = await import('../../dist/saga3/domain/discovery-readiness-assessment.js');
+  const ra = await import('../../dist/modules/discovery/domain/discovery-readiness-assessment.js');
   DB_DEPS.DISCOVERY_READINESS_ASSESSMENT_SCHEMA = ra.DISCOVERY_READINESS_ASSESSMENT_SCHEMA;
   DB_DEPS.READINESS_DIMENSIONS = ra.READINESS_DIMENSIONS;
-  DB_DEPS.canonicalJson = (await import('../../dist/saga3/shared/discovery-canonical.js')).canonicalJson;
+  DB_DEPS.canonicalJson = (await import('../../dist/shared/canonical-json.js')).canonicalJson;
   DB_DEPS.ensureSaga3ReadinessSchema = (await import('../../dist/saga3/persistence/saga3-readiness-repository.js')).ensureSaga3ReadinessSchema;
-  DB_DEPS.ensureSaga3SettlementSchema = (await import('../../dist/saga3/persistence/saga3-settlement-repository.js')).ensureSaga3SettlementSchema;
+  DB_DEPS.ensureSaga3SettlementSchema = (await import('../../dist/modules/discovery/infrastructure/saga3-settlement-repository.js')).ensureSaga3SettlementSchema;
   DB_DEPS.ensureSaga3DiagnosisSchema = (await import('../../dist/saga3/persistence/saga3-diagnosis-repository.js')).ensureSaga3DiagnosisSchema;
   DB_DEPS.DISCOVERY_DIAGNOSIS_REPORT_SCHEMA = (await import('../../dist/saga3/domain/discovery-diagnosis-report.js')).DISCOVERY_DIAGNOSIS_REPORT_SCHEMA;
   DB_DEPS.validateDiagnosisReport = (await import('../../dist/saga3/domain/discovery-diagnosis-validator.js')).validateDiagnosisReport;
@@ -512,7 +512,7 @@ async function loadRealDeps() {
   DB_DEPS.diagnosisCaseHash = (await import('../../dist/saga3/domain/discovery-diagnosis-case.js')).diagnosisCaseHash;
   DB_DEPS.SqliteSaga3DiscoveryRuntime = (await import('../../dist/saga3/persistence/sqlite-saga3-discovery-runtime.js')).SqliteSaga3DiscoveryRuntime;
   DB_DEPS.Saga3DiscoveryDiagnosisService = (await import('../../dist/saga3/application/discovery-diagnosis-service.js')).Saga3DiscoveryDiagnosisService;
-  DB_DEPS.Saga3DiscoverySettlementService = (await import('../../dist/saga3/application/discovery-settlement-service.js')).Saga3DiscoverySettlementService;
+  DB_DEPS.Saga3DiscoverySettlementService = (await import('../../dist/modules/discovery/application/discovery-settlement-service.js')).Saga3DiscoverySettlementService;
   return DB_DEPS;
 }
 

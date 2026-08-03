@@ -30,47 +30,47 @@ test('D4 architecture: discovery engine stays db-free (no getDb, no inline SQL)'
 });
 
 test('D4 architecture: settlement service stays db-free (no getDb, no inline SQL)', () => {
-  assertNoDbInSource(['saga3', 'application', 'discovery-settlement-service.ts'], 'discovery-settlement-service');
+  assertNoDbInSource(['modules', 'discovery', 'application', 'discovery-settlement-service.ts'], 'discovery-settlement-service');
 });
 
 test('D4 architecture: settlement service must NOT reference WorkerExecutorFactory (settlement is kernel-only)', () => {
-  const source = readFileSync(SRC('saga3', 'application', 'discovery-settlement-service.ts'), 'utf8');
+  const source = readFileSync(SRC('modules', 'discovery', 'application', 'discovery-settlement-service.ts'), 'utf8');
   assert.doesNotMatch(source, /WorkerExecutorFactory/,
     'discovery-settlement-service must not reference WorkerExecutorFactory (settlement is kernel-only)');
 });
 
 test('D4 architecture: settlement service must NOT import from the tools/ layer', () => {
-  const source = readFileSync(SRC('saga3', 'application', 'discovery-settlement-service.ts'), 'utf8');
+  const source = readFileSync(SRC('modules', 'discovery', 'application', 'discovery-settlement-service.ts'), 'utf8');
   assert.doesNotMatch(source, /from ['"].*\/tools\//,
     'discovery-settlement-service must not import from the tools/ layer');
 });
 
 test('D4 architecture: settlement policy domain has no DB import', () => {
-  assertNoDbInSource(['saga3', 'domain', 'discovery-settlement-policy.ts'], 'discovery-settlement-policy domain');
+  assertNoDbInSource(['modules', 'discovery', 'domain', 'discovery-settlement-policy.ts'], 'discovery-settlement-policy domain');
 });
 
 test('D4 architecture: settlement policy must NOT import an LM client', () => {
-  const source = readFileSync(SRC('saga3', 'domain', 'discovery-settlement-policy.ts'), 'utf8');
+  const source = readFileSync(SRC('modules', 'discovery', 'domain', 'discovery-settlement-policy.ts'), 'utf8');
   assert.doesNotMatch(source, /LMStudio|openai|llm/i,
     'discovery-settlement-policy must not import an LM client');
 });
 
 test('D4 architecture: settlement policy must NOT import the SQLite adapter', () => {
-  const source = readFileSync(SRC('saga3', 'domain', 'discovery-settlement-policy.ts'), 'utf8');
+  const source = readFileSync(SRC('modules', 'discovery', 'domain', 'discovery-settlement-policy.ts'), 'utf8');
   assert.doesNotMatch(source, /from ['"].*(better-sqlite3|sqlite)/,
     'discovery-settlement-policy must not import the SQLite adapter');
 });
 
 test('D4 architecture: settlement input domain has no DB import', () => {
-  assertNoDbInSource(['saga3', 'domain', 'discovery-settlement-input.ts'], 'discovery-settlement-input domain');
+  assertNoDbInSource(['modules', 'discovery', 'domain', 'discovery-settlement-input.ts'], 'discovery-settlement-input domain');
 });
 
 test('D4 architecture: outcome certificate domain has no DB import', () => {
-  assertNoDbInSource(['saga3', 'domain', 'discovery-outcome-certificate.ts'], 'discovery-outcome-certificate domain');
+  assertNoDbInSource(['modules', 'discovery', 'domain', 'discovery-outcome-certificate.ts'], 'discovery-outcome-certificate domain');
 });
 
 test('D4 architecture: settlement repository does NOT import from application/engine layer (no upward dependency)', () => {
-  const source = readFileSync(SRC('saga3', 'persistence', 'saga3-settlement-repository.ts'), 'utf8');
+  const source = readFileSync(SRC('modules', 'discovery', 'infrastructure', 'saga3-settlement-repository.ts'), 'utf8');
   // The persistence adapter may import the domain layer + db, but never the
   // application service or engine.
   assert.doesNotMatch(source, /from ['"]\.\.\/\.\.\/(engines|saga3\/application|app)\//,
@@ -86,7 +86,7 @@ test('D4 architecture: no settlement_submit or certificate_submit MCP handler is
 });
 
 test('D4 architecture: outcome certificates table has no mutation (UPDATE) path', () => {
-  const source = readFileSync(SRC('saga3', 'persistence', 'saga3-settlement-repository.ts'), 'utf8');
+  const source = readFileSync(SRC('modules', 'discovery', 'infrastructure', 'saga3-settlement-repository.ts'), 'utf8');
   assert.doesNotMatch(source, /UPDATE\s+saga3_discovery_outcome_certificates/i,
     'settlement repository must not UPDATE the outcome certificates table (certificates are immutable)');
 });

@@ -8,7 +8,7 @@
  * readiness-advisor provenance are SEPARATE lineages — an advisor execution
  * identity never lands in a product Proposal row.
  */
-import type { ProposalProvenance } from './proposal.js';
+import type { ProposalProvenance } from '../../../saga3/domain/proposal.js';
 import type {
   OverallReadiness,
   RecommendedNextAction,

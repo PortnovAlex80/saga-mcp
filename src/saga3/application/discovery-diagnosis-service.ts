@@ -30,7 +30,7 @@ import type {
 } from '../../application/ports/worker-executor.js';
 import type { IdGeneratorPort } from '../../application/ports/conveyor-ports.js';
 import type { SagaRuntimeConfig } from '../../runtime/saga-runtime-config.js';
-import type { Saga3DiscoveryRuntimePersistence } from '../persistence/saga3-discovery-runtime-port.js';
+import type { Saga3DiscoveryRuntimePersistence } from '../../modules/discovery/infrastructure/saga3-discovery-runtime-port.js';
 
 /** What the engine passes to the diagnosis service. */
 export interface DiagnoseRequest {
@@ -137,9 +137,9 @@ export interface Saga3DiscoveryDiagnosisServiceDependencies {
 // the engine projects — never outcome/outcomeAuthority/scopeCompleted/reason/
 // finalStage (invariant I1).
 
-import type { OutcomeCertificateRecord, SettlementRecord } from '../domain/discovery-settlement-records.js';
-import type { DiscoveryProposalPayload } from '../domain/discovery-proposal.js';
-import type { ReadinessAssessmentPayload } from '../domain/discovery-readiness-assessment.js';
+import type { OutcomeCertificateRecord, SettlementRecord } from '../../modules/discovery/domain/discovery-settlement-records.js';
+import type { DiscoveryProposalPayload } from '../../modules/discovery/domain/discovery-proposal.js';
+import type { ReadinessAssessmentPayload } from '../../modules/discovery/domain/discovery-readiness-assessment.js';
 import {
   DISCOVERY_DIAGNOSIS_CASE_SCHEMA,
   DISCOVERY_DIAGNOSIS_CONTRACT_VERSION,
@@ -160,9 +160,9 @@ import type {
   DiagnosisDecision,
 } from '../domain/discovery-diagnosis-case.js';
 import type { DiagnosisControlExecution, DiagnosisReportRecord } from '../domain/discovery-diagnosis-records.js';
-import type { SettlementProposalRecord } from '../persistence/saga3-discovery-runtime-port.js';
-import { discoverySettlementPolicyV1 } from '../domain/discovery-settlement-policy.js';
-import { canonicalJson } from '../shared/discovery-canonical.js';
+import type { SettlementProposalRecord } from '../../modules/discovery/infrastructure/saga3-discovery-runtime-port.js';
+import { discoverySettlementPolicyV1 } from '../../modules/discovery/domain/discovery-settlement-policy.js';
+import { canonicalJson } from '../../shared/canonical-json.js';
 // P0-3: the diagnosis target gate now calls the SAME full verifier D4 uses, so
 // D5 no longer maintains a weaker independent copy of the certificate /
 // settlement / snapshot / readiness verification. The bundle returns every
@@ -170,7 +170,7 @@ import { canonicalJson } from '../shared/discovery-canonical.js';
 import {
   verifyDiscoveryCertificateBundle,
   type VerifiedCertificateBundle,
-} from './discovery-certificate-bundle.js';
+} from '../../modules/discovery/application/discovery-certificate-bundle.js';
 import {
   assignOneCard,
   releaseOneCardIfAssigned,

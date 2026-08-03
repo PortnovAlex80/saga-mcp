@@ -15,7 +15,7 @@
  *
  * Before W6-A3, server-side enforcement of a saga tool call lived in two
  * specialised, non-composable places:
- *   1. `src/saga3/authority/authorize-saga-tool-call.ts` — the strict
+ *   1. `src/shared/authority/authorize-tool-call.ts` — the strict
  *      execution-context + authority gateway bound to the legacy Saga 2/3
  *      MCP handler dispatch in `src/index.ts`. It validates the frozen
  *      execution_context and the authority allowed_tools list, but it is

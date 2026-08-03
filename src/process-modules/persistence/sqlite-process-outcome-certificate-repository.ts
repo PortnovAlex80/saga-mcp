@@ -23,7 +23,7 @@
 import type Database from 'better-sqlite3';
 import { createHash } from 'node:crypto';
 import { getDb } from '../../db.js';
-import { canonicalJson } from '../../saga3/shared/discovery-canonical.js';
+import { canonicalJson } from '../../shared/canonical-json.js';
 import {
   processModuleKey,
   type ProcessModuleReference,

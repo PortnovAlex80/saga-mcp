@@ -334,7 +334,7 @@ test('W9-A8 restart discovery: outcome certificate is write-once (same hash repl
       insertSettlement,
       issueCertificateAtomically,
     } = await import(
-      '../../dist/saga3/persistence/saga3-settlement-repository.js'
+      '../../dist/modules/discovery/infrastructure/saga3-settlement-repository.js'
     );
     ensureSaga3SettlementSchema(db);
 

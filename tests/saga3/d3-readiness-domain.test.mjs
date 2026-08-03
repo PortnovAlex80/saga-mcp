@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 const { validateReadinessAssessment, READINESS_DIMENSIONS } = await import(
-  '../../dist/saga3/domain/discovery-readiness-assessment.js'
+  '../../dist/modules/discovery/domain/discovery-readiness-assessment.js'
 );
 
 const PROPOSAL_ID = 42;

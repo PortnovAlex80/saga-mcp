@@ -4,12 +4,12 @@ import { getDb } from '../db.js';
 import type { ToolHandler } from '../types.js';
 import { withImmediateTransaction } from './dispatcher.js';
 import { argInt, argStr, SAGA3_TOOL_CALL_SHAPES, SAGA3_ARG_SOURCES, enrichPayloadErrors } from './saga3-args.js';
-import { readExecutionContextStrict } from '../saga3/authority/authorize-saga-tool-call.js';
+import { readExecutionContextStrict } from '../shared/authority/authorize-tool-call.js';
 import {
   DISCOVERY_NORMALIZATION_PROPOSAL_SCHEMA,
   validateDiscoveryNormalizationProposal,
   type DiscoveryNormalizationProposalPayload,
-} from '../saga3/domain/discovery-normalization-proposal.js';
+} from '../modules/discovery/domain/discovery-normalization-proposal.js';
 import type { ProposalProvenance } from '../saga3/domain/proposal.js';
 import {
   canonicalJson,

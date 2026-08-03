@@ -47,7 +47,7 @@ const {
 } = await import(
   '../../dist/process-modules/application/handlers/process-outcome-emitter.js'
 );
-const { sha256Hex } = await import('../../dist/saga3/shared/discovery-canonical.js');
+const { sha256Hex } = await import('../../dist/shared/canonical-json.js');
 const { validateProcessModuleInstallation } = await import(
   '../../dist/process-modules/application/validate-process-module-installation.js'
 );

@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-const { normalizeDiscoveryProposalInput } = await import('../../dist/saga3/domain/discovery-normalization.js');
-const { validateDiscoveryNormalizationProposal } = await import('../../dist/saga3/domain/discovery-normalization-proposal.js');
+const { normalizeDiscoveryProposalInput } = await import('../../dist/modules/discovery/domain/discovery-normalization.js');
+const { validateDiscoveryNormalizationProposal } = await import('../../dist/modules/discovery/domain/discovery-normalization-proposal.js');
 
 function canonical(overrides = {}) {
   return {

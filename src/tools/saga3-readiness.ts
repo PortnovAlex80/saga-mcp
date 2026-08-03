@@ -18,21 +18,21 @@ import { getDb } from '../db.js';
 import type { ToolHandler } from '../types.js';
 import { withImmediateTransaction } from './dispatcher.js';
 import { argInt, argStr, SAGA3_TOOL_CALL_SHAPES, SAGA3_ARG_SOURCES, enrichPayloadErrors } from './saga3-args.js';
-import { readExecutionContextStrict } from '../saga3/authority/authorize-saga-tool-call.js';
+import { readExecutionContextStrict } from '../shared/authority/authorize-tool-call.js';
 import {
   DISCOVERY_READINESS_ASSESSMENT_SCHEMA,
   validateReadinessAssessment,
   type ReadinessAssessmentPayload,
-} from '../saga3/domain/discovery-readiness-assessment.js';
+} from '../modules/discovery/domain/discovery-readiness-assessment.js';
 import type { ProposalProvenance } from '../saga3/domain/proposal.js';
-import { validateDiscoveryProposal, type DiscoveryProposalPayload } from '../saga3/domain/discovery-proposal.js';
+import { validateDiscoveryProposal, type DiscoveryProposalPayload } from '../modules/discovery/domain/discovery-proposal.js';
 import {
   ensureSaga3ReadinessSchema,
   insertReadinessAssessment,
   markReadinessAccepted,
   markReadinessRejected,
 } from '../saga3/persistence/saga3-readiness-repository.js';
-import { canonicalJson, collectDiscoverySourceRefs } from '../saga3/shared/discovery-canonical.js';
+import { canonicalJson, collectDiscoverySourceRefs } from '../shared/canonical-json.js';
 import { createHash } from 'node:crypto';
 
 export interface Saga3ReadinessHandlersOptions {
@@ -117,7 +117,7 @@ function requireReadinessBinding(
 
 /**
  * The allowed source-ref set is built by the SHARED collectDiscoverySourceRefs
- * (src/saga3/shared/discovery-canonical.ts). Both the D3 readiness handler and
+ * (src/shared/canonical-json.ts). Both the D3 readiness handler and
  * the D4 settlement service MUST use that single function: a drift between the
  * two once made an accepted assessment fail settlement re-validation. This thin
  * adapter maps the handler's ProductProposalRow into the shared target shape.

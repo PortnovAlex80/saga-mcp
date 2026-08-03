@@ -14,7 +14,7 @@
  */
 import { createHash } from 'node:crypto';
 
-import { canonicalJson } from '../shared/discovery-canonical.js';
+import { canonicalJson } from '../../shared/canonical-json.js';
 import type { DiagnosisDecision } from './discovery-diagnosis-case.js';
 
 /** Schema version for the diagnosis report payload (D5 §6). */

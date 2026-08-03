@@ -30,7 +30,7 @@ import type { ToolHandler } from '../types.js';
 // transaction — that caused a nested-transaction error in the live D5 smoke.
 // The repository function is itself the single atomic boundary.)
 import { argInt, argStr, SAGA3_TOOL_CALL_SHAPES, SAGA3_ARG_SOURCES, enrichPayloadErrors } from './saga3-args.js';
-import { readExecutionContextStrict } from '../saga3/authority/authorize-saga-tool-call.js';
+import { readExecutionContextStrict } from '../shared/authority/authorize-tool-call.js';
 import {
   DISCOVERY_DIAGNOSIS_REPORT_SCHEMA,
 } from '../saga3/domain/discovery-diagnosis-report.js';

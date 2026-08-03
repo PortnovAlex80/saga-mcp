@@ -58,7 +58,7 @@ const { SqliteSaga3DiscoveryRuntime } = await import(
   '../../dist/saga3/persistence/sqlite-saga3-discovery-runtime.js'
 );
 const { Saga3DiscoverySettlementService } = await import(
-  '../../dist/saga3/application/discovery-settlement-service.js'
+  '../../dist/modules/discovery/application/discovery-settlement-service.js'
 );
 const { createSaga3ProposalHandlers } = await import(
   '../../dist/tools/saga3-proposals.js'
@@ -70,30 +70,30 @@ const { createSaga3ReadinessHandlers } = await import(
   '../../dist/tools/saga3-readiness.js'
 );
 const { buildExecutionContext } = await import(
-  '../../dist/saga3/authority/build-execution-context.js'
+  '../../dist/shared/authority/build-execution-context.js'
 );
 const { executionContextHash } = await import(
-  '../../dist/saga3/domain/execution-context.js'
+  '../../dist/shared/authority/execution-context.js'
 );
 const {
   DISCOVERY_INTENT_KIND,
   DISCOVERY_READINESS_INTENT_KIND,
   DISCOVERY_WORK_INTENT_SCHEMA,
-} = await import('../../dist/saga3/domain/work-intent.js');
+} = await import('../../dist/shared/work-intent.js');
 const { DISCOVERY_PROPOSAL_SCHEMA } = await import(
-  '../../dist/saga3/domain/discovery-proposal.js'
+  '../../dist/modules/discovery/domain/discovery-proposal.js'
 );
 const { DISCOVERY_NORMALIZATION_PROPOSAL_SCHEMA } = await import(
-  '../../dist/saga3/domain/discovery-normalization-proposal.js'
+  '../../dist/modules/discovery/domain/discovery-normalization-proposal.js'
 );
 const {
   DISCOVERY_READINESS_ASSESSMENT_SCHEMA,
   READINESS_DIMENSIONS,
 } = await import(
-  '../../dist/saga3/domain/discovery-readiness-assessment.js'
+  '../../dist/modules/discovery/domain/discovery-readiness-assessment.js'
 );
 const { canonicalJson } = await import(
-  '../../dist/saga3/shared/discovery-canonical.js'
+  '../../dist/shared/canonical-json.js'
 );
 
 const PROJECT_ID = 1;

@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { getDb } from '../../db.js';
-import type { CreateWorkIntent, WorkIntent, WorkIntentStatus } from '../domain/work-intent.js';
+import type { CreateWorkIntent, WorkIntent, WorkIntentStatus } from '../../shared/work-intent.js';
 import type {
   ProposalProvenance,
   ProposalRecord,

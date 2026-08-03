@@ -89,9 +89,9 @@ import type {
   WorkerExecutorFactoryContext,
 } from '../application/ports/worker-executor.js';
 import { getDb } from '../db.js';
-import type { Saga3DiscoveryRuntimePersistence } from '../saga3/persistence/saga3-discovery-runtime-port.js';
+import type { Saga3DiscoveryRuntimePersistence } from '../modules/discovery/infrastructure/saga3-discovery-runtime-port.js';
 import { SqliteSaga3DiscoveryRuntime } from '../saga3/persistence/sqlite-saga3-discovery-runtime.js';
-import { Saga3DiscoverySettlementService } from '../saga3/application/discovery-settlement-service.js';
+import { Saga3DiscoverySettlementService } from '../modules/discovery/application/discovery-settlement-service.js';
 import { GenericFlowExecutor } from '../process-modules/application/generic-flow-executor.js';
 import {
   PROCESS_OUTCOME_EMITTER_HANDLER_ID,

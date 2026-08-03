@@ -15,13 +15,13 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import test from 'node:test';
 
-const { buildExecutionContext } = await import('../../dist/saga3/authority/build-execution-context.js');
+const { buildExecutionContext } = await import('../../dist/shared/authority/build-execution-context.js');
 const {
   authorityHash,
   executionContextHash,
   canonicalJson,
   EXECUTION_CONTEXT_POLICY_VERSION,
-} = await import('../../dist/saga3/domain/execution-context.js');
+} = await import('../../dist/shared/authority/execution-context.js');
 
 const ALLOWED = ['task_get', 'repository_checkout_list', 'artifact_list', 'note_list', 'proposal_submit', 'worker_done'];
 

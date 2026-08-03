@@ -29,22 +29,22 @@ import path from 'node:path';
 import test from 'node:test';
 
 const { closeDb, getDb } = await import('../../dist/db.js');
-const { DISCOVERY_PROPOSAL_SCHEMA } = await import('../../dist/saga3/domain/discovery-proposal.js');
+const { DISCOVERY_PROPOSAL_SCHEMA } = await import('../../dist/modules/discovery/domain/discovery-proposal.js');
 const {
   DISCOVERY_INTENT_KIND,
   DISCOVERY_READINESS_INTENT_KIND,
   DISCOVERY_WORK_INTENT_SCHEMA,
-} = await import('../../dist/saga3/domain/work-intent.js');
+} = await import('../../dist/shared/work-intent.js');
 const { DISCOVERY_READINESS_ASSESSMENT_SCHEMA, READINESS_DIMENSIONS } = await import(
-  '../../dist/saga3/domain/discovery-readiness-assessment.js'
+  '../../dist/modules/discovery/domain/discovery-readiness-assessment.js'
 );
-const { canonicalJson } = await import('../../dist/saga3/shared/discovery-canonical.js');
+const { canonicalJson } = await import('../../dist/shared/canonical-json.js');
 const { ensureSaga3ReadinessSchema } = await import(
   '../../dist/saga3/persistence/saga3-readiness-repository.js'
 );
 const {
   ensureSaga3SettlementSchema,
-} = await import('../../dist/saga3/persistence/saga3-settlement-repository.js');
+} = await import('../../dist/modules/discovery/infrastructure/saga3-settlement-repository.js');
 const { ensureSaga3DiagnosisSchema } = await import(
   '../../dist/saga3/persistence/saga3-diagnosis-repository.js'
 );
@@ -61,7 +61,7 @@ const { Saga3DiscoveryDiagnosisService } = await import(
   '../../dist/saga3/application/discovery-diagnosis-service.js'
 );
 const { Saga3DiscoverySettlementService } = await import(
-  '../../dist/saga3/application/discovery-settlement-service.js'
+  '../../dist/modules/discovery/application/discovery-settlement-service.js'
 );
 const { SqliteSaga3DiscoveryRuntime } = await import(
   '../../dist/saga3/persistence/sqlite-saga3-discovery-runtime.js'

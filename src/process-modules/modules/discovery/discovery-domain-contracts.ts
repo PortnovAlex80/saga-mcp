@@ -53,7 +53,7 @@ export const DISCOVERY_SETTLEMENT_INPUT_SCHEMA =
 export const NO_READINESS_HASH = 'none';
 
 // ---------------------------------------------------------------------------
-// WorkIntent kinds + schema (byte-identical to saga3/domain/work-intent.ts).
+// WorkIntent kinds + schema (byte-identical to src/shared/work-intent.ts).
 // ---------------------------------------------------------------------------
 
 /** Schema version for the discovery WorkIntent envelope. */
@@ -346,7 +346,7 @@ export interface SettlementProposalRecord {
 }
 
 // ---------------------------------------------------------------------------
-// WorkIntent + CreateWorkIntent (mirror saga3/domain/work-intent.ts).
+// WorkIntent + CreateWorkIntent (mirror src/shared/work-intent.ts).
 // ---------------------------------------------------------------------------
 
 export interface AuthorityScope {

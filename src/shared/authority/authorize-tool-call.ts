@@ -15,7 +15,7 @@ import {
   type ExecutionAuthority,
   type ExecutionContextSnapshot,
   type ExecutionModelRoute,
-} from '../domain/execution-context.js';
+} from './execution-context.js';
 
 export type AuthorizationDecision =
   | { allow: true; advisory?: boolean; observation?: string; executionId?: string }

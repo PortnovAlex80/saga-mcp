@@ -22,7 +22,7 @@
 import { createHash } from 'node:crypto';
 
 import type { DiscoverySettlementInputSnapshot } from './discovery-settlement-input.js';
-import { canonicalJson } from '../shared/discovery-canonical.js';
+import { canonicalJson } from '../../../shared/canonical-json.js';
 
 /**
  * Version string for policy v1. Recorded in the snapshot, the settlement row,

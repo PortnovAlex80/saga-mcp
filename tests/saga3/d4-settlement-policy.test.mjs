@@ -17,15 +17,15 @@ import {
   POLICY_V1_CONTENT_HASH,
   POLICY_V1_MANIFEST,
   REJECT_MIN_CONFIDENCE,
-} from '../../dist/saga3/domain/discovery-settlement-policy.js';
+} from '../../dist/modules/discovery/domain/discovery-settlement-policy.js';
 import {
   DISCOVERY_SETTLEMENT_INPUT_SCHEMA,
   buildSettlementInputHash,
-} from '../../dist/saga3/domain/discovery-settlement-input.js';
+} from '../../dist/modules/discovery/domain/discovery-settlement-input.js';
 import {
   OVERALL_READINESS_VALUES,
   READINESS_DIMENSIONS,
-} from '../../dist/saga3/domain/discovery-readiness-assessment.js';
+} from '../../dist/modules/discovery/domain/discovery-readiness-assessment.js';
 
 const policy = new DiscoverySettlementPolicyV1();
 

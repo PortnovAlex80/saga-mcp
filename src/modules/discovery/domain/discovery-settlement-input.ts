@@ -18,7 +18,7 @@ import { createHash } from 'node:crypto';
 
 import type { DiscoveryProposalPayload } from './discovery-proposal.js';
 import type { ReadinessAssessmentPayload } from './discovery-readiness-assessment.js';
-import { canonicalJson } from '../shared/discovery-canonical.js';
+import { canonicalJson } from '../../../shared/canonical-json.js';
 
 /**
  * Schema version for the settlement input snapshot. The hash computed over a
