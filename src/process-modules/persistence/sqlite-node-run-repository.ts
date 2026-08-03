@@ -8,6 +8,7 @@
 
 import type Database from 'better-sqlite3';
 import { getDb } from '../../db.js';
+import { canonicalJson, sha256Hex } from '../shared/canonical-json.js';
 import type {
   CompleteNodeRunInput,
   FailNodeRunInput,
@@ -114,6 +115,16 @@ export function ensureSaga3NodeRunSchema(db: Database.Database): void {
   if (!cols.some((c) => c.name === 'completion')) {
     db.exec('ALTER TABLE saga3_node_runs ADD COLUMN completion TEXT');
   }
+  // WAVE 8 HIGH 4: 9th additive nullable column. SHA-256 over the canonical
+  // JSON of `completion` (computed when `completion` is non-null). Persisted
+  // alongside the JSON so reads can VERIFY integrity — corrupted/malformed JSON
+  // or a hash mismatch becomes a LOUD error (COMPLETION_CORRUPT /
+  // COMPLETION_HASH_MISMATCH), not the silent null the audit flagged. Null when
+  // `completion` is null (legacy row or non-terminal node). Idempotent ALTER,
+  // same dual-placement pattern as the 8 columns above.
+  if (!cols.some((c) => c.name === 'completion_hash')) {
+    db.exec('ALTER TABLE saga3_node_runs ADD COLUMN completion_hash TEXT');
+  }
   // Resume index: exact-cursor lookup by (process_run_id, node_id, attempt).
   // The attempt column is 1-based and unique per (run, node), so this index
   // makes readByExactCursor an equality probe (§9.11).
@@ -151,6 +162,9 @@ interface NodeRunRow {
   production_envelope?: string | null;
   // FU-A Wave 3: explicit ModuleCompletion JSON column.
   completion?: string | null;
+  // WAVE 8 HIGH 4: SHA-256 over canonical JSON of `completion`. Null when the
+  // completion column is null. Verified on read — mismatch throws.
+  completion_hash?: string | null;
 }
 
 function rowToRecord(row: NodeRunRow): NodeRunRecord {
@@ -256,6 +270,18 @@ function parseJsonArray<T>(text: string | null | undefined): T[] | null {
  * `rowToRecord` for the legacy fields, then layers the seven v2 fields. Legacy
  * rows (v2 columns NULL) surface every v2 field as null/empty — they remain
  * valid `NodeRunRecordV2` values, just without the Wave-3 marker.
+ *
+ * WAVE 8 HIGH 4 — the `completion` column is parsed with INTEGRITY
+ * VERIFICATION, not the lenient `parseJsonObject` fallback. The audit
+ * (WAVE-8-PRODUCTION-V2-BLOCKERS.txt HIGH 4) flagged that "повреждённый JSON
+ * молча превращается в null" — silent null on parse error. After Wave 8:
+ *   - malformed `completion` JSON → throws COMPLETION_CORRUPT (loud).
+ *   - `completion` parses but the recomputed hash ≠ stored `completion_hash` →
+ *     throws COMPLETION_HASH_MISMATCH (loud; signals DB corruption or a
+ *     non-canonical writer).
+ *   - both `completion` and `completion_hash` NULL → surfaces `completion: null`
+ *     + `completionHash: null` (legacy / non-terminal row — the additive
+ *     contract holds).
  */
 function rowToRecordV2(row: NodeRunRow): NodeRunRecordV2 {
   const base = rowToRecord(row);
@@ -270,8 +296,65 @@ function rowToRecordV2(row: NodeRunRow): NodeRunRecordV2 {
     productionEnvelope: parseJsonObject<NodeRunRecordV2['productionEnvelope']>(
       row.production_envelope,
     ),
-    completion: parseJsonObject<NodeRunRecordV2['completion']>(row.completion),
+    completion: parseVerifiedCompletion(row.completion, row.completion_hash),
+    completionHash: row.completion_hash ?? null,
   };
+}
+
+/**
+ * WAVE 8 HIGH 4 — parse `completion` with integrity verification.
+ *
+ *   - both null  → null (legacy / non-terminal row; additive contract).
+ *   - JSON null/text empty → null.
+ *   - JSON malformed → throw `COMPLETION_CORRUPT` (NOT silent null).
+ *   - JSON valid but canonical-hash ≠ stored hash → throw
+ *     `COMPLETION_HASH_MISMATCH` (NOT silent null). Signals a corrupted row or
+ *     a writer that did not use canonicalJson.
+ *
+ * The hash column is consulted only when the JSON column is non-null. This
+ * preserves the additive contract for pre-Wave-8 rows that have completion but
+ * no completion_hash: their hash is null, so we cannot verify, but we also do
+ * not silently null — we surface the parsed value (the row predates the
+ * integrity column and is trusted by the migration contract). New rows always
+ * carry both columns together (completeV2 writes them atomically).
+ */
+function parseVerifiedCompletion(
+  completionText: string | null | undefined,
+  completionHash: string | null | undefined,
+): NodeRunRecordV2['completion'] {
+  if (!completionText) return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(completionText);
+  } catch (err) {
+    throw new Error(
+      `COMPLETION_CORRUPT: saga3_node_runs.completion is malformed JSON `
+        + `(${(err as Error).message}); refusing to silently degrade to null`,
+    );
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    // Valid JSON but wrong shape — treat as corrupt (the writer invariant is
+    // `JSON.stringify(ModuleCompletion)`, always a plain object).
+    throw new Error(
+      'COMPLETION_CORRUPT: saga3_node_runs.completion parsed to a non-object; '
+        + 'refusing to silently degrade to null',
+    );
+  }
+  // Pre-Wave-8 rows carry completion but no completion_hash — trust them (the
+  // migration contract: rows written before HIGH 4 are presumed intact, the
+  // hash column only starts verifying rows written after).
+  if (completionHash === null || completionHash === undefined) {
+    return parsed as NodeRunRecordV2['completion'];
+  }
+  const computed = sha256Hex(parsed);
+  if (computed !== completionHash) {
+    throw new Error(
+      `COMPLETION_HASH_MISMATCH: saga3_node_runs.completion hash differs from `
+        + `completion_hash (expected ${completionHash}, computed ${computed}); `
+        + 'refusing to silently degrade to null',
+    );
+  }
+  return parsed as NodeRunRecordV2['completion'];
 }
 
 export class SqliteNodeRunRepository implements NodeRunRepository, NodeRunRepositoryV2 {
@@ -411,18 +494,26 @@ export class SqliteNodeRunRepository implements NodeRunRepository, NodeRunReposi
     const envelopeText = input.productionEnvelope
       ? JSON.stringify(input.productionEnvelope)
       : null;
-    const completionText = input.completion ? JSON.stringify(input.completion) : null;
+    // WAVE 8 HIGH 4 — persist the completion JSON AND its canonical hash. The
+    // hash is computed via canonicalJson (NOT JSON.stringify) so reads can
+    // recompute byte-identically regardless of property order. Both columns
+    // are written atomically in the same UPDATE. Null when the caller passes
+    // no completion (legacy / non-terminal node).
+    const completionText = input.completion ? canonicalJson(input.completion) : null;
+    const completionHash = input.completion ? sha256Hex(input.completion) : null;
     // DUAL-WRITE: legacy output_* columns AND the v2 production_envelope +
-    // transition_cursor + completion. The legacy columns keep pre-Wave-3
-    // readers working; the v2 columns let Wave-3 readers resume by exact
-    // cursor (§9.11). `completion` (FU-A Wave 3) carries the explicit
+    // transition_cursor + completion + completion_hash. The legacy columns keep
+    // pre-Wave-3 readers working; the v2 columns let Wave-3 readers resume by
+    // exact cursor (§9.11). `completion` (FU-A Wave 3) carries the explicit
     // terminal envelope so crash-resume rebuilds NodeExecutionResult.completion
-    // without falling back to magic bindings.
+    // without falling back to magic bindings. `completion_hash` (Wave 8 HIGH 4)
+    // lets reads VERIFY integrity (COMPLETION_CORRUPT / COMPLETION_HASH_MISMATCH
+    // throw instead of silent null).
     this.db.prepare(
       `UPDATE saga3_node_runs
           SET status='completed', event=?, output_ref=?, output_schema=?, output_hash=?, output_bindings=?,
               execution_receipt=?, acceptance_receipt=?, recovery_issue=?,
-              production_envelope=?, transition_cursor=?, completion=?,
+              production_envelope=?, transition_cursor=?, completion=?, completion_hash=?,
               completed_at=datetime('now')
         WHERE id=?`,
     ).run(
@@ -437,6 +528,7 @@ export class SqliteNodeRunRepository implements NodeRunRepository, NodeRunReposi
       envelopeText,
       input.transitionCursor ?? null,
       completionText,
+      completionHash,
       input.id,
     );
     const row = this.db.prepare(

@@ -626,10 +626,13 @@ function developmentSettlementFailure(
     payload: developmentPayload,
   };
   const certificateHash = sha256Hex(certificatePayload);
-  // Uncle Bob Wave 4 — the failure path is also authoritative for its own
-  // certificate (it emits the 'failed' terminal outcome). Same issuance as the
-  // success path; the repo is idempotent so the executor's magic-bindings
-  // re-issue during the additive cutover is safe.
+  // WAVE 8 HIGH 3 — the failure path is also authoritative for its own
+  // certificate (it emits the 'failed' terminal outcome). The repo is
+  // idempotent on certificateHash so re-runs converge. There is NO try/catch
+  // swallow: if `certificateRepository.issue` throws, the settlement MUST FAIL
+  // LOUDLY (the previous contract relied on the deleted magic-bindings
+  // fallback; Wave 8 makes terminal completion mandatory and the swallow was a
+  // silent-null data-loss path).
   const certResult = deps.certificateRepository.issue({
     processRunId: ctx.processRunId,
     moduleRef: DEVELOPMENT_PROCESS_MODULE_REF,

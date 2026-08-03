@@ -450,3 +450,296 @@ const V2_COLUMNS = [
   'transition_cursor',
   'production_envelope',
 ];
+
+// ===========================================================================
+// WAVE 8 HIGH 4 — completion_hash column + integrity verification.
+//
+// The audit (WAVE-8-PRODUCTION-V2-BLOCKERS.txt HIGH 4) flagged that the
+// durable ModuleCompletion had NO identity/integrity: stored as plain JSON,
+// corrupted/malformed JSON silently became null. HIGH 4 adds a
+// `completion_hash` column (SHA-256 over canonical JSON), persisted alongside
+// the JSON. Reads VERIFY integrity — COMPLETION_CORRUPT and
+// COMPLETION_HASH_MISMATCH throw instead of silent null. These tests prove
+// the column exists, the hash round-trips, and the loud throws fire.
+// ===========================================================================
+
+test('WAVE 8 HIGH 4: saga3_node_runs has a `completion_hash` column after the repo ctor (fresh DB)', () => {
+  const { db, temp, previous } = freshDb();
+  try {
+    // eslint-disable-next-line no-new
+    new SqliteNodeRunRepository(db);
+    const cols = columnNames(db);
+    assert.ok(
+      cols.includes('completion_hash'),
+      `expected 'completion_hash' column to exist; got [${cols.join(', ')}]`,
+    );
+  } finally {
+    cleanup(temp, previous);
+  }
+});
+
+test('WAVE 8 HIGH 4: ensureSaga3NodeRunSchema is idempotent — `completion_hash` column not duplicated', () => {
+  const { db, temp, previous } = freshDb();
+  try {
+    // eslint-disable-next-line no-new
+    new SqliteNodeRunRepository(db);
+    // eslint-disable-next-line no-new
+    new SqliteNodeRunRepository(db);
+    const cols = columnNames(db);
+    const count = cols.filter((c) => c === 'completion_hash').length;
+    assert.equal(count, 1, '`completion_hash` column must appear exactly once');
+  } finally {
+    cleanup(temp, previous);
+  }
+});
+
+test('WAVE 8 HIGH 4: completeV2 persists completion_hash alongside completion (round-trip)', () => {
+  const { db, temp, previous } = freshDb();
+  try {
+    const repo = new SqliteNodeRunRepository(db);
+    const started = repo.startV2({
+      processRunId: 5001,
+      nodeId: 'settle',
+      nodeKind: 'kernel',
+      inputEnvelopeHash: 'env-hash-1',
+    });
+    const completion = sampleModuleCompletion();
+    const completed = repo.completeV2({
+      id: started.id,
+      event: 'domain.go',
+      outputRef: 'settle:out',
+      outputHash: 'hash-1',
+      completion,
+    });
+    // The v2 record carries the computed hash.
+    assert.equal(completed.completionHash, sha256Hex(completion));
+    assert.deepEqual(completed.completion, completion);
+
+    // The raw row stores both columns.
+    const raw = db.prepare(
+      'SELECT completion, completion_hash FROM saga3_node_runs WHERE id=?',
+    ).get(started.id);
+    assert.ok(raw.completion, 'completion JSON must be populated');
+    assert.ok(raw.completion_hash, 'completion_hash must be populated');
+    assert.equal(raw.completion_hash, sha256Hex(completion));
+
+    // readByExactCursor returns the hash too.
+    const resumed = repo.readByExactCursor(5001, 'settle', 1);
+    assert.ok(resumed);
+    assert.equal(resumed.completionHash, sha256Hex(completion));
+    assert.deepEqual(resumed.completion, completion);
+  } finally {
+    cleanup(temp, previous);
+  }
+});
+
+test('WAVE 8 HIGH 4: a row completed WITHOUT completion surfaces completion_hash: null (additive)', () => {
+  const { db, temp, previous } = freshDb();
+  try {
+    const repo = new SqliteNodeRunRepository(db);
+    const started = repo.startV2({
+      processRunId: 5002,
+      nodeId: 'n',
+      nodeKind: 'kernel',
+    });
+    const completed = repo.completeV2({
+      id: started.id,
+      event: 'e',
+      outputRef: 'r',
+      outputHash: 'h',
+    });
+    assert.equal(completed.completion, null);
+    assert.equal(completed.completionHash, null, 'absent completion → null hash');
+  } finally {
+    cleanup(temp, previous);
+  }
+});
+
+test('WAVE 8 HIGH 4: completion_hash round-trips byte-identical through DB close/reopen', () => {
+  const previous = process.env.DB_PATH;
+  const temp = mkdtempSync(path.join(os.tmpdir(), 'saga-w8-hash-reopen-'));
+  process.env.DB_PATH = path.join(temp, 'reopen.db');
+  const completion = sampleModuleCompletion({
+    outcome: 'accepted',
+    certSchemaId: 'saga3.delivery-certificate.v2',
+    certRef: 'certificate:5150',
+    certDigest: 'sha256:delivery-cert-aaaa',
+  });
+  const expectedHash = sha256Hex(completion);
+  try {
+    let db = getDb();
+    db.pragma('foreign_keys = OFF');
+    let repo = new SqliteNodeRunRepository(db);
+    const started = repo.startV2({
+      processRunId: 5003,
+      nodeId: 'settle-deliver',
+      nodeKind: 'kernel',
+      inputEnvelopeHash: 'env-pre',
+    });
+    repo.completeV2({
+      id: started.id,
+      event: 'domain.accepted',
+      outputRef: 'settle:d',
+      outputHash: 'd-hash',
+      completion,
+    });
+
+    closeDb();
+    db = getDb();
+    db.pragma('foreign_keys = OFF');
+    repo = new SqliteNodeRunRepository(db);
+
+    const resumed = repo.readByExactCursor(5003, 'settle-deliver', 1);
+    assert.ok(resumed);
+    assert.ok(resumed.completion);
+    assert.equal(resumed.completionHash, expectedHash);
+    assert.deepEqual(resumed.completion, completion);
+  } finally {
+    cleanup(temp, previous);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// THE CRITICAL PROOF: corrupted completion JSON THROWS (not silent null).
+// ---------------------------------------------------------------------------
+
+test('WAVE 8 HIGH 4 (CRITICAL): malformed completion JSON in the DB THROWS COMPLETION_CORRUPT (not silent null)', () => {
+  const { db, temp, previous } = freshDb();
+  try {
+    const repo = new SqliteNodeRunRepository(db);
+    const started = repo.startV2({
+      processRunId: 5004,
+      nodeId: 'settle',
+      nodeKind: 'kernel',
+    });
+    repo.completeV2({
+      id: started.id,
+      event: 'domain.go',
+      outputRef: 'r',
+      outputHash: 'h',
+      completion: sampleModuleCompletion(),
+    });
+    // Corrupt the completion JSON in the DB directly (simulates a torn write /
+    // SQLite corruption the audit warned about). Old behavior: parse failed →
+    // null surfaced silently. Wave 8: COMPLETION_CORRUPT must throw loudly.
+    db.prepare(
+      `UPDATE saga3_node_runs SET completion=? WHERE id=?`,
+    ).run('{ this is not valid json', started.id);
+
+    assert.throws(
+      () => repo.readByExactCursor(5004, 'settle', 1),
+      /COMPLETION_CORRUPT/,
+      'malformed completion JSON must throw COMPLETION_CORRUPT, not silent null',
+    );
+    // Also via listV2.
+    assert.throws(
+      () => repo.listV2(5004),
+      /COMPLETION_CORRUPT/,
+      'listV2 must surface the same COMPLETION_CORRUPT throw',
+    );
+  } finally {
+    cleanup(temp, previous);
+  }
+});
+
+test('WAVE 8 HIGH 4 (CRITICAL): completion JSON that parses to a non-object THROWS COMPLETION_CORRUPT', () => {
+  const { db, temp, previous } = freshDb();
+  try {
+    const repo = new SqliteNodeRunRepository(db);
+    const started = repo.startV2({
+      processRunId: 5005,
+      nodeId: 'settle',
+      nodeKind: 'kernel',
+    });
+    repo.completeV2({
+      id: started.id,
+      event: 'domain.go',
+      outputRef: 'r',
+      outputHash: 'h',
+      completion: sampleModuleCompletion(),
+    });
+    // Valid JSON but wrong shape (array, not an object) — also a corrupt
+    // completion value (the writer invariant is JSON.stringify(ModuleCompletion),
+    // always a plain object).
+    db.prepare(
+      `UPDATE saga3_node_runs SET completion=? WHERE id=?`,
+    ).run('[1, 2, 3]', started.id);
+
+    assert.throws(
+      () => repo.readByExactCursor(5005, 'settle', 1),
+      /COMPLETION_CORRUPT/,
+      'completion JSON parsing to a non-object must throw COMPLETION_CORRUPT',
+    );
+  } finally {
+    cleanup(temp, previous);
+  }
+});
+
+test('WAVE 8 HIGH 4 (CRITICAL): completion_hash mismatch in the DB THROWS COMPLETION_HASH_MISMATCH (not silent null)', () => {
+  const { db, temp, previous } = freshDb();
+  try {
+    const repo = new SqliteNodeRunRepository(db);
+    const started = repo.startV2({
+      processRunId: 5006,
+      nodeId: 'settle',
+      nodeKind: 'kernel',
+    });
+    repo.completeV2({
+      id: started.id,
+      event: 'domain.go',
+      outputRef: 'r',
+      outputHash: 'h',
+      completion: sampleModuleCompletion(),
+    });
+    // Tamper with the hash — keep the JSON intact so parsing succeeds, then
+    // fail the integrity check. This catches a non-canonical writer or a row
+    // edited in place (the audit's corruption scenario).
+    db.prepare(
+      `UPDATE saga3_node_runs SET completion_hash=? WHERE id=?`,
+    ).run('0'.repeat(64), started.id);
+
+    assert.throws(
+      () => repo.readByExactCursor(5006, 'settle', 1),
+      /COMPLETION_HASH_MISMATCH/,
+      'hash mismatch must throw COMPLETION_HASH_MISMATCH, not silent null',
+    );
+  } finally {
+    cleanup(temp, previous);
+  }
+});
+
+test('WAVE 8 HIGH 4: legacy pre-Wave-8 row (completion without completion_hash) is trusted, not verified', () => {
+  // The migration contract: rows written before HIGH 4 carry `completion` but
+  // no `completion_hash`. They are presumed intact (the integrity column was
+  // not yet invented). The read must surface the parsed value WITHOUT throwing
+  // — silent null was the bug; legacy trust is the migration path.
+  const { db, temp, previous } = freshDb();
+  try {
+    const repo = new SqliteNodeRunRepository(db);
+    // Simulate a pre-Wave-8 row by inserting via raw SQL with a completion but
+    // a NULL completion_hash. The repo's completeV2 always writes both; the
+    // only way to get a row with completion + null hash is the legacy writer.
+    db.prepare(
+      `INSERT INTO saga3_node_runs (
+         process_run_id, node_id, node_kind, attempt, status, event,
+         output_ref, output_hash, completion, completion_hash
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
+    ).run(
+      5007,
+      'legacy-settle',
+      'kernel',
+      1,
+      'completed',
+      'domain.go',
+      'legacy:ref',
+      'legacy-hash',
+      canonicalJson(sampleModuleCompletion()),
+    );
+    const resumed = repo.readByExactCursor(5007, 'legacy-settle', 1);
+    assert.ok(resumed, 'legacy row must be readable');
+    assert.ok(resumed.completion, 'legacy completion must surface (not silent null)');
+    assert.equal(resumed.completionHash, null, 'legacy row hash stays null');
+  } finally {
+    cleanup(temp, previous);
+  }
+});

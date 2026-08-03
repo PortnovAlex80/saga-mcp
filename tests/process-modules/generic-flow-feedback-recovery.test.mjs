@@ -267,9 +267,17 @@ function buildHarness(db, module, {
       kind: 'kernel',
       async execute(ctx) {
         if (ctx.node.id === 'complete') {
+          // WAVE 8 HIGH 3 — terminal completion is mandatory. The recovery
+          // feedback tests exercise the verify→repair loop, not the
+          // certificate channel; emit a minimal certificate-free completion.
           return {
             runtimeEvent: 'completed',
             domainEvent: 'outcome:accepted',
+            completion: {
+              outcome: 'accepted',
+              terminal: true,
+              outputEnvelope: { outcome: 'accepted', productions: [] },
+            },
           };
         }
         calls.verifier.push(ctx);

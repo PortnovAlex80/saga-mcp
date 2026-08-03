@@ -822,6 +822,16 @@ function createDiscoverySettlementHandler(
     //    Runtime (GenericFlowExecutor) только валидирует envelope + атомарно
     //    сохраняет (Д7), не реконструируя сертификат заново.
     if (settled.status !== 'issued') {
+      // WAVE 8 HIGH 3 — terminal completion is MANDATORY. The failure outcome
+      // reaches the terminal `complete-failed` emitter; the kernel MUST emit an
+      // explicit ModuleCompletion so the executor does not throw
+      // SETTLEMENT_COMPLETION_MISSING. No certificate is issued on this path
+      // (the settlement policy declined to issue one), so certificateRef is
+      // OMITTED — the executor resolves `certificate = null`, which is the
+      // clean contract for a non-certified terminal outcome. The previous
+      // return omitted `completion`, which silently produced a null certificate
+      // via the deleted magic-bindings path; after Wave 5 + Wave 8 that path is
+      // gone, so the completion must be explicit.
       return {
         event: 'failed',
         production: {
@@ -830,6 +840,15 @@ function createDiscoverySettlementHandler(
           contentHash: '',
           bindings: { proposalId, proposalHash, reason: settled.error },
         },
+        completion: {
+          outcome: 'failed',
+          terminal: true,
+          outputEnvelope: {
+            outcome: 'failed',
+            productions: [],
+            // No certificateRef — non-certified terminal outcome.
+          },
+        } satisfies ModuleCompletion,
       };
     }
     const certificate = runtime.readOutcomeCertificate(settled.certificateId);

@@ -27,6 +27,16 @@
  *                                   carrying the durable, content-addressed
  *                                   production + lineage. Dual-written alongside
  *                                   the legacy flat `output_*` columns.
+ *   - `completion`               — FU-A Wave 3: explicit terminal
+ *                                   `ModuleCompletion` envelope the node emitted.
+ *                                   Persisted so crash-resume rebuilds the
+ *                                   `NodeExecutionResult.completion` and
+ *                                   settlement reads the explicit certificate
+ *                                   ref (no magic-bindings fallback).
+ *   - `completionHash`           — WAVE 8 HIGH 4: SHA-256 over canonical JSON
+ *                                   of `completion`. Verified on read
+ *                                   (COMPLETION_CORRUPT / COMPLETION_HASH_MISMATCH
+ *                                   throw, not silent null).
  *
  * All seven are OPTIONAL on the record (legacy rows surface them as null/empty).
  * No NOT NULL is enforced at the schema layer (Wave 11 hardens that). No legacy
@@ -97,6 +107,16 @@ export interface NodeRunRecordV2 extends NodeRunRecord {
    * certificate on restart). Null on legacy rows / non-terminal nodes.
    */
   completion: ModuleCompletion | null;
+  /**
+   * WAVE 8 HIGH 4 — SHA-256 over the canonical JSON of `completion`. Persisted
+   * alongside the JSON so reads can VERIFY integrity: a malformed
+   * `completion` throws COMPLETION_CORRUPT; a hash mismatch throws
+   * COMPLETION_HASH_MISMATCH. Null when `completion` is null (legacy row or
+   * non-terminal node). Pre-Wave-8 rows that carry `completion` without this
+   * column are trusted by the migration contract (the read surfaces the parsed
+   * value without verifying).
+   */
+  completionHash: string | null;
 }
 
 /**

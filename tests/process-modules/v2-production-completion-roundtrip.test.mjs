@@ -420,3 +420,284 @@ test('Wave 8 BLOCKER 2: no kernel code creates a runtime cycle — the four real
     );
   }
 });
+
+// ===========================================================================
+// WAVE 8 HIGH 3 — terminal completion is MANDATORY.
+//
+// The audit (WAVE-8-PRODUCTION-V2-BLOCKERS.txt HIGH 3) flagged that the
+// executor silently set `certificate = null` when completion was absent, which
+// after the magic-bindings deletion (Wave 5) is silent data loss, not graceful
+// degradation. HIGH 3 makes terminal completion MANDATORY: if a terminal node
+// reaches settlement WITHOUT a ModuleCompletion, the executor MUST throw
+// SETTLEMENT_COMPLETION_MISSING — the kernel has a bug (forgot to emit
+// completion) or the failure path swallowed a cert-issuance error.
+//
+// These tests prove:
+//   1. The throw fires when the terminal node emits NO completion.
+//   2. The throw fires when the terminal node emits a completion with the
+//      WRONG outcome (contract bug caught by assertExplicitModuleCompletion).
+//   3. The throw fires when the completion is not flagged terminal.
+//   4. The throw fires when certificateRef is malformed (HIGH 4).
+//   5. The ProcessRun flips to 'failed' (best-effort) on the throw.
+// ===========================================================================
+
+/**
+ * Build an executor whose terminal settlement kernel emits whatever completion
+ * (or none) the caller wires. Reuses the same fixture as the round-trip test
+ * above; the only difference is the handler behavior. The productRepo bridge
+ * falls back to NodeRun rows so synthetic settlement productions resolve
+ * without the content-addressed product store.
+ */
+function buildNoCompletionExecutor(module, db, handlerFn) {
+  const processRunRepo = new SqliteProcessRunRepository(db);
+  const certificateRepo = new SqliteProcessOutcomeCertificateRepository(db);
+  const nodeRunRepo = new SqliteNodeRunRepository(db);
+
+  const lookupProduction = db.prepare(
+    `SELECT output_schema AS schema, output_ref AS ref, output_hash AS hash,
+            output_bindings AS bindingsText
+       FROM saga3_node_runs
+      WHERE output_schema=? AND output_ref=? AND output_hash=?
+        AND status='completed'
+      LIMIT 1`,
+  );
+  const assemblerProductRepo = {
+    getByProductRef(ref) {
+      const nr = lookupProduction.get(ref.schemaId, ref.ref, ref.digest);
+      if (nr === undefined || nr.schema === null || nr.ref === null || nr.hash === null) {
+        return null;
+      }
+      const bindings = nr.bindingsText ? JSON.parse(nr.bindingsText) : {};
+      return {
+        productRef: { schemaId: nr.schema, ref: nr.ref, digest: nr.hash },
+        payload: { schema: nr.schema, artifactRef: nr.ref, contentHash: nr.hash, bindings },
+      };
+    },
+  };
+
+  const handlerRegistry = new KernelHandlerRegistry();
+  handlerRegistry.register(PROCESS_OUTCOME_EMITTER_HANDLER_ID, processOutcomeEmitter);
+  handlerRegistry.register('w8-settler', handlerFn);
+
+  const kernelExecutor = new KernelNodeExecutor(handlerRegistry);
+  const nodeExecutors = new Map([['kernel', kernelExecutor]]);
+  return new GenericFlowExecutor({
+    moduleRef: module.identity,
+    processRunRepo,
+    nodeRunRepo,
+    certificateRepo,
+    nodeExecutors,
+    v2: { productRepo: assemblerProductRepo },
+  });
+}
+
+test('WAVE 8 HIGH 3: terminal node emitting NO completion throws SETTLEMENT_COMPLETION_MISSING (not silent null)', async () => {
+  const module = syntheticModule();
+  const { db, temp, previous } = freshDb();
+  try {
+    // Settler returns a production + event but NO completion. Wave 5 deleted
+    // the magic-bindings fallback; Wave 8 makes this a hard error.
+    const executor = buildNoCompletionExecutor(module, db, () => ({
+      event: 'accept',
+      production: {
+        schema: 'w8.settlement.v1',
+        artifactRef: 'settle-no-completion',
+        contentHash: 'hash-no-completion',
+        bindings: { decision: 'accept' },
+      },
+      // NO completion field.
+    }));
+
+    const processRunRepo = new SqliteProcessRunRepository(db);
+    const inputPayload = { epicId: 90, projectId: 1 };
+    const inputHash = sha256Hex(inputPayload);
+    const { record: run } = processRunRepo.start({
+      moduleRef: module.identity,
+      input: { schema: module.inputContract.id, payload: inputPayload, contentHash: inputHash },
+      executorKind: 'generic-flow',
+      projectedStage: 'w8',
+      invocationContext: {
+        projectId: 1, epicId: 90, initiatedBy: 'test', idempotencyKey: 'w8-no-completion',
+      },
+    });
+
+    await assert.rejects(
+      executor.execute(module, {
+        projectId: 1, epicId: 90, processRunId: run.id, inputPayload, inputHash, initiatedBy: 'test',
+      }),
+      (err) => {
+        assert.match(
+          err.message,
+          /SETTLEMENT_COMPLETION_MISSING: terminal node 'complete-accepted' produced no ModuleCompletion/,
+          'must throw SETTLEMENT_COMPLETION_MISSING with the offending terminal node id',
+        );
+        return true;
+      },
+    );
+
+    // The ProcessRun was flipped to 'failed' (best-effort).
+    const final = processRunRepo.read(run.id);
+    assert.equal(final.status, 'failed', 'ProcessRun must flip to failed on the contract violation');
+  } finally {
+    cleanup(temp, previous);
+  }
+});
+
+test('WAVE 8 HIGH 4: terminal completion with wrong outcome throws (assertExplicitModuleCompletion)', async () => {
+  const module = syntheticModule();
+  const { db, temp, previous } = freshDb();
+  try {
+    // Settler emits a completion whose outcome DISAGREES with the terminal
+    // outcome the flow resolved (terminal emits 'accepted'; completion claims
+    // 'rejected'). assertExplicitModuleCompletion must catch this contract bug.
+    const executor = buildNoCompletionExecutor(module, db, () => ({
+      event: 'accept',
+      production: {
+        schema: 'w8.settlement.v1', artifactRef: 'x', contentHash: 'h', bindings: {},
+      },
+      completion: {
+        outcome: 'rejected', // WRONG — terminal node will emit 'accepted'.
+        terminal: true,
+        outputEnvelope: { outcome: 'rejected', productions: [] },
+      },
+    }));
+
+    const processRunRepo = new SqliteProcessRunRepository(db);
+    const inputPayload = { epicId: 90, projectId: 1 };
+    const inputHash = sha256Hex(inputPayload);
+    const { record: run } = processRunRepo.start({
+      moduleRef: module.identity,
+      input: { schema: module.inputContract.id, payload: inputPayload, contentHash: inputHash },
+      executorKind: 'generic-flow', projectedStage: 'w8',
+      invocationContext: { projectId: 1, epicId: 90, initiatedBy: 'test', idempotencyKey: 'w8-wrong-outcome' },
+    });
+
+    await assert.rejects(
+      executor.execute(module, {
+        projectId: 1, epicId: 90, processRunId: run.id, inputPayload, inputHash, initiatedBy: 'test',
+      }),
+      /does not match terminal outcome 'accepted'/,
+    );
+  } finally {
+    cleanup(temp, previous);
+  }
+});
+
+test('WAVE 8 HIGH 4: terminal completion with terminal=false throws (assertExplicitModuleCompletion)', async () => {
+  const module = syntheticModule();
+  const { db, temp, previous } = freshDb();
+  try {
+    // Settlement reached — the kernel MUST assert terminal=true. A non-terminal
+    // completion at settlement is a contract bug.
+    const executor = buildNoCompletionExecutor(module, db, () => ({
+      event: 'accept',
+      production: { schema: 'w8.settlement.v1', artifactRef: 'x', contentHash: 'h', bindings: {} },
+      completion: {
+        outcome: 'accepted',
+        terminal: false, // WRONG — terminal flag must be true at settlement.
+        outputEnvelope: { outcome: 'accepted', productions: [] },
+      },
+    }));
+
+    const processRunRepo = new SqliteProcessRunRepository(db);
+    const inputPayload = { epicId: 90, projectId: 1 };
+    const inputHash = sha256Hex(inputPayload);
+    const { record: run } = processRunRepo.start({
+      moduleRef: module.identity,
+      input: { schema: module.inputContract.id, payload: inputPayload, contentHash: inputHash },
+      executorKind: 'generic-flow', projectedStage: 'w8',
+      invocationContext: { projectId: 1, epicId: 90, initiatedBy: 'test', idempotencyKey: 'w8-not-terminal' },
+    });
+
+    await assert.rejects(
+      executor.execute(module, {
+        projectId: 1, epicId: 90, processRunId: run.id, inputPayload, inputHash, initiatedBy: 'test',
+      }),
+      /ModuleCompletion\.terminal must be true at settlement/,
+    );
+  } finally {
+    cleanup(temp, previous);
+  }
+});
+
+test('WAVE 8 HIGH 4: terminal completion with malformed certificateRef throws (assertExplicitModuleCompletion)', async () => {
+  const module = syntheticModule();
+  const { db, temp, previous } = freshDb();
+  try {
+    // certificateRef present but missing fields — the executor would resolve a
+    // malformed ref. assertExplicitModuleCompletion validates the
+    // content-addressed ProductRef shape (schemaId/ref/digest all non-empty).
+    const executor = buildNoCompletionExecutor(module, db, () => ({
+      event: 'accept',
+      production: { schema: 'w8.settlement.v1', artifactRef: 'x', contentHash: 'h', bindings: {} },
+      completion: {
+        outcome: 'accepted',
+        terminal: true,
+        outputEnvelope: {
+          outcome: 'accepted', productions: [],
+          certificateRef: { schemaId: '', ref: 'certificate:1', digest: 'd1' }, // empty schemaId
+        },
+      },
+    }));
+
+    const processRunRepo = new SqliteProcessRunRepository(db);
+    const inputPayload = { epicId: 90, projectId: 1 };
+    const inputHash = sha256Hex(inputPayload);
+    const { record: run } = processRunRepo.start({
+      moduleRef: module.identity,
+      input: { schema: module.inputContract.id, payload: inputPayload, contentHash: inputHash },
+      executorKind: 'generic-flow', projectedStage: 'w8',
+      invocationContext: { projectId: 1, epicId: 90, initiatedBy: 'test', idempotencyKey: 'w8-bad-certref' },
+    });
+
+    await assert.rejects(
+      executor.execute(module, {
+        projectId: 1, epicId: 90, processRunId: run.id, inputPayload, inputHash, initiatedBy: 'test',
+      }),
+      /certificateRef must be a content-addressed ProductRef with non-empty schemaId\/ref\/digest/,
+    );
+  } finally {
+    cleanup(temp, previous);
+  }
+});
+
+test('WAVE 8 HIGH 3: terminal completion WITHOUT certificateRef is valid (non-certified outcome)', async () => {
+  // A completion without certificateRef represents a legitimate non-certified
+  // terminal outcome (e.g. a deterministic failure that produced no
+  // certificate). The mandatory rule requires the COMPLETION ENVELOPE, not a
+  // certificateRef. This must NOT throw — `certificate` resolves to null
+  // cleanly (the only silent-null path that survives Wave 8).
+  const module = syntheticModule();
+  const { db, temp, previous } = freshDb();
+  try {
+    const executor = buildNoCompletionExecutor(module, db, () => ({
+      event: 'accept',
+      production: { schema: 'w8.settlement.v1', artifactRef: 'x', contentHash: 'h', bindings: {} },
+      completion: {
+        outcome: 'accepted',
+        terminal: true,
+        outputEnvelope: { outcome: 'accepted', productions: [] }, // NO certificateRef
+      },
+    }));
+
+    const processRunRepo = new SqliteProcessRunRepository(db);
+    const inputPayload = { epicId: 90, projectId: 1 };
+    const inputHash = sha256Hex(inputPayload);
+    const { record: run } = processRunRepo.start({
+      moduleRef: module.identity,
+      input: { schema: module.inputContract.id, payload: inputPayload, contentHash: inputHash },
+      executorKind: 'generic-flow', projectedStage: 'w8',
+      invocationContext: { projectId: 1, epicId: 90, initiatedBy: 'test', idempotencyKey: 'w8-no-certref' },
+    });
+
+    const result = await executor.execute(module, {
+      projectId: 1, epicId: 90, processRunId: run.id, inputPayload, inputHash, initiatedBy: 'test',
+    });
+    assert.equal(result.outcome, 'accepted');
+    assert.equal(result.certificate, null, 'no certificateRef → certificate stays null (clean)');
+    const final = processRunRepo.read(run.id);
+    assert.equal(final.status, 'completed');
+  } finally {
+    cleanup(temp, previous);
+  }
+});

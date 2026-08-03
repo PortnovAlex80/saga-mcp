@@ -1570,24 +1570,21 @@ function settlementFailure(
     payload: formalizationPayload,
   };
   const certificateHash = sha256Hex(certificatePayload);
-  // Wave 4 (Uncle Bob): issue the failure certificate IN THE KERNEL too — the
-  // failure outcome is terminal and historically was certified via the
-  // executor's magic-bindings path. Now the explicit ModuleCompletion carries
-  // the content-addressed certificateRef. Best-effort: if the certificate issue
-  // itself throws (it should not for a deterministic failure path), we still
-  // surface the failure production WITHOUT a completion — the executor's magic-
-  // bindings fallback then issues the certificate (additive contract holds).
-  let issuedCertificate: { id: number; certificateHash: string } | null = null;
-  try {
-    issuedCertificate = issueFormalizationCertificate(
-      deps,
-      ctx,
-      certificatePayload,
-      certificateHash,
-    );
-  } catch {
-    issuedCertificate = null;
-  }
+  // WAVE 8 HIGH 3 — issue the failure certificate IN THE KERNEL. The failure
+  // outcome is terminal and historically was certified via the executor's
+  // magic-bindings path. Wave 4 made the kernel the issuer; Wave 5 deleted the
+  // magic-bindings fallback; Wave 8 makes terminal completion MANDATORY. There
+  // is NO recovery path: if `certificateRepo.issue` throws, the settlement MUST
+  // FAIL LOUDLY — a swallowed error would silently produce a null certificate,
+  // which is data loss (a real problem: DB issue, schema mismatch, etc.). The
+  // previous try/catch swallow was deleted; the failure surfaces as a thrown
+  // error and the ProcessRun flips to 'failed'.
+  const issuedCertificate = issueFormalizationCertificate(
+    deps,
+    ctx,
+    certificatePayload,
+    certificateHash,
+  );
   return {
     event: 'failed',
     production: {
@@ -1602,14 +1599,12 @@ function settlementFailure(
         settlementError: reason,
       },
     },
-    completion: issuedCertificate === null
-      ? undefined
-      : buildFormalizationModuleCompletion(
-        'failed',
-        certificatePayload,
-        certificateHash,
-        issuedCertificate,
-      ),
+    completion: buildFormalizationModuleCompletion(
+      'failed',
+      certificatePayload,
+      certificateHash,
+      issuedCertificate,
+    ),
   };
 }
 

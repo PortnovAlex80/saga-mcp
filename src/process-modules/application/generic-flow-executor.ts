@@ -275,15 +275,14 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
 
       // The settlement production carries the authority binding (Д6) and, for
       // non-terminal kernels, the durable productions the data chain needs.
-      // WAVE 5 CUTOVER: the certificate envelope is NO LONGER read from
-      // `production.bindings`. Settlement kernels emit an explicit
-      // `ModuleCompletion` (Wave 4); Wave 4.5 propagates it through the node
-      // chain to `terminal.result.completion`; settlement reads the certificate
-      // reference DIRECTLY from there. The legacy magic-bindings branch
-      // (certificatePayload / certificateHash / certificateSchema /
-      // certificateRef / certificateArtifactPayload / certificateDecision) is
-      // GONE. When no explicit completion carries a certificateRef, the run
-      // result has `certificate = null` — that is the clean contract.
+      // WAVE 5 CUTOVER + WAVE 8 HIGH 3: the certificate envelope is NO LONGER
+      // read from `production.bindings` AND a terminal completion is MANDATORY.
+      // Settlement kernels emit an explicit `ModuleCompletion` (Wave 4); Wave
+      // 4.5 propagates it through the node chain to `terminal.result.completion`;
+      // settlement reads the certificate reference DIRECTLY from there. The
+      // legacy magic-bindings branch is GONE. After Wave 5 deletion, completion
+      // is the SOLE certificate channel — a terminal run without one is a hard
+      // error (SETTLEMENT_COMPLETION_MISSING), not silent degradation.
       const terminalBindings = (terminal.result.production?.bindings ?? {}) as Record<string, unknown>;
       const authority = (terminalBindings.authority as string | undefined) ?? null;
 
@@ -291,43 +290,46 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
         ? this.opts.resolveOutput(module, terminal.outcome, terminal.result, context)
         : null;
 
-      // No certificate envelope in the terminal production → the module did not
-      // produce an authoritative certificate (e.g. a failed outcome). RunResult
-      // certificate is null; ProcessRun still completes with the outcome.
+      // Drive settling → completed transition. The certificate (if any) is
+      // resolved below from the mandatory completion's certificateRef; a
+      // completion without certificateRef yields `certificate = null` — the
+      // clean contract for a non-certified terminal outcome (e.g. a
+      // deterministic failure that legitimately produced no certificate).
       processRunRepo.update(context.processRunId, { status: 'settling' });
 
-      // WAVE 5 CUTOVER — the certificate resolution is now a SINGLE path.
+      // WAVE 8 HIGH 3 (mandatory completion) — the certificate resolution is a
+      // SINGLE path AND a terminal run MUST produce an explicit
+      // ModuleCompletion. Wave 5 deleted the magic-bindings fallback; the
+      // completion envelope is now the SOLE certificate channel. A terminal
+      // node that reaches settlement WITHOUT a completion is therefore a
+      // CONTRACT VIOLATION — the kernel forgot to emit completion (a bug), or
+      // the failure-path swallowed a certificate-issuance error and returned
+      // `completion: undefined` (HIGH 3 also removes those swallows). The
+      // executor MUST NOT silently degrade to `certificate = null`: that is
+      // silent data loss. Throw loudly so the kernel bug surfaces.
       //
-      // Wave 4 made every settlement kernel emit an explicit ModuleCompletion
-      // (the `completion` field on its KernelHandlerResult). Wave 4.5 propagates
-      // that completion through the node chain to `terminal.result.completion`
-      // (the terminal process-outcome-emitter does not emit its own; the
-      // executor merges the last non-terminal completion as a side-channel).
-      // Settlement therefore reads the certificate reference DIRECTLY from the
-      // completion envelope's `outputEnvelope.certificateRef` — a typed
-      // content-addressed ProductRef — and surfaces it on the run result.
-      //
-      // The previous magic-bindings branch (extracting certificatePayload /
-      // certificateHash / certificateSchema / certificateRef /
-      // certificateArtifactPayload / certificateDecision from opaque
-      // `production.bindings`, then `certificateRepo.issue`-ing here) is GONE.
-      // Kernels issue their own certificates (Wave 4); the executor no longer
-      // issues certs at settlement time. When no completion carries a
-      // certificateRef, `certificate` stays null — the run completes with the
-      // outcome but no authoritative certificate (the clean contract for a
-      // module that did not produce one, e.g. a non-certified failure path).
+      // Note: a terminal completion WITHOUT `certificateRef` is still valid —
+      // it represents a non-certified outcome (e.g. a deterministic failure
+      // that legitimately produced no certificate). The mandatory field is the
+      // completion envelope itself, not the certificateRef.
       const explicitCompletion = terminal.result.completion;
-      if (explicitCompletion) {
-        assertExplicitModuleCompletion(explicitCompletion, terminal.outcome);
+      if (!explicitCompletion) {
+        throw new Error(
+          `SETTLEMENT_COMPLETION_MISSING: terminal node '${terminal.nodeId}' `
+          + `produced no ModuleCompletion; certificate cannot be resolved`,
+        );
       }
-      const explicitCertificateRef = explicitCompletion?.outputEnvelope.certificateRef ?? null;
+      assertExplicitModuleCompletion(explicitCompletion, terminal.outcome);
+      const explicitCertificateRef = explicitCompletion.outputEnvelope.certificateRef ?? null;
 
       let certificate: ProcessModuleCertificateRef | null = null;
       if (explicitCertificateRef) {
         // Explicit path: the completion envelope owns the certificate reference.
-        // Validate the outcome agreement, then surface the ref. The certificate
-        // itself was issued by the module's settlement kernel and recorded in
-        // the durable product store; the ref points at it by content-address.
+        // The completion was already validated by assertExplicitModuleCompletion
+        // (HIGH 4 — terminal flag + certificateRef shape). Surface the ref. The
+        // certificate itself was issued by the module's settlement kernel and
+        // recorded in the durable product store; the ref points at it by
+        // content-address.
         certificate = {
           schema: explicitCertificateRef.schemaId,
           certificateRef: explicitCertificateRef.ref,
@@ -402,7 +404,7 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
     nodeRunRepo: NodeRunRepository,
     nodeExecutors: ReadonlyMap<string, NodeExecutor>,
     heartbeat: () => void,
-  ): Promise<{ outcome: string; result: NodeExecutionResult }> {
+  ): Promise<{ outcome: string; nodeId: string; result: NodeExecutionResult }> {
     const flow = module.flow;
     const allRuns = nodeRunRepo.list(context.processRunId);
     // W3-A1 (spec §3/§4) + Wave 8 BLOCKER 1: detect whether this run is v2-shaped.
@@ -537,6 +539,7 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
           // explicit completion the fresh terminal path does — no merge needed.
           return {
             outcome: terminalNode.emitsOutcome,
+            nodeId: lastCompleted.nodeId,
             result: restoredResult,
           };
         }
@@ -824,7 +827,7 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
         if (!result.completion && pendingCompletion) {
           result = { ...result, completion: pendingCompletion };
         }
-        return { outcome: node.emitsOutcome, result };
+        return { outcome: node.emitsOutcome, nodeId: node.id, result };
       }
 
       // Otherwise advance via the transition whose `on` matches the event.
@@ -1452,13 +1455,22 @@ function isTerminal(status: string): boolean {
 }
 
 /**
- * W3-A1 (spec §3/§4): validate an explicit {@link ModuleCompletion} envelope
- * emitted by a terminal node. The explicit path trusts the completion's
- * `outputEnvelope.certificateRef` directly; this assertion guards against a
- * producer emitting a completion whose declared outcome disagrees with the
- * terminal outcome the flow resolved (a contract bug, not a recovery case).
+ * W3-A1 (spec §3/§4) + WAVE 8 HIGH 4: validate an explicit
+ * {@link ModuleCompletion} envelope emitted by a terminal node. The explicit
+ * path trusts the completion's `outputEnvelope.certificateRef` directly; this
+ * assertion guards against:
+ *   - a producer emitting a completion whose declared outcome disagrees with
+ *     the terminal outcome the flow resolved (a contract bug);
+ *   - a completion that is not flagged terminal (HIGH 4 — settlement reached,
+ *     so the kernel is asserting this outcome is final);
+ *   - a malformed certificateRef shape (HIGH 4 — when present, it MUST be a
+ *     valid content-addressed ProductRef: schemaId/ref/digest all non-empty
+ *     strings, since the executor resolves the certificate by these three).
  *
- * Pure, throwing. Same arguments → same decision.
+ * `certificateRef` is OPTIONAL — a non-certified outcome (e.g. a deterministic
+ * failure that produced no certificate) emits a completion without it. When
+ * present, the shape must be valid. Pure, throwing. Same arguments → same
+ * decision.
  */
 function assertExplicitModuleCompletion(
   completion: ModuleCompletion,
@@ -1478,5 +1490,34 @@ function assertExplicitModuleCompletion(
       'GenericFlowExecutor: explicit ModuleCompletion.outputEnvelope outcome '
         + `'${completion.outputEnvelope.outcome}' does not match terminal outcome '${terminalOutcome}'`,
     );
+  }
+  // WAVE 8 HIGH 4 — terminal flag must be true at settlement. The executor
+  // reached a terminal node; the kernel is asserting this outcome is final. A
+  // `terminal: false` completion here is a contract bug.
+  if (completion.terminal !== true) {
+    throw new Error(
+      'GenericFlowExecutor: explicit ModuleCompletion.terminal must be true at '
+        + `settlement (got '${String(completion.terminal)}' for outcome '${terminalOutcome}')`,
+    );
+  }
+  // WAVE 8 HIGH 4 — when certificateRef is present, validate the
+  // content-addressed ProductRef shape (schemaId/ref/digest all non-empty).
+  // The executor resolves the certificate by exactly these three values; a
+  // malformed ref would silently produce a null certificate or a wrong lookup.
+  const certRef = completion.outputEnvelope?.certificateRef;
+  if (certRef !== undefined && certRef !== null) {
+    if (
+      typeof certRef.schemaId !== 'string' || certRef.schemaId.length === 0
+      || typeof certRef.ref !== 'string' || certRef.ref.length === 0
+      || typeof certRef.digest !== 'string' || certRef.digest.length === 0
+    ) {
+      throw new Error(
+        'GenericFlowExecutor: explicit ModuleCompletion.outputEnvelope.'
+          + 'certificateRef must be a content-addressed ProductRef with non-empty '
+          + 'schemaId/ref/digest '
+          + `(got schemaId='${String(certRef.schemaId)}', ref='${String(certRef.ref)}', `
+          + `digest='${String(certRef.digest)}')`,
+      );
+    }
   }
 }

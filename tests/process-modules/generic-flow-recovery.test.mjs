@@ -90,14 +90,24 @@ function startRun(repo, module, key) {
   return { record, inputPayload, inputHash };
 }
 
-function buildExecutor(db, module, nodeExecutors) {
-  return new GenericFlowExecutor({
+function buildExecutor(db, module, nodeExecutors, options = {}) {
+  const opts = {
     moduleRef: module.identity,
     processRunRepo: new SqliteProcessRunRepository(db),
     nodeRunRepo: new SqliteNodeRunRepository(db),
     certificateRepo: new SqliteProcessOutcomeCertificateRepository(db),
     nodeExecutors,
-  });
+  };
+  if (options.v2) {
+    // WAVE 8 HIGH 3 — when the durable NodeRun rows carry a `completion`
+    // column (written via completeV2), the executor MUST take the v2 path so
+    // the resume read surfaces the completion. Otherwise the legacy
+    // readLastCompleted returns a NodeRunRecord without the completion field
+    // and the SETTLEMENT_COMPLETION_MISSING guard trips. The productRepo
+    // bridge mirrors v2-production-completion-roundtrip.test.mjs.
+    opts.v2 = { productRepo: options.v2.productRepo };
+  }
+  return new GenericFlowExecutor(opts);
 }
 
 function executionContext(started) {
@@ -108,6 +118,22 @@ function executionContext(started) {
     inputPayload: started.inputPayload,
     inputHash: started.inputHash,
     initiatedBy: 'recovery-test',
+  };
+}
+
+/**
+ * WAVE 8 HIGH 3 — terminal completion is MANDATORY. These recovery tests
+ * exercise the runtime pause/lease/resume mechanics, not the certificate
+ * channel; their synthetic kernel executors emit the minimal terminal
+ * completion (no certificateRef) so the executor's SETTLEMENT_COMPLETION_MISSING
+ * guard does not trip. The completion is intentionally certificate-free — the
+ * tests assert on lease/across-restart invariants, never on `result.certificate`.
+ */
+function terminalCompletion(outcome = 'accepted') {
+  return {
+    outcome,
+    terminal: true,
+    outputEnvelope: { outcome, productions: [] },
   };
 }
 
@@ -142,7 +168,7 @@ test('ProcessRun lease rejects a concurrent driver before a second node dispatch
           dispatches += 1;
           entered();
           await gate;
-          return { runtimeEvent: 'completed' };
+          return { runtimeEvent: 'completed', completion: terminalCompletion() };
         },
       }],
     ]));
@@ -230,7 +256,7 @@ test('runtime pause is a resumable checkpoint and repeats the same LM node once'
         kind: 'kernel',
         async execute() {
           terminalCalls += 1;
-          return { runtimeEvent: 'completed' };
+          return { runtimeEvent: 'completed', completion: terminalCompletion() };
         },
       }],
     ]));
@@ -284,20 +310,51 @@ test('settling restart replays the durable terminal NodeRun and finalizes once',
     repo.update(started.record.id, { status: 'preparing' });
     repo.update(started.record.id, { status: 'running' });
     repo.update(started.record.id, { status: 'settling' });
-    const terminal = nodeRepo.start({
+    // WAVE 8 HIGH 3 — terminal completion is mandatory, so the durable
+    // terminal NodeRun must carry one (via completeV2). The legacy `complete`
+    // path does not write `completion`; using it here would make the resumed
+    // run throw SETTLEMENT_COMPLETION_MISSING.
+    const terminal = nodeRepo.startV2({
       processRunId: started.record.id,
       nodeId: 'complete',
       nodeKind: 'kernel',
     });
-    nodeRepo.complete({
+    nodeRepo.completeV2({
       id: terminal.id,
       event: 'runtime.completed',
       outputRef: 'terminal:accepted',
       outputSchema: 'terminal.v1',
       outputHash: 'durable-terminal-hash',
       outputBindings: { authority: 'recovery-policy' },
+      completion: terminalCompletion(),
     });
     let unexpectedDispatches = 0;
+    // WAVE 8 HIGH 3 — v2 wiring is required so the resume read
+    // (readLastCompletedV2) surfaces the persisted `completion` column. The
+    // productRepo bridge falls back to NodeRun rows for settlement productions
+    // not in the content-addressed product store (mirrors
+    // v2-production-completion-roundtrip.test.mjs).
+    const lookupProduction = ctx.db.prepare(
+      `SELECT output_schema AS schema, output_ref AS ref, output_hash AS hash,
+              output_bindings AS bindingsText
+         FROM saga3_node_runs
+        WHERE output_schema=? AND output_ref=? AND output_hash=?
+          AND status='completed'
+        LIMIT 1`,
+    );
+    const productRepo = {
+      getByProductRef(ref) {
+        const nr = lookupProduction.get(ref.schemaId, ref.ref, ref.digest);
+        if (nr === undefined || nr.schema === null || nr.ref === null || nr.hash === null) {
+          return null;
+        }
+        const bindings = nr.bindingsText ? JSON.parse(nr.bindingsText) : {};
+        return {
+          productRef: { schemaId: nr.schema, ref: nr.ref, digest: nr.hash },
+          payload: { schema: nr.schema, artifactRef: nr.ref, contentHash: nr.hash, bindings },
+        };
+      },
+    };
     const executor = buildExecutor(ctx.db, module, new Map([
       ['kernel', {
         kind: 'kernel',
@@ -306,7 +363,7 @@ test('settling restart replays the durable terminal NodeRun and finalizes once',
           throw new Error('terminal node must be replayed, not dispatched');
         },
       }],
-    ]));
+    ]), { v2: { productRepo } });
 
     const result = await executor.execute(module, executionContext(started));
     assert.equal(result.outcome, 'accepted');
@@ -351,6 +408,7 @@ test('terminal adapter replay preserves the live authority exactly', async () =>
               contentHash: 'terminal-hash',
               bindings: { authority: 'stable-policy' },
             },
+            completion: terminalCompletion(),
           };
         },
       }],

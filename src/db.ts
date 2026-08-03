@@ -169,6 +169,13 @@ export function getDb(): Database.Database {
     try { db.exec('ALTER TABLE saga3_node_runs ADD COLUMN transition_cursor TEXT'); } catch { /* column already exists */ }
     try { db.exec('ALTER TABLE saga3_node_runs ADD COLUMN production_envelope TEXT'); } catch { /* column already exists */ }
     try { db.exec('ALTER TABLE saga3_node_runs ADD COLUMN completion TEXT'); } catch { /* column already exists */ }
+    // WAVE 8 HIGH 4 — completion integrity column. SHA-256 over canonical JSON
+    // of `completion`; verified on read (COMPLETION_CORRUPT /
+    // COMPLETION_HASH_MISMATCH throw instead of silent null). Same dual-
+    // placement pattern as the eight columns above (idempotent ALTER, no-op on
+    // fresh DBs where the table does not exist yet here; the repo ctor adds the
+    // column when it springs the table into existence).
+    try { db.exec('ALTER TABLE saga3_node_runs ADD COLUMN completion_hash TEXT'); } catch { /* column already exists */ }
     try {
       db.exec(`
         CREATE UNIQUE INDEX IF NOT EXISTS idx_saga3_node_runs_exact_cursor
