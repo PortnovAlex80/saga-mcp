@@ -42,13 +42,32 @@
         "path": "architecture-analysis/phase-0/coverage-statement.md",
         "status": "evidence-incomplete",
         "version": "1.0"
+      },
+      {
+        "artifact_id": "ART-PHASE1-OPERATIONAL-PURPOSE",
+        "type": "Reconstructed Operational Purpose",
+        "path": "architecture-analysis/phase-1/operational-purpose.md",
+        "status": "evidence-incomplete",
+        "version": "1.0"
       }
     ],
     "open_questions": [
       "QUESTION-001", "QUESTION-002", "QUESTION-003", "QUESTION-004",
-      "QUESTION-005", "QUESTION-006", "QUESTION-007"
+      "QUESTION-005", "QUESTION-006", "QUESTION-007",
+      "QUESTION-008", "QUESTION-009"
+    ],
+    "findings": [
+      "FINDING-001 (four-desks gap confirmed in production paths)",
+      "FINDING-002 (center of gravity is the transition gate, not the artifact)",
+      "FINDING-003 (system is a state-machine engine for governing external LLM workers)"
+    ],
+    "hypotheses": [
+      "HYPOTHESIS-001 (governance platform — strong)",
+      "HYPOTHESIS-002 (one machine one material — plausible but unverified)",
+      "HYPOTHESIS-003 (glass ceiling is accidental — partially verified)",
+      "HYPOTHESIS-004 (evolving to autonomous factory — weak)"
     ],
     "contradictions": ["CONTRADICTION-001"],
-    "next_phase": "Phase One — Reconstruct the Operational Purpose"
+    "next_phase": "Phase Two — Cross-Cutting System Maps"
   }
 }
