@@ -1,0 +1,64 @@
+# Evidence Ledger — Phase Zero
+
+Artifact ID: ART-PHASE0-EVIDENCE-LEDGER
+Artifact Type: Evidence Ledger (JSONL format, one record per line)
+Phase: Phase Zero
+Version: 1.0
+Status: evidence-incomplete
+Coverage: Architecturally significant symbols only (entry points, state writers, rule enforcement, integration boundaries, transaction boundaries, dynamic registration)
+Confidence: High for E0-E3; Medium for E4; Low for E5 (tests exist but coverage unverified); No E6 (runtime telemetry unavailable)
+
+---
+(originally JSONL; presented here as structured records for readability)
+
+EVID-001 | Symbol: main() | File: src/index.ts:224 | Level: E3 | Note: MCP server entry point. Reached via stdio from MCP client (ZCode). Auto-spawns tracker-view (detached).
+
+EVID-002 | Symbol: CallToolRequestSchema handler | File: src/index.ts:173 | Level: E5 | Note: Every MCP tool call passes through authorizeSagaToolCall here. Tested.
+
+EVID-003 | Symbol: authorizeSagaToolCall() | File: src/saga3/authority/authorize-saga-tool-call.ts:236 | Level: E5 | Note: Fail-closed authority gateway. Tests verify denial for unlisted tools, mismatched execution_id, expired leases.
+
+EVID-004 | Symbol: findNextClaimable() | File: src/lifecycle/work-assignment-core.ts:252 | Level: E5 | Note: Atomic claim under BEGIN IMMEDIATE. Dispatcher-race tests (8 parallel processes) prove no double-claim. Single-writer invariant.
+
+EVID-005 | Symbol: releaseExecutionAtomically() | File: src/lifecycle/atomic-release.ts:138 | Level: E5 | Note: Terminalize+release in one tx with fence CAS. Tested for close/reaper race (one winner).
+
+EVID-006 | Symbol: decideStuckAction() | File: src/lifecycle/stuck-policy.ts:184 | Level: E5 | Note: PURE function, zero I/O. Table-driven tests. BYTE-IDENTITY contract with procedural predecessor.
+
+EVID-007 | Symbol: reconcileWorkerExecutions() | File: src/worker-executions.ts:334 | Level: E5 | Note: Reaper mechanism. Delegates to decideStuckAction (pure policy) + performs I/O dispatch.
+
+EVID-008 | Symbol: createSaga2Application() | File: src/app/composition-root.ts:101 | Level: E2 | Note: Only engine-selection switch. Throws if productLifecycle missing.
+
+EVID-009 | Symbol: createProductLifecycleRuntime() | File: src/app/product-lifecycle-runtime.ts:325 | Level: E2 | Note: Wires 4 modules + handlers + executors + orchestrator. 780 lines.
+
+EVID-010 | Symbol: GenericFlowExecutor.walk() | File: src/process-modules/application/generic-flow-executor.ts:399 | Level: E5 | Note: Walks Flow nodes, dispatches by kind. Characterization tests prove no regression vs legacy path.
+
+EVID-011 | Symbol: LmNodeExecutor.execute() | File: src/process-modules/application/node-executors/lm-node-executor.ts:273 | Level: E5 | Note: Generates fence token before assignTask. Poll loop with terminal verdicts.
+
+EVID-012 | Symbol: ClaudeBoardRunner.launch() | File: tracker-view/claude-runner.mjs:680 | Level: E4 | Note: Spawns claude -p. Per-execution MCP config. stdin-piped prompt. E4 not E5: board-runner tests mock spawn.
+
+EVID-013 | Symbol: discoverySettlementPolicyV1.evaluate() | File: src/saga3/domain/discovery-settlement-policy.ts:306 | Level: E5 | Note: PURE settlement policy. Deterministic trace with reason codes. Manifest hash pins policy identity.
+
+EVID-014 | Symbol: Saga3DiscoverySettlementService.settle() | File: src/saga3/application/discovery-settlement-service.ts:161 | Level: E5 | Note: ONLY writer of settlements + certificates. Strict re-validation. Idempotent on input hash.
+
+EVID-015 | Symbol: handleWorkerDone() | File: src/tools/dispatcher.ts:412 | Level: E5 | Note: Idempotency FIRST (checkReceipt), then fence check, then status transition. Review-loop escape for verification.ac (T-013 fix).
+
+EVID-016 | Symbol: handleArtifactCreate() | File: src/tools/artifacts.ts:90 | Level: E5 | Note: Upsert by (epic_id, code, type). Managed-production provenance recorded. artifactDiskHash for content verification.
+
+EVID-017 | Symbol: exactCandidateAcceptance.accept() | File: src/process-modules/persistence/sqlite-exact-candidate-acceptance.ts | Level: E5 | Note: Atomic CAS to status=accepted. Idempotent on idempotency_key. Kernel-gate authority boundary.
+
+EVID-018 | Symbol: SqliteManagedProductionLedger | File: src/process-modules/persistence/sqlite-managed-production-ledger.ts:428 | Level: E5 | Note: Wave 6 cutover removed execution-scoped reads. Only node-scoped (P18). recordManagedArtifactProduction requires live producer fence.
+
+EVID-019 | Symbol: buildSagaBoardLineageBag() | File: src/process-modules/application/node-executors/saga-board-adapter-data-builder.ts:140 | Level: E5 | Note: P18 invariant — strips recoveryFeedback from stable node-input hash. Tests prove cross-attempt hash stability.
+
+EVID-020 | Symbol: distributeQueuedTasks() | File: src/app/dispatch-loop.ts:62 | Level: E4 | Note: Drain loop: assignTask → start → waitForAssignedWorker. Concurrency budget enforced.
+
+EVID-021 | Symbol: orchestrate-cli main loop | File: src/orchestrate-cli.ts:272 | Level: E4 | Note: while(true) { runEpisode → if paused: distributeQueuedTasks → resume }. Terminal on completed/failed or empty queue.
+
+EVID-022 | Symbol: process_node_submit handler | File: src/tools/process-node-submissions.ts:21 | Level: E5 | Note: Universal typed submit for LM nodes. Derives lineage from live fence. Idempotent.
+
+EVID-023 | Symbol: proposal_submit handler | File: src/tools/saga3-proposals.ts:53 | Level: E5 | Note: Discovery-specific submit. Writes saga3_raw_submissions + saga3_proposals. Authority context validation.
+
+EVID-024 | Symbol: readExecutionContextStrict() | File: src/saga3/authority/authorize-saga-tool-call.ts:156 | Level: E5 | Note: Validates execution_context_hash, policy_version, authority_hash. Fail-closed on any mismatch.
+
+EVID-025 | Symbol: validateProcessModuleRunResult() | File: src/process-modules/application/validate-process-module-run-result.ts:62 | Level: E5 | Note: Universal RunResult validator. Outcome must be declared + terminal. Certificate requires authority.
+
+EVID-026 | Symbol: installProductionModules() | File: src/process-modules/installation/production-install.ts:121 | Level: E4 | Note: Content-addressed package store. Idempotent on unchanged bytes. replaceOnDigestChange=true.

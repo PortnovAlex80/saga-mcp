@@ -1,0 +1,54 @@
+{
+  "artifact-manifest": {
+    "protocol": "Architecture Reconstruction and Redecomposition Protocol",
+    "project": "saga-mcp",
+    "branch": "saga4",
+    "execution_mode": "PHASE",
+    "current_phase": "Phase Zero",
+    "artifacts": [
+      {
+        "artifact_id": "ART-PHASE0-FILE-MANIFEST",
+        "type": "File Manifest (JSONL)",
+        "path": "architecture-analysis/phase-0/file-manifest.jsonl",
+        "status": "evidence-complete",
+        "version": "1.0",
+        "records": 1544
+      },
+      {
+        "artifact_id": "ART-PHASE0-MODULE-INVENTORY",
+        "type": "Module and Component Inventory",
+        "path": "architecture-analysis/phase-0/module-inventory.md",
+        "status": "evidence-incomplete",
+        "version": "1.0"
+      },
+      {
+        "artifact_id": "ART-PHASE0-EVIDENCE-LEDGER",
+        "type": "Evidence Ledger",
+        "path": "architecture-analysis/phase-0/evidence-ledger.jsonl",
+        "status": "evidence-incomplete",
+        "version": "1.0",
+        "records": 26
+      },
+      {
+        "artifact_id": "ART-PHASE0-EXECUTABLE-TOPOLOGY",
+        "type": "Executable Topology and Reachability Map",
+        "path": "architecture-analysis/phase-0/executable-topology.md",
+        "status": "evidence-incomplete",
+        "version": "1.0"
+      },
+      {
+        "artifact_id": "ART-PHASE0-COVERAGE-STATEMENT",
+        "type": "Coverage and Unresolved Regions Statement",
+        "path": "architecture-analysis/phase-0/coverage-statement.md",
+        "status": "evidence-incomplete",
+        "version": "1.0"
+      }
+    ],
+    "open_questions": [
+      "QUESTION-001", "QUESTION-002", "QUESTION-003", "QUESTION-004",
+      "QUESTION-005", "QUESTION-006", "QUESTION-007"
+    ],
+    "contradictions": ["CONTRADICTION-001"],
+    "next_phase": "Phase One — Reconstruct the Operational Purpose"
+  }
+}
