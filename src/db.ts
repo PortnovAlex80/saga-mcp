@@ -16,10 +16,19 @@ let db: Database.Database | null = null;
  * functions, backfill migrations) was removed because there are no legacy
  * databases to migrate — the product has not shipped to clients.
  *
+ * **DB compatibility policy:** disposable pre-release. `user_version` is
+ * stamped on every fresh DB. If a DB with a mismatched version is opened,
+ * the call fails fast with a clear "delete and recreate" message rather than
+ * silently running against an incompatible schema.
+ *
  * Pragmas: WAL (concurrent reader + writer), foreign_keys ON, busy_timeout
  * 5s (SQLite serializes all writes under a single writer), synchronous
  * NORMAL (safe under WAL).
  */
+
+/** Increment when the schema changes incompatibly. 1 = saga4 clean foundation. */
+const SCHEMA_VERSION = 1;
+
 export function getDb(): Database.Database {
   if (db) return db;
 
@@ -37,6 +46,18 @@ export function getDb(): Database.Database {
   db.pragma('busy_timeout = 5000');
   db.pragma('synchronous = NORMAL');
 
+  // DB compatibility check — disposable pre-release policy.
+  const existingVersion = db.pragma('user_version', { simple: true }) as number;
+  if (existingVersion !== 0 && existingVersion !== SCHEMA_VERSION) {
+    db.close();
+    db = null;
+    throw new Error(
+      `DB at ${dbPath} has user_version=${existingVersion}, expected ${SCHEMA_VERSION} or 0 (fresh). ` +
+        'This DB is from an incompatible schema version. Delete the file and let saga recreate it: ' +
+        `rm ${dbPath}${dbPath.replace(/\.db$/, '{,.db-wal,.db-shm}')}`,
+    );
+  }
+
   // Core schema — all tables, columns, indexes, CHECK constraints.
   db.exec(SCHEMA_SQL);
 
@@ -50,6 +71,11 @@ export function getDb(): Database.Database {
   // not exist yet — ensureSaga3* guard internally on table existence.
   ensureSaga3ProtocolRunSchema(db);
   ensureSaga3CallInstanceSchema(db);
+
+  // Stamp the schema version on fresh DBs (existingVersion === 0).
+  if (existingVersion === 0) {
+    db.pragma(`user_version = ${SCHEMA_VERSION}`);
+  }
 
   return db;
 }

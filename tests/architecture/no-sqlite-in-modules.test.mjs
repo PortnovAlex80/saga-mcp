@@ -56,6 +56,12 @@ const __dirname = path.dirname(__filename);
 const REPO_ROOT = path.resolve(__dirname, '..', '..');
 const MODULES_ROOT = path.join(REPO_ROOT, 'src', 'process-modules', 'modules');
 
+// saga4 consolidation: the gate ALSO scans src/modules/*/domain/ and
+// src/modules/*/application/ — the pure layers where SQLite substrate must
+// NEVER appear. Infrastructure/ subdirectories are EXCLUDED (SQLite adapters
+// live there legitimately).
+const NEW_MODULES_ROOT = path.join(REPO_ROOT, 'src', 'modules');
+
 // ---------------------------------------------------------------------------
 // File discovery — every .ts file under src/process-modules/modules/.
 // ---------------------------------------------------------------------------
@@ -223,6 +229,14 @@ function collectViolations() {
   /** @type {Violation[]} */
   const violations = [];
   const files = listTypeScriptFiles(MODULES_ROOT);
+  // saga4: also scan src/modules/*/domain/ and src/modules/*/application/.
+  // Infrastructure/ is excluded — SQLite adapters belong there.
+  for (const subdir of ['domain', 'application']) {
+    for (const modName of ['discovery', 'formalization', 'development', 'delivery']) {
+      const layerDir = path.join(NEW_MODULES_ROOT, modName, subdir);
+      files.push(...listTypeScriptFiles(layerDir));
+    }
+  }
   for (const { rel, abs } of files) {
     let raw;
     try {

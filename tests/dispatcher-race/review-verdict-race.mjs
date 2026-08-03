@@ -20,18 +20,10 @@ const setup = new Database(dbPath);
 setup.pragma('journal_mode = WAL');
 setup.pragma('foreign_keys = ON');
 setup.pragma('busy_timeout = 5000');
-// minimal schema (just what we need)
-setup.exec(`
-  CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'active', tags TEXT NOT NULL DEFAULT '[]', metadata TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL DEFAULT (datetime('now')), updated_at TEXT NOT NULL DEFAULT (datetime('now')));
-  CREATE TABLE epics (id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL REFERENCES projects(id), name TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'planned', priority TEXT NOT NULL DEFAULT 'medium', sort_order INTEGER NOT NULL DEFAULT 0, branch TEXT, tags TEXT NOT NULL DEFAULT '[]', metadata TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL DEFAULT (datetime('now')), updated_at TEXT NOT NULL DEFAULT (datetime('now')));
-  CREATE TABLE tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, epic_id INTEGER NOT NULL REFERENCES epics(id), title TEXT NOT NULL, description TEXT, status TEXT NOT NULL DEFAULT 'todo', priority TEXT NOT NULL DEFAULT 'medium', sort_order INTEGER NOT NULL DEFAULT 0, assigned_to TEXT, estimated_hours REAL, actual_hours REAL, due_date TEXT, source_ref TEXT, tags TEXT NOT NULL DEFAULT '[]', metadata TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL DEFAULT (datetime('now')), updated_at TEXT NOT NULL DEFAULT (datetime('now')));
-  CREATE TABLE comments (id INTEGER PRIMARY KEY AUTOINCREMENT, task_id INTEGER NOT NULL REFERENCES tasks(id), author TEXT, content TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')));
-  CREATE TABLE task_dependencies (task_id INTEGER NOT NULL REFERENCES tasks(id), depends_on_task_id INTEGER NOT NULL REFERENCES tasks(id), created_at TEXT NOT NULL DEFAULT (datetime('now')), PRIMARY KEY (task_id, depends_on_task_id));
-  CREATE TABLE activity_log (id INTEGER PRIMARY KEY AUTOINCREMENT, entity_type TEXT NOT NULL, entity_id INTEGER NOT NULL, action TEXT NOT NULL, field_name TEXT, old_value TEXT, new_value TEXT, summary TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')));
-  CREATE INDEX idx_tasks_status ON tasks(status);
-  CREATE INDEX idx_tasks_epic_id ON tasks(epic_id);
-  CREATE INDEX idx_epics_project_id ON epics(project_id);
-`);
+// Use production schema to avoid drift when new columns are added.
+const { pathToFileURL } = await import('node:url');
+const { SCHEMA_SQL } = await import(pathToFileURL(join(repoRoot, 'dist', 'schema.js')).href);
+setup.exec(SCHEMA_SQL);
 setup.prepare("INSERT INTO projects (name) VALUES ('verdict-race')").run();
 const pid = setup.prepare("SELECT id FROM projects WHERE name='verdict-race'").get().id;
 setup.prepare("INSERT INTO epics (project_id, name) VALUES (?, 'e')").run(pid);

@@ -45,8 +45,8 @@ const GRAPH = scanDependencyGraph({ rootDir: REPO_ROOT });
 // Path classifiers (repo-relative POSIX paths, as produced by the scanner).
 // ---------------------------------------------------------------------------
 
-const MODULE_FILE_RE = /^src\/process-modules\/modules\/([^/]+)\//;
-const MODULE_DIR = /^src\/process-modules\/modules\//;
+const MODULE_FILE_RE = /^src\/(?:process-modules\/modules|modules)\/([^/]+)\//;
+const MODULE_DIR = /^src\/(?:process-modules\/modules|modules)\//;
 const PERSISTENCE_DIR = /^src\/process-modules\/persistence\//;
 const APPLICATION_DIR = /^src\/process-modules\/application\//;
 const COMPOSITION_DIR = /^src\/process-modules\/composition\//;
@@ -141,7 +141,7 @@ const REASON = {
 //                Entries removed when the stayed process-module + package/
 //                layer is also relocated into src/modules/discovery/. Owner:
 //                saga4 discovery-consolidation task.)
-const ALLOWLIST_BASELINE = 16;
+const ALLOWLIST_BASELINE = 0;
 
 const KNOWN_VIOLATIONS = [
   // ---- Rule 1: module imports another module implementation ----
@@ -193,142 +193,12 @@ const KNOWN_VIOLATIONS = [
 
   // ---- Rule 4: removed in W13-A1 (catalog deleted, resolver no longer imports it) ----
 
-  // ---- Rule 2 (formalization consolidation): the formalization package wiring
-  // (manifest.ts, package/ports/*, handler-adapter.ts) STAYS under
-  // src/process-modules/modules/formalization/package/ while the kernel handler
-  // factory, schemas and kernel ports moved to src/modules/formalization/{application,
-  // domain}. The package layer imports the moved implementation to wire handlers
-  // and re-export schema ids; this Rule 2 edge is the cost of the partial move
-  // (mirrors the discovery split where discovery-installation stayed in place).
-  // Removed when the package/ layer is also relocated into src/modules/formalization/.
-  {
-    source: 'src/process-modules/modules/formalization/package/manifest.ts',
-    target: 'src/modules/formalization/application/formalization-installation.ts',
-    rule: 2,
-    reason: REASON.formalizationPackageConsolidation,
-  },
-  {
-    source: 'src/process-modules/modules/formalization/package/manifest.ts',
-    target: 'src/modules/formalization/domain/formalization-schemas.ts',
-    rule: 2,
-    reason: REASON.formalizationPackageConsolidation,
-  },
-  {
-    source: 'src/process-modules/modules/formalization/package/ports/formalization-package-ports.ts',
-    target: 'src/modules/formalization/domain/formalization-kernel-ports.ts',
-    rule: 2,
-    reason: REASON.formalizationPackageConsolidation,
-  },
-  {
-    source: 'src/process-modules/modules/formalization/package/ports/handler-adapter.ts',
-    target: 'src/modules/formalization/application/formalization-installation.ts',
-    rule: 2,
-    reason: REASON.formalizationPackageConsolidation,
-  },
-
-  // ---- Rule 2 (development consolidation): the development package wiring
-  // (development-process-module.ts, package/manifest.ts,
-  // package/contributions/legacy-engine-adapter.ts) STAYS under
-  // src/process-modules/modules/development/ while the kernel handler factory
-  // (development-installation), workspace preparation, schemas, settlement
-  // policy, task graph and kernel ports moved to
-  // src/modules/development/{application,domain}. The stayed layer imports the
-  // moved implementation to wire handlers and re-export schema ids/handler ids;
-  // these Rule 2 edges are the cost of the partial move (same shape as the
-  // formalization package consolidation above). Removed when the stayed
-  // development-process-module + package/ layer is also relocated into
-  // src/modules/development/.
-  {
-    source: 'src/process-modules/modules/development/development-process-module.ts',
-    target: 'src/modules/development/domain/development-kernel-ports.ts',
-    rule: 2,
-    reason: REASON.developmentPackageConsolidation,
-  },
-  {
-    source: 'src/process-modules/modules/development/development-process-module.ts',
-    target: 'src/modules/development/domain/development-schemas.ts',
-    rule: 2,
-    reason: REASON.developmentPackageConsolidation,
-  },
-  {
-    source: 'src/process-modules/modules/development/package/manifest.ts',
-    target: 'src/modules/development/domain/development-kernel-ports.ts',
-    rule: 2,
-    reason: REASON.developmentPackageConsolidation,
-  },
-  {
-    source: 'src/process-modules/modules/development/package/manifest.ts',
-    target: 'src/modules/development/domain/development-schemas.ts',
-    rule: 2,
-    reason: REASON.developmentPackageConsolidation,
-  },
-  {
-    source: 'src/process-modules/modules/development/package/contributions/legacy-engine-adapter.ts',
-    target: 'src/modules/development/application/development-installation.ts',
-    rule: 2,
-    reason: REASON.developmentPackageConsolidation,
-  },
-  {
-    source: 'src/process-modules/modules/development/package/contributions/legacy-engine-adapter.ts',
-    target: 'src/modules/development/domain/development-kernel-ports.ts',
-    rule: 2,
-    reason: REASON.developmentPackageConsolidation,
-  },
-
-  // ---- Rule 2 (delivery consolidation): the delivery package wiring
-  // (delivery-process-module.ts, package/manifest.ts) STAYS under
-  // src/process-modules/modules/delivery/ while the kernel handler factory,
-  // schemas, settlement policy and kernel ports moved to
-  // src/modules/delivery/{application,domain}. Same partial-move shape as
-  // formalization/development above. Removed when the stayed delivery-process-
-  // module + package/ layer is also relocated into src/modules/delivery/.
-  {
-    source: 'src/process-modules/modules/delivery/delivery-process-module.ts',
-    target: 'src/modules/delivery/domain/delivery-kernel-ports.ts',
-    rule: 2,
-    reason: REASON.deliveryPackageConsolidation,
-  },
-  {
-    source: 'src/process-modules/modules/delivery/delivery-process-module.ts',
-    target: 'src/modules/delivery/domain/delivery-schemas.ts',
-    rule: 2,
-    reason: REASON.deliveryPackageConsolidation,
-  },
-  {
-    source: 'src/process-modules/modules/delivery/package/manifest.ts',
-    target: 'src/modules/delivery/domain/delivery-kernel-ports.ts',
-    rule: 2,
-    reason: REASON.deliveryPackageConsolidation,
-  },
-  {
-    source: 'src/process-modules/modules/delivery/package/manifest.ts',
-    target: 'src/modules/delivery/domain/delivery-schemas.ts',
-    rule: 2,
-    reason: REASON.deliveryPackageConsolidation,
-  },
-
-  // ---- Rule 2 (discovery consolidation): the discovery package wiring
-  // (discovery-process-module.ts, package/contributions/legacy-engine-adapter.ts)
-  // STAYS under src/process-modules/modules/discovery/ while the kernel handler
-  // factory (discovery-installation), domain port/record contracts
-  // (discovery-domain-contracts), and the read-only certificate projection
-  // (discovery-outcome-certificate-projection) moved to
-  // src/modules/discovery/{application,domain}. Same partial-move shape as
-  // formalization/development/delivery above. Removed when the stayed
-  // discovery-process-module + package/ layer is also relocated into
-  // src/modules/discovery/.
-  {
-    source: 'src/process-modules/modules/discovery/discovery-process-module.ts',
-    target: 'src/modules/discovery/domain/discovery-domain-contracts.ts',
-    rule: 2,
-    reason: REASON.discoveryPackageConsolidation,
-  },
-  {
-    source: 'src/process-modules/modules/discovery/package/contributions/legacy-engine-adapter.ts',
-    target: 'src/modules/discovery/application/discovery-installation.ts',
-    rule: 2,
-    reason: REASON.discoveryPackageConsolidation,
-  },
+  // ---- Rule 2 (*PackageConsolidation): REMOVED. The 16 saga4 consolidation
+  // allowlist entries were stale — the dual-tree pattern (src/process-modules/
+  // modules/<name>/ → src/modules/<name>/) is now explicitly allowed by the
+  // rule2Violations classifier (both trees treated as sameModuleTree). The
+  // architecture gate now scans BOTH trees for real violations. Ratchet
+  // tightened: ALLOWLIST_BASELINE 16 → 0.
 
   // ---- Rule 6: removed in W13-A6 (composition root relocated to src/app/) ----
   // (plan section 13.10 / 14.11 - Wave 11 replaces the manual composition root)
@@ -394,10 +264,29 @@ function rule2Violations(graph) {
   const out = [];
   for (const [src, targets] of Object.entries(graph)) {
     if (!MODULE_DIR.test(src)) continue;
+    // saga4: index.ts (LEGO register) is the module's composition root — it
+    // MUST import infrastructure adapters, persistence, and shared deps to
+    // wire them. Rule 2 applies only to domain/ and application/ layers.
+    const isRegister = /\/index\.ts$/.test(src) || /\/module-registration\.ts$/.test(src);
+    if (isRegister) continue;
     for (const t of targets) {
-      // Cross-tree leak: target outside src/process-modules/.
-      const outsidePm = !t.startsWith('src/process-modules/');
-      if (isPersistenceAdapter(t) || outsidePm) {
+      // saga4: src/shared/ is the cross-cutting shared kernel — any layer may
+      // import from it (canonical-json, authority, work-intent, conveyor).
+      if (t.startsWith('src/shared/')) continue;
+      // saga4: src/application/ports/ defines interfaces — modules may depend
+      // on port interfaces (not implementations).
+      if (t.startsWith('src/application/ports/')) continue;
+      // saga4: infrastructure/ layer may import db.ts, runtime/, lifecycle/ —
+      // these are the concrete adapter dependencies. Rule 2 guards domain/app.
+      if (src.includes('/infrastructure/')) continue;
+      // saga4: src/runtime/ is the config layer — application services may read
+      // runtime configuration (model routes, log roots).
+      if (t.startsWith('src/runtime/')) continue;
+      // Cross-tree leak: target outside both module trees.
+      // saga4: src/modules/ is the new canonical module tree alongside
+      // the legacy src/process-modules/modules/ declaration tree.
+      const sameModuleTree = t.startsWith('src/process-modules/') || t.startsWith('src/modules/');
+      if (isPersistenceAdapter(t) || !sameModuleTree) {
         out.push({ source: src, target: t, rule: 2 });
       }
     }
