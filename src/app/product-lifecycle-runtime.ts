@@ -3,15 +3,35 @@
  *
  * # What this file owns
  *
- * The concrete manual wiring for the Product Delivery lifecycle: the four
- * production Process Module definitions + executors, the SQLite repositories,
- * the kernel-handler / external-adapter / human-interaction registries, and the
- * `LifecycleOrchestrator` that drives the lifecycle. This wiring USED TO live
- * in `composition/product-lifecycle-runtime.ts` (the manual composition root,
- * and the source of all 34 Rule 6 edges); it was relocated here so the
- * `composition/` directory no longer carries Rule 6 edges — the wiring is
- * consumed via the composition-loader seam instead. See
- * `docs/architecture/WAVE-LOG.md` (Wave 13) for the relocation history.
+ * The composition root for the Product Delivery lifecycle. It constructs the
+ * SHARED deps once (databases, repositories, the shared node-executors map,
+ * the centralized node-products resolver), then delegates the per-module
+ * wiring to four `register<Name>()` functions — the LEGO contract: adding a
+ * fifth module is one new register call, not 200 lines of inline wiring.
+ *
+ * # The LEGO contract
+ *
+ * Each module (`src/modules/<name>/index.ts`) exports a
+ * `register<Name>(registries, sharedDeps, options)` function that constructs
+ * its own concrete adapters, registers its kernel handlers, builds its
+ * `GenericFlowExecutor`, and registers the module definition + installation.
+ * This file holds the four registries + shared deps and calls them in order:
+ *
+ *   registerDiscovery(registries, sharedDeps);
+ *   registerFormalization(registries, sharedDeps);
+ *   registerDevelopment(registries, sharedDeps, options.development);
+ *   registerDelivery(registries, sharedDeps, options.delivery);
+ *
+ * What STAYS in the composition root (cross-module, not module-specific):
+ *   - the shared SQLite repositories (processRun / nodeRun / certificate /
+ *     recoveryCase / managedNodeSubmissions / lifecycleRun);
+ *   - the v2 executor product-repo bridge (with the NodeRun fallback);
+ *   - the shared `nodeExecutors` map (kernel + lm + human executors);
+ *   - the centralized `resolveNodeProducts` resolver;
+ *   - the cross-module `process-outcome-emitter` kernel handler;
+ *   - the `resolveOutputPayload` callback (binds the three module-specific
+ *     payload resolvers by schema — needs results from all four registers);
+ *   - the `LifecycleOrchestrator` + engine adapter.
  *
  * # Why `src/app/` is the correct home
  *
@@ -26,22 +46,6 @@
  *     (`tests/architecture/cutover-architecture-checks.test.mjs`), so the
  *     wiring's catalog/module imports are not "hidden fallbacks" — they are the
  *     legitimate legacy composition surface.
- *
- * This mirrors how `src/app/composition-root.ts` already carries the
- * `createBuiltInProcessModuleRegistry` / `createBuiltInProcessModuleInstallationRegistry`
- * imports for the saga3-discovery + saga3-lifecycle branches. The Product
- * Delivery wiring is the same kind of decision, just larger.
- *
- * # Why a separate file (not inlining into composition-root.ts)
- *
- * The public surface `createProductLifecycleRuntime(options)` is consumed by:
- *   - `src/app/composition-root.ts` (the saga3-lifecycle engine branch);
- *   - `tests/process-modules/product-lifecycle-composition.test.mjs`;
- *   - `tests/process-modules/delivery-lifecycle-resume.test.mjs`.
- * Behaviour MUST NOT change. Keeping the function in its own module (rather
- * than inlining into `composition-root.ts`) preserves the import path
- * `process-modules/composition/product-lifecycle-runtime.js` via a thin re-export
- * shim, so existing import sites keep resolving without edit.
  *
  * # The composition-loader seam
  *
@@ -71,8 +75,6 @@ import type {
 import { getDb } from '../db.js';
 import type { Saga3DiscoveryRuntimePersistence } from '../modules/discovery/infrastructure/saga3-discovery-runtime-port.js';
 import { SqliteSaga3DiscoveryRuntime } from '../modules/discovery/infrastructure/sqlite-saga3-discovery-runtime.js';
-import { Saga3DiscoverySettlementService } from '../modules/discovery/application/discovery-settlement-service.js';
-import { GenericFlowExecutor } from '../process-modules/application/generic-flow-executor.js';
 import {
   PROCESS_OUTCOME_EMITTER_HANDLER_ID,
   processOutcomeEmitter,
@@ -96,99 +98,11 @@ import {
   resolveProductDeliveryRepositories,
   resolveProductDeliveryStageInput,
 } from './product-lifecycle-repository-bindings.js';
-import {
-  discoveryProcessModule,
-} from '../process-modules/modules/discovery/discovery-process-module.js';
-import {
-  formalizationProcessModule,
-} from '../process-modules/modules/formalization/formalization-process-module.js';
-import {
-  developmentProcessModule,
-} from '../process-modules/modules/development/development-process-module.js';
-import {
-  deliveryProcessModule,
-} from '../process-modules/modules/delivery/delivery-process-module.js';
-import {
-  ProcessModuleRegistry,
-} from '../process-modules/application/process-module-registry.js';
+import { ProcessModuleRegistry } from '../process-modules/application/process-module-registry.js';
+import { ProcessModuleInstallationRegistry } from '../process-modules/application/process-module-installation-registry.js';
 import {
   type ProductionInstallation,
 } from '../process-modules/installation/production-install.js';
-import {
-  createDeliveryHumanInteractions,
-  createDeliveryKernelHandlers,
-  createDeliveryOutputPayloadResolver,
-  createDeliveryOutputResolver,
-} from '../process-modules/modules/delivery/delivery-installation.js';
-import type {
-  DeliveryApprovalPort,
-  DeliveryObservationPort,
-  DeliveryPreflightStatePort,
-  DeliveryPublicationPort,
-  DeliverySettlementStatePort,
-  DeliveryModuleInstallationDependencies,
-  DeliveryOutputRepository,
-} from '../process-modules/modules/delivery/delivery-kernel-ports.js';
-import type {
-  DeliveryApprovalSource,
-  DeliveryRuntimeProviders,
-} from '../process-modules/modules/delivery/delivery-provider-ports.js';
-import { SqliteDeliveryOutputRepository } from '../modules/delivery/infrastructure/delivery-persistence.js';
-import { RELEASE_RECORD_SCHEMA } from '../process-modules/modules/delivery/delivery-schemas.js';
-import {
-  ReferenceDeliveryPreflightPolicy,
-  ReferenceDeliverySettlementPolicy,
-} from '../process-modules/modules/delivery/delivery-settlement-policy.js';
-import { SqliteDeliveryApprovalInbox } from '../modules/delivery/infrastructure/sqlite-delivery-approval-inbox.js';
-import { SqliteDeliveryRuntime } from '../modules/delivery/infrastructure/sqlite-delivery-runtime.js';
-import {
-  createDevelopmentKernelHandlers,
-  createDevelopmentOutputPayloadResolver,
-  createDevelopmentOutputResolver,
-} from '../process-modules/modules/development/development-installation.js';
-import type {
-  DevelopmentCanonicalGraphPort,
-  DevelopmentModuleInstallationDependencies,
-  DevelopmentOutputRepository,
-  DevelopmentSettlementStatePort,
-  DevelopmentTaskGraphPort,
-} from '../process-modules/modules/development/development-kernel-ports.js';
-import { SqliteDevelopmentOutputRepository } from '../modules/development/infrastructure/development-persistence.js';
-import { VERIFIED_INTEGRATION_BUNDLE_SCHEMA } from '../process-modules/modules/development/development-schemas.js';
-import {
-  ReferenceDevelopmentSettlementPolicy,
-  ReferenceDevelopmentTaskGraphPolicy,
-} from '../process-modules/modules/development/development-settlement-policy.js';
-import { SqliteDevelopmentModuleStore } from '../modules/development/infrastructure/sqlite-development-settlement-state.js';
-import { createGitPort, createMachinePort } from '../infrastructure/process-modules/git-machine-ports.js';
-import { SqliteWorkAssignmentAdapter } from '../infrastructure/work/sqlite-work-assignment-adapter.js';
-import {
-  createDeliveryProcessProductPort,
-  createDeliveryExternalEffectLedgerPort,
-} from '../infrastructure/process-modules/delivery-ports.js';
-import {
-  SqliteFormalizationBriefProvisioning,
-  SqliteDiscoveryBriefProvisioning,
-} from '../infrastructure/process-modules/brief-provisioning-ports.js';
-import {
-  createDiscoveryKernelHandlers,
-  createDiscoveryLmNodePersistence,
-} from '../process-modules/modules/discovery/discovery-installation.js';
-import {
-  createFormalizationKernelHandlers,
-  createFormalizationLifecycleOutputPayloadResolver,
-  createFormalizationOutputResolver,
-} from '../process-modules/modules/formalization/formalization-installation.js';
-import {
-  SqliteFormalizationBaselineRepository,
-  SqliteFormalizationSolutionContractRepository,
-} from '../modules/formalization/infrastructure/formalization-persistence.js';
-import { SOLUTION_CONTRACT_CERTIFICATE_SCHEMA } from '../process-modules/modules/formalization/formalization-schemas.js';
-import {
-  ReferenceFormalizationSettlementPolicy,
-  SqliteFormalizationArtifactGraph,
-} from '../modules/formalization/infrastructure/sqlite-formalization-kernel.js';
-import { ProcessModuleInstallationRegistry } from '../process-modules/application/process-module-installation-registry.js';
 import type { ResolveStageOutputPayload } from '../process-modules/application/lifecycle-orchestrator.js';
 import { SqliteLifecycleRunRepository } from '../process-modules/persistence/sqlite-lifecycle-run-repository.js';
 import { lifecycleRefKey } from '../process-modules/persistence/lifecycle-run.js';
@@ -203,45 +117,41 @@ import { SqliteExactCandidateAcceptance } from '../process-modules/persistence/s
 import { SqliteProcessOutcomeCertificateRepository } from '../process-modules/persistence/sqlite-process-outcome-certificate-repository.js';
 import { SqliteProcessRunRepository } from '../process-modules/persistence/sqlite-process-run-repository.js';
 import { SqliteRecoveryCaseRepository } from '../process-modules/persistence/sqlite-recovery-case-repository.js';
+import { SqliteWorkAssignmentAdapter } from '../infrastructure/work/sqlite-work-assignment-adapter.js';
+import { createDiscoveryLmNodePersistence } from '../process-modules/modules/discovery/discovery-installation.js';
+import {
+  createFormalizationLifecycleOutputPayloadResolver,
+} from '../process-modules/modules/formalization/formalization-installation.js';
+import { SOLUTION_CONTRACT_CERTIFICATE_SCHEMA } from '../process-modules/modules/formalization/formalization-schemas.js';
+import {
+  createDevelopmentOutputPayloadResolver,
+} from '../process-modules/modules/development/development-installation.js';
+import { VERIFIED_INTEGRATION_BUNDLE_SCHEMA } from '../process-modules/modules/development/development-schemas.js';
+import {
+  createDeliveryOutputPayloadResolver,
+} from '../process-modules/modules/delivery/delivery-installation.js';
+import { RELEASE_RECORD_SCHEMA } from '../process-modules/modules/delivery/delivery-schemas.js';
 import type { ProductRef } from '../process-modules/domain/spi/index.js';
 
-export interface DevelopmentCompositionDependencies {
-  /**
-   * The declarative module store: persists the validated task graph +
-   * projects kanban tasks (DevelopmentTaskGraphPort) AND re-reads tracker state
-   * to reconstruct the settlement input (DevelopmentSettlementStatePort). Under
-   * the Formalization mechanical pattern there are no executive ports here —
-   * workers claim projected tasks through the shared worker_next queue, merge
-   * via worker_merge_release and record evidence via verification_record.
-   */
-  store?: DevelopmentCanonicalGraphPort
-    & DevelopmentTaskGraphPort
-    & DevelopmentSettlementStatePort;
-  taskGraph?: DevelopmentTaskGraphPort;
-  settlementState?: DevelopmentSettlementStatePort;
-  taskGraphPolicy?: DevelopmentModuleInstallationDependencies['taskGraphPolicy'];
-  settlementPolicy?: DevelopmentModuleInstallationDependencies['settlementPolicy'];
-  outputRepository?: DevelopmentOutputRepository;
-}
-
-export type DeliveryProviderConfiguration =
-  Omit<DeliveryRuntimeProviders, 'approval'> & {
-    approval?: DeliveryApprovalSource;
-  };
-
-export interface DeliveryCompositionDependencies {
-  runtime?: SqliteDeliveryRuntime;
-  providers?: DeliveryProviderConfiguration;
-  approvalInbox?: SqliteDeliveryApprovalInbox;
-  preflightState?: DeliveryPreflightStatePort;
-  approval?: DeliveryApprovalPort;
-  publication?: DeliveryPublicationPort;
-  observation?: DeliveryObservationPort;
-  settlementState?: DeliverySettlementStatePort;
-  preflightPolicy?: DeliveryModuleInstallationDependencies['preflightPolicy'];
-  settlementPolicy?: DeliveryModuleInstallationDependencies['settlementPolicy'];
-  outputRepository?: DeliveryOutputRepository;
-}
+// Module register functions (the LEGO contract).
+import { registerDiscovery } from '../modules/discovery/index.js';
+import { registerFormalization } from '../modules/formalization/index.js';
+import { registerDevelopment } from '../modules/development/index.js';
+import { registerDelivery } from '../modules/delivery/index.js';
+import type {
+  ModuleRegistries,
+  ModuleSharedDeps,
+} from '../modules/module-registration.js';
+// Import the per-module composition-dependency option types so they are in
+// local scope for `ProductLifecycleRuntimeOptions` AND re-exported below for
+// back-compat with the historical public option names (composition-root.ts).
+import type { DevelopmentCompositionDependencies } from '../modules/development/index.js';
+import type {
+  DeliveryCompositionDependencies,
+  DeliveryProviderConfiguration,
+} from '../modules/delivery/index.js';
+export type { DevelopmentCompositionDependencies };
+export type { DeliveryCompositionDependencies, DeliveryProviderConfiguration };
 
 export interface ProductLifecycleRuntimeOptions {
   workerExecutorFactory: WorkerExecutorFactory;
@@ -290,30 +200,31 @@ export interface ProductLifecycleRuntimeOptions {
 /**
  * Explicit composition for the complete product lifecycle.
  *
- * Runtime mechanics are shared. Module handlers/adapters are registrations.
- * Development's standard SQLite/task/Git adapter and all deterministic
- * policies are wired by default. Delivery's runtime mechanics and approval
- * inbox are also standard; only the actual preflight/publication/observation
- * providers remain explicit because composition must never fabricate an
- * external success or a human decision.
+ * The composition root constructs the shared deps + registries once, then
+ * delegates per-module wiring to the four `register<Name>()` functions
+ * (`src/modules/<name>/index.ts`). Adding a module = one new register call.
  *
- * W13: this body was relocated verbatim from
+ * W13: the body was relocated verbatim from
  * `composition/product-lifecycle-runtime.ts` so the `composition/` directory
- * no longer carries Rule 6 edges. The composition root consumes it via the
- * composition-loader seam (the loader's `legacy` path delegates to these
- * factories); see `composition/product-lifecycle-runtime.ts` for the thin
- * re-export that preserves the historical import path.
+ * no longer carries Rule 6 edges. W14 (this revision) extracted the per-module
+ * wiring into register functions.
  */
 export function createProductLifecycleRuntime(
   options: ProductLifecycleRuntimeOptions,
 ) {
   assertCompositionDependencies(options);
   const db = options.db ?? getDb();
+
+  // ---------------------------------------------------------------------
+  // SHARED deps — constructed ONCE, shared across all four modules.
+  // ---------------------------------------------------------------------
   const processRunRepo = new SqliteProcessRunRepository(db);
   const nodeRunRepo = new SqliteNodeRunRepository(db);
   const certificateRepo = new SqliteProcessOutcomeCertificateRepository(db);
   const recoveryCaseRepo = new SqliteRecoveryCaseRepository(db);
   const lifecycleRunRepo = new SqliteLifecycleRunRepository(db);
+  const processProductRepo = new SqliteProcessProductRepository(db);
+  const processProductRepoV2 = new SqliteProcessProductRepositoryV2(db);
   // Wire the v2 driver-neutral envelope path (driver-neutral execution-context
   // envelopes + explicit ModuleCompletion persistence via completeV2) into all
   // four executors below. `SqliteNodeRunRepository` implements
@@ -326,30 +237,6 @@ export function createProductLifecycleRuntime(
   // assembler's legacy fallback) — null here is the documented
   // 'legacy:unpinned' sentinel when the installed digest is not surfaced on
   // ProcessRunRecord.
-  const processProductRepo = new SqliteProcessProductRepository(db);
-  const processProductRepoV2 = new SqliteProcessProductRepositoryV2(db);
-  // Bridge the `SqliteProcessProductRepositoryV2` (returns
-  // `ProcessProductRecordV2` with `reference.{schema,ref,hash}`) to the
-  // assembler's `ProcessProductRepository` port (expects `UpstreamProductRecord`
-  // with `productRef.{schemaId,ref,digest}`).
-  //
-  // In addition to normalizing field names, this adapter falls back to the
-  // durable NodeRun rows when the content-addressed product store
-  // (`saga3_process_products`) does not contain a product. This is required
-  // because the four modules persist their settlement productions on the
-  // NodeRun `output_*` columns (via completeV2 dual-write), NOT in the product
-  // store — the product store is only populated by modules that explicitly
-  // call `recordProduct`. Without this fallback the v2 assembler's strict
-  // exact-product-store lookup throws UPSTREAM_PRODUCT_NOT_FOUND for every
-  // terminal node whose upstream is a settlement production.
-  //
-  // The fallback is a content-addressed global query over completed NodeRun
-  // rows matching the full (schema, ref, hash) triple. Content-addressing
-  // makes the match unique and deterministic regardless of which ProcessRun
-  // produced it — two productions with the same triple ARE the same product.
-  // The payload returned is the production body reconstructed from the NodeRun
-  // output columns (schema/artifactRef/contentHash/bindings), which is the
-  // same shape the legacy `restoreProduction` path forwarded as chainInput.
   const lookupProduction = db.prepare(
     `SELECT output_schema AS schema, output_ref AS ref, output_hash AS hash,
             output_bindings AS bindingsText
@@ -426,169 +313,7 @@ export function createProductLifecycleRuntime(
     ?? new SqliteSaga3DiscoveryRuntime();
   const managedNodeSubmissions =
     new SqliteManagedNodeSubmissionRepository(db);
-
-  const developmentConfig = options.development ?? {};
-  // Development uses the Formalization mechanical pattern: the module's Flow is
-  // lm+kernel only and its installation deps are purely declarative (read /
-  // persist / decide). The SqliteDevelopmentModuleStore persists the validated
-  // task graph, projects its kanban tasks (which workers then claim through the
-  // shared worker_next queue), and re-reads tracker state to reconstruct the
-  // settlement input. There is no ScopedWorksetRunner / no executive port: the
-  // module never hires, merges or tests — that is infrastructure's job.
-  const developmentLedger = new SqliteManagedProductionLedger(db);
-  // Inject the concrete process-product repository + git/machine ports from
-  // the composition root so the Development module imports no SQLite adapter,
-  // child_process, or node:os. Reuse the shared `processProductRepo`
-  // (constructed above for the v2 executor wiring) instead of a second
-  // instance over the same DB.
-  const developmentProcessProducts = processProductRepo;
-  const developmentGit = createGitPort();
-  const developmentMachine = createMachinePort();
-  const developmentGraph = developmentConfig.store
-    ?? new SqliteDevelopmentModuleStore(db, developmentProcessProducts, developmentGit, developmentMachine);
-  const developmentTaskGraphPolicy = developmentConfig.taskGraphPolicy
-    ?? new ReferenceDevelopmentTaskGraphPolicy();
-  const developmentOutputRepository = developmentConfig.outputRepository
-    ?? new SqliteDevelopmentOutputRepository(db);
-  const developmentDeps: DevelopmentModuleInstallationDependencies = {
-    plannerSubmissions: managedNodeSubmissions,
-    ledger: developmentLedger,
-    graph: developmentGraph,
-    taskGraph: developmentConfig.taskGraph ?? developmentGraph,
-    settlementState: developmentConfig.settlementState ?? developmentGraph,
-    taskGraphPolicy: developmentTaskGraphPolicy,
-    settlementPolicy: developmentConfig.settlementPolicy
-      ?? new ReferenceDevelopmentSettlementPolicy(
-        developmentTaskGraphPolicy,
-      ),
-    outputRepository: developmentOutputRepository,
-    // The development settlement kernel AUTHORS its own certificate (issuing
-    // it through this repo) and emits an explicit ModuleCompletion pointing at
-    // the resulting certificateRef.
-    certificateRepository: certificateRepo,
-  };
-
-  const deliveryConfig = options.delivery;
-  const deliveryApprovalInbox = deliveryConfig.approvalInbox
-    ?? new SqliteDeliveryApprovalInbox(db);
-  const deliveryProviders: DeliveryRuntimeProviders | null =
-    deliveryConfig.providers
-      ? {
-        ...deliveryConfig.providers,
-        approval:
-            deliveryConfig.providers.approval ?? deliveryApprovalInbox,
-      }
-      : null;
-  const deliveryRuntime = deliveryConfig.runtime
-    ?? (deliveryProviders
-      ? new SqliteDeliveryRuntime({
-        db,
-        providers: deliveryProviders,
-        // Injected concrete adapters (composition root owns construction) so
-        // the Delivery module imports no getDb/Sqlite*.
-        products: createDeliveryProcessProductPort(db),
-        effectLedger: createDeliveryExternalEffectLedgerPort(db),
-      })
-      : null);
-  const deliveryPreflightPolicy = deliveryConfig.preflightPolicy
-    ?? new ReferenceDeliveryPreflightPolicy();
-  const deliveryOutputRepository = deliveryConfig.outputRepository
-    ?? new SqliteDeliveryOutputRepository(db);
-  const deliveryDeps: DeliveryModuleInstallationDependencies = {
-    preflightState: requireDeliveryPort(
-      deliveryConfig.preflightState ?? deliveryRuntime,
-      'preflightState',
-    ),
-    approval: requireDeliveryPort(
-      deliveryConfig.approval ?? deliveryRuntime,
-      'approval',
-    ),
-    publication: requireDeliveryPort(
-      deliveryConfig.publication ?? deliveryRuntime,
-      'publication',
-    ),
-    observation: requireDeliveryPort(
-      deliveryConfig.observation ?? deliveryRuntime,
-      'observation',
-    ),
-    settlementState: requireDeliveryPort(
-      deliveryConfig.settlementState ?? deliveryRuntime,
-      'settlementState',
-    ),
-    preflightPolicy: deliveryPreflightPolicy,
-    settlementPolicy: deliveryConfig.settlementPolicy
-      ?? new ReferenceDeliverySettlementPolicy(deliveryPreflightPolicy),
-    outputRepository: deliveryOutputRepository,
-    // The delivery settlement kernel issues its own ProcessOutcomeCertificate
-    // and emits an explicit ModuleCompletion.
-    certificateRepo,
-  };
-
-  const formalizationBaselineRepository =
-    new SqliteFormalizationBaselineRepository(db);
-  const formalizationSolutionContractRepository =
-    new SqliteFormalizationSolutionContractRepository(db);
-  const formalizationGraph = new SqliteFormalizationArtifactGraph(db);
-  const formalizationLedger = new SqliteManagedProductionLedger(db);
   const exactCandidateAcceptance = new SqliteExactCandidateAcceptance(db);
-
-  const kernelHandlers = new KernelHandlerRegistry();
-  kernelHandlers.register(
-    PROCESS_OUTCOME_EMITTER_HANDLER_ID,
-    processOutcomeEmitter,
-  );
-  kernelHandlers.registerAll(createDiscoveryKernelHandlers({
-    runtimePersistence,
-    // Injected brief-provisioning port so the Discovery module imports no
-    // getDb. Composition root owns concrete construction.
-    briefProvisioning: new SqliteDiscoveryBriefProvisioning(db),
-    // The deterministic D4 settlement service is an EXPLICIT injected port.
-    // The composition root constructs the concrete saga3 implementation and
-    // injects it; the Discovery module no longer self-provisions it via a
-    // dynamic import (which hid the runtime dependency from the static
-    // dependency graph). The bounded-context edge (composition root →
-    // saga3/application) lives in src/app/, which is outside
-    // src/process-modules/modules/, so it is not a Rule 2 violation.
-    settlementService: new Saga3DiscoverySettlementService({ runtimePersistence }),
-  }));
-  kernelHandlers.registerAll(createFormalizationKernelHandlers({
-    ledger: formalizationLedger,
-    graph: formalizationGraph,
-    baselineRepository: formalizationBaselineRepository,
-    solutionContractRepository: formalizationSolutionContractRepository,
-    settlementPolicy: new ReferenceFormalizationSettlementPolicy(),
-    candidateAcceptance: exactCandidateAcceptance,
-    // Injected brief-provisioning port so the Formalization module imports no
-    // getDb. Composition root owns concrete construction.
-    briefProvisioning: new SqliteFormalizationBriefProvisioning(db),
-    // The formalization settlement kernel issues its own
-    // ProcessOutcomeCertificate and emits an explicit ModuleCompletion.
-    certificateRepo,
-  }));
-  kernelHandlers.registerAll(createDevelopmentKernelHandlers(developmentDeps));
-  kernelHandlers.registerAll(createDeliveryKernelHandlers(deliveryDeps));
-
-  const humanInteractions = new HumanInteractionRegistry();
-  humanInteractions.registerAll(createDeliveryHumanInteractions(deliveryDeps));
-
-  const nodeExecutors = new Map<string, NodeExecutor>([
-    ['kernel', new KernelNodeExecutor(kernelHandlers, exactCandidateAcceptance)],
-    ['lm', new LmNodeExecutor({
-      persistence: createDiscoveryLmNodePersistence(runtimePersistence),
-      workerExecutorFactory: options.workerExecutorFactory,
-      resolveWorkerContext: options.resolveWorkerContext,
-      // Pre-assign the LM node's card through the atomic WorkAssignmentPort
-      // BEFORE launching the worker, so there is ONE assignment path. The
-      // dispatch-loop path uses the same port (via the factory's claimTask
-      // callback); this closes the LM-node divergence. We default-construct
-      // the same SqliteWorkAssignmentAdapter the dispatch path uses
-      // (overridable via options for tests), so every production LM-node
-      // launch pre-assigns even when the external composition module did not
-      // supply one explicitly.
-      workAssignment: options.workAssignment ?? new SqliteWorkAssignmentAdapter(db),
-    })],
-    ['human', new HumanNodeExecutor(humanInteractions)],
-  ]);
 
   // CGAD P18 — centralized node-products resolver: reads the workplace's (node's)
   // durable worker products by node-scope (processRunId + moduleRef + nodeId),
@@ -630,76 +355,92 @@ export function createProductLifecycleRuntime(
     };
   };
 
-  const executors = {
-    discovery: new GenericFlowExecutor({
-      moduleRef: discoveryProcessModule.identity,
-      processRunRepo,
-      nodeRunRepo,
-      certificateRepo,
-      nodeExecutors,
-      recoveryCaseRepo,
-      resolveNodeProducts,
-      // Activate the v2 path (explicit ModuleCompletion persistence via
-      // completeV2) in production.
-      v2: executorV2Options,
-    }),
-    formalization: new GenericFlowExecutor({
-      moduleRef: formalizationProcessModule.identity,
-      processRunRepo,
-      nodeRunRepo,
-      certificateRepo,
-      nodeExecutors,
-      recoveryCaseRepo,
-      resolveNodeProducts,
-      resolveOutput: createFormalizationOutputResolver(
-        formalizationSolutionContractRepository,
-      ),
-      v2: executorV2Options,
-    }),
-    development: new GenericFlowExecutor({
-      moduleRef: developmentProcessModule.identity,
-      processRunRepo,
-      nodeRunRepo,
-      certificateRepo,
-      nodeExecutors,
-      recoveryCaseRepo,
-      resolveNodeProducts,
-      resolveOutput: createDevelopmentOutputResolver(
-        developmentOutputRepository,
-      ),
-      v2: executorV2Options,
-    }),
-    delivery: new GenericFlowExecutor({
-      moduleRef: deliveryProcessModule.identity,
-      processRunRepo,
-      nodeRunRepo,
-      certificateRepo,
-      nodeExecutors,
-      recoveryCaseRepo,
-      resolveNodeProducts,
-      resolveOutput: createDeliveryOutputResolver(deliveryOutputRepository),
-      v2: executorV2Options,
-    }),
-  };
-
+  // ---------------------------------------------------------------------
+  // REGISTRIES — constructed once, populated by the four register calls.
+  // ---------------------------------------------------------------------
+  const kernelHandlers = new KernelHandlerRegistry();
+  // Cross-module handler (NOT module-specific) — stays in the composition root.
+  kernelHandlers.register(
+    PROCESS_OUTCOME_EMITTER_HANDLER_ID,
+    processOutcomeEmitter,
+  );
+  const humanInteractions = new HumanInteractionRegistry();
   const moduleRegistry = new ProcessModuleRegistry();
-  moduleRegistry.register(discoveryProcessModule);
-  moduleRegistry.register(formalizationProcessModule);
-  moduleRegistry.register(developmentProcessModule);
-  moduleRegistry.register(deliveryProcessModule);
   const installationRegistry =
     new ProcessModuleInstallationRegistry({
       kernelHandlerRegistry: kernelHandlers,
       humanInteractionRegistry: humanInteractions,
     });
-  for (const inst of [
-    { definition: discoveryProcessModule, executor: executors.discovery },
-    { definition: formalizationProcessModule, executor: executors.formalization },
-    { definition: developmentProcessModule, executor: executors.development },
-    { definition: deliveryProcessModule, executor: executors.delivery },
-  ]) {
-    installationRegistry.register(inst as any);
-  }
+
+  // ---------------------------------------------------------------------
+  // SHARED node executors — must be constructed AFTER kernelHandlers exists
+  // (kernel executor references it) and AFTER runtimePersistence /
+  // exactCandidateAcceptance (shared prerequisites). Stays in the composition
+  // root because it is cross-module.
+  // ---------------------------------------------------------------------
+  const nodeExecutors = new Map<string, NodeExecutor>([
+    ['kernel', new KernelNodeExecutor(kernelHandlers, exactCandidateAcceptance)],
+    ['lm', new LmNodeExecutor({
+      persistence: createDiscoveryLmNodePersistence(runtimePersistence),
+      workerExecutorFactory: options.workerExecutorFactory,
+      resolveWorkerContext: options.resolveWorkerContext,
+      // Pre-assign the LM node's card through the atomic WorkAssignmentPort
+      // BEFORE launching the worker, so there is ONE assignment path. The
+      // dispatch-loop path uses the same port (via the factory's claimTask
+      // callback); this closes the LM-node divergence. We default-construct
+      // the same SqliteWorkAssignmentAdapter the dispatch path uses
+      // (overridable via options for tests), so every production LM-node
+      // launch pre-assigns even when the external composition module did not
+      // supply one explicitly.
+      workAssignment: options.workAssignment ?? new SqliteWorkAssignmentAdapter(db),
+    })],
+    ['human', new HumanNodeExecutor(humanInteractions)],
+  ]);
+
+  const sharedDeps: ModuleSharedDeps = {
+    db,
+    processRunRepo,
+    nodeRunRepo,
+    certificateRepo,
+    recoveryCaseRepo,
+    managedNodeSubmissions,
+    processProductRepo,
+    nodeExecutors,
+    resolveNodeProducts,
+    executorV2Options,
+    runtimePersistence,
+    exactCandidateAcceptance,
+  };
+  const registries: ModuleRegistries = {
+    kernelHandlers,
+    humanInteractions,
+    moduleRegistry,
+    installationRegistry,
+  };
+
+  // ---------------------------------------------------------------------
+  // LEGO contract — four register calls, one per module.
+  // ---------------------------------------------------------------------
+  const discoveryExecutor = registerDiscovery(registries, sharedDeps);
+  const formalization = registerFormalization(registries, sharedDeps);
+  const development = registerDevelopment(registries, sharedDeps, options.development ?? {});
+  const delivery = registerDelivery(registries, sharedDeps, options.delivery);
+
+  // ---------------------------------------------------------------------
+  // resolveOutputPayload — cross-module callback that binds each module's
+  // payload resolver by schema. Needs results from the formalization /
+  // development / delivery registers, so it stays here.
+  // ---------------------------------------------------------------------
+  const resolversBySchema = new Map<string, ResolveStageOutputPayload>([
+    [SOLUTION_CONTRACT_CERTIFICATE_SCHEMA, createFormalizationLifecycleOutputPayloadResolver(formalization.solutionContractRepository)],
+    [VERIFIED_INTEGRATION_BUNDLE_SCHEMA, createDevelopmentOutputPayloadResolver(development.outputRepository)],
+    [RELEASE_RECORD_SCHEMA, createDeliveryOutputPayloadResolver(delivery.outputRepository)],
+  ]);
+  const resolveOutputPayload: ResolveStageOutputPayload = async (params) => {
+    const resolver = resolversBySchema.get(params.output.schema);
+    if (!resolver) throw new Error(`no output payload resolver for schema ${params.output.schema}`);
+    return resolver(params);
+  };
 
   // The production module packages were installed by the composition loader
   // (orchestrate-cli) BEFORE this runtime is constructed (install is async
@@ -709,18 +450,9 @@ export function createProductLifecycleRuntime(
   // remains in effect for those paths.
   const packageInstallation = options.packageInstallation;
 
-  // ProcessOutputPayloadRegistry replaced by injected ResolveStageOutputPayload callback.
-  const resolversBySchema = new Map<string, ResolveStageOutputPayload>([
-    [SOLUTION_CONTRACT_CERTIFICATE_SCHEMA, createFormalizationLifecycleOutputPayloadResolver(formalizationSolutionContractRepository)],
-    [VERIFIED_INTEGRATION_BUNDLE_SCHEMA, createDevelopmentOutputPayloadResolver(developmentOutputRepository)],
-    [RELEASE_RECORD_SCHEMA, createDeliveryOutputPayloadResolver(deliveryOutputRepository)],
-  ]);
-  const resolveOutputPayload: ResolveStageOutputPayload = async (params) => {
-    const resolver = resolversBySchema.get(params.output.schema);
-    if (!resolver) throw new Error(`no output payload resolver for schema ${params.output.schema}`);
-    return resolver(params);
-  };
-
+  // ---------------------------------------------------------------------
+  // ORCHESTRATOR + engine — cross-module, stays in the composition root.
+  // ---------------------------------------------------------------------
   const orchestrator = new LifecycleOrchestrator({
     lifecycleRunRepo,
     onLifecycleStarted: options.onLifecycleStarted,
@@ -826,17 +558,22 @@ export function createProductLifecycleRuntime(
     resolveOutputPayload,
     kernelHandlers,
     humanInteractions,
-    executors,
+    executors: {
+      discovery: discoveryExecutor,
+      formalization: formalization.executor,
+      development: development.executor,
+      delivery: delivery.executor,
+    },
     packageInstallation,
     runtimes: {
       // Development has no executive runtime under the Formalization mechanical
       // pattern — its store (task-graph persistence + settlement-state reader)
-      // is exposed above as `developmentGraph` and wired via `developmentDeps`.
-      development: developmentGraph,
-      delivery: deliveryRuntime,
+      // is exposed as `development.graph` and wired via the register deps.
+      development: development.graph,
+      delivery: delivery.runtime,
     },
     interactions: {
-      deliveryApprovalInbox,
+      deliveryApprovalInbox: delivery.approvalInbox,
     },
     repositories: {
       processRunRepo,
@@ -844,10 +581,10 @@ export function createProductLifecycleRuntime(
       certificateRepo,
       lifecycleRunRepo,
       managedNodeSubmissions,
-      formalizationBaselineRepository,
-      formalizationSolutionContractRepository,
-      developmentOutputRepository,
-      deliveryOutputRepository,
+      formalizationBaselineRepository: formalization.baselineRepository,
+      formalizationSolutionContractRepository: formalization.solutionContractRepository,
+      developmentOutputRepository: development.outputRepository,
+      deliveryOutputRepository: delivery.outputRepository,
     },
   };
 }
@@ -864,16 +601,4 @@ function assertCompositionDependencies(
       `PRODUCT_LIFECYCLE_COMPOSITION_INCOMPLETE: ${missing.join(', ')}`,
     );
   }
-}
-
-function requireDeliveryPort<T>(
-  port: T | null | undefined,
-  name: string,
-): T {
-  if (port) return port;
-  throw new Error(
-    `PRODUCT_LIFECYCLE_COMPOSITION_INCOMPLETE: delivery.${name}; `
-    + 'provide a complete Delivery port set, a SqliteDeliveryRuntime, or '
-    + 'delivery.providers for the standard runtime',
-  );
 }

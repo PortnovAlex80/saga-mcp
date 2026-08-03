@@ -9,24 +9,34 @@
 //   /api/heartbeat          → JSON { last } — timestamp последней активности
 //   POST /api/artifact/save → сохранить .md + metadata (JSON body)
 import http from 'node:http';
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync, unlinkSync, statSync, openSync, readSync, closeSync, realpathSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync, unlinkSync, statSync, openSync, readSync, closeSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import os from 'node:os';
-import { handlers as dispatcherHandlers } from '../dist/tools/dispatcher.js';
 import { handlers as repositoryHandlers } from '../dist/tools/repositories.js';
-import { createClaudeBoardRunner } from './claude-runner.mjs';
 import { ensureInitializedGitRepository } from './git-bootstrap.mjs';
 import {
   artifactFallbackDocument,
   orderedArtifactTypes,
 } from './artifact-presentation.mjs';
 import { isProcessAlive } from '../dist/worker-executions.js';
-import { releaseExecutionAtomically } from '../dist/lifecycle/atomic-release.js';
 import { getDb as ensureSagaDb, closeDb as closeSagaDb } from '../dist/db.js';
+import {
+  initShared,
+  withDb, withDbWrite,
+  ageClass, ageText,
+  esc, extractDiv, inTableHasHeader, truncate,
+  respondJson, readRequestFields, readJsonRequest,
+  canonicalAllowedWorkerLogPath,
+  DEV_ROOT, PROJECT_REPO_MAP,
+  resolveArtifactFile,
+} from './shared.mjs';
+import {
+  createBoardRunnerAdapter,
+} from './board-runner-adapter.mjs';
 import { createSagaControlApplication } from '../dist/app/composition-root.js';
 import { loadSagaRuntimeConfig } from '../dist/runtime/saga-runtime-config.js';
 import { requiresBackgroundEngine } from '../dist/runtime/orchestration-mode.js';
@@ -49,23 +59,10 @@ const WORKER_LOG_ROOTS = [...new Set(
     .map(root => path.resolve(root)),
 )];
 
-function canonicalAllowedWorkerLogPath(requestedPath) {
-  if (!requestedPath) return null;
-  const resolved = path.resolve(requestedPath);
-  if (!existsSync(resolved)) return null;
-  const canonical = realpathSync(resolved);
-  for (const configuredRoot of WORKER_LOG_ROOTS) {
-    if (!existsSync(configuredRoot)) continue;
-    const canonicalRoot = realpathSync(configuredRoot);
-    const relative = path.relative(canonicalRoot, canonical);
-    if (relative === '' || (
-      relative !== '..'
-      && !relative.startsWith(`..${path.sep}`)
-      && !path.isAbsolute(relative)
-    )) return canonical;
-  }
-  return null;
-}
+// Inject DB_PATH + Database + log roots into the shared helpers so the
+// extracted withDb/withDbWrite/canonicalAllowedWorkerLogPath can reference them
+// without tracker-view.mjs having to re-declare their logic.
+initShared({ dbPath: DB_PATH, Database, workerLogRoots: WORKER_LOG_ROOTS });
 
 // Файл saga.db создаётся лениво MCP-сервером при первом вызове инструмента.
 // Если tracker-view запускается первым, инициализируем ту же schema/migrations.
@@ -121,61 +118,6 @@ const LINK_GLYPH = {
   covers:'↳ covers', depends_on:'↳ dep', superseded_by:'↳ super'
 };
 
-// --- DB helpers (одна общая БД, read-only, открываем на каждый запрос —
-//     overhead минимален, зато всегда свежие данные и нет гонок с saga-MCP) ---
-function withDb(fn) {
-  const db = new Database(DB_PATH, { readonly: true, timeout: 2000 });
-  try {
-    return fn(db);
-  } finally {
-    db.close();
-  }
-}
-
-// Read-write соединение для save-handler. WAL-режим БД saga-mcp позволяет
-// конкурентную запись (один писатель + много читателей) — безопасно с saga-MCP.
-function withDbWrite(fn) {
-  const db = new Database(DB_PATH, { timeout: 5000 });
-  db.pragma('journal_mode = WAL');
-  try {
-    return fn(db);
-  } finally {
-    db.close();
-  }
-}
-
-// Парсинг timestamp из БД saga. SQLite `datetime('now')` возвращает **UTC** в
-// формате 'YYYY-MM-DD HH:MM:SS' (без T, без Z). Старый комментарий утверждал,
-// что это локальное время — НЕВЕРНО; именно это заблуждение и плодит tz-баги
-// (на UTC+3 распарсенный timestamp уезжает на -3ч, возрасты растут на 180 мин).
-// Поэтому нормализуем в ISO с Z и парсим как UTC. Уже-ISO значения (с T/Z)
-// проходят как есть.
-function parseTs(iso) {
-  if (!iso) return null;
-  let s = String(iso);
-  if (s.indexOf('T') < 0) s = s.replace(' ', 'T');
-  if (s.indexOf('Z') < 0 && /[+-]\d\d:?\d\d$/.test(s) === false) s += 'Z';
-  const d = new Date(s);
-  return isNaN(d.getTime()) ? null : d.getTime();
-}
-// Возраст timestamp'а → класс кружка (green/yellow/red)
-function ageClass(iso) {
-  const t = parseTs(iso);
-  if (t === null) return 'red';
-  const ago = Math.floor((Date.now() - t) / 1000);
-  if (ago < 15) return 'green';
-  if (ago < 60) return 'yellow';
-  return 'red';
-}
-function ageText(iso) {
-  const t = parseTs(iso);
-  if (t === null) return '?';
-  const ago = Math.floor((Date.now() - t) / 1000);
-  if (ago < 60) return ago + 'с';
-  if (ago < 3600) return Math.floor(ago / 60) + 'м';
-  return Math.floor(ago / 3600) + 'ч';
-}
-
 // Все saga-проекты и канбан читаются через стабильную application projection.
 function listProjects() {
   return sagaApplication.listProjects();
@@ -205,190 +147,20 @@ const lifecyclePipelineApi = createLifecyclePipelineApi({
   }),
 });
 
-function esc(s){ return String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+// esc / DEV_ROOT / PROJECT_REPO_MAP / projectFolderTag / resolveProjectWorkspace
+// live in ./shared.mjs now (imported above).
+// getRunnerTaskState / recoverRunnerAssignment / createBoardRunnerAdapter
+// live in ./board-runner-adapter.mjs (imported above).
 
-// --- Repo-root resolver: проект saga → физический репо, где лежат .md файлы ---
-// Конвенция folder:тега ненадёжна (проекты с артефактами его не имеют),
-// поэтому map строим по факту где docs/requirements/<epic> реально существует.
-// PROJECT_REPO_MAP — hardcoded приоритеты; resolveRepoFile обходит кандидатов.
-const DEV_ROOT = 'D:/Development';
-const PROJECT_REPO_MAP = {
-  granite: ['Stone'],
-  Geosophia: ['geosophia'],
-  TestLasGPU: ['TestLasGPU'],
-  'kickstart-impl': ['Harmess', 'saga-mcp'],
-  'deposit-calc-simple': ['Harmess', 'deposit-calc-simple'],
-  requirements: ['Harmess'],
-  'ODN-MVP': ['GDesign', 'Harmess'],
-  harmess: ['Harmess'],
-  femdriver: ['femdriver'],
-  GazPenetration: ['GazPenetration'],
-};
-
-function projectFolderTag(project) {
-  try {
-    const tags = JSON.parse(project.tags || '[]');
-    const tag = tags.find(value => typeof value === 'string' && value.startsWith('folder:'));
-    return tag ? tag.slice('folder:'.length) : null;
-  } catch {
-    return null;
-  }
-}
-
-function resolveProjectWorkspace(project) {
-  const candidates = [];
-  const folderTag = projectFolderTag(project);
-  if (folderTag) candidates.push(path.join(DEV_ROOT, folderTag));
-  for (const folder of PROJECT_REPO_MAP[project.name] || []) {
-    candidates.push(path.join(DEV_ROOT, folder));
-  }
-  candidates.push(path.join(DEV_ROOT, project.name));
-
-  try {
-    for (const entry of readdirSync(DEV_ROOT, { withFileTypes: true })) {
-      if (!entry.isDirectory()) continue;
-      const root = path.join(DEV_ROOT, entry.name);
-      const marker = path.join(root, 'projectname.txt');
-      if (!existsSync(marker)) continue;
-      if (readFileSync(marker, 'utf8').trim() === project.name) candidates.push(root);
-    }
-  } catch {}
-
-  return candidates.find(candidate => existsSync(candidate)) || null;
-}
-
-function getRunnerTaskState(taskId) {
-  return withDb(db =>
-    db.prepare('SELECT id, status, assigned_to, tags, integration_state FROM tasks WHERE id=?').get(taskId),
-  );
-}
-
-function recoverRunnerAssignment({ taskId, workerId, originalStatus, executionId, reason }) {
-  // Slice 1 (ADR-010/011, blueprint §16:829-845): the recovery path now
-  // delegates fenced releases to the single atomic terminalization+release
-  // function in src/lifecycle/atomic-release.ts. This removes the duplicate
-  // recovery SQL that existed between tracker-view and orchestrate.ts
-  // (blueprint §22:1199) and collapses the close/reconciler race
-  // (blueprint §16:844): the function's fence CAS means only one of the two
-  // callers wins; the other no-ops.
-  //
-  // Legacy (pre-ADR-009, unfenced) assignments still need the old code path
-  // because there is no execution row to terminalize — only a stale
-  // assigned_to to clear.
-  return withDbWrite(db => {
-    const task = db.prepare(
-      'SELECT id, title, status, assigned_to, tags, current_execution_id FROM tasks WHERE id=?',
-    ).get(taskId);
-    if (!task || task.assigned_to !== workerId) return false;
-    let tags = [];
-    try { tags = JSON.parse(task.tags || '[]'); } catch {}
-    if (tags.includes('needs-human')) return false;
-
-    // Fenced task: delegate to the atomic release path. The fence CAS inside
-    // protects against the close/reconciler race — if orchestrate.ts already
-    // released, this call no-ops on the task row (still terminalizes nothing
-    // because execution is already terminal).
-    if (executionId && task.current_execution_id === executionId) {
-      const terminalState = reason && /exit\s*code/i.test(String(reason)) ? 'exited' : 'lost';
-      const outcome = releaseExecutionAtomically(db, {
-        executionId,
-        terminalState,
-        exitCode: null,
-        reason: `runner recovery: ${reason}`,
-      });
-      if (outcome.taskReleased) {
-        db.prepare(
-          `INSERT INTO activity_log
-            (entity_type, entity_id, action, field_name, old_value, new_value, summary)
-           VALUES ('task', ?, 'status_changed', 'status', ?, ?, ?)`,
-        ).run(taskId, task.status, outcome.restoredStatus,
-          `Board runner recovered task '${task.title}' (atomic): ${reason}`);
-      }
-      return outcome.taskReleased;
-    }
-
-    // Legacy path: pre-ADR-009 unfenced assignment. Keep the old SQL — there
-    // is no execution to terminalize.
-    let restoredStatus = originalStatus === 'review' ? 'review' : 'todo';
-    if (originalStatus === 'review' && task.status === 'in_progress') restoredStatus = 'todo';
-    const info = db.prepare(
-      `UPDATE tasks SET status=?, assigned_to=NULL, current_execution_id=NULL,
-         updated_at=datetime('now')
-       WHERE id=? AND assigned_to=?
-         AND (current_execution_id IS NULL OR current_execution_id=?)`,
-    ).run(restoredStatus, taskId, workerId, executionId ?? null);
-    if (info.changes === 1) {
-      db.prepare(
-        `INSERT INTO activity_log
-          (entity_type, entity_id, action, field_name, old_value, new_value, summary)
-         VALUES ('task', ?, 'status_changed', 'status', ?, ?, ?)`,
-      ).run(taskId, task.status, restoredStatus, `Board runner recovered task '${task.title}': ${reason}`);
-    }
-    return info.changes === 1;
-  });
-}
-
-const boardRunner = createClaudeBoardRunner({
-  claimTask: args => dispatcherHandlers.worker_next(args),
-  getProject: projectId => withDb(db => db.prepare('SELECT * FROM projects WHERE id=?').get(projectId)),
-  getTaskState: getRunnerTaskState,
-  recoverAssignment: recoverRunnerAssignment,
-  resolveWorkspace: resolveProjectWorkspace,
-  dbPath: runtimeConfig.dbPath,
+const boardRunner = createBoardRunnerAdapter({
+  runtimeConfig,
   sagaEntry: path.join(__dirname, '..', 'dist', 'index.js'),
   sagaSkillRoot: path.join(__dirname, '..', 'skills'),
-  claudePath: runtimeConfig.claudePath,
+  dbPath: DB_PATH,
   lmstudioBaseUrl: runtimeConfig.lmStudioUrl,
-  logRoot: runtimeConfig.orchestrationLogRoot,
-  // Provider + effort routing for the board-run path (mirrors the engine's
-  // legacy-claude-worker-executor-factory.ts and
-  // sqlite-saga2-runtime-repositories.readWorkerModelRoute). Reads
-  // model_name / model_provider / model_effort from the episode's
-  // lifecycle_execution_controls row so the runner can point the worker at
-  // LM Studio and omit --effort for it. Returns the zai/null default when the
-  // episode has no chosen model yet.
-  getActiveModel: epicId => {
-    if (!epicId) return { model: null, provider: 'zai', effort: null };
-    try {
-      const row = withDb(db => db.prepare(
-        `SELECT model_name AS m, model_provider AS p, model_effort AS e
-           FROM lifecycle_execution_controls WHERE epic_id=?`,
-      ).get(epicId));
-      return { model: row?.m ?? null, provider: row?.p ?? 'zai', effort: row?.e ?? null };
-    } catch { return { model: null, provider: 'zai', effort: null }; }
-  },
 });
 
-// Найти физический путь к .md файлу артефакта.
-// path в БД может быть 'docs/.../01-SRS.md#FR-1' — якорь отбрасываем.
-// Возвращает { abs, projectRoot } или null если файл не существует.
-function resolveArtifactFile(artifactPath, projectName, repositoryPath = null) {
-  const cleanPath = artifactPath.split('#')[0];
-  // Workers sometimes write absolute paths (D:\Development\moscito\docs\...md)
-  // despite the skill template saying 'docs/...'. On Windows, path.join with
-  // an absolute second arg produces garbage like:
-  //   D:\Development\moscito\D:Developmentmoscitodocs...md
-  // Detect absolute paths and use them directly instead of joining with root.
-  // This is a defensive fix — the proper fix is in artifact_create handler
-  // (src/tools/artifacts.ts) which normalises absolute → relative at write time.
-  const looksAbsolute = /^([A-Za-z]:[\\/]|[\\/]|\\\\[^?])/.test(cleanPath);
-  if (looksAbsolute) {
-    return existsSync(cleanPath)
-      ? { abs: cleanPath, projectRoot: path.dirname(cleanPath) }
-      : null;
-  }
-  const candidates = [];
-  if (repositoryPath) candidates.push(repositoryPath);
-  const map = PROJECT_REPO_MAP[projectName] || [];
-  for (const sub of map) candidates.push(path.join(DEV_ROOT, sub));
-  // Fallback: если проекта нет в map, ищем по имени в DEV_ROOT
-  if (!map.length) candidates.push(path.join(DEV_ROOT, projectName));
-  for (const root of candidates) {
-    const abs = path.join(root, cleanPath);
-    if (existsSync(abs)) return { abs, projectRoot: root };
-  }
-  return null;
-}
+// resolveArtifactFile also lives in ./shared.mjs now (imported above).
 
 // --- Markdown → HTML (минимальный рендер, без зависимостей) ---
 // Поддержка: заголовки #..####, списки -/*, код ```, параграфы, жирный **,
@@ -456,24 +228,7 @@ function renderMarkdown(md) {
   flushPara();
   return html;
 }
-function inTableHasHeader(htmlTail) { return /<\/th>/.test(htmlTail.slice(-200)); }
-
-// Извлечь первый <div class="<cls>">…</div> по балансу тегов (надёжнее regex при
-// глубокой вложенности — .episodes содержит много вложенных </div>).
-// Возвращает подстроку включая открывающий/закрывающий тег, или '' если не найден.
-function extractDiv(html, cls) {
-  const open = html.indexOf(`<div class="${cls}">`);
-  if (open < 0) return '';
-  let depth = 0, i = open;
-  const re = /<div\b|<\/div>/g;
-  re.lastIndex = open;
-  let m;
-  while ((m = re.exec(html)) !== null) {
-    depth += m[0] === '</div>' ? -1 : 1;
-    if (depth === 0) return html.slice(open, m.index + m[0].length);
-  }
-  return '';
-}
+// inTableHasHeader / extractDiv are imported from ./shared.mjs.
 
 // Загрузка всех артефактов проекта + их исходящих трасс (для вкладки Артефакты).
 // Структура данных (по exploration):
@@ -2797,27 +2552,7 @@ function handleArtifactSave(req, res) {
   });
 }
 
-function respondJson(res, code, obj) {
-  res.writeHead(code, { 'Content-Type': 'application/json' });
-  res.end(JSON.stringify(obj));
-}
-
-function readRequestFields(req, callback) {
-  const chunks = [];
-  req.on('data', chunk => chunks.push(chunk));
-  req.on('end', () => {
-    const raw = Buffer.concat(chunks).toString('utf8');
-    const contentType = req.headers['content-type'] || '';
-    try {
-      const fields = contentType.includes('application/json')
-        ? JSON.parse(raw || '{}')
-        : Object.fromEntries(new URLSearchParams(raw));
-      callback(null, fields);
-    } catch (error) {
-      callback(error);
-    }
-  });
-}
+// respondJson / readRequestFields are imported from ./shared.mjs.
 
 function handleBoardRunStart(req, res) {
   readRequestFields(req, (parseError, fields) => {
@@ -4654,10 +4389,7 @@ function handleWorkerTail(req, res, url) {
   }
 }
 
-function truncate(s, n) {
-  s = String(s).replace(/\s+/g, ' ').trim();
-  return s.length > n ? s.slice(0, n - 1) + '…' : s;
-}
+// truncate is imported from ./shared.mjs.
 
 // --- GET /api/workers/active?project_id=N ---
 // Returns live workers for a project, sourced from the DB (NOT from the
@@ -4834,16 +4566,7 @@ function handleWorkersActive(req, res, url) {
 
 // --- Engine control: thin HTTP adapter over EngineAdministration ---
 
-function readJsonRequest(req, callback) {
-  const chunks = [];
-  req.on('data', chunk => chunks.push(chunk));
-  req.on('end', () => {
-    const raw = Buffer.concat(chunks).toString('utf8');
-    let fields;
-    try { fields = JSON.parse(raw); } catch { fields = {}; }
-    callback(fields);
-  });
-}
+// readJsonRequest is imported from ./shared.mjs.
 
 function respondEngineError(res, error) {
   const code = error?.code;
