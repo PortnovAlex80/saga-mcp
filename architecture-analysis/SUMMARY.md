@@ -19,8 +19,8 @@
 | 6. Target | ✅ | Gate-centric hexagonal, self-contained modules, unified desk |
 | 7. Adversarial | ✅ | Desk unification scope сужена: handoff-level, не full replacement |
 | 8. Relocation | ✅ | Discovery = первый tranche (17 файлов + 3 cross-cutting) |
-| 9. Algorithms | ⏳ | (ожидается) |
-| 10. Migration | ⏳ | (ожидается) |
+| 9. Algorithms | ✅ | 5 structural improvements (НЕ алгоритмических — performance не драйвер) |
+| 10. Migration | ✅ | 15-step roadmap, 8 fitness functions, first tranche = Discovery |
 
 ---
 
@@ -152,38 +152,50 @@ Emergent success от «Uncle Bob Wave» рефакторинга. Pure policies
 
 ---
 
-### Phase 9 — Algorithm Improvement (прогноз)
+### Phase 9 — Algorithm Improvement
 
-Phase 5 доказал: **производительность — не драйвер**. Все алгоритмы O(1) или O(N) при N<100. Phase 9 будет содержать:
-- Удаление v1 legacy NodeRun path (сокращает GenericFlowExecutor на ~400 строк)
-- Consolidation RULE-012 (duplicated traceability → одна pure function)
-- Consolidation ManagedProductionLedger interface (два объявления → одно)
-- Никаких алгоритмических оптимизаций (не нужно)
+**Что сделали:** 5 structural improvements (НЕ алгоритмических).
+
+**Инсайт:** Phase 5 доказал — алгоритмы уже appropriate для workload. Все 5 улучшений — STRUCTURAL: удалить legacy path, консолидировать дубликаты, развестить типы. Никаких Big-O оптимизаций — не нужно.
 
 ---
 
-### Phase 10 — Migration Plan (прогноз)
+### Phase 10 — Migration Plan
 
-**Порядок:**
-1. Discovery module consolidation (Tranche 1, ~20 файлов)
-2. saga3/shared → shared/ (3 файла)
-3. saga3/authority → shared/authority/ (3 файла)
-4. Formalization module consolidation
-5. Development module consolidation
-6. Delivery module consolidation
-7. Composition root slim-down (780 → 80 строк)
-8. WorkplaceProductPort (universal desk for handoff)
-9. Wave debt extraction (comments → WAVE-LOG.md)
-10. tracker-view.mjs split
+**Что сделали:** 15-step roadmap, 8 fitness functions, detailed first tranche, final blueprint.
 
-**Fitness functions:**
-- "Adding a module must not require editing composition root" (LEGO ratchet)
-- "All module products readable via universal desk for handoff"
-- "Each module is one directory under src/modules/"
-- "No saga3/ directory remains"
-- "GenericFlowExecutor < 700 lines"
+**Инсайт:** Migration ordered by dependency + risk. Lowest-risk first (Wave debt extraction), highest-risk later (composition slim-down). Total ~73h sequential, ~40h parallelizable. First tranche = Discovery (pure relocation, no behavioral change, rollback = git revert).
 
-**First tranche:** Discovery — 17 файлов + 3 cross-cutting. Pure relocation, no behavioral change. Rollback = `git revert`.
+**8 Fitness functions** защищают новую архитектуру от erosion:
+- FIT-001: module = one directory
+- FIT-002: LEGO (register call per module, composition ≤ 100 lines)
+- FIT-003: no saga3/
+- FIT-004: dependency direction (extended ratchet)
+- FIT-005: GenericFlowExecutor ≤ 700 lines
+- FIT-006: universal desk for cross-module reads
+- FIT-007: single-writer (exactly 3, not 3+1)
+- FIT-008: no type-cycle hacks
+
+---
+
+### Финальный blueprint (полная трассировка)
+
+```
+code evidence (1544 files)
+  → executable topology (5 processes, 3 composition roots)
+    → 8 scenarios traced
+      → 14 state entities mapped
+        → 18 rules catalogued
+          → 16 seams identified
+            → 4 critical seams
+              → target architecture: gate-centric hexagonal
+                → 10 relocation clusters
+                  → 15-step migration roadmap
+                    → 8 fitness functions
+                      → first tranche: Discovery (22 files)
+```
+
+**Status: recommended-pending-approval**
 
 ---
 
