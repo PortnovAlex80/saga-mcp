@@ -202,12 +202,12 @@ import {
 import {
   SqliteFormalizationBaselineRepository,
   SqliteFormalizationSolutionContractRepository,
-} from '../infrastructure/process-modules/formalization/formalization-persistence.js';
+} from '../modules/formalization/infrastructure/formalization-persistence.js';
 import { SOLUTION_CONTRACT_CERTIFICATE_SCHEMA } from '../process-modules/modules/formalization/formalization-schemas.js';
 import {
   ReferenceFormalizationSettlementPolicy,
   SqliteFormalizationArtifactGraph,
-} from '../infrastructure/process-modules/formalization/sqlite-formalization-kernel.js';
+} from '../modules/formalization/infrastructure/sqlite-formalization-kernel.js';
 import { ProcessModuleInstallationRegistry } from '../process-modules/application/process-module-installation-registry.js';
 import type { ResolveStageOutputPayload } from '../process-modules/application/lifecycle-orchestrator.js';
 import { SqliteLifecycleRunRepository } from '../process-modules/persistence/sqlite-lifecycle-run-repository.js';

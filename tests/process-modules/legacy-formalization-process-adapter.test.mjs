@@ -28,7 +28,7 @@ const {
   '../../dist/process-modules/persistence/sqlite-process-outcome-certificate-repository.js'
 );
 const { ReferenceFormalizationSettlementPolicy } = await import(
-  '../../dist/infrastructure/process-modules/formalization/sqlite-formalization-kernel.js'
+  '../../dist/modules/formalization/infrastructure/sqlite-formalization-kernel.js'
 );
 const {
   LegacyFormalizationProcessAdapter,

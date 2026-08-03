@@ -26,7 +26,7 @@
  * This file imports `better-sqlite3` and the shared managed-production ledger.
  * That makes it a Rule 2 violation (module imports a persistence adapter /
  * substrate) — the SAME classification as the existing
- * `../../sqlite-formalization-kernel.ts` sibling. It is allowlisted in
+ * `./sqlite-formalization-kernel.ts` sibling. It is allowlisted in
  * `tests/architecture/dependency-direction.test.mjs` under the
  * `modulePorts` reason ("Phase 4/5 moves persistence behind module-local
  * ports") — which is exactly what this file IS: the module-local port adapter
@@ -38,7 +38,7 @@
  */
 
 import type Database from 'better-sqlite3';
-import { sha256Hex } from '../../../../process-modules/shared/canonical-json.js';
+import { sha256Hex } from '../../../process-modules/shared/canonical-json.js';
 import type {
   FormalizationBriefProvisioningContext,
   FormalizationBriefProvisioningOutcome,
@@ -48,13 +48,13 @@ import type {
   FormalizationManagedTraceWrite,
   FormalizationPackagePorts,
   FormalizationPrdRootRead,
-} from '../../../../process-modules/modules/formalization/package/ports/formalization-package-ports.js';
+} from '../../../process-modules/modules/formalization/package/ports/formalization-package-ports.js';
 import type {
   FormalizationCanonicalGraphPort,
   ManagedArtifactProductionRecord,
   ManagedProductionLedger,
   ManagedTraceProductionRecord,
-} from '../../../../process-modules/modules/formalization/formalization-kernel-ports.js';
+} from '../../../process-modules/modules/formalization/formalization-kernel-ports.js';
 
 // ---------------------------------------------------------------------------
 // Brief provisioning adapter.

@@ -7,7 +7,7 @@
  * (`SqliteFormalizationBaselineRepository`,
  * `SqliteFormalizationSolutionContractRepository`,
  * `ensureFormalizationPersistenceSchema`) physically live in
- * `src/infrastructure/process-modules/formalization/formalization-persistence.ts`
+ * `src/modules/formalization/infrastructure/formalization-persistence.ts`
  * after the Wave 7 hex extraction. The port interfaces and record types they
  * implement, however, are PURE contracts: they name only the schema payload
  * types (from the sibling `formalization-schemas.ts`) and primitive columns.

@@ -106,7 +106,7 @@ const {
   SqliteFormalizationManagedProduction,
   buildSqliteFormalizationPackagePorts,
 } = await import(
-  '../../dist/infrastructure/process-modules/formalization/package/sqlite-formalization-package-adapters.js'
+  '../../dist/modules/formalization/infrastructure/sqlite-formalization-package-adapters.js'
 );
 
 function briefFixture() {

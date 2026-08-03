@@ -14,7 +14,7 @@ const { formalizationProcessModule } = await import(
   '../../dist/process-modules/modules/formalization/formalization-process-module.js'
 );
 const { ReferenceFormalizationSettlementPolicy } = await import(
-  '../../dist/infrastructure/process-modules/formalization/sqlite-formalization-kernel.js'
+  '../../dist/modules/formalization/infrastructure/sqlite-formalization-kernel.js'
 );
 const { sha256Hex } = await import(
   '../../dist/process-modules/shared/canonical-json.js'

@@ -16,7 +16,7 @@
  * NOT re-export the concrete SQLite-backed adapters (`SqliteFormalizationBrief
  * Provisioning` / `SqliteFormalizationManagedProduction` /
  * `buildSqliteFormalizationPackagePorts`): those live in
- * `src/infrastructure/process-modules/formalization/package/sqlite-formalization-package-adapters.ts`
+ * `src/modules/formalization/infrastructure/sqlite-formalization-package-adapters.ts`
  * and must be imported directly from there. A module-tree barrel re-exporting
  * them would form a Rule 2 module→infrastructure edge (dependency-direction
  * ratchet, `tests/architecture/dependency-direction.test.mjs`). Importers who
