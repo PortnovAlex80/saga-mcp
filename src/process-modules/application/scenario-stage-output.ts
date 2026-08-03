@@ -53,7 +53,7 @@ import type {
   ProcessModuleOutputEnvelope,
   ProductRef,
 } from '../domain/spi/production-envelope.js';
-import { sha256Hex } from '../shared/canonical-json.js';
+import { sha256Hex } from '../../shared/canonical-json.js';
 import {
   mapLifecycleValues,
   type LifecycleMappingRuntime,

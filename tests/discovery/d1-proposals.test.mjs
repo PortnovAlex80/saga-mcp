@@ -197,8 +197,8 @@ test('proposal_submit: valid submission records the proposal with provenance fro
   try {
     const { intentId, taskId, executionId } = seedIntentAndTask(getDb());
 
-    const { createSaga3ProposalHandlers } = await import('../../dist/tools/saga3-proposals.js');
-    const { Saga3ProposalRepository } = await import('../../dist/modules/discovery/infrastructure/saga3-proposal-repository.js');
+    const { createSaga3ProposalHandlers } = await import('../../dist/tools/discovery-proposal-tools.js');
+    const { Saga3ProposalRepository } = await import('../../dist/modules/discovery/infrastructure/discovery-proposal-repository.js');
     const repo = new Saga3ProposalRepository();
     const { handlers } = createSaga3ProposalHandlers();
 
@@ -231,7 +231,7 @@ test('proposal_submit: exact replay returns the same proposal id with replayed=t
   const { temp, dbPath } = makeFixture();
   try {
     const { intentId, taskId, executionId } = seedIntentAndTask(getDb());
-    const { createSaga3ProposalHandlers } = await import('../../dist/tools/saga3-proposals.js');
+    const { createSaga3ProposalHandlers } = await import('../../dist/tools/discovery-proposal-tools.js');
     const { handlers } = createSaga3ProposalHandlers();
 
     const payload = validPayload();
@@ -248,7 +248,7 @@ test('proposal_submit: exact replay returns the same proposal id with replayed=t
     assert.equal(replay.content_hash, first.content_hash);
     assert.equal(replay.replayed, true);
 
-    const { Saga3ProposalRepository } = await import('../../dist/modules/discovery/infrastructure/saga3-proposal-repository.js');
+    const { Saga3ProposalRepository } = await import('../../dist/modules/discovery/infrastructure/discovery-proposal-repository.js');
     const repo = new Saga3ProposalRepository();
     const count = getDb().prepare('SELECT COUNT(*) c FROM saga3_proposals WHERE intent_id=?').get(intentId).c;
     assert.equal(count, 1, 'replay must not create a duplicate proposal row');
@@ -278,7 +278,7 @@ test('proposal_submit: fence rejects execution that owns a different task', asyn
     // task 100 — the execution-ownership check must catch this.
     seed.prepare('UPDATE saga3_work_intents SET projected_task_id=200 WHERE id=2').run();
     seed.prepare('UPDATE tasks SET current_execution_id=? WHERE id=?').run('exec-A', 200);
-    const { createSaga3ProposalHandlers } = await import('../../dist/tools/saga3-proposals.js');
+    const { createSaga3ProposalHandlers } = await import('../../dist/tools/discovery-proposal-tools.js');
     const { handlers } = createSaga3ProposalHandlers();
     assert.throws(
       () => handlers.proposal_submit({
@@ -301,7 +301,7 @@ test('proposal_submit: fence rejects cancel_requested execution state', async ()
     const { intentId, taskId, executionId } = seedIntentAndTask(seed, { liveExecution: false });
     // Override to cancel_requested specifically (not a plain terminal state).
     seed.prepare("UPDATE worker_executions SET state='cancel_requested' WHERE execution_id=?").run(executionId);
-    const { createSaga3ProposalHandlers } = await import('../../dist/tools/saga3-proposals.js');
+    const { createSaga3ProposalHandlers } = await import('../../dist/tools/discovery-proposal-tools.js');
     const { handlers } = createSaga3ProposalHandlers();
     assert.throws(
       () => handlers.proposal_submit({
@@ -321,7 +321,7 @@ test('proposal_submit: wrong kind is rejected', async () => {
   const { temp, dbPath } = makeFixture();
   try {
     const { intentId, taskId, executionId } = seedIntentAndTask(getDb());
-    const { createSaga3ProposalHandlers } = await import('../../dist/tools/saga3-proposals.js');
+    const { createSaga3ProposalHandlers } = await import('../../dist/tools/discovery-proposal-tools.js');
     const { handlers } = createSaga3ProposalHandlers();
     assert.throws(
       () => handlers.proposal_submit({
@@ -342,7 +342,7 @@ test('proposal_submit: schema version mismatch is rejected (kernel owns the cont
   const { temp, dbPath } = makeFixture();
   try {
     const { intentId, taskId, executionId } = seedIntentAndTask(getDb());
-    const { createSaga3ProposalHandlers } = await import('../../dist/tools/saga3-proposals.js');
+    const { createSaga3ProposalHandlers } = await import('../../dist/tools/discovery-proposal-tools.js');
     const { handlers } = createSaga3ProposalHandlers();
     assert.throws(
       () => handlers.proposal_submit({
@@ -363,7 +363,7 @@ test('proposal_submit: execution fence failure is rejected', async () => {
   const { temp, dbPath } = makeFixture();
   try {
     const { intentId, taskId } = seedIntentAndTask(getDb(), { executionId: 'exec-1' });
-    const { createSaga3ProposalHandlers } = await import('../../dist/tools/saga3-proposals.js');
+    const { createSaga3ProposalHandlers } = await import('../../dist/tools/discovery-proposal-tools.js');
     const { handlers } = createSaga3ProposalHandlers();
     // Worker claims a DIFFERENT execution id than the task's fence.
     assert.throws(
@@ -385,7 +385,7 @@ test('proposal_submit: dead execution is rejected', async () => {
   const { temp, dbPath } = makeFixture();
   try {
     const { intentId, taskId, executionId } = seedIntentAndTask(getDb(), { liveExecution: false });
-    const { createSaga3ProposalHandlers } = await import('../../dist/tools/saga3-proposals.js');
+    const { createSaga3ProposalHandlers } = await import('../../dist/tools/discovery-proposal-tools.js');
     const { handlers } = createSaga3ProposalHandlers();
     assert.throws(
       () => handlers.proposal_submit({
@@ -408,7 +408,7 @@ test('proposal_submit: task not projected from the intent is rejected', async ()
     const { intentId, executionId } = seedIntentAndTask(getDb(), { taskId: 100 });
     // A second, unrelated task with its own execution.
     dbInsertTask(getDb(), 200, 'exec-2');
-    const { createSaga3ProposalHandlers } = await import('../../dist/tools/saga3-proposals.js');
+    const { createSaga3ProposalHandlers } = await import('../../dist/tools/discovery-proposal-tools.js');
     const { handlers } = createSaga3ProposalHandlers();
     assert.throws(
       () => handlers.proposal_submit({
@@ -429,7 +429,7 @@ test('proposal_submit D2: malformed semantic payload is preserved and requests n
   const { temp, dbPath } = makeFixture();
   try {
     const { intentId, taskId, executionId } = seedIntentAndTask(getDb());
-    const { createSaga3ProposalHandlers } = await import('../../dist/tools/saga3-proposals.js');
+    const { createSaga3ProposalHandlers } = await import('../../dist/tools/discovery-proposal-tools.js');
     const { handlers } = createSaga3ProposalHandlers();
     const result = handlers.proposal_submit({
       intent_id: intentId, task_id: taskId, execution_id: executionId,

@@ -42,7 +42,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { sha256Hex } from '../../dist/process-modules/shared/canonical-json.js';
+import { sha256Hex } from '../../dist/shared/canonical-json.js';
 
 // Wave 1 SPI — legacy adapter (wraps a definition into a manifest envelope).
 const { adaptLegacyProcessModule } = await import(

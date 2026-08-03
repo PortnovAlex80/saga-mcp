@@ -9,7 +9,7 @@
  */
 import { createHash } from 'node:crypto';
 import type Database from 'better-sqlite3';
-import { canonicalJson } from './saga3-normalization-repository.js';
+import { canonicalJson } from './discovery-normalization-repository.js';
 import type {
   OverallReadiness,
   RecommendedNextAction,

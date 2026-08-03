@@ -65,7 +65,7 @@ import { SqliteCallInstanceRepository } from '../../dist/process-modules/persist
 import { SqliteRecoveryCaseRepository } from '../../dist/process-modules/persistence/sqlite-recovery-case-repository.js';
 import { SqliteProcessRunRepository } from '../../dist/process-modules/persistence/sqlite-process-run-repository.js';
 import { SqliteNodeRunRepository } from '../../dist/process-modules/persistence/sqlite-node-run-repository.js';
-import { sha256Hex } from '../../dist/process-modules/shared/canonical-json.js';
+import { sha256Hex } from '../../dist/shared/canonical-json.js';
 
 // ---------------------------------------------------------------------------
 // Crash harness — simulates process death + restart on the SAME DB file.

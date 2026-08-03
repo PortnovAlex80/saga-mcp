@@ -51,7 +51,7 @@ const { SqliteProcessRunRepository } = await import(
   '../../dist/process-modules/persistence/sqlite-process-run-repository.js'
 );
 const { sha256Hex } = await import(
-  '../../dist/process-modules/shared/canonical-json.js'
+  '../../dist/shared/canonical-json.js'
 );
 
 const DISCOVERY_CERTIFICATE_SCHEMA = 'saga3.discovery-outcome-certificate.v1';

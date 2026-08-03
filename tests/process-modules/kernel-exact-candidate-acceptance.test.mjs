@@ -26,7 +26,7 @@ const { SqliteNodeRunRepository } = await import(
   '../../dist/process-modules/persistence/sqlite-node-run-repository.js'
 );
 const { sha256Hex } = await import(
-  '../../dist/process-modules/shared/canonical-json.js'
+  '../../dist/shared/canonical-json.js'
 );
 
 const HASH = 'a'.repeat(64);

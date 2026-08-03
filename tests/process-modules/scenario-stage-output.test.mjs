@@ -31,7 +31,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { sha256Hex } from '../../dist/process-modules/shared/canonical-json.js';
+import { sha256Hex } from '../../dist/shared/canonical-json.js';
 
 import {
   InMemoryLifecycleVariableStore,

@@ -49,7 +49,7 @@
  * in parallel with them.
  */
 
-import { sha256Hex } from '../shared/canonical-json.js';
+import { sha256Hex } from '../../shared/canonical-json.js';
 
 // ---------------------------------------------------------------------------
 // Public types.

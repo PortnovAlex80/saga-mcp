@@ -78,7 +78,7 @@ const {
   '../../dist/process-modules/domain/recovery.js'
 );
 const { sha256Hex } = await import(
-  '../../dist/process-modules/shared/canonical-json.js'
+  '../../dist/shared/canonical-json.js'
 );
 
 // The 7 valid RecoveryAction values, frozen from the Wave 1 SPI. The engine

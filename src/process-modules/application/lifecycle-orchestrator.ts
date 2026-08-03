@@ -19,7 +19,7 @@ import type {
   StartLifecycleCommand,
 } from '../persistence/lifecycle-run.js';
 import type { LifecycleRunRepository } from '../persistence/lifecycle-run-repository.js';
-import { canonicalJson, sha256Hex } from '../shared/canonical-json.js';
+import { canonicalJson, sha256Hex } from '../../shared/canonical-json.js';
 import type { ProcessModuleInstallationRegistry } from './process-module-installation-registry.js';
 import type { ProcessModuleRegistry } from './process-module-registry.js';
 import type { ProcessModuleRunResult } from './process-module-executor.js';

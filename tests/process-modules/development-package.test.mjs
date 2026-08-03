@@ -49,7 +49,7 @@ import test from 'node:test';
 import { validateProcessModuleManifest } from '../../dist/process-modules/domain/spi/module-manifest.js';
 import { validateNodeProtocolDefinition } from '../../dist/process-modules/domain/spi/node-protocol.js';
 import { assertCanonicalSerializable } from '../../dist/process-modules/domain/spi/canonical-serialization.js';
-import { canonicalJson, sha256Hex } from '../../dist/process-modules/shared/canonical-json.js';
+import { canonicalJson, sha256Hex } from '../../dist/shared/canonical-json.js';
 import { RESOURCE_KINDS } from '../../dist/process-modules/domain/spi/resource-index.js';
 import { developmentProcessModule } from '../../dist/process-modules/modules/development/development-process-module.js';
 

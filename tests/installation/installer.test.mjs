@@ -33,7 +33,7 @@ import test from 'node:test';
 import { createHash } from 'node:crypto';
 
 const { sha256Hex } = await import(
-  '../../dist/process-modules/shared/canonical-json.js'
+  '../../dist/shared/canonical-json.js'
 );
 const { adaptLegacyProcessModule } = await import(
   '../../dist/process-modules/domain/spi/legacy-adapter.js'

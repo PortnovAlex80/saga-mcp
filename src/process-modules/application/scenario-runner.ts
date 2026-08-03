@@ -60,7 +60,7 @@ import type {
   ProcessRunRecord,
 } from '../persistence/process-run.js';
 import type { ProcessRunRepository } from '../persistence/process-run-repository.js';
-import { canonicalJson, sha256Hex } from '../shared/canonical-json.js';
+import { canonicalJson, sha256Hex } from '../../shared/canonical-json.js';
 
 import type { ProcessModuleInstallation, ProcessModuleRunResult } from './process-module-executor.js';
 import type { ProcessModuleInstallationRegistry } from './process-module-installation-registry.js';

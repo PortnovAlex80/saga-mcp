@@ -11,7 +11,7 @@ import {
   type ExactCandidateAcceptanceItemDisposition,
   type ExactCandidateProductionLineage,
 } from '../application/exact-candidate-acceptance.js';
-import { canonicalJson, sha256Hex } from '../shared/canonical-json.js';
+import { canonicalJson, sha256Hex } from '../../shared/canonical-json.js';
 
 interface NormalizedAcceptanceRequest {
   readonly schemaVersion: typeof EXACT_CANDIDATE_ACCEPTANCE_SCHEMA;

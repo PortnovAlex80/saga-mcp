@@ -44,12 +44,12 @@ const { DISCOVERY_READINESS_ASSESSMENT_SCHEMA, READINESS_DIMENSIONS } = await im
 );
 const { canonicalJson } = await import('../../dist/shared/canonical-json.js');
 const { ensureSaga3ReadinessSchema } = await import(
-  '../../dist/modules/discovery/infrastructure/saga3-readiness-repository.js'
+  '../../dist/modules/discovery/infrastructure/discovery-readiness-repository.js'
 );
 const {
   ensureSaga3SettlementSchema,
   findSettlementByInputKey,
-} = await import('../../dist/modules/discovery/infrastructure/saga3-settlement-repository.js');
+} = await import('../../dist/modules/discovery/infrastructure/discovery-settlement-repository.js');
 const { DISCOVERY_SETTLEMENT_POLICY_VERSION, POLICY_V1_CONTENT_HASH } = await import(
   '../../dist/modules/discovery/domain/discovery-settlement-policy.js'
 );
@@ -57,7 +57,7 @@ const { Saga3DiscoverySettlementService, SettlementValidationError } = await imp
   '../../dist/modules/discovery/application/discovery-settlement-service.js'
 );
 const { SqliteSaga3DiscoveryRuntime } = await import(
-  '../../dist/modules/discovery/infrastructure/sqlite-saga3-discovery-runtime.js'
+  '../../dist/modules/discovery/infrastructure/sqlite-discovery-runtime.js'
 );
 
 // ---------------------------------------------------------------------------

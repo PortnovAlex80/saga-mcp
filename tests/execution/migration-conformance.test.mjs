@@ -334,12 +334,12 @@ test('W9-A8 restart discovery: outcome certificate is write-once (same hash repl
       insertSettlement,
       issueCertificateAtomically,
     } = await import(
-      '../../dist/modules/discovery/infrastructure/saga3-settlement-repository.js'
+      '../../dist/modules/discovery/infrastructure/discovery-settlement-repository.js'
     );
     ensureSaga3SettlementSchema(db);
 
     const { canonicalJson } = await import(
-      '../../dist/process-modules/shared/canonical-json.js'
+      '../../dist/shared/canonical-json.js'
     );
     const inputSnapshot = {
       schema_version: 'saga3.discovery-settlement-input.v1',

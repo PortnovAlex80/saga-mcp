@@ -27,7 +27,7 @@ import {
   type ProcessModuleDigestInput,
   type ProcessModulePackage,
 } from '../domain/process-module.js';
-import { sha256Hex } from '../shared/canonical-json.js';
+import { sha256Hex } from '../../shared/canonical-json.js';
 
 /**
  * Compute the definition digest: SHA-256 over the canonical JSON of the

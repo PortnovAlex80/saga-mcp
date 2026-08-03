@@ -41,7 +41,7 @@ import path from 'node:path';
 
 import type { ProcessModuleManifest } from '../../domain/spi/index.js';
 import type { ResourceIndexEntry } from '../../domain/spi/index.js';
-import { canonicalJson } from '../../shared/canonical-json.js';
+import { canonicalJson } from '../../../shared/canonical-json.js';
 import {
   PACKAGE_STORE_CORRUPT,
   PACKAGE_STORE_DIGEST_MISMATCH,

@@ -27,7 +27,7 @@ const {
   installScenario,
 } = await import('../../dist/process-modules/application/scenario-runner.js');
 const { canonicalJson, sha256Hex } = await import(
-  '../../dist/process-modules/shared/canonical-json.js'
+  '../../dist/shared/canonical-json.js'
 );
 
 // ---------------------------------------------------------------------------

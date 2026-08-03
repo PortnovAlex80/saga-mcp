@@ -42,7 +42,7 @@
  * tree.
  */
 
-import { sha256Hex } from '../../shared/canonical-json.js';
+import { sha256Hex } from '../../../shared/canonical-json.js';
 
 // NOTE: `ModuleCompletion` (./module-completion.ts) references
 // `ProcessModuleOutputEnvelope` via `import type`. That is a one-directional

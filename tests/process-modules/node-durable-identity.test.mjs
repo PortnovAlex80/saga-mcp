@@ -22,7 +22,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 const { sha256Hex } = await import(
-  '../../dist/process-modules/shared/canonical-json.js'
+  '../../dist/shared/canonical-json.js'
 );
 const { buildSagaBoardLineageBag } = await import(
   '../../dist/process-modules/application/node-executors/saga-board-adapter-data-builder.js'

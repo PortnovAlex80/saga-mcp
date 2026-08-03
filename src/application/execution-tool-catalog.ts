@@ -53,7 +53,7 @@
  * This file is PURE (plan §3.5): data types + pure functions. No I/O, no side
  * effects, no closures retained across calls. It imports only from the Wave 1
  * pure SPI barrel (`process-modules/domain/spi`) and from
- * `process-modules/shared/canonical-json.ts`. No imports from persistence,
+ * `shared/canonical-json.ts`. No imports from persistence,
  * composition, modules, or infrastructure.
  */
 
@@ -61,9 +61,9 @@ import type { ModuleToolContribution, ToolContractRef } from '../process-modules
 import type { ContractRef } from '../process-modules/domain/spi/contract-ref.js';
 
 // Canonical-JSON + sha256 over the assembled entries. Imported from the shared
-// pure module (re-exported by process-modules/shared/canonical-json.ts). Value
+// pure module (shared/canonical-json.ts). Value
 // import: the hash is computed at runtime by the catalog assembler.
-import { sha256Hex, canonicalJson } from '../process-modules/shared/canonical-json.js';
+import { sha256Hex, canonicalJson } from '../shared/canonical-json.js';
 
 // ---------------------------------------------------------------------------
 // Structural aliases for not-yet-landed sibling-lane types. See file header.

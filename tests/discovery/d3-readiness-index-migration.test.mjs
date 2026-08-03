@@ -25,7 +25,7 @@ const {
 const { DISCOVERY_READINESS_ASSESSMENT_SCHEMA, READINESS_DIMENSIONS } = await import(
   '../../dist/modules/discovery/domain/discovery-readiness-assessment.js'
 );
-const { canonicalJson } = await import('../../dist/modules/discovery/infrastructure/saga3-normalization-repository.js');
+const { canonicalJson } = await import('../../dist/modules/discovery/infrastructure/discovery-normalization-repository.js');
 const { createHash } = await import('node:crypto');
 
 function freshFixture() {
@@ -68,7 +68,7 @@ test('P0 migration: execution-scoped index rebuilt to content-scoped; cross-exec
 
     // Reopen through getDb (production path) and run the migration.
     const migDb = getDb();
-    const { ensureSaga3ReadinessSchema } = await import('../../dist/modules/discovery/infrastructure/saga3-readiness-repository.js');
+    const { ensureSaga3ReadinessSchema } = await import('../../dist/modules/discovery/infrastructure/discovery-readiness-repository.js');
     ensureSaga3ReadinessSchema(migDb);
 
     cols = migDb.prepare(`PRAGMA index_info('idx_saga3_readiness_assessment_idempotency')`).all().map(r => r.name);
@@ -105,7 +105,7 @@ test('P0 migration: execution-scoped index rebuilt to content-scoped; cross-exec
     migDb.prepare(`INSERT INTO worker_executions (execution_id,run_id,project_id,epic_id,task_id,worker_id,machine_id,state,phase,metadata) VALUES ('migr-exec-a','ra',1,10,200,'wa','m','running','executing',?)`)
       .run(JSON.stringify({ execution_context: ecA, execution_context_hash: executionContextHash(ecA) }));
 
-    const { createSaga3ReadinessHandlers } = await import('../../dist/tools/saga3-readiness.js');
+    const { createSaga3ReadinessHandlers } = await import('../../dist/tools/discovery-readiness-tools.js');
     const { handlers } = createSaga3ReadinessHandlers({ db: () => migDb });
     const dims = {};
     for (const d of READINESS_DIMENSIONS) dims[d] = { status: 'sufficient', rationale: 'g', source_refs: ['$.problem_statement'] };
@@ -158,7 +158,7 @@ test('P0 migration: duplicates collapsed deterministically (keep accepted > reje
 
     // Migration through the production path.
     const migDb = getDb();
-    const { ensureSaga3ReadinessSchema } = await import('../../dist/modules/discovery/infrastructure/saga3-readiness-repository.js');
+    const { ensureSaga3ReadinessSchema } = await import('../../dist/modules/discovery/infrastructure/discovery-readiness-repository.js');
     ensureSaga3ReadinessSchema(migDb);
 
     const survivors = migDb.prepare('SELECT status, execution_id FROM saga3_readiness_assessments').all();
@@ -173,7 +173,7 @@ test('P0 migration: duplicates collapsed deterministically (keep accepted > reje
 test('P0 migration: fresh DB (no prior index) gets the correct content-scoped index directly', async () => {
   const { temp, db } = freshFixture();
   try {
-    const { ensureSaga3ReadinessSchema } = await import('../../dist/modules/discovery/infrastructure/saga3-readiness-repository.js');
+    const { ensureSaga3ReadinessSchema } = await import('../../dist/modules/discovery/infrastructure/discovery-readiness-repository.js');
     ensureSaga3ReadinessSchema(db);
     const cols = db.prepare(`PRAGMA index_info('idx_saga3_readiness_assessment_idempotency')`).all().map(r => r.name);
     assert.deepEqual(cols, ['control_intent_id', 'content_hash']);

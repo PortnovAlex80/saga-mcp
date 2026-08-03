@@ -5,7 +5,7 @@
  * Plan: §11.8 (all validation failures use ActionableToolError), §11.9
  * (call-instance correlation), §11.10 (gateway preserves the structured error
  * across MCP serialization — must NOT flatten into one textual Error string),
- * §13.13 (src/tools/saga3-args.ts has a hard-coded Discovery tracker workflow
+ * §13.13 (src/tools/discovery-tool-args.ts has a hard-coded Discovery tracker workflow
  * and cannot serve arbitrary module tools).
  *
  * WHAT THIS MODULE OWNS
@@ -27,7 +27,7 @@
  *
  * WHY IT REPLACES THE HARD-CODED DISCOVERY STRINGS (§13.13)
  *
- * `src/tools/saga3-args.ts` enriches every error with the literal
+ * `src/tools/discovery-tool-args.ts` enriches every error with the literal
  * `'[Workflow: Read your stage tracker docs/discovery/project-<N>-discovery-stage.md, ...]'`
  * and a Discovery-only `PAYLOAD_FIELD_SOURCES` map. That bakes the Discovery
  * module identity into the platform gateway and cannot serve any other module.
@@ -39,7 +39,7 @@
  *
  * ANTI-SCOPE (spec §3)
  *
- * This lane does NOT rewrite `src/index.ts` or `src/tools/saga3-args.ts`. The
+ * This lane does NOT rewrite `src/index.ts` or `src/tools/discovery-tool-args.ts`. The
  * integrator wires the universal type into the gateway at the Wave 11 cutover.
  * Here we only provide the type, validators, builder, transport round-trip, and
  * stable renderer.
@@ -510,7 +510,7 @@ export function renderActionableToolError(error: ActionableToolError): string {
 
 /**
  * Render the workflow hint that replaces the hard-coded Discovery literal in
- * `src/tools/saga3-args.ts` (§13.13). PARAMETERIZED: the caller supplies its
+ * `src/tools/discovery-tool-args.ts` (§13.13). PARAMETERIZED: the caller supplies its
  * module's own `trackerRef`, `checklistRef`, and `resumeStep`, so no module
  * name is baked into the platform. Returns the empty string when no references
  * are supplied (the caller had nothing actionable to point at).

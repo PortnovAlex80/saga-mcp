@@ -3,7 +3,7 @@ import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import { getDb } from '../db.js';
 import type { ToolHandler } from '../types.js';
 import { withImmediateTransaction } from './dispatcher.js';
-import { argInt, argStr, SAGA3_TOOL_CALL_SHAPES, SAGA3_ARG_SOURCES, enrichPayloadErrors } from './saga3-args.js';
+import { argInt, argStr, SAGA3_TOOL_CALL_SHAPES, SAGA3_ARG_SOURCES, enrichPayloadErrors } from './discovery-tool-args.js';
 import { readExecutionContextStrict } from '../shared/authority/authorize-tool-call.js';
 import {
   DISCOVERY_NORMALIZATION_PROPOSAL_SCHEMA,
@@ -18,7 +18,7 @@ import {
   markNormalizationAccepted,
   markRawSubmissionNormalized,
   readRawSubmission,
-} from '../modules/discovery/infrastructure/saga3-normalization-repository.js';
+} from '../modules/discovery/infrastructure/discovery-normalization-repository.js';
 
 export interface Saga3NormalizationHandlersOptions {
   db?: () => ReturnType<typeof getDb>;

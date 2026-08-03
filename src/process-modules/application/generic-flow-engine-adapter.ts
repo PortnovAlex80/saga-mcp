@@ -31,7 +31,7 @@ import type {
   ProcessOutcomeProjector,
 } from './process-module-runtime-engine.js';
 import type { ProcessRunRepository } from '../persistence/process-run-repository.js';
-import { sha256Hex } from '../shared/canonical-json.js';
+import { sha256Hex } from '../../shared/canonical-json.js';
 
 export interface GenericFlowEngineAdapterOptions {
   moduleRef: ProcessModuleReference;

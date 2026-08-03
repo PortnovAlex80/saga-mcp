@@ -31,7 +31,7 @@
  *   - `dist/process-modules/application/worker-execution-port.js` (this lane),
  *   - `dist/process-modules/application/contract-boundary-decoder.js` (this lane),
  *   - `dist/process-modules/domain/spi/index.js` (Wave 1 barrel, frozen),
- *   - `dist/process-modules/shared/canonical-json.js` (frozen primitives),
+ *   - `dist/shared/canonical-json.js` (frozen primitives),
  *   - node: built-ins.
  * NO persistence adapters, NO modules/, NO db.ts, NO composition root. The
  * dep-direction ratchet test enforces this statically repo-wide.
@@ -43,7 +43,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 // Frozen Wave 1 primitives (already built in this worktree).
-import { canonicalJson, sha256Hex } from '../../dist/process-modules/shared/canonical-json.js';
+import { canonicalJson, sha256Hex } from '../../dist/shared/canonical-json.js';
 
 // Wave 1 SPI barrel — registry + types.
 const {

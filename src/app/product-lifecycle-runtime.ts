@@ -73,8 +73,8 @@ import type {
   WorkerExecutorFactoryContext,
 } from '../application/ports/worker-executor.js';
 import { getDb } from '../db.js';
-import type { Saga3DiscoveryRuntimePersistence } from '../modules/discovery/infrastructure/saga3-discovery-runtime-port.js';
-import { SqliteSaga3DiscoveryRuntime } from '../modules/discovery/infrastructure/sqlite-saga3-discovery-runtime.js';
+import type { Saga3DiscoveryRuntimePersistence } from '../modules/discovery/infrastructure/discovery-runtime-port.js';
+import { SqliteSaga3DiscoveryRuntime } from '../modules/discovery/infrastructure/sqlite-discovery-runtime.js';
 import {
   PROCESS_OUTCOME_EMITTER_HANDLER_ID,
   processOutcomeEmitter,

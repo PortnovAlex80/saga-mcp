@@ -4,7 +4,7 @@ import type {
   ManagedNodeSubmissionReader,
   ManagedNodeSubmissionRecord,
 } from '../application/managed-node-submission.js';
-import { canonicalJson, sha256Hex } from '../shared/canonical-json.js';
+import { canonicalJson, sha256Hex } from '../../shared/canonical-json.js';
 import {
   resolveManagedExecutionProvenance,
 } from './sqlite-managed-production-ledger.js';

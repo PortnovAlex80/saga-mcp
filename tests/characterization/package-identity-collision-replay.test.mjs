@@ -63,7 +63,7 @@ const { deliveryProcessModule } = await import(
   '../../dist/process-modules/modules/delivery/delivery-process-module.js'
 );
 const { sha256Hex, canonicalJson } = await import(
-  '../../dist/process-modules/shared/canonical-json.js'
+  '../../dist/shared/canonical-json.js'
 );
 const {
   SqliteManagedProductionLedger,

@@ -28,7 +28,7 @@
 
 import type { ContractRef } from '../../domain/spi/contract-ref.js';
 import type { ProcessModuleManifest } from '../../domain/spi/module-manifest.js';
-import { canonicalJson, sha256Hex } from '../../shared/canonical-json.js';
+import { canonicalJson, sha256Hex } from '../../../shared/canonical-json.js';
 
 /**
  * Placeholder digest Wave 2 callers carry when they have no real content hash

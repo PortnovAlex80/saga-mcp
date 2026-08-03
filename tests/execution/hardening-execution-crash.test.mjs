@@ -61,7 +61,7 @@ import test from 'node:test';
 // ---------------------------------------------------------------------------
 const { closeDb, getDb } = await import('../../dist/db.js');
 const { canonicalJson, sha256Hex } = await import(
-  '../../dist/process-modules/shared/canonical-json.js'
+  '../../dist/shared/canonical-json.js'
 );
 const { SqliteProcessRunRepository } = await import(
   '../../dist/process-modules/persistence/sqlite-process-run-repository.js'

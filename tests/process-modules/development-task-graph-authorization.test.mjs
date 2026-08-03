@@ -31,7 +31,7 @@ const {
   '../../dist/modules/development/domain/development-settlement-policy.js'
 );
 const { sha256Hex } = await import(
-  '../../dist/process-modules/shared/canonical-json.js'
+  '../../dist/shared/canonical-json.js'
 );
 
 function developmentCase() {

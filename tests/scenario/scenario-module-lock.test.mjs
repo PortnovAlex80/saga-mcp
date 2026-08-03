@@ -54,7 +54,7 @@ import {
   projectLifecycleRunPin,
   getPinForStage,
 } from '../../dist/process-modules/application/scenario-module-lock.js';
-import { canonicalJson, sha256Hex } from '../../dist/process-modules/shared/canonical-json.js';
+import { canonicalJson, sha256Hex } from '../../dist/shared/canonical-json.js';
 
 // ---------------------------------------------------------------------------
 // Fakes.

@@ -20,7 +20,7 @@ import type { ProcessModuleOutput } from '../../../process-modules/persistence/p
 import type {
   IssueProcessOutcomeCertificateCommand,
 } from '../../../process-modules/persistence/process-outcome-certificate.js';
-import { sha256Hex } from '../../../process-modules/shared/canonical-json.js';
+import { sha256Hex } from '../../../shared/canonical-json.js';
 import type {
   ModuleCompletion,
 } from '../../../process-modules/domain/spi/module-completion.js';

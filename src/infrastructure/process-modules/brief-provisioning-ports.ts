@@ -22,7 +22,7 @@ import type {
   DiscoveryBriefProvisioningContext,
   DiscoveryBriefProvisioningPort,
 } from '../../modules/discovery/application/discovery-installation.js';
-import { sha256Hex } from '../../process-modules/shared/canonical-json.js';
+import { sha256Hex } from '../../shared/canonical-json.js';
 
 /**
  * Product types that are NOT valid root ancestors for a PRD. A PRD's root must

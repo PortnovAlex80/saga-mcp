@@ -40,7 +40,7 @@ const { mapLifecycleValues } = await import(
   '../../dist/process-modules/application/lifecycle-mapper.js'
 );
 const { sha256Hex } = await import(
-  '../../dist/process-modules/shared/canonical-json.js'
+  '../../dist/shared/canonical-json.js'
 );
 
 const registry = createBuiltInProcessModuleRegistry();

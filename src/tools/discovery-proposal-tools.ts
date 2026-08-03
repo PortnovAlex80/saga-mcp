@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import { getDb } from '../db.js';
 import { withImmediateTransaction } from './dispatcher.js';
-import { argInt, argStr, SAGA3_TOOL_CALL_SHAPES, SAGA3_ARG_SOURCES, enrichPayloadErrors, DISCOVERY_WORKFLOW_REFS } from './saga3-args.js';
+import { argInt, argStr, SAGA3_TOOL_CALL_SHAPES, SAGA3_ARG_SOURCES, enrichPayloadErrors, DISCOVERY_WORKFLOW_REFS } from './discovery-tool-args.js';
 import { renderWorkflowHint } from '../application/actionable-tool-error.js';
 import type { ToolHandler } from '../types.js';
 import { DISCOVERY_INTENT_KIND, DISCOVERY_WORK_INTENT_SCHEMA } from '../shared/work-intent.js';
@@ -14,7 +14,7 @@ import {
   canonicalJson,
   ensureSaga3NormalizationSchema,
   insertRawSubmission,
-} from '../modules/discovery/infrastructure/saga3-normalization-repository.js';
+} from '../modules/discovery/infrastructure/discovery-normalization-repository.js';
 
 const PROPOSAL_CONTRACTS = {
   [DISCOVERY_INTENT_KIND]: {

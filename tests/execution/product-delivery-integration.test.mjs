@@ -87,7 +87,7 @@ import {
 import {
   canonicalJson,
   sha256Hex,
-} from '../../dist/process-modules/shared/canonical-json.js';
+} from '../../dist/shared/canonical-json.js';
 
 // ===========================================================================
 // LAYER 1 — ADAPTER / STRUCTURE tests (always run).

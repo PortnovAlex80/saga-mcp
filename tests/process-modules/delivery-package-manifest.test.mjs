@@ -65,7 +65,7 @@ import {
 import { validateProcessModuleManifest } from '../../dist/process-modules/domain/spi/module-manifest.js';
 import { validateNodeProtocolDefinition } from '../../dist/process-modules/domain/spi/node-protocol.js';
 import { RESOURCE_KINDS } from '../../dist/process-modules/domain/spi/resource-index.js';
-import { canonicalJson, sha256Hex } from '../../dist/process-modules/shared/canonical-json.js';
+import { canonicalJson, sha256Hex } from '../../dist/shared/canonical-json.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const REPO_ROOT = path.resolve(path.dirname(__filename), '..', '..');

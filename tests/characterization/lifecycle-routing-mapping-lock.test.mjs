@@ -41,7 +41,7 @@ const { productDeliveryLifecycle } = await import(
   '../../dist/process-modules/lifecycles/product-delivery-lifecycle.js'
 );
 const { canonicalJson, sha256Hex } = await import(
-  '../../dist/process-modules/shared/canonical-json.js'
+  '../../dist/shared/canonical-json.js'
 );
 const { closeDb, getDb } = await import('../../dist/db.js');
 const { SqliteLifecycleRunRepository } = await import(

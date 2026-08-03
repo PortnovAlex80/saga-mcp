@@ -23,7 +23,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { randomUUID } from 'node:crypto';
 
-import { canonicalJson, sha256Hex } from '../../dist/process-modules/shared/canonical-json.js';
+import { canonicalJson, sha256Hex } from '../../dist/shared/canonical-json.js';
 
 // ---------------------------------------------------------------------------
 // Sibling surface (W3-A4). Resolved lazily; absent in isolation → SKIP.

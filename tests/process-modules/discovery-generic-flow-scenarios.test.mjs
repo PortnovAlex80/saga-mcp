@@ -55,19 +55,19 @@ const { createDiscoveryKernelHandlers } = await import(
   '../../dist/modules/discovery/application/discovery-installation.js'
 );
 const { SqliteSaga3DiscoveryRuntime } = await import(
-  '../../dist/modules/discovery/infrastructure/sqlite-saga3-discovery-runtime.js'
+  '../../dist/modules/discovery/infrastructure/sqlite-discovery-runtime.js'
 );
 const { Saga3DiscoverySettlementService } = await import(
   '../../dist/modules/discovery/application/discovery-settlement-service.js'
 );
 const { createSaga3ProposalHandlers } = await import(
-  '../../dist/tools/saga3-proposals.js'
+  '../../dist/tools/discovery-proposal-tools.js'
 );
 const { createSaga3NormalizationHandlers } = await import(
-  '../../dist/tools/saga3-normalization.js'
+  '../../dist/tools/discovery-normalization-tools.js'
 );
 const { createSaga3ReadinessHandlers } = await import(
-  '../../dist/tools/saga3-readiness.js'
+  '../../dist/tools/discovery-readiness-tools.js'
 );
 const { buildExecutionContext } = await import(
   '../../dist/shared/authority/build-execution-context.js'

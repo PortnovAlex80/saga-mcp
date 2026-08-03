@@ -17,7 +17,7 @@ const { ReferenceFormalizationSettlementPolicy } = await import(
   '../../dist/modules/formalization/infrastructure/sqlite-formalization-kernel.js'
 );
 const { sha256Hex } = await import(
-  '../../dist/process-modules/shared/canonical-json.js'
+  '../../dist/shared/canonical-json.js'
 );
 const { KernelHandlerRegistry } = await import(
   '../../dist/process-modules/application/kernel-handler-registry.js'

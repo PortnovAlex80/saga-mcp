@@ -36,7 +36,7 @@
 
 import { createHash } from 'node:crypto';
 
-import type { Saga3DiscoveryRuntimePersistence, SettlementInputKey, SettlementProposalRecord, IssueCertificateAtomicallyInput } from '../infrastructure/saga3-discovery-runtime-port.js';
+import type { Saga3DiscoveryRuntimePersistence, SettlementInputKey, SettlementProposalRecord, IssueCertificateAtomicallyInput } from '../infrastructure/discovery-runtime-port.js';
 import type { SettlementRecord, OutcomeCertificateRecord } from '../domain/discovery-settlement-records.js';
 import type { ReadinessAssessmentRecord } from '../domain/discovery-readiness-records.js';
 import type { ReadinessShadowResult } from '../domain/discovery-readiness-assessment.js';

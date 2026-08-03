@@ -14,11 +14,11 @@ const {
   DISCOVERY_WORK_INTENT_SCHEMA,
 } = await import('../../dist/shared/work-intent.js');
 const { DISCOVERY_PROPOSAL_SCHEMA } = await import('../../dist/modules/discovery/domain/discovery-proposal.js');
-const { canonicalJson } = await import('../../dist/modules/discovery/infrastructure/saga3-normalization-repository.js');
+const { canonicalJson } = await import('../../dist/modules/discovery/infrastructure/discovery-normalization-repository.js');
 const { DISCOVERY_READINESS_ASSESSMENT_SCHEMA, READINESS_DIMENSIONS } = await import(
   '../../dist/modules/discovery/domain/discovery-readiness-assessment.js'
 );
-const { ensureSaga3ReadinessSchema } = await import('../../dist/modules/discovery/infrastructure/saga3-readiness-repository.js');
+const { ensureSaga3ReadinessSchema } = await import('../../dist/modules/discovery/infrastructure/discovery-readiness-repository.js');
 
 function fixture() {
   const temp = mkdtempSync(path.join(os.tmpdir(), 'saga3-d3-handler-'));
@@ -160,7 +160,7 @@ test('D3 handler: valid accepted assessment persisted with shadow provenance', a
   const { temp, db } = fixture();
   try {
     const ctx = buildLiveFixture(db);
-    const { createSaga3ReadinessHandlers } = await import('../../dist/tools/saga3-readiness.js');
+    const { createSaga3ReadinessHandlers } = await import('../../dist/tools/discovery-readiness-tools.js');
     const { handlers } = createSaga3ReadinessHandlers({ db: () => db });
     const result = handlers.readiness_submit({
       control_intent_id: ctx.controlIntentId,
@@ -185,7 +185,7 @@ test('D3 handler: exact replay is idempotent (same content hash → same row, re
   const { temp, db } = fixture();
   try {
     const ctx = buildLiveFixture(db);
-    const { createSaga3ReadinessHandlers } = await import('../../dist/tools/saga3-readiness.js');
+    const { createSaga3ReadinessHandlers } = await import('../../dist/tools/discovery-readiness-tools.js');
     const { handlers } = createSaga3ReadinessHandlers({ db: () => db });
     const payload = validAssessmentPayload();
     const first = handlers.readiness_submit({
@@ -212,7 +212,7 @@ test('D3 handler: wrong task execution rejected (execution bound to a different 
     // never gets a valid authority, so the call is rejected before persistence.
     const ctx = buildLiveFixture(db, { advisorTaskId: 200 });
     db.prepare('UPDATE worker_executions SET task_id=999 WHERE execution_id=?').run(ctx.executionId);
-    const { createSaga3ReadinessHandlers } = await import('../../dist/tools/saga3-readiness.js');
+    const { createSaga3ReadinessHandlers } = await import('../../dist/tools/discovery-readiness-tools.js');
     const { handlers } = createSaga3ReadinessHandlers({ db: () => db });
     assert.throws(() => handlers.readiness_submit({
       control_intent_id: ctx.controlIntentId, execution_id: ctx.executionId,
@@ -226,7 +226,7 @@ test('D3 handler: dead execution rejected', async () => {
   try {
     const ctx = buildLiveFixture(db);
     db.prepare("UPDATE worker_executions SET state='exited' WHERE execution_id=?").run(ctx.executionId);
-    const { createSaga3ReadinessHandlers } = await import('../../dist/tools/saga3-readiness.js');
+    const { createSaga3ReadinessHandlers } = await import('../../dist/tools/discovery-readiness-tools.js');
     const { handlers } = createSaga3ReadinessHandlers({ db: () => db });
     assert.throws(() => handlers.readiness_submit({
       control_intent_id: ctx.controlIntentId, execution_id: ctx.executionId,
@@ -247,7 +247,7 @@ test('D3 handler: authority mismatch (execution bound to a different WorkIntent)
     // also null the authority to force AUTHORITY_CONTEXT_INVALID instead.
     meta.execution_context.authority = null;
     db.prepare('UPDATE worker_executions SET metadata=? WHERE execution_id=?').run(JSON.stringify(meta), ctx.executionId);
-    const { createSaga3ReadinessHandlers } = await import('../../dist/tools/saga3-readiness.js');
+    const { createSaga3ReadinessHandlers } = await import('../../dist/tools/discovery-readiness-tools.js');
     const { handlers } = createSaga3ReadinessHandlers({ db: () => db });
     assert.throws(() => handlers.readiness_submit({
       control_intent_id: ctx.controlIntentId, execution_id: ctx.executionId,
@@ -265,7 +265,7 @@ test('D3 handler: changed proposal content_hash rejected (immutable target bindi
     // this because the recomputed hash no longer matches the stored hash, and
     // neither matches the ControlIntent's target. Throw before persistence.
     db.prepare('UPDATE saga3_proposals SET content_hash=? WHERE id=50').run('d'.repeat(64));
-    const { createSaga3ReadinessHandlers } = await import('../../dist/tools/saga3-readiness.js');
+    const { createSaga3ReadinessHandlers } = await import('../../dist/tools/discovery-readiness-tools.js');
     const { handlers } = createSaga3ReadinessHandlers({ db: () => db });
     assert.throws(() => handlers.readiness_submit({
       control_intent_id: ctx.controlIntentId, execution_id: ctx.executionId,
@@ -280,7 +280,7 @@ test('D3 handler: assessment lineage stays separate from product Proposal proven
   const { temp, db } = fixture();
   try {
     const ctx = buildLiveFixture(db);
-    const { createSaga3ReadinessHandlers } = await import('../../dist/tools/saga3-readiness.js');
+    const { createSaga3ReadinessHandlers } = await import('../../dist/tools/discovery-readiness-tools.js');
     const { handlers } = createSaga3ReadinessHandlers({ db: () => db });
     handlers.readiness_submit({
       control_intent_id: ctx.controlIntentId, execution_id: ctx.executionId,
@@ -302,7 +302,7 @@ test('D3 handler: readiness_get returns allowed_source_refs (anti-invent-evidenc
   const { temp, db } = fixture();
   try {
     const ctx = buildLiveFixture(db);
-    const { createSaga3ReadinessHandlers } = await import('../../dist/tools/saga3-readiness.js');
+    const { createSaga3ReadinessHandlers } = await import('../../dist/tools/discovery-readiness-tools.js');
     const { handlers } = createSaga3ReadinessHandlers({ db: () => db });
     const out = handlers.readiness_get({
       control_intent_id: ctx.controlIntentId, execution_id: ctx.executionId,
@@ -321,7 +321,7 @@ test('D3 handler: schema_version mismatch rejected', async () => {
   const { temp, db } = fixture();
   try {
     const ctx = buildLiveFixture(db);
-    const { createSaga3ReadinessHandlers } = await import('../../dist/tools/saga3-readiness.js');
+    const { createSaga3ReadinessHandlers } = await import('../../dist/tools/discovery-readiness-tools.js');
     const { handlers } = createSaga3ReadinessHandlers({ db: () => db });
     assert.throws(() => handlers.readiness_submit({
       control_intent_id: ctx.controlIntentId, execution_id: ctx.executionId,

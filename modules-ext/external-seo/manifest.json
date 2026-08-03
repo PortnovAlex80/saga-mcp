@@ -90,14 +90,14 @@
       "logicalId": "external-seo.description.package",
       "path": "resources/package-description.md",
       "kind": "description",
-      "digest": "4411e212ccc0a76e960b36b52b5832588a042f5deeedc5c594aa5ffbf60f872a"
+      "digest": "9af7e06fd4d6e99514515761d867a0efbcbe7a5732d110fa1f61b9196bac951d"
     }
   ],
   "handlerRefs": [
     {
       "logicalId": "seo-ranking-adapter@1.0.0",
       "version": "1.0.0",
-      "digest": "daa9f52e6dbc6e1e45162f9cd6d3a50cd2932ef00bfc3cbc4c55e0d19496bde6"
+      "digest": "632850a2eacff2ec71239c05e0599f8c68a010d3c005ce63f83cebbb5fc520c4"
     }
   ],
   "inputContractRef": {

@@ -56,7 +56,7 @@ const { validateNodeProtocolDefinition } = await import(
   '../../dist/process-modules/domain/spi/node-protocol.js'
 );
 const { canonicalJson, sha256Hex } = await import(
-  '../../dist/process-modules/shared/canonical-json.js'
+  '../../dist/shared/canonical-json.js'
 );
 const { RESOURCE_KINDS } = await import(
   '../../dist/process-modules/domain/spi/resource-index.js'

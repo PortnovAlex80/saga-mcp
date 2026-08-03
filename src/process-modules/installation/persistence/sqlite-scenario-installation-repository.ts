@@ -81,7 +81,7 @@
  */
 
 import type Database from 'better-sqlite3';
-import { canonicalJson } from '../../shared/canonical-json.js';
+import { canonicalJson } from '../../../shared/canonical-json.js';
 import {
   asScenarioInstallationId,
   SCENARIO_INSTALLATION_NOT_FOUND,

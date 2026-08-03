@@ -40,8 +40,8 @@ import {
   PackageStoreError,
   computeResourceDigest,
 } from '../../dist/process-modules/installation/domain/package-store.js';
-import { canonicalJson } from '../../dist/process-modules/shared/canonical-json.js';
-import { sha256Hex } from '../../dist/process-modules/shared/canonical-json.js';
+import { canonicalJson } from '../../dist/shared/canonical-json.js';
+import { sha256Hex } from '../../dist/shared/canonical-json.js';
 import { lmMarketingModule } from '../fixtures/synthetic-modules/lm-marketing/definition.mjs';
 
 // ---------------------------------------------------------------------------

@@ -34,7 +34,7 @@
 
 import { createHash } from 'node:crypto';
 
-import { sha256Hex } from '../../shared/canonical-json.js';
+import { sha256Hex } from '../../../shared/canonical-json.js';
 import type {
   ProcessModuleManifest,
   ResourceIndexEntry,

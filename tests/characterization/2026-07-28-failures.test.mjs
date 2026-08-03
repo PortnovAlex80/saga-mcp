@@ -352,7 +352,7 @@ test('fixture null-content-hash: schema column is nullable + index uses COALESCE
     'row type must propagate content_hash as nullable',
   );
   // Discovery runtime documents the failure mode.
-  const discovery = readSrc('src/modules/discovery/infrastructure/sqlite-saga3-discovery-runtime.ts');
+  const discovery = readSrc('src/modules/discovery/infrastructure/sqlite-discovery-runtime.ts');
   assert.ok(
     discovery.includes('NULL content_hash') || discovery.includes('NULL project_repository_id and NULL content_hash'),
     'discovery runtime must document the NULL content_hash failure mode',

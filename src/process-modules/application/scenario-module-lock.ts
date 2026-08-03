@@ -67,7 +67,7 @@ import type {
 
 // Frozen canonical primitives — `canonicalJson` (deterministic JSON) and
 // `sha256Hex` (sha256 of a string). node:crypto only, no module state.
-import { canonicalJson, sha256Hex } from '../shared/canonical-json.js';
+import { canonicalJson, sha256Hex } from '../../shared/canonical-json.js';
 
 // ---------------------------------------------------------------------------
 // INTEGRATION NOTE: ScenarioInstallationStore.

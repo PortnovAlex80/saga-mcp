@@ -34,7 +34,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { canonicalJson, sha256Hex } from '../../dist/process-modules/shared/canonical-json.js';
+import { canonicalJson, sha256Hex } from '../../dist/shared/canonical-json.js';
 
 // Wave 1 SPI — legacy adapter (wraps a definition into a manifest envelope).
 const { adaptLegacyProcessModule } = await import(

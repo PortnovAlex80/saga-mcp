@@ -45,7 +45,7 @@ import type {
   Saga3DiscoveryRuntimePersistence,
   SettlementInputKey,
   SettlementProposalRecord,
-} from '../infrastructure/saga3-discovery-runtime-port.js';
+} from '../infrastructure/discovery-runtime-port.js';
 import type {
   OutcomeCertificateRecord,
   SettlementRecord,

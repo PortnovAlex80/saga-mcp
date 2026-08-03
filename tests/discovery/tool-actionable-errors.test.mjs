@@ -25,7 +25,7 @@ import {
   enrichPayloadErrors,
   SAGA3_TOOL_CALL_SHAPES,
   SAGA3_ARG_SOURCES,
-} from '../../dist/tools/saga3-args.js';
+} from '../../dist/tools/discovery-tool-args.js';
 
 // ---- argInt: actionable + backward-compatible -------------------------------
 

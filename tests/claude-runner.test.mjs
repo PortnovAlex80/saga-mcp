@@ -62,7 +62,7 @@ function fakeChild(pid) {
 
 // Minimal AssignedWork builder for the one-card runner contract (mirrors the
 // shape built by WorkAssignmentPort.assignTask — see
-// tests/saga3/_conveyor-fakes.mjs fakeWorkAssignment). The dispatcher hands the
+// tests/discovery/_conveyor-fakes.mjs fakeWorkAssignment). The dispatcher hands the
 // runner exactly one pre-assigned card; the runner never claims.
 //
 // workerExecutionId is intentionally EMPTY: when present, launch() calls

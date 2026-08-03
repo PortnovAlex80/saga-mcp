@@ -13,7 +13,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 const { canonicalJson } = await import(
-  '../../dist/process-modules/shared/canonical-json.js'
+  '../../dist/shared/canonical-json.js'
 );
 const { projectPipeline } = await import(
   '../../dist/process-modules/application/lifecycle-pipeline-projection.js'

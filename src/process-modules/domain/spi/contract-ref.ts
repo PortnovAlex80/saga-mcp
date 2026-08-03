@@ -29,7 +29,7 @@
  * `contract-schema-registry.ts`.
  */
 
-import { sha256Hex } from '../../shared/canonical-json.js';
+import { sha256Hex } from '../../../shared/canonical-json.js';
 
 /**
  * Pure, serializable reference to a contract schema.

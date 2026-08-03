@@ -35,7 +35,7 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 
-import { sha256Hex } from '../../dist/process-modules/shared/canonical-json.js';
+import { sha256Hex } from '../../dist/shared/canonical-json.js';
 
 const { resolveAgentLaunchSpec } = await import(
   '../../dist/process-modules/application/agent-launch-spec.js'

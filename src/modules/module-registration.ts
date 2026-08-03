@@ -39,7 +39,7 @@ import type { SqliteRecoveryCaseRepository } from '../process-modules/persistenc
 import type { SqliteManagedNodeSubmissionRepository } from '../process-modules/persistence/sqlite-managed-node-submission-repository.js';
 import type { SqliteProcessProductRepository } from '../process-modules/persistence/sqlite-process-product-repository.js';
 import type { SqliteExactCandidateAcceptance } from '../process-modules/persistence/sqlite-exact-candidate-acceptance.js';
-import type { Saga3DiscoveryRuntimePersistence } from './discovery/infrastructure/saga3-discovery-runtime-port.js';
+import type { Saga3DiscoveryRuntimePersistence } from './discovery/infrastructure/discovery-runtime-port.js';
 import type { ProductRef } from '../process-modules/domain/spi/index.js';
 import type { WorkplaceProductPort } from '../process-modules/application/workplace-product-port.js';
 

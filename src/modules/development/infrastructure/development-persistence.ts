@@ -1,5 +1,5 @@
 import type Database from 'better-sqlite3';
-import { canonicalJson, sha256Hex } from '../../../process-modules/shared/canonical-json.js';
+import { canonicalJson, sha256Hex } from '../../../shared/canonical-json.js';
 import {
   type DevelopmentOutputRecord,
   type DevelopmentOutputRepository,

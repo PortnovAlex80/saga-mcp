@@ -34,7 +34,7 @@
  * @typedef {import('../../dist/process-modules/application/node-executor.js').NodeProduction} NodeProduction
  */
 
-import { sha256Hex } from '../../dist/process-modules/shared/canonical-json.js';
+import { sha256Hex } from '../../dist/shared/canonical-json.js';
 
 /**
  * Build a deterministic result URL for a keyword. Stable so the snapshot is

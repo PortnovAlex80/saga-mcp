@@ -26,7 +26,7 @@ const { DEVELOPMENT_TASK_GRAPH_PROPOSAL_SCHEMA } = await import(
   '../../dist/modules/development/domain/development-schemas.js'
 );
 const { sha256Hex } = await import(
-  '../../dist/process-modules/shared/canonical-json.js'
+  '../../dist/shared/canonical-json.js'
 );
 
 const PROCESS_RUN_ID = 77;

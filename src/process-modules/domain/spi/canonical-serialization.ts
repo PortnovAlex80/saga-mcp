@@ -18,7 +18,7 @@
  * Task: docs/refactor-management/05-subagent-tasks/W01-A1-canonical-serialization.md.
  */
 
-import { canonicalJson } from '../../shared/canonical-json.js';
+import { canonicalJson } from '../../../shared/canonical-json.js';
 
 /**
  * Error shape returned by `assertCanonicalSerializable`. A plain data object

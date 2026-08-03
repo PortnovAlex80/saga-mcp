@@ -107,7 +107,7 @@ const {
 
 // Shared canonical JSON + sha256Hex (content-addressing / replay determinism).
 const { canonicalJson, sha256Hex } = await import(
-  '../../dist/process-modules/shared/canonical-json.js'
+  '../../dist/shared/canonical-json.js'
 );
 
 // The REAL installation surface (Wave 2 immutable-installation layer).

@@ -30,7 +30,7 @@ import {
 import {
   canonicalJson,
   sha256Hex,
-} from '../../dist/process-modules/shared/canonical-json.js';
+} from '../../dist/shared/canonical-json.js';
 
 // ---------------------------------------------------------------------------
 // PINNED resources fixture.

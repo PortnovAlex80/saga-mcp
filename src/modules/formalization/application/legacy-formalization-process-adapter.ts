@@ -34,7 +34,7 @@ import { createHash } from 'node:crypto';
 // re-exported by the process-modules shared layer, so this module no longer
 // reaches into src/saga3/shared/**. Both resolve to the same byte-identical
 // implementation.
-import { canonicalJson } from '../../../process-modules/shared/canonical-json.js';
+import { canonicalJson } from '../../../shared/canonical-json.js';
 import { processModuleKey } from '../../../process-modules/domain/process-module.js';
 import type { ProcessRunRepository } from '../../../process-modules/persistence/process-run-repository.js';
 import type { ProcessRunStatus } from '../../../process-modules/persistence/process-run.js';

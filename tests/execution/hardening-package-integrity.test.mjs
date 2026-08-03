@@ -58,7 +58,7 @@ import { createHash } from 'node:crypto';
 
 import Database from 'better-sqlite3';
 
-import { canonicalJson, sha256Hex } from '../../dist/process-modules/shared/canonical-json.js';
+import { canonicalJson, sha256Hex } from '../../dist/shared/canonical-json.js';
 import {
   FilesystemModulePackageStore,
 } from '../../dist/process-modules/installation/adapters/filesystem-package-store.js';

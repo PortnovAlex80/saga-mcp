@@ -90,9 +90,9 @@ async function loadModules() {
     import('../../dist/tools/process-node-submissions.js'),
     import('../../dist/tools/delivery-approvals.js'),
     import('../../dist/tools/lifecycle-runs.js'),
-    import('../../dist/tools/saga3-proposals.js'),
-    import('../../dist/tools/saga3-normalization.js'),
-    import('../../dist/tools/saga3-readiness.js'),
+    import('../../dist/tools/discovery-proposal-tools.js'),
+    import('../../dist/tools/discovery-normalization-tools.js'),
+    import('../../dist/tools/discovery-readiness-tools.js'),
   ]);
   const saga3Proposals = saga3ProposalsMod.createSaga3ProposalHandlers();
   const saga3Normalization = saga3NormalizationMod.createSaga3NormalizationHandlers();
@@ -127,7 +127,7 @@ async function loadModules() {
     ...saga3Normalization.definitions,
     ...saga3Readiness.definitions,
   ];
-  const args = await import('../../dist/tools/saga3-args.js');
+  const args = await import('../../dist/tools/discovery-tool-args.js');
   const authority = await import('../../dist/shared/authority/authorize-tool-call.js');
   const ctxDomain = await import('../../dist/shared/authority/execution-context.js');
   const dbMod = await import('../../dist/db.js');

@@ -58,7 +58,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createHash } from 'node:crypto';
 
 // Frozen Wave 1 primitives — already built in this worktree (Wave 1 checkpoint 6a349a2).
-import { canonicalJson, sha256Hex } from '../../dist/process-modules/shared/canonical-json.js';
+import { canonicalJson, sha256Hex } from '../../dist/shared/canonical-json.js';
 
 // §14.4.7 PROOF — the import list. The ONLY imports are:
 //   - the Wave 2 installation barrel (this lane's product),

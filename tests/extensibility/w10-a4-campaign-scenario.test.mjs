@@ -59,7 +59,7 @@ const {
   assertCanonicalSerializable,
 } = await import('../../dist/process-modules/domain/spi/index.js');
 const { canonicalJson, sha256Hex } = await import(
-  '../../dist/process-modules/shared/canonical-json.js'
+  '../../dist/shared/canonical-json.js'
 );
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));

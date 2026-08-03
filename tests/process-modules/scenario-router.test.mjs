@@ -44,7 +44,7 @@ import {
   ROUTING_ERROR_CODES,
   SCENARIO_ROOT,
 } from '../../dist/process-modules/application/scenario-router.js';
-import { sha256Hex } from '../../dist/process-modules/shared/canonical-json.js';
+import { sha256Hex } from '../../dist/shared/canonical-json.js';
 
 // ---------------------------------------------------------------------------
 // Manifest builder (mirrors tests/spi/scenario-manifest.test.mjs).

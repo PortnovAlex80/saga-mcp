@@ -37,7 +37,7 @@ import {
   PENDING_DIGEST,
   RESOURCE_KINDS,
 } from '../../dist/process-modules/domain/spi/module-manifest.js';
-import { canonicalJson, sha256Hex } from '../../dist/process-modules/shared/canonical-json.js';
+import { canonicalJson, sha256Hex } from '../../dist/shared/canonical-json.js';
 import { lmMarketingModule } from '../../tests/fixtures/synthetic-modules/lm-marketing/definition.mjs';
 
 // ---------------------------------------------------------------------------

@@ -46,7 +46,7 @@ import type {
   ProcessOutputPayloadResolver,
 } from '../../../process-modules/application/lifecycle-orchestrator.js';
 import type { ProcessModuleOutput } from '../../../process-modules/persistence/process-run.js';
-import { canonicalJson, sha256Hex } from '../../../process-modules/shared/canonical-json.js';
+import { canonicalJson, sha256Hex } from '../../../shared/canonical-json.js';
 import type {
   BriefProvisioningPort,
   FormalizationArtifactGraphPort,

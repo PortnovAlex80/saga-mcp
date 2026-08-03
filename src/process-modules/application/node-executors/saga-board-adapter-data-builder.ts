@@ -35,7 +35,7 @@ import type {
 } from '../../domain/spi/index.js';
 import type { FlowNodeKind } from '../../domain/process-module.js';
 import type { RecoveryFeedback } from '../../domain/recovery.js';
-import { sha256Hex } from '../../shared/canonical-json.js';
+import { sha256Hex } from '../../../shared/canonical-json.js';
 
 /**
  * Driver kind this builder targets. Hard-coded `'lm'` because this builder is

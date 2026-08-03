@@ -15,7 +15,7 @@ import { createHash } from 'node:crypto';
 // CONVEYOR Wave 7 — saga3 cross-tree leak elimination: canonicalJson is
 // re-exported by the process-modules shared layer, so this module no longer
 // reaches into src/saga3/shared/**.
-import { canonicalJson } from '../../../process-modules/shared/canonical-json.js';
+import { canonicalJson } from '../../../shared/canonical-json.js';
 import {
   FORMALIZATION_SETTLEMENT_INPUT_SCHEMA,
   type FormalizationSettlementInput,

@@ -6,7 +6,7 @@ import test from 'node:test';
 
 const { closeDb, getDb } = await import('../../dist/db.js');
 const { createProductLifecycleRuntime } = await import(
-  '../../dist/process-modules/composition/product-lifecycle-runtime.js'
+  '../../dist/app/product-lifecycle-runtime.js'
 );
 const {
   ReferenceDevelopmentSettlementPolicy,

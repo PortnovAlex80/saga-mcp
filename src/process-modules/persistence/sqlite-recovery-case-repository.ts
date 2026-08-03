@@ -21,7 +21,7 @@ import {
 import {
   processModuleKey,
 } from '../domain/process-module.js';
-import { canonicalJson, sha256Hex } from '../shared/canonical-json.js';
+import { canonicalJson, sha256Hex } from '../../shared/canonical-json.js';
 import type {
   RecordRecoveryIssueInput,
   RecordRecoveryIssueResult,

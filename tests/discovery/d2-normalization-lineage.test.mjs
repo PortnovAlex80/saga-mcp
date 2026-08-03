@@ -25,7 +25,7 @@ const { DISCOVERY_NORMALIZATION_PROPOSAL_SCHEMA } = await import(
 const {
   ensureSaga3NormalizationSchema,
   insertRawSubmission,
-} = await import('../../dist/modules/discovery/infrastructure/saga3-normalization-repository.js');
+} = await import('../../dist/modules/discovery/infrastructure/discovery-normalization-repository.js');
 
 function fixture() {
   const temp = mkdtempSync(path.join(os.tmpdir(), 'saga3-d2-lineage-'));
@@ -186,7 +186,7 @@ test('normalized canonical Proposal keeps source product task/execution and nest
       Object.keys(normalizedPayload).map(field => [field, [`$.${field}`]]),
     );
     const { createSaga3NormalizationHandlers } = await import(
-      '../../dist/tools/saga3-normalization.js'
+      '../../dist/tools/discovery-normalization-tools.js'
     );
     const { handlers } = createSaga3NormalizationHandlers({
       db: () => db,

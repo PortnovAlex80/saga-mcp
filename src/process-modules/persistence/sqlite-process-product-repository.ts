@@ -1,6 +1,6 @@
 import type Database from 'better-sqlite3';
 import { getDb } from '../../db.js';
-import { canonicalJson, sha256Hex } from '../shared/canonical-json.js';
+import { canonicalJson, sha256Hex } from '../../shared/canonical-json.js';
 import { ensureSaga3ProcessRunSchema } from './sqlite-process-run-repository.js';
 
 export interface ProcessProductReference {

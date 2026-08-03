@@ -28,7 +28,7 @@ import {
   processModuleKey,
   type ProcessModuleReference,
 } from '../domain/process-module.js';
-import { canonicalJson, sha256Hex } from '../shared/canonical-json.js';
+import { canonicalJson, sha256Hex } from '../../shared/canonical-json.js';
 import {
   assertTransitionAllowed,
   isTerminalStatus,

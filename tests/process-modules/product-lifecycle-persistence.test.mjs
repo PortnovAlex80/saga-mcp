@@ -23,7 +23,7 @@ const { RELEASE_RECORD_SCHEMA } = await import(
   '../../dist/modules/delivery/domain/delivery-schemas.js'
 );
 const { sha256Hex } = await import(
-  '../../dist/process-modules/shared/canonical-json.js'
+  '../../dist/shared/canonical-json.js'
 );
 
 function fixture() {

@@ -28,7 +28,7 @@ const { LmNodeExecutor } = await import(
   '../../dist/process-modules/application/node-executors/lm-node-executor.js'
 );
 const { sha256Hex } = await import(
-  '../../dist/process-modules/shared/canonical-json.js'
+  '../../dist/shared/canonical-json.js'
 );
 
 function fixture() {

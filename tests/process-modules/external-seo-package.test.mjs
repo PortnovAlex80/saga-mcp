@@ -75,7 +75,7 @@ import {
 import { validateProcessModuleManifest } from '../../dist/process-modules/domain/spi/module-manifest.js';
 import { validateNodeProtocolDefinition } from '../../dist/process-modules/domain/spi/node-protocol.js';
 import { RESOURCE_KINDS } from '../../dist/process-modules/domain/spi/resource-index.js';
-import { sha256Hex } from '../../dist/process-modules/shared/canonical-json.js';
+import { sha256Hex } from '../../dist/shared/canonical-json.js';
 // W7-RECHECK (2026-08-02) — re-scoped off the missing ExternalAdapterRegistry /
 // ExternalNodeExecutor imports. Those two modules are the W10 External-node
 // dispatch SPI that has NOT yet been implemented in src/ (no
@@ -427,7 +427,7 @@ test('external-seo package: source imports ONLY the runtime SPI (§0.13.10 proof
     '../../dist/process-modules/application/external-adapter-registry.js',
     '../../dist/process-modules/application/node-executor.js',
     '../../dist/process-modules/application/node-executors/external-node-executor.js',
-    '../../dist/process-modules/shared/canonical-json.js',
+    '../../dist/shared/canonical-json.js',
   ];
   // Specifiers that would VIOLATE §0.13.10 (touching a built-in module
   // implementation, the catalog, or the composition root).

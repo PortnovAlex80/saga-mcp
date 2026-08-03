@@ -74,7 +74,7 @@ const {
   '../../dist/process-modules/application/handlers/process-outcome-emitter.js'
 );
 const { sha256Hex } = await import(
-  '../../dist/process-modules/shared/canonical-json.js'
+  '../../dist/shared/canonical-json.js'
 );
 
 // --- Fixtures ---------------------------------------------------------------

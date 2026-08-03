@@ -33,7 +33,7 @@ This package imports **only** from the compiled runtime SPI under `dist/`:
 | `validateProcessModuleManifest` | `dist/process-modules/domain/spi/module-manifest.js` |
 | `validateNodeProtocolDefinition` | `dist/process-modules/domain/spi/node-protocol.js` |
 | `ExternalAdapterRegistry` (type) | `dist/process-modules/application/external-adapter-registry.js` |
-| `sha256Hex` | `dist/process-modules/shared/canonical-json.js` |
+| `sha256Hex` | `dist/shared/canonical-json.js` |
 
 It **never** imports `src/index.ts`, `modules/catalog.ts`, the composition root,
 or any built-in module implementation. Adding this package changes zero lines

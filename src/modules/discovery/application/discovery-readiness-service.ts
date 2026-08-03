@@ -16,7 +16,7 @@ import type {
 } from '../../../application/ports/worker-executor.js';
 import type { IdGeneratorPort } from '../../../application/ports/conveyor-ports.js';
 import type { SagaRuntimeConfig } from '../../../runtime/saga-runtime-config.js';
-import type { Saga3DiscoveryRuntimePersistence } from '../infrastructure/saga3-discovery-runtime-port.js';
+import type { Saga3DiscoveryRuntimePersistence } from '../infrastructure/discovery-runtime-port.js';
 import type { ReadinessShadowResult } from '../domain/discovery-readiness-assessment.js';
 import {
   assignOneCard,

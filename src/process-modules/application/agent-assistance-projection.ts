@@ -13,7 +13,7 @@ import type {
   AssistanceBlock,
   AssistanceEvent,
 } from '../domain/spi/agent-assistance.js';
-import { canonicalJson, sha256Hex } from '../shared/canonical-json.js';
+import { canonicalJson, sha256Hex } from '../../shared/canonical-json.js';
 
 export const AGENT_ASSISTANCE_PROJECTION_SCHEMA =
   'saga3.agent-assistance-projection.v1' as const;

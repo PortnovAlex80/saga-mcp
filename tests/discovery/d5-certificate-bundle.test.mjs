@@ -43,10 +43,10 @@ const { DISCOVERY_READINESS_ASSESSMENT_SCHEMA, READINESS_DIMENSIONS } = await im
 );
 const { canonicalJson } = await import('../../dist/shared/canonical-json.js');
 const { ensureSaga3ReadinessSchema } = await import(
-  '../../dist/modules/discovery/infrastructure/saga3-readiness-repository.js'
+  '../../dist/modules/discovery/infrastructure/discovery-readiness-repository.js'
 );
 const { ensureSaga3SettlementSchema } = await import(
-  '../../dist/modules/discovery/infrastructure/saga3-settlement-repository.js'
+  '../../dist/modules/discovery/infrastructure/discovery-settlement-repository.js'
 );
 const {
   discoverySettlementPolicyV1,
@@ -59,7 +59,7 @@ const {
   CertificateBundleError,
 } = await import('../../dist/modules/discovery/application/discovery-certificate-bundle.js');
 const { SqliteSaga3DiscoveryRuntime } = await import(
-  '../../dist/modules/discovery/infrastructure/sqlite-saga3-discovery-runtime.js'
+  '../../dist/modules/discovery/infrastructure/sqlite-discovery-runtime.js'
 );
 
 // ---------------------------------------------------------------------------

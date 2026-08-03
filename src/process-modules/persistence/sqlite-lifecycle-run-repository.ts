@@ -2,7 +2,7 @@ import type Database from 'better-sqlite3';
 import { getDb } from '../../db.js';
 import type { TransitionTarget } from '../domain/lifecycle.js';
 import type { ProcessModuleReference } from '../domain/process-module.js';
-import { canonicalJson, sha256Hex } from '../shared/canonical-json.js';
+import { canonicalJson, sha256Hex } from '../../shared/canonical-json.js';
 import type {
   CompleteLifecycleStageResult,
   LifecycleRunRepository,

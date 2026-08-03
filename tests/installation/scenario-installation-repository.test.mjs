@@ -58,7 +58,7 @@ const {
   asScenarioInstallationId,
 } = await import('../../dist/process-modules/installation/scenario-store.js');
 const { canonicalJson, sha256Hex } = await import(
-  '../../dist/process-modules/shared/canonical-json.js'
+  '../../dist/shared/canonical-json.js'
 );
 const {
   campaignScenario,

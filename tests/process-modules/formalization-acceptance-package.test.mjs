@@ -45,7 +45,7 @@ import {
 import {
   canonicalJson,
   sha256Hex,
-} from '../../dist/process-modules/shared/canonical-json.js';
+} from '../../dist/shared/canonical-json.js';
 import {
   RESOURCE_KINDS,
 } from '../../dist/process-modules/domain/spi/resource-index.js';

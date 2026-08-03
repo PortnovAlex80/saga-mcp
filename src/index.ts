@@ -45,9 +45,9 @@ import {
   definitions as lifecycleRunDefs,
   handlers as lifecycleRunHandlers,
 } from './tools/lifecycle-runs.js';
-import { createSaga3ProposalHandlers } from './tools/saga3-proposals.js';
-import { createSaga3NormalizationHandlers } from './tools/saga3-normalization.js';
-import { createSaga3ReadinessHandlers } from './tools/saga3-readiness.js';
+import { createSaga3ProposalHandlers } from './tools/discovery-proposal-tools.js';
+import { createSaga3NormalizationHandlers } from './tools/discovery-normalization-tools.js';
+import { createSaga3ReadinessHandlers } from './tools/discovery-readiness-tools.js';
 import {
   authorizeSagaToolCall,
   visibleSagaToolNames,

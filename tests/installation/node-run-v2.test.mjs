@@ -38,7 +38,7 @@ import test from 'node:test';
 
 const { closeDb, getDb } = await import('../../dist/db.js');
 const { sha256Hex } = await import(
-  '../../dist/process-modules/shared/canonical-json.js'
+  '../../dist/shared/canonical-json.js'
 );
 const { SqliteNodeRunRepository } = await import(
   '../../dist/process-modules/persistence/sqlite-node-run-repository.js'

@@ -29,7 +29,7 @@ const { SqliteRecoveryCaseRepository } = await import(
   '../../dist/process-modules/persistence/sqlite-recovery-case-repository.js'
 );
 const { sha256Hex } = await import(
-  '../../dist/process-modules/shared/canonical-json.js'
+  '../../dist/shared/canonical-json.js'
 );
 
 function fixture() {

@@ -86,7 +86,7 @@
 //   This file imports ONLY from:
 //     - node: built-ins (assert, test, fs, path, crypto, child_process, url)
 //     - dist/process-modules/domain/spi/*         (the frozen SPI)
-//     - dist/process-modules/shared/canonical-json (hashing helper)
+//     - dist/shared/canonical-json (hashing helper)
 //     - dist/application/module-conformance-runner (the shared conformance kit)
 //     - tests/fixtures/synthetic-modules/* + synthetic-scenarios/* (frozen seed)
 //   It NEVER imports from:
@@ -138,7 +138,7 @@ const {
 const {
   canonicalJson,
   sha256Hex,
-} = await import('../../dist/process-modules/shared/canonical-json.js');
+} = await import('../../dist/shared/canonical-json.js');
 
 // Shared Process Module conformance kit (W9-A7) — runs the eight conformance
 // dimensions against a ProcessModuleDefinition. The kit consumes PURE DATA

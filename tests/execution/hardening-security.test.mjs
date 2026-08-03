@@ -49,7 +49,7 @@
 // NOT patched here.
 //
 // These tests are SELF-CONTAINED: real SQLite for the authority gateway
-// (mirrors tests/saga3/d1-1-authority.test.mjs), in-memory fakes for the
+// (mirrors tests/discovery/d1-1-authority.test.mjs), in-memory fakes for the
 // package store/repo (mirrors tests/installation/installer.test.mjs), and
 // inline fixtures for manifests/scenarios (mirrors
 // tests/execution/scenario-compiler.test.mjs). No cross-W12-lane imports.
@@ -68,7 +68,7 @@ import Database from 'better-sqlite3';
 
 // --- Pure validators / value types (Waves 1-2) ----------------------------
 const { sha256Hex } = await import(
-  '../../dist/process-modules/shared/canonical-json.js'
+  '../../dist/shared/canonical-json.js'
 );
 const {
   validateProcessModuleManifest,

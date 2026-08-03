@@ -20,11 +20,11 @@ import {
   type Saga3DiscoveryRuntimePersistence,
   type SettlementInputKey,
   type SettlementProposalRecord,
-} from './saga3-discovery-runtime-port.js';
+} from './discovery-runtime-port.js';
 import {
   canonicalJson,
   hashPayload,
-} from './saga3-proposal-repository.js';
+} from './discovery-proposal-repository.js';
 import {
   ensureSaga3NormalizationSchema,
   readLatestNormalizationProposalForControl,
@@ -32,14 +32,14 @@ import {
   readNormalizationProposalForExecution,
   readRawSubmission,
   readRawSubmissionForExecution,
-} from './saga3-normalization-repository.js';
+} from './discovery-normalization-repository.js';
 import {
   ensureSaga3ReadinessSchema,
   readLatestReadinessAssessmentForControl,
   readReadinessAssessmentForExecution,
   readReadinessAssessment,
   readReadinessControlForProposal as readReadinessControlForProposalRepo,
-} from './saga3-readiness-repository.js';
+} from './discovery-readiness-repository.js';
 import {
   ensureSaga3SettlementSchema,
   findSettlementByInputKey as findSettlementByInputKeyRepo,
@@ -50,7 +50,7 @@ import {
   readOutcomeCertificate as readOutcomeCertificateRepo,
   readSettlement as readSettlementRepo,
   reconcileExistingCertificate as reconcileExistingCertificateRepo,
-} from './saga3-settlement-repository.js';
+} from './discovery-settlement-repository.js';
 
 /**
  * SQLite implementation of the Saga3DiscoveryRuntimePersistence port.

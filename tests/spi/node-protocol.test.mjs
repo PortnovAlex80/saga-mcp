@@ -23,7 +23,7 @@ const { validateNodeProtocolDefinition, isSupportedFlowCondition } = await impor
   '../../dist/process-modules/domain/spi/node-protocol.js'
 );
 const { canonicalJson, sha256Hex } = await import(
-  '../../dist/process-modules/shared/canonical-json.js'
+  '../../dist/shared/canonical-json.js'
 );
 
 // ---------------------------------------------------------------------------

@@ -6,7 +6,7 @@
  * validate immutable snapshots and derive the local process outcome.
  */
 
-import { sha256Hex } from '../../../process-modules/shared/canonical-json.js';
+import { sha256Hex } from '../../../shared/canonical-json.js';
 import {
   ACCEPTANCE_VERIFICATION_SCHEMA,
   DEVELOPMENT_CASE_SCHEMA,

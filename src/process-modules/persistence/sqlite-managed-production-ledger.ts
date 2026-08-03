@@ -10,7 +10,7 @@
 
 import type Database from 'better-sqlite3';
 import type { Artifact, ArtifactTrace } from '../../types.js';
-import { sha256Hex } from '../shared/canonical-json.js';
+import { sha256Hex } from '../../shared/canonical-json.js';
 import type {
   ManagedArtifactProductionRecord,
   ManagedProductionLedger,

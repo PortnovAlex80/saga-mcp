@@ -83,7 +83,7 @@ const { getDb, closeDb } = await import(
   '../../dist/db.js'
 );
 const { sha256Hex } = await import(
-  '../../dist/process-modules/shared/canonical-json.js'
+  '../../dist/shared/canonical-json.js'
 );
 const { SqliteLifecycleRunRepository } = await import(
   '../../dist/process-modules/persistence/sqlite-lifecycle-run-repository.js'

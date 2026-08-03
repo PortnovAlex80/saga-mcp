@@ -66,7 +66,7 @@ test('D4 architecture: outcome certificate domain has no DB import', () => {
 });
 
 test('D4 architecture: settlement repository does NOT import from application/engine layer (no upward dependency)', () => {
-  const source = readFileSync(SRC('modules', 'discovery', 'infrastructure', 'saga3-settlement-repository.ts'), 'utf8');
+  const source = readFileSync(SRC('modules', 'discovery', 'infrastructure', 'discovery-settlement-repository.ts'), 'utf8');
   // The persistence adapter may import the domain layer + db, but never the
   // application service or engine.
   assert.doesNotMatch(source, /from ['"]\.\.\/\.\.\/(engines|saga3\/application|app)\//,
@@ -82,7 +82,7 @@ test('D4 architecture: no settlement_submit or certificate_submit MCP handler is
 });
 
 test('D4 architecture: outcome certificates table has no mutation (UPDATE) path', () => {
-  const source = readFileSync(SRC('modules', 'discovery', 'infrastructure', 'saga3-settlement-repository.ts'), 'utf8');
+  const source = readFileSync(SRC('modules', 'discovery', 'infrastructure', 'discovery-settlement-repository.ts'), 'utf8');
   assert.doesNotMatch(source, /UPDATE\s+saga3_discovery_outcome_certificates/i,
     'settlement repository must not UPDATE the outcome certificates table (certificates are immutable)');
 });

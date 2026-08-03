@@ -39,7 +39,7 @@ import {
 import { validateLifecycleScenarioManifest, isSafeMappingPath } from
   '../../dist/process-modules/domain/spi/scenario-manifest.js';
 import { canonicalJson, sha256Hex } from
-  '../../dist/process-modules/shared/canonical-json.js';
+  '../../dist/shared/canonical-json.js';
 
 // ---------------------------------------------------------------------------
 // Helpers — build a manifest-shaped object from the W0-A7 campaign fixture.

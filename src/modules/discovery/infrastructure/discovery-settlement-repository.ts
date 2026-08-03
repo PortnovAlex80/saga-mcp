@@ -28,7 +28,7 @@ import { createHash } from 'node:crypto';
 
 import type { DiscoverySettlementReasonCode } from '../domain/discovery-settlement-policy.js';
 import type { SettlementDecision, SettlementStatus, SettlementRecord, OutcomeCertificateRecord } from '../domain/discovery-settlement-records.js';
-import { canonicalJson } from './saga3-normalization-repository.js';
+import { canonicalJson } from './discovery-normalization-repository.js';
 
 /**
  * Create the settlement + certificate tables and indexes. Idempotent. Uses

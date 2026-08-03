@@ -44,7 +44,7 @@ import path from 'node:path';
 
 import { validateProcessModuleManifest } from '../../dist/process-modules/domain/spi/module-manifest.js';
 import { validateNodeProtocolDefinition } from '../../dist/process-modules/domain/spi/node-protocol.js';
-import { sha256Hex } from '../../dist/process-modules/shared/canonical-json.js';
+import { sha256Hex } from '../../dist/shared/canonical-json.js';
 
 import {
   externalSeoProcessModule,

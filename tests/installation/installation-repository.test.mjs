@@ -43,7 +43,7 @@ const {
   MODULE_INSTALLATION_CORRUPT,
   asModuleInstallationId,
 } = await import('../../dist/process-modules/installation/domain/installation.js');
-const { canonicalJson, sha256Hex } = await import('../../dist/process-modules/shared/canonical-json.js');
+const { canonicalJson, sha256Hex } = await import('../../dist/shared/canonical-json.js');
 const { lmMarketingModule } = await import('../../tests/fixtures/synthetic-modules/lm-marketing/definition.mjs');
 
 // ---------------------------------------------------------------------------

@@ -19,7 +19,7 @@
  * in principle, but the discovery edition NEEDS per-epic workspace seeding
  * because weaker LM workers cannot reliably derive intent_id/task_id/
  * schema_version from task_get alone. Removing this module reintroduces the
- * regression. The regression test (tests/saga3/d1-workspace-creation.test.mjs)
+ * regression. The regression test (tests/discovery/d1-workspace-creation.test.mjs)
  * WILL fail; do not delete the test either.
  *
  * If you want to relocate this logic (e.g. into the executor factory, or a
@@ -45,7 +45,7 @@
  * Regression context: this logic existed as engine.ensureDiscoveryWorkspace
  * (commit 1efb086), was deleted in 12952be when templates became static, and
  * the deletion went uncaught because NO test covered workspace creation.
- * tests/saga3/d1-workspace-creation.test.mjs now guards it.
+ * tests/discovery/d1-workspace-creation.test.mjs now guards it.
  */
 
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';

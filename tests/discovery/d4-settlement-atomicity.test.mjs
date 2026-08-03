@@ -14,9 +14,9 @@ import path from 'node:path';
 import test from 'node:test';
 
 const { closeDb, getDb } = await import('../../dist/db.js');
-const { canonicalJson } = await import('../../dist/modules/discovery/infrastructure/saga3-normalization-repository.js');
+const { canonicalJson } = await import('../../dist/modules/discovery/infrastructure/discovery-normalization-repository.js');
 const { sha256Hex } = await import('../../dist/shared/canonical-json.js');
-const { ensureSaga3SettlementSchema, insertSettlement, findSettlementByInputKey, readCertificateForSettlement } = await import('../../dist/modules/discovery/infrastructure/saga3-settlement-repository.js');
+const { ensureSaga3SettlementSchema, insertSettlement, findSettlementByInputKey, readCertificateForSettlement } = await import('../../dist/modules/discovery/infrastructure/discovery-settlement-repository.js');
 const { DISCOVERY_SETTLEMENT_POLICY_VERSION, POLICY_V1_CONTENT_HASH } = await import('../../dist/modules/discovery/domain/discovery-settlement-policy.js');
 const { DISCOVERY_SETTLEMENT_INPUT_SCHEMA } = await import('../../dist/modules/discovery/domain/discovery-settlement-input.js');
 const { buildOutcomeCertificatePayload, hashOutcomeCertificate } = await import('../../dist/modules/discovery/domain/discovery-outcome-certificate.js');
@@ -101,7 +101,7 @@ test('atomic issuance: transaction failure after certificate insert rolls back (
       // possible (it is wrapped in the adapter). Instead, exercise the same
       // BEGIN IMMEDIATE path by replicating the call through the adapter port.
       // We import the runtime adapter, which delegates to issueCertificateAtomically.
-      const { SqliteSaga3DiscoveryRuntime } = await import('../../dist/modules/discovery/infrastructure/sqlite-saga3-discovery-runtime.js');
+      const { SqliteSaga3DiscoveryRuntime } = await import('../../dist/modules/discovery/infrastructure/sqlite-discovery-runtime.js');
       const rt = new SqliteSaga3DiscoveryRuntime();
       rt.issueCertificateAtomically({
         settlementId: settlement.id,
@@ -152,7 +152,7 @@ test('atomic issuance: successful commit leaves certificate + certificate_issued
       settlementInputHash: settlement.input_hash, issuedAt: settlement.created_at,
     });
     const expectedHash = hashOutcomeCertificate(certPayload);
-    const { SqliteSaga3DiscoveryRuntime } = await import('../../dist/modules/discovery/infrastructure/sqlite-saga3-discovery-runtime.js');
+    const { SqliteSaga3DiscoveryRuntime } = await import('../../dist/modules/discovery/infrastructure/sqlite-discovery-runtime.js');
     const rt = new SqliteSaga3DiscoveryRuntime();
     const { record, inserted } = rt.issueCertificateAtomically({
       settlementId: settlement.id, epicId: 10, proposalId: 50, proposalContentHash: 'a'.repeat(64),
@@ -187,7 +187,7 @@ test('atomic issuance: settlement.input_snapshot changed (input_hash left) -> ce
     // but BEFORE BEGIN IMMEDIATE, leaving input_hash unchanged.
     db.prepare('UPDATE saga3_discovery_settlements SET input_snapshot=? WHERE id=?')
       .run('{"tampered":true}', settlement.id);
-    const { SqliteSaga3DiscoveryRuntime } = await import('../../dist/modules/discovery/infrastructure/sqlite-saga3-discovery-runtime.js');
+    const { SqliteSaga3DiscoveryRuntime } = await import('../../dist/modules/discovery/infrastructure/sqlite-discovery-runtime.js');
     const rt = new SqliteSaga3DiscoveryRuntime();
     let threw = false;
     try {
@@ -225,7 +225,7 @@ test('atomic reconcile: settlement.rationale changed -> reconcile rejected, stat
       settlementInputHash: settlement.input_hash, issuedAt: settlement.created_at,
     });
     const expectedHash = hashOutcomeCertificate(certPayload);
-    const { SqliteSaga3DiscoveryRuntime } = await import('../../dist/modules/discovery/infrastructure/sqlite-saga3-discovery-runtime.js');
+    const { SqliteSaga3DiscoveryRuntime } = await import('../../dist/modules/discovery/infrastructure/sqlite-discovery-runtime.js');
     const rt = new SqliteSaga3DiscoveryRuntime();
     // First: issue the certificate successfully.
     rt.issueCertificateAtomically({

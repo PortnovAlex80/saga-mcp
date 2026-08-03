@@ -88,7 +88,7 @@ const {
   '../../dist/modules/formalization/domain/formalization-schemas.js'
 );
 const { canonicalJson } = await import(
-  '../../dist/process-modules/shared/canonical-json.js'
+  '../../dist/shared/canonical-json.js'
 );
 
 // ---------------------------------------------------------------------------

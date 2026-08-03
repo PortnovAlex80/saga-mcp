@@ -16,7 +16,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { sha256Hex, canonicalJson } from '../../dist/process-modules/shared/canonical-json.js';
+import { sha256Hex, canonicalJson } from '../../dist/shared/canonical-json.js';
 import {
   validateProductRef,
   validateLineageRef,

@@ -73,7 +73,7 @@ const { validateProcessModuleManifest } = await import(
 // W1-A1 domain/shared path), so this test does not take a W1-A1 dependency for
 // round-trip assertions.
 const { canonicalJson, sha256Hex } = await import(
-  '../../dist/process-modules/shared/canonical-json.js'
+  '../../dist/shared/canonical-json.js'
 );
 
 // W0-A7 synthetic lm-marketing fixture (already a ProcessModuleDefinition).

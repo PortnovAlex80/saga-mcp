@@ -18,7 +18,7 @@ import {
   processModuleKey,
   type ProcessModuleReference,
 } from '../domain/process-module.js';
-import { canonicalJson } from '../shared/canonical-json.js';
+import { canonicalJson } from '../../shared/canonical-json.js';
 import {
   type InsertProcessModuleInstallationInput,
   type ProcessModuleInstallationRecord,
