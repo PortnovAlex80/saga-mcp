@@ -70,11 +70,11 @@ import { deliveryProcessModule } from '../delivery-process-module.js';
 import {
   DELIVERY_HUMAN_ADAPTER_IDS,
   DELIVERY_KERNEL_HANDLER_IDS,
-} from '../delivery-kernel-ports.js';
+} from '../../../../modules/delivery/domain/delivery-kernel-ports.js';
 import {
   DELIVERY_RELEASE_CASE_SCHEMA,
   RELEASE_RECORD_SCHEMA,
-} from '../delivery-schemas.js';
+} from '../../../../modules/delivery/domain/delivery-schemas.js';
 
 // ---------------------------------------------------------------------------
 // Manifest format + runtime identity.

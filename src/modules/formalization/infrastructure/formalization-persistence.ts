@@ -5,7 +5,7 @@ import {
   SOLUTION_CONTRACT_CERTIFICATE_SCHEMA,
   type AcceptanceBaselineSnapshotPayload,
   type FormalizationSolutionContractPayload,
-} from '../../../process-modules/modules/formalization/formalization-schemas.js';
+} from '../domain/formalization-schemas.js';
 // W7-THIRD-AUDIT — the port contracts (record + repository interfaces) are now
 // owned by the module tree and re-imported here. Infrastructure implements
 // module-owned ports; it must not define them (that would force module
@@ -15,13 +15,13 @@ export type {
   FormalizationSolutionContractRecord,
   FormalizationBaselineRepository,
   FormalizationSolutionContractRepository,
-} from '../../../process-modules/modules/formalization/formalization-persistence-contracts.js';
+} from '../domain/formalization-persistence-contracts.js';
 import type {
   AcceptanceBaselineSnapshotRecord,
   FormalizationSolutionContractRecord,
   FormalizationBaselineRepository,
   FormalizationSolutionContractRepository,
-} from '../../../process-modules/modules/formalization/formalization-persistence-contracts.js';
+} from '../domain/formalization-persistence-contracts.js';
 
 export function ensureFormalizationPersistenceSchema(db: Database.Database): void {
   db.exec(`

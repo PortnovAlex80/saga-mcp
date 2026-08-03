@@ -57,11 +57,11 @@ import { deliveryProcessModule } from '../../dist/process-modules/modules/delive
 import {
   DELIVERY_KERNEL_HANDLER_IDS,
   DELIVERY_HUMAN_ADAPTER_IDS,
-} from '../../dist/process-modules/modules/delivery/delivery-kernel-ports.js';
+} from '../../dist/modules/delivery/domain/delivery-kernel-ports.js';
 import {
   DELIVERY_RELEASE_CASE_SCHEMA,
   RELEASE_RECORD_SCHEMA,
-} from '../../dist/process-modules/modules/delivery/delivery-schemas.js';
+} from '../../dist/modules/delivery/domain/delivery-schemas.js';
 import { validateProcessModuleManifest } from '../../dist/process-modules/domain/spi/module-manifest.js';
 import { validateNodeProtocolDefinition } from '../../dist/process-modules/domain/spi/node-protocol.js';
 import { RESOURCE_KINDS } from '../../dist/process-modules/domain/spi/resource-index.js';

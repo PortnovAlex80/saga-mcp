@@ -54,7 +54,7 @@ import type {
   ManagedArtifactProductionRecord,
   ManagedProductionLedger,
   ManagedTraceProductionRecord,
-} from '../../../process-modules/modules/formalization/formalization-kernel-ports.js';
+} from '../domain/formalization-kernel-ports.js';
 
 // ---------------------------------------------------------------------------
 // Brief provisioning adapter.

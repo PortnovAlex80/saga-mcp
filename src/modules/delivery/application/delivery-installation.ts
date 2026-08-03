@@ -1,37 +1,37 @@
-import type { ProcessModuleDefinition } from '../../domain/process-module.js';
+import type { ProcessModuleDefinition } from '../../../process-modules/domain/process-module.js';
 import type {
   ProcessModuleOutputEnvelope,
   ProductRef,
-} from '../../domain/spi/production-envelope.js';
+} from '../../../process-modules/domain/spi/production-envelope.js';
 import type {
   ModuleCompletion,
-} from '../../domain/spi/module-completion.js';
+} from '../../../process-modules/domain/spi/module-completion.js';
 import type {
   HumanInteractionAdapter,
   HumanInteractionContext,
-} from '../../application/human-interaction-registry.js';
+} from '../../../process-modules/application/human-interaction-registry.js';
 import type {
   KernelHandler,
   KernelHandlerContext,
   KernelHandlerResult,
-} from '../../application/kernel-handler-registry.js';
-import type { NodeExecutionResult } from '../../application/node-executor.js';
+} from '../../../process-modules/application/kernel-handler-registry.js';
+import type { NodeExecutionResult } from '../../../process-modules/application/node-executor.js';
 import type {
   ProcessOutputPayloadResolver,
-} from '../../application/lifecycle-orchestrator.js';
+} from '../../../process-modules/application/lifecycle-orchestrator.js';
 import type {
   ProcessModuleExecutionContext,
-} from '../../application/process-module-executor.js';
-import type { ProcessModuleOutput } from '../../persistence/process-run.js';
-import { sha256Hex } from '../../shared/canonical-json.js';
+} from '../../../process-modules/application/process-module-executor.js';
+import type { ProcessModuleOutput } from '../../../process-modules/persistence/process-run.js';
+import { sha256Hex } from '../../../shared/canonical-json.js';
 import {
   DELIVERY_HUMAN_ADAPTER_IDS,
   DELIVERY_KERNEL_HANDLER_IDS,
   type DeliveryModuleInstallationDependencies,
   type DeliveryOutputRecord,
   type DeliveryOutputRepository,
-} from './delivery-kernel-ports.js';
-import { DELIVERY_PROCESS_MODULE_REF } from './delivery-process-module.js';
+} from '../domain/delivery-kernel-ports.js';
+import { DELIVERY_PROCESS_MODULE_REF } from '../../../process-modules/modules/delivery/delivery-process-module.js';
 import {
   DELIVERY_APPROVAL_SCHEMA,
   DELIVERY_CERTIFICATE_SCHEMA,
@@ -48,7 +48,7 @@ import {
   type DeliveryPublicationSnapshot,
   type DeliveryReleaseCase,
   type DeliverySettlementInput,
-} from './delivery-schemas.js';
+} from '../domain/delivery-schemas.js';
 import {
   buildDeliveryCertificatePayload,
   deliveryActionKey,
@@ -58,7 +58,7 @@ import {
   hashDeliveryPublication,
   hashReleaseRecord,
   type DeliverySettlementResult,
-} from './delivery-settlement-policy.js';
+} from '../domain/delivery-settlement-policy.js';
 
 export const DELIVERY_NODE_IDS = {
   preflight: 'preflight-release',

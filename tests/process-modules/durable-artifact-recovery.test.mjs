@@ -38,7 +38,7 @@ const {
   createFormalizationKernelHandlers,
   FORMALIZATION_HANDLER_IDS,
 } = await import(
-  '../../dist/process-modules/modules/formalization/formalization-installation.js'
+  '../../dist/modules/formalization/application/formalization-installation.js'
 );
 
 // ---------------------------------------------------------------------------

@@ -16,19 +16,19 @@ const {
 const {
   DELIVERY_RELEASE_CASE_SCHEMA,
 } = await import(
-  '../../dist/process-modules/modules/delivery/delivery-schemas.js'
+  '../../dist/modules/delivery/domain/delivery-schemas.js'
 );
 const {
   hashDeliveryReleasePolicy,
 } = await import(
-  '../../dist/process-modules/modules/delivery/delivery-settlement-policy.js'
+  '../../dist/modules/delivery/domain/delivery-settlement-policy.js'
 );
 const {
   DEVELOPMENT_CERTIFICATE_SCHEMA,
   INTEGRATED_CANDIDATE_SCHEMA,
   VERIFIED_INTEGRATION_BUNDLE_SCHEMA,
 } = await import(
-  '../../dist/process-modules/modules/development/development-schemas.js'
+  '../../dist/modules/development/domain/development-schemas.js'
 );
 const { sha256Hex } = await import(
   '../../dist/process-modules/shared/canonical-json.js'

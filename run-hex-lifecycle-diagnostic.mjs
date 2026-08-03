@@ -22,10 +22,10 @@ const { assertProductDeliveryLifecycleInput } = await import(
   './dist/process-modules/lifecycles/product-delivery-lifecycle.js'
 );
 const { hashDevelopmentPolicy } = await import(
-  './dist/process-modules/modules/development/development-settlement-policy.js'
+  './dist/modules/development/domain/development-settlement-policy.js'
 );
 const { hashDeliveryReleasePolicy } = await import(
-  './dist/process-modules/modules/delivery/delivery-settlement-policy.js'
+  './dist/modules/delivery/domain/delivery-settlement-policy.js'
 );
 
 console.log('=== HEX LIFECYCLE DIAGNOSTIC ===\n');

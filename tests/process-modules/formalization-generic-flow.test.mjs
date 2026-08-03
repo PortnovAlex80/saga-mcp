@@ -8,7 +8,7 @@ const {
   FORMALIZATION_HANDLER_IDS,
   FORMALIZATION_MODULE_KEY,
 } = await import(
-  '../../dist/process-modules/modules/formalization/formalization-installation.js'
+  '../../dist/modules/formalization/application/formalization-installation.js'
 );
 const { formalizationProcessModule } = await import(
   '../../dist/process-modules/modules/formalization/formalization-process-module.js'

@@ -42,11 +42,11 @@ import {
   FORMALIZATION_MODULE_KEY,
 } from '../../dist/process-modules/modules/formalization/package/index.js';
 import { formalizationProcessModule } from '../../dist/process-modules/modules/formalization/formalization-process-module.js';
-import { FORMALIZATION_HANDLER_IDS } from '../../dist/process-modules/modules/formalization/formalization-installation.js';
+import { FORMALIZATION_HANDLER_IDS } from '../../dist/modules/formalization/application/formalization-installation.js';
 import {
   FORMALIZATION_CASE_SCHEMA,
   SOLUTION_CONTRACT_CERTIFICATE_SCHEMA,
-} from '../../dist/process-modules/modules/formalization/formalization-schemas.js';
+} from '../../dist/modules/formalization/domain/formalization-schemas.js';
 import { validateProcessModuleManifest } from '../../dist/process-modules/domain/spi/module-manifest.js';
 import { RESOURCE_KINDS } from '../../dist/process-modules/domain/spi/resource-index.js';
 import { canonicalJson, sha256Hex } from '../../dist/process-modules/shared/canonical-json.js';

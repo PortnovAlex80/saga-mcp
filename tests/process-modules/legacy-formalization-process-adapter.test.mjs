@@ -34,12 +34,12 @@ const {
   LegacyFormalizationProcessAdapter,
   hashFormalizationCase,
 } = await import(
-  '../../dist/process-modules/modules/formalization/legacy-formalization-process-adapter.js'
+  '../../dist/modules/formalization/application/legacy-formalization-process-adapter.js'
 );
 const {
   FORMALIZATION_CASE_SCHEMA,
 } = await import(
-  '../../dist/process-modules/modules/formalization/formalization-schemas.js'
+  '../../dist/modules/formalization/domain/formalization-schemas.js'
 );
 const { validateProcessModuleRunResult } = await import(
   '../../dist/process-modules/application/validate-process-module-run-result.js'

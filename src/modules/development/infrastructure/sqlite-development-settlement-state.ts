@@ -36,7 +36,7 @@ import type {
   GitPort,
   MachinePort,
   ProcessProductRepositoryPort,
-} from '../../../process-modules/modules/development/development-kernel-ports.js';
+} from '../domain/development-kernel-ports.js';
 import {
   ACCEPTANCE_VERIFICATION_SCHEMA,
   DEVELOPMENT_IMPLEMENTATION_WORKSET_SCHEMA,
@@ -55,12 +55,12 @@ import {
   type ImplementationWorkItemResult,
   type IntegratedReleaseCandidate,
   type VerificationProviderBinding,
-} from '../../../process-modules/modules/development/development-schemas.js';
+} from '../domain/development-schemas.js';
 import {
   hashAcceptanceVerification,
   hashImplementationWorkset,
   hashIntegratedCandidate,
-} from '../../../process-modules/modules/development/development-settlement-policy.js';
+} from '../domain/development-settlement-policy.js';
 
 const PROCESS_PRODUCT_KIND_TASK_GRAPH = 'development.task-graph';
 

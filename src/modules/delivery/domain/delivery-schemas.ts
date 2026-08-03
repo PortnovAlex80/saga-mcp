@@ -13,11 +13,11 @@
 export {
   DELIVERY_RELEASE_CASE_SCHEMA,
   DELIVERY_DEFERRED_PROFILE_SCHEMA,
-} from '../../lifecycles/product-delivery-module-contracts.js';
+} from '../../../process-modules/lifecycles/product-delivery-module-contracts.js';
 import {
   DELIVERY_RELEASE_CASE_SCHEMA,
   DELIVERY_DEFERRED_PROFILE_SCHEMA,
-} from '../../lifecycles/product-delivery-module-contracts.js';
+} from '../../../process-modules/lifecycles/product-delivery-module-contracts.js';
 export const DELIVERY_PREFLIGHT_SCHEMA = 'saga3.delivery-preflight.v1';
 export const DELIVERY_APPROVAL_SCHEMA = 'saga3.delivery-approval-decision.v1';
 export const DELIVERY_PUBLICATION_SCHEMA = 'saga3.delivery-publication.v1';

@@ -34,36 +34,36 @@ import { createHash } from 'node:crypto';
 // re-exported by the process-modules shared layer, so this module no longer
 // reaches into src/saga3/shared/**. Both resolve to the same byte-identical
 // implementation.
-import { canonicalJson } from '../../shared/canonical-json.js';
-import { processModuleKey } from '../../domain/process-module.js';
-import type { ProcessRunRepository } from '../../persistence/process-run-repository.js';
-import type { ProcessRunStatus } from '../../persistence/process-run.js';
+import { canonicalJson } from '../../../process-modules/shared/canonical-json.js';
+import { processModuleKey } from '../../../process-modules/domain/process-module.js';
+import type { ProcessRunRepository } from '../../../process-modules/persistence/process-run-repository.js';
+import type { ProcessRunStatus } from '../../../process-modules/persistence/process-run.js';
 import type {
   ProcessModuleExecutionContext,
   ProcessModuleExecutor,
   ProcessModuleRunResult,
-} from '../../application/process-module-executor.js';
+} from '../../../process-modules/application/process-module-executor.js';
 import {
   type ProcessModuleCertificateRef,
   type ProcessModuleOutput,
-} from '../../persistence/process-run.js';
+} from '../../../process-modules/persistence/process-run.js';
 import type {
   ProcessOutcomeCertificateRepository,
-} from '../../persistence/process-outcome-certificate-repository.js';
+} from '../../../process-modules/persistence/process-outcome-certificate-repository.js';
 import {
   type FormalizationArtifactGraphPort,
   type FormalizationSettlementPolicyPort,
   buildFormalizationCertificatePayload,
-} from './formalization-kernel-ports.js';
+} from '../domain/formalization-kernel-ports.js';
 import {
   FORMALIZATION_CASE_SCHEMA,
   FORMALIZATION_CERTIFICATE_SCHEMA_VERSION,
   type FormalizationCase,
   type FormalizationSettlementInput,
   type SolutionContractBundle,
-} from './formalization-schemas.js';
-import { FORMALIZATION_PROCESS_MODULE_REF } from './formalization-schemas.js';
-import { assertTransitionAllowed } from '../../persistence/process-run-repository.js';
+} from '../domain/formalization-schemas.js';
+import { FORMALIZATION_PROCESS_MODULE_REF } from '../domain/formalization-schemas.js';
+import { assertTransitionAllowed } from '../../../process-modules/persistence/process-run-repository.js';
 
 export interface LegacyFormalizationProcessAdapterOptions {
   /** Graph port — reads accepted artifacts + baseline + traces. */

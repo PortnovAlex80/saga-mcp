@@ -7,7 +7,7 @@
  * authoritative observation proves the desired state already exists.
  */
 
-import { sha256Hex } from '../../shared/canonical-json.js';
+import { sha256Hex } from '../../../shared/canonical-json.js';
 import {
   DELIVERY_APPROVAL_SCHEMA,
   DELIVERY_DEFERRED_PROFILE_SCHEMA,

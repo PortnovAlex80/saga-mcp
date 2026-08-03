@@ -80,12 +80,12 @@ const {
 const {
   buildFormalizationCertificatePayload,
 } = await import(
-  '../../dist/process-modules/modules/formalization/formalization-kernel-ports.js'
+  '../../dist/modules/formalization/domain/formalization-kernel-ports.js'
 );
 const {
   FORMALIZATION_SETTLEMENT_INPUT_SCHEMA,
 } = await import(
-  '../../dist/process-modules/modules/formalization/formalization-schemas.js'
+  '../../dist/modules/formalization/domain/formalization-schemas.js'
 );
 const { canonicalJson } = await import(
   '../../dist/process-modules/shared/canonical-json.js'
@@ -577,7 +577,7 @@ test('W8-A8 settlement: adapter drives run to completed + issues a write-once ce
     '../../dist/process-modules/persistence/sqlite-process-outcome-certificate-repository.js'
   );
   const { LegacyFormalizationProcessAdapter } = await import(
-    '../../dist/process-modules/modules/formalization/legacy-formalization-process-adapter.js'
+    '../../dist/modules/formalization/application/legacy-formalization-process-adapter.js'
   );
 
   const temp = mkdtempSync(path.join(os.tmpdir(), 'saga3-w8a8-settlement-'));

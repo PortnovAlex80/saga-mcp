@@ -102,19 +102,19 @@ export const ARCHITECTURE_RESOURCE_ENTRIES: readonly ResourceIndexEntry[] = Obje
   // ---- Schema contract references ----
   {
     logicalId: ARCHITECTURE_RESOURCE_IDS.srsSchema,
-    path: 'src/process-modules/modules/formalization/formalization-schemas.ts',
+    path: 'src/modules/formalization/domain/formalization-schemas.ts',
     kind: 'schema',
     digest: 'pending@wave-2',
   },
   {
     logicalId: ARCHITECTURE_RESOURCE_IDS.architectureBundleSchema,
-    path: 'src/process-modules/modules/formalization/formalization-schemas.ts',
+    path: 'src/modules/formalization/domain/formalization-schemas.ts',
     kind: 'schema',
     digest: 'pending@wave-2',
   },
   {
     logicalId: ARCHITECTURE_RESOURCE_IDS.workIntentSchema,
-    path: 'src/process-modules/modules/formalization/formalization-schemas.ts',
+    path: 'src/modules/formalization/domain/formalization-schemas.ts',
     kind: 'schema',
     digest: 'pending@wave-2',
   },

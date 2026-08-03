@@ -24,7 +24,7 @@ import type {
 } from './delivery-settlement-policy.js';
 import type {
   ProcessOutcomeCertificateRepository,
-} from '../../persistence/process-outcome-certificate-repository.js';
+} from '../../../process-modules/persistence/process-outcome-certificate-repository.js';
 
 export const DELIVERY_KERNEL_HANDLER_IDS = {
   preflight: 'delivery-preflight-policy',

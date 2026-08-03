@@ -5,7 +5,7 @@ import {
   buildDevelopmentTaskGraphSubmitCallFromCase,
   isReusableDevelopmentTaskGraphCall,
   prepareDevelopmentWorkspaceTemplate,
-} from '../../dist/process-modules/modules/development/development-workspace-preparation.js';
+} from '../../dist/modules/development/application/development-workspace-preparation.js';
 
 const developmentCase = {
   schemaVersion: 'saga3.development-case.v1',

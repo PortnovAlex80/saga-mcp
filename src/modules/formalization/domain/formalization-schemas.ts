@@ -34,8 +34,8 @@
 // FORMALIZATION_PROCESS_MODULE_REF removal (now canonical in contracts).
 export {
   FORMALIZATION_CASE_SCHEMA,
-} from '../../lifecycles/product-delivery-module-contracts.js';
-import { FORMALIZATION_CASE_SCHEMA } from '../../lifecycles/product-delivery-module-contracts.js';
+} from '../../../process-modules/lifecycles/product-delivery-module-contracts.js';
+import { FORMALIZATION_CASE_SCHEMA } from '../../../process-modules/lifecycles/product-delivery-module-contracts.js';
 export const SOLUTION_CONTRACT_CERTIFICATE_SCHEMA = 'saga3.solution-contract-certificate.v1';
 export const FORMALIZATION_SETTLEMENT_INPUT_SCHEMA = 'saga3.formalization-settlement-input.v1';
 export const FORMALIZATION_PRODUCT_BUNDLE_SCHEMA = 'saga3.formalization-product-bundle.v1';
@@ -181,4 +181,4 @@ export interface FormalizationCertificatePayload {
 // CONVEYOR Wave 7: FORMALIZATION_PROCESS_MODULE_REF was duplicated here. It now
 // has one canonical home in the lifecycle contracts module; this file re-exports
 // it so existing SPI consumers keep a single import surface.
-export { FORMALIZATION_PROCESS_MODULE_REF } from '../../lifecycles/product-delivery-module-contracts.js';
+export { FORMALIZATION_PROCESS_MODULE_REF } from '../../../process-modules/lifecycles/product-delivery-module-contracts.js';

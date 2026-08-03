@@ -3,7 +3,7 @@ import type Database from 'better-sqlite3';
 // repository and external-effect ledger are INJECTED by the composition root
 // (see src/infrastructure/process-modules/delivery-ports.ts). This module
 // imports no getDb, no Sqlite* concrete adapter.
-import { sha256Hex } from '../../../process-modules/shared/canonical-json.js';
+import { sha256Hex } from '../../../shared/canonical-json.js';
 import type {
   DeliveryApprovalPort,
   DeliveryExternalEffectActionRecord,
@@ -13,7 +13,7 @@ import type {
   DeliveryProcessProductRepositoryPort,
   DeliveryPublicationPort,
   DeliverySettlementStatePort,
-} from '../../../process-modules/modules/delivery/delivery-kernel-ports.js';
+} from '../domain/delivery-kernel-ports.js';
 import {
   DELIVERY_PROCESS_MODULE_REF,
 } from '../../../process-modules/modules/delivery/delivery-process-module.js';
@@ -22,7 +22,7 @@ import type {
   DeliveryActionObservationResult,
   DeliveryProviderIdentity,
   DeliveryRuntimeProviders,
-} from '../../../process-modules/modules/delivery/delivery-provider-ports.js';
+} from '../domain/delivery-provider-ports.js';
 import {
   DELIVERY_APPROVAL_SCHEMA,
   DELIVERY_OBSERVATION_SCHEMA,
@@ -43,14 +43,14 @@ import {
   type DeliveryReleaseCase,
   type DeliverySettlementInput,
   type ReleaseActionDefinition,
-} from '../../../process-modules/modules/delivery/delivery-schemas.js';
+} from '../domain/delivery-schemas.js';
 import {
   deliveryActionKey,
   hashDeliveryApproval,
   hashDeliveryObservation,
   hashDeliveryPreflight,
   hashDeliveryPublication,
-} from '../../../process-modules/modules/delivery/delivery-settlement-policy.js';
+} from '../domain/delivery-settlement-policy.js';
 
 const PRODUCT_KINDS = {
   preflight: 'delivery.preflight',

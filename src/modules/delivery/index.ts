@@ -26,12 +26,12 @@ import {
 import {
   ReferenceDeliveryPreflightPolicy,
   ReferenceDeliverySettlementPolicy,
-} from '../../process-modules/modules/delivery/delivery-settlement-policy.js';
+} from './domain/delivery-settlement-policy.js';
 import {
   createDeliveryHumanInteractions,
   createDeliveryKernelHandlers,
   createDeliveryOutputResolver,
-} from '../../process-modules/modules/delivery/delivery-installation.js';
+} from './application/delivery-installation.js';
 import { deliveryProcessModule } from '../../process-modules/modules/delivery/delivery-process-module.js';
 import type {
   DeliveryApprovalPort,
@@ -41,11 +41,11 @@ import type {
   DeliverySettlementStatePort,
   DeliveryModuleInstallationDependencies,
   DeliveryOutputRepository,
-} from '../../process-modules/modules/delivery/delivery-kernel-ports.js';
+} from './domain/delivery-kernel-ports.js';
 import type {
   DeliveryApprovalSource,
   DeliveryRuntimeProviders,
-} from '../../process-modules/modules/delivery/delivery-provider-ports.js';
+} from './domain/delivery-provider-ports.js';
 import type {
   ModuleRegistries,
   ModuleSharedDeps,

@@ -1,39 +1,39 @@
-import type { ProcessModuleDefinition } from '../../domain/process-module.js';
-import { processModuleKey } from '../../domain/process-module.js';
+import type { ProcessModuleDefinition } from '../../../process-modules/domain/process-module.js';
+import { processModuleKey } from '../../../process-modules/domain/process-module.js';
 import type {
   KernelHandler,
   KernelHandlerContext,
   KernelHandlerResult,
-} from '../../application/kernel-handler-registry.js';
-import { withKernelRecoveryIssue } from '../../application/kernel-recovery-issue.js';
+} from '../../../process-modules/application/kernel-handler-registry.js';
+import { withKernelRecoveryIssue } from '../../../process-modules/application/kernel-recovery-issue.js';
 import type {
   NodeExecutionReceipt,
   NodeExecutionResult,
-} from '../../application/node-executor.js';
+} from '../../../process-modules/application/node-executor.js';
 import type {
   ProcessOutputPayloadResolver,
-} from '../../application/lifecycle-orchestrator.js';
+} from '../../../process-modules/application/lifecycle-orchestrator.js';
 import type {
   ProcessModuleExecutionContext,
-} from '../../application/process-module-executor.js';
-import type { ProcessModuleOutput } from '../../persistence/process-run.js';
+} from '../../../process-modules/application/process-module-executor.js';
+import type { ProcessModuleOutput } from '../../../process-modules/persistence/process-run.js';
 import type {
   IssueProcessOutcomeCertificateCommand,
-} from '../../persistence/process-outcome-certificate.js';
-import { sha256Hex } from '../../shared/canonical-json.js';
+} from '../../../process-modules/persistence/process-outcome-certificate.js';
+import { sha256Hex } from '../../../process-modules/shared/canonical-json.js';
 import type {
   ModuleCompletion,
-} from '../../domain/spi/module-completion.js';
+} from '../../../process-modules/domain/spi/module-completion.js';
 import type {
   ProcessModuleOutputEnvelope,
   ProductRef,
-} from '../../domain/spi/production-envelope.js';
+} from '../../../process-modules/domain/spi/production-envelope.js';
 import {
   DEVELOPMENT_KERNEL_HANDLER_IDS,
   type DevelopmentModuleInstallationDependencies,
   type DevelopmentOutputRecord,
   type DevelopmentOutputRepository,
-} from './development-kernel-ports.js';
+} from '../domain/development-kernel-ports.js';
 import {
   DEVELOPMENT_CERTIFICATE_SCHEMA,
   DEVELOPMENT_TASK_GRAPH_PROPOSAL_SCHEMA,
@@ -42,18 +42,18 @@ import {
   type ContentAddressedReference,
   type DevelopmentCase,
   type DevelopmentSettlementInput,
-} from './development-schemas.js';
+} from '../domain/development-schemas.js';
 import {
   buildDevelopmentCertificatePayload,
   hashDevelopmentTaskGraph,
   hashVerifiedIntegrationBundle,
   type DevelopmentSettlementResult,
-} from './development-settlement-policy.js';
-import { DEVELOPMENT_PROCESS_MODULE_REF } from './development-process-module.js';
+} from '../domain/development-settlement-policy.js';
+import { DEVELOPMENT_PROCESS_MODULE_REF } from '../../../process-modules/modules/development/development-process-module.js';
 import {
   buildCanonicalDevelopmentTaskGraph,
   decodeDevelopmentTaskGraphProposal,
-} from './development-task-graph.js';
+} from '../domain/development-task-graph.js';
 
 export const DEVELOPMENT_NODE_IDS = {
   planner: 'plan-task-graph',

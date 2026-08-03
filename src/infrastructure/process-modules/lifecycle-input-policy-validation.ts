@@ -11,8 +11,8 @@ import type { LifecycleInputPolicyValidationPort } from '../../process-modules/l
 import {
   hashDeliveryReleasePolicy,
   hashDeliveryDeferredProfile,
-} from '../../process-modules/modules/delivery/delivery-settlement-policy.js';
-import { hashDevelopmentPolicy } from '../../process-modules/modules/development/development-settlement-policy.js';
+} from '../../modules/delivery/domain/delivery-settlement-policy.js';
+import { hashDevelopmentPolicy } from '../../modules/development/domain/development-settlement-policy.js';
 
 export const lifecycleInputPolicyValidation: LifecycleInputPolicyValidationPort = {
   hashDevelopmentPolicy: (policy: unknown) =>

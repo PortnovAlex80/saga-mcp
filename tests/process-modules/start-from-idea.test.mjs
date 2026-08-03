@@ -33,7 +33,7 @@ const { deliveryProcessModule } = await import(
   '../../dist/process-modules/modules/delivery/delivery-process-module.js'
 );
 const { DELIVERY_CERTIFICATE_SCHEMA } = await import(
-  '../../dist/process-modules/modules/delivery/delivery-schemas.js'
+  '../../dist/modules/delivery/domain/delivery-schemas.js'
 );
 const {
   assertProductDeliveryLifecycleInput,

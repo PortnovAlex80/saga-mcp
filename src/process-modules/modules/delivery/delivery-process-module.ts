@@ -6,7 +6,7 @@ import { DELIVERY_PROCESS_MODULE_REF } from '../../lifecycles/product-delivery-m
 import {
   DELIVERY_HUMAN_ADAPTER_IDS,
   DELIVERY_KERNEL_HANDLER_IDS,
-} from './delivery-kernel-ports.js';
+} from '../../../modules/delivery/domain/delivery-kernel-ports.js';
 import {
   DELIVERY_APPROVAL_SCHEMA,
   DELIVERY_CERTIFICATE_SCHEMA,
@@ -15,7 +15,7 @@ import {
   DELIVERY_PUBLICATION_SCHEMA,
   DELIVERY_RELEASE_CASE_SCHEMA,
   RELEASE_RECORD_SCHEMA,
-} from './delivery-schemas.js';
+} from '../../../modules/delivery/domain/delivery-schemas.js';
 
 export { DELIVERY_PROCESS_MODULE_REF };
 

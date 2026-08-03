@@ -12,12 +12,12 @@ const { ReferenceFormalizationSettlementPolicy } = await import(
   '../../dist/modules/formalization/infrastructure/sqlite-formalization-kernel.js'
 );
 const { buildFormalizationCertificatePayload } = await import(
-  '../../dist/process-modules/modules/formalization/formalization-kernel-ports.js'
+  '../../dist/modules/formalization/domain/formalization-kernel-ports.js'
 );
 const {
   FORMALIZATION_SETTLEMENT_INPUT_SCHEMA,
 } = await import(
-  '../../dist/process-modules/modules/formalization/formalization-schemas.js'
+  '../../dist/modules/formalization/domain/formalization-schemas.js'
 );
 const { canonicalJson } = await import(
   '../../dist/process-modules/shared/canonical-json.js'

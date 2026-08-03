@@ -49,11 +49,11 @@ import type { ContractRef } from '../../../domain/spi/contract-ref.js';
 import { CONTRACT_REF_PENDING_DIGEST } from '../../../domain/spi/contract-ref.js';
 import { developmentProcessModule } from '../development-process-module.js';
 import { DEVELOPMENT_AGENT_ASSISTANCE } from './assistance.js';
-import { DEVELOPMENT_KERNEL_HANDLER_IDS } from '../development-kernel-ports.js';
+import { DEVELOPMENT_KERNEL_HANDLER_IDS } from '../../../../modules/development/domain/development-kernel-ports.js';
 import {
   DEVELOPMENT_CASE_SCHEMA,
   VERIFIED_INTEGRATION_BUNDLE_SCHEMA,
-} from '../development-schemas.js';
+} from '../../../../modules/development/domain/development-schemas.js';
 
 // ---------------------------------------------------------------------------
 // Manifest format + runtime identity.

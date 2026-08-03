@@ -1,13 +1,13 @@
 import type Database from 'better-sqlite3';
 // CONVEYOR Wave 7 — Isolate modules behind ports: the db handle is injected by
 // the composition root / tools adapter. This module imports no getDb / db.ts.
-import { canonicalJson, sha256Hex } from '../../../process-modules/shared/canonical-json.js';
+import { canonicalJson, sha256Hex } from '../../../shared/canonical-json.js';
 import type {
   DeliveryApprovalSource,
   DeliveryApprovalSourceResult,
   DeliveryProviderIdentity,
-} from '../../../process-modules/modules/delivery/delivery-provider-ports.js';
-import type { AuthorizedDeliveryReleaseCase } from '../../../process-modules/modules/delivery/delivery-schemas.js';
+} from '../domain/delivery-provider-ports.js';
+import type { AuthorizedDeliveryReleaseCase } from '../domain/delivery-schemas.js';
 
 export const DELIVERY_APPROVAL_RECORD_SCHEMA =
   'saga3.delivery-approval-record.v1';

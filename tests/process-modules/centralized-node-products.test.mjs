@@ -20,10 +20,10 @@ const {
   createDevelopmentKernelHandlers,
   DEVELOPMENT_NODE_IDS,
 } = await import(
-  '../../dist/process-modules/modules/development/development-installation.js'
+  '../../dist/modules/development/application/development-installation.js'
 );
 const { DEVELOPMENT_TASK_GRAPH_PROPOSAL_SCHEMA } = await import(
-  '../../dist/process-modules/modules/development/development-schemas.js'
+  '../../dist/modules/development/domain/development-schemas.js'
 );
 const { sha256Hex } = await import(
   '../../dist/process-modules/shared/canonical-json.js'

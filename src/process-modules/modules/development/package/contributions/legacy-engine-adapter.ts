@@ -72,11 +72,11 @@ import type {
 import {
   createDevelopmentKernelHandlers,
   DEVELOPMENT_NODE_IDS,
-} from '../../development-installation.js';
+} from '../../../../../modules/development/application/development-installation.js';
 import {
   DEVELOPMENT_KERNEL_HANDLER_IDS,
   type DevelopmentModuleInstallationDependencies,
-} from '../../development-kernel-ports.js';
+} from '../../../../../modules/development/domain/development-kernel-ports.js';
 
 // ---------------------------------------------------------------------------
 // Candidate observation port — the settlement-time immutability re-check.

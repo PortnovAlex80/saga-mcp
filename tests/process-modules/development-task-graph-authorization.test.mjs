@@ -5,12 +5,12 @@ const {
   createDevelopmentKernelHandlers,
   DEVELOPMENT_NODE_IDS,
 } = await import(
-  '../../dist/process-modules/modules/development/development-installation.js'
+  '../../dist/modules/development/application/development-installation.js'
 );
 const {
   DEVELOPMENT_KERNEL_HANDLER_IDS,
 } = await import(
-  '../../dist/process-modules/modules/development/development-kernel-ports.js'
+  '../../dist/modules/development/domain/development-kernel-ports.js'
 );
 const {
   developmentProcessModule,
@@ -22,13 +22,13 @@ const {
   DEVELOPMENT_TASK_GRAPH_PROPOSAL_SCHEMA,
   DEVELOPMENT_TASK_GRAPH_SCHEMA,
 } = await import(
-  '../../dist/process-modules/modules/development/development-schemas.js'
+  '../../dist/modules/development/domain/development-schemas.js'
 );
 const {
   ReferenceDevelopmentTaskGraphPolicy,
   hashDevelopmentPolicy,
 } = await import(
-  '../../dist/process-modules/modules/development/development-settlement-policy.js'
+  '../../dist/modules/development/domain/development-settlement-policy.js'
 );
 const { sha256Hex } = await import(
   '../../dist/process-modules/shared/canonical-json.js'

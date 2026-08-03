@@ -225,7 +225,7 @@ test('fixture incomplete-provenance: provenance keys are best-effort nullable me
 
 test('fixture execution-scoped-read: process-run fallback exists (commit 9229f14)', () => {
   const f = manifests.find(m => m.data.id === 'execution-scoped-read');
-  const formalization = readSrc('src/process-modules/modules/formalization/formalization-installation.ts');
+  const formalization = readSrc('src/modules/formalization/application/formalization-installation.ts');
   // The fallback method added by commit 9229f14.
   assert.ok(
     formalization.includes('listArtifactsForNodeInProcessRun'),

@@ -3,12 +3,12 @@ import { canonicalJson, sha256Hex } from '../../../process-modules/shared/canoni
 import {
   type DevelopmentOutputRecord,
   type DevelopmentOutputRepository,
-} from '../../../process-modules/modules/development/development-kernel-ports.js';
+} from '../domain/development-kernel-ports.js';
 import { DEVELOPMENT_PROCESS_MODULE_REF } from '../../../process-modules/modules/development/development-process-module.js';
 import {
   VERIFIED_INTEGRATION_BUNDLE_SCHEMA,
   type VerifiedIntegrationBundle,
-} from '../../../process-modules/modules/development/development-schemas.js';
+} from '../domain/development-schemas.js';
 
 // CONVEYOR Wave 7 hex extraction: the parent `saga3_process_runs` table is
 // ensured by the composition root (which constructs SqliteProcessRunRepository

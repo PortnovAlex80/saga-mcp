@@ -37,7 +37,7 @@ import {
 import { getDb } from '../db.js';
 import {
   prepareDevelopmentWorkspaceTemplate,
-} from '../process-modules/modules/development/development-workspace-preparation.js';
+} from '../modules/development/application/development-workspace-preparation.js';
 import {
   createProductLifecycleRuntime,
   type ProductLifecycleRuntimeOptions,

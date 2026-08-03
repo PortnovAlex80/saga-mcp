@@ -39,7 +39,7 @@ const {
   LegacyFormalizationProcessAdapter,
   hashFormalizationCase,
 } = await import(
-  '../../dist/process-modules/modules/formalization/legacy-formalization-process-adapter.js'
+  '../../dist/modules/formalization/application/legacy-formalization-process-adapter.js'
 );
 const { ReferenceFormalizationSettlementPolicy, SqliteFormalizationArtifactGraph } = await import(
   '../../dist/modules/formalization/infrastructure/sqlite-formalization-kernel.js'
@@ -48,7 +48,7 @@ const {
   FORMALIZATION_CASE_SCHEMA,
   FORMALIZATION_PROCESS_MODULE_REF,
 } = await import(
-  '../../dist/process-modules/modules/formalization/formalization-schemas.js'
+  '../../dist/modules/formalization/domain/formalization-schemas.js'
 );
 
 const PROJECT_ID = 1;

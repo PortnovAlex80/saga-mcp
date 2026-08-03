@@ -9,7 +9,7 @@
 
 import { spawnSync } from 'node:child_process';
 import os from 'node:os';
-import type { GitPort, MachinePort } from '../../process-modules/modules/development/development-kernel-ports.js';
+import type { GitPort, MachinePort } from '../../modules/development/domain/development-kernel-ports.js';
 
 /** A read-only git client backed by `git -C <repoPath>` shell-outs. */
 export function createGitPort(): GitPort {

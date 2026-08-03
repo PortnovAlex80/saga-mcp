@@ -52,7 +52,7 @@ import {
   FORMALIZATION_HANDLER_IDS,
   createFormalizationKernelHandlers,
   type FormalizationInstallationDeps,
-} from '../../formalization-installation.js';
+} from '../../../../../modules/formalization/application/formalization-installation.js';
 import type {
   FormalizationBriefProvisioningContext,
   FormalizationBriefProvisioningOutcome,

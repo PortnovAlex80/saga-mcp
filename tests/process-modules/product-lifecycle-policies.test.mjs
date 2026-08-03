@@ -2,21 +2,21 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 const developmentSchemas = await import(
-  '../../dist/process-modules/modules/development/development-schemas.js'
+  '../../dist/modules/development/domain/development-schemas.js'
 );
 const developmentPolicy = await import(
-  '../../dist/process-modules/modules/development/development-settlement-policy.js'
+  '../../dist/modules/development/domain/development-settlement-policy.js'
 );
 const {
   buildCanonicalDevelopmentTaskGraph,
 } = await import(
-  '../../dist/process-modules/modules/development/development-task-graph.js'
+  '../../dist/modules/development/domain/development-task-graph.js'
 );
 const deliverySchemas = await import(
-  '../../dist/process-modules/modules/delivery/delivery-schemas.js'
+  '../../dist/modules/delivery/domain/delivery-schemas.js'
 );
 const deliveryPolicy = await import(
-  '../../dist/process-modules/modules/delivery/delivery-settlement-policy.js'
+  '../../dist/modules/delivery/domain/delivery-settlement-policy.js'
 );
 
 function ref(schema, name, hash) {

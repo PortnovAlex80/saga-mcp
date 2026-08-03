@@ -11,7 +11,7 @@ import {
 import type {
   DevelopmentCase,
   DevelopmentRepositoryBinding,
-} from '../process-modules/modules/development/development-schemas.js';
+} from '../modules/development/domain/development-schemas.js';
 
 interface RepositoryRow {
   id: number;

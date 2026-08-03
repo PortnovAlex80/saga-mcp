@@ -20,13 +20,13 @@ import {
   type ProductDeliveryRepositoryBinding,
 } from '../process-modules/lifecycles/product-delivery-lifecycle.js';
 import { lifecycleInputPolicyValidation } from '../infrastructure/process-modules/lifecycle-input-policy-validation.js';
-import type { DevelopmentPolicySnapshot } from '../process-modules/modules/development/development-schemas.js';
-import { hashDevelopmentPolicy } from '../process-modules/modules/development/development-settlement-policy.js';
+import type { DevelopmentPolicySnapshot } from '../modules/development/domain/development-schemas.js';
+import { hashDevelopmentPolicy } from '../modules/development/domain/development-settlement-policy.js';
 import {
   DELIVERY_DEFERRED_PROFILE_SCHEMA,
   type DeliveryDeferredProfile,
-} from '../process-modules/modules/delivery/delivery-schemas.js';
-import { hashDeliveryDeferredProfile } from '../process-modules/modules/delivery/delivery-settlement-policy.js';
+} from '../modules/delivery/domain/delivery-schemas.js';
+import { hashDeliveryDeferredProfile } from '../modules/delivery/domain/delivery-settlement-policy.js';
 
 /**
  * Build a deterministic deferred Delivery profile. It carries no release

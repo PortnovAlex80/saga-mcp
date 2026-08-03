@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 // CONVEYOR Wave 7 — Isolate modules behind ports: the brief-provisioning
 // substrate touch is delegated to an injected BriefProvisioningPort (wired by
 // the composition root), so this module imports no getDb / db.ts.
-import type { ProcessModuleDefinition } from '../../domain/process-module.js';
+import type { ProcessModuleDefinition } from '../../../process-modules/domain/process-module.js';
 // Wave 4 (Uncle Bob): the formalization settlement kernel now issues its own
 // ProcessOutcomeCertificate and emits an explicit ModuleCompletion whose
 // outputEnvelope.certificateRef points at the issued row. This replaces the
@@ -13,40 +13,40 @@ import type { ProcessModuleDefinition } from '../../domain/process-module.js';
 // that branch.
 import type {
   ModuleCompletion,
-} from '../../domain/spi/module-completion.js';
+} from '../../../process-modules/domain/spi/module-completion.js';
 import type {
   ProcessModuleOutputEnvelope,
   ProductRef,
-} from '../../domain/spi/production-envelope.js';
+} from '../../../process-modules/domain/spi/production-envelope.js';
 import type {
   ProcessOutcomeCertificateRepository,
-} from '../../persistence/process-outcome-certificate-repository.js';
+} from '../../../process-modules/persistence/process-outcome-certificate-repository.js';
 import {
   type ExactCandidateAcceptance,
   type ExactCandidateAcceptanceDirective,
-} from '../../application/exact-candidate-acceptance.js';
+} from '../../../process-modules/application/exact-candidate-acceptance.js';
 import {
   withKernelRecoveryIssue,
   type KernelRecoveryIssueSpec,
-} from '../../application/kernel-recovery-issue.js';
+} from '../../../process-modules/application/kernel-recovery-issue.js';
 import type {
   KernelHandler,
   KernelHandlerContext,
   KernelHandlerResult,
-} from '../../application/kernel-handler-registry.js';
+} from '../../../process-modules/application/kernel-handler-registry.js';
 import type {
   NodeExecutionReceipt,
   NodeExecutionResult,
   NodeProduction,
-} from '../../application/node-executor.js';
+} from '../../../process-modules/application/node-executor.js';
 import type {
   ProcessModuleExecutionContext,
-} from '../../application/process-module-executor.js';
+} from '../../../process-modules/application/process-module-executor.js';
 import type {
   ProcessOutputPayloadResolver,
-} from '../../application/lifecycle-orchestrator.js';
-import type { ProcessModuleOutput } from '../../persistence/process-run.js';
-import { canonicalJson, sha256Hex } from '../../shared/canonical-json.js';
+} from '../../../process-modules/application/lifecycle-orchestrator.js';
+import type { ProcessModuleOutput } from '../../../process-modules/persistence/process-run.js';
+import { canonicalJson, sha256Hex } from '../../../process-modules/shared/canonical-json.js';
 import type {
   BriefProvisioningPort,
   FormalizationArtifactGraphPort,
@@ -58,13 +58,13 @@ import type {
   ManagedArtifactWriteRecord,
   ManagedProductionQuery,
   ManagedTraceWriteRecord,
-} from './formalization-kernel-ports.js';
-import { buildFormalizationCertificatePayload } from './formalization-kernel-ports.js';
+} from '../domain/formalization-kernel-ports.js';
+import { buildFormalizationCertificatePayload } from '../domain/formalization-kernel-ports.js';
 import type {
   AcceptanceBaselineSnapshotRecord,
   FormalizationBaselineRepository,
   FormalizationSolutionContractRepository,
-} from './formalization-persistence-contracts.js';
+} from '../domain/formalization-persistence-contracts.js';
 import {
   ACCEPTANCE_BASELINE_SNAPSHOT_SCHEMA,
   FORMALIZATION_ACCEPTANCE_BUNDLE_SCHEMA,
@@ -81,8 +81,8 @@ import {
   type FormalizationSettlementInput,
   type FormalizationSolutionContractPayload,
   type SolutionContractBundle,
-} from './formalization-schemas.js';
-import { FORMALIZATION_PROCESS_MODULE_REF } from './formalization-schemas.js';
+} from '../domain/formalization-schemas.js';
+import { FORMALIZATION_PROCESS_MODULE_REF } from '../domain/formalization-schemas.js';
 
 export const FORMALIZATION_MODULE_KEY =
   `${FORMALIZATION_PROCESS_MODULE_REF.name}@${FORMALIZATION_PROCESS_MODULE_REF.version}`;

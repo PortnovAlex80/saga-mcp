@@ -5,12 +5,12 @@ const {
   createDeliveryKernelHandlers,
   DELIVERY_NODE_IDS,
 } = await import(
-  '../../dist/process-modules/modules/delivery/delivery-installation.js'
+  '../../dist/modules/delivery/application/delivery-installation.js'
 );
 const {
   DELIVERY_KERNEL_HANDLER_IDS,
 } = await import(
-  '../../dist/process-modules/modules/delivery/delivery-kernel-ports.js'
+  '../../dist/modules/delivery/domain/delivery-kernel-ports.js'
 );
 const {
   deliveryProcessModule,
@@ -18,10 +18,10 @@ const {
   '../../dist/process-modules/modules/delivery/delivery-process-module.js'
 );
 const deliverySchemas = await import(
-  '../../dist/process-modules/modules/delivery/delivery-schemas.js'
+  '../../dist/modules/delivery/domain/delivery-schemas.js'
 );
 const deliveryPolicy = await import(
-  '../../dist/process-modules/modules/delivery/delivery-settlement-policy.js'
+  '../../dist/modules/delivery/domain/delivery-settlement-policy.js'
 );
 
 function reference(schema, ref, hash) {

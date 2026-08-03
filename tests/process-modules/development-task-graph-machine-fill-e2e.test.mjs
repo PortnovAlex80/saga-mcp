@@ -10,7 +10,7 @@ import path from 'node:path';
 import test from 'node:test';
 
 import { materializePinnedWorkspace } from '../../dist/process-modules/application/pinned-workspace-materializer.js';
-import { prepareDevelopmentWorkspaceTemplate } from '../../dist/process-modules/modules/development/development-workspace-preparation.js';
+import { prepareDevelopmentWorkspaceTemplate } from '../../dist/modules/development/application/development-workspace-preparation.js';
 
 const encoder = new TextEncoder();
 const trackerPath = 'resources/process-module-stage-tracker.md';

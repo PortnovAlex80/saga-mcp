@@ -34,10 +34,10 @@
 
 import type {
   ManagedNodeSubmissionReader,
-} from '../../application/managed-node-submission.js';
+} from '../../../process-modules/application/managed-node-submission.js';
 import type {
   ProcessOutcomeCertificateRepository,
-} from '../../persistence/process-outcome-certificate-repository.js';
+} from '../../../process-modules/persistence/process-outcome-certificate-repository.js';
 import type {
   DevelopmentSettlementInput,
   DevelopmentTaskGraphSnapshot,
@@ -68,14 +68,14 @@ import type {
   ManagedArtifactProductionRecord,
   ManagedTraceProductionRecord,
   ManagedProductionLedger,
-} from '../../shared/managed-production.js';
+} from '../../../process-modules/shared/managed-production.js';
 
 export type {
   ManagedExecutionProductQuery,
   ManagedArtifactProductionRecord,
   ManagedTraceProductionRecord,
   ManagedProductionLedger,
-} from '../../shared/managed-production.js';
+} from '../../../process-modules/shared/managed-production.js';
 import type {
   DevelopmentSettlementPolicyPort,
   DevelopmentTaskGraphPolicyPort,

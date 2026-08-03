@@ -22,13 +22,13 @@ import { createGitPort, createMachinePort } from '../../infrastructure/process-m
 import {
   ReferenceDevelopmentSettlementPolicy,
   ReferenceDevelopmentTaskGraphPolicy,
-} from '../../process-modules/modules/development/development-settlement-policy.js';
+} from './domain/development-settlement-policy.js';
 import {
   createDevelopmentKernelHandlers,
   createDevelopmentOutputResolver,
-} from '../../process-modules/modules/development/development-installation.js';
+} from './application/development-installation.js';
 import { developmentProcessModule } from '../../process-modules/modules/development/development-process-module.js';
-import type { DevelopmentModuleInstallationDependencies } from '../../process-modules/modules/development/development-kernel-ports.js';
+import type { DevelopmentModuleInstallationDependencies } from './domain/development-kernel-ports.js';
 import type {
   ModuleRegistries,
   ModuleSharedDeps,

@@ -122,16 +122,16 @@ import { SqliteWorkAssignmentAdapter } from '../infrastructure/work/sqlite-work-
 import { createDiscoveryLmNodePersistence } from '../process-modules/modules/discovery/discovery-installation.js';
 import {
   createFormalizationLifecycleOutputPayloadResolver,
-} from '../process-modules/modules/formalization/formalization-installation.js';
-import { SOLUTION_CONTRACT_CERTIFICATE_SCHEMA } from '../process-modules/modules/formalization/formalization-schemas.js';
+} from '../modules/formalization/application/formalization-installation.js';
+import { SOLUTION_CONTRACT_CERTIFICATE_SCHEMA } from '../modules/formalization/domain/formalization-schemas.js';
 import {
   createDevelopmentOutputPayloadResolver,
-} from '../process-modules/modules/development/development-installation.js';
-import { VERIFIED_INTEGRATION_BUNDLE_SCHEMA } from '../process-modules/modules/development/development-schemas.js';
+} from '../modules/development/application/development-installation.js';
+import { VERIFIED_INTEGRATION_BUNDLE_SCHEMA } from '../modules/development/domain/development-schemas.js';
 import {
   createDeliveryOutputPayloadResolver,
-} from '../process-modules/modules/delivery/delivery-installation.js';
-import { RELEASE_RECORD_SCHEMA } from '../process-modules/modules/delivery/delivery-schemas.js';
+} from '../modules/delivery/application/delivery-installation.js';
+import { RELEASE_RECORD_SCHEMA } from '../modules/delivery/domain/delivery-schemas.js';
 import type { ProductRef } from '../process-modules/domain/spi/index.js';
 
 // Module register functions (the LEGO contract).

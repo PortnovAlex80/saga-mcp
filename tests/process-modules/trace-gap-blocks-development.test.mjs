@@ -52,7 +52,7 @@ const {
   LegacyFormalizationProcessAdapter,
   hashFormalizationCase,
 } = await import(
-  '../../dist/process-modules/modules/formalization/legacy-formalization-process-adapter.js'
+  '../../dist/modules/formalization/application/legacy-formalization-process-adapter.js'
 );
 const {
   ReferenceFormalizationSettlementPolicy,
@@ -64,7 +64,7 @@ const {
   FORMALIZATION_CASE_SCHEMA,
   FORMALIZATION_PROCESS_MODULE_REF,
 } = await import(
-  '../../dist/process-modules/modules/formalization/formalization-schemas.js'
+  '../../dist/modules/formalization/domain/formalization-schemas.js'
 );
 const { routeProcessOutcome } = await import(
   '../../dist/process-modules/application/lifecycle-router.js'

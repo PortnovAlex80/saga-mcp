@@ -15,7 +15,7 @@ import type {
   ManagedArtifactProductionRecord,
   ManagedProductionLedger,
   ManagedTraceProductionRecord,
-} from '../modules/development/development-kernel-ports.js';
+} from '../../modules/development/domain/development-kernel-ports.js';
 
 // Wave 7 type-leak fix: the managed-production ledger INTERFACES now live as
 // the canonical source of truth inside each module's *-kernel-ports.ts (the
@@ -28,7 +28,7 @@ export type {
   ManagedExecutionProductQuery,
   ManagedProductionLedger,
   ManagedTraceProductionRecord,
-} from '../modules/development/development-kernel-ports.js';
+} from '../../modules/development/domain/development-kernel-ports.js';
 
 export interface ManagedExecutionProvenance {
   processRunId: number;

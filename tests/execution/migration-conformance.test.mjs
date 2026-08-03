@@ -488,7 +488,7 @@ for (const [label, module] of WAVE9_MODULES) {
 
 test('W9-A8 exact-output development: settlement policy is a pure function (same input -> same decision + inputHash)', async () => {
   const { ReferenceDevelopmentSettlementPolicy } = await import(
-    '../../dist/process-modules/modules/development/development-settlement-policy.js'
+    '../../dist/modules/development/domain/development-settlement-policy.js'
   );
   const policy = new ReferenceDevelopmentSettlementPolicy();
   // An invalid schemaVersion is the simplest deterministic branch: the policy
@@ -530,7 +530,7 @@ test('W9-A8 exact-output development: settlement policy is a pure function (same
 
 test('W9-A8 exact-output delivery: settlement policy is a pure function (same input -> same decision + inputHash)', async () => {
   const { ReferenceDeliverySettlementPolicy } = await import(
-    '../../dist/process-modules/modules/delivery/delivery-settlement-policy.js'
+    '../../dist/modules/delivery/domain/delivery-settlement-policy.js'
   );
   const policy = new ReferenceDeliverySettlementPolicy();
   const input = {

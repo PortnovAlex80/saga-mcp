@@ -53,14 +53,14 @@ import type {
   ManagedArtifactProductionRecord,
   ManagedTraceProductionRecord,
   ManagedProductionLedger,
-} from '../../shared/managed-production.js';
+} from '../../../process-modules/shared/managed-production.js';
 
 export type {
   ManagedExecutionProductQuery,
   ManagedArtifactProductionRecord,
   ManagedTraceProductionRecord,
   ManagedProductionLedger,
-} from '../../shared/managed-production.js';
+} from '../../../process-modules/shared/managed-production.js';
 
 export type FormalizationArtifactStatus = 'draft' | 'in_review' | 'accepted' | 'superseded';
 

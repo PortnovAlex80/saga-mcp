@@ -21,11 +21,11 @@
 import {
   ReferenceDevelopmentSettlementPolicy,
   ReferenceDevelopmentTaskGraphPolicy,
-} from './dist/process-modules/modules/development/development-settlement-policy.js';
+} from './dist/modules/development/domain/development-settlement-policy.js';
 import {
   ReferenceDeliveryPreflightPolicy,
   ReferenceDeliverySettlementPolicy,
-} from './dist/process-modules/modules/delivery/delivery-settlement-policy.js';
+} from './dist/modules/delivery/domain/delivery-settlement-policy.js';
 
 const notReached = (label) => () => {
   throw new Error(

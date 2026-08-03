@@ -1,14 +1,14 @@
 import type Database from 'better-sqlite3';
-import { canonicalJson, sha256Hex } from '../../../process-modules/shared/canonical-json.js';
+import { canonicalJson, sha256Hex } from '../../../shared/canonical-json.js';
 import {
   type DeliveryOutputRecord,
   type DeliveryOutputRepository,
-} from '../../../process-modules/modules/delivery/delivery-kernel-ports.js';
+} from '../domain/delivery-kernel-ports.js';
 import { DELIVERY_PROCESS_MODULE_REF } from '../../../process-modules/modules/delivery/delivery-process-module.js';
 import {
   RELEASE_RECORD_SCHEMA,
   type ReleaseRecord,
-} from '../../../process-modules/modules/delivery/delivery-schemas.js';
+} from '../domain/delivery-schemas.js';
 
 /**
  * Wave 7 hex extraction: the parent `saga3_process_runs` table is ensured by

@@ -17,7 +17,7 @@ import type Database from 'better-sqlite3';
 import type {
   BriefProvisioningContext,
   BriefProvisioningPort,
-} from '../../process-modules/modules/formalization/formalization-kernel-ports.js';
+} from '../../modules/formalization/domain/formalization-kernel-ports.js';
 import type {
   DiscoveryBriefProvisioningContext,
   DiscoveryBriefProvisioningPort,

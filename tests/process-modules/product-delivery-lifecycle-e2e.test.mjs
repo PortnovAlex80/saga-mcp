@@ -53,26 +53,26 @@ const {
   INTEGRATED_CANDIDATE_SCHEMA,
   VERIFIED_INTEGRATION_BUNDLE_SCHEMA,
 } = await import(
-  '../../dist/process-modules/modules/development/development-schemas.js'
+  '../../dist/modules/development/domain/development-schemas.js'
 );
 const { hashDevelopmentPolicy } = await import(
-  '../../dist/process-modules/modules/development/development-settlement-policy.js'
+  '../../dist/modules/development/domain/development-settlement-policy.js'
 );
 const {
   DELIVERY_CERTIFICATE_SCHEMA,
   DELIVERY_RELEASE_CASE_SCHEMA,
   RELEASE_RECORD_SCHEMA,
 } = await import(
-  '../../dist/process-modules/modules/delivery/delivery-schemas.js'
+  '../../dist/modules/delivery/domain/delivery-schemas.js'
 );
 const { hashDeliveryReleasePolicy } = await import(
-  '../../dist/process-modules/modules/delivery/delivery-settlement-policy.js'
+  '../../dist/modules/delivery/domain/delivery-settlement-policy.js'
 );
 const {
   FORMALIZATION_CASE_SCHEMA,
   SOLUTION_CONTRACT_CERTIFICATE_SCHEMA,
 } = await import(
-  '../../dist/process-modules/modules/formalization/formalization-schemas.js'
+  '../../dist/modules/formalization/domain/formalization-schemas.js'
 );
 const { SqliteLifecycleRunRepository } = await import(
   '../../dist/process-modules/persistence/sqlite-lifecycle-run-repository.js'

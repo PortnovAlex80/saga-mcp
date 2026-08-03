@@ -32,7 +32,7 @@ import { SqliteFormalizationBriefProvisioning } from '../../infrastructure/proce
 import {
   createFormalizationKernelHandlers,
   createFormalizationOutputResolver,
-} from '../../process-modules/modules/formalization/formalization-installation.js';
+} from './application/formalization-installation.js';
 import { formalizationProcessModule } from '../../process-modules/modules/formalization/formalization-process-module.js';
 import type {
   ModuleRegistries,

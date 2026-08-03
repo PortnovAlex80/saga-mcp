@@ -52,7 +52,7 @@
  * fakes of these ports — no DB needed.
  */
 
-import type { FormalizationCanonicalGraphPort } from '../../formalization-kernel-ports.js';
+import type { FormalizationCanonicalGraphPort } from '../../../../../modules/formalization/domain/formalization-kernel-ports.js';
 
 // ---------------------------------------------------------------------------
 // Brief provisioning port — replaces the `getDb()` brief auto-provisioning.
@@ -291,4 +291,4 @@ export type {
   FormalizationArtifactSnapshot,
   FormalizationCanonicalGraphPort,
   FormalizationTraceSnapshot,
-} from '../../formalization-kernel-ports.js';
+} from '../../../../../modules/formalization/domain/formalization-kernel-ports.js';

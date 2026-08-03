@@ -88,6 +88,9 @@ const REASON = {
   modulePorts: 'Phase 4/5 moves persistence behind module-local ports',
   moduleIsolation: 'Phase 6 module package isolation removes inter-module import',
   catalogInjection: 'Phase 3 PackageRegistry replaces built-in catalog lookup',
+  formalizationPackageConsolidation: 'Formalization consolidation moves installation/schemas/ports into src/modules/formalization/{domain,application}; package/ wiring (which stays in src/process-modules/modules/formalization/package/) reaches the moved handlers/contracts until the package layer is also relocated',
+  developmentPackageConsolidation: 'Development consolidation moves installation/workspace-preparation into src/modules/development/application and schemas/settlement-policy/task-graph/kernel-ports into src/modules/development/domain; development-process-module + package/ wiring (which stay in src/process-modules/modules/development/) reach the moved handlers/contracts until those layers are also relocated',
+  deliveryPackageConsolidation: 'Delivery consolidation moves installation/provider-ports/schemas/settlement-policy/kernel-ports into src/modules/delivery/{application,domain}; delivery-process-module + package/ wiring (which stay in src/process-modules/modules/delivery/) reach the moved contracts/handlers until those layers are also relocated',
 };
 
 // Versioned baseline for the KNOWN_VIOLATIONS allowlist size — the ratchet's
@@ -111,7 +114,19 @@ const REASON = {
 //                no module file references infrastructure any longer, so the
 //                8 Rule 2 edges and their allowlist entries are gone and the
 //                baseline returns to 0. Owner: Wave 7 third-audit lane.)
-const ALLOWLIST_BASELINE = 0;
+//     2026-08-03  baseline = 4 → 14  (Development + delivery module
+//                consolidation: installation/workspace-preparation/
+//                schemas/settlement-policy/task-graph/kernel-ports moved to
+//                src/modules/{development,delivery}/{application,domain} while
+//                the stayed *-process-module.ts + package/ wiring remain under
+//                src/process-modules/modules/{development,delivery}/ and reach
+//                forward into the moved tree (6 development + 4 delivery Rule 2
+//                edges). Same partial-move shape as the existing formalization
+//                package consolidation. Entries removed when the stayed
+//                process-module + package/ layers are also relocated into
+//                src/modules/<module>/. Owner: saga4 development-consolidation
+//                task.)
+const ALLOWLIST_BASELINE = 14;
 
 const KNOWN_VIOLATIONS = [
   // ---- Rule 1: module imports another module implementation ----
@@ -162,6 +177,120 @@ const KNOWN_VIOLATIONS = [
   // No Rule-3 entries remain.
 
   // ---- Rule 4: removed in W13-A1 (catalog deleted, resolver no longer imports it) ----
+
+  // ---- Rule 2 (formalization consolidation): the formalization package wiring
+  // (manifest.ts, package/ports/*, handler-adapter.ts) STAYS under
+  // src/process-modules/modules/formalization/package/ while the kernel handler
+  // factory, schemas and kernel ports moved to src/modules/formalization/{application,
+  // domain}. The package layer imports the moved implementation to wire handlers
+  // and re-export schema ids; this Rule 2 edge is the cost of the partial move
+  // (mirrors the discovery split where discovery-installation stayed in place).
+  // Removed when the package/ layer is also relocated into src/modules/formalization/.
+  {
+    source: 'src/process-modules/modules/formalization/package/manifest.ts',
+    target: 'src/modules/formalization/application/formalization-installation.ts',
+    rule: 2,
+    reason: REASON.formalizationPackageConsolidation,
+  },
+  {
+    source: 'src/process-modules/modules/formalization/package/manifest.ts',
+    target: 'src/modules/formalization/domain/formalization-schemas.ts',
+    rule: 2,
+    reason: REASON.formalizationPackageConsolidation,
+  },
+  {
+    source: 'src/process-modules/modules/formalization/package/ports/formalization-package-ports.ts',
+    target: 'src/modules/formalization/domain/formalization-kernel-ports.ts',
+    rule: 2,
+    reason: REASON.formalizationPackageConsolidation,
+  },
+  {
+    source: 'src/process-modules/modules/formalization/package/ports/handler-adapter.ts',
+    target: 'src/modules/formalization/application/formalization-installation.ts',
+    rule: 2,
+    reason: REASON.formalizationPackageConsolidation,
+  },
+
+  // ---- Rule 2 (development consolidation): the development package wiring
+  // (development-process-module.ts, package/manifest.ts,
+  // package/contributions/legacy-engine-adapter.ts) STAYS under
+  // src/process-modules/modules/development/ while the kernel handler factory
+  // (development-installation), workspace preparation, schemas, settlement
+  // policy, task graph and kernel ports moved to
+  // src/modules/development/{application,domain}. The stayed layer imports the
+  // moved implementation to wire handlers and re-export schema ids/handler ids;
+  // these Rule 2 edges are the cost of the partial move (same shape as the
+  // formalization package consolidation above). Removed when the stayed
+  // development-process-module + package/ layer is also relocated into
+  // src/modules/development/.
+  {
+    source: 'src/process-modules/modules/development/development-process-module.ts',
+    target: 'src/modules/development/domain/development-kernel-ports.ts',
+    rule: 2,
+    reason: REASON.developmentPackageConsolidation,
+  },
+  {
+    source: 'src/process-modules/modules/development/development-process-module.ts',
+    target: 'src/modules/development/domain/development-schemas.ts',
+    rule: 2,
+    reason: REASON.developmentPackageConsolidation,
+  },
+  {
+    source: 'src/process-modules/modules/development/package/manifest.ts',
+    target: 'src/modules/development/domain/development-kernel-ports.ts',
+    rule: 2,
+    reason: REASON.developmentPackageConsolidation,
+  },
+  {
+    source: 'src/process-modules/modules/development/package/manifest.ts',
+    target: 'src/modules/development/domain/development-schemas.ts',
+    rule: 2,
+    reason: REASON.developmentPackageConsolidation,
+  },
+  {
+    source: 'src/process-modules/modules/development/package/contributions/legacy-engine-adapter.ts',
+    target: 'src/modules/development/application/development-installation.ts',
+    rule: 2,
+    reason: REASON.developmentPackageConsolidation,
+  },
+  {
+    source: 'src/process-modules/modules/development/package/contributions/legacy-engine-adapter.ts',
+    target: 'src/modules/development/domain/development-kernel-ports.ts',
+    rule: 2,
+    reason: REASON.developmentPackageConsolidation,
+  },
+
+  // ---- Rule 2 (delivery consolidation): the delivery package wiring
+  // (delivery-process-module.ts, package/manifest.ts) STAYS under
+  // src/process-modules/modules/delivery/ while the kernel handler factory,
+  // schemas, settlement policy and kernel ports moved to
+  // src/modules/delivery/{application,domain}. Same partial-move shape as
+  // formalization/development above. Removed when the stayed delivery-process-
+  // module + package/ layer is also relocated into src/modules/delivery/.
+  {
+    source: 'src/process-modules/modules/delivery/delivery-process-module.ts',
+    target: 'src/modules/delivery/domain/delivery-kernel-ports.ts',
+    rule: 2,
+    reason: REASON.deliveryPackageConsolidation,
+  },
+  {
+    source: 'src/process-modules/modules/delivery/delivery-process-module.ts',
+    target: 'src/modules/delivery/domain/delivery-schemas.ts',
+    rule: 2,
+    reason: REASON.deliveryPackageConsolidation,
+  },
+  {
+    source: 'src/process-modules/modules/delivery/package/manifest.ts',
+    target: 'src/modules/delivery/domain/delivery-kernel-ports.ts',
+    rule: 2,
+    reason: REASON.deliveryPackageConsolidation,
+  },
+  {
+    source: 'src/process-modules/modules/delivery/package/manifest.ts',
+    target: 'src/modules/delivery/domain/delivery-schemas.ts',
+    rule: 2,
+    reason: REASON.deliveryPackageConsolidation,
+  },
 
   // ---- Rule 6: removed in W13-A6 (composition root relocated to src/app/) ----
   // (plan section 13.10 / 14.11 - Wave 11 replaces the manual composition root)

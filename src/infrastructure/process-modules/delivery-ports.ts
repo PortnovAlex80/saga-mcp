@@ -22,7 +22,7 @@ import type {
   DeliveryExternalEffectLedgerPort,
   DeliveryProcessProductRepositoryPort,
   ProcessRunSchemaEnsurePort,
-} from '../../process-modules/modules/delivery/delivery-kernel-ports.js';
+} from '../../modules/delivery/domain/delivery-kernel-ports.js';
 
 /**
  * Build a Delivery process-product repository port backed by the shared

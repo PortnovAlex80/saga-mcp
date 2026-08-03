@@ -62,11 +62,11 @@ import { FORMALIZATION_AGENT_ASSISTANCE } from './assistance.js';
 import {
   FORMALIZATION_HANDLER_IDS,
   FORMALIZATION_MODULE_KEY,
-} from '../formalization-installation.js';
+} from '../../../../modules/formalization/application/formalization-installation.js';
 import {
   FORMALIZATION_CASE_SCHEMA,
   SOLUTION_CONTRACT_CERTIFICATE_SCHEMA,
-} from '../formalization-schemas.js';
+} from '../../../../modules/formalization/domain/formalization-schemas.js';
 
 // ---------------------------------------------------------------------------
 // Manifest format + runtime identity.

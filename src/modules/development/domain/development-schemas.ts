@@ -18,8 +18,8 @@
 // here so the module's own consumers keep a single import surface.
 export {
   DEVELOPMENT_CASE_SCHEMA,
-} from '../../lifecycles/product-delivery-module-contracts.js';
-import { DEVELOPMENT_CASE_SCHEMA } from '../../lifecycles/product-delivery-module-contracts.js';
+} from '../../../process-modules/lifecycles/product-delivery-module-contracts.js';
+import { DEVELOPMENT_CASE_SCHEMA } from '../../../process-modules/lifecycles/product-delivery-module-contracts.js';
 export const DEVELOPMENT_TASK_GRAPH_PROPOSAL_SCHEMA =
   'saga3.development-task-graph-proposal.v1';
 export const DEVELOPMENT_TASK_GRAPH_SCHEMA = 'saga3.development-task-graph.v1';

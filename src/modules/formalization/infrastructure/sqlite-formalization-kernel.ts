@@ -19,7 +19,7 @@ import { canonicalJson } from '../../../process-modules/shared/canonical-json.js
 import {
   FORMALIZATION_SETTLEMENT_INPUT_SCHEMA,
   type FormalizationSettlementInput,
-} from '../../../process-modules/modules/formalization/formalization-schemas.js';
+} from '../domain/formalization-schemas.js';
 import type {
   FormalizationArtifactSnapshot,
   FormalizationArtifactGraphPort,
@@ -27,7 +27,7 @@ import type {
   FormalizationSettlementPolicyPort,
   FormalizationSettlementResult,
   FormalizationTraceSnapshot,
-} from '../../../process-modules/modules/formalization/formalization-kernel-ports.js';
+} from '../domain/formalization-kernel-ports.js';
 
 // ---------------------------------------------------------------------------
 // Artifact graph port (SQLite)

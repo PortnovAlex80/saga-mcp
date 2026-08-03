@@ -6,7 +6,7 @@
  * invoked.
  */
 
-import { sha256Hex } from '../../shared/canonical-json.js';
+import { sha256Hex } from '../../../process-modules/shared/canonical-json.js';
 import {
   DEVELOPMENT_TASK_GRAPH_PROPOSAL_SCHEMA,
   DEVELOPMENT_TASK_GRAPH_SCHEMA,

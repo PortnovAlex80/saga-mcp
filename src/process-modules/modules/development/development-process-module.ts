@@ -2,7 +2,7 @@ import type { ProcessModuleDefinition } from '../../domain/process-module.js';
 // CONVEYOR Wave 7: the module identity ref is a CANONICAL contract owned by the
 // lifecycle (Rule 3). This module imports it back — inward direction, allowed.
 import { DEVELOPMENT_PROCESS_MODULE_REF } from '../../lifecycles/product-delivery-module-contracts.js';
-import { DEVELOPMENT_KERNEL_HANDLER_IDS } from './development-kernel-ports.js';
+import { DEVELOPMENT_KERNEL_HANDLER_IDS } from '../../../modules/development/domain/development-kernel-ports.js';
 import {
   ACCEPTANCE_VERIFICATION_SCHEMA,
   DEVELOPMENT_CASE_SCHEMA,
@@ -12,7 +12,7 @@ import {
   DEVELOPMENT_TASK_GRAPH_SCHEMA,
   INTEGRATED_CANDIDATE_SCHEMA,
   VERIFIED_INTEGRATION_BUNDLE_SCHEMA,
-} from './development-schemas.js';
+} from '../../../modules/development/domain/development-schemas.js';
 
 export { DEVELOPMENT_PROCESS_MODULE_REF };
 

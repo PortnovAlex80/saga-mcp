@@ -2,7 +2,7 @@ import {
   DEVELOPMENT_CASE_SCHEMA,
   DEVELOPMENT_TASK_GRAPH_PROPOSAL_SCHEMA,
   type DevelopmentCase,
-} from './development-schemas.js';
+} from '../domain/development-schemas.js';
 
 interface WorkspacePreparationInput {
   readonly profile: { readonly id: string };

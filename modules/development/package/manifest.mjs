@@ -39,7 +39,7 @@
 // definition come from dist/ (the test surface runs `tsc` first). The build
 // step (`npm run build`) keeps dist/ in sync before any consumer runs.
 import { developmentProcessModule } from '../../../dist/process-modules/modules/development/development-process-module.js';
-import { DEVELOPMENT_CASE_SCHEMA, VERIFIED_INTEGRATION_BUNDLE_SCHEMA } from '../../../dist/process-modules/modules/development/development-schemas.js';
+import { DEVELOPMENT_CASE_SCHEMA, VERIFIED_INTEGRATION_BUNDLE_SCHEMA } from '../../../dist/modules/development/domain/development-schemas.js';
 import {
   DEVELOPMENT_PACKAGE_RESOURCE_INDEX,
   DEVELOPMENT_PACKAGE_RESOURCE_LOGICAL_IDS,
