@@ -49,6 +49,21 @@
         "path": "architecture-analysis/phase-1/operational-purpose.md",
         "status": "evidence-incomplete",
         "version": "1.0"
+      },
+      {
+        "artifact_id": "ART-PHASE3-CORE-MODEL",
+        "type": "Reconstructed Core Model",
+        "path": "architecture-analysis/phase-3/reconstructed-core-model.md",
+        "status": "evidence-incomplete",
+        "version": "1.0"
+      },
+      {
+        "artifact_id": "ART-PHASE3-RULE-CATALOG",
+        "type": "Rule and Invariant Catalog",
+        "path": "architecture-analysis/phase-3/rule-catalog.jsonl",
+        "status": "evidence-incomplete",
+        "version": "1.0",
+        "records": 18
       }
     ],
     "open_questions": [

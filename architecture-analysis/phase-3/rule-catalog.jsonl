@@ -1,0 +1,23 @@
+# Rule and Invariant Catalog (JSONL)
+# Artifact ID: ART-PHASE3-RULE-CATALOG
+# Phase: Phase Three, Version: 1.0, Status: evidence-incomplete
+# 18 rules catalogued. Each line below is a structured record.
+
+RULE-001 | review-first-dispatch | Technical invariant | E5 | work-assignment-core.ts:311 (SQL ORDER BY) | SCN-002,SCN-007 | tasks.status | dispatch ordering | dispatch policy | High | None
+RULE-002 | conflict-key-gate | Technical invariant | E5 | work-assignment-core.ts:301 (SQL NOT EXISTS) | SCN-002 | task_conflict_keys | parallel collision prevention | dispatch policy | High | None
+RULE-003 | single-writer-tasks | Technical invariant | E5 | work-assignment-core.ts + atomic-release.ts + tasks-writer-invariant.test.mjs | ALL | tasks.{status,assigned_to,current_execution_id} | ownership serialization | writer-invariant ratchet | High | markExecutionExited exception
+RULE-004 | fence-validation | Technical invariant | E5 | worker-executions.ts:95 (assertExecutionFence) | SCN-002,003,005,007 | worker_executions + tasks | execution identity check | execution fence policy | High | legacy unfenced tasks
+RULE-005 | deny-by-default-4valued | Protocol invariant | E5 | lifecycle.ts:21 (CHECK) + settlement policies | SCN-008 | verification_evidence.outcome | transition admission | verification policy | High | T-013 escape (pragmatic)
+RULE-006 | content-addressing | Technical invariant | E5 | saga3/shared/discovery-canonical.ts:28 | ALL | all product hashes | deterministic identity | canonical-json primitive | High | dual: disk-hash vs json-hash
+RULE-007 | monotonic-risk-p15 | Business/security invariant | E5 | tasks.ts:40 (computeFinalRisk) | SCN-002 | tasks.{declared,derived,policy,final}_risk | risk floor enforcement | risk policy | High | direct SQL (lint catches)
+RULE-008 | node-durable-identity-p18 | Protocol invariant | E5 | lm-node-executor.ts:406 + saga-board-adapter-data-builder.ts:153 | SCN-003 | task.metadata (generationKey, process_node_input_hash) | recovery card reuse | node-durable policy | High | None
+RULE-009 | exact-candidate-acceptance | Authority invariant | E5 | sqlite-exact-candidate-acceptance.ts + artifacts.ts:53 | SCN-001,003 | artifacts.{status,accepted_hash,drift_state} | kernel gate authority | acceptance policy | High | legacy 'worker' authority
+RULE-010 | authority-scope-frozen | Security invariant | E5 | authorize-saga-tool-call.ts:236 + index.ts:147 | SCN-004 | worker_executions.metadata.execution_context | tool call authorization | authority policy | High | advisory mode
+RULE-011 | discovery-settlement-go-clarify-reject | Business decision | E5 | discovery-settlement-policy.ts:306 (PURE) | SCN-001 | saga3_discovery_settlements + outcome_certificates | go/clarify/reject decision | discovery settlement policy | High | None
+RULE-012 | formalization-traceability | Business rule | E5 | sqlite-formalization-kernel.ts:168 + formalization-installation.ts:1237 (DUPLICATED) | SCN-001 | artifact_traces + artifacts.status | PRD→brief, UC→PRD+FR, AC→FR/NFR+UC, SRS→PRD | traceability policy | Medium | TWO implementations can drift
+RULE-013 | task-graph-validation | Business rule | E5 | development-settlement-policy.ts:159 (PURE) | SCN-001 | saga3_process_products (task graph) | DAG, coverage, acyclic, repository match | task graph policy | High | None
+RULE-014 | verified-candidate-settlement | Business rule | E5 | development-settlement-policy.ts:444 (PURE, 905 lines) | SCN-001 | verification_evidence + integration_intents | frozen candidate + trusted evidence | development settlement policy | High | None
+RULE-015 | delivery-observe-before-settle | Business rule | E4 | delivery-settlement-policy.ts (PURE) | SCN-001 | saga3_external_effect_events | authoritative observed state | delivery settlement policy | Medium | no E6 (fail-closed in prod)
+RULE-016 | lease-expiry | Technical invariant | E5 | stuck-policy.ts:184 (PURE decideStuckAction) | SCN-005 | worker_executions.{lease_expires_at,stuck_state} | execution authority expiry | lease policy | High | None
+RULE-017 | idempotency-command-receipts | Protocol invariant | E5 | lifecycle/idempotency.ts (checkReceipt+storeReceipt) | SCN-002,007 | command_receipts | same command_id+payload_hash → replay | idempotency policy | High | None
+RULE-018 | baseline-immutability | Protocol invariant | E5 | formalization-installation.ts:678 + artifact-file.ts | SCN-001 | artifacts.{accepted_hash,drift_state} + acceptance_baseline | frozen contract snapshot | baseline policy | High | None
