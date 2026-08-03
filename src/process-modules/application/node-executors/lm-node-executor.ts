@@ -244,7 +244,7 @@ export class LmNodeExecutor implements NodeExecutor {
    * the legacy `NodeExecutionReceipt`. The LM executor does NOT own the NodeRun
    * row (the GenericFlowExecutor opens/completes it), so when the v2 envelope
    * is present we borrow `nodeRunId`/`attempt` from it; otherwise we emit the
-   * 0/1 placeholder that `toV2Result` in `node-executor.ts` also uses, and let
+   * 0/1 placeholder that the envelope derivation in generic-flow-executor.ts also uses, and let
    * the GenericFlowExecutor's v2 dual-write path stamp the real NodeRun id.
    *
    * Pure with respect to inputs: same (envelope, lineage, ids) → same receipt.

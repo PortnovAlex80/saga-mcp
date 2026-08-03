@@ -242,7 +242,7 @@ export interface SagaBoardDriverNeutralReceiptInputs extends SagaBoardReceiptInp
    * Durable NodeRun id. Wave 3 LM executor does NOT own the NodeRun row (the
    * GenericFlowExecutor opens/completes it), so this builder accepts a 0
    * placeholder and lets the caller — or the GenericFlowExecutor's v2
-   * dual-write path — stamp the real id. This mirrors `toV2Result` in
+   * dual-write path — stamp the real id. This mirrors the envelope derivation in
  * `node-executor.ts`, which also emits `nodeRunId: 0` for the same reason.
    */
   nodeRunId: number;

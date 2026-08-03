@@ -68,7 +68,7 @@ import type {
   ProcessModuleRunResult,
 } from './process-module-executor.js';
 import { validateProcessModuleRunResult } from './validate-process-module-run-result.js';
-import { NodeExecutionLeaseLostError, nodeEventForTransition, toV2Result } from './node-executor.js';
+import { NodeExecutionLeaseLostError, nodeEventForTransition } from './node-executor.js';
 import type {
   ExecutionContextEnvelope,
   ModuleCompletion,
@@ -688,11 +688,11 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
       // Dual-write. `completeV2` writes BOTH the legacy output_* columns AND
       // the v2 production_envelope + transition_cursor. The production
       // envelope is sourced from the result's explicit `productionEnvelope`
-      // (v2 producers) or derived from the legacy flat `production` via
-      // toV2Result when only the legacy field is present.
+      // (v2 producers) or derived from the legacy flat `production` when only
+      // the legacy field is present (all current producers — they emit v1).
       const transitionEvent = nodeEventForTransition(result);
       const productionEnvelope: NodeProductionEnvelope | null =
-        result.productionEnvelope ?? toV2Result(result).productionEnvelope ?? null;
+        result.productionEnvelope ?? deriveEnvelope(result.production) ?? null;
       const completedNodeRun: NodeRunRecordV2 | NodeRunRecord = v2.repo.completeV2({
         id: nodeRunId,
         event: transitionEvent,
@@ -1348,6 +1348,32 @@ function assertNodeExecutionResult(
 
 function isTerminal(status: string): boolean {
   return status === 'completed' || status === 'failed' || status === 'cancelled';
+}
+
+/**
+ * Derive a `NodeProductionEnvelope` from a legacy `NodeProduction` when a node
+ * result carries only the v1 flat `production` field (all current producers).
+ * The envelope wraps the v1 fields verbatim and adds an empty lineage array
+ * and a derived `productRef`. Returns null when `production` is absent.
+ */
+function deriveEnvelope(
+  production: NodeProduction | undefined,
+): NodeProductionEnvelope | null {
+  if (!production) return null;
+  const productRef: ProductRef = {
+    schemaId: production.schema,
+    ref: production.artifactRef,
+    digest: production.contentHash,
+  };
+  return {
+    schema: production.schema,
+    artifactRef: production.artifactRef,
+    contentHash: production.contentHash,
+    bindings: production.bindings,
+    schemaId: production.schema,
+    productRef,
+    lineage: [],
+  };
 }
 
 /**

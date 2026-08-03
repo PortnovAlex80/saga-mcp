@@ -32,7 +32,6 @@ import type {
   ExecutionContextEnvelope,
   ModuleCompletion,
   NodeProductionEnvelope,
-  ProductRef,
 } from '../domain/spi/index.js';
 
 /**
@@ -66,7 +65,7 @@ export interface NodeExecutionContext {
    * GenericFlowExecutor's v2 wiring is active (the run was started with v2
    * NodeRun columns and an ExecutionContextAssembler is configured). v2-aware
    * NodeExecutors read `ctx.envelope` directly; legacy executors ignore it and
-   * read `ctx.frame` (which is dual-populated via {@link toLegacyFrame} when
+   * read `ctx.frame` (which is dual-populated via mergeLegacyFrame when
    * the envelope is present). Absent ⇒ legacy run, `frame` is the sole
    * execution-context surface.
    */
@@ -271,7 +270,7 @@ export interface NodeExecutor {
 // legacy types, and the GenericFlowExecutor only hands the v2 context to a
 // NodeExecutor when v2 wiring is present (an `envelope` field is set on the
 // context). Existing node executors that read only the legacy `frame` keep
-// working because `toLegacyFrame(envelope)` computes the legacy
+// working because mergeLegacyFrame computes the legacy
 // `NodeExecutionFrame` from the envelope's `upstreamProducts`.
 
 /**
@@ -291,7 +290,7 @@ export interface NodeExecutor {
  * identically whether the v2 path is active or not.
  *
  * The legacy `frame` field is NOT on this type; a v2-aware NodeExecutor that
- * still needs the legacy frame view can call {@link toLegacyFrame} on
+ * still needs the legacy frame view can use `mergeLegacyFrame` on
  * `ctx.envelope` (the v2 GenericFlowExecutor also continues to pass the legacy
  * `frame` on the legacy {@link NodeExecutionContext} when the v2 wiring is
  * absent, so legacy-only executors see no change).
@@ -311,160 +310,6 @@ export interface NodeExecutionContextV2 {
   readonly input: unknown;
   readonly heartbeat: () => void;
   readonly initiatedBy: string;
-}
-
-/**
- * v2 node-execution result.
- *
- * Replaces the legacy flat `NodeProduction` + board-coupled
- * `NodeExecutionReceipt` with the driver-neutral shapes:
- * {@link NodeProductionEnvelope} (carries lineage) and
- * {@link DriverNeutralExecutionReceipt} (board/task/WorkIntent live in
- * `adapterData`). The optional {@link ModuleCompletion} is the EXPLICIT
- * terminal envelope that replaces the legacy magic certificate bindings
- * (`production.bindings.certificatePayload`): when a node returns
- * `completion`, settlement reads `outputEnvelope`/`certificateRef` directly
- * instead of extracting them from opaque bindings.
- *
- * Legacy fields (`runtimeEvent` / `domainEvent` / `recoveryIssue` /
- * `acceptanceReceipt` / `outcome`) are retained on the v2 shape so a v2-aware
- * NodeExecutor can return one result object that the GenericFlowExecutor reads
- * uniformly. Use {@link toV2Result} to adapt a legacy {@link NodeExecutionResult}.
- */
-export interface NodeExecutionResultV2 {
-  readonly runtimeEvent: 'completed' | 'failed' | 'paused';
-  readonly domainEvent?: string;
-  /**
-   * Driver-neutral execution receipt. Present for LM/external/human nodes;
-   * absent for kernel nodes that emit `productionEnvelope`. Replaces the
-   * legacy board-coupled `NodeExecutionReceipt`.
-   */
-  readonly driverReceipt?: DriverNeutralExecutionReceipt;
-  /**
-   * Durable, content-addressed production with lineage. Present for kernel /
-   * terminal nodes. Replaces the legacy flat `NodeProduction`.
-   */
-  readonly productionEnvelope?: NodeProductionEnvelope;
-  /**
-   * EXPLICIT terminal envelope. When present on a terminal node's result,
-   * settlement reads `completion.outputEnvelope` /
-   * `completion.outputEnvelope.certificateRef` directly instead of extracting
-   * certificate fields from opaque `bindings.certificatePayload`.
-   */
-  readonly completion?: ModuleCompletion;
-  readonly recoveryIssue?: RecoveryIssue;
-  readonly acceptanceReceipt?: ExactCandidateAcceptanceReceipt;
-  /** Только для terminal-узлов (outcome-emitter). */
-  readonly outcome?: string;
-}
-
-/**
- * Compute the legacy {@link NodeExecutionFrame} view from a v2
- * {@link ExecutionContextEnvelope}.
- *
- * The envelope carries only the exact declared predecessor `ProductRef`s (the
- * durable content-address pointers); the legacy `frame.productions` map is
- * keyed by node id and the envelope does not carry node ids. We therefore
- * surface the upstream refs on the legacy frame as a single synthetic
- * `'__upstream__'` entry under `productions` (each ref materialized into a
- * minimal `NodeProduction` shell) plus `runInput` from
- * `envelope.immutableRunInput`. This is a READ-ONLY compatibility view for
- * node executors that have not yet migrated to read the envelope directly.
- * The v2-aware executors read `ctx.envelope` directly and ignore this bridge.
- *
- * This function is pure: same envelope → same frame.
- */
-export function toLegacyFrame(
-  envelope: ExecutionContextEnvelope,
-): NodeExecutionFrame {
-  const productions: Record<string, NodeProduction> = {};
-  for (const ref of envelope.upstreamProducts) {
-    // Materialize a minimal NodeProduction shell from the ProductRef so legacy
-    // consumers that read production.schema/artifactRef/contentHash keep
-    // working. `bindings` is empty: the envelope carries refs, not bodies; the
-    // real bindings live on the loaded upstream product bodies (forwarded
-    // separately on NodeExecutionContextV2).
-    productions[ref.ref] = {
-      schema: ref.schemaId,
-      artifactRef: ref.ref,
-      contentHash: ref.digest,
-      bindings: {},
-    };
-  }
-  return {
-    runInput: envelope.immutableRunInput,
-    productions,
-    receipts: {},
-  };
-}
-
-/**
- * Adapt a legacy {@link NodeExecutionResult} into a {@link NodeExecutionResultV2}.
- *
- * Wraps the legacy flat `NodeProduction` (if present) into a minimal
- * `NodeProductionEnvelope` (with an empty lineage array and a `productRef`
- * derived from the production's own fields) and the legacy
- * `NodeExecutionReceipt` (if present) into a `DriverNeutralExecutionReceipt`
- * (with the board/task/intent ids moved into `adapterData`). The legacy
- * `completion` magic-bindings case (production.bindings.certificatePayload) is
- * NOT reverse-engineered into a `ModuleCompletion` here — settlement continues
- * to read the magic bindings as the documented fallback when a node returns a
- * legacy-shaped result.
- *
- * Pure: same legacy result → same v2 result.
- */
-export function toV2Result(legacy: NodeExecutionResult): NodeExecutionResultV2 {
-  const productionEnvelope: NodeProductionEnvelope | undefined = legacy.production
-    ? (() => {
-        const p = legacy.production;
-        const productRef: ProductRef = {
-          schemaId: p.schema,
-          ref: p.artifactRef,
-          digest: p.contentHash,
-        };
-        return {
-          schema: p.schema,
-          artifactRef: p.artifactRef,
-          contentHash: p.contentHash,
-          bindings: p.bindings,
-          schemaId: p.schema,
-          productRef,
-          lineage: [],
-        };
-      })()
-    : undefined;
-  const driverReceipt: DriverNeutralExecutionReceipt | undefined = legacy.receipt
-    ? (() => {
-        const r = legacy.receipt;
-        // Board/task/intent ids move into adapterData. The driver-neutral base
-        // fields are the physical ones the runtime switches on.
-        return {
-          schemaVersion: 'saga3.driver-neutral-receipt.v1',
-          nodeRunId: 0,
-          attempt: 1,
-          runtimeEvent: r.runtimeStatus,
-          driverKind: r.executorKind,
-          adapterData: {
-            kind: r.kind,
-            intentId: r.intentId,
-            taskId: r.taskId,
-            ...(r.executionId !== null ? { executionId: r.executionId } : {}),
-            replayed: r.replayed,
-          },
-        };
-      })()
-    : undefined;
-  return {
-    runtimeEvent: legacy.runtimeEvent,
-    ...(legacy.domainEvent !== undefined ? { domainEvent: legacy.domainEvent } : {}),
-    ...(legacy.recoveryIssue !== undefined ? { recoveryIssue: legacy.recoveryIssue } : {}),
-    ...(legacy.acceptanceReceipt !== undefined
-      ? { acceptanceReceipt: legacy.acceptanceReceipt }
-      : {}),
-    ...(legacy.outcome !== undefined ? { outcome: legacy.outcome } : {}),
-    ...(productionEnvelope !== undefined ? { productionEnvelope } : {}),
-    ...(driverReceipt !== undefined ? { driverReceipt } : {}),
-  };
 }
 
 /**
