@@ -46,19 +46,18 @@ export function getDb(): Database.Database {
   db.pragma('busy_timeout = 5000');
   db.pragma('synchronous = NORMAL');
 
-  // DB compatibility check — disposable pre-release policy.
-  // PRE-RELEASE: there are no clients and no data to preserve. When the schema
-  // changes, SCHEMA_VERSION is bumped and old DBs are rejected. When the
-  // product ships to real users, replace this with versioned migrations.
+  // DB version stamp. user_version is set on fresh DBs and checked on reopen.
+  // If the version differs, the system warns but does NOT delete or block —
+  // saga is a governance platform, the database IS the product (artifacts,
+  // traces, tasks, evidence). Deleting it is never the right answer.
+  // When the schema changes, versioned migrations must handle the upgrade.
   const existingVersion = db.pragma('user_version', { simple: true }) as number;
   if (existingVersion !== 0 && existingVersion !== SCHEMA_VERSION) {
-    db.close();
-    db = null;
-    throw new Error(
-      `DB at ${dbPath} has user_version=${existingVersion}, expected ${SCHEMA_VERSION}. ` +
-        'PRE-RELEASE: this DB is from an older schema version. Delete and recreate: ' +
-        `rm ${dbPath}${dbPath.replace(/\.db$/, '{,.db-wal,.db-shm}')}` +
-        '\n(NOT for production — when saga ships to real users, this will become a versioned migration.)',
+    console.warn(
+      `[saga] DB at ${dbPath} has user_version=${existingVersion}, ` +
+        `current schema is ${SCHEMA_VERSION}. ` +
+        'The database will be opened as-is. If errors occur, a versioned ' +
+        'migration is needed — do NOT delete the database.',
     );
   }
 
