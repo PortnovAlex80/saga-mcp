@@ -85,30 +85,55 @@ stores and reads uniformly. The kernel engineer validates the schema
 declaratively (via the module's declared `outputSchema`), not by branching on
 module name.
 
-### Known gap (as of this version)
+### Historical record: four parallel desks (the design mistake)
 
-The current implementation has **four separate desks** instead of one:
+The original implementation was built workshop-by-workshop. Each workshop
+received its **own submit tool, its own table and its own resolver** — because
+the designers thought the workshops produced *different kinds of entities*:
 
-| Current desk | Workshop | Should be |
-|---|---|---|
-| `saga3_proposals` | Discovery | `workplace_products` |
-| `saga3_managed_artifact_productions` | Formalization | `workplace_products` |
-| `saga3_managed_node_submissions` | Development | `workplace_products` |
-| `saga3_delivery_*` | Delivery | `workplace_products` |
+| Workshop | What designers thought it produced | Actual physical product | Dedicated desk |
+|---|---|---|---|
+| Discovery | "A proposal" | Text (JSON) | `saga3_proposals` |
+| Formalization | "Artifacts (PRD, UC, AC, SRS)" | Text (JSON/Markdown) | `saga3_managed_artifact_productions` |
+| Development | "A submission" | Text (JSON task graph) | `saga3_managed_node_submissions` |
+| Delivery | "Release records" | Text (JSON) | `saga3_delivery_*` |
 
-And four separate submit tools:
+The mistake was **domain-driven table design**: each workshop's domain
+vocabulary ("proposal", "artifact", "submission") became a separate table,
+when the physical reality is that **every product is text with a schema**.
+The designers conflated *what the text means* (domain semantics) with *what
+the text is* (a workplace product that the conveyor moves between nodes).
 
-| Current submit | Workshop | Should be |
-|---|---|---|
-| `proposal_submit` | Discovery | `submitWork` |
-| `artifact_create` (bridge part) | Formalization | `submitWork` |
-| `process_node_submit` | Development | `submitWork` |
-| (kernel-only) | Delivery | `submitWork` |
+**The proof that this was a mistake** — and the proof that the Saga pipeline
+is fundamentally one mechanism, not four — is that the refactoring described
+in this document (Waves 0–9) made every workshop work through the same:
 
-This is the largest remaining architectural debt. The factory works —
-Discovery, Formalization, Development and Delivery all run — but they run on
-**four parallel tracks** where the LEGO model requires **one track with
-different payloads**. Unifying the desk is the next architectural priority.
+- Same dispatch-loop and atomic card assignment (Wave 2).
+- Same `AssignedWork` launch input (Wave 3, Slice 1).
+- Same review-pause-resume lifecycle (the `review_skill` declarative gate).
+- Same recovery mechanic (RecoveryIssue → same card, same desk).
+- Same pure stuck-policy (Wave 2 FU-D).
+- Same cross-process lease (Wave 5).
+
+The only thing that remains **non-universal** is the four separate desks
+(four tables, four submit tools, four resolvers). These are the last
+vestige of the per-workshop design. The conveyor already moves cards, hires
+workers, manages review and handles recovery identically for every workshop.
+The desk unification is the final step to make the LEGO model complete:
+**one machine, one material, one desk**.
+
+This historical record is preserved so future architects understand **why**
+there are four tables and **why** they should become one — not because the
+domains differ, but because the domains were mistaken for different materials
+when they are all text.
+
+> **Current status:** Discovery (`proposal_submit` → `saga3_proposals`),
+> Formalization (`artifact_create` bridge → `saga3_managed_artifact_productions`),
+> Development (`process_node_submit` → `saga3_managed_node_submissions`) and
+> Delivery (kernel-only) each use their own desk. All four are proven to work
+> end-to-end with real GLM 4.7 (the Sprint Velocity Calculator run demonstrated
+> Discovery → Formalization → review → recovery → resume). The four desks are
+> the largest remaining architectural debt.
 
 ## The conveyor
 
