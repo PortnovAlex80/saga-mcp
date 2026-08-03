@@ -66,7 +66,7 @@ async function loadModules() {
     search, activity, exportImport, dispatcher, artifacts, repositories,
     lifecycle, observations, conflicts, providers, processModules,
     processNodeSubmissions, deliveryApprovals, lifecycleRuns,
-    saga3ProposalsMod, saga3NormalizationMod, saga3ReadinessMod, saga3DiagnosisMod,
+    saga3ProposalsMod, saga3NormalizationMod, saga3ReadinessMod,
   ] = await Promise.all([
     import('../../dist/tools/projects.js'),
     import('../../dist/tools/epics.js'),
@@ -93,12 +93,10 @@ async function loadModules() {
     import('../../dist/tools/saga3-proposals.js'),
     import('../../dist/tools/saga3-normalization.js'),
     import('../../dist/tools/saga3-readiness.js'),
-    import('../../dist/tools/saga3-diagnosis.js'),
   ]);
   const saga3Proposals = saga3ProposalsMod.createSaga3ProposalHandlers();
   const saga3Normalization = saga3NormalizationMod.createSaga3NormalizationHandlers();
   const saga3Readiness = saga3ReadinessMod.createSaga3ReadinessHandlers();
-  const saga3Diagnosis = saga3DiagnosisMod.createSaga3DiagnosisHandlers();
   // EXACT mirror of src/index.ts:81 ALL_TOOLS assembly (same sources, same order).
   // saga4 cutover: the workflow source was removed (see note above); it is no
   // longer spread here.
@@ -128,7 +126,6 @@ async function loadModules() {
     ...saga3Proposals.definitions,
     ...saga3Normalization.definitions,
     ...saga3Readiness.definitions,
-    ...saga3Diagnosis.definitions,
   ];
   const args = await import('../../dist/tools/saga3-args.js');
   const authority = await import('../../dist/shared/authority/authorize-tool-call.js');
@@ -176,8 +173,6 @@ const EXPECTED_SORTED_TOOL_NAMES = [
   'delivery_approval_decide',
   'delivery_approval_get',
   'delivery_approval_list',
-  'diagnosis_get',
-  'diagnosis_submit',
   'epic_create',
   'epic_list',
   'epic_update',
@@ -519,7 +514,7 @@ test('structured errors: SAGA3_TOOL_CALL_SHAPES covers all 7 saga3 tools', async
   assert.deepEqual(
     Object.keys(args.SAGA3_TOOL_CALL_SHAPES).sort(),
     [
-      'diagnosis_get', 'diagnosis_submit', 'normalization_get', 'normalization_submit',
+      'normalization_get', 'normalization_submit',
       'proposal_submit', 'readiness_get', 'readiness_submit',
     ],
   );

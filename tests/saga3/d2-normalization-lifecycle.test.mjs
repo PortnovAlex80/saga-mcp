@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 const { Saga3DiscoveryNormalizationService } = await import(
-  '../../dist/saga3/application/discovery-normalization-service.js'
+  '../../dist/modules/discovery/application/discovery-normalization-service.js'
 );
 const { Saga3DiscoveryEngine } = await import('../../dist/engines/saga3-discovery-engine.js');
 const {

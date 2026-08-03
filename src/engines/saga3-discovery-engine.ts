@@ -26,14 +26,10 @@ import {
   type DiscoveryProposalPayload,
 } from '../modules/discovery/domain/discovery-proposal.js';
 import type { Saga3DiscoveryRuntimePersistence } from '../modules/discovery/infrastructure/saga3-discovery-runtime-port.js';
-import type { DiscoveryNormalizationService } from '../saga3/application/discovery-normalization-service.js';
-import { ensureDiscoveryWorkspace } from '../saga3/application/ensure-discovery-workspace.js';
-import type { DiscoveryReadinessService } from '../saga3/application/discovery-readiness-service.js';
+import type { DiscoveryNormalizationService } from '../modules/discovery/application/discovery-normalization-service.js';
+import { ensureDiscoveryWorkspace } from '../modules/discovery/application/ensure-discovery-workspace.js';
+import type { DiscoveryReadinessService } from '../modules/discovery/application/discovery-readiness-service.js';
 import type { DiscoverySettlementService, DiscoverySettlementResult, ProvisionalOutcome } from '../modules/discovery/application/discovery-settlement-service.js';
-import type {
-  DiscoveryDiagnosisResult,
-  DiscoveryDiagnosisService,
-} from '../saga3/application/discovery-diagnosis-service.js';
 import type { ReadinessShadowResult } from '../modules/discovery/domain/discovery-readiness-assessment.js';
 import type { ReadinessAssessmentRecord, ReadinessControlIntentRecord } from '../modules/discovery/domain/discovery-readiness-records.js';
 import {
@@ -177,15 +173,10 @@ export interface Saga3DiscoveryEngineDependencies {
    */
   settlementService?: DiscoverySettlementService;
   /**
-   * D5 advisory diagnosis service. Optional so D1-D4 engine tests that do not
-   * exercise diagnosis stay green without wiring a fake; production
-   * (composition-root) always supplies it. When absent (or when no authoritative
-   * certificate was issued), the engine records diagnosis.status='not_run' and
-   * NEVER mutates the top-level outcome/authority/scope/reason/finalStage set
-   * by D4 (invariants I1/I5). Diagnosis runs only after settlement issued a
-   * certificate authoritatively (topLevelAuthority='discovery_settlement_policy').
+   * D5 advisory diagnosis was REMOVED from the outcome-critical flow. The
+   * diagnosis service/domain/repository files were deleted as dead code. The
+   * engine still surfaces a diagnosis section in runResult, always 'not_run'.
    */
-  diagnosisService?: DiscoveryDiagnosisService;
   now?: () => Date;
   sleep?: (ms: number) => Promise<void>;
   /** Max wall-clock seconds the engine waits for the worker to finish. */
@@ -503,14 +494,9 @@ const concluded = typeof rt.readConcludedIntentWithProposal === 'function'
             decision: null, reasonCodes: [], error: null,
           };
         }
-        // D5 recovery: mirror the fresh-run diagnosis hook. Diagnosis runs ONLY
-        // when the recovery settlement issued a certificate authoritatively
-        // (status='issued' + non-null certificate). When the recovery settlement
-        // is not_run/failed, diagnosis stays not_run. Invariants I1/I5 hold:
-        // the diagnosis is advisory and never mutates top-level fields.
-        const recoveryDiagnosis = await this.runDiagnosis(
-          projectId, epicId, recoverySettlement, workspace.workspaceRoot, heartbeat,
-        );
+        // D5: diagnosis was removed from the outcome-critical flow. Surface a
+        // not_run diagnosis section for observability (invariant I1/I5 hold).
+        const recoveryDiagnosis = notRunDiagnosis();
         return this.runResult(projectId, epicId, 'completed', recoveryCycles, null,
           provisionalOutcome,
           persistence.episodes.currentStage(epicId) ?? 'discovery', true,
@@ -874,122 +860,12 @@ const concluded = typeof rt.readConcludedIntentWithProposal === 'function'
       };
     }
 
-    // D5: advisory diagnosis. Eligibility (D5-TEST-MATRIX §12) REQUIRES the
-    // settlement to have issued a certificate AUTHORITATIVELY: status='issued'
-    // with non-null certificateId + certificateHash. This is exactly the
-    // condition under which runResult sets topLevelAuthority=
-    // 'discovery_settlement_policy'. When not eligible (settlement failed /
-    // not_run, or no certificate), diagnosis stays not_run.
-    //
-    // CRITICAL invariants I1/I5: the diagnosis result is ADVISORY ONLY. It MUST
-    // NOT change topLevelOutcome, topLevelAuthority, topLevelReason,
-    // topLevelScope, topLevelLastError, or finalStage — those were set
-    // authoritatively by the settlement block above and are projected by
-    // runResult. A diagnosis failure (worker crash, invalid payload, persistence
-    // error) leaves the D4 result COMPLETE and UNCHANGED; only the advisory
-    // diagnosis section records the failure. There is NO `if (diagnosis...)`
-    // branch that mutates top-level fields.
-    const diagnosis = await this.runDiagnosis(
-      projectId, epicId, settlement, workspace.workspaceRoot, heartbeat,
-    );
+    // D5: advisory diagnosis was REMOVED from the outcome-critical flow. The
+    // engine surfaces a not_run diagnosis section for observability only
+    // (invariants I1/I5 hold — diagnosis never mutated top-level fields).
+    const diagnosis = notRunDiagnosis();
 
     return this.runResult(projectId, epicId, reason, cycles, lastError, outcome, finalStage, scopeCompleted, readiness, settlement, diagnosis);
-  }
-
-  /**
-   * D5 advisory diagnosis hook. Mirrors the D4 settlement eligibility + try/catch
-   * isolation pattern. Returns an `EngineDiagnosisResult` that runResult surfaces
-   * in the `diagnosis` section WITHOUT touching any top-level field (I1/I5).
-   *
-   * Eligibility (§12): settlement.status='issued' AND certificateId != null AND
-   * certificateHash != null — i.e. settlement issued authoritatively. This is the
-   * exact condition under which runResult sets topLevelAuthority=
-   * 'discovery_settlement_policy'. When the diagnosis service is not wired
-   * (D1-D4 engine tests) or no certificate was issued, returns notRunDiagnosis().
-   *
-   * On ANY throw from the service, returns status='failed' with the error — the
-   * D4 result stays COMPLETE (I5). The service itself is defensive and returns
-   * failed/failed-payload results rather than throwing, but the try/catch is
-   * belt-and-braces (mirrors the settlement hook).
-   */
-  private async runDiagnosis(
-    projectId: number,
-    epicId: number,
-    settlement: EngineSettlementResult,
-    workspaceRoot: string,
-    heartbeat: (event: string, message: string) => void,
-  ): Promise<EngineDiagnosisResult> {
-    const eligible =
-      settlement.status === 'issued'
-      && settlement.certificateId !== null
-      && settlement.certificateHash !== null
-      && !!this.deps.diagnosisService;
-    if (!eligible || !this.deps.diagnosisService
-        || settlement.certificateId === null
-        || settlement.certificateHash === null) {
-      return notRunDiagnosis();
-    }
-    try {
-      // Create filled diagnosis-call template so the diagnosis worker can
-      // copy → fill remaining fields → verify → submit. Pre-fills the target
-      // tuple (certificate_id/hash/decision) that the model must echo exactly.
-      this.ensureStageTemplate(workspaceRoot, epicId, 'diagnosis', {
-        certificate_id: settlement.certificateId,
-        certificate_hash: settlement.certificateHash,
-      });
-      const result = await this.deps.diagnosisService.diagnose({
-        projectId,
-        epicId,
-        certificateId: settlement.certificateId,
-        certificateHash: settlement.certificateHash,
-        workspaceRoot,
-        heartbeat,
-      });
-      return this.projectDiagnosisResult(result);
-    } catch (diagErr) {
-      const msg = diagErr instanceof Error ? diagErr.message : String(diagErr);
-      heartbeat('DIAGNOSIS_ISOLATED_FAILURE', msg);
-      return {
-        status: 'failed',
-        authority: 'none',
-        reportId: null,
-        reportHash: null,
-        target: {
-          certificateId: settlement.certificateId,
-          certificateHash: settlement.certificateHash,
-        },
-        summary: null,
-        primaryCauses: [],
-        blockingGaps: [],
-        recommendedActions: [],
-        error: msg,
-      };
-    }
-  }
-
-  /**
-   * Map the service's `DiscoveryDiagnosisResult` discriminated union into the
-   * engine's `EngineDiagnosisResult`. The shapes are identical by construction;
-   * this exists so the engine owns its result type (mirrors how
-   * `EngineSettlementResult` relates to `DiscoverySettlementResult`). It never
-   * mutates anything outside the advisory diagnosis section.
-   */
-  private projectDiagnosisResult(result: DiscoveryDiagnosisResult): EngineDiagnosisResult {
-    return {
-      status: result.status,
-      authority: result.authority,
-      reportId: result.reportId,
-      reportHash: result.reportHash,
-      target: {
-        certificateId: result.target.certificateId,
-        certificateHash: result.target.certificateHash,
-      },
-      summary: result.summary,
-      primaryCauses: result.primaryCauses,
-      blockingGaps: result.blockingGaps,
-      recommendedActions: result.recommendedActions,
-      error: result.error,
-    };
   }
 
   private runResult(

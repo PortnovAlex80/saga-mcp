@@ -1,16 +1,16 @@
-import type { Saga2HostRuntime } from '../../application/ports/saga2-host-runtime.js';
+import type { Saga2HostRuntime } from '../../../application/ports/saga2-host-runtime.js';
 import type {
   AssignedWork,
   WorkerExecutorFactory,
   WorkAssignmentPort,
-} from '../../application/ports/worker-executor.js';
-import type { IdGeneratorPort } from '../../application/ports/conveyor-ports.js';
-import type { SagaRuntimeConfig } from '../../runtime/saga-runtime-config.js';
-import type { Saga3DiscoveryRuntimePersistence } from '../../modules/discovery/infrastructure/saga3-discovery-runtime-port.js';
+} from '../../../application/ports/worker-executor.js';
+import type { IdGeneratorPort } from '../../../application/ports/conveyor-ports.js';
+import type { SagaRuntimeConfig } from '../../../runtime/saga-runtime-config.js';
+import type { Saga3DiscoveryRuntimePersistence } from '../infrastructure/saga3-discovery-runtime-port.js';
 import {
   assignOneCard,
   releaseOneCardIfAssigned,
-} from './assign-one-card.js';
+} from '../../../saga3/application/assign-one-card.js';
 
 export interface DiscoveryNormalizationRequest {
   projectId: number;

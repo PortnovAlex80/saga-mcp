@@ -33,9 +33,9 @@ const { DISCOVERY_READINESS_ASSESSMENT_SCHEMA, READINESS_DIMENSIONS } = await im
   '../../dist/modules/discovery/domain/discovery-readiness-assessment.js'
 );
 const { ensureSaga3ReadinessSchema } = await import(
-  '../../dist/saga3/persistence/saga3-readiness-repository.js'
+  '../../dist/modules/discovery/infrastructure/saga3-readiness-repository.js'
 );
-const { canonicalJson } = await import('../../dist/saga3/persistence/saga3-normalization-repository.js');
+const { canonicalJson } = await import('../../dist/modules/discovery/infrastructure/saga3-normalization-repository.js');
 const {
   fakeWorkAssignment,
   fakeIdGenerator,
@@ -169,7 +169,7 @@ test('P0-2: rejected assessment is observable in the shadow matrix (service)', a
     });
     // The service's shadowFrom must report failed (not not_run) for a rejected
     // assessment, with the assessmentId and rejection error.
-    const { Saga3DiscoveryReadinessService } = await import('../../dist/saga3/application/discovery-readiness-service.js');
+    const { Saga3DiscoveryReadinessService } = await import('../../dist/modules/discovery/application/discovery-readiness-service.js');
     const fakeRt = {
       ensureReadinessControl: () => ({ controlIntentId: 1, proposalId: 50, proposalContentHash: PROPOSAL_HASH, controlStatus: 'concluded', authorityIntentId: 2, authorityIntentStatus: 'concluded', taskId: 200 }),
       prepareIntentForExecution: () => ({ state: 'done', intentStatus: 'concluded', taskStatus: 'done' }),
@@ -205,7 +205,7 @@ test('P0-2: rejected assessment is observable in the shadow matrix (service)', a
 // ---------------------------------------------------------------------------
 
 test('P0-1: advisor task done + no assessment → readiness.failed (never not_run)', async () => {
-  const { Saga3DiscoveryReadinessService } = await import('../../dist/saga3/application/discovery-readiness-service.js');
+  const { Saga3DiscoveryReadinessService } = await import('../../dist/modules/discovery/application/discovery-readiness-service.js');
   const svc = new Saga3DiscoveryReadinessService({
     config: { dbPath: '/d', claudePath: 'c', lmStudioUrl: 'http://x/v1' },
     workerExecutorFactory: () => ({}), host: { workerPaths: {} },
@@ -224,7 +224,7 @@ test('P0-1: advisor task done + no assessment → readiness.failed (never not_ru
 });
 
 test('P0-1: accepted assessment → readiness.completed; verdict carried', async () => {
-  const { Saga3DiscoveryReadinessService } = await import('../../dist/saga3/application/discovery-readiness-service.js');
+  const { Saga3DiscoveryReadinessService } = await import('../../dist/modules/discovery/application/discovery-readiness-service.js');
   const svc = new Saga3DiscoveryReadinessService({
     config: { dbPath: '/d', claudePath: 'c', lmStudioUrl: 'http://x/v1' },
     workerExecutorFactory: () => ({}), host: { workerPaths: {} },

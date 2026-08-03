@@ -14,11 +14,11 @@ const {
   DISCOVERY_WORK_INTENT_SCHEMA,
 } = await import('../../dist/shared/work-intent.js');
 const { DISCOVERY_PROPOSAL_SCHEMA } = await import('../../dist/modules/discovery/domain/discovery-proposal.js');
-const { canonicalJson } = await import('../../dist/saga3/persistence/saga3-normalization-repository.js');
+const { canonicalJson } = await import('../../dist/modules/discovery/infrastructure/saga3-normalization-repository.js');
 const { DISCOVERY_READINESS_ASSESSMENT_SCHEMA, READINESS_DIMENSIONS } = await import(
   '../../dist/modules/discovery/domain/discovery-readiness-assessment.js'
 );
-const { ensureSaga3ReadinessSchema } = await import('../../dist/saga3/persistence/saga3-readiness-repository.js');
+const { ensureSaga3ReadinessSchema } = await import('../../dist/modules/discovery/infrastructure/saga3-readiness-repository.js');
 
 function fixture() {
   const temp = mkdtempSync(path.join(os.tmpdir(), 'saga3-d3-handler-'));

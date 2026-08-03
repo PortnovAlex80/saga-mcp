@@ -12,7 +12,7 @@ const { SqliteProcessRunRepository } = await import(
   '../../dist/process-modules/persistence/sqlite-process-run-repository.js'
 );
 const { SqliteDeliveryApprovalInbox } = await import(
-  '../../dist/infrastructure/process-modules/delivery/sqlite-delivery-approval-inbox.js'
+  '../../dist/modules/delivery/infrastructure/sqlite-delivery-approval-inbox.js'
 );
 
 test('delivery approval inbox pauses, binds and immutably replays a human decision', () => {

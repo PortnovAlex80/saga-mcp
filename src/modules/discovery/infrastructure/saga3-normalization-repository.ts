@@ -4,9 +4,9 @@ import type {
   DiscoveryNormalizationProposalRecord,
   RawDiscoverySubmissionRecord,
   RawDiscoverySubmissionStatus,
-} from '../../modules/discovery/domain/discovery-normalization-records.js';
-import type { ProposalProvenance } from '../domain/proposal.js';
-import { canonicalJson } from '../../shared/canonical-json.js';
+} from '../domain/discovery-normalization-records.js';
+import type { ProposalProvenance } from '../../../saga3/domain/proposal.js';
+import { canonicalJson } from '../../../shared/canonical-json.js';
 
 export function ensureSaga3NormalizationSchema(db: Database.Database): void {
   db.exec(`
@@ -235,7 +235,7 @@ export function markNormalizationAccepted(
   ).run(normalizationProposalId);
 }
 
-export { canonicalJson } from '../../shared/canonical-json.js';
+export { canonicalJson } from '../../../shared/canonical-json.js';
 
 interface RawSubmissionRow {
   id: number;

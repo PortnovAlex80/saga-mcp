@@ -673,17 +673,9 @@ export interface DiscoveryRuntimePersistencePort {
     inserted: boolean;
   };
   reconcileExistingCertificate(input: IssueCertificateAtomicallyInput): OutcomeCertificateRecord;
-  ensureDiagnosisControl(input: EnsureDiagnosisControl): DiagnosisControlExecution;
-  setDiagnosisControlStatus(controlIntentId: number, expected: DiagnosisControlStatus, next: DiagnosisControlStatus): boolean;
-  readDiagnosisControlForTarget(certificateId: number, certificateHash: string): DiagnosisControlIntentRecord | null;
-  readDiagnosisControl(controlIntentId: number): DiagnosisControlIntentRecord | null;
-  readAcceptedDiagnosisReport(controlIntentId: number): DiagnosisReportRecord | null;
-  readLatestDiagnosisReport(controlIntentId: number): DiagnosisReportRecord | null;
-  submitDiagnosisReportAtomically(input: SubmitDiagnosisReportInput): {
-    record: DiagnosisReportRecord;
-    inserted: boolean;
-    replayed: boolean;
-  };
+  // D5: advisory diagnosis methods REMOVED — diagnosis flow node was deleted
+  // from the outcome-critical path and the diagnosis domain/repository/service
+  // files were removed as dead code. See discovery-process-module.ts.
 }
 
 // ---------------------------------------------------------------------------

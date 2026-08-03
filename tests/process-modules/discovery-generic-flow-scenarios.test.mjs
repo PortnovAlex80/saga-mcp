@@ -55,7 +55,7 @@ const { createDiscoveryKernelHandlers } = await import(
   '../../dist/process-modules/modules/discovery/discovery-installation.js'
 );
 const { SqliteSaga3DiscoveryRuntime } = await import(
-  '../../dist/saga3/persistence/sqlite-saga3-discovery-runtime.js'
+  '../../dist/modules/discovery/infrastructure/sqlite-saga3-discovery-runtime.js'
 );
 const { Saga3DiscoverySettlementService } = await import(
   '../../dist/modules/discovery/application/discovery-settlement-service.js'

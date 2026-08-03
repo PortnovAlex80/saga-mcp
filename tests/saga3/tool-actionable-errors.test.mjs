@@ -94,10 +94,10 @@ test('argStr: allowEmpty permits empty', () => {
 // ---- actionableError builder ------------------------------------------------
 
 test('actionableError: assembles tool + message + expected + source + got', () => {
-  const err = actionableError('diagnosis', "'schema_version' must be a string",
-    { field: 'schema_version', expected: 'diagnosis_submit({...})', source: 'top-level arg', got: 42 });
-  assert.match(err.message, /diagnosis: 'schema_version' must be a string/);
-  assert.match(err.message, /Expected shape: diagnosis_submit/);
+  const err = actionableError('readiness', "'schema_version' must be a string",
+    { field: 'schema_version', expected: 'readiness_submit({...})', source: 'top-level arg', got: 42 });
+  assert.match(err.message, /readiness: 'schema_version' must be a string/);
+  assert.match(err.message, /Expected shape: readiness_submit/);
   assert.match(err.message, /Source: top-level arg/);
   assert.match(err.message, /Got: 42/);
 });
@@ -107,12 +107,11 @@ test('actionableError: omits missing sections gracefully', () => {
   assert.equal(err.message, 't: something wrong');
 });
 
-// ---- shape registry: all 7 tools have a template ----------------------------
+// ---- shape registry: all 5 tools have a template ----------------------------
 
 test('SAGA3_TOOL_CALL_SHAPES: every saga3 tool has an expected-shape entry', () => {
   const required = [
     'proposal_submit', 'readiness_get', 'readiness_submit',
-    'diagnosis_get', 'diagnosis_submit',
     'normalization_get', 'normalization_submit',
   ];
   for (const name of required) {
@@ -157,11 +156,6 @@ test('enrichPayloadErrors: readiness proposal_id error gets readiness_get source
   assert.match(enriched[1], /Source: readiness_get → proposal_content_hash/);
   // Expected shape appended once at end.
   assert.match(enriched[enriched.length - 1], /\[Expected readiness_submit shape:/);
-});
-
-test('enrichPayloadErrors: diagnosis target.certificate_id gets diagnosis_get source', () => {
-  const enriched = enrichPayloadErrors('diagnosis_submit', ["field 'target.certificate_id' must be 12, got 7"]);
-  assert.match(enriched[0], /Source: diagnosis_get → diagnosis_case\.certificate\.id/);
 });
 
 test('enrichPayloadErrors: source_refs failure gets allowed_source_refs hint', () => {

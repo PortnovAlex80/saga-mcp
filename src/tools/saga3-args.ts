@@ -113,10 +113,6 @@ export const SAGA3_TOOL_CALL_SHAPES = {
     'readiness_get({ control_intent_id: <int from task metadata>, execution_id: <string> })',
   readiness_submit:
     'readiness_submit({ control_intent_id: <int>, execution_id: <string>, schema_version: "saga3.discovery-readiness-assessment.v1", payload: { proposal_id, proposal_content_hash, overall_readiness, dimension_assessments: { problem_clarity, scope_boundedness, stakeholder_coverage, assumption_visibility, unknowns_manageability, risk_visibility, evidence_grounding }, blocking_gaps: [], non_blocking_gaps: [], recommended_next_action, confidence, rationale } })',
-  diagnosis_get:
-    'diagnosis_get({ control_intent_id: <int from task metadata>, execution_id: <string> })',
-  diagnosis_submit:
-    'diagnosis_submit({ control_intent_id: <int>, execution_id: <string>, schema_version: "saga3.discovery-diagnosis.v1", payload: { target: { certificate_id, certificate_hash, settlement_input_hash, decision }, executive_summary, cause_analysis: [], information_requests: [], recommended_actions: [], residual_risks: [], confidence } })',
   normalization_get:
     'normalization_get({ control_intent_id: <int>, source_submission_id: <int>, execution_id: <string> })',
   normalization_submit:
@@ -155,17 +151,6 @@ const PAYLOAD_FIELD_SOURCES: Record<string, Record<string, string>> = {
     dimension_assessments: 'object with all 7 keys: problem_clarity, scope_boundedness, stakeholder_coverage, assumption_visibility, unknowns_manageability, risk_visibility, evidence_grounding',
     blocking_gaps: 'array of { code, description, source_refs[] }',
     non_blocking_gaps: 'array of { code, description, source_refs[] }',
-  },
-  diagnosis_submit: {
-    certificate_id: 'diagnosis_get → diagnosis_case.certificate.id (echo the integer)',
-    certificate_hash: 'diagnosis_get → diagnosis_case.certificate.hash (echo the 64-char hex)',
-    settlement_input_hash: 'diagnosis_get → diagnosis_case.certificate.settlement_input_hash (echo the 64-char hex)',
-    decision: 'diagnosis_get → diagnosis_case.certificate.decision (go, clarify, or reject)',
-    target: 'object: { certificate_id, certificate_hash, settlement_input_hash, decision } — copy from diagnosis_case.certificate',
-    source_refs: 'use ONLY refs from the allowed_source_refs list returned by diagnosis_get',
-    cited_condition_ids: 'condition_ids from diagnosis_case.policy_trace where contributed_to_decision is true',
-    reason_codes: 'reason codes emitted by the cited policy_trace nodes (emitted_reason_codes)',
-    confidence: 'a number between 0 and 1',
   },
   proposal_submit: {
     recommended_outcome: 'one of: go, clarify, reject, defer, inconclusive, failed',

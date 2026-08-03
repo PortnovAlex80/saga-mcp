@@ -31,7 +31,7 @@ import {
   insertReadinessAssessment,
   markReadinessAccepted,
   markReadinessRejected,
-} from '../saga3/persistence/saga3-readiness-repository.js';
+} from '../modules/discovery/infrastructure/saga3-readiness-repository.js';
 import { canonicalJson, collectDiscoverySourceRefs } from '../shared/canonical-json.js';
 import { createHash } from 'node:crypto';
 

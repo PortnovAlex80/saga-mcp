@@ -200,8 +200,9 @@ test('fixture incomplete-provenance: provenance keys are best-effort nullable me
   // The development runtime was renamed+moved during the saga4 cutover. The old
   // path src/process-modules/modules/development/sqlite-development-runtime.ts
   // is ENOENT; the settlement-state runtime now hosts these provenance keys
-  // (byte-identical literals at the new path :1005-1006).
-  const dev = readSrc('src/infrastructure/process-modules/development/sqlite-development-settlement-state.ts');
+  // (byte-identical literals at the new path :1005-1006). The module was later
+  // consolidated into src/modules/development/infrastructure/ (self-contained module).
+  const dev = readSrc('src/modules/development/infrastructure/sqlite-development-settlement-state.ts');
   // Both newly-stamped keys fall back to null on lookup miss — the boundary
   // is still fragile even after commit fd52982.
   assert.ok(
@@ -351,7 +352,7 @@ test('fixture null-content-hash: schema column is nullable + index uses COALESCE
     'row type must propagate content_hash as nullable',
   );
   // Discovery runtime documents the failure mode.
-  const discovery = readSrc('src/saga3/persistence/sqlite-saga3-discovery-runtime.ts');
+  const discovery = readSrc('src/modules/discovery/infrastructure/sqlite-saga3-discovery-runtime.ts');
   assert.ok(
     discovery.includes('NULL content_hash') || discovery.includes('NULL project_repository_id and NULL content_hash'),
     'discovery runtime must document the NULL content_hash failure mode',

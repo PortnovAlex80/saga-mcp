@@ -90,7 +90,7 @@ import type {
 } from '../application/ports/worker-executor.js';
 import { getDb } from '../db.js';
 import type { Saga3DiscoveryRuntimePersistence } from '../modules/discovery/infrastructure/saga3-discovery-runtime-port.js';
-import { SqliteSaga3DiscoveryRuntime } from '../saga3/persistence/sqlite-saga3-discovery-runtime.js';
+import { SqliteSaga3DiscoveryRuntime } from '../modules/discovery/infrastructure/sqlite-saga3-discovery-runtime.js';
 import { Saga3DiscoverySettlementService } from '../modules/discovery/application/discovery-settlement-service.js';
 import { GenericFlowExecutor } from '../process-modules/application/generic-flow-executor.js';
 import {
@@ -153,14 +153,14 @@ import type {
   DeliveryApprovalSource,
   DeliveryRuntimeProviders,
 } from '../process-modules/modules/delivery/delivery-provider-ports.js';
-import { SqliteDeliveryOutputRepository } from '../infrastructure/process-modules/delivery/delivery-persistence.js';
+import { SqliteDeliveryOutputRepository } from '../modules/delivery/infrastructure/delivery-persistence.js';
 import { RELEASE_RECORD_SCHEMA } from '../process-modules/modules/delivery/delivery-schemas.js';
 import {
   ReferenceDeliveryPreflightPolicy,
   ReferenceDeliverySettlementPolicy,
 } from '../process-modules/modules/delivery/delivery-settlement-policy.js';
-import { SqliteDeliveryApprovalInbox } from '../infrastructure/process-modules/delivery/sqlite-delivery-approval-inbox.js';
-import { SqliteDeliveryRuntime } from '../infrastructure/process-modules/delivery/sqlite-delivery-runtime.js';
+import { SqliteDeliveryApprovalInbox } from '../modules/delivery/infrastructure/sqlite-delivery-approval-inbox.js';
+import { SqliteDeliveryRuntime } from '../modules/delivery/infrastructure/sqlite-delivery-runtime.js';
 import {
   createDevelopmentKernelHandlers,
   createDevelopmentOutputPayloadResolver,
@@ -173,13 +173,13 @@ import type {
   DevelopmentSettlementStatePort,
   DevelopmentTaskGraphPort,
 } from '../process-modules/modules/development/development-kernel-ports.js';
-import { SqliteDevelopmentOutputRepository } from '../infrastructure/process-modules/development/development-persistence.js';
+import { SqliteDevelopmentOutputRepository } from '../modules/development/infrastructure/development-persistence.js';
 import { VERIFIED_INTEGRATION_BUNDLE_SCHEMA } from '../process-modules/modules/development/development-schemas.js';
 import {
   ReferenceDevelopmentSettlementPolicy,
   ReferenceDevelopmentTaskGraphPolicy,
 } from '../process-modules/modules/development/development-settlement-policy.js';
-import { SqliteDevelopmentModuleStore } from '../infrastructure/process-modules/development/sqlite-development-settlement-state.js';
+import { SqliteDevelopmentModuleStore } from '../modules/development/infrastructure/sqlite-development-settlement-state.js';
 import { createGitPort, createMachinePort } from '../infrastructure/process-modules/git-machine-ports.js';
 import { SqliteWorkAssignmentAdapter } from '../infrastructure/work/sqlite-work-assignment-adapter.js';
 import {

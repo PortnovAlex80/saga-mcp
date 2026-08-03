@@ -1,7 +1,7 @@
 /**
  * D1 — Saga 3 Discovery workspace creation regression test.
  *
- * Guards ensureDiscoveryWorkspace (src/saga3/application/ensure-discovery-workspace.ts).
+ * Guards ensureDiscoveryWorkspace (src/modules/discovery/application/ensure-discovery-workspace.ts).
  *
  * Regression context: ensureDiscoveryWorkspace existed as engine code in
  * commit 1efb086, was DELETED in 12952be (templates became static), and the
@@ -23,7 +23,7 @@ import path from 'node:path';
 import test from 'node:test';
 
 const { ensureDiscoveryWorkspace } = await import(
-  '../../dist/saga3/application/ensure-discovery-workspace.js'
+  '../../dist/modules/discovery/application/ensure-discovery-workspace.js'
 );
 
 /**

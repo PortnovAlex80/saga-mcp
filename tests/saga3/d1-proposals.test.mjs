@@ -198,7 +198,7 @@ test('proposal_submit: valid submission records the proposal with provenance fro
     const { intentId, taskId, executionId } = seedIntentAndTask(getDb());
 
     const { createSaga3ProposalHandlers } = await import('../../dist/tools/saga3-proposals.js');
-    const { Saga3ProposalRepository } = await import('../../dist/saga3/persistence/saga3-proposal-repository.js');
+    const { Saga3ProposalRepository } = await import('../../dist/modules/discovery/infrastructure/saga3-proposal-repository.js');
     const repo = new Saga3ProposalRepository();
     const { handlers } = createSaga3ProposalHandlers();
 
@@ -248,7 +248,7 @@ test('proposal_submit: exact replay returns the same proposal id with replayed=t
     assert.equal(replay.content_hash, first.content_hash);
     assert.equal(replay.replayed, true);
 
-    const { Saga3ProposalRepository } = await import('../../dist/saga3/persistence/saga3-proposal-repository.js');
+    const { Saga3ProposalRepository } = await import('../../dist/modules/discovery/infrastructure/saga3-proposal-repository.js');
     const repo = new Saga3ProposalRepository();
     const count = getDb().prepare('SELECT COUNT(*) c FROM saga3_proposals WHERE intent_id=?').get(intentId).c;
     assert.equal(count, 1, 'replay must not create a duplicate proposal row');

@@ -1,13 +1,13 @@
 import { createHash } from 'node:crypto';
-import { getDb } from '../../db.js';
-import type { CreateWorkIntent, WorkIntent, WorkIntentStatus } from '../../shared/work-intent.js';
+import { getDb } from '../../../db.js';
+import type { CreateWorkIntent, WorkIntent, WorkIntentStatus } from '../../../shared/work-intent.js';
 import type {
   ProposalProvenance,
   ProposalRecord,
   ProposalStatus,
   SubmitProposal,
   SubmittedProposalResult,
-} from '../domain/proposal.js';
+} from '../../../saga3/domain/proposal.js';
 
 /**
  * Canonical JSON stringify for content hashing. Keys are sorted so the same

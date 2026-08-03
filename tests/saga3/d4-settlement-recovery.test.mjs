@@ -49,7 +49,7 @@ const { DISCOVERY_READINESS_ASSESSMENT_SCHEMA, READINESS_DIMENSIONS } = await im
 );
 const { canonicalJson } = await import('../../dist/shared/canonical-json.js');
 const { ensureSaga3ReadinessSchema } = await import(
-  '../../dist/saga3/persistence/saga3-readiness-repository.js'
+  '../../dist/modules/discovery/infrastructure/saga3-readiness-repository.js'
 );
 const {
   ensureSaga3SettlementSchema,
@@ -62,7 +62,7 @@ const { Saga3DiscoverySettlementService } = await import(
   '../../dist/modules/discovery/application/discovery-settlement-service.js'
 );
 const { SqliteSaga3DiscoveryRuntime } = await import(
-  '../../dist/saga3/persistence/sqlite-saga3-discovery-runtime.js'
+  '../../dist/modules/discovery/infrastructure/sqlite-saga3-discovery-runtime.js'
 );
 
 // ---------------------------------------------------------------------------

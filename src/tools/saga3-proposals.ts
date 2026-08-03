@@ -14,7 +14,7 @@ import {
   canonicalJson,
   ensureSaga3NormalizationSchema,
   insertRawSubmission,
-} from '../saga3/persistence/saga3-normalization-repository.js';
+} from '../modules/discovery/infrastructure/saga3-normalization-repository.js';
 
 const PROPOSAL_CONTRACTS = {
   [DISCOVERY_INTENT_KIND]: {

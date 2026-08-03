@@ -13,7 +13,7 @@ const { SqliteManagedProductionLedger } = await import(
   '../../dist/process-modules/persistence/sqlite-managed-production-ledger.js'
 );
 const { SqliteSaga3DiscoveryRuntime } = await import(
-  '../../dist/saga3/persistence/sqlite-saga3-discovery-runtime.js'
+  '../../dist/modules/discovery/infrastructure/sqlite-saga3-discovery-runtime.js'
 );
 const { sha256Hex } = await import(
   '../../dist/process-modules/shared/canonical-json.js'

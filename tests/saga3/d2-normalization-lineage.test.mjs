@@ -25,7 +25,7 @@ const { DISCOVERY_NORMALIZATION_PROPOSAL_SCHEMA } = await import(
 const {
   ensureSaga3NormalizationSchema,
   insertRawSubmission,
-} = await import('../../dist/saga3/persistence/saga3-normalization-repository.js');
+} = await import('../../dist/modules/discovery/infrastructure/saga3-normalization-repository.js');
 
 function fixture() {
   const temp = mkdtempSync(path.join(os.tmpdir(), 'saga3-d2-lineage-'));

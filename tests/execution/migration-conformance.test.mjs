@@ -206,7 +206,7 @@ test('W9-A8 restart development: output repository is write-once (same hash repl
       '../../dist/process-modules/modules/development/development-process-module.js'
     );
     const { SqliteDevelopmentOutputRepository } = await import(
-      '../../dist/infrastructure/process-modules/development/development-persistence.js'
+      '../../dist/modules/development/infrastructure/development-persistence.js'
     );
     const processRunId = await startRun(db, DEVELOPMENT_PROCESS_MODULE_REF, 'w9a8-dev-restart');
     const repo = new SqliteDevelopmentOutputRepository(db);
@@ -265,7 +265,7 @@ test('W9-A8 restart delivery: output repository is write-once (same hash replays
       '../../dist/process-modules/modules/delivery/delivery-process-module.js'
     );
     const { SqliteDeliveryOutputRepository } = await import(
-      '../../dist/infrastructure/process-modules/delivery/delivery-persistence.js'
+      '../../dist/modules/delivery/infrastructure/delivery-persistence.js'
     );
     const processRunId = await startRun(db, DELIVERY_PROCESS_MODULE_REF, 'w9a8-del-restart');
     const repo = new SqliteDeliveryOutputRepository(db);

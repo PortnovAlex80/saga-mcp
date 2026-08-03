@@ -18,7 +18,7 @@ import {
   markNormalizationAccepted,
   markRawSubmissionNormalized,
   readRawSubmission,
-} from '../saga3/persistence/saga3-normalization-repository.js';
+} from '../modules/discovery/infrastructure/saga3-normalization-repository.js';
 
 export interface Saga3NormalizationHandlersOptions {
   db?: () => ReturnType<typeof getDb>;
