@@ -47,14 +47,18 @@ export function getDb(): Database.Database {
   db.pragma('synchronous = NORMAL');
 
   // DB compatibility check — disposable pre-release policy.
+  // PRE-RELEASE: there are no clients and no data to preserve. When the schema
+  // changes, SCHEMA_VERSION is bumped and old DBs are rejected. When the
+  // product ships to real users, replace this with versioned migrations.
   const existingVersion = db.pragma('user_version', { simple: true }) as number;
   if (existingVersion !== 0 && existingVersion !== SCHEMA_VERSION) {
     db.close();
     db = null;
     throw new Error(
-      `DB at ${dbPath} has user_version=${existingVersion}, expected ${SCHEMA_VERSION} or 0 (fresh). ` +
-        'This DB is from an incompatible schema version. Delete the file and let saga recreate it: ' +
-        `rm ${dbPath}${dbPath.replace(/\.db$/, '{,.db-wal,.db-shm}')}`,
+      `DB at ${dbPath} has user_version=${existingVersion}, expected ${SCHEMA_VERSION}. ` +
+        'PRE-RELEASE: this DB is from an older schema version. Delete and recreate: ' +
+        `rm ${dbPath}${dbPath.replace(/\.db$/, '{,.db-wal,.db-shm}')}` +
+        '\n(NOT for production — when saga ships to real users, this will become a versioned migration.)',
     );
   }
 
