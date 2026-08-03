@@ -530,9 +530,9 @@ PORT-001: WorkplaceProductPort
 | ALG-IMP-002 | ⏳ после T4 | | traceability consolidation |
 | T7 (Composition) | ⏳ после T1,T4,T5,T6 | | 780→80 строк |
 | T8 (WorkplaceProductPort) | ⏳ после T7 | | "один стол" для cross-module handoff |
-| ALG-IMP-001 | ⏳ | | v1 NodeRun removal (~400 строк) |
-| ALG-IMP-004 | ⏳ | | type cycle break |
-| ALG-IMP-005 | ⏳ | | markExecutionExited → releaseExecutionAtomically |
+| ALG-IMP-001 | ✅ | `7344529` | v1 NodeRun — уже удалён в Wave-археологии cleanup |
+| ALG-IMP-004 | ✅ | Wave 8 | type cycle — уже устранён (BLOCKER 2) |
+| ALG-IMP-005 | ⏳ проверка | | markExecutionExited → releaseExecutionAtomically |
 | T9 (Wave debt) | ⏳ | | comments → WAVE-LOG.md |
 | T10 (tracker-view) | ⏳ | | 5605 строк → 4 файла |
 
