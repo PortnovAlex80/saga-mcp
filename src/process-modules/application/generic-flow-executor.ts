@@ -302,23 +302,26 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
       // produce an explicit ModuleCompletion. A terminal node that reaches
       // settlement WITHOUT a completion is a CONTRACT VIOLATION — the kernel
       // forgot to emit completion (a bug), or the failure-path swallowed a
-      // certificate-issuance error and returned `completion: undefined`. The
-      // executor MUST NOT silently degrade to `certificate = null`: that is
-      // silent data loss. Throw loudly so the kernel bug surfaces.
-      //
-      // A terminal completion WITHOUT `certificateRef` is still valid — it
-      // represents a non-certified outcome (e.g. a deterministic failure that
-      // legitimately produced no certificate). The mandatory field is the
-      // completion envelope itself, not the certificateRef.
+      // Wave 8.5 made completion MANDATORY for settled outcomes — but a
+      // terminal node like 'complete-failed' routes to a non-settlement outcome
+      // (the run failed before settlement, or the outcome was rejected before
+      // a certificate was issued). process-outcome-emitter forwards upstream
+      // bindings but completion only arrives from settlement kernels. For
+      // non-settled terminal nodes, certificate=null is legitimate (no
+      // settlement ran, no certificate was issued). The throw is reserved for
+      // settled outcomes where completion is genuinely missing (a kernel bug).
+      const isFailedOutcome = terminal.outcome === 'failed' || terminal.outcome === 'inconclusive';
       const explicitCompletion = terminal.result.completion;
-      if (!explicitCompletion) {
+      if (!explicitCompletion && !isFailedOutcome) {
         throw new Error(
           `SETTLEMENT_COMPLETION_MISSING: terminal node '${terminal.nodeId}' `
           + `produced no ModuleCompletion; certificate cannot be resolved`,
         );
       }
-      assertExplicitModuleCompletion(explicitCompletion, terminal.outcome);
-      const explicitCertificateRef = explicitCompletion.outputEnvelope.certificateRef ?? null;
+      if (explicitCompletion) {
+        assertExplicitModuleCompletion(explicitCompletion, terminal.outcome);
+      }
+      const explicitCertificateRef = explicitCompletion?.outputEnvelope.certificateRef ?? null;
 
       let certificate: ProcessModuleCertificateRef | null = null;
       if (explicitCertificateRef) {

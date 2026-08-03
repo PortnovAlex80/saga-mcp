@@ -1,0 +1,19 @@
+{
+  "tool": "trace_add",
+  "arguments": {
+    "source_id": "FILL_INTEGER_SOURCE_ARTIFACT_ID",
+    "target_type": "artifact",
+    "target_id": "FILL_INTEGER_TARGET_ARTIFACT_OR_TASK_ID",
+    "link_type": "FILL_ALLOWED_LINK_TYPE"
+  },
+  "call_provenance": {
+    "process_module_ref": "solution-formalization@1.0.0",
+    "process_run_id": "FILL_MACHINE_BOUND_PROCESS_RUN_ID",
+    "node_id": "FILL_MACHINE_BOUND_NODE_ID",
+    "work_intent_id": "FILL_INTEGER_MACHINE_BOUND_WORK_INTENT_ID",
+    "task_id": "FILL_INTEGER_MACHINE_BOUND_TASK_ID",
+    "execution_id": "FILL_MACHINE_BOUND_EXECUTION_ID",
+    "input_snapshot_hash": "FILL_MACHINE_BOUND_INPUT_HASH",
+    "note": "Sidecar provenance for the materialized call file. The current trace_add MCP row has no metadata column; execution identity is also enforced by the MCP gateway."
+  }
+}

@@ -406,6 +406,31 @@ export function createProductLifecycleRuntime(
         | { schema: string | null; ref: string | null; hash: string | null; bindingsText: string | null }
         | undefined;
       if (nr === undefined || nr.schema === null || nr.ref === null || nr.hash === null) {
+        // Fallback: recovery-feedback products are persisted in saga3_recovery_attempts,
+        // not in saga3_node_runs or the product store. The verify→repair loop forwards
+        // a recovery-feedback product (schema 'saga3.recovery-feedback.v1', ref
+        // 'recovery-case:<id>:attempt:<n>') that production must resolve here.
+        if (ref.schemaId === 'saga3.recovery-feedback.v1') {
+          try {
+            const recoveryRow = db.prepare(
+              `SELECT feedback_snapshot, feedback_hash, issue_ref FROM saga3_recovery_attempts
+               WHERE issue_ref = ? ORDER BY attempt DESC LIMIT 1`,
+            ).get(ref.ref) as { feedback_snapshot: string; feedback_hash: string } | undefined;
+            if (recoveryRow) {
+              return {
+                productRef: ref,
+                payload: {
+                  schema: ref.schemaId,
+                  artifactRef: ref.ref,
+                  contentHash: recoveryRow.feedback_hash,
+                  bindings: JSON.parse(recoveryRow.feedback_snapshot || '{}'),
+                },
+              };
+            }
+          } catch {
+            // Table may not exist on fresh DBs without recovery history.
+          }
+        }
         return null;
       }
       const bindings = nr.bindingsText ? JSON.parse(nr.bindingsText) : {};
