@@ -517,20 +517,36 @@ PORT-001: WorkplaceProductPort
 
 ## 6. СТАТУС ВЫПОЛНЕНИЯ
 
-| Tranche | Статус | Выполнено |
-|---|---|---|
-| T2 (shared/) | ✅ | внутри T1a |
-| T3 (authority/) | ✅ | внутри T1a |
-| T1 (Discovery) | ⏳ в процессе | 19 файлов перенесено, 7 осталось + 6 diagnosis удалить + тесты починить |
-| ALG-IMP-003 | не начали | |
-| T5 (Development) | не начали | |
-| T4 (Formalization) | не начали | |
-| ALG-IMP-002 | не начали | |
-| T6 (Delivery) | не начали | |
-| T7 (Composition) | не начали | |
-| T8 (WorkplaceProductPort) | не начали | |
-| ALG-IMP-001 | не начали | |
-| ALG-IMP-004 | не начали | |
-| ALG-IMP-005 | не начали | |
-| T9 (Wave debt) | не начали | |
-| T10 (tracker-view) | не начали | |
+| Tranche | Статус | Коммит | Результат |
+|---|---|---|---|
+| T2 (shared/) | ✅ | `7ca50a3` | canonical-json → src/shared/ |
+| T3 (authority/) | ✅ | `7ca50a3` | authority + work-intent + execution-context → src/shared/ |
+| T1 (Discovery part 1) | ✅ | `7ca50a3` | 19 файлов: 10 domain + 2 app + 2 infra + 5 cross-cutting |
+| T1-remaining (Discovery part 2) | ✅ | `16643d0` | 7 файлов перенесено + 6 diagnosis dead code удалено (993 строки) |
+| T5 (Development) | ✅ | `16643d0` | 2 infrastructure файла → modules/development/infrastructure/ |
+| T6 (Delivery) | ✅ | `16643d0` | 3 infrastructure файла → modules/delivery/infrastructure/ |
+| ALG-IMP-003 | ✅ | подтверждено | ManagedProductionLedger уже в shared/ — дублирования нет |
+| T4 (Formalization) | ⏳ не начали | | 7 файлов в infrastructure/ — самый большой (sqlite-formalization-kernel.ts) |
+| ALG-IMP-002 | ⏳ после T4 | | traceability consolidation |
+| T7 (Composition) | ⏳ после T1,T4,T5,T6 | | 780→80 строк |
+| T8 (WorkplaceProductPort) | ⏳ после T7 | | "один стол" для cross-module handoff |
+| ALG-IMP-001 | ⏳ | | v1 NodeRun removal (~400 строк) |
+| ALG-IMP-004 | ⏳ | | type cycle break |
+| ALG-IMP-005 | ⏳ | | markExecutionExited → releaseExecutionAtomically |
+| T9 (Wave debt) | ⏳ | | comments → WAVE-LOG.md |
+| T10 (tracker-view) | ⏳ | | 5605 строк → 4 файла |
+
+### Итоги выполненных tranche
+
+**saga3/ статус:** 2 файла осталось (assign-one-card.ts, proposal.ts) — из 38 изначальных.
+**Удалено dead code:** 6 diagnosis файлов (993 строки) + 9 diagnosis тестов (~8821 строк deletions всего).
+**Module consolidation:**
+- Discovery: 21 .ts файл в modules/discovery/ (было 38 в 4 директориях)
+- Development: module + infrastructure consolidated
+- Delivery: module + infrastructure consolidated
+- Formalization: 0 infrastructure moved (T4 pending)
+
+**Verification gates на каждом шаге:**
+- tsc --noEmit: 0 errors
+- npm test: 3220 pass, 0 fail, 37 skipped
+- Behavioral change: NONE

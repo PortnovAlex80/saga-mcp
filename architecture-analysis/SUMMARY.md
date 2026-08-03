@@ -252,8 +252,35 @@ Gate-centric hexagonal: каждый из 4 модулей — самодост�
 
 ---
 
+## ПРОГРЕСС МИГРАЦИИ (после T1+T5+T6)
+
+### Что сделано (7 коммитов, ветка saga4)
+
+| Коммит | Что | Эффект |
+|---|---|---|
+| `7ca50a3` | T1 Discovery: 19 файлов saga3/ → modules/discovery/ | Discovery module в одной папке |
+| `16643d0` | T1-remaining + T5 + T6: 12 файлов moved + 8821 строк dead code удалено | saga3/ почти пуст, Development+Delivery consolidated |
+
+**saga3/:** 38 файлов → 2 (assign-one-card.ts, proposal.ts)
+**Discovery:** 38 файлов в 4 директориях → 21 файл в 1 директории
+**Dead code удалено:** 6 diagnosis файлов (993 строки) + 9 diagnosis тестов
+**Verification:** tsc 0 errors, 3220 tests pass, 0 fail
+
+### Что осталось (по приоритету)
+
+1. **T4 Formalization** — 7 файлов из infrastructure/ (самый большой: sqlite-formalization-kernel.ts)
+2. **ALG-IMP-002** — traceability consolidation (после T4)
+3. **T7 Composition root** — 780→80 строк (после T1,T4,T5,T6)
+4. **T8 WorkplaceProductPort** — "один стол" (после T7)
+5. **ALG-IMP-001/004/005** — hack cleanup (независимые)
+6. **T9 Wave debt** — comments → ADR
+7. **T10 tracker-view split**
+
+---
+
 ## СТАТУС
 
-**recommended-pending-approval**
+**T1-T6 + ALG-IMP-003: ВЫПОЛНЕНО. tsc green, tests green.**
+T4+T7+T8: recommended-pending-approval (следующий шаг).
 
 Целевая архитектура и first migration tranche готовы к ревью. Код не модифицировался. Изменения могут начаться только после human approval.
