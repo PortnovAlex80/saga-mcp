@@ -68,6 +68,6 @@
       "HYPOTHESIS-004 (evolving to autonomous factory — weak)"
     ],
     "contradictions": ["CONTRADICTION-001"],
-    "next_phase": "Phase Two — Cross-Cutting System Maps"
+    "next_phase": "Phase Three — Extract the Real Core"
   }
 }
