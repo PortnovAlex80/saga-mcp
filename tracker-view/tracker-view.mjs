@@ -9,7 +9,7 @@
 //   /api/heartbeat          → JSON { last } — timestamp последней активности
 //   POST /api/artifact/save → сохранить .md + metadata (JSON body)
 import http from 'node:http';
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync, unlinkSync, statSync, openSync, readSync, closeSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
@@ -28,8 +28,7 @@ import {
   withDb, withDbWrite,
   ageClass, ageText,
   esc, extractDiv, inTableHasHeader, truncate,
-  respondJson, readRequestFields, readJsonRequest,
-  canonicalAllowedWorkerLogPath,
+  respondJson, readJsonRequest,
   DEV_ROOT, PROJECT_REPO_MAP,
   resolveArtifactFile,
 } from './shared.mjs';
@@ -3502,20 +3501,19 @@ const server = http.createServer((req, res) => {
     return adminApi.handleProjectCreateFromIdea(req, res);
   }
   if (req.method === 'POST' && url.pathname === '/api/board-run/start') {
-    return handleBoardRunStart(req, res);
+    return lifecycleApi.handleBoardRunStart(req, res);
   }
   if (req.method === 'POST' && url.pathname === '/api/board-run/stop') {
-    return handleBoardRunStop(req, res);
+    return lifecycleApi.handleBoardRunStop(req, res);
   }
   if (req.method === 'POST' && url.pathname === '/api/repository/register') {
-    return handleSagaOperation(req, res, 'repository_register');
+    return lifecycleApi.handleSagaOperation(req, res, 'repository_register');
   }
   if (req.method === 'POST' && url.pathname === '/api/repository/bootstrap') {
-    return handleSagaOperation(req, res, 'repository_bootstrap');
+    return lifecycleApi.handleSagaOperation(req, res, 'repository_bootstrap');
   }
   if (req.method === 'GET' && url.pathname === '/api/board-run/status') {
-    const projectId = Number(url.searchParams.get('project_id'));
-    return respondJson(res, 200, { ok:true, run:boardRunner.status(projectId) });
+    return lifecycleApi.handleBoardRunStatus(req, res, url);
   }
   // Saga 3 lifecycle pipeline (process-modules).
   if (req.method === 'GET' && url.pathname === '/api/lifecycle/pipeline') {
@@ -3526,28 +3524,28 @@ const server = http.createServer((req, res) => {
     return lifecyclePipelineApi.handleStatic(req, res, url);
   }
   if (req.method === 'GET' && url.pathname === '/api/episode/stage-summary') {
-    return handleStageSummary(req, res, url);
+    return lifecycleApi.handleStageSummary(req, res, url);
   }
   if (req.method === 'GET' && url.pathname === '/api/worker/tail') {
-    return handleWorkerTail(req, res, url);
+    return lifecycleApi.handleWorkerTail(req, res, url);
   }
   if (req.method === 'GET' && url.pathname === '/api/workers/active') {
-    return handleWorkersActive(req, res, url);
+    return lifecycleApi.handleWorkersActive(req, res, url);
   }
   if (req.method === 'POST' && url.pathname === '/api/engine/restart') {
-    return handleEngineRestart(req, res);
+    return lifecycleApi.handleEngineRestart(req, res);
   }
   if (req.method === 'POST' && url.pathname === '/api/engine/start') {
-    return handleEngineStart(req, res);
+    return lifecycleApi.handleEngineStart(req, res);
   }
   if (req.method === 'POST' && url.pathname === '/api/engine/stop') {
-    return handleEngineStop(req, res);
+    return lifecycleApi.handleEngineStop(req, res);
   }
   if (req.method === 'GET' && url.pathname === '/api/engine/status') {
-    return handleEngineStatus(req, res, url);
+    return lifecycleApi.handleEngineStatus(req, res, url);
   }
   if (req.method === 'POST' && url.pathname === '/api/engine/concurrency') {
-    return handleEngineConcurrency(req, res);
+    return lifecycleApi.handleEngineConcurrency(req, res);
   }
   if (req.method === 'GET' && url.pathname === '/api/models') {
     return modelApi.handleModelsList(req, res);

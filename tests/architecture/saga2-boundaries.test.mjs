@@ -483,7 +483,10 @@ test('tracker uses extracted ports and preserves the LM Studio hard rule fix', (
   assert.match(source, /createSagaControlApplication/);
   assert.match(source, /sagaApplication\.listProjects\(\)/);
   assert.match(source, /sagaApplication\.loadProjectBoard/);
-  assert.match(source, /sagaApplication\.startEngine/);
+  // T10 step 5: sagaApplication.startEngine moved to lifecycle-endpoints.mjs
+  const lifecyclePath = path.join(process.cwd(), 'tracker-view', 'lifecycle-endpoints.mjs');
+  const lifecycle = readFileSync(lifecyclePath, 'utf8');
+  assert.match(lifecycle, /sagaApplication\.startEngine/);
   assert.doesNotMatch(source, /function killEngineTree\(/);
 
   // T10 step 3: the model-management code (LM Studio hard rule + settings.json
