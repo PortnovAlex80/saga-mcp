@@ -526,15 +526,15 @@ PORT-001: WorkplaceProductPort
 | T5 (Development) | ✅ | `16643d0` | 2 infrastructure файла → modules/development/infrastructure/ |
 | T6 (Delivery) | ✅ | `16643d0` | 3 infrastructure файла → modules/delivery/infrastructure/ |
 | ALG-IMP-003 | ✅ | подтверждено | ManagedProductionLedger уже в shared/ — дублирования нет |
-| T4 (Formalization) | ⏳ не начали | | 7 файлов в infrastructure/ — самый большой (sqlite-formalization-kernel.ts) |
-| ALG-IMP-002 | ⏳ после T4 | | traceability consolidation |
-| T7 (Composition) | ⏳ после T1,T4,T5,T6 | | 780→80 строк |
-| T8 (WorkplaceProductPort) | ⏳ после T7 | | "один стол" для cross-module handoff |
-| ALG-IMP-001 | ✅ | `7344529` | v1 NodeRun — уже удалён в Wave-археологии cleanup |
-| ALG-IMP-004 | ✅ | Wave 8 | type cycle — уже устранён (BLOCKER 2) |
-| ALG-IMP-005 | ⏳ проверка | | markExecutionExited → releaseExecutionAtomically |
-| T9 (Wave debt) | ⏳ | | comments → WAVE-LOG.md |
-| T10 (tracker-view) | ⏳ | | 5605 строк → 4 файла |
+| T4 (Formalization) | ✅ | `a1c420a` | 3 infrastructure файла → modules/formalization/ |
+| ALG-IMP-002 | ✅ | `771d181` | traceability — DOCUMENTED (не дубликат, два enforcement layer) |
+| T7 (Composition) | ✅ | `0221c92` | LEGO CONTRACT: 4 register*() функции, 915→604 строк |
+| T8 (WorkplaceProductPort) | ⏳ в работе | | "один стол" — additive universal desk |
+| ALG-IMP-001 | ✅ | `7344529` | v1 NodeRun — уже удалён |
+| ALG-IMP-004 | ✅ | Wave 8 | type cycle — уже устранён |
+| ALG-IMP-005 | ✅ | Wave 8 | markExecutionExited → уже делегирует |
+| T9 (Wave debt) | ✅ | `9af292a` | top-10 файлов очищены, WAVE-LOG.md создан |
+| T10 (tracker-view) | ⏳ step 1-2 done, 3-7 pending | `0221c92` | shared.mjs + board-runner-adapter.mjs извлечены; model-management в работе |
 
 ### Итоги выполненных tranche
 
