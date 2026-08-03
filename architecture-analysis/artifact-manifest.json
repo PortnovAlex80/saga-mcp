@@ -64,6 +64,14 @@
         "status": "evidence-incomplete",
         "version": "1.0",
         "records": 18
+      },
+      {
+        "artifact_id": "ART-PHASE4-SEAM-MAP",
+        "type": "Seam Map",
+        "path": "architecture-analysis/phase-4/seam-map.md",
+        "status": "evidence-incomplete",
+        "version": "1.0",
+        "records": 16
       }
     ],
     "open_questions": [
