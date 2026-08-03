@@ -16,7 +16,7 @@ const {
   DiscoveryOutcomeCertificateProjection,
   DISCOVERY_GENERIC_CERTIFICATE_SCHEMA_VERSION,
 } = await import(
-  '../../dist/process-modules/modules/discovery/discovery-outcome-certificate-projection.js'
+  '../../dist/modules/discovery/application/discovery-outcome-certificate-projection.js'
 );
 const {
   SqliteProcessOutcomeCertificateRepository,

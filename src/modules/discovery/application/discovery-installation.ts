@@ -27,14 +27,14 @@
  * Discovery Pack только объявляет профили (content).
  */
 
-import type { KernelHandler } from '../../application/kernel-handler-registry.js';
-import type { LmNodeExecutionPersistence } from '../../application/node-executors/lm-node-executor.js';
-import type { NodeExecutionReceipt } from '../../application/node-executor.js';
+import type { KernelHandler } from '../../../process-modules/application/kernel-handler-registry.js';
+import type { LmNodeExecutionPersistence } from '../../../process-modules/application/node-executors/lm-node-executor.js';
+import type { NodeExecutionReceipt } from '../../../process-modules/application/node-executor.js';
 // Uncle Bob Wave 4 / FU-A: explicit ModuleCompletion envelope emitted alongside
 // the legacy magic certificate bindings (additive; Wave 5 deletes the magic).
 // `import type` keeps this a domain→domain edge (Rule 5 permits it); the SPI
 // types are pure data, erased at compile time.
-import type { ModuleCompletion } from '../../domain/spi/module-completion.js';
+import type { ModuleCompletion } from '../../../process-modules/domain/spi/module-completion.js';
 // CONVEYOR Wave 7 — saga3 cross-tree leak elimination: every schema-id
 // constant, intent-kind constant, record type, and the runtime-persistence
 // port is now declared locally in discovery-domain-contracts.ts (byte-identical
@@ -47,11 +47,11 @@ import type {
   RawDiscoverySubmissionRecord,
   ReadinessControlStatus,
   ReadinessShadowResult,
-} from './discovery-domain-contracts.js';
+} from '../domain/discovery-domain-contracts.js';
 import {
   DISCOVERY_OUTCOME_CERTIFICATE_SCHEMA,
   NO_READINESS_HASH,
-} from './discovery-domain-contracts.js';
+} from '../domain/discovery-domain-contracts.js';
 // CONVEYOR Wave 7 — Isolate modules behind ports: brief provisioning is
 // delegated to an injected DiscoveryBriefProvisioningPort (wired by the
 // composition root), so this module imports no getDb / db.ts.

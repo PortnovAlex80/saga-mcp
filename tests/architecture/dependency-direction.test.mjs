@@ -91,6 +91,7 @@ const REASON = {
   formalizationPackageConsolidation: 'Formalization consolidation moves installation/schemas/ports into src/modules/formalization/{domain,application}; package/ wiring (which stays in src/process-modules/modules/formalization/package/) reaches the moved handlers/contracts until the package layer is also relocated',
   developmentPackageConsolidation: 'Development consolidation moves installation/workspace-preparation into src/modules/development/application and schemas/settlement-policy/task-graph/kernel-ports into src/modules/development/domain; development-process-module + package/ wiring (which stay in src/process-modules/modules/development/) reach the moved handlers/contracts until those layers are also relocated',
   deliveryPackageConsolidation: 'Delivery consolidation moves installation/provider-ports/schemas/settlement-policy/kernel-ports into src/modules/delivery/{application,domain}; delivery-process-module + package/ wiring (which stay in src/process-modules/modules/delivery/) reach the moved contracts/handlers until those layers are also relocated',
+  discoveryPackageConsolidation: 'Discovery consolidation moves the kernel handler factory (discovery-installation), the domain port/record contracts (discovery-domain-contracts), and the read-only certificate projection (discovery-outcome-certificate-projection) into src/modules/discovery/{application,domain}; discovery-process-module + package/ wiring (which stay in src/process-modules/modules/discovery/) reach the moved handlers/contracts until those layers are also relocated',
 };
 
 // Versioned baseline for the KNOWN_VIOLATIONS allowlist size — the ratchet's
@@ -126,7 +127,21 @@ const REASON = {
 //                process-module + package/ layers are also relocated into
 //                src/modules/<module>/. Owner: saga4 development-consolidation
 //                task.)
-const ALLOWLIST_BASELINE = 14;
+//     2026-08-03  baseline = 14 → 16  (Discovery consolidation: the kernel
+//                handler factory (discovery-installation), domain port/record
+//                contracts (discovery-domain-contracts), and the read-only
+//                certificate projection (discovery-outcome-certificate-projection)
+//                moved to src/modules/discovery/{application,domain} while the
+//                stayed discovery-process-module.ts + package/ wiring remain
+//                under src/process-modules/modules/discovery/ and reach forward
+//                into the moved tree (2 Rule 2 edges). Same partial-move shape
+//                as the existing formalization/development/delivery package
+//                consolidations — restores the 4-module symmetry (each module
+//                keeps exactly its *-process-module.ts in the old tree).
+//                Entries removed when the stayed process-module + package/
+//                layer is also relocated into src/modules/discovery/. Owner:
+//                saga4 discovery-consolidation task.)
+const ALLOWLIST_BASELINE = 16;
 
 const KNOWN_VIOLATIONS = [
   // ---- Rule 1: module imports another module implementation ----
@@ -290,6 +305,29 @@ const KNOWN_VIOLATIONS = [
     target: 'src/modules/delivery/domain/delivery-schemas.ts',
     rule: 2,
     reason: REASON.deliveryPackageConsolidation,
+  },
+
+  // ---- Rule 2 (discovery consolidation): the discovery package wiring
+  // (discovery-process-module.ts, package/contributions/legacy-engine-adapter.ts)
+  // STAYS under src/process-modules/modules/discovery/ while the kernel handler
+  // factory (discovery-installation), domain port/record contracts
+  // (discovery-domain-contracts), and the read-only certificate projection
+  // (discovery-outcome-certificate-projection) moved to
+  // src/modules/discovery/{application,domain}. Same partial-move shape as
+  // formalization/development/delivery above. Removed when the stayed
+  // discovery-process-module + package/ layer is also relocated into
+  // src/modules/discovery/.
+  {
+    source: 'src/process-modules/modules/discovery/discovery-process-module.ts',
+    target: 'src/modules/discovery/domain/discovery-domain-contracts.ts',
+    rule: 2,
+    reason: REASON.discoveryPackageConsolidation,
+  },
+  {
+    source: 'src/process-modules/modules/discovery/package/contributions/legacy-engine-adapter.ts',
+    target: 'src/modules/discovery/application/discovery-installation.ts',
+    rule: 2,
+    reason: REASON.discoveryPackageConsolidation,
   },
 
   // ---- Rule 6: removed in W13-A6 (composition root relocated to src/app/) ----

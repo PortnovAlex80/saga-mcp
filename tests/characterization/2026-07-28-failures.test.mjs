@@ -174,7 +174,7 @@ const readSrc = rel => readFileSync(path.join(root, rel.replaceAll('/', path.sep
 
 test('fixture missing-brief-production: brief is a kernel side-effect projection, not a declared product', () => {
   const f = manifests.find(m => m.data.id === 'missing-brief-production');
-  const install = readSrc('src/process-modules/modules/discovery/discovery-installation.ts');
+  const install = readSrc('src/modules/discovery/application/discovery-installation.ts');
   // The fix at commit 3110770 projects the brief from the kernel.
   assert.ok(
     install.includes('ensureDiscoveryBriefArtifact'),

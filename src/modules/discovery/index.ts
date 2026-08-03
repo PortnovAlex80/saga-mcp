@@ -23,7 +23,7 @@
 import { GenericFlowExecutor } from '../../process-modules/application/generic-flow-executor.js';
 import { Saga3DiscoverySettlementService } from './application/discovery-settlement-service.js';
 import { SqliteDiscoveryBriefProvisioning } from '../../infrastructure/process-modules/brief-provisioning-ports.js';
-import { createDiscoveryKernelHandlers } from '../../process-modules/modules/discovery/discovery-installation.js';
+import { createDiscoveryKernelHandlers } from './application/discovery-installation.js';
 import { discoveryProcessModule } from '../../process-modules/modules/discovery/discovery-process-module.js';
 import type {
   ModuleRegistries,

@@ -61,7 +61,7 @@ import type {
 import {
   createDiscoveryKernelHandlers,
   type DiscoveryInstallationDeps,
-} from '../../discovery-installation.js';
+} from '../../../../../modules/discovery/application/discovery-installation.js';
 
 // ---------------------------------------------------------------------------
 // Brief provisioning port — replaces the `getDb()` brief auto-provisioning.

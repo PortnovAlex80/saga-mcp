@@ -13,7 +13,7 @@ import {
   DISCOVERY_NORMALIZATION_INTENT_KIND,
   DISCOVERY_READINESS_INTENT_KIND,
   DISCOVERY_WORK_INTENT_SCHEMA,
-} from './discovery-domain-contracts.js';
+} from '../../../modules/discovery/domain/discovery-domain-contracts.js';
 
 // CONVEYOR Wave 7: the module identity ref is a CANONICAL contract owned by the
 // lifecycle (Rule 3). This module imports it back — inward direction, allowed.

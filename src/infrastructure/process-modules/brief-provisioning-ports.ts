@@ -21,7 +21,7 @@ import type {
 import type {
   DiscoveryBriefProvisioningContext,
   DiscoveryBriefProvisioningPort,
-} from '../../process-modules/modules/discovery/discovery-installation.js';
+} from '../../modules/discovery/application/discovery-installation.js';
 import { sha256Hex } from '../../process-modules/shared/canonical-json.js';
 
 /**

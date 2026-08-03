@@ -119,7 +119,7 @@ import { SqliteProcessOutcomeCertificateRepository } from '../process-modules/pe
 import { SqliteProcessRunRepository } from '../process-modules/persistence/sqlite-process-run-repository.js';
 import { SqliteRecoveryCaseRepository } from '../process-modules/persistence/sqlite-recovery-case-repository.js';
 import { SqliteWorkAssignmentAdapter } from '../infrastructure/work/sqlite-work-assignment-adapter.js';
-import { createDiscoveryLmNodePersistence } from '../process-modules/modules/discovery/discovery-installation.js';
+import { createDiscoveryLmNodePersistence } from '../modules/discovery/application/discovery-installation.js';
 import {
   createFormalizationLifecycleOutputPayloadResolver,
 } from '../modules/formalization/application/formalization-installation.js';

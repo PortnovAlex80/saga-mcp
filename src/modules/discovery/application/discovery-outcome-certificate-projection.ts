@@ -47,10 +47,10 @@ type SqliteDb = {
 // original). The readOutcomeCertificate SQL was inlined from
 // src/saga3/persistence/saga3-settlement-repository.ts so this projection no
 // longer reaches outside src/process-modules/.
-import type { OutcomeCertificateRecord } from './discovery-domain-contracts.js';
-import { DISCOVERY_PROCESS_MODULE_REF } from './discovery-process-module.js';
-import { processModuleKey } from '../../domain/process-module.js';
-import type { ProcessOutcomeCertificate } from '../../persistence/process-outcome-certificate.js';
+import type { OutcomeCertificateRecord } from '../domain/discovery-domain-contracts.js';
+import { DISCOVERY_PROCESS_MODULE_REF } from '../../../process-modules/modules/discovery/discovery-process-module.js';
+import { processModuleKey } from '../../../process-modules/domain/process-module.js';
+import type { ProcessOutcomeCertificate } from '../../../process-modules/persistence/process-outcome-certificate.js';
 
 /**
  * The discovery certificate's generic schemaVersion. Distinct from the discovery

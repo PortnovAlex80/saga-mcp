@@ -565,7 +565,7 @@ test('W9-A8 exact-output discovery: certificate projection is a pure function (s
   // function: the same record + projectId yields the same generic certificate
   // (same decision, reasonCodes, inputHash, certificateHash) every time.
   const { projectDiscoveryCertificate } = await import(
-    '../../dist/process-modules/modules/discovery/discovery-outcome-certificate-projection.js'
+    '../../dist/modules/discovery/application/discovery-outcome-certificate-projection.js'
   );
   const cert = {
     id: 42,
