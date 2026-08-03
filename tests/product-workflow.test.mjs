@@ -831,46 +831,9 @@ test('verification evidence is immutable per fenced execution, so a new holder c
   });
 });
 
-test('startup repair removes legacy verified_by edges that disagree with canonical provenance', () => {
-  const product = projects.project_create({ name: 'Trace Repair Product' });
-  const epic = epics.epic_create({ project_id: product.id, name: 'REQ-trace-repair' });
-  const canonical = artifacts.artifact_create({
-    project_id: product.id, epic_id: epic.id, type: 'AC', code: 'AC-CANON',
-    title: 'Canonical criterion', path: 'docs/canonical.md',
-    status: 'accepted', content_hash: 'canonical-hash',
-  });
-  const stray = artifacts.artifact_create({
-    project_id: product.id, epic_id: epic.id, type: 'AC', code: 'AC-STRAY',
-    title: 'Stray criterion', path: 'docs/stray.md',
-    status: 'accepted', content_hash: 'stray-hash',
-  });
-  const verify = tasks.task_create({
-    epic_id: epic.id, title: 'Verify AC-CANON', task_kind: 'verification.ac',
-    workflow_stage: 'verification', execution_mode: 'read_only_evidence',
-    source_artifact_ids: [canonical.id],
-  });
-  getDb().prepare(
-    `INSERT INTO artifact_traces(source_id,target_type,target_id,link_type)
-     VALUES (?,'task',?,'verified_by')`,
-  ).run(stray.id, verify.id);
-  getDb().prepare(
-    'UPDATE tasks SET verification_target_artifact_id=NULL WHERE id=?',
-  ).run(verify.id);
-  getDb().prepare(
-    `DELETE FROM artifact_traces
-      WHERE source_id=? AND target_type='task' AND target_id=? AND link_type='depends_on'`,
-  ).run(canonical.id, verify.id);
-
-  closeDb();
-  const reopened = getDb();
-  assert.equal(reopened.prepare(
-    `SELECT COUNT(*) AS n FROM artifact_traces
-      WHERE source_id=? AND target_type='task' AND target_id=? AND link_type='verified_by'`,
-  ).get(stray.id, verify.id).n, 0);
-  assert.equal(reopened.prepare(
-    'SELECT verification_target_artifact_id FROM tasks WHERE id=?',
-  ).get(verify.id).verification_target_artifact_id, canonical.id);
-});
+// NOTE: The 'startup repair removes legacy verified_by edges' test was removed
+// when migration sediment (migrateVerificationTargets) was cleaned out of db.ts.
+// The product has not shipped to clients — there are no legacy DBs to repair.
 
 test('worker reconciliation uses OS liveness, not silent logs or task-status guesses', () => {
   const product = projects.project_create({ name: 'Execution Liveness Product' });
@@ -1885,57 +1848,6 @@ test('CGAD P15: failed monotonicity check leaves the row UNCHANGED (transaction 
 });
 
 // ============================================================================
-// Fix 3 — final_risk backfill for legacy rows in migrateRiskClass.
-// Old-schema DBs (no risk columns) with a legacy priority get declared_risk
-// AND final_risk stamped by the migration. Tested by spinning up a private
-// Database with an old-style tasks table and invoking the exported migration.
-// ============================================================================
-
-test('migrateRiskClass backfills final_risk = declared_risk for legacy rows', async () => {
-  // Build a private old-schema DB: tasks table with legacy columns only
-  // (no risk columns), seeded with rows that have priority set.
-  const migrateMod = await import('../dist/db.js');
-  const Database = (await import('better-sqlite3')).default;
-  const backfillTmp = mkdtempSync(path.join(os.tmpdir(), 'saga-backfill-'));
-  const oldDbPath = path.join(backfillTmp, 'old.db');
-  const old = new Database(oldDbPath);
-  old.exec(`
-    CREATE TABLE tasks (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      title TEXT NOT NULL,
-      priority TEXT CHECK (priority IN ('low','medium','high','critical') OR priority IS NULL)
-    );
-    INSERT INTO tasks (title, priority) VALUES ('legacy high', 'high');
-    INSERT INTO tasks (title, priority) VALUES ('legacy low', 'low');
-    INSERT INTO tasks (title, priority) VALUES ('legacy null', NULL);
-  `);
-  // Run the migration directly against this old-schema DB.
-  migrateMod.migrateRiskClass(old);
-  const rows = old.prepare('SELECT title, priority, declared_risk, final_risk FROM tasks ORDER BY id').all();
-  // Legacy rows with priority set must have BOTH declared_risk and final_risk
-  // stamped (final_risk = declared_risk = priority for these, since derived
-  // and policy were NULL at migration time).
-  assert.deepEqual(
-    rows.map(r => ({ title: r.title, declared_risk: r.declared_risk, final_risk: r.final_risk })),
-    [
-      { title: 'legacy high', declared_risk: 'high', final_risk: 'high' },
-      { title: 'legacy low', declared_risk: 'low', final_risk: 'low' },
-      { title: 'legacy null', declared_risk: null, final_risk: null },
-    ],
-    'priority -> declared_risk -> final_risk backfill chain; null priority stays null',
-  );
-  // Idempotency: running the migration again must not change anything.
-  migrateMod.migrateRiskClass(old);
-  const rows2 = old.prepare('SELECT title, declared_risk, final_risk FROM tasks ORDER BY id').all();
-  assert.deepEqual(
-    rows2.map(r => r.final_risk),
-    ['high', 'low', null],
-    'migration is idempotent',
-  );
-  old.close();
-  rmSync(backfillTmp, { recursive: true, force: true });
-});
-
 // ============================================================================
 // REQ-012 — Trusted Provider Registry.
 // Catalogues the Trusted Guard Input Providers that may feed evidence/state/

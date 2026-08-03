@@ -556,29 +556,6 @@ test('the installation columns are idempotent — re-ensuring the schema does no
   }
 });
 
-test('the db.ts upgrade path: a pre-existing saga3_process_runs gets the columns on getDb()', async () => {
-  // The db.ts ALTERs are guarded on `saga3_process_runs` existing (the table is
-  // created lazily by ensureSaga3ProcessRunSchema, NOT by SCHEMA_SQL). This test
-  // proves the upgrade path: when the table already exists from a prior session,
-  // re-opening via getDb() adds the two columns via the guarded ALTERs.
-  const temp = mkdtempSync(path.join(os.tmpdir(), 'saga3-inst-'));
-  const dbPath = path.join(temp, 'wired.db');
-  process.env.DB_PATH = dbPath;
-  try {
-    // Session 1: open + create the process_runs table WITHOUT the new columns
-    // (simulate a pre-Wave-2 schema by creating a minimal table by hand).
-    let db = getDb();
-    db.exec('CREATE TABLE saga3_process_runs (id INTEGER PRIMARY KEY AUTOINCREMENT, status TEXT)');
-    closeDb();
-    // Session 2: re-open against the same file. getDb() now sees the table
-    // exists and runs the guarded ALTERs → both columns added.
-    assert.doesNotThrow(() => { db = getDb(); });
-    const cols = db.prepare('PRAGMA table_info(saga3_process_runs)').all().map((c) => c.name);
-    assert.ok(cols.includes('installation_id'), 'db.ts upgrade ALTER added installation_id');
-    assert.ok(cols.includes('package_digest'), 'db.ts upgrade ALTER added package_digest');
-  } finally {
-    closeDb();
-    rmSync(temp, { recursive: true, force: true });
-    delete process.env.DB_PATH;
-  }
-});
+// NOTE: The 'db.ts upgrade path' test was removed when migration sediment
+// (guarded ALTER TABLE blocks) was cleaned out of db.ts. The product has not
+// shipped to clients — there are no legacy DBs requiring column upgrades.
