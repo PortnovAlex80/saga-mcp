@@ -165,6 +165,15 @@ export class SqliteFormalizationArtifactGraph implements
     return { hash, clean: dirty.length === 0, dirty };
   }
 
+  // AUTHORITATIVE for the settlement certificate gate (RULE-012). This is the
+  // epic-wide traceability check the formalization settlement policy calls
+  // (see ReferenceFormalizationSettlementPolicy.settle → line ~374). A SECOND,
+  // deliberately different implementation — `findContractGap` in
+  // formalization-installation.ts — runs at the per-node exact-set gate. They
+  // are NOT duplicates and must not be merged; see the comparison table in the
+  // header comment of findContractGap for the three load-bearing differences
+  // (root-edge breadth, scope, return shape). When the canonical RULES edge
+  // set changes, BOTH must be updated together.
   findFirstTraceabilityGap(epicId: number) {
     const db = this.db;
     // hasEdge checks for an outgoing edge of given link_type to ANY artifact

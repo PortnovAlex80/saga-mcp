@@ -1,70 +1,37 @@
 /**
- * W7-A6 — ScenarioInstaller + ScenarioRunner services.
- *
- * Spec: `docs/refactor-management/09-contracts/WAVE7-SCENARIO-SPEC.md`
- *   §1 row 6 (ScenarioInstaller + ScenarioRunner),
- *   §2 exit gate (reorders+reuses modules, pins lock, no cumulative frame,
- *                 no hidden routing, no Runtime changes),
- *   §3 anti-scope (no `lifecycle-orchestrator.ts` rewrite — Wave 11 cutover;
- *                   new ScenarioRunner lives ALONGSIDE the hot file).
- * Task: `docs/refactor-management/05-subagent-tasks/W07-a6.md`.
+ * ScenarioInstaller + ScenarioRunner — generic services that orchestrate a
+ * `LifecycleScenarioManifest` end to end.
  *
  * # What this file owns
  *
- * Two generic services that orchestrate a `LifecycleScenarioManifest` end to
- * end without touching the legacy `lifecycle-orchestrator.ts` (Wave 11 cutover
- * owns the rewrite; Wave 13 owns cumulative-frame removal — spec §3):
- *
  *   1. `ScenarioInstaller` — install a scenario manifest: validate it
- *      (delegates to the W7-A3 scenario compiler), resolve every
- *      `ModuleSelector` to an exact `InstalledProcessModule` against the
- *      `ScenarioModulePackageRegistry` (W7-A2 lock), persist the resulting
- *      `ScenarioModuleLock` (W7-A2), and return an `InstalledScenario`
- *      carrying the frozen lock + the manifest snapshot.
+ *      (delegates to the scenario compiler), resolve every `ModuleSelector`
+ *      to an exact `InstalledProcessModule` against the package registry,
+ *      persist the resulting `ScenarioModuleLock`, and return an
+ *      `InstalledScenario` carrying the frozen lock + the manifest snapshot.
  *
  *   2. `ScenarioRunner` — execute an installed scenario: resolve the
  *      `ScenarioExecutionLease`, walk stages via the injected
  *      `ProcessModuleExecutor` (the existing SPI — no Runtime change), route
- *      outcomes through the static `outcomeRoutes` table (W7-A4 declarative
- *      router — NO `routeResolver` function anywhere, spec §6.4), persist
- *      each public stage output once via the W7-A5 stage-output store (NO
- *      cumulative frame, spec §13.21/§2), and stop at the first terminal
- *      outcome.
+ *      outcomes through the static `outcomeRoutes` table (declarative router
+ *      — NO `routeResolver` function anywhere), persist each public stage
+ *      output once via the stage-output store (NO cumulative frame), and stop
+ *      at the first terminal outcome.
  *
- * # Why this file is a NEW file (spec §3 anti-scope)
+ * # Sibling-port declarations
  *
- * `lifecycle-orchestrator.ts` is a 657-line hot file driving the legacy
- * `LifecycleDefinition` surface; the spec explicitly forbids rewriting it in
- * Wave 7. The new scenario runtime composes the SAME injected ports the
- * legacy orchestrator already uses (ProcessModuleExecutor,
- * ProcessRunRepository, LifecycleRunRepository) plus the new Wave 7 sibling
- * ports (ScenarioModulePackageRegistry, ScenarioModuleLockStore,
- * ScenarioOutputStore, ScenarioRouter). The legacy orchestrator keeps running
- * unchanged; Wave 11 cuts over, Wave 13 deletes the legacy path.
- *
- * # Sibling-port declaration policy
- *
- * The Wave 7 lanes (A2 module-lock, A3 compiler, A4 router, A5 stage-output)
- * are built in parallel worktrees off the SAME frozen commit `174a757`; they
- * do NOT exist in this worktree yet. To let THIS lane build in isolation
- * against the frozen contract (plan §0.5.2 serial integration), the sibling
- * ports are declared HERE as consumer-side structural interfaces, exactly
- * mirroring the policy documented in `installation/domain/installer.ts`
- * ("STRUCTURAL consumer-side declarations of the ports defined canonically").
- * TypeScript structural typing makes these assignment-compatible with the
- * canonical declarations at integration time; if a sibling diverges from the
- * spec, the integrator reconciles (escalate per plan §0.1.7). After W7-A2/A3/
- * A4/A5 land, the integrator MAY replace these inline declarations with
- * `import type` from the sibling `.js` specifiers — that switch is a no-op
- * behaviorally and is left to the integrator (single writer per file).
+ * The sibling ports (module-lock, compiler, router, stage-output) are declared
+ * HERE as consumer-side structural interfaces. TypeScript structural typing
+ * makes these assignment-compatible with the canonical declarations. See
+ * `docs/architecture/WAVE-LOG.md` (Wave 7) for the parallel-lane context.
  *
  * # Purity / dependency tier
  *
- * This is an application-layer orchestrator (like `lifecycle-orchestrator.ts`
- * itself): it imports application ports, persistence ports, and domain SPI
- * types. It is NOT pure domain — it coordinates ports. It does NOT import
- * any `sqlite-*` adapter, `db.ts`, `schema.ts`, or any `modules/*` module
- * implementation. The dependency-direction ratchet
+ * Application-layer orchestrator (like `lifecycle-orchestrator.ts`): it
+ * imports application ports, persistence ports, and domain SPI types. It is
+ * NOT pure domain — it coordinates ports. It does NOT import any `sqlite-*`
+ * adapter, `db.ts`, `schema.ts`, or any `modules/*` module implementation.
+ * The dependency-direction ratchet
  * (`tests/architecture/dependency-direction.test.mjs`) enforces this.
  */
 
@@ -99,34 +66,29 @@ import type { ProcessModuleInstallation, ProcessModuleRunResult } from './proces
 import type { ProcessModuleInstallationRegistry } from './process-module-installation-registry.js';
 
 // ---------------------------------------------------------------------------
-// Sibling-port declarations (W7-A2/A3/A4/A5 — see module header policy).
-//
-// These mirror the contracts the spec fixes for the parallel Wave 7 lanes.
-// Each one is consumed by THIS lane via type-only structural declarations so
-// the file compiles in isolation; at integration time the canonical siblings
-// drop in (or the integrator switches these to `import type` from the
-// sibling specifiers).
+// Sibling-port declarations — see module header policy.
+// These mirror the canonical contracts structurally; TypeScript structural
+// typing makes them assignment-compatible at integration time.
 // ---------------------------------------------------------------------------
 
 /**
  * Resolution of ONE scenario-stage `ModuleSelector` against the package
- * registry, as produced by W7-A2's lock-resolution step. Carries the exact
- * installed module identity the scenario will pin for that stage.
+ * registry. Carries the exact installed module identity the scenario will
+ * pin for that stage.
  *
- * `installationId` / `packageDigest` mirror the Wave 2 ProcessRun pin (spec
- * §6, W3-A3): a ScenarioRun started under an installed scenario pins BOTH so
- * an in-flight upgrade cannot change behavior mid-run.
+ * `installationId` / `packageDigest` pin BOTH so an in-flight upgrade cannot
+ * change behavior mid-run.
  */
 export interface ScenarioModuleLockEntry {
   /** Stage id this resolution applies to (one of `manifest.stageBindings[].id`). */
   readonly stageId: string;
   /** The selector that was resolved. */
   readonly selector: ModuleSelector;
-  /** Exact installed module identity (W7-A2). */
+  /** Exact installed module identity. */
   readonly installedModuleRef: ProcessModuleReference;
-  /** Installation row id pinned for replay (Wave 2 ModuleInstallationId). */
+  /** Installation row id pinned for replay. */
   readonly installationId: number;
-  /** Content-addressed package digest pinned for replay (Wave 2). */
+  /** Content-addressed package digest pinned for replay. */
   readonly packageDigest: string;
 }
 
@@ -135,25 +97,24 @@ export interface ScenarioModuleLockEntry {
  * Immutable after the ScenarioInstaller writes it; the ScenarioRunner reads
  * it verbatim and refuses to run if any stage is missing.
  *
- * `lockDigest = sha256Hex(canonicalJson(entries))` — same content-addressing
- * convention as W2-A3's `DependencyLock`. Any drift in any resolved module
- * identity changes the digest, making tampering detectable at run time.
+ * `lockDigest = sha256Hex(canonicalJson(entries))`. Any drift in any resolved
+ * module identity changes the digest, making tampering detectable at run time.
  */
 export interface ScenarioModuleLock {
   /** Scenario identity the lock was computed for. */
   readonly scenarioIdentity: LifecycleIdentity;
   /** Stable per-stage resolutions, indexed by `stageId`. Order = manifest order. */
   readonly entries: readonly ScenarioModuleLockEntry[];
-  /** Content-addressed digest over `entries` (W7-A2). */
+  /** Content-addressed digest over `entries`. */
   readonly lockDigest: string;
 }
 
 /**
- * Result of W7-A2 module-selector resolution for a manifest. The installer
- * passes the manifest + the package registry to W7-A2 and receives a complete
+ * Result of module-selector resolution for a manifest. The installer passes
+ * the manifest + the package registry to the resolver and receives a complete
  * `ScenarioModuleLock`. If a selector cannot be resolved (no installed module
- * matches the range, or the active installation is missing), W7-A2 throws a
- * typed error.
+ * matches the range, or the active installation is missing), the resolver
+ * throws a typed error.
  *
  * The port is an async function (the package registry may resolve over I/O).
  */
@@ -162,8 +123,8 @@ export type ScenarioModuleLockResolver = (
 ) => Promise<ScenarioModuleLock>;
 
 /**
- * Persistence port for the scenario module lock (W7-A2 owns the canonical
- * declaration, backed by the `saga3_scenario_module_locks` table from W7-A1).
+ * Persistence port for the scenario module lock (backed by the
+ * `saga3_scenario_module_locks` table).
  *
  * Idempotent on `(scenarioIdentity, lockDigest)`: writing the same lock twice
  * returns the existing record. The installer writes once at install time; the
@@ -175,10 +136,10 @@ export interface ScenarioModuleLockStore {
 }
 
 /**
- * W7-A3 scenario-compiler validation result. The compiler validates a
+ * Scenario-compiler validation result. The compiler validates a
  * `LifecycleScenarioManifest` end to end: manifest-shape validation (delegated
- * to W1-A3's `validateLifecycleScenarioManifest`), mapping type-checking
- * against module contracts, route-table completeness, graph reachability,
+ * to `validateLifecycleScenarioManifest`), mapping type-checking against
+ * module contracts, route-table completeness, graph reachability,
  * terminal-outcome coverage, and budget validation.
  *
  * The installer runs this BEFORE resolving any module selector, so a manifest
@@ -197,7 +158,7 @@ export interface ScenarioCompilationError {
 }
 
 /**
- * W7-A3 scenario compiler port. Pure (no I/O): takes a manifest, returns a
+ * Scenario compiler port. Pure (no I/O): takes a manifest, returns a
  * validation result.
  */
 export type ScenarioCompiler = (
@@ -205,16 +166,15 @@ export type ScenarioCompiler = (
 ) => ScenarioCompilationResult;
 
 /**
- * W7-A4 declarative router. Resolves the next transition target for a stage
+ * Declarative router. Resolves the next transition target for a stage
  * outcome by looking it up in the manifest's STATIC `outcomeRoutes` table —
- * there is NO `routeResolver` function anywhere (spec §6.4). The router may
- * ALSO enforce transition+reentry budgets (declared on the manifest) and
- * throw when a budget is exhausted.
+ * there is NO `routeResolver` function anywhere. The router may ALSO enforce
+ * transition+reentry budgets (declared on the manifest) and throw when a
+ * budget is exhausted.
  *
  * The router is injected (not called as a free function) so the runner does
- * not import the W7-A4 module directly — keeps the file's sibling-port
- * surface uniform and lets the integrator swap the canonical router in at
- * cherry-pick time.
+ * not import the router module directly — keeps the file's sibling-port
+ * surface uniform.
  */
 export interface ScenarioRouter {
   resolveTransition(params: {
@@ -229,7 +189,7 @@ export interface ScenarioRouter {
 }
 
 /**
- * W7-A4 budget-exhaustion error. Thrown by the router when
+ * Budget-exhaustion error. Thrown by the router when
  * `manifest.transitionBudgets.maxTransitions` or
  * `reentryBudgets.maxReentries` (or a per-stage cap) is exceeded.
  */

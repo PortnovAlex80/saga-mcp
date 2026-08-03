@@ -1234,6 +1234,44 @@ function snapshotForOwnedArtifacts(
   };
 }
 
+/**
+ * AUTHORITATIVE for the per-node exact-set traceability gate. Each formalization
+ * resolver node (product / useCases / acceptance / architecture / reconciliation)
+ * calls this to validate the traceability edges of the EXACT artifact set that
+ * node owns, BEFORE the settlement certificate gate runs.
+ *
+ * DUPLICATE NOTICE — there is a second, deliberately different traceability
+ * check: `findFirstTraceabilityGap` in
+ * src/modules/formalization/infrastructure/sqlite-formalization-kernel.ts
+ * (the epic-wide settlement-certificate gate, AUTHORITATIVE for RULE-012).
+ *
+ * These two are NOT duplicates and were intentionally NOT consolidated, because
+ * they answer different questions on different data sources:
+ *
+ *   dimension           | findFirstTraceabilityGap (SQL)    | findContractGap (this)
+ *   --------------------+-----------------------------------+----------------------------------
+ *   AUTHORITATIVE FOR   | settlement certificate (RULE-012) | per-node exact-set gate
+ *   data source         | LIVE artifact_traces (whole epic) | ContractSnapshot (exact owned set)
+ *   scope of edges      | epic-wide (any same-type target)  | exact-set (target must be in snapshot)
+ *   PRD root edge       | literal type='brief'              | any non-product ancestor type
+ *                       |                                   |   (brief/decision/discovery-doc/...)
+ *   SRS/UC/AC/FR edges  | SAME five canonical edges         | SAME five canonical edges
+ *   return shape        | first gap as structured object    | ALL gaps joined as one string
+ *                       | {artifactType,artifactId,         |   plus cardinality failures
+ *                       |  missingEdge, description} | null |   ('exactly one PRD', '>=1 FR', ...)
+ *
+ * The PRD-root-edge difference is load-bearing: discovery does not always
+ * register a `brief` artifact row, so the per-node gate accepts any accepted
+ * non-product ancestor while the settlement gate requires the literal brief
+ * edge (the brief-provisioning adapter creates it before settlement runs).
+ *
+ * When the canonical RULES edge set changes, BOTH this function AND
+ * findFirstTraceabilityGap must be updated together. Do not collapse them into
+ * one shared helper: the SQL path must stay short-circuit-first-gap against the
+ * live DB (its port contract is stubbed across 4 test files), and this path
+ * must stay aggregated-string over the exact snapshot (its callers bind the
+ * aggregated `gap` string into manifest results).
+ */
 function findContractGap(
   snapshot: ContractSnapshot,
   required: {

@@ -142,6 +142,13 @@ export interface FormalizationArtifactGraphPort {
    * Verify the canonical traceability edges for one episode:
    *   PRD → brief, SRS → PRD, each UC → PRD + ≥1 FR, each AC → ≥1 FR/NFR.
    * Returns the first gap (null when the graph is complete).
+   *
+   * AUTHORITATIVE for the settlement-certificate gate (RULE-012). A second,
+   * deliberately different per-node exact-set check (`findContractGap` in
+   * formalization-installation.ts) validates the same five canonical edges but
+   * over an in-memory ContractSnapshot with broader PRD-root acceptance and an
+   * aggregated-string return shape. The two are NOT duplicates — see the
+   * DUPLICATE NOTICE in findContractGap's docblock for the full comparison.
    */
   findFirstTraceabilityGap(epicId: number): {
     artifactType: string;
