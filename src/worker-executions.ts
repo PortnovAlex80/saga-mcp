@@ -3,6 +3,7 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import os from 'node:os';
 import { releaseExecutionAtomically } from './lifecycle/atomic-release.js';
+import { recoverLegacyAssignment } from './lifecycle/legacy-assignment-recovery.js';
 import {
   decideStuckAction,
   FINISH_GRACE_MS,
@@ -187,6 +188,30 @@ export function markExecutionSpawnFailed(
   }
 }
 
+/**
+ * CONVEYOR Wave 8 / MEDIUM 6 — single-writer closure.
+ *
+ * Previously this function wrote `worker_executions` AND `tasks`
+ * (current_execution_id + worker_pid metadata) directly in its own transaction,
+ * which was the documented "temporary exception" in the single-writer gate
+ * (tests/architecture/tasks-writer-invariant.test.mjs). Wave 2 (FU-D) was
+ * supposed to consolidate it; this finally does: the function now DELEGATES to
+ * {@link releaseExecutionAtomically}, the same primitive the reaper and the
+ * legacy-recovery path use. That collapses the close-callback path and the
+ * reaper path onto ONE atomic mechanism (blueprint §22:1199).
+ *
+ * Behavioral equivalence notes:
+ *   - `state` ('exited' | 'terminated') maps 1:1 to releaseExecutionAtomically's
+ *     `terminalState` (which accepts exactly those values for this caller).
+ *   - The old code's `worker_pid` metadata CAS (only strip the pid stamp when
+ *     the execution row's pid equals the task metadata's worker_pid) is
+ *     subsumed by releaseExecutionAtomically's fence CAS: the metadata is only
+ *     touched when `current_execution_id` STILL matches this execution. If the
+ *     task was reassigned mid-close, the CAS fails (changes=0) and the new
+ *     owner's metadata is left intact — the same protection, expressed via the
+ *     fence instead of a pid-equality check.
+ *   - exit_code is forwarded to the execution row exactly as before.
+ */
 export function markExecutionExited(
   dbPath: string,
   executionId: string,
@@ -195,24 +220,12 @@ export function markExecutionExited(
 ): void {
   const db = openRuntimeDb(dbPath);
   try {
-    db.transaction(() => {
-      db.prepare(
-        `UPDATE worker_executions
-         SET state=?, finished_at=datetime('now'), exit_code=?
-         WHERE execution_id=? AND state IN (${ACTIVE_STATE_SQL})`,
-      ).run(state, exitCode, executionId);
-      db.prepare(
-        `UPDATE tasks
-         SET current_execution_id=NULL,
-             metadata=CASE
-               WHEN json_extract(metadata,'$.worker_pid') = (
-                 SELECT pid FROM worker_executions WHERE execution_id=?
-               ) THEN json_remove(metadata,'$.worker_pid','$.worker_started_at')
-               ELSE metadata END,
-             updated_at=datetime('now')
-         WHERE current_execution_id=?`,
-      ).run(executionId, executionId);
-    })();
+    releaseExecutionAtomically(db, {
+      executionId,
+      terminalState: state,
+      exitCode,
+      reason: `process exited (state=${state}, exitCode=${exitCode ?? 'null'})`,
+    });
   } finally {
     db.close();
   }
@@ -627,21 +640,26 @@ function recoverLegacyAssignments(
       });
       continue;
     }
-    const restoredStatus = task.status === 'in_progress'
-      ? 'todo'
-      : 'review';
-    const info = db.prepare(
-      `UPDATE tasks
-          SET status=?, assigned_to=NULL,
-              metadata=json_remove(metadata,'$.worker_pid','$.worker_started_at'),
-              updated_at=datetime('now')
-        WHERE id=? AND assigned_to IS ? AND current_execution_id IS NULL`,
-    ).run(restoredStatus, task.id, task.assigned_to);
+    // Wave 8 / MEDIUM 6 — single-writer closure. The legacy-unfenced release
+    // now delegates to recoverLegacyAssignment (the documented single writer
+    // for legacy recovery in src/lifecycle/legacy-assignment-recovery.ts),
+    // matching the way the fenced branch delegates to releaseExecutionAtomically.
+    // originalStatus carries the queue family so the legacy module's
+    // restoredStatus formula reproduces the previous inlined mapping:
+    //   in_progress        → 'todo'
+    //   review_in_progress → 'review'
+    //   review (buffer)    → 'review'
+    const released = recoverLegacyAssignment(db, {
+      taskId: task.id,
+      workerId: task.assigned_to ?? '',
+      originalStatus: task.status === 'in_progress' ? 'in_progress' : 'review',
+      reason: pid ? 'legacy OS process is not alive' : 'legacy assignment has no PID',
+    });
     results.push({
       executionId: `legacy-task-${task.id}`,
       taskId: task.id,
       action: 'lost',
-      released: info.changes === 1,
+      released,
       reason: pid ? 'legacy OS process is not alive' : 'legacy assignment has no PID',
     });
   }

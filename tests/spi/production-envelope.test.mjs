@@ -87,18 +87,14 @@ function validNodeProductionEnvelope() {
   };
 }
 
-function validModuleCompletionShell() {
-  // Shell only — deep validation of outputEnvelope is the barrel's job; here we
-  // just need a plain object to satisfy the completion presence check.
-  return { outcome: 'accepted', outputEnvelope: {}, terminal: true };
-}
-
 function validOutputEnvelope() {
+  // Wave 8 BLOCKER 2: the envelope is a LEAF — no `completion` back-reference.
+  // The model is a serializable tree (ModuleCompletion.outputEnvelope → this
+  // envelope, one-directional).
   return {
     outcome: 'accepted',
     productions: [validNodeProductionEnvelope()],
     certificateRef: validProductRef(),
-    completion: validModuleCompletionShell(),
   };
 }
 
@@ -289,20 +285,29 @@ test('ProcessModuleOutputEnvelope: rejects each forbidden value kind in certific
   }
 });
 
-test('ProcessModuleOutputEnvelope: rejects forbidden value in completion', async () => {
+test('ProcessModuleOutputEnvelope: rejects a forbidden value anywhere in the envelope (canonical check)', async () => {
+  // Wave 8 BLOCKER 2: the cyclic `completion` field was removed. This test now
+  // exercises the canonical-serializability guard (a function value anywhere
+  // in the envelope is rejected) rather than a completion-specific rule.
   const v = validOutputEnvelope();
+  v.outcome = 'accepted';
   v.completion = () => 1;
-  await assertInvalid(validateProcessModuleOutputEnvelope, v, 'ProcessModuleOutputEnvelope.completion function');
+  await assertInvalid(validateProcessModuleOutputEnvelope, v, 'ProcessModuleOutputEnvelope function value (canonical)');
 });
 
-test('ProcessModuleOutputEnvelope: rejects missing/empty outcome and missing completion', async () => {
+test('ProcessModuleOutputEnvelope: rejects missing/empty outcome', async () => {
   const v1 = validOutputEnvelope();
   delete v1.outcome;
   await assertInvalid(validateProcessModuleOutputEnvelope, v1, 'ProcessModuleOutputEnvelope missing outcome');
   const v2 = validOutputEnvelope();
   v2.outcome = '';
   await assertInvalid(validateProcessModuleOutputEnvelope, v2, 'ProcessModuleOutputEnvelope empty outcome');
-  const v3 = validOutputEnvelope();
-  delete v3.completion;
-  await assertInvalid(validateProcessModuleOutputEnvelope, v3, 'ProcessModuleOutputEnvelope missing completion');
+});
+
+test('ProcessModuleOutputEnvelope: leaf shape — extra keys are ignored, no completion required (Wave 8 BLOCKER 2)', async () => {
+  // The envelope is a LEAF: it does not require a `completion` field, and the
+  // validator does not inspect any `completion` key (the cyclic field was
+  // removed). An envelope without completion is valid.
+  const v = validOutputEnvelope();
+  await assertValid(validateProcessModuleOutputEnvelope, v, 'ProcessModuleOutputEnvelope no completion (leaf)');
 });

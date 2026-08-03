@@ -88,9 +88,12 @@ sending work back for rework:
 The worker never carries the card or the desk away. The next worker always finds
 the workplace's card and desk waiting.
 
-This is exactly the **physical-resume** path (`generic-flow-executor.ts`
-restoreFrame), generalised to **semantic recovery**. There is one proven path,
-not two.
+This is exactly the **physical-resume** path, generalised to **semantic
+recovery**. The legacy `generic-flow-executor.ts::restoreFrame()` was FULLY
+REMOVED (Wave 13) and replaced by `assembleExecutionContext`
+(`execution-context-assembler.ts`), which reads the SAME durable NodeRun
+columns immutably instead of mutating a reconstructed frame. There is one
+proven path, not two.
 
 ## What this rules out (the bug this model replaced)
 

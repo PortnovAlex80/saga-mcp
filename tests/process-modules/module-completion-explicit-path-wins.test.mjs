@@ -215,7 +215,6 @@ function buildExecutor(module, db) {
             ref: EXPLICIT_CERT_REF,
             digest: EXPLICIT_DIGEST,
           },
-          completion: null,
         },
       },
     };

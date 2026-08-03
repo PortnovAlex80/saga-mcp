@@ -692,11 +692,12 @@ export interface DiscoveryRuntimePersistencePort {
 // The discovery module's settlement handler needs to run the deterministic D4
 // settlement policy + issue the authoritative certificate. That logic lives in
 // the legacy saga3 application layer (`Saga3DiscoverySettlementService`). The
-// module declares THIS port; the composition root injects a concrete
-// implementation (today the saga3 service). When `settlementService` is omitted
-// from DiscoveryInstallationDeps, the module falls back to a lazy legacy
-// bridge (see discovery-installation.ts) so existing callers that only pass
-// `runtimePersistence` keep working.
+// module declares THIS port; the composition root constructs the concrete
+// service and injects it through `DiscoveryInstallationDeps.settlementService`
+// (required since Wave 8 MEDIUM 7). The module never imports
+// `src/saga3/application/**` and never self-provisions the service via a
+// dynamic import — the bounded-context coupling is owned by the composition
+// root and visible in the static dependency graph.
 // ---------------------------------------------------------------------------
 
 export interface SettleRequest {

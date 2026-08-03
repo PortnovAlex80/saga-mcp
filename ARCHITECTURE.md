@@ -46,9 +46,14 @@ saga-mcp/
 │   │
 │   ├── application/                  Use cases + порты (hexagonal)
 │   │   ├── ports/                     Формальные outbound-контракты
-│   │   │   ├── conveyor-ports.ts        14 портов конвейера (launcher,
-│   │   │   │                              supervision, workspace, product,
-│   │   │   │                              catalog, journal, liveness, clock…)
+│   │   │   ├── conveyor-ports.ts        ОДИН глобальный порт (IdGeneratorPort).
+│   │   │   │                              Раньше здесь было 8 outbound-портов
+│   │   │   │                              (в старых документах фигурировало
+│   │   │   │                              «14 портов»), но ADR-022 вывел из
+│   │   │   │                              употребления 7: их обязанности
+│   │   │   │                              переехали в module-local SPI (Wave 7).
+│   │   │   │                              См. docs/architecture/decisions/
+│   │   │   │                              022-module-local-ports-over-global-catalog.md
 │   │   │   ├── worker-executor.ts       WorkAssignmentPort + AssignedWork —
 │   │   │   │                              единственный input запуска worker
 │   │   │   ├── orchestration-engine.ts  Порт движка оркестрации

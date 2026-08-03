@@ -31,19 +31,25 @@
  * `NodeProduction` itself into `domain/` can swap the mirror for a real import
  * without touching call sites.
  *
- * ── Circular type reference with module-completion.ts ─────────────────────
+ * ── Acyclic model (Wave 8 BLOCKER 2) ─────────────────────────────────────
  *
- * `ProcessModuleOutputEnvelope.completion: ModuleCompletion` and
- * `ModuleCompletion.outputEnvelope: ProcessModuleOutputEnvelope` form a type
- * cycle. It is resolved with TypeScript `import type` — a type-only edge
- * between two files in the SAME `domain/spi/` directory. That is a domain→
- * domain edge, which Rule 5 permits. There is no runtime cycle: both types are
- * pure data, erased at compile time.
+ * `ProcessModuleOutputEnvelope` is a LEAF. It does NOT reference
+ * `ModuleCompletion`; the relationship is one-directional
+ * (`ModuleCompletion.outputEnvelope` → this envelope). The previous
+ * `completion: ModuleCompletion` field created a type cycle that Delivery and
+ * Formalization closed at runtime with a real back-reference, breaking
+ * JSON persistence. The field was removed; the model is now a serializable
+ * tree.
  */
 
 import { sha256Hex } from '../../shared/canonical-json.js';
 
-import type { ModuleCompletion } from './module-completion.js';
+// NOTE: `ModuleCompletion` (./module-completion.ts) references
+// `ProcessModuleOutputEnvelope` via `import type`. That is a one-directional
+// edge: completion → envelope. This file does NOT import ModuleCompletion —
+// the envelope is a serializable leaf with no back-reference (Wave 8 BLOCKER 2
+// removed the cyclic `completion` field; see the doc comment on
+// ProcessModuleOutputEnvelope below).
 
 // ---------------------------------------------------------------------------
 // assertCanonicalSerializable — W1-A1 integration path with an inline
@@ -249,12 +255,22 @@ export interface NodeProductionEnvelope {
 /**
  * The complete immutable output that crosses the Process Module boundary
  * (plan §13.20). It carries the module's declared `outcome`, every production
- * the module emitted (each wrapped in a NodeProductionEnvelope), an optional
- * certificate reference, and the explicit `completion` envelope that replaces
- * the legacy magic certificate bindings (plan §7.5.6).
+ * the module emitted (each wrapped in a NodeProductionEnvelope), and an
+ * optional certificate reference.
  *
- * `completion` references `ModuleCompletion` from `./module-completion.ts`,
- * forming a type-only cycle resolved via `import type` (see file header).
+ * ── Acyclic model (Wave 8 BLOCKER 2) ─────────────────────────────────────
+ *
+ * This envelope is a LEAF: it does NOT reference back to `ModuleCompletion`.
+ * The relationship is ONE-DIRECTIONAL: `ModuleCompletion.outputEnvelope`
+ * points at this envelope (completion → envelope), but the envelope does not
+ * point back. The previous `completion: ModuleCompletion` field created a type
+ * cycle that Delivery and Formalization closed at RUNTIME via a real
+ * back-reference (`envelope.completion = completion`), which made
+ * `JSON.stringify(completion)` throw "Converting circular structure to JSON"
+ * in the durable persist path. Removing the field makes the model a tree,
+ * which is safe to serialize. Settlement reads only
+ * `outputEnvelope.certificateRef` and `outputEnvelope.outcome` — never
+ * `outputEnvelope.completion` — so the field was dead weight.
  */
 export interface ProcessModuleOutputEnvelope {
   /** The module's declared outcome code (one of its OutcomeDefinition codes). */
@@ -263,8 +279,6 @@ export interface ProcessModuleOutputEnvelope {
   readonly productions: readonly NodeProductionEnvelope[];
   /** Optional certificate reference the module authored. */
   readonly certificateRef?: ProductRef;
-  /** Explicit terminal envelope (plan §7.5.6). */
-  readonly completion: ModuleCompletion;
 }
 
 // ---------------------------------------------------------------------------
@@ -395,12 +409,10 @@ export async function validateNodeProductionEnvelope(
 
 /**
  * Validate a `ProcessModuleOutputEnvelope`: assert canonical serializability,
- * then check `outcome`, `productions` (each validated), optional `certificateRef`,
- * and `completion`. NOTE: `completion` is `ModuleCompletion`, which itself
- * references this envelope — validating it deeply would recurse infinitely.
- * We validate its structural shell (object with outcome/outputEnvelope/terminal)
- * here; deep validation of `outputEnvelope` is the caller's / barrel's job to
- * break the cycle.
+ * then check `outcome`, `productions` (each validated), and optional
+ * `certificateRef`. The envelope is a LEAF (Wave 8 BLOCKER 2 removed the
+ * cyclic `completion` field), so there is no completion shell to validate and
+ * no recursion concern.
  */
 export async function validateProcessModuleOutputEnvelope(
   value: unknown,
@@ -440,14 +452,6 @@ export async function validateProcessModuleOutputEnvelope(
         errors.push(err(e.code, `certificateRef.${e.path}`, e.message));
       }
     }
-  }
-  // Shell-only completion check to avoid infinite mutual recursion.
-  if (
-    typeof v.completion !== 'object' ||
-    v.completion === null ||
-    Array.isArray(v.completion)
-  ) {
-    errors.push(err('BAD_COMPLETION', 'completion', 'completion must be a plain object'));
   }
   return errors.length === 0 ? okResult() : fail(errors);
 }

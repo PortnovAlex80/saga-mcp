@@ -438,16 +438,14 @@ function createDevelopmentSettlementHandler(
  * a `completion` slot. All five development outcomes are terminal, so
  * `terminal` is always true.
  *
- * SERIALIZABILITY: the ModuleCompletion ↔ ProcessModuleOutputEnvelope type
- * cycle is a COMPILE-TIME type relationship, NOT a runtime back-reference. The
- * SQLite NodeRun repo persists `completion` via `JSON.stringify`
- * (sqlite-node-run-repository.ts ~line 414), so a true runtime cycle would
- * throw "Converting circular structure to JSON". The envelope's `completion`
- * slot is therefore set to `null` — the executor's explicit settlement path
+ * SERIALIZABILITY: the ModuleCompletion → ProcessModuleOutputEnvelope
+ * reference is ONE-DIRECTIONAL (completion → envelope). The envelope is a
+ * LEAF with no back-reference (Wave 8 BLOCKER 2 removed the cyclic
+ * `completion` field). The SQLite NodeRun repo persists `completion` via
+ * `JSON.stringify` (sqlite-node-run-repository.ts ~line 414); because the
+ * model is a tree, this never throws. The executor's explicit settlement path
  * reads only `outputEnvelope.certificateRef` (generic-flow-executor.ts
- * ~line 318), never `outputEnvelope.completion`. This mirrors the convention
- * in the module-completion-persistence test fixture (`sampleModuleCompletion`
- * sets `completion: null` inside the envelope for the same reason).
+ * ~line 318).
  *
  * Pure: same (outcome, certificateRef) → same ModuleCompletion.
  */
@@ -459,9 +457,6 @@ function buildDevelopmentModuleCompletion(
     outcome,
     productions: [],
     certificateRef,
-    // Intentionally NOT a back-reference to this completion: see the
-    // SERIALIZABILITY note above. The type cycle is compile-time only.
-    completion: null as unknown as ModuleCompletion,
   };
   return {
     outcome,

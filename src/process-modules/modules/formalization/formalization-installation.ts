@@ -1668,6 +1668,13 @@ function issueFormalizationCertificate(
  * resolveOutput hook. This matches the shape proven by
  * tests/process-modules/module-completion-persistence.test.mjs
  * (sampleModuleCompletion: productions: []).
+ *
+ * Wave 8 BLOCKER 2: the envelope is a LEAF. The previous implementation built
+ * a REAL runtime cycle (`envelope.completion = completion`) to satisfy the
+ * now-removed `ProcessModuleOutputEnvelope.completion` field. That cycle made
+ * `JSON.stringify(completion)` throw "Converting circular structure to JSON"
+ * in the durable persist path. With the field gone, the model is a tree:
+ * ModuleCompletion.outputEnvelope → envelope (one-directional).
  */
 function buildFormalizationModuleCompletion(
   outcome: string,
@@ -1680,36 +1687,16 @@ function buildFormalizationModuleCompletion(
     ref: `certificate:${issuedCertificate.id}`,
     digest: issuedCertificate.certificateHash,
   };
-  // The ProcessModuleOutputEnvelope ↔ ModuleCompletion pair forms a type cycle
-  // (production-envelope.ts:267 / module-completion.ts:114). Both fields are
-  // `readonly`, so the cycle cannot be closed by mutation after construction.
-  // We build it via a single object literal that references itself: `envelope`
-  // is declared first as a mutable holder, then `completion.outputEnvelope`
-  // points at it, and finally `envelope.completion` is assigned in the same
-  // expression that produces `completion`. Because JS object literals evaluate
-  // property values eagerly but the back-reference is a property of `envelope`
-  // itself (assigned after `completion` exists), the cycle resolves at runtime.
-  // The local `Envelopelike` type widens `completion` to allow the single
-  // closing assignment; the returned values are asserted back to the readonly
-  // SPI types (which they structurally satisfy — no mutation occurs afterwards).
-  type Envelopelike = {
-    outcome: string;
-    productions: readonly never[];
-    certificateRef: ProductRef;
-    completion: ModuleCompletion;
-  };
-  const envelope: Envelopelike = {
+  const outputEnvelope: ProcessModuleOutputEnvelope = {
     outcome,
     productions: [],
     certificateRef,
-    completion: undefined as unknown as ModuleCompletion,
   };
   const completion: ModuleCompletion = {
     outcome,
-    outputEnvelope: envelope as unknown as ProcessModuleOutputEnvelope,
+    outputEnvelope,
     terminal: true,
   };
-  envelope.completion = completion;
   void certificateHash;
   return completion;
 }

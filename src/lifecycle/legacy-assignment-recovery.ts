@@ -10,9 +10,10 @@
  *   - src/lifecycle/atomic-release.ts          (releaseExecutionAtomically)
  *   - src/lifecycle/legacy-assignment-recovery.ts   (this module)
  *
- *   PLUS the documented exception:
- *   - src/worker-executions.ts:202  (markExecutionExited — FU-D will
- *     consolidate this duplicate writer into releaseExecutionAtomically)
+ *   Wave 8 / MEDIUM 6: src/worker-executions.ts is NO LONGER an exception.
+ *   markExecutionExited delegates to releaseExecutionAtomically and the
+ *   reaper's legacy recovery loop delegates to recoverLegacyAssignment
+ *   (this module).
  *
  * This module owns the legacy (pre-ADR-009, unfenced) recovery path: a
  * worker process died holding an assignment that has NO execution fence.

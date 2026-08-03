@@ -182,11 +182,22 @@ races.
 
 ## Структурные риски
 
-### 1. Type cycle workaround
+### 1. Type cycle — ИСПРАВЛЕНО (Wave 8 BLOCKER 2)
 
-`ModuleCompletion ↔ ProcessModuleOutputEnvelope` — цикл типов, разрешённый
-через `import type`. При сериализации `completion: null as unknown as
-ModuleCompletion`. Code smell: типы борются с моделью сериализации.
+Раньше `ModuleCompletion ↔ ProcessModuleOutputEnvelope` образовывали цикл
+типов, разрешённый через `import type`, а Delivery и Formalization замыкали
+его в RUNTIME реальным back-reference (`envelope.completion = completion`).
+Это ломало `JSON.stringify(completion)` в durable-persist-пути («Converting
+circular structure to JSON»).
+
+Wave 8 BLOCKER 2 (W8-1) устранил и type-cycle, и runtime-cycle:
+`ProcessModuleOutputEnvelope.completion` УДАЛЕН. Модель теперь однонаправленная
+и сериализуемая: `ModuleCompletion.outputEnvelope → envelope` (envelope —
+лист, без back-reference). Formalization и Delivery переписаны на
+tree-shaped builder (`outputEnvelope` строится первым, `completion` ссылается
+на него). `completion: null as unknown as ModuleCompletion` каст удалён из
+всех четырёх модулей. См. `src/process-modules/domain/spi/production-envelope.ts`
+(§Acyclic model) и `module-completion.ts` (§One-directional reference).
 
 ### 2. Дублирование interface'ов
 
@@ -194,12 +205,22 @@ ModuleCompletion`. Code smell: типы борются с моделью сер�
 formalization-kernel-ports.ts — структурно идентичны, но два независимых
 источника. Дрейф одного пройдёт молча.
 
-### 3. Dynamic import для обхода ratchet
+### 3. Dynamic import для обхода ratchet — ИСПРАВЛЕНО (Wave 8 MEDIUM 7)
 
-`createLegacySettlementBridge` — dynamic import чтобы scanner не видел
-static edge. Рантайм-зависимость реальна, но статический граф чист.
-Подрывает доверие к ratchet: если один dynamic import легален, почему не
-десять?
+Раньше `createLegacySettlementBridge` делал `await import(...)` saga3
+application-сервиса, чтобы dependency-ratchet scanner не видел static edge:
+runtime-зависимость была реальной, но статический граф чист. Это подрывало
+доверие к ratchet.
+
+Wave 8 MEDIUM 7 устранил bridge: settlement-сервис теперь EXPLICIT injected
+port. `DiscoveryInstallationDeps.settlementService` стал обязательным;
+composition root (`src/app/product-lifecycle-runtime.ts`) конструирует
+`Saga3DiscoverySettlementService` и передаёт его через объявленный
+`DiscoverySettlementPort`. Dynamic import удалён. Связь bounded-contexts
+видна в статическом графе (composition root в `src/app/` — вне
+`src/process-modules/modules/`, поэтому Rule 2 её не считает нарушением).
+`tests/architecture/dependency-direction.test.mjs` остаётся зелёным с тем же
+baseline (0 violations).
 
 ### 4. `as any` в composition root
 

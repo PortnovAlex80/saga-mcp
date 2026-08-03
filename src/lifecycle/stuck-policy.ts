@@ -65,6 +65,18 @@ export const STUCK_SILENCE_MS = 10 * 60 * 1000;
 export const STUCK_CANCEL_GRACE_MS = 5 * 60 * 1000;
 /** 1 min after cancel_requested → terminate (only if PID birth verified). */
 export const CANCEL_GRACE_MS = 60_000;
+/**
+ * Wave 8 HIGH 5B — PID-reuse escalation grace. When a row is in
+ * cancel_requested past the kill grace AND the PID birth token no longer
+ * matches (scenario 16: the OS recycled the PID), the reaper refuses to kill
+ * an unrelated process. Without an escalation path the card would stay locked
+ * forever waiting for a human. After this grace elapses (measured from the
+ * cancel_requested_at stamp), the policy escalates to RELEASE: the process is
+ * either dead or stolen, but the card MUST return to the queue. This is a
+ * human-notification event, not a permanent block. 10 min keeps it well above
+ * the per-sweep jitter while bounding the worst-case stall.
+ */
+export const PID_REUSE_GRACE_MS = 10 * 60 * 1000;
 
 // ---------------------------------------------------------------------------
 // The policy decision surface.
@@ -86,14 +98,30 @@ export const CANCEL_GRACE_MS = 60_000;
  *                                  success, releaseExecutionAtomically(
  *                                  terminal='terminated'). If killVerified
  *                                  fails the mechanism pushes a `kept` result.
- *   - TERMINATE_BUT_PID_REUSE    → KEEP for a human. PID is alive but its birth
- *                                  token changed (scenario 16): NEVER kill,
- *                                  NEVER release. Mechanism pushes `kept`.
+ *                                  Also returned for alive + lease-expired
+ *                                  (Wave 8 HIGH 5A): the supervisor authority
+ *                                  is gone, so the still-running process MUST
+ *                                  be killed (after birth-token verification)
+ *                                  before its card is released — releasing
+ *                                  without killing would let a second worker
+ *                                  claim the same card while the first is
+ *                                  still spinning.
+ *   - TERMINATE_BUT_PID_REUSE    → KEEP for a human on THIS sweep. PID is alive
+ *                                  but its birth token changed (scenario 16):
+ *                                  NEVER kill on this sweep. The row is left
+ *                                  fenced. The policy escalates this state to
+ *                                  RELEASE once PID_REUSE_GRACE_MS has elapsed
+ *                                  since cancel_requested_at (Wave 8 HIGH 5B),
+ *                                  so a reused-PID card cannot lock the queue
+ *                                  forever.
  *   - RELEASE                    → releaseExecutionAtomically with the named
  *                                  terminal state ('lost' | 'spawn_failed' |
  *                                  'terminated'). No kill (the process is
- *                                  either already gone, never spawned, or was
- *                                  verified-dead by an upstream TERMINATE).
+ *                                  either already gone, never spawned, was
+ *                                  verified-dead by an upstream TERMINATE, OR
+ *                                  the PID-reuse grace was exhausted and the
+ *                                  card is being returned to prevent a
+ *                                  permanent stall).
  */
 export type StuckAction =
   | { readonly kind: 'KEEP'; readonly reason: string }
@@ -172,14 +200,21 @@ export interface StuckPolicyInput {
  *
  * Order of decisions (load-bearing — do not reorder):
  *   1. Remote row           → leaseExpired ? RELEASE(lost) : KEEP.
- *   2. Dead/reserved-expired/lease-expired local → RELEASE.
+ *   2. Dead/reserved-expired/reserved-lease-expired local → RELEASE.
+ *      (Wave 8 HIGH 5A: an ALIVE local row with an expired lease is NOT
+ *      released here — it falls through to step 6's TERMINATE so the still-
+ *      running process is killed before its card is released.)
  *   3. Stuck stage 1+2      → MARK_SUSPECTED, or REQUEST_CANCEL (which
  *                             short-circuits). MARK_SUSPECTED falls through.
  *   4. Stuck stage 3        → cancel grace met: TERMINATE_BUT_PID_REUSE (no
- *                             match) or TERMINATE (match).
- *   5. Legitimate phase     → KEEP.
+ *                             birth-token match) which escalates to
+ *                             RELEASE(lost) once PID_REUSE_GRACE_MS elapses
+ *                             (Wave 8 HIGH 5B), or TERMINATE (match).
+ *   5. Legitimate phase     → KEEP (only when the lease is still alive; an
+ *                             expired lease skips this gate — HIGH 5A).
  *   6. Alive but illegit    → TERMINATE (kill+release); the mechanism handles
- *                             killVerified failure by pushing KEEP.
+ *                             killVerified failure by pushing KEEP. Also
+ *                             reached by alive + lease-expired rows (HIGH 5A).
  */
 export function decideStuckAction(input: StuckPolicyInput): StuckAction {
   // -------------------------------------------------------------------------
@@ -204,28 +239,59 @@ export function decideStuckAction(input: StuckPolicyInput): StuckAction {
   }
 
   // -------------------------------------------------------------------------
-  // (2) LOCAL execution release gate.
+  // (2) LOCAL execution release gate — DEAD / reserved-expired rows only.
   //   - reserved rows have no PID; they are released ONLY by
   //     RESERVED_BOOT_TIMEOUT_MS expiry (or lease expiry), NEVER by !alive.
-  //   - non-reserved rows are released when the OS process is dead OR the lease
-  //     expired (authority gone even if the OS process is still spinning).
+  //   - non-reserved rows are released when the OS process is DEAD (the lease
+  //     may or may not have expired; a dead process is always safe to release).
   // Terminal state: reserved → 'spawn_failed'; otherwise 'lost'.
+  //
+  // Wave 8 HIGH 5A: an ALIVE local process with an EXPIRED lease is NOT
+  // released here. Releasing without killing would let a second worker claim
+  // the same card while the first is still spinning (two workers at one desk).
+  // The supervisor authority is gone (lease expired), so the still-running
+  // process must be KILLED after birth-token verification — that path is
+  // TERMINATE, handled in step (6) below. We compute `leaseExpired` here only
+  // to exclude it from this release gate for alive rows; the downstream
+  // TERMINATE branch carries its own reason.
   // -------------------------------------------------------------------------
   const notAlive = input.state !== 'reserved' && !input.isAlive;
   const reservedExpired = input.state === 'reserved'
     && input.nowMs - input.reservedAtMs >= RESERVED_BOOT_TIMEOUT_MS;
   const leaseExpired = input.leaseExpiresAtMs !== 0 && input.nowMs >= input.leaseExpiresAtMs;
+  // Reserved rows are always treated as not-alive for release purposes (no
+  // PID to probe). A reserved row whose lease expired before the 60s boot
+  // timeout is released here as spawn_failed.
+  const reservedLeaseExpired = input.state === 'reserved' && leaseExpired;
 
-  if (notAlive || reservedExpired || leaseExpired) {
+  if (notAlive || reservedExpired || reservedLeaseExpired) {
     const terminal = input.state === 'reserved' ? 'spawn_failed' : 'lost';
     const reason = reservedExpired
       ? 'spawn reservation timed out'
-      : input.state === 'reserved'
+      : reservedLeaseExpired
         ? 'lease expired (foreman/supervisor gone) during spawn reservation'
         : !input.isAlive
           ? 'OS process is not alive'
           : 'lease expired (foreman/supervisor gone) while local process could not be confirmed alive';
     return { kind: 'RELEASE', terminal, reason };
+  }
+
+  // Track whether the supervisor authority is gone for the alive paths below.
+  // Wave 8 HIGH 5A: an alive local row with an expired lease MUST be
+  // terminated (verified kill), NOT released and NOT kept. The lease is the
+  // durable signal that the supervisor/foreman renewed it within the last
+  // window; once it is gone, the still-spinning process is an orphan holding
+  // a card. Releasing without killing let a second worker claim the same
+  // card; keeping it trusts a process whose authority is dead. So lease
+  // expiry dominates legitimacy and progress-silence: we fall straight to
+  // step (6)'s TERMINATE. (Birth-token verification still happens in the
+  // mechanism before the actual kill.)
+  const aliveLeaseExpired = input.isAlive && leaseExpired;
+  if (aliveLeaseExpired) {
+    return {
+      kind: 'TERMINATE',
+      reason: 'lease expired (foreman/supervisor gone) — alive process killed after verified PID identity to prevent double-assignment',
+    };
   }
 
   // -------------------------------------------------------------------------
@@ -288,12 +354,26 @@ export function decideStuckAction(input: StuckPolicyInput): StuckAction {
   // -------------------------------------------------------------------------
   // (4) Stuck stage 3 — cancel_requested past the kill grace → verified kill.
   // Birth-token verification is the LAST gate before termination (scenario 16):
-  // a reused PID with a different token is NEVER killed and NEVER released.
+  // a reused PID with a different token is NEVER killed. Wave 8 HIGH 5B adds
+  // the escalation: such a row is normally TERMINATE_BUT_PID_REUSE (left for a
+  // human on this sweep), but once PID_REUSE_GRACE_MS has elapsed since
+  // cancel_requested_at the policy escalates to RELEASE — the process is
+  // either dead or stolen, but the card MUST return to the queue eventually.
+  // This bounds the worst-case stall at PID_REUSE_GRACE_MS and is a
+  // human-notification event, not a permanent block.
   // -------------------------------------------------------------------------
   if (input.isAlive && input.stuckState === 'cancel_requested') {
     const since = input.cancelRequestedAtMs || input.nowMs;
     if (input.nowMs - since >= CANCEL_GRACE_MS) {
       if (!input.birthTokenMatches) {
+        const reuseAge = input.nowMs - since;
+        if (reuseAge >= PID_REUSE_GRACE_MS) {
+          return {
+            kind: 'RELEASE',
+            terminal: 'lost',
+            reason: 'PID reuse grace exhausted — card released to prevent permanent stall (scenario 16; notify human)',
+          };
+        }
         return {
           kind: 'TERMINATE_BUT_PID_REUSE',
           reason: 'cancel grace expired but PID birth token changed — left for human (PID reuse suspected, scenario 16)',
@@ -309,6 +389,11 @@ export function decideStuckAction(input: StuckPolicyInput): StuckAction {
   // -------------------------------------------------------------------------
   // (5) Legitimate phase — alive execution that still owns an allowed task
   // phase is left alone. (Computed by the mechanism; the policy just gates.)
+  //
+  // Note: an alive row with an expired lease was already returned as TERMINATE
+  // above (Wave 8 HIGH 5A) and never reaches this gate. So this KEEP only
+  // applies to alive rows whose lease is still alive — the supervisor is
+  // healthy and vouches for the phase ownership.
   // -------------------------------------------------------------------------
   if (input.isAlive && (input.ownsActiveTask || input.legitimateIntegration || input.legitimateFinishing)) {
     return {

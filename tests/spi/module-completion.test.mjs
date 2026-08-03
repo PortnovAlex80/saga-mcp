@@ -65,20 +65,18 @@ const FORBIDDEN_VALUES = [
 // ---------------------------------------------------------------------------
 // Fixtures.
 //
-// IMPORTANT: the ModuleCompletion <-> ProcessModuleOutputEnvelope reference is
-// a TYPE-ONLY cycle (resolved via `import type`). Serialized DATA must be a
-// tree — canonicalJson cannot serialize a value-level cycle, and
-// assertCanonicalSerializable rightly rejects one. In real persistence the two
-// are stored as separate rows; a serialized ModuleCompletion's
-// outputEnvelope.completion is therefore a stub shell (or omitted), NOT a
-// back-pointer. The fixtures below mirror that: the nested completion is a
-// plain shell object, not the parent.
+// IMPORTANT (Wave 8 BLOCKER 2): the ModuleCompletion → ProcessModuleOutputEnvelope
+// reference is ONE-DIRECTIONAL (completion → envelope). The envelope is a LEAF
+// with no `completion` back-reference — the cyclic field was removed because
+// Delivery/Formalization closed it at runtime with a real back-pointer, which
+// broke JSON persistence. Serialized DATA is a tree by construction now; the
+// fixtures below mirror the acyclic shape (no nested completion stub needed).
 // ---------------------------------------------------------------------------
 
 function validModuleCompletion() {
-  // validateModuleCompletion checks the outputEnvelope shell only (deep mutual
-  // validation is the barrel's job, to avoid infinite recursion), so a plain
-  // object with the shell fields suffices.
+  // validateModuleCompletion checks the outputEnvelope shell only (deep
+  // validation of the envelope is the barrel's job), so a plain object with
+  // the shell fields suffices.
   return {
     outcome: 'accepted',
     outputEnvelope: {

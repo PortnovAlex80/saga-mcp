@@ -95,10 +95,10 @@ function sampleModuleCompletion({
         ref: certRef,
         digest: certDigest,
       },
-      // `completion` is null here to avoid the type cycle in the test fixture
-      // (the real envelope carries the completion back-reference; for the
-      // persistence round-trip the leaf fields are what matter).
-      completion: null,
+      // Wave 8 BLOCKER 2: the envelope is a LEAF. The cyclic `completion`
+      // back-reference field was removed from ProcessModuleOutputEnvelope;
+      // the model is now a serializable tree (ModuleCompletion.outputEnvelope
+      // → envelope, one-directional). No stub needed.
     },
     terminal: true,
   };

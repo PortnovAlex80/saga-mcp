@@ -91,6 +91,7 @@ import type {
 import { getDb } from '../db.js';
 import type { Saga3DiscoveryRuntimePersistence } from '../saga3/persistence/saga3-discovery-runtime-port.js';
 import { SqliteSaga3DiscoveryRuntime } from '../saga3/persistence/sqlite-saga3-discovery-runtime.js';
+import { Saga3DiscoverySettlementService } from '../saga3/application/discovery-settlement-service.js';
 import { GenericFlowExecutor } from '../process-modules/application/generic-flow-executor.js';
 import {
   PROCESS_OUTCOME_EMITTER_HANDLER_ID,
@@ -216,11 +217,13 @@ import {
 } from '../process-modules/persistence/sqlite-managed-node-submission-repository.js';
 import { SqliteManagedProductionLedger } from '../process-modules/persistence/sqlite-managed-production-ledger.js';
 import { SqliteProcessProductRepository } from '../process-modules/persistence/sqlite-process-product-repository.js';
+import { SqliteProcessProductRepositoryV2 } from '../process-modules/persistence/sqlite-process-product-repository-v2.js';
 import { SqliteNodeRunRepository } from '../process-modules/persistence/sqlite-node-run-repository.js';
 import { SqliteExactCandidateAcceptance } from '../process-modules/persistence/sqlite-exact-candidate-acceptance.js';
 import { SqliteProcessOutcomeCertificateRepository } from '../process-modules/persistence/sqlite-process-outcome-certificate-repository.js';
 import { SqliteProcessRunRepository } from '../process-modules/persistence/sqlite-process-run-repository.js';
 import { SqliteRecoveryCaseRepository } from '../process-modules/persistence/sqlite-recovery-case-repository.js';
+import type { ProductRef } from '../process-modules/domain/spi/index.js';
 
 export interface DevelopmentCompositionDependencies {
   /**
@@ -332,6 +335,98 @@ export function createProductLifecycleRuntime(
   const certificateRepo = new SqliteProcessOutcomeCertificateRepository(db);
   const recoveryCaseRepo = new SqliteRecoveryCaseRepository(db);
   const lifecycleRunRepo = new SqliteLifecycleRunRepository(db);
+  // Wave 8 BLOCKER 1 — production v2 cutover wiring.
+  //
+  // The v2 path (driver-neutral execution-context envelopes + explicit
+  // ModuleCompletion persistence via completeV2) was ADDITIVE in Wave 3 but
+  // never ACTIVATED in production: the four executors below were constructed
+  // without `v2:` options, so `v2ChannelFor` returned null and every
+  // ProcessRun ran the legacy `start`/`complete` path. ModuleCompletion was
+  // therefore never persisted by the production path, and a crash between
+  // settlement and the terminal emitter lost the certificate.
+  //
+  // The fix wires v2 into ALL FOUR executors. `SqliteNodeRunRepository`
+  // implements `NodeRunRepositoryV2` (startV2/completeV2/readByExactCursor), so
+  // `v2ChannelFor` now returns a live channel and (with the bootstrap fix in
+  // generic-flow-executor.ts) the v2 path activates unconditionally for fresh
+  // runs. `processProductRepoV2` is the W3-A4 exact-by-ProductRef port
+  // (`getByProductRef`) the assembler consumes — it shares the same
+  // `saga3_process_products` table as the v1 repo. Manifest pins are left to
+  // the packageInstallation resolver (forwarded by the assembler's legacy
+  // fallback) — null here is the documented 'legacy:unpinned' sentinel until
+  // W3-A3 surfaces the installed digest on ProcessRunRecord.
+  const processProductRepo = new SqliteProcessProductRepository(db);
+  const processProductRepoV2 = new SqliteProcessProductRepositoryV2(db);
+  // Wave 8 BLOCKER 1: bridge the W3-A4 `SqliteProcessProductRepositoryV2`
+  // (returns `ProcessProductRecordV2` with `reference.{schema,ref,hash}`) to
+  // the W3-A5 assembler's `ProcessProductRepository` port (expects
+  // `UpstreamProductRecord` with `productRef.{schemaId,ref,digest}`).
+  //
+  // The two ports were defined in separate lanes with structurally-different
+  // record shapes. In addition to normalizing field names, this adapter falls
+  // back to the durable NodeRun rows when the content-addressed product store
+  // (`saga3_process_products`) does not contain a product. This is required
+  // because the four modules persist their settlement productions on the
+  // NodeRun `output_*` columns (via completeV2 dual-write), NOT in the product
+  // store — the product store is only populated by modules that explicitly
+  // call `recordProduct`. Without this fallback the v2 assembler's strict
+  // exact-product-store lookup (spec §9.11) throws UPSTREAM_PRODUCT_NOT_FOUND
+  // for every terminal node whose upstream is a settlement production.
+  //
+  // The fallback is a content-addressed global query over completed NodeRun
+  // rows matching the full (schema, ref, hash) triple. Content-addressing
+  // makes the match unique and deterministic regardless of which ProcessRun
+  // produced it — two productions with the same triple ARE the same product.
+  // The payload returned is the production body reconstructed from the NodeRun
+  // output columns (schema/artifactRef/contentHash/bindings), which is the
+  // same shape the legacy `restoreProduction` path forwarded as chainInput.
+  const lookupProduction = db.prepare(
+    `SELECT output_schema AS schema, output_ref AS ref, output_hash AS hash,
+            output_bindings AS bindingsText
+       FROM saga3_node_runs
+      WHERE output_schema=? AND output_ref=? AND output_hash=?
+        AND status='completed'
+      LIMIT 1`,
+  );
+  const assemblerProductRepo = {
+    getByProductRef: (ref: ProductRef) => {
+      const row = processProductRepoV2.getByProductRef(ref);
+      if (row !== null) {
+        return {
+          productRef: {
+            schemaId: row.reference.schema,
+            ref: row.reference.ref,
+            digest: row.reference.hash,
+          },
+          payload: row.payload,
+        };
+      }
+      // Fallback: resolve from durable NodeRun rows (settlement productions).
+      const nr = lookupProduction.get(ref.schemaId, ref.ref, ref.digest) as
+        | { schema: string | null; ref: string | null; hash: string | null; bindingsText: string | null }
+        | undefined;
+      if (nr === undefined || nr.schema === null || nr.ref === null || nr.hash === null) {
+        return null;
+      }
+      const bindings = nr.bindingsText ? JSON.parse(nr.bindingsText) : {};
+      return {
+        productRef: {
+          schemaId: nr.schema,
+          ref: nr.ref,
+          digest: nr.hash,
+        },
+        payload: {
+          schema: nr.schema,
+          artifactRef: nr.ref,
+          contentHash: nr.hash,
+          bindings,
+        },
+      };
+    },
+  };
+  const executorV2Options = {
+    productRepo: assemblerProductRepo,
+  };
   const runtimePersistence = options.discoveryRuntimePersistence
     ?? new SqliteSaga3DiscoveryRuntime();
   const managedNodeSubmissions =
@@ -348,8 +443,10 @@ export function createProductLifecycleRuntime(
   const developmentLedger = new SqliteManagedProductionLedger(db);
   // Wave 7: inject the concrete process-product repository + git/machine ports
   // from the composition root so the Development module imports no SQLite
-  // adapter, child_process, or node:os.
-  const developmentProcessProducts = new SqliteProcessProductRepository(db);
+  // adapter, child_process, or node:os. Wave 8 BLOCKER 1: reuse the shared
+  // `processProductRepo` (constructed above for the v2 executor wiring) instead
+  // of a second instance over the same DB.
+  const developmentProcessProducts = processProductRepo;
   const developmentGit = createGitPort();
   const developmentMachine = createMachinePort();
   const developmentGraph = developmentConfig.store
@@ -454,6 +551,14 @@ export function createProductLifecycleRuntime(
     // CONVEYOR Wave 7: injected brief-provisioning port so the Discovery module
     // imports no getDb. Composition root owns concrete construction.
     briefProvisioning: new SqliteDiscoveryBriefProvisioning(db),
+    // Wave 8 MEDIUM 7: the deterministic D4 settlement service is now an
+    // EXPLICIT injected port. The composition root constructs the concrete
+    // saga3 implementation and injects it; the Discovery module no longer
+    // self-provisions it via a dynamic import (which hid the runtime
+    // dependency from the static dependency graph). The bounded-context edge
+    // (composition root → saga3/application) lives in src/app/, which is
+    // outside src/process-modules/modules/, so it is not a Rule 2 violation.
+    settlementService: new Saga3DiscoverySettlementService({ runtimePersistence }),
   }));
   kernelHandlers.registerAll(createFormalizationKernelHandlers({
     ledger: formalizationLedger,
@@ -545,6 +650,9 @@ export function createProductLifecycleRuntime(
       nodeExecutors,
       recoveryCaseRepo,
       resolveNodeProducts,
+      // Wave 8 BLOCKER 1: activate the v2 path (explicit ModuleCompletion
+      // persistence via completeV2) in production.
+      v2: executorV2Options,
     }),
     formalization: new GenericFlowExecutor({
       moduleRef: formalizationProcessModule.identity,
@@ -557,6 +665,7 @@ export function createProductLifecycleRuntime(
       resolveOutput: createFormalizationOutputResolver(
         formalizationSolutionContractRepository,
       ),
+      v2: executorV2Options,
     }),
     development: new GenericFlowExecutor({
       moduleRef: developmentProcessModule.identity,
@@ -569,6 +678,7 @@ export function createProductLifecycleRuntime(
       resolveOutput: createDevelopmentOutputResolver(
         developmentOutputRepository,
       ),
+      v2: executorV2Options,
     }),
     delivery: new GenericFlowExecutor({
       moduleRef: deliveryProcessModule.identity,
@@ -579,6 +689,7 @@ export function createProductLifecycleRuntime(
       recoveryCaseRepo,
       resolveNodeProducts,
       resolveOutput: createDeliveryOutputResolver(deliveryOutputRepository),
+      v2: executorV2Options,
     }),
   };
 

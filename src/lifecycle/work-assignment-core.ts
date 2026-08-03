@@ -10,10 +10,9 @@
  *   - src/lifecycle/atomic-release.ts          (releaseExecutionAtomically)
  *   - src/lifecycle/legacy-assignment-recovery.ts
  *
- *   PLUS the documented exception:
- *   - src/worker-executions.ts:202  (markExecutionExited clears
- *     current_execution_id while zeroing worker_pid metadata — FU-D will
- *     consolidate this duplicate into releaseExecutionAtomically)
+ *   Wave 8 / MEDIUM 6: src/worker-executions.ts is NO LONGER an exception.
+ *   markExecutionExited delegates to releaseExecutionAtomically and the
+ *   reaper's legacy recovery delegates to recoverLegacyAssignment.
  *
  * The claim path here MUST keep using direct SQL inside a BEGIN IMMEDIATE
  * transaction (SELECT claimable card + INSERT fence row + UPDATE status-flip

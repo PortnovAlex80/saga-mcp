@@ -5,15 +5,14 @@
  * Spec: docs/refactor-management/09-contracts/WAVE1-PURE-SPI-SPEC.md §1 row 10.
  * Plan: §7.5.6.
  *
- * ── Type-only circular reference ──────────────────────────────────────────
+ * ── One-directional reference (acyclic since Wave 8 BLOCKER 2) ────────────
  *
- * `ModuleCompletion.outputEnvelope: ProcessModuleOutputEnvelope` and
- * `ProcessModuleOutputEnvelope.completion: ModuleCompletion` form a type cycle.
- * It is resolved with TypeScript `import type`: a type-only edge between two
- * files in the SAME `domain/spi/` directory. That is a domain→domain edge,
- * which the Wave 1 dependency-direction ratchet (Rule 5) permits. There is NO
- * runtime cycle — both types are pure data, erased at compile time. The
- * `import type` clause guarantees the compiler drops it from emit.
+ * `ModuleCompletion.outputEnvelope: ProcessModuleOutputEnvelope` is a
+ * ONE-DIRECTIONAL edge: completion → envelope. The envelope does NOT point
+ * back (the previous `ProcessModuleOutputEnvelope.completion` field was
+ * removed — it created a type cycle that Delivery/Formalization closed at
+ * runtime with a real back-reference, breaking JSON persistence). The model
+ * is now a serializable tree.
  *
  * This file is PURE: one data type + one pure validator. No behavior.
  */
@@ -124,9 +123,10 @@ function err(code: string, path: string, message: string): ValidationError {
 /**
  * Validate a `ModuleCompletion`: assert canonical serializability, then check
  * `outcome` is a non-empty string and `terminal` is a boolean. The
- * `outputEnvelope` field is checked for presence and shape only (it is a
- * ProcessModuleOutputEnvelope whose own validator would recurse back here via
- * `completion` — deep mutual validation is the barrel/caller's job).
+ * `outputEnvelope` field is checked for presence and shape only (deep
+ * validation of the envelope is the barrel/caller's job — the envelope is a
+ * leaf with no back-reference since Wave 8 BLOCKER 2, so there is no
+ * recursion concern, but we keep the shell check cheap and non-recursive).
  */
 export async function validateModuleCompletion(
   value: unknown,

@@ -176,7 +176,7 @@ WorkIntent. WorkIntent — single-use: клеймится CAS'ом (open→execu
 | # | Критерий | Как проверить |
 |---|---|---|
 | I1 | Restart после simulated process death resume'ит до того же терминала без manual repair | `hardening-execution-crash.test.mjs` green |
-| I2 | Recovery использует durable receipts/products, не latest-execution/metadata fallback | Нет `restoreFrame()` в hot path |
+| I2 | Recovery использует durable receipts/products, не latest-execution/metadata fallback | `restoreFrame()` удалён (Wave 13); recovery через `assembleExecutionContext` |
 | I3 | Exact candidate acceptance: кандидат принимается только по точному content-hash | `exact-candidate-acceptance.test.mjs` green |
 | I4 | Co-tamper detection: settlement input не может быть подменён между assess и settle | `issueCertificateAtomically` WRITE-ONCE |
 
@@ -238,8 +238,15 @@ Stage Binding вызывает Process Module, Process Module содержит F
 1. **§18.8 Agent assistance renderer не wired в production** — hook fail-closed
    на `'{}'`. Модель не получает structured guidance между tool-calls. Это
    значит линии защиты 8 (agent assistance) сейчас inactive.
-2. **`restoreFrame()` legacy fallback всё ещё в hot path** — recovery может
-   использовать stale frame вместо durable receipts (I2 не полностью закрыт).
+2. **~~`restoreFrame()` legacy fallback всё ещё в hot path~~** — ЗАКРЫТО
+   (Wave 13). `restoreFrame()` полностью удалён; recovery идёт через
+   `assembleExecutionContext` (`execution-context-assembler.ts`), который
+   читает те же durable NodeRun-колонки неизменяемо. I2 закрыт на уровне
+   кода. **Но**: production v2 cutover ещё не завершён —
+   `docs/architecture/conveyor-wave-review/WAVE-8-PRODUCTION-V2-BLOCKERS.txt`
+   фиксирует оставшиеся blockers (v2-путь активирован, но durable
+   ModuleCompletion cutover и terminal-completion handling имеют открытые
+   вопросы).
 3. **Нет real model-driven e2e теста в suite** — все e2e тесты используют stub
    executors. Real flow доказывается только ручным прогоном через
    `discovery-run.mjs`.

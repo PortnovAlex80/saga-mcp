@@ -57,6 +57,9 @@ const { createDiscoveryKernelHandlers } = await import(
 const { SqliteSaga3DiscoveryRuntime } = await import(
   '../../dist/saga3/persistence/sqlite-saga3-discovery-runtime.js'
 );
+const { Saga3DiscoverySettlementService } = await import(
+  '../../dist/saga3/application/discovery-settlement-service.js'
+);
 const { createSaga3ProposalHandlers } = await import(
   '../../dist/tools/saga3-proposals.js'
 );
@@ -198,6 +201,20 @@ function trackedRuntime() {
     },
   });
   return { runtime, legacyLookupCalls };
+}
+
+/**
+ * Build the discovery kernel handlers with the settlement service injected
+ * EXPLICITLY, mirroring the production composition root (Wave 8 MEDIUM 7):
+ * the deterministic D4 settlement service is constructed here and passed
+ * through the declared DiscoverySettlementPort. The Discovery module no longer
+ * self-provisions it via a dynamic import.
+ */
+function discoveryHandlers(runtime) {
+  return createDiscoveryKernelHandlers({
+    runtimePersistence: runtime,
+    settlementService: new Saga3DiscoverySettlementService({ runtimePersistence: runtime }),
+  });
 }
 
 /**
@@ -626,7 +643,7 @@ function buildExecutor({ db, runtime, lmExecutor }) {
     processOutcomeEmitter,
   );
   handlerRegistry.registerAll(
-    createDiscoveryKernelHandlers({ runtimePersistence: runtime }),
+    discoveryHandlers(runtime),
   );
 
   const kernelExecutor = new KernelNodeExecutor(handlerRegistry);
@@ -646,7 +663,7 @@ function buildExecutor({ db, runtime, lmExecutor }) {
     processRunRepo,
     certificateRepo,
     nodeRunRepo,
-    handlers: createDiscoveryKernelHandlers({ runtimePersistence: runtime }),
+    handlers: discoveryHandlers(runtime),
   };
 }
 
@@ -998,9 +1015,7 @@ test('missing exact lineage fails closed even when newer epic products exist', a
     const distractor = seedNewerDistractor(ctx.db);
     assert.ok(distractor.proposalId > 0);
     assert.ok(distractor.assessmentId > 0);
-    const handlers = createDiscoveryKernelHandlers({
-      runtimePersistence: tracked.runtime,
-    });
+    const handlers = discoveryHandlers(tracked.runtime);
     const baseContext = {
       projectId: PROJECT_ID,
       epicId: EPIC_ID,

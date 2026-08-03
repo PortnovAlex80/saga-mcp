@@ -195,7 +195,6 @@ function buildExecutor(module, emitEvent, db) {
             ref: certificateRef,
             digest: certificateHash,
           },
-          completion: null,
         },
       },
     };

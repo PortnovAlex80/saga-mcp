@@ -25,14 +25,15 @@
 //   3. src/lifecycle/legacy-assignment-recovery.ts — legacy (pre-ADR-009,
 //      unfenced) worker-death recovery; the fenced branch delegates to (2).
 //
-//   4. src/worker-executions.ts                    — DOCUMENTED EXCEPTION.
-//      markExecutionExited (line ~202) clears current_execution_id while
-//      zeroing the worker_pid metadata stamp, and the reconciler loop
-//      (line ~627) releases legacy-task assignments. FU-D OWNS this file and
-//      will consolidate these DUPLICATE writers into releaseExecutionAtomically.
-//      Allowed until that slice lands; do not add new owner writes here.
+//   Wave 8 / MEDIUM 6: src/worker-executions.ts is NO LONGER an exception.
+//      markExecutionExited now DELEGATES to releaseExecutionAtomically (2),
+//      and the reaper's legacy-assignment recovery loop DELEGATES to
+//      recoverLegacyAssignment (3). The close-callback path and the reaper
+//      path now share ONE atomic mechanism with the rest of the lifecycle, as
+//      the audit required. There are ZERO direct owner-column writes left in
+//      src/worker-executions.ts; the "temporary exception" is closed.
 //
-//   5. src/tools/**                                — MCP/tool handlers that
+//   4. src/tools/**                                — MCP/tool handlers that
 //      perform board-column transitions via fenced tool calls (worker_done
 //      status-flip, worker_ask_need assigned_to clear, auto-block/unblock
 //      from dependency re-evaluation, merge_release integration_state).
@@ -96,12 +97,12 @@ const ALLOWED_LIFECYCLE_FILES = new Set([
   'src/lifecycle/legacy-assignment-recovery.ts',
 ]);
 
-const ALLOWED_EXCEPTION_FILES = new Set([
-  // FU-D owns this file and will consolidate the duplicate writers
-  // (markExecutionExited + reconciler legacy release) into
-  // releaseExecutionAtomically. Allowed until that slice lands.
-  'src/worker-executions.ts',
-]);
+// Wave 8 / MEDIUM 6: the documented src/worker-executions.ts exception is
+// CLOSED. markExecutionExited and the reaper's legacy recovery now delegate
+// to the single-writer primitives above, so worker-executions.ts must NOT
+// issue any owner-column write. If a new owner write appears there, it is a
+// violation — route it through releaseExecutionAtomically or
+// recoverLegacyAssignment instead.
 
 /**
  * Is `relPath` (repo-relative, POSIX) an ALLOWED file for an owner write?
@@ -113,7 +114,6 @@ const ALLOWED_EXCEPTION_FILES = new Set([
 function isAllowedOwnerWriter(relPath) {
   const posix = relPath.split(path.sep).join('/');
   if (ALLOWED_LIFECYCLE_FILES.has(posix)) return true;
-  if (ALLOWED_EXCEPTION_FILES.has(posix)) return true;
   if (posix.startsWith('src/tools/')) return true;
   return false;
 }
@@ -320,10 +320,12 @@ function collect() {
             `single-writer set. Owner columns (status, assigned_to, ` +
             `current_execution_id) MUST be written only from ` +
             `src/lifecycle/{work-assignment-core,atomic-release,legacy-assignment-recovery}.ts ` +
-            `(+ the documented src/worker-executions.ts exception owned by FU-D, ` +
-            `and src/tools/** fenced board-column transitions). Route this write ` +
-            `through one of those instead. See the file header for the forward ` +
-            `path (command bus, Slice 1.C).`,
+            `(+ src/tools/** fenced board-column transitions). ` +
+            `src/worker-executions.ts is NO LONGER an exception (Wave 8 / MEDIUM 6): ` +
+            `markExecutionExited delegates to releaseExecutionAtomically and the ` +
+            `reaper legacy loop delegates to recoverLegacyAssignment. Route this ` +
+            `write through one of the single-writer primitives instead. See the ` +
+            `file header for the forward path (command bus, Slice 1.C).`,
         });
       }
     }
@@ -383,8 +385,9 @@ test('tasks-writer-invariant: ZERO owner-column writes outside the single-writer
       `Wave 1B / FU-B single-writer invariant VIOLATED: ${VIOLATIONS.length} ` +
         `owner-column write(s) outside the allowed set.\n` +
         `Only src/lifecycle/{work-assignment-core,atomic-release,legacy-assignment-recovery}.ts ` +
-        `(+ the src/worker-executions.ts FU-D exception and src/tools/** fenced ` +
-        `board-column transitions) may write tasks.{status,assigned_to,current_execution_id}.\n` +
+        `(+ src/tools/** fenced board-column transitions) may write ` +
+        `tasks.{status,assigned_to,current_execution_id}. ` +
+        `src/worker-executions.ts is no longer excepted (Wave 8 / MEDIUM 6).\n` +
         lines.join('\n'),
     );
   }

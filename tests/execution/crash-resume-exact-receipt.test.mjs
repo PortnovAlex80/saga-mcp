@@ -378,7 +378,6 @@ test('§0.6.12: terminal settlement reads ModuleCompletion explicitly — magic 
     outputEnvelope: {
       outcome: 'go',
       productions: [],
-      completion: null, // shell only — avoids infinite type cycle
     },
     certificateRef: { schemaId: 'saga3.discovery-certificate.v1', ref: 'cert:1', digest: 'c1' },
     terminal: true,
@@ -391,7 +390,6 @@ test('§0.6.12: terminal settlement reads ModuleCompletion explicitly — magic 
     outputEnvelope: {
       outcome: 'go',
       productions: [],
-      completion: null,
     },
     certificateRef: { schemaId: 'saga3.discovery-certificate.v1', ref: 'cert:1', digest: 'c1' },
     terminal: true,

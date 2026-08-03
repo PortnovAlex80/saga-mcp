@@ -356,7 +356,10 @@ test('W9-A2 legacy adapter: createDiscoveryPackageHandlerAdapter wraps the propo
   };
   const fakePort = createFakeDiscoveryBriefProvisioningPort();
   const handlers = createDiscoveryPackageHandlerAdapter({
-    legacyDeps: { runtimePersistence: fakeRuntime },
+    // Wave 8 MEDIUM 7: settlementService is now a required injected port.
+    // This test only checks handler-map construction (no settlement is
+    // invoked), so a stub settle() suffices.
+    legacyDeps: { runtimePersistence: fakeRuntime, settlementService: { settle: async () => { throw new Error('not used'); } } },
     ports: { briefProvisioning: fakePort },
   });
   // Every discovery handler id is present.
@@ -373,7 +376,7 @@ test('W9-A2 legacy adapter: throws on unknown handler id', () => {
   assert.throws(
     () =>
       createDiscoveryPackageHandlerAdapter({
-        legacyDeps: { runtimePersistence: fakeRuntime },
+        legacyDeps: { runtimePersistence: fakeRuntime, settlementService: { settle: async () => { throw new Error('not used'); } } },
         ports: { briefProvisioning: fakePort },
         briefProvisioningHandlerId: 'discovery-nonexistent',
       }),

@@ -10,10 +10,11 @@
  *   - src/lifecycle/atomic-release.ts          (this module — releaseExecutionAtomically)
  *   - src/lifecycle/legacy-assignment-recovery.ts
  *
- *   PLUS the documented exception:
- *   - src/worker-executions.ts:202  (markExecutionExited clears
- *     current_execution_id while zeroing worker_pid metadata — FU-D will
- *     consolidate this duplicate writer into releaseExecutionAtomically)
+ *   Wave 8 / MEDIUM 6: src/worker-executions.ts is NO LONGER an exception.
+ *   markExecutionExited now DELEGATES to releaseExecutionAtomically (this
+ *   module), and the reaper's legacy-assignment recovery loop DELEGATES to
+ *   recoverLegacyAssignment. There are ZERO direct owner-column writes left
+ *   in src/worker-executions.ts; the "temporary exception" is closed.
  *
  * `releaseExecutionAtomically` terminalizes an execution AND releases its
  * task in a single `BEGIN IMMEDIATE` transaction with a fence CAS on
@@ -55,7 +56,7 @@
  *
  * This module provides ONE function — `releaseExecutionAtomically` — that
  * terminalizes the execution AND releases the task in a single
- * `BEGIN IMMEDIATE` transaction with a fence CAS. All three callers
+ * `BEGIN IMMEDIATE` transaction with a fence CAS. All callers
  * (markExecutionExited, recoverAssignment, reconcileWorkerExecutions) delegate
  * to it. This removes the duplicated recovery SQL (blueprint §22:1199) and
  * collapses the close/reconciler race (blueprint §16:844).

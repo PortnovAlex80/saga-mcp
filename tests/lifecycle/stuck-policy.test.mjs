@@ -19,6 +19,7 @@
  *   CANCEL_GRACE_MS         = 60 s    (cancel_requested → terminate)
  *   RESERVED_BOOT_TIMEOUT_MS= 60 s    (reserved → spawn_failed)
  *   FINISH_GRACE_MS         = 30 s    (finishing phase kept window)
+ *   PID_REUSE_GRACE_MS      = 10 min  (Wave 8 HIGH 5B: PID-reuse escalation)
  */
 import assert from 'node:assert/strict';
 import test from 'node:test';
@@ -30,6 +31,7 @@ import {
   CANCEL_GRACE_MS,
   RESERVED_BOOT_TIMEOUT_MS,
   FINISH_GRACE_MS,
+  PID_REUSE_GRACE_MS,
 } from '../../dist/lifecycle/stuck-policy.js';
 
 // ---------------------------------------------------------------------------
@@ -41,6 +43,7 @@ test('stuck-policy thresholds are the documented values (drift guard)', () => {
   assert.equal(CANCEL_GRACE_MS, 60_000);
   assert.equal(RESERVED_BOOT_TIMEOUT_MS, 60_000);
   assert.equal(FINISH_GRACE_MS, 30_000);
+  assert.equal(PID_REUSE_GRACE_MS, 10 * 60 * 1000);
 });
 
 // ---------------------------------------------------------------------------
@@ -171,13 +174,31 @@ const CASES = [
     expected: { kind: 'RELEASE', terminal: 'lost', reasonMatches: /remote lease expired/ },
   },
   {
-    name: 'lease expired while alive (local) → RELEASE(lost)',
+    // Wave 8 HIGH 5A — alive + lease expired → TERMINATE (verified kill),
+    // NOT RELEASE. Releasing without killing would let a second worker claim
+    // the same card while the first process is still spinning. The mechanism
+    // handles TERMINATE by calling probe.killVerified BEFORE
+    // releaseExecutionAtomically. This dominates legitimacy (ownsActiveTask)
+    // and progress-silence: the supervisor authority is gone.
+    name: 'alive + lease expired → TERMINATE (verified kill, not release)',
     input: input({
       leaseExpiresAtMs: NOW - 1000, // lease expired
       isAlive: true,
-      ownsActiveTask: true, // even though it owns the task — lease expiry wins
+      ownsActiveTask: true, // legitimacy does NOT save it — lease expiry wins
     }),
-    expected: { kind: 'RELEASE', terminal: 'lost', reasonMatches: /lease expired/ },
+    expected: { kind: 'TERMINATE', reasonMatches: /lease expired.*verified PID identity/ },
+  },
+  {
+    // Wave 8 HIGH 5A corner: alive + lease expired + NOT owning the task still
+    // terminates (not the generic illegitimate TERMINATE — the lease-expiry
+    // reason is carried so the audit trail is precise).
+    name: 'alive + lease expired + illegitimate → TERMINATE (lease-expiry reason)',
+    input: input({
+      leaseExpiresAtMs: NOW - 1000,
+      isAlive: true,
+      ownsActiveTask: false,
+    }),
+    expected: { kind: 'TERMINATE', reasonMatches: /lease expired.*verified PID identity/ },
   },
   {
     name: 'legitimate finishing phase → KEEP',
@@ -313,4 +334,91 @@ test('stuck-policy is pure: same input ⇒ same action (determinism)', () => {
   const a1 = decideStuckAction(inp);
   const a2 = decideStuckAction(inp);
   assert.deepEqual(a1, a2, 'pure function must be deterministic');
+});
+
+// ---------------------------------------------------------------------------
+// Wave 8 HIGH 5B — PID-reuse escalation (scenario 16 grace bound).
+//
+// When the kill grace has elapsed in cancel_requested BUT the PID birth token
+// no longer matches (the OS recycled the PID), the policy refuses to kill an
+// unrelated process. The card is left fenced for a human on THIS sweep
+// (TERMINATE_BUT_PID_REUSE). But after PID_REUSE_GRACE_MS elapses since
+// cancel_requested_at, the policy ESCALATES to RELEASE: the process is either
+// dead or stolen, but the card MUST return to the queue eventually — a
+// reused-PID card cannot lock the queue forever.
+// ---------------------------------------------------------------------------
+
+test('HIGH 5B: PID reuse + grace NOT exhausted → KEEP (TERMINATE_BUT_PID_REUSE)', () => {
+  // cancel_requested 90s ago (past the 60s kill grace, but only 90s into the
+  // 10-min PID-reuse grace). PID is alive but token differs. The row is left
+  // for a human — the reuse grace has not elapsed.
+  const action = decideStuckAction(input({
+    stuckState: 'cancel_requested',
+    cancelRequestedAtMs: NOW - (CANCEL_GRACE_MS + 30_000), // 90s — kill grace met
+    birthTokenMatches: false, // PID reused (scenario 16)
+    ownsActiveTask: false,
+  }));
+  assert.equal(action.kind, 'TERMINATE_BUT_PID_REUSE');
+  assert.match(action.reason, /birth token changed/);
+});
+
+test('HIGH 5B: PID reuse + grace exhausted → RELEASE(lost) (card returns to queue)', () => {
+  // cancel_requested 11 min ago — past BOTH the 60s kill grace AND the 10-min
+  // PID_REUSE_GRACE_MS. The PID birth token still mismatches, but the card can
+  // no longer stay locked. The policy escalates to RELEASE so the card returns
+  // to the queue; this is a human-notification event, not a permanent block.
+  const action = decideStuckAction(input({
+    stuckState: 'cancel_requested',
+    cancelRequestedAtMs: NOW - (PID_REUSE_GRACE_MS + 60_000), // 11 min
+    birthTokenMatches: false, // still reused
+    ownsActiveTask: false,
+  }));
+  assert.equal(action.kind, 'RELEASE');
+  assert.equal(action.terminal, 'lost');
+  assert.match(action.reason, /PID reuse grace exhausted/);
+  assert.match(action.reason, /notify human/);
+});
+
+test('HIGH 5B: PID reuse escalation boundary — exactly at grace → RELEASE (>= fires)', () => {
+  // Exactly PID_REUSE_GRACE_MS since cancel_requested_at. The escalation uses
+  // >= so the boundary itself already releases: the grace has fully elapsed at
+  // that instant, and the card must not stay locked past it. One millisecond
+  // BEFORE the grace, the row is still KEEP (covered by the next test).
+  const action = decideStuckAction(input({
+    stuckState: 'cancel_requested',
+    cancelRequestedAtMs: NOW - PID_REUSE_GRACE_MS, // exactly at grace
+    birthTokenMatches: false,
+    ownsActiveTask: false,
+  }));
+  assert.equal(action.kind, 'RELEASE',
+    'exactly-at-grace escalates (>= is inclusive)');
+  assert.equal(action.terminal, 'lost');
+});
+
+test('HIGH 5B: PID reuse escalation boundary — 1ms before grace → KEEP', () => {
+  // One millisecond before PID_REUSE_GRACE_MS elapses. The reuse grace has not
+  // yet fully elapsed, so the row is still left for a human. This pins the
+  // off-by-one boundary: the escalation is >=, not >.
+  const action = decideStuckAction(input({
+    stuckState: 'cancel_requested',
+    cancelRequestedAtMs: NOW - (PID_REUSE_GRACE_MS - 1), // 1ms short
+    birthTokenMatches: false,
+    ownsActiveTask: false,
+  }));
+  assert.equal(action.kind, 'TERMINATE_BUT_PID_REUSE',
+    '1ms before grace is still KEEP');
+});
+
+test('HIGH 5B: PID reuse escalation does NOT fire when birth token matches', () => {
+  // Same age (past PID_REUSE_GRACE_MS) but the birth token MATCHES — this is
+  // the normal verified-kill path, not the reuse path. Escalation is specific
+  // to the mismatched-token branch.
+  const action = decideStuckAction(input({
+    stuckState: 'cancel_requested',
+    cancelRequestedAtMs: NOW - (PID_REUSE_GRACE_MS + 60_000),
+    birthTokenMatches: true, // token matches → normal verified kill
+    ownsActiveTask: false,
+  }));
+  assert.equal(action.kind, 'TERMINATE');
+  assert.match(action.reason, /verified PID identity/);
 });

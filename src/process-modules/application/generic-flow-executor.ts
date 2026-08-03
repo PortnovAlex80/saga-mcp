@@ -405,14 +405,26 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
   ): Promise<{ outcome: string; result: NodeExecutionResult }> {
     const flow = module.flow;
     const allRuns = nodeRunRepo.list(context.processRunId);
-    // W3-A1 (spec §3/§4): detect whether this run is v2-shaped. The v2 path
-    // activates ONLY when (a) v2 wiring is configured AND (b) at least one
-    // NodeRun row in the run carries the v2 marker (`inputEnvelopeHash`).
-    // Legacy runs (no v2 wiring, or v2 wiring but no v2 rows yet) execute the
-    // byte-identical durable-frame path — characterization tests prove no
-    // regression (plan §16.9).
+    // W3-A1 (spec §3/§4) + Wave 8 BLOCKER 1: detect whether this run is v2-shaped.
+    //
+    // The v2 path activates when v2 wiring is configured (this.opts.v2 present)
+    // AND the node-run repo exposes the v2 methods (startV2/completeV2/
+    // readByExactCursor). The previous implementation ALSO required at least one
+    // NodeRun row to carry the v2 marker (inputEnvelopeHash/productionEnvelope)
+    // — but that created a chicken-and-egg: a FRESH run has zero rows, so the
+    // first node was dispatched via legacy `start` (which never writes the
+    // marker), so the v2 path never engaged. Production ran the legacy path
+    // forever and ModuleCompletion never persisted via completeV2.
+    //
+    // The marker check was backward-compat for runs that started WITHOUT v2
+    // wiring (legacy test fakes + pre-Wave-3 rows). In production every saga4
+    // run is fresh and this executor owns the entire run, so when v2 wiring is
+    // present the v2 path activates UNCONDITIONALLY. The first node now uses
+    // startV2, which writes the marker, so every subsequent node sees it too.
+    // Legacy in-memory fakes (no v2 methods) still fall back via v2ChannelFor
+    // returning null — characterization tests prove no regression (plan §16.9).
     const v2 = this.v2ChannelFor(nodeRunRepo);
-    const isV2Run = v2 !== null && runHasV2Marker(v2, context.processRunId);
+    const isV2Run = v2 !== null;
     // WAVE 6 (fourth audit 2026-08-02) — restoreFrame fully retired.
     //
     // The frame every node executor reads (legacy `ctx.frame`) is built
@@ -1278,40 +1290,15 @@ export function assembleFrameFromDurableNodeRuns(
 // used. The legacy path itself never calls them.
 // ─────────────────────────────────────────────────────────────────────────────
 
-/**
- * Detect whether ANY NodeRun row in the run carries the v2 marker
- * (`inputEnvelopeHash` non-null, OR `productionEnvelope` non-null). The v2
- * path is a per-RUN property: once a run has been started under the v2 path,
- * every subsequent node in that run uses the v2 path (so the envelope lineage
- * stays consistent). A run with zero NodeRuns yet (fresh start) returns false
- * — the first node is dispatched via the legacy `start`, and the v2 path
- * activates for subsequent dispatches once a v2 row exists.
- *
- * Spec §3: `inputEnvelopeHash` is the canonical "is this a Wave-3 row?"
- * discriminant. We ALSO accept `productionEnvelope` as a marker so a run that
- * completed its first node under v2 (and stamped the production envelope) but
- * has not yet stamped the input hash on the NEXT node's start row is still
- * recognized as v2-shaped.
- */
-function runHasV2Marker(
-  v2: { repo: NodeRunRepositoryV2 },
-  processRunId: number,
-): boolean {
-  try {
-    const rows = v2.repo.listV2(processRunId);
-    for (const row of rows) {
-      if (row.inputEnvelopeHash !== null && row.inputEnvelopeHash !== undefined) {
-        return true;
-      }
-      if (row.productionEnvelope !== null && row.productionEnvelope !== undefined) {
-        return true;
-      }
-    }
-  } catch {
-    // listV2 not available or row shape unexpected — treat as legacy.
-  }
-  return false;
-}
+// NOTE (Wave 8 BLOCKER 1): the former `runHasV2Marker` helper was removed. It
+// gated v2 activation on a pre-existing v2-marker NodeRun row, which created a
+// chicken-and-egg: a fresh run had no such row, so the first node used the
+// legacy `start` path and the marker was never written — production never
+// entered the v2 path. v2 now activates unconditionally when wiring is present
+// (see the `isV2Run` assignment in walk()). The marker columns
+// (inputEnvelopeHash / productionEnvelope) are still WRITTEN by startV2/
+// completeV2 and still READ by the resume path; they just no longer gate
+// activation.
 
 /**
  * Declare the upstream ProductRefs the next node consumes. The v2 path hands

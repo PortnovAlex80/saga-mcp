@@ -106,12 +106,15 @@ export interface DiscoveryInstallationDeps {
   briefProvisioning: DiscoveryBriefProvisioningPort;
   /**
    * CONVEYOR Wave 7 — saga3 cross-tree leak elimination. The deterministic D4
-   * settlement service (policy + certificate issuance). Optional: when omitted,
-   * the module lazily bridges to the legacy saga3 `Saga3DiscoverySettlementService`
-   * via a dynamic import (see createLegacySettlementBridge). The composition
-   * root may inject a concrete implementation to remove the dynamic bridge.
+   * settlement service (policy + certificate issuance). REQUIRED since Wave 8
+   * MEDIUM 7: the composition root constructs the concrete service and injects
+   * it through this declared port. The module declares the port; the adapter
+   * (today the saga3 `Saga3DiscoverySettlementService`, built in the
+   * composition root) implements it. The dynamic-import bridge that used to
+   * self-provision this service was removed because it hid a runtime dependency
+   * from the static dependency graph (Wave 8 MEDIUM 7).
    */
-  settlementService?: DiscoverySettlementPort;
+  settlementService: DiscoverySettlementPort;
 }
 
 /**
@@ -123,9 +126,12 @@ export function createDiscoveryKernelHandlers(
 ): Record<string, KernelHandler> {
   // CONVEYOR Wave 7 — brief provisioning is injected by the composition root.
   const briefProvisioning = deps.briefProvisioning;
-  // CONVEYOR Wave 7 — the settlement service is injected when the composition
-  // root supplies one; otherwise the lazy legacy bridge is used.
-  const settlementService = deps.settlementService ?? createLegacySettlementBridge(deps.runtimePersistence);
+  // Wave 8 MEDIUM 7 — the settlement service is an EXPLICIT injected port. The
+  // composition root constructs the concrete service (today the saga3
+  // Saga3DiscoverySettlementService) and passes it in. No dynamic import, no
+  // self-provisioning: the bounded-context coupling is visible in the static
+  // dependency graph (the composition root, not this module, owns it).
+  const settlementService = deps.settlementService;
   return {
     'discovery-resolve-proposal-submission': createResolveProposalSubmissionHandler(deps.runtimePersistence, briefProvisioning),
     'discovery-prepare-normalization': createPrepareNormalizationHandler(deps.runtimePersistence),
@@ -133,44 +139,6 @@ export function createDiscoveryKernelHandlers(
     'discovery-prepare-readiness': createPrepareReadinessHandler(deps.runtimePersistence),
     'discovery-resolve-readiness': createResolveReadinessHandler(deps.runtimePersistence),
     'discovery-settlement-policy': createDiscoverySettlementHandler(deps.runtimePersistence, settlementService),
-  };
-}
-
-/**
- * CONVEYOR Wave 7 — saga3 cross-tree leak elimination: legacy settlement bridge.
- *
- * The deterministic D4 settlement logic (policy evaluation + certificate
- * issuance) lives in the legacy saga3 application layer
- * (`Saga3DiscoverySettlementService`). The module declares its own
- * `DiscoverySettlementPort` contract; the composition root may inject a
- * concrete implementation. When none is injected, this bridge lazily constructs
- * the saga3 service on first use via a DYNAMIC import so that NO static
- * `import ... from 'src/saga3/**'` edge remains in the module's dependency
- * graph (the architecture ratchet scans only static imports).
- *
- * The dynamic import is an explicit, documented legacy bridge — not a hidden
- * dependency. Wave 11 (composition cutover) will inject the concrete service
- * and delete this bridge.
- */
-function createLegacySettlementBridge(
-  runtime: DiscoveryRuntimePersistencePort,
-): DiscoverySettlementPort {
-  // Lazy cache: construct the saga3 service once, reuse across calls.
-  // `any` cast is intentional — the saga3 module is outside the module's
-  // static type graph by design; the bridge only invokes settle().
-  let cached: DiscoverySettlementPort | null = null;
-  const load = async (): Promise<DiscoverySettlementPort> => {
-    if (cached) return cached;
-    // Dynamic import keeps this edge out of the static dependency graph.
-    const mod = await import('../../../saga3/application/discovery-settlement-service.js');
-    cached = new mod.Saga3DiscoverySettlementService({ runtimePersistence: runtime });
-    return cached;
-  };
-  return {
-    async settle(request) {
-      const svc = await load();
-      return svc.settle(request);
-    },
   };
 }
 
@@ -904,19 +872,10 @@ function createDiscoverySettlementHandler(
       // final. Settlement reads `outputEnvelope.certificateRef` to resolve the
       // certificate (the sole path after Wave 5).
       //
-      // The `ProcessModuleOutputEnvelope.completion` back-reference forms a
-      // type-only cycle with `ModuleCompletion.outputEnvelope` (production-
-      // envelope.ts §circular-type-reference). The back-reference is never read
-      // at runtime (settlement reads only `outputEnvelope.certificateRef`, and
-      // neither validateModuleCompletion nor the production path recurses into
-      // it), and a real reference cycle would break JSON persistence
-      // (`completeV2` → `JSON.stringify`). We therefore emit the same
-      // serializable envelope shape proven by the Wave 3 crash-resume fixture
-      // (tests/process-modules/module-completion-persistence.test.mjs, which
-      // uses `completion: null` for the inner back-reference and round-trips
-      // byte-identical through `sha256Hex` + DB reopen). The targeted cast
-      // satisfies the required (non-optional) `completion: ModuleCompletion`
-      // field without inventing a runtime cycle.
+      // Wave 8 BLOCKER 2: the envelope is a LEAF — it no longer carries a
+      // `completion` back-reference. The model is a serializable tree
+      // (ModuleCompletion.outputEnvelope → envelope, one-directional), so
+      // `completeV2` → `JSON.stringify(completion)` is safe.
       completion: {
         outcome: settled.decision,
         terminal: true,
@@ -928,7 +887,6 @@ function createDiscoverySettlementHandler(
             ref: certificateRef,
             digest: settled.certificateHash,
           },
-          completion: null as unknown as ModuleCompletion,
         },
       } satisfies ModuleCompletion,
     };
