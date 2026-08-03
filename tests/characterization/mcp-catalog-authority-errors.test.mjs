@@ -66,7 +66,7 @@ async function loadModules() {
     search, activity, exportImport, dispatcher, artifacts, repositories,
     lifecycle, observations, conflicts, providers, processModules,
     processNodeSubmissions, deliveryApprovals, lifecycleRuns,
-    saga3ProposalsMod, saga3NormalizationMod, saga3ReadinessMod,
+    discoveryProposalsMod, discoveryNormalizationMod, discoveryReadinessMod,
   ] = await Promise.all([
     import('../../dist/tools/projects.js'),
     import('../../dist/tools/epics.js'),
@@ -94,9 +94,9 @@ async function loadModules() {
     import('../../dist/tools/discovery-normalization-tools.js'),
     import('../../dist/tools/discovery-readiness-tools.js'),
   ]);
-  const saga3Proposals = saga3ProposalsMod.createSaga3ProposalHandlers();
-  const saga3Normalization = saga3NormalizationMod.createSaga3NormalizationHandlers();
-  const saga3Readiness = saga3ReadinessMod.createSaga3ReadinessHandlers();
+  const discoveryProposals = discoveryProposalsMod.createDiscoveryProposalHandlers();
+  const discoveryNormalization = discoveryNormalizationMod.createDiscoveryNormalizationHandlers();
+  const discoveryReadiness = discoveryReadinessMod.createDiscoveryReadinessHandlers();
   // EXACT mirror of src/index.ts:81 ALL_TOOLS assembly (same sources, same order).
   // saga4 cutover: the workflow source was removed (see note above); it is no
   // longer spread here.
@@ -123,9 +123,9 @@ async function loadModules() {
     ...processNodeSubmissions.definitions,
     ...deliveryApprovals.definitions,
     ...lifecycleRuns.definitions,
-    ...saga3Proposals.definitions,
-    ...saga3Normalization.definitions,
-    ...saga3Readiness.definitions,
+    ...discoveryProposals.definitions,
+    ...discoveryNormalization.definitions,
+    ...discoveryReadiness.definitions,
   ];
   const args = await import('../../dist/tools/discovery-tool-args.js');
   const authority = await import('../../dist/shared/authority/authorize-tool-call.js');

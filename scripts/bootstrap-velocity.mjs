@@ -10,7 +10,7 @@ const WS = 'C:/Temp/saga4-velocity-ws';
 for (const p of [DB_PATH, DB_PATH+'-shm', DB_PATH+'-wal']) { try { rmSync(p); } catch {} }
 process.env.DB_PATH = DB_PATH;
 
-const { getDb } = await import('./dist/db.js');
+const { getDb } = await import('../dist/db.js');
 
 // Fresh git workspace
 if (existsSync(WS)) { try { rmSync(WS, { recursive: true, force: true }); } catch {} }

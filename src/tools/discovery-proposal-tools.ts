@@ -23,7 +23,7 @@ const PROPOSAL_CONTRACTS = {
   },
 } as const;
 
-export interface Saga3ProposalHandlersOptions {
+export interface DiscoveryProposalHandlersOptions {
   db?: () => ReturnType<typeof getDb>;
   now?: () => Date;
 }
@@ -44,8 +44,8 @@ export interface D2ProposalSubmitResult {
   _workflow_hint?: string;
 }
 
-export function createSaga3ProposalHandlers(
-  options: Saga3ProposalHandlersOptions = {},
+export function createDiscoveryProposalHandlers(
+  options: DiscoveryProposalHandlersOptions = {},
 ): { definitions: Tool[]; handlers: Record<string, ToolHandler> } {
   const getDbFn = options.db ?? getDb;
   const now = options.now ?? (() => new Date());

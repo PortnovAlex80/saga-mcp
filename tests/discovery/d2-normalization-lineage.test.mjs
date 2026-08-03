@@ -185,10 +185,10 @@ test('normalized canonical Proposal keeps source product task/execution and nest
     const source_field_map = Object.fromEntries(
       Object.keys(normalizedPayload).map(field => [field, [`$.${field}`]]),
     );
-    const { createSaga3NormalizationHandlers } = await import(
+    const { createDiscoveryNormalizationHandlers } = await import(
       '../../dist/tools/discovery-normalization-tools.js'
     );
-    const { handlers } = createSaga3NormalizationHandlers({
+    const { handlers } = createDiscoveryNormalizationHandlers({
       db: () => db,
       now: () => new Date('2026-07-24T00:02:00.000Z'),
     });

@@ -20,7 +20,7 @@ import {
   readRawSubmission,
 } from '../modules/discovery/infrastructure/discovery-normalization-repository.js';
 
-export interface Saga3NormalizationHandlersOptions {
+export interface DiscoveryNormalizationHandlersOptions {
   db?: () => ReturnType<typeof getDb>;
   now?: () => Date;
 }
@@ -85,8 +85,8 @@ function requireControlBinding(
   };
 }
 
-export function createSaga3NormalizationHandlers(
-  options: Saga3NormalizationHandlersOptions = {},
+export function createDiscoveryNormalizationHandlers(
+  options: DiscoveryNormalizationHandlersOptions = {},
 ): { definitions: Tool[]; handlers: Record<string, ToolHandler> } {
   const getDbFn = options.db ?? getDb;
   const now = options.now ?? (() => new Date());

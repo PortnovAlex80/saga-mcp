@@ -25,7 +25,7 @@ if (existsSync(DB_PATH)) {
 process.env.DB_PATH = DB_PATH;
 
 // Bootstrap the schema (getDb initialises SCHEMA_SQL + migrations).
-const { getDb } = await import('./dist/db.js');
+const { getDb } = await import('../dist/db.js');
 
 // Init a git workspace for the target repository (real HEAD, like production).
 if (!existsSync(path.join(WS, '.git'))) {
@@ -66,7 +66,7 @@ const { projectId, epicId } = (() => {
 
 // Assemble the lifecycle input (deferred delivery, real repo HEAD).
 const { assembleProductLifecycleInput } = await import(
-  './dist/app/start-product-lifecycle-from-idea.js'
+  '../dist/app/start-product-lifecycle-from-idea.js'
 );
 const input = assembleProductLifecycleInput({ projectId, epicId, idea, db });
 const inputJson = JSON.stringify(input);

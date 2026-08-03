@@ -24,3 +24,8 @@ tests/planner-ac9/.tmp-*.db*
 *.tmp.db*
 epic*-run.log
 orchestrate-*.log
+
+# Runtime/test databases created by bootstrap scripts and manual testing
+saga*.db*
+.tracker.db*
+saga4-*.db*

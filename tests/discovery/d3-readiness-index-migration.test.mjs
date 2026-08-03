@@ -105,8 +105,8 @@ test('P0 migration: execution-scoped index rebuilt to content-scoped; cross-exec
     migDb.prepare(`INSERT INTO worker_executions (execution_id,run_id,project_id,epic_id,task_id,worker_id,machine_id,state,phase,metadata) VALUES ('migr-exec-a','ra',1,10,200,'wa','m','running','executing',?)`)
       .run(JSON.stringify({ execution_context: ecA, execution_context_hash: executionContextHash(ecA) }));
 
-    const { createSaga3ReadinessHandlers } = await import('../../dist/tools/discovery-readiness-tools.js');
-    const { handlers } = createSaga3ReadinessHandlers({ db: () => migDb });
+    const { createDiscoveryReadinessHandlers } = await import('../../dist/tools/discovery-readiness-tools.js');
+    const { handlers } = createDiscoveryReadinessHandlers({ db: () => migDb });
     const dims = {};
     for (const d of READINESS_DIMENSIONS) dims[d] = { status: 'sufficient', rationale: 'g', source_refs: ['$.problem_statement'] };
     const payload = { proposal_id: 50, proposal_content_hash: REAL_HASH, overall_readiness: 'ready', dimension_assessments: dims, blocking_gaps: [], non_blocking_gaps: [], recommended_next_action: 'proceed_to_settlement', confidence: 0.8, rationale: 'ok' };

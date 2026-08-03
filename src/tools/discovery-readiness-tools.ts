@@ -35,7 +35,7 @@ import {
 import { canonicalJson, collectDiscoverySourceRefs } from '../shared/canonical-json.js';
 import { createHash } from 'node:crypto';
 
-export interface Saga3ReadinessHandlersOptions {
+export interface DiscoveryReadinessHandlersOptions {
   db?: () => ReturnType<typeof getDb>;
   now?: () => Date;
 }
@@ -136,8 +136,8 @@ function collectAllowedSourceRefs(
   );
 }
 
-export function createSaga3ReadinessHandlers(
-  options: Saga3ReadinessHandlersOptions = {},
+export function createDiscoveryReadinessHandlers(
+  options: DiscoveryReadinessHandlersOptions = {},
 ): { definitions: Tool[]; handlers: Record<string, ToolHandler> } {
   const getDbFn = options.db ?? getDb;
   ensureSaga3ReadinessSchema(getDbFn());

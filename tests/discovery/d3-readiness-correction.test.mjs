@@ -132,8 +132,8 @@ test('P0-2: rejected assessment is durable — row persisted with rejected_by_ke
   const { temp, db } = fixture();
   try {
     const ctx = buildLiveFixture(db);
-    const { createSaga3ReadinessHandlers } = await import('../../dist/tools/discovery-readiness-tools.js');
-    const { handlers } = createSaga3ReadinessHandlers({ db: () => db });
+    const { createDiscoveryReadinessHandlers } = await import('../../dist/tools/discovery-readiness-tools.js');
+    const { handlers } = createDiscoveryReadinessHandlers({ db: () => db });
     // Invent an evidence ref not in the allowed set.
     const bad = validAssessment();
     bad.dimension_assessments.problem_clarity.source_refs = ['$.problem_statement', 'invented:ref:9'];
@@ -157,8 +157,8 @@ test('P0-2: rejected assessment is observable in the shadow matrix (service)', a
   const { temp, db } = fixture();
   try {
     const ctx = buildLiveFixture(db);
-    const { createSaga3ReadinessHandlers } = await import('../../dist/tools/discovery-readiness-tools.js');
-    const { handlers } = createSaga3ReadinessHandlers({ db: () => db });
+    const { createDiscoveryReadinessHandlers } = await import('../../dist/tools/discovery-readiness-tools.js');
+    const { handlers } = createDiscoveryReadinessHandlers({ db: () => db });
     const bad = validAssessment();
     bad.dimension_assessments.problem_clarity.source_refs = ['invented:ref'];
     handlers.readiness_submit({
@@ -281,8 +281,8 @@ test('P1-2: proposal intent_id mismatch rejected', async () => {
     // Proposal's intent_id (1). The handler must reject (target integrity).
     db.prepare(`INSERT INTO saga3_work_intents (id,epic_id,kind,objective,authority_scope,output_schema,token_budget,retry_budget,status) VALUES (999,10,'discovery','other','{}','s',0,0,'concluded')`).run();
     db.prepare('UPDATE saga3_readiness_control_intents SET source_intent_id=999 WHERE id=1').run();
-    const { createSaga3ReadinessHandlers } = await import('../../dist/tools/discovery-readiness-tools.js');
-    const { handlers } = createSaga3ReadinessHandlers({ db: () => db });
+    const { createDiscoveryReadinessHandlers } = await import('../../dist/tools/discovery-readiness-tools.js');
+    const { handlers } = createDiscoveryReadinessHandlers({ db: () => db });
     assert.throws(() => handlers.readiness_submit({
       control_intent_id: ctx.controlIntentId, execution_id: ctx.executionId,
       schema_version: DISCOVERY_READINESS_ASSESSMENT_SCHEMA, payload: validAssessment(),
@@ -298,8 +298,8 @@ test('P1-2: control/execution epic mismatch rejected', async () => {
     const ctx = buildLiveFixture(db, { epicId: 10 });
     // Move only the worker_execution to epic 11, leaving the control at epic 10.
     db.prepare('UPDATE worker_executions SET epic_id=11 WHERE execution_id=?').run(ctx.executionId);
-    const { createSaga3ReadinessHandlers } = await import('../../dist/tools/discovery-readiness-tools.js');
-    const { handlers } = createSaga3ReadinessHandlers({ db: () => db });
+    const { createDiscoveryReadinessHandlers } = await import('../../dist/tools/discovery-readiness-tools.js');
+    const { handlers } = createDiscoveryReadinessHandlers({ db: () => db });
     assert.throws(() => handlers.readiness_submit({
       control_intent_id: ctx.controlIntentId, execution_id: ctx.executionId,
       schema_version: DISCOVERY_READINESS_ASSESSMENT_SCHEMA, payload: validAssessment(),
@@ -314,8 +314,8 @@ test('P1-2: corrupted proposal payload (hash mismatch) rejected', async () => {
     const ctx = buildLiveFixture(db);
     // Tamper with the payload WITHOUT updating the hash → recomputed hash differs.
     db.prepare('UPDATE saga3_proposals SET payload=? WHERE id=50').run(JSON.stringify({ ...PROPOSAL_PAYLOAD, problem_statement: 'tampered' }));
-    const { createSaga3ReadinessHandlers } = await import('../../dist/tools/discovery-readiness-tools.js');
-    const { handlers } = createSaga3ReadinessHandlers({ db: () => db });
+    const { createDiscoveryReadinessHandlers } = await import('../../dist/tools/discovery-readiness-tools.js');
+    const { handlers } = createDiscoveryReadinessHandlers({ db: () => db });
     assert.throws(() => handlers.readiness_submit({
       control_intent_id: ctx.controlIntentId, execution_id: ctx.executionId,
       schema_version: DISCOVERY_READINESS_ASSESSMENT_SCHEMA, payload: validAssessment(),
@@ -332,8 +332,8 @@ test('P1-3: same assessment content, new execution_id → same row (no duplicate
   const { temp, db } = fixture();
   try {
     const ctx = buildLiveFixture(db, { executionId: 'exec-one' });
-    const { createSaga3ReadinessHandlers } = await import('../../dist/tools/discovery-readiness-tools.js');
-    const { handlers: h1 } = createSaga3ReadinessHandlers({ db: () => db });
+    const { createDiscoveryReadinessHandlers } = await import('../../dist/tools/discovery-readiness-tools.js');
+    const { handlers: h1 } = createDiscoveryReadinessHandlers({ db: () => db });
     const payload = validAssessment();
     const first = h1.readiness_submit({
       control_intent_id: ctx.controlIntentId, execution_id: 'exec-one',

@@ -27,7 +27,7 @@ mkdirSync(workspaceRoot, { recursive: true });
 // Set DB_PATH BEFORE importing getDb so the saga schema initializer runs
 // against our fresh file (SCHEMA_SQL + all migrations).
 process.env.DB_PATH = dbPath;
-const { getDb, closeDb } = await import('./dist/db.js');
+const { getDb, closeDb } = await import('../dist/db.js');
 
 const PROJECT_NAME = 'Hex-Button-Autism-UI-GLM';
 const PROJECT_DESC = 'React component library of hexagonal buttons optimized for autism spectrum users (GLM-4.7 lifecycle flow test).';

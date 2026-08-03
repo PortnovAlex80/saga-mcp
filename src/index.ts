@@ -49,9 +49,9 @@ import {
   definitions as settlementDebugDefs,
   handlers as settlementDebugHandlers,
 } from './tools/settlement-debug.js';
-import { createSaga3ProposalHandlers } from './tools/discovery-proposal-tools.js';
-import { createSaga3NormalizationHandlers } from './tools/discovery-normalization-tools.js';
-import { createSaga3ReadinessHandlers } from './tools/discovery-readiness-tools.js';
+import { createDiscoveryProposalHandlers } from './tools/discovery-proposal-tools.js';
+import { createDiscoveryNormalizationHandlers } from './tools/discovery-normalization-tools.js';
+import { createDiscoveryReadinessHandlers } from './tools/discovery-readiness-tools.js';
 import {
   authorizeSagaToolCall,
   visibleSagaToolNames,
@@ -78,9 +78,9 @@ export function assertManagedExecutionIdentity(env: NodeJS.ProcessEnv = process.
 // Saga 3 proposal submission boundary (D1). A factory so the composition can
 // inject a repository / model-route reader; here it uses the default SQLite
 // wiring that reads the shared saga DB directly.
-const saga3Proposals = createSaga3ProposalHandlers();
-const saga3Normalization = createSaga3NormalizationHandlers();
-const saga3Readiness = createSaga3ReadinessHandlers();
+const discoveryProposals = createDiscoveryProposalHandlers();
+const discoveryNormalization = createDiscoveryNormalizationHandlers();
+const discoveryReadiness = createDiscoveryReadinessHandlers();
 
 const ALL_TOOLS: Tool[] = [
   ...projectDefs,
@@ -106,9 +106,9 @@ const ALL_TOOLS: Tool[] = [
   ...deliveryApprovalDefs,
   ...lifecycleRunDefs,
   ...settlementDebugDefs,
-  ...saga3Proposals.definitions,
-  ...saga3Normalization.definitions,
-  ...saga3Readiness.definitions,
+  ...discoveryProposals.definitions,
+  ...discoveryNormalization.definitions,
+  ...discoveryReadiness.definitions,
 ];
 
 const ALL_HANDLERS: Record<string, (args: Record<string, unknown>) => unknown> = {
@@ -135,9 +135,9 @@ const ALL_HANDLERS: Record<string, (args: Record<string, unknown>) => unknown> =
   ...deliveryApprovalHandlers,
   ...lifecycleRunHandlers,
   ...settlementDebugHandlers,
-  ...saga3Proposals.handlers,
-  ...saga3Normalization.handlers,
-  ...saga3Readiness.handlers,
+  ...discoveryProposals.handlers,
+  ...discoveryNormalization.handlers,
+  ...discoveryReadiness.handlers,
 };
 
 const server = new Server(

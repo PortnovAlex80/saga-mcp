@@ -60,13 +60,13 @@ const { SqliteSaga3DiscoveryRuntime } = await import(
 const { Saga3DiscoverySettlementService } = await import(
   '../../dist/modules/discovery/application/discovery-settlement-service.js'
 );
-const { createSaga3ProposalHandlers } = await import(
+const { createDiscoveryProposalHandlers } = await import(
   '../../dist/tools/discovery-proposal-tools.js'
 );
-const { createSaga3NormalizationHandlers } = await import(
+const { createDiscoveryNormalizationHandlers } = await import(
   '../../dist/tools/discovery-normalization-tools.js'
 );
-const { createSaga3ReadinessHandlers } = await import(
+const { createDiscoveryReadinessHandlers } = await import(
   '../../dist/tools/discovery-readiness-tools.js'
 );
 const { buildExecutionContext } = await import(
@@ -442,15 +442,15 @@ function createScriptedLmExecutor({
   injectDistractor = true,
   reportedRuntimeStatus = 'completed',
 }) {
-  const proposalTools = createSaga3ProposalHandlers({
+  const proposalTools = createDiscoveryProposalHandlers({
     db: () => db,
     now: () => new Date('2026-07-26T12:01:00.000Z'),
   }).handlers;
-  const normalizationTools = createSaga3NormalizationHandlers({
+  const normalizationTools = createDiscoveryNormalizationHandlers({
     db: () => db,
     now: () => new Date('2026-07-26T12:02:00.000Z'),
   }).handlers;
-  const readinessTools = createSaga3ReadinessHandlers({
+  const readinessTools = createDiscoveryReadinessHandlers({
     db: () => db,
   }).handlers;
   const trace = {

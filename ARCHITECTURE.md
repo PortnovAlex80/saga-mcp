@@ -118,21 +118,26 @@ saga-mcp/
 │   │   │   ├── formalization/           solution-formalization
 │   │   │   ├── development/             development
 │   │   │   └── delivery/                product-delivery
-│   │   │   Каждый содержит *-process-module.ts (контракт), *-kernel-ports.ts,
-│   │   │   *-schemas.ts, *-settlement-policy.ts и package/ (skills, templates,
-│   │   │   resources, schemas). Модули НЕ импортируют SQLite/getDb напрямую.
+│   │   │   Каждый содержит *-process-module.ts (контракт — остаётся здесь),
+│   │   │   package/ (skills, templates, resources, schemas).
 │   │   ├── persistence/               Рантайм-persistence (lifecycle-run,
 │   │   │                              exact-candidate-acceptance и др.)
-│   │   └── shared/                    canonical-json (хэширование контрактов)
+│   │   └── shared/                    managed-production (ledger contracts)
 │   │
-│   ├── saga3/                        Discovery как bounded context
-│   │   ├── domain/                    ЧИСТЫЙ домен Discovery: certificate,
-│   │   │                              settlement-policy, readiness, diagnosis,
-│   │   │                              normalization, work-intent, proposal
-│   │   ├── application/               Normalization/readiness/settlement/diagnosis
-│   │   ├── authority/                 Execution-scoped MCP enforcement
-│   │   ├── persistence/               Durable Discovery runtime (SQLite)
-│   │   └── shared/                    discovery-canonical
+│   ├── modules/                      ⭐ Четыре цеха — module implementations
+│   │   ├── discovery/                 domain/ + application/ + infrastructure/ + index.ts
+│   │   ├── formalization/             domain/ + application/ + infrastructure/ + index.ts
+│   │   ├── development/               domain/ + application/ + infrastructure/ + index.ts
+│   │   ├── delivery/                  domain/ + application/ + infrastructure/ + index.ts
+│   │   └── module-registration.ts     LEGO shared contract (ModuleSharedDeps, ModuleRegistries)
+│   │       Каждый index.ts экспортирует register<Name>(registries, sharedDeps) —
+│   │       composition root вызывает 4 функции. Добавление модуля = 1 register().
+│   │
+│   ├── shared/                       ⭐ Cross-cutting shared kernel
+│   │   ├── canonical-json.ts         Deterministic JSON + SHA-256 (all modules)
+│   │   ├── authority/                Execution-scoped MCP enforcement
+│   │   ├── work-intent.ts            WorkIntent / ControlIntent types
+│   │   └── conveyor/                 assign-one-card (cross-module conveyor physics)
 │   │
 │   ├── lifecycle/                    Машина состояний (legacy ядро)
 │   │   ├── domain/                    ЧИСТЫЙ домен: commands, events, state,
@@ -143,18 +148,16 @@ saga-mcp/
 │   │   ├── compatibility-projector.ts Проецирование legacy→новое состояние
 │   │   └── idempotency.ts             command_receipts (ExecutionJournalPort)
 │   │
-│   ├── engines/                      Движки стадий
-│   │   ├── saga3-discovery-engine.ts   Discovery engine
-│   │   └── saga3-formalization-engine.ts Formalization engine
+│   ├── engines/                      (удалено в saga4 cutover — был discovery/formalization engine)
 │   │
-│   ├── tools/                        MCP API surface (28 файлов)
+│   ├── tools/                        MCP API surface (28+ файлов)
 │   │   ├── dispatcher.ts              worker_next/worker_done, merge-lock,
 │   │   │                                findNextClaimable (review-first)
 │   │   ├── tasks.ts, epics.ts, projects.ts  CRUD сущностей
 │   │   ├── artifacts.ts               PRD/SRS/AC и traceability
 │   │   ├── conflicts.ts               Семантические конфликты
 │   │   ├── process-modules.ts         Read-only каталог модулей/lifecycle
-│   │   ├── saga3-*.ts                 Discovery MCP: proposals/readiness/...
+│   │   ├── discovery-*-tools.ts       Discovery MCP: proposals/readiness/normalization
 │   │   ├── observations.ts            Продуктовые наблюдения и метрики
 │   │   ├── providers.ts               Реестр Trusted Providers
 │   │   └── repositories.ts            Подключённые Git-репозитории
@@ -220,7 +223,7 @@ saga-mcp/
 │   │   └── w13-a4-retired-fallbacks.test.mjs  Запрещённые символы
 │   ├── execution/                    definition-of-done §18 — финальный gate
 │   ├── process-modules/              Контракты, routing, boundaries, MCP
-│   ├── saga3/                        Discovery D1-D5 runtime/invariant тесты
+│   ├── discovery/                    Discovery D1-D5 runtime/invariant тесты
 │   ├── lifecycle/                    Машина состояний и инварианты
 │   ├── dispatcher-race/              Гонки, claim, worktree isolation
 │   ├── spi/, installation/, scenario/  SPI, установка, сценарии
@@ -282,7 +285,7 @@ MCP / CLI / scheduler / tests                 inbound adapters
    runtime/, projections/)
 ```
 
-Доменные слои (`saga3/domain/`, `process-modules/domain/`,
+Доменные слои (`modules/*/domain/`, `process-modules/domain/`,
 `lifecycle/domain/`) — **полностью чистые**: они не импортируют SQLite, MCP,
 файловую систему, `db.ts` или `schema.ts`. Это проверяется grep'ом и
 архитектурными тестами.
@@ -328,7 +331,7 @@ fencing/heartbeat/persistence.
 3. **Module Contracts** (Flow/node/profiles/contracts) —
    `process-modules/domain/` + `process-modules/modules/*/`
 4. **Production & Evidence** (products, artifacts, traces, receipts) —
-   `saga3/domain/` + `process-modules/persistence/`
+   `modules/*/domain/` + `process-modules/persistence/`
 5. **Module Catalog & Installation** (manifests, digests, install) —
    `process-modules/installation/`
 6. **Lifecycle Composition** (stage bindings, outcome routing) —

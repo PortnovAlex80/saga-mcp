@@ -150,12 +150,12 @@ infra (KEEP); only the two tools above + their handlers are legacy.
 
 | File | Role | Legacy? |
 |---|---|---|
-| `bootstrap-autism-buttons.mjs` | one-shot DB/workspace bootstrap (git init, project/epic insert) | infra helper (no engine) |
+| `scripts/bootstrap-autism-buttons.mjs` | one-shot DB/workspace bootstrap (git init, project/epic insert) | infra helper (no engine) |
 | `bootstrap-hex-lifecycle.mjs` | bootstrap fresh saga3 lifecycle DB + prints the `orchestrate-cli` cmd | infra helper |
 | `bootstrap-molecule3d*.mjs` | same pattern | infra helper |
 | `run-hex-lifecycle.mjs` | deterministic E2E runner — drives `createProductLifecycleRuntime` with STUB executors, no LM, no `orchestrate-cli` spawn | lifecycle test harness (KEEP) |
 | `run-hex-lifecycle-diagnostic.mjs` | validates `hex-lifecycle-input.json` against the lifecycle input contract; no execution | lifecycle test harness (KEEP) |
-| `hex-composition.mjs` | ESM composition module loaded by `orchestrate-cli` when `SAGA_ORCHESTRATION_MODE=saga3-lifecycle`; exports `createProductLifecycleComposition` (mock delivery) | lifecycle composition (KEEP) |
+| `scripts/hex-composition.mjs` | ESM composition module loaded by `orchestrate-cli` when `SAGA_ORCHESTRATION_MODE=saga3-lifecycle`; exports `createProductLifecycleComposition` (mock delivery) | lifecycle composition (KEEP) |
 | `product-lifecycle-composition.mjs` | same, fuller version | lifecycle composition (KEEP) |
 | `reset-saga-db.mjs` | wipes saga.db data (keeps schema) | infra helper (no engine) |
 
@@ -455,7 +455,7 @@ light adaptation (column noted).
 | **Typed formalization ladder (auto-advance on worker_done/merge)** | `src/tools/workflow.ts:generateNextForCompletedTask` (365) + its 2 dispatcher call sites (1125, 1674) | ADAPT, do not delete: the lifecycle runtime still needs PRD→UC→AC→SRS auto-spawn when a worker finishes a producer task. Either keep the function or move the ladder into the lifecycle module. |
 | **Host runtime (locks, heartbeat, zombie reconcile, rate-limit scan)** | `src/infrastructure/runtime/node-saga2-host-runtime.ts` | Adapt: rename off the `saga2` literal; the lock/heartbeat/scan primitives are reused by the lifecycle engine. |
 | **Recovery task persistence (task_kind-agnostic)** | `sqlite-saga2-runtime-repositories.ts:createRecoveryTask` (239), `recordPostTransitionSweep` (226), `hasActiveRecovery` (211), `terminalBookkeepingCounts` (268) | Keep; delete only the orchestrate.ts *spawners* that feed them. |
-| **Bootstrap / test harness scripts** | `bootstrap-*.mjs`, `run-hex-lifecycle*.mjs`, `reset-saga-db.mjs`, `hex-composition.mjs`, `product-lifecycle-composition.mjs` | None (lifecycle-only already). |
+| **Bootstrap / test harness scripts** | `bootstrap-*.mjs`, `run-hex-lifecycle*.mjs`, `reset-saga-db.mjs`, `scripts/hex-composition.mjs`, `product-lifecycle-composition.mjs` | None (lifecycle-only already). |
 
 ---
 

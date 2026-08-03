@@ -313,7 +313,7 @@ L4-прогонами, чтобы опустить и перерегистрац
    node tools/saga-reset-stage.mjs --stage=solution-formalization
    # resume без повтора Discovery/остальных stage:
    DB_PATH=... SAGA_ORCHESTRATION_MODE=saga3-lifecycle \
-     SAGA_PRODUCT_LIFECYCLE_COMPOSITION=.../hex-composition.mjs \
+     SAGA_PRODUCT_LIFECYCLE_COMPOSITION=.../scripts/hex-composition.mjs \
      SAGA_TEST_WARM_START=1 \
      SAGA_TEST_WARM_START_FIXTURE=.../autism-buttons-warm-start.json \
      node dist/orchestrate-cli.js 1 1 --lifecycle-input=... --resume --concurrency=1
