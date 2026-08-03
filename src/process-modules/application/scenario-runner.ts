@@ -205,10 +205,9 @@ export class ScenarioBudgetExhaustedError extends Error {
 }
 
 /**
- * A stored public stage output (W7-A5). Content-addressed: `contentHash` is
+ * A stored public stage output. Content-addressed: `contentHash` is
  * `sha256Hex` of the canonical output payload, so the same logical output
- * stored twice collapses to one row (spec §2: "Stores each public output
- * once — no cumulative frame").
+ * stored twice collapses to one row.
  */
 export interface ScenarioStageOutputRecord {
   readonly scenarioRunId: number;
@@ -223,13 +222,13 @@ export interface ScenarioStageOutputRecord {
 }
 
 /**
- * W7-A5 stage-output store port. Persists each public stage output ONCE,
- * keyed by `(scenarioRunId, stageId, contentHash)`. Replays return the
- * existing row; the runner never re-stores an already-persisted output.
+ * Stage-output store port. Persists each public stage output ONCE, keyed by
+ * `(scenarioRunId, stageId, contentHash)`. Replays return the existing row;
+ * the runner never re-stores an already-persisted output.
  *
  * The store also exposes the run's lifecycle variables (projectId, epicId,
  * initiatedBy, lifecycleRunId, stageRunId) so mappings can resolve
- * `{ runtime: ... }` expressions without a cumulative frame (spec §13.21).
+ * `{ runtime: ... }` expressions without a cumulative frame.
  */
 export interface ScenarioOutputStore {
   /** Persist a public stage output. Idempotent on content-hash. */
@@ -265,7 +264,7 @@ export interface ScenarioTransitionRecord {
  *
  * `manifestHash` content-addresses the manifest snapshot; `lockDigest`
  * content-addresses the lock. Both are persisted on the LifecycleRun so an
- * in-flight upgrade cannot change behavior mid-run (spec §2 exit gate 3).
+ * in-flight upgrade cannot change behavior mid-run.
  */
 export interface InstalledScenario {
   readonly manifest: LifecycleScenarioManifest;
@@ -286,7 +285,7 @@ export interface InstalledScenario {
 
 /** Error code constants. Stable so callers can match without importing. */
 
-/** W7-A3 compiler returned `{ ok: false }`. */
+/** Compiler returned `{ ok: false }`. */
 export const SCENARIO_INSTALL_MANIFEST_INVALID = 'SCENARIO_INSTALL_MANIFEST_INVALID';
 /** A `ModuleSelector` could not be resolved to an active installation. */
 export const SCENARIO_INSTALL_MODULE_UNRESOLVED = 'SCENARIO_INSTALL_MODULE_UNRESOLVED';
@@ -315,15 +314,15 @@ export class ScenarioInstallerError extends Error {
  * PORT — the installer owns no storage and no module-implementation imports.
  */
 export interface ScenarioInstallerDeps {
-  /** W7-A3 compiler — pure manifest validation. */
+  /** Compiler — pure manifest validation. */
   readonly compiler: ScenarioCompiler;
-  /** W7-A2 lock resolver — resolves selectors against the package registry. */
+  /** Lock resolver — resolves selectors against the package registry. */
   readonly lockResolver: ScenarioModuleLockResolver;
-  /** W7-A2 lock store — persists the resolved lock. */
+  /** Lock store — persists the resolved lock. */
   readonly lockStore: ScenarioModuleLockStore;
   /**
-   * Existing ProcessModuleInstallationRegistry (W3/P1). The installer resolves
-   * each `installedModuleRef` against it so the runner receives a fully-bound
+   * Existing ProcessModuleInstallationRegistry. The installer resolves each
+   * `installedModuleRef` against it so the runner receives a fully-bound
    * `InstalledScenario` and never has to look up an executor at run time.
    */
   readonly installationRegistry: ProcessModuleInstallationRegistry;
@@ -342,14 +341,14 @@ export interface ScenarioInstallerDeps {
  * number of times. All storage and resolution is delegated to the injected
  * {@link ScenarioInstallerDeps}.
  *
- * Install pipeline (spec §1 row 6):
- *   1. `compiler.validate(manifest)`           — reject invalid (W7-A3).
+ * Install pipeline:
+ *   1. `compiler.validate(manifest)`           — reject invalid.
  *   2. `lockResolver.resolve(manifest)`        — ModuleSelector → exact
  *                                                InstalledProcessModule per
- *                                                stage (W7-A2).
+ *                                                stage.
  *   3. `installationRegistry.require(ref)`     — bind each resolved module
  *                                                to its ProcessModuleInstallation.
- *   4. `lockStore.write(lock)`                 — persist the lock (W7-A2).
+ *   4. `lockStore.write(lock)`                 — persist the lock.
  *   5. return `InstalledScenario`               — manifest snapshot + hash,
  *                                                lock, per-stage installation.
  */
@@ -369,10 +368,10 @@ export class ScenarioInstaller {
     manifest: LifecycleScenarioManifest,
     deps: ScenarioInstallerDeps,
   ): Promise<InstalledScenario> {
-    // Step 1 — compile / validate. The W7-A3 compiler runs the W1-A3 manifest
-    // validator plus mapping type-checking, route completeness, graph
-    // reachability, terminal-outcome coverage, and budget validation. A
-    // manifest that fails here never touches the package registry.
+    // Step 1 — compile / validate. The compiler runs the manifest validator
+    // plus mapping type-checking, route completeness, graph reachability,
+    // terminal-outcome coverage, and budget validation. A manifest that fails
+    // here never touches the package registry.
     const compilation = deps.compiler(manifest);
     if (!compilation.ok) {
       throw new ScenarioInstallerError(
