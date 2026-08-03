@@ -1,4 +1,4 @@
-# Conveyor Mental Model — Saga4
+# Conveyor Mental Model — Saga4 (Version 2)
 
 The architectural metaphor that governs how the Saga conveyor moves work from
 idea to release. This document captures the conceptual model so every change to
@@ -6,12 +6,116 @@ the conveyor can be checked against it. It is NOT a spec — the formal invarian
 is **CGAD P18** (`cgad-v2-spec.md`); this file is the plain-language model
 behind it.
 
+**Version 2** supersedes the original. The refactoring waves (0–9) are
+complete; the plan has been removed. A new core analogy — **one machine, one
+material, one desk** — is introduced to clarify why the conveyor is
+universal across all workshops.
+
+## The one-machine factory
+
+The Saga conveyor has **one machine**: a language model. It has **one
+material**: text. It produces **one kind of product**: text artifacts.
+
+This sounds trivial until you realise what it means for the architecture:
+
+| Workshop | What the LM produces | Physical form |
+|---|---|---|
+| Discovery | Proposal, readiness assessment, certificate | Text (JSON/Markdown) |
+| Formalization | PRD, UC, AC, SRS, FR, NFR | Text (JSON/Markdown) |
+| Development | Code, tests, review comments | Text (source files) |
+| Delivery | Release record, observations | Text (JSON) |
+
+A proposal, a PRD and a TypeScript module are **the same physical entity**: a
+text artifact with a schema and a content hash. The schema differs
+(`saga3.discovery-proposal.v1` vs `saga3.formalization-product-bundle.v1` vs
+`text/x-typescript`) — but that is **data polymorphism, not mechanism
+polymorphism**.
+
+**This is why there is one desk, not four.** The conveyor does not have a
+"proposal desk", a "PRD desk" and a "code desk". It has **one desk**:
+`WorkplaceProduct(processRunId, nodeId, schema, ref, hash)`. Every worker —
+regardless of workshop — places text on the same desk. Every kernel engineer —
+regardless of workshop — reads from the same desk.
+
+### The LEGO principle
+
+A workshop (цех) is a **pure declaration** — a package of skills, profiles,
+policies and schemas. It contains **zero runtime code** for:
+
+- How workers are hired, dispatched or supervised.
+- Where products are stored or read from.
+- How review works or recovery triggers.
+- Which table receives a submit.
+
+The workshop declares **WHAT** (Flow, execution profiles, schemas, policies).
+The factory runtime decides **HOW** (dispatch, desk, review, recovery).
+
+Adding a new workshop means writing a new package (skills + profiles + Flow
+declaration). It does NOT mean:
+- Adding a new `*_submit` tool.
+- Adding a new table.
+- Adding a new resolver that reads from that table.
+- Adding a `task_kind === 'myModule.*'` switch anywhere.
+
+If any of those steps is required, the LEGO contract is broken.
+
+### One desk, one submit, one read
+
+```
+Worker (any workshop)
+  │
+  ▼
+submitWork({ schema, ref, content })     ← ONE universal submit
+  │
+  ▼
+workplace_products table                 ← ONE desk
+  (processRunId, nodeId, schema,
+   ref, hash, executionRef)
+  │
+  ▼
+readWorkplaceOutput(processRunId, nodeId) ← ONE universal read
+  │
+  ▼
+Kernel engineer / next node (any workshop)
+```
+
+The `schema` field distinguishes the **type of text** (proposal, PRD, code).
+The runtime does not switch on schema to decide where to store or read — it
+stores and reads uniformly. The kernel engineer validates the schema
+declaratively (via the module's declared `outputSchema`), not by branching on
+module name.
+
+### Known gap (as of this version)
+
+The current implementation has **four separate desks** instead of one:
+
+| Current desk | Workshop | Should be |
+|---|---|---|
+| `saga3_proposals` | Discovery | `workplace_products` |
+| `saga3_managed_artifact_productions` | Formalization | `workplace_products` |
+| `saga3_managed_node_submissions` | Development | `workplace_products` |
+| `saga3_delivery_*` | Delivery | `workplace_products` |
+
+And four separate submit tools:
+
+| Current submit | Workshop | Should be |
+|---|---|---|
+| `proposal_submit` | Discovery | `submitWork` |
+| `artifact_create` (bridge part) | Formalization | `submitWork` |
+| `process_node_submit` | Development | `submitWork` |
+| (kernel-only) | Delivery | `submitWork` |
+
+This is the largest remaining architectural debt. The factory works —
+Discovery, Formalization, Development and Delivery all run — but they run on
+**four parallel tracks** where the LEGO model requires **one track with
+different payloads**. Unifying the desk is the next architectural priority.
+
 ## The conveyor
 
 A product initiative moves through **stages** (Discovery → Formalization →
 Development → Delivery). Each stage is run by a **module** (a swappable unit
-with its own skills/specialty). Inside a module, work flows through a **Flow** of
-**nodes**.
+with its own skills/specialty). Inside a module, work flows through a **Flow**
+of **nodes**.
 
 ## Three entities, one primary
 
@@ -42,20 +146,15 @@ game.
 
 A module MUST NOT hire workers itself. `workerExecutorFactory`,
 `runScopedTasks`, `executor.start` belong to infrastructure, never to a module.
-The development module currently violates this (it reaches into
-`SqliteDevelopmentRuntimeOptions.workerExecutorFactory` and spawns workers from
-inside the module) — that is the leak to fix. Discovery, Formalization and
-Delivery are clean: they declare LM nodes in their Flow and let the
-infrastructure's `LmNodeExecutor` staff them.
 
 ### One queue, one concurrency knob, infrastructure assigns cards
 
-There is exactly **one** queue and **one** concurrency control: `--concurrency=N`.
-The **infrastructure** picks tasks from the `todo` AND `review` queue (review
-first) and **assigns** each task to a hired worker. The worker never searches
-for work — the infrastructure puts the exact card on the desk before the worker
-arrives. No module runs its own dispatch loop, no module has a second
-concurrency parameter. The queue ordering is:
+There is exactly **one** queue and **one** concurrency control:
+`--concurrency=N`. The **infrastructure** picks tasks from the `todo` AND
+`review` queue (review first) and **assigns** each task to a hired worker. The
+worker never searches for work — the infrastructure puts the exact card on the
+desk before the worker arrives. No module runs its own dispatch loop, no module
+has a second concurrency parameter. The queue ordering is:
 
 1. **`review` tasks FIRST** — existing code in review gets priority so it
    reaches commit/merge faster. Never start new `todo` work while reviewed code
@@ -63,17 +162,28 @@ concurrency parameter. The queue ordering is:
 2. **`todo` tasks** — new work, in priority then sort order.
 
 The infrastructure (dispatch-loop) selects a task, hires a worker via
-`WorkerExecutorFactory` with `claimScope.taskIds=[taskId]`, and provides the
-desk. The worker reads the card, does the work, calls `worker_done`, leaves.
-The worker does NOT call `worker_next` — that is the infrastructure's job.
-
-This is already implemented in `findNextClaimable` (`dispatcher.ts:451`:
-`CASE WHEN t.status = 'review' THEN 0 ELSE 1 END`). The principle: close what
-is started before opening new work.
+`WorkerExecutorFactory`, and provides the desk. The worker reads the card, does
+the work, calls `worker_done`, leaves.
 
 **The workplace is the primary entity.** The worker is a one-shot guest on it.
 The card and the desk are property of the **workplace**, not the worker, and
 survive a worker change.
+
+### Review is universal, not module-specific
+
+When a worker finishes, the task routes to `review` or `done` based on a
+**declarative field** (`review_skill` on the execution profile), not on a
+hardcoded module-name check:
+
+- `review_skill IS NULL` → `done` immediately (tracker-only tasks, e.g. Discovery).
+- `review_skill IS SET` → `review` buffer. The LM-executor detects `review`,
+  pauses the run, and the dispatch-loop hires a reviewer. After the reviewer
+  approves, the run resumes and the kernel resolver re-reads with both
+  receipts.
+
+This is the same mechanism for **every** workshop. There is no
+`if (task_kind.startsWith('discovery.'))` switch. The runtime core does not
+switch on module names, module kinds or worker skills.
 
 ## The repair mechanic (recovery)
 
@@ -81,29 +191,28 @@ Every workplace has a common mechanic — independent of its specialty — for
 sending work back for rework:
 
 > When a verifier (engineer / kernel node) finds a defect, a **new worker** is
-> brought to the **SAME workplace**. The new worker takes the **SAME card** (with
-> the work already done on it) and continues on the **SAME desk** (with the
-> prior drafts). The worker fixes the defect and the verifier re-checks.
+> brought to the **SAME workplace**. The new worker takes the **SAME card**
+> (with the work already done on it) and continues on the **SAME desk** (with
+> the prior drafts). The worker fixes the defect and the verifier re-checks.
 
-The worker never carries the card or the desk away. The next worker always finds
-the workplace's card and desk waiting.
+The worker never carries the card or the desk away. The next worker always
+finds the workplace's card and desk waiting.
 
-This is exactly the **physical-resume** path, generalised to **semantic
-recovery**. The legacy `generic-flow-executor.ts::restoreFrame()` was FULLY
-REMOVED (Wave 13) and replaced by `assembleExecutionContext`
-(`execution-context-assembler.ts`), which reads the SAME durable NodeRun
-columns immutably instead of mutating a reconstructed frame. There is one
-proven path, not two.
+The defect sheet (`RecoveryIssue`) is delivered **on the desk** — in
+`task.metadata.recovery_feedback` — not through prompt regeneration. The new
+worker reads the defect sheet alongside the prior drafts and understands what to
+fix.
 
 ## What this rules out (the bug this model replaced)
 
 - ~~Recovery mints a **new card** per attempt~~ → the verifier looks at the new
   empty card, finds "no work", and the loop never converges.
 - ~~Recovery gives the worker a **clean desk**~~ → the worker starts from
-  scratch every round and cannot converge on a complex artifact
-  (BUGS-2026-07-30 #10 "каждый запуск — чистый лист").
+  scratch every round and cannot converge on a complex artifact.
 - ~~A gate reads the card by **worker identity**~~ → it is blinded to the
   workplace's prior work on every repair round.
+- ~~Runtime core **switches on module names**~~ → adding a workshop requires
+  editing dispatcher/lifecycle code instead of just writing a package.
 
 ## Resume must not be coupled to package digest
 
@@ -113,29 +222,6 @@ process-run + node. It does **not** live inside the module package. The package
 is the **toolset and instructions** (templates, skills, schemas, tracker rules)
 the workers use — it is a separate concern from the work they produced.
 
-A ProcessRun pins an `installation_id` + `package_digest` so a run is
-reproducible against the exact bytes it started with. But this pin is an
-**integrity boundary for toolset versioning**, not a gate on whether the run's
-work can be resumed. When the toolset changes (e.g. a tracker rule or a skill is
-updated), `PackageInstaller.installPackage` recomputes the digest and a naive
-resume throws "already holds the active slot with a different package_digest" —
-even though every artifact, trace, submission and task on the workplace's card
-is unchanged and still valid.
-
-The correct behaviour: **resume is about the work on the card, not the toolset
-version.** If the package changed, the runtime reinstalls the new version (or
-records the drift) and resumes against the existing work. The card, the desk,
-the accepted artifacts, the submissions and the kanban tasks all survive a
-toolset change. Coupling resume-correctness to `package_digest` equality is the
-same class of mistake as coupling a gate's read to transient task identity: it
-treats an ancillary identity (which tools; which worker) as if it owned the
-work, when the workplace owns the work.
-
-(In practice today this is mitigated by clearing stale installations before
-resume so the new digest installs cleanly. The deeper fix is for the runtime to
-tolerate a digest change on resume — reinstating the installation rather than
-rejecting the resume — and record the drift for audit.)
-
 ## Why Discovery is permissive (the market is the real gate)
 
 A user who enters a hypothesis into the conveyor wants to see it built — **even
@@ -144,38 +230,20 @@ idea-strength gate, not a build gate: its job is to record how strong the idea
 looks (go / clarify / reject / defer / inconclusive / failed) into the discovery
 certificate, **not** to block the conveyor.
 
-The reasoning is product-level: **the only real validation of an idea is the
-market.** An expert assessment that "this idea is bad" is itself a hypothesis —
-it can be wrong, and history is full of ideas experts dismissed that succeeded.
-The conveyor must not impose that judgement as a hard block, because doing so
-privileges one assessor's opinion over the market's verdict.
-
-So every Discovery outcome forwards to Formalization. The strength of the idea
-travels in the certificate (so downstream stages know the assessed risk), but it
-never terminates the run. Formalization is the conveyor's real go/no-go gate:
-it reasons about whether a *contract* can be built from the idea, and its
-non-formalized outcomes terminate there — but even that is about buildability,
-not about whether the idea is "good".
-
-The strict-gate variant (non-go Discovery terminates) survives as a separate
-declarative scenario package (`LEGACY_PRODUCT_DELIVERY_SCENARIO_STRICT`) for
-regulated/contractual environments where an explicit go/no-go gate is legally
-required. The production lifecycle is permissive by default.
+So every Discovery outcome forwards to Formalization. The strict-gate variant
+(non-go Discovery terminates) survives as a separate declarative scenario
+package for regulated/contractual environments.
 
 ## How this is enforced (CGAD P18)
 
 - **Card reuse:** `LmNodeExecutor` computes the generationKey WITHOUT a
-  per-recovery-attempt suffix, so `ensureNodeExecutionPlan` reclaims the
-  workplace's existing card. (`lm-node-executor.ts`)
+  per-recovery-attempt suffix, so the workplace's existing card is reclaimed.
 - **Desk stability:** the workspace directory is keyed by the **node**
   (`executions/node-<nodeId>/`), so drafts survive across workers.
-  (`pinned-workspace-materializer.ts`)
 - **Stable node-input hash:** the workplace's identity hash excludes the
-  transient recovery loop input, so the reused card's reserved metadata compares
-  equal across attempts. (`saga-board-adapter-data-builder.ts`)
-- **Durable product reads:** kernel gates read managed productions by durable
-  node-scope (processRunId + moduleRef + nodeId), never by transient task.
-  (`formalization-installation.ts`)
+  transient recovery loop input.
+- **Durable product reads:** kernel gates read products by durable node scope
+  (processRunId + moduleRef + nodeId), never by transient task identity.
 
 Per-attempt **audit** is preserved orthogonally: each repair round records its
 own `NodeRun` (keyed on process_run + node + attempt), independent of task
@@ -220,7 +288,7 @@ stable technical meaning.
 | **Progress signal** (отметка «работаю») | structured output/tool/progress observation | execution journal |
 | **Tools** (инструменты) | allowed capabilities exposed to a worker | execution authority |
 | **Tooling** (оснастка) | installed package, resources, templates and schemas | Module Catalog context |
-| **Product** (изделие) | production, artifact or submission | Production context; attributed to the workplace |
+| **Product** (изделие) | text artifact placed on the desk by a worker | Production context; attributed to the workplace |
 | **Defect sheet** (брак-лист) | `RecoveryIssue` | verifier output |
 | **Repair case** (ремонтный случай) | `RecoveryCase` | Conveyor Runtime domain |
 | **Control point** (контрольная точка) | pre/post hooks and policy enforcement | infrastructure |
@@ -255,6 +323,24 @@ must be enforced by a contract and covered by an executable test.
 - One global `concurrency=N` limit applies to every worker-launch path.
 - Restarting the runtime preserves orders, workplaces, cards, desks and
   accepted products.
+
+### One machine, one material, one desk
+
+- Every LM worker — in every workshop — places text artifacts on **one desk**:
+  a `workplace_products` table keyed by `(processRunId, nodeId)`.
+- There is **one universal submit tool** (`submitWork`) that every worker uses,
+  regardless of workshop. Schema distinguishes the payload type; the mechanism
+  is identical.
+- There is **one universal read** (`readWorkplaceOutput`) that every kernel
+  engineer uses, regardless of workshop.
+- The runtime does not branch on `task_kind`, `schema` or `module name` to
+  decide where to store or read a product.
+- A workshop declares its `outputSchema` declaratively; the runtime validates
+  against it without executing workshop-specific code.
+
+> **Status:** This is the target. The current implementation has four separate
+> desks (see "Known gap" above). Unifying them is the primary architectural
+> debt.
 
 ### Production order (`ProcessRun`)
 
@@ -479,6 +565,9 @@ Safe automatic recovery requires all of the following:
     worker and is never killed.
 17. Child-close and reaper racing on the same execution produce one terminal
     transition and one effective `TaskReleased` event.
+18. A worker in any workshop places its product on the same universal desk;
+    the next workshop's engineer reads it from the same desk without a
+    module-specific adapter.
 
 ## DDD interpretation
 
@@ -594,275 +683,33 @@ contain SQL or domain transition logic.
 
 ### Required outbound ports
 
-> **Updated by ADR-022 (2026-08-02): module-local ports over global catalog.**
-> The responsibilities below are MANDATORY, but they no longer live in a single
-> global `ports/` file. Each responsibility is owned by the module that
-> implements it; the module-local interface is the canonical declaration. Only
-> `IdGeneratorPort` remains a global port, because identity creation spans every
-> conveyor module. See `docs/architecture/decisions/022-module-local-ports-over-global-catalog.md`
-> for the per-port live location and the evidence that drove the inversion.
-
-Names may follow repository conventions, and **declarations may live at the
-module boundary rather than in a shared catalog** (ADR-022). Responsibilities
-must remain separate. The responsibility→live-location map:
+> **ADR-022 (2026-08-02): module-local ports over global catalog.**
+> Responsibilities are MANDATORY but declared at the module boundary. Only
+> `IdGeneratorPort` remains global.
 
 | Responsibility | Canonical declaration |
 | --- | --- |
 | Assign / renew / complete / expire work | `WorkAssignmentPort` — `application/ports/worker-executor.ts` |
-| Launch / stop a worker process | `ClaudeBoardRunner` run-lifecycle surface — `tracker-view/claude-runner.mjs` |
-| Supervise (lease renewal, progress, exit, reconcile) | `startWorkerSupervision` + runtime repo + `reconcileWorkerExecutions` — `infrastructure/work/worker-supervision-service.ts`, `worker-executions.ts` |
-| Materialize the desk / write recovery feedback | `materializePinnedWorkspace` — `process-modules/application/pinned-workspace-materializer.ts` |
-| Read / append immutable products | `ProcessProductRepository(V2)` SPI — `process-modules/persistence/` |
-| Resolve module selectors to installed entries | `PackageRegistry` SPI — `process-modules/installation/domain/package-registry.ts` |
+| Launch / stop a worker process | `ClaudeBoardRunner` — `tracker-view/claude-runner.mjs` |
+| Supervise (lease renewal, progress, exit, reconcile) | `startWorkerSupervision` + `reconcileWorkerExecutions` |
+| Materialize the desk / write recovery feedback | `materializePinnedWorkspace` |
+| Read / append immutable products | `ProcessProductRepository(V2)` SPI |
+| Resolve module selectors to installed entries | `PackageRegistry` SPI |
 | Append-only journal (receipts / events) | `command_receipts` via `lifecycle/idempotency.ts` |
-| Inspect OS process liveness (read-only) | `ProcessProbe` — `worker-executions.ts` (the domain never calls `process.kill`) |
-| Generate ids (cross-module) | `IdGeneratorPort` — `application/ports/conveyor-ports.ts` (the ONE global port) |
+| Inspect OS process liveness (read-only) | `ProcessProbe` — `worker-executions.ts` |
+| Generate ids (cross-module) | `IdGeneratorPort` |
 
-The illustrative interface shapes that previously appeared here (worked
-examples of `WorkAssignmentPort`, `WorkerLauncherPort`,
-`WorkerSupervisionPort`, `WorkspacePort`, `ProductRepositoryPort`) are
-preserved in the git history and in ADR-022's context; they are NOT a
-requirement that all five be re-declared in one shared file. The
-responsibility matters, not the file it lives in.
-
-Additional repositories are formalized at their module boundary:
-`ProcessRunRepository`, `NodeRunRepository`, `RecoveryCaseRepository`, and
-`ModuleInstallationRepository`. `ClockPort` is intentionally NOT a global port
-(ADR-022): temporal logic that needs determinism uses a narrow local clock
-(FU-D's `SupervisionClock`), not a conveyor-wide abstraction.
+`ClockPort` is intentionally NOT a global port (ADR-022): temporal logic that
+needs determinism uses a narrow local clock (`SupervisionClock`).
 
 ### Adapter rules
 
 - SQLite adapters implement repositories and atomic assignment transactions.
-- The LM/Claude runner implements `WorkerLauncherPort` only.
-- Filesystem code implements `WorkspacePort` only.
+- The LM/Claude runner implements the worker-launch surface only.
+- Filesystem code implements workspace materialization only.
 - MCP is an inbound adapter plus tool adapters; it is not the domain API.
 - Composition root is the only place allowed to construct concrete adapters.
 - Domain and application tests use fakes implementing the same ports.
-
-## Refactoring plan
-
-This plan changes the system incrementally. Every wave must leave the repository
-buildable and must add enforcement before removing the old path.
-
-### Current baseline (2026-08-01)
-
-This is a dated migration baseline, not a permanent description of the system.
-Delete each item when the corresponding executable acceptance test proves it is
-gone.
-
-- `LmNodeExecutor` and the application dispatch loop pass
-  `claimScope.taskIds=[taskId]`, but production Development and Formalization
-  skills still instruct workers to call `worker_next`. Assignment is therefore
-  not yet consistently infrastructure-owned.
-- `app/dispatch-loop.ts` reads claimable rows separately from assignment and
-  launches its selected batch through a blocking loop. It does not yet provide
-  an atomic select-and-assign boundary or real bounded parallelism.
-- Module implementations still contain direct `getDb`, `Sqlite*`, shared
-  concrete repository and cross-module imports.
-- The dependency-direction ratchet contains an allowlist of known violations;
-  a green ratchet means "no unapproved regression", not "clean architecture".
-- CGAD P18 tests already protect stable node-input identity, separate recovery
-  feedback and card generation-key reuse. These protections must remain green
-  throughout every wave.
-- Resume-tolerant package replacement exists as an option, but compatibility
-  and drift handling are not yet one mandatory application policy.
-- `worker-executions.ts` already contains PID/birth-token checks,
-  `reconcileWorkerExecutions()` and atomic fenced task release; the runner also
-  handles child `close`. However, the `ExecutionRuntimeRepository.reconcile()`
-  port has no production scheduling call, so crash recovery is not a running
-  watchman yet.
-- Existing worker heartbeat text is observability, while
-  `phase_updated_at` changes only on lifecycle phases. There is no durable
-  periodic lease heartbeat or separate progress timestamp for a remote/dead
-  foreman and an alive-but-stuck worker.
-- `AdminOverrideLifecycle` exists in domain vocabulary but is not the correct
-  automated reaper path and is not a production recovery tool.
-
-### Wave 0 — Baseline and architecture gate
-
-**Work**
-
-- Make one `test:architecture` command run dependency-direction, conveyor,
-  dispatcher-race and P18 suites.
-- Fix current unallowlisted and stale dependency-ratchet entries; do not hide
-  new violations by expanding the allowlist without a dated removal owner.
-- Add characterization tests for current assignment, completion, recovery and
-  resume behaviour.
-
-**Exit criteria**
-
-- Architecture command is green and required by CI.
-- The allowlist count is printed and can only shrink.
-- Current behaviour has reproducible race and recovery fixtures.
-
-### Wave 1 — Domain contracts and ubiquitous language
-
-**Work**
-
-- Introduce driver-neutral IDs/value objects: `WorkplaceRef`, `CardRef`,
-  `ExecutionId`, `FenceToken`, `Lease`, `DeskRef`, `ProductRef`.
-- Define `AssignedWork` as the only worker launch input.
-- Extract the pure policies listed above.
-- Resolve the overloaded word `task`: card means projected work; execution
-  means a one-shot worker attempt.
-
-**Exit criteria**
-
-- Domain packages import no adapters.
-- Invalid transitions and mismatched references are rejected by unit tests.
-- No new public contract calls a worker execution a task.
-
-### Wave 2 — Atomic work assignment
-
-**Work**
-
-- Add `WorkAssignmentPort`.
-- Implement one SQLite transaction that selects review-first, verifies
-  dependencies, assigns the card, creates lease/fence and returns
-  `AssignedWork`.
-- Replace separate `readClaimableTasks` plus later worker claim with the port.
-- Add database constraints or compare-and-set guards for one live assignment.
-
-**Exit criteria**
-
-- The card is committed as assigned before `WorkerLauncherPort.start`.
-- Two processes racing for one card produce one winner.
-- Unmet dependencies and cross-project cards are never assigned.
-- Review-first ordering is verified under concurrency.
-
-### Wave 3 — Worker receives work; worker does not dispatch
-
-**Work**
-
-- Change all launchers to accept `AssignedWork`.
-- Remove `worker_next` from worker allowed tools and capability packages.
-- Remove `worker_next` instructions from Development and Formalization skills.
-- Keep a temporary compatibility adapter only at the infrastructure boundary,
-  instrument every use, and set a removal date.
-
-**Exit criteria**
-
-- Production workers start with exact card, desk and fence.
-- Calling `worker_next` from an assigned execution is impossible.
-- One launch processes one card and stops after `worker_done`.
-- Compatibility-path usage is zero in end-to-end tests.
-
-### Wave 4 — One dispatcher and real global concurrency
-
-**Work**
-
-- Route Flow LM nodes and Development implementation cards through one
-  application dispatch service.
-- Replace blocking sequential loops with a bounded async worker pool.
-- Apply one global concurrency budget across all launch paths.
-- Define deterministic launch-failure, cancellation and shutdown behaviour.
-
-**Exit criteria**
-
-- At most `N` workers run globally.
-- When two cards exist and `N >= 2`, executions overlap in time.
-- No module owns a dispatch loop or secondary concurrency option.
-- Shutdown leaves no permanently assigned orphan card.
-
-### Wave 5 — Stable desks, hooks, supervision and zombie reaping
-
-**Work**
-
-- Put all workspace creation behind `WorkspacePort` and key it by workplace.
-- Define typed pre-launch, pre-tool, post-tool and completion hook contracts.
-- Centralize heartbeat, fence validation and execution journal transitions.
-- Ensure recovery feedback is materialized separately from identity input.
-- Add durable lease and progress columns and a supervisor-owned periodic lease
-  renewal independent of model behaviour.
-- Schedule reconciliation on runtime startup and at a bounded interval with a
-  single-flight/advisory lock.
-- Route child close, dead PID, expired lease and cancellation timeout through
-  the same atomic fenced release application service.
-- Add stuck policy: observe, request cancel, wait grace, then terminate only
-  after PID birth verification or lease-authority proof.
-
-**Exit criteria**
-
-- Replacement workers receive the same directory and prior drafts.
-- Path-containment and cross-run isolation tests pass.
-- Stale fences fail every mutating tool call.
-- Hook retries do not duplicate products or completion.
-- A dead process and a dead supervisor return unfinished work without operator
-  intervention.
-- A merely silent but live model is not falsely reaped.
-- Reaper activity has system audit events; human override remains separate.
-- Reaper keeps running independently of the tracker UI and worker process.
-
-### Wave 6 — Recovery and resume convergence
-
-**Work**
-
-- Use the same workplace/card/desk path for physical resume and semantic
-  repair.
-- Persist structured `RecoveryIssue` and bounded `RecoveryCase` attempts.
-- Make verifiers read exact refs or durable workplace productions.
-- Remove execution-scoped product lookup fallbacks.
-
-**Exit criteria**
-
-- Recovery never creates a replacement card or clean desk.
-- A new execution fixes work from a prior attempt and the verifier sees it.
-- Exhaustion deterministically pauses or fails according to policy.
-- P18 and full recovery end-to-end tests pass.
-
-### Wave 7 — Isolate modules behind ports
-
-**Work**
-
-- Remove `getDb`, `Sqlite*`, shared concrete repositories and cross-module
-  implementation imports from Development, Delivery and Formalization.
-- Define module-local application ports where the shared runtime vocabulary is
-  insufficient.
-- Move concrete construction to the composition root.
-- Replace lifecycle imports of module implementations with contract/package
-  references.
-
-**Exit criteria**
-
-- Module domain/application code has zero infrastructure imports.
-- Each module runs contract tests with fake ports.
-- Dependency ratchet has no Rule 1–3 allowlist entries.
-- Adding a synthetic module requires no runtime-core modification.
-
-### Wave 8 — Package drift and product integrity
-
-**Work**
-
-- Make resume compatibility an explicit policy rather than raw digest equality.
-- Record old/new installation identity for each resumed attempt.
-- Verify product schema/hash independently of installed package bytes.
-- Define explicit incompatible-upgrade pause and operator action.
-
-**Exit criteria**
-
-- Compatible drift resumes the same run, card and desk.
-- Incompatible drift pauses without mutating existing work.
-- Audit shows exactly which toolset produced every attempt.
-
-### Wave 9 — Cutover and legacy removal
-
-**Work**
-
-- Delete worker-driven claim, duplicate dispatchers, execution-scoped product
-  reads and obsolete compatibility adapters.
-- Remove stale skills, comments, capability declarations and tests describing
-  the old model.
-- Make the mandatory end-to-end scenarios above release gates.
-
-**Exit criteria**
-
-- Repository search finds no production worker instruction to call
-  `worker_next`.
-- There is one assignment port, one launcher path and one concurrency budget.
-- Architecture allowlists for the migrated boundaries are empty.
-- All factory-model acceptance criteria are executable or linked to an issue
-  with an explicit owner; no criterion is claimed by prose alone.
 
 ## Architecture review questions
 
@@ -881,6 +728,11 @@ For every class, function, table and tool, ask:
 10. Who detects a dead worker when its parent runner also died?
 11. Is the evidence liveness, progress, or merely an observability log?
 12. Which executable test proves the claimed invariant?
+13. **Is this a module-specific desk/submit/read, or the universal one?** If
+    module-specific — why does this workshop need its own desk when every
+    product is text?
+14. **Does runtime code switch on `task_kind` or module name?** If yes — the
+    LEGO contract is broken; the decision should come from a declared profile.
 
 If one component selects a card, starts a worker, writes SQL, manipulates the
 workspace and makes a domain decision, the boundaries are broken even if the
