@@ -552,6 +552,34 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
     }
   }
 
+  reopenTaskForRepair(taskId: number): boolean {
+    const db = getDb();
+    db.exec('BEGIN IMMEDIATE');
+    try {
+      const task = db.prepare('SELECT status FROM tasks WHERE id=?').get(taskId) as { status: string } | undefined;
+      if (!task || task.status !== 'done') {
+        db.exec('COMMIT');
+        return false;
+      }
+      // task: done → todo, clear assignment/execution (new worker claims fresh).
+      db.prepare(
+        `UPDATE tasks SET status='todo', assigned_to=NULL, current_execution_id=NULL, updated_at=datetime('now')
+          WHERE id=? AND status='done'`,
+      ).run(taskId);
+      // intent projected to this task: concluded → open so prepareIntentForExecution
+      // routes through the ready path instead of the done-replay early return.
+      db.prepare(
+        `UPDATE saga3_work_intents SET status='open', updated_at=datetime('now')
+          WHERE projected_task_id=? AND status='concluded'`,
+      ).run(taskId);
+      db.exec('COMMIT');
+      return true;
+    } catch (error) {
+      try { db.exec('ROLLBACK'); } catch { /* no active transaction */ }
+      throw error;
+    }
+  }
+
   readWorkIntentForTask(taskId: number): WorkIntent | null {
     const db = getDb();
     const task = db.prepare(

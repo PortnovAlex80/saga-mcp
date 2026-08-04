@@ -626,6 +626,20 @@ export interface DiscoveryRuntimePersistencePort {
   ): string | null;
   readTaskProjectRepositoryId(taskId: number): number | null;
   prepareIntentForExecution(intentId: number, taskId: number): PrepareIntentForExecutionResult;
+  /**
+   * Reopen a task that a prior worker already concluded (status='done') so a
+   * repair-attempt can spawn a FRESH worker run. Without this, recovery-loop
+   * replays the done intent (0ms, no worker) and feedback is never read.
+   *
+   * Resets: tasks.status done→todo, assigned_to→NULL, current_execution_id→NULL;
+   * saga3_work_intents.status concluded→open (for the intent projected to this
+   * task). The task_id is preserved (same generationKey → same lineage), so
+   * exact-acceptance gate finds the prior ledger entries and requires a new
+   * approved review after the repair worker concludes again.
+   *
+   * Returns true if a row was reopened, false if the task was not in 'done'.
+   */
+  reopenTaskForRepair(taskId: number): boolean;
   readWorkIntentForTask(taskId: number): WorkIntent | null;
   readLatestProposal(intentId: number): ProposalRecord | null;
   readProposalForExecution(intentId: number, taskId: number, executionId: string): ProposalRecord | null;

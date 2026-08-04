@@ -154,6 +154,13 @@ export interface LmNodeExecutionPersistence {
     taskId: number,
   ): { status: 'ready' | 'active' | 'blocked' | 'done'; intentStatus: string };
 
+  /**
+   * Reopen a task already concluded ('done') so a repair-attempt spawns a
+   * fresh worker run instead of replaying the prior done intent. Returns
+   * true if a row was reopened, false if the task was not 'done'.
+   */
+  reopenTaskForRepair(taskId: number): boolean;
+
   readTaskState(taskId: number): string | null;
 
   /** Current execution fence while the task is claimed. */
@@ -446,6 +453,20 @@ export class LmNodeExecutor implements NodeExecutor {
         });
         intent = { id: plan.intentId };
         taskId = plan.taskId;
+      }
+
+      // Recovery repair: when this LM-node received a recovery feedback
+      // (chainInput was a feedbackProduction — the verifier rejected prior
+      // work), the workplace's task may already be 'done' from the previous
+      // worker run. prepareIntentForExecution would then replay it instantly
+      // (0ms, no worker) and the feedback on the desk would never be read.
+      // Reopen the task so a FRESH worker run picks up recovery-feedback.json,
+      // inspects the gap, and fixes the traces/artifacts. The task_id is
+      // preserved (same generationKey → same lineage), so exact-acceptance
+      // gate still finds the prior ledger entries and requires a new approved
+      // review after this repair worker concludes again.
+      if (recoveryFeedback) {
+        this.persistence.reopenTaskForRepair(taskId);
       }
 
       // Preparation nodes may project the task before this generic LM cell is
