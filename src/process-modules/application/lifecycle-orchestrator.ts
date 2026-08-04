@@ -262,7 +262,12 @@ export class LifecycleOrchestrator {
               durableFrame,
               runtime,
             );
-        const stageInput = frozenStageRun || !this.resolveStageInput
+        // resolveStageInput must run EVEN for frozen stage runs: it resolves
+        // portable repository refs (repositoryName → projectRepositoryId) into
+        // DB-specific ids that downstream modules (development settlement) use
+        // for validation. Without this, frozen input carries repositoryRef
+        // without projectRepositoryId → "repository outside DevelopmentCase".
+        const stageInput = !this.resolveStageInput
           ? mappedStageInput
           : await this.resolveStageInput({
               lifecycleRun,
