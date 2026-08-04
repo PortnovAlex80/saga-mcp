@@ -1008,6 +1008,228 @@ CREATE TABLE IF NOT EXISTS supervision_locks (
 );
 CREATE INDEX IF NOT EXISTS idx_supervision_locks_holder ON supervision_locks(holder_id);
 CREATE INDEX IF NOT EXISTS idx_supervision_locks_expires ON supervision_locks(expires_at);
+
+-- ---------------------------------------------------------------------------
+-- Conveyor v4 — Workplace authoritative aggregate stores (step 1.2).
+--
+-- Target contracts: FACTORY-DOMAIN-ACCEPTANCE-REGISTRY REG-05 (Workplace),
+-- REG-09 (ExecutionReservation), REG-12 (CandidateSet), REG-15 (GateRun),
+-- REG-17 (CheckReceipt), REG-18 (GateDecision).
+--
+-- Purely ADDITIVE (CREATE TABLE IF NOT EXISTS). The legacy tasks/worker_executions
+-- tables remain the runtime authority until step 5 of the migration; these
+-- tables are written in parallel (step 1.3 projection) and read by NOTHING
+-- on the runtime path yet. The SCHEMA_VERSION is NOT bumped — pre-release
+-- disposal policy applies (db.ts).
+--
+-- Identity convention: every Workplace-scoped row keys on the deterministic
+-- serialized WorkplaceRef (see domain/workplace/workplace-ref.ts), NOT on the
+-- transient tasks.id. This keeps the workplace stable across worker/reviewer/
+-- repair attempts (REG-05-AC-01).
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS v4_workplaces (
+  -- Deterministic 'workplace/<processRunId>/<moduleRef>/<productionCellId>/<workKey>'.
+  workplace_ref       TEXT PRIMARY KEY,
+  process_run_id      INTEGER NOT NULL,
+  module_ref          TEXT NOT NULL,
+  production_cell_id  TEXT NOT NULL,
+  work_key            TEXT NOT NULL,
+  -- Two-channel state (REG-28).
+  kanban_phase        TEXT NOT NULL
+                        CHECK (kanban_phase IN ('todo','in_progress','review','review_in_progress','blocked','done','failed','cancelled')),
+  loop_state          TEXT NOT NULL
+                        CHECK (loop_state IN ('idle','queued','leased','running','verifying','repair_wait','paused','terminal')),
+  next_role           TEXT NOT NULL CHECK (next_role IN ('author','reviewer')),
+  terminal_reason     TEXT CHECK (terminal_reason IN ('accepted','failed','cancelled') OR terminal_reason IS NULL),
+  -- Monotonic CAS token (REG-05-AC-06).
+  revision            INTEGER NOT NULL DEFAULT 0,
+  -- Active actor refs (at most one mutation actor may own a revision — REG-05-AC-02).
+  active_reservation_ref TEXT,
+  active_gate_ref         TEXT,
+  active_recovery_case_ref TEXT,
+  -- Immutable product/desk refs changed through their owning contexts.
+  desk_ref                TEXT,
+  created_at          TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at          TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_v4_workplaces_process_run ON v4_workplaces(process_run_id);
+CREATE INDEX IF NOT EXISTS idx_v4_workplaces_loop_state ON v4_workplaces(loop_state);
+CREATE INDEX IF NOT EXISTS idx_v4_workplaces_kanban_phase ON v4_workplaces(kanban_phase);
+
+-- CandidateSet — sealed immutable handoff to OTK (REG-12).
+-- Seal key (workplace_ref, producer_execution_ref, role) is UNIQUE: a replay
+-- of the same execution's completion returns the same row (REG-12-AC-01); a
+-- different payload under the same key is rejected by the repository.
+CREATE TABLE IF NOT EXISTS v4_candidate_sets (
+  candidate_set_ref       TEXT PRIMARY KEY,
+  workplace_ref           TEXT NOT NULL,
+  producer_execution_ref  TEXT NOT NULL,
+  role                    TEXT NOT NULL CHECK (role IN ('author','reviewer')),
+  -- REQUIRED non-null when role=reviewer; enforced by the domain validator
+  -- (assertValidCandidateSet) and by the repository write path.
+  subject_candidate_set_ref TEXT,
+  candidate_set_digest    TEXT NOT NULL,
+  seal_receipt_ref        TEXT NOT NULL,
+  sealed_at               TEXT NOT NULL,
+  created_at              TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (workplace_ref, producer_execution_ref, role),
+  FOREIGN KEY (workplace_ref) REFERENCES v4_workplaces(workplace_ref)
+);
+
+CREATE INDEX IF NOT EXISTS idx_v4_candidate_sets_workplace ON v4_candidate_sets(workplace_ref);
+CREATE INDEX IF NOT EXISTS idx_v4_candidate_sets_subject ON v4_candidate_sets(subject_candidate_set_ref);
+
+-- CandidateSet members (REG-12-AC-02/03). Each member is either produced by
+-- the active execution or explicitly carried-forward from a named prior set.
+CREATE TABLE IF NOT EXISTS v4_candidate_set_members (
+  id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+  candidate_set_ref       TEXT NOT NULL,
+  ordinal                 INTEGER NOT NULL,
+  -- ProductRef triple.
+  product_schema          TEXT NOT NULL,
+  product_ref             TEXT NOT NULL,
+  product_digest          TEXT NOT NULL,
+  origin                  TEXT NOT NULL CHECK (origin IN ('produced','carried-forward')),
+  -- REQUIRED non-null when origin=carried-forward; null when produced.
+  source_candidate_set_ref TEXT,
+  created_at              TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (candidate_set_ref, ordinal),
+  FOREIGN KEY (candidate_set_ref) REFERENCES v4_candidate_sets(candidate_set_ref)
+);
+
+CREATE INDEX IF NOT EXISTS idx_v4_candidate_members_set ON v4_candidate_set_members(candidate_set_ref);
+
+-- ExecutionReservation — durable launch authority (REG-09).
+-- Deterministic ref over (workplace_ref, role, workplace_revision); two
+-- dispatchers racing produce one effective reservation (REG-09-AC-01).
+CREATE TABLE IF NOT EXISTS v4_execution_reservations (
+  reservation_ref         TEXT PRIMARY KEY,
+  workplace_ref           TEXT NOT NULL,
+  expected_workplace_revision INTEGER NOT NULL,
+  role                    TEXT NOT NULL CHECK (role IN ('author','reviewer')),
+  idempotency_key         TEXT NOT NULL,
+  fence_token             TEXT NOT NULL,
+  expires_at              TEXT NOT NULL,
+  state                   TEXT NOT NULL DEFAULT 'queued'
+                            CHECK (state IN ('queued','consumed','expired','cancelled')),
+  created_at              TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at              TEXT NOT NULL DEFAULT (datetime('now')),
+  FOREIGN KEY (workplace_ref) REFERENCES v4_workplaces(workplace_ref)
+);
+
+CREATE INDEX IF NOT EXISTS idx_v4_reservations_workplace ON v4_execution_reservations(workplace_ref);
+CREATE INDEX IF NOT EXISTS idx_v4_reservations_state ON v4_execution_reservations(state);
+
+-- GateRun — one authorized inspection of one CandidateSet (REG-15).
+CREATE TABLE IF NOT EXISTS v4_gate_runs (
+  gate_run_ref            TEXT PRIMARY KEY,
+  workplace_ref           TEXT NOT NULL,
+  gate_phase              TEXT NOT NULL CHECK (gate_phase IN ('author','final')),
+  subject_candidate_set_ref TEXT NOT NULL,
+  -- JSON array of assessment CandidateSet refs (reviewer verdicts, when present).
+  assessment_candidate_set_refs TEXT NOT NULL DEFAULT '[]',
+  check_plan_ref          TEXT NOT NULL,
+  check_plan_digest       TEXT NOT NULL,
+  expected_workplace_revision INTEGER NOT NULL,
+  gate_lease_ref          TEXT NOT NULL,
+  state                   TEXT NOT NULL DEFAULT 'claimed'
+                            CHECK (state IN ('claimed','checking','decided','terminal')),
+  created_at              TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at              TEXT NOT NULL DEFAULT (datetime('now')),
+  FOREIGN KEY (workplace_ref) REFERENCES v4_workplaces(workplace_ref)
+);
+
+CREATE INDEX IF NOT EXISTS idx_v4_gate_runs_workplace ON v4_gate_runs(workplace_ref);
+CREATE INDEX IF NOT EXISTS idx_v4_gate_runs_subject ON v4_gate_runs(subject_candidate_set_ref);
+
+-- CheckReceipt — immutable evidence of one check run (REG-17).
+-- BEFORE UPDATE/DELETE triggers make receipts append-only (same pattern as
+-- saga3_exact_candidate_acceptance_decisions).
+CREATE TABLE IF NOT EXISTS v4_check_receipts (
+  check_receipt_ref       TEXT PRIMARY KEY,
+  check_run_ref           TEXT NOT NULL,
+  subject_candidate_set_ref TEXT NOT NULL,
+  -- JSON array of assessment CandidateSet refs.
+  assessment_candidate_set_refs TEXT NOT NULL DEFAULT '[]',
+  -- CheckRef triple.
+  provider_id             TEXT NOT NULL,
+  provider_version        TEXT NOT NULL,
+  provider_digest         TEXT NOT NULL,
+  environment_ref         TEXT,
+  outcome                 TEXT NOT NULL
+                            CHECK (outcome IN ('passed','failed','unknown','error')),
+  -- JSON array of evidence refs.
+  evidence_refs           TEXT NOT NULL DEFAULT '[]',
+  receipt_digest          TEXT NOT NULL,
+  created_at              TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_v4_check_receipts_run ON v4_check_receipts(check_run_ref);
+CREATE INDEX IF NOT EXISTS idx_v4_check_receipts_subject ON v4_check_receipts(subject_candidate_set_ref);
+
+CREATE TRIGGER IF NOT EXISTS trg_v4_check_receipts_no_update
+  BEFORE UPDATE ON v4_check_receipts
+  BEGIN
+    SELECT RAISE(ABORT, 'v4 check receipts are immutable (REG-17)');
+  END;
+
+CREATE TRIGGER IF NOT EXISTS trg_v4_check_receipts_no_delete
+  BEFORE DELETE ON v4_check_receipts
+  BEGIN
+    SELECT RAISE(ABORT, 'v4 check receipts are immutable (REG-17)');
+  END;
+
+-- GateDecision — immutable domain decision (REG-18). The act of OTK.
+-- BEFORE UPDATE/DELETE triggers make decisions append-only, mirroring the
+-- existing saga3_exact_candidate_acceptance_decisions (which step 3.A.3
+-- generalizes into this universal contract).
+CREATE TABLE IF NOT EXISTS v4_gate_decisions (
+  decision_key            TEXT PRIMARY KEY,
+  workplace_ref           TEXT NOT NULL,
+  gate_ref                TEXT NOT NULL,
+  gate_run_ref            TEXT NOT NULL,
+  gate_phase              TEXT NOT NULL CHECK (gate_phase IN ('author','final')),
+  transition_ref          TEXT NOT NULL,
+  subject_candidate_set_ref TEXT NOT NULL,
+  -- JSON array of assessment CandidateSet refs.
+  assessment_candidate_set_refs TEXT NOT NULL DEFAULT '[]',
+  verdict                 TEXT NOT NULL
+                            CHECK (verdict IN ('accepted','repair_required','human_required','failed')),
+  repair_target_role      TEXT CHECK (repair_target_role IN ('author','reviewer') OR repair_target_role IS NULL),
+  check_plan_ref          TEXT NOT NULL,
+  check_plan_digest       TEXT NOT NULL,
+  decision_policy_ref     TEXT NOT NULL,
+  decision_policy_digest  TEXT NOT NULL,
+  -- JSON array of exact CheckReceipt refs the policy reduced.
+  check_receipt_refs      TEXT NOT NULL DEFAULT '[]',
+  installation_digest     TEXT NOT NULL,
+  -- JSON array of AcceptedOutputBinding (only non-empty on final-gate accepted).
+  accepted_output_bindings TEXT NOT NULL DEFAULT '[]',
+  recovery_issue_ref      TEXT,
+  decision_digest         TEXT NOT NULL,
+  decided_at              TEXT NOT NULL DEFAULT (datetime('now')),
+  FOREIGN KEY (workplace_ref) REFERENCES v4_workplaces(workplace_ref)
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_v4_gate_decisions_digest
+  ON v4_gate_decisions(decision_digest);
+CREATE INDEX IF NOT EXISTS idx_v4_gate_decisions_workplace ON v4_gate_decisions(workplace_ref);
+CREATE INDEX IF NOT EXISTS idx_v4_gate_decisions_subject ON v4_gate_decisions(subject_candidate_set_ref);
+CREATE INDEX IF NOT EXISTS idx_v4_gate_decisions_verdict ON v4_gate_decisions(verdict);
+
+CREATE TRIGGER IF NOT EXISTS trg_v4_gate_decisions_no_update
+  BEFORE UPDATE ON v4_gate_decisions
+  BEGIN
+    SELECT RAISE(ABORT, 'v4 gate decisions are immutable (REG-18)');
+  END;
+
+CREATE TRIGGER IF NOT EXISTS trg_v4_gate_decisions_no_delete
+  BEFORE DELETE ON v4_gate_decisions
+  BEGIN
+    SELECT RAISE(ABORT, 'v4 gate decisions are immutable (REG-18)');
+  END;
 `;
 
 // ----------------------------------------------------------------------------
