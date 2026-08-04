@@ -14,7 +14,7 @@ import type {
   WorkAssignmentPort,
 } from '../../application/ports/worker-executor.js';
 import { getDb } from '../../db.js';
-import { recoverLegacyAssignment } from '../../lifecycle/legacy-assignment-recovery.js';
+import { recoverLegacyAssignment } from '../../lifecycle/unfenced-assignment-recovery.js';
 import {
   ClaudeBoardWorkerExecutor,
   type LegacyClaudeBoardRunner,

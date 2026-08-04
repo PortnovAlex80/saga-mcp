@@ -36,7 +36,7 @@ const { sha256Hex } = await import(
   '../../dist/shared/canonical-json.js'
 );
 const { adaptLegacyProcessModule } = await import(
-  '../../dist/process-modules/domain/spi/legacy-adapter.js'
+  '../../dist/process-modules/domain/spi/manifest-adapter.js'
 );
 const { validateProcessModuleManifest } = await import(
   '../../dist/process-modules/domain/spi/module-manifest.js'

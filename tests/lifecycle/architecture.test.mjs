@@ -131,13 +131,8 @@ test('architecture: no direct lifecycle UPDATE outside sanctioned writers', () =
 
   const SANCTIONED = new Set([
     'src/lifecycle/atomic-release.ts',
-    'src/lifecycle/backfill-migration.ts',
-    'src/lifecycle/work-item-repository.ts',
-    'src/lifecycle/compatibility-projector.ts',
-    'src/lifecycle/integration-executor.ts',
     'src/lifecycle/idempotency.ts',
-    'src/lifecycle/invariant-scanner.ts',
-    'src/lifecycle/legacy-assignment-recovery.ts',
+    'src/lifecycle/unfenced-assignment-recovery.ts',
     // Sanctioned atomic-assignment writer (WorkAssignmentPort core). The
     // UPDATE tasks here is the claim primitive shared by worker_next and the
     // dispatcher; it is legitimate because:
@@ -264,11 +259,6 @@ test('architecture: lifecycle infrastructure modules exist (regression guard)', 
     'atomic-release.ts',
     'payload-hash.ts',
     'idempotency.ts',
-    'invariant-scanner.ts',
-    'work-item-repository.ts',
-    'compatibility-projector.ts',
-    'backfill-migration.ts',
-    'integration-executor.ts',
   ];
   for (const name of expected) {
     const full = path.join(SRC, 'lifecycle', name);

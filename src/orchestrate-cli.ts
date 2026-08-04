@@ -28,7 +28,7 @@ import {
 } from './app/composition-root.js';
 import type { SagaApplication } from './application/saga-application.js';
 import type { WorkerExecutorFactory } from './application/ports/worker-executor.js';
-import { createLegacyClaudeWorkerExecutorFactory } from './infrastructure/workers/legacy-claude-worker-executor-factory.js';
+import { createLegacyClaudeWorkerExecutorFactory } from './infrastructure/workers/claude-worker-executor-factory.js';
 import { SqliteWorkAssignmentAdapter } from './infrastructure/work/sqlite-work-assignment-adapter.js';
 import { asModuleInstallationId } from './process-modules/installation/domain/installation.js';
 import type { ProductionInstallation } from './process-modules/installation/production-install.js';

@@ -69,7 +69,7 @@ import {
   portInjectedObserveDevelopmentCandidate,
   createDevelopmentPackageHandlerAdapter,
   createFakeDevelopmentCandidateObservationPort,
-} from '../../dist/process-modules/modules/development/package/contributions/legacy-engine-adapter.js';
+} from '../../dist/process-modules/modules/development/package/contributions/handler-adapter.js';
 
 // Barrel re-exports everything from one path — verify that too.
 import * as barrel from '../../dist/process-modules/modules/development/package/contributions/index.js';

@@ -16,7 +16,7 @@ import { closeDb } from '../db.js';
 import { asModuleInstallationId } from '../process-modules/installation/domain/installation.js';
 import type { ProductionInstallation } from '../process-modules/installation/production-install.js';
 import type { OrchestrationEngine } from '../application/ports/orchestration-engine.js';
-import { LegacyEngineAdministration } from '../infrastructure/engine/legacy-engine-administration.js';
+import { LegacyEngineAdministration } from '../infrastructure/engine/engine-administration.js';
 import {
   SqliteEpisodeRuntimeRepository,
   SqliteExecutionRuntimeRepository,
@@ -24,7 +24,7 @@ import {
 } from '../infrastructure/persistence/sqlite-saga2-runtime-repositories.js';
 import { SqliteBoardProjectionReader } from '../infrastructure/projections/sqlite-board-projection-reader.js';
 import { NodeSaga2HostRuntime } from '../infrastructure/runtime/node-saga2-host-runtime.js';
-import { createLegacyClaudeWorkerExecutorFactory } from '../infrastructure/workers/legacy-claude-worker-executor-factory.js';
+import { createLegacyClaudeWorkerExecutorFactory } from '../infrastructure/workers/claude-worker-executor-factory.js';
 import { SqliteWorkAssignmentAdapter } from '../infrastructure/work/sqlite-work-assignment-adapter.js';
 import { SqliteWorkspaceResolver } from '../infrastructure/workspaces/sqlite-workspace-resolver.js';
 import {

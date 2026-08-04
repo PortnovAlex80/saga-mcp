@@ -122,4 +122,4 @@ export {
   portInjectedEnsureDiscoveryBrief,
   createDiscoveryPackageHandlerAdapter,
   createFakeDiscoveryBriefProvisioningPort,
-} from './legacy-engine-adapter.js';
+} from './handler-adapter.js';

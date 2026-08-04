@@ -1,5 +1,5 @@
 import { getDb } from '../../../db.js';
-import { prepareSaga3ProjectedTaskForExecution } from '../../../lifecycle/legacy-assignment-recovery.js';
+import { prepareSaga3ProjectedTaskForExecution } from '../../../lifecycle/unfenced-assignment-recovery.js';
 import { transitionTaskToInRepair } from '../../../lifecycle/work-assignment-core.js';
 import type { CreateWorkIntent, WorkIntent, WorkIntentStatus } from '../../../shared/work-intent.js';
 import type { ProposalRecord } from '../domain/proposal.js';

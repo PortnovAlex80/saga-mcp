@@ -1,4 +1,4 @@
-import { createLegacyClaudeWorkerExecutorFactory } from '../dist/infrastructure/workers/legacy-claude-worker-executor-factory.js';
+import { createLegacyClaudeWorkerExecutorFactory } from '../dist/infrastructure/workers/claude-worker-executor-factory.js';
 import { getDb } from '../dist/db.js';
 
 // Mock delivery port — proxy that returns async () => ({ok:true}) for any method

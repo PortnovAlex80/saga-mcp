@@ -64,7 +64,7 @@ const {
   LEGACY_RUNTIME_COMPATIBILITY_RANGE,
   LegacyManifestAdapterError,
 } = await import(
-  '../../dist/process-modules/domain/spi/legacy-adapter.js'
+  '../../dist/process-modules/domain/spi/manifest-adapter.js'
 );
 const { validateProcessModuleManifest } = await import(
   '../../dist/process-modules/domain/spi/module-manifest.js'

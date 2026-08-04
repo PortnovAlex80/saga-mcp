@@ -120,4 +120,4 @@ export {
   portInjectedObserveDevelopmentCandidate,
   createDevelopmentPackageHandlerAdapter,
   createFakeDevelopmentCandidateObservationPort,
-} from './legacy-engine-adapter.js';
+} from './handler-adapter.js';

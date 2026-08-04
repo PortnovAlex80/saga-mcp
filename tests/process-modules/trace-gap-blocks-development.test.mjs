@@ -52,7 +52,7 @@ const {
   LegacyFormalizationProcessAdapter,
   hashFormalizationCase,
 } = await import(
-  '../../dist/modules/formalization/application/legacy-formalization-process-adapter.js'
+  '../../dist/modules/formalization/application/formalization-process-adapter.js'
 );
 const {
   ReferenceFormalizationSettlementPolicy,

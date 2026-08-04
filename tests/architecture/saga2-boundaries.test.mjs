@@ -15,13 +15,13 @@ const { ClaudeBoardWorkerExecutor } = await import(
   '../../dist/infrastructure/workers/claude-board-worker-executor.js'
 );
 const { LegacyBoardProjectionAdapter } = await import(
-  '../../dist/infrastructure/projections/legacy-board-projection.js'
+  '../../dist/infrastructure/projections/board-projection-adapter.js'
 );
 const { SqliteBoardProjectionReader } = await import(
   '../../dist/infrastructure/projections/sqlite-board-projection-reader.js'
 );
 const { LegacyEngineAdministration } = await import(
-  '../../dist/infrastructure/engine/legacy-engine-administration.js'
+  '../../dist/infrastructure/engine/engine-administration.js'
 );
 const { NodeSaga2HostRuntime } = await import(
   '../../dist/infrastructure/runtime/node-saga2-host-runtime.js'

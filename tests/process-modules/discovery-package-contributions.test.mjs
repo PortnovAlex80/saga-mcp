@@ -60,7 +60,7 @@ import {
   portInjectedEnsureDiscoveryBrief,
   createDiscoveryPackageHandlerAdapter,
   createFakeDiscoveryBriefProvisioningPort,
-} from '../../dist/process-modules/modules/discovery/package/contributions/legacy-engine-adapter.js';
+} from '../../dist/process-modules/modules/discovery/package/contributions/handler-adapter.js';
 
 // Barrel re-exports everything from one path — verify that too.
 import * as barrel from '../../dist/process-modules/modules/discovery/package/contributions/index.js';

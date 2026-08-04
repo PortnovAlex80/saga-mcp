@@ -577,7 +577,7 @@ test('W8-A8 settlement: adapter drives run to completed + issues a write-once ce
     '../../dist/process-modules/persistence/sqlite-process-outcome-certificate-repository.js'
   );
   const { LegacyFormalizationProcessAdapter } = await import(
-    '../../dist/modules/formalization/application/legacy-formalization-process-adapter.js'
+    '../../dist/modules/formalization/application/formalization-process-adapter.js'
   );
 
   const temp = mkdtempSync(path.join(os.tmpdir(), 'saga3-w8a8-settlement-'));

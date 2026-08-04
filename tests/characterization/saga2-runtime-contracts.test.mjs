@@ -24,8 +24,8 @@ const requiredFiles = [
   'src/application/ports/worker-executor.ts',
   'src/application/ports/saga2-host-runtime.ts',
   'src/application/ports/engine-administration.ts',
-  'src/infrastructure/workers/legacy-claude-worker-executor-factory.ts',
-  'src/infrastructure/engine/legacy-engine-administration.ts',
+  'src/infrastructure/workers/claude-worker-executor-factory.ts',
+  'src/infrastructure/engine/engine-administration.ts',
   'src/infrastructure/runtime/node-saga2-host-runtime.ts',
   'src/infrastructure/projections/sqlite-board-projection-reader.ts',
   'tracker-view/tracker-view.mjs',
@@ -97,7 +97,7 @@ test('persistence adapters keep the moved SQLite and execution anchors', () => {
 
 test('model route remains model-config-driven across the worker boundary', () => {
   const runner = read('tracker-view/claude-runner.mjs');
-  const factory = read('src/infrastructure/workers/legacy-claude-worker-executor-factory.ts');
+  const factory = read('src/infrastructure/workers/claude-worker-executor-factory.ts');
   assertIncludesAll(runner, [
     "const effortArg = isLmstudio ? null : (am.effort || 'high');",
     "args.splice(modelIdx + 2, 0, '--effort', effortArg);",
@@ -110,7 +110,7 @@ test('model route remains model-config-driven across the worker boundary', () =>
 });
 
 test('worker infrastructure keeps claim, recovery and concrete runner anchors', () => {
-  const source = read('src/infrastructure/workers/legacy-claude-worker-executor-factory.ts');
+  const source = read('src/infrastructure/workers/claude-worker-executor-factory.ts');
   // Slice 1 (saga4, commit 49ac316) removed the runner's internal claimTask
   // callback — the runner is now a one-card host and the dispatcher pre-assigns
   // the card via WorkAssignmentPort before launch. The old

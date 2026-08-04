@@ -76,21 +76,11 @@ CREATE TABLE IF NOT EXISTS epics (
   updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
--- saga4 cutover note: after Phases 2-7 this table is NO LONGER an executable
--- state machine. The columns split by ownership:
---   - metadata (SHARED control plane): engine_running / engine_pid /
---     engine_concurrency / active_model / needs-human / last_gate_error. Read
---     and written by LegacyEngineAdministration (generic process spawner) and
---     the board projection. NOT legacy-engine-specific.
---   - stage / track / baseline_* (LIFECYCLE PROJECTION TARGET): the saga3
---     ProcessRun runtime projects its stage here (process_run.projected_stage →
---     episode_workflows.stage) so the board-projection-reader can render the
---     coarse lifecycle bar. The legacy pump that DROVE these columns is gone;
---     they are now a read-only mirror of the lifecycle runtime. The episode
---    _transition MCP tool (orchestrator/operator-owned after Phase 7) is the
---     only explicit writer; no worker tool or legacy pump writes them.
--- Phase 8 cleanup task: once the board-projection-reader reads
--- lifecycle_stage_runs directly, these columns can be dropped.
+-- saga4 cutover note: this table is NO LONGER an executable state machine.
+-- The stage source of truth is now saga3_lifecycle_runs. Engine control-plane
+-- metadata lives in lifecycle_execution_controls. This table is kept as a
+-- compatibility projection target — some code paths still read/seed it for
+-- provenance checks. It will be fully removed once all readers are migrated.
 CREATE TABLE IF NOT EXISTS episode_workflows (
   epic_id              INTEGER PRIMARY KEY REFERENCES epics(id) ON DELETE CASCADE,
   stage                TEXT NOT NULL DEFAULT 'discovery'
@@ -553,68 +543,10 @@ CREATE INDEX IF NOT EXISTS idx_lifecycle_events_task ON lifecycle_events(task_id
 CREATE INDEX IF NOT EXISTS idx_lifecycle_events_kind ON lifecycle_events(event_kind);
 
 -- ---------------------------------------------------------------------------
--- Work-item shadow model (ADR-011, blueprint §14 line 685-726).
--- Added in Slice 2. Purely additive: existing rows untouched; the new tables
--- start populated by the Slice 2 backfill migration (one synthetic current
--- pipeline per task). Old task columns remain authoritative in Slice 2;
--- work items are shadow-written and compared for equivalence.
---
--- Naming note: blueprint §14 also defines lifecycle_command_receipts,
--- lifecycle_outbox, and a versioned lifecycle_events. Slice 1 already
--- shipped command_receipts + a simpler lifecycle_events. Those are the
--- current implementation; the blueprint names remain the target. We do NOT
--- rename Slice 1's tables here — doing so would break every DB already
--- migrated. Reconciliation is deferred to a later slice.
--- ---------------------------------------------------------------------------
-
-CREATE TABLE IF NOT EXISTS task_work_items (
-  work_item_id TEXT PRIMARY KEY,
-  task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
-  kind TEXT NOT NULL
-    CHECK (kind IN ('implementation','review','verification',
-                    'integration','human_decision','cleanup')),
-  cycle_no INTEGER NOT NULL,
-  item_no INTEGER NOT NULL DEFAULT 1,
-  state TEXT NOT NULL
-    CHECK (state IN ('pending','ready','active','waiting',
-                     'completed','cancelled')),
-  outcome TEXT,
-  predecessor_item_id TEXT REFERENCES task_work_items(work_item_id),
-  required INTEGER NOT NULL DEFAULT 1,
-  input_snapshot_json TEXT NOT NULL DEFAULT '{}',
-  result_json TEXT,
-  version INTEGER NOT NULL DEFAULT 0,
-  history_complete INTEGER NOT NULL DEFAULT 1,
-  created_at TEXT NOT NULL DEFAULT (datetime('now')),
-  completed_at TEXT,
-  UNIQUE (task_id, kind, cycle_no, item_no)
-);
-
-CREATE TABLE IF NOT EXISTS work_attempts (
-  attempt_id TEXT PRIMARY KEY,
-  work_item_id TEXT NOT NULL
-    REFERENCES task_work_items(work_item_id) ON DELETE CASCADE,
-  ordinal INTEGER NOT NULL,
-  state TEXT NOT NULL
-    CHECK (state IN ('reserved','running','succeeded','failed',
-                     'lost','cancelled')),
-  worker_id TEXT,
-  execution_id TEXT REFERENCES worker_executions(execution_id),
-  command_id TEXT,
-  outcome TEXT,
-  result_json TEXT,
-  reserved_at TEXT NOT NULL DEFAULT (datetime('now')),
-  started_at TEXT,
-  finished_at TEXT,
-  last_error TEXT,
-  UNIQUE (work_item_id, ordinal)
-);
-
-CREATE INDEX IF NOT EXISTS idx_task_work_items_task ON task_work_items(task_id);
-CREATE INDEX IF NOT EXISTS idx_task_work_items_task_state ON task_work_items(task_id, state);
-CREATE INDEX IF NOT EXISTS idx_task_work_items_kind ON task_work_items(kind, cycle_no);
-CREATE INDEX IF NOT EXISTS idx_work_attempts_item ON work_attempts(work_item_id);
-CREATE INDEX IF NOT EXISTS idx_work_attempts_execution ON work_attempts(execution_id);
+-- saga4 cutover: task_work_items + work_attempts tables REMOVED. The
+-- "work-item shadow model" (Slice 2) was never finished — its repository,
+-- compatibility projector, and backfill migration had zero production
+-- importers and were deleted. The tables existed only to serve that dead code.
 
 -- ---------------------------------------------------------------------------
 -- Human requests (ADR-011, blueprint §12.3 line 565-578, §16 Slice 3 line 871-883).

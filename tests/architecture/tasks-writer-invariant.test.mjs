@@ -22,7 +22,7 @@
 //      (terminalize execution + release task in one BEGIN IMMEDIATE tx with a
 //      fence CAS on current_execution_id).
 //
-//   3. src/lifecycle/legacy-assignment-recovery.ts — legacy (pre-ADR-009,
+//   3. src/lifecycle/unfenced-assignment-recovery.ts — legacy (pre-ADR-009,
 //      unfenced) worker-death recovery; the fenced branch delegates to (2).
 //
 //   Wave 8 / MEDIUM 6: src/worker-executions.ts is NO LONGER an exception.
@@ -94,7 +94,7 @@ const OWNER_COLUMNS = ['status', 'assigned_to', 'current_execution_id'];
 const ALLOWED_LIFECYCLE_FILES = new Set([
   'src/lifecycle/work-assignment-core.ts',
   'src/lifecycle/atomic-release.ts',
-  'src/lifecycle/legacy-assignment-recovery.ts',
+  'src/lifecycle/unfenced-assignment-recovery.ts',
 ]);
 
 // Wave 8 / MEDIUM 6: the documented src/worker-executions.ts exception is
