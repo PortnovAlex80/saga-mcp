@@ -389,16 +389,12 @@ export const developmentProcessModule: ProcessModuleDefinition = {
       semanticSkill: 'saga-planner',
       executionMode: 'tracker_only',
       allowedTools: [
-        'task_get',
-        'task_list',
+        ...COMMON_READ_TOOLS,
         'artifact_get',
-        'artifact_list',
-        'trace_list',
-        'repository_list',
-        'repository_checkout_list',
         'conflict_check',
         'process_node_submit',
         'worker_done',
+        'Write', 'Edit', 'Bash',
       ],
       trackerTemplate: DEVELOPMENT_TRACKER,
       workspaceTemplates: [
