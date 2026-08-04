@@ -1146,11 +1146,26 @@ There are two different meanings of ownership here:
 This distinction keeps the metaphor true without creating one distributed
 aggregate spanning SQLite rows, directories and external workers.
 
-## Acceptance criteria for the factory model
+## Normative domain acceptance appendix
+
+The strict human-process → domain concept → code contract → behavior →
+acceptance-ID registry lives in
+[Factory Domain Acceptance Registry](FACTORY-DOMAIN-ACCEPTANCE-REGISTRY.md).
+It is deliberately separate so this document remains the readable mental model
+while the registry can serve as a hard review/test contract.
+
+Every domain or lifecycle change MUST cite the applicable `REG-*`, `PROC-*` and
+`E2E-*` identifiers from that registry. A class name is not evidence of domain
+conformance: identity, lifetime, authority, prohibited behavior, restart and
+observable acceptance facts are.
+
+## Condensed technical conformance checklist
 
 These criteria define the target architecture. A criterion is not considered
 implemented merely because a comment, skill or type uses the right words. It
-must be enforced by a contract and covered by an executable test.
+must be enforced by a contract and covered by an executable test. This section
+is a quick technical view; the linked registry is the canonical detailed
+acceptance contract.
 
 ### Factory / conveyor
 
