@@ -411,7 +411,7 @@ function nonNegativeInteger(value: unknown): number {
 
 function handleWorkerDone(args: Record<string, unknown>): {
   completed: number;
-  completed_new_status: 'review' | 'done' | 'todo' | 'blocked';
+  completed_new_status: 'review' | 'done' | 'todo' | 'blocked' | 'pending_verification';
   active_tasks?: Array<{
     task_id: number;
     title: string;
@@ -507,7 +507,7 @@ function handleWorkerDone(args: Record<string, unknown>): {
     //    задачу в todo (это создаёт бесконечный цикл — verifier не может
     //    фиксить product bugs). Вместо этого задача закрывается как done с
     //    пометкой verification_outcome=failed в metadata.
-    let newStatus: 'review' | 'done' | 'todo' | 'blocked';
+    let newStatus: 'review' | 'done' | 'todo' | 'blocked' | 'pending_verification';
     let newAssignedTo: string | null; // кому уходит задача после перевода
     if (task.status === 'in_progress') {
       // UNIVERSAL CONVEYOR (CONVEYOR-MENTAL-MODEL §"One queue"):
@@ -598,7 +598,12 @@ function handleWorkerDone(args: Record<string, unknown>): {
           );
         }
       } else {
-        newStatus = 'done';            // цикл ревью завершён (APPROVED)
+        // Ревью пройдено (APPROVED). Переводим в pending_verification —
+        // ядро (kernel verifier) должно проверить доменную корректность,
+        // прежде чем задача станет done (терминальный статус).
+        // Integration_state и reevaluateDownstream НЕ вызываются здесь —
+        // только когда ядро примет работу и переведёт в done.
+        newStatus = 'pending_verification';
         newAssignedTo = null;
       }
     } else {
@@ -656,7 +661,7 @@ function handleWorkerDone(args: Record<string, unknown>): {
         `Task ${taskId} assignment changed before completion (expected owner ${workerId})`,
       );
     }
-    if (newStatus === 'done') {
+    if (newStatus === 'done' || newStatus === 'pending_verification') {
       let taskTags: string[] = [];
       try { taskTags = JSON.parse(task.tags || '[]') as string[]; } catch { taskTags = []; }
       if (taskTags.includes('needs-human')) {
@@ -669,6 +674,7 @@ function handleWorkerDone(args: Record<string, unknown>): {
       taskId,
       workerId,
       args.execution_id,
+      // pending_verification ждёт проверки ядром — ещё не 'integrating'
       newStatus === 'done' && task.task_kind && task.execution_mode === 'git_change'
         ? 'integrating'
         : 'finishing',

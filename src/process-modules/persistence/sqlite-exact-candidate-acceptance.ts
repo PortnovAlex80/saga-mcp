@@ -710,10 +710,10 @@ implements ExactCandidateAcceptance {
     const task = this.db.prepare(
       'SELECT id, epic_id, status FROM tasks WHERE id=?',
     ).get(taskId) as TaskIdentityRow | undefined;
-    if (!task || task.status !== 'done') {
+    if (!task || (task.status !== 'done' && task.status !== 'pending_verification')) {
       reject(
         'EXACT_ACCEPTANCE_APPROVED_REVIEW_REQUIRED',
-        `task ${taskId} is not in terminal done state`,
+        `task ${taskId} is not in a verified terminal state (expected done or pending_verification)`,
         { taskId, taskStatus: task?.status ?? null },
       );
     }

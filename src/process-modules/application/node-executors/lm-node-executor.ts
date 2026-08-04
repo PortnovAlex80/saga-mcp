@@ -155,11 +155,12 @@ export interface LmNodeExecutionPersistence {
   ): { status: 'ready' | 'active' | 'blocked' | 'done'; intentStatus: string };
 
   /**
-   * Reopen a task already concluded ('done') so a repair-attempt spawns a
-   * fresh worker run instead of replaying the prior done intent. Returns
-   * true if a row was reopened, false if the task was not 'done'.
+   * Transition a task from pending_verification (or done) to in_repair so a
+   * repair-attempt spawns a fresh worker run instead of replaying the prior
+   * concluded intent. Returns true if a row was transitioned, false if the
+   * task was not in a repairable state.
    */
-  reopenTaskForRepair(taskId: number): boolean;
+  transitionToInRepair(taskId: number): boolean;
 
   readTaskState(taskId: number): string | null;
 
@@ -460,16 +461,16 @@ export class LmNodeExecutor implements NodeExecutor {
 
       // Recovery repair: when this LM-node received a recovery feedback
       // (chainInput was a feedbackProduction — the verifier rejected prior
-      // work), the workplace's task may already be 'done' from the previous
-      // worker run. prepareIntentForExecution would then replay it instantly
-      // (0ms, no worker) and the feedback on the desk would never be read.
-      // Reopen the task so a FRESH worker run picks up recovery-feedback.json,
-      // inspects the gap, and fixes the traces/artifacts. The task_id is
-      // preserved (same generationKey → same lineage), so exact-acceptance
-      // gate still finds the prior ledger entries and requires a new approved
-      // review after this repair worker concludes again.
+      // work), the workplace's task may be in 'pending_verification' (review
+      // passed but kernel found defect) or 'done' (legacy). Transition it to
+      // 'in_repair' so prepareIntentForExecution routes through the ready path
+      // and a FRESH worker run picks up recovery-feedback.json, inspects the
+      // gap, and fixes the traces/artifacts. The task_id is preserved (same
+      // generationKey → same lineage), so exact-acceptance gate still finds
+      // the prior ledger entries and requires a new approved review after this
+      // repair worker concludes again.
       if (recoveryFeedback) {
-        this.persistence.reopenTaskForRepair(taskId);
+        this.persistence.transitionToInRepair(taskId);
       }
 
       // Preparation nodes may project the task before this generic LM cell is
@@ -710,7 +711,10 @@ export class LmNodeExecutor implements NodeExecutor {
           ctx.heartbeat();
           executionId ??= this.persistence.readCurrentExecutionId(taskId);
           const taskStatus = this.persistence.readTaskState(taskId);
-          const taskDone = taskStatus === 'done';
+          // pending_verification = ревью пройдено, задача передана ядру (kernel
+          // verifier) для финальной проверки. Poll-loop завершается так же, как
+          // для done — LM-узел отдаёт управление следующему узлу (kernel).
+          const taskDone = taskStatus === 'done' || taskStatus === 'pending_verification';
           const taskBlocked = taskStatus === 'blocked';
           const taskInReview = taskStatus === 'review';
           const run = executor.status(ctx.projectId);

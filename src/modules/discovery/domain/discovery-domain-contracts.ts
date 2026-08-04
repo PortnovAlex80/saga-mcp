@@ -562,7 +562,7 @@ export type PrepareIntentForExecutionResult =
   | { state: 'ready'; intentStatus: 'open' | 'paused'; taskStatus: string }
   | { state: 'active'; intentStatus: 'executing'; taskStatus: string; detail: string }
   | { state: 'blocked'; intentStatus: 'paused'; taskStatus: 'blocked'; detail: string }
-  | { state: 'done'; intentStatus: WorkIntentStatus; taskStatus: 'done' };
+  | { state: 'done'; intentStatus: WorkIntentStatus; taskStatus: 'done' | 'pending_verification' };
 
 export interface ReadinessControlIntentRecord {
   id: number;
@@ -629,19 +629,20 @@ export interface DiscoveryRuntimePersistencePort {
   readTaskProjectRepositoryId(taskId: number): number | null;
   prepareIntentForExecution(intentId: number, taskId: number): PrepareIntentForExecutionResult;
   /**
-   * Reopen a task that a prior worker already concluded (status='done') so a
-   * repair-attempt can spawn a FRESH worker run. Without this, recovery-loop
-   * replays the done intent (0ms, no worker) and feedback is never read.
+   * Transition a task from pending_verification (or done) to in_repair so a
+   * repair-attempt can spawn a FRESH worker run. This is the "dismantle order" —
+   * the kernel verifier found a defect after review approved.
    *
-   * Resets: tasks.status done→todo, assigned_to→NULL, current_execution_id→NULL;
-   * saga3_work_intents.status concluded→open (for the intent projected to this
-   * task). The task_id is preserved (same generationKey → same lineage), so
+   * Resets: tasks.status pending_verification→in_repair, assigned_to→NULL,
+   * current_execution_id→NULL; saga3_work_intents.status concluded→open.
+   * The task_id is preserved (same generationKey → same lineage), so
    * exact-acceptance gate finds the prior ledger entries and requires a new
    * approved review after the repair worker concludes again.
    *
-   * Returns true if a row was reopened, false if the task was not in 'done'.
+   * Returns true if a row was transitioned, false if the task was not in a
+   * repairable state.
    */
-  reopenTaskForRepair(taskId: number): boolean;
+  transitionToInRepair(taskId: number): boolean;
   readWorkIntentForTask(taskId: number): WorkIntent | null;
   readLatestProposal(intentId: number): ProposalRecord | null;
   readProposalForExecution(intentId: number, taskId: number, executionId: string): ProposalRecord | null;

@@ -116,6 +116,7 @@ export function registerDevelopment(
     recoveryCaseRepo: sharedDeps.recoveryCaseRepo,
     resolveNodeProducts: sharedDeps.resolveNodeProducts,
     resolveOutput: createDevelopmentOutputResolver(outputRepository),
+    onWorkplaceVerified: sharedDeps.onWorkplaceVerified,
     v2: sharedDeps.executorV2Options,
   });
 

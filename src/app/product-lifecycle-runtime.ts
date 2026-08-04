@@ -433,6 +433,41 @@ export function createProductLifecycleRuntime(
     runtimePersistence,
     exactCandidateAcceptance,
     workplaceProductPort,
+    // Kernel-gate: promote task pending_verification → done when the kernel
+    // verifier accepts the work. This is the ONLY path from
+    // pending_verification to done. The callback receives (processRunId,
+    // repairNodeId) — the repairNodeId is the LM node whose task needs
+    // promotion. The generationKey ties the task to the same processRun +
+    // node, so we find it deterministically.
+    onWorkplaceVerified: (processRunId, repairNodeId) => {
+      const generationKey = `process-run:${processRunId}:node:${repairNodeId}`;
+      db.prepare(
+        `UPDATE tasks SET status='done', updated_at=datetime('now')
+          WHERE generation_key=? AND status='pending_verification'`,
+      ).run(generationKey);
+      // integration_state + reevaluateDownstream for the newly-done task
+      const taskRow = db.prepare(
+        'SELECT id, task_kind, execution_mode, project_repository_id FROM tasks WHERE generation_key=? AND status=\'done\'',
+      ).get(generationKey) as
+        | { id: number; task_kind: string | null; execution_mode: string; project_repository_id: number | null }
+        | undefined;
+      if (taskRow) {
+        if (taskRow.task_kind && taskRow.execution_mode === 'git_change') {
+          const repo = taskRow.project_repository_id == null ? undefined : db.prepare(
+            'SELECT integration_branch FROM project_repositories WHERE id=?',
+          ).get(taskRow.project_repository_id) as { integration_branch: string } | undefined;
+          const mergeTarget = repo?.integration_branch ?? 'dev';
+          db.prepare(
+            `UPDATE tasks SET integration_state='pending', integrated_at=NULL, integrated_commit=NULL,
+                updated_at=datetime('now') WHERE id=?`,
+          ).run(taskRow.id);
+        } else {
+          db.prepare(
+            `UPDATE tasks SET integration_state='not_required', updated_at=datetime('now') WHERE id=?`,
+          ).run(taskRow.id);
+        }
+      }
+    },
   };
   const registries: ModuleRegistries = {
     kernelHandlers,

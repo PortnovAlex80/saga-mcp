@@ -182,6 +182,7 @@ export function registerDelivery(
     recoveryCaseRepo: sharedDeps.recoveryCaseRepo,
     resolveNodeProducts: sharedDeps.resolveNodeProducts,
     resolveOutput: createDeliveryOutputResolver(outputRepository),
+    onWorkplaceVerified: sharedDeps.onWorkplaceVerified,
     v2: sharedDeps.executorV2Options,
   });
 

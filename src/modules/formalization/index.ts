@@ -98,6 +98,7 @@ export function registerFormalization(
     recoveryCaseRepo: sharedDeps.recoveryCaseRepo,
     resolveNodeProducts: sharedDeps.resolveNodeProducts,
     resolveOutput: createFormalizationOutputResolver(solutionContractRepository),
+    onWorkplaceVerified: sharedDeps.onWorkplaceVerified,
     v2: sharedDeps.executorV2Options,
   });
 

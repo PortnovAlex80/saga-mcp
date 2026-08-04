@@ -109,11 +109,18 @@ export function canonicalizeProductDeliveryLifecycleInput(
 export function resolveProductDeliveryRepositories(
   db: Database.Database,
   projectId: number,
-  repositories: readonly ProductDeliveryRepositoryBinding[],
+  repositories: readonly (ProductDeliveryRepositoryBinding | DevelopmentRepositoryBinding)[],
 ): DevelopmentRepositoryBinding[] {
   return repositories.map(repository => {
-    const matches = repositoryRows(db, projectId, repository);
-    const ref = `${repository.repositoryRef.repositoryName}:${repository.repositoryRef.role}`;
+    // Already resolved (has projectRepositoryId, no repositoryRef) — return as-is.
+    // This happens when resolveStageInput ran on a frozen stage run whose input
+    // was already resolved in a prior cycle.
+    if ('projectRepositoryId' in repository && !('repositoryRef' in repository)) {
+      return repository as DevelopmentRepositoryBinding;
+    }
+    const portable = repository as ProductDeliveryRepositoryBinding;
+    const matches = repositoryRows(db, projectId, portable);
+    const ref = `${portable.repositoryRef.repositoryName}:${portable.repositoryRef.role}`;
     if (matches.length === 0) {
       throw new Error(`PRODUCT_LIFECYCLE_REPOSITORY_REF_NOT_FOUND: ${ref}`);
     }
@@ -121,16 +128,16 @@ export function resolveProductDeliveryRepositories(
       throw new Error(`PRODUCT_LIFECYCLE_REPOSITORY_REF_AMBIGUOUS: ${ref}`);
     }
     const match = matches[0]!;
-    if (match.integration_branch !== repository.integrationBranch) {
+    if (match.integration_branch !== portable.integrationBranch) {
       throw new Error(
         `PRODUCT_LIFECYCLE_REPOSITORY_BRANCH_MISMATCH: ${ref} expected `
-        + `'${repository.integrationBranch}', current '${match.integration_branch}'`,
+        + `'${portable.integrationBranch}', current '${match.integration_branch}'`,
       );
     }
     return {
       projectRepositoryId: match.id,
-      integrationBranch: repository.integrationBranch,
-      expectedBaseCommit: repository.expectedBaseCommit,
+      integrationBranch: portable.integrationBranch,
+      expectedBaseCommit: portable.expectedBaseCommit,
     };
   });
 }

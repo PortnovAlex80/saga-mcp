@@ -88,6 +88,15 @@ export interface ModuleSharedDeps {
     nodeId: string,
   ) => NodeProducts | null;
   readonly executorV2Options: { productRepo: AssemblerProductRepo };
+  /**
+   * Kernel-gate callback: called when a recovery case is resolved OR the
+   * verifier accepted on first pass. Promotes the repair node's task from
+   * 'pending_verification' to 'done'. Wired in the composition root.
+   */
+  readonly onWorkplaceVerified?: (
+    processRunId: number,
+    repairNodeId: string,
+  ) => void;
 
   // ---- Shared prerequisites (constructed in composition root because the
   // shared `nodeExecutors` map needs them; see file header). ----

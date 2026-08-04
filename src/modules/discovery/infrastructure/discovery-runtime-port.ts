@@ -37,7 +37,7 @@ export type PrepareIntentForExecutionResult =
   | { state: 'ready'; intentStatus: 'open' | 'paused'; taskStatus: string }
   | { state: 'active'; intentStatus: 'executing'; taskStatus: string; detail: string }
   | { state: 'blocked'; intentStatus: 'paused'; taskStatus: 'blocked'; detail: string }
-  | { state: 'done'; intentStatus: WorkIntentStatus; taskStatus: 'done' };
+  | { state: 'done'; intentStatus: WorkIntentStatus; taskStatus: 'done' | 'pending_verification' };
 
 export interface Saga3DiscoveryRuntimePersistence {
   /** Read the epic's name + description (the discovery objective source). */

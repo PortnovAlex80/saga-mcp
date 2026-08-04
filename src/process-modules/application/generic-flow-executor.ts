@@ -135,6 +135,18 @@ export interface GenericFlowExecutorOptions {
     moduleRef: string,
     nodeId: string,
   ) => NodeProducts | null;
+  /**
+   * Kernel-gate callback: called when a recovery case is resolved (the
+   * kernel verifier accepted the work). This is the single point where a
+   * task in 'pending_verification' is promoted to 'done' — NOT the review
+   * approval (which sets pending_verification). Absent ⇒ no auto-promotion
+   * (the task stays in pending_verification; only for modules without
+   * recovery policies or where the module handles promotion itself).
+   */
+  onWorkplaceVerified?: (
+    processRunId: number,
+    repairNodeId: string,
+  ) => void;
 }
 
 /**
@@ -896,6 +908,21 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
 
     if (!issue) {
       this.resolveSuccessfulRecovery(module, context, nodeRun, event);
+      // Kernel-gate first-pass: the verifier accepted the work on the first
+      // try (no recovery case was opened). Promote the repair node's task
+      // from pending_verification → done. resolveSuccessfulRecovery only
+      // promotes when a case was actually resolved; this covers the case
+      // where no case existed at all (first success).
+      if (this.opts.onWorkplaceVerified) {
+        for (const policy of module.flow.recovery ?? []) {
+          if (
+            policy.verifyNodeId === nodeRun.nodeId
+            && policy.resolvedEvents.includes(event)
+          ) {
+            this.opts.onWorkplaceVerified(context.processRunId, policy.repairNodeId);
+          }
+        }
+      }
       return { feedbackProduction: null };
     }
 
@@ -1002,6 +1029,10 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
         activeIssue: null,
         error: null,
       });
+      // Note: onWorkplaceVerified is called by reconcileRecoveryCheckpoint
+      // (the caller) for BOTH first-pass success and recovery-resolve success.
+      // It iterates the recovery policies and promotes the repair node's task.
+      // We do NOT call it here to avoid double-promotion.
     }
   }
 

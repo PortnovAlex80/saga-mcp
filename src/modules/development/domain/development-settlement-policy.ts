@@ -192,7 +192,8 @@ implements DevelopmentTaskGraphPolicyPort {
       || graph.formalizationCertificateHash
         !== developmentCase.formalizationCertificate.hash
       || graph.solutionContractHash !== developmentCase.solutionContract.hash
-      || graph.acceptanceBaselineHash !== developmentCase.acceptanceBaselineHash
+      || (graph.acceptanceBaselineHash !== undefined
+        && graph.acceptanceBaselineHash !== developmentCase.acceptanceBaselineHash)
       || graph.srsHash !== developmentCase.srs.hash
     ) {
       pushIssue(
