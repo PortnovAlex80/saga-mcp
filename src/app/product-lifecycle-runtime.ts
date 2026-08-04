@@ -47,15 +47,14 @@
  *     wiring's catalog/module imports are not "hidden fallbacks" — they are the
  *     legitimate legacy composition surface.
  *
- * # The composition-loader seam
+ * # LEGO composition (saga4)
  *
- * The composition root consumes the wiring through the composition-loader seam
- * (`application/composition-loader.ts`): the loader's `legacy` branch delegates
- * to the `createBuiltInProcessModuleRegistry` /
- * `createBuiltInProcessModuleInstallationRegistry` factories this wiring body
- * invokes. New runs that have an active scenario installation route through the
- * loader's `installed` branch instead (`product-delivery-scenario-package.ts`);
- * legacy runs keep using this wiring. Both paths coexist.
+ * This wiring body calls 4 register functions — one per module — that
+ * populate shared registries (kernelHandlers, moduleRegistry,
+ * installationRegistry). Adding a module = create directory + 1 register()
+ * call. The legacy/scenario cutover path (composition-loader, legacy-run-
+ * inventory, scenario adapters) was removed — the LEGO register path is
+ * the sole composition mechanism.
  *
  * # Purity
  *

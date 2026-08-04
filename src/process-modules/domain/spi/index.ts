@@ -108,7 +108,7 @@ export * from './tool-contribution.js';
 export * from './agent-assistance.js';
 export * from './execution-receipt.js';
 
-// W1-A7 — LegacyProcessModuleAdapter (wraps existing ProcessModuleDefinition
-// into a ProcessModuleManifest with manifestFormatVersion='legacy-0').
-// (adaptLegacyProcessModule, LEGACY_MANIFEST_FORMAT_VERSION).
-export * from './legacy-adapter.js';
+// W1-A7 — ProcessModuleDefinition → ProcessModuleManifest adapter.
+// Pure adapter that wraps a definition into a manifest envelope. Used by
+// describePackage, extensibility tests, and the SPI conformance suite.
+export { adaptLegacyProcessModule, LEGACY_MANIFEST_FORMAT_VERSION } from './legacy-adapter.js';

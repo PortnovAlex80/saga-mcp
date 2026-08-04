@@ -215,6 +215,24 @@ async function main() {
     process.exit(2);
   }
 
+  // DIAGNOSTIC: catch silent exits. The engine dies after "drain complete"
+  // without a "cycle:" or "done:" line — process disappears quietly. These
+  // handlers surface the cause (unhandled rejection, uncaught exception, or
+  // explicit exit) so we can see WHY the dispatch loop doesn't resume.
+  process.on('uncaughtException', (err) => {
+    process.stderr.write(`[orchestrate-cli] UNCAUGHT_EXCEPTION: ${err.message}\n`);
+    if (err.stack) process.stderr.write(err.stack + '\n');
+  });
+  process.on('unhandledRejection', (reason) => {
+    process.stderr.write(`[orchestrate-cli] UNHANDLED_REJECTION: ${String(reason)}\n`);
+  });
+  process.on('beforeExit', (code) => {
+    process.stderr.write(`[orchestrate-cli] BEFORE_EXIT: code=${code}\n`);
+  });
+  process.on('exit', (code) => {
+    process.stderr.write(`[orchestrate-cli] EXIT: code=${code}\n`);
+  });
+
   process.stdout.write(
     `[orchestrate-cli] starting project=${projectId} epic=${epicId} concurrency=${concurrency}\n`,
   );
@@ -270,6 +288,7 @@ async function main() {
     let isFirstCycle = true;
     // eslint-disable-next-line no-constant-condition
     while (true) {
+      process.stderr.write(`[orchestrate-cli] LOOP: cycle ${isFirstCycle ? '1 (initial)' : 'resume'} — calling runEpisode\n`);
       const result = await application.runEpisode({
         projectId,
         epicId,
@@ -332,13 +351,14 @@ async function main() {
           lmStudioUrl: dispatchConfig.lmStudioUrl,
         },
       });
-      if (dispatched === 0) {
-        // No tasks to dispatch but lifecycle still paused — stuck (needs-human or
-        // unresolved). Don't loop forever.
-        process.stdout.write('[orchestrate-cli] paused with empty queue — stopping\n');
-        break;
-      }
-    }
+            if (dispatched === 0) {
+              // No tasks to dispatch but lifecycle still paused — stuck (needs-human or
+              // unresolved). Don't loop forever.
+              process.stdout.write('[orchestrate-cli] paused with empty queue — stopping\n');
+              break;
+            }
+            process.stderr.write(`[orchestrate-cli] LOOP: dispatched=${dispatched}, continuing to next runEpisode\n`);
+          }
     const result = lastResult!;
     process.stdout.write(`[orchestrate-cli] done: ${JSON.stringify(result)}\n`);
     process.exit(result.reason === 'failed' ? 1 : 0);

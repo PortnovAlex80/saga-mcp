@@ -617,20 +617,19 @@ test('§18.3: Runtime core (domain/ + application/) imports NO concrete module/s
     'src/process-modules/application/execution-profile-resolver.ts -> src/process-modules/modules/formalization/formalization-process-module.ts',
     'src/process-modules/application/execution-profile-resolver.ts -> src/process-modules/modules/development/development-process-module.ts',
     'src/process-modules/application/execution-profile-resolver.ts -> src/process-modules/modules/delivery/delivery-process-module.ts',
-    'src/process-modules/application/legacy-scenario-adapter.ts -> src/process-modules/lifecycles/product-delivery-lifecycle.ts',
   ]);
-  // Every actual violation MUST be one of the five documented gaps.
+  // Every actual violation MUST be one of the documented gaps.
   for (const v of violations) {
     const key = `${v.source} -> ${v.target}`;
     assert.ok(documentedGap.has(key),
-      `§18.3 NEW Runtime-core→impl edge (regression, not in Wave-12 baseline): ${key}`);
+      `§18.3 NEW Runtime-core→impl edge (regression): ${key}`);
   }
-  // The five documented gaps ARE present (Wave-12 checkpoint state). When the
-  // integrator applies W13-A1 + W13-A3, these disappear and this assertion
-  // flips to "violations.length === 0" (the §18.3 closure target).
+  // The documented gaps are present (saga4 checkpoint state). When
+  // execution-profile-resolver migrates to PackageRegistry, these disappear
+  // and this assertion flips to "violations.length === 0".
   assert.equal(violations.length, documentedGap.size,
-    `§18.3 documented current state: ${documentedGap.size} Runtime-core→impl edges (Wave-12 checkpoint). ` +
-    `Target is 0; W13-A1 (R4 catalog) + W13-A3 (R3 lifecycle) close this gap.`);
+    `§18.3 documented current state: ${documentedGap.size} Runtime-core→impl edges (saga4 checkpoint). ` +
+    `Target is 0; execution-profile-resolver → PackageRegistry closes this gap.`);
 });
 
 test('§18.3: the scenario runner does NOT statically import any concrete module implementation', () => {
@@ -1535,7 +1534,7 @@ test('item 15: Wave 0-12 regression — the hardening + cutover + extensibility 
   // proof and make item 15 vacuous.
   const mustExist = [
     'tests/architecture/dependency-direction.test.mjs',
-    'tests/architecture/cutover-architecture-checks.test.mjs',
+    'tests/architecture/no-sqlite-in-modules.test.mjs',
     'tests/execution/extensibility-proof.test.mjs',
     'tests/execution/hardening-product-delivery-e2e.test.mjs',
     'tests/execution/hardening-campaign-e2e.test.mjs',

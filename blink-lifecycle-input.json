@@ -16,7 +16,7 @@
           "role": "control"
         },
         "integrationBranch": "dev",
-        "expectedBaseCommit": "d7f124b624b43a9959b176b670cce15f6777c0c7"
+        "expectedBaseCommit": "3294ba27099b3ff5fcc23f5df34b7f5f31b8883f"
       }
     ],
     "policy": {

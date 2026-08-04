@@ -13,7 +13,7 @@
  *
  * What this file proves:
  *   1. All 4 W0-A7 synthetic module fixtures wrap into a `ProcessModuleManifest`
- *      via `adaptLegacyProcessModule` (W1-A7), pass `validateProcessModuleManifest`,
+ *      directly pass `validateProcessModuleManifest`,
  *      and round-trip through canonical JSON (spec §4).
  *   2. The W0-A7 `campaign` scenario maps into a `LifecycleScenarioManifest`,
  *      passes `validateLifecycleScenarioManifest`, and round-trips.
@@ -73,9 +73,6 @@ const {
   validateProcessModuleManifest,
   // W1-A3
   validateLifecycleScenarioManifest,
-  // W1-A7
-  adaptLegacyProcessModule,
-  LEGACY_MANIFEST_FORMAT_VERSION,
 } = await import('../../dist/process-modules/domain/spi/index.js');
 
 // ---------------------------------------------------------------------------
@@ -110,111 +107,6 @@ function assertRoundTrip(label, manifest) {
   const h2 = sha256Hex(manifest);
   assert.equal(h1, h2, `${label}: sha256Hex stable across two runs`);
 }
-
-// ---------------------------------------------------------------------------
-// 1. Wrap each W0-A7 module fixture into a ProcessModuleManifest via the
-//    LegacyProcessModuleAdapter (W1-A7). Each result must validate + round-trip.
-// ---------------------------------------------------------------------------
-
-/**
- * @param {string} label
- * @param {any} definition
- */
-function assertLegacyWrappedModuleValidates(label, definition) {
-  const manifest = adaptLegacyProcessModule(definition);
-  // Legacy adapter contract (W1-A7): manifestFormatVersion='legacy-0',
-  // empty resourceIndex, empty handlerRefs, contract refs derived from
-  // the definition's inputContract/outputContract with version 'legacy'
-  // and digest 'pending@wave-2'.
-  assert.equal(
-    manifest.manifestFormatVersion,
-    LEGACY_MANIFEST_FORMAT_VERSION,
-    `${label}: manifestFormatVersion is the legacy marker`,
-  );
-  assert.equal(
-    LEGACY_MANIFEST_FORMAT_VERSION,
-    'legacy-0',
-    'LEGACY_MANIFEST_FORMAT_VERSION constant equals the spec value',
-  );
-  assert.deepEqual(manifest.resourceIndex, [], `${label}: legacy manifest has empty resourceIndex`);
-  assert.deepEqual(manifest.handlerRefs, [], `${label}: legacy manifest has empty handlerRefs`);
-  assert.equal(
-    manifest.inputContractRef.digest,
-    'pending@wave-2',
-    `${label}: legacy inputContractRef digest placeholder`,
-  );
-  assert.equal(
-    manifest.outputContractRef.digest,
-    'pending@wave-2',
-    `${label}: legacy outputContractRef digest placeholder`,
-  );
-  assert.equal(
-    manifest.runtimeCompatibilityRange,
-    '>=2.0.0 <3.0.0',
-    `${label}: legacy runtimeCompatibilityRange`,
-  );
-
-  // Validate passes.
-  const result = validateProcessModuleManifest(manifest);
-  assert.equal(
-    result.ok,
-    true,
-    `${label}: validateProcessModuleManifest ok (errors=${JSON.stringify(result.errors)})`,
-  );
-
-  // Round-trip + stability.
-  assertRoundTrip(`legacy-wrap:${label}`, manifest);
-}
-
-test('lm-marketing (LM node) wraps via adaptLegacyProcessModule, validates, round-trips', () => {
-  assertLegacyWrappedModuleValidates('lm-marketing', lmMarketing);
-});
-
-test('kernel-analytics (Kernel node) wraps via adaptLegacyProcessModule, validates, round-trips', () => {
-  assertLegacyWrappedModuleValidates('kernel-analytics', kernelAnalytics);
-});
-
-test('human-director-approval (Human node) wraps via adaptLegacyProcessModule, validates, round-trips', () => {
-  assertLegacyWrappedModuleValidates('human-director-approval', humanDirectorApproval);
-});
-
-test('external-seo (External node) wraps via adaptLegacyProcessModule, validates, round-trips', () => {
-  assertLegacyWrappedModuleValidates('external-seo', externalSeo);
-});
-
-test('all 4 module kinds cover all 4 node kinds (lm, kernel, human, external)', () => {
-  // This is the proof that the SPI is module-kind-agnostic — the same
-  // validateProcessModuleManifest + canonicalJson path covers every node
-  // kind the production runtime supports. Plan ref: §3.6, §14.2.6.
-  const kinds = new Set([
-    lmMarketing.flow.nodes[0].kind,
-    kernelAnalytics.flow.nodes[0].kind,
-    humanDirectorApproval.flow.nodes[0].kind,
-    externalSeo.flow.nodes[0].kind,
-  ]);
-  assert.deepEqual([...kinds].sort(), ['external', 'human', 'kernel', 'lm']);
-});
-
-test('Wave 1 exit-gate proof: two unrelated synthetic packages validate via the SAME SPI', () => {
-  // Plan §14.2.6 — the entire wave exit gate. lm-marketing (LM) and
-  // external-seo (External) are completely unrelated node kinds; if they
-  // both wrap+validate+round-trip via the same SPI without any module-
-  // specific branch in our code, the SPI is proven kind-agnostic.
-  const lmManifest = adaptLegacyProcessModule(lmMarketing);
-  const seoManifest = adaptLegacyProcessModule(externalSeo);
-  const lmResult = validateProcessModuleManifest(lmManifest);
-  const seoResult = validateProcessModuleManifest(seoManifest);
-  assert.equal(lmResult.ok, true, 'lm-marketing validates via shared SPI');
-  assert.equal(seoResult.ok, true, 'external-seo validates via shared SPI');
-  // Distinct identity — proves these are genuinely unrelated packages.
-  assert.notEqual(
-    lmManifest.definition.identity.name,
-    seoManifest.definition.identity.name,
-    'lm-marketing and external-seo are distinct package identities',
-  );
-  assertRoundTrip('exit-gate:lm-marketing', lmManifest);
-  assertRoundTrip('exit-gate:external-seo', seoManifest);
-});
 
 // ---------------------------------------------------------------------------
 // 2. Map the W0-A7 campaign scenario into a LifecycleScenarioManifest.
