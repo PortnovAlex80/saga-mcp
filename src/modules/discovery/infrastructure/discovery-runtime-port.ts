@@ -131,12 +131,13 @@ export interface Saga3DiscoveryRuntimePersistence {
   prepareIntentForExecution(intentId: number, taskId: number): PrepareIntentForExecutionResult;
 
   /**
-   * Reopen a task already concluded ('done') so a repair-attempt spawns a
-   * fresh worker run instead of replaying the prior done intent. Resets
-   * tasks.status done→todo, assigned_to/current_execution_id→NULL, and the
-   * projected intent concluded→open. task_id is preserved (same lineage).
+  /**
+   * Transition a task from pending_verification (or done) to in_repair so a
+   * repair-attempt spawns a fresh worker run. Resets tasks.status, assigned_to/
+   * current_execution_id→NULL, and the projected intent concluded→open.
+   * task_id is preserved (same lineage).
    */
-  reopenTaskForRepair(taskId: number): boolean;
+  transitionToInRepair(taskId: number): boolean;
 
   /**
    * Read the WorkIntent bound to a board task via `tasks.metadata.work_intent_id`,

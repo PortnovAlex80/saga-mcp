@@ -137,6 +137,7 @@ import type { ProductRef } from '../process-modules/domain/spi/index.js';
 import { registerDiscovery } from '../modules/discovery/index.js';
 import { registerFormalization } from '../modules/formalization/index.js';
 import { registerDevelopment } from '../modules/development/index.js';
+import { promoteTaskToDone } from '../lifecycle/work-assignment-core.js';
 import { registerDelivery } from '../modules/delivery/index.js';
 import type {
   ModuleRegistries,
@@ -441,31 +442,11 @@ export function createProductLifecycleRuntime(
     // node, so we find it deterministically.
     onWorkplaceVerified: (processRunId, repairNodeId) => {
       const generationKey = `process-run:${processRunId}:node:${repairNodeId}`;
-      db.prepare(
-        `UPDATE tasks SET status='done', updated_at=datetime('now')
-          WHERE generation_key=? AND status='pending_verification'`,
-      ).run(generationKey);
-      // integration_state + reevaluateDownstream for the newly-done task
       const taskRow = db.prepare(
-        'SELECT id, task_kind, execution_mode, project_repository_id FROM tasks WHERE generation_key=? AND status=\'done\'',
-      ).get(generationKey) as
-        | { id: number; task_kind: string | null; execution_mode: string; project_repository_id: number | null }
-        | undefined;
+        'SELECT id FROM tasks WHERE generation_key=? AND status=\'pending_verification\'',
+      ).get(generationKey) as { id: number } | undefined;
       if (taskRow) {
-        if (taskRow.task_kind && taskRow.execution_mode === 'git_change') {
-          const repo = taskRow.project_repository_id == null ? undefined : db.prepare(
-            'SELECT integration_branch FROM project_repositories WHERE id=?',
-          ).get(taskRow.project_repository_id) as { integration_branch: string } | undefined;
-          const mergeTarget = repo?.integration_branch ?? 'dev';
-          db.prepare(
-            `UPDATE tasks SET integration_state='pending', integrated_at=NULL, integrated_commit=NULL,
-                updated_at=datetime('now') WHERE id=?`,
-          ).run(taskRow.id);
-        } else {
-          db.prepare(
-            `UPDATE tasks SET integration_state='not_required', updated_at=datetime('now') WHERE id=?`,
-          ).run(taskRow.id);
-        }
+        promoteTaskToDone(db, taskRow.id);
       }
     },
   };

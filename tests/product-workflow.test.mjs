@@ -969,6 +969,9 @@ test('typed dependencies wait for merge and repository merge locks do not block 
   dispatcher.worker_done({
     task_id: upstream.id, worker_id: 'repo-a-reviewer', result: 'approved', verdict: 'approved',
   });
+  // After kernel-gate change: review-approved → pending_verification (not done).
+  // Promote to done manually (simulates kernel verifier accepting).
+  getDb().prepare("UPDATE tasks SET status='done', integration_state='pending' WHERE id=? AND status='pending_verification'").run(upstream.id);
   assert.equal(dispatcher.worker_next({ project_id: product.id, worker_id: 'too-early' }).task, null);
 
   const independent = tasks.task_create({

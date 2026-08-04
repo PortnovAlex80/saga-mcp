@@ -1007,8 +1007,8 @@ export function createDiscoveryLmNodePersistence(
       const r = runtime.prepareIntentForExecution(intentId, taskId);
       return { status: r.state, intentStatus: r.intentStatus };
     },
-    reopenTaskForRepair(taskId) {
-      return runtime.reopenTaskForRepair(taskId);
+    transitionToInRepair(taskId: number) {
+      return runtime.transitionToInRepair(taskId);
     },
     readTaskState(taskId) {
       return runtime.readTaskState(taskId);

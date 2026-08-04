@@ -371,6 +371,52 @@ export function findNextClaimable(
 }
 
 /**
+ * Kernel-gate repair: transition a task from pending_verification (or done)
+ * to in_repair. Called by the LM-executor persistence port when a recovery
+ * feedback is received and the task needs a fresh worker. This is a sanctioned
+ * single-writer path for the status column.
+ */
+export function transitionTaskToInRepair(db: Database.Database, taskId: number): boolean {
+  const task = db.prepare('SELECT status FROM tasks WHERE id=?').get(taskId) as { status: string } | undefined;
+  if (!task || (task.status !== 'pending_verification' && task.status !== 'done')) {
+    return false;
+  }
+  db.prepare(
+    `UPDATE tasks SET status='in_repair', assigned_to=NULL, current_execution_id=NULL, updated_at=datetime('now')
+      WHERE id=? AND status IN ('pending_verification','done')`,
+  ).run(taskId);
+  return true;
+}
+
+/**
+ * Kernel-gate promotion: transition a task from 'pending_verification' to
+ * 'done'. Called by the composition root's onWorkplaceVerified callback when
+ * the kernel verifier accepts the work. This is the ONLY sanctioned writer
+ * path for this transition (outside the fenced board-column transitions in
+ * dispatcher.ts). Integration_state is set here to avoid a second UPDATE
+ * from a non-sanctioned writer.
+ */
+export function promoteTaskToDone(db: Database.Database, taskId: number): void {
+  const task = db.prepare(
+    'SELECT task_kind, execution_mode FROM tasks WHERE id=?',
+  ).get(taskId) as { task_kind: string | null; execution_mode: string } | undefined;
+  if (!task) return;
+  if (task.task_kind && task.execution_mode === 'git_change') {
+    db.prepare(
+      `UPDATE tasks SET status='done', integration_state='pending', integrated_at=NULL,
+           integrated_commit=NULL, updated_at=datetime('now')
+       WHERE id=? AND status='pending_verification'`,
+    ).run(taskId);
+  } else {
+    db.prepare(
+      `UPDATE tasks SET status='done', integration_state='not_required',
+           updated_at=datetime('now')
+       WHERE id=? AND status='pending_verification'`,
+    ).run(taskId);
+  }
+}
+
+/**
  * Build an AssignedWork snapshot from a freshly-claimed task. Shared by the
  * worker_next MCP path and the WorkAssignmentPort. Called AFTER the IMMEDIATE
  * transaction commits.

@@ -1,5 +1,6 @@
 import { getDb } from '../../../db.js';
 import { prepareSaga3ProjectedTaskForExecution } from '../../../lifecycle/legacy-assignment-recovery.js';
+import { transitionTaskToInRepair } from '../../../lifecycle/work-assignment-core.js';
 import type { CreateWorkIntent, WorkIntent, WorkIntentStatus } from '../../../shared/work-intent.js';
 import type { ProposalRecord } from '../domain/proposal.js';
 import { DISCOVERY_NORMALIZATION_INTENT_KIND, DISCOVERY_READINESS_INTENT_KIND } from '../../../shared/work-intent.js';
@@ -586,23 +587,17 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
   }
 
   transitionToInRepair(taskId: number): boolean {
+    // Delegate the status transition to the sanctioned single-writer
+    // (work-assignment-core.ts). The work_intent status update stays here
+    // (saga3_work_intents is not subject to the tasks single-writer gate).
     const db = getDb();
     db.exec('BEGIN IMMEDIATE');
     try {
-      const task = db.prepare('SELECT status FROM tasks WHERE id=?').get(taskId) as { status: string } | undefined;
-      // Transition from pending_verification (review passed, kernel found defect)
-      // or done (legacy/fallback) to in_repair. This is the "dismantle order" —
-      // the card leaves the accepted state but is NOT put in the general queue.
-      // in_repair is invisible to findNextClaimable (which filters todo/review);
-      // LmNodeExecutor handles it directly through prepareIntentForExecution.
-      if (!task || (task.status !== 'pending_verification' && task.status !== 'done')) {
+      const transitioned = transitionTaskToInRepair(db, taskId);
+      if (!transitioned) {
         db.exec('COMMIT');
         return false;
       }
-      db.prepare(
-        `UPDATE tasks SET status='in_repair', assigned_to=NULL, current_execution_id=NULL, updated_at=datetime('now')
-          WHERE id=? AND status IN ('pending_verification','done')`,
-      ).run(taskId);
       // intent projected to this task: concluded → open so prepareIntentForExecution
       // routes through the ready path (in_repair → ready) for the repair worker.
       db.prepare(

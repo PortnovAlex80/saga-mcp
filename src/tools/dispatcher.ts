@@ -598,12 +598,15 @@ function handleWorkerDone(args: Record<string, unknown>): {
           );
         }
       } else {
-        // Ревью пройдено (APPROVED). Переводим в pending_verification —
-        // ядро (kernel verifier) должно проверить доменную корректность,
-        // прежде чем задача станет done (терминальный статус).
-        // Integration_state и reevaluateDownstream НЕ вызываются здесь —
-        // только когда ядро примет работу и переведёт в done.
-        newStatus = 'pending_verification';
+        // Ревью пройдено (APPROVED). Если задача — Flow-managed LM-node task
+        // (generation_key начинается с 'process-run:'), переводим в
+        // pending_verification: ядро (kernel verifier) в Flow должно проверить
+        // доменную корректность, прежде чем задача станет done.
+        // Если задача НЕ Flow-managed (development impl/verify tasks, legacy) —
+        // done сразу: нет kernel verifier, который её проверит.
+        const isFlowManaged = typeof task.generation_key === 'string'
+          && task.generation_key.startsWith('process-run:');
+        newStatus = isFlowManaged ? 'pending_verification' : 'done';
         newAssignedTo = null;
       }
     } else {

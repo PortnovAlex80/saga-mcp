@@ -562,6 +562,9 @@ test('LM active execution pauses without constructing or starting another worker
     readTaskProjectRepositoryId() {
       return null;
     },
+    transitionToInRepair() {
+      return false;
+    },
   };
   const executor = new LmNodeExecutor({
     persistence,
@@ -682,6 +685,9 @@ test('LM done replay returns the producer fence, not the later reviewer executio
     },
     readTaskProjectRepositoryId() {
       return null;
+    },
+    transitionToInRepair() {
+      return false;
     },
   };
   const executor = new LmNodeExecutor({
