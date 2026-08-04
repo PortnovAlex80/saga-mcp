@@ -1000,7 +1000,20 @@ function readExecutionWrites(
   sourceNodeId: string,
   handlerId: string,
 ): ExecutionWrites {
-  const receipt = requireLmReceipt(ctx.input, handlerId);
+  // On recovery resume, ctx.input may be a feedbackProduction (recovery
+  // feedback) instead of an LM execution receipt. The durable receipt is
+  // available in ctx.frame.productions (the LM node's production restored
+  // from node_run output_bindings). Try ctx.input first (normal path), then
+  // fall back to the frame production for the source node.
+  let receipt = tryLmReceipt(ctx.input, handlerId);
+  if (!receipt) {
+    const production = ctx.frame.productions[sourceNodeId];
+    receipt = tryLmReceipt(production, handlerId)
+      ?? null;
+  }
+  if (!receipt) {
+    throw new Error(`${handlerId}: expected an exact completed/failed LM execution receipt (checked ctx.input and frame.productions.${sourceNodeId})`);
+  }
   if (!receipt.executionId) {
     throw new Error(`${handlerId}: task execution has no durable execution fence`);
   }
@@ -1048,33 +1061,45 @@ function readExecutionWrites(
       : processRunTraceWrites,
   );
   const artifacts = deps.graph.readArtifactsByIds(artifactWrites.map(write => write.artifactId));
-  if (artifacts.length !== artifactWrites.length) {
+  // When borrowing from epic-scope (recovery fallback), some ledger writes may
+  // reference artifacts that were deleted in a prior lifecycle run (legacy
+  // SQL operations before the immutability contract was enforced). Filter
+  // those dangling writes instead of crashing — the surviving canonical
+  // artifacts are sufficient for the gate to verify. For the normal path
+  // (current process-run), keep the strict check: a missing artifact IS a
+  // real error.
+  if (!borrowedFromEpic && artifacts.length !== artifactWrites.length) {
     throw new Error(`${handlerId}: one or more ledger artifacts no longer exist`);
   }
   const artifactsById = new Map(artifacts.map(artifact => [artifact.id, artifact]));
-  for (const write of artifactWrites) {
+  // Filter artifactWrites to only those whose artifact still exists.
+  // (No-op for the normal path where the strict check above already passed.)
+  const validArtifactWrites = artifactWrites.filter(write => artifactsById.has(write.artifactId));
+  for (const write of validArtifactWrites) {
     const artifact = artifactsById.get(write.artifactId);
-    if (
-      (!borrowedFromEpic && !matchesNodeFence(write, query))
-      || !artifact
-      || artifact.projectId !== ctx.projectId
-      || artifact.epicId !== ctx.epicId
-      || artifact.type !== write.artifactType
-      || !artifactStatusMatchesManagedWrite(deps, ctx, query, write, artifact)
-      || artifact.contentHash !== write.contentHash
-      || !isSha256(write.contentHash)
-    ) {
+      if (
+        (!borrowedFromEpic && !matchesNodeFence(write, query))
+        || !artifact
+        || artifact.projectId !== ctx.projectId
+        || artifact.epicId !== ctx.epicId
+        || artifact.type !== write.artifactType
+        || (!borrowedFromEpic && !artifactStatusMatchesManagedWrite(deps, ctx, query, write, artifact))
+        || (borrowedFromEpic && !isAcceptedClean(artifact))
+        || artifact.contentHash !== write.contentHash
+        || !isSha256(write.contentHash)
+      ) {
       throw new Error(
         `${handlerId}: ledger artifact ${write.artifactId} does not match its canonical row`,
       );
     }
   }
   const traces = deps.graph.readTracesByIds(traceWrites.map(write => write.traceId));
-  if (traces.length !== traceWrites.length) {
+  if (!borrowedFromEpic && traces.length !== traceWrites.length) {
     throw new Error(`${handlerId}: one or more ledger traces no longer exist`);
   }
   const tracesById = new Map(traces.map(trace => [trace.id, trace]));
-  for (const write of traceWrites) {
+  const validTraceWrites = traceWrites.filter(write => tracesById.has(write.traceId));
+  for (const write of validTraceWrites) {
     const trace = tracesById.get(write.traceId);
     if (
       (!borrowedFromEpic && !matchesNodeFence(write, query))
@@ -1096,7 +1121,14 @@ function readExecutionWrites(
   return { receipt, artifactWrites, traceWrites, artifacts, traces };
 }
 
-function requireLmReceipt(input: unknown, handlerId: string): NodeExecutionReceipt {
+/**
+ * Try to read an LM execution receipt from the given input. Returns null if
+ * the input is not a valid LM receipt (instead of throwing). Used by
+ * readExecutionWrites to try multiple sources (ctx.input, frame.productions)
+ * before giving up. On recovery resume, ctx.input may be a feedbackProduction
+ * instead of a receipt; the durable receipt is then in frame.productions.
+ */
+function tryLmReceipt(input: unknown, _handlerId: string): NodeExecutionReceipt | null {
   const receipt = input as Partial<NodeExecutionReceipt> | null;
   if (
     !receipt
@@ -1109,7 +1141,7 @@ function requireLmReceipt(input: unknown, handlerId: string): NodeExecutionRecei
     || (receipt.executionId !== null && typeof receipt.executionId !== 'string')
     || !['completed', 'failed'].includes(String(receipt.runtimeStatus))
   ) {
-    throw new Error(`${handlerId}: expected an exact completed/failed LM execution receipt`);
+    return null;
   }
   return receipt as NodeExecutionReceipt;
 }

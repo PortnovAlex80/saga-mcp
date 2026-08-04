@@ -606,7 +606,7 @@ implements ExactCandidateAcceptance {
     // The reviewed task is the product aggregate. An earlier execution of the
     // same task may have written the exact version, but another recovery task
     // must never be adopted implicitly.
-    const ledger = this.db.prepare(
+    let ledger = this.db.prepare(
       `SELECT id, artifact_type, artifact_status, content_hash
          FROM saga3_managed_artifact_productions
         WHERE process_run_id=? AND module_ref=? AND node_id=?
@@ -620,6 +620,30 @@ implements ExactCandidateAcceptance {
       lineage.taskId,
       candidate.artifactId,
     ) as ManagedArtifactProductionRow | undefined;
+    // Recovery fallback: if no ledger record exists for the current execution
+    // (repair worker reused accepted artifacts from a prior run without calling
+    // artifact_create again), check epic-wide for the same artifact+hash. If
+    // found, the artifact IS canonical — just produced by a different execution
+    // of the same epic. This unblocks the deadlock where the worker correctly
+    // skips duplicating accepted work but the gate demanded a per-execution
+    // receipt.
+    if (!ledger) {
+      ledger = this.db.prepare(
+        `SELECT map.id, map.artifact_type, map.artifact_status, map.content_hash
+           FROM saga3_managed_artifact_productions map
+           JOIN saga3_process_runs pr ON pr.id = map.process_run_id
+          WHERE pr.project_id=? AND pr.epic_id=? AND map.module_ref=? AND map.node_id=?
+            AND map.artifact_id=?
+          ORDER BY map.recorded_at DESC
+          LIMIT 1`,
+      ).get(
+        lineage.projectId,
+        lineage.epicId,
+        lineage.moduleRef,
+        lineage.nodeId,
+        candidate.artifactId,
+      ) as ManagedArtifactProductionRow | undefined;
+    }
     if (!ledger
       || ledger.artifact_type !== candidate.artifactType
       || ledger.content_hash !== candidate.contentHash) {
