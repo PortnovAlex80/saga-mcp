@@ -465,10 +465,52 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
       }
       if (reexecutePausedNode) {
         currentNodeId = lastCompleted.nodeId;
+        // Rehydrate the recovery feedback for the repair LM-node. When the
+        // verifier re-executes on resume with a persisted recoveryIssue, the
+        // NEXT node (the repair LM-node) needs the feedbackProduction as its
+        // chainInput — otherwise the worker runs blind and the loop exhausts.
+        // The feedback is rehydrated from the durable recovery_case attempts
+        // (feedback_snapshot is persisted), keyed by the verifier's policy.
+        let resumedFeedback: RecoveryFeedback | null = null;
+        if (lastCompleted.recoveryIssue && this.opts.recoveryCaseRepo) {
+          // The case may be 'active' OR already 'exhausted' (the verifier
+          // re-runs on resume after exhaustion). readActive filters by
+          // status='active', so fall back to the process_run's pinned
+          // activeIssue.recoveryCaseId, then to the latest case for the
+          // policy regardless of status.
+          const resumeRun = this.opts.processRunRepo.read(context.processRunId);
+          const caseId = resumeRun?.activeIssue?.recoveryCaseId ?? null;
+          const policy = (module.flow.recovery ?? [])
+            .find(p => p.verifyNodeId === lastCompleted.nodeId);
+          let recoveryCase = caseId
+            ? this.opts.recoveryCaseRepo.readCase(caseId)
+            : null;
+          if (!recoveryCase && policy) {
+            recoveryCase = this.opts.recoveryCaseRepo.readActiveForVerifier(
+              context.processRunId,
+              lastCompleted.nodeId,
+            ) ?? this.opts.recoveryCaseRepo.readActive(
+              context.processRunId,
+              policy.id,
+            );
+          }
+          if (!recoveryCase && policy) {
+            // Last resort: newest case for this policy, any status.
+            const all = this.opts.recoveryCaseRepo.listForProcessRun(context.processRunId);
+            recoveryCase = all.find(c => c.policyId === policy.id) ?? null;
+          }
+          if (recoveryCase) {
+            const attempts = this.opts.recoveryCaseRepo.listAttempts(recoveryCase.id);
+            resumedFeedback = attempts.length > 0
+              ? attempts[attempts.length - 1].feedback
+              : null;
+          }
+        }
         pausedVerifierInput = inputBeforeNodeRun(
           context.inputPayload,
           allRuns,
           lastCompleted.id,
+          resumedFeedback,
         );
         // An exhausted recovery case is terminal — it must not be mutated by a
         // re-run of the verifier. Resolve it (and clear activeIssue) so that if
@@ -1062,11 +1104,23 @@ function inputBeforeNodeRun(
   runInput: unknown,
   allRuns: readonly NodeRunRecord[],
   nodeRunId: number,
+  recoveryFeedback?: RecoveryFeedback | null,
 ): unknown {
   const prior = [...allRuns]
     .filter(run => run.id < nodeRunId && run.status === 'completed')
     .sort((left, right) => right.id - left.id)[0];
   if (!prior) return runInput;
+  // Recovery feedback survives engine restart. When the prior (verifier) NodeRun
+  // emitted a recoveryIssue, the NEXT node (the repair LM-node) must receive the
+  // feedbackProduction as its chainInput — NOT the verifier's own production.
+  // Without this, the repair worker runs blind: no recovery-feedback.json on its
+  // desk, so it recreates the same defect and the loop exhausts → pause.
+  // The feedback is rehydrated by the caller from the durable recovery_case /
+  // recovery_attempt rows (which persist feedback_snapshot), so no new
+  // persistence is needed.
+  if (recoveryFeedback && prior.recoveryIssue) {
+    return recoveryFeedbackProduction(recoveryFeedback, recoveryFeedback.issueHash);
+  }
   if (prior.executionReceipt) return prior.executionReceipt;
   if (prior.outputBindings || prior.outputRef) return restoreProduction(prior);
   return runInput;

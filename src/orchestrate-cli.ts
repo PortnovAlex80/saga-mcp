@@ -286,6 +286,13 @@ async function main() {
     // more tasks remain to dispatch.
     let lastResult: Awaited<ReturnType<SagaApplication['runEpisode']>> | null = null;
     let isFirstCycle = true;
+    // Empty-dispatch streak guard: when distributeQueuedTasks returns 0 we
+    // re-run runEpisode (the lifecycle may be waiting to project the next
+    // node after a worker just completed). But if this happens repeatedly
+    // without the lifecycle advancing, the run is genuinely stuck
+    // (needs-human, unresolved dependency) and we must stop rather than spin.
+    const MAX_EMPTY_DISPATCH_STREAK = 3;
+    let emptyDispatchStreak = 0;
     // eslint-disable-next-line no-constant-condition
     while (true) {
       process.stderr.write(`[orchestrate-cli] LOOP: cycle ${isFirstCycle ? '1 (initial)' : 'resume'} — calling runEpisode\n`);
@@ -352,11 +359,37 @@ async function main() {
         },
       });
             if (dispatched === 0) {
-              // No tasks to dispatch but lifecycle still paused — stuck (needs-human or
-              // unresolved). Don't loop forever.
-              process.stdout.write('[orchestrate-cli] paused with empty queue — stopping\n');
-              break;
+              // The queue drained to empty while the lifecycle is still paused.
+              // This is NOT necessarily a stuck state: a worker may have just
+              // completed a task (e.g. formalization's PRD node) whose
+              // completion is what unblocks the NEXT lifecycle node (e.g. UC),
+              // but that next task has not been projected into the kanban yet.
+              // Calling runEpisode({resumePaused:true}) again advances the
+              // lifecycle — either it projects the next task (loop continues)
+              // or it returns non-paused (terminal) and we stop.
+              //
+              // Guard against a genuine stuck state (needs-human, unresolved
+              // dependency, routing cycle): if the lifecycle has not progressed
+              // for several consecutive empty-dispatch cycles, stop so the
+              // operator can intervene instead of burning tokens forever.
+              emptyDispatchStreak += 1;
+              process.stdout.write(
+                `[orchestrate-cli] paused with empty queue — resuming lifecycle (streak ${emptyDispatchStreak}/${MAX_EMPTY_DISPATCH_STREAK})\n`,
+              );
+              if (emptyDispatchStreak >= MAX_EMPTY_DISPATCH_STREAK) {
+                process.stdout.write(
+                  '[orchestrate-cli] empty-queue streak exhausted — stopping to avoid infinite loop\n',
+                );
+                break;
+              }
+              // Short backoff before re-checking, so we don't tight-loop the DB
+              // when the lifecycle is genuinely idle.
+              await new Promise(resolve => setTimeout(resolve, 2000));
+              continue;
             }
+            // Tasks were dispatched and drained — the lifecycle may have
+            // advanced, so reset the streak and resume runEpisode.
+            emptyDispatchStreak = 0;
             process.stderr.write(`[orchestrate-cli] LOOP: dispatched=${dispatched}, continuing to next runEpisode\n`);
           }
     const result = lastResult!;
