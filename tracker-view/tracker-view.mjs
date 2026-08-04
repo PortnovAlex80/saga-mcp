@@ -460,7 +460,8 @@ function extractDiv(html, cls) {
 // Загрузка всех артефактов проекта + их исходящих трасс (для вкладки Артефакты).
 // Структура данных (по exploration):
 //   parent_artifact_id = «позвоночник» дерева, max depth 3:
-//     decision(BRIEF) → PRD → {SRS, UC, FR, NFR}; AC → UC (иногда → PRD).
+//     decision(BRIEF) → PRD → {FR, NFR, RULE, UC, SRS}; AC → UC (иногда → PRD).
+//     Pipeline order (ADR-014): PRD → UC → AC → Reconcile → SRS(+§D).
 //   artifact_traces = кросс-режущие рёбра, НЕ часть дерева:
 //     implements (AC→DEV-таск), verified_by, derived_from (AC→FR), covers (UC→FR).
 //   28 трасс кросс-проектные (AC в requirements → DEV-таск в builders-проекте).
@@ -1700,7 +1701,10 @@ function renderArtifacts(projectId, allProjects) {
   // Сводка по типам (chips).
   const byType = {};
   for (const a of artifacts) byType[a.type] = (byType[a.type] || 0) + 1;
-  const typeOrder = ['PRD','SRS','UC','AC','FR','NFR','decision','theme','brief'];
+  // Pipeline order (ADR-014): PRD → UC → AC → Reconcile → SRS. FR/NFR/RULE
+  // are children of PRD now; SRS sits after the AC baseline. Chips display
+  // in canonical pipeline order, not the pre-reorder PRD/SRS/UC sequence.
+  const typeOrder = ['PRD','FR','NFR','RULE','UC','AC','SRS','decision','theme','brief'];
   const summaryChips = typeOrder
     .filter(t => byType[t])
     .map(t => `<span class="tchip" style="border-color:${TYPE_COLORS[t]};color:${TYPE_COLORS[t]}">${TYPE_LABEL[t]||t}: ${byType[t]}</span>`)
@@ -2967,7 +2971,7 @@ function renderRegistry(type, allProjects) {
        ORDER BY p.name, a.code`).all(T));
   } catch { arts = []; }
 
-  const types = ['PRD','SRS','UC','AC','FR','NFR','decision'];
+  const types = ['PRD','FR','NFR','RULE','UC','AC','SRS','decision'];
   const typeChips = types.map(t =>
     `<a class="chip${t===T?' active':''}" href="?registry=${t}">${TYPE_LABEL[t]||t}</a>`).join('');
   const projColor = (pid) => {
@@ -3075,22 +3079,24 @@ const STAGE_DESCRIPTIONS = {
   },
   formalization: {
     name: 'Формализация',
-    responsibility: 'Превращает принятый бриф в формальные требования и приёмочные критерии. Параллельно пишет PRD (что делать), SRS (как архитектурно) и UC (сценарии использования), затем сверяет их на reconciliation и сводит к принятому baseline приёмочных критериев (AC).',
+    responsibility: 'Превращает принятый бриф в формальные требования и приёмочные критерии. Разделена на две части (ADR-014): Часть 1 — ЧТО (PRD с FR/NFR/RULE, UC, AC, reconciliation и фиксация AC baseline); Часть 2 — КАК (SRS после AC: архитектор видит замороженные AC + brief complexity и выбирает стиль по таблице complexity→architecture, затем пишет §D Decomposition для планировщика).',
     inputs: [
       'Принятый brief с decision=go из стадии Discovery',
+      'complexity.tshirt / topology_hint / shared_mutation_risk из brief',
       'Документы и контекст пользователя'
     ],
     does: [
-      'Параллельная генерация PRD, SRS и Use Cases',
-      'Reconciliation: сверка соответствия PRD ↔ SRS ↔ UC',
-      'Формирование и приёмка AC (acceptance criteria)',
-      'Фиксация baseline артефактов для планирования'
+      'Часть 1 (ЧТО): PRD с FR/NFR/RULE, UC, AC, reconciliation, фиксация AC baseline',
+      'Reconciliation: сверка трасс PRD ↔ UC ↔ AC (SRS ещё не существует)',
+      'Часть 2 (КАК): SRS после baseline — архитектор выбирает стиль по complexity→architecture таблице',
+      'Архитектор пишет §D Decomposition (машино-читаемый per-AC map для планировщика)'
     ],
     outputs: [
       'Accepted AC artifacts — baseline для стадии Planning',
-      'Связная иерархия PRD → SRS → UC → AC с трассами'
+      'Accepted SRS с §D — контракт для saga-planner',
+      'Связная иерархия: PRD(+FR/NFR/RULE) → UC → AC и PRD → SRS(+§D) с трассами'
     ],
-    roles: ['saga-product (PRD)', 'saga-architect (SRS)', 'saga-analyst (UC+AC)', 'saga-reconciler']
+    roles: ['saga-product (PRD+FR/NFR/RULE)', 'saga-analyst (UC+AC)', 'saga-reconciler', 'saga-architect (SRS+§D, после AC)']
   },
   planning: {
     name: 'Планирование',
@@ -3866,7 +3872,7 @@ function renderAdmin(projects, flash) {
         <div class="admin-hint">
           Создаёт project + repo + epic + discovery.kickstart задачу одной транзакцией.
           При <code>SAGA_ORCHESTRATION_MODE=v3</code> запускает автономный движок в background
-          (он сам прогонит kickstart → PRD → SRS/UC → planning → dev → verify → integration).
+          (он сам прогонит kickstart → PRD → UC/AC → SRS → planning → dev → verify → integration, ADR-014).
           При <code>v2</code> движок не стартует — воркеры запускаются вручную через board-run.
         </div>
         <button type="submit" class="btn primary">🚀 Создать и запустить</button>
@@ -5388,25 +5394,45 @@ function getOrCreateCloudTemplate() {
 }
 
 /**
- * Get the canonical LM Studio template (settings.lmstudio.json). Always
- * available — it's a generated constant, derived from LMSTUDIO_URL + the
- * fixed lm-studio placeholder token. Regenerated each call so changes to
- * SAGA_LMSTUDIO_URL (e.g. remote LM Studio box) take effect immediately.
+ * Get the canonical LM Studio template (settings.lmstudio.json). Persistent
+ * file — written ONCE from the frontend selector, then never overwritten by
+ * saga. No model defaults: model env vars are added by handleModelSet from
+ * the frontend-supplied modelId. If settings.lmstudio.json does not exist,
+ * returns a minimal skeleton with ONLY the LM Studio endpoint + auth token
+ * and NO model slots (a caller that needs a model MUST set it explicitly).
+ *
+ * We deliberately DO NOT inherit the live settings.json env here — that was
+ * the old bug: stale models from a previous run leaked into the LM Studio
+ * template and overrode the frontend selector (gemma-4-26b survived even
+ * after the user picked qwen3.6).
  */
 function getOrCreateLmstudioTemplate() {
   const fs = require('node:fs');
-  // Build from the current live settings.json so we preserve the user's
-  // non-env keys (model, permissions, enabledPlugins, etc.) — we only swap
-  // the env values that route to LM Studio.
-  const base = JSON.parse(fs.readFileSync(CLAUDE_SETTINGS_PATH, 'utf8'));
-  base.env = base.env || {};
-  // Strip /v1 — claude v2 appends it itself; a leftover /v1 here would yield
-  // /v1/v1/messages which LM Studio rejects with an empty 200.
-  base.env.ANTHROPIC_BASE_URL = LMSTUDIO_URL.replace(/\/v\d+\/?$/, '').replace(/\/+$/, '');
-  base.env.ANTHROPIC_AUTH_TOKEN = 'lm-studio';
-  base.env.ANTHROPIC_API_KEY = 'lm-studio';
-  base.env.CLAUDE_CODE_ATTRIBUTION_HEADER = '0';
-  return base;
+  let tpl = null;
+  try { tpl = JSON.parse(fs.readFileSync(CLAUDE_SETTINGS_LMSTUDIO_TPL, 'utf8')); } catch { /* not yet */ }
+  if (tpl) {
+    // Always refresh the endpoint (SAGA_LMSTUDIO_URL may have changed), but
+    // leave model slots alone — they are owned by the frontend selector.
+    tpl.env = tpl.env || {};
+    tpl.env.ANTHROPIC_BASE_URL = LMSTUDIO_URL.replace(/\/v\d+\/?$/, '').replace(/\/+$/, '');
+    tpl.env.ANTHROPIC_AUTH_TOKEN = 'lm-studio';
+    tpl.env.ANTHROPIC_API_KEY = 'lm-studio';
+    tpl.env.CLAUDE_CODE_ATTRIBUTION_HEADER = '0';
+    return tpl;
+  }
+  // First-time skeleton: endpoint + auth only. NO ANTHROPIC_DEFAULT_*_MODEL —
+  // those are set strictly from the frontend selector in handleModelSet.
+  return {
+    env: {
+      ANTHROPIC_BASE_URL: LMSTUDIO_URL.replace(/\/v\d+\/?$/, '').replace(/\/+$/, ''),
+      ANTHROPIC_AUTH_TOKEN: 'lm-studio',
+      ANTHROPIC_API_KEY: 'lm-studio',
+      CLAUDE_CODE_ATTRIBUTION_HEADER: '0',
+      API_TIMEOUT_MS: '3000000',
+      CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
+    },
+    permissions: { allow: ['*'] },
+  };
 }
 
 // --- POST /api/model/set ---
@@ -5466,10 +5492,6 @@ function handleModelSet(req, res) {
         const cloudTpl = getOrCreateCloudTemplate();
         if (cloudTpl) {
           payload = cloudTpl;
-          payload.env = payload.env || {};
-          payload.env.ANTHROPIC_DEFAULT_OPUS_MODEL = modelId;
-          payload.env.ANTHROPIC_DEFAULT_SONNET_MODEL = modelId;
-          payload.env.ANTHROPIC_DEFAULT_HAIKU_MODEL = modelId;
           delete payload.env.ANTHROPIC_API_KEY;
           delete payload.env.CLAUDE_CODE_ATTRIBUTION_HEADER;
         } else {
@@ -5480,12 +5502,30 @@ function handleModelSet(req, res) {
           payload = JSON.parse(fs.readFileSync(CLAUDE_SETTINGS_PATH, 'utf8'));
           payload.env = payload.env || {};
           payload.env.ANTHROPIC_BASE_URL = ZAI_DEFAULT_BASE_URL;
-          payload.env.ANTHROPIC_DEFAULT_OPUS_MODEL = modelId;
-          payload.env.ANTHROPIC_DEFAULT_SONNET_MODEL = modelId;
-          payload.env.ANTHROPIC_DEFAULT_HAIKU_MODEL = modelId;
           if (payload.env.ANTHROPIC_AUTH_TOKEN === 'lm-studio') delete payload.env.ANTHROPIC_AUTH_TOKEN;
           delete payload.env.ANTHROPIC_API_KEY;
           delete payload.env.CLAUDE_CODE_ATTRIBUTION_HEADER;
+        }
+      }
+      // HARD RULE: the model from the selector is authoritative. No defaults,
+      // no inheritance, no "leave whatever was there". All four claude model
+      // slots get EXACTLY modelId. If modelId is somehow empty we already 400'd
+      // above, so here it is guaranteed non-empty. This closes the bug where
+      // lmstudio template kept stale gemma-4-26b after the user picked qwen3.6.
+      payload.env = payload.env || {};
+      payload.env.ANTHROPIC_DEFAULT_HAIKU_MODEL = modelId;
+      payload.env.ANTHROPIC_DEFAULT_SONNET_MODEL = modelId;
+      payload.env.ANTHROPIC_DEFAULT_OPUS_MODEL = modelId;
+      payload.env.CLAUDE_CODE_SUBAGENT_MODEL = modelId;
+      // Persist the LM Studio template so the chosen model survives a tracker-
+      // view restart. cloud template is already frozen separately and must not
+      // be touched here.
+      if (provider === 'lmstudio') {
+        try {
+          const fs = require('node:fs');
+          fs.writeFileSync(CLAUDE_SETTINGS_LMSTUDIO_TPL, JSON.stringify(payload, null, 2), 'utf8');
+        } catch (e) {
+          console.error('[model/set] lmstudio template persist failed:', e.message);
         }
       }
       // Block until durable + verified. Throws on torn write → 500 to caller.

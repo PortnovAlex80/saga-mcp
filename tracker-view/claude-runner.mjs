@@ -389,6 +389,11 @@ export class ClaudeBoardRunner {
       ANTHROPIC_AUTH_TOKEN: 'lm-studio',
       ANTHROPIC_API_KEY: 'lm-studio',
       CLAUDE_CODE_ATTRIBUTION_HEADER: '0',
+      // Явный context window для non-Claude модели (LM Studio qwen3.6 загружена
+      // с loaded_context_length=262144). Без этой переменной Claude Code использует
+      // hardcoded fallback (~200k) — см. https://code.claude.com/docs/en/env-vars
+      // и anthropics/claude-code#46416.
+      CLAUDE_CODE_MAX_CONTEXT_TOKENS: '262144',
     } : {};
     const child = this.spawn(this.claudePath, args, {
       cwd: workspaceRoot,

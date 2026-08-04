@@ -55,6 +55,55 @@ is scaffolded by the parallel saga-mcp SCAFFOLD task #215):
   default path is **auto-resolve** via domain knowledge — see Completeness-gate.
   Verdict override on `reject` is still a legitimate AskUser trigger.
 
+<a id="delivery-checklist"></a>
+## Delivery checklist — ЧТО ИМЕННО ТЫ СОЗДАЁШЬ (rule №0)
+
+> **Правило №0 скилла.** Discovery создаёт **ровно ОДИН артефакт**: `brief`.
+> Любой другой тип артефакта — **протокол violation**. Эта секция важнее
+> всех остальных: слабые модели читают описание downstream (PRD, UC, AC) в
+> этом SKILL и по ошибке создают их. Ниже — исчерпывающий список того,
+> что имеет право делать discovery-воркер.
+
+### Что ТЫ создаёшь на этом этапе (Discovery)
+
+| # | артефакт | type в `artifact_create` | статус |
+|---|---|---|---|
+| 1 | **brief** — discovery brief (12 секций per BRIEF-004) | `type: 'brief'` | `accepted` (c `decision` в metadata) |
+
+**Дополнительно можно** (helper, не saga-artifact):
+- `00-inputs.md` файл в workspace (через `extractInputs` helper или обычный Write)
+- `00-rollout.jsonl` файл (FALLBACK input source, только если нет db.sqlite)
+
+### Что ТЫ НЕ СОЗДАЁШЬ — это работа ДРУГИХ скиллов на ДРУГИХ этапах
+
+| тип | кто создаёт | этап |
+|---|---|---|
+| `PRD` | **saga-product** (НЕ ты) | formalization |
+| `UC` | **saga-analyst** (НЕ ты) | formalization |
+| `AC` | **saga-analyst** (НЕ ты) | formalization |
+| `SRS` | **saga-architect** (НЕ ты) | formalization (post-baseline) |
+| `baseline` | **saga-reconciler** (НЕ ты) | formalization reconciliation |
+| `decision`/`RULE` | **saga-product/analyst** | formalization |
+| `code`, `test` | **saga-worker** (НЕ ты) | development |
+| `evidence` | **saga-verifier** (НЕ ты) | verification |
+| `release-notes` | **saga-release** (НЕ ты) | release |
+
+> Если ты вызвал `artifact_create` с `type` НЕ `'brief'` — ты нарушил
+> контракт. Удали чужой артефакт (`artifact_update({status:'superseded'})`)
+> или немедленно заверши task через `worker_done` с пометкой ошибки в
+> `result`. Discovery = только brief.
+
+### Минимальный чек-лист перед `worker_done`
+
+Перед тем как вызвать `worker_done`, проверь:
+
+- [ ] **1 brief artifact** создан через `artifact_create({type:'brief'})`
+- [ ] brief имеет статус `accepted`
+- [ ] в `metadata.brief_payload.decision` стоит одно из: `go`, `fast-track`, `clarify`, `reject`
+- [ ] **0 других artifacts** создано тобой в этом эпизоде (никаких PRD/UC/AC!)
+- [ ] если `decision='go'` — formalization.prd задача **появится сама**
+  через `brief_accepted` transition; **НЕ создавай её вручную**
+
 ---
 
 <a id="decision-fork"></a>
@@ -444,6 +493,91 @@ the two gates share one ping-pong budget.
 | 1 | `classification='product'`, brief has zero hypotheses OR a hypothesis missing `metric` OR a hypothesis missing `target` | `decision='clarify'` is emitted, the canonical question body above is in `output`, flow does **not** reach `decision=go` / `fast-track`. |
 | 2 | `classification='product'`, brief has ≥1 hypothesis with both `metric` and `target` | `gate_hypothesis_passed === true`, flow proceeds to the decision-fork / verdict, **no** hypothesis AskUser is issued. |
 | 3 | `classification='tech-task'` (or any non-product) | gate is skipped; `HYP-GATE: skipped` marker present; flow proceeds regardless of whether hypotheses are present. |
+
+<a id="downstream-actionability-check"></a>
+## Downstream-actionability check
+
+<!-- source: EXT-7 https://github.com/levnikolaevich/claude-code-skills (product-discovery-suite/ln-51-opportunity-evaluator: "Record assumptions that can reverse the recommendation"; frame user/problem/channel/value before commitment) + heeki/spec-driven-development spec→plan→tasks→execute (a spec is actionable when each downstream role can produce its artifact without re-asking) -->
+
+> **Implements:** NFR-5 (observability), the discovery→formalization
+> contract (CGAD: a brief that exits Discovery as `go` / `fast-track` must
+> let formalization produce PRD / UC / AC without re-asking the sponsor),
+> the same family as the completeness-gate and product-hypothesis-gate.
+
+**Deterministic rule.** A brief is **downstream-actionable** iff it carries
+**all four** minimal fields, populated with content (not just a header), such
+that the formalization roles (product/analyst/verifier) can produce their
+artifacts from the brief alone:
+
+| Minimal field | Carries enough to derive | CGAD downstream artifact |
+|---|---|---|
+| **users** | who the actors are and why they care | **UC** actors + primary actor |
+| **capabilities** | what the system must do (verbs, not adjectives) | **FR** (functional requirements) |
+| **mandatory outcomes** | the observable result(s) the sponsor will accept | **AC** (acceptance criteria) |
+| **evidence hints** | how an outcome could be checked at verification | verification evidence / **FR/NFR** test surface |
+
+**Why these four.** `users → capabilities → mandatory outcomes → evidence hints`
+is the shortest chain that lets a downstream role start its artifact without a
+round-trip: the product owner names actors from `users`, the analyst turns
+`capabilities` into FR and `mandatory outcomes` into AC, and the verifier picks
+a property-test target from `evidence hints`. Drop any one and a role is forced
+to re-ask the sponsor — that re-ask is the failure mode this gate exists to
+prevent. A field is **present** when it names something specific to *this*
+brief; a copy-pasted generic ("stakeholders", "the system works", "tested",
+"users are happy") counts as **absent**.
+
+**Branch.** Compute after the product-hypothesis-gate, before the verdict
+fixation:
+
+```
+gate_actionability_passed =
+  has_field(brief, 'users')              AND
+  has_field(brief, 'capabilities')       AND
+  has_field(brief, 'mandatory_outcomes') AND
+  has_field(brief, 'evidence_hints')
+
+IF gate_actionability_passed === true:
+    # continue to the verdict / decision-fork
+    ACTION-GATE: passed (n_fields=4)
+ELSE:
+    # the missing field is the clarify subject
+    missing = first_absent(['users','capabilities','mandatory_outcomes','evidence_hints'])
+    ACTION-GATE: blocked → decision=clarify (missing <missing>)
+    decision = 'clarify'
+```
+
+On the `=== false` branch, emit exactly one AskUser whose body names the
+**first missing field** and asks the sponsor to make it specific to *this*
+brief (e.g. "Name the primary actor and what they do with the system today"
+for `users`; "Name the one observable result you will accept as done" for
+`mandatory_outcomes`). Do not auto-fill the field on the sponsor's behalf —
+the no-self-authorization invariant holds: the worker proposes the gap, the
+sponsor supplies the content, the gate re-decides.
+
+**Re-evaluation loop.** The sponsor's answer mutates the brief draft (fills the
+missing field), then the gate is recomputed. Loop until
+`gate_actionability_passed === true` OR an escalation fires, bounded by the
+same small fixed iteration count (default 3) shared with the completeness and
+hypothesis gates — the three gates draw from one ping-pong budget.
+
+**Position in the gate stack.** This check runs **after** the
+completeness-gate (the brief covers 100% of input replicas) and **after** the
+product-hypothesis-gate (a product brief has a measurable bet), and
+**before** the verdict fixation. It fixes whether `go` / `fast-track` is even
+available: a brief with `gate_actionability_passed === false` may not exit
+Discovery as `go` or `fast-track`. It is forbidden to reach `decision=go` (or
+`fast-track`) with `gate_actionability_passed === false`.
+
+**Grep markers (NFR-5 observability).**
+- `ACTION-GATE: passed (n_fields=4)` — success.
+- `ACTION-GATE: blocked → decision=clarify (missing <field>)` — failure, names the absent field.
+
+**Проверка (DoD).** Two observable cases gate this behaviour:
+
+| # | Setup | Assert |
+|---|---|---|
+| 1 | Brief is missing any of the four fields, OR a field is present but generic (e.g. `users='stakeholders'`, `evidence_hints='tested'`) | `gate_actionability_passed === false`, `decision='clarify'` is emitted, the AskUser body names the first missing field, flow does **not** reach `decision=go` / `fast-track`. |
+| 2 | All four fields present and specific to this brief | `gate_actionability_passed === true`, flow proceeds to the verdict / decision-fork, **no** actionability AskUser is issued. |
 
 <a id="verdict-override"></a>
 ## Verdict + override

@@ -25,10 +25,16 @@ saga-mcp решает это **механизмами, не дисциплино
 
 ```
 ИДЕЯ → Discovery → Formalization → Planning → Development → Verification → Integration → ГОТОВО
-         brief         PRD+SRS+AC    scaffold    code+L2      L3 property    merge
-                        +RULE+SPEC   +conflict   tests        tests          +gate
-                         +INV         keys                      (independent)
+         brief         PRD+UC+AC     scaffold    code+L2      L3 property    merge
+                        →SRS+DECOMP  +conflict   tests        tests          +gate
+                        +RULE+SPEC   keys                      (independent)
+                         +INV
 ```
+
+> **Note (ADR-014):** Formalization разбит на Part 1 (PRD+UC+AC+Reconcile) и
+> Part 2 (SRS ПОСЛЕ AC, архитектор видит замороженные AC + brief complexity).
+> `PRD → UC → AC → SRS` — каноничный порядок. FR/NFR/RULE теперь живут в PRD, SRS
+> чисто архитектурный + новая секция §D DECOMP (per-AC map для планировщика).
 
 Между стадиями — **hard gates (жёсткие шлюзы)**: нельзя войти в development без принятых AC, нельзя в integration без passing evidence (прохождения доказательства) с правильным hash. `deny-by-default (отказ по умолчанию)`: отсутствие доказательства = отказ.
 
@@ -84,12 +90,14 @@ HYP-1 (hypothesis: "core loop holds player ≥180s")
   ↓ metric: median_session_length_seconds
   ↓ target: ≥180s, kill: <90s, valid_by: 2026-08-15
   ↓
-PRD → SRS (Invariant Registry) → AC (properties YAML) → code → evidence
+PRD (+FR/NFR/RULE) → UC → AC (properties YAML) → Reconcile → SRS (Invariant Registry, §D DECOMP) → code → evidence
   ↓
 observation_record (median=203s)
   ↓
 HYP-1: HIT ✓ → invest in v1
 ```
+
+> Pipeline (ADR-014): `BRIEF → PRD → UC → AC → Reconcile → SRS → Planning → Dev → Verify → Integrate`.
 
 R16 lint: если hypothesis accepted (принята), но нет observation (наблюдения) → warning (предупреждение). Продуктовый цикл не замкнут — измерь метрику.
 

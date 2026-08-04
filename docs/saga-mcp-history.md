@@ -115,10 +115,17 @@ ADR-005 принял CGAD как target-state reference (целевое сост
 Исследование показало: saga-architect и saga-analyst не направляют систему в конкретный архитектурный стиль и не требуют машино-проверяемых инвариантов.
 
 Были обновлены:
-- **saga-architect**: требует Architectural Style declaration (объявление архитектурного стиля), Module Manifest с conflict-key surface (поверхностью ключей конфликтов), Invariant Registry (реестр инвариантов), Port Registry (реестр портов), Test Strategy L0-L4 (стратегия тестирования), NFR Capacity Targets (целевые показатели нефункциональных требований)
+- **saga-architect**: требует Architectural Style declaration (объявление архитектурного стиля), Module Manifest с conflict-key surface (поверхностью ключей конфликтов), Invariant Registry (реестр инвариантов), Port Registry (реестр портов), Test Strategy L0-L4 (стратегия тестирования)
 - **saga-analyst**: требует properties блок (YAML contract-as-data — контракт как данные) для алгоритмических AC — Verifier генерирует L3 property tests (тесты-свойства) из frozen контракта
 - **SRS template (шаблон)**: 8 обязательных секций (было 5)
-- **AC template (шаблон)**: YAML contract-as-data с inputs/outputs/examples/properties/operational
+
+> **Act VI addendum (ADR-014, 2026-07-20):** FR/NFR/RULE переехали из SRS в PRD.
+> SRS теперь чисто архитектурный: стиль, модули, порты, инварианты, + новая секция
+> **§D DECOMP** (per-AC YAML map — что реализует каждый AC: files/functions/types/
+> conflict_keys/ac_kind). saga-architect теперь работает ПОСЛЕ AC и выбирает стиль
+> по таблице complexity (XS→KISS, M-seq→Modular Monolith, M-scaffold→Ports, L/XL→
+> Hexagonal). Планировщик стал тупым копировщиком §D2. Pipeline канон:
+> `BRIEF → PRD(+FR/NFR/RULE) → UC → AC → Reconcile → SRS(+DECOMP) → Planning → Dev → Verify → Integrate`.
 
 Эксперимент (water-cannon smoke-test) подтвердил: **скиллы работают**. Архитектор пишет Invariant Registry (7 формальных предикатов), аналитик превращает их в properties блок, planner создаёт verification.ac задачи. Когда скилл говорит «MUST list every invariant (ОБЯЗАНО перечислить каждый инвариант)» — архитектор пишет 7 формальных предикатов. Не от себя — потому что скилл требует.
 

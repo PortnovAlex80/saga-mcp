@@ -56,13 +56,16 @@ Saga:   Какой продукт делаем? (одной фразой)
 Вы:     Депозитный калькулятор для сайта банка
 Saga:   [Discovery: 3 ассесора → brief → decision=go]
 Saga:   [Complexity Gate (шлюз сложности): класс=modular, артефакты определены]
-Saga:   [Formalization: PRD с гипотезой → SRS с инвариантами → AC с properties]
-Saga:   [Planning: scaffold (каркас) + dev tasks + verification tasks]
+Saga:   [Formalization Part 1: PRD с гипотезой + FR/NFR/RULE → UC → AC → Reconcile (заморозка baseline_hash)]
+Saga:   [Formalization Part 2: SRS ПОСЛЕ AC (стиль по сложности, §D DECOMP)]
+Saga:   [Planning: planner = тупой копировщик §D2 (одна задача на AC)]
 Saga:   [Development: рой воркеров в worktrees (рабочих копиях)]
 Saga:   [Verification: независимые L3 property-тесты (тесты-свойства)]
 Saga:   [Integration: merge (слияние) + hard gate (жёсткий шлюз)]
 Saga:   ✅ Продукт готов
 ```
+
+> Pipeline canonical order (ADR-014): `BRIEF → PRD(+FR/NFR/RULE) → UC → AC → Reconcile → SRS(+DECOMP) → Planning → Dev → Verify → Integrate`.
 
 ## Канбан-доска (автозапуск)
 
@@ -122,8 +125,9 @@ SAGA_LMSTUDIO_URL=http://192.168.1.10:1234/v1  # вместо дефолта loc
 |---|---|---|
 | Discovery (исследование) | Идея → измеримая гипотеза (metric, target, kill criteria) | saga-kickstart |
 | Complexity Gate (шлюз сложности) | Оценка: thin/modular/regulated/research → набор артефактов | senior-analyst |
-| Formalization (формализация) | PRD + SRS (стиль, инварианты, порты) + UC/AC (contract-as-data) | product/architect/analyst |
-| Planning (планирование) | Pattern B scaffold, conflict_keys, verification.ac tasks | saga-planner |
+| Formalization Part 1 (ЧТО) | PRD (+FR/NFR/RULE) → UC → AC (contract-as-data) → Reconcile (заморозка baseline_hash) | product/analyst/reconciler |
+| Formalization Part 2 (КАК) | SRS ПОСЛЕ AC: стиль по таблице сложности, инварианты, порты, §D DECOMP (per-AC map) | saga-architect |
+| Planning (планирование) | Planner = тупой копировщик §D2: одна задача на AC с file_path/schema/conflict_keys | saga-planner |
 | Development (разработка) | Параллельные воркеры в worktrees (рабочих копиях), merge-lock (мьютекс слияния) | saga-worker |
 | Verification (проверка) | Независимые property-тесты (тесты-свойства) из frozen AC (не Builder'овские) | saga-verifier |
 | Integration (интеграция) | Hard gate (жёсткий шлюз): каждый AC имеет passing evidence | episode_transition |

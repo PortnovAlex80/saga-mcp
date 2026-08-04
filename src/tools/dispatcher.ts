@@ -237,8 +237,13 @@ function findNextClaimable(
   //    Шаблон NOT EXISTS сверен с tasks.ts:139-145 и blocked_by_count (tasks.ts:279-281).
   //    project-фильтр через tasks.epic_id → epics.project_id (precedent в dashboard.ts).
   //    Готовые индексы: idx_tasks_epic_id, idx_epics_project_id.
-  //    low-приоритет НЕ раздаётся автоматически — ждёт ручного решения (повысить
-  //    приоритет / взять вручную). Применяется к todo И review единообразно.
+  //
+  //    Priority: раздаём ЛЮБЫЕ приоритеты (critical/high/medium/low). ORDER BY
+  //    PRIORITY_ORDER сохраняет предпочтение (critical раньше low), но low не
+  //    блокируется. Это снимает dead-lock «задача готова, depend_on выполнены,
+  //    но не выдаётся потому что priority=low» — saga-planner имеет право
+  //    ставить low для extension-задач, и pipeline всё равно должен их выдать.
+  //    Применяется к todo И review единообразно.
   //
   //    role (опционально): фильтр по тегу `role:<name>` (например role:analyst).
   //    Теги хранятся JSON-массивом; json_each разворачивает, EXISTS проверяет.
@@ -250,7 +255,6 @@ function findNextClaimable(
     SELECT t.* FROM tasks t
     WHERE t.status IN ('todo', 'review')
       AND (t.assigned_to IS NULL OR t.assigned_to = '')
-      AND t.priority IN ('critical', 'high', 'medium')
       AND t.epic_id IN (SELECT id FROM epics WHERE project_id = ?)
       ${epicClause}
       AND (
@@ -285,7 +289,34 @@ function findNextClaimable(
           )
         )
       )
-    ORDER BY ${PRIORITY_ORDER}, t.created_at
+      AND NOT EXISTS (
+        -- T-008 kanban: НЕ выдаём dev-задачу, если есть другая task с тем же
+        -- conflict_key, ещё не слитая в integration-ветку. Ждём, пока pending-merge
+        -- закроется — иначе параллельные задачи на один файл (single-file monolith)
+        -- гарантированно конфликтуют.
+        --
+        -- Узкий фильтр: только git_change задачи с integration_state РОВНО
+        -- 'pending' или 'conflict'. 'not_required' / '' / NULL нас не касается
+        -- (это tracker_only / recovery / read-only — они не пишут код).
+        -- Также ограничиваем тем же workflow_stage, чтобы verification-задачи
+        -- не блокировались development pending-merge'ами.
+        SELECT 1 FROM tasks other
+        JOIN task_conflict_keys k1 ON k1.task_id = t.id
+        JOIN task_conflict_keys k2 ON k2.key_type = k1.key_type
+                                   AND k2.key_value = k1.key_value
+        WHERE other.id = k2.task_id
+          AND other.id != t.id
+          AND other.workflow_stage = t.workflow_stage
+          AND other.execution_mode = 'git_change'
+          AND other.integration_state IN ('pending', 'conflict')
+      )
+    ORDER BY
+      -- T-008 kanban: review задачи выдаются РАНЬШЕ todo при равном priority.
+      -- Принцип: «сначала закрой начатое». Пока задача висит в review, она
+      -- блокирует очередь (новые todo на тот же conflict_key ждут её merge).
+      CASE WHEN t.status = 'review' THEN 0 ELSE 1 END,
+      ${PRIORITY_ORDER},
+      t.created_at
     LIMIT 1
   `;
   // Сбор параметров в порядке появления ? в SQL.
@@ -569,6 +600,11 @@ function handleWorkerDone(args: Record<string, unknown>): {
     );
 
     // 2. Следующий статус по ТЕКУЩЕМУ статусу (он сам = флаг цикла) + verdict.
+    //    T-013: для verification.ac — review-loop escape. Если verifier уже
+    //    записал ≥2 failed evidence records, changes_requested НЕ возвращают
+    //    задачу в todo (это создаёт бесконечный цикл — verifier не может
+    //    фиксить product bugs). Вместо этого задача закрывается как done с
+    //    пометкой verification_outcome=failed в metadata.
     let newStatus: 'review' | 'done' | 'todo';
     let newAssignedTo: string | null; // кому уходит задача после перевода
     if (task.status === 'in_progress') {
@@ -576,8 +612,37 @@ function handleWorkerDone(args: Record<string, unknown>): {
       newAssignedTo = null;            // в очереди на ревью (без исполнителя)
     } else if (task.status === 'review_in_progress') {
       if (verdict === 'changes_requested') {
-        newStatus = 'todo';            // single-use reviewer exits; a developer reclaims it
-        newAssignedTo = null;
+        // T-013: verification review-loop escape.
+        // Если это verification.ac и уже есть ≥ VERIFICATION_MAX_RETRIES (2)
+        // evidence records с outcome='failed' — не возвращаем в todo.
+        // Verifier нашёл реальные product bugs — он сделал свою работу.
+        // Закрываем как done (metadata verification_outcome=failed).
+        if (task.task_kind === 'verification.ac') {
+          const failedCount = db.prepare(
+            `SELECT COUNT(*) AS n FROM verification_evidence
+             WHERE task_id=? AND outcome='failed'`,
+          ).get(taskId) as { n: number } | undefined;
+          const VERIFICATION_MAX_RETRIES = 2;
+          if ((failedCount?.n ?? 0) >= VERIFICATION_MAX_RETRIES) {
+            // Loop detected — close as done (verifier did its job: found bugs).
+            newStatus = 'done';
+            newAssignedTo = null;
+            // Tag for follow-up: product bugs need dev fixes, not verifier retries.
+            db.prepare(
+              `UPDATE tasks SET metadata=json_set(COALESCE(metadata,'{}'),
+                '$.verification_outcome', 'failed',
+                '$.verification_loop_escaped', datetime('now'),
+                '$.verification_failed_count', ?)
+                WHERE id=?`,
+            ).run(failedCount?.n ?? 0, taskId);
+          } else {
+            newStatus = 'todo';        // first/second failure — retry allowed
+            newAssignedTo = null;
+          }
+        } else {
+          newStatus = 'todo';          // non-verification: normal changes_requested
+          newAssignedTo = null;
+        }
       } else {
         newStatus = 'done';            // цикл ревью завершён (APPROVED)
         newAssignedTo = null;
@@ -594,6 +659,11 @@ function handleWorkerDone(args: Record<string, unknown>): {
     //    - review_in_progress→done:      любой воркер (status='review_in_progress'), assigned→NULL.
     //    - review_in_progress→in_progress: любой воркер (status='review_in_progress'), assigned→workerId.
     //    Гонок нет: BEGIN IMMEDIATE + info.changes===1.
+    //
+    //    T-013: verification.ac может закрываться как done в двух случаях:
+    //      (a) есть passed evidence (APPROVED — нормальный путь)
+    //      (b) loop_escaped (≥2 failed evidence — verifier нашёл product bugs,
+    //          retrying бессмысленно, pipeline должен идти дальше с degraded verification)
     if (newStatus === 'done' && task.task_kind === 'verification.ac') {
       const target = db.prepare(
         `SELECT a.id, a.accepted_hash
@@ -604,7 +674,12 @@ function handleWorkerDone(args: Record<string, unknown>): {
         `SELECT 1 FROM verification_evidence
          WHERE task_id=? AND artifact_id=? AND outcome='passed' AND content_hash=?`,
       ).get(taskId, target.id, target.accepted_hash);
-      if (!target || !passed) {
+      // T-013: check if this is a loop-escape close (metadata.verification_loop_escaped)
+      const loopEscaped = db.prepare(
+        `SELECT json_extract(metadata, '$.verification_loop_escaped') AS escaped
+         FROM tasks WHERE id=?`,
+      ).get(taskId) as { escaped: string | null } | undefined;
+      if (!target || (!passed && !loopEscaped?.escaped)) {
         throw new Error(
           `Verification task ${taskId} cannot be approved without passing evidence for its canonical AC`,
         );
@@ -1486,7 +1561,7 @@ export const definitions: Tool[] = [
   {
     name: 'worker_next',
     description:
-      'Claim the next available task for a worker WITHIN A PROJECT. Finds a free task (status todo or review, unassigned, no unmet dependencies, priority medium or above) in the given project only, atomically assigns it to the worker, and returns the task plus the skill the agent should use. Low-priority tasks are NOT handed out automatically (raise their priority to medium+ to make them claimable). Other projects in the shared DB are never touched. project_id is REQUIRED — resolve it once from ./projectname.txt via project_resolve_by_name, then pass it on every call. Optional `role` filters the queue to tasks tagged `role:<name>` (e.g. role:"analyst") — used in the requirements project to split work between saga-product / saga-analyst / saga-architect. Returns {task: null} when the project queue is empty.',
+      'Claim the next available task for a worker WITHIN A PROJECT. Finds a free task (status todo or review, unassigned, no unmet dependencies) in the given project only, atomically assigns it to the worker, and returns the task plus the skill the agent should use. Tasks of ANY priority (critical/high/medium/low) are handed out, ordered by priority (critical first, low last). Other projects in the shared DB are never touched. project_id is REQUIRED — resolve it once from ./projectname.txt via project_resolve_by_name, then pass it on every call. Optional `role` filters the queue to tasks tagged `role:<name>` (e.g. role:"analyst") — used in the requirements project to split work between saga-product / saga-analyst / saga-architect. Returns {task: null} when the project queue is empty.',
     annotations: {
       title: 'Worker: Next Task',
       readOnlyHint: false,

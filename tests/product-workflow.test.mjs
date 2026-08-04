@@ -141,7 +141,11 @@ test('machine checkout overrides legacy repository path during dispatch', () => 
   assert.equal(assignment.repository.local_path, path.resolve(machinePath));
 });
 
-test('typed PRD generates SRS and UC exactly once and preserves lineage', () => {
+test('typed PRD generates UC exactly once and the ADR-013 chain runs end-to-end', () => {
+  // ADR-013 (pipeline-reorder-srs-after-ac) reshapes the typed flow:
+  //   PRD → UC → AC → reconciliation → SRS → planning.decomposition
+  // SRS is no longer a parallel sibling of UC — it appears AFTER the AC
+  // baseline is frozen (baseline_accepted → formalization.srs).
   const product = projects.project_list({}).find(p => p.name === 'Workflow Product');
   const repo = repositories.repository_list({ project_id: product.id }).repositories[0];
   const epic = epics.epic_create({ project_id: product.id, name: 'REQ-001 typed flow' });
@@ -157,37 +161,28 @@ test('typed PRD generates SRS and UC exactly once and preserves lineage', () => 
     project_repository_id: repo.id,
   });
 
+  // prd_accepted → EXACTLY ONE UC (no SRS).
   const first = workflow.workflow_generate_next({
     epic_id: epic.id, source_task_id: prd.id, transition: 'prd_accepted',
   });
-  assert.equal(first.created.length, 2);
-  assert.deepEqual(first.tasks.map(t => t.task_kind).sort(), ['formalization.srs', 'formalization.uc']);
+  assert.equal(first.created.length, 1);
+  assert.deepEqual(first.tasks.map(t => t.task_kind), ['formalization.uc']);
   assert.ok(first.tasks.every(t => t.generated_from_task_id === prd.id));
   assert.ok(first.tasks.every(t => t.project_repository_id === repo.id));
+  assert.ok(!first.tasks.some(t => t.task_kind === 'formalization.srs'),
+    'SRS must NOT be spawned by prd_accepted under ADR-013');
 
+  // Idempotency.
   const second = workflow.workflow_generate_next({
     epic_id: epic.id, source_task_id: prd.id, transition: 'prd_accepted',
   });
   assert.equal(second.created.length, 0);
-  assert.deepEqual(second.reused.sort(), first.created.sort());
-  assert.equal(tasks.task_list({ epic_id: epic.id }).filter(t => t.generated_from_task_id === prd.id).length, 2);
+  assert.deepEqual(second.reused, first.created);
+  assert.equal(tasks.task_list({ epic_id: epic.id }).filter(t => t.generated_from_task_id === prd.id).length, 1);
 
-  const srs = first.tasks.find(t => t.task_kind === 'formalization.srs');
   const uc = first.tasks.find(t => t.task_kind === 'formalization.uc');
 
-  // First sibling done → its transition fires but returns [] (counterpart
-  // not done yet, AC must wait). This pins the "wait for both" semantics.
-  process.env.SAGA_ALLOW_MANUAL_STATUS = '1';
-  tasks.task_update({ id: srs.id, status: 'done' });
-  delete process.env.SAGA_ALLOW_MANUAL_STATUS;
-  const acAttempt1 = workflow.workflow_generate_next({
-    epic_id: epic.id, source_task_id: srs.id, transition: 'srs_accepted',
-  });
-  assert.equal(acAttempt1.created.length, 0);
-  assert.equal(acAttempt1.tasks.length, 0);
-
-  // Second sibling done → its transition produces the AC task with deps
-  // on BOTH siblings (so AC unblocks only when SRS AND UC are both done).
+  // UC done → uc_accepted → AC (no sibling-wait under ADR-013).
   process.env.SAGA_ALLOW_MANUAL_STATUS = '1';
   tasks.task_update({ id: uc.id, status: 'done' });
   delete process.env.SAGA_ALLOW_MANUAL_STATUS;
@@ -200,13 +195,7 @@ test('typed PRD generates SRS and UC exactly once and preserves lineage', () => 
   assert.equal(ac.tasks[0].execution_mode, 'tracker_only',
     'formalization.ac is tracker_only — markdown artifact, no git integration');
 
-  // Calling srs_accepted again must reuse (idempotent), not create a duplicate.
-  const acAgain = workflow.workflow_generate_next({
-    epic_id: epic.id, source_task_id: srs.id, transition: 'srs_accepted',
-  });
-  assert.deepEqual(acAgain.reused, ac.created);
-
-  // AC done → ac_accepted → reconciliation
+  // AC done → ac_accepted → reconciliation.
   process.env.SAGA_ALLOW_MANUAL_STATUS = '1';
   tasks.task_update({ id: ac.tasks[0].id, status: 'done' });
   delete process.env.SAGA_ALLOW_MANUAL_STATUS;
@@ -219,16 +208,33 @@ test('typed PRD generates SRS and UC exactly once and preserves lineage', () => 
   assert.equal(reconciliation.tasks[0].task_kind, 'formalization.reconciliation');
   assert.equal(reconciliation.tasks[0].execution_mode, 'tracker_only');
 
+  // Reconciliation done → baseline_accepted → SRS (NEW post-AC position).
   process.env.SAGA_ALLOW_MANUAL_STATUS = '1';
   tasks.task_update({ id: reconciliation.tasks[0].id, status: 'done' });
   delete process.env.SAGA_ALLOW_MANUAL_STATUS;
-  const planning = workflow.workflow_generate_next({
+  const srs = workflow.workflow_generate_next({
     epic_id: epic.id,
     source_task_id: reconciliation.tasks[0].id,
     transition: 'baseline_accepted',
   });
+  assert.equal(srs.created.length, 1);
+  assert.equal(srs.tasks[0].task_kind, 'formalization.srs');
+  assert.equal(srs.tasks[0].execution_mode, 'tracker_only');
+  assert.equal(srs.tasks[0].execution_skill, 'saga-architect');
+
+  // SRS done → srs_accepted → planning.decomposition (NEW transition).
+  process.env.SAGA_ALLOW_MANUAL_STATUS = '1';
+  tasks.task_update({ id: srs.tasks[0].id, status: 'done' });
+  delete process.env.SAGA_ALLOW_MANUAL_STATUS;
+  const planning = workflow.workflow_generate_next({
+    epic_id: epic.id,
+    source_task_id: srs.tasks[0].id,
+    transition: 'srs_accepted',
+  });
+  assert.equal(planning.created.length, 1);
   assert.equal(planning.tasks[0].task_kind, 'planning.decomposition');
   assert.equal(planning.tasks[0].execution_mode, 'tracker_only');
+  assert.equal(planning.tasks[0].workflow_stage, 'planning');
 });
 
 test('ADR-008: brief_accepted seeds EXACTLY ONE formalization.prd (not PRD+SRS parallel)', () => {
@@ -299,7 +305,9 @@ test('ADR-008: brief_accepted seeds EXACTLY ONE formalization.prd (not PRD+SRS p
   assert.deepEqual(again.reused, result.created);
 
   // The downstream chain is NOT broken: completing the seeded PRD fires
-  // prd_accepted, which creates SRS+UC as children of the PRD (not of kickstart).
+  // prd_accepted, which under ADR-013 creates EXACTLY ONE UC (no parallel
+  // SRS). SRS now appears later, via baseline_accepted after the AC baseline
+  // is frozen.
   process.env.SAGA_ALLOW_MANUAL_STATUS = '1';
   tasks.task_update({ id: result.tasks[0].id, status: 'done' });
   delete process.env.SAGA_ALLOW_MANUAL_STATUS;
@@ -311,11 +319,13 @@ test('ADR-008: brief_accepted seeds EXACTLY ONE formalization.prd (not PRD+SRS p
   const downstream = workflow.workflow_generate_next({
     epic_id: epic.id, source_task_id: prdId, transition: 'prd_accepted',
   });
-  assert.equal(downstream.created.length, 2);
-  assert.deepEqual(downstream.tasks.map(t => t.task_kind).sort(), ['formalization.srs', 'formalization.uc']);
-  // CRITICAL lineage invariant: SRS and UC share the PRD as their parent
-  // (this is what sibling() at workflow.ts:108 relies on for reconciliation).
+  assert.equal(downstream.created.length, 1);
+  assert.deepEqual(downstream.tasks.map(t => t.task_kind), ['formalization.uc']);
+  // CRITICAL lineage invariant: UC's parent is the PRD that prd_accepted
+  // consumed. The legacy sibling() dance between parallel SRS+UC is retired.
   assert.ok(downstream.tasks.every(t => t.generated_from_task_id === prdId));
+  assert.ok(!downstream.tasks.some(t => t.task_kind === 'formalization.srs'),
+    'SRS must NOT appear in prd_accepted downstream under ADR-013');
 });
 
 test('ADR-008: brief_accepted decision-guard — non-go decisions seed NO PRD', () => {
@@ -457,10 +467,12 @@ test('typed git work generates downstream only after repository integration', ()
   dispatcher.worker_merge_release({
     task_id: prd.id, worker_id: 'auto-reviewer', result: 'merged', commit_sha: 'abc123',
   });
+  // ADR-013: prd_accepted emits EXACTLY ONE downstream task — UC. SRS now
+  // appears later via baseline_accepted after the AC baseline is frozen.
   assert.deepEqual(
     tasks.task_list({ epic_id: epic.id }).filter(t => t.generated_from_task_id === prd.id)
       .map(t => t.task_kind).sort(),
-    ['formalization.srs', 'formalization.uc'],
+    ['formalization.uc'],
   );
 });
 

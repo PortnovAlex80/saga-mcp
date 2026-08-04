@@ -1,5 +1,320 @@
 # saga-mcp 3.0 — Changelog
 
+## [Unreleased]
+
+### Fixed — saga-planner: every AC gets a verification task (T-014) — 2026-07-21
+
+**Root cause.** The verification→integration episode gate requires `passed` (or
+`unknown`) evidence for **every** accepted AC in the baseline. But the planner
+only created `verification.ac` tasks for ACs whose §D2 entry had
+`ac_kind: verification`. ACs marked `ac_kind: implementation` (the majority —
+19 of 25 in Sollar) were left without any verification task.
+
+Result: at the verification→integration transition, the gate failed with
+"no passing evidence for AC-1.1, AC-1.2, …" and the engine had to spawn a
+recovery task that retroactively created 19 verification tasks. This wasted
+~1 hour and broke the episode flow.
+
+The misunderstanding: `ac_kind` in §D2 classifies the *primary* work (write
+code vs run benchmark), NOT whether the AC needs substantive verification.
+Every AC needs it — the gate enforces it regardless of `ac_kind`.
+
+**Fix.** `skills/saga-planner/SKILL.md`: added a hard rule "T-014: EVERY AC
+gets a verification task (no exceptions)". The planner now creates a
+`verification.ac` task for every AC in the baseline, not just those marked
+`ac_kind: verification`. Routing to `saga-verifier` (L3 property tests) vs
+`saga-worker` (L2 component re-check) is decided by the presence of a
+`properties` block, not by `ac_kind`.
+
+The planner's exit criterion is now: `implements` = 0 gaps AND `verified_by`
+= 0 gaps — both structural coverage and substantive verification coverage
+must be complete before INTEGRATE.
+
+| File | Change |
+|---|---|
+| `skills/saga-planner/SKILL.md` | Hard rule: verification task for every AC; `ac_kind` ≠ exemption from verification |
+
+See `docs/research/testing-2026-07-21-sollar-new-pipeline.md` (case T-014)
+for the full analysis: why planner created only 6 verification tasks for 25
+ACs, how recovery #46 retroactively filled the gap, and why `ac_kind` must
+not gate verification coverage.
+
+---
+
+### Fixed — verification review-loop escape (T-013) — 2026-07-21
+
+**Root cause.** When a verifier records `outcome=failed` because it found a
+real product bug (not a test bug), the review loop returns the task with
+`changes_requested` — expecting the verifier to "fix the test". But the bug
+is in the product code, which the verifier cannot and should not fix (T-010
+Principle 2). This creates an infinite dev↔review loop.
+
+Forensic evidence (Sollar task #31, AC-2.5 Browser Compatibility): the
+verifier recorded `outcome=failed` **15 times** over ~3 hours, each time
+with the same two product bugs (ESM MIME mismatch + `validateParams()`
+missing `body` field). The pipeline never escaped — each review cycle
+returned the task with `changes_requested`.
+
+**Fix.** Two changes in `worker_done` (`src/tools/dispatcher.ts`):
+
+1. **Review-loop escape for verification.ac.** When `verdict=changes_requested`
+   is issued for a `verification.ac` task AND there are already
+   `≥ VERIFICATION_MAX_RETRIES` (2) evidence records with `outcome=failed`,
+   the task is closed as `done` instead of returned to `todo`. Metadata is
+   tagged with `verification_outcome=failed`, `verification_loop_escaped`,
+   `verification_failed_count`. Non-verification tasks retain the old
+   behaviour (unlimited retries on changes_requested).
+
+2. **Gate allows `done` on loop-escape.** The verification.ac gate previously
+   required `passed` evidence to transition to `done`. Now it also accepts
+   a close when `metadata.verification_loop_escaped` is set — i.e. the
+   pipeline acknowledges that the verifier found real product bugs and the
+   task is closed as a degraded-verification outcome.
+
+**Semantic change.**
+- `passed` → AC confirmed, normal flow.
+- `failed` (≤1 occurrence) → retry allowed (could be a test bug).
+- `failed` (≥2 occurrences, same task) → **loop escaped**: task closed as
+  done with `verification_outcome=failed`. Product bugs need a separate
+  development task, not verifier retries.
+- `unknown` → escalate (T-010).
+- `error` → retry once.
+
+**Why this is not "giving up".** The verifier DID its job: it found the
+bugs and recorded evidence. Forcing it to retry the same broken code 15
+times produces no new information — it only burns tokens and time. The
+correct downstream action is a `development.code` task to fix the bugs,
+then a fresh verification run. This fix stops the loop; spawning the dev
+task automatically is a v2 enhancement (see T-013 proposal).
+
+| File | Change |
+|---|---|
+| `src/tools/dispatcher.ts` | `worker_done`: verification.ac review-loop escape after ≥2 failed evidence; gate accepts loop-escaped `done` |
+
+See `docs/research/testing-2026-07-21-sollar-new-pipeline.md` (case T-013)
+for the full forensic analysis of the 15-cycle loop on task #31.
+
+---
+
+### Added — saga-architect: Test Reachability Check (T-012) — 2026-07-21
+
+**Root cause.** Sollar's saga-architect chose single-file monolith with inline
+`<script type="module">` blocks (SRS §2.1) AND Playwright cross-browser E2E
+(SRS §2.5). These two decisions are mutually exclusive: inline ESM self-imports
+(`import { x } from './index.html'`) work only via HTTP, not via the `file://`
+protocol Playwright uses by default. The architect declared WHAT to test (§2.5)
+and WHICH tools (§9), but never proved the tools could physically reach the
+code in the chosen form.
+
+Downstream impact: verifiers hit the ESM limitation, entered retry-loops
+(T-001), and one verifier (task #31) ended up refactoring the product itself
+into a multi-file structure to make tests loadable — a clear violation of
+concern separation (verifier should not be an architect).
+
+**Fix principle.** Do NOT hardcode a list of forbidden technology combinations
+— the space is infinite (Rust/WASM, React SSR, Python multiprocessing, embedded
+HAL, microservices, GLSL...). Instead, give the architect a **consistency
+check obligation**: for every (test_level, framework) pair, write a one-line
+compatibility statement proving the test runner can reach the code in the form
+declared by §2.1. If the sentence cannot be written, the stack is inconsistent
+and the SRS must be revised (add test infrastructure to §9, or revise §2.1).
+
+**Change.** `skills/saga-architect/SKILL.md`:
+
+- New section **"Test Reachability Check"** between §9 Technology Stack and
+  §D Decomposition. Defines the principle, the mandatory §2.6 matrix
+  (level / framework / reach_method / compatibility statement /
+  test_server / isolation / startup_teardown), the 5 validation questions
+  to answer before `worker_done`, and the two resolution paths when a pair
+  is incompatible (add infrastructure vs. revise style).
+- New rule in the **Rules** section: "SRS must be internally consistent."
+  Lists the §2.1↔§2.5↔§9↔§2.6 consistency checks. Explicitly references
+  T-012 as the class of bug this prevents.
+- The matrix is a template, not a hard rule. The architect reasons per-stack
+  using their own knowledge (a 7-row example table illustrates the reasoning
+  for ESM/Playwright, Rust/WASM, React SSR, Vite preview, microservices,
+  embedded — but these are examples, not an exhaustive list).
+
+**Why principle over catalog.** A hardcoded "ban ESM + file://" rule would
+break the next project that legitimately uses a different stack with its own
+incompatibilities. The consistency check scales to any stack because it asks
+the architect to *prove* compatibility, not to memorize forbidden pairs.
+
+See `docs/research/testing-2026-07-21-sollar-new-pipeline.md` (case T-012)
+for the full forensic analysis: SRS §2.1 vs §2.5 contradiction, verifier
+loop, product refactor by the verifier.
+
+---
+
+### Fixed — Kanban dispatch + reviewer-does-merge + conflict-key gate (T-008) — 2026-07-21
+
+**Root cause.** Two related defects caused the Sollar episode to spawn 8
+`recovery.heal` tasks in a loop and to produce mechanical merge conflicts
+on a single-file monolith (`index.html`):
+
+1. **Reviewer exited with `integration_state="pending"`.** `worker_done`
+   sets `pending` after APPROVED and relies on a *third* worker to pick up
+   the merge later. In single-file monoliths this creates a 30–180s window
+   where the engine sees the task as `done` and dispatches the next dev-task
+   on the same `file_path` → guaranteed merge conflict. The saga-worker
+   SKILL claimed "the worker who got `done` does the merge", but in practice
+   reviewer and merger were different processes.
+
+2. **`findNextClaimable` treated `todo` and `review` equally.** `ORDER BY`
+   was `PRIORITY_ORDER, created_at` — no kanban priority. A new dev-task
+   could be claimed while a reviewed task waited in `review` for someone to
+   pick up its merge.
+
+3. **No conflict-key aware dispatching.** Two dev-tasks sharing
+   `conflict_key = {file_path: 'index.html'}` could be dispatched in
+   parallel because the dispatcher never checked for sibling tasks in
+   pre-merge state.
+
+**Forensic evidence (Sollar task #20 lifecycle):**
+```
+07:56:17  dev worker -28  todo → in_progress (writes code)
+07:59:12  dev worker -28  in_progress → review (worker_done)
+07:59:17  rev worker -29  review → review_in_progress (DIFFERENT worker)
+08:02:03  rev worker -29  review_in_progress → done, integration_state=pending
+                            ← reviewer EXITS without merging
+          ~~~~ 76 second window ~~~~  ← engine may dispatch next dev-task here
+08:03:18  merge worker -31  acquires merge-lock
+08:03:37  merge worker -31  git merge → dev, integration_state=merged
+```
+
+Three different workers (developer, reviewer, merger) for one task. The
+window between `done` and `merged` is where single-file merge conflicts
+were born.
+
+**Fix.**
+
+**A. Kanban ORDER BY** (`src/tools/dispatcher.ts`, `findNextClaimable`):
+```sql
+ORDER BY
+  CASE WHEN t.status = 'review' THEN 0 ELSE 1 END,  -- kanban: review first
+  PRIORITY_ORDER,
+  t.created_at
+```
+`review` tasks are now handed out before `todo` at equal priority —
+"finish what you started" before starting new work.
+
+**B. Conflict-key gate** (`src/tools/dispatcher.ts`, `findNextClaimable`):
+```sql
+AND NOT EXISTS (
+  SELECT 1 FROM tasks other
+  JOIN task_conflict_keys k1 ON k1.task_id = t.id
+  JOIN task_conflict_keys k2 ON k2.key_type = k1.key_type
+                             AND k2.key_value = k1.key_value
+  WHERE other.id = k2.task_id
+    AND other.id != t.id
+    AND other.workflow_stage = t.workflow_stage
+    AND other.execution_mode = 'git_change'
+    AND other.integration_state IN ('pending', 'conflict')
+)
+```
+A dev-task is not dispatched while another task with an overlapping
+`conflict_key` is in pre-merge state (`pending` or `conflict`). Single-file
+monoliths can no longer race. Filter is narrow: only `git_change` tasks
+with `integration_state` literally `pending` or `conflict` — `not_required`
+(tracker-only / verification / recovery) is exempt, and the filter is
+scoped to the same `workflow_stage` so verification is not blocked by
+development pending-merges.
+
+**C. Reviewer-does-merge** (`skills/saga-worker/SKILL.md`, "MERGE-BACK"
+section): explicitly states that the worker who receives
+`completed_new_status === "done"` for a `git_change` task MUST perform the
+merge in the same launch (acquire → git merge → release) before exiting.
+`stop:true` means "do not claim another task", NOT "exit immediately".
+Leaving `integration_state="pending"` and exiting is now called out as the
+anti-pattern that created the Sollar recovery-loop.
+
+| File | Change |
+|---|---|
+| `src/tools/dispatcher.ts` | `findNextClaimable`: kanban ORDER BY (review-first) + conflict-key gate |
+| `skills/saga-worker/SKILL.md` | "MERGE-BACK" section: reviewer must merge before exit; `pending` exit is an anti-pattern |
+
+**Semantic changes.**
+
+- `priority=low` no longer blocks dispatch (was the T-006 fix).
+- `review` is now preferred over `todo` in the dispatch queue at equal priority.
+- A dev-task will not be dispatched while a sibling with overlapping
+  `conflict_key` is in `pending`/`conflict` integration state.
+- Reviewer is now responsible for the merge — no separate "merger" worker.
+
+**Verification.** Sollar episode resumed immediately after engine rebuild +
+restart (PID 3992 → 13860). Previously stuck verification tasks (#25, #29)
+were manually marked `merged` (they were `verification.ac` mislabeled
+`git_change` by the planner — see T-009 candidate). Engine then dispatched
+#31 (verification.ac) within 15 seconds. No new recovery tasks spawned.
+
+See `docs/research/testing-2026-07-21-sollar-new-pipeline.md` (case T-008)
+for the full incident timeline, forensic lifecycle analysis, and root-cause.
+
+---
+
+### Fixed — `worker_next` now dispatches ALL priorities (was: medium+ only) — 2026-07-21
+
+**Root cause.** `findNextClaimable` in `src/tools/dispatcher.ts` and
+`countActiveTasks` in `src/orchestrate.ts` both filtered candidate tasks by
+`priority IN ('critical','high','medium')`. Any `low`-priority task was
+invisible to the dispatcher and to the engine pump-loop.
+
+`saga-planner` legitimately assigns `priority=low` to extension / edge-case
+ACs (e.g. "Interactive Examples", "Duplicate Name Handling", "Empty-State
+Message"). These tasks had their dependencies satisfied and were ready to
+run, but `worker_next` refused to hand them out.
+
+**Cascade failure observed (Sollar episode, 2026-07-21):** 5 dev tasks
+(#21/#22/#23/#24/#28) stuck in `todo`/`blocked` because planner marked them
+`low`. Engine's gate refused to advance to verification
+("tasks not completed/integrated"). Engine then spawned 8 `recovery.heal`
+tasks (#33–#40) trying to "fix" the situation; the recovery skill
+hallucinated that the code was already written and tried to advance task
+status via the API, which `worker_done` rejects for `todo` tasks. After
+3 failed recoveries the engine paused the episode with `needs-human=1`.
+
+**Fix.** Removed the `priority IN (...)` filter from both SQL queries.
+The `ORDER BY PRIORITY_ORDER` clause is preserved, so critical tasks are
+still handed out before low — but low is no longer a hard block.
+
+| File | Change |
+|---|---|
+| `src/tools/dispatcher.ts` | `findNextClaimable`: dropped `AND t.priority IN ('critical','high','medium')`. Updated `worker_next` description (was misleading models into manually bumping priority). |
+| `src/orchestrate.ts` | `countActiveTasks`: dropped the same filter. Engine pump-loop now sees `low`-priority tasks as `claimable > 0` and dispatches workers. |
+
+**Semantic change.** `priority=low` previously meant *"waits for manual
+decision — raise to medium+ to make claimable"*. It now means *"dispatched
+last, after all higher priorities are exhausted"*. If a task must never be
+auto-dispatched, use `status=blocked` (without `depends_on`) or a dedicated
+`deferred` tag — `priority=low` is no longer a deferral mechanism.
+
+**Verification.** Sollar episode resumed immediately after the engine
+rebuild + restart (PID 3144 → 3992): `claimable=1` for the previously-stuck
+`low` task, 2 workers running in parallel, 0 new recovery tasks spawned.
+The previously-stuck chain (#21 → #22 → #23 → #24 → #28) progressed to
+completion through the normal pipeline.
+
+See `docs/research/testing-2026-07-21-sollar-new-pipeline.md` (case T-006)
+for the full incident timeline and root-cause analysis.
+
+---
+
+### Changed — Pipeline reorder: SRS after AC + Complexity Gate + DECOMP (ADR-014)
+
+- **Architecture step moved.** SRS is now written AFTER AC (was: parallel with UC).
+  Pipeline: `BRIEF → PRD(+FR/NFR/RULE) → UC → AC → Reconcile → SRS(+DECOMP) → Planning → Dev → Verify → Integrate`.
+- **Complexity Gate linked to architect.** saga-architect MUST read brief complexity
+  and choose architecture by mandatory table (XS=KISS, M-sequence=Modular Monolith, etc.).
+- **DECOMP §D.** New SRS section: per-AC YAML map (files, functions, types,
+  conflict_keys, ac_kind). Planner becomes dumb copier.
+- **FR/NFR/RULE moved to PRD.** saga-product creates them as separate artifacts with
+  derived_from → PRD.
+- **11 skills updated**, **12 docs updated**, ADR-014 added, ADR-008 addendum.
+
+See `docs/plans/PIPELINE-REORDER-SRS-AC.md` for full plan and rationale.
+
+---
+
 ## Hotfix: saga-mcp 3.0.1 — Worker Execution Fencing + Markdown + Russian UX (2026-07-18)
 
 **11 commits** from `f865570` to `3ee4e66`. End-to-end verified by completing the

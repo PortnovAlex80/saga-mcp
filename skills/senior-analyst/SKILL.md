@@ -8,14 +8,22 @@ description: "Reference methodology for requirements engineering. Loaded by saga
 ## When this skill is used
 
 Loaded by saga-orchestrator at Stage 1.5 (Complexity Gate), after Discovery
-(brief accepted) and before Formalization (PRD/SRS/UC/AC). The orchestrator
-reads this reference to decide: which artifact types does THIS project need?
+(brief accepted) and before Formalization (PRD → UC → AC → Reconcile → SRS).
+The orchestrator reads this reference to decide: which artifact types does
+THIS project need? The brief's `complexity.tshirt` and `topology_hint` also
+seed the SRS §2.1 style choice the architect makes LATER (after AC are
+baselined) — see the complexity→architecture table in saga-architect SKILL.
 
 ## Complexity classes
 
+> **Pipeline order (ADR-013).** Artifact SETS are unchanged; only the ORDER
+> in which they are produced shifted. SRS now follows AC (the architect reads
+> the frozen AC + brief complexity to choose a style). FR/NFR/RULE live under
+> the PRD (saga-product registers them), not under the SRS.
+
 | Class | T-shirt | Artifact set | Example |
 |---|---|---|---|
-| **thin** | XS-S | brief → PRD → SRS → FR → NFR → UC → AC | Prototype, utility |
+| **thin** | XS-S | brief → PRD(+FR/NFR/RULE) → UC → AC → SRS(+DECOMP) | Prototype, utility |
 | **modular** | M-L | thin + RULE + hypothesis + business_metric + SPEC | Product feature, service |
 | **regulated** | XL | modular + DR + IR + CONSTRAINT + RISK + TR | Finance, health, legal |
 | **research** | any | brief → decision → OQ | Spike, exploration |
@@ -44,13 +52,13 @@ Each artifact type has a ROLE. Only create types that add value:
 | hypothesis | Measurable business bet | Product classification | Tech-task, research |
 | business_metric | Metric definition for hypothesis | With hypothesis | No hypothesis |
 | PRD | Product intent + scope | Product, modular | Tech-task (use brief) |
-| SRS | System design + contracts | Always (when code needed) | Pure research |
-| FR | Observable system behavior | Always | — |
-| NFR | Quality thresholds with numbers | Always | — |
-| RULE | Business logic, calculations, policies | When decision logic exists | Pure CRUD |
+| SRS | System design + contracts + §D Decomposition | Always (when code needed) — written AFTER AC baseline | Pure research |
+| FR | Observable system behavior — **child of PRD** (saga-product registers) | Always | — |
+| NFR | Quality thresholds with numbers — **child of PRD** (saga-product registers) | Always | — |
+| RULE | Business logic, calculations, policies — **child of PRD** (saga-product registers) | When decision logic exists | Pure CRUD |
 | SPEC | Implementation mechanism (API, algo, data) | When FR needs impl detail | Trivial impl |
-| UC | Actor-system interaction | When actors exist | Batch/automated |
-| AC | Verifiable acceptance criteria | Always (bridge to kanban) | Never skip |
+| UC | Actor-system interaction — derived from PRD | When actors exist | Batch/automated |
+| AC | Verifiable acceptance criteria — derived from UC + FR/NFR (in PRD) | Always (bridge to kanban) | Never skip |
 | OQ | Unresolved question | When something is unknown | Everything resolved |
 | decision | Explicit choice with rationale | At each fork | — |
 
@@ -77,7 +85,7 @@ TEST 4 — RULE-VS-FR: Contains decision logic (if X then Y)? → extract RULE. 
 1. FR MUST NOT contain implementation detail (endpoints, JSON, DB tables, algorithms). R14 catches.
 2. RULE MUST have enforcement path (implements or implements_spec trace). R15 catches.
 3. Hypothesis MUST have observation. R16 catches.
-4. NFR MUST have capacity target (number + unit). SRS template enforces.
+4. NFR MUST have capacity target (number + unit). PRD template enforces (NFR lives under PRD per ADR-013).
 5. AC MUST have properties block for algorithmic logic. AC template enforces.
 6. Every artifact MUST trace to parent or child. episode gate enforces.
 

@@ -1,11 +1,20 @@
 ---
 name: saga-planner
-description: "Planning role on one logical product board. Reads accepted ACs from one REQ epic, creates repository-scoped development and verification tasks in that same epic with atomic provenance, and completes the planning task."
+description: "Planning role on one logical product board. Dumb copier: reads the SRS §D2 AC→Implementation Map (written by saga-architect after AC are baselined) and creates one repository-scoped task per YAML entry with all fields copied faithfully. Does NOT choose Pattern A/B, does NOT choose priority, does NOT decompose — those decisions were made by the architect upstream."
 ---
 
-# saga-planner — accepted ACs → repository-scoped work
+# saga-planner — Dumb Copier from SRS §D2
 
-## Multi-repository typed tasks (мульти-репозитарные типизированные задачи; REQ-007)
+> **Pipeline (reordered, ADR-013).** The planner is no longer a translator that
+> reads AC and invents a plan. It is a **dumb copier**. saga-architect, who now
+> runs AFTER AC are baselined, writes a machine-readable `§D Decomposition`
+> section in the SRS (`§D1` File Tree, `§D2` AC→Implementation Map, `§D3`
+> Priority rationale, `§D4` Pattern selection per cluster). The planner's ONLY
+> job is to read `§D2` and produce one task per entry, copying every field
+> faithfully into `task.metadata` and `conflict_keys`. No decisions, no
+> heuristics, no Pattern A/B selection.
+
+## Multi-repository typed tasks (REQ-007)
 
 The Saga project is the logical product. Repositories are execution scopes
 returned by `repository_list({project_id})`; do not create one Saga project per
@@ -16,8 +25,8 @@ repository. Every generated task must set:
 - `execution_mode`
 - exactly one `project_repository_id` for executable repository work
 - `generated_from_task_id`
-- `source_artifact_ids: [<accepted AC ids>]` so provenance is created
-  atomically with the task
+- `source_artifact_ids: [<accepted AC id>, <SRS id>]` — atomic provenance from
+  BOTH the AC (the contract) and the SRS §D (the architectural decomposition).
 - a deterministic `generation_key`
 
 Split a cross-repository change into one task per repository and connect them
@@ -26,278 +35,377 @@ duplicates.
 
 ## Flow position (saga-flow — позиция в потоке)
 
-- **Stage (этап):** 5-Planning (после formalization, перед execution)
-- **Precondition (предусловие):** AC artifact accepted (принят). Проверь: `artifact_list({type:'AC', epic_id})` → status=accepted.
-- **Postcondition (постусловие):** development tasks have `implements` provenance and
-  `verification.ac` tasks are planned with AC `depends_on` provenance.
-  `verified_by` appears only after passing `verification_record`.
-- **Called by (вызывается):** saga-orchestrator (Этап 5)
-- **Next enables (что разблокирует):** saga-dispatch / saga-worker (execution рой — рой выполнения)
-- **Проверь precondition:** если AC не accepted (не принят) → STOP. Нет AC → нечего планировать.
-- **ОБЯЗАТЕЛЬНО:** после dev-задач создай AC-verification задачи (Sign 006, docs/ac-verification.md).
+- **Stage (этап):** 5-Planning (after formalization, which now ends with the SRS
+  being accepted; before execution)
+- **Precondition:** SRS artifact accepted AND its `§D2` section exists with at
+  least one AC entry. Verify:
+  ```
+  artifact_list({ epic_id, type:'SRS', status:'accepted' })
+  ```
+  Then read the SRS .md and locate `## §D2` (or `# §D2` / `## D2`).
+- **Postcondition:** one task per §D2 entry (minus `ac_kind=merge_with`), each
+  with `implements` provenance, `verified_by` planned for verification entries,
+  `metadata` fields copied, and `conflict_keys` set.
+- **Called by:** saga-orchestrator (Stage 5). Triggered by the
+  `srs_accepted`→`planning.decomposition` transition.
+- **Next enables:** saga-dispatch / saga-worker (execution swarm)
+- **Verify precondition:** if SRS is not accepted, or `§D2` is missing/empty →
+  STOP. No §D2 → nothing to copy.
 
-You read **accepted acceptance criteria** from one product episode and turn
-each into repository-scoped tasks in the same epic, traced back to its AC. After
-your run, the product kanban has a fresh batch of `todo` tasks, and
-`artifact_coverage` shows zero gaps.
+## What you are NOT responsible for (decisions already made upstream)
 
-You are **not** a worker and **not** an analyst. You do not touch the .md docs,
-you do not implement code. You translate.
+- **Choosing Pattern A vs B** — saga-architect did it in §D4 per module cluster.
+- **Choosing task priority** — saga-architect did it in §D3 (critical path).
+- **Writing task descriptions from scratch** — pointer to AC + pointer to SRS §D2
+  entry is enough; the architect already encoded the structure in §D.
+- **Decomposing AC into subtasks** — saga-architect did it in §D2 (one row per
+  implementation slice).
+- **Classifying AC as implementation vs verification vs spike** — the
+  `ac_kind` field in §D2 tells you.
+- **Deciding conflict keys** — §D2 has a `conflict_keys` list per entry. Copy it.
 
-## Inputs (входные данные; from the orchestrator's prompt — из промпта оркестратора)
+If you find yourself inventing any of the above, STOP — the SRS §D is
+incomplete. Report `worker_ask_need` with the gap; do not guess.
+
+## What you ARE responsible for
+
+- Reading §D2 correctly (YAML parsing).
+- Copying all fields faithfully into the right task fields.
+- Mapping `ac_kind` → `task_kind` and `workflow_stage`.
+- Setting `conflict_keys` from §D2's `conflict_keys` list (and then
+  `conflict_keys_auto_derive` will fill in anything missed).
+- Skipping `ac_kind=merge_with` entries (the parent task absorbs them).
+- Resolving `depends_on` references (AC codes or `scaffold:<module>` refs) to
+  task IDs.
+- Idempotency: do not duplicate tasks on re-runs.
+
+## Inputs
 
 - `project_id` — the one logical product.
 - `req_epic_id` — the epic containing requirements and generated work.
-- repository bindings from `repository_list({project_id})`.
+- The accepted SRS artifact id and its file on disk.
+- Repository bindings from `repository_list({project_id})`.
 
 One launch = one episode. Bridge it fully, then stop.
 
-## Preconditions (предусловия)
+## Step 1 — Read the SRS §D2
 
-- The episode must have AC artifacts. Verify:
+```
+// Get the SRS artifact
+srs = artifact_list({ epic_id: req_epic_id, type: 'SRS', status: 'accepted' })
+if srs is empty → STOP (precondition not met; report to orchestrator)
+srs_artifact = srs[0]
+srs_full = artifact_get({ id: srs_artifact.id })  // includes content_hash, path
+
+// Read the SRS .md file from disk (resolve path against project repo)
+// Find the §D2 section (heading "## §D2" or "## D2 — AC → Implementation Map")
+// Parse the YAML blocks under it — one block per AC entry
+```
+
+The §D2 entry schema (defined in the saga-architect SKILL and the SRS template):
+
+```yaml
+- ac: AC-1
+  title: "Trajectory Calculation Engine"
+  module: physics
+  files: [src/physics/orbital.ts]
+  functions: [calculateOrbit]
+  types: [LaunchParameters, OrbitResult]
+  public_protocol: PhysicsEnginePort
+  conflict_keys:
+    - {key_type: file_path, key_value: 'src/physics/orbital.ts'}
+    - {key_type: schema, key_value: 'OrbitResult'}
+    - {key_type: public_protocol, key_value: 'PhysicsEnginePort'}
+  invariants: [INV-PHYS-1, INV-PHYS-3]
+  test_layers: [L0, L2, L3]
+  pattern: B
+  depends_on: [scaffold:physics]
+  ac_kind: implementation     # implementation | verification | spike | merge_with
+```
+
+If a field is missing from an entry, leave the corresponding task field unset —
+do NOT invent a value.
+
+## Step 2 — For each §D2 entry, create exactly one task
+
+For each YAML block:
+
+### 2a. Determine `task_kind` / `workflow_stage` from `ac_kind`
+
+| `ac_kind` | `task_kind` | `workflow_stage` | `execution_skill` | `review_skill` |
+|---|---|---|---|---|
+| `implementation` | `development.code` | `development` | `saga-worker` | `saga-worker` |
+| `verification` | `verification.ac` | `verification` | `saga-verifier` (if AC has properties) or `saga-worker` (L2 only) | `saga-worker` |
+| `spike` | `development.spike` | `development` | `saga-worker` | `saga-worker` |
+| `merge_with` | *(skip — handled by the parent task it merges into)* | — | — | — |
+
+> **`merge_with` entries** name another AC (e.g. `merge_with: AC-1`). They
+> produce NO new task. The parent AC's task absorbs their scope; the planner
+> only needs to ensure the parent task's `source_artifact_ids` includes the
+> merged AC's id.
+
+### 2b. Resolve AC artifact id and SRS artifact id
+
+```
+ac_artifact = artifact_list({ epic_id, type:'AC', code: entry.ac })[0]
+// If ac_kind=merge_with with a parent AC, also resolve:
+parent_ac   = artifact_list({ epic_id, type:'AC', code: entry.merge_with })[0]
+```
+
+### 2c. Resolve `depends_on`
+
+Map each item in `entry.depends_on` to a task id:
+- If it looks like `scaffold:<module>` → find the task titled `SCAFFOLD: <module>`
+  (created earlier from another §D2 entry tagged `ac_kind: implementation` with
+  `title` starting with `SCAFFOLD:`). If not yet created, record the dependency
+  by `generation_key` and resolve after all tasks exist (second pass).
+- If it looks like an AC code (`AC-N`) → find the task generated from that AC.
+
+### 2d. Compose title and description
+
+- **title:** `${entry.ac}: ${entry.title}` (e.g. `AC-1: Trajectory Calculation Engine`)
+- **description:**
   ```
-  artifact_list({ epic_id: req_epic_id, type: 'AC', status: 'accepted' })
+  AC: <entry.ac> — <entry.title>
+  AC doc: <AC artifact path>#<entry.ac>
+  SRS §D2: <SRS artifact path>#§D2-<entry.ac>
+  Module: <entry.module>
+  Files: <entry.files join ', '>
+  Functions: <entry.functions join ', '>
+  Types: <entry.types join ', '>
+  Public protocol: <entry.public_protocol>
+  Invariants: <entry.invariants join ', '>
+  Pattern: <entry.pattern>
+  ac_kind: <entry.ac_kind>
   ```
-  If empty → the episode isn't ready. Report and stop.
-- Every executable task must target a repository binding belonging to
-  `project_id`. Never create another project or epic for builders.
+  Do NOT paste the Given/When/Then — point to the AC .md. Do NOT restate
+  architectural rationale — point to the SRS.
 
-## The bridge loop (мостовой цикл)
+### 2e. `task_create` with everything copied
 
-For each accepted AC artifact:
+```
+task_create({
+  epic_id: req_epic_id,
+  title:        '<AC>: <title>',
+  description:  <as composed above>,
+  status:       'todo',
+  task_kind:    <from 2a>,
+  workflow_stage: <from 2a>,
+  execution_mode: 'git_change',     // 'tracker_only' only if ac_kind=spike with no code
+  execution_skill: <from 2a>,
+  review_skill:     <from 2a>,
+  project_repository_id: <target repo binding>,  // resolved from entry.module → repo, or epic default
+  source_artifact_ids: [ac_artifact.id, srs_artifact.id],
+  verification_target_artifact_id: ac_artifact.id,  // ONLY if ac_kind=verification
+  source_ref:   { file: ac_artifact.path },
+  generation_key: '<epic_id>:<entry.ac>:<repo_id>:<entry.ac_kind>',
+  depends_on:   <resolved in 2c>,
+  priority:     <high if §D3 marks this AC as critical path, else medium>,
+  metadata: {
+    target_file:    entry.files[0],
+    files:          entry.files,
+    functions:      entry.functions,
+    types:          entry.types,
+    public_protocol: entry.public_protocol,
+    schema:         entry.types[0],     // first type as the schema conflict-key
+    invariants:     entry.invariants,
+    pattern:        entry.pattern,
+    module:         entry.module,
+    ac_kind:        entry.ac_kind,
+    srs_d2_anchor:  '<SRS path>#§D2-<entry.ac>',
+  },
+})
+```
 
-1. Read the AC (its `path` → the .md anchor; `artifact_get` for full context:
-   which UC/FR it derives from).
-2. Compose a dev-task title and description:
-   - title: `<AC-code>: <AC title>` (e.g. "AC-1: implement add(a,b)").
-   - description: the AC's Given/When/Then + a pointer to the .md path + the
-     FR it traces from. Include the verifiable check so the worker knows DoD.
-   - priority: inherit from the AC's metadata or default to 'medium'.
-   - `source_ref`: `{ file: '<AC path>' }` — so the worker can jump to the AC.
-3. Create the task in the same REQ epic with typed routing and provenance:
-   ```
-   task_create({ epic_id: req_epic_id, title, description, priority:'medium',
-                 status:'todo', task_kind:'development.code',
-                 workflow_stage:'development', execution_mode:'git_change',
-                 project_repository_id:<target repo binding>,
-                 source_artifact_ids:[<AC id>],
-                 generation_key:'<REQ>:<AC>:<repo>:dev',
-                 source_ref:{ file:<AC path> } })
-   ```
-4. `source_artifact_ids` creates the implements provenance atomically. Verify
-   the trace; do not add an unrelated manual substitute.
-5. Repeat for each AC.
+### 2f. Set conflict_keys
 
-## Verification (проверка) — coverage must show zero gaps (покрытие должно показывать ноль пробелов)
+```
+conflict_keys_set({ task_id, keys: entry.conflict_keys })
+conflict_keys_auto_derive({ task_id })   // catches anything §D2 missed
+```
 
-After bridging all ACs:
+### 2g. For merge_with entries — patch the parent
+
+If `entry.ac_kind == 'merge_with'`:
+- Do NOT create a new task.
+- Find the parent AC's task (already created in this run or pre-existing).
+- `task_update({ id: parent_task_id, source_artifact_ids: <existing + [ac_artifact.id]> })`
+- `comment_add({ task_id: parent_task_id, content: 'AC <entry.ac> merged into this task per SRS §D2 (ac_kind=merge_with)' })`
+
+## Step 3 — Second pass: resolve cross-AC dependencies
+
+If Step 2c encountered `depends_on` references to tasks not yet created
+(typical for AC codes that come later in §D2 order), do a second pass now that
+all tasks exist:
+
+```
+for each task created above with unresolved depends_on:
+  task_update({ id, depends_on: <fully resolved list of task ids> })
+```
+
+## Step 4 — Idempotency
+
+Before creating any task, check if it already exists:
+
+```
+existing = task_list({ epic_id, tag: 'planned' })  // OR query by generation_key
+for each entry in §D2:
+  key = '<epic_id>:<entry.ac>:<repo_id>:<entry.ac_kind>'
+  if any existing task has generation_key == key → skip
+```
+
+Re-running planning on an already-bridged episode MUST be a no-op. Never create
+duplicate tasks.
+
+## Step 5 — Verification (coverage must show zero gaps)
+
+After bridging all §D2 entries:
+
 ```
 artifact_coverage({ epic_id: req_epic_id, type:'AC', link_type:'implements' })
 ```
-Expect `{ total: N, covered: N, gaps: [] }`. If gaps remain → fix (missed an AC,
-or a trace_add failed) before reporting done.
+
+For every AC with `ac_kind: implementation` in §D2, `gaps` MUST be empty. If a
+gap remains, you missed an entry (or `source_artifact_ids` failed) — fix before
+reporting done.
+
+> **Note on `verified_by` coverage.** Verification tasks (`ac_kind: verification`)
+> are created with `workflow_stage: 'verification'`. They will produce
+> `verified_by` traces only AFTER they run and pass. The planning-time gate is
+> `implements` gaps = 0; the `verified_by` gate fires at the
+> `verification → integration` episode transition, not here.
+
+## Step 6 — REQ-010 conflict check
+
+After all tasks are created and `conflict_keys` set:
+
+```
+conflict_check({ epic_id })
+```
+
+The lint rule CGAD-R5 will also run later; but if `conflict_check` reports a
+collision here, the planner's job is to **flag it back to the architect**, not
+to silently restructure the plan (the architect owns §D). Record a comment on
+the planning task describing the collision; if §D4 already specified a scaffold
+or sequencing for the cluster, the collision is expected (different files within
+the same module) — verify each task's `metadata.target_file` differs.
 
 ## Stop (стоп)
 
-Call `worker_done` for the held planning task, then return: "Planned REQ-NNN:
-N ACs → N repository-scoped tasks in product <id>, epic <id>; coverage N/N."
-Then stop. Do NOT spawn workers,
-do NOT call worker_next — that's the orchestrator's job after you finish.
+Call `worker_done` for the held planning task, then return:
+
+```
+Planned REQ-NNN: N entries in SRS §D2 →
+  - <X> implementation tasks
+  - <Y> verification tasks
+  - <Z> spike tasks
+  - <W> merge_with entries (absorbed into parents)
+  - 0 coverage gaps on AC implements
+  - conflict_check: <report summary>
+```
+
+Then stop. Do NOT spawn workers, do NOT call worker_next — that's the
+orchestrator's job after you finish.
 
 ## Rules (правила)
 
-- **One dev-task per AC** by default. Only group ACs if they're trivially
-  inseparable (e.g. AC-2 "div-by-zero error" + AC-X "div normal" share the same
-  function) — and even then, keep both traces pointing at the grouped task.
-- **Do not modify artifacts.** ACs stay in their accepted status. You read them,
-  you don't write them.
-- **Do not implement.** You create tasks, you don't do them. No code, no git.
-- **Do not bridge non-accepted ACs.** An AC in `draft`/`in_review` is not a
-  contract yet — wait until it's `accepted`.
-- **Idempotency.** If you re-run on an already-bridged episode, detect existing
-  `implements` traces (via `trace_list({ source_id, link_type:'implements' })`)
-  and skip ACs that already have a dev-task. Don't create duplicate tasks.
+- **You are a copier, not a designer.** Every decision field (pattern, priority,
+  files, functions, types, conflict_keys, ac_kind) comes from §D2. If §D2 lacks
+  a field, leave the task field unset; do not invent.
+- **One task per §D2 entry** (except `merge_with`, which absorbs into its parent).
+- **`ac_kind` mapping is mechanical** (table in Step 2a). Do not reclassify.
+- **Do not modify artifacts.** AC and SRS stay accepted. You read them, you
+  don't write them.
+- **Do not bridge a §D2 entry whose AC is not `accepted`.** Wait until accepted.
+- **Idempotency.** Re-running on an already-bridged episode must be a no-op.
+  Match by `generation_key`.
 - **Coverage is your exit criterion**, not "I think I did all of them".
 
-## Planning for parallel dev (планирование для параллельной разработки) — avoid integration conflicts (избегай конфликтов интеграции)
+## AC-verification tasks (created mechanically from §D2)
 
-When multiple ACs of an episode touch the **same file / module / API surface**,
-naive "one dev-task per AC, all parallel" produces merge conflicts — because
-each worker independently invents the shared structure (API contract, module
-layout). The conflict is NOT a worker failure; it's a planning failure. Two
-patterns prevent it. Pick based on how much the ACs share:
+> **GUARDRAILS Sign 006.** `implements` (structural coverage) ≠ `verified_by`
+> (substantive check). For every AC whose §D2 entry has `ac_kind: verification`,
+> the planner creates a `verification.ac` task. The Verifier (or a reviewer
+> worker) runs the actual check independently from the Builder's tests.
 
-> **⚠ CGAD-R4 enforcement (REQ-013 / ADR-006).** The cgad-spec-lint rule CGAD-R4
-> now fails episodes reaching `development` with ≥2 parallel `git_change` tasks
-> on a greenfield repository when no scaffold task exists. If your episode is
-> greenfield (no prior merged tasks in the `project_repository`) and ≥2 body
-> tasks share a module, you MUST pick Pattern B below — the lint will block the
-> episode_transition to `development` otherwise. To waive with justification,
-> tag every body task `['cgad-r4-waived']` AND document the reason in a comment
-> on the planning task. Waivers are audited.
+The planner no longer decides "this AC needs a verification task." The architect
+decided that in §D2 by setting `ac_kind`. The planner just creates the task with:
 
-### Pattern A — Sequence (small overlap: 2-3 ACs share one file)
+- `task_kind: verification.ac`
+- `workflow_stage: verification`
+- `execution_skill: saga-verifier` (for AC with a `properties` block — L3
+  property tests) OR `saga-worker` (for L2-only re-run verification)
+- `verification_target_artifact_id: <AC id>`
+- `depends_on: <the implementation task(s) that cover this AC, resolved from §D2
+  depends_on>`
+- `priority: high` — blocks INTEGRATE
+- tags: `["role:reviewer", "ac-verification", "ac:<AC-code>"]`
 
-If ACs share a file but are few, chain them with `depends_on`. Each task
-inherits the previous task's merged result, so no parallel writes to the same
-file. Slower (no parallelism), but zero integration risk.
-
-```
-AC-1 (add)  ─depends_on─▶  AC-2 (div)  ─depends_on─▶  AC-3 (sub)
-```
-
-Use when: 2-3 ACs, same file, the work per AC is small. Parallelism gain is
-marginal anyway.
-
-### Pattern B — Scaffold + parallel bodies + integrate (large overlap: 4+ ACs share a module)
-
-For larger overlap, separate the **shared structure** from the **per-AC bodies**:
-
-1. **SCAFFOLD task** (no AC trace — it's infrastructure): create the module with
-   the API contract fixed — function signatures, class skeletons, stub returns.
-   The SRS's API contract section (which saga-architect MUST produce for any
-   module touched by >1 parallel task) is the source. This task must reach
-   `done` before the body tasks start (they `depends_on` it).
-   **Tag the scaffold task** `['scaffold']` and/or prefix its title with
-   `SCAFFOLD:` — cgad-spec-lint R4 looks for both markers.
-2. **Body tasks** (one per AC, all parallel, all `depends_on` the scaffold):
-   each worker fills ONE function/body. Because the scaffold fixed the API,
-   workers don't invent the structure — they implement inside it. Different
-   functions → no file conflict on bodies.
-3. **INTEGRATE task** (`depends_on` ALL body tasks): one task that merges every
-   body branch into `dev`, resolves any residual conflict (now mechanical, since
-   the API is shared), and produces the final merge commit. This is a deliberate
-   integration step, not an accident inside each worker's dev-phase.
+After the verification task is created, the planner adds the `verified_by` trace
+**stub** — actual evidence is recorded by the verifier via `verification_record`:
 
 ```
-SCAFFOLD (create module + API contract) ─▶ done
-   ├── AC-1 body (depends_on SCAFFOLD) ──┐
-   ├── AC-2 body (depends_on SCAFFOLD) ──┤  all parallel, different functions
-   ├── AC-3 body (depends_on SCAFFOLD) ──┤
-   ├── AC-4 body (depends_on SCAFFOLD) ──┘
-   │ all done
-   ▼
-INTEGRATE (depends_on all bodies): merge all branches → final dev merge
+trace_add({ source_id: <AC artifact id>, target_type:'task',
+             target_id: <verification task id>, link_type:'verified_by' })
 ```
 
-Use when: 4+ ACs share a module, or the API contract is non-trivial. The
-SCAFFOLD removes the architectural ambiguity that caused REQ-001's conflicts;
-the INTEGRATE task owns the merge instead of each worker racing for merge-lock.
+(This trace is structural; the substantive gate is
+`verification_record` with `outcome='passed'` at the
+`verification → integration` episode transition.)
 
-### Semantic conflict keys (REQ-010, REQUIRED after scaffold)
+### T-014: EVERY AC gets a verification task (no exceptions)
 
-After creating dev tasks (and after any task that touches code), tag each
-task with semantic conflict keys so the lint rule CGAD-R5 can detect
-collisions BEFORE workers start:
+> **Hard rule (Sollar A/B lesson T-014).** The verification → integration
+> episode transition requires `outcome='passed'` (or `'unknown'` under
+> degraded-verification model) evidence for **every** accepted AC in the
+> baseline — regardless of its `ac_kind` in §D2. An AC marked
+> `ac_kind: implementation` is NOT exempt from verification: it still needs
+> an independent verifier to record evidence.
 
-```
-conflict_keys_auto_derive({ task_id })   # picks up source_ref, metadata.schema,
-                                         # metadata.public_protocol, repo branch
-```
+**DO NOT skip creating `verification.ac` tasks for ACs with
+`ac_kind: implementation`.** The `ac_kind` field in §D2 classifies the
+*primary* work (write code vs run benchmark), not whether the AC needs
+substantive verification. Every AC needs it — the gate enforces it.
 
-For shared surfaces the auto-derive misses, set keys manually:
+In the Sollar episode, the architect marked 19 of 25 ACs as
+`ac_kind: implementation`. The planner (following the old wording of this
+section literally) created verification tasks only for the 6 ACs with
+`ac_kind: verification`. Result: at the verification→integration transition,
+the gate failed with "no passing evidence for AC-1.1, AC-1.2, …" and the
+engine had to spawn a recovery task that created 19 retroactive verification
+tasks. This wasted ~1 hour and broke the episode flow.
 
-```
-conflict_keys_set({ task_id, keys: [
-  { key_type: 'schema', key_value: 'tasks.priority enum' },
-  { key_type: 'public_protocol', key_value: 'MCP tool: episode_transition' },
-]})
-```
-
-Then run `conflict_check({ epic_id })` before transitioning to development.
-If R5 reports a collision you missed, either add a scaffold (Pattern B),
-sequence the tasks (`depends_on`), or split the scope. Two tasks colliding
-is a warning; three or more, or any collision with ≥2 in-flight tasks, is
-an error — the episode should not advance.
-
-### When to deviate from one-task-per-AC
-
-- If two ACs are truly inseparable (same function, same lines), group them into
-  one task — but trace BOTH ACs to it.
-- If an AC maps to multiple files/modules, split by module, not by AC — each
-  task's `source_ref` still points to the AC, and the AC has multiple
-  `implements` traces.
-
-### The core principle
-
-**If two parallel workers would touch the same lines, the plan is wrong — not
-the workers.** Fix it at planning time: scaffold the shared contract, sequence
-the overlap, or split by module. Merge conflicts that arise from genuinely
-shared code are a planning defect, not an execution one.
-
----
-
-## AC-verification задачи (ОБЯЗАТЕЛЬНО после dev-задач)
-
-> **GUARDRAILS Sign 006.** `implements` (структурный coverage) ≠ `verified_by`
-> (содержательная проверка). Dev-задача может быть APPROVED по «тесты green»,
-> но если тесты не покрывают AC содержательно — AC НЕ удовлетворён.
-> Подробно: `docs/ac-verification.md`.
-
-После создания всех dev-задач (`implements` traces), planner ОБЯЗАН создать
-**отдельную AC-verification задачу для каждого AC** в эпизоде.
-
-### Что делает AC-verification задача
-
-Задача `role:reviewer tag:ac-verification tag:ac:<code>`:
-1. Берёт конкретный AC (Given/When/Then с эталоном из AC-документа)
-2. Находит соответствующий тест-кейс в коде (grep AC-кода в тестах)
-3. Прогоняет его
-4. **Сверяет результат с эталоном** (например AC-1: `100000@12%/12m → 112682.50`)
-5. `trace_add(AC → verification-task, link_type:'verified_by')`
-6. Если не совпадает → `changes_requested`, dev-задача возвращается
-
-### Структура
+**The rule is simple:**
 
 ```
-dev-task #N (implements AC-1) → done → merge в dev
-                                        ↓
-                AC-1 verification (depends_on [N], verified_by AC-1)
-                                        ↓
-                                    APPROVED  ← содержательная сверка
-                                        ↓
-                                   INTEGRATE
+for each AC in baseline:
+    create verification.ac task
+    add verified_by trace
 ```
 
-### Правила planner'а
+No AC is left without a verification task. If the AC has a `properties` block
+in its YAML, route to `saga-verifier` (L3 property tests); otherwise route to
+`saga-worker` (L2 component / rendering re-check). The verifier decides
+`passed` / `failed` / `unknown` based on the evidence it can gather — the
+planner's job is to ensure the task EXISTS so evidence CAN be gathered.
 
-1. **Создать после dev-задач.** AC-verification не идёт параллельно с dev —
-   depends_on все dev-задачи, которые `implements` этот AC.
-2. **tags:** `["role:reviewer", "ac-verification", "ac:<AC-code>"]`.
-3. **priority:** high — блокирует INTEGRATE.
-4. **depends_on:** dev-задачи этого AC.
-5. **Описание:** цитата Given/When/Then + эталон + способ проверки (test name
-   или прямой вызов с эталонными входами).
-6. **Trace:** `trace_add(source_id:<AC-artifact>, target_type:'task',
-   target_id:<verification-task-id>, link_type:'verified_by')`.
-
-### Двойной coverage-gate перед INTEGRATE
+## Double coverage gate before INTEGRATE (unchanged from before)
 
 ```
-artifact_coverage(type:'AC', link_type:'implements')  → 0 gaps  ← структурно
-artifact_coverage(type:'AC', link_type:'verified_by') → 0 gaps  ← содержательно
+artifact_coverage(type:'AC', link_type:'implements')  → 0 gaps  ← structural
+artifact_coverage(type:'AC', link_type:'verified_by') → 0 gaps  ← substantive
 ```
 
-Оба должны показать 0 gaps перед стартом INTEGRATE. `implements` без
-`verified_by` — это coverage gap, эпизод НЕ готов к integration.
+Both must show 0 gaps before INTEGRATE may start. `implements` without
+`verified_by` is a coverage gap — the episode is NOT ready for integration.
+The planner's job ends at `implements` = 0 gaps AND `verified_by` = 0 gaps;
+the verifier's job produces the substantive `outcome` on each `verified_by` edge.
 
-### Метрика эпизода
+## Routing: saga-verifier for L3 property tests
 
-- `verified_by gaps > 0` → эпизод НЕ готов (AC не проверены содержательно)
-- `verified_by gaps == 0` AND `implements gaps == 0` → INTEGRATE может стартовать
-
-### Связь с solo-worker review
-
-Solo-worker review dev-задачи APPROVE'ит по «тесты green». AC-verification
-задача — **отдельная**, после review всех dev-задач, перед INTEGRATE. Она
-сверяет содержательно, а не «тесты green». Это закрывает Sign 006.
-
-### Routing: saga-verifier for L3 property tests
-
-When a verification.ac task needs **L3 property tests** generated independently
-from the frozen AC contract (CGAD §9 — monotonicity, positivity, identity,
-idempotency), set `execution_skill: 'saga-verifier'` instead of `saga-worker`.
-The Verifier reads the AC's YAML properties block, generates its own tests in
-`tests/verifier/`, and records L3 evidence — it never re-runs the Builder's L2
-tests. Use `saga-worker` only for L2 re-run verification (when the AC has no
-properties block, or when only an etalon re-run is meaningful).
+When the §D2 entry has `ac_kind: verification` AND the corresponding AC document
+contains a `properties` block (algorithmic AC), the planner routes the task to
+`saga-verifier` (`execution_skill: 'saga-verifier'`). The Verifier reads the AC's
+YAML properties block, generates its own tests in `tests/verifier/`, and records
+L3 evidence — it never re-runs the Builder's L2 tests. Use `saga-worker` only
+for L2 re-run verification (when the AC has no properties block).
