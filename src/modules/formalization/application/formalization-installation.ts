@@ -1007,8 +1007,11 @@ function readExecutionWrites(
   // fall back to the frame production for the source node.
   let receipt = tryLmReceipt(ctx.input, handlerId);
   if (!receipt) {
-    const production = ctx.frame.productions[sourceNodeId];
-    receipt = tryLmReceipt(production, handlerId)
+    // On recovery resume, ctx.input may be feedbackProduction. The durable
+    // LM receipt is in ctx.frame.receipts (restored from node_run
+    // execution_receipt by restoreNodeResult → frame.receipts[nodeId]).
+    receipt = tryLmReceipt(ctx.frame.receipts?.[sourceNodeId], handlerId)
+      ?? tryLmReceipt(ctx.frame.productions?.[sourceNodeId], handlerId)
       ?? null;
   }
   if (!receipt) {
@@ -1084,7 +1087,6 @@ function readExecutionWrites(
         || artifact.epicId !== ctx.epicId
         || artifact.type !== write.artifactType
         || (!borrowedFromEpic && !artifactStatusMatchesManagedWrite(deps, ctx, query, write, artifact))
-        || (borrowedFromEpic && !isAcceptedClean(artifact))
         || artifact.contentHash !== write.contentHash
         || !isSha256(write.contentHash)
       ) {
