@@ -1021,24 +1021,32 @@ function readExecutionWrites(
     taskId: receipt.taskId,
     executionId: receipt.executionId,
   };
-  const artifactWrites = latestArtifactWrites(deps.ledger.listArtifactsForNodeInProcessRun(
+  const processRunArtifactWrites = deps.ledger.listArtifactsForNodeInProcessRun(
     ctx.processRunId, FORMALIZATION_MODULE_KEY, sourceNodeId,
-  ).length > 0
-    ? deps.ledger.listArtifactsForNodeInProcessRun(
-        ctx.processRunId, FORMALIZATION_MODULE_KEY, sourceNodeId,
-      )
-    : deps.ledger.listArtifactsForNodeInEpic(
-        ctx.projectId, ctx.epicId!, FORMALIZATION_MODULE_KEY, sourceNodeId,
-      ));
-  const traceWrites = latestTraceWrites(deps.ledger.listTracesForNodeInProcessRun(
+  );
+  const processRunTraceWrites = deps.ledger.listTracesForNodeInProcessRun(
     ctx.processRunId, FORMALIZATION_MODULE_KEY, sourceNodeId,
-  ).length > 0
-    ? deps.ledger.listTracesForNodeInProcessRun(
-        ctx.processRunId, FORMALIZATION_MODULE_KEY, sourceNodeId,
-      )
-    : deps.ledger.listTracesForNodeInEpic(
-        ctx.projectId, ctx.epicId!, FORMALIZATION_MODULE_KEY, sourceNodeId,
-      ));
+  );
+  // Recovery fallback: if this process-run has NO ledger entries for this node
+  // (repair worker reused accepted artifacts from a prior run), borrow canonical
+  // writes from the epic-wide node scope. The borrowed writes carry a different
+  // processRunId, so matchesNodeFence (which checks processRunId) is skipped for
+  // them — the artifacts themselves are epic-scoped, immutable, and hash-verified.
+  const borrowedFromEpic = processRunArtifactWrites.length === 0;
+  const artifactWrites = latestArtifactWrites(
+    borrowedFromEpic
+      ? deps.ledger.listArtifactsForNodeInEpic(
+          ctx.projectId, ctx.epicId!, FORMALIZATION_MODULE_KEY, sourceNodeId,
+        )
+      : processRunArtifactWrites,
+  );
+  const traceWrites = latestTraceWrites(
+    processRunTraceWrites.length === 0
+      ? deps.ledger.listTracesForNodeInEpic(
+          ctx.projectId, ctx.epicId!, FORMALIZATION_MODULE_KEY, sourceNodeId,
+        )
+      : processRunTraceWrites,
+  );
   const artifacts = deps.graph.readArtifactsByIds(artifactWrites.map(write => write.artifactId));
   if (artifacts.length !== artifactWrites.length) {
     throw new Error(`${handlerId}: one or more ledger artifacts no longer exist`);
@@ -1047,7 +1055,7 @@ function readExecutionWrites(
   for (const write of artifactWrites) {
     const artifact = artifactsById.get(write.artifactId);
     if (
-      !matchesNodeFence(write, query)
+      (!borrowedFromEpic && !matchesNodeFence(write, query))
       || !artifact
       || artifact.projectId !== ctx.projectId
       || artifact.epicId !== ctx.epicId
@@ -1069,7 +1077,7 @@ function readExecutionWrites(
   for (const write of traceWrites) {
     const trace = tracesById.get(write.traceId);
     if (
-      !matchesNodeFence(write, query)
+      (!borrowedFromEpic && !matchesNodeFence(write, query))
       || !trace
       || trace.sourceArtifactId !== write.sourceId
       || trace.targetType !== write.targetType
