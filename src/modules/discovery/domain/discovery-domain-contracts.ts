@@ -619,6 +619,8 @@ export interface DiscoveryRuntimePersistencePort {
   readTaskState(taskId: number): string | null;
   readCurrentExecutionId(taskId: number): string | null;
   readLatestExecutionId(taskId: number): string | null;
+  /** Find the PRODUCER execution (worker_done → review), not reviewer (→ done). */
+  readProducerExecutionId(taskId: number): string | null;
   readLatestManagedProductionExecutionId(
     taskId: number,
     processRunId: number,

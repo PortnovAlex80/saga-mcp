@@ -169,6 +169,9 @@ export interface LmNodeExecutionPersistence {
   /** Latest physical execution for the exact projected task. */
   readLatestExecutionId(taskId: number): string | null;
 
+  /** Producer execution (worker_done → review), not reviewer (→ done). */
+  readProducerExecutionId?(taskId: number): string | null;
+
   /**
    * Exact execution that last persisted a managed product for this ProcessRun
    * node. On a completed task this differs from readLatestExecutionId because
@@ -756,7 +759,21 @@ export class LmNodeExecutor implements NodeExecutor {
         // taskId, workIntentId) PLUS any upstream bindings forwarded from the
         // preparation node (proposalId/proposalHash/controlIntentId), so the
         // downstream settlement kernel can read exact lineage from the chain.
-        const cleanExecutionId = executionId ?? this.persistence.readLatestExecutionId(taskId);
+        // Prefer the managed-production producer execution (the worker that
+        // created artifacts → moved task to 'review'), not the latest execution
+        // (which may be the reviewer who moved it to 'done'). On replay
+        // (recovery/resume), executionId is null, and readLatestExecutionId
+        // returns the reviewer — but exact-acceptance gate needs the PRODUCER
+        // execution_id for lineage. readLatestManagedProductionExecutionId
+        // finds it through the managed_artifact_productions ledger.
+        const cleanExecutionId = executionId
+          ?? this.persistence.readLatestManagedProductionExecutionId?.(
+              taskId,
+              ctx.processRunId,
+              node.id,
+            )
+          ?? this.persistence.readProducerExecutionId?.(taskId)
+          ?? this.persistence.readLatestExecutionId(taskId);
         return {
           runtimeEvent: 'completed',
           receipt: {

@@ -1019,6 +1019,9 @@ export function createDiscoveryLmNodePersistence(
     readLatestExecutionId(taskId) {
       return runtime.readLatestExecutionId(taskId);
     },
+    readProducerExecutionId(taskId) {
+      return runtime.readProducerExecutionId(taskId);
+    },
     readLatestManagedProductionExecutionId(taskId, processRunId, nodeId) {
       return runtime.readLatestManagedProductionExecutionId(
         taskId,

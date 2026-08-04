@@ -383,6 +383,26 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
     return row?.execution_id ?? null;
   }
 
+  /**
+   * Find the PRODUCER execution_id — the worker_done receipt that moved the
+   * task to 'review' (dev-phase producer), not the one that moved it to 'done'
+   * (review-phase reviewer). Used by LM-executor on replay to bind the receipt
+   * to the correct producer lineage. Without this, exact-acceptance gate sees
+   * lineage.executionId = reviewer (latest), which equals the final approved
+   * receipt → "no separate reviewer" → reject.
+   */
+  readProducerExecutionId(taskId: number): string | null {
+    const row = getDb().prepare(
+      `SELECT execution_id
+         FROM command_receipts
+        WHERE task_id=? AND command_kind='worker_done' AND accepted=1
+          AND result_json LIKE '%"completed_new_status":"review"%'
+        ORDER BY accepted_at ASC
+        LIMIT 1`,
+    ).get(taskId) as { execution_id: string } | undefined;
+    return row?.execution_id ?? null;
+  }
+
   readLatestManagedProductionExecutionId(
     taskId: number,
     processRunId: number,
