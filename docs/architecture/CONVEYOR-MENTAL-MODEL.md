@@ -215,16 +215,18 @@ bounded control loop:
 exact input ProductRefs
   → fenced author execution
   → immutable ProductRefs
-  → sealed CandidateSet
-  → declared checks
-  → optional fenced reviewer execution
-  → final declared checks
-  → typed GateDecision
-      ├─ accepted        → author gate queues review; final gate completes cell
-      ├─ repair_required → RecoveryIssue on the same desk; hire again
+  → sealed author CandidateSet
+  → author GateRun + typed GateDecision
+      ├─ accepted(final)  → complete cell
+      ├─ accepted(author) → fenced reviewer pinned to the author CandidateSet
+      │                      → reviewer CandidateSet
+      │                      → final GateRun + typed GateDecision
+      ├─ repair_required → exact RecoveryIssue; hire target role again
       ├─ human_required  → pause without losing the Workplace
       └─ failed          → explicit terminal failure
 ```
+
+The final GateDecision has the same closed verdict branches as the author gate.
 
 This protocol is the **universal production kernel**. It is the same for a
 proposal, PRD, source patch, test set or desired release state. Product meaning
@@ -497,11 +499,17 @@ commands:
 workplace_get()
 product_read({ exactProductRef })
 product_submit({ schemaRef, content | textSet, lineageRefs })
-execution_complete({ productRefs, summary? })
+execution_complete({
+  productRefs,
+  carryForward?: [{ productRef, sourceCandidateSetRef }],
+  summary?
+})
 ```
 
 - Runtime derives Workplace, execution, role and fence from the launch context;
   the model cannot choose or rebind them.
+- `workplace_get` returns that immutable context and pinned refs; it exposes no
+  queue listing, task selection or transition command.
 - `product_read` resolves only an exact ProductRef that is in this execution's
   pinned read set: declared inputs, subject CandidateSet, RecoveryIssue or an
   explicitly permitted prior desk binding. Every read is journaled.
@@ -680,8 +688,8 @@ game.
 - **Worker (модель + skill):** knows ONLY how to do the work described in its
   skill. That is all. It does not hire, does not spawn, does not pick work,
   does not decide how many workers run, does not manage infrastructure. It
-  arrives with an already committed Workplace, role, WorkItem, exact inputs,
-  desk, execution and fence, does the work, submits exact products, calls
+  arrives with an already committed Workplace, role, work description, exact
+  inputs, desk, execution and fence, does the work, submits exact products, calls
   `execution_complete`, and leaves. The worker has no queue-selection command —
   infrastructure fixes the context before the worker arrives.
 - **Infrastructure (конвейер):** hires workers, decides how many to run, picks
@@ -953,7 +961,7 @@ completion. The conveyor derives transitions from durable events:
 | Worker assigned/started | unchanged | `queued -> leased -> running` |
 | Worker completed candidate | unchanged | `running -> verifying` |
 | Worker crashed or lease expired | unchanged | `running -> repair_wait`; recovery may queue a replacement |
-| Kernel requests repair | unchanged | `verifying -> repair_wait`, preserving the role |
+| Gate requests repair | unchanged | `verifying -> repair_wait`, using explicit `repairTargetRole` |
 | Author gate accepts and review is required | `in_progress -> review` | `verifying -> queued`, `nextRole=reviewer` |
 | Author gate accepts without review (cell-final) | `in_progress -> done` | `verifying -> terminal(accepted)`; ProcessRun activates next node |
 | Reviewer assigned | `review -> review_in_progress` | `queued -> leased -> running` |
@@ -1057,39 +1065,51 @@ path.
 Per-attempt **audit** remains orthogonal: each author, reviewer and gate run has
 its own execution/attempt record while the Workplace identity stays fixed.
 
-## Analogy key (the words we use)
+## Human factory analogy (short form)
 
-- **конвейер** = the Saga runtime (orchestrator + executors + persistence)
+- **завод / конвейер** = the Saga runtime (orchestration, execution and persistence)
 - **цех** = a process module (discovery / formalization / development / delivery)
-- **место** (workplace) = a materialized Production Cell in a ProcessRun
+- **производственная ячейка** = a reusable Production Cell definition
+- **рабочее место** (workplace) = one materialized cell instance in a ProcessRun
 - **рабочий** (worker) = one fenced LM WorkerExecution
-- **инженер** (engineer) = a GateRun invoking declared check providers
 - **карточка** (card) = the human-facing WorkItem projection
-- **стол** (desk) = the cell-scoped workspace plus product ledger
+- **рабочий стол** (desk) = the workplace-scoped workspace plus product ledger
+- **отдел качества / ОТК** = the universal quality subsystem of a Production Cell
+- **инженер ОТК** = one GateRun inspecting an exact CandidateSet
+- **проверочный стенд** = a versioned CheckProvider invoked by the GateRun
+- **акт ОТК** = the immutable GateDecision
+- **брак-лист** = the exact RecoveryIssue returned to the same workplace
 - **скилл** = the execution profile / semantic skill of a workplace
 
-## Canonical factory vocabulary
+## Human–machine glossary (canonical factory vocabulary)
 
-The following vocabulary is normative for architecture discussions, code
-reviews, tests and plans. The metaphor is useful only while every word has one
-stable technical meaning.
+The left-hand terms are the language used with people; the right-hand side is
+their exact machine meaning. This vocabulary is normative for architecture
+discussions, code reviews, tests and plans. A human term must not map to two
+runtime concepts, and a runtime concept must not silently acquire a second
+human meaning.
 
-| Factory word | Technical meaning | Owner |
+| Human factory term | Machine contract / meaning | Owner |
 |---|---|---|
 | **Factory / conveyor** (завод / конвейер) | Saga Runtime: orchestration, executors, dispatch and persistence | infrastructure |
 | **Production order** (заказ) | `ProcessRun` | Conveyor Runtime domain |
 | **Workshop** (цех) | a Process Module package | module package |
 | **Production Cell** (производственная ячейка) | declarative author/check/review/gate loop | Module Contracts |
-| **Workplace** (место) | one materialized Production Cell in a `ProcessRun` | Conveyor Runtime |
+| **Workplace** (рабочее место) | one materialized Production Cell instance identified by exact `WorkplaceRef` | Conveyor Runtime |
 | **Machine loop state** (состояние лупа) | durable progress of staffing, execution and quality checking inside one workplace | `Workplace` |
 | **Card** (карточка) | human-facing `WorkItem` read model derived from WorkplaceRef/events | Work Projection context |
-| **Desk** (стол) | cell-scoped workspace and immutable product ledger | workplace |
+| **Work desk** (рабочий стол) | WorkplaceRef-scoped workspace and immutable product-ledger view | workplace |
 | **Worker** (рабочий) | one LM execution | infrastructure |
 | **Shift / worker attempt** (смена) | one `WorkerExecution` | Execution Control |
-| **Inspection run** (проверка инженера) | one `GateRun` | Production/Evidence audit |
+| **Candidate batch** (партия на проверку) | one sealed immutable `CandidateSet` | Production/Evidence |
+| **Quality department / QC** (отдел качества / ОТК) | universal Production Cell quality subsystem coordinating GateRun, checks, evidence and decision application | Conveyor Runtime + Production/Evidence |
+| **Quality plan** (план контроля) | versioned `CheckPlan` declared by the workshop | Module Contracts |
+| **Quality engineer / inspector** (инженер ОТК) | one authorized `GateRun` over an exact subject CandidateSet | Production/Evidence audit |
+| **Test bench** (проверочный стенд) | installed versioned `CheckProvider` executed through `CheckRunnerPort` | capability infrastructure |
+| **Test receipt** (протокол проверки) | immutable `CheckReceipt` binding provider/version, subject, outcome and evidence | Production/Evidence |
+| **QC act** (акт ОТК) | immutable `GateDecision` binding exact candidates, receipts, policy and verdict | Production/Evidence |
 | **Control-node run** | one `NodeRun` for an ordinary non-cell Flow node | Conveyor Runtime audit |
 | **Specialty** (специальность) | execution profile and semantic skill | module declaration |
-| **Engineer** (инженер) | GateRun executing a declared CheckPlan | runtime executing module policy |
 | **Dispatcher** (диспетчер) | application service leasing eligible workplaces to executions | infrastructure |
 | **Queue** (очередь) | claimable Workplaces whose loop state is `queued` | Conveyor Runtime |
 | **Pass / badge** (пропуск) | execution fence and lease token | worker execution |
@@ -1100,11 +1120,18 @@ stable technical meaning.
 | **Progress signal** (отметка «работаю») | structured output/tool/progress observation | execution journal |
 | **Tools** (инструменты) | allowed capabilities exposed to a worker | execution authority |
 | **Tooling** (оснастка) | installed package, resources, templates and schemas | Module Catalog context |
-| **Product** (изделие) | text artifact placed on the desk by a worker | Production context; attributed to the workplace |
-| **Defect sheet** (брак-лист) | `RecoveryIssue` | verifier output |
+| **Product** (изделие) | immutable `ProductEnvelope` placed on the work desk | Production context; attributed to its producer/workplace |
+| **Defect sheet** (брак-лист) | exact `RecoveryIssue` bound to the rejected decision, candidate and failed receipts | quality subsystem output |
 | **Repair case** (ремонтный случай) | `RecoveryCase` | Conveyor Runtime domain |
 | **Control point** (контрольная точка) | pre/post hooks and policy enforcement | infrastructure |
 | **Production journal** (журнал) | events, traces, receipts and provenance | runtime persistence |
+
+The **quality department is not a fifth workshop and not another worker**. The
+workshop declares what quality means through contracts and CheckPlan; the
+factory-owned QC mechanism executes that plan identically for every workshop.
+An inspector/GateRun cannot rewrite the product, a test bench/CheckProvider
+cannot move the card, and a worker cannot issue its own QC act. Only application
+of an immutable GateDecision may change the Production Cell after inspection.
 
 There are two different meanings of ownership here:
 
@@ -1222,7 +1249,7 @@ must be enforced by a contract and covered by an executable test.
   identity.
 - At most one active mutation actor (`WorkerExecution` or `GateRun`) may own a
   Workplace revision at a time.
-- Card reference, desk reference and accepted product references survive a
+- WorkItem identity, desk reference and accepted product references survive a
   worker change.
 - Verifiers read a sealed CandidateSet by exact product references, never a
   mutable "latest" view or transient worker identity.
@@ -1235,8 +1262,9 @@ must be enforced by a contract and covered by an executable test.
   reservation idempotently.
 - Eligibility validates Flow dependencies, Kanban/loop state, run scope, role
   and authority.
-- The launch context contains exact WorkItem, Workplace, role, execution and
-  fence references; it exposes no queue-selection capability.
+- The launch context contains a Workplace-derived WorkItem snapshot plus exact
+  Workplace, role, execution and fence refs; it exposes no queue-selection
+  capability and does not depend on a projection row.
 - Reviewer-role Workplaces are leased before author-role Workplaces.
 - Two dispatchers cannot give one Workplace two live mutating executions.
 - WorkItem projection and restart are idempotent and do not mint duplicates.
@@ -1257,8 +1285,8 @@ must be enforced by a contract and covered by an executable test.
 ### Worker
 
 - One launch receives exactly one immutable execution context for one Workplace.
-- The worker knows its WorkItem, role, workplace, desk, exact inputs, execution
-  ID and fence at start.
+- The worker knows its Workplace-derived work description, role, desk, exact
+  inputs, execution ID and fence at start.
 - It performs only the declared semantic specialty.
 - It cannot create workers, choose concurrency, dispatch cards or manage
   infrastructure.
