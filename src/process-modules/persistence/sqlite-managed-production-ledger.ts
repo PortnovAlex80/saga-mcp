@@ -506,4 +506,43 @@ export class SqliteManagedProductionLedger implements ManagedProductionLedger {
     ).all(processRunId, moduleRef, nodeId) as TraceLedgerRow[];
     return rows.map(traceRowToRecord);
   }
+
+  // Recovery fallback: epic-scoped lookup. When a repair worker correctly
+  // reuses accepted artifacts from a prior process-run (instead of duplicating
+  // them), the current process-run's ledger is empty for that node. The
+  // formalization resolver uses this to borrow the canonical writes from the
+  // most recent prior run of the same epic + node, so it sees the work the
+  // worker reused. This does NOT bypass immutability — it only widens the
+  // read scope. Artifacts themselves stay epic-scoped and unchanged.
+  listArtifactsForNodeInEpic(
+    projectId: number,
+    epicId: number,
+    moduleRef: string,
+    nodeId: string,
+  ): readonly ManagedArtifactProductionRecord[] {
+    const rows = this.db.prepare(
+      `SELECT mp.*
+         FROM saga3_managed_artifact_productions mp
+        JOIN saga3_process_runs pr ON pr.id = mp.process_run_id
+        WHERE pr.project_id=? AND pr.epic_id=? AND mp.module_ref=? AND mp.node_id=?
+        ORDER BY mp.recorded_at DESC, mp.id DESC`,
+    ).all(projectId, epicId, moduleRef, nodeId) as ArtifactLedgerRow[];
+    return rows.map(artifactRowToRecord);
+  }
+
+  listTracesForNodeInEpic(
+    projectId: number,
+    epicId: number,
+    moduleRef: string,
+    nodeId: string,
+  ): readonly ManagedTraceProductionRecord[] {
+    const rows = this.db.prepare(
+      `SELECT mp.*
+         FROM saga3_managed_trace_productions mp
+        JOIN saga3_process_runs pr ON pr.id = mp.process_run_id
+        WHERE pr.project_id=? AND pr.epic_id=? AND mp.module_ref=? AND mp.node_id=?
+        ORDER BY mp.recorded_at DESC, mp.id DESC`,
+    ).all(projectId, epicId, moduleRef, nodeId) as TraceLedgerRow[];
+    return rows.map(traceRowToRecord);
+  }
 }

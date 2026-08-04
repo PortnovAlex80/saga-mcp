@@ -97,4 +97,23 @@ export interface ManagedProductionLedger {
     moduleRef: string,
     nodeId: string,
   ): readonly ManagedTraceProductionRecord[];
+  /**
+   * Epic-scoped recovery fallback. Used by formalization resolvers when the
+   * current process-run has no ledger entries for a node (because a repair
+   * worker correctly reused accepted artifacts from a prior run). Borrows
+   * canonical writes from any process-run of the same epic + node, newest
+   * first. Does NOT bypass immutability — read-only scope widening.
+   */
+  listArtifactsForNodeInEpic(
+    projectId: number,
+    epicId: number,
+    moduleRef: string,
+    nodeId: string,
+  ): readonly ManagedArtifactProductionRecord[];
+  listTracesForNodeInEpic(
+    projectId: number,
+    epicId: number,
+    moduleRef: string,
+    nodeId: string,
+  ): readonly ManagedTraceProductionRecord[];
 }

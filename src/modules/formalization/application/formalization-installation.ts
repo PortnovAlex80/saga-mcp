@@ -1023,10 +1023,22 @@ function readExecutionWrites(
   };
   const artifactWrites = latestArtifactWrites(deps.ledger.listArtifactsForNodeInProcessRun(
     ctx.processRunId, FORMALIZATION_MODULE_KEY, sourceNodeId,
-  ));
+  ).length > 0
+    ? deps.ledger.listArtifactsForNodeInProcessRun(
+        ctx.processRunId, FORMALIZATION_MODULE_KEY, sourceNodeId,
+      )
+    : deps.ledger.listArtifactsForNodeInEpic(
+        ctx.projectId, ctx.epicId!, FORMALIZATION_MODULE_KEY, sourceNodeId,
+      ));
   const traceWrites = latestTraceWrites(deps.ledger.listTracesForNodeInProcessRun(
     ctx.processRunId, FORMALIZATION_MODULE_KEY, sourceNodeId,
-  ));
+  ).length > 0
+    ? deps.ledger.listTracesForNodeInProcessRun(
+        ctx.processRunId, FORMALIZATION_MODULE_KEY, sourceNodeId,
+      )
+    : deps.ledger.listTracesForNodeInEpic(
+        ctx.projectId, ctx.epicId!, FORMALIZATION_MODULE_KEY, sourceNodeId,
+      ));
   const artifacts = deps.graph.readArtifactsByIds(artifactWrites.map(write => write.artifactId));
   if (artifacts.length !== artifactWrites.length) {
     throw new Error(`${handlerId}: one or more ledger artifacts no longer exist`);
