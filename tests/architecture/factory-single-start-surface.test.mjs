@@ -17,3 +17,15 @@ test('factory exposes one HTTP start route and runtime host accepts launch capab
   assert.match(parseBody, /--launch-ref/);
   assert.doesNotMatch(parseBody, /--resume|--lifecycle-input|idempotency-key/);
 });
+
+test('factory start skill requires an explicit four-way mode choice', () => {
+  const skill = readFileSync('skills/saga-start/SKILL.md', 'utf8');
+  for (const marker of [
+    '1. Resume существующего заказа',
+    '2. Новый production-заказ',
+    '3. Тест без LLM — checkpoint replay',
+    '4. Тест с реальной LLM — warm start',
+  ]) assert.ok(skill.includes(marker), marker);
+  assert.match(skill, /До записи в БД[\s\S]*покажи пользователю этот список/);
+  assert.match(skill, /not_run[\s\S]*productionEligible=false/);
+});
