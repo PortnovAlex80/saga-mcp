@@ -736,9 +736,15 @@ implements ExactCandidateAcceptance {
     // back to an older approval after a newer changes_requested verdict would
     // silently accept a superseded review decision.
     const finalReceipt = receipts[0];
+    // A reviewer's worker_done(approved) sends the task to 'pending_verification'
+    // (not 'done'). 'done' is only set by promoteTaskToDone AFTER the kernel gate
+    // accepts — a chicken-and-egg. Accept 'pending_verification' as a valid
+    // terminal review receipt (consistent with line 721 which already accepts
+    // pending_verification as a verified terminal state).
     if (
       !finalReceipt
-      || !isWorkerDoneReceipt(finalReceipt, taskId, 'done')
+      || !(isWorkerDoneReceipt(finalReceipt, taskId, 'done')
+           || isWorkerDoneReceipt(finalReceipt, taskId, 'pending_verification'))
       || finalReceipt.execution_id === null
       || finalReceipt.execution_id === lineage.executionId
     ) {
@@ -1418,7 +1424,7 @@ function hashReviewReceipt(receipt: ApprovedReviewReceiptRow): string {
 function isWorkerDoneReceipt(
   receipt: ApprovedReviewReceiptRow,
   taskId: number,
-  expectedStatus: 'review' | 'done',
+  expectedStatus: 'review' | 'done' | 'pending_verification',
 ): boolean {
   if (
     !receipt.command_id.endsWith(':worker-done:approved')
