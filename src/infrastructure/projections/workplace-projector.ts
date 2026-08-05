@@ -173,15 +173,19 @@ export function deriveWorkplaceRefFromTaskMetadata(input: {
 
   const moduleRef = typeof meta['module_ref'] === 'string'
     ? meta['module_ref']
-    : typeof input.taskKind === 'string'
-      ? `${input.taskKind.split('.')[0]}@1.0.0`
-      : 'unknown@1.0.0';
+    : typeof meta['process_module_ref'] === 'string'
+      ? meta['process_module_ref']
+      : typeof input.taskKind === 'string'
+        ? `${input.taskKind.split('.')[0]}@1.0.0`
+        : 'unknown@1.0.0';
   const productionCellId = typeof meta['process_node_id'] === 'string'
     ? meta['process_node_id']
     : input.taskKind ?? 'default';
   const workKey = typeof meta['work_key'] === 'string'
     ? meta['work_key']
-    : `task-${input.taskId}`;
+    : typeof meta['work_item_key'] === 'string'
+      ? meta['work_item_key']
+      : `task-${input.taskId}`;
 
   return asWorkplaceRef({
     processRunId: processRunId as number,

@@ -24,6 +24,7 @@ import type {
   AssignedWork,
   WorkAssignmentPort,
 } from '../../application/ports/worker-executor.js';
+import { reserveTaskExecution } from '../../tools/conveyor-runtime-helper.js';
 // CONVEYOR #7: the adapter imports the atomic assignment core from the
 // lifecycle layer (infrastructure-side), NOT from the MCP/tool layer. This
 // keeps the dependency direction inward: outbound adapter → lifecycle core.
@@ -62,6 +63,20 @@ export class SqliteWorkAssignmentAdapter implements WorkAssignmentPort {
       ),
     );
     if (!task) return null;
+    // Conveyor v4: bind the task to its workplace + lease the loop channel.
+    // This is the engine-path equivalent of reserveTaskExecution in the MCP
+    // dispatcher. The workplace becomes authoritative for the loop state.
+    try {
+      reserveTaskExecution(this.db, {
+        taskId: task.id,
+        epicId: task.epic_id,
+        projectId: input.projectId,
+        taskKind: task.task_kind,
+        metadata: task.metadata,
+        executionId: input.workerExecutionId,
+        preClaimStatus: task.status === 'in_progress' ? 'todo' : task.status,
+      });
+    } catch { /* best-effort v4 binding */ }
     // The claim is committed (card assigned + execution reserved). The snapshot
     // build below reads repository bindings + execution context AFTER the
     // transaction. If it throws (e.g. a dangling project_repository_id, a
