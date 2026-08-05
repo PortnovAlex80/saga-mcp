@@ -23,6 +23,7 @@ import type Database from 'better-sqlite3';
 import { ConveyorRuntime } from '../application/conveyor-runtime.js';
 import type { WorkplaceRef } from '../process-modules/domain/workplace/index.js';
 import { deriveWorkplaceRefFromTaskMetadata } from '../infrastructure/projections/workplace-projector.js';
+import { SqliteWorkplaceRepository } from '../infrastructure/workplace/sqlite-workplace-repository.js';
 
 let cachedRuntime: ConveyorRuntime | null = null;
 let cachedDb: Database.Database | null = null;
@@ -111,6 +112,15 @@ export function releaseTaskExecution(db: Database.Database, input: {
     taskKind: input.taskKind,
   });
   if (!ref) return;
+  // If no executionId was passed, read the active reservation from the
+  // workplace (the fence that the claim set). This handles the engine path
+  // where worker_done may not carry the execution_id.
+  let execId = input.executionId;
+  if (!execId || execId === 'undefined') {
+    const repo = new SqliteWorkplaceRepository(db);
+    const actors = repo.readActiveActors(ref);
+    execId = actors?.activeReservationRef ?? input.executionId ?? '';
+  }
   try {
     // When the dispatcher moves a task to 'done', decide terminal vs verifying:
     //   - tracker_only / artifact_change / read_only → terminal(accepted) on done
@@ -124,20 +134,18 @@ export function releaseTaskExecution(db: Database.Database, input: {
     if (input.taskStatus === 'done' && canTerminal) {
       rt.acceptFinal({
         workplaceRef: ref,
-        reservationRef: input.executionId,
+        reservationRef: execId,
         taskId: input.taskId,
       });
     } else {
       rt.releaseExecution({
         workplaceRef: ref,
-        reservationRef: input.executionId,
+        reservationRef: execId,
         taskId: input.taskId,
         outcome: input.outcome,
       });
     }
-  } catch {
-    // FENCE_MISMATCH or WORKPLACE_NOT_FOUND — the task may have been recovered
-    // or the workplace not yet bound. In cutover mode this is a consistency
-    // gap; fall through (the legacy tasks.status write still happened).
+  } catch (e) {
+    console.error(`[v4-release] task=${input.taskId} execId=${execId} status=${input.taskStatus}: ${e instanceof Error ? e.message : String(e)}`);
   }
 }

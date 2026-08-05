@@ -687,7 +687,7 @@ function handleWorkerDone(args: Record<string, unknown>): {
       projectId: (db.prepare('SELECT e.project_id AS project_id FROM epics e WHERE e.id=?').get(task.epic_id) as { project_id?: number } | undefined)?.project_id ?? 0,
       taskKind: task.task_kind,
       metadata: task.metadata,
-      executionId: task.current_execution_id ?? workerId,
+      executionId: (args.execution_id as string) ?? task.current_execution_id ?? workerId,
       outcome: 'completed',
       taskStatus: newStatus,
       executionMode: task.execution_mode,
