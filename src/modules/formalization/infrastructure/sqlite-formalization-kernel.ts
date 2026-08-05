@@ -259,13 +259,32 @@ export class SqliteFormalizationArtifactGraph implements
   }
 
   areTasksReady(epicId: number) {
-    const rows = this.db.prepare(
-      `SELECT id, execution_mode, status, integration_state, task_kind
-        FROM tasks WHERE epic_id=? AND workflow_stage='formalization'`,
-    ).all(epicId) as Array<{
+    // Conveyor v4 step 3.A.4 read-switch: when SAGA_WORKPLACE_READ=new, the
+    // task's done-ness is the AUTHORITATIVE v4_workplaces loop_state (terminal
+    // = done). The legacy `tasks.status` is a reverse projection that may lag.
+    // integration_state / execution_mode / task_kind stay on tasks (DATA
+    // columns — they describe the task, not its orchestration loop state).
+    const cutover = process.env.SAGA_WORKPLACE_READ === 'new';
+    interface TaskRow {
       id: number; execution_mode: string; status: string;
+      loop_state: string | null;
       integration_state: string; task_kind: string | null;
-    }>;
+    }
+    const rows: TaskRow[] = cutover
+      ? this.db.prepare(
+          `SELECT t.id, t.execution_mode,
+                  COALESCE(w.kanban_phase, t.status) AS status,
+                  w.loop_state AS loop_state,
+                  t.integration_state, t.task_kind
+             FROM tasks t
+             LEFT JOIN v4_workplaces w ON w.workplace_ref = t.workplace_ref
+            WHERE t.epic_id=? AND t.workflow_stage='formalization'`,
+        ).all(epicId) as TaskRow[]
+      : this.db.prepare(
+          `SELECT id, execution_mode, status, NULL AS loop_state,
+                  integration_state, task_kind
+            FROM tasks WHERE epic_id=? AND workflow_stage='formalization'`,
+        ).all(epicId) as TaskRow[];
     // Exclude bookkeeping tasks (summary/recovery) — same exclusion as lifecycle.ts.
     const gateable = rows.filter(t =>
       t.task_kind !== 'summary.stage' && t.task_kind !== 'recovery.heal');
@@ -273,8 +292,15 @@ export class SqliteFormalizationArtifactGraph implements
       return { ready: false, blockingTaskIds: [] };
     }
     const blocking = gateable
-      .filter(t => t.status !== 'done'
-        || (t.execution_mode === 'git_change' && t.integration_state !== 'merged'))
+      .filter(t => {
+        // A task blocks the gate unless it is fully done. In cutover mode the
+        // authoritative signal is the workplace loop_state='terminal'; in
+        // legacy mode it is tasks.status='done'. integration_state (git merge)
+        // is data either way.
+        const isDone = cutover ? t.loop_state === 'terminal' : t.status === 'done';
+        return !isDone
+          || (t.execution_mode === 'git_change' && t.integration_state !== 'merged');
+      })
       .map(t => t.id);
     return { ready: blocking.length === 0, blockingTaskIds: blocking };
   }
