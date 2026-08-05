@@ -84,28 +84,14 @@ interface TaskOrchestrationState {
   current_execution_id: string | null;
 }
 
-function cutoverActive(): boolean {
-  return true;
-}
-
 function readTaskOrchestrationState(taskId: number): TaskOrchestrationState {
   const db = getDb();
-  if (!cutoverActive()) {
-    const row = db.prepare(
-      'SELECT status, assigned_to, current_execution_id FROM tasks WHERE id=?',
-    ).get(taskId) as TaskOrchestrationState | undefined;
-    return {
-      status: row?.status ?? null,
-      assigned_to: row?.assigned_to ?? null,
-      current_execution_id: row?.current_execution_id ?? null,
-    };
-  }
-  // Cutover: derive the orchestration state from the authoritative workplace.
+  // Derive the orchestration state from the authoritative workplace.
   // status ← reverse-project workplace.kanban_phase.
   // current_execution_id ← workplace.active_reservation_ref (the live lease).
   // assigned_to ← worker_executions row for the active reservation (the worker
   //   that won the lease). Falls back to tasks.assigned_to when no workplace
-  //   is bound (a legacy task not yet admitted to the conveyor).
+  //   is bound.
   const task = db.prepare(
     'SELECT workplace_ref, assigned_to FROM tasks WHERE id=?',
   ).get(taskId) as { workplace_ref: string | null; assigned_to: string | null } | undefined;

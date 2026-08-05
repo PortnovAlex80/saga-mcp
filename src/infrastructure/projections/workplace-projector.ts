@@ -49,101 +49,9 @@ import type Database from 'better-sqlite3';
 import {
   asWorkplaceRef,
   type KanbanPhase,
-  type LoopState,
-  type NextRole,
-  type TerminalReason,
   type WorkplaceRef,
   type WorkplaceState,
 } from '../../process-modules/domain/workplace/index.js';
-import { SqliteWorkplaceRepository } from '../workplace/sqlite-workplace-repository.js';
-
-/**
- * The legacy task status that triggers a projection write.
- */
-export interface TaskStatusSnapshot {
-  readonly taskId: number;
-  readonly status: string;
-  readonly epicId: number;
-  readonly projectId: number;
-  readonly taskKind: string | null;
-  readonly metadata: string;
-}
-
-/**
- * The projector. Construct once per DB; call `projectStatusChange` after every
- * dispatcher status transition (worker_next, worker_done, worker_ask_need).
- *
- * The forward projection (tasks → v4) is enabled when `SAGA_WORKPLACE_WRITE`
- * is 'on'. After cutover, the ConveyorRuntime drives v4 directly and calls
- * `reverseProjectWorkplaceToTask` — the forward path becomes a legacy adapter.
- */
-export class WorkplaceProjector {
-  private readonly repo: SqliteWorkplaceRepository;
-  private readonly enabled: boolean;
-
-  constructor(db: Database.Database) {
-    this.repo = new SqliteWorkplaceRepository(db);
-    this.enabled = true;
-  }
-
-  /**
-   * Forward projection: shadow-write a task status change into v4_workplaces.
-   *
-   * Derives the WorkplaceRef from the task's metadata. When the metadata lacks
-   * `process_run_id`, the task is a legacy board task and is NOT projected.
-   *
-   * This is the LEGACY direction — used while tasks.status is still driven by
-   * the legacy dispatcher. After cutover, ConveyorRuntime writes v4 directly
-   * and the REVERSE projection (`reverseProjectWorkplaceToTask`) is the
-   * authoritative direction.
-   */
-  projectStatusChange(snapshot: TaskStatusSnapshot): void {
-    if (!this.enabled) return;
-
-    const ref = deriveWorkplaceRefFromTaskMetadata({
-      taskId: snapshot.taskId,
-      metadata: snapshot.metadata,
-      taskKind: snapshot.taskKind,
-    });
-    if (!ref) return; // not a Process Module task — skip
-
-    const target = mapLegacyStatusToV4(snapshot.status);
-    if (!target) return; // unknown status — skip
-
-    // Materialize if not present (idempotent — returns existing if already there).
-    this.repo.materialize({
-      processRunId: ref.processRunId,
-      moduleRef: ref.moduleRef,
-      productionCellId: ref.productionCellId,
-      workKey: ref.workKey,
-    });
-
-    // Read current state and CAS the transition.
-    const current = this.repo.read(ref);
-    if (!current) return;
-
-    // Skip if already at the target (idempotent shadow — avoid spurious revision bumps).
-    if (
-      current.kanbanPhase === target.kanbanPhase
-      && current.loopState === target.loopState
-      && current.nextRole === target.nextRole
-    ) return;
-
-    try {
-      this.repo.applyTransition({
-        workplaceRef: ref,
-        expectedRevision: current.revision,
-        kanbanPhase: target.kanbanPhase,
-        loopState: target.loopState,
-        nextRole: target.nextRole,
-        terminalReason: target.terminalReason,
-      });
-    } catch {
-      // CAS miss or invariant violation — best-effort shadow. The ConveyorRuntime
-      // path is authoritative after cutover; this forward path is a legacy adapter.
-    }
-  }
-}
 
 // ---------------------------------------------------------------------------
 // PURE HELPERS — exportable, used by ConveyorRuntime.
@@ -236,38 +144,5 @@ export function mapV4KanbanToTaskStatus(kanbanPhase: KanbanPhase): string | null
     case 'cancelled':
       return 'done';
     default: return null;
-  }
-}
-
-/**
- * Map a legacy tasks.status to the v4 two-channel state (FORWARD projection).
- *
- * Returns null for unrecognized statuses (the projection is skipped).
- */
-function mapLegacyStatusToV4(status: string): {
-  kanbanPhase: KanbanPhase;
-  loopState: LoopState;
-  nextRole: NextRole;
-  terminalReason: TerminalReason | null;
-} | null {
-  switch (status) {
-    case 'todo':
-      return { kanbanPhase: 'todo', loopState: 'idle', nextRole: 'author', terminalReason: null };
-    case 'in_progress':
-      // Map to 'queued' not 'running' — the projector mirrors the Kanban
-      // phase (in_progress = active author work), while the loop state is a
-      // best-effort shadow. 'queued' is a valid transition from 'idle'
-      // (REG-28-AC-01 closed pairs) and avoids the idle→running gap.
-      return { kanbanPhase: 'in_progress', loopState: 'queued', nextRole: 'author', terminalReason: null };
-    case 'review':
-      return { kanbanPhase: 'review', loopState: 'queued', nextRole: 'reviewer', terminalReason: null };
-    case 'review_in_progress':
-      return { kanbanPhase: 'review_in_progress', loopState: 'queued', nextRole: 'reviewer', terminalReason: null };
-    case 'done':
-      return { kanbanPhase: 'done', loopState: 'terminal', nextRole: 'author', terminalReason: 'accepted' };
-    case 'blocked':
-      return { kanbanPhase: 'blocked', loopState: 'paused', nextRole: 'author', terminalReason: null };
-    default:
-      return null;
   }
 }

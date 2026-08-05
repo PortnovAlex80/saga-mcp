@@ -29,9 +29,6 @@ let cachedRuntime: ConveyorRuntime | null = null;
 let cachedDb: Database.Database | null = null;
 
 /** Is the cutover authority active (SAGA_WORKPLACE_READ=new)? */
-export function cutoverActive(): boolean {
-  return true;
-}
 
 function runtime(db: Database.Database): ConveyorRuntime {
   if (cachedDb !== db) {
@@ -57,7 +54,6 @@ export function reserveTaskExecution(db: Database.Database, input: {
   executionId: string;
   preClaimStatus?: string;
 }): WorkplaceRef | null {
-  if (!cutoverActive()) return null;
   const rt = runtime(db);
   const ref = rt.bindTaskToWorkplace({
     taskId: input.taskId,
@@ -103,7 +99,6 @@ export function releaseTaskExecution(db: Database.Database, input: {
   /** The task's integration_state — 'merged' means it's safe to terminal. */
   integrationState?: string;
 }): void {
-  if (!cutoverActive()) return;
   const rt = runtime(db);
   // Re-derive the ref from metadata (the task is already bound).
   const ref = deriveWorkplaceRefFromTaskMetadata({
