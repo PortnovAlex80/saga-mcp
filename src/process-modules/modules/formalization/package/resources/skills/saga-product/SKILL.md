@@ -412,3 +412,17 @@ For EVERY artifact you create:
 1. `Write({ file_path: "<workspace_root>/<artifact_path>", content: "<full artifact text>" })` — write the file FIRST.
 2. THEN `artifact_create({ path, project_repository_id, type, ... })` — the tool reads the file and stamps `content_hash`.
 3. Verify via `artifact_list` that `content_hash` is NOT null before proceeding.
+
+
+## CRITICAL: Do NOT edit artifact files after artifact_create
+
+After you call `artifact_create`, the file content is frozen — its SHA-256 hash
+is stamped as `content_hash`. If you edit the file again (Write/Edit), the hash
+on disk changes but the hash in saga.db does NOT update. The kernel gate will
+then fail: "ledger artifact does not match its canonical row".
+
+Rule: Write the file ONCE with final content → artifact_create → DONE.
+If you need to fix content: Write the file → artifact_create again (creates a
+new ledger row with the new hash) → the LATEST row wins.
+
+NEVER: artifact_create → Edit file → (hash drift → gate fails)
