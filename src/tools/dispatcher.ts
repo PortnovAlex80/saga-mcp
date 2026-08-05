@@ -426,7 +426,7 @@ function nonNegativeInteger(value: unknown): number {
 
 function handleWorkerDone(args: Record<string, unknown>): {
   completed: number;
-  completed_new_status: 'review' | 'done' | 'todo' | 'blocked' | 'pending_verification';
+  completed_new_status: 'review' | 'done' | 'todo' | 'blocked';
   active_tasks?: Array<{
     task_id: number;
     title: string;
@@ -522,7 +522,7 @@ function handleWorkerDone(args: Record<string, unknown>): {
     //    задачу в todo (это создаёт бесконечный цикл — verifier не может
     //    фиксить product bugs). Вместо этого задача закрывается как done с
     //    пометкой verification_outcome=failed в metadata.
-    let newStatus: 'review' | 'done' | 'todo' | 'blocked' | 'pending_verification';
+    let newStatus: 'review' | 'done' | 'todo' | 'blocked';
     let newAssignedTo: string | null; // кому уходит задача после перевода
     if (task.status === 'in_progress') {
       // UNIVERSAL CONVEYOR (CONVEYOR-MENTAL-MODEL §"One queue"):
@@ -613,15 +613,11 @@ function handleWorkerDone(args: Record<string, unknown>): {
           );
         }
       } else {
-        // Ревью пройдено (APPROVED). Если задача — Flow-managed LM-node task
-        // (generation_key начинается с 'process-run:'), переводим в
-        // pending_verification: ядро (kernel verifier) в Flow должно проверить
-        // доменную корректность, прежде чем задача станет done.
-        // Если задача НЕ Flow-managed (development impl/verify tasks, legacy) —
-        // done сразу: нет kernel verifier, который её проверит.
-        const isFlowManaged = typeof task.generation_key === 'string'
-          && task.generation_key.startsWith('process-run:');
-        newStatus = isFlowManaged ? 'pending_verification' : 'done';
+        // Ревью пройдено (APPROVED) — done. Kernel gate внутри lifecycle
+        // (runEpisode → resolve-node) примет артефакты. Не нужен промежуточный
+        // pending_verification — конвейерная модель: author → review → done.
+        // Kernel gate работает внутри lifecycle, не блокирует tasks.status.
+        newStatus = 'done';
         newAssignedTo = null;
       }
     } else {
@@ -694,7 +690,7 @@ function handleWorkerDone(args: Record<string, unknown>): {
       integrationState: task.integration_state,
     });
 
-    if (newStatus === 'done' || newStatus === 'pending_verification') {
+    if (newStatus === 'done') {
       let taskTags: string[] = [];
       try { taskTags = JSON.parse(task.tags || '[]') as string[]; } catch { taskTags = []; }
       if (taskTags.includes('needs-human')) {
