@@ -550,7 +550,7 @@ export class ClaudeBoardRunner {
   //
   // Used by: model change (lower ceiling when switching to a smaller model),
   // rate-limit recovery (drop ceiling on 429, climb back after cooldown),
-  // concurrency selector (user-initiated change via /api/engine/restart).
+  // concurrency selector (operational policy change for the next factory resume).
   setConcurrency(projectId, concurrency) {
     const run = this.runs.get(projectId);
     if (!run) return;

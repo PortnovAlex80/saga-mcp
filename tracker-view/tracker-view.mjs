@@ -267,7 +267,7 @@ boardApi.setModelApi(modelApi);
 
 // Admin endpoints API (T10 step 4): /admin HTML page + /api/project/create,
 // /api/project/archive, /api/project/delete, /api/admin/purge-all-projects,
-// /api/epic/create, /api/project/create-from-idea. Injected with the same
+// /api/epic/create, and the sole /api/factory/start gateway. Injected with the same
 // runtimeConfig + DB_PATH, and the page(title, body) HTML wrapper (now owned
 // by boardApi) so renderAdmin can emit the full HTML document.
 // Route strings stay here as test anchors; the handlers live in the factory.
@@ -275,9 +275,10 @@ const adminApi = createAdminEndpointsApi({
   runtimeConfig,
   dbPath: DB_PATH,
   page: boardApi.page,
+  sagaApplication,
 });
 
-// Lifecycle endpoints API (T10 step 5): engine control (start/stop/restart/
+// Lifecycle endpoints API (T10 step 5): operational engine control (stop/
 // status/concurrency), board-run lifecycle (start/stop/status), saga
 // repository operations, worker observation (tail + active), and episode
 // stage summaries. Injected with the sagaApplication + boardRunner +
@@ -345,8 +346,8 @@ const server = http.createServer((req, res) => {
   if (req.method === 'POST' && url.pathname === '/api/epic/create') {
     return adminApi.handleEpicCreate(req, res);
   }
-  if (req.method === 'POST' && url.pathname === '/api/project/create-from-idea') {
-    return adminApi.handleProjectCreateFromIdea(req, res);
+  if (req.method === 'POST' && url.pathname === '/api/factory/start') {
+    return adminApi.handleFactoryStart(req, res);
   }
   if (req.method === 'POST' && url.pathname === '/api/board-run/start') {
     return lifecycleApi.handleBoardRunStart(req, res);
@@ -379,12 +380,6 @@ const server = http.createServer((req, res) => {
   }
   if (req.method === 'GET' && url.pathname === '/api/workers/active') {
     return lifecycleApi.handleWorkersActive(req, res, url);
-  }
-  if (req.method === 'POST' && url.pathname === '/api/engine/restart') {
-    return lifecycleApi.handleEngineRestart(req, res);
-  }
-  if (req.method === 'POST' && url.pathname === '/api/engine/start') {
-    return lifecycleApi.handleEngineStart(req, res);
   }
   if (req.method === 'POST' && url.pathname === '/api/engine/stop') {
     return lifecycleApi.handleEngineStop(req, res);

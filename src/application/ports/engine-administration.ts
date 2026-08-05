@@ -1,12 +1,6 @@
 export interface EngineStartCommand {
   epicId: number;
   concurrency?: number;
-  /** JSON input consumed by the product Lifecycle execution plane. */
-  lifecycleInputPath?: string;
-  /** Stable key used to replay/resume the same durable LifecycleRun. */
-  idempotencyKey?: string;
-  /** Explicit controller authority to continue a durable human pause. */
-  resumePaused?: boolean;
 }
 
 export interface EngineStateSnapshot {
@@ -25,6 +19,7 @@ export type EngineAdministrationErrorCode =
   | 'epic_not_found'
   | 'ambiguous_active_run'
   | 'active_run_mismatch'
+  | 'run_not_resumable'
   | 'spawn_failed';
 
 export class EngineAdministrationError extends Error {
@@ -40,7 +35,6 @@ export class EngineAdministrationError extends Error {
 export interface EngineAdministration {
   start(command: EngineStartCommand): EngineStateSnapshot;
   stop(epicId: number): EngineStateSnapshot;
-  restart(command: EngineStartCommand): EngineStateSnapshot;
   setConcurrency(epicId: number, concurrency: number): EngineStateSnapshot;
   status(epicId: number): EngineStateSnapshot;
   dispose(): void;

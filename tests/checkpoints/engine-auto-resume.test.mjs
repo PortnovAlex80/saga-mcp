@@ -7,7 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import Database from 'better-sqlite3';
 import { SCHEMA_SQL } from '../../dist/schema.js';
-import { LegacyEngineAdministration } from '../../dist/infrastructure/engine/engine-administration.js';
+import { EngineProcessAdministration } from '../../dist/infrastructure/engine/engine-administration.js';
 
 function databaseFixture() {
   const root = mkdtempSync(path.join(os.tmpdir(), 'saga-engine-resume-'));
@@ -48,14 +48,24 @@ test('engine start automatically resumes the unique active lifecycle run', t => 
   t.after(() => rmSync(f.root, { recursive: true, force: true }));
   insertRun(f.dbPath);
   let args;
-  const admin = new LegacyEngineAdministration({
+  const admin = new EngineProcessAdministration({
     config: { dbPath: f.dbPath, orchestrationMode: 'lifecycle' },
     platform: 'linux', spawnProcess: (_command, actual) => { args = actual; return child(); },
     spawnProcessSync: () => ({ status: 1, stdout: '', stderr: '' }),
   });
   admin.start({ epicId: 2, concurrency: 2 });
-  assert.ok(args.includes('--resume'));
-  assert.ok(args.includes('--idempotency-key=same-order'));
+  assert.equal(args.length, 2);
+  assert.match(args[1], /^--launch-ref=launch-/);
+  const db = new Database(f.dbPath, { readonly:true });
+  const launch = db.prepare(
+    `SELECT mode, project_id, epic_id, idempotency_key, concurrency, state
+       FROM factory_launch_requests`,
+  ).get();
+  db.close();
+  assert.deepEqual(launch, {
+    mode:'resume', project_id:1, epic_id:2,
+    idempotency_key:'same-order', concurrency:2, state:'requested',
+  });
 });
 
 test('engine start fails closed when more than one lifecycle is active in the epic', t => {
@@ -63,7 +73,7 @@ test('engine start fails closed when more than one lifecycle is active in the ep
   t.after(() => rmSync(f.root, { recursive: true, force: true }));
   insertRun(f.dbPath, { name: 'factory-a', idempotencyKey: 'a' });
   insertRun(f.dbPath, { name: 'factory-b', idempotencyKey: 'b' });
-  const admin = new LegacyEngineAdministration({
+  const admin = new EngineProcessAdministration({
     config: { dbPath: f.dbPath, orchestrationMode: 'lifecycle' },
     spawnProcess: () => child(), spawnProcessSync: () => ({ status: 1, stdout: '', stderr: '' }),
   });

@@ -946,20 +946,19 @@ export function createBoardRenderApi({
               engineToggle.disabled = false;
             }
           } else {
-            const conc = Number(runnerConcurrency?.value) || 4;
-            if (!confirm('Запустить движок с concurrency=' + conc + '? Будут созданы воркеры (claude -p), расходующие токены.')) return;
+            if (!confirm('Продолжить завод с последней durable-точки? Будут созданы воркеры, расходующие токены.')) return;
             engineToggle.disabled = true;
             runnerStatus.textContent = 'старт…';
             try {
-              const r = await fetch('/api/engine/start', {
+              const r = await fetch('/api/factory/start', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ epic_id: epicId, concurrency: conc, resume: true }),
+                body: JSON.stringify({ project_id: projectId }),
               });
               const d = await r.json();
               if (!r.ok || !d.ok) throw new Error(d.error || 'не удалось запустить');
               syncEngineToggleButton(true);
-              runnerStatus.textContent = 'concurrency=' + d.concurrency + ' (pid ' + d.engine_pid + ')';
+              runnerStatus.textContent = 'resume lifecycle=' + d.lifecycle_run_id + ' (pid ' + d.engine_pid + ')';
             } catch (e) {
               alert('Старт движка: ' + e.message);
               runnerStatus.textContent = 'ошибка';

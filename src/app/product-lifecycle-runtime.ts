@@ -429,7 +429,7 @@ export function createProductLifecycleRuntime(
         );
         if (!existing || existing.inputSnapshot === null) {
           throw new Error(
-            'PRODUCT_LIFECYCLE_INPUT_REQUIRED: --resume was requested but no durable '
+            'PRODUCT_LIFECYCLE_INPUT_REQUIRED: resume launch was requested but no durable '
             + `LifecycleRun input is persisted for idempotency key '${idempotencyKey}'`,
           );
         }

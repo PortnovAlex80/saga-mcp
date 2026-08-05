@@ -3,6 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createWriteStream } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { randomUUID } from 'node:crypto';
 import Database from 'better-sqlite3';
 import { isProcessAlive } from '../../worker-executions.js';
 import {
@@ -12,8 +13,9 @@ import {
   type EngineStateSnapshot,
 } from '../../application/ports/engine-administration.js';
 import type { SagaRuntimeConfig } from '../../runtime/saga-runtime-config.js';
+import { requestFactoryLaunch } from '../factory/sqlite-factory-launch-repository.js';
 
-export interface LegacyEngineAdministrationOptions {
+export interface EngineProcessAdministrationOptions {
   config: SagaRuntimeConfig;
   baseEnv?: NodeJS.ProcessEnv;
   orchestrateCliPath?: string;
@@ -40,6 +42,7 @@ interface PersistedEngineState {
 interface ResumableLifecycleRun {
   id: number;
   idempotencyKey: string;
+  initiatedBy: string;
 }
 
 /**
@@ -48,7 +51,7 @@ interface ResumableLifecycleRun {
  * Process-tree termination, detached CLI spawning and episode metadata stay
  * compatible in behavior, but the HTTP/frontend layer no longer owns them.
  */
-export class LegacyEngineAdministration implements EngineAdministration {
+export class EngineProcessAdministration implements EngineAdministration {
   private readonly config: SagaRuntimeConfig;
   private readonly baseEnv: NodeJS.ProcessEnv;
   private readonly orchestrateCliPath: string;
@@ -70,7 +73,7 @@ export class LegacyEngineAdministration implements EngineAdministration {
   private readonly aliveCache = new Map<string, { at: number; alive: boolean }>();
   private static readonly ALIVE_CACHE_MS = 5000;
 
-  constructor(options: LegacyEngineAdministrationOptions) {
+  constructor(options: EngineProcessAdministrationOptions) {
     this.config = options.config;
     this.baseEnv = { ...(options.baseEnv ?? {}) };
     this.spawnProcess = options.spawnProcess ?? spawn;
@@ -87,46 +90,40 @@ export class LegacyEngineAdministration implements EngineAdministration {
   start(command: EngineStartCommand): EngineStateSnapshot {
     const projectId = this.projectIdForEpic(command.epicId);
     const resumable = this.findResumableLifecycleRun(projectId, command.epicId);
-    if (
-      resumable
-      && command.idempotencyKey?.trim()
-      && command.idempotencyKey.trim() !== resumable.idempotencyKey
-      && command.resumePaused !== false
-    ) {
+    if (!resumable) {
       throw new EngineAdministrationError(
-        'active_run_mismatch',
-        `epic ${command.epicId} already has active LifecycleRun ${resumable.id} `
-          + `with idempotency key '${resumable.idempotencyKey}'`,
+        'run_not_resumable',
+        `project ${projectId} epic ${command.epicId} has no resumable factory run`,
       );
     }
-    // Undefined means the normal safe policy: continue the unique durable run.
-    // Explicit false remains available to administrative callers that really
-    // want start-without-resume semantics.
-    const resumePaused = command.resumePaused ?? (resumable !== null);
-    const idempotencyKey = command.idempotencyKey?.trim()
-      || (resumePaused ? resumable?.idempotencyKey : undefined);
     const persisted = this.readPersisted(command.epicId);
     const requested = Number(command.concurrency);
     const concurrency = Number.isInteger(requested) && requested >= 1 && requested <= 10
       ? requested
       : (Number(persisted.concurrency) || 4);
 
+    if (persisted.running && this.isEngineAlive(projectId, command.epicId)) {
+      return {
+        projectId,
+        epicId: command.epicId,
+        running: true,
+        alive: true,
+        pid: persisted.pid,
+        concurrency: persisted.concurrency ?? concurrency,
+        startedAt: persisted.startedAt,
+      };
+    }
+
     this.killEngineTree(projectId, command.epicId);
 
     try {
-      const cliArgs = [
-        this.orchestrateCliPath,
-        String(projectId),
-        String(command.epicId),
-        `--concurrency=${concurrency}`,
-      ];
-      if (command.lifecycleInputPath?.trim()) {
-        cliArgs.push(`--lifecycle-input=${command.lifecycleInputPath.trim()}`);
-      }
-      if (idempotencyKey) {
-        cliArgs.push(`--idempotency-key=${idempotencyKey}`);
-      }
-      if (resumePaused) cliArgs.push('--resume');
+      const launchRef = this.createResumeLaunch(
+        projectId,
+        command.epicId,
+        resumable,
+        concurrency,
+      );
+      const cliArgs = [this.orchestrateCliPath, `--launch-ref=${launchRef}`];
       const child = this.spawnProcess(
         'node',
         cliArgs,
@@ -188,12 +185,6 @@ export class LegacyEngineAdministration implements EngineAdministration {
       concurrency: persisted.concurrency,
       startedAt: persisted.startedAt,
     };
-  }
-
-  restart(command: EngineStartCommand): EngineStateSnapshot {
-    // Restart is recovery authority by definition. Reuse the persisted input
-    // and cursor; never make the caller remember a second flag.
-    return this.start({ ...command, resumePaused: true });
   }
 
   setConcurrency(epicId: number, concurrency: number): EngineStateSnapshot {
@@ -288,12 +279,16 @@ export class LegacyEngineAdministration implements EngineAdministration {
       ).get();
       if (!table) return null;
       const rows = db.prepare(
-        `SELECT id, idempotency_key
+        `SELECT id, idempotency_key, initiated_by
            FROM saga3_lifecycle_runs
           WHERE project_id=? AND epic_id=?
             AND status IN ('created','running','paused')
           ORDER BY id DESC`,
-      ).all(projectId, epicId) as Array<{ id: number; idempotency_key: string }>;
+      ).all(projectId, epicId) as Array<{
+        id: number;
+        idempotency_key: string;
+        initiated_by: string;
+      }>;
       if (rows.length > 1) {
         throw new EngineAdministrationError(
           'ambiguous_active_run',
@@ -302,7 +297,11 @@ export class LegacyEngineAdministration implements EngineAdministration {
         );
       }
       const row = rows[0];
-      return row ? { id: row.id, idempotencyKey: row.idempotency_key } : null;
+      return row ? {
+        id: row.id,
+        idempotencyKey: row.idempotency_key,
+        initiatedBy: row.initiated_by,
+      } : null;
     });
   }
 
@@ -389,7 +388,7 @@ export class LegacyEngineAdministration implements EngineAdministration {
     const cacheKey = this.aliveCacheKey(projectId, epicId);
     const cached = this.aliveCache.get(cacheKey);
     const nowMs = this.now().getTime();
-    if (cached && nowMs - cached.at < LegacyEngineAdministration.ALIVE_CACHE_MS) {
+    if (cached && nowMs - cached.at < EngineProcessAdministration.ALIVE_CACHE_MS) {
       return cached.alive;
     }
 
@@ -426,6 +425,40 @@ export class LegacyEngineAdministration implements EngineAdministration {
 
   private timestamp(): string {
     return this.now().toISOString().replace('T', ' ').slice(0, 19);
+  }
+
+  private createResumeLaunch(
+    projectId: number,
+    epicId: number,
+    run: ResumableLifecycleRun,
+    concurrency: number,
+  ): string {
+    return this.withDb(db => db.transaction(() => {
+      const existing = db.prepare(
+        'SELECT order_ref FROM factory_orders WHERE project_id=?',
+      ).get(projectId) as { order_ref: string } | undefined;
+      const orderRef = existing?.order_ref ?? `order-${randomUUID()}`;
+      if (!existing) {
+        db.prepare(
+          `INSERT INTO factory_orders
+             (order_ref, project_id, epic_id, lifecycle_run_id, source_kind,
+              state, source_url, source_final_url, source_media_type,
+              source_digest, source_body)
+           VALUES (?, ?, ?, ?, 'existing_project', 'paused',
+                   NULL, NULL, NULL, NULL, NULL)`,
+        ).run(orderRef, projectId, epicId, run.id);
+      }
+      return requestFactoryLaunch({
+        orderRef,
+        mode: 'resume',
+        projectId,
+        epicId,
+        lifecycleRunId: run.id,
+        initiatedBy: run.initiatedBy,
+        idempotencyKey: run.idempotencyKey,
+        concurrency,
+      }, db);
+    })(), false);
   }
 
   private withDb<T>(

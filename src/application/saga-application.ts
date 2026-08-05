@@ -19,7 +19,6 @@ export interface SagaControlApplication {
   loadProjectBoard(projectId: number): ProjectBoardProjection;
   startEngine(command: EngineStartCommand): EngineStateSnapshot;
   stopEngine(epicId: number): EngineStateSnapshot;
-  restartEngine(command: EngineStartCommand): EngineStateSnapshot;
   setEngineConcurrency(epicId: number, concurrency: number): EngineStateSnapshot;
   getEngineStatus(epicId: number): EngineStateSnapshot;
   close(): void;
@@ -75,11 +74,6 @@ export function createSagaControlApplication(
     stopEngine(epicId) {
       assertOpen();
       return dependencies.engineAdministration.stop(epicId);
-    },
-
-    restartEngine(command) {
-      assertOpen();
-      return dependencies.engineAdministration.restart(command);
     },
 
     setEngineConcurrency(epicId, concurrency) {
@@ -143,11 +137,6 @@ export function createSagaApplication(
     stopEngine(epicId) {
       assertOpen();
       return dependencies.engineAdministration.stop(epicId);
-    },
-
-    restartEngine(command) {
-      assertOpen();
-      return dependencies.engineAdministration.restart(command);
     },
 
     setEngineConcurrency(epicId, concurrency) {

@@ -2,8 +2,8 @@
 /**
  * Saga orchestration CLI host.
  *
- * Usage:
- *   node dist/orchestrate-cli.js <project_id> <epic_id> [--concurrency=4]
+ * Internal usage:
+ *   node dist/orchestrate-cli.js --launch-ref=<opaque capability>
  *
  * The CLI now depends on the engine-neutral SagaApplication boundary. After the
  * saga4 cutover the composition root always returns the Product Lifecycle
@@ -17,7 +17,8 @@
  *                         (required; the lifecycle runtime is the only engine)
  */
 
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { mkdirSync, renameSync, writeFileSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -42,83 +43,31 @@ import { discoveryPackageManifest } from './process-modules/modules/discovery/pa
 import { formalizationPackageManifest } from './process-modules/modules/formalization/package/manifest.js';
 import { developmentPackageManifest } from './process-modules/modules/development/package/manifest.js';
 import { deliveryPackageManifest } from './process-modules/modules/delivery/package/manifest.js';
+import {
+  claimFactoryLaunch,
+  finishFactoryLaunch,
+  markFactoryLaunchRunning,
+} from './infrastructure/factory/sqlite-factory-launch-repository.js';
 
-function parseArgs(argv: string[]): {
-  projectId: number;
-  epicId: number;
-  concurrency: number;
-  lifecycleInputPath: string | null;
-  idempotencyKey: string | null;
-  resumePaused: boolean;
-} {
-  const positional: string[] = [];
-  let concurrency = 4;
-  let lifecycleInputPath: string | null = null;
-  let idempotencyKey: string | null = null;
-  let resumePaused = false;
+function parseArgs(argv: string[]): { launchRef: string } {
+  let launchRef: string | null = null;
   for (const arg of argv.slice(2)) {
-    const m = /^--concurrency=(\d+)$/.exec(arg);
-    if (m) {
-      concurrency = Number(m[1]);
-      if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 10) {
-        throw new Error(`--concurrency must be an integer 1..10, got '${m[1]}'`);
-      }
-      continue;
-    }
-    const lifecycleInput = /^--lifecycle-input=(.+)$/.exec(arg);
-    if (lifecycleInput) {
-      lifecycleInputPath = lifecycleInput[1];
-      continue;
-    }
-    const idempotency = /^--idempotency-key=(.+)$/.exec(arg);
-    if (idempotency) {
-      idempotencyKey = idempotency[1];
-      continue;
-    }
-    if (arg === '--resume') {
-      resumePaused = true;
+    const capability = /^--launch-ref=([^\s]+)$/.exec(arg);
+    if (capability && launchRef === null) {
+      launchRef = capability[1]!;
       continue;
     }
     if (arg === '-h' || arg === '--help') {
       process.stdout.write(
-        'Usage: orchestrate-cli.js <project_id> <epic_id> [options]\n'
-        + '  --concurrency=4\n'
-        + '  --lifecycle-input=path/to/input.json\n'
-        + '  --idempotency-key=stable-key\n'
-        + '  --resume\n'
-        + '\n'
-        + 'SAGA_PRODUCT_LIFECYCLE_COMPOSITION is required (lifecycle is the only '
-        + 'engine). Pass --lifecycle-input, set SAGA_PRODUCT_LIFECYCLE_INPUT '
-        + '(path), or set SAGA_PRODUCT_LIFECYCLE_INPUT_JSON (inline JSON).\n',
+        'Internal factory runtime host.\n'
+        + 'Usage: orchestrate-cli.js --launch-ref=<opaque capability>\n',
       );
       process.exit(0);
     }
-    positional.push(arg);
+    throw new Error(`unsupported runtime-host argument '${arg}'`);
   }
-  if (positional.length !== 2) {
-    process.stderr.write(
-      'Usage: orchestrate-cli.js <project_id> <epic_id> [--concurrency=4]\n',
-    );
-    process.exit(2);
-  }
-  const projectId = Number(positional[0]);
-  const epicId = Number(positional[1]);
-  if (!Number.isInteger(projectId) || projectId < 1) {
-    process.stderr.write(`project_id must be a positive integer, got '${positional[0]}'\n`);
-    process.exit(2);
-  }
-  if (!Number.isInteger(epicId) || epicId < 1) {
-    process.stderr.write(`epic_id must be a positive integer, got '${positional[1]}'\n`);
-    process.exit(2);
-  }
-  return {
-    projectId,
-    epicId,
-    concurrency,
-    lifecycleInputPath,
-    idempotencyKey,
-    resumePaused,
-  };
+  if (launchRef === null) throw new Error('FACTORY_LAUNCH_CAPABILITY_REQUIRED');
+  return { launchRef };
 }
 
 
@@ -241,20 +190,25 @@ function writeLifecycleStartReceipt(run: {
 }
 
 async function main() {
-  const {
-    projectId,
-    epicId,
-    concurrency,
-    lifecycleInputPath,
-    idempotencyKey,
-    resumePaused,
-  } = parseArgs(process.argv);
+  const { launchRef } = parseArgs(process.argv);
   if (!process.env.DB_PATH) {
     process.stderr.write(
       'DB_PATH env var is required (path to the saga SQLite database).\n',
     );
     process.exit(2);
   }
+  const claimToken = randomUUID();
+  const ticket = claimFactoryLaunch(launchRef, claimToken);
+  const {
+    projectId,
+    epicId,
+    concurrency,
+    lifecycleInput,
+    lifecycleInputSchema,
+    idempotencyKey,
+    initiatedBy,
+    mode,
+  } = ticket;
 
   // DIAGNOSTIC: catch silent exits. The engine dies after "drain complete"
   // without a "cycle:" or "done:" line — process disappears quietly. These
@@ -289,20 +243,6 @@ async function main() {
     // to this child via env — no JSON file is written to disk and no
     // --lifecycle-input path is passed. The runtime's resolveInput re-validates
     // it (assertProductDeliveryLifecycleInput) before Discovery runs.
-    const inlineLifecycleInputJson =
-      process.env.SAGA_PRODUCT_LIFECYCLE_INPUT_JSON?.trim()
-        ? process.env.SAGA_PRODUCT_LIFECYCLE_INPUT_JSON
-        : null;
-    const resolvedLifecycleInputPath = lifecycleInputPath
-      ?? process.env.SAGA_PRODUCT_LIFECYCLE_INPUT
-      ?? null;
-    const lifecycleInput = inlineLifecycleInputJson !== null
-      ? JSON.parse(inlineLifecycleInputJson) as unknown
-      : resolvedLifecycleInputPath
-        ? JSON.parse(
-          readFileSync(path.resolve(resolvedLifecycleInputPath), 'utf8'),
-        ) as unknown
-        : undefined;
     application = createSaga2Application(process.env, overrides);
 
     // CONVEYOR Wave 5 — start the watchman. The supervision service reconciles
@@ -343,25 +283,23 @@ async function main() {
         concurrency,
         lifecycleInput: isFirstCycle ? lifecycleInput : undefined,
         lifecycleInputSchema: isFirstCycle && lifecycleInput !== undefined
-          ? 'saga3.product-delivery-lifecycle-input.v2'
+          ? lifecycleInputSchema ?? undefined
           : undefined,
-        idempotencyKey: idempotencyKey ?? undefined,
-        resumePaused: !isFirstCycle || resumePaused,
+        idempotencyKey,
+        resumePaused: !isFirstCycle || mode === 'resume',
         // On resume, read the original initiated_by from the lifecycle run
         // to avoid REPLAY_CONTEXT_MISMATCH.
         initiatedBy: (() => {
-          if (process.env.SAGA_INITIATED_BY) return process.env.SAGA_INITIATED_BY;
-          if (!isFirstCycle || resumePaused) {
-            try {
-              const row = getDb().prepare(
-                'SELECT initiated_by FROM saga3_lifecycle_runs WHERE project_id=? AND epic_id=? ORDER BY id DESC LIMIT 1',
-              ).get(projectId, epicId) as { initiated_by: string } | undefined;
-              if (row?.initiated_by) return row.initiated_by;
-            } catch { /* best effort */ }
-          }
-          return 'orchestrate-cli';
+          return initiatedBy;
         })(),
       });
+      if (isFirstCycle && result.lifecycleRun?.id) {
+        markFactoryLaunchRunning(
+          launchRef,
+          claimToken,
+          result.lifecycleRun.id,
+        );
+      }
       lastResult = result;
       isFirstCycle = false;
       process.stdout.write(`[orchestrate-cli] cycle: ${JSON.stringify({ reason: result.reason, stage: result.finalStage })}\n`);
@@ -495,6 +433,17 @@ async function main() {
     const logPath = process.env.SAGA_ENGINE_LOG ?? `${tmpdir()}/saga-engine-manual.log`;
     const ts = new Date().toISOString();
     appendFileSync(logPath, `[${ts}] PIPELINE RESULT: ${JSON.stringify(result)}\n`);
+    finishFactoryLaunch(
+      launchRef,
+      claimToken,
+      result.reason === 'failed' ? 'failed' : 'completed',
+      result.reason === 'failed' ? JSON.stringify(result) : null,
+      result.reason === 'paused'
+        ? 'paused'
+        : result.reason === 'failed'
+          ? 'start_failed'
+          : 'completed',
+    );
     process.exit(result.reason === 'failed' ? 1 : 0);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -502,6 +451,9 @@ async function main() {
     if (err instanceof Error && err.stack) {
       process.stderr.write(err.stack + '\n');
     }
+    try {
+      finishFactoryLaunch(launchRef, claimToken, 'failed', msg);
+    } catch { /* preserve the original failure */ }
     process.exit(1);
   } finally {
     try { supervision?.stop(); } catch { /* best effort */ }

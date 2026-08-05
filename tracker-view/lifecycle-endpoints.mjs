@@ -631,40 +631,6 @@ export function createLifecycleEndpointsApi({
     respondJson(res, status, { ok: false, error: error?.message || String(error) });
   }
 
-  function handleEngineStart(req, res) {
-    readJsonRequest(req, fields => {
-      try {
-        const epicId = Number(fields.epic_id);
-        const concurrency = fields.concurrency === undefined
-          ? undefined
-          : Number(fields.concurrency);
-        const state = sagaApplication.startEngine({
-          epicId,
-          concurrency,
-          lifecycleInputPath: typeof fields.lifecycle_input_path === 'string'
-            ? fields.lifecycle_input_path
-            : undefined,
-          idempotencyKey: typeof fields.idempotency_key === 'string'
-            ? fields.idempotency_key
-            : undefined,
-          resumePaused: fields.resume === undefined
-            ? undefined
-            : (fields.resume === true || fields.resume === 'true'),
-        });
-        respondJson(res, 200, {
-          ok: true,
-          project_id: state.projectId,
-          epic_id: state.epicId,
-          concurrency: state.concurrency,
-          engine_pid: state.pid,
-          running: state.running,
-        });
-      } catch (error) {
-        respondEngineError(res, error);
-      }
-    });
-  }
-
   function handleEngineStop(req, res) {
     readJsonRequest(req, fields => {
       try {
@@ -727,48 +693,10 @@ export function createLifecycleEndpointsApi({
     }
   }
 
-  function handleEngineRestart(req, res) {
-    readJsonRequest(req, fields => {
-      try {
-        const epicId = Number(fields.epic_id);
-        const concurrency = fields.concurrency === undefined
-          ? undefined
-          : Number(fields.concurrency);
-        const state = sagaApplication.restartEngine({
-          epicId,
-          concurrency,
-          lifecycleInputPath: typeof fields.lifecycle_input_path === 'string'
-            ? fields.lifecycle_input_path
-            : undefined,
-          idempotencyKey: typeof fields.idempotency_key === 'string'
-            ? fields.idempotency_key
-            : undefined,
-          // Restart always resumes in EngineAdministration. Preserve the field
-          // only for wire compatibility with older clients.
-          resumePaused: fields.resume === undefined
-            ? undefined
-            : (fields.resume === true || fields.resume === 'true'),
-        });
-        respondJson(res, 200, {
-          ok: true,
-          project_id: state.projectId,
-          epic_id: state.epicId,
-          concurrency: state.concurrency,
-          engine_pid: state.pid,
-          running: state.running,
-        });
-      } catch (error) {
-        respondEngineError(res, error);
-      }
-    });
-  }
-
   return {
-    handleEngineStart,
     handleEngineStop,
     handleEngineConcurrency,
     handleEngineStatus,
-    handleEngineRestart,
     handleBoardRunStart,
     handleBoardRunStop,
     handleBoardRunStatus,

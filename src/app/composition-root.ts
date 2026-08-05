@@ -16,7 +16,7 @@ import { closeDb } from '../db.js';
 import { asModuleInstallationId } from '../process-modules/installation/domain/installation.js';
 import type { ProductionInstallation } from '../process-modules/installation/production-install.js';
 import type { OrchestrationEngine } from '../application/ports/orchestration-engine.js';
-import { LegacyEngineAdministration } from '../infrastructure/engine/engine-administration.js';
+import { EngineProcessAdministration } from '../infrastructure/engine/engine-administration.js';
 import {
   SqliteEpisodeRuntimeRepository,
   SqliteExecutionRuntimeRepository,
@@ -84,7 +84,7 @@ export function createSagaControlApplication(
   const config = overrides.config ?? loadSagaRuntimeConfig(env);
   const board = overrides.board ?? new SqliteBoardProjectionReader(config.dbPath);
   const engineAdministration = overrides.engineAdministration
-    ?? new LegacyEngineAdministration({ config, baseEnv: env });
+    ?? new EngineProcessAdministration({ config, baseEnv: env });
   return createControlApplication({
     board,
     engineAdministration,
@@ -147,7 +147,7 @@ export function createSaga2Application(
   );
   const board = overrides.board ?? new SqliteBoardProjectionReader(config.dbPath);
   const engineAdministration = overrides.engineAdministration
-    ?? new LegacyEngineAdministration({ config, baseEnv: env });
+    ?? new EngineProcessAdministration({ config, baseEnv: env });
 
   return createSagaApplication({
     engine,

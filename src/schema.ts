@@ -1251,6 +1251,57 @@ CREATE TABLE IF NOT EXISTS factory_database_identity (
   created_at           TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- One durable factory order is the public identity behind a project.  A
+-- caller never supplies epic/run/input coordinates: the start gateway resolves
+-- them from this record.  Source bytes are frozen before provisioning so a
+-- retry cannot observe a different "idea on a napkin".
+CREATE TABLE IF NOT EXISTS factory_orders (
+  order_ref            TEXT PRIMARY KEY,
+  project_id           INTEGER NOT NULL UNIQUE REFERENCES projects(id) ON DELETE RESTRICT,
+  epic_id              INTEGER NOT NULL UNIQUE REFERENCES epics(id) ON DELETE RESTRICT,
+  lifecycle_run_id     INTEGER UNIQUE REFERENCES saga3_lifecycle_runs(id) ON DELETE RESTRICT,
+  source_kind          TEXT NOT NULL CHECK (source_kind IN ('idea_url','existing_project')),
+  source_url           TEXT,
+  source_final_url     TEXT,
+  source_media_type    TEXT,
+  source_digest        TEXT,
+  source_body          BLOB,
+  state                TEXT NOT NULL CHECK (
+                         state IN ('provisioned','starting','running',
+                                   'paused','completed','start_failed')
+                       ),
+  last_error           TEXT,
+  created_at           TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at           TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_factory_orders_source_digest
+  ON factory_orders(source_digest) WHERE source_digest IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS factory_launch_requests (
+  launch_ref           TEXT PRIMARY KEY,
+  order_ref            TEXT NOT NULL REFERENCES factory_orders(order_ref) ON DELETE RESTRICT,
+  mode                 TEXT NOT NULL CHECK (mode IN ('new','resume')),
+  project_id           INTEGER NOT NULL REFERENCES projects(id) ON DELETE RESTRICT,
+  epic_id              INTEGER NOT NULL REFERENCES epics(id) ON DELETE RESTRICT,
+  lifecycle_run_id     INTEGER REFERENCES saga3_lifecycle_runs(id) ON DELETE RESTRICT,
+  lifecycle_input_json TEXT,
+  lifecycle_input_schema TEXT,
+  initiated_by         TEXT NOT NULL,
+  idempotency_key      TEXT NOT NULL,
+  concurrency          INTEGER NOT NULL CHECK (concurrency BETWEEN 1 AND 10),
+  state                TEXT NOT NULL CHECK (state IN ('requested','claimed','running','completed','failed')),
+  claim_token          TEXT,
+  claimed_at           TEXT,
+  error                TEXT,
+  created_at           TEXT NOT NULL DEFAULT (datetime('now')),
+  completed_at         TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_factory_one_pending_launch
+  ON factory_launch_requests(order_ref) WHERE state='requested';
+CREATE UNIQUE INDEX IF NOT EXISTS idx_factory_one_active_launch
+  ON factory_launch_requests(order_ref)
+  WHERE state IN ('requested','claimed','running');
+
 CREATE TABLE IF NOT EXISTS factory_checkpoints (
   checkpoint_ref       TEXT PRIMARY KEY,
   manifest_digest      TEXT NOT NULL UNIQUE,

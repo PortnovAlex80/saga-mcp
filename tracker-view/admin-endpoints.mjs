@@ -3,6 +3,7 @@
 // the model route, and only then starts Product Delivery.
 
 import path from 'node:path';
+import { randomUUID } from 'node:crypto';
 
 import {
   withDbWrite,
@@ -13,7 +14,15 @@ import {
 import { ensureInitializedGitRepository } from './git-bootstrap.mjs';
 import { requiresBackgroundEngine } from '../dist/runtime/orchestration-mode.js';
 import { startProductLifecycleFromIdea } from '../dist/app/start-product-lifecycle-from-idea.js';
-import { createSpawnCliLifecycleRunStarter } from '../dist/app/product-lifecycle-run-starter.js';
+import { createFactoryLaunchStarter } from '../dist/app/product-lifecycle-run-starter.js';
+import {
+  decodeFactoryStartCommand,
+  resolveFactoryResumeTarget,
+} from '../dist/app/factory-start.js';
+import {
+  captureProductIdeaUrl,
+  ideaPromptView,
+} from './product-idea-source.mjs';
 
 const FACTORY_MODELS = Object.freeze([
   Object.freeze({
@@ -102,16 +111,16 @@ function legacyWorkAttemptsExist(db) {
   ).get());
 }
 
-export function createAdminEndpointsApi({ runtimeConfig, dbPath, page }) {
+export function createAdminEndpointsApi({
+  runtimeConfig,
+  dbPath,
+  page,
+  sagaApplication,
+  captureIdeaSource = captureProductIdeaUrl,
+}) {
   function renderAdmin(projects, flash) {
     const projectOptions = projects
       .map(project => `<option value="${project.id}">${esc(project.name)}</option>`)
-      .join('');
-    const modelOptions = FACTORY_MODELS.map(model =>
-      `<option value="${esc(model.id)}"${model.id === DEFAULT_FACTORY_MODEL ? ' selected' : ''}>${esc(model.label)} · max ${model.limit}</option>`)
-      .join('');
-    const concurrencyOptions = [1, 2, 3, 4, 5, 6, 8, 10]
-      .map(value => `<option value="${value}"${value === DEFAULT_FACTORY_CONCURRENCY ? ' selected' : ''}>${value}</option>`)
       .join('');
     const header = `
       <div class="board-head">
@@ -145,17 +154,21 @@ export function createAdminEndpointsApi({ runtimeConfig, dbPath, page }) {
           <button type="submit" class="btn primary">➕ Создать эпик</button>
         </form>
 
+        <form class="admin-form" id="resume-form">
+          <input type="hidden" name="action" value="factory_resume">
+          <div class="admin-card-head"><span class="admin-ic">▶</span> Возобновить заказ завода</div>
+          <label class="ed-field"><span>Проект *</span><select name="project_id" required>${projectOptions}</select></label>
+          <div class="admin-hint">Lifecycle, input и checkpoint однозначно восстанавливаются по номеру проекта.</div>
+          <button type="submit" class="btn primary">Продолжить завод</button>
+        </form>
+
         <form class="admin-form" id="idea-form">
-          <input type="hidden" name="action" value="idea">
+          <input type="hidden" name="action" value="factory_new">
           <div class="admin-card-head"><span class="admin-ic">🏭</span> Идея на салфетке → запустить завод</div>
-          <label class="ed-field"><span>Имя продукта *</span><input type="text" name="name" required placeholder="напр. water-cannon" autocomplete="off"></label>
-          <label class="ed-field"><span>Идея / проблема *</span><textarea name="idea" required rows="4" placeholder="Опишите одной-двумя фразами, что нужно получить и для кого. Формальные требования не нужны." autocomplete="off"></textarea></label>
-          <label class="ed-field"><span>Локальный путь (опц.)</span><input type="text" name="local_path" placeholder="по умолчанию D:/Development/&lt;name&gt;" autocomplete="off"></label>
-          <label class="ed-field"><span>Модель первого и последующих workers *</span><select name="model" required>${modelOptions}</select></label>
-          <label class="ed-field"><span>Параллельных workers *</span><select name="concurrency" required>${concurrencyOptions}</select></label>
+          <label class="ed-field"><span>Ссылка на продуктовую идею *</span><input type="url" name="idea_url" required placeholder="https://docs.example.com/product-idea" autocomplete="off"></label>
           <div class="admin-hint">
-            Кнопка создаёт project + repository + epic, фиксирует выбранную модель,
-            материализует immutable lifecycle input и запускает один Product Delivery Lifecycle:
+            Завод замораживает содержимое ссылки, создаёт project + repository + epic,
+            материализует immutable lifecycle input и запускает Product Delivery Lifecycle:
             <code>Discovery → Formalization → Development → Delivery</code>.
             Новая стартовая task вручную не создаётся: каждый цех сам материализует
             свои рабочие места. Завод продолжает работу, пока текущий цех не выпустит
@@ -172,14 +185,19 @@ export function createAdminEndpointsApi({ runtimeConfig, dbPath, page }) {
         const action = data.get('action');
         const endpoint = action === 'project'
           ? '/api/project/create'
-          : action === 'idea'
-            ? '/api/project/create-from-idea'
+          : action === 'factory_new' || action === 'factory_resume'
+            ? '/api/factory/start'
             : '/api/epic/create';
         button.disabled = true;
         const oldText = button.textContent;
-        button.textContent = action === 'idea' ? 'Запуск завода…' : 'Создание…';
+        button.textContent = action.startsWith('factory_') ? 'Запуск завода…' : 'Создание…';
         try {
-          const response = await fetch(endpoint, { method:'POST', body:data });
+          const factoryBody = action === 'factory_new'
+            ? { idea_url:data.get('idea_url') }
+            : { project_id:Number(data.get('project_id')) };
+          const response = await fetch(endpoint, action.startsWith('factory_')
+            ? { method:'POST', headers:{'content-type':'application/json'}, body:JSON.stringify(factoryBody) }
+            : { method:'POST', body:data });
           const result = await response.json();
           if (!result.ok) {
             button.disabled = false;
@@ -191,7 +209,7 @@ export function createAdminEndpointsApi({ runtimeConfig, dbPath, page }) {
             location.href = '/?created=' + encodeURIComponent('проект «' + (result.name || '') + '»');
             return;
           }
-          if (action === 'idea') {
+          if (action.startsWith('factory_')) {
             const lifecycle = result.lifecycle_run_id == null
               ? 'не подтверждён'
               : '#' + result.lifecycle_run_id;
@@ -215,6 +233,7 @@ export function createAdminEndpointsApi({ runtimeConfig, dbPath, page }) {
       }
       document.getElementById('proj-form').addEventListener('submit', event => { event.preventDefault(); postForm(event.target); });
       document.getElementById('epic-form').addEventListener('submit', event => { event.preventDefault(); postForm(event.target); });
+      document.getElementById('resume-form').addEventListener('submit', event => { event.preventDefault(); postForm(event.target); });
       document.getElementById('idea-form').addEventListener('submit', event => { event.preventDefault(); postForm(event.target); });
       </script>`);
   }
@@ -454,39 +473,44 @@ export function createAdminEndpointsApi({ runtimeConfig, dbPath, page }) {
     });
   }
 
-  function rollbackCreatedProjectAggregate({ projectId, repoId }) {
-    withDbWrite(db => {
-      db.prepare(
-        "DELETE FROM activity_log WHERE entity_type='project' AND entity_id=?",
-      ).run(projectId);
-      db.prepare('DELETE FROM projects WHERE id=?').run(projectId);
-      db.prepare(
-        `DELETE FROM repositories
-          WHERE id=?
-            AND NOT EXISTS (
-              SELECT 1 FROM project_repositories WHERE repository_id=?
-            )`,
-      ).run(repoId, repoId);
-    });
-  }
-
-  function handleProjectCreateFromIdea(req, res) {
+  function handleFactoryStart(req, res) {
     parseRequest(req, async fields => {
-      const name = (fields.name || '').toString().trim();
-      const idea = (fields.idea || '').toString().trim();
-      const modelId = (fields.model || DEFAULT_FACTORY_MODEL)
-        .toString()
-        .trim();
+      let command;
+      try {
+        command = decodeFactoryStartCommand(fields);
+      } catch (error) {
+        return respondJson(res, 400, { ok:false, error:error.message, code:error.code });
+      }
+      if (command.kind === 'resume') {
+        try {
+          const target = withDbWrite(db => resolveFactoryResumeTarget(db, command.projectId));
+          const state = sagaApplication.startEngine({ epicId:target.epicId });
+          return respondJson(res, 200, {
+            ok:true,
+            mode:'resume',
+            project_id:target.projectId,
+            epic_id:target.epicId,
+            lifecycle_run_id:target.lifecycleRunId,
+            engine_pid:state.pid,
+            running:state.running,
+          });
+        } catch (error) {
+          const status = error?.code === 'FACTORY_PROJECT_NOT_FOUND' ? 404 : 409;
+          return respondJson(res, status, { ok:false, error:error.message, code:error.code });
+        }
+      }
+
+      let source;
+      try {
+        source = await captureIdeaSource(command.ideaUrl);
+      } catch (error) {
+        return respondJson(res, 400, { ok:false, error:error.message });
+      }
+      const name = `idea-${source.digest.slice(-12)}`;
+      const idea = ideaPromptView(source);
+      const modelId = DEFAULT_FACTORY_MODEL;
       const selectedModel = factoryModel(modelId);
-      const requestedConcurrency = Number(
-        fields.concurrency || DEFAULT_FACTORY_CONCURRENCY,
-      );
-      if (!name) {
-        return respondJson(res, 400, { ok:false, error:'name обязательное поле' });
-      }
-      if (!idea) {
-        return respondJson(res, 400, { ok:false, error:'idea обязательное поле' });
-      }
+      const requestedConcurrency = DEFAULT_FACTORY_CONCURRENCY;
       if (!selectedModel) {
         return respondJson(res, 400, { ok:false, error:`Неизвестная модель: ${modelId}` });
       }
@@ -501,15 +525,27 @@ export function createAdminEndpointsApi({ runtimeConfig, dbPath, page }) {
         requestedConcurrency,
         selectedModel.limit,
       );
-      const localPath = (fields.local_path || '').toString().trim()
-        || path.join(DEV_ROOT, name);
+      const localPath = path.join(DEV_ROOT, name);
 
       try {
         const result = withDbWrite(db => {
-          const duplicate = db.prepare(
-            'SELECT id FROM projects WHERE name=? COLLATE NOCASE',
-          ).get(name);
-          if (duplicate) return { duplicate:true };
+          const existing = db.prepare(
+            `SELECT fo.order_ref, fo.project_id, fo.epic_id,
+                    fo.lifecycle_run_id, pr.repository_id AS repo_id
+               FROM factory_orders fo
+               JOIN project_repositories pr ON pr.project_id=fo.project_id
+                AND pr.status='active'
+              WHERE fo.source_digest=?`,
+          ).get(source.digest);
+          if (existing) return {
+            projectId:existing.project_id,
+            repoId:existing.repo_id,
+            epicId:existing.epic_id,
+            lifecycleRunId:existing.lifecycle_run_id,
+            orderRef:existing.order_ref,
+            taskId:null,
+            replayed:true,
+          };
 
           const projectInfo = db.prepare(
             "INSERT INTO projects (name,description,status) VALUES (?,?,'active')",
@@ -538,25 +574,50 @@ export function createAdminEndpointsApi({ runtimeConfig, dbPath, page }) {
             selectedModel,
             concurrency,
           );
-          return { projectId, repoId, epicId, taskId:null };
+          const orderRef = `order-${randomUUID()}`;
+          db.prepare(
+            `INSERT INTO factory_orders
+               (order_ref, project_id, epic_id, source_kind, source_url,
+                source_final_url, source_media_type, source_digest,
+                source_body, state)
+             VALUES (?, ?, ?, 'idea_url', ?, ?, ?, ?, ?, 'provisioned')`,
+          ).run(
+            orderRef,
+            projectId,
+            epicId,
+            source.requestedUrl,
+            source.finalUrl,
+            source.mediaType,
+            source.digest,
+            source.body,
+          );
+          return { projectId, repoId, epicId, orderRef, taskId:null };
         });
 
-        if (result.duplicate) {
-          return respondJson(res, 409, { ok:false, error:`Проект «${name}» уже существует` });
+        if (result.lifecycleRunId) {
+          const state = sagaApplication.startEngine({ epicId:result.epicId });
+          return respondJson(res, 200, {
+            ok:true, mode:'resume', replayed:true,
+            order_ref:result.orderRef,
+            project_id:result.projectId,
+            epic_id:result.epicId,
+            lifecycle_run_id:result.lifecycleRunId,
+            engine_pid:state.pid,
+            running:state.running,
+          });
         }
 
         try {
           ensureInitializedGitRepository(localPath, name);
         } catch (error) {
-          try {
-            rollbackCreatedProjectAggregate(result);
-          } catch (cleanupError) {
-            console.error(
-              `[create-from-idea] rollback project ${result.projectId} failed: ${cleanupError.message}`,
-            );
-          }
+          withDbWrite(db => db.prepare(
+            `UPDATE factory_orders SET state='start_failed', last_error=?,
+                    updated_at=datetime('now') WHERE order_ref=?`,
+          ).run(`git bootstrap: ${error.message}`, result.orderRef));
           return respondJson(res, 500, {
             ok:false,
+            project_id:result.projectId,
+            order_ref:result.orderRef,
             error:`git bootstrap: ${error.message}`,
           });
         }
@@ -566,7 +627,11 @@ export function createAdminEndpointsApi({ runtimeConfig, dbPath, page }) {
         let lifecycleRunId = null;
         if (requiresBackgroundEngine(mode)) {
           try {
-            const starter = createSpawnCliLifecycleRunStarter({
+            withDbWrite(db => db.prepare(
+              `UPDATE factory_orders SET state='starting', last_error=NULL,
+                      updated_at=datetime('now') WHERE order_ref=?`,
+            ).run(result.orderRef));
+            const starter = createFactoryLaunchStarter({
               dbPath,
               // Keep model selection scoped to this engine. Every worker also
               // receives the durable model route captured at claim time.
@@ -576,10 +641,11 @@ export function createAdminEndpointsApi({ runtimeConfig, dbPath, page }) {
               },
             });
             const started = await startProductLifecycleFromIdea({
+              orderRef:result.orderRef,
               projectId:result.projectId,
               epicId:result.epicId,
               idea,
-              initiatedBy:`create-from-idea:${result.projectId}`,
+              initiatedBy:`factory-start:${result.orderRef}`,
               concurrency,
               starter,
             });
@@ -587,17 +653,16 @@ export function createAdminEndpointsApi({ runtimeConfig, dbPath, page }) {
             lifecycleRunId = started.lifecycleRunId;
           } catch (error) {
             console.error(
-              `[create-from-idea] lifecycle start failed: ${error.message}`,
+              `[factory-start] lifecycle start failed: ${error.message}`,
             );
-            try {
-              rollbackCreatedProjectAggregate(result);
-            } catch (cleanupError) {
-              console.error(
-                `[create-from-idea] rollback project ${result.projectId} failed: ${cleanupError.message}`,
-              );
-            }
+            withDbWrite(db => db.prepare(
+              `UPDATE factory_orders SET last_error=?,
+                      updated_at=datetime('now') WHERE order_ref=?`,
+            ).run(`lifecycle start: ${error.message}`, result.orderRef));
             return respondJson(res, 500, {
               ok:false,
+              project_id:result.projectId,
+              order_ref:result.orderRef,
               error:`lifecycle start: ${error.message}`,
             });
           }
@@ -612,6 +677,8 @@ export function createAdminEndpointsApi({ runtimeConfig, dbPath, page }) {
 
         respondJson(res, 200, {
           ok:true,
+          mode:'new',
+          order_ref:result.orderRef,
           project_id:result.projectId,
           repo_id:result.repoId,
           epic_id:result.epicId,
@@ -639,7 +706,7 @@ export function createAdminEndpointsApi({ runtimeConfig, dbPath, page }) {
     handleProjectDelete,
     handleAdminPurgeAllProjects,
     handleEpicCreate,
-    handleProjectCreateFromIdea,
+    handleFactoryStart,
     renderAdmin,
   };
 }

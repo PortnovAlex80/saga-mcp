@@ -219,6 +219,7 @@ function verifyEpicBelongsToProject(
  */
 export interface LifecycleRunStarter {
   start(params: {
+    orderRef: string;
     projectId: number;
     epicId: number;
     lifecycleInput: ProductDeliveryLifecycleInput;
@@ -230,6 +231,7 @@ export interface LifecycleRunStarter {
 }
 
 export interface StartProductLifecycleFromIdeaParams {
+  orderRef: string;
   projectId: number;
   epicId: number;
   idea: string;
@@ -264,6 +266,7 @@ export async function startProductLifecycleFromIdea(
     db: params.db,
   });
   const started = await params.starter.start({
+    orderRef: params.orderRef,
     projectId: params.projectId,
     epicId: params.epicId,
     lifecycleInput,

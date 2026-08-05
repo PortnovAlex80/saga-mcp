@@ -6,14 +6,11 @@
  * module supplies the production adapters and keeps them out of the assembler
  * so the assembler stays pure and unit-testable.
  *
- * Two adapters are provided:
+ * Two internal adapters are provided:
  *
- *  - `createSpawnCliLifecycleRunStarter`: spawns `orchestrate-cli` as a detached
- *    background process, passing the validated input INLINE via the
- *    `SAGA_PRODUCT_LIFECYCLE_INPUT_JSON` env var. No JSON file is written to
- *    disk and no `--lifecycle-input` path is passed. This is the adapter the
- *    tracker-view "start from idea" route uses: it matches the existing
- *    detached-engine architecture while honouring the fail-closed constraints.
+ *  - `createFactoryLaunchStarter`: persists a single-use launch capability and
+ *    spawns the runtime host with only that opaque reference. Input and resume
+ *    identity never cross the process boundary as caller-controlled flags.
  *
  *  - `createInProcessLifecycleRunStarter`: runs the orchestrator in-process via
  *    an injected `application.runEpisode`. Used by tests / hosts that already
@@ -34,6 +31,8 @@ import {
   type ProductDeliveryLifecycleInput,
 } from '../process-modules/lifecycles/product-delivery-lifecycle.js';
 import type { LifecycleRunStarter } from './start-product-lifecycle-from-idea.js';
+import Database from 'better-sqlite3';
+import { requestFactoryLaunch } from '../infrastructure/factory/sqlite-factory-launch-repository.js';
 
 /**
  * Read the durable lifecycleRunId from an OrchestrationRunResult. The lifecycle
@@ -69,15 +68,15 @@ export interface SpawnCliLifecycleRunStarterOptions {
 }
 
 /**
- * Spawns `orchestrate-cli` detached with the validated lifecycle input passed
- * INLINE via env (no JSON file, no --lifecycle-input path).
+ * Persists a launch ticket, then spawns the internal runtime host with only its
+ * opaque single-use reference.
  *
  * The adapter does not report success merely because the OS accepted spawn().
  * The child writes an atomic one-shot receipt immediately after the durable
  * LifecycleRun is created/replayed and before the first stage executes. This
  * method resolves only after reading and validating that positive run id.
  */
-export function createSpawnCliLifecycleRunStarter(
+export function createFactoryLaunchStarter(
   options: SpawnCliLifecycleRunStarterOptions,
 ): LifecycleRunStarter {
   const here = path.dirname(fileURLToPath(import.meta.url));
@@ -105,19 +104,27 @@ export function createSpawnCliLifecycleRunStarter(
       const childEnv: NodeJS.ProcessEnv = {
         ...(options.baseEnv ?? {}),
         DB_PATH: options.dbPath,
-        SAGA_PRODUCT_LIFECYCLE_INPUT_JSON: JSON.stringify(params.lifecycleInput),
-        SAGA_INITIATED_BY: params.initiatedBy,
         SAGA_LIFECYCLE_START_RECEIPT: receiptPath,
       };
-      const cliArgs = [
-        orchestrateCliPath,
-        String(params.projectId),
-        String(params.epicId),
-        `--concurrency=${params.concurrency}`,
-      ];
-      if (params.idempotencyKey?.trim()) {
-        cliArgs.push(`--idempotency-key=${params.idempotencyKey.trim()}`);
+      const db = new Database(options.dbPath);
+      let launchRef: string;
+      try {
+        launchRef = requestFactoryLaunch({
+          orderRef: params.orderRef,
+          mode: 'new',
+          projectId: params.projectId,
+          epicId: params.epicId,
+          lifecycleInput: params.lifecycleInput,
+          lifecycleInputSchema: params.lifecycleInputSchema,
+          initiatedBy: params.initiatedBy,
+          idempotencyKey: params.idempotencyKey
+            ?? `product-delivery:epic:${params.epicId}`,
+          concurrency: params.concurrency,
+        }, db);
+      } finally {
+        db.close();
       }
+      const cliArgs = [orchestrateCliPath, `--launch-ref=${launchRef}`];
       // Must be present before spawn; mutating childEnv afterwards does not
       // change the environment already copied into the child process.
       const engineLog = `${tmpdir()}/saga-engine-${Date.now()}.log`;
