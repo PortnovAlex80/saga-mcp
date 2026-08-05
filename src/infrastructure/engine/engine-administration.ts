@@ -1,6 +1,8 @@
 import { spawn, spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createWriteStream } from 'node:fs';
+import { tmpdir } from 'node:os';
 import Database from 'better-sqlite3';
 import { isProcessAlive } from '../../worker-executions.js';
 import {
@@ -106,14 +108,20 @@ export class LegacyEngineAdministration implements EngineAdministration {
         cliArgs,
         {
           detached: true,
-          stdio: 'ignore',
+          stdio: ['ignore', 'pipe', 'pipe'],
           env: {
             ...this.baseEnv,
             DB_PATH: this.config.dbPath,
             SAGA_ORCHESTRATION_MODE: this.config.orchestrationMode,
+            SAGA_PRODUCT_LIFECYCLE_COMPOSITION: process.env.SAGA_PRODUCT_LIFECYCLE_COMPOSITION,
           },
         },
       );
+      // Pipe engine output to a persistent log file for debugging.
+      const engineLog = `${tmpdir()}/saga-engine-${command.epicId}-${Date.now()}.log`;
+      const logStream = createWriteStream(engineLog, { flags: 'a' });
+      child.stdout?.pipe(logStream);
+      child.stderr?.pipe(logStream);
       child.unref();
       const startedAt = this.timestamp();
       this.upsertControl(command.epicId, {

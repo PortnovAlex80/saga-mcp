@@ -306,7 +306,20 @@ async function main() {
           : undefined,
         idempotencyKey: idempotencyKey ?? undefined,
         resumePaused: !isFirstCycle || resumePaused,
-        initiatedBy: process.env.SAGA_INITIATED_BY ?? 'orchestrate-cli',
+        // On resume, read the original initiated_by from the lifecycle run
+        // to avoid REPLAY_CONTEXT_MISMATCH.
+        initiatedBy: (() => {
+          if (process.env.SAGA_INITIATED_BY) return process.env.SAGA_INITIATED_BY;
+          if (!isFirstCycle || resumePaused) {
+            try {
+              const row = getDb().prepare(
+                'SELECT initiated_by FROM saga3_lifecycle_runs WHERE project_id=? AND epic_id=? ORDER BY id DESC LIMIT 1',
+              ).get(projectId, epicId) as { initiated_by: string } | undefined;
+              if (row?.initiated_by) return row.initiated_by;
+            } catch { /* best effort */ }
+          }
+          return 'orchestrate-cli';
+        })(),
       });
       lastResult = result;
       isFirstCycle = false;
