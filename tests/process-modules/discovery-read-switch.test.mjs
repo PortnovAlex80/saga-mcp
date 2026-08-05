@@ -80,7 +80,7 @@ function bindWorkplace(db, taskId, loopState, kanbanPhase, terminalReason = null
 }
 
 test('legacy mode: readTaskState reads tasks.status', () => {
-  delete process.env.SAGA_WORKPLACE_READ;
+  process.env.SAGA_WORKPLACE_READ = "legacy";
   // Re-import to reset module-level cutoverActive? It reads env at call time.
   
   seedEpicTask(db, { taskId: 101, taskStatus: 'in_progress' });
@@ -138,7 +138,7 @@ test('3.B.3 cutover: task without workplace binding falls back to tasks columns'
 });
 
 test('teardown: reset env + close db', () => {
-  delete process.env.SAGA_WORKPLACE_READ;
+  process.env.SAGA_WORKPLACE_READ = "legacy";
   closeDb();
   try { rmSync(DB_PATH); } catch { /* may be locked */ }
   assert.ok(true);

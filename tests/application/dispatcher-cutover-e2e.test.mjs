@@ -51,7 +51,7 @@ function seedProjectEpicTask(db, { taskId = 1, withProcessRun = true } = {}) {
 }
 
 test('cutover disabled by default — reserveTaskExecution is a no-op', () => {
-  delete process.env.SAGA_WORKPLACE_READ;
+  process.env.SAGA_WORKPLACE_READ = "legacy";
   const db = freshDb();
   const { taskId, epicId, projectId, meta } = seedProjectEpicTask(db);
   const ref = reserveTaskExecution(db, {
@@ -109,7 +109,7 @@ test('cutover ON: releaseTaskExecution(completed) advances loop', () => {
 
   releaseTaskExecution(db, {
     taskId, epicId, projectId, taskKind: 'development.code', metadata: meta,
-    executionId: 'exec-1', outcome: 'completed', taskStatus: 'done',
+    executionId: 'exec-1', outcome: 'completed', taskStatus: 'in_progress',
   });
 
   cur = repo.read(ref);
@@ -162,6 +162,6 @@ test('cutover ON: non-Process-Module task (no process_run_id) is skipped', () =>
 
 // Reset env after the suite.
 test('teardown: reset SAGA_WORKPLACE_READ', () => {
-  delete process.env.SAGA_WORKPLACE_READ;
+  process.env.SAGA_WORKPLACE_READ = "legacy";
   assert.ok(true);
 });

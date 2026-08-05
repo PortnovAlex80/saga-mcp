@@ -54,6 +54,7 @@ export function reserveTaskExecution(db: Database.Database, input: {
   taskKind: string | null;
   metadata: string;
   executionId: string;
+  preClaimStatus?: string;
 }): WorkplaceRef | null {
   if (!cutoverActive()) return null;
   const rt = runtime(db);
@@ -63,6 +64,7 @@ export function reserveTaskExecution(db: Database.Database, input: {
     projectId: input.projectId,
     taskKind: input.taskKind,
     metadata: input.metadata,
+    preClaimStatus: input.preClaimStatus,
   });
   if (!ref) return null;
   rt.reserveWorkplace({
@@ -105,12 +107,24 @@ export function releaseTaskExecution(db: Database.Database, input: {
   });
   if (!ref) return;
   try {
-    rt.releaseExecution({
-      workplaceRef: ref,
-      reservationRef: input.executionId,
-      taskId: input.taskId,
-      outcome: input.outcome,
-    });
+    // When the dispatcher moves a task to 'done' (final accept), the workplace
+    // must reach terminal(accepted), not verifying. The dispatcher treats a
+    // final-author worker_done as the de-facto gate accept (the separate
+    // GateRun is not yet wired into the claim path).
+    if (input.taskStatus === 'done') {
+      rt.acceptFinal({
+        workplaceRef: ref,
+        reservationRef: input.executionId,
+        taskId: input.taskId,
+      });
+    } else {
+      rt.releaseExecution({
+        workplaceRef: ref,
+        reservationRef: input.executionId,
+        taskId: input.taskId,
+        outcome: input.outcome,
+      });
+    }
   } catch {
     // FENCE_MISMATCH or WORKPLACE_NOT_FOUND — the task may have been recovered
     // or the workplace not yet bound. In cutover mode this is a consistency

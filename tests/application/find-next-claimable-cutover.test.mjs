@@ -82,14 +82,22 @@ test('REG-10-AC-01 cutover: task with workplace loop=idle IS claimable', () => {
   db.close();
 });
 
-test('REG-10-AC-01 cutover: task with workplace loop=running NOT claimable', () => {
+test('REG-10-AC-01 cutover: task with workplace loop=running + active execution NOT claimable', () => {
   process.env.SAGA_WORKPLACE_READ = 'new';
   const db = freshDb();
   const projectId = seedTask(db, 1, { status: 'todo' }); // stale reverse projection
-  bindWorkplace(db, 1, 'running', 'in_progress');
+  const ref = bindWorkplace(db, 1, 'running', 'in_progress');
+  // An ACTIVE worker_execution holds the lease — the workplace is not orphaned.
+  db.prepare(
+    `INSERT INTO worker_executions (execution_id, run_id, project_id, epic_id, task_id, worker_id, machine_id, phase, metadata, lease_expires_at, heartbeat_at, progress_at, stuck_state)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+  ).run('active-exec', 'r', projectId, 1, 1, 'w', 'm', 'executing', '{}', '2030-01-01', '2026-01-01', '2026-01-01', 'active');
+  // Bind the reservation ref so the orphan-check sees the active execution.
+  const cur = db.prepare(`SELECT revision FROM v4_workplaces WHERE workplace_ref=?`).get(serializeWorkplaceRef(ref));
+  db.prepare(`UPDATE v4_workplaces SET active_reservation_ref='active-exec' WHERE workplace_ref=?`).run(serializeWorkplaceRef(ref));
 
   const task = findNextClaimable(db, 'w-1', projectId);
-  assert.equal(task, null, 'NOT claimable — workplace loop=running');
+  assert.equal(task, null, 'NOT claimable — workplace loop=running with active execution');
   db.close();
 });
 
@@ -139,7 +147,7 @@ test('REG-10-AC-01 cutover: non-PM task without binding NOT claimable', () => {
 });
 
 test('legacy mode: task queue gate is tasks.status (not workplace)', () => {
-  delete process.env.SAGA_WORKPLACE_READ;
+  process.env.SAGA_WORKPLACE_READ = "legacy";
   const db = freshDb();
   const projectId = seedTask(db, 1, { status: 'todo' });
   // No workplace binding at all — legacy mode does not require one.
@@ -150,6 +158,6 @@ test('legacy mode: task queue gate is tasks.status (not workplace)', () => {
 });
 
 test('teardown: reset SAGA_WORKPLACE_READ', () => {
-  delete process.env.SAGA_WORKPLACE_READ;
+  process.env.SAGA_WORKPLACE_READ = "legacy";
   assert.ok(true);
 });

@@ -296,7 +296,15 @@ export function findNextClaimable(
            AND EXISTS (
              SELECT 1 FROM v4_workplaces w
              WHERE w.workplace_ref = t.workplace_ref
-               AND w.loop_state IN ('idle', 'queued')
+               AND (
+                 w.loop_state IN ('idle', 'queued')
+                 OR (w.loop_state IN ('leased','running','verifying')
+                     AND NOT EXISTS (
+                       SELECT 1 FROM worker_executions we
+                       WHERE we.execution_id = w.active_reservation_ref
+                         AND we.state IN ('reserved','running','cancel_requested')
+                     ))
+               )
            ))
          OR
          (t.workplace_ref IS NULL

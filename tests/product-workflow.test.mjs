@@ -765,6 +765,11 @@ test('verified_by is backed by immutable passing evidence for the accepted AC re
 });
 
 test('verification evidence is immutable per fenced execution, so a new holder can retry', () => {
+  // Ensure the assigned_to guard is active (a prior test may have set the
+  // SAGA_ALLOW_MANUAL_STATUS escape hatch and not cleared it).
+  const savedManual = process.env.SAGA_ALLOW_MANUAL_STATUS;
+  delete process.env.SAGA_ALLOW_MANUAL_STATUS;
+  try {
   const product = projects.project_create({ name: 'Evidence Retry Product' });
   const epic = epics.epic_create({ project_id: product.id, name: 'REQ-evidence-retry' });
   const ac = artifacts.artifact_create({
@@ -829,6 +834,9 @@ test('verification evidence is immutable per fenced execution, so a new holder c
     task_id: verify.id, worker_id: common.worker_id, result: 'current',
     execution_id: 'retry-execution-2',
   });
+  } finally {
+    if (savedManual !== undefined) process.env.SAGA_ALLOW_MANUAL_STATUS = savedManual;
+  }
 });
 
 // NOTE: The 'startup repair removes legacy verified_by edges' test was removed

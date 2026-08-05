@@ -93,6 +93,10 @@ const ALLOWED_CORE_READERS = [
   // Retires when step 2.5 unifies the launch path behind WorkerLauncherPort.
   'src/app/product-lifecycle-runtime.ts',
   'src/worker-executions.ts',
+  // ConveyorRuntime — the cutover authority. Reads tasks.status at bind time
+  // (preClaimStatus sync) and tasks.workplace_ref for queue joins. Retires
+  // when tasks is fully projection (no data reads needed).
+  'src/application/conveyor-runtime.ts',
   // Saga2 runtime repositories — the dispatch eligibility view. Retires when
   // step 5.2 makes v4_workplaces the queue source (REG-10-AC-01).
   'src/infrastructure/persistence/sqlite-saga2-runtime-repositories.ts',

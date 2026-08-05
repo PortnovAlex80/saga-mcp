@@ -297,7 +297,9 @@ export class SqliteFormalizationArtifactGraph implements
         // authoritative signal is the workplace loop_state='terminal'; in
         // legacy mode it is tasks.status='done'. integration_state (git merge)
         // is data either way.
-        const isDone = cutover ? t.loop_state === 'terminal' : t.status === 'done';
+        const isDone = cutover
+          ? (t.loop_state === 'terminal' || (t.loop_state === null && t.status === 'done'))
+          : t.status === 'done';
         return !isDone
           || (t.execution_mode === 'git_change' && t.integration_state !== 'merged');
       })

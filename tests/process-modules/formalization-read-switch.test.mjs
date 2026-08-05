@@ -83,7 +83,7 @@ function bindWorkplace(db, taskId, loopState, kanbanPhase, terminalReason = null
 }
 
 test('legacy mode: areTasksReady reads tasks.status', () => {
-  delete process.env.SAGA_WORKPLACE_READ;
+  process.env.SAGA_WORKPLACE_READ = "legacy";
   const db = freshDb();
   const { epicId } = seedEpic(db);
   // Task with status=todo (NOT done) — no workplace binding.
@@ -97,7 +97,7 @@ test('legacy mode: areTasksReady reads tasks.status', () => {
 });
 
 test('legacy mode: areTasksReady true when tasks.status=done + merged', () => {
-  delete process.env.SAGA_WORKPLACE_READ;
+  process.env.SAGA_WORKPLACE_READ = "legacy";
   const db = freshDb();
   const { epicId } = seedEpic(db);
   seedFormalizationTask(db, epicId, 1, {
@@ -173,6 +173,6 @@ test('3.A.4 cutover: bookkeeping tasks (summary/recovery) excluded', () => {
 });
 
 test('teardown: reset SAGA_WORKPLACE_READ', () => {
-  delete process.env.SAGA_WORKPLACE_READ;
+  process.env.SAGA_WORKPLACE_READ = "legacy";
   assert.ok(true);
 });

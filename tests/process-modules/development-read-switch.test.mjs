@@ -67,7 +67,7 @@ function bindWorkplace(db, taskId, loopState, kanbanPhase, terminalReason = null
 }
 
 test('legacy mode: readRuntimeTask reads tasks.status', () => {
-  delete process.env.SAGA_WORKPLACE_READ;
+  process.env.SAGA_WORKPLACE_READ = "legacy";
   const db = freshDb();
   seedEpicTask(db, { taskId: 1, taskStatus: 'in_progress' });
   const store = new SqliteDevelopmentModuleStore(db);
@@ -156,6 +156,6 @@ test('3.C.4 cutover: readRuntimeTasks (plural) maps via workplace join', () => {
 });
 
 test('teardown: reset SAGA_WORKPLACE_READ', () => {
-  delete process.env.SAGA_WORKPLACE_READ;
+  process.env.SAGA_WORKPLACE_READ = "legacy";
   assert.ok(true);
 });

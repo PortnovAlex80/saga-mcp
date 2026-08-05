@@ -358,6 +358,9 @@ function handleWorkerNext(args: Record<string, unknown>): {
       taskKind: task.task_kind,
       metadata: task.metadata,
       executionId: executionId ?? workerId,
+      // The ORIGINAL tasks.status before the claim UPDATE — needed to bind
+      // the workplace at the correct Kanban phase (review vs author).
+      preClaimStatus: task.status,
     });
   } else {
     // Legacy forward shadow-write (SAGA_WORKPLACE_WRITE=on).
