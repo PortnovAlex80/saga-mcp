@@ -101,3 +101,21 @@ export type {
   TargetRecoveryIssue,
   RecoveryFindingEntry,
 } from './recovery-issue-target.js';
+
+// REG-04 — ProductionCellDefinition (declarative Production Cell).
+export {
+  assertValidProductionCellDefinition,
+} from './production-cell-definition.js';
+export type {
+  ProductionCellDefinition,
+  ProductionCellMaterialization,
+  ProductContract,
+  CellRoleProfile,
+  CellGate,
+  CellReview,
+  CellRecoveryPolicy,
+} from './production-cell-definition.js';
+
+// REG-04/05/13 — ProductionCellTransitionReducer (pure transition logic).
+export { reduceWorkplaceEvent } from './production-cell-reducer.js';
+export type { ProductionCellEvent } from './production-cell-reducer.js';

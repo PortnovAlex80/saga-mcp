@@ -3,6 +3,10 @@ export interface ProcessModuleReference {
   version: string;
 }
 
+// Conveyor v4 — ProductionCellDefinition is declared in the pure workplace
+// domain (REG-04). Type-only import so this domain file stays pure.
+import type { ProductionCellDefinition } from './workplace/production-cell-definition.js';
+
 /**
  * Module-relative path into the package resources/ tree.
  *
@@ -122,7 +126,7 @@ export interface ExecutionProfileDefinition {
  * KERNEL node handler. There is no node kind that hides hiring or external
  * effects behind a string id.
  */
-export type FlowNodeKind = 'lm' | 'kernel' | 'human' | 'composite';
+export type FlowNodeKind = 'lm' | 'kernel' | 'human' | 'composite' | 'production-cell';
 
 interface BaseFlowNodeDefinition {
   id: string;
@@ -154,11 +158,53 @@ export interface CompositeFlowNodeDefinition extends BaseFlowNodeDefinition {
   moduleRef: ProcessModuleReference;
 }
 
+/**
+ * A Production Cell — the universal unit of LM production (Conveyor v4).
+ *
+ * Target contract: FACTORY-DOMAIN-ACCEPTANCE-REGISTRY REG-04 (Производственная
+ * ячейка) + Conveyor Mental Model v4 §«The reusable Production Cell» and
+ * §«Production Cell versus Flow node».
+ *
+ * A Production Cell is a first-class FlowNode with `kind = 'production-cell'`.
+ * It contains the WHOLE bounded control loop: fenced author execution →
+ * immutable CandidateSet → author GateRun + typed GateDecision → (optional)
+ * reviewer → repair/human/fail. Author/reviewer WorkerExecutions, CheckRuns
+ * and GateRuns are INTERNAL runs of the cell, not separate Flow nodes. The
+ * Flow cursor stays on the cell across repair and review and leaves it only
+ * after a final typed outcome (REG-04-AC-01).
+ *
+ * The full declarative shape (inputSelectors, materialization, author profile,
+ * product contracts, author/final gates, optional review, recovery, transitions)
+ * lives in `domain/workplace/production-cell-definition.ts`. This node
+ * definition CARRIES that cell definition by reference + inline data so a
+ * module's Flow can embed it without a separate registry lookup at walk time.
+ *
+ * `cellDefinition` is the inline ProductionCellDefinition. A module MAY also
+ * reference it by `cellDefinitionRef` from a registry; the runtime resolves
+ * one or the other before walking. This keeps the Flow self-contained for
+ * tests while allowing a shared registry for production modules.
+ */
+export interface ProductionCellFlowNodeDefinition extends BaseFlowNodeDefinition {
+  kind: 'production-cell';
+  /**
+   * The inline cell definition. When present, the runtime uses it directly.
+   * Mutually exclusive with `cellDefinitionRef` (exactly one must be set).
+   */
+  cellDefinition?: ProductionCellDefinition;
+  /**
+   * Registry reference to a cell definition. When `cellDefinition` is absent,
+   * the runtime resolves this ref against the module's cell-definition
+   * registry before walking.
+   */
+  cellDefinitionRef?: string;
+}
+
 export type FlowNodeDefinition =
   | LmFlowNodeDefinition
   | KernelFlowNodeDefinition
   | HumanFlowNodeDefinition
-  | CompositeFlowNodeDefinition;
+  | CompositeFlowNodeDefinition
+  | ProductionCellFlowNodeDefinition;
 
 export interface FlowTransitionDefinition {
   from: string;
