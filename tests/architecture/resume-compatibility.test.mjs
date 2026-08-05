@@ -36,12 +36,12 @@ function makeManifest(overrides = {}) {
       { logicalId: 'dev-kernel-2' },
     ],
     inputContractRef: {
-      schemaId: overrides.inputSchemaId ?? 'saga3.development-case.v1',
+      schemaId: overrides.inputSchemaId ?? 'factory.development-case.v1',
       version: '1.0.0',
       digest: 'd'.repeat(64),
     },
     outputContractRef: {
-      schemaId: overrides.outputSchemaId ?? 'saga3.verified-integration-bundle.v1',
+      schemaId: overrides.outputSchemaId ?? 'factory.verified-integration-bundle.v1',
       version: '1.0.0',
       digest: 'e'.repeat(64),
     },
@@ -114,8 +114,8 @@ test('Wave 8: module version bumped → incompatible (pause without mutating wor
 });
 
 test('Wave 8: input schema changed → incompatible', () => {
-  const existing = makeRecord({ inputSchemaId: 'saga3.development-case.v1', packageDigest: 'old' });
-  const newManifest = makeManifest({ inputSchemaId: 'saga3.development-case.v2' });
+  const existing = makeRecord({ inputSchemaId: 'factory.development-case.v1', packageDigest: 'old' });
+  const newManifest = makeManifest({ inputSchemaId: 'factory.development-case.v2' });
   const verdict = classifyResumeCompatibility(existing, 'new', newManifest);
 
   assert.equal(verdict.outcome, 'incompatible');

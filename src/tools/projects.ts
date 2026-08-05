@@ -70,7 +70,7 @@ export const definitions: Tool[] = [
   {
     name: 'project_resolve_by_name',
     description:
-      'Get-or-create a project by its exact name, atomically. Returns {project_id, created, project}. created:true if a new project was inserted, false if an existing name matched. Use this when a worker needs a stable project_id from a project name (e.g. read from ./projectname.txt) — guarantees no duplicate projects are created when multiple agents start cold at once (name is not unique in saga, so the atomic lookup-or-insert under a write lock is what prevents duplicates). ' +
+      'Internal factory operation: get-or-create a project by its exact name atomically. This tool is not exposed in the public MCP catalog; new orders use saga-start. ' +
       'Call shape: project_resolve_by_name({ name: "<string (exact match)>", description: "<string (only used if creating)>" }). Required: name.',
     annotations: { title: 'Resolve Project by Name', readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
@@ -265,7 +265,7 @@ function handleProjectDelete(args: Record<string, unknown>): {
   // orphan the orchestrator or workers attached to its ProcessRuns.
   const runningEpics = db.prepare(
     `SELECT DISTINCT epic_id
-       FROM saga3_lifecycle_runs
+       FROM factory_lifecycle_runs
       WHERE project_id = ?
         AND status IN ('created','running')`,
   ).all(projectId) as Array<{ epic_id: number | null }>;
@@ -306,11 +306,11 @@ function handleProjectDelete(args: Record<string, unknown>): {
     //   epics → artifacts → artifact_traces
     //   epics → episode_workflows
     //   epics → runtime_observations
-    //   epics → saga3_work_intents → saga3_proposals (D1 protocol entities)
+    //   epics → factory_work_intents → factory_proposals (D1 protocol entities)
     //   artifacts (direct project_id) — also cascaded
     //   project_repositories → repository_checkouts
     //   trusted_providers (project-scoped rows; NULL = global survives)
-    // saga3_proposals also has task_id REFERENCES tasks CASCADE, so it is
+    // factory_proposals also has task_id REFERENCES tasks CASCADE, so it is
     // removed whichever path fires first; its execution_id is deliberately NOT
     // a FK (worker_executions row may be pruned), but it cannot dangle because
     // its parent row is gone.

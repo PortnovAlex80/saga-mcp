@@ -41,7 +41,7 @@
 //     that ALREADY EXISTS in src/:
 //       D1 GENERICITY     — all four node kinds (lm, kernel, human, external)
 //                            wrap into a ProcessModuleManifest via the SAME
-//                            adaptLegacyProcessModule adapter and validate
+//                            createProcessModuleManifest adapter and validate
 //                            through the SAME validateProcessModuleManifest,
 //                            with zero kind-specific branches in our code.
 //       D2 REPEATED-MODULE — the campaign scenario reuses synthetic-external-
@@ -131,7 +131,7 @@ import { installModulePackages } from '../../dist/process-modules/installation/p
 const {
   validateProcessModuleManifest,
   validateLifecycleScenarioManifest,
-  adaptLegacyProcessModule,
+  createProcessModuleManifest,
 } = await import('../../dist/process-modules/domain/spi/index.js');
 
 // Shared canonical JSON + sha256Hex helper (used for replay determinism).
@@ -250,16 +250,16 @@ function buildCampaignManifest(opts = {}) {
 // §0.13.10 / spec §4: "the architecture accepts ARBITRARY packages, not just
 // the 4 production ones." The four synthetic fixtures cover all four node
 // kinds (lm, kernel, human, external). If they all wrap into a
-// ProcessModuleManifest via the SAME adaptLegacyProcessModule and validate
+// ProcessModuleManifest via the SAME createProcessModuleManifest and validate
 // through the SAME validateProcessModuleManifest — with no kind-specific
 // branch in our code — the SPI is proven kind-agnostic. This is the Wave 1
 // exit-gate proof (§14.2.6) re-asserted at the Wave 10 gate.
 // ===========================================================================
 
-test('D1 genericity: all four node kinds wrap via the SAME adaptLegacyProcessModule', () => {
+test('D1 genericity: all four node kinds wrap via the SAME createProcessModuleManifest', () => {
   const manifests = new Map();
   for (const { label, definition } of FOUR_KIND_FIXTURES) {
-    const manifest = adaptLegacyProcessModule(definition);
+    const manifest = createProcessModuleManifest(definition);
     // The legacy adapter produces a uniform envelope regardless of node kind.
     // The wrapped definition is embedded verbatim under `.definition`.
     assert.equal(typeof manifest.manifestFormatVersion, 'string',
@@ -277,7 +277,7 @@ test('D1 genericity: all four node kinds wrap via the SAME adaptLegacyProcessMod
 
 test('D1 genericity: all four node kinds validate via the SAME validateProcessModuleManifest', () => {
   for (const { label, definition } of FOUR_KIND_FIXTURES) {
-    const manifest = adaptLegacyProcessModule(definition);
+    const manifest = createProcessModuleManifest(definition);
     const result = validateProcessModuleManifest(manifest);
     assert.equal(result.ok, true,
       `${label} must validate via the shared SPI: ${JSON.stringify(result.errors)}`);
@@ -339,7 +339,7 @@ test('D1 genericity: the human multi-outcome fixture is a documented frozen-shap
   }
   // CRUCIALLY: the legacy-wrap + manifest-validate path (the actual Runtime
   // acceptance surface) PASSES for this fixture, identical to the other three.
-  const manifest = adaptLegacyProcessModule(humanDirectorApproval);
+  const manifest = createProcessModuleManifest(humanDirectorApproval);
   const result = validateProcessModuleManifest(manifest);
   assert.equal(result.ok, true,
     `human fixture must still wrap+validate via the shared SPI: ${JSON.stringify(result.errors)}`);
@@ -830,8 +830,8 @@ test('D7 import-list: the frozen SPI surface is actually exercised (non-trivial 
     'validateProcessModuleManifest is a function (SPI present)');
   assert.equal(typeof validateLifecycleScenarioManifest, 'function',
     'validateLifecycleScenarioManifest is a function (SPI present)');
-  assert.equal(typeof adaptLegacyProcessModule, 'function',
-    'adaptLegacyProcessModule is a function (SPI present)');
+  assert.equal(typeof createProcessModuleManifest, 'function',
+    'createProcessModuleManifest is a function (SPI present)');
   assert.equal(typeof runModuleConformance, 'function',
     'runModuleConformance is a function (shared kit present)');
   // And the four fixtures are non-trivial objects.

@@ -46,7 +46,7 @@ test('project resume resolves one exact durable run and fails ambiguity', () => 
   db.prepare("INSERT INTO projects (id,name) VALUES (1,'p')").run();
   db.prepare("INSERT INTO epics (id,project_id,name) VALUES (2,1,'e')").run();
   const insert = db.prepare(
-    `INSERT INTO saga3_lifecycle_runs
+    `INSERT INTO factory_lifecycle_runs
       (lifecycle_name,lifecycle_version,lifecycle_ref_key,display_name,description,
        definition_snapshot,definition_hash,project_id,epic_id,initiated_by,
        idempotency_key,input_schema,input_snapshot,input_hash,status,

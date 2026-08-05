@@ -119,7 +119,7 @@ export const developmentProcessModule: ProcessModuleDefinition = {
     },
   ],
   flow: {
-    id: 'saga3.development.standard',
+    id: 'factory.development.standard',
     version: '1.0.0',
     entryNodeId: 'plan-task-graph',
     nodes: [
@@ -380,7 +380,7 @@ export const developmentProcessModule: ProcessModuleDefinition = {
       id: 'development-task-graph-planner',
       workIntentKind: 'development.plan-task-graph',
       workIntentSchema: {
-        id: 'saga3.work-intent.development-task-graph.v1',
+        id: 'factory.work-intent.development-task-graph.v1',
       },
       taskKind: 'planning.decomposition',
       executionSkill: 'saga-planner',
@@ -428,7 +428,7 @@ export const developmentProcessModule: ProcessModuleDefinition = {
       id: 'development-implementation-worker',
       workIntentKind: 'development.implementation',
       workIntentSchema: {
-        id: 'saga3.work-intent.development-implementation.v1',
+        id: 'factory.work-intent.development-implementation.v1',
       },
       taskKind: 'implementation.feature',
       executionSkill: 'saga-worker',

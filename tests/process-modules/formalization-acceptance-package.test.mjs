@@ -385,9 +385,9 @@ test('W8-A4: every JSON resource file parses as valid JSON', () => {
 
 test('W8-A4: every JSON schema resource carries the matching $id', () => {
   const schemaIdByLogicalId = new Map([
-    ['formalization.acceptance.bundle-schema', 'saga3.formalization-acceptance-bundle.v1'],
-    ['formalization.reconciliation.report-schema', 'saga3.formalization-reconciliation-report.v1'],
-    ['formalization.reconciliation.baseline-schema', 'saga3.acceptance-baseline-snapshot.v1'],
+    ['formalization.acceptance.bundle-schema', 'factory.formalization-acceptance-bundle.v1'],
+    ['formalization.reconciliation.report-schema', 'factory.formalization-reconciliation-report.v1'],
+    ['formalization.reconciliation.baseline-schema', 'factory.acceptance-baseline-snapshot.v1'],
   ]);
   for (const entry of ACCEPTANCE_RESOURCE_INDEX) {
     const expectedId = schemaIdByLogicalId.get(entry.logicalId);

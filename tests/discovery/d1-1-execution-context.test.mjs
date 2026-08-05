@@ -37,7 +37,7 @@ function discoveryIntent({ enforcement = 'runtime', allowed = ALLOWED, id = 7 } 
       allowed_tools: allowed,
       enforcement,
     },
-    output_schema: 'saga3.work-intent.discovery.v1',
+    output_schema: 'factory.work-intent.discovery.v1',
     token_budget: 0,
     retry_budget: 0,
     projected_task_id: 100,

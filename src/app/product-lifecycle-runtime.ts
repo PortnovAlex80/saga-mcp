@@ -12,8 +12,8 @@ import type {
   WorkerExecutorFactoryContext,
 } from '../application/ports/worker-executor.js';
 import { getDb } from '../db.js';
-import type { Saga3DiscoveryRuntimePersistence } from '../modules/discovery/infrastructure/discovery-runtime-port.js';
-import { SqliteSaga3DiscoveryRuntime } from '../modules/discovery/infrastructure/sqlite-discovery-runtime.js';
+import type { FactoryDiscoveryRuntimePersistence } from '../modules/discovery/infrastructure/discovery-runtime-port.js';
+import { SqliteFactoryDiscoveryRuntime } from '../modules/discovery/infrastructure/sqlite-discovery-runtime.js';
 import {
   PROCESS_OUTCOME_EMITTER_HANDLER_ID,
   processOutcomeEmitter,
@@ -98,7 +98,7 @@ export interface ProductLifecycleRuntimeOptions {
   development?: DevelopmentCompositionDependencies;
   delivery: DeliveryCompositionDependencies;
   db?: Database.Database;
-  discoveryRuntimePersistence?: Saga3DiscoveryRuntimePersistence;
+  discoveryRuntimePersistence?: FactoryDiscoveryRuntimePersistence;
   packageInstallation?: ProductionInstallation;
   onLifecycleStarted?: (
     run: import('../process-modules/persistence/lifecycle-run.js').LifecycleRunRecord,
@@ -126,7 +126,7 @@ export function createProductLifecycleRuntime(
   const lookupProduction = db.prepare(
     `SELECT output_schema AS schema, output_ref AS ref, output_hash AS hash,
             output_bindings AS bindingsText
-       FROM saga3_node_runs
+       FROM factory_node_runs
       WHERE output_schema=? AND output_ref=? AND output_hash=?
         AND status='completed'
       LIMIT 1`,
@@ -161,11 +161,11 @@ export function createProductLifecycleRuntime(
         || nodeProduction.ref === null
         || nodeProduction.hash === null
       ) {
-        if (ref.schemaId === 'saga3.recovery-feedback.v1') {
+        if (ref.schemaId === 'factory.recovery-feedback.v1') {
           try {
             const recoveryRow = db.prepare(
               `SELECT feedback_snapshot, feedback_hash
-                 FROM saga3_recovery_attempts
+                 FROM factory_recovery_attempts
                 WHERE issue_ref=?
                 ORDER BY attempt DESC
                 LIMIT 1`,
@@ -214,7 +214,7 @@ export function createProductLifecycleRuntime(
   const executorV2Options = { productRepo: assemblerProductRepo };
 
   const runtimePersistence = options.discoveryRuntimePersistence
-    ?? new SqliteSaga3DiscoveryRuntime();
+    ?? new SqliteFactoryDiscoveryRuntime();
   const managedNodeSubmissions =
     new SqliteManagedNodeSubmissionRepository(db);
   const exactCandidateAcceptance = new SqliteExactCandidateAcceptance(db);

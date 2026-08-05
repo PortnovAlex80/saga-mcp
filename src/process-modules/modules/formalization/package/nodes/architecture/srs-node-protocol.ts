@@ -79,7 +79,7 @@ export const ARCHITECTURE_RESOURCE_IDS = {
  * profile `workIntentSchema` declared in formalization-process-module.ts).
  */
 export const ARCHITECTURE_WORK_INTENT_SCHEMA_ID =
-  'saga3.work-intent.formalization-architecture.v1';
+  'factory.work-intent.formalization-architecture.v1';
 
 /**
  * The architecture node protocol.
@@ -146,7 +146,7 @@ export const ARCHITECTURE_NODE_PROTOCOL: NodeProtocolDefinition = {
           // Pinned to the acceptance-baseline snapshot the architecture node
           // consumes (frozen by the upstream baseline-freezer node).
           contractRef: {
-            schemaId: 'saga3.acceptance-baseline-snapshot.v1',
+            schemaId: 'factory.acceptance-baseline-snapshot.v1',
             version: '1.0.0',
             digest: 'pending@wave-2',
           },
@@ -179,7 +179,7 @@ export const ARCHITECTURE_NODE_PROTOCOL: NodeProtocolDefinition = {
         {
           category: 'artifact-reference',
           contractRef: {
-            schemaId: 'saga3.srs.v1',
+            schemaId: 'factory.srs.v1',
             version: '1.0.0',
             digest: 'pending@wave-2',
           },
@@ -190,7 +190,7 @@ export const ARCHITECTURE_NODE_PROTOCOL: NodeProtocolDefinition = {
           // (formalization-architecture-bundle.v1).
           category: 'artifact-reference',
           contractRef: {
-            schemaId: 'saga3.formalization-architecture-bundle.v1',
+            schemaId: 'factory.formalization-architecture-bundle.v1',
             version: '1.0.0',
             digest: 'pending@wave-2',
           },
@@ -214,7 +214,7 @@ export const ARCHITECTURE_NODE_PROTOCOL: NodeProtocolDefinition = {
         {
           category: 'trace-reference',
           contractRef: {
-            schemaId: 'saga3.trace-edge.v1',
+            schemaId: 'factory.trace-edge.v1',
             version: '1.0.0',
             digest: 'pending@wave-2',
           },
@@ -241,7 +241,7 @@ export const ARCHITECTURE_NODE_PROTOCOL: NodeProtocolDefinition = {
           // upgrades it to a module-verifier-receipt at node completion.
           category: 'human-receipt',
           contractRef: {
-            schemaId: 'saga3.architecture-review.v1',
+            schemaId: 'factory.architecture-review.v1',
             version: '1.0.0',
             digest: 'pending@wave-2',
           },
@@ -262,7 +262,7 @@ export const ARCHITECTURE_NODE_PROTOCOL: NodeProtocolDefinition = {
       // PRD and that the baseline has not drifted.
       category: 'module-verifier-receipt',
       contractRef: {
-        schemaId: 'saga3.architecture-gate.v1',
+        schemaId: 'factory.architecture-gate.v1',
         version: '1.0.0',
         digest: 'pending@wave-2',
       },
@@ -271,7 +271,7 @@ export const ARCHITECTURE_NODE_PROTOCOL: NodeProtocolDefinition = {
     {
       category: 'artifact-reference',
       contractRef: {
-        schemaId: 'saga3.srs.v1',
+        schemaId: 'factory.srs.v1',
         version: '1.0.0',
         digest: 'pending@wave-2',
       },

@@ -31,7 +31,7 @@
 | `ProcessOutcomeCertificate` generic table | `src/process-modules/persistence/process-outcome-certificate*.ts` | ✓ |
 | `validateProcessModuleRunResult` | `src/process-modules/application/validate-process-module-run-result.ts:62-128` | ✓ (**orphaned** — никем не вызывается) |
 | WorkIntent lifecycle (`createIntent`/`ensureProjectedTask`/`setIntentStatus`) | `src/saga3/persistence/sqlite-saga3-discovery-runtime.ts` | ✓ (generic по форме, но захардкожены `workflow_stage='discovery'`/`execution_mode='tracker_only'`/`title="Discovery: "`) |
-| `WorkerExecutor` port + `createLegacyClaudeWorkerExecutorFactory` | `src/application/ports/worker-executor.ts`, `src/infrastructure/workers/` | ✓ |
+| `WorkerExecutor` port + `createPinnedClaudeWorkerExecutorFactory` | `src/application/ports/worker-executor.ts`, `src/infrastructure/workers/` | ✓ |
 | `resolveExecutionProfile` + skill inlining (protocol+semantic) | `src/process-modules/application/execution-profile-resolver.ts`, `tracker-view/claude-runner.mjs:35-111` | ✓ |
 | `discoverySettlementPolicyV1`, `Saga3Discovery{Normalization,Readiness,Settlement,Diagnosis}Service` | `src/saga3/` | ✓ (вызываются из монолитного engine, не из registry) |
 | Poll-loop skeleton для LM-node spawn/wait/recover | `src/engines/saga3-discovery-engine.ts:543-625` | ✓ (переиспользовать как образец) |

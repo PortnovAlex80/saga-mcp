@@ -33,7 +33,7 @@ const { sha256Hex } = await import(
 );
 
 function fixture() {
-  const temp = mkdtempSync(path.join(os.tmpdir(), 'saga3-feedback-recovery-'));
+  const temp = mkdtempSync(path.join(os.tmpdir(), 'factory-feedback-recovery-'));
   process.env.DB_PATH = path.join(temp, 'feedback-recovery.db');
   const db = getDb();
   db.prepare(`INSERT INTO projects (id,name,status) VALUES (1,'P','active')`).run();
@@ -308,19 +308,19 @@ function buildHarness(db, module, {
   // completion path is deleted). The productRepo bridge falls back to NodeRun
   // rows for settlement productions not in the content-addressed product
   // store (mirrors v2-production-completion-roundtrip.test.mjs), and ALSO
-  // resolves recovery-feedback products from saga3_recovery_attempts — those
+  // resolves recovery-feedback products from factory_recovery_attempts — those
   // are content-addressed control-plane products the executor forwards as
   // chainInput to the repair node, persisted in the recovery tables rather
   // than the product/NodeRun stores.
   const lookupProduction = db.prepare(
     `SELECT output_schema AS schema, output_ref AS ref, output_hash AS hash,
             output_bindings AS bindingsText
-       FROM saga3_node_runs
+       FROM factory_node_runs
       WHERE output_schema=? AND output_ref=? AND output_hash=?
         AND status='completed'
       LIMIT 1`,
   );
-  // Lazy + defensive: saga3_recovery_attempts only exists when a
+  // Lazy + defensive: factory_recovery_attempts only exists when a
   // SqliteRecoveryCaseRepository was constructed (this harness does construct
   // one, but the lazy guard keeps the bridge reusable for scenarios that do
   // not).
@@ -330,7 +330,7 @@ function buildHarness(db, module, {
       try {
         lookupRecoveryFeedback = db.prepare(
           `SELECT issue_ref AS ref, feedback_hash AS hash, feedback_snapshot AS snapshot
-             FROM saga3_recovery_attempts
+             FROM factory_recovery_attempts
             WHERE issue_ref=? AND feedback_hash=?
             LIMIT 1`,
         );

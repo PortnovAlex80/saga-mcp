@@ -35,7 +35,7 @@ export const DISCOVERY_OUTCOMES: readonly DiscoveryOutcome[] = [
  * submission whose schema_version does not match this exactly — the kernel, not
  * the worker, owns the contract version.
  */
-export const DISCOVERY_PROPOSAL_SCHEMA = 'saga3.discovery-proposal.v1';
+export const DISCOVERY_PROPOSAL_SCHEMA = 'factory.discovery-proposal.v1';
 
 /** Typed discovery proposal payload (roadmap §6.2). */
 export interface DiscoveryProposalPayload {

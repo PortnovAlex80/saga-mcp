@@ -19,13 +19,13 @@ import type {
   StartLifecycleCommand,
 } from './lifecycle-run.js';
 import { lifecycleRefKey } from './lifecycle-run.js';
-import { ensureSaga3ProcessRunSchema } from './sqlite-process-run-repository.js';
+import { ensureFactoryProcessRunSchema } from './sqlite-process-run-repository.js';
 import { classifyLifecycleDefinitionCompatibility } from '../application/lifecycle-definition-compatibility.js';
 
-export function ensureSaga3LifecycleRunSchema(db: Database.Database): void {
-  ensureSaga3ProcessRunSchema(db);
+export function ensureFactoryLifecycleRunSchema(db: Database.Database): void {
+  ensureFactoryProcessRunSchema(db);
   db.exec(`
-    CREATE TABLE IF NOT EXISTS saga3_lifecycle_runs (
+    CREATE TABLE IF NOT EXISTS factory_lifecycle_runs (
       id                    INTEGER PRIMARY KEY AUTOINCREMENT,
       lifecycle_name        TEXT NOT NULL,
       lifecycle_version     TEXT NOT NULL,
@@ -58,20 +58,20 @@ export function ensureSaga3LifecycleRunSchema(db: Database.Database): void {
       updated_at            TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_saga3_lifecycle_runs_idem
-      ON saga3_lifecycle_runs(
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_factory_lifecycle_runs_idem
+      ON factory_lifecycle_runs(
         project_id, lifecycle_name, lifecycle_version, idempotency_key
       );
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_saga3_lifecycle_runs_active_scope
-      ON saga3_lifecycle_runs(project_id, COALESCE(epic_id,-1), lifecycle_name)
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_factory_lifecycle_runs_active_scope
+      ON factory_lifecycle_runs(project_id, COALESCE(epic_id,-1), lifecycle_name)
       WHERE status IN ('created','running','paused');
-    CREATE INDEX IF NOT EXISTS idx_saga3_lifecycle_runs_active
-      ON saga3_lifecycle_runs(project_id, epic_id, status, updated_at);
+    CREATE INDEX IF NOT EXISTS idx_factory_lifecycle_runs_active
+      ON factory_lifecycle_runs(project_id, epic_id, status, updated_at);
 
-    CREATE TABLE IF NOT EXISTS saga3_stage_runs (
+    CREATE TABLE IF NOT EXISTS factory_stage_runs (
       id                    INTEGER PRIMARY KEY AUTOINCREMENT,
       lifecycle_run_id      INTEGER NOT NULL
-                                REFERENCES saga3_lifecycle_runs(id) ON DELETE CASCADE,
+                                REFERENCES factory_lifecycle_runs(id) ON DELETE CASCADE,
       ordinal               INTEGER NOT NULL,
       stage_id              TEXT NOT NULL,
       attempt               INTEGER NOT NULL,
@@ -86,7 +86,7 @@ export function ensureSaga3LifecycleRunSchema(db: Database.Database): void {
       status                TEXT NOT NULL DEFAULT 'created'
                               CHECK (status IN ('created','running','paused','completed','failed','cancelled')),
       process_run_id        INTEGER UNIQUE
-                                REFERENCES saga3_process_runs(id) ON DELETE RESTRICT,
+                                REFERENCES factory_process_runs(id) ON DELETE RESTRICT,
       local_outcome         TEXT,
       authority             TEXT,
       output_schema         TEXT,
@@ -106,22 +106,22 @@ export function ensureSaga3LifecycleRunSchema(db: Database.Database): void {
       UNIQUE(lifecycle_run_id, stage_id, attempt)
     );
 
-    CREATE INDEX IF NOT EXISTS idx_saga3_stage_runs_lifecycle
-      ON saga3_stage_runs(lifecycle_run_id, ordinal);
+    CREATE INDEX IF NOT EXISTS idx_factory_stage_runs_lifecycle
+      ON factory_stage_runs(lifecycle_run_id, ordinal);
 
-    CREATE TABLE IF NOT EXISTS saga3_process_transitions (
+    CREATE TABLE IF NOT EXISTS factory_process_transitions (
       id                    INTEGER PRIMARY KEY AUTOINCREMENT,
       lifecycle_run_id      INTEGER NOT NULL
-                                REFERENCES saga3_lifecycle_runs(id) ON DELETE CASCADE,
+                                REFERENCES factory_lifecycle_runs(id) ON DELETE CASCADE,
       from_stage_run_id     INTEGER NOT NULL UNIQUE
-                                REFERENCES saga3_stage_runs(id) ON DELETE RESTRICT,
+                                REFERENCES factory_stage_runs(id) ON DELETE RESTRICT,
       transition_key        TEXT NOT NULL UNIQUE,
       outcome               TEXT NOT NULL,
       target_type           TEXT NOT NULL CHECK (target_type IN ('stage','terminal')),
       target_stage_id       TEXT,
       terminal_status       TEXT,
       to_stage_run_id       INTEGER
-                                REFERENCES saga3_stage_runs(id) ON DELETE RESTRICT,
+                                REFERENCES factory_stage_runs(id) ON DELETE RESTRICT,
       handoff_snapshot      TEXT NOT NULL,
       handoff_hash          TEXT NOT NULL,
       decision_hash         TEXT NOT NULL,
@@ -135,12 +135,12 @@ export function ensureSaga3LifecycleRunSchema(db: Database.Database): void {
       )
     );
 
-    CREATE INDEX IF NOT EXISTS idx_saga3_process_transitions_lifecycle
-      ON saga3_process_transitions(lifecycle_run_id, id);
+    CREATE INDEX IF NOT EXISTS idx_factory_process_transitions_lifecycle
+      ON factory_process_transitions(lifecycle_run_id, id);
 
     CREATE TABLE IF NOT EXISTS factory_definition_compatibility_receipts (
       receipt_ref TEXT PRIMARY KEY,
-      lifecycle_run_id INTEGER NOT NULL REFERENCES saga3_lifecycle_runs(id) ON DELETE RESTRICT,
+      lifecycle_run_id INTEGER NOT NULL REFERENCES factory_lifecycle_runs(id) ON DELETE RESTRICT,
       previous_definition_hash TEXT NOT NULL,
       candidate_definition_hash TEXT NOT NULL,
       current_stage_id TEXT,
@@ -150,22 +150,22 @@ export function ensureSaga3LifecycleRunSchema(db: Database.Database): void {
     );
   `);
   const lifecycleColumns = db.prepare(
-    'PRAGMA table_info(saga3_lifecycle_runs)',
+    'PRAGMA table_info(factory_lifecycle_runs)',
   ).all() as Array<{ name: string }>;
   if (!lifecycleColumns.some(column => column.name === 'entry_stage_id')) {
-    db.exec('ALTER TABLE saga3_lifecycle_runs ADD COLUMN entry_stage_id TEXT');
+    db.exec('ALTER TABLE factory_lifecycle_runs ADD COLUMN entry_stage_id TEXT');
     db.exec(
-      `UPDATE saga3_lifecycle_runs
+      `UPDATE factory_lifecycle_runs
           SET entry_stage_id=COALESCE(current_stage_id,'unknown')
         WHERE entry_stage_id IS NULL`,
     );
   }
   const transitionColumns = db.prepare(
-    'PRAGMA table_info(saga3_process_transitions)',
+    'PRAGMA table_info(factory_process_transitions)',
   ).all() as Array<{ name: string }>;
   if (!transitionColumns.some(column => column.name === 'to_stage_run_id')) {
     db.exec(
-      'ALTER TABLE saga3_process_transitions ADD COLUMN to_stage_run_id INTEGER REFERENCES saga3_stage_runs(id)',
+      'ALTER TABLE factory_process_transitions ADD COLUMN to_stage_run_id INTEGER REFERENCES factory_stage_runs(id)',
     );
   }
 }
@@ -365,7 +365,7 @@ function nullableEqual(left: unknown, right: unknown): boolean {
 
 export class SqliteLifecycleRunRepository implements LifecycleRunRepository {
   constructor(private readonly db: Database.Database = getDb()) {
-    ensureSaga3LifecycleRunSchema(db);
+    ensureFactoryLifecycleRunSchema(db);
   }
 
   start(command: StartLifecycleCommand): {
@@ -383,7 +383,7 @@ export class SqliteLifecycleRunRepository implements LifecycleRunRepository {
     const ctx = command.invocationContext;
     return this.transaction(() => {
       const existing = this.db.prepare(
-        `SELECT * FROM saga3_lifecycle_runs
+        `SELECT * FROM factory_lifecycle_runs
           WHERE project_id=? AND lifecycle_name=? AND lifecycle_version=?
             AND idempotency_key=?`,
       ).get(
@@ -440,7 +440,7 @@ export class SqliteLifecycleRunRepository implements LifecycleRunRepository {
       }
 
       const active = this.db.prepare(
-        `SELECT id FROM saga3_lifecycle_runs
+        `SELECT id FROM factory_lifecycle_runs
           WHERE project_id=? AND COALESCE(epic_id,-1)=COALESCE(?,-1)
             AND lifecycle_name=? AND status IN ('created','running','paused')
           LIMIT 1`,
@@ -452,7 +452,7 @@ export class SqliteLifecycleRunRepository implements LifecycleRunRepository {
       }
 
       const info = this.db.prepare(
-        `INSERT INTO saga3_lifecycle_runs
+        `INSERT INTO factory_lifecycle_runs
           (lifecycle_name,lifecycle_version,lifecycle_ref_key,display_name,description,
            definition_snapshot,definition_hash,project_id,epic_id,initiated_by,
            idempotency_key,input_schema,input_snapshot,input_hash,status,
@@ -485,7 +485,7 @@ export class SqliteLifecycleRunRepository implements LifecycleRunRepository {
 
   read(id: number): LifecycleRunRecord | null {
     const row = this.db.prepare(
-      'SELECT * FROM saga3_lifecycle_runs WHERE id=?',
+      'SELECT * FROM factory_lifecycle_runs WHERE id=?',
     ).get(id) as LifecycleRunRow | undefined;
     return row ? runRowToRecord(row) : null;
   }
@@ -496,7 +496,7 @@ export class SqliteLifecycleRunRepository implements LifecycleRunRepository {
     idempotencyKey: string,
   ): LifecycleRunRecord | null {
     const row = this.db.prepare(
-      `SELECT * FROM saga3_lifecycle_runs
+      `SELECT * FROM factory_lifecycle_runs
         WHERE project_id=? AND lifecycle_ref_key=? AND idempotency_key=?`,
     ).get(projectId, refKey, idempotencyKey) as LifecycleRunRow | undefined;
     return row ? runRowToRecord(row) : null;
@@ -508,12 +508,12 @@ export class SqliteLifecycleRunRepository implements LifecycleRunRepository {
   ): readonly LifecycleRunRecord[] {
     const rows = epicId === undefined
       ? this.db.prepare(
-          `SELECT * FROM saga3_lifecycle_runs
+          `SELECT * FROM factory_lifecycle_runs
             WHERE project_id=?
             ORDER BY id DESC`,
         ).all(projectId)
       : this.db.prepare(
-          `SELECT * FROM saga3_lifecycle_runs
+          `SELECT * FROM factory_lifecycle_runs
             WHERE project_id=? AND epic_id=?
             ORDER BY id DESC`,
         ).all(projectId, epicId);
@@ -522,7 +522,7 @@ export class SqliteLifecycleRunRepository implements LifecycleRunRepository {
 
   listStageRuns(lifecycleRunId: number): readonly LifecycleStageRunRecord[] {
     const rows = this.db.prepare(
-      `SELECT * FROM saga3_stage_runs
+      `SELECT * FROM factory_stage_runs
         WHERE lifecycle_run_id=? ORDER BY ordinal`,
     ).all(lifecycleRunId) as StageRunRow[];
     return rows.map(stageRowToRecord);
@@ -532,7 +532,7 @@ export class SqliteLifecycleRunRepository implements LifecycleRunRepository {
     lifecycleRunId: number,
   ): readonly LifecycleTransitionRecord[] {
     const rows = this.db.prepare(
-      `SELECT * FROM saga3_process_transitions
+      `SELECT * FROM factory_process_transitions
         WHERE lifecycle_run_id=? ORDER BY id`,
     ).all(lifecycleRunId) as TransitionRow[];
     return rows.map(transitionRowToRecord);
@@ -540,8 +540,8 @@ export class SqliteLifecycleRunRepository implements LifecycleRunRepository {
 
   readCurrentStageRun(lifecycleRunId: number): LifecycleStageRunRecord | null {
     const row = this.db.prepare(
-      `SELECT sr.* FROM saga3_lifecycle_runs lr
-         JOIN saga3_stage_runs sr ON sr.id=lr.current_stage_run_id
+      `SELECT sr.* FROM factory_lifecycle_runs lr
+         JOIN factory_stage_runs sr ON sr.id=lr.current_stage_run_id
         WHERE lr.id=?`,
     ).get(lifecycleRunId) as StageRunRow | undefined;
     return row ? stageRowToRecord(row) : null;
@@ -568,7 +568,7 @@ export class SqliteLifecycleRunRepository implements LifecycleRunRepository {
 
       const inserted = this.insertStageRun(command);
       const changed = this.db.prepare(
-        `UPDATE saga3_lifecycle_runs
+        `UPDATE factory_lifecycle_runs
             SET current_stage_run_id=?, status='running', version=version+1,
                 error=NULL, updated_at=datetime('now')
           WHERE id=? AND current_stage_run_id IS NULL
@@ -599,7 +599,7 @@ export class SqliteLifecycleRunRepository implements LifecycleRunRepository {
       }
       const process = this.db.prepare(
         `SELECT project_id,epic_id,module_name,module_version,input_hash
-           FROM saga3_process_runs WHERE id=?`,
+           FROM factory_process_runs WHERE id=?`,
       ).get(processRunId) as {
         project_id: number;
         epic_id: number | null;
@@ -620,10 +620,10 @@ export class SqliteLifecycleRunRepository implements LifecycleRunRepository {
         throw new Error('LIFECYCLE_PROCESS_RUN_BINDING_MISMATCH');
       }
       const changed = this.db.prepare(
-        `UPDATE saga3_stage_runs SET process_run_id=?, updated_at=datetime('now')
+        `UPDATE factory_stage_runs SET process_run_id=?, updated_at=datetime('now')
           WHERE id=? AND lifecycle_run_id=? AND process_run_id IS NULL
             AND EXISTS (
-              SELECT 1 FROM saga3_lifecycle_runs
+              SELECT 1 FROM factory_lifecycle_runs
                WHERE id=? AND execution_lease_owner=? AND execution_lease_fence=?
             )`,
       ).run(
@@ -654,10 +654,10 @@ export class SqliteLifecycleRunRepository implements LifecycleRunRepository {
         return stageRowToRecord(stage);
       }
       const changed = this.db.prepare(
-        `UPDATE saga3_stage_runs SET status='running', error=NULL, updated_at=datetime('now')
+        `UPDATE factory_stage_runs SET status='running', error=NULL, updated_at=datetime('now')
           WHERE id=? AND lifecycle_run_id=?
             AND EXISTS (
-              SELECT 1 FROM saga3_lifecycle_runs
+              SELECT 1 FROM factory_lifecycle_runs
                WHERE id=? AND execution_lease_owner=? AND execution_lease_fence=?
             )`,
       ).run(
@@ -669,7 +669,7 @@ export class SqliteLifecycleRunRepository implements LifecycleRunRepository {
       );
       if (changed.changes !== 1) throw new Error('LIFECYCLE_LEASE_LOST');
       this.db.prepare(
-        `UPDATE saga3_lifecycle_runs
+        `UPDATE factory_lifecycle_runs
             SET status='running', error=NULL, version=version+1, updated_at=datetime('now')
           WHERE id=? AND execution_lease_owner=? AND execution_lease_fence=?`,
       ).run(lifecycleRunId, lease.owner, lease.fence);
@@ -689,12 +689,12 @@ export class SqliteLifecycleRunRepository implements LifecycleRunRepository {
         throw new Error('LIFECYCLE_STAGE_RUN_IS_NOT_CURRENT');
       }
       this.db.prepare(
-        `UPDATE saga3_stage_runs
+        `UPDATE factory_stage_runs
             SET status='paused', error=?, updated_at=datetime('now')
           WHERE id=? AND lifecycle_run_id=? AND status NOT IN ('completed','failed','cancelled')`,
       ).run(error, stageRunId, lifecycleRunId);
       const changed = this.db.prepare(
-        `UPDATE saga3_lifecycle_runs
+        `UPDATE factory_lifecycle_runs
             SET status='paused', error=?, version=version+1, updated_at=datetime('now')
           WHERE id=? AND execution_lease_owner=? AND execution_lease_fence=?
             AND status NOT IN ('completed','failed','cancelled')`,
@@ -714,14 +714,14 @@ export class SqliteLifecycleRunRepository implements LifecycleRunRepository {
       this.requireLease(lifecycleRunId, lease);
       if (stageRunId !== null) {
         this.db.prepare(
-          `UPDATE saga3_stage_runs
+          `UPDATE factory_stage_runs
               SET status='failed', error=?, completed_at=COALESCE(completed_at,datetime('now')),
                   updated_at=datetime('now')
             WHERE id=? AND lifecycle_run_id=? AND status NOT IN ('completed','cancelled')`,
         ).run(error, stageRunId, lifecycleRunId);
       }
       const changed = this.db.prepare(
-        `UPDATE saga3_lifecycle_runs
+        `UPDATE factory_lifecycle_runs
             SET status='failed', terminal_status='failed', error=?,
                 completed_at=COALESCE(completed_at,datetime('now')),
                 version=version+1, updated_at=datetime('now')
@@ -736,7 +736,7 @@ export class SqliteLifecycleRunRepository implements LifecycleRunRepository {
   resume(lifecycleRunId: number, expectedVersion: number): LifecycleRunRecord {
     return this.transaction(() => {
       const changed = this.db.prepare(
-        `UPDATE saga3_lifecycle_runs
+        `UPDATE factory_lifecycle_runs
             SET status='running', error=NULL, version=version+1,
                 execution_lease_owner=NULL, execution_lease_expires_at=NULL,
                 updated_at=datetime('now')
@@ -765,7 +765,7 @@ export class SqliteLifecycleRunRepository implements LifecycleRunRepository {
         throw new Error(`LIFECYCLE_CANCEL_TERMINAL: run is ${current.status}`);
       }
       const changed = this.db.prepare(
-        `UPDATE saga3_lifecycle_runs
+        `UPDATE factory_lifecycle_runs
             SET status='cancelled', terminal_status='cancelled', error=?,
                 completed_at=COALESCE(completed_at,datetime('now')),
                 execution_lease_owner=NULL, execution_lease_expires_at=NULL,
@@ -781,7 +781,7 @@ export class SqliteLifecycleRunRepository implements LifecycleRunRepository {
         // transaction; otherwise a stale lifecycle worker could keep driving
         // provider mutations after the parent run had already been cancelled.
         this.db.prepare(
-          `UPDATE saga3_process_runs
+          `UPDATE factory_process_runs
               SET status='cancelled', error=?,
                   completed_at=COALESCE(completed_at,datetime('now')),
                   execution_lease_owner=NULL,
@@ -789,13 +789,13 @@ export class SqliteLifecycleRunRepository implements LifecycleRunRepository {
                   updated_at=datetime('now')
             WHERE id=(
               SELECT process_run_id
-                FROM saga3_stage_runs
+                FROM factory_stage_runs
                WHERE id=? AND lifecycle_run_id=?
             )
               AND status IN ('created','preparing','running','paused','settling')`,
         ).run(reason, current.current_stage_run_id, lifecycleRunId);
         this.db.prepare(
-          `UPDATE saga3_stage_runs
+          `UPDATE factory_stage_runs
               SET status='cancelled', error=?,
                   completed_at=COALESCE(completed_at,datetime('now')),
                   updated_at=datetime('now')
@@ -808,7 +808,7 @@ export class SqliteLifecycleRunRepository implements LifecycleRunRepository {
 
   listRecoverable(expiredBeforeIso: string): readonly LifecycleRunRecord[] {
     const rows = this.db.prepare(
-      `SELECT * FROM saga3_lifecycle_runs
+      `SELECT * FROM factory_lifecycle_runs
         WHERE status IN ('created','running')
           AND (
             execution_lease_owner IS NULL
@@ -845,7 +845,7 @@ export class SqliteLifecycleRunRepository implements LifecycleRunRepository {
     }
     return this.transaction(() => {
       const prior = this.db.prepare(
-        'SELECT * FROM saga3_process_transitions WHERE transition_key=?',
+        'SELECT * FROM factory_process_transitions WHERE transition_key=?',
       ).get(command.transitionKey) as TransitionRow | undefined;
       if (prior) {
         const sameTarget = command.target.type === prior.target_type
@@ -886,7 +886,7 @@ export class SqliteLifecycleRunRepository implements LifecycleRunRepository {
       const process = this.db.prepare(
         `SELECT status,local_outcome,authority,output_schema,output_ref,output_hash,
                 certificate_schema,certificate_ref,certificate_hash
-           FROM saga3_process_runs WHERE id=?`,
+           FROM factory_process_runs WHERE id=?`,
       ).get(stage.process_run_id) as {
         status: string;
         local_outcome: string | null;
@@ -951,7 +951,7 @@ export class SqliteLifecycleRunRepository implements LifecycleRunRepository {
       const mappedOutputSnapshot = canonicalJson(command.mappedOutput);
       const resultSnapshot = canonicalJson(expectedResultSnapshot);
       const stageChanged = this.db.prepare(
-        `UPDATE saga3_stage_runs
+        `UPDATE factory_stage_runs
             SET status='completed', local_outcome=?, authority=?,
                 output_schema=?, output_ref=?, output_hash=?,
                 certificate_schema=?, certificate_ref=?, certificate_hash=?,
@@ -990,7 +990,7 @@ export class SqliteLifecycleRunRepository implements LifecycleRunRepository {
           })
         : null;
       const transitionInfo = this.db.prepare(
-        `INSERT INTO saga3_process_transitions
+        `INSERT INTO factory_process_transitions
           (lifecycle_run_id,from_stage_run_id,transition_key,outcome,target_type,
            target_stage_id,terminal_status,to_stage_run_id,handoff_snapshot,
            handoff_hash,decision_hash)
@@ -1011,7 +1011,7 @@ export class SqliteLifecycleRunRepository implements LifecycleRunRepository {
 
       if (command.nextStage && nextStageRow) {
         const changed = this.db.prepare(
-          `UPDATE saga3_lifecycle_runs
+          `UPDATE factory_lifecycle_runs
               SET status='running', current_stage_id=?, current_stage_run_id=?,
                   terminal_status=NULL, error=NULL, version=version+1,
                   updated_at=datetime('now')
@@ -1028,7 +1028,7 @@ export class SqliteLifecycleRunRepository implements LifecycleRunRepository {
         if (changed.changes !== 1) throw new Error('LIFECYCLE_LEASE_LOST');
       } else {
         const changed = this.db.prepare(
-          `UPDATE saga3_lifecycle_runs
+          `UPDATE factory_lifecycle_runs
               SET status='completed', current_stage_id=NULL, current_stage_run_id=NULL,
                   terminal_status=?, error=NULL,
                   completed_at=COALESCE(completed_at,datetime('now')),
@@ -1046,7 +1046,7 @@ export class SqliteLifecycleRunRepository implements LifecycleRunRepository {
       }
 
       const transition = this.db.prepare(
-        'SELECT * FROM saga3_process_transitions WHERE id=?',
+        'SELECT * FROM factory_process_transitions WHERE id=?',
       ).get(Number(transitionInfo.lastInsertRowid)) as TransitionRow;
       return {
         lifecycleRun: runRowToRecord(this.readRunRow(command.lifecycleRunId)),
@@ -1077,7 +1077,7 @@ export class SqliteLifecycleRunRepository implements LifecycleRunRepository {
         `SELECT execution_lease_owner AS owner,
                 execution_lease_expires_at AS expires_at,
                 execution_lease_fence AS fence
-           FROM saga3_lifecycle_runs WHERE id=?`,
+           FROM factory_lifecycle_runs WHERE id=?`,
       ).get(lifecycleRunId) as {
         owner: string | null;
         expires_at: string | null;
@@ -1093,7 +1093,7 @@ export class SqliteLifecycleRunRepository implements LifecycleRunRepository {
       }
       const fence = leaseRow.fence + 1;
       const changed = this.db.prepare(
-        `UPDATE saga3_lifecycle_runs
+        `UPDATE factory_lifecycle_runs
             SET execution_lease_owner=?, execution_lease_fence=?,
                 execution_lease_expires_at=?,
                 status=CASE WHEN status='created' THEN 'running' ELSE status END,
@@ -1110,7 +1110,7 @@ export class SqliteLifecycleRunRepository implements LifecycleRunRepository {
     expiresAtIso: string,
   ): boolean {
     const changed = this.db.prepare(
-      `UPDATE saga3_lifecycle_runs
+      `UPDATE factory_lifecycle_runs
           SET execution_lease_expires_at=?, updated_at=datetime('now')
         WHERE id=? AND execution_lease_owner=? AND execution_lease_fence=?
           AND julianday(execution_lease_expires_at)>julianday('now')
@@ -1124,7 +1124,7 @@ export class SqliteLifecycleRunRepository implements LifecycleRunRepository {
     lease: LifecycleExecutionLease,
   ): void {
     this.db.prepare(
-      `UPDATE saga3_lifecycle_runs
+      `UPDATE factory_lifecycle_runs
           SET execution_lease_owner=NULL, execution_lease_expires_at=NULL,
               updated_at=datetime('now')
         WHERE id=? AND execution_lease_owner=? AND execution_lease_fence=?`,
@@ -1159,13 +1159,13 @@ export class SqliteLifecycleRunRepository implements LifecycleRunRepository {
     const counters = this.db.prepare(
       `SELECT COALESCE(MAX(ordinal),0) AS max_ordinal,
               COALESCE(MAX(CASE WHEN stage_id=? THEN attempt ELSE 0 END),0) AS max_attempt
-         FROM saga3_stage_runs WHERE lifecycle_run_id=?`,
+         FROM factory_stage_runs WHERE lifecycle_run_id=?`,
     ).get(command.stageId, command.lifecycleRunId) as {
       max_ordinal: number;
       max_attempt: number;
     };
     const info = this.db.prepare(
-      `INSERT INTO saga3_stage_runs
+      `INSERT INTO factory_stage_runs
         (lifecycle_run_id,ordinal,stage_id,attempt,module_name,module_version,
          module_ref_key,binding_snapshot,binding_hash,input_schema,input_snapshot,
          input_hash,status)
@@ -1192,7 +1192,7 @@ export class SqliteLifecycleRunRepository implements LifecycleRunRepository {
     lease: LifecycleExecutionLease,
   ): LifecycleRunRow {
     const row = this.db.prepare(
-      `SELECT * FROM saga3_lifecycle_runs
+      `SELECT * FROM factory_lifecycle_runs
         WHERE id=? AND execution_lease_owner=? AND execution_lease_fence=?
           AND julianday(execution_lease_expires_at)>julianday('now')
           AND status NOT IN ('completed','failed','cancelled')`,
@@ -1203,7 +1203,7 @@ export class SqliteLifecycleRunRepository implements LifecycleRunRepository {
 
   private readRunRow(id: number): LifecycleRunRow {
     const row = this.db.prepare(
-      'SELECT * FROM saga3_lifecycle_runs WHERE id=?',
+      'SELECT * FROM factory_lifecycle_runs WHERE id=?',
     ).get(id) as LifecycleRunRow | undefined;
     if (!row) throw new Error(`saga3: lifecycle_run ${id} not found`);
     return row;
@@ -1211,7 +1211,7 @@ export class SqliteLifecycleRunRepository implements LifecycleRunRepository {
 
   private readStageRow(id: number): StageRunRow {
     const row = this.db.prepare(
-      'SELECT * FROM saga3_stage_runs WHERE id=?',
+      'SELECT * FROM factory_stage_runs WHERE id=?',
     ).get(id) as StageRunRow | undefined;
     if (!row) throw new Error(`saga3: stage_run ${id} not found`);
     return row;

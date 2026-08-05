@@ -50,7 +50,7 @@ const NODE_REF = Object.freeze({
 });
 
 const PRODUCT_REF = Object.freeze({
-  schemaId: 'saga3.srs.v1',
+  schemaId: 'factory.srs.v1',
   ref: 'srs/REQ-001/SRS.md',
   digest: 'b'.repeat(64),
 });

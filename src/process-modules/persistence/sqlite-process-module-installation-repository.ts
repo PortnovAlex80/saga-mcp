@@ -1,13 +1,13 @@
 /**
  * SQLite implementation of ProcessModuleInstallationRepository. P-PM-1.
  *
- * Schema: `saga3_process_module_installations`. Idempotent upsert keyed on
+ * Schema: `factory_process_module_installations`. Idempotent upsert keyed on
  * (module_name, module_version, package_digest). Two installations of the same
  * module version with different package digests coexist as distinct rows —
  * this is intentional: it captures "edited resource, same version" as a new
  * installation, and ProcessRuns pinned to the old one keep replaying correctly.
  *
- * `saga3_process_runs.installation_id` is the FK consumers use. This repo does
+ * `factory_process_runs.installation_id` is the FK consumers use. This repo does
  * NOT add that FK here (it's added in sqlite-process-run-repository.ts as a
  * nullable column to preserve backward compatibility with pre-P-PM-1 rows).
  */
@@ -25,9 +25,9 @@ import {
   type ProcessModuleInstallationRepository,
 } from './process-module-installation-record.js';
 
-export function ensureSaga3ProcessModuleInstallationSchema(db: Database.Database): void {
+export function ensureFactoryProcessModuleInstallationSchema(db: Database.Database): void {
   db.exec(`
-    CREATE TABLE IF NOT EXISTS saga3_process_module_installations (
+    CREATE TABLE IF NOT EXISTS factory_process_module_installations (
       id                      INTEGER PRIMARY KEY AUTOINCREMENT,
       module_name             TEXT NOT NULL,
       module_version          TEXT NOT NULL,
@@ -41,12 +41,12 @@ export function ensureSaga3ProcessModuleInstallationSchema(db: Database.Database
     );
 
     -- Idempotent upsert: same module + same package = same row.
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_saga3_installations_module_pkg
-      ON saga3_process_module_installations(module_name, module_version, package_digest);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_factory_installations_module_pkg
+      ON factory_process_module_installations(module_name, module_version, package_digest);
 
     -- Fast "latest installation for module" lookup.
-    CREATE INDEX IF NOT EXISTS idx_saga3_installations_module
-      ON saga3_process_module_installations(module_name, module_version, id DESC);
+    CREATE INDEX IF NOT EXISTS idx_factory_installations_module
+      ON factory_process_module_installations(module_name, module_version, id DESC);
   `);
 }
 
@@ -100,7 +100,7 @@ export class SqliteProcessModuleInstallationRepository
 
   constructor(db: Database.Database = getDb()) {
     this.db = db;
-    ensureSaga3ProcessModuleInstallationSchema(this.db);
+    ensureFactoryProcessModuleInstallationSchema(this.db);
   }
 
   upsert(input: InsertProcessModuleInstallationInput): ProcessModuleInstallationRecord {
@@ -111,7 +111,7 @@ export class SqliteProcessModuleInstallationRepository
     // Look up existing by (module, package_digest). If found, return as-is —
     // the package is byte-identical, no new row needed.
     const existing = this.db.prepare(
-      `SELECT * FROM saga3_process_module_installations
+      `SELECT * FROM factory_process_module_installations
         WHERE module_name=? AND module_version=? AND package_digest=?`,
     ).get(input.moduleRef.name, input.moduleRef.version, input.packageDigest) as
       | InstallationRow
@@ -119,7 +119,7 @@ export class SqliteProcessModuleInstallationRepository
     if (existing) return rowToRecord(existing);
 
     const info = this.db.prepare(
-      `INSERT INTO saga3_process_module_installations
+      `INSERT INTO factory_process_module_installations
          (module_name, module_version, module_ref_key, executor_kind,
           definition_digest, package_digest, resource_hashes_json, handler_versions_json)
        VALUES (?,?,?,?,?,?,?,?)`,
@@ -134,21 +134,21 @@ export class SqliteProcessModuleInstallationRepository
       handlerVersionsJson,
     );
     const row = this.db.prepare(
-      'SELECT * FROM saga3_process_module_installations WHERE id=?',
+      'SELECT * FROM factory_process_module_installations WHERE id=?',
     ).get(Number(info.lastInsertRowid)) as InstallationRow;
     return rowToRecord(row);
   }
 
   read(id: number): ProcessModuleInstallationRecord | null {
     const row = this.db.prepare(
-      'SELECT * FROM saga3_process_module_installations WHERE id=?',
+      'SELECT * FROM factory_process_module_installations WHERE id=?',
     ).get(id) as InstallationRow | undefined;
     return row ? rowToRecord(row) : null;
   }
 
   findLatestForModule(moduleRef: ProcessModuleReference): ProcessModuleInstallationRecord | null {
     const row = this.db.prepare(
-      `SELECT * FROM saga3_process_module_installations
+      `SELECT * FROM factory_process_module_installations
         WHERE module_name=? AND module_version=?
         ORDER BY id DESC LIMIT 1`,
     ).get(moduleRef.name, moduleRef.version) as InstallationRow | undefined;
@@ -160,7 +160,7 @@ export class SqliteProcessModuleInstallationRepository
     packageDigest: string,
   ): ProcessModuleInstallationRecord | null {
     const row = this.db.prepare(
-      `SELECT * FROM saga3_process_module_installations
+      `SELECT * FROM factory_process_module_installations
         WHERE module_name=? AND module_version=? AND package_digest=?`,
     ).get(moduleRef.name, moduleRef.version, packageDigest) as InstallationRow | undefined;
     return row ? rowToRecord(row) : null;

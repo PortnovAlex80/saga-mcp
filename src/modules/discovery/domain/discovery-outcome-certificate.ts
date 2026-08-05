@@ -21,7 +21,7 @@ import { canonicalJson } from '../../../shared/canonical-json.js';
 /**
  * Schema version for the outcome certificate payload.
  */
-export const DISCOVERY_OUTCOME_CERTIFICATE_SCHEMA = 'saga3.discovery-outcome-certificate.v1';
+export const DISCOVERY_OUTCOME_CERTIFICATE_SCHEMA = 'factory.discovery-outcome-certificate.v1';
 
 /**
  * The authority that issued the certificate. Always kernel_policy for D4 — the

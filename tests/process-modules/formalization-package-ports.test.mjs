@@ -110,7 +110,7 @@ const {
 );
 
 function briefFixture() {
-  const temp = mkdtempSync(path.join(os.tmpdir(), 'saga3-formalization-ports-'));
+  const temp = mkdtempSync(path.join(os.tmpdir(), 'factory-formalization-ports-'));
   process.env.DB_PATH = path.join(temp, 'ports.db');
   const db = getDb();
   db.prepare(`INSERT INTO projects (id,name,status) VALUES (1,'P','active')`).run();
@@ -461,7 +461,7 @@ test('W8-A6: createFormalizationPackageHandlerAdapter wraps the product handler 
   const stubProductResult = {
     event: 'completed',
     production: {
-      schema: 'saga3.formalization-product-bundle.v1',
+      schema: 'factory.formalization-product-bundle.v1',
       artifactRef: 'stub:product',
       contentHash: 'd'.repeat(64),
       bindings: { prdArtifactId: 55 },

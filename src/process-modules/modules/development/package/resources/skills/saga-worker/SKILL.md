@@ -80,19 +80,18 @@ because your task does not carry LM-node provenance.
 
 For new products, project identity lives in `.saga/project.json`; the board
 runner may also pass the resolved `project_id` and repository binding directly.
-`./projectname.txt` is a legacy fallback. The shared DB holds many products, so
-never guess identity from the directory name.
+The shared DB holds many products, so never guess identity from the directory name.
 
 1. Read `.saga/project.json`; if supplied by the runner, use its resolved
    `project_id` directly.
-2. If no manifest exists, read legacy `./projectname.txt` and resolve its name.
+2. If no manifest or runner binding exists, stop and use `saga-start`.
 3. **If neither binding exists and no project_id was supplied → HARD STOP.**
    - Ask the user ONCE: *"What is the saga project name for this folder?"*
    - **Do NOT create anything.** Do NOT call `project_create`, `project_resolve_by_name`,
      `epic_create`, `task_create`, or any other mutation. Without a confirmed project
      name you have NO idea which project is yours — fabricating one creates work in
      the wrong place (a real failure: an agent spun up a duplicate "Lottery Solver"
-     in an empty DB because projectname.txt was missing).
+     in an empty DB because its authoritative binding was missing).
    - Wait for the user's answer and use `saga-start` to create the canonical
      product/repository binding.
    - The user's answer is the ONLY legitimate source of the project name — never
@@ -696,7 +695,7 @@ task_list({ epic_id: <any epic in your project>, limit: 50 })   # or tracker_das
 
 - **≥1 task exists in any status** → the project is real, just idle. This is genuine DONE. Report in 2 sentences: what you completed, that the queue is verified empty. Stop.
 - **0 tasks / product looks wrong** → re-check the runner assignment or
-  `.saga/project.json`; use `projectname.txt` only for a legacy checkout.
+  `.saga/project.json`; if it is absent, use `saga-start`.
 
 This probe is what catches "I finished everything!" when actually you were on
 the wrong project all along.
@@ -740,7 +739,7 @@ where a wrong guess is more expensive than restarting.
 ## Hard rules (жёсткие правила)
 
 - **Project identity comes from the dispatcher or `.saga/project.json`.**
-  `projectname.txt` is legacy fallback only. With no authoritative binding,
+  With no authoritative binding,
   hard stop and ask the user; never infer a product from the folder name.
 - **worker_id**: use exactly the id you were given (e.g. `agent-1`). It is how the board shows who does what.
 - **One task at a time.** Only the task whose `assigned_to` == your `worker_id` is yours.

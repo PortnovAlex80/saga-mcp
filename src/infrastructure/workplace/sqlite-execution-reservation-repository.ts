@@ -86,7 +86,7 @@ export class SqliteExecutionReservationRepository {
         return { kind: 'race_lost', winner: rowToReservation(existing) } as CreateReservationResult;
       }
       this.db.prepare(
-        `INSERT INTO v4_execution_reservations
+        `INSERT INTO factory_execution_reservations
            (reservation_ref, workplace_ref, expected_workplace_revision, role,
             idempotency_key, fence_token, expires_at, state)
          VALUES (?, ?, ?, ?, ?, ?, ?, 'queued')`,
@@ -119,7 +119,7 @@ export class SqliteExecutionReservationRepository {
     target: Exclude<ExecutionReservationState, 'queued'>,
   ): boolean {
     const info = this.db.prepare(
-      `UPDATE v4_execution_reservations
+      `UPDATE factory_execution_reservations
           SET state=?, updated_at=datetime('now')
         WHERE reservation_ref=? AND state='queued'`,
     ).run(target, reservationRef);
@@ -133,7 +133,7 @@ export class SqliteExecutionReservationRepository {
    */
   listQueuedForWorkplace(workplaceRef: WorkplaceRef): ExecutionReservation[] {
     const rows = this.db.prepare(
-      `SELECT * FROM v4_execution_reservations
+      `SELECT * FROM factory_execution_reservations
         WHERE workplace_ref=? AND state='queued'
         ORDER BY created_at`,
     ).all(serializeWorkplaceRef(workplaceRef)) as ReservationRow[];
@@ -146,7 +146,7 @@ export class SqliteExecutionReservationRepository {
 
   private readRow(reservationRef: string): ReservationRow | null {
     const row = this.db.prepare(
-      'SELECT * FROM v4_execution_reservations WHERE reservation_ref=?',
+      'SELECT * FROM factory_execution_reservations WHERE reservation_ref=?',
     ).get(reservationRef) as ReservationRow | undefined;
     return row ?? null;
   }

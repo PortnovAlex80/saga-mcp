@@ -80,7 +80,7 @@ const { sha256Hex } = await import(
 // --- Fixtures ---------------------------------------------------------------
 
 function fixture() {
-  const temp = mkdtempSync(path.join(os.tmpdir(), 'saga3-w45-explicit-'));
+  const temp = mkdtempSync(path.join(os.tmpdir(), 'factory-w45-explicit-'));
   process.env.DB_PATH = path.join(temp, 'explicit.db');
   const db = getDb();
   db.prepare(`INSERT INTO projects (id,name,status) VALUES (1,'P','active')`).run();
@@ -230,7 +230,7 @@ function buildExecutor(module, db) {
   const lookupProduction = db.prepare(
     `SELECT output_schema AS schema, output_ref AS ref, output_hash AS hash,
             output_bindings AS bindingsText
-       FROM saga3_node_runs
+       FROM factory_node_runs
       WHERE output_schema=? AND output_ref=? AND output_hash=?
         AND status='completed'
       LIMIT 1`,

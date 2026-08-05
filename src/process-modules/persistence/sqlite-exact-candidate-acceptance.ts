@@ -126,7 +126,7 @@ export function ensureExactCandidateAcceptanceSchema(
   db: Database.Database,
 ): void {
   db.exec(`
-    CREATE TABLE IF NOT EXISTS saga3_exact_candidate_acceptance_decisions (
+    CREATE TABLE IF NOT EXISTS factory_exact_candidate_acceptance_decisions (
       id                         INTEGER PRIMARY KEY AUTOINCREMENT,
       schema_version             TEXT NOT NULL,
       idempotency_key            TEXT NOT NULL UNIQUE,
@@ -152,15 +152,15 @@ export function ensureExactCandidateAcceptanceSchema(
       decided_at                 TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_saga3_exact_acceptance_decision_hash
-      ON saga3_exact_candidate_acceptance_decisions(decision_hash);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_factory_exact_acceptance_decision_hash
+      ON factory_exact_candidate_acceptance_decisions(decision_hash);
 
-    CREATE INDEX IF NOT EXISTS idx_saga3_exact_acceptance_lineage
-      ON saga3_exact_candidate_acceptance_decisions(
+    CREATE INDEX IF NOT EXISTS idx_factory_exact_acceptance_lineage
+      ON factory_exact_candidate_acceptance_decisions(
         process_run_id, module_ref, node_id, task_id, execution_id
       );
 
-    CREATE TABLE IF NOT EXISTS saga3_exact_candidate_acceptance_items (
+    CREATE TABLE IF NOT EXISTS factory_exact_candidate_acceptance_items (
       id                     INTEGER PRIMARY KEY AUTOINCREMENT,
       decision_id            INTEGER NOT NULL,
       ordinal                INTEGER NOT NULL,
@@ -180,52 +180,52 @@ export function ensureExactCandidateAcceptanceSchema(
       UNIQUE (decision_id, artifact_id)
     );
 
-    CREATE INDEX IF NOT EXISTS idx_saga3_exact_acceptance_item_artifact
-      ON saga3_exact_candidate_acceptance_items(artifact_id, decision_id);
+    CREATE INDEX IF NOT EXISTS idx_factory_exact_acceptance_item_artifact
+      ON factory_exact_candidate_acceptance_items(artifact_id, decision_id);
 
     -- Acceptance records are decision receipts, not mutable projections.
-    CREATE TRIGGER IF NOT EXISTS trg_saga3_exact_acceptance_decision_no_update
-      BEFORE UPDATE ON saga3_exact_candidate_acceptance_decisions
+    CREATE TRIGGER IF NOT EXISTS trg_factory_exact_acceptance_decision_no_update
+      BEFORE UPDATE ON factory_exact_candidate_acceptance_decisions
       BEGIN
         SELECT RAISE(ABORT, 'saga3 exact acceptance decisions are immutable');
       END;
 
-    CREATE TRIGGER IF NOT EXISTS trg_saga3_exact_acceptance_decision_no_delete
-      BEFORE DELETE ON saga3_exact_candidate_acceptance_decisions
+    CREATE TRIGGER IF NOT EXISTS trg_factory_exact_acceptance_decision_no_delete
+      BEFORE DELETE ON factory_exact_candidate_acceptance_decisions
       BEGIN
         SELECT RAISE(ABORT, 'saga3 exact acceptance decisions are immutable');
       END;
 
-    CREATE TRIGGER IF NOT EXISTS trg_saga3_exact_acceptance_item_no_update
-      BEFORE UPDATE ON saga3_exact_candidate_acceptance_items
+    CREATE TRIGGER IF NOT EXISTS trg_factory_exact_acceptance_item_no_update
+      BEFORE UPDATE ON factory_exact_candidate_acceptance_items
       BEGIN
         SELECT RAISE(ABORT, 'saga3 exact acceptance items are immutable');
       END;
 
-    CREATE TRIGGER IF NOT EXISTS trg_saga3_exact_acceptance_item_no_delete
-      BEFORE DELETE ON saga3_exact_candidate_acceptance_items
+    CREATE TRIGGER IF NOT EXISTS trg_factory_exact_acceptance_item_no_delete
+      BEFORE DELETE ON factory_exact_candidate_acceptance_items
       BEGIN
         SELECT RAISE(ABORT, 'saga3 exact acceptance items are immutable');
       END;
   `);
   const decisionColumns = db.prepare(
-    'PRAGMA table_info(saga3_exact_candidate_acceptance_decisions)',
+    'PRAGMA table_info(factory_exact_candidate_acceptance_decisions)',
   ).all() as { name: string }[];
   if (!decisionColumns.some(column => column.name === 'review_receipt_hash')) {
     db.exec(
-      'ALTER TABLE saga3_exact_candidate_acceptance_decisions '
+      'ALTER TABLE factory_exact_candidate_acceptance_decisions '
       + 'ADD COLUMN review_receipt_hash TEXT',
     );
   }
   if (!decisionColumns.some(column => column.name === 'producer_receipt_command_id')) {
     db.exec(
-      'ALTER TABLE saga3_exact_candidate_acceptance_decisions '
+      'ALTER TABLE factory_exact_candidate_acceptance_decisions '
       + 'ADD COLUMN producer_receipt_command_id TEXT',
     );
   }
   if (!decisionColumns.some(column => column.name === 'producer_receipt_hash')) {
     db.exec(
-      'ALTER TABLE saga3_exact_candidate_acceptance_decisions '
+      'ALTER TABLE factory_exact_candidate_acceptance_decisions '
       + 'ADD COLUMN producer_receipt_hash TEXT',
     );
   }
@@ -311,7 +311,7 @@ implements ExactCandidateAcceptance {
       });
 
       const inserted = this.db.prepare(
-        `INSERT INTO saga3_exact_candidate_acceptance_decisions
+        `INSERT INTO factory_exact_candidate_acceptance_decisions
            (schema_version, idempotency_key, request_hash, request_snapshot,
             candidate_set_hash, process_run_id, module_ref, node_id, intent_id,
             task_id, execution_id, project_id, epic_id, review_required,
@@ -345,7 +345,7 @@ implements ExactCandidateAcceptance {
       const decisionId = Number(inserted.lastInsertRowid);
 
       const insertItem = this.db.prepare(
-        `INSERT INTO saga3_exact_candidate_acceptance_items
+        `INSERT INTO factory_exact_candidate_acceptance_items
            (decision_id, ordinal, artifact_id, artifact_type,
             expected_content_hash, ledger_id, disposition, prior_status,
             prior_accepted_hash, prior_drift_state, final_status,
@@ -414,15 +414,15 @@ implements ExactCandidateAcceptance {
     );
     const row = this.db.prepare(
       `SELECT d.idempotency_key
-         FROM saga3_exact_candidate_acceptance_decisions d
-         JOIN saga3_exact_candidate_acceptance_items i
+         FROM factory_exact_candidate_acceptance_decisions d
+         JOIN factory_exact_candidate_acceptance_items i
            ON i.decision_id=d.id
-         JOIN saga3_process_runs pr
+         JOIN factory_process_runs pr
            ON pr.id=d.process_run_id
           AND pr.project_id=d.project_id
           AND pr.epic_id=d.epic_id
           AND pr.module_ref_key=d.module_ref
-         JOIN saga3_managed_artifact_productions mp
+         JOIN factory_managed_artifact_productions mp
            ON mp.id=i.ledger_id
           AND mp.process_run_id=d.process_run_id
           AND mp.module_ref=d.module_ref
@@ -481,7 +481,7 @@ implements ExactCandidateAcceptance {
   private assertLineage(lineage: ExactCandidateProductionLineage): void {
     const run = this.db.prepare(
       `SELECT id, project_id, epic_id, module_ref_key
-         FROM saga3_process_runs
+         FROM factory_process_runs
         WHERE id=?`,
     ).get(lineage.processRunId) as ProcessRunIdentityRow | undefined;
     if (!run) {
@@ -608,7 +608,7 @@ implements ExactCandidateAcceptance {
     // must never be adopted implicitly.
     let ledger = this.db.prepare(
       `SELECT id, artifact_type, artifact_status, content_hash
-         FROM saga3_managed_artifact_productions
+         FROM factory_managed_artifact_productions
         WHERE process_run_id=? AND module_ref=? AND node_id=?
           AND task_id=? AND artifact_id=?
         ORDER BY id DESC
@@ -637,8 +637,8 @@ implements ExactCandidateAcceptance {
     if (!ledger) {
       ledger = this.db.prepare(
         `SELECT map.id, map.artifact_type, map.artifact_status, map.content_hash
-           FROM saga3_managed_artifact_productions map
-           JOIN saga3_process_runs pr ON pr.id = map.process_run_id
+           FROM factory_managed_artifact_productions map
+           JOIN factory_process_runs pr ON pr.id = map.process_run_id
           WHERE pr.project_id=? AND pr.epic_id=? AND map.module_ref=? AND map.node_id=?
             AND map.task_id=? AND map.artifact_id=?
           ORDER BY map.recorded_at DESC
@@ -1005,7 +1005,7 @@ implements ExactCandidateAcceptance {
   ): AcceptanceDecisionRow | undefined {
     return this.db.prepare(
       `SELECT *
-         FROM saga3_exact_candidate_acceptance_decisions
+         FROM factory_exact_candidate_acceptance_decisions
         WHERE idempotency_key=?`,
     ).get(idempotencyKey) as AcceptanceDecisionRow | undefined;
   }
@@ -1049,7 +1049,7 @@ implements ExactCandidateAcceptance {
               ledger_id, disposition, prior_status, prior_accepted_hash,
               prior_drift_state, final_status, final_accepted_hash,
               final_drift_state
-         FROM saga3_exact_candidate_acceptance_items
+         FROM factory_exact_candidate_acceptance_items
         WHERE decision_id=?
         ORDER BY ordinal`,
     ).all(row.id) as AcceptanceItemRow[];
@@ -1162,7 +1162,7 @@ implements ExactCandidateAcceptance {
 
   private withImmediateTransaction<T>(work: () => T): T {
     const ownsTransaction = !this.db.inTransaction;
-    const savepoint = 'saga3_exact_candidate_acceptance_apply';
+    const savepoint = 'factory_exact_candidate_acceptance_apply';
     if (ownsTransaction) {
       this.db.exec('BEGIN IMMEDIATE');
     } else {

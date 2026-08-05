@@ -105,7 +105,7 @@ export function createBoardRunnerAdapter({
     logRoot: runtimeConfig.orchestrationLogRoot,
     // Provider + effort routing for the board-run path (mirrors the engine's
     // legacy-claude-worker-executor-factory.ts and
-    // sqlite-saga2-runtime-repositories.readWorkerModelRoute). Reads
+    // sqlite-factory-runtime-repositories.readWorkerModelRoute). Reads
     // model_name / model_provider / model_effort from the episode's
     // lifecycle_execution_controls row so the runner can point the worker at
     // LM Studio and omit --effort for it. Returns the zai/null default when the

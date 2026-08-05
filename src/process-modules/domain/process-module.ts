@@ -290,7 +290,7 @@ export function processModuleKey(reference: ProcessModuleReference): string {
  *   `definitionDigest` — SHA-256 over the canonical JSON of the definition.
  *     Deterministic across rebuilds; excludes the non-enumerable `routeResolver`
  *     (lifecycle-owned, see domain/lifecycle.ts). Registered in the catalog and
- *     persisted in `saga3_process_module_installations.definition_digest`.
+ *     persisted in `factory_process_module_installations.definition_digest`.
  *
  *   `packageDigest` — SHA-256 over the canonical JSON of
  *     `{definitionDigest, resourceHashes, handlerVersions}`. This is what a

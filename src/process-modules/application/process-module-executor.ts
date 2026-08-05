@@ -112,7 +112,7 @@ export interface ProcessModuleExecutor {
  * hash-pinned: every shipped resource (skill, template, checklist) and every
  * handler version is captured in `package.packageDigest`, and ProcessRuns
  * started against this installation pin that digest via the
- * `saga3_process_module_installations` row. This closes the "skill edited,
+ * `factory_process_module_installations` row. This closes the "skill edited,
  * version unchanged" replay attack. During migration, installations without a
  * package continue to work (legacy path); once a module is fully migrated
  * (P-PM-6+), `package` becomes required.
@@ -122,7 +122,7 @@ export interface ProcessModuleInstallation {
   readonly executor: ProcessModuleExecutor;
   /**
    * Hash-pinned delivery unit. Optional during migration; the Runtime stores
-   * it in `saga3_process_module_installations` when present and pins
+   * it in `factory_process_module_installations` when present and pins
    * `packageDigest` to every ProcessRun started against this installation.
    */
   readonly package?: import('../domain/process-module.js').ProcessModulePackage;

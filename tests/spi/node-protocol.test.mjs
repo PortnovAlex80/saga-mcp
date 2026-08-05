@@ -31,7 +31,7 @@ const { canonicalJson, sha256Hex } = await import(
 // ---------------------------------------------------------------------------
 
 const STUB_CONTRACT_REF = Object.freeze({
-  schemaId: 'saga3.evidence.tool-receipt.v1',
+  schemaId: 'factory.evidence.tool-receipt.v1',
   version: '1.0.0',
   digest: '0'.repeat(64),
 });

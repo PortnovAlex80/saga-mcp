@@ -69,10 +69,13 @@ const errors = results.filter(r => r.parsed?.error);
 for (const r of results) console.log(r.line);
 
 console.log('\n=== ASSERTIONS ===');
-// Verify final DB state: task must be 'done', exactly once.
+// Verify one durable completion while the GateRun still owns acceptance.
 const check = new Database(dbPath, { readonly: true });
 const finalTask = check.prepare('SELECT status, assigned_to FROM tasks WHERE id=?').get(taskId);
 const commentCount = check.prepare('SELECT COUNT(*) n FROM comments WHERE task_id=?').get(taskId).n;
+const workplace = check.prepare(
+  "SELECT loop_state FROM factory_workplaces WHERE active_reservation_ref=?",
+).get(executionId);
 // command_receipts: exactly ONE accepted worker_done row proves a single state
 // mutation under contention — the core no-double-done invariant.
 let receiptCount = 0;
@@ -82,7 +85,8 @@ try {
 check.close();
 
 const okAllSeeDone = winners.length === numWorkers && errors.length === 0;
-const okFinalDone = finalTask.status === 'done';
+const okFinalDone = finalTask.status === 'review_in_progress'
+  && workplace?.loop_state === 'verifying';
 const okFinalUnassigned = finalTask.assigned_to === null;
 // Exactly ONE comment + ONE accepted receipt = exactly one mutation, regardless
 // of how many replays observed the done verdict.
@@ -90,7 +94,7 @@ const okOneMutation = commentCount === 1 && receiptCount === 1;
 
 console.log(`callers observing done (leader + replays): ${winners.length}/${numWorkers}  ${okAllSeeDone ? 'PASS ✅' : 'FAIL ❌'}`);
 console.log(`callers erroring:                         ${errors.length} (expect 0)   ${errors.length === 0 ? 'PASS ✅' : 'FAIL ❌'}`);
-console.log(`final task status: ${finalTask.status} (expect done)        ${okFinalDone ? 'PASS ✅' : 'FAIL ❌'}`);
+console.log(`final task status: ${finalTask.status}, loop=${workplace?.loop_state} (expect GateRun pending) ${okFinalDone ? 'PASS ✅' : 'FAIL ❌'}`);
 console.log(`final assigned_to: ${finalTask.assigned_to} (expect null)   ${okFinalUnassigned ? 'PASS ✅' : 'FAIL ❌'}`);
 console.log(`single mutation (1 comment, 1 receipt):    ${okOneMutation ? 'PASS ✅' : 'FAIL ❌'}  [comments=${commentCount}, receipts=${receiptCount}]`);
 

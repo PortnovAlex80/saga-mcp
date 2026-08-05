@@ -11,9 +11,9 @@
  *
  * Tests that exercise the 'done'/'blocked'/'active' preparation paths do NOT
  * spawn a worker, so they do not need these fakes — only the 'ready' path
- * (which calls assignOneCard) requires them. Every Saga3DiscoveryEngine /
- * Saga3DiscoveryNormalizationService / Saga3DiscoveryReadinessService /
- * Saga3DiscoveryDiagnosisService construction site must now pass:
+ * (which calls assignOneCard) requires them. Every FactoryDiscoveryEngine /
+ * FactoryDiscoveryNormalizationService / FactoryDiscoveryReadinessService /
+ * FactoryDiscoveryDiagnosisService construction site must now pass:
  *   workAssignment, idGenerator, machineId
  * because the deps interface made them required.
  */

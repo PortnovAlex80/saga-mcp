@@ -62,7 +62,7 @@ function fakeGraph(overrides = {}) {
 
 function makeBundle(overrides = {}) {
   const partial = {
-    schemaVersion: 'saga3.solution-contract-certificate.v1',
+    schemaVersion: 'factory.solution-contract-certificate.v1',
     formalizationEpicId: 100,
     prdArtifactId: 1, frArtifactIds: [10], nfrArtifactIds: [11],
     ruleArtifactIds: [], ucArtifactIds: [20], acArtifactIds: [30, 31],
@@ -211,5 +211,5 @@ test('buildFormalizationCertificatePayload assembles the certificate envelope', 
   assert.equal(payload.discoveryCertificateRef, 'certificate:5');
   assert.equal(payload.bundleHash, input.bundle.bundleHash);
   assert.equal(payload.acceptanceBaselineHash, input.bundle.acceptanceBaselineHash);
-  assert.equal(payload.schemaVersion, 'saga3.solution-contract-certificate.generic.v1');
+  assert.equal(payload.schemaVersion, 'factory.solution-contract-certificate.generic.v1');
 });

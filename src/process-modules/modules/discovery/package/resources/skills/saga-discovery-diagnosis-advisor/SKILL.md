@@ -61,7 +61,7 @@ do NOT re-derive that. Record `certificate`, `policy_trace`, `allowed_source_ref
    (it already has `control_intent_id`, `execution_id`, `schema_version`, and
    `payload.target.certificate_id` / `certificate_hash` filled by the engine).
 2. `Edit` it: replace **every** remaining `FILL_` from `diagnosis_get`. CRITICAL:
-   - NEVER touch `schema_version` — it is already `saga3.discovery-diagnosis.v1`
+   - NEVER touch `schema_version` — it is already `factory.discovery-diagnosis.v1`
      and a TOP-LEVEL arg (NOT inside `payload`).
    - `payload.target.settlement_input_hash` and `payload.target.decision` come
      from `diagnosis_case.certificate` — fill EXACTLY as given.
@@ -103,7 +103,7 @@ Re-read verified JSON, then:
 ```
 diagnosis_submit({
   control_intent_id: <integer>, execution_id: "<string>",
-  schema_version: "saga3.discovery-diagnosis.v1",
+  schema_version: "factory.discovery-diagnosis.v1",
   payload: <payload object from your JSON>
 })
 ```

@@ -95,13 +95,13 @@ export type DeliveryApprovalStatus =
  * surfaces it as an `EvidenceRequirement` on the approve-release node protocol
  * (W9-A5). Mirrors `HUMAN_RECEIPT_EVIDENCE` in `delivery-node-protocols.ts`.
  *
- * The contract id is `saga3.evidence.human-receipt.v1`; the digest is the
+ * The contract id is `factory.evidence.human-receipt.v1`; the digest is the
  * documented Wave-2 placeholder until the ContractSchemaRegistry ships a
  * codec.
  */
 export const DELIVERY_HUMAN_RECEIPT_EVIDENCE = Object.freeze({
   category: 'human-receipt',
-  contractRef: contractRef('saga3.evidence.human-receipt.v1', '1.0.0'),
+  contractRef: contractRef('factory.evidence.human-receipt.v1', '1.0.0'),
   required: true,
 } as const);
 
@@ -152,8 +152,8 @@ export const DELIVERY_APPROVE_RELEASE_ADAPTER_CONTRIBUTION: HumanApprovalAdapter
     adapterId: 'delivery-release-approval',
     version: '1.0.0',
     owningFlowNodeId: 'approve-release',
-    inputContractRef: contractRef('saga3.delivery-preflight.v1', '1.0.0'),
-    outputContractRef: contractRef('saga3.delivery-approval-decision.v1', '1.0.0'),
+    inputContractRef: contractRef('factory.delivery-preflight.v1', '1.0.0'),
+    outputContractRef: contractRef('factory.delivery-approval-decision.v1', '1.0.0'),
     evidenceContract: DELIVERY_HUMAN_RECEIPT_EVIDENCE,
     nonTerminalStatus: 'pending',
     invariantRefs: Object.freeze([

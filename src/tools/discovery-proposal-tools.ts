@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import { getDb } from '../db.js';
 import { withImmediateTransaction } from './dispatcher.js';
-import { argInt, argStr, SAGA3_TOOL_CALL_SHAPES, SAGA3_ARG_SOURCES, enrichPayloadErrors, DISCOVERY_WORKFLOW_REFS } from './discovery-tool-args.js';
+import { argInt, argStr, FACTORY_TOOL_CALL_SHAPES, FACTORY_ARG_SOURCES, enrichPayloadErrors, DISCOVERY_WORKFLOW_REFS } from './discovery-tool-args.js';
 import { renderWorkflowHint } from '../application/actionable-tool-error.js';
 import type { ToolHandler } from '../types.js';
 import { DISCOVERY_INTENT_KIND, DISCOVERY_WORK_INTENT_SCHEMA } from '../shared/work-intent.js';
@@ -10,11 +10,11 @@ import { DISCOVERY_PROPOSAL_SCHEMA } from '../modules/discovery/domain/discovery
 import { normalizeDiscoveryProposalInput } from '../modules/discovery/domain/discovery-normalization.js';
 import type { ProposalProvenance, SubmitProposal } from '../modules/discovery/domain/proposal.js';
 import { readExecutionContextStrict } from '../shared/authority/authorize-tool-call.js';
-import { dualWriteProduct } from './universal-desk-helper.js';
+import { writeProduct } from './universal-desk-helper.js';
 import { PROPOSAL_REF_SCHEMA } from '../modules/discovery/domain/proposal-ref-bridge.js';
 import {
   canonicalJson,
-  ensureSaga3NormalizationSchema,
+  ensureFactoryNormalizationSchema,
   insertRawSubmission,
 } from '../modules/discovery/infrastructure/discovery-normalization-repository.js';
 
@@ -62,9 +62,9 @@ export function createDiscoveryProposalHandlers(
 
     return withImmediateTransaction(getDbFn(), () => {
       const db = getDbFn();
-      ensureSaga3NormalizationSchema(db);
+      ensureFactoryNormalizationSchema(db);
       const intentRow = db.prepare(
-        `SELECT id, kind, output_schema, projected_task_id, epic_id FROM saga3_work_intents WHERE id=?`,
+        `SELECT id, kind, output_schema, projected_task_id, epic_id FROM factory_work_intents WHERE id=?`,
       ).get(submission.intent_id) as {
         id: number; kind: string; output_schema: string; projected_task_id: number | null; epic_id: number;
       } | undefined;
@@ -122,7 +122,7 @@ export function createDiscoveryProposalHandlers(
 
       if (deterministic.disposition !== 'accepted') {
         if (!raw.replayed) {
-          db.prepare(`INSERT INTO comments (task_id, author, content) VALUES (?, 'saga3-kernel', ?)`).run(
+          db.prepare(`INSERT INTO comments (task_id, author, content) VALUES (?, 'factory-kernel', ?)`).run(
             submission.task_id,
             deterministic.disposition === 'needs_lm'
               ? `Raw proposal stored: source=${raw.record.id} normalization required`
@@ -150,24 +150,24 @@ export function createDiscoveryProposalHandlers(
         source_submission_id: raw.record.id,
       };
       const inserted = db.prepare(
-        `INSERT INTO saga3_proposals
+        `INSERT INTO factory_proposals
            (intent_id, task_id, execution_id, kind, schema_version, payload, content_hash, status, provenance, source_submission_id)
          VALUES (?,?,?,?,?,?,?, 'submitted', ?, ?)
          ON CONFLICT(intent_id, execution_id, content_hash) DO NOTHING`,
       ).run(submission.intent_id, submission.task_id, submission.execution_id, submission.kind,
         submission.schema_version, payloadText, contentHash, JSON.stringify(provenance), raw.record.id);
       const proposal = db.prepare(
-        `SELECT id FROM saga3_proposals WHERE intent_id=? AND execution_id=? AND content_hash=?`,
+        `SELECT id FROM factory_proposals WHERE intent_id=? AND execution_id=? AND content_hash=?`,
       ).get(submission.intent_id, submission.execution_id, contentHash) as { id: number } | undefined;
       if (!proposal) throw new Error('proposal_submit: canonical proposal vanished after insert');
       if (inserted.changes === 1) {
-        db.prepare(`INSERT INTO comments (task_id, author, content) VALUES (?, 'saga3-kernel', ?)`).run(
+        db.prepare(`INSERT INTO comments (task_id, author, content) VALUES (?, 'factory-kernel', ?)`).run(
           submission.task_id,
           `Proposal accepted deterministically: source=${raw.record.id} proposal=${proposal.id} hash=${contentHash.slice(0, 12)}…`,
         );
       }
       // Conveyor v4 step 3.B.2: dual-write proposal-ref onto the universal desk.
-      dualWriteProduct(db, {
+      writeProduct(db, {
         schemaRef: PROPOSAL_REF_SCHEMA,
         content: { proposalId: proposal.id, contentHash },
         executionRef: submission.execution_id,
@@ -199,8 +199,8 @@ export function createDiscoveryProposalHandlers(
   return {
     definitions: [{
       name: 'proposal_submit',
-      description: 'Store the immutable raw discovery response, then run deterministic normalization: strict JSON, full markdown-fence removal, supported aliases, schema validation. Only semantic ambiguity is delegated to a bounded normalization control worker. Call shape: proposal_submit({ intent_id: <int from task_get.metadata.work_intent_id>, task_id: <int, your assigned task_id>, execution_id: <string, your execution_id>, kind: "discovery", schema_version: "saga3.discovery-proposal.v1", payload: { problem_statement: <string>, observed_context: <string>, stakeholders_or_actors: <string[]>, assumptions: <string[]>, unknowns: <string[]>, risks: <string[]>, candidate_scope: <string>, evidence_refs: <string[]>, recommended_outcome: "go|clarify|reject|defer|inconclusive|failed", rationale: <string> } }). IMPORTANT: intent_id/task_id/execution_id/kind/schema_version are TOP-LEVEL args, NOT inside payload; payload must be the discovery proposal object only.',
-      annotations: { title: 'Saga3: Submit Proposal', readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+      description: 'Store the immutable raw discovery response, then run deterministic normalization: strict JSON, full markdown-fence removal, supported aliases, schema validation. Only semantic ambiguity is delegated to a bounded normalization control worker. Call shape: proposal_submit({ intent_id: <int from task_get.metadata.work_intent_id>, task_id: <int, your assigned task_id>, execution_id: <string, your execution_id>, kind: "discovery", schema_version: "factory.discovery-proposal.v1", payload: { problem_statement: <string>, observed_context: <string>, stakeholders_or_actors: <string[]>, assumptions: <string[]>, unknowns: <string[]>, risks: <string[]>, candidate_scope: <string>, evidence_refs: <string[]>, recommended_outcome: "go|clarify|reject|defer|inconclusive|failed", rationale: <string> } }). IMPORTANT: intent_id/task_id/execution_id/kind/schema_version are TOP-LEVEL args, NOT inside payload; payload must be the discovery proposal object only.',
+      annotations: { title: 'Factory: Submit Proposal', readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
       inputSchema: {
         type: 'object',
         required: ['intent_id', 'task_id', 'execution_id', 'kind', 'schema_version', 'payload'],
@@ -220,26 +220,26 @@ export function createDiscoveryProposalHandlers(
 
 function readSubmission(args: Record<string, unknown>): SubmitProposal {
   const intentId = argInt('proposal_submit', args, 'intent_id', {
-    source: SAGA3_ARG_SOURCES.intent_id, expected: SAGA3_TOOL_CALL_SHAPES.proposal_submit,
+    source: FACTORY_ARG_SOURCES.intent_id, expected: FACTORY_TOOL_CALL_SHAPES.proposal_submit,
   });
   const taskId = argInt('proposal_submit', args, 'task_id', {
-    source: SAGA3_ARG_SOURCES.task_id, expected: SAGA3_TOOL_CALL_SHAPES.proposal_submit,
+    source: FACTORY_ARG_SOURCES.task_id, expected: FACTORY_TOOL_CALL_SHAPES.proposal_submit,
   });
   const executionId = argStr('proposal_submit', args, 'execution_id', {
-    source: SAGA3_ARG_SOURCES.execution_id, expected: SAGA3_TOOL_CALL_SHAPES.proposal_submit,
+    source: FACTORY_ARG_SOURCES.execution_id, expected: FACTORY_TOOL_CALL_SHAPES.proposal_submit,
   });
   // kind/schema_version use argStr with their source, then narrowed by the handler.
   const kind = argStr('proposal_submit', args, 'kind', {
-    source: SAGA3_ARG_SOURCES.kind, expected: SAGA3_TOOL_CALL_SHAPES.proposal_submit,
+    source: FACTORY_ARG_SOURCES.kind, expected: FACTORY_TOOL_CALL_SHAPES.proposal_submit,
   });
   const schemaVersion = argStr('proposal_submit', args, 'schema_version', {
-    source: SAGA3_ARG_SOURCES.schema_version, expected: SAGA3_TOOL_CALL_SHAPES.proposal_submit,
+    source: FACTORY_ARG_SOURCES.schema_version, expected: FACTORY_TOOL_CALL_SHAPES.proposal_submit,
   });
   const payload = args.payload;
   if (payload === undefined) {
     throw new Error(
       `proposal_submit: 'payload' is required (the typed discovery proposal object; must be a top-level arg). ` +
-      `Expected shape: ${SAGA3_TOOL_CALL_SHAPES.proposal_submit}`,
+      `Expected shape: ${FACTORY_TOOL_CALL_SHAPES.proposal_submit}`,
     );
   }
   return { intent_id: intentId, task_id: taskId, execution_id: executionId, kind, schema_version: schemaVersion, payload };

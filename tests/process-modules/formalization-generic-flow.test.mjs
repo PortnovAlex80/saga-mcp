@@ -282,7 +282,7 @@ function fixture() {
           }
         }
         return {
-          schemaVersion: 'saga3.exact-candidate-acceptance.v2',
+          schemaVersion: 'factory.exact-candidate-acceptance.v2',
           decisionId: acceptanceCalls.length,
           idempotencyKey: command.idempotencyKey,
           requestHash: sha256Hex(command),
@@ -382,7 +382,7 @@ function fixture() {
 function flowFrame() {
   return {
     runInput: {
-      schemaVersion: 'saga3.formalization-case.v1',
+      schemaVersion: 'factory.formalization-case.v1',
       discoveryEpicId: 50,
       formalizationEpicId: 100,
       discoveryCertificateRef: 'certificate:7',
@@ -537,7 +537,7 @@ test('exact ledger flow settles and persists a durable SolutionContract', () => 
   assert.ok(fx.getBaseline());
   assert.ok(fx.getSolution());
   assert.deepEqual(fx.getSolution().payload.srs, {
-    schema: 'saga3.srs.v1',
+    schema: 'factory.srs.v1',
     ref: 'artifact:40',
     hash: HASH.srs,
   });
@@ -563,7 +563,7 @@ test('exact ledger flow settles and persists a durable SolutionContract', () => 
     },
   );
   assert.deepEqual(output, {
-    schema: 'saga3.solution-contract-certificate.v1',
+    schema: 'factory.solution-contract-certificate.v1',
     artifactRef: 'formalization-solution-contract:1',
     contentHash: fx.getSolution().contentHash,
   });

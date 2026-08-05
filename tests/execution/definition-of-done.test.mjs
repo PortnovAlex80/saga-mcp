@@ -101,7 +101,7 @@ const require = createRequire(import.meta.url);
 const {
   validateProcessModuleManifest,
   validateLifecycleScenarioManifest,
-  adaptLegacyProcessModule,
+  createProcessModuleManifest,
   assertCanonicalSerializable,
 } = await import('../../dist/process-modules/domain/spi/index.js');
 
@@ -119,7 +119,7 @@ const { installPackage } = await import(
 );
 const {
   SqliteModuleInstallationRepository,
-  ensureSaga3ModuleInstallationSchema,
+  ensureFactoryModuleInstallationSchema,
 } = await import(
   '../../dist/process-modules/installation/persistence/installation-repository.js'
 );
@@ -198,7 +198,7 @@ function readSrc(relPosixPath) {
  * package-local resources. Used by the §18.1 install-without-editing proof.
  */
 function buildModuleManifest(definition) {
-  const manifest = adaptLegacyProcessModule(definition);
+  const manifest = createProcessModuleManifest(definition);
   return {
     ...manifest,
     resourceIndex: [
@@ -304,9 +304,9 @@ function makeIsolatedEnv() {
   const Database = require('better-sqlite3');
   const init = new Database(dbPath);
   init.pragma('journal_mode = WAL');
-  ensureSaga3ModuleInstallationSchema(init);
+  ensureFactoryModuleInstallationSchema(init);
   init.exec(`
-    CREATE TABLE IF NOT EXISTS saga3_process_runs (
+    CREATE TABLE IF NOT EXISTS factory_process_runs (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       module_name TEXT NOT NULL,
       module_version TEXT NOT NULL,
@@ -322,7 +322,7 @@ function makeIsolatedEnv() {
     newStore: () => new FilesystemModulePackageStore(storeRoot),
     reopen() {
       const db = new Database(dbPath);
-      ensureSaga3ModuleInstallationSchema(db);
+      ensureFactoryModuleInstallationSchema(db);
       return {
         db,
         repo: new SqliteModuleInstallationRepository(db),
@@ -739,7 +739,7 @@ test('§18.5: every active ProcessRun is pinned to immutable module package byte
         );
         v1Digest = v1.packageDigest; v1Id = v1.id;
         const info = opened.db
-          .prepare('INSERT INTO saga3_process_runs (module_name, module_version) VALUES (?,?)')
+          .prepare('INSERT INTO factory_process_runs (module_name, module_version) VALUES (?,?)')
           .run(moduleName, '0.1.0');
         runId = Number(info.lastInsertRowid);
         const pin = pinInstallationOnProcessRun(runId, v1Id, v1Digest);

@@ -48,10 +48,10 @@ export const USE_CASE_OWNING_FLOW_NODE_ID = 'model-use-cases';
 export const USE_CASE_EXECUTION_PROFILE_ID = 'formalization-use-cases';
 
 /** Schema the node's LM execution must produce (matches formalization-schemas). */
-export const USE_CASE_BUNDLE_SCHEMA = 'saga3.formalization-use-case-bundle.v1';
+export const USE_CASE_BUNDLE_SCHEMA = 'factory.formalization-use-case-bundle.v1';
 
 /** Work-intent schema bound to the use-case execution profile. */
-export const USE_CASE_WORK_INTENT_SCHEMA = 'saga3.work-intent.formalization-use-cases.v1';
+export const USE_CASE_WORK_INTENT_SCHEMA = 'factory.work-intent.formalization-use-cases.v1';
 
 /** Kernel handler that resolves this node's writes (owned by W8-A6 ports). */
 export const USE_CASE_RESOLVER_HANDLER_ID = 'formalization-resolve-use-cases';
@@ -122,7 +122,7 @@ export const USE_CASE_NODE_HANDLER_REFS: readonly HandlerRef[] = Object.freeze([
 const TOOL_RECEIPT_EVIDENCE: EvidenceRequirement = Object.freeze({
   category: 'tool-receipt',
   contractRef: {
-    schemaId: 'saga3.evidence.tool-receipt.v1',
+    schemaId: 'factory.evidence.tool-receipt.v1',
     version: '1.0.0',
     digest: PENDING_DIGEST,
   },
@@ -132,7 +132,7 @@ const TOOL_RECEIPT_EVIDENCE: EvidenceRequirement = Object.freeze({
 const ARTIFACT_REFERENCE_EVIDENCE: EvidenceRequirement = Object.freeze({
   category: 'artifact-reference',
   contractRef: {
-    schemaId: 'saga3.evidence.artifact-reference.v1',
+    schemaId: 'factory.evidence.artifact-reference.v1',
     version: '1.0.0',
     digest: PENDING_DIGEST,
   },
@@ -142,7 +142,7 @@ const ARTIFACT_REFERENCE_EVIDENCE: EvidenceRequirement = Object.freeze({
 const TRACE_REFERENCE_EVIDENCE: EvidenceRequirement = Object.freeze({
   category: 'trace-reference',
   contractRef: {
-    schemaId: 'saga3.evidence.trace-reference.v1',
+    schemaId: 'factory.evidence.trace-reference.v1',
     version: '1.0.0',
     digest: PENDING_DIGEST,
   },

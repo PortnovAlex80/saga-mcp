@@ -124,7 +124,7 @@ export type ScenarioModuleLockResolver = (
 
 /**
  * Persistence port for the scenario module lock (backed by the
- * `saga3_scenario_module_locks` table).
+ * `factory_scenario_module_locks` table).
  *
  * Idempotent on `(scenarioIdentity, lockDigest)`: writing the same lock twice
  * returns the existing record. The installer writes once at install time; the

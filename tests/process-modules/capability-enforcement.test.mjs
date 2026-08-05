@@ -52,7 +52,7 @@ const {
 test('DEFAULT_AGENT_BUILTIN_CAPABILITIES is frozen and matches the pre-W5-A7 inline builtin set', () => {
   assert.equal(Object.isFrozen(DEFAULT_AGENT_BUILTIN_CAPABILITIES), true);
   // The exact set previously inlined in tracker-view/claude-runner.mjs and
-  // echoed in saga3-discovery-engine's DISCOVERY_ALLOWED_TOOLS file-tool rows.
+  // echoed in factory-discovery-engine's DISCOVERY_ALLOWED_TOOLS file-tool rows.
   assert.deepEqual(
     [...DEFAULT_AGENT_BUILTIN_CAPABILITIES].sort(),
     ['Bash', 'Edit', 'Glob', 'Grep', 'MultiEdit', 'Read', 'Task', 'Write'],

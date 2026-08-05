@@ -5,7 +5,7 @@ Read readiness-call-{EPIC_ID}.json and verify EVERY item:
 ## Top-level fields
 - [ ] control_intent_id is an integer (like 10228, NOT "10228" or a string) — from readiness_get metadata
 - [ ] execution_id is a string in quotes
-- [ ] schema_version is exactly "saga3.discovery-readiness-assessment.v1"
+- [ ] schema_version is exactly "factory.discovery-readiness-assessment.v1"
 
 ## Payload identity binding
 - [ ] payload.proposal_id is an integer matching readiness_get canonical proposal id

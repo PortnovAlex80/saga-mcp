@@ -41,19 +41,19 @@ function developmentCase() {
     projectId: 1,
     epicId: 10,
     formalizationCertificate: {
-      schema: 'saga3.solution-contract-certificate.v1',
+      schema: 'factory.solution-contract-certificate.v1',
       ref: 'certificate:formalization:1',
       hash: 'formal-cert-hash',
       decision: 'formalized',
     },
     solutionContract: {
-      schema: 'saga3.solution-contract-certificate.v1',
+      schema: 'factory.solution-contract-certificate.v1',
       ref: 'solution-contract:1',
       hash: 'solution-contract-hash',
     },
     acceptanceBaselineHash: 'acceptance-baseline-hash',
     srs: {
-      schema: 'saga3.srs.v1',
+      schema: 'factory.srs.v1',
       ref: 'artifact:201',
       hash: 'srs-hash',
     },

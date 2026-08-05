@@ -82,6 +82,15 @@ const discoveryProposals = createDiscoveryProposalHandlers();
 const discoveryNormalization = createDiscoveryNormalizationHandlers();
 const discoveryReadiness = createDiscoveryReadinessHandlers();
 
+const INTERNAL_ONLY_TOOL_NAMES = new Set([
+  'project_create',
+  'project_resolve_by_name',
+  'epic_create',
+  'process_run_start',
+  'process_run_set',
+  'process_run_cancel',
+]);
+
 const ALL_TOOLS: Tool[] = [
   ...projectDefs,
   ...epicDefs,
@@ -109,7 +118,7 @@ const ALL_TOOLS: Tool[] = [
   ...discoveryProposals.definitions,
   ...discoveryNormalization.definitions,
   ...discoveryReadiness.definitions,
-];
+].filter(tool => !INTERNAL_ONLY_TOOL_NAMES.has(tool.name));
 
 const ALL_HANDLERS: Record<string, (args: Record<string, unknown>) => unknown> = {
   ...projectHandlers,
@@ -139,6 +148,7 @@ const ALL_HANDLERS: Record<string, (args: Record<string, unknown>) => unknown> =
   ...discoveryNormalization.handlers,
   ...discoveryReadiness.handlers,
 };
+for (const name of INTERNAL_ONLY_TOOL_NAMES) delete ALL_HANDLERS[name];
 
 const server = new Server(
   { name: 'tracker', version: '1.0.0' },

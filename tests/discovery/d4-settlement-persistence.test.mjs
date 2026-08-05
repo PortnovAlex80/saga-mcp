@@ -4,7 +4,7 @@
  * CORRECTED for the D4 settlement contract revision. The four contract changes
  * this test file reflects:
  *
- *   1. The saga3_proposals row must carry kind/schema_version/status columns and
+ *   1. The factory_proposals row must carry kind/schema_version/status columns and
  *      the project_id (resolved via epic → project) must match the request; the
  *      service does EXACT target binding (kind==='discovery',
  *      schema_version===DISCOVERY_PROPOSAL_SCHEMA, status==='submitted',
@@ -18,7 +18,7 @@
  *   4. The settle() result is a DISCRIMINATED UNION on `status`. When 'issued',
  *      decision / certificateId / certificateHash are non-null.
  *
- * These tests run the real Saga3DiscoverySettlementService over a real
+ * These tests run the real FactoryDiscoverySettlementService over a real
  * better-sqlite3 temp-file DB. The fixture mirrors d3-readiness: a temp dir
  * under os.tmpdir(), DB_PATH pointed at it, getDb() opened, and the full FK
  * chain (projects → epics → episode_workflows → tasks → work_intents →
@@ -43,20 +43,20 @@ const { DISCOVERY_READINESS_ASSESSMENT_SCHEMA, READINESS_DIMENSIONS } = await im
   '../../dist/modules/discovery/domain/discovery-readiness-assessment.js'
 );
 const { canonicalJson } = await import('../../dist/shared/canonical-json.js');
-const { ensureSaga3ReadinessSchema } = await import(
+const { ensureFactoryReadinessSchema } = await import(
   '../../dist/modules/discovery/infrastructure/discovery-readiness-repository.js'
 );
 const {
-  ensureSaga3SettlementSchema,
+  ensureFactorySettlementSchema,
   findSettlementByInputKey,
 } = await import('../../dist/modules/discovery/infrastructure/discovery-settlement-repository.js');
 const { DISCOVERY_SETTLEMENT_POLICY_VERSION, POLICY_V1_CONTENT_HASH } = await import(
   '../../dist/modules/discovery/domain/discovery-settlement-policy.js'
 );
-const { Saga3DiscoverySettlementService, SettlementValidationError } = await import(
+const { FactoryDiscoverySettlementService, SettlementValidationError } = await import(
   '../../dist/modules/discovery/application/discovery-settlement-service.js'
 );
-const { SqliteSaga3DiscoveryRuntime } = await import(
+const { SqliteFactoryDiscoveryRuntime } = await import(
   '../../dist/modules/discovery/infrastructure/sqlite-discovery-runtime.js'
 );
 
@@ -65,7 +65,7 @@ const { SqliteSaga3DiscoveryRuntime } = await import(
 // ---------------------------------------------------------------------------
 
 function fixture() {
-  const temp = mkdtempSync(path.join(os.tmpdir(), 'saga3-d4-settle-'));
+  const temp = mkdtempSync(path.join(os.tmpdir(), 'factory-d4-settle-'));
   process.env.DB_PATH = path.join(temp, 'd4.db');
   const db = getDb();
   db.prepare(`INSERT INTO projects (id,name,status) VALUES (1,'P','active')`).run();
@@ -73,8 +73,8 @@ function fixture() {
   // An extra epic (11) under the same project, used by the cross-epic rejection test.
   db.prepare(`INSERT INTO epics (id,project_id,name) VALUES (11,1,'E2')`).run();
   db.prepare(`INSERT INTO episode_workflows (epic_id,stage,metadata) VALUES (10,'discovery','{}')`).run();
-  ensureSaga3ReadinessSchema(db);
-  ensureSaga3SettlementSchema(db);
+  ensureFactoryReadinessSchema(db);
+  ensureFactorySettlementSchema(db);
   return { temp, db };
 }
 
@@ -189,14 +189,14 @@ function inputKey(readinessTarget) {
  * product proposal path (the missing-readiness scenario).
  *
  * FK chain, in order:
- *   tasks(100) → saga3_work_intents(1, projected_task_id=100) →
- *   saga3_proposals(50, intent_id=1)
+ *   tasks(100) → factory_work_intents(1, projected_task_id=100) →
+ *   factory_proposals(50, intent_id=1)
  * and, when withReadiness:
- *   tasks(200) → saga3_work_intents(2, projected_task_id=200) →
- *   saga3_readiness_control_intents(1, authority_intent_id=2) →
- *   saga3_readiness_assessments(7, control_intent_id=1)
+ *   tasks(200) → factory_work_intents(2, projected_task_id=200) →
+ *   factory_readiness_control_intents(1, authority_intent_id=2) →
+ *   factory_readiness_assessments(7, control_intent_id=1)
  *
- * The saga3_proposals INSERT carries the kind/schema_version/status columns the
+ * The factory_proposals INSERT carries the kind/schema_version/status columns the
  * corrected contract reads; 10 columns vs 10 placeholders (verified by the
  * prepared-statement bind).
  */
@@ -206,7 +206,7 @@ function buildLiveFixture(db, { withReadiness = true } = {}) {
     `INSERT INTO tasks (id,epic_id,title,status,task_kind) VALUES (100,10,'Discovery','done','discovery.work')`,
   ).run();
   db.prepare(
-    `INSERT INTO saga3_work_intents
+    `INSERT INTO factory_work_intents
        (id,epic_id,kind,objective,authority_scope,output_schema,
         token_budget,retry_budget,projected_task_id,status)
      VALUES (1,10,?,?,?,?,0,0,100,'concluded')`,
@@ -215,7 +215,7 @@ function buildLiveFixture(db, { withReadiness = true } = {}) {
   //               payload, content_hash, status, provenance.
   // Placeholders (10): one per non-literal column.
   db.prepare(
-    `INSERT INTO saga3_proposals
+    `INSERT INTO factory_proposals
        (id,intent_id,task_id,execution_id,kind,schema_version,payload,content_hash,status,provenance)
      VALUES (50,1,100,'product-exec',?,?,?,?,?,?)`,
   ).run(
@@ -234,19 +234,19 @@ function buildLiveFixture(db, { withReadiness = true } = {}) {
     `INSERT INTO tasks (id,epic_id,title,status,task_kind) VALUES (200,10,'Assess','done','discovery.assess')`,
   ).run();
   db.prepare(
-    `INSERT INTO saga3_work_intents
+    `INSERT INTO factory_work_intents
        (id,epic_id,kind,objective,authority_scope,output_schema,
         token_budget,retry_budget,projected_task_id,status)
      VALUES (2,10,?,?,?,?,0,0,200,'concluded')`,
   ).run(DISCOVERY_READINESS_INTENT_KIND, 'assess', '{}', DISCOVERY_READINESS_ASSESSMENT_SCHEMA);
   db.prepare(
-    `INSERT INTO saga3_readiness_control_intents
+    `INSERT INTO factory_readiness_control_intents
        (id,epic_id,kind,proposal_id,proposal_content_hash,source_intent_id,
         authority_intent_id,projected_task_id,status)
      VALUES (1,10,'AssessDiscoveryReadiness',?,?,?,?,?, 'concluded')`,
   ).run(50, PRODUCT_PROPOSAL_HASH, 1, 2, 200);
   db.prepare(
-    `INSERT INTO saga3_readiness_assessments
+    `INSERT INTO factory_readiness_assessments
        (id,control_intent_id,proposal_id,proposal_content_hash,task_id,execution_id,
         payload,content_hash,status,overall_readiness,recommended_next_action,
         validation_errors,provenance)
@@ -257,7 +257,7 @@ function buildLiveFixture(db, { withReadiness = true } = {}) {
 /** Insert a second accepted assessment (id `id`, hash computed from `payload`). */
 function insertAcceptedAssessment(db, id, payload, hash) {
   db.prepare(
-    `INSERT INTO saga3_readiness_assessments
+    `INSERT INTO factory_readiness_assessments
        (id,control_intent_id,proposal_id,proposal_content_hash,task_id,execution_id,
         payload,content_hash,status,overall_readiness,recommended_next_action,
         validation_errors,provenance)
@@ -267,8 +267,8 @@ function insertAcceptedAssessment(db, id, payload, hash) {
 
 /** Construct the live runtime + service bound to the current DB. */
 function makeService() {
-  const runtime = new SqliteSaga3DiscoveryRuntime();
-  const service = new Saga3DiscoverySettlementService({ runtimePersistence: runtime });
+  const runtime = new SqliteFactoryDiscoveryRuntime();
+  const service = new FactoryDiscoverySettlementService({ runtimePersistence: runtime });
   return { runtime, service };
 }
 
@@ -356,11 +356,11 @@ test('D4: idempotent replay returns the SAME settlementId, certificateId, certif
     assert.equal(second.certificateHash, first.certificateHash);
     // Exactly one settlement + one certificate for this target.
     assert.equal(
-      db.prepare('SELECT COUNT(*) c FROM saga3_discovery_settlements').get().c,
+      db.prepare('SELECT COUNT(*) c FROM factory_discovery_settlements').get().c,
       1,
     );
     assert.equal(
-      db.prepare('SELECT COUNT(*) c FROM saga3_discovery_outcome_certificates').get().c,
+      db.prepare('SELECT COUNT(*) c FROM factory_discovery_outcome_certificates').get().c,
       1,
     );
   } finally {
@@ -450,11 +450,11 @@ test('D4: new readiness hash creates a NEW settlement + certificate', async () =
     assert.notEqual(second.certificateId, first.certificateId);
     // Two settlements + two certificates coexist (old one preserved for audit).
     assert.equal(
-      db.prepare('SELECT COUNT(*) c FROM saga3_discovery_settlements').get().c,
+      db.prepare('SELECT COUNT(*) c FROM factory_discovery_settlements').get().c,
       2,
     );
     assert.equal(
-      db.prepare('SELECT COUNT(*) c FROM saga3_discovery_outcome_certificates').get().c,
+      db.prepare('SELECT COUNT(*) c FROM factory_discovery_outcome_certificates').get().c,
       2,
     );
   } finally {
@@ -494,7 +494,7 @@ test('D4: settlement rejects a mutated proposal payload at old hash (SettlementV
     const payloadA = { ...PRODUCT_PROPOSAL_PAYLOAD, problem_statement: 'alpha' };
     const payloadB = { ...PRODUCT_PROPOSAL_PAYLOAD, problem_statement: 'beta' };
     const hashOfB = createHash('sha256').update(canonicalJson(payloadB)).digest('hex');
-    db.prepare('UPDATE saga3_proposals SET payload=?, content_hash=? WHERE id=50')
+    db.prepare('UPDATE factory_proposals SET payload=?, content_hash=? WHERE id=50')
       .run(canonicalJson(payloadA), hashOfB);
     const { service } = makeService();
     await assert.rejects(
@@ -511,7 +511,7 @@ test('D4: settlement rejects a mutated proposal payload at old hash (SettlementV
       },
     );
     // No settlement row should be persisted for a rejected settlement.
-    assert.equal(db.prepare('SELECT COUNT(*) c FROM saga3_discovery_settlements').get().c, 0);
+    assert.equal(db.prepare('SELECT COUNT(*) c FROM factory_discovery_settlements').get().c, 0);
   } finally {
     cleanup(temp);
   }
@@ -526,7 +526,7 @@ test('D4: provisional proposal provenance unchanged after settlement', async () 
       projectId: 1, epicId: 10, proposalId: 50,
       proposalHash: PRODUCT_PROPOSAL_HASH, readiness: SHADOW_COMPLETED,
     });
-    const product = db.prepare('SELECT provenance, content_hash FROM saga3_proposals WHERE id=50').get();
+    const product = db.prepare('SELECT provenance, content_hash FROM factory_proposals WHERE id=50').get();
     assert.equal(product.provenance, '{}');
     assert.equal(product.content_hash, PRODUCT_PROPOSAL_HASH);
   } finally {
@@ -569,7 +569,7 @@ test('D4 correction: GO with empty evidence_refs produces clarify / CLARIFY_EVID
     const emptyEvidencePayload = { ...PRODUCT_PROPOSAL_PAYLOAD, evidence_refs: [] };
     const emptyEvidenceHash = createHash('sha256').update(canonicalJson(emptyEvidencePayload)).digest('hex');
     buildLiveFixture(db, { withReadiness: false });
-    db.prepare('UPDATE saga3_proposals SET payload=?, content_hash=? WHERE id=50')
+    db.prepare('UPDATE factory_proposals SET payload=?, content_hash=? WHERE id=50')
       .run(canonicalJson(emptyEvidencePayload), emptyEvidenceHash);
     // Seed an accepted assessment bound to THIS proposal hash, then read it by id 7.
     const assessment = validAssessmentPayload(50, emptyEvidenceHash);
@@ -578,19 +578,19 @@ test('D4 correction: GO with empty evidence_refs produces clarify / CLARIFY_EVID
       `INSERT INTO tasks (id,epic_id,title,status,task_kind) VALUES (200,10,'Assess','done','discovery.assess')`,
     ).run();
     db.prepare(
-      `INSERT INTO saga3_work_intents
+      `INSERT INTO factory_work_intents
          (id,epic_id,kind,objective,authority_scope,output_schema,
           token_budget,retry_budget,projected_task_id,status)
        VALUES (2,10,?,?,?,?,0,0,200,'concluded')`,
     ).run(DISCOVERY_READINESS_INTENT_KIND, 'assess', '{}', DISCOVERY_READINESS_ASSESSMENT_SCHEMA);
     db.prepare(
-      `INSERT INTO saga3_readiness_control_intents
+      `INSERT INTO factory_readiness_control_intents
          (id,epic_id,kind,proposal_id,proposal_content_hash,source_intent_id,
           authority_intent_id,projected_task_id,status)
        VALUES (1,10,'AssessDiscoveryReadiness',?,?,?,?,?, 'concluded')`,
     ).run(50, emptyEvidenceHash, 1, 2, 200);
     db.prepare(
-      `INSERT INTO saga3_readiness_assessments
+      `INSERT INTO factory_readiness_assessments
          (id,control_intent_id,proposal_id,proposal_content_hash,task_id,execution_id,
           payload,content_hash,status,overall_readiness,recommended_next_action,
           validation_errors,provenance)
@@ -642,7 +642,7 @@ test('D4 correction: cross-epic proposal is rejected', async () => {
         return true;
       },
     );
-    assert.equal(db.prepare('SELECT COUNT(*) c FROM saga3_discovery_settlements').get().c, 0);
+    assert.equal(db.prepare('SELECT COUNT(*) c FROM factory_discovery_settlements').get().c, 0);
   } finally {
     cleanup(temp);
   }
@@ -654,7 +654,7 @@ test('D4 correction: wrong proposal kind/schema/status is rejected', async () =>
     buildLiveFixture(db);
     // Flip the proposal status to 'superseded'. The service rejects any status
     // other than 'submitted'.
-    db.prepare('UPDATE saga3_proposals SET status=? WHERE id=50').run('superseded');
+    db.prepare('UPDATE factory_proposals SET status=? WHERE id=50').run('superseded');
     const { service } = makeService();
     await assert.rejects(
       () => service.settle({
@@ -669,7 +669,7 @@ test('D4 correction: wrong proposal kind/schema/status is rejected', async () =>
         return true;
       },
     );
-    assert.equal(db.prepare('SELECT COUNT(*) c FROM saga3_discovery_settlements').get().c, 0);
+    assert.equal(db.prepare('SELECT COUNT(*) c FROM factory_discovery_settlements').get().c, 0);
   } finally {
     cleanup(temp);
   }
@@ -695,11 +695,11 @@ test('D4 correction: missing then failed readiness produce DIFFERENT settlements
     assert.notEqual(failed.settlementId, missing.settlementId);
     assert.notEqual(failed.certificateId, missing.certificateId);
     assert.equal(
-      db.prepare('SELECT COUNT(*) c FROM saga3_discovery_settlements').get().c,
+      db.prepare('SELECT COUNT(*) c FROM factory_discovery_settlements').get().c,
       2,
     );
     assert.equal(
-      db.prepare('SELECT COUNT(*) c FROM saga3_discovery_outcome_certificates').get().c,
+      db.prepare('SELECT COUNT(*) c FROM factory_discovery_outcome_certificates').get().c,
       2,
     );
     // The two settlements carry the distinct reason codes too.
@@ -732,9 +732,9 @@ test('D4 correction: computed settlement crash before certificate -> determinist
     // must deterministically REBUILD the certificate from the STORED snapshot +
     // decision, producing the SAME decision (and a byte-identical certificate,
     // because issued_at is derived from the settlement created_at).
-    db.prepare('DELETE FROM saga3_discovery_outcome_certificates WHERE settlement_id=?')
+    db.prepare('DELETE FROM factory_discovery_outcome_certificates WHERE settlement_id=?')
       .run(first.settlementId);
-    db.prepare("UPDATE saga3_discovery_settlements SET status='computed' WHERE id=?")
+    db.prepare("UPDATE factory_discovery_settlements SET status='computed' WHERE id=?")
       .run(first.settlementId);
 
     const recovered = await service.settle({
@@ -773,7 +773,7 @@ test('D4 correction: existing certificate payload tampering is rejected', async 
     // (now tampered) payload and compares to the stored certificate_hash —
     // mismatch throws SettlementValidationError.
     const tamperedPayload = { tampered: true, injected: 'attacker' };
-    db.prepare('UPDATE saga3_discovery_outcome_certificates SET certificate_payload=? WHERE settlement_id=?')
+    db.prepare('UPDATE factory_discovery_outcome_certificates SET certificate_payload=? WHERE settlement_id=?')
       .run(canonicalJson(tamperedPayload), first.settlementId);
     await assert.rejects(
       () => service.settle({
@@ -791,7 +791,7 @@ test('D4 correction: existing certificate payload tampering is rejected', async 
     // The tampered certificate row itself is still present (rejection does not
     // delete audit rows).
     assert.equal(
-      db.prepare('SELECT COUNT(*) c FROM saga3_discovery_outcome_certificates').get().c,
+      db.prepare('SELECT COUNT(*) c FROM factory_discovery_outcome_certificates').get().c,
       1,
     );
   } finally {
@@ -814,9 +814,9 @@ test('D4 correction: recovery uses the STORED readiness status, not the current 
 
     // Simulate a crash after the settlement row was committed but before the
     // certificate was issued (delete the cert + reset status to 'computed').
-    db.prepare('DELETE FROM saga3_discovery_outcome_certificates WHERE settlement_id=?')
+    db.prepare('DELETE FROM factory_discovery_outcome_certificates WHERE settlement_id=?')
       .run(accepted.settlementId);
-    db.prepare("UPDATE saga3_discovery_settlements SET status='computed' WHERE id=?")
+    db.prepare("UPDATE factory_discovery_settlements SET status='computed' WHERE id=?")
       .run(accepted.settlementId);
 
     // Re-settle with the SAME readiness target (accepted:<hash>). The replay
@@ -836,12 +836,12 @@ test('D4 correction: recovery uses the STORED readiness status, not the current 
     assert.equal(replayed.certificateHash, accepted.certificateHash);
     // No second settlement was created (the idempotency key matched).
     assert.equal(
-      db.prepare('SELECT COUNT(*) c FROM saga3_discovery_settlements').get().c,
+      db.prepare('SELECT COUNT(*) c FROM factory_discovery_settlements').get().c,
       1,
     );
     // Exactly one certificate now (the rebuilt one).
     assert.equal(
-      db.prepare('SELECT COUNT(*) c FROM saga3_discovery_outcome_certificates').get().c,
+      db.prepare('SELECT COUNT(*) c FROM factory_discovery_outcome_certificates').get().c,
       1,
     );
   } finally {

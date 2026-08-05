@@ -22,7 +22,7 @@ const {
 );
 
 function fixture() {
-  const temp = mkdtempSync(path.join(os.tmpdir(), 'saga3-product-composition-'));
+  const temp = mkdtempSync(path.join(os.tmpdir(), 'factory-product-composition-'));
   process.env.DB_PATH = path.join(temp, 'composition.db');
   const db = getDb();
   db.prepare(`INSERT INTO projects (id,name,status) VALUES (1,'P','active')`).run();
@@ -107,9 +107,9 @@ test('composition installs all module capabilities and refuses implicit input/pr
     const resolveOutputPayload = runtime.resolveOutputPayload;
     assert.equal(typeof resolveOutputPayload, 'function');
     for (const schema of [
-      'saga3.release-record.v1',
-      'saga3.solution-contract-certificate.v1',
-      'saga3.verified-integration-bundle.v1',
+      'factory.release-record.v1',
+      'factory.solution-contract-certificate.v1',
+      'factory.verified-integration-bundle.v1',
     ]) {
       // Each registered schema is accepted (dispatch finds a resolver); the
       // per-module resolver then validates the ref against storage and throws
@@ -140,7 +140,7 @@ test('composition installs all module capabilities and refuses implicit input/pr
         moduleRef: { name: 'any', version: '1.0.0' },
         projectId: 1,
         epicId: 10,
-        output: { schema: 'saga3.unknown.v1', artifactRef: 'x', contentHash: '0'.repeat(64) },
+        output: { schema: 'factory.unknown.v1', artifactRef: 'x', contentHash: '0'.repeat(64) },
       }),
       /no output payload resolver/,
     );
@@ -149,7 +149,7 @@ test('composition installs all module capabilities and refuses implicit input/pr
       /PRODUCT_LIFECYCLE_INPUT_REQUIRED/,
     );
     assert.equal(
-      fx.db.prepare('SELECT COUNT(*) AS n FROM saga3_lifecycle_runs').get().n,
+      fx.db.prepare('SELECT COUNT(*) AS n FROM factory_lifecycle_runs').get().n,
       0,
     );
 

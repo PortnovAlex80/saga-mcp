@@ -171,7 +171,7 @@ export type WorkerExecutionStateStatus =
  *
  * `status` is the runtime-visible branch point. `intentStatus` is the opaque
  * substrate status string the driver CAS-machines against (board: the
- * `saga3_work_intents.status` literal like 'open'/'executing'/'concluded').
+ * `factory_work_intents.status` literal like 'open'/'executing'/'concluded').
  */
 export interface WorkerExecutionState {
   readonly status: WorkerExecutionStateStatus;
@@ -230,7 +230,7 @@ export interface WorkerExecutionOutcome {
  *
  * Wave 3 DEFINES this port; Wave 5 adopts it fully (the board driver implements
  * it, the LM executor consumes it). The concrete board implementation produced
- * by Wave 5 will adapt the existing `SqliteSaga3*Runtime` projection surface —
+ * by Wave 5 will adapt the existing `SqliteFactory*Runtime` projection surface —
  * same SQL, same CAS semantics — behind this driver-neutral vocabulary.
  *
  * Method mapping (legacy → driver-neutral):

@@ -3,7 +3,7 @@
 // Conveyor v4 step 5.2 cutover — ConveyorRuntime authority E2E.
 //
 // Proves that after cutover:
-//   - ConveyorRuntime drives the LOOP channel authoritatively in v4_workplaces.
+//   - ConveyorRuntime drives the LOOP channel authoritatively in factory_workplaces.
 //   - The KANBAN channel (tasks.status) is a REVERSE PROJECTION of the
 //     workplace's kanbanPhase (REG-06-AC-01: rebuildable).
 //   - REG-28-AC-02: crash/expiry changes loop, NEVER rolls Kanban back to todo.
@@ -11,7 +11,7 @@
 //   - REG-05-AC-06: CAS on revision (idempotent replay; concurrent writer loses).
 //   - REG-09-AC-04: a stale/revoked fence cannot mutate the workplace.
 //
-// This is the load-bearing cutover test: if it passes, v4_workplaces is the
+// This is the load-bearing cutover test: if it passes, factory_workplaces is the
 // authority for the loop channel and tasks is a projection.
 
 import { test } from 'node:test';
@@ -155,7 +155,7 @@ test('REG-05-AC-03: crash does not create a new Workplace (same ref, bumped revi
   assert.equal(cur.loopState, 'repair_wait');
   assert.ok(cur.revision > revisionBefore, 'revision advanced (no new workplace)');
   // Count workplaces: exactly 1.
-  const count = db.prepare(`SELECT count(*) c FROM v4_workplaces`).get().c;
+  const count = db.prepare(`SELECT count(*) c FROM factory_workplaces`).get().c;
   assert.equal(count, 1, 'no duplicate workplace created by crash');
   db.close();
 });

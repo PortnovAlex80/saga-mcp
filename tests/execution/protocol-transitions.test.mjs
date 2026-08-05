@@ -68,7 +68,7 @@ const __dirname = path.dirname(__filename);
 /** A minimal evidence requirement (tool-receipt, required). */
 const evToolReceipt = {
   category: 'tool-receipt',
-  contractRef: { schemaId: 'saga3.tool-receipt.v1', digest: 'sha256:ev-1' },
+  contractRef: { schemaId: 'factory.tool-receipt.v1', digest: 'sha256:ev-1' },
   required: true,
 };
 

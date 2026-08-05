@@ -16,7 +16,7 @@
  *
  * # Lifecycle
  *
- *   1. `materializeCell` — creates the v4_workplaces row at todo/idle.
+ *   1. `materializeCell` — creates the factory_workplaces row at todo/idle.
  *   2. `admitWork` — transitions todo/idle → in_progress/queued (work-admitted).
  *   3. `launchWorker` — creates ExecutionReservation, calls WorkerLauncherPort,
  *      transitions queued → leased → running.

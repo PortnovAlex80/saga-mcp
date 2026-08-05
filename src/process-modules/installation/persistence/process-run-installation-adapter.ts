@@ -1,6 +1,6 @@
 /**
  * ProcessRunInstallationAdapter — reads/writes the `installation_id` +
- * `package_digest` columns on `saga3_process_runs` via RAW SQL, and provides
+ * `package_digest` columns on `factory_process_runs` via RAW SQL, and provides
  * the LEGACY NULLABLE ADAPTER for pre-pinning runs.
  *
  * Immutable-installation pinning layer. See
@@ -104,7 +104,7 @@ export type ModuleInstallationStatus =
   | 'corrupt';
 
 /**
- * Minimal projection of a `saga3_module_installations` row sufficient for the
+ * Minimal projection of a `factory_module_installations` row sufficient for the
  * legacy resolver to return. This is a STRUCTURAL SUBSET of the canonical
  * `ModuleInstallationRecord` (which also carries `manifestSnapshot`,
  * `storeLocation`, `resourceIndex`, `handlerRefs`, `dependencyLock`,
@@ -144,7 +144,7 @@ interface ModuleRefRow {
 
 /**
  * Read/write the `installation_id` + `package_digest` columns on
- * `saga3_process_runs` via raw SQL, plus the legacy nullable resolver.
+ * `factory_process_runs` via raw SQL, plus the legacy nullable resolver.
  *
  * Does NOT import or extend `SqliteProcessRunRepository` (anti-scope).
  * Does NOT create the columns — the persistence lane's `db.ts` ALTERs own the
@@ -164,7 +164,7 @@ export class ProcessRunInstallationAdapter {
   /**
    * Pin (or RE-pin) the installation + digest on a ProcessRun row.
    *
-   * `UPDATE saga3_process_runs SET installation_id=?, package_digest=? WHERE id=?`.
+   * `UPDATE factory_process_runs SET installation_id=?, package_digest=? WHERE id=?`.
    * Idempotent: re-pinning the same run with new values overwrites the
    * previous pin (this is the documented "re-pin (update)" path). Returns the
    * number of rows affected (0 if the run does not exist — caller decides
@@ -179,7 +179,7 @@ export class ProcessRunInstallationAdapter {
   ): number {
     const info = this.db
       .prepare(
-        'UPDATE saga3_process_runs SET installation_id=?, package_digest=? WHERE id=?',
+        'UPDATE factory_process_runs SET installation_id=?, package_digest=? WHERE id=?',
       )
       .run(installationId, packageDigest, processRunId);
     return Number(info.changes);
@@ -201,7 +201,7 @@ export class ProcessRunInstallationAdapter {
   /**
    * Read the pinned installation for a ProcessRun.
    *
-   * `SELECT installation_id, package_digest FROM saga3_process_runs WHERE id=?`.
+   * `SELECT installation_id, package_digest FROM factory_process_runs WHERE id=?`.
    * Returns `null` when:
    *   - the run row does not exist, OR
    *   - BOTH columns are NULL (legacy pre-pinning run).
@@ -213,7 +213,7 @@ export class ProcessRunInstallationAdapter {
   getPinnedInstallation(processRunId: number): PinnedInstallation | null {
     const row = this.db
       .prepare(
-        'SELECT installation_id, package_digest FROM saga3_process_runs WHERE id=?',
+        'SELECT installation_id, package_digest FROM factory_process_runs WHERE id=?',
       )
       .get(processRunId) as PinnedColumnsRow | undefined;
 
@@ -274,7 +274,7 @@ export class ProcessRunInstallationAdapter {
   ): ModuleInstallationRecord | null {
     const row = this.db
       .prepare(
-        'SELECT module_name, module_version, installation_id FROM saga3_process_runs WHERE id=?',
+        'SELECT module_name, module_version, installation_id FROM factory_process_runs WHERE id=?',
       )
       .get(processRunId) as ModuleRefRow | undefined;
 
@@ -298,7 +298,7 @@ export class ProcessRunInstallationAdapter {
    */
   private readUpdatedAt(processRunId: number): string {
     const row = this.db
-      .prepare('SELECT updated_at FROM saga3_process_runs WHERE id=?')
+      .prepare('SELECT updated_at FROM factory_process_runs WHERE id=?')
       .get(processRunId) as { updated_at: string } | undefined;
     return row?.updated_at ?? '';
   }

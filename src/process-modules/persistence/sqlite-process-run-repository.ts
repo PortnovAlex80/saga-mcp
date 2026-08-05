@@ -1,7 +1,7 @@
 /**
  * SQLite implementation of ProcessRunRepository.
  *
- * Schema lives in saga3_process_runs. The idempotency key is scoped to
+ * Schema lives in factory_process_runs. The idempotency key is scoped to
  * (project_id, module_name, module_version, idempotency_key): one key names
  * exactly one ProcessRun per (project, module). A replay of the same start
  * command returns the existing row (replayed=true). A second start that
@@ -43,16 +43,16 @@ import type {
 } from './process-run.js';
 
 /**
- * Create the saga3_process_runs table + indexes. Idempotent — safe to call on
+ * Create the factory_process_runs table + indexes. Idempotent — safe to call on
  * every repository construction and at the top of any handler that touches
- * the table. Mirrors ensureSaga3SettlementSchema style.
+ * the table. Mirrors ensureFactorySettlementSchema style.
  */
-export function ensureSaga3ProcessRunSchema(db: Database.Database): void {
+export function ensureFactoryProcessRunSchema(db: Database.Database): void {
   db.exec(`
     -- Generic envelope around one Process Module execution. Lives ALONGSIDE
     -- module-specific state (WorkIntent/Proposal for discovery, PRD/UC/AC/SRS
     -- for formalization) — never replaces it.
-    CREATE TABLE IF NOT EXISTS saga3_process_runs (
+    CREATE TABLE IF NOT EXISTS factory_process_runs (
       id                          INTEGER PRIMARY KEY AUTOINCREMENT,
       project_id                  INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
       epic_id                     INTEGER,                            -- nullable: project-wide run
@@ -61,7 +61,7 @@ export function ensureSaga3ProcessRunSchema(db: Database.Database): void {
       module_ref_key              TEXT NOT NULL,                      -- '${'<name>@<version>'}'
       idempotency_key             TEXT NOT NULL,                      -- caller-supplied
       executor_kind               TEXT NOT NULL
-                                    CHECK (executor_kind IN ('legacy-adapter','generic-flow','external','human')),
+                                    CHECK (executor_kind IN ('module-adapter','generic-flow','external','human')),
       input_schema                TEXT NOT NULL,                      -- module input contract id
       input_snapshot              TEXT NOT NULL,                      -- canonical JSON of payload
       input_hash                  TEXT NOT NULL,                      -- SHA-256 over input_snapshot
@@ -97,35 +97,35 @@ export function ensureSaga3ProcessRunSchema(db: Database.Database): void {
     -- IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_INPUT. The CHECK-free unique index
     -- here only enforces uniqueness; the input-equality rule is a domain
     -- invariant validated in code so the error carries the offending hashes.
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_saga3_process_runs_idem
-      ON saga3_process_runs(project_id, module_name, module_version, idempotency_key);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_factory_process_runs_idem
+      ON factory_process_runs(project_id, module_name, module_version, idempotency_key);
 
     -- Lookups by project + epic (the dashboard/board view uses this).
-    CREATE INDEX IF NOT EXISTS idx_saga3_process_runs_project
-      ON saga3_process_runs(project_id, epic_id, status);
+    CREATE INDEX IF NOT EXISTS idx_factory_process_runs_project
+      ON factory_process_runs(project_id, epic_id, status);
 
     -- Lookups by status (orchestrator scans running/paused runs to resume).
-    CREATE INDEX IF NOT EXISTS idx_saga3_process_runs_status
-      ON saga3_process_runs(status, updated_at);
+    CREATE INDEX IF NOT EXISTS idx_factory_process_runs_status
+      ON factory_process_runs(status, updated_at);
   `);
-  const columns = db.prepare('PRAGMA table_info(saga3_process_runs)').all() as Array<{ name: string }>;
+  const columns = db.prepare('PRAGMA table_info(factory_process_runs)').all() as Array<{ name: string }>;
   if (!columns.some(column => column.name === 'execution_lease_owner')) {
-    db.exec('ALTER TABLE saga3_process_runs ADD COLUMN execution_lease_owner TEXT');
+    db.exec('ALTER TABLE factory_process_runs ADD COLUMN execution_lease_owner TEXT');
   }
   if (!columns.some(column => column.name === 'execution_lease_expires_at')) {
-    db.exec('ALTER TABLE saga3_process_runs ADD COLUMN execution_lease_expires_at TEXT');
+    db.exec('ALTER TABLE factory_process_runs ADD COLUMN execution_lease_expires_at TEXT');
   }
   if (!columns.some(column => column.name === 'authority')) {
-    db.exec('ALTER TABLE saga3_process_runs ADD COLUMN authority TEXT');
+    db.exec('ALTER TABLE factory_process_runs ADD COLUMN authority TEXT');
   }
   if (!columns.some(column => column.name === 'active_recovery_case_id')) {
-    db.exec('ALTER TABLE saga3_process_runs ADD COLUMN active_recovery_case_id INTEGER');
+    db.exec('ALTER TABLE factory_process_runs ADD COLUMN active_recovery_case_id INTEGER');
   }
   if (!columns.some(column => column.name === 'active_issue_ref')) {
-    db.exec('ALTER TABLE saga3_process_runs ADD COLUMN active_issue_ref TEXT');
+    db.exec('ALTER TABLE factory_process_runs ADD COLUMN active_issue_ref TEXT');
   }
   if (!columns.some(column => column.name === 'active_issue_hash')) {
-    db.exec('ALTER TABLE saga3_process_runs ADD COLUMN active_issue_hash TEXT');
+    db.exec('ALTER TABLE factory_process_runs ADD COLUMN active_issue_hash TEXT');
   }
   // Wave 2 (W2-A2, spec §3.2) — pin ProcessRuns to their installation. Both
   // nullable: legacy pre-Wave-2 runs leave them NULL and route through the
@@ -134,13 +134,13 @@ export function ensureSaga3ProcessRunSchema(db: Database.Database): void {
   // ALTERs mirror the column-add block above; W2-A2 (single SQL owner, plan
   // §0.5.2 / C083) owns them and ALSO places defensive copies in db.ts for the
   // existing-DB upgrade path. See db.ts `tableExists` guard for the dual
-  // placement rationale (saga3_process_runs is created lazily here, not by
+  // placement rationale (factory_process_runs is created lazily here, not by
   // SCHEMA_SQL — spec §3.2 assumed otherwise).
   if (!columns.some(column => column.name === 'installation_id')) {
-    db.exec('ALTER TABLE saga3_process_runs ADD COLUMN installation_id INTEGER');
+    db.exec('ALTER TABLE factory_process_runs ADD COLUMN installation_id INTEGER');
   }
   if (!columns.some(column => column.name === 'package_digest')) {
-    db.exec('ALTER TABLE saga3_process_runs ADD COLUMN package_digest TEXT');
+    db.exec('ALTER TABLE factory_process_runs ADD COLUMN package_digest TEXT');
   }
 }
 
@@ -227,7 +227,7 @@ function rowToRecord(row: ProcessRunRow): ProcessRunRecord {
 }
 
 function readRowById(db: Database.Database, id: number): ProcessRunRow | null {
-  const row = db.prepare('SELECT * FROM saga3_process_runs WHERE id=?')
+  const row = db.prepare('SELECT * FROM factory_process_runs WHERE id=?')
     .get(id) as ProcessRunRow | undefined;
   return row ?? null;
 }
@@ -242,7 +242,7 @@ export class SqliteProcessRunRepository implements ProcessRunRepository {
 
   constructor(db: Database.Database = getDb()) {
     this.db = db;
-    ensureSaga3ProcessRunSchema(this.db);
+    ensureFactoryProcessRunSchema(this.db);
   }
 
   start(command: StartProcessModuleCommand): { record: ProcessRunRecord; replayed: boolean } {
@@ -282,7 +282,7 @@ export class SqliteProcessRunRepository implements ProcessRunRepository {
     // domain violation (the caller is trying to swap the input under a stable
     // name). Different key → brand-new run.
     const existing = this.db.prepare(
-      `SELECT * FROM saga3_process_runs
+      `SELECT * FROM factory_process_runs
         WHERE project_id=? AND module_name=? AND module_version=? AND idempotency_key=?`,
     ).get(ctx.projectId, command.moduleRef.name, command.moduleRef.version, ctx.idempotencyKey) as ProcessRunRow | undefined;
 
@@ -306,7 +306,7 @@ export class SqliteProcessRunRepository implements ProcessRunRepository {
     }
 
     const info = this.db.prepare(
-      `INSERT INTO saga3_process_runs
+      `INSERT INTO factory_process_runs
          (project_id, epic_id, module_name, module_version, module_ref_key,
           idempotency_key, executor_kind, input_schema, input_snapshot,
           input_hash, projected_stage, status, installation_id, package_digest)
@@ -342,7 +342,7 @@ export class SqliteProcessRunRepository implements ProcessRunRepository {
     idempotencyKey: string,
   ): ProcessRunRecord | null {
     const row = this.db.prepare(
-      `SELECT * FROM saga3_process_runs
+      `SELECT * FROM factory_process_runs
         WHERE project_id=? AND module_ref_key=? AND idempotency_key=?`,
     ).get(projectId, moduleRefKey, idempotencyKey) as ProcessRunRow | undefined;
     return row ? rowToRecord(row) : null;
@@ -351,10 +351,10 @@ export class SqliteProcessRunRepository implements ProcessRunRepository {
   list(projectId: number, epicId: number | null): readonly ProcessRunRecord[] {
     const rows = epicId === null
       ? this.db.prepare(
-          'SELECT * FROM saga3_process_runs WHERE project_id=? ORDER BY id DESC',
+          'SELECT * FROM factory_process_runs WHERE project_id=? ORDER BY id DESC',
         ).all(projectId) as ProcessRunRow[]
       : this.db.prepare(
-          'SELECT * FROM saga3_process_runs WHERE project_id=? AND epic_id=? ORDER BY id DESC',
+          'SELECT * FROM factory_process_runs WHERE project_id=? AND epic_id=? ORDER BY id DESC',
         ).all(projectId, epicId) as ProcessRunRow[];
     return rows.map(rowToRecord);
   }
@@ -366,7 +366,7 @@ export class SqliteProcessRunRepository implements ProcessRunRepository {
     expiresAtIso: string,
   ): boolean {
     const info = this.db.prepare(
-      `UPDATE saga3_process_runs
+      `UPDATE factory_process_runs
           SET execution_lease_owner=?,
               execution_lease_expires_at=?,
               updated_at=datetime('now')
@@ -384,7 +384,7 @@ export class SqliteProcessRunRepository implements ProcessRunRepository {
 
   renewExecutionLease(id: number, owner: string, expiresAtIso: string): boolean {
     const info = this.db.prepare(
-      `UPDATE saga3_process_runs
+      `UPDATE factory_process_runs
           SET execution_lease_expires_at=?,
               updated_at=datetime('now')
         WHERE id=?
@@ -398,7 +398,7 @@ export class SqliteProcessRunRepository implements ProcessRunRepository {
 
   releaseExecutionLease(id: number, owner: string): void {
     this.db.prepare(
-      `UPDATE saga3_process_runs
+      `UPDATE factory_process_runs
           SET execution_lease_owner=NULL,
               execution_lease_expires_at=NULL,
               updated_at=datetime('now')
@@ -539,7 +539,7 @@ export class SqliteProcessRunRepository implements ProcessRunRepository {
 
     params.push(id, current.status);
     const info = this.db.prepare(
-      `UPDATE saga3_process_runs SET ${sets.join(', ')} WHERE id=? AND status=?`,
+      `UPDATE factory_process_runs SET ${sets.join(', ')} WHERE id=? AND status=?`,
     ).run(...params);
 
     if (info.changes === 0) {

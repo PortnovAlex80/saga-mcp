@@ -52,7 +52,7 @@ diagnostics, and the raw payload.
 2. `Edit` it: replace **every** remaining `FILL_` from `normalization_get`.
    CRITICAL:
    - NEVER touch `schema_version` — it is already
-     `"saga3.discovery-normalization-proposal.v1"` and a TOP-LEVEL arg (NOT
+     `"factory.discovery-normalization-proposal.v1"` and a TOP-LEVEL arg (NOT
      inside `payload`).
    - `payload.source_field_map`: cite existing top-level source JSON paths for
      every canonical field — never invent paths.
@@ -73,7 +73,7 @@ normalization_submit({
   control_intent_id: <integer, same as normalization_get>,
   source_submission_id: <integer, same as normalization_get>,
   execution_id: <string>,
-  schema_version: "saga3.discovery-normalization-proposal.v1",
+  schema_version: "factory.discovery-normalization-proposal.v1",
   payload: { ...the normalized discovery proposal fields... }
 })
 ```

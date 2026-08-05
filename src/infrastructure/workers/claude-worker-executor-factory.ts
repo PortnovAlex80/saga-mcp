@@ -14,10 +14,10 @@ import type {
   WorkAssignmentPort,
 } from '../../application/ports/worker-executor.js';
 import { getDb } from '../../db.js';
-import { recoverLegacyAssignment } from '../../lifecycle/unfenced-assignment-recovery.js';
+import { releaseExecutionAtomically } from '../../lifecycle/atomic-release.js';
 import {
   ClaudeBoardWorkerExecutor,
-  type LegacyClaudeBoardRunner,
+  type ClaudeBoardRunner,
 } from './claude-board-worker-executor.js';
 import { resolveExecutionProfile } from '../../process-modules/application/execution-profile-resolver.js';
 import type { ResolvedExecutionProfile } from '../../process-modules/application/execution-profile-resolver.js';
@@ -80,9 +80,9 @@ type RunnerOptions = ClaudeBoardRunnerOptions & {
   }) => void;
 };
 
-export interface LegacyClaudeWorkerExecutorFactoryOptions {
+export interface PinnedClaudeWorkerExecutorFactoryOptions {
   spawn?: typeof nodeSpawn;
-  modelRouteReader?: WorkerModelRouteReader;
+  modelRouteReader: WorkerModelRouteReader;
   /**
    * Pinned-package workspace resolution (W13-AUDIT §18.9 / bug #4). When BOTH
    * this registry and {@link resolveInstallationId} are provided and a task
@@ -90,23 +90,23 @@ export interface LegacyClaudeWorkerExecutorFactoryOptions {
    * from the pinned package store (immutable bytes) instead of the legacy
    * workspaceRoot tree lookup. Absent or null pin → legacy fallback.
    */
-  packageRegistry?: WorkspacePackageRegistry;
+  packageRegistry: WorkspacePackageRegistry;
   /** Verified immutable package snapshots keyed by package digest. */
-  packageSnapshots?: ReadonlyMap<string, StoredModulePackage>;
+  packageSnapshots: ReadonlyMap<string, StoredModulePackage>;
   /**
    * Resolves the pinned module installation id for a claimed assignment.
-   * Typically reads task.metadata.process_run_id → saga3_process_runs.installation_id.
+   * Typically reads task.metadata.process_run_id → factory_process_runs.installation_id.
    * Returns null when the run is unpinned (legacy path).
    */
-  resolveInstallationId?: (assignment: RunnerAssignment) => ModuleInstallationId | null;
+  resolveInstallationId: (assignment: RunnerAssignment) => ModuleInstallationId | null;
   /** Reads the denormalized package digest frozen on the same ProcessRun. */
-  resolvePackageDigest?: (assignment: RunnerAssignment) => string | null;
+  resolvePackageDigest: (assignment: RunnerAssignment) => string | null;
   /**
    * Resolves the flow node id for a claimed assignment (needed by
    * buildWorkspaceProjection to locate the LM node's execution profile).
    * Typically reads task.metadata.process_node_id.
    */
-  resolveNodeId?: (assignment: RunnerAssignment) => string | null;
+  resolveNodeId: (assignment: RunnerAssignment) => string | null;
   /**
    * Module-owned semantic template preparers, selected by immutable module
    * reference. The host owns IO and persistence; preparers only transform
@@ -121,23 +121,6 @@ export interface LegacyClaudeWorkerExecutorFactoryOptions {
    * wires this port via the composition root.
    */
   workAssignment: WorkAssignmentPort;
-}
-
-function readLegacyModelRoute(epicId: number | null) {
-  if (!epicId) return { model: null, provider: 'zai', effort: null };
-  const row = getDb().prepare(
-    `SELECT model_name AS m, model_provider AS p, model_effort AS e
-       FROM lifecycle_execution_controls WHERE epic_id=?`,
-  ).get(epicId) as {
-    m: string | null;
-    p: string | null;
-    e: string | null;
-  } | undefined;
-  return {
-    model: row?.m ?? null,
-    provider: row?.p ?? 'zai',
-    effort: row?.e ?? null,
-  };
 }
 
 function sha256(bytes: Uint8Array): string {
@@ -198,10 +181,10 @@ function materializePinnedSkill(
  * ClaudeBoardRunner callbacks, MCP paths and provider selection live here.
  * Lifecycle mutations are delegated to the lifecycle boundary.
  */
-export function createLegacyClaudeWorkerExecutorFactory(
-  options: LegacyClaudeWorkerExecutorFactoryOptions,
+export function createPinnedClaudeWorkerExecutorFactory(
+  options: PinnedClaudeWorkerExecutorFactoryOptions,
 ): WorkerExecutorFactory {
-  const modelRouteReader = options.modelRouteReader ?? readLegacyModelRoute;
+  const modelRouteReader = options.modelRouteReader;
   const packageRegistry = options.packageRegistry;
   const packageSnapshots = options.packageSnapshots;
   const resolveInstallationIdFn = options.resolveInstallationId;
@@ -221,11 +204,11 @@ export function createLegacyClaudeWorkerExecutorFactory(
       installationId: ModuleInstallationId;
       projection: WorkspaceProjection;
       storedPackage: StoredModulePackage;
-    } | null => {
-      const installationId = typeof resolveInstallationIdFn === 'function'
-        ? resolveInstallationIdFn(assignment)
-        : null;
-      if (installationId === null) return null;
+    } => {
+      const installationId = resolveInstallationIdFn(assignment);
+      if (installationId === null) {
+        throw new Error('PROCESS_RUN_PIN_REQUIRED: assignment has no installation pin');
+      }
       if (
         !packageRegistry
         || !packageSnapshots
@@ -287,8 +270,22 @@ export function createLegacyClaudeWorkerExecutorFactory(
       // AssignedWork without an in-process claim.
       getTask: (taskId: number) =>
         getDb().prepare('SELECT * FROM tasks WHERE id=?').get(taskId),
-      recoverAssignment: (command: Parameters<typeof recoverLegacyAssignment>[1]) =>
-        recoverLegacyAssignment(getDb(), command),
+      recoverAssignment: (command: {
+        taskId: number;
+        workerId: string;
+        originalStatus: string;
+        executionId?: string | null;
+        reason: string;
+      }) => {
+        if (!command.executionId) {
+          throw new Error('EXECUTION_FENCE_REQUIRED: cannot recover an unfenced assignment');
+        }
+        return releaseExecutionAtomically(getDb(), {
+          executionId: command.executionId,
+          terminalState: 'lost',
+          reason: command.reason ?? 'worker execution failed before completion',
+        }).taskReleased;
+      },
       resolveWorkspace: () => context.workspaceRoot,
       dbPath: context.dbPath,
       sagaEntry: context.sagaEntry,
@@ -309,7 +306,6 @@ export function createLegacyClaudeWorkerExecutorFactory(
         resolveExecutionProfile(taskKind),
       resolveLaunchSpec: input => {
         const pinned = resolvePinnedPackage(input.assignment);
-        if (!pinned) return null;
         const profile = pinned.storedPackage.manifest.definition.executionProfiles
           .find(candidate => candidate.id === pinned.projection.executionProfileId);
         if (!profile) {
@@ -468,7 +464,7 @@ export function createLegacyClaudeWorkerExecutorFactory(
 
     const runner = createClaudeBoardRunner(runnerOptions);
     return new ClaudeBoardWorkerExecutor(
-      runner as unknown as LegacyClaudeBoardRunner,
+      runner as unknown as ClaudeBoardRunner,
     );
   };
 }

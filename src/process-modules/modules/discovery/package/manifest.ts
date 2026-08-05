@@ -113,10 +113,10 @@ export const DISCOVERY_HANDLER_IDS = Object.freeze({
 // ---------------------------------------------------------------------------
 
 /** Input contract schema: one DiscoveryCase bound to an idea/context. */
-export const DISCOVERY_CASE_SCHEMA = 'saga3.discovery-case.v1';
+export const DISCOVERY_CASE_SCHEMA = 'factory.discovery-case.v1';
 
 /** Output contract schema: the authoritative DiscoveryOutcomeCertificate. */
-export const DISCOVERY_OUTCOME_CERTIFICATE_SCHEMA = 'saga3.discovery-outcome-certificate.v1';
+export const DISCOVERY_OUTCOME_CERTIFICATE_SCHEMA = 'factory.discovery-outcome-certificate.v1';
 
 // ---------------------------------------------------------------------------
 // Manifest format + runtime identity.

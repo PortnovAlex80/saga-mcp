@@ -8,9 +8,9 @@
  * # What this is
  *
  * Before this runtime, `tasks.{status,assigned_to,current_execution_id}` was
- * the orchestration truth and `v4_workplaces` was a best-effort shadow. After
+ * the orchestration truth and `factory_workplaces` was a best-effort shadow. After
  * this runtime, the LOOP channel (`queued|leased|running|verifying|
- * repair_wait|paused|terminal`) lives authoritatively in `v4_workplaces`,
+ * repair_wait|paused|terminal`) lives authoritatively in `factory_workplaces`,
  * and the KANBAN channel (`tasks.status`) becomes a REVERSE PROJECTION of
  * the workplace's `kanbanPhase` — written by the projector, never by hand.
  *
@@ -21,7 +21,7 @@
  *
  * # The two channels after cutover (REG-28)
  *
- *   Kanban (`tasks.status`)   — projection of v4_workplaces.kanbanPhase.
+ *   Kanban (`tasks.status`)   — projection of factory_workplaces.kanbanPhase.
  *                                Written ONLY by WorkplaceProjector.
  *   Loop   (v4 loopState)     — authoritative. CAS-guarded by revision.
  *                                Mutated ONLY by ConveyorRuntime use cases.
@@ -111,6 +111,7 @@ export class ConveyorRuntime {
           kind: 'worker-leased',
           reservationRef: input.reservationRef,
         });
+        state = reduceWorkplaceEvent(state, { kind: 'worker-started' });
       } else if (state.loopState === 'leased' || state.loopState === 'running') {
         // Already leased/running — idempotent if same reservation.
         return null; // signal "no transition needed"
@@ -183,11 +184,13 @@ export class ConveyorRuntime {
    * the claim path). This moves the workplace to terminal(accepted) directly,
    * after the fence check. Used when newStatus='done'.
    */
-  acceptFinal(input: {
+  rejectWorkerSelfAcceptance(input: {
     workplaceRef: WorkplaceRef;
     reservationRef: string;
     taskId: number;
   }): UseCaseResult {
+    throw new Error('GATE_RUN_REQUIRED: worker completion cannot accept a candidate');
+    /* c8 ignore start -- retained source is unreachable until the method is removed */
     return this.atomically(input.workplaceRef, input.taskId, (current, ref) => {
       // Fence check: the caller's reservation must match.
       const actors = this.repo.readActiveActors(ref);
@@ -216,6 +219,7 @@ export class ConveyorRuntime {
         activeReservationRef: null,
       };
     });
+    /* c8 ignore stop */
   }
 
   /**
@@ -297,7 +301,8 @@ export class ConveyorRuntime {
     // nest. So we open ONE BEGIN IMMEDIATE here and call applyTransitionInTx
     // (which assumes the caller's transaction). The reverse projection runs
     // inside the same transaction so v4 CAS + tasks.status commit together.
-    this.db.exec('BEGIN IMMEDIATE');
+    const ownsTransaction = !this.db.inTransaction;
+    if (ownsTransaction) this.db.exec('BEGIN IMMEDIATE');
     try {
       const current = this.repo.read(workplaceRef);
       if (!current) {
@@ -309,7 +314,7 @@ export class ConveyorRuntime {
       if (planned === null) {
         // Idempotent — nothing to do.
         const taskStatus = this.reverseProject(taskId, current);
-        this.db.exec('COMMIT');
+        if (ownsTransaction) this.db.exec('COMMIT');
         return { applied: false, workplace: current, taskStatus };
       }
       const target = planned.directState
@@ -328,15 +333,17 @@ export class ConveyorRuntime {
         // CAS miss — a concurrent writer advanced the revision. Surface as
         // not-applied; the caller (dispatcher) re-reads and re-evaluates.
         const taskStatus = this.reverseProject(taskId, result.state);
-        this.db.exec('COMMIT');
+        if (ownsTransaction) this.db.exec('COMMIT');
         return { applied: false, workplace: result.state, taskStatus };
       }
       // Reverse-project the new kanbanPhase into tasks.status.
       const taskStatus = this.reverseProject(taskId, result.state);
-      this.db.exec('COMMIT');
+      if (ownsTransaction) this.db.exec('COMMIT');
       return { applied: true, workplace: result.state, taskStatus };
     } catch (err) {
-      try { this.db.exec('ROLLBACK'); } catch { /* tx may not be active */ }
+      if (ownsTransaction) {
+        try { this.db.exec('ROLLBACK'); } catch { /* tx may not be active */ }
+      }
       throw err;
     }
   }
@@ -352,7 +359,7 @@ export class ConveyorRuntime {
   /**
    * Bind a task to its workplace. Called when a task is admitted to the
    * conveyor (at task creation or first claim). Sets tasks.workplace_ref and
-   * materializes the v4_workplaces row at todo/idle.
+   * materializes the factory_workplaces row at todo/idle.
    */
   bindTaskToWorkplace(input: {
     taskId: number;
@@ -408,7 +415,7 @@ export class ConveyorRuntime {
         }
       }
       // Bind the task row to the workplace (data column). Store the SERIALIZED
-      // form so it matches v4_workplaces.workplace_ref (the PK) for joins.
+      // form so it matches factory_workplaces.workplace_ref (the PK) for joins.
       this.db.prepare(
         `UPDATE tasks SET workplace_ref=? WHERE id=? AND workplace_ref IS NULL`,
       ).run(serializeWorkplaceRef(ref), input.taskId);

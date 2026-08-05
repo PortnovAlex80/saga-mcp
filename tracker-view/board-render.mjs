@@ -851,7 +851,7 @@ export function createBoardRenderApi({
           return;
         }
         try {
-          const r = await fetch('/api/engine/status?epic_id=' + epicId);
+          const r = await fetch('/api/factory/status?epic_id=' + epicId);
           const state = await r.json();
           if (!r.ok || !state.ok) throw new Error(state.error || 'status unavailable');
           syncEngineToggleButton(state.running && state.alive);
@@ -896,7 +896,7 @@ export function createBoardRenderApi({
         runnerStatus.textContent = 'concurrency=' + newConc + ' (плавно)';
         runnerConcurrency.disabled = true;
         try {
-          const r = await fetch('/api/engine/concurrency', {
+          const r = await fetch('/api/factory/concurrency', {
             method:'POST',
             headers:{'Content-Type':'application/json'},
             body:JSON.stringify({epic_id: window.__sagaEpicId, concurrency: newConc})
@@ -930,7 +930,7 @@ export function createBoardRenderApi({
             engineToggle.disabled = true;
             runnerStatus.textContent = 'остановка…';
             try {
-              const r = await fetch('/api/engine/stop', {
+              const r = await fetch('/api/factory/stop', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ epic_id: epicId }),

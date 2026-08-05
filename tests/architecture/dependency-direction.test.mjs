@@ -168,7 +168,7 @@ const KNOWN_VIOLATIONS = [
   // W7-THIRD-AUDIT (2026-08-02) — the 8 Wave-7 re-export shims at the old
   // module paths (development/delivery/formalization {,*-persistence,sqlite-*,
   // package/ports/sqlite-formalization-package-adapters}) have been deleted
-  // and every importer (saga3-formalization-engine.ts, tools/delivery-approvals.ts,
+  // and every importer (factory-formalization-engine.ts, tools/delivery-approvals.ts,
   // formalization/package/ports/index.ts, formalization-installation.ts, and
   // the relevant tests) now imports directly from
   // src/infrastructure/process-modules/. No module file references
@@ -214,7 +214,7 @@ const KNOWN_VIOLATIONS = [
   // zero Rule 6 edges. The ratchet bucket R6: 34 -> 0 (spec §5).
 ];
 
-// Discovery cross-tree leak into src/saga3/ (plan section 13.1 / baseline
+// Discovery cross-tree leak into src/factory/ (plan section 13.1 / baseline
 // "modules/discovery/ also reaches back into src/saga3/domain/"). These are
 // Rule 2/3 periphery - a module package reaching outside process-modules
 // entirely. Allowlisted against Wave 9.
@@ -224,7 +224,7 @@ const KNOWN_VIOLATIONS = [
 //   - discovery-process-module.ts: schema-id + intent-kind constants moved into
 //     discovery-domain-contracts.ts (byte-identical string values).
 //   - discovery-installation.ts: record types + the runtime-persistence port
-//     moved into discovery-domain-contracts.ts; the Saga3DiscoverySettlementService
+//     moved into discovery-domain-contracts.ts; the FactoryDiscoverySettlementService
 //     is now an injected DiscoverySettlementPort with a lazy dynamic-import
 //     legacy bridge (no static saga3 edge).
 //   - discovery-outcome-certificate-projection.ts: OutcomeCertificateRecord moved

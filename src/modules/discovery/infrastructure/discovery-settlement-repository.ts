@@ -2,9 +2,9 @@
  * Persistence for D4 authoritative discovery settlement.
  *
  * Two durable entities (roadmap D4 §9):
- *   - saga3_discovery_settlements: the deterministic decision + input snapshot
+ *   - factory_discovery_settlements: the deterministic decision + input snapshot
  *     for one immutable (proposal hash, readiness hash, policy) target.
- *   - saga3_discovery_outcome_certificates: the immutable proof row, 1:1 with a
+ *   - factory_discovery_outcome_certificates: the immutable proof row, 1:1 with a
  *     settlement.
  *
  * Idempotency follows the D3 lesson: the key is the immutable INPUT target
@@ -20,7 +20,7 @@
  *
  * This module is the ONLY place settlement persistence touches the DB handle.
  * The settlement service and engine never import it directly — they go through
- * the Saga3DiscoveryRuntimePersistence port (Phase B boundary).
+ * the FactoryDiscoveryRuntimePersistence port (Phase B boundary).
  */
 
 import type Database from 'better-sqlite3';
@@ -32,19 +32,19 @@ import { canonicalJson } from './discovery-normalization-repository.js';
 
 /**
  * Create the settlement + certificate tables and indexes. Idempotent. Uses
- * db.exec for the multi-statement DDL (mirrors ensureSaga3ReadinessSchema).
+ * db.exec for the multi-statement DDL (mirrors ensureFactoryReadinessSchema).
  * Safe to call on every runtime construction and at the top of any handler.
  */
-export function ensureSaga3SettlementSchema(db: Database.Database): void {
+export function ensureFactorySettlementSchema(db: Database.Database): void {
   db.exec(`
     -- D4: authoritative discovery settlement. A settlement binds the immutable
     -- settlement INPUT (proposal hash + readiness hash + policy version/hash)
     -- to a deterministic decision. Kernel-only: no LM WorkIntent, no worker
     -- task. Provisional Proposal lineage is separate and is never mutated.
-    CREATE TABLE IF NOT EXISTS saga3_discovery_settlements (
+    CREATE TABLE IF NOT EXISTS factory_discovery_settlements (
       id                          INTEGER PRIMARY KEY AUTOINCREMENT,
       epic_id                     INTEGER NOT NULL REFERENCES epics(id) ON DELETE CASCADE,
-      proposal_id                 INTEGER NOT NULL REFERENCES saga3_proposals(id) ON DELETE CASCADE,
+      proposal_id                 INTEGER NOT NULL REFERENCES factory_proposals(id) ON DELETE CASCADE,
       proposal_content_hash       TEXT NOT NULL,
       readiness_assessment_id     INTEGER,                           -- nullable: no accepted assessment
       readiness_assessment_hash   TEXT NOT NULL,                     -- sentinel 'none' when null assessment
@@ -63,11 +63,11 @@ export function ensureSaga3SettlementSchema(db: Database.Database): void {
 
     -- D4: the immutable outcome certificate. 1:1 with a settlement. There is
     -- no UPDATE path for this table in code — certificates are write-once.
-    CREATE TABLE IF NOT EXISTS saga3_discovery_outcome_certificates (
+    CREATE TABLE IF NOT EXISTS factory_discovery_outcome_certificates (
       id                          INTEGER PRIMARY KEY AUTOINCREMENT,
-      settlement_id               INTEGER NOT NULL UNIQUE REFERENCES saga3_discovery_settlements(id) ON DELETE CASCADE,
+      settlement_id               INTEGER NOT NULL UNIQUE REFERENCES factory_discovery_settlements(id) ON DELETE CASCADE,
       epic_id                     INTEGER NOT NULL REFERENCES epics(id) ON DELETE CASCADE,
-      proposal_id                 INTEGER NOT NULL REFERENCES saga3_proposals(id) ON DELETE CASCADE,
+      proposal_id                 INTEGER NOT NULL REFERENCES factory_proposals(id) ON DELETE CASCADE,
       proposal_content_hash       TEXT NOT NULL,
       readiness_assessment_id     INTEGER,
       readiness_assessment_hash   TEXT NOT NULL,
@@ -86,12 +86,12 @@ export function ensureSaga3SettlementSchema(db: Database.Database): void {
     -- hash + policy). A changed proposal hash, a changed readiness hash, or a
     -- new policy version is a NEW target -> new settlement + new certificate;
     -- old rows are preserved.
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_saga3_settlement_input
-      ON saga3_discovery_settlements(
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_factory_settlement_input
+      ON factory_discovery_settlements(
         proposal_id, proposal_content_hash, readiness_assessment_hash,
         policy_version, policy_hash);
-    CREATE INDEX IF NOT EXISTS idx_saga3_settlement_epic
-      ON saga3_discovery_settlements(epic_id, status);
+    CREATE INDEX IF NOT EXISTS idx_factory_settlement_epic
+      ON factory_discovery_settlements(epic_id, status);
   `);
 }
 
@@ -183,7 +183,7 @@ export function findSettlementByInputKey(
   key: SettlementInputKey,
 ): SettlementRecord | null {
   const row = db.prepare(
-    `SELECT * FROM saga3_discovery_settlements
+    `SELECT * FROM factory_discovery_settlements
       WHERE proposal_id=? AND proposal_content_hash=?
         AND readiness_assessment_hash=? AND policy_version=? AND policy_hash=?
       ORDER BY id DESC LIMIT 1`,
@@ -210,7 +210,7 @@ export function insertSettlement(
   const snapshotText = canonicalJson(input.inputSnapshot);
   const inputHash = createHash('sha256').update(snapshotText).digest('hex');
   const info = db.prepare(
-    `INSERT INTO saga3_discovery_settlements
+    `INSERT INTO factory_discovery_settlements
        (epic_id, proposal_id, proposal_content_hash, readiness_assessment_id,
         readiness_assessment_hash, policy_version, policy_hash, input_snapshot,
         input_hash, decision, reason_codes, rationale, status)
@@ -248,7 +248,7 @@ export function markSettlementCertificateIssued(
   settlementId: number,
 ): boolean {
   const info = db.prepare(
-    `UPDATE saga3_discovery_settlements
+    `UPDATE factory_discovery_settlements
         SET status='certificate_issued'
       WHERE id=? AND status IN ('computed','failed','certificate_issued')`,
   ).run(settlementId);
@@ -265,7 +265,7 @@ export function markSettlementFailed(
   settlementId: number,
 ): void {
   db.prepare(
-    `UPDATE saga3_discovery_settlements
+    `UPDATE factory_discovery_settlements
         SET status='failed'
       WHERE id=? AND status='computed'`,
   ).run(settlementId);
@@ -276,7 +276,7 @@ export function readSettlement(
   db: Database.Database,
   settlementId: number,
 ): SettlementRecord | null {
-  const row = db.prepare('SELECT * FROM saga3_discovery_settlements WHERE id=?')
+  const row = db.prepare('SELECT * FROM factory_discovery_settlements WHERE id=?')
     .get(settlementId) as SettlementRow | undefined;
   return row ? settlementRowToRecord(row) : null;
 }
@@ -352,7 +352,7 @@ export function insertCertificate(
   const payloadText = canonicalJson(input.certificatePayload);
   const certHash = createHash('sha256').update(payloadText).digest('hex');
   const info = db.prepare(
-    `INSERT INTO saga3_discovery_outcome_certificates
+    `INSERT INTO factory_discovery_outcome_certificates
        (settlement_id, epic_id, proposal_id, proposal_content_hash,
         readiness_assessment_id, readiness_assessment_hash, policy_version,
         policy_hash, decision, reason_codes, input_hash, certificate_payload,
@@ -375,7 +375,7 @@ export function insertCertificate(
     certHash,
   );
   const row = db.prepare(
-    'SELECT * FROM saga3_discovery_outcome_certificates WHERE settlement_id=?',
+    'SELECT * FROM factory_discovery_outcome_certificates WHERE settlement_id=?',
   ).get(input.settlementId) as CertificateRow | undefined;
   if (!row) throw new Error('saga3: outcome certificate vanished after insert');
   return { record: certificateRowToRecord(row), replayed: info.changes === 0 };
@@ -387,7 +387,7 @@ export function readCertificateForSettlement(
   settlementId: number,
 ): OutcomeCertificateRecord | null {
   const row = db.prepare(
-    'SELECT * FROM saga3_discovery_outcome_certificates WHERE settlement_id=?',
+    'SELECT * FROM factory_discovery_outcome_certificates WHERE settlement_id=?',
   ).get(settlementId) as CertificateRow | undefined;
   return row ? certificateRowToRecord(row) : null;
 }
@@ -402,7 +402,7 @@ export function readOutcomeCertificate(
   certificateId: number,
 ): OutcomeCertificateRecord | null {
   const row = db.prepare(
-    'SELECT * FROM saga3_discovery_outcome_certificates WHERE id=?',
+    'SELECT * FROM factory_discovery_outcome_certificates WHERE id=?',
   ).get(certificateId) as CertificateRow | undefined;
   return row ? certificateRowToRecord(row) : null;
 }
@@ -454,7 +454,7 @@ export function issueCertificateAtomically(
     //    could have changed the settlement row after the service verified it.
     //    The atomic boundary must re-confirm the FULL settlement, not just status.
     const settlement = db.prepare(
-      'SELECT * FROM saga3_discovery_settlements WHERE id=?',
+      'SELECT * FROM factory_discovery_settlements WHERE id=?',
     ).get(input.settlementId) as SettlementRow | undefined;
     if (!settlement) {
       throw new Error(`saga3: settlement ${input.settlementId} not found for certificate issuance`);
@@ -519,7 +519,7 @@ export function issueCertificateAtomically(
       );
     }
     const insertInfo = db.prepare(
-      `INSERT INTO saga3_discovery_outcome_certificates
+      `INSERT INTO factory_discovery_outcome_certificates
          (settlement_id, epic_id, proposal_id, proposal_content_hash,
           readiness_assessment_id, readiness_assessment_hash, policy_version,
           policy_hash, decision, reason_codes, input_hash, certificate_payload,
@@ -535,7 +535,7 @@ export function issueCertificateAtomically(
     );
     const inserted = insertInfo.changes > 0;
     const certRow = db.prepare(
-      'SELECT * FROM saga3_discovery_outcome_certificates WHERE settlement_id=?',
+      'SELECT * FROM factory_discovery_outcome_certificates WHERE settlement_id=?',
     ).get(input.settlementId) as CertificateRow | undefined;
     if (!certRow) {
       throw new Error(`saga3: certificate vanished for settlement ${input.settlementId}`);
@@ -603,7 +603,7 @@ export function issueCertificateAtomically(
     //    -> certificate_issued). Replaying an already-issued settlement is a
     //    no-op success.
     const marked = db.prepare(
-      `UPDATE saga3_discovery_settlements
+      `UPDATE factory_discovery_settlements
           SET status='certificate_issued'
         WHERE id=? AND status IN ('computed','failed','certificate_issued')`,
     ).run(input.settlementId);
@@ -641,7 +641,7 @@ export function reconcileExistingCertificate(
   try {
     // 1. Re-verify the FULL settlement row lineage inside the tx.
     const settlement = db.prepare(
-      'SELECT * FROM saga3_discovery_settlements WHERE id=?',
+      'SELECT * FROM factory_discovery_settlements WHERE id=?',
     ).get(input.settlementId) as SettlementRow | undefined;
     if (!settlement) {
       throw new Error(`saga3: settlement ${input.settlementId} not found for reconcile`);
@@ -692,7 +692,7 @@ export function reconcileExistingCertificate(
       );
     }
     const certRow = db.prepare(
-      'SELECT * FROM saga3_discovery_outcome_certificates WHERE settlement_id=?',
+      'SELECT * FROM factory_discovery_outcome_certificates WHERE settlement_id=?',
     ).get(input.settlementId) as CertificateRow | undefined;
     if (!certRow) {
       throw new Error(`saga3: no certificate to reconcile for settlement ${input.settlementId}`);
@@ -736,7 +736,7 @@ export function reconcileExistingCertificate(
     }
     // 3. Transition the settlement to certificate_issued (CAS).
     const marked = db.prepare(
-      `UPDATE saga3_discovery_settlements
+      `UPDATE factory_discovery_settlements
           SET status='certificate_issued'
         WHERE id=? AND status IN ('computed','failed','certificate_issued')`,
     ).run(input.settlementId);

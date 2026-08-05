@@ -40,19 +40,19 @@ function deferredCase() {
     epicId: 10,
     developmentCertificate: {
       ...reference(
-        'saga3.development-certificate.v1',
+        'factory.development-certificate.v1',
         'development-certificate:1',
         'development-certificate-hash',
       ),
       decision: 'verified',
     },
     verifiedIntegrationBundle: reference(
-      'saga3.verified-integration-bundle.v1',
+      'factory.verified-integration-bundle.v1',
       'verified-bundle:1',
       'verified-bundle-hash',
     ),
     integratedCandidate: reference(
-      'saga3.integrated-release-candidate.v1',
+      'factory.integrated-release-candidate.v1',
       'candidate:1',
       'candidate-hash',
     ),

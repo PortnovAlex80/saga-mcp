@@ -4,7 +4,7 @@
  *
  * CONVEYOR Wave 7 (saga3 cross-tree leak elimination). Previously the discovery
  * module imported these definitions from `src/saga3/domain/**` and
- * `src/saga3/persistence/saga3-discovery-runtime-port.ts`. That crossed the
+ * `src/saga3/persistence/factory-discovery-runtime-port.ts`. That crossed the
  * Pack/Core boundary the wrong way: `src/saga3/**` is the LEGACY inbound adapter
  * layer, and a Process Module package must not reach outside
  * `src/process-modules/`. The definitions are mirrored here BYTE-IDENTICAL
@@ -13,7 +13,7 @@
  * own copies and may re-import from here (saga3 is allowed to depend inward).
  *
  * INVARIANT: the schema-id string constants (e.g.
- * `'saga3.discovery-proposal.v1'`) MUST stay byte-identical — discovery
+ * `'factory.discovery-proposal.v1'`) MUST stay byte-identical — discovery
  * certificates and hashes depend on them. Do NOT rename the schema strings.
  */
 
@@ -22,26 +22,26 @@
 // ---------------------------------------------------------------------------
 
 /** Schema version for the discovery proposal payload. */
-export const DISCOVERY_PROPOSAL_SCHEMA = 'saga3.discovery-proposal.v1';
+export const DISCOVERY_PROPOSAL_SCHEMA = 'factory.discovery-proposal.v1';
 
 /** Schema version for the readiness assessment payload. */
 export const DISCOVERY_READINESS_ASSESSMENT_SCHEMA =
-  'saga3.discovery-readiness-assessment.v1';
+  'factory.discovery-readiness-assessment.v1';
 
 /** Schema version for the diagnosis report payload (D5). */
-export const DISCOVERY_DIAGNOSIS_REPORT_SCHEMA = 'saga3.discovery-diagnosis.v1';
+export const DISCOVERY_DIAGNOSIS_REPORT_SCHEMA = 'factory.discovery-diagnosis.v1';
 
 /** Schema version for the normalization proposal payload (D2). */
 export const DISCOVERY_NORMALIZATION_PROPOSAL_SCHEMA =
-  'saga3.discovery-normalization-proposal.v1';
+  'factory.discovery-normalization-proposal.v1';
 
 /** Schema version for the outcome certificate payload (D4). */
 export const DISCOVERY_OUTCOME_CERTIFICATE_SCHEMA =
-  'saga3.discovery-outcome-certificate.v1';
+  'factory.discovery-outcome-certificate.v1';
 
 /** Schema version for the settlement input snapshot (D4). */
 export const DISCOVERY_SETTLEMENT_INPUT_SCHEMA =
-  'saga3.discovery-settlement-input.v1';
+  'factory.discovery-settlement-input.v1';
 
 /**
  * Sentinel hash for the readiness slice when no assessment is present. Stored
@@ -57,7 +57,7 @@ export const NO_READINESS_HASH = 'none';
 // ---------------------------------------------------------------------------
 
 /** Schema version for the discovery WorkIntent envelope. */
-export const DISCOVERY_WORK_INTENT_SCHEMA = 'saga3.work-intent.discovery.v1';
+export const DISCOVERY_WORK_INTENT_SCHEMA = 'factory.work-intent.discovery.v1';
 
 /** Kind value for discovery product work. */
 export const DISCOVERY_INTENT_KIND = 'discovery';
@@ -318,7 +318,7 @@ export interface OutcomeCertificateRecord {
 }
 
 // ---------------------------------------------------------------------------
-// Settlement input key (mirrors saga3-discovery-runtime-port.ts).
+// Settlement input key (mirrors factory-discovery-runtime-port.ts).
 // ---------------------------------------------------------------------------
 
 export interface SettlementInputKey {
@@ -459,7 +459,7 @@ export interface DiagnosisReportRecord {
 }
 
 // ---------------------------------------------------------------------------
-// Ensure* input shapes (mirror saga3-discovery-runtime-port.ts).
+// Ensure* input shapes (mirror factory-discovery-runtime-port.ts).
 // ---------------------------------------------------------------------------
 
 export interface EnsureProjectedTask {
@@ -581,8 +581,8 @@ export interface ReadinessControlIntentRecord {
 // ---------------------------------------------------------------------------
 // DiscoveryRuntimePersistencePort — the runtime-persistence boundary the
 // Discovery Process Module speaks. Structurally compatible with the legacy
-// `Saga3DiscoveryRuntimePersistence` (src/saga3/persistence/
-// saga3-discovery-runtime-port.ts): the concrete saga3 SQLite adapter satisfies
+// `FactoryDiscoveryRuntimePersistence` (src/saga3/persistence/
+// factory-discovery-runtime-port.ts): the concrete saga3 SQLite adapter satisfies
 // this interface, so the composition root can pass it in unchanged.
 //
 // This port is the module's INWARD-FACING contract (hexagonal). The module
@@ -636,7 +636,7 @@ export interface DiscoveryRuntimePersistencePort {
    * the kernel verifier found a defect after review approved.
    *
    * Resets: tasks.status removed-legacy-status→removed-legacy-status, assigned_to→NULL,
-   * current_execution_id→NULL; saga3_work_intents.status concluded→open.
+   * current_execution_id→NULL; factory_work_intents.status concluded→open.
    * The task_id is preserved (same generationKey → same lineage), so
    * exact-acceptance gate finds the prior ledger entries and requires a new
    * approved review after the repair worker concludes again.
@@ -702,7 +702,7 @@ export interface DiscoveryRuntimePersistencePort {
 //
 // The discovery module's settlement handler needs to run the deterministic D4
 // settlement policy + issue the authoritative certificate. That logic lives in
-// the legacy saga3 application layer (`Saga3DiscoverySettlementService`). The
+// the legacy saga3 application layer (`FactoryDiscoverySettlementService`). The
 // module declares THIS port; the composition root constructs the concrete
 // service and injects it through `DiscoveryInstallationDeps.settlementService`
 // (required since Wave 8 MEDIUM 7). The module never imports

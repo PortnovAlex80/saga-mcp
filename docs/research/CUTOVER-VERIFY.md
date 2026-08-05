@@ -26,7 +26,7 @@ Saga4 оторвана от Saga2 как **продуктовый orchestration 
 | **Execution control** | ❌ НЕ чисто | `LegacyEngineAdministration` пишет engine_* в `episode_workflows` |
 | **PID/concurrency/start/stop** | ❌ НЕ чисто | `legacy-engine-administration.ts:110-139,225-251` |
 | **Worker model routing** | ❌ НЕ чисто (хранение) | `episode_workflows.metadata.active_model` в 3 сайтах |
-| **Saga2 persistence interfaces** | ❌ Активны | `saga2-runtime-persistence.ts`, `saga2-host-runtime.ts` |
+| **Saga2 persistence interfaces** | ❌ Активны | `factory-runtime-persistence.ts`, `worker-host-runtime.ts` |
 | **episode_workflows как operational authority** | ❌ Активна | engine_*, active_model, stage — live read/write |
 
 ---
@@ -35,7 +35,7 @@ Saga4 оторвана от Saga2 как **продуктовый orchestration 
 
 ### 1. ✅ Composition root собирает Saga2 infrastructure (архитектор ПРАВ)
 
-7 объектов реально создаются в production-default path `createSaga2Application`:
+7 объектов реально создаются в production-default path `createFactoryApplication`:
 
 | объект | file:line | создаётся в prod? |
 |---|---|---|
@@ -43,9 +43,9 @@ Saga4 оторвана от Saga2 как **продуктовый orchestration 
 | `SqliteTaskRuntimeRepository` | `:107` | ✅ default |
 | `SqliteExecutionRuntimeRepository` | `:108` | ✅ default |
 | `SqliteWorkspaceResolver` | `:109` | ✅ default |
-| `NodeSaga2HostRuntime` | `:119` | ✅ default |
+| `NodeWorkerHostRuntime` | `:119` | ✅ default |
 | `LegacyEngineAdministration` | `:137` | ✅ default |
-| `createLegacyClaudeWorkerExecutorFactory` | `:262` (через `createPinnedWorkerFactory`) | ✅ prod |
+| `createPinnedClaudeWorkerExecutorFactory` | `:262` (через `createPinnedWorkerFactory`) | ✅ prod |
 
 **Критическое уточнение:** ENGINE уже saga4 (`createProductLifecycleRuntime:174`),
 но **infrastructure layer (persistence/host/admin/worker-adapter) = Saga2**.
@@ -67,7 +67,7 @@ pause, needs-human, recovery metadata, patchMetadata — не вызываютс
 
 ### 3. ✅ CLI завёрнут в Saga2 shell (архитектор ПРАВ — но нейтральный порт)
 
-- `orchestrate-cli.ts:180` → `createSaga2Application` → `application.runEpisode`
+- `orchestrate-cli.ts:180` → `createFactoryApplication` → `application.runEpisode`
 - `runEpisode` (`saga-application.ts:123-126`) — **нейтральный generic-порт** (чистая
   делегация в `OrchestrationEngine.run`), НЕ Saga2 semantics
 - CLI зависит от Saga2 только через **имена символов**, не internals
@@ -77,7 +77,7 @@ pause, needs-human, recovery metadata, patchMetadata — не вызываютс
 
 - `active_model/provider/effort` живут только в `episode_workflows.metadata`
 - 3 идентичных `json_extract` SQL в 3 файлах:
-  - `sqlite-saga2-runtime-repositories.ts:127-131`
+  - `sqlite-factory-runtime-repositories.ts:127-131`
   - `legacy-claude-worker-executor-factory.ts:124-128`
   - `dispatcher.ts:215-219`
 - **НО:** spawn hot-path уже нейтральный — `claude-runner.mjs:690` предпочитает
@@ -128,17 +128,17 @@ pause, needs-human, recovery metadata, patchMetadata — не вызываютс
 
 8 активных write-путей:
 - `legacy-engine-administration.ts:249` (setMeta)
-- `sqlite-saga2-runtime-repositories.ts:42,64,145` (stage mirror, pause, patchMetadata)
+- `sqlite-factory-runtime-repositories.ts:42,64,145` (stage mirror, pause, patchMetadata)
 - `planner/fast-track.ts:206` (INSERT)
 - `db.ts:808` (backfill)
 - `export-import.ts:408,500` (export/import)
 
 ### Блок C — Cosmetic renames (отложены, низкий приоритет)
 
-- `createSaga2Application` → `createProductLifecycleApplication`
+- `createFactoryApplication` → `createProductLifecycleApplication`
 - `runEpisode` → `runProductLifecycle` (high blast radius — каждый saga3 service + scenario adapter)
-- `Saga2RuntimePersistence` → `RuntimePersistence` (high blast radius)
-- `NodeSaga2HostRuntime` → `WorkerExecutionHost`
+- `FactoryRuntimePersistence` → `RuntimePersistence` (high blast radius)
+- `NodeWorkerHostRuntime` → `WorkerExecutionHost`
 - `LegacyEngineAdministration` → `LifecycleExecutionAdministration`
 
 ### Блок D — Dead code cleanup
@@ -172,12 +172,12 @@ pause, needs-human, recovery metadata, patchMetadata — не вызываютс
 - `docs/design/saga4-cutover/phase-3-delete-legacy-engine.md`
 
 ### Saga2 infrastructure (active)
-- `src/app/composition-root.ts:100-145` (createSaga2Application)
+- `src/app/composition-root.ts:100-145` (createFactoryApplication)
 - `src/infrastructure/engine/legacy-engine-administration.ts` (engine control)
-- `src/infrastructure/persistence/sqlite-saga2-runtime-repositories.ts` (episode repo)
-- `src/infrastructure/runtime/node-saga2-host-runtime.ts` (host runtime)
-- `src/application/ports/saga2-runtime-persistence.ts` (persistence port)
-- `src/application/ports/saga2-host-runtime.ts` (host port)
+- `src/infrastructure/persistence/sqlite-factory-runtime-repositories.ts` (episode repo)
+- `src/infrastructure/runtime/node-worker-host-runtime.ts` (host runtime)
+- `src/application/ports/factory-runtime-persistence.ts` (persistence port)
+- `src/application/ports/worker-host-runtime.ts` (host port)
 
 ### saga3 kernel (durable, НЕ трогать)
 - `src/schema.ts:960-998` (lifecycle_runs DDL)
@@ -186,6 +186,6 @@ pause, needs-human, recovery metadata, patchMetadata — не вызываютс
 
 ### episode_workflows writers (подлежат удалению)
 - `src/infrastructure/engine/legacy-engine-administration.ts:249`
-- `src/infrastructure/persistence/sqlite-saga2-runtime-repositories.ts:42,64,145`
+- `src/infrastructure/persistence/sqlite-factory-runtime-repositories.ts:42,64,145`
 - `src/planner/fast-track.ts:206`
 - `src/tools/dispatcher.ts:215` (read в claim)

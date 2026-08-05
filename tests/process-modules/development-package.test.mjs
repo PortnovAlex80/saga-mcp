@@ -93,8 +93,8 @@ test('W9-A3: manifest wraps the frozen development definition', () => {
 });
 
 test('W9-A3: manifest carries rich input/output contract refs', () => {
-  assert.equal(developmentPackageManifest.inputContractRef.schemaId, 'saga3.development-case.v1');
-  assert.equal(developmentPackageManifest.outputContractRef.schemaId, 'saga3.verified-integration-bundle.v1');
+  assert.equal(developmentPackageManifest.inputContractRef.schemaId, 'factory.development-case.v1');
+  assert.equal(developmentPackageManifest.outputContractRef.schemaId, 'factory.verified-integration-bundle.v1');
   for (const ref of [developmentPackageManifest.inputContractRef, developmentPackageManifest.outputContractRef]) {
     assert.equal(ref.digest, 'pending@wave-2');
     assert.ok(ref.version.length > 0);
@@ -359,7 +359,7 @@ test('W9-A3: every JSON schema resource carries the matching $id', () => {
   // removed along with the deleted verification node protocol orphan; only the
   // planning proposal schema remains in the package resource index.
   const schemaIdByLogicalId = new Map([
-    ['planning-task-graph-proposal-schema', 'saga3.development-task-graph-proposal.v1'],
+    ['planning-task-graph-proposal-schema', 'factory.development-task-graph-proposal.v1'],
   ]);
   for (const entry of DEVELOPMENT_PACKAGE_RESOURCE_INDEX) {
     const expectedId = schemaIdByLogicalId.get(entry.logicalId);

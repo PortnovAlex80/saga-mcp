@@ -365,7 +365,7 @@ export function buildStageVariables(params: {
  * this keeps legacy single-schema stages working.
  */
 export const LIFECYCLE_VARIABLE_GENERIC_SCHEMA =
-  'saga3.lifecycle-variable.generic.v1';
+  'factory.lifecycle-variable.generic.v1';
 
 /**
  * Build the `ScenarioStageOutputEnvelope` for one completed stage. This is

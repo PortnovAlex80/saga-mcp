@@ -71,7 +71,7 @@ export interface LifecycleInputPolicyValidationPort {
 
 
 export const PRODUCT_DELIVERY_LIFECYCLE_INPUT_SCHEMA =
-  'saga3.product-delivery-lifecycle-input.v2';
+  'factory.product-delivery-lifecycle-input.v2';
 
 export interface ProductDeliveryLifecycleInput {
   initiative: {
@@ -81,9 +81,7 @@ export interface ProductDeliveryLifecycleInput {
     constraints: unknown;
   };
   development: {
-    repositories: readonly (
-      ProductDeliveryRepositoryBinding | LegacyProductDeliveryRepositoryBinding
-    )[];
+    repositories: readonly ProductDeliveryRepositoryBinding[];
     policy: LifecycleDevelopmentPolicyShape;
   };
   delivery:
@@ -123,17 +121,6 @@ export interface ProductDeliveryRepositoryRef {
 
 export interface ProductDeliveryRepositoryBinding {
   repositoryRef: ProductDeliveryRepositoryRef;
-  integrationBranch: string;
-  expectedBaseCommit: string;
-}
-
-/**
- * Input-only compatibility shape. The composition root converts it to a
- * ProductDeliveryRepositoryBinding before LifecycleRun persistence. A stale
- * or foreign id is rejected; it is never copied into a durable snapshot.
- */
-export interface LegacyProductDeliveryRepositoryBinding {
-  projectRepositoryId: number;
   integrationBranch: string;
   expectedBaseCommit: string;
 }

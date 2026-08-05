@@ -23,13 +23,13 @@ import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
-  createSaga2Application,
+  createFactoryApplication,
   type ProductLifecycleCompositionOverrides,
-  type Saga2CompositionOverrides,
+  type FactoryCompositionOverrides,
 } from './app/composition-root.js';
 import type { SagaApplication } from './application/saga-application.js';
 import type { WorkerExecutorFactory } from './application/ports/worker-executor.js';
-import { createLegacyClaudeWorkerExecutorFactory } from './infrastructure/workers/claude-worker-executor-factory.js';
+import { createPinnedClaudeWorkerExecutorFactory } from './infrastructure/workers/claude-worker-executor-factory.js';
 import { SqliteWorkAssignmentAdapter } from './infrastructure/work/sqlite-work-assignment-adapter.js';
 import { prepareDevelopmentWorkspaceTemplate } from './modules/development/application/development-workspace-preparation.js';
 import { asModuleInstallationId } from './process-modules/installation/domain/installation.js';
@@ -104,7 +104,7 @@ function createUnifiedWorkerFactory(
       + 'to create pinned worker desks.',
     );
   }
-  return createLegacyClaudeWorkerExecutorFactory({
+  return createPinnedClaudeWorkerExecutorFactory({
     // Episode-pinned model route (was missing in the dispatch-only factory).
     modelRouteReader: (epicId: number | null) => {
       if (epicId !== null) {
@@ -130,7 +130,7 @@ function createUnifiedWorkerFactory(
       const runId = typeof md.process_run_id === 'number' ? md.process_run_id : null;
       if (runId === null) return null;
       const row = getDb().prepare(
-        'SELECT installation_id FROM saga3_process_runs WHERE id=?',
+        'SELECT installation_id FROM factory_process_runs WHERE id=?',
       ).get(runId) as { installation_id?: number | null } | undefined;
       const id = row?.installation_id ?? null;
       return id === null ? null : asModuleInstallationId(id);
@@ -142,7 +142,7 @@ function createUnifiedWorkerFactory(
       const runId = typeof md.process_run_id === 'number' ? md.process_run_id : null;
       if (runId === null) return null;
       const row = getDb().prepare(
-        'SELECT package_digest FROM saga3_process_runs WHERE id=?',
+        'SELECT package_digest FROM factory_process_runs WHERE id=?',
       ).get(runId) as { package_digest?: string | null } | undefined;
       return row?.package_digest ?? null;
     },
@@ -243,7 +243,7 @@ async function main() {
     // to this child via env — no JSON file is written to disk and no
     // --lifecycle-input path is passed. The runtime's resolveInput re-validates
     // it (assertProductDeliveryLifecycleInput) before Discovery runs.
-    application = createSaga2Application(process.env, overrides);
+    application = createFactoryApplication(process.env, overrides);
 
     // CONVEYOR Wave 5 — start the watchman. The supervision service reconciles
     // durable worker executions on startup (catching orphans from a prior
@@ -252,7 +252,7 @@ async function main() {
     // intervention. reconcileWorkerExecutions already existed but had no
     // production scheduling call — this is that call.
     const { startWorkerSupervision } = await import('./infrastructure/work/worker-supervision-service.js');
-    const { SqliteExecutionRuntimeRepository } = await import('./infrastructure/persistence/sqlite-saga2-runtime-repositories.js');
+    const { SqliteExecutionRuntimeRepository } = await import('./infrastructure/persistence/sqlite-factory-runtime-repositories.js');
     const supervisionHandle = startWorkerSupervision({
       executionRuntime: new SqliteExecutionRuntimeRepository(),
       projectId,
@@ -485,7 +485,7 @@ interface ProductLifecycleCompositionModule {
 async function loadCompositionOverrides(
   projectId: number,
   epicId: number,
-): Promise<Saga2CompositionOverrides> {
+): Promise<FactoryCompositionOverrides> {
   // saga4 cutover: the CLI always runs the Product Lifecycle runtime.
   // SAGA_PRODUCT_LIFECYCLE_COMPOSITION is mandatory.
   const repoRoot = path.resolve(process.env.SAGA_REPO_ROOT ?? process.cwd());

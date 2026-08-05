@@ -9,10 +9,10 @@
  * both at start). Task:
  * `docs/refactor-management/05-subagent-tasks/W07-a1.md`.
  *
- * This is the SINGLE SQL owner of the `saga3_scenario_installations` and
- * `saga3_scenario_module_locks` tables (plan §0.5.2, C083). The SQLite adapter
+ * This is the SINGLE SQL owner of the `factory_scenario_installations` and
+ * `factory_scenario_module_locks` tables (plan §0.5.2, C083). The SQLite adapter
  * (`persistence/sqlite-scenario-installation-repository.ts`) implements the
- * port declared here; `db.ts` calls `ensureSaga3ScenarioInstallationSchema`
+ * port declared here; `db.ts` calls `ensureFactoryScenarioInstallationSchema`
  * from the adapter (dual-placement, see that file).
  *
  * ## Boundary vs W7-A2
@@ -27,10 +27,10 @@
  *
  * ## What the SQL enforces
  *
- * `saga3_scenario_installations` carries the frozen manifest snapshot + its
+ * `factory_scenario_installations` carries the frozen manifest snapshot + its
  * content-addressed digest; a partial UNIQUE index guarantees at most one
  * ACTIVE installation per scenario identity `(scenario_name, scenario_version)`.
- * `saga3_scenario_module_locks` is the per-stage exact-pin: one row per
+ * `factory_scenario_module_locks` is the per-stage exact-pin: one row per
  * `(scenario_installation_id, stage_id)` referencing the exact module
  * installation id + digest the lock was resolved against. A UNIQUE index on
  * that pair makes the lock a single, durable pin (plan §6.6-6.7). Both rows
@@ -58,7 +58,7 @@ import type { ModuleInstallationId } from './domain/installation.js';
 // ---------------------------------------------------------------------------
 
 /**
- * Database-assigned primary key of a `saga3_scenario_installations` row.
+ * Database-assigned primary key of a `factory_scenario_installations` row.
  *
  * Branded so a bare `number` cannot be silently passed where a scenario
  * installation id is expected (mirrors `ModuleInstallationId` in W2-A2). The
@@ -86,7 +86,7 @@ export function asScenarioInstallationId(id: number): ScenarioInstallationId {
  * - `'staged'`     — row inserted; manifest stored; NOT yet activated.
  * - `'active'`     — the unique-active slot for
  *                    `(scenario_name, scenario_version)` is held. The partial
- *                    UNIQUE index `idx_saga3_scenario_installations_active`
+ *                    UNIQUE index `idx_factory_scenario_installations_active`
  *                    enforces at most ONE row per identity carries this status
  *                    — scenario version immutability (mirrors W2-A2 §4).
  * - `'retired'`    — withdrawn from the active slot. Row preserved for replay
@@ -122,7 +122,7 @@ export const SCENARIO_INSTALLATION_STATUSES: readonly ScenarioInstallationStatus
  * @property stageId              The stage id within the scenario manifest
  *                                (`ScenarioStageBinding.id`). Unique within a
  *                                scenario installation.
- * @property moduleInstallationId The exact `saga3_module_installations.id`
+ * @property moduleInstallationId The exact `factory_module_installations.id`
  *                                (W2-A2) this stage is pinned to.
  * @property moduleName           Module identity name (denormalized for
  *                                diagnostics + lookup without a JOIN).
@@ -259,8 +259,8 @@ export const SCENARIO_MODULE_LOCK_INCOMPLETE = 'SCENARIO_MODULE_LOCK_INCOMPLETE'
 // ---------------------------------------------------------------------------
 
 /**
- * Persistence port for `saga3_scenario_installations` +
- * `saga3_scenario_module_locks`. Implementations:
+ * Persistence port for `factory_scenario_installations` +
+ * `factory_scenario_module_locks`. Implementations:
  * `SqliteScenarioInstallationRepository` (sibling `persistence/` file). Future
  * swaps (Wave 13) implement this interface without touching `domain/`.
  *
@@ -280,8 +280,8 @@ export interface ScenarioInstallationRepository {
   /**
    * Persist a scenario installation + its complete module lock atomically.
    *
-   * Writes one row into `saga3_scenario_installations` and one row per
-   * `moduleLock` entry into `saga3_scenario_module_locks`, in a single
+   * Writes one row into `factory_scenario_installations` and one row per
+   * `moduleLock` entry into `factory_scenario_module_locks`, in a single
    * transaction. The lock is validated against the manifest snapshot FIRST
    * (every `manifestSnapshot.stageBindings[].id` has exactly one lock entry
    * and vice-versa); a mismatch throws `SCENARIO_MODULE_LOCK_INCOMPLETE`

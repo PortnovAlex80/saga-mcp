@@ -5,7 +5,7 @@
  * driver-neutral ports (delivery-kernel-ports: DeliveryProcessProductRepositoryPort,
  * DeliveryExternalEffectLedgerPort, ProcessRunSchemaEnsurePort). They keep the
  * concrete SQLite adapter imports (`SqliteProcessProductRepository`,
- * `SqliteExternalEffectLedger`, `ensureSaga3ProcessRunSchema`) and the global
+ * `SqliteExternalEffectLedger`, `ensureFactoryProcessRunSchema`) and the global
  * `getDb()` out of the Delivery module — the module speaks the port, this file
  * owns the concrete construction.
  *
@@ -15,7 +15,7 @@
  */
 
 import type Database from 'better-sqlite3';
-import { ensureSaga3ProcessRunSchema } from '../../process-modules/persistence/sqlite-process-run-repository.js';
+import { ensureFactoryProcessRunSchema } from '../../process-modules/persistence/sqlite-process-run-repository.js';
 import { SqliteExternalEffectLedger } from '../../process-modules/persistence/sqlite-external-effect-ledger.js';
 import { SqliteProcessProductRepository } from '../../process-modules/persistence/sqlite-process-product-repository.js';
 import type {
@@ -48,14 +48,14 @@ export function createDeliveryExternalEffectLedgerPort(
 
 /**
  * Build a ProcessRun schema-ensure port backed by
- * `ensureSaga3ProcessRunSchema`. Guarantees the parent `saga3_process_runs`
+ * `ensureFactoryProcessRunSchema`. Guarantees the parent `factory_process_runs`
  * table exists before a module's own tables are created, without the module
  * importing the concrete SQLite repository.
  */
 export function createProcessRunSchemaEnsurePort(): ProcessRunSchemaEnsurePort {
   return {
     ensure: (db: unknown) => {
-      ensureSaga3ProcessRunSchema(db as Database.Database);
+      ensureFactoryProcessRunSchema(db as Database.Database);
     },
   };
 }

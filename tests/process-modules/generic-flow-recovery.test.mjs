@@ -32,7 +32,7 @@ const { sha256Hex } = await import(
 );
 
 function fixture() {
-  const temp = mkdtempSync(path.join(os.tmpdir(), 'saga3-gfe-recovery-'));
+  const temp = mkdtempSync(path.join(os.tmpdir(), 'factory-gfe-recovery-'));
   process.env.DB_PATH = path.join(temp, 'recovery.db');
   const db = getDb();
   db.prepare(`INSERT INTO projects (id,name,status) VALUES (1,'P','active')`).run();
@@ -103,7 +103,7 @@ function buildExecutor(db, module, nodeExecutors, options = {}) {
   // productRepo, default to the NodeRun-row bridge (the pattern in
   // v2-production-completion-roundtrip.test.mjs) so settlement productions
   // resolve without the content-addressed product store. The bridge also
-  // resolves recovery-feedback products from saga3_recovery_attempts
+  // resolves recovery-feedback products from factory_recovery_attempts
   // (content-addressed control-plane products persisted in the recovery
   // tables). Callers that need a custom bridge still pass
   // `{ v2: { productRepo } }`.
@@ -118,7 +118,7 @@ function buildExecutor(db, module, nodeExecutors, options = {}) {
 /**
  * Build the bridge productRepo for v2 wiring: resolves content-addressed
  * products from NodeRun output rows (settlement productions) AND from
- * saga3_recovery_attempts (recovery-feedback control-plane products). Mirrors
+ * factory_recovery_attempts (recovery-feedback control-plane products). Mirrors
  * the production assemblerProductRepo fallback in product-lifecycle-runtime.ts
  * plus the recovery-feedback table that production resolves via the same
  * exact-(schema,ref,digest) match.
@@ -127,12 +127,12 @@ function buildBridgeProductRepo(db) {
   const lookupProduction = db.prepare(
     `SELECT output_schema AS schema, output_ref AS ref, output_hash AS hash,
             output_bindings AS bindingsText
-       FROM saga3_node_runs
+       FROM factory_node_runs
       WHERE output_schema=? AND output_ref=? AND output_hash=?
         AND status='completed'
       LIMIT 1`,
   );
-  // Lazy + defensive: saga3_recovery_attempts only exists when a
+  // Lazy + defensive: factory_recovery_attempts only exists when a
   // SqliteRecoveryCaseRepository was constructed (its migration creates the
   // table). Tests that never exercise recovery would otherwise throw
   // SQLITE_ERROR at prepare time. We prepare on first use and tolerate a
@@ -143,7 +143,7 @@ function buildBridgeProductRepo(db) {
       try {
         lookupRecoveryFeedback = db.prepare(
           `SELECT issue_ref AS ref, feedback_hash AS hash, feedback_snapshot AS snapshot
-             FROM saga3_recovery_attempts
+             FROM factory_recovery_attempts
             WHERE issue_ref=? AND feedback_hash=?
             LIMIT 1`,
         );
@@ -591,10 +591,10 @@ test('LM active execution pauses without constructing or starting another worker
     module,
     node: module.flow.nodes[0],
     input: {
-      schema: 'saga3.recovery-feedback.v1',
+      schema: 'factory.recovery-feedback.v1',
       bindings: {
         recoveryFeedback: {
-          schemaVersion: 'saga3.recovery-feedback.v1',
+          schemaVersion: 'factory.recovery-feedback.v1',
           caseId: 9,
           attempt: 1,
           maxAttempts: 2,

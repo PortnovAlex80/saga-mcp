@@ -5,7 +5,7 @@
  * NOT create new tables, does NOT change schemas, and does NOT touch the four
  * legacy submit tools. It delegates every write/read to
  * `SqliteProcessProductRepositoryV2` (which reuses the v1
- * `saga3_process_products` table plus its v2 `node_id` column and exact-lookup
+ * `factory_process_products` table plus its v2 `node_id` column and exact-lookup
  * index).
  *
  * # Mapping
@@ -204,7 +204,7 @@ export class SqliteWorkplaceProductAdapter implements WorkplaceProductPort {
     const rows = this.db.prepare(
       `SELECT process_run_id, node_id, schema_id, artifact_ref, product_hash,
               payload_snapshot, payload_hash
-         FROM saga3_process_products
+         FROM factory_process_products
         WHERE process_run_id=? AND node_id=?
         ORDER BY id ASC`,
     ).all(processRunId, nodeId) as WorkplaceProductRow[];

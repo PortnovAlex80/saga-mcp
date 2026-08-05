@@ -50,7 +50,7 @@ export function processOutcomeEmitter(ctx: KernelHandlerContext): KernelHandlerR
   return {
     event: `outcome:${outcome}`,
     production: {
-      schema: 'saga3.process-outcome.v1',
+      schema: 'factory.process-outcome.v1',
       artifactRef: `outcome:${outcome}`,
       contentHash: outcome,
       bindings,

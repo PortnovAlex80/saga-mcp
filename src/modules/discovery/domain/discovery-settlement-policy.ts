@@ -29,7 +29,7 @@ import { canonicalJson } from '../../../shared/canonical-json.js';
  * and the outcome certificate. A policy version bump is a new idempotency
  * target (new settlement + new certificate); old certificates are preserved.
  */
-export const DISCOVERY_SETTLEMENT_POLICY_VERSION = 'saga3.discovery-settlement-policy.v1';
+export const DISCOVERY_SETTLEMENT_POLICY_VERSION = 'factory.discovery-settlement-policy.v1';
 
 /**
  * The stable, reason-bearing codes the policy emits alongside its decision.
@@ -176,7 +176,7 @@ export const REJECT_MIN_CONFIDENCE = 0.70;
  * actual rule behaviour.)
  */
 export interface SettlementPolicyManifest {
-  schema: 'saga3.discovery-settlement-policy-manifest.v1';
+  schema: 'factory.discovery-settlement-policy-manifest.v1';
   version: string;
   go: {
     worker_outcome: 'go';
@@ -200,7 +200,7 @@ export interface SettlementPolicyManifest {
 }
 
 export const POLICY_V1_MANIFEST: SettlementPolicyManifest = {
-  schema: 'saga3.discovery-settlement-policy-manifest.v1',
+  schema: 'factory.discovery-settlement-policy-manifest.v1',
   version: DISCOVERY_SETTLEMENT_POLICY_VERSION,
   go: {
     worker_outcome: 'go',

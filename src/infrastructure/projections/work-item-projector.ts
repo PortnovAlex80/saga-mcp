@@ -9,7 +9,7 @@
  *
  * REG-06: the card (WorkItem) is a REBUILDABLE projection/read model derived
  * from the Workplace, NOT an orchestration aggregate. The authoritative
- * Kanban phase and loop state live on `v4_workplaces` (REG-05). The projector
+ * Kanban phase and loop state live on `factory_workplaces` (REG-05). The projector
  * reads durable Workplace state and derives the human-facing view; a full
  * drop + rebuild MUST reproduce both channels without changing production
  * (REG-06-AC-01, E2E-10).
@@ -104,7 +104,7 @@ export function projectWorkItemsForRun(
     `SELECT workplace_ref, process_run_id, module_ref, production_cell_id,
             work_key, kanban_phase, loop_state, next_role, terminal_reason,
             revision
-       FROM v4_workplaces
+       FROM factory_workplaces
       WHERE process_run_id=?
       ORDER BY workplace_ref`,
   ).all(processRunId) as WorkplaceProjectionRow[];
@@ -126,7 +126,7 @@ export function projectWorkItem(
     `SELECT workplace_ref, process_run_id, module_ref, production_cell_id,
             work_key, kanban_phase, loop_state, next_role, terminal_reason,
             revision
-       FROM v4_workplaces
+       FROM factory_workplaces
       WHERE workplace_ref=?`,
   ).get(serializeWorkplaceRef(ref)) as WorkplaceProjectionRow | undefined;
   return row ? rowToWorkItem(row) : null;
@@ -138,7 +138,7 @@ export function projectWorkItem(
  * identically.
  *
  * In step 1.3 the projection is NOT a separate table — it is derived on read
- * from `v4_workplaces` (the authoritative store). So "drop and rebuild" is
+ * from `factory_workplaces` (the authoritative store). So "drop and rebuild" is
  * trivially correct: every `projectWorkItem` call rebuilds from durable
  * state. This function exists so the E2E-10 test has a concrete hook: it
  * snapshots the projection, the test mutates nothing, and the snapshot

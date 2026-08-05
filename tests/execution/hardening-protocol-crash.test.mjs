@@ -74,7 +74,7 @@ import { sha256Hex } from '../../dist/shared/canonical-json.js';
 /**
  * One isolated SQLite world backed by a tmpdir file. `open()` returns the
  * live DB handle via the real getDb() singleton (full schema bootstrap, all
- * saga3_* tables + FKs, exactly like process startup). `kill()` simulates a
+ * factory_* tables + FKs, exactly like process startup). `kill()` simulates a
  * process crash: closeDb() closes the handle and clears the singleton. The
  * next `open()` reopens a FRESH handle against the SAME file — exactly what
  * a process restart does. Anything not committed before `kill()` is lost.
@@ -91,7 +91,7 @@ class CrashWorld {
     }
     process.env.DB_PATH = this.dbPath;
     const db = this._dbMod.getDb();
-    // Eagerly create every saga3_* table this wave touches. These tables are
+    // Eagerly create every factory_* table this wave touches. These tables are
     // NOT in SCHEMA_SQL — they are created lazily by their repository
     // constructors (CREATE TABLE IF NOT EXISTS, idempotent). Constructing them
     // here on EVERY open guarantees the FK targets exist in the correct order
@@ -126,7 +126,7 @@ class CrashWorld {
 
 const evToolReceipt = (digest) => ({
   category: 'tool-receipt',
-  contractRef: { schemaId: 'saga3.tool-receipt.v1', version: '1.0.0', digest },
+  contractRef: { schemaId: 'factory.tool-receipt.v1', version: '1.0.0', digest },
   required: true,
 });
 
@@ -177,7 +177,7 @@ const LINEAR_PROTOCOL = Object.freeze({
 const evidenceFor = (digest, value) => [
   {
     category: 'tool-receipt',
-    contractRef: { schemaId: 'saga3.tool-receipt.v1', version: '1.0.0', digest },
+    contractRef: { schemaId: 'factory.tool-receipt.v1', version: '1.0.0', digest },
     value: { digest, ...(value ?? {}) },
   },
 ];
@@ -201,7 +201,7 @@ async function seedProcessRun(db) {
   const started = repo.start({
     moduleRef: { name: 'w12a3.test', version: '1.0.0' },
     input: {
-      schema: 'saga3.w12a3.input.v1',
+      schema: 'factory.w12a3.input.v1',
       payload: { seed: true },
       contentHash: sha256Hex({ seed: true }),
     },
@@ -221,8 +221,8 @@ async function seedProcessRun(db) {
  * Build a ProtocolRuntime wired to a fresh repository over the given DB.
  * The runtime owns the transition DECISION; `wrapRunRepo` translates its
  * port calls (read/transition/upsertStep/readStep/listStepAttempts/listSteps)
- * into durable SQLite operations against saga3_protocol_runs +
- * saga3_protocol_step_runs — proving the runtime drives the real durable
+ * into durable SQLite operations against factory_protocol_runs +
+ * factory_protocol_step_runs — proving the runtime drives the real durable
  * surface, not a mock.
  */
 function runtimeFor(db) {
@@ -234,7 +234,7 @@ function wrapRunRepo(db) {
   return {
     read(runId) {
       const row = db
-        .prepare('SELECT * FROM saga3_protocol_runs WHERE id=?')
+        .prepare('SELECT * FROM factory_protocol_runs WHERE id=?')
         .get(runId);
       return row ? snakeToRunRecord(row) : null;
     },
@@ -260,7 +260,7 @@ function wrapRunRepo(db) {
       setClauses.push("updated_at=datetime('now')");
       args.push(runId);
       const info = db
-        .prepare(`UPDATE saga3_protocol_runs SET ${setClauses.join(', ')} WHERE id=?`)
+        .prepare(`UPDATE factory_protocol_runs SET ${setClauses.join(', ')} WHERE id=?`)
         .run(...args);
       if (info.changes !== 1) {
         throw new Error(`PROTOCOL_RUN_TRANSITION_FAILED: run ${runId} not updated`);
@@ -271,18 +271,18 @@ function wrapRunRepo(db) {
       // Mirror the W4-A1 adapter: a terminal row is never re-opened at the
       // same attempt; in_progress/pending flip to in_progress.
       db.prepare(
-        `INSERT INTO saga3_protocol_step_runs
+        `INSERT INTO factory_protocol_step_runs
            (protocol_run_id, step_id, attempt, status)
          VALUES (?, ?, ?, 'in_progress')
          ON CONFLICT(protocol_run_id, step_id, attempt) DO UPDATE SET
-           status = CASE WHEN saga3_protocol_step_runs.status IN ('pending','in_progress')
+           status = CASE WHEN factory_protocol_step_runs.status IN ('pending','in_progress')
                         THEN 'in_progress'
-                        ELSE saga3_protocol_step_runs.status END`,
+                        ELSE factory_protocol_step_runs.status END`,
       ).run(runId, stepId, attempt);
       if (input.status === 'completed') {
         const evidenceJson = JSON.stringify(input.evidence ?? []);
         const info = db.prepare(
-          `UPDATE saga3_protocol_step_runs
+          `UPDATE factory_protocol_step_runs
               SET status='completed', evidence_json=?, completed_at=?
             WHERE protocol_run_id=? AND step_id=? AND attempt=?
               AND status IN ('pending','in_progress')`,
@@ -304,7 +304,7 @@ function wrapRunRepo(db) {
     readStep(runId, stepId, attempt) {
       const row = db
         .prepare(
-          'SELECT * FROM saga3_protocol_step_runs WHERE protocol_run_id=? AND step_id=? AND attempt=?',
+          'SELECT * FROM factory_protocol_step_runs WHERE protocol_run_id=? AND step_id=? AND attempt=?',
         )
         .get(runId, stepId, attempt);
       return row ? snakeToStepRecord(row) : null;
@@ -312,7 +312,7 @@ function wrapRunRepo(db) {
     listStepAttempts(runId, stepId) {
       return db
         .prepare(
-          'SELECT * FROM saga3_protocol_step_runs WHERE protocol_run_id=? AND step_id=? ORDER BY attempt ASC, id ASC',
+          'SELECT * FROM factory_protocol_step_runs WHERE protocol_run_id=? AND step_id=? ORDER BY attempt ASC, id ASC',
         )
         .all(runId, stepId)
         .map(snakeToStepRecord);
@@ -320,7 +320,7 @@ function wrapRunRepo(db) {
     listSteps(runId) {
       return db
         .prepare(
-          'SELECT * FROM saga3_protocol_step_runs WHERE protocol_run_id=? ORDER BY attempt ASC, id ASC',
+          'SELECT * FROM factory_protocol_step_runs WHERE protocol_run_id=? ORDER BY attempt ASC, id ASC',
         )
         .all(runId)
         .map(snakeToStepRecord);
@@ -560,7 +560,7 @@ function freshNodeRun(db, processRunId) {
 
 function buildRecoveryInput(processRunId, sourceNodeRunId, reasonCode, maxAttempts) {
   const issue = {
-    schemaVersion: 'saga3.recovery-issue.v1',
+    schemaVersion: 'factory.recovery-issue.v1',
     policyId: 'w12a3.repair',
     reasonCode,
     disposition: 'repair',
@@ -576,7 +576,7 @@ function buildRecoveryInput(processRunId, sourceNodeRunId, reasonCode, maxAttemp
     maxAttempts,
     issue,
     sourceProduction: {
-      schema: 'saga3.production.v1',
+      schema: 'factory.production.v1',
       contentHash: sha256Hex({ rejected: sourceNodeRunId }),
       artifactRef: `rejected-${sourceNodeRunId}`,
     },
@@ -754,7 +754,7 @@ test('§2 Recovery: recordIssue is deterministic — same issue+source yields th
 // §3 — CallInstance: crashes at every lifecycle transition boundary.
 // ===========================================================================
 
-const CALL_TOOL = 'saga3.tool.w12a3@1.0.0';
+const CALL_TOOL = 'factory.tool.w12a3@1.0.0';
 
 /**
  * Drive the full CallInstance lifecycle up to and including a named
@@ -828,7 +828,7 @@ async function driveCallTo(world, killAt) {
 function succeedSubmittedCall(db, callInstanceId) {
   const info = db
     .prepare(
-      `UPDATE saga3_call_instances
+      `UPDATE factory_call_instances
           SET status='succeeded', updated_at=datetime('now')
         WHERE id=? AND status='submitted'`,
     )
@@ -1008,10 +1008,10 @@ test('§4 e2e: protocol completes with a crash after every step transition; ledg
     );
     // Evidence survived byte-for-byte on each completed step.
     const entryEv = JSON.parse(
-      db.prepare('SELECT evidence_json FROM saga3_protocol_step_runs WHERE protocol_run_id=? AND step_id=?')
+      db.prepare('SELECT evidence_json FROM factory_protocol_step_runs WHERE protocol_run_id=? AND step_id=?')
         .get(runId, 'entry').evidence_json,
     );
-    assert.equal(entryEv[0].contractRef.schemaId, 'saga3.tool-receipt.v1', 'entry evidence persisted');
+    assert.equal(entryEv[0].contractRef.schemaId, 'factory.tool-receipt.v1', 'entry evidence persisted');
     assert.equal(entryEv[0].contractRef.digest, 'sha256:ev-entry', 'entry evidence digest persisted');
   } finally {
     world.kill();

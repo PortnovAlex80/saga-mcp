@@ -73,7 +73,7 @@ import { canonicalJson, sha256Hex } from '../../dist/shared/canonical-json.js';
 const {
   // Wave 1 SPI — manifest construction + validation + legacy adapter
   validateProcessModuleManifest,
-  adaptLegacyProcessModule,
+  createProcessModuleManifest,
   assertCanonicalSerializable,
 } = await import('../../dist/process-modules/domain/spi/index.js');
 
@@ -84,7 +84,7 @@ const {
   FilesystemModulePackageStore,
   // W2-A2 — record + repo + schema
   SqliteModuleInstallationRepository,
-  ensureSaga3ModuleInstallationSchema,
+  ensureFactoryModuleInstallationSchema,
   MODULE_INSTALLATION_VERSION_COLLISION,
   // W2-A3 — installer + dependency lock
   installPackage,
@@ -147,9 +147,9 @@ async function loadThirdSyntheticFixture() {
 
   // Wrap the legacy definition into a manifest envelope (Wave 1 pattern).
   // Then ENRICH resourceIndex/handlerRefs from the fixture's declared resources
-  // — adaptLegacyProcessModule emits empty arrays; the 3rd fixture carries
+  // — createProcessModuleManifest emits empty arrays; the 3rd fixture carries
   // real resources to prove resource resolution (W2-A7 task).
-  const manifest = adaptLegacyProcessModule(definition);
+  const manifest = createProcessModuleManifest(definition);
   manifest.resourceIndex = resourceIndex.map((r) => ({
     logicalId: r.logicalId,
     path: r.path,
@@ -208,8 +208,8 @@ async function loadThirdSyntheticFixture() {
 /**
  * Create a fresh, isolated environment for one install run:
  *   - mkdtemp directory for FilesystemModulePackageStore
- *   - mkdtemp .db file with ensureSaga3ModuleInstallationSchema(db) applied
- *   - a minimal saga3_process_runs-shaped table for the W2-A4 pinning proof
+ *   - mkdtemp .db file with ensureFactoryModuleInstallationSchema(db) applied
+ *   - a minimal factory_process_runs-shaped table for the W2-A4 pinning proof
  *
  * Returns cleanup hooks. NEVER shares a DB/root across tests (spec §9).
  */
@@ -220,14 +220,14 @@ function makeIsolatedEnv() {
   db.pragma('journal_mode = WAL');
   // W2-A2 owns the installations table DDL; apply it directly on our raw
   // connection. (In production, db.ts calls this in the getDb() chain.)
-  ensureSaga3ModuleInstallationSchema(db);
+  ensureFactoryModuleInstallationSchema(db);
   // Minimal process_runs-like table for the W2-A4 legacy-adapter proof. The
   // W2-A4 adapter reads installation_id/package_digest via raw SQL; a minimal
   // table with those columns (plus module_name/module_version for the legacy
-  // fallback) is sufficient to prove §14.3.7. The real saga3_process_runs table
+  // fallback) is sufficient to prove §14.3.7. The real factory_process_runs table
   // is owned by sqlite-process-run-repository.ts (NOT imported here — §14.4.7).
   db.exec(`
-    CREATE TABLE IF NOT EXISTS saga3_process_runs (
+    CREATE TABLE IF NOT EXISTS factory_process_runs (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       module_name TEXT NOT NULL,
       module_version TEXT NOT NULL,
@@ -362,7 +362,7 @@ test('§6.3 + §4: installing a DIFFERENT manifest under the same (name, version
 
   // Build a DIFFERENT manifest that collides on (name, version) but whose
   // content differs → different packageDigest.
-  const colliding = adaptLegacyProcessModule({
+  const colliding = createProcessModuleManifest({
     ...sharedFixture.manifest.definition,
     identity: {
       ...sharedFixture.manifest.definition.identity,
@@ -426,12 +426,12 @@ test('§6.4 + §14.3.7: pinned installation round-trips; legacy NULL run resolve
   const adapter = sharedEnv.runAdapter;
 
   // Insert a NEW process_runs row to pin. sharedEnv uses a MINIMAL
-  // saga3_process_runs table (id, module_name, module_version, installation_id,
+  // factory_process_runs table (id, module_name, module_version, installation_id,
   // package_digest) — see makeIsolatedEnv. This is intentional for the §14.4.7
   // proof (no import of the real sqlite-process-run-repository). The real
   // table's extra NOT NULL columns are irrelevant to the pinning adapter.
   const insertRun = db.prepare(
-    `INSERT INTO saga3_process_runs (module_name, module_version) VALUES (?, ?)`,
+    `INSERT INTO factory_process_runs (module_name, module_version) VALUES (?, ?)`,
   );
   const info = insertRun.run(sharedRecord.name, sharedRecord.version);
   const runId = Number(info.lastInsertRowid);
@@ -457,7 +457,7 @@ test('§6.4 + §14.3.7: pinned installation round-trips; legacy NULL run resolve
   const legacyRunId = Number(legacyInfo.lastInsertRowid);
   // Explicitly clear (defensive — the column defaults to NULL).
   // Use .run() not .get() — UPDATE does not return data (better-sqlite3 rule).
-  db.prepare(`UPDATE saga3_process_runs SET installation_id = NULL, package_digest = NULL WHERE id = ?`)
+  db.prepare(`UPDATE factory_process_runs SET installation_id = NULL, package_digest = NULL WHERE id = ?`)
     .run(legacyRunId);
 
   const legacyPin = adapter.getPinnedInstallation(legacyRunId);

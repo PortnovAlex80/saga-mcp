@@ -18,10 +18,10 @@ const { canonicalJson } = await import('../../dist/modules/discovery/infrastruct
 const { DISCOVERY_READINESS_ASSESSMENT_SCHEMA, READINESS_DIMENSIONS } = await import(
   '../../dist/modules/discovery/domain/discovery-readiness-assessment.js'
 );
-const { ensureSaga3ReadinessSchema } = await import('../../dist/modules/discovery/infrastructure/discovery-readiness-repository.js');
+const { ensureFactoryReadinessSchema } = await import('../../dist/modules/discovery/infrastructure/discovery-readiness-repository.js');
 
 function fixture() {
-  const temp = mkdtempSync(path.join(os.tmpdir(), 'saga3-d3-handler-'));
+  const temp = mkdtempSync(path.join(os.tmpdir(), 'factory-d3-handler-'));
   process.env.DB_PATH = path.join(temp, 'd3.db');
   const db = getDb();
   db.prepare(`INSERT INTO projects (id,name,status) VALUES (1,'P','active')`).run();
@@ -29,7 +29,7 @@ function fixture() {
   db.prepare(
     `INSERT INTO episode_workflows (epic_id,stage,metadata) VALUES (10,'discovery','{}')`,
   ).run();
-  ensureSaga3ReadinessSchema(db);
+  ensureFactoryReadinessSchema(db);
   return { temp, db };
 }
 function cleanup(temp) {
@@ -79,24 +79,24 @@ function validAssessmentPayload(proposalId = 50, proposalHash = PRODUCT_PROPOSAL
  */
 function buildLiveFixture(db, { epicId = 10, proposalId = 50, taskId = 100, advisorTaskId = 200, executionId = 'advisor-exec' } = {}) {
   // Product proposal row (the assessment target). intent_id=1, task_id=100.
-  // NB: tasks first because saga3_work_intents.projected_task_id REFERENCES tasks(id).
+  // NB: tasks first because factory_work_intents.projected_task_id REFERENCES tasks(id).
   db.prepare(
     `INSERT INTO tasks (id,epic_id,title,status,task_kind) VALUES (100,10,'Discovery','done','discovery.work')`,
   ).run();
   db.prepare(
-    `INSERT INTO saga3_work_intents
+    `INSERT INTO factory_work_intents
        (id,epic_id,kind,objective,authority_scope,output_schema,
         token_budget,retry_budget,projected_task_id,status)
      VALUES (1,10,?,?,?,?,0,0,100,'concluded')`,
   ).run(DISCOVERY_INTENT_KIND, 'discover', '{}', DISCOVERY_WORK_INTENT_SCHEMA);
   db.prepare(
-    `INSERT INTO saga3_proposals
+    `INSERT INTO factory_proposals
        (id,intent_id,task_id,execution_id,kind,schema_version,payload,content_hash,status,provenance)
      VALUES (50,1,100,'product-exec','discovery',?,?,?, 'submitted', '{}')`,
   ).run(DISCOVERY_PROPOSAL_SCHEMA, JSON.stringify(PRODUCT_PROPOSAL_PAYLOAD), PRODUCT_PROPOSAL_HASH);
 
   // Readiness authority WorkIntent. Advisor task must exist first (FK on
-  // saga3_work_intents.projected_task_id REFERENCES tasks(id)).
+  // factory_work_intents.projected_task_id REFERENCES tasks(id)).
   const advisorAuthority = {
     snapshot_ref: `proposal:${proposalId}:${PRODUCT_PROPOSAL_HASH.slice(0, 12)}`,
     scope: 'read-only shadow readiness assessment',
@@ -112,7 +112,7 @@ function buildLiveFixture(db, { epicId = 10, proposalId = 50, taskId = 100, advi
         'tracker_only','assess-task',?,?)`,
   ).run(advisorTaskId, epicId, 'Assess', 'in_progress', JSON.stringify({ work_intent_id: 2 }), executionId);
   db.prepare(
-    `INSERT INTO saga3_work_intents
+    `INSERT INTO factory_work_intents
        (id,epic_id,kind,objective,authority_scope,output_schema,
         token_budget,retry_budget,projected_task_id,status)
      VALUES (2,10,?,?,?,?,0,0,?, 'open')`,
@@ -125,7 +125,7 @@ function buildLiveFixture(db, { epicId = 10, proposalId = 50, taskId = 100, advi
   );
   // Readiness ControlIntent.
   db.prepare(
-    `INSERT INTO saga3_readiness_control_intents
+    `INSERT INTO factory_readiness_control_intents
        (id,epic_id,kind,proposal_id,proposal_content_hash,source_intent_id,
         authority_intent_id,projected_task_id,status)
      VALUES (1,10,'AssessDiscoveryReadiness',?,?,?,?,?, 'executing')`,
@@ -172,7 +172,7 @@ test('D3 handler: valid accepted assessment persisted with shadow provenance', a
     assert.equal(result.replayed, false);
     assert.ok(result.assessment_id > 0);
     // Row persisted with accepted status + shadow provenance.
-    const row = db.prepare('SELECT status, overall_readiness, recommended_next_action, provenance FROM saga3_readiness_assessments WHERE id=?').get(result.assessment_id);
+    const row = db.prepare('SELECT status, overall_readiness, recommended_next_action, provenance FROM factory_readiness_assessments WHERE id=?').get(result.assessment_id);
     assert.equal(row.status, 'accepted_by_kernel');
     assert.equal(row.overall_readiness, 'ready');
     const prov = JSON.parse(row.provenance);
@@ -199,7 +199,7 @@ test('D3 handler: exact replay is idempotent (same content hash → same row, re
     assert.equal(first.assessment_id, second.assessment_id);
     assert.equal(second.replayed, true);
     // Only one row.
-    assert.equal(db.prepare('SELECT COUNT(*) c FROM saga3_readiness_assessments').get().c, 1);
+    assert.equal(db.prepare('SELECT COUNT(*) c FROM factory_readiness_assessments').get().c, 1);
   } finally { cleanup(temp); }
 });
 
@@ -264,7 +264,7 @@ test('D3 handler: changed proposal content_hash rejected (immutable target bindi
     // created for the old hash. The strict target re-validation (P1-2) catches
     // this because the recomputed hash no longer matches the stored hash, and
     // neither matches the ControlIntent's target. Throw before persistence.
-    db.prepare('UPDATE saga3_proposals SET content_hash=? WHERE id=50').run('d'.repeat(64));
+    db.prepare('UPDATE factory_proposals SET content_hash=? WHERE id=50').run('d'.repeat(64));
     const { createDiscoveryReadinessHandlers } = await import('../../dist/tools/discovery-readiness-tools.js');
     const { handlers } = createDiscoveryReadinessHandlers({ db: () => db });
     assert.throws(() => handlers.readiness_submit({
@@ -272,7 +272,7 @@ test('D3 handler: changed proposal content_hash rejected (immutable target bindi
       schema_version: DISCOVERY_READINESS_ASSESSMENT_SCHEMA, payload: validAssessmentPayload(),
     }), /Proposal target integrity check failed.*content_hash/);
     // No assessment row must be persisted for an integrity violation.
-    assert.equal(db.prepare('SELECT COUNT(*) c FROM saga3_readiness_assessments').get().c, 0);
+    assert.equal(db.prepare('SELECT COUNT(*) c FROM factory_readiness_assessments').get().c, 0);
   } finally { cleanup(temp); }
 });
 
@@ -287,12 +287,12 @@ test('D3 handler: assessment lineage stays separate from product Proposal proven
       schema_version: DISCOVERY_READINESS_ASSESSMENT_SCHEMA, payload: validAssessmentPayload(),
     });
     // The product Proposal row must NOT have been touched by the advisor.
-    const product = db.prepare('SELECT execution_id, provenance FROM saga3_proposals WHERE id=50').get();
+    const product = db.prepare('SELECT execution_id, provenance FROM factory_proposals WHERE id=50').get();
     assert.equal(product.execution_id, 'product-exec');
     // Its provenance stays the empty '{}' we set — advisor never wrote into it.
     assert.equal(product.provenance, '{}');
     // The advisor identity lives ONLY in the assessment row.
-    const assessment = db.prepare('SELECT execution_id, provenance FROM saga3_readiness_assessments ORDER BY id DESC LIMIT 1').get();
+    const assessment = db.prepare('SELECT execution_id, provenance FROM factory_readiness_assessments ORDER BY id DESC LIMIT 1').get();
     assert.equal(assessment.execution_id, 'advisor-exec');
     assert.equal(JSON.parse(assessment.provenance).execution_id, 'advisor-exec');
   } finally { cleanup(temp); }

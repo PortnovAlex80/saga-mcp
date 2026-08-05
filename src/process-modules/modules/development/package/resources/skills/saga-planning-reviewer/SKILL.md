@@ -13,7 +13,7 @@ creates canonical tasks and dependencies.
 
 1. Call `task_get({id: <assigned task id>})`.
 2. Read the immutable `task.metadata.process_node_input`
-   (`saga3.development-case.v1`). This is the only authority for:
+   (`factory.development-case.v1`). This is the only authority for:
    - accepted AC ids and `implementationRequired`;
    - repository ids, integration branches, and expected base commits.
 3. Read `task.metadata.process_workspace` and open:
@@ -34,7 +34,7 @@ payload associated with this reviewed task and is what you validate.
 Reject with concrete findings if any check fails:
 
 1. The call is valid JSON, uses `process_node_submit`, and both schema fields
-   equal `saga3.development-task-graph-proposal.v1`.
+   equal `factory.development-task-graph-proposal.v1`.
 2. Work-item keys are non-empty and unique across both arrays.
 3. Dependencies are closed, non-self-referential, and acyclic.
 4. Implementation items depend only on implementation items.

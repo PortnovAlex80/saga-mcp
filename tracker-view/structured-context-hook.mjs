@@ -13,7 +13,7 @@
 //   assistance event list:
 //
 //     {
-//       "schemaVersion": "saga3.agent-assistance-projection.v1",
+//       "schemaVersion": "factory.agent-assistance-projection.v1",
 //       "stateVersion":  "<hash of execution scope + package definition>",
 //       "executionId":   "<fencing token; cross-execution events are rejected>",
 //       "mode":          "<compact|guided|intensive>",
@@ -209,7 +209,7 @@ function recordHookObservation(emitted) {
       ? previous.emittedCount
       : 0) + (emitted ? 1 : 0);
     writeFileSync(observationPath, `${JSON.stringify({
-      schemaVersion: 'saga3.agent-assistance-hook-state.v1',
+      schemaVersion: 'factory.agent-assistance-hook-state.v1',
       executionId: snapExecId || null,
       event: selectedEvent,
       toolName: toolName || null,

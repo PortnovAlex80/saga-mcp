@@ -1,18 +1,18 @@
 /**
  * W2-A2 — `ModuleInstallationRepository` PORT + `SqliteModuleInstallationRepository`
- * adapter + `ensureSaga3ModuleInstallationSchema(db)`.
+ * adapter + `ensureFactoryModuleInstallationSchema(db)`.
  *
  * Spec: `docs/refactor-management/09-contracts/WAVE2-IMMUTABLE-INSTALLATION-SPEC.md`
  * §1 row 5, §3, §4. Task:
  * `docs/refactor-management/05-subagent-tasks/W02-A2-installation-repository-sql-owner.md`.
  *
- * This is the SINGLE SQL owner of the `saga3_module_installations` table (plan
+ * This is the SINGLE SQL owner of the `factory_module_installations` table (plan
  * §0.5.2, C083). No other Wave 2 lane may create SQL tables or edit `db.ts`.
  *
  * ## What the SQL enforces
  *
  * The partial UNIQUE index
- * `idx_saga3_module_installations_active ON (name, version) WHERE status='active'`
+ * `idx_factory_module_installations_active ON (name, version) WHERE status='active'`
  * is the version-immutability invariant (spec §4): at most ONE active
  * installation per `(name, version)`. The adapter detects the resulting SQLite
  * `SQLITE_CONSTRAINT_UNIQUE` violation on `insert`/`activate` and translates it
@@ -81,7 +81,7 @@ interface ModuleInstallationRow {
 // ---------------------------------------------------------------------------
 
 /**
- * Create the `saga3_module_installations` table + indexes (spec §3). Idempotent
+ * Create the `factory_module_installations` table + indexes (spec §3). Idempotent
  * — safe to call on every repository construction and from `db.ts` `getDb()`.
  *
  * The schema is created with `CREATE TABLE IF NOT EXISTS`; the two indexes are
@@ -89,14 +89,14 @@ interface ModuleInstallationRow {
  * already has the table is a no-op.
  *
  * The partial UNIQUE index
- * `idx_saga3_module_installations_active ON (name, version) WHERE status='active'`
+ * `idx_factory_module_installations_active ON (name, version) WHERE status='active'`
  * is the version-immutability invariant. NO `ON DELETE SET NULL` (plan §5.5.9).
  */
-export function ensureSaga3ModuleInstallationSchema(db: Database.Database): void {
+export function ensureFactoryModuleInstallationSchema(db: Database.Database): void {
   db.exec(`
     -- Single source of truth for "what is installed" (W2-A2, spec §3).
     -- One row per installed package version. Identity rules: spec §4.
-    CREATE TABLE IF NOT EXISTS saga3_module_installations (
+    CREATE TABLE IF NOT EXISTS factory_module_installations (
       id                          INTEGER PRIMARY KEY AUTOINCREMENT,
       name                        TEXT NOT NULL,                    -- module identity name (denormalized for the active-unique index)
       version                     TEXT NOT NULL,                    -- module identity version
@@ -118,12 +118,12 @@ export function ensureSaga3ModuleInstallationSchema(db: Database.Database): void
     -- a DIFFERENT package_digest is rejected by the adapter with
     -- MODULE_INSTALLATION_VERSION_COLLISION. SQLite's partial UNIQUE index is
     -- the structural enforcement; the adapter translates the violation.
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_saga3_module_installations_active
-      ON saga3_module_installations(name, version) WHERE status = 'active';
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_factory_module_installations_active
+      ON factory_module_installations(name, version) WHERE status = 'active';
 
     -- Lookup by package digest (replay verification, registry selection).
-    CREATE INDEX IF NOT EXISTS idx_saga3_module_installations_digest
-      ON saga3_module_installations(package_digest);
+    CREATE INDEX IF NOT EXISTS idx_factory_module_installations_digest
+      ON factory_module_installations(package_digest);
   `);
 }
 
@@ -150,7 +150,7 @@ function rowToRecord(row: ModuleInstallationRow): ModuleInstallationRecord {
 }
 
 function readRowById(db: Database.Database, id: ModuleInstallationId): ModuleInstallationRow | null {
-  const row = db.prepare('SELECT * FROM saga3_module_installations WHERE id=?')
+  const row = db.prepare('SELECT * FROM factory_module_installations WHERE id=?')
     .get(id) as ModuleInstallationRow | undefined;
   return row ?? null;
 }
@@ -165,7 +165,7 @@ function readActiveRowByNameVersion(
   version: string,
 ): ModuleInstallationRow | null {
   const row = db.prepare(
-    `SELECT * FROM saga3_module_installations WHERE name=? AND version=? AND status='active'`,
+    `SELECT * FROM factory_module_installations WHERE name=? AND version=? AND status='active'`,
   ).get(name, version) as ModuleInstallationRow | undefined;
   return row ?? null;
 }
@@ -175,7 +175,7 @@ function readActiveRowByNameVersion(
 // ---------------------------------------------------------------------------
 
 /**
- * Persistence port for `saga3_module_installations`. Implementations:
+ * Persistence port for `factory_module_installations`. Implementations:
  * `SqliteModuleInstallationRepository` (this file). Future swaps (Wave 13)
  * implement this interface without touching `domain/`.
  *
@@ -250,7 +250,7 @@ export interface ModuleInstallationRepository {
  * Concrete SQLite implementation of {@link ModuleInstallationRepository}.
  *
  * Construction is cheap and idempotent: the schema is created on first use via
- * {@link ensureSaga3ModuleInstallationSchema} (CREATE IF NOT EXISTS). Production
+ * {@link ensureFactoryModuleInstallationSchema} (CREATE IF NOT EXISTS). Production
  * wires one instance at the composition root; tests construct one against a
  * temp DB.
  */
@@ -259,7 +259,7 @@ export class SqliteModuleInstallationRepository implements ModuleInstallationRep
 
   constructor(db: Database.Database) {
     this.db = db;
-    ensureSaga3ModuleInstallationSchema(this.db);
+    ensureFactoryModuleInstallationSchema(this.db);
   }
 
   insert(record: Omit<ModuleInstallationRecord, 'id' | 'installedAt' | 'activatedAt' | 'retiredAt'>
@@ -295,7 +295,7 @@ export class SqliteModuleInstallationRepository implements ModuleInstallationRep
     let lastInsertRowid: number | bigint;
     try {
       const info = this.db.prepare(
-        `INSERT INTO saga3_module_installations
+        `INSERT INTO factory_module_installations
            (name, version, package_digest, manifest_snapshot, store_location,
             resource_index, handler_refs, dependency_lock, status,
             installed_at, activated_at, retired_at)
@@ -321,7 +321,7 @@ export class SqliteModuleInstallationRepository implements ModuleInstallationRep
       // and the INSERT. Translate any UNIQUE violation on the active index to
       // the version-collision error.
       const msg = (err as Error).message ?? '';
-      if (msg.includes('UNIQUE') && msg.includes('idx_saga3_module_installations_active')) {
+      if (msg.includes('UNIQUE') && msg.includes('idx_factory_module_installations_active')) {
         const existing = readActiveRowByNameVersion(this.db, record.name, record.version);
         if (existing && existing.package_digest !== record.packageDigest) {
           throw new Error(
@@ -346,7 +346,7 @@ export class SqliteModuleInstallationRepository implements ModuleInstallationRep
 
   getByPackageDigest(digest: string): ModuleInstallationRecord | null {
     const row = this.db.prepare(
-      'SELECT * FROM saga3_module_installations WHERE package_digest=?',
+      'SELECT * FROM factory_module_installations WHERE package_digest=?',
     ).get(digest) as ModuleInstallationRow | undefined;
     return row ? rowToRecord(row) : null;
   }
@@ -386,7 +386,7 @@ export class SqliteModuleInstallationRepository implements ModuleInstallationRep
 
     try {
       const info = this.db.prepare(
-        `UPDATE saga3_module_installations
+        `UPDATE factory_module_installations
             SET status='active',
                 activated_at=COALESCE(activated_at, datetime('now'))
           WHERE id=?`,
@@ -397,7 +397,7 @@ export class SqliteModuleInstallationRepository implements ModuleInstallationRep
       }
     } catch (err) {
       const msg = (err as Error).message ?? '';
-      if (msg.includes('UNIQUE') && msg.includes('idx_saga3_module_installations_active')) {
+      if (msg.includes('UNIQUE') && msg.includes('idx_factory_module_installations_active')) {
         throw new Error(
           `${MODULE_INSTALLATION_VERSION_COLLISION}: concurrent activation won the `
           + `active slot for ${current.name}@${current.version}.`,
@@ -413,7 +413,7 @@ export class SqliteModuleInstallationRepository implements ModuleInstallationRep
 
   retire(id: ModuleInstallationId): ModuleInstallationRecord {
     const info = this.db.prepare(
-      `UPDATE saga3_module_installations
+      `UPDATE factory_module_installations
           SET status='retired',
               retired_at=COALESCE(retired_at, datetime('now'))
         WHERE id=?`,
@@ -428,7 +428,7 @@ export class SqliteModuleInstallationRepository implements ModuleInstallationRep
 
   markCorrupt(id: ModuleInstallationId): ModuleInstallationRecord {
     const info = this.db.prepare(
-      `UPDATE saga3_module_installations
+      `UPDATE factory_module_installations
           SET status='corrupt'
         WHERE id=?`,
     ).run(id);
@@ -442,7 +442,7 @@ export class SqliteModuleInstallationRepository implements ModuleInstallationRep
 
   listActive(): readonly ModuleInstallationRecord[] {
     const rows = this.db.prepare(
-      `SELECT * FROM saga3_module_installations
+      `SELECT * FROM factory_module_installations
         WHERE status='active'
         ORDER BY name ASC, version ASC`,
     ).all() as ModuleInstallationRow[];

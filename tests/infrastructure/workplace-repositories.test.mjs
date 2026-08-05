@@ -36,7 +36,7 @@ function freshDb() {
   return db;
 }
 
-// Most v4 tables FK to v4_workplaces, so every repository test materializes
+// Most v4 tables FK to factory_workplaces, so every repository test materializes
 // the singleton workplace once. Pure-schema tests use freshDb() directly.
 function freshDbWithWorkplace() {
   const db = freshDb();
@@ -366,29 +366,29 @@ test('REG-17: recordCheckReceipt is append-only (UPDATE rejected by trigger)', (
   });
   // Direct UPDATE attempt — trigger must abort.
   assert.throws(
-    () => db.prepare("UPDATE v4_check_receipts SET outcome='failed' WHERE check_receipt_ref='cr-1'").run(),
+    () => db.prepare("UPDATE factory_check_receipts SET outcome='failed' WHERE check_receipt_ref='cr-1'").run(),
     /immutable/i,
   );
   db.close();
 });
 
-test('REG-18: v4_gate_decisions UPDATE rejected by trigger', () => {
+test('REG-18: factory_gate_decisions UPDATE rejected by trigger', () => {
   const db = freshDbWithWorkplace();
   const repo = new SqliteGateRepository(db);
   repo.recordDecision(makeDecision());
   assert.throws(
-    () => db.prepare("UPDATE v4_gate_decisions SET verdict='failed' WHERE decision_key='dk-1'").run(),
+    () => db.prepare("UPDATE factory_gate_decisions SET verdict='failed' WHERE decision_key='dk-1'").run(),
     /immutable/i,
   );
   db.close();
 });
 
-test('REG-18: v4_gate_decisions DELETE rejected by trigger', () => {
+test('REG-18: factory_gate_decisions DELETE rejected by trigger', () => {
   const db = freshDbWithWorkplace();
   const repo = new SqliteGateRepository(db);
   repo.recordDecision(makeDecision());
   assert.throws(
-    () => db.prepare("DELETE FROM v4_gate_decisions WHERE decision_key='dk-1'").run(),
+    () => db.prepare("DELETE FROM factory_gate_decisions WHERE decision_key='dk-1'").run(),
     /immutable/i,
   );
   db.close();

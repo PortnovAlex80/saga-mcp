@@ -177,7 +177,7 @@ function fail(errors: ValidationError[]): ValidationResult {
 /**
  * Pure, serializable reference to a single product produced by a node.
  *
- * `schemaId` is the schema identity (e.g. `'saga3.discovery-proposal.v1'`).
+ * `schemaId` is the schema identity (e.g. `'factory.discovery-proposal.v1'`).
  * `ref` is an opaque, module-owned artifact reference (e.g. `'proposal:141'`).
  * `digest` is the SHA-256 over the canonical product body — lowercase hex,
  * immutable, content-addressing the exact bytes.

@@ -162,50 +162,50 @@ const { hashDeliveryReleasePolicy } = await import(
 // consumed by development's inputMapping).
 // ---------------------------------------------------------------------------
 const DISCOVERY_PAYLOAD = Object.freeze({
-  schemaVersion: 'saga3.discovery-certificate.v1',
+  schemaVersion: 'factory.discovery-certificate.v1',
   outcome: 'go',
   evidenceRefs: ['log:discovery-1'],
 });
 const SOLUTION_CONTRACT_PAYLOAD = Object.freeze({
-  schemaVersion: 'saga3.solution-contract-certificate.v1',
+  schemaVersion: 'factory.solution-contract-certificate.v1',
   bundle: { acceptanceBaselineHash: 'a'.repeat(64) },
-  srs: { schema: 'saga3.srs.v1', ref: 'SRS:1', hash: 'b'.repeat(64) },
+  srs: { schema: 'factory.srs.v1', ref: 'SRS:1', hash: 'b'.repeat(64) },
   acceptanceCriteria: [
     { artifactId: 30, code: 'AC-1', acceptedHash: 'c'.repeat(64), implementationRequired: true },
   ],
 });
 const VERIFIED_BUNDLE_PAYLOAD = Object.freeze({
-  schemaVersion: 'saga3.verified-integration-bundle.v1',
+  schemaVersion: 'factory.verified-integration-bundle.v1',
   integratedCandidate: {
-    schema: 'saga3.integration-candidate.v1',
+    schema: 'factory.integration-candidate.v1',
     ref: 'IC:1',
     hash: 'd'.repeat(64),
   },
 });
 const RELEASE_RECORD_PAYLOAD = Object.freeze({
-  schemaVersion: 'saga3.release-record.v1',
+  schemaVersion: 'factory.release-record.v1',
   releaseRef: 'rel:1',
 });
 
 /** Per-module output contract + forward-going outcome + payload. */
 const MODULE_OUTPUTS = Object.freeze({
   'product-discovery': {
-    schema: 'saga3.discovery-certificate.v1',
+    schema: 'factory.discovery-certificate.v1',
     payload: DISCOVERY_PAYLOAD,
     outcome: 'go',
   },
   'solution-formalization': {
-    schema: 'saga3.solution-contract-certificate.v1',
+    schema: 'factory.solution-contract-certificate.v1',
     payload: SOLUTION_CONTRACT_PAYLOAD,
     outcome: 'formalized',
   },
   'solution-development': {
-    schema: 'saga3.verified-integration-bundle.v1',
+    schema: 'factory.verified-integration-bundle.v1',
     payload: VERIFIED_BUNDLE_PAYLOAD,
     outcome: 'verified',
   },
   'delivery-release': {
-    schema: 'saga3.release-record.v1',
+    schema: 'factory.release-record.v1',
     payload: RELEASE_RECORD_PAYLOAD,
     outcome: 'released',
   },
@@ -313,7 +313,7 @@ function buildProductDeliveryInput(subject) {
       mode: 'authorized',
       policy: deliveryPolicy,
       operatorAuthorization: {
-        schema: 'saga3.delivery-authorization.v1',
+        schema: 'factory.delivery-authorization.v1',
         ref: 'auth:1',
         hash: 'h'.repeat(64),
         requestedBy: 'operator',

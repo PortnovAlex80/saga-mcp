@@ -2,7 +2,7 @@
  * WorkItem projector tests (Conveyor v4, step 1.3).
  *
  * Target contract: REG-06 (Карточка — WorkItem projection). Verifies:
- *   - projectWorkItemsForRun derives cards from v4_workplaces.
+ *   - projectWorkItemsForRun derives cards from factory_workplaces.
  *   - projectWorkItem reads one card by exact ref.
  *   - rebuildAllWorkItems is idempotent (E2E-10: drop+rebuild reproduces
  *     both channels identically).
@@ -126,7 +126,7 @@ test('E2E-10: rebuild is identical (drop+rebuild reproduces both channels)', () 
 test('REG-06-AC-02: projector does not write to tasks (read-only)', () => {
   const db = dbWithWorkplace();
   // Count tasks rows before and after a projection read — must be unchanged.
-  // (The projector only SELECTs from v4_workplaces; it never touches tasks.)
+  // (The projector only SELECTs from factory_workplaces; it never touches tasks.)
   const before = db.prepare('SELECT COUNT(*) AS n FROM tasks').get().n;
   projectWorkItemsForRun(db, 42);
   projectWorkItem(db, REF);

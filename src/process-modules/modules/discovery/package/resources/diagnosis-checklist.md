@@ -5,7 +5,7 @@ Read diagnosis-call-{EPIC_ID}.json and verify EVERY item:
 ## Top-level fields
 - [ ] control_intent_id is an integer (like 10228, NOT "10228" or a string) — from diagnosis_get metadata
 - [ ] execution_id is a string in quotes
-- [ ] schema_version is exactly "saga3.discovery-diagnosis.v1"
+- [ ] schema_version is exactly "factory.discovery-diagnosis.v1"
 
 ## target (must match diagnosis_case.certificate EXACTLY)
 - [ ] payload.target.certificate_id is an integer matching diagnosis_case.certificate.id

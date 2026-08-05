@@ -3,9 +3,9 @@
  *
  * Spec: docs/refactor-management/09-contracts/WAVE3-DURABLE-EXECUTION-SPEC.md §7.
  *
- * Reuses the EXISTING `saga3_process_products` table (owned by the v1
+ * Reuses the EXISTING `factory_process_products` table (owned by the v1
  * `SqliteProcessProductRepository`). This adapter only:
- *   - ADDS `idx_saga3_process_products_schema_ref_hash` — an index on
+ *   - ADDS `idx_factory_process_products_schema_ref_hash` — an index on
  *     `(schema_id, artifact_ref, product_hash)` so the exact-by-ProductRef
  *     lookup is O(log n) instead of a full table scan. Idempotent
  *     (`CREATE INDEX IF NOT EXISTS`).
@@ -14,7 +14,7 @@
  *     `sqlite-process-run-repository.ts`).
  *
  * SQL OWNERSHIP: per spec §7/§9, W3-A6 is the single SQL writer for
- * `saga3_node_runs`; W3-A4 owns `saga3_process_products`. Both changes here are
+ * `factory_node_runs`; W3-A4 owns `factory_process_products`. Both changes here are
  * additive and idempotent; v1 read/write paths are untouched. No NOT NULL
  * enforcement (Wave 11 hardens); legacy v1 rows leave `node_id` NULL.
  *
@@ -35,9 +35,9 @@ import type {
   ProductRef,
 } from '../domain/spi/index.js';
 // Reuse the v1 table-creation function so there is exactly ONE definition of
-// the saga3_process_products base schema. This adapter only adds the v2 index
+// the factory_process_products base schema. This adapter only adds the v2 index
 // + node_id column on top.
-import { ensureSaga3ProcessProductSchema } from './sqlite-process-product-repository.js';
+import { ensureFactoryProcessProductSchema } from './sqlite-process-product-repository.js';
 import {
   PROCESS_PRODUCT_FIELD_REQUIRED,
   PROCESS_PRODUCT_INVALID_PROCESS_RUN_ID,
@@ -48,7 +48,7 @@ import {
 } from './process-product-repository-v2.js';
 
 /**
- * Ensure the v2 additions to `saga3_process_products` exist:
+ * Ensure the v2 additions to `factory_process_products` exist:
  *   1. the base table + v1 indexes (delegated to the v1 schema function);
  *   2. the v2 exact-lookup index `(schema_id, artifact_ref, product_hash)`;
  *   3. the nullable `node_id` column (additive ALTER, idempotent).
@@ -56,24 +56,24 @@ import {
  * Safe to call on every adapter construction and at the top of any handler that
  * touches the table. Idempotent throughout.
  */
-export function ensureSaga3ProcessProductV2Schema(db: Database.Database): void {
+export function ensureFactoryProcessProductV2Schema(db: Database.Database): void {
   // 1. Base table + v1 indexes (idempotent).
-  ensureSaga3ProcessProductSchema(db);
+  ensureFactoryProcessProductSchema(db);
 
   // 2. Exact-by-ProductRef index. (schema_id, artifact_ref, product_hash) is
   //    exactly the (schemaId, ref, digest) triple a ProductRef carries, so the
   //    getByProductRef query is a direct equality probe on this index.
   db.exec(`
-    CREATE INDEX IF NOT EXISTS idx_saga3_process_products_schema_ref_hash
-      ON saga3_process_products(schema_id, artifact_ref, product_hash);
+    CREATE INDEX IF NOT EXISTS idx_factory_process_products_schema_ref_hash
+      ON factory_process_products(schema_id, artifact_ref, product_hash);
   `);
 
   // 3. Nullable node_id column (additive). Guarded by a PRAGMA check so the
   //    ALTER runs at most once per database file, mirroring the column-add
   //    pattern in sqlite-process-run-repository.ts.
-  const columns = db.prepare('PRAGMA table_info(saga3_process_products)').all() as Array<{ name: string }>;
+  const columns = db.prepare('PRAGMA table_info(factory_process_products)').all() as Array<{ name: string }>;
   if (!columns.some((c) => c.name === 'node_id')) {
-    db.exec('ALTER TABLE saga3_process_products ADD COLUMN node_id TEXT');
+    db.exec('ALTER TABLE factory_process_products ADD COLUMN node_id TEXT');
   }
 }
 
@@ -89,17 +89,17 @@ export class SqliteProcessProductRepositoryV2 implements ProcessProductRepositor
 
   constructor(db: Database.Database = getDb()) {
     this.db = db;
-    ensureSaga3ProcessProductV2Schema(db);
+    ensureFactoryProcessProductV2Schema(db);
   }
 
   getByProductRef(ref: ProductRef): ProcessProductRecordV2 | null {
     // Exact match on the (schemaId, ref, digest) triple. The index
-    // idx_saga3_process_products_schema_ref_hash serves this probe directly.
+    // idx_factory_process_products_schema_ref_hash serves this probe directly.
     // No LIKE, no epic-scope fallback, no "latest" heuristic (§9.11).
     const row = this.db.prepare(
       `SELECT process_run_id, product_kind, schema_id, artifact_ref, product_hash,
               payload_snapshot, payload_hash, created_at, node_id
-         FROM saga3_process_products
+         FROM factory_process_products
         WHERE schema_id=? AND artifact_ref=? AND product_hash=?`,
     ).get(ref.schemaId, ref.ref, ref.digest) as ProcessProductV2Row | undefined;
     return row ? rowToV2Record(row) : null;
@@ -112,7 +112,7 @@ export class SqliteProcessProductRepositoryV2 implements ProcessProductRepositor
     const row = this.db.prepare(
       `SELECT process_run_id, product_kind, schema_id, artifact_ref, product_hash,
               payload_snapshot, payload_hash, created_at, node_id
-         FROM saga3_process_products
+         FROM factory_process_products
         WHERE artifact_ref=?`,
     ).get(artifactRef) as ProcessProductV2Row | undefined;
     return row ? rowToV2Record(row) : null;
@@ -170,7 +170,7 @@ export class SqliteProcessProductRepositoryV2 implements ProcessProductRepositor
     }
 
     this.db.prepare(
-      `INSERT INTO saga3_process_products
+      `INSERT INTO factory_process_products
         (process_run_id, product_kind, schema_id, artifact_ref, product_hash,
          payload_snapshot, payload_hash, node_id)
        VALUES (?,?,?,?,?,?,?,?)`,
@@ -203,7 +203,7 @@ export class SqliteProcessProductRepositoryV2 implements ProcessProductRepositor
     const row = this.db.prepare(
       `SELECT process_run_id, product_kind, schema_id, artifact_ref, product_hash,
               payload_snapshot, payload_hash, created_at, node_id
-         FROM saga3_process_products
+         FROM factory_process_products
         WHERE schema_id=? AND artifact_ref=?`,
     ).get(schemaId, artifactRef) as ProcessProductV2Row | undefined;
     return row ?? null;

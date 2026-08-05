@@ -36,7 +36,7 @@
 
 import { createHash } from 'node:crypto';
 
-import type { Saga3DiscoveryRuntimePersistence, SettlementInputKey, SettlementProposalRecord, IssueCertificateAtomicallyInput } from '../infrastructure/discovery-runtime-port.js';
+import type { FactoryDiscoveryRuntimePersistence, SettlementInputKey, SettlementProposalRecord, IssueCertificateAtomicallyInput } from '../infrastructure/discovery-runtime-port.js';
 import type { SettlementRecord, OutcomeCertificateRecord } from '../domain/discovery-settlement-records.js';
 import type { ReadinessAssessmentRecord } from '../domain/discovery-readiness-records.js';
 import type { ReadinessShadowResult } from '../domain/discovery-readiness-assessment.js';
@@ -136,8 +136,8 @@ export interface DiscoverySettlementService {
   settle(request: SettleRequest): Promise<DiscoverySettlementResult>;
 }
 
-export interface Saga3DiscoverySettlementServiceDependencies {
-  runtimePersistence: Saga3DiscoveryRuntimePersistence;
+export interface FactoryDiscoverySettlementServiceDependencies {
+  runtimePersistence: FactoryDiscoveryRuntimePersistence;
 }
 
 /**
@@ -155,8 +155,8 @@ export class SettlementValidationError extends Error {
 /**
  * Saga 3 implementation. Stateless beyond its persistence dependency.
  */
-export class Saga3DiscoverySettlementService implements DiscoverySettlementService {
-  constructor(private readonly deps: Saga3DiscoverySettlementServiceDependencies) {}
+export class FactoryDiscoverySettlementService implements DiscoverySettlementService {
+  constructor(private readonly deps: FactoryDiscoverySettlementServiceDependencies) {}
 
   async settle(request: SettleRequest): Promise<DiscoverySettlementResult> {
     const { runtimePersistence: rt } = this.deps;
@@ -525,7 +525,7 @@ export class Saga3DiscoverySettlementService implements DiscoverySettlementServi
    * considered not authoritatively issued and we throw.
    */
   private issueCertificate(
-    rt: Saga3DiscoveryRuntimePersistence,
+    rt: FactoryDiscoveryRuntimePersistence,
     settlementId: number,
     epicId: number,
     decision: 'go' | 'clarify' | 'reject',
@@ -616,7 +616,7 @@ export class Saga3DiscoverySettlementService implements DiscoverySettlementServi
    * the wrong ControlIntent/task.
    */
   private verifyReadinessLineage(
-    rt: Saga3DiscoveryRuntimePersistence,
+    rt: FactoryDiscoveryRuntimePersistence,
     assessment: ReadinessAssessmentRecord,
     proposal: SettlementProposalRecord,
   ): void {

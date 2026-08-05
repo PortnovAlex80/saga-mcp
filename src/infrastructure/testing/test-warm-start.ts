@@ -19,8 +19,8 @@ import path from 'node:path';
 
 import type { WorkplaceDesk } from '../../process-modules/application/pinned-workspace-materializer.js';
 
-const SCHEMA = 'saga3.test-warm-start-fixture.v1';
-const CACHE_SCHEMA = 'saga3.test-draft-cache-entry.v1';
+const SCHEMA = 'factory.test-warm-start-fixture.v1';
+const CACHE_SCHEMA = 'factory.test-draft-cache-entry.v1';
 const MODE = 'verify-and-submit-existing-draft' as const;
 
 interface DraftSpec {
@@ -397,7 +397,7 @@ export function applyTestWarmStart(
   );
   const receiptPath = path.join(executionDirectory, 'test-warm-start.json');
   const receipt = {
-    schemaVersion: 'saga3.test-warm-start-receipt.v2',
+    schemaVersion: 'factory.test-warm-start-receipt.v2',
     fixtureId: fixture.fixtureId,
     epicId: request.epicId,
     moduleRef: request.moduleRef,

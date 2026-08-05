@@ -2,7 +2,7 @@
 
 **Status:** Accepted  
 **Date:** 2026-08-06  
-**Relates to:** ADR-009, ADR-018, ADR-021, ADR-023,
+**Relates to:** ADR-027,
 `FACTORY-DOMAIN-ACCEPTANCE-REGISTRY.md`, `PARTIAL-RESET-AND-RESUME.md`
 
 ## Context
@@ -97,6 +97,6 @@ excuse to mark a production cell accepted.
 - **Expected:** deleting or changing one captured file makes verification fail.
 - **Expected:** importing the same manifest twice is idempotent; a different
   manifest under the same adoption key is rejected.
-- **Revisit when:** all legacy task readers in ADR-023 reach zero; CandidateSet
+- **Revisit when:** CandidateSet
   can then become the sole runtime checkpoint authority.
 - **Revisit by:** 2026-09-15.

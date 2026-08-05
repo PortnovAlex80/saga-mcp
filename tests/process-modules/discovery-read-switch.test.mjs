@@ -2,9 +2,9 @@
 //
 // Conveyor v4 step 3.B.3 — Discovery read-switch.
 //
-// Proves that SqliteSaga3DiscoveryRuntime.readTaskState / readCurrentExecutionId
+// Proves that SqliteFactoryDiscoveryRuntime.readTaskState / readCurrentExecutionId
 // / resumeNodeExecutionPlan read the ORCHESTRATION state (status /
-// current_execution_id) from the AUTHORITATIVE v4_workplaces when
+// current_execution_id) from the AUTHORITATIVE factory_workplaces when
 // SAGA_WORKPLACE_READ=new (cutover), not from the legacy tasks columns.
 
 import { test } from 'node:test';
@@ -20,7 +20,7 @@ process.env.DB_PATH = DB_PATH;
 import { SCHEMA_SQL } from '../../dist/schema.js';
 import { asWorkplaceRef, serializeWorkplaceRef } from '../../dist/process-modules/domain/workplace/workplace-ref.js';
 import { SqliteWorkplaceRepository } from '../../dist/infrastructure/workplace/sqlite-workplace-repository.js';
-import { SqliteSaga3DiscoveryRuntime } from '../../dist/modules/discovery/infrastructure/sqlite-discovery-runtime.js';
+import { SqliteFactoryDiscoveryRuntime } from '../../dist/modules/discovery/infrastructure/sqlite-discovery-runtime.js';
 
 // Set up the schema on the singleton DB before the runtime uses it.
 const { getDb, closeDb } = await import('../../dist/db.js');
@@ -84,7 +84,7 @@ test('legacy mode: readTaskState reads tasks.status', () => {
   // Re-import to reset module-level cutoverActive? It reads env at call time.
   
   seedEpicTask(db, { taskId: 101, taskStatus: 'in_progress' });
-  const rt = new SqliteSaga3DiscoveryRuntime();
+  const rt = new SqliteFactoryDiscoveryRuntime();
   assert.equal(rt.readTaskState(101), 'in_progress');
 });
 
@@ -93,7 +93,7 @@ test('3.B.3 cutover: readTaskState derives from workplace kanban_phase', () => {
   
   seedEpicTask(db, { taskId: 102, taskStatus: 'todo' }); // stale
   bindWorkplace(db, 102, 'terminal', 'done', 'accepted');
-  const rt = new SqliteSaga3DiscoveryRuntime();
+  const rt = new SqliteFactoryDiscoveryRuntime();
   assert.equal(rt.readTaskState(102), 'done', 'cutover reverse-projects done from v4');
 });
 
@@ -102,7 +102,7 @@ test('3.B.3 cutover: readTaskState shows in_progress when workplace loop=running
   
   seedEpicTask(db, { taskId: 103, taskStatus: 'done' }); // stale
   bindWorkplace(db, 103, 'running', 'in_progress');
-  const rt = new SqliteSaga3DiscoveryRuntime();
+  const rt = new SqliteFactoryDiscoveryRuntime();
   assert.equal(rt.readTaskState(103), 'in_progress', 'cutover trusts v4 loop=running over stale tasks.status=done');
 });
 
@@ -116,7 +116,7 @@ test('3.B.3 cutover: readCurrentExecutionId reads workplace active_reservation_r
     `INSERT INTO worker_executions (execution_id, run_id, project_id, epic_id, task_id, worker_id, machine_id, phase, metadata, lease_expires_at, heartbeat_at, progress_at, stuck_state)
      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
   ).run('res-104', 'r', 1, 1, 104, 'worker-104', 'm', 'executing', '{}', '2030-01-01', '2026-01-01', '2026-01-01', 'active');
-  const rt = new SqliteSaga3DiscoveryRuntime();
+  const rt = new SqliteFactoryDiscoveryRuntime();
   assert.equal(rt.readCurrentExecutionId(104), 'res-104');
 });
 
@@ -125,7 +125,7 @@ test('3.B.3 cutover: readCurrentExecutionId null when workplace loop=terminal', 
   
   seedEpicTask(db, { taskId: 105, taskStatus: 'in_progress' });
   bindWorkplace(db, 105, 'terminal', 'done', 'accepted', 'res-105');
-  const rt = new SqliteSaga3DiscoveryRuntime();
+  const rt = new SqliteFactoryDiscoveryRuntime();
   assert.equal(rt.readCurrentExecutionId(105), null, 'terminal workplace has no live execution');
 });
 
@@ -133,7 +133,7 @@ test('3.B.3 cutover: task without workplace binding falls back to tasks columns'
   process.env.SAGA_WORKPLACE_READ = 'new';
   
   seedEpicTask(db, { taskId: 106, taskStatus: 'review' }); // no workplace_ref
-  const rt = new SqliteSaga3DiscoveryRuntime();
+  const rt = new SqliteFactoryDiscoveryRuntime();
   assert.equal(rt.readTaskState(106), 'review', 'legacy task without binding falls back');
 });
 

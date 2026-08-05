@@ -17,7 +17,7 @@ start workers. Those are kernel/runtime responsibilities after authorization.
 
 1. Call `task_get({id: <assigned task id>})`.
 2. Read `task.metadata.process_node_input`. It is the immutable
-   `saga3.development-case.v1` frozen for this ProcessRun.
+   `factory.development-case.v1` frozen for this ProcessRun.
 3. Read `task.metadata.process_workspace` and use its exact paths:
    - `tracker_path`
    - `call_files`
@@ -38,8 +38,8 @@ the current frozen input.
 The call must invoke:
 
 - tool: `process_node_submit`
-- schema: `saga3.development-task-graph-proposal.v1`
-- payload.schemaVersion: `saga3.development-task-graph-proposal.v1`
+- schema: `factory.development-task-graph-proposal.v1`
+- payload.schemaVersion: `factory.development-task-graph-proposal.v1`
 
 The payload has three arrays:
 

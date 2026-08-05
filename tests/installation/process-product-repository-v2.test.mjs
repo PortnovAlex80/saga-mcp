@@ -64,7 +64,7 @@ function makeEnvelope({ schema, artifactRef, bindings, schemaId, lineage = [] })
 }
 
 function fixture() {
-  const temp = mkdtempSync(path.join(os.tmpdir(), 'saga3-product-v2-'));
+  const temp = mkdtempSync(path.join(os.tmpdir(), 'factory-product-v2-'));
   process.env.DB_PATH = path.join(temp, 'product-v2.db');
   const db = getDb();
   db.prepare(`INSERT INTO projects (id,name,status) VALUES (1,'P','active')`).run();
@@ -75,7 +75,7 @@ function fixture() {
     moduleRef: MODULE_REF,
     executorKind: 'generic-flow',
     input: {
-      schema: 'saga3.delivery-case.v1',
+      schema: 'factory.delivery-case.v1',
       payload: input,
       contentHash: sha256Hex(input),
     },
@@ -105,17 +105,17 @@ test('recordProduct persists a NodeProductionEnvelope and returns replayed:false
   const { temp, repo, processRunId } = fixture();
   try {
     const envelope = makeEnvelope({
-      schema: 'saga3.delivery-preflight.v1',
+      schema: 'factory.delivery-preflight.v1',
       artifactRef: 'preflight:42',
       bindings: { ok: true, checks: 7 },
-      schemaId: 'saga3.delivery-preflight-envelope.v1',
+      schemaId: 'factory.delivery-preflight-envelope.v1',
       lineage: [{ kind: 'node-run', ref: 'node-run:99' }],
     });
     const res = repo.recordProduct(envelope, processRunId, 'node.preflight');
     assert.equal(res.replayed, false);
     assert.equal(res.record.processRunId, processRunId);
     assert.equal(res.record.nodeId, 'node.preflight');
-    assert.equal(res.record.reference.schema, 'saga3.delivery-preflight.v1');
+    assert.equal(res.record.reference.schema, 'factory.delivery-preflight.v1');
     assert.equal(res.record.reference.ref, 'preflight:42');
     assert.equal(res.record.reference.hash, envelope.contentHash);
     assert.equal(res.record.payloadHash, sha256Hex(envelope.bindings));
@@ -133,10 +133,10 @@ test('getByProductRef returns the EXACT product matching (schemaId, ref, digest)
   const { temp, repo, processRunId } = fixture();
   try {
     const envelope = makeEnvelope({
-      schema: 'saga3.readiness-assessment.v1',
+      schema: 'factory.readiness-assessment.v1',
       artifactRef: 'readiness:77',
       bindings: { ready: true },
-      schemaId: 'saga3.readiness-envelope.v1',
+      schemaId: 'factory.readiness-envelope.v1',
     });
     repo.recordProduct(envelope, processRunId, 'node.readiness');
 
@@ -158,10 +158,10 @@ test('§9.11 invariant: getByProductRef with a WRONG digest returns null (no fal
   const { temp, repo, processRunId } = fixture();
   try {
     const envelope = makeEnvelope({
-      schema: 'saga3.normalization-proposal.v1',
+      schema: 'factory.normalization-proposal.v1',
       artifactRef: 'proposal:5',
       bindings: { problem: 'x' },
-      schemaId: 'saga3.normalization-envelope.v1',
+      schemaId: 'factory.normalization-envelope.v1',
     });
     repo.recordProduct(envelope, processRunId, 'node.normalize');
 
@@ -180,7 +180,7 @@ test('§9.11 invariant: getByProductRef for a MISSING product returns null (no e
   const { temp, repo } = fixture();
   try {
     const absent = {
-      schemaId: 'saga3.never-persisted.v1',
+      schemaId: 'factory.never-persisted.v1',
       ref: 'nope:1',
       digest: 'a'.repeat(64),
     };
@@ -196,15 +196,15 @@ test('§9.11 invariant: getByProductRef does NOT match a different schemaId with
   const { temp, repo, processRunId } = fixture();
   try {
     const envelope = makeEnvelope({
-      schema: 'saga3.diagnosis-report.v1',
+      schema: 'factory.diagnosis-report.v1',
       artifactRef: 'diag:3',
       bindings: { verdict: 'go' },
-      schemaId: 'saga3.diagnosis-envelope.v1',
+      schemaId: 'factory.diagnosis-envelope.v1',
     });
     repo.recordProduct(envelope, processRunId, 'node.diagnose');
 
     const crossSchema = {
-      schemaId: 'saga3.different-schema.v1',
+      schemaId: 'factory.different-schema.v1',
       ref: envelope.productRef.ref,
       digest: envelope.productRef.digest,
     };
@@ -218,10 +218,10 @@ test('replay: same envelope twice returns replayed:true with an equal record', (
   const { temp, repo, processRunId } = fixture();
   try {
     const envelope = makeEnvelope({
-      schema: 'saga3.settlement-input.v1',
+      schema: 'factory.settlement-input.v1',
       artifactRef: 'settle:9',
       bindings: { outcome: 'completed' },
-      schemaId: 'saga3.settlement-envelope.v1',
+      schemaId: 'factory.settlement-envelope.v1',
     });
     const first = repo.recordProduct(envelope, processRunId, 'node.settle');
     const second = repo.recordProduct(envelope, processRunId, 'node.settle');
@@ -240,19 +240,19 @@ test('replay mismatch: same (schema, ref) with a different digest throws', () =>
   const { temp, repo, processRunId } = fixture();
   try {
     const e1 = makeEnvelope({
-      schema: 'saga3.candidate.v1',
+      schema: 'factory.candidate.v1',
       artifactRef: 'cand:1',
       bindings: { v: 1 },
-      schemaId: 'saga3.candidate-envelope.v1',
+      schemaId: 'factory.candidate-envelope.v1',
     });
     repo.recordProduct(e1, processRunId, 'node.candidate');
 
     // Same (schema, artifactRef), different bindings → different contentHash.
     const e2 = makeEnvelope({
-      schema: 'saga3.candidate.v1',
+      schema: 'factory.candidate.v1',
       artifactRef: 'cand:1',
       bindings: { v: 2 },
-      schemaId: 'saga3.candidate-envelope.v1',
+      schemaId: 'factory.candidate-envelope.v1',
     });
     assert.throws(
       () => repo.recordProduct(e2, processRunId, 'node.candidate'),
@@ -273,10 +273,10 @@ test('getByArtifactRef resolves by the opaque artifact_ref string', () => {
   const { temp, repo, processRunId } = fixture();
   try {
     const envelope = makeEnvelope({
-      schema: 'saga3.publication.v1',
+      schema: 'factory.publication.v1',
       artifactRef: 'pub:abc',
       bindings: { released: true },
-      schemaId: 'saga3.publication-envelope.v1',
+      schemaId: 'factory.publication-envelope.v1',
     });
     repo.recordProduct(envelope, processRunId, 'node.publish');
 
@@ -298,10 +298,10 @@ test('recordProduct rejects an invalid processRunId', () => {
   const { temp, repo } = fixture();
   try {
     const envelope = makeEnvelope({
-      schema: 'saga3.observation.v1',
+      schema: 'factory.observation.v1',
       artifactRef: 'obs:1',
       bindings: { k: 1 },
-      schemaId: 'saga3.observation-envelope.v1',
+      schemaId: 'factory.observation-envelope.v1',
     });
     assert.throws(
       () => repo.recordProduct(envelope, 0, 'node.obs'),
@@ -319,10 +319,10 @@ test('recordProduct rejects an empty required field', () => {
   const { temp, repo, processRunId } = fixture();
   try {
     const envelope = makeEnvelope({
-      schema: 'saga3.observation.v1',
+      schema: 'factory.observation.v1',
       artifactRef: 'obs:2',
       bindings: { k: 1 },
-      schemaId: 'saga3.observation-envelope.v1',
+      schemaId: 'factory.observation-envelope.v1',
     });
     assert.throws(
       () => repo.recordProduct(envelope, processRunId, '   '),
@@ -343,10 +343,10 @@ test('schema is idempotent: the node_id column + index survive a second construc
   const { temp, db, processRunId } = fixture();
   try {
     const envelope = makeEnvelope({
-      schema: 'saga3.idempotent.v1',
+      schema: 'factory.idempotent.v1',
       artifactRef: 'idem:1',
       bindings: { n: 1 },
-      schemaId: 'saga3.idempotent-envelope.v1',
+      schemaId: 'factory.idempotent-envelope.v1',
     });
     const repo1 = new SqliteProcessProductRepositoryV2(db);
     repo1.recordProduct(envelope, processRunId, 'node.a');
@@ -357,13 +357,13 @@ test('schema is idempotent: the node_id column + index survive a second construc
     assert.equal(found.nodeId, 'node.a');
 
     // node_id column is present (additive ALTER happened exactly once).
-    const cols = db.prepare('PRAGMA table_info(saga3_process_products)').all()
+    const cols = db.prepare('PRAGMA table_info(factory_process_products)').all()
       .map((c) => c.name);
     assert.ok(cols.includes('node_id'), 'node_id column must exist');
 
     // The exact-lookup index is present.
     const idx = db.prepare(
-      "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_saga3_process_products_schema_ref_hash'",
+      "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_factory_process_products_schema_ref_hash'",
     ).get();
     assert.ok(idx, 'v2 exact-lookup index must exist');
   } finally {
@@ -379,22 +379,22 @@ test('multiple distinct products coexist in one run and each resolves by exact r
   try {
     const envs = [
       makeEnvelope({
-        schema: 'saga3.delivery-preflight.v1',
+        schema: 'factory.delivery-preflight.v1',
         artifactRef: 'preflight:1',
         bindings: { ok: true },
-        schemaId: 'saga3.delivery-preflight-envelope.v1',
+        schemaId: 'factory.delivery-preflight-envelope.v1',
       }),
       makeEnvelope({
-        schema: 'saga3.delivery-approval.v1',
+        schema: 'factory.delivery-approval.v1',
         artifactRef: 'approval:1',
         bindings: { status: 'approved' },
-        schemaId: 'saga3.delivery-approval-envelope.v1',
+        schemaId: 'factory.delivery-approval-envelope.v1',
       }),
       makeEnvelope({
-        schema: 'saga3.delivery-publication.v1',
+        schema: 'factory.delivery-publication.v1',
         artifactRef: 'publication:1',
         bindings: { released: true },
-        schemaId: 'saga3.delivery-publication-envelope.v1',
+        schemaId: 'factory.delivery-publication-envelope.v1',
       }),
     ];
     for (const e of envs) {

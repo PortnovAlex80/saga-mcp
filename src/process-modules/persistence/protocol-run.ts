@@ -18,12 +18,12 @@
  * `sqlite-protocol-run-repository.ts` (W4-A1, SQL OWNER).
  *
  * Two tables (spec §2, W4-A1 is the single SQL owner):
- *   - `saga3_protocol_runs`       — one row per active protocol per
+ *   - `factory_protocol_runs`       — one row per active protocol per
  *                                   (process_run_id, node_protocol_id). Partial
  *                                   UNIQUE index enforces at most one ACTIVE row
  *                                   per pair; paused/completed/failed/abandoned
  *                                   rows are kept for history.
- *   - `saga3_protocol_step_runs`  — one row per (protocol_run_id, step_id,
+ *   - `factory_protocol_step_runs`  — one row per (protocol_run_id, step_id,
  *                                   attempt) triple. The attempt counter lets a
  *                                   repeated/retried step carry fresh evidence
  *                                   without overwriting history.
@@ -38,7 +38,7 @@
 /**
  * Lifecycle status of a ProtocolRun row.
  *
- * Mirrors `saga3_protocol_runs.status` CHECK:
+ * Mirrors `factory_protocol_runs.status` CHECK:
  *   'active'     — protocol is executing (some step is in_progress or pending).
  *   'paused'     — protocol has been explicitly parked (pause-external recovery
  *                  action or human pause); resume re-enters at current_step.
@@ -58,7 +58,7 @@ export type ProtocolRunStatus = typeof PROTOCOL_RUN_STATUSES[number];
 /**
  * Lifecycle status of a single ProtocolStepRun row.
  *
- * Mirrors `saga3_protocol_step_runs.status` CHECK:
+ * Mirrors `factory_protocol_step_runs.status` CHECK:
  *   'pending'     — step row created but not yet started.
  *   'in_progress' — step is currently executing (advanceStep has fired).
  *   'completed'   — step finished and its required evidence was recorded.
@@ -79,7 +79,7 @@ export type ProtocolStepRunStatus = typeof PROTOCOL_STEP_RUN_STATUSES[number];
 // ---------------------------------------------------------------------------
 
 /**
- * One row of `saga3_protocol_runs`.
+ * One row of `factory_protocol_runs`.
  *
  * `nodeRunId` is nullable: a protocol may be started before its owning NodeRun
  * row is known (the runtime binds it once the NodeRun starts). `currentStep` is
@@ -110,7 +110,7 @@ export interface ProtocolRunRecord {
 }
 
 /**
- * One row of `saga3_protocol_step_runs`.
+ * One row of `factory_protocol_step_runs`.
  *
  * The (protocolRunId, stepId, attempt) triple is UNIQUE — a repeated/retried
  * step gets a fresh attempt number and therefore a fresh row, so evidence is

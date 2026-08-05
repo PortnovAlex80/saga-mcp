@@ -16,10 +16,10 @@ const { handlers } = await import('../../dist/tools/settlement-debug.js');
 const { SqliteProcessRunRepository } = await import(
   '../../dist/process-modules/persistence/sqlite-process-run-repository.js'
 );
-const { ensureSaga3ProcessOutcomeCertificateSchema } = await import(
+const { ensureFactoryProcessOutcomeCertificateSchema } = await import(
   '../../dist/process-modules/persistence/sqlite-process-outcome-certificate-repository.js'
 );
-const { ensureSaga3NodeRunSchema } = await import(
+const { ensureFactoryNodeRunSchema } = await import(
   '../../dist/process-modules/persistence/sqlite-node-run-repository.js'
 );
 
@@ -28,13 +28,13 @@ const EPIC_ID = 100;
 const PROCESS_RUN_ID = 5001;
 
 function fixture() {
-  const temp = mkdtempSync(path.join(os.tmpdir(), 'saga3-setdbg-'));
+  const temp = mkdtempSync(path.join(os.tmpdir(), 'factory-setdbg-'));
   process.env.DB_PATH = path.join(temp, 'setdbg.db');
   const db = getDb();
   // Ensure saga3 tables exist (lazily created by repos).
   new SqliteProcessRunRepository(db);
-  ensureSaga3ProcessOutcomeCertificateSchema(db);
-  ensureSaga3NodeRunSchema(db);
+  ensureFactoryProcessOutcomeCertificateSchema(db);
+  ensureFactoryNodeRunSchema(db);
 
   // Minimal project + epic.
   db.prepare(`INSERT INTO projects (id,name,status) VALUES (1,'P','active')`).run();
@@ -42,7 +42,7 @@ function fixture() {
 
   // ProcessRun — settled 'inconsistent'.
   db.prepare(`
-    INSERT INTO saga3_process_runs
+    INSERT INTO factory_process_runs
       (id, project_id, epic_id,
        module_name, module_version, module_ref_key,
        idempotency_key, executor_kind,
@@ -55,17 +55,17 @@ function fixture() {
     PROCESS_RUN_ID, PROJECT_ID, EPIC_ID,
     'product-formalization', '1.0.0', 'product-formalization@1.0.0',
     `idemp-${PROCESS_RUN_ID}`, 'generic-flow',
-    'saga3.formalization-case.v1', '{"epicId":100}', 'abc123',
+    'factory.formalization-case.v1', '{"epicId":100}', 'abc123',
     'completed', 'inconsistent', 'formalization_settlement_policy',
-    'saga3.formalization-certificate.v1',
-    'saga3_process_outcome_certificates:42',
+    'factory.formalization-certificate.v1',
+    'factory_process_outcome_certificates:42',
     'def456',
     new Date().toISOString(), new Date().toISOString(),
   );
 
   // Certificate — decision 'inconsistent', reason_codes with traceability-gap.
   db.prepare(`
-    INSERT INTO saga3_process_outcome_certificates
+    INSERT INTO factory_process_outcome_certificates
       (process_run_id, project_id, epic_id,
        module_name, module_version, module_ref_key, schema_version,
        decision, reason_codes, rationale, input_hash,
@@ -75,7 +75,7 @@ function fixture() {
   `).run(
     PROCESS_RUN_ID, PROJECT_ID, EPIC_ID,
     'product-formalization', '1.0.0', 'product-formalization@1.0.0',
-    'saga3.formalization-certificate.v1',
+    'factory.formalization-certificate.v1',
     'inconsistent',
     JSON.stringify(['traceability-gap']),
     'UC-1 is missing a covers edge to an FR artifact',
@@ -88,7 +88,7 @@ function fixture() {
 
   // NodeRun #1 — a clean resolve node (no gap).
   db.prepare(`
-    INSERT INTO saga3_node_runs
+    INSERT INTO factory_node_runs
       (id, process_run_id, node_id, node_kind, attempt, status,
        output_schema, output_hash, output_bindings,
        completion, completion_hash,
@@ -96,7 +96,7 @@ function fixture() {
     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
   `).run(
     6001, PROCESS_RUN_ID, 'resolve-product', 'kernel', 1, 'completed',
-    'saga3.formalization-manifest.v1', 'h1',
+    'factory.formalization-manifest.v1', 'h1',
     JSON.stringify({
       gap: null,
       unacceptedArtifactIds: [],
@@ -112,7 +112,7 @@ function fixture() {
 
   // NodeRun #2 — settlement node WITH a gap.
   db.prepare(`
-    INSERT INTO saga3_node_runs
+    INSERT INTO factory_node_runs
       (id, process_run_id, node_id, node_kind, attempt, status,
        output_schema, output_hash, output_bindings,
        completion, completion_hash,
@@ -120,7 +120,7 @@ function fixture() {
     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
   `).run(
     6002, PROCESS_RUN_ID, 'formalization-settlement-policy', 'kernel', 1, 'completed',
-    'saga3.formalization-manifest.v1', 'h2',
+    'factory.formalization-manifest.v1', 'h2',
     JSON.stringify({
       gap: 'UC-1 (id=20) has no covers edge to any FR',
       unacceptedArtifactIds: [],
@@ -133,7 +133,7 @@ function fixture() {
       outcome: 'inconsistent',
       terminal: true,
       outputEnvelope: {
-        certificateRef: { schema: 'saga3.formalization-certificate.v1', ref: 42, hash: 'def456' },
+        certificateRef: { schema: 'factory.formalization-certificate.v1', ref: 42, hash: 'def456' },
       },
     }),
     'comp-hash',
@@ -200,11 +200,11 @@ test('settlement_explain: returns full causal trace for an inconsistent run', ()
 });
 
 test('settlement_explain: throws for non-existent run', () => {
-  const temp = mkdtempSync(path.join(os.tmpdir(), 'saga3-setdbg-nf-'));
+  const temp = mkdtempSync(path.join(os.tmpdir(), 'factory-setdbg-nf-'));
   process.env.DB_PATH = path.join(temp, 'nf.db');
   try {
     const db = getDb();
-    new SqliteProcessRunRepository(db); // ensure saga3_process_runs exists
+    new SqliteProcessRunRepository(db); // ensure factory_process_runs exists
     assert.throws(
       () => handlers.settlement_explain({ process_run_id: 999999 }),
       /process_run 999999 not found/,
@@ -215,16 +215,16 @@ test('settlement_explain: throws for non-existent run', () => {
 });
 
 test('settlement_explain: handles run without certificate or node runs gracefully', () => {
-  const temp = mkdtempSync(path.join(os.tmpdir(), 'saga3-setdbg-empty-'));
+  const temp = mkdtempSync(path.join(os.tmpdir(), 'factory-setdbg-empty-'));
   process.env.DB_PATH = path.join(temp, 'empty.db');
   try {
     const db = getDb();
-    new SqliteProcessRunRepository(db); // ensure saga3_process_runs exists
+    new SqliteProcessRunRepository(db); // ensure factory_process_runs exists
     db.prepare(`INSERT INTO projects (id,name,status) VALUES (1,'P','active')`).run();
     db.prepare(`INSERT INTO epics (id,project_id,name) VALUES (100,1,'Form')`).run();
     // A run that's still 'running' — no certificate, no node runs yet.
     db.prepare(`
-      INSERT INTO saga3_process_runs
+      INSERT INTO factory_process_runs
         (id, project_id, epic_id,
          module_name, module_version, module_ref_key,
          idempotency_key, executor_kind,
@@ -235,7 +235,7 @@ test('settlement_explain: handles run without certificate or node runs gracefull
       7001, 1, 100,
       'product-formalization', '1.0.0', 'product-formalization@1.0.0',
       'idemp-7001', 'generic-flow',
-      'saga3.formalization-case.v1', '{}', 'x',
+      'factory.formalization-case.v1', '{}', 'x',
       'running',
       new Date().toISOString(), new Date().toISOString(),
     );

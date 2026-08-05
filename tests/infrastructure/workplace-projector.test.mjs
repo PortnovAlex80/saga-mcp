@@ -2,7 +2,7 @@
  * WorkplaceProjector dual-write tests (Conveyor v4, step 5.2).
  *
  * Verifies that the projector shadows legacy task status transitions into
- * v4_workplaces. Tests run with SAGA_WORKPLACE_WRITE=on so the projector
+ * factory_workplaces. Tests run with SAGA_WORKPLACE_WRITE=on so the projector
  * is active.
  */
 
@@ -14,14 +14,14 @@ import Database from 'better-sqlite3';
 process.env.SAGA_WORKPLACE_WRITE = 'on';
 
 import { SCHEMA_SQL } from '../../dist/schema.js';
-import { ensureSaga3ProcessRunSchema } from '../../dist/process-modules/persistence/sqlite-process-run-repository.js';
+import { ensureFactoryProcessRunSchema } from '../../dist/process-modules/persistence/sqlite-process-run-repository.js';
 import { WorkplaceProjector } from '../../dist/infrastructure/projections/workplace-projector.js';
 import { SqliteWorkplaceRepository } from '../../dist/infrastructure/workplace/sqlite-workplace-repository.js';
 
 function freshDb() {
   const db = new Database(':memory:');
   db.exec(SCHEMA_SQL);
-  ensureSaga3ProcessRunSchema(db);
+  ensureFactoryProcessRunSchema(db);
   return db;
 }
 
@@ -37,7 +37,7 @@ function makeSnapshot(status, overrides = {}) {
   };
 }
 
-test('5.2: projector creates v4_workplaces row on first claim (in_progress)', () => {
+test('5.2: projector creates factory_workplaces row on first claim (in_progress)', () => {
   const db = freshDb();
   const projector = new WorkplaceProjector(db);
   projector.projectStatusChange(makeSnapshot('in_progress'));

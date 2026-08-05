@@ -1,9 +1,9 @@
 {
   "tool": "process_node_submit",
   "arguments": {
-    "schema": "saga3.development-task-graph-proposal.v1",
+    "schema": "factory.development-task-graph-proposal.v1",
     "payload": {
-      "schemaVersion": "saga3.development-task-graph-proposal.v1",
+      "schemaVersion": "factory.development-task-graph-proposal.v1",
       "implementationItems": [
         {
           "key": "FILL_STABLE_IMPLEMENTATION_KEY",

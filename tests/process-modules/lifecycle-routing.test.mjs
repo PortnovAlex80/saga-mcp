@@ -301,7 +301,7 @@ test('F2: validator ignores literal and runtime mappings (no stage references)',
   assert.ok(discovery);
   discovery.inputMapping = {
     projectId: { runtime: 'projectId' },
-    schemaVersion: { literal: 'saga3.case.v1' },
+    schemaVersion: { literal: 'factory.case.v1' },
   };
   const validation = validateLifecycleDefinition(broken, registry);
   const refError = validation.errors

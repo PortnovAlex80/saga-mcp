@@ -9,7 +9,7 @@
  *
  * # The cutover model (step 5.2)
  *
- * After cutover, the LOOP channel (`v4_workplaces.loop_state`) is the
+ * After cutover, the LOOP channel (`factory_workplaces.loop_state`) is the
  * orchestration authority. The KANBAN channel (`tasks.status`) is a REVERSE
  * PROJECTION of the workplace's `kanbanPhase`, written ONLY here. This makes
  * `tasks` a rebuildable read model (REG-06-AC-01: "deleting the projection
@@ -18,7 +18,7 @@
  *
  * This module provides TWO projection directions:
  *
- *   FORWARD  (`projectStatusChange`): tasks.status → v4_workplaces. Used
+ *   FORWARD  (`projectStatusChange`): tasks.status → factory_workplaces. Used
  *             during the dual-write/shadow window (SAGA_WORKPLACE_WRITE=on)
  *             and by legacy callers that still drive tasks.status. After
  *             cutover, this is the path for legacy adapters only.

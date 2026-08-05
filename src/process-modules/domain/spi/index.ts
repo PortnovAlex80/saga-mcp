@@ -111,4 +111,4 @@ export * from './execution-receipt.js';
 // W1-A7 — ProcessModuleDefinition → ProcessModuleManifest adapter.
 // Pure adapter that wraps a definition into a manifest envelope. Used by
 // describePackage, extensibility tests, and the SPI conformance suite.
-export { adaptLegacyProcessModule, LEGACY_MANIFEST_FORMAT_VERSION } from './manifest-adapter.js';
+export { createProcessModuleManifest, MANIFEST_FORMAT_VERSION } from './manifest-factory.js';

@@ -12,7 +12,7 @@ const { SqliteProcessRunRepository } = await import(
 const { SqliteManagedProductionLedger } = await import(
   '../../dist/process-modules/persistence/sqlite-managed-production-ledger.js'
 );
-const { SqliteSaga3DiscoveryRuntime } = await import(
+const { SqliteFactoryDiscoveryRuntime } = await import(
   '../../dist/modules/discovery/infrastructure/sqlite-discovery-runtime.js'
 );
 const { sha256Hex } = await import(
@@ -20,7 +20,7 @@ const { sha256Hex } = await import(
 );
 
 function fixture() {
-  const temp = mkdtempSync(path.join(os.tmpdir(), 'saga3-managed-products-'));
+  const temp = mkdtempSync(path.join(os.tmpdir(), 'factory-managed-products-'));
   process.env.DB_PATH = path.join(temp, 'products.db');
   const db = getDb();
   db.prepare(`INSERT INTO projects (id,name,status) VALUES (1,'P','active')`).run();
@@ -30,7 +30,7 @@ function fixture() {
     moduleRef: { name: 'solution-formalization', version: '1.0.0' },
     executorKind: 'generic-flow',
     input: {
-      schema: 'saga3.formalization-case.v1',
+      schema: 'factory.formalization-case.v1',
       payload: input,
       contentHash: sha256Hex(input),
     },
@@ -366,7 +366,7 @@ test('producer replay selection follows completion receipts across ledger tables
     insertCompletion(reworkExecutionId, '4'.repeat(64));
 
     assert.equal(
-      new SqliteSaga3DiscoveryRuntime()
+      new SqliteFactoryDiscoveryRuntime()
         .readLatestManagedProductionExecutionId(
           f.taskId,
           f.processRun.id,
@@ -382,7 +382,7 @@ test('producer replay selection follows completion receipts across ledger tables
 test('projected tasks persist reviewer binding and reject reviewer rebinding', () => {
   const f = fixture();
   try {
-    const runtime = new SqliteSaga3DiscoveryRuntime();
+    const runtime = new SqliteFactoryDiscoveryRuntime();
     const input = {
       epicId: 10,
       projectId: 1,

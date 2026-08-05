@@ -1,7 +1,7 @@
 // tests/process-modules/protocol-run-persistence.test.mjs
 //
-// W4-A1 — ProtocolRun persistence (SQL OWNER for saga3_protocol_runs +
-// saga3_protocol_step_runs this wave).
+// W4-A1 — ProtocolRun persistence (SQL OWNER for factory_protocol_runs +
+// factory_protocol_step_runs this wave).
 //
 // Spec: docs/refactor-management/09-contracts/WAVE4-PROTOCOL-RECOVERY-SPEC.md §2.
 // Task: docs/refactor-management/05-subagent-tasks/W04-a1.md.
@@ -30,10 +30,10 @@
 //   - Persistence: tables survive DB reopen (dual-placement idempotency).
 //
 // ISOLATION NOTE: W4-A1 is the single SQL owner. This test constructs
-// SqliteProtocolRunRepository directly, which runs ensureSaga3ProtocolRunSchema
+// SqliteProtocolRunRepository directly, which runs ensureFactoryProtocolRunSchema
 // (fresh-DB path). The dual-placement in src/db.ts is exercised by the
 // "persists across DB reopen" test via getDb()/closeDb(). FK enforcement is
-// disabled for the temp DB (no saga3_process_runs parent row is created).
+// disabled for the temp DB (no factory_process_runs parent row is created).
 
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -55,7 +55,7 @@ function freshDb(prefix = 'saga-w4a1-') {
   const temp = mkdtempSync(path.join(os.tmpdir(), prefix));
   process.env.DB_PATH = path.join(temp, 'protocol.db');
   const db = getDb();
-  // saga3_protocol_runs REFERENCES saga3_process_runs; we test the protocol
+  // factory_protocol_runs REFERENCES factory_process_runs; we test the protocol
   // layer in isolation (no parent row), so disable FK enforcement.
   db.pragma('foreign_keys = OFF');
   return { db, temp, previous };
@@ -86,13 +86,13 @@ function indexNames(db, table) {
 // Schema tests.
 // ---------------------------------------------------------------------------
 
-test('schema: creates saga3_protocol_runs + saga3_protocol_step_runs after ctor', () => {
+test('schema: creates factory_protocol_runs + factory_protocol_step_runs after ctor', () => {
   const ctx = freshDb();
   try {
     // eslint-disable-next-line no-new
     new SqliteProtocolRunRepository(ctx.db);
 
-    const runCols = new Set(tableColumns(ctx.db, 'saga3_protocol_runs'));
+    const runCols = new Set(tableColumns(ctx.db, 'factory_protocol_runs'));
     assert.ok(runCols.has('id'));
     assert.ok(runCols.has('process_run_id'));
     assert.ok(runCols.has('node_run_id'));
@@ -106,7 +106,7 @@ test('schema: creates saga3_protocol_runs + saga3_protocol_step_runs after ctor'
     assert.ok(runCols.has('updated_at'));
     assert.ok(runCols.has('completed_at'));
 
-    const stepCols = new Set(tableColumns(ctx.db, 'saga3_protocol_step_runs'));
+    const stepCols = new Set(tableColumns(ctx.db, 'factory_protocol_step_runs'));
     assert.ok(stepCols.has('id'));
     assert.ok(stepCols.has('protocol_run_id'));
     assert.ok(stepCols.has('step_id'));
@@ -116,14 +116,14 @@ test('schema: creates saga3_protocol_runs + saga3_protocol_step_runs after ctor'
     assert.ok(stepCols.has('completed_at'));
     assert.ok(stepCols.has('created_at'));
 
-    const runIdx = indexNames(ctx.db, 'saga3_protocol_runs');
+    const runIdx = indexNames(ctx.db, 'factory_protocol_runs');
     assert.ok(
-      runIdx.includes('idx_saga3_protocol_runs_active'),
+      runIdx.includes('idx_factory_protocol_runs_active'),
       'partial UNIQUE active index must exist',
     );
-    const stepIdx = indexNames(ctx.db, 'saga3_protocol_step_runs');
+    const stepIdx = indexNames(ctx.db, 'factory_protocol_step_runs');
     assert.ok(
-      stepIdx.includes('idx_saga3_protocol_step_runs_protocol'),
+      stepIdx.includes('idx_factory_protocol_step_runs_protocol'),
       'step protocol index must exist',
     );
   } finally {
@@ -131,12 +131,12 @@ test('schema: creates saga3_protocol_runs + saga3_protocol_step_runs after ctor'
   }
 });
 
-test('schema: ensureSaga3ProtocolRunSchema is idempotent (ctor twice does not throw)', () => {
+test('schema: ensureFactoryProtocolRunSchema is idempotent (ctor twice does not throw)', () => {
   const ctx = freshDb();
   try {
     const repo = new SqliteProtocolRunRepository(ctx.db);
     assert.doesNotThrow(() => {
-      // Re-instantiate — runs ensureSaga3ProtocolRunSchema again.
+      // Re-instantiate — runs ensureFactoryProtocolRunSchema again.
       // eslint-disable-next-line no-new
       new SqliteProtocolRunRepository(ctx.db);
     });
@@ -341,7 +341,7 @@ test('advanceStep: cannot advance a completed protocol', () => {
     // Force the protocol terminal via raw SQL (the runtime owns terminal
     // transitions; the repository only needs to REFUSE to advance them).
     ctx.db.prepare(
-      `UPDATE saga3_protocol_runs SET status='completed', completed_at=datetime('now') WHERE id=?`,
+      `UPDATE factory_protocol_runs SET status='completed', completed_at=datetime('now') WHERE id=?`,
     ).run(run.id);
     assert.throws(
       () => repo.advanceStep({ protocolRunId: run.id, stepId: 's2' }),
@@ -666,7 +666,7 @@ test('persistence: protocol + step rows survive DB reopen', () => {
     });
     closeDb();
     // Reopen: getDb() runs the dual-placement in src/db.ts (guarded on
-    // saga3_process_runs existing) — it must be a no-op for our tables.
+    // factory_process_runs existing) — it must be a no-op for our tables.
     const db2 = getDb();
     db2.pragma('foreign_keys = OFF');
     const repo2 = new SqliteProtocolRunRepository(db2);

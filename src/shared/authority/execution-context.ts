@@ -23,7 +23,7 @@
 import { createHash } from 'node:crypto';
 
 /** Policy version baked into every snapshot. Bumped on shape-incompatible change. */
-export const EXECUTION_CONTEXT_POLICY_VERSION = 'saga3.execution.v1';
+export const EXECUTION_CONTEXT_POLICY_VERSION = 'factory.execution.v1';
 
 /**
  * Model route frozen into the snapshot. `provider`/`model`/`effort` mirror the

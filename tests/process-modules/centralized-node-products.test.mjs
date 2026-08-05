@@ -112,11 +112,11 @@ function gateContext() {
     },
     frame: {
       runInput: {
-        schemaVersion: 'saga3.development-case.v1',
+        schemaVersion: 'factory.development-case.v1',
         projectId: PROJECT_ID,
         epicId: EPIC_ID,
-        developmentCertificate: { decision: 'verified', hash: 'd'.repeat(64), ref: 'cert:1', schema: 'saga3.development-certificate.v1' },
-        solutionContract: { hash: 'c'.repeat(64), ref: 'contract:1', schema: 'saga3.formalization-solution-contract.v1' },
+        developmentCertificate: { decision: 'verified', hash: 'd'.repeat(64), ref: 'cert:1', schema: 'factory.development-certificate.v1' },
+        solutionContract: { hash: 'c'.repeat(64), ref: 'contract:1', schema: 'factory.formalization-solution-contract.v1' },
         acceptanceBaselineHash: 'a'.repeat(64),
         repositories: [],
         policy: { id: 'reference-development-policy', version: '1', contentHash: 'p'.repeat(64) },

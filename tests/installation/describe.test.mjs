@@ -8,7 +8,7 @@
  *
  * What this file proves:
  *   1. A `ModuleInstallationRecord` built from the 3rd synthetic fixture
- *      (`synthetic-compliance-check`) wrapped via `adaptLegacyProcessModule`
+ *      (`synthetic-compliance-check`) wrapped via `createProcessModuleManifest`
  *      + a fake `resourceIndex` (the fixture's declared resources) projects to
  *      the correct counts (resources/handlers/tools/capabilities), flow
  *      summary (node count, node kinds, outcomes), and contract refs.
@@ -48,7 +48,7 @@ import complianceCheckModule, {
 } from './fixtures/3rd-synthetic-module/definition.mjs';
 
 // Wave 1 SPI — legacy adapter (wraps the definition into a manifest envelope).
-const { adaptLegacyProcessModule } = await import(
+const { createProcessModuleManifest } = await import(
   '../../dist/process-modules/domain/spi/index.js'
 );
 
@@ -74,7 +74,7 @@ function fakeDigest(logicalId) {
  * Construct a fake `ModuleInstallationRecord` from the 3rd synthetic fixture:
  *
  *   1. Wrap the fixture's `ProcessModuleDefinition` via
- *      `adaptLegacyProcessModule` (Wave 1 SPI) → a `ProcessModuleManifest`
+ *      `createProcessModuleManifest` (Wave 1 SPI) → a `ProcessModuleManifest`
  *      envelope with empty `resourceIndex` / `handlerRefs` (the legacy adapter
  *      zeroes them; a real install resolves them — that's W2-A3's job).
  *   2. Build the record with:
@@ -95,7 +95,7 @@ function fakeDigest(logicalId) {
  * @returns {object}
  */
 function buildRecord(overrides = {}) {
-  const manifest = adaptLegacyProcessModule(complianceCheckModule);
+  const manifest = createProcessModuleManifest(complianceCheckModule);
 
   // Real-shaped resource index (what the installer would resolve post-install).
   const resourceIndex = complianceCheckResourceIndex.map((r) => ({
@@ -265,7 +265,7 @@ test('describeInstallation reflects record-level overrides (counts track record,
 
 test('describeInstallation surfaces toolCount/capabilityCount when the manifest declares them', () => {
   // Build a record whose manifestSnapshot declares toolContributions and
-  // capabilityRequirements. adaptLegacyProcessModule drops these (legacy
+  // capabilityRequirements. createProcessModuleManifest drops these (legacy
   // modules don't carry them), so we splice a richer manifest in directly.
   const baseRecord = buildRecord();
   const richManifest = {

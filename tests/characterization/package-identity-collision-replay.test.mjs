@@ -236,12 +236,12 @@ test('1d. GAP: registry is in-memory only — two instances are independent, no 
   assert.equal(b.list().length, 0);
   assert.equal(b.get(DISCOVERY_REF), null);
 
-  // WAVE 2 WILL FIX: there is no saga3_process_module_installations table.
+  // WAVE 2 WILL FIX: there is no factory_process_module_installations table.
   // Confirm absence in the canonical fresh-DB schema.
   const schemaSql = readSchemaSql();
   assert.ok(
-    !/saga3_process_module_installations/i.test(schemaSql),
-    'no persisted process_module_installations table today (plan §5.5.6 / baseline §"saga3_process_module_installations does NOT exist")',
+    !/factory_process_module_installations/i.test(schemaSql),
+    'no persisted process_module_installations table today (plan §5.5.6 / baseline §"factory_process_module_installations does NOT exist")',
   );
 });
 
@@ -403,7 +403,7 @@ test('3b. GAP: ledger is keyed by board/task vocab (processRunId/moduleRef/nodeI
 
     // Read back the actual table definition.
     const ddl = db
-      .prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='saga3_managed_artifact_productions'")
+      .prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='factory_managed_artifact_productions'")
       .get();
     const sql = String(ddl.sql);
     for (const col of [
@@ -417,13 +417,13 @@ test('3b. GAP: ledger is keyed by board/task vocab (processRunId/moduleRef/nodeI
     ]) {
       assert.ok(
         sql.includes(col),
-        `key column ${col} present in saga3_managed_artifact_productions`,
+        `key column ${col} present in factory_managed_artifact_productions`,
       );
     }
     // WAVE 3 CLEANUP TARGET: confirm the index that hard-codes this
     // composite board+process key.
     const idx = db
-      .prepare("SELECT sql FROM sqlite_master WHERE type='index' AND name='idx_saga3_managed_artifact_product_execution'")
+      .prepare("SELECT sql FROM sqlite_master WHERE type='index' AND name='idx_factory_managed_artifact_product_execution'")
       .get();
     assert.ok(
       String(idx?.sql ?? '').includes('intent_id')
@@ -547,7 +547,7 @@ test('5b. GAP: hashing is over mutable content, mutating that content changes th
   // Demonstrate by hashing two artifacts that differ only by one byte of
   // content. The hashes differ — there is no immutable byte-store today.
   const manifestA = {
-    schema: 'saga3.formalization-baseline.v1',
+    schema: 'factory.formalization-baseline.v1',
     artifactIds: [1, 2, 3],
     artifactHashes: ['h1', 'h2', 'h3'],
   };
@@ -617,7 +617,7 @@ test('6a. WAVE 2 CLOSED: ModulePackageStore PORT + FilesystemModulePackageStore 
   //
   // The characterization is flipped to ASSERT PRESENCE so the suite tracks the
   // closed gap (a "WAVE 2 WILL FIX" tag that is no longer a gap). The OTHER two
-  // sub-pins below (no saga3_process_module_installations SQL table; no replay
+  // sub-pins below (no factory_process_module_installations SQL table; no replay
   // method on ManagedProductionLedger) are STILL OPEN gaps and remain pinned.
   for (const sub of ['src/process-modules', 'dist/process-modules']) {
     const dir = path.join(root, sub);
@@ -631,12 +631,12 @@ test('6a. WAVE 2 CLOSED: ModulePackageStore PORT + FilesystemModulePackageStore 
     );
   }
 
-  // REMAINING GAP (still open): no saga3_process_module_installations table in
+  // REMAINING GAP (still open): no factory_process_module_installations table in
   // the canonical schema. Wave 2's bytes store is filesystem content-addressed,
   // not a SQL installation row.
   const schemaSql = readSchemaSql();
   assert.ok(
-    !/saga3_process_module_installations/i.test(schemaSql),
+    !/factory_process_module_installations/i.test(schemaSql),
     'no persisted installation table today — replay-bytes cannot be pinned to a SQL row',
   );
 
@@ -687,9 +687,9 @@ function readSchemaSql() {
 }
 
 function seedProcessRun(db, { epicId, projectId, moduleRef }) {
-  // Minimal seed for saga3_process_runs so the FK on the ledger is satisfied.
+  // Minimal seed for factory_process_runs so the FK on the ledger is satisfied.
   db.exec(`
-    CREATE TABLE IF NOT EXISTS saga3_process_runs (
+    CREATE TABLE IF NOT EXISTS factory_process_runs (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       project_id INTEGER NOT NULL,
       epic_id INTEGER,
@@ -706,7 +706,7 @@ function seedProcessRun(db, { epicId, projectId, moduleRef }) {
   `);
   const [name, version] = moduleRef.split('@');
   const info = db.prepare(
-    `INSERT INTO saga3_process_runs (project_id, epic_id, module_name, module_version, module_ref_key, executor_kind, input_hash, idempotency_key, status, initiated_by)
+    `INSERT INTO factory_process_runs (project_id, epic_id, module_name, module_version, module_ref_key, executor_kind, input_hash, idempotency_key, status, initiated_by)
      VALUES (?, ?, ?, ?, ?, 'generic-flow', ?, ?, 'completed', 'w0a5-test')`,
   ).run(projectId, epicId, name, version, moduleRef, '0'.repeat(64), `seed-${Math.random()}`);
   return Number(info.lastInsertRowid);
@@ -715,7 +715,7 @@ function seedProcessRun(db, { epicId, projectId, moduleRef }) {
 function insertArtifactLedgerRow(db, row) {
   ensureManagedProductionLedgerSchema(db);
   db.prepare(
-    `INSERT OR IGNORE INTO saga3_managed_artifact_productions
+    `INSERT OR IGNORE INTO factory_managed_artifact_productions
        (process_run_id, module_ref, node_id, intent_id, task_id, execution_id,
         artifact_id, artifact_type, artifact_status, content_hash, operation)
      VALUES (?,?,?,?,?,?,?,?,?,?,?)`,

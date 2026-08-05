@@ -56,7 +56,7 @@ export const DISCOVERY_CAP_MANAGED_PRODUCTION_LEDGER: CapabilityRequirement = {
  * The discovery-runtime persistence capability. Discovery's kernel handlers
  * read the immutable raw submission, the canonical Proposal, the
  * normalization/readiness/diagnosis rows, and the outcome certificate through
- * the `Saga3DiscoveryRuntimePersistence` port backed by this capability.
+ * the `FactoryDiscoveryRuntimePersistence` port backed by this capability.
  * Required: every resolver handler depends on it to materialize the exact
  * durable product for one (intent, task, execution).
  */

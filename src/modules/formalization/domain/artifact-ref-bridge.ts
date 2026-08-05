@@ -15,7 +15,7 @@
  *
  * The bridge solves this: the workplace product stores a REFERENCE to the
  * artifact, not the artifact body itself. The ProductRef's:
- *   - `schemaId` = `'saga3.artifact-ref.v1'`
+ *   - `schemaId` = `'factory.artifact-ref.v1'`
  *   - `ref` = `'artifact:<id>#<contentHash>'`
  *   - `digest` = the artifact's `content_hash`
  *
@@ -35,7 +35,7 @@
 import type { ProductRef } from '../../../process-modules/domain/spi/index.js';
 
 /** The schema id for an artifact-reference product on the universal desk. */
-export const ARTIFACT_REF_SCHEMA = 'saga3.artifact-ref.v1' as const;
+export const ARTIFACT_REF_SCHEMA = 'factory.artifact-ref.v1' as const;
 
 /**
  * Build a ProductRef that references an artifact BY ID + content-hash, without

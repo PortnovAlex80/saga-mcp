@@ -104,7 +104,7 @@ export const FLOW_NODE_KINDS: ReadonlySet<FlowNodeKind> = new Set([
 /**
  * Driver-neutral evidence that one physical node execution finished.
  *
- *   `schemaVersion` — the receipt schema id (e.g. `'saga3.driver-neutral-receipt.v1'`).
+ *   `schemaVersion` — the receipt schema id (e.g. `'factory.driver-neutral-receipt.v1'`).
  *   `nodeRunId`     — durable NodeRun id.
  *   `attempt`       — attempt number within the node run (1-based).
  *   `runtimeEvent`  — physical status: 'completed' | 'failed' | 'paused'.

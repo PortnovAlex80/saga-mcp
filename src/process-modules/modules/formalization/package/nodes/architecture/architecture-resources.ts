@@ -127,27 +127,27 @@ export const ARCHITECTURE_RESOURCE_ENTRIES: readonly ResourceIndexEntry[] = Obje
  */
 export const ARCHITECTURE_CONTRACT_REFS = {
   srs: {
-    schemaId: 'saga3.srs.v1',
+    schemaId: 'factory.srs.v1',
     version: '1.0.0',
     digest: 'pending@wave-2',
   },
   architectureBundle: {
-    schemaId: 'saga3.formalization-architecture-bundle.v1',
+    schemaId: 'factory.formalization-architecture-bundle.v1',
     version: '1.0.0',
     digest: 'pending@wave-2',
   },
   acceptanceBaseline: {
-    schemaId: 'saga3.acceptance-baseline-snapshot.v1',
+    schemaId: 'factory.acceptance-baseline-snapshot.v1',
     version: '1.0.0',
     digest: 'pending@wave-2',
   },
   architectureGate: {
-    schemaId: 'saga3.architecture-gate.v1',
+    schemaId: 'factory.architecture-gate.v1',
     version: '1.0.0',
     digest: 'pending@wave-2',
   },
   recoveryIssue: {
-    schemaId: 'saga3.recovery-issue.v1',
+    schemaId: 'factory.recovery-issue.v1',
     version: '1.0.0',
     digest: 'pending@wave-2',
   },

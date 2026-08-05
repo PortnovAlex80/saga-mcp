@@ -829,7 +829,7 @@ export class ClaudeBoardRunner {
       // The set MUST stay in sync with the builtin names that Process Module
       // profiles put inside authority_scope.allowed_tools "for documentation and
       // skill sync, not for gateway enforcement" (the retired
-      // saga3-discovery-engine DISCOVERY_ALLOWED_TOOLS was the historical source
+      // factory-discovery-engine DISCOVERY_ALLOWED_TOOLS was the historical source
       // of this list; the engine is gone but the canonical surface lives on in
       // capability-enforcement.ts).
       const DEFAULT_BUILTIN = ['Bash', 'Read', 'Write', 'Edit', 'Glob', 'Grep', 'MultiEdit', 'Task'];

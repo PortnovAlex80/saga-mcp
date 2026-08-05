@@ -60,10 +60,10 @@ function contractRef(schemaId: string, version: string): ContractRef {
  * The module's input contract: one `DeliveryReleaseCase` binding a verified
  * Development certificate and integrated candidate to either an authorized
  * immutable release policy or an explicit content-addressed deferred profile.
- * Matches `saga3.delivery-release-case.v2`.
+ * Matches `factory.delivery-release-case.v2`.
  */
 export const DELIVERY_INPUT_CONTRACT: ContractRef = contractRef(
-  'saga3.delivery-release-case.v2',
+  'factory.delivery-release-case.v2',
   '1.0.0',
 );
 
@@ -74,61 +74,61 @@ export const DELIVERY_INPUT_CONTRACT: ContractRef = contractRef(
 /**
  * Output contract of the `preflight-release` kernel node: the complete
  * deterministic release-guard evidence snapshot for the exact certified
- * candidate. Matches `saga3.delivery-preflight.v1`.
+ * candidate. Matches `factory.delivery-preflight.v1`.
  */
 export const DELIVERY_PREFLIGHT_BUNDLE_CONTRACT: ContractRef = contractRef(
-  'saga3.delivery-preflight.v1',
+  'factory.delivery-preflight.v1',
   '1.0.0',
 );
 
 /**
  * Output contract of the `approve-release` human node: the authorized decision
  * bound to the candidate, preflight snapshot and release policy. Matches
- * `saga3.delivery-approval-decision.v1`.
+ * `factory.delivery-approval-decision.v1`.
  */
 export const DELIVERY_APPROVAL_BUNDLE_CONTRACT: ContractRef = contractRef(
-  'saga3.delivery-approval-decision.v1',
+  'factory.delivery-approval-decision.v1',
   '1.0.0',
 );
 
 /**
  * Output contract of the `publish-deploy` external node: the durable
  * desired-state action receipts, including uncertain external responses.
- * Matches `saga3.delivery-publication.v1`.
+ * Matches `factory.delivery-publication.v1`.
  */
 export const DELIVERY_PUBLICATION_BUNDLE_CONTRACT: ContractRef = contractRef(
-  'saga3.delivery-publication.v1',
+  'factory.delivery-publication.v1',
   '1.0.0',
 );
 
 /**
  * Output contract of the `observe-release` external node: the authoritative
  * post-action state observations used to settle external effects safely.
- * Matches `saga3.delivery-observation.v1`.
+ * Matches `factory.delivery-observation.v1`.
  */
 export const DELIVERY_OBSERVATION_BUNDLE_CONTRACT: ContractRef = contractRef(
-  'saga3.delivery-observation.v1',
+  'factory.delivery-observation.v1',
   '1.0.0',
 );
 
 /**
  * The intermediate settlement-input contract the settlement handler assembles
  * from the durable preflight/approval/publication/observation productions plus
- * the current candidate hash. Matches `saga3.delivery-settlement-input.v1`.
+ * the current candidate hash. Matches `factory.delivery-settlement-input.v1`.
  */
 export const DELIVERY_SETTLEMENT_INPUT_CONTRACT: ContractRef = contractRef(
-  'saga3.delivery-settlement-input.v1',
+  'factory.delivery-settlement-input.v1',
   '1.0.0',
 );
 
 /**
  * Output contract of the canonical ReleaseRecord — the externally-visible
  * record of every observed release destination for the certified candidate.
- * Matches `saga3.release-record.v1`. The manifest (W9-A5) carries this as
+ * Matches `factory.release-record.v1`. The manifest (W9-A5) carries this as
  * `outputContractRef`.
  */
 export const DELIVERY_RELEASE_RECORD_CONTRACT: ContractRef = contractRef(
-  'saga3.release-record.v1',
+  'factory.release-record.v1',
   '1.0.0',
 );
 
@@ -139,21 +139,21 @@ export const DELIVERY_RELEASE_RECORD_CONTRACT: ContractRef = contractRef(
 /**
  * The module's terminal certificate contract: the immutable delivery
  * settlement decision and exact product-lineage hashes. Matches
- * `saga3.delivery-certificate.v2`. Emitted on every terminal outcome
+ * `factory.delivery-certificate.v2`. Emitted on every terminal outcome
  * (released / approval-required / blocked / failed).
  */
 export const DELIVERY_OUTPUT_CONTRACT: ContractRef = contractRef(
-  'saga3.delivery-certificate.v2',
+  'factory.delivery-certificate.v2',
   '1.0.0',
 );
 
 /**
  * The certificate payload contract the generic ProcessOutcomeCertificate layer
  * wraps around the delivery decision. Matches
- * `saga3.delivery-certificate.generic.v1`.
+ * `factory.delivery-certificate.generic.v1`.
  */
 export const DELIVERY_CERTIFICATE_CONTRACT: ContractRef = contractRef(
-  'saga3.delivery-certificate.generic.v1',
+  'factory.delivery-certificate.generic.v1',
   '1.0.0',
 );
 

@@ -1,6 +1,6 @@
 /**
  * DiscoveryOutcomeCertificateProjection — projects a Discovery D4 certificate
- * (OutcomeCertificateRecord from saga3_discovery_outcome_certificates) into the
+ * (OutcomeCertificateRecord from factory_discovery_outcome_certificates) into the
  * generic ProcessOutcomeCertificate shape ON THE FLY.
  *
  * This is a PROJECTION, not a copy. The discovery table remains the single
@@ -45,7 +45,7 @@ type SqliteDb = {
 // CONVEYOR Wave 7 — saga3 cross-tree leak elimination: OutcomeCertificateRecord
 // is now declared locally in the discovery module (byte-identical to the saga3
 // original). The readOutcomeCertificate SQL was inlined from
-// src/saga3/persistence/saga3-settlement-repository.ts so this projection no
+// src/saga3/persistence/factory-settlement-repository.ts so this projection no
 // longer reaches outside src/process-modules/.
 import type { OutcomeCertificateRecord } from '../domain/discovery-domain-contracts.js';
 import { DISCOVERY_PROCESS_MODULE_REF } from '../../../process-modules/modules/discovery/discovery-process-module.js';
@@ -59,14 +59,14 @@ import type { ProcessOutcomeCertificate } from '../../../process-modules/persist
  * certificate_payload column (canonical JSON parsed back to an object).
  */
 export const DISCOVERY_GENERIC_CERTIFICATE_SCHEMA_VERSION =
-  'saga3.discovery-outcome-certificate.generic.v1';
+  'factory.discovery-outcome-certificate.generic.v1';
 
 // ---------------------------------------------------------------------------
 // Inlined readOutcomeCertificate (Wave 7 saga3 leak elimination).
 //
 // Previously imported from
-// src/saga3/persistence/saga3-settlement-repository.ts. That function is a
-// single read-only SELECT over saga3_discovery_outcome_certificates + a
+// src/saga3/persistence/factory-settlement-repository.ts. That function is a
+// single read-only SELECT over factory_discovery_outcome_certificates + a
 // row-to-record mapping. Inlined here verbatim so the projection no longer
 // reaches outside src/process-modules/. The saga3 layer keeps its own copy.
 // ---------------------------------------------------------------------------
@@ -120,7 +120,7 @@ function readDiscoveryOutcomeCertificate(
   certificateId: number,
 ): OutcomeCertificateRecord | null {
   const row = db.prepare(
-    'SELECT * FROM saga3_discovery_outcome_certificates WHERE id=?',
+    'SELECT * FROM factory_discovery_outcome_certificates WHERE id=?',
   ).get(certificateId) as DiscoveryCertificateRow | undefined;
   return row ? discoveryCertificateRowToRecord(row) : null;
 }
@@ -140,7 +140,7 @@ export function projectDiscoveryCertificate(
     // Discovery certificates predate ProcessRun rows. processRunId is synthetic:
     // we encode the discovery-internal lineage so the generic surface can still
     // point back. Format: negative id namespace reserved for projections
-    // (positive ids are real saga3_process_outcome_certificates rows).
+    // (positive ids are real factory_process_outcome_certificates rows).
     processRunId: -cert.id,
     moduleRef: { ...DISCOVERY_PROCESS_MODULE_REF },
     moduleRefKey: processModuleKey(DISCOVERY_PROCESS_MODULE_REF),
@@ -197,7 +197,7 @@ export class DiscoveryOutcomeCertificateProjection {
    */
   readByEpic(epicId: number, projectId: number): ProcessOutcomeCertificate | null {
     const row = this.db.prepare(
-      `SELECT * FROM saga3_discovery_outcome_certificates WHERE epic_id=? ORDER BY id DESC LIMIT 1`,
+      `SELECT * FROM factory_discovery_outcome_certificates WHERE epic_id=? ORDER BY id DESC LIMIT 1`,
     ).get(epicId) as { id: number } | undefined;
     if (!row) return null;
     return this.read(row.id, projectId);

@@ -1,6 +1,6 @@
 // tests/application/find-next-claimable-cutover.test.mjs
 //
-// Conveyor v4 step 5.2 — findNextClaimable queue gate is v4_workplaces in
+// Conveyor v4 step 5.2 — findNextClaimable queue gate is factory_workplaces in
 // cutover mode (REG-10-AC-01: "queue consists of Workplace with
 // loopState=queued").
 //
@@ -93,8 +93,8 @@ test('REG-10-AC-01 cutover: task with workplace loop=running + active execution 
      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
   ).run('active-exec', 'r', projectId, 1, 1, 'w', 'm', 'executing', '{}', '2030-01-01', '2026-01-01', '2026-01-01', 'active');
   // Bind the reservation ref so the orphan-check sees the active execution.
-  const cur = db.prepare(`SELECT revision FROM v4_workplaces WHERE workplace_ref=?`).get(serializeWorkplaceRef(ref));
-  db.prepare(`UPDATE v4_workplaces SET active_reservation_ref='active-exec' WHERE workplace_ref=?`).run(serializeWorkplaceRef(ref));
+  const cur = db.prepare(`SELECT revision FROM factory_workplaces WHERE workplace_ref=?`).get(serializeWorkplaceRef(ref));
+  db.prepare(`UPDATE factory_workplaces SET active_reservation_ref='active-exec' WHERE workplace_ref=?`).run(serializeWorkplaceRef(ref));
 
   const task = findNextClaimable(db, 'w-1', projectId);
   assert.equal(task, null, 'NOT claimable — workplace loop=running with active execution');

@@ -72,7 +72,7 @@ export class SqliteCandidateSetRepository {
 
     const workplaceSerialized = serializeWorkplaceRef(input.workplaceRef);
     const existing = this.db.prepare(
-      'SELECT candidate_set_digest FROM v4_candidate_sets WHERE candidate_set_ref=?',
+      'SELECT candidate_set_digest FROM factory_candidate_sets WHERE candidate_set_ref=?',
     ).get(candidateSetRef) as { candidate_set_digest: string } | undefined;
     if (existing) {
       if (existing.candidate_set_digest !== input.candidateSetDigest) {
@@ -85,7 +85,7 @@ export class SqliteCandidateSetRepository {
     }
 
     this.db.prepare(
-      `INSERT INTO v4_candidate_sets
+      `INSERT INTO factory_candidate_sets
          (candidate_set_ref, workplace_ref, producer_execution_ref, role,
           subject_candidate_set_ref, candidate_set_digest, seal_receipt_ref, sealed_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -100,7 +100,7 @@ export class SqliteCandidateSetRepository {
       input.sealedAt,
     );
     const insertMember = this.db.prepare(
-      `INSERT INTO v4_candidate_set_members
+      `INSERT INTO factory_candidate_set_members
          (candidate_set_ref, ordinal, product_schema, product_ref, product_digest,
           origin, source_candidate_set_ref)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
@@ -126,7 +126,7 @@ export class SqliteCandidateSetRepository {
    */
   read(candidateSetRef: string): CandidateSet | null {
     const row = this.db.prepare(
-      `SELECT * FROM v4_candidate_sets WHERE candidate_set_ref=?`,
+      `SELECT * FROM factory_candidate_sets WHERE candidate_set_ref=?`,
     ).get(candidateSetRef) as
       | {
           candidate_set_ref: string;
@@ -142,7 +142,7 @@ export class SqliteCandidateSetRepository {
     if (!row) return null;
     const memberRows = this.db.prepare(
       `SELECT product_schema, product_ref, product_digest, origin, source_candidate_set_ref
-         FROM v4_candidate_set_members
+         FROM factory_candidate_set_members
         WHERE candidate_set_ref=?
         ORDER BY ordinal`,
     ).all(candidateSetRef) as Array<{

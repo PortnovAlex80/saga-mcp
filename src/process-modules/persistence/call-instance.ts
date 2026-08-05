@@ -20,7 +20,7 @@
  * lives in `sqlite-call-instance-repository.ts` (W5-A2, SQL OWNER).
  *
  * One table (spec §2, W5-A2 is the single SQL owner):
- *   - `saga3_call_instances` — one row per (process_run, step, tool_contract,
+ *   - `factory_call_instances` — one row per (process_run, step, tool_contract,
  *     attempt) call. The attempt counter lets a retried call carry a fresh row
  *     without overwriting the failed draft (C029: same draft preserved for
  *     progressive correction means the runtime re-edits the SAME row when it
@@ -59,7 +59,7 @@
 /**
  * Lifecycle status of a CallInstance row.
  *
- * Mirrors `saga3_call_instances.status` CHECK:
+ * Mirrors `factory_call_instances.status` CHECK:
  *   'materialized' — row created BEFORE submission (C028). No draft yet, or a
  *                    draft just attached via updateDraft.
  *   'edited'       — a draft (draft_content_hash) has been attached/updated.
@@ -118,7 +118,7 @@ export const CALL_INSTANCE_TRANSITIONS: Record<string, readonly CallInstanceStat
 // ---------------------------------------------------------------------------
 
 /**
- * One row of `saga3_call_instances`.
+ * One row of `factory_call_instances`.
  *
  * `protocolRunId`, `stepId`, and `workspacePath` are nullable because a call
  * may be materialized before the owning protocol/step/workspace is known (the

@@ -307,7 +307,7 @@ function buildModuleCompletionAndEnvelope() {
     contentHash: '0'.repeat(64),
     bindings: { source: 'roundtrip-fixture' },
     // Envelope wrapper fields (plan §7.6)
-    schemaId: 'saga3.node-production-envelope.v1',
+    schemaId: 'factory.node-production-envelope.v1',
     productRef: {
       schemaId: 'synthetic.roundtrip.production.v1',
       ref: 'production-1',
@@ -359,7 +359,7 @@ function buildExecutionContextEnvelope() {
  */
 function buildDriverNeutralExecutionReceipt() {
   return {
-    schemaVersion: 'saga3.driver-neutral-receipt.v1',
+    schemaVersion: 'factory.driver-neutral-receipt.v1',
     nodeRunId: 7,
     attempt: 1,
     runtimeEvent: 'completed',

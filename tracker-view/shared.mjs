@@ -212,16 +212,6 @@ export function resolveProjectWorkspace(project) {
   }
   candidates.push(path.join(DEV_ROOT, project.name));
 
-  try {
-    for (const entry of readdirSync(DEV_ROOT, { withFileTypes: true })) {
-      if (!entry.isDirectory()) continue;
-      const root = path.join(DEV_ROOT, entry.name);
-      const marker = path.join(root, 'projectname.txt');
-      if (!existsSync(marker)) continue;
-      if (readFileSync(marker, 'utf8').trim() === project.name) candidates.push(root);
-    }
-  } catch {}
-
   return candidates.find(candidate => existsSync(candidate)) || null;
 }
 

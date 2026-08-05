@@ -9,7 +9,7 @@ Use the assigned `project_id`, `epic_id` and `project_repository_id`. A product
 may contain many repositories but has one Saga project and one board. Never
 create or target a separate requirements/builders project. Register artifacts
 with the task's product, epic and repository binding. `.saga/project.json` is
-canonical; `projectname.txt` is legacy fallback only.
+canonical; without it, stop and use `saga-start`.
 
 # saga-product — Product Owner (владелец продукта)
 

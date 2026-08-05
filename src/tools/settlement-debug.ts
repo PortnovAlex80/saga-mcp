@@ -4,8 +4,8 @@
 // When a ProcessRun settles with decision `inconsistent` or `clarification-required`,
 // the operator (human or LLM agent) asks "WHY?" — what check failed, which artifact
 // has a broken trace edge, which gap caused the decision. The answer IS in the database
-// (saga3_node_runs.output_bindings contains per-node `gap` strings;
-// saga3_process_outcome_certificates contains decision + reason_codes + rationale),
+// (factory_node_runs.output_bindings contains per-node `gap` strings;
+// factory_process_outcome_certificates contains decision + reason_codes + rationale),
 // but NO tool exposed it. This tool closes that observability gap by joining the
 // causal chain from ProcessRun → certificate → per-node bindings into one structured trace.
 //
@@ -69,7 +69,7 @@ function handleSettlementExplain(args: Record<string, unknown>): unknown {
            output_schema, output_ref, output_hash,
            certificate_schema, certificate_ref, certificate_hash,
            error, active_issue_ref, active_issue_hash
-      FROM saga3_process_runs WHERE id = ?
+      FROM factory_process_runs WHERE id = ?
   `).get(processRunId) as Record<string, unknown> | undefined;
   if (!run) throw new Error(`process_run ${processRunId} not found`);
 
@@ -80,7 +80,7 @@ function handleSettlementExplain(args: Record<string, unknown>): unknown {
       SELECT id, process_run_id, decision, reason_codes, rationale,
              input_hash, certificate_payload, certificate_hash,
              authority, issued_at
-        FROM saga3_process_outcome_certificates WHERE process_run_id = ?
+        FROM factory_process_outcome_certificates WHERE process_run_id = ?
     `).get(processRunId) as Record<string, unknown> | undefined;
     if (cert) {
       certificate = {
@@ -107,7 +107,7 @@ function handleSettlementExplain(args: Record<string, unknown>): unknown {
              output_schema, output_hash, output_bindings,
              completion, completion_hash,
              execution_receipt
-        FROM saga3_node_runs WHERE process_run_id = ? ORDER BY id ASC
+        FROM factory_node_runs WHERE process_run_id = ? ORDER BY id ASC
     `).all(processRunId) as Record<string, unknown>[];
     nodeTrace = rows.map(row => decodeNodeRun(row));
   } catch {
@@ -116,13 +116,13 @@ function handleSettlementExplain(args: Record<string, unknown>): unknown {
 
   // 4. Discovery-specific settlement (richer: full input snapshot).
   let discoverySettlement = null;
-  if (run.module_ref_key === 'discovery' || run.module_ref_key === 'saga3.discovery') {
+  if (run.module_ref_key === 'discovery' || run.module_ref_key === 'factory.discovery') {
     try {
       const ds = db.prepare(`
         SELECT ds.decision, ds.reason_codes, ds.rationale,
                ds.input_snapshot, ds.policy_version, ds.policy_hash,
                ds.settlement_hash
-          FROM saga3_discovery_settlements ds
+          FROM factory_discovery_settlements ds
          WHERE ds.process_run_id = ?
          ORDER BY ds.id DESC LIMIT 1
       `).get(processRunId) as Record<string, unknown> | undefined;
@@ -235,7 +235,7 @@ function extractCausalFields(bindings: Record<string, unknown>): Record<string, 
 
 /**
  * Drill into completion.outputEnvelope.certificateRef — the content-addressed
- * pointer to the saga3_process_outcome_certificates row this node produced.
+ * pointer to the factory_process_outcome_certificates row this node produced.
  */
 function extractCertificateRef(completion: Record<string, unknown>): unknown {
   const env = completion.outputEnvelope;

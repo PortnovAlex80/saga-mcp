@@ -24,7 +24,7 @@ import type {
  * boundary for Saga 3. Every read/write the engine needs (epic objective,
  * WorkIntent lifecycle, projected board task, task status, latest proposal)
  * is expressed here as a narrow method. The SQLite adapter
- * (sqlite-saga3-discovery-runtime.ts) is the only implementation; the engine
+ * (sqlite-factory-discovery-runtime.ts) is the only implementation; the engine
  * depends on this interface so it stays pure orchestration logic and is
  * replaceable / testable with a fake.
  *
@@ -39,7 +39,7 @@ export type PrepareIntentForExecutionResult =
   | { state: 'blocked'; intentStatus: 'paused'; taskStatus: 'blocked'; detail: string }
   | { state: 'done'; intentStatus: WorkIntentStatus; taskStatus: 'done' };
 
-export interface Saga3DiscoveryRuntimePersistence {
+export interface FactoryDiscoveryRuntimePersistence {
   /** Read the epic's name + description (the discovery objective source). */
   readEpicObjective(epicId: number): { name: string; description: string | null } | null;
 

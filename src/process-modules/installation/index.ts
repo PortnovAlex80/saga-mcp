@@ -91,10 +91,10 @@ export {
 export {
   // Port
   type ModuleInstallationRepository,
-  // Concrete sqlite adapter (single SQL writer owns ensureSaga3ModuleInstallationSchema)
+  // Concrete sqlite adapter (single SQL writer owns ensureFactoryModuleInstallationSchema)
   SqliteModuleInstallationRepository,
-  // Schema bootstrap (idempotent — creates saga3_module_installations; called by db.ts)
-  ensureSaga3ModuleInstallationSchema,
+  // Schema bootstrap (idempotent — creates factory_module_installations; called by db.ts)
+  ensureFactoryModuleInstallationSchema,
 } from './persistence/installation-repository.js';
 
 // ---------------------------------------------------------------------------
@@ -122,7 +122,7 @@ export {
 // ---------------------------------------------------------------------------
 // W2-A4 — ProcessRun installation pinning (pure value builder) + the legacy
 // nullable adapter that reads the new installation_id/package_digest columns
-// on saga3_process_runs via raw SQL (does NOT edit sqlite-process-run-repository).
+// on factory_process_runs via raw SQL (does NOT edit sqlite-process-run-repository).
 // (installation/domain/process-run-pinning.ts + installation/persistence/process-run-installation-adapter.ts)
 // ---------------------------------------------------------------------------
 export {

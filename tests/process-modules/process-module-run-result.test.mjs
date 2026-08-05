@@ -27,7 +27,7 @@ test('valid certificate result passes', () => {
     outcome: 'go',
     output: null,
     certificate: {
-      schema: 'saga3.discovery-outcome-certificate.v1',
+      schema: 'factory.discovery-outcome-certificate.v1',
       certificateRef: 'certificate:1',
       certificateHash: 'a'.repeat(64),
     },
@@ -81,7 +81,7 @@ test('certificate present but authority missing → error', () => {
     outcome: 'go',
     output: null,
     certificate: {
-      schema: 'saga3.discovery-outcome-certificate.v1',
+      schema: 'factory.discovery-outcome-certificate.v1',
       certificateRef: 'certificate:1',
       certificateHash: 'a'.repeat(64),
     },

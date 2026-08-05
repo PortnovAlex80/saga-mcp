@@ -325,6 +325,11 @@ function resolveInstallation(
   processRun: ProcessRunRecord,
   registry: PackageRegistry,
 ): ModuleInstallationRecord {
+  if (processRun.installationId === null || processRun.packageDigest === null) {
+    throw new Error(
+      'PROCESS_RUN_PIN_REQUIRED: worker launch is forbidden for an unpinned ProcessRun',
+    );
+  }
   const name = processRun.moduleRef.name;
   // Exact version — legacy runs and pinned runs both carry an exact
   // module_version (ranges are resolved at install time, not at run time).
@@ -351,8 +356,7 @@ function resolveInstallation(
     return resolved;
   }
 
-  // Legacy null-pinned run: trust the registry's exact-version resolution.
-  return resolved;
+  throw new Error('PROCESS_RUN_PIN_REQUIRED: unreachable unpinned ProcessRun branch');
 }
 
 /**

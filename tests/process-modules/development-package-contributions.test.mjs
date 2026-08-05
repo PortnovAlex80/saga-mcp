@@ -155,7 +155,7 @@ test('W9-A4 tool contributions: verification_record carries the evidence-pins-ca
 test('W9-A4 tool contributions: process_node_submit targets the task-graph-proposal schema', () => {
   assert.equal(
     DEVELOPMENT_PROCESS_NODE_SUBMIT_CONTRIBUTION.inputContractRef.schemaId,
-    'saga3.development-task-graph-proposal.v1',
+    'factory.development-task-graph-proposal.v1',
   );
 });
 
@@ -225,14 +225,14 @@ test('W9-A4 acceptance capabilities: evidence-pins-candidate + candidate-immutab
 // ---------------------------------------------------------------------------
 
 test('W9-A4 output contracts: input + output contract refs are the saga3 development schemas', () => {
-  assert.equal(DEVELOPMENT_INPUT_CONTRACT.schemaId, 'saga3.development-case.v1');
-  assert.equal(DEVELOPMENT_OUTPUT_CONTRACT.schemaId, 'saga3.verified-integration-bundle.v1');
-  assert.equal(DEVELOPMENT_CERTIFICATE_CONTRACT.schemaId, 'saga3.development-certificate.v1');
+  assert.equal(DEVELOPMENT_INPUT_CONTRACT.schemaId, 'factory.development-case.v1');
+  assert.equal(DEVELOPMENT_OUTPUT_CONTRACT.schemaId, 'factory.verified-integration-bundle.v1');
+  assert.equal(DEVELOPMENT_CERTIFICATE_CONTRACT.schemaId, 'factory.development-certificate.v1');
 });
 
 test('W9-A4 output contracts: every node output contract has a valid saga3 schema id', () => {
   for (const c of DEVELOPMENT_NODE_OUTPUT_CONTRACTS) {
-    assert.ok(c.schemaId.startsWith('saga3.'), `${c.schemaId} is not a saga3 schema`);
+    assert.ok(c.schemaId.startsWith('factory.'), `${c.schemaId} is not a saga3 schema`);
     assert.ok(c.version.length > 0, 'version must be non-empty');
     assert.ok(c.digest.length > 0, 'digest must be non-empty');
   }
@@ -240,11 +240,11 @@ test('W9-A4 output contracts: every node output contract has a valid saga3 schem
 
 test('W9-A4 output contracts: node output contracts cover proposal/graph/workset/candidate/verification', () => {
   const ids = DEVELOPMENT_NODE_OUTPUT_CONTRACTS.map((c) => c.schemaId);
-  assert.ok(ids.includes('saga3.development-task-graph-proposal.v1'));
-  assert.ok(ids.includes('saga3.development-task-graph.v1'));
-  assert.ok(ids.includes('saga3.development-implementation-workset.v1'));
-  assert.ok(ids.includes('saga3.integrated-release-candidate.v1'));
-  assert.ok(ids.includes('saga3.acceptance-verification-workset.v1'));
+  assert.ok(ids.includes('factory.development-task-graph-proposal.v1'));
+  assert.ok(ids.includes('factory.development-task-graph.v1'));
+  assert.ok(ids.includes('factory.development-implementation-workset.v1'));
+  assert.ok(ids.includes('factory.integrated-release-candidate.v1'));
+  assert.ok(ids.includes('factory.acceptance-verification-workset.v1'));
 });
 
 test('W9-A4 output contracts: declared outcomes are all terminal and match the development flow', () => {

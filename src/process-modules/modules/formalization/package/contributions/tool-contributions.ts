@@ -96,8 +96,8 @@ export const FORMALIZATION_TOOL_RESOURCE_IDS = {
 export const FORMALIZATION_ARTIFACT_CREATE_CONTRIBUTION: ModuleToolContribution = {
   logicalId: `${FORMALIZATION_TOOL_NAMESPACE}.artifact_create`,
   version: '1.0.0',
-  inputContractRef: contractRef('saga3.mcp.artifact-create.v1', '1.0.0'),
-  outputContractRef: contractRef('saga3.mcp.artifact-result.v1', '1.0.0'),
+  inputContractRef: contractRef('factory.mcp.artifact-create.v1', '1.0.0'),
+  outputContractRef: contractRef('factory.mcp.artifact-result.v1', '1.0.0'),
   handlerRef: 'capability.saga.artifact-create',
   callTemplateRef: FORMALIZATION_TOOL_RESOURCE_IDS.artifactCallTemplate,
   checklistRef: FORMALIZATION_TOOL_RESOURCE_IDS.nodeChecklist,
@@ -124,8 +124,8 @@ export const FORMALIZATION_ARTIFACT_CREATE_CONTRIBUTION: ModuleToolContribution 
 export const FORMALIZATION_ARTIFACT_UPDATE_CONTRIBUTION: ModuleToolContribution = {
   logicalId: `${FORMALIZATION_TOOL_NAMESPACE}.artifact_update`,
   version: '1.0.0',
-  inputContractRef: contractRef('saga3.mcp.artifact-update.v1', '1.0.0'),
-  outputContractRef: contractRef('saga3.mcp.artifact-result.v1', '1.0.0'),
+  inputContractRef: contractRef('factory.mcp.artifact-update.v1', '1.0.0'),
+  outputContractRef: contractRef('factory.mcp.artifact-result.v1', '1.0.0'),
   handlerRef: 'capability.saga.artifact-update',
   callTemplateRef: FORMALIZATION_TOOL_RESOURCE_IDS.artifactCallTemplate,
   checklistRef: FORMALIZATION_TOOL_RESOURCE_IDS.nodeChecklist,
@@ -152,8 +152,8 @@ export const FORMALIZATION_ARTIFACT_UPDATE_CONTRIBUTION: ModuleToolContribution 
 export const FORMALIZATION_TRACE_ADD_CONTRIBUTION: ModuleToolContribution = {
   logicalId: `${FORMALIZATION_TOOL_NAMESPACE}.trace_add`,
   version: '1.0.0',
-  inputContractRef: contractRef('saga3.mcp.trace-add.v1', '1.0.0'),
-  outputContractRef: contractRef('saga3.mcp.trace-result.v1', '1.0.0'),
+  inputContractRef: contractRef('factory.mcp.trace-add.v1', '1.0.0'),
+  outputContractRef: contractRef('factory.mcp.trace-result.v1', '1.0.0'),
   handlerRef: 'capability.saga.trace-add',
   callTemplateRef: FORMALIZATION_TOOL_RESOURCE_IDS.traceCallTemplate,
   checklistRef: FORMALIZATION_TOOL_RESOURCE_IDS.nodeChecklist,
@@ -181,8 +181,8 @@ export const FORMALIZATION_TRACE_ADD_CONTRIBUTION: ModuleToolContribution = {
 export const FORMALIZATION_WORKER_DONE_CONTRIBUTION: ModuleToolContribution = {
   logicalId: `${FORMALIZATION_TOOL_NAMESPACE}.worker_done`,
   version: '1.0.0',
-  inputContractRef: contractRef('saga3.mcp.worker-done.v1', '1.0.0'),
-  outputContractRef: contractRef('saga3.mcp.worker-done-result.v1', '1.0.0'),
+  inputContractRef: contractRef('factory.mcp.worker-done.v1', '1.0.0'),
+  outputContractRef: contractRef('factory.mcp.worker-done-result.v1', '1.0.0'),
   handlerRef: 'capability.saga.worker-done',
   callTemplateRef: FORMALIZATION_TOOL_RESOURCE_IDS.workerDoneCallTemplate,
   checklistRef: FORMALIZATION_TOOL_RESOURCE_IDS.nodeChecklist,

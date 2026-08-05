@@ -58,14 +58,14 @@ import type {
  * once per completed protocol step with the durable evidence it produced.
  */
 export const PROTOCOL_STEP_COMPLETE_INPUT_SCHEMA =
-  'saga3.protocol.step-complete.input.v1' as const;
+  'factory.protocol.step-complete.input.v1' as const;
 
 /**
  * Output contract for the `protocol_step_complete` MCP tool — the canonical
  * checkpoint receipt Runtime returns after persisting the step.
  */
 export const PROTOCOL_STEP_COMPLETE_OUTPUT_SCHEMA =
-  'saga3.protocol.step-complete.output.v1' as const;
+  'factory.protocol.step-complete.output.v1' as const;
 
 /**
  * Stable logical id for the protocol step completion tool. Namespaced under
@@ -134,7 +134,7 @@ export const TERMINAL_STEP_RUN_STATUSES: ReadonlySet<ProtocolStepRunStatus> = ne
 /**
  * LOCAL_ISOLATION_ALIAS for the persistence `ProtocolRunRecord`.
  *
- * Mirrors the `saga3_protocol_runs` columns. Field names are camelCase of
+ * Mirrors the `factory_protocol_runs` columns. Field names are camelCase of
  * the SQL column names.
  */
 export interface ProtocolRunRecord {
@@ -155,7 +155,7 @@ export interface ProtocolRunRecord {
 /**
  * LOCAL_ISOLATION_ALIAS for the persistence `ProtocolStepRunRecord`.
  *
- * Mirrors the `saga3_protocol_step_runs` columns.
+ * Mirrors the `factory_protocol_step_runs` columns.
  */
 export interface ProtocolStepRunRecord {
   readonly id: number;

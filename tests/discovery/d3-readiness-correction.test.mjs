@@ -30,7 +30,7 @@ const { DISCOVERY_PROPOSAL_SCHEMA } = await import('../../dist/modules/discovery
 const { DISCOVERY_READINESS_ASSESSMENT_SCHEMA, READINESS_DIMENSIONS } = await import(
   '../../dist/modules/discovery/domain/discovery-readiness-assessment.js'
 );
-const { ensureSaga3ReadinessSchema } = await import(
+const { ensureFactoryReadinessSchema } = await import(
   '../../dist/modules/discovery/infrastructure/discovery-readiness-repository.js'
 );
 const { canonicalJson } = await import('../../dist/modules/discovery/infrastructure/discovery-normalization-repository.js');
@@ -41,13 +41,13 @@ const {
 } = await import('./_conveyor-fakes.mjs');
 
 function fixture() {
-  const temp = mkdtempSync(path.join(os.tmpdir(), 'saga3-d3-fix-'));
+  const temp = mkdtempSync(path.join(os.tmpdir(), 'factory-d3-fix-'));
   process.env.DB_PATH = path.join(temp, 'fix.db');
   const db = getDb();
   db.prepare(`INSERT INTO projects (id,name,status) VALUES (1,'P','active')`).run();
   db.prepare(`INSERT INTO epics (id,project_id,name) VALUES (10,1,'E')`).run();
   db.prepare(`INSERT INTO episode_workflows (epic_id,stage,metadata) VALUES (10,'discovery','{}')`).run();
-  ensureSaga3ReadinessSchema(db);
+  ensureFactoryReadinessSchema(db);
   return { temp, db };
 }
 function cleanup(temp) {
@@ -85,9 +85,9 @@ function validAssessment(proposalId = 50, hash = PROPOSAL_HASH, overrides = {}) 
  */
 function buildLiveFixture(db, { executionId = 'advisor-exec', proposalId = 50, advisorTaskId = 200, epicId = 10 } = {}) {
   db.prepare(`INSERT INTO tasks (id,epic_id,title,status,task_kind) VALUES (100,?,'Discovery','done','discovery.work')`).run(epicId);
-  db.prepare(`INSERT INTO saga3_work_intents (id,epic_id,kind,objective,authority_scope,output_schema,token_budget,retry_budget,projected_task_id,status) VALUES (1,?,?,?,?,?,?,?,100,'concluded')`)
+  db.prepare(`INSERT INTO factory_work_intents (id,epic_id,kind,objective,authority_scope,output_schema,token_budget,retry_budget,projected_task_id,status) VALUES (1,?,?,?,?,?,?,?,100,'concluded')`)
     .run(epicId, DISCOVERY_INTENT_KIND, 'discover', '{}', DISCOVERY_WORK_INTENT_SCHEMA, 0, 0);
-  db.prepare(`INSERT INTO saga3_proposals (id,intent_id,task_id,execution_id,kind,schema_version,payload,content_hash,status,provenance) VALUES (50,1,100,'product-exec','discovery',?,?,?,'submitted','{}')`)
+  db.prepare(`INSERT INTO factory_proposals (id,intent_id,task_id,execution_id,kind,schema_version,payload,content_hash,status,provenance) VALUES (50,1,100,'product-exec','discovery',?,?,?,'submitted','{}')`)
     .run(DISCOVERY_PROPOSAL_SCHEMA, JSON.stringify(PROPOSAL_PAYLOAD), PROPOSAL_HASH);
 
   const advisorAuthority = {
@@ -101,9 +101,9 @@ function buildLiveFixture(db, { executionId = 'advisor-exec', proposalId = 50, a
     .run(advisorTaskId, epicId, 'Assess', 'in_progress',
       'discovery.assess', 'discovery', 'saga-discovery-readiness-advisor',
       'tracker_only', 'assess-task', JSON.stringify({ work_intent_id: 2 }), executionId);
-  db.prepare(`INSERT INTO saga3_work_intents (id,epic_id,kind,objective,authority_scope,output_schema,token_budget,retry_budget,projected_task_id,status) VALUES (2,?,?,?,?,?,?,?,?,'open')`)
+  db.prepare(`INSERT INTO factory_work_intents (id,epic_id,kind,objective,authority_scope,output_schema,token_budget,retry_budget,projected_task_id,status) VALUES (2,?,?,?,?,?,?,?,?,'open')`)
     .run(epicId, DISCOVERY_READINESS_INTENT_KIND, 'assess', JSON.stringify(advisorAuthority), DISCOVERY_READINESS_ASSESSMENT_SCHEMA, 0, 0, advisorTaskId);
-  db.prepare(`INSERT INTO saga3_readiness_control_intents (id,epic_id,kind,proposal_id,proposal_content_hash,source_intent_id,authority_intent_id,projected_task_id,status) VALUES (1,?,'AssessDiscoveryReadiness',?,?,?,?,?,'executing')`)
+  db.prepare(`INSERT INTO factory_readiness_control_intents (id,epic_id,kind,proposal_id,proposal_content_hash,source_intent_id,authority_intent_id,projected_task_id,status) VALUES (1,?,'AssessDiscoveryReadiness',?,?,?,?,?,'executing')`)
     .run(epicId, proposalId, PROPOSAL_HASH, 1, 2, advisorTaskId);
 
   const intent = {
@@ -145,7 +145,7 @@ test('P0-2: rejected assessment is durable — row persisted with rejected_by_ke
     assert.equal(result.status, 'rejected_by_kernel');
     assert.ok(result.validation_errors.some(e => e.includes('invented:ref:9')));
     // The row IS persisted (durable), not discarded.
-    const row = db.prepare('SELECT status, validation_errors, overall_readiness FROM saga3_readiness_assessments WHERE id=?').get(result.assessment_id);
+    const row = db.prepare('SELECT status, validation_errors, overall_readiness FROM factory_readiness_assessments WHERE id=?').get(result.assessment_id);
     assert.equal(row.status, 'rejected_by_kernel');
     assert.equal(row.overall_readiness, null);
     const errs = JSON.parse(row.validation_errors);
@@ -167,13 +167,13 @@ test('P0-2: rejected assessment is observable in the shadow matrix (service)', a
     });
     // The service's shadowFrom must report failed (not not_run) for a rejected
     // assessment, with the assessmentId and rejection error.
-    const { Saga3DiscoveryReadinessService } = await import('../../dist/modules/discovery/application/discovery-readiness-service.js');
+    const { FactoryDiscoveryReadinessService } = await import('../../dist/modules/discovery/application/discovery-readiness-service.js');
     const fakeRt = {
       ensureReadinessControl: () => ({ controlIntentId: 1, proposalId: 50, proposalContentHash: PROPOSAL_HASH, controlStatus: 'concluded', authorityIntentId: 2, authorityIntentStatus: 'concluded', taskId: 200 }),
       prepareIntentForExecution: () => ({ state: 'done', intentStatus: 'concluded', taskStatus: 'done' }),
       setIntentStatus: () => true, setReadinessControlStatus: () => true,
       readLatestReadinessAssessment: (cid) => {
-        const row = db.prepare('SELECT * FROM saga3_readiness_assessments WHERE control_intent_id=? ORDER BY id DESC LIMIT 1').get(cid);
+        const row = db.prepare('SELECT * FROM factory_readiness_assessments WHERE control_intent_id=? ORDER BY id DESC LIMIT 1').get(cid);
         if (!row) return null;
         return {
           id: row.id, control_intent_id: row.control_intent_id, proposal_id: row.proposal_id,
@@ -184,7 +184,7 @@ test('P0-2: rejected assessment is observable in the shadow matrix (service)', a
         };
       },
     };
-    const svc = new Saga3DiscoveryReadinessService({
+    const svc = new FactoryDiscoveryReadinessService({
       config: { dbPath: '/d', claudePath: 'c', lmStudioUrl: 'http://x/v1' },
       workerExecutorFactory: () => ({}), host: { workerPaths: {} },
     workAssignment: fakeWorkAssignment(), idGenerator: fakeIdGenerator(), machineId: TEST_MACHINE_ID, runtimePersistence: fakeRt,
@@ -203,8 +203,8 @@ test('P0-2: rejected assessment is observable in the shadow matrix (service)', a
 // ---------------------------------------------------------------------------
 
 test('P0-1: advisor task done + no assessment → readiness.failed (never not_run)', async () => {
-  const { Saga3DiscoveryReadinessService } = await import('../../dist/modules/discovery/application/discovery-readiness-service.js');
-  const svc = new Saga3DiscoveryReadinessService({
+  const { FactoryDiscoveryReadinessService } = await import('../../dist/modules/discovery/application/discovery-readiness-service.js');
+  const svc = new FactoryDiscoveryReadinessService({
     config: { dbPath: '/d', claudePath: 'c', lmStudioUrl: 'http://x/v1' },
     workerExecutorFactory: () => ({}), host: { workerPaths: {} },
     workAssignment: fakeWorkAssignment(), idGenerator: fakeIdGenerator(), machineId: TEST_MACHINE_ID,
@@ -222,8 +222,8 @@ test('P0-1: advisor task done + no assessment → readiness.failed (never not_ru
 });
 
 test('P0-1: accepted assessment → readiness.completed; verdict carried', async () => {
-  const { Saga3DiscoveryReadinessService } = await import('../../dist/modules/discovery/application/discovery-readiness-service.js');
-  const svc = new Saga3DiscoveryReadinessService({
+  const { FactoryDiscoveryReadinessService } = await import('../../dist/modules/discovery/application/discovery-readiness-service.js');
+  const svc = new FactoryDiscoveryReadinessService({
     config: { dbPath: '/d', claudePath: 'c', lmStudioUrl: 'http://x/v1' },
     workerExecutorFactory: () => ({}), host: { workerPaths: {} },
     workAssignment: fakeWorkAssignment(), idGenerator: fakeIdGenerator(), machineId: TEST_MACHINE_ID,
@@ -279,15 +279,15 @@ test('P1-2: proposal intent_id mismatch rejected', async () => {
     // Create an intent 999 (in epic 10) so the FK on source_intent_id is
     // satisfiable, then point the ControlIntent at it — diverging from the
     // Proposal's intent_id (1). The handler must reject (target integrity).
-    db.prepare(`INSERT INTO saga3_work_intents (id,epic_id,kind,objective,authority_scope,output_schema,token_budget,retry_budget,status) VALUES (999,10,'discovery','other','{}','s',0,0,'concluded')`).run();
-    db.prepare('UPDATE saga3_readiness_control_intents SET source_intent_id=999 WHERE id=1').run();
+    db.prepare(`INSERT INTO factory_work_intents (id,epic_id,kind,objective,authority_scope,output_schema,token_budget,retry_budget,status) VALUES (999,10,'discovery','other','{}','s',0,0,'concluded')`).run();
+    db.prepare('UPDATE factory_readiness_control_intents SET source_intent_id=999 WHERE id=1').run();
     const { createDiscoveryReadinessHandlers } = await import('../../dist/tools/discovery-readiness-tools.js');
     const { handlers } = createDiscoveryReadinessHandlers({ db: () => db });
     assert.throws(() => handlers.readiness_submit({
       control_intent_id: ctx.controlIntentId, execution_id: ctx.executionId,
       schema_version: DISCOVERY_READINESS_ASSESSMENT_SCHEMA, payload: validAssessment(),
     }), /target integrity check failed.*intent_id/);
-    assert.equal(db.prepare('SELECT COUNT(*) c FROM saga3_readiness_assessments').get().c, 0);
+    assert.equal(db.prepare('SELECT COUNT(*) c FROM factory_readiness_assessments').get().c, 0);
   } finally { cleanup(temp); }
 });
 
@@ -304,7 +304,7 @@ test('P1-2: control/execution epic mismatch rejected', async () => {
       control_intent_id: ctx.controlIntentId, execution_id: ctx.executionId,
       schema_version: DISCOVERY_READINESS_ASSESSMENT_SCHEMA, payload: validAssessment(),
     }), /target integrity check failed.*epic/);
-    assert.equal(db.prepare('SELECT COUNT(*) c FROM saga3_readiness_assessments').get().c, 0);
+    assert.equal(db.prepare('SELECT COUNT(*) c FROM factory_readiness_assessments').get().c, 0);
   } finally { cleanup(temp); }
 });
 
@@ -313,14 +313,14 @@ test('P1-2: corrupted proposal payload (hash mismatch) rejected', async () => {
   try {
     const ctx = buildLiveFixture(db);
     // Tamper with the payload WITHOUT updating the hash → recomputed hash differs.
-    db.prepare('UPDATE saga3_proposals SET payload=? WHERE id=50').run(JSON.stringify({ ...PROPOSAL_PAYLOAD, problem_statement: 'tampered' }));
+    db.prepare('UPDATE factory_proposals SET payload=? WHERE id=50').run(JSON.stringify({ ...PROPOSAL_PAYLOAD, problem_statement: 'tampered' }));
     const { createDiscoveryReadinessHandlers } = await import('../../dist/tools/discovery-readiness-tools.js');
     const { handlers } = createDiscoveryReadinessHandlers({ db: () => db });
     assert.throws(() => handlers.readiness_submit({
       control_intent_id: ctx.controlIntentId, execution_id: ctx.executionId,
       schema_version: DISCOVERY_READINESS_ASSESSMENT_SCHEMA, payload: validAssessment(),
     }), /target integrity check failed.*content_hash mismatch/);
-    assert.equal(db.prepare('SELECT COUNT(*) c FROM saga3_readiness_assessments').get().c, 0);
+    assert.equal(db.prepare('SELECT COUNT(*) c FROM factory_readiness_assessments').get().c, 0);
   } finally { cleanup(temp); }
 });
 
@@ -372,6 +372,6 @@ test('P1-3: same assessment content, new execution_id → same row (no duplicate
     });
     assert.equal(second.assessment_id, first.assessment_id, 'same content → same row');
     assert.equal(second.replayed, true);
-    assert.equal(db.prepare('SELECT COUNT(*) c FROM saga3_readiness_assessments').get().c, 1);
+    assert.equal(db.prepare('SELECT COUNT(*) c FROM factory_readiness_assessments').get().c, 1);
   } finally { cleanup(temp); }
 });

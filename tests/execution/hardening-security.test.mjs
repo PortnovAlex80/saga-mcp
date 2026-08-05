@@ -417,7 +417,7 @@ function createInstrumentedRepo() {
 const ALLOWED_TOOLS = ['task_get', 'proposal_submit', 'worker_done'];
 
 function makeAuthorityFixture() {
-  const temp = mkdtempSync(path.join(os.tmpdir(), 'saga3-w12-a5-auth-'));
+  const temp = mkdtempSync(path.join(os.tmpdir(), 'factory-w12-a5-auth-'));
   process.env.DB_PATH = path.join(temp, 'w12-a5-auth.db');
   const db = getDb();
   return { temp, db };
@@ -463,7 +463,7 @@ function runtimeAuthoritySnapshot(allowed = ALLOWED_TOOLS, workIntentId = 7, ove
   };
   authority.authority_hash = authorityHash(authority);
   const execution_context = {
-    policy_version: 'saga3.execution.v1',
+    policy_version: 'factory.execution.v1',
     work_intent_id: workIntentId,
     authority,
     model_route: { provider: 'lmstudio', model: 'qwen-test', effort: null },
@@ -615,7 +615,7 @@ test('PACKAGES: PackageInstaller rejects a corrupt package and marks it corrupt 
 });
 
 test('PACKAGES: FilesystemModulePackageStore rejects path-traversal logicalIds BEFORE any byte is written', async () => {
-  const tmpRoot = mkdtempSync(path.join(os.tmpdir(), 'saga3-w12-a5-store-'));
+  const tmpRoot = mkdtempSync(path.join(os.tmpdir(), 'factory-w12-a5-store-'));
   try {
     const store = new FilesystemModulePackageStore(tmpRoot);
     const manifest = moduleManifestWithResources('traversal', '1.0.0');

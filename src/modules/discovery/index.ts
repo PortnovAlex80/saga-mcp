@@ -21,7 +21,7 @@
  */
 
 import { GenericFlowExecutor } from '../../process-modules/application/generic-flow-executor.js';
-import { Saga3DiscoverySettlementService } from './application/discovery-settlement-service.js';
+import { FactoryDiscoverySettlementService } from './application/discovery-settlement-service.js';
 import { SqliteDiscoveryBriefProvisioning } from '../../infrastructure/process-modules/brief-provisioning-ports.js';
 import { createDiscoveryKernelHandlers } from './application/discovery-installation.js';
 import { discoveryProcessModule } from '../../process-modules/modules/discovery/discovery-process-module.js';
@@ -55,7 +55,7 @@ export function registerDiscovery(
   // Module-specific concrete adapters (composition owns construction so the
   // module imports no getDb). `runtimePersistence` is shared (passed in via
   // sharedDeps because the LM executor also needs it).
-  const settlementService = new Saga3DiscoverySettlementService({ runtimePersistence });
+  const settlementService = new FactoryDiscoverySettlementService({ runtimePersistence });
   const briefProvisioning = new SqliteDiscoveryBriefProvisioning(db);
 
   // Register kernel handlers.

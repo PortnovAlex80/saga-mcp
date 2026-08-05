@@ -1,7 +1,7 @@
 import type Database from 'better-sqlite3';
 import { getDb } from '../../db.js';
 import { canonicalJson, sha256Hex } from '../../shared/canonical-json.js';
-import { ensureSaga3ProcessRunSchema } from './sqlite-process-run-repository.js';
+import { ensureFactoryProcessRunSchema } from './sqlite-process-run-repository.js';
 
 export interface ProcessProductReference {
   schema: string;
@@ -30,15 +30,15 @@ export interface ProcessProductRecord<T = unknown> {
  * Reusing a (ProcessRun, product kind) with any different byte-level payload
  * is rejected. This is the durable equivalent of an immutable frame binding.
  */
-export function ensureSaga3ProcessProductSchema(
+export function ensureFactoryProcessProductSchema(
   db: Database.Database,
 ): void {
-  ensureSaga3ProcessRunSchema(db);
+  ensureFactoryProcessRunSchema(db);
   db.exec(`
-    CREATE TABLE IF NOT EXISTS saga3_process_products (
+    CREATE TABLE IF NOT EXISTS factory_process_products (
       id                 INTEGER PRIMARY KEY AUTOINCREMENT,
       process_run_id     INTEGER NOT NULL
-                               REFERENCES saga3_process_runs(id) ON DELETE RESTRICT,
+                               REFERENCES factory_process_runs(id) ON DELETE RESTRICT,
       product_kind       TEXT NOT NULL,
       schema_id          TEXT NOT NULL,
       artifact_ref       TEXT NOT NULL UNIQUE,
@@ -49,10 +49,10 @@ export function ensureSaga3ProcessProductSchema(
       UNIQUE(process_run_id, product_kind)
     );
 
-    CREATE INDEX IF NOT EXISTS idx_saga3_process_products_run
-      ON saga3_process_products(process_run_id, id);
-    CREATE INDEX IF NOT EXISTS idx_saga3_process_products_hash
-      ON saga3_process_products(schema_id, product_hash);
+    CREATE INDEX IF NOT EXISTS idx_factory_process_products_run
+      ON factory_process_products(process_run_id, id);
+    CREATE INDEX IF NOT EXISTS idx_factory_process_products_hash
+      ON factory_process_products(schema_id, product_hash);
   `);
 }
 
@@ -61,7 +61,7 @@ export class SqliteProcessProductRepository {
 
   constructor(db: Database.Database = getDb()) {
     this.db = db;
-    ensureSaga3ProcessProductSchema(db);
+    ensureFactoryProcessProductSchema(db);
   }
 
   persist<T>(input: {
@@ -101,7 +101,7 @@ export class SqliteProcessProductRepository {
     }
 
     this.db.prepare(
-      `INSERT INTO saga3_process_products
+      `INSERT INTO factory_process_products
         (process_run_id,product_kind,schema_id,artifact_ref,product_hash,
          payload_snapshot,payload_hash)
        VALUES (?,?,?,?,?,?,?)`,
@@ -137,7 +137,7 @@ export class SqliteProcessProductRepository {
     const row = this.db.prepare(
       `SELECT process_run_id,product_kind,schema_id,artifact_ref,product_hash,
               payload_snapshot,payload_hash,created_at
-         FROM saga3_process_products
+         FROM factory_process_products
         WHERE process_run_id=? AND product_kind=?`,
     ).get(processRunId, productKind) as ProcessProductRow | undefined;
     return row ?? null;

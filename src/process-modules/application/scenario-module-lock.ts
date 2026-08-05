@@ -79,22 +79,22 @@ import { canonicalJson, sha256Hex } from '../../shared/canonical-json.js';
 // the file compiles + tests run. At integration time the integrator deletes
 // the `ScenarioInstallationStore` interface and the `ScenarioModuleLockRecord`
 // type below and imports them from `../installation/scenario-store.js`. The
-// shapes are frozen by the `saga3_scenario_module_locks` table definition —
+// shapes are frozen by the `factory_scenario_module_locks` table definition —
 // they MUST stay byte-compatible with the sibling lane's.
 // ---------------------------------------------------------------------------
 
 /**
  * Stable identifier for a scenario installation row. Branded so a bare number
  * cannot be confused with a module installation id or a process run id.
- * Persisted as the `saga3_scenario_installations.id` (or
- * `saga3_scenario_module_locks.scenario_installation_id`) INTEGER PRIMARY KEY.
+ * Persisted as the `factory_scenario_installations.id` (or
+ * `factory_scenario_module_locks.scenario_installation_id`) INTEGER PRIMARY KEY.
  */
 export type ScenarioInstallationId = number & {
   readonly __brand: 'ScenarioInstallationId';
 };
 
 /**
- * Minimal write/read port over the `saga3_scenario_module_locks` table.
+ * Minimal write/read port over the `factory_scenario_module_locks` table.
  * `writeScenarioModuleLock` resolves the lock document here, then hands it to
  * this port to persist; `readScenarioModuleLock` (the LifecycleRun start path)
  * reads it back. The concrete sqlite adapter is injected at the composition
@@ -134,7 +134,7 @@ export interface ScenarioInstallationStore {
 /**
  * Persisted row shape for a scenario module lock. Local isolation copy of the
  * sibling-lane row type — see INTEGRATION NOTE above. The fields mirror the
- * `saga3_scenario_module_locks` table columns.
+ * `factory_scenario_module_locks` table columns.
  */
 export interface ScenarioModuleLockRecord {
   readonly scenarioInstallationId: ScenarioInstallationId;
@@ -406,7 +406,7 @@ function buildPin(
  * a no-op replay.
  *
  * @param scenarioInstallationId The scenario installation row this lock pins
- *                               (`saga3_scenario_installations.id`).
+ *                               (`factory_scenario_installations.id`).
  * @param stageBindings          The scenario's stage bindings.
  * @param packageRegistry        The package registry (port, injected).
  * @param store                  The scenario-installation store (port, injected).

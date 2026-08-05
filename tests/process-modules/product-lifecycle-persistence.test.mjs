@@ -27,7 +27,7 @@ const { sha256Hex } = await import(
 );
 
 function fixture() {
-  const temp = mkdtempSync(path.join(os.tmpdir(), 'saga3-product-output-'));
+  const temp = mkdtempSync(path.join(os.tmpdir(), 'factory-product-output-'));
   process.env.DB_PATH = path.join(temp, 'output.db');
   const db = getDb();
   db.prepare(`INSERT INTO projects (id,name,status) VALUES (1,'P','active')`).run();
@@ -109,7 +109,7 @@ test('Development output is canonical, write-once and bound to its exact Process
     );
     assert.throws(
       () => fx.db.prepare(
-        `UPDATE saga3_development_outputs SET content_hash='tampered' WHERE process_run_id=?`,
+        `UPDATE factory_development_outputs SET content_hash='tampered' WHERE process_run_id=?`,
       ).run(run.id),
       /DEVELOPMENT_OUTPUT_IMMUTABLE/,
     );
@@ -154,9 +154,9 @@ test('Delivery output rejects wrong module binding and detects stored-content ta
     });
     assert.equal(persisted.record.contentHash, sha256Hex(payload));
 
-    fx.db.exec('DROP TRIGGER trg_saga3_delivery_outputs_no_update');
+    fx.db.exec('DROP TRIGGER trg_factory_delivery_outputs_no_update');
     fx.db.prepare(
-      `UPDATE saga3_delivery_outputs SET content_hash=? WHERE process_run_id=?`,
+      `UPDATE factory_delivery_outputs SET content_hash=? WHERE process_run_id=?`,
     ).run('0'.repeat(64), run.id);
     assert.throws(
       () => fx.deliveryRepo.readByProcessRun(run.id),

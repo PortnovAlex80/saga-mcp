@@ -6,8 +6,8 @@ import path from 'node:path';
 import Database from 'better-sqlite3';
 import { SCHEMA_SQL } from '../../dist/schema.js';
 import { FactoryCheckpointService } from '../../dist/checkpoints/factory-checkpoint-service.js';
-import { ensureSaga3ProcessRunSchema } from '../../dist/process-modules/persistence/sqlite-process-run-repository.js';
-import { ensureSaga3NodeRunSchema } from '../../dist/process-modules/persistence/sqlite-node-run-repository.js';
+import { ensureFactoryProcessRunSchema } from '../../dist/process-modules/persistence/sqlite-process-run-repository.js';
+import { ensureFactoryNodeRunSchema } from '../../dist/process-modules/persistence/sqlite-node-run-repository.js';
 
 function fixture() {
   const root = mkdtempSync(path.join(os.tmpdir(), 'saga-checkpoint-test-'));
@@ -19,8 +19,8 @@ function fixture() {
   const db = new Database(dbPath);
   db.pragma('foreign_keys = ON');
   db.exec(SCHEMA_SQL);
-  ensureSaga3ProcessRunSchema(db);
-  ensureSaga3NodeRunSchema(db);
+  ensureFactoryProcessRunSchema(db);
+  ensureFactoryNodeRunSchema(db);
   db.prepare("INSERT INTO projects (id,name) VALUES (1,'p')").run();
   db.prepare("INSERT INTO epics (id,project_id,name) VALUES (2,1,'e')").run();
   db.prepare("INSERT INTO repositories (id,name) VALUES (3,'r')").run();
@@ -33,14 +33,14 @@ function fixture() {
      VALUES (5,1,2,'PRD','PRD','docs/prd.md',4,'ignored-legacy-hash')`,
   ).run();
   db.prepare(
-    `INSERT INTO saga3_process_runs
+    `INSERT INTO factory_process_runs
       (id,project_id,epic_id,module_name,module_version,module_ref_key,
        idempotency_key,executor_kind,input_schema,input_snapshot,input_hash,
        status,package_digest)
      VALUES (6,1,2,'m','1','m@1','idem','generic-flow','in','{}','input-hash','paused','pkg-hash')`,
   ).run();
   db.prepare(
-    `INSERT INTO saga3_node_runs
+    `INSERT INTO factory_node_runs
       (id,process_run_id,node_id,node_kind,attempt,status,event,output_ref,
        output_schema,output_hash,output_bindings,execution_receipt)
      VALUES (7,6,'author','lm',1,'completed','runtime.completed','artifact:5',

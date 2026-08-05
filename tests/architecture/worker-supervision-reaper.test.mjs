@@ -24,7 +24,7 @@ import { handlers as projects } from '../../dist/tools/projects.js';
 import { handlers as epics } from '../../dist/tools/epics.js';
 import { handlers as tasks } from '../../dist/tools/tasks.js';
 import { handlers as dispatcher } from '../../dist/tools/dispatcher.js';
-import { SqliteExecutionRuntimeRepository } from '../../dist/infrastructure/persistence/sqlite-saga2-runtime-repositories.js';
+import { SqliteExecutionRuntimeRepository } from '../../dist/infrastructure/persistence/sqlite-factory-runtime-repositories.js';
 import { startWorkerSupervision } from '../../dist/infrastructure/work/worker-supervision-service.js';
 import { reconcileWorkerExecutions } from '../../dist/worker-executions.js';
 import { releaseExecutionAtomically } from '../../dist/lifecycle/atomic-release.js';

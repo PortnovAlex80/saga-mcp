@@ -132,7 +132,7 @@ export const DELIVERY_ACTION_RECEIPT_CONTRIBUTION: ReceiptTypeContribution =
   Object.freeze({
     receiptTypeId: 'delivery.action-receipt',
     version: '1.0.0',
-    contractRef: contractRef('saga3.delivery-publication.v1', '1.0.0'),
+    contractRef: contractRef('factory.delivery-publication.v1', '1.0.0'),
     fields: Object.freeze([
       'actionKey',
       'actionId',
@@ -173,7 +173,7 @@ export const DELIVERY_ACTION_OBSERVATION_CONTRIBUTION: ReceiptTypeContribution =
   Object.freeze({
     receiptTypeId: 'delivery.action-observation',
     version: '1.0.0',
-    contractRef: contractRef('saga3.delivery-observation.v1', '1.0.0'),
+    contractRef: contractRef('factory.delivery-observation.v1', '1.0.0'),
     fields: Object.freeze([
       'actionKey',
       'target',

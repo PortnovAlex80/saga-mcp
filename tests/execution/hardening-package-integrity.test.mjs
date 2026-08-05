@@ -72,7 +72,7 @@ import {
 } from '../../dist/process-modules/installation/domain/installation.js';
 import {
   SqliteModuleInstallationRepository,
-  ensureSaga3ModuleInstallationSchema,
+  ensureFactoryModuleInstallationSchema,
 } from '../../dist/process-modules/installation/persistence/installation-repository.js';
 import { installPackage } from '../../dist/process-modules/installation/domain/installer.js';
 import { ProcessRunInstallationAdapter } from '../../dist/process-modules/installation/persistence/process-run-installation-adapter.js';
@@ -186,7 +186,7 @@ function referencePackageDigest(manifest, resources) {
  * Create a fresh, isolated environment for one scenario:
  *   - mkdtemp directory for FilesystemModulePackageStore
  *   - mkdtemp .db file with the Wave 2 installations schema + a minimal
- *     saga3_process_runs table (the columns the W2-A4 pinning adapter reads).
+ *     factory_process_runs table (the columns the W2-A4 pinning adapter reads).
  *
  * Returns the paths + a factory for store/repo/adapter so we can simulate a
  * process restart by building fresh instances against the SAME on-disk files.
@@ -197,13 +197,13 @@ function makeIsolatedEnv() {
   const dbPath = path.join(dbDir, 'hardening.db');
 
   function applySchema(db) {
-    ensureSaga3ModuleInstallationSchema(db);
+    ensureFactoryModuleInstallationSchema(db);
     // Minimal process_runs-shaped table for the W2-A4 pinning proof. The real
-    // saga3_process_runs table is owned by sqlite-process-run-repository.ts
+    // factory_process_runs table is owned by sqlite-process-run-repository.ts
     // (NOT imported here — this is the test-only minimal projection the pinning
     // adapter reads via raw SQL).
     db.exec(`
-      CREATE TABLE IF NOT EXISTS saga3_process_runs (
+      CREATE TABLE IF NOT EXISTS factory_process_runs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         module_name TEXT NOT NULL,
         module_version TEXT NOT NULL,
@@ -647,7 +647,7 @@ test('W12-A1 §4 active runs stay pinned: pinned run reads 0.1.0 bytes after 0.2
 
         // Insert a process_runs row and PIN it to the v1 installation.
         const info = opened.db
-          .prepare('INSERT INTO saga3_process_runs (module_name, module_version) VALUES (?, ?)')
+          .prepare('INSERT INTO factory_process_runs (module_name, module_version) VALUES (?, ?)')
           .run(moduleName, '0.1.0');
         runId = Number(info.lastInsertRowid);
         const pin = pinInstallationOnProcessRun(runId, v1Id, v1Digest);

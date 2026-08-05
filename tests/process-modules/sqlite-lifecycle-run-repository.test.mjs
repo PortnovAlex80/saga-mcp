@@ -16,7 +16,7 @@ const { canonicalJson, sha256Hex } = await import(
 );
 
 function fixture() {
-  const temp = mkdtempSync(path.join(os.tmpdir(), 'saga3-lifecycle-'));
+  const temp = mkdtempSync(path.join(os.tmpdir(), 'factory-lifecycle-'));
   process.env.DB_PATH = path.join(temp, 'lifecycle.db');
   const db = getDb();
   db.prepare(`INSERT INTO projects (id,name,status) VALUES (1,'P','active')`).run();
@@ -61,7 +61,7 @@ function startCommand({
     definitionHash: sha256Hex(definition),
     entryStageId: 'discovery',
     input: {
-      schema: 'saga3.product-initiative.v1',
+      schema: 'factory.product-initiative.v1',
       payload,
       contentHash: sha256Hex(payload),
     },
@@ -102,7 +102,7 @@ function stageCommand(lifecycleRunId, {
     moduleRef: { name: moduleName, version: moduleVersion },
     bindingSnapshot: canonicalJson(binding),
     bindingHash: sha256Hex(binding),
-    inputSchema: `saga3.${stageId}-case.v1`,
+    inputSchema: `factory.${stageId}-case.v1`,
     inputPayload: payload,
     inputHash: sha256Hex(payload),
   };
@@ -135,12 +135,12 @@ function startProcess(processRepo, stage, {
 function completeProcess(processRepo, processRunId) {
   processRepo.update(processRunId, { status: 'running' });
   const output = {
-    schema: 'saga3.discovery-output.v1',
+    schema: 'factory.discovery-output.v1',
     artifactRef: 'artifact:discovery:1',
     contentHash: sha256Hex({ decision: 'advance' }),
   };
   const certificate = {
-    schema: 'saga3.discovery-certificate.v1',
+    schema: 'factory.discovery-certificate.v1',
     certificateRef: 'certificate:discovery:1',
     certificateHash: sha256Hex({ outcome: 'advance' }),
   };
@@ -405,7 +405,7 @@ test('completeStage atomically persists transition, next StageRun, cursor, and e
     assert.equal(fx.lifecycleRepo.readCurrentStageRun(run.id).id, stages[1].id);
     assert.equal(
       fx.db.prepare(
-        'SELECT COUNT(*) AS n FROM saga3_process_transitions WHERE lifecycle_run_id=?',
+        'SELECT COUNT(*) AS n FROM factory_process_transitions WHERE lifecycle_run_id=?',
       ).get(run.id).n,
       1,
     );

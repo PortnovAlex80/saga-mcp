@@ -1,12 +1,12 @@
 // tests/process-modules/call-instance-persistence.test.mjs
 //
-// W5-A2 — CallInstance persistence (SQL OWNER for saga3_call_instances this wave).
+// W5-A2 — CallInstance persistence (SQL OWNER for factory_call_instances this wave).
 //
 // Spec: docs/refactor-management/09-contracts/WAVE5-WORKSPACE-TRACKER-SPEC.md §2.
 // Task: docs/refactor-management/05-subagent-tasks/W05-a2.md.
 //
 // Coverage (per task "Verify" + spec §2 exit gate 4 + C028/C029/C030):
-//   - Schema: saga3_call_instances exists after the repo ctor, with every
+//   - Schema: factory_call_instances exists after the repo ctor, with every
 //     column from spec §2 + the status CHECK enum + the step-ledger index.
 //   - Schema: idempotent — constructing twice does not throw.
 //   - createCallInstance (C028): materializes a row at status 'materialized'
@@ -31,10 +31,10 @@
 //   - Persistence: rows survive DB reopen (dual-placement idempotency).
 //
 // ISOLATION NOTE: W5-A2 is the single SQL owner. This test constructs
-// SqliteCallInstanceRepository directly, which runs ensureSaga3CallInstanceSchema
+// SqliteCallInstanceRepository directly, which runs ensureFactoryCallInstanceSchema
 // (fresh-DB path). The dual-placement in src/db.ts is exercised by the
 // "persists across DB reopen" test via getDb()/closeDb(). FK enforcement is
-// disabled for the temp DB (no saga3_process_runs parent row is created).
+// disabled for the temp DB (no factory_process_runs parent row is created).
 //
 // Note on submitted→succeeded: spec §2 lists 'succeeded' as the pre-seal state
 // and sealCall as the terminal success. The runtime records the receipt when it
@@ -63,7 +63,7 @@ function freshDb(prefix = 'saga-w5a2-') {
   const temp = mkdtempSync(path.join(os.tmpdir(), prefix));
   process.env.DB_PATH = path.join(temp, 'call-instance.db');
   const db = getDb();
-  // saga3_call_instances REFERENCES saga3_process_runs; we test the call layer
+  // factory_call_instances REFERENCES factory_process_runs; we test the call layer
   // in isolation (no parent row), so disable FK enforcement.
   db.pragma('foreign_keys = OFF');
   return { db, temp, previous };
@@ -93,7 +93,7 @@ function indexNames(db, table) {
 // Force a call row to a status the runtime would set (e.g. 'succeeded'), so we
 // can exercise sealCall without a separate succeedCall mutator.
 function forceStatus(db, callInstanceId, status) {
-  db.prepare('UPDATE saga3_call_instances SET status=? WHERE id=?').run(
+  db.prepare('UPDATE factory_call_instances SET status=? WHERE id=?').run(
     status,
     callInstanceId,
   );
@@ -103,13 +103,13 @@ function forceStatus(db, callInstanceId, status) {
 // Schema tests.
 // ---------------------------------------------------------------------------
 
-test('schema: creates saga3_call_instances after ctor', () => {
+test('schema: creates factory_call_instances after ctor', () => {
   const ctx = freshDb();
   try {
     // eslint-disable-next-line no-new
     new SqliteCallInstanceRepository(ctx.db);
 
-    const cols = new Set(tableColumns(ctx.db, 'saga3_call_instances'));
+    const cols = new Set(tableColumns(ctx.db, 'factory_call_instances'));
     for (const c of [
       'id', 'process_run_id', 'protocol_run_id', 'step_id',
       'tool_contract_ref', 'attempt', 'workspace_path', 'draft_content_hash',
@@ -119,16 +119,16 @@ test('schema: creates saga3_call_instances after ctor', () => {
       assert.ok(cols.has(c), `column ${c} must exist`);
     }
 
-    const idx = indexNames(ctx.db, 'saga3_call_instances');
+    const idx = indexNames(ctx.db, 'factory_call_instances');
     assert.ok(
-      idx.includes('idx_saga3_call_instances_step'),
+      idx.includes('idx_factory_call_instances_step'),
       'step-ledger index must exist',
     );
 
     // The status CHECK enum rejects an unknown value.
     assert.throws(
       () => ctx.db.prepare(
-        "INSERT INTO saga3_call_instances (process_run_id, tool_contract_ref, status) VALUES (1, 't', 'bogus')",
+        "INSERT INTO factory_call_instances (process_run_id, tool_contract_ref, status) VALUES (1, 't', 'bogus')",
       ).run(),
       /CHECK/i,
     );
@@ -137,7 +137,7 @@ test('schema: creates saga3_call_instances after ctor', () => {
   }
 });
 
-test('schema: ensureSaga3CallInstanceSchema is idempotent (ctor twice does not throw)', () => {
+test('schema: ensureFactoryCallInstanceSchema is idempotent (ctor twice does not throw)', () => {
   const ctx = freshDb();
   try {
     const repo = new SqliteCallInstanceRepository(ctx.db);
@@ -689,7 +689,7 @@ test('persistence: call rows survive DB reopen', () => {
     repo.validateCall(call.id);
     closeDb();
     // Reopen: getDb() runs the dual-placement in src/db.ts (guarded on
-    // saga3_process_runs existing) — it must be a no-op for our table.
+    // factory_process_runs existing) — it must be a no-op for our table.
     const db2 = getDb();
     db2.pragma('foreign_keys = OFF');
     const repo2 = new SqliteCallInstanceRepository(db2);

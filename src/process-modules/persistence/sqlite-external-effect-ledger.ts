@@ -18,7 +18,7 @@ import type {
   RecordExternalEffectObservationCommand,
   StartExternalEffectActionCommand,
 } from './external-effect-ledger.js';
-import { ensureSaga3ProcessRunSchema } from './sqlite-process-run-repository.js';
+import { ensureFactoryProcessRunSchema } from './sqlite-process-run-repository.js';
 
 const ACTION_STATES = [
   'new',
@@ -41,15 +41,15 @@ type AuditEventType =
   | 'observation.absent-retry-safe'
   | 'observation.blocked';
 
-export function ensureSaga3ExternalEffectLedgerSchema(db: Database.Database): void {
-  ensureSaga3ProcessRunSchema(db);
+export function ensureFactoryExternalEffectLedgerSchema(db: Database.Database): void {
+  ensureFactoryProcessRunSchema(db);
   db.exec(`
-    CREATE TABLE IF NOT EXISTS saga3_external_effect_actions (
+    CREATE TABLE IF NOT EXISTS factory_external_effect_actions (
       id                        INTEGER PRIMARY KEY AUTOINCREMENT,
       provider_namespace        TEXT NOT NULL,
       action_key                TEXT NOT NULL,
       process_run_id            INTEGER NOT NULL
-                                    REFERENCES saga3_process_runs(id) ON DELETE RESTRICT,
+                                    REFERENCES factory_process_runs(id) ON DELETE RESTRICT,
       module_name               TEXT NOT NULL,
       module_version            TEXT NOT NULL,
       module_ref_key            TEXT NOT NULL,
@@ -94,15 +94,15 @@ export function ensureSaga3ExternalEffectLedgerSchema(db: Database.Database): vo
       )
     );
 
-    CREATE INDEX IF NOT EXISTS idx_saga3_external_effect_actions_run
-      ON saga3_external_effect_actions(process_run_id, node_id, id);
-    CREATE INDEX IF NOT EXISTS idx_saga3_external_effect_actions_state
-      ON saga3_external_effect_actions(state, updated_at);
+    CREATE INDEX IF NOT EXISTS idx_factory_external_effect_actions_run
+      ON factory_external_effect_actions(process_run_id, node_id, id);
+    CREATE INDEX IF NOT EXISTS idx_factory_external_effect_actions_state
+      ON factory_external_effect_actions(state, updated_at);
 
-    CREATE TABLE IF NOT EXISTS saga3_external_effect_events (
+    CREATE TABLE IF NOT EXISTS factory_external_effect_events (
       id                 INTEGER PRIMARY KEY AUTOINCREMENT,
       action_id          INTEGER NOT NULL
-                              REFERENCES saga3_external_effect_actions(id) ON DELETE RESTRICT,
+                              REFERENCES factory_external_effect_actions(id) ON DELETE RESTRICT,
       sequence           INTEGER NOT NULL,
       event_type         TEXT NOT NULL,
       from_state         TEXT,
@@ -116,32 +116,32 @@ export function ensureSaga3ExternalEffectLedgerSchema(db: Database.Database): vo
       UNIQUE(action_id, sequence)
     );
 
-    CREATE INDEX IF NOT EXISTS idx_saga3_external_effect_events_action
-      ON saga3_external_effect_events(action_id, sequence);
+    CREATE INDEX IF NOT EXISTS idx_factory_external_effect_events_action
+      ON factory_external_effect_events(action_id, sequence);
 
-    CREATE TRIGGER IF NOT EXISTS trg_saga3_external_effect_binding_immutable
+    CREATE TRIGGER IF NOT EXISTS trg_factory_external_effect_binding_immutable
     BEFORE UPDATE OF
       provider_namespace, action_key, process_run_id, module_name,
       module_version, module_ref_key, node_id, request_snapshot, request_hash
-    ON saga3_external_effect_actions
+    ON factory_external_effect_actions
     BEGIN
       SELECT RAISE(ABORT, 'EXTERNAL_EFFECT_ACTION_BINDING_IMMUTABLE');
     END;
 
-    CREATE TRIGGER IF NOT EXISTS trg_saga3_external_effect_actions_no_delete
-    BEFORE DELETE ON saga3_external_effect_actions
+    CREATE TRIGGER IF NOT EXISTS trg_factory_external_effect_actions_no_delete
+    BEFORE DELETE ON factory_external_effect_actions
     BEGIN
       SELECT RAISE(ABORT, 'EXTERNAL_EFFECT_ACTION_AUDIT_DELETE_FORBIDDEN');
     END;
 
-    CREATE TRIGGER IF NOT EXISTS trg_saga3_external_effect_events_no_update
-    BEFORE UPDATE ON saga3_external_effect_events
+    CREATE TRIGGER IF NOT EXISTS trg_factory_external_effect_events_no_update
+    BEFORE UPDATE ON factory_external_effect_events
     BEGIN
       SELECT RAISE(ABORT, 'EXTERNAL_EFFECT_AUDIT_EVENT_IMMUTABLE');
     END;
 
-    CREATE TRIGGER IF NOT EXISTS trg_saga3_external_effect_events_no_delete
-    BEFORE DELETE ON saga3_external_effect_events
+    CREATE TRIGGER IF NOT EXISTS trg_factory_external_effect_events_no_delete
+    BEFORE DELETE ON factory_external_effect_events
     BEGIN
       SELECT RAISE(ABORT, 'EXTERNAL_EFFECT_AUDIT_EVENT_DELETE_FORBIDDEN');
     END;
@@ -276,7 +276,7 @@ function sameModule(
 
 export class SqliteExternalEffectLedger implements ExternalEffectLedger {
   constructor(private readonly db: Database.Database = getDb()) {
-    ensureSaga3ExternalEffectLedgerSchema(db);
+    ensureFactoryExternalEffectLedgerSchema(db);
   }
 
   start(command: StartExternalEffectActionCommand): {
@@ -300,7 +300,7 @@ export class SqliteExternalEffectLedger implements ExternalEffectLedger {
 
     return this.transaction(() => {
       const existing = this.db.prepare(
-        `SELECT * FROM saga3_external_effect_actions
+        `SELECT * FROM factory_external_effect_actions
           WHERE provider_namespace=? AND action_key=?`,
       ).get(
         command.providerNamespace,
@@ -325,7 +325,7 @@ export class SqliteExternalEffectLedger implements ExternalEffectLedger {
 
       const processRun = this.db.prepare(
         `SELECT module_name,module_version,status
-           FROM saga3_process_runs WHERE id=?`,
+           FROM factory_process_runs WHERE id=?`,
       ).get(command.processRunId) as {
         module_name: string;
         module_version: string;
@@ -344,7 +344,7 @@ export class SqliteExternalEffectLedger implements ExternalEffectLedger {
       }
 
       const info = this.db.prepare(
-        `INSERT INTO saga3_external_effect_actions
+        `INSERT INTO factory_external_effect_actions
           (provider_namespace,action_key,process_run_id,module_name,module_version,
            module_ref_key,node_id,request_snapshot,request_hash,state)
          VALUES (?,?,?,?,?,?,?,?,?,'new')`,
@@ -383,7 +383,7 @@ export class SqliteExternalEffectLedger implements ExternalEffectLedger {
 
   read(actionId: number): ExternalEffectActionRecord | null {
     const row = this.db.prepare(
-      'SELECT * FROM saga3_external_effect_actions WHERE id=?',
+      'SELECT * FROM factory_external_effect_actions WHERE id=?',
     ).get(actionId) as ExternalEffectActionRow | undefined;
     return row ? rowToRecord(row) : null;
   }
@@ -393,7 +393,7 @@ export class SqliteExternalEffectLedger implements ExternalEffectLedger {
     actionKey: string,
   ): ExternalEffectActionRecord | null {
     const row = this.db.prepare(
-      `SELECT * FROM saga3_external_effect_actions
+      `SELECT * FROM factory_external_effect_actions
         WHERE provider_namespace=? AND action_key=?`,
     ).get(providerNamespace, actionKey) as ExternalEffectActionRow | undefined;
     return row ? rowToRecord(row) : null;
@@ -422,7 +422,7 @@ export class SqliteExternalEffectLedger implements ExternalEffectLedger {
 
       const fence = row.claim_fence + 1;
       const changed = this.db.prepare(
-        `UPDATE saga3_external_effect_actions
+        `UPDATE factory_external_effect_actions
             SET state='executing', claim_fence=?,
                 active_claim_kind='execution', active_claim_owner=?,
                 active_claim_expires_at=datetime('now', ?),
@@ -430,9 +430,9 @@ export class SqliteExternalEffectLedger implements ExternalEffectLedger {
                 updated_at=datetime('now')
           WHERE id=? AND claim_fence=? AND state=?
             AND EXISTS (
-              SELECT 1 FROM saga3_process_runs
-               WHERE saga3_process_runs.id=saga3_external_effect_actions.process_run_id
-                 AND saga3_process_runs.status NOT IN ('completed','failed','cancelled')
+              SELECT 1 FROM factory_process_runs
+               WHERE factory_process_runs.id=factory_external_effect_actions.process_run_id
+                 AND factory_process_runs.status NOT IN ('completed','failed','cancelled')
             )`,
       ).run(
         fence,
@@ -505,7 +505,7 @@ export class SqliteExternalEffectLedger implements ExternalEffectLedger {
         ? "datetime('now')"
         : 'NULL';
       const changed = this.db.prepare(
-        `UPDATE saga3_external_effect_actions
+        `UPDATE factory_external_effect_actions
             SET state=?, active_claim_kind=NULL, active_claim_owner=NULL,
                 active_claim_expires_at=NULL, provider_effect_id=COALESCE(?,provider_effect_id),
                 last_error=?, last_execution_fence=?, last_execution_owner=?,
@@ -582,7 +582,7 @@ export class SqliteExternalEffectLedger implements ExternalEffectLedger {
 
       const fence = row.claim_fence + 1;
       const changed = this.db.prepare(
-        `UPDATE saga3_external_effect_actions
+        `UPDATE factory_external_effect_actions
             SET state=?, claim_fence=?,
                 active_claim_kind='observation', active_claim_owner=?,
                 active_claim_expires_at=datetime('now', ?),
@@ -672,7 +672,7 @@ export class SqliteExternalEffectLedger implements ExternalEffectLedger {
         ? "datetime('now')"
         : 'NULL';
       const changed = this.db.prepare(
-        `UPDATE saga3_external_effect_actions
+        `UPDATE factory_external_effect_actions
             SET state=?, active_claim_kind=NULL, active_claim_owner=NULL,
                 active_claim_expires_at=NULL,
                 provider_effect_id=?,
@@ -771,10 +771,10 @@ export class SqliteExternalEffectLedger implements ExternalEffectLedger {
     const payloadSnapshot = canonicalSnapshot(input.payload, 'audit_payload');
     const sequence = this.db.prepare(
       `SELECT COALESCE(MAX(sequence),0)+1 AS sequence
-         FROM saga3_external_effect_events WHERE action_id=?`,
+         FROM factory_external_effect_events WHERE action_id=?`,
     ).get(input.actionId) as { sequence: number };
     this.db.prepare(
-      `INSERT INTO saga3_external_effect_events
+      `INSERT INTO factory_external_effect_events
         (action_id,sequence,event_type,from_state,to_state,claim_kind,
          claim_fence,actor,payload_snapshot,payload_hash)
        VALUES (?,?,?,?,?,?,?,?,?,?)`,
@@ -794,7 +794,7 @@ export class SqliteExternalEffectLedger implements ExternalEffectLedger {
 
   private readRow(actionId: number): ExternalEffectActionRow {
     const row = this.db.prepare(
-      'SELECT * FROM saga3_external_effect_actions WHERE id=?',
+      'SELECT * FROM factory_external_effect_actions WHERE id=?',
     ).get(actionId) as ExternalEffectActionRow | undefined;
     if (!row) throw new Error(`EXTERNAL_EFFECT_ACTION_NOT_FOUND: ${actionId}`);
     if (!(ACTION_STATES as readonly string[]).includes(row.state)) {
@@ -805,7 +805,7 @@ export class SqliteExternalEffectLedger implements ExternalEffectLedger {
 
   private readProcessRunStatus(processRunId: number): string {
     const row = this.db.prepare(
-      'SELECT status FROM saga3_process_runs WHERE id=?',
+      'SELECT status FROM factory_process_runs WHERE id=?',
     ).get(processRunId) as { status: string } | undefined;
     if (!row) throw new Error(`EXTERNAL_EFFECT_PROCESS_RUN_NOT_FOUND: ${processRunId}`);
     return row.status;

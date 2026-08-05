@@ -16,7 +16,7 @@
  *
  * WorkIntent projection port (LmNodeExecutionPersistence) — module-agnostic
  * проекция тех самых функций, что исторически жили в
- * SqliteSaga3DiscoveryRuntime. Реализация в шаге 4 оборачивает тот же адаптер.
+ * SqliteFactoryDiscoveryRuntime. Реализация в шаге 4 оборачивает тот же адаптер.
  */
 
 import os from 'node:os';
@@ -438,10 +438,10 @@ export class LmNodeExecutor implements NodeExecutor {
               enforcement: 'runtime',
             },
             // outputSchema here is the WorkIntent's OWN output contract
-            // (workIntentSchema, e.g. saga3.work-intent.discovery.v1). It is
+            // (workIntentSchema, e.g. factory.work-intent.discovery.v1). It is
             // what proposal_submit / readiness_submit / etc. compare against
-            // in saga3_work_intents.output_schema. Using profile.outputSchema
-            // (the proposal payload schema, e.g. saga3.discovery-proposal.v1)
+            // in factory_work_intents.output_schema. Using profile.outputSchema
+            // (the proposal payload schema, e.g. factory.discovery-proposal.v1)
             // here produced "intent output_schema mismatch" at proposal_submit:
             // intent.output_schema ended up as the PROPOSAL schema while the
             // submit handler compared it against the INTENT schema.
@@ -700,7 +700,7 @@ export class LmNodeExecutor implements NodeExecutor {
       }
       const executor = workerExecutor;
 
-      // 5. Poll loop — originally patterned on the retired Saga3DiscoveryEngine.
+      // 5. Poll loop — originally patterned on the retired FactoryDiscoveryEngine.
       //    The terminal verdict combines task status + worker substrate state +
       //    wall clock.
       const startedAt = this.now().getTime();

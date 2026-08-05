@@ -5,11 +5,11 @@
  * Task: docs/refactor-management/05-subagent-tasks/W05-a2.md.
  *
  * W5-A2 is the SINGLE SQL owner this wave for the new
- * `saga3_call_instances` table. The schema DDL below is SPEC §2 VERBATIM
+ * `factory_call_instances` table. The schema DDL below is SPEC §2 VERBATIM
  * (additive, idempotent `CREATE TABLE IF NOT EXISTS`). The dual-placement
  * lives in `src/db.ts` (upgrade path for pre-existing DBs, guarded on
- * `tableExists('saga3_process_runs')`) AND here in
- * `ensureSaga3CallInstanceSchema` (the path that reliably runs when the table
+ * `tableExists('factory_process_runs')`) AND here in
+ * `ensureFactoryCallInstanceSchema` (the path that reliably runs when the table
  * springs into existence via the constructor) — mirroring the Wave 2/3/4
  * pattern (spec §2 "Dual-placement in db.ts").
  *
@@ -43,17 +43,17 @@ import { CALL_INSTANCE_TRANSITIONS } from './call-instance.js';
 // ---------------------------------------------------------------------------
 
 /**
- * Create the Wave 5 `saga3_call_instances` table if it does not yet exist.
+ * Create the Wave 5 `factory_call_instances` table if it does not yet exist.
  * Idempotent (`CREATE TABLE IF NOT EXISTS` + `CREATE INDEX IF NOT EXISTS`).
  * Safe to call from the adapter constructor (fresh-DB path) and from
  * `src/db.ts` (upgrade path) — the second call is a no-op.
  */
-export function ensureSaga3CallInstanceSchema(db: Database.Database): void {
+export function ensureFactoryCallInstanceSchema(db: Database.Database): void {
   db.exec(`
-    CREATE TABLE IF NOT EXISTS saga3_call_instances (
+    CREATE TABLE IF NOT EXISTS factory_call_instances (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      process_run_id INTEGER NOT NULL REFERENCES saga3_process_runs(id) ON DELETE CASCADE,
-      protocol_run_id INTEGER REFERENCES saga3_protocol_runs(id) ON DELETE CASCADE,
+      process_run_id INTEGER NOT NULL REFERENCES factory_process_runs(id) ON DELETE CASCADE,
+      protocol_run_id INTEGER REFERENCES factory_protocol_runs(id) ON DELETE CASCADE,
       step_id TEXT,
       tool_contract_ref TEXT NOT NULL,
       attempt INTEGER NOT NULL DEFAULT 1,
@@ -66,8 +66,8 @@ export function ensureSaga3CallInstanceSchema(db: Database.Database): void {
       updated_at TEXT NOT NULL DEFAULT (datetime('now')),
       sealed_at TEXT
     );
-    CREATE INDEX IF NOT EXISTS idx_saga3_call_instances_step
-      ON saga3_call_instances(process_run_id, step_id, tool_contract_ref, attempt, id);
+    CREATE INDEX IF NOT EXISTS idx_factory_call_instances_step
+      ON factory_call_instances(process_run_id, step_id, tool_contract_ref, attempt, id);
   `);
 }
 
@@ -116,7 +116,7 @@ function readCallInstanceRow(
   id: number,
 ): CallInstanceRow | null {
   const row = db.prepare(
-    'SELECT * FROM saga3_call_instances WHERE id=?',
+    'SELECT * FROM factory_call_instances WHERE id=?',
   ).get(id) as CallInstanceRow | undefined;
   return row ?? null;
 }
@@ -205,13 +205,13 @@ function guardedTransition(
   const allowedFrom = CALL_INSTANCE_TRANSITIONS[mutator];
   const placeholders = allowedFrom.map(() => '?').join(',');
   const info = db.prepare(
-    `UPDATE saga3_call_instances
+    `UPDATE factory_call_instances
         SET ${setClause}, updated_at=datetime('now')
       WHERE id=? AND status IN (${placeholders})`,
   ).run(...binds, callInstanceId, ...allowedFrom);
   if (info.changes !== 1) {
     const existing = db.prepare(
-      'SELECT status FROM saga3_call_instances WHERE id=?',
+      'SELECT status FROM factory_call_instances WHERE id=?',
     ).get(callInstanceId) as { status: CallInstanceStatus } | undefined;
     if (!existing) {
       throw new Error(
@@ -240,7 +240,7 @@ export class SqliteCallInstanceRepository implements CallInstanceRepository {
 
   constructor(db: Database.Database = getDb()) {
     this.db = db;
-    ensureSaga3CallInstanceSchema(this.db);
+    ensureFactoryCallInstanceSchema(this.db);
   }
 
   createCallInstance(input: CreateCallInstanceInput): CallInstanceRecord {
@@ -248,7 +248,7 @@ export class SqliteCallInstanceRepository implements CallInstanceRepository {
     const run = (): CallInstanceRecord => {
       const attempt = input.attempt ?? 1;
       const info = this.db.prepare(
-        `INSERT INTO saga3_call_instances
+        `INSERT INTO factory_call_instances
            (process_run_id, protocol_run_id, step_id, tool_contract_ref,
             attempt, workspace_path, draft_content_hash, status)
          VALUES (?, ?, ?, ?, ?, ?, ?, 'materialized')`,
@@ -426,7 +426,7 @@ export class SqliteCallInstanceRepository implements CallInstanceRepository {
     assertNonEmptyTrimmedString(stepId, 'stepId');
     assertNonEmptyTrimmedString(toolContractRef, 'toolContractRef');
     const rows = this.db.prepare(
-      `SELECT * FROM saga3_call_instances
+      `SELECT * FROM factory_call_instances
         WHERE process_run_id=? AND step_id=? AND tool_contract_ref=?
         ORDER BY attempt ASC, id ASC`,
     ).all(processRunId, stepId, toolContractRef) as CallInstanceRow[];

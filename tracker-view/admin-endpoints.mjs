@@ -322,7 +322,7 @@ export function createAdminEndpointsApi({
 
           const live = db.prepare(
             `SELECT DISTINCT epic_id
-               FROM saga3_lifecycle_runs
+               FROM factory_lifecycle_runs
               WHERE project_id=?
                 AND status IN ('created','running','paused')`,
           ).all(projectId);
@@ -381,7 +381,7 @@ export function createAdminEndpointsApi({
         const result = withDbWrite(db => {
           const live = db.prepare(
             `SELECT DISTINCT epic_id,project_id
-               FROM saga3_lifecycle_runs
+               FROM factory_lifecycle_runs
               WHERE status IN ('created','running','paused')`,
           ).all();
           if (live.length > 0) return { lifecycleActive:live };

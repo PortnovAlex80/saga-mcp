@@ -5,7 +5,7 @@ Read normalization-call-{EPIC_ID}.json and verify EVERY item:
 - [ ] control_intent_id is an integer (NOT inside payload)
 - [ ] source_submission_id is an integer (top-level arg, ALSO inside payload)
 - [ ] execution_id is a string in quotes (top-level arg)
-- [ ] schema_version is exactly "saga3.discovery-normalization-proposal.v1" (top-level arg, NOT inside payload)
+- [ ] schema_version is exactly "factory.discovery-normalization-proposal.v1" (top-level arg, NOT inside payload)
 - [ ] payload.source_submission_id matches the top-level source_submission_id
 - [ ] payload.source_raw_hash is the EXACT 64-char hex from normalization_get
 - [ ] payload.normalized_payload is a valid DiscoveryProposal:

@@ -14,7 +14,7 @@ evidence: |
     two productions with NULL hashes are treated as the same exact replay.
   - sqlite-managed-production-ledger.ts:142 and :469 type the row as
     `content_hash: string | null` and propagate the null into the read model.
-  - src/saga3/persistence/sqlite-saga3-discovery-runtime.ts:182-184 documents
+  - src/saga3/persistence/sqlite-factory-discovery-runtime.ts:182-184 documents
     the failure mode in a comment: "Without it [project_repository_id]
     artifacts end up with NULL project_repository_id and NULL content_hash,
     and formalization resolvers fail closed." The hash is computed by
@@ -23,7 +23,7 @@ reproduction: |
   Static:
     `grep -n "content_hash    TEXT\|COALESCE(content_hash" src/process-modules/persistence/sqlite-managed-production-ledger.ts`
     `sed -n '180,186p' src/process-modules/persistence/sqlite-managed-production-ledger.ts`
-    `sed -n '182,184p' src/saga3/persistence/sqlite-saga3-discovery-runtime.ts`
+    `sed -n '182,184p' src/saga3/persistence/sqlite-factory-discovery-runtime.ts`
   Dynamic: insert a managed_artifact_productions row with content_hash=NULL
   (or accept an artifact whose artifactDiskHash could not be computed) and
   observe the COALESCE index treats it as the empty-string exact key.

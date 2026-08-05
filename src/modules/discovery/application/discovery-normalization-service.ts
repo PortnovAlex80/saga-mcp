@@ -1,4 +1,4 @@
-import type { Saga2HostRuntime } from '../../../application/ports/saga2-host-runtime.js';
+import type { WorkerHostRuntime } from '../../../application/ports/worker-host-runtime.js';
 import type {
   AssignedWork,
   WorkerExecutorFactory,
@@ -6,7 +6,7 @@ import type {
 } from '../../../application/ports/worker-executor.js';
 import type { IdGeneratorPort } from '../../../application/ports/conveyor-ports.js';
 import type { SagaRuntimeConfig } from '../../../runtime/saga-runtime-config.js';
-import type { Saga3DiscoveryRuntimePersistence } from '../infrastructure/discovery-runtime-port.js';
+import type { FactoryDiscoveryRuntimePersistence } from '../infrastructure/discovery-runtime-port.js';
 import {
   assignOneCard,
   releaseOneCardIfAssigned,
@@ -31,11 +31,11 @@ export interface DiscoveryNormalizationService {
   normalize(request: DiscoveryNormalizationRequest): Promise<DiscoveryNormalizationResult>;
 }
 
-export interface Saga3DiscoveryNormalizationServiceDependencies {
+export interface FactoryDiscoveryNormalizationServiceDependencies {
   config: SagaRuntimeConfig;
   workerExecutorFactory: WorkerExecutorFactory;
-  host: Saga2HostRuntime;
-  runtimePersistence: Saga3DiscoveryRuntimePersistence;
+  host: WorkerHostRuntime;
+  runtimePersistence: FactoryDiscoveryRuntimePersistence;
   /** Single authority for selecting and fencing the projected card. */
   workAssignment: WorkAssignmentPort;
   /** Infrastructure identity source for workerExecutionId / workerId / runId. */
@@ -54,13 +54,13 @@ export interface Saga3DiscoveryNormalizationServiceDependencies {
  * The service owns only orchestration. The worker proposes a transformation;
  * normalization_submit performs deterministic validation and acceptance.
  */
-export class Saga3DiscoveryNormalizationService implements DiscoveryNormalizationService {
+export class FactoryDiscoveryNormalizationService implements DiscoveryNormalizationService {
   private readonly now: () => Date;
   private readonly sleep: (ms: number) => Promise<void>;
   private readonly maxRunMs: number;
   private readonly pollMs: number;
 
-  constructor(private readonly deps: Saga3DiscoveryNormalizationServiceDependencies) {
+  constructor(private readonly deps: FactoryDiscoveryNormalizationServiceDependencies) {
     this.now = deps.now ?? (() => new Date());
     this.sleep = deps.sleep ?? (ms => new Promise(resolve => setTimeout(resolve, ms)));
     // Align with the engine's own 30-min default (see discovery-readiness/

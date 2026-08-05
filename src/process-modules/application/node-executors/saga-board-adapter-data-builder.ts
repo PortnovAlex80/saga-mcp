@@ -263,7 +263,7 @@ export function buildSagaBoardDriverNeutralReceipt(
   inputs: SagaBoardDriverNeutralReceiptInputs,
 ): DriverNeutralExecutionReceipt {
   return {
-    schemaVersion: 'saga3.driver-neutral-receipt.v1',
+    schemaVersion: 'factory.driver-neutral-receipt.v1',
     nodeRunId: inputs.nodeRunId,
     attempt: inputs.attempt,
     runtimeEvent: inputs.runtimeStatus,

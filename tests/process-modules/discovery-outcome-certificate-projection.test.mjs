@@ -29,31 +29,31 @@ const Y64 = 'y'.repeat(64);
 const I64 = 'i'.repeat(64);
 
 function fixture() {
-  const temp = mkdtempSync(path.join(os.tmpdir(), 'saga3-discproj-'));
+  const temp = mkdtempSync(path.join(os.tmpdir(), 'factory-discproj-'));
   process.env.DB_PATH = path.join(temp, 'proj.db');
   const db = getDb();
   db.prepare(`INSERT INTO projects (id,name,status) VALUES (1,'P','active')`).run();
   db.prepare(`INSERT INTO epics (id,project_id,name) VALUES (10,1,'E')`).run();
   db.prepare(`INSERT INTO tasks (id,epic_id,title,status,priority,task_kind,workflow_stage,execution_skill,execution_mode,generation_key,tags,metadata)
               VALUES (1,10,'D','done','high','discovery.work','discovery','saga-discovery-worker','tracker_only','g','[]','{}')`).run();
-  db.prepare(`INSERT INTO saga3_work_intents (id,epic_id,kind,objective,authority_scope,output_schema,status)
-              VALUES (1,10,'discovery','obj','{}','saga3.discovery-proposal.v1','concluded')`).run();
-  db.prepare(`INSERT INTO saga3_proposals
+  db.prepare(`INSERT INTO factory_work_intents (id,epic_id,kind,objective,authority_scope,output_schema,status)
+              VALUES (1,10,'discovery','obj','{}','factory.discovery-proposal.v1','concluded')`).run();
+  db.prepare(`INSERT INTO factory_proposals
     (id,intent_id,task_id,execution_id,kind,schema_version,payload,content_hash,status,provenance)
-    VALUES (1,1,1,'exec-1','discovery','saga3.discovery-proposal.v1','{}',?,'superseded','{}')`)
+    VALUES (1,1,1,'exec-1','discovery','factory.discovery-proposal.v1','{}',?,'superseded','{}')`)
     .run(P64);
-  db.prepare(`INSERT INTO saga3_discovery_settlements
+  db.prepare(`INSERT INTO factory_discovery_settlements
     (id,epic_id,proposal_id,proposal_content_hash,readiness_assessment_id,readiness_assessment_hash,
      policy_version,policy_hash,input_snapshot,input_hash,decision,reason_codes,rationale,status,created_at)
     VALUES (1,10,1,?,NULL,'none','1.0.0',?, '{}',?, 'go','[]','ok','certificate_issued','2026-01-01')`)
     .run(P64, Y64, I64);
   const payload = {
-    schemaVersion: 'saga3.discovery-outcome-certificate.v1',
+    schemaVersion: 'factory.discovery-outcome-certificate.v1',
     decision: 'go', reasonCodes: [], rationale: 'good',
     certificateId: 1, settlementId: 1, proposalId: 1,
   };
   const certHash = createHash('sha256').update(JSON.stringify(payload)).digest('hex');
-  db.prepare(`INSERT INTO saga3_discovery_outcome_certificates
+  db.prepare(`INSERT INTO factory_discovery_outcome_certificates
     (id,settlement_id,epic_id,proposal_id,proposal_content_hash,readiness_assessment_id,
      readiness_assessment_hash,policy_version,policy_hash,decision,reason_codes,input_hash,
      certificate_payload,certificate_hash,issued_at)

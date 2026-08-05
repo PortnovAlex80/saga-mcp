@@ -275,12 +275,12 @@ export class EngineProcessAdministration implements EngineAdministration {
   ): ResumableLifecycleRun | null {
     return this.withDb(db => {
       const table = db.prepare(
-        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='saga3_lifecycle_runs'",
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='factory_lifecycle_runs'",
       ).get();
       if (!table) return null;
       const rows = db.prepare(
         `SELECT id, idempotency_key, initiated_by
-           FROM saga3_lifecycle_runs
+           FROM factory_lifecycle_runs
           WHERE project_id=? AND epic_id=?
             AND status IN ('created','running','paused')
           ORDER BY id DESC`,

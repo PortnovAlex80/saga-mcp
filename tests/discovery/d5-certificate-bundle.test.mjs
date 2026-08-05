@@ -17,7 +17,7 @@
  *   B8 — malformed snapshot readiness (accepted without payload)
  *   B9 — happy path: a clean D4-issued certificate verifies + returns the bundle
  *
- * The fixture settles a REAL proposal via the real Saga3DiscoverySettlementService
+ * The fixture settles a REAL proposal via the real FactoryDiscoverySettlementService
  * (so the starting certificate is legitimate), then mutates rows in place and
  * asserts the bundle verifier throws CertificateBundleError with a precise
  * message. Mirrors the d4-settlement-recovery harness.
@@ -42,23 +42,23 @@ const { DISCOVERY_READINESS_ASSESSMENT_SCHEMA, READINESS_DIMENSIONS } = await im
   '../../dist/modules/discovery/domain/discovery-readiness-assessment.js'
 );
 const { canonicalJson } = await import('../../dist/shared/canonical-json.js');
-const { ensureSaga3ReadinessSchema } = await import(
+const { ensureFactoryReadinessSchema } = await import(
   '../../dist/modules/discovery/infrastructure/discovery-readiness-repository.js'
 );
-const { ensureSaga3SettlementSchema } = await import(
+const { ensureFactorySettlementSchema } = await import(
   '../../dist/modules/discovery/infrastructure/discovery-settlement-repository.js'
 );
 const {
   discoverySettlementPolicyV1,
 } = await import('../../dist/modules/discovery/domain/discovery-settlement-policy.js');
-const { Saga3DiscoverySettlementService } = await import(
+const { FactoryDiscoverySettlementService } = await import(
   '../../dist/modules/discovery/application/discovery-settlement-service.js'
 );
 const {
   verifyDiscoveryCertificateBundle,
   CertificateBundleError,
 } = await import('../../dist/modules/discovery/application/discovery-certificate-bundle.js');
-const { SqliteSaga3DiscoveryRuntime } = await import(
+const { SqliteFactoryDiscoveryRuntime } = await import(
   '../../dist/modules/discovery/infrastructure/sqlite-discovery-runtime.js'
 );
 
@@ -67,14 +67,14 @@ const { SqliteSaga3DiscoveryRuntime } = await import(
 // ---------------------------------------------------------------------------
 
 function fixture() {
-  const temp = mkdtempSync(path.join(os.tmpdir(), 'saga3-d5-bundle-'));
+  const temp = mkdtempSync(path.join(os.tmpdir(), 'factory-d5-bundle-'));
   process.env.DB_PATH = path.join(temp, 'd5b.db');
   const db = getDb();
   db.prepare(`INSERT INTO projects (id,name,status) VALUES (1,'P','active')`).run();
   db.prepare(`INSERT INTO epics (id,project_id,name) VALUES (10,1,'E')`).run();
   db.prepare(`INSERT INTO episode_workflows (epic_id,stage,metadata) VALUES (10,'discovery','{}')`).run();
-  ensureSaga3ReadinessSchema(db);
-  ensureSaga3SettlementSchema(db);
+  ensureFactoryReadinessSchema(db);
+  ensureFactorySettlementSchema(db);
   return { temp, db };
 }
 
@@ -135,13 +135,13 @@ function buildLiveFixture(db) {
     `INSERT INTO tasks (id,epic_id,title,status,task_kind) VALUES (100,10,'Discovery','done','discovery.work')`,
   ).run();
   db.prepare(
-    `INSERT INTO saga3_work_intents
+    `INSERT INTO factory_work_intents
        (id,epic_id,kind,objective,authority_scope,output_schema,
         token_budget,retry_budget,projected_task_id,status)
      VALUES (1,10,?,?,?,?,0,0,100,'concluded')`,
   ).run(DISCOVERY_INTENT_KIND, 'discover', '{}', DISCOVERY_WORK_INTENT_SCHEMA);
   db.prepare(
-    `INSERT INTO saga3_proposals
+    `INSERT INTO factory_proposals
        (id,intent_id,task_id,execution_id,kind,schema_version,payload,content_hash,status,provenance)
      VALUES (50,1,100,'product-exec',?,?,?,?,?,?)`,
   ).run(
@@ -157,19 +157,19 @@ function buildLiveFixture(db) {
     `INSERT INTO tasks (id,epic_id,title,status,task_kind) VALUES (200,10,'Assess','done','discovery.assess')`,
   ).run();
   db.prepare(
-    `INSERT INTO saga3_work_intents
+    `INSERT INTO factory_work_intents
        (id,epic_id,kind,objective,authority_scope,output_schema,
         token_budget,retry_budget,projected_task_id,status)
      VALUES (2,10,?,?,?,?,0,0,200,'concluded')`,
   ).run(DISCOVERY_READINESS_INTENT_KIND, 'assess', '{}', DISCOVERY_READINESS_ASSESSMENT_SCHEMA);
   db.prepare(
-    `INSERT INTO saga3_readiness_control_intents
+    `INSERT INTO factory_readiness_control_intents
        (id,epic_id,kind,proposal_id,proposal_content_hash,source_intent_id,
         authority_intent_id,projected_task_id,status)
      VALUES (1,10,'AssessDiscoveryReadiness',?,?,?,?,?, 'concluded')`,
   ).run(50, PRODUCT_PROPOSAL_HASH, 1, 2, 200);
   db.prepare(
-    `INSERT INTO saga3_readiness_assessments
+    `INSERT INTO factory_readiness_assessments
        (id,control_intent_id,proposal_id,proposal_content_hash,task_id,execution_id,
         payload,content_hash,status,overall_readiness,recommended_next_action,
         validation_errors,provenance)
@@ -178,11 +178,11 @@ function buildLiveFixture(db) {
 }
 
 function makeRuntime() {
-  return new SqliteSaga3DiscoveryRuntime();
+  return new SqliteFactoryDiscoveryRuntime();
 }
 function makeService() {
   const runtime = makeRuntime();
-  return new Saga3DiscoverySettlementService({ runtimePersistence: runtime });
+  return new FactoryDiscoverySettlementService({ runtimePersistence: runtime });
 }
 
 /**
@@ -262,7 +262,7 @@ test('bundle: corrupted certificate_payload is rejected', async () => {
     // Tamper the persisted certificate_payload to something the rebuild will
     // not match. The stored certificate_hash is left intact, so the rebuild-
     // expected-hash check would pass if not for the canonical-payload compare.
-    db.prepare('UPDATE saga3_discovery_outcome_certificates SET certificate_payload=? WHERE id=?')
+    db.prepare('UPDATE factory_discovery_outcome_certificates SET certificate_payload=? WHERE id=?')
       .run(canonicalJson({ tampered: true, injected: 'attacker' }), certificateId);
     const rt = makeRuntime();
     assertBundleError(
@@ -307,7 +307,7 @@ test('bundle: certificate on a non-issued settlement is rejected', async () => {
     // present (a crash left a cert attached to a non-issued settlement). The
     // bundle must reject: a certificate on a non-issued settlement is NOT
     // authoritative.
-    db.prepare("UPDATE saga3_discovery_settlements SET status='computed' WHERE id=?")
+    db.prepare("UPDATE factory_discovery_settlements SET status='computed' WHERE id=?")
       .run(settlementId);
     const rt = makeRuntime();
     assertBundleError(
@@ -331,7 +331,7 @@ test('bundle: reason-code mismatch between cert and settlement is rejected', asy
     // Tamper ONLY the certificate row's reason_codes JSON array. The settlement
     // row keeps its original reason_codes, so the settlement/cert reason-code
     // consistency check fires.
-    db.prepare('UPDATE saga3_discovery_outcome_certificates SET reason_codes=? WHERE id=?')
+    db.prepare('UPDATE factory_discovery_outcome_certificates SET reason_codes=? WHERE id=?')
       .run(JSON.stringify(['WRONG_CODE']), certificateId);
     const rt = makeRuntime();
     assertBundleError(
@@ -354,7 +354,7 @@ test('bundle: tampered settlement.input_hash is rejected', async () => {
     const { settlementId, certificateId, certificateHash } = await issueCleanCertificate(db);
     // Flip the settlement row's input_hash to a wrong value. The snapshot is
     // unchanged, so recomputing buildSettlementInputHash(snapshot) != row.
-    db.prepare('UPDATE saga3_discovery_settlements SET input_hash=? WHERE id=?')
+    db.prepare('UPDATE factory_discovery_settlements SET input_hash=? WHERE id=?')
       .run('f'.repeat(64), settlementId);
     const rt = makeRuntime();
     assertBundleError(
@@ -398,10 +398,10 @@ test('bundle: snapshot policy-replay disagreement is rejected', async () => {
     // the two rows still agree with each other — but neither agrees with the
     // intact snapshot's replay.
     db.prepare(
-      "UPDATE saga3_discovery_settlements SET decision='reject', reason_codes=?, rationale=? WHERE id=?",
+      "UPDATE factory_discovery_settlements SET decision='reject', reason_codes=?, rationale=? WHERE id=?",
     ).run(JSON.stringify(['REJECT_WORKER_AND_ADVISOR_AGREE']), 'tampered', settlementId);
     db.prepare(
-      "UPDATE saga3_discovery_outcome_certificates SET decision='reject', reason_codes=? WHERE id=?",
+      "UPDATE factory_discovery_outcome_certificates SET decision='reject', reason_codes=? WHERE id=?",
     ).run(JSON.stringify(['REJECT_WORKER_AND_ADVISOR_AGREE']), certificateId);
     const rt = makeRuntime();
     assertBundleError(
@@ -427,7 +427,7 @@ test('bundle: readiness-assessment-id drift is rejected', async () => {
     // readiness status + content_hash intact so the encoded-target check passes,
     // and re-derive input_hash on BOTH rows so the snapshot-hash + cert/settlement
     // consistency checks pass, isolating the assessment_id consistency check.
-    const row = db.prepare('SELECT input_snapshot FROM saga3_discovery_settlements WHERE id=?')
+    const row = db.prepare('SELECT input_snapshot FROM factory_discovery_settlements WHERE id=?')
       .get(settlementId);
     const snap = JSON.parse(row.input_snapshot);
     assert.equal(snap.readiness.status, 'accepted_by_kernel');
@@ -435,9 +435,9 @@ test('bundle: readiness-assessment-id drift is rejected', async () => {
     snap.readiness.assessment_id = 999; // drift from the settlement row's id
     const tamperedText = canonicalJson(snap);
     const tamperedHash = createHash('sha256').update(tamperedText).digest('hex');
-    db.prepare('UPDATE saga3_discovery_settlements SET input_snapshot=?, input_hash=? WHERE id=?')
+    db.prepare('UPDATE factory_discovery_settlements SET input_snapshot=?, input_hash=? WHERE id=?')
       .run(tamperedText, tamperedHash, settlementId);
-    db.prepare('UPDATE saga3_discovery_outcome_certificates SET input_hash=? WHERE id=?')
+    db.prepare('UPDATE factory_discovery_outcome_certificates SET input_hash=? WHERE id=?')
       .run(tamperedHash, certificateId);
     const rt = makeRuntime();
     assertBundleError(
@@ -463,16 +463,16 @@ test('bundle: accepted snapshot readiness without payload is rejected', async ()
     // non-null; nulling the payload trips it. Re-derive input_hash on BOTH rows
     // so the snapshot-hash + cert/settlement consistency checks pass, isolating
     // the null-anchor check.
-    const row = db.prepare('SELECT input_snapshot FROM saga3_discovery_settlements WHERE id=?')
+    const row = db.prepare('SELECT input_snapshot FROM factory_discovery_settlements WHERE id=?')
       .get(settlementId);
     const snap = JSON.parse(row.input_snapshot);
     assert.equal(snap.readiness.status, 'accepted_by_kernel');
     snap.readiness.payload = null; // accepted without payload -> malformed
     const tamperedText = canonicalJson(snap);
     const tamperedHash = createHash('sha256').update(tamperedText).digest('hex');
-    db.prepare('UPDATE saga3_discovery_settlements SET input_snapshot=?, input_hash=? WHERE id=?')
+    db.prepare('UPDATE factory_discovery_settlements SET input_snapshot=?, input_hash=? WHERE id=?')
       .run(tamperedText, tamperedHash, settlementId);
-    db.prepare('UPDATE saga3_discovery_outcome_certificates SET input_hash=? WHERE id=?')
+    db.prepare('UPDATE factory_discovery_outcome_certificates SET input_hash=? WHERE id=?')
       .run(tamperedHash, certificateId);
     const rt = makeRuntime();
     assertBundleError(

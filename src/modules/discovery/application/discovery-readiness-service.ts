@@ -8,7 +8,7 @@
  * assessment; readiness_submit performs deterministic validation and
  * acceptance. The discovery outcome is never touched by this service.
  */
-import type { Saga2HostRuntime } from '../../../application/ports/saga2-host-runtime.js';
+import type { WorkerHostRuntime } from '../../../application/ports/worker-host-runtime.js';
 import type {
   AssignedWork,
   WorkerExecutorFactory,
@@ -16,7 +16,7 @@ import type {
 } from '../../../application/ports/worker-executor.js';
 import type { IdGeneratorPort } from '../../../application/ports/conveyor-ports.js';
 import type { SagaRuntimeConfig } from '../../../runtime/saga-runtime-config.js';
-import type { Saga3DiscoveryRuntimePersistence } from '../infrastructure/discovery-runtime-port.js';
+import type { FactoryDiscoveryRuntimePersistence } from '../infrastructure/discovery-runtime-port.js';
 import type { ReadinessShadowResult } from '../domain/discovery-readiness-assessment.js';
 import {
   assignOneCard,
@@ -46,11 +46,11 @@ export interface DiscoveryReadinessService {
   assess(request: ReadinessAssessRequest): Promise<ReadinessAssessResult>;
 }
 
-export interface Saga3DiscoveryReadinessServiceDependencies {
+export interface FactoryDiscoveryReadinessServiceDependencies {
   config: SagaRuntimeConfig;
   workerExecutorFactory: WorkerExecutorFactory;
-  host: Saga2HostRuntime;
-  runtimePersistence: Saga3DiscoveryRuntimePersistence;
+  host: WorkerHostRuntime;
+  runtimePersistence: FactoryDiscoveryRuntimePersistence;
   /** Single authority for selecting and fencing the projected card. */
   workAssignment: WorkAssignmentPort;
   /** Infrastructure identity source for workerExecutionId / workerId / runId. */
@@ -63,13 +63,13 @@ export interface Saga3DiscoveryReadinessServiceDependencies {
   pollMs?: number;
 }
 
-export class Saga3DiscoveryReadinessService implements DiscoveryReadinessService {
+export class FactoryDiscoveryReadinessService implements DiscoveryReadinessService {
   private readonly now: () => Date;
   private readonly sleep: (ms: number) => Promise<void>;
   private readonly maxRunMs: number;
   private readonly pollMs: number;
 
-  constructor(private readonly deps: Saga3DiscoveryReadinessServiceDependencies) {
+  constructor(private readonly deps: FactoryDiscoveryReadinessServiceDependencies) {
     this.now = deps.now ?? (() => new Date());
     this.sleep = deps.sleep ?? (ms => new Promise(resolve => setTimeout(resolve, ms)));
     // Readiness is a text-heavy stage (7 dimension rationale + blocking/

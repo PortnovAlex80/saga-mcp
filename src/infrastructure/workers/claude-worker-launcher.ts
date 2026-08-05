@@ -30,14 +30,14 @@
  */
 
 import type { WorkerLauncherPort, LaunchRequest, LaunchResult } from '../../application/ports/worker-launcher-port.js';
-import type { LegacyClaudeBoardRunner } from './claude-board-worker-executor.js';
+import type { ClaudeBoardRunner } from './claude-board-worker-executor.js';
 import type { AssignedWork } from '../../application/ports/worker-executor.js';
 import { asCardId, asExecutionId, asFenceToken } from '../../lifecycle/domain/ids.js';
 
 export class ClaudeWorkerLauncher implements WorkerLauncherPort {
   private readonly launched = new Map<string, { pid: number | null; logPath: string | null; startedAt: string }>();
 
-  constructor(private readonly runner: LegacyClaudeBoardRunner) {}
+  constructor(private readonly runner: ClaudeBoardRunner) {}
 
   launch(request: LaunchRequest): LaunchResult {
     // Idempotency (REG-09-AC-03): a retry for the same reservation returns the

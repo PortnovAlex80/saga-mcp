@@ -97,9 +97,9 @@ interface TraceLedgerRow {
 
 export function ensureManagedProductionLedgerSchema(db: Database.Database): void {
   db.exec(`
-    CREATE TABLE IF NOT EXISTS saga3_managed_artifact_productions (
+    CREATE TABLE IF NOT EXISTS factory_managed_artifact_productions (
       id              INTEGER PRIMARY KEY AUTOINCREMENT,
-      process_run_id  INTEGER NOT NULL REFERENCES saga3_process_runs(id) ON DELETE CASCADE,
+      process_run_id  INTEGER NOT NULL REFERENCES factory_process_runs(id) ON DELETE CASCADE,
       module_ref      TEXT NOT NULL,
       node_id         TEXT NOT NULL,
       intent_id       INTEGER NOT NULL,
@@ -113,20 +113,20 @@ export function ensureManagedProductionLedgerSchema(db: Database.Database): void
       recorded_at     TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_saga3_managed_artifact_product_exact
-      ON saga3_managed_artifact_productions(
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_factory_managed_artifact_product_exact
+      ON factory_managed_artifact_productions(
         process_run_id, node_id, execution_id, artifact_id, operation,
         artifact_status, COALESCE(content_hash, '')
       );
 
-    CREATE INDEX IF NOT EXISTS idx_saga3_managed_artifact_product_execution
-      ON saga3_managed_artifact_productions(
+    CREATE INDEX IF NOT EXISTS idx_factory_managed_artifact_product_execution
+      ON factory_managed_artifact_productions(
         process_run_id, module_ref, node_id, intent_id, task_id, execution_id
       );
 
-    CREATE TABLE IF NOT EXISTS saga3_managed_trace_productions (
+    CREATE TABLE IF NOT EXISTS factory_managed_trace_productions (
       id              INTEGER PRIMARY KEY AUTOINCREMENT,
-      process_run_id  INTEGER NOT NULL REFERENCES saga3_process_runs(id) ON DELETE CASCADE,
+      process_run_id  INTEGER NOT NULL REFERENCES factory_process_runs(id) ON DELETE CASCADE,
       module_ref      TEXT NOT NULL,
       node_id         TEXT NOT NULL,
       intent_id       INTEGER NOT NULL,
@@ -142,8 +142,8 @@ export function ensureManagedProductionLedgerSchema(db: Database.Database): void
       UNIQUE (process_run_id, node_id, execution_id, trace_id)
     );
 
-    CREATE INDEX IF NOT EXISTS idx_saga3_managed_trace_product_execution
-      ON saga3_managed_trace_productions(
+    CREATE INDEX IF NOT EXISTS idx_factory_managed_trace_product_execution
+      ON factory_managed_trace_productions(
         process_run_id, module_ref, node_id, intent_id, task_id, execution_id
       );
   `);
@@ -281,7 +281,7 @@ export function resolveManagedExecutionProvenance(
 
   const run = db.prepare(
     `SELECT project_id, epic_id, module_ref_key, input_hash
-       FROM saga3_process_runs
+       FROM factory_process_runs
       WHERE id=?`,
   ).get(processRunId) as ProcessRunIdentityRow | undefined;
   if (!run) {
@@ -337,7 +337,7 @@ export function recordManagedArtifactProduction(
   assertManagedProductScope(provenance, artifact.project_id, artifact.epic_id);
   ensureManagedProductionLedgerSchema(db);
   db.prepare(
-    `INSERT OR IGNORE INTO saga3_managed_artifact_productions
+    `INSERT OR IGNORE INTO factory_managed_artifact_productions
        (process_run_id, module_ref, node_id, intent_id, task_id, execution_id,
         artifact_id, artifact_type, artifact_status, content_hash, operation)
      VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
@@ -381,7 +381,7 @@ export function recordManagedTraceProduction(
     linkType: trace.link_type,
   });
   db.prepare(
-    `INSERT OR IGNORE INTO saga3_managed_trace_productions
+    `INSERT OR IGNORE INTO factory_managed_trace_productions
        (process_run_id, module_ref, node_id, intent_id, task_id, execution_id,
         trace_id, source_id, target_type, target_id, link_type, trace_hash)
      VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
@@ -464,7 +464,7 @@ export class SqliteManagedProductionLedger implements ManagedProductionLedger {
   ): readonly ManagedArtifactProductionRecord[] {
     const rows = this.db.prepare(
       `SELECT mp.*
-         FROM saga3_managed_artifact_productions mp
+         FROM factory_managed_artifact_productions mp
         WHERE mp.process_run_id=? AND mp.module_ref=? AND mp.node_id=?
           AND mp.task_id=?
         ORDER BY mp.id`,
@@ -480,7 +480,7 @@ export class SqliteManagedProductionLedger implements ManagedProductionLedger {
   ): readonly ManagedTraceProductionRecord[] {
     const rows = this.db.prepare(
       `SELECT mp.*
-         FROM saga3_managed_trace_productions mp
+         FROM factory_managed_trace_productions mp
         WHERE mp.process_run_id=? AND mp.module_ref=? AND mp.node_id=?
           AND mp.task_id=?
         ORDER BY mp.id`,
@@ -499,7 +499,7 @@ export class SqliteManagedProductionLedger implements ManagedProductionLedger {
   ): readonly ManagedArtifactProductionRecord[] {
     const rows = this.db.prepare(
       `SELECT mp.*
-         FROM saga3_managed_artifact_productions mp
+         FROM factory_managed_artifact_productions mp
         WHERE mp.process_run_id=? AND mp.module_ref=? AND mp.node_id=?
         ORDER BY mp.id`,
     ).all(processRunId, moduleRef, nodeId) as ArtifactLedgerRow[];
@@ -513,7 +513,7 @@ export class SqliteManagedProductionLedger implements ManagedProductionLedger {
   ): readonly ManagedTraceProductionRecord[] {
     const rows = this.db.prepare(
       `SELECT mp.*
-         FROM saga3_managed_trace_productions mp
+         FROM factory_managed_trace_productions mp
         WHERE mp.process_run_id=? AND mp.module_ref=? AND mp.node_id=?
         ORDER BY mp.id`,
     ).all(processRunId, moduleRef, nodeId) as TraceLedgerRow[];
@@ -535,8 +535,8 @@ export class SqliteManagedProductionLedger implements ManagedProductionLedger {
   ): readonly ManagedArtifactProductionRecord[] {
     const rows = this.db.prepare(
       `SELECT mp.*
-         FROM saga3_managed_artifact_productions mp
-        JOIN saga3_process_runs pr ON pr.id = mp.process_run_id
+         FROM factory_managed_artifact_productions mp
+        JOIN factory_process_runs pr ON pr.id = mp.process_run_id
         WHERE pr.project_id=? AND pr.epic_id=? AND mp.module_ref=? AND mp.node_id=?
         ORDER BY mp.recorded_at DESC, mp.id DESC`,
     ).all(projectId, epicId, moduleRef, nodeId) as ArtifactLedgerRow[];
@@ -551,8 +551,8 @@ export class SqliteManagedProductionLedger implements ManagedProductionLedger {
   ): readonly ManagedTraceProductionRecord[] {
     const rows = this.db.prepare(
       `SELECT mp.*
-         FROM saga3_managed_trace_productions mp
-        JOIN saga3_process_runs pr ON pr.id = mp.process_run_id
+         FROM factory_managed_trace_productions mp
+        JOIN factory_process_runs pr ON pr.id = mp.process_run_id
         WHERE pr.project_id=? AND pr.epic_id=? AND mp.module_ref=? AND mp.node_id=?
         ORDER BY mp.recorded_at DESC, mp.id DESC`,
     ).all(projectId, epicId, moduleRef, nodeId) as TraceLedgerRow[];
@@ -566,7 +566,7 @@ export class SqliteManagedProductionLedger implements ManagedProductionLedger {
   ): string | null {
     const row = this.db.prepare(
       `SELECT execution_id
-         FROM saga3_managed_artifact_productions
+         FROM factory_managed_artifact_productions
         WHERE process_run_id=? AND module_ref=? AND node_id=?
         ORDER BY recorded_at DESC, id DESC
         LIMIT 1`,

@@ -1,7 +1,7 @@
 import type { BoardProjectionReader } from '../application/ports/board-projection.js';
 import type { EngineAdministration } from '../application/ports/engine-administration.js';
-import type { Saga2HostRuntime } from '../application/ports/saga2-host-runtime.js';
-import type { Saga2RuntimePersistence } from '../application/ports/saga2-runtime-persistence.js';
+import type { WorkerHostRuntime } from '../application/ports/worker-host-runtime.js';
+import type { FactoryRuntimePersistence } from '../application/ports/factory-runtime-persistence.js';
 import type { WorkerExecutorFactory } from '../application/ports/worker-executor.js';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -21,10 +21,10 @@ import {
   SqliteEpisodeRuntimeRepository,
   SqliteExecutionRuntimeRepository,
   SqliteTaskRuntimeRepository,
-} from '../infrastructure/persistence/sqlite-saga2-runtime-repositories.js';
+} from '../infrastructure/persistence/sqlite-factory-runtime-repositories.js';
 import { SqliteBoardProjectionReader } from '../infrastructure/projections/sqlite-board-projection-reader.js';
-import { NodeSaga2HostRuntime } from '../infrastructure/runtime/node-saga2-host-runtime.js';
-import { createLegacyClaudeWorkerExecutorFactory } from '../infrastructure/workers/claude-worker-executor-factory.js';
+import { NodeWorkerHostRuntime } from '../infrastructure/runtime/node-worker-host-runtime.js';
+import { createPinnedClaudeWorkerExecutorFactory } from '../infrastructure/workers/claude-worker-executor-factory.js';
 import { SqliteWorkAssignmentAdapter } from '../infrastructure/work/sqlite-work-assignment-adapter.js';
 import { SqliteWorkspaceResolver } from '../infrastructure/workspaces/sqlite-workspace-resolver.js';
 import {
@@ -32,7 +32,7 @@ import {
   type SagaRuntimeConfig,
 } from '../runtime/saga-runtime-config.js';
 import {
-  isSaga3LifecycleMode,
+  isFactoryLifecycleMode,
 } from '../runtime/orchestration-mode.js';
 import { getDb } from '../db.js';
 import {
@@ -48,17 +48,17 @@ export type ProductLifecycleCompositionOverrides = Omit<
   'workerExecutorFactory' | 'resolveWorkerContext'
 >;
 
-export interface Saga2CompositionOverrides {
+export interface FactoryCompositionOverrides {
   config?: SagaRuntimeConfig;
   workerExecutorFactory?: WorkerExecutorFactory;
-  persistence?: Saga2RuntimePersistence;
-  host?: Saga2HostRuntime;
+  persistence?: FactoryRuntimePersistence;
+  host?: WorkerHostRuntime;
   board?: BoardProjectionReader;
   engineAdministration?: EngineAdministration;
   /** Immutable module packages available to standalone generic module runs. */
   modulePackages?: ProductionInstallation;
   /**
-   * Explicit Delivery provider composition for saga3-lifecycle mode.
+   * Explicit Delivery provider composition for factory-lifecycle mode.
    * Standard Development/SQLite mechanics are supplied by the lifecycle
    * factory; no deployment success or human decision is silently selected.
    */
@@ -67,7 +67,7 @@ export interface Saga2CompositionOverrides {
 }
 
 export type SagaControlCompositionOverrides = Pick<
-  Saga2CompositionOverrides,
+  FactoryCompositionOverrides,
   'config' | 'board' | 'engineAdministration' | 'close'
 >;
 
@@ -98,9 +98,9 @@ export function createSagaControlApplication(
  * CLI and HTTP hosts consume SagaApplication and do not import the pump,
  * ClaudeBoardRunner, SQLite projection SQL, process control or environment.
  */
-export function createSaga2Application(
+export function createFactoryApplication(
   env: NodeJS.ProcessEnv = process.env,
-  overrides: Saga2CompositionOverrides = {},
+  overrides: FactoryCompositionOverrides = {},
 ): SagaApplication {
   const config = overrides.config ?? loadSagaRuntimeConfig(env);
   const persistence = overrides.persistence ?? {
@@ -122,14 +122,14 @@ export function createSaga2Application(
       ? createPinnedWorkerFactory(persistence, packageInstallation)
       : (() => {
         throw new Error(
-          'PACKAGE_INSTALLATION_REQUIRED: createSaga2Application did not receive '
+          'PACKAGE_INSTALLATION_REQUIRED: createFactoryApplication did not receive '
           + 'overrides.modulePackages or overrides.productLifecycle.packageInstallation. '
           + 'After the saga4 cutover every Process Module execution resolves its '
           + 'WorkplaceDesk from an immutable pinned package snapshot; the legacy '
           + 'unpinned worker factory has been removed.',
         );
       })());
-  const host = overrides.host ?? new NodeSaga2HostRuntime({
+  const host = overrides.host ?? new NodeWorkerHostRuntime({
     workerPaths: config.orchestrationLogRoot
       ? {
           logRoot: config.orchestrationLogRoot,
@@ -168,16 +168,16 @@ export function createSaga2Application(
  */
 function selectEngine(
   config: SagaRuntimeConfig,
-  persistence: Saga2RuntimePersistence,
+  persistence: FactoryRuntimePersistence,
   workerExecutorFactory: WorkerExecutorFactory,
-  host: Saga2HostRuntime,
+  host: WorkerHostRuntime,
   productLifecycle: ProductLifecycleCompositionOverrides | undefined,
   _modulePackages: ProductionInstallation | undefined,
 ): OrchestrationEngine {
-  void isSaga3LifecycleMode; // retained predicate; now trivially true
+  void isFactoryLifecycleMode; // retained predicate; now trivially true
   if (!productLifecycle) {
     throw new Error(
-      'PRODUCT_LIFECYCLE_DEPENDENCIES_REQUIRED: createSaga2Application '
+      'PRODUCT_LIFECYCLE_DEPENDENCIES_REQUIRED: createFactoryApplication '
       + 'must receive overrides.productLifecycle with explicit Delivery '
       + 'preflight/publication/observation providers. After the saga4 cutover '
       + 'the lifecycle runtime is the only engine; SAGA_PRODUCT_LIFECYCLE_COMPOSITION '
@@ -195,13 +195,13 @@ function selectEngine(
 
 /**
  * Build the WorkerExecutorFactoryContext for one LM-node spawn. Mirrors the
- * legacy saga3-discovery engine's workspace resolution; the values come from
+ * legacy factory-discovery engine's workspace resolution; the values come from
  * config + the episode's project repository (generic — no discovery literal).
  */
 function buildDiscoveryWorkerContext(
   config: SagaRuntimeConfig,
-  persistence: Saga2RuntimePersistence,
-  host: Saga2HostRuntime,
+  persistence: FactoryRuntimePersistence,
+  host: WorkerHostRuntime,
   ctx: { projectId: number; epicId: number | null },
 ): import('../application/ports/worker-executor.js').WorkerExecutorFactoryContext {
   const workspace = persistence.workspaces.resolve(ctx.projectId);
@@ -269,10 +269,10 @@ function resolveSagaMcpEntry(): string {
  * module-specific behavior remains in the package definition and handlers.
  */
 function createPinnedWorkerFactory(
-  persistence: Saga2RuntimePersistence,
+  persistence: FactoryRuntimePersistence,
   installation: ProductionInstallation,
 ): WorkerExecutorFactory {
-  return createLegacyClaudeWorkerExecutorFactory({
+  return createPinnedClaudeWorkerExecutorFactory({
     modelRouteReader: epicId => persistence.episodes.readWorkerModelRoute(epicId),
     packageRegistry: installation.registry,
     packageSnapshots: installation.packages,
@@ -280,7 +280,7 @@ function createPinnedWorkerFactory(
       const runId = processRunIdFromAssignment(assignment);
       if (runId === null) return null;
       const row = getDb().prepare(
-        'SELECT installation_id FROM saga3_process_runs WHERE id=?',
+        'SELECT installation_id FROM factory_process_runs WHERE id=?',
       ).get(runId) as { installation_id?: number | null } | undefined;
       const id = row?.installation_id ?? null;
       return id === null ? null : asModuleInstallationId(id);
@@ -289,7 +289,7 @@ function createPinnedWorkerFactory(
       const runId = processRunIdFromAssignment(assignment);
       if (runId === null) return null;
       const row = getDb().prepare(
-        'SELECT package_digest FROM saga3_process_runs WHERE id=?',
+        'SELECT package_digest FROM factory_process_runs WHERE id=?',
       ).get(runId) as { package_digest?: string | null } | undefined;
       return row?.package_digest ?? null;
     },

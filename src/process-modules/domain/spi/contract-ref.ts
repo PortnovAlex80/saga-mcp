@@ -36,7 +36,7 @@ import { sha256Hex } from '../../../shared/canonical-json.js';
  *
  * `schemaId` + `version` form the logical identity (the key the registry
  * indexes by); `digest` content-addresses the exact schema document so that
- * two modules advertising `saga3.foo.v1` cannot silently disagree on shape.
+ * two modules advertising `factory.foo.v1` cannot silently disagree on shape.
  */
 export interface ContractRef {
   readonly schemaId: string;

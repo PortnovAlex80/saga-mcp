@@ -208,7 +208,7 @@ const deps = {
   candidateAcceptance: {
     accept(command) {
       return {
-        schemaVersion: 'saga3.exact-candidate-acceptance.v2',
+        schemaVersion: 'factory.exact-candidate-acceptance.v2',
         decisionId: 1,
         idempotencyKey: command.idempotencyKey,
         requestHash: sha256Hex(command),
@@ -245,7 +245,7 @@ function production(nodeId, ids) {
   for (const id of ids) hashes[String(id)] = artifactById.get(id).contentHash;
   return {
     artifactRef: `formalization-node-product:${PROCESS_RUN_ID}:${nodeId}:${sha256Hex(nodeId)}`,
-    schema: 'saga3.formalization-node-product.v1',
+    schema: 'factory.formalization-node-product.v1',
     contentHash: sha256Hex(ids),
     bindings: { artifactIds: ids, artifactHashes: hashes },
   };
@@ -254,7 +254,7 @@ function production(nodeId, ids) {
 function flowFrame() {
   return {
     runInput: {
-      schemaVersion: 'saga3.formalization-case.v1',
+      schemaVersion: 'factory.formalization-case.v1',
       discoveryEpicId: 50,
       formalizationEpicId: EPIC_ID,
       discoveryCertificateRef: 'certificate:7',

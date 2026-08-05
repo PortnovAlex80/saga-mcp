@@ -84,10 +84,10 @@ const { canonicalJson, sha256Hex } = await import(
   '../../dist/shared/canonical-json.js'
 );
 
-const DISCOVERY_CERTIFICATE_SCHEMA = 'saga3.discovery-outcome-certificate.v1';
+const DISCOVERY_CERTIFICATE_SCHEMA = 'factory.discovery-outcome-certificate.v1';
 
 function createFixture() {
-  const temp = mkdtempSync(path.join(os.tmpdir(), 'saga3-product-lifecycle-e2e-'));
+  const temp = mkdtempSync(path.join(os.tmpdir(), 'factory-product-lifecycle-e2e-'));
   const previousDbPath = process.env.DB_PATH;
   process.env.DB_PATH = path.join(temp, 'lifecycle.db');
   const db = getDb();
@@ -151,7 +151,7 @@ test('durable product lifecycle freezes exact handoffs and terminal replay creat
         }),
       },
       srs: {
-        schema: 'saga3.srs.v1',
+        schema: 'factory.srs.v1',
         ref: 'artifact:srs:circle:4',
         hash: sha256Hex({ ref: 'artifact:srs:circle:4', revision: 4 }),
       },
@@ -165,7 +165,7 @@ test('durable product lifecycle freezes exact handoffs and terminal replay creat
       }],
     };
     const integratedCandidatePayload = {
-      schemaVersion: 'saga3.integrated-release-candidate.v1',
+      schemaVersion: 'factory.integrated-release-candidate.v1',
       repositoryId: 91,
       commitHash: '6b4721e22f780312c3f273ebc732f33d32097f43',
       treeHash: sha256Hex({ files: ['src/circle.ts', 'tests/circle.test.ts'] }),
@@ -406,7 +406,7 @@ test('durable product lifecycle freezes exact handoffs and terminal replay creat
         mode: 'authorized',
         policy: releasePolicy,
         operatorAuthorization: {
-          schema: 'saga3.operator-release-grant.v1',
+          schema: 'factory.operator-release-grant.v1',
           ref: 'operator-release-grant:circle-v1',
           hash: sha256Hex(operatorGrantBody),
           ...operatorGrantBody,
@@ -428,7 +428,7 @@ test('durable product lifecycle freezes exact handoffs and terminal replay creat
     const command = {
       projectId: 1,
       epicId: 10,
-      inputSchema: 'saga3.product-initiative.v1',
+      inputSchema: 'factory.product-initiative.v1',
       inputPayload: rootInput,
       initiatedBy: 'product-owner',
       idempotencyKey: 'circle-product-lifecycle-v1',
@@ -581,7 +581,7 @@ test('durable product lifecycle freezes exact handoffs and terminal replay creat
     const transitionsBeforeReplay = fixture.db.prepare(
       `SELECT from_stage_run_id,to_stage_run_id,outcome,target_type,
               target_stage_id,terminal_status,handoff_snapshot,handoff_hash
-         FROM saga3_process_transitions
+         FROM factory_process_transitions
         WHERE lifecycle_run_id=?
         ORDER BY id`,
     ).all(first.lifecycleRun.id);
@@ -656,16 +656,16 @@ test('durable product lifecycle freezes exact handoffs and terminal replay creat
       stageRunIds: first.stageRuns.map(stage => stage.id),
       processRunIds: first.stageRuns.map(stage => stage.processRunId),
       lifecycleCount: fixture.db.prepare(
-        'SELECT COUNT(*) AS count FROM saga3_lifecycle_runs',
+        'SELECT COUNT(*) AS count FROM factory_lifecycle_runs',
       ).get().count,
       stageCount: fixture.db.prepare(
-        'SELECT COUNT(*) AS count FROM saga3_stage_runs',
+        'SELECT COUNT(*) AS count FROM factory_stage_runs',
       ).get().count,
       processCount: fixture.db.prepare(
-        'SELECT COUNT(*) AS count FROM saga3_process_runs',
+        'SELECT COUNT(*) AS count FROM factory_process_runs',
       ).get().count,
       transitionCount: fixture.db.prepare(
-        'SELECT COUNT(*) AS count FROM saga3_process_transitions',
+        'SELECT COUNT(*) AS count FROM factory_process_transitions',
       ).get().count,
       executionCallCount: executionCalls.length,
       resolverCallCount: resolverCalls.length,
@@ -689,16 +689,16 @@ test('durable product lifecycle freezes exact handoffs and terminal replay creat
     assert.deepEqual(
       {
         lifecycleCount: fixture.db.prepare(
-          'SELECT COUNT(*) AS count FROM saga3_lifecycle_runs',
+          'SELECT COUNT(*) AS count FROM factory_lifecycle_runs',
         ).get().count,
         stageCount: fixture.db.prepare(
-          'SELECT COUNT(*) AS count FROM saga3_stage_runs',
+          'SELECT COUNT(*) AS count FROM factory_stage_runs',
         ).get().count,
         processCount: fixture.db.prepare(
-          'SELECT COUNT(*) AS count FROM saga3_process_runs',
+          'SELECT COUNT(*) AS count FROM factory_process_runs',
         ).get().count,
         transitionCount: fixture.db.prepare(
-          'SELECT COUNT(*) AS count FROM saga3_process_transitions',
+          'SELECT COUNT(*) AS count FROM factory_process_transitions',
         ).get().count,
       },
       {

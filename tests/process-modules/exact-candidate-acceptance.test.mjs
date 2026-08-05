@@ -22,7 +22,7 @@ const { canonicalJson, sha256Hex } = await import(
 );
 
 function fixture({ includeProducerReceipt = true } = {}) {
-  const temp = mkdtempSync(path.join(os.tmpdir(), 'saga3-exact-acceptance-'));
+  const temp = mkdtempSync(path.join(os.tmpdir(), 'factory-exact-acceptance-'));
   process.env.DB_PATH = path.join(temp, 'acceptance.db');
   const db = getDb();
   db.prepare(`INSERT INTO projects (id,name,status) VALUES (1,'P','active')`).run();
@@ -78,7 +78,7 @@ function fixture({ includeProducerReceipt = true } = {}) {
      RETURNING id`,
   ).get(contentHash).id);
   db.prepare(
-    `INSERT INTO saga3_managed_artifact_productions
+    `INSERT INTO factory_managed_artifact_productions
        (process_run_id,module_ref,node_id,intent_id,task_id,execution_id,
         artifact_id,artifact_type,artifact_status,content_hash,operation)
      VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
@@ -178,7 +178,7 @@ test('exact candidate acceptance is atomic, review-backed and idempotent', () =>
     assert.equal(first.replayed, false);
     assert.equal(
       first.schemaVersion,
-      'saga3.exact-candidate-acceptance.v2',
+      'factory.exact-candidate-acceptance.v2',
     );
     assert.equal(first.items[0].disposition, 'accepted');
     assert.equal(
@@ -207,7 +207,7 @@ test('exact candidate acceptance is atomic, review-backed and idempotent', () =>
     assert.equal(replay.decisionHash, first.decisionHash);
     assert.equal(
       f.db.prepare(
-        'SELECT COUNT(*) AS n FROM saga3_exact_candidate_acceptance_decisions',
+        'SELECT COUNT(*) AS n FROM factory_exact_candidate_acceptance_decisions',
       ).get().n,
       1,
     );
@@ -235,7 +235,7 @@ test('acceptance may use an earlier write from the same reviewed task', () => {
   const f = fixture();
   try {
     f.db.prepare(
-      `UPDATE saga3_managed_artifact_productions
+      `UPDATE factory_managed_artifact_productions
           SET execution_id='exec-earlier-same-task'
         WHERE artifact_id=?`,
     ).run(f.artifactId);
@@ -251,7 +251,7 @@ test('acceptance never adopts a candidate written by another recovery task', () 
   const f = fixture();
   try {
     f.db.prepare(
-      `UPDATE saga3_managed_artifact_productions
+      `UPDATE factory_managed_artifact_productions
           SET task_id=999
         WHERE artifact_id=?`,
     ).run(f.artifactId);
@@ -276,7 +276,7 @@ test('a mismatched member rejects the whole candidate set before any CAS', () =>
        RETURNING id`,
     ).get(secondHash).id);
     f.db.prepare(
-      `INSERT INTO saga3_managed_artifact_productions
+      `INSERT INTO factory_managed_artifact_productions
          (process_run_id,module_ref,node_id,intent_id,task_id,execution_id,
           artifact_id,artifact_type,artifact_status,content_hash,operation)
        VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
@@ -321,7 +321,7 @@ test('a mismatched member rejects the whole candidate set before any CAS', () =>
     );
     assert.equal(
       f.db.prepare(
-        'SELECT COUNT(*) AS n FROM saga3_exact_candidate_acceptance_decisions',
+        'SELECT COUNT(*) AS n FROM factory_exact_candidate_acceptance_decisions',
       ).get().n,
       0,
     );
@@ -347,7 +347,7 @@ test('an accepted artifact without a prior exact decision cannot be attested ret
     );
     assert.equal(
       f.db.prepare(
-        'SELECT COUNT(*) AS n FROM saga3_exact_candidate_acceptance_decisions',
+        'SELECT COUNT(*) AS n FROM factory_exact_candidate_acceptance_decisions',
       ).get().n,
       0,
     );
@@ -415,11 +415,11 @@ test('a legacy v1 decision remains exactly replayable after the v2 upgrade', () 
     ensureExactCandidateAcceptanceSchema(f.db);
     const ledgerId = Number(f.db.prepare(
       `SELECT id
-         FROM saga3_managed_artifact_productions
+         FROM factory_managed_artifact_productions
         WHERE artifact_id=?`,
     ).get(f.artifactId).id);
     const legacyRequest = {
-      schemaVersion: 'saga3.exact-candidate-acceptance.v1',
+      schemaVersion: 'factory.exact-candidate-acceptance.v1',
       idempotencyKey: f.command.idempotencyKey,
       lineage: f.command.lineage,
       candidates: f.command.candidates,
@@ -445,7 +445,7 @@ test('a legacy v1 decision remains exactly replayable after the v2 upgrade', () 
       finalDriftState: 'clean',
     };
     const decisionHash = sha256Hex({
-      schemaVersion: 'saga3.exact-candidate-acceptance.v1',
+      schemaVersion: 'factory.exact-candidate-acceptance.v1',
       idempotencyKey: f.command.idempotencyKey,
       requestHash,
       candidateSetHash,
@@ -458,7 +458,7 @@ test('a legacy v1 decision remains exactly replayable after the v2 upgrade', () 
         WHERE id=?`,
     ).run(f.artifactId);
     const decisionId = Number(f.db.prepare(
-      `INSERT INTO saga3_exact_candidate_acceptance_decisions
+      `INSERT INTO factory_exact_candidate_acceptance_decisions
          (schema_version,idempotency_key,request_hash,request_snapshot,
           candidate_set_hash,process_run_id,module_ref,node_id,intent_id,
           task_id,execution_id,project_id,epic_id,review_required,
@@ -486,7 +486,7 @@ test('a legacy v1 decision remains exactly replayable after the v2 upgrade', () 
       decisionHash,
     ).id);
     f.db.prepare(
-      `INSERT INTO saga3_exact_candidate_acceptance_items
+      `INSERT INTO factory_exact_candidate_acceptance_items
          (decision_id,ordinal,artifact_id,artifact_type,
           expected_content_hash,ledger_id,disposition,prior_status,
           prior_accepted_hash,prior_drift_state,final_status,

@@ -122,8 +122,8 @@ export const DEVELOPMENT_TOOL_RESOURCE_IDS = {
 export const DEVELOPMENT_PROCESS_NODE_SUBMIT_CONTRIBUTION: ModuleToolContribution = {
   logicalId: `${DEVELOPMENT_TOOL_NAMESPACE}.process_node_submit`,
   version: '1.0.0',
-  inputContractRef: contractRef('saga3.development-task-graph-proposal.v1', '1.0.0'),
-  outputContractRef: contractRef('saga3.mcp.process-node-submit-result.v1', '1.0.0'),
+  inputContractRef: contractRef('factory.development-task-graph-proposal.v1', '1.0.0'),
+  outputContractRef: contractRef('factory.mcp.process-node-submit-result.v1', '1.0.0'),
   handlerRef: 'capability.saga.process-node-submit',
   callTemplateRef: DEVELOPMENT_TOOL_RESOURCE_IDS.planningSubmissionCallTemplate,
   checklistRef: DEVELOPMENT_TOOL_RESOURCE_IDS.planningChecklist,
@@ -153,8 +153,8 @@ export const DEVELOPMENT_PROCESS_NODE_SUBMIT_CONTRIBUTION: ModuleToolContributio
 export const DEVELOPMENT_VERIFICATION_RECORD_CONTRIBUTION: ModuleToolContribution = {
   logicalId: `${DEVELOPMENT_TOOL_NAMESPACE}.verification_record`,
   version: '1.0.0',
-  inputContractRef: contractRef('saga3.mcp.verification-record.v1', '1.0.0'),
-  outputContractRef: contractRef('saga3.mcp.verification-record-result.v1', '1.0.0'),
+  inputContractRef: contractRef('factory.mcp.verification-record.v1', '1.0.0'),
+  outputContractRef: contractRef('factory.mcp.verification-record-result.v1', '1.0.0'),
   handlerRef: 'capability.saga.verification-record',
   callTemplateRef: DEVELOPMENT_TOOL_RESOURCE_IDS.verificationEvidenceRecordCallTemplate,
   checklistRef: DEVELOPMENT_TOOL_RESOURCE_IDS.verificationChecklist,
@@ -184,8 +184,8 @@ export const DEVELOPMENT_VERIFICATION_RECORD_CONTRIBUTION: ModuleToolContributio
 export const DEVELOPMENT_PLANNER_WORKER_DONE_CONTRIBUTION: ModuleToolContribution = {
   logicalId: `${DEVELOPMENT_TOOL_NAMESPACE}.planner.worker_done`,
   version: '1.0.0',
-  inputContractRef: contractRef('saga3.mcp.worker-done.v1', '1.0.0'),
-  outputContractRef: contractRef('saga3.mcp.worker-done-result.v1', '1.0.0'),
+  inputContractRef: contractRef('factory.mcp.worker-done.v1', '1.0.0'),
+  outputContractRef: contractRef('factory.mcp.worker-done-result.v1', '1.0.0'),
   handlerRef: 'capability.saga.worker-done',
   callTemplateRef: DEVELOPMENT_TOOL_RESOURCE_IDS.planningWorkerDoneCallTemplate,
   checklistRef: DEVELOPMENT_TOOL_RESOURCE_IDS.planningChecklist,
@@ -208,8 +208,8 @@ export const DEVELOPMENT_PLANNER_WORKER_DONE_CONTRIBUTION: ModuleToolContributio
 export const DEVELOPMENT_VERIFIER_WORKER_DONE_CONTRIBUTION: ModuleToolContribution = {
   logicalId: `${DEVELOPMENT_TOOL_NAMESPACE}.verifier.worker_done`,
   version: '1.0.0',
-  inputContractRef: contractRef('saga3.mcp.worker-done.v1', '1.0.0'),
-  outputContractRef: contractRef('saga3.mcp.worker-done-result.v1', '1.0.0'),
+  inputContractRef: contractRef('factory.mcp.worker-done.v1', '1.0.0'),
+  outputContractRef: contractRef('factory.mcp.worker-done-result.v1', '1.0.0'),
   handlerRef: 'capability.saga.worker-done',
   callTemplateRef: DEVELOPMENT_TOOL_RESOURCE_IDS.verificationWorkerDoneCallTemplate,
   checklistRef: DEVELOPMENT_TOOL_RESOURCE_IDS.verificationChecklist,

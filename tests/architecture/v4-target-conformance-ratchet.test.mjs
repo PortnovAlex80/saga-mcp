@@ -135,8 +135,8 @@ test('REG-11-AC-05: TextSetManifest for Development exists', () => {
   assert.ok(existsSync(path.join(REPO_ROOT, 'src/modules/development/domain/text-set-manifest.ts')));
 });
 
-test('v4 migration plan document exists', () => {
-  assert.ok(existsSync(path.join(REPO_ROOT, 'docs/architecture/CONVEYOR-V4-MIGRATION-PLAN.md')));
+test('factory-only decision document exists', () => {
+  assert.ok(existsSync(path.join(REPO_ROOT, 'docs/architecture/decisions/027-factory-only-runtime.md')));
 });
 
 // ---------------------------------------------------------------------------

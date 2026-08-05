@@ -14,7 +14,7 @@ rubber-stamps." This skill closes that hole.
 ## Product-board contract
 
 Same as `saga-worker` — use the assignment's product, epic, repository. Resolve
-`project_id` from `.saga/project.json` (or `projectname.txt` legacy fallback).
+`project_id` from the runner binding or `.saga/project.json`; absence is a hard stop.
 Use `worker_next({ role: 'reviewer' })` to claim, `worker_done` to release.
 
 ## Flow position

@@ -169,13 +169,13 @@ test('W8-A7 acceptance capabilities: guard bindings cover call, submit, and node
 // ---------------------------------------------------------------------------
 
 test('W8-A7 output contracts: input + output contract refs are the saga3 formalization schemas', () => {
-  assert.equal(FORMALIZATION_INPUT_CONTRACT.schemaId, 'saga3.formalization-case.v1');
-  assert.equal(FORMALIZATION_OUTPUT_CONTRACT.schemaId, 'saga3.solution-contract-certificate.v1');
+  assert.equal(FORMALIZATION_INPUT_CONTRACT.schemaId, 'factory.formalization-case.v1');
+  assert.equal(FORMALIZATION_OUTPUT_CONTRACT.schemaId, 'factory.solution-contract-certificate.v1');
 });
 
 test('W8-A7 output contracts: every node output contract has a valid saga3 schema id', () => {
   for (const c of FORMALIZATION_NODE_OUTPUT_CONTRACTS) {
-    assert.ok(c.schemaId.startsWith('saga3.'), `${c.schemaId} is not a saga3 schema`);
+    assert.ok(c.schemaId.startsWith('factory.'), `${c.schemaId} is not a saga3 schema`);
     assert.ok(c.version.length > 0, 'version must be non-empty');
     assert.ok(c.digest.length > 0, 'digest must be non-empty');
   }

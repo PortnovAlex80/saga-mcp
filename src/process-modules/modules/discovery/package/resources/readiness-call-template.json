@@ -1,7 +1,7 @@
 {
   "control_intent_id": "FILL_INTEGER_FROM_READINESS_GET_METADATA_CONTROL_INTENT_ID",
   "execution_id": "FILL_STRING_YOUR_EXECUTION_ID",
-  "schema_version": "saga3.discovery-readiness-assessment.v1",
+  "schema_version": "factory.discovery-readiness-assessment.v1",
   "payload": {
     "proposal_id": "FILL_INTEGER_FROM_READINESS_GET_CANONICAL_PROPOSAL_ID",
     "proposal_content_hash": "FILL_64_CHAR_HEX_FROM_READINESS_GET_CANONICAL_PROPOSAL_CONTENT_HASH",

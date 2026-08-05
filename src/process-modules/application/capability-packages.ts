@@ -235,7 +235,7 @@ export const PLATFORM_TASKS_CAPABILITY_ID = 'platform.tasks' as const;
  * (`<stem>.input` / `<stem>.output`); the full ids are per-tool
  * (`platform.tasks.task_create`, etc.).
  */
-const TASKS_SCHEMA_STEM = 'saga3.platform.tasks';
+const TASKS_SCHEMA_STEM = 'factory.platform.tasks';
 
 function buildTasksPackage(): CapabilityPackage {
   const tools: readonly ModuleToolContribution[] = [
@@ -263,7 +263,7 @@ function buildTasksPackage(): CapabilityPackage {
 export const PLATFORM_ARTIFACT_GRAPH_CAPABILITY_ID =
   'platform.artifact-graph' as const;
 
-const ARTIFACT_GRAPH_SCHEMA_STEM = 'saga3.platform.artifact-graph';
+const ARTIFACT_GRAPH_SCHEMA_STEM = 'factory.platform.artifact-graph';
 
 function buildArtifactGraphPackage(): CapabilityPackage {
   const tools: readonly ModuleToolContribution[] = [
@@ -327,7 +327,7 @@ function buildArtifactGraphPackage(): CapabilityPackage {
 
 export const PLATFORM_REPOSITORY_CAPABILITY_ID = 'platform.repository' as const;
 
-const REPOSITORY_SCHEMA_STEM = 'saga3.platform.repository';
+const REPOSITORY_SCHEMA_STEM = 'factory.platform.repository';
 
 function buildRepositoryPackage(): CapabilityPackage {
   const tools: readonly ModuleToolContribution[] = [
@@ -389,7 +389,7 @@ function buildRepositoryPackage(): CapabilityPackage {
 export const PLATFORM_WORKER_COMPLETION_CAPABILITY_ID =
   'platform.worker-completion' as const;
 
-const WORKER_SCHEMA_STEM = 'saga3.platform.worker-completion';
+const WORKER_SCHEMA_STEM = 'factory.platform.worker-completion';
 
 function buildWorkerCompletionPackage(): CapabilityPackage {
   // `worker_next` is intentionally REMOVED from the assigned-worker capability

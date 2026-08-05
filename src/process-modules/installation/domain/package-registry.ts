@@ -71,7 +71,7 @@ import type {
 /**
  * Stable identifier for an installed module package. Branded so it cannot be
  * confused with a generic number at the type level. Persisted as the
- * `saga3_module_installations.id` INTEGER PRIMARY KEY.
+ * `factory_module_installations.id` INTEGER PRIMARY KEY.
  */
 export type ModuleInstallationId = number & { readonly __brand: 'ModuleInstallationId' };
 

@@ -106,21 +106,21 @@ export function argStr(
  * read-only `proposal_get`. Centralised so the error message and the skill
  * template cannot drift apart.
  */
-export const SAGA3_TOOL_CALL_SHAPES = {
+export const FACTORY_TOOL_CALL_SHAPES = {
   proposal_submit:
-    'proposal_submit({ intent_id: <int from task_get.metadata.work_intent_id>, task_id: <int, your task_id>, execution_id: <string, your execution_id>, kind: "discovery", schema_version: "saga3.discovery-proposal.v1", payload: { problem_statement, observed_context, stakeholders_or_actors: [], assumptions: [], unknowns: [], risks: [], candidate_scope, evidence_refs: [], recommended_outcome, rationale } })',
+    'proposal_submit({ intent_id: <int from task_get.metadata.work_intent_id>, task_id: <int, your task_id>, execution_id: <string, your execution_id>, kind: "discovery", schema_version: "factory.discovery-proposal.v1", payload: { problem_statement, observed_context, stakeholders_or_actors: [], assumptions: [], unknowns: [], risks: [], candidate_scope, evidence_refs: [], recommended_outcome, rationale } })',
   readiness_get:
     'readiness_get({ control_intent_id: <int from task metadata>, execution_id: <string> })',
   readiness_submit:
-    'readiness_submit({ control_intent_id: <int>, execution_id: <string>, schema_version: "saga3.discovery-readiness-assessment.v1", payload: { proposal_id, proposal_content_hash, overall_readiness, dimension_assessments: { problem_clarity, scope_boundedness, stakeholder_coverage, assumption_visibility, unknowns_manageability, risk_visibility, evidence_grounding }, blocking_gaps: [], non_blocking_gaps: [], recommended_next_action, confidence, rationale } })',
+    'readiness_submit({ control_intent_id: <int>, execution_id: <string>, schema_version: "factory.discovery-readiness-assessment.v1", payload: { proposal_id, proposal_content_hash, overall_readiness, dimension_assessments: { problem_clarity, scope_boundedness, stakeholder_coverage, assumption_visibility, unknowns_manageability, risk_visibility, evidence_grounding }, blocking_gaps: [], non_blocking_gaps: [], recommended_next_action, confidence, rationale } })',
   normalization_get:
     'normalization_get({ control_intent_id: <int>, source_submission_id: <int>, execution_id: <string> })',
   normalization_submit:
-    'normalization_submit({ control_intent_id: <int>, source_submission_id: <int>, execution_id: <string>, schema_version: "saga3.discovery-normalization-proposal.v1", payload: { ...normalized discovery proposal fields... } })',
+    'normalization_submit({ control_intent_id: <int>, source_submission_id: <int>, execution_id: <string>, schema_version: "factory.discovery-normalization-proposal.v1", payload: { ...normalized discovery proposal fields... } })',
 } as const;
 
 /** Where each integer/string argument should come from — used in error messages. */
-export const SAGA3_ARG_SOURCES = {
+export const FACTORY_ARG_SOURCES = {
   intent_id: 'task_get → metadata.work_intent_id (top-level arg, NOT inside payload)',
   task_id: 'your assigned task_id (top-level arg, NOT inside payload)',
   execution_id: 'your execution_id (top-level arg, NOT inside payload)',
@@ -133,7 +133,7 @@ export const SAGA3_ARG_SOURCES = {
 /**
  * Per-tool mapping of PAYLOAD fields (the typed object inside the tool's
  * `payload` arg) to where the worker should source their correct values. This
- * extends SAGA3_ARG_SOURCES (which covers envelope args) to the payload body.
+ * extends FACTORY_ARG_SOURCES (which covers envelope args) to the payload body.
  *
  * Identity-echo fields (proposal_id, certificate_id, hashes) point the worker to
  * the read-only `_get` tool that already returned them. source_refs failures
@@ -206,7 +206,7 @@ export function enrichPayloadErrors(
 ): string[] {
   if (!errors || errors.length === 0) return errors;
   const sources = PAYLOAD_FIELD_SOURCES[tool];
-  const shape = (SAGA3_TOOL_CALL_SHAPES as Record<string, string>)[tool];
+  const shape = (FACTORY_TOOL_CALL_SHAPES as Record<string, string>)[tool];
 
   // This helper is deliberately scoped to known Saga 3 tool contracts. Adding a
   // generic workflow sentence to an unknown tool changes its error semantics and

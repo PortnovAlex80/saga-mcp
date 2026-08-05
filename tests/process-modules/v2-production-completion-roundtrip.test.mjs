@@ -160,7 +160,7 @@ function buildV2Executor(module, db) {
   const lookupProduction = db.prepare(
     `SELECT output_schema AS schema, output_ref AS ref, output_hash AS hash,
             output_bindings AS bindingsText
-       FROM saga3_node_runs
+       FROM factory_node_runs
       WHERE output_schema=? AND output_ref=? AND output_hash=?
         AND status='completed'
       LIMIT 1`,
@@ -311,7 +311,7 @@ test('Wave 8 BLOCKER 1+2: v2 path activates for a fresh run and persists an acyc
 
     // Read the raw persisted JSON from the v2 column to prove it was written.
     const rawCompletionText = db.prepare(
-      'SELECT completion FROM saga3_node_runs WHERE id=?',
+      'SELECT completion FROM factory_node_runs WHERE id=?',
     ).get(settleRow.id).completion;
     assert.ok(rawCompletionText, 'completion column must be populated by completeV2 (v2 path active)');
 
@@ -395,7 +395,7 @@ test('Wave 8 BLOCKER 2: no kernel code creates a runtime cycle — the four real
       outputEnvelope: {
         outcome: 'released',
         productions: [],
-        certificateRef: { schemaId: 'saga3.delivery-certificate.v2', ref: 'certificate:1', digest: 'd1' },
+        certificateRef: { schemaId: 'factory.delivery-certificate.v2', ref: 'certificate:1', digest: 'd1' },
       },
       terminal: true,
     },
@@ -404,7 +404,7 @@ test('Wave 8 BLOCKER 2: no kernel code creates a runtime cycle — the four real
       outputEnvelope: {
         outcome: 'formalized',
         productions: [],
-        certificateRef: { schemaId: 'saga3.solution-contract.v1', ref: 'certificate:2', digest: 'd2' },
+        certificateRef: { schemaId: 'factory.solution-contract.v1', ref: 'certificate:2', digest: 'd2' },
       },
       terminal: true,
     },
@@ -456,7 +456,7 @@ function buildNoCompletionExecutor(module, db, handlerFn) {
   const lookupProduction = db.prepare(
     `SELECT output_schema AS schema, output_ref AS ref, output_hash AS hash,
             output_bindings AS bindingsText
-       FROM saga3_node_runs
+       FROM factory_node_runs
       WHERE output_schema=? AND output_ref=? AND output_hash=?
         AND status='completed'
       LIMIT 1`,

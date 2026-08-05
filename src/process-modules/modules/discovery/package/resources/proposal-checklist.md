@@ -6,7 +6,7 @@ Read proposal-call-{EPIC_ID}.json and verify EVERY item:
 - [ ] task_id is an integer
 - [ ] execution_id is a string in quotes
 - [ ] kind is exactly "discovery"
-- [ ] schema_version is exactly "saga3.discovery-proposal.v1"
+- [ ] schema_version is exactly "factory.discovery-proposal.v1"
 - [ ] payload.problem_statement is a non-empty string
 - [ ] payload.observed_context is a non-empty string
 - [ ] payload.stakeholders_or_actors is a real array: ["a", "b"] (not a string!)

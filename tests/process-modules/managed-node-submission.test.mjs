@@ -20,7 +20,7 @@ const { sha256Hex } = await import(
 );
 
 function fixture() {
-  const temp = mkdtempSync(path.join(os.tmpdir(), 'saga3-node-submit-'));
+  const temp = mkdtempSync(path.join(os.tmpdir(), 'factory-node-submit-'));
   process.env.DB_PATH = path.join(temp, 'submissions.db');
   const db = getDb();
   db.prepare(`INSERT INTO projects (id,name,status) VALUES (1,'P','active')`).run();
@@ -31,7 +31,7 @@ function fixture() {
     moduleRef: { name: 'solution-development', version: '1.0.0' },
     executorKind: 'generic-flow',
     input: {
-      schema: 'saga3.development-case.v1',
+      schema: 'factory.development-case.v1',
       payload: input,
       contentHash: sha256Hex(input),
     },
@@ -105,7 +105,7 @@ test('managed node submission is machine-bound, immutable and exactly replayable
   const f = fixture();
   try {
     const payload = {
-      schemaVersion: 'saga3.development-task-graph-proposal.v1',
+      schemaVersion: 'factory.development-task-graph-proposal.v1',
       implementationItems: [],
       verificationItems: [],
       integrationTargets: [],
@@ -144,7 +144,7 @@ test('managed node submission is machine-bound, immutable and exactly replayable
     );
     assert.throws(
       () => f.db.prepare(
-        `UPDATE saga3_managed_node_submissions
+        `UPDATE factory_managed_node_submissions
             SET content_hash='tampered' WHERE id=?`,
       ).run(record.submissionId),
       /MANAGED_NODE_SUBMISSION_IMMUTABLE/,
@@ -178,7 +178,7 @@ test('managed node submission refuses a lost execution or ProcessRun fence', () 
     );
     assert.equal(
       f.db.prepare(
-        'SELECT COUNT(*) AS n FROM saga3_managed_node_submissions',
+        'SELECT COUNT(*) AS n FROM factory_managed_node_submissions',
       ).get().n,
       0,
     );

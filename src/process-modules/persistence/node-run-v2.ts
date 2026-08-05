@@ -1,7 +1,7 @@
 /**
- * NodeRun v2 — durable execution primitives for saga3_node_runs (Wave 3 §9).
+ * NodeRun v2 — durable execution primitives for factory_node_runs (Wave 3 §9).
  *
- * W3-A6 owns this file. It is the SQL OWNER for saga3_node_runs this wave
+ * W3-A6 owns this file. It is the SQL OWNER for factory_node_runs this wave
  * (C083: single-writer coordination). The v2 record EXTENDS the legacy
  * `NodeRunRecord` (no field removed, none narrowed) with the seven additive
  * nullable columns introduced by Wave 3 §9 of WAVE3-DURABLE-EXECUTION-SPEC.md:

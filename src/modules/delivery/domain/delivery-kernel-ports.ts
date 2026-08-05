@@ -160,8 +160,8 @@ export interface DeliveryModuleInstallationDependencies {
 
 /**
  * ProcessRun schema-ensure port. Replaces the direct
- * `ensureSaga3ProcessRunSchema` import from the shared SQLite process-run
- * repository. Delivery's own tables reference saga3_process_runs; this port
+ * `ensureFactoryProcessRunSchema` import from the shared SQLite process-run
+ * repository. Delivery's own tables reference factory_process_runs; this port
  * guarantees that parent table exists before delivery's tables are created,
  * without the module importing the concrete SQLite repository.
  */

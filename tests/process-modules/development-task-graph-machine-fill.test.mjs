@@ -8,7 +8,7 @@ import {
 } from '../../dist/modules/development/application/development-workspace-preparation.js';
 
 const developmentCase = {
-  schemaVersion: 'saga3.development-case.v1',
+  schemaVersion: 'factory.development-case.v1',
   projectId: 7,
   epicId: 51,
   formalizationCertificate: {

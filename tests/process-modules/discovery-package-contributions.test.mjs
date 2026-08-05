@@ -215,13 +215,13 @@ test('W9-A2 acceptance capabilities: diagnosis-advisory guard is declared packag
 // ---------------------------------------------------------------------------
 
 test('W9-A2 output contracts: input + output contract refs are the saga3 discovery schemas', () => {
-  assert.equal(DISCOVERY_INPUT_CONTRACT.schemaId, 'saga3.discovery-case.v1');
-  assert.equal(DISCOVERY_OUTPUT_CONTRACT.schemaId, 'saga3.discovery-outcome-certificate.v1');
+  assert.equal(DISCOVERY_INPUT_CONTRACT.schemaId, 'factory.discovery-case.v1');
+  assert.equal(DISCOVERY_OUTPUT_CONTRACT.schemaId, 'factory.discovery-outcome-certificate.v1');
 });
 
 test('W9-A2 output contracts: every node output contract has a valid saga3 schema id', () => {
   for (const c of DISCOVERY_NODE_OUTPUT_CONTRACTS) {
-    assert.ok(c.schemaId.startsWith('saga3.'), `${c.schemaId} is not a saga3 schema`);
+    assert.ok(c.schemaId.startsWith('factory.'), `${c.schemaId} is not a saga3 schema`);
     assert.ok(c.version.length > 0, 'version must be non-empty');
     assert.ok(c.digest.length > 0, 'digest must be non-empty');
   }
@@ -229,11 +229,11 @@ test('W9-A2 output contracts: every node output contract has a valid saga3 schem
 
 test('W9-A2 output contracts: node output contracts cover proposal/normalization/readiness/diagnosis/brief', () => {
   const ids = DISCOVERY_NODE_OUTPUT_CONTRACTS.map((c) => c.schemaId);
-  assert.ok(ids.includes('saga3.discovery-proposal.v1'));
-  assert.ok(ids.includes('saga3.discovery-normalization-proposal.v1'));
-  assert.ok(ids.includes('saga3.discovery-readiness-assessment.v1'));
-  assert.ok(ids.includes('saga3.discovery-diagnosis.v1'));
-  assert.ok(ids.includes('saga3.discovery-brief.v1'));
+  assert.ok(ids.includes('factory.discovery-proposal.v1'));
+  assert.ok(ids.includes('factory.discovery-normalization-proposal.v1'));
+  assert.ok(ids.includes('factory.discovery-readiness-assessment.v1'));
+  assert.ok(ids.includes('factory.discovery-diagnosis.v1'));
+  assert.ok(ids.includes('factory.discovery-brief.v1'));
 });
 
 test('W9-A2 output contracts: declared outcomes are all terminal and match the discovery flow', () => {

@@ -45,7 +45,7 @@ import test from 'node:test';
 import { sha256Hex } from '../../dist/shared/canonical-json.js';
 
 // Wave 1 SPI — legacy adapter (wraps a definition into a manifest envelope).
-const { adaptLegacyProcessModule } = await import(
+const { createProcessModuleManifest } = await import(
   '../../dist/process-modules/domain/spi/index.js'
 );
 
@@ -169,14 +169,14 @@ const moduleDefinition = {
 
 /**
  * Build a fake `ModuleInstallationRecord` from the fixture, wrapping the
- * definition via `adaptLegacyProcessModule` (Wave 1 SPI) into a manifest
+ * definition via `createProcessModuleManifest` (Wave 1 SPI) into a manifest
  * envelope, then splicing in the resolved resource index + handler refs.
  *
  * @param {object} [overrides]
  * @returns {object}
  */
 function buildRecord(overrides = {}) {
-  const manifest = adaptLegacyProcessModule(moduleDefinition);
+  const manifest = createProcessModuleManifest(moduleDefinition);
   const resourceIndex = RESOURCE_INDEX.map((r) => ({ ...r }));
   const handlerRefs = [
     { logicalId: 'settle-handler', version: '1.0.0', digest: sha256Hex({ id: 'settle-handler' }) },

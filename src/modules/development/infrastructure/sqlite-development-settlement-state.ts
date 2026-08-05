@@ -64,9 +64,9 @@ import {
 
 const PROCESS_PRODUCT_KIND_TASK_GRAPH = 'development.task-graph';
 
-const TASK_RESULT_SCHEMA = 'saga3.development-task-result.v1';
+const TASK_RESULT_SCHEMA = 'factory.development-task-result.v1';
 const VERIFICATION_EVIDENCE_REF_SCHEMA =
-  'saga3.candidate-verification-evidence.v1';
+  'factory.candidate-verification-evidence.v1';
 const MODULE_REF = 'solution-development@1.0.0';
 const RESOLVE_NODE_ID = 'resolve-task-graph';
 
@@ -651,7 +651,7 @@ export class SqliteDevelopmentModuleStore implements
       : [processRunId];
     return this.db.prepare(
       `SELECT task_id,work_item_key,item_kind
-         FROM saga3_development_task_projections
+         FROM factory_development_task_projections
         WHERE process_run_id=?${whereKind}
         ORDER BY work_item_key`,
     ).all(...params) as ProjectedTaskRow[];
@@ -659,7 +659,7 @@ export class SqliteDevelopmentModuleStore implements
 
   private readRuntimeTask(taskId: number): RuntimeTaskRow {
     // Conveyor v4 step 3.C.4 read-switch: in cutover mode the task's status is
-    // the AUTHORITATIVE v4_workplaces kanban_phase (reverse-projected to the
+    // the AUTHORITATIVE factory_workplaces kanban_phase (reverse-projected to the
     // legacy status vocabulary). integration_state / integrated_commit /
     // project_repository_id / metadata are DATA columns and stay on tasks.
     const cutover = true;
@@ -681,7 +681,7 @@ export class SqliteDevelopmentModuleStore implements
                   t.integration_state, t.integrated_commit,
                   t.project_repository_id, t.metadata
              FROM tasks t
-             LEFT JOIN v4_workplaces w ON w.workplace_ref = t.workplace_ref
+             LEFT JOIN factory_workplaces w ON w.workplace_ref = t.workplace_ref
             WHERE t.id=?`,
         ).get(taskId)
       : this.db.prepare(
@@ -716,7 +716,7 @@ export class SqliteDevelopmentModuleStore implements
                   t.integration_state, t.integrated_commit,
                   t.project_repository_id, t.metadata
              FROM tasks t
-             LEFT JOIN v4_workplaces w ON w.workplace_ref = t.workplace_ref
+             LEFT JOIN factory_workplaces w ON w.workplace_ref = t.workplace_ref
             WHERE t.id IN (${taskIds.map(() => '?').join(',')})`,
         ).all(...taskIds)
       : this.db.prepare(
@@ -1036,11 +1036,11 @@ export class SqliteDevelopmentModuleStore implements
     // WorkIntent so managed-production provenance is complete for the workers
     // that later claim these tasks through worker_next.
     const processRun = this.db.prepare(
-      'SELECT input_hash FROM saga3_process_runs WHERE id=?',
+      'SELECT input_hash FROM factory_process_runs WHERE id=?',
     ).get(input.processRunId) as { input_hash: string } | undefined;
     const plannerIntent = this.db.prepare(
       `SELECT wi.id AS work_intent_id
-         FROM saga3_work_intents wi
+         FROM factory_work_intents wi
          JOIN tasks t ON t.id = wi.projected_task_id
         WHERE t.metadata LIKE ?
           AND t.epic_id = ?
@@ -1115,7 +1115,7 @@ export class SqliteDevelopmentModuleStore implements
     }
 
     this.db.prepare(
-      `INSERT INTO saga3_development_task_projections
+      `INSERT INTO factory_development_task_projections
         (process_run_id,graph_hash,work_item_key,item_kind,task_id)
        VALUES (?,?,?,?,?)
        ON CONFLICT(process_run_id,work_item_key) DO NOTHING`,
@@ -1128,7 +1128,7 @@ export class SqliteDevelopmentModuleStore implements
     );
     const projection = this.db.prepare(
       `SELECT graph_hash,item_kind,task_id
-         FROM saga3_development_task_projections
+         FROM factory_development_task_projections
         WHERE process_run_id=? AND work_item_key=?`,
     ).get(input.processRunId, input.item.key) as {
       graph_hash: string;
@@ -1385,9 +1385,9 @@ function parseMetadata(raw: string): Record<string, unknown> {
 
 export function ensureDevelopmentStoreSchema(db: Database.Database): void {
   db.exec(`
-    CREATE TABLE IF NOT EXISTS saga3_development_task_projections (
+    CREATE TABLE IF NOT EXISTS factory_development_task_projections (
       process_run_id INTEGER NOT NULL
-                       REFERENCES saga3_process_runs(id) ON DELETE RESTRICT,
+                       REFERENCES factory_process_runs(id) ON DELETE RESTRICT,
       graph_hash     TEXT NOT NULL,
       work_item_key  TEXT NOT NULL,
       item_kind      TEXT NOT NULL
@@ -1399,7 +1399,7 @@ export function ensureDevelopmentStoreSchema(db: Database.Database): void {
       UNIQUE(process_run_id,task_id)
     );
 
-    CREATE INDEX IF NOT EXISTS idx_saga3_development_projection_task
-      ON saga3_development_task_projections(task_id);
+    CREATE INDEX IF NOT EXISTS idx_factory_development_projection_task
+      ON factory_development_task_projections(task_id);
   `);
 }

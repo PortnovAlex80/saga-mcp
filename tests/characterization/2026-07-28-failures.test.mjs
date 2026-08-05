@@ -261,7 +261,7 @@ test('fixture lost-receipt: receipt is a nullable JSON blob reconstructed each w
     'execution_receipt must be a nullable TEXT column',
   );
   assert.ok(
-    nodeRun.includes('ALTER TABLE saga3_node_runs ADD COLUMN execution_receipt'),
+    nodeRun.includes('ALTER TABLE factory_node_runs ADD COLUMN execution_receipt'),
     'execution_receipt must be added by ALTER TABLE migration (nullable by construction)',
   );
   assert.ok(f.data.fixing_waves.includes('3'), 'lost-receipt must list Wave 3');

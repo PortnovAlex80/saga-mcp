@@ -1590,7 +1590,7 @@ function withResolutionFailure(
       event: 'failed',
       production: resolutionFailureProduction(
         ctx,
-        'saga3.formalization-resolution-failure.v1',
+        'factory.formalization-resolution-failure.v1',
         `${handlerId}: ${errorMessage(error)}`,
         partialReceipt(ctx.input),
       ),

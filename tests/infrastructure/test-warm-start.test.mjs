@@ -67,7 +67,7 @@ function fixture({
     : null;
   const fixturePath = path.join(root, 'fixture.json');
   writeFileSync(fixturePath, JSON.stringify({
-    schemaVersion: 'saga3.test-warm-start-fixture.v1',
+    schemaVersion: 'factory.test-warm-start-fixture.v1',
     fixtureId: 'uc-smoke-v1',
     epicId,
     nodes: [{
@@ -235,7 +235,7 @@ test('dynamic execution paths use a logical workspace slot without globbing', ()
   writeFileSync(firstTarget, '# Empty template\n');
   const fixturePath = path.join(root, 'fixture.json');
   writeFileSync(fixturePath, JSON.stringify({
-    schemaVersion: 'saga3.test-warm-start-fixture.v1',
+    schemaVersion: 'factory.test-warm-start-fixture.v1',
     fixtureId: 'dynamic-discovery',
     epicId: 9,
     nodes: [{
@@ -298,7 +298,7 @@ test('later epic stages add independent slots without overwriting earlier drafts
   mkdirSync(path.join(root, 'docs', 'requirements'), { recursive: true });
   const fixturePath = path.join(root, 'fixture.json');
   writeFileSync(fixturePath, JSON.stringify({
-    schemaVersion: 'saga3.test-warm-start-fixture.v1',
+    schemaVersion: 'factory.test-warm-start-fixture.v1',
     fixtureId: 'stage-accumulation',
     epicId: 12,
     nodes: [

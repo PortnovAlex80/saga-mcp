@@ -34,7 +34,7 @@ import { sha256Hex } from '../../shared/canonical-json.js';
  * definition. Excludes the non-enumerable `routeResolver` automatically.
  *
  * This is registered in the catalog and persisted in
- * `saga3_process_module_installations.definition_digest`.
+ * `factory_process_module_installations.definition_digest`.
  */
 export function computeDefinitionDigest(definition: ProcessModuleDefinition): string {
   return sha256Hex(definition);

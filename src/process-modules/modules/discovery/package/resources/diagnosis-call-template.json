@@ -1,7 +1,7 @@
 {
   "control_intent_id": "FILL_INTEGER_FROM_DIAGNOSIS_GET_METADATA_CONTROL_INTENT_ID",
   "execution_id": "FILL_STRING_YOUR_EXECUTION_ID",
-  "schema_version": "saga3.discovery-diagnosis.v1",
+  "schema_version": "factory.discovery-diagnosis.v1",
   "payload": {
     "target": {
       "certificate_id": "FILL_INTEGER_FROM_DIAGNOSIS_GET_CERTIFICATE_ID",

@@ -15,7 +15,7 @@ evidence: |
     nodeRunRepo rows and re-parsing each row.executionReceipt JSON.
   - The receipt column is nullable TEXT, added by ALTER TABLE in
     src/process-modules/persistence/sqlite-node-run-repository.ts:35,53-63,79
-    (execution_receipt TEXT; ALTER TABLE saga3_node_runs ADD COLUMN
+    (execution_receipt TEXT; ALTER TABLE factory_node_runs ADD COLUMN
     execution_receipt TEXT). A NULL or unparseable blob silently drops the
     receipt from the reconstructed frame.
   - Plan §0.6.12 Wave 3 gate (verbatim): "a crash after worker completion
@@ -26,7 +26,7 @@ evidence: |
     NodeExecutionFrame (productions/receipts maps) reconstructed each step`.
 reproduction: |
   Static: `grep -n "restoreFrame\|NodeExecutionFrame" src/process-modules/application/generic-flow-executor.ts`
-  Dynamic: persist a saga3_node_runs row with execution_receipt=NULL or
+  Dynamic: persist a factory_node_runs row with execution_receipt=NULL or
   execution_receipt='{not json' and call walk() — restoreFrame silently omits
   the receipt (frame.receipts gets no entry) instead of failing closed.
   Command: `grep -n "execution_receipt TEXT" src/process-modules/persistence/sqlite-node-run-repository.ts`

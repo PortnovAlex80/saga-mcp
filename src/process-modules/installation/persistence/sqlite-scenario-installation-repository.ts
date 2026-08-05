@@ -1,6 +1,6 @@
 /**
  * W7-A1 — `SqliteScenarioInstallationRepository` adapter +
- * `ensureSaga3ScenarioInstallationSchema(db)`.
+ * `ensureFactoryScenarioInstallationSchema(db)`.
  *
  * Spec: `docs/refactor-management/09-contracts/WAVE7-SCENARIO-SPEC.md`
  * (Lanes row W7-A1; §0.10.3 / §0.10.12). Plan: §4.3.3
@@ -9,15 +9,15 @@
  * module lock; LifecycleRun pins both at start), §5.5.9 (deletion-restricted).
  * Task: `docs/refactor-management/05-subagent-tasks/W07-a1.md`.
  *
- * This is the SINGLE SQL owner of the `saga3_scenario_installations` and
- * `saga3_scenario_module_locks` tables (plan §0.5.2, C083). No other Wave 7
+ * This is the SINGLE SQL owner of the `factory_scenario_installations` and
+ * `factory_scenario_module_locks` tables (plan §0.5.2, C083). No other Wave 7
  * lane may create SQL tables or edit `db.ts`.
  *
  * ## What the SQL enforces
  *
- * `saga3_scenario_installations`:
+ * `factory_scenario_installations`:
  *   - The partial UNIQUE index
- *     `idx_saga3_scenario_installations_active ON (scenario_name, scenario_version) WHERE status='active'`
+ *     `idx_factory_scenario_installations_active ON (scenario_name, scenario_version) WHERE status='active'`
  *     is the scenario-version-immutability invariant (mirrors W2-A2 §4): at
  *     most ONE active installation per scenario identity. The adapter detects
  *     the resulting `SQLITE_CONSTRAINT_UNIQUE` violation on `installScenario`
@@ -30,11 +30,11 @@
  *     method — only `retire` (status `active` → `retired`), which releases the
  *     unique-active slot but preserves the row for replay verification.
  *
- * `saga3_scenario_module_locks`:
+ * `factory_scenario_module_locks`:
  *   - One row per `(scenario_installation_id, stage_id)`. The UNIQUE index
- *     `idx_saga3_scenario_module_locks_pair ON (scenario_installation_id, stage_id)`
+ *     `idx_factory_scenario_module_locks_pair ON (scenario_installation_id, stage_id)`
  *     makes the lock a single durable pin per stage (plan §6.6-6.7).
- *   - `module_installation_id` REFERENCES `saga3_module_installations(id)`:
+ *   - `module_installation_id` REFERENCES `factory_module_installations(id)`:
  *     the lock pins an EXACT installed module package, not just a name+version.
  *     `module_package_digest` is denormalized so a reader can detect drift
  *     without a JOIN.
@@ -58,11 +58,11 @@
  *
  * ## Dual-placement (mirrors Wave 2/3/4/5 pattern)
  *
- * `saga3_scenario_installations` REFERENCES `saga3_module_installations`
- * (W2-A2) and `saga3_scenario_module_locks` REFERENCES both. On a fresh DB the
- * parent table exists (W2-A2's `ensureSaga3ModuleInstallationSchema` runs
+ * `factory_scenario_installations` REFERENCES `factory_module_installations`
+ * (W2-A2) and `factory_scenario_module_locks` REFERENCES both. On a fresh DB the
+ * parent table exists (W2-A2's `ensureFactoryModuleInstallationSchema` runs
  * earlier in `getDb()`), so the FK target is present and the schema can be
- * created here. `ensureSaga3ScenarioInstallationSchema` is therefore called
+ * created here. `ensureFactoryScenarioInstallationSchema` is therefore called
  * BOTH from the `SqliteScenarioInstallationRepository` constructor (lazy path)
  * AND from `db.ts` `getDb()` (upgrade path for pre-existing DBs). `CREATE
  * TABLE IF NOT EXISTS` makes the second placement a no-op, so both paths are
@@ -130,7 +130,7 @@ interface ScenarioModuleLockRow {
 // ---------------------------------------------------------------------------
 
 /**
- * Create the `saga3_scenario_installations` + `saga3_scenario_module_locks`
+ * Create the `factory_scenario_installations` + `factory_scenario_module_locks`
  * tables + indexes (plan §6.6-6.7, mirrors W2-A2 §3). Idempotent — safe to
  * call on every repository construction and from `db.ts` `getDb()`.
  *
@@ -139,17 +139,17 @@ interface ScenarioModuleLockRow {
  * that already has both tables is a no-op.
  *
  * The partial UNIQUE index
- * `idx_saga3_scenario_installations_active ON (scenario_name, scenario_version) WHERE status='active'`
+ * `idx_factory_scenario_installations_active ON (scenario_name, scenario_version) WHERE status='active'`
  * is the scenario-version-immutability invariant. NO `ON DELETE SET NULL`
  * (plan §5.5.9).
  */
-export function ensureSaga3ScenarioInstallationSchema(
+export function ensureFactoryScenarioInstallationSchema(
   db: Database.Database,
 ): void {
   db.exec(`
     -- Single source of truth for "which scenario is installed" (W7-A1).
     -- One row per installed scenario identity. Identity rules mirror W2-A2 §4.
-    CREATE TABLE IF NOT EXISTS saga3_scenario_installations (
+    CREATE TABLE IF NOT EXISTS factory_scenario_installations (
       id                          INTEGER PRIMARY KEY AUTOINCREMENT,
       scenario_name               TEXT NOT NULL,                    -- manifest.identity.name (denormalized for the active-unique index)
       scenario_version            TEXT NOT NULL,                    -- manifest.identity.version
@@ -170,22 +170,22 @@ export function ensureSaga3ScenarioInstallationSchema(
     -- the adapter with SCENARIO_INSTALLATION_VERSION_COLLISION. SQLite's
     -- partial UNIQUE index is the structural enforcement; the adapter
     -- translates the violation.
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_saga3_scenario_installations_active
-      ON saga3_scenario_installations(scenario_name, scenario_version) WHERE status = 'active';
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_factory_scenario_installations_active
+      ON factory_scenario_installations(scenario_name, scenario_version) WHERE status = 'active';
 
     -- Lookup by scenario digest (replay verification, registry selection).
-    CREATE INDEX IF NOT EXISTS idx_saga3_scenario_installations_digest
-      ON saga3_scenario_installations(scenario_digest);
+    CREATE INDEX IF NOT EXISTS idx_factory_scenario_installations_digest
+      ON factory_scenario_installations(scenario_digest);
 
     -- Per-stage exact module pin (plan §6.6-6.7). One row per
     -- (scenario_installation_id, stage_id). The UNIQUE index makes the lock a
     -- single durable pin per stage; module_installation_id pins the EXACT
     -- installed package (not just name+version).
-    CREATE TABLE IF NOT EXISTS saga3_scenario_module_locks (
+    CREATE TABLE IF NOT EXISTS factory_scenario_module_locks (
       id                            INTEGER PRIMARY KEY AUTOINCREMENT,
-      scenario_installation_id      INTEGER NOT NULL REFERENCES saga3_scenario_installations(id) ON DELETE CASCADE,
+      scenario_installation_id      INTEGER NOT NULL REFERENCES factory_scenario_installations(id) ON DELETE CASCADE,
       stage_id                      TEXT NOT NULL,                  -- ScenarioStageBinding.id within the manifest
-      module_installation_id        INTEGER NOT NULL REFERENCES saga3_module_installations(id) ON DELETE RESTRICT,
+      module_installation_id        INTEGER NOT NULL REFERENCES factory_module_installations(id) ON DELETE RESTRICT,
       module_name                   TEXT NOT NULL,                  -- denormalized for lookup without a JOIN
       module_version                TEXT NOT NULL,                  -- denormalized
       module_package_digest         TEXT NOT NULL,                  -- exact pin: the module's package_digest (W2-A2)
@@ -193,12 +193,12 @@ export function ensureSaga3ScenarioInstallationSchema(
     );
 
     -- One lock row per scenario stage (plan §6.6-6.7).
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_saga3_scenario_module_locks_pair
-      ON saga3_scenario_module_locks(scenario_installation_id, stage_id);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_factory_scenario_module_locks_pair
+      ON factory_scenario_module_locks(scenario_installation_id, stage_id);
 
     -- Reverse lookup: which scenario installations pin this module installation?
-    CREATE INDEX IF NOT EXISTS idx_saga3_scenario_module_locks_module
-      ON saga3_scenario_module_locks(module_installation_id);
+    CREATE INDEX IF NOT EXISTS idx_factory_scenario_module_locks_module
+      ON factory_scenario_module_locks(module_installation_id);
   `);
 }
 
@@ -260,7 +260,7 @@ function readInstallationRowById(
   id: ScenarioInstallationId,
 ): ScenarioInstallationRow | null {
   const row = db
-    .prepare('SELECT * FROM saga3_scenario_installations WHERE id=?')
+    .prepare('SELECT * FROM factory_scenario_installations WHERE id=?')
     .get(id) as ScenarioInstallationRow | undefined;
   return row ?? null;
 }
@@ -271,7 +271,7 @@ function readLockRowsForInstallation(
 ): ScenarioModuleLockRow[] {
   const rows = db
     .prepare(
-      `SELECT * FROM saga3_scenario_module_locks
+      `SELECT * FROM factory_scenario_module_locks
         WHERE scenario_installation_id=?
         ORDER BY id ASC`,
     )
@@ -290,7 +290,7 @@ function readActiveRowByNameVersion(
 ): ScenarioInstallationRow | null {
   const row = db
     .prepare(
-      `SELECT * FROM saga3_scenario_installations
+      `SELECT * FROM factory_scenario_installations
         WHERE scenario_name=? AND scenario_version=? AND status='active'`,
     )
     .get(scenarioName, scenarioVersion) as ScenarioInstallationRow | undefined;
@@ -349,7 +349,7 @@ function validateLockAgainstManifest(
  * Concrete SQLite implementation of `ScenarioInstallationRepository`.
  *
  * Construction is cheap and idempotent: the schema is created on first use
- * via {@link ensureSaga3ScenarioInstallationSchema} (CREATE IF NOT EXISTS).
+ * via {@link ensureFactoryScenarioInstallationSchema} (CREATE IF NOT EXISTS).
  * Production wires one instance at the composition root; tests construct one
  * against a temp DB.
  */
@@ -358,7 +358,7 @@ export class SqliteScenarioInstallationRepository {
 
   constructor(db: Database.Database) {
     this.db = db;
-    ensureSaga3ScenarioInstallationSchema(this.db);
+    ensureFactoryScenarioInstallationSchema(this.db);
   }
 
   installScenario(
@@ -414,7 +414,7 @@ export class SqliteScenarioInstallationRepository {
         let lastInsertRowid: number | bigint;
         try {
           const info = this.db.prepare(
-            `INSERT INTO saga3_scenario_installations
+            `INSERT INTO factory_scenario_installations
                (scenario_name, scenario_version, scenario_digest,
                 manifest_snapshot, module_lock, store_location, status,
                 installed_at, activated_at, retired_at)
@@ -438,7 +438,7 @@ export class SqliteScenarioInstallationRepository {
           const msg = (err as Error).message ?? '';
           if (
             msg.includes('UNIQUE')
-            && msg.includes('idx_saga3_scenario_installations_active')
+            && msg.includes('idx_factory_scenario_installations_active')
           ) {
             const existing = readActiveRowByNameVersion(
               this.db,
@@ -459,7 +459,7 @@ export class SqliteScenarioInstallationRepository {
         // Insert one lock row per stage. The UNIQUE(scenario_installation_id,
         // stage_id) index + the pre-write validation guarantee no duplicates.
         const insertLock = this.db.prepare(
-          `INSERT INTO saga3_scenario_module_locks
+          `INSERT INTO factory_scenario_module_locks
              (scenario_installation_id, stage_id, module_installation_id,
               module_name, module_version, module_package_digest,
               selector_version_range)
@@ -524,7 +524,7 @@ export class SqliteScenarioInstallationRepository {
   getByDigest(digest: string): ScenarioInstallationRecord | null {
     const row = this.db
       .prepare(
-        'SELECT * FROM saga3_scenario_installations WHERE scenario_digest=?',
+        'SELECT * FROM factory_scenario_installations WHERE scenario_digest=?',
       )
       .get(digest) as ScenarioInstallationRow | undefined;
     if (!row) return null;
@@ -569,7 +569,7 @@ export class SqliteScenarioInstallationRepository {
     try {
       const info = this.db
         .prepare(
-          `UPDATE saga3_scenario_installations
+          `UPDATE factory_scenario_installations
               SET status='active',
                   activated_at=COALESCE(activated_at, datetime('now'))
             WHERE id=?`,
@@ -584,7 +584,7 @@ export class SqliteScenarioInstallationRepository {
       const msg = (err as Error).message ?? '';
       if (
         msg.includes('UNIQUE')
-        && msg.includes('idx_saga3_scenario_installations_active')
+        && msg.includes('idx_factory_scenario_installations_active')
       ) {
         throw new Error(
           `${SCENARIO_INSTALLATION_VERSION_COLLISION}: concurrent activation won the `
@@ -607,7 +607,7 @@ export class SqliteScenarioInstallationRepository {
   retire(id: ScenarioInstallationId): ScenarioInstallationRecord {
     const info = this.db
       .prepare(
-        `UPDATE saga3_scenario_installations
+        `UPDATE factory_scenario_installations
             SET status='retired',
                 retired_at=COALESCE(retired_at, datetime('now'))
           WHERE id=?`,
@@ -631,7 +631,7 @@ export class SqliteScenarioInstallationRepository {
   listActive(): readonly ScenarioInstallationRecord[] {
     const rows = this.db
       .prepare(
-        `SELECT * FROM saga3_scenario_installations
+        `SELECT * FROM factory_scenario_installations
           WHERE status='active'
           ORDER BY scenario_name ASC, scenario_version ASC`,
       )

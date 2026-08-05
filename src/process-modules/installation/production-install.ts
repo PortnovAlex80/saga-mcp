@@ -106,7 +106,7 @@ export interface ProductionInstallation {
  * store root.
  *
  * @param db         Open saga SQLite handle (the same one the rest of the
- *                   runtime uses; `saga3_module_installations` is created here
+ *                   runtime uses; `factory_module_installations` is created here
  *                   if absent).
  * @param repoRoot   Absolute path to the saga-mcp repository root. Manifest
  *                   resource paths are repo-root-relative POSIX.

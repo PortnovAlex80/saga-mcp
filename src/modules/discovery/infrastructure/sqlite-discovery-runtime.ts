@@ -1,6 +1,8 @@
 import { getDb } from '../../../db.js';
-import { prepareSaga3ProjectedTaskForExecution } from '../../../lifecycle/unfenced-assignment-recovery.js';
-import { transitionTaskToInRepair } from '../../../lifecycle/work-assignment-core.js';
+import {
+  prepareFactoryProjectedTaskForExecution,
+  transitionTaskToInRepair,
+} from '../../../lifecycle/work-assignment-core.js';
 import { mapV4KanbanToTaskStatus } from '../../../infrastructure/projections/workplace-projector.js';
 import type { CreateWorkIntent, WorkIntent, WorkIntentStatus } from '../../../shared/work-intent.js';
 import type { ProposalRecord } from '../domain/proposal.js';
@@ -19,7 +21,7 @@ import {
   type IssueCertificateAtomicallyInput,
   type NormalizationControlExecution,
   type PrepareIntentForExecutionResult,
-  type Saga3DiscoveryRuntimePersistence,
+  type FactoryDiscoveryRuntimePersistence,
   type SettlementInputKey,
   type SettlementProposalRecord,
 } from './discovery-runtime-port.js';
@@ -28,7 +30,7 @@ import {
   hashPayload,
 } from './discovery-proposal-repository.js';
 import {
-  ensureSaga3NormalizationSchema,
+  ensureFactoryNormalizationSchema,
   readLatestNormalizationProposalForControl,
   readLatestRawSubmissionForIntent,
   readNormalizationProposalForExecution,
@@ -36,14 +38,14 @@ import {
   readRawSubmissionForExecution,
 } from './discovery-normalization-repository.js';
 import {
-  ensureSaga3ReadinessSchema,
+  ensureFactoryReadinessSchema,
   readLatestReadinessAssessmentForControl,
   readReadinessAssessmentForExecution,
   readReadinessAssessment,
   readReadinessControlForProposal as readReadinessControlForProposalRepo,
 } from './discovery-readiness-repository.js';
 import {
-  ensureSaga3SettlementSchema,
+  ensureFactorySettlementSchema,
   findSettlementByInputKey as findSettlementByInputKeyRepo,
   insertSettlement as insertSettlementRepo,
   issueCertificateAtomically as issueCertificateAtomicallyRepo,
@@ -55,19 +57,19 @@ import {
 } from './discovery-settlement-repository.js';
 
 /**
- * SQLite implementation of the Saga3DiscoveryRuntimePersistence port.
+ * SQLite implementation of the FactoryDiscoveryRuntimePersistence port.
  *
  * This is the ONLY place the Saga 3 discovery engine's data access touches
  * `getDb()`. The engine itself depends on the interface, so a test can inject
  * a fake. All methods here mirror what the D1 engine previously did inline
  * (readObjective / ensureDiscoveryTask / repoForProject / taskStatus) plus the
- * WorkIntent + proposal reads it delegated to Saga3ProposalRepository.
+ * WorkIntent + proposal reads it delegated to FactoryProposalRepository.
  */
 
 /**
  * Conveyor v4 step 3.B.3 read-switch: read a task's ORCHESTRATION state
  * (status / assigned_to / current_execution_id) from the authoritative
- * v4_workplaces when SAGA_WORKPLACE_READ=new. In legacy mode, read directly
+ * factory_workplaces when SAGA_WORKPLACE_READ=new. In legacy mode, read directly
  * from the tasks columns (the historical behavior).
  *
  * The orchestration state is what the discovery LM-node executor uses to
@@ -108,7 +110,7 @@ function readTaskOrchestrationState(taskId: number): TaskOrchestrationState {
     };
   }
   const wp = db.prepare(
-    'SELECT kanban_phase, loop_state, active_reservation_ref FROM v4_workplaces WHERE workplace_ref=?',
+    'SELECT kanban_phase, loop_state, active_reservation_ref FROM factory_workplaces WHERE workplace_ref=?',
   ).get(task.workplace_ref) as
     | { kanban_phase: string; loop_state: string; active_reservation_ref: string | null }
     | undefined;
@@ -143,12 +145,12 @@ function readTaskOrchestrationState(taskId: number): TaskOrchestrationState {
   };
 }
 
-export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersistence {
+export class SqliteFactoryDiscoveryRuntime implements FactoryDiscoveryRuntimePersistence {
   constructor() {
     ensurePausedWorkIntentStatus(getDb());
-    ensureSaga3NormalizationSchema(getDb());
-    ensureSaga3ReadinessSchema(getDb());
-    ensureSaga3SettlementSchema(getDb());
+    ensureFactoryNormalizationSchema(getDb());
+    ensureFactoryReadinessSchema(getDb());
+    ensureFactorySettlementSchema(getDb());
   }
 
   readEpicObjective(epicId: number): { name: string; description: string | null } | null {
@@ -160,7 +162,7 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
 
   readOpenIntent(epicId: number, kind: string): WorkIntent | null {
     const row = getDb().prepare(
-      `SELECT * FROM saga3_work_intents
+      `SELECT * FROM factory_work_intents
         WHERE epic_id=? AND kind=? AND status IN ('open','executing','paused')
         ORDER BY id DESC LIMIT 1`,
     ).get(epicId, kind) as WorkIntentRow | undefined;
@@ -172,10 +174,10 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
     // This enables restart recovery: reuse the existing discovery result
     // instead of creating a duplicate intent + worker.
     const row = getDb().prepare(
-      `SELECT wi.* FROM saga3_work_intents wi
+      `SELECT wi.* FROM factory_work_intents wi
         WHERE wi.epic_id=? AND wi.kind=? AND wi.status='concluded'
           AND EXISTS (
-            SELECT 1 FROM saga3_proposals p
+            SELECT 1 FROM factory_proposals p
             WHERE p.intent_id = wi.id AND p.status = 'submitted'
           )
         ORDER BY wi.id DESC LIMIT 1`,
@@ -186,7 +188,7 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
   createIntent(command: CreateWorkIntent): WorkIntent {
     const db = getDb();
     const info = db.prepare(
-      `INSERT INTO saga3_work_intents
+      `INSERT INTO factory_work_intents
          (epic_id, kind, objective, authority_scope, output_schema,
           token_budget, retry_budget, status)
        VALUES (?,?,?,?,?,?,?, 'open')`,
@@ -204,7 +206,7 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
 
   setProjectedTask(intentId: number, taskId: number): void {
     getDb().prepare(
-      `UPDATE saga3_work_intents SET projected_task_id=?, updated_at=datetime('now')
+      `UPDATE factory_work_intents SET projected_task_id=?, updated_at=datetime('now')
         WHERE id=?`,
     ).run(taskId, intentId);
   }
@@ -296,7 +298,7 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
 
   setIntentStatus(intentId: number, expected: WorkIntentStatus, next: WorkIntentStatus): boolean {
     const info = getDb().prepare(
-      `UPDATE saga3_work_intents
+      `UPDATE factory_work_intents
           SET status=?, updated_at=datetime('now')
         WHERE id=? AND status=?`,
     ).run(next, intentId, expected);
@@ -507,11 +509,11 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
       const completedProducer = db.prepare(
         `WITH managed_execution_ids AS (
            SELECT execution_id
-             FROM saga3_managed_artifact_productions
+             FROM factory_managed_artifact_productions
             WHERE task_id=? AND process_run_id=? AND node_id=?
            UNION
            SELECT execution_id
-             FROM saga3_managed_trace_productions
+             FROM factory_managed_trace_productions
             WHERE task_id=? AND process_run_id=? AND node_id=?
          )
          SELECT cr.execution_id
@@ -545,11 +547,11 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
       const row = db.prepare(
         `WITH managed_products AS (
              SELECT execution_id, recorded_at
-               FROM saga3_managed_artifact_productions
+               FROM factory_managed_artifact_productions
               WHERE task_id=? AND process_run_id=? AND node_id=?
              UNION ALL
              SELECT execution_id, recorded_at
-               FROM saga3_managed_trace_productions
+               FROM factory_managed_trace_productions
               WHERE task_id=? AND process_run_id=? AND node_id=?
            )
          SELECT products.execution_id
@@ -590,7 +592,7 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
     db.exec('BEGIN IMMEDIATE');
     try {
       const intent = db.prepare(
-        'SELECT status, projected_task_id FROM saga3_work_intents WHERE id=?',
+        'SELECT status, projected_task_id FROM factory_work_intents WHERE id=?',
       ).get(intentId) as { status: WorkIntentStatus; projected_task_id: number | null } | undefined;
       if (!intent) throw new Error(`saga3: WorkIntent ${intentId} not found during resume`);
       if (intent.projected_task_id !== taskId) {
@@ -618,14 +620,14 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
       // spawns a new worker run.
       if (task.status === 'todo') {
         if (intent.status === 'concluded') {
-          db.prepare(`UPDATE saga3_work_intents SET status='open', updated_at=datetime('now') WHERE id=? AND status='concluded'`).run(intentId);
+          db.prepare(`UPDATE factory_work_intents SET status='open', updated_at=datetime('now') WHERE id=? AND status='concluded'`).run(intentId);
         }
         db.exec('COMMIT');
         return { state: 'ready', intentStatus: 'open', taskStatus: 'todo' };
       }
       if (task.status === 'blocked') {
         if (intent.status === 'executing') {
-          db.prepare(`UPDATE saga3_work_intents SET status='paused', updated_at=datetime('now') WHERE id=? AND status='executing'`).run(intentId);
+          db.prepare(`UPDATE factory_work_intents SET status='paused', updated_at=datetime('now') WHERE id=? AND status='executing'`).run(intentId);
         }
         db.exec('COMMIT');
         return { state: 'blocked', intentStatus: 'paused', taskStatus: 'blocked', detail: 'blocked tasks require controller/operator policy' };
@@ -659,7 +661,7 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
           ).run(task.current_execution_id);
         }
       }
-      const restoredStatus = prepareSaga3ProjectedTaskForExecution(db, {
+      const restoredStatus = prepareFactoryProjectedTaskForExecution(db, {
         taskId,
         currentStatus: task.status,
         assignedTo: task.assigned_to,
@@ -667,7 +669,7 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
       });
       let intentStatus = intent.status;
       if (intentStatus === 'executing') {
-        db.prepare(`UPDATE saga3_work_intents SET status='paused', updated_at=datetime('now') WHERE id=? AND status='executing'`).run(intentId);
+        db.prepare(`UPDATE factory_work_intents SET status='paused', updated_at=datetime('now') WHERE id=? AND status='executing'`).run(intentId);
         intentStatus = 'paused';
       }
       if (intentStatus !== 'open' && intentStatus !== 'paused') {
@@ -684,7 +686,7 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
   transitionToInRepair(taskId: number): boolean {
     // Delegate the status transition to the sanctioned single-writer
     // (work-assignment-core.ts). The work_intent status update stays here
-    // (saga3_work_intents is not subject to the tasks single-writer gate).
+    // (factory_work_intents is not subject to the tasks single-writer gate).
     const db = getDb();
     db.exec('BEGIN IMMEDIATE');
     try {
@@ -696,7 +698,7 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
       // intent projected to this task: concluded → open so prepareIntentForExecution
       // routes through the ready path (removed-legacy-status → ready) for the repair worker.
       db.prepare(
-        `UPDATE saga3_work_intents SET status='open', updated_at=datetime('now')
+        `UPDATE factory_work_intents SET status='open', updated_at=datetime('now')
           WHERE projected_task_id=? AND status='concluded'`,
       ).run(taskId);
       db.exec('COMMIT');
@@ -715,14 +717,14 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
     ).get(taskId) as { intent_id: number | null } | undefined;
     if (!task || task.intent_id === null) return null;
     const row = db.prepare(
-      'SELECT * FROM saga3_work_intents WHERE id=?',
+      'SELECT * FROM factory_work_intents WHERE id=?',
     ).get(task.intent_id) as WorkIntentRow | undefined;
     return row ? rowToIntent(row) : null;
   }
 
   readLatestProposal(intentId: number): ProposalRecord | null {
     const row = getDb().prepare(
-      `SELECT * FROM saga3_proposals
+      `SELECT * FROM factory_proposals
         WHERE intent_id=? AND status='submitted'
         ORDER BY id DESC LIMIT 1`,
     ).get(intentId) as ProposalRow | undefined;
@@ -735,7 +737,7 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
     executionId: string,
   ): ProposalRecord | null {
     const row = getDb().prepare(
-      `SELECT * FROM saga3_proposals
+      `SELECT * FROM factory_proposals
         WHERE intent_id=? AND task_id=? AND execution_id=? AND status='submitted'
         ORDER BY id DESC LIMIT 1`,
     ).get(intentId, taskId, executionId) as ProposalRow | undefined;
@@ -744,8 +746,8 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
 
   readLatestProposalByEpic(epicId: number): ProposalRecord | null {
     const row = getDb().prepare(
-      `SELECT p.* FROM saga3_proposals p
-        JOIN saga3_work_intents i ON i.id = p.intent_id
+      `SELECT p.* FROM factory_proposals p
+        JOIN factory_work_intents i ON i.id = p.intent_id
         WHERE i.epic_id=? AND p.status='submitted'
         ORDER BY p.id DESC LIMIT 1`,
     ).get(epicId) as ProposalRow | undefined;
@@ -757,11 +759,11 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
     content_hash: string;
     payload: unknown;
   } | null {
-    ensureSaga3ReadinessSchema(getDb());
+    ensureFactoryReadinessSchema(getDb());
     const row = getDb().prepare(
       `SELECT a.id AS assessment_id, a.content_hash, a.payload
-         FROM saga3_readiness_assessments a
-         JOIN saga3_control_intents c ON c.id = a.control_intent_id
+         FROM factory_readiness_assessments a
+         JOIN factory_control_intents c ON c.id = a.control_intent_id
         WHERE c.epic_id=? AND a.status='accepted_by_kernel'
         ORDER BY a.id DESC LIMIT 1`,
     ).get(epicId) as
@@ -771,28 +773,28 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
   }
 
   readLatestRawSubmission(intentId: number) {
-    ensureSaga3NormalizationSchema(getDb());
+    ensureFactoryNormalizationSchema(getDb());
     return readLatestRawSubmissionForIntent(getDb(), intentId);
   }
 
   readRawSubmission(submissionId: number) {
-    ensureSaga3NormalizationSchema(getDb());
+    ensureFactoryNormalizationSchema(getDb());
     return readRawSubmission(getDb(), submissionId);
   }
 
   readRawSubmissionForExecution(intentId: number, taskId: number, executionId: string) {
-    ensureSaga3NormalizationSchema(getDb());
+    ensureFactoryNormalizationSchema(getDb());
     return readRawSubmissionForExecution(getDb(), intentId, taskId, executionId);
   }
 
   ensureNormalizationControl(input: EnsureNormalizationControl): NormalizationControlExecution {
     const db = getDb();
-    ensureSaga3NormalizationSchema(db);
+    ensureFactoryNormalizationSchema(db);
     const ownsTransaction = !db.inTransaction;
     if (ownsTransaction) db.exec('BEGIN IMMEDIATE');
     try {
     let control = db.prepare(
-      `SELECT id, authority_intent_id, projected_task_id, status FROM saga3_control_intents WHERE source_submission_id=?`,
+      `SELECT id, authority_intent_id, projected_task_id, status FROM factory_control_intents WHERE source_submission_id=?`,
     ).get(input.sourceSubmissionId) as {
       id: number;
       authority_intent_id: number;
@@ -817,7 +819,7 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
         retry_budget: 0,
       });
       const info = db.prepare(
-        `INSERT INTO saga3_control_intents
+        `INSERT INTO factory_control_intents
            (epic_id, kind, question, source_submission_id, authority_intent_id, status)
          VALUES (?, 'NormalizeDiscoveryProposal', ?, ?, ?, 'open')`,
       ).run(
@@ -851,7 +853,7 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
       authority = this.readIntentStrict(authority.id);
     }
     if (control.projected_task_id !== taskId) {
-      db.prepare(`UPDATE saga3_control_intents SET projected_task_id=?, updated_at=datetime('now') WHERE id=?`).run(taskId, control.id);
+      db.prepare(`UPDATE factory_control_intents SET projected_task_id=?, updated_at=datetime('now') WHERE id=?`).run(taskId, control.id);
     }
     const result = {
       controlIntentId: control.id,
@@ -872,7 +874,7 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
   }
 
   readLatestNormalizationProposal(controlIntentId: number) {
-    ensureSaga3NormalizationSchema(getDb());
+    ensureFactoryNormalizationSchema(getDb());
     return readLatestNormalizationProposalForControl(getDb(), controlIntentId);
   }
 
@@ -881,27 +883,27 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
     taskId: number,
     executionId: string,
   ) {
-    ensureSaga3NormalizationSchema(getDb());
+    ensureFactoryNormalizationSchema(getDb());
     return readNormalizationProposalForExecution(getDb(), controlIntentId, taskId, executionId);
   }
 
   setControlIntentStatus(controlIntentId: number, expected: ControlIntentStatus, next: ControlIntentStatus): boolean {
     const info = getDb().prepare(
-      `UPDATE saga3_control_intents SET status=?, updated_at=datetime('now') WHERE id=? AND status=?`,
+      `UPDATE factory_control_intents SET status=?, updated_at=datetime('now') WHERE id=? AND status=?`,
     ).run(next, controlIntentId, expected);
     return info.changes === 1;
   }
 
   ensureReadinessControl(input: EnsureReadinessControl): ReadinessControlExecution {
     const db = getDb();
-    ensureSaga3ReadinessSchema(db);
+    ensureFactoryReadinessSchema(db);
     const ownsTransaction = !db.inTransaction;
     if (ownsTransaction) db.exec('BEGIN IMMEDIATE');
     try {
     // Idempotent on the immutable Proposal version (proposal_id + content_hash).
     let control = db.prepare(
       `SELECT id, authority_intent_id, projected_task_id, status
-         FROM saga3_readiness_control_intents
+         FROM factory_readiness_control_intents
         WHERE proposal_id=? AND proposal_content_hash=?`,
     ).get(input.proposalId, input.proposalContentHash) as {
       id: number;
@@ -928,7 +930,7 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
         retry_budget: 0,
       });
       const info = db.prepare(
-        `INSERT INTO saga3_readiness_control_intents
+        `INSERT INTO factory_readiness_control_intents
            (epic_id, kind, proposal_id, proposal_content_hash, source_intent_id,
             authority_intent_id, status)
          VALUES (?, 'AssessDiscoveryReadiness', ?, ?, ?, ?, 'open')`,
@@ -970,7 +972,7 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
     }
     if (control.projected_task_id !== taskId) {
       db.prepare(
-        `UPDATE saga3_readiness_control_intents SET projected_task_id=?, updated_at=datetime('now') WHERE id=?`,
+        `UPDATE factory_readiness_control_intents SET projected_task_id=?, updated_at=datetime('now') WHERE id=?`,
       ).run(taskId, control.id);
     }
     const result = {
@@ -994,13 +996,13 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
 
   setReadinessControlStatus(controlIntentId: number, expected: ReadinessControlStatus, next: ReadinessControlStatus): boolean {
     const info = getDb().prepare(
-      `UPDATE saga3_readiness_control_intents SET status=?, updated_at=datetime('now') WHERE id=? AND status=?`,
+      `UPDATE factory_readiness_control_intents SET status=?, updated_at=datetime('now') WHERE id=? AND status=?`,
     ).run(next, controlIntentId, expected);
     return info.changes === 1;
   }
 
   readLatestReadinessAssessment(controlIntentId: number): ReadinessAssessmentRecord | null {
-    ensureSaga3ReadinessSchema(getDb());
+    ensureFactoryReadinessSchema(getDb());
     return readLatestReadinessAssessmentForControl(getDb(), controlIntentId);
   }
 
@@ -1009,7 +1011,7 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
     taskId: number,
     executionId: string,
   ): ReadinessAssessmentRecord | null {
-    ensureSaga3ReadinessSchema(getDb());
+    ensureFactoryReadinessSchema(getDb());
     return readReadinessAssessmentForExecution(getDb(), controlIntentId, taskId, executionId);
   }
 
@@ -1018,13 +1020,13 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
     // Proposal version. Used by engine recovery (reconstruct the D3 readiness
     // shadow) and by the settlement service (full exact binding through the
     // ControlIntent + authority WorkIntent).
-    ensureSaga3ReadinessSchema(getDb());
+    ensureFactoryReadinessSchema(getDb());
     return readReadinessControlForProposalRepo(getDb(), proposalId, proposalContentHash);
   }
 
   readWorkIntent(intentId: number): WorkIntent | null {
     // D4: read-only lookup of any WorkIntent by id (authority lineage binding).
-    const row = getDb().prepare('SELECT * FROM saga3_work_intents WHERE id=?')
+    const row = getDb().prepare('SELECT * FROM factory_work_intents WHERE id=?')
       .get(intentId) as WorkIntentRow | undefined;
     return row ? rowToIntent(row) : null;
   }
@@ -1035,15 +1037,15 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
     // both. kind/schema_version/status are surfaced so the service can do
     // EXACT target binding (it rejects a proposal of the wrong kind/schema/
     // status, or bound to a different epic/project than the request).
-    ensureSaga3NormalizationSchema(getDb());
+    ensureFactoryNormalizationSchema(getDb());
     const row = getDb().prepare(
       `SELECT p.id, p.intent_id, p.task_id, p.execution_id,
               p.kind, p.schema_version, p.status,
               p.content_hash, p.payload,
               p.source_submission_id, p.normalization_proposal_id,
               wi.epic_id AS epic_id, e.project_id AS project_id
-         FROM saga3_proposals p
-         JOIN saga3_work_intents wi ON wi.id = p.intent_id
+         FROM factory_proposals p
+         JOIN factory_work_intents wi ON wi.id = p.intent_id
          JOIN epics e ON e.id = wi.epic_id
         WHERE p.id=?`,
     ).get(proposalId) as
@@ -1083,40 +1085,40 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
     // assessmentId/assessmentHash it observed via D3; the settlement must
     // build its snapshot from THAT assessment, never silently substitute a
     // newer accepted row that appeared afterwards.
-    ensureSaga3ReadinessSchema(getDb());
+    ensureFactoryReadinessSchema(getDb());
     return readReadinessAssessment(getDb(), assessmentId);
   }
 
   findSettlementByInputKey(key: SettlementInputKey): SettlementRecord | null {
-    ensureSaga3SettlementSchema(getDb());
+    ensureFactorySettlementSchema(getDb());
     return findSettlementByInputKeyRepo(getDb(), key);
   }
 
   insertSettlement(input: InsertSettlementPort): { record: SettlementRecord; replayed: boolean } {
-    ensureSaga3SettlementSchema(getDb());
+    ensureFactorySettlementSchema(getDb());
     return insertSettlementRepo(getDb(), input);
   }
 
   markSettlementFailed(settlementId: number): void {
-    ensureSaga3SettlementSchema(getDb());
+    ensureFactorySettlementSchema(getDb());
     markSettlementFailedRepo(getDb(), settlementId);
   }
 
   readCertificateForSettlement(settlementId: number): OutcomeCertificateRecord | null {
-    ensureSaga3SettlementSchema(getDb());
+    ensureFactorySettlementSchema(getDb());
     return readCertificateForSettlementRepo(getDb(), settlementId);
   }
 
   readOutcomeCertificate(certificateId: number): OutcomeCertificateRecord | null {
     // D5: load the immutable diagnosis target by exact certificate id. Read-only.
-    ensureSaga3SettlementSchema(getDb());
+    ensureFactorySettlementSchema(getDb());
     return readOutcomeCertificateRepo(getDb(), certificateId);
   }
 
   readSettlement(settlementId: number): SettlementRecord | null {
     // D5: load the settlement by exact id (settlement/certificate relation
     // verification before building the diagnosis case). Read-only.
-    ensureSaga3SettlementSchema(getDb());
+    ensureFactorySettlementSchema(getDb());
     return readSettlementRepo(getDb(), settlementId);
   }
 
@@ -1124,12 +1126,12 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
     record: OutcomeCertificateRecord;
     inserted: boolean;
   } {
-    ensureSaga3SettlementSchema(getDb());
+    ensureFactorySettlementSchema(getDb());
     return issueCertificateAtomicallyRepo(getDb(), input);
   }
 
   reconcileExistingCertificate(input: IssueCertificateAtomicallyInput): OutcomeCertificateRecord {
-    ensureSaga3SettlementSchema(getDb());
+    ensureFactorySettlementSchema(getDb());
     return reconcileExistingCertificateRepo(getDb(), input);
   }
 
@@ -1141,7 +1143,7 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
 
   private readIntentStrict(id: number): WorkIntent {
     const row = getDb().prepare(
-      'SELECT * FROM saga3_work_intents WHERE id=?',
+      'SELECT * FROM factory_work_intents WHERE id=?',
     ).get(id) as WorkIntentRow | undefined;
     if (!row) throw new Error(`saga3: WorkIntent ${id} vanished after insert`);
     return rowToIntent(row);
@@ -1215,14 +1217,14 @@ function rowToRecord(row: ProposalRow): ProposalRecord {
 
 function ensurePausedWorkIntentStatus(db: ReturnType<typeof getDb>): void {
   const ddl = db.prepare(
-    "SELECT sql FROM sqlite_schema WHERE type='table' AND name='saga3_work_intents'",
+    "SELECT sql FROM sqlite_schema WHERE type='table' AND name='factory_work_intents'",
   ).get() as { sql: string } | undefined;
   if (!ddl?.sql || ddl.sql.includes("'paused'")) return;
   db.pragma('foreign_keys = OFF');
   try {
     db.exec('BEGIN IMMEDIATE');
     db.exec(`
-      CREATE TABLE saga3_work_intents_new (
+      CREATE TABLE factory_work_intents_new (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         epic_id INTEGER NOT NULL REFERENCES epics(id) ON DELETE CASCADE,
         kind TEXT NOT NULL,
@@ -1237,16 +1239,16 @@ function ensurePausedWorkIntentStatus(db: ReturnType<typeof getDb>): void {
         created_at TEXT NOT NULL DEFAULT (datetime('now')),
         updated_at TEXT NOT NULL DEFAULT (datetime('now'))
       );
-      INSERT INTO saga3_work_intents_new
+      INSERT INTO factory_work_intents_new
         (id, epic_id, kind, objective, authority_scope, output_schema,
          token_budget, retry_budget, projected_task_id, status, created_at, updated_at)
       SELECT id, epic_id, kind, objective, authority_scope, output_schema,
              token_budget, retry_budget, projected_task_id, status, created_at, updated_at
-        FROM saga3_work_intents;
-      DROP TABLE saga3_work_intents;
-      ALTER TABLE saga3_work_intents_new RENAME TO saga3_work_intents;
-      CREATE INDEX IF NOT EXISTS idx_saga3_work_intents_epic ON saga3_work_intents(epic_id);
-      CREATE INDEX IF NOT EXISTS idx_saga3_work_intents_kind_status ON saga3_work_intents(kind, status);
+        FROM factory_work_intents;
+      DROP TABLE factory_work_intents;
+      ALTER TABLE factory_work_intents_new RENAME TO factory_work_intents;
+      CREATE INDEX IF NOT EXISTS idx_factory_work_intents_epic ON factory_work_intents(epic_id);
+      CREATE INDEX IF NOT EXISTS idx_factory_work_intents_kind_status ON factory_work_intents(kind, status);
     `);
     db.exec('COMMIT');
   } catch (error) {

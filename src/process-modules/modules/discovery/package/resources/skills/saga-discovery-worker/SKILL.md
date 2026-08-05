@@ -76,7 +76,7 @@ Read the exact checklist from `checklists`, then read the JSON back and verify:
 
 - integer IDs remain integers;
 - `kind` is `discovery`;
-- schema is `saga3.discovery-proposal.v1`;
+- schema is `factory.discovery-proposal.v1`;
 - all list fields are JSON arrays;
 - the outcome is one of `go`, `clarify`, `reject`, `defer`, `inconclusive`,
   or `failed`;

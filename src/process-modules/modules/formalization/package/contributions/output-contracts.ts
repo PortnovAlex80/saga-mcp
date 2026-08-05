@@ -58,10 +58,10 @@ function contractRef(schemaId: string, version: string): ContractRef {
 /**
  * The module's input contract: one `FormalizationCase` binding a discovery
  * certificate to a formalization episode. Matches
- * `saga3.formalization-case.v1` in `formalization-schemas.ts`.
+ * `factory.formalization-case.v1` in `formalization-schemas.ts`.
  */
 export const FORMALIZATION_INPUT_CONTRACT: ContractRef = contractRef(
-  'saga3.formalization-case.v1',
+  'factory.formalization-case.v1',
   '1.0.0',
 );
 
@@ -72,68 +72,68 @@ export const FORMALIZATION_INPUT_CONTRACT: ContractRef = contractRef(
 /**
  * Output contract of the `define-product-contract` /
  * `resolve-product-contract` node pair: the canonical PRD + FR + NFR + RULE
- * bundle. Matches `saga3.formalization-product-bundle.v1`.
+ * bundle. Matches `factory.formalization-product-bundle.v1`.
  */
 export const FORMALIZATION_PRODUCT_BUNDLE_CONTRACT: ContractRef = contractRef(
-  'saga3.formalization-product-bundle.v1',
+  'factory.formalization-product-bundle.v1',
   '1.0.0',
 );
 
 /**
  * Output contract of the `model-use-cases` / `resolve-use-cases` node pair: the
- * canonical UC bundle. Matches `saga3.formalization-use-case-bundle.v1`.
+ * canonical UC bundle. Matches `factory.formalization-use-case-bundle.v1`.
  */
 export const FORMALIZATION_USE_CASE_BUNDLE_CONTRACT: ContractRef = contractRef(
-  'saga3.formalization-use-case-bundle.v1',
+  'factory.formalization-use-case-bundle.v1',
   '1.0.0',
 );
 
 /**
  * Output contract of the `define-acceptance-contract` /
  * `resolve-acceptance-contract` node pair: the canonical AC bundle. Matches
- * `saga3.formalization-acceptance-bundle.v1`.
+ * `factory.formalization-acceptance-bundle.v1`.
  */
 export const FORMALIZATION_ACCEPTANCE_BUNDLE_CONTRACT: ContractRef = contractRef(
-  'saga3.formalization-acceptance-bundle.v1',
+  'factory.formalization-acceptance-bundle.v1',
   '1.0.0',
 );
 
 /**
  * Output contract of the `reconcile-what` / `resolve-reconciliation` node pair:
  * the WHAT-side reconciliation report. Matches
- * `saga3.formalization-reconciliation-report.v1`.
+ * `factory.formalization-reconciliation-report.v1`.
  */
 export const FORMALIZATION_RECONCILIATION_CONTRACT: ContractRef = contractRef(
-  'saga3.formalization-reconciliation-report.v1',
+  'factory.formalization-reconciliation-report.v1',
   '1.0.0',
 );
 
 /**
  * Output contract of the `freeze-acceptance-baseline` kernel node: the
  * immutable acceptance-baseline snapshot. Matches
- * `saga3.acceptance-baseline-snapshot.v1`.
+ * `factory.acceptance-baseline-snapshot.v1`.
  */
 export const FORMALIZATION_ACCEPTANCE_BASELINE_CONTRACT: ContractRef = contractRef(
-  'saga3.acceptance-baseline-snapshot.v1',
+  'factory.acceptance-baseline-snapshot.v1',
   '1.0.0',
 );
 
 /**
  * Output contract of the `define-architecture-contract` /
  * `resolve-architecture-contract` node pair: the canonical SRS bundle. Matches
- * `saga3.formalization-architecture-bundle.v1`.
+ * `factory.formalization-architecture-bundle.v1`.
  */
 export const FORMALIZATION_ARCHITECTURE_BUNDLE_CONTRACT: ContractRef = contractRef(
-  'saga3.formalization-architecture-bundle.v1',
+  'factory.formalization-architecture-bundle.v1',
   '1.0.0',
 );
 
 /**
  * The intermediate settlement-input contract the settlement handler assembles
- * from the frozen graph. Matches `saga3.formalization-settlement-input.v1`.
+ * from the frozen graph. Matches `factory.formalization-settlement-input.v1`.
  */
 export const FORMALIZATION_SETTLEMENT_INPUT_CONTRACT: ContractRef = contractRef(
-  'saga3.formalization-settlement-input.v1',
+  'factory.formalization-settlement-input.v1',
   '1.0.0',
 );
 
@@ -144,21 +144,21 @@ export const FORMALIZATION_SETTLEMENT_INPUT_CONTRACT: ContractRef = contractRef(
 /**
  * The module's terminal output contract: the immutable
  * `FormalizationSolutionContractPayload` the settlement handler persists on the
- * `formalized` outcome. Matches `saga3.solution-contract-certificate.v1`. The
+ * `formalized` outcome. Matches `factory.solution-contract-certificate.v1`. The
  * manifest (W8-A1) carries this as `outputContractRef`.
  */
 export const FORMALIZATION_OUTPUT_CONTRACT: ContractRef = contractRef(
-  'saga3.solution-contract-certificate.v1',
+  'factory.solution-contract-certificate.v1',
   '1.0.0',
 );
 
 /**
  * The certificate payload contract the generic ProcessOutcomeCertificate layer
  * wraps around the formalization decision. Matches
- * `saga3.solution-contract-certificate.generic.v1`.
+ * `factory.solution-contract-certificate.generic.v1`.
  */
 export const FORMALIZATION_CERTIFICATE_CONTRACT: ContractRef = contractRef(
-  'saga3.solution-contract-certificate.generic.v1',
+  'factory.solution-contract-certificate.generic.v1',
   '1.0.0',
 );
 

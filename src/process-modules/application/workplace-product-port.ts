@@ -8,10 +8,10 @@
  * Development, Delivery), and historically each had its own submit tool writing
  * to its own table:
  *
- *   - Discovery:     `proposal_submit`        → saga3_proposals
- *   - Formalization: `artifact_create`        → saga3_managed_artifact_productions
- *   - Development:   `process_node_submit`    → saga3_managed_node_submissions
- *   - Delivery:      kernel-only              → saga3_external_effect_events
+ *   - Discovery:     `proposal_submit`        → factory_proposals
+ *   - Formalization: `artifact_create`        → factory_managed_artifact_productions
+ *   - Development:   `process_node_submit`    → factory_managed_node_submissions
+ *   - Delivery:      kernel-only              → factory_external_effect_events
  *
  * All four produce the SAME physical thing — text with a schema and a
  * content_hash — but each has its own submit tool, its own table, and its own
@@ -20,7 +20,7 @@
  *
  * The Development module ALREADY writes its durable products through a universal
  * store: `SqliteProcessProductRepository` (v1) / `SqliteProcessProductRepositoryV2`
- * (v2), both backed by the `saga3_process_products` table. This port surfaces
+ * (v2), both backed by the `factory_process_products` table. This port surfaces
  * that store as the single LINGUA FRANCA for cross-module product refs: any
  * workshop MAY submit a typed product here, and any other workshop MAY read it
  * back by exact content-addressed reference.

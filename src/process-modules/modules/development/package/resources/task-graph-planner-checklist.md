@@ -2,7 +2,7 @@
 
 Before `process_node_submit`:
 
-- The schema is exactly `saga3.development-task-graph-proposal.v1`.
+- The schema is exactly `factory.development-task-graph-proposal.v1`.
 - Every placeholder is replaced with the correct JSON type; ids are integers,
   and a missing repository binding is JSON `null`, not a string.
 - Work-item keys are non-empty and unique across both arrays.

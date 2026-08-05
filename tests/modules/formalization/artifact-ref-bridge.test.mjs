@@ -16,7 +16,7 @@ import {
 
 const HASH = 'a'.repeat(64);
 
-test('REG-11: buildArtifactProductRef produces saga3.artifact-ref.v1', () => {
+test('REG-11: buildArtifactProductRef produces factory.artifact-ref.v1', () => {
   const ref = buildArtifactProductRef({ artifactId: 42, contentHash: HASH });
   assert.equal(ref.schemaId, ARTIFACT_REF_SCHEMA);
   assert.equal(ref.ref, `artifact:42#${HASH}`);

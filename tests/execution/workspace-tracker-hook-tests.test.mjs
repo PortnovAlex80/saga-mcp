@@ -202,7 +202,7 @@ function sampleModule(overrides = {}) {
 //          → buildWorkspaceProjection, WorkspaceProjection
 //   W5-A2: persistence/call-instance.ts + sqlite-call-instance-repository.ts
 //          → CallInstanceRepository port, SqliteCallInstanceRepository,
-//            ensureSaga3CallInstanceSchema, CallInstanceState constants
+//            ensureFactoryCallInstanceSchema, CallInstanceState constants
 //   W5-A3: application/tracker-renderer.ts
 //          → renderTracker, TrackerRenderer
 //   W5-A5: tracker-view/structured-context-hook.mjs
@@ -244,7 +244,7 @@ async function loadWave5Surface() {
   );
   if (
     (a2Sqlite && typeof a2Sqlite.SqliteCallInstanceRepository === 'function')
-    || (a2Sqlite && typeof a2Sqlite.ensureSaga3CallInstanceSchema === 'function')
+    || (a2Sqlite && typeof a2Sqlite.ensureFactoryCallInstanceSchema === 'function')
   ) {
     // Merge the port types + the adapter so sibling tests see one surface.
     out.a2 = { ...(a2Port || {}), ...a2Sqlite };
@@ -353,7 +353,7 @@ test('fixture/workspace: prepareProcessExecutionWorkspace fills machine bindings
 
     const profile = {
       id: 'collect-profile',
-      outputSchema: { id: 'saga3.discovery-proposal.v1', digest: 'sha256:p' },
+      outputSchema: { id: 'factory.discovery-proposal.v1', digest: 'sha256:p' },
       allowedTools: ['proposal_submit'],
       retryPolicy: { maxAttempts: 2 },
       trackerTemplate: 'docs/discovery/tracker-template.md',
@@ -463,7 +463,7 @@ test('sibling/workspace-projection: resolves resources from the pinned installat
             executionSkill: 'product-discovery/collect.md',
             reviewSkill: null,
             protocolSkill: null,
-            outputSchema: { id: 'saga3.discovery-proposal.v1', digest: 'sha256:p' },
+            outputSchema: { id: 'factory.discovery-proposal.v1', digest: 'sha256:p' },
             allowedTools: ['proposal_submit'],
             retryPolicy: { maxAttempts: 2 },
             trackerTemplate: 'docs/discovery/tracker-template.md',
@@ -491,32 +491,32 @@ test('sibling/workspace-projection: resolves resources from the pinned installat
 
 // --- §2 Call crash: CallInstance lifecycle (W5-A2) -------------------------
 
-test('sibling/call-instance: schema creates saga3_call_instances after ctor', async (t) => {
+test('sibling/call-instance: schema creates factory_call_instances after ctor', async (t) => {
   const surface = await loadWave5Surface();
   if (!surface.a2) {
     t.diagnostic(skipReason(surface, 'W5-A2'));
     t.skip();
     return;
   }
-  const { SqliteCallInstanceRepository, ensureSaga3CallInstanceSchema } = surface.a2;
+  const { SqliteCallInstanceRepository, ensureFactoryCallInstanceSchema } = surface.a2;
   const ctx = freshDb('saga-w5a8-call-');
   try {
     const db = ctx.db;
     db.pragma('foreign_keys = OFF');
-    if (typeof ensureSaga3CallInstanceSchema === 'function') {
-      ensureSaga3CallInstanceSchema(db);
+    if (typeof ensureFactoryCallInstanceSchema === 'function') {
+      ensureFactoryCallInstanceSchema(db);
     } else {
       // eslint-disable-next-line no-new
       new SqliteCallInstanceRepository(db);
     }
-    const cols = new Set(tableColumns(db, 'saga3_call_instances'));
+    const cols = new Set(tableColumns(db, 'factory_call_instances'));
     // Spec §2 columns:
     for (const c of [
       'id', 'process_run_id', 'protocol_run_id', 'step_id', 'tool_contract_ref',
       'attempt', 'workspace_path', 'draft_content_hash', 'status', 'last_error_json',
       'successful_receipt_ref', 'created_at', 'updated_at', 'sealed_at',
     ]) {
-      assert.ok(cols.has(c), `saga3_call_instances must have column '${c}'`);
+      assert.ok(cols.has(c), `factory_call_instances must have column '${c}'`);
     }
   } finally {
     cleanupDb(ctx);
@@ -540,7 +540,7 @@ test('sibling/call-instance: lifecycle materialized→edited→validated→submi
       processRunId: 100,
       protocolRunId: 1,
       stepId: 'draft',
-      toolContractRef: 'saga3.discovery-proposal.v1',
+      toolContractRef: 'factory.discovery-proposal.v1',
       attempt: 1,
     });
     assert.ok(created.id > 0);
@@ -602,7 +602,7 @@ test('sibling/call-instance: failed draft preserved for progressive correction (
       processRunId: 100,
       protocolRunId: 1,
       stepId: 'draft',
-      toolContractRef: 'saga3.discovery-proposal.v1',
+      toolContractRef: 'factory.discovery-proposal.v1',
       attempt: 1,
     });
     // STALE-FIXTURE FIX: updateDraft takes {callInstanceId, draftContentHash}.
@@ -734,7 +734,7 @@ test('sibling/structured-hook: reads agent-assistance.json (NOT Markdown parsing
     // {version, blocks, stateVersion} which the hook ignores (no events → no
     // blocks rendered → emitEmpty). Mirror the real projection shape.
     const payload = {
-      schemaVersion: 'saga3.agent-assistance-projection.v1',
+      schemaVersion: 'factory.agent-assistance-projection.v1',
       stateVersion: 'v1-unique-c032',
       executionId: 'exec-c032',
       mode: 'compact',
@@ -776,7 +776,7 @@ test('sibling/structured-hook: untrusted error text never escapes into a shell c
     // A malicious last-error block carrying shell metacharacters, in the real
     // projection shape the hook reads.
     const payload = {
-      schemaVersion: 'saga3.agent-assistance-projection.v1',
+      schemaVersion: 'factory.agent-assistance-projection.v1',
       stateVersion: 'v1-unique-shellsec',
       executionId: 'exec-sec',
       mode: 'compact',
@@ -816,7 +816,7 @@ test('sibling/structured-hook: bounded output — never exceeds a context budget
     // A pathological assistance file with one giant block, in the real shape.
     const huge = 'x'.repeat(2 * 1024 * 1024);
     const payload = {
-      schemaVersion: 'saga3.agent-assistance-projection.v1',
+      schemaVersion: 'factory.agent-assistance-projection.v1',
       stateVersion: 'v1-unique-c033',
       executionId: 'exec-c033',
       mode: 'compact',
@@ -959,25 +959,25 @@ function freshDb(prefix = 'saga-w5a8-') {
   const temp = mkdtempSync(path.join(os.tmpdir(), prefix));
   process.env.DB_PATH = path.join(temp, 'workspace.db');
   const db = getDb();
-  // STALE-FIXTURE FIX (Wave 5 re-check 2026-08-02): saga3_call_instances has
-  // FK REFERENCES to saga3_process_runs(id) + saga3_protocol_runs(id). Those
+  // STALE-FIXTURE FIX (Wave 5 re-check 2026-08-02): factory_call_instances has
+  // FK REFERENCES to factory_process_runs(id) + factory_protocol_runs(id). Those
   // parent tables are created LAZILY by their own repositories (they are NOT in
   // SCHEMA_SQL), so on a fresh DB the FK targets are absent and every INSERT
-  // into saga3_call_instances fails with `no such table: main.saga3_protocol_runs`.
+  // into factory_call_instances fails with `no such table: main.factory_protocol_runs`.
   // The pre-re-check fixture omitted this setup entirely. Materialize the parent
   // tables via their single-owner schema helpers (the same path production uses)
   // so the FK graph is intact, AND seed the FK parent rows the tests reference
   // (project 1, process_run 100, protocol_run 1) — foreign_keys is ON, so an
-  // INSERT into saga3_call_instances with process_run_id=100 otherwise fails
+  // INSERT into factory_call_instances with process_run_id=100 otherwise fails
   // SQLITE_CONSTRAINT_FOREIGNKEY.
-  const { ensureSaga3ProcessRunSchema } = require_from_dist(
+  const { ensureFactoryProcessRunSchema } = require_from_dist(
     'process-modules/persistence/sqlite-process-run-repository.js',
   );
-  const { ensureSaga3ProtocolRunSchema } = require_from_dist(
+  const { ensureFactoryProtocolRunSchema } = require_from_dist(
     'process-modules/persistence/sqlite-protocol-run-repository.js',
   );
-  try { ensureSaga3ProcessRunSchema(db); } catch { /* already exists */ }
-  try { ensureSaga3ProtocolRunSchema(db); } catch { /* already exists */ }
+  try { ensureFactoryProcessRunSchema(db); } catch { /* already exists */ }
+  try { ensureFactoryProtocolRunSchema(db); } catch { /* already exists */ }
   seedCallInstanceParents(db);
   return { db, temp, previous, closeDb };
 }
@@ -990,14 +990,14 @@ function reopenDb(ctx) {
   // Re-materialize the saga3 parent tables on reopen (the lazy constructors
   // would also do this; doing it explicitly keeps the FK graph stable across
   // reopen even if a future schema change altered constructor side-effects).
-  const { ensureSaga3ProcessRunSchema } = require_from_dist(
+  const { ensureFactoryProcessRunSchema } = require_from_dist(
     'process-modules/persistence/sqlite-process-run-repository.js',
   );
-  const { ensureSaga3ProtocolRunSchema } = require_from_dist(
+  const { ensureFactoryProtocolRunSchema } = require_from_dist(
     'process-modules/persistence/sqlite-protocol-run-repository.js',
   );
-  try { ensureSaga3ProcessRunSchema(db); } catch { /* already exists */ }
-  try { ensureSaga3ProtocolRunSchema(db); } catch { /* already exists */ }
+  try { ensureFactoryProcessRunSchema(db); } catch { /* already exists */ }
+  try { ensureFactoryProtocolRunSchema(db); } catch { /* already exists */ }
   // The parent rows seeded by freshDb persist on disk — no re-seed needed here.
   return db;
 }
@@ -1005,13 +1005,13 @@ function reopenDb(ctx) {
 /**
  * Seed the FK parent rows the call-instance tests reference: project 1,
  * process_run 100, protocol_run 1. foreign_keys is ON, so without these the
- * INSERT into saga3_call_instances fails the FK check. Idempotent (INSERT OR
+ * INSERT into factory_call_instances fails the FK check. Idempotent (INSERT OR
  * IGNORE) so reopening the repo / re-running is safe.
  *
- * Seeding runs with foreign_keys temporarily OFF because saga3_protocol_runs
- * also REFERENCES saga3_node_runs(id) (a table this fixture does not need and
+ * Seeding runs with foreign_keys temporarily OFF because factory_protocol_runs
+ * also REFERENCES factory_node_runs(id) (a table this fixture does not need and
  * whose own lazy schema helper is out of scope to wire here). The FK contract
- * on saga3_call_instances itself is still enforced for every test INSERT — the
+ * on factory_call_instances itself is still enforced for every test INSERT — the
  * parent rows exist on disk by the time the repo runs. This only relaxes the
  * seed's own INSERT-time check, not the code under test.
  */
@@ -1021,13 +1021,13 @@ function seedCallInstanceParents(db) {
     db.pragma('foreign_keys = OFF');
     db.prepare("INSERT OR IGNORE INTO projects (id, name) VALUES (1, 'w5a8-fk-parent')")
       .run();
-    db.prepare(`INSERT OR IGNORE INTO saga3_process_runs
+    db.prepare(`INSERT OR IGNORE INTO factory_process_runs
       (id, project_id, module_name, module_version, module_ref_key, idempotency_key,
        executor_kind, input_schema, input_snapshot, input_hash, status)
       VALUES (100, 1, 'product-discovery', '3.0.0', 'product-discovery@3.0.0',
-              'w5a8-idem', 'generic-flow', 'saga3.discovery-case.v1', '{}',
+              'w5a8-idem', 'generic-flow', 'factory.discovery-case.v1', '{}',
               'sha256:seed', 'running')`).run();
-    db.prepare(`INSERT OR IGNORE INTO saga3_protocol_runs
+    db.prepare(`INSERT OR IGNORE INTO factory_protocol_runs
       (id, process_run_id, node_protocol_id, node_protocol_version, entry_step,
        current_step, status, attempt)
       VALUES (1, 100, 'product-discovery#node.collect', '1.0.0', 'collect',
@@ -1052,14 +1052,14 @@ function tableColumns(db, table) {
 }
 
 /**
- * Stamp a saga3_call_instances row to an arbitrary status. Used ONLY to reach
+ * Stamp a factory_call_instances row to an arbitrary status. Used ONLY to reach
  * the 'succeeded' status that the implementation's sealCall requires but no
  * public mutator produces (see the REAL-BUG note in the lifecycle test). Direct
  * SQL, bypassing the guarded transition — never use this to paper over a
  * transition the port legitimately enforces.
  */
 function db_stampStatus(db, callInstanceId, status) {
-  db.prepare('UPDATE saga3_call_instances SET status=?, updated_at=datetime(\'now\') WHERE id=?')
+  db.prepare('UPDATE factory_call_instances SET status=?, updated_at=datetime(\'now\') WHERE id=?')
     .run(status, callInstanceId);
 }
 

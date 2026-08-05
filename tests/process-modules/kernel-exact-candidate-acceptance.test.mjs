@@ -121,7 +121,7 @@ function executor(acceptance) {
 
 function decision(command) {
   return {
-    schemaVersion: 'saga3.exact-candidate-acceptance.v2',
+    schemaVersion: 'factory.exact-candidate-acceptance.v2',
     decisionId: 9,
     idempotencyKey: command.idempotencyKey,
     requestHash: 'b'.repeat(64),
@@ -164,7 +164,7 @@ test('kernel executor commits a directive and returns durable decision evidence'
   });
   assert.equal(result.domainEvent, 'completed');
   assert.deepEqual(result.acceptanceReceipt, {
-    schemaVersion: 'saga3.exact-candidate-acceptance.v2',
+    schemaVersion: 'factory.exact-candidate-acceptance.v2',
     decisionRef: 'exact-acceptance:9',
     decisionHash: 'd'.repeat(64),
     candidateSetHash: 'c'.repeat(64),
@@ -289,7 +289,7 @@ test('a directive without a configured acceptance port fails fast', async () => 
 });
 
 test('NodeRun persists the exact acceptance receipt across restart', () => {
-  const temp = mkdtempSync(path.join(os.tmpdir(), 'saga3-node-acceptance-'));
+  const temp = mkdtempSync(path.join(os.tmpdir(), 'factory-node-acceptance-'));
   process.env.DB_PATH = path.join(temp, 'node-run.db');
   try {
     const db = getDb();
@@ -319,7 +319,7 @@ test('NodeRun persists the exact acceptance receipt across restart', () => {
       nodeKind: 'kernel',
     });
     const receipt = {
-      schemaVersion: 'saga3.exact-candidate-acceptance.v2',
+      schemaVersion: 'factory.exact-candidate-acceptance.v2',
       decisionRef: 'exact-acceptance:9',
       decisionHash: 'd'.repeat(64),
       candidateSetHash: 'c'.repeat(64),

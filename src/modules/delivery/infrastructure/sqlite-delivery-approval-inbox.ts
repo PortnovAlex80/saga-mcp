@@ -10,7 +10,7 @@ import type {
 import type { AuthorizedDeliveryReleaseCase } from '../domain/delivery-schemas.js';
 
 export const DELIVERY_APPROVAL_RECORD_SCHEMA =
-  'saga3.delivery-approval-record.v1';
+  'factory.delivery-approval-record.v1';
 
 export interface DeliveryApprovalRequestRecord {
   requestId: string;
@@ -60,7 +60,7 @@ export class SqliteDeliveryApprovalInbox implements DeliveryApprovalSource {
     const request = this.ensureRequest(input);
     const decision = this.db.prepare(
       `SELECT status,decision_ref,decision_hash,provider_id
-         FROM saga3_delivery_approval_decisions
+         FROM factory_delivery_approval_decisions
         WHERE request_id=?`,
     ).get(request.requestId) as {
       status: 'approved' | 'denied' | 'expired';
@@ -138,7 +138,7 @@ export class SqliteDeliveryApprovalInbox implements DeliveryApprovalSource {
     return this.transaction(() => {
       const existing = this.db.prepare(
         `SELECT status,decision_ref,decision_hash,payload_snapshot
-           FROM saga3_delivery_approval_decisions
+           FROM factory_delivery_approval_decisions
           WHERE request_id=?`,
       ).get(request.requestId) as {
         status: string;
@@ -171,7 +171,7 @@ export class SqliteDeliveryApprovalInbox implements DeliveryApprovalSource {
         );
       }
       this.db.prepare(
-        `INSERT INTO saga3_delivery_approval_decisions
+        `INSERT INTO factory_delivery_approval_decisions
           (request_id,status,decided_by,rationale,provider_id,decision_ref,
            decision_hash,payload_snapshot)
          VALUES (?,?,?,?,?,?,?,?)`,
@@ -186,7 +186,7 @@ export class SqliteDeliveryApprovalInbox implements DeliveryApprovalSource {
         payloadSnapshot,
       );
       this.db.prepare(
-        `UPDATE saga3_delivery_approval_requests
+        `UPDATE factory_delivery_approval_requests
             SET state='decided',decided_at=datetime('now'),
                 updated_at=datetime('now')
           WHERE request_id=? AND state='open'`,
@@ -204,7 +204,7 @@ export class SqliteDeliveryApprovalInbox implements DeliveryApprovalSource {
     const row = this.db.prepare(
       `SELECT request_id,process_run_id,project_id,epic_id,candidate_hash,
               preflight_hash,release_policy_hash,state,created_at,decided_at
-         FROM saga3_delivery_approval_requests
+         FROM factory_delivery_approval_requests
         WHERE request_id=?`,
     ).get(requestId) as ApprovalRequestRow | undefined;
     return row ? requestRowToRecord(row) : null;
@@ -215,14 +215,14 @@ export class SqliteDeliveryApprovalInbox implements DeliveryApprovalSource {
       ? this.db.prepare(
           `SELECT request_id,process_run_id,project_id,epic_id,candidate_hash,
                   preflight_hash,release_policy_hash,state,created_at,decided_at
-             FROM saga3_delivery_approval_requests
+             FROM factory_delivery_approval_requests
             WHERE state='open'
             ORDER BY created_at,request_id`,
         ).all()
       : this.db.prepare(
           `SELECT request_id,process_run_id,project_id,epic_id,candidate_hash,
                   preflight_hash,release_policy_hash,state,created_at,decided_at
-             FROM saga3_delivery_approval_requests
+             FROM factory_delivery_approval_requests
             WHERE state='open' AND project_id=?
             ORDER BY created_at,request_id`,
         ).all(projectId);
@@ -254,7 +254,7 @@ export class SqliteDeliveryApprovalInbox implements DeliveryApprovalSource {
       return existing;
     }
     this.db.prepare(
-      `INSERT INTO saga3_delivery_approval_requests
+      `INSERT INTO factory_delivery_approval_requests
         (request_id,process_run_id,project_id,epic_id,candidate_hash,
          preflight_hash,release_policy_hash,requested_by)
        VALUES (?,?,?,?,?,?,?,?)`,
@@ -320,10 +320,10 @@ export function ensureDeliveryApprovalInboxSchema(
   db: Database.Database,
 ): void {
   db.exec(`
-    CREATE TABLE IF NOT EXISTS saga3_delivery_approval_requests (
+    CREATE TABLE IF NOT EXISTS factory_delivery_approval_requests (
       request_id         TEXT PRIMARY KEY,
       process_run_id     INTEGER NOT NULL UNIQUE
-                           REFERENCES saga3_process_runs(id) ON DELETE RESTRICT,
+                           REFERENCES factory_process_runs(id) ON DELETE RESTRICT,
       project_id         INTEGER NOT NULL
                            REFERENCES projects(id) ON DELETE RESTRICT,
       epic_id            INTEGER REFERENCES epics(id) ON DELETE RESTRICT,
@@ -338,12 +338,12 @@ export function ensureDeliveryApprovalInboxSchema(
       decided_at         TEXT
     );
 
-    CREATE INDEX IF NOT EXISTS idx_saga3_delivery_approval_open
-      ON saga3_delivery_approval_requests(state,project_id,created_at);
+    CREATE INDEX IF NOT EXISTS idx_factory_delivery_approval_open
+      ON factory_delivery_approval_requests(state,project_id,created_at);
 
-    CREATE TABLE IF NOT EXISTS saga3_delivery_approval_decisions (
+    CREATE TABLE IF NOT EXISTS factory_delivery_approval_decisions (
       request_id       TEXT PRIMARY KEY
-                         REFERENCES saga3_delivery_approval_requests(request_id)
+                         REFERENCES factory_delivery_approval_requests(request_id)
                          ON DELETE RESTRICT,
       status           TEXT NOT NULL
                          CHECK (status IN ('approved','denied','expired')),

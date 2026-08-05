@@ -25,10 +25,10 @@ import type {
 
 export function ensureFormalizationPersistenceSchema(db: Database.Database): void {
   db.exec(`
-    CREATE TABLE IF NOT EXISTS saga3_formalization_acceptance_baselines (
+    CREATE TABLE IF NOT EXISTS factory_formalization_acceptance_baselines (
       id                    INTEGER PRIMARY KEY AUTOINCREMENT,
       process_run_id        INTEGER NOT NULL UNIQUE
-                              REFERENCES saga3_process_runs(id) ON DELETE CASCADE,
+                              REFERENCES factory_process_runs(id) ON DELETE CASCADE,
       formalization_epic_id INTEGER NOT NULL REFERENCES epics(id) ON DELETE CASCADE,
       schema_version        TEXT NOT NULL,
       payload               TEXT NOT NULL,
@@ -37,10 +37,10 @@ export function ensureFormalizationPersistenceSchema(db: Database.Database): voi
       created_at            TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
-    CREATE TABLE IF NOT EXISTS saga3_formalization_solution_contracts (
+    CREATE TABLE IF NOT EXISTS factory_formalization_solution_contracts (
       id                    INTEGER PRIMARY KEY AUTOINCREMENT,
       process_run_id        INTEGER NOT NULL UNIQUE
-                              REFERENCES saga3_process_runs(id) ON DELETE CASCADE,
+                              REFERENCES factory_process_runs(id) ON DELETE CASCADE,
       formalization_epic_id INTEGER NOT NULL REFERENCES epics(id) ON DELETE CASCADE,
       schema_version        TEXT NOT NULL,
       payload               TEXT NOT NULL,
@@ -48,10 +48,10 @@ export function ensureFormalizationPersistenceSchema(db: Database.Database): voi
       created_at            TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
-    CREATE INDEX IF NOT EXISTS idx_saga3_formalization_baseline_epic
-      ON saga3_formalization_acceptance_baselines(formalization_epic_id);
-    CREATE INDEX IF NOT EXISTS idx_saga3_formalization_contract_epic
-      ON saga3_formalization_solution_contracts(formalization_epic_id);
+    CREATE INDEX IF NOT EXISTS idx_factory_formalization_baseline_epic
+      ON factory_formalization_acceptance_baselines(formalization_epic_id);
+    CREATE INDEX IF NOT EXISTS idx_factory_formalization_contract_epic
+      ON factory_formalization_solution_contracts(formalization_epic_id);
   `);
 }
 
@@ -92,7 +92,7 @@ export class SqliteFormalizationBaselineRepository implements FormalizationBasel
     const payloadText = canonicalJson(payload);
     const snapshotHash = sha256Hex(payload);
     const existing = this.db.prepare(
-      'SELECT * FROM saga3_formalization_acceptance_baselines WHERE process_run_id=?',
+      'SELECT * FROM factory_formalization_acceptance_baselines WHERE process_run_id=?',
     ).get(payload.processRunId) as BaselineRow | undefined;
     if (existing) {
       if (existing.snapshot_hash !== snapshotHash) {
@@ -104,7 +104,7 @@ export class SqliteFormalizationBaselineRepository implements FormalizationBasel
       return { record: baselineRowToRecord(existing), replayed: true };
     }
     const info = this.db.prepare(
-      `INSERT INTO saga3_formalization_acceptance_baselines
+      `INSERT INTO factory_formalization_acceptance_baselines
          (process_run_id, formalization_epic_id, schema_version, payload,
           baseline_hash, snapshot_hash)
        VALUES (?, ?, ?, ?, ?, ?)`,
@@ -117,7 +117,7 @@ export class SqliteFormalizationBaselineRepository implements FormalizationBasel
       snapshotHash,
     );
     const row = this.db.prepare(
-      'SELECT * FROM saga3_formalization_acceptance_baselines WHERE id=?',
+      'SELECT * FROM factory_formalization_acceptance_baselines WHERE id=?',
     ).get(Number(info.lastInsertRowid)) as BaselineRow | undefined;
     if (!row) throw new Error('formalization baseline vanished after insert');
     return { record: baselineRowToRecord(row), replayed: false };
@@ -125,7 +125,7 @@ export class SqliteFormalizationBaselineRepository implements FormalizationBasel
 
   readByProcessRun(processRunId: number): AcceptanceBaselineSnapshotRecord | null {
     const row = this.db.prepare(
-      'SELECT * FROM saga3_formalization_acceptance_baselines WHERE process_run_id=?',
+      'SELECT * FROM factory_formalization_acceptance_baselines WHERE process_run_id=?',
     ).get(processRunId) as BaselineRow | undefined;
     return row ? baselineRowToRecord(row) : null;
   }
@@ -149,7 +149,7 @@ implements FormalizationSolutionContractRepository {
     const payloadText = canonicalJson(payload);
     const contentHash = sha256Hex(payload);
     const existing = this.db.prepare(
-      'SELECT * FROM saga3_formalization_solution_contracts WHERE process_run_id=?',
+      'SELECT * FROM factory_formalization_solution_contracts WHERE process_run_id=?',
     ).get(payload.processRunId) as SolutionContractRow | undefined;
     if (existing) {
       if (existing.content_hash !== contentHash) {
@@ -161,7 +161,7 @@ implements FormalizationSolutionContractRepository {
       return { record: solutionRowToRecord(existing), replayed: true };
     }
     const info = this.db.prepare(
-      `INSERT INTO saga3_formalization_solution_contracts
+      `INSERT INTO factory_formalization_solution_contracts
          (process_run_id, formalization_epic_id, schema_version, payload, content_hash)
        VALUES (?, ?, ?, ?, ?)`,
     ).run(
@@ -172,7 +172,7 @@ implements FormalizationSolutionContractRepository {
       contentHash,
     );
     const row = this.db.prepare(
-      'SELECT * FROM saga3_formalization_solution_contracts WHERE id=?',
+      'SELECT * FROM factory_formalization_solution_contracts WHERE id=?',
     ).get(Number(info.lastInsertRowid)) as SolutionContractRow | undefined;
     if (!row) throw new Error('formalization solution contract vanished after insert');
     return { record: solutionRowToRecord(row), replayed: false };
@@ -180,7 +180,7 @@ implements FormalizationSolutionContractRepository {
 
   readByProcessRun(processRunId: number): FormalizationSolutionContractRecord | null {
     const row = this.db.prepare(
-      'SELECT * FROM saga3_formalization_solution_contracts WHERE process_run_id=?',
+      'SELECT * FROM factory_formalization_solution_contracts WHERE process_run_id=?',
     ).get(processRunId) as SolutionContractRow | undefined;
     return row ? solutionRowToRecord(row) : null;
   }

@@ -23,8 +23,8 @@ import {
   argStr,
   actionableError,
   enrichPayloadErrors,
-  SAGA3_TOOL_CALL_SHAPES,
-  SAGA3_ARG_SOURCES,
+  FACTORY_TOOL_CALL_SHAPES,
+  FACTORY_ARG_SOURCES,
 } from '../../dist/tools/discovery-tool-args.js';
 
 // ---- argInt: actionable + backward-compatible -------------------------------
@@ -32,7 +32,7 @@ import {
 test('argInt: error contains expected shape + source + got + legacy phrase', () => {
   assert.throws(
     () => argInt('proposal_submit', { intent_id: 'not-an-int' }, 'intent_id',
-      { source: SAGA3_ARG_SOURCES.intent_id, expected: SAGA3_TOOL_CALL_SHAPES.proposal_submit }),
+      { source: FACTORY_ARG_SOURCES.intent_id, expected: FACTORY_TOOL_CALL_SHAPES.proposal_submit }),
     (err) => {
       const msg = err.message;
       // Legacy phrase preserved (backward-compat with regex tests).
@@ -68,7 +68,7 @@ test('argInt: undefined value is reported in the diagnostic phrase', () => {
 test('argStr: error contains expected shape + source + got + legacy phrase', () => {
   assert.throws(
     () => argStr('proposal_submit', { execution_id: 123 }, 'execution_id',
-      { source: SAGA3_ARG_SOURCES.execution_id, expected: SAGA3_TOOL_CALL_SHAPES.proposal_submit }),
+      { source: FACTORY_ARG_SOURCES.execution_id, expected: FACTORY_TOOL_CALL_SHAPES.proposal_submit }),
     (err) => {
       const msg = err.message;
       assert.match(msg, /must be a non-empty string/);
@@ -109,13 +109,13 @@ test('actionableError: omits missing sections gracefully', () => {
 
 // ---- shape registry: all 5 tools have a template ----------------------------
 
-test('SAGA3_TOOL_CALL_SHAPES: every saga3 tool has an expected-shape entry', () => {
+test('FACTORY_TOOL_CALL_SHAPES: every saga3 tool has an expected-shape entry', () => {
   const required = [
     'proposal_submit', 'readiness_get', 'readiness_submit',
     'normalization_get', 'normalization_submit',
   ];
   for (const name of required) {
-    const shape = SAGA3_TOOL_CALL_SHAPES[name];
+    const shape = FACTORY_TOOL_CALL_SHAPES[name];
     assert.ok(shape, `missing shape for ${name}`);
     assert.match(shape, new RegExp(name));
   }
@@ -129,12 +129,12 @@ test('regression (gemma E2E): intent_id nested in payload triggers actionable er
   // worker intent_id is a top-level arg sourced from task_get metadata.
   const argsWithoutIntentId = {
     task_id: 6218, execution_id: 'exec-1', kind: 'discovery',
-    schema_version: 'saga3.discovery-proposal.v1',
+    schema_version: 'factory.discovery-proposal.v1',
     payload: { intent_id: 10217, problem_statement: 'x', /* ... */ },
   };
   assert.throws(
     () => argInt('proposal_submit', argsWithoutIntentId, 'intent_id',
-      { source: SAGA3_ARG_SOURCES.intent_id, expected: SAGA3_TOOL_CALL_SHAPES.proposal_submit }),
+      { source: FACTORY_ARG_SOURCES.intent_id, expected: FACTORY_TOOL_CALL_SHAPES.proposal_submit }),
     (err) => {
       assert.match(err.message, /intent_id.*must be an integer/);
       assert.match(err.message, /top-level arg, NOT inside payload/);

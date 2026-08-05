@@ -109,7 +109,7 @@ export interface DiscoveryInstallationDeps {
    * settlement service (policy + certificate issuance). REQUIRED since Wave 8
    * MEDIUM 7: the composition root constructs the concrete service and injects
    * it through this declared port. The module declares the port; the adapter
-   * (today the saga3 `Saga3DiscoverySettlementService`, built in the
+   * (today the saga3 `FactoryDiscoverySettlementService`, built in the
    * composition root) implements it. The dynamic-import bridge that used to
    * self-provision this service was removed because it hid a runtime dependency
    * from the static dependency graph (Wave 8 MEDIUM 7).
@@ -128,7 +128,7 @@ export function createDiscoveryKernelHandlers(
   const briefProvisioning = deps.briefProvisioning;
   // Wave 8 MEDIUM 7 — the settlement service is an EXPLICIT injected port. The
   // composition root constructs the concrete service (today the saga3
-  // Saga3DiscoverySettlementService) and passes it in. No dynamic import, no
+  // FactoryDiscoverySettlementService) and passes it in. No dynamic import, no
   // self-provisioning: the bounded-context coupling is visible in the static
   // dependency graph (the composition root, not this module, owns it).
   const settlementService = deps.settlementService;
@@ -282,7 +282,7 @@ function resolveAcceptedRaw(
     return {
       event: 'invalid-json',
       production: {
-          schema: 'saga3.discovery-raw-submission.v1',
+          schema: 'factory.discovery-raw-submission.v1',
           artifactRef: `raw-submission:${raw.id}`,
           contentHash: raw.raw_hash,
           bindings: {
@@ -300,7 +300,7 @@ function resolveAcceptedRaw(
       return {
         event: 'normalization-required',
         production: {
-          schema: 'saga3.discovery-raw-submission.v1',
+          schema: 'factory.discovery-raw-submission.v1',
           artifactRef: `raw-submission:${raw.id}`,
           contentHash: raw.raw_hash,
           bindings: {
@@ -370,7 +370,7 @@ function failedProposalResolution(
   return {
     event: 'failed',
     production: {
-      schema: 'saga3.discovery-proposal-resolution.v1',
+      schema: 'factory.discovery-proposal-resolution.v1',
       artifactRef: `task-execution:${receipt.taskId}:${receipt.executionId ?? 'missing'}`,
       contentHash: '',
       bindings: {
@@ -424,7 +424,7 @@ function createPrepareNormalizationHandler(
     return {
       event: 'prepared',
       production: {
-        schema: 'saga3.discovery-normalization-control.v1',
+        schema: 'factory.discovery-normalization-control.v1',
         artifactRef: `normalization-control:${execution.controlIntentId}`,
         contentHash: rawHash,
         bindings: {
@@ -514,7 +514,7 @@ function createResolveNormalizedProposalHandler(
       return {
         event: 'failed',
         production: {
-          schema: 'saga3.discovery-normalization-result.v1',
+          schema: 'factory.discovery-normalization-result.v1',
           artifactRef: `raw-submission:${rawSubmissionId}`,
           contentHash: String(bindings.rawHash ?? ''),
           bindings: { sourceIntentId, rawSubmissionId, reason: 'canonical-proposal-missing' },
@@ -544,7 +544,7 @@ function proposalProduction(
   rawSubmissionId: number,
 ) {
   return {
-    schema: 'saga3.discovery-proposal.v1',
+    schema: 'factory.discovery-proposal.v1',
     artifactRef: `proposal:${proposalId}`,
     contentHash: proposalHash,
     bindings: {
@@ -624,7 +624,7 @@ function createPrepareReadinessHandler(
     return {
       event: 'prepared', // domain.prepared → assess-readiness
       production: {
-        schema: 'saga3.discovery-prepare-readiness.v1',
+        schema: 'factory.discovery-prepare-readiness.v1',
         artifactRef: `prepare-readiness:${execution.controlIntentId}`,
         contentHash: proposalHash,
         bindings: {
@@ -698,7 +698,7 @@ function createResolveReadinessHandler(
       return {
         event: 'accepted',
         production: {
-          schema: 'saga3.discovery-readiness-assessment.v1',
+          schema: 'factory.discovery-readiness-assessment.v1',
           artifactRef: `readiness-assessment:${assessment.id}`,
           contentHash: assessment.content_hash,
           bindings: {
@@ -723,7 +723,7 @@ function createResolveReadinessHandler(
     return {
       event: readinessStatus,
       production: {
-        schema: 'saga3.discovery-readiness-result.v1',
+        schema: 'factory.discovery-readiness-result.v1',
         artifactRef: `readiness-control:${controlIntentId}:${readinessStatus}`,
         contentHash: assessment?.content_hash ?? NO_READINESS_HASH,
         bindings: {
@@ -835,7 +835,7 @@ function createDiscoverySettlementHandler(
       return {
         event: 'failed',
         production: {
-          schema: 'saga3.discovery-settlement.v1',
+          schema: 'factory.discovery-settlement.v1',
           artifactRef: `settlement:failed:${ctx.epicId}:${proposalId}`,
           contentHash: '',
           bindings: { proposalId, proposalHash, reason: settled.error },
@@ -870,7 +870,7 @@ function createDiscoverySettlementHandler(
     return {
       event: settled.decision,
       production: {
-        schema: 'saga3.discovery-settlement.v1',
+        schema: 'factory.discovery-settlement.v1',
         artifactRef: `settlement:${settled.settlementId}`,
         contentHash: settled.certificateHash,
         bindings: {

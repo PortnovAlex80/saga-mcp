@@ -17,7 +17,7 @@
 // addressed, not reconstructed.
 //
 // WHAT THIS PROVES
-//   1. The `completion` column exists on saga3_node_runs after the repo ctor
+//   1. The `completion` column exists on factory_node_runs after the repo ctor
 //      (fresh-DB path) AND after a DB reopen (dual-placement ALTER in db.ts).
 //   2. `completeV2({ completion })` persists the ModuleCompletion JSON.
 //   3. After close + reopen of the DB, `readByExactCursor` returns the row
@@ -47,7 +47,7 @@ const { SqliteNodeRunRepository } = await import(
 // ---------------------------------------------------------------------------
 
 /**
- * Build a fresh temp DB. saga3_node_runs is created lazily by the repo ctor.
+ * Build a fresh temp DB. factory_node_runs is created lazily by the repo ctor.
  * FK enforcement is disabled because these tests exercise the NodeRun layer in
  * isolation (no ProcessRun parent row) — mirrors tests/installation/node-run-v2.
  */
@@ -71,7 +71,7 @@ function cleanup(temp, previous) {
 }
 
 function columnNames(db) {
-  return db.prepare('PRAGMA table_info(saga3_node_runs)').all().map((c) => c.name);
+  return db.prepare('PRAGMA table_info(factory_node_runs)').all().map((c) => c.name);
 }
 
 /**
@@ -81,7 +81,7 @@ function columnNames(db) {
  */
 function sampleModuleCompletion({
   outcome = 'go',
-  certSchemaId = 'saga3.discovery-certificate.v1',
+  certSchemaId = 'factory.discovery-certificate.v1',
   certRef = 'certificate:7777',
   certDigest = 'sha256:cert-abc-123',
 } = {}) {
@@ -108,7 +108,7 @@ function sampleModuleCompletion({
 // §1 Schema: the `completion` column exists (fresh DB + after reopen).
 // ===========================================================================
 
-test('FU-A Wave 3: saga3_node_runs has a `completion` column after the repo ctor (fresh DB)', () => {
+test('FU-A Wave 3: factory_node_runs has a `completion` column after the repo ctor (fresh DB)', () => {
   const { db, temp, previous } = freshDb();
   try {
     // eslint-disable-next-line no-new
@@ -127,7 +127,7 @@ test('FU-A Wave 3: saga3_node_runs has a `completion` column after the repo ctor
   }
 });
 
-test('FU-A Wave 3: ensureSaga3NodeRunSchema is idempotent — `completion` column not duplicated', () => {
+test('FU-A Wave 3: ensureFactoryNodeRunSchema is idempotent — `completion` column not duplicated', () => {
   const { db, temp, previous } = freshDb();
   try {
     // eslint-disable-next-line no-new
@@ -163,13 +163,13 @@ test('FU-A Wave 3: completeV2({ completion }) persists the ModuleCompletion JSON
       outputRef: 'settle:out',
       outputHash: 'hash-1',
       productionEnvelope: {
-        schema: 'saga3.discovery-settlement.v1',
+        schema: 'factory.discovery-settlement.v1',
         artifactRef: 'settle:out',
         contentHash: 'hash-1',
         bindings: {},
-        schemaId: 'saga3.discovery-settlement.v1',
+        schemaId: 'factory.discovery-settlement.v1',
         productRef: {
-          schemaId: 'saga3.discovery-settlement.v1',
+          schemaId: 'factory.discovery-settlement.v1',
           ref: 'settle:out',
           digest: 'hash-1',
         },
@@ -222,7 +222,7 @@ test('FU-A Wave 3: completion round-trips byte-identical through DB close + reop
   let startedId;
   const preCrashCompletion = sampleModuleCompletion({
     outcome: 'accepted',
-    certSchemaId: 'saga3.development-certificate.v1',
+    certSchemaId: 'factory.development-certificate.v1',
     certRef: 'certificate:4242',
     certDigest: 'sha256:dev-cert-deadbeef',
   });
@@ -244,13 +244,13 @@ test('FU-A Wave 3: completion round-trips byte-identical through DB close + reop
       outputRef: 'settle:dev',
       outputHash: 'dev-hash',
       productionEnvelope: {
-        schema: 'saga3.development-settlement.v1',
+        schema: 'factory.development-settlement.v1',
         artifactRef: 'settle:dev',
         contentHash: 'dev-hash',
         bindings: {},
-        schemaId: 'saga3.development-settlement.v1',
+        schemaId: 'factory.development-settlement.v1',
         productRef: {
-          schemaId: 'saga3.development-settlement.v1',
+          schemaId: 'factory.development-settlement.v1',
           ref: 'settle:dev',
           digest: 'dev-hash',
         },
@@ -263,8 +263,8 @@ test('FU-A Wave 3: completion round-trips byte-identical through DB close + reop
 
     // ── Simulate crash: close the DB handle, reopen a fresh one. ────────────
     // getDb() reruns SCHEMA_SQL + the db.ts migrations (including the dual-
-    // placement saga3_node_runs ALTERs). The repo ctor reruns
-    // ensureSaga3NodeRunSchema — both must be idempotent.
+    // placement factory_node_runs ALTERs). The repo ctor reruns
+    // ensureFactoryNodeRunSchema — both must be idempotent.
     closeDb();
     db = getDb();
     db.pragma('foreign_keys = OFF');
@@ -298,7 +298,7 @@ test('FU-A Wave 3: completion round-trips byte-identical through DB close + reop
       preCrashCertRef,
       'certificateRef (content-addressed certificate pointer) must be preserved exactly',
     );
-    assert.equal(resumedCertRef.schemaId, 'saga3.development-certificate.v1');
+    assert.equal(resumedCertRef.schemaId, 'factory.development-certificate.v1');
     assert.equal(resumedCertRef.ref, 'certificate:4242');
     assert.equal(resumedCertRef.digest, 'sha256:dev-cert-deadbeef');
     // 4. outcome + terminal preserved.
@@ -373,7 +373,7 @@ test('FU-A Wave 3: upgrade path — pre-FU-A schema DB gains the completion colu
     // Create the table with the 7 Wave-3 v2 columns but WITHOUT completion
     // (simulate a DB from after Wave 3 but before FU-A Phase 1).
     db.exec(`
-      CREATE TABLE saga3_node_runs (
+      CREATE TABLE factory_node_runs (
         id              INTEGER PRIMARY KEY AUTOINCREMENT,
         process_run_id INTEGER NOT NULL,
         node_id        TEXT NOT NULL,
@@ -403,7 +403,7 @@ test('FU-A Wave 3: upgrade path — pre-FU-A schema DB gains the completion colu
     `);
     // Insert a legacy row (no completion) so we can prove it round-trips.
     db.prepare(
-      `INSERT INTO saga3_node_runs (process_run_id, node_id, node_kind, attempt, status, event, output_ref, output_hash)
+      `INSERT INTO factory_node_runs (process_run_id, node_id, node_kind, attempt, status, event, output_ref, output_hash)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(4001, 'leg', 'kernel', 1, 'completed', 'domain.accept', 'leg-ref', 'leg-hash');
 
@@ -463,7 +463,7 @@ const V2_COLUMNS = [
 // the column exists, the hash round-trips, and the loud throws fire.
 // ===========================================================================
 
-test('WAVE 8 HIGH 4: saga3_node_runs has a `completion_hash` column after the repo ctor (fresh DB)', () => {
+test('WAVE 8 HIGH 4: factory_node_runs has a `completion_hash` column after the repo ctor (fresh DB)', () => {
   const { db, temp, previous } = freshDb();
   try {
     // eslint-disable-next-line no-new
@@ -478,7 +478,7 @@ test('WAVE 8 HIGH 4: saga3_node_runs has a `completion_hash` column after the re
   }
 });
 
-test('WAVE 8 HIGH 4: ensureSaga3NodeRunSchema is idempotent — `completion_hash` column not duplicated', () => {
+test('WAVE 8 HIGH 4: ensureFactoryNodeRunSchema is idempotent — `completion_hash` column not duplicated', () => {
   const { db, temp, previous } = freshDb();
   try {
     // eslint-disable-next-line no-new
@@ -517,7 +517,7 @@ test('WAVE 8 HIGH 4: completeV2 persists completion_hash alongside completion (r
 
     // The raw row stores both columns.
     const raw = db.prepare(
-      'SELECT completion, completion_hash FROM saga3_node_runs WHERE id=?',
+      'SELECT completion, completion_hash FROM factory_node_runs WHERE id=?',
     ).get(started.id);
     assert.ok(raw.completion, 'completion JSON must be populated');
     assert.ok(raw.completion_hash, 'completion_hash must be populated');
@@ -561,7 +561,7 @@ test('WAVE 8 HIGH 4: completion_hash round-trips byte-identical through DB close
   process.env.DB_PATH = path.join(temp, 'reopen.db');
   const completion = sampleModuleCompletion({
     outcome: 'accepted',
-    certSchemaId: 'saga3.delivery-certificate.v2',
+    certSchemaId: 'factory.delivery-certificate.v2',
     certRef: 'certificate:5150',
     certDigest: 'sha256:delivery-cert-aaaa',
   });
@@ -623,7 +623,7 @@ test('WAVE 8 HIGH 4 (CRITICAL): malformed completion JSON in the DB THROWS COMPL
     // SQLite corruption the audit warned about). Old behavior: parse failed →
     // null surfaced silently. Wave 8: COMPLETION_CORRUPT must throw loudly.
     db.prepare(
-      `UPDATE saga3_node_runs SET completion=? WHERE id=?`,
+      `UPDATE factory_node_runs SET completion=? WHERE id=?`,
     ).run('{ this is not valid json', started.id);
 
     assert.throws(
@@ -662,7 +662,7 @@ test('WAVE 8 HIGH 4 (CRITICAL): completion JSON that parses to a non-object THRO
     // completion value (the writer invariant is JSON.stringify(ModuleCompletion),
     // always a plain object).
     db.prepare(
-      `UPDATE saga3_node_runs SET completion=? WHERE id=?`,
+      `UPDATE factory_node_runs SET completion=? WHERE id=?`,
     ).run('[1, 2, 3]', started.id);
 
     assert.throws(
@@ -695,7 +695,7 @@ test('WAVE 8 HIGH 4 (CRITICAL): completion_hash mismatch in the DB THROWS COMPLE
     // fail the integrity check. This catches a non-canonical writer or a row
     // edited in place (the audit's corruption scenario).
     db.prepare(
-      `UPDATE saga3_node_runs SET completion_hash=? WHERE id=?`,
+      `UPDATE factory_node_runs SET completion_hash=? WHERE id=?`,
     ).run('0'.repeat(64), started.id);
 
     assert.throws(
@@ -720,7 +720,7 @@ test('WAVE 8 HIGH 4: legacy pre-Wave-8 row (completion without completion_hash) 
     // a NULL completion_hash. The repo's completeV2 always writes both; the
     // only way to get a row with completion + null hash is the legacy writer.
     db.prepare(
-      `INSERT INTO saga3_node_runs (
+      `INSERT INTO factory_node_runs (
          process_run_id, node_id, node_kind, attempt, status, event,
          output_ref, output_hash, completion, completion_hash
        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,

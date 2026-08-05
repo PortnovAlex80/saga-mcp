@@ -19,9 +19,9 @@ import type {
  */
 
 export const LEGACY_EXACT_CANDIDATE_ACCEPTANCE_SCHEMA =
-  'saga3.exact-candidate-acceptance.v1' as const;
+  'factory.exact-candidate-acceptance.v1' as const;
 export const EXACT_CANDIDATE_ACCEPTANCE_SCHEMA =
-  'saga3.exact-candidate-acceptance.v2' as const;
+  'factory.exact-candidate-acceptance.v2' as const;
 export type ExactCandidateAcceptanceSchema =
   | typeof LEGACY_EXACT_CANDIDATE_ACCEPTANCE_SCHEMA
   | typeof EXACT_CANDIDATE_ACCEPTANCE_SCHEMA;

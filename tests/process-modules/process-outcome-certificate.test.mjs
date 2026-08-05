@@ -29,7 +29,7 @@ const {
 );
 
 function fixture() {
-  const temp = mkdtempSync(path.join(os.tmpdir(), 'saga3-poc-'));
+  const temp = mkdtempSync(path.join(os.tmpdir(), 'factory-poc-'));
   process.env.DB_PATH = path.join(temp, 'poc.db');
   const db = getDb();
   db.prepare(`INSERT INTO projects (id,name,status) VALUES (1,'P','active')`).run();
@@ -40,7 +40,7 @@ function fixture() {
     moduleRef: { name: 'solution-formalization', version: '1.0.0' },
     executorKind: 'legacy-adapter',
     input: {
-      schema: 'saga3.formalization-case.v1',
+      schema: 'factory.formalization-case.v1',
       payload: { epicId: 10 },
       contentHash: createHash('sha256').update(JSON.stringify({ epicId: 10 })).digest('hex'),
     },
@@ -59,7 +59,7 @@ function cleanup(temp) {
 
 function makePayload({ decision = 'accepted', rationale = 'ok' } = {}) {
   return {
-    schemaVersion: 'saga3.solution-contract-certificate.v1',
+    schemaVersion: 'factory.solution-contract-certificate.v1',
     decision,
     reasonCodes: [],
     rationale,
@@ -73,7 +73,7 @@ test('schema creation is idempotent', () => {
   try {
     new SqliteProcessOutcomeCertificateRepository(db);
     new SqliteProcessOutcomeCertificateRepository(db);
-    const cols = db.prepare('PRAGMA table_info(saga3_process_outcome_certificates)').all().map(c => c.name);
+    const cols = db.prepare('PRAGMA table_info(factory_process_outcome_certificates)').all().map(c => c.name);
     assert.ok(cols.includes('certificate_hash'));
     assert.ok(cols.includes('process_run_id'));
     assert.ok(cols.includes('authority'));
@@ -169,7 +169,7 @@ test('certificate_hash is UNIQUE globally (two runs cannot share a hash)', () =>
       moduleRef: { name: 'solution-formalization', version: '1.0.0' },
       executorKind: 'legacy-adapter',
       input: {
-        schema: 'saga3.formalization-case.v1',
+        schema: 'factory.formalization-case.v1',
         payload: { epicId: 10 },
         contentHash: createHash('sha256').update(JSON.stringify({ epicId: 10 })).digest('hex'),
       },
@@ -183,7 +183,7 @@ test('certificate_hash is UNIQUE globally (two runs cannot share a hash)', () =>
     const hash = hashProcessOutcomeCertificatePayload(payload);
     // First issue is fine. We need a run id to attach to; use the fixture's.
     const firstRunId = (() => {
-      const r = db.prepare('SELECT MIN(id) AS m FROM saga3_process_runs').get();
+      const r = db.prepare('SELECT MIN(id) AS m FROM factory_process_runs').get();
       return r.m;
     })();
     repo.issue({

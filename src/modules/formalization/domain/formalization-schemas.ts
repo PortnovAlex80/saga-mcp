@@ -36,17 +36,17 @@ export {
   FORMALIZATION_CASE_SCHEMA,
 } from '../../../process-modules/lifecycles/product-delivery-module-contracts.js';
 import { FORMALIZATION_CASE_SCHEMA } from '../../../process-modules/lifecycles/product-delivery-module-contracts.js';
-export const SOLUTION_CONTRACT_CERTIFICATE_SCHEMA = 'saga3.solution-contract-certificate.v1';
-export const FORMALIZATION_SETTLEMENT_INPUT_SCHEMA = 'saga3.formalization-settlement-input.v1';
-export const FORMALIZATION_PRODUCT_BUNDLE_SCHEMA = 'saga3.formalization-product-bundle.v1';
-export const FORMALIZATION_USE_CASE_BUNDLE_SCHEMA = 'saga3.formalization-use-case-bundle.v1';
-export const FORMALIZATION_ACCEPTANCE_BUNDLE_SCHEMA = 'saga3.formalization-acceptance-bundle.v1';
-export const FORMALIZATION_RECONCILIATION_SCHEMA = 'saga3.formalization-reconciliation-report.v1';
-export const FORMALIZATION_ARCHITECTURE_BUNDLE_SCHEMA = 'saga3.formalization-architecture-bundle.v1';
-export const ACCEPTANCE_BASELINE_SNAPSHOT_SCHEMA = 'saga3.acceptance-baseline-snapshot.v1';
-export const FORMALIZATION_SRS_SCHEMA = 'saga3.srs.v1';
+export const SOLUTION_CONTRACT_CERTIFICATE_SCHEMA = 'factory.solution-contract-certificate.v1';
+export const FORMALIZATION_SETTLEMENT_INPUT_SCHEMA = 'factory.formalization-settlement-input.v1';
+export const FORMALIZATION_PRODUCT_BUNDLE_SCHEMA = 'factory.formalization-product-bundle.v1';
+export const FORMALIZATION_USE_CASE_BUNDLE_SCHEMA = 'factory.formalization-use-case-bundle.v1';
+export const FORMALIZATION_ACCEPTANCE_BUNDLE_SCHEMA = 'factory.formalization-acceptance-bundle.v1';
+export const FORMALIZATION_RECONCILIATION_SCHEMA = 'factory.formalization-reconciliation-report.v1';
+export const FORMALIZATION_ARCHITECTURE_BUNDLE_SCHEMA = 'factory.formalization-architecture-bundle.v1';
+export const ACCEPTANCE_BASELINE_SNAPSHOT_SCHEMA = 'factory.acceptance-baseline-snapshot.v1';
+export const FORMALIZATION_SRS_SCHEMA = 'factory.srs.v1';
 export const FORMALIZATION_CERTIFICATE_SCHEMA_VERSION =
-  'saga3.solution-contract-certificate.generic.v1';
+  'factory.solution-contract-certificate.generic.v1';
 
 /** One formalization run = one discovery certificate being converted to a contract. */
 export interface FormalizationCase {

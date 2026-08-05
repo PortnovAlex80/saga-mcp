@@ -22,16 +22,16 @@ import type {
 import type { ProposalProvenance } from '../domain/proposal.js';
 
 /** Idempotently create the D3 readiness tables if absent. */
-export function ensureSaga3ReadinessSchema(db: Database.Database): void {
+export function ensureFactoryReadinessSchema(db: Database.Database): void {
   db.exec(`
-    CREATE TABLE IF NOT EXISTS saga3_readiness_control_intents (
+    CREATE TABLE IF NOT EXISTS factory_readiness_control_intents (
       id                    INTEGER PRIMARY KEY AUTOINCREMENT,
       epic_id               INTEGER NOT NULL REFERENCES epics(id) ON DELETE CASCADE,
       kind                  TEXT NOT NULL,
-      proposal_id           INTEGER NOT NULL REFERENCES saga3_proposals(id) ON DELETE CASCADE,
+      proposal_id           INTEGER NOT NULL REFERENCES factory_proposals(id) ON DELETE CASCADE,
       proposal_content_hash TEXT NOT NULL,
-      source_intent_id      INTEGER NOT NULL REFERENCES saga3_work_intents(id) ON DELETE CASCADE,
-      authority_intent_id   INTEGER NOT NULL REFERENCES saga3_work_intents(id) ON DELETE CASCADE,
+      source_intent_id      INTEGER NOT NULL REFERENCES factory_work_intents(id) ON DELETE CASCADE,
+      authority_intent_id   INTEGER NOT NULL REFERENCES factory_work_intents(id) ON DELETE CASCADE,
       projected_task_id     INTEGER REFERENCES tasks(id) ON DELETE SET NULL,
       status                TEXT NOT NULL DEFAULT 'open'
                               CHECK (status IN ('open','executing','paused','concluded','cancelled')),
@@ -39,10 +39,10 @@ export function ensureSaga3ReadinessSchema(db: Database.Database): void {
       updated_at            TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
-    CREATE TABLE IF NOT EXISTS saga3_readiness_assessments (
+    CREATE TABLE IF NOT EXISTS factory_readiness_assessments (
       id                       INTEGER PRIMARY KEY AUTOINCREMENT,
-      control_intent_id        INTEGER NOT NULL REFERENCES saga3_readiness_control_intents(id) ON DELETE CASCADE,
-      proposal_id              INTEGER NOT NULL REFERENCES saga3_proposals(id) ON DELETE CASCADE,
+      control_intent_id        INTEGER NOT NULL REFERENCES factory_readiness_control_intents(id) ON DELETE CASCADE,
+      proposal_id              INTEGER NOT NULL REFERENCES factory_proposals(id) ON DELETE CASCADE,
       proposal_content_hash    TEXT NOT NULL,
       task_id                  INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
       execution_id             TEXT NOT NULL,
@@ -57,20 +57,20 @@ export function ensureSaga3ReadinessSchema(db: Database.Database): void {
       created_at               TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_saga3_readiness_control_target
-      ON saga3_readiness_control_intents(proposal_id, proposal_content_hash);
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_saga3_readiness_assessment_idempotency
-      ON saga3_readiness_assessments(control_intent_id, content_hash);
-    CREATE INDEX IF NOT EXISTS idx_saga3_readiness_control_epic
-      ON saga3_readiness_control_intents(epic_id, status);
-    CREATE INDEX IF NOT EXISTS idx_saga3_readiness_assessment_control
-      ON saga3_readiness_assessments(control_intent_id);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_factory_readiness_control_target
+      ON factory_readiness_control_intents(proposal_id, proposal_content_hash);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_factory_readiness_assessment_idempotency
+      ON factory_readiness_assessments(control_intent_id, content_hash);
+    CREATE INDEX IF NOT EXISTS idx_factory_readiness_control_epic
+      ON factory_readiness_control_intents(epic_id, status);
+    CREATE INDEX IF NOT EXISTS idx_factory_readiness_assessment_control
+      ON factory_readiness_assessments(control_intent_id);
   `);
   // Runtime migration: add validation_errors to pre-existing assessments tables
   // (P0: durable rejection reasons). ALTER ... ADD COLUMN is idempotent via try/catch.
-  const cols = db.prepare('PRAGMA table_info(saga3_readiness_assessments)').all() as Array<{ name: string }>;
+  const cols = db.prepare('PRAGMA table_info(factory_readiness_assessments)').all() as Array<{ name: string }>;
   if (!cols.some(c => c.name === 'validation_errors')) {
-    db.exec('ALTER TABLE saga3_readiness_assessments ADD COLUMN validation_errors TEXT NOT NULL DEFAULT \'[]\'');
+    db.exec('ALTER TABLE factory_readiness_assessments ADD COLUMN validation_errors TEXT NOT NULL DEFAULT \'[]\'');
   }
   // P0 migration: the original D3 (9895532) created the idempotency index as
   // UNIQUE(control_intent_id, execution_id, content_hash). The correction
@@ -82,7 +82,7 @@ export function ensureSaga3ReadinessSchema(db: Database.Database): void {
   // "ON CONFLICT clause does not match any PRIMARY KEY or UNIQUE constraint".
   // Inspect the actual index columns and rebuild it deterministically.
   const indexColumns = db.prepare(
-    `PRAGMA index_info('idx_saga3_readiness_assessment_idempotency')`,
+    `PRAGMA index_info('idx_factory_readiness_assessment_idempotency')`,
   ).all() as Array<{ name: string }>;
   const wantsCorrect =
     indexColumns.length === 2
@@ -95,7 +95,7 @@ export function ensureSaga3ReadinessSchema(db: Database.Database): void {
     // accepted_by_kernel > rejected_by_kernel > submitted. This is a
     // deterministic, loss-minimising dedupe — it never drops an accepted row.
     db.exec(`
-      DELETE FROM saga3_readiness_assessments
+      DELETE FROM factory_readiness_assessments
        WHERE id NOT IN (
          SELECT id FROM (
            SELECT id,
@@ -109,14 +109,14 @@ export function ensureSaga3ReadinessSchema(db: Database.Database): void {
                              END,
                              id ASC
                   ) AS rn
-             FROM saga3_readiness_assessments
+             FROM factory_readiness_assessments
          ) WHERE rn = 1
        );
     `);
-    db.exec('DROP INDEX IF EXISTS idx_saga3_readiness_assessment_idempotency');
+    db.exec('DROP INDEX IF EXISTS idx_factory_readiness_assessment_idempotency');
     db.exec(
-      `CREATE UNIQUE INDEX idx_saga3_readiness_assessment_idempotency
-         ON saga3_readiness_assessments(control_intent_id, content_hash)`,
+      `CREATE UNIQUE INDEX idx_factory_readiness_assessment_idempotency
+         ON factory_readiness_assessments(control_intent_id, content_hash)`,
     );
   }
 }
@@ -149,7 +149,7 @@ export function insertReadinessAssessment(
   // Idempotency key is (control_intent_id, content_hash) — INDEPENDENT of
   // execution_id (P1-3): a restart with a new execution reuses the same row.
   const info = db.prepare(
-    `INSERT INTO saga3_readiness_assessments
+    `INSERT INTO factory_readiness_assessments
        (control_intent_id, proposal_id, proposal_content_hash, task_id,
         execution_id, payload, content_hash, status, overall_readiness,
         recommended_next_action, validation_errors, provenance)
@@ -169,7 +169,7 @@ export function insertReadinessAssessment(
     JSON.stringify(input.provenance),
   );
   const row = db.prepare(
-    `SELECT * FROM saga3_readiness_assessments
+    `SELECT * FROM factory_readiness_assessments
       WHERE control_intent_id=? AND content_hash=?`,
   ).get(input.controlIntentId, hash) as ReadinessAssessmentRow | undefined;
   if (!row) throw new Error('saga3: readiness assessment vanished after insert');
@@ -180,7 +180,7 @@ export function readReadinessAssessment(
   db: Database.Database,
   assessmentId: number,
 ): ReadinessAssessmentRecord | null {
-  const row = db.prepare('SELECT * FROM saga3_readiness_assessments WHERE id=?')
+  const row = db.prepare('SELECT * FROM factory_readiness_assessments WHERE id=?')
     .get(assessmentId) as ReadinessAssessmentRow | undefined;
   return row ? assessmentRowToRecord(row) : null;
 }
@@ -191,7 +191,7 @@ export function readLatestReadinessAssessmentForControl(
   controlIntentId: number,
 ): ReadinessAssessmentRecord | null {
   const row = db.prepare(
-    `SELECT * FROM saga3_readiness_assessments WHERE control_intent_id=? ORDER BY id DESC LIMIT 1`,
+    `SELECT * FROM factory_readiness_assessments WHERE control_intent_id=? ORDER BY id DESC LIMIT 1`,
   ).get(controlIntentId) as ReadinessAssessmentRow | undefined;
   return row ? assessmentRowToRecord(row) : null;
 }
@@ -203,7 +203,7 @@ export function readReadinessAssessmentForExecution(
   executionId: string,
 ): ReadinessAssessmentRecord | null {
   const row = db.prepare(
-    `SELECT * FROM saga3_readiness_assessments
+    `SELECT * FROM factory_readiness_assessments
       WHERE control_intent_id=? AND task_id=? AND execution_id=?
       ORDER BY id DESC LIMIT 1`,
   ).get(controlIntentId, taskId, executionId) as ReadinessAssessmentRow | undefined;
@@ -216,7 +216,7 @@ export function readLatestAcceptedReadinessAssessmentForControl(
   controlIntentId: number,
 ): ReadinessAssessmentRecord | null {
   const row = db.prepare(
-    `SELECT * FROM saga3_readiness_assessments
+    `SELECT * FROM factory_readiness_assessments
       WHERE control_intent_id=? AND status='accepted_by_kernel'
       ORDER BY id DESC LIMIT 1`,
   ).get(controlIntentId) as ReadinessAssessmentRow | undefined;
@@ -225,7 +225,7 @@ export function readLatestAcceptedReadinessAssessmentForControl(
 
 export function markReadinessAccepted(db: Database.Database, assessmentId: number): void {
   db.prepare(
-    `UPDATE saga3_readiness_assessments
+    `UPDATE factory_readiness_assessments
         SET status='accepted_by_kernel'
       WHERE id=? AND status IN ('submitted','accepted_by_kernel')`,
   ).run(assessmentId);
@@ -235,7 +235,7 @@ export function markReadinessRejected(db: Database.Database, assessmentId: numbe
   // P0: rejected assessments must be DURABLE. The advisor proposed; the kernel
   // rejected; the rejection reason is retained so a human/D4 can see WHY.
   db.prepare(
-    `UPDATE saga3_readiness_assessments
+    `UPDATE factory_readiness_assessments
         SET status='rejected_by_kernel', validation_errors=?
       WHERE id=? AND status IN ('submitted','rejected_by_kernel')`,
   ).run(JSON.stringify(validationErrors), assessmentId);
@@ -248,7 +248,7 @@ export function readReadinessControlForProposal(
   proposalContentHash: string,
 ): ReadinessControlIntentRecord | null {
   const row = db.prepare(
-    `SELECT * FROM saga3_readiness_control_intents
+    `SELECT * FROM factory_readiness_control_intents
       WHERE proposal_id=? AND proposal_content_hash=?`,
   ).get(proposalId, proposalContentHash) as ReadinessControlIntentRow | undefined;
   return row ? controlRowToRecord(row) : null;
@@ -258,7 +258,7 @@ export function readReadinessControl(
   db: Database.Database,
   controlIntentId: number,
 ): ReadinessControlIntentRecord | null {
-  const row = db.prepare('SELECT * FROM saga3_readiness_control_intents WHERE id=?')
+  const row = db.prepare('SELECT * FROM factory_readiness_control_intents WHERE id=?')
     .get(controlIntentId) as ReadinessControlIntentRow | undefined;
   return row ? controlRowToRecord(row) : null;
 }

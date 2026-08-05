@@ -57,11 +57,11 @@ function contractRef(schemaId: string, version: string): ContractRef {
 
 /**
  * The module's input contract: one `DiscoveryCase` binding a discovery episode.
- * Matches `saga3.discovery-case.v1` (the `inputContract` on
+ * Matches `factory.discovery-case.v1` (the `inputContract` on
  * `discovery-process-module.ts`).
  */
 export const DISCOVERY_INPUT_CONTRACT: ContractRef = contractRef(
-  'saga3.discovery-case.v1',
+  'factory.discovery-case.v1',
   '1.0.0',
 );
 
@@ -72,10 +72,10 @@ export const DISCOVERY_INPUT_CONTRACT: ContractRef = contractRef(
 /**
  * Output contract of the `produce-proposal` /
  * `resolve-proposal-submission` node pair: the canonical DiscoveryProposal.
- * Matches `saga3.discovery-proposal.v1`.
+ * Matches `factory.discovery-proposal.v1`.
  */
 export const DISCOVERY_PROPOSAL_BUNDLE_CONTRACT: ContractRef = contractRef(
-  'saga3.discovery-proposal.v1',
+  'factory.discovery-proposal.v1',
   '1.0.0',
 );
 
@@ -83,30 +83,30 @@ export const DISCOVERY_PROPOSAL_BUNDLE_CONTRACT: ContractRef = contractRef(
  * Output contract of the `prepare-normalization` /
  * `resolve-normalized-proposal` node pair: the canonical normalization
  * transformation proposal. Matches
- * `saga3.discovery-normalization-proposal.v1`.
+ * `factory.discovery-normalization-proposal.v1`.
  */
 export const DISCOVERY_NORMALIZATION_BUNDLE_CONTRACT: ContractRef = contractRef(
-  'saga3.discovery-normalization-proposal.v1',
+  'factory.discovery-normalization-proposal.v1',
   '1.0.0',
 );
 
 /**
  * Output contract of the `prepare-readiness` / `resolve-readiness` node pair:
  * the canonical readiness assessment. Matches
- * `saga3.discovery-readiness-assessment.v1`.
+ * `factory.discovery-readiness-assessment.v1`.
  */
 export const DISCOVERY_READINESS_BUNDLE_CONTRACT: ContractRef = contractRef(
-  'saga3.discovery-readiness-assessment.v1',
+  'factory.discovery-readiness-assessment.v1',
   '1.0.0',
 );
 
 /**
  * Output contract of the diagnosis advisor (post-completion observer): the
- * advisory diagnosis report. Matches `saga3.discovery-diagnosis.v1`. The
+ * advisory diagnosis report. Matches `factory.discovery-diagnosis.v1`. The
  * diagnosis is advisory-only — it never enters the outcome-critical flow.
  */
 export const DISCOVERY_DIAGNOSIS_BUNDLE_CONTRACT: ContractRef = contractRef(
-  'saga3.discovery-diagnosis.v1',
+  'factory.discovery-diagnosis.v1',
   '1.0.0',
 );
 
@@ -114,19 +114,19 @@ export const DISCOVERY_DIAGNOSIS_BUNDLE_CONTRACT: ContractRef = contractRef(
  * Output contract of the brief auto-provisioning projection: the synthetic
  * accepted brief created when a proposal is first accepted (so downstream
  * Formalization has its PRD → brief `derived_from` lineage). Matches
- * `saga3.discovery-brief.v1`.
+ * `factory.discovery-brief.v1`.
  */
 export const DISCOVERY_BRIEF_BUNDLE_CONTRACT: ContractRef = contractRef(
-  'saga3.discovery-brief.v1',
+  'factory.discovery-brief.v1',
   '1.0.0',
 );
 
 /**
  * The intermediate settlement-input contract the settlement handler assembles
- * from the frozen graph. Matches `saga3.discovery-settlement-input.v1`.
+ * from the frozen graph. Matches `factory.discovery-settlement-input.v1`.
  */
 export const DISCOVERY_SETTLEMENT_INPUT_CONTRACT: ContractRef = contractRef(
-  'saga3.discovery-settlement-input.v1',
+  'factory.discovery-settlement-input.v1',
   '1.0.0',
 );
 
@@ -137,21 +137,21 @@ export const DISCOVERY_SETTLEMENT_INPUT_CONTRACT: ContractRef = contractRef(
 /**
  * The module's terminal output contract: the immutable discovery outcome
  * certificate the settlement handler persists on every terminal outcome.
- * Matches `saga3.discovery-outcome-certificate.v1`. The manifest (W9-A1)
+ * Matches `factory.discovery-outcome-certificate.v1`. The manifest (W9-A1)
  * carries this as `outputContractRef`.
  */
 export const DISCOVERY_OUTPUT_CONTRACT: ContractRef = contractRef(
-  'saga3.discovery-outcome-certificate.v1',
+  'factory.discovery-outcome-certificate.v1',
   '1.0.0',
 );
 
 /**
  * The certificate payload contract the generic ProcessOutcomeCertificate layer
  * wraps around the discovery decision. Matches
- * `saga3.discovery-outcome-certificate.generic.v1`.
+ * `factory.discovery-outcome-certificate.generic.v1`.
  */
 export const DISCOVERY_CERTIFICATE_CONTRACT: ContractRef = contractRef(
-  'saga3.discovery-outcome-certificate.generic.v1',
+  'factory.discovery-outcome-certificate.generic.v1',
   '1.0.0',
 );
 

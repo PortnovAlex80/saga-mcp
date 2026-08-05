@@ -35,8 +35,8 @@ import { createHash } from 'node:crypto';
 const { sha256Hex } = await import(
   '../../dist/shared/canonical-json.js'
 );
-const { adaptLegacyProcessModule } = await import(
-  '../../dist/process-modules/domain/spi/manifest-adapter.js'
+const { createProcessModuleManifest } = await import(
+  '../../dist/process-modules/domain/spi/manifest-factory.js'
 );
 const { validateProcessModuleManifest } = await import(
   '../../dist/process-modules/domain/spi/module-manifest.js'
@@ -314,12 +314,12 @@ function digestBytes(bytes) {
 
 /**
  * Build a VALID manifest for installation: take the W0-A7 lm-marketing fixture,
- * wrap via adaptLegacyProcessModule (gets a valid baseline envelope), then
+ * wrap via createProcessModuleManifest (gets a valid baseline envelope), then
  * populate resourceIndex + handlerRefs with real (placeholder-digest) entries.
  * The result passes validateProcessModuleManifest.
  */
 function buildMarketingManifest({ withResources = true, withHandlers = true } = {}) {
-  const baseline = adaptLegacyProcessModule(lmMarketingModule);
+  const baseline = createProcessModuleManifest(lmMarketingModule);
   // Re-build a manifest object with optionally populated index/handlers. The
   // baseline already validates; we extend it with declared entries that also
   // validate (real logicalIds, valid kinds, placeholder digests accepted by

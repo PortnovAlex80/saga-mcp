@@ -5,7 +5,7 @@ import type {
   WorkerRunSnapshot,
 } from '../../application/ports/worker-executor.js';
 
-export interface LegacyClaudeBoardRunner {
+export interface ClaudeBoardRunner {
   start(command: {
     projectId: number;
     epicId?: number | null;
@@ -26,7 +26,7 @@ export interface LegacyClaudeBoardRunner {
  * tracker implementation from orchestration code.
  */
 export class ClaudeBoardWorkerExecutor implements WorkerExecutor {
-  constructor(private readonly runner: LegacyClaudeBoardRunner) {}
+  constructor(private readonly runner: ClaudeBoardRunner) {}
 
   start(command: WorkerExecutorStart): WorkerRunSnapshot {
     return this.runner.start(command);

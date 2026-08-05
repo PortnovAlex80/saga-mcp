@@ -11,7 +11,7 @@
 //
 // Coverage:
 //   - Schema creation is idempotent (constructor safe to call twice;
-//     ensureSaga3ScenarioInstallationSchema re-runnable).
+//     ensureFactoryScenarioInstallationSchema re-runnable).
 //   - Positive: installScenario (active) → getScenarioInstallation returns it
 //     with the module lock attached; getModuleLock; getByDigest;
 //     getActiveByNameVersion; listActive; activate (staged→active); retire.
@@ -47,7 +47,7 @@ import test from 'node:test';
 const { closeDb, getDb } = await import('../../dist/db.js');
 const {
   SqliteScenarioInstallationRepository,
-  ensureSaga3ScenarioInstallationSchema,
+  ensureFactoryScenarioInstallationSchema,
 } = await import(
   '../../dist/process-modules/installation/persistence/sqlite-scenario-installation-repository.js'
 );
@@ -165,7 +165,7 @@ function buildInstallInput({
   const manifest = buildCampaignManifest({ name, version });
   const moduleLock = buildModuleLock(manifest, { moduleInstallationIdBase });
   // Seed the module-installation parent rows so the module-locks FK is
-  // satisfied. getDb() already created saga3_module_installations (W2-A2).
+  // satisfied. getDb() already created factory_module_installations (W2-A2).
   seedModuleInstallations(moduleLock);
   const scenarioDigest = sha256Hex({ manifest, moduleLock, salt: digestSalt });
   return {
@@ -179,7 +179,7 @@ function buildInstallInput({
   };
 }
 
-/** Insert minimal parent rows into saga3_module_installations for the lock FK. */
+/** Insert minimal parent rows into factory_module_installations for the lock FK. */
 function seedModuleInstallations(moduleLock) {
   const db = getDb();
   const seen = new Set();
@@ -187,7 +187,7 @@ function seedModuleInstallations(moduleLock) {
     if (seen.has(entry.moduleInstallationId)) continue;
     seen.add(entry.moduleInstallationId);
     db.prepare(
-      `INSERT OR IGNORE INTO saga3_module_installations
+      `INSERT OR IGNORE INTO factory_module_installations
          (id, name, version, package_digest, manifest_snapshot, store_location,
           resource_index, handler_refs, dependency_lock, status, installed_at)
        VALUES (?,?,?,?,?,?,?,?,?, 'active', ?)`,
@@ -208,7 +208,7 @@ function seedModuleInstallations(moduleLock) {
 
 /** Spin up a fresh temp DB (getDb() runs all migrations incl. W7-A1). */
 function freshDb() {
-  const temp = mkdtempSync(path.join(os.tmpdir(), 'saga3-scenario-'));
+  const temp = mkdtempSync(path.join(os.tmpdir(), 'factory-scenario-'));
   process.env.DB_PATH = path.join(temp, 'scenario.db');
   const db = getDb();
   return { temp, db };
@@ -239,22 +239,22 @@ test('W7-A1 db.ts wiring: getDb() creates both new tables + all indexes', () => 
           "SELECT name FROM sqlite_master WHERE type='index' AND name=?",
         )
         .get(name);
-    assert.ok(table('saga3_scenario_installations'), 'installations table created by getDb()');
-    assert.ok(table('saga3_scenario_module_locks'), 'module_locks table created by getDb()');
-    assert.ok(index('idx_saga3_scenario_installations_active'), 'partial UNIQUE active index');
-    assert.ok(index('idx_saga3_scenario_installations_digest'), 'digest index');
-    assert.ok(index('idx_saga3_scenario_module_locks_pair'), 'per-stage UNIQUE lock index');
-    assert.ok(index('idx_saga3_scenario_module_locks_module'), 'reverse module-lookup index');
+    assert.ok(table('factory_scenario_installations'), 'installations table created by getDb()');
+    assert.ok(table('factory_scenario_module_locks'), 'module_locks table created by getDb()');
+    assert.ok(index('idx_factory_scenario_installations_active'), 'partial UNIQUE active index');
+    assert.ok(index('idx_factory_scenario_installations_digest'), 'digest index');
+    assert.ok(index('idx_factory_scenario_module_locks_pair'), 'per-stage UNIQUE lock index');
+    assert.ok(index('idx_factory_scenario_module_locks_module'), 'reverse module-lookup index');
   } finally {
     cleanup(temp);
   }
 });
 
-test('schema creation is idempotent — ensureSaga3ScenarioInstallationSchema re-runnable', () => {
+test('schema creation is idempotent — ensureFactoryScenarioInstallationSchema re-runnable', () => {
   const { temp, db } = freshDb();
   try {
-    assert.doesNotThrow(() => ensureSaga3ScenarioInstallationSchema(db));
-    assert.doesNotThrow(() => ensureSaga3ScenarioInstallationSchema(db));
+    assert.doesNotThrow(() => ensureFactoryScenarioInstallationSchema(db));
+    assert.doesNotThrow(() => ensureFactoryScenarioInstallationSchema(db));
   } finally {
     cleanup(temp);
   }
@@ -299,7 +299,7 @@ test('installScenario (active) writes the row + module lock and returns the reco
     // The lock rows actually landed in the lock table.
     const lockRowCount = db
       .prepare(
-        'SELECT COUNT(*) AS n FROM saga3_scenario_module_locks WHERE scenario_installation_id=?',
+        'SELECT COUNT(*) AS n FROM factory_scenario_module_locks WHERE scenario_installation_id=?',
       )
       .get(rec.id);
     assert.equal(lockRowCount.n, input.moduleLock.length);
@@ -516,7 +516,7 @@ test('lock missing a stage → SCENARIO_MODULE_LOCK_INCOMPLETE; no row written',
     );
     assert.equal(repo.listActive().length, 0);
     const cnt = db
-      .prepare('SELECT COUNT(*) AS n FROM saga3_scenario_installations')
+      .prepare('SELECT COUNT(*) AS n FROM factory_scenario_installations')
       .get();
     assert.equal(cnt.n, 0, 'no installation row written on lock failure');
   } finally {
@@ -601,7 +601,7 @@ test('structural: a direct second-active INSERT bypassing the repo is rejected b
     // Bypass the repo: try to insert a second active row for the same identity.
     assert.throws(() =>
       db.prepare(
-        `INSERT INTO saga3_scenario_installations
+        `INSERT INTO factory_scenario_installations
            (scenario_name, scenario_version, scenario_digest, manifest_snapshot,
             module_lock, store_location, status, installed_at)
          VALUES (?,?,?,?,?,?, 'active', ?)`,

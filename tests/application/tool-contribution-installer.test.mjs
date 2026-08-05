@@ -125,10 +125,10 @@ test('happy path: a valid batch installs into the registry', async () => {
 });
 
 test('happy path: deeply nested namespace prefix is accepted', async () => {
-  const tool = toolContribution('saga3.discovery.kernel.settle');
+  const tool = toolContribution('factory.discovery.kernel.settle');
   const bundle = bundleWithHandlers([tool]);
   const result = await installModuleToolContributions([tool], bundle);
-  assert.deepEqual(result.installed, ['saga3.discovery.kernel.settle']);
+  assert.deepEqual(result.installed, ['factory.discovery.kernel.settle']);
   assert.equal(result.count, 1);
 });
 

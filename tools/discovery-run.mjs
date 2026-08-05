@@ -298,7 +298,7 @@ async function preflight(options) {
     process.env.SAGA_REPO_ROOT = configuration.repoRoot;
     process.env.SAGA_PACKAGE_STORE_DIR = configuration.packageStore;
     // saga4 cutover: 'saga3-discovery-generic' is no longer a reachable mode
-    // from createSaga2Application — the composition root always returns the
+    // from createFactoryApplication — the composition root always returns the
     // Product Lifecycle runtime. This harness proved the generic-flow discovery
     // composition during P6c; that goal is complete. The check now verifies
     // that the discovery module package still installs cleanly (its manifest +

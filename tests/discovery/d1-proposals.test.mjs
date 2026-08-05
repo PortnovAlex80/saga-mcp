@@ -12,7 +12,7 @@
  *      captured automatically.
  *
  * These tests build a fresh temp SQLite DB with the saga schema so the handler
- * can read/write saga3_work_intents, saga3_proposals, tasks, worker_executions
+ * can read/write factory_work_intents, factory_proposals, tasks, worker_executions
  * without touching the real development database.
  */
 
@@ -132,7 +132,7 @@ test('validateDiscoveryProposal: recommended_outcome must be one of the six', ()
 // getDb() singleton (not a raw handle) so closeDb() releases the WAL handle
 // cleanly — a raw handle would leak and rmSync would EPERM on Windows.
 function makeFixture() {
-  const temp = mkdtempSync(path.join(os.tmpdir(), 'saga3-d1-'));
+  const temp = mkdtempSync(path.join(os.tmpdir(), 'factory-d1-'));
   process.env.DB_PATH = path.join(temp, 'd1.db');
   const db = getDb();
   db.prepare(`INSERT INTO projects (id,name,status) VALUES (1,'P','active')`).run();
@@ -155,7 +155,7 @@ function seedIntentAndTask(db, { intentId = 1, taskId = 100, executionId = 'exec
     enforcement: 'runtime',
   };
   db.prepare(
-    `INSERT INTO saga3_work_intents
+    `INSERT INTO factory_work_intents
        (id, epic_id, kind, objective, authority_scope, output_schema,
         token_budget, retry_budget, projected_task_id, status)
      VALUES (?,?,?,?,?,?,?,?,?, 'executing')`,
@@ -198,8 +198,8 @@ test('proposal_submit: valid submission records the proposal with provenance fro
     const { intentId, taskId, executionId } = seedIntentAndTask(getDb());
 
     const { createDiscoveryProposalHandlers } = await import('../../dist/tools/discovery-proposal-tools.js');
-    const { Saga3ProposalRepository } = await import('../../dist/modules/discovery/infrastructure/discovery-proposal-repository.js');
-    const repo = new Saga3ProposalRepository();
+    const { FactoryProposalRepository } = await import('../../dist/modules/discovery/infrastructure/discovery-proposal-repository.js');
+    const repo = new FactoryProposalRepository();
     const { handlers } = createDiscoveryProposalHandlers();
 
     const result = handlers.proposal_submit({
@@ -248,14 +248,14 @@ test('proposal_submit: exact replay returns the same proposal id with replayed=t
     assert.equal(replay.content_hash, first.content_hash);
     assert.equal(replay.replayed, true);
 
-    const { Saga3ProposalRepository } = await import('../../dist/modules/discovery/infrastructure/discovery-proposal-repository.js');
-    const repo = new Saga3ProposalRepository();
-    const count = getDb().prepare('SELECT COUNT(*) c FROM saga3_proposals WHERE intent_id=?').get(intentId).c;
+    const { FactoryProposalRepository } = await import('../../dist/modules/discovery/infrastructure/discovery-proposal-repository.js');
+    const repo = new FactoryProposalRepository();
+    const count = getDb().prepare('SELECT COUNT(*) c FROM factory_proposals WHERE intent_id=?').get(intentId).c;
     assert.equal(count, 1, 'replay must not create a duplicate proposal row');
     // Replay must also be idempotent for the visibility side-effect: exactly one
-    // saga3-kernel comment, not one per submission (review P1).
+    // factory-kernel comment, not one per submission (review P1).
     const commentCount = getDb().prepare(
-      "SELECT COUNT(*) c FROM comments WHERE task_id=? AND author='saga3-kernel'",
+      "SELECT COUNT(*) c FROM comments WHERE task_id=? AND author='factory-kernel'",
     ).get(taskId).c;
     assert.equal(commentCount, 1, 'replay must not create a duplicate visibility comment');
   } finally {
@@ -276,7 +276,7 @@ test('proposal_submit: fence rejects execution that owns a different task', asyn
     // Make intent 2 point at task 200. Then forge task 200's fence to claim it
     // holds exec-A (so the task-fence check passes), while exec-A actually owns
     // task 100 — the execution-ownership check must catch this.
-    seed.prepare('UPDATE saga3_work_intents SET projected_task_id=200 WHERE id=2').run();
+    seed.prepare('UPDATE factory_work_intents SET projected_task_id=200 WHERE id=2').run();
     seed.prepare('UPDATE tasks SET current_execution_id=? WHERE id=?').run('exec-A', 200);
     const { createDiscoveryProposalHandlers } = await import('../../dist/tools/discovery-proposal-tools.js');
     const { handlers } = createDiscoveryProposalHandlers();
@@ -347,7 +347,7 @@ test('proposal_submit: schema version mismatch is rejected (kernel owns the cont
     assert.throws(
       () => handlers.proposal_submit({
         intent_id: intentId, task_id: taskId, execution_id: executionId,
-        kind: 'discovery', schema_version: 'saga3.discovery-proposal.v2',
+        kind: 'discovery', schema_version: 'factory.discovery-proposal.v2',
         payload: validPayload(),
       }),
       /schema_version mismatch/,
@@ -440,11 +440,11 @@ test('proposal_submit D2: malformed semantic payload is preserved and requests n
     assert.equal(result.proposal_id, null, 'normalizer has not produced a canonical Proposal yet');
     assert.equal(typeof result.raw_submission_id, 'number');
     assert.ok(result.validation_errors.length > 0);
-    const raw = getDb().prepare('SELECT status, raw_payload FROM saga3_raw_submissions WHERE id=?')
+    const raw = getDb().prepare('SELECT status, raw_payload FROM factory_raw_submissions WHERE id=?')
       .get(result.raw_submission_id);
     assert.equal(raw.status, 'normalization_required');
     assert.equal(JSON.parse(raw.raw_payload).problem_statement, 'x');
-    const proposalCount = getDb().prepare('SELECT COUNT(*) c FROM saga3_proposals WHERE intent_id=?')
+    const proposalCount = getDb().prepare('SELECT COUNT(*) c FROM factory_proposals WHERE intent_id=?')
       .get(intentId).c;
     assert.equal(proposalCount, 0, 'raw ambiguous response must not become a canonical Proposal');
   } finally {

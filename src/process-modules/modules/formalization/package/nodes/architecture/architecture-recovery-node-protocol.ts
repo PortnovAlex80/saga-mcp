@@ -148,7 +148,7 @@ export const ARCHITECTURE_RECOVERY_NODE_PROTOCOL: NodeProtocolDefinition = {
           // The RecoveryIssue itself is the durable entry evidence.
           category: 'module-verifier-receipt',
           contractRef: {
-            schemaId: 'saga3.recovery-issue.v1',
+            schemaId: 'factory.recovery-issue.v1',
             version: '1.0.0',
             digest: 'pending@wave-2',
           },
@@ -182,7 +182,7 @@ export const ARCHITECTURE_RECOVERY_NODE_PROTOCOL: NodeProtocolDefinition = {
         {
           category: 'artifact-reference',
           contractRef: {
-            schemaId: 'saga3.srs.v1',
+            schemaId: 'factory.srs.v1',
             version: '1.0.0',
             digest: 'pending@wave-2',
           },
@@ -205,7 +205,7 @@ export const ARCHITECTURE_RECOVERY_NODE_PROTOCOL: NodeProtocolDefinition = {
         {
           category: 'module-verifier-receipt',
           contractRef: {
-            schemaId: 'saga3.architecture-gate.v1',
+            schemaId: 'factory.architecture-gate.v1',
             version: '1.0.0',
             digest: 'pending@wave-2',
           },
@@ -225,7 +225,7 @@ export const ARCHITECTURE_RECOVERY_NODE_PROTOCOL: NodeProtocolDefinition = {
     {
       category: 'module-verifier-receipt',
       contractRef: {
-        schemaId: 'saga3.architecture-gate.v1',
+        schemaId: 'factory.architecture-gate.v1',
         version: '1.0.0',
         digest: 'pending@wave-2',
       },
@@ -234,7 +234,7 @@ export const ARCHITECTURE_RECOVERY_NODE_PROTOCOL: NodeProtocolDefinition = {
     {
       category: 'artifact-reference',
       contractRef: {
-        schemaId: 'saga3.srs.v1',
+        schemaId: 'factory.srs.v1',
         version: '1.0.0',
         digest: 'pending@wave-2',
       },

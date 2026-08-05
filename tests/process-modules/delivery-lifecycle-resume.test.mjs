@@ -139,7 +139,7 @@ test('delivery pause resumes the same lifecycle and applies one external effect'
       deliveryMode: 'authorized',
       policy,
       operatorAuthorization: {
-        schema: 'saga3.operator-authorization.v1',
+        schema: 'factory.operator-authorization.v1',
         ref: 'operator-authorization:circle-v1',
         hash: sha256Hex({ operator: 'release-owner', candidateHash }),
         requestedBy: 'release-owner',
@@ -169,7 +169,7 @@ test('delivery pause resumes the same lifecycle and applies one external effect'
             evaluate: ({ checkId }) => ({
               outcome: 'passed',
               evidence: {
-                schema: 'saga3.preflight-evidence.v1',
+                schema: 'factory.preflight-evidence.v1',
                 ref: `preflight:${checkId}:${candidateHash}`,
                 hash: sha256Hex({ checkId, candidateHash, outcome: 'passed' }),
               },
@@ -207,7 +207,7 @@ test('delivery pause resumes the same lifecycle and applies one external effect'
                   outcome: applied ? 'matched' : 'mismatched',
                   observedStateHash,
                   observation: {
-                    schema: 'saga3.deployment-observation.v1',
+                    schema: 'factory.deployment-observation.v1',
                     ref: `deployment-observation:${actionKey}:${observedStateHash}`,
                     hash: sha256Hex({ actionKey, observedStateHash }),
                   },

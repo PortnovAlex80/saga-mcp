@@ -3,7 +3,7 @@
   "task_id": "FILL_INTEGER_YOUR_TASK_ID",
   "execution_id": "FILL_STRING_YOUR_EXECUTION_ID",
   "kind": "discovery",
-  "schema_version": "saga3.discovery-proposal.v1",
+  "schema_version": "factory.discovery-proposal.v1",
   "payload": {
     "problem_statement": "FILL_FROM_DISCOVERY_DOC_PROBLEM_SECTION",
     "observed_context": "FILL_FROM_DISCOVERY_DOC_CONTEXT_SECTION",

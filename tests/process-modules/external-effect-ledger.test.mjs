@@ -18,7 +18,7 @@ const { SqliteExternalEffectLedger } = await import(
 const MODULE_REF = { name: 'software-delivery', version: '1.0.0' };
 
 function fixture() {
-  const temp = mkdtempSync(path.join(os.tmpdir(), 'saga3-external-effect-'));
+  const temp = mkdtempSync(path.join(os.tmpdir(), 'factory-external-effect-'));
   process.env.DB_PATH = path.join(temp, 'external-effect.db');
   const db = getDb();
   db.prepare(`INSERT INTO projects (id,name,status) VALUES (1,'P','active')`).run();
@@ -29,7 +29,7 @@ function fixture() {
     moduleRef: MODULE_REF,
     executorKind: 'generic-flow',
     input: {
-      schema: 'saga3.delivery-case.v1',
+      schema: 'factory.delivery-case.v1',
       payload: input,
       contentHash: sha256Hex(input),
     },
@@ -192,7 +192,7 @@ test('successful execution is fenced, terminal and idempotent for the exact resu
 
     const events = db.prepare(
       `SELECT sequence,event_type,claim_fence
-         FROM saga3_external_effect_events
+         FROM factory_external_effect_events
         WHERE action_id=? ORDER BY sequence`,
     ).all(action.id);
     assert.deepEqual(
@@ -365,7 +365,7 @@ test('expired execution requires observation and every replacement claim fences 
     }), null, 'a still-live execution cannot be observed concurrently');
 
     db.prepare(
-      `UPDATE saga3_external_effect_actions
+      `UPDATE factory_external_effect_actions
           SET active_claim_expires_at='2000-01-01 00:00:00'
         WHERE id=?`,
     ).run(action.id);
@@ -388,7 +388,7 @@ test('expired execution requires observation and every replacement claim fences 
     );
 
     db.prepare(
-      `UPDATE saga3_external_effect_actions
+      `UPDATE factory_external_effect_actions
           SET active_claim_expires_at='2000-01-01 00:00:00'
         WHERE id=?`,
     ).run(action.id);
@@ -428,27 +428,27 @@ test('binding and append-only audit history are protected by SQLite triggers', (
     const action = startAction(ledger, processRun.id).record;
     assert.throws(
       () => db.prepare(
-        `UPDATE saga3_external_effect_actions
+        `UPDATE factory_external_effect_actions
             SET request_hash=? WHERE id=?`,
       ).run('f'.repeat(64), action.id),
       /EXTERNAL_EFFECT_ACTION_BINDING_IMMUTABLE/,
     );
     assert.throws(
       () => db.prepare(
-        `UPDATE saga3_external_effect_events
+        `UPDATE factory_external_effect_events
             SET actor='tampered' WHERE action_id=?`,
       ).run(action.id),
       /EXTERNAL_EFFECT_AUDIT_EVENT_IMMUTABLE/,
     );
     assert.throws(
       () => db.prepare(
-        'DELETE FROM saga3_external_effect_events WHERE action_id=?',
+        'DELETE FROM factory_external_effect_events WHERE action_id=?',
       ).run(action.id),
       /EXTERNAL_EFFECT_AUDIT_EVENT_DELETE_FORBIDDEN/,
     );
     assert.throws(
       () => db.prepare(
-        'DELETE FROM saga3_external_effect_actions WHERE id=?',
+        'DELETE FROM factory_external_effect_actions WHERE id=?',
       ).run(action.id),
       /EXTERNAL_EFFECT_ACTION_AUDIT_DELETE_FORBIDDEN/,
     );

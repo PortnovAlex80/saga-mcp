@@ -63,7 +63,7 @@ export const deliveryProcessModule: ProcessModuleDefinition = {
     },
   ],
   flow: {
-    id: 'saga3.delivery.standard',
+    id: 'factory.delivery.standard',
     version: '1.0.0',
     entryNodeId: 'preflight-release',
     nodes: [

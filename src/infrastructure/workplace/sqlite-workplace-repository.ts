@@ -35,7 +35,7 @@
  * The single-writer ratchet (`tasks-writer-invariant.test.mjs`) names exactly
  * three files allowed to write `tasks.{status,assigned_to,current_execution_id}`.
  * This repository is NOT in that set and does NOT touch `tasks`. It writes
- * only the new `v4_workplaces` table.
+ * only the new `factory_workplaces` table.
  */
 
 import type Database from 'better-sqlite3';
@@ -55,7 +55,7 @@ import {
   type WorkplaceState,
 } from '../../process-modules/domain/workplace/index.js';
 
-/** A row read from v4_workplaces, in the repository's concrete shape. */
+/** A row read from factory_workplaces, in the repository's concrete shape. */
 interface WorkplaceRow {
   workplace_ref: string;
   process_run_id: number;
@@ -151,7 +151,7 @@ export class SqliteWorkplaceRepository {
     }
     const initial = initialWorkplaceState();
     this.db.prepare(
-      `INSERT INTO v4_workplaces
+      `INSERT INTO factory_workplaces
          (workplace_ref, process_run_id, module_ref, production_cell_id, work_key,
           kanban_phase, loop_state, next_role, terminal_reason, revision)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, 0)`,
@@ -264,7 +264,7 @@ export class SqliteWorkplaceRepository {
       };
     }
     const info = this.db.prepare(
-      `UPDATE v4_workplaces
+      `UPDATE factory_workplaces
           SET kanban_phase=?, loop_state=?, next_role=?, terminal_reason=?,
               revision=revision+1,
               active_reservation_ref=?,
@@ -308,7 +308,7 @@ export class SqliteWorkplaceRepository {
    */
   listInProcessRun(processRunId: number): Array<{ ref: WorkplaceRef; state: WorkplaceState }> {
     const rows = this.db.prepare(
-      `SELECT * FROM v4_workplaces WHERE process_run_id=? ORDER BY workplace_ref`,
+      `SELECT * FROM factory_workplaces WHERE process_run_id=? ORDER BY workplace_ref`,
     ).all(processRunId) as WorkplaceRow[];
     return rows.map(row => ({
       ref: asWorkplaceRef({
@@ -327,7 +327,7 @@ export class SqliteWorkplaceRepository {
 
   private readRow(serialized: string): WorkplaceRow | null {
     const row = this.db.prepare(
-      'SELECT * FROM v4_workplaces WHERE workplace_ref=?',
+      'SELECT * FROM factory_workplaces WHERE workplace_ref=?',
     ).get(serialized) as WorkplaceRow | undefined;
     return row ?? null;
   }

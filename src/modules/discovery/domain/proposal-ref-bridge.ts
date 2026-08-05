@@ -7,16 +7,16 @@
  *
  * # Why this bridge exists
  *
- * Discovery's product is a proposal (text JSON in `saga3_proposals`). v4
+ * Discovery's product is a proposal (text JSON in `factory_proposals`). v4
  * requires every workshop to place text on one universal desk. Like the
  * Formalization artifact-ref bridge, this bridge lets Discovery place a
  * REFERENCE to the proposal (not a body copy) on the desk. The proposal body
- * stays in `saga3_proposals` (single source of truth for D3/D4/D5
+ * stays in `factory_proposals` (single source of truth for D3/D4/D5
  * settlement/certificate chain); the desk carries the content-addressed
  * pointer.
  *
  * The ProductRef's:
- *   - `schemaId` = `'saga3.discovery-proposal-ref.v1'`
+ *   - `schemaId` = `'factory.discovery-proposal-ref.v1'`
  *   - `ref` = `'proposal:<id>#<contentHash>'`
  *   - `digest` = the proposal's `content_hash`
  *
@@ -30,7 +30,7 @@
 import type { ProductRef } from '../../../process-modules/domain/spi/index.js';
 
 /** The schema id for a proposal-reference product on the universal desk. */
-export const PROPOSAL_REF_SCHEMA = 'saga3.discovery-proposal-ref.v1' as const;
+export const PROPOSAL_REF_SCHEMA = 'factory.discovery-proposal-ref.v1' as const;
 
 /**
  * Build a ProductRef that references a discovery proposal BY ID + content-hash.

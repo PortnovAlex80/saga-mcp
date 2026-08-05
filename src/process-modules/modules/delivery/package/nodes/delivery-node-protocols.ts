@@ -79,7 +79,7 @@ export const DELIVERY_NODE_FLOW_IDS = Object.freeze({
 const EXTERNAL_RECEIPT_EVIDENCE: EvidenceRequirement = Object.freeze({
   category: 'external-receipt',
   contractRef: {
-    schemaId: 'saga3.evidence.external-receipt.v1',
+    schemaId: 'factory.evidence.external-receipt.v1',
     version: '1.0.0',
     digest: 'pending@wave-2',
   },
@@ -89,7 +89,7 @@ const EXTERNAL_RECEIPT_EVIDENCE: EvidenceRequirement = Object.freeze({
 const HUMAN_RECEIPT_EVIDENCE: EvidenceRequirement = Object.freeze({
   category: 'human-receipt',
   contractRef: {
-    schemaId: 'saga3.evidence.human-receipt.v1',
+    schemaId: 'factory.evidence.human-receipt.v1',
     version: '1.0.0',
     digest: 'pending@wave-2',
   },
@@ -99,7 +99,7 @@ const HUMAN_RECEIPT_EVIDENCE: EvidenceRequirement = Object.freeze({
 const MODULE_VERIFIER_RECEIPT_EVIDENCE: EvidenceRequirement = Object.freeze({
   category: 'module-verifier-receipt',
   contractRef: {
-    schemaId: 'saga3.evidence.module-verifier-receipt.v1',
+    schemaId: 'factory.evidence.module-verifier-receipt.v1',
     version: '1.0.0',
     digest: 'pending@wave-2',
   },

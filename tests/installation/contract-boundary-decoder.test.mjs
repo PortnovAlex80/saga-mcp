@@ -271,7 +271,7 @@ test('validateWorkerExecutionPlan: accepts a well-formed driver-neutral plan', (
   const plan = {
     intent: {
       adapterData: { kind: 'discovery', objective: 'x', tokenBudget: 0 },
-      outputContract: { schemaId: 'saga3.foo.v1', version: '1.0.0', digest: 'abc' },
+      outputContract: { schemaId: 'factory.foo.v1', version: '1.0.0', digest: 'abc' },
     },
     projection: {
       adapterData: { taskKind: 'discovery.code', generationKey: 'gk-1' },
@@ -308,7 +308,7 @@ test('validateWorkerExecutionPlan: rejects a malformed outputContract', () => {
     intent: {
       adapterData: {},
       // missing version + digest
-      outputContract: { schemaId: 'saga3.foo.v1' },
+      outputContract: { schemaId: 'factory.foo.v1' },
     },
     projection: { adapterData: {} },
   };

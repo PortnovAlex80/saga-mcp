@@ -719,7 +719,7 @@ function requireDevelopmentCase(
   const value = ctx.frame.runInput;
   if (
     !isRecord(value)
-    || value.schemaVersion !== 'saga3.development-case.v1'
+    || value.schemaVersion !== 'factory.development-case.v1'
     || !Number.isInteger(value.projectId)
     || !Number.isInteger(value.epicId)
     || value.projectId !== ctx.projectId
@@ -751,7 +751,7 @@ function emptySettlementInput(
   developmentCase: DevelopmentCase,
 ): DevelopmentSettlementInput {
   return {
-    schemaVersion: 'saga3.development-settlement-input.v1',
+    schemaVersion: 'factory.development-settlement-input.v1',
     developmentCase,
     taskGraph: null,
     implementationWorkset: null,

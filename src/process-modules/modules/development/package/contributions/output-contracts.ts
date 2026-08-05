@@ -56,11 +56,11 @@ function contractRef(schemaId: string, version: string): ContractRef {
 /**
  * The module's input contract: one `DevelopmentCase` binding a formalization
  * certificate, accepted baseline, SRS and repository bases to a development
- * episode. Matches `saga3.development-case.v1` (the `inputContract` on
+ * episode. Matches `factory.development-case.v1` (the `inputContract` on
  * `development-process-module.ts`).
  */
 export const DEVELOPMENT_INPUT_CONTRACT: ContractRef = contractRef(
-  'saga3.development-case.v1',
+  'factory.development-case.v1',
   '1.0.0',
 );
 
@@ -70,61 +70,61 @@ export const DEVELOPMENT_INPUT_CONTRACT: ContractRef = contractRef(
 
 /**
  * Output contract of the `plan-task-graph` LM node: the advisory task-graph
- * proposal. Matches `saga3.development-task-graph-proposal.v1`. Advisory only —
+ * proposal. Matches `factory.development-task-graph-proposal.v1`. Advisory only —
  * it has no execution authority until kernel resolution.
  */
 export const DEVELOPMENT_TASK_GRAPH_PROPOSAL_CONTRACT: ContractRef = contractRef(
-  'saga3.development-task-graph-proposal.v1',
+  'factory.development-task-graph-proposal.v1',
   '1.0.0',
 );
 
 /**
  * Output contract of the `resolve-task-graph` kernel node: the canonical,
  * coverage-complete, acyclic task and integration graph. Matches
- * `saga3.development-task-graph.v1`.
+ * `factory.development-task-graph.v1`.
  */
 export const DEVELOPMENT_TASK_GRAPH_CONTRACT: ContractRef = contractRef(
-  'saga3.development-task-graph.v1',
+  'factory.development-task-graph.v1',
   '1.0.0',
 );
 
 /**
  * Output contract of the `execute-implementation-workset` external adapter: the
  * durable implementation and independent-review workset. Matches
- * `saga3.development-implementation-workset.v1`.
+ * `factory.development-implementation-workset.v1`.
  */
 export const DEVELOPMENT_IMPLEMENTATION_WORKSET_CONTRACT: ContractRef = contractRef(
-  'saga3.development-implementation-workset.v1',
+  'factory.development-implementation-workset.v1',
   '1.0.0',
 );
 
 /**
  * Output contract of the `integrate-release-candidate` external adapter: the
  * frozen repository commits, tree hashes and build digests. Matches
- * `saga3.integrated-release-candidate.v1`.
+ * `factory.integrated-release-candidate.v1`.
  */
 export const DEVELOPMENT_INTEGRATED_CANDIDATE_CONTRACT: ContractRef = contractRef(
-  'saga3.integrated-release-candidate.v1',
+  'factory.integrated-release-candidate.v1',
   '1.0.0',
 );
 
 /**
  * Output contract of the `verify-acceptance-workset` external adapter: the
  * trusted acceptance-verification evidence bound to the exact frozen candidate
- * hash. Matches `saga3.acceptance-verification-workset.v1`.
+ * hash. Matches `factory.acceptance-verification-workset.v1`.
  */
 export const DEVELOPMENT_ACCEPTANCE_VERIFICATION_CONTRACT: ContractRef = contractRef(
-  'saga3.acceptance-verification-workset.v1',
+  'factory.acceptance-verification-workset.v1',
   '1.0.0',
 );
 
 /**
  * The intermediate settlement-input contract the settlement handler assembles
  * from the re-read durable products. Matches
- * `saga3.development-settlement-input.v1`.
+ * `factory.development-settlement-input.v1`.
  */
 export const DEVELOPMENT_SETTLEMENT_INPUT_CONTRACT: ContractRef = contractRef(
-  'saga3.development-settlement-input.v1',
+  'factory.development-settlement-input.v1',
   '1.0.0',
 );
 
@@ -136,31 +136,31 @@ export const DEVELOPMENT_SETTLEMENT_INPUT_CONTRACT: ContractRef = contractRef(
  * The module's terminal output contract: the immutable
  * `VerifiedIntegrationBundle` the settlement handler persists on the `verified`
  * outcome — the canonical Development output consumed by Delivery/Release.
- * Matches `saga3.verified-integration-bundle.v1`. The manifest carries this as
+ * Matches `factory.verified-integration-bundle.v1`. The manifest carries this as
  * `outputContractRef`.
  */
 export const DEVELOPMENT_OUTPUT_CONTRACT: ContractRef = contractRef(
-  'saga3.verified-integration-bundle.v1',
+  'factory.verified-integration-bundle.v1',
   '1.0.0',
 );
 
 /**
  * The certificate payload contract the settlement handler issues: the immutable
  * development decision + exact product-lineage hashes. Matches
- * `saga3.development-certificate.v1`.
+ * `factory.development-certificate.v1`.
  */
 export const DEVELOPMENT_CERTIFICATE_CONTRACT: ContractRef = contractRef(
-  'saga3.development-certificate.v1',
+  'factory.development-certificate.v1',
   '1.0.0',
 );
 
 /**
  * The certificate payload contract the generic ProcessOutcomeCertificate layer
  * wraps around the development decision. Matches
- * `saga3.development-certificate.generic.v1`.
+ * `factory.development-certificate.generic.v1`.
  */
 export const DEVELOPMENT_CERTIFICATE_GENERIC_CONTRACT: ContractRef = contractRef(
-  'saga3.development-certificate.generic.v1',
+  'factory.development-certificate.generic.v1',
   '1.0.0',
 );
 

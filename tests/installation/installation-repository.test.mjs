@@ -7,7 +7,7 @@
 // Task: docs/refactor-management/05-subagent-tasks/W02-A2-installation-repository-sql-owner.md.
 //
 // Coverage:
-//   - Schema creation is idempotent (constructor safe to call twice; ensureSaga3ModuleInstallationSchema re-runnable).
+//   - Schema creation is idempotent (constructor safe to call twice; ensureFactoryModuleInstallationSchema re-runnable).
 //   - Positive: insert staged → getById returns it; activate → status='active'; getByPackageDigest;
 //     getActiveByNameVersion; listActive; retire; markCorrupt.
 //   - Version immutability (spec §4): inserting a second active row for the same (name, version) with a
@@ -19,7 +19,7 @@
 //   - Deletion restriction: the repository exposes NO delete method (plan §5.5.9).
 //   - Serialization round-trip: manifestSnapshot / resourceIndex / handlerRefs / dependencyLock survive
 //     canonicalJson → TEXT → JSON.parse unchanged.
-//   - getDb() wiring: the saga3_module_installations table + the two saga3_process_runs ALTERs land via
+//   - getDb() wiring: the factory_module_installations table + the two factory_process_runs ALTERs land via
 //     getDb() (the db.ts edit this lane owns).
 //
 // Tests run against the COMPILED dist/ output. Uses process.env.DB_PATH = mkdtempSync(...)
@@ -35,7 +35,7 @@ import test from 'node:test';
 const { closeDb, getDb } = await import('../../dist/db.js');
 const {
   SqliteModuleInstallationRepository,
-  ensureSaga3ModuleInstallationSchema,
+  ensureFactoryModuleInstallationSchema,
 } = await import('../../dist/process-modules/installation/persistence/installation-repository.js');
 const {
   MODULE_INSTALLATION_VERSION_COLLISION,
@@ -101,7 +101,7 @@ function buildInsertInput({
 
 /** Spin up a fresh temp DB. */
 function freshDb() {
-  const temp = mkdtempSync(path.join(os.tmpdir(), 'saga3-inst-'));
+  const temp = mkdtempSync(path.join(os.tmpdir(), 'factory-inst-'));
   process.env.DB_PATH = path.join(temp, 'installations.db');
   const db = getDb();
   return { temp, db };
@@ -117,20 +117,20 @@ function cleanup(temp) {
 // Schema creation
 // ===========================================================================
 
-test('schema creation is idempotent — ensureSaga3ModuleInstallationSchema re-runnable', () => {
-  const temp = mkdtempSync(path.join(os.tmpdir(), 'saga3-inst-'));
+test('schema creation is idempotent — ensureFactoryModuleInstallationSchema re-runnable', () => {
+  const temp = mkdtempSync(path.join(os.tmpdir(), 'factory-inst-'));
   process.env.DB_PATH = path.join(temp, 'installations.db');
   try {
     const db = getDb();
     // Calling twice must not throw (CREATE TABLE/INDEX IF NOT EXISTS).
-    assert.doesNotThrow(() => ensureSaga3ModuleInstallationSchema(db));
-    assert.doesNotThrow(() => ensureSaga3ModuleInstallationSchema(db));
+    assert.doesNotThrow(() => ensureFactoryModuleInstallationSchema(db));
+    assert.doesNotThrow(() => ensureFactoryModuleInstallationSchema(db));
     // Table + both indexes exist.
-    const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='saga3_module_installations'").get();
-    assert.ok(tables, 'saga3_module_installations table created');
-    const idxActive = db.prepare("SELECT name FROM sqlite_master WHERE type='index' AND name='idx_saga3_module_installations_active'").get();
+    const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='factory_module_installations'").get();
+    assert.ok(tables, 'factory_module_installations table created');
+    const idxActive = db.prepare("SELECT name FROM sqlite_master WHERE type='index' AND name='idx_factory_module_installations_active'").get();
     assert.ok(idxActive, 'partial UNIQUE active index created');
-    const idxDigest = db.prepare("SELECT name FROM sqlite_master WHERE type='index' AND name='idx_saga3_module_installations_digest'").get();
+    const idxDigest = db.prepare("SELECT name FROM sqlite_master WHERE type='index' AND name='idx_factory_module_installations_digest'").get();
     assert.ok(idxDigest, 'digest index created');
   } finally {
     closeDb();
@@ -403,7 +403,7 @@ test('direct INSERT bypassing the repo is caught by the partial UNIQUE index', (
     // primary guard, the index is the structural backstop).
     assert.throws(
       () => db.prepare(
-        `INSERT INTO saga3_module_installations
+        `INSERT INTO factory_module_installations
            (name, version, package_digest, manifest_snapshot, store_location,
             resource_index, handler_refs, dependency_lock, status, installed_at)
          VALUES (?,?,?,?,?,?,?,?,?,?)`,
@@ -492,17 +492,17 @@ test('manifestSnapshot / resourceIndex / handlerRefs / dependencyLock round-trip
 
 // ===========================================================================
 // getDb() wiring — db.ts owns the schema-ensure; process_runs columns land
-// via ensureSaga3ProcessRunSchema (the established pattern for that table).
+// via ensureFactoryProcessRunSchema (the established pattern for that table).
 // ===========================================================================
 
-test('getDb() creates saga3_module_installations (the table this lane owns)', () => {
-  const temp = mkdtempSync(path.join(os.tmpdir(), 'saga3-inst-'));
+test('getDb() creates factory_module_installations (the table this lane owns)', () => {
+  const temp = mkdtempSync(path.join(os.tmpdir(), 'factory-inst-'));
   process.env.DB_PATH = path.join(temp, 'wired.db');
   try {
     const db = getDb();
-    const table = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='saga3_module_installations'").get();
-    assert.ok(table, 'getDb() created saga3_module_installations via ensureSaga3ModuleInstallationSchema');
-    const idxActive = db.prepare("SELECT name FROM sqlite_master WHERE type='index' AND name='idx_saga3_module_installations_active'").get();
+    const table = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='factory_module_installations'").get();
+    assert.ok(table, 'getDb() created factory_module_installations via ensureFactoryModuleInstallationSchema');
+    const idxActive = db.prepare("SELECT name FROM sqlite_master WHERE type='index' AND name='idx_factory_module_installations_active'").get();
     assert.ok(idxActive, 'partial UNIQUE active index created via getDb()');
   } finally {
     closeDb();
@@ -511,13 +511,13 @@ test('getDb() creates saga3_module_installations (the table this lane owns)', ()
   }
 });
 
-test('the two installation columns land on saga3_process_runs once the table is ensured', async () => {
-  // saga3_process_runs is created lazily by ensureSaga3ProcessRunSchema (NOT by
+test('the two installation columns land on factory_process_runs once the table is ensured', async () => {
+  // factory_process_runs is created lazily by ensureFactoryProcessRunSchema (NOT by
   // SCHEMA_SQL). The columns are added there via the established column-add
   // block; db.ts ALSO places defensive ALTERs for the existing-DB upgrade path
   // (guarded on table existence). After the process-run repo is constructed,
   // both columns must be present.
-  const temp = mkdtempSync(path.join(os.tmpdir(), 'saga3-inst-'));
+  const temp = mkdtempSync(path.join(os.tmpdir(), 'factory-inst-'));
   process.env.DB_PATH = path.join(temp, 'wired.db');
   try {
     const db = getDb();
@@ -525,9 +525,9 @@ test('the two installation columns land on saga3_process_runs once the table is 
     // Constructing the repo creates the table + adds the columns.
     // eslint-disable-next-line no-new
     new SqliteProcessRunRepository(db);
-    const cols = db.prepare('PRAGMA table_info(saga3_process_runs)').all().map((c) => c.name);
-    assert.ok(cols.includes('installation_id'), 'installation_id column present on saga3_process_runs');
-    assert.ok(cols.includes('package_digest'), 'package_digest column present on saga3_process_runs');
+    const cols = db.prepare('PRAGMA table_info(factory_process_runs)').all().map((c) => c.name);
+    assert.ok(cols.includes('installation_id'), 'installation_id column present on factory_process_runs');
+    assert.ok(cols.includes('package_digest'), 'package_digest column present on factory_process_runs');
   } finally {
     closeDb();
     rmSync(temp, { recursive: true, force: true });
@@ -536,17 +536,17 @@ test('the two installation columns land on saga3_process_runs once the table is 
 });
 
 test('the installation columns are idempotent — re-ensuring the schema does not throw', async () => {
-  const temp = mkdtempSync(path.join(os.tmpdir(), 'saga3-inst-'));
+  const temp = mkdtempSync(path.join(os.tmpdir(), 'factory-inst-'));
   process.env.DB_PATH = path.join(temp, 'wired.db');
   try {
     const db = getDb();
     const { SqliteProcessRunRepository } = await import('../../dist/process-modules/persistence/sqlite-process-run-repository.js');
     // eslint-disable-next-line no-new
     new SqliteProcessRunRepository(db);
-    // Second construction re-runs ensureSaga3ProcessRunSchema — must not throw
+    // Second construction re-runs ensureFactoryProcessRunSchema — must not throw
     // on the already-present columns (PRAGMA table_info + guard pattern).
     assert.doesNotThrow(() => { new SqliteProcessRunRepository(db); });
-    const cols = db.prepare('PRAGMA table_info(saga3_process_runs)').all().map((c) => c.name);
+    const cols = db.prepare('PRAGMA table_info(factory_process_runs)').all().map((c) => c.name);
     assert.ok(cols.includes('installation_id'));
     assert.ok(cols.includes('package_digest'));
   } finally {

@@ -104,14 +104,14 @@ function makeProcessRunRecord(overrides = {}) {
     projectId: 7,
     epicId: 99,
     idempotencyKey: 'idem-1',
-    inputSchema: 'saga3.discovery-case.v1',
+    inputSchema: 'factory.discovery-case.v1',
     inputSnapshot: JSON.stringify({ problem: 'p', observed: 'o' }),
     inputHash: 'abc',
     status: 'running',
     executorKind: 'generic-flow',
     projectedStage: 'discovery',
     localOutcome: null,
-    authority: 'saga3.kernel/issuer',
+    authority: 'factory.kernel/issuer',
     outputSchema: null,
     outputRef: null,
     outputHash: null,
@@ -134,8 +134,8 @@ function makeProcessRunRecord(overrides = {}) {
 // ---------------------------------------------------------------------------
 
 test('assembleExecutionContext: loads each declared upstream product by exact ProductRef and returns the envelope', async () => {
-  const refA = { schemaId: 'saga3.proposal.v1', ref: 'proposal:141', digest: 'dA' };
-  const refB = { schemaId: 'saga3.readiness.v1', ref: 'readiness:141', digest: 'dB' };
+  const refA = { schemaId: 'factory.proposal.v1', ref: 'proposal:141', digest: 'dA' };
+  const refB = { schemaId: 'factory.readiness.v1', ref: 'readiness:141', digest: 'dB' };
   const productStore = [
     { productRef: refA, payload: { proposalId: 141 } },
     { productRef: refB, payload: { ready: true } },
@@ -195,9 +195,9 @@ test('assembleExecutionContext: loads each declared upstream product by exact Pr
 });
 
 test('assembleExecutionContext (spec §9.11): missing predecessor product throws UpstreamProductNotFoundError — NO epic-scope fallback', async () => {
-  const refA = { schemaId: 'saga3.proposal.v1', ref: 'proposal:141', digest: 'dA' };
+  const refA = { schemaId: 'factory.proposal.v1', ref: 'proposal:141', digest: 'dA' };
   const missingRef = {
-    schemaId: 'saga3.readiness.v1',
+    schemaId: 'factory.readiness.v1',
     ref: 'readiness:141',
     digest: 'dB',
   };
@@ -242,12 +242,12 @@ test('assembleExecutionContext: exact-match is strict — a different digest doe
   // query must miss; the assembler must throw rather than return the
   // same-schema neighbor (which is what the epic-scope fallback used to do).
   const queried = {
-    schemaId: 'saga3.proposal.v1',
+    schemaId: 'factory.proposal.v1',
     ref: 'proposal:141',
     digest: 'd-exact',
   };
   const neighbor = {
-    schemaId: 'saga3.proposal.v1',
+    schemaId: 'factory.proposal.v1',
     ref: 'proposal:141',
     digest: 'd-different',
   };
@@ -315,7 +315,7 @@ test('assembleExecutionContext (plan §13.16, C061): envelope BASE has no forbid
   // frozenAuthority as projection data, NOT on the base.
   assert.equal(envelope.frozenAuthority.projectId, 7);
   assert.equal(envelope.frozenAuthority.epicId, 99);
-  assert.equal(envelope.frozenAuthority.outcomeAuthority, 'saga3.kernel/issuer');
+  assert.equal(envelope.frozenAuthority.outcomeAuthority, 'factory.kernel/issuer');
 });
 
 test('assembleExecutionContext: nodeRunId is 0 when no NodeRun row matches the attempt (pre-start assembly)', async () => {

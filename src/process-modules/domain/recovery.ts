@@ -12,8 +12,8 @@
 
 import type { ProcessModuleReference } from './process-module.js';
 
-export const RECOVERY_ISSUE_SCHEMA = 'saga3.recovery-issue.v1' as const;
-export const RECOVERY_FEEDBACK_SCHEMA = 'saga3.recovery-feedback.v1' as const;
+export const RECOVERY_ISSUE_SCHEMA = 'factory.recovery-issue.v1' as const;
+export const RECOVERY_FEEDBACK_SCHEMA = 'factory.recovery-feedback.v1' as const;
 
 /** Module-owned, opaque reason code. The generic runtime never switches on it. */
 export type RecoveryReasonCode = string;

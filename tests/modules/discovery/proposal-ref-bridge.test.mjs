@@ -16,7 +16,7 @@ import {
 
 const HASH = 'b'.repeat(64);
 
-test('REG-11: buildProposalProductRef produces saga3.discovery-proposal-ref.v1', () => {
+test('REG-11: buildProposalProductRef produces factory.discovery-proposal-ref.v1', () => {
   const ref = buildProposalProductRef({ proposalId: 7, contentHash: HASH });
   assert.equal(ref.schemaId, PROPOSAL_REF_SCHEMA);
   assert.equal(ref.ref, `proposal:7#${HASH}`);

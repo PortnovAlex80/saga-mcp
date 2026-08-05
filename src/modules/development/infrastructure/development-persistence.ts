@@ -10,17 +10,17 @@ import {
   type VerifiedIntegrationBundle,
 } from '../domain/development-schemas.js';
 
-// CONVEYOR Wave 7 hex extraction: the parent `saga3_process_runs` table is
+// CONVEYOR Wave 7 hex extraction: the parent `factory_process_runs` table is
 // ensured by the composition root (which constructs SqliteProcessRunRepository
 // before this repo), mirroring the delivery-persistence fix. The module
 // no longer imports the concrete process-run SQLite adapter.
 
 export function ensureDevelopmentPersistenceSchema(db: Database.Database): void {
   db.exec(`
-    CREATE TABLE IF NOT EXISTS saga3_development_outputs (
+    CREATE TABLE IF NOT EXISTS factory_development_outputs (
       id              INTEGER PRIMARY KEY AUTOINCREMENT,
       process_run_id  INTEGER NOT NULL UNIQUE
-                        REFERENCES saga3_process_runs(id) ON DELETE RESTRICT,
+                        REFERENCES factory_process_runs(id) ON DELETE RESTRICT,
       project_id      INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
       epic_id         INTEGER NOT NULL REFERENCES epics(id) ON DELETE CASCADE,
       schema_version  TEXT NOT NULL,
@@ -29,17 +29,17 @@ export function ensureDevelopmentPersistenceSchema(db: Database.Database): void 
       created_at      TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
-    CREATE INDEX IF NOT EXISTS idx_saga3_development_outputs_scope
-      ON saga3_development_outputs(project_id,epic_id,id);
+    CREATE INDEX IF NOT EXISTS idx_factory_development_outputs_scope
+      ON factory_development_outputs(project_id,epic_id,id);
 
-    CREATE TRIGGER IF NOT EXISTS trg_saga3_development_outputs_no_update
-    BEFORE UPDATE ON saga3_development_outputs
+    CREATE TRIGGER IF NOT EXISTS trg_factory_development_outputs_no_update
+    BEFORE UPDATE ON factory_development_outputs
     BEGIN
       SELECT RAISE(ABORT, 'DEVELOPMENT_OUTPUT_IMMUTABLE');
     END;
 
-    CREATE TRIGGER IF NOT EXISTS trg_saga3_development_outputs_no_delete
-    BEFORE DELETE ON saga3_development_outputs
+    CREATE TRIGGER IF NOT EXISTS trg_factory_development_outputs_no_delete
+    BEFORE DELETE ON factory_development_outputs
     BEGIN
       SELECT RAISE(ABORT, 'DEVELOPMENT_OUTPUT_DELETE_FORBIDDEN');
     END;
@@ -102,7 +102,7 @@ implements DevelopmentOutputRepository {
       }
 
       this.db.prepare(
-        `INSERT INTO saga3_development_outputs
+        `INSERT INTO factory_development_outputs
           (process_run_id,project_id,epic_id,schema_version,payload_snapshot,content_hash)
          VALUES (?,?,?,?,?,?)`,
       ).run(
@@ -131,7 +131,7 @@ implements DevelopmentOutputRepository {
   ): void {
     const process = this.db.prepare(
       `SELECT project_id,epic_id,module_name,module_version
-         FROM saga3_process_runs WHERE id=?`,
+         FROM factory_process_runs WHERE id=?`,
     ).get(processRunId) as {
       project_id: number;
       epic_id: number | null;
@@ -153,7 +153,7 @@ implements DevelopmentOutputRepository {
 
   private readRow(processRunId: number): DevelopmentOutputRow | null {
     return (this.db.prepare(
-      'SELECT * FROM saga3_development_outputs WHERE process_run_id=?',
+      'SELECT * FROM factory_development_outputs WHERE process_run_id=?',
     ).get(processRunId) as DevelopmentOutputRow | undefined) ?? null;
   }
 

@@ -3,7 +3,7 @@
 // Conveyor v4 step 3.C.4 — Development read-switch.
 //
 // Proves that DevelopmentSettlementState.readRuntimeTask(s) read the task's
-// status from the AUTHORITATIVE v4_workplaces kanban_phase when
+// status from the AUTHORITATIVE factory_workplaces kanban_phase when
 // SAGA_WORKPLACE_READ=new (cutover). integration_state / integrated_commit /
 // project_repository_id / metadata stay on tasks (DATA columns).
 

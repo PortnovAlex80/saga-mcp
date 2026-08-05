@@ -37,7 +37,7 @@ import type {
 // ---------------------------------------------------------------------------
 
 /**
- * Database-assigned primary key of a `saga3_module_installations` row.
+ * Database-assigned primary key of a `factory_module_installations` row.
  *
  * Branded so that a bare `number` cannot be silently passed where an
  * installation id is expected (and vice-versa). The brand is erased at the
@@ -64,7 +64,7 @@ export function asModuleInstallationId(id: number): ModuleInstallationId {
  * - `'validated'`  — manifest + dependency lock validated; ready to activate.
  * - `'active'`     — the unique-active slot for `(name, version)` is held.
  *                    The partial UNIQUE index
- *                    `idx_saga3_module_installations_active`
+ *                    `idx_factory_module_installations_active`
  *                    enforces that at most ONE row per `(name, version)`
  *                    carries this status — version immutability (spec §4).
  * - `'retired'`    — withdrawn from the active slot. Row preserved for replay

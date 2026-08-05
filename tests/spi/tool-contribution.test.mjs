@@ -65,7 +65,7 @@ const FORBIDDEN_VALUES = [
 ];
 
 function contractRef() {
-  return { schemaId: 'saga3.tool.input.v1', version: '1.0.0', digest: 'abc' };
+  return { schemaId: 'factory.tool.input.v1', version: '1.0.0', digest: 'abc' };
 }
 
 // ---------------------------------------------------------------------------

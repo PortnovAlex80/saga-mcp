@@ -159,9 +159,15 @@ export function resolvePackageRef(
   packageIdentity: { name: string; version: string } | null,
   installedDigest: string | null,
 ): PackageRef {
-  const name = packageIdentity?.name ?? run.moduleRef.name;
-  const version = packageIdentity?.version ?? run.moduleRef.version;
-  const digest = installedDigest ?? 'legacy:unpinned';
+  void run;
+  if (!packageIdentity || !installedDigest) {
+    throw new Error(
+      'PACKAGE_PIN_REQUIRED: every execution context must carry an installed package identity and digest',
+    );
+  }
+  const name = packageIdentity.name;
+  const version = packageIdentity.version;
+  const digest = installedDigest;
   return { name, version, digest };
 }
 
@@ -180,10 +186,14 @@ export function resolveNodeRef(
   flowIdentity: { flowId: string; flowVersion: string } | null,
   run: ProcessRunRecord,
 ): NodeRef {
+  void run;
+  if (!flowIdentity) {
+    throw new Error('FLOW_IDENTITY_REQUIRED: every node execution must be pinned to an installed flow');
+  }
   return {
     nodeId,
-    flowId: flowIdentity?.flowId ?? run.moduleRef.name,
-    flowVersion: flowIdentity?.flowVersion ?? run.moduleRef.version,
+    flowId: flowIdentity.flowId,
+    flowVersion: flowIdentity.flowVersion,
   };
 }
 

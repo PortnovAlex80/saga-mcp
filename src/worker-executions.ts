@@ -3,7 +3,6 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import os from 'node:os';
 import { releaseExecutionAtomically } from './lifecycle/atomic-release.js';
-import { recoverLegacyAssignment } from './lifecycle/unfenced-assignment-recovery.js';
 import {
   decideStuckAction,
   FINISH_GRACE_MS,
@@ -515,7 +514,6 @@ export function reconcileWorkerExecutions(
   // Transitional recovery for pre-ADR-009 (unfenced) assignments. Orthogonal
   // to the stuck policy — left as a sibling, NOT folded into decideStuckAction
   // (which reasons only about fenced executions).
-  recoverLegacyAssignments(db, projectId, epicId, probe, results);
   return results;
 }
 
@@ -592,75 +590,3 @@ function stampStuckIfNotAlready(
  * pure stuck policy: this is legacy-transitional mechanism that touches the
  * tasks table directly (documented exception in the single-writer invariant).
  */
-function recoverLegacyAssignments(
-  db: Database.Database,
-  projectId: number,
-  epicId: number | undefined,
-  probe: ProcessProbe,
-  results: ReconcileResult[],
-): void {
-  const legacyParams = epicId === undefined ? [projectId] : [projectId, epicId];
-  const legacyEpicClause = epicId === undefined ? '' : 'AND t.epic_id=?';
-  const legacy = db.prepare(
-    `SELECT t.id, t.status, t.assigned_to, t.metadata
-       FROM tasks t
-       JOIN epics e ON e.id=t.epic_id
-      WHERE e.project_id=?
-        ${legacyEpicClause}
-        AND (
-          t.status IN ('in_progress','review_in_progress')
-          OR (t.status='review' AND t.assigned_to IS NOT NULL AND t.assigned_to!='')
-        )
-        AND t.current_execution_id IS NULL
-        AND NOT EXISTS (
-          SELECT 1 FROM worker_executions we
-           WHERE we.task_id=t.id AND we.state IN (${ACTIVE_STATE_SQL})
-        )`,
-  ).all(...legacyParams) as Array<{
-    id: number;
-    status: string;
-    assigned_to: string | null;
-    metadata: string;
-  }>;
-  for (const task of legacy) {
-    let pid: number | null = null;
-    try {
-      const parsed = JSON.parse(task.metadata || '{}') as { worker_pid?: unknown };
-      pid = typeof parsed.worker_pid === 'number' ? parsed.worker_pid : null;
-    } catch {
-      pid = null;
-    }
-    if (probe.isAlive(pid)) {
-      results.push({
-        executionId: `legacy-task-${task.id}`,
-        taskId: task.id,
-        action: 'kept',
-        released: false,
-        reason: 'legacy assignment has a live PID; observe only',
-      });
-      continue;
-    }
-    // Wave 8 / MEDIUM 6 — single-writer closure. The legacy-unfenced release
-    // now delegates to recoverLegacyAssignment (the documented single writer
-    // for legacy recovery in src/lifecycle/legacy-assignment-recovery.ts),
-    // matching the way the fenced branch delegates to releaseExecutionAtomically.
-    // originalStatus carries the queue family so the legacy module's
-    // restoredStatus formula reproduces the previous inlined mapping:
-    //   in_progress        → 'todo'
-    //   review_in_progress → 'review'
-    //   review (buffer)    → 'review'
-    const released = recoverLegacyAssignment(db, {
-      taskId: task.id,
-      workerId: task.assigned_to ?? '',
-      originalStatus: task.status === 'in_progress' ? 'in_progress' : 'review',
-      reason: pid ? 'legacy OS process is not alive' : 'legacy assignment has no PID',
-    });
-    results.push({
-      executionId: `legacy-task-${task.id}`,
-      taskId: task.id,
-      action: 'lost',
-      released,
-      reason: pid ? 'legacy OS process is not alive' : 'legacy assignment has no PID',
-    });
-  }
-}

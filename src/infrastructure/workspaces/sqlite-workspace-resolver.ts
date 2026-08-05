@@ -3,7 +3,7 @@ import os from 'node:os';
 import type {
   WorkspaceResolution,
   WorkspaceResolver,
-} from '../../application/ports/saga2-runtime-persistence.js';
+} from '../../application/ports/factory-runtime-persistence.js';
 import { getDb } from '../../db.js';
 
 /** Preserves the current Saga 2 repository-checkout resolution order. */

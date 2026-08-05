@@ -3,12 +3,12 @@
  * SAGA_ORCHESTRATION_MODE value.
  *
  * saga4 cutover: the Product Lifecycle runtime is the SOLE engine. There is
- * exactly ONE mode: 'saga3-lifecycle' — the complete durable Discovery →
+ * exactly ONE mode: 'factory-lifecycle' — the complete durable Discovery →
  * Formalization → Development → Delivery lifecycle through registered
  * GenericFlow module installations.
  *
  * The legacy 'v2'/'v3'/'saga2' modes (which selected Saga2Engine) and the
- * earlier 'saga3-discovery' / 'saga3-discovery-generic' / 'saga3-formalization'
+ * earlier 'factory-discovery' / 'factory-discovery-generic' / 'factory-formalization'
  * modes have all been removed. The composition root ALWAYS returns the lifecycle
  * runtime regardless of mode; those three were dead configuration that misled
  * operators into thinking a different engine would run.
@@ -19,24 +19,24 @@
  *
  * An unrecognised value is an error, never a silent fallback — a typo must
  * surface, not silently select the wrong engine. Whitespace and case are
- * normalised so `SAGA_ORCHESTRATION_MODE= Saga3-Lifecycle ` still resolves.
+ * normalised so `SAGA_ORCHESTRATION_MODE= Factory-Lifecycle ` still resolves.
  */
-export type OrchestrationMode = 'saga3-lifecycle';
+export type OrchestrationMode = 'factory-lifecycle';
 
-export const ORCHESTRATION_MODES: readonly OrchestrationMode[] = ['saga3-lifecycle'];
+export const ORCHESTRATION_MODES: readonly OrchestrationMode[] = ['factory-lifecycle'];
 
 /**
  * The unconditional default. After the saga4 cutover the Product Lifecycle
- * runtime is the only engine; saga3-lifecycle is the complete durable lifecycle.
+ * runtime is the only engine; factory-lifecycle is the complete durable lifecycle.
  */
-export const DEFAULT_ORCHESTRATION_MODE: OrchestrationMode = 'saga3-lifecycle';
+export const DEFAULT_ORCHESTRATION_MODE: OrchestrationMode = 'factory-lifecycle';
 
 /**
  * Parse a raw env value into a typed OrchestrationMode.
  *
  * Throws on an unknown value instead of falling back — a typo must surface,
  * not silently select the wrong engine. Whitespace and case are normalised so
- * `SAGA_ORCHESTRATION_MODE= Saga3-Lifecycle ` still resolves.
+ * `SAGA_ORCHESTRATION_MODE= Factory-Lifecycle ` still resolves.
  */
 export function parseOrchestrationMode(value: string | undefined): OrchestrationMode {
   if (value === undefined || value.trim() === '') return DEFAULT_ORCHESTRATION_MODE;
@@ -63,6 +63,6 @@ export function requiresBackgroundEngine(_mode: OrchestrationMode): boolean {
  * The composition root always builds the Product Lifecycle runtime now. Kept as
  * a named predicate so the composition-root call site stays self-documenting.
  */
-export function isSaga3LifecycleMode(_mode: OrchestrationMode): boolean {
+export function isFactoryLifecycleMode(_mode: OrchestrationMode): boolean {
   return true;
 }

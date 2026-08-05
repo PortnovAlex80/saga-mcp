@@ -10,7 +10,7 @@
  * injected fallback. Wave 13 removes the legacy path.
  *
  * This file is PURE: it defines value types and a value builder only. The
- * persistence touch (reading/writing the two columns on `saga3_process_runs`)
+ * persistence touch (reading/writing the two columns on `factory_process_runs`)
  * lives in `installation/persistence/process-run-installation-adapter.ts`.
  *
  * Plan ref: §1 row 7 (PinnedInstallation + pinInstallationOnProcessRun),
@@ -40,7 +40,7 @@
 declare const __moduleInstallationIdBrand: unique symbol;
 
 /**
- * Nominal id of a row in `saga3_module_installations` (W2-A2). Branded
+ * Nominal id of a row in `factory_module_installations` (W2-A2). Branded
  * `number`. The canonical definition lives in W2-A2's
  * `installation/domain/installation.ts`; this is the isolation-safe local copy.
  */
@@ -63,7 +63,7 @@ export function asModuleInstallationId(raw: number): ModuleInstallationId {
 /**
  * The immutable pin binding one ProcessRun to one module installation.
  *
- * `installationId` references `saga3_module_installations.id` (W2-A2).
+ * `installationId` references `factory_module_installations.id` (W2-A2).
  * `packageDigest` is the denormalized `sha256Hex` of the canonical
  * `{ manifest, resourceIndex, resourceDigests }` (W2-A3) — denormalized onto
  * the run row so replay verification can re-hash stored bytes without a join.
@@ -74,7 +74,7 @@ export function asModuleInstallationId(raw: number): ModuleInstallationId {
  * are equivalent. It carries NO behavior and NO side effects.
  */
 export interface PinnedInstallation {
-  /** The ProcessRun row id (`saga3_process_runs.id`). */
+  /** The ProcessRun row id (`factory_process_runs.id`). */
   readonly processRunId: number;
   /** The pinned module installation id (NOT NULL on new Wave-2+ runs). */
   readonly installationId: ModuleInstallationId;

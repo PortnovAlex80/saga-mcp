@@ -51,7 +51,7 @@ Returns immutable Proposal + EXACT `allowed_source_refs`. Record `proposal_id`,
    `payload.proposal_id` / `proposal_content_hash` filled by the engine).
 2. `Edit` it: replace **every** remaining `FILL_` from `readiness_get`. CRITICAL:
    - NEVER touch `schema_version` — it is already
-     `"saga3.discovery-readiness-assessment.v1"` and a TOP-LEVEL arg (NOT inside
+     `"factory.discovery-readiness-assessment.v1"` and a TOP-LEVEL arg (NOT inside
      `payload`).
    - If `control_intent_id` / `execution_id` / `proposal_id` / `proposal_content_hash`
      are still `FILL_`, fill them from `readiness_get` — but normally the engine
@@ -73,7 +73,7 @@ and the kernel rejects with `schema_version got undefined` or
 2. `Read` the exact machine-provisioned readiness call file back.
 3. Verify **EVERY** item. If any fails, `Edit`, re-read, re-check. Critical:
    `control_intent_id` bare int; `schema_version` exactly
-   `"saga3.discovery-readiness-assessment.v1"`; exactly 7 dimensions; every
+   `"factory.discovery-readiness-assessment.v1"`; exactly 7 dimensions; every
    `source_ref` in `allowed_source_refs`; gap codes unique per list and not in
    both lists; **no `FILL_` remains**.
 
@@ -82,7 +82,7 @@ Re-read verified JSON, then:
 ```
 readiness_submit({
   control_intent_id: <integer>, execution_id: "<string>",
-  schema_version: "saga3.discovery-readiness-assessment.v1",
+  schema_version: "factory.discovery-readiness-assessment.v1",
   payload: <payload object from your JSON>
 })
 ```

@@ -39,7 +39,7 @@ import type { SqliteRecoveryCaseRepository } from '../process-modules/persistenc
 import type { SqliteManagedNodeSubmissionRepository } from '../process-modules/persistence/sqlite-managed-node-submission-repository.js';
 import type { SqliteProcessProductRepository } from '../process-modules/persistence/sqlite-process-product-repository.js';
 import type { SqliteExactCandidateAcceptance } from '../process-modules/persistence/sqlite-exact-candidate-acceptance.js';
-import type { Saga3DiscoveryRuntimePersistence } from './discovery/infrastructure/discovery-runtime-port.js';
+import type { FactoryDiscoveryRuntimePersistence } from './discovery/infrastructure/discovery-runtime-port.js';
 import type { ProductRef } from '../process-modules/domain/spi/index.js';
 import type { WorkplaceProductPort } from '../process-modules/application/workplace-product-port.js';
 import type { AdoptedNodeResultPort } from '../checkpoints/sqlite-resume-directive-repository.js';
@@ -103,13 +103,13 @@ export interface ModuleSharedDeps {
   // shared `nodeExecutors` map needs them; see file header). ----
 
   /** Discovery runtime persistence — needed by the shared LM executor. */
-  readonly runtimePersistence: Saga3DiscoveryRuntimePersistence;
+  readonly runtimePersistence: FactoryDiscoveryRuntimePersistence;
   /** Exact-candidate acceptance — needed by the shared kernel executor. */
   readonly exactCandidateAcceptance: SqliteExactCandidateAcceptance;
 
   /**
    * T8 — Universal cross-module product handoff port ("one desk for all
-   * workshops"). Backed by the existing `saga3_process_products` table via
+   * workshops"). Backed by the existing `factory_process_products` table via
    * `SqliteWorkplaceProductAdapter`. Purely ADDITIVE: future module code MAY
    * use it for cross-module submit + read; existing submit tools and their
    * tables are unchanged. Optional so legacy/test paths that do not construct

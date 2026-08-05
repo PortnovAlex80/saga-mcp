@@ -172,7 +172,7 @@ function parseModuleRef(args: Record<string, unknown>): ProcessModuleReference {
 
 function parseExecutorKind(args: Record<string, unknown>): ExecutorKind {
   const raw = requiredString(args, 'executor_kind');
-  const allowed: readonly ExecutorKind[] = ['legacy-adapter', 'generic-flow', 'external', 'human'];
+  const allowed: readonly ExecutorKind[] = ['module-adapter', 'generic-flow', 'external', 'human'];
   if (!allowed.includes(raw as ExecutorKind)) {
     throw new Error(
       `executor_kind '${raw}' is invalid; expected one of [${allowed.join(', ')}]`,
@@ -466,7 +466,7 @@ export const definitions: Tool[] = [
   {
     name: 'process_run_start',
     description:
-      'Start (or replay) one ProcessRun for a registered Process Module. Idempotent on (project_id, module_name, module_version, idempotency_key): a second call with the same key + same input_hash returns the existing run with replayed=true. Reusing the same key with a DIFFERENT input_hash throws IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_INPUT. P0 persists the run record; executor wiring (legacy-adapter/generic-flow/external/human) is invoked by the orchestrate-cli engine, not by this tool.',
+      'Internal operation for the Factory runtime. Public callers must use saga-start.',
     annotations: {
       title: 'Process Run: Start',
       readOnlyHint: false,
@@ -481,10 +481,10 @@ export const definitions: Tool[] = [
         module_version: { type: 'string', description: 'Registered module version, e.g. 3.0.0.' },
         executor_kind: {
           type: 'string',
-          enum: ['legacy-adapter', 'generic-flow', 'external', 'human'],
-          description: 'How the module will be executed. legacy-adapter wraps an existing engine; generic-flow runs universal LM/kernel nodes; external delegates to another system; human requires explicit human authority.',
+          enum: ['module-adapter', 'generic-flow', 'external', 'human'],
+          description: 'How the module executes: module-adapter, generic-flow, external, or explicit human authority.',
         },
-        input_schema: { type: 'string', description: 'Module input contract id, e.g. saga3.discovery-case.v1.' },
+        input_schema: { type: 'string', description: 'Module input contract id, e.g. factory.discovery-case.v1.' },
         input_payload: { description: 'Module input payload. The persistence layer stores its canonical JSON; the executor decodes it against input_schema.' },
         input_hash: {
           type: 'string',

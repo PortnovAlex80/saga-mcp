@@ -3,20 +3,9 @@
  * ConveyorRuntime (Conveyor v4 step 5.2 cutover authority).
  *
  * A thin singleton wrapper so the dispatcher can call the runtime use cases
- * without constructing it on every transition. When `SAGA_WORKPLACE_READ` is
- * not 'new' (the cutover mode), the cutover path is not active and the
- * dispatcher continues to use the legacy claim/release + forward shadow-write
- * (`SAGA_WORKPLACE_WRITE=on`).
+ * without constructing it on every transition. The Factory workplace is the
+ * sole authority and tasks.status is its reverse projection.
  *
- * # When this is active
- *
- *   SAGA_WORKPLACE_READ=new  → the runtime IS the authority. The dispatcher
- *                              routes claim/release through these helpers.
- *                              tasks.status is a reverse projection.
- *
- *   SAGA_WORKPLACE_READ=both|legacy (or unset) → legacy path. The forward
- *                              shadow-write (`SAGA_WORKPLACE_WRITE=on`) may
- *                              still run; the runtime helpers are not called.
  */
 
 import type Database from 'better-sqlite3';
@@ -27,8 +16,6 @@ import { SqliteWorkplaceRepository } from '../infrastructure/workplace/sqlite-wo
 
 let cachedRuntime: ConveyorRuntime | null = null;
 let cachedDb: Database.Database | null = null;
-
-/** Is the cutover authority active (SAGA_WORKPLACE_READ=new)? */
 
 function runtime(db: Database.Database): ConveyorRuntime {
   if (cachedDb !== db) {
@@ -139,25 +126,17 @@ export function releaseTaskExecution(db: Database.Database, input: {
         });
       }
     } else {
-    const isGitChange = input.executionMode === 'git_change';
-    const isMerged = input.integrationState === 'merged' || input.integrationState === 'not_required';
-    const canTerminal = !isGitChange || isMerged;
-    if (input.taskStatus === 'done' && canTerminal) {
-      rt.acceptFinal({
-        workplaceRef: ref,
-        reservationRef: execId,
-        taskId: input.taskId,
-      });
-    } else {
       rt.releaseExecution({
         workplaceRef: ref,
         reservationRef: execId,
         taskId: input.taskId,
         outcome: input.outcome,
       });
-    }
     } // end else (not review)
   } catch (e) {
-    console.error(`[v4-release] task=${input.taskId} execId=${execId} status=${input.taskStatus}: ${e instanceof Error ? e.message : String(e)}`);
+    throw new Error(
+      `FACTORY_RELEASE_FAILED: task=${input.taskId} execution=${execId}: ${e instanceof Error ? e.message : String(e)}`,
+      { cause: e },
+    );
   }
 }

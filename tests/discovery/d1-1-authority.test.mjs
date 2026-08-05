@@ -39,7 +39,7 @@ const { authorityHash, executionContextHash } = await import(
 const ALLOWED = ['task_get', 'repository_checkout_list', 'artifact_list', 'note_list', 'proposal_submit', 'worker_done'];
 
 function makeFixture() {
-  const temp = mkdtempSync(path.join(os.tmpdir(), 'saga3-d1-1-auth-'));
+  const temp = mkdtempSync(path.join(os.tmpdir(), 'factory-d1-1-auth-'));
   process.env.DB_PATH = path.join(temp, 'd1-1-auth.db');
   const db = getDb();
   return { temp, db };
@@ -86,7 +86,7 @@ function runtimeSnapshot(allowed = ALLOWED, workIntentId = 7, overrides = {}) {
   };
   authority.authority_hash = authorityHash(authority);
   const execution_context = {
-    policy_version: 'saga3.execution.v1',
+    policy_version: 'factory.execution.v1',
     work_intent_id: workIntentId,
     authority,
     model_route: { provider: 'lmstudio', model: 'qwen-test', effort: null },
@@ -148,7 +148,7 @@ test('runtime: disallowed task_create is denied with AUTHORITY_DENIED', () => {
     assert.equal(d.details.requested_tool, 'task_create');
     assert.deepEqual(d.details.allowed_tools, ALLOWED);
     assert.match(d.details.recovery, /new WorkIntent/);
-    assert.equal(d.details.policy_version, 'saga3.execution.v1');
+    assert.equal(d.details.policy_version, 'factory.execution.v1');
   } finally { cleanup(temp); }
 });
 
@@ -186,17 +186,17 @@ test('runtime: a Saga tool not in the allowlist is auto-denied (default-deny)', 
 
 test('immutable: mutating the WorkIntent after claim does not change gateway permissions', () => {
   // The gateway reads the FROZEN execution_context in worker_executions.metadata,
-  // NOT the live saga3_work_intents row. So even if a separate process rewrites
+  // NOT the live factory_work_intents row. So even if a separate process rewrites
   // the WorkIntent to add 'task_create' to allowed_tools, this execution is still
   // denied because its snapshot was frozen with the original allowlist.
   const { temp, db } = makeFixture();
   try {
     seedExecution(db, 'exec-frozen', runtimeSnapshot());  // frozen WITHOUT task_create
     // Simulate a concurrent WorkIntent mutation adding task_create.
-    db.prepare(`INSERT OR IGNORE INTO saga3_work_intents
+    db.prepare(`INSERT OR IGNORE INTO factory_work_intents
       (id, epic_id, kind, objective, authority_scope, output_schema, token_budget, retry_budget, projected_task_id, status)
       VALUES (7, 10, 'discovery', 'o', '{}', 's', 0, 0, 100, 'executing')`).run();
-    db.prepare(`UPDATE saga3_work_intents SET authority_scope=? WHERE id=7`).run(
+    db.prepare(`UPDATE factory_work_intents SET authority_scope=? WHERE id=7`).run(
       JSON.stringify({ allowed_tools: [...ALLOWED, 'task_create'], enforcement: 'runtime', scope: 's', snapshot_ref: 'e:10' }),
     );
     const d = authorizeSagaToolCall({ toolName: 'task_create', db, executionId: 'exec-frozen' });
@@ -237,7 +237,7 @@ test('compat: legacy Saga 2 execution (authority=null) is compatibility-allowed'
   const { temp, db } = makeFixture();
   try {
     const execution_context = {
-      policy_version: 'saga3.execution.v1',
+      policy_version: 'factory.execution.v1',
       work_intent_id: null,
       authority: null,
       model_route: { provider: 'zai', model: null, effort: 'high' },

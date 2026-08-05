@@ -20,7 +20,7 @@
  * # Reuse of existing substrate
  *
  * Writes delegate to `SqliteProcessProductRepositoryV2.recordProduct` (the same
- * `saga3_process_products` table the prototype and the v2 product store use).
+ * `factory_process_products` table the prototype and the v2 product store use).
  * Reads delegate to `SqliteProcessProductRepositoryV2.getByProductRef`. This
  * means products submitted through the authoritative port land in the SAME
  * physical store as prototype and v1 callers — the desk is unified at the

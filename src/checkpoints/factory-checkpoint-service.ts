@@ -267,7 +267,7 @@ export class FactoryCheckpointService {
       throw new Error('CHECKPOINT_WARM_START_REQUIRES_EPIC_SCOPE');
     }
     return {
-      schemaVersion: 'saga3.test-warm-start-fixture.v1',
+      schemaVersion: 'factory.test-warm-start-fixture.v1',
       fixtureId: `checkpoint:${manifest.payload.checkpointRef}`,
       epicId: manifest.payload.scope.epicId,
       nodes: manifest.payload.warmStartNodes.map(node => ({
@@ -365,7 +365,7 @@ export class FactoryCheckpointService {
       ) throw new Error('CHECKPOINT_SCOPE_MISMATCH');
       const run = db.prepare(
         `SELECT project_id, epic_id, input_hash, package_digest
-           FROM saga3_process_runs WHERE id=?`,
+           FROM factory_process_runs WHERE id=?`,
       ).get(options.targetProcessRunId) as {
         project_id: number; epic_id: number | null; input_hash: string;
         package_digest: string | null;
@@ -552,7 +552,7 @@ export class FactoryCheckpointService {
     const row = db.prepare(
       `SELECT id, input_hash, status, current_stage_id, current_stage_run_id,
               definition_hash, idempotency_key
-         FROM saga3_lifecycle_runs
+         FROM factory_lifecycle_runs
         WHERE project_id=? AND (? IS NULL OR epic_id=?)
         ORDER BY CASE WHEN status IN ('created','running','paused') THEN 0 ELSE 1 END, id DESC
         LIMIT 1`,
@@ -574,13 +574,13 @@ export class FactoryCheckpointService {
     projectId: number,
     epicId: number | null,
   ): CapturedNodeResult[] {
-    if (!this.tableExists(db, 'saga3_node_runs') || !this.tableExists(db, 'saga3_process_runs')) return [];
+    if (!this.tableExists(db, 'factory_node_runs') || !this.tableExists(db, 'factory_process_runs')) return [];
     const rows = db.prepare(
       `SELECT nr.id, nr.process_run_id, nr.node_id, nr.event, nr.output_ref,
               nr.output_schema, nr.output_hash, nr.output_bindings,
               nr.execution_receipt, pr.input_hash, pr.package_digest
-         FROM saga3_node_runs nr
-         JOIN saga3_process_runs pr ON pr.id=nr.process_run_id
+         FROM factory_node_runs nr
+         JOIN factory_process_runs pr ON pr.id=nr.process_run_id
         WHERE pr.project_id=? AND (? IS NULL OR pr.epic_id=?)
           AND nr.status='completed' AND nr.event IN ('runtime.completed','runtime.paused')
         ORDER BY nr.id`,
@@ -606,9 +606,9 @@ export class FactoryCheckpointService {
           | undefined;
         if (task?.status !== 'done') return null;
         let producerExecutionId: string | null = null;
-        if (this.tableExists(db, 'saga3_managed_artifact_productions')) {
+        if (this.tableExists(db, 'factory_managed_artifact_productions')) {
           const producer = db.prepare(
-            `SELECT execution_id FROM saga3_managed_artifact_productions
+            `SELECT execution_id FROM factory_managed_artifact_productions
               WHERE process_run_id=? AND node_id=? AND task_id=?
               ORDER BY id DESC LIMIT 1`,
           ).get(row.process_run_id, row.node_id, receipt.taskId) as
@@ -616,9 +616,9 @@ export class FactoryCheckpointService {
             | undefined;
           producerExecutionId = producer?.execution_id ?? null;
         }
-        if (!producerExecutionId && this.tableExists(db, 'saga3_managed_node_submissions')) {
+        if (!producerExecutionId && this.tableExists(db, 'factory_managed_node_submissions')) {
           const producer = db.prepare(
-            `SELECT execution_id FROM saga3_managed_node_submissions
+            `SELECT execution_id FROM factory_managed_node_submissions
               WHERE process_run_id=? AND node_id=? AND task_id=?
               ORDER BY id DESC LIMIT 1`,
           ).get(row.process_run_id, row.node_id, receipt.taskId) as
@@ -651,12 +651,12 @@ export class FactoryCheckpointService {
     epicId: number | null,
     objects: readonly CheckpointObject[],
   ): WarmStartNode[] {
-    if (!this.tableExists(db, 'saga3_managed_artifact_productions')) return [];
+    if (!this.tableExists(db, 'factory_managed_artifact_productions')) return [];
     const rows = db.prepare(
       `SELECT mp.module_ref, mp.node_id, mp.artifact_id, a.path,
               a.project_repository_id
-         FROM saga3_managed_artifact_productions mp
-         JOIN saga3_process_runs pr ON pr.id=mp.process_run_id
+         FROM factory_managed_artifact_productions mp
+         JOIN factory_process_runs pr ON pr.id=mp.process_run_id
          JOIN artifacts a ON a.id=mp.artifact_id
         WHERE pr.project_id=? AND (? IS NULL OR pr.epic_id=?)
         ORDER BY mp.id`,

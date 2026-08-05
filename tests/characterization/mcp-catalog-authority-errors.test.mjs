@@ -14,7 +14,7 @@
  *      allow-in-set, legacy non-managed allow, deny decision shapes.
  *   3. Identity guard `assertManagedExecutionIdentity` — marker/exec-id
  *      pairing rules and the AUTHORITY_CONTEXT_INVALID error code.
- *   4. Structured errors `actionableError` + `SAGA3_TOOL_CALL_SHAPES` +
+ *   4. Structured errors `actionableError` + `FACTORY_TOOL_CALL_SHAPES` +
  *      `enrichPayloadErrors` — error shape, parameterized workflow hint
  *      (W13-A5; was a hard-coded Discovery literal), recommended_outcome /
  *      recommended_next_action lists.
@@ -403,7 +403,7 @@ test('authority: managed execution denies a tool NOT in the frozen allowed_saga_
   assert.equal(decision.details.work_intent_id, 7);
   assert.equal(decision.details.requested_tool, 'project_delete');
   assert.deepEqual(decision.details.allowed_tools, ['task_get', 'task_update']);
-  assert.equal(decision.details.policy_version, 'saga3.execution.v1');
+  assert.equal(decision.details.policy_version, 'factory.execution.v1');
   assert.ok(typeof decision.details.recovery === 'string' && decision.details.recovery.length > 0);
 });
 
@@ -509,16 +509,16 @@ test('structured errors: actionableError omits absent detail sections', async ()
   assert.equal(err.message, 'readiness_get: bare message');
 });
 
-test('structured errors: SAGA3_TOOL_CALL_SHAPES covers all 7 saga3 tools', async () => {
+test('structured errors: FACTORY_TOOL_CALL_SHAPES covers all 7 saga3 tools', async () => {
   const { args } = await loadModules();
   assert.deepEqual(
-    Object.keys(args.SAGA3_TOOL_CALL_SHAPES).sort(),
+    Object.keys(args.FACTORY_TOOL_CALL_SHAPES).sort(),
     [
       'normalization_get', 'normalization_submit',
       'proposal_submit', 'readiness_get', 'readiness_submit',
     ],
   );
-  for (const [tool, shape] of Object.entries(args.SAGA3_TOOL_CALL_SHAPES)) {
+  for (const [tool, shape] of Object.entries(args.FACTORY_TOOL_CALL_SHAPES)) {
     assert.ok(typeof shape === 'string' && shape.startsWith(`${tool}(`), `shape for ${tool} must start with the tool name`);
   }
 });
@@ -570,7 +570,7 @@ test('structured errors: enrichPayloadErrors appends the Expected <tool> shape l
 
 test('structured errors: enrichPayloadErrors is a no-op for an unknown tool (no shape, no hint)', async () => {
   const { args } = await loadModules();
-  const out = args.enrichPayloadErrors('not_a_saga3_tool', ['some error']);
+  const out = args.enrichPayloadErrors('not_a_factory_tool', ['some error']);
   // Unknown tools must NOT get the generic workflow sentence — that would
   // change error semantics and hide the missing registry (see source comment).
   assert.deepEqual(out, ['some error']);

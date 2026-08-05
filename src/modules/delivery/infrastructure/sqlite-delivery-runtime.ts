@@ -634,7 +634,7 @@ export class SqliteDeliveryRuntime implements
         observedStateHash: null,
         outcome: 'error',
         observation: {
-          schema: 'saga3.delivery-provider-error.v1',
+          schema: 'factory.delivery-provider-error.v1',
           ref: `delivery-provider-error:${sha256Hex(body)}`,
           hash: sha256Hex(body),
         },
@@ -666,7 +666,7 @@ export class SqliteDeliveryRuntime implements
         outcome: 'error',
         observedStateHash: null,
         observation: {
-          schema: 'saga3.delivery-observation-error.v1',
+          schema: 'factory.delivery-observation-error.v1',
           ref: `delivery-observation-error:${sha256Hex(body)}`,
           hash: sha256Hex(body),
         },

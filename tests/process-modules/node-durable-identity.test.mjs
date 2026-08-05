@@ -40,14 +40,14 @@ const WORKPLACE = {
   processRunId: 77,
   nodeId: 'define-acceptance-contract',
   moduleRef: 'solution-formalization@1.0.0',
-  runInput: { schemaVersion: 'saga3.formalization-case.v1', formalizationEpicId: 100 },
+  runInput: { schemaVersion: 'factory.formalization-case.v1', formalizationEpicId: 100 },
   artifactAcceptanceAuthority: 'kernel-gate',
   projectRepositoryId: 4,
   managedReviewBudget: 2,
 };
 
 const producerChainInput = {
-  schema: 'saga3.lm-node-input.v1',
+  schema: 'factory.lm-node-input.v1',
   bindings: {
     WORKSPACE_FILES: ['ac-template.md'],
     ARTIFACT_ACCEPTANCE_AUTHORITY: 'kernel-gate',
@@ -55,13 +55,13 @@ const producerChainInput = {
 };
 
 const recoveryChainInput = {
-  schema: 'saga3.lm-node-input.v1',
+  schema: 'factory.lm-node-input.v1',
   bindings: {
     WORKSPACE_FILES: ['ac-template.md'],
     ARTIFACT_ACCEPTANCE_AUTHORITY: 'kernel-gate',
     // The repair round carries the recovery feedback — the LOOP input.
     recoveryFeedback: {
-      schemaVersion: 'saga3.recovery-feedback.v1',
+      schemaVersion: 'factory.recovery-feedback.v1',
       caseId: 1,
       attempt: 2,
       maxAttempts: 5,
@@ -74,7 +74,7 @@ const recoveryChainInput = {
 };
 
 const recoveryFeedback = {
-  schemaVersion: 'saga3.recovery-feedback.v1',
+  schemaVersion: 'factory.recovery-feedback.v1',
   caseId: 1,
   attempt: 2,
   maxAttempts: 5,

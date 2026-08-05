@@ -42,8 +42,8 @@ export const discoveryProcessModule: ProcessModuleDefinition = {
     displayName: 'Product Discovery',
     description: 'Turns an idea or problem into an authoritative discovery outcome certificate.',
   },
-  inputContract: { id: 'saga3.discovery-case.v1' },
-  outputContract: { id: 'saga3.discovery-outcome-certificate.v1' },
+  inputContract: { id: 'factory.discovery-case.v1' },
+  outputContract: { id: 'factory.discovery-outcome-certificate.v1' },
   outcomes: [
     { code: 'go', description: 'The subject is sufficiently grounded to continue.', terminal: true },
     { code: 'clarify', description: 'Material information is missing or contradictory.', terminal: true },
@@ -53,7 +53,7 @@ export const discoveryProcessModule: ProcessModuleDefinition = {
     { code: 'failed', description: 'Discovery infrastructure could not produce an authoritative result.', terminal: true },
   ],
   flow: {
-    id: 'saga3.discovery.standard',
+    id: 'factory.discovery.standard',
     version: '1.0.0',
     entryNodeId: 'produce-proposal',
     nodes: [
@@ -133,8 +133,8 @@ export const discoveryProcessModule: ProcessModuleDefinition = {
         kind: 'kernel',
         description: 'Apply the versioned policy and issue the immutable authoritative certificate.',
         handler: 'discovery-settlement-policy',
-        inputSchema: { id: 'saga3.discovery-settlement-input.v1' },
-        outputSchema: { id: 'saga3.discovery-outcome-certificate.v1' },
+        inputSchema: { id: 'factory.discovery-settlement-input.v1' },
+        outputSchema: { id: 'factory.discovery-outcome-certificate.v1' },
       },
       // Д2: D5 Diagnosis REMOVED from the outcome-critical flow. It is advisory
       // enrichment that runs AFTER ProcessRun completion (separate observer /
@@ -208,12 +208,12 @@ export const discoveryProcessModule: ProcessModuleDefinition = {
     ],
   },
   artifacts: [
-    { type: 'discovery-case', schema: { id: 'saga3.discovery-case.v1' }, authority: 'kernel', description: 'Immutable process input snapshot.' },
-    { type: 'discovery-document', schema: { id: 'saga3.discovery-document.v1' }, authority: 'worker', description: 'Human-readable investigation record.' },
+    { type: 'discovery-case', schema: { id: 'factory.discovery-case.v1' }, authority: 'kernel', description: 'Immutable process input snapshot.' },
+    { type: 'discovery-document', schema: { id: 'factory.discovery-document.v1' }, authority: 'worker', description: 'Human-readable investigation record.' },
     { type: 'discovery-proposal', schema: { id: DISCOVERY_PROPOSAL_SCHEMA }, authority: 'worker', description: 'Typed worker proposal.' },
     { type: 'discovery-normalization-proposal', schema: { id: DISCOVERY_NORMALIZATION_PROPOSAL_SCHEMA }, authority: 'advisor', description: 'Source-bound semantic transformation proposal.' },
     { type: 'discovery-readiness-assessment', schema: { id: DISCOVERY_READINESS_ASSESSMENT_SCHEMA }, authority: 'advisor', description: 'Advisory readiness classification.' },
-    { type: 'discovery-outcome-certificate', schema: { id: 'saga3.discovery-outcome-certificate.v1' }, authority: 'kernel', description: 'Immutable authoritative process result.' },
+    { type: 'discovery-outcome-certificate', schema: { id: 'factory.discovery-outcome-certificate.v1' }, authority: 'kernel', description: 'Immutable authoritative process result.' },
     { type: 'discovery-diagnosis-report', schema: { id: DISCOVERY_DIAGNOSIS_REPORT_SCHEMA }, authority: 'advisor', description: 'Advisory explanation of the certificate.' },
   ],
   policies: [

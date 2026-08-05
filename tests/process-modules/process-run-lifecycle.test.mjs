@@ -32,7 +32,7 @@ const { SqliteProcessRunRepository } = await import(
 const { handlers, _resetProcessRunRepositoryForTests } = await import('../../dist/tools/process-modules.js');
 
 function fixture() {
-  const temp = mkdtempSync(path.join(os.tmpdir(), 'saga3-prun-'));
+  const temp = mkdtempSync(path.join(os.tmpdir(), 'factory-prun-'));
   process.env.DB_PATH = path.join(temp, 'process-runs.db');
   const db = getDb();
   db.prepare(`INSERT INTO projects (id,name,status) VALUES (1,'P','active')`).run();
@@ -56,7 +56,7 @@ function discoveryCommand({ idempotencyKey = 'k1', payload = { subject: 'geo' } 
   return {
     moduleRef: { name: 'product-discovery', version: '3.0.0' },
     executorKind: 'legacy-adapter',
-    input: { schema: 'saga3.discovery-case.v1', payload, contentHash: hashPayload(payload) },
+    input: { schema: 'factory.discovery-case.v1', payload, contentHash: hashPayload(payload) },
     projectedStage: 'discovery',
     invocationContext: {
       projectId: 1, epicId: 10, initiatedBy: 'operator', idempotencyKey,
@@ -75,7 +75,7 @@ test('schema creation is idempotent — constructor safe to call twice', () => {
     const repo2 = new SqliteProcessRunRepository(db);
     assert.equal(repo1.list(1, null).length, 0);
     assert.equal(repo2.list(1, null).length, 0);
-    const cols = db.prepare('PRAGMA table_info(saga3_process_runs)').all().map(c => c.name);
+    const cols = db.prepare('PRAGMA table_info(factory_process_runs)').all().map(c => c.name);
     assert.ok(cols.includes('module_ref_key'));
     assert.ok(cols.includes('input_hash'));
     assert.ok(cols.includes('idempotency_key'));
@@ -84,7 +84,7 @@ test('schema creation is idempotent — constructor safe to call twice', () => {
     assert.ok(cols.includes('certificate_hash'));
     // The idempotency unique index is scoped to (project, module, key).
     const idx = db.prepare(
-      `SELECT sql FROM sqlite_master WHERE type='index' AND name='idx_saga3_process_runs_idem'`,
+      `SELECT sql FROM sqlite_master WHERE type='index' AND name='idx_factory_process_runs_idem'`,
     ).get();
     assert.match(idx.sql, /project_id/);
     assert.match(idx.sql, /module_name/);
@@ -202,12 +202,12 @@ test('happy path lifecycle: created → preparing → running → settling → c
       status: 'completed',
       localOutcome: 'go',
       output: {
-        schema: 'saga3.discovery-outcome-certificate.v1',
+        schema: 'factory.discovery-outcome-certificate.v1',
         artifactRef: 'certificate:23',
         contentHash: 'c'.repeat(64),
       },
       certificate: {
-        schema: 'saga3.discovery-outcome-certificate.v1',
+        schema: 'factory.discovery-outcome-certificate.v1',
         certificateRef: 'certificate:23',
         certificateHash: 'c'.repeat(64),
       },
@@ -335,7 +335,7 @@ test('process_run_start handler persists a run and rejects unknown modules', () 
       module_name: 'product-discovery',
       module_version: '3.0.2',
       executor_kind: 'legacy-adapter',
-      input_schema: 'saga3.discovery-case.v1',
+      input_schema: 'factory.discovery-case.v1',
       input_payload: { subject: 'geo' },
       input_hash: hashPayload({ subject: 'geo' }),
       project_id: 1,
@@ -351,7 +351,7 @@ test('process_run_start handler persists a run and rejects unknown modules', () 
       module_name: 'product-discovery',
       module_version: '3.0.2',
       executor_kind: 'legacy-adapter',
-      input_schema: 'saga3.discovery-case.v1',
+      input_schema: 'factory.discovery-case.v1',
       input_payload: { subject: 'geo' },
       input_hash: hashPayload({ subject: 'geo' }),
       project_id: 1,
@@ -383,7 +383,7 @@ test('process_run_start handler persists a run and rejects unknown modules', () 
         module_name: 'product-discovery',
         module_version: '3.0.2',
         executor_kind: 'legacy-adapter',
-        input_schema: 'saga3.discovery-case.v1',
+        input_schema: 'factory.discovery-case.v1',
         input_payload: { subject: 'ballistic' },
         input_hash: hashPayload({ subject: 'ballistic' }),
         project_id: 1,
@@ -403,7 +403,7 @@ test('process_run_set handler drives the lifecycle end-to-end', () => {
       module_name: 'product-discovery',
         module_version: '3.0.2',
       executor_kind: 'legacy-adapter',
-      input_schema: 'saga3.discovery-case.v1',
+      input_schema: 'factory.discovery-case.v1',
       input_payload: { s: 1 },
       input_hash: hashPayload({ s: 1 }),
       project_id: 1,
@@ -427,7 +427,7 @@ test('process_run_set handler drives the lifecycle end-to-end', () => {
       status: 'completed',
       local_outcome: 'go',
       output: {
-        schema: 'saga3.discovery-outcome-certificate.v1',
+        schema: 'factory.discovery-outcome-certificate.v1',
         artifact_ref: 'certificate:99',
         content_hash: 'd'.repeat(64),
       },
@@ -445,7 +445,7 @@ test('process_run_cancel on a running run records reason and is idempotent on te
       module_name: 'product-discovery',
       module_version: '3.0.2',
       executor_kind: 'legacy-adapter',
-      input_schema: 'saga3.discovery-case.v1',
+      input_schema: 'factory.discovery-case.v1',
       input_payload: { s: 2 },
       input_hash: hashPayload({ s: 2 }),
       project_id: 1,
@@ -475,7 +475,7 @@ test('process_run_get reads by id and by (project, module, idempotency_key)', ()
       module_name: 'product-discovery',
       module_version: '3.0.2',
       executor_kind: 'legacy-adapter',
-      input_schema: 'saga3.discovery-case.v1',
+      input_schema: 'factory.discovery-case.v1',
       input_payload: { s: 3 },
       input_hash: hashPayload({ s: 3 }),
       project_id: 1,
@@ -508,7 +508,7 @@ test('process_run_list returns all runs for a project, optionally narrowed by ep
     handlers.process_run_start({
       module_name: 'product-discovery', module_version: '3.0.2',
       executor_kind: 'legacy-adapter',
-      input_schema: 'saga3.discovery-case.v1',
+      input_schema: 'factory.discovery-case.v1',
       input_payload: { s: 'a' }, input_hash: hashPayload({ s: 'a' }),
       project_id: 1, epic_id: 10,
       initiated_by: 'op', idempotency_key: 'list-1',
@@ -516,7 +516,7 @@ test('process_run_list returns all runs for a project, optionally narrowed by ep
     handlers.process_run_start({
       module_name: 'product-discovery', module_version: '3.0.2',
       executor_kind: 'legacy-adapter',
-      input_schema: 'saga3.discovery-case.v1',
+      input_schema: 'factory.discovery-case.v1',
       input_payload: { s: 'b' }, input_hash: hashPayload({ s: 'b' }),
       project_id: 1, epic_id: 11,
       initiated_by: 'op', idempotency_key: 'list-2',

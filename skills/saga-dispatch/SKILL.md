@@ -43,7 +43,7 @@ checkout-копию. Свежий CLI-процесс обрабатывает о
 Перед запуском определи:
 
 1. **project_id** — from the board runner or `.saga/project.json`;
-   `projectname.txt` is legacy fallback only.
+   without either binding, stop and use `saga-start`.
 2. **worker_count** (по умолчанию 3) — сколько параллельных воркеров запускать
    за раунд. Если задач мало (< worker_count) — запускай по числу задач.
 3. **worker_id_prefix** — префикс для воркеров (например `dev` → `dev-1`,

@@ -23,7 +23,7 @@ function databaseFixture() {
 function insertRun(dbPath, { name = 'factory', idempotencyKey = 'same-order' } = {}) {
   const db = new Database(dbPath);
   db.prepare(
-    `INSERT INTO saga3_lifecycle_runs
+    `INSERT INTO factory_lifecycle_runs
       (lifecycle_name,lifecycle_version,lifecycle_ref_key,display_name,description,
        definition_snapshot,definition_hash,project_id,epic_id,initiated_by,
        idempotency_key,input_schema,input_snapshot,input_hash,status,entry_stage_id,current_stage_id)

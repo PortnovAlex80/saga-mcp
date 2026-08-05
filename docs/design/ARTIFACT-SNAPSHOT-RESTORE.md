@@ -922,7 +922,7 @@ digest другой → `IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_INPUT` на Proce
 **Митигация:**
 - Restore и последующий `orchestrate-cli` запускаются в одном скрипте/флоу, без ручных
   правок БД между ними. Первый же `getDb()` (`orchestrate-cli.ts:143` →
-  `createSaga2Application` → getDb) пересоздаст триггеры до любой worker-мутации.
+  `createFactoryApplication` → getDb) пересоздаст триггеры до любой worker-мутации.
 - Альтернатива: в конце restore явно вызвать `ensureExactCandidateAcceptanceSchema(db)` и
   `ensureManagedNodeSubmissionSchema(db)`. Надёжнее; рекомендую.
 

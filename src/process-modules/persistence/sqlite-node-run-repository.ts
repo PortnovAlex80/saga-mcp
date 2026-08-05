@@ -1,7 +1,7 @@
 /**
  * SQLite implementation of NodeRunRepository.
  *
- * Schema lives in saga3_node_runs. One row per node-execution attempt; the
+ * Schema lives in factory_node_runs. One row per node-execution attempt; the
  * attempt counter is derived from existing rows for (process_run_id, node_id)
  * so retries increment naturally. Generic — no module-specific columns.
  */
@@ -24,11 +24,11 @@ import type {
   StartNodeRunV2Input,
 } from './node-run-v2.js';
 
-export function ensureSaga3NodeRunSchema(db: Database.Database): void {
+export function ensureFactoryNodeRunSchema(db: Database.Database): void {
   db.exec(`
-    CREATE TABLE IF NOT EXISTS saga3_node_runs (
+    CREATE TABLE IF NOT EXISTS factory_node_runs (
       id              INTEGER PRIMARY KEY AUTOINCREMENT,
-      process_run_id INTEGER NOT NULL REFERENCES saga3_process_runs(id) ON DELETE CASCADE,
+      process_run_id INTEGER NOT NULL REFERENCES factory_process_runs(id) ON DELETE CASCADE,
       node_id        TEXT NOT NULL,
       node_kind      TEXT NOT NULL,
       attempt        INTEGER NOT NULL,
@@ -46,31 +46,31 @@ export function ensureSaga3NodeRunSchema(db: Database.Database): void {
       started_at     TEXT NOT NULL DEFAULT (datetime('now')),
       completed_at   TEXT
     );
-    CREATE INDEX IF NOT EXISTS idx_saga3_node_runs_process
-      ON saga3_node_runs(process_run_id, node_id);
-    CREATE INDEX IF NOT EXISTS idx_saga3_node_runs_status
-      ON saga3_node_runs(process_run_id, status, id);
+    CREATE INDEX IF NOT EXISTS idx_factory_node_runs_process
+      ON factory_node_runs(process_run_id, node_id);
+    CREATE INDEX IF NOT EXISTS idx_factory_node_runs_status
+      ON factory_node_runs(process_run_id, status, id);
   `);
-  // Д8 migration: older DBs created saga3_node_runs without output_bindings.
+  // Д8 migration: older DBs created factory_node_runs without output_bindings.
   // SQLite ALTER TABLE ADD COLUMN is safe (no CHECK to rebuild).
-  const cols = db.prepare("PRAGMA table_info(saga3_node_runs)").all() as { name: string }[];
+  const cols = db.prepare("PRAGMA table_info(factory_node_runs)").all() as { name: string }[];
   if (!cols.some((c) => c.name === 'output_bindings')) {
-    db.exec('ALTER TABLE saga3_node_runs ADD COLUMN output_bindings TEXT');
+    db.exec('ALTER TABLE factory_node_runs ADD COLUMN output_bindings TEXT');
   }
   if (!cols.some((c) => c.name === 'execution_receipt')) {
-    db.exec('ALTER TABLE saga3_node_runs ADD COLUMN execution_receipt TEXT');
+    db.exec('ALTER TABLE factory_node_runs ADD COLUMN execution_receipt TEXT');
   }
   if (!cols.some((c) => c.name === 'output_schema')) {
-    db.exec('ALTER TABLE saga3_node_runs ADD COLUMN output_schema TEXT');
+    db.exec('ALTER TABLE factory_node_runs ADD COLUMN output_schema TEXT');
   }
   if (!cols.some((c) => c.name === 'recovery_issue')) {
-    db.exec('ALTER TABLE saga3_node_runs ADD COLUMN recovery_issue TEXT');
+    db.exec('ALTER TABLE factory_node_runs ADD COLUMN recovery_issue TEXT');
   }
   if (!cols.some((c) => c.name === 'acceptance_receipt')) {
-    db.exec('ALTER TABLE saga3_node_runs ADD COLUMN acceptance_receipt TEXT');
+    db.exec('ALTER TABLE factory_node_runs ADD COLUMN acceptance_receipt TEXT');
   }
 
-  // ── Wave 3 (W3-A6 §9, single SQL owner for saga3_node_runs this wave) ──────
+  // ── Wave 3 (W3-A6 §9, single SQL owner for factory_node_runs this wave) ──────
   // Seven ADDITIVE NULLABLE columns. Idempotent — guarded by PRAGMA
   // table_info check, mirroring the Wave 2 dual-placement pattern. NO NOT NULL
   // (Wave 11 hardens). NO removal of legacy columns. The dual placement lives
@@ -85,25 +85,25 @@ export function ensureSaga3NodeRunSchema(db: Database.Database): void {
   //   transition_cursor         TEXT  — opaque kernel transition cursor
   //   production_envelope       TEXT  — JSON NodeProductionEnvelope (Wave 1 §7.6)
   if (!cols.some((c) => c.name === 'input_envelope_hash')) {
-    db.exec('ALTER TABLE saga3_node_runs ADD COLUMN input_envelope_hash TEXT');
+    db.exec('ALTER TABLE factory_node_runs ADD COLUMN input_envelope_hash TEXT');
   }
   if (!cols.some((c) => c.name === 'node_ref')) {
-    db.exec('ALTER TABLE saga3_node_runs ADD COLUMN node_ref TEXT');
+    db.exec('ALTER TABLE factory_node_runs ADD COLUMN node_ref TEXT');
   }
   if (!cols.some((c) => c.name === 'package_ref')) {
-    db.exec('ALTER TABLE saga3_node_runs ADD COLUMN package_ref TEXT');
+    db.exec('ALTER TABLE factory_node_runs ADD COLUMN package_ref TEXT');
   }
   if (!cols.some((c) => c.name === 'predecessor_node_run_ids')) {
-    db.exec('ALTER TABLE saga3_node_runs ADD COLUMN predecessor_node_run_ids TEXT');
+    db.exec('ALTER TABLE factory_node_runs ADD COLUMN predecessor_node_run_ids TEXT');
   }
   if (!cols.some((c) => c.name === 'definition_digest')) {
-    db.exec('ALTER TABLE saga3_node_runs ADD COLUMN definition_digest TEXT');
+    db.exec('ALTER TABLE factory_node_runs ADD COLUMN definition_digest TEXT');
   }
   if (!cols.some((c) => c.name === 'transition_cursor')) {
-    db.exec('ALTER TABLE saga3_node_runs ADD COLUMN transition_cursor TEXT');
+    db.exec('ALTER TABLE factory_node_runs ADD COLUMN transition_cursor TEXT');
   }
   if (!cols.some((c) => c.name === 'production_envelope')) {
-    db.exec('ALTER TABLE saga3_node_runs ADD COLUMN production_envelope TEXT');
+    db.exec('ALTER TABLE factory_node_runs ADD COLUMN production_envelope TEXT');
   }
   // FU-A Wave 3 (W3-A1 spec §3/§4): 8th additive nullable column. The explicit
   // `ModuleCompletion` envelope a terminal node emitted — persisted so crash-
@@ -113,7 +113,7 @@ export function ensureSaga3NodeRunSchema(db: Database.Database): void {
   // legacy rows surface it as null; the legacy `complete` path does not write
   // it. Idempotent ALTER guarded by PRAGMA table_info, mirroring the 7 v2 cols.
   if (!cols.some((c) => c.name === 'completion')) {
-    db.exec('ALTER TABLE saga3_node_runs ADD COLUMN completion TEXT');
+    db.exec('ALTER TABLE factory_node_runs ADD COLUMN completion TEXT');
   }
   // WAVE 8 HIGH 4: 9th additive nullable column. SHA-256 over the canonical
   // JSON of `completion` (computed when `completion` is non-null). Persisted
@@ -123,14 +123,14 @@ export function ensureSaga3NodeRunSchema(db: Database.Database): void {
   // `completion` is null (legacy row or non-terminal node). Idempotent ALTER,
   // same dual-placement pattern as the 8 columns above.
   if (!cols.some((c) => c.name === 'completion_hash')) {
-    db.exec('ALTER TABLE saga3_node_runs ADD COLUMN completion_hash TEXT');
+    db.exec('ALTER TABLE factory_node_runs ADD COLUMN completion_hash TEXT');
   }
   // Resume index: exact-cursor lookup by (process_run_id, node_id, attempt).
   // The attempt column is 1-based and unique per (run, node), so this index
   // makes readByExactCursor an equality probe (§9.11).
   db.exec(`
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_saga3_node_runs_exact_cursor
-      ON saga3_node_runs(process_run_id, node_id, attempt);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_factory_node_runs_exact_cursor
+      ON factory_node_runs(process_run_id, node_id, attempt);
   `);
 }
 
@@ -328,7 +328,7 @@ function parseVerifiedCompletion(
     parsed = JSON.parse(completionText);
   } catch (err) {
     throw new Error(
-      `COMPLETION_CORRUPT: saga3_node_runs.completion is malformed JSON `
+      `COMPLETION_CORRUPT: factory_node_runs.completion is malformed JSON `
         + `(${(err as Error).message}); refusing to silently degrade to null`,
     );
   }
@@ -336,7 +336,7 @@ function parseVerifiedCompletion(
     // Valid JSON but wrong shape — treat as corrupt (the writer invariant is
     // `JSON.stringify(ModuleCompletion)`, always a plain object).
     throw new Error(
-      'COMPLETION_CORRUPT: saga3_node_runs.completion parsed to a non-object; '
+      'COMPLETION_CORRUPT: factory_node_runs.completion parsed to a non-object; '
         + 'refusing to silently degrade to null',
     );
   }
@@ -349,7 +349,7 @@ function parseVerifiedCompletion(
   const computed = sha256Hex(parsed);
   if (computed !== completionHash) {
     throw new Error(
-      `COMPLETION_HASH_MISMATCH: saga3_node_runs.completion hash differs from `
+      `COMPLETION_HASH_MISMATCH: factory_node_runs.completion hash differs from `
         + `completion_hash (expected ${completionHash}, computed ${computed}); `
         + 'refusing to silently degrade to null',
     );
@@ -362,20 +362,20 @@ export class SqliteNodeRunRepository implements NodeRunRepository, NodeRunReposi
 
   constructor(db: Database.Database = getDb()) {
     this.db = db;
-    ensureSaga3NodeRunSchema(this.db);
+    ensureFactoryNodeRunSchema(this.db);
   }
 
   start(input: StartNodeRunInput): NodeRunRecord {
     const count = this.db.prepare(
-      'SELECT COUNT(*) AS n FROM saga3_node_runs WHERE process_run_id=? AND node_id=?',
+      'SELECT COUNT(*) AS n FROM factory_node_runs WHERE process_run_id=? AND node_id=?',
     ).get(input.processRunId, input.nodeId) as { n: number };
     const attempt = count.n + 1;
     const info = this.db.prepare(
-      `INSERT INTO saga3_node_runs (process_run_id, node_id, node_kind, attempt, status)
+      `INSERT INTO factory_node_runs (process_run_id, node_id, node_kind, attempt, status)
        VALUES (?, ?, ?, ?, 'running')`,
     ).run(input.processRunId, input.nodeId, input.nodeKind, attempt);
     const row = this.db.prepare(
-      'SELECT * FROM saga3_node_runs WHERE id=?',
+      'SELECT * FROM factory_node_runs WHERE id=?',
     ).get(Number(info.lastInsertRowid)) as NodeRunRow;
     return rowToRecord(row);
   }
@@ -388,7 +388,7 @@ export class SqliteNodeRunRepository implements NodeRunRepository, NodeRunReposi
       : null;
     const recoveryIssueText = input.recoveryIssue ? JSON.stringify(input.recoveryIssue) : null;
     this.db.prepare(
-      `UPDATE saga3_node_runs
+      `UPDATE factory_node_runs
           SET status='completed', event=?, output_ref=?, output_schema=?, output_hash=?, output_bindings=?,
               execution_receipt=?, acceptance_receipt=?, recovery_issue=?,
               completed_at=datetime('now')
@@ -405,26 +405,26 @@ export class SqliteNodeRunRepository implements NodeRunRepository, NodeRunReposi
       input.id,
     );
     const row = this.db.prepare(
-      'SELECT * FROM saga3_node_runs WHERE id=?',
+      'SELECT * FROM factory_node_runs WHERE id=?',
     ).get(input.id) as NodeRunRow;
     return rowToRecord(row);
   }
 
   fail(input: FailNodeRunInput): NodeRunRecord {
     this.db.prepare(
-      `UPDATE saga3_node_runs
+      `UPDATE factory_node_runs
           SET status='failed', error_message=?, completed_at=datetime('now')
         WHERE id=?`,
     ).run(input.errorMessage, input.id);
     const row = this.db.prepare(
-      'SELECT * FROM saga3_node_runs WHERE id=?',
+      'SELECT * FROM factory_node_runs WHERE id=?',
     ).get(input.id) as NodeRunRow;
     return rowToRecord(row);
   }
 
   readLatest(processRunId: number, nodeId: string): NodeRunRecord | null {
     const row = this.db.prepare(
-      `SELECT * FROM saga3_node_runs
+      `SELECT * FROM factory_node_runs
         WHERE process_run_id=? AND node_id=?
         ORDER BY id DESC LIMIT 1`,
     ).get(processRunId, nodeId) as NodeRunRow | undefined;
@@ -433,7 +433,7 @@ export class SqliteNodeRunRepository implements NodeRunRepository, NodeRunReposi
 
   readLastCompleted(processRunId: number): NodeRunRecord | null {
     const row = this.db.prepare(
-      `SELECT * FROM saga3_node_runs
+      `SELECT * FROM factory_node_runs
         WHERE process_run_id=? AND status='completed'
           AND (event IS NULL OR event<>'runtime.paused')
         ORDER BY id DESC LIMIT 1`,
@@ -443,7 +443,7 @@ export class SqliteNodeRunRepository implements NodeRunRepository, NodeRunReposi
 
   list(processRunId: number): readonly NodeRunRecord[] {
     const rows = this.db.prepare(
-      'SELECT * FROM saga3_node_runs WHERE process_run_id=? ORDER BY id ASC',
+      'SELECT * FROM factory_node_runs WHERE process_run_id=? ORDER BY id ASC',
     ).all(processRunId) as NodeRunRow[];
     return rows.map(rowToRecord);
   }
@@ -452,7 +452,7 @@ export class SqliteNodeRunRepository implements NodeRunRepository, NodeRunReposi
 
   startV2(input: StartNodeRunV2Input): NodeRunRecordV2 {
     const count = this.db.prepare(
-      'SELECT COUNT(*) AS n FROM saga3_node_runs WHERE process_run_id=? AND node_id=?',
+      'SELECT COUNT(*) AS n FROM factory_node_runs WHERE process_run_id=? AND node_id=?',
     ).get(input.processRunId, input.nodeId) as { n: number };
     const attempt = count.n + 1;
     const nodeRefText = input.nodeRef ? JSON.stringify(input.nodeRef) : null;
@@ -461,7 +461,7 @@ export class SqliteNodeRunRepository implements NodeRunRepository, NodeRunReposi
       ? JSON.stringify(input.predecessorNodeRunIds)
       : null;
     const info = this.db.prepare(
-      `INSERT INTO saga3_node_runs (
+      `INSERT INTO factory_node_runs (
          process_run_id, node_id, node_kind, attempt, status,
          input_envelope_hash, node_ref, package_ref,
          predecessor_node_run_ids, definition_digest, transition_cursor
@@ -479,7 +479,7 @@ export class SqliteNodeRunRepository implements NodeRunRepository, NodeRunReposi
       input.transitionCursor ?? null,
     );
     const row = this.db.prepare(
-      'SELECT * FROM saga3_node_runs WHERE id=?',
+      'SELECT * FROM factory_node_runs WHERE id=?',
     ).get(Number(info.lastInsertRowid)) as NodeRunRow;
     return rowToRecordV2(row);
   }
@@ -510,7 +510,7 @@ export class SqliteNodeRunRepository implements NodeRunRepository, NodeRunReposi
     // lets reads VERIFY integrity (COMPLETION_CORRUPT / COMPLETION_HASH_MISMATCH
     // throw instead of silent null).
     this.db.prepare(
-      `UPDATE saga3_node_runs
+      `UPDATE factory_node_runs
           SET status='completed', event=?, output_ref=?, output_schema=?, output_hash=?, output_bindings=?,
               execution_receipt=?, acceptance_receipt=?, recovery_issue=?,
               production_envelope=?, transition_cursor=?, completion=?, completion_hash=?,
@@ -532,7 +532,7 @@ export class SqliteNodeRunRepository implements NodeRunRepository, NodeRunReposi
       input.id,
     );
     const row = this.db.prepare(
-      'SELECT * FROM saga3_node_runs WHERE id=?',
+      'SELECT * FROM factory_node_runs WHERE id=?',
     ).get(input.id) as NodeRunRow;
     return rowToRecordV2(row);
   }
@@ -543,9 +543,9 @@ export class SqliteNodeRunRepository implements NodeRunRepository, NodeRunReposi
     attempt: number,
   ): NodeRunRecordV2 | null {
     // §9.11 resume primitive: exact (run, node, attempt) lookup. Backed by
-    // idx_saga3_node_runs_exact_cursor UNIQUE index — an equality probe.
+    // idx_factory_node_runs_exact_cursor UNIQUE index — an equality probe.
     const row = this.db.prepare(
-      `SELECT * FROM saga3_node_runs
+      `SELECT * FROM factory_node_runs
         WHERE process_run_id=? AND node_id=? AND attempt=?
         LIMIT 1`,
     ).get(processRunId, nodeId, attempt) as NodeRunRow | undefined;
@@ -554,7 +554,7 @@ export class SqliteNodeRunRepository implements NodeRunRepository, NodeRunReposi
 
   readLatestV2(processRunId: number, nodeId: string): NodeRunRecordV2 | null {
     const row = this.db.prepare(
-      `SELECT * FROM saga3_node_runs
+      `SELECT * FROM factory_node_runs
         WHERE process_run_id=? AND node_id=?
         ORDER BY id DESC LIMIT 1`,
     ).get(processRunId, nodeId) as NodeRunRow | undefined;
@@ -563,7 +563,7 @@ export class SqliteNodeRunRepository implements NodeRunRepository, NodeRunReposi
 
   readLastCompletedV2(processRunId: number): NodeRunRecordV2 | null {
     const row = this.db.prepare(
-      `SELECT * FROM saga3_node_runs
+      `SELECT * FROM factory_node_runs
         WHERE process_run_id=? AND status='completed'
           AND (event IS NULL OR event<>'runtime.paused')
         ORDER BY id DESC LIMIT 1`,
@@ -573,7 +573,7 @@ export class SqliteNodeRunRepository implements NodeRunRepository, NodeRunReposi
 
   listV2(processRunId: number): readonly NodeRunRecordV2[] {
     const rows = this.db.prepare(
-      'SELECT * FROM saga3_node_runs WHERE process_run_id=? ORDER BY id ASC',
+      'SELECT * FROM factory_node_runs WHERE process_run_id=? ORDER BY id ASC',
     ).all(processRunId) as NodeRunRow[];
     return rows.map(rowToRecordV2);
   }

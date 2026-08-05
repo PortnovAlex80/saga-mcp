@@ -1,9 +1,9 @@
 import Database from 'better-sqlite3';
 import { SCHEMA_SQL } from './schema.js';
-import { ensureSaga3ModuleInstallationSchema } from './process-modules/installation/persistence/installation-repository.js';
-import { ensureSaga3ScenarioInstallationSchema } from './process-modules/installation/persistence/sqlite-scenario-installation-repository.js';
-import { ensureSaga3ProtocolRunSchema } from './process-modules/persistence/sqlite-protocol-run-repository.js';
-import { ensureSaga3CallInstanceSchema } from './process-modules/persistence/sqlite-call-instance-repository.js';
+import { ensureFactoryModuleInstallationSchema } from './process-modules/installation/persistence/installation-repository.js';
+import { ensureFactoryScenarioInstallationSchema } from './process-modules/installation/persistence/sqlite-scenario-installation-repository.js';
+import { ensureFactoryProtocolRunSchema } from './process-modules/persistence/sqlite-protocol-run-repository.js';
+import { ensureFactoryCallInstanceSchema } from './process-modules/persistence/sqlite-call-instance-repository.js';
 
 let db: Database.Database | null = null;
 
@@ -11,7 +11,7 @@ let db: Database.Database | null = null;
  * Open (or return the cached) saga SQLite database.
  *
  * The schema is defined entirely in {@link SCHEMA_SQL} (schema.ts) and the
- * lazy `ensureSaga3*Schema` calls below. This function is clean-foundation:
+ * lazy `ensureFactory*Schema` calls below. This function is clean-foundation:
  * all migration sediment (ALTER TABLE try/catch blocks, table-rebuild
  * functions, backfill migrations) was removed because there are no legacy
  * databases to migrate — the product has not shipped to clients.
@@ -26,7 +26,7 @@ let db: Database.Database | null = null;
  * **SCHEMA_VERSION history:**
  *   1 = saga4 clean foundation.
  *   2 = Conveyor v4 additive layer (CONVEYOR-V4-MIGRATION-PLAN step 6):
- *       the 7 `v4_*` authoritative Workplace/CandidateSet/Gate tables plus
+ *       the 7 `factory_*` authoritative Workplace/CandidateSet/Gate tables plus
  *       4 immutability triggers are now a required part of the schema, and
  *       `tracker_export` format_version moves to 1.5. Additive-only: legacy
  *       tables are retained as projections through the cutover window.
@@ -74,16 +74,16 @@ export function getDb(): Database.Database {
   // Core schema — all tables, columns, indexes, CHECK constraints.
   db.exec(SCHEMA_SQL);
 
-  // Lazy schema for saga3_* process-module tables. These are created here
+  // Lazy schema for factory_* process-module tables. These are created here
   // (eagerly at DB-open time) AND in their respective repository constructors
   // (lazily). Both paths are idempotent (CREATE TABLE IF NOT EXISTS).
-  ensureSaga3ModuleInstallationSchema(db);
-  ensureSaga3ScenarioInstallationSchema(db);
-  // ProtocolRun + CallInstance tables reference saga3_process_runs, which is
+  ensureFactoryModuleInstallationSchema(db);
+  ensureFactoryScenarioInstallationSchema(db);
+  // ProtocolRun + CallInstance tables reference factory_process_runs, which is
   // created lazily by SqliteProcessRunRepository. On a fresh DB the table may
-  // not exist yet — ensureSaga3* guard internally on table existence.
-  ensureSaga3ProtocolRunSchema(db);
-  ensureSaga3CallInstanceSchema(db);
+  // not exist yet — ensureFactory* guard internally on table existence.
+  ensureFactoryProtocolRunSchema(db);
+  ensureFactoryCallInstanceSchema(db);
 
   // Stamp the schema version on fresh DBs (existingVersion === 0).
   if (existingVersion === 0) {

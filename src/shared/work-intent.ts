@@ -7,7 +7,7 @@
  * kernel records provenance and content hash. The authoritative outcome is
  * produced later by the settlement policy (D4), not by the worker.
  *
- * WorkIntent is a Saga 3 protocol entity — it lives in saga3_work_intents, NOT
+ * WorkIntent is a Saga 3 protocol entity — it lives in factory_work_intents, NOT
  * in the existing artifacts table. It is shared by every Saga 3 stage (discovery
  * today; formalization/planning/development later). The discovery-specific
  * payload shape is described in discovery-proposal.ts.
@@ -82,7 +82,7 @@ export interface CreateWorkIntent {
  * Schema version for the discovery WorkIntent itself. Bumped when the intent
  * envelope shape changes in an incompatible way.
  */
-export const DISCOVERY_WORK_INTENT_SCHEMA = 'saga3.work-intent.discovery.v1';
+export const DISCOVERY_WORK_INTENT_SCHEMA = 'factory.work-intent.discovery.v1';
 
 /** Kind value for discovery product work. */
 export const DISCOVERY_INTENT_KIND = 'discovery';
@@ -105,7 +105,7 @@ export const ASSESS_DISCOVERY_READINESS_KIND = 'AssessDiscoveryReadiness';
  * minimal and runtime-enforced; it EXPLAINS an already-issued
  * DiscoveryOutcomeCertificate but can never change the outcome, the
  * certificate, or the stage (roadmap D5). Output schema is
- * saga3.discovery-diagnosis.v1.
+ * factory.discovery-diagnosis.v1.
  */
 export const DISCOVERY_DIAGNOSIS_INTENT_KIND = 'discovery.diagnose';
 
@@ -113,4 +113,4 @@ export const DISCOVERY_DIAGNOSIS_INTENT_KIND = 'discovery.diagnose';
 export const DIAGNOSE_DISCOVERY_OUTCOME_KIND = 'DiagnoseDiscoveryOutcome';
 
 /** Output schema name for the D5 diagnosis WorkIntent (owned by the kernel). */
-export const DISCOVERY_DIAGNOSIS_WORK_INTENT_SCHEMA = 'saga3.work-intent.discovery-diagnosis.v1';
+export const DISCOVERY_DIAGNOSIS_WORK_INTENT_SCHEMA = 'factory.work-intent.discovery-diagnosis.v1';

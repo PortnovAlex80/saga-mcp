@@ -12,21 +12,21 @@
 //   "process-scope" fallback heuristics, never by silently re-deriving a
 //   certificate or production. The four durable boundaries lane A2 owns:
 //
-//     1. RECEIPT WRITE  — saga3_managed_node_submissions
+//     1. RECEIPT WRITE  — factory_managed_node_submissions
 //                         (the immutable LM → kernel typed-product submission.
 //                          No-UPDATE / no-DELETE triggers make it append-only:
 //                          one worker execution gets one immutable value.)
-//     2. PRODUCTION WRITE — saga3_process_products
+//     2. PRODUCTION WRITE — factory_process_products
 //                           (the content-addressed ProcessProduct row keyed by
 //                            (schemaId, artifactRef, productHash). Replay of an
 //                            identical envelope is benign; mutation is rejected.)
-//     3. NODERUN COMPLETE — saga3_node_runs
+//     3. NODERUN COMPLETE — factory_node_runs
 //                           (status='completed' + the dual-written legacy
 //                            output_* columns AND the v2 production_envelope +
 //                            transition_cursor. The exact-cursor resume index
 //                            (process_run_id, node_id, attempt) makes resume an
 //                            equality probe, not a scan.)
-//     4. PROCESSRUN TRANSITION — saga3_process_runs
+//     4. PROCESSRUN TRANSITION — factory_process_runs
 //                                (status transitions through the state machine
 //                                 + write-once terminal outcome/output/
 //                                 certificate. A crash mid-pipeline leaves the
@@ -79,8 +79,8 @@ const { SqliteManagedNodeSubmissionRepository } = await import(
 // ===========================================================================
 // Harness: a fresh, isolated, file-backed SQLite environment that mirrors a
 // real process boot. getDb() applies the FULL schema (SCHEMA_SQL + migrations
-// + every ensure*Schema), so worker_executions / tasks / saga3_process_runs /
-// saga3_node_runs / saga3_process_products / saga3_managed_node_submissions
+// + every ensure*Schema), so worker_executions / tasks / factory_process_runs /
+// factory_node_runs / factory_process_products / factory_managed_node_submissions
 // all exist exactly as in production.
 // ===========================================================================
 
@@ -130,7 +130,7 @@ function crashAndReopen(dbPath) {
  * Seed the minimal COHERENT board rows a ProcessRun + managed execution need:
  * project, epic. Returns their ids. The ProcessRun row references project_id
  * (FK), and the managed-node-submission live-fence query JOINs
- * tasks ↔ worker_executions ↔ saga3_process_runs, so all of these must hang off
+ * tasks ↔ worker_executions ↔ factory_process_runs, so all of these must hang off
  * the SAME project. getDb() turns foreign_keys = ON, so we create the project
  * BEFORE any row that references it.
  *
@@ -159,7 +159,7 @@ function seedBoard(db) {
  *
  * The provenance fields MUST match the ProcessRun row exactly —
  * resolveManagedExecutionProvenance cross-checks (project_id, epic_id,
- * module_ref_key, input_hash) against the saga3_process_runs row, so we derive
+ * module_ref_key, input_hash) against the factory_process_runs row, so we derive
  * them from the run record rather than inventing them.
  *
  * @param {import('better-sqlite3').Database} db
@@ -241,7 +241,7 @@ function startRunningProcessRun(repo, opts) {
   const contentHash = sha256Hex(payload);
   const { record } = repo.start({
     moduleRef,
-    input: { schema: 'saga3.development-case.v1', payload, contentHash },
+    input: { schema: 'factory.development-case.v1', payload, contentHash },
     executorKind: 'generic-flow',
     projectedStage: 'development',
     installationId: null,
@@ -279,7 +279,7 @@ function buildProductionEnvelope({ schemaId, artifactRef, body, predecessorNodeR
 }
 
 // ===========================================================================
-// Boundary 1 — RECEIPT WRITE (saga3_managed_node_submissions)
+// Boundary 1 — RECEIPT WRITE (factory_managed_node_submissions)
 // ===========================================================================
 //
 // The managed-node-submission is the immutable LM → kernel typed-product
@@ -320,7 +320,7 @@ test('boundary 1 (receipt write): crash AFTER managed-node-submission INSERT —
       manifest_version: 1,
     };
     const first = submissionRepo.submitForCurrentExecution({
-      schema: 'saga3.development-task-graph.v1',
+      schema: 'factory.development-task-graph.v1',
       payload,
     });
     assert.equal(first.replayed, false, 'first submit is not a replay');
@@ -343,13 +343,13 @@ test('boundary 1 (receipt write): crash AFTER managed-node-submission INSERT —
     assert.ok(readBack, 'resume must find the receipt by exact key (no fallback scan)');
     assert.equal(readBack.contentHash, first.record.contentHash);
     assert.equal(canonicalJson(readBack.payload), canonicalJson(first.record.payload));
-    assert.equal(readBack.schema, 'saga3.development-task-graph.v1');
+    assert.equal(readBack.schema, 'factory.development-task-graph.v1');
     assert.equal(readBack.submissionId, first.record.submissionId, 'row id stable across crash');
 
     // ── Assert: a second identical submit is a benign replay. ───────────────
     enterManagedFence({ executionId, taskId });
     const replayed = resumedRepo.submitForCurrentExecution({
-      schema: 'saga3.development-task-graph.v1',
+      schema: 'factory.development-task-graph.v1',
       payload,
     });
     assert.equal(replayed.replayed, true, 'identical replay must be idempotent after crash');
@@ -389,7 +389,7 @@ test('boundary 1 (receipt write): crash BEFORE managed-node-submission INSERT �
     // Resume then submits for the first time — creates the row exactly once.
     enterManagedFence({ executionId, taskId });
     const first = resumedRepo.submitForCurrentExecution({
-      schema: 'saga3.development-task-graph.v1',
+      schema: 'factory.development-task-graph.v1',
       payload: { proposal: { tasks: [] } },
     });
     assert.equal(first.replayed, false, 'first post-crash submit creates the row');
@@ -417,7 +417,7 @@ test('boundary 1 (receipt write): a second DIFFERENT payload under the same exec
     enterManagedFence({ executionId, taskId });
     const submissionRepo = new SqliteManagedNodeSubmissionRepository(env.db);
     submissionRepo.submitForCurrentExecution({
-      schema: 'saga3.development-task-graph.v1',
+      schema: 'factory.development-task-graph.v1',
       payload: { proposal: { tasks: [{ title: 'A' }] } },
     });
     leaveManagedFence();
@@ -431,7 +431,7 @@ test('boundary 1 (receipt write): a second DIFFERENT payload under the same exec
     enterManagedFence({ executionId, taskId });
     assert.throws(
       () => resumedRepo.submitForCurrentExecution({
-        schema: 'saga3.development-task-graph.v1',
+        schema: 'factory.development-task-graph.v1',
         payload: { proposal: { tasks: [{ title: 'B' }] } }, // different
       }),
       /MANAGED_NODE_SUBMISSION_ALREADY_FINAL/,
@@ -445,7 +445,7 @@ test('boundary 1 (receipt write): a second DIFFERENT payload under the same exec
 });
 
 // ===========================================================================
-// Boundary 2 — PRODUCTION WRITE (saga3_process_products)
+// Boundary 2 — PRODUCTION WRITE (factory_process_products)
 // ===========================================================================
 //
 // The ProcessProduct row is content-addressed by (schemaId, artifactRef,
@@ -463,7 +463,7 @@ test('boundary 2 (production write): crash AFTER process-product INSERT — resu
     const run = startRunningProcessRun(repo, { projectId });
 
     const envelope = buildProductionEnvelope({
-      schemaId: 'saga3.development-task-graph.v1',
+      schemaId: 'factory.development-task-graph.v1',
       artifactRef: 'task-graph:9101',
       body: { tasks: [{ title: 'implement AC-1', skill: 'dev' }] },
     });
@@ -508,7 +508,7 @@ test('boundary 2 (production write): crash BEFORE production INSERT — resume s
     const run = startRunningProcessRun(repo, { projectId });
 
     const envelope = buildProductionEnvelope({
-      schemaId: 'saga3.development-task-graph.v1',
+      schemaId: 'factory.development-task-graph.v1',
       artifactRef: 'task-graph:9102',
       body: { tasks: [] },
     });
@@ -540,7 +540,7 @@ test('boundary 2 (production write): replay of a DIFFERENT envelope under the sa
     const run = startRunningProcessRun(repo, { projectId });
 
     const original = buildProductionEnvelope({
-      schemaId: 'saga3.development-task-graph.v1',
+      schemaId: 'factory.development-task-graph.v1',
       artifactRef: 'task-graph:9103',
       body: { tasks: [{ title: 'A' }] },
     });
@@ -555,7 +555,7 @@ test('boundary 2 (production write): replay of a DIFFERENT envelope under the sa
     // contentHash ⇒ PROCESS_PRODUCT_REPLAY_MISMATCH. The crash cannot let a
     // mutated product overwrite the immutable one.
     const divergent = buildProductionEnvelope({
-      schemaId: 'saga3.development-task-graph.v1',
+      schemaId: 'factory.development-task-graph.v1',
       artifactRef: 'task-graph:9103', // SAME ref
       body: { tasks: [{ title: 'B' }] }, // DIFFERENT body ⇒ different hash
     });
@@ -575,7 +575,7 @@ test('boundary 2 (production write): replay of a DIFFERENT envelope under the sa
 });
 
 // ===========================================================================
-// Boundary 3 — NODERUN COMPLETE (saga3_node_runs)
+// Boundary 3 — NODERUN COMPLETE (factory_node_runs)
 // ===========================================================================
 //
 // completeV2 dual-writes: legacy output_* columns AND the v2 production_envelope
@@ -603,14 +603,14 @@ test('boundary 3 (NodeRun complete): crash AFTER completeV2 — resume reads exa
       nodeKind: 'lm',
       inputEnvelopeHash,
       nodeRef: { nodeId, flowId: 'discovery.flow', flowVersion: '3.0.0' },
-      packageRef: { name: 'saga3-discovery', version: '3.0.0', digest: 'sha256:pkg-1' },
+      packageRef: { name: 'factory-discovery', version: '3.0.0', digest: 'sha256:pkg-1' },
       predecessorNodeRunIds: [],
       definitionDigest: 'sha256:flow-def-1',
       transitionCursor: `${run.id}/${nodeId}#${attempt}`,
     });
 
     const production = buildProductionEnvelope({
-      schemaId: 'saga3.discovery-proposal.v1',
+      schemaId: 'factory.discovery-proposal.v1',
       artifactRef: `proposal:${run.id}`,
       body: { problemStatement: 'x', recommendedOutcome: 'go' },
     });
@@ -707,7 +707,7 @@ test('boundary 3 (NodeRun complete): crash AFTER startV2 BEFORE completeV2 — r
 
     // The kernel/worker re-issues completeV2 — this is the crash-resume step.
     const production = buildProductionEnvelope({
-      schemaId: 'saga3.discovery-proposal.v1',
+      schemaId: 'factory.discovery-proposal.v1',
       artifactRef: `proposal:${run.id}`,
       body: { problemStatement: 'y', recommendedOutcome: 'clarify' },
     });
@@ -732,7 +732,7 @@ test('boundary 3 (NodeRun complete): crash AFTER startV2 BEFORE completeV2 — r
 });
 
 // ===========================================================================
-// Boundary 4 — PROCESSRUN TRANSITION (saga3_process_runs)
+// Boundary 4 — PROCESSRUN TRANSITION (factory_process_runs)
 // ===========================================================================
 //
 // The ProcessRun state machine is created → preparing → running → (settling →
@@ -792,12 +792,12 @@ test('boundary 4 (ProcessRun transition): crash in settling→completed window �
 
     // The terminal write: outcome + output + certificate all set atomically.
     const output = {
-      schema: 'saga3.development-result.v1',
+      schema: 'factory.development-result.v1',
       artifactRef: `result:${run.id}`,
       contentHash: sha256Hex({ delivered: true }),
     };
     const certificate = {
-      schema: 'saga3.development-certificate.v1',
+      schema: 'factory.development-certificate.v1',
       certificateRef: `cert:${run.id}`,
       certificateHash: sha256Hex({ verified: true }),
     };
@@ -852,7 +852,7 @@ test('boundary 4 (ProcessRun transition): crash in settling→completed window �
     assert.throws(
       () => resumedRepo.update(run.id, {
         output: {
-          schema: 'saga3.development-result.v1',
+          schema: 'factory.development-result.v1',
           artifactRef: `result:${run.id}`,
           contentHash: sha256Hex({ delivered: false }), // DIFFERENT
         },
@@ -880,7 +880,7 @@ test('boundary 4 (ProcessRun transition): crash before terminal write — resume
 
     // Resume issues the terminal write once.
     const output = {
-      schema: 'saga3.development-result.v1',
+      schema: 'factory.development-result.v1',
       artifactRef: `result:${run.id}`,
       contentHash: sha256Hex({ delivered: true }),
     };
@@ -925,7 +925,7 @@ test('cross-boundary: worker fully durable (NodeRun complete + production + rece
     // (the managed-submission live fence requires pr.status='running'). The
     // kernel only later advances running → settling → completed.
     const production = buildProductionEnvelope({
-      schemaId: 'saga3.development-task-graph.v1',
+      schemaId: 'factory.development-task-graph.v1',
       artifactRef: `task-graph:${run.id}`,
       body: { tasks: [{ title: 'implement AC-1', skill: 'dev' }] },
     });
@@ -941,7 +941,7 @@ test('cross-boundary: worker fully durable (NodeRun complete + production + rece
     enterManagedFence({ executionId, taskId });
     let submissionRepo = new SqliteManagedNodeSubmissionRepository(env.db);
     const submitted = submissionRepo.submitForCurrentExecution({
-      schema: 'saga3.development-task-graph.v1',
+      schema: 'factory.development-task-graph.v1',
       payload: production.bindings,
     });
     leaveManagedFence();
@@ -1049,7 +1049,7 @@ test('no-fallback: resume primitives return null for unknown keys (no epic-scope
     // Unknown ProductRef ⇒ null (no fuzzy/artifactRef-only fallback that could
     // pull in an unrelated product).
     const unknownRef = {
-      schemaId: 'saga3.development-task-graph.v1',
+      schemaId: 'factory.development-task-graph.v1',
       ref: 'task-graph:does-not-exist',
       digest: '0'.repeat(64),
     };
@@ -1092,7 +1092,7 @@ function startCreatedProcessRun(repo, opts) {
   const payload = { idea: 'w12-a2 transition-probe', seed: randomUUID() };
   const { record } = repo.start({
     moduleRef: { name: 'product-development', version: '3.0.0' },
-    input: { schema: 'saga3.development-case.v1', payload, contentHash: sha256Hex(payload) },
+    input: { schema: 'factory.development-case.v1', payload, contentHash: sha256Hex(payload) },
     executorKind: 'generic-flow',
     projectedStage: 'development',
     installationId: null,

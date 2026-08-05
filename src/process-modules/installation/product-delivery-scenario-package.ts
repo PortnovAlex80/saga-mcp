@@ -132,7 +132,7 @@ export const PRODUCT_DELIVERY_SCENARIO_MANIFEST_FORMAT_VERSION = '1';
  * manifest identity.
  */
 const PERMISSIVE_IDENTITY = {
-  name: 'legacy-product-delivery',
+  name: 'product-delivery',
   version: `${productDeliveryLifecycle.identity.version}+permissive`,
   displayName: 'Legacy Product Delivery (permissive Discovery gate)',
   description:
@@ -149,7 +149,7 @@ const PERMISSIVE_IDENTITY = {
  * terminate).
  */
 const STRICT_IDENTITY = {
-  name: 'legacy-product-delivery',
+  name: 'product-delivery',
   version: `${productDeliveryLifecycle.identity.version}+strict`,
   displayName: 'Legacy Product Delivery (strict Discovery gate)',
   description:
@@ -346,10 +346,10 @@ const REENTRY_BUDGETS = {
  * the runtime binds `kind` to a registered strategy.
  */
 const SCENARIO_POLICIES = {
-  retry: { kind: 'legacy', params: { maxAttempts: 1 } },
-  pause: { kind: 'legacy' },
-  cancellation: { kind: 'legacy' },
-  escalation: { kind: 'legacy' },
+  retry: { kind: 'standard', params: { maxAttempts: 1 } },
+  pause: { kind: 'standard' },
+  cancellation: { kind: 'standard' },
+  escalation: { kind: 'standard' },
 } as const;
 
 /**

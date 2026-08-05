@@ -54,10 +54,10 @@ const { discoveryProcessModule } = await import(
 const { createDiscoveryKernelHandlers } = await import(
   '../../dist/modules/discovery/application/discovery-installation.js'
 );
-const { SqliteSaga3DiscoveryRuntime } = await import(
+const { SqliteFactoryDiscoveryRuntime } = await import(
   '../../dist/modules/discovery/infrastructure/sqlite-discovery-runtime.js'
 );
-const { Saga3DiscoverySettlementService } = await import(
+const { FactoryDiscoverySettlementService } = await import(
   '../../dist/modules/discovery/application/discovery-settlement-service.js'
 );
 const { createDiscoveryProposalHandlers } = await import(
@@ -100,7 +100,7 @@ const PROJECT_ID = 1;
 const EPIC_ID = 70;
 
 function fixture() {
-  const temp = mkdtempSync(path.join(os.tmpdir(), 'saga3-disc-generic-lineage-'));
+  const temp = mkdtempSync(path.join(os.tmpdir(), 'factory-disc-generic-lineage-'));
   process.env.DB_PATH = path.join(temp, 'discovery-generic.db');
   const db = getDb();
   db.prepare(
@@ -181,7 +181,7 @@ function validReadiness(proposalId, proposalHash, overrides = {}) {
  * Pack is forbidden to call them.
  */
 function trackedRuntime() {
-  const target = new SqliteSaga3DiscoveryRuntime();
+  const target = new SqliteFactoryDiscoveryRuntime();
   const legacyLookupCalls = [];
   const forbidden = new Set([
     'readLatestProposalByEpic',
@@ -213,13 +213,13 @@ function trackedRuntime() {
 function discoveryHandlers(runtime) {
   return createDiscoveryKernelHandlers({
     runtimePersistence: runtime,
-    settlementService: new Saga3DiscoverySettlementService({ runtimePersistence: runtime }),
+    settlementService: new FactoryDiscoverySettlementService({ runtimePersistence: runtime }),
   });
 }
 
 /**
  * Freeze a real execution authority snapshot for an existing WorkIntent/task.
- * This is the minimum worker-plane setup required by the real Saga3 submit
+ * This is the minimum worker-plane setup required by the real Factory submit
  * handlers: exact task fence, live worker execution and immutable authority.
  */
 function bindLiveExecution(db, runtime, {
@@ -247,7 +247,7 @@ function bindLiveExecution(db, runtime, {
       WHERE id=?`,
   ).run(workerId, executionId, taskId);
   db.prepare(
-    `UPDATE saga3_work_intents SET status='executing' WHERE id=?`,
+    `UPDATE factory_work_intents SET status='executing' WHERE id=?`,
   ).run(intentId);
   db.prepare(
     `INSERT INTO worker_executions
@@ -272,7 +272,7 @@ function bindLiveExecution(db, runtime, {
 function finishExecution(db, { intentId, taskId, executionId }) {
   db.prepare(`UPDATE tasks SET status='done' WHERE id=?`).run(taskId);
   db.prepare(
-    `UPDATE saga3_work_intents SET status='concluded' WHERE id=?`,
+    `UPDATE factory_work_intents SET status='concluded' WHERE id=?`,
   ).run(intentId);
   db.prepare(
     `UPDATE worker_executions
@@ -311,7 +311,7 @@ function seedNewerDistractor(db) {
   ).run(EPIC_ID, 'distractor-product');
   const productTaskId = Number(productTask.lastInsertRowid);
   const productIntent = db.prepare(
-    `INSERT INTO saga3_work_intents
+    `INSERT INTO factory_work_intents
        (epic_id,kind,objective,authority_scope,output_schema,status,projected_task_id)
      VALUES (?,?,?,'{}',?,'concluded',?)`,
   ).run(
@@ -327,7 +327,7 @@ function seedNewerDistractor(db) {
     productTaskId,
   );
   const proposal = db.prepare(
-    `INSERT INTO saga3_proposals
+    `INSERT INTO factory_proposals
        (intent_id,task_id,execution_id,kind,schema_version,payload,
         content_hash,status,provenance)
      VALUES (?,?,?,'discovery',?,?,?,'submitted','{}')`,
@@ -350,7 +350,7 @@ function seedNewerDistractor(db) {
   ).run(EPIC_ID, 'distractor-readiness');
   const readinessTaskId = Number(readinessTask.lastInsertRowid);
   const readinessIntent = db.prepare(
-    `INSERT INTO saga3_work_intents
+    `INSERT INTO factory_work_intents
        (epic_id,kind,objective,authority_scope,output_schema,status,projected_task_id)
      VALUES (?,?,?,'{}',?,'concluded',?)`,
   ).run(
@@ -366,7 +366,7 @@ function seedNewerDistractor(db) {
     readinessTaskId,
   );
   const control = db.prepare(
-    `INSERT INTO saga3_readiness_control_intents
+    `INSERT INTO factory_readiness_control_intents
        (epic_id,kind,proposal_id,proposal_content_hash,source_intent_id,
         authority_intent_id,projected_task_id,status)
      VALUES (?,'AssessDiscoveryReadiness',?,?,?,?,?,'concluded')`,
@@ -391,7 +391,7 @@ function seedNewerDistractor(db) {
   });
   const assessmentHash = sha256Canonical(assessmentPayload);
   const assessment = db.prepare(
-    `INSERT INTO saga3_readiness_assessments
+    `INSERT INTO factory_readiness_assessments
        (control_intent_id,proposal_id,proposal_content_hash,task_id,execution_id,
         payload,content_hash,status,overall_readiness,recommended_next_action)
      VALUES (?,?,?,?,?,?,?,'accepted_by_kernel','not_ready','reject')`,
@@ -658,7 +658,7 @@ function buildExecutor({ db, runtime, lmExecutor }) {
   const lookupProduction = db.prepare(
     `SELECT output_schema AS schema, output_ref AS ref, output_hash AS hash,
             output_bindings AS bindingsText
-       FROM saga3_node_runs
+       FROM factory_node_runs
       WHERE output_schema=? AND output_ref=? AND output_hash=?
         AND status='completed'
       LIMIT 1`,
@@ -754,7 +754,7 @@ async function runScenario({
   const certificateMatch = /^discovery-certificate:(\d+)$/.exec(certificateRef);
   assert.ok(certificateMatch, 'Discovery must reference its canonical D4 certificate');
   const certificate = db.prepare(
-    'SELECT * FROM saga3_discovery_outcome_certificates WHERE id=?',
+    'SELECT * FROM factory_discovery_outcome_certificates WHERE id=?',
   ).get(Number(certificateMatch[1]));
   return {
     ...built,
@@ -851,15 +851,15 @@ test('deterministic D1 materializes exact Proposal from receipt and ignores newe
 
     const latestProposal = ctx.db.prepare(
       `SELECT p.id
-         FROM saga3_proposals p
-         JOIN saga3_work_intents i ON i.id=p.intent_id
+         FROM factory_proposals p
+         JOIN factory_work_intents i ON i.id=p.intent_id
         WHERE i.epic_id=?
         ORDER BY p.id DESC LIMIT 1`,
     ).get(EPIC_ID);
     const latestAssessment = ctx.db.prepare(
       `SELECT a.id
-         FROM saga3_readiness_assessments a
-         JOIN saga3_readiness_control_intents c ON c.id=a.control_intent_id
+         FROM factory_readiness_assessments a
+         JOIN factory_readiness_control_intents c ON c.id=a.control_intent_id
         WHERE c.epic_id=? AND a.status='accepted_by_kernel'
         ORDER BY a.id DESC LIMIT 1`,
     ).get(EPIC_ID);
@@ -962,11 +962,11 @@ test('semantic D2 preserves exact raw/control lineage through normalization rece
     );
 
     const rawRow = ctx.db.prepare(
-      `SELECT status FROM saga3_raw_submissions WHERE id=?`,
+      `SELECT status FROM factory_raw_submissions WHERE id=?`,
     ).get(rawSubmissionId);
     const proposalRow = ctx.db.prepare(
       `SELECT source_submission_id,normalization_proposal_id
-         FROM saga3_proposals WHERE id=?`,
+         FROM factory_proposals WHERE id=?`,
     ).get(normalizedProposalId);
     assert.equal(rawRow.status, 'normalized');
     assert.equal(proposalRow.source_submission_id, rawSubmissionId);

@@ -14,7 +14,7 @@
 - task_id: `{TASK_ID}`
 - execution_id: `{EXECUTION_ID}`
 - input_snapshot_hash: `{INPUT_SNAPSHOT_HASH}`
-- output_schema: `saga3.development-task-graph-proposal.v1`
+- output_schema: `factory.development-task-graph-proposal.v1`
 
 ## Program counter
 

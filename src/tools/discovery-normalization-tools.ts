@@ -3,7 +3,7 @@ import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import { getDb } from '../db.js';
 import type { ToolHandler } from '../types.js';
 import { withImmediateTransaction } from './dispatcher.js';
-import { argInt, argStr, SAGA3_TOOL_CALL_SHAPES, SAGA3_ARG_SOURCES, enrichPayloadErrors } from './discovery-tool-args.js';
+import { argInt, argStr, FACTORY_TOOL_CALL_SHAPES, FACTORY_ARG_SOURCES, enrichPayloadErrors } from './discovery-tool-args.js';
 import { readExecutionContextStrict } from '../shared/authority/authorize-tool-call.js';
 import {
   DISCOVERY_NORMALIZATION_PROPOSAL_SCHEMA,
@@ -13,7 +13,7 @@ import {
 import type { ProposalProvenance } from '../modules/discovery/domain/proposal.js';
 import {
   canonicalJson,
-  ensureSaga3NormalizationSchema,
+  ensureFactoryNormalizationSchema,
   insertNormalizationProposal,
   markNormalizationAccepted,
   markRawSubmissionNormalized,
@@ -50,7 +50,7 @@ function requireControlBinding(
   const control = db.prepare(
     `SELECT id, epic_id, source_submission_id, authority_intent_id,
             projected_task_id, status
-       FROM saga3_control_intents WHERE id=?`,
+       FROM factory_control_intents WHERE id=?`,
   ).get(controlIntentId) as ControlIntentRow | undefined;
   if (!control) throw new Error(`normalization: ControlIntent ${controlIntentId} not found`);
   if (control.source_submission_id !== sourceSubmissionId) {
@@ -90,7 +90,7 @@ export function createDiscoveryNormalizationHandlers(
 ): { definitions: Tool[]; handlers: Record<string, ToolHandler> } {
   const getDbFn = options.db ?? getDb;
   const now = options.now ?? (() => new Date());
-  ensureSaga3NormalizationSchema(getDbFn());
+  ensureFactoryNormalizationSchema(getDbFn());
 
   const normalizationGet: ToolHandler = args => {
     const controlIntentId = integerArg(args, 'control_intent_id');
@@ -140,7 +140,7 @@ export function createDiscoveryNormalizationHandlers(
       );
       const source = readRawSubmission(db, sourceSubmissionId);
       if (!source) throw new Error(`normalization_submit: source submission ${sourceSubmissionId} not found`);
-      const sourceIntent = db.prepare(`SELECT epic_id FROM saga3_work_intents WHERE id=?`).get(source.intent_id) as { epic_id: number } | undefined;
+      const sourceIntent = db.prepare(`SELECT epic_id FROM factory_work_intents WHERE id=?`).get(source.intent_id) as { epic_id: number } | undefined;
       if (!sourceIntent || sourceIntent.epic_id !== binding.control.epic_id) {
         throw new Error('normalization_submit: source submission/control epic mismatch');
       }
@@ -199,7 +199,7 @@ export function createDiscoveryNormalizationHandlers(
       // mixing its execution_id with the product task_id would create a false
       // task↔execution pair and break D1's provenance invariant.
       const productInsert = db.prepare(
-        `INSERT INTO saga3_proposals
+        `INSERT INTO factory_proposals
            (intent_id, task_id, execution_id, kind, schema_version, payload,
             content_hash, status, provenance, source_submission_id,
             normalization_proposal_id)
@@ -218,7 +218,7 @@ export function createDiscoveryNormalizationHandlers(
         inserted.record.id,
       );
       const product = db.prepare(
-        `SELECT id FROM saga3_proposals
+        `SELECT id FROM factory_proposals
           WHERE intent_id=? AND execution_id=? AND content_hash=?`,
       ).get(source.intent_id, source.execution_id, contentHash) as { id: number } | undefined;
       if (!product) throw new Error('normalization_submit: accepted product proposal vanished');
@@ -228,7 +228,7 @@ export function createDiscoveryNormalizationHandlers(
       if (productInsert.changes === 1) {
         db.prepare(
           `INSERT INTO comments (task_id, author, content)
-           VALUES (?, 'saga3-kernel', ?)`,
+           VALUES (?, 'factory-kernel', ?)`,
         ).run(
           source.task_id,
           `Normalization accepted: source=${source.id} normalization=${inserted.record.id} proposal=${product.id} hash=${contentHash.slice(0, 12)}…`,
@@ -249,7 +249,7 @@ export function createDiscoveryNormalizationHandlers(
       {
         name: 'normalization_get',
         description: 'Read the immutable raw discovery submission and deterministic normalization diagnostics for the assigned NormalizeDiscoveryProposal ControlIntent. Call shape: normalization_get({ control_intent_id: <int from task_get.metadata.control_intent_id>, source_submission_id: <int from task_get.metadata.source_submission_id>, execution_id: <string, your execution_id> }) — returns source_submission_id, source_raw_hash, raw_payload, parsed_payload, deterministic_trace, validation_errors, alias_conflicts, allowed_evidence_refs, output_schema, rule. Echo source_submission_id and source_raw_hash verbatim into the subsequent normalization_submit payload.',
-        annotations: { title: 'Saga3: Read Normalization Input', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+        annotations: { title: 'Factory: Read Normalization Input', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
         inputSchema: {
           type: 'object',
           required: ['control_intent_id', 'source_submission_id', 'execution_id'],
@@ -262,8 +262,8 @@ export function createDiscoveryNormalizationHandlers(
       },
       {
         name: 'normalization_submit',
-        description: 'Submit a transformation proposal for a raw discovery response. The LM cannot accept it; the deterministic kernel validates source paths, schema, raw hash and evidence non-invention before creating the canonical product proposal. Call shape: normalization_submit({ control_intent_id: <int from task_get.metadata.control_intent_id>, source_submission_id: <int from normalization_get, echo verbatim>, execution_id: <string, your execution_id>, schema_version: "saga3.discovery-normalization-proposal.v1", payload: { source_submission_id: <int, echo normalization_get>, source_raw_hash: "<64-char hex, echo normalization_get>", normalized_payload: { problem_statement, observed_context, stakeholders_or_actors: [], assumptions: [], unknowns: [], risks: [], candidate_scope, evidence_refs: [], recommended_outcome: "go|clarify|reject|defer|inconclusive|failed", rationale }, source_field_map: { problem_statement: [<JSON paths into parsed_payload>], observed_context: [...], candidate_scope: [...], rationale: [...], stakeholders_or_actors: [...], assumptions: [...], unknowns: [...], risks: [...], evidence_refs: [...] }, notes: <string[]> } }). IMPORTANT: control_intent_id/source_submission_id/execution_id/schema_version are TOP-LEVEL args, NOT inside payload; every source_field_map path MUST resolve in normalization_get.parsed_payload; evidence_refs must come from allowed_evidence_refs.',
-        annotations: { title: 'Saga3: Submit Normalization Proposal', readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+        description: 'Submit a transformation proposal for a raw discovery response. The LM cannot accept it; the deterministic kernel validates source paths, schema, raw hash and evidence non-invention before creating the canonical product proposal. Call shape: normalization_submit({ control_intent_id: <int from task_get.metadata.control_intent_id>, source_submission_id: <int from normalization_get, echo verbatim>, execution_id: <string, your execution_id>, schema_version: "factory.discovery-normalization-proposal.v1", payload: { source_submission_id: <int, echo normalization_get>, source_raw_hash: "<64-char hex, echo normalization_get>", normalized_payload: { problem_statement, observed_context, stakeholders_or_actors: [], assumptions: [], unknowns: [], risks: [], candidate_scope, evidence_refs: [], recommended_outcome: "go|clarify|reject|defer|inconclusive|failed", rationale }, source_field_map: { problem_statement: [<JSON paths into parsed_payload>], observed_context: [...], candidate_scope: [...], rationale: [...], stakeholders_or_actors: [...], assumptions: [...], unknowns: [...], risks: [...], evidence_refs: [...] }, notes: <string[]> } }). IMPORTANT: control_intent_id/source_submission_id/execution_id/schema_version are TOP-LEVEL args, NOT inside payload; every source_field_map path MUST resolve in normalization_get.parsed_payload; evidence_refs must come from allowed_evidence_refs.',
+        annotations: { title: 'Factory: Submit Normalization Proposal', readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
         inputSchema: {
           type: 'object',
           required: ['control_intent_id', 'source_submission_id', 'execution_id', 'schema_version', 'payload'],
@@ -288,11 +288,11 @@ function integerArg(args: Record<string, unknown>, name: string): number {
   // normalization_get uses control_intent_id+source_submission_id+execution_id;
   // normalization_submit adds schema_version. Pick the shape by whether schema_version
   // is among the args (submit) or not (get).
-  const shape = args.schema_version !== undefined ? SAGA3_TOOL_CALL_SHAPES.normalization_submit : SAGA3_TOOL_CALL_SHAPES.normalization_get;
-  return argInt('normalization', args, name, { source: SAGA3_ARG_SOURCES[name as keyof typeof SAGA3_ARG_SOURCES] ?? name, expected: shape });
+  const shape = args.schema_version !== undefined ? FACTORY_TOOL_CALL_SHAPES.normalization_submit : FACTORY_TOOL_CALL_SHAPES.normalization_get;
+  return argInt('normalization', args, name, { source: FACTORY_ARG_SOURCES[name as keyof typeof FACTORY_ARG_SOURCES] ?? name, expected: shape });
 }
 
 function stringArg(args: Record<string, unknown>, name: string): string {
-  const shape = args.schema_version !== undefined ? SAGA3_TOOL_CALL_SHAPES.normalization_submit : SAGA3_TOOL_CALL_SHAPES.normalization_get;
-  return argStr('normalization', args, name, { source: SAGA3_ARG_SOURCES[name as keyof typeof SAGA3_ARG_SOURCES] ?? name, expected: shape });
+  const shape = args.schema_version !== undefined ? FACTORY_TOOL_CALL_SHAPES.normalization_submit : FACTORY_TOOL_CALL_SHAPES.normalization_get;
+  return argStr('normalization', args, name, { source: FACTORY_ARG_SOURCES[name as keyof typeof FACTORY_ARG_SOURCES] ?? name, expected: shape });
 }

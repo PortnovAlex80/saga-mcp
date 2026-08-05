@@ -11,6 +11,11 @@ test('factory exposes one HTTP start route and runtime host accepts launch capab
   assert.ok(!activePostRoutes.includes('/api/engine/start'));
   assert.ok(!activePostRoutes.includes('/api/engine/restart'));
   assert.ok(!activePostRoutes.includes('/api/project/create-from-idea'));
+  assert.ok(!activePostRoutes.includes('/api/project/create'));
+  assert.ok(!activePostRoutes.includes('/api/epic/create'));
+  assert.ok(!activePostRoutes.includes('/api/artifact/save'));
+  assert.ok(!activePostRoutes.includes('/api/board-run/start'));
+  assert.ok(!activePostRoutes.includes('/api/board-run/stop'));
 
   const host = readFileSync('src/orchestrate-cli.ts', 'utf8');
   const parseBody = /function parseArgs[\s\S]*?\r?\n}/.exec(host)?.[0] ?? '';

@@ -3,7 +3,7 @@
 // Conveyor v4 step 3.A.4 — Formalization read-switch.
 //
 // Proves that SqliteFormalizationArtifactGraph.areTasksReady reads the
-// task's done-ness from the AUTHORITATIVE v4_workplaces loop_state when
+// task's done-ness from the AUTHORITATIVE factory_workplaces loop_state when
 // SAGA_WORKPLACE_READ=new (cutover), NOT from the legacy tasks.status. The
 // integration_state / execution_mode / task_kind DATA columns are still read
 // from tasks (they describe the task, not its orchestration loop).

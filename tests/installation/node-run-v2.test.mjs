@@ -1,13 +1,13 @@
 // tests/installation/node-run-v2.test.mjs
 //
-// W3-A6 — NodeRun v2 persistence (SQL OWNER for saga3_node_runs this wave).
+// W3-A6 — NodeRun v2 persistence (SQL OWNER for factory_node_runs this wave).
 //
 // Spec: docs/refactor-management/09-contracts/WAVE3-DURABLE-EXECUTION-SPEC.md §9.
 // Task: docs/refactor-management/05-subagent-tasks/W03-A6-node-run-v2-sql-owner.md.
 //
 // Coverage (per task spec "Verify" + §9 contract):
 //   - Schema: 7 additive nullable columns + 1 resume index exist after the
-//     repository constructor (fresh-DB path through ensureSaga3NodeRunSchema).
+//     repository constructor (fresh-DB path through ensureFactoryNodeRunSchema).
 //   - Schema: idempotent — constructing twice does not throw.
 //   - startV2: writes legacy columns AND the 7 v2 columns; returns a v2 record.
 //   - completeV2: DUAL-WRITES legacy output_* AND v2 production_envelope +
@@ -20,13 +20,13 @@
 //   - Legacy compat: the legacy start/complete/readLatest/readLastCompleted/list
 //     methods still work on the same table and surface v2 columns as null.
 //   - Persistence: v2 row survives DB reopen (the dual-placement ALTER in db.ts
-//     + ensureSaga3NodeRunSchema must both be idempotent).
+//     + ensureFactoryNodeRunSchema must both be idempotent).
 //   - Upgrade path: a DB created with the PRE-Wave-3 schema (only legacy
 //     columns) gets the 7 v2 columns + index after the constructor runs.
 //
-// ISOLATION NOTE: W3-A6 is the single SQL owner for saga3_node_runs. This test
+// ISOLATION NOTE: W3-A6 is the single SQL owner for factory_node_runs. This test
 // constructs `SqliteNodeRunRepository` directly, which runs
-// `ensureSaga3NodeRunSchema` (the fresh-DB path). The dual-placement ALTER in
+// `ensureFactoryNodeRunSchema` (the fresh-DB path). The dual-placement ALTER in
 // src/db.ts (the upgrade path for pre-existing DBs) is exercised by the
 // "upgrade path" + "persists across DB reopen" tests via getDb()/closeDb().
 
@@ -59,13 +59,13 @@ const V2_COLUMNS = [
 ];
 
 /**
- * Build a fresh temp DB. saga3_node_runs is created lazily by the repo ctor.
+ * Build a fresh temp DB. factory_node_runs is created lazily by the repo ctor.
  *
- * FK note: saga3_node_runs declares `REFERENCES saga3_process_runs(id)` and
+ * FK note: factory_node_runs declares `REFERENCES factory_process_runs(id)` and
  * getDb() turns `foreign_keys = ON`. These tests exercise the NodeRun layer in
  * isolation (no ProcessRun parent row), so we disable FK enforcement for the
  * temp DB. This mirrors how the generic-flow-executor tests avoid FK friction
- * (they happen to create saga3_process_runs first; here we deliberately keep
+ * (they happen to create factory_process_runs first; here we deliberately keep
  * the surface minimal — the FK target is irrelevant to the v2 column contract).
  */
 function freshDb(prefix = 'saga-w3a6-') {
@@ -87,15 +87,15 @@ function cleanup(temp, previous) {
   }
 }
 
-/** Read the column names of saga3_node_runs (after the repo ctor has run). */
+/** Read the column names of factory_node_runs (after the repo ctor has run). */
 function columnNames(db) {
-  return db.prepare('PRAGMA table_info(saga3_node_runs)').all().map((c) => c.name);
+  return db.prepare('PRAGMA table_info(factory_node_runs)').all().map((c) => c.name);
 }
 
-/** Read the index names on saga3_node_runs. */
+/** Read the index names on factory_node_runs. */
 function indexNames(db) {
   return db
-    .prepare("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='saga3_node_runs'")
+    .prepare("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='factory_node_runs'")
     .all()
     .map((r) => r.name);
 }
@@ -117,7 +117,7 @@ function sampleProductionEnvelope(contentHash = 'prod-hash-1') {
     artifactRef: 'decision:accept',
     contentHash,
     bindings: { decision: 'accepted' },
-    schemaId: 'saga3.node-production-envelope.v1',
+    schemaId: 'factory.node-production-envelope.v1',
     productRef: {
       schemaId: 'synthetic.decision.v1',
       ref: 'decision:accept',
@@ -133,7 +133,7 @@ function sampleProductionEnvelope(contentHash = 'prod-hash-1') {
 // Schema: 7 v2 columns + resume index exist after the ctor (fresh-DB path).
 // ===========================================================================
 
-test('ensureSaga3NodeRunSchema (fresh DB) adds all 7 v2 columns', () => {
+test('ensureFactoryNodeRunSchema (fresh DB) adds all 7 v2 columns', () => {
   const { db, temp, previous } = freshDb();
   try {
     // eslint-disable-next-line no-new
@@ -154,14 +154,14 @@ test('ensureSaga3NodeRunSchema (fresh DB) adds all 7 v2 columns', () => {
   }
 });
 
-test('ensureSaga3NodeRunSchema creates the exact-cursor resume index', () => {
+test('ensureFactoryNodeRunSchema creates the exact-cursor resume index', () => {
   const { db, temp, previous } = freshDb();
   try {
     // eslint-disable-next-line no-new
     new SqliteNodeRunRepository(db);
     const idx = indexNames(db);
     assert.ok(
-      idx.includes('idx_saga3_node_runs_exact_cursor'),
+      idx.includes('idx_factory_node_runs_exact_cursor'),
       'resume index must exist',
     );
   } finally {
@@ -169,12 +169,12 @@ test('ensureSaga3NodeRunSchema creates the exact-cursor resume index', () => {
   }
 });
 
-test('ensureSaga3NodeRunSchema is idempotent (constructing twice does not throw)', () => {
+test('ensureFactoryNodeRunSchema is idempotent (constructing twice does not throw)', () => {
   const { db, temp, previous } = freshDb();
   try {
     // eslint-disable-next-line no-new
     new SqliteNodeRunRepository(db);
-    // Second construction re-runs ensureSaga3NodeRunSchema; the PRAGMA-check
+    // Second construction re-runs ensureFactoryNodeRunSchema; the PRAGMA-check
     // guards + CREATE UNIQUE INDEX IF NOT EXISTS must make it a no-op.
     // eslint-disable-next-line no-new
     new SqliteNodeRunRepository(db);
@@ -569,11 +569,11 @@ test('v2 row survives DB reopen', () => {
     startedId = started.id;
 
     // Close and reopen the SAME db file. getDb() reruns SCHEMA_SQL + the
-    // db.ts migrations (including the dual-placement saga3_node_runs ALTERs).
+    // db.ts migrations (including the dual-placement factory_node_runs ALTERs).
     closeDb();
     db = getDb();
     db.pragma('foreign_keys = OFF');
-    // The constructor reruns ensureSaga3NodeRunSchema — must be idempotent.
+    // The constructor reruns ensureFactoryNodeRunSchema — must be idempotent.
     repo = new SqliteNodeRunRepository(db);
     const resumed = repo.readByExactCursor(700, 'persist', 1);
     assert.ok(resumed, 'row must survive reopen');
@@ -605,7 +605,7 @@ test('upgrade path: pre-Wave-3 schema DB gains v2 columns + index via ctor', () 
     // Create the table with ONLY the legacy columns (simulate a pre-Wave-3 DB
     // before any v2 migration ran). No v2 columns, no resume index.
     db.exec(`
-      CREATE TABLE saga3_node_runs (
+      CREATE TABLE factory_node_runs (
         id              INTEGER PRIMARY KEY AUTOINCREMENT,
         process_run_id INTEGER NOT NULL,
         node_id        TEXT NOT NULL,
@@ -628,7 +628,7 @@ test('upgrade path: pre-Wave-3 schema DB gains v2 columns + index via ctor', () 
     `);
     // Insert a legacy row so we can prove it round-trips after upgrade.
     db.prepare(
-      `INSERT INTO saga3_node_runs (process_run_id, node_id, node_kind, attempt, status, event, output_ref, output_hash)
+      `INSERT INTO factory_node_runs (process_run_id, node_id, node_kind, attempt, status, event, output_ref, output_hash)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(800, 'leg', 'kernel', 1, 'completed', 'domain.accept', 'leg-ref', 'leg-hash');
 
@@ -637,7 +637,7 @@ test('upgrade path: pre-Wave-3 schema DB gains v2 columns + index via ctor', () 
     for (const c of V2_COLUMNS) {
       assert.equal(cols.includes(c), false, `pre-upgrade: ${c} must not exist yet`);
     }
-    // Drop the singleton so the ctor's ensureSaga3NodeRunSchema runs the ALTERs.
+    // Drop the singleton so the ctor's ensureFactoryNodeRunSchema runs the ALTERs.
     // The repo ctor takes a db handle directly, so we just construct it.
     const repo = new SqliteNodeRunRepository(db);
 
@@ -647,7 +647,7 @@ test('upgrade path: pre-Wave-3 schema DB gains v2 columns + index via ctor', () 
       assert.ok(cols.includes(c), `post-upgrade: ${c} must exist`);
     }
     const idx = indexNames(db);
-    assert.ok(idx.includes('idx_saga3_node_runs_exact_cursor'));
+    assert.ok(idx.includes('idx_factory_node_runs_exact_cursor'));
 
     // The legacy row is preserved and readable via the v2 shape; its v2 fields
     // are all null (it predates Wave 3).
@@ -682,7 +682,7 @@ test('malformed JSON in a v2 column surfaces as null (no throw)', () => {
     const repo = new SqliteNodeRunRepository(db);
     const started = repo.startV2({ processRunId: 900, nodeId: 'n', nodeKind: 'kernel' });
     // Corrupt the node_ref column directly.
-    db.prepare('UPDATE saga3_node_runs SET node_ref=? WHERE id=?').run(
+    db.prepare('UPDATE factory_node_runs SET node_ref=? WHERE id=?').run(
       '{not valid json',
       started.id,
     );

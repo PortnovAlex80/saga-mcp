@@ -1,9 +1,9 @@
 /**
  * SQLite implementation of ProcessOutcomeCertificateRepository.
  *
- * Schema lives in saga3_process_outcome_certificates. The table is generic —
+ * Schema lives in factory_process_outcome_certificates. The table is generic —
  * any Process Module can write here. Discovery's existing D4 certificates stay
- * in saga3_discovery_outcome_certificates and are projected through this shape
+ * in factory_discovery_outcome_certificates and are projected through this shape
  * by a P3b adapter; they are NOT migrated. Formalization (P4) is the first
  * module to write here directly.
  *
@@ -35,15 +35,15 @@ import type {
   ProcessOutcomeCertificatePayload,
 } from './process-outcome-certificate.js';
 
-export function ensureSaga3ProcessOutcomeCertificateSchema(db: Database.Database): void {
+export function ensureFactoryProcessOutcomeCertificateSchema(db: Database.Database): void {
   db.exec(`
     -- Generic authoritative outcome certificate. One per ProcessRun. Lives
     -- alongside module-specific state (Discovery D4 stays in its own table and
     -- is projected via a P3b adapter; Formalization and later modules write
     -- here directly).
-    CREATE TABLE IF NOT EXISTS saga3_process_outcome_certificates (
+    CREATE TABLE IF NOT EXISTS factory_process_outcome_certificates (
       id                          INTEGER PRIMARY KEY AUTOINCREMENT,
-      process_run_id              INTEGER NOT NULL REFERENCES saga3_process_runs(id) ON DELETE CASCADE,
+      process_run_id              INTEGER NOT NULL REFERENCES factory_process_runs(id) ON DELETE CASCADE,
       project_id                  INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
       epic_id                     INTEGER,                            -- nullable: project-wide run
       module_name                 TEXT NOT NULL,
@@ -63,16 +63,16 @@ export function ensureSaga3ProcessOutcomeCertificateSchema(db: Database.Database
     -- One certificate per ProcessRun. A second certificate for the same run
     -- must carry the SAME hash (idempotent replay); a different hash is
     -- rejected in code with PROCESS_RUN_ALREADY_CERTIFIED.
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_saga3_poc_process_run
-      ON saga3_process_outcome_certificates(process_run_id);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_factory_poc_process_run
+      ON factory_process_outcome_certificates(process_run_id);
 
     -- Lookups by project + epic.
-    CREATE INDEX IF NOT EXISTS idx_saga3_poc_project
-      ON saga3_process_outcome_certificates(project_id, epic_id);
+    CREATE INDEX IF NOT EXISTS idx_factory_poc_project
+      ON factory_process_outcome_certificates(project_id, epic_id);
 
     -- Lookups by module ref (conformance queries, replay checks).
-    CREATE INDEX IF NOT EXISTS idx_saga3_poc_module
-      ON saga3_process_outcome_certificates(module_ref_key, project_id);
+    CREATE INDEX IF NOT EXISTS idx_factory_poc_module
+      ON factory_process_outcome_certificates(module_ref_key, project_id);
   `);
 }
 
@@ -121,7 +121,7 @@ function rowToCertificate(row: CertificateRow): ProcessOutcomeCertificate {
 }
 
 function readRowById(db: Database.Database, id: number): CertificateRow | null {
-  const row = db.prepare('SELECT * FROM saga3_process_outcome_certificates WHERE id=?')
+  const row = db.prepare('SELECT * FROM factory_process_outcome_certificates WHERE id=?')
     .get(id) as CertificateRow | undefined;
   return row ?? null;
 }
@@ -131,7 +131,7 @@ export class SqliteProcessOutcomeCertificateRepository implements ProcessOutcome
 
   constructor(db: Database.Database = getDb()) {
     this.db = db;
-    ensureSaga3ProcessOutcomeCertificateSchema(this.db);
+    ensureFactoryProcessOutcomeCertificateSchema(this.db);
   }
 
   issue(
@@ -142,7 +142,7 @@ export class SqliteProcessOutcomeCertificateRepository implements ProcessOutcome
 
     // Idempotency: check for an existing certificate for this process_run_id.
     const existing = this.db.prepare(
-      'SELECT * FROM saga3_process_outcome_certificates WHERE process_run_id=?',
+      'SELECT * FROM factory_process_outcome_certificates WHERE process_run_id=?',
     ).get(command.processRunId) as CertificateRow | undefined;
 
     if (existing) {
@@ -157,7 +157,7 @@ export class SqliteProcessOutcomeCertificateRepository implements ProcessOutcome
     }
 
     const info = this.db.prepare(
-      `INSERT INTO saga3_process_outcome_certificates
+      `INSERT INTO factory_process_outcome_certificates
          (process_run_id, project_id, epic_id, module_name, module_version,
           module_ref_key, schema_version, decision, reason_codes, rationale,
           input_hash, certificate_payload, certificate_hash, authority)
@@ -190,14 +190,14 @@ export class SqliteProcessOutcomeCertificateRepository implements ProcessOutcome
 
   readByProcessRun(processRunId: number): ProcessOutcomeCertificate | null {
     const row = this.db.prepare(
-      'SELECT * FROM saga3_process_outcome_certificates WHERE process_run_id=?',
+      'SELECT * FROM factory_process_outcome_certificates WHERE process_run_id=?',
     ).get(processRunId) as CertificateRow | undefined;
     return row ? rowToCertificate(row) : null;
   }
 
   readByHash(certificateHash: string): ProcessOutcomeCertificate | null {
     const row = this.db.prepare(
-      'SELECT * FROM saga3_process_outcome_certificates WHERE certificate_hash=?',
+      'SELECT * FROM factory_process_outcome_certificates WHERE certificate_hash=?',
     ).get(certificateHash) as CertificateRow | undefined;
     return row ? rowToCertificate(row) : null;
   }
@@ -205,10 +205,10 @@ export class SqliteProcessOutcomeCertificateRepository implements ProcessOutcome
   list(projectId: number, epicId: number | null): readonly ProcessOutcomeCertificate[] {
     const rows = epicId === null
       ? this.db.prepare(
-          'SELECT * FROM saga3_process_outcome_certificates WHERE project_id=? ORDER BY id DESC',
+          'SELECT * FROM factory_process_outcome_certificates WHERE project_id=? ORDER BY id DESC',
         ).all(projectId) as CertificateRow[]
       : this.db.prepare(
-          'SELECT * FROM saga3_process_outcome_certificates WHERE project_id=? AND epic_id=? ORDER BY id DESC',
+          'SELECT * FROM factory_process_outcome_certificates WHERE project_id=? AND epic_id=? ORDER BY id DESC',
         ).all(projectId, epicId) as CertificateRow[];
     return rows.map(rowToCertificate);
   }
@@ -219,7 +219,7 @@ export class SqliteProcessOutcomeCertificateRepository implements ProcessOutcome
     processRunId: number,
   ): ProcessOutcomeCertificate | null {
     const row = this.db.prepare(
-      `SELECT * FROM saga3_process_outcome_certificates
+      `SELECT * FROM factory_process_outcome_certificates
         WHERE project_id=? AND module_ref_key=? AND process_run_id=?`,
     ).get(projectId, processModuleKey(moduleRef), processRunId) as CertificateRow | undefined;
     return row ? rowToCertificate(row) : null;

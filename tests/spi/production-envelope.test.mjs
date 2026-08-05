@@ -68,7 +68,7 @@ class BogusInstance {
 // ---------------------------------------------------------------------------
 
 function validProductRef() {
-  return { schemaId: 'saga3.discovery-proposal.v1', ref: 'proposal:141', digest: 'abc123' };
+  return { schemaId: 'factory.discovery-proposal.v1', ref: 'proposal:141', digest: 'abc123' };
 }
 
 function validLineageRef() {
@@ -77,11 +77,11 @@ function validLineageRef() {
 
 function validNodeProductionEnvelope() {
   return {
-    schema: 'saga3.discovery-proposal.v1',
+    schema: 'factory.discovery-proposal.v1',
     artifactRef: 'proposal:141',
     contentHash: 'deadbeef',
     bindings: { proposalId: 141, proposalHash: 'deadbeef' },
-    schemaId: 'saga3.node-production-envelope.v1',
+    schemaId: 'factory.node-production-envelope.v1',
     productRef: validProductRef(),
     lineage: [validLineageRef()],
   };

@@ -68,7 +68,7 @@ function nodeRun(overrides = {}) {
 const RUN_INPUT = { objective: 'author a result', projectId: 1 };
 
 const AUTHOR_PRODUCTION = {
-  schema: 'saga3.authored-result.v1',
+  schema: 'factory.authored-result.v1',
   artifactRef: 'artifact:author:7',
   contentHash: 'a'.repeat(64),
   bindings: { artifactId: 7, verified: true },
@@ -223,7 +223,7 @@ test('assembleFrameFromDurableNodeRuns: a completed row with NO output fields co
 
 test('assembleFrameFromDurableNodeRuns: a multi-node run unions productions by nodeId (the durable chain)', () => {
   const VERIFY_PRODUCTION = {
-    schema: 'saga3.verified-result.v1',
+    schema: 'factory.verified-result.v1',
     artifactRef: 'artifact:verify:9',
     contentHash: 'b'.repeat(64),
     bindings: { gate: 'passed' },

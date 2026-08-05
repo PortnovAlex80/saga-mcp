@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-const { Saga3DiscoveryNormalizationService } = await import(
+const { FactoryDiscoveryNormalizationService } = await import(
   '../../dist/modules/discovery/application/discovery-normalization-service.js'
 );
 const {
@@ -14,7 +14,7 @@ const config = {
   dbPath: '/tmp/saga.db', claudePath: '/claude', lmStudioUrl: 'http://lm/v1',
   zaiBaseUrl: 'http://zai', trackerAutostart: false, trackerPort: 4321,
   trackerReloadSec: 5, trackerSpawned: false, trackerNoBrowser: true,
-  orchestrationMode: 'saga3-discovery',
+  orchestrationMode: 'factory-discovery',
 };
 
 function host() {
@@ -50,7 +50,7 @@ test('D2 normalization service pauses both intents when executor status throws',
     dispose: () => { calls.push('dispose'); },
     setConcurrency: () => {},
   };
-  const service = new Saga3DiscoveryNormalizationService({
+  const service = new FactoryDiscoveryNormalizationService({
     config,
     workerExecutorFactory: () => executor,
     host: host(),

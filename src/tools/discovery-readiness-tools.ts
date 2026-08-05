@@ -11,13 +11,13 @@
  *
  * The advisor PROPOSES an assessment; only the kernel accepts it. The product
  * Proposal provenance and the readiness-advisor provenance are separate
- * lineages — an advisor execution_id never lands in a saga3_proposals row.
+ * lineages — an advisor execution_id never lands in a factory_proposals row.
  */
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import { getDb } from '../db.js';
 import type { ToolHandler } from '../types.js';
 import { withImmediateTransaction } from './dispatcher.js';
-import { argInt, argStr, SAGA3_TOOL_CALL_SHAPES, SAGA3_ARG_SOURCES, enrichPayloadErrors } from './discovery-tool-args.js';
+import { argInt, argStr, FACTORY_TOOL_CALL_SHAPES, FACTORY_ARG_SOURCES, enrichPayloadErrors } from './discovery-tool-args.js';
 import { readExecutionContextStrict } from '../shared/authority/authorize-tool-call.js';
 import {
   DISCOVERY_READINESS_ASSESSMENT_SCHEMA,
@@ -27,7 +27,7 @@ import {
 import type { ProposalProvenance } from '../modules/discovery/domain/proposal.js';
 import { validateDiscoveryProposal, type DiscoveryProposalPayload } from '../modules/discovery/domain/discovery-proposal.js';
 import {
-  ensureSaga3ReadinessSchema,
+  ensureFactoryReadinessSchema,
   insertReadinessAssessment,
   markReadinessAccepted,
   markReadinessRejected,
@@ -83,7 +83,7 @@ function requireReadinessBinding(
   const control = db.prepare(
     `SELECT id, epic_id, proposal_id, proposal_content_hash, source_intent_id,
             authority_intent_id, projected_task_id, status
-       FROM saga3_readiness_control_intents WHERE id=?`,
+       FROM factory_readiness_control_intents WHERE id=?`,
   ).get(controlIntentId) as ReadinessControlRow | undefined;
   if (!control) throw new Error(`readiness: ControlIntent ${controlIntentId} not found`);
   if (control.authority_intent_id !== strict.snapshot.work_intent_id) {
@@ -140,7 +140,7 @@ export function createDiscoveryReadinessHandlers(
   options: DiscoveryReadinessHandlersOptions = {},
 ): { definitions: Tool[]; handlers: Record<string, ToolHandler> } {
   const getDbFn = options.db ?? getDb;
-  ensureSaga3ReadinessSchema(getDbFn());
+  ensureFactoryReadinessSchema(getDbFn());
 
   const readinessGet: ToolHandler = args => {
     const controlIntentId = integerArg(args, 'control_intent_id');
@@ -150,7 +150,7 @@ export function createDiscoveryReadinessHandlers(
     const proposal = db.prepare(
       `SELECT id, intent_id, task_id, execution_id, payload, content_hash,
               provenance, source_submission_id, normalization_proposal_id
-         FROM saga3_proposals WHERE id=?`,
+         FROM factory_proposals WHERE id=?`,
     ).get(binding.control.proposal_id) as ProductProposalRow | undefined;
     if (!proposal) {
       throw new Error(`readiness_get: Proposal ${binding.control.proposal_id} not found`);
@@ -194,7 +194,7 @@ export function createDiscoveryReadinessHandlers(
       const proposal = db.prepare(
         `SELECT id, intent_id, task_id, execution_id, payload, content_hash,
                 provenance, source_submission_id, normalization_proposal_id
-           FROM saga3_proposals WHERE id=?`,
+           FROM factory_proposals WHERE id=?`,
       ).get(binding.control.proposal_id) as ProductProposalRow | undefined;
       if (!proposal) {
         throw new Error(`readiness_submit: Proposal ${binding.control.proposal_id} not found`);
@@ -226,7 +226,7 @@ export function createDiscoveryReadinessHandlers(
         targetErrors.push(`Proposal intent_id=${proposal.intent_id} does not match ControlIntent source_intent_id=${binding.control.source_intent_id}`);
       }
       // Epic binding: the source WorkIntent's epic must equal the ControlIntent's epic.
-      const sourceIntentEpic = db.prepare('SELECT epic_id FROM saga3_work_intents WHERE id=?')
+      const sourceIntentEpic = db.prepare('SELECT epic_id FROM factory_work_intents WHERE id=?')
         .get(binding.control.source_intent_id) as { epic_id: number } | undefined;
       if (!sourceIntentEpic || sourceIntentEpic.epic_id !== binding.control.epic_id) {
         targetErrors.push('ControlIntent source_intent_id is not bound to this epic');
@@ -285,7 +285,7 @@ export function createDiscoveryReadinessHandlers(
         // the kernel rejected; the decision is durable.
         markReadinessRejected(db, inserted.record.id, validation.errors);
         db.prepare(
-          `INSERT INTO comments (task_id, author, content) VALUES (?, 'saga3-kernel', ?)`,
+          `INSERT INTO comments (task_id, author, content) VALUES (?, 'factory-kernel', ?)`,
         ).run(
           binding.control.projected_task_id,
           `Readiness assessment REJECTED: control=${controlIntentId} assessment=${inserted.record.id} errors=${validation.errors.length > 0 ? validation.errors[0].slice(0, 120) : 'unknown'}`,
@@ -319,13 +319,13 @@ export function createDiscoveryReadinessHandlers(
       // IS the kernel acceptance gate. Update the denormalized verdict columns.
       markReadinessAccepted(db, inserted.record.id);
       db.prepare(
-        `UPDATE saga3_readiness_assessments
+        `UPDATE factory_readiness_assessments
             SET overall_readiness=?, recommended_next_action=?
           WHERE id=? AND status='accepted_by_kernel'`,
       ).run(typed.overall_readiness, typed.recommended_next_action, inserted.record.id);
 
       db.prepare(
-        `INSERT INTO comments (task_id, author, content) VALUES (?, 'saga3-kernel', ?)`,
+        `INSERT INTO comments (task_id, author, content) VALUES (?, 'factory-kernel', ?)`,
       ).run(
         binding.control.projected_task_id,
         `Readiness assessment accepted: control=${controlIntentId} assessment=${inserted.record.id} overall=${typed.overall_readiness} hash=${inserted.record.content_hash.slice(0, 12)}…`,
@@ -357,7 +357,7 @@ export function createDiscoveryReadinessHandlers(
       },
       {
         name: 'readiness_submit',
-        description: 'Submit one typed readiness assessment for the immutable Proposal bound to the ControlIntent. The kernel validates it deterministically and accepts or rejects; this never modifies the product Proposal or the discovery outcome. Call shape: readiness_submit({ control_intent_id: <int from task_get.metadata.control_intent_id>, execution_id: <string, your execution_id>, schema_version: "saga3.discovery-readiness-assessment.v1", payload: { proposal_id: <int from readiness_get, echo verbatim>, proposal_content_hash: "<64-char hex from readiness_get, echo verbatim>", overall_readiness: "ready|conditionally_ready|not_ready|inconclusive", dimension_assessments: { problem_clarity: { status: "sufficient|partial|insufficient|unknown", rationale: <string>, source_refs: <string[] from allowed_source_refs> }, scope_boundedness: {...}, stakeholder_coverage: {...}, assumption_visibility: {...}, unknowns_manageability: {...}, risk_visibility: {...}, evidence_grounding: {...} }, blocking_gaps: [ { code: <string>, description: <string>, source_refs: <string[]> } ], non_blocking_gaps: [ { code, description, source_refs[] } ], recommended_next_action: "proceed_to_settlement|request_clarification|repeat_discovery|defer|reject|manual_review", confidence: <number 0..1>, rationale: <string> } }). IMPORTANT: control_intent_id/execution_id/schema_version are TOP-LEVEL args, NOT inside payload; all source_refs must come from the allowed_source_refs list returned by readiness_get.',
+        description: 'Submit one typed readiness assessment for the immutable Proposal bound to the ControlIntent. The kernel validates it deterministically and accepts or rejects; this never modifies the product Proposal or the discovery outcome. Call shape: readiness_submit({ control_intent_id: <int from task_get.metadata.control_intent_id>, execution_id: <string, your execution_id>, schema_version: "factory.discovery-readiness-assessment.v1", payload: { proposal_id: <int from readiness_get, echo verbatim>, proposal_content_hash: "<64-char hex from readiness_get, echo verbatim>", overall_readiness: "ready|conditionally_ready|not_ready|inconclusive", dimension_assessments: { problem_clarity: { status: "sufficient|partial|insufficient|unknown", rationale: <string>, source_refs: <string[] from allowed_source_refs> }, scope_boundedness: {...}, stakeholder_coverage: {...}, assumption_visibility: {...}, unknowns_manageability: {...}, risk_visibility: {...}, evidence_grounding: {...} }, blocking_gaps: [ { code: <string>, description: <string>, source_refs: <string[]> } ], non_blocking_gaps: [ { code, description, source_refs[] } ], recommended_next_action: "proceed_to_settlement|request_clarification|repeat_discovery|defer|reject|manual_review", confidence: <number 0..1>, rationale: <string> } }). IMPORTANT: control_intent_id/execution_id/schema_version are TOP-LEVEL args, NOT inside payload; all source_refs must come from the allowed_source_refs list returned by readiness_get.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -379,11 +379,11 @@ export function createDiscoveryReadinessHandlers(
 }
 
 function integerArg(args: Record<string, unknown>, key: string): number {
-  const shape = key === 'control_intent_id' ? SAGA3_TOOL_CALL_SHAPES.readiness_get : SAGA3_TOOL_CALL_SHAPES.readiness_submit;
-  return argInt('readiness', args, key, { source: SAGA3_ARG_SOURCES[key as keyof typeof SAGA3_ARG_SOURCES] ?? key, expected: shape });
+  const shape = key === 'control_intent_id' ? FACTORY_TOOL_CALL_SHAPES.readiness_get : FACTORY_TOOL_CALL_SHAPES.readiness_submit;
+  return argInt('readiness', args, key, { source: FACTORY_ARG_SOURCES[key as keyof typeof FACTORY_ARG_SOURCES] ?? key, expected: shape });
 }
 
 function stringArg(args: Record<string, unknown>, key: string): string {
-  const shape = key === 'execution_id' ? SAGA3_TOOL_CALL_SHAPES.readiness_get : SAGA3_TOOL_CALL_SHAPES.readiness_submit;
-  return argStr('readiness', args, key, { source: SAGA3_ARG_SOURCES[key as keyof typeof SAGA3_ARG_SOURCES] ?? key, expected: shape });
+  const shape = key === 'execution_id' ? FACTORY_TOOL_CALL_SHAPES.readiness_get : FACTORY_TOOL_CALL_SHAPES.readiness_submit;
+  return argStr('readiness', args, key, { source: FACTORY_ARG_SOURCES[key as keyof typeof FACTORY_ARG_SOURCES] ?? key, expected: shape });
 }

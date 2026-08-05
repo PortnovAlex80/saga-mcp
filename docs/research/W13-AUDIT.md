@@ -66,7 +66,7 @@
 
 ### ❌ §18.10/11 — Нет real model-driven e2e
 - DoD test `tests/execution/definition-of-done.test.mjs:1061`: `executor: { kind: 'legacy-adapter', execute: async () => { throw new Error('not executed at install time'); } }`
-- `grep -rln "createLegacyClaudeWorkerExecutorFactory" tests/` → пусто. Ни один тест не спавнит реальный claude.
+- `grep -rln "createPinnedClaudeWorkerExecutorFactory" tests/` → пусто. Ни один тест не спавнит реальный claude.
 
 ## Рекомендации (НЕ чинить — только список)
 

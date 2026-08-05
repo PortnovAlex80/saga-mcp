@@ -30,16 +30,16 @@ function developmentFixture() {
     projectId: 1,
     epicId: 10,
     formalizationCertificate: {
-      ...ref('saga3.formalization-certificate.v1', 'certificate', 'formal-cert'),
+      ...ref('factory.formalization-certificate.v1', 'certificate', 'formal-cert'),
       decision: 'formalized',
     },
     solutionContract: ref(
-      'saga3.solution-contract-certificate.v1',
+      'factory.solution-contract-certificate.v1',
       'solution-contract',
       'solution-contract-hash',
     ),
     acceptanceBaselineHash: 'baseline-hash',
-    srs: ref('saga3.formalization-srs.v1', 'artifact', 'srs-hash'),
+    srs: ref('factory.formalization-srs.v1', 'artifact', 'srs-hash'),
     acceptanceCriteria: [{
       artifactId: 101,
       code: 'AC-1',
@@ -108,7 +108,7 @@ function developmentFixture() {
       implementationExecutionId: 'implementation-execution',
       reviewExecutionId: 'review-execution',
       reviewedSourceCommit: 'reviewed-source-commit',
-      result: ref('saga3.implementation-result.v1', 'artifact', 'result-hash'),
+      result: ref('factory.implementation-result.v1', 'artifact', 'result-hash'),
       reasonCodes: [],
     }],
     complete: true,
@@ -154,7 +154,7 @@ function developmentFixture() {
       acceptedCriterionHash: 'ac-1-hash',
       candidateHash: integratedCandidate.candidateHash,
       outcome: 'passed',
-      evidence: ref('saga3.verification-evidence.v1', 'evidence', 'evidence-hash'),
+      evidence: ref('factory.verification-evidence.v1', 'evidence', 'evidence-hash'),
       provider: {
         providerId: 1,
         name: 'deterministic-test-provider',
@@ -254,7 +254,7 @@ function deliveryFixture() {
     policy,
     operatorAuthorization: {
       ...ref(
-        'saga3.operator-release-authorization.v1',
+        'factory.operator-release-authorization.v1',
         'authorization',
         'authorization-hash',
       ),
@@ -277,7 +277,7 @@ function deliveryFixture() {
       checkId: 'candidate-integrity',
       subjectCandidateHash: 'candidate-hash',
       outcome: 'passed',
-      evidence: ref('saga3.preflight-evidence.v1', 'evidence', 'preflight-evidence'),
+      evidence: ref('factory.preflight-evidence.v1', 'evidence', 'preflight-evidence'),
       provider: {
         providerId: 2,
         name: 'ci',
@@ -299,7 +299,7 @@ function deliveryFixture() {
     preflightHash: preflight.preflightHash,
     releasePolicyHash: policy.contentHash,
     decision: ref(
-      'saga3.authorized-release-decision.v1',
+      'factory.authorized-release-decision.v1',
       'approval',
       'approval-decision-hash',
     ),
@@ -358,7 +358,7 @@ function deliveryFixture() {
       observedStateHash: action.desiredStateHash,
       outcome: 'matched',
       observation: ref(
-        'saga3.authoritative-state-observation.v1',
+        'factory.authoritative-state-observation.v1',
         'observation',
         'observation-evidence-hash',
       ),

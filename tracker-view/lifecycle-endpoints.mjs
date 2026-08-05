@@ -145,9 +145,9 @@ export function createLifecycleEndpointsApi({
                   CASE WHEN lr.status='created' THEN lr.entry_stage_id ELSE lr.status END
                 ) AS current_stage
            FROM epics e
-           LEFT JOIN saga3_lifecycle_runs lr ON lr.id=(
+           LEFT JOIN factory_lifecycle_runs lr ON lr.id=(
              SELECT candidate.id
-               FROM saga3_lifecycle_runs candidate
+               FROM factory_lifecycle_runs candidate
               WHERE candidate.epic_id=e.id
               ORDER BY candidate.id DESC
               LIMIT 1

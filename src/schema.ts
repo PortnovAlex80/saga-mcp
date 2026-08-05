@@ -77,7 +77,7 @@ CREATE TABLE IF NOT EXISTS epics (
 );
 
 -- saga4 cutover note: this table is NO LONGER an executable state machine.
--- The stage source of truth is now saga3_lifecycle_runs. Engine control-plane
+-- The stage source of truth is now factory_lifecycle_runs. Engine control-plane
 -- metadata lives in lifecycle_execution_controls. This table is kept as a
 -- compatibility projection target — some code paths still read/seed it for
 -- provenance checks. It will be fully removed once all readers are migrated.
@@ -661,7 +661,7 @@ CREATE INDEX IF NOT EXISTS idx_integration_intents_state ON integration_intents(
 -- payload shape. Purely additive.
 -- ---------------------------------------------------------------------------
 
-CREATE TABLE IF NOT EXISTS saga3_work_intents (
+CREATE TABLE IF NOT EXISTS factory_work_intents (
   id              INTEGER PRIMARY KEY AUTOINCREMENT,
   epic_id         INTEGER NOT NULL REFERENCES epics(id) ON DELETE CASCADE,
   kind            TEXT NOT NULL,             -- 'discovery', later 'formalization', etc.
@@ -677,9 +677,9 @@ CREATE TABLE IF NOT EXISTS saga3_work_intents (
   updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
-CREATE TABLE IF NOT EXISTS saga3_raw_submissions (
+CREATE TABLE IF NOT EXISTS factory_raw_submissions (
   id                    INTEGER PRIMARY KEY AUTOINCREMENT,
-  intent_id             INTEGER NOT NULL REFERENCES saga3_work_intents(id) ON DELETE CASCADE,
+  intent_id             INTEGER NOT NULL REFERENCES factory_work_intents(id) ON DELETE CASCADE,
   task_id               INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
   execution_id          TEXT NOT NULL,
   kind                  TEXT NOT NULL,
@@ -697,13 +697,13 @@ CREATE TABLE IF NOT EXISTS saga3_raw_submissions (
   created_at            TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
-CREATE TABLE IF NOT EXISTS saga3_control_intents (
+CREATE TABLE IF NOT EXISTS factory_control_intents (
   id                    INTEGER PRIMARY KEY AUTOINCREMENT,
   epic_id               INTEGER NOT NULL REFERENCES epics(id) ON DELETE CASCADE,
   kind                  TEXT NOT NULL,
   question              TEXT NOT NULL,
-  source_submission_id  INTEGER NOT NULL UNIQUE REFERENCES saga3_raw_submissions(id) ON DELETE CASCADE,
-  authority_intent_id   INTEGER NOT NULL REFERENCES saga3_work_intents(id) ON DELETE CASCADE,
+  source_submission_id  INTEGER NOT NULL UNIQUE REFERENCES factory_raw_submissions(id) ON DELETE CASCADE,
+  authority_intent_id   INTEGER NOT NULL REFERENCES factory_work_intents(id) ON DELETE CASCADE,
   projected_task_id     INTEGER REFERENCES tasks(id) ON DELETE SET NULL,
   status                TEXT NOT NULL DEFAULT 'open'
                           CHECK (status IN ('open','executing','paused','concluded','cancelled')),
@@ -711,10 +711,10 @@ CREATE TABLE IF NOT EXISTS saga3_control_intents (
   updated_at            TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
-CREATE TABLE IF NOT EXISTS saga3_normalization_proposals (
+CREATE TABLE IF NOT EXISTS factory_normalization_proposals (
   id                    INTEGER PRIMARY KEY AUTOINCREMENT,
-  control_intent_id     INTEGER NOT NULL REFERENCES saga3_control_intents(id) ON DELETE CASCADE,
-  source_submission_id  INTEGER NOT NULL REFERENCES saga3_raw_submissions(id) ON DELETE CASCADE,
+  control_intent_id     INTEGER NOT NULL REFERENCES factory_control_intents(id) ON DELETE CASCADE,
+  source_submission_id  INTEGER NOT NULL REFERENCES factory_raw_submissions(id) ON DELETE CASCADE,
   task_id               INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
   execution_id          TEXT NOT NULL,
   payload               TEXT NOT NULL,
@@ -725,28 +725,28 @@ CREATE TABLE IF NOT EXISTS saga3_normalization_proposals (
   created_at            TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_saga3_raw_submission_idempotency
-  ON saga3_raw_submissions(intent_id, execution_id, raw_hash);
-CREATE INDEX IF NOT EXISTS idx_saga3_raw_submission_intent
-  ON saga3_raw_submissions(intent_id);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_saga3_normalization_idempotency
-  ON saga3_normalization_proposals(control_intent_id, execution_id, content_hash);
-CREATE INDEX IF NOT EXISTS idx_saga3_control_epic
-  ON saga3_control_intents(epic_id, status);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_factory_raw_submission_idempotency
+  ON factory_raw_submissions(intent_id, execution_id, raw_hash);
+CREATE INDEX IF NOT EXISTS idx_factory_raw_submission_intent
+  ON factory_raw_submissions(intent_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_factory_normalization_idempotency
+  ON factory_normalization_proposals(control_intent_id, execution_id, content_hash);
+CREATE INDEX IF NOT EXISTS idx_factory_control_epic
+  ON factory_control_intents(epic_id, status);
 
 -- D3: shadow readiness advisor. A readiness ControlIntent is keyed by the
 -- IMMUTABLE Proposal version (proposal_id + proposal_content_hash), not by a
 -- raw submission: a changed content hash is a new assessment target. This is
--- a separate table from saga3_control_intents (whose UNIQUE is on
+-- a separate table from factory_control_intents (whose UNIQUE is on
 -- source_submission_id) so the two control kinds never collide.
-CREATE TABLE IF NOT EXISTS saga3_readiness_control_intents (
+CREATE TABLE IF NOT EXISTS factory_readiness_control_intents (
   id                    INTEGER PRIMARY KEY AUTOINCREMENT,
   epic_id               INTEGER NOT NULL REFERENCES epics(id) ON DELETE CASCADE,
   kind                  TEXT NOT NULL,                        -- 'AssessDiscoveryReadiness'
-  proposal_id           INTEGER NOT NULL REFERENCES saga3_proposals(id) ON DELETE CASCADE,
+  proposal_id           INTEGER NOT NULL REFERENCES factory_proposals(id) ON DELETE CASCADE,
   proposal_content_hash TEXT NOT NULL,                        -- binds to one immutable Proposal version
-  source_intent_id      INTEGER NOT NULL REFERENCES saga3_work_intents(id) ON DELETE CASCADE,
-  authority_intent_id   INTEGER NOT NULL REFERENCES saga3_work_intents(id) ON DELETE CASCADE,
+  source_intent_id      INTEGER NOT NULL REFERENCES factory_work_intents(id) ON DELETE CASCADE,
+  authority_intent_id   INTEGER NOT NULL REFERENCES factory_work_intents(id) ON DELETE CASCADE,
   projected_task_id     INTEGER REFERENCES tasks(id) ON DELETE SET NULL,
   status                TEXT NOT NULL DEFAULT 'open'
                           CHECK (status IN ('open','executing','paused','concluded','cancelled')),
@@ -754,10 +754,10 @@ CREATE TABLE IF NOT EXISTS saga3_readiness_control_intents (
   updated_at            TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
-CREATE TABLE IF NOT EXISTS saga3_readiness_assessments (
+CREATE TABLE IF NOT EXISTS factory_readiness_assessments (
   id                       INTEGER PRIMARY KEY AUTOINCREMENT,
-  control_intent_id        INTEGER NOT NULL REFERENCES saga3_readiness_control_intents(id) ON DELETE CASCADE,
-  proposal_id              INTEGER NOT NULL REFERENCES saga3_proposals(id) ON DELETE CASCADE,
+  control_intent_id        INTEGER NOT NULL REFERENCES factory_readiness_control_intents(id) ON DELETE CASCADE,
+  proposal_id              INTEGER NOT NULL REFERENCES factory_proposals(id) ON DELETE CASCADE,
   proposal_content_hash    TEXT NOT NULL,
   task_id                  INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
   execution_id             TEXT NOT NULL,
@@ -773,26 +773,26 @@ CREATE TABLE IF NOT EXISTS saga3_readiness_assessments (
 );
 
 -- One readiness ControlIntent per immutable Proposal version.
-CREATE UNIQUE INDEX IF NOT EXISTS idx_saga3_readiness_control_target
-  ON saga3_readiness_control_intents(proposal_id, proposal_content_hash);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_factory_readiness_control_target
+  ON factory_readiness_control_intents(proposal_id, proposal_content_hash);
 -- Idempotent submission keyed by immutable assessment target + submitted
 -- content, INDEPENDENT of execution_id (P1-3): a restart with a new execution
 -- must reuse the same assessment row, not create a duplicate.
-CREATE UNIQUE INDEX IF NOT EXISTS idx_saga3_readiness_assessment_idempotency
-  ON saga3_readiness_assessments(control_intent_id, content_hash);
-CREATE INDEX IF NOT EXISTS idx_saga3_readiness_control_epic
-  ON saga3_readiness_control_intents(epic_id, status);
-CREATE INDEX IF NOT EXISTS idx_saga3_readiness_assessment_control
-  ON saga3_readiness_assessments(control_intent_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_factory_readiness_assessment_idempotency
+  ON factory_readiness_assessments(control_intent_id, content_hash);
+CREATE INDEX IF NOT EXISTS idx_factory_readiness_control_epic
+  ON factory_readiness_control_intents(epic_id, status);
+CREATE INDEX IF NOT EXISTS idx_factory_readiness_assessment_control
+  ON factory_readiness_assessments(control_intent_id);
 
 -- D4: authoritative discovery settlement. A settlement binds the immutable
 -- settlement INPUT (proposal hash + readiness hash + policy version/hash) to a
 -- deterministic kernel decision. Kernel-only: no LM WorkIntent, no worker task.
 -- Provisional Proposal lineage is separate and never mutated here.
-CREATE TABLE IF NOT EXISTS saga3_discovery_settlements (
+CREATE TABLE IF NOT EXISTS factory_discovery_settlements (
   id                          INTEGER PRIMARY KEY AUTOINCREMENT,
   epic_id                     INTEGER NOT NULL REFERENCES epics(id) ON DELETE CASCADE,
-  proposal_id                 INTEGER NOT NULL REFERENCES saga3_proposals(id) ON DELETE CASCADE,
+  proposal_id                 INTEGER NOT NULL REFERENCES factory_proposals(id) ON DELETE CASCADE,
   proposal_content_hash       TEXT NOT NULL,
   readiness_assessment_id     INTEGER,                           -- nullable: no accepted assessment
   readiness_assessment_hash   TEXT NOT NULL,                     -- sentinel 'none' when null assessment
@@ -811,11 +811,11 @@ CREATE TABLE IF NOT EXISTS saga3_discovery_settlements (
 
 -- D4: the immutable outcome certificate. 1:1 with a settlement. There is no
 -- UPDATE path for this table in code — certificates are write-once.
-CREATE TABLE IF NOT EXISTS saga3_discovery_outcome_certificates (
+CREATE TABLE IF NOT EXISTS factory_discovery_outcome_certificates (
   id                          INTEGER PRIMARY KEY AUTOINCREMENT,
-  settlement_id               INTEGER NOT NULL UNIQUE REFERENCES saga3_discovery_settlements(id) ON DELETE CASCADE,
+  settlement_id               INTEGER NOT NULL UNIQUE REFERENCES factory_discovery_settlements(id) ON DELETE CASCADE,
   epic_id                     INTEGER NOT NULL REFERENCES epics(id) ON DELETE CASCADE,
-  proposal_id                 INTEGER NOT NULL REFERENCES saga3_proposals(id) ON DELETE CASCADE,
+  proposal_id                 INTEGER NOT NULL REFERENCES factory_proposals(id) ON DELETE CASCADE,
   proposal_content_hash       TEXT NOT NULL,
   readiness_assessment_id     INTEGER,
   readiness_assessment_hash   TEXT NOT NULL,
@@ -832,12 +832,12 @@ CREATE TABLE IF NOT EXISTS saga3_discovery_outcome_certificates (
 
 -- One settlement per immutable INPUT target. A changed proposal hash, a
 -- changed readiness hash, or a new policy version is a NEW target.
-CREATE UNIQUE INDEX IF NOT EXISTS idx_saga3_settlement_input
-  ON saga3_discovery_settlements(
+CREATE UNIQUE INDEX IF NOT EXISTS idx_factory_settlement_input
+  ON factory_discovery_settlements(
     proposal_id, proposal_content_hash, readiness_assessment_hash,
     policy_version, policy_hash);
-CREATE INDEX IF NOT EXISTS idx_saga3_settlement_epic
-  ON saga3_discovery_settlements(epic_id, status);
+CREATE INDEX IF NOT EXISTS idx_factory_settlement_epic
+  ON factory_discovery_settlements(epic_id, status);
 
 -- D5: advisory diagnosis. A diagnosis control binds an immutable certificate
 -- TARGET (certificate_id + certificate_hash + diagnosis contract version) to a
@@ -845,17 +845,17 @@ CREATE INDEX IF NOT EXISTS idx_saga3_settlement_epic
 -- payload, content hash, status, separate provenance. The diagnosis is ADVISORY
 -- — it never mutates the D4 settlement/certificate, the product Proposal, or
 -- the readiness assessment.
-CREATE TABLE IF NOT EXISTS saga3_discovery_diagnosis_control_intents (
+CREATE TABLE IF NOT EXISTS factory_discovery_diagnosis_control_intents (
   id                          INTEGER PRIMARY KEY AUTOINCREMENT,
   epic_id                     INTEGER NOT NULL REFERENCES epics(id) ON DELETE CASCADE,
   kind                        TEXT NOT NULL DEFAULT 'DiagnoseDiscoveryOutcome',
-  certificate_id              INTEGER NOT NULL REFERENCES saga3_discovery_outcome_certificates(id) ON DELETE CASCADE,
+  certificate_id              INTEGER NOT NULL REFERENCES factory_discovery_outcome_certificates(id) ON DELETE CASCADE,
   certificate_hash            TEXT NOT NULL,
   settlement_input_hash       TEXT NOT NULL,
   diagnosis_case              TEXT NOT NULL,         -- canonical JSON of the immutable DiagnosisCase
   diagnosis_case_hash         TEXT NOT NULL,         -- SHA-256 over the case (captured_at excluded)
   diagnosis_contract_version  TEXT NOT NULL,
-  authority_intent_id         INTEGER NOT NULL REFERENCES saga3_work_intents(id) ON DELETE CASCADE,
+  authority_intent_id         INTEGER NOT NULL REFERENCES factory_work_intents(id) ON DELETE CASCADE,
   projected_task_id           INTEGER REFERENCES tasks(id) ON DELETE SET NULL,
   status                      TEXT NOT NULL DEFAULT 'open'
                                 CHECK (status IN ('open','executing','paused','concluded','cancelled')),
@@ -863,9 +863,9 @@ CREATE TABLE IF NOT EXISTS saga3_discovery_diagnosis_control_intents (
   updated_at                  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
-CREATE TABLE IF NOT EXISTS saga3_discovery_diagnosis_reports (
+CREATE TABLE IF NOT EXISTS factory_discovery_diagnosis_reports (
   id                          INTEGER PRIMARY KEY AUTOINCREMENT,
-  control_intent_id           INTEGER NOT NULL REFERENCES saga3_discovery_diagnosis_control_intents(id) ON DELETE CASCADE,
+  control_intent_id           INTEGER NOT NULL REFERENCES factory_discovery_diagnosis_control_intents(id) ON DELETE CASCADE,
   certificate_id              INTEGER NOT NULL,
   certificate_hash            TEXT NOT NULL,
   task_id                     INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
@@ -881,24 +881,24 @@ CREATE TABLE IF NOT EXISTS saga3_discovery_diagnosis_reports (
 );
 
 -- One control per immutable certificate target.
-CREATE UNIQUE INDEX IF NOT EXISTS idx_saga3_diagnosis_control_target
-  ON saga3_discovery_diagnosis_control_intents(certificate_id, certificate_hash, diagnosis_contract_version);
-CREATE INDEX IF NOT EXISTS idx_saga3_diagnosis_control_epic
-  ON saga3_discovery_diagnosis_control_intents(epic_id, status);
-CREATE INDEX IF NOT EXISTS idx_saga3_diagnosis_reports_control
-  ON saga3_discovery_diagnosis_reports(control_intent_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_factory_diagnosis_control_target
+  ON factory_discovery_diagnosis_control_intents(certificate_id, certificate_hash, diagnosis_contract_version);
+CREATE INDEX IF NOT EXISTS idx_factory_diagnosis_control_epic
+  ON factory_discovery_diagnosis_control_intents(epic_id, status);
+CREATE INDEX IF NOT EXISTS idx_factory_diagnosis_reports_control
+  ON factory_discovery_diagnosis_reports(control_intent_id);
 -- Idempotency: replaying the same report (same control + content hash) under a
 -- new execution returns the existing row. execution_id is NOT in the key.
-CREATE UNIQUE INDEX IF NOT EXISTS idx_saga3_diagnosis_reports_idempotency
-  ON saga3_discovery_diagnosis_reports(control_intent_id, content_hash);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_factory_diagnosis_reports_idempotency
+  ON factory_discovery_diagnosis_reports(control_intent_id, content_hash);
 -- P0-2: at-most-one accepted report per control (structural second line of
 -- defence; the runtime check lives inside BEGIN IMMEDIATE in the repo function).
-CREATE UNIQUE INDEX IF NOT EXISTS idx_saga3_diagnosis_reports_one_accepted
-  ON saga3_discovery_diagnosis_reports(control_intent_id) WHERE status='accepted_by_kernel';
+CREATE UNIQUE INDEX IF NOT EXISTS idx_factory_diagnosis_reports_one_accepted
+  ON factory_discovery_diagnosis_reports(control_intent_id) WHERE status='accepted_by_kernel';
 
-CREATE TABLE IF NOT EXISTS saga3_proposals (
+CREATE TABLE IF NOT EXISTS factory_proposals (
   id              INTEGER PRIMARY KEY AUTOINCREMENT,
-  intent_id       INTEGER NOT NULL REFERENCES saga3_work_intents(id) ON DELETE CASCADE,
+  intent_id       INTEGER NOT NULL REFERENCES factory_work_intents(id) ON DELETE CASCADE,
   task_id         INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
   execution_id    TEXT NOT NULL,             -- worker_executions fence (not FK: row may be pruned)
   kind            TEXT NOT NULL,             -- mirrors WorkIntent.kind ('discovery', …)
@@ -908,16 +908,16 @@ CREATE TABLE IF NOT EXISTS saga3_proposals (
   status          TEXT NOT NULL DEFAULT 'submitted'
                     CHECK (status IN ('submitted','superseded','rejected_by_kernel')),
   provenance      TEXT NOT NULL DEFAULT '{}',-- auto-captured model/provider/effort/worker/exec/time
-  source_submission_id INTEGER REFERENCES saga3_raw_submissions(id) ON DELETE SET NULL,
-  normalization_proposal_id INTEGER REFERENCES saga3_normalization_proposals(id) ON DELETE SET NULL,
+  source_submission_id INTEGER REFERENCES factory_raw_submissions(id) ON DELETE SET NULL,
+  normalization_proposal_id INTEGER REFERENCES factory_normalization_proposals(id) ON DELETE SET NULL,
   created_at      TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
-CREATE INDEX IF NOT EXISTS idx_saga3_work_intents_epic ON saga3_work_intents(epic_id);
-CREATE INDEX IF NOT EXISTS idx_saga3_work_intents_kind_status ON saga3_work_intents(kind, status);
-CREATE INDEX IF NOT EXISTS idx_saga3_proposals_intent ON saga3_proposals(intent_id);
-CREATE INDEX IF NOT EXISTS idx_saga3_proposals_task ON saga3_proposals(task_id);
-CREATE INDEX IF NOT EXISTS idx_saga3_proposals_kind ON saga3_proposals(kind);
+CREATE INDEX IF NOT EXISTS idx_factory_work_intents_epic ON factory_work_intents(epic_id);
+CREATE INDEX IF NOT EXISTS idx_factory_work_intents_kind_status ON factory_work_intents(kind, status);
+CREATE INDEX IF NOT EXISTS idx_factory_proposals_intent ON factory_proposals(intent_id);
+CREATE INDEX IF NOT EXISTS idx_factory_proposals_task ON factory_proposals(task_id);
+CREATE INDEX IF NOT EXISTS idx_factory_proposals_kind ON factory_proposals(kind);
 -- Idempotency: replaying the same submission (same intent + execution +
 -- content hash) must return the existing proposal, not create a duplicate.
 -- The worker's skill allows "fix the payload and submit once more" — without
@@ -925,12 +925,12 @@ CREATE INDEX IF NOT EXISTS idx_saga3_proposals_kind ON saga3_proposals(kind);
 -- first on readLatestProposalForIntent (ORDER BY id DESC). With it, an exact
 -- replay is a no-op; a corrected payload has a different content_hash and
 -- inserts normally (the engine reads the latest by id).
-CREATE UNIQUE INDEX IF NOT EXISTS idx_saga3_proposals_idempotency
-  ON saga3_proposals(intent_id, execution_id, content_hash);
--- saga4: saga3_lifecycle_runs is now read by production code (project_delete
+CREATE UNIQUE INDEX IF NOT EXISTS idx_factory_proposals_idempotency
+  ON factory_proposals(intent_id, execution_id, content_hash);
+-- saga4: factory_lifecycle_runs is now read by production code (project_delete
 -- safety guard), so it must exist in the base schema, not just as a lazy
 -- CREATE in the lifecycle-run-repository constructor.
-CREATE TABLE IF NOT EXISTS saga3_lifecycle_runs (
+CREATE TABLE IF NOT EXISTS factory_lifecycle_runs (
   id                    INTEGER PRIMARY KEY AUTOINCREMENT,
   lifecycle_name        TEXT NOT NULL,
   lifecycle_version     TEXT NOT NULL,
@@ -962,10 +962,10 @@ CREATE TABLE IF NOT EXISTS saga3_lifecycle_runs (
   created_at            TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at            TEXT NOT NULL DEFAULT (datetime('now'))
 );
-CREATE UNIQUE INDEX IF NOT EXISTS idx_saga3_lifecycle_runs_idem
-  ON saga3_lifecycle_runs(project_id, lifecycle_ref_key, idempotency_key);
-CREATE INDEX IF NOT EXISTS idx_saga3_lifecycle_runs_status
-  ON saga3_lifecycle_runs(project_id, status);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_factory_lifecycle_runs_idem
+  ON factory_lifecycle_runs(project_id, lifecycle_ref_key, idempotency_key);
+CREATE INDEX IF NOT EXISTS idx_factory_lifecycle_runs_status
+  ON factory_lifecycle_runs(project_id, status);
 
 -- saga4: lifecycle_execution_controls — per-epic engine state + model route,
 -- the new home for fields being migrated out of episode_workflows.metadata.
@@ -1037,7 +1037,7 @@ CREATE INDEX IF NOT EXISTS idx_supervision_locks_expires ON supervision_locks(ex
 -- repair attempts (REG-05-AC-01).
 -- ---------------------------------------------------------------------------
 
-CREATE TABLE IF NOT EXISTS v4_workplaces (
+CREATE TABLE IF NOT EXISTS factory_workplaces (
   -- Deterministic 'workplace/<processRunId>/<moduleRef>/<productionCellId>/<workKey>'.
   workplace_ref       TEXT PRIMARY KEY,
   process_run_id      INTEGER NOT NULL,
@@ -1063,15 +1063,15 @@ CREATE TABLE IF NOT EXISTS v4_workplaces (
   updated_at          TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
-CREATE INDEX IF NOT EXISTS idx_v4_workplaces_process_run ON v4_workplaces(process_run_id);
-CREATE INDEX IF NOT EXISTS idx_v4_workplaces_loop_state ON v4_workplaces(loop_state);
-CREATE INDEX IF NOT EXISTS idx_v4_workplaces_kanban_phase ON v4_workplaces(kanban_phase);
+CREATE INDEX IF NOT EXISTS idx_factory_workplaces_process_run ON factory_workplaces(process_run_id);
+CREATE INDEX IF NOT EXISTS idx_factory_workplaces_loop_state ON factory_workplaces(loop_state);
+CREATE INDEX IF NOT EXISTS idx_factory_workplaces_kanban_phase ON factory_workplaces(kanban_phase);
 
 -- CandidateSet — sealed immutable handoff to OTK (REG-12).
 -- Seal key (workplace_ref, producer_execution_ref, role) is UNIQUE: a replay
 -- of the same execution's completion returns the same row (REG-12-AC-01); a
 -- different payload under the same key is rejected by the repository.
-CREATE TABLE IF NOT EXISTS v4_candidate_sets (
+CREATE TABLE IF NOT EXISTS factory_candidate_sets (
   candidate_set_ref       TEXT PRIMARY KEY,
   workplace_ref           TEXT NOT NULL,
   producer_execution_ref  TEXT NOT NULL,
@@ -1084,15 +1084,15 @@ CREATE TABLE IF NOT EXISTS v4_candidate_sets (
   sealed_at               TEXT NOT NULL,
   created_at              TEXT NOT NULL DEFAULT (datetime('now')),
   UNIQUE (workplace_ref, producer_execution_ref, role),
-  FOREIGN KEY (workplace_ref) REFERENCES v4_workplaces(workplace_ref)
+  FOREIGN KEY (workplace_ref) REFERENCES factory_workplaces(workplace_ref)
 );
 
-CREATE INDEX IF NOT EXISTS idx_v4_candidate_sets_workplace ON v4_candidate_sets(workplace_ref);
-CREATE INDEX IF NOT EXISTS idx_v4_candidate_sets_subject ON v4_candidate_sets(subject_candidate_set_ref);
+CREATE INDEX IF NOT EXISTS idx_factory_candidate_sets_workplace ON factory_candidate_sets(workplace_ref);
+CREATE INDEX IF NOT EXISTS idx_factory_candidate_sets_subject ON factory_candidate_sets(subject_candidate_set_ref);
 
 -- CandidateSet members (REG-12-AC-02/03). Each member is either produced by
 -- the active execution or explicitly carried-forward from a named prior set.
-CREATE TABLE IF NOT EXISTS v4_candidate_set_members (
+CREATE TABLE IF NOT EXISTS factory_candidate_set_members (
   id                      INTEGER PRIMARY KEY AUTOINCREMENT,
   candidate_set_ref       TEXT NOT NULL,
   ordinal                 INTEGER NOT NULL,
@@ -1105,15 +1105,15 @@ CREATE TABLE IF NOT EXISTS v4_candidate_set_members (
   source_candidate_set_ref TEXT,
   created_at              TEXT NOT NULL DEFAULT (datetime('now')),
   UNIQUE (candidate_set_ref, ordinal),
-  FOREIGN KEY (candidate_set_ref) REFERENCES v4_candidate_sets(candidate_set_ref)
+  FOREIGN KEY (candidate_set_ref) REFERENCES factory_candidate_sets(candidate_set_ref)
 );
 
-CREATE INDEX IF NOT EXISTS idx_v4_candidate_members_set ON v4_candidate_set_members(candidate_set_ref);
+CREATE INDEX IF NOT EXISTS idx_factory_candidate_members_set ON factory_candidate_set_members(candidate_set_ref);
 
 -- ExecutionReservation — durable launch authority (REG-09).
 -- Deterministic ref over (workplace_ref, role, workplace_revision); two
 -- dispatchers racing produce one effective reservation (REG-09-AC-01).
-CREATE TABLE IF NOT EXISTS v4_execution_reservations (
+CREATE TABLE IF NOT EXISTS factory_execution_reservations (
   reservation_ref         TEXT PRIMARY KEY,
   workplace_ref           TEXT NOT NULL,
   expected_workplace_revision INTEGER NOT NULL,
@@ -1125,14 +1125,14 @@ CREATE TABLE IF NOT EXISTS v4_execution_reservations (
                             CHECK (state IN ('queued','consumed','expired','cancelled')),
   created_at              TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at              TEXT NOT NULL DEFAULT (datetime('now')),
-  FOREIGN KEY (workplace_ref) REFERENCES v4_workplaces(workplace_ref)
+  FOREIGN KEY (workplace_ref) REFERENCES factory_workplaces(workplace_ref)
 );
 
-CREATE INDEX IF NOT EXISTS idx_v4_reservations_workplace ON v4_execution_reservations(workplace_ref);
-CREATE INDEX IF NOT EXISTS idx_v4_reservations_state ON v4_execution_reservations(state);
+CREATE INDEX IF NOT EXISTS idx_factory_reservations_workplace ON factory_execution_reservations(workplace_ref);
+CREATE INDEX IF NOT EXISTS idx_factory_reservations_state ON factory_execution_reservations(state);
 
 -- GateRun — one authorized inspection of one CandidateSet (REG-15).
-CREATE TABLE IF NOT EXISTS v4_gate_runs (
+CREATE TABLE IF NOT EXISTS factory_gate_runs (
   gate_run_ref            TEXT PRIMARY KEY,
   workplace_ref           TEXT NOT NULL,
   gate_phase              TEXT NOT NULL CHECK (gate_phase IN ('author','final')),
@@ -1147,16 +1147,16 @@ CREATE TABLE IF NOT EXISTS v4_gate_runs (
                             CHECK (state IN ('claimed','checking','decided','terminal')),
   created_at              TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at              TEXT NOT NULL DEFAULT (datetime('now')),
-  FOREIGN KEY (workplace_ref) REFERENCES v4_workplaces(workplace_ref)
+  FOREIGN KEY (workplace_ref) REFERENCES factory_workplaces(workplace_ref)
 );
 
-CREATE INDEX IF NOT EXISTS idx_v4_gate_runs_workplace ON v4_gate_runs(workplace_ref);
-CREATE INDEX IF NOT EXISTS idx_v4_gate_runs_subject ON v4_gate_runs(subject_candidate_set_ref);
+CREATE INDEX IF NOT EXISTS idx_factory_gate_runs_workplace ON factory_gate_runs(workplace_ref);
+CREATE INDEX IF NOT EXISTS idx_factory_gate_runs_subject ON factory_gate_runs(subject_candidate_set_ref);
 
 -- CheckReceipt — immutable evidence of one check run (REG-17).
 -- BEFORE UPDATE/DELETE triggers make receipts append-only (same pattern as
--- saga3_exact_candidate_acceptance_decisions).
-CREATE TABLE IF NOT EXISTS v4_check_receipts (
+-- factory_exact_candidate_acceptance_decisions).
+CREATE TABLE IF NOT EXISTS factory_check_receipts (
   check_receipt_ref       TEXT PRIMARY KEY,
   check_run_ref           TEXT NOT NULL,
   subject_candidate_set_ref TEXT NOT NULL,
@@ -1175,26 +1175,26 @@ CREATE TABLE IF NOT EXISTS v4_check_receipts (
   created_at              TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
-CREATE INDEX IF NOT EXISTS idx_v4_check_receipts_run ON v4_check_receipts(check_run_ref);
-CREATE INDEX IF NOT EXISTS idx_v4_check_receipts_subject ON v4_check_receipts(subject_candidate_set_ref);
+CREATE INDEX IF NOT EXISTS idx_factory_check_receipts_run ON factory_check_receipts(check_run_ref);
+CREATE INDEX IF NOT EXISTS idx_factory_check_receipts_subject ON factory_check_receipts(subject_candidate_set_ref);
 
-CREATE TRIGGER IF NOT EXISTS trg_v4_check_receipts_no_update
-  BEFORE UPDATE ON v4_check_receipts
+CREATE TRIGGER IF NOT EXISTS trg_factory_check_receipts_no_update
+  BEFORE UPDATE ON factory_check_receipts
   BEGIN
     SELECT RAISE(ABORT, 'v4 check receipts are immutable (REG-17)');
   END;
 
-CREATE TRIGGER IF NOT EXISTS trg_v4_check_receipts_no_delete
-  BEFORE DELETE ON v4_check_receipts
+CREATE TRIGGER IF NOT EXISTS trg_factory_check_receipts_no_delete
+  BEFORE DELETE ON factory_check_receipts
   BEGIN
     SELECT RAISE(ABORT, 'v4 check receipts are immutable (REG-17)');
   END;
 
 -- GateDecision — immutable domain decision (REG-18). The act of OTK.
 -- BEFORE UPDATE/DELETE triggers make decisions append-only, mirroring the
--- existing saga3_exact_candidate_acceptance_decisions (which step 3.A.3
+-- existing factory_exact_candidate_acceptance_decisions (which step 3.A.3
 -- generalizes into this universal contract).
-CREATE TABLE IF NOT EXISTS v4_gate_decisions (
+CREATE TABLE IF NOT EXISTS factory_gate_decisions (
   decision_key            TEXT PRIMARY KEY,
   workplace_ref           TEXT NOT NULL,
   gate_ref                TEXT NOT NULL,
@@ -1219,23 +1219,23 @@ CREATE TABLE IF NOT EXISTS v4_gate_decisions (
   recovery_issue_ref      TEXT,
   decision_digest         TEXT NOT NULL,
   decided_at              TEXT NOT NULL DEFAULT (datetime('now')),
-  FOREIGN KEY (workplace_ref) REFERENCES v4_workplaces(workplace_ref)
+  FOREIGN KEY (workplace_ref) REFERENCES factory_workplaces(workplace_ref)
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_v4_gate_decisions_digest
-  ON v4_gate_decisions(decision_digest);
-CREATE INDEX IF NOT EXISTS idx_v4_gate_decisions_workplace ON v4_gate_decisions(workplace_ref);
-CREATE INDEX IF NOT EXISTS idx_v4_gate_decisions_subject ON v4_gate_decisions(subject_candidate_set_ref);
-CREATE INDEX IF NOT EXISTS idx_v4_gate_decisions_verdict ON v4_gate_decisions(verdict);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_factory_gate_decisions_digest
+  ON factory_gate_decisions(decision_digest);
+CREATE INDEX IF NOT EXISTS idx_factory_gate_decisions_workplace ON factory_gate_decisions(workplace_ref);
+CREATE INDEX IF NOT EXISTS idx_factory_gate_decisions_subject ON factory_gate_decisions(subject_candidate_set_ref);
+CREATE INDEX IF NOT EXISTS idx_factory_gate_decisions_verdict ON factory_gate_decisions(verdict);
 
-CREATE TRIGGER IF NOT EXISTS trg_v4_gate_decisions_no_update
-  BEFORE UPDATE ON v4_gate_decisions
+CREATE TRIGGER IF NOT EXISTS trg_factory_gate_decisions_no_update
+  BEFORE UPDATE ON factory_gate_decisions
   BEGIN
     SELECT RAISE(ABORT, 'v4 gate decisions are immutable (REG-18)');
   END;
 
-CREATE TRIGGER IF NOT EXISTS trg_v4_gate_decisions_no_delete
-  BEFORE DELETE ON v4_gate_decisions
+CREATE TRIGGER IF NOT EXISTS trg_factory_gate_decisions_no_delete
+  BEFORE DELETE ON factory_gate_decisions
   BEGIN
     SELECT RAISE(ABORT, 'v4 gate decisions are immutable (REG-18)');
   END;
@@ -1259,7 +1259,7 @@ CREATE TABLE IF NOT EXISTS factory_orders (
   order_ref            TEXT PRIMARY KEY,
   project_id           INTEGER NOT NULL UNIQUE REFERENCES projects(id) ON DELETE RESTRICT,
   epic_id              INTEGER NOT NULL UNIQUE REFERENCES epics(id) ON DELETE RESTRICT,
-  lifecycle_run_id     INTEGER UNIQUE REFERENCES saga3_lifecycle_runs(id) ON DELETE RESTRICT,
+  lifecycle_run_id     INTEGER UNIQUE REFERENCES factory_lifecycle_runs(id) ON DELETE RESTRICT,
   source_kind          TEXT NOT NULL CHECK (source_kind IN ('idea_url','existing_project')),
   source_url           TEXT,
   source_final_url     TEXT,
@@ -1283,7 +1283,7 @@ CREATE TABLE IF NOT EXISTS factory_launch_requests (
   mode                 TEXT NOT NULL CHECK (mode IN ('new','resume')),
   project_id           INTEGER NOT NULL REFERENCES projects(id) ON DELETE RESTRICT,
   epic_id              INTEGER NOT NULL REFERENCES epics(id) ON DELETE RESTRICT,
-  lifecycle_run_id     INTEGER REFERENCES saga3_lifecycle_runs(id) ON DELETE RESTRICT,
+  lifecycle_run_id     INTEGER REFERENCES factory_lifecycle_runs(id) ON DELETE RESTRICT,
   lifecycle_input_json TEXT,
   lifecycle_input_schema TEXT,
   initiated_by         TEXT NOT NULL,
@@ -1376,7 +1376,7 @@ CREATE TABLE IF NOT EXISTS factory_runtime_mode (
 
 CREATE TABLE IF NOT EXISTS factory_definition_compatibility_receipts (
   receipt_ref          TEXT PRIMARY KEY,
-  lifecycle_run_id     INTEGER NOT NULL REFERENCES saga3_lifecycle_runs(id) ON DELETE RESTRICT,
+  lifecycle_run_id     INTEGER NOT NULL REFERENCES factory_lifecycle_runs(id) ON DELETE RESTRICT,
   previous_definition_hash TEXT NOT NULL,
   candidate_definition_hash TEXT NOT NULL,
   current_stage_id     TEXT,

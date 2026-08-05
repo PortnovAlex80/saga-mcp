@@ -31,12 +31,12 @@ import type {
 } from './recovery-case.js';
 import type { RecoveryCaseRepository } from './recovery-case-repository.js';
 
-export function ensureSaga3RecoveryCaseSchema(db: Database.Database): void {
+export function ensureFactoryRecoveryCaseSchema(db: Database.Database): void {
   db.exec(`
-    CREATE TABLE IF NOT EXISTS saga3_recovery_cases (
+    CREATE TABLE IF NOT EXISTS factory_recovery_cases (
       id                       INTEGER PRIMARY KEY AUTOINCREMENT,
       process_run_id           INTEGER NOT NULL
-                                 REFERENCES saga3_process_runs(id) ON DELETE CASCADE,
+                                 REFERENCES factory_process_runs(id) ON DELETE CASCADE,
       module_name              TEXT NOT NULL,
       module_version           TEXT NOT NULL,
       module_ref_key           TEXT NOT NULL,
@@ -48,32 +48,32 @@ export function ensureSaga3RecoveryCaseSchema(db: Database.Database): void {
                                  CHECK (status IN ('active','resolved','exhausted')),
       attempt_count            INTEGER NOT NULL DEFAULT 0 CHECK (attempt_count >= 0),
       opened_by_node_run_id    INTEGER NOT NULL
-                                 REFERENCES saga3_node_runs(id) ON DELETE CASCADE,
+                                 REFERENCES factory_node_runs(id) ON DELETE CASCADE,
       last_source_node_run_id  INTEGER NOT NULL
-                                 REFERENCES saga3_node_runs(id) ON DELETE CASCADE,
+                                 REFERENCES factory_node_runs(id) ON DELETE CASCADE,
       last_issue_ref           TEXT NOT NULL,
       last_issue_hash          TEXT NOT NULL,
       last_reason_code         TEXT NOT NULL,
       resolved_by_node_run_id  INTEGER
-                                 REFERENCES saga3_node_runs(id) ON DELETE SET NULL,
+                                 REFERENCES factory_node_runs(id) ON DELETE SET NULL,
       opened_at                TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at               TEXT NOT NULL DEFAULT (datetime('now')),
       resolved_at              TEXT
     );
 
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_saga3_recovery_cases_active_policy
-      ON saga3_recovery_cases(process_run_id, policy_id)
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_factory_recovery_cases_active_policy
+      ON factory_recovery_cases(process_run_id, policy_id)
       WHERE status='active';
 
-    CREATE INDEX IF NOT EXISTS idx_saga3_recovery_cases_verifier
-      ON saga3_recovery_cases(process_run_id, verify_node_id, status, id);
+    CREATE INDEX IF NOT EXISTS idx_factory_recovery_cases_verifier
+      ON factory_recovery_cases(process_run_id, verify_node_id, status, id);
 
-    CREATE TABLE IF NOT EXISTS saga3_recovery_attempts (
+    CREATE TABLE IF NOT EXISTS factory_recovery_attempts (
       id                  INTEGER PRIMARY KEY AUTOINCREMENT,
       recovery_case_id    INTEGER NOT NULL
-                            REFERENCES saga3_recovery_cases(id) ON DELETE CASCADE,
+                            REFERENCES factory_recovery_cases(id) ON DELETE CASCADE,
       source_node_run_id  INTEGER NOT NULL
-                            REFERENCES saga3_node_runs(id) ON DELETE CASCADE,
+                            REFERENCES factory_node_runs(id) ON DELETE CASCADE,
       attempt             INTEGER NOT NULL CHECK (attempt > 0),
       issue_ref           TEXT NOT NULL,
       issue_schema        TEXT NOT NULL,
@@ -87,8 +87,8 @@ export function ensureSaga3RecoveryCaseSchema(db: Database.Database): void {
       UNIQUE (recovery_case_id, attempt)
     );
 
-    CREATE INDEX IF NOT EXISTS idx_saga3_recovery_attempts_case
-      ON saga3_recovery_attempts(recovery_case_id, attempt);
+    CREATE INDEX IF NOT EXISTS idx_factory_recovery_attempts_case
+      ON factory_recovery_attempts(recovery_case_id, attempt);
   `);
 }
 
@@ -195,7 +195,7 @@ function readCaseRow(
   id: number,
 ): RecoveryCaseRow | null {
   const row = db.prepare(
-    'SELECT * FROM saga3_recovery_cases WHERE id=?',
+    'SELECT * FROM factory_recovery_cases WHERE id=?',
   ).get(id) as RecoveryCaseRow | undefined;
   return row ?? null;
 }
@@ -205,7 +205,7 @@ function readAttemptBySourceNodeRun(
   sourceNodeRunId: number,
 ): RecoveryAttemptRow | null {
   const row = db.prepare(
-    'SELECT * FROM saga3_recovery_attempts WHERE source_node_run_id=?',
+    'SELECT * FROM factory_recovery_attempts WHERE source_node_run_id=?',
   ).get(sourceNodeRunId) as RecoveryAttemptRow | undefined;
   return row ?? null;
 }
@@ -296,7 +296,7 @@ export class SqliteRecoveryCaseRepository implements RecoveryCaseRepository {
 
   constructor(db: Database.Database = getDb()) {
     this.db = db;
-    ensureSaga3RecoveryCaseSchema(this.db);
+    ensureFactoryRecoveryCaseSchema(this.db);
   }
 
   recordIssue(input: RecordRecoveryIssueInput): RecordRecoveryIssueResult {
@@ -340,7 +340,7 @@ export class SqliteRecoveryCaseRepository implements RecoveryCaseRepository {
     }
 
     let caseRow = this.db.prepare(
-      `SELECT * FROM saga3_recovery_cases
+      `SELECT * FROM factory_recovery_cases
         WHERE process_run_id=? AND policy_id=? AND status='active'
         ORDER BY id DESC LIMIT 1`,
     ).get(input.processRunId, input.issue.policyId) as RecoveryCaseRow | undefined;
@@ -350,7 +350,7 @@ export class SqliteRecoveryCaseRepository implements RecoveryCaseRepository {
     } else {
       const pendingIssueRef = 'pending';
       const info = this.db.prepare(
-        `INSERT INTO saga3_recovery_cases
+        `INSERT INTO factory_recovery_cases
            (process_run_id, module_name, module_version, module_ref_key,
             policy_id, verify_node_id, repair_node_id, max_attempts, status,
             attempt_count, opened_by_node_run_id, last_source_node_run_id,
@@ -399,7 +399,7 @@ export class SqliteRecoveryCaseRepository implements RecoveryCaseRepository {
     const feedbackHash = sha256Hex(feedback);
 
     const attemptInfo = this.db.prepare(
-      `INSERT INTO saga3_recovery_attempts
+      `INSERT INTO factory_recovery_attempts
          (recovery_case_id, source_node_run_id, attempt, issue_ref,
           issue_schema, issue_hash, issue_snapshot, feedback_schema,
           feedback_hash, feedback_snapshot)
@@ -418,7 +418,7 @@ export class SqliteRecoveryCaseRepository implements RecoveryCaseRepository {
     );
 
     this.db.prepare(
-      `UPDATE saga3_recovery_cases
+      `UPDATE factory_recovery_cases
           SET status=?,
               attempt_count=?,
               last_source_node_run_id=?,
@@ -442,7 +442,7 @@ export class SqliteRecoveryCaseRepository implements RecoveryCaseRepository {
 
     const updatedCase = readCaseRow(this.db, caseRow.id);
     const attemptRow = this.db.prepare(
-      'SELECT * FROM saga3_recovery_attempts WHERE id=?',
+      'SELECT * FROM factory_recovery_attempts WHERE id=?',
     ).get(Number(attemptInfo.lastInsertRowid)) as RecoveryAttemptRow | undefined;
     if (!updatedCase || !attemptRow) {
       throw new Error('RECOVERY_ATTEMPT_CREATE_FAILED: row vanished after insert');
@@ -464,7 +464,7 @@ export class SqliteRecoveryCaseRepository implements RecoveryCaseRepository {
   ): RecoveryCaseRecord | null {
     const resolve = (): RecoveryCaseRecord | null => {
       const active = this.db.prepare(
-        `SELECT * FROM saga3_recovery_cases
+        `SELECT * FROM factory_recovery_cases
           WHERE process_run_id=? AND policy_id=?
             AND status IN ('active','exhausted')
           ORDER BY id DESC LIMIT 1`,
@@ -472,7 +472,7 @@ export class SqliteRecoveryCaseRepository implements RecoveryCaseRepository {
       if (!active) return null;
 
       const info = this.db.prepare(
-        `UPDATE saga3_recovery_cases
+        `UPDATE factory_recovery_cases
             SET status='resolved',
                 resolved_by_node_run_id=?,
                 resolved_at=datetime('now'),
@@ -503,7 +503,7 @@ export class SqliteRecoveryCaseRepository implements RecoveryCaseRepository {
     policyId: string,
   ): RecoveryCaseRecord | null {
     const row = this.db.prepare(
-      `SELECT * FROM saga3_recovery_cases
+      `SELECT * FROM factory_recovery_cases
         WHERE process_run_id=? AND policy_id=? AND status='active'
         ORDER BY id DESC LIMIT 1`,
     ).get(processRunId, policyId) as RecoveryCaseRow | undefined;
@@ -515,7 +515,7 @@ export class SqliteRecoveryCaseRepository implements RecoveryCaseRepository {
     verifyNodeId: string,
   ): RecoveryCaseRecord | null {
     const row = this.db.prepare(
-      `SELECT * FROM saga3_recovery_cases
+      `SELECT * FROM factory_recovery_cases
         WHERE process_run_id=? AND verify_node_id=? AND status='active'
         ORDER BY id DESC LIMIT 1`,
     ).get(processRunId, verifyNodeId) as RecoveryCaseRow | undefined;
@@ -524,7 +524,7 @@ export class SqliteRecoveryCaseRepository implements RecoveryCaseRepository {
 
   listForProcessRun(processRunId: number): readonly RecoveryCaseRecord[] {
     const rows = this.db.prepare(
-      `SELECT * FROM saga3_recovery_cases
+      `SELECT * FROM factory_recovery_cases
         WHERE process_run_id=?
         ORDER BY id DESC`,
     ).all(processRunId) as RecoveryCaseRow[];
@@ -533,7 +533,7 @@ export class SqliteRecoveryCaseRepository implements RecoveryCaseRepository {
 
   listAttempts(caseId: number): readonly RecoveryAttemptRecord[] {
     const rows = this.db.prepare(
-      `SELECT * FROM saga3_recovery_attempts
+      `SELECT * FROM factory_recovery_attempts
         WHERE recovery_case_id=?
         ORDER BY attempt ASC`,
     ).all(caseId) as RecoveryAttemptRow[];

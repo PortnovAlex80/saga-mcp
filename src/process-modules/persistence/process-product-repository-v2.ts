@@ -23,14 +23,14 @@
  * It deliberately does NOT import the v1 sqlite adapter: the record types are
  * defined inline here so the port stays driver-neutral and self-contained.
  *
- * REUSE OF saga3_process_products
+ * REUSE OF factory_process_products
  * -------------------------------
- * The v2 adapter reuses the EXISTING `saga3_process_products` table (created by
- * `ensureSaga3ProcessProductSchema` in the v1 file). It only ADDS one index
- * (`idx_saga3_process_products_schema_ref_hash` on
+ * The v2 adapter reuses the EXISTING `factory_process_products` table (created by
+ * `ensureFactoryProcessProductSchema` in the v1 file). It only ADDS one index
+ * (`idx_factory_process_products_schema_ref_hash` on
  * `(schema_id, artifact_ref, product_hash)`) and one nullable `node_id` column
  * — both idempotent, both owned by W3-A4 (W3-A6 is the SQL owner for
- * `saga3_node_runs`; per spec §7/§9, W3-A4 owns `saga3_process_products`).
+ * `factory_node_runs`; per spec §7/§9, W3-A4 owns `factory_process_products`).
  * No legacy column is removed; v1 read/write paths keep working unchanged.
  */
 
@@ -49,7 +49,7 @@ import type {
  * inline here so the port does not import the concrete adapter.
  */
 export interface ProcessProductReferenceV2 {
-  /** Schema id of the product (e.g. 'saga3.discovery-proposal.v1'). */
+  /** Schema id of the product (e.g. 'factory.discovery-proposal.v1'). */
   readonly schema: string;
   /** Opaque, module-owned artifact reference (maps to ProductRef.ref). */
   readonly ref: string;
@@ -65,7 +65,7 @@ export interface ProcessProductReferenceV2 {
  * only round-trips JSON, so callers own the cast.
  */
 export interface ProcessProductRecordV2<T = unknown> {
-  /** Parent ProcessRun id (FK to saga3_process_runs.id). */
+  /** Parent ProcessRun id (FK to factory_process_runs.id). */
   readonly processRunId: number;
   /**
    * Module-owned product-kind label (mirrors v1's product_kind column). For v2
@@ -151,7 +151,7 @@ export interface ProcessProductRepository {
    *   `product_hash` is `envelope.contentHash` (the SHA-256 over the canonical
    *   production body), so the on-disk row is byte-addressable by
    *   `envelope.productRef.digest`.
-   * - `processRunId` — the parent ProcessRun (FK to saga3_process_runs).
+   * - `processRunId` — the parent ProcessRun (FK to factory_process_runs).
    * - `nodeId` — the Flow node that emitted this product.
    *
    * Idempotent: a second call with a byte-identical envelope returns the

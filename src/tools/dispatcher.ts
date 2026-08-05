@@ -9,7 +9,7 @@ import { releaseExecutionAtomically } from '../lifecycle/atomic-release.js';
 import { reserveTaskExecution, releaseTaskExecution } from './conveyor-runtime-helper.js';
 // CONVEYOR #7: the atomic assignment core lives in lifecycle/work-assignment-core.ts.
 // This module imports it for internal use AND re-exports it (below) so existing
-// consumers (tasks.ts, saga3-* tools) keep their './dispatcher.js' imports.
+// consumers (tasks.ts, factory-* tools) keep their './dispatcher.js' imports.
 import {
   withImmediateTransaction,
   skillForTask,
@@ -40,7 +40,7 @@ import {
 // CONVEYOR #7: the atomic assignment core lives in lifecycle/work-assignment-core.ts
 // (infrastructure-side, away from the MCP/tool layer — see CONVEYOR-MENTAL-MODEL
 // §"Adapter rules"). This module re-exports it so existing consumers
-// (tasks.ts, saga3-* tools, the adapter) keep importing from './dispatcher.js'
+// (tasks.ts, factory-* tools, the adapter) keep importing from './dispatcher.js'
 // without churn; the canonical home is the lifecycle module.
 export {
   withImmediateTransaction,
@@ -277,18 +277,15 @@ function handleWorkerNext(args: Record<string, unknown>): {
       [
         'project_id is missing — cannot dispatch work without knowing the project.',
         'HOW TO GET project_id (do this ONCE, then retry worker_next):',
-        '1. Read ./projectname.txt.',
-        '2. If it exists: call project_resolve_by_name({ name: "<file contents>" }) and use its project_id.',
-        '3. If it does NOT exist: ask the user "What is the saga project name for this folder?",',
-        '   create ./projectname.txt with that single line as its only contents,',
-        '   then call project_resolve_by_name({ name: "<that name>" }).',
+        '1. Read the runner-supplied project binding or .saga/project.json.',
+        '2. If neither exists, stop and use the canonical saga-start gateway.',
         'Then retry: worker_next({ worker_id, project_id }).',
       ].join('\n'),
     );
   }
   const exists = db.prepare('SELECT 1 FROM projects WHERE id=?').get(projectId);
   if (!exists) {
-    throw new Error(`project_id ${projectId} not found. Run project_list to see valid IDs, or project_resolve_by_name to (re)create by name from ./projectname.txt.`);
+    throw new Error(`project_id ${projectId} not found. Run project_list to see valid IDs, or use saga-start to create a new product order.`);
   }
   // saga4 cutover (Phase 4): worker_next is a PURE claim — it must not advance
   // lifecycle stages. The previous advanceReadyEpisodes(projectId) call let a
@@ -1374,7 +1371,7 @@ function handleWorkerHealth(args: Record<string, unknown>): {
   const projectId = args.project_id as number | undefined;
   if (projectId == null) {
     throw new Error(
-      'project_id is required. Resolve it once from ./projectname.txt via project_resolve_by_name, then pass it here.',
+      'project_id is required. Use the runner binding or .saga/project.json, then pass it here.',
     );
   }
 
@@ -1449,7 +1446,7 @@ export const definitions: Tool[] = [
   {
     name: 'worker_next',
     description:
-      'Claim the next available task for a worker WITHIN A PROJECT. Finds a free task (status todo or review, unassigned, no unmet dependencies) in the given project only, atomically assigns it to the worker, and returns the task plus the skill the agent should use. Tasks of ANY priority (critical/high/medium/low) are handed out, ordered by priority (critical first, low last). Other projects in the shared DB are never touched. project_id is REQUIRED — resolve it once from ./projectname.txt via project_resolve_by_name, then pass it on every call. Optional `role` filters the queue to tasks tagged `role:<name>` (e.g. role:"analyst") — used in the requirements project to split work between saga-product / saga-analyst / saga-architect. Returns {task: null} when the project queue is empty. Call shape: worker_next({ worker_id: "<string>", project_id: <integer>, role: "<string>", machine_id: "<string>", epic_id: <integer>, execution_id: "<string>", run_id: "<string>" }). Required: worker_id, project_id.',
+      'Claim the next available task for a worker WITHIN A PROJECT. Finds a free task (status todo or review, unassigned, no unmet dependencies) in the given project only, atomically assigns it to the worker, and returns the task plus the skill the agent should use. project_id is REQUIRED from the runner binding or .saga/project.json. Other projects are never touched. Returns {task: null} when the queue is empty.',
     annotations: {
       title: 'Worker: Next Task',
       readOnlyHint: false,
@@ -1468,7 +1465,7 @@ export const definitions: Tool[] = [
         project_id: {
           type: 'integer',
           description:
-            'ID of the project to claim work from (REQUIRED). Get it once via project_resolve_by_name from the name in ./projectname.txt. Tasks from other projects are never returned.',
+            'ID of the project to claim work from (REQUIRED), supplied by the runner binding or .saga/project.json.',
         },
         role: {
           type: 'string',
@@ -1633,7 +1630,7 @@ export const definitions: Tool[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        project_id: { type: 'integer', description: 'Project to scan. Resolve it once via project_resolve_by_name from ./projectname.txt.' },
+        project_id: { type: 'integer', description: 'Project to scan, supplied by the runner binding or .saga/project.json.' },
       },
       required: ['project_id'],
     },

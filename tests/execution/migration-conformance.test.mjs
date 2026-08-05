@@ -107,7 +107,7 @@ async function startRun(db, moduleRef, idempotencyKey) {
     '../../dist/process-modules/persistence/sqlite-process-run-repository.js'
   );
   const runRepo = new SqliteProcessRunRepository(db);
-  const schemaId = `saga3.${moduleRef.name}-case.v1`;
+  const schemaId = `factory.${moduleRef.name}-case.v1`;
   const { record } = runRepo.start({
     moduleRef,
     executorKind: 'generic-flow',
@@ -129,7 +129,7 @@ async function startRun(db, moduleRef, idempotencyKey) {
 
 /** Fresh temp DB seeded with one project + one epic. Sets DB_PATH for getDb(). */
 function freshDb() {
-  const temp = mkdtempSync(path.join(os.tmpdir(), 'saga3-w9a8-'));
+  const temp = mkdtempSync(path.join(os.tmpdir(), 'factory-w9a8-'));
   process.env.DB_PATH = path.join(temp, 'w9a8.db');
   return temp;
 }
@@ -212,7 +212,7 @@ test('W9-A8 restart development: output repository is write-once (same hash repl
     const repo = new SqliteDevelopmentOutputRepository(db);
 
     const payload = {
-      schemaVersion: 'saga3.verified-integration-bundle.v1',
+      schemaVersion: 'factory.verified-integration-bundle.v1',
       formalizationCertificate: { schemaId: 's', version: '1.0.0', digest: 'd' },
       solutionContract: { schemaId: 's', version: '1.0.0', digest: 'd' },
       acceptanceBaselineHash: 'b'.repeat(64),
@@ -272,12 +272,12 @@ test('W9-A8 restart delivery: output repository is write-once (same hash replays
 
     const ref = (digest) => ({ schemaId: 's', version: '1.0.0', digest });
     const payload = {
-      schemaVersion: 'saga3.release-record.v1',
+      schemaVersion: 'factory.release-record.v1',
       developmentCertificate: ref('1'),
       verifiedIntegrationBundle: ref('2'),
       integratedCandidate: ref('3'),
       policy: {
-        schemaVersion: 'saga3.delivery-release-policy.v1',
+        schemaVersion: 'factory.delivery-release-policy.v1',
         policyVersion: '1.0.0',
         policyHash: 'p'.repeat(64),
         requireHumanApproval: true,
@@ -327,22 +327,22 @@ test('W9-A8 restart discovery: outcome certificate is write-once (same hash repl
     db.prepare(`INSERT INTO epics (id,project_id,name) VALUES (10,1,'D')`).run();
     db.prepare(`INSERT INTO episode_workflows (epic_id,stage,metadata) VALUES (10,'discovery','{}')`).run();
     db.prepare(`INSERT INTO tasks (id,epic_id,title,status,task_kind) VALUES (100,10,'D','done','discovery.work')`).run();
-    db.prepare(`INSERT INTO saga3_work_intents (id,epic_id,kind,objective,authority_scope,output_schema,token_budget,retry_budget,projected_task_id,status) VALUES (1,10,'discovery','o','{}','saga3.work-intent.discovery.v1',0,0,100,'concluded')`).run();
-    db.prepare(`INSERT INTO saga3_proposals (id,intent_id,task_id,execution_id,kind,schema_version,payload,content_hash,status,provenance) VALUES (50,1,100,'exec','discovery','saga3.discovery-proposal.v1','{}','${'a'.repeat(64)}','submitted','{}')`).run();
+    db.prepare(`INSERT INTO factory_work_intents (id,epic_id,kind,objective,authority_scope,output_schema,token_budget,retry_budget,projected_task_id,status) VALUES (1,10,'discovery','o','{}','factory.work-intent.discovery.v1',0,0,100,'concluded')`).run();
+    db.prepare(`INSERT INTO factory_proposals (id,intent_id,task_id,execution_id,kind,schema_version,payload,content_hash,status,provenance) VALUES (50,1,100,'exec','discovery','factory.discovery-proposal.v1','{}','${'a'.repeat(64)}','submitted','{}')`).run();
     const {
-      ensureSaga3SettlementSchema,
+      ensureFactorySettlementSchema,
       insertSettlement,
       issueCertificateAtomically,
     } = await import(
       '../../dist/modules/discovery/infrastructure/discovery-settlement-repository.js'
     );
-    ensureSaga3SettlementSchema(db);
+    ensureFactorySettlementSchema(db);
 
     const { canonicalJson } = await import(
       '../../dist/shared/canonical-json.js'
     );
     const inputSnapshot = {
-      schema_version: 'saga3.discovery-settlement-input.v1',
+      schema_version: 'factory.discovery-settlement-input.v1',
       epic_id: 10,
       proposal: { id: 50, content_hash: 'a'.repeat(64) },
       readiness: { status: 'accepted_by_kernel', assessment_id: 7, content_hash: 'b'.repeat(64), payload: null },
@@ -368,7 +368,7 @@ test('W9-A8 restart discovery: outcome certificate is write-once (same hash repl
     });
 
     const certificatePayload = {
-      schemaVersion: 'saga3.discovery-outcome-certificate.v1',
+      schemaVersion: 'factory.discovery-outcome-certificate.v1',
       decision: 'go',
       reasonCodes: ['GO_READY_AND_GROUNDED'],
       rationale: 'sufficient evidence',

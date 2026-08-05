@@ -8,7 +8,7 @@ import { canonicalJson, sha256Hex } from '../../shared/canonical-json.js';
 import {
   resolveManagedExecutionProvenance,
 } from './sqlite-managed-production-ledger.js';
-import { ensureSaga3ProcessRunSchema } from './sqlite-process-run-repository.js';
+import { ensureFactoryProcessRunSchema } from './sqlite-process-run-repository.js';
 
 interface SubmissionRow {
   id: number;
@@ -43,12 +43,12 @@ export interface SubmitManagedNodeProductResult {
 export function ensureManagedNodeSubmissionSchema(
   db: Database.Database,
 ): void {
-  ensureSaga3ProcessRunSchema(db);
+  ensureFactoryProcessRunSchema(db);
   db.exec(`
-    CREATE TABLE IF NOT EXISTS saga3_managed_node_submissions (
+    CREATE TABLE IF NOT EXISTS factory_managed_node_submissions (
       id               INTEGER PRIMARY KEY AUTOINCREMENT,
       process_run_id   INTEGER NOT NULL
-                         REFERENCES saga3_process_runs(id) ON DELETE RESTRICT,
+                         REFERENCES factory_process_runs(id) ON DELETE RESTRICT,
       module_ref       TEXT NOT NULL,
       node_id          TEXT NOT NULL,
       intent_id        INTEGER NOT NULL,
@@ -62,19 +62,19 @@ export function ensureManagedNodeSubmissionSchema(
       UNIQUE (process_run_id, node_id, execution_id)
     );
 
-    CREATE INDEX IF NOT EXISTS idx_saga3_managed_node_submission_exact
-      ON saga3_managed_node_submissions(
+    CREATE INDEX IF NOT EXISTS idx_factory_managed_node_submission_exact
+      ON factory_managed_node_submissions(
         process_run_id,module_ref,node_id,intent_id,task_id,execution_id
       );
 
-    CREATE TRIGGER IF NOT EXISTS trg_saga3_managed_node_submissions_no_update
-    BEFORE UPDATE ON saga3_managed_node_submissions
+    CREATE TRIGGER IF NOT EXISTS trg_factory_managed_node_submissions_no_update
+    BEFORE UPDATE ON factory_managed_node_submissions
     BEGIN
       SELECT RAISE(ABORT, 'MANAGED_NODE_SUBMISSION_IMMUTABLE');
     END;
 
-    CREATE TRIGGER IF NOT EXISTS trg_saga3_managed_node_submissions_no_delete
-    BEFORE DELETE ON saga3_managed_node_submissions
+    CREATE TRIGGER IF NOT EXISTS trg_factory_managed_node_submissions_no_delete
+    BEFORE DELETE ON factory_managed_node_submissions
     BEGIN
       SELECT RAISE(ABORT, 'MANAGED_NODE_SUBMISSION_DELETE_FORBIDDEN');
     END;
@@ -143,7 +143,7 @@ implements ManagedNodeSubmissionReader {
       }
 
       this.db.prepare(
-        `INSERT INTO saga3_managed_node_submissions
+        `INSERT INTO factory_managed_node_submissions
           (process_run_id,module_ref,node_id,intent_id,task_id,execution_id,
            schema_version,payload_snapshot,content_hash)
          VALUES (?,?,?,?,?,?,?,?,?)`,
@@ -180,7 +180,7 @@ implements ManagedNodeSubmissionReader {
   ): ManagedNodeSubmissionRecord | null {
     const row = this.db.prepare(
       `SELECT *
-         FROM saga3_managed_node_submissions
+         FROM factory_managed_node_submissions
         WHERE process_run_id=? AND module_ref=? AND node_id=? AND task_id=?
         ORDER BY id DESC
         LIMIT 1`,
@@ -203,7 +203,7 @@ implements ManagedNodeSubmissionReader {
     // worker's submission.
     const row = this.db.prepare(
       `SELECT *
-         FROM saga3_managed_node_submissions
+         FROM factory_managed_node_submissions
         WHERE process_run_id=? AND module_ref=? AND node_id=?
         ORDER BY id DESC
         LIMIT 1`,
@@ -216,7 +216,7 @@ implements ManagedNodeSubmissionReader {
   ): SubmissionRow | undefined {
     return this.db.prepare(
       `SELECT *
-         FROM saga3_managed_node_submissions
+         FROM factory_managed_node_submissions
         WHERE process_run_id=? AND module_ref=? AND node_id=?
           AND intent_id=? AND task_id=? AND execution_id=?
         ORDER BY id DESC
@@ -243,7 +243,7 @@ implements ManagedNodeSubmissionReader {
          FROM tasks t
          JOIN worker_executions we
            ON we.task_id=t.id AND we.execution_id=?
-         JOIN saga3_process_runs pr ON pr.id=?
+         JOIN factory_process_runs pr ON pr.id=?
         WHERE t.id=?`,
     ).get(
       executionId,

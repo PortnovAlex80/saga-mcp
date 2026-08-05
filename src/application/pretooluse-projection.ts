@@ -115,6 +115,7 @@ export interface PreToolUseDeny {
 
 export type PreToolUseDenyCode =
   | 'TOOL_NOT_IN_ALLOWED_TOOLS' // runtime enforcement + tool absent from list
+  | 'AUTHORITY_CONTEXT_REQUIRED'
   | 'EMPTY_TOOL_NAME'; // caller bug: no tool to authorize
 
 /**
@@ -180,15 +181,18 @@ export function projectPreToolUse(
     };
   }
 
-  // Legacy Saga 2 snapshot: authority is null. The server compatibility-allows
-  // these, so the projection passes (never stricter than the server).
+  // Every managed execution must carry an exact authority snapshot. Missing
+  // authority is never an interactive compatibility mode.
   if (authority === null) {
     return {
-      outcome: 'pass',
+      outcome: 'deny',
+      code: 'AUTHORITY_CONTEXT_REQUIRED',
       reason:
-        'PreToolUse projection: legacy execution context (authority=null). Server compatibility-allows; server guard is authoritative.',
+        'PreToolUse projection: execution authority is missing; no tool may run without a fenced Workplace authority context.',
       requestedTool: toolName,
+      allowedTools: [],
       executionId,
+      workIntentId: null,
       authoritative: false,
     };
   }

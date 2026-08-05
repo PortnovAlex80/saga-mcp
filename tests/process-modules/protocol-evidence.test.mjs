@@ -48,13 +48,13 @@ function ref(schemaId, digest) {
   };
 }
 
-const TOOL_REF = ref('saga3.evidence.tool-receipt.v1', 'a'.repeat(64));
-const ARTIFACT_REF = ref('saga3.evidence.artifact-reference.v1', 'b'.repeat(64));
-const TRACE_REF = ref('saga3.evidence.trace-reference.v1', 'c'.repeat(64));
-const HUMAN_REF = ref('saga3.evidence.human-receipt.v1', 'd'.repeat(64));
-const EXTERNAL_REF = ref('saga3.evidence.external-receipt.v1', 'e'.repeat(64));
-const VERIFIER_REF = ref('saga3.evidence.module-verifier-receipt.v1', 'f'.repeat(64));
-const OTHER_REF = ref('saga3.evidence.tool-receipt.v1', 'z'.repeat(64));
+const TOOL_REF = ref('factory.evidence.tool-receipt.v1', 'a'.repeat(64));
+const ARTIFACT_REF = ref('factory.evidence.artifact-reference.v1', 'b'.repeat(64));
+const TRACE_REF = ref('factory.evidence.trace-reference.v1', 'c'.repeat(64));
+const HUMAN_REF = ref('factory.evidence.human-receipt.v1', 'd'.repeat(64));
+const EXTERNAL_REF = ref('factory.evidence.external-receipt.v1', 'e'.repeat(64));
+const VERIFIER_REF = ref('factory.evidence.module-verifier-receipt.v1', 'f'.repeat(64));
+const OTHER_REF = ref('factory.evidence.tool-receipt.v1', 'z'.repeat(64));
 
 function req(category, contractRef, required = true) {
   return { category, contractRef, required };

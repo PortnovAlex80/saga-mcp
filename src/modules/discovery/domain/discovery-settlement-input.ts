@@ -24,7 +24,7 @@ import { canonicalJson } from '../../../shared/canonical-json.js';
  * Schema version for the settlement input snapshot. The hash computed over a
  * snapshot whose schema_version differs is a different idempotency target.
  */
-export const DISCOVERY_SETTLEMENT_INPUT_SCHEMA = 'saga3.discovery-settlement-input.v1';
+export const DISCOVERY_SETTLEMENT_INPUT_SCHEMA = 'factory.discovery-settlement-input.v1';
 
 /**
  * Readiness state as captured into the snapshot. These are NOT the shadow

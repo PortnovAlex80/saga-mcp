@@ -2,7 +2,6 @@ import type Database from 'better-sqlite3';
 import type { StageBinding } from '../process-modules/domain/lifecycle.js';
 import {
   type ProductDeliveryLifecycleInput,
-  type LegacyProductDeliveryRepositoryBinding,
   type ProductDeliveryRepositoryBinding,
 } from '../process-modules/lifecycles/product-delivery-lifecycle.js';
 import {
@@ -41,53 +40,13 @@ function repositoryRows(
   ) as RepositoryRow[];
 }
 
-function isPortableBinding(
-  value: ProductDeliveryRepositoryBinding | LegacyProductDeliveryRepositoryBinding,
-): value is ProductDeliveryRepositoryBinding {
+function isPortableBinding(value: ProductDeliveryRepositoryBinding): boolean {
   return 'repositoryRef' in value;
 }
 
-function portableBindingForLegacyId(
-  db: Database.Database,
-  projectId: number,
-  binding: LegacyProductDeliveryRepositoryBinding,
-): ProductDeliveryRepositoryBinding {
-  const row = db.prepare(
-    `SELECT r.name, pr.role, pr.integration_branch
-       FROM project_repositories pr
-       JOIN repositories r ON r.id=pr.repository_id
-      WHERE pr.id=? AND pr.project_id=? AND pr.status='active'`,
-  ).get(binding.projectRepositoryId, projectId) as {
-    name: string;
-    role: string;
-    integration_branch: string;
-  } | undefined;
-  if (!row) {
-    throw new Error(
-      `PRODUCT_LIFECYCLE_LOCAL_REPOSITORY_ID_STALE_OR_FOREIGN: `
-      + binding.projectRepositoryId,
-    );
-  }
-  if (row.integration_branch !== binding.integrationBranch) {
-    throw new Error(
-      `PRODUCT_LIFECYCLE_REPOSITORY_BRANCH_MISMATCH: `
-      + `${row.name}:${row.role} expected '${binding.integrationBranch}', `
-      + `current '${row.integration_branch}'`,
-    );
-  }
-  return {
-    repositoryRef: {
-      repositoryName: row.name,
-      role: row.role,
-    },
-    integrationBranch: binding.integrationBranch,
-    expectedBaseCommit: binding.expectedBaseCommit,
-  };
-}
-
 export function canonicalizeProductDeliveryLifecycleInput(
-  db: Database.Database,
-  projectId: number,
+  _db: Database.Database,
+  _projectId: number,
   input: ProductDeliveryLifecycleInput,
 ): ProductDeliveryLifecycleInput & {
   development: ProductDeliveryLifecycleInput['development'] & {
@@ -98,10 +57,12 @@ export function canonicalizeProductDeliveryLifecycleInput(
     ...input,
     development: {
       ...input.development,
-      repositories: input.development.repositories.map(binding =>
-        isPortableBinding(binding)
-          ? binding
-          : portableBindingForLegacyId(db, projectId, binding)),
+      repositories: input.development.repositories.map(binding => {
+        if (!isPortableBinding(binding)) {
+          throw new Error('PRODUCT_LIFECYCLE_PORTABLE_REPOSITORY_REF_REQUIRED');
+        }
+        return binding;
+      }),
     },
   };
 }

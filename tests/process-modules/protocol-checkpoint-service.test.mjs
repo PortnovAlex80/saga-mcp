@@ -59,13 +59,13 @@ const { validateModuleToolContribution } = await import(
 // ---------------------------------------------------------------------------
 
 const STUB_CONTRACT_REF = Object.freeze({
-  schemaId: 'saga3.evidence.tool-receipt.v1',
+  schemaId: 'factory.evidence.tool-receipt.v1',
   version: '1.0.0',
   digest: '0'.repeat(64),
 });
 
 const OTHER_CONTRACT_REF = Object.freeze({
-  schemaId: 'saga3.evidence.artifact-reference.v1',
+  schemaId: 'factory.evidence.artifact-reference.v1',
   version: '1.0.0',
   digest: '1'.repeat(64),
 });

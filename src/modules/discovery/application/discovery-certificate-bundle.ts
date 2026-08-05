@@ -42,7 +42,7 @@
 import { createHash } from 'node:crypto';
 
 import type {
-  Saga3DiscoveryRuntimePersistence,
+  FactoryDiscoveryRuntimePersistence,
   SettlementInputKey,
   SettlementProposalRecord,
 } from '../infrastructure/discovery-runtime-port.js';
@@ -141,7 +141,7 @@ export function encodeReadinessTarget(
  * (which reads by certificate id). Exported so D4 can re-use it if needed.
  */
 export function readCertificateOrFail(
-  rt: Saga3DiscoveryRuntimePersistence,
+  rt: FactoryDiscoveryRuntimePersistence,
   certificateId: number,
 ): OutcomeCertificateRecord {
   const cert = rt.readOutcomeCertificate(certificateId);
@@ -332,7 +332,7 @@ export function parseAndVerifyStoredSnapshotShared(
  * task. Consolidates D4's verifyReadinessLineage.
  */
 export function verifyReadinessLineageShared(
-  rt: Saga3DiscoveryRuntimePersistence,
+  rt: FactoryDiscoveryRuntimePersistence,
   assessment: ReadinessAssessmentRecord,
   proposal: SettlementProposalRecord,
   error: (message: string) => Error,
@@ -556,7 +556,7 @@ export function verifyCertificateRecordShared(
  * always verified it; passing it keeps that cross-check). D5 omits it.
  */
 export function verifyDiscoveryCertificateBundle(
-  rt: Saga3DiscoveryRuntimePersistence,
+  rt: FactoryDiscoveryRuntimePersistence,
   certificateId: number,
   expectedHash: string,
   policy: DiscoverySettlementPolicy,

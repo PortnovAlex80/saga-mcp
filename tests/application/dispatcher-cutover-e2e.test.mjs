@@ -4,7 +4,7 @@
 //
 // Proves that when SAGA_WORKPLACE_READ=new (cutover mode), the dispatcher's
 // worker_next → worker_done path drives the authoritative LOOP channel in
-// v4_workplaces, and tasks.status is the reverse projection. This is the
+// factory_workplaces, and tasks.status is the reverse projection. This is the
 // final load-bearing test of the cutover: if it passes, the dispatcher no
 // longer treats tasks.status as orchestration truth for the loop.
 //
@@ -140,7 +140,7 @@ test('cutover ON: non-Process-Module task (no process_run_id) is skipped', () =>
     taskId, epicId, projectId, taskKind: 'development.code', metadata: meta, executionId: 'exec-1',
   });
   assert.equal(ref, null, 'legacy board task is not projected');
-  const count = db.prepare(`SELECT count(*) c FROM v4_workplaces`).get().c;
+  const count = db.prepare(`SELECT count(*) c FROM factory_workplaces`).get().c;
   assert.equal(count, 0);
   // tasks.status untouched (no reverse projection for a non-PM task).
   db.close();

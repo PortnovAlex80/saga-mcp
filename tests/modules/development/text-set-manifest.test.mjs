@@ -39,7 +39,7 @@ test('REG-11-AC-05: different content → different digest', () => {
   assert.notEqual(computeTextSetDigest(m1), computeTextSetDigest(m2));
 });
 
-test('REG-11: buildTextSetProductRef produces saga3.text-set.v1', () => {
+test('REG-11: buildTextSetProductRef produces factory.text-set.v1', () => {
   const m = { entries: [{ path: 'a.ts', operation: 'create', blobRef: 'b', digest: DIGEST }] };
   const ref = buildTextSetProductRef(m);
   assert.equal(ref.schemaId, TEXT_SET_SCHEMA);

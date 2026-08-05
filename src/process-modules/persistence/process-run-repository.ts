@@ -2,8 +2,8 @@
  * ProcessRunRepository — the persistence port for ProcessRun records.
  *
  * This port isolates the application/runtime layer from the concrete SQLite
- * implementation, mirroring the saga3-discovery persistence boundary
- * (Saga3DiscoveryRuntimePersistence). Tests inject a fake; production wires
+ * implementation, mirroring the factory-discovery persistence boundary
+ * (FactoryDiscoveryRuntimePersistence). Tests inject a fake; production wires
  * the SQLite implementation from saga3/persistence/.
  *
  * The contract is intentionally narrow: idempotent start, atomic transition,

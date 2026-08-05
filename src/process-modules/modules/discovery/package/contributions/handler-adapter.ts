@@ -10,7 +10,7 @@
  *
  * The legacy discovery handlers (`../../discovery-installation.ts`) are
  * constructed by `createDiscoveryKernelHandlers(deps)` where `deps` carries
- * the `Saga3DiscoveryRuntimePersistence` port — but the
+ * the `FactoryDiscoveryRuntimePersistence` port — but the
  * `ensureDiscoveryBriefArtifact` helper STILL calls `getDb()` directly for
  * the one piece of state no port exposes: the auto-provisioned `brief`
  * artifact row that downstream Formalization needs for its PRD → brief

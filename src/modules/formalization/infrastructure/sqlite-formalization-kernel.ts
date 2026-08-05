@@ -260,7 +260,7 @@ export class SqliteFormalizationArtifactGraph implements
 
   areTasksReady(epicId: number) {
     // Conveyor v4 step 3.A.4 read-switch: when SAGA_WORKPLACE_READ=new, the
-    // task's done-ness is the AUTHORITATIVE v4_workplaces loop_state (terminal
+    // task's done-ness is the AUTHORITATIVE factory_workplaces loop_state (terminal
     // = done). The legacy `tasks.status` is a reverse projection that may lag.
     // integration_state / execution_mode / task_kind stay on tasks (DATA
     // columns — they describe the task, not its orchestration loop state).
@@ -277,7 +277,7 @@ export class SqliteFormalizationArtifactGraph implements
                   w.loop_state AS loop_state,
                   t.integration_state, t.task_kind
              FROM tasks t
-             LEFT JOIN v4_workplaces w ON w.workplace_ref = t.workplace_ref
+             LEFT JOIN factory_workplaces w ON w.workplace_ref = t.workplace_ref
             WHERE t.epic_id=? AND t.workflow_stage='formalization'`,
         ).all(epicId) as TaskRow[]
       : this.db.prepare(

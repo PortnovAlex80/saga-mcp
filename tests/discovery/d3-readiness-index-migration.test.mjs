@@ -7,7 +7,7 @@
  * CREATE UNIQUE INDEX IF NOT EXISTS is a NO-OP when an index of the SAME NAME
  * already exists — even if its columns differ — so on a pre-correction DB the
  * old index would survive and ON CONFLICT(control_intent_id, content_hash)
- * would throw. ensureSaga3ReadinessSchema must rebuild the index, deduping
+ * would throw. ensureFactoryReadinessSchema must rebuild the index, deduping
  * existing rows deterministically. These tests reproduce the upgrade path.
  */
 import assert from 'node:assert/strict';
@@ -29,7 +29,7 @@ const { canonicalJson } = await import('../../dist/modules/discovery/infrastruct
 const { createHash } = await import('node:crypto');
 
 function freshFixture() {
-  const temp = mkdtempSync(path.join(os.tmpdir(), 'saga3-d3-mig-'));
+  const temp = mkdtempSync(path.join(os.tmpdir(), 'factory-d3-mig-'));
   process.env.DB_PATH = path.join(temp, 'mig.db');
   const db = getDb();
   db.prepare(`INSERT INTO projects (id,name,status) VALUES (1,'P','active')`).run();
@@ -56,28 +56,28 @@ test('P0 migration: execution-scoped index rebuilt to content-scoped; cross-exec
     closeDb();
     const Database = (await import('better-sqlite3')).default;
     const rawDb = new Database(process.env.DB_PATH);
-    rawDb.exec('DROP INDEX IF EXISTS idx_saga3_readiness_assessment_idempotency');
+    rawDb.exec('DROP INDEX IF EXISTS idx_factory_readiness_assessment_idempotency');
     rawDb.exec(
-      `CREATE UNIQUE INDEX idx_saga3_readiness_assessment_idempotency
-         ON saga3_readiness_assessments(control_intent_id, execution_id, content_hash)`,
+      `CREATE UNIQUE INDEX idx_factory_readiness_assessment_idempotency
+         ON factory_readiness_assessments(control_intent_id, execution_id, content_hash)`,
     );
-    let cols = rawDb.prepare(`PRAGMA index_info('idx_saga3_readiness_assessment_idempotency')`).all().map(r => r.name);
+    let cols = rawDb.prepare(`PRAGMA index_info('idx_factory_readiness_assessment_idempotency')`).all().map(r => r.name);
     assert.deepEqual(cols, ['control_intent_id', 'execution_id', 'content_hash'],
       'pre-migration index must be the execution-scoped original');
     rawDb.close();
 
     // Reopen through getDb (production path) and run the migration.
     const migDb = getDb();
-    const { ensureSaga3ReadinessSchema } = await import('../../dist/modules/discovery/infrastructure/discovery-readiness-repository.js');
-    ensureSaga3ReadinessSchema(migDb);
+    const { ensureFactoryReadinessSchema } = await import('../../dist/modules/discovery/infrastructure/discovery-readiness-repository.js');
+    ensureFactoryReadinessSchema(migDb);
 
-    cols = migDb.prepare(`PRAGMA index_info('idx_saga3_readiness_assessment_idempotency')`).all().map(r => r.name);
+    cols = migDb.prepare(`PRAGMA index_info('idx_factory_readiness_assessment_idempotency')`).all().map(r => r.name);
     assert.deepEqual(cols, ['control_intent_id', 'content_hash'],
       'post-migration index must be content-scoped (independent of execution)');
 
     // Idempotent re-migration leaves the correct index in place.
-    ensureSaga3ReadinessSchema(migDb);
-    cols = migDb.prepare(`PRAGMA index_info('idx_saga3_readiness_assessment_idempotency')`).all().map(r => r.name);
+    ensureFactoryReadinessSchema(migDb);
+    cols = migDb.prepare(`PRAGMA index_info('idx_factory_readiness_assessment_idempotency')`).all().map(r => r.name);
     assert.deepEqual(cols, ['control_intent_id', 'content_hash']);
 
     // Exercise ON CONFLICT across two executions: same content from exec A,
@@ -91,15 +91,15 @@ test('P0 migration: execution-scoped index rebuilt to content-scoped; cross-exec
     };
     const REAL_HASH = createHash('sha256').update(canonicalJson(PROPOSAL_PAYLOAD)).digest('hex');
     migDb.prepare(`INSERT INTO tasks (id,epic_id,title,status,task_kind) VALUES (100,10,'D','done','discovery.work')`).run();
-    migDb.prepare(`INSERT INTO saga3_work_intents (id,epic_id,kind,objective,authority_scope,output_schema,token_budget,retry_budget,projected_task_id,status) VALUES (1,10,'discovery','o','{}','s',0,0,100,'concluded')`).run();
-    migDb.prepare(`INSERT INTO saga3_proposals (id,intent_id,task_id,execution_id,kind,schema_version,payload,content_hash,status,provenance) VALUES (50,1,100,'product-exec','discovery','sv',?,?, 'submitted','{}')`)
+    migDb.prepare(`INSERT INTO factory_work_intents (id,epic_id,kind,objective,authority_scope,output_schema,token_budget,retry_budget,projected_task_id,status) VALUES (1,10,'discovery','o','{}','s',0,0,100,'concluded')`).run();
+    migDb.prepare(`INSERT INTO factory_proposals (id,intent_id,task_id,execution_id,kind,schema_version,payload,content_hash,status,provenance) VALUES (50,1,100,'product-exec','discovery','sv',?,?, 'submitted','{}')`)
       .run(JSON.stringify(PROPOSAL_PAYLOAD), REAL_HASH);
     const aa = { snapshot_ref: 'p', scope: 'x', allowed_tools: ['task_get', 'readiness_get', 'readiness_submit', 'worker_done'], enforcement: 'runtime' };
     migDb.prepare(`INSERT INTO tasks (id,epic_id,title,status,task_kind,workflow_stage,execution_skill,execution_mode,generation_key,metadata,current_execution_id) VALUES (200,10,'A','in_progress','discovery.assess','discovery','saga-discovery-readiness-advisor','tracker_only','at',?,?)`)
       .run(JSON.stringify({ work_intent_id: 2 }), 'migr-exec-a');
-    migDb.prepare(`INSERT INTO saga3_work_intents (id,epic_id,kind,objective,authority_scope,output_schema,token_budget,retry_budget,projected_task_id,status) VALUES (2,10,?,?,?,?,0,0,200,'open')`)
+    migDb.prepare(`INSERT INTO factory_work_intents (id,epic_id,kind,objective,authority_scope,output_schema,token_budget,retry_budget,projected_task_id,status) VALUES (2,10,?,?,?,?,0,0,200,'open')`)
       .run(DISCOVERY_READINESS_INTENT_KIND, 'assess', JSON.stringify(aa), DISCOVERY_READINESS_ASSESSMENT_SCHEMA);
-    migDb.prepare(`INSERT INTO saga3_readiness_control_intents (id,epic_id,kind,proposal_id,proposal_content_hash,source_intent_id,authority_intent_id,projected_task_id,status) VALUES (1,10,'AssessDiscoveryReadiness',50,?,1,2,200,'executing')`).run(REAL_HASH);
+    migDb.prepare(`INSERT INTO factory_readiness_control_intents (id,epic_id,kind,proposal_id,proposal_content_hash,source_intent_id,authority_intent_id,projected_task_id,status) VALUES (1,10,'AssessDiscoveryReadiness',50,?,1,2,200,'executing')`).run(REAL_HASH);
     const intent = { id: 2, epic_id: 10, kind: DISCOVERY_READINESS_INTENT_KIND, objective: 'assess', authority_scope: aa, output_schema: DISCOVERY_READINESS_ASSESSMENT_SCHEMA, token_budget: 0, retry_budget: 0, projected_task_id: 200, status: 'executing', created_at: 't' };
     const ecA = buildExecutionContext({ modelRoute: { model: 'm', provider: 'lmstudio', effort: null }, workIntent: intent, capturedAt: 't' });
     migDb.prepare(`INSERT INTO worker_executions (execution_id,run_id,project_id,epic_id,task_id,worker_id,machine_id,state,phase,metadata) VALUES ('migr-exec-a','ra',1,10,200,'wa','m','running','executing',?)`)
@@ -124,7 +124,7 @@ test('P0 migration: execution-scoped index rebuilt to content-scoped; cross-exec
     const second = handlers.readiness_submit({ control_intent_id: 1, execution_id: 'migr-exec-b', schema_version: DISCOVERY_READINESS_ASSESSMENT_SCHEMA, payload });
     assert.equal(second.assessment_id, first.assessment_id, 'cross-exec replay reuses the row');
     assert.equal(second.replayed, true);
-    assert.equal(migDb.prepare('SELECT COUNT(*) c FROM saga3_readiness_assessments').get().c, 1);
+    assert.equal(migDb.prepare('SELECT COUNT(*) c FROM factory_readiness_assessments').get().c, 1);
   } finally { hardClose(temp); }
 });
 
@@ -134,38 +134,38 @@ test('P0 migration: duplicates collapsed deterministically (keep accepted > reje
     closeDb();
     const Database = (await import('better-sqlite3')).default;
     const rawDb = new Database(process.env.DB_PATH);
-    rawDb.exec('DROP INDEX IF EXISTS idx_saga3_readiness_assessment_idempotency');
+    rawDb.exec('DROP INDEX IF EXISTS idx_factory_readiness_assessment_idempotency');
     rawDb.exec(
-      `CREATE UNIQUE INDEX idx_saga3_readiness_assessment_idempotency
-         ON saga3_readiness_assessments(control_intent_id, execution_id, content_hash)`,
+      `CREATE UNIQUE INDEX idx_factory_readiness_assessment_idempotency
+         ON factory_readiness_assessments(control_intent_id, execution_id, content_hash)`,
     );
     // Seed three rows for the same (control_intent_id, content_hash), different
     // executions + statuses — the old index permitted this.
     const ch = '0'.repeat(64);
     // FK anchors: control intent + minimal proposal/intent rows.
     rawDb.prepare(`INSERT INTO tasks (id,epic_id,title,status,task_kind) VALUES (100,10,'D','done','discovery.work')`).run();
-    rawDb.prepare(`INSERT INTO saga3_work_intents (id,epic_id,kind,objective,authority_scope,output_schema,token_budget,retry_budget,projected_task_id,status) VALUES (1,10,'discovery','o','{}','s',0,0,100,'concluded')`).run();
-    rawDb.prepare(`INSERT INTO saga3_proposals (id,intent_id,task_id,execution_id,kind,schema_version,payload,content_hash,status,provenance) VALUES (50,1,100,'e','discovery','sv','{}',?,'submitted','{}')`).run(ch);
+    rawDb.prepare(`INSERT INTO factory_work_intents (id,epic_id,kind,objective,authority_scope,output_schema,token_budget,retry_budget,projected_task_id,status) VALUES (1,10,'discovery','o','{}','s',0,0,100,'concluded')`).run();
+    rawDb.prepare(`INSERT INTO factory_proposals (id,intent_id,task_id,execution_id,kind,schema_version,payload,content_hash,status,provenance) VALUES (50,1,100,'e','discovery','sv','{}',?,'submitted','{}')`).run(ch);
     rawDb.prepare(`INSERT INTO tasks (id,epic_id,title,status,task_kind) VALUES (200,10,'A','done','discovery.assess')`).run();
-    rawDb.prepare(`INSERT INTO saga3_work_intents (id,epic_id,kind,objective,authority_scope,output_schema,token_budget,retry_budget,projected_task_id,status) VALUES (2,10,'discovery.assess','o','{}','s',0,0,200,'concluded')`).run();
-    rawDb.prepare(`INSERT INTO saga3_readiness_control_intents (id,epic_id,kind,proposal_id,proposal_content_hash,source_intent_id,authority_intent_id,projected_task_id,status) VALUES (1,10,'AssessDiscoveryReadiness',50,?,1,2,200,'concluded')`).run(ch);
+    rawDb.prepare(`INSERT INTO factory_work_intents (id,epic_id,kind,objective,authority_scope,output_schema,token_budget,retry_budget,projected_task_id,status) VALUES (2,10,'discovery.assess','o','{}','s',0,0,200,'concluded')`).run();
+    rawDb.prepare(`INSERT INTO factory_readiness_control_intents (id,epic_id,kind,proposal_id,proposal_content_hash,source_intent_id,authority_intent_id,projected_task_id,status) VALUES (1,10,'AssessDiscoveryReadiness',50,?,1,2,200,'concluded')`).run(ch);
     const baseRow = (status, exec) => [1, 50, ch, 200, exec, '{}', ch, status, null, null, '[]', '{}'];
-    rawDb.prepare(`INSERT INTO saga3_readiness_assessments (control_intent_id,proposal_id,proposal_content_hash,task_id,execution_id,payload,content_hash,status,overall_readiness,recommended_next_action,validation_errors,provenance) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`).run(...baseRow('submitted', 'exec-x'));
-    rawDb.prepare(`INSERT INTO saga3_readiness_assessments (control_intent_id,proposal_id,proposal_content_hash,task_id,execution_id,payload,content_hash,status,overall_readiness,recommended_next_action,validation_errors,provenance) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`).run(...baseRow('rejected_by_kernel', 'exec-y'));
-    rawDb.prepare(`INSERT INTO saga3_readiness_assessments (control_intent_id,proposal_id,proposal_content_hash,task_id,execution_id,payload,content_hash,status,overall_readiness,recommended_next_action,validation_errors,provenance) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`).run(...baseRow('accepted_by_kernel', 'exec-z'));
-    assert.equal(rawDb.prepare('SELECT COUNT(*) c FROM saga3_readiness_assessments').get().c, 3);
+    rawDb.prepare(`INSERT INTO factory_readiness_assessments (control_intent_id,proposal_id,proposal_content_hash,task_id,execution_id,payload,content_hash,status,overall_readiness,recommended_next_action,validation_errors,provenance) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`).run(...baseRow('submitted', 'exec-x'));
+    rawDb.prepare(`INSERT INTO factory_readiness_assessments (control_intent_id,proposal_id,proposal_content_hash,task_id,execution_id,payload,content_hash,status,overall_readiness,recommended_next_action,validation_errors,provenance) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`).run(...baseRow('rejected_by_kernel', 'exec-y'));
+    rawDb.prepare(`INSERT INTO factory_readiness_assessments (control_intent_id,proposal_id,proposal_content_hash,task_id,execution_id,payload,content_hash,status,overall_readiness,recommended_next_action,validation_errors,provenance) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`).run(...baseRow('accepted_by_kernel', 'exec-z'));
+    assert.equal(rawDb.prepare('SELECT COUNT(*) c FROM factory_readiness_assessments').get().c, 3);
     rawDb.close();
 
     // Migration through the production path.
     const migDb = getDb();
-    const { ensureSaga3ReadinessSchema } = await import('../../dist/modules/discovery/infrastructure/discovery-readiness-repository.js');
-    ensureSaga3ReadinessSchema(migDb);
+    const { ensureFactoryReadinessSchema } = await import('../../dist/modules/discovery/infrastructure/discovery-readiness-repository.js');
+    ensureFactoryReadinessSchema(migDb);
 
-    const survivors = migDb.prepare('SELECT status, execution_id FROM saga3_readiness_assessments').all();
+    const survivors = migDb.prepare('SELECT status, execution_id FROM factory_readiness_assessments').all();
     assert.equal(survivors.length, 1, 'duplicates collapsed to one row');
     assert.equal(survivors[0].status, 'accepted_by_kernel', 'kept the strongest status');
     assert.equal(survivors[0].execution_id, 'exec-z', 'kept the accepted execution');
-    const cols = migDb.prepare(`PRAGMA index_info('idx_saga3_readiness_assessment_idempotency')`).all().map(r => r.name);
+    const cols = migDb.prepare(`PRAGMA index_info('idx_factory_readiness_assessment_idempotency')`).all().map(r => r.name);
     assert.deepEqual(cols, ['control_intent_id', 'content_hash']);
   } finally { hardClose(temp); }
 });
@@ -173,9 +173,9 @@ test('P0 migration: duplicates collapsed deterministically (keep accepted > reje
 test('P0 migration: fresh DB (no prior index) gets the correct content-scoped index directly', async () => {
   const { temp, db } = freshFixture();
   try {
-    const { ensureSaga3ReadinessSchema } = await import('../../dist/modules/discovery/infrastructure/discovery-readiness-repository.js');
-    ensureSaga3ReadinessSchema(db);
-    const cols = db.prepare(`PRAGMA index_info('idx_saga3_readiness_assessment_idempotency')`).all().map(r => r.name);
+    const { ensureFactoryReadinessSchema } = await import('../../dist/modules/discovery/infrastructure/discovery-readiness-repository.js');
+    ensureFactoryReadinessSchema(db);
+    const cols = db.prepare(`PRAGMA index_info('idx_factory_readiness_assessment_idempotency')`).all().map(r => r.name);
     assert.deepEqual(cols, ['control_intent_id', 'content_hash']);
   } finally { hardClose(temp); }
 });

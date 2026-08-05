@@ -126,7 +126,7 @@ test('store records each (stageId, portName) once and rejects divergent re-recor
     stageId: 'draft',
     stageRunId: 10,
     processRunId: 100,
-    portSchemaIds: { campaignDraft: 'saga3.campaign-draft.v1' },
+    portSchemaIds: { campaignDraft: 'factory.campaign-draft.v1' },
     mappedOutput: { campaignDraft: { title: 'Spring Sale' } },
   });
   const [v] = variables;
@@ -201,7 +201,7 @@ test('handoff payload contains only the receiving stage inputMapping fields, not
     stageId: 'draft',
     stageRunId: 10,
     processRunId: 100,
-    portSchemaIds: { campaignDraft: 'saga3.campaign-draft.v1' },
+    portSchemaIds: { campaignDraft: 'factory.campaign-draft.v1' },
     mappedOutput: {
       campaignDraft: { title: 'Spring Sale', budget: 5000 },
       // A second port on the same stage:
@@ -283,7 +283,7 @@ test('stage output envelope references the module envelope by digest and is itse
     stageRunId: 10,
     processRunId: 100,
     outcome: 'campaign-drafted',
-    portSchemaIds: { campaignDraft: 'saga3.campaign-draft.v1' },
+    portSchemaIds: { campaignDraft: 'factory.campaign-draft.v1' },
     mappedOutput: { campaignDraft: { title: 'Spring Sale' } },
     moduleEnvelope: envelope,
   });

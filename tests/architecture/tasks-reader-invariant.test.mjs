@@ -9,7 +9,7 @@
 // # What this ratchet guards
 //
 // After the v4 cutover, the authoritative state of a work item lives in the
-// `v4_workplaces` aggregate (REG-05). The legacy `tasks` table becomes a
+// `factory_workplaces` aggregate (REG-05). The legacy `tasks` table becomes a
 // REBUILDABLE PROJECTION (REG-06): the `tasks.{status,integration_state,
 // current_execution_id}` owner columns are written by the WorkItemProjector
 // (one-way), and no orchestration core may read them as truth.
@@ -17,7 +17,7 @@
 // Step 5.2/5.4 of the migration plan require:
 //   - core reads of `tasks`/`worker_executions` as orchestration truth are
 //     FORBIDDEN;
-//   - the dispatch/transition use cases read from `v4_workplaces` (via
+//   - the dispatch/transition use cases read from `factory_workplaces` (via
 //     `SAGA_WORKPLACE_READ=new`).
 //
 // # Ratchet shape (shrinkage, not yet zero)
@@ -85,10 +85,9 @@ const ALLOWED_CORE_READERS = [
   // Lifecycle single-writer set — these are the WRITERS (tasks-writer-invariant
   // gate) and they also read-then-write inside the same atomic transaction.
   // They retire when step 5.2 routes claim/release through ConveyorRuntime use
-  // cases backed by v4_workplaces CAS.
+  // cases backed by factory_workplaces CAS.
   'src/lifecycle/work-assignment-core.ts',
   'src/lifecycle/atomic-release.ts',
-  'src/lifecycle/unfenced-assignment-recovery.ts',
   // Lifecycle app — reads task_kind/execution_mode to decide launch path.
   // Retires when step 2.5 unifies the launch path behind WorkerLauncherPort.
   'src/app/product-lifecycle-runtime.ts',
@@ -98,8 +97,8 @@ const ALLOWED_CORE_READERS = [
   // when tasks is fully projection (no data reads needed).
   'src/application/conveyor-runtime.ts',
   // Saga2 runtime repositories — the dispatch eligibility view. Retires when
-  // step 5.2 makes v4_workplaces the queue source (REG-10-AC-01).
-  'src/infrastructure/persistence/sqlite-saga2-runtime-repositories.ts',
+  // step 5.2 makes factory_workplaces the queue source (REG-10-AC-01).
+  'src/infrastructure/persistence/sqlite-factory-runtime-repositories.ts',
   'src/infrastructure/work/sqlite-work-assignment-adapter.ts',
   // Worker launcher factory reads task metadata to assemble the launch
   // context. Retires when step 2.4/2.5 routes launch via WorkerLauncherPort
@@ -205,7 +204,7 @@ test('step 5.4 ratchet: every core tasks-reader is on the allowed whitelist', ()
     assert.fail(
       `${unlisted.length} orchestration core file(s) read tasks/worker_executions ` +
         `but are NOT on the ALLOWED_CORE_READERS whitelist (Conveyor v4 step 5.4). ` +
-        `Either route the read through v4_workplaces, or add the file to the ` +
+        `Either route the read through factory_workplaces, or add the file to the ` +
         `whitelist in tests/architecture/tasks-reader-invariant.test.mjs with a ` +
         `migration-plan citation:\n` +
         unlisted.map((f) => `  ${f}`).join('\n'),
@@ -234,7 +233,7 @@ test('step 5.4 ratchet: reports reader set for shrinkage visibility', () => {
   console.log(
     `\n  step 5.4 absence-of-readers ratchet: ${ALLOWED_CORE_READERS.length} allowed ` +
       `core reader(s), ${OBSERVED_READERS.length} observed. Target = 0 when every ` +
-      `workshop has switched its reads to v4_workplaces (steps 3.A.4/3.B.3/3.C.4).`,
+      `workshop has switched its reads to factory_workplaces (steps 3.A.4/3.B.3/3.C.4).`,
   );
   assert.ok(
     ALLOWED_CORE_READERS.length >= 0,

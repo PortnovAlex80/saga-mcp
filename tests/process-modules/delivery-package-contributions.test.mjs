@@ -254,14 +254,14 @@ test('W9-A6 acceptance capabilities: no-default-provider + push-is-not-release +
 // ---------------------------------------------------------------------------
 
 test('W9-A6 output contracts: input + output contract refs are the saga3 delivery schemas', () => {
-  assert.equal(DELIVERY_INPUT_CONTRACT.schemaId, 'saga3.delivery-release-case.v2');
-  assert.equal(DELIVERY_OUTPUT_CONTRACT.schemaId, 'saga3.delivery-certificate.v2');
-  assert.equal(DELIVERY_RELEASE_RECORD_CONTRACT.schemaId, 'saga3.release-record.v1');
+  assert.equal(DELIVERY_INPUT_CONTRACT.schemaId, 'factory.delivery-release-case.v2');
+  assert.equal(DELIVERY_OUTPUT_CONTRACT.schemaId, 'factory.delivery-certificate.v2');
+  assert.equal(DELIVERY_RELEASE_RECORD_CONTRACT.schemaId, 'factory.release-record.v1');
 });
 
 test('W9-A6 output contracts: every node output contract has a valid saga3 schema id', () => {
   for (const c of DELIVERY_NODE_OUTPUT_CONTRACTS) {
-    assert.ok(c.schemaId.startsWith('saga3.'), `${c.schemaId} is not a saga3 schema`);
+    assert.ok(c.schemaId.startsWith('factory.'), `${c.schemaId} is not a saga3 schema`);
     assert.ok(c.version.length > 0, 'version must be non-empty');
     assert.ok(c.digest.length > 0, 'digest must be non-empty');
   }
@@ -269,12 +269,12 @@ test('W9-A6 output contracts: every node output contract has a valid saga3 schem
 
 test('W9-A6 output contracts: node output contracts cover the five flow-node products', () => {
   const ids = DELIVERY_NODE_OUTPUT_CONTRACTS.map((c) => c.schemaId);
-  assert.ok(ids.includes('saga3.delivery-preflight.v1'));
-  assert.ok(ids.includes('saga3.delivery-approval-decision.v1'));
-  assert.ok(ids.includes('saga3.delivery-publication.v1'));
-  assert.ok(ids.includes('saga3.delivery-observation.v1'));
-  assert.ok(ids.includes('saga3.delivery-settlement-input.v1'));
-  assert.ok(ids.includes('saga3.release-record.v1'));
+  assert.ok(ids.includes('factory.delivery-preflight.v1'));
+  assert.ok(ids.includes('factory.delivery-approval-decision.v1'));
+  assert.ok(ids.includes('factory.delivery-publication.v1'));
+  assert.ok(ids.includes('factory.delivery-observation.v1'));
+  assert.ok(ids.includes('factory.delivery-settlement-input.v1'));
+  assert.ok(ids.includes('factory.release-record.v1'));
 });
 
 test('W9-A6 output contracts: declared outcomes are all terminal and match the delivery flow', () => {
@@ -324,7 +324,7 @@ test('W9-A6 external-effects: every adapter carries no-default-provider + no-for
 test('W9-A6 external-effects: external-receipt evidence is required + canonically named', () => {
   assert.equal(DELIVERY_EXTERNAL_RECEIPT_EVIDENCE.category, 'external-receipt');
   assert.equal(DELIVERY_EXTERNAL_RECEIPT_EVIDENCE.required, true);
-  assert.equal(DELIVERY_EXTERNAL_RECEIPT_EVIDENCE.contractRef.schemaId, 'saga3.evidence.external-receipt.v1');
+  assert.equal(DELIVERY_EXTERNAL_RECEIPT_EVIDENCE.contractRef.schemaId, 'factory.evidence.external-receipt.v1');
 });
 
 test('W9-A6 external-effects: release action kinds are the closed four-kind set', () => {
@@ -361,7 +361,7 @@ test('W9-A6 human-approval: approval statuses include pending + approved + denie
 test('W9-A6 human-approval: human-receipt evidence is required + canonically named', () => {
   assert.equal(DELIVERY_HUMAN_RECEIPT_EVIDENCE.category, 'human-receipt');
   assert.equal(DELIVERY_HUMAN_RECEIPT_EVIDENCE.required, true);
-  assert.equal(DELIVERY_HUMAN_RECEIPT_EVIDENCE.contractRef.schemaId, 'saga3.evidence.human-receipt.v1');
+  assert.equal(DELIVERY_HUMAN_RECEIPT_EVIDENCE.contractRef.schemaId, 'factory.evidence.human-receipt.v1');
 });
 
 test('W9-A6 human-approval: adapter carries explicit-operator-authorization + approval-binds-exact-input', () => {

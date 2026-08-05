@@ -96,10 +96,10 @@ test('project_delete: rejects when a lifecycle run is active', () => {
   const { project, epic } = seedProject('Lifecycle-Running');
   const db = getDb();
 
-  // saga4: the guard checks saga3_lifecycle_runs.status, not episode_workflows.
+  // saga4: the guard checks factory_lifecycle_runs.status, not episode_workflows.
   // Seed a lifecycle run in 'running' state for this epic.
   db.prepare(
-    `INSERT INTO saga3_lifecycle_runs
+    `INSERT INTO factory_lifecycle_runs
        (lifecycle_name, lifecycle_version, lifecycle_ref_key, display_name, description,
         definition_snapshot, definition_hash, project_id, epic_id, initiated_by,
         idempotency_key, input_schema, input_snapshot, input_hash, status, entry_stage_id)

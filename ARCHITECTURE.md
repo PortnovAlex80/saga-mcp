@@ -59,8 +59,8 @@ saga-mcp/
 │   │   │   ├── orchestration-engine.ts  Порт движка оркестрации
 │   │   │   ├── board-projection.ts      Порт чтения канбан-проекции
 │   │   │   ├── engine-administration.ts Порт администрирования движка
-│   │   │   ├── saga2-host-runtime.ts    Порт host-runtime
-│   │   │   └── saga2-runtime-persistence.ts  Порт persistence рантайма
+│   │   │   ├── worker-host-runtime.ts    Порт host-runtime
+│   │   │   └── factory-runtime-persistence.ts  Порт persistence рантайма
 │   │   ├── saga-application.ts        Корневой application-фасад
 │   │   ├── module-conformance-runner.ts  Прогон модуля через контракт
 │   │   ├── scenario-compiler.ts       Компиляция сценария вmanifest
@@ -85,7 +85,7 @@ saga-mcp/
 │   │   │   └── legacy-claude-worker-executor-factory.ts  WorkerExecutorFactory
 │   │   ├── persistence/               SQLite-репозитории рантайма
 │   │   ├── projections/               Чтение board-projection (канбан)
-│   │   ├── runtime/                   NodeSaga2HostRuntime
+│   │   ├── runtime/                   NodeWorkerHostRuntime
 │   │   ├── engine/                    LegacyEngineAdministration
 │   │   ├── workspaces/                SqliteWorkspaceResolver
 │   │   ├── conveyor/                  Конвейер-специфичные адаптеры

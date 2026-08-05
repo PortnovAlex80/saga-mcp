@@ -24,7 +24,7 @@
  * rejects a submission whose schema_version does not match this exactly — the
  * kernel, not the advisor, owns the contract version.
  */
-export const DISCOVERY_READINESS_ASSESSMENT_SCHEMA = 'saga3.discovery-readiness-assessment.v1';
+export const DISCOVERY_READINESS_ASSESSMENT_SCHEMA = 'factory.discovery-readiness-assessment.v1';
 
 /**
  * Top-level readiness classification of the whole Proposal. These are

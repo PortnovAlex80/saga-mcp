@@ -102,19 +102,19 @@ function rowToRecord(row: ProposalRow): ProposalRecord {
 }
 
 /**
- * SQLite repository for saga3_work_intents + saga3_proposals.
+ * SQLite repository for factory_work_intents + factory_proposals.
  *
  * Owns the create / read / status transitions for both tables. The
- * proposal_submit handler (src/tools/saga3-proposals.ts) performs the fence +
+ * proposal_submit handler (src/tools/factory-proposals.ts) performs the fence +
  * schema validation then delegates the INSERT here; this module never trusts
  * worker-supplied provenance (it is supplied explicitly by the handler).
  */
-export class Saga3ProposalRepository {
+export class FactoryProposalRepository {
   createWorkIntent(command: CreateWorkIntent): WorkIntent {
     const db = getDb();
     const authorityScope = JSON.stringify(command.authority_scope);
     const info = db.prepare(
-      `INSERT INTO saga3_work_intents
+      `INSERT INTO factory_work_intents
          (epic_id, kind, objective, authority_scope, output_schema,
           token_budget, retry_budget, status)
        VALUES (?,?,?,?,?,?,?, 'open')`,
@@ -133,7 +133,7 @@ export class Saga3ProposalRepository {
   readWorkIntent(id: number): WorkIntent | null {
     const db = getDb();
     const row = db.prepare(
-      'SELECT * FROM saga3_work_intents WHERE id=?',
+      'SELECT * FROM factory_work_intents WHERE id=?',
     ).get(id) as WorkIntentRow | undefined;
     return row ? rowToIntent(row) : null;
   }
@@ -142,7 +142,7 @@ export class Saga3ProposalRepository {
   readOpenIntentByEpic(epicId: number, kind: string): WorkIntent | null {
     const db = getDb();
     const row = db.prepare(
-      `SELECT * FROM saga3_work_intents
+      `SELECT * FROM factory_work_intents
         WHERE epic_id=? AND kind=? AND status IN ('open','executing')
         ORDER BY id DESC LIMIT 1`,
     ).get(epicId, kind) as WorkIntentRow | undefined;
@@ -153,7 +153,7 @@ export class Saga3ProposalRepository {
   setProjectedTask(intentId: number, taskId: number): void {
     const db = getDb();
     db.prepare(
-      `UPDATE saga3_work_intents SET projected_task_id=?, updated_at=datetime('now')
+      `UPDATE factory_work_intents SET projected_task_id=?, updated_at=datetime('now')
         WHERE id=?`,
     ).run(taskId, intentId);
   }
@@ -161,7 +161,7 @@ export class Saga3ProposalRepository {
   setIntentStatus(intentId: number, status: WorkIntentStatus): void {
     const db = getDb();
     db.prepare(
-      `UPDATE saga3_work_intents SET status=?, updated_at=datetime('now') WHERE id=?`,
+      `UPDATE factory_work_intents SET status=?, updated_at=datetime('now') WHERE id=?`,
     ).run(status, intentId);
   }
 
@@ -178,7 +178,7 @@ export class Saga3ProposalRepository {
     const payloadJson = canonicalJson(submission.payload);
     const contentHash = createHash('sha256').update(payloadJson).digest('hex');
     const info = db.prepare(
-      `INSERT INTO saga3_proposals
+      `INSERT INTO factory_proposals
          (intent_id, task_id, execution_id, kind, schema_version,
           payload, content_hash, status, provenance)
        VALUES (?,?,?,?,?,?,?, 'submitted', ?)`,
@@ -199,7 +199,7 @@ export class Saga3ProposalRepository {
   readLatestProposalForIntent(intentId: number): ProposalRecord | null {
     const db = getDb();
     const row = db.prepare(
-      `SELECT * FROM saga3_proposals
+      `SELECT * FROM factory_proposals
         WHERE intent_id=? AND status='submitted'
         ORDER BY id DESC LIMIT 1`,
     ).get(intentId) as ProposalRow | undefined;

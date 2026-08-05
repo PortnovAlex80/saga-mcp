@@ -18,14 +18,14 @@ import {
   DELIVERY_RELEASE_CASE_SCHEMA,
   DELIVERY_DEFERRED_PROFILE_SCHEMA,
 } from '../../../process-modules/lifecycles/product-delivery-module-contracts.js';
-export const DELIVERY_PREFLIGHT_SCHEMA = 'saga3.delivery-preflight.v1';
-export const DELIVERY_APPROVAL_SCHEMA = 'saga3.delivery-approval-decision.v1';
-export const DELIVERY_PUBLICATION_SCHEMA = 'saga3.delivery-publication.v1';
-export const DELIVERY_OBSERVATION_SCHEMA = 'saga3.delivery-observation.v1';
-export const RELEASE_RECORD_SCHEMA = 'saga3.release-record.v1';
+export const DELIVERY_PREFLIGHT_SCHEMA = 'factory.delivery-preflight.v1';
+export const DELIVERY_APPROVAL_SCHEMA = 'factory.delivery-approval-decision.v1';
+export const DELIVERY_PUBLICATION_SCHEMA = 'factory.delivery-publication.v1';
+export const DELIVERY_OBSERVATION_SCHEMA = 'factory.delivery-observation.v1';
+export const RELEASE_RECORD_SCHEMA = 'factory.release-record.v1';
 export const DELIVERY_SETTLEMENT_INPUT_SCHEMA =
-  'saga3.delivery-settlement-input.v1';
-export const DELIVERY_CERTIFICATE_SCHEMA = 'saga3.delivery-certificate.v2';
+  'factory.delivery-settlement-input.v1';
+export const DELIVERY_CERTIFICATE_SCHEMA = 'factory.delivery-certificate.v2';
 
 export interface DeliveryContentAddressedReference {
   schema: string;

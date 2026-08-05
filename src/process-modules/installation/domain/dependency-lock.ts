@@ -33,7 +33,7 @@ import { canonicalJson, sha256Hex } from '../../../shared/canonical-json.js';
 /**
  * Placeholder digest Wave 2 callers carry when they have no real content hash
  * yet. Matches the Wave 1 sentinel used by `ContractRef`, `HandlerRef`, and
- * `ResourceIndexEntry` (`CONTRACT_REF_PENDING_DIGEST` / `LEGACY_CONTRACT_DIGEST`
+ * `ResourceIndexEntry` (`CONTRACT_REF_PENDING_DIGEST` / `CONTRACT_DIGEST_PLACEHOLDER`
  * / `PENDING_DIGEST`). The lock accepts it but flags it so Wave 3+ can find
  * every unresolved reference by scanning `DependencyLock.entries`.
  */

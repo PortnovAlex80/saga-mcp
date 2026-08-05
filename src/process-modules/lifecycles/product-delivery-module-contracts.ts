@@ -55,8 +55,8 @@ export const DELIVERY_PROCESS_MODULE_REF = {
 // schema-id strings (only the four lifecycle-referenced ones live here).
 // ---------------------------------------------------------------------------
 
-export const DELIVERY_RELEASE_CASE_SCHEMA = 'saga3.delivery-release-case.v2';
+export const DELIVERY_RELEASE_CASE_SCHEMA = 'factory.delivery-release-case.v2';
 export const DELIVERY_DEFERRED_PROFILE_SCHEMA =
-  'saga3.delivery-deferred-profile.v1';
-export const DEVELOPMENT_CASE_SCHEMA = 'saga3.development-case.v1';
-export const FORMALIZATION_CASE_SCHEMA = 'saga3.formalization-case.v1';
+  'factory.delivery-deferred-profile.v1';
+export const DEVELOPMENT_CASE_SCHEMA = 'factory.development-case.v1';
+export const FORMALIZATION_CASE_SCHEMA = 'factory.formalization-case.v1';

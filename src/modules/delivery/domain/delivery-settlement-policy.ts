@@ -45,9 +45,9 @@ import {
  * development module (Rule 1). The values MUST stay byte-for-byte identical to
  * development-schemas.ts; if either changes the lineage check breaks at runtime.
  */
-const DEVELOPMENT_CERTIFICATE_SCHEMA = 'saga3.development-certificate.v1';
-const INTEGRATED_CANDIDATE_SCHEMA = 'saga3.integrated-release-candidate.v1';
-const VERIFIED_INTEGRATION_BUNDLE_SCHEMA = 'saga3.verified-integration-bundle.v1';
+const DEVELOPMENT_CERTIFICATE_SCHEMA = 'factory.development-certificate.v1';
+const INTEGRATED_CANDIDATE_SCHEMA = 'factory.integrated-release-candidate.v1';
+const VERIFIED_INTEGRATION_BUNDLE_SCHEMA = 'factory.verified-integration-bundle.v1';
 
 export interface DeliveryPreflightResult {
   event: 'ready' | 'blocked' | 'failed';

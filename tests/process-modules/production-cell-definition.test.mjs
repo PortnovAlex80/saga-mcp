@@ -47,7 +47,7 @@ function makeCell(overrides = {}) {
     materialization: { completionPolicy: 'all' },
     author: { skillRef: 'saga-analyst', capabilityPreset: 'text-author' },
     productContracts: [
-      { binding: 'srs', schemaRef: 'saga3.srs.v1', mediaType: 'application/json', cardinality: '1' },
+      { binding: 'srs', schemaRef: 'factory.srs.v1', mediaType: 'application/json', cardinality: '1' },
     ],
     authorGate: { gateId: 'author-gate', gatePhase: 'final', checkPlan: makePlan() },
     recovery: { maxAttempts: 3, onExhausted: 'fail' },
@@ -78,7 +78,7 @@ test('REG-04: cell with review — author=author + finalGate=final passes', () =
     authorGate: { gateId: 'g', gatePhase: 'author', checkPlan: makePlan() },
     review: {
       reviewer: { skillRef: 'saga-architect', capabilityPreset: 'text-reviewer' },
-      verdictSchemaRef: 'saga3.review-verdict.v1',
+      verdictSchemaRef: 'factory.review-verdict.v1',
       finalGate: { gateId: 'final-gate', gatePhase: 'final', checkPlan: makePlan() },
     },
   });

@@ -99,13 +99,13 @@ export type DeliveryReleaseActionKind =
  * the publish-deploy and observe-release node protocols (W9-A5). Mirrors
  * `EXTERNAL_RECEIPT_EVIDENCE` in `delivery-node-protocols.ts`.
  *
- * The contract id is `saga3.evidence.external-receipt.v1`; the digest is the
+ * The contract id is `factory.evidence.external-receipt.v1`; the digest is the
  * documented Wave-2 placeholder until the ContractSchemaRegistry ships a
  * codec.
  */
 export const DELIVERY_EXTERNAL_RECEIPT_EVIDENCE = Object.freeze({
   category: 'external-receipt',
-  contractRef: contractRef('saga3.evidence.external-receipt.v1', '1.0.0'),
+  contractRef: contractRef('factory.evidence.external-receipt.v1', '1.0.0'),
   required: true,
 } as const);
 
@@ -160,8 +160,8 @@ export const DELIVERY_PUBLISH_DEPLOY_ADAPTER_CONTRIBUTION: ExternalEffectAdapter
     owningFlowNodeId: 'publish-deploy',
     sideEffect: 'external',
     actionKinds: DELIVERY_RELEASE_ACTION_KINDS,
-    inputContractRef: contractRef('saga3.delivery-approval-decision.v1', '1.0.0'),
-    outputContractRef: contractRef('saga3.delivery-publication.v1', '1.0.0'),
+    inputContractRef: contractRef('factory.delivery-approval-decision.v1', '1.0.0'),
+    outputContractRef: contractRef('factory.delivery-publication.v1', '1.0.0'),
     evidenceContract: DELIVERY_EXTERNAL_RECEIPT_EVIDENCE,
     invariantRefs: Object.freeze([
       'delivery.no-default-provider',
@@ -192,8 +192,8 @@ export const DELIVERY_OBSERVE_RELEASE_ADAPTER_CONTRIBUTION: ExternalEffectAdapte
     owningFlowNodeId: 'observe-release',
     sideEffect: 'read',
     actionKinds: Object.freeze([]),
-    inputContractRef: contractRef('saga3.delivery-publication.v1', '1.0.0'),
-    outputContractRef: contractRef('saga3.delivery-observation.v1', '1.0.0'),
+    inputContractRef: contractRef('factory.delivery-publication.v1', '1.0.0'),
+    outputContractRef: contractRef('factory.delivery-observation.v1', '1.0.0'),
     evidenceContract: DELIVERY_EXTERNAL_RECEIPT_EVIDENCE,
     invariantRefs: Object.freeze([
       'delivery.no-default-provider',

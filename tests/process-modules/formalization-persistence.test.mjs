@@ -17,7 +17,7 @@ const {
 );
 
 function fixture() {
-  const temp = mkdtempSync(path.join(os.tmpdir(), 'saga3-formalization-persistence-'));
+  const temp = mkdtempSync(path.join(os.tmpdir(), 'factory-formalization-persistence-'));
   process.env.DB_PATH = path.join(temp, 'formalization.db');
   const db = getDb();
   db.prepare(`INSERT INTO projects (id,name,status) VALUES (1,'P','active')`).run();
@@ -27,7 +27,7 @@ function fixture() {
     moduleRef: { name: 'solution-formalization', version: '1.0.0' },
     executorKind: 'generic-flow',
     input: {
-      schema: 'saga3.formalization-case.v1',
+      schema: 'factory.formalization-case.v1',
       payload: { formalizationEpicId: 10 },
       contentHash: createHash('sha256')
         .update(JSON.stringify({ formalizationEpicId: 10 }))
@@ -52,7 +52,7 @@ function cleanup(temp) {
 
 function baselinePayload(processRunId, overrides = {}) {
   return {
-    schemaVersion: 'saga3.acceptance-baseline-snapshot.v1',
+    schemaVersion: 'factory.acceptance-baseline-snapshot.v1',
     processRunId,
     formalizationEpicId: 10,
     sourceReconciliationRef: 'formalization-node-product:reconciliation',
@@ -66,13 +66,13 @@ function baselinePayload(processRunId, overrides = {}) {
 
 function solutionPayload(processRunId, baselineRecord, overrides = {}) {
   return {
-    schemaVersion: 'saga3.solution-contract-certificate.v1',
+    schemaVersion: 'factory.solution-contract-certificate.v1',
     processRunId,
     formalizationEpicId: 10,
     discoveryCertificateRef: 'process-outcome-certificate:1',
     discoveryCertificateHash: 'd'.repeat(64),
     bundle: {
-      schemaVersion: 'saga3.solution-contract-certificate.v1',
+      schemaVersion: 'factory.solution-contract-certificate.v1',
       formalizationEpicId: 10,
       prdArtifactId: 10,
       frArtifactIds: [11],
@@ -97,7 +97,7 @@ function solutionPayload(processRunId, baselineRecord, overrides = {}) {
     baselineSnapshotRef: baselineRecord.artifactRef,
     baselineSnapshotHash: baselineRecord.snapshotHash,
     srs: {
-      schema: 'saga3.srs.v1',
+      schema: 'factory.srs.v1',
       ref: 'artifact:40',
       hash: '6'.repeat(64),
     },

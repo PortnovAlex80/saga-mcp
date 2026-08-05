@@ -184,7 +184,7 @@ test('§0.6.12: crash after worker completion, before kernel settlement — resu
   // The EXACT production envelope the worker produced and the kernel must NOT
   // reconstruct. Its contentHash is the byte-for-byte oracle.
   const preCrashProduction = buildProductionEnvelope({
-    schemaId: 'saga3.discovery-proposal.v1',
+    schemaId: 'factory.discovery-proposal.v1',
     artifactRef: 'proposal:4201',
     body: {
       problemStatement: 'orders double-charge on retry',
@@ -218,7 +218,7 @@ test('§0.6.12: crash after worker completion, before kernel settlement — resu
     event: null,                 // kernel has not emitted a domain event yet
     inputEnvelopeHash: preCrashInputEnvelopeHash,
     nodeRef: { nodeId, flowId: 'discovery.flow', flowVersion: '3.0.0' },
-    packageRef: { name: 'saga3-discovery', version: '3.0.0', digest: 'sha256:pkg-frozen' },
+    packageRef: { name: 'factory-discovery', version: '3.0.0', digest: 'sha256:pkg-frozen' },
     predecessorNodeRunIds: [],
     definitionDigest: 'sha256:flow-def-1',
     transitionCursor: `${processRunId}/${nodeId}#${attempt}`,
@@ -327,7 +327,7 @@ test('§0.6.12: resume does NOT reconstruct a mutable NodeExecutionFrame from la
   // that returns one product per ref and a sentinel product for any ref we did
   // NOT declare — proving the assembler never asks for undeclared products.
   const declared = [
-    { schemaId: 'saga3.discovery-proposal.v1', ref: 'proposal:1', digest: 'd1' },
+    { schemaId: 'factory.discovery-proposal.v1', ref: 'proposal:1', digest: 'd1' },
   ];
   const seen = [];
   const fakeDeps = {
@@ -379,7 +379,7 @@ test('§0.6.12: terminal settlement reads ModuleCompletion explicitly — magic 
       outcome: 'go',
       productions: [],
     },
-    certificateRef: { schemaId: 'saga3.discovery-certificate.v1', ref: 'cert:1', digest: 'c1' },
+    certificateRef: { schemaId: 'factory.discovery-certificate.v1', ref: 'cert:1', digest: 'c1' },
     terminal: true,
   };
   // The canonical-JSON of the explicit completion is stable and does not
@@ -391,7 +391,7 @@ test('§0.6.12: terminal settlement reads ModuleCompletion explicitly — magic 
       outcome: 'go',
       productions: [],
     },
-    certificateRef: { schemaId: 'saga3.discovery-certificate.v1', ref: 'cert:1', digest: 'c1' },
+    certificateRef: { schemaId: 'factory.discovery-certificate.v1', ref: 'cert:1', digest: 'c1' },
     terminal: true,
   });
   assert.equal(h1, h2, 'ModuleCompletion is content-addressable without any magic binding key');

@@ -54,7 +54,7 @@ const { sha256Hex } = await import(
   '../../dist/shared/canonical-json.js'
 );
 
-const DISCOVERY_CERTIFICATE_SCHEMA = 'saga3.discovery-outcome-certificate.v1';
+const DISCOVERY_CERTIFICATE_SCHEMA = 'factory.discovery-outcome-certificate.v1';
 
 function git(cwd, ...args) {
   return execFileSync('git', args, {
@@ -267,12 +267,12 @@ function buildDeferredOrchestrator(fixture) {
   const executionLog = [];
 
   const solutionContractPayload = {
-    schemaVersion: 'saga3.solution-contract-certificate.v1',
+    schemaVersion: 'factory.solution-contract-certificate.v1',
     bundle: {
       acceptanceBaselineHash: sha256Hex({ acceptedCriteria: ['AC-IDEA-1'], revision: 1 }),
     },
     srs: {
-      schema: 'saga3.srs.v1',
+      schema: 'factory.srs.v1',
       ref: 'artifact:srs:idea:1',
       hash: sha256Hex({ ref: 'artifact:srs:idea:1' }),
     },
@@ -284,19 +284,19 @@ function buildDeferredOrchestrator(fixture) {
     }],
   };
   const integratedCandidatePayload = {
-    schemaVersion: 'saga3.integrated-release-candidate.v1',
+    schemaVersion: 'factory.integrated-release-candidate.v1',
     repositoryId: fixture.repoId,
     commitHash: '5b1f9c0b2d3e4f5a6c7d8e9f0a1b2c3d4e5f6a7b',
     treeHash: sha256Hex({ files: ['src/idea.ts'] }),
     buildDigest: 'sha256:idea-build-v1',
   };
   const integratedCandidate = {
-    schema: 'saga3.integrated-release-candidate.v1',
+    schema: 'factory.integrated-release-candidate.v1',
     artifactRef: 'integrated-candidate:idea:1',
     contentHash: sha256Hex(integratedCandidatePayload),
   };
   const verifiedBundlePayload = {
-    schemaVersion: 'saga3.verified-integration-bundle.v1',
+    schemaVersion: 'factory.verified-integration-bundle.v1',
     integratedCandidate,
     acceptanceBaselineHash: solutionContractPayload.bundle.acceptanceBaselineHash,
     verifiedCriteria: [{
@@ -320,12 +320,12 @@ function buildDeferredOrchestrator(fixture) {
     'solution-formalization': {
       outcome: 'formalized',
       output: {
-        schema: 'saga3.solution-contract-certificate.v1',
+        schema: 'factory.solution-contract-certificate.v1',
         artifactRef: 'formalization-solution-contract:idea:1',
         contentHash: sha256Hex(solutionContractPayload),
       },
       certificate: {
-        schema: 'saga3.solution-contract-certificate.v1',
+        schema: 'factory.solution-contract-certificate.v1',
         certificateRef: 'formalization-certificate:idea:1',
         certificateHash: sha256Hex({ decision: 'formalized' }),
       },
@@ -335,12 +335,12 @@ function buildDeferredOrchestrator(fixture) {
     'solution-development': {
       outcome: 'verified',
       output: {
-        schema: 'saga3.verified-integration-bundle.v1',
+        schema: 'factory.verified-integration-bundle.v1',
         artifactRef: 'development-verified-bundle:idea:1',
         contentHash: sha256Hex(verifiedBundlePayload),
       },
       certificate: {
-        schema: 'saga3.development-certificate.v1',
+        schema: 'factory.development-certificate.v1',
         certificateRef: 'development-certificate:idea:1',
         certificateHash: sha256Hex({ decision: 'verified', candidate: integratedCandidate }),
       },
@@ -422,7 +422,7 @@ test('deferred Delivery does not block upstream stages and terminates approval-r
     const result = await orchestrator.run(productDeliveryLifecycle, {
       projectId: 1,
       epicId: 10,
-      inputSchema: 'saga3.product-delivery-lifecycle-input.v2',
+      inputSchema: 'factory.product-delivery-lifecycle-input.v2',
       inputPayload: input,
       initiatedBy: 'start-from-idea-test',
       idempotencyKey: 'start-from-idea-dry-run-full',
@@ -450,7 +450,7 @@ test('deferred Delivery does not block upstream stages and terminates approval-r
     let releaseRecordCount = 0;
     try {
       releaseRecordCount = fixture.db.prepare(
-        'SELECT COUNT(*) AS n FROM saga3_delivery_outputs',
+        'SELECT COUNT(*) AS n FROM factory_delivery_outputs',
       ).get().n;
     } catch {
       releaseRecordCount = 0;
@@ -512,7 +512,7 @@ test('startProductLifecycleFromIdea starts a LifecycleRun through the injected p
       assertProductDeliveryLifecycleInput(captured.lifecycleInput, lifecycleInputPolicyValidation));
     assert.equal(
       captured.lifecycleInputSchema,
-      'saga3.product-delivery-lifecycle-input.v2',
+      'factory.product-delivery-lifecycle-input.v2',
     );
     assert.equal(captured.projectId, 1);
     assert.equal(captured.epicId, 10);

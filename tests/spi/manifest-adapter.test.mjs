@@ -6,7 +6,7 @@
 // Task: docs/refactor-management/05-subagent-tasks/W01-A7-legacy-adapter.md.
 //
 // Proves:
-//   - adaptLegacyProcessModule wraps each of the 4 production module
+//   - createProcessModuleManifest wraps each of the 4 production module
 //     definitions (discovery/formalization/development/delivery, iterated via
 //     createBuiltInProcessModuleRegistry().list()) into a manifest that PASSES
 //     validateProcessModuleManifest and round-trips through canonical JSON.
@@ -57,14 +57,14 @@ function createBuiltInProcessModuleRegistry() {
   return registry;
 }
 const {
-  adaptLegacyProcessModule,
-  LEGACY_CONTRACT_DIGEST,
-  LEGACY_CONTRACT_VERSION,
-  LEGACY_MANIFEST_FORMAT_VERSION,
-  LEGACY_RUNTIME_COMPATIBILITY_RANGE,
-  LegacyManifestAdapterError,
+  createProcessModuleManifest,
+  CONTRACT_DIGEST_PLACEHOLDER,
+  CONTRACT_VERSION,
+  MANIFEST_FORMAT_VERSION,
+  RUNTIME_COMPATIBILITY_RANGE,
+  ManifestFactoryError,
 } = await import(
-  '../../dist/process-modules/domain/spi/manifest-adapter.js'
+  '../../dist/process-modules/domain/spi/manifest-factory.js'
 );
 const { validateProcessModuleManifest } = await import(
   '../../dist/process-modules/domain/spi/module-manifest.js'
@@ -116,7 +116,7 @@ function assertRoundTrip(manifest, label) {
 function assertLegacyEnvelopeShape(manifest, label) {
   assert.equal(
     manifest.manifestFormatVersion,
-    LEGACY_MANIFEST_FORMAT_VERSION,
+    MANIFEST_FORMAT_VERSION,
     `${label}: manifestFormatVersion === 'legacy-0'`,
   );
   assert.ok(
@@ -129,7 +129,7 @@ function assertLegacyEnvelopeShape(manifest, label) {
   );
   assert.equal(
     manifest.runtimeCompatibilityRange,
-    LEGACY_RUNTIME_COMPATIBILITY_RANGE,
+    RUNTIME_COMPATIBILITY_RANGE,
     `${label}: runtimeCompatibilityRange === '>=2.0.0 <3.0.0'`,
   );
   // Uniform manifest shape: NO legacy boolean marker.
@@ -144,12 +144,12 @@ function assertLegacyEnvelopeShape(manifest, label) {
     assert.ok(ref && typeof ref === 'object', `${label}: ${refField} present`);
     assert.equal(
       ref.version,
-      LEGACY_CONTRACT_VERSION,
+      CONTRACT_VERSION,
       `${label}: ${refField}.version === 'legacy'`,
     );
     assert.equal(
       ref.digest,
-      LEGACY_CONTRACT_DIGEST,
+      CONTRACT_DIGEST_PLACEHOLDER,
       `${label}: ${refField}.digest === 'pending@wave-2'`,
     );
     assert.equal(typeof ref.schemaId, 'string', `${label}: ${refField}.schemaId is a string`);
@@ -181,7 +181,7 @@ for (const mod of builtInModules) {
   const version = mod.identity.version;
 
   test(`legacy adapter wraps production module '${name}@${version}' into a valid manifest`, () => {
-    const manifest = adaptLegacyProcessModule(mod);
+    const manifest = createProcessModuleManifest(mod);
     // The adapter's own return already validated; re-validate independently to
     // prove the result passes the canonical validator.
     const validation = validateProcessModuleManifest(manifest);
@@ -195,7 +195,7 @@ for (const mod of builtInModules) {
   });
 
   test(`legacy adapter: '${name}@${version}' manifest round-trips through canonical JSON`, () => {
-    const manifest = adaptLegacyProcessModule(mod);
+    const manifest = createProcessModuleManifest(mod);
     assertRoundTrip(manifest, `${name}@${version}`);
   });
 }
@@ -206,7 +206,7 @@ for (const mod of builtInModules) {
 // ---------------------------------------------------------------------------
 
 test('legacy adapter wraps the W0-A7 synthetic lm-marketing fixture into a valid manifest', () => {
-  const manifest = adaptLegacyProcessModule(lmMarketingModule);
+  const manifest = createProcessModuleManifest(lmMarketingModule);
   const validation = validateProcessModuleManifest(manifest);
   assert.ok(
     validation.ok,
@@ -226,7 +226,7 @@ test('legacy adapter wraps the W0-A7 synthetic lm-marketing fixture into a valid
 });
 
 test('legacy adapter: lm-marketing manifest round-trips through canonical JSON', () => {
-  const manifest = adaptLegacyProcessModule(lmMarketingModule);
+  const manifest = createProcessModuleManifest(lmMarketingModule);
   assertRoundTrip(manifest, 'lm-marketing');
 });
 
@@ -238,19 +238,19 @@ test('legacy adapter: lm-marketing manifest round-trips through canonical JSON',
 test('legacy adapter REJECTS a function planted in a legacy extension field', () => {
   // Clone the lm-marketing definition and inject a function into an extension
   // field. validateProcessModuleManifest must reject it (functions are not
-  // canonical-serializable), surfacing as a thrown LegacyManifestAdapterError.
+  // canonical-serializable), surfacing as a thrown ManifestFactoryError.
   /** @type {any} */
   const poisoned = JSON.parse(JSON.stringify(lmMarketingModule));
   poisoned.extension = { callback: () => 'not serializable' };
   assert.throws(
-    () => adaptLegacyProcessModule(poisoned),
+    () => createProcessModuleManifest(poisoned),
     (err) => {
-      assert.ok(err instanceof LegacyManifestAdapterError, 'throws LegacyManifestAdapterError');
-      assert.equal(err.name, 'LegacyManifestAdapterError');
+      assert.ok(err instanceof ManifestFactoryError, 'throws ManifestFactoryError');
+      assert.equal(err.name, 'ManifestFactoryError');
       assert.ok(err.validationErrors.length > 0, 'carries structured validation errors');
       return true;
     },
-    'adaptLegacyProcessModule must throw on a function value',
+    'createProcessModuleManifest must throw on a function value',
   );
 });
 
@@ -259,9 +259,9 @@ test('legacy adapter REJECTS a Map planted in a legacy extension field', () => {
   const poisoned = JSON.parse(JSON.stringify(lmMarketingModule));
   poisoned.extension = { table: new Map([['k', 1]]) };
   assert.throws(
-    () => adaptLegacyProcessModule(poisoned),
-    (err) => err instanceof LegacyManifestAdapterError,
-    'adaptLegacyProcessModule must throw on a Map value',
+    () => createProcessModuleManifest(poisoned),
+    (err) => err instanceof ManifestFactoryError,
+    'createProcessModuleManifest must throw on a Map value',
   );
 });
 
@@ -273,9 +273,9 @@ test('legacy adapter REJECTS undefined inside an array field', () => {
   // (object-key undefined is dropped by canonicalJson intentionally).
   poisoned.outcomes = [poisoned.outcomes[0], undefined];
   assert.throws(
-    () => adaptLegacyProcessModule(poisoned),
-    (err) => err instanceof LegacyManifestAdapterError,
-    'adaptLegacyProcessModule must throw on undefined inside an array',
+    () => createProcessModuleManifest(poisoned),
+    (err) => err instanceof ManifestFactoryError,
+    'createProcessModuleManifest must throw on undefined inside an array',
   );
 });
 
@@ -286,9 +286,9 @@ test('legacy adapter REJECTS a Symbol planted in a legacy field', () => {
   const direct = structuredClone(lmMarketingModule);
   direct.identity.kind = Symbol('not serializable');
   assert.throws(
-    () => adaptLegacyProcessModule(direct),
-    (err) => err instanceof LegacyManifestAdapterError,
-    'adaptLegacyProcessModule must throw on a Symbol value',
+    () => createProcessModuleManifest(direct),
+    (err) => err instanceof ManifestFactoryError,
+    'createProcessModuleManifest must throw on a Symbol value',
   );
 });
 
@@ -297,9 +297,9 @@ test('legacy adapter REJECTS a non-finite number (NaN) in a legacy field', () =>
   const direct = structuredClone(lmMarketingModule);
   direct.identity.version = NaN; // not a finite number
   assert.throws(
-    () => adaptLegacyProcessModule(direct),
-    (err) => err instanceof LegacyManifestAdapterError,
-    'adaptLegacyProcessModule must throw on a non-finite number',
+    () => createProcessModuleManifest(direct),
+    (err) => err instanceof ManifestFactoryError,
+    'createProcessModuleManifest must throw on a non-finite number',
   );
 });
 
@@ -308,18 +308,18 @@ test('legacy adapter REJECTS a non-finite number (NaN) in a legacy field', () =>
 // ---------------------------------------------------------------------------
 
 test('exported constants match the frozen SPI spec (§1 row 15)', () => {
-  assert.equal(LEGACY_MANIFEST_FORMAT_VERSION, 'legacy-0');
-  assert.equal(LEGACY_RUNTIME_COMPATIBILITY_RANGE, '>=2.0.0 <3.0.0');
-  assert.equal(LEGACY_CONTRACT_VERSION, 'legacy');
-  assert.equal(LEGACY_CONTRACT_DIGEST, 'pending@wave-2');
+  assert.equal(MANIFEST_FORMAT_VERSION, 'legacy-0');
+  assert.equal(RUNTIME_COMPATIBILITY_RANGE, '>=2.0.0 <3.0.0');
+  assert.equal(CONTRACT_VERSION, 'legacy');
+  assert.equal(CONTRACT_DIGEST_PLACEHOLDER, 'pending@wave-2');
 });
 
 // ---------------------------------------------------------------------------
 // Contract: the manifestFormatVersion option override is honored.
 // ---------------------------------------------------------------------------
 
-test('adaptLegacyProcessModule honors opts.manifestFormatVersion override', () => {
-  const manifest = adaptLegacyProcessModule(lmMarketingModule, {
+test('createProcessModuleManifest honors opts.manifestFormatVersion override', () => {
+  const manifest = createProcessModuleManifest(lmMarketingModule, {
     manifestFormatVersion: 'migrating-1',
   });
   assert.equal(manifest.manifestFormatVersion, 'migrating-1');

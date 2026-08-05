@@ -20,7 +20,7 @@
 //   - Persistence: pin survives DB reopen.
 //
 // ISOLATION NOTE: W2-A4 runs before W2-A2 in some worktrees. W2-A2 owns the
-// ALTERs that add installation_id + package_digest to saga3_process_runs. If
+// ALTERs that add installation_id + package_digest to factory_process_runs. If
 // those columns are NOT present on the test DB (because W2-A2's db.ts edits
 // are not in this worktree), the helper `ensureInstallationColumns` applies
 // the same idempotent ALTER pattern W2-A2 uses (db.ts: `try { ALTER } catch {}`).
@@ -55,17 +55,17 @@ const { ProcessRunInstallationAdapter } = await import(
 // ---------------------------------------------------------------------------
 
 /**
- * Idempotently ensure the two new columns exist on saga3_process_runs. Mirrors
+ * Idempotently ensure the two new columns exist on factory_process_runs. Mirrors
  * the W2-A2 db.ts pattern (`try { ALTER } catch {}`). No-op once W2-A2 lands.
  */
 function ensureInstallationColumns(db) {
-  const cols = db.prepare('PRAGMA table_info(saga3_process_runs)').all()
+  const cols = db.prepare('PRAGMA table_info(factory_process_runs)').all()
     .map((c) => c.name);
   if (!cols.includes('installation_id')) {
-    db.exec('ALTER TABLE saga3_process_runs ADD COLUMN installation_id INTEGER');
+    db.exec('ALTER TABLE factory_process_runs ADD COLUMN installation_id INTEGER');
   }
   if (!cols.includes('package_digest')) {
-    db.exec('ALTER TABLE saga3_process_runs ADD COLUMN package_digest TEXT');
+    db.exec('ALTER TABLE factory_process_runs ADD COLUMN package_digest TEXT');
   }
 }
 
@@ -75,8 +75,8 @@ function ensureInstallationColumns(db) {
  * and the temp dir (caller cleans up).
  *
  * ORDERING: `ensureInstallationColumns` MUST run AFTER the
- * `saga3_process_runs` table exists. The table is created by
- * `ensureSaga3ProcessRunSchema(db)`, which runs inside the
+ * `factory_process_runs` table exists. The table is created by
+ * `ensureFactoryProcessRunSchema(db)`, which runs inside the
  * `SqliteProcessRunRepository` constructor. So we construct the repo once
  * (which creates the table) before applying the ALTERs. The repo instance is
  * discarded — `startRun` constructs its own.
@@ -87,7 +87,7 @@ function freshDb() {
   const db = getDb();
   db.prepare("INSERT INTO projects (id,name,status) VALUES (1,'P','active')").run();
   db.prepare("INSERT INTO epics (id,project_id,name) VALUES (10,1,'E')").run();
-  // Construct the repo once to create saga3_process_runs, then add the columns.
+  // Construct the repo once to create factory_process_runs, then add the columns.
   // eslint-disable-next-line no-new
   new SqliteProcessRunRepository(db);
   ensureInstallationColumns(db);
@@ -112,7 +112,7 @@ function startRun(db, { idempotencyKey = 'k1' } = {}) {
     executorKind: 'legacy-adapter',
     projectedStage: 'discovery',
     input: {
-      schema: 'saga3.discovery-case.v1',
+      schema: 'factory.discovery-case.v1',
       payload: { case: idempotencyKey },
       contentHash: sha256Hex({ case: idempotencyKey }),
     },
@@ -395,7 +395,7 @@ test('pin survives DB reopen (persistence)', () => {
     let db = getDb();
     db.prepare("INSERT INTO projects (id,name,status) VALUES (1,'P','active')").run();
     db.prepare("INSERT INTO epics (id,project_id,name) VALUES (10,1,'E')").run();
-    // Construct the repo once to create saga3_process_runs, then add columns.
+    // Construct the repo once to create factory_process_runs, then add columns.
     // eslint-disable-next-line no-new
     new SqliteProcessRunRepository(db);
     ensureInstallationColumns(db);

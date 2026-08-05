@@ -26,7 +26,7 @@ import { sha256Hex } from '../../../shared/canonical-json.js';
 import type { ProductRef } from '../../../process-modules/domain/spi/index.js';
 
 /** The schema id for a TextSet product on the universal desk. */
-export const TEXT_SET_SCHEMA = 'saga3.text-set.v1' as const;
+export const TEXT_SET_SCHEMA = 'factory.text-set.v1' as const;
 
 /** The operation a TextSet entry performs. */
 export type TextSetOperation = 'create' | 'modify' | 'rename' | 'delete';

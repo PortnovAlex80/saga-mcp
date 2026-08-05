@@ -16,7 +16,7 @@ import type {
 import { canonicalJson, sha256Hex } from '../../shared/canonical-json.js';
 
 export const AGENT_ASSISTANCE_PROJECTION_SCHEMA =
-  'saga3.agent-assistance-projection.v1' as const;
+  'factory.agent-assistance-projection.v1' as const;
 
 export interface AgentAssistanceProjectionScope {
   readonly processRunId: number | null;

@@ -115,7 +115,7 @@ export function resolveFactoryResumeTarget(
   const rows = db.prepare(
     `SELECT lr.id AS lifecycle_run_id, lr.epic_id, lr.idempotency_key,
             lr.status, fo.order_ref
-       FROM saga3_lifecycle_runs lr
+       FROM factory_lifecycle_runs lr
        LEFT JOIN factory_orders fo ON fo.lifecycle_run_id=lr.id
       WHERE lr.project_id=?
         AND lr.status IN ('created','running','paused')

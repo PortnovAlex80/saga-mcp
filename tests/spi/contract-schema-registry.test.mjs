@@ -106,7 +106,7 @@ function objectCodec() {
 
 test('ContractRef: pure value round-trips through canonical JSON', () => {
   const ref = {
-    schemaId: 'saga3.discovery-proposal',
+    schemaId: 'factory.discovery-proposal',
     version: '1.0.0',
     digest: 'abc123',
   };
@@ -117,8 +117,8 @@ test('ContractRef: pure value round-trips through canonical JSON', () => {
 
 test('ContractRef: canonicalJson of equal refs is byte-equal (determinism)', () => {
   // Two structurally-identical refs must canonicalize to the same bytes.
-  const a = { schemaId: 'saga3.x', version: '1', digest: 'd' };
-  const b = { schemaId: 'saga3.x', version: '1', digest: 'd' };
+  const a = { schemaId: 'factory.x', version: '1', digest: 'd' };
+  const b = { schemaId: 'factory.x', version: '1', digest: 'd' };
   assert.equal(sha256Hex(a), sha256Hex(b));
 });
 
@@ -147,7 +147,7 @@ test('computeContractRefDigest: stable across calls (deterministic)', () => {
 test('InMemoryContractSchemaRegistry: register/has/validateOrThrow happy path', () => {
   const reg = new InMemoryContractSchemaRegistry();
   const ref = {
-    schemaId: 'saga3.discovery-proposal',
+    schemaId: 'factory.discovery-proposal',
     version: '1.0.0',
     digest: computeContractRefDigest({ ok: true }),
   };
@@ -242,8 +242,8 @@ test('decode: unknown ref raises Error with CONTRACT_SCHEMA_UNKNOWN token', () =
 
 test('contractSchemaRegistryKey: ${schemaId}@${version} format', () => {
   assert.equal(
-    contractSchemaRegistryKey({ schemaId: 'saga3.x', version: '1.2.3', digest: 'ignored' }),
-    'saga3.x@1.2.3',
+    contractSchemaRegistryKey({ schemaId: 'factory.x', version: '1.2.3', digest: 'ignored' }),
+    'factory.x@1.2.3',
   );
 });
 

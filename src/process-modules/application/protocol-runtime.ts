@@ -51,7 +51,7 @@ import type { RecoveryAction } from '../domain/spi/recovery-definitions.js';
 // ---------------------------------------------------------------------------
 
 /**
- * Status of one durable ProtocolRun (mirrors saga3_protocol_runs.status).
+ * Status of one durable ProtocolRun (mirrors factory_protocol_runs.status).
  *
  *   'active'     — running, may accept step transitions.
  *   'paused'     — checkpointed; resumable at the recorded current_step.
@@ -62,7 +62,7 @@ import type { RecoveryAction } from '../domain/spi/recovery-definitions.js';
 export type ProtocolRunStatus = 'active' | 'paused' | 'completed' | 'failed' | 'abandoned';
 
 /**
- * Status of one ProtocolStepRun (mirrors saga3_protocol_step_runs.status).
+ * Status of one ProtocolStepRun (mirrors factory_protocol_step_runs.status).
  */
 export type ProtocolStepRunStatus =
   | 'pending'

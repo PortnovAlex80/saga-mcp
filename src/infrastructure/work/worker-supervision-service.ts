@@ -52,7 +52,7 @@
 
 import os from 'node:os';
 import { randomBytes } from 'node:crypto';
-import type { ExecutionRuntimeRepository } from '../../application/ports/saga2-runtime-persistence.js';
+import type { ExecutionRuntimeRepository } from '../../application/ports/factory-runtime-persistence.js';
 import type Database from 'better-sqlite3';
 import { getDb } from '../../db.js';
 

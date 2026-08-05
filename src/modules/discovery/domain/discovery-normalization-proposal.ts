@@ -9,7 +9,7 @@ import {
 } from './discovery-proposal.js';
 
 export const DISCOVERY_NORMALIZATION_PROPOSAL_SCHEMA =
-  'saga3.discovery-normalization-proposal.v1';
+  'factory.discovery-normalization-proposal.v1';
 
 export interface DiscoveryNormalizationProposalPayload {
   source_submission_id: number;

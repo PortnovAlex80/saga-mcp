@@ -1171,7 +1171,7 @@ test('transactional stage completion: completion + next-stage insert happen in o
     assert.equal(stages[1].stageId, 'formalization');
     assert.equal(
       fx.db.prepare(
-        'SELECT COUNT(*) AS n FROM saga3_process_transitions WHERE lifecycle_run_id=?',
+        'SELECT COUNT(*) AS n FROM factory_process_transitions WHERE lifecycle_run_id=?',
       ).get(run.id).n,
       1,
     );
@@ -1215,7 +1215,7 @@ test('transactional stage completion: a failure between completion and next-stag
       moduleRef: { name: 'solution-formalization', version: '1.0.0' },
       bindingSnapshot: canonicalJson({ stageId: 'formalization' }),
       bindingHash: sha256Hex({ stageId: 'formalization' }),
-      inputSchema: 'saga3.formalization-case.v1',
+      inputSchema: 'factory.formalization-case.v1',
       inputPayload: { from: 'discovery' },
       inputHash: sha256Hex({ from: 'NOT-the-payload' }), // mismatched hash
     };
@@ -1249,7 +1249,7 @@ test('transactional stage completion: a failure between completion and next-stag
     assert.notEqual(stages[0].status, 'completed', 'stage 1 completion must be rolled back');
     assert.equal(
       fx.db.prepare(
-        'SELECT COUNT(*) AS n FROM saga3_process_transitions WHERE lifecycle_run_id=?',
+        'SELECT COUNT(*) AS n FROM factory_process_transitions WHERE lifecycle_run_id=?',
       ).get(run.id).n,
       0,
       'no transition row should exist after rollback',
@@ -1264,7 +1264,7 @@ test('transactional stage completion: a failure between completion and next-stag
 // ---------------------------------------------------------------------------
 
 function lifecycleFixture() {
-  const temp = mkdtempSync(path.join(os.tmpdir(), 'saga3-w0a4-lifecycle-'));
+  const temp = mkdtempSync(path.join(os.tmpdir(), 'factory-w0a4-lifecycle-'));
   process.env.DB_PATH = path.join(temp, 'lifecycle.db');
   const db = getDb();
   db.prepare(`INSERT INTO projects (id,name,status) VALUES (1,'P','active')`).run();

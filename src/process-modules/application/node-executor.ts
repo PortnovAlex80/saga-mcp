@@ -222,7 +222,7 @@ export interface NodeExecutionFrame {
  * возвращает production, узел B (или settlement kernel) читает из неё exact
  * bindings и перечитывает каноническую строку из БД.
  *
- *   schema       — schema id продукции (например 'saga3.discovery-proposal.v1').
+ *   schema       — schema id продукции (например 'factory.discovery-proposal.v1').
  *   artifactRef  — opaque ссылка на продукцию (например 'proposal:141').
  *   contentHash  — SHA-256 над каноническим телом продукции (immutable).
  *   bindings     — machine-filled параметры для downstream-узлов:

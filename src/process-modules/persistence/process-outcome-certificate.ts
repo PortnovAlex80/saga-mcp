@@ -2,8 +2,8 @@
  * Generic ProcessOutcomeCertificate<TPayload>.
  *
  * This is the MODULE-AGNOSTIC authoritative result record. It lives in
- * saga3_process_outcome_certificates alongside (NOT inside) each module's
- * domain-specific state. Discovery's D4 certificate (saga3_discovery_outcome_
+ * factory_process_outcome_certificates alongside (NOT inside) each module's
+ * domain-specific state. Discovery's D4 certificate (factory_discovery_outcome_
  * certificates) is preserved as-is; in P3b a projection adapter exposes those
  * rows THROUGH the generic shape WITHOUT copying — discovery reads stay on the
  * discovery table, generic reads go through the adapter. Formalization (P4)

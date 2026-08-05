@@ -5,20 +5,20 @@
  * Task: docs/refactor-management/05-subagent-tasks/W04-a1.md.
  *
  * W4-A1 is the SINGLE SQL owner this wave for the two new tables
- * (`saga3_protocol_runs` + `saga3_protocol_step_runs`). The schema DDL below is
+ * (`factory_protocol_runs` + `factory_protocol_step_runs`). The schema DDL below is
  * SPEC §2 VERBATIM (additive, idempotent `CREATE TABLE IF NOT EXISTS`). The
  * dual-placement lives in `src/db.ts` (upgrade path for pre-existing DBs,
- * guarded on `tableExists('saga3_process_runs')`) AND here in
- * `ensureSaga3ProtocolRunSchema` (the path that reliably runs when the tables
+ * guarded on `tableExists('factory_process_runs')`) AND here in
+ * `ensureFactoryProtocolRunSchema` (the path that reliably runs when the tables
  * spring into existence via the constructor) — mirroring the Wave 2/3 pattern
  * (spec §2 "Dual-placement in db.ts (guarded tableExists) +
- * ensureSaga3ProtocolRunSchema(db)").
+ * ensureFactoryProtocolRunSchema(db)").
  *
  * Invariants enforced in SQL and respected by the adapter:
  *   - at most one ACTIVE protocol per (process_run_id, node_protocol_id)
- *     (partial UNIQUE index `idx_saga3_protocol_runs_active`);
+ *     (partial UNIQUE index `idx_factory_protocol_runs_active`);
  *   - one immutable step row per (protocol_run_id, step_id, attempt)
- *     (UNIQUE constraint on `saga3_protocol_step_runs`);
+ *     (UNIQUE constraint on `factory_protocol_step_runs`);
  *   - status transitions respect the SQL CHECK enums;
  *   - completing a step requires a non-empty evidence blob (the runtime must
  *     have verified required evidence first — spec §8.4 / C026).
@@ -47,12 +47,12 @@ import type {
  * call from the adapter constructor (fresh-DB path) and from `src/db.ts`
  * (upgrade path) — the second call is a no-op.
  */
-export function ensureSaga3ProtocolRunSchema(db: Database.Database): void {
+export function ensureFactoryProtocolRunSchema(db: Database.Database): void {
   db.exec(`
-    CREATE TABLE IF NOT EXISTS saga3_protocol_runs (
+    CREATE TABLE IF NOT EXISTS factory_protocol_runs (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      process_run_id INTEGER NOT NULL REFERENCES saga3_process_runs(id) ON DELETE CASCADE,
-      node_run_id INTEGER REFERENCES saga3_node_runs(id) ON DELETE CASCADE,
+      process_run_id INTEGER NOT NULL REFERENCES factory_process_runs(id) ON DELETE CASCADE,
+      node_run_id INTEGER REFERENCES factory_node_runs(id) ON DELETE CASCADE,
       node_protocol_id TEXT NOT NULL,
       node_protocol_version TEXT NOT NULL,
       entry_step TEXT NOT NULL,
@@ -63,12 +63,12 @@ export function ensureSaga3ProtocolRunSchema(db: Database.Database): void {
       updated_at TEXT NOT NULL DEFAULT (datetime('now')),
       completed_at TEXT
     );
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_saga3_protocol_runs_active
-      ON saga3_protocol_runs(process_run_id, node_protocol_id) WHERE status='active';
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_factory_protocol_runs_active
+      ON factory_protocol_runs(process_run_id, node_protocol_id) WHERE status='active';
 
-    CREATE TABLE IF NOT EXISTS saga3_protocol_step_runs (
+    CREATE TABLE IF NOT EXISTS factory_protocol_step_runs (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      protocol_run_id INTEGER NOT NULL REFERENCES saga3_protocol_runs(id) ON DELETE CASCADE,
+      protocol_run_id INTEGER NOT NULL REFERENCES factory_protocol_runs(id) ON DELETE CASCADE,
       step_id TEXT NOT NULL,
       attempt INTEGER NOT NULL DEFAULT 1,
       status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','in_progress','completed','skipped','failed')),
@@ -77,8 +77,8 @@ export function ensureSaga3ProtocolRunSchema(db: Database.Database): void {
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       UNIQUE(protocol_run_id, step_id, attempt)
     );
-    CREATE INDEX IF NOT EXISTS idx_saga3_protocol_step_runs_protocol
-      ON saga3_protocol_step_runs(protocol_run_id, attempt, id);
+    CREATE INDEX IF NOT EXISTS idx_factory_protocol_step_runs_protocol
+      ON factory_protocol_step_runs(protocol_run_id, attempt, id);
   `);
 }
 
@@ -147,7 +147,7 @@ function readProtocolRunRow(
   id: number,
 ): ProtocolRunRow | null {
   const row = db.prepare(
-    'SELECT * FROM saga3_protocol_runs WHERE id=?',
+    'SELECT * FROM factory_protocol_runs WHERE id=?',
   ).get(id) as ProtocolRunRow | undefined;
   return row ?? null;
 }
@@ -228,7 +228,7 @@ export class SqliteProtocolRunRepository implements ProtocolRunRepository {
 
   constructor(db: Database.Database = getDb()) {
     this.db = db;
-    ensureSaga3ProtocolRunSchema(this.db);
+    ensureFactoryProtocolRunSchema(this.db);
   }
 
   startProtocol(input: StartProtocolInput): ProtocolRunRecord {
@@ -237,7 +237,7 @@ export class SqliteProtocolRunRepository implements ProtocolRunRepository {
       const currentStep = input.currentStep ?? input.entryStep;
       const attempt = input.attempt ?? 1;
       const info = this.db.prepare(
-        `INSERT INTO saga3_protocol_runs
+        `INSERT INTO factory_protocol_runs
            (process_run_id, node_run_id, node_protocol_id, node_protocol_version,
             entry_step, current_step, status, attempt)
          VALUES (?, ?, ?, ?, ?, ?, 'active', ?)`,
@@ -266,7 +266,7 @@ export class SqliteProtocolRunRepository implements ProtocolRunRepository {
     assertAdvanceInput(input);
     const run = (): ProtocolRunRecord => {
       const protocol = this.db.prepare(
-        `SELECT * FROM saga3_protocol_runs WHERE id=?`,
+        `SELECT * FROM factory_protocol_runs WHERE id=?`,
       ).get(input.protocolRunId) as ProtocolRunRow | undefined;
       if (!protocol) {
         throw new Error(
@@ -287,7 +287,7 @@ export class SqliteProtocolRunRepository implements ProtocolRunRepository {
       if (attempt === undefined) {
         const maxRow = this.db.prepare(
           `SELECT MAX(attempt) AS max_attempt
-             FROM saga3_protocol_step_runs
+             FROM factory_protocol_step_runs
             WHERE protocol_run_id=? AND step_id=?`,
         ).get(input.protocolRunId, input.stepId) as
           | { max_attempt: number | null }
@@ -296,7 +296,7 @@ export class SqliteProtocolRunRepository implements ProtocolRunRepository {
         let reuseAttempt = maxAttempt;
         if (maxAttempt > 0) {
           const lastStep = this.db.prepare(
-            `SELECT status FROM saga3_protocol_step_runs
+            `SELECT status FROM factory_protocol_step_runs
               WHERE protocol_run_id=? AND step_id=? AND attempt=?`,
           ).get(input.protocolRunId, input.stepId, maxAttempt) as
             | { status: ProtocolStepRunStatus }
@@ -320,20 +320,20 @@ export class SqliteProtocolRunRepository implements ProtocolRunRepository {
       // in_progress; an in_progress row stays; a completed row cannot be
       // re-advanced at the same attempt (caller must pass a higher attempt).
       const stepInfo = this.db.prepare(
-        `INSERT INTO saga3_protocol_step_runs
+        `INSERT INTO factory_protocol_step_runs
            (protocol_run_id, step_id, attempt, status)
          VALUES (?, ?, ?, 'in_progress')
          ON CONFLICT(protocol_run_id, step_id, attempt) DO UPDATE SET
-           status = CASE WHEN saga3_protocol_step_runs.status IN ('pending','in_progress')
+           status = CASE WHEN factory_protocol_step_runs.status IN ('pending','in_progress')
                         THEN 'in_progress'
-                        ELSE saga3_protocol_step_runs.status END`,
+                        ELSE factory_protocol_step_runs.status END`,
       ).run(input.protocolRunId, input.stepId, attempt);
 
       // If the upsert hit a terminal (completed/skipped/failed) row, it did not
       // flip it (CASE above keeps the old status). Detect that and throw — the
       // caller must use a fresh attempt to re-open a closed step.
       const stepRow = this.db.prepare(
-        `SELECT status FROM saga3_protocol_step_runs WHERE id=?`,
+        `SELECT status FROM factory_protocol_step_runs WHERE id=?`,
       ).get(Number(stepInfo.lastInsertRowid)) as
         | { status: ProtocolStepRunStatus }
         | undefined;
@@ -346,7 +346,7 @@ export class SqliteProtocolRunRepository implements ProtocolRunRepository {
       // Move the protocol cursor + touch updated_at. A paused protocol resumes
       // to active as it advances.
       const upd = this.db.prepare(
-        `UPDATE saga3_protocol_runs
+        `UPDATE factory_protocol_runs
             SET current_step=?, status='active', updated_at=datetime('now')
           WHERE id=?`,
       ).run(input.stepId, input.protocolRunId);
@@ -374,7 +374,7 @@ export class SqliteProtocolRunRepository implements ProtocolRunRepository {
       let attempt = input.attempt;
       if (attempt === undefined) {
         const row = this.db.prepare(
-          `SELECT attempt FROM saga3_protocol_step_runs
+          `SELECT attempt FROM factory_protocol_step_runs
             WHERE protocol_run_id=? AND step_id=?
               AND status IN ('pending','in_progress')
             ORDER BY attempt DESC LIMIT 1`,
@@ -390,7 +390,7 @@ export class SqliteProtocolRunRepository implements ProtocolRunRepository {
       }
 
       const info = this.db.prepare(
-        `UPDATE saga3_protocol_step_runs
+        `UPDATE factory_protocol_step_runs
             SET status='completed',
                 evidence_json=?,
                 completed_at=datetime('now')
@@ -405,7 +405,7 @@ export class SqliteProtocolRunRepository implements ProtocolRunRepository {
       if (info.changes !== 1) {
         // Either the row does not exist, or it is already terminal.
         const existing = this.db.prepare(
-          `SELECT status FROM saga3_protocol_step_runs
+          `SELECT status FROM factory_protocol_step_runs
             WHERE protocol_run_id=? AND step_id=? AND attempt=?`,
         ).get(input.protocolRunId, input.stepId, attempt) as
           | { status: ProtocolStepRunStatus }
@@ -420,7 +420,7 @@ export class SqliteProtocolRunRepository implements ProtocolRunRepository {
         );
       }
       const stepRow = this.db.prepare(
-        `SELECT * FROM saga3_protocol_step_runs
+        `SELECT * FROM factory_protocol_step_runs
           WHERE protocol_run_id=? AND step_id=? AND attempt=?`,
       ).get(input.protocolRunId, input.stepId, attempt) as ProtocolStepRunRow;
       return rowToStepRun(stepRow);
@@ -436,7 +436,7 @@ export class SqliteProtocolRunRepository implements ProtocolRunRepository {
     assertPositiveInt(processRunId, 'processRunId');
     assertNonEmptyTrimmedString(nodeProtocolId, 'nodeProtocolId');
     const row = this.db.prepare(
-      `SELECT * FROM saga3_protocol_runs
+      `SELECT * FROM factory_protocol_runs
         WHERE process_run_id=? AND node_protocol_id=? AND status='active'
         ORDER BY id DESC LIMIT 1`,
     ).get(processRunId, nodeProtocolId) as ProtocolRunRow | undefined;
@@ -452,7 +452,7 @@ export class SqliteProtocolRunRepository implements ProtocolRunRepository {
     assertNonEmptyTrimmedString(stepId, 'stepId');
     assertPositiveInt(attempt, 'attempt');
     const row = this.db.prepare(
-      `SELECT * FROM saga3_protocol_step_runs
+      `SELECT * FROM factory_protocol_step_runs
         WHERE protocol_run_id=? AND step_id=? AND attempt=?
         LIMIT 1`,
     ).get(protocolRunId, stepId, attempt) as ProtocolStepRunRow | undefined;
@@ -467,13 +467,13 @@ export class SqliteProtocolRunRepository implements ProtocolRunRepository {
     assertNonEmptyTrimmedString(nodeProtocolId, 'nodeProtocolId');
     const run = (): ProtocolRunRecord | null => {
       const active = this.db.prepare(
-        `SELECT * FROM saga3_protocol_runs
+        `SELECT * FROM factory_protocol_runs
           WHERE process_run_id=? AND node_protocol_id=? AND status='active'
           ORDER BY id DESC LIMIT 1`,
       ).get(processRunId, nodeProtocolId) as ProtocolRunRow | undefined;
       if (!active) return null;
       const info = this.db.prepare(
-        `UPDATE saga3_protocol_runs
+        `UPDATE factory_protocol_runs
             SET status='paused', updated_at=datetime('now')
           WHERE id=? AND status='active'`,
       ).run(active.id);
@@ -502,13 +502,13 @@ export class SqliteProtocolRunRepository implements ProtocolRunRepository {
     assertNonEmptyTrimmedString(nodeProtocolId, 'nodeProtocolId');
     const run = (): ProtocolRunRecord | null => {
       const paused = this.db.prepare(
-        `SELECT * FROM saga3_protocol_runs
+        `SELECT * FROM factory_protocol_runs
           WHERE process_run_id=? AND node_protocol_id=? AND status='paused'
           ORDER BY id DESC LIMIT 1`,
       ).get(processRunId, nodeProtocolId) as ProtocolRunRow | undefined;
       if (!paused) return null;
       const info = this.db.prepare(
-        `UPDATE saga3_protocol_runs
+        `UPDATE factory_protocol_runs
             SET status='active', updated_at=datetime('now')
           WHERE id=? AND status='paused'`,
       ).run(paused.id);
@@ -532,7 +532,7 @@ export class SqliteProtocolRunRepository implements ProtocolRunRepository {
   listSteps(protocolRunId: number): readonly ProtocolStepRunRecord[] {
     assertPositiveInt(protocolRunId, 'protocolRunId');
     const rows = this.db.prepare(
-      `SELECT * FROM saga3_protocol_step_runs
+      `SELECT * FROM factory_protocol_step_runs
         WHERE protocol_run_id=?
         ORDER BY attempt ASC, id ASC`,
     ).all(protocolRunId) as ProtocolStepRunRow[];

@@ -37,7 +37,7 @@ import { fileURLToPath } from 'node:url';
 import { canonicalJson, sha256Hex } from '../../dist/shared/canonical-json.js';
 
 // Wave 1 SPI — legacy adapter (wraps a definition into a manifest envelope).
-const { adaptLegacyProcessModule } = await import(
+const { createProcessModuleManifest } = await import(
   '../../dist/process-modules/domain/spi/index.js'
 );
 
@@ -69,7 +69,7 @@ const lmMarketing = (
  * recovery route so every view is non-empty.
  */
 function buildManifest(overrides = {}) {
-  const base = adaptLegacyProcessModule(lmMarketing);
+  const base = createProcessModuleManifest(lmMarketing);
   // The legacy adapter zeroes resourceIndex/handlerRefs; supply real-shaped
   // values so the resources/handlers views are exercised.
   const resourceIndex = [
@@ -378,7 +378,7 @@ test('describePackage result is canonically serializable (round-trips, plan §3.
 
 test('describePackage handles an empty manifest gracefully (vacuous views)', () => {
   // A manifest with no tools/capabilities/recovery and a single node.
-  const base = adaptLegacyProcessModule(lmMarketing);
+  const base = createProcessModuleManifest(lmMarketing);
   const desc = describePackage(base);
   assert.equal(desc.tools.toolCount, 0);
   assert.equal(desc.capabilities.capabilityCount, 0);
@@ -402,7 +402,7 @@ test('describeInstallation is re-exported from the describe surface (Wave 2 line
   // The Wave 2 describeInstallation projects a persisted installation record.
   // Confirm it is callable from the W10-A7 import surface.
   assert.equal(typeof describeInstallation, 'function');
-  const manifest = adaptLegacyProcessModule(lmMarketing);
+  const manifest = createProcessModuleManifest(lmMarketing);
   const record = {
     id: 1,
     name: 'synthetic-lm-marketing',

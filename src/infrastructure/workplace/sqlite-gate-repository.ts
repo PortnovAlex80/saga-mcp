@@ -2,7 +2,7 @@
  * SqliteGateRepository — GateRun / CheckReceipt / GateDecision store (step 1.2).
  *
  * Target contracts: REG-15 (GateRun), REG-17 (CheckReceipt), REG-18
- * (GateDecision). The v4_check_receipts and v4_gate_decisions tables are
+ * (GateDecision). The factory_check_receipts and factory_gate_decisions tables are
  * append-only (BEFORE UPDATE/DELETE triggers in schema.ts), so this repository
  * only INSERTs into them — there is no UPDATE path.
  *
@@ -64,7 +64,7 @@ export class SqliteGateRepository {
    */
   createGateRun(input: CreateGateRunInput): GateRun {
     this.db.prepare(
-      `INSERT OR IGNORE INTO v4_gate_runs
+      `INSERT OR IGNORE INTO factory_gate_runs
          (gate_run_ref, workplace_ref, gate_phase, subject_candidate_set_ref,
           assessment_candidate_set_refs, check_plan_ref, check_plan_digest,
           expected_workplace_revision, gate_lease_ref, state)
@@ -85,7 +85,7 @@ export class SqliteGateRepository {
 
   readGateRun(gateRunRef: string): GateRun | null {
     const row = this.db.prepare(
-      `SELECT * FROM v4_gate_runs WHERE gate_run_ref=?`,
+      `SELECT * FROM factory_gate_runs WHERE gate_run_ref=?`,
     ).get(gateRunRef) as
       | {
           gate_run_ref: string;
@@ -123,7 +123,7 @@ export class SqliteGateRepository {
    */
   setGateRunState(gateRunRef: string, state: GateRun['state']): void {
     this.db.prepare(
-      `UPDATE v4_gate_runs SET state=?, updated_at=datetime('now') WHERE gate_run_ref=?`,
+      `UPDATE factory_gate_runs SET state=?, updated_at=datetime('now') WHERE gate_run_ref=?`,
     ).run(state, gateRunRef);
   }
 
@@ -148,7 +148,7 @@ export class SqliteGateRepository {
     readonly receiptDigest: string;
   }): CheckReceipt {
     this.db.prepare(
-      `INSERT OR IGNORE INTO v4_check_receipts
+      `INSERT OR IGNORE INTO factory_check_receipts
          (check_receipt_ref, check_run_ref, subject_candidate_set_ref,
           assessment_candidate_set_refs, provider_id, provider_version,
           provider_digest, environment_ref, outcome, evidence_refs, receipt_digest)
@@ -171,7 +171,7 @@ export class SqliteGateRepository {
 
   readCheckReceipt(checkReceiptRef: string): CheckReceipt | null {
     const row = this.db.prepare(
-      `SELECT * FROM v4_check_receipts WHERE check_receipt_ref=?`,
+      `SELECT * FROM factory_check_receipts WHERE check_receipt_ref=?`,
     ).get(checkReceiptRef) as
       | {
           check_receipt_ref: string;
@@ -211,7 +211,7 @@ export class SqliteGateRepository {
    */
   listReceiptsForRun(gateRunRef: string): CheckReceipt[] {
     const rows = this.db.prepare(
-      `SELECT * FROM v4_check_receipts WHERE check_run_ref=? ORDER BY rowid`,
+      `SELECT * FROM factory_check_receipts WHERE check_run_ref=? ORDER BY rowid`,
     ).all(gateRunRef) as CheckReceiptRow[];
     return rows.map(readCheckReceiptRow);
   }
@@ -229,7 +229,7 @@ export class SqliteGateRepository {
     // Validate cross-field rules BEFORE any DB write (REG-18).
     assertValidGateDecision(decision);
     const existing = this.db.prepare(
-      'SELECT decision_digest FROM v4_gate_decisions WHERE decision_key=?',
+      'SELECT decision_digest FROM factory_gate_decisions WHERE decision_key=?',
     ).get(decision.decisionKey) as { decision_digest: string } | undefined;
     if (existing) {
       if (existing.decision_digest !== decision.decisionDigest) {
@@ -241,7 +241,7 @@ export class SqliteGateRepository {
       return { decision, replayed: true };
     }
     this.db.prepare(
-      `INSERT INTO v4_gate_decisions
+      `INSERT INTO factory_gate_decisions
          (decision_key, workplace_ref, gate_ref, gate_run_ref, gate_phase,
           transition_ref, subject_candidate_set_ref, assessment_candidate_set_refs,
           verdict, repair_target_role, check_plan_ref, check_plan_digest,
@@ -275,7 +275,7 @@ export class SqliteGateRepository {
 
   readDecision(decisionKey: string): GateDecision | null {
     const row = this.db.prepare(
-      `SELECT * FROM v4_gate_decisions WHERE decision_key=?`,
+      `SELECT * FROM factory_gate_decisions WHERE decision_key=?`,
     ).get(decisionKey) as GateDecisionRow | undefined;
     if (!row) return null;
     return hydrateDecision(row);
@@ -288,7 +288,7 @@ export class SqliteGateRepository {
    */
   listDecisionsForWorkplace(workplaceRef: WorkplaceRef): GateDecision[] {
     const rows = this.db.prepare(
-      `SELECT * FROM v4_gate_decisions
+      `SELECT * FROM factory_gate_decisions
         WHERE workplace_ref=?
         ORDER BY decided_at DESC, rowid DESC`,
     ).all(serializeWorkplaceRef(workplaceRef)) as GateDecisionRow[];

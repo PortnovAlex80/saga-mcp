@@ -117,7 +117,7 @@ test('§8: ExecutionContextAssembler throws UPSTREAM_PRODUCT_NOT_FOUND when a de
   // naming the missing ref — and must NOT call any epic-scope / latest-in-
   // process fallback (the test guards in makeDeps throw if it does).
   const missingRef = ref(
-    'saga3.discovery-proposal.v1',
+    'factory.discovery-proposal.v1',
     'proposal:6001',
     sha256Hex({ body: 'whatever-was-expected' }),
   );
@@ -155,8 +155,8 @@ test('§8: assembler does NOT fall back to listArtifactsForNodeInEpic or readLas
   // Two missing refs. The deps install SENTINEL throwers on the retired
   // fallback methods. If the assembler calls either, the test fails with the
   // TEST_GUARD message (caught and re-asserted as a failure).
-  const missingA = ref('saga3.discovery-proposal.v1', 'proposal:6002', 'd2');
-  const missingB = ref('saga3.discovery-normalization.v1', 'norm:6003', 'd3');
+  const missingA = ref('factory.discovery-proposal.v1', 'proposal:6002', 'd2');
+  const missingB = ref('factory.discovery-normalization.v1', 'norm:6003', 'd3');
   const deps = makeDeps({ withProduct: null });
 
   let caught = null;
@@ -195,8 +195,8 @@ test('§8: assembler returns a populated envelope when ALL declared upstream pro
   // the throw above is specifically about MISSING products, not about the
   // assembler being unable to assemble at all.
   const presentProduct = {
-    productRef: ref('saga3.discovery-proposal.v1', 'proposal:6004', 'd4'),
-    envelope: { schema: 'saga3.discovery-proposal.v1', artifactRef: 'proposal:6004', contentHash: 'd4', bindings: {}, schemaId: 'x', productRef: ref('saga3.discovery-proposal.v1', 'proposal:6004', 'd4'), lineage: [] },
+    productRef: ref('factory.discovery-proposal.v1', 'proposal:6004', 'd4'),
+    envelope: { schema: 'factory.discovery-proposal.v1', artifactRef: 'proposal:6004', contentHash: 'd4', bindings: {}, schemaId: 'x', productRef: ref('factory.discovery-proposal.v1', 'proposal:6004', 'd4'), lineage: [] },
     payload: { ok: true },
   };
   const deps = makeDeps({ withProduct: presentProduct });

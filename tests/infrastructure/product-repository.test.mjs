@@ -22,10 +22,10 @@ import {
   STALE_EXECUTION_CANNOT_SUBMIT,
   LINEAGE_REF_NOT_IN_READ_SET,
 } from '../../dist/process-modules/application/product-repository-port.js';
-// Lazy schema creators — saga3_process_runs / saga3_process_products are
+// Lazy schema creators — factory_process_runs / factory_process_products are
 // ensured lazily by repository constructors in production (db.ts wires them
 // via getDb). Tests call them directly on the in-memory DB.
-import { ensureSaga3ProcessRunSchema } from '../../dist/process-modules/persistence/sqlite-process-run-repository.js';
+import { ensureFactoryProcessRunSchema } from '../../dist/process-modules/persistence/sqlite-process-run-repository.js';
 import { SqliteProcessProductRepositoryV2 } from '../../dist/process-modules/persistence/sqlite-process-product-repository-v2.js';
 
 function freshDb() {
@@ -33,7 +33,7 @@ function freshDb() {
   db.exec(SCHEMA_SQL);
   // Ensure the lazy tables the product repository depends on, by constructing
   // their owning repositories (same as production db.ts does via getDb()).
-  ensureSaga3ProcessRunSchema(db);
+  ensureFactoryProcessRunSchema(db);
   new SqliteProcessProductRepositoryV2(db);
   return db;
 }
@@ -45,12 +45,12 @@ function seedFixtures(db) {
     `INSERT INTO tasks (id, epic_id, title, current_execution_id, metadata)
      VALUES (1, 1, ?, ?, ?)`,
   ).run('t', 'exec-1', JSON.stringify({ process_run_id: 1, process_node_id: 'node-1' }));
-  // Insert a saga3_process_runs row directly (its lazy-ensure schema differs
+  // Insert a factory_process_runs row directly (its lazy-ensure schema differs
   // from the old SCHEMA_SQL block — the columns are module_name/version, not
   // lifecycle_name/version). The product repository's FK on
-  // saga3_process_products(process_run_id) needs this row.
+  // factory_process_products(process_run_id) needs this row.
   db.prepare(
-    `INSERT INTO saga3_process_runs
+    `INSERT INTO factory_process_runs
        (id, project_id, module_name, module_version, module_ref_key,
         idempotency_key, executor_kind, input_schema, input_snapshot,
         input_hash, status)
@@ -75,7 +75,7 @@ test('REG-11-AC-01: submitProduct canonicalizes internally (no caller digest)', 
   const { productRef } = repo.submitProduct({
     workplaceRef: null,
     executionRef: 'exec-1',
-    schemaRef: 'saga3.test.v1',
+    schemaRef: 'factory.test.v1',
     content,
   });
   // The digest MUST be the repository's own sha256, not anything the caller
@@ -167,7 +167,7 @@ test('REG-11-AC-03: readProduct returns submitted content + hash', () => {
   const { productRef } = repo.submitProduct({
     workplaceRef: null,
     executionRef: 'exec-1',
-    schemaRef: 'saga3.test.v1',
+    schemaRef: 'factory.test.v1',
     content,
   });
   const read = repo.readProduct(productRef);
@@ -197,14 +197,14 @@ test('valid lineage ref (prior submitted product) accepted', () => {
   const r1 = repo.submitProduct({
     workplaceRef: null,
     executionRef: 'exec-1',
-    schemaRef: 'saga3.first.v1',
+    schemaRef: 'factory.first.v1',
     content: { first: true },
   });
   // Second product cites the first as lineage — must pass.
   assert.doesNotThrow(() => repo.submitProduct({
     workplaceRef: null,
     executionRef: 'exec-1',
-    schemaRef: 'saga3.second.v1',
+    schemaRef: 'factory.second.v1',
     content: { second: true },
     lineageRefs: [r1.productRef],
   }));

@@ -73,7 +73,7 @@ test('structured-context-hook: emits bounded context from valid snapshot', () =>
   const tmp = freshDir('saga-w5a5-ok-');
   try {
     const p = writeSnapshot(tmp, 'agent-assistance.json', {
-      schemaVersion: 'saga3.agent-assistance.v1',
+      schemaVersion: 'factory.agent-assistance.v1',
       stateVersion: 'v1',
       event: 'post-tool-success',
       executionId: 'exec-1',
@@ -319,7 +319,7 @@ test('structured-context-hook: writes bounded execution-scoped observability sta
     const observationPath = `${p}.hook-state.json`;
     assert.equal(existsSync(observationPath), true);
     assert.deepEqual(JSON.parse(readFileSync(observationPath, 'utf8')), {
-      schemaVersion: 'saga3.agent-assistance-hook-state.v1',
+      schemaVersion: 'factory.agent-assistance-hook-state.v1',
       executionId: 'exec-current',
       event: 'post-tool-success',
       toolName: 'Read',
@@ -380,7 +380,7 @@ test('structured-context-hook: selects package success/error events from the too
   const tmp = freshDir('saga-w5a5-events-');
   try {
     const projection = {
-      schemaVersion: 'saga3.agent-assistance-projection.v1',
+      schemaVersion: 'factory.agent-assistance-projection.v1',
       stateVersion: 'v1',
       executionId: 'exec-current',
       mode: 'intensive',

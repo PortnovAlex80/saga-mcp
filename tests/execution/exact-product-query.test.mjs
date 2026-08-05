@@ -96,12 +96,12 @@ test('§7: getByProductRef returns the EXACT product matching (schemaId, ref, di
   // `listArtifactsForNodeInEpic` got wrong: it would return "the latest one"
   // regardless of which digest the caller actually pinned.
   const stale = makeProduct({
-    schemaId: 'saga3.discovery-proposal.v1',
+    schemaId: 'factory.discovery-proposal.v1',
     ref: 'proposal:5001',
     body: { problemStatement: 'stale — pre-rework', recommendedOutcome: 'clarify' },
   });
   const current = makeProduct({
-    schemaId: 'saga3.discovery-proposal.v1',
+    schemaId: 'factory.discovery-proposal.v1',
     ref: 'proposal:5001',
     body: { problemStatement: 'current — post-rework', recommendedOutcome: 'go' },
   });
@@ -153,7 +153,7 @@ test('§7: getByProductRef returns null for a non-existent digest — NO epic-sc
   const store = new Map();
   const repo = makeFakeRepo(store);
   const only = makeProduct({
-    schemaId: 'saga3.discovery-proposal.v1',
+    schemaId: 'factory.discovery-proposal.v1',
     ref: 'proposal:5002',
     body: { problemStatement: 'only one here' },
   });
@@ -173,7 +173,7 @@ test('§7: getByProductRef returns null for a non-existent digest — NO epic-sc
 
   // And a completely unrelated schema/ref returns null too.
   const gotOther = repo.getByProductRef({
-    schemaId: 'saga3.formalization-ac.v1',
+    schemaId: 'factory.formalization-ac.v1',
     ref: 'ac:9999',
     digest: 'whatever',
   });
@@ -190,7 +190,7 @@ test('§7: getByArtifactRef resolves by exact artifactRef string', async (t) => 
   const store = new Map();
   const repo = makeFakeRepo(store);
   const p = makeProduct({
-    schemaId: 'saga3.discovery-proposal.v1',
+    schemaId: 'factory.discovery-proposal.v1',
     ref: 'proposal:5003',
     body: { x: 1 },
   });

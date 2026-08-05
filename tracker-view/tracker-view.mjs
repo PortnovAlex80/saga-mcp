@@ -327,13 +327,7 @@ boardApi.setRenderMarkdown(artifactApi.renderMarkdown);
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://localhost');
 
-  // POST-маршруты (запись): /api/artifact/save, /api/project/create, /api/epic/create
-  if (req.method === 'POST' && url.pathname === '/api/artifact/save') {
-    return artifactApi.handleArtifactSave(req, res);
-  }
-  if (req.method === 'POST' && url.pathname === '/api/project/create') {
-    return adminApi.handleProjectCreate(req, res);
-  }
+  // Factory creation/resume has exactly one public write gateway below.
   if (req.method === 'POST' && url.pathname === '/api/project/archive') {
     return adminApi.handleProjectArchive(req, res);
   }
@@ -343,26 +337,14 @@ const server = http.createServer((req, res) => {
   if (req.method === 'POST' && url.pathname === '/api/admin/purge-all-projects') {
     return adminApi.handleAdminPurgeAllProjects(req, res);
   }
-  if (req.method === 'POST' && url.pathname === '/api/epic/create') {
-    return adminApi.handleEpicCreate(req, res);
-  }
   if (req.method === 'POST' && url.pathname === '/api/factory/start') {
     return adminApi.handleFactoryStart(req, res);
-  }
-  if (req.method === 'POST' && url.pathname === '/api/board-run/start') {
-    return lifecycleApi.handleBoardRunStart(req, res);
-  }
-  if (req.method === 'POST' && url.pathname === '/api/board-run/stop') {
-    return lifecycleApi.handleBoardRunStop(req, res);
   }
   if (req.method === 'POST' && url.pathname === '/api/repository/register') {
     return lifecycleApi.handleSagaOperation(req, res, 'repository_register');
   }
   if (req.method === 'POST' && url.pathname === '/api/repository/bootstrap') {
     return lifecycleApi.handleSagaOperation(req, res, 'repository_bootstrap');
-  }
-  if (req.method === 'GET' && url.pathname === '/api/board-run/status') {
-    return lifecycleApi.handleBoardRunStatus(req, res, url);
   }
   // Saga 3 lifecycle pipeline (process-modules).
   if (req.method === 'GET' && url.pathname === '/api/lifecycle/pipeline') {
@@ -381,13 +363,13 @@ const server = http.createServer((req, res) => {
   if (req.method === 'GET' && url.pathname === '/api/workers/active') {
     return lifecycleApi.handleWorkersActive(req, res, url);
   }
-  if (req.method === 'POST' && url.pathname === '/api/engine/stop') {
+  if (req.method === 'POST' && url.pathname === '/api/factory/stop') {
     return lifecycleApi.handleEngineStop(req, res);
   }
-  if (req.method === 'GET' && url.pathname === '/api/engine/status') {
+  if (req.method === 'GET' && url.pathname === '/api/factory/status') {
     return lifecycleApi.handleEngineStatus(req, res, url);
   }
-  if (req.method === 'POST' && url.pathname === '/api/engine/concurrency') {
+  if (req.method === 'POST' && url.pathname === '/api/factory/concurrency') {
     return lifecycleApi.handleEngineConcurrency(req, res);
   }
   if (req.method === 'GET' && url.pathname === '/api/models') {
@@ -410,13 +392,6 @@ const server = http.createServer((req, res) => {
   }
 
   const projects = listProjects();
-
-  // /artifact/<id>/edit — wiki-редактор
-  const editMatch = url.pathname.match(/^\/artifact\/(\d+)\/edit$/);
-  if (editMatch) {
-    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-    return res.end(artifactApi.renderArtifactEdit(editMatch[1], projects, null));
-  }
 
   // ?artifact=<id> — wiki-просмотр
   const artifactId = url.searchParams.get('artifact');

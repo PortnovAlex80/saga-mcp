@@ -23,12 +23,12 @@ const { DISCOVERY_NORMALIZATION_PROPOSAL_SCHEMA } = await import(
   '../../dist/modules/discovery/domain/discovery-normalization-proposal.js'
 );
 const {
-  ensureSaga3NormalizationSchema,
+  ensureFactoryNormalizationSchema,
   insertRawSubmission,
 } = await import('../../dist/modules/discovery/infrastructure/discovery-normalization-repository.js');
 
 function fixture() {
-  const temp = mkdtempSync(path.join(os.tmpdir(), 'saga3-d2-lineage-'));
+  const temp = mkdtempSync(path.join(os.tmpdir(), 'factory-d2-lineage-'));
   process.env.DB_PATH = path.join(temp, 'lineage.db');
   const db = getDb();
   db.prepare(`INSERT INTO projects (id,name,status) VALUES (1,'P','active')`).run();
@@ -37,7 +37,7 @@ function fixture() {
     `INSERT INTO episode_workflows (epic_id,stage,metadata)
      VALUES (10,'discovery','{}')`,
   ).run();
-  ensureSaga3NormalizationSchema(db);
+  ensureFactoryNormalizationSchema(db);
   return { temp, db };
 }
 
@@ -62,7 +62,7 @@ test('normalized canonical Proposal keeps source product task/execution and nest
        VALUES (100,10,'Discovery','done','discovery.work','discovery','source-task',?)`,
     ).run(JSON.stringify({ work_intent_id: 1 }));
     db.prepare(
-      `INSERT INTO saga3_work_intents
+      `INSERT INTO factory_work_intents
          (id,epic_id,kind,objective,authority_scope,output_schema,
           token_budget,retry_budget,projected_task_id,status)
        VALUES (1,10,?,?,?,?,0,0,100,'concluded')`,
@@ -124,7 +124,7 @@ test('normalized canonical Proposal keeps source product task/execution and nest
           'saga-discovery-normalizer','tracker_only','normalize-task',?,?)`,
     ).run(JSON.stringify({ work_intent_id: 2 }), 'normalizer-exec');
     db.prepare(
-      `INSERT INTO saga3_work_intents
+      `INSERT INTO factory_work_intents
          (id,epic_id,kind,objective,authority_scope,output_schema,
           token_budget,retry_budget,projected_task_id,status)
        VALUES (2,10,?,?,?,?,0,0,200,'executing')`,
@@ -135,7 +135,7 @@ test('normalized canonical Proposal keeps source product task/execution and nest
       DISCOVERY_NORMALIZATION_PROPOSAL_SCHEMA,
     );
     db.prepare(
-      `INSERT INTO saga3_control_intents
+      `INSERT INTO factory_control_intents
          (id,epic_id,kind,question,source_submission_id,authority_intent_id,
           projected_task_id,status)
        VALUES (20,10,'NormalizeDiscoveryProposal','normalize',?,2,200,'executing')`,
@@ -209,7 +209,7 @@ test('normalized canonical Proposal keeps source product task/execution and nest
     const canonical = db.prepare(
       `SELECT task_id,execution_id,provenance,source_submission_id,
               normalization_proposal_id
-         FROM saga3_proposals WHERE id=?`,
+         FROM factory_proposals WHERE id=?`,
     ).get(result.proposal_id);
     const provenance = JSON.parse(canonical.provenance);
     assert.equal(canonical.task_id, 100);
@@ -225,7 +225,7 @@ test('normalized canonical Proposal keeps source product task/execution and nest
     assert.equal(canonical.normalization_proposal_id, result.normalization_proposal_id);
 
     const transform = db.prepare(
-      `SELECT task_id,execution_id FROM saga3_normalization_proposals WHERE id=?`,
+      `SELECT task_id,execution_id FROM factory_normalization_proposals WHERE id=?`,
     ).get(result.normalization_proposal_id);
     assert.equal(transform.task_id, 200);
     assert.equal(transform.execution_id, 'normalizer-exec');

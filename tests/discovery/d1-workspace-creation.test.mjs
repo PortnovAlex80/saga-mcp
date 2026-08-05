@@ -70,7 +70,7 @@ function seedToolTemplates(root) {
         task_id: 'FILL_INTEGER_YOUR_TASK_ID',
         execution_id: 'FILL_STRING_YOUR_EXECUTION_ID',
         kind: 'discovery',
-        schema_version: 'saga3.discovery-proposal.v1',
+        schema_version: 'factory.discovery-proposal.v1',
         payload: { problem_statement: 'FILL_FROM_DISCOVERY_DOC' },
       },
       null,
@@ -87,7 +87,7 @@ function seedToolTemplates(root) {
     path.join(tmplDir, 'readiness-call-template.json'),
     JSON.stringify({
       control_intent_id: 'FILL_INTEGER_FROM_READINESS_GET',
-      schema_version: 'saga3.discovery-readiness-assessment.v1',
+      schema_version: 'factory.discovery-readiness-assessment.v1',
       payload: {},
     }),
   );
@@ -96,7 +96,7 @@ function seedToolTemplates(root) {
     path.join(tmplDir, 'diagnosis-call-template.json'),
     JSON.stringify({
       control_intent_id: 'FILL_INTEGER_FROM_DIAGNOSIS_GET',
-      schema_version: 'saga3.discovery-diagnosis.v1',
+      schema_version: 'factory.discovery-diagnosis.v1',
       payload: { target: {} },
     }),
   );
@@ -106,7 +106,7 @@ function seedToolTemplates(root) {
     JSON.stringify({
       control_intent_id: 'FILL_INTEGER_FROM_TASK_GET',
       source_submission_id: 'FILL_INTEGER_FROM_TASK_GET',
-      schema_version: 'saga3.discovery-normalization-proposal.v1',
+      schema_version: 'factory.discovery-normalization-proposal.v1',
       payload: {},
     }),
   );
@@ -115,7 +115,7 @@ function seedToolTemplates(root) {
 }
 
 test('D1 workspace: copies ALL templates into docs/discovery/tools/', () => {
-  const root = mkdtempSync(path.join(os.tmpdir(), 'saga3-ws-'));
+  const root = mkdtempSync(path.join(os.tmpdir(), 'factory-ws-'));
   try {
     seedToolTemplates(root);
     const result = ensureDiscoveryWorkspace({
@@ -146,7 +146,7 @@ test('D1 workspace: copies ALL templates into docs/discovery/tools/', () => {
 });
 
 test('D1 workspace: creates per-epic stage tracker with PROJECT_ID/EPIC_ID/TASK_ID/intent_id substituted', () => {
-  const root = mkdtempSync(path.join(os.tmpdir(), 'saga3-ws-'));
+  const root = mkdtempSync(path.join(os.tmpdir(), 'factory-ws-'));
   try {
     seedToolTemplates(root);
     ensureDiscoveryWorkspace({
@@ -168,7 +168,7 @@ test('D1 workspace: creates per-epic stage tracker with PROJECT_ID/EPIC_ID/TASK_
 });
 
 test('D1 workspace: creates per-epic proposal-call JSON with intent_id/task_id pre-bound', () => {
-  const root = mkdtempSync(path.join(os.tmpdir(), 'saga3-ws-'));
+  const root = mkdtempSync(path.join(os.tmpdir(), 'factory-ws-'));
   try {
     seedToolTemplates(root);
     ensureDiscoveryWorkspace({
@@ -180,7 +180,7 @@ test('D1 workspace: creates per-epic proposal-call JSON with intent_id/task_id p
     const parsed = JSON.parse(readFileSync(proposalPath, 'utf8'));
     assert.equal(parsed.intent_id, 1234, 'intent_id pre-bound as bare integer');
     assert.equal(parsed.task_id, 999, 'task_id pre-bound as bare integer');
-    assert.equal(parsed.schema_version, 'saga3.discovery-proposal.v1');
+    assert.equal(parsed.schema_version, 'factory.discovery-proposal.v1');
     // execution_id is NOT engine-known at workspace-seed time (it is assigned
     // when the worker is spawned); it must remain a FILL_ placeholder.
     assert.match(parsed.execution_id, /FILL_/, 'execution_id stays as FILL_ (assigned at spawn)');
@@ -190,7 +190,7 @@ test('D1 workspace: creates per-epic proposal-call JSON with intent_id/task_id p
 });
 
 test('D1 workspace: idempotent — second call does NOT overwrite existing files', () => {
-  const root = mkdtempSync(path.join(os.tmpdir(), 'saga3-ws-'));
+  const root = mkdtempSync(path.join(os.tmpdir(), 'factory-ws-'));
   try {
     seedToolTemplates(root);
     const first = ensureDiscoveryWorkspace({
@@ -220,7 +220,7 @@ test('D1 workspace: idempotent — second call does NOT overwrite existing files
 });
 
 test('D1 workspace: gracefully handles missing discovery package resources dir', () => {
-  const root = mkdtempSync(path.join(os.tmpdir(), 'saga3-ws-'));
+  const root = mkdtempSync(path.join(os.tmpdir(), 'factory-ws-'));
   try {
     // No discovery package resources dir seeded.
     const result = ensureDiscoveryWorkspace({
@@ -238,7 +238,7 @@ test('D1 workspace: gracefully handles missing discovery package resources dir',
 });
 
 test('D1 workspace: different epics get independent trackers and proposal-call files', () => {
-  const root = mkdtempSync(path.join(os.tmpdir(), 'saga3-ws-'));
+  const root = mkdtempSync(path.join(os.tmpdir(), 'factory-ws-'));
   try {
     seedToolTemplates(root);
     ensureDiscoveryWorkspace({

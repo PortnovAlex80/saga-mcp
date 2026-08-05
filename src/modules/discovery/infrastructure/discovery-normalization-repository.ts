@@ -8,11 +8,11 @@ import type {
 import type { ProposalProvenance } from '../domain/proposal.js';
 import { canonicalJson } from '../../../shared/canonical-json.js';
 
-export function ensureSaga3NormalizationSchema(db: Database.Database): void {
+export function ensureFactoryNormalizationSchema(db: Database.Database): void {
   db.exec(`
-    CREATE TABLE IF NOT EXISTS saga3_raw_submissions (
+    CREATE TABLE IF NOT EXISTS factory_raw_submissions (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      intent_id INTEGER NOT NULL REFERENCES saga3_work_intents(id) ON DELETE CASCADE,
+      intent_id INTEGER NOT NULL REFERENCES factory_work_intents(id) ON DELETE CASCADE,
       task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
       execution_id TEXT NOT NULL,
       kind TEXT NOT NULL,
@@ -28,22 +28,22 @@ export function ensureSaga3NormalizationSchema(db: Database.Database): void {
       provenance TEXT NOT NULL DEFAULT '{}',
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
-    CREATE TABLE IF NOT EXISTS saga3_control_intents (
+    CREATE TABLE IF NOT EXISTS factory_control_intents (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       epic_id INTEGER NOT NULL REFERENCES epics(id) ON DELETE CASCADE,
       kind TEXT NOT NULL,
       question TEXT NOT NULL,
-      source_submission_id INTEGER NOT NULL UNIQUE REFERENCES saga3_raw_submissions(id) ON DELETE CASCADE,
-      authority_intent_id INTEGER NOT NULL REFERENCES saga3_work_intents(id) ON DELETE CASCADE,
+      source_submission_id INTEGER NOT NULL UNIQUE REFERENCES factory_raw_submissions(id) ON DELETE CASCADE,
+      authority_intent_id INTEGER NOT NULL REFERENCES factory_work_intents(id) ON DELETE CASCADE,
       projected_task_id INTEGER REFERENCES tasks(id) ON DELETE SET NULL,
       status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','executing','paused','concluded','cancelled')),
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
-    CREATE TABLE IF NOT EXISTS saga3_normalization_proposals (
+    CREATE TABLE IF NOT EXISTS factory_normalization_proposals (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      control_intent_id INTEGER NOT NULL REFERENCES saga3_control_intents(id) ON DELETE CASCADE,
-      source_submission_id INTEGER NOT NULL REFERENCES saga3_raw_submissions(id) ON DELETE CASCADE,
+      control_intent_id INTEGER NOT NULL REFERENCES factory_control_intents(id) ON DELETE CASCADE,
+      source_submission_id INTEGER NOT NULL REFERENCES factory_raw_submissions(id) ON DELETE CASCADE,
       task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
       execution_id TEXT NOT NULL,
       payload TEXT NOT NULL,
@@ -52,19 +52,19 @@ export function ensureSaga3NormalizationSchema(db: Database.Database): void {
       provenance TEXT NOT NULL DEFAULT '{}',
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_saga3_raw_submission_idempotency
-      ON saga3_raw_submissions(intent_id, execution_id, raw_hash);
-    CREATE INDEX IF NOT EXISTS idx_saga3_raw_submission_intent
-      ON saga3_raw_submissions(intent_id);
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_saga3_normalization_idempotency
-      ON saga3_normalization_proposals(control_intent_id, execution_id, content_hash);
-    CREATE INDEX IF NOT EXISTS idx_saga3_control_epic
-      ON saga3_control_intents(epic_id, status);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_factory_raw_submission_idempotency
+      ON factory_raw_submissions(intent_id, execution_id, raw_hash);
+    CREATE INDEX IF NOT EXISTS idx_factory_raw_submission_intent
+      ON factory_raw_submissions(intent_id);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_factory_normalization_idempotency
+      ON factory_normalization_proposals(control_intent_id, execution_id, content_hash);
+    CREATE INDEX IF NOT EXISTS idx_factory_control_epic
+      ON factory_control_intents(epic_id, status);
   `);
-  const columns = db.prepare(`PRAGMA table_info(saga3_proposals)`).all() as Array<{ name: string }>;
+  const columns = db.prepare(`PRAGMA table_info(factory_proposals)`).all() as Array<{ name: string }>;
   const names = new Set(columns.map(column => column.name));
-  if (!names.has('source_submission_id')) db.exec(`ALTER TABLE saga3_proposals ADD COLUMN source_submission_id INTEGER`);
-  if (!names.has('normalization_proposal_id')) db.exec(`ALTER TABLE saga3_proposals ADD COLUMN normalization_proposal_id INTEGER`);
+  if (!names.has('source_submission_id')) db.exec(`ALTER TABLE factory_proposals ADD COLUMN source_submission_id INTEGER`);
+  if (!names.has('normalization_proposal_id')) db.exec(`ALTER TABLE factory_proposals ADD COLUMN normalization_proposal_id INTEGER`);
 }
 
 export function hashRawSubmission(raw: string): string {
@@ -93,7 +93,7 @@ export function insertRawSubmission(
 ): { record: RawDiscoverySubmissionRecord; replayed: boolean } {
   const rawHash = hashRawSubmission(input.rawPayload);
   const info = db.prepare(
-    `INSERT INTO saga3_raw_submissions
+    `INSERT INTO factory_raw_submissions
        (intent_id, task_id, execution_id, kind, schema_version, raw_payload,
         raw_hash, parsed_payload, status, normalization_trace, validation_errors,
         alias_conflicts, allowed_evidence_refs, provenance)
@@ -116,7 +116,7 @@ export function insertRawSubmission(
     JSON.stringify(input.provenance),
   );
   const row = db.prepare(
-    `SELECT * FROM saga3_raw_submissions
+    `SELECT * FROM factory_raw_submissions
       WHERE intent_id=? AND execution_id=? AND raw_hash=?`,
   ).get(input.intentId, input.executionId, rawHash) as RawSubmissionRow | undefined;
   if (!row) throw new Error('saga3: raw submission vanished after insert');
@@ -127,7 +127,7 @@ export function readRawSubmission(
   db: Database.Database,
   submissionId: number,
 ): RawDiscoverySubmissionRecord | null {
-  const row = db.prepare('SELECT * FROM saga3_raw_submissions WHERE id=?')
+  const row = db.prepare('SELECT * FROM factory_raw_submissions WHERE id=?')
     .get(submissionId) as RawSubmissionRow | undefined;
   return row ? rawRowToRecord(row) : null;
 }
@@ -136,7 +136,7 @@ export function markRawSubmissionNormalized(
   db: Database.Database,
   submissionId: number,
 ): void {
-  db.prepare(`UPDATE saga3_raw_submissions SET status='normalized' WHERE id=? AND status IN ('normalization_required','normalized')`).run(submissionId);
+  db.prepare(`UPDATE factory_raw_submissions SET status='normalized' WHERE id=? AND status IN ('normalization_required','normalized')`).run(submissionId);
 }
 
 export function readLatestRawSubmissionForIntent(
@@ -144,7 +144,7 @@ export function readLatestRawSubmissionForIntent(
   intentId: number,
 ): RawDiscoverySubmissionRecord | null {
   const row = db.prepare(
-    `SELECT * FROM saga3_raw_submissions WHERE intent_id=? ORDER BY id DESC LIMIT 1`,
+    `SELECT * FROM factory_raw_submissions WHERE intent_id=? ORDER BY id DESC LIMIT 1`,
   ).get(intentId) as RawSubmissionRow | undefined;
   return row ? rawRowToRecord(row) : null;
 }
@@ -156,7 +156,7 @@ export function readRawSubmissionForExecution(
   executionId: string,
 ): RawDiscoverySubmissionRecord | null {
   const row = db.prepare(
-    `SELECT * FROM saga3_raw_submissions
+    `SELECT * FROM factory_raw_submissions
       WHERE intent_id=? AND task_id=? AND execution_id=?
       ORDER BY id DESC LIMIT 1`,
   ).get(intentId, taskId, executionId) as RawSubmissionRow | undefined;
@@ -179,7 +179,7 @@ export function insertNormalizationProposal(
   const payloadText = canonicalJson(input.payload);
   const hash = createHash('sha256').update(payloadText).digest('hex');
   const info = db.prepare(
-    `INSERT INTO saga3_normalization_proposals
+    `INSERT INTO factory_normalization_proposals
        (control_intent_id, source_submission_id, task_id, execution_id,
         payload, content_hash, status, provenance)
      VALUES (?,?,?,?,?,?, 'submitted', ?)
@@ -194,7 +194,7 @@ export function insertNormalizationProposal(
     JSON.stringify(input.provenance),
   );
   const row = db.prepare(
-    `SELECT * FROM saga3_normalization_proposals
+    `SELECT * FROM factory_normalization_proposals
       WHERE control_intent_id=? AND execution_id=? AND content_hash=?`,
   ).get(input.controlIntentId, input.executionId, hash) as NormalizationProposalRow | undefined;
   if (!row) throw new Error('saga3: normalization proposal vanished after insert');
@@ -205,7 +205,7 @@ export function readLatestNormalizationProposalForControl(
   db: Database.Database,
   controlIntentId: number,
 ): DiscoveryNormalizationProposalRecord | null {
-  const row = db.prepare(`SELECT * FROM saga3_normalization_proposals WHERE control_intent_id=? ORDER BY id DESC LIMIT 1`)
+  const row = db.prepare(`SELECT * FROM factory_normalization_proposals WHERE control_intent_id=? ORDER BY id DESC LIMIT 1`)
     .get(controlIntentId) as NormalizationProposalRow | undefined;
   return row ? normalizationRowToRecord(row) : null;
 }
@@ -217,7 +217,7 @@ export function readNormalizationProposalForExecution(
   executionId: string,
 ): DiscoveryNormalizationProposalRecord | null {
   const row = db.prepare(
-    `SELECT * FROM saga3_normalization_proposals
+    `SELECT * FROM factory_normalization_proposals
       WHERE control_intent_id=? AND task_id=? AND execution_id=?
       ORDER BY id DESC LIMIT 1`,
   ).get(controlIntentId, taskId, executionId) as NormalizationProposalRow | undefined;
@@ -229,7 +229,7 @@ export function markNormalizationAccepted(
   normalizationProposalId: number,
 ): void {
   db.prepare(
-    `UPDATE saga3_normalization_proposals
+    `UPDATE factory_normalization_proposals
         SET status='accepted_by_kernel'
       WHERE id=? AND status IN ('submitted','accepted_by_kernel')`,
   ).run(normalizationProposalId);

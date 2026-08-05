@@ -73,7 +73,7 @@ implements BriefProvisioningPort {
     //    code) so the PRD has a valid root ancestor.
     if (!briefId) {
       const briefHash = sha256Hex({
-        schema: 'saga3.discovery-brief.v1',
+        schema: 'factory.discovery-brief.v1',
         epic_id: ctx.epicId,
         process_run_id: ctx.processRunId,
         note: 'Auto-provisioned by formalization resolver',
@@ -156,7 +156,7 @@ implements DiscoveryBriefProvisioningPort {
     if (existing) return;
 
     const briefHash = sha256Hex({
-      schema: 'saga3.discovery-brief.v1',
+      schema: 'factory.discovery-brief.v1',
       epic_id: ctx.epicId,
       problem_statement: ctx.proposalPayload?.problem_statement ?? null,
       candidate_scope: ctx.proposalPayload?.candidate_scope ?? null,

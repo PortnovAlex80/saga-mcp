@@ -21,20 +21,20 @@ export {
 } from '../../../process-modules/lifecycles/product-delivery-module-contracts.js';
 import { DEVELOPMENT_CASE_SCHEMA } from '../../../process-modules/lifecycles/product-delivery-module-contracts.js';
 export const DEVELOPMENT_TASK_GRAPH_PROPOSAL_SCHEMA =
-  'saga3.development-task-graph-proposal.v1';
-export const DEVELOPMENT_TASK_GRAPH_SCHEMA = 'saga3.development-task-graph.v1';
+  'factory.development-task-graph-proposal.v1';
+export const DEVELOPMENT_TASK_GRAPH_SCHEMA = 'factory.development-task-graph.v1';
 export const DEVELOPMENT_IMPLEMENTATION_WORKSET_SCHEMA =
-  'saga3.development-implementation-workset.v1';
+  'factory.development-implementation-workset.v1';
 export const INTEGRATED_CANDIDATE_SCHEMA =
-  'saga3.integrated-release-candidate.v1';
+  'factory.integrated-release-candidate.v1';
 export const ACCEPTANCE_VERIFICATION_SCHEMA =
-  'saga3.acceptance-verification-workset.v1';
+  'factory.acceptance-verification-workset.v1';
 export const VERIFIED_INTEGRATION_BUNDLE_SCHEMA =
-  'saga3.verified-integration-bundle.v1';
+  'factory.verified-integration-bundle.v1';
 export const DEVELOPMENT_SETTLEMENT_INPUT_SCHEMA =
-  'saga3.development-settlement-input.v1';
+  'factory.development-settlement-input.v1';
 export const DEVELOPMENT_CERTIFICATE_SCHEMA =
-  'saga3.development-certificate.v1';
+  'factory.development-certificate.v1';
 
 export interface ContentAddressedReference {
   schema: string;

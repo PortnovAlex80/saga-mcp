@@ -7,7 +7,7 @@
  * start?" in-process; this table answers "which exact bytes did it ship with,
  * reproducibly, across restarts?".
  *
- * A `saga3_process_runs` row references this via `installation_id` FK. That
+ * A `factory_process_runs` row references this via `installation_id` FK. That
  * means: editing a shipped resource (skill, template, checklist) WITHOUT
  * bumping the module version produces a NEW installation row with a NEW
  * `package_digest`, and replays against the OLD ProcessRun detect the mismatch
@@ -65,7 +65,7 @@ export interface ProcessModuleInstallationRepository {
    */
   upsert(input: InsertProcessModuleInstallationInput): ProcessModuleInstallationRecord;
 
-  /** Read by surrogate id (the FK stored on saga3_process_runs). */
+  /** Read by surrogate id (the FK stored on factory_process_runs). */
   read(id: number): ProcessModuleInstallationRecord | null;
 
   /**

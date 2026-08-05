@@ -11,7 +11,7 @@ Same as saga-worker — use the assignment's product, epic, repository.
   node review buffer.
 - **Precondition:** the `saga-planner` worker (execution skill on the
   `development-task-graph-planner` profile) submitted a
-  `saga3.development-task-graph-proposal.v1` via `process_node_submit` and the
+  `factory.development-task-graph-proposal.v1` via `process_node_submit` and the
   task moved to `review`.
 - **Postcondition:** reviewer emits `approved` or `changes_requested` with exact
   findings. The proposal is advisory; an approved verdict is evidence consumed by
@@ -77,9 +77,9 @@ self-reference, implementation items depend only on implementation items.
    `DevelopmentTaskGraphProposal` was persisted by `process_node_submit`. Read it
    back from the task tracker / the submission receipt before validating — never
    reconstruct it from memory. Confirm `schemaVersion` is exactly
-   `saga3.development-task-graph-proposal.v1`. If the schema version differs or
+   `factory.development-task-graph-proposal.v1`. If the schema version differs or
    the proposal is absent from the tracker, emit `changes_requested` with reason
-   "planner did not submit a saga3.development-task-graph-proposal.v1 proposal".
+   "planner did not submit a factory.development-task-graph-proposal.v1 proposal".
 
 5. **Structural checks on work items** (mirror the kernel's
    `task-graph-dependency-invalid` branch). Collect `allItems =
@@ -254,7 +254,7 @@ self-reference, implementation items depend only on implementation items.
   set) and `repository_list` (valid repository set) results in `result`, plus
   the per-check pass/fail.
 - If the submitted proposal is absent or has the wrong `schemaVersion` →
-  `changes_requested` with reason "no saga3.development-task-graph-proposal.v1
+  `changes_requested` with reason "no factory.development-task-graph-proposal.v1
   proposal found in the tracker".
 - If a work item references an AC id that is not in the accepted set →
   `changes_requested` (foreign id).

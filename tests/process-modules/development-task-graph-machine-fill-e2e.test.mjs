@@ -32,7 +32,7 @@ const resources = [
     logicalId: 'call',
     relativePath: callPath,
     kind: 'template',
-    content: '{"tool":"process_node_submit","arguments":{"schema":"saga3.development-task-graph-proposal.v1","payload":{"schemaVersion":"saga3.development-task-graph-proposal.v1","implementationItems":[],"verificationItems":[],"integrationTargets":[]}}}\n',
+    content: '{"tool":"process_node_submit","arguments":{"schema":"factory.development-task-graph-proposal.v1","payload":{"schemaVersion":"factory.development-task-graph-proposal.v1","implementationItems":[],"verificationItems":[],"integrationTargets":[]}}}\n',
   },
 ].map(resource => ({
   ...resource,
@@ -41,7 +41,7 @@ const resources = [
 }));
 
 const developmentCase = {
-  schemaVersion: 'saga3.development-case.v1',
+  schemaVersion: 'factory.development-case.v1',
   projectId: 1,
   epicId: 1,
   formalizationCertificate: {
@@ -110,7 +110,7 @@ function request(root, executionId, additionalBindings = {}) {
       workspaceTemplates: [],
       callTemplates: [callPath],
       checklists: [],
-      outputSchema: { id: 'saga3.development-task-graph-proposal.v1' },
+      outputSchema: { id: 'factory.development-task-graph-proposal.v1' },
       allowedTools: ['task_get', 'process_node_submit', 'worker_done'],
       semanticSkill: 'saga-planner',
       retryPolicy: { maxAttempts: 15 },
@@ -165,7 +165,7 @@ test('a retry replaces inherited wrong-lineage content and projects submission s
     const first = materializePinnedWorkspace(request(root, 'exec-1'));
     writeFileSync(
       path.join(root, first.callFiles[0]),
-      '{"tool":"process_node_submit","arguments":{"schema":"saga3.development-task-graph-proposal.v1","payload":{"schemaVersion":"saga3.development-task-graph-proposal.v1","implementationItems":[],"verificationItems":[],"integrationTargets":[{"projectRepositoryId":77}]}}}\n',
+      '{"tool":"process_node_submit","arguments":{"schema":"factory.development-task-graph-proposal.v1","payload":{"schemaVersion":"factory.development-task-graph-proposal.v1","implementationItems":[],"verificationItems":[],"integrationTargets":[{"projectRepositoryId":77}]}}}\n',
     );
 
     const second = materializePinnedWorkspace(

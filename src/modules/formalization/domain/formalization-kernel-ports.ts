@@ -6,7 +6,7 @@
  * settlement policy never imports saga2 lifecycle tools directly — it talks
  * to these ports. Production wires SQLite-backed implementations (P5); tests
  * inject fakes. This keeps the module portable: a formalization run in a
- * different persistence substrate (e.g. a future saga3-native artifact store)
+ * different persistence substrate (e.g. a future factory-native artifact store)
  * just provides different port implementations, no policy change.
  *
  * Two ports:
@@ -198,7 +198,7 @@ export function buildFormalizationCertificatePayload(
   input: FormalizationSettlementInput,
 ): FormalizationCertificatePayload {
   return {
-    schemaVersion: 'saga3.solution-contract-certificate.generic.v1',
+    schemaVersion: 'factory.solution-contract-certificate.generic.v1',
     decision: result.decision,
     reasonCodes: result.reasonCodes,
     rationale: result.rationale,

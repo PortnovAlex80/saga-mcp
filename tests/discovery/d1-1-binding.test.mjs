@@ -8,7 +8,7 @@ const { closeDb, getDb } = await import('../../dist/db.js');
 const { handlers } = await import('../../dist/tools/dispatcher.js');
 
 function fixture() {
-  const temp = mkdtempSync(path.join(os.tmpdir(), 'saga3-binding-'));
+  const temp = mkdtempSync(path.join(os.tmpdir(), 'factory-binding-'));
   process.env.DB_PATH = path.join(temp, 'db.sqlite');
   const db = getDb();
   db.prepare(`INSERT INTO projects (id,name,status) VALUES (1,'P','active')`).run();

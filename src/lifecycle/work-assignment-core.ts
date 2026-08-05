@@ -195,7 +195,7 @@ export function readWorkIntentForTaskClaim(
   if (intentId === null) return null;
 
   const row = db.prepare(
-    'SELECT * FROM saga3_work_intents WHERE id=?',
+    'SELECT * FROM factory_work_intents WHERE id=?',
   ).get(intentId) as WorkIntentClaimRow | undefined;
   if (!row) {
     throw new Error(
@@ -244,7 +244,7 @@ function claimedStatusFor(
   if (task.workplace_ref) {
     const workplace = db.prepare(
       `SELECT kanban_phase
-         FROM v4_workplaces
+         FROM factory_workplaces
         WHERE workplace_ref=?`,
     ).get(task.workplace_ref) as { kanban_phase: string } | undefined;
     if (
@@ -311,7 +311,7 @@ export function findNextClaimable(
            AND t.status IN ('todo','review')
            AND EXISTS (
              SELECT 1
-               FROM v4_workplaces w
+               FROM factory_workplaces w
               WHERE w.workplace_ref=t.workplace_ref
                 AND (
                   w.loop_state IN ('idle','queued')
@@ -542,6 +542,32 @@ export function promoteTaskToDone(
 }
 
 /** Build the immutable AssignedWork snapshot after the claim transaction. */
+export interface ProjectedTaskPreparationCommand {
+  taskId: number;
+  currentStatus: string;
+  assignedTo: string | null;
+  currentExecutionId: string | null;
+}
+
+/** Prepare a projected task for a new fenced execution. */
+export function prepareFactoryProjectedTaskForExecution(
+  db: Database.Database,
+  command: ProjectedTaskPreparationCommand,
+): string {
+  const restoredStatus = command.currentStatus === 'review_in_progress'
+    ? 'review'
+    : command.currentStatus === 'in_progress'
+      ? 'todo'
+      : command.currentStatus;
+  if (command.assignedTo || command.currentExecutionId || restoredStatus !== command.currentStatus) {
+    db.prepare(
+      `UPDATE tasks SET status=?, assigned_to=NULL, current_execution_id=NULL,
+                        updated_at=datetime('now') WHERE id=?`,
+    ).run(restoredStatus, command.taskId);
+  }
+  return restoredStatus;
+}
+
 export function buildAssignedWorkFromClaim(args: {
   db: Database.Database;
   task: Task;
