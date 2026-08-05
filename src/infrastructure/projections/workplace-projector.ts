@@ -1,42 +1,48 @@
 /**
- * WorkplaceProjector — dual-write shadow of legacy tasks → v4_workplaces
- * (Conveyor v4 step 5.2).
+ * WorkplaceProjector — the projection layer between the authoritative v4
+ * Workplace aggregate and the legacy `tasks` read model (Conveyor v4 step 5.2
+ * cutover).
  *
  * Target contract: FACTORY-DOMAIN-ACCEPTANCE-REGISTRY REG-05 (Workplace) +
- * Conveyor Mental Model v4 §«One engine, two channels».
+ * REG-06 (Карточка — WorkItem projection) + Conveyor Mental Model v4 §«One
+ * engine, two channels».
  *
- * # What this does
+ * # The cutover model (step 5.2)
  *
- * The legacy dispatcher (`worker_next`, `worker_done`, `worker_ask_need`)
- * mutates `tasks.{status, assigned_to, current_execution_id}`. Until step 5's
- * full cutover, we CANNOT replace those writes. But we CAN write a SHADOW
- * into `v4_workplaces` so the new aggregate store fills with real production
- * data and the board shows it.
+ * After cutover, the LOOP channel (`v4_workplaces.loop_state`) is the
+ * orchestration authority. The KANBAN channel (`tasks.status`) is a REVERSE
+ * PROJECTION of the workplace's `kanbanPhase`, written ONLY here. This makes
+ * `tasks` a rebuildable read model (REG-06-AC-01: "deleting the projection
+ * and rebuilding it reproduces both status channels without changing
+ * production").
  *
- * This projector hooks into the dispatcher's status transitions and writes a
- * parallel v4_workplaces row. It is BEHIND a feature-flag
- * (`SAGA_WORKPLACE_WRITE=on`, default off) so production only activates it
- * when the operator is ready.
+ * This module provides TWO projection directions:
  *
- * # Mapping (legacy tasks.status → v4 two-channel state)
+ *   FORWARD  (`projectStatusChange`): tasks.status → v4_workplaces. Used
+ *             during the dual-write/shadow window (SAGA_WORKPLACE_WRITE=on)
+ *             and by legacy callers that still drive tasks.status. After
+ *             cutover, this is the path for legacy adapters only.
  *
- *   tasks.status='todo'              → kanbanPhase=todo,      loopState=idle
- *   tasks.status='in_progress'       → kanbanPhase=in_progress, loopState=running
- *   tasks.status='review'            → kanbanPhase=review,    loopState=queued, nextRole=reviewer
- *   tasks.status='review_in_progress'→ kanbanPhase=review_in_progress, loopState=running, nextRole=reviewer
- *   tasks.status='done'              → kanbanPhase=done,      loopState=terminal, terminalReason=accepted
- *   tasks.status='blocked'           → kanbanPhase=blocked,   loopState=paused
+ *   REVERSE  (`reverseProjectWorkplaceToTask`): v4 kanbanPhase → tasks.status.
+ *             Used by ConveyorRuntime after it CAS-mutates the workplace. This
+ *             is the authoritative direction after cutover — the workplace
+ *             owns the truth, tasks mirrors it.
  *
- * The WorkplaceRef is derived from the task's metadata (processRunId,
- * moduleRef, productionCellId, workKey) — fields the runtime already stamps
- * when it creates a Process Module task.
+ * # Mapping (v4 kanbanPhase → tasks.status)
+ *
+ *   kanbanPhase=todo               → status='todo'
+ *   kanbanPhase=in_progress        → status='in_progress'
+ *   kanbanPhase=review             → status='review'
+ *   kanbanPhase=review_in_progress → status='review_in_progress'
+ *   kanbanPhase=blocked            → status='blocked'
+ *   kanbanPhase=done               → status='done'
+ *   kanbanPhase=failed             → status='done'      (terminal — board shows done)
+ *   kanbanPhase=cancelled          → status='done'      (terminal — board shows done)
  *
  * # Non-goals
  *
- * This projector does NOT read from v4_workplaces (that is step 5.3's read
- * cutover). It only WRITES shadows. It does NOT launch workers, does NOT
- * decide transitions, does NOT touch the legacy tasks-table — it only adds a
- * parallel write.
+ * The projector does NOT launch workers, does NOT decide transitions, does
+ * NOT mutate the loop channel. It is a one-way projection surface.
  */
 
 import type Database from 'better-sqlite3';
@@ -47,6 +53,7 @@ import {
   type NextRole,
   type TerminalReason,
   type WorkplaceRef,
+  type WorkplaceState,
 } from '../../process-modules/domain/workplace/index.js';
 import { SqliteWorkplaceRepository } from '../workplace/sqlite-workplace-repository.js';
 
@@ -66,7 +73,9 @@ export interface TaskStatusSnapshot {
  * The projector. Construct once per DB; call `projectStatusChange` after every
  * dispatcher status transition (worker_next, worker_done, worker_ask_need).
  *
- * Safe to call when `SAGA_WORKPLACE_WRITE` is not 'on' — it no-ops.
+ * The forward projection (tasks → v4) is enabled when `SAGA_WORKPLACE_WRITE`
+ * is 'on'. After cutover, the ConveyorRuntime drives v4 directly and calls
+ * `reverseProjectWorkplaceToTask` — the forward path becomes a legacy adapter.
  */
 export class WorkplaceProjector {
   private readonly repo: SqliteWorkplaceRepository;
@@ -78,22 +87,24 @@ export class WorkplaceProjector {
   }
 
   /**
-   * Shadow-write a task status change into v4_workplaces.
+   * Forward projection: shadow-write a task status change into v4_workplaces.
    *
-   * Derives the WorkplaceRef from the task's metadata (processRunId, moduleRef,
-   * productionCellId, workKey). When the metadata lacks these fields (a legacy
-   * task not created by a Process Module), the projection is silently skipped
-   * — v4_workplaces only tracks Process Module tasks.
+   * Derives the WorkplaceRef from the task's metadata. When the metadata lacks
+   * `process_run_id`, the task is a legacy board task and is NOT projected.
    *
-   * Uses CAS: reads the current v4 row, computes the target state via the
-   * mapping table, and applies the transition. If the CAS misses (a concurrent
-   * write), it retries once. This is best-effort shadow — a missed projection
-   * is observable but not fatal (the legacy tasks-table is still the authority).
+   * This is the LEGACY direction — used while tasks.status is still driven by
+   * the legacy dispatcher. After cutover, ConveyorRuntime writes v4 directly
+   * and the REVERSE projection (`reverseProjectWorkplaceToTask`) is the
+   * authoritative direction.
    */
   projectStatusChange(snapshot: TaskStatusSnapshot): void {
     if (!this.enabled) return;
 
-    const ref = this.deriveWorkplaceRef(snapshot);
+    const ref = deriveWorkplaceRefFromTaskMetadata({
+      taskId: snapshot.taskId,
+      metadata: snapshot.metadata,
+      taskKind: snapshot.taskKind,
+    });
     if (!ref) return; // not a Process Module task — skip
 
     const target = mapLegacyStatusToV4(snapshot.status);
@@ -128,51 +139,104 @@ export class WorkplaceProjector {
         terminalReason: target.terminalReason,
       });
     } catch {
-      // CAS miss or invariant violation — best-effort shadow. Log but do not crash.
-      // The legacy tasks-table is still authoritative; a missed projection
-      // surfaces as a stale v4_workplaces row, not a data loss event.
+      // CAS miss or invariant violation — best-effort shadow. The ConveyorRuntime
+      // path is authoritative after cutover; this forward path is a legacy adapter.
     }
   }
+}
 
-  /**
-   * Derive a WorkplaceRef from a task's metadata. The runtime stamps
-   * `process_run_id`, `process_node_id` and the module context when it creates
-   * a Process Module task. When those fields are absent, the task is a legacy
-   * board task and is NOT projected (v4 tracks only Process Module work).
-   */
-  private deriveWorkplaceRef(snapshot: TaskStatusSnapshot): WorkplaceRef | null {
-    let meta: Record<string, unknown> = {};
-    try {
-      meta = JSON.parse(snapshot.metadata || '{}');
-    } catch {
-      return null;
-    }
-    const processRunId = meta['process_run_id'];
-    if (!Number.isInteger(processRunId) || (processRunId as number) < 1) return null;
+// ---------------------------------------------------------------------------
+// PURE HELPERS — exportable, used by ConveyorRuntime.
+// ---------------------------------------------------------------------------
 
-    const moduleRef = typeof meta['module_ref'] === 'string'
-      ? meta['module_ref']
-      : typeof snapshot.taskKind === 'string'
-        ? `${snapshot.taskKind.split('.')[0]}@1.0.0`
-        : 'unknown@1.0.0';
-    const productionCellId = typeof meta['process_node_id'] === 'string'
-      ? meta['process_node_id']
-      : snapshot.taskKind ?? 'default';
-    const workKey = typeof meta['work_key'] === 'string'
-      ? meta['work_key']
-      : `task-${snapshot.taskId}`;
+/**
+ * Derive a WorkplaceRef from a task's metadata. The runtime stamps
+ * `process_run_id`, `process_node_id` and the module context when it creates
+ * a Process Module task. When those fields are absent, the task is a legacy
+ * board task and is NOT projected (returns null).
+ *
+ * PURE: no DB, no I/O. Same (metadata, taskKind, taskId) ⇒ same ref.
+ */
+export function deriveWorkplaceRefFromTaskMetadata(input: {
+  taskId: number;
+  metadata: string;
+  taskKind: string | null;
+}): WorkplaceRef | null {
+  let meta: Record<string, unknown> = {};
+  try {
+    meta = JSON.parse(input.metadata || '{}');
+  } catch {
+    return null;
+  }
+  const processRunId = meta['process_run_id'];
+  if (!Number.isInteger(processRunId) || (processRunId as number) < 1) return null;
 
-    return asWorkplaceRef({
-      processRunId: processRunId as number,
-      moduleRef,
-      productionCellId,
-      workKey,
-    });
+  const moduleRef = typeof meta['module_ref'] === 'string'
+    ? meta['module_ref']
+    : typeof input.taskKind === 'string'
+      ? `${input.taskKind.split('.')[0]}@1.0.0`
+      : 'unknown@1.0.0';
+  const productionCellId = typeof meta['process_node_id'] === 'string'
+    ? meta['process_node_id']
+    : input.taskKind ?? 'default';
+  const workKey = typeof meta['work_key'] === 'string'
+    ? meta['work_key']
+    : `task-${input.taskId}`;
+
+  return asWorkplaceRef({
+    processRunId: processRunId as number,
+    moduleRef,
+    productionCellId,
+    workKey,
+  });
+}
+
+/**
+ * REVERSE projection (step 5.2 authoritative direction): write the workplace's
+ * kanbanPhase into tasks.status. This is the ONE-WAY projection that makes
+ * tasks a read model (REG-06). Called by ConveyorRuntime after it CAS-mutates
+ * the workplace.
+ *
+ * Returns the tasks.status value written (or null if the task has no
+ * workplace binding).
+ */
+export function reverseProjectWorkplaceToTask(
+  db: Database.Database,
+  taskId: number,
+  state: WorkplaceState,
+): string | null {
+  const status = mapV4KanbanToTaskStatus(state.kanbanPhase);
+  if (!status) return null;
+  db.prepare(
+    `UPDATE tasks SET status=?, updated_at=datetime('now') WHERE id=?`,
+  ).run(status, taskId);
+  return status;
+}
+
+/**
+ * Map a v4 kanbanPhase to the legacy tasks.status value.
+ *
+ * Terminal phases (done/failed/cancelled) all map to 'done' on the board —
+ * the board does not distinguish failure reasons (those live in
+ * terminal_reason on the workplace + integration_state on the task).
+ */
+export function mapV4KanbanToTaskStatus(kanbanPhase: KanbanPhase): string | null {
+  switch (kanbanPhase) {
+    case 'todo': return 'todo';
+    case 'in_progress': return 'in_progress';
+    case 'review': return 'review';
+    case 'review_in_progress': return 'review_in_progress';
+    case 'blocked': return 'blocked';
+    case 'done':
+    case 'failed':
+    case 'cancelled':
+      return 'done';
+    default: return null;
   }
 }
 
 /**
- * Map a legacy tasks.status to the v4 two-channel state.
+ * Map a legacy tasks.status to the v4 two-channel state (FORWARD projection).
  *
  * Returns null for unrecognized statuses (the projection is skipped).
  */

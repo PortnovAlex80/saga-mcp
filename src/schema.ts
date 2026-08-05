@@ -109,6 +109,14 @@ CREATE TABLE IF NOT EXISTS tasks (
   -- Fencing token for managed CLI executions. NULL means legacy/manual claim.
   -- Every worker-side mutation of a managed task must present this exact id.
   current_execution_id TEXT,
+  -- Conveyor v4 binding: the authoritative Workplace aggregate that owns this
+  -- task loop state. NULL for tasks not (yet) tracked as a Production Cell
+  -- instance. This is a DATA column (the projection identity), NOT an owner
+  -- column. Written by WorkplaceProjector when the task is admitted to the
+  -- conveyor and never changes thereafter. The owner channel (status /
+  -- assigned_to) is the reverse-projection of the v4 kanbanPhase / loopState
+  -- (REG-06, CONVEYOR-V4-MIGRATION-PLAN step 5.2).
+  workplace_ref TEXT,
   -- Canonical AC owned by a verification.ac task. Evidence for any other AC
   -- is rejected; verified_by is derived output, never the assignment source.
   verification_target_artifact_id INTEGER REFERENCES artifacts(id) ON DELETE SET NULL,
@@ -442,6 +450,7 @@ CREATE INDEX IF NOT EXISTS idx_subtasks_task_id ON subtasks(task_id);
 CREATE INDEX IF NOT EXISTS idx_projects_status ON projects(status);
 CREATE INDEX IF NOT EXISTS idx_epics_status ON epics(status);
 CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
+CREATE INDEX IF NOT EXISTS idx_tasks_workplace_ref ON tasks(workplace_ref);
 CREATE INDEX IF NOT EXISTS idx_subtasks_status ON subtasks(status);
 
 CREATE INDEX IF NOT EXISTS idx_epics_priority ON epics(priority);

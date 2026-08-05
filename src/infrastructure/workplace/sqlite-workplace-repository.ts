@@ -227,48 +227,70 @@ export class SqliteWorkplaceRepository {
     // BEGIN IMMEDIATE so the read-validate-write is one atomic step: a
     // concurrent writer cannot advance the revision between our read and our
     // CAS UPDATE.
-    return this.withImmediateTransaction(() => {
-      const current = this.readRow(serialized);
-      if (!current) {
-        throw new Error(`WORKPLACE_NOT_FOUND: '${serialized}' was not materialized`);
-      }
-      if (current.revision !== input.expectedRevision) {
-        // CAS miss — a concurrent writer already advanced the revision.
-        return {
-          applied: false,
-          state: rowToState(current),
-          revision: current.revision,
-        };
-      }
-      const info = this.db.prepare(
-        `UPDATE v4_workplaces
-            SET kanban_phase=?, loop_state=?, next_role=?, terminal_reason=?,
-                revision=revision+1,
-                active_reservation_ref=?,
-                active_gate_ref=?,
-                active_recovery_case_ref=?,
-                updated_at=datetime('now')
-          WHERE workplace_ref=? AND revision=?`,
-      ).run(
-        input.kanbanPhase,
-        input.loopState,
-        input.nextRole,
-        input.terminalReason,
-        input.activeReservationRef ?? null,
-        input.activeGateRef ?? null,
-        input.activeRecoveryCaseRef ?? null,
-        serialized,
-        input.expectedRevision,
-      );
-      if (info.changes !== 1) {
-        // Lost the CAS race between read and UPDATE (extremely tight window
-        // under BEGIN IMMEDIATE, but defensive).
-        const after = this.readRow(serialized)!;
-        return { applied: false, state: rowToState(after), revision: after.revision };
-      }
-      const after = this.readRow(serialized)!;
-      return { applied: true, state: rowToState(after), revision: after.revision };
-    });
+    return this.withImmediateTransaction(() => this.applyTransitionInTx(input, serialized));
+  }
+
+  /**
+   * Apply a transition WITHOUT opening a transaction — for callers (the
+   * ConveyorRuntime) that already hold a transaction and need the workplace
+   * CAS + reverse projection to commit atomically together. The caller is
+   * responsible for the BEGIN IMMEDIATE / COMMIT boundary.
+   *
+   * Same CAS semantics as {@link applyTransition}: matches expected revision,
+   * bumps by 1 on success, returns `{applied:false}` on a CAS miss.
+   */
+  applyTransitionInTx(input: TransitionInput, serialized?: string): TransitionResult {
+    // Validate the TARGET state first (pure-domain check, no DB).
+    const targetState: WorkplaceState = {
+      kanbanPhase: input.kanbanPhase,
+      loopState: input.loopState,
+      nextRole: input.nextRole,
+      revision: input.expectedRevision + 1,
+      terminalReason: input.terminalReason,
+    };
+    assertValidWorkplaceState(targetState);
+
+    const ser = serialized ?? serializeWorkplaceRef(input.workplaceRef);
+    const current = this.readRow(ser);
+    if (!current) {
+      throw new Error(`WORKPLACE_NOT_FOUND: '${ser}' was not materialized`);
+    }
+    if (current.revision !== input.expectedRevision) {
+      // CAS miss — a concurrent writer already advanced the revision.
+      return {
+        applied: false,
+        state: rowToState(current),
+        revision: current.revision,
+      };
+    }
+    const info = this.db.prepare(
+      `UPDATE v4_workplaces
+          SET kanban_phase=?, loop_state=?, next_role=?, terminal_reason=?,
+              revision=revision+1,
+              active_reservation_ref=?,
+              active_gate_ref=?,
+              active_recovery_case_ref=?,
+              updated_at=datetime('now')
+        WHERE workplace_ref=? AND revision=?`,
+    ).run(
+      input.kanbanPhase,
+      input.loopState,
+      input.nextRole,
+      input.terminalReason,
+      input.activeReservationRef ?? null,
+      input.activeGateRef ?? null,
+      input.activeRecoveryCaseRef ?? null,
+      ser,
+      input.expectedRevision,
+    );
+    if (info.changes !== 1) {
+      // Lost the CAS race between read and UPDATE (extremely tight window
+      // under BEGIN IMMEDIATE, but defensive).
+      const after = this.readRow(ser)!;
+      return { applied: false, state: rowToState(after), revision: after.revision };
+    }
+    const after = this.readRow(ser)!;
+    return { applied: true, state: rowToState(after), revision: after.revision };
   }
 
   /**
