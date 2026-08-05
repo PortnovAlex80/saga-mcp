@@ -117,12 +117,21 @@ export function releaseTaskExecution(db: Database.Database, input: {
     execId = actors?.activeReservationRef ?? input.executionId ?? '';
   }
   try {
-    // When the dispatcher moves a task to 'done', decide terminal vs verifying:
-    //   - tracker_only / artifact_change / read_only → terminal(accepted) on done
-    //     (no merge step — the gate IS the worker_done approval)
-    //   - git_change → terminal(accepted) ONLY if integration_state='merged';
-    //     otherwise stay in verifying (merge hasn't happened yet, downstream
-    //     must NOT fire until merge_release)
+    // Decide workplace transition from the dispatcher's new task status:
+    //
+    //   review              → workplace 'review/queued' (reviewer must be hired next)
+    //   done (final)        → workplace 'done/terminal(accepted)'
+    //   done (git_change, not merged) → workplace 'verifying' (awaiting merge)
+    //   anything else       → releaseExecution(completed) → verifying
+    if (input.taskStatus === 'review') {
+      // Author completed → hand to reviewer. Workplace goes to review/queued
+      // so the next claim picks up the reviewer skill (review_skill).
+      rt.requeueForRepair({
+        workplaceRef: ref,
+        taskId: input.taskId,
+        role: 'reviewer',
+      });
+    } else {
     const isGitChange = input.executionMode === 'git_change';
     const isMerged = input.integrationState === 'merged' || input.integrationState === 'not_required';
     const canTerminal = !isGitChange || isMerged;
@@ -140,6 +149,7 @@ export function releaseTaskExecution(db: Database.Database, input: {
         outcome: input.outcome,
       });
     }
+    } // end else (not review)
   } catch (e) {
     console.error(`[v4-release] task=${input.taskId} execId=${execId} status=${input.taskStatus}: ${e instanceof Error ? e.message : String(e)}`);
   }
