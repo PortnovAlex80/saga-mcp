@@ -627,13 +627,20 @@ implements ExactCandidateAcceptance {
     // of the same epic. This unblocks the deadlock where the worker correctly
     // skips duplicating accepted work but the gate demanded a per-execution
     // receipt.
+    //
+    // Boundary (REG-12-AC-02/03, exact-candidate-acceptance test "acceptance
+    // never adopts a candidate written by another recovery task"): the fallback
+    // may ONLY adopt an artifact produced by the SAME task lineage (same task_id)
+    // under a different process run. A different recovery task (task_id mismatch)
+    // must NEVER be adopted implicitly — that would let one task claim another
+    // task's work. The task_id filter below enforces this.
     if (!ledger) {
       ledger = this.db.prepare(
         `SELECT map.id, map.artifact_type, map.artifact_status, map.content_hash
            FROM saga3_managed_artifact_productions map
            JOIN saga3_process_runs pr ON pr.id = map.process_run_id
           WHERE pr.project_id=? AND pr.epic_id=? AND map.module_ref=? AND map.node_id=?
-            AND map.artifact_id=?
+            AND map.task_id=? AND map.artifact_id=?
           ORDER BY map.recorded_at DESC
           LIMIT 1`,
       ).get(
@@ -641,6 +648,7 @@ implements ExactCandidateAcceptance {
         lineage.epicId,
         lineage.moduleRef,
         lineage.nodeId,
+        lineage.taskId,
         candidate.artifactId,
       ) as ManagedArtifactProductionRow | undefined;
     }
