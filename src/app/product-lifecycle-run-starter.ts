@@ -120,9 +120,16 @@ export function createSpawnCliLifecycleRunStarter(
       }
       const child = spawnProcess('node', cliArgs, {
         detached: true,
-        stdio: 'ignore',
+        stdio: ['ignore', 'pipe', 'pipe'],
         env: childEnv,
       });
+      // Pipe engine stdout/stderr to a persistent log file for debugging.
+      const engineLog = `${require('node:os').tmpdir()}/saga-engine-${Date.now()}.log`;
+      const { createWriteStream } = require('node:fs');
+      const logStream = createWriteStream(engineLog, { flags: 'a' });
+      child.stdout?.pipe(logStream);
+      child.stderr?.pipe(logStream);
+      childEnv.SAGA_ENGINE_LOG = engineLog;
       child.unref();
       try {
         return await waitForLifecycleStartReceipt({

@@ -311,6 +311,14 @@ async function main() {
       lastResult = result;
       isFirstCycle = false;
       process.stdout.write(`[orchestrate-cli] cycle: ${JSON.stringify({ reason: result.reason, stage: result.finalStage })}\n`);
+      // Structured log — every cycle for debugging
+      try {
+        const { appendFileSync: apf } = await import('node:fs');
+        const { tmpdir: tmp } = await import('node:os');
+        const lp = process.env.SAGA_ENGINE_LOG ?? `${tmp()}/saga-engine-manual.log`;
+        const ts2 = new Date().toISOString();
+        apf(lp, `[${ts2}] CYCLE: ${JSON.stringify({ reason: result.reason, stage: result.finalStage })}\n`);
+      } catch { /* logging is best-effort */ }
 
       // Terminal — lifecycle finished (completed/failed/stopped).
       if (result.reason !== 'paused') break;
@@ -394,6 +402,12 @@ async function main() {
           }
     const result = lastResult!;
     process.stdout.write(`[orchestrate-cli] done: ${JSON.stringify(result)}\n`);
+    // Structured log — write pipeline result to engine log for debugging
+    const { appendFileSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const logPath = process.env.SAGA_ENGINE_LOG ?? `${tmpdir()}/saga-engine-manual.log`;
+    const ts = new Date().toISOString();
+    appendFileSync(logPath, `[${ts}] PIPELINE RESULT: ${JSON.stringify(result)}\n`);
     process.exit(result.reason === 'failed' ? 1 : 0);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
