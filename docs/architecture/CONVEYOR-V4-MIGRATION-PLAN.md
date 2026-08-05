@@ -332,15 +332,19 @@ enforcement. `WorkerLauncherPort` (REG-21). `ConcurrentLaunchBudget`
 **ШАГ 4 — done (contracts).** `EffectExecutorPort` + delivery effect contracts
 с exact digest + idempotency + observe-before-retry (REG-23-AC-03).
 
-**ШАГ 5 — done (conformance + ratchets); cutover read-switch pending.**
+**ШАГ 5 — done (conformance + cutover authority wired); per-workshop read-switch pending.**
 - 5.1 conformance harness: E2E-01..06/10 (`workplace-conformance-harness`),
   E2E-07..09/11..13 (`workplace-conformance-e2e-extended`). E2E-14 (real-LM)
   требует реальной модели.
-- 5.2 dual-write shadow из production dispatcher (`workplace-projector`,
-  feature-flagged `SAGA_WORKPLACE_WRITE=on`) + read comparator при
-  `SAGA_WORKPLACE_READ=both`. **Cutover authority (`SAGA_WORKPLACE_READ=new`
-  как единственный source) НЕ выполнен** — требует sustained zero-drift и
-  per-workshop read-switch (см. шаг 3).
+- 5.2 **cutover authority DONE (wired behind `SAGA_WORKPLACE_READ=new`)**:
+  `ConveyorRuntime` (`src/application/conveyor-runtime.ts`) drives the LOOP
+  channel authoritatively in v4_workplaces (reserve/release/requeue/pause/
+  resume), с fence enforcement (REG-09-AC-04) и CAS (REG-05-AC-06).
+  Dispatcher `worker_next`/`worker_done` route через runtime helpers;
+  `findNextClaimable` queue gate читает workplace loop_state (REG-10-AC-01);
+  `WorkplaceProjector.reverseProjectWorkplaceToTask` пишет tasks.status как
+  reverse projection (REG-06). 21 cutover test green. Legacy/both режимы
+  сохранены (forward shadow-write).
 - 5.3 two-channel enforcement — done (закрытые пары в reducer, REG-28).
 - 5.4 absence-of-readers ratchet (`tasks-reader-invariant.test.mjs`): 16
   allowed core readers captured как shrinkage whitelist, target = 0.
@@ -358,9 +362,11 @@ DB_PATH=./saga4-v4.db npm start` — сервер поднимается, 7 v4_*
 immutability triggers создаются, dual-write активен.
 
 **Остающиеся пробелы (последовательность выполнения):**
-1. Per-workshop read-switch (3.A.4 / 3.B.3 / 3.C.4) — каждое уводит читателя
-   из whitelist шага 5.4.
-2. Cutover `SAGA_WORKPLACE_READ=new` после sustained zero-drift в `both`.
-3. Destructive drop legacy (шаг 6 полный) после cutover.
+1. Cutover `SAGA_WORKPLACE_READ=new` как DEFAULT — требует sustained zero-
+   drift в `both` и per-workshop read-switch (см. ниже). Сегодня cutover wired
+   и functional за флагом; legacy/both — default.
+2. Per-workshop read-switch (3.A.4 / 3.B.3 / 3.C.4) — каждое уводит читателя
+   из whitelist шага 5.4 в v4 projection. После всех трёх — `new` default.
+3. Destructive drop legacy (шаг 6 полный) после `new` default.
 4. E2E-14 real-LM conformance.
 

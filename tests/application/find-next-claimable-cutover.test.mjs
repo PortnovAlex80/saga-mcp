@@ -115,14 +115,26 @@ test('REG-10-AC-01 cutover: task with workplace loop=queued IS claimable (re-que
   db.close();
 });
 
-test('REG-10-AC-01 cutover: task WITHOUT workplace binding NOT claimable', () => {
+test('REG-10-AC-01 cutover: PM task without workplace binding IS claimable (lazy materialize)', () => {
   process.env.SAGA_WORKPLACE_READ = 'new';
   const db = freshDb();
   const projectId = seedTask(db, 1, { status: 'todo' });
-  // No bindWorkplace call — task.workplace_ref is NULL.
+  // No bindWorkplace call — task.workplace_ref is NULL but metadata has
+  // process_run_id. First claim materializes the workplace (lazy binding).
 
   const task = findNextClaimable(db, 'w-1', projectId);
-  assert.equal(task, null, 'NOT claimable without a workplace binding');
+  assert.ok(task, 'PM task without binding is claimable — lazy materialize on first claim');
+  db.close();
+});
+
+test('REG-10-AC-01 cutover: non-PM task without binding NOT claimable', () => {
+  process.env.SAGA_WORKPLACE_READ = 'new';
+  const db = freshDb();
+  const projectId = seedTask(db, 1, { status: 'todo', meta: {} }); // no process_run_id
+  // No binding AND no process_run_id → not a PM task, not claimable in cutover.
+
+  const task = findNextClaimable(db, 'w-1', projectId);
+  assert.equal(task, null, 'non-PM task without binding NOT claimable');
   db.close();
 });
 

@@ -284,16 +284,22 @@ export function findNextClaimable(
   const taskIdsClause = taskIds && taskIds.length > 0
     ? `AND t.id IN (${taskIds.map(() => '?').join(',')})`
     : '';
-  // Cutover: a task is queue-eligible iff its bound workplace is in idle or
-  // queued loop. The Kanban phase is allowed to be todo (fresh author),
-  // in_progress (re-queued author after repair), or review (reviewer buffer).
-  // Legacy: the tasks.status column is the gate.
+  // Cutover: a task is queue-eligible iff EITHER (a) it has a bound workplace
+  // in idle/queued loop, OR (b) it has process_run_id metadata but NO bound
+  // workplace yet (first claim materializes the workplace). Legacy: the
+  // tasks.status column is the gate.
   const queueGate = cutover
-    ? `AND t.workplace_ref IS NOT NULL
-       AND EXISTS (
-         SELECT 1 FROM v4_workplaces w
-         WHERE w.workplace_ref = t.workplace_ref
-           AND w.loop_state IN ('idle', 'queued')
+    ? `AND (
+         (t.workplace_ref IS NOT NULL
+           AND EXISTS (
+             SELECT 1 FROM v4_workplaces w
+             WHERE w.workplace_ref = t.workplace_ref
+               AND w.loop_state IN ('idle', 'queued')
+           ))
+         OR
+         (t.workplace_ref IS NULL
+           AND json_extract(t.metadata, '$.process_run_id') IS NOT NULL
+           AND t.status IN ('todo', 'review'))
        )`
     : `AND t.status IN ('todo', 'review')`;
   const selectSql = `

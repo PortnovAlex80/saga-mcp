@@ -121,3 +121,33 @@ build fails.
   read-switch path is viable end-to-end.
 - **Check trigger:** the `tasks-reader-invariant` test run on each PR; the
   "reports reader set" line shows the count.
+
+---
+
+## Update 2026-08-04 — cutover authority wired (commits b9fe7e5, c9d…)
+
+Following the user's guidance ("можем вообще делать все заново чтобы не
+опираться на легаси"), the cutover was implemented rather than only gated:
+
+- **ConveyorRuntime** (`src/application/conveyor-runtime.ts`) drives the LOOP
+  channel authoritatively in v4_workplaces: reserveWorkplace / releaseExecution
+  / requeueForRepair / pauseForHuman / resumeFromHuman / bindTaskToWorkplace.
+  Each use case is one atomic BEGIN IMMEDIATE: read → plan via pure reducer →
+  CAS revision → reverse-project tasks.status.
+- **Dispatcher + queue gate** rewired behind `SAGA_WORKPLACE_READ=new`:
+  worker_next/worker_done route through ConveyorRuntime; findNextClaimable's
+  queue gate reads workplace loop_state (REG-10-AC-01); lazy materialization
+  on first claim (a PM task with process_run_id but no binding is claimable).
+- **Single-writer invariant evolved**: WorkplaceProjector is now a sanctioned
+  writer of tasks.status (the reverse projection, REG-06). assigned_to /
+  current_execution_id remain owned by the lifecycle single-writer set.
+
+The cutover is **functional behind the flag**, not yet the default. 21 cutover
+tests + 8 queue-gate tests + 8 authority tests green; full cutover E2E smoke
+pass. Legacy/both modes are preserved (zero regressions vs base saga4).
+
+**Revised ex-ante expectations:**
+- **Next:** run production in `both` mode to accumulate zero-drift evidence,
+  then flip `SAGA_WORKPLACE_READ=new` to default after sustained agreement.
+- The per-workshop read-switches (3.A.4/3.B.3/3.C.4) shrink the absence-of-
+  readers whitelist toward 0; when it reaches 0, `new` is unconditionally safe.
