@@ -36,6 +36,18 @@ every artifact, trace, or completion write.
   trace calls. Do not include fields the kernel owns.
 - Read the JSON file back after editing, then execute.
 
+## CRITICAL: File-first, content_hash mandatory
+
+The kernel gate REQUIRES `content_hash` on every artifact. `artifact_create`
+auto-computes it from the file on disk — but ONLY if the file exists at the
+given `path` under the repository root BEFORE the call. If the file is missing,
+`content_hash` is NULL and the Formalization pipeline WILL fail.
+
+For EVERY artifact (PRD, FR, NFR, RULE, business_metric, hypothesis):
+1. `Write({ file_path: "<workspace_root>/<artifact_path>", content: "<full text>" })` — create the physical file first.
+2. THEN `artifact_create({ path, project_repository_id, type, ... })` — the tool reads the file and stamps `content_hash`.
+3. Read back via `artifact_list` — verify `content_hash` is NOT null before proceeding.
+
 ## Read-back before completion
 
 - Query `artifact_list` for the rows you created. Confirm every id and hash was

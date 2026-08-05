@@ -55,6 +55,19 @@ not accepted or decision≠go → STOP, do not write the PRD.
 `docs/requirements/REQ-NNN-<slug>/00-PRD.md`. Never absolute — the path is
 stored in saga.db and joined by tracker-view.
 
+## CRITICAL: Write file + content_hash
+
+The kernel gate (exact-candidate-acceptance) REQUIRES a non-null `content_hash`
+on every artifact. If `content_hash` is NULL, the gate fails with
+"ledger artifact does not match its canonical row" and the entire Formalization
+pipeline terminates as `failed`.
+
+To ensure `content_hash` is set:
+1. **Write the file to disk FIRST** — use `Write({ file_path: <repo>/docs/requirements/REQ-NNN-<slug>/<file>.md, content: <full artifact text> })`.
+2. **Then call `artifact_create({ path, project_repository_id, ... })`** — the tool auto-computes `content_hash` from the file on disk via SHA-256.
+3. If `artifact_create` returns `content_hash: null`, the file was not found — STOP, write the file, then retry.
+4. EVERY artifact (PRD, FR, NFR, RULE, business_metric, hypothesis) MUST have a real file on disk with content before calling `artifact_create`.
+
 ## Acceptance is not yours
 
 After registration, hand to the kernel. The common kernel gate accepts the
