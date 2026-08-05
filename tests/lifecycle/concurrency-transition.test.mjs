@@ -276,5 +276,8 @@ async function enginePids() {
 
 test.after(() => {
   closeDb();
-  rmSync(temp, { recursive: true, force: true });
+  // Best-effort cleanup: on Windows the temp dir may still be locked by the
+  // OS when the after-hook fires (EPERM). The OS temp reaper will reclaim it;
+  // a cleanup failure must not fail the suite.
+  try { rmSync(temp, { recursive: true, force: true }); } catch { /* temp dir locked */ }
 });

@@ -309,5 +309,6 @@ async function startTrackerView(t, dbPath, extraEnv = {}) {
 
 test.after(() => {
   closeDb();
-  rmSync(temp, { recursive: true, force: true });
+  // Best-effort cleanup (Windows EPERM on locked temp dirs — see concurrency-transition).
+  try { rmSync(temp, { recursive: true, force: true }); } catch { /* temp dir locked */ }
 });
