@@ -1041,10 +1041,10 @@ test({ skip: 'saga4 cutover: ladder deleted' }, 'cross-repository dependency blo
   assert.equal(tasks.task_list({ epic_id: epic.id }).length, 2);
 });
 
-test({ skip: 'saga4 cutover: depends on ladder-generated tasks' }, 'project export/import 1.4 preserves repository bindings and typed task fields', () => {
+test({ skip: 'saga4 cutover: depends on ladder-generated tasks' }, 'project export/import 1.5 preserves repository bindings and typed task fields', () => {
   const source = projects.project_list({}).find(p => p.name === 'Workflow Product');
   const exported = exportImport.tracker_export({ project_id: source.id });
-  assert.equal(exported.format_version, '1.4');
+  assert.equal(exported.format_version, '1.5');
   assert.equal(exported.project.repositories.length, 2);
   const imported = exportImport.tracker_import({ data: exported });
   const importedRepos = repositories.repository_list({ project_id: imported.project_id });

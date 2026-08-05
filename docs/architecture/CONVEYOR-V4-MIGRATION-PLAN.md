@@ -294,3 +294,73 @@ REG-03-AC-05). `SCHEMA_VERSION` → 2. `tracker_export/import` → format_versio
 `CandidateSet`, `GateDecision`/`GateRun`/`CheckPlan`/`CheckReceipt`,
 `ExecutionReservation` в `src/process-modules/domain/workplace/` +
 property-тесты. Нулевой риск, точка опоры. REG-04/05/09/12/14/15/17/18/28.
+
+---
+
+# Статус реализации (status snapshot)
+
+Ветка `feat/v4-workplace-domain`. Реализовано и покрыто тестами:
+
+**ШАГ 1 — done.** Pure-domain ядро `src/process-modules/domain/workplace/`
+(9 файлов: workplace-ref/state, candidate-set, gate, execution-reservation,
+recovery-issue-target, production-cell-definition/reducer, index).
+SQLite-адаптеры `src/infrastructure/workplace/` (5 файлов: workplace /
+candidate-set / gate / execution-reservation / product repository, CAS на
+revision, immutability triggers). Rebuildable WorkItem projection
+`src/infrastructure/projections/work-item-projector.ts`. Ratchets:
+`workplace-domain-purity`, `workplace-stores-additive`,
+`gate-decision-immutability` — green.
+
+**ШАГ 2 — done.** `ProductionCellDefinition` + `production-cell` FlowNode kind
+(REG-04). `ProductionCellCoordinator` (REG-13) runtime component с полным
+lifecycle (materialize → admit → launch → seal → gate-accepted/repair/human/
+failed → crash/requeue), 13 integration тестов. Authoritative
+`ProductRepositoryPort` (REG-08/11/12) с internal canonicalization + fence
+enforcement. `WorkerLauncherPort` (REG-21). `ConcurrentLaunchBudget`
+(REG-10-AC-05) — единый concurrency budget. Universal desk helper.
+
+**ШАГ 3 — bridges + dual-write done; per-workshop read-switch pending.**
+- 3.A.1 artifact-ref bridge (REG-11), 3.A.2 dual-write в `artifact_create`,
+  3.A.3 GateDecision adapter (4 closed verdicts, REG-18). 3.A.4 read-switch
+  в formalization kernel — НЕ выполнен (в whitelist ratchet, шаг 5.4).
+- 3.B.1 proposal-ref bridge, 3.B.2 dual-write. 3.B.3 read-switch — НЕ выполнен.
+- 3.C.1 TextSetManifest (REG-11-AC-05), 3.C.2 dual-write. 3.C.4 read-switch
+  — НЕ выполнен.
+- 3.D `HumanInteractionRun` (REG-22) + `EffectAttempt`/`EffectReceipt`/
+  `EffectExecutorPort` (REG-23) — done.
+
+**ШАГ 4 — done (contracts).** `EffectExecutorPort` + delivery effect contracts
+с exact digest + idempotency + observe-before-retry (REG-23-AC-03).
+
+**ШАГ 5 — done (conformance + ratchets); cutover read-switch pending.**
+- 5.1 conformance harness: E2E-01..06/10 (`workplace-conformance-harness`),
+  E2E-07..09/11..13 (`workplace-conformance-e2e-extended`). E2E-14 (real-LM)
+  требует реальной модели.
+- 5.2 dual-write shadow из production dispatcher (`workplace-projector`,
+  feature-flagged `SAGA_WORKPLACE_WRITE=on`) + read comparator при
+  `SAGA_WORKPLACE_READ=both`. **Cutover authority (`SAGA_WORKPLACE_READ=new`
+  как единственный source) НЕ выполнен** — требует sustained zero-drift и
+  per-workshop read-switch (см. шаг 3).
+- 5.3 two-channel enforcement — done (закрытые пары в reducer, REG-28).
+- 5.4 absence-of-readers ratchet (`tasks-reader-invariant.test.mjs`): 16
+  allowed core readers captured как shrinkage whitelist, target = 0.
+
+**ШАГ 6 — partial.** `SCHEMA_VERSION` bumped 1→2 (v4 additive layer обязателен).
+`tracker_export/import` format_version 1.4→1.5. Final ratchets:
+`no-module-name-switch` (4 allowed, shrinkage), `fifth-workshop-installable`
+(E2E-13 green). **Destructive drop legacy таблиц/owner-колонок НЕ выполнен** —
+требует завершения cutover (шаг 5.2) и per-workshop read-switch (шаг 3);
+runtime сегодня зависит от legacy таблиц. Pre-release disposal policy
+позволяет drop, но план требует «после join'ов через workplace».
+
+**Запуск:** `SAGA_WORKPLACE_WRITE=on SAGA_WORKPLACE_READ=both
+DB_PATH=./saga4-v4.db npm start` — сервер поднимается, 7 v4_* таблиц + 4
+immutability triggers создаются, dual-write активен.
+
+**Остающиеся пробелы (последовательность выполнения):**
+1. Per-workshop read-switch (3.A.4 / 3.B.3 / 3.C.4) — каждое уводит читателя
+   из whitelist шага 5.4.
+2. Cutover `SAGA_WORKPLACE_READ=new` после sustained zero-drift в `both`.
+3. Destructive drop legacy (шаг 6 полный) после cutover.
+4. E2E-14 real-LM conformance.
+

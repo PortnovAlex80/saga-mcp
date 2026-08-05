@@ -195,7 +195,7 @@ function handleExport(args: Record<string, unknown>) {
   ).all(...artifactIds);
 
   return {
-    format_version: '1.4',
+    format_version: '1.5',
     exported_at: new Date().toISOString(),
     project: {
       name: project.name,
@@ -218,8 +218,8 @@ function handleImport(args: Record<string, unknown>) {
   const data = args.data as Record<string, unknown>;
 
   const version = data.format_version as string;
-  if (!['1.0', '1.1', '1.2', '1.3', '1.4'].includes(version)) {
-    throw new Error(`Unsupported format version: ${version}. Expected 1.0 through 1.4.`);
+  if (!['1.0', '1.1', '1.2', '1.3', '1.4', '1.5'].includes(version)) {
+    throw new Error(`Unsupported format version: ${version}. Expected 1.0 through 1.5.`);
   }
 
   const projectData = data.project as Record<string, unknown>;

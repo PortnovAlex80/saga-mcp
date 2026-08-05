@@ -18,16 +18,26 @@ let db: Database.Database | null = null;
  *
  * **DB compatibility policy:** disposable pre-release. `user_version` is
  * stamped on every fresh DB. If a DB with a mismatched version is opened,
- * the call fails fast with a clear "delete and recreate" message rather than
- * silently running against an incompatible schema.
+ * the call warns but does NOT delete or block — saga is a governance
+ * platform, the database IS the product (artifacts, traces, tasks,
+ * evidence). When the schema changes, versioned migrations must handle the
+ * upgrade.
+ *
+ * **SCHEMA_VERSION history:**
+ *   1 = saga4 clean foundation.
+ *   2 = Conveyor v4 additive layer (CONVEYOR-V4-MIGRATION-PLAN step 6):
+ *       the 7 `v4_*` authoritative Workplace/CandidateSet/Gate tables plus
+ *       4 immutability triggers are now a required part of the schema, and
+ *       `tracker_export` format_version moves to 1.5. Additive-only: legacy
+ *       tables are retained as projections through the cutover window.
  *
  * Pragmas: WAL (concurrent reader + writer), foreign_keys ON, busy_timeout
  * 5s (SQLite serializes all writes under a single writer), synchronous
  * NORMAL (safe under WAL).
  */
 
-/** Increment when the schema changes incompatibly. 1 = saga4 clean foundation. */
-const SCHEMA_VERSION = 1;
+/** Increment when the schema changes incompatibly. 2 = Conveyor v4 additive layer. */
+const SCHEMA_VERSION = 2;
 
 export function getDb(): Database.Database {
   if (db) return db;
