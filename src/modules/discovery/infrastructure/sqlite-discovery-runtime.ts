@@ -463,6 +463,16 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
     return row?.execution_id ?? null;
   }
 
+  readExecutionLiveness(executionId: string): { pid: number | null; state: string } | null {
+    const row = getDb().prepare(
+      `SELECT pid, state
+         FROM worker_executions
+        WHERE execution_id=?`,
+    ).get(executionId) as { pid: number | null; state: string } | undefined;
+    if (!row) return null;
+    return { pid: row.pid, state: row.state };
+  }
+
   /**
    * Find the PRODUCER execution_id — the worker_done receipt that moved the
    * task to 'review' (dev-phase producer), not the one that moved it to 'done'

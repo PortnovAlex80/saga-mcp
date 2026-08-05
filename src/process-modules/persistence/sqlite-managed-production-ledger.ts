@@ -224,16 +224,46 @@ export function resolveManagedExecutionProvenance(
   if (env.SAGA_TASK_ID !== undefined && String(execution.task_id) !== env.SAGA_TASK_ID) {
     throw new Error('MANAGED_PRODUCTION_CONTEXT_INVALID: execution/task environment mismatch');
   }
-  if (options.requireLiveProducer && (
-    execution.execution_state !== 'running'
-    || execution.task_status !== 'in_progress'
-    || execution.task_assigned_to !== execution.execution_worker_id
-    || execution.task_current_execution_id !== executionId
-  )) {
-    throw new Error(
-      'MANAGED_PRODUCTION_FENCE_VIOLATION: only the live producer execution '
-      + 'owning an in_progress task may mutate managed products',
+  if (options.requireLiveProducer) {
+    // CONVEYOR v4 — REG-05/REG-28: the fence authority is the Workplace
+    // (loop_state + active_reservation_ref), NOT the projected tasks row.
+    // Reading tasks.status here created a race: worker_done writes tasks first,
+    // then the workplace CAS — so an artifact_create late in the worker's run
+    // (but before worker_done) could see a stale task_status and fail the fence.
+    // The Workplace is the authority: while the worker is live, its workplace
+    // has loop_state IN ('leased','running') and active_reservation_ref = executionId.
+    // task_metadata is parsed below (line ~239); read workplace_ref from it
+    // early for the fence lookup.
+    const rawMeta = execution.task_metadata ?? '{}';
+    let workplaceRef: string | null = null;
+    try {
+      const meta = JSON.parse(rawMeta) as Record<string, unknown>;
+      if (typeof meta.workplace_ref === 'string') workplaceRef = meta.workplace_ref;
+    } catch { /* best effort */ }
+    const workplace = workplaceRef
+      ? (db.prepare(
+          'SELECT loop_state, active_reservation_ref FROM v4_workplaces WHERE workplace_ref = ?',
+        ).get(workplaceRef) as
+          | { loop_state: string; active_reservation_ref: string | null }
+          | undefined)
+      : undefined;
+    const wpLoopState = workplace?.loop_state ?? null;
+    const wpReservation = workplace?.active_reservation_ref ?? null;
+    const executionAlive = execution.execution_state === 'running';
+    const workplaceOwned = (
+      (wpLoopState === 'leased' || wpLoopState === 'running')
+      && wpReservation === executionId
     );
+    if (!executionAlive || !workplaceOwned) {
+      throw new Error(
+        'MANAGED_PRODUCTION_FENCE_VIOLATION: only the live producer execution '
+        + `owning an active workplace may mutate managed products. `
+        + `execution_state=${execution.execution_state}, `
+        + `workplace.loop_state=${wpLoopState}, `
+        + `workplace.active_reservation_ref=${wpReservation}, `
+        + `expected=${executionId}`,
+      );
+    }
   }
 
   const metadata = parseMetadata(execution.task_metadata, 'task metadata');

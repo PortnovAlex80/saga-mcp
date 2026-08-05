@@ -30,6 +30,7 @@ import type { SagaApplication } from './application/saga-application.js';
 import type { WorkerExecutorFactory } from './application/ports/worker-executor.js';
 import { createLegacyClaudeWorkerExecutorFactory } from './infrastructure/workers/claude-worker-executor-factory.js';
 import { SqliteWorkAssignmentAdapter } from './infrastructure/work/sqlite-work-assignment-adapter.js';
+import { prepareDevelopmentWorkspaceTemplate } from './modules/development/application/development-workspace-preparation.js';
 import { asModuleInstallationId } from './process-modules/installation/domain/installation.js';
 import type { ProductionInstallation } from './process-modules/installation/production-install.js';
 import { getDb } from './db.js';
@@ -127,16 +128,50 @@ function parseArgs(argv: string[]): {
  * workers get the SAME desk (materializer, hooks, fence, authority) as
  * Flow-node workers. One spawn path, one mechanic.
  */
-function createPinnedWorkerFactoryForDispatch(
+/**
+ * CONVEYOR v4 — the SINGLE workerExecutorFactory for the entire conveyor.
+ * Both the LmNodeExecutor (inside runEpisode → GenericFlowExecutor) and the
+ * dispatch-loop (distributeQueuedTasks) consume this exact factory instance.
+ *
+ * Previously two factories existed (createPinnedWorkerFactory in
+ * composition-root vs createPinnedWorkerFactoryForDispatch here), and the
+ * dispatch factory was a HAND-ROLLED SUBSET missing modelRouteReader and
+ * workspaceTemplatePreparers. This caused development-card workers spawned
+ * through the dispatch path to skip workspace template preparation and ignore
+ * the episode's pinned model route — a silent divergence that violated the
+ * single-launch-path invariant (CONVEYOR-MENTAL-MODEL INV-3.1).
+ *
+ * This factory is feature-complete: it resolves installation/digest/nodeId
+ * from task metadata, reads the episode's worker model route from the DB,
+ * applies the development workspace template preparer, and routes card
+ * assignment through the atomic WorkAssignmentPort.
+ */
+function createUnifiedWorkerFactory(
   installation: ProductionInstallation | undefined,
 ): WorkerExecutorFactory {
   if (!installation) {
     throw new Error(
-      'PACKAGE_INSTALLATION_REQUIRED: dispatch loop needs a ProductionInstallation '
+      'PACKAGE_INSTALLATION_REQUIRED: the conveyor needs a ProductionInstallation '
       + 'to create pinned worker desks.',
     );
   }
   return createLegacyClaudeWorkerExecutorFactory({
+    // Episode-pinned model route (was missing in the dispatch-only factory).
+    modelRouteReader: (epicId: number | null) => {
+      if (epicId !== null) {
+        const row = getDb().prepare(
+          'SELECT worker_model_route FROM episode_workflows WHERE epic_id=?',
+        ).get(epicId) as { worker_model_route?: string | null } | undefined;
+        const route = row?.worker_model_route ?? null;
+        if (route) {
+          try {
+            const parsed = JSON.parse(route) as { provider: string; model?: string | null; effort?: string | null };
+            return { provider: parsed.provider, model: parsed.model ?? null, effort: parsed.effort ?? null };
+          } catch { /* fall through to default */ }
+        }
+      }
+      return { provider: 'zai', model: null, effort: null };
+    },
     packageRegistry: installation.registry,
     packageSnapshots: installation.packages,
     resolveInstallationId: assignment => {
@@ -169,6 +204,12 @@ function createPinnedWorkerFactoryForDispatch(
       const nodeId = md.process_node_id;
       return typeof nodeId === 'string' && nodeId.length > 0 ? nodeId : null;
     },
+    // Development workspace template preparation (was missing in the dispatch
+    // factory — development cards need the per-repository template to resolve
+    // test/build integration branches correctly).
+    workspaceTemplatePreparers: new Map([
+      ['solution-development@1.0.0', prepareDevelopmentWorkspaceTemplate],
+    ]),
     // CONVEYOR: atomic card assignment before spawn. Same port wired in
     // composition-root; the dispatch loop and LM-node workers share one
     // assignment path.
@@ -363,7 +404,7 @@ async function main() {
         idGenerator: uuidIdGenerator,
         machineId: os.hostname(),
         workerExecutorFactory: overrides.workerExecutorFactory
-          ?? createPinnedWorkerFactoryForDispatch(overrides.modulePackages),
+          ?? createUnifiedWorkerFactory(overrides.modulePackages),
         factoryContext: {
           projectId,
           epicId,
@@ -526,6 +567,15 @@ async function loadCompositionOverrides(
       packageInstallation,
       onLifecycleStarted: writeLifecycleStartReceipt,
     },
+    // CONVEYOR v4 — ONE workerExecutorFactory for BOTH launch paths
+    // (LmNodeExecutor inside runEpisode AND dispatch-loop). Previously these
+    // used two different factories: createPinnedWorkerFactory (full: has
+    // modelRouteReader + workspaceTemplatePreparers) vs
+    // createPinnedWorkerFactoryForDispatch (subset: missing both). The subset
+    // factory caused development-card workers to skip workspace template
+    // preparation and use the default model route instead of the episode's
+    // pinned route. Now both paths get the same factory.
+    workerExecutorFactory: createUnifiedWorkerFactory(packageInstallation),
   };
 }
 

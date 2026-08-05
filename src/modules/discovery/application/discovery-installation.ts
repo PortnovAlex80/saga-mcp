@@ -1032,5 +1032,8 @@ export function createDiscoveryLmNodePersistence(
     readTaskProjectRepositoryId(taskId) {
       return runtime.readTaskProjectRepositoryId(taskId);
     },
+    readExecutionLiveness(executionId) {
+      return runtime.readExecutionLiveness(executionId);
+    },
   };
 }

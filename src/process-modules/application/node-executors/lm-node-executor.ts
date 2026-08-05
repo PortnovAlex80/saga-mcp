@@ -170,6 +170,14 @@ export interface LmNodeExecutionPersistence {
   /** Latest physical execution for the exact projected task. */
   readLatestExecutionId(taskId: number): string | null;
 
+  /**
+   * OS pid + state of the worker_execution currently owning this task's fence.
+   * Used by the poll-loop's PID-liveness guard to detect a dead worker process
+   * even when the executor substrate returns a stale 'running' snapshot.
+   * Returns null when no execution row exists or pid is null.
+   */
+  readExecutionLiveness?(executionId: string): { pid: number | null; state: string } | null;
+
   /** Producer execution (worker_done → review), not reviewer (→ done). */
   readProducerExecutionId?(taskId: number): string | null;
 
@@ -741,6 +749,26 @@ export class LmNodeExecutor implements NodeExecutor {
           // review → pause; tasks without reviewSkill skip straight to done.
           if (taskInReview && !taskStillActive) { terminal = 'review_paused'; break; }
           if (runCompleted && !taskDone && !taskInReview) { terminal = 'task_unclaimed'; break; }
+          // REG-21-AC-02/03: PID-liveness guard. The executor.status() snapshot
+          // can lag behind OS reality (the claude process died but the board
+          // runner hasn't processed the close callback yet). Cross-check the
+          // worker_executions row: if its pid is present but the OS process is
+          // gone (and the execution row is not yet terminalized), the worker is
+          // dead — break immediately so the workplace enters repair_wait instead
+          // of burning the poll-loop forever (zombie-engine root cause).
+          if (executionId && this.persistence.readExecutionLiveness) {
+            const liveness = this.persistence.readExecutionLiveness(executionId);
+            if (
+              liveness
+              && liveness.state !== 'exited'
+              && liveness.state !== 'lost'
+              && liveness.pid !== null
+              && !isProcessAlive(liveness.pid)
+            ) {
+              terminal = 'executor_dead';
+              break;
+            }
+          }
           if (this.now().getTime() - startedAt > this.maxRunMs) { terminal = 'timeout'; break; }
           await this.sleep(this.pollMs);
         }
@@ -880,6 +908,25 @@ function safeMachineId(): string {
     return name && name.length > 0 ? name : 'unknown';
   } catch {
     return 'unknown';
+  }
+}
+
+/**
+ * Check whether a process with the given pid is alive on the current host.
+ * Uses signal 0 (no-op probe). Returns false on ESRCH (no such process) or
+ * EPERM (exists but not ours — treat as alive to avoid false kills). The
+ * poll-loop uses this to detect a dead claude worker whose executor substrate
+ * has not yet processed the close callback (zombie-engine root cause, REG-21).
+ */
+function isProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    // EPERM: process exists but we lack permission — treat as alive.
+    // ESRCH or anything else: process is gone.
+    return code === 'EPERM';
   }
 }
 

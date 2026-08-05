@@ -114,6 +114,13 @@ export interface Saga3DiscoveryRuntimePersistence {
   /** Latest physical worker execution id for one exact projected task. */
   readLatestExecutionId(taskId: number): string | null;
 
+  /**
+   * OS pid + durable state of a worker_execution. Used by the LM-executor
+   * poll-loop's PID-liveness guard to detect a dead worker process even when
+   * the executor substrate returns a stale 'running' snapshot.
+   */
+  readExecutionLiveness(executionId: string): { pid: number | null; state: string } | null;
+
   /** Producer execution (worker_done → review), not reviewer (→ done). */
   readProducerExecutionId(taskId: number): string | null;
 

@@ -23,8 +23,8 @@
 
 import { spawn, type ChildProcess } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { existsSync, readFileSync, rmSync } from 'node:fs';
-import os from 'node:os';
+import { createWriteStream, existsSync, readFileSync, rmSync } from 'node:fs';
+import os, { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { OrchestrationRunResult } from '../application/ports/orchestration-engine.js';
@@ -124,8 +124,7 @@ export function createSpawnCliLifecycleRunStarter(
         env: childEnv,
       });
       // Pipe engine stdout/stderr to a persistent log file for debugging.
-      const engineLog = `${require('node:os').tmpdir()}/saga-engine-${Date.now()}.log`;
-      const { createWriteStream } = require('node:fs');
+      const engineLog = `${tmpdir()}/saga-engine-${Date.now()}.log`;
       const logStream = createWriteStream(engineLog, { flags: 'a' });
       child.stdout?.pipe(logStream);
       child.stderr?.pipe(logStream);
