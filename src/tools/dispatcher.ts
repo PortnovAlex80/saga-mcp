@@ -341,7 +341,7 @@ function handleWorkerNext(args: Record<string, unknown>): {
 
   if (!task) return { task: null, skill: null, repository: null, active_tasks, reason: 'очередь пуста' };
 
-  // Conveyor v4 step 5.2 cutover: when SAGA_WORKPLACE_READ=new, the
+  // The Factory workplace is the unconditional claim authority.
   // Conveyor v4: ConveyorRuntime is the authority — bind the task to its
   // workplace, lease the loop channel, reverse-project tasks.status.
   reserveTaskExecution(db, {

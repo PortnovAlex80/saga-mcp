@@ -259,7 +259,7 @@ export class SqliteFormalizationArtifactGraph implements
   }
 
   areTasksReady(epicId: number) {
-    // Conveyor v4 step 3.A.4 read-switch: when SAGA_WORKPLACE_READ=new, the
+    // Factory workplace state is the unconditional orchestration authority.
     // task's done-ness is the AUTHORITATIVE factory_workplaces loop_state (terminal
     // = done). The legacy `tasks.status` is a reverse projection that may lag.
     // integration_state / execution_mode / task_kind stay on tasks (DATA

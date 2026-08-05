@@ -1,7 +1,6 @@
 import type Database from 'better-sqlite3';
 import {
   EXACT_CANDIDATE_ACCEPTANCE_SCHEMA,
-  LEGACY_EXACT_CANDIDATE_ACCEPTANCE_SCHEMA,
   ExactCandidateAcceptanceRejected,
   type AcceptExactCandidatesCommand,
   type ExactArtifactCandidate,
@@ -249,16 +248,7 @@ implements ExactCandidateAcceptance {
       if (prior) {
         const matchesCurrent = prior.request_hash === requestHash
           && prior.request_snapshot === requestSnapshot;
-        const legacyRequest = {
-          ...request,
-          schemaVersion: LEGACY_EXACT_CANDIDATE_ACCEPTANCE_SCHEMA,
-        };
-        const legacyRequestSnapshot = canonicalJson(legacyRequest);
-        const matchesLegacy =
-          prior.schema_version === LEGACY_EXACT_CANDIDATE_ACCEPTANCE_SCHEMA
-          && prior.request_hash === sha256Hex(legacyRequest)
-          && prior.request_snapshot === legacyRequestSnapshot;
-        if (!matchesCurrent && !matchesLegacy) {
+        if (!matchesCurrent) {
           reject(
             'EXACT_ACCEPTANCE_IDEMPOTENCY_KEY_REUSED',
             `idempotency key '${request.idempotencyKey}' was used for another request`,
@@ -914,12 +904,8 @@ implements ExactCandidateAcceptance {
       decision.approvedReviewReceiptCommandId,
     ) as ApprovedReviewReceiptRow | undefined;
     const reviewHashMatches = reviewReceipt
-      && (
-        decision.schemaVersion === LEGACY_EXACT_CANDIDATE_ACCEPTANCE_SCHEMA
-        && decision.approvedReviewReceiptHash === null
-        || decision.approvedReviewReceiptHash !== null
-        && hashReviewReceipt(reviewReceipt) === decision.approvedReviewReceiptHash
-      );
+      && decision.approvedReviewReceiptHash !== null
+      && hashReviewReceipt(reviewReceipt) === decision.approvedReviewReceiptHash;
     if (
       !reviewReceipt
       || !reviewHashMatches
@@ -933,9 +919,6 @@ implements ExactCandidateAcceptance {
           reviewReceiptCommandId: decision.approvedReviewReceiptCommandId,
         },
       );
-    }
-    if (decision.schemaVersion === LEGACY_EXACT_CANDIDATE_ACCEPTANCE_SCHEMA) {
-      return;
     }
     if (
       !decision.producerCompletionReceiptCommandId
@@ -1016,7 +999,6 @@ implements ExactCandidateAcceptance {
   ): ExactCandidateAcceptanceDecision {
     if (
       row.schema_version !== EXACT_CANDIDATE_ACCEPTANCE_SCHEMA
-      && row.schema_version !== LEGACY_EXACT_CANDIDATE_ACCEPTANCE_SCHEMA
     ) {
       reject(
         'EXACT_ACCEPTANCE_STORED_DECISION_CORRUPT',
@@ -1089,35 +1071,16 @@ implements ExactCandidateAcceptance {
         },
       );
     }
-    const expectedDecisionHashes =
-      row.schema_version === EXACT_CANDIDATE_ACCEPTANCE_SCHEMA
-        ? [computeDecisionHash({
-            idempotencyKey: row.idempotency_key,
-            requestHash: row.request_hash,
-            candidateSetHash: row.candidate_set_hash,
-            producerReceiptCommandId: row.producer_receipt_command_id,
-            producerReceiptHash: row.producer_receipt_hash,
-            reviewReceiptCommandId: row.review_receipt_command_id,
-            reviewReceiptHash: row.review_receipt_hash,
-            items,
-          })]
-        : [
-            computeLegacyDecisionHash({
-              idempotencyKey: row.idempotency_key,
-              requestHash: row.request_hash,
-              candidateSetHash: row.candidate_set_hash,
-              reviewReceiptCommandId: row.review_receipt_command_id,
-              items,
-            }),
-            computeTransitionalDecisionHash({
-              idempotencyKey: row.idempotency_key,
-              requestHash: row.request_hash,
-              candidateSetHash: row.candidate_set_hash,
-              reviewReceiptCommandId: row.review_receipt_command_id,
-              reviewReceiptHash: row.review_receipt_hash,
-              items,
-            }),
-          ];
+    const expectedDecisionHashes = [computeDecisionHash({
+      idempotencyKey: row.idempotency_key,
+      requestHash: row.request_hash,
+      candidateSetHash: row.candidate_set_hash,
+      producerReceiptCommandId: row.producer_receipt_command_id,
+      producerReceiptHash: row.producer_receipt_hash,
+      reviewReceiptCommandId: row.review_receipt_command_id,
+      reviewReceiptHash: row.review_receipt_hash,
+      items,
+    })];
     if (!expectedDecisionHashes.includes(row.decision_hash)) {
       reject(
         'EXACT_ACCEPTANCE_STORED_DECISION_CORRUPT',
@@ -1356,60 +1319,6 @@ function computeDecisionHash(input: {
       finalDriftState: item.finalDriftState,
     })),
   });
-}
-
-function computeLegacyDecisionHash(input: {
-  readonly idempotencyKey: string;
-  readonly requestHash: string;
-  readonly candidateSetHash: string;
-  readonly reviewReceiptCommandId: string | null;
-  readonly items: readonly ExactCandidateAcceptanceItem[];
-}): string {
-  return sha256Hex({
-    schemaVersion: LEGACY_EXACT_CANDIDATE_ACCEPTANCE_SCHEMA,
-    idempotencyKey: input.idempotencyKey,
-    requestHash: input.requestHash,
-    candidateSetHash: input.candidateSetHash,
-    reviewReceiptCommandId: input.reviewReceiptCommandId,
-    items: decisionHashItems(input.items),
-  });
-}
-
-function computeTransitionalDecisionHash(input: {
-  readonly idempotencyKey: string;
-  readonly requestHash: string;
-  readonly candidateSetHash: string;
-  readonly reviewReceiptCommandId: string | null;
-  readonly reviewReceiptHash: string | null;
-  readonly items: readonly ExactCandidateAcceptanceItem[];
-}): string {
-  return sha256Hex({
-    schemaVersion: LEGACY_EXACT_CANDIDATE_ACCEPTANCE_SCHEMA,
-    idempotencyKey: input.idempotencyKey,
-    requestHash: input.requestHash,
-    candidateSetHash: input.candidateSetHash,
-    reviewReceiptCommandId: input.reviewReceiptCommandId,
-    reviewReceiptHash: input.reviewReceiptHash,
-    items: decisionHashItems(input.items),
-  });
-}
-
-function decisionHashItems(
-  items: readonly ExactCandidateAcceptanceItem[],
-): readonly Record<string, unknown>[] {
-  return items.map(item => ({
-    artifactId: item.artifactId,
-    artifactType: item.artifactType,
-    contentHash: item.contentHash,
-    ledgerId: item.ledgerId,
-    disposition: item.disposition,
-    priorStatus: item.priorStatus,
-    priorAcceptedHash: item.priorAcceptedHash,
-    priorDriftState: item.priorDriftState,
-    finalStatus: item.finalStatus,
-    finalAcceptedHash: item.finalAcceptedHash,
-    finalDriftState: item.finalDriftState,
-  }));
 }
 
 function hashReviewReceipt(receipt: ApprovedReviewReceiptRow): string {

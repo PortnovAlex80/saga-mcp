@@ -159,7 +159,7 @@ export interface GenericFlowExecutorOptions {
  * `packageIdentity`/`flowIdentity`/`installedDigest` are forwarded to
  * `assembleExecutionContext` as the manifest pinning context. Callers without
  * an installation pin pass null and the assembler emits the
- * `'legacy:unpinned'` sentinel.
+ * Missing package pins are rejected before execution.
  */
 export interface GenericFlowExecutorV2Options {
   productRepo: A5ProcessProductRepository;
@@ -651,7 +651,7 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
       // Start the NodeRun via `startV2` (which writes the legacy columns AND
       // the v2 envelope-marker columns). The v2 path also assembles the
       // ExecutionContextEnvelope and dual-populates the context (`envelope` for
-      // v2-aware executors, `frame` computed via mergeLegacyFrame for legacy
+      // executors receive `frame` computed by buildExecutionFrame
       // executors).
       const upstreamRefs = declareUpstreamRefs(chainInput, frame, node.id);
       const v2Row = v2.repo.startV2({
@@ -694,7 +694,7 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
 
       // Build the context. The legacy `frame` is ALWAYS populated (legacy
       // executors read it) and refreshed from the assembled envelope via
-      // mergeLegacyFrame so the legacy and v2 views agree. `envelope` +
+      // buildExecutionFrame keeps the frame and envelope views consistent. `envelope` +
       // `upstreamProductBodies` are always present so v2-aware executors can
       // read the driver-neutral envelope.
       const ctx: NodeExecutionContext = {
@@ -704,7 +704,7 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
         module,
         node,
         input: chainInput,
-        frame: mergeLegacyFrame(frame, assembled.envelope),
+        frame: buildExecutionFrame(frame, assembled.envelope),
         heartbeat,
         initiatedBy: context.initiatedBy,
         envelope: assembled.envelope,
@@ -1254,7 +1254,7 @@ function restoreProduction(run: {
 // PRIMARY frame construction path: reads durable NodeRun rows DIRECTLY into a
 // NodeExecutionFrame. `assembleFrameFromDurableNodeRuns` is the LIVE data
 // source for every node executor's `ctx.frame` (legacy view) AND for
-// `declareUpstreamRefs` (v2 ProductRef derivation) AND for `mergeLegacyFrame`
+// `declareUpstreamRefs` (ProductRef derivation) and `buildExecutionFrame`
 // (legacy+v2 frame merge).
 
 /**
@@ -1266,7 +1266,7 @@ function restoreProduction(run: {
  * (`outputRef`/`outputSchema`/`outputHash`/`outputBindings`/
  * `executionReceipt`). The forward path is `assembleExecutionContext` + exact
  * `ProductRef` resolution via `getByProductRef`; this builder feeds both
- * `mergeLegacyFrame` (the `frame` view) and `declareUpstreamRefs` (the v2
+ * `buildExecutionFrame` (the `frame` view) and `declareUpstreamRefs` (the
  * ref derivation) from the same durable rows.
  *
  * Pure: same (runInput, runs) -> same frame. No side effects, no fallback to
@@ -1399,14 +1399,14 @@ function predecessorIdsFor(
  * `upstreamProducts` directly. The two views agree on content (the envelope's
  * refs are a content-addressed re-expression of the same productions).
  */
-function mergeLegacyFrame(
-  legacy: NodeExecutionFrame,
+function buildExecutionFrame(
+  current: NodeExecutionFrame,
   envelope: ExecutionContextEnvelope,
 ): NodeExecutionFrame {
   const merged: NodeExecutionFrame = {
-    runInput: envelope.immutableRunInput ?? legacy.runInput,
-    productions: { ...legacy.productions },
-    receipts: { ...legacy.receipts },
+    runInput: envelope.immutableRunInput ?? current.runInput,
+    productions: { ...current.productions },
+    receipts: { ...current.receipts },
   };
   for (const ref of envelope.upstreamProducts) {
     // Only add entries the legacy frame does not already carry under this key,

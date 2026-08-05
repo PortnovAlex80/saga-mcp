@@ -69,7 +69,7 @@ import {
 /**
  * Conveyor v4 step 3.B.3 read-switch: read a task's ORCHESTRATION state
  * (status / assigned_to / current_execution_id) from the authoritative
- * factory_workplaces when SAGA_WORKPLACE_READ=new. In legacy mode, read directly
+ * factory_workplaces. There is no alternate read authority.
  * from the tasks columns (the historical behavior).
  *
  * The orchestration state is what the discovery LM-node executor uses to

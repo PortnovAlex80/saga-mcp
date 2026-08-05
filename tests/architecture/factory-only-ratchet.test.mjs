@@ -38,6 +38,17 @@ test('factory runtime is unconditional, fenced and gate-owned', () => {
   const assembler = read('src/process-modules/application/execution-context-assembler.ts');
   assert.match(assembler, /PACKAGE_PIN_REQUIRED/);
   assert.doesNotMatch(assembler, /return ['"]legacy:unpinned['"]/);
+
+  const acceptance = read('src/process-modules/application/exact-candidate-acceptance.ts');
+  assert.doesNotMatch(acceptance, /exact-candidate-acceptance\.v1|LEGACY_EXACT/);
+
+  const installation = read(
+    'src/process-modules/installation/persistence/process-run-installation-adapter.ts',
+  );
+  assert.doesNotMatch(installation, /resolveInstallationForLegacyRun\s*\(/);
+
+  const executor = read('src/process-modules/application/generic-flow-executor.ts');
+  assert.doesNotMatch(executor, /mergeLegacyFrame/);
 });
 
 test('only the factory gateway can initiate production', () => {

@@ -151,7 +151,7 @@ export interface ExecutionContextAssemblerDeps {
  * via `packageIdentity`). The digest pins the exact immutable content.
  *
  * Legacy runs (no installation pin yet) get a placeholder digest of
- * `'legacy:unpinned'` so the envelope is still well-typed; the executor's
+ * Execution is rejected when the immutable package pin is absent; the
  * catalog fallback path treats that sentinel as "use catalog".
  */
 export function resolvePackageRef(
@@ -275,7 +275,7 @@ export interface AssembleExecutionContextOptions {
   flowIdentity?: { flowId: string; flowVersion: string } | null;
   /**
    * The installed-package content digest. Null for legacy catalog-resolved
-   * runs; the assembler emits the `'legacy:unpinned'` sentinel (the
+   * runs; the assembler requires the immutable package identity and digest (the
    * executor's catalog fallback treats that as "resolve via catalog").
    */
   installedDigest?: string | null;

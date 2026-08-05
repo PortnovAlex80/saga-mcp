@@ -2,7 +2,7 @@
  * Validation of ProcessModuleRunResult against a ProcessModuleDefinition.
  *
  * P2 enforces the universal RunResult contract (correction v2 #6: output and
- * certificate are separated, mandatory shape). Every executor — legacy-adapter,
+ * certificate are separated, mandatory shape). Every executor — module-adapter,
  * generic-flow, external, human — returns the same shape, and this validator
  * is the Runtime's gate before the result is written to the ProcessRun row.
  *

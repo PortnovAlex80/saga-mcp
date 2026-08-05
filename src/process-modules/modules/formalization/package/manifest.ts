@@ -76,7 +76,7 @@ import {
  * Format version of THIS manifest envelope. `'1'` signals the envelope wraps a
  * migrated ProcessModuleDefinition that populates `resourceIndex` /
  * `handlerRefs` (as opposed to `'legacy-0'`, which wraps a bare definition
- * with empty arrays — see `legacy-adapter.ts`). Wave 8 bumps formalization
+ * with empty arrays). Formalization uses the current manifest format.
  * from legacy-0 to '1'.
  */
 export const FORMALIZATION_MANIFEST_FORMAT_VERSION = '1';

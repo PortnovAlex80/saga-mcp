@@ -84,7 +84,7 @@ import {
  * Format version of THIS manifest envelope. `'1'` signals the envelope wraps a
  * migrated ProcessModuleDefinition that populates `resourceIndex` /
  * `handlerRefs` (as opposed to `'legacy-0'`, which wraps a bare definition
- * with empty arrays — see `legacy-adapter.ts`). Wave 9 bumps delivery from
+ * with empty arrays). Delivery uses the current manifest format.
  * legacy-0 to '1', mirroring the Wave 8 formalization bump.
  */
 export const DELIVERY_MANIFEST_FORMAT_VERSION = '1';

@@ -19,7 +19,7 @@
  * This module provides TWO projection directions:
  *
  *   FORWARD  (`projectStatusChange`): tasks.status → factory_workplaces. Used
- *             during the dual-write/shadow window (SAGA_WORKPLACE_WRITE=on)
+ *             as the authoritative workplace projection
  *             and by legacy callers that still drive tasks.status. After
  *             cutover, this is the path for legacy adapters only.
  *

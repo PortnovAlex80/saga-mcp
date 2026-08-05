@@ -29,7 +29,7 @@
  *   nullable path is removed entirely once all runs are pinned at start.
  *
  * INTEGRATION NOTE: `ModuleInstallationRecord` and the
- * `LegacyInstallationResolver` shape are defined here ONLY because this lane
+ * The installation resolver port is defined locally to keep this adapter isolated.
  * runs in isolation and the sibling installation lanes have not landed in
  * this worktree. The canonical `ModuleInstallationRecord` lives in
  * `installation/domain/installation.ts`; the canonical `PackageRegistry`
@@ -48,7 +48,7 @@ import {
 } from '../domain/process-run-pinning.js';
 
 // ---------------------------------------------------------------------------
-// LegacyInstallationResolver — the fallback port injected into
+// InstallationResolver — package-registry projection used by validation.
 // `resolveInstallationForLegacyRun`. Structural subset of the
 // PackageRegistry (`select(selector): ModuleInstallationRecord`).
 // ---------------------------------------------------------------------------
@@ -59,7 +59,7 @@ import {
  * pass an EXACT version (legacy runs always carry an exact `module_version`),
  * so `versionRange` is the pinned version string.
  */
-export interface LegacyInstallationSelector {
+export interface InstallationSelector {
   readonly name: string;
   /** Exact version string (e.g. '3.0.0'). Legacy runs never carry a range. */
   readonly versionRange: string;
@@ -79,12 +79,12 @@ export interface LegacyInstallationSelector {
  * lane has not landed. At cherry-pick the integrator MAY narrow this to
  * import the canonical port directly.
  */
-export interface LegacyInstallationResolver {
+export interface InstallationResolver {
   /**
    * Resolve the active installation for the given selector, or `null` if no
    * active installation matches. Must NOT perform module-name switching.
    */
-  resolve(selector: LegacyInstallationSelector): ModuleInstallationRecord | null;
+  resolve(selector: InstallationSelector): ModuleInstallationRecord | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -268,17 +268,20 @@ export class ProcessRunInstallationAdapter {
    *
    * This method is removed entirely once all runs are pinned at start time.
    */
-  resolveInstallationForLegacyRun(
+  rejectUnpinnedInstallation(
     processRunId: number,
-    fallback: LegacyInstallationResolver,
+    fallback: InstallationResolver,
   ): ModuleInstallationRecord | null {
+    void fallback;
     const row = this.db
       .prepare(
         'SELECT module_name, module_version, installation_id FROM factory_process_runs WHERE id=?',
       )
       .get(processRunId) as ModuleRefRow | undefined;
 
-    if (!row) return null;
+    if (!row || row.installation_id === null) {
+      throw new Error(`PROCESS_RUN_PIN_REQUIRED: run ${processRunId} has no immutable installation pin`);
+    }
 
     // Already pinned → not a legacy run. The caller should use the pin path.
     if (row.installation_id !== null) return null;

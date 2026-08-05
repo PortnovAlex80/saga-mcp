@@ -230,7 +230,6 @@ test('exact candidate acceptance is atomic, review-backed and idempotent', () =>
     cleanup(f.temp);
   }
 });
-
 test('acceptance may use an earlier write from the same reviewed task', () => {
   const f = fixture();
   try {
@@ -246,7 +245,6 @@ test('acceptance may use an earlier write from the same reviewed task', () => {
     cleanup(f.temp);
   }
 });
-
 test('acceptance never adopts a candidate written by another recovery task', () => {
   const f = fixture();
   try {
@@ -409,110 +407,3 @@ test('a newer changes_requested receipt supersedes an older approval', () => {
   }
 });
 
-test('a legacy v1 decision remains exactly replayable after the v2 upgrade', () => {
-  const f = fixture();
-  try {
-    ensureExactCandidateAcceptanceSchema(f.db);
-    const ledgerId = Number(f.db.prepare(
-      `SELECT id
-         FROM factory_managed_artifact_productions
-        WHERE artifact_id=?`,
-    ).get(f.artifactId).id);
-    const legacyRequest = {
-      schemaVersion: 'factory.exact-candidate-acceptance.v1',
-      idempotencyKey: f.command.idempotencyKey,
-      lineage: f.command.lineage,
-      candidates: f.command.candidates,
-      requireApprovedReview: true,
-      authority: f.command.authority,
-      reasonCode: f.command.reasonCode,
-      context: f.command.context,
-    };
-    const requestSnapshot = canonicalJson(legacyRequest);
-    const requestHash = sha256Hex(legacyRequest);
-    const candidateSetHash = sha256Hex(f.command.candidates);
-    const item = {
-      artifactId: f.artifactId,
-      artifactType: 'SRS',
-      contentHash: f.contentHash,
-      ledgerId,
-      disposition: 'accepted',
-      priorStatus: 'draft',
-      priorAcceptedHash: null,
-      priorDriftState: 'unknown',
-      finalStatus: 'accepted',
-      finalAcceptedHash: f.contentHash,
-      finalDriftState: 'clean',
-    };
-    const decisionHash = sha256Hex({
-      schemaVersion: 'factory.exact-candidate-acceptance.v1',
-      idempotencyKey: f.command.idempotencyKey,
-      requestHash,
-      candidateSetHash,
-      reviewReceiptCommandId: 'exec-review-1:worker-done:approved',
-      items: [item],
-    });
-    f.db.prepare(
-      `UPDATE artifacts
-          SET status='accepted',accepted_hash=content_hash,drift_state='clean'
-        WHERE id=?`,
-    ).run(f.artifactId);
-    const decisionId = Number(f.db.prepare(
-      `INSERT INTO factory_exact_candidate_acceptance_decisions
-         (schema_version,idempotency_key,request_hash,request_snapshot,
-          candidate_set_hash,process_run_id,module_ref,node_id,intent_id,
-          task_id,execution_id,project_id,epic_id,review_required,
-          review_receipt_command_id,authority,reason_code,decision_hash)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-       RETURNING id`,
-    ).get(
-      legacyRequest.schemaVersion,
-      f.command.idempotencyKey,
-      requestHash,
-      requestSnapshot,
-      candidateSetHash,
-      f.command.lineage.processRunId,
-      f.command.lineage.moduleRef,
-      f.command.lineage.nodeId,
-      f.command.lineage.intentId,
-      f.command.lineage.taskId,
-      f.command.lineage.executionId,
-      f.command.lineage.projectId,
-      f.command.lineage.epicId,
-      1,
-      'exec-review-1:worker-done:approved',
-      f.command.authority,
-      f.command.reasonCode,
-      decisionHash,
-    ).id);
-    f.db.prepare(
-      `INSERT INTO factory_exact_candidate_acceptance_items
-         (decision_id,ordinal,artifact_id,artifact_type,
-          expected_content_hash,ledger_id,disposition,prior_status,
-          prior_accepted_hash,prior_drift_state,final_status,
-          final_accepted_hash,final_drift_state)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-    ).run(
-      decisionId,
-      0,
-      item.artifactId,
-      item.artifactType,
-      item.contentHash,
-      item.ledgerId,
-      item.disposition,
-      item.priorStatus,
-      item.priorAcceptedHash,
-      item.priorDriftState,
-      item.finalStatus,
-      item.finalAcceptedHash,
-      item.finalDriftState,
-    );
-
-    const replay = new SqliteExactCandidateAcceptance(f.db).accept(f.command);
-    assert.equal(replay.schemaVersion, legacyRequest.schemaVersion);
-    assert.equal(replay.replayed, true);
-    assert.equal(replay.decisionHash, decisionHash);
-  } finally {
-    cleanup(f.temp);
-  }
-});

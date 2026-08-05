@@ -18,13 +18,9 @@ import type {
  * module-owned artifact types all use the same protocol.
  */
 
-export const LEGACY_EXACT_CANDIDATE_ACCEPTANCE_SCHEMA =
-  'factory.exact-candidate-acceptance.v1' as const;
 export const EXACT_CANDIDATE_ACCEPTANCE_SCHEMA =
   'factory.exact-candidate-acceptance.v2' as const;
-export type ExactCandidateAcceptanceSchema =
-  | typeof LEGACY_EXACT_CANDIDATE_ACCEPTANCE_SCHEMA
-  | typeof EXACT_CANDIDATE_ACCEPTANCE_SCHEMA;
+export type ExactCandidateAcceptanceSchema = typeof EXACT_CANDIDATE_ACCEPTANCE_SCHEMA;
 
 export interface ExactArtifactCandidate {
   /** Artifact row selected by the module-owned semantic gate. */

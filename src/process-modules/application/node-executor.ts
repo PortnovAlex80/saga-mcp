@@ -65,7 +65,7 @@ export interface NodeExecutionContext {
    * GenericFlowExecutor's v2 wiring is active (the run was started with v2
    * NodeRun columns and an ExecutionContextAssembler is configured). v2-aware
    * NodeExecutors read `ctx.envelope` directly; legacy executors ignore it and
-   * read `ctx.frame` (which is dual-populated via mergeLegacyFrame when
+   * read `ctx.frame` (which is populated via buildExecutionFrame when
    * the envelope is present). Absent ⇒ legacy run, `frame` is the sole
    * execution-context surface.
    */
@@ -270,7 +270,7 @@ export interface NodeExecutor {
 // legacy types, and the GenericFlowExecutor only hands the v2 context to a
 // NodeExecutor when v2 wiring is present (an `envelope` field is set on the
 // context). Existing node executors that read only the legacy `frame` keep
-// working because mergeLegacyFrame computes the legacy
+// working because buildExecutionFrame computes the protocol
 // `NodeExecutionFrame` from the envelope's `upstreamProducts`.
 
 /**
@@ -290,7 +290,7 @@ export interface NodeExecutor {
  * identically whether the v2 path is active or not.
  *
  * The legacy `frame` field is NOT on this type; a v2-aware NodeExecutor that
- * still needs the legacy frame view can use `mergeLegacyFrame` on
+ * needs the frame view can use `buildExecutionFrame` on
  * `ctx.envelope` (the v2 GenericFlowExecutor also continues to pass the legacy
  * `frame` on the legacy {@link NodeExecutionContext} when the v2 wiring is
  * absent, so legacy-only executors see no change).
