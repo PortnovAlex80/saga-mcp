@@ -124,13 +124,20 @@ export function releaseTaskExecution(db: Database.Database, input: {
     //   done (git_change, not merged) → workplace 'verifying' (awaiting merge)
     //   anything else       → releaseExecution(completed) → verifying
     if (input.taskStatus === 'review') {
-      // Author completed → hand to reviewer. Workplace goes to review/queued
-      // so the next claim picks up the reviewer skill (review_skill).
-      rt.requeueForRepair({
-        workplaceRef: ref,
-        taskId: input.taskId,
-        role: 'reviewer',
-      });
+      // Author completed → hand to reviewer. Set workplace directly to
+      // review/queued so the next claim resolves review_skill.
+      const cur = rt['repo'].read(ref);
+      if (cur) {
+        rt['repo'].applyTransitionInTx({
+          workplaceRef: ref,
+          expectedRevision: cur.revision,
+          kanbanPhase: 'review',
+          loopState: 'queued',
+          nextRole: 'reviewer',
+          terminalReason: null,
+          activeReservationRef: null,
+        });
+      }
     } else {
     const isGitChange = input.executionMode === 'git_change';
     const isMerged = input.integrationState === 'merged' || input.integrationState === 'not_required';
