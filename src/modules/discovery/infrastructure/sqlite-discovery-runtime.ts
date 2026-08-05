@@ -1,6 +1,7 @@
 import { getDb } from '../../../db.js';
 import { prepareSaga3ProjectedTaskForExecution } from '../../../lifecycle/unfenced-assignment-recovery.js';
 import { transitionTaskToInRepair } from '../../../lifecycle/work-assignment-core.js';
+import { mapV4KanbanToTaskStatus } from '../../../infrastructure/projections/workplace-projector.js';
 import type { CreateWorkIntent, WorkIntent, WorkIntentStatus } from '../../../shared/work-intent.js';
 import type { ProposalRecord } from '../domain/proposal.js';
 import { DISCOVERY_NORMALIZATION_INTENT_KIND, DISCOVERY_READINESS_INTENT_KIND } from '../../../shared/work-intent.js';
@@ -62,6 +63,100 @@ import {
  * (readObjective / ensureDiscoveryTask / repoForProject / taskStatus) plus the
  * WorkIntent + proposal reads it delegated to Saga3ProposalRepository.
  */
+
+/**
+ * Conveyor v4 step 3.B.3 read-switch: read a task's ORCHESTRATION state
+ * (status / assigned_to / current_execution_id) from the authoritative
+ * v4_workplaces when SAGA_WORKPLACE_READ=new. In legacy mode, read directly
+ * from the tasks columns (the historical behavior).
+ *
+ * The orchestration state is what the discovery LM-node executor uses to
+ * decide whether a node is ready / running / done. After cutover that truth
+ * lives in the workplace's loop_state + active_reservation_ref, not in
+ * tasks.status (which is a reverse projection that may lag).
+ *
+ * DATA columns (metadata, task_kind, project_repository_id, etc.) are NOT
+ * routed through this helper — they stay on tasks.
+ */
+interface TaskOrchestrationState {
+  status: string | null;
+  assigned_to: string | null;
+  current_execution_id: string | null;
+}
+
+function cutoverActive(): boolean {
+  return process.env.SAGA_WORKPLACE_READ === 'new';
+}
+
+function readTaskOrchestrationState(taskId: number): TaskOrchestrationState {
+  const db = getDb();
+  if (!cutoverActive()) {
+    const row = db.prepare(
+      'SELECT status, assigned_to, current_execution_id FROM tasks WHERE id=?',
+    ).get(taskId) as TaskOrchestrationState | undefined;
+    return {
+      status: row?.status ?? null,
+      assigned_to: row?.assigned_to ?? null,
+      current_execution_id: row?.current_execution_id ?? null,
+    };
+  }
+  // Cutover: derive the orchestration state from the authoritative workplace.
+  // status ← reverse-project workplace.kanban_phase.
+  // current_execution_id ← workplace.active_reservation_ref (the live lease).
+  // assigned_to ← worker_executions row for the active reservation (the worker
+  //   that won the lease). Falls back to tasks.assigned_to when no workplace
+  //   is bound (a legacy task not yet admitted to the conveyor).
+  const task = db.prepare(
+    'SELECT workplace_ref, assigned_to FROM tasks WHERE id=?',
+  ).get(taskId) as { workplace_ref: string | null; assigned_to: string | null } | undefined;
+  if (!task) return { status: null, assigned_to: null, current_execution_id: null };
+  if (!task.workplace_ref) {
+    // Legacy task not bound to a workplace — fall back to the tasks columns.
+    const row = db.prepare(
+      'SELECT status, assigned_to, current_execution_id FROM tasks WHERE id=?',
+    ).get(taskId) as TaskOrchestrationState | undefined;
+    return {
+      status: row?.status ?? null,
+      assigned_to: row?.assigned_to ?? null,
+      current_execution_id: row?.current_execution_id ?? null,
+    };
+  }
+  const wp = db.prepare(
+    'SELECT kanban_phase, loop_state, active_reservation_ref FROM v4_workplaces WHERE workplace_ref=?',
+  ).get(task.workplace_ref) as
+    | { kanban_phase: string; loop_state: string; active_reservation_ref: string | null }
+    | undefined;
+  if (!wp) {
+    // Workplace row missing (should not happen after bind) — fall back.
+    const row = db.prepare(
+      'SELECT status, assigned_to, current_execution_id FROM tasks WHERE id=?',
+    ).get(taskId) as TaskOrchestrationState | undefined;
+    return {
+      status: row?.status ?? null,
+      assigned_to: row?.assigned_to ?? null,
+      current_execution_id: row?.current_execution_id ?? null,
+    };
+  }
+  const status = mapV4KanbanToTaskStatus(wp.kanban_phase as never);
+  let assignedTo = task.assigned_to;
+  if (wp.active_reservation_ref) {
+    const exec = db.prepare(
+      'SELECT worker_id FROM worker_executions WHERE execution_id=?',
+    ).get(wp.active_reservation_ref) as { worker_id: string } | undefined;
+    if (exec) assignedTo = exec.worker_id;
+  }
+  return {
+    status,
+    assigned_to: assignedTo,
+    // A leased/running reservation IS the live execution. verifying retains it
+    // (the same worker may still be the active actor). terminal/repair_wait/
+    // paused have no live execution.
+    current_execution_id: (wp.loop_state === 'leased' || wp.loop_state === 'running' || wp.loop_state === 'verifying')
+      ? wp.active_reservation_ref
+      : null,
+  };
+}
+
 export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersistence {
   constructor() {
     ensurePausedWorkIntentStatus(getDb());
@@ -293,17 +388,15 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
   }
 
   readTaskState(taskId: number): string | null {
-    const row = getDb().prepare('SELECT status FROM tasks WHERE id=?').get(taskId) as
-      | { status: string }
-      | undefined;
-    return row?.status ?? null;
+    // Conveyor v4 step 3.B.3: read status from the authoritative workplace in
+    // cutover mode (reverse projection of v4 kanban_phase).
+    return readTaskOrchestrationState(taskId).status;
   }
 
   readCurrentExecutionId(taskId: number): string | null {
-    const row = getDb().prepare(
-      'SELECT current_execution_id FROM tasks WHERE id=?',
-    ).get(taskId) as { current_execution_id: string | null } | undefined;
-    return row?.current_execution_id ?? null;
+    // Conveyor v4 step 3.B.3: read the live execution from the authoritative
+    // workplace's active_reservation_ref in cutover mode.
+    return readTaskOrchestrationState(taskId).current_execution_id;
   }
 
   ensureNodeExecutionPlan(input: EnsureNodeExecutionPlan): {
@@ -507,10 +600,16 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
       if (intent.projected_task_id !== taskId) {
         throw new Error(`saga3: WorkIntent ${intentId} is not projected to task ${taskId}`);
       }
-      const task = db.prepare(
-        `SELECT status, assigned_to, current_execution_id FROM tasks WHERE id=?`,
-      ).get(taskId) as { status: string; assigned_to: string | null; current_execution_id: string | null } | undefined;
-      if (!task) throw new Error(`saga3: projected task ${taskId} not found during resume`);
+      // Conveyor v4 step 3.B.3: orchestration state (status / assigned_to /
+      // current_execution_id) read from the authoritative workplace in cutover
+      // mode. Falls back to tasks columns in legacy mode.
+      const taskState = readTaskOrchestrationState(taskId);
+      if (taskState.status === null) throw new Error(`saga3: projected task ${taskId} not found during resume`);
+      const task = {
+        status: taskState.status as string,
+        assigned_to: taskState.assigned_to,
+        current_execution_id: taskState.current_execution_id,
+      };
       // done AND pending_verification both mean "workplace completed" —
       // the LM-node should not spawn a worker. pending_verification waits for
       // the kernel verifier to either promote to done or return as in_repair.
