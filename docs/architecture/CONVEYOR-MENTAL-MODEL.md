@@ -1734,3 +1734,19 @@ For every class, function, table and tool, ask:
 If one component selects a Workplace, starts a worker, writes SQL, manipulates the
 workspace and makes a domain decision, the boundaries are broken even if the
 component is named "service" or "executor".
+
+## Operational appendices
+
+- [Universal transition diagnostics and logging](CONVEYOR-TRANSITION-DIAGNOSTICS.md)
+  defines the target causal journal and deterministic current-state answer to
+  “why did it not advance?” for any number of workshops.
+- [Transition acceptance and incident checklist](CONVEYOR-TRANSITION-CHECKLIST.md)
+  is the operator/developer checklist for factory, workshop, node, Workplace,
+  worker, quality gate and inter-workshop transitions.
+
+The current four workshops are configuration instances of this protocol. They
+are not four lifecycle engines. Adding a fifth or a thousandth workshop may add
+module declarations, products and checks, but must not add another dispatcher,
+desk lifecycle, acceptance state machine or diagnostic algorithm.
+Domain decisions may emit diagnostic envelopes, but those envelopes are never
+read to authorize, replay or repair a transition.
