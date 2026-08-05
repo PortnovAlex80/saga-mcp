@@ -193,6 +193,26 @@ function fixture() {
     ) {
       return this.listTracesForNodeInProcessRun(processRunId, moduleRef, nodeId);
     },
+    // Epic-scope recovery fallback (commit ec3123d): when a process-run has no
+    // ledger entries for a node (repair worker reused accepted artifacts from a
+    // prior run), the resolver borrows from the epic-wide node scope. The fake
+    // is single-processRun, so epic-scope == node-scope here.
+    listArtifactsForNodeInEpic(
+      _projectId,
+      _epicId,
+      moduleRef,
+      nodeId,
+    ) {
+      return this.listArtifactsForNodeInProcessRun(77, moduleRef, nodeId);
+    },
+    listTracesForNodeInEpic(
+      _projectId,
+      _epicId,
+      moduleRef,
+      nodeId,
+    ) {
+      return this.listTracesForNodeInProcessRun(77, moduleRef, nodeId);
+    },
   };
   let baselineRecord = null;
   const baselineRepository = {
