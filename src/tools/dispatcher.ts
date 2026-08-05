@@ -6,6 +6,7 @@ import { assertExecutionFence, updateExecutionPhase, isProcessAlive, ACTIVE_EXEC
 import { reevaluateDownstream } from './tasks.js';
 import type { Task, ToolHandler } from '../types.js';
 import { releaseExecutionAtomically } from '../lifecycle/atomic-release.js';
+import { projectTaskStatus } from './workplace-projection-helper.js';
 // CONVEYOR #7: the atomic assignment core lives in lifecycle/work-assignment-core.ts.
 // This module imports it for internal use AND re-exports it (below) so existing
 // consumers (tasks.ts, saga3-* tools) keep their './dispatcher.js' imports.
@@ -342,6 +343,17 @@ function handleWorkerNext(args: Record<string, unknown>): {
   const active_tasks = getActiveTasks(db, projectId);
 
   if (!task) return { task: null, skill: null, repository: null, active_tasks, reason: 'очередь пуста' };
+
+  // Conveyor v4 step 5.2: shadow-write the claim into v4_workplaces.
+  projectTaskStatus(db, {
+    taskId: task.id,
+    status: task.status === 'todo' ? 'in_progress' : 'review_in_progress',
+    epicId: task.epic_id,
+    projectId,
+    taskKind: task.task_kind,
+    metadata: task.metadata,
+  });
+
   const repository = task.project_repository_id == null ? null : db.prepare(`
     SELECT pr.id, pr.repository_id, r.name,
            COALESCE(rc.local_path,pr.local_path) AS local_path, pr.role,
@@ -664,6 +676,19 @@ function handleWorkerDone(args: Record<string, unknown>): {
         `Task ${taskId} assignment changed before completion (expected owner ${workerId})`,
       );
     }
+
+    // Conveyor v4 step 5.2: shadow-write the completion into v4_workplaces.
+    // pending_verification maps to the same v4 state as done (terminal/accepted)
+    // until the verification-specific loop is wired.
+    projectTaskStatus(db, {
+      taskId,
+      status: newStatus === 'pending_verification' ? 'done' : newStatus,
+      epicId: task.epic_id,
+      projectId: (db.prepare('SELECT e.project_id AS project_id FROM epics e WHERE e.id=?').get(task.epic_id) as { project_id?: number } | undefined)?.project_id ?? 0,
+      taskKind: task.task_kind,
+      metadata: task.metadata,
+    });
+
     if (newStatus === 'done' || newStatus === 'pending_verification') {
       let taskTags: string[] = [];
       try { taskTags = JSON.parse(task.tags || '[]') as string[]; } catch { taskTags = []; }
