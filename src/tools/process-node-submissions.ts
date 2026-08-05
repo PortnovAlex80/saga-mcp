@@ -3,6 +3,7 @@ import { getDb } from '../db.js';
 import {
   SqliteManagedNodeSubmissionRepository,
 } from '../process-modules/persistence/sqlite-managed-node-submission-repository.js';
+import { dualWriteProduct } from './universal-desk-helper.js';
 import type { ToolHandler } from '../types.js';
 
 let repository: SqliteManagedNodeSubmissionRepository | null = null;
@@ -50,6 +51,12 @@ function handleProcessNodeSubmit(args: Record<string, unknown>) {
   const result = repo().submitForCurrentExecution({
     schema,
     payload,
+  });
+  // Conveyor v4 step 3.C.2: dual-write submission-ref onto the universal desk.
+  dualWriteProduct(getDb(), {
+    schemaRef: `saga3.node-submission.${schema}.v1`,
+    content: payload,
+    executionRef: result.record.executionId ?? 'system',
   });
   return {
     accepted: true,

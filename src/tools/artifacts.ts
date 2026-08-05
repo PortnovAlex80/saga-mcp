@@ -10,6 +10,8 @@ import {
   resolveManagedExecutionProvenance,
   type ManagedExecutionProvenance,
 } from '../process-modules/persistence/sqlite-managed-production-ledger.js';
+import { dualWriteProduct } from './universal-desk-helper.js';
+import { ARTIFACT_REF_SCHEMA } from '../modules/formalization/domain/artifact-ref-bridge.js';
 
 // ============================================================================
 // Requirements & design artifacts + traceability graph.
@@ -294,6 +296,14 @@ function handleArtifactCreate(args: Record<string, unknown>): Artifact {
     artifact,
     updatedExisting ? 'upsert' : 'create',
   );
+  // Conveyor v4 step 3.A.2: dual-write artifact-ref onto the universal desk.
+  if (artifact.content_hash) {
+    dualWriteProduct(db, {
+      schemaRef: ARTIFACT_REF_SCHEMA,
+      content: { artifactId: artifact.id, type: artifact.type, contentHash: artifact.content_hash },
+      executionRef: managedExecution?.executionId ?? 'system',
+    });
+  }
   logActivity(db, 'artifact', artifact.id, updatedExisting ? 'updated' : 'created', null, null, type,
     `Artifact ${artifact.type}${code ? ` ${code}` : ''} '${title}' ${updatedExisting ? 'updated (upsert)' : 'created'}`);
   return artifact;

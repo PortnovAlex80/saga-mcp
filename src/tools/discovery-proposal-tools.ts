@@ -10,6 +10,8 @@ import { DISCOVERY_PROPOSAL_SCHEMA } from '../modules/discovery/domain/discovery
 import { normalizeDiscoveryProposalInput } from '../modules/discovery/domain/discovery-normalization.js';
 import type { ProposalProvenance, SubmitProposal } from '../modules/discovery/domain/proposal.js';
 import { readExecutionContextStrict } from '../shared/authority/authorize-tool-call.js';
+import { dualWriteProduct } from './universal-desk-helper.js';
+import { PROPOSAL_REF_SCHEMA } from '../modules/discovery/domain/proposal-ref-bridge.js';
 import {
   canonicalJson,
   ensureSaga3NormalizationSchema,
@@ -164,6 +166,12 @@ export function createDiscoveryProposalHandlers(
           `Proposal accepted deterministically: source=${raw.record.id} proposal=${proposal.id} hash=${contentHash.slice(0, 12)}…`,
         );
       }
+      // Conveyor v4 step 3.B.2: dual-write proposal-ref onto the universal desk.
+      dualWriteProduct(db, {
+        schemaRef: PROPOSAL_REF_SCHEMA,
+        content: { proposalId: proposal.id, contentHash },
+        executionRef: submission.execution_id,
+      });
       return {
         raw_submission_id: raw.record.id,
         raw_hash: raw.record.raw_hash,
