@@ -658,23 +658,74 @@ export class SqliteDevelopmentModuleStore implements
   }
 
   private readRuntimeTask(taskId: number): RuntimeTaskRow {
-    const row = this.db.prepare(
-      `SELECT id,status,integration_state,integrated_commit,
-              project_repository_id,metadata
-         FROM tasks WHERE id=?`,
-    ).get(taskId) as RuntimeTaskRow | undefined;
+    // Conveyor v4 step 3.C.4 read-switch: in cutover mode the task's status is
+    // the AUTHORITATIVE v4_workplaces kanban_phase (reverse-projected to the
+    // legacy status vocabulary). integration_state / integrated_commit /
+    // project_repository_id / metadata are DATA columns and stay on tasks.
+    const cutover = process.env.SAGA_WORKPLACE_READ === 'new';
+    const row = (cutover
+      ? this.db.prepare(
+          `SELECT t.id,
+                  COALESCE(
+                    CASE w.kanban_phase
+                      WHEN 'todo' THEN 'todo'
+                      WHEN 'in_progress' THEN 'in_progress'
+                      WHEN 'review' THEN 'review'
+                      WHEN 'review_in_progress' THEN 'review_in_progress'
+                      WHEN 'blocked' THEN 'blocked'
+                      WHEN 'done' THEN 'done'
+                      WHEN 'failed' THEN 'done'
+                      WHEN 'cancelled' THEN 'done'
+                      ELSE NULL
+                    END, t.status) AS status,
+                  t.integration_state, t.integrated_commit,
+                  t.project_repository_id, t.metadata
+             FROM tasks t
+             LEFT JOIN v4_workplaces w ON w.workplace_ref = t.workplace_ref
+            WHERE t.id=?`,
+        ).get(taskId)
+      : this.db.prepare(
+          `SELECT id,status,integration_state,integrated_commit,
+                  project_repository_id,metadata
+             FROM tasks WHERE id=?`,
+        ).get(taskId)
+    ) as RuntimeTaskRow | undefined;
     if (!row) throw new Error(`DEVELOPMENT_TASK_NOT_FOUND: ${taskId}`);
     return row;
   }
 
   private readRuntimeTasks(taskIds: readonly number[]): RuntimeTaskRow[] {
     if (taskIds.length === 0) return [];
-    return this.db.prepare(
-      `SELECT id,status,integration_state,integrated_commit,
-              project_repository_id,metadata
-         FROM tasks
-        WHERE id IN (${taskIds.map(() => '?').join(',')})`,
-    ).all(...taskIds) as RuntimeTaskRow[];
+    // Conveyor v4 step 3.C.4 read-switch (see readRuntimeTask).
+    const cutover = process.env.SAGA_WORKPLACE_READ === 'new';
+    return (cutover
+      ? this.db.prepare(
+          `SELECT t.id,
+                  COALESCE(
+                    CASE w.kanban_phase
+                      WHEN 'todo' THEN 'todo'
+                      WHEN 'in_progress' THEN 'in_progress'
+                      WHEN 'review' THEN 'review'
+                      WHEN 'review_in_progress' THEN 'review_in_progress'
+                      WHEN 'blocked' THEN 'blocked'
+                      WHEN 'done' THEN 'done'
+                      WHEN 'failed' THEN 'done'
+                      WHEN 'cancelled' THEN 'done'
+                      ELSE NULL
+                    END, t.status) AS status,
+                  t.integration_state, t.integrated_commit,
+                  t.project_repository_id, t.metadata
+             FROM tasks t
+             LEFT JOIN v4_workplaces w ON w.workplace_ref = t.workplace_ref
+            WHERE t.id IN (${taskIds.map(() => '?').join(',')})`,
+        ).all(...taskIds)
+      : this.db.prepare(
+          `SELECT id,status,integration_state,integrated_commit,
+                  project_repository_id,metadata
+             FROM tasks
+            WHERE id IN (${taskIds.map(() => '?').join(',')})`,
+        ).all(...taskIds)
+    ) as RuntimeTaskRow[];
   }
 
   private readReviewedSourceCommit(task: RuntimeTaskRow): string | null {
