@@ -117,6 +117,7 @@ export function registerDevelopment(
     resolveNodeProducts: sharedDeps.resolveNodeProducts,
     resolveOutput: createDevelopmentOutputResolver(outputRepository),
     onWorkplaceVerified: sharedDeps.onWorkplaceVerified,
+    adoptedNodeResults: sharedDeps.adoptedNodeResults,
     v2: sharedDeps.executorV2Options,
   });
 

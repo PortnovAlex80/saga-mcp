@@ -365,6 +365,39 @@ async function main() {
       lastResult = result;
       isFirstCycle = false;
       process.stdout.write(`[orchestrate-cli] cycle: ${JSON.stringify({ reason: result.reason, stage: result.finalStage })}\n`);
+      // Optional online factory checkpoint. It snapshots SQLite through the
+      // backup API and content-addresses referenced artifact bytes. A failed
+      // capture never publishes COMPLETE and never stops the production run.
+      const checkpointStore = process.env.SAGA_FACTORY_CHECKPOINT_STORE?.trim();
+      if (checkpointStore) {
+        try {
+          const { FactoryCheckpointService } = await import(
+            './checkpoints/factory-checkpoint-service.js'
+          );
+          const checkpoint = await new FactoryCheckpointService().capture({
+            dbPath: process.env.DB_PATH!,
+            storageRoot: checkpointStore,
+            projectId,
+            epicId,
+            createdBy: 'orchestrate-cli',
+            includeLogs: process.env.SAGA_FACTORY_CHECKPOINT_LOGS === '1',
+            ...(process.env.SAGA_FACTORY_CHECKPOINT_HMAC_KEY
+              ? {
+                  hmacKey: process.env.SAGA_FACTORY_CHECKPOINT_HMAC_KEY,
+                  signatureKeyId: 'env:SAGA_FACTORY_CHECKPOINT_HMAC_KEY',
+                }
+              : {}),
+          });
+          process.stdout.write(
+            `[orchestrate-cli] checkpoint: ${checkpoint.payload.checkpointRef}\n`,
+          );
+        } catch (checkpointError) {
+          process.stderr.write(
+            `[orchestrate-cli] checkpoint not published: `
+              + `${checkpointError instanceof Error ? checkpointError.message : String(checkpointError)}\n`,
+          );
+        }
+      }
       // Structured log — every cycle for debugging
       try {
         const { appendFileSync: apf } = await import('node:fs');

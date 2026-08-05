@@ -77,6 +77,7 @@ export function registerDiscovery(
     recoveryCaseRepo: sharedDeps.recoveryCaseRepo,
     resolveNodeProducts: sharedDeps.resolveNodeProducts,
     onWorkplaceVerified: sharedDeps.onWorkplaceVerified,
+    adoptedNodeResults: sharedDeps.adoptedNodeResults,
     v2: sharedDeps.executorV2Options,
   });
 

@@ -6,7 +6,8 @@
   "type": "module",
   "main": "dist/index.js",
   "bin": {
-    "saga-mcp": "dist/index.js"
+    "saga-mcp": "dist/index.js",
+    "saga-checkpoint": "dist/checkpoint-cli.js"
   },
   "files": [
     "dist",

@@ -183,6 +183,7 @@ export function registerDelivery(
     resolveNodeProducts: sharedDeps.resolveNodeProducts,
     resolveOutput: createDeliveryOutputResolver(outputRepository),
     onWorkplaceVerified: sharedDeps.onWorkplaceVerified,
+    adoptedNodeResults: sharedDeps.adoptedNodeResults,
     v2: sharedDeps.executorV2Options,
   });
 

@@ -42,6 +42,7 @@ import type { SqliteExactCandidateAcceptance } from '../process-modules/persiste
 import type { Saga3DiscoveryRuntimePersistence } from './discovery/infrastructure/discovery-runtime-port.js';
 import type { ProductRef } from '../process-modules/domain/spi/index.js';
 import type { WorkplaceProductPort } from '../process-modules/application/workplace-product-port.js';
+import type { AdoptedNodeResultPort } from '../checkpoints/sqlite-resume-directive-repository.js';
 
 /**
  * The four registries that register functions populate. Constructed once in
@@ -115,4 +116,5 @@ export interface ModuleSharedDeps {
    * the adapter keep working — modules should feature-detect before use.
    */
   readonly workplaceProductPort?: WorkplaceProductPort;
+  readonly adoptedNodeResults?: AdoptedNodeResultPort;
 }

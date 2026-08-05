@@ -79,6 +79,7 @@ import type {
   DeliveryCompositionDependencies,
   DeliveryProviderConfiguration,
 } from '../modules/delivery/index.js';
+import { SqliteResumeDirectiveRepository } from '../checkpoints/sqlite-resume-directive-repository.js';
 
 export type { DevelopmentCompositionDependencies };
 export type {
@@ -308,6 +309,7 @@ export function createProductLifecycleRuntime(
     runtimePersistence,
     exactCandidateAcceptance,
     workplaceProductPort,
+    adoptedNodeResults: new SqliteResumeDirectiveRepository(db),
 
     // A successful kernel gate ends the current workplace loop. The Workplace
     // aggregate is authoritative; this callback only reverse-projects that

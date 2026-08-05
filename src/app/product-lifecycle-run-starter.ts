@@ -118,17 +118,19 @@ export function createSpawnCliLifecycleRunStarter(
       if (params.idempotencyKey?.trim()) {
         cliArgs.push(`--idempotency-key=${params.idempotencyKey.trim()}`);
       }
+      // Must be present before spawn; mutating childEnv afterwards does not
+      // change the environment already copied into the child process.
+      const engineLog = `${tmpdir()}/saga-engine-${Date.now()}.log`;
+      childEnv.SAGA_ENGINE_LOG = engineLog;
       const child = spawnProcess('node', cliArgs, {
         detached: true,
         stdio: ['ignore', 'pipe', 'pipe'],
         env: childEnv,
       });
       // Pipe engine stdout/stderr to a persistent log file for debugging.
-      const engineLog = `${tmpdir()}/saga-engine-${Date.now()}.log`;
       const logStream = createWriteStream(engineLog, { flags: 'a' });
       child.stdout?.pipe(logStream);
       child.stderr?.pipe(logStream);
-      childEnv.SAGA_ENGINE_LOG = engineLog;
       child.unref();
       try {
         return await waitForLifecycleStartReceipt({

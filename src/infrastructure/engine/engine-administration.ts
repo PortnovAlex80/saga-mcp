@@ -37,6 +37,11 @@ interface PersistedEngineState {
   startedAt: string | null;
 }
 
+interface ResumableLifecycleRun {
+  id: number;
+  idempotencyKey: string;
+}
+
 /**
  * Compatibility adapter for tracker-view's existing engine controls.
  *
@@ -81,6 +86,25 @@ export class LegacyEngineAdministration implements EngineAdministration {
 
   start(command: EngineStartCommand): EngineStateSnapshot {
     const projectId = this.projectIdForEpic(command.epicId);
+    const resumable = this.findResumableLifecycleRun(projectId, command.epicId);
+    if (
+      resumable
+      && command.idempotencyKey?.trim()
+      && command.idempotencyKey.trim() !== resumable.idempotencyKey
+      && command.resumePaused !== false
+    ) {
+      throw new EngineAdministrationError(
+        'active_run_mismatch',
+        `epic ${command.epicId} already has active LifecycleRun ${resumable.id} `
+          + `with idempotency key '${resumable.idempotencyKey}'`,
+      );
+    }
+    // Undefined means the normal safe policy: continue the unique durable run.
+    // Explicit false remains available to administrative callers that really
+    // want start-without-resume semantics.
+    const resumePaused = command.resumePaused ?? (resumable !== null);
+    const idempotencyKey = command.idempotencyKey?.trim()
+      || (resumePaused ? resumable?.idempotencyKey : undefined);
     const persisted = this.readPersisted(command.epicId);
     const requested = Number(command.concurrency);
     const concurrency = Number.isInteger(requested) && requested >= 1 && requested <= 10
@@ -99,10 +123,10 @@ export class LegacyEngineAdministration implements EngineAdministration {
       if (command.lifecycleInputPath?.trim()) {
         cliArgs.push(`--lifecycle-input=${command.lifecycleInputPath.trim()}`);
       }
-      if (command.idempotencyKey?.trim()) {
-        cliArgs.push(`--idempotency-key=${command.idempotencyKey.trim()}`);
+      if (idempotencyKey) {
+        cliArgs.push(`--idempotency-key=${idempotencyKey}`);
       }
-      if (command.resumePaused) cliArgs.push('--resume');
+      if (resumePaused) cliArgs.push('--resume');
       const child = this.spawnProcess(
         'node',
         cliArgs,
@@ -167,7 +191,9 @@ export class LegacyEngineAdministration implements EngineAdministration {
   }
 
   restart(command: EngineStartCommand): EngineStateSnapshot {
-    return this.start(command);
+    // Restart is recovery authority by definition. Reuse the persisted input
+    // and cursor; never make the caller remember a second flag.
+    return this.start({ ...command, resumePaused: true });
   }
 
   setConcurrency(epicId: number, concurrency: number): EngineStateSnapshot {
@@ -249,6 +275,34 @@ export class LegacyEngineAdministration implements EngineAdministration {
         concurrency: row?.concurrency ?? null,
         startedAt: row?.started_at ?? null,
       };
+    });
+  }
+
+  private findResumableLifecycleRun(
+    projectId: number,
+    epicId: number,
+  ): ResumableLifecycleRun | null {
+    return this.withDb(db => {
+      const table = db.prepare(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='saga3_lifecycle_runs'",
+      ).get();
+      if (!table) return null;
+      const rows = db.prepare(
+        `SELECT id, idempotency_key
+           FROM saga3_lifecycle_runs
+          WHERE project_id=? AND epic_id=?
+            AND status IN ('created','running','paused')
+          ORDER BY id DESC`,
+      ).all(projectId, epicId) as Array<{ id: number; idempotency_key: string }>;
+      if (rows.length > 1) {
+        throw new EngineAdministrationError(
+          'ambiguous_active_run',
+          `multiple resumable LifecycleRuns exist for project ${projectId}, epic ${epicId}; `
+            + 'refusing to guess',
+        );
+      }
+      const row = rows[0];
+      return row ? { id: row.id, idempotencyKey: row.idempotency_key } : null;
     });
   }
 

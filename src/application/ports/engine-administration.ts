@@ -23,6 +23,8 @@ export type EngineAdministrationErrorCode =
   | 'invalid_epic'
   | 'invalid_concurrency'
   | 'epic_not_found'
+  | 'ambiguous_active_run'
+  | 'active_run_mismatch'
   | 'spawn_failed';
 
 export class EngineAdministrationError extends Error {

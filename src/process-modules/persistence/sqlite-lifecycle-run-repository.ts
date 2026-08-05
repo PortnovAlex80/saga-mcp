@@ -20,6 +20,7 @@ import type {
 } from './lifecycle-run.js';
 import { lifecycleRefKey } from './lifecycle-run.js';
 import { ensureSaga3ProcessRunSchema } from './sqlite-process-run-repository.js';
+import { classifyLifecycleDefinitionCompatibility } from '../application/lifecycle-definition-compatibility.js';
 
 export function ensureSaga3LifecycleRunSchema(db: Database.Database): void {
   ensureSaga3ProcessRunSchema(db);
@@ -136,6 +137,17 @@ export function ensureSaga3LifecycleRunSchema(db: Database.Database): void {
 
     CREATE INDEX IF NOT EXISTS idx_saga3_process_transitions_lifecycle
       ON saga3_process_transitions(lifecycle_run_id, id);
+
+    CREATE TABLE IF NOT EXISTS factory_definition_compatibility_receipts (
+      receipt_ref TEXT PRIMARY KEY,
+      lifecycle_run_id INTEGER NOT NULL REFERENCES saga3_lifecycle_runs(id) ON DELETE RESTRICT,
+      previous_definition_hash TEXT NOT NULL,
+      candidate_definition_hash TEXT NOT NULL,
+      current_stage_id TEXT,
+      classification TEXT NOT NULL CHECK (classification IN ('exact','metadata_only','incompatible')),
+      reason_json TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
   `);
   const lifecycleColumns = db.prepare(
     'PRAGMA table_info(saga3_lifecycle_runs)',
@@ -388,10 +400,33 @@ export class SqliteLifecycleRunRepository implements LifecycleRunRepository {
           );
         }
         if (existing.definition_hash !== command.definitionHash) {
-          throw new Error(
-            `LIFECYCLE_DEFINITION_CHANGED_FOR_REPLAY: `
-            + `${existing.lifecycle_ref_key} is pinned to ${existing.definition_hash}`,
+          const compatibility = classifyLifecycleDefinitionCompatibility(
+            existing.definition_snapshot,
+            command.definitionSnapshot,
           );
+          const receiptRef = sha256Hex({
+            kind: 'lifecycle-definition-compatibility',
+            lifecycleRunId: existing.id,
+            previous: existing.definition_hash,
+            candidate: command.definitionHash,
+            classification: compatibility.classification,
+          });
+          this.db.prepare(
+            `INSERT OR IGNORE INTO factory_definition_compatibility_receipts
+              (receipt_ref, lifecycle_run_id, previous_definition_hash,
+               candidate_definition_hash, current_stage_id, classification, reason_json)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          ).run(
+            receiptRef, existing.id, existing.definition_hash,
+            command.definitionHash, existing.current_stage_id,
+            compatibility.classification, canonicalJson(compatibility.reasons),
+          );
+          if (compatibility.classification === 'incompatible') {
+            throw new Error(
+              `LIFECYCLE_DEFINITION_CHANGED_FOR_REPLAY: `
+              + `${existing.lifecycle_ref_key} is pinned to ${existing.definition_hash}`,
+            );
+          }
         }
         if (
           !nullableEqual(existing.epic_id, ctx.epicId)

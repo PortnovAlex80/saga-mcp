@@ -954,7 +954,7 @@ export function createBoardRenderApi({
               const r = await fetch('/api/engine/start', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ epic_id: epicId, concurrency: conc }),
+                body: JSON.stringify({ epic_id: epicId, concurrency: conc, resume: true }),
               });
               const d = await r.json();
               if (!r.ok || !d.ok) throw new Error(d.error || 'не удалось запустить');

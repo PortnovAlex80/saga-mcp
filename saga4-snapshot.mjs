@@ -319,16 +319,18 @@ if (command === 'export') {
   process.stdout.write(JSON.stringify(snapshot, null, 2));
   process.stderr.write(`\nDone: ${Object.values(snapshot.tables).reduce((a, b) => a + b.length, 0)} total rows\n`);
 } else if (command === 'import') {
-  const file = positionals[1];
-  if (!file) {
-    process.stderr.write('Usage: node saga4-snapshot.mjs import <snapshot.json>\n');
-    process.exit(1);
-  }
-  importSnapshot(db, file);
+  // This legacy importer deletes whole tables and cannot preserve the v4
+  // provenance/file graph. Keep export for read-only diagnostics, but refuse
+  // destructive restore. The official replacement restores an online SQLite
+  // backup into a NEW clone and adopts products through an import authority.
+  process.stderr.write(
+    'UNSAFE_LEGACY_SNAPSHOT_IMPORT_DISABLED: use `node dist/checkpoint-cli.js restore-clone ...`\n',
+  );
+  process.exitCode = 2;
 } else {
   process.stderr.write(`Usage:
   node saga4-snapshot.mjs export [--project=N] > snapshot.json
-  node saga4-snapshot.mjs import snapshot.json
+  node dist/checkpoint-cli.js restore-clone --manifest=... --target-db=... --target-workspace=...
 
 Tables exported:
 ${SNAPSHOT_TABLES.map(([t]) => '  ' + t).join('\n')}

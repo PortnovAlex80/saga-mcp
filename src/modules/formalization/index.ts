@@ -99,6 +99,7 @@ export function registerFormalization(
     resolveNodeProducts: sharedDeps.resolveNodeProducts,
     resolveOutput: createFormalizationOutputResolver(solutionContractRepository),
     onWorkplaceVerified: sharedDeps.onWorkplaceVerified,
+    adoptedNodeResults: sharedDeps.adoptedNodeResults,
     v2: sharedDeps.executorV2Options,
   });
 

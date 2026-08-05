@@ -85,6 +85,7 @@ import type {
   NodeRunRecordV2,
   NodeRunRepositoryV2,
 } from '../persistence/node-run-v2.js';
+import type { AdoptedNodeResultPort } from '../../checkpoints/sqlite-resume-directive-repository.js';
 
 export interface GenericFlowExecutorOptions {
   moduleRef: ProcessModuleDefinition['identity'];
@@ -147,6 +148,8 @@ export interface GenericFlowExecutorOptions {
     processRunId: number,
     repairNodeId: string,
   ) => void;
+  /** Verified checkpoint result consumed before an LM worker is launched. */
+  adoptedNodeResults?: AdoptedNodeResultPort;
 }
 
 /**
@@ -722,9 +725,23 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
           : {}),
       };
 
+      const processRun = this.opts.processRunRepo.read(context.processRunId);
+      if (!processRun) {
+        nodeRunRepo.fail({ id: nodeRunId, errorMessage: 'PROCESS_RUN_NOT_FOUND' });
+        throw new Error(`ProcessRun ${context.processRunId} not found`);
+      }
+      const adopted = node.kind === 'lm'
+        ? this.opts.adoptedNodeResults?.peek({
+            processRunId: context.processRunId,
+            nodeId: node.id,
+            processInputHash: processRun.inputHash,
+            packageDigest: assembled.envelope.packageRef.digest,
+          }) ?? null
+        : null;
+
       let result: NodeExecutionResult;
       try {
-        result = await executor.execute(ctx);
+        result = adopted?.result ?? await executor.execute(ctx);
         assertNodeExecutionResult(node, result);
         heartbeat();
       } catch (err) {
@@ -767,6 +784,12 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
         // — persisted as NULL.
         completion: result.completion,
       });
+
+      if (adopted) {
+        // Consume only after the NodeRun commit. Before this point a crash can
+        // safely retry; afterwards normal NodeRun replay prevents another LM.
+        this.opts.adoptedNodeResults?.markConsumed(adopted.directiveRef, nodeRunId);
+      }
 
       if (result.runtimeEvent === 'paused') {
         throw new ProcessRunPausedError(context.processRunId, node.id);

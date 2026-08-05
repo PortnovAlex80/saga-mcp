@@ -1239,6 +1239,117 @@ CREATE TRIGGER IF NOT EXISTS trg_v4_gate_decisions_no_delete
   BEGIN
     SELECT RAISE(ABORT, 'v4 gate decisions are immutable (REG-18)');
   END;
+
+-- ---------------------------------------------------------------------------
+-- Factory checkpoints — immutable recovery metadata over an online SQLite
+-- backup plus content-addressed external files. The filesystem manifest is
+-- published last; these rows are the trusted local registry and audit trail.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS factory_database_identity (
+  singleton_id         INTEGER PRIMARY KEY CHECK (singleton_id=1),
+  namespace_id         TEXT NOT NULL UNIQUE,
+  created_at           TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS factory_checkpoints (
+  checkpoint_ref       TEXT PRIMARY KEY,
+  manifest_digest      TEXT NOT NULL UNIQUE,
+  project_id           INTEGER NOT NULL REFERENCES projects(id) ON DELETE RESTRICT,
+  epic_id              INTEGER REFERENCES epics(id) ON DELETE RESTRICT,
+  lifecycle_run_id     INTEGER,
+  lifecycle_input_hash TEXT,
+  parent_checkpoint_ref TEXT REFERENCES factory_checkpoints(checkpoint_ref),
+  sequence_no          INTEGER NOT NULL,
+  storage_root         TEXT NOT NULL,
+  manifest_json        TEXT NOT NULL,
+  status               TEXT NOT NULL CHECK (status IN ('complete','superseded')),
+  created_by           TEXT NOT NULL,
+  created_at           TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (project_id, epic_id, sequence_no)
+);
+CREATE INDEX IF NOT EXISTS idx_factory_checkpoints_scope
+  ON factory_checkpoints(project_id, epic_id, sequence_no DESC);
+
+CREATE TABLE IF NOT EXISTS factory_adoptions (
+  adoption_ref         TEXT PRIMARY KEY,
+  checkpoint_ref       TEXT NOT NULL,
+  manifest_digest      TEXT NOT NULL,
+  target_project_id    INTEGER NOT NULL REFERENCES projects(id) ON DELETE RESTRICT,
+  target_epic_id       INTEGER REFERENCES epics(id) ON DELETE RESTRICT,
+  target_process_run_id INTEGER NOT NULL,
+  target_node_id       TEXT NOT NULL,
+  source_node_run_id   INTEGER NOT NULL,
+  target_input_hash    TEXT NOT NULL,
+  authority_kind       TEXT NOT NULL CHECK (authority_kind='checkpoint_import'),
+  verification_profile TEXT NOT NULL DEFAULT 'full'
+                         CHECK (verification_profile IN ('full','test_replay')),
+  actor                TEXT NOT NULL,
+  reason               TEXT NOT NULL,
+  receipt_json         TEXT NOT NULL,
+  created_at           TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (checkpoint_ref, target_process_run_id, target_node_id, source_node_run_id)
+);
+
+-- A directive is not a gate decision. It supplies one already-produced LM
+-- result to the exact target node; the normal downstream verifier/gate still
+-- owns acceptance. The executor marks it consumed only after completing the
+-- durable NodeRun, so a crash before that point safely retries the directive.
+CREATE TABLE IF NOT EXISTS factory_resume_directives (
+  directive_ref        TEXT PRIMARY KEY,
+  adoption_ref         TEXT NOT NULL REFERENCES factory_adoptions(adoption_ref) ON DELETE RESTRICT,
+  process_run_id       INTEGER NOT NULL,
+  node_id              TEXT NOT NULL,
+  process_input_hash   TEXT NOT NULL,
+  package_digest       TEXT,
+  result_json          TEXT NOT NULL,
+  result_digest        TEXT NOT NULL,
+  state                TEXT NOT NULL DEFAULT 'ready' CHECK (state IN ('ready','consumed','cancelled')),
+  consumed_node_run_id INTEGER,
+  created_at           TEXT NOT NULL DEFAULT (datetime('now')),
+  consumed_at          TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_factory_resume_directives_ready
+  ON factory_resume_directives(process_run_id, node_id, state);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_factory_one_ready_directive
+  ON factory_resume_directives(process_run_id, node_id) WHERE state='ready';
+
+-- Present only in restored diagnostic clones. Production databases have no
+-- row. Test-only replay is refused unless this marker exists.
+CREATE TABLE IF NOT EXISTS factory_runtime_mode (
+  singleton_id         INTEGER PRIMARY KEY CHECK (singleton_id=1),
+  mode                 TEXT NOT NULL CHECK (mode='diagnostic_clone'),
+  source_checkpoint_ref TEXT NOT NULL,
+  source_manifest_digest TEXT NOT NULL,
+  created_at           TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS factory_definition_compatibility_receipts (
+  receipt_ref          TEXT PRIMARY KEY,
+  lifecycle_run_id     INTEGER NOT NULL REFERENCES saga3_lifecycle_runs(id) ON DELETE RESTRICT,
+  previous_definition_hash TEXT NOT NULL,
+  candidate_definition_hash TEXT NOT NULL,
+  current_stage_id     TEXT,
+  classification       TEXT NOT NULL CHECK (classification IN ('exact','metadata_only','incompatible')),
+  reason_json          TEXT NOT NULL,
+  created_at           TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TRIGGER IF NOT EXISTS trg_factory_adoptions_no_update
+  BEFORE UPDATE ON factory_adoptions BEGIN
+    SELECT RAISE(ABORT, 'factory adoptions are immutable');
+  END;
+CREATE TRIGGER IF NOT EXISTS trg_factory_adoptions_no_delete
+  BEFORE DELETE ON factory_adoptions BEGIN
+    SELECT RAISE(ABORT, 'factory adoptions are immutable');
+  END;
+CREATE TRIGGER IF NOT EXISTS trg_factory_compat_no_update
+  BEFORE UPDATE ON factory_definition_compatibility_receipts BEGIN
+    SELECT RAISE(ABORT, 'factory compatibility receipts are immutable');
+  END;
+CREATE TRIGGER IF NOT EXISTS trg_factory_compat_no_delete
+  BEFORE DELETE ON factory_definition_compatibility_receipts BEGIN
+    SELECT RAISE(ABORT, 'factory compatibility receipts are immutable');
+  END;
 `;
 
 // ----------------------------------------------------------------------------

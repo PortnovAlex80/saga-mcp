@@ -625,6 +625,7 @@ export function createLifecycleEndpointsApi({
   function respondEngineError(res, error) {
     const code = error?.code;
     const status = code === 'epic_not_found' ? 404
+      : (code === 'ambiguous_active_run' || code === 'active_run_mismatch') ? 409
       : (code === 'invalid_epic' || code === 'invalid_concurrency') ? 400
       : 500;
     respondJson(res, status, { ok: false, error: error?.message || String(error) });
@@ -646,7 +647,9 @@ export function createLifecycleEndpointsApi({
           idempotencyKey: typeof fields.idempotency_key === 'string'
             ? fields.idempotency_key
             : undefined,
-          resumePaused: fields.resume === true || fields.resume === 'true',
+          resumePaused: fields.resume === undefined
+            ? undefined
+            : (fields.resume === true || fields.resume === 'true'),
         });
         respondJson(res, 200, {
           ok: true,
@@ -740,7 +743,11 @@ export function createLifecycleEndpointsApi({
           idempotencyKey: typeof fields.idempotency_key === 'string'
             ? fields.idempotency_key
             : undefined,
-          resumePaused: fields.resume === true || fields.resume === 'true',
+          // Restart always resumes in EngineAdministration. Preserve the field
+          // only for wire compatibility with older clients.
+          resumePaused: fields.resume === undefined
+            ? undefined
+            : (fields.resume === true || fields.resume === 'true'),
         });
         respondJson(res, 200, {
           ok: true,
