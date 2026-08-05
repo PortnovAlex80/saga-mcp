@@ -37,7 +37,7 @@ export type PrepareIntentForExecutionResult =
   | { state: 'ready'; intentStatus: 'open' | 'paused'; taskStatus: string }
   | { state: 'active'; intentStatus: 'executing'; taskStatus: string; detail: string }
   | { state: 'blocked'; intentStatus: 'paused'; taskStatus: 'blocked'; detail: string }
-  | { state: 'done'; intentStatus: WorkIntentStatus; taskStatus: 'done' | 'pending_verification' };
+  | { state: 'done'; intentStatus: WorkIntentStatus; taskStatus: 'done' };
 
 export interface Saga3DiscoveryRuntimePersistence {
   /** Read the epic's name + description (the discovery objective source). */
@@ -132,7 +132,7 @@ export interface Saga3DiscoveryRuntimePersistence {
 
   /**
   /**
-   * Transition a task from pending_verification (or done) to in_repair so a
+   * Transition a task from removed-legacy-status (or done) to removed-legacy-status so a
    * repair-attempt spawns a fresh worker run. Resets tasks.status, assigned_to/
    * current_execution_id→NULL, and the projected intent concluded→open.
    * task_id is preserved (same lineage).

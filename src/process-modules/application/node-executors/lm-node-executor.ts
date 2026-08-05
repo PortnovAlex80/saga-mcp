@@ -155,7 +155,7 @@ export interface LmNodeExecutionPersistence {
   ): { status: 'ready' | 'active' | 'blocked' | 'done'; intentStatus: string };
 
   /**
-   * Transition a task from pending_verification (or done) to in_repair so a
+   * Transition a task from removed-legacy-status (or done) to removed-legacy-status so a
    * repair-attempt spawns a fresh worker run instead of replaying the prior
    * concluded intent. Returns true if a row was transitioned, false if the
    * task was not in a repairable state.
@@ -461,9 +461,9 @@ export class LmNodeExecutor implements NodeExecutor {
 
       // Recovery repair: when this LM-node received a recovery feedback
       // (chainInput was a feedbackProduction — the verifier rejected prior
-      // work), the workplace's task may be in 'pending_verification' (review
+      // work), the workplace's task may be in 'removed-legacy-status' (review
       // passed but kernel found defect) or 'done' (legacy). Transition it to
-      // 'in_repair' so prepareIntentForExecution routes through the ready path
+      // 'removed-legacy-status' so prepareIntentForExecution routes through the ready path
       // and a FRESH worker run picks up recovery-feedback.json, inspects the
       // gap, and fixes the traces/artifacts. The task_id is preserved (same
       // generationKey → same lineage), so exact-acceptance gate still finds
@@ -711,10 +711,10 @@ export class LmNodeExecutor implements NodeExecutor {
           ctx.heartbeat();
           executionId ??= this.persistence.readCurrentExecutionId(taskId);
           const taskStatus = this.persistence.readTaskState(taskId);
-          // pending_verification = ревью пройдено, задача передана ядру (kernel
+          // removed-legacy-status = ревью пройдено, задача передана ядру (kernel
           // verifier) для финальной проверки. Poll-loop завершается так же, как
           // для done — LM-узел отдаёт управление следующему узлу (kernel).
-          const taskDone = taskStatus === 'done' || taskStatus === 'pending_verification';
+          const taskDone = taskStatus === 'done';
           const taskBlocked = taskStatus === 'blocked';
           const taskInReview = taskStatus === 'review';
           const run = executor.status(ctx.projectId);

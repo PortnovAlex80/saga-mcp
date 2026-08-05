@@ -562,7 +562,7 @@ export type PrepareIntentForExecutionResult =
   | { state: 'ready'; intentStatus: 'open' | 'paused'; taskStatus: string }
   | { state: 'active'; intentStatus: 'executing'; taskStatus: string; detail: string }
   | { state: 'blocked'; intentStatus: 'paused'; taskStatus: 'blocked'; detail: string }
-  | { state: 'done'; intentStatus: WorkIntentStatus; taskStatus: 'done' | 'pending_verification' };
+  | { state: 'done'; intentStatus: WorkIntentStatus; taskStatus: 'done' };
 
 export interface ReadinessControlIntentRecord {
   id: number;
@@ -629,11 +629,11 @@ export interface DiscoveryRuntimePersistencePort {
   readTaskProjectRepositoryId(taskId: number): number | null;
   prepareIntentForExecution(intentId: number, taskId: number): PrepareIntentForExecutionResult;
   /**
-   * Transition a task from pending_verification (or done) to in_repair so a
+   * Transition a task from removed-legacy-status (or done) to removed-legacy-status so a
    * repair-attempt can spawn a FRESH worker run. This is the "dismantle order" —
    * the kernel verifier found a defect after review approved.
    *
-   * Resets: tasks.status pending_verification→in_repair, assigned_to→NULL,
+   * Resets: tasks.status removed-legacy-status→removed-legacy-status, assigned_to→NULL,
    * current_execution_id→NULL; saga3_work_intents.status concluded→open.
    * The task_id is preserved (same generationKey → same lineage), so
    * exact-acceptance gate finds the prior ledger entries and requires a new

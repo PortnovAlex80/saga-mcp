@@ -434,16 +434,16 @@ export function createProductLifecycleRuntime(
     runtimePersistence,
     exactCandidateAcceptance,
     workplaceProductPort,
-    // Kernel-gate: promote task pending_verification → done when the kernel
+    // Kernel-gate: promote task removed-legacy-status → done when the kernel
     // verifier accepts the work. This is the ONLY path from
-    // pending_verification to done. The callback receives (processRunId,
+    // removed-legacy-status to done. The callback receives (processRunId,
     // repairNodeId) — the repairNodeId is the LM node whose task needs
     // promotion. The generationKey ties the task to the same processRun +
     // node, so we find it deterministically.
     onWorkplaceVerified: (processRunId, repairNodeId) => {
       const generationKey = `process-run:${processRunId}:node:${repairNodeId}`;
       const taskRow = db.prepare(
-        'SELECT id FROM tasks WHERE generation_key=? AND status=\'pending_verification\'',
+        'SELECT id FROM tasks WHERE generation_key=? AND status=\'removed-legacy-status\'',
       ).get(generationKey) as { id: number } | undefined;
       if (taskRow) {
         promoteTaskToDone(db, taskRow.id);

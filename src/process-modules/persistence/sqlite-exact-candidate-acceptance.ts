@@ -718,10 +718,10 @@ implements ExactCandidateAcceptance {
     const task = this.db.prepare(
       'SELECT id, epic_id, status FROM tasks WHERE id=?',
     ).get(taskId) as TaskIdentityRow | undefined;
-    if (!task || (task.status !== 'done' && task.status !== 'pending_verification')) {
+    if (!task || (task.status !== 'done')) {
       reject(
         'EXACT_ACCEPTANCE_APPROVED_REVIEW_REQUIRED',
-        `task ${taskId} is not in a verified terminal state (expected done or pending_verification)`,
+        `task ${taskId} is not in a verified terminal state (expected done or removed-legacy-status)`,
         { taskId, taskStatus: task?.status ?? null },
       );
     }
@@ -736,15 +736,15 @@ implements ExactCandidateAcceptance {
     // back to an older approval after a newer changes_requested verdict would
     // silently accept a superseded review decision.
     const finalReceipt = receipts[0];
-    // A reviewer's worker_done(approved) sends the task to 'pending_verification'
+    // A reviewer's worker_done(approved) sends the task to 'removed-legacy-status'
     // (not 'done'). 'done' is only set by promoteTaskToDone AFTER the kernel gate
-    // accepts — a chicken-and-egg. Accept 'pending_verification' as a valid
+    // accepts — a chicken-and-egg. Accept 'removed-legacy-status' as a valid
     // terminal review receipt (consistent with line 721 which already accepts
-    // pending_verification as a verified terminal state).
+    // removed-legacy-status as a verified terminal state).
     if (
       !finalReceipt
       || !(isWorkerDoneReceipt(finalReceipt, taskId, 'done')
-           || isWorkerDoneReceipt(finalReceipt, taskId, 'pending_verification'))
+           )
       || finalReceipt.execution_id === null
       || finalReceipt.execution_id === lineage.executionId
     ) {
@@ -1424,7 +1424,7 @@ function hashReviewReceipt(receipt: ApprovedReviewReceiptRow): string {
 function isWorkerDoneReceipt(
   receipt: ApprovedReviewReceiptRow,
   taskId: number,
-  expectedStatus: 'review' | 'done' | 'pending_verification',
+  expectedStatus: 'review' | 'done',
 ): boolean {
   if (
     !receipt.command_id.endsWith(':worker-done:approved')

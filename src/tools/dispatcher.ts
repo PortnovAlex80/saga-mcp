@@ -615,7 +615,7 @@ function handleWorkerDone(args: Record<string, unknown>): {
       } else {
         // Ревью пройдено (APPROVED) — done. Kernel gate внутри lifecycle
         // (runEpisode → resolve-node) примет артефакты. Не нужен промежуточный
-        // pending_verification — конвейерная модель: author → review → done.
+        // removed-legacy-status — конвейерная модель: author → review → done.
         // Kernel gate работает внутри lifecycle, не блокирует tasks.status.
         newStatus = 'done';
         newAssignedTo = null;
@@ -703,7 +703,7 @@ function handleWorkerDone(args: Record<string, unknown>): {
       taskId,
       workerId,
       args.execution_id,
-      // pending_verification ждёт проверки ядром — ещё не 'integrating'
+      // removed-legacy-status ждёт проверки ядром — ещё не 'integrating'
       newStatus === 'done' && task.task_kind && task.execution_mode === 'git_change'
         ? 'integrating'
         : 'finishing',

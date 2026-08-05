@@ -138,9 +138,9 @@ export interface GenericFlowExecutorOptions {
   /**
    * Kernel-gate callback: called when a recovery case is resolved (the
    * kernel verifier accepted the work). This is the single point where a
-   * task in 'pending_verification' is promoted to 'done' — NOT the review
-   * approval (which sets pending_verification). Absent ⇒ no auto-promotion
-   * (the task stays in pending_verification; only for modules without
+   * task in 'removed-legacy-status' is promoted to 'done' — NOT the review
+   * approval (which sets removed-legacy-status). Absent ⇒ no auto-promotion
+   * (the task stays in removed-legacy-status; only for modules without
    * recovery policies or where the module handles promotion itself).
    */
   onWorkplaceVerified?: (
@@ -910,7 +910,7 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
       this.resolveSuccessfulRecovery(module, context, nodeRun, event);
       // Kernel-gate first-pass: the verifier accepted the work on the first
       // try (no recovery case was opened). Promote the repair node's task
-      // from pending_verification → done. resolveSuccessfulRecovery only
+      // from removed-legacy-status → done. resolveSuccessfulRecovery only
       // promotes when a case was actually resolved; this covers the case
       // where no case existed at all (first success).
       if (this.opts.onWorkplaceVerified) {

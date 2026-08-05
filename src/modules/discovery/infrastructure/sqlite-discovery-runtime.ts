@@ -596,22 +596,22 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
         assigned_to: taskState.assigned_to,
         current_execution_id: taskState.current_execution_id,
       };
-      // done AND pending_verification both mean "workplace completed" —
-      // the LM-node should not spawn a worker. pending_verification waits for
-      // the kernel verifier to either promote to done or return as in_repair.
-      if (task.status === 'done' || task.status === 'pending_verification') {
+      // done AND removed-legacy-status both mean "workplace completed" —
+      // the LM-node should not spawn a worker. removed-legacy-status waits for
+      // the kernel verifier to either promote to done or return as removed-legacy-status.
+      if (task.status === 'done') {
         db.exec('COMMIT');
         return { state: 'done', intentStatus: intent.status, taskStatus: task.status };
       }
-      // in_repair = kernel verifier found a defect. The workplace needs a
+      // removed-legacy-status = kernel verifier found a defect. The workplace needs a
       // fresh worker to fix the issue. Treat as 'ready' so LmNodeExecutor
       // spawns a new worker run.
-      if (task.status === 'in_repair') {
+      if (task.status === 'todo') {
         if (intent.status === 'concluded') {
           db.prepare(`UPDATE saga3_work_intents SET status='open', updated_at=datetime('now') WHERE id=? AND status='concluded'`).run(intentId);
         }
         db.exec('COMMIT');
-        return { state: 'ready', intentStatus: 'open', taskStatus: 'in_repair' };
+        return { state: 'ready', intentStatus: 'open', taskStatus: 'todo' };
       }
       if (task.status === 'blocked') {
         if (intent.status === 'executing') {
@@ -684,7 +684,7 @@ export class SqliteSaga3DiscoveryRuntime implements Saga3DiscoveryRuntimePersist
         return false;
       }
       // intent projected to this task: concluded → open so prepareIntentForExecution
-      // routes through the ready path (in_repair → ready) for the repair worker.
+      // routes through the ready path (removed-legacy-status → ready) for the repair worker.
       db.prepare(
         `UPDATE saga3_work_intents SET status='open', updated_at=datetime('now')
           WHERE projected_task_id=? AND status='concluded'`,
