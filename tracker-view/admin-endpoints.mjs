@@ -1,31 +1,11 @@
-// Admin endpoints API extracted from tracker-view.mjs (T10 step 4).
-//
-// This module owns everything related to the /admin HTML page and the
-// project/epic CRUD HTTP endpoints exposed under /api/project/*, /api/epic/*,
-// and /api/admin/*. Concretely:
-//   - renderAdmin(projects, flash)         — renders the admin HTML page
-//   - handleProjectCreate                  — POST /api/project/create
-//   - handleProjectArchive                 — POST /api/project/archive
-//   - handleProjectDelete                  — POST /api/project/delete
-//   - handleAdminPurgeAllProjects          — POST /api/admin/purge-all-projects
-//   - handleEpicCreate                     — POST /api/epic/create
-//   - handleProjectCreateFromIdea          — POST /api/project/create-from-idea
-//   - rollbackCreatedProjectAggregate()    — internal helper for idea bootstrap
-//
-// It depends only on:
-//   - ./shared.mjs (withDb / withDbWrite / respondJson / esc / DEV_ROOT)
-//   - ./git-bootstrap.mjs (ensureInitializedGitRepository)
-//   - the dist lifecycle starters (requiresBackgroundEngine,
-//     startProductLifecycleFromIdea, createSpawnCliLifecycleRunStarter)
-//   - the injected runtimeConfig + DB_PATH (composition root in tracker-view.mjs)
-//   - the injected page(title, body) HTML wrapper (still owned by tracker-view.mjs)
-//
-// No HTTP server, no routing — the route strings stay in tracker-view.mjs as
-// test anchors.
+// Tracker-view administration and the one-shot "idea on a napkin" factory
+// bootstrap. The factory start endpoint creates the durable aggregate, freezes
+// the model route, and only then starts Product Delivery.
+
 import path from 'node:path';
 
 import {
-  withDb, withDbWrite,
+  withDbWrite,
   respondJson,
   esc,
   DEV_ROOT,
@@ -35,14 +15,104 @@ import { requiresBackgroundEngine } from '../dist/runtime/orchestration-mode.js'
 import { startProductLifecycleFromIdea } from '../dist/app/start-product-lifecycle-from-idea.js';
 import { createSpawnCliLifecycleRunStarter } from '../dist/app/product-lifecycle-run-starter.js';
 
+const FACTORY_MODELS = Object.freeze([
+  Object.freeze({
+    id: 'glm-4.7',
+    label: 'GLM 4.7 — рекомендуется для первого запуска',
+    provider: 'zai',
+    effort: 'high',
+    limit: 10,
+  }),
+  Object.freeze({
+    id: 'glm-5-turbo',
+    label: 'GLM 5 Turbo',
+    provider: 'zai',
+    effort: 'high',
+    limit: 5,
+  }),
+  Object.freeze({
+    id: 'glm-5.2',
+    label: 'GLM 5.2',
+    provider: 'zai',
+    effort: 'high',
+    limit: 3,
+  }),
+]);
+const DEFAULT_FACTORY_MODEL = 'glm-4.7';
+const DEFAULT_FACTORY_CONCURRENCY = 4;
+
+function factoryModel(modelId) {
+  return FACTORY_MODELS.find(model => model.id === modelId) ?? null;
+}
+
+function modelEnvironment(modelId) {
+  return {
+    ANTHROPIC_DEFAULT_HAIKU_MODEL: modelId,
+    ANTHROPIC_DEFAULT_SONNET_MODEL: modelId,
+    ANTHROPIC_DEFAULT_OPUS_MODEL: modelId,
+    CLAUDE_CODE_SUBAGENT_MODEL: modelId,
+  };
+}
+
+function configureFactoryControl(db, epicId, model, concurrency) {
+  db.prepare(
+    `INSERT INTO lifecycle_execution_controls
+       (epic_id, engine_state, concurrency, model_provider, model_name,
+        model_effort, model_concurrency_limit)
+     VALUES (?, 'stopped', ?, ?, ?, ?, ?)
+     ON CONFLICT(epic_id) DO UPDATE SET
+       concurrency=excluded.concurrency,
+       model_provider=excluded.model_provider,
+       model_name=excluded.model_name,
+       model_effort=excluded.model_effort,
+       model_concurrency_limit=excluded.model_concurrency_limit,
+       updated_at=datetime('now')`,
+  ).run(
+    epicId,
+    concurrency,
+    model.provider,
+    model.id,
+    model.effort,
+    model.limit,
+  );
+}
+
+function parseRequest(req, callback) {
+  const chunks = [];
+  req.on('data', chunk => chunks.push(chunk));
+  req.on('end', () => {
+    const raw = Buffer.concat(chunks).toString('utf8');
+    const contentType = req.headers['content-type'] || '';
+    if (contentType.includes('application/json')) {
+      try {
+        callback(JSON.parse(raw));
+      } catch {
+        callback({});
+      }
+      return;
+    }
+    callback(Object.fromEntries(new URLSearchParams(raw)));
+  });
+}
+
+function legacyWorkAttemptsExist(db) {
+  return Boolean(db.prepare(
+    `SELECT 1 FROM sqlite_master
+      WHERE type='table' AND name='work_attempts'`,
+  ).get());
+}
+
 export function createAdminEndpointsApi({ runtimeConfig, dbPath, page }) {
-  // --- HTML: страница администрирования (создание проекта/эпика) ---
-  // GET /admin — две формы: «Создать проект» и «Создать эпик».
-  // POST сабмитится через fetch → /api/project/create | /api/epic/create.
-  // Только INSERT в projects/epics (schema НЕ трогается) — безопасно, обратимо.
-  // На ошибку UNIQUE name / неверный project_id → flash без краша.
   function renderAdmin(projects, flash) {
-    const opts = projects.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('');
+    const projectOptions = projects
+      .map(project => `<option value="${project.id}">${esc(project.name)}</option>`)
+      .join('');
+    const modelOptions = FACTORY_MODELS.map(model =>
+      `<option value="${esc(model.id)}"${model.id === DEFAULT_FACTORY_MODEL ? ' selected' : ''}>${esc(model.label)} · max ${model.limit}</option>`)
+      .join('');
+    const concurrencyOptions = [1, 2, 3, 4, 5, 6, 8, 10]
+      .map(value => `<option value="${value}"${value === DEFAULT_FACTORY_CONCURRENCY ? ' selected' : ''}>${value}</option>`)
+      .join('');
     const header = `
       <div class="board-head">
         <a href="/" class="back">← Все проекты</a>
@@ -50,402 +120,340 @@ export function createAdminEndpointsApi({ runtimeConfig, dbPath, page }) {
         <span style="flex:1"></span>
         <div class="heartbeat"><span id="hb-dot" class="hb-dot red"></span><span id="hb-txt">…</span></div>
       </div>`;
+
     return page('Администрирование', `
       ${header}
-      ${flash ? `<div class="flash ${flash.kind||'ok'}">${esc(flash.msg)}</div>` : ''}
+      ${flash ? `<div class="flash ${flash.kind || 'ok'}">${esc(flash.msg)}</div>` : ''}
       <div class="admin-wrap">
         <form class="admin-form" id="proj-form">
           <input type="hidden" name="action" value="project">
           <div class="admin-card-head"><span class="admin-ic">📦</span> Создать проект</div>
           <label class="ed-field"><span>Имя проекта *</span><input type="text" name="name" required placeholder="напр. my-new-product" autocomplete="off"></label>
           <label class="ed-field"><span>Описание</span><input type="text" name="description" placeholder="короткое описание (опц.)" autocomplete="off"></label>
-          <div class="admin-hint">Статус по умолчанию: <code>active</code>. Имя должно быть уникальным среди всех проектов.</div>
+          <div class="admin-hint">Статус по умолчанию: <code>active</code>. Имя должно быть уникальным.</div>
           <button type="submit" class="btn primary">➕ Создать проект</button>
         </form>
+
         <form class="admin-form" id="epic-form">
           <input type="hidden" name="action" value="epic">
           <div class="admin-card-head"><span class="admin-ic">🎯</span> Создать эпик</div>
-          <label class="ed-field"><span>Проект *</span><select name="project_id" required>${opts}</select></label>
+          <label class="ed-field"><span>Проект *</span><select name="project_id" required>${projectOptions}</select></label>
           <label class="ed-field"><span>Имя эпика *</span><input type="text" name="name" required placeholder="напр. REQ-001-feature" autocomplete="off"></label>
           <label class="ed-field"><span>Описание</span><input type="text" name="description" placeholder="опц." autocomplete="off"></label>
-          <label class="ed-field"><span>Ветка (branch, опц.)</span><input type="text" name="branch" placeholder="напр. feature/x" autocomplete="off"></label>
-          <div class="admin-hint">Статус: <code>planned</code>, приоритет <code>medium</code>.</div>
+          <label class="ed-field"><span>Ветка (опц.)</span><input type="text" name="branch" placeholder="напр. feature/x" autocomplete="off"></label>
+          <div class="admin-hint">Создаёт только эпик. Завод автоматически не запускается.</div>
           <button type="submit" class="btn primary">➕ Создать эпик</button>
         </form>
+
         <form class="admin-form" id="idea-form">
           <input type="hidden" name="action" value="idea">
-          <div class="admin-card-head"><span class="admin-ic">🚀</span> Idea → Engine (3.0)</div>
-          <label class="ed-field"><span>Имя проекта *</span><input type="text" name="name" required placeholder="напр. water-cannon" autocomplete="off"></label>
-          <label class="ed-field"><span>Идея (одной фразой) *</span><textarea name="idea" required rows="3" placeholder="напр. мини автокад 3д для прототипирования" autocomplete="off"></textarea></label>
-          <label class="ed-field"><span>Локальный путь (опц.)</span><input type="text" name="local_path" placeholder="по умолч. D:/Development/&lt;name&gt;" autocomplete="off"></label>
+          <div class="admin-card-head"><span class="admin-ic">🏭</span> Идея на салфетке → запустить завод</div>
+          <label class="ed-field"><span>Имя продукта *</span><input type="text" name="name" required placeholder="напр. water-cannon" autocomplete="off"></label>
+          <label class="ed-field"><span>Идея / проблема *</span><textarea name="idea" required rows="4" placeholder="Опишите одной-двумя фразами, что нужно получить и для кого. Формальные требования не нужны." autocomplete="off"></textarea></label>
+          <label class="ed-field"><span>Локальный путь (опц.)</span><input type="text" name="local_path" placeholder="по умолчанию D:/Development/&lt;name&gt;" autocomplete="off"></label>
+          <label class="ed-field"><span>Модель первого и последующих workers *</span><select name="model" required>${modelOptions}</select></label>
+          <label class="ed-field"><span>Параллельных workers *</span><select name="concurrency" required>${concurrencyOptions}</select></label>
           <div class="admin-hint">
-            Создаёт project + repo + epic + discovery.kickstart задачу одной транзакцией.
-            Запускает автономный движок в background — он сам прогонит
-            kickstart → PRD → UC/AC → SRS → planning → dev → verify → integration, ADR-014.
-            (После cutover saga4 существует один режим <code>saga3-lifecycle</code>;
-            движок стартует всегда.)
+            Кнопка создаёт project + repository + epic, фиксирует выбранную модель,
+            материализует immutable lifecycle input и запускает один Product Delivery Lifecycle:
+            <code>Discovery → Formalization → Development → Delivery</code>.
+            Новая стартовая task вручную не создаётся: каждый цех сам материализует
+            свои рабочие места. Завод продолжает работу, пока текущий цех не выпустит
+            свой продукт либо не вернёт явный terminal/pause/human-required outcome.
           </div>
-          <button type="submit" class="btn primary">🚀 Создать и запустить</button>
+          <button type="submit" class="btn primary">🏭 Создать и запустить завод</button>
         </form>
       </div>
+
       <script>
       async function postForm(form) {
         const data = new URLSearchParams(new FormData(form));
-        const btn = form.querySelector('button[type=submit]');
+        const button = form.querySelector('button[type=submit]');
         const action = data.get('action');
-        const endpoint = action === 'project' ? '/api/project/create'
-          : action === 'idea' ? '/api/project/create-from-idea'
-          : '/api/epic/create';
-        btn.disabled = true; const oldTxt = btn.textContent; btn.textContent = 'Создание…';
+        const endpoint = action === 'project'
+          ? '/api/project/create'
+          : action === 'idea'
+            ? '/api/project/create-from-idea'
+            : '/api/epic/create';
+        button.disabled = true;
+        const oldText = button.textContent;
+        button.textContent = action === 'idea' ? 'Запуск завода…' : 'Создание…';
         try {
-          const r = await fetch(endpoint, { method:'POST', body:data });
-          const j = await r.json();
-          if (j.ok) {
-            if (action === 'project') location.href = '/?created=' + encodeURIComponent('проект «'+(j.name||'')+'»');
-            else if (action === 'idea') {
-              const mode = j.orchestration_mode || 'saga3-lifecycle';
-              // Mirrors server-side requiresBackgroundEngine(): after the saga4
-              // cutover there is exactly ONE mode ('saga3-lifecycle') and it
-              // always spawns the background engine. Display-only; the server is
-              // the authority on whether the engine actually started.
-              const hasBgEngine = true;
-              const engineMsg = hasBgEngine
-                ? (j.engine_spawned ? 'движок запущен (' + mode + ', pid=' + j.engine_pid + ')' : 'движок НЕ запущен — проверь лог')
-                : '';
-              alert('Проект создан. project=' + j.project_id + ' epic=' + j.epic_id + ' task=' + j.task_id + '\\n' + engineMsg);
-              location.href = '?project=' + j.project_id + '&created=' + encodeURIComponent('idea → ' + engineMsg);
-            }
-            else location.href = '?project=' + j.project_id + '&created=' + encodeURIComponent('эпик «'+(j.name||'')+'»');
-          } else {
-            btn.disabled = false; btn.textContent = oldTxt;
-            alert('Ошибка: ' + (j.error || 'неизвестная'));
+          const response = await fetch(endpoint, { method:'POST', body:data });
+          const result = await response.json();
+          if (!result.ok) {
+            button.disabled = false;
+            button.textContent = oldText;
+            alert('Ошибка: ' + (result.error || 'неизвестная'));
+            return;
           }
-        } catch (err) {
-          btn.disabled = false; btn.textContent = oldTxt;
-          alert('Сеть: ' + err.message);
+          if (action === 'project') {
+            location.href = '/?created=' + encodeURIComponent('проект «' + (result.name || '') + '»');
+            return;
+          }
+          if (action === 'idea') {
+            const lifecycle = result.lifecycle_run_id == null
+              ? 'не подтверждён'
+              : '#' + result.lifecycle_run_id;
+            const message = 'Завод запущен. project=' + result.project_id
+              + ' epic=' + result.epic_id
+              + ' lifecycle=' + lifecycle
+              + '\\nmodel=' + result.model
+              + ' concurrency=' + result.concurrency;
+            alert(message);
+            location.href = '?project=' + result.project_id
+              + '&created=' + encodeURIComponent(message);
+            return;
+          }
+          location.href = '?project=' + result.project_id
+            + '&created=' + encodeURIComponent('эпик «' + (result.name || '') + '»');
+        } catch (error) {
+          button.disabled = false;
+          button.textContent = oldText;
+          alert('Сеть: ' + error.message);
         }
       }
-      document.getElementById('proj-form').addEventListener('submit', e => { e.preventDefault(); postForm(e.target); });
-      document.getElementById('epic-form').addEventListener('submit', e => { e.preventDefault(); postForm(e.target); });
-      document.getElementById('idea-form').addEventListener('submit', e => { e.preventDefault(); postForm(e.target); });
+      document.getElementById('proj-form').addEventListener('submit', event => { event.preventDefault(); postForm(event.target); });
+      document.getElementById('epic-form').addEventListener('submit', event => { event.preventDefault(); postForm(event.target); });
+      document.getElementById('idea-form').addEventListener('submit', event => { event.preventDefault(); postForm(event.target); });
       </script>`);
   }
 
-  // --- POST /api/project/create: INSERT нового saga-проекта ---
-  // Тело: application/x-www-form-urlencoded (форма) или JSON. Поля: name (обяз.),
-  // description (опц.). Только INSERT в projects (status='active'). Валидация:
-  // name непустой + уникальный (БД не форсирует UNIQUE — проверяем запросом).
-  // activity_log: фиксируем создание, как project_create в saga-mcp.
   function handleProjectCreate(req, res) {
-    let chunks = [];
-    req.on('data', c => chunks.push(c));
-    req.on('end', () => {
-      const raw = Buffer.concat(chunks).toString('utf8');
-      let fields;
-      const ct = req.headers['content-type'] || '';
-      if (ct.includes('application/json')) {
-        try { fields = JSON.parse(raw); } catch { fields = {}; }
-      } else {
-        fields = Object.fromEntries(new URLSearchParams(raw));
-      }
+    parseRequest(req, fields => {
       const name = (fields.name || '').toString().trim();
       const description = (fields.description || '').toString().trim();
-      if (!name) return respondJson(res, 400, { ok:false, error: 'name обязательное поле' });
-
+      if (!name) {
+        return respondJson(res, 400, { ok:false, error:'name обязательное поле' });
+      }
       try {
         const result = withDbWrite(db => {
-          const dup = db.prepare('SELECT id FROM projects WHERE name = ? COLLATE NOCASE').get(name);
-          if (dup) return { dup: true };
+          const duplicate = db.prepare(
+            'SELECT id FROM projects WHERE name=? COLLATE NOCASE',
+          ).get(name);
+          if (duplicate) return { duplicate:true };
           const info = db.prepare(
-            "INSERT INTO projects (name, description, status) VALUES (?, ?, 'active')"
+            "INSERT INTO projects (name,description,status) VALUES (?,?,'active')",
           ).run(name, description || null);
-          const newId = Number(info.lastInsertRowid);
+          const id = Number(info.lastInsertRowid);
           db.prepare(
-            "INSERT INTO activity_log (entity_type, entity_id, action, summary) VALUES ('project', ?, 'created', ?)"
-          ).run(newId, `Создан проект «${name}» через tracker-view admin`);
-          return { id: newId };
+            "INSERT INTO activity_log (entity_type,entity_id,action,summary) VALUES ('project',?,'created',?)",
+          ).run(id, `Создан проект «${name}» через tracker-view admin`);
+          return { id };
         });
-        if (result.dup) return respondJson(res, 409, { ok:false, error: `Проект «${name}» уже существует` });
-        respondJson(res, 200, { ok:true, id: result.id, name });
-      } catch (e) {
-        respondJson(res, 500, { ok:false, error: 'db: ' + e.message });
+        if (result.duplicate) {
+          return respondJson(res, 409, { ok:false, error:`Проект «${name}» уже существует` });
+        }
+        respondJson(res, 200, { ok:true, id:result.id, name });
+      } catch (error) {
+        respondJson(res, 500, { ok:false, error:'db: ' + error.message });
       }
     });
   }
 
-  // --- POST /api/project/archive: soft-delete (status='archived') ---
-  // Тело: { project_id }. Не трогает cascade — только переводит проект в
-  // 'archived'. listProjects() фильтрует по status != 'archived', так что
-  // проект исчезает из канбана, но все данные сохраняются. Это CGAD-P2-
-  // совместимый путь. Восстановление — через SQL (UPDATE status='active').
   function handleProjectArchive(req, res) {
-    let chunks = [];
-    req.on('data', c => chunks.push(c));
-    req.on('end', () => {
-      const raw = Buffer.concat(chunks).toString('utf8');
-      let fields;
-      const ct = req.headers['content-type'] || '';
-      if (ct.includes('application/json')) {
-        try { fields = JSON.parse(raw); } catch { fields = {}; }
-      } else {
-        fields = Object.fromEntries(new URLSearchParams(raw));
-      }
+    parseRequest(req, fields => {
       const projectId = Number(fields.project_id);
       if (!Number.isInteger(projectId) || projectId <= 0) {
-        return respondJson(res, 400, { ok:false, error: 'project_id обязателен и должен быть положительным целым' });
+        return respondJson(res, 400, { ok:false, error:'project_id должен быть положительным целым' });
       }
       try {
         const result = withDbWrite(db => {
-          const row = db.prepare('SELECT name, status FROM projects WHERE id=?').get(projectId);
-          if (!row) return { notFound: true };
-          if (row.status === 'archived') return { alreadyArchived: true, name: row.name };
-          db.prepare("UPDATE projects SET status='archived', updated_at=datetime('now') WHERE id=?")
-            .run(projectId);
-          db.prepare(
-            "INSERT INTO activity_log (entity_type, entity_id, action, summary) VALUES ('project', ?, 'archived', ?)"
-          ).run(projectId, `Проект «${row.name}» архивирован через tracker-view admin`);
-          return { name: row.name };
-        });
-        if (result.notFound) return respondJson(res, 404, { ok:false, error: `Проект ${projectId} не найден` });
-        if (result.alreadyArchived) return respondJson(res, 200, { ok:true, id: projectId, name: result.name, already_archived: true });
-        respondJson(res, 200, { ok:true, id: projectId, name: result.name });
-      } catch (e) {
-        respondJson(res, 500, { ok:false, error: 'db: ' + e.message });
-      }
-    });
-  }
-
-  // --- POST /api/project/delete: hard-delete (cascade) ---
-  // Тело: { project_id }. Полное удаление со всеми эпиками, задачами,
-  // артефактами, трассировками, worker_executions, repository bindings.
-  // Возвращает deregistered_checkouts — список (machine_id, local_path),
-  // которые были отвязаны, чтобы оператор мог подчистить диск отдельно.
-  //
-  // Safety: rejects (409) while a durable Product Lifecycle is created/running.
-  // Не трогает: repositories rows (P17), activity_log (P12), command_receipts,
-  // on-disk .md artifact files.
-  function handleProjectDelete(req, res) {
-    let chunks = [];
-    req.on('data', c => chunks.push(c));
-    req.on('end', () => {
-      const raw = Buffer.concat(chunks).toString('utf8');
-      let fields;
-      const ct = req.headers['content-type'] || '';
-      if (ct.includes('application/json')) {
-        try { fields = JSON.parse(raw); } catch { fields = {}; }
-      } else {
-        fields = Object.fromEntries(new URLSearchParams(raw));
-      }
-      const projectId = Number(fields.project_id);
-      if (!Number.isInteger(projectId) || projectId <= 0) {
-        return respondJson(res, 400, { ok:false, error: 'project_id обязателен и должен быть положительным целым' });
-      }
-      try {
-        const result = withDbWrite(db => {
-          const row = db.prepare('SELECT name FROM projects WHERE id=?').get(projectId);
-          if (!row) return { notFound: true };
-
-          // Saga4 guard: LifecycleRun is the execution authority. Do not
-          // delete a project while an orchestrator may still own its ProcessRuns.
-          const running = db.prepare(
-            `SELECT DISTINCT epic_id
-               FROM saga3_lifecycle_runs
-              WHERE project_id = ?
-                AND status IN ('created','running')`,
-          ).all(projectId);
-          if (running.length > 0) {
-            return { engineRunning: running.map(r => r.epic_id) };
+          const project = db.prepare(
+            'SELECT name,status FROM projects WHERE id=?',
+          ).get(projectId);
+          if (!project) return { notFound:true };
+          if (project.status === 'archived') {
+            return { alreadyArchived:true, name:project.name };
           }
-
-          // Capture checkouts before delete (return value).
-          const checkouts = db.prepare(
-            `SELECT rc.machine_id, rc.local_path
-               FROM repository_checkouts rc
-               JOIN project_repositories pr ON pr.id = rc.project_repository_id
-              WHERE pr.project_id = ?`,
-          ).all(projectId);
-
-          // work_attempts.execution_id → worker_executions (no CASCADE).
-          // Clean first, otherwise DELETE FROM worker_executions trips FK.
           db.prepare(
-            `DELETE FROM work_attempts
-              WHERE execution_id IN (
-                SELECT execution_id FROM worker_executions WHERE project_id=?
-              )`
+            "UPDATE projects SET status='archived',updated_at=datetime('now') WHERE id=?",
           ).run(projectId);
-          // worker_executions has no FK on project_id — manual cleanup.
-          db.prepare('DELETE FROM worker_executions WHERE project_id=?').run(projectId);
-          // DELETE FROM projects triggers every ON DELETE CASCADE.
-          db.prepare('DELETE FROM projects WHERE id=?').run(projectId);
           db.prepare(
-            "INSERT INTO activity_log (entity_type, entity_id, action, summary) VALUES ('project', ?, 'deleted', ?)"
-          ).run(projectId, `Проект «${row.name}» (id=${projectId}) удалён через tracker-view admin`);
-          return { name: row.name, checkouts };
+            "INSERT INTO activity_log (entity_type,entity_id,action,summary) VALUES ('project',?,'archived',?)",
+          ).run(projectId, `Проект «${project.name}» архивирован`);
+          return { name:project.name };
         });
-        if (result.notFound) return respondJson(res, 404, { ok:false, error: `Проект ${projectId} не найден` });
-        if (result.engineRunning) {
-          return respondJson(res, 409, {
-            ok:false,
-            error: `Сначала завершите или отмените Product Lifecycle для scope: ${result.engineRunning.map(id => id ?? '<project>').join(', ')}`,
-            running_epics: result.engineRunning,
-          });
+        if (result.notFound) {
+          return respondJson(res, 404, { ok:false, error:`Проект ${projectId} не найден` });
         }
         respondJson(res, 200, {
-          ok:true, id: projectId, name: result.name,
-          deregistered_checkouts: result.checkouts,
+          ok:true,
+          id:projectId,
+          name:result.name,
+          already_archived:Boolean(result.alreadyArchived),
         });
-      } catch (e) {
-        respondJson(res, 500, { ok:false, error: 'db: ' + e.message });
+      } catch (error) {
+        respondJson(res, 500, { ok:false, error:'db: ' + error.message });
       }
     });
   }
 
-  // --- POST /api/admin/purge-all-projects: cascade-delete EVERY project ---
-  // Admin/operator escape hatch for resetting the board to empty (test fixtures,
-  // clean D-slice smoke runs). Iterates every project and runs the SAME cascade
-  // cleanup as /api/project/delete (work_attempts → worker_executions → projects
-  // CASCADE, which also drops saga3_work_intents/saga3_proposals via epic/task
-  // CASCADE). Returns the per-project outcome + the global seed rows preserved.
-  //
-  // Safety:
-  //   - rejects (409) if ANY durable Product Lifecycle is created/running —
-  //     operator must complete or cancel it before destructive cleanup;
-  //   - never deletes platform_policies / global trusted_providers (NULL
-  //     project_id) — saga needs those at bootstrap;
-  //   - does NOT touch on-disk .md files or machine checkouts; returns the list
-  //     of deregistered checkouts so the operator can rm them separately.
-  //
-  // NOT touched (by design, mirrors /api/project/delete):
-  //   repositories rows (P17 resource), activity_log (P12 audit), command_receipts
-  //   (idempotency ledger), on-disk artifact docs.
-  function handleAdminPurgeAllProjects(req, res) {
-    let chunks = [];
-    req.on('data', c => chunks.push(c));
-    req.on('end', () => {
+  function handleProjectDelete(req, res) {
+    parseRequest(req, fields => {
+      const projectId = Number(fields.project_id);
+      if (!Number.isInteger(projectId) || projectId <= 0) {
+        return respondJson(res, 400, { ok:false, error:'project_id должен быть положительным целым' });
+      }
       try {
         const result = withDbWrite(db => {
-          // Global Saga4 guard: lifecycle state, not episode metadata, owns
-          // whether destructive cleanup is safe.
-          const running = db.prepare(
-            `SELECT DISTINCT epic_id, project_id
+          const project = db.prepare('SELECT name FROM projects WHERE id=?')
+            .get(projectId);
+          if (!project) return { notFound:true };
+
+          const live = db.prepare(
+            `SELECT DISTINCT epic_id
                FROM saga3_lifecycle_runs
-              WHERE status IN ('created','running')`,
-          ).all();
-          if (running.length > 0) {
-            return { engineRunning: running };
+              WHERE project_id=?
+                AND status IN ('created','running','paused')`,
+          ).all(projectId);
+          if (live.length > 0) {
+            return { lifecycleActive:live.map(row => row.epic_id) };
           }
 
-          const projects = db.prepare('SELECT id, name FROM projects ORDER BY id').all();
-          const checkouts = [];
-          const deleted = [];
-          for (const p of projects) {
-            // Capture this project's checkouts before delete.
-            const pco = db.prepare(
-              `SELECT rc.machine_id, rc.local_path
-                 FROM repository_checkouts rc
-                 JOIN project_repositories pr ON pr.id = rc.project_repository_id
-                WHERE pr.project_id = ?`,
-            ).all(p.id);
-            checkouts.push(...pco);
-
-            // Same manual cleanup as handleProjectDelete (no-FK columns first).
+          const checkouts = db.prepare(
+            `SELECT rc.machine_id,rc.local_path
+               FROM repository_checkouts rc
+               JOIN project_repositories pr
+                 ON pr.id=rc.project_repository_id
+              WHERE pr.project_id=?`,
+          ).all(projectId);
+          if (legacyWorkAttemptsExist(db)) {
             db.prepare(
               `DELETE FROM work_attempts
                 WHERE execution_id IN (
                   SELECT execution_id FROM worker_executions WHERE project_id=?
-                )`
-            ).run(p.id);
-            db.prepare('DELETE FROM worker_executions WHERE project_id=?').run(p.id);
-            // DELETE FROM projects fires every ON DELETE CASCADE: epics → tasks →
-            // (subtasks, deps, comments, conflict_keys, verification_evidence,
-            //  task_work_items, human_requests, integration_intents), epics →
-            // artifacts → traces, epics → episode_workflows, epics →
-            // runtime_observations, epics → saga3_work_intents → saga3_proposals,
-            // project_repositories → repository_checkouts, trusted_providers
-            // (project-scoped only; global NULL-project_id rows survive).
-            db.prepare('DELETE FROM projects WHERE id=?').run(p.id);
-            deleted.push({ id: p.id, name: p.name });
+                )`,
+            ).run(projectId);
           }
-
-          // Audit the bulk purge as one entry.
+          db.prepare('DELETE FROM worker_executions WHERE project_id=?')
+            .run(projectId);
+          db.prepare('DELETE FROM projects WHERE id=?').run(projectId);
           db.prepare(
-            "INSERT INTO activity_log (entity_type, entity_id, action, summary) VALUES ('project', 0, 'purge_all', ?)"
-          ).run(`Каскадное удаление всех проектов через /api/admin/purge-all-projects: ${deleted.length} проект(ов) [${deleted.map(d => d.name).join(', ')}]`);
-
-          return { deleted, checkouts };
+            "INSERT INTO activity_log (entity_type,entity_id,action,summary) VALUES ('project',?,'deleted',?)",
+          ).run(projectId, `Проект «${project.name}» удалён`);
+          return { name:project.name, checkouts };
         });
-
-        if (result.engineRunning) {
-          const list = result.engineRunning.map(r => `epic ${r.epic_id} (project ${r.project_id})`).join(', ');
+        if (result.notFound) {
+          return respondJson(res, 404, { ok:false, error:`Проект ${projectId} не найден` });
+        }
+        if (result.lifecycleActive) {
           return respondJson(res, 409, {
             ok:false,
-            error: `Сначала остановите все движки: ${list}`,
-            running: result.engineRunning,
+            error:'Сначала завершите или отмените Product Lifecycle. Paused run нужно resume, а не удалять.',
+            running_epics:result.lifecycleActive,
           });
         }
         respondJson(res, 200, {
-          ok: true,
-          deleted: result.deleted,
-          deregistered_checkouts: result.checkouts,
-          note: 'platform_policies и глобальные trusted_providers сохранены. .md-файлы и machine checkouts на диске не тронуты.',
+          ok:true,
+          id:projectId,
+          name:result.name,
+          deregistered_checkouts:result.checkouts,
         });
-      } catch (e) {
-        respondJson(res, 500, { ok:false, error: 'db: ' + e.message });
+      } catch (error) {
+        respondJson(res, 500, { ok:false, error:'db: ' + error.message });
       }
     });
   }
 
-  // --- POST /api/epic/create: INSERT нового эпика ---
-  // Поля: project_id (обяз.), name (обяз.), description (опц.), branch (опц.).
-  // INSERT в epics (status='planned', priority='medium'). FK project_id проверяется.
-  function handleEpicCreate(req, res) {
-    let chunks = [];
-    req.on('data', c => chunks.push(c));
-    req.on('end', () => {
-      const raw = Buffer.concat(chunks).toString('utf8');
-      let fields;
-      const ct = req.headers['content-type'] || '';
-      if (ct.includes('application/json')) {
-        try { fields = JSON.parse(raw); } catch { fields = {}; }
-      } else {
-        fields = Object.fromEntries(new URLSearchParams(raw));
+  function handleAdminPurgeAllProjects(req, res) {
+    parseRequest(req, () => {
+      try {
+        const result = withDbWrite(db => {
+          const live = db.prepare(
+            `SELECT DISTINCT epic_id,project_id
+               FROM saga3_lifecycle_runs
+              WHERE status IN ('created','running','paused')`,
+          ).all();
+          if (live.length > 0) return { lifecycleActive:live };
+
+          const projects = db.prepare(
+            'SELECT id,name FROM projects ORDER BY id',
+          ).all();
+          const checkouts = [];
+          const deleted = [];
+          const hasLegacyAttempts = legacyWorkAttemptsExist(db);
+          for (const project of projects) {
+            checkouts.push(...db.prepare(
+              `SELECT rc.machine_id,rc.local_path
+                 FROM repository_checkouts rc
+                 JOIN project_repositories pr
+                   ON pr.id=rc.project_repository_id
+                WHERE pr.project_id=?`,
+            ).all(project.id));
+            if (hasLegacyAttempts) {
+              db.prepare(
+                `DELETE FROM work_attempts
+                  WHERE execution_id IN (
+                    SELECT execution_id FROM worker_executions WHERE project_id=?
+                  )`,
+              ).run(project.id);
+            }
+            db.prepare('DELETE FROM worker_executions WHERE project_id=?')
+              .run(project.id);
+            db.prepare('DELETE FROM projects WHERE id=?').run(project.id);
+            deleted.push({ id:project.id, name:project.name });
+          }
+          db.prepare(
+            "INSERT INTO activity_log (entity_type,entity_id,action,summary) VALUES ('project',0,'purge_all',?)",
+          ).run(`Удалены все проекты: ${deleted.map(item => item.name).join(', ')}`);
+          return { deleted, checkouts };
+        });
+        if (result.lifecycleActive) {
+          return respondJson(res, 409, {
+            ok:false,
+            error:'Нельзя очищать доску при created/running/paused lifecycle.',
+            running:result.lifecycleActive,
+          });
+        }
+        respondJson(res, 200, {
+          ok:true,
+          deleted:result.deleted,
+          deregistered_checkouts:result.checkouts,
+          note:'Глобальные policies/providers и файлы рабочих копий не удалены.',
+        });
+      } catch (error) {
+        respondJson(res, 500, { ok:false, error:'db: ' + error.message });
       }
+    });
+  }
+
+  function handleEpicCreate(req, res) {
+    parseRequest(req, fields => {
       const projectId = Number(fields.project_id);
       const name = (fields.name || '').toString().trim();
       const description = (fields.description || '').toString().trim();
       const branch = (fields.branch || '').toString().trim();
-      if (!projectId) return respondJson(res, 400, { ok:false, error: 'project_id обязательное поле' });
-      if (!name) return respondJson(res, 400, { ok:false, error: 'name обязательное поле' });
-
+      if (!projectId) {
+        return respondJson(res, 400, { ok:false, error:'project_id обязательное поле' });
+      }
+      if (!name) {
+        return respondJson(res, 400, { ok:false, error:'name обязательное поле' });
+      }
       try {
         const result = withDbWrite(db => {
-          const proj = db.prepare('SELECT id, name FROM projects WHERE id=?').get(projectId);
-          if (!proj) return { missing: true };
+          const project = db.prepare('SELECT id,name FROM projects WHERE id=?')
+            .get(projectId);
+          if (!project) return { missing:true };
           const info = db.prepare(
-            "INSERT INTO epics (project_id, name, description, branch, status, priority) VALUES (?, ?, ?, ?, 'planned', 'medium')"
+            "INSERT INTO epics (project_id,name,description,branch,status,priority) VALUES (?,?,?,?,'planned','medium')",
           ).run(projectId, name, description || null, branch || null);
-          const newId = Number(info.lastInsertRowid);
+          const id = Number(info.lastInsertRowid);
           db.prepare(
-            "INSERT INTO activity_log (entity_type, entity_id, action, summary) VALUES ('epic', ?, 'created', ?)"
-          ).run(newId, `Создан эпик «${name}» в проекте «${proj.name}» через tracker-view admin`);
-          return { id: newId };
+            "INSERT INTO activity_log (entity_type,entity_id,action,summary) VALUES ('epic',?,'created',?)",
+          ).run(id, `Создан эпик «${name}» в проекте «${project.name}»`);
+          return { id };
         });
-        if (result.missing) return respondJson(res, 404, { ok:false, error: `Проект #${projectId} не найден` });
-        respondJson(res, 200, { ok:true, id: result.id, project_id: projectId, name });
-      } catch (e) {
-        respondJson(res, 500, { ok:false, error: 'db: ' + e.message });
+        if (result.missing) {
+          return respondJson(res, 404, { ok:false, error:`Проект #${projectId} не найден` });
+        }
+        respondJson(res, 200, { ok:true, id:result.id, project_id:projectId, name });
+      } catch (error) {
+        respondJson(res, 500, { ok:false, error:'db: ' + error.message });
       }
     });
   }
 
-
-  // --- POST /api/project/create-from-idea: one-shot bootstrap для Saga4 ---
-  // Поля: name (обяз.), idea (обяз.), local_path (опц., по умолчанию DEV_ROOT/<name>).
-  //
-  // Создаёт project/repository/epic, инициализирует реальный Git checkout с
-  // первым commit (если HEAD ещё отсутствует), затем запускает единственный
-  // Product Lifecycle runtime. `episode_workflows` здесь не создаётся: durable
-  // LifecycleRun является единственной записью оркестрации нового проекта.
   function rollbackCreatedProjectAggregate({ projectId, repoId }) {
     withDbWrite(db => {
       db.prepare(
@@ -463,74 +471,83 @@ export function createAdminEndpointsApi({ runtimeConfig, dbPath, page }) {
   }
 
   function handleProjectCreateFromIdea(req, res) {
-    let chunks = [];
-    req.on('data', c => chunks.push(c));
-    req.on('end', async () => {
-      const raw = Buffer.concat(chunks).toString('utf8');
-      let fields;
-      const ct = req.headers['content-type'] || '';
-      if (ct.includes('application/json')) {
-        try { fields = JSON.parse(raw); } catch { fields = {}; }
-      } else {
-        fields = Object.fromEntries(new URLSearchParams(raw));
-      }
+    parseRequest(req, async fields => {
       const name = (fields.name || '').toString().trim();
       const idea = (fields.idea || '').toString().trim();
-      if (!name) return respondJson(res, 400, { ok:false, error: 'name обязательное поле' });
-      if (!idea) return respondJson(res, 400, { ok:false, error: 'idea обязательное поле' });
+      const modelId = (fields.model || DEFAULT_FACTORY_MODEL)
+        .toString()
+        .trim();
+      const selectedModel = factoryModel(modelId);
+      const requestedConcurrency = Number(
+        fields.concurrency || DEFAULT_FACTORY_CONCURRENCY,
+      );
+      if (!name) {
+        return respondJson(res, 400, { ok:false, error:'name обязательное поле' });
+      }
+      if (!idea) {
+        return respondJson(res, 400, { ok:false, error:'idea обязательное поле' });
+      }
+      if (!selectedModel) {
+        return respondJson(res, 400, { ok:false, error:`Неизвестная модель: ${modelId}` });
+      }
+      if (
+        !Number.isInteger(requestedConcurrency)
+        || requestedConcurrency < 1
+        || requestedConcurrency > 10
+      ) {
+        return respondJson(res, 400, { ok:false, error:'concurrency должен быть целым 1..10' });
+      }
+      const concurrency = Math.min(
+        requestedConcurrency,
+        selectedModel.limit,
+      );
       const localPath = (fields.local_path || '').toString().trim()
         || path.join(DEV_ROOT, name);
 
       try {
         const result = withDbWrite(db => {
-          const dup = db.prepare('SELECT id FROM projects WHERE name = ? COLLATE NOCASE').get(name);
-          if (dup) return { dup: true };
+          const duplicate = db.prepare(
+            'SELECT id FROM projects WHERE name=? COLLATE NOCASE',
+          ).get(name);
+          if (duplicate) return { duplicate:true };
 
-          // 1. project
-          const projInfo = db.prepare(
-            "INSERT INTO projects (name, description, status) VALUES (?, ?, 'active')"
+          const projectInfo = db.prepare(
+            "INSERT INTO projects (name,description,status) VALUES (?,?,'active')",
           ).run(name, idea);
-          const projectId = Number(projInfo.lastInsertRowid);
+          const projectId = Number(projectInfo.lastInsertRowid);
 
-          // 2. repository — register control repo. Two INSERTs matching
-          //    repository_register in src/tools/repositories.ts (repositories +
-          //    project_repositories). project_repositories has no `name` column —
-          //    name lives on `repositories`. We inline so the whole bootstrap is
-          //    one atomic transaction (no half-created project on partial failure).
           const repoInfo = db.prepare(
-            `INSERT INTO repositories (name, default_branch) VALUES (?, 'main')`,
+            "INSERT INTO repositories (name,default_branch) VALUES (?,'main')",
           ).run(name);
           const repoId = Number(repoInfo.lastInsertRowid);
           db.prepare(
             `INSERT INTO project_repositories
-               (project_id, repository_id, role, local_path,
-                integration_branch, status)
-             VALUES (?, ?, 'control', ?, 'main', 'active')`,
+               (project_id,repository_id,role,local_path,integration_branch,status)
+             VALUES (?,?,'control',?,'main','active')`,
           ).run(projectId, repoId, localPath);
 
-          // 3. epic
           const epicInfo = db.prepare(
-            "INSERT INTO epics (project_id, name, description, status, priority) VALUES (?, ?, ?, 'planned', 'high')"
+            "INSERT INTO epics (project_id,name,description,status,priority) VALUES (?,?,?,'planned','high')",
           ).run(projectId, `REQ-001-${name}`, `Discovery: ${idea}`);
           const epicId = Number(epicInfo.lastInsertRowid);
 
-          // No episode_workflows row and no legacy discovery.kickstart task.
-          // The Product Lifecycle owns orchestration state and task projection.
-          // Activity is recorded only after the durable LifecycleRun has started,
-          // so a failed bootstrap leaves no successful-creation audit record.
-          return { projectId, repoId, epicId, taskId: null };
+          // The model route is durable before any LM task becomes claimable.
+          configureFactoryControl(
+            db,
+            epicId,
+            selectedModel,
+            concurrency,
+          );
+          return { projectId, repoId, epicId, taskId:null };
         });
 
-        if (result.dup) {
-          return respondJson(res, 409, { ok:false, error: `Проект «${name}» уже существует` });
+        if (result.duplicate) {
+          return respondJson(res, 409, { ok:false, error:`Проект «${name}» уже существует` });
         }
 
-        // Lifecycle input pins a real Git HEAD before Discovery starts.
         try {
           ensureInitializedGitRepository(localPath, name);
-        } catch (e) {
-          // The aggregate is unusable without a repository capability. Remove
-          // project/epic/binding and the now-unreferenced repository registry row.
+        } catch (error) {
           try {
             rollbackCreatedProjectAggregate(result);
           } catch (cleanupError) {
@@ -539,15 +556,11 @@ export function createAdminEndpointsApi({ runtimeConfig, dbPath, page }) {
             );
           }
           return respondJson(res, 500, {
-            ok: false,
-            error: `git bootstrap: ${e.message}`,
+            ok:false,
+            error:`git bootstrap: ${error.message}`,
           });
         }
 
-        // The bare idea is assembled into a validated Product Delivery input,
-        // including the real repository binding/current Git HEAD and an explicit
-        // deferred Delivery profile. The spawn starter acknowledges only after
-        // the LifecycleRun has been durably persisted.
         const mode = runtimeConfig.orchestrationMode;
         let lifecycleStarted = false;
         let lifecycleRunId = null;
@@ -555,20 +568,27 @@ export function createAdminEndpointsApi({ runtimeConfig, dbPath, page }) {
           try {
             const starter = createSpawnCliLifecycleRunStarter({
               dbPath,
-              baseEnv: process.env,
+              // Keep model selection scoped to this engine. Every worker also
+              // receives the durable model route captured at claim time.
+              baseEnv: {
+                ...process.env,
+                ...modelEnvironment(selectedModel.id),
+              },
             });
             const started = await startProductLifecycleFromIdea({
-              projectId: result.projectId,
-              epicId: result.epicId,
+              projectId:result.projectId,
+              epicId:result.epicId,
               idea,
-              initiatedBy: `create-from-idea:${result.projectId}`,
-              concurrency: 4,
+              initiatedBy:`create-from-idea:${result.projectId}`,
+              concurrency,
               starter,
             });
             lifecycleStarted = true;
             lifecycleRunId = started.lifecycleRunId;
-          } catch (e) {
-            console.error(`[create-from-idea] lifecycle start failed: ${e.message}`);
+          } catch (error) {
+            console.error(
+              `[create-from-idea] lifecycle start failed: ${error.message}`,
+            );
             try {
               rollbackCreatedProjectAggregate(result);
             } catch (cleanupError) {
@@ -577,33 +597,38 @@ export function createAdminEndpointsApi({ runtimeConfig, dbPath, page }) {
               );
             }
             return respondJson(res, 500, {
-              ok: false,
-              error: `lifecycle start: ${e.message}`,
+              ok:false,
+              error:`lifecycle start: ${error.message}`,
             });
           }
         }
 
         withDbWrite(db => db.prepare(
-          "INSERT INTO activity_log (entity_type, entity_id, action, summary) VALUES ('project', ?, 'created', ?)",
+          "INSERT INTO activity_log (entity_type,entity_id,action,summary) VALUES ('project',?,'created',?)",
         ).run(
           result.projectId,
-          `Создан проект «${name}» через веб-форму idea → Product Lifecycle`,
+          `Создан завод «${name}»: model=${selectedModel.id}, concurrency=${concurrency}`,
         ));
 
         respondJson(res, 200, {
-          ok: true,
-          project_id: result.projectId,
-          repo_id: result.repoId,
-          epic_id: result.epicId,
-          task_id: result.taskId,
-          orchestration_mode: mode,
-          lifecycle_started: lifecycleStarted,
-          lifecycle_run_id: lifecycleRunId,
-          start_error: null,
-          local_path: localPath,
+          ok:true,
+          project_id:result.projectId,
+          repo_id:result.repoId,
+          epic_id:result.epicId,
+          task_id:result.taskId,
+          orchestration_mode:mode,
+          lifecycle_started:lifecycleStarted,
+          lifecycle_run_id:lifecycleRunId,
+          start_error:null,
+          local_path:localPath,
+          model:selectedModel.id,
+          model_provider:selectedModel.provider,
+          model_limit:selectedModel.limit,
+          requested_concurrency:requestedConcurrency,
+          concurrency,
         });
-      } catch (e) {
-        respondJson(res, 500, { ok:false, error: 'db: ' + e.message });
+      } catch (error) {
+        respondJson(res, 500, { ok:false, error:'db: ' + error.message });
       }
     });
   }
