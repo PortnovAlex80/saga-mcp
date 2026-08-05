@@ -792,19 +792,23 @@ export class LmNodeExecutor implements NodeExecutor {
         // preparation node (proposalId/proposalHash/controlIntentId), so the
         // downstream settlement kernel can read exact lineage from the chain.
         // Prefer the managed-production producer execution (the worker that
-        // created artifacts → moved task to 'review'), not the latest execution
-        // (which may be the reviewer who moved it to 'done'). On replay
-        // (recovery/resume), executionId is null, and readLatestExecutionId
-        // returns the reviewer — but exact-acceptance gate needs the PRODUCER
-        // execution_id for lineage. readLatestManagedProductionExecutionId
-        // finds it through the managed_artifact_productions ledger.
-        const cleanExecutionId = executionId
-          ?? this.persistence.readLatestManagedProductionExecutionId?.(
-              taskId,
-              ctx.processRunId,
-              node.id,
-            )
+        // The exact-acceptance gate needs the PRODUCER execution_id (the author
+        // who created artifacts → moved task to 'review'), not the latest
+        // execution (which may be the reviewer who moved it to 'done'). The
+        // poll-loop's `executionId` variable tracks the CURRENT fence, which
+        // after review→done is the REVIEWER, not the author. So we MUST check
+        // the managed_artifact_productions ledger FIRST — it records the exact
+        // execution that produced artifacts for this node. Only when the ledger
+        // has no entry (non-managed path) do we fall back to the poll-loop
+        // executionId.
+        const cleanExecutionId =
+          this.persistence.readLatestManagedProductionExecutionId?.(
+            taskId,
+            ctx.processRunId,
+            node.id,
+          )
           ?? this.persistence.readProducerExecutionId?.(taskId)
+          ?? executionId
           ?? this.persistence.readLatestExecutionId(taskId);
         return {
           runtimeEvent: 'completed',

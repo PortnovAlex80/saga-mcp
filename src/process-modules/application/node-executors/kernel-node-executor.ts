@@ -126,6 +126,11 @@ export class KernelNodeExecutor implements NodeExecutor {
       };
     } catch (error) {
       if (!(error instanceof ExactCandidateAcceptanceRejected)) throw error;
+      // Diagnostic: surface the exact rejection reason so the operator can see
+      // WHY the gate blocked (instead of a silent 'acceptance-blocked' event).
+      process.stderr.write(
+        `[exact-acceptance] REJECTED node=${ctx.node?.id} code=${error.code} details=${JSON.stringify(error.details ?? {})}\n`,
+      );
       if (!isRepairableAcceptanceRejection(error)) throw error;
       return {
         result: {
