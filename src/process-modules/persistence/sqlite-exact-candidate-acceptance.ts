@@ -736,18 +736,6 @@ implements ExactCandidateAcceptance {
     // back to an older approval after a newer changes_requested verdict would
     // silently accept a superseded review decision.
     const finalReceipt = receipts[0];
-    // Diagnostic: log the exact receipt evaluation so the operator can see WHY
-    // the review-evidence check fails (instead of a silent rejection).
-    const _receiptCheck = finalReceipt ? {
-      cmd: finalReceipt.command_id,
-      exec: finalReceipt.execution_id,
-      isDone: isWorkerDoneReceipt(finalReceipt, taskId, 'done'),
-      execNull: finalReceipt.execution_id === null,
-      execEqProducer: finalReceipt.execution_id === lineage.executionId,
-    } : null;
-    process.stderr.write(
-      `[exact-acceptance] review-eval taskId=${taskId} lineageExec=${lineage.executionId} receipts=${receipts.length} final=${JSON.stringify(_receiptCheck)}\n`,
-    );
     // A reviewer's worker_done(approved) sends the task to 'removed-legacy-status'
     // (not 'done'). 'done' is only set by promoteTaskToDone AFTER the kernel gate
     // accepts — a chicken-and-egg. Accept 'removed-legacy-status' as a valid

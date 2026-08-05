@@ -1120,7 +1120,21 @@ function readExecutionWrites(
       throw new Error(`${handlerId}: ledger trace ${write.traceId} does not match its canonical row`);
     }
   }
-  return { receipt, artifactWrites, traceWrites, artifacts, traces };
+  // P18 fix: the receipt.executionId may point to a REVIEWER or FAILED repair
+  // execution (the latest NodeRun for this node), not the PRODUCER (the author
+  // who created artifacts and moved the task to 'review'). The exact-acceptance
+  // gate requires the producer's executionId to find the 'review' receipt.
+  // Resolve the producer from the managed_artifact_productions ledger — it
+  // records the exact execution that produced artifacts for this node-scope.
+  const ledgerProducerExec = deps.ledger.readLatestManagedProductionExecutionIdForNode?.(
+    ctx.processRunId,
+    FORMALIZATION_MODULE_KEY,
+    sourceNodeId,
+  );
+  const finalReceipt = (ledgerProducerExec && ledgerProducerExec !== receipt.executionId)
+    ? { ...receipt, executionId: ledgerProducerExec }
+    : receipt;
+  return { receipt: finalReceipt, artifactWrites, traceWrites, artifacts, traces };
 }
 
 /**

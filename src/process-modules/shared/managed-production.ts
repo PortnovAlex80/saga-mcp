@@ -116,4 +116,17 @@ export interface ManagedProductionLedger {
     moduleRef: string,
     nodeId: string,
   ): readonly ManagedTraceProductionRecord[];
+  /**
+   * The execution_id of the latest managed artifact production for this
+   * node-scope. This is the PRODUCER execution (the author who created
+   * artifacts), not the reviewer or a failed repair attempt. Used by the
+   * formalization gate to resolve producer lineage (P18): the gate needs the
+   * author's 'review' receipt, but the latest NodeRun may point to a reviewer
+   * or failed execution. Returns null when the ledger has no entries.
+   */
+  readLatestManagedProductionExecutionIdForNode?(
+    processRunId: number,
+    moduleRef: string,
+    nodeId: string,
+  ): string | null;
 }
