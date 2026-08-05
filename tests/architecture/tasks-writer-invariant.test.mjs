@@ -95,6 +95,13 @@ const ALLOWED_LIFECYCLE_FILES = new Set([
   'src/lifecycle/work-assignment-core.ts',
   'src/lifecycle/atomic-release.ts',
   'src/lifecycle/unfenced-assignment-recovery.ts',
+  // Conveyor v4 step 5.2 cutover: WorkplaceProjector.reverseProjectWorkplaceToTask
+  // is the ONE-WAY reverse projection of v4_workplaces.kanbanPhase into
+  // tasks.status (REG-06: tasks is a rebuildable projection after cutover).
+  // It writes ONLY the status column (never assigned_to / current_execution_id,
+  // which remain owned by the single-writer set above). This is the projection
+  // writer — the inverse of the forward shadow-write.
+  'src/infrastructure/projections/workplace-projector.ts',
 ]);
 
 // Wave 8 / MEDIUM 6: the documented src/worker-executions.ts exception is

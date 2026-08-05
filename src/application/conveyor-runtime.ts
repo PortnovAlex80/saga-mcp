@@ -334,10 +334,11 @@ export class ConveyorRuntime {
         productionCellId: ref.productionCellId,
         workKey: ref.workKey,
       });
-      // Bind the task row to the workplace (data column).
+      // Bind the task row to the workplace (data column). Store the SERIALIZED
+      // form so it matches v4_workplaces.workplace_ref (the PK) for joins.
       this.db.prepare(
         `UPDATE tasks SET workplace_ref=? WHERE id=? AND workplace_ref IS NULL`,
-      ).run(JSON.stringify(ref), input.taskId);
+      ).run(serializeWorkplaceRef(ref), input.taskId);
       return ref;
     })();
   }

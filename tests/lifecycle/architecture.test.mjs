@@ -156,6 +156,12 @@ test('architecture: no direct lifecycle UPDATE outside sanctioned writers', () =
     'src/db.ts',
     'src/orchestrate.ts',
     'src/worker-executions.ts',
+    // Conveyor v4 step 5.2 cutover: WorkplaceProjector.reverseProjectWorkplaceToTask
+    // writes tasks.status as the one-way reverse projection of the authoritative
+    // v4_workplaces.kanbanPhase (REG-06). Sanctioned because it IS the projection
+    // writer — the single-writer invariant evolves so tasks.status is owned by
+    // the projection, not by hand-written claim/release SQL.
+    'src/infrastructure/projections/workplace-projector.ts',
   ]);
 
   const FORBIDDEN_PATTERNS = [

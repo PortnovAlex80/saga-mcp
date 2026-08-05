@@ -271,22 +271,41 @@ export function findNextClaimable(
   taskIds?: number[],
 ): Task | null {
   if (attempt >= MAX_CLAIM_ATTEMPTS) return null;
+  // Conveyor v4 step 5.2 cutover: when SAGA_WORKPLACE_READ=new, the LOOP
+  // channel in v4_workplaces is authoritative. The queue eligibility is the
+  // workplace's loop_state (idle/queued = claimable), NOT tasks.status. We
+  // still read deps/conflict/epic from tasks (data columns), but the
+  // "is this card claimable" gate comes from the workplace. REG-10-AC-01:
+  // "queue consists of Workplace with loopState=queued".
+  const cutover = process.env.SAGA_WORKPLACE_READ === 'new';
   const excludeClause = excludeTaskId !== undefined ? 'AND t.id != ?' : '';
   const roleClause = role ? `AND EXISTS (SELECT 1 FROM json_each(t.tags) WHERE json_each.value = ?)` : '';
   const epicClause = epicId !== undefined ? 'AND t.epic_id = ?' : '';
   const taskIdsClause = taskIds && taskIds.length > 0
     ? `AND t.id IN (${taskIds.map(() => '?').join(',')})`
     : '';
+  // Cutover: a task is queue-eligible iff its bound workplace is in idle or
+  // queued loop. The Kanban phase is allowed to be todo (fresh author),
+  // in_progress (re-queued author after repair), or review (reviewer buffer).
+  // Legacy: the tasks.status column is the gate.
+  const queueGate = cutover
+    ? `AND t.workplace_ref IS NOT NULL
+       AND EXISTS (
+         SELECT 1 FROM v4_workplaces w
+         WHERE w.workplace_ref = t.workplace_ref
+           AND w.loop_state IN ('idle', 'queued')
+       )`
+    : `AND t.status IN ('todo', 'review')`;
   const selectSql = `
     SELECT t.* FROM tasks t
-    WHERE t.status IN ('todo', 'review')
-      AND (t.assigned_to IS NULL OR t.assigned_to = '')
+    WHERE (t.assigned_to IS NULL OR t.assigned_to = '')
       AND t.epic_id IN (SELECT id FROM epics WHERE project_id = ?)
       ${epicClause}
       ${taskIdsClause}
       AND (json_extract(t.metadata, '$.process_run_id') IS NOT NULL)
       ${excludeClause}
       ${roleClause}
+      ${queueGate}
       AND t.current_execution_id IS NULL
       AND NOT EXISTS (
         SELECT 1 FROM worker_executions we
@@ -329,7 +348,22 @@ export function findNextClaimable(
   if (!task) return null;
 
   let info: Database.RunResult;
-  if (task.status === 'todo') {
+  if (cutover) {
+    // Cutover: tasks.status is a reverse projection that may already show
+    // in_progress (re-queued author). The claim fence is assigned_to +
+    // current_execution_id, NOT tasks.status. The target status is determined
+    // by the workplace's kanban phase (author → in_progress, reviewer →
+    // review_in_progress). ConveyorRuntime.reserveWorkplace will reverse-
+    // project the final status after the loop lease.
+    const wp = task.workplace_ref
+      ? db.prepare(`SELECT kanban_phase FROM v4_workplaces WHERE workplace_ref=?`).get(task.workplace_ref) as { kanban_phase: string } | undefined
+      : undefined;
+    const targetStatus = wp?.kanban_phase === 'review' ? 'review_in_progress' : 'in_progress';
+    info = db.prepare(
+      `UPDATE tasks SET status=?, assigned_to=?, current_execution_id=?, updated_at=datetime('now')
+       WHERE id=? AND (assigned_to IS NULL OR assigned_to = '') AND current_execution_id IS NULL`,
+    ).run(targetStatus, workerId, reservation?.executionId ?? null, task.id);
+  } else if (task.status === 'todo') {
     info = db.prepare(
       `UPDATE tasks SET status='in_progress', assigned_to=?, current_execution_id=?, updated_at=datetime('now')
        WHERE id=? AND status='todo' AND (assigned_to IS NULL OR assigned_to = '')`,

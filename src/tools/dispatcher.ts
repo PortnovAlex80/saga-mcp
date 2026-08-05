@@ -7,6 +7,7 @@ import { reevaluateDownstream } from './tasks.js';
 import type { Task, ToolHandler } from '../types.js';
 import { releaseExecutionAtomically } from '../lifecycle/atomic-release.js';
 import { projectTaskStatus } from './workplace-projection-helper.js';
+import { reserveTaskExecution, releaseTaskExecution, cutoverActive } from './conveyor-runtime-helper.js';
 import { compareTaskStatus, shouldCompareReads } from '../infrastructure/projections/workplace-read-comparator.js';
 // CONVEYOR #7: the atomic assignment core lives in lifecycle/work-assignment-core.ts.
 // This module imports it for internal use AND re-exports it (below) so existing
@@ -345,15 +346,30 @@ function handleWorkerNext(args: Record<string, unknown>): {
 
   if (!task) return { task: null, skill: null, repository: null, active_tasks, reason: 'очередь пуста' };
 
-  // Conveyor v4 step 5.2: shadow-write the claim into v4_workplaces.
-  projectTaskStatus(db, {
-    taskId: task.id,
-    status: task.status === 'todo' ? 'in_progress' : 'review_in_progress',
-    epicId: task.epic_id,
-    projectId,
-    taskKind: task.task_kind,
-    metadata: task.metadata,
-  });
+  // Conveyor v4 step 5.2 cutover: when SAGA_WORKPLACE_READ=new, the
+  // ConveyorRuntime is the authority — bind the task to its workplace, lease
+  // the loop channel, and let the runtime reverse-project tasks.status.
+  // Otherwise (legacy/both), the forward shadow-write runs.
+  if (cutoverActive()) {
+    reserveTaskExecution(db, {
+      taskId: task.id,
+      epicId: task.epic_id,
+      projectId,
+      taskKind: task.task_kind,
+      metadata: task.metadata,
+      executionId: executionId ?? workerId,
+    });
+  } else {
+    // Legacy forward shadow-write (SAGA_WORKPLACE_WRITE=on).
+    projectTaskStatus(db, {
+      taskId: task.id,
+      status: task.status === 'todo' ? 'in_progress' : 'review_in_progress',
+      epicId: task.epic_id,
+      projectId,
+      taskKind: task.task_kind,
+      metadata: task.metadata,
+    });
+  }
 
   const repository = task.project_repository_id == null ? null : db.prepare(`
     SELECT pr.id, pr.repository_id, r.name,
@@ -678,17 +694,35 @@ function handleWorkerDone(args: Record<string, unknown>): {
       );
     }
 
-    // Conveyor v4 step 5.2: shadow-write the completion into v4_workplaces.
-    // pending_verification maps to the same v4 state as done (terminal/accepted)
-    // until the verification-specific loop is wired.
-    projectTaskStatus(db, {
-      taskId,
-      status: newStatus === 'pending_verification' ? 'done' : newStatus,
-      epicId: task.epic_id,
-      projectId: (db.prepare('SELECT e.project_id AS project_id FROM epics e WHERE e.id=?').get(task.epic_id) as { project_id?: number } | undefined)?.project_id ?? 0,
-      taskKind: task.task_kind,
-      metadata: task.metadata,
-    });
+    // Conveyor v4 step 5.2 cutover: when SAGA_WORKPLACE_READ=new, the
+    // ConveyorRuntime releases the execution (loop advances). Otherwise the
+    // forward shadow-write runs. The outcome maps from the requested newStatus:
+    //   done/pending_verification → completed (loop → verifying/terminal).
+    //   (crash/expiry paths route through atomic-release, not here.)
+    if (cutoverActive()) {
+      releaseTaskExecution(db, {
+        taskId,
+        epicId: task.epic_id,
+        projectId: (db.prepare('SELECT e.project_id AS project_id FROM epics e WHERE e.id=?').get(task.epic_id) as { project_id?: number } | undefined)?.project_id ?? 0,
+        taskKind: task.task_kind,
+        metadata: task.metadata,
+        executionId: task.current_execution_id ?? workerId,
+        outcome: 'completed',
+        taskStatus: newStatus,
+      });
+    } else {
+      // Legacy forward shadow-write (SAGA_WORKPLACE_WRITE=on).
+      // pending_verification maps to the same v4 state as done (terminal/accepted)
+      // until the verification-specific loop is wired.
+      projectTaskStatus(db, {
+        taskId,
+        status: newStatus === 'pending_verification' ? 'done' : newStatus,
+        epicId: task.epic_id,
+        projectId: (db.prepare('SELECT e.project_id AS project_id FROM epics e WHERE e.id=?').get(task.epic_id) as { project_id?: number } | undefined)?.project_id ?? 0,
+        taskKind: task.task_kind,
+        metadata: task.metadata,
+      });
+    }
 
     // Conveyor v4 step 5.3: compare legacy vs v4 reads when SAGA_WORKPLACE_READ=both.
     if (shouldCompareReads()) {

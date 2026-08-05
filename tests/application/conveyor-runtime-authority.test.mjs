@@ -19,7 +19,7 @@ import assert from 'node:assert/strict';
 import Database from 'better-sqlite3';
 
 import { SCHEMA_SQL } from '../../dist/schema.js';
-import { asWorkplaceRef } from '../../dist/process-modules/domain/workplace/workplace-ref.js';
+import { asWorkplaceRef, serializeWorkplaceRef } from '../../dist/process-modules/domain/workplace/workplace-ref.js';
 import { SqliteWorkplaceRepository } from '../../dist/infrastructure/workplace/sqlite-workplace-repository.js';
 import { ConveyorRuntime } from '../../dist/application/conveyor-runtime.js';
 
@@ -65,7 +65,7 @@ function seedTaskAndWorkplace(db, { processRunId = 1, taskId = 1 } = {}) {
     workKey: `item-${taskId}`,
   });
   // Bind the task row to its workplace (data column).
-  db.prepare(`UPDATE tasks SET workplace_ref=? WHERE id=?`).run(JSON.stringify(ref), taskId);
+  db.prepare(`UPDATE tasks SET workplace_ref=? WHERE id=?`).run(serializeWorkplaceRef(ref), taskId);
   return { ref, taskId };
 }
 

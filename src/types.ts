@@ -61,6 +61,9 @@ export interface Task {
   generated_from_task_id: number | null;
   generation_key: string | null;
   current_execution_id: string | null;
+  // Conveyor v4 binding to the authoritative Workplace aggregate (step 5.2
+  // cutover). NULL for tasks not tracked as a Production Cell instance.
+  workplace_ref: string | null;
   verification_target_artifact_id: number | null;
   tags: string;
   metadata: string;
