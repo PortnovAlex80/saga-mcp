@@ -225,43 +225,26 @@ export function resolveManagedExecutionProvenance(
     throw new Error('MANAGED_PRODUCTION_CONTEXT_INVALID: execution/task environment mismatch');
   }
   if (options.requireLiveProducer) {
-    // CONVEYOR v4 — REG-05/REG-28: the fence authority is the Workplace
-    // (loop_state + active_reservation_ref), NOT the projected tasks row.
-    // Reading tasks.status here created a race: worker_done writes tasks first,
-    // then the workplace CAS — so an artifact_create late in the worker's run
-    // (but before worker_done) could see a stale task_status and fail the fence.
-    // The Workplace is the authority: while the worker is live, its workplace
-    // has loop_state IN ('leased','running') and active_reservation_ref = executionId.
-    // task_metadata is parsed below (line ~239); read workplace_ref from it
-    // early for the fence lookup.
-    const rawMeta = execution.task_metadata ?? '{}';
-    let workplaceRef: string | null = null;
-    try {
-      const meta = JSON.parse(rawMeta) as Record<string, unknown>;
-      if (typeof meta.workplace_ref === 'string') workplaceRef = meta.workplace_ref;
-    } catch { /* best effort */ }
-    const workplace = workplaceRef
-      ? (db.prepare(
-          'SELECT loop_state, active_reservation_ref FROM v4_workplaces WHERE workplace_ref = ?',
-        ).get(workplaceRef) as
-          | { loop_state: string; active_reservation_ref: string | null }
-          | undefined)
-      : undefined;
-    const wpLoopState = workplace?.loop_state ?? null;
-    const wpReservation = workplace?.active_reservation_ref ?? null;
-    const executionAlive = execution.execution_state === 'running';
-    const workplaceOwned = (
-      (wpLoopState === 'leased' || wpLoopState === 'running')
-      && wpReservation === executionId
-    );
-    if (!executionAlive || !workplaceOwned) {
+    // CONVEYOR v4 — REG-05/REG-28: the fence authority is the WorkerExecution
+    // row (its durable state), NOT the projected tasks.{status,assigned_to}
+    // columns. Reading tasks.status created a race: worker_done writes tasks
+    // first, then the workplace CAS — an artifact_create late in the run (but
+    // before worker_done) could see a stale task_status and fail the fence,
+    // leaving the managed_artifact ledger empty.
+    //
+    // The durable fence: the worker_execution row for this execution_id must be
+    // in state='running' (the worker process is alive and has not yet called
+    // worker_done). This is the single authoritative signal — the execution row
+    // is terminalized atomically by releaseExecutionAtomically when the worker
+    // exits, so as long as state='running', the worker IS the live producer.
+    // We deliberately do NOT cross-check workplace.active_reservation_ref here:
+    // that would re-introduce a race between the workplace CAS and the
+    // execution row's terminalization (they are separate transactions).
+    if (execution.execution_state !== 'running') {
       throw new Error(
-        'MANAGED_PRODUCTION_FENCE_VIOLATION: only the live producer execution '
-        + `owning an active workplace may mutate managed products. `
-        + `execution_state=${execution.execution_state}, `
-        + `workplace.loop_state=${wpLoopState}, `
-        + `workplace.active_reservation_ref=${wpReservation}, `
-        + `expected=${executionId}`,
+        'MANAGED_PRODUCTION_FENCE_VIOLATION: only a live producer execution '
+        + `(state='running') may mutate managed products. `
+        + `execution_state=${execution.execution_state}, execution_id=${executionId}`,
       );
     }
   }
