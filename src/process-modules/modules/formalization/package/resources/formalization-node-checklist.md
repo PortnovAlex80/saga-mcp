@@ -52,3 +52,8 @@ Run this checklist before every artifact, trace or completion MCP write.
 - [ ] Completion summary names created/updated artifacts and trace refs truthfully.
 - [ ] `worker_done` is called once, only after all outputs were read back.
 - [ ] After `worker_done`, the single-use worker exits and claims no other task.
+
+## CRITICAL: File-first discipline
+- [ ] Every artifact has a physical file written to disk via Write BEFORE artifact_create
+- [ ] Every artifact has non-null content_hash (verify via artifact_list read-back)
+- [ ] If content_hash is NULL after artifact_create, the file was not found — STOP and fix

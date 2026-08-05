@@ -1,4 +1,5 @@
 {
+  "_PRE_CALL_INSTRUCTION": "BEFORE calling artifact_create, you MUST Write the file to disk at <workspace_root>/<path>. artifact_create auto-computes content_hash from the file. Without the file, content_hash is NULL and the Formalization pipeline WILL fail.",
   "tool": "artifact_create",
   "arguments": {
     "project_id": "FILL_INTEGER_MACHINE_BOUND_PROJECT_ID",
@@ -6,7 +7,7 @@
     "project_repository_id": "FILL_INTEGER_MACHINE_BOUND_PROJECT_REPOSITORY_ID",
     "type": "FILL_NODE_OWNED_ARTIFACT_TYPE",
     "title": "FILL_ARTIFACT_TITLE",
-    "path": "FILL_RELATIVE_ARTIFACT_PATH",
+    "path": "FILL_RELATIVE_ARTIFACT_PATH_docs_requirements_REQ_NNN_slug",
     "code": "FILL_STABLE_CODE_OR_NULL",
     "status": "draft",
     "parent_artifact_id": "FILL_INTEGER_PARENT_ID_OR_NULL",
@@ -19,5 +20,6 @@
       "execution_id": "FILL_MACHINE_BOUND_EXECUTION_ID",
       "input_snapshot_hash": "FILL_MACHINE_BOUND_INPUT_HASH"
     }
-  }
+  },
+  "_POST_CALL_VERIFY": "After artifact_create, call artifact_list and verify content_hash is NOT null. If null, the file was not found — Write it and call artifact_create again."
 }

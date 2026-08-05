@@ -131,3 +131,18 @@ Before `worker_done`:
 7. mark tracker completed and exit.
 
 The semantic skill defines what constitutes correct domain output. This protocol defines how that output is produced reliably.
+
+
+## CRITICAL: Write file to disk BEFORE artifact_create
+
+The kernel gate REQUIRES a non-null `content_hash` on every artifact.
+`artifact_create` auto-computes SHA-256 from the file on disk — but ONLY if
+the file physically exists at the given `path` under the repository root
+BEFORE the call. If the file is missing, `content_hash` is NULL, the gate
+fails with "ledger artifact does not match its canonical row", and the entire
+Formalization pipeline terminates as `failed`.
+
+For EVERY artifact you create:
+1. `Write({ file_path: "<workspace_root>/<artifact_path>", content: "<full artifact text>" })` — write the file FIRST.
+2. THEN `artifact_create({ path, project_repository_id, type, ... })` — the tool reads the file and stamps `content_hash`.
+3. Verify via `artifact_list` that `content_hash` is NOT null before proceeding.
