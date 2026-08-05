@@ -378,7 +378,9 @@ export function findNextClaimable(
     const wp = task.workplace_ref
       ? db.prepare(`SELECT kanban_phase FROM v4_workplaces WHERE workplace_ref=?`).get(task.workplace_ref) as { kanban_phase: string } | undefined
       : undefined;
-    const targetStatus = wp?.kanban_phase === 'review' ? 'review_in_progress' : 'in_progress';
+    const targetStatus = (wp?.kanban_phase === 'review' || task.status === 'review')
+      ? 'review_in_progress'
+      : 'in_progress';
     info = db.prepare(
       `UPDATE tasks SET status=?, assigned_to=?, current_execution_id=?, updated_at=datetime('now')
        WHERE id=? AND (assigned_to IS NULL OR assigned_to = '') AND current_execution_id IS NULL`,
