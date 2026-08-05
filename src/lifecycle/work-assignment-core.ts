@@ -293,6 +293,7 @@ export function findNextClaimable(
   const queueGate = cutover
     ? `AND (
          (t.workplace_ref IS NOT NULL
+           AND t.status IN ('todo', 'review')
            AND EXISTS (
              SELECT 1 FROM v4_workplaces w
              WHERE w.workplace_ref = t.workplace_ref
