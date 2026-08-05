@@ -7,6 +7,7 @@ import { reevaluateDownstream } from './tasks.js';
 import type { Task, ToolHandler } from '../types.js';
 import { releaseExecutionAtomically } from '../lifecycle/atomic-release.js';
 import { projectTaskStatus } from './workplace-projection-helper.js';
+import { compareTaskStatus, shouldCompareReads } from '../infrastructure/projections/workplace-read-comparator.js';
 // CONVEYOR #7: the atomic assignment core lives in lifecycle/work-assignment-core.ts.
 // This module imports it for internal use AND re-exports it (below) so existing
 // consumers (tasks.ts, saga3-* tools) keep their './dispatcher.js' imports.
@@ -688,6 +689,19 @@ function handleWorkerDone(args: Record<string, unknown>): {
       taskKind: task.task_kind,
       metadata: task.metadata,
     });
+
+    // Conveyor v4 step 5.3: compare legacy vs v4 reads when SAGA_WORKPLACE_READ=both.
+    if (shouldCompareReads()) {
+      const comparison = compareTaskStatus(db, {
+        id: taskId,
+        status: newStatus === 'pending_verification' ? 'done' : newStatus,
+        task_kind: task.task_kind,
+        metadata: task.metadata,
+      });
+      if (!comparison.inSync) {
+        console.error(`[saga-workplace-drift] ${comparison.driftDetail}`);
+      }
+    }
 
     if (newStatus === 'done' || newStatus === 'pending_verification') {
       let taskTags: string[] = [];

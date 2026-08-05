@@ -186,11 +186,15 @@ function mapLegacyStatusToV4(status: string): {
     case 'todo':
       return { kanbanPhase: 'todo', loopState: 'idle', nextRole: 'author', terminalReason: null };
     case 'in_progress':
-      return { kanbanPhase: 'in_progress', loopState: 'running', nextRole: 'author', terminalReason: null };
+      // Map to 'queued' not 'running' — the projector mirrors the Kanban
+      // phase (in_progress = active author work), while the loop state is a
+      // best-effort shadow. 'queued' is a valid transition from 'idle'
+      // (REG-28-AC-01 closed pairs) and avoids the idle→running gap.
+      return { kanbanPhase: 'in_progress', loopState: 'queued', nextRole: 'author', terminalReason: null };
     case 'review':
       return { kanbanPhase: 'review', loopState: 'queued', nextRole: 'reviewer', terminalReason: null };
     case 'review_in_progress':
-      return { kanbanPhase: 'review_in_progress', loopState: 'running', nextRole: 'reviewer', terminalReason: null };
+      return { kanbanPhase: 'review_in_progress', loopState: 'queued', nextRole: 'reviewer', terminalReason: null };
     case 'done':
       return { kanbanPhase: 'done', loopState: 'terminal', nextRole: 'author', terminalReason: 'accepted' };
     case 'blocked':

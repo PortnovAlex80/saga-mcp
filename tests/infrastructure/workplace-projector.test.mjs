@@ -45,7 +45,7 @@ test('5.2: projector creates v4_workplaces row on first claim (in_progress)', ()
   const items = repo.listInProcessRun(1);
   assert.equal(items.length, 1);
   assert.equal(items[0].state.kanbanPhase, 'in_progress');
-  assert.equal(items[0].state.loopState, 'running');
+  assert.equal(items[0].state.loopState, 'queued');
   db.close();
 });
 

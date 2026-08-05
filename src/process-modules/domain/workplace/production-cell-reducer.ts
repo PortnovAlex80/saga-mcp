@@ -259,13 +259,26 @@ function computeNextState(
 
     // --- Repair re-queue --------------------------------------------------
     case 'repair-requeued': {
-      // repair_wait → queued, with the declared role (author or reviewer).
-      assertLoop(state, 'repair_wait');
+      // repair_wait → queued (after a gate-rejected repair), OR
+      // paused → queued (after a human-required block is resumed). Both are
+      // valid resume points — the repair/blocked states block the line until
+      // the issue is resolved or the human answers.
+      if (state.loopState !== 'repair_wait' && state.loopState !== 'paused') {
+        throw new Error(
+          `NO_TRANSITION: repair-requeued requires loopState='repair_wait' or 'paused', got '${state.loopState}'`,
+        );
+      }
       if (!isRoleCompatibleWithPhase(state.kanbanPhase, event.role)) {
         throw new Error(
           `repair-requeued: role '${event.role}' is not compatible with `
             + `kanbanPhase '${state.kanbanPhase}'`,
         );
+      }
+      // When resuming from blocked/paused, also clear the Kanban phase back to
+      // the active work phase for the role.
+      const targetPhase = event.role === 'reviewer' ? 'review_in_progress' : 'in_progress';
+      if (state.kanbanPhase === 'blocked') {
+        return { ...state, kanbanPhase: targetPhase, loopState: 'queued', nextRole: event.role, revision: rev };
       }
       return { ...state, loopState: 'queued', nextRole: event.role, revision: rev };
     }
