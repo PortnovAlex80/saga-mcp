@@ -264,7 +264,7 @@ export class SqliteFormalizationArtifactGraph implements
     // = done). The legacy `tasks.status` is a reverse projection that may lag.
     // integration_state / execution_mode / task_kind stay on tasks (DATA
     // columns — they describe the task, not its orchestration loop state).
-    const cutover = process.env.SAGA_WORKPLACE_READ === 'new';
+    const cutover = true;
     interface TaskRow {
       id: number; execution_mode: string; status: string;
       loop_state: string | null;

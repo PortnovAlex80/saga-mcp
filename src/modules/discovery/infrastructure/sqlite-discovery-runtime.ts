@@ -85,7 +85,7 @@ interface TaskOrchestrationState {
 }
 
 function cutoverActive(): boolean {
-  return process.env.SAGA_WORKPLACE_READ === 'new';
+  return true;
 }
 
 function readTaskOrchestrationState(taskId: number): TaskOrchestrationState {

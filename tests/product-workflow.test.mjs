@@ -944,6 +944,8 @@ test('verification review cannot approve before passing evidence exists', () => 
 });
 
 test('typed dependencies wait for merge and repository merge locks do not block other repositories', () => {
+  const _savedManual2 = process.env.SAGA_ALLOW_MANUAL_STATUS;
+  delete process.env.SAGA_ALLOW_MANUAL_STATUS;
   const product = projects.project_create({ name: 'Repository Gate Product' });
   const repoA = repositories.repository_register({
     project_id: product.id, name: 'gate-a', local_path: repoAPath, integration_branch: 'develop-a',
@@ -1001,6 +1003,7 @@ test('typed dependencies wait for merge and repository merge locks do not block 
   });
   const released = dispatcher.worker_next({ project_id: product.id, worker_id: 'after-merge' });
   assert.equal(released.task.id, downstream.id);
+  if (_savedManual2 !== undefined) process.env.SAGA_ALLOW_MANUAL_STATUS = _savedManual2;
 });
 
 test('legacy tasks retain developer and reviewer routing', () => {

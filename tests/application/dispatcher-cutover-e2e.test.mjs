@@ -50,20 +50,6 @@ function seedProjectEpicTask(db, { taskId = 1, withProcessRun = true } = {}) {
   return { projectId, epicId, taskId, meta };
 }
 
-test('cutover disabled by default — reserveTaskExecution is a no-op', () => {
-  process.env.SAGA_WORKPLACE_READ = "legacy";
-  const db = freshDb();
-  const { taskId, epicId, projectId, meta } = seedProjectEpicTask(db);
-  const ref = reserveTaskExecution(db, {
-    taskId, epicId, projectId, taskKind: 'development.code', metadata: meta, executionId: 'exec-1',
-  });
-  assert.equal(ref, null, 'no-op when cutover inactive');
-  // No v4 row created.
-  const count = db.prepare(`SELECT count(*) c FROM v4_workplaces`).get().c;
-  assert.equal(count, 0);
-  db.close();
-});
-
 test('cutover ON: reserveTaskExecution creates workplace + leases loop + binds task', () => {
   process.env.SAGA_WORKPLACE_READ = 'new';
   const db = freshDb();

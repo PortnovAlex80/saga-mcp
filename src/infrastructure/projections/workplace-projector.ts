@@ -83,7 +83,7 @@ export class WorkplaceProjector {
 
   constructor(db: Database.Database) {
     this.repo = new SqliteWorkplaceRepository(db);
-    this.enabled = process.env.SAGA_WORKPLACE_WRITE === 'on';
+    this.enabled = true;
   }
 
   /**

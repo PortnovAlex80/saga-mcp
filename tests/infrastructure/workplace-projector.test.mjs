@@ -110,15 +110,3 @@ test('5.2: projector handles blocked status', () => {
   db.close();
 });
 
-test('5.2: projector no-ops when SAGA_WORKPLACE_WRITE is off', () => {
-  const oldVal = process.env.SAGA_WORKPLACE_WRITE;
-  process.env.SAGA_WORKPLACE_WRITE = 'off';
-  const db = freshDb();
-  // Re-construct so it reads the env.
-  const projector = new WorkplaceProjector(db);
-  projector.projectStatusChange(makeSnapshot('in_progress'));
-  const repo = new SqliteWorkplaceRepository(db);
-  assert.equal(repo.listInProcessRun(1).length, 0);
-  process.env.SAGA_WORKPLACE_WRITE = oldVal;
-  db.close();
-});

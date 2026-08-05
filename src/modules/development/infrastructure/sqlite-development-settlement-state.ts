@@ -662,7 +662,7 @@ export class SqliteDevelopmentModuleStore implements
     // the AUTHORITATIVE v4_workplaces kanban_phase (reverse-projected to the
     // legacy status vocabulary). integration_state / integrated_commit /
     // project_repository_id / metadata are DATA columns and stay on tasks.
-    const cutover = process.env.SAGA_WORKPLACE_READ === 'new';
+    const cutover = true;
     const row = (cutover
       ? this.db.prepare(
           `SELECT t.id,
@@ -697,7 +697,7 @@ export class SqliteDevelopmentModuleStore implements
   private readRuntimeTasks(taskIds: readonly number[]): RuntimeTaskRow[] {
     if (taskIds.length === 0) return [];
     // Conveyor v4 step 3.C.4 read-switch (see readRuntimeTask).
-    const cutover = process.env.SAGA_WORKPLACE_READ === 'new';
+    const cutover = true;
     return (cutover
       ? this.db.prepare(
           `SELECT t.id,

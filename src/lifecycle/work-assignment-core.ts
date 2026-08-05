@@ -277,7 +277,7 @@ export function findNextClaimable(
   // still read deps/conflict/epic from tasks (data columns), but the
   // "is this card claimable" gate comes from the workplace. REG-10-AC-01:
   // "queue consists of Workplace with loopState=queued".
-  const cutover = process.env.SAGA_WORKPLACE_READ === 'new';
+  const cutover = true;
   const excludeClause = excludeTaskId !== undefined ? 'AND t.id != ?' : '';
   const roleClause = role ? `AND EXISTS (SELECT 1 FROM json_each(t.tags) WHERE json_each.value = ?)` : '';
   const epicClause = epicId !== undefined ? 'AND t.epic_id = ?' : '';

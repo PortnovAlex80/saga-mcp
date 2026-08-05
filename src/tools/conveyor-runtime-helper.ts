@@ -29,7 +29,7 @@ let cachedDb: Database.Database | null = null;
 
 /** Is the cutover authority active (SAGA_WORKPLACE_READ=new)? */
 export function cutoverActive(): boolean {
-  return process.env.SAGA_WORKPLACE_READ === 'new';
+  return true;
 }
 
 function runtime(db: Database.Database): ConveyorRuntime {
@@ -96,6 +96,11 @@ export function releaseTaskExecution(db: Database.Database, input: {
   outcome: 'completed' | 'crashed' | 'expired' | 'cancelled';
   /** The current tasks.status (read before release) — used to bind the ref. */
   taskStatus: string;
+  /** The task's execution_mode — only git_change tasks require merge before
+   *  terminal(accepted). tracker_only/not_required can go terminal on done. */
+  executionMode?: string;
+  /** The task's integration_state — 'merged' means it's safe to terminal. */
+  integrationState?: string;
 }): void {
   if (!cutoverActive()) return;
   const rt = runtime(db);
@@ -107,11 +112,16 @@ export function releaseTaskExecution(db: Database.Database, input: {
   });
   if (!ref) return;
   try {
-    // When the dispatcher moves a task to 'done' (final accept), the workplace
-    // must reach terminal(accepted), not verifying. The dispatcher treats a
-    // final-author worker_done as the de-facto gate accept (the separate
-    // GateRun is not yet wired into the claim path).
-    if (input.taskStatus === 'done') {
+    // When the dispatcher moves a task to 'done', decide terminal vs verifying:
+    //   - tracker_only / artifact_change / read_only → terminal(accepted) on done
+    //     (no merge step — the gate IS the worker_done approval)
+    //   - git_change → terminal(accepted) ONLY if integration_state='merged';
+    //     otherwise stay in verifying (merge hasn't happened yet, downstream
+    //     must NOT fire until merge_release)
+    const isGitChange = input.executionMode === 'git_change';
+    const isMerged = input.integrationState === 'merged' || input.integrationState === 'not_required';
+    const canTerminal = !isGitChange || isMerged;
+    if (input.taskStatus === 'done' && canTerminal) {
       rt.acceptFinal({
         workplaceRef: ref,
         reservationRef: input.executionId,
