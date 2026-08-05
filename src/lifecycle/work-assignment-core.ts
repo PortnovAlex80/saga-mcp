@@ -286,8 +286,10 @@ export function findNextClaimable(
     : '';
   // Cutover: a task is queue-eligible iff EITHER (a) it has a bound workplace
   // in idle/queued loop, OR (b) it has process_run_id metadata but NO bound
-  // workplace yet (first claim materializes the workplace). Legacy: the
-  // tasks.status column is the gate.
+  // workplace yet (first claim materializes the workplace), OR (c) it is a
+  // non-Process-Module board task (no process_run_id) — those still use the
+  // legacy tasks.status gate since they are not tracked as Production Cells.
+  // Legacy: the tasks.status column is the gate.
   const queueGate = cutover
     ? `AND (
          (t.workplace_ref IS NOT NULL
@@ -299,6 +301,9 @@ export function findNextClaimable(
          OR
          (t.workplace_ref IS NULL
            AND json_extract(t.metadata, '$.process_run_id') IS NOT NULL
+           AND t.status IN ('todo', 'review'))
+         OR
+         (json_extract(t.metadata, '$.process_run_id') IS NULL
            AND t.status IN ('todo', 'review'))
        )`
     : `AND t.status IN ('todo', 'review')`;
