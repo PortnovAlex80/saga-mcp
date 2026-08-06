@@ -20,9 +20,7 @@ export function parseClaudeArgv(argv) {
       continue;
     }
     if (value.startsWith('--') && value.includes('=')) {
-      if (value.startsWith('--mcp-config=')) {
-        mcpConfigPath = value.slice('--mcp-config='.length);
-      }
+      if (value.startsWith('--mcp-config=')) mcpConfigPath = value.slice('--mcp-config='.length);
       continue;
     }
     if (value.startsWith('-')) continue;
@@ -36,8 +34,7 @@ export function parseSagaPrompt(prompt) {
   for (const line of String(prompt).split('\n')) {
     if (line === 'Hard rules:') break;
     const match = /^([a-z_]+)=(.*)$/.exec(line);
-    if (!match) continue;
-    values[match[1]] = match[2];
+    if (match) values[match[1]] = match[2];
   }
   for (const key of ['project_id', 'task_id']) {
     if (values[key] !== undefined) values[key] = Number(values[key]);
@@ -52,9 +49,7 @@ export function resolveDbPath(mcpConfigPath, env = process.env) {
       const config = JSON.parse(readFileSync(mcpConfigPath, 'utf8'));
       const configured = config?.mcpServers?.saga?.env?.DB_PATH;
       if (typeof configured === 'string' && configured.length > 0) return configured;
-    } catch {
-      // Fall through to inherited environment.
-    }
+    } catch { /* inherited env remains the fallback */ }
   }
   return env.DB_PATH || null;
 }
@@ -63,21 +58,25 @@ export function sha256(value) {
   return createHash('sha256').update(value).digest('hex');
 }
 
+function resolveTemplatePath(path, vars) {
+  const resolved = path.split('.').reduce((current, part) => current?.[part], vars);
+  if (resolved === undefined || resolved === null) {
+    throw new Error(`SIMULATOR_TEMPLATE_VALUE_MISSING: ${path}`);
+  }
+  return resolved;
+}
+
 export function renderTemplate(value, vars) {
   if (typeof value === 'string') {
-    return value.replace(/\{\{([a-zA-Z0-9_.-]+)\}\}/g, (_match, path) => {
-      const resolved = path.split('.').reduce((current, part) => current?.[part], vars);
-      if (resolved === undefined || resolved === null) {
-        throw new Error(`SIMULATOR_TEMPLATE_VALUE_MISSING: ${path}`);
-      }
-      return String(resolved);
-    });
+    const exact = /^\{\{([a-zA-Z0-9_.-]+)\}\}$/.exec(value);
+    if (exact) return resolveTemplatePath(exact[1], vars);
+    return value.replace(/\{\{([a-zA-Z0-9_.-]+)\}\}/g, (_match, path) =>
+      String(resolveTemplatePath(path, vars)));
   }
   if (Array.isArray(value)) return value.map(item => renderTemplate(item, vars));
   if (value && typeof value === 'object') {
-    return Object.fromEntries(
-      Object.entries(value).map(([key, item]) => [key, renderTemplate(item, vars)]),
-    );
+    return Object.fromEntries(Object.entries(value)
+      .map(([key, item]) => [key, renderTemplate(item, vars)]));
   }
   return value;
 }
@@ -128,19 +127,15 @@ export function createStreamEmitter(output = process.stdout) {
 }
 
 export function heartbeat(ctx, event, message = '') {
-  const line = [
-    new Date().toISOString().replace(/\.\d+Z$/, 'Z'),
+  const line = [new Date().toISOString().replace(/\.\d+Z$/, 'Z'),
     `pid=${process.pid}`, `worker=${ctx.worker_id ?? 'unknown'}`,
     `project=${ctx.project_id ?? 'unknown'}`, `task=${ctx.task_id ?? 'unknown'}`,
-    event, message,
-  ].join(' ').replace(/\s+/g, ' ').trim();
+    event, message].join(' ').replace(/\s+/g, ' ').trim();
   try {
     const target = join(homedir(), '.zcode', 'cli', 'worker-heartbeat.log');
     mkdirSync(dirname(target), { recursive: true });
     appendFileSync(target, `${line}\n`);
-  } catch {
-    // Heartbeat is observability, not scenario authority.
-  }
+  } catch { /* observability is non-authoritative */ }
 }
 
 export async function loadSagaRuntime(dbPath) {
@@ -165,18 +160,13 @@ export function enrichContext(runtime, promptContext) {
   let metadata = {};
   try { metadata = JSON.parse(task.metadata || '{}'); } catch { metadata = {}; }
   const attemptRow = promptContext.execution_id
-    ? db.prepare(
-        `SELECT COUNT(*) AS n FROM worker_executions
-          WHERE task_id=? AND reserved_at <= (
-            SELECT reserved_at FROM worker_executions WHERE execution_id=?
-          )`,
-      ).get(task.id, promptContext.execution_id)
+    ? db.prepare(`SELECT COUNT(*) AS n FROM worker_executions
+        WHERE task_id=? AND reserved_at <= (
+          SELECT reserved_at FROM worker_executions WHERE execution_id=?)`)
+      .get(task.id, promptContext.execution_id)
     : { n: 1 };
   return {
-    ...promptContext,
-    task,
-    metadata,
-    epic_id: task.epic_id,
+    ...promptContext, task, metadata, epic_id: task.epic_id,
     task_kind: task.task_kind || promptContext.task_kind || 'legacy',
     execution_mode: task.execution_mode || promptContext.execution_mode || 'tracker_only',
     process_run_id: metadata.process_run_id ?? null,
@@ -184,24 +174,19 @@ export function enrichContext(runtime, promptContext) {
     process_node_id: metadata.process_node_id ?? null,
     attempt: Math.max(1, Number(attemptRow?.n ?? 1)),
     role: task.status === 'review' || task.status === 'review_in_progress'
-      ? 'reviewer'
-      : (promptContext.role || 'author'),
+      ? 'reviewer' : (promptContext.role || 'author'),
   };
 }
 
 function findArtifact(db, epicId, type, code = null) {
-  if (code) {
-    return db.prepare(
-      `SELECT * FROM artifacts WHERE epic_id=? AND type=? AND code=?
-       ORDER BY id DESC LIMIT 1`,
-    ).get(epicId, type, code);
-  }
-  return db.prepare(
-    `SELECT * FROM artifacts WHERE epic_id=? AND type=? ORDER BY id DESC LIMIT 1`,
-  ).get(epicId, type);
+  return code
+    ? db.prepare(`SELECT * FROM artifacts WHERE epic_id=? AND type=? AND code=?
+        ORDER BY id DESC LIMIT 1`).get(epicId, type, code)
+    : db.prepare(`SELECT * FROM artifacts WHERE epic_id=? AND type=?
+        ORDER BY id DESC LIMIT 1`).get(epicId, type);
 }
 
-function handler(container, name) {
+function requireHandler(container, name) {
   const value = container?.handlers?.[name];
   if (typeof value !== 'function') throw new Error(`SIMULATOR_HANDLER_MISSING: ${name}`);
   return value;
@@ -209,8 +194,7 @@ function handler(container, name) {
 
 function writeWorkspaceFile(ctx, relativePath, content) {
   const root = ctx.workspace_root && ctx.workspace_root !== 'undefined'
-    ? ctx.workspace_root
-    : process.cwd();
+    ? ctx.workspace_root : process.cwd();
   const target = isAbsolute(relativePath) ? relativePath : resolve(root, relativePath);
   mkdirSync(dirname(target), { recursive: true });
   writeFileSync(target, content, 'utf8');
@@ -223,12 +207,8 @@ export async function executeSteps(runtime, ctx, scenario, stream) {
   for (const rawStep of scenario.steps) {
     const step = renderTemplate(rawStep, vars);
     switch (step.type) {
-      case 'emit':
-        stream.text(step.text);
-        break;
-      case 'sleep':
-        await new Promise(resolveDelay => setTimeout(resolveDelay, step.ms));
-        break;
+      case 'emit': stream.text(step.text); break;
+      case 'sleep': await new Promise(done => setTimeout(done, step.ms)); break;
       case 'write_file': {
         const target = writeWorkspaceFile(ctx, step.path, step.content);
         vars.aliases[step.as || 'last_file'] = target;
@@ -242,16 +222,14 @@ export async function executeSteps(runtime, ctx, scenario, stream) {
           args.content_hash = sha256(step.content);
           vars.aliases[`${step.as || args.type}_path`] = target;
         }
-        const result = handler(runtime.artifacts, 'artifact_create')(args);
-        const artifactId = result?.id ?? result?.artifact?.id ?? result?.artifact_id;
-        if (!Number.isInteger(artifactId)) {
-          const row = findArtifact(db, args.epic_id, args.type, args.code ?? null);
-          if (!row) throw new Error(`SIMULATOR_ARTIFACT_CREATE_UNRESOLVED: ${args.type}`);
-          vars.aliases[step.as] = row.id;
-        } else {
-          vars.aliases[step.as] = artifactId;
-        }
-        stream.text(`simulator: created ${args.type} #${vars.aliases[step.as]}`);
+        const result = requireHandler(runtime.artifacts, 'artifact_create')(args);
+        const returnedId = result?.id ?? result?.artifact?.id ?? result?.artifact_id;
+        const row = Number.isInteger(returnedId)
+          ? { id: returnedId }
+          : findArtifact(db, args.epic_id, args.type, args.code ?? null);
+        if (!row) throw new Error(`SIMULATOR_ARTIFACT_CREATE_UNRESOLVED: ${args.type}`);
+        vars.aliases[step.as] = row.id;
+        stream.text(`simulator: created ${args.type} #${row.id}`);
         break;
       }
       case 'artifact_find': {
@@ -269,11 +247,11 @@ export async function executeSteps(runtime, ctx, scenario, stream) {
         break;
       }
       case 'verification_record':
-        handler(runtime.lifecycle, 'verification_record')(step.args);
+        requireHandler(runtime.lifecycle, 'verification_record')(step.args);
         stream.text('simulator: verification evidence recorded');
         break;
       case 'worker_done':
-        handler(runtime.dispatcher, 'worker_done')(step.args);
+        requireHandler(runtime.dispatcher, 'worker_done')(step.args);
         stream.text(`simulator: worker_done task #${step.args.task_id}`);
         break;
       case 'assert': {
@@ -283,10 +261,8 @@ export async function executeSteps(runtime, ctx, scenario, stream) {
         }
         break;
       }
-      case 'exit_error':
-        throw new Error(step.message || 'SIMULATOR_INJECTED_FAILURE');
-      default:
-        throw new Error(`SIMULATOR_STEP_UNSUPPORTED: ${step.type}`);
+      case 'exit_error': throw new Error(step.message || 'SIMULATOR_INJECTED_FAILURE');
+      default: throw new Error(`SIMULATOR_STEP_UNSUPPORTED: ${step.type}`);
     }
   }
   return vars;
