@@ -141,6 +141,12 @@ function decodeItems(
       && dependsOnKeys
       && typeof value.required === 'boolean'
     ) {
+      const criticalityRaw = value.criticality;
+      const criticality = criticalityRaw === 'blocker'
+        || criticalityRaw === 'degradable'
+        || criticalityRaw === 'nice_to_have'
+        ? criticalityRaw
+        : 'blocker' as const;
       result.push({
         key: value.key,
         kind,
@@ -151,6 +157,7 @@ function decodeItems(
         acceptanceCriterionIds,
         dependsOnKeys,
         required: value.required,
+        criticality,
       });
     }
   });

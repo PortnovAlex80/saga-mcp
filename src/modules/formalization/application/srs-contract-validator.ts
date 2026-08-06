@@ -112,14 +112,14 @@ export function createSrsContractValidator(
         }
       }
 
-      // 4. Check criticality validity (if present).
+      // 4. Check criticality validity (required, authoritative end-to-end).
       const d2Rows = db.prepare(
         `SELECT a.id, a.code FROM artifacts a
           JOIN factory_managed_artifact_productions p ON p.artifact_id = a.id
           WHERE p.process_run_id=? AND a.type='AC'`,
       ).all(input.processRunId) as Array<{ id: number; code: string | null }>;
 
-      // Read §D2 YAML from SRS to check criticality if present.
+      // Read §D2 YAML from SRS to check criticality.
       if (repo?.local_path && gaps.length === 0) {
         const srsPath = path.join(repo.local_path, srs.path.split('#')[0]!);
         if (existsSync(srsPath)) {

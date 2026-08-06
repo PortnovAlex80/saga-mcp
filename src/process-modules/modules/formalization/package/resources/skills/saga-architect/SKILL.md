@@ -511,6 +511,7 @@ Required and optional fields:
 - `pattern`: `A` | `B`
 - `depends_on`: list of `scaffold:<module>` | `AC-N` references
 - `ac_kind`: `implementation` | `verification` | `spike` | `merge_with` (REQUIRED)
+- `criticality`: `blocker` | `degradable` | `nice_to_have` (REQUIRED — drives integration readiness gate)
 
 **`ac_kind` field is critical — it determines what task the planner creates:**
 - `implementation` → planner creates a `development.code` task (Builder writes code)
@@ -560,21 +561,25 @@ Example — full §D2 block:
 Every accepted AC in the episode MUST appear as a row in §D2. The
 architecture-reviewer verifies this (one row per accepted AC) before approving.
 
-> **Tag AC artifacts with `ac_kind` (REQUIRED).** After writing §D2, call
+> **Tag AC artifacts with `ac_kind` AND `criticality` (REQUIRED).** After writing §D2, call
 > `artifact_update` on **every** AC artifact to set its `tags` field to match the
-> `ac_kind` from §D2:
+> `ac_kind` AND `criticality` from §D2:
 > ```
-> artifact_update({ id: <ac_artifact_id>, tags: ['ac_kind:verification'] })
+> artifact_update({ id: <ac_artifact_id>, tags: ['ac_kind:implementation', 'criticality:blocker'] })
 > ```
 > Use `'ac_kind:verification'` for ACs whose §D2 row has `ac_kind: verification`
 > (NFR-derived: performance, security, accessibility, browser compatibility).
 > Use `'ac_kind:implementation'` for the rest.
 >
-> This tag is how the formalization settlement knows which ACs are
-> verification-only and do NOT need an implementation task in the development
-> graph. Without the tag, formalization defaults every AC to
-> `implementationRequired: true` and the development planning verifier will
-> reject the task graph for missing implementation coverage on NFR-style ACs.
+> `criticality` tags: `criticality:blocker` (MUST pass before module completes),
+> `criticality:degradable` (module may complete with unknown verification),
+> `criticality:nice_to_have` (module may complete without verification).
+> Default when unsure: `criticality:blocker`.
+>
+> These tags are how the formalization settlement builds
+> AcceptanceCriterionBinding (which carries criticality end-to-end through
+> the planner → task metadata → integration readiness gate). Without the tag,
+> formalization defaults every AC to `criticality: blocker`.
 
 #### §D2 DAG lens — frontier, fog, and the ticket-vs-fog test
 

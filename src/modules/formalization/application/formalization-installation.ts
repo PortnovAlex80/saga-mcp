@@ -939,6 +939,12 @@ function createSettlementHandler(deps: FormalizationInstallationDeps): KernelHan
             // Default to true (implementation required) when no tag is present,
             // preserving backward compatibility with ACs created before the tag.
             implementationRequired: !artifactTagsInclude(artifact, 'ac_kind:verification'),
+            // Criticality: read from AC tags (criticality:blocker |
+            // criticality:degradable | criticality:nice_to_have). The architect
+            // tags ACs from SRS §D2. Default 'blocker' (conservative) when no
+            // tag is present — treat as mandatory until Integration Readiness
+            // policy explicitly allows degradation.
+            criticality: readCriticalityFromTags(artifact),
           })),
         };
         const persisted = deps.solutionContractRepository.persist(payload);
@@ -2043,6 +2049,23 @@ function acceptedArtifactHash(artifact: FormalizationArtifactSnapshot): string {
 function artifactTagsInclude(artifact: FormalizationArtifactSnapshot, tag: string): boolean {
   const tags = artifact.tags;
   return Array.isArray(tags) && tags.includes(tag);
+}
+
+/**
+ * Read criticality classification from AC artifact tags.
+ * The architect tags each AC from SRS §D2: `criticality:blocker`,
+ * `criticality:degradable`, `criticality:nice_to_have`.
+ * Default: 'blocker' (conservative — treat as mandatory).
+ */
+function readCriticalityFromTags(artifact: FormalizationArtifactSnapshot): 'blocker' | 'degradable' | 'nice_to_have' {
+  const tags = artifact.tags;
+  if (!Array.isArray(tags)) return 'blocker';
+  for (const tag of tags) {
+    if (tag === 'criticality:blocker') return 'blocker';
+    if (tag === 'criticality:degradable') return 'degradable';
+    if (tag === 'criticality:nice_to_have') return 'nice_to_have';
+  }
+  return 'blocker';
 }
 
 function artifactHashMap(

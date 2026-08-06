@@ -34,7 +34,7 @@ follow the Complexity Gate inputs from the brief, and must declare a complete
 | SRS declares architectural style per Complexity Gate table | Read brief metadata + SRS §2.1; cross-check against Step 3 table |
 | SRS §D2 exists with one row per accepted AC | Read SRS §D, compare AC codes to `artifact_list({type:'AC', status:'accepted'})` |
 | Every §D2 row has valid `ac_kind` | Each row's `ac_kind` ∈ {`implementation`,`verification`,`spike`,`merge_with`} |
-| §D2 `criticality` valid IF present (reserved, non-authoritative) | If field present: value ∈ {`blocker`,`degradable`,`nice-to-have`}. Absence is allowed. |
+| §D2 `criticality` required and valid (authoritative end-to-end) | Every row: value ∈ {`blocker`,`degradable`,`nice_to_have`}. Missing → changes_requested. |
 | SRS §D1 File Tree non-empty and consistent with §2.2 Module Manifest | Read §D1, compare file paths to §2.2 module surfaces |
 | SRS §D4 contains pattern selection per module cluster | Read §D4, verify each cluster has Pattern A or B + reason |
 | SRS §2.3 Invariant Registry present (if algorithmic logic) | Read the .md file, grep for "Invariant Registry" or equivalent |
@@ -137,15 +137,19 @@ follow the Complexity Gate inputs from the brief, and must declare a complete
    - Cross-check: every `invariants:` entry in §D2 rows exists in §2.3.
      Missing invariants → `changes_requested`.
 
-7. **Verify `criticality` field validity (non-authoritative until Integration Readiness policy v1):**
-   - `criticality` is a RESERVED field: `blocker` | `degradable` | `nice-to-have`.
-     It is NOT authoritative yet — no runtime consumer (planner, integration
-     gate) reads it. Absence is ALLOWED (not a blocking gap).
-   - IF the architect voluntarily included the field, the value MUST be valid:
-     ∈ {`blocker`, `degradable`, `nice-to-have`}. An invalid value (typo,
-     unknown enum) → `changes_requested`.
-   - Do NOT reject an SRS for missing `criticality`. When Integration Readiness
-     policy v1 is installed, this field will become required end-to-end.
+7. **Verify `criticality` field (authoritative end-to-end):**
+   - `criticality` ∈ {`blocker`, `degradable`, `nice_to_have`} is now REQUIRED
+     on every §D2 row. It drives the integration readiness gate: blocker ACs
+     MUST pass verification before the module can complete; degradable ACs may
+     be unknown; nice_to_have ACs may be unverified entirely.
+   - The architect tags each AC artifact with `criticality:<value>` (alongside
+     `ac_kind:<value>`). Formalization settlement reads these tags and carries
+     criticality through AcceptanceCriterionBinding → DevelopmentTaskGraphItem
+     → task metadata → settlement gate.
+   - Missing `criticality` in §D2 → `changes_requested` (the default
+     `criticality: blocker` is conservative, but the architect MUST classify
+     explicitly — silent defaults create unverifiable assumptions).
+   - Invalid value (not in enum) → `changes_requested`.
 
 8. **Verify SRS §9 stack entries are runnable commands (v2.2 Поток E4):**
    - For each of `test_framework`, `property_test_framework`, `linter`,
@@ -290,9 +294,9 @@ follow the Complexity Gate inputs from the brief, and must declare a complete
 - ❌ **Do not skip the §D check.** Without §D2, the planner cannot generate
   tasks (it is a dumb copier). Without §D1, the scaffold cannot create the
   file tree.
-- ❌ **Do validate `criticality` IF present.** The field is reserved
-  (non-authoritative until Integration Readiness policy v1). If the architect
-  included it, the value MUST be valid. Do NOT reject for missing criticality.
+- ❌ **Do validate `criticality` on EVERY §D2 row.** The field is authoritative
+  end-to-end (planner → task metadata → integration gate). Missing or invalid
+  value → changes_requested.
 - ❌ **Do not accept bare tool names in §9** (v2.2 E4). `jest` is not a
   command the build-gate can run; `npm test` is. Approving a bare name
   guarantees the build-gate fails on every downstream task.
@@ -335,9 +339,8 @@ follow the Complexity Gate inputs from the brief, and must declare a complete
   `changes_requested` with reason "§2.3 Invariant Registry missing —
   saga-architect must declare invariants for algorithmic FRs".
 - If §D2 is missing OR has fewer rows than accepted ACs → `changes_requested`.
-- If any §D2 row has a `criticality` field with an INVALID value (not in
-  {blocker, degradable, nice-to-have}) → `changes_requested`. Missing
-  criticality is NOT a gap (field is reserved, non-authoritative).
+- If any §D2 row lacks `criticality` or has an invalid value (not in
+  {blocker, degradable, nice_to_have}) → `changes_requested`.
 - If §D1 is empty OR contradicts §2.2 Module Manifest → `changes_requested`.
 - If §9 has any bare tool name (no flag, no space, no script alias) (v2.2
   E4) → `changes_requested`.

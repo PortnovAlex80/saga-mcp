@@ -1059,6 +1059,7 @@ export class SqliteDevelopmentModuleStore implements
       work_item_key: input.item.key,
       work_item_kind: input.item.kind,
       acceptance_criterion_ids: [...input.item.acceptanceCriterionIds],
+      criticality: input.item.criticality,
       candidate_hash: null,
     };
 

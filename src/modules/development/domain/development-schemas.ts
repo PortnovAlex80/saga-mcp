@@ -48,6 +48,22 @@ export interface DevelopmentPolicySnapshot {
   contentHash: string;
 }
 
+/**
+ * Criticality classification for integration readiness.
+ * Controls whether an AC's verification status gates module completion.
+ *   blocker      — verification MUST pass before the module can complete.
+ *   degradable   — module may complete with this AC in 'unknown' state
+ *                   (explicitly accepted risk).
+ *   nice_to_have — module may complete without this AC verified at all.
+ *
+ * Default when the architect does not classify: 'blocker' (conservative).
+ * Source of truth: SRS §D2 criticality field → parsed by formalization
+ * settlement → frozen into AcceptanceCriterionBinding → carried through
+ * DevelopmentTaskGraphItem → stamped on task metadata → read by
+ * integration readiness gate.
+ */
+export type AcceptanceCriticality = 'blocker' | 'degradable' | 'nice_to_have';
+
 export interface AcceptanceCriterionBinding {
   artifactId: number;
   code: string | null;
@@ -58,6 +74,11 @@ export interface AcceptanceCriterionBinding {
    * for every criterion regardless of this flag.
    */
   implementationRequired: boolean;
+  /**
+   * Integration readiness classification. Defaults to 'blocker' when the
+   * SRS did not carry a criticality value (conservative: treat as mandatory).
+   */
+  criticality: AcceptanceCriticality;
 }
 
 export interface DevelopmentRepositoryBinding {
@@ -96,6 +117,11 @@ export interface DevelopmentTaskGraphItem {
   acceptanceCriterionIds: readonly number[];
   dependsOnKeys: readonly string[];
   required: boolean;
+  /**
+   * Criticality carried from the AC binding. Stamped onto task metadata
+   * so the integration readiness gate can classify verification outcomes.
+   */
+  criticality: AcceptanceCriticality;
 }
 
 export interface CandidateIntegrationTarget {

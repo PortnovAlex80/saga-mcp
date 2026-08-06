@@ -109,6 +109,7 @@ export function buildDevelopmentTaskGraphSubmitCallFromCase(
       acceptanceCriterionIds: [criterion.artifactId],
       dependsOnKeys: [],
       required: true,
+      criticality: criterion.criticality,
     });
   }
 
@@ -125,6 +126,7 @@ export function buildDevelopmentTaskGraphSubmitCallFromCase(
       acceptanceCriterionIds: [criterion.artifactId],
       dependsOnKeys: implementationKey ? [implementationKey] : [],
       required: true,
+      criticality: criterion.criticality,
     };
   });
 

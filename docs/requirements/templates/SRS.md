@@ -241,6 +241,7 @@ src/
   pattern: B
   depends_on: [scaffold:physics]
   ac_kind: implementation
+  criticality: blocker
 
 - ac: AC-4
   title: "Moon Transfer Trajectory"
@@ -257,6 +258,7 @@ src/
   pattern: B
   depends_on: [scaffold:physics, 'AC-1']
   ac_kind: implementation
+  criticality: blocker
 
 - ac: AC-NFR-1
   title: "Page Load Time"
@@ -272,6 +274,7 @@ src/
   pattern: A
   depends_on: ['AC-6']           # after UI is built
   ac_kind: verification          # NOT a dev task — Lighthouse measurement
+  criticality: degradable
 ```
 
 ### §D3. Priority Rationale (critical path)
