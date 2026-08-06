@@ -52,14 +52,16 @@ test('parseSagaPrompt extracts the immutable Saga launch binding before Hard rul
   assert.equal(parsed.process_module_ref, 'solution-formalization@1.0.0');
 });
 
-test('template rendering resolves nested execution and alias values', () => {
+test('template rendering preserves numeric contract values for handlers', () => {
   const rendered = renderTemplate({
     task: '{{ctx.task_id}}',
     trace: ['{{aliases.srs}}', '{{ctx.process_node_id}}'],
+    label: 'task-{{ctx.task_id}}',
   }, { ctx: BASE_CTX, aliases: { srs: 42 } });
   assert.deepEqual(rendered, {
-    task: '3',
-    trace: ['42', 'define-architecture-contract'],
+    task: 3,
+    trace: [42, 'define-architecture-contract'],
+    label: 'task-3',
   });
 });
 
@@ -123,20 +125,18 @@ test('development scenario writes an actual working HTML product', () => {
 });
 
 test('unknown production work fails closed unless compatibility fallback is explicit', () => {
-  const scenario = selectButtonColorScenario({
+  const unknown = {
     ...BASE_CTX,
     process_module_ref: 'unknown@1',
     process_node_id: 'unknown-node',
     task_kind: 'unknown.work',
-  }, {});
+  };
+  const scenario = selectButtonColorScenario(unknown, {});
   assert.equal(scenario.id, 'unsupported');
   assert.equal(scenario.steps[0].type, 'exit_error');
 
-  const compatibility = selectButtonColorScenario({
-    ...BASE_CTX,
-    process_module_ref: 'unknown@1',
-    process_node_id: 'unknown-node',
-    task_kind: 'unknown.work',
-  }, { SAGA_SIM_ALLOW_GENERIC_APPROVE: '1' });
+  const compatibility = selectButtonColorScenario(unknown, {
+    SAGA_SIM_ALLOW_GENERIC_APPROVE: '1',
+  });
   assert.equal(compatibility.id, 'compat/generic-approve');
 });
