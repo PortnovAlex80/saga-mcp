@@ -905,7 +905,16 @@ function createResolveArchitectureHandler(deps: FormalizationInstallationDeps): 
           // provider. When the gate infrastructure is wired (deps present),
           // the GateDecision is authoritative. When not wired (tests, early
           // boot), falls back to ExactCandidateAcceptance.
-          const candidateSetRef = sealArchitectureCandidateSet(deps, ctx, writes);
+          // Production Cell bridge: seal + gate. Wrapped in try/catch — if the
+          // bridge fails (e.g. workplace not materialized, FK constraint), the
+          // bridge is skipped and ExactCandidateAcceptance runs alone. The
+          // bridge is additive; it must NEVER break the existing acceptance path.
+          let candidateSetRef: string | null = null;
+          try {
+            candidateSetRef = sealArchitectureCandidateSet(deps, ctx, writes);
+          } catch {
+            candidateSetRef = null;
+          }
           const gateDecision = candidateSetRef
             ? runArchitectureGate(deps, ctx, writes, candidateSetRef)
             : null;
