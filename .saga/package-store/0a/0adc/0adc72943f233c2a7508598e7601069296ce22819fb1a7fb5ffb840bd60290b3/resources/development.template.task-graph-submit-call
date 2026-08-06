@@ -1,0 +1,52 @@
+{
+  "tool": "process_node_submit",
+  "arguments": {
+    "schema": "factory.development-task-graph-proposal.v1",
+    "payload": {
+      "schemaVersion": "factory.development-task-graph-proposal.v1",
+      "implementationItems": [
+        {
+          "key": "FILL_STABLE_IMPLEMENTATION_KEY",
+          "kind": "implementation",
+          "taskKind": "FILL_ALLOWED_TASK_KIND",
+          "executionSkill": "FILL_EXECUTION_SKILL",
+          "executionMode": "git_change",
+          "projectRepositoryId": "FILL_INTEGER_BOUND_REPOSITORY_ID",
+          "acceptanceCriterionIds": [
+            "FILL_INTEGER_ACCEPTANCE_ARTIFACT_ID"
+          ],
+          "dependsOnKeys": [],
+          "required": true
+        }
+      ],
+      "verificationItems": [
+        {
+          "key": "FILL_STABLE_VERIFICATION_KEY",
+          "kind": "verification",
+          "taskKind": "verification.ac",
+          "executionSkill": "saga-verifier",
+          "executionMode": "read_only_evidence",
+          "projectRepositoryId": "FILL_INTEGER_BOUND_REPOSITORY_ID_OR_NULL",
+          "acceptanceCriterionIds": [
+            "FILL_EXACTLY_ONE_INTEGER_ACCEPTANCE_ARTIFACT_ID"
+          ],
+          "dependsOnKeys": [
+            "FILL_REQUIRED_IMPLEMENTATION_KEY"
+          ],
+          "required": true
+        }
+      ],
+      "integrationTargets": [
+        {
+          "projectRepositoryId": "FILL_INTEGER_BOUND_REPOSITORY_ID",
+          "sourceWorkItemKeys": [
+            "FILL_REQUIRED_IMPLEMENTATION_KEY"
+          ],
+          "targetBranch": "FILL_EXACT_BOUND_INTEGRATION_BRANCH",
+          "expectedBaseCommit": "FILL_EXACT_BOUND_BASE_COMMIT"
+        }
+      ],
+      "acceptanceBaselineHash": "FILL_EXACT_ACCEPTANCE_BASELINE_HASH_FROM_DEVELOPMENT_CASE"
+    }
+  }
+}

@@ -172,7 +172,7 @@ function selectEngine(
   workerExecutorFactory: WorkerExecutorFactory,
   host: WorkerHostRuntime,
   productLifecycle: ProductLifecycleCompositionOverrides | undefined,
-  _modulePackages: ProductionInstallation | undefined,
+  modulePackages: ProductionInstallation | undefined,
 ): OrchestrationEngine {
   void isFactoryLifecycleMode; // retained predicate; now trivially true
   if (!productLifecycle) {
@@ -190,6 +190,7 @@ function selectEngine(
     resolveWorkerContext: context =>
       buildDiscoveryWorkerContext(config, persistence, host, context),
     concurrency: positiveConcurrency(process.env.SAGA_CONCURRENCY),
+    packageInstallation: modulePackages,
   }).engine;
 }
 

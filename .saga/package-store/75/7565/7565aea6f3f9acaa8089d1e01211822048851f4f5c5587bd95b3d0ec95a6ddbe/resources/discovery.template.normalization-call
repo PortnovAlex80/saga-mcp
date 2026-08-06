@@ -1,0 +1,35 @@
+{
+  "control_intent_id": "FILL_INTEGER_FROM_TASK_GET_METADATA_CONTROL_INTENT_ID",
+  "source_submission_id": "FILL_INTEGER_FROM_TASK_GET_METADATA_SOURCE_SUBMISSION_ID",
+  "execution_id": "FILL_STRING_YOUR_EXECUTION_ID",
+  "schema_version": "factory.discovery-normalization-proposal.v1",
+  "payload": {
+    "source_submission_id": "FILL_INTEGER_FROM_TASK_GET_METADATA_SOURCE_SUBMISSION_ID",
+    "source_raw_hash": "FILL_64_CHAR_HEX_FROM_NORMALIZATION_GET_SOURCE_RAW_HASH",
+    "normalized_payload": {
+      "problem_statement": "FILL_DERIVED_FROM_SOURCE_PAYLOAD",
+      "observed_context": "FILL_DERIVED_FROM_SOURCE_PAYLOAD",
+      "stakeholders_or_actors": ["FILL_DERIVED_FROM_SOURCE_PAYLOAD"],
+      "assumptions": ["FILL_DERIVED_FROM_SOURCE_PAYLOAD"],
+      "unknowns": ["FILL_DERIVED_FROM_SOURCE_PAYLOAD"],
+      "risks": ["FILL_DERIVED_FROM_SOURCE_PAYLOAD"],
+      "candidate_scope": "FILL_DERIVED_FROM_SOURCE_PAYLOAD",
+      "evidence_refs": ["FILL_ALLOWED_SOURCE_REF_1"],
+      "recommended_outcome": "go",
+      "rationale": "FILL_DERIVED_FROM_SOURCE_PAYLOAD"
+    },
+    "source_field_map": {
+      "problem_statement": ["$.<top_level_source_path>"],
+      "observed_context": ["$.<top_level_source_path>"],
+      "stakeholders_or_actors": ["$.<top_level_source_path>"],
+      "assumptions": ["$.<top_level_source_path>"],
+      "unknowns": ["$.<top_level_source_path>"],
+      "risks": ["$.<top_level_source_path>"],
+      "candidate_scope": ["$.<top_level_source_path>"],
+      "evidence_refs": ["$.<top_level_source_path>"],
+      "recommended_outcome": ["$.<top_level_source_path>"],
+      "rationale": ["$.<top_level_source_path>"]
+    },
+    "notes": ["FILL_OPTIONAL_NOTE_ABOUT_TRANSFORMATION_APPLIED"]
+  }
+}

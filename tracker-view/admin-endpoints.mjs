@@ -30,7 +30,7 @@ const FACTORY_MODELS = Object.freeze([
     label: 'GLM 4.7 — рекомендуется для первого запуска',
     provider: 'zai',
     effort: 'high',
-    limit: 10,
+    limit: 2,
   }),
   Object.freeze({
     id: 'glm-5-turbo',
@@ -48,7 +48,7 @@ const FACTORY_MODELS = Object.freeze([
   }),
 ]);
 const DEFAULT_FACTORY_MODEL = 'glm-4.7';
-const DEFAULT_FACTORY_CONCURRENCY = 4;
+const DEFAULT_FACTORY_CONCURRENCY = 2;
 
 function factoryModel(modelId) {
   return FACTORY_MODELS.find(model => model.id === modelId) ?? null;
