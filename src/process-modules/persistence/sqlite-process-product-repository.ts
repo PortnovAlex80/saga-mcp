@@ -89,35 +89,74 @@ function migrateFactoryProcessProductProductKey(
   if (!tableRow) return;
   const columns = db.prepare('PRAGMA table_info(factory_process_products)').all() as Array<{ name: string }>;
   if (columns.some((c) => c.name === 'product_key')) return;
+  // The v2 repository may have already added a nullable `node_id` column
+  // (provenance: which Flow node emitted the product). The rebuild MUST
+  // preserve it — dropping it would silently erase lineage for every existing
+  // v2 product row. We detect it and branch the DDL + COPY accordingly.
+  const hasNodeId = columns.some((c) => c.name === 'node_id');
   // Old shape present without product_key — rebuild.
-  db.exec(`
-    CREATE TABLE factory_process_products_new (
-      id                 INTEGER PRIMARY KEY AUTOINCREMENT,
-      process_run_id     INTEGER NOT NULL
-                               REFERENCES factory_process_runs(id) ON DELETE RESTRICT,
-      product_kind       TEXT NOT NULL,
-      product_key        TEXT NOT NULL DEFAULT '',
-      schema_id          TEXT NOT NULL,
-      artifact_ref       TEXT NOT NULL UNIQUE,
-      product_hash       TEXT NOT NULL,
-      payload_snapshot   TEXT NOT NULL,
-      payload_hash       TEXT NOT NULL,
-      created_at         TEXT NOT NULL DEFAULT (datetime('now')),
-      UNIQUE(process_run_id, product_kind, product_key)
-    );
-    INSERT INTO factory_process_products_new
-      (id, process_run_id, product_kind, product_key, schema_id, artifact_ref,
-       product_hash, payload_snapshot, payload_hash, created_at)
-    SELECT id, process_run_id, product_kind, product_kind, schema_id, artifact_ref,
-           product_hash, payload_snapshot, payload_hash, created_at
-      FROM factory_process_products;
-    DROP TABLE factory_process_products;
-    ALTER TABLE factory_process_products_new RENAME TO factory_process_products;
-    CREATE INDEX IF NOT EXISTS idx_factory_process_products_run
-      ON factory_process_products(process_run_id, id);
-    CREATE INDEX IF NOT EXISTS idx_factory_process_products_hash
-      ON factory_process_products(schema_id, product_hash);
-  `);
+  if (hasNodeId) {
+    db.exec(`
+      CREATE TABLE factory_process_products_new (
+        id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+        process_run_id     INTEGER NOT NULL
+                                 REFERENCES factory_process_runs(id) ON DELETE RESTRICT,
+        product_kind       TEXT NOT NULL,
+        product_key        TEXT NOT NULL DEFAULT '',
+        schema_id          TEXT NOT NULL,
+        artifact_ref       TEXT NOT NULL UNIQUE,
+        product_hash       TEXT NOT NULL,
+        payload_snapshot   TEXT NOT NULL,
+        payload_hash       TEXT NOT NULL,
+        created_at         TEXT NOT NULL DEFAULT (datetime('now')),
+        node_id            TEXT,
+        UNIQUE(process_run_id, product_kind, product_key)
+      );
+      INSERT INTO factory_process_products_new
+        (id, process_run_id, product_kind, product_key, schema_id, artifact_ref,
+         product_hash, payload_snapshot, payload_hash, created_at, node_id)
+      SELECT id, process_run_id, product_kind, product_kind, schema_id, artifact_ref,
+             product_hash, payload_snapshot, payload_hash, created_at, node_id
+        FROM factory_process_products;
+      DROP TABLE factory_process_products;
+      ALTER TABLE factory_process_products_new RENAME TO factory_process_products;
+      CREATE INDEX IF NOT EXISTS idx_factory_process_products_run
+        ON factory_process_products(process_run_id, id);
+      CREATE INDEX IF NOT EXISTS idx_factory_process_products_hash
+        ON factory_process_products(schema_id, product_hash);
+      CREATE INDEX IF NOT EXISTS idx_factory_process_products_schema_ref_hash
+        ON factory_process_products(schema_id, artifact_ref, product_hash);
+    `);
+  } else {
+    db.exec(`
+      CREATE TABLE factory_process_products_new (
+        id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+        process_run_id     INTEGER NOT NULL
+                                 REFERENCES factory_process_runs(id) ON DELETE RESTRICT,
+        product_kind       TEXT NOT NULL,
+        product_key        TEXT NOT NULL DEFAULT '',
+        schema_id          TEXT NOT NULL,
+        artifact_ref       TEXT NOT NULL UNIQUE,
+        product_hash       TEXT NOT NULL,
+        payload_snapshot   TEXT NOT NULL,
+        payload_hash       TEXT NOT NULL,
+        created_at         TEXT NOT NULL DEFAULT (datetime('now')),
+        UNIQUE(process_run_id, product_kind, product_key)
+      );
+      INSERT INTO factory_process_products_new
+        (id, process_run_id, product_kind, product_key, schema_id, artifact_ref,
+         product_hash, payload_snapshot, payload_hash, created_at)
+      SELECT id, process_run_id, product_kind, product_kind, schema_id, artifact_ref,
+             product_hash, payload_snapshot, payload_hash, created_at
+        FROM factory_process_products;
+      DROP TABLE factory_process_products;
+      ALTER TABLE factory_process_products_new RENAME TO factory_process_products;
+      CREATE INDEX IF NOT EXISTS idx_factory_process_products_run
+        ON factory_process_products(process_run_id, id);
+      CREATE INDEX IF NOT EXISTS idx_factory_process_products_hash
+        ON factory_process_products(schema_id, product_hash);
+    `);
+  }
 }
 
 export class SqliteProcessProductRepository {

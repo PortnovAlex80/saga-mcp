@@ -157,15 +157,21 @@ export class SqliteProcessProductRepositoryV2 implements ProcessProductRepositor
       : productKind;
 
     // Replay detection: a row with the same (schema_id, artifact_ref) already
-    // present is the same content-addressed identity. If its product_hash /
-    // payload match, it's a benign replay; otherwise the caller is trying to
-    // mutate an immutable product.
+    // present is the same content-addressed identity. A true replay requires
+    // the FULL binding to match: same process run, same product kind, same
+    // logical product key, and same content. A row that shares the
+    // content-addressed artifact_ref but has a DIFFERENT binding (e.g. the same
+    // product resubmitted under another productKey, or by another process run)
+    // is a binding mismatch, not a benign replay.
     const existing = this.readRowBySchemaRef(
       envelope.schema,
       envelope.artifactRef,
     );
     if (existing) {
       assertReplay(existing, {
+        processRunId,
+        productKind,
+        productKey,
         schemaId: envelope.schemaId,
         productHash,
         payloadSnapshot,
@@ -313,6 +319,9 @@ function rowToV2Record(row: ProcessProductV2Row): ProcessProductRecordV2 {
 function assertReplay(
   row: ProcessProductV2Row,
   expected: {
+    processRunId: number;
+    productKind: string;
+    productKey: string;
     schemaId: string;
     productHash: string;
     payloadSnapshot: string;
@@ -320,13 +329,17 @@ function assertReplay(
   },
 ): void {
   if (
-    row.product_kind !== expected.schemaId
+    row.process_run_id !== expected.processRunId
+    || row.product_kind !== expected.productKind
+    || row.product_key !== expected.productKey
+    || row.product_kind !== expected.schemaId
     || row.product_hash !== expected.productHash
     || row.payload_snapshot !== expected.payloadSnapshot
     || row.payload_hash !== expected.payloadHash
   ) {
     throw new Error(
-      `${PROCESS_PRODUCT_REPLAY_MISMATCH}: ${row.schema_id}/${row.artifact_ref}`,
+      `${PROCESS_PRODUCT_REPLAY_MISMATCH}: ${row.schema_id}/${row.artifact_ref} `
+        + `(binding run=${row.process_run_id}/kind=${row.product_kind}/key=${row.product_key})`,
     );
   }
 }
