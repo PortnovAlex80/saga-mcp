@@ -60,11 +60,15 @@ import { SqliteWorkplaceRepository } from '../infrastructure/workplace/sqlite-wo
 import { ProductionCellCoordinator } from '../process-modules/application/production-cell-coordinator.js';
 import {
   ProductionCellNodeExecutor,
-  type ProductionCellNodeExecutorOptions,
   type ProductionCellProductReader,
-  type ProductionCellTaskPersistence,
+  type ProductionCellProjectionPersistence,
 } from '../process-modules/application/node-executors/production-cell-node-executor.js';
-import type { CheckProviderRegistry } from '../process-modules/application/gate-run-driver.js';
+import {
+  activateProductionCellRoleTask,
+  completeProductionCellTaskProjections,
+} from '../lifecycle/work-assignment-core.js';
+import { createStandardCheckProviderRegistry } from '../process-modules/application/standard-check-providers.js';
+import { serializeWorkplaceRef } from '../process-modules/domain/workplace/workplace-ref.js';
 import { SqliteProcessOutcomeCertificateRepository } from '../process-modules/persistence/sqlite-process-outcome-certificate-repository.js';
 import { SqliteProcessRunRepository } from '../process-modules/persistence/sqlite-process-run-repository.js';
 import { SqliteRecoveryCaseRepository } from '../process-modules/persistence/sqlite-recovery-case-repository.js';
@@ -258,19 +262,14 @@ export function createProductLifecycleRuntime(
   // so modules that haven't migrated feature-detect and skip.
   const candidateSetRepo = new SqliteCandidateSetRepository(db);
   const gateRepo = new SqliteGateRepository(db);
-  // ADR-029 Slice 1: Production Cell universal executor. The coordinator drives
-  // the Workplace state machine; the executor composes it with the proven
-  // WorkAssignmentPort + WorkerExecutorFactory launch path (the same surface
-  // LmNodeExecutor uses) plus the gate-run-driver. checkProviders is optional
-  // (feature-detect): until a module ships a cell definition, no production-cell
-  // node is walked, so a missing registry is inert.
+  // Universal Production Cell execution. The coordinator drives only the
+  // Workplace state machine; the application-wide dispatcher is the sole
+  // assignment and launch authority. The node executor reconciles durable
+  // products, CandidateSets and gate decisions.
   const workplaceRepo = new SqliteWorkplaceRepository(db);
   const productionCellCoordinator = new ProductionCellCoordinator({
     db,
     workplaceRepo,
-    // Slice 1 uses WorkAssignmentPort + WorkerExecutorFactory for launch, not
-    // the canonical WorkerLauncherPort. launcher/productRepo are optional in
-    // the coordinator deps for exactly this reason.
     now: () => new Date(),
   });
 
@@ -347,17 +346,67 @@ export function createProductLifecycleRuntime(
         options.workAssignment ?? new SqliteWorkAssignmentAdapter(db),
     })],
     ['human', new HumanNodeExecutor(humanInteractions)],
-    // ADR-029 Slice 1: universal production-cell executor. checkProviders is an
-    // empty registry for now; the executor feature-detects providers per cell.
-    // Until a module ships a production-cell Flow node, this entry is inert.
-    ...(options.workerExecutorFactory ? [(['production-cell', new ProductionCellNodeExecutor({
+    // ADR-030: the Production Cell executor only reconciles durable state. It
+    // never assigns, launches or polls workers; the application dispatcher is
+    // the sole process-launch path.
+    ['production-cell', new ProductionCellNodeExecutor({
       coordinator: productionCellCoordinator,
       candidateSetRepo,
       gateRepo,
-      checkProviders: { resolve: () => null } as CheckProviderRegistry,
-      taskPersistence: lmPersistence as unknown as ProductionCellTaskPersistence,
+      checkProviders: createStandardCheckProviderRegistry(),
+      persistence: {
+        ...lmPersistence,
+        activateRoleTask: ({ taskId, intentId, workplaceRef, role, executionProfileId }) => {
+          const workplace = serializeWorkplaceRef(workplaceRef);
+          activateProductionCellRoleTask(db, {
+            taskId, intentId, workplaceRef: workplace, role, executionProfileId,
+          });
+        },
+        concludeExecutionIntent: (executionRef) => {
+          db.prepare(
+            `UPDATE factory_work_intents
+                SET status='concluded', updated_at=datetime('now')
+              WHERE projected_task_id=(
+                SELECT task_id FROM worker_executions WHERE execution_id=?
+              ) AND status IN ('open','executing','paused')`,
+          ).run(executionRef);
+        },
+        readProcessInputHash: (processRunId) => {
+          const row = db.prepare(
+            'SELECT input_hash FROM factory_process_runs WHERE id=?',
+          ).get(processRunId) as { input_hash: string } | undefined;
+          if (!row) throw new Error(`PROCESS_RUN_NOT_FOUND: ${processRunId}`);
+          return row.input_hash;
+        },
+        projectWorkplace: (workplaceRef) => {
+          const workplace = serializeWorkplaceRef(workplaceRef);
+          const state = db.prepare(
+            `SELECT kanban_phase,loop_state,next_role
+               FROM factory_workplaces WHERE workplace_ref=?`,
+          ).get(workplace) as { kanban_phase: string; loop_state: string; next_role: string } | undefined;
+          if (!state) throw new Error(`WORKPLACE_NOT_FOUND: ${workplace}`);
+          if (state.loop_state === 'terminal') {
+            completeProductionCellTaskProjections(db, workplace);
+          }
+        },
+      } as ProductionCellProjectionPersistence,
       productReader: {
         readExecutionProducts: ({ processRunId, moduleRef, nodeId, executionRef }) => {
+          const submission = db.prepare(
+            `SELECT id,schema_version,content_hash
+               FROM factory_managed_node_submissions
+              WHERE process_run_id=? AND module_ref=? AND node_id=? AND execution_id=?
+              ORDER BY id DESC LIMIT 1`,
+          ).get(processRunId, moduleRef, nodeId, executionRef) as
+            | { id: number; schema_version: string; content_hash: string }
+            | undefined;
+          if (submission) {
+            return [{
+              schemaId: submission.schema_version,
+              ref: `managed-node-submission:${submission.id}`,
+              digest: submission.content_hash,
+            }];
+          }
           const artifacts = centralLedger.listArtifactsForNodeInProcessRun(
             processRunId, moduleRef, nodeId,
           ).filter(a => a.executionId === executionRef && a.contentHash);
@@ -368,16 +417,9 @@ export function createProductLifecycleRuntime(
           }));
         },
       } as ProductionCellProductReader,
-      workerExecutorFactory: options.workerExecutorFactory,
-      resolveWorkerContext: (ctx =>
-        options.resolveWorkerContext({
-          projectId: ctx.projectId,
-          epicId: ctx.epicId,
-        })) as ProductionCellNodeExecutorOptions['resolveWorkerContext'],
-      workAssignment: options.workAssignment ?? new SqliteWorkAssignmentAdapter(db),
-      installationDigest: packageInstallation?.records.values().next().value?.packageDigest ?? 'ad-slice1',
-      pollMs: 2000,
-    })] as [string, NodeExecutor])] : []),
+      resolveInstallationDigest: moduleName =>
+        packageInstallation?.records.get(moduleName)?.packageDigest ?? 'factory-runtime',
+    })],
   ]);
 
   const sharedDeps: ModuleSharedDeps = {

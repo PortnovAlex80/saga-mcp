@@ -14,21 +14,14 @@
  * surfaces to the executing node, the guards bound to it, and its
  * idempotency/side-effect classification.
  *
- * Development is one locally-settled module with two LM-facing nodes:
- *   - planning  (`plan-task-graph`)   — proposes the task graph
- *   - verification (`verify-acceptance-workset`) — records acceptance evidence
+ * Development is one locally-settled module whose LM-facing planning desk
+ * proposes the task graph. Implementation and verification are universal
+ * Production Cells and publish typed products through `process_node_submit`.
  *
- * Between them these nodes drive three durable MCP calls:
+ * The package declares these durable MCP calls:
  *   - `process_node_submit`   — planner writes the typed task-graph proposal
- *   - `verification_record`   — verifier writes the 4-valued AC evidence
- *   - `worker_done`           — both nodes complete their fenced task
- *
- * The implementation, integration and freeze steps are EXTERNAL adapters
- * (`execute-implementation-workset`, `integrate-release-candidate`,
- * `verify-acceptance-workset`'s external work) — they are not LM-driven MCP
- * calls, so they are not declared as tool contributions here. They surface to
- * the runtime as external adapter ids (owned by W9-A3's protocols + the
- * port/handler adapter in `legacy-engine-adapter.ts`).
+ *   - `verification_record`   — compatibility tool for typed AC evidence
+ *   - `worker_done`           — fenced LM task completion
  *
  * Each tool declaration references package-local resource paths (the call
  * templates and node checklists owned by this package's `nodes/` subtree,

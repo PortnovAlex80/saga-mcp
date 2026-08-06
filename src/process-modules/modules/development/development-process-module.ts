@@ -1,4 +1,11 @@
 import type { ProcessModuleDefinition } from '../../domain/process-module.js';
+import type { CheckPlan } from '../../domain/workplace/index.js';
+import { sha256Hex } from '../../../shared/canonical-json.js';
+import {
+  PRODUCT_CONTRACT_CHECK_PROVIDER_DIGEST,
+  PRODUCT_CONTRACT_CHECK_PROVIDER_ID,
+  PRODUCT_CONTRACT_CHECK_PROVIDER_VERSION,
+} from '../../application/standard-check-providers.js';
 // CONVEYOR Wave 7: the module identity ref is a CANONICAL contract owned by the
 // lifecycle (Rule 3). This module imports it back — inward direction, allowed.
 import { DEVELOPMENT_PROCESS_MODULE_REF } from '../../lifecycles/product-delivery-module-contracts.js';
@@ -8,10 +15,13 @@ import {
   DEVELOPMENT_CASE_SCHEMA,
   DEVELOPMENT_CERTIFICATE_SCHEMA,
   DEVELOPMENT_IMPLEMENTATION_WORKSET_SCHEMA,
+  DEVELOPMENT_IMPLEMENTATION_RESULT_SCHEMA,
+  DEVELOPMENT_REVIEW_VERDICT_SCHEMA,
   DEVELOPMENT_TASK_GRAPH_PROPOSAL_SCHEMA,
   DEVELOPMENT_TASK_GRAPH_SCHEMA,
   INTEGRATED_CANDIDATE_SCHEMA,
   VERIFIED_INTEGRATION_BUNDLE_SCHEMA,
+  DEVELOPMENT_VERIFICATION_EVIDENCE_PRODUCT_SCHEMA,
 } from '../../../modules/development/domain/development-schemas.js';
 
 export { DEVELOPMENT_PROCESS_MODULE_REF };
@@ -35,6 +45,42 @@ const IMPLEMENTATION_TRACKER =
 const IMPLEMENTATION_CHECKLIST =
   `${DEVELOPMENT_RESOURCE_ROOT}/implementation-worker-checklist.md`;
 
+function productContractPlan(id: string): CheckPlan {
+  const entries = [{
+    check: {
+      providerId: PRODUCT_CONTRACT_CHECK_PROVIDER_ID,
+      version: PRODUCT_CONTRACT_CHECK_PROVIDER_VERSION,
+      providerDigest: PRODUCT_CONTRACT_CHECK_PROVIDER_DIGEST,
+    },
+    parameters: {},
+    environmentRef: null,
+  }];
+  const version = '1.0.0';
+  const decisionPolicyRef = 'factory.fail-closed-product-contract.v1';
+  const decisionPolicyDigest = sha256Hex({ decisionPolicyRef, version });
+  const unknownErrorPolicy = 'fail-closed' as const;
+  return {
+    checkPlanId: id,
+    version,
+    checkPlanDigest: sha256Hex({
+      checkPlanId: id,
+      version,
+      entries,
+      decisionPolicyRef,
+      decisionPolicyDigest,
+      unknownErrorPolicy,
+    }),
+    entries,
+    decisionPolicyRef,
+    decisionPolicyDigest,
+    unknownErrorPolicy,
+  };
+}
+
+const IMPLEMENTATION_AUTHOR_PLAN = productContractPlan('development.implementation.author');
+const IMPLEMENTATION_FINAL_PLAN = productContractPlan('development.implementation.final');
+const VERIFICATION_FINAL_PLAN = productContractPlan('development.verification.final');
+
 const COMMON_READ_TOOLS = [
   'task_get', 'task_list', 'artifact_list', 'trace_list', 'repository_list',
   'repository_checkout_list', 'Read', 'Glob', 'Grep',
@@ -49,7 +95,7 @@ const COMMON_WRITE_TOOLS = [
 ] as const;
 
 /**
- * Development is one module, not four independently-settled legacy stages.
+ * Development is one module assembled from the universal Production Cell.
  *
  * Mechanical pattern (cloned from Formalization): lm-node proposes, kernel-node
  * resolves/authorizes, then the single settlement kernel-node decides. There
@@ -61,11 +107,9 @@ const COMMON_WRITE_TOOLS = [
  *     onto the kanban (declarative persistence — legitimate kernel work, same
  *     tier as Formalization persisting a contract).
  *
- * Implementation, integration and verification are NOT Flow nodes. The
- * projected tasks are ordinary kanban tasks. Workers claim them through the
- * shared worker_next queue (infrastructure), execute code, merge through
- * worker_merge_release and record verification evidence. The module never
- * hires, merges or tests.
+ * Implementation and verification are Production Cell nodes. Their desks are
+ * staffed through the one global dispatcher and accepted through sealed
+ * CandidateSets and deterministic gates.
  *
  *   settle-development (kernel) re-reads exact durable products via
  *     settlementState, reconstructs the implementation workset / integrated
@@ -144,11 +188,100 @@ export const developmentProcessModule: ProcessModuleDefinition = {
         outputSchema: { id: DEVELOPMENT_TASK_GRAPH_SCHEMA },
       },
       {
+        id: 'implement-work-items',
+        label: 'Implement and Review Work Items',
+        kind: 'production-cell',
+        description:
+          'Fan out the validated implementation items through the universal Workplace author, review, gate and repair loop.',
+        cellDefinition: {
+          id: 'development-implementation',
+          inputSelectors: ['resolve-task-graph.items'],
+          materialization: {
+            sourceBinding: 'resolve-task-graph',
+            workKeySelector: 'items',
+            completionPolicy: 'all',
+          },
+          author: {
+            skillRef: 'development-implementation-worker',
+            capabilityPreset: 'sandbox-code-author',
+          },
+          productContracts: [{
+            binding: 'implementationResult',
+            schemaRef: DEVELOPMENT_IMPLEMENTATION_RESULT_SCHEMA,
+            mediaType: 'application/json',
+            cardinality: '1',
+          }],
+          authorGate: {
+            gateId: 'development-implementation-author',
+            gatePhase: 'author',
+            checkPlan: IMPLEMENTATION_AUTHOR_PLAN,
+          },
+          review: {
+            reviewer: {
+              skillRef: 'development-implementation-reviewer',
+              capabilityPreset: 'sandbox-code-reviewer',
+            },
+            verdictSchemaRef: DEVELOPMENT_REVIEW_VERDICT_SCHEMA,
+            finalGate: {
+              gateId: 'development-implementation-final',
+              gatePhase: 'final',
+              checkPlan: IMPLEMENTATION_FINAL_PLAN,
+            },
+          },
+          recovery: { maxAttempts: 2, onExhausted: 'pause' },
+          transitions: {
+            accepted: 'verify-acceptance',
+            humanRequired: 'complete-blocked',
+            failed: 'complete-failed',
+          },
+        },
+      },
+      {
+        id: 'verify-acceptance',
+        label: 'Verify Acceptance Criteria',
+        kind: 'production-cell',
+        description:
+          'Fan out acceptance checks over the exact accepted implementation manifest through the same universal Workplace loop.',
+        cellDefinition: {
+          id: 'development-verification',
+          inputSelectors: [
+            'resolve-task-graph.verificationItems',
+            'implement-work-items.products',
+          ],
+          materialization: {
+            sourceBinding: 'resolve-task-graph',
+            workKeySelector: 'verificationItems',
+            completionPolicy: 'all',
+          },
+          author: {
+            skillRef: 'development-verification-worker',
+            capabilityPreset: 'sandbox-verifier',
+          },
+          productContracts: [{
+            binding: 'verificationEvidence',
+            schemaRef: DEVELOPMENT_VERIFICATION_EVIDENCE_PRODUCT_SCHEMA,
+            mediaType: 'application/json',
+            cardinality: '1',
+          }],
+          authorGate: {
+            gateId: 'development-verification-final',
+            gatePhase: 'final',
+            checkPlan: VERIFICATION_FINAL_PLAN,
+          },
+          recovery: { maxAttempts: 2, onExhausted: 'pause' },
+          transitions: {
+            accepted: 'settle-development',
+            humanRequired: 'complete-blocked',
+            failed: 'complete-failed',
+          },
+        },
+      },
+      {
         id: 'settle-development',
         label: 'Settle Development',
         kind: 'kernel',
         description:
-          'Re-read exact durable products — the validated task graph, projected tracker tasks and integration state — reconstruct the implementation workset, integrated release candidate and acceptance-verification workset as inner settlement data, then run the deterministic settlement policy and issue the development certificate.',
+          'Re-read the validated task graph and accepted Production Cell products, reconstruct the implementation workset, integrated release candidate and acceptance-verification workset, then issue the deterministic development certificate.',
         handler: DEVELOPMENT_KERNEL_HANDLER_IDS.settle,
         inputSchema: { id: DEVELOPMENT_TASK_GRAPH_SCHEMA },
         outputSchema: { id: DEVELOPMENT_CERTIFICATE_SCHEMA },
@@ -185,20 +318,22 @@ export const developmentProcessModule: ProcessModuleDefinition = {
         on: 'runtime.failed',
       },
 
-      // Resolver success → settlement. The settlement kernel re-reads tracker
-      // state (projected tasks, integration_state) and decides the outcome.
-      // NOTE: there is intentionally NO await-implementation node between
-      // resolve and settle. The conveyor (orchestrate-cli main loop /
-      // LifecycleOrchestrator) drives the impl tasks through the shared
-      // worker_next queue; the ProcessRun does not advance to settle-development
-      // until those tasks reach terminal state. The GenericFlowExecutor has no
-      // condition-wait primitive, so any "wait" must be owned by the conveyor,
-      // not by a Flow node. settle-development assumes the impl workset is
-      // already terminal when it runs.
+      // Resolution authorizes two universal cells. Each pauses while its desks
+      // are staffed and completes only when its declared policy is satisfied.
       {
         from: 'resolve-task-graph',
-        to: 'settle-development',
+        to: 'implement-work-items',
         on: 'domain.valid',
+      },
+      {
+        from: 'implement-work-items',
+        to: 'verify-acceptance',
+        on: 'domain.accepted',
+      },
+      {
+        from: 'verify-acceptance',
+        to: 'settle-development',
+        on: 'domain.accepted',
       },
       // Semantic repair loop: the planner must revise the proposal.
       {
@@ -278,14 +413,14 @@ export const developmentProcessModule: ProcessModuleDefinition = {
       schema: { id: DEVELOPMENT_IMPLEMENTATION_WORKSET_SCHEMA },
       authority: 'kernel',
       description:
-        'Implementation and independent review results, reconstructed at settlement from the exact projected tracker tasks and integration state.',
+        'Implementation and independent review results reconstructed from accepted, sealed cell products.',
     },
     {
       type: 'integrated-release-candidate',
       schema: { id: INTEGRATED_CANDIDATE_SCHEMA },
       authority: 'kernel',
       description:
-        'Frozen repository commits, tree hashes and build digests, reconstructed at settlement from integration state.',
+        'Frozen repository commits, tree hashes and build digests reconstructed from accepted implementation products.',
     },
     {
       type: 'acceptance-verification-workset',
@@ -430,9 +565,9 @@ export const developmentProcessModule: ProcessModuleDefinition = {
       workIntentSchema: {
         id: 'factory.work-intent.development-implementation.v1',
       },
-      taskKind: 'implementation.feature',
+      taskKind: 'development.code',
       executionSkill: 'saga-worker',
-      reviewSkill: 'saga-worker',
+      reviewSkill: null,
       protocolSkill: PROCESS_PROTOCOL_SKILL,
       semanticSkill: 'saga-worker',
       executionMode: 'git_change',
@@ -441,12 +576,60 @@ export const developmentProcessModule: ProcessModuleDefinition = {
       workspaceTemplates: [IMPLEMENTATION_CHECKLIST],
       callTemplates: [],
       checklists: [IMPLEMENTATION_CHECKLIST],
-      outputSchema: { id: DEVELOPMENT_IMPLEMENTATION_WORKSET_SCHEMA },
+      outputSchema: { id: DEVELOPMENT_IMPLEMENTATION_RESULT_SCHEMA },
       retryPolicy: {
         maxAttempts: 2,
         retryOn: ['review-rejected', 'merge-conflict'],
         backoff: 'none',
       },
+      recoveryPolicy: {
+        resumeFromCheckpoint: true,
+        reuseWorkIntent: true,
+        reuseAcceptedOutput: true,
+        onExhausted: 'pause',
+      },
+    },
+    {
+      id: 'development-implementation-reviewer',
+      workIntentKind: 'development.implementation-review',
+      workIntentSchema: { id: 'factory.work-intent.development-implementation-review.v1' },
+      taskKind: 'development.code.review',
+      executionSkill: 'saga-worker',
+      reviewSkill: null,
+      protocolSkill: PROCESS_PROTOCOL_SKILL,
+      semanticSkill: 'saga-worker',
+      executionMode: 'tracker_only',
+      allowedTools: COMMON_WRITE_TOOLS,
+      trackerTemplate: IMPLEMENTATION_TRACKER,
+      workspaceTemplates: [IMPLEMENTATION_CHECKLIST],
+      callTemplates: [],
+      checklists: [IMPLEMENTATION_CHECKLIST],
+      outputSchema: { id: DEVELOPMENT_REVIEW_VERDICT_SCHEMA },
+      retryPolicy: { maxAttempts: 2, retryOn: ['review-rejected'], backoff: 'none' },
+      recoveryPolicy: {
+        resumeFromCheckpoint: true,
+        reuseWorkIntent: true,
+        reuseAcceptedOutput: true,
+        onExhausted: 'pause',
+      },
+    },
+    {
+      id: 'development-verification-worker',
+      workIntentKind: 'development.verification',
+      workIntentSchema: { id: 'factory.work-intent.development-verification.v1' },
+      taskKind: 'verification.ac',
+      executionSkill: 'saga-worker',
+      reviewSkill: null,
+      protocolSkill: PROCESS_PROTOCOL_SKILL,
+      semanticSkill: 'saga-worker',
+      executionMode: 'tracker_only',
+      allowedTools: COMMON_WRITE_TOOLS,
+      trackerTemplate: IMPLEMENTATION_TRACKER,
+      workspaceTemplates: [IMPLEMENTATION_CHECKLIST],
+      callTemplates: [],
+      checklists: [IMPLEMENTATION_CHECKLIST],
+      outputSchema: { id: DEVELOPMENT_VERIFICATION_EVIDENCE_PRODUCT_SCHEMA },
+      retryPolicy: { maxAttempts: 2, retryOn: ['evidence-rejected'], backoff: 'none' },
       recoveryPolicy: {
         resumeFromCheckpoint: true,
         reuseWorkIntent: true,

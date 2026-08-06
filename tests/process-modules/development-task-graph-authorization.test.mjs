@@ -110,7 +110,7 @@ function validProposal() {
   };
 }
 
-function resolverContext(runInput) {
+function resolverContext(runInput, proposal) {
   return {
     projectId: 1,
     epicId: 10,
@@ -131,6 +131,24 @@ function resolverContext(runInput) {
       runInput,
       productions: {},
       receipts: {},
+    },
+    nodeProducts: {
+      artifacts: [],
+      traces: [],
+      submission: {
+        submissionId: 1,
+        processRunId: 77,
+        moduleRef: 'solution-development@1.0.0',
+        nodeId: DEVELOPMENT_NODE_IDS.planner,
+        intentId: 501,
+        taskId: 601,
+        executionId: 'execution-701',
+        schema: DEVELOPMENT_TASK_GRAPH_PROPOSAL_SCHEMA,
+        payload: proposal,
+        contentHash: sha256Hex(proposal),
+        artifactRef: 'managed-node-submission:1',
+        submittedAt: '2026-07-26 12:00:00',
+      },
     },
     initiatedBy: 'test',
   };
@@ -201,7 +219,7 @@ test('invalid LM graph is rejected before any task materialization', async () =>
   );
   const result = await handlers[
     DEVELOPMENT_KERNEL_HANDLER_IDS.resolveTaskGraph
-  ](resolverContext(runInput));
+  ](resolverContext(runInput, proposal));
   assert.equal(result.event, 'repair-required');
   assert.equal(result.production.bindings.resolutionStatus, 'rejected');
   assert.equal(
@@ -235,7 +253,7 @@ test('kernel validates and canonicalizes before the materializer sees a graph', 
   );
   const result = await handlers[
     DEVELOPMENT_KERNEL_HANDLER_IDS.resolveTaskGraph
-  ](resolverContext(runInput));
+  ](resolverContext(runInput, proposal));
   assert.equal(result.event, 'valid');
   assert.equal(result.production.bindings.resolutionStatus, 'valid');
   assert.equal(authorizedGraph.plannerSubmission.ref, 'managed-node-submission:1');

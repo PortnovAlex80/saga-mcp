@@ -394,6 +394,7 @@ export function buildWorkspaceProjection(
   installationId: ModuleInstallationId,
   nodeId: string,
   packageRegistry: WorkspacePackageRegistry,
+  executionProfileId?: string,
 ): WorkspaceProjection {
   // Step 1 — resolve the pinned record by exact id. NOT by name: a pinned run
   // must see the exact installation it was started under, even if a newer
@@ -435,18 +436,19 @@ export function buildWorkspaceProjection(
 
   // Step 5 — LM nodes carry an execution profile; other kinds do not.
   const lmNode = lmNodeOf(node);
-  if (!lmNode) {
+  const selectedProfileId = executionProfileId ?? lmNode?.executionProfile;
+  if (!selectedProfileId) {
     throw new WorkspaceProjectionError(
       WORKSPACE_NODE_NOT_LM,
-      `${WORKSPACE_NODE_NOT_LM}: node '${nodeId}' has kind '${node.kind}'; only 'lm' nodes carry an execution profile`,
+      `${WORKSPACE_NODE_NOT_LM}: node '${nodeId}' has kind '${node.kind}' and no explicit execution profile was supplied`,
     );
   }
   const profile: ExecutionProfileDefinition | undefined =
-    definition.executionProfiles.find((p) => p.id === lmNode.executionProfile);
+    definition.executionProfiles.find((p) => p.id === selectedProfileId);
   if (!profile) {
     throw new WorkspaceProjectionError(
       WORKSPACE_PROFILE_NOT_FOUND,
-      `${WORKSPACE_PROFILE_NOT_FOUND}: node '${nodeId}' references profile '${lmNode.executionProfile}' which is not declared by ${record.name}@${record.version}`,
+      `${WORKSPACE_PROFILE_NOT_FOUND}: node '${nodeId}' references profile '${selectedProfileId}' which is not declared by ${record.name}@${record.version}`,
     );
   }
 

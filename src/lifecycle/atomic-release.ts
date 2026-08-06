@@ -126,7 +126,9 @@ export function releaseExecutionAtomically(
     ?? hasAcceptedWorkerDoneReceipt(db, input.executionId);
   const restoredStatus = preserveTaskStatus
     ? task.status
-    : computeRestoredStatus(task.status, task.integration_state);
+    : physicalRetryExhausted(db, task.id)
+      ? 'blocked'
+      : computeRestoredStatus(task.status, task.integration_state);
 
   let taskReleased = false;
   db.transaction(() => {
@@ -165,6 +167,23 @@ export function releaseExecutionAtomically(
     blockedReason: taskReleased ? '' : 'fence CAS failed (task reassigned mid-release)',
     taskId: task.id,
   };
+}
+
+function physicalRetryExhausted(db: Database, taskId: number): boolean {
+  const row = db.prepare(
+    `SELECT COALESCE(intent.retry_budget,0) AS retryBudget,
+            json_extract(task.metadata,'$.production_cell_id') AS productionCellId,
+            (SELECT COUNT(*) FROM worker_executions execution
+              WHERE execution.task_id=task.id
+                AND execution.state IN ('lost','spawn_failed','terminated')) AS failedAttempts
+       FROM tasks task
+       LEFT JOIN factory_work_intents intent
+         ON intent.id=json_extract(task.metadata,'$.work_intent_id')
+      WHERE task.id=?`,
+  ).get(taskId) as { retryBudget: number; failedAttempts: number; productionCellId: string | null } | undefined;
+  if (!row || !row.productionCellId) return false;
+  // retry_budget counts retries after the first physical attempt.
+  return row.failedAttempts + 1 > row.retryBudget;
 }
 
 function noRelease(blockedReason: string, taskId: number | null): ReleaseOutcome {

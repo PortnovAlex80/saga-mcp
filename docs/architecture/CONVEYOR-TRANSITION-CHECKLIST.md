@@ -125,5 +125,3 @@ Run the same scenario without changing the factory engine:
 9. Exercise concurrent advance during diagnosis, absent journal with intact
    authority, duplicate outbox delivery, rollback before outbox, database
    unavailability, unknown reason code and event redaction.
-10. Make a legacy migration adapter return `unknown` when evidence is unavailable;
-    it must never translate absence into pass.

@@ -48,6 +48,10 @@ db.pragma('foreign_keys = ON');
 db.prepare('DELETE FROM factory_launch_requests').run();
 db.prepare('DELETE FROM factory_orders').run();
 db.prepare("UPDATE tasks SET status='todo', assigned_to=NULL, current_execution_id=NULL").run();
+db.prepare(`INSERT OR IGNORE INTO trusted_providers
+  (project_id,name,version,category,trust_basis,determinism,scope,status)
+  VALUES (1,'saga-deterministic-simulator','1.0.0','deterministic_evidence',
+          'deterministic mock factory','full','mock-factory','active')`).run();
 
 const orderRef = 'order-sim-' + crypto.randomUUID().slice(0,8);
 const launchRef = 'launch-' + crypto.randomUUID();

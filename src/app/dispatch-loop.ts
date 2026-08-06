@@ -177,7 +177,8 @@ async function waitForAssignedWorker(input: {
 function logTerminal(assignment: AssignedWork, snapshot: WorkerRunSnapshot): void {
   process.stdout.write(
     `[dispatch] task=${assignment.taskId} run=${snapshot.status}: `
-    + `${snapshot.completed} completed, ${snapshot.failed} failed\n`,
+    + `${snapshot.completed} completed, ${snapshot.failed} failed`
+    + `${snapshot.last_error ? `; error=${snapshot.last_error}` : ''}\n`,
   );
 }
 

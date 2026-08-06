@@ -342,6 +342,90 @@ export async function executeSteps(runtime, ctx, scenario, stream) {
         stream.text(`simulator: process_node_submit schema=${step.args.schema} ref=${result.submission_ref}`);
         break;
       }
+      case 'development_implementation_submit': {
+        const item = ctx.metadata?.cell_input_item;
+        if (!item?.key) throw new Error('SIMULATOR_DEVELOPMENT_ITEM_MISSING');
+        const repository = db.prepare(
+          `SELECT id,local_path,integration_branch
+             FROM project_repositories
+            WHERE project_id=? AND status='active'
+            ORDER BY id LIMIT 1`,
+        ).get(ctx.project_id);
+        if (!repository?.local_path) throw new Error('SIMULATOR_REPOSITORY_MISSING');
+        const commit = spawnSync('git', ['-C', repository.local_path, 'rev-parse', repository.integration_branch], { encoding: 'utf8' });
+        const tree = spawnSync('git', ['-C', repository.local_path, 'rev-parse', `${repository.integration_branch}^{tree}`], { encoding: 'utf8' });
+        if (commit.status !== 0 || tree.status !== 0) throw new Error('SIMULATOR_REPOSITORY_SNAPSHOT_FAILED');
+        const htmlDigest = sha256(step.content);
+        const payload = {
+          schemaVersion: 'factory.development-implementation-result.v1',
+          workItemKey: item.key,
+          status: 'succeeded',
+          reviewedSourceCommit: commit.stdout.trim(),
+          repository: {
+            projectRepositoryId: repository.id,
+            branch: repository.integration_branch,
+            commitSha: commit.stdout.trim(),
+            treeHash: tree.stdout.trim(),
+          },
+          buildProducts: [{ kind: 'text-file', ref: 'workspace:index.html', digest: htmlDigest }],
+          result: { schema: 'factory.text-file.v1', ref: 'workspace:index.html', hash: htmlDigest },
+          reasonCodes: [],
+        };
+        const result = requireHandler(runtime.nodeSubmitMod, 'process_node_submit')({
+          schema: payload.schemaVersion,
+          payload,
+        });
+        stream.text(`simulator: implementation product ref=${result.submission_ref}`);
+        break;
+      }
+      case 'development_verification_submit': {
+        const item = ctx.metadata?.cell_input_item;
+        const criterionId = item?.acceptanceCriterionIds?.[0];
+        const criterion = Number.isInteger(criterionId)
+          ? db.prepare('SELECT accepted_hash FROM artifacts WHERE id=?').get(criterionId)
+          : null;
+        const provider = db.prepare(
+          `SELECT id,name,version FROM trusted_providers
+            WHERE name='saga-deterministic-simulator'
+              AND category='deterministic_evidence' AND status='active'
+              AND (project_id=? OR project_id IS NULL)
+            ORDER BY project_id IS NOT NULL DESC,id LIMIT 1`,
+        ).get(ctx.project_id);
+        if (!item?.key || !criterion?.accepted_hash || !provider) {
+          throw new Error('SIMULATOR_VERIFICATION_LINEAGE_MISSING');
+        }
+        const evidenceBody = {
+          item: item.key,
+          criterionId,
+          acceptedHash: criterion.accepted_hash,
+          result: 'passed',
+        };
+        const payload = {
+          schemaVersion: 'factory.candidate-verification-evidence-product.v1',
+          verificationItemKey: item.key,
+          acceptanceCriterionId: criterionId,
+          acceptedCriterionHash: criterion.accepted_hash,
+          outcome: 'passed',
+          evidence: {
+            schema: 'factory.deterministic-verification-evidence.v1',
+            ref: `simulator-verification:${ctx.execution_id}`,
+            hash: sha256(JSON.stringify(evidenceBody)),
+          },
+          provider: {
+            providerId: provider.id,
+            name: provider.name,
+            version: provider.version,
+            category: 'deterministic_evidence',
+            trusted: true,
+          },
+        };
+        const result = requireHandler(runtime.nodeSubmitMod, 'process_node_submit')({
+          schema: payload.schemaVersion,
+          payload,
+        });
+        stream.text(`simulator: verification product ref=${result.submission_ref}`);
+        break;
+      }
       case 'proposal_submit': {
         const result = requireHandler(runtime.proposals, 'proposal_submit')(step.args);
         const proposalId = result?.proposal_id;

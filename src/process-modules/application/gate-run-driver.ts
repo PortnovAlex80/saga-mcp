@@ -67,6 +67,7 @@ export interface CheckProviderRegistry {
 export interface DriveGateRunInput {
   readonly workplaceRef: WorkplaceRef;
   readonly subjectCandidateSetRef: string;
+  readonly assessmentCandidateSetRefs?: readonly string[];
   readonly checkPlan: CheckPlan;
   readonly gatePhase: 'author' | 'final';
   readonly expectedWorkplaceRevision: number;
@@ -105,7 +106,7 @@ export function driveGateRun(
     workplaceRef: input.workplaceRef,
     gatePhase: input.gatePhase,
     subjectCandidateSetRef: input.subjectCandidateSetRef,
-    assessmentCandidateSetRefs: [],
+    assessmentCandidateSetRefs: input.assessmentCandidateSetRefs ?? [],
     checkPlanRef: input.checkPlan.checkPlanId,
     checkPlanDigest: input.checkPlan.checkPlanDigest,
     expectedWorkplaceRevision: input.expectedWorkplaceRevision,
@@ -140,7 +141,7 @@ export function driveGateRun(
       checkReceiptRef,
       checkRunRef: gateRunRef,
       subjectCandidateSetRef: input.subjectCandidateSetRef,
-      assessmentCandidateSetRefs: [],
+      assessmentCandidateSetRefs: input.assessmentCandidateSetRefs ?? [],
       check: entry.check,
       environmentRef: entry.environmentRef ?? input.environmentRef,
       outcome: outcome as CheckOutcome,
@@ -165,7 +166,7 @@ export function driveGateRun(
     workplaceRef: input.workplaceRef,
     transitionRef,
     subjectCandidateSetRef: input.subjectCandidateSetRef,
-    assessmentCandidateSetRefs: [],
+    assessmentCandidateSetRefs: input.assessmentCandidateSetRefs ?? [],
     verdict,
     repairTargetRole: verdict === 'repair_required' ? 'author' : null,
     checkPlanRef: input.checkPlan.checkPlanId,

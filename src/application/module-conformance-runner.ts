@@ -108,6 +108,7 @@ export const FLOW_NODE_KIND_VALUES = Object.freeze([
   'human',
   'external',
   'composite',
+  'production-cell',
 ]);
 export const ARTIFACT_AUTHORITY_VALUES = Object.freeze([
   'worker',

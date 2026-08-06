@@ -549,6 +549,56 @@ export interface ProjectedTaskPreparationCommand {
   currentExecutionId: string | null;
 }
 
+/** Atomically publish the one claimable task card for a Production Cell role. */
+export function activateProductionCellRoleTask(
+  db: Database.Database,
+  input: {
+    taskId: number;
+    intentId: number;
+    workplaceRef: string;
+    role: 'author' | 'reviewer';
+    executionProfileId: string;
+  },
+): void {
+  withImmediateTransaction(db, () => {
+    const row = db.prepare('SELECT metadata FROM tasks WHERE id=?').get(input.taskId) as
+      | { metadata: string }
+      | undefined;
+    if (!row) throw new Error(`PROJECTED_TASK_NOT_FOUND: ${input.taskId}`);
+    let metadata: Record<string, unknown>;
+    try { metadata = JSON.parse(row.metadata) as Record<string, unknown>; }
+    catch { throw new Error(`PROJECTED_TASK_METADATA_INVALID: ${input.taskId}`); }
+    metadata.work_intent_id = input.intentId;
+    metadata.process_execution_profile_id = input.executionProfileId;
+    metadata.workplace_ref = input.workplaceRef;
+    metadata.role = input.role;
+    db.prepare(
+      `UPDATE tasks SET status='done',assigned_to=NULL,current_execution_id=NULL,
+              updated_at=datetime('now') WHERE workplace_ref=? AND id<>?`,
+    ).run(input.workplaceRef, input.taskId);
+    db.prepare(
+      `UPDATE tasks SET workplace_ref=?,status=?,assigned_to=NULL,
+              current_execution_id=NULL,metadata=?,updated_at=datetime('now') WHERE id=?`,
+    ).run(
+      input.workplaceRef,
+      input.role === 'reviewer' ? 'review' : 'todo',
+      JSON.stringify(metadata),
+      input.taskId,
+    );
+  });
+}
+
+/** Mark every disposable card projection of a terminal Workplace complete. */
+export function completeProductionCellTaskProjections(
+  db: Database.Database,
+  workplaceRef: string,
+): void {
+  db.prepare(
+    `UPDATE tasks SET status='done',assigned_to=NULL,current_execution_id=NULL,
+            updated_at=datetime('now') WHERE workplace_ref=?`,
+  ).run(workplaceRef);
+}
+
 /** Prepare a projected task for a new fenced execution. */
 export function prepareFactoryProjectedTaskForExecution(
   db: Database.Database,

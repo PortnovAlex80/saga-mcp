@@ -9,18 +9,17 @@
  *
  * The coordinator is the INFRASTRUCTURE twin of the pure-domain reducer
  * (`production-cell-reducer.ts`). The reducer computes the next state; the
- * coordinator APPLIES it: it persists via CAS, spawns workers, seals
- * CandidateSets, runs gates, records decisions. It is the concrete component
- * that `GenericFlowExecutor` will delegate `production-cell` nodes to (step 2.5
- * wiring).
+ * coordinator APPLIES it: it persists state transitions via CAS. Worker
+ * reservation and launch belong exclusively to the global dispatcher; gates
+ * and immutable product provenance belong to their dedicated repositories.
  *
  * # Lifecycle
  *
  *   1. `materializeCell` — creates the factory_workplaces row at todo/idle.
  *   2. `admitWork` — transitions todo/idle → in_progress/queued (work-admitted).
- *   3. `launchWorker` — creates ExecutionReservation, calls WorkerLauncherPort,
- *      transitions queued → leased → running.
- *   4. `sealCandidateSet` — when worker calls `execution_complete`, seal the
+ *   3. The global dispatcher leases and starts the worker, while the Workplace
+ *      projector applies queued → leased → running.
+ *   4. `sealCandidateSet` — after the worker has submitted its products,
  *      CandidateSet and transition running → verifying.
  *   5. `applyGateDecision` — record the GateDecision, apply the transition
  *      (verifying → terminal/review/repair_wait per verdict).
@@ -33,11 +32,6 @@
  * The coordinator receives its dependencies via constructor (ports + repos).
  * This makes it testable with in-memory fakes and composable in the root.
  *
- * # Step 2.2 scope
- *
- * EXISTS and tested; nothing on the runtime path delegates to it yet (the
- * GenericFlowExecutor still uses its inline node-walking). Step 2.5 wiring
- * routes `production-cell` FlowNodes to this coordinator.
  */
 
 import type Database from 'better-sqlite3';
@@ -50,25 +44,17 @@ import {
   type WorkplaceState,
 } from '../domain/workplace/index.js';
 import { SqliteWorkplaceRepository } from '../../infrastructure/workplace/sqlite-workplace-repository.js';
-import type { WorkerLauncherPort, LaunchRequest } from '../../application/ports/worker-launcher-port.js';
-import type { ProductRepositoryPort } from '../application/product-repository-port.js';
 
 /**
  * Dependencies the coordinator needs.
  *
- * `launcher` and `productRepo` are OPTIONAL: they are only used by
- * {@link ProductionCellCoordinator.launchWorker}. The ADR-029 Slice 1 runtime
- * path (ProductionCellNodeExecutor) does NOT use launchWorker — it launches
- * workers through the proven WorkAssignmentPort + WorkerExecutorFactory path
- * and drives Workplace state via materialize/admit/seal/applyGateDecision. A
- * future slice may migrate launchWorker to the canonical WorkerLauncherPort,
- * at which point these become required again.
+ * Launch dependencies are deliberately absent. The coordinator cannot spawn a
+ * worker, which makes the single-launch-authority invariant structural rather
+ * than conventional.
  */
 export interface ProductionCellCoordinatorDeps {
   readonly db: Database.Database;
   readonly workplaceRepo: SqliteWorkplaceRepository;
-  readonly launcher?: WorkerLauncherPort | null;
-  readonly productRepo?: ProductRepositoryPort | null;
   /** Clock for timestamps (injectable for tests). */
   readonly now: () => Date;
 }
@@ -115,100 +101,6 @@ export class ProductionCellCoordinator {
   }
 
   // -----------------------------------------------------------------------
-  // Step 3: Launch worker.
-  // -----------------------------------------------------------------------
-
-  /**
-   * Lease + launch a worker for this workplace.
-   *
-   * Creates an ExecutionReservation (deterministic ref), calls the
-   * WorkerLauncherPort, and applies the worker-leased + worker-started
-   * transitions. Returns the PID of the launched process.
-   *
-   * When the workplace is in `review/queued` with `nextRole=reviewer`, the
-   * Kanban phase advances to `review_in_progress` on lease (v4 §Allowed
-   * channel combinations).
-   */
-  launchWorker(
-    ref: WorkplaceRef,
-    request: Omit<LaunchRequest, 'workplaceRef' | 'reservationRef'>,
-  ): { pid: number | null; state: WorkplaceState } {
-    if (!this.deps.launcher) {
-      throw new Error(
-        'ProductionCellCoordinator.launchWorker: no WorkerLauncherPort wired. '
-          + 'The ADR-029 Slice 1 runtime path launches workers via '
-          + 'WorkAssignmentPort + WorkerExecutorFactory (see '
-          + 'ProductionCellNodeExecutor), not through this method. The '
-          + 'canonical WorkerLauncherPort is wired in a later slice.',
-      );
-    }
-    // Apply worker-leased transition (queued → leased).
-    const leased = this.applyEvent(ref, { kind: 'worker-leased', reservationRef: request.fenceToken });
-    if (!leased.applied) {
-      throw new Error(
-        `ProductionCellCoordinator.launchWorker: CAS miss on worker-leased for ${serializeWorkplaceRef(ref)}`,
-      );
-    }
-
-    // Launch the process.
-    const launchResult = this.deps.launcher.launch({
-      ...request,
-      workplaceRef: ref,
-      reservationRef: request.fenceToken,
-    });
-
-    // Apply worker-started transition (leased → running).
-    const started = this.applyEvent(ref, { kind: 'worker-started' });
-    if (!started.applied) {
-      throw new Error(
-        `ProductionCellCoordinator.launchWorker: CAS miss on worker-started for ${serializeWorkplaceRef(ref)}`,
-      );
-    }
-
-    return { pid: launchResult.pid, state: started.state };
-  }
-
-  /**
-   * Record the Workplace state-machine side of a worker launch on the ADR-029
-   * hybrid launch path (WorkAssignmentPort + WorkerExecutorFactory).
-   *
-   * The {@link ProductionCellNodeExecutor} launches workers through the same
-   * proven `WorkAssignmentPort` + `WorkerExecutorFactory` surface the
-   * `LmNodeExecutor` and the dispatch-loop use — NOT through the canonical
-   * `WorkerLauncherPort`. That path performs the claim/fence/spawn, but it
-   * does NOT touch Workplace state. The Workplace state machine still needs
-   * the two loop transitions (`queued → leased → running`) so that a later
-   * `candidate-sealed` event is valid. This method applies both transitions
-   * around an externally-performed launch, decoupling the SPAWN
-   * (infrastructure) from the WORKPLACE STATE (domain).
-   *
-   * Returns the post-`running` state. Throws on a CAS miss or a NO_TRANSITION
-   * (the workplace was not in `queued`/`leased` as expected).
-   */
-  markWorkerLaunched(
-    ref: WorkplaceRef,
-    fenceToken: string,
-  ): WorkplaceState {
-    // queued → leased. When the Kanban phase is `review` (reviewer buffer),
-    // leasing ALSO advances Kanban to `review_in_progress` (v4 §Allowed
-    // channel combinations) — same rule as launchWorker.
-    const leased = this.applyEvent(ref, { kind: 'worker-leased', reservationRef: fenceToken });
-    if (!leased.applied) {
-      throw new Error(
-        `markWorkerLaunched: CAS miss on worker-leased for ${serializeWorkplaceRef(ref)}`,
-      );
-    }
-    // leased → running.
-    const started = this.applyEvent(ref, { kind: 'worker-started' });
-    if (!started.applied) {
-      throw new Error(
-        `markWorkerLaunched: CAS miss on worker-started for ${serializeWorkplaceRef(ref)}`,
-      );
-    }
-    return started.state;
-  }
-
-  // -----------------------------------------------------------------------
   // Step 4: Seal CandidateSet.
   // -----------------------------------------------------------------------
 
@@ -221,7 +113,10 @@ export class ProductionCellCoordinator {
    * is done by the CandidateSetRepository — the coordinator triggers it.
    */
   sealCandidateSet(ref: WorkplaceRef): StepResult {
-    return this.applyEvent(ref, { kind: 'candidate-sealed' });
+    const actors = this.deps.workplaceRepo.readActiveActors(ref);
+    return this.applyEvent(ref, { kind: 'candidate-sealed' }, {
+      activeReservationRef: actors?.activeReservationRef ?? null,
+    });
   }
 
   // -----------------------------------------------------------------------
@@ -354,7 +249,15 @@ export class ProductionCellCoordinator {
    * Returns `{applied: false}` on a CAS miss (a concurrent writer won the
    * revision race — REG-05-AC-02, E2E-08).
    */
-  private applyEvent(ref: WorkplaceRef, event: ProductionCellEvent): StepResult {
+  private applyEvent(
+    ref: WorkplaceRef,
+    event: ProductionCellEvent,
+    actors?: {
+      activeReservationRef?: string | null;
+      activeGateRef?: string | null;
+      activeRecoveryCaseRef?: string | null;
+    },
+  ): StepResult {
     const current = this.deps.workplaceRepo.read(ref);
     if (!current) {
       throw new Error(
@@ -371,6 +274,7 @@ export class ProductionCellCoordinator {
       loopState: target.loopState,
       nextRole: target.nextRole,
       terminalReason: target.terminalReason,
+      ...actors,
     });
     return {
       applied: result.applied,
@@ -386,6 +290,14 @@ export class ProductionCellCoordinator {
   /** Read the current workplace state. */
   readState(ref: WorkplaceRef): WorkplaceState | null {
     return this.deps.workplaceRepo.read(ref);
+  }
+
+  readActiveActors(ref: WorkplaceRef): {
+    activeReservationRef: string | null;
+    activeGateRef: string | null;
+    activeRecoveryCaseRef: string | null;
+  } | null {
+    return this.deps.workplaceRepo.readActiveActors(ref);
   }
 
   /** Is this workplace terminal? */

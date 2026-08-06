@@ -26,6 +26,7 @@ import { SRS_CONTRACT_REF } from '../../modules/formalization/domain/srs-contrac
 
 const FORMALIZATION_MODULE_REF = 'solution-formalization@1.0.0';
 const DISCOVERY_MODULE_REF = 'product-discovery@3.0.2';
+const DEVELOPMENT_MODULE_REF = 'solution-development@1.0.0';
 
 export function wireSubmissionValidation(
   policyRegistry: NodeSubmissionPolicyRegistry,
@@ -87,5 +88,20 @@ export function wireSubmissionValidation(
         migrationTicket: 'DISCOVERY-SUBMISSION-VALIDATION',
       },
     );
+  }
+
+  // Development workers publish typed JSON products. Their schema/cardinality
+  // is checked by the Production Cell gate and their domain lineage is checked
+  // again by deterministic settlement, so the artifact-graph validator is not
+  // applicable to these nodes.
+  for (const nodeId of [
+    'plan-task-graph',
+    'implement-work-items',
+    'verify-acceptance',
+  ]) {
+    policyRegistry.register(DEVELOPMENT_MODULE_REF, nodeId, {
+      mode: 'none',
+      rationale: 'typed Production Cell product; validated by cell gate and Development settlement',
+    });
   }
 }

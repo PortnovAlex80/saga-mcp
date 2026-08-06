@@ -114,7 +114,6 @@ const ALLOWED_CORE_READERS = [
   // Each retires at its workshop's read-switch (3.A.4 / 3.B.3 / 3.C.4).
   'src/modules/formalization/infrastructure/sqlite-formalization-kernel.ts',
   'src/modules/discovery/infrastructure/sqlite-discovery-runtime.ts',
-  'src/modules/development/infrastructure/sqlite-development-settlement-state.ts',
   // Fast-track planner reads tasks to plan development waves. Retires when
   // planning reads the v4 projection.
   'src/planner/fast-track.ts',

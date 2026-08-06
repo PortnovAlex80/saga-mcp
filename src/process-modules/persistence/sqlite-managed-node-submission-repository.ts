@@ -28,6 +28,8 @@ interface LiveFenceRow {
   current_execution_id: string | null;
   execution_state: string;
   process_status: string;
+  workplace_ref: string | null;
+  workplace_loop_state: string | null;
 }
 
 export interface SubmitManagedNodeProductCommand {
@@ -239,11 +241,14 @@ implements ManagedNodeSubmissionReader {
     const row = this.db.prepare(
       `SELECT t.current_execution_id,
               we.state AS execution_state,
-              pr.status AS process_status
+              pr.status AS process_status,
+              t.workplace_ref,
+              w.loop_state AS workplace_loop_state
          FROM tasks t
          JOIN worker_executions we
            ON we.task_id=t.id AND we.execution_id=?
          JOIN factory_process_runs pr ON pr.id=?
+         LEFT JOIN factory_workplaces w ON w.workplace_ref=t.workplace_ref
         WHERE t.id=?`,
     ).get(
       executionId,
@@ -263,7 +268,14 @@ implements ManagedNodeSubmissionReader {
         `MANAGED_NODE_SUBMISSION_EXECUTION_NOT_RUNNING: ${row.execution_state}`,
       );
     }
-    if (row.process_status !== 'running') {
+    // A Production Cell deliberately pauses its ProcessRun while the global
+    // dispatcher executes a desk. In that mode the live Workplace is the
+    // durable orchestration fence; non-cell submissions still require a
+    // running ProcessRun exactly as before.
+    const liveProductionCell = row.process_status === 'paused'
+      && row.workplace_ref !== null
+      && row.workplace_loop_state === 'running';
+    if (row.process_status !== 'running' && !liveProductionCell) {
       throw new Error(
         `MANAGED_NODE_SUBMISSION_PROCESS_NOT_RUNNING: ${row.process_status}`,
       );

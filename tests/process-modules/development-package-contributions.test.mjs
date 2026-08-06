@@ -3,14 +3,13 @@
 // W9-A4 — Tests for the Development package-local contributions.
 //
 // Validates that the five contribution categories declared under
-// `src/process-modules/modules/development/package/contributions/` plus the
-// legacy engine adapter are well-formed, internally consistent, and conform
+// `src/process-modules/modules/development/package/contributions/` are
+// well-formed, internally consistent, and conform
 // to the Wave 1 SPI shapes:
 //   - tool contributions: every ModuleToolContribution validates.
 //   - acceptance capabilities: capability requirements + guard bindings.
 //   - output contracts: input/output contract refs + declared outcomes.
 //   - reviewer skills: pinned skill resource index entries.
-//   - legacy engine adapter: port-injected candidate-observation wrapper.
 //
 // These tests run against the compiled dist/ output (the contributions are
 // pure data, so this is a structural + cross-reference conformance check).
@@ -63,13 +62,6 @@ import {
   DEVELOPMENT_PLANNER_SKILL,
   DEVELOPMENT_VERIFIER_SKILL,
 } from '../../dist/process-modules/modules/development/package/contributions/reviewer-skills.js';
-
-import {
-  DEVELOPMENT_PACKAGE_HANDLER_IDS,
-  portInjectedObserveDevelopmentCandidate,
-  createDevelopmentPackageHandlerAdapter,
-  createFakeDevelopmentCandidateObservationPort,
-} from '../../dist/process-modules/modules/development/package/contributions/handler-adapter.js';
 
 // Barrel re-exports everything from one path — verify that too.
 import * as barrel from '../../dist/process-modules/modules/development/package/contributions/index.js';
@@ -298,107 +290,10 @@ test('W9-A4 reviewer skills: resource index entries strip package-local metadata
 });
 
 // ---------------------------------------------------------------------------
-// Legacy engine adapter.
-// ---------------------------------------------------------------------------
-
-test('W9-A4 legacy adapter: exposes the development handler + node ids', () => {
-  // Kernel handler ids (address handlers in the handler map).
-  assert.equal(DEVELOPMENT_PACKAGE_HANDLER_IDS.resolveTaskGraph, 'development-resolve-task-graph');
-  assert.equal(DEVELOPMENT_PACKAGE_HANDLER_IDS.settle, 'development-settlement-policy');
-  // Flow node ids live under `nodes` (disjoint from the handler-id keys).
-  // saga4 cutover: verification/integration external nodes removed; Flow is
-  // lm+kernel only (plan-task-graph -> resolve-task-graph -> settle-development).
-  assert.equal(DEVELOPMENT_PACKAGE_HANDLER_IDS.nodes.settlement, 'settle-development');
-  assert.equal(DEVELOPMENT_PACKAGE_HANDLER_IDS.nodes.resolveTaskGraph, 'resolve-task-graph');
-  assert.equal(DEVELOPMENT_PACKAGE_HANDLER_IDS.nodes.planner, 'plan-task-graph');
-});
-
-test('W9-A4 legacy adapter: fake candidate-observation port records calls', () => {
-  const fake = createFakeDevelopmentCandidateObservationPort([
-    { status: 'unchanged', observedCandidateHash: 'candidate-abc' },
-  ]);
-  const outcome = fake.observeDevelopmentCandidate({
-    projectId: 1,
-    epicId: 2,
-    processRunId: 3,
-    expectedCandidateHash: 'candidate-abc',
-  });
-  assert.equal(outcome.status, 'unchanged');
-  assert.equal(outcome.observedCandidateHash, 'candidate-abc');
-  assert.equal(fake.calls.length, 1);
-  assert.equal(fake.calls[0].ctx.epicId, 2);
-});
-
-test('W9-A4 legacy adapter: portInjectedObserveDevelopmentCandidate fails without an epic', () => {
-  const fake = createFakeDevelopmentCandidateObservationPort();
-  const outcome = portInjectedObserveDevelopmentCandidate(
-    fake,
-    { projectId: 1, epicId: null, processRunId: 3 },
-    'candidate-abc',
-  );
-  assert.equal(outcome.status, 'observation-failed');
-  assert.ok(outcome.reason.length > 0);
-  // The port must NOT have been called when there is no epic.
-  assert.equal(fake.calls.length, 0);
-});
-
-test('W9-A4 legacy adapter: portInjectedObserveDevelopmentCandidate delegates to the port with an epic', () => {
-  const fake = createFakeDevelopmentCandidateObservationPort([
-    { status: 'drifted', expectedCandidateHash: 'a', observedCandidateHash: 'b' },
-  ]);
-  const outcome = portInjectedObserveDevelopmentCandidate(
-    fake,
-    { projectId: 1, epicId: 5, processRunId: 9 },
-    'a',
-  );
-  assert.equal(outcome.status, 'drifted');
-  assert.equal(fake.calls.length, 1);
-  assert.equal(fake.calls[0].ctx.epicId, 5);
-  assert.equal(fake.calls[0].ctx.processRunId, 9);
-  assert.equal(fake.calls[0].ctx.expectedCandidateHash, 'a');
-});
-
-test('W9-A4 legacy adapter: createDevelopmentPackageHandlerAdapter wraps the settlement handler', () => {
-  // The adapter is constructed from a minimal legacy-deps stub. The legacy
-  // factory does not invoke the handlers at construction time, only the adapter
-  // wraps them. We confirm the adapter produces a handler map keyed by the
-  // development handler ids and that the target handler is wrapped (a function).
-  const fakeLegacyDeps = {};
-  const fakePort = createFakeDevelopmentCandidateObservationPort();
-  const handlers = createDevelopmentPackageHandlerAdapter({
-    legacyDeps: fakeLegacyDeps,
-    ports: { candidateObservation: fakePort },
-  });
-  // Every development kernel handler id is present.
-  assert.ok(
-    typeof handlers[DEVELOPMENT_PACKAGE_HANDLER_IDS.resolveTaskGraph] === 'function',
-    'resolveTaskGraph handler must be a function',
-  );
-  assert.ok(
-    typeof handlers[DEVELOPMENT_PACKAGE_HANDLER_IDS.settle] === 'function',
-    'settle handler must be a function',
-  );
-});
-
-test('W9-A4 legacy adapter: throws on unknown handler id', () => {
-  const fakeLegacyDeps = {};
-  const fakePort = createFakeDevelopmentCandidateObservationPort();
-  assert.throws(
-    () =>
-      createDevelopmentPackageHandlerAdapter({
-        legacyDeps: fakeLegacyDeps,
-        ports: { candidateObservation: fakePort },
-        candidateObservationHandlerId: 'development-nonexistent',
-      }),
-    /unknown handler id/,
-  );
-});
-
-// ---------------------------------------------------------------------------
 // Barrel.
 // ---------------------------------------------------------------------------
 
-test('W9-A4 barrel: re-exports all five contribution categories + the adapter', () => {
+test('W9-A4 barrel: re-exports every active contribution category', () => {
   // Tool contributions.
   assert.ok(typeof barrel.DEVELOPMENT_TOOL_CONTRIBUTIONS === 'object');
   // Acceptance capabilities.
@@ -410,10 +305,6 @@ test('W9-A4 barrel: re-exports all five contribution categories + the adapter', 
   assert.ok(typeof barrel.DEVELOPMENT_DECLARED_OUTCOMES === 'object');
   // Reviewer skills.
   assert.ok(typeof barrel.DEVELOPMENT_SKILL_RESOURCE_INDEX_ENTRIES === 'object');
-  // Legacy engine adapter.
-  assert.equal(typeof barrel.createDevelopmentPackageHandlerAdapter, 'function');
-  assert.equal(typeof barrel.createFakeDevelopmentCandidateObservationPort, 'function');
-  assert.equal(typeof barrel.portInjectedObserveDevelopmentCandidate, 'function');
 });
 
 test('W9-A4 barrel: re-exported aggregates match the per-file aggregates', () => {

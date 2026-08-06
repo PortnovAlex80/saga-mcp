@@ -136,15 +136,19 @@ export const DEVELOPMENT_AGENT_ASSISTANCE: readonly AgentAssistanceDefinition[] 
         'process_node_submit has returned a durable receipt for the task graph proposal, every planner checklist item passes, the tracker is current, and worker_done is called exactly once.',
     }),
     developmentAssistance({
-      // Flow-less profile: matches the virtual nodeId computed by
-      // resolveOwningNodeId for profiles with no matching Flow LM node.
-      // Format: `profile:<moduleKind>:<profileId>`.
-      nodeId: 'profile:development:development-implementation-worker',
+      nodeId: 'implement-work-items',
       goal:
-        'Implement exactly one acceptance-criterion-scoped feature: write code, pass review, merge into the integration branch, and record verification evidence.',
+        'Produce exactly one typed implementation result for the assigned work item, with source and artifact lineage suitable for independent review.',
       completion:
-        'The implementation is complete, review is approved (or changes are applied), worker_merge_release has merged the branch, verification_record has recorded evidence, the tracker is current, and worker_done is called exactly once.',
+        'process_node_submit has returned a durable implementation product receipt, the tracker is current, and worker_done is called exactly once.',
       resumeHint:
         'This is a resumed execution. Read {TRACKER_PATH} and recovery-feedback.json or review-feedback.json when present; continue at the first unchecked item.',
+    }),
+    developmentAssistance({
+      nodeId: 'verify-acceptance',
+      goal:
+        'Verify one acceptance criterion against the exact frozen implementation candidate and publish typed deterministic evidence.',
+      completion:
+        'process_node_submit has returned a durable verification evidence receipt, the tracker is current, and worker_done is called exactly once.',
     }),
   ]);

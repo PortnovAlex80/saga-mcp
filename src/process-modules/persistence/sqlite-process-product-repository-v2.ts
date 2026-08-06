@@ -183,22 +183,42 @@ export class SqliteProcessProductRepositoryV2 implements ProcessProductRepositor
       };
     }
 
-    this.db.prepare(
-      `INSERT INTO factory_process_products
-        (process_run_id, product_kind, product_key, schema_id, artifact_ref, product_hash,
-         payload_snapshot, payload_hash, node_id)
-       VALUES (?,?,?,?,?,?,?,?,?)`,
-    ).run(
-      processRunId,
-      productKind,
-      productKey,
-      envelope.schema,
-      envelope.artifactRef,
-      productHash,
-      payloadSnapshot,
-      payloadHash,
-      nodeId,
-    );
+    try {
+      this.db.prepare(
+        `INSERT INTO factory_process_products
+          (process_run_id, product_kind, product_key, schema_id, artifact_ref, product_hash,
+           payload_snapshot, payload_hash, node_id)
+         VALUES (?,?,?,?,?,?,?,?,?)`,
+      ).run(
+        processRunId,
+        productKind,
+        productKey,
+        envelope.schema,
+        envelope.artifactRef,
+        productHash,
+        payloadSnapshot,
+        payloadHash,
+        nodeId,
+      );
+    } catch (error) {
+      // Another process may insert the same content-addressed product between
+      // our replay probe and INSERT. Re-read after the constraint and accept
+      // only a byte-identical binding; assertReplay still fails closed for a
+      // genuine logical-key or lineage collision.
+      if (!isSqliteConstraint(error)) throw error;
+      const raced = this.readRowBySchemaRef(envelope.schema, envelope.artifactRef);
+      if (!raced) throw error;
+      assertReplay(raced, {
+        processRunId,
+        productKind,
+        productKey,
+        schemaId: envelope.schemaId,
+        productHash,
+        payloadSnapshot,
+        payloadHash,
+      });
+      return { record: rowToV2Record(raced), replayed: true };
+    }
 
     const inserted = this.readRowBySchemaRef(
       envelope.schema,
@@ -223,6 +243,14 @@ export class SqliteProcessProductRepositoryV2 implements ProcessProductRepositor
     ).get(schemaId, artifactRef) as ProcessProductV2Row | undefined;
     return row ?? null;
   }
+}
+
+function isSqliteConstraint(error: unknown): boolean {
+  return typeof error === 'object'
+    && error !== null
+    && 'code' in error
+    && typeof (error as { code?: unknown }).code === 'string'
+    && (error as { code: string }).code.startsWith('SQLITE_CONSTRAINT');
 }
 
 // ---------------------------------------------------------------------------

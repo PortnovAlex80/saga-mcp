@@ -60,10 +60,8 @@ import {
 // ---------------------------------------------------------------------------
 
 /**
- * Format version of THIS manifest envelope. `'1'` signals the envelope wraps a
- * migrated ProcessModuleDefinition that populates `resourceIndex` /
- * `handlerRefs` (as opposed to `'legacy-0'`, which wraps a bare definition
- * with empty arrays).
+ * Format version of this manifest envelope. Version `1` requires a complete
+ * ProcessModuleDefinition with explicit `resourceIndex` and `handlerRefs`.
  */
 export const DEVELOPMENT_MANIFEST_FORMAT_VERSION = '1';
 
@@ -120,6 +118,8 @@ const RESOURCE_PATHS = {
   // Per-node checklist + stage tracker pinned by the planning execution profile.
   taskGraphPlannerChecklist: `${DEVELOPMENT_PACKAGE_RESOURCE_ROOT}/task-graph-planner-checklist.md`,
   stageTracker: `${DEVELOPMENT_PACKAGE_RESOURCE_ROOT}/process-module-stage-tracker.md`,
+  implementationTracker: `${DEVELOPMENT_PACKAGE_RESOURCE_ROOT}/implementation-task-tracker.md`,
+  implementationChecklist: `${DEVELOPMENT_PACKAGE_RESOURCE_ROOT}/implementation-worker-checklist.md`,
 } as const;
 
 /**
@@ -179,6 +179,18 @@ export const DEVELOPMENT_RESOURCE_INDEX: readonly ResourceIndexEntry[] = [
     logicalId: 'development.tracker.stage',
     path: RESOURCE_PATHS.stageTracker,
     kind: 'template',
+    digest: PENDING_DIGEST,
+  },
+  {
+    logicalId: 'development.tracker.implementation',
+    path: RESOURCE_PATHS.implementationTracker,
+    kind: 'template',
+    digest: PENDING_DIGEST,
+  },
+  {
+    logicalId: 'development.checklist.implementation',
+    path: RESOURCE_PATHS.implementationChecklist,
+    kind: 'checklist',
     digest: PENDING_DIGEST,
   },
 ];

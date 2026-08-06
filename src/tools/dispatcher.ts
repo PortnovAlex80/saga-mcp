@@ -332,9 +332,23 @@ function handleWorkerNext(args: Record<string, unknown>): {
   // BEGIN IMMEDIATE — write-lock всей БД с старта транзакции
   // (аналог SELECT FOR UPDATE, которого нет в SQLite). busy_timeout=5000 в db.ts.
   // db.transaction(fn) тут только DEFERRED, поэтому оборачиваем явно.
-  const task = withImmediateTransaction(db, () =>
-    findNextClaimable(db, workerId, projectId, undefined, 0, role, epicId, reservation, taskIds),
-  );
+  const task = withImmediateTransaction(db, () => {
+    const claimed = findNextClaimable(
+      db, workerId, projectId, undefined, 0, role, epicId, reservation, taskIds,
+    );
+    if (claimed) {
+      reserveTaskExecution(db, {
+        taskId: claimed.id,
+        epicId: claimed.epic_id,
+        projectId,
+        taskKind: claimed.task_kind,
+        metadata: claimed.metadata,
+        executionId: executionId ?? workerId,
+        preClaimStatus: claimed.status === 'in_progress' ? 'todo' : 'review',
+      });
+    }
+    return claimed;
+  });
 
   // active_tasks — read-only снапшот параллельной работы. Берём ПОСЛЕ транзакции,
   // чтобы не держать write-lock дольше необходимого: видимость — best-effort,
@@ -346,16 +360,6 @@ function handleWorkerNext(args: Record<string, unknown>): {
   // The Factory workplace is the unconditional claim authority.
   // Conveyor v4: ConveyorRuntime is the authority — bind the task to its
   // workplace, lease the loop channel, reverse-project tasks.status.
-  reserveTaskExecution(db, {
-    taskId: task.id,
-    epicId: task.epic_id,
-    projectId,
-    taskKind: task.task_kind,
-    metadata: task.metadata,
-    executionId: executionId ?? workerId,
-    preClaimStatus: task.status,
-  });
-
   const repository = task.project_repository_id == null ? null : db.prepare(`
     SELECT pr.id, pr.repository_id, r.name,
            COALESCE(rc.local_path,pr.local_path) AS local_path, pr.role,
@@ -647,7 +651,16 @@ function handleWorkerDone(args: Record<string, unknown>): {
     //      (a) есть passed evidence (APPROVED — нормальный путь)
     //      (b) loop_escaped (≥2 failed evidence — verifier нашёл product bugs,
     //          retrying бессмысленно, pipeline должен идти дальше с degraded verification)
-    if (newStatus === 'done' && task.task_kind === 'verification.ac') {
+    const workplaceManagedVerification = task.workplace_ref !== null
+      && db.prepare(
+        `SELECT 1 FROM factory_workplaces
+          WHERE workplace_ref=? AND production_cell_id IS NOT NULL`,
+      ).get(task.workplace_ref) !== undefined;
+    if (
+      newStatus === 'done'
+      && task.task_kind === 'verification.ac'
+      && !workplaceManagedVerification
+    ) {
       const target = db.prepare(
         `SELECT a.id, a.accepted_hash
          FROM tasks t JOIN artifacts a ON a.id=t.verification_target_artifact_id

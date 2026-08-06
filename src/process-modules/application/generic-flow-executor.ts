@@ -125,11 +125,10 @@ export interface GenericFlowExecutorOptions {
   /**
    * CGAD P18 — OPTIONAL centralized resolver that reads the workplace's (node's)
    * durable worker products (artifacts/traces/submission) scoped by
-   * processRunId + moduleRef + nodeId, NEVER by task. When present, the executor
-   * populates `ctx.nodeProducts` for every kernel node, so handlers read the
-   * centralized products instead of querying the ledger themselves — every
-   * module inherits P18 automatically. Absent ⇒ legacy run (handlers that still
-   * query themselves keep working; formalization already does node-scope).
+   * processRunId + moduleRef + producer nodeId, NEVER by task. When present,
+   * the executor populates `ctx.nodeProducts` for a kernel node from its exact
+   * immediate predecessor. Thus a resolver reads the products produced by the
+   * desk it resolves, rather than looking under its own kernel node id.
    */
   resolveNodeProducts?: (
     processRunId: number,
@@ -634,6 +633,7 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
     // produced, so resuming the next node sees the same upstream context.
     let chainInput: unknown = context.inputPayload;
     const lastCompletedForChain = nodeRunRepo.readLastCompleted(context.processRunId);
+    let productSourceNodeId: string | null = lastCompletedForChain?.nodeId ?? null;
     if (reexecutePausedNode) {
       chainInput = pausedVerifierInput;
     } else if (resumedRecoveryInput) {
@@ -725,12 +725,12 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
         // CGAD P18 — centralized node-scoped worker products. Resolved once per
         // node execution by the executor, so kernel handlers read ctx.nodeProducts
         // instead of querying the ledger by transient task identity.
-        ...(this.opts.resolveNodeProducts && node.kind === 'kernel'
+        ...(this.opts.resolveNodeProducts && node.kind === 'kernel' && productSourceNodeId
           ? {
               nodeProducts: this.opts.resolveNodeProducts(
                 context.processRunId,
                 processModuleKey(module.identity),
-                node.id,
+                productSourceNodeId,
               ) ?? undefined,
             }
           : {}),
@@ -852,6 +852,7 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
         ?? result.production
         ?? result.receipt
         ?? chainInput;
+      productSourceNodeId = node.id;
 
       // Track the LAST non-terminal completion as a side-channel. Settlement
       // kernels emit `completion`; the terminal outcome-emitter does not. By

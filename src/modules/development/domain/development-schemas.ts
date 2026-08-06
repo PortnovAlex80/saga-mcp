@@ -1,8 +1,8 @@
 /**
  * Domain contracts for the Development Process Module.
  *
- * Development absorbs the legacy planning -> development -> integration ->
- * verification stages into one locally-settled process. The important ordering
+ * Development composes planning, implementation, review, integration and
+ * verification into one locally-settled process. The important ordering
  * is deliberate:
  *
  *   plan -> implement/review -> integrate + freeze candidate
@@ -35,6 +35,41 @@ export const DEVELOPMENT_SETTLEMENT_INPUT_SCHEMA =
   'factory.development-settlement-input.v1';
 export const DEVELOPMENT_CERTIFICATE_SCHEMA =
   'factory.development-certificate.v1';
+
+// ADR-030 — typed schema'd products that Development cell workers publish.
+// These payloads carry the exact structured lineage the settlement policy
+// consumes (reviewedSourceCommit, integratedCommit, treeHash,
+// acceptanceCriterionId, acceptedCriterionHash, candidateHash, provider).
+// The generic CandidateSet seals only {schemaId, ref, digest} ProductRefs;
+// Development semantics live in these product bodies, keeping the universal
+// Workplace type free of module vocabulary (ADR-029 ratchet).
+export const DEVELOPMENT_IMPLEMENTATION_RESULT_SCHEMA =
+  'factory.development-implementation-result.v1';
+export const DEVELOPMENT_VERIFICATION_EVIDENCE_PRODUCT_SCHEMA =
+  'factory.candidate-verification-evidence-product.v1';
+export const DEVELOPMENT_REVIEW_VERDICT_SCHEMA =
+  'factory.development-review-verdict.v1';
+
+export interface DevelopmentImplementationResultProduct {
+  schemaVersion: typeof DEVELOPMENT_IMPLEMENTATION_RESULT_SCHEMA;
+  workItemKey: string;
+  status: WorkItemTerminalStatus;
+  reviewedSourceCommit: string | null;
+  repository: CandidateRepositorySnapshot | null;
+  buildProducts: readonly CandidateBuildProduct[];
+  result: ContentAddressedReference | null;
+  reasonCodes: readonly string[];
+}
+
+export interface DevelopmentVerificationEvidenceProduct {
+  schemaVersion: typeof DEVELOPMENT_VERIFICATION_EVIDENCE_PRODUCT_SCHEMA;
+  verificationItemKey: string;
+  acceptanceCriterionId: number;
+  acceptedCriterionHash: string;
+  outcome: VerificationOutcome;
+  evidence: ContentAddressedReference;
+  provider: VerificationProviderBinding;
+}
 
 export interface ContentAddressedReference {
   schema: string;

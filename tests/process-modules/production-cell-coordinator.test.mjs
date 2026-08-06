@@ -1,10 +1,4 @@
-/**
- * ProductionCellCoordinator tests (Conveyor v4, REG-13).
- *
- * Drives a full author → seal → gate → decision lifecycle through the
- * coordinator, verifying it correctly sequences reducer events + CAS +
- * launcher calls.
- */
+/** ProductionCellCoordinator state-machine tests (Conveyor v4, REG-13). */
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -15,250 +9,157 @@ import { asWorkplaceRef } from '../../dist/process-modules/domain/workplace/work
 import { SqliteWorkplaceRepository } from '../../dist/infrastructure/workplace/sqlite-workplace-repository.js';
 import { ProductionCellCoordinator } from '../../dist/process-modules/application/production-cell-coordinator.js';
 
-function freshDb() {
+const REF = asWorkplaceRef({
+  processRunId: 1,
+  moduleRef: 'formalization@1.0.0',
+  productionCellId: 'srs-author',
+});
+
+function harness() {
   const db = new Database(':memory:');
   db.exec(SCHEMA_SQL);
-  return db;
+  const workplaceRepo = new SqliteWorkplaceRepository(db);
+  const coordinator = new ProductionCellCoordinator({ db, workplaceRepo, now: () => new Date() });
+  return { db, workplaceRepo, coordinator };
 }
 
-function makeFakeLauncher() {
-  const launches = [];
-  return {
-    launch(req) {
-      launches.push(req);
-      return { pid: 1000 + launches.length, processBirthToken: null, logPath: `/tmp/log-${launches.length}.log`, startedAt: new Date().toISOString() };
-    },
-    stop(fence) {},
-    dispose() {},
-    _launches: launches,
-  };
+/** Simulate the canonical dispatcher's projected lease/start events. */
+function projectWorkerStarted(workplaceRepo, ref, reservationRef = 'execution:test') {
+  const queued = workplaceRepo.read(ref);
+  assert.ok(queued);
+  const leased = workplaceRepo.applyTransition({
+    workplaceRef: ref,
+    expectedRevision: queued.revision,
+    kanbanPhase: queued.kanbanPhase === 'review' ? 'review_in_progress' : queued.kanbanPhase,
+    loopState: 'leased',
+    nextRole: queued.nextRole,
+    terminalReason: null,
+    activeReservationRef: reservationRef,
+  });
+  assert.equal(leased.applied, true);
+  const started = workplaceRepo.applyTransition({
+    workplaceRef: ref,
+    expectedRevision: leased.revision,
+    kanbanPhase: leased.state.kanbanPhase,
+    loopState: 'running',
+    nextRole: leased.state.nextRole,
+    terminalReason: null,
+    activeReservationRef: reservationRef,
+  });
+  assert.equal(started.applied, true);
 }
 
-function makeFakeProductRepo() {
-  return {
-    submitProduct(input) {
-      return { productRef: { schemaId: input.schemaRef, ref: 'test-ref', digest: 'a'.repeat(64) }, replayed: false };
-    },
-    readProduct(ref) { return null; },
-  };
+function runningHarness() {
+  const h = harness();
+  h.coordinator.materializeCell({
+    processRunId: 1,
+    moduleRef: 'formalization@1.0.0',
+    productionCellId: 'srs-author',
+  });
+  h.coordinator.admitWork(REF);
+  projectWorkerStarted(h.workplaceRepo, REF);
+  return h;
 }
 
-function makeCoordinator(db) {
-  return new ProductionCellCoordinator({
-    db,
-    workplaceRepo: new SqliteWorkplaceRepository(db),
-    launcher: makeFakeLauncher(),
-    productRepo: makeFakeProductRepo(),
-    now: () => new Date(),
+test('REG-13: materialize and admit create todo/idle then in_progress/queued', () => {
+  const h = harness();
+  const initial = h.coordinator.materializeCell({
+    processRunId: 1,
+    moduleRef: 'formalization@1.0.0',
+    productionCellId: 'srs-author',
   });
-}
-
-const REF = asWorkplaceRef({ processRunId: 1, moduleRef: 'formalization@1.0.0', productionCellId: 'srs-author' });
-
-test('REG-13: materialize creates todo/idle workplace', () => {
-  const db = freshDb();
-  const coord = makeCoordinator(db);
-  const state = coord.materializeCell({ processRunId: 1, moduleRef: 'formalization@1.0.0', productionCellId: 'srs-author' });
-  assert.equal(state.kanbanPhase, 'todo');
-  assert.equal(state.loopState, 'idle');
-  db.close();
+  assert.equal(initial.kanbanPhase, 'todo');
+  assert.equal(initial.loopState, 'idle');
+  const admitted = h.coordinator.admitWork(REF);
+  assert.equal(admitted.applied, true);
+  assert.equal(admitted.state.kanbanPhase, 'in_progress');
+  assert.equal(admitted.state.loopState, 'queued');
+  h.db.close();
 });
 
-test('REG-13: admitWork transitions to in_progress/queued', () => {
-  const db = freshDb();
-  const coord = makeCoordinator(db);
-  coord.materializeCell({ processRunId: 1, moduleRef: 'formalization@1.0.0', productionCellId: 'srs-author' });
-  const result = coord.admitWork(REF);
-  assert.equal(result.applied, true);
-  assert.equal(result.state.kanbanPhase, 'in_progress');
-  assert.equal(result.state.loopState, 'queued');
-  db.close();
+test('REG-13: coordinator has no worker-launch capability', () => {
+  const h = harness();
+  assert.equal('launchWorker' in h.coordinator, false);
+  assert.equal('markWorkerLaunched' in h.coordinator, false);
+  h.db.close();
 });
 
-test('REG-13: launchWorker calls launcher + transitions to running', () => {
-  const db = freshDb();
-  const coord = makeCoordinator(db);
-  coord.materializeCell({ processRunId: 1, moduleRef: 'formalization@1.0.0', productionCellId: 'srs-author' });
-  coord.admitWork(REF);
-  const result = coord.launchWorker(REF, {
-    role: 'author',
-    fenceToken: 'exec-1',
-    skillRef: 'saga-analyst',
-    capabilityPreset: 'text-author',
-    workspacePath: '/tmp/ws',
-    runId: 'run-1',
-    workerId: 'w-1',
-    machineId: 'host',
-  });
-  assert.ok(result.pid !== null);
-  assert.equal(result.state.loopState, 'running');
-  db.close();
+test('REG-13: accepted final candidate reaches done/terminal', () => {
+  const h = runningHarness();
+  const verifying = h.coordinator.sealCandidateSet(REF);
+  assert.equal(verifying.state.loopState, 'verifying');
+  const final = h.coordinator.applyGateDecision(REF, { verdict: 'accepted', isFinal: true });
+  assert.equal(final.state.kanbanPhase, 'done');
+  assert.equal(final.state.loopState, 'terminal');
+  assert.equal(final.state.terminalReason, 'accepted');
+  assert.equal(h.coordinator.isTerminal(REF), true);
+  h.db.close();
 });
 
-test('REG-13: sealCandidateSet transitions to verifying', () => {
-  const db = freshDb();
-  const coord = makeCoordinator(db);
-  coord.materializeCell({ processRunId: 1, moduleRef: 'formalization@1.0.0', productionCellId: 'srs-author' });
-  coord.admitWork(REF);
-  coord.launchWorker(REF, {
-    role: 'author', fenceToken: 'e1', skillRef: 's', capabilityPreset: 'p',
-    workspacePath: '/w', runId: 'r', workerId: 'w', machineId: 'h',
-  });
-  const result = coord.sealCandidateSet(REF);
-  assert.equal(result.state.loopState, 'verifying');
-  db.close();
+test('REG-13: accepted author candidate hands off to reviewer', () => {
+  const h = runningHarness();
+  h.coordinator.sealCandidateSet(REF);
+  const review = h.coordinator.applyGateDecision(REF, { verdict: 'accepted', isFinal: false });
+  assert.equal(review.state.kanbanPhase, 'review');
+  assert.equal(review.state.loopState, 'queued');
+  assert.equal(review.state.nextRole, 'reviewer');
+  h.db.close();
 });
 
-test('REG-13: applyGateDecision accepted-final → done/terminal', () => {
-  const db = freshDb();
-  const coord = makeCoordinator(db);
-  coord.materializeCell({ processRunId: 1, moduleRef: 'formalization@1.0.0', productionCellId: 'srs-author' });
-  coord.admitWork(REF);
-  coord.launchWorker(REF, {
-    role: 'author', fenceToken: 'e1', skillRef: 's', capabilityPreset: 'p',
-    workspacePath: '/w', runId: 'r', workerId: 'w', machineId: 'h',
+test('REG-13: repair decision waits and requeues the declared role', () => {
+  const h = runningHarness();
+  h.coordinator.sealCandidateSet(REF);
+  const waiting = h.coordinator.applyGateDecision(REF, {
+    verdict: 'repair_required',
+    isFinal: false,
+    repairTargetRole: 'author',
   });
-  coord.sealCandidateSet(REF);
-  const result = coord.applyGateDecision(REF, { verdict: 'accepted', isFinal: true });
-  assert.equal(result.state.kanbanPhase, 'done');
-  assert.equal(result.state.loopState, 'terminal');
-  assert.equal(result.state.terminalReason, 'accepted');
-  assert.equal(coord.isTerminal(REF), true);
-  db.close();
+  assert.equal(waiting.state.loopState, 'repair_wait');
+  assert.equal(waiting.state.kanbanPhase, 'in_progress');
+  const queued = h.coordinator.requeue(REF, 'author');
+  assert.equal(queued.state.loopState, 'queued');
+  assert.equal(queued.state.nextRole, 'author');
+  h.db.close();
 });
 
-test('REG-13: applyGateDecision accepted-with-review → review/queued', () => {
-  const db = freshDb();
-  const coord = makeCoordinator(db);
-  coord.materializeCell({ processRunId: 1, moduleRef: 'formalization@1.0.0', productionCellId: 'srs-author' });
-  coord.admitWork(REF);
-  coord.launchWorker(REF, {
-    role: 'author', fenceToken: 'e1', skillRef: 's', capabilityPreset: 'p',
-    workspacePath: '/w', runId: 'r', workerId: 'w', machineId: 'h',
-  });
-  coord.sealCandidateSet(REF);
-  const result = coord.applyGateDecision(REF, { verdict: 'accepted', isFinal: false });
-  assert.equal(result.state.kanbanPhase, 'review');
-  assert.equal(result.state.nextRole, 'reviewer');
-  db.close();
-});
-
-test('REG-13: applyGateDecision repair_required → repair_wait', () => {
-  const db = freshDb();
-  const coord = makeCoordinator(db);
-  coord.materializeCell({ processRunId: 1, moduleRef: 'formalization@1.0.0', productionCellId: 'srs-author' });
-  coord.admitWork(REF);
-  coord.launchWorker(REF, {
-    role: 'author', fenceToken: 'e1', skillRef: 's', capabilityPreset: 'p',
-    workspacePath: '/w', runId: 'r', workerId: 'w', machineId: 'h',
-  });
-  coord.sealCandidateSet(REF);
-  const result = coord.applyGateDecision(REF, { verdict: 'repair_required', isFinal: false, repairTargetRole: 'author' });
-  assert.equal(result.state.loopState, 'repair_wait');
-  assert.equal(result.state.kanbanPhase, 'in_progress');
-  db.close();
-});
-
-test('REG-13: applyGateDecision human_required → blocked/paused', () => {
-  const db = freshDb();
-  const coord = makeCoordinator(db);
-  coord.materializeCell({ processRunId: 1, moduleRef: 'formalization@1.0.0', productionCellId: 'srs-author' });
-  coord.admitWork(REF);
-  coord.launchWorker(REF, {
-    role: 'author', fenceToken: 'e1', skillRef: 's', capabilityPreset: 'p',
-    workspacePath: '/w', runId: 'r', workerId: 'w', machineId: 'h',
-  });
-  coord.sealCandidateSet(REF);
-  const result = coord.applyGateDecision(REF, { verdict: 'human_required', isFinal: false });
-  assert.equal(result.state.kanbanPhase, 'blocked');
-  assert.equal(result.state.loopState, 'paused');
-  db.close();
-});
-
-test('REG-13: applyGateDecision failed → failed/terminal', () => {
-  const db = freshDb();
-  const coord = makeCoordinator(db);
-  coord.materializeCell({ processRunId: 1, moduleRef: 'formalization@1.0.0', productionCellId: 'srs-author' });
-  coord.admitWork(REF);
-  coord.launchWorker(REF, {
-    role: 'author', fenceToken: 'e1', skillRef: 's', capabilityPreset: 'p',
-    workspacePath: '/w', runId: 'r', workerId: 'w', machineId: 'h',
-  });
-  coord.sealCandidateSet(REF);
-  const result = coord.applyGateDecision(REF, { verdict: 'failed', isFinal: false });
-  assert.equal(result.state.kanbanPhase, 'failed');
-  assert.equal(result.state.terminalReason, 'failed');
-  db.close();
-});
-
-test('REG-13: repair_required without repairTargetRole throws', () => {
-  const db = freshDb();
-  const coord = makeCoordinator(db);
-  coord.materializeCell({ processRunId: 1, moduleRef: 'formalization@1.0.0', productionCellId: 'srs-author' });
-  coord.admitWork(REF);
-  coord.launchWorker(REF, {
-    role: 'author', fenceToken: 'e1', skillRef: 's', capabilityPreset: 'p',
-    workspacePath: '/w', runId: 'r', workerId: 'w', machineId: 'h',
-  });
-  coord.sealCandidateSet(REF);
+test('REG-13: repair decision without a role is rejected', () => {
+  const h = runningHarness();
+  h.coordinator.sealCandidateSet(REF);
   assert.throws(
-    () => coord.applyGateDecision(REF, { verdict: 'repair_required', isFinal: false }),
+    () => h.coordinator.applyGateDecision(REF, { verdict: 'repair_required', isFinal: false }),
     /repairTargetRole/,
   );
-  db.close();
+  h.db.close();
 });
 
-test('REG-13: recordWorkerCrash → repair_wait, Kanban unchanged', () => {
-  const db = freshDb();
-  const coord = makeCoordinator(db);
-  coord.materializeCell({ processRunId: 1, moduleRef: 'formalization@1.0.0', productionCellId: 'srs-author' });
-  coord.admitWork(REF);
-  coord.launchWorker(REF, {
-    role: 'author', fenceToken: 'e1', skillRef: 's', capabilityPreset: 'p',
-    workspacePath: '/w', runId: 'r', workerId: 'w', machineId: 'h',
-  });
-  const result = coord.recordWorkerCrash(REF);
-  assert.equal(result.state.loopState, 'repair_wait');
-  assert.equal(result.state.kanbanPhase, 'in_progress'); // NOT todo
-  db.close();
+test('REG-13: human-required pauses a blocked workplace', () => {
+  const h = runningHarness();
+  h.coordinator.sealCandidateSet(REF);
+  const blocked = h.coordinator.applyGateDecision(REF, { verdict: 'human_required', isFinal: false });
+  assert.equal(blocked.state.kanbanPhase, 'blocked');
+  assert.equal(blocked.state.loopState, 'paused');
+  h.db.close();
 });
 
-test('REG-13: requeue from repair_wait → queued', () => {
-  const db = freshDb();
-  const coord = makeCoordinator(db);
-  coord.materializeCell({ processRunId: 1, moduleRef: 'formalization@1.0.0', productionCellId: 'srs-author' });
-  coord.admitWork(REF);
-  coord.launchWorker(REF, {
-    role: 'author', fenceToken: 'e1', skillRef: 's', capabilityPreset: 'p',
-    workspacePath: '/w', runId: 'r', workerId: 'w', machineId: 'h',
-  });
-  coord.recordWorkerCrash(REF);
-  const result = coord.requeue(REF, 'author');
-  assert.equal(result.state.loopState, 'queued');
-  db.close();
+test('REG-13: failed gate reaches failed/terminal', () => {
+  const h = runningHarness();
+  h.coordinator.sealCandidateSet(REF);
+  const failed = h.coordinator.applyGateDecision(REF, { verdict: 'failed', isFinal: false });
+  assert.equal(failed.state.kanbanPhase, 'failed');
+  assert.equal(failed.state.loopState, 'terminal');
+  assert.equal(failed.state.terminalReason, 'failed');
+  h.db.close();
 });
 
-test('REG-13: full lifecycle — author → crash → repair → accepted', () => {
-  const db = freshDb();
-  const coord = makeCoordinator(db);
-  coord.materializeCell({ processRunId: 1, moduleRef: 'formalization@1.0.0', productionCellId: 'srs-author' });
-  coord.admitWork(REF);
-  coord.launchWorker(REF, {
-    role: 'author', fenceToken: 'e1', skillRef: 's', capabilityPreset: 'p',
-    workspacePath: '/w', runId: 'r', workerId: 'w', machineId: 'h',
-  });
-  // Worker crashes.
-  coord.recordWorkerCrash(REF);
-  assert.equal(coord.readState(REF).kanbanPhase, 'in_progress');
-  // Repair: requeue → launch → seal → gate accepts.
-  coord.requeue(REF, 'author');
-  coord.launchWorker(REF, {
-    role: 'author', fenceToken: 'e2', skillRef: 's', capabilityPreset: 'p',
-    workspacePath: '/w', runId: 'r', workerId: 'w', machineId: 'h',
-  });
-  coord.sealCandidateSet(REF);
-  const final = coord.applyGateDecision(REF, { verdict: 'accepted', isFinal: true });
-  assert.equal(final.state.kanbanPhase, 'done');
+test('REG-13: worker crash keeps Kanban progress and can be retried', () => {
+  const h = runningHarness();
+  const waiting = h.coordinator.recordWorkerCrash(REF);
+  assert.equal(waiting.state.kanbanPhase, 'in_progress');
+  assert.equal(waiting.state.loopState, 'repair_wait');
+  h.coordinator.requeue(REF, 'author');
+  projectWorkerStarted(h.workplaceRepo, REF, 'execution:retry');
+  h.coordinator.sealCandidateSet(REF);
+  const final = h.coordinator.applyGateDecision(REF, { verdict: 'accepted', isFinal: true });
   assert.equal(final.state.terminalReason, 'accepted');
-  db.close();
+  h.db.close();
 });

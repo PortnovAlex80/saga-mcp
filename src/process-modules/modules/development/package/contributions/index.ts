@@ -7,8 +7,8 @@
  *
  * This is the single import surface for the Development package's contributions
  * subdirectory. Every contribution category the package declares — tool
- * contributions, acceptance capabilities, output contracts, reviewer skills,
- * recovery policies, and the legacy engine adapter — is re-exported here so the
+ * contributions, acceptance capabilities, output contracts, and reviewer
+ * skills — is re-exported here so the
  * manifest builder (W9-A3) and downstream consumers can import the full set
  * from one path:
  *
@@ -20,18 +20,13 @@
  *     DEVELOPMENT_OUTPUT_CONTRACT,
  *     DEVELOPMENT_DECLARED_OUTCOMES,
  *     DEVELOPMENT_SKILL_RESOURCE_INDEX_ENTRIES,
- *     DEVELOPMENT_RECOVERY_POLICY_BINDINGS,
- *     createDevelopmentPackageHandlerAdapter,
  *   } from './contributions/index.js';
  *
  * All contributions are PURE DATA: readonly constants typed by the Wave 1 SPI
  * (`domain/spi/*`). No behavior, no factories, no persistence. The dependency-
  * direction ratchet permits module files to import the pure domain SPI; this
  * barrel introduces no new architectural edges beyond each sibling file's own
- * domain-SPI imports. The legacy engine adapter is the only file that imports a
- * sibling module (`../../development-installation.js` +
- * `../../development-kernel-ports.js`) — those imports are intra-module
- * (development → development), permitted by Rule 1.
+ * domain-SPI imports.
  *
  * Ownership: W9-A4 owns this `contributions/` subdirectory exclusively. The
  * sibling lane (W9-A3) owns the rest of `package/`. If a sibling lane needs a
@@ -106,18 +101,3 @@ export {
 // deleted) and by tests of that SPI. Production recovery routing is
 // `flow.recovery[]` executed by `generic-flow-executor.reconcileRecoveryCheckpoint`
 // through the `RecoveryCaseRepository` port.
-
-// Legacy engine adapter — port-injected handler wrapper + candidate-observation
-// port (mirrors W8-A6's formalization + W9-A2's discovery handler adapters).
-export {
-  DEVELOPMENT_PACKAGE_HANDLER_IDS,
-  DevelopmentCandidateObservationPort,
-  DevelopmentCandidateObservationContext,
-  DevelopmentCandidateObservationOutcome,
-  DevelopmentPackagePorts,
-  DevelopmentPackageHandlerAdapterOptions,
-  FakeDevelopmentCandidateObservationRecord,
-  portInjectedObserveDevelopmentCandidate,
-  createDevelopmentPackageHandlerAdapter,
-  createFakeDevelopmentCandidateObservationPort,
-} from './handler-adapter.js';

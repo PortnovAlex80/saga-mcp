@@ -15,6 +15,9 @@ import type {
 } from '../../application/ports/worker-executor.js';
 import { getDb } from '../../db.js';
 import { releaseExecutionAtomically } from '../../lifecycle/atomic-release.js';
+import { ConveyorRuntime } from '../../application/conveyor-runtime.js';
+import { SqliteWorkplaceRepository } from '../workplace/sqlite-workplace-repository.js';
+import { deserializeWorkplaceRef } from '../../process-modules/domain/workplace/workplace-ref.js';
 import {
   ClaudeBoardWorkerExecutor,
   type ClaudeBoardRunner,
@@ -262,7 +265,16 @@ export function createPinnedClaudeWorkerExecutorFactory(
           + `${installationId} but no process_node_id`,
         );
       }
-      const projection = buildWorkspaceProjection(installationId, nodeId, packageRegistry);
+      const taskMetadata = parseTaskMetadata(assignment.task.metadata);
+      const executionProfileId = typeof taskMetadata.process_execution_profile_id === 'string'
+        ? taskMetadata.process_execution_profile_id
+        : undefined;
+      const projection = buildWorkspaceProjection(
+        installationId,
+        nodeId,
+        packageRegistry,
+        executionProfileId,
+      );
       const expectedPackageDigest = resolvePackageDigestFn(assignment);
       if (
         !expectedPackageDigest
@@ -300,16 +312,41 @@ export function createPinnedClaudeWorkerExecutorFactory(
         if (!command.executionId) {
           throw new Error('EXECUTION_FENCE_REQUIRED: cannot recover an unfenced assignment');
         }
+        const executionId = command.executionId;
         // Defense in depth. getTaskState normally routes this close through the
         // runner's completed/changes_requested branch. If a stale in-memory
         // snapshot still reaches recovery, the durable receipt wins and the
         // accepted execution is never marked lost.
-        if (readAcceptedWorkerDone(command.executionId)) return false;
-        return releaseExecutionAtomically(getDb(), {
-          executionId: command.executionId,
-          terminalState: 'lost',
-          reason: command.reason ?? 'worker execution failed before completion',
-        }).taskReleased;
+        if (readAcceptedWorkerDone(executionId)) return false;
+        const db = getDb();
+        return db.transaction(() => {
+          const task = db.prepare(
+            `SELECT workplace_ref FROM tasks WHERE id=?`,
+          ).get(command.taskId) as { workplace_ref: string | null } | undefined;
+          if (task?.workplace_ref) {
+            const workplaceRef = deserializeWorkplaceRef(task.workplace_ref);
+            const workplaceRepo = new SqliteWorkplaceRepository(db);
+            const state = workplaceRepo.read(workplaceRef);
+            const actors = workplaceRepo.readActiveActors(workplaceRef);
+            if (
+              state
+              && (state.loopState === 'leased' || state.loopState === 'running')
+              && actors?.activeReservationRef === executionId
+            ) {
+              new ConveyorRuntime(db).releaseExecution({
+                workplaceRef,
+                reservationRef: executionId,
+                taskId: command.taskId,
+                outcome: 'crashed',
+              });
+            }
+          }
+          return releaseExecutionAtomically(db, {
+            executionId,
+            terminalState: 'lost',
+            reason: command.reason ?? 'worker execution failed before completion',
+          }).taskReleased;
+        })();
       },
       resolveWorkspace: () => context.workspaceRoot,
       dbPath: context.dbPath,

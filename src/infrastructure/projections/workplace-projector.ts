@@ -39,6 +39,7 @@
 import type Database from 'better-sqlite3';
 import {
   asWorkplaceRef,
+  deserializeWorkplaceRef,
   type KanbanPhase,
   type WorkplaceRef,
   type WorkplaceState,
@@ -69,6 +70,15 @@ export function deriveWorkplaceRefFromTaskMetadata(input: {
   }
   const processRunId = meta['process_run_id'];
   if (!Number.isInteger(processRunId) || (processRunId as number) < 1) return null;
+
+  if (typeof meta['workplace_ref'] === 'string') {
+    try {
+      const explicit = deserializeWorkplaceRef(meta['workplace_ref']);
+      return explicit.processRunId === processRunId ? explicit : null;
+    } catch {
+      return null;
+    }
+  }
 
   const moduleRef = typeof meta['module_ref'] === 'string'
     ? meta['module_ref']
@@ -214,6 +224,7 @@ function installConclusionTrigger(db: Database.Database): void {
     WHEN NEW.status = 'concluded'
       AND OLD.status <> 'concluded'
       AND NEW.projected_task_id IS NOT NULL
+      AND NEW.kind NOT LIKE 'production-cell.%'
     BEGIN
       UPDATE factory_workplaces
          SET kanban_phase = CASE
@@ -287,6 +298,7 @@ function reconcileExistingConclusions(
        FROM factory_work_intents intent
        JOIN tasks task ON task.id = intent.projected_task_id
       WHERE intent.status = 'concluded'
+        AND intent.kind NOT LIKE 'production-cell.%'
       ORDER BY intent.id`,
   ).all() as ConcludedBindingRow[];
 

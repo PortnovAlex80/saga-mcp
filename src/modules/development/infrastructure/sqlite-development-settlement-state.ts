@@ -1,32 +1,12 @@
 /**
- * SQLite implementation of the Development module's DECLARATIVE persistence
- * ports:
- *
- *   DevelopmentTaskGraphPort   — persist a validated task graph and atomically
- *                                find-or-create its projected kanban tasks.
- *   DevelopmentSettlementStatePort — re-read exact tracker state (validated
- *                                task graph, projected tasks + integration
- *                                state, recorded verification evidence) and
- *                                reconstruct the DevelopmentSettlementInput.
- *
- * This file replaced the deleted `sqlite-development-runtime.ts`. The runtime
- * mixed these declarative ports with THREE executive ports (worker hiring,
- * merge integration, verification driving). Under the Formalization mechanical
- * pattern those executive concerns belong to the INFRASTRUCTURE (workers claim
- * projected tasks through the shared worker_next queue, merge via
- * worker_merge_release, record evidence via verification_record); the module
- * only reads/decides/persists. Hence this store implements exactly two ports
- * and no execution.
- *
- * Reconstruction rule (Q1=A): the implementation workset, integrated release
- * candidate and acceptance-verification workset are INNER data of the
- * DevelopmentSettlementInput, built here from tracker state. They are NOT
- * produced by dedicated Flow nodes and are NOT persisted to the process-product
- * store; settlement consumes them in memory.
+ * Development persistence for the validated task graph and deterministic
+ * settlement input. Settlement reconstructs its worksets exclusively from
+ * accepted CandidateSets and exact typed submissions. Queue/card projections
+ * are disposable and never have settlement authority.
  */
 
 import type Database from 'better-sqlite3';
-import { canonicalJson, sha256Hex } from '../../../shared/canonical-json.js';
+import { sha256Hex } from '../../../shared/canonical-json.js';
 import type {
   DevelopmentArtifactSnapshot,
   DevelopmentCanonicalGraphPort,
@@ -39,22 +19,22 @@ import type {
 } from '../domain/development-kernel-ports.js';
 import {
   ACCEPTANCE_VERIFICATION_SCHEMA,
+  DEVELOPMENT_IMPLEMENTATION_RESULT_SCHEMA,
   DEVELOPMENT_IMPLEMENTATION_WORKSET_SCHEMA,
   DEVELOPMENT_SETTLEMENT_INPUT_SCHEMA,
   DEVELOPMENT_TASK_GRAPH_SCHEMA,
+  DEVELOPMENT_VERIFICATION_EVIDENCE_PRODUCT_SCHEMA,
   INTEGRATED_CANDIDATE_SCHEMA,
   type AcceptanceVerificationWorkset,
-  type CandidateRepositorySnapshot,
   type CandidateVerificationEvidence,
   type ContentAddressedReference,
   type DevelopmentCase,
   type DevelopmentImplementationWorkset,
+  type DevelopmentImplementationResultProduct,
   type DevelopmentSettlementInput,
-  type DevelopmentTaskGraphItem,
   type DevelopmentTaskGraphSnapshot,
-  type ImplementationWorkItemResult,
   type IntegratedReleaseCandidate,
-  type VerificationProviderBinding,
+  type DevelopmentVerificationEvidenceProduct,
 } from '../domain/development-schemas.js';
 import {
   hashAcceptanceVerification,
@@ -64,26 +44,6 @@ import {
 
 const PROCESS_PRODUCT_KIND_TASK_GRAPH = 'development.task-graph';
 
-const TASK_RESULT_SCHEMA = 'factory.development-task-result.v1';
-const VERIFICATION_EVIDENCE_REF_SCHEMA =
-  'factory.candidate-verification-evidence.v1';
-const MODULE_REF = 'solution-development@1.0.0';
-const RESOLVE_NODE_ID = 'resolve-task-graph';
-
-interface ProjectedTaskRow {
-  task_id: number;
-  work_item_key: string;
-  item_kind: 'implementation' | 'verification';
-}
-
-interface RuntimeTaskRow {
-  id: number;
-  status: string;
-  integration_state: string;
-  integrated_commit: string | null;
-  project_repository_id: number | null;
-  metadata: string;
-}
 
 /**
  * SQLite-backed Development module store. Implements the declarative ports over
@@ -136,33 +96,11 @@ export class SqliteDevelopmentModuleStore implements
     );
     if (existing) {
       assertStoredGraph(existing, input.graph);
-      this.assertTaskProjection(input.processRunId, input.graph);
       return { graph: existing.payload, reference: existing.reference };
     }
 
     const materialize = this.db.transaction(() => {
       this.assertDevelopmentScope(input.developmentCase);
-      const allItems = [
-        ...input.graph.implementationItems,
-        ...input.graph.verificationItems,
-      ];
-      const taskIdByKey = new Map<string, number>();
-      allItems.forEach((item, ordinal) => {
-        const taskId = this.findOrCreateProjectedTask({
-          processRunId: input.processRunId,
-          developmentCase: input.developmentCase,
-          graph: input.graph,
-          item,
-          ordinal,
-        });
-        taskIdByKey.set(item.key, taskId);
-      });
-      for (const item of allItems) {
-        const taskId = requireMapValue(taskIdByKey, item.key);
-        const dependencyIds = item.dependsOnKeys.map(key =>
-          requireMapValue(taskIdByKey, key));
-        this.replaceDependencies(taskId, dependencyIds);
-      }
       const stored = this.products.persist({
         processRunId: input.processRunId,
         productKind: PROCESS_PRODUCT_KIND_TASK_GRAPH,
@@ -193,9 +131,9 @@ export class SqliteDevelopmentModuleStore implements
     const taskGraph = taskGraphProduct?.payload ?? null;
     const taskGraphRef = taskGraphProduct?.reference ?? null;
 
-    // Reconstruct the three inner worksets directly from tracker state. They
-    // are not persisted to the process-product store; settlement consumes them
-    // in memory.
+    // Reconstruct module semantics exclusively from accepted, sealed cell
+    // products. `tasks` is a disposable queue/card projection and is never a
+    // settlement authority (ADR-030).
     const implementation = taskGraph
       ? this.buildImplementationWorkset(
         input.processRunId,
@@ -222,11 +160,7 @@ export class SqliteDevelopmentModuleStore implements
     const observedCandidateHash = candidate
       ? this.observeCandidate(candidate)
       : null;
-    const projectedIds = this.readProjectedTasks(input.processRunId)
-      .map(row => row.task_id);
-    const openHumanGateIds = projectedIds.length === 0
-      ? []
-      : this.readOpenHumanGateIds(projectedIds);
+    const openHumanGateIds = this.readPausedWorkplaces(input.processRunId);
 
     return {
       schemaVersion: DEVELOPMENT_SETTLEMENT_INPUT_SCHEMA,
@@ -252,30 +186,6 @@ export class SqliteDevelopmentModuleStore implements
     };
   }
 
-  areProjectedTasksTerminal(input: {
-    processRunId: number;
-    developmentCase: DevelopmentCase;
-  }): boolean {
-    const projectedIds = this.readProjectedTasks(input.processRunId)
-      .map(row => row.task_id);
-    if (projectedIds.length === 0) return true;
-    const rows = this.readRuntimeTasks(projectedIds);
-    // A projected task is terminal when it is blocked, or done with a settled
-    // integration_state (merged / conflict / not_required). While any task is
-    // still todo/in_progress/review, settle-development must pause so the
-    // conveyor can drain the shared worker_next queue.
-    return rows.length === projectedIds.length && rows.every(row =>
-      row.status === 'blocked'
-      || (
-        row.status === 'done'
-        && (
-          row.integration_state === 'not_required'
-          || row.integration_state === 'merged'
-          || row.integration_state === 'conflict'
-        )
-      ));
-  }
-
   // ----- inner workset reconstruction ---------------------------------
 
   private buildImplementationWorkset(
@@ -283,20 +193,37 @@ export class SqliteDevelopmentModuleStore implements
     taskGraph: DevelopmentTaskGraphSnapshot,
   ): DevelopmentImplementationWorkset | null {
     if (taskGraph.implementationItems.length === 0) return null;
-    const projections = this.readProjectedTasks(processRunId, 'implementation');
-    assertProjectionKeys(
-      projections,
-      taskGraph.implementationItems.map(item => item.key),
-      'implementation',
+    const products = this.readAcceptedCellProducts<DevelopmentImplementationResultProduct>(
+      processRunId,
+      'development-implementation',
+      DEVELOPMENT_IMPLEMENTATION_RESULT_SCHEMA,
     );
-    const projectionByKey = new Map(
-      projections.map(row => [row.work_item_key, row]),
-    );
-    const results = taskGraph.implementationItems.map(item =>
-      this.buildImplementationResult(
-        item,
-        requireMapValue(projectionByKey, item.key).task_id,
-      ));
+    const byKey = new Map(products.map(product => [product.payload.workItemKey, product]));
+    const results = taskGraph.implementationItems.map(item => {
+      const product = byKey.get(item.key);
+      if (!product) {
+        return {
+          key: item.key,
+          status: 'blocked' as const,
+          taskId: 0,
+          implementationExecutionId: null,
+          reviewExecutionId: null,
+          reviewedSourceCommit: null,
+          result: null,
+          reasonCodes: ['accepted-cell-product-missing'],
+        };
+      }
+      return {
+        key: item.key,
+        status: product.payload.status,
+        taskId: product.taskId,
+        implementationExecutionId: product.executionId,
+        reviewExecutionId: product.reviewExecutionId,
+        reviewedSourceCommit: product.payload.reviewedSourceCommit,
+        result: product.payload.result ?? product.reference,
+        reasonCodes: [...product.payload.reasonCodes],
+      };
+    });
     const requiredKeys = new Set(
       taskGraph.implementationItems
         .filter(item => item.required)
@@ -320,96 +247,6 @@ export class SqliteDevelopmentModuleStore implements
     };
   }
 
-  private buildImplementationResult(
-    item: DevelopmentTaskGraphItem,
-    taskId: number,
-  ): ImplementationWorkItemResult {
-    const task = this.readRuntimeTask(taskId);
-    const executions = this.db.prepare(
-      `SELECT execution_id,state,last_error,reserved_at
-         FROM worker_executions
-        WHERE task_id=?
-        ORDER BY reserved_at,execution_id`,
-    ).all(taskId) as Array<{
-      execution_id: string;
-      state: string;
-      last_error: string | null;
-      reserved_at: string;
-    }>;
-    const implementationExecutionId = executions[0]?.execution_id ?? null;
-    const reviewExecutionId = executions.length >= 2
-      ? executions[executions.length - 1]!.execution_id
-      : null;
-    const reviewedSourceCommit = this.readReviewedSourceCommit(task);
-    const terminalReady = task.status === 'done'
-      && (
-        item.executionMode === 'git_change'
-          ? task.integration_state === 'merged'
-          : task.integration_state === 'not_required'
-      );
-    const proofComplete = implementationExecutionId !== null
-      && reviewExecutionId !== null
-      && reviewedSourceCommit !== null;
-
-    const reasonCodes: string[] = [];
-    let status: ImplementationWorkItemResult['status'];
-    if (task.status === 'blocked' || task.integration_state === 'conflict') {
-      status = 'blocked';
-      reasonCodes.push(
-        task.integration_state === 'conflict'
-          ? 'integration-conflict'
-          : 'task-blocked',
-      );
-    } else if (terminalReady && proofComplete) {
-      status = 'succeeded';
-    } else if (
-      executions.some(execution =>
-        execution.state === 'spawn_failed'
-        || (
-          execution.state === 'exited'
-          && execution.last_error !== null
-        ))
-    ) {
-      status = 'failed';
-      reasonCodes.push('worker-execution-failed');
-    } else {
-      status = 'blocked';
-      if (!terminalReady) reasonCodes.push('task-not-terminal');
-      if (!proofComplete) reasonCodes.push('review-proof-incomplete');
-    }
-
-    const resultBody = status === 'succeeded'
-      ? {
-        taskId,
-        workItemKey: item.key,
-        implementationExecutionId,
-        reviewExecutionId,
-        reviewedSourceCommit,
-        integratedCommit: task.integrated_commit,
-        comments: this.db.prepare(
-          `SELECT author,content,created_at
-             FROM comments WHERE task_id=? ORDER BY id`,
-        ).all(taskId),
-      }
-      : null;
-    return {
-      key: item.key,
-      status,
-      taskId,
-      implementationExecutionId,
-      reviewExecutionId,
-      reviewedSourceCommit,
-      result: resultBody === null
-        ? null
-        : {
-          schema: TASK_RESULT_SCHEMA,
-          ref: `development-task-result:${taskId}`,
-          hash: sha256Hex(resultBody),
-        },
-      reasonCodes,
-    };
-  }
-
   private buildIntegratedCandidate(
     processRunId: number,
     developmentCase: DevelopmentCase,
@@ -428,24 +265,46 @@ export class SqliteDevelopmentModuleStore implements
     if (!workset.complete || !requiredSucceeded) return null;
 
     try {
-      const repositories = developmentCase.repositories
-        .map(binding => this.observeRepository(
-          developmentCase.projectId,
-          binding.projectRepositoryId,
-          binding.integrationBranch,
-          binding.expectedBaseCommit,
-        ))
-        .sort((left, right) =>
-          left.projectRepositoryId - right.projectRepositoryId);
-      const integrationIntentRefs =
-        this.collectIntegrationIntentRefs(processRunId, taskGraph, workset);
-      const buildProducts = repositories.map(repository => ({
-        kind: 'source-tree',
-        ref:
-          `project-repository:${repository.projectRepositoryId}`
-          + `:branch:${repository.branch}:commit:${repository.commitSha}`,
-        digest: repository.treeHash,
-      }));
+      const accepted = this.readAcceptedCellProducts<DevelopmentImplementationResultProduct>(
+        processRunId,
+        'development-implementation',
+        DEVELOPMENT_IMPLEMENTATION_RESULT_SCHEMA,
+      );
+      const repositoryById = new Map<number, NonNullable<DevelopmentImplementationResultProduct['repository']>>();
+      for (const product of accepted) {
+        const repository = product.payload.repository;
+        if (!repository) continue;
+        const prior = repositoryById.get(repository.projectRepositoryId);
+        if (prior && (
+          prior.branch !== repository.branch
+          || prior.commitSha !== repository.commitSha
+          || prior.treeHash !== repository.treeHash
+        )) {
+          // Multiple desks may contribute to one integration target, but they
+          // must agree on the exact frozen repository snapshot.
+          return null;
+        }
+        repositoryById.set(repository.projectRepositoryId, repository);
+      }
+      const repositories = [...repositoryById.values()]
+        .sort((left, right) => left.projectRepositoryId - right.projectRepositoryId);
+      const expectedRepositoryIds = new Set(
+        developmentCase.repositories.map(repository => repository.projectRepositoryId),
+      );
+      if (repositories.length !== expectedRepositoryIds.size
+        || repositories.some(repository => !expectedRepositoryIds.has(repository.projectRepositoryId))) {
+        return null;
+      }
+      const integrationIntentRefs = accepted.map(product => product.candidateSetRef).sort();
+      const buildProductByIdentity = new Map<string, (typeof accepted)[number]['payload']['buildProducts'][number]>();
+      for (const product of accepted.flatMap(item => item.payload.buildProducts)) {
+        const key = `${product.kind}\u0000${product.ref}`;
+        const prior = buildProductByIdentity.get(key);
+        if (prior && prior.digest !== product.digest) return null;
+        buildProductByIdentity.set(key, product);
+      }
+      const buildProducts = [...buildProductByIdentity.values()]
+        .sort((left, right) => left.ref.localeCompare(right.ref));
       const body: Omit<IntegratedReleaseCandidate, 'candidateHash'> = {
         schemaVersion: INTEGRATED_CANDIDATE_SCHEMA,
         taskGraphHash: taskGraph.graphHash,
@@ -474,15 +333,12 @@ export class SqliteDevelopmentModuleStore implements
     candidate: IntegratedReleaseCandidate,
   ): AcceptanceVerificationWorkset | null {
     if (taskGraph.verificationItems.length === 0) return null;
-    const projections = this.readProjectedTasks(processRunId, 'verification');
-    assertProjectionKeys(
-      projections,
-      taskGraph.verificationItems.map(item => item.key),
-      'verification',
+    const products = this.readAcceptedCellProducts<DevelopmentVerificationEvidenceProduct>(
+      processRunId,
+      'development-verification',
+      DEVELOPMENT_VERIFICATION_EVIDENCE_PRODUCT_SCHEMA,
     );
-    const projectionByKey = new Map(
-      projections.map(row => [row.work_item_key, row]),
-    );
+    const byKey = new Map(products.map(product => [product.payload.verificationItemKey, product]));
     const criterionById = new Map(
       developmentCase.acceptanceCriteria.map(criterion => [
         criterion.artifactId,
@@ -491,42 +347,22 @@ export class SqliteDevelopmentModuleStore implements
     );
     const evidence: CandidateVerificationEvidence[] = [];
     for (const item of taskGraph.verificationItems) {
-      const taskId = requireMapValue(projectionByKey, item.key).task_id;
+      const product = byKey.get(item.key);
+      if (!product) continue;
       const criterionId = item.acceptanceCriterionIds[0];
       if (criterionId === undefined) continue;
       const criterion = criterionById.get(criterionId);
       if (!criterion) continue;
-      const row = this.readVerificationEvidence(
-        taskId,
-        criterionId,
-        criterion.acceptedHash,
-      );
-      if (!row) continue;
       evidence.push({
         verificationItemKey: item.key,
-        taskId,
-        executionId: row.execution_id,
+        taskId: product.taskId,
+        executionId: product.executionId,
         acceptanceCriterionId: criterionId,
         acceptedCriterionHash: criterion.acceptedHash,
         candidateHash: candidate.candidateHash,
-        outcome: row.outcome,
-        evidence: {
-          schema: VERIFICATION_EVIDENCE_REF_SCHEMA,
-          ref: `verification-evidence:${row.id}`,
-          hash: sha256Hex({
-            id: row.id,
-            taskId,
-            artifactId: criterionId,
-            outcome: row.outcome,
-            evidence: row.evidence,
-            contentHash: row.content_hash,
-            executionId: row.execution_id,
-          }),
-        },
-        provider: this.resolveVerificationProvider(
-          developmentCase.projectId,
-          row.provider,
-        ),
+        outcome: product.payload.outcome,
+        evidence: product.payload.evidence,
+        provider: product.payload.provider,
       });
     }
 
@@ -548,6 +384,90 @@ export class SqliteDevelopmentModuleStore implements
         verificationHash: '',
       }),
     };
+  }
+
+  private readAcceptedCellProducts<T extends { schemaVersion: string }>(
+    processRunId: number,
+    cellId: string,
+    schemaId: string,
+  ): Array<{
+    workplaceRef: string;
+    candidateSetRef: string;
+    taskId: number;
+    executionId: string;
+    reviewExecutionId: string | null;
+    reference: ContentAddressedReference;
+    payload: T;
+  }> {
+    const rows = this.db.prepare(
+      `SELECT w.workplace_ref AS workplaceRef,
+              cs.candidate_set_ref AS candidateSetRef,
+              cs.producer_execution_ref AS executionId,
+              submission.id AS submissionId,
+              submission.task_id AS taskId,
+              submission.payload_snapshot AS payloadSnapshot,
+              submission.content_hash AS contentHash,
+              (SELECT reviewer.producer_execution_ref
+                 FROM factory_candidate_sets reviewer
+                WHERE reviewer.workplace_ref=w.workplace_ref
+                  AND reviewer.role='reviewer'
+                ORDER BY reviewer.sealed_at DESC,reviewer.candidate_set_ref DESC
+                LIMIT 1) AS reviewExecutionId
+         FROM factory_workplaces w
+         JOIN factory_candidate_sets cs
+           ON cs.workplace_ref=w.workplace_ref AND cs.role='author'
+         JOIN factory_candidate_set_members member
+           ON member.candidate_set_ref=cs.candidate_set_ref
+          AND member.product_schema=?
+         JOIN factory_managed_node_submissions submission
+           ON member.product_ref='managed-node-submission:' || submission.id
+        WHERE w.process_run_id=?
+          AND w.production_cell_id=?
+          AND w.loop_state='terminal'
+          AND w.terminal_reason='accepted'
+        ORDER BY w.workplace_ref,cs.sealed_at DESC,cs.candidate_set_ref DESC`,
+    ).all(schemaId, processRunId, cellId) as Array<{
+      workplaceRef: string;
+      candidateSetRef: string;
+      executionId: string;
+      submissionId: number;
+      taskId: number;
+      payloadSnapshot: string;
+      contentHash: string;
+      reviewExecutionId: string | null;
+    }>;
+    const seen = new Set<string>();
+    return rows.flatMap(row => {
+      if (seen.has(row.workplaceRef)) return [];
+      seen.add(row.workplaceRef);
+      const payload = JSON.parse(row.payloadSnapshot) as T;
+      if (payload.schemaVersion !== schemaId || sha256Hex(payload) !== row.contentHash) {
+        throw new Error(`DEVELOPMENT_CELL_PRODUCT_CORRUPT: ${row.candidateSetRef}`);
+      }
+      return [{
+        workplaceRef: row.workplaceRef,
+        candidateSetRef: row.candidateSetRef,
+        taskId: row.taskId,
+        executionId: row.executionId,
+        reviewExecutionId: row.reviewExecutionId,
+        reference: {
+          schema: schemaId,
+          ref: `managed-node-submission:${row.submissionId}`,
+          hash: row.contentHash,
+        },
+        payload,
+      }];
+    });
+  }
+
+  private readPausedWorkplaces(processRunId: number): string[] {
+    return (this.db.prepare(
+      `SELECT workplace_ref
+         FROM factory_workplaces
+        WHERE process_run_id=? AND loop_state='paused'
+        ORDER BY workplace_ref`,
+    ).all(processRunId) as Array<{ workplace_ref: string }>)
+      .map(row => row.workplace_ref);
   }
 
   // ----- DevelopmentCanonicalGraphPort --------------------------------
@@ -639,116 +559,6 @@ export class SqliteDevelopmentModuleStore implements
     }));
   }
 
-  // ----- tracker readers ----------------------------------------------
-
-  private readProjectedTasks(
-    processRunId: number,
-    kind?: 'implementation' | 'verification',
-  ): ProjectedTaskRow[] {
-    const whereKind = kind ? ' AND item_kind=?' : '';
-    const params: unknown[] = kind
-      ? [processRunId, kind]
-      : [processRunId];
-    return this.db.prepare(
-      `SELECT task_id,work_item_key,item_kind
-         FROM factory_development_task_projections
-        WHERE process_run_id=?${whereKind}
-        ORDER BY work_item_key`,
-    ).all(...params) as ProjectedTaskRow[];
-  }
-
-  private readRuntimeTask(taskId: number): RuntimeTaskRow {
-    // Conveyor v4 step 3.C.4 read-switch: in cutover mode the task's status is
-    // the AUTHORITATIVE factory_workplaces kanban_phase (reverse-projected to the
-    // legacy status vocabulary). integration_state / integrated_commit /
-    // project_repository_id / metadata are DATA columns and stay on tasks.
-    const cutover = true;
-    const row = (cutover
-      ? this.db.prepare(
-          `SELECT t.id,
-                  COALESCE(
-                    CASE w.kanban_phase
-                      WHEN 'todo' THEN 'todo'
-                      WHEN 'in_progress' THEN 'in_progress'
-                      WHEN 'review' THEN 'review'
-                      WHEN 'review_in_progress' THEN 'review_in_progress'
-                      WHEN 'blocked' THEN 'blocked'
-                      WHEN 'done' THEN 'done'
-                      WHEN 'failed' THEN 'done'
-                      WHEN 'cancelled' THEN 'done'
-                      ELSE NULL
-                    END, t.status) AS status,
-                  t.integration_state, t.integrated_commit,
-                  t.project_repository_id, t.metadata
-             FROM tasks t
-             LEFT JOIN factory_workplaces w ON w.workplace_ref = t.workplace_ref
-            WHERE t.id=?`,
-        ).get(taskId)
-      : this.db.prepare(
-          `SELECT id,status,integration_state,integrated_commit,
-                  project_repository_id,metadata
-             FROM tasks WHERE id=?`,
-        ).get(taskId)
-    ) as RuntimeTaskRow | undefined;
-    if (!row) throw new Error(`DEVELOPMENT_TASK_NOT_FOUND: ${taskId}`);
-    return row;
-  }
-
-  private readRuntimeTasks(taskIds: readonly number[]): RuntimeTaskRow[] {
-    if (taskIds.length === 0) return [];
-    // Conveyor v4 step 3.C.4 read-switch (see readRuntimeTask).
-    const cutover = true;
-    return (cutover
-      ? this.db.prepare(
-          `SELECT t.id,
-                  COALESCE(
-                    CASE w.kanban_phase
-                      WHEN 'todo' THEN 'todo'
-                      WHEN 'in_progress' THEN 'in_progress'
-                      WHEN 'review' THEN 'review'
-                      WHEN 'review_in_progress' THEN 'review_in_progress'
-                      WHEN 'blocked' THEN 'blocked'
-                      WHEN 'done' THEN 'done'
-                      WHEN 'failed' THEN 'done'
-                      WHEN 'cancelled' THEN 'done'
-                      ELSE NULL
-                    END, t.status) AS status,
-                  t.integration_state, t.integrated_commit,
-                  t.project_repository_id, t.metadata
-             FROM tasks t
-             LEFT JOIN factory_workplaces w ON w.workplace_ref = t.workplace_ref
-            WHERE t.id IN (${taskIds.map(() => '?').join(',')})`,
-        ).all(...taskIds)
-      : this.db.prepare(
-          `SELECT id,status,integration_state,integrated_commit,
-                  project_repository_id,metadata
-             FROM tasks
-            WHERE id IN (${taskIds.map(() => '?').join(',')})`,
-        ).all(...taskIds)
-    ) as RuntimeTaskRow[];
-  }
-
-  private readReviewedSourceCommit(task: RuntimeTaskRow): string | null {
-    const intent = this.db.prepare(
-      `SELECT reviewed_source_sha
-         FROM integration_intents
-        WHERE task_id=?
-          AND state='merged'
-        ORDER BY updated_at DESC
-        LIMIT 1`,
-    ).get(task.id) as { reviewed_source_sha: string } | undefined;
-    if (intent?.reviewed_source_sha) return intent.reviewed_source_sha;
-    if (task.project_repository_id === null) {
-      return task.integrated_commit;
-    }
-    const repository = this.readRepositoryPath(task.project_repository_id);
-    if (!repository) return null;
-    return this.git.read(repository.localPath, [
-      'rev-parse',
-      `refs/heads/task/${task.id}`,
-    ]);
-  }
-
   private readRepositoryPath(
     projectRepositoryId: number,
   ): {
@@ -771,52 +581,6 @@ export class SqliteDevelopmentModuleStore implements
     return row?.local_path
       ? { projectId: row.project_id, localPath: row.local_path }
       : null;
-  }
-
-  private observeRepository(
-    projectId: number,
-    projectRepositoryId: number,
-    branch: string,
-    expectedBaseCommit: string,
-  ): CandidateRepositorySnapshot {
-    const repository = this.readRepositoryPath(projectRepositoryId);
-    if (!repository || repository.projectId !== projectId) {
-      throw new Error(
-        `DEVELOPMENT_REPOSITORY_CHECKOUT_MISSING: ${projectRepositoryId}`,
-      );
-    }
-    const commitSha = this.git.read(repository.localPath, [
-      'rev-parse',
-      `refs/heads/${branch}`,
-    ]);
-    if (!commitSha) {
-      throw new Error(
-        `DEVELOPMENT_REPOSITORY_BRANCH_MISSING: `
-        + `${projectRepositoryId}/${branch}`,
-      );
-    }
-    if (
-      !this.git.ok(repository.localPath, [
-        'merge-base',
-        '--is-ancestor',
-        expectedBaseCommit,
-        commitSha,
-      ])
-    ) {
-      throw new Error(
-        `DEVELOPMENT_REPOSITORY_BASE_MISMATCH: ${projectRepositoryId}`,
-      );
-    }
-    const treeHash = this.git.read(repository.localPath, [
-      'rev-parse',
-      `${commitSha}^{tree}`,
-    ]);
-    if (!treeHash) {
-      throw new Error(
-        `DEVELOPMENT_REPOSITORY_TREE_MISSING: ${projectRepositoryId}`,
-      );
-    }
-    return { projectRepositoryId, branch, commitSha, treeHash };
   }
 
   private observeCandidate(
@@ -860,344 +624,6 @@ export class SqliteDevelopmentModuleStore implements
       });
     } catch {
       return null;
-    }
-  }
-
-  private collectIntegrationIntentRefs(
-    processRunId: number,
-    graph: DevelopmentTaskGraphSnapshot,
-    workset: DevelopmentImplementationWorkset,
-  ): string[] {
-    const resultByKey = new Map(
-      workset.results.map(result => [result.key, result]),
-    );
-    const projectionByKey = new Map(
-      this.readProjectedTasks(processRunId, 'implementation')
-        .map(row => [row.work_item_key, row]),
-    );
-    const references: string[] = [];
-    for (const target of graph.integrationTargets) {
-      for (const key of target.sourceWorkItemKeys) {
-        const result = resultByKey.get(key);
-        const projection = projectionByKey.get(key);
-        if (
-          !result
-          || result.status !== 'succeeded'
-          || !result.reviewedSourceCommit
-          || !projection
-        ) {
-          throw new Error(`DEVELOPMENT_INTEGRATION_PROOF_MISSING: ${key}`);
-        }
-        const task = this.readRuntimeTask(projection.task_id);
-        if (
-          task.integration_state !== 'merged'
-          || !task.integrated_commit
-        ) {
-          throw new Error(`DEVELOPMENT_INTEGRATION_NOT_MERGED: ${key}`);
-        }
-        references.push(
-          `development-integration:${processRunId}:${projection.task_id}:`
-          + sha256Hex({
-            projectRepositoryId: target.projectRepositoryId,
-            taskId: projection.task_id,
-            workItemKey: key,
-            reviewedSourceCommit: result.reviewedSourceCommit,
-            targetBranch: target.targetBranch,
-            integratedCommit: task.integrated_commit,
-          }),
-        );
-      }
-    }
-    return [...new Set(references)].sort();
-  }
-
-  private readVerificationEvidence(
-    taskId: number,
-    artifactId: number,
-    acceptedHash: string,
-  ): {
-    id: number;
-    outcome: CandidateVerificationEvidence['outcome'];
-    evidence: string;
-    content_hash: string | null;
-    provider: string | null;
-    execution_id: string | null;
-  } | null {
-    const row = this.db.prepare(
-      `SELECT id,outcome,evidence,content_hash,provider,execution_id
-         FROM verification_evidence
-        WHERE task_id=? AND artifact_id=? AND content_hash=?
-        ORDER BY id DESC
-        LIMIT 1`,
-    ).get(taskId, artifactId, acceptedHash) as {
-      id: number;
-      outcome: CandidateVerificationEvidence['outcome'];
-      evidence: string;
-      content_hash: string | null;
-      provider: string | null;
-      execution_id: string | null;
-    } | undefined;
-    return row ?? null;
-  }
-
-  private resolveVerificationProvider(
-    projectId: number,
-    providerName: string | null,
-  ): VerificationProviderBinding {
-    const normalized = providerName?.trim() ?? '';
-    const row = normalized
-      ? this.db.prepare(
-        `SELECT id,name,version,category,status
-           FROM trusted_providers
-          WHERE name=?
-            AND category='deterministic_evidence'
-            AND status='active'
-            AND (project_id=? OR project_id IS NULL)
-          ORDER BY project_id IS NOT NULL DESC,id
-          LIMIT 1`,
-      ).get(normalized, projectId) as {
-        id: number;
-        name: string;
-        version: string | null;
-        category: 'deterministic_evidence';
-        status: string;
-      } | undefined
-      : undefined;
-    return row
-      ? {
-        providerId: row.id,
-        name: row.name,
-        version: row.version,
-        category: 'deterministic_evidence',
-        trusted: true,
-      }
-      : {
-        providerId: 0,
-        name: normalized || 'unregistered',
-        version: null,
-        category: 'deterministic_evidence',
-        trusted: false,
-      };
-  }
-
-  private readOpenHumanGateIds(taskIds: number[]): string[] {
-    return (this.db.prepare(
-      `SELECT request_id
-         FROM human_requests
-        WHERE state='open'
-          AND task_id IN (${taskIds.map(() => '?').join(',')})
-        ORDER BY request_id`,
-    ).all(...taskIds) as Array<{ request_id: string }>)
-      .map(row => row.request_id);
-  }
-
-  // ----- graph projection (materializeValidatedTaskGraph) -------------
-
-  private findOrCreateProjectedTask(input: {
-    processRunId: number;
-    developmentCase: DevelopmentCase;
-    graph: DevelopmentTaskGraphSnapshot;
-    item: DevelopmentTaskGraphItem;
-    ordinal: number;
-  }): number {
-    const generationKey = taskGenerationKey(
-      input.processRunId,
-      input.graph.graphHash,
-      input.item.key,
-    );
-    const existing = this.db.prepare(
-      `SELECT id,epic_id,task_kind,workflow_stage,execution_skill,
-              execution_mode,project_repository_id,
-              verification_target_artifact_id,generation_key,metadata
-         FROM tasks
-        WHERE epic_id=? AND generation_key=?`,
-    ).get(
-      input.developmentCase.epicId,
-      generationKey,
-    ) as {
-      id: number;
-      epic_id: number;
-      task_kind: string | null;
-      workflow_stage: string | null;
-      execution_skill: string | null;
-      execution_mode: string;
-      project_repository_id: number | null;
-      verification_target_artifact_id: number | null;
-      generation_key: string;
-      metadata: string;
-    } | undefined;
-    const verificationTarget = input.item.kind === 'verification'
-      ? input.item.acceptanceCriterionIds[0] ?? null
-      : null;
-    const workflowStage = input.item.kind === 'verification'
-      ? 'verification'
-      : 'development';
-    // Stamp each projected task with the ProcessRun input hash for
-    // managed-production provenance. We intentionally do NOT stamp the
-    // planner's work_intent_id: fan-out impl/verify tasks are not bound to
-    // the planner's WorkIntent (which has projected_task_id = planner task).
-    // readWorkIntentForTaskClaim enforces projected_task_id == task.id, so
-    // stamping the planner intent here would make every fan-out task
-    // unclaimable with AUTHORITY_BINDING_INVALID. Impl/verify tasks are
-    // git_change / read_only_evidence and do not use process_node_submit, so
-    // they do not need a managed-node work intent binding. Their provenance
-    // is carried by process_run_id + task_graph_hash + work_item_key.
-    const processRun = this.db.prepare(
-      'SELECT input_hash FROM factory_process_runs WHERE id=?',
-    ).get(input.processRunId) as { input_hash: string } | undefined;
-    const metadata = {
-      process_run_id: input.processRunId,
-      process_node_id: RESOLVE_NODE_ID,
-      process_module_ref: MODULE_REF,
-      process_input_hash: processRun?.input_hash ?? null,
-      task_graph_hash: input.graph.graphHash,
-      work_item_key: input.item.key,
-      work_item_kind: input.item.kind,
-      acceptance_criterion_ids: [...input.item.acceptanceCriterionIds],
-      criticality: input.item.criticality,
-      candidate_hash: null,
-    };
-
-    let taskId: number;
-    if (existing) {
-      if (
-        existing.epic_id !== input.developmentCase.epicId
-        || existing.task_kind !== input.item.taskKind
-        || existing.workflow_stage !== workflowStage
-        || existing.execution_skill !== input.item.executionSkill
-        || existing.execution_mode !== input.item.executionMode
-        || existing.project_repository_id !== input.item.projectRepositoryId
-        || existing.verification_target_artifact_id !== verificationTarget
-        || existing.generation_key !== generationKey
-        || !metadataProjectionMatches(existing.metadata, metadata)
-      ) {
-        throw new Error(
-          `DEVELOPMENT_TASK_PROJECTION_MISMATCH: ${input.item.key}`,
-        );
-      }
-      taskId = existing.id;
-    } else {
-      const info = this.db.prepare(
-        `INSERT INTO tasks
-          (epic_id,title,description,status,priority,sort_order,task_kind,
-           workflow_stage,execution_skill,review_skill,execution_mode,
-           project_repository_id,verification_target_artifact_id,
-           generation_key,tags,metadata)
-         VALUES (?,?,?,'todo','medium',?,?,?,?,?,?,?,?,?,?,?)`,
-      ).run(
-        input.developmentCase.epicId,
-        `${input.item.kind === 'verification' ? 'Verify' : 'Implement'}: `
-          + input.item.key,
-        `ProcessRun ${input.processRunId}; graph ${input.graph.graphHash}; `
-          + `accepted criteria: ${input.item.acceptanceCriterionIds.join(', ')}`,
-        input.ordinal,
-        input.item.taskKind,
-        workflowStage,
-        input.item.executionSkill,
-        input.item.kind === 'verification'
-          ? 'saga-reviewer'
-          : 'saga-reviewer',
-        input.item.executionMode,
-        input.item.projectRepositoryId,
-        verificationTarget,
-        generationKey,
-        canonicalJson([
-          'process-module:solution-development',
-          `development-work-item:${input.item.key}`,
-        ]),
-        canonicalJson(metadata),
-      );
-      taskId = Number(info.lastInsertRowid);
-    }
-
-    this.db.prepare(
-      `INSERT INTO factory_development_task_projections
-        (process_run_id,graph_hash,work_item_key,item_kind,task_id)
-       VALUES (?,?,?,?,?)
-       ON CONFLICT(process_run_id,work_item_key) DO NOTHING`,
-    ).run(
-      input.processRunId,
-      input.graph.graphHash,
-      input.item.key,
-      input.item.kind,
-      taskId,
-    );
-    const projection = this.db.prepare(
-      `SELECT graph_hash,item_kind,task_id
-         FROM factory_development_task_projections
-        WHERE process_run_id=? AND work_item_key=?`,
-    ).get(input.processRunId, input.item.key) as {
-      graph_hash: string;
-      item_kind: string;
-      task_id: number;
-    };
-    if (
-      projection.graph_hash !== input.graph.graphHash
-      || projection.item_kind !== input.item.kind
-      || projection.task_id !== taskId
-    ) {
-      throw new Error(
-        `DEVELOPMENT_TASK_PROJECTION_REPLAY_MISMATCH: ${input.item.key}`,
-      );
-    }
-
-    const linkType = input.item.kind === 'implementation'
-      ? 'implements'
-      : 'depends_on';
-    for (const artifactId of input.item.acceptanceCriterionIds) {
-      this.db.prepare(
-        `INSERT OR IGNORE INTO artifact_traces
-          (source_id,target_type,target_id,link_type)
-         VALUES (?,'task',?,?)`,
-      ).run(artifactId, taskId, linkType);
-    }
-    return taskId;
-  }
-
-  private replaceDependencies(taskId: number, dependencyIds: number[]): void {
-    const existing = this.db.prepare(
-      `SELECT depends_on_task_id
-         FROM task_dependencies
-        WHERE task_id=?
-        ORDER BY depends_on_task_id`,
-    ).all(taskId) as Array<{ depends_on_task_id: number }>;
-    const expected = [...new Set(dependencyIds)].sort((a, b) => a - b);
-    if (existing.length > 0) {
-      const actual = existing.map(row => row.depends_on_task_id);
-      if (
-        actual.length !== expected.length
-        || actual.some((value, index) => value !== expected[index])
-      ) {
-        throw new Error(
-          `DEVELOPMENT_TASK_DEPENDENCY_REPLAY_MISMATCH: task ${taskId}`,
-        );
-      }
-      return;
-    }
-    const insert = this.db.prepare(
-      `INSERT INTO task_dependencies (task_id,depends_on_task_id)
-       VALUES (?,?)`,
-    );
-    for (const dependencyId of expected) insert.run(taskId, dependencyId);
-  }
-
-  private assertTaskProjection(
-    processRunId: number,
-    graph: DevelopmentTaskGraphSnapshot,
-  ): void {
-    const rows = this.readProjectedTasks(processRunId);
-    assertProjectionKeys(
-      rows,
-      [
-        ...graph.implementationItems.map(item => item.key),
-        ...graph.verificationItems.map(item => item.key),
-      ],
-      'task graph',
-    );
-    if (rows.some(row => row.item_kind === 'implementation'
-      ? !graph.implementationItems.some(item => item.key === row.work_item_key)
-      : !graph.verificationItems.some(item => item.key === row.work_item_key))) {
-      throw new Error('DEVELOPMENT_TASK_PROJECTION_KIND_MISMATCH');
     }
   }
 
@@ -1309,52 +735,6 @@ function assertStoredGraph(
       'DEVELOPMENT_TASK_GRAPH_REPLAY_MISMATCH: stored graph differs from authorized graph',
     );
   }
-}
-
-function taskGenerationKey(
-  processRunId: number,
-  graphHash: string,
-  itemKey: string,
-): string {
-  return `process-run:${processRunId}:development:${graphHash}:${sha256Hex(itemKey)}`;
-}
-
-function assertProjectionKeys(
-  rows: readonly ProjectedTaskRow[],
-  expectedKeys: readonly string[],
-  label: string,
-): void {
-  const actual = rows.map(row => row.work_item_key).sort();
-  const expected = [...expectedKeys].sort();
-  if (
-    actual.length !== expected.length
-    || actual.some((key, index) => key !== expected[index])
-  ) {
-    throw new Error(
-      `DEVELOPMENT_${label.toUpperCase().replaceAll(' ', '_')}_PROJECTION_MISMATCH`,
-    );
-  }
-}
-
-function metadataProjectionMatches(
-  raw: string,
-  expected: Record<string, unknown>,
-): boolean {
-  try {
-    const value = JSON.parse(raw) as Record<string, unknown>;
-    return Object.entries(expected).every(([key, expectedValue]) =>
-      sha256Hex(value[key]) === sha256Hex(expectedValue));
-  } catch {
-    return false;
-  }
-}
-
-function requireMapValue<K, V>(map: ReadonlyMap<K, V>, key: K): V {
-  const value = map.get(key);
-  if (value === undefined) {
-    throw new Error(`DEVELOPMENT_MAP_VALUE_MISSING: ${String(key)}`);
-  }
-  return value;
 }
 
 function parseTags(raw: string): readonly string[] {

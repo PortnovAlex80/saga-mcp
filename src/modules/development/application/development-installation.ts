@@ -1,5 +1,4 @@
 import type { ProcessModuleDefinition } from '../../../process-modules/domain/process-module.js';
-import { processModuleKey } from '../../../process-modules/domain/process-module.js';
 import type {
   KernelHandler,
   KernelHandlerContext,
@@ -64,16 +63,9 @@ export const DEVELOPMENT_NODE_IDS = {
 /**
  * Build the kernel handlers for the Development module Flow.
  *
- * The Flow is lm+kernel only (mechanical pattern cloned from Formalization):
- *
- *   plan-task-graph (lm)   → resolve-task-graph (kernel) → settle-development (kernel)
- *
- * Implementation, integration and verification are NOT Flow nodes. The
- * resolver materializes the projected kanban tasks (declarative persistence);
- * workers then claim them through the shared worker_next queue
- * (infrastructure) and settle-development re-reads the resulting tracker state.
- *
- * There are no external adapters — the module never hires, merges or tests.
+ * The planner proposes a graph, the resolver freezes it, universal Production
+ * Cells produce implementation and verification products, and settlement
+ * evaluates their sealed CandidateSets.
  */
 export function createDevelopmentKernelHandlers(
   deps: DevelopmentModuleInstallationDependencies,
@@ -192,24 +184,8 @@ function createTaskGraphResolver(
           },
         );
       }
-      // CGAD P18 — read the workplace's (planner node's) product via the
-      // centralized node-scoped products when available, so the gate can never
-      // be blinded to the planner's prior submission by a transient task
-      // identity. Falls back to the task-scoped read on legacy runs without the
-      // centralized seam.
-      const moduleRef = processModuleKey(DEVELOPMENT_PROCESS_MODULE_REF);
-      const submission = ctx.nodeProducts?.submission
-        ?? deps.plannerSubmissions.readLatestForNode(
-          ctx.processRunId,
-          moduleRef,
-          DEVELOPMENT_NODE_IDS.planner,
-        )
-        ?? deps.plannerSubmissions.readLatestForTask({
-          processRunId: ctx.processRunId,
-          moduleRef,
-          nodeId: DEVELOPMENT_NODE_IDS.planner,
-          taskId: receipt.taskId,
-        });
+      // Read the planner product only through the centralized node-scoped seam.
+      const submission = ctx.nodeProducts?.submission ?? null;
       if (submission === null) {
         return taskGraphResolutionManifest(
           ctx,
@@ -315,6 +291,10 @@ function createTaskGraphResolver(
           contentHash: materialized.reference.hash,
           bindings: {
             graphHash: materialized.graph.graphHash,
+            items: materialized.graph.implementationItems,
+            verificationItems: materialized.graph.verificationItems,
+            integrationTargets: materialized.graph.integrationTargets,
+            taskGraph: materialized.graph,
             plannerSubmissionRef:
               materialized.graph.plannerSubmission.ref,
             plannerSubmissionHash:
@@ -346,42 +326,8 @@ function createDevelopmentSettlementHandler(
         DEVELOPMENT_NODE_IDS.resolveTaskGraph
       ];
 
-      // Conveyor gate (resolve-task-graph produced a valid graph and projected
-      // impl/integration/verification tasks onto the kanban). When those tasks
-      // are not all terminal yet, RELEASE the run to the conveyor: return
-      // runtimeEvent 'paused'. The GenericFlowExecutor raises
-      // ProcessRunPausedError and the run pauses; orchestrate-cli /
-      // LifecycleOrchestrator then drains the shared worker_next queue
-      // (workers claim the projected todo tasks, execute, review, merge, record
-      // evidence), and once every projected task reaches terminal state it
-      // resumes the run. The generic-flow-executor RE-EXECUTES this same node
-      // (see `reexecutePausedNode`), so the gate re-checks and proceeds.
-      //
-      // Skipped when resolution already failed/needs-clarification — in those
-      // cases there is nothing to wait for; settle records the terminal
-      // outcome directly.
-      if (resolution?.bindings.resolutionStatus === 'valid') {
-        if (!deps.settlementState.areProjectedTasksTerminal({
-          processRunId: ctx.processRunId,
-          developmentCase,
-        })) {
-          return {
-            event: 'await-implementation',
-            runtimeEvent: 'paused',
-            production: {
-              schema: DEVELOPMENT_CERTIFICATE_SCHEMA,
-              artifactRef:
-                `development-await:${ctx.processRunId}:${resolution.contentHash}`,
-              contentHash: resolution.contentHash,
-              bindings: {
-                awaitReason: 'projected-implementation-tasks-not-terminal',
-                taskGraphHash: resolution.bindings.graphHash,
-              },
-            },
-          };
-        }
-      }
-
+      // Settlement consumes only products accepted by the preceding universal
+      // cells. A failed graph resolution terminates without cell products.
       let settled: DevelopmentSettlementResult;
       if (resolution?.bindings.resolutionStatus === 'failed') {
         settled = {
@@ -392,11 +338,7 @@ function createDevelopmentSettlementHandler(
           bundle: null,
         };
       } else {
-        // The implementation workset, integrated release candidate and
-        // acceptance-verification workset are reconstructed INSIDE
-        // settlementState.buildSettlementInput by reading exact tracker state
-        // (projected tasks, integration_state, recorded evidence). They are no
-        // longer produced by dedicated external Flow nodes.
+        // Accepted CandidateSets are the authority; task cards are projections.
         const settlementInput = readExactSettlementState(
           deps,
           ctx,
@@ -558,13 +500,8 @@ function developmentSettlementProduction(
       artifactRef:
         `development-settlement:${ctx.processRunId}:${certificateHash}`,
       contentHash: certificateHash,
-      // WAVE 5 CUTOVER — the certificate envelope is no longer duplicated into
-      // `production.bindings`. The kernel issues its own certificate (above)
-      // and emits an explicit ModuleCompletion whose certificateRef points at
-      // the issued row; settlement reads it from there. The legacy magic keys
-      // (certificatePayload / certificateHash / certificateSchema) are removed.
-      // `outputBindings` (verifiedBundleRef etc.) and `authority` are
-      // non-certificate bindings and are retained.
+      // The certificate is an explicit ModuleCompletion reference; bindings
+      // carry only non-certificate output data and authority.
       bindings: {
         ...outputBindings,
         authority: 'development_settlement_policy',

@@ -77,9 +77,9 @@ export interface NodeExecutionContext {
    */
   readonly upstreamProductBodies?: readonly unknown[];
   /**
-   * CGAD P18 — centralized node-scoped worker products for THIS node, read by
-   * the GenericFlowExecutor before invoking any handler. Contains the latest
-   * managed artifacts, traces, and submission produced by the workplace (node)
+   * CGAD P18 — centralized node-scoped worker products of this node's exact
+   * immediate producer, read before invoking a kernel handler. Contains the
+   * latest managed artifacts, traces, and submission produced by that Workplace
    * regardless of which worker (task) produced them. Kernel handlers read this
    * instead of querying the ledger themselves, so every module inherits P18
    * automatically and no future module can reintroduce a task-scoped read.
@@ -250,6 +250,10 @@ export interface NodeProduction {
  * решение. '*' остаётся wildcard.
  */
 export function nodeEventForTransition(result: NodeExecutionResult): string {
+  // Pause is a physical scheduler state, never a domain transition. Persisting
+  // a domain hint here makes crash/resume advance the Flow instead of
+  // re-running the waiting node.
+  if (result.runtimeEvent === 'paused') return 'runtime.paused';
   if (result.domainEvent) return `domain.${result.domainEvent}`;
   return `runtime.${result.runtimeEvent}`;
 }

@@ -57,6 +57,11 @@ function handleProcessNodeSubmit(args: Record<string, unknown>) {
     schemaRef: `factory.node-submission.${schema}.v1`,
     content: payload,
     executionRef: result.record.executionId ?? 'system',
+    // The universal desk is content-addressed: equal payloads produced by
+    // independent fan-out desks intentionally converge on one product, while
+    // distinct payloads of the same schema remain distinct. Execution-level
+    // provenance stays in factory_managed_node_submissions/CandidateSets.
+    productKey: `content:${result.record.contentHash}`,
   });
   return {
     accepted: true,

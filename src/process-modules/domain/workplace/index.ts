@@ -25,6 +25,7 @@
 export {
   DEFAULT_WORK_KEY,
   asWorkplaceRef,
+  deserializeWorkplaceRef,
   serializeWorkplaceRef,
   workplaceRefEquals,
 } from './workplace-ref.js';

@@ -146,6 +146,19 @@ export function serializeWorkplaceRef(ref: WorkplaceRef): string {
   ].join('/');
 }
 
+export function deserializeWorkplaceRef(value: string): WorkplaceRef {
+  const parts = value.split('/');
+  if (parts.length < 5 || parts[0] !== 'workplace') {
+    throw new Error(`deserializeWorkplaceRef: invalid ref '${value}'`);
+  }
+  return asWorkplaceRef({
+    processRunId: Number(parts[1]),
+    moduleRef: parts[2]!,
+    productionCellId: parts[3]!,
+    workKey: parts.slice(4).join('/'),
+  });
+}
+
 /**
  * Two WorkplaceRefs are equal iff every component is equal. Structural equality
  * — no prototype, no branding tricks. Used by coordinator tests and by

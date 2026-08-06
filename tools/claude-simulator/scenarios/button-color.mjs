@@ -371,6 +371,12 @@ export function selectButtonColorScenario(ctx, env = process.env) {
     }
 
     case 'plan-task-graph': {
+      if (ctx.role === 'reviewer') {
+        return {
+          id: 'button-color/development/plan-task-graph/review',
+          steps: [done(ctx, 'Reviewed the exact submitted task graph.')],
+        };
+      }
       // Development planner node. The lifecycle has frozen a DevelopmentCase
       // in task.metadata.process_node_input (with resolved projectRepositoryId).
       // Build the deterministic task-graph proposal and submit it through the
@@ -412,17 +418,32 @@ export function selectButtonColorScenario(ctx, env = process.env) {
     const verdict = fault === 'review-changes-requested' ? 'changes_requested' : 'approved';
     return {
       id: `button-color/reviewer/${verdict}`,
-      steps: [{
-        type: 'worker_done',
-        args: {
+      steps: [
+        ...(ctx.process_node_id === 'implement-work-items' ? [{
+          type: 'process_node_submit',
+          args: {
+            schema: 'factory.development-review-verdict.v1',
+            payload: {
+              schemaVersion: 'factory.development-review-verdict.v1',
+              verdict,
+              rationale: verdict === 'approved'
+                ? 'Deterministic review accepted the pinned author product.'
+                : 'Injected deterministic correction request.',
+            },
+          },
+        }] : []),
+        {
+          type: 'worker_done',
+          args: {
           task_id: '{{ctx.task_id}}', worker_id: '{{ctx.worker_id}}',
           execution_id: '{{ctx.execution_id}}',
           result: verdict === 'approved'
             ? 'Deterministic reviewer: candidate matches the pinned contract.'
             : 'Deterministic reviewer: injected correction request.',
           verdict,
+          },
         },
-      }],
+      ],
     };
   }
 
@@ -461,6 +482,7 @@ export function selectButtonColorScenario(ctx, env = process.env) {
       id: 'button-color/development/code',
       steps: [
         { type: 'write_file', path: 'index.html', content: BUTTON_HTML, as: 'index_html' },
+        { type: 'development_implementation_submit', content: BUTTON_HTML },
         done(ctx, 'Implemented index.html with a deterministic blue/red toggle.'),
       ],
     };
@@ -470,17 +492,7 @@ export function selectButtonColorScenario(ctx, env = process.env) {
     return {
       id: 'button-color/development/verification',
       steps: [
-        {
-          type: 'verification_record',
-          args: {
-            task_id: '{{ctx.task_id}}',
-            artifact_id: '{{ctx.task.verification_target_artifact_id}}',
-            outcome: 'passed',
-            evidence: 'Deterministic simulator verified the button-color fixture against the exact AC.',
-            recorded_by: '{{ctx.worker_id}}', provider: 'saga-deterministic-simulator',
-            execution_id: '{{ctx.execution_id}}',
-          },
-        },
+        { type: 'development_verification_submit' },
         done(ctx, 'Recorded deterministic passing evidence.'),
       ],
     };

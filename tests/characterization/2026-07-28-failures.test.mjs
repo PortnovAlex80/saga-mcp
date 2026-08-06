@@ -195,29 +195,20 @@ test('fixture missing-brief-production: brief is a kernel side-effect projection
   assert.ok(f.data.fixing_waves.includes('9'), 'missing-brief must list Wave 9');
 });
 
-test('fixture incomplete-provenance: provenance keys are best-effort nullable metadata', () => {
+test('fixture incomplete-provenance: Production Cell provenance is complete by construction', () => {
   const f = manifests.find(m => m.data.id === 'incomplete-provenance');
-  // The development runtime was renamed+moved during the saga4 cutover. The old
-  // path src/process-modules/modules/development/sqlite-development-runtime.ts
-  // is ENOENT; the settlement-state runtime now hosts these provenance keys
-  // (byte-identical literals at the new path :1005-1006). The module was later
-  // consolidated into src/modules/development/infrastructure/ (self-contained module).
-  const dev = readSrc('src/modules/development/infrastructure/sqlite-development-settlement-state.ts');
-  // Both newly-stamped keys fall back to null on lookup miss — the boundary
-  // is still fragile even after commit fd52982.
+  const cell = readSrc('src/process-modules/application/node-executors/production-cell-node-executor.ts');
   assert.ok(
-    dev.includes('process_input_hash: processRun?.input_hash ?? null'),
-    'process_input_hash must still be best-effort nullable (residual fragility)',
+    cell.includes('readProcessInputHash(ctx.processRunId)'),
+    'process_input_hash must come from the immutable ProcessRun',
   );
   assert.ok(
-    dev.includes('work_intent_id: plannerIntent?.work_intent_id ?? null'),
-    'work_intent_id must still be best-effort nullable (residual fragility)',
+    cell.includes('nodeInputHash: sha256Hex(nodeInput)'),
+    'node input provenance must be canonically hashed',
   );
-  // The validator error string proves the partial-binding failure mode exists.
   const ledger = readSrc('src/process-modules/persistence/sqlite-managed-production-ledger.ts');
   assert.ok(
-    ledger.includes('process') || dev.includes('MANAGED_PRODUCTION_CONTEXT_INVALID')
-    || dev.includes('provenance'),
+    ledger.includes('MANAGED_PRODUCTION_CONTEXT_INVALID'),
     'managed-production provenance fence must be present',
   );
   assert.ok(f.data.fixing_waves.includes('3'), 'incomplete-provenance must list Wave 3');

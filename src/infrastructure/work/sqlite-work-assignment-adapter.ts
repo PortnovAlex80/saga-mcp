@@ -49,8 +49,8 @@ export class SqliteWorkAssignmentAdapter implements WorkAssignmentPort {
     // worker_executions (frozen execution_context). This is the same atomic
     // boundary findNextClaimable uses under worker_next — proven by
     // tests/dispatcher-race/run.mjs (N concurrent workers, no double-claim).
-    const task = withImmediateTransaction(this.db, () =>
-      findNextClaimable(
+    const task = withImmediateTransaction(this.db, () => {
+      const claimed = findNextClaimable(
         this.db,
         input.workerId,
         input.projectId,
@@ -60,23 +60,24 @@ export class SqliteWorkAssignmentAdapter implements WorkAssignmentPort {
         input.epicId,
         reservation,
         input.taskIds,
-      ),
-    );
+      );
+      if (claimed) {
+        reserveTaskExecution(this.db, {
+          taskId: claimed.id,
+          epicId: claimed.epic_id,
+          projectId: input.projectId,
+          taskKind: claimed.task_kind,
+          metadata: claimed.metadata,
+          executionId: input.workerExecutionId,
+          preClaimStatus: claimed.status === 'in_progress' ? 'todo' : 'review',
+        });
+      }
+      return claimed;
+    });
     if (!task) return null;
     // Conveyor v4: bind the task to its workplace + lease the loop channel.
     // This is the engine-path equivalent of reserveTaskExecution in the MCP
     // dispatcher. The workplace becomes authoritative for the loop state.
-    try {
-      reserveTaskExecution(this.db, {
-        taskId: task.id,
-        epicId: task.epic_id,
-        projectId: input.projectId,
-        taskKind: task.task_kind,
-        metadata: task.metadata,
-        executionId: input.workerExecutionId,
-        preClaimStatus: task.status === 'in_progress' ? 'todo' : task.status,
-      });
-    } catch { /* best-effort v4 binding */ }
     // The claim is committed (card assigned + execution reserved). The snapshot
     // build below reads repository bindings + execution context AFTER the
     // transaction. If it throws (e.g. a dangling project_repository_id, a
