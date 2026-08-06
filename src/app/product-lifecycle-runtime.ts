@@ -29,6 +29,7 @@ import type {
 import { HumanNodeExecutor } from '../process-modules/application/node-executors/human-node-executor.js';
 import { KernelNodeExecutor } from '../process-modules/application/node-executors/kernel-node-executor.js';
 import { LmNodeExecutor } from '../process-modules/application/node-executors/lm-node-executor.js';
+import { ReceiptAwareLmNodeExecutor } from '../process-modules/application/node-executors/receipt-aware-lm-node-executor.js';
 import {
   PRODUCT_DELIVERY_LIFECYCLE_INPUT_SCHEMA,
   assertProductDeliveryLifecycleInput,
@@ -211,11 +212,8 @@ export function createProductLifecycleRuntime(
       };
     },
   };
-  // Each module executor needs its packageIdentity + installedDigest to pin
-  // every execution context (PACKAGE_PIN_REQUIRED). The packageInstallation
-  // holds the records keyed by module name; the executor resolves its own
-  // identity from its moduleRef at registration time. We build a helper that
-  // modules call to fetch their pin.
+
+  const packageInstallation = options.packageInstallation;
   const resolvePackagePin = (moduleName: string): {
     packageIdentity: { name: string; version: string };
     installedDigest: string;
@@ -227,7 +225,6 @@ export function createProductLifecycleRuntime(
     return {
       packageIdentity: { name: moduleName, version: record.version },
       installedDigest: record.packageDigest,
-      // Flow identity = module identity (the module IS the flow in saga4).
       flowIdentity: { flowId: moduleName, flowVersion: record.version },
     };
   };
@@ -235,6 +232,7 @@ export function createProductLifecycleRuntime(
 
   const runtimePersistence = options.discoveryRuntimePersistence
     ?? new SqliteFactoryDiscoveryRuntime();
+  const lmPersistence = createDiscoveryLmNodePersistence(runtimePersistence);
   const managedNodeSubmissions =
     new SqliteManagedNodeSubmissionRepository(db);
   const exactCandidateAcceptance = new SqliteExactCandidateAcceptance(db);
@@ -300,18 +298,23 @@ export function createProductLifecycleRuntime(
     humanInteractionRegistry: humanInteractions,
   });
 
+  const innerLmExecutor = new LmNodeExecutor({
+    persistence: lmPersistence,
+    workerExecutorFactory: options.workerExecutorFactory,
+    resolveWorkerContext: options.resolveWorkerContext,
+    workAssignment:
+      options.workAssignment ?? new SqliteWorkAssignmentAdapter(db),
+  });
   const nodeExecutors = new Map<string, NodeExecutor>([
     ['kernel', new KernelNodeExecutor(
       kernelHandlers,
       exactCandidateAcceptance,
     )],
-    ['lm', new LmNodeExecutor({
-      persistence: createDiscoveryLmNodePersistence(runtimePersistence),
-      workerExecutorFactory: options.workerExecutorFactory,
-      resolveWorkerContext: options.resolveWorkerContext,
-      workAssignment:
-        options.workAssignment ?? new SqliteWorkAssignmentAdapter(db),
-    })],
+    ['lm', new ReceiptAwareLmNodeExecutor(
+      innerLmExecutor,
+      lmPersistence,
+      db,
+    )],
     ['human', new HumanNodeExecutor(humanInteractions)],
   ]);
 
@@ -331,10 +334,6 @@ export function createProductLifecycleRuntime(
     workplaceProductPort,
     adoptedNodeResults: new SqliteResumeDirectiveRepository(db),
 
-    // A successful kernel gate ends the current workplace loop. The Workplace
-    // aggregate is authoritative; this callback only reverse-projects that
-    // decision onto the human task board. It therefore accepts legal current
-    // board projections and never refers to removed migration statuses.
     onWorkplaceVerified: (processRunId, repairNodeId) => {
       const generationKey =
         `process-run:${processRunId}:node:${repairNodeId}`;
@@ -398,7 +397,6 @@ export function createProductLifecycleRuntime(
     return resolver(params);
   };
 
-  const packageInstallation = options.packageInstallation;
   const orchestrator = new LifecycleOrchestrator({
     lifecycleRunRepo,
     onLifecycleStarted: options.onLifecycleStarted,
@@ -421,8 +419,8 @@ export function createProductLifecycleRuntime(
           const record = packageInstallation.records.get(moduleRef.name);
           if (!record) {
             process.stderr.write(
-              `[factory] resolveModuleInstallation: no record for '${moduleRef.name}'. '
-              + 'Available: ${[...packageInstallation.records.keys()].join(', ')}\n`,
+              `[factory] resolveModuleInstallation: no record for '${moduleRef.name}'. `
+              + `Available: ${[...packageInstallation.records.keys()].join(', ')}\n`,
             );
             return null;
           }
