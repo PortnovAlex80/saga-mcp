@@ -15,8 +15,15 @@
  * valid acceptance contract looks like.
  */
 
-import type Database from 'better-sqlite3';
 import { sha256Hex } from '../../../shared/canonical-json.js';
+
+/**
+ * Driver-neutral database handle alias. See srs-contract-validator.ts for
+ * rationale (Wave 7 architecture test: no-sqlite-in-modules).
+ */
+interface DbHandle {
+  prepare(sql: string): { get(...params: unknown[]): unknown; all(...params: unknown[]): unknown[] };
+}
 import {
   buildContractSnapshot,
   findContractGap,
@@ -37,7 +44,7 @@ export const ACCEPTANCE_CONTRACT_VALIDATOR_ID = 'formalization.acceptance-contra
  * artifacts + artifact_traces directly — the same tables buildContractSnapshot
  * reads through the port in the resolver path.
  */
-function graphPortFromDb(db: Database.Database): FormalizationCanonicalGraphPort {
+function graphPortFromDb(db: DbHandle): FormalizationCanonicalGraphPort {
   return {
     readArtifactsByIds(ids: readonly number[]): readonly FormalizationArtifactSnapshot[] {
       if (ids.length === 0) return [];
@@ -85,7 +92,7 @@ function graphPortFromDb(db: Database.Database): FormalizationCanonicalGraphPort
  * in the snapshot).
  */
 function readContractArtifacts(
-  db: Database.Database,
+  db: DbHandle,
   processRunId: number,
 ): readonly FormalizationArtifactSnapshot[] {
   return db.prepare(
@@ -148,7 +155,7 @@ function parseGaps(
  * validator reads fresh state at validation time (not a stale snapshot).
  */
 export function createAcceptanceContractValidator(
-  db: Database.Database,
+  db: DbHandle,
 ): NodeSubmissionValidator {
   return {
     validatorId: ACCEPTANCE_CONTRACT_VALIDATOR_ID,
@@ -183,15 +190,25 @@ export function createAcceptanceContractValidator(
 }
 
 function acceptWithReceipt(
-  _db: Database.Database,
+  _db: DbHandle,
   input: NodeSubmissionValidationInput,
   artifacts: readonly FormalizationArtifactSnapshot[],
   traceIds: readonly number[],
 ): NodeSubmissionValidationResult {
   const artifactIds = artifacts.map(a => a.id);
+  // Capture content hashes at validation time so a post-hoc mutation is
+  // detectable by recomputing the digest against current state. ID-only
+  // digests could not detect content mutation.
+  const artifactHashes: Record<string, string> = {};
+  for (const a of artifacts) {
+    if (a.contentHash) artifactHashes[String(a.id)] = a.contentHash;
+  }
+  const sortedTraceIds = [...traceIds].sort((a, b) => a - b);
+  const traceDigest = sha256Hex(sortedTraceIds);
   const validatedSetDigest = sha256Hex({
     artifactIds: [...artifactIds].sort((a, b) => a - b),
-    traceIds: [...traceIds].sort((a, b) => a - b),
+    artifactHashes,
+    traceIds: sortedTraceIds,
   });
   const receipt: SubmissionValidationReceipt = {
     validatorId: ACCEPTANCE_CONTRACT_VALIDATOR_ID,
@@ -204,7 +221,10 @@ function acceptWithReceipt(
     inputSnapshotHash: validatedSetDigest,
     artifactIds,
     traceIds,
+    artifactHashes,
+    traceDigest,
     validatedSetDigest,
+    contractRef: input.contractRef,
     validatedAt: new Date().toISOString(),
   };
   return { accepted: true, receipt };

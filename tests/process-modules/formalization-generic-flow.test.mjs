@@ -546,6 +546,10 @@ test('exact ledger flow settles and persists a durable SolutionContract', () => 
     code: 'AC-30',
     acceptedHash: HASH.ac,
     implementationRequired: true,
+    // criticality: read from AC tags (default 'blocker' when no tag). This is
+    // advisory metadata — the Development settlement gate does not yet branch
+    // on it. See formalization-installation.ts readCriticalityFromTags.
+    criticality: 'blocker',
   }]);
 
   const resolveOutput = createFormalizationOutputResolver(fx.deps.solutionContractRepository);

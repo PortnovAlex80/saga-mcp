@@ -11,8 +11,15 @@
  * worker can submit" for ALL formalization nodes, not just AC.
  */
 
-import type Database from 'better-sqlite3';
 import { sha256Hex } from '../../../shared/canonical-json.js';
+
+/**
+ * Driver-neutral database handle alias. See srs-contract-validator.ts for
+ * rationale (Wave 7 architecture test: no-sqlite-in-modules).
+ */
+interface DbHandle {
+  prepare(sql: string): { get(...params: unknown[]): unknown; all(...params: unknown[]): unknown[] };
+}
 import {
   buildContractSnapshot,
   findContractGap,
@@ -31,7 +38,7 @@ import type {
  * dimension set. The validatorId is per-node so the registry can resolve it.
  */
 export function createFormalizationContractValidator(
-  db: Database.Database,
+  db: DbHandle,
   validatorId: string,
   _nodeId: string,
   required: {
@@ -62,12 +69,12 @@ export function createFormalizationContractValidator(
         };
       }
       const traceIds = snapshot.traces.map(t => t.id);
-      return acceptWithReceipt(input, artifacts.map(a => a.id), traceIds);
+      return acceptWithReceipt(input, artifacts, traceIds);
     },
   };
 }
 
-function graphPortFromDb(db: Database.Database): FormalizationCanonicalGraphPort {
+function graphPortFromDb(db: DbHandle): FormalizationCanonicalGraphPort {
   return {
     readArtifactsByIds(ids: readonly number[]): readonly FormalizationArtifactSnapshot[] {
       if (ids.length === 0) return [];
@@ -105,7 +112,7 @@ function graphPortFromDb(db: Database.Database): FormalizationCanonicalGraphPort
 }
 
 function readContractArtifacts(
-  db: Database.Database,
+  db: DbHandle,
   processRunId: number,
 ): readonly FormalizationArtifactSnapshot[] {
   return db.prepare(
@@ -169,12 +176,20 @@ function parseGaps(gapString: string): SubmissionGap[] {
 
 function acceptWithReceipt(
   input: NodeSubmissionValidationInput,
-  artifactIds: number[],
+  artifacts: readonly { id: number; contentHash: string | null }[],
   traceIds: number[],
 ): NodeSubmissionValidationResult {
+  const artifactIds = artifacts.map(a => a.id);
+  const artifactHashes: Record<string, string> = {};
+  for (const a of artifacts) {
+    if (a.contentHash) artifactHashes[String(a.id)] = a.contentHash;
+  }
+  const sortedTraceIds = [...traceIds].sort((a, b) => a - b);
+  const traceDigest = sha256Hex(sortedTraceIds);
   const validatedSetDigest = sha256Hex({
     artifactIds: [...artifactIds].sort((a, b) => a - b),
-    traceIds: [...traceIds].sort((a, b) => a - b),
+    artifactHashes,
+    traceIds: sortedTraceIds,
   });
   const receipt: SubmissionValidationReceipt = {
     validatorId: 'formalization.contract.v1',
@@ -187,7 +202,10 @@ function acceptWithReceipt(
     inputSnapshotHash: validatedSetDigest,
     artifactIds,
     traceIds,
+    artifactHashes,
+    traceDigest,
     validatedSetDigest,
+    contractRef: input.contractRef,
     validatedAt: new Date().toISOString(),
   };
   return { accepted: true, receipt };

@@ -1,4 +1,5 @@
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
+import type Database from 'better-sqlite3';
 import { getDb } from '../db.js';
 import { logActivity } from '../helpers/activity-logger.js';
 import { validateBrief } from '../validators/brief.js';
@@ -82,6 +83,66 @@ function assertManagedArtifactMutationAuthority(
         + 'be mutated in place by this worker; explicitly reopen it as draft/'
         + 'in_review so the common kernel gate can validate the new version',
     );
+  }
+}
+
+/**
+ * T2.1A — Guard against frozen-baseline AC tag mutation.
+ *
+ * After the acceptance baseline is frozen (freeze-acceptance-baseline node),
+ * the architect runs and produces the SRS. The architect must NOT mutate the
+ * tags of accepted ACs that belong to the frozen baseline — that would let a
+ * HOW-role weaken the WHAT contract (e.g. flip criticality:blocker →
+ * criticality:degradable) after freeze, and the baseline-drift detector
+ * (which checks content_hash, not tags) would not catch it.
+ *
+ * If this artifact id appears in any frozen baseline's acArtifactIds, tag
+ * mutation is forbidden. The architect should instead record criticality /
+ * ac_kind decisions in its OWN product (SRS §D2 or a future
+ * ImplementationBinding), not by mutating the AC row.
+ *
+ * This guard is intentionally narrow: it blocks ONLY tag mutation on accepted
+ * ACs that are part of a frozen baseline. Non-accepted ACs, non-AC artifacts,
+ * and ACs not in any baseline are unaffected.
+ */
+function assertAcceptedAcNotFrozenByTags(
+  db: Database.Database,
+  artifactId: number,
+  existingTags: unknown,
+  newTags: string[],
+): void {
+  // Quick check: if the tag set is unchanged (same values, any order), allow.
+  // This avoids blocking idempotent re-writes of the same tags.
+  const existing = Array.isArray(existingTags) ? [...existingTags].sort() : [];
+  const incoming = [...newTags].sort();
+  if (existing.length === incoming.length && existing.every((t, i) => t === incoming[i])) {
+    return;
+  }
+  // Check whether this AC is part of any frozen acceptance baseline. The
+  // payload JSON contains acArtifactIds. We scan all baselines for the epic
+  // (there is typically just one per process run).
+  const baselines = db.prepare(
+    `SELECT payload FROM factory_formalization_acceptance_baselines`,
+  ).all() as Array<{ payload: string }>;
+  for (const row of baselines) {
+    try {
+      const payload = JSON.parse(row.payload) as { acArtifactIds?: number[] };
+      if (Array.isArray(payload.acArtifactIds) && payload.acArtifactIds.includes(artifactId)) {
+        throw new Error(
+          `ACCEPTED_AC_TAG_MUTATION_FORBIDDEN: artifact ${artifactId} is part `
+          + `of a frozen acceptance baseline and its tags cannot be mutated `
+          + `after baseline freeze. Record criticality/ac_kind decisions in `
+          + `the SRS §D2 (the architect's own product), not by mutating the `
+          + `AC artifact row.`,
+        );
+      }
+    } catch (e) {
+      // Re-throw the guard error; swallow JSON parse errors (malformed
+      // baseline payload is a separate problem, not a tag-mutation case).
+      if (e instanceof Error && e.message.startsWith('ACCEPTED_AC_TAG_MUTATION_FORBIDDEN')) {
+        throw e;
+      }
+    }
   }
 }
 
@@ -485,7 +546,24 @@ function handleArtifactUpdate(args: Record<string, unknown>): Artifact {
   }
 
   const tags = args.tags as string[] | undefined;
-  if (tags !== undefined) { fields.push('tags=?'); params.push(JSON.stringify(tags)); }
+  if (tags !== undefined) {
+    // T2.1A — Frozen AC tag mutation guard.
+    //
+    // The architect (a HOW-role) runs AFTER the acceptance baseline is frozen.
+    // It must not mutate the tags of an accepted AC that belongs to a frozen
+    // baseline — that would let a HOW-role weaken the frozen WHAT contract
+    // (e.g. re-tag criticality: blocker → criticality: degradable). The
+    // baseline-drift detector (findBaselineDrift) checks content_hash but is
+    // blind to tag changes, so without this guard the mutation is invisible.
+    //
+    // The only legitimate way to change an AC's criticality after baseline is
+    // a separate immutable product (ImplementationBinding / SrsDecomposition)
+    // created by the architect as ITS OWN output, not by mutating the AC row.
+    if (existing.type === 'AC' && existing.status === 'accepted') {
+      assertAcceptedAcNotFrozenByTags(db, id, existing.tags, tags);
+    }
+    fields.push('tags=?'); params.push(JSON.stringify(tags));
+  }
 
   const metadata = args.metadata as Record<string, unknown> | undefined;
   if (metadata !== undefined) { fields.push('metadata=?'); params.push(JSON.stringify(metadata)); }

@@ -1419,6 +1419,11 @@ CREATE TRIGGER IF NOT EXISTS trg_factory_compat_no_delete
 -- Persisted when a 'required' submission validator accepts a worker's
 -- submission, in the same transaction as the task transition. Proves that
 -- the validator ran and what exact artifact+trace set it examined.
+--
+-- T1.8: artifact_hashes + trace_digest capture the CONTENT at validation
+-- time (not just IDs), so a post-hoc mutation is detectable by recomputing
+-- the digest against current state. contract_ref records which contract
+-- version the validator ran under (provenance for replay).
 CREATE TABLE IF NOT EXISTS factory_submission_validation_receipts (
   id                  INTEGER PRIMARY KEY AUTOINCREMENT,
   validator_id        TEXT NOT NULL,
@@ -1431,6 +1436,9 @@ CREATE TABLE IF NOT EXISTS factory_submission_validation_receipts (
   input_snapshot_hash TEXT NOT NULL,
   artifact_ids        TEXT NOT NULL,
   trace_ids           TEXT NOT NULL,
+  artifact_hashes     TEXT NOT NULL DEFAULT '{}',
+  trace_digest        TEXT NOT NULL DEFAULT '',
+  contract_ref        TEXT,
   validated_set_digest TEXT NOT NULL,
   validated_at        TEXT NOT NULL DEFAULT (datetime('now'))
 );

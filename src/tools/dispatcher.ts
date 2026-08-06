@@ -1652,10 +1652,26 @@ export const definitions: Tool[] = [
 
 /**
  * Resolve the authoritative execution binding and run the node's submission
- * validator if one is declared. The binding comes from the execution chain
- * (execution_id → worker_executions → task), NOT from task.metadata as
- * authority — metadata is a consistency read. If the registries are not wired
- * (tests that don't exercise validation), this is a no-op.
+ * validator if one is declared.
+ *
+ * Binding resolution (T1.5): task.metadata is a consistency read, NOT the
+ * authority. Two fail-closed rules:
+ *   - If the registries are not initialized → infra failure (throw), not a
+ *     silent legacy bypass. The composition root MUST wire the registries in
+ *     production. Tests that don't exercise validation initialize the DB
+ *     without calling initSubmissionRegistries, but those tests also don't
+ *     call handleWorkerDone for factory-managed tasks.
+ *   - If task.metadata declares a process_module_ref but the binding fields
+ *     are malformed/missing → FACTORY_BINDING_MISSING (throw), not a silent
+ *     legacy bypass. A task that is supposed to be factory-managed but has a
+ *     broken binding is a real error, not "legacy mode".
+ *   - If task.metadata has NO process_module_ref key at all → the task is
+ *     genuinely non-factory (e.g. a manually created task). Legacy mode is
+ *     correct here — return without validation.
+ *
+ * Contract ref (T1.6): if the resolved policy carries a contractRef, it is
+ * passed to the validator input. A version-pinned validator compares it
+ * against its own canonical contract and rejects on mismatch.
  */
 function validateSubmissionIfRequired(
   db: Database.Database,
@@ -1664,16 +1680,40 @@ function validateSubmissionIfRequired(
 ): void {
   const policyRegistry = getSubmissionPolicyRegistry();
   const validatorRegistry = getSubmissionValidatorRegistry();
-  if (!policyRegistry || !validatorRegistry) return; // not wired — legacy mode
 
-  // Resolve binding from task.metadata (consistency read; the authority is
-  // the execution fence that was already checked by assertExecutionFence).
+  // Parse task.metadata once. The presence of the `process_module_ref` key
+  // distinguishes "factory-managed task with binding" from "non-factory task".
   let metadata: Record<string, unknown> = {};
   try {
     metadata = typeof task.metadata === 'string'
       ? JSON.parse(task.metadata)
       : (task.metadata as Record<string, unknown>) ?? {};
-  } catch { /* malformed — treat as no binding */ }
+  } catch {
+    // Malformed metadata JSON. If the raw string contains process_module_ref,
+    // it's a broken factory binding → fail-closed. Otherwise non-factory.
+    const rawMeta = typeof task.metadata === 'string' ? task.metadata : '';
+    if (rawMeta.includes('process_module_ref')) {
+      throw new Error(
+        `FACTORY_BINDING_MALFORMED: task ${task.id} metadata contains `
+        + `process_module_ref but JSON is unparseable`,
+      );
+    }
+    return; // genuinely non-factory task with malformed metadata
+  }
+
+  const hasProcessModuleRef = Object.prototype.hasOwnProperty.call(metadata, 'process_module_ref');
+
+  // Non-factory task: no process binding at all. Legacy mode is correct.
+  if (!hasProcessModuleRef) return;
+
+  // Factory-managed task: registries MUST be wired (fail-closed, T1.5).
+  if (!policyRegistry || !validatorRegistry) {
+    throw new Error(
+      `SUBMISSION_INFRASTRUCTURE_NOT_INITIALIZED: task ${task.id} is `
+      + `factory-managed (has process_module_ref) but submission registries `
+      + `are not wired. Call initSubmissionRegistries(db) at composition root.`,
+    );
+  }
 
   const processRunId = metadata['process_run_id'];
   const moduleRef = metadata['process_module_ref'];
@@ -1683,7 +1723,14 @@ function validateSubmissionIfRequired(
     || typeof moduleRef !== 'string'
     || typeof nodeId !== 'string'
   ) {
-    return; // not a factory-managed task (no process binding) — legacy mode
+    // Factory-managed task (has process_module_ref key) but binding fields
+    // are missing or wrong type → real error, not legacy bypass.
+    throw new Error(
+      `FACTORY_BINDING_INCOMPLETE: task ${task.id} has process_module_ref `
+      + `but binding is incomplete (process_run_id=${JSON.stringify(processRunId)}, `
+      + `process_module_ref=${JSON.stringify(moduleRef)}, `
+      + `process_node_id=${JSON.stringify(nodeId)})`,
+    );
   }
 
   const policy = policyRegistry.resolve(moduleRef, nodeId);
@@ -1700,7 +1747,7 @@ function validateSubmissionIfRequired(
     // Allowed with telemetry warning. Migration tracked by ticket.
     console.warn(
       `[submission] legacy-unvalidated: ${moduleRef}/${nodeId} `
-        + `(${policy.migrationTicket})`,
+      + `(${policy.migrationTicket})`,
     );
     return;
   }
@@ -1711,6 +1758,8 @@ function validateSubmissionIfRequired(
     throw new Error(`SUBMISSION_VALIDATOR_MISSING: ${policy.validatorId}`);
   }
 
+  const projectId = (db.prepare('SELECT e.project_id AS project_id FROM epics e WHERE e.id=?').get(task.epic_id) as { project_id?: number } | undefined)?.project_id ?? 0;
+
   const result = validator.validate({
     processRunId,
     moduleRef,
@@ -1718,7 +1767,10 @@ function validateSubmissionIfRequired(
     executionId: executionId ?? task.current_execution_id ?? '',
     taskId: task.id,
     epicId: task.epic_id,
-    projectId: (db.prepare('SELECT e.project_id AS project_id FROM epics e WHERE e.id=?').get(task.epic_id) as { project_id?: number } | undefined)?.project_id ?? 0,
+    projectId,
+    // T1.6: pass the pinned contract ref from the policy declaration so the
+    // validator can detect version mismatch between author and validator.
+    contractRef: policy.contractRef,
   });
 
   if (!result.accepted) {
@@ -1733,8 +1785,8 @@ function validateSubmissionIfRequired(
     `INSERT INTO factory_submission_validation_receipts
        (validator_id, validator_version, process_run_id, module_ref, node_id,
         execution_id, task_id, input_snapshot_hash, artifact_ids, trace_ids,
-        validated_set_digest)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        artifact_hashes, trace_digest, contract_ref, validated_set_digest)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     receipt.validatorId,
     receipt.validatorVersion,
@@ -1746,6 +1798,9 @@ function validateSubmissionIfRequired(
     receipt.inputSnapshotHash,
     JSON.stringify(receipt.artifactIds),
     JSON.stringify(receipt.traceIds),
+    JSON.stringify(receipt.artifactHashes ?? {}),
+    receipt.traceDigest ?? '',
+    receipt.contractRef ? JSON.stringify(receipt.contractRef) : null,
     receipt.validatedSetDigest,
   );
 }

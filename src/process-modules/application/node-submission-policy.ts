@@ -40,7 +40,7 @@
  * than relying on the absence of a validator as an implicit "anything goes".
  */
 export type NodeSubmissionPolicy =
-  | { readonly mode: 'required'; readonly validatorId: string }
+  | { readonly mode: 'required'; readonly validatorId: string; readonly contractRef?: ContractRef }
   | { readonly mode: 'none'; readonly rationale: string }
   | { readonly mode: 'legacy-unvalidated'; readonly migrationTicket: string };
 
@@ -70,11 +70,28 @@ export interface SubmissionGap {
 // ---------------------------------------------------------------------------
 
 /**
+ * Content-addressed contract reference. Carries the version + digest of the
+ * canonical contract a validator was built against. Stamped on the validation
+ * input (so the validator can detect version mismatch) and on the receipt
+ * (provenance: which contract version accepted this submission).
+ */
+export interface ContractRef {
+  readonly version: string;
+  readonly digest: string;
+}
+
+/**
  * Durable proof that a validator accepted a submission. Persisted in the same
  * transaction as the task transition so a crash between validation and
  * transition cannot leave a validated-but-not-transitioned (or vice-versa)
- * state. The `validatedSetDigest` covers the exact artifact + trace id sets
- * the validator examined, so a later mutation is detectable.
+ * state.
+ *
+ * The `validatedSetDigest` covers the exact artifact ids + their content
+ * hashes and trace ids + trace digest the validator examined, so a later
+ * mutation (artifact content changed, trace added/removed) is detectable by
+ * recomputing the digest against the current state and comparing. ID-only
+ * digests (the previous shape) could not detect content mutation — the IDs
+ * stayed the same while the bytes changed.
  */
 export interface SubmissionValidationReceipt {
   readonly validatorId: string;
@@ -87,7 +104,24 @@ export interface SubmissionValidationReceipt {
   readonly inputSnapshotHash: string;
   readonly artifactIds: readonly number[];
   readonly traceIds: readonly number[];
+  /**
+   * Content hashes of the artifacts examined, keyed by artifact id (string).
+   * Captured at validation time so a post-hoc content mutation is detectable
+   * without relying on the artifact row's mutable `content_hash`.
+   */
+  readonly artifactHashes: Readonly<Record<string, string>>;
+  /**
+   * Canonical digest of the trace set examined. Empty string when the
+   * validator examined no traces.
+   */
+  readonly traceDigest: string;
   readonly validatedSetDigest: string;
+  /**
+   * The contract version this validator ran under, if the validator is
+   * version-pinned. Provenance for replay: a receipt stamped under contract
+   * v2.2 proves the validation ran against the v2.2 canonical contract.
+   */
+  readonly contractRef?: ContractRef;
   readonly validatedAt: string;
 }
 
@@ -125,6 +159,16 @@ export interface NodeSubmissionValidationInput {
   readonly taskId: number;
   readonly epicId: number;
   readonly projectId: number;
+  /**
+   * The contract version pinned on the execution profile, if any. When
+   * present, a version-pinned validator compares this ref against its own
+   * canonical contract ref and rejects with `*_CONTRACT_VERSION_MISMATCH`
+   * if they differ — detecting the case where the author produced an
+   * artifact under one contract version and the validator is checking
+   * under another. When absent, the validator skips the version check
+   * (backward-compatible with unpinned profiles).
+   */
+  readonly contractRef?: ContractRef;
 }
 
 // ---------------------------------------------------------------------------

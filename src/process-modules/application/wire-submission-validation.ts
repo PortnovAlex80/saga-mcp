@@ -22,6 +22,7 @@ import type {
 import { createAcceptanceContractValidator } from '../../modules/formalization/application/acceptance-contract-validator.js';
 import { createSrsContractValidator } from '../../modules/formalization/application/srs-contract-validator.js';
 import { createFormalizationContractValidator } from '../../modules/formalization/application/formalization-contract-validator.js';
+import { SRS_CONTRACT_REF } from '../../modules/formalization/domain/srs-contract.js';
 
 const FORMALIZATION_MODULE_REF = 'solution-formalization@1.0.0';
 const DISCOVERY_MODULE_REF = 'product-discovery@3.0.2';
@@ -51,13 +52,17 @@ export function wireSubmissionValidation(
   ));
 
   // --- Formalization policies ---
-  // ALL five formalization LM-nodes now have required validators.
+  // ALL five formalization LM-nodes now have required validators. The SRS
+  // node additionally pins its contract version — the validator compares the
+  // pinned ref against its own canonical SRS_CONTRACT_REF and rejects with
+  // SRS_CONTRACT_VERSION_MISMATCH if they differ. This detects the case where
+  // the author produced an SRS under one contract version and the validator
+  // is checking under another.
   const formalizationPolicies: Array<[string, string]> = [
     ['define-product-contract', 'formalization.product-contract.v1'],
     ['model-use-cases', 'formalization.use-cases.v1'],
     ['define-acceptance-contract', 'formalization.acceptance-contract.v1'],
     ['reconcile-what', 'formalization.reconciliation.v1'],
-    ['define-architecture-contract', 'formalization.srs-contract.v1'],
   ];
   for (const [nodeId, validatorId] of formalizationPolicies) {
     policyRegistry.register(FORMALIZATION_MODULE_REF, nodeId, {
@@ -65,6 +70,12 @@ export function wireSubmissionValidation(
       validatorId,
     });
   }
+  // SRS policy: version-pinned.
+  policyRegistry.register(FORMALIZATION_MODULE_REF, 'define-architecture-contract', {
+    mode: 'required',
+    validatorId: 'formalization.srs-contract.v1',
+    contractRef: SRS_CONTRACT_REF,
+  });
 
   // --- Discovery policies ---
   for (const nodeId of ['produce-proposal', 'assess-readiness']) {
