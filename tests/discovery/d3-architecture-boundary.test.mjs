@@ -4,7 +4,6 @@
  * The Saga 3 discovery readiness application service must stay pure
  * orchestration: no getDb(), no inline SQL. SQLite is an adapter only; the
  * service depends on the FactoryDiscoveryRuntimePersistence port. This guards
- * the same boundary Phase B established for Saga 2 and D1/D2.
  */
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';

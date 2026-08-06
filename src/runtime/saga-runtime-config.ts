@@ -24,7 +24,6 @@ function positiveInteger(value: string | undefined, fallback: number): number {
 }
 
 /**
- * Reads the stable Saga 2 runtime contract once at the composition boundary.
  * Infrastructure adapters receive this object instead of reading process.env.
  */
 export function loadSagaRuntimeConfig(

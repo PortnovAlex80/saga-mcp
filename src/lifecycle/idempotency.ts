@@ -124,13 +124,8 @@ export function storeReceipt(
  * would be IDEMPOTENCY_KEY_REUSED if the first succeeded with a different
  * payload).
  *
- * For unfenced (pre-ADR-009 legacy or test) tasks: we have no execution_id.
- * The receipt must still be unique per (task, worker, verdict, attempt) —
- * otherwise two legitimate worker_done calls on the same task with different
- * results would collide. We include task_id + worker_id + a short hash of
- * the result text so retries of the SAME call match but different calls do
- * not. (Per blueprint §7.1, controller/admin commands use generated UUIDs;
- * here we synthesize a deterministic one for legacy compatibility.)
+ * An execution fence is mandatory. Calls without one cannot produce a valid
+ * idempotency receipt.
  */
 export function workerDoneCommandId(
   executionId: string | null | undefined,
@@ -139,26 +134,11 @@ export function workerDoneCommandId(
   workerId?: string,
   result?: string,
 ): string {
-  if (executionId) {
-    return `${executionId}:worker-done:${verdict}`;
-  }
-  // Legacy unfenced path: include payload identity so two different calls
-  // don't collide. A retry with the same payload still matches.
-  const legacy = `legacy:${taskId ?? '?'}:${workerId ?? '?'}}:${verdict}:${shortHash(result ?? '')}`;
-  return legacy;
-}
-
-/**
- * Short stable hash for legacy command_id derivation. Not security-sensitive;
- * only needs to be deterministic and collision-resistant over realistic
- * result-text inputs.
- */
-function shortHash(s: string): string {
-  let h = 0;
-  for (let i = 0; i < s.length; i += 1) {
-    h = (h * 31 + s.charCodeAt(i)) | 0;
-  }
-  return (h >>> 0).toString(16).padStart(8, '0');
+  void taskId;
+  void workerId;
+  void result;
+  if (!executionId) throw new Error('EXECUTION_FENCE_REQUIRED: worker_done requires execution_id');
+  return `${executionId}:worker-done:${verdict}`;
 }
 
 /**

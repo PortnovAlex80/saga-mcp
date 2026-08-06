@@ -94,7 +94,6 @@ export const FORMALIZATION_CAP_SOLUTION_CONTRACT_REPOSITORY: CapabilityRequireme
 
 /**
  * Optional: a traceability-policy evaluator. The settlement policy reuses the
- * saga2 lifecycle tools (acceptedBaseline, assertTraceability, assertTasksReady)
  * through this capability when present. Marked optional so a minimal runtime
  * that ships only the formalization-native graph checks can still run the
  * module — the policy falls back to its built-in `findContractGap`.

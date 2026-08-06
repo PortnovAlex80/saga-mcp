@@ -63,7 +63,7 @@ Choose **A**.
 5. Definition replay is allowed only with a durable compatibility receipt when
    the executable suffix (entry/current/future stage identity, module refs,
    routes and mappings) is unchanged. Display-only changes are compatible.
-6. The legacy JSON snapshot importer is deprecated and must not be used for
+6. JSON snapshots must not be used for
    live recovery.
 7. Test acceleration has two explicit profiles instead of a weaker hidden
    gate: `checkpoint_replay` skips the LM only in a diagnostic clone and reruns

@@ -55,8 +55,6 @@ import {
 // Manifest format version.
 //
 // `'1'` signals the envelope wraps a real ProcessModuleDefinition with a
-// populated `resourceIndex` / `handlerRefs` (as opposed to `'legacy-0'`, which
-// wraps a bare definition with empty arrays — see `legacy-adapter.ts`). Mirrors
 // the formalization package's `FORMALIZATION_MANIFEST_FORMAT_VERSION`.
 // ---------------------------------------------------------------------------
 

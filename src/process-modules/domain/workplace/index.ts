@@ -17,7 +17,6 @@
  *
  * These are TARGET contracts. Step 1.1 defines them; later steps (2.x, 3.x)
  * build the coordinator, repositories and projection that consume them. The
- * legacy `domain/recovery.ts` RecoveryIssue stays in use until step 3.A.3
  * generalises the gate and reconciles the two.
  */
 

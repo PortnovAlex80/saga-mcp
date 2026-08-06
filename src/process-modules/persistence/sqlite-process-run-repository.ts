@@ -65,7 +65,7 @@ export function ensureFactoryProcessRunSchema(db: Database.Database): void {
       input_schema                TEXT NOT NULL,                      -- module input contract id
       input_snapshot              TEXT NOT NULL,                      -- canonical JSON of payload
       input_hash                  TEXT NOT NULL,                      -- SHA-256 over input_snapshot
-      projected_stage             TEXT,                               -- legacy episode_workflows.stage projection
+      projected_stage             TEXT,
       status                      TEXT NOT NULL DEFAULT 'created'
                                     CHECK (status IN ('created','preparing','running','paused','settling','completed','failed','cancelled')),
       local_outcome               TEXT,                               -- module-local outcome, terminal-only
@@ -128,8 +128,6 @@ export function ensureFactoryProcessRunSchema(db: Database.Database): void {
     db.exec('ALTER TABLE factory_process_runs ADD COLUMN active_issue_hash TEXT');
   }
   // Wave 2 (W2-A2, spec §3.2) — pin ProcessRuns to their installation. Both
-  // nullable: legacy pre-Wave-2 runs leave them NULL and route through the
-  // legacy adapter (W2-A4). New Wave-2+ runs MUST set both (enforced in
   // application code, not schema, until Wave 11 hardens NOT NULL). These two
   // ALTERs mirror the column-add block above; W2-A2 (single SQL owner, plan
   // §0.5.2 / C083) owns them and ALSO places defensive copies in db.ts for the
@@ -158,7 +156,6 @@ interface ProcessRunRow {
   input_hash: string;
   projected_stage: string | null;
   status: ProcessRunStatus;
-  // Wave 2 (W3-A3 surface, spec §6): both nullable — legacy runs leave NULL.
   installation_id: number | null;
   package_digest: string | null;
   local_outcome: string | null;
@@ -269,7 +266,6 @@ export class SqliteProcessRunRepository implements ProcessRunRepository {
     }
     // Normalize the Wave 2 installation pin so absent (undefined) values — from
     // pre-Wave-3 callers that do not yet know about the two fields — behave
-    // identically to an explicit null (the legacy-run pin shape). This keeps
     // replay-equality and INSERT binding byte-stable across the cutover: a row
     // stored with NULL installation_id stays equal to a replay command that
     // omits the field entirely. W3-A3, spec §6.

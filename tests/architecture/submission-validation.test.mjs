@@ -173,7 +173,7 @@ test('submission validator accepts AC with complete FR + UC edges', () => {
   db.close();
 });
 
-test('policy registry: define-acceptance-contract is required, others legacy', () => {
+test('policy registry: define-acceptance-contract is required, others unsupported', () => {
   const db = freshDb();
   initSubmissionRegistries(db);
   const registry = getSubmissionPolicyRegistry();
@@ -189,6 +189,6 @@ test('policy registry: define-acceptance-contract is required, others legacy', (
 
   const discoveryPolicy = registry.resolve('product-discovery@3.0.2', 'produce-proposal');
   assert.ok(discoveryPolicy);
-  assert.equal(discoveryPolicy.mode, 'legacy-unvalidated');
+  assert.equal(discoveryPolicy.mode, 'none');
   db.close();
 });

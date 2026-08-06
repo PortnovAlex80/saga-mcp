@@ -19,7 +19,6 @@
  *      inputMapping declared — never a copy of the root input or sibling
  *      stage payloads. §6.11 / §13.21.
  *   4. The minimal handoff frame exposes only declared ports: a mapping that
- *      reaches for a legacy cumulative-frame field
  *      (`stages.<id>.processOutcome`) is REJECTED — that field is absent.
  *      §13.21.
  *   5. sourceVariableDigests proves a handoff was built only from declared
@@ -237,10 +236,9 @@ test('handoff payload contains only the receiving stage inputMapping fields, not
 });
 
 // ---------------------------------------------------------------------------
-// 4. Minimal frame rejects legacy cumulative-frame field reads (§13.21).
 // ---------------------------------------------------------------------------
 
-test('legacy cumulative-frame field (stages.<id>.processOutcome) is absent and rejected', () => {
+test('unsupported cumulative-frame field (stages.<id>.processOutcome) is absent and rejected', () => {
   const store = new InMemoryLifecycleVariableStore();
   recordStage(store, {
     stageId: 'draft',
@@ -256,7 +254,6 @@ test('legacy cumulative-frame field (stages.<id>.processOutcome) is absent and r
     completedStageIds: ['draft'],
   });
 
-  // The legacy orchestrator exposed stages.<id>.processOutcome (a sibling's
   // result blob). The minimal frame exposes ONLY ports — processOutcome is
   // structurally absent, so a mapping that reaches for it fails cleanly.
   const draftEntry = frame.stages.draft;
@@ -265,7 +262,6 @@ test('legacy cumulative-frame field (stages.<id>.processOutcome) is absent and r
   assert.equal('stageRunId' in draftEntry, false);
   assert.equal('processRunId' in draftEntry, false);
 
-  // Root input is NOT spread into the top level (legacy did {...rootInput}).
   // It is referenced once under lifecycleInput.
   assert.equal('initiative' in frame, false);
   assert.deepEqual(frame.lifecycleInput, { initiative: 'q2-growth' });
@@ -392,7 +388,6 @@ test('literal and runtime mapping expressions resolve without a source variable 
 
 // ---------------------------------------------------------------------------
 // 8. buildStageVariables uses the generic schema placeholder for ports
-//    without a declared schema (legacy compatibility).
 // ---------------------------------------------------------------------------
 
 test('ports without a declared schema fall back to the generic lifecycle-variable schema', () => {

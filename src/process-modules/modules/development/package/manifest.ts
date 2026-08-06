@@ -93,7 +93,6 @@ export const DEVELOPMENT_MODULE_KEY = `${developmentProcessModule.identity.name}
  * Repository-root-relative POSIX paths to the resources development pins.
  * Development-owned resources live under
  * `src/process-modules/modules/development/package/resources/` (W13-A2-complete
- * migrated them out of the legacy `tool-templates/development/` + `skills/`
  * global root). Shared platform skills (saga-process-module-worker-protocol,
  * saga-planning-reviewer, saga-verifier) stay at the repo-root `skills/` dir.
  */

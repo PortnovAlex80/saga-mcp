@@ -238,7 +238,6 @@ Stage Binding вызывает Process Module, Process Module содержит F
 1. **§18.8 Agent assistance renderer не wired в production** — hook fail-closed
    на `'{}'`. Модель не получает structured guidance между tool-calls. Это
    значит линии защиты 8 (agent assistance) сейчас inactive.
-2. **~~`restoreFrame()` legacy fallback всё ещё в hot path~~** — ЗАКРЫТО
    (Wave 13). `restoreFrame()` полностью удалён; recovery идёт через
    `assembleExecutionContext` (`execution-context-assembler.ts`), который
    читает те же durable NodeRun-колонки неизменяемо. I2 закрыт на уровне

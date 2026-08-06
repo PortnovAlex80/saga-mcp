@@ -2,7 +2,6 @@
 // W5-A5 — Structured agent context hook (replaces tracker-reminder.mjs).
 //
 // Reads a STRUCTURED execution-scoped agent-assistance.json projection instead
-// of parsing Markdown checkboxes (C027 violation in the legacy hook). The
 // current projection is Flow-node scoped; a durable inner NodeProtocol cursor
 // can later replace it with a finer step projection without changing the hook.
 //
@@ -46,7 +45,6 @@
 // "additionalContext": "<bounded structured context>" } }` on first sight of
 // a new state version; `{}` when deduped, missing, malformed, or when
 // the env path is unset/relative/nonexistent (identical fail-closed surface to
-// the legacy hook so the platform adapter needs no change).
 //
 // W13-A2: tracker-reminder.mjs has been deleted. This is the sole
 // PostToolUse/PostToolUseFailure context hook wired by claude-runner.mjs.
@@ -134,7 +132,6 @@ if (typeof snap !== 'object' || snap === null || Array.isArray(snap)) {
 // runner passes SAGA_EXECUTION_ID and it does not match the snapshot's
 // executionId, the snapshot is stale (from a prior/aborted execution) and is
 // rejected. A snapshot with no executionId is accepted only when the runner
-// did not pin one (lenient mode for the legacy fallback path).
 // ---------------------------------------------------------------------------
 
 const runnerExecId = process.env.SAGA_EXECUTION_ID || '';

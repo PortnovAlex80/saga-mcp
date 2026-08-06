@@ -8,7 +8,6 @@
  * It mirrors `src/app/dispatch-loop.ts` `startOne()` (the production
  * assignTask-before-start pattern) with ONE narrowing: the caller passes a
  * single `taskId` (the projected card) instead of an open scope. This is the
- * only assignment path now that the legacy `claimScope` self-claim has been
  * removed (Slice 1 Zones 1-4 node-breaker).
  *
  * Why a shared helper:

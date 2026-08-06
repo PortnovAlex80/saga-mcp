@@ -22,7 +22,6 @@
  *
  * The settlement policy (formalization-settlement-policy.ts) consumes a
  * FormalizationSettlementInput and produces a FormalizationCertificatePayload.
- * It reuses the saga2 lifecycle tools (acceptedBaseline, assertTraceability,
  * assertTasksReady) for the WHAT/HOW graph checks — it does NOT invent new
  * validation logic.
  */
@@ -132,7 +131,6 @@ export interface FormalizationSolutionContractPayload {
 
 /**
  * What the settlement policy consumes. Computed by the formalization pump
- * (P5 LegacyFormalizationProcessAdapter) when it reaches the settle node — it
  * gathers the accepted artifacts + baseline + traces and passes them here.
  */
 export interface FormalizationSettlementInput {

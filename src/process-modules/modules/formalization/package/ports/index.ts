@@ -12,7 +12,6 @@
  *   } from '../ports/index.js';
  *
  * Purity: this barrel re-exports only port TYPES and the handler adapter (which
- * depends solely on ports + the legacy handler factory). It deliberately does
  * NOT re-export the concrete SQLite-backed adapters (`SqliteFormalizationBrief
  * Provisioning` / `SqliteFormalizationManagedProduction` /
  * `buildSqliteFormalizationPackagePorts`): those live in

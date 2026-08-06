@@ -20,7 +20,6 @@
  *   external_ref — content referenced by an external durable ref (reserved;
  *                  no current producer emits this kind).
  *
- * The column is NOT NULL with a CHECK constraint (see schema.ts). Legacy rows
  * migrated by {@link ensureArtifactStorageKindColumn} default to file_backed.
  */
 export type ArtifactStorageKind = 'file_backed' | 'db_native' | 'external_ref';

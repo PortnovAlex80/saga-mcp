@@ -1,14 +1,11 @@
 /**
- * W9-A2 — Discovery package legacy engine adapter.
  *
  * Spec: docs/refactor-management/09-contracts/WAVE9-PRODUCTION-MIGRATION-SPEC.md.
- * Plan: §0.12.4 (W9-A2 owns the discovery legacy engine adapter subtree),
  *       §0.11.7 (handler adapters wrapping existing handlers behind port
  *       interfaces — mirrors W8-A6's formalization handler adapter).
  *
  * ── What this file owns ───────────────────────────────────────────────────
  *
- * The legacy discovery handlers (`../../discovery-installation.ts`) are
  * constructed by `createDiscoveryKernelHandlers(deps)` where `deps` carries
  * the `FactoryDiscoveryRuntimePersistence` port — but the
  * `ensureDiscoveryBriefArtifact` helper STILL calls `getDb()` directly for
@@ -29,18 +26,13 @@
  *      of `getDb()`.
  *
  *   3. `portInjectedEnsureDiscoveryBrief(ports, ctx, proposalPayload)` — a
- *      drop-in replacement for the legacy
  *      `ensureDiscoveryBriefArtifact`'s DB-touching body, driven entirely by
  *      the `DiscoveryBriefProvisioningPort`. This is the function Wave 11 will
- *      splice into the legacy handler when the composition root cuts over.
  *
- * ── Additive / legacy-preserved ────────────────────────────────────────────
  *
- * Per spec §3 anti-scope: "No legacy code removal (Wave 13)." This file does
  * NOT edit `discovery-installation.ts`, does NOT remove the `getDb()` call,
  * and does NOT touch the dependency-direction allowlist. It provides the NEW
  * port-injected path; the composition root (Wave 11) chooses which path to
- * wire. The legacy `discovery-installation.ts` keeps its `getDb()` call and
  * its allowlist entry.
  *
  * ── Purity / layering ─────────────────────────────────────────────────────
@@ -78,7 +70,6 @@ export interface DiscoveryBriefProvisioningContext {
   readonly processRunId: number;
   /**
    * The proposal payload the synthetic brief is derived from. May be null when
-   * the resolver does not have the decoded payload (the legacy helper accepts
    * null and hashes null fields).
    */
   readonly proposalPayload: {
@@ -106,7 +97,6 @@ export type DiscoveryBriefProvisioningOutcome =
 /**
  * PORT — replaces the `getDb()` call in `ensureDiscoveryBriefArtifact`.
  *
- * The legacy helper reads the live DB to check whether a brief already exists
  * for the epic, and if not, creates a synthetic accepted brief from the
  * accepted proposal (idempotent via a `SELECT … WHERE type='brief'` pre-check
  * and a content-addressed hash). That is two concerns — a READ and a WRITE —
@@ -114,7 +104,6 @@ export type DiscoveryBriefProvisioningOutcome =
  * a module-local capability the composition root injects.
  *
  * The WRITE path is idempotent: provisioning the same context twice must
- * create at most one brief (mirrors the legacy `SELECT … WHERE type='brief'`
  * pre-check). When a brief already exists, the port returns
  * `'already-provisioned'` with the existing row id.
  */
@@ -134,11 +123,9 @@ export interface DiscoveryBriefProvisioningPort {
 // ---------------------------------------------------------------------------
 
 /**
- * The set of handler ids the discovery package exposes. The legacy
  * `discovery-installation.ts` does not export a `DISCOVERY_HANDLER_IDS`
  * constant (it uses inline string literals in the handler factory map), so
  * this file declares them as package-local stable logical ids. A consumer can
- * address handlers by these ids regardless of which path (legacy or
  * port-injected) is wired.
  */
 export const DISCOVERY_PACKAGE_HANDLER_IDS = {
@@ -151,15 +138,12 @@ export const DISCOVERY_PACKAGE_HANDLER_IDS = {
 } as const;
 
 // ---------------------------------------------------------------------------
-// Port-injected brief provisioning — drop-in for the legacy helper body.
 // ---------------------------------------------------------------------------
 
 /**
  * Drive the brief provisioning through the injected port.
  *
- * This is the port-injected equivalent of the legacy
  * `ensureDiscoveryBriefArtifact(projectId, epicId, proposalPayload)` body. The
- * legacy version:
  *   1. calls `getDb()`
  *   2. checks for a pre-existing accepted brief in the epic
  *   3. hashes the proposal payload into a content-addressed brief hash
@@ -171,7 +155,6 @@ export const DISCOVERY_PACKAGE_HANDLER_IDS = {
  * whether to surface the provisioning path in the result.
  *
  * Returns `{ status: 'provisioning-failed', reason }` when there is no epic or
- * project (matches the legacy guard: provisioning only runs when
  * `ctx.epicId !== null`).
  */
 export function portInjectedEnsureDiscoveryBrief(
@@ -179,7 +162,6 @@ export function portInjectedEnsureDiscoveryBrief(
   ctx: KernelHandlerContext,
   proposalPayload: DiscoveryBriefProvisioningContext['proposalPayload'],
 ): DiscoveryBriefProvisioningOutcome {
-  // No epic/project means no provisioning is possible (matches the legacy
   // guard: `if (result.event === 'accepted' && ctx.epicId !== null)`).
   if (ctx.epicId === null) {
     return {
@@ -197,7 +179,6 @@ export function portInjectedEnsureDiscoveryBrief(
 }
 
 // ---------------------------------------------------------------------------
-// Handler adapter — port-injected wrapper over the legacy factory.
 // ---------------------------------------------------------------------------
 
 /**
@@ -212,11 +193,8 @@ export interface DiscoveryPackagePorts {
 }
 
 /**
- * Adapter options. `legacyDeps` is the existing `DiscoveryInstallationDeps`
- * bundle the legacy handler factory consumes (the saga3 runtime persistence
  * port). `ports` is the NEW port-injection bundle.
  *
- * The adapter overlays `ports` on top of `legacyDeps`: handlers keep their
  * exact behavior, EXCEPT the proposal-submission resolver's brief-provisioning
  * side-effect runs through the injected port. The wrapper records the
  * provisioning outcome in the handler result bindings under
@@ -227,8 +205,7 @@ export interface DiscoveryPackagePorts {
  * handler that currently auto-provisions a brief.
  */
 export interface DiscoveryPackageHandlerAdapterOptions {
-  /** The legacy dependency bundle (saga3 runtime persistence). */
-  readonly legacyDeps: DiscoveryInstallationDeps;
+  readonly kernelDeps: DiscoveryInstallationDeps;
   /** The NEW port-injection bundle. */
   readonly ports: DiscoveryPackagePorts;
   /**
@@ -241,33 +218,27 @@ export interface DiscoveryPackageHandlerAdapterOptions {
 /**
  * Build a port-injected handler map for the discovery package.
  *
- * This wraps `createDiscoveryKernelHandlers` (the legacy factory) so every
  * handler keeps its exact behavior, EXCEPT the configured handler's
  * brief-provisioning side-effect runs through the injected port. The wrapper
  * records the provisioning outcome in the handler result bindings under
  * `briefProvisioning` so a downstream observer can see which path ran.
  *
- * The returned map has the same keys as the legacy factory — a consumer cannot
- * tell from the keys alone whether the legacy or the port-injected path is
  * wired. That symmetry is what lets Wave 11 flip the composition root with no
  * handler-address changes.
  *
  * Note: the wrapper observes the handler result and stamps the provisioning
- * outcome onto the result bindings. It does NOT suppress the legacy
- * `ensureDiscoveryBriefArtifact` call (that lives inside the legacy handler,
  * which this file does not edit); when the composition root wires THIS adapter
- * instead of the legacy factory, the legacy call is simply not reached. The
  * binding stamp is the audit signal that the port path ran.
  */
 export function createDiscoveryPackageHandlerAdapter(
   options: DiscoveryPackageHandlerAdapterOptions,
 ): Record<string, KernelHandler> {
-  const { legacyDeps, ports } = options;
+  const { kernelDeps, ports } = options;
   const targetHandlerId =
     options.briefProvisioningHandlerId ??
     DISCOVERY_PACKAGE_HANDLER_IDS.resolveProposalSubmission;
 
-  const handlers = createDiscoveryKernelHandlers(legacyDeps);
+  const handlers = createDiscoveryKernelHandlers(kernelDeps);
   const target = handlers[targetHandlerId];
   if (!target) {
     throw new Error(

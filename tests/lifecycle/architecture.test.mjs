@@ -120,7 +120,6 @@ test('architecture: no direct lifecycle UPDATE outside sanctioned writers', () =
   //   - src/db.ts                (migrations)
   //   - src/schema.ts            (DDL only, no UPDATE — included for completeness)
   //   - src/tools/lifecycle.ts   (verification_record; saga4 cutover removed
-  //                               the legacy episode_transition stage-machine)
   //   - src/orchestrate.ts       (engine recovery — recoverAssignment)
   //   - tracker-view/**          (recoverRunnerAssignment)
   //

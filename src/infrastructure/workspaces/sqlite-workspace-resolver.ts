@@ -6,7 +6,6 @@ import type {
 } from '../../application/ports/factory-runtime-persistence.js';
 import { getDb } from '../../db.js';
 
-/** Preserves the current Saga 2 repository-checkout resolution order. */
 export class SqliteWorkspaceResolver implements WorkspaceResolver {
   resolve(projectId: number): WorkspaceResolution {
     const db = getDb();

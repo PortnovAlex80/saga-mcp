@@ -526,7 +526,6 @@ test('W7-A4 §6.4: router module exports no routeResolver / no closure-based res
 });
 
 test('W7-A4 §6.4: routing is invariant to rootInput — no per-run branch exists', () => {
-  // A legacy routeResolver could branch on rootInput. The declarative router
   // has no rootInput parameter at all. Prove routing cannot be influenced by
   // any external value: mutate a would-be rootInput and confirm the route is
   // unchanged.

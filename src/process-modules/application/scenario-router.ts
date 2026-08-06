@@ -6,8 +6,6 @@
  * budgets), §6.3.5 (complete static route tables), §6.8 (module reuse across
  * stages), §0.10.12 exit gate ("no hidden executable routing").
  *
- * This module is the declarative replacement for the legacy `routeResolver`
- * function (§6.4) that lived on `LifecycleDefinition`. Where the legacy
  * resolver was an executable CLOSURE that could override the static
  * `outcomeRoutes` table based on per-run root input, this router resolves
  * transitions by PURE TABLE LOOKUP against the static `outcomeRoutes` carried
@@ -60,7 +58,6 @@
  *   - Does NOT compile/validate the WHOLE manifest (W7-A3 owns manifest-shape
  *     validation; this router validates only the ROUTING GRAPH).
  *   - Does NOT execute modules or store outputs (W7-A5/A6).
- *   - Does NOT rewrite `lifecycle-orchestrator.ts` or remove the legacy
  *     `routeResolver` (Wave 11 cutover / Wave 13 removal — anti-scope §3).
  */
 
@@ -75,7 +72,6 @@ import type {
 // ---------------------------------------------------------------------------
 
 /**
- * Result of a single declarative route lookup. Mirrors the legacy
  * `LifecycleRouteResult` shape (from `domain/lifecycle.ts`) but is produced
  * WITHOUT any resolver closure — purely from the static route table.
  */
@@ -210,7 +206,6 @@ function indexStages(
 
 /**
  * Resolve the transition target for a (stage, outcome) pair by PURE STATIC
- * TABLE LOOKUP. This is the declarative replacement for the legacy
  * `routeResolver` (plan §6.4): there is no closure, no per-run override, no
  * fallback synthesis. The target comes from `stage.outcomeRoutes[outcome]`,
  * full stop.
@@ -222,7 +217,6 @@ function indexStages(
  * the static authorities; this router is the runtime authority and applies
  * the same rule.)
  *
- * The optional `scenarioLevelFallback` parameter exists ONLY for the legacy
  * adapter path (W7-A8) where a scenario-level `outcomeRoutes` table augments
  * per-stage routes. It defaults to `true`, matching the manifest contract:
  * when a stage has no route for an outcome, the scenario-level table is

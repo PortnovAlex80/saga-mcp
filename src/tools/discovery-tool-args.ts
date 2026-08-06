@@ -57,7 +57,6 @@ export function actionableError(
 
 /**
  * Read and validate an integer argument. Throws an actionable error that keeps
- * the legacy phrase "must be an integer" as a substring, plus the expected shape,
  * where to read the value from, and the offending value.
  */
 export function argInt(
@@ -79,8 +78,6 @@ export function argInt(
 
 /**
  * Read and validate a non-empty string argument. Throws an actionable error that
- * keeps the legacy phrase "must be a non-empty string" as a substring. By default
- * trims before the empty check (matches readiness/diagnosis behaviour; the legacy
  * normalization helper did NOT trim — that drift is intentionally resolved toward
  * trim, since an all-whitespace string is never a valid saga identifier).
  */

@@ -30,7 +30,7 @@ function fixture() {
   db.prepare(
     `INSERT INTO artifacts
       (id,project_id,epic_id,type,title,path,project_repository_id,content_hash)
-     VALUES (5,1,2,'PRD','PRD','docs/prd.md',4,'ignored-legacy-hash')`,
+     VALUES (5,1,2,'PRD','PRD','docs/prd.md',4,'ignored-unsupported-hash')`,
   ).run();
   db.prepare(
     `INSERT INTO factory_process_runs

@@ -37,8 +37,6 @@ export interface ExecutionModelRoute {
 }
 
 /**
- * Authority frozen into the snapshot. `authority === null` marks a legacy
- * Saga 2 execution that has no WorkIntent — those get compatibility-allow at
  * the gateway. `work_intent_id` is included so the gateway can cite it in a
  * denial without re-reading the (mutable) WorkIntent row.
  *
@@ -60,7 +58,6 @@ export interface ExecutionAuthority {
 }
 
 /**
- * The full frozen snapshot. `authority: null` for legacy Saga 2 executions
  * (no WorkIntent); non-null for Saga 3 managed executions.
  */
 export interface ExecutionContextSnapshot {

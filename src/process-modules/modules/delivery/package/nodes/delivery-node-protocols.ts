@@ -34,7 +34,6 @@
  * Anti-scope (WAVE9-PRODUCTION-MIGRATION-SPEC §3): this lane does NOT define
  * the concrete handler/adapter implementations (A6 owns ports + external
  * effects + human approval + idempotency + receipts + contributions), does
- * NOT edit the central Runtime/runner/gateway, and does NOT remove the legacy
  * delivery path (Wave 13). It is additive.
  */
 

@@ -1,6 +1,5 @@
 /**
  * W1-A6 — ModuleCompletion: the explicit terminal envelope that replaces the
- * legacy magic certificate bindings.
  *
  * Spec: docs/refactor-management/09-contracts/WAVE1-PURE-SPI-SPEC.md §1 row 10.
  * Plan: §7.5.6.
@@ -94,7 +93,6 @@ void (async () => {
 // ---------------------------------------------------------------------------
 
 /**
- * Explicit terminal envelope replacing the legacy magic certificate bindings
  * (plan §7.5.6). A module signals it is DONE by emitting a `ModuleCompletion`
  * that points back at the full output envelope and declares whether the
  * outcome is terminal.

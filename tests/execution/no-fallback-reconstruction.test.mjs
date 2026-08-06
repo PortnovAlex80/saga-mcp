@@ -10,7 +10,6 @@
 //   the ExecutionContextAssembler MUST throw `UPSTREAM_PRODUCT_NOT_FOUND`. It
 //   MUST NOT silently fall back to:
 //     - an epic-scope search (`listArtifactsForNodeInEpic`, §9.11), or
-//     - a "latest execution in the process" scan (the legacy `restoreFrame`
 //       mutable reconstruction, generic-flow-executor.ts:833-861), or
 //     - substituting the module's original run input for the missing product.
 //

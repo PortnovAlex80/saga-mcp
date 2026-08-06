@@ -21,7 +21,6 @@
  * composition root and passed via `ModuleSharedDeps` because the shared
  * `nodeExecutors` map (constructed once in the composition root) needs them:
  *   - the kernel executor takes `exactCandidateAcceptance`;
- *   - the LM executor takes `createDiscoveryLmNodePersistence(runtimePersistence)`.
  * Keeping `nodeExecutors` in the composition root (per the refactoring brief)
  * forces these two prerequisites up into the shared layer.
  */
@@ -94,7 +93,7 @@ export interface ModuleSharedDeps {
   /**
    * Kernel-gate callback: called when a recovery case is resolved OR the
    * verifier accepted on first pass. Promotes the repair node's task from
-   * 'removed-legacy-status' to 'done'. Wired in the composition root.
+   * 'awaiting_verification' to 'done'. Wired in the composition root.
    */
   readonly onWorkplaceVerified?: (
     processRunId: number,
@@ -127,7 +126,6 @@ export interface ModuleSharedDeps {
    * workshops"). Backed by the existing `factory_process_products` table via
    * `SqliteWorkplaceProductAdapter`. Purely ADDITIVE: future module code MAY
    * use it for cross-module submit + read; existing submit tools and their
-   * tables are unchanged. Optional so legacy/test paths that do not construct
    * the adapter keep working — modules should feature-detect before use.
    */
   readonly workplaceProductPort?: WorkplaceProductPort;

@@ -558,4 +558,3 @@ test('the installation columns are idempotent — re-ensuring the schema does no
 
 // NOTE: The 'db.ts upgrade path' test was removed when migration sediment
 // (guarded ALTER TABLE blocks) was cleaned out of db.ts. The product has not
-// shipped to clients — there are no legacy DBs requiring column upgrades.

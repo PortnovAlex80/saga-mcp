@@ -17,7 +17,6 @@
  * ad-hoc inline logic in the driver runner. See `tracker-view/claude-runner.mjs`
  * around the `const builtin = [...]` block: it carried the comment
  * "The set MUST stay in sync with the builtin names that Process Module profiles
- * and legacy engines put inside authority_scope.allowed_tools" — i.e. the
  * builtin list was duplicated in three places and the split was reconstructed
  * by filtering on the presence of the `mcp__` prefix at the last possible
  * moment. C067 closes that seam.

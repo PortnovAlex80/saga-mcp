@@ -149,7 +149,7 @@ export const definitions: Tool[] = [
           // may STORE.
           type: 'string',
           enum: ['low', 'medium', 'high', 'critical'],
-          description: 'REQ-009 / CGAD §11 — risk proposed by the change author (Builder). Defaults to legacy `priority` if omitted. The agent cannot lower final_risk below derived_risk or policy_minimum (CGAD P15).',
+          description: 'REQ-009 / CGAD §11 — risk proposed by the change author. The agent cannot lower final_risk below derived_risk or policy_minimum.',
         },
         derived_risk: {
           // See declared_risk: enum constrains user input; the stored value may
@@ -414,7 +414,6 @@ function handleTaskCreate(args: Record<string, unknown>) {
   const sourceArtifactIds = (args.source_artifact_ids as number[] | undefined) ?? [];
   const explicitVerificationTarget = (args.verification_target_artifact_id as number | undefined) ?? null;
 
-  // REQ-009 / CGAD §11 — RiskClass. declared_risk defaults to legacy `priority`
   // for backward compatibility. derived_risk and policy_minimum can be passed
   // explicitly or auto-derived from tags + task_kind. final_risk is always
   // computed = max(declared, derived, policy_minimum) — the agent cannot
@@ -447,7 +446,6 @@ function handleTaskCreate(args: Record<string, unknown>) {
     }
   }
   // Saga4 task provenance is a property of the typed workflow stage, not of
-  // whether a legacy episode_workflows row happens to exist. New lifecycle-owned
   // projects intentionally have no such row, so consulting it here silently
   // disabled the provenance gate for development/verification/integration work.
   const provenanceRequired = ['development', 'verification', 'integration']
@@ -888,18 +886,12 @@ function handleTaskUpdate(args: Record<string, unknown>) {
       };
       // If derived_risk / policy_minimum were not explicitly written, auto-derive
       // them from the (possibly updated) tags + task_kind. declared_risk follows
-      // priority when not set, to keep the legacy column authoritative.
       let effectiveDerived = fresh.derived_risk;
       let effectivePolicy = fresh.policy_minimum;
       let effectiveDeclared = fresh.declared_risk;
       const tagsParsed = (() => { try { return JSON.parse(fresh.tags || '[]') as string[]; } catch { return []; } })();
       if (effectiveDerived == null) effectiveDerived = deriveRiskFromTags(tagsParsed, fresh.task_kind);
       if (effectivePolicy == null) effectivePolicy = derivePolicyMinimum(tagsParsed, fresh.task_kind);
-      if (effectiveDeclared == null) {
-        // Fall back to legacy priority column if declared_risk never set.
-        const legacyPriority = db.prepare('SELECT priority FROM tasks WHERE id=?').get(id) as { priority: string };
-        effectiveDeclared = legacyPriority.priority || null;
-      }
       const computedFinal = computeFinalRisk(effectiveDeclared, effectiveDerived, effectivePolicy);
 
       // CGAD P15 monotonicity guard (BEFORE the risk UPDATE).

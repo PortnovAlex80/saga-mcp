@@ -47,7 +47,6 @@ import complianceCheckModule, {
   complianceCheckResourceIndex,
 } from './fixtures/3rd-synthetic-module/definition.mjs';
 
-// Wave 1 SPI — legacy adapter (wraps the definition into a manifest envelope).
 const { createProcessModuleManifest } = await import(
   '../../dist/process-modules/domain/spi/index.js'
 );
@@ -75,7 +74,6 @@ function fakeDigest(logicalId) {
  *
  *   1. Wrap the fixture's `ProcessModuleDefinition` via
  *      `createProcessModuleManifest` (Wave 1 SPI) → a `ProcessModuleManifest`
- *      envelope with empty `resourceIndex` / `handlerRefs` (the legacy adapter
  *      zeroes them; a real install resolves them — that's W2-A3's job).
  *   2. Build the record with:
  *        - `manifestSnapshot`    = the wrapped manifest;
@@ -215,7 +213,6 @@ test('InstallationDescription is canonically serializable (round-trips, plan §3
 });
 
 test('describeInstallation reflects record-level overrides (counts track record, not manifest)', () => {
-  // The legacy adapter zeroed the manifest's resourceIndex/handlerRefs, but
   // the RECORD carries its own resolved arrays. describeInstallation MUST
   // count from the record (post-install resolution), not from the manifest
   // snapshot. Verify by overriding the record's arrays and confirming the
@@ -265,7 +262,6 @@ test('describeInstallation reflects record-level overrides (counts track record,
 
 test('describeInstallation surfaces toolCount/capabilityCount when the manifest declares them', () => {
   // Build a record whose manifestSnapshot declares toolContributions and
-  // capabilityRequirements. createProcessModuleManifest drops these (legacy
   // modules don't carry them), so we splice a richer manifest in directly.
   const baseRecord = buildRecord();
   const richManifest = {

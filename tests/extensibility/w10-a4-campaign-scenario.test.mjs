@@ -158,7 +158,7 @@ test('W10-A4 campaign manifest: upgraded to LifecycleScenarioManifest shape (W1-
   assert.equal(
     'stages' in m,
     false,
-    'upgraded manifest must NOT carry the legacy `stages` field',
+    'upgraded manifest must NOT carry the unsupported `stages` field',
   );
   // Each stageBinding is enriched with a moduleSelector (W1-A3 ScenarioStageBinding).
   for (const s of m.stageBindings) {

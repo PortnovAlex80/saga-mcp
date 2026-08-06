@@ -22,7 +22,6 @@
 //
 //   LAYER 2 — migration gating works. Formalization (the migrated Wave-8
 //   pilot, kernel-gate acceptance + independent review) PASSES the migrated
-//   checks; the legacy modules (discovery/development/delivery) SKIP the
 //   migration-gated checks with a clear reason rather than failing.
 //
 //   LAYER 3 — the kit catches regressions. Synthetic bad modules (a kernel
@@ -107,7 +106,6 @@ for (const [label, module] of BUILT_IN_MODULES) {
 
 // ===========================================================================
 // LAYER 2 — migration gating: formalization passes the migrated checks;
-// legacy modules skip them with a clear reason.
 // ===========================================================================
 
 test('W9-A7 migration-gating: formalization (migrated) passes kernel-gate acceptance + independent review', async () => {
@@ -118,35 +116,11 @@ test('W9-A7 migration-gating: formalization (migrated) passes kernel-gate accept
   assert.equal(review.status, 'passed', 'formalization must pass independent review');
 });
 
-test('W9-A7 migration-gating: legacy modules with profiles SKIP kernel-gate acceptance (not a failure)', async () => {
-  // Delivery has no executionProfiles (external-only module), so its execution
-  // dimension is vacuous and produces no kernel-gate result. The modules that
-  // DO author (discovery, development) are legacy and must skip cleanly.
-  for (const [label, module] of BUILT_IN_MODULES) {
-    if (label === 'formalization') continue;
-    if (module.executionProfiles.length === 0) continue; // delivery: vacuous
-    const report = await runModuleConformance({ definition: module });
-    const exec = resultsFor(report, 'execution').find((r) => r.check === 'artifact_acceptance_kernel_gate');
-    assert.ok(exec, `${label} must produce an artifact_acceptance_kernel_gate result`);
-    assert.equal(exec.status, 'skipped',
-      `${label} is legacy and must SKIP kernel-gate acceptance (not fail)`);
-    assert.ok(exec.message.includes('legacy'), `${label} skip reason must name 'legacy'`);
-  }
-});
-
 test('W9-A7 migration-gating: delivery (no profiles) reports a vacuous execution dimension', async () => {
   const report = await runModuleConformance({ definition: deliveryProcessModule });
   const execBind = resultsFor(report, 'execution').find((r) => r.check === 'lm_nodes_bind_profiles');
   assert.equal(execBind.status, 'passed');
   assert.ok(/external-only module/.test(execBind.message), 'delivery execution must be flagged vacuous');
-});
-
-test('W9-A7 migration-gating: skips do not fail the report', async () => {
-  // Discovery has no flow.recovery entries and no manifest — both must skip,
-  // and the report must still be passing.
-  const report = await runModuleConformance({ definition: discoveryProcessModule });
-  assert.ok(report.counts.skipped > 0, 'discovery must have at least one skip');
-  assert.equal(report.passing, true, 'skips must not fail the report');
 });
 
 // ===========================================================================

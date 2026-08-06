@@ -9,6 +9,7 @@ import type Database from 'better-sqlite3';
 import { SqliteProductRepository } from '../infrastructure/workplace/sqlite-product-repository.js';
 import { sha256Hex } from '../shared/canonical-json.js';
 import type { ProductRef } from '../process-modules/domain/spi/index.js';
+import { SqliteManagedNodeSubmissionRepository } from '../process-modules/persistence/sqlite-managed-node-submission-repository.js';
 
 let cachedRepo: SqliteProductRepository | null = null;
 let cachedDb: Database.Database | null = null;
@@ -49,4 +50,42 @@ export function writeProduct(
 /** Compute the canonical digest of content (for bridge callers). */
 export function computeContentDigest(content: unknown): string {
   return sha256Hex(content);
+}
+
+/**
+ * Publish the typed result of one live execution to the Production Cell gate.
+ * Process identity is resolved from server-authored task metadata; callers only
+ * provide the already-validated schema, payload, and execution fence.
+ */
+export function recordExecutionProduct(
+  db: Database.Database,
+  input: {
+    schema: string;
+    content: unknown;
+    executionRef: string;
+    taskId: number;
+  },
+): ProductRef | null {
+  const managed = db.prepare(
+    `SELECT json_extract(metadata, '$.process_run_id') AS processRunId
+       FROM tasks WHERE id=?`,
+  ).get(input.taskId) as { processRunId: number | null } | undefined;
+  if (!Number.isInteger(managed?.processRunId) || (managed?.processRunId ?? 0) < 1) {
+    return null;
+  }
+  const result = new SqliteManagedNodeSubmissionRepository(db)
+    .submitForCurrentExecution(
+      { schema: input.schema, payload: input.content },
+      {
+        ...process.env,
+        SAGA_MANAGED_EXECUTION: '1',
+        SAGA_EXECUTION_ID: input.executionRef,
+        SAGA_TASK_ID: String(input.taskId),
+      },
+    );
+  return {
+    schemaId: result.record.schema,
+    ref: result.record.artifactRef,
+    digest: result.record.contentHash,
+  };
 }

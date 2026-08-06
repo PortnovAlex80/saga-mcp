@@ -122,7 +122,6 @@ export interface ScenarioInstallationStore {
 
   /**
    * Read the module lock pinned for `scenarioInstallationId`, or null if the
-   * scenario was installed without a resolved lock (legacy / pre-scenario-lock).
    * Returns the deserialized `lockDocument` plus the persisted `lockDigest` so
    * the caller can re-verify integrity.
    */
@@ -455,7 +454,6 @@ export function writeScenarioModuleLock(
 
 /**
  * Read the module lock pinned for `scenarioInstallationId`, or null if the
- * scenario was installed without a resolved lock (legacy / pre-scenario-lock).
  *
  * The returned record carries the persisted `lockDigest`; the caller (LifecycleRun
  * start) SHOULD re-derive `sha256Hex(canonicalJson(lockDocument.pins))` and

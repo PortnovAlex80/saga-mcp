@@ -11,7 +11,6 @@
  * Wave 4 (`application/protocol-runtime.ts`).
  *
  * C027 — the renderer MUST NOT emit model-authored Markdown checkboxes
- * (`- [ ]` / `- [x]`). The legacy `tracker-reminder.mjs` parses those tokens
  * via regex and the model flips them; that loop is what this lane deletes.
  * Instead, every step's status is computed from the step-run's durable
  * `status` field and rendered as a FIXED, read-only symbol token. The model

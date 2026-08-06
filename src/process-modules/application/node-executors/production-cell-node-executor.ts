@@ -40,6 +40,11 @@ import {
 import { ProductionCellCoordinator } from '../production-cell-coordinator.js';
 import { deriveWorkKey } from '../../domain/workplace/work-key-deriver.js';
 import { sha256Hex } from '../../../shared/canonical-json.js';
+import {
+  PRODUCT_CONTRACT_CHECK_PROVIDER_DIGEST,
+  PRODUCT_CONTRACT_CHECK_PROVIDER_ID,
+  PRODUCT_CONTRACT_CHECK_PROVIDER_VERSION,
+} from '../standard-check-providers.js';
 
 export interface ProductionCellProjectionPersistence {
   ensureExecutionPlan(input: {
@@ -94,6 +99,7 @@ export interface ProductionCellProjectionPersistence {
   }): void;
   /** Conclude the physical attempt without deciding product acceptance. */
   concludeExecutionIntent(executionRef: string): void;
+  readExecutionReceipt(executionRef: string): { intentId: number; taskId: number };
   /** Rebuild all task projections after a Workplace transition. */
   projectWorkplace(workplaceRef: WorkplaceRef): void;
 }
@@ -104,6 +110,7 @@ export interface ProductionCellProductReader {
     moduleRef: string;
     nodeId: string;
     executionRef: string;
+    expectedSchemaRefs: readonly string[];
   }): readonly ProductRef[];
 }
 
@@ -129,6 +136,7 @@ interface ReconcileOutcome {
   readonly accepted: boolean;
   readonly products: readonly ProductRef[];
   readonly candidateSetRef: string | null;
+  readonly executionRef: string | null;
 }
 
 export class ProductionCellNodeExecutor implements NodeExecutor {
@@ -138,7 +146,7 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
 
   async execute(ctx: NodeExecutionContext): Promise<NodeExecutionResult> {
     const node = ctx.node as ProductionCellFlowNodeDefinition;
-    const cell = resolveCellDefinition(node);
+    const cell = resolveCellDefinition(ctx, node);
     assertValidProductionCellDefinition(cell);
     if (ctx.epicId === null) {
       throw new NodeExecutionError(this.kind, node.id, 'Production Cell requires epicId');
@@ -170,10 +178,25 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
       );
     }
 
+    const executionRef = outcomes.find(outcome => outcome.accepted)?.executionRef ?? null;
+    const execution = executionRef && ctx.node.kind === 'lm'
+      ? this.opts.persistence.readExecutionReceipt(executionRef)
+      : null;
     return {
       runtimeEvent: 'completed',
-      domainEvent: 'accepted',
-      production: this.manifestProduction(cell, workplaces, outcomes, true),
+      domainEvent: ctx.node.kind === 'lm' ? undefined : 'accepted',
+      receipt: execution ? {
+        kind: 'task-execution',
+        executorKind: 'lm',
+        intentId: execution.intentId,
+        taskId: execution.taskId,
+        executionId: executionRef,
+        runtimeStatus: 'completed',
+        replayed: false,
+      } : undefined,
+      production: ctx.node.kind === 'lm'
+        ? undefined
+        : this.manifestProduction(cell, workplaces, outcomes, true),
     };
   }
 
@@ -273,6 +296,9 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
       moduleRef,
       nodeId: node.id,
       executionRef,
+      expectedSchemaRefs: role === 'reviewer'
+        ? [cell.review?.verdictSchemaRef ?? '']
+        : cell.productContracts.map(contract => contract.schemaRef),
     });
     if (role === 'reviewer') {
       this.assertReviewerProductContract(cell, products, node.id);
@@ -289,8 +315,6 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
       subjectAuthorSet?.candidateSetRef ?? null,
       products,
     );
-    this.opts.persistence.concludeExecutionIntent(executionRef);
-
     if (role === 'author') {
       const decision = this.runGate(ctx, workplace.ref, cell.authorGate, candidate.candidateSetRef);
       if (decision.verdict === 'accepted') {
@@ -320,6 +344,7 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
         repairTargetRole: decision.repairTargetRole ?? undefined,
       });
     }
+    this.opts.persistence.concludeExecutionIntent(executionRef);
     this.opts.persistence.projectWorkplace(workplace.ref);
 
     state = this.requireState(workplace.ref);
@@ -346,12 +371,28 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
       throw new NodeExecutionError(this.kind, node.id, `cell '${cell.id}' has no ${role} declaration`);
     }
     const profile = resolveExecutionProfile(ctx, roleDeclaration.skillRef);
-    const generationKey = `${serializeWorkplaceRef(workplace.ref)}:${role}:revision:${state.revision}`;
+    const generationKey = `${serializeWorkplaceRef(workplace.ref)}:${role}`;
     const objective = `${cell.id}/${role}: ${node.description || node.label}`;
-    const plan = this.opts.persistence.ensureExecutionPlan({
+    const preparationBindings = isRecord(ctx.input)
+      && isRecord((ctx.input as Record<string, unknown>).bindings)
+      ? (ctx.input as { bindings: Record<string, unknown> }).bindings
+      : {};
+    const preparedTaskId = Number(preparationBindings.preProjectedTaskId ?? 0);
+    const preparedIntentId = Number(
+      preparationBindings.preProjectedIntentId
+        ?? preparationBindings.authorityIntentId
+        ?? 0,
+    );
+    const prepared = Number.isInteger(preparedTaskId) && preparedTaskId > 0
+      && Number.isInteger(preparedIntentId) && preparedIntentId > 0;
+    const plan = prepared
+      ? { taskId: preparedTaskId, intentId: preparedIntentId, replayed: true }
+      : this.opts.persistence.ensureExecutionPlan({
       intent: {
         epicId: ctx.epicId!,
-        kind: `production-cell.${role}`,
+        kind: ctx.node.kind === 'lm'
+          ? profile.workIntentKind
+          : `production-cell.${role}`,
         objective,
         authorityScope: {
           snapshot_ref: serializeWorkplaceRef(workplace.ref),
@@ -359,7 +400,11 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
           allowed_tools: [...profile.allowedTools],
           enforcement: 'runtime',
         },
-        outputSchema: cell.productContracts[0]?.schemaRef ?? 'factory.product-envelope.v1',
+        outputSchema: ctx.node.kind === 'lm'
+          ? profile.workIntentSchema.id
+          : role === 'reviewer'
+            ? cell.review!.verdictSchemaRef
+            : cell.productContracts[0]!.schemaRef,
         tokenBudget: 0,
         retryBudget: cell.recovery.maxAttempts,
       },
@@ -386,9 +431,11 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
           cell_input_item: workplace.item,
         },
       },
-    });
+      });
     const projectRepositoryId = this.opts.persistence.readTaskProjectRepositoryId(plan.taskId);
-    const nodeInput = { upstream: ctx.input, item: workplace.item };
+    const nodeInput = ctx.node.kind === 'lm'
+      ? ctx.input
+      : { upstream: ctx.input, item: workplace.item };
     this.opts.persistence.bindProjectedTaskProcessContext?.({
       taskId: plan.taskId,
       processRunId: ctx.processRunId,
@@ -498,7 +545,7 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
 
   private terminalOutcome(ref: WorkplaceRef, state: WorkplaceState): ReconcileOutcome {
     if (state.terminalReason !== 'accepted') {
-      return { pending: false, accepted: false, products: [], candidateSetRef: null };
+      return { pending: false, accepted: false, products: [], candidateSetRef: null, executionRef: null };
     }
     const author = this.latestCandidate(ref, 'author');
     return {
@@ -506,6 +553,7 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
       accepted: true,
       products: author?.members.map(member => member.productRef) ?? [],
       candidateSetRef: author?.candidateSetRef ?? null,
+      executionRef: author?.producerExecutionRef ?? null,
     };
   }
 
@@ -550,8 +598,60 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
   }
 }
 
-function resolveCellDefinition(node: ProductionCellFlowNodeDefinition): ProductionCellDefinition {
+function resolveCellDefinition(
+  ctx: NodeExecutionContext,
+  node: ProductionCellFlowNodeDefinition,
+): ProductionCellDefinition {
   if (node.cellDefinition) return node.cellDefinition;
+  if (ctx.node.kind === 'lm') {
+    const lmNode = ctx.node;
+    const profile = ctx.module.executionProfiles.find(candidate => candidate.id === lmNode.executionProfile);
+    if (!profile) throw new Error(`EXECUTION_PROFILE_NOT_FOUND: ${lmNode.executionProfile}`);
+    const schemaRef = lmNode.outputSchema?.id ?? profile.outputSchema.id;
+    const checkPlanId = `${ctx.module.identity.name}.${lmNode.id}.final`;
+    const version = '1.0.0';
+    const entries = [{
+      check: {
+        providerId: PRODUCT_CONTRACT_CHECK_PROVIDER_ID,
+        version: PRODUCT_CONTRACT_CHECK_PROVIDER_VERSION,
+        providerDigest: PRODUCT_CONTRACT_CHECK_PROVIDER_DIGEST,
+      },
+      parameters: {},
+      environmentRef: null,
+    }];
+    const decisionPolicyRef = 'factory.fail-closed-product-contract.v1';
+    const decisionPolicyDigest = sha256Hex({ decisionPolicyRef, version });
+    const unknownErrorPolicy = 'fail-closed' as const;
+    return {
+      id: ctx.node.id,
+      inputSelectors: ['input'],
+      materialization: { completionPolicy: 'all' },
+      author: { skillRef: profile.id, capabilityPreset: 'module-author' },
+      productContracts: [{
+        binding: 'product', schemaRef, mediaType: 'application/json', cardinality: '1..n',
+      }],
+      authorGate: {
+        gateId: checkPlanId,
+        gatePhase: 'final',
+        checkPlan: {
+          checkPlanId,
+          version,
+          checkPlanDigest: sha256Hex({
+            checkPlanId, version, entries, decisionPolicyRef, decisionPolicyDigest, unknownErrorPolicy,
+          }),
+          entries,
+          decisionPolicyRef,
+          decisionPolicyDigest,
+          unknownErrorPolicy,
+        },
+      },
+      recovery: {
+        maxAttempts: profile.retryPolicy.maxAttempts,
+        onExhausted: profile.recoveryPolicy.onExhausted === 'fail' ? 'fail' : 'pause',
+      },
+      transitions: { accepted: ctx.node.id, humanRequired: ctx.node.id, failed: ctx.node.id },
+    };
+  }
   throw new Error(
     `PRODUCTION_CELL_DEFINITION_REQUIRED: node '${node.id}' must carry an inline cellDefinition`,
   );
@@ -626,7 +726,7 @@ function completionSatisfied(
 }
 
 function pendingOutcome(): ReconcileOutcome {
-  return { pending: true, accepted: false, products: [], candidateSetRef: null };
+  return { pending: true, accepted: false, products: [], candidateSetRef: null, executionRef: null };
 }
 
 function hash(value: unknown): string {

@@ -7,7 +7,6 @@
 // Verifies:
 //   1. The package ports file is dependency-clean (no db.ts, no better-sqlite3,
 //      no persistence adapter imports) — the whole point of the port.
-//   2. The SQLite brief-provisioning adapter mirrors the legacy ensureBriefRoot
 //      logic: readPrdRoot, already-rooted short-circuit, provision-create,
 //      provision-link-existing, idempotency.
 //   3. The managed-production adapter bridges to the shared ledger correctly.
@@ -97,7 +96,6 @@ test('W8-A6: handler-adapter imports no substrate (db.ts, better-sqlite3, persis
 });
 
 // ---------------------------------------------------------------------------
-// 2. SQLite brief-provisioning adapter — mirrors legacy ensureBriefRoot.
 // ---------------------------------------------------------------------------
 
 const { closeDb, getDb } = await import('../../dist/db.js');
@@ -433,16 +431,13 @@ test('W8-A6: portInjectedEnsureBriefRoot fails when epic is null', () => {
 });
 
 test('W8-A6: createFormalizationPackageHandlerAdapter wraps the product handler and stamps the port outcome', async () => {
-  // Build a minimal legacy-deps bundle whose product handler returns a PRD.
   // We stub createFormalizationKernelHandlers indirectly by providing deps
   // that make the real factory build all handlers; then we invoke ONLY the
   // wrapped product handler with a hand-built context that yields a PRD id
   // in the bindings. Because the real factory's product handler does heavy
   // graph/ledger reads, we instead verify the WRAPPER behavior by replacing
   // the produced handler map entry with a stub before wrapping. This tests
-  // the adapter's wrapping logic, not the legacy handler internals.
 
-  // We import the legacy factory to confirm the adapter composes with it
   // without throwing, then substitute a stub handler for isolation.
   const fake = createFakeBriefProvisioningPort([
     { status: 'root-attached', briefArtifactId: 888, newlyCreated: false },
@@ -468,18 +463,14 @@ test('W8-A6: createFormalizationPackageHandlerAdapter wraps the product handler 
     },
   };
   // Replicate the adapter's wrapping by calling the public factory with a
-  // legacy deps stub whose underlying factory we bypass: we construct the
-  // adapter options such that legacyDeps.graph matches ports.graph. The real
   // factory will build all handlers; we then overwrite the product handler
   // entry with our stub and re-wrap manually to isolate the wrapper.
   // Simpler: directly exercise the wrapper contract by building the adapter
-  // against a legacy deps that makes createFormalizationKernelHandlers succeed,
   // then assert the wrapper is a function and the handler id set matches.
 
-  // Minimal legacy deps: the factory only reads these at handler-invocation
   // time, not at construction time, so an object with the right shape is
   // enough to construct the map.
-  const legacyDeps = {
+  const kernelDeps = {
     ledger: {
       listArtifactsForTaskInProcessRun: () => [],
       listTracesForTaskInProcessRun: () => [],
@@ -497,8 +488,7 @@ test('W8-A6: createFormalizationPackageHandlerAdapter wraps the product handler 
     certificateRepo: { issue: () => { throw new Error('not used'); } },
   };
 
-  const handlers = createFormalizationPackageHandlerAdapter({ legacyDeps, ports });
-  // The adapter exposes the same handler ids as the legacy factory.
+  const handlers = createFormalizationPackageHandlerAdapter({ kernelDeps, ports });
   assert.ok(handlers[FORMALIZATION_PACKAGE_HANDLER_IDS.resolveProduct], 'product handler present');
   assert.ok(handlers[FORMALIZATION_PACKAGE_HANDLER_IDS.settle], 'settlement handler present');
   assert.equal(typeof handlers[FORMALIZATION_PACKAGE_HANDLER_IDS.resolveProduct], 'function');
@@ -513,13 +503,11 @@ test('W8-A6: createFormalizationPackageHandlerAdapter wraps the product handler 
     input: {}, frame: { productions: {}, runInput: {} },
     heartbeat: () => {}, initiatedBy: 'test',
   };
-  // Call the real wrapped handler — it will invoke the legacy product handler
   // which, against our stub deps, returns a 'failed'/resolution-failure event
   // (no LM receipt). The wrapper must still not throw and must skip
   // provisioning when event === 'failed'.
   const result = await handlers[FORMALIZATION_PACKAGE_HANDLER_IDS.resolveProduct](ctx);
   assert.ok(result, 'wrapped handler returned a result');
-  // Legacy handler with no LM receipt returns a resolution-failure (event
   // 'failed'); the wrapper must skip provisioning in that case.
   if (result.event === 'failed') {
     assert.equal(fake.calls.length, 0, 'provisioning skipped on failed event');

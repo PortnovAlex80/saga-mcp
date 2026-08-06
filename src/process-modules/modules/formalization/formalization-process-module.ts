@@ -7,7 +7,6 @@ import { SRS_CONTRACT_REF } from '../../../modules/formalization/domain/srs-cont
 import { FORMALIZATION_PROCESS_MODULE_REF } from '../../lifecycles/product-delivery-module-contracts.js';
 export { FORMALIZATION_PROCESS_MODULE_REF };
 
-// W13-A2: resources were moved out of the legacy global root
 // (`tool-templates/formalization/`) into the formalization package resources
 // directory. These are repo-root-relative POSIX paths — the workspace
 // materializer resolves them under `workspaceRoot` (process.cwd()), matching

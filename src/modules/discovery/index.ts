@@ -8,7 +8,6 @@
  *
  * The Discovery module's runtime persistence (`runtimePersistence`) is a
  * SHARED prerequisite (the LM executor's
- * `createDiscoveryLmNodePersistence(runtimePersistence)` needs it), so the
  * composition root constructs it and passes it through `sharedDeps` — this
  * register function consumes it, not constructs it.
  *

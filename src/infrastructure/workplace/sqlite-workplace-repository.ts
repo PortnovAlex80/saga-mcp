@@ -25,12 +25,10 @@
  *
  * At step 1.2 this repository EXISTS and is covered by tests, but nothing on
  * the runtime path reads or writes it yet. Step 1.3 (WorkItem projector)
- * writes to it in parallel with the legacy `tasks` projection; step 5 makes
  * it the single authority. The repository is intentionally complete now so
  * the projector and the coordinator (step 2) consume one proven-correct
  * store from day one.
  *
- * # Legacy `tasks` is NOT touched here
  *
  * The single-writer ratchet (`tasks-writer-invariant.test.mjs`) names exactly
  * three files allowed to write `tasks.{status,assigned_to,current_execution_id}`.

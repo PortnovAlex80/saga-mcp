@@ -8,7 +8,6 @@
 // This test makes a regression against the old two-path model structurally
 // impossible: it FAILS if the identifier `claimScope` ever reappears as actual
 // CODE under src/. It deliberately ALLOWS the word `claimScope` inside comments
-// and string literals — the codebase legitimately documents "the legacy
 // claimScope path is removed" in several places, and forbidding those mentions
 // would force the documentation to lie. The gate cares only about executable
 // code: a property, parameter, variable, or type named `claimScope`.

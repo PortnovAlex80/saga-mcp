@@ -6,12 +6,9 @@
  *     gate that closes the AC repair-loop root cause)
  *   - policy declarations for every LM-node across all modules
  *
- * Formalization's `define-acceptance-contract` is `required` (full validator).
- * The other four formalization LM-nodes and all Discovery/Development LM-nodes
- * are declared `legacy-unvalidated` — they are allowed to proceed (with a
- * telemetry warning) but their migration to real validators is tracked by
- * ticket. New modules cannot use `legacy-unvalidated` (enforced by an
- * architecture test).
+ * Formalization nodes use domain validators. Discovery and Development
+ * publish typed Production Cell products that are checked by their cell gate
+ * and deterministic settlement.
  */
 
 import type Database from 'better-sqlite3';
@@ -84,8 +81,8 @@ export function wireSubmissionValidation(
       DISCOVERY_MODULE_REF,
       nodeId,
       {
-        mode: 'legacy-unvalidated',
-        migrationTicket: 'DISCOVERY-SUBMISSION-VALIDATION',
+        mode: 'none',
+        rationale: 'typed Production Cell product; validated by cell gate and Discovery settlement',
       },
     );
   }

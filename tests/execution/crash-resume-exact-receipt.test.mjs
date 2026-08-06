@@ -10,7 +10,6 @@
 //   production, MUST be resumable by loading the EXACT receipt + production
 //   envelope from the NodeRun v2 row. The resume MUST NOT:
 //     - reconstruct a mutable NodeExecutionFrame from "latest-execution" /
-//       "process-scope" / "task-metadata" (the legacy `restoreFrame` path,
 //       generic-flow-executor.ts:833-861, that Wave 3 retires), and
 //     - re-derive the certificate envelope from `production.bindings.
 //       certificatePayload` (the §13.6 "magic bindings" extraction at
@@ -48,7 +47,6 @@ const __dirname = path.dirname(__filename);
 //        `SqliteNodeRunRepositoryV2` — completeV2(...) dual-writes the v2
 //        columns (input_envelope_hash, node_ref, package_ref,
 //        predecessor_node_run_ids, definition_digest, transition_cursor,
-//        production_envelope) alongside the legacy output* columns.
 //        readByExactCursor(processRunId, nodeId, attempt) is the resume query
 //        that replaces readLastCompleted + frame reconstruction.
 //  - W3-A4: ProcessProductRepository v2 — getByProductRef / recordProduct.
@@ -198,7 +196,7 @@ test('§0.6.12: crash after worker completion, before kernel settlement — resu
     upstreamProducts: [],
   });
   const preCrashReceipt = buildDriverNeutralReceipt({
-    executorKind: 'legacy-adapter',
+    executorKind: 'module-adapter',
     executionId,
     runtimeStatus: 'completed',
     taskBoardVocab: { taskId: 7701, intentId: 3301, workIntentId: 9001 },
@@ -301,7 +299,6 @@ test('§0.6.12: resume does NOT reconstruct a mutable NodeExecutionFrame from la
     return;
   }
 
-  // The legacy resume path (generic-flow-executor.ts restoreFrame :833-861)
   // rebuilt a MUTABLE NodeExecutionFrame by iterating ALL completed NodeRuns in
   // the process and unioning their productions/receipts into one bag. That is
   // the "process-scope" reconstruction Wave 3 retires.
@@ -363,7 +360,6 @@ test('§0.6.12: resume does NOT reconstruct a mutable NodeExecutionFrame from la
 test('§0.6.12: terminal settlement reads ModuleCompletion explicitly — magic certificatePayload binding is NOT the primary path', async (t) => {
   // This is exit-gate item §12.3. We assert at the type/contract level that a
   // ModuleCompletion (Wave 1 explicit terminal) is what the settlement reads,
-  // not a `production.bindings.certificatePayload` magic key. The legacy
   // magic-binding path is a documented fallback only.
   const { ModuleCompletion } = SPI;
   assert.ok(

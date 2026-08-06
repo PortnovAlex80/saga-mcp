@@ -267,7 +267,6 @@ export function assertProductDeliveryLifecycleInput(
  * override (a product-specific route resolver attached via
  * `Object.defineProperty`) was removed in Wave 13; the strict-gate variant is
  * now a separate declarative Lifecycle Scenario Package
- * (`LEGACY_PRODUCT_DELIVERY_SCENARIO_STRICT`).
  *
  * Root input contract (documented structurally by the mappings):
  *   initiative.{subject,context,evidence,constraints}
@@ -318,7 +317,6 @@ export const productDeliveryLifecycle: LifecycleDefinition = {
         // then reasons about the contract on its own merits and is itself the
         // real go/no-go gate (its non-formalized outcomes terminate). The
         // strict-gate variant lives in the separate declarative
-        // LEGACY_PRODUCT_DELIVERY_SCENARIO_STRICT scenario package for
         // regulated/contractual environments; the production lifecycle is
         // permissive by default.
         go: { type: 'stage', stageId: 'solution-formalization' },

@@ -73,7 +73,6 @@ export function ensureFactoryNodeRunSchema(db: Database.Database): void {
   // ── Wave 3 (W3-A6 §9, single SQL owner for factory_node_runs this wave) ──────
   // Seven ADDITIVE NULLABLE columns. Idempotent — guarded by PRAGMA
   // table_info check, mirroring the Wave 2 dual-placement pattern. NO NOT NULL
-  // (Wave 11 hardens). NO removal of legacy columns. The dual placement lives
   // in src/db.ts (the upgrade path for pre-existing DBs) AND here (the path
   // that reliably runs when the table springs into existence via the
   // constructor). The columns are:
@@ -110,7 +109,6 @@ export function ensureFactoryNodeRunSchema(db: Database.Database): void {
   // resume can rebuild the NodeExecutionResult.completion without which
   // settlement cannot read the explicit certificate ref (and would silently
   // fall back to magic bindings, losing the certificate on restart). Additive:
-  // legacy rows surface it as null; the legacy `complete` path does not write
   // it. Idempotent ALTER guarded by PRAGMA table_info, mirroring the 7 v2 cols.
   if (!cols.some((c) => c.name === 'completion')) {
     db.exec('ALTER TABLE factory_node_runs ADD COLUMN completion TEXT');
@@ -120,7 +118,6 @@ export function ensureFactoryNodeRunSchema(db: Database.Database): void {
   // alongside the JSON so reads can VERIFY integrity — corrupted/malformed JSON
   // or a hash mismatch becomes a LOUD error (COMPLETION_CORRUPT /
   // COMPLETION_HASH_MISMATCH), not the silent null the audit flagged. Null when
-  // `completion` is null (legacy row or non-terminal node). Idempotent ALTER,
   // same dual-placement pattern as the 8 columns above.
   if (!cols.some((c) => c.name === 'completion_hash')) {
     db.exec('ALTER TABLE factory_node_runs ADD COLUMN completion_hash TEXT');
@@ -187,7 +184,6 @@ function rowToRecord(row: NodeRunRow): NodeRunRecord {
         executionReceipt = parsed as Record<string, unknown>;
       }
     } catch {
-      // Malformed legacy data is treated as absent execution evidence.
     }
   }
   let recoveryIssue: NodeRunRecord['recoveryIssue'] = null;
@@ -198,7 +194,6 @@ function rowToRecord(row: NodeRunRow): NodeRunRecord {
         recoveryIssue = parsed as NodeRunRecord['recoveryIssue'];
       }
     } catch {
-      // Malformed legacy data is treated as absent recovery evidence.
     }
   }
   let acceptanceReceipt: Record<string, unknown> | null = null;
@@ -209,7 +204,6 @@ function rowToRecord(row: NodeRunRow): NodeRunRecord {
         acceptanceReceipt = parsed as Record<string, unknown>;
       }
     } catch {
-      // Malformed legacy data is treated as absent acceptance evidence.
     }
   }
   return {
@@ -236,8 +230,6 @@ function rowToRecord(row: NodeRunRow): NodeRunRecord {
 // ── Wave 3 v2 helpers (W3-A6 §9) ────────────────────────────────────────────
 //
 // JSON parsers for the v2 columns. Each is defensive: a malformed or missing
-// value surfaces as `null` (legacy row), never throws. This matches the
-// lenient-parse precedent in `rowToRecord` for the legacy JSON columns.
 
 function parseJsonObject<T>(text: string | null | undefined): T | null {
   if (!text) return null;
@@ -247,7 +239,6 @@ function parseJsonObject<T>(text: string | null | undefined): T | null {
       return parsed as T;
     }
   } catch {
-    // Malformed JSON — treat as absent (legacy / corrupted row).
   }
   return null;
 }
@@ -267,7 +258,6 @@ function parseJsonArray<T>(text: string | null | undefined): T[] | null {
 
 /**
  * Map a raw row (with optional v2 columns) to the v2 record shape. Reuses
- * `rowToRecord` for the legacy fields, then layers the seven v2 fields. Legacy
  * rows (v2 columns NULL) surface every v2 field as null/empty — they remain
  * valid `NodeRunRecordV2` values, just without the Wave-3 marker.
  *
@@ -280,7 +270,6 @@ function parseJsonArray<T>(text: string | null | undefined): T[] | null {
  *     throws COMPLETION_HASH_MISMATCH (loud; signals DB corruption or a
  *     non-canonical writer).
  *   - both `completion` and `completion_hash` NULL → surfaces `completion: null`
- *     + `completionHash: null` (legacy / non-terminal row — the additive
  *     contract holds).
  */
 function rowToRecordV2(row: NodeRunRow): NodeRunRecordV2 {
@@ -304,7 +293,6 @@ function rowToRecordV2(row: NodeRunRow): NodeRunRecordV2 {
 /**
  * WAVE 8 HIGH 4 — parse `completion` with integrity verification.
  *
- *   - both null  → null (legacy / non-terminal row; additive contract).
  *   - JSON null/text empty → null.
  *   - JSON malformed → throw `COMPLETION_CORRUPT` (NOT silent null).
  *   - JSON valid but canonical-hash ≠ stored hash → throw
@@ -498,11 +486,8 @@ export class SqliteNodeRunRepository implements NodeRunRepository, NodeRunReposi
     // hash is computed via canonicalJson (NOT JSON.stringify) so reads can
     // recompute byte-identically regardless of property order. Both columns
     // are written atomically in the same UPDATE. Null when the caller passes
-    // no completion (legacy / non-terminal node).
     const completionText = input.completion ? canonicalJson(input.completion) : null;
     const completionHash = input.completion ? sha256Hex(input.completion) : null;
-    // DUAL-WRITE: legacy output_* columns AND the v2 production_envelope +
-    // transition_cursor + completion + completion_hash. The legacy columns keep
     // pre-Wave-3 readers working; the v2 columns let Wave-3 readers resume by
     // exact cursor (§9.11). `completion` (FU-A Wave 3) carries the explicit
     // terminal envelope so crash-resume rebuilds NodeExecutionResult.completion

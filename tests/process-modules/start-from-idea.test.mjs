@@ -155,7 +155,6 @@ test('repository ref resolves to the current local binding with the REAL git HEA
     });
     assert.equal(input.development.repositories.length, 1);
     const [binding] = input.development.repositories;
-    // Portable ref shape (not a legacy projectRepositoryId-only binding).
     assert.ok(binding.repositoryRef, 'repositoryRef must be present');
     assert.equal(binding.repositoryRef.repositoryName, 'idea-repo');
     assert.equal(binding.repositoryRef.role, 'control');

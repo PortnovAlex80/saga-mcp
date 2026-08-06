@@ -23,7 +23,6 @@
 // TWO LAYERS OF TESTS
 //   Layer 1 — FIXTURE / PURE tests (always run). They exercise the frozen Wave
 //             1 SPI (AgentAssistanceDefinition, the process-execution-workspace
-//             placeholder-fillers already on disk) and the legacy
 //             tracker-reminder.mjs security surface. These PASS in every W5-A8
 //             worktree because their inputs are frozen at checkpoint e87809b.
 //   Layer 2 — SIBLING tests (skip-on-absent-sibling). They exercise the W5-A1..
@@ -59,7 +58,6 @@ const {
   validateAgentAssistanceDefinition,
 } = await import('../../dist/process-modules/domain/spi/agent-assistance.js');
 
-// W13-A2: the legacy tracker-reminder.mjs (frozen at e87809b) has been
 // DELETED — it was the C027-violating Markdown-parsing fallback W5-A5
 // replaced. The structured-context-hook.mjs is now the sole PostToolUse
 // context hook. Its security surface (fail-closed '{}', never echoes untrusted
@@ -289,7 +287,6 @@ function skipReason(surface, lane) {
 
 // --- §4 Hook security -----------------------------------------------------
 //
-// W13-A2: the legacy tracker-reminder.mjs security tests were removed along
 // with the file. The replacement structured-context-hook.mjs preserves the
 // same fail-closed surface ('{}' on missing/invalid input, JSON.stringify'd
 // output so untrusted text can never break into a shell command, never
@@ -329,7 +326,6 @@ test('fixture/assistance-vocabulary: modes + events + block-kinds are the frozen
 // --- §1 Workspace placeholder filling (existing surface, always present) ----
 
 test('fixture/workspace: prepareProcessExecutionWorkspace fills machine bindings', () => {
-  // saga4 cutover (LEGO-CONTRACTS.md §"Слой 1: СТОЛ"): the legacy
   // `prepareProcessExecutionWorkspace` was REMOVED in D2; the pinned
   // materializer (`materializePinnedWorkspace`) is the sole desk creator now.
   // This Layer-1 fixture was written shape-drift-safe (`if (!fn) return`), so

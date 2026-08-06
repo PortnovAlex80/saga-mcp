@@ -4,10 +4,7 @@
  *
  * Every new ProcessRun (Wave 2 onward) MUST pin the immutable
  * `installation_id` + `package_digest` of the module installation it executes
- * against. Legacy runs (pre-Wave-2) carry NULL on both columns and route
- * through the legacy nullable adapter (see ProcessRunInstallationAdapter)
  * which resolves the installation by `module_name`+`module_version` via an
- * injected fallback. Wave 13 removes the legacy path.
  *
  * This file is PURE: it defines value types and a value builder only. The
  * persistence touch (reading/writing the two columns on `factory_process_runs`)
@@ -15,7 +12,6 @@
  *
  * Plan ref: §1 row 7 (PinnedInstallation + pinInstallationOnProcessRun),
  *          §1 row 8 (ProcessRunInstallationAdapter), §4 (identity rules),
- *          §14.3.7 (legacy nullable adapter).
  *
  * INTEGRATION NOTE (integrator, Wave 2 cherry-pick): `ModuleInstallationId`
  * and `ModuleInstallationRecord` are defined here ONLY because W2-A4 runs in

@@ -239,7 +239,6 @@ export interface ScenarioOutputStore {
 
 /**
  * One recorded transition in a scenario run (router history). Used for budget
- * enforcement and audit. Mirrors the legacy `LifecycleTransitionRecord` but
  * carries only the scenario-relevant fields.
  */
 export interface ScenarioTransitionRecord {
@@ -489,7 +488,6 @@ export async function installScenario(
 // ---------------------------------------------------------------------------
 
 /**
- * Command to start one scenario run. Mirrors the legacy `RunLifecycleCommand`
  * shape (projectId/epicId/inputSchema/inputPayload/initiatedBy/idempotencyKey)
  * but adds the `InstalledScenario` to pin against, so the runner never
  * re-resolves modules or re-validates the manifest.
@@ -507,7 +505,6 @@ export interface RunScenarioCommand {
 
 /**
  * Result of one scenario run. Mirrors `LifecycleExecutionResult` so a caller
- * can treat the new and legacy surfaces uniformly.
  */
 export interface ScenarioExecutionResult {
   readonly lifecycleRun: LifecycleRunRecord;
@@ -569,9 +566,7 @@ const SCENARIO_LEASE_MS = 120_000;
  *
  * The runner reuses the EXISTING `LifecycleRunRepository` +
  * `ProcessRunRepository` ports so durability, lease management, and replay
- * semantics are byte-compatible with the legacy orchestrator.
  *
- * Lease / watchdog / failure handling mirror the legacy orchestrator's
  * proven implementation; the genuinely new behavior is (a) no
  * `routeResolver`, (b) per-stage public output storage instead of a
  * cumulative frame, and (c) complete lock pinning at start.
@@ -614,7 +609,6 @@ export class ScenarioRunner {
     // 1. Start (or replay) the LifecycleRun. The manifest snapshot + hash are
     //    pinned on the run row so an in-flight upgrade cannot change behavior.
     //    We use the manifest identity as the lifecycle identity so the run is
-    //    keyed by scenario name+version exactly like a legacy LifecycleRun is
     //    keyed by lifecycle name+version.
     const started = this.lifecycleRunRepo.start({
       lifecycle: manifest.identity,
@@ -663,7 +657,6 @@ export class ScenarioRunner {
       // Bounded stage loop: the manifest's own transitionBudgets.maxTransitions
       // is enforced by the router, but we add a hard ceiling of
       // (stages * 4 + 8) as defense-in-depth so a buggy router can never
-      // produce an infinite loop here. This mirrors the legacy orchestrator's
       // ceiling.
       const maxStages = manifest.stageBindings.length * 4 + 8;
       for (let step = 0; step < maxStages; step += 1) {
@@ -683,7 +676,6 @@ export class ScenarioRunner {
           );
         }
 
-        // 3. Build the stage input. Reuse the legacy pattern: if a StageRun
         //    already exists with frozen input (replay after pause/crash), use
         //    that; otherwise map from the durable frame. The frame is built
         //    from the output store (public outputs only — NO cumulative
@@ -921,7 +913,6 @@ export class ScenarioRunner {
   }
 
   // -------------------------------------------------------------------------
-  // Private helpers — mirror the legacy orchestrator's proven implementation
   // (lease watchdog, frame assembly, mapping runtime). Kept private so the
   // public surface stays narrow.
   // -------------------------------------------------------------------------
@@ -1030,7 +1021,6 @@ export class ScenarioRunner {
    * Build the durable mapping frame from the output store (public outputs
    * only — NO cumulative frame) plus the root input.
    *
-   * The frame shape is intentionally the SAME shape the legacy orchestrator
    * produces (`{ ...root, lifecycleInput, stages: { [stageId]: {...} } }`)
    * so existing `LifecycleMappingExpression` paths like
    * `stages.draft.output.campaignDraft` keep resolving identically. The
@@ -1047,7 +1037,6 @@ export class ScenarioRunner {
     const stages: Record<string, unknown> = {};
     // Include the manifest's stage ids so mapping paths that reference a stage
     // which has not yet produced output resolve to an empty object rather than
-    // throwing — matches legacy orchestrator behavior (the mapping layer throws
     // LIFECYCLE_MAPPING_SOURCE_MISSING only when a path is dereferenced).
     const completedStageRuns = new Map(
       this.lifecycleRunRepo.listStageRuns(lifecycleRunId)
@@ -1180,8 +1169,6 @@ export class ScenarioRunner {
 
 /**
  * Local re-declaration of the lifecycle mapping runtime + mapper, so this
- * file does not import the legacy `lifecycle-mapper.ts` hot path (keeps the
- * sibling-port surface uniform and avoids a structural edge into the legacy
  * orchestrator's helper file). The implementation is byte-identical to the
  * canonical `mapLifecycleValues` — same path semantics, same unsafe-segment
  * guard, same literal/runtime expression handling.
@@ -1350,7 +1337,6 @@ function withStageOutput(
 ): Record<string, unknown> {
   const existingStages = isRecord(frame.stages) ? frame.stages : {};
   // The per-stage entry exposes the mapped public output BOTH at the top level
-  // (legacy `stages.<id>.<field>` convention) AND under an explicit `output`
   // key (`stages.<id>.output.<field>`, the convention the stage-output store
   // uses). Both path shapes resolve identically because `output` aliases the
   // same payload object.

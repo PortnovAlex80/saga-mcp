@@ -99,12 +99,11 @@ check('task-B APPROVED → done', approvedB.completed_new_status === 'done', `go
 // worker_done response carries active_tasks too.
 check('worker_done response includes active_tasks', Array.isArray(approvedB.active_tasks), 'missing');
 
-// These fixtures are legacy untyped tasks, so no typed integration gate is
 // required even though the explicit merge-lock API remains available.
 const integrationB = getDb().prepare(
   'SELECT integration_state FROM tasks WHERE id=?',
 ).get(reviewPickB.task.id).integration_state;
-check('legacy task integration_state stays "not_required"', integrationB === 'not_required', integrationB);
+check('unsupported task integration_state stays "not_required"', integrationB === 'not_required', integrationB);
 
 // First acquirer wins.
 const acq1 = handlers.worker_merge_acquire({ task_id: reviewPickB.task.id, worker_id: 'agent-B' });

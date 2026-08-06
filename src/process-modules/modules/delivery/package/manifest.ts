@@ -52,7 +52,6 @@
  * Anti-scope (WAVE9-PRODUCTION-MIGRATION-SPEC §3): this lane does NOT modify
  * Runtime, global registries, runner, gateway, lifecycle composition, or
  * another module. It does NOT cut over the composition root (Wave 11) or
- * remove legacy code (Wave 13). Additive only.
  */
 
 import type {
@@ -83,9 +82,7 @@ import {
 /**
  * Format version of THIS manifest envelope. `'1'` signals the envelope wraps a
  * migrated ProcessModuleDefinition that populates `resourceIndex` /
- * `handlerRefs` (as opposed to `'legacy-0'`, which wraps a bare definition
  * with empty arrays). Delivery uses the current manifest format.
- * legacy-0 to '1', mirroring the Wave 8 formalization bump.
  */
 export const DELIVERY_MANIFEST_FORMAT_VERSION = '1';
 

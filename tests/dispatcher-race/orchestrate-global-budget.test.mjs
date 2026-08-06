@@ -3,7 +3,6 @@
 // Wave 4 requires that the whole runtime has ONE dispatcher and ONE global
 // concurrency budget. There are two launch paths:
 //
-//   1. Lifecycle Flow LM nodes (runEpisode → lm-node-executor calls
 //      assignOneCard + executor.start with concurrency:1 per node).
 //   2. Conveyor dispatch loop (distributeQueuedTasks, owns the --concurrency=N
 //      global budget for development/review cards).
@@ -21,7 +20,6 @@
 // run concurrently. The lifecycle pauses (returns reason 'paused') precisely
 // when it has done all it can until kanban tasks drain; only then does the
 // dispatch loop run, and the next runEpisode resumes only after dispatch
-// drains. lm-node-executor.ts:646-661 documents this explicitly: "lifecycle
 // Flow nodes and the dispatch loop run strictly sequentially."
 //
 // This test enforces that invariant STRUCTURALLY: it drives the SAME loop

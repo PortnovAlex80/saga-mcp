@@ -38,11 +38,7 @@
 //      EXISTS in the module, and every profile binds the authoring skill
 //      (executionSkill), the semantic skill, an executionMode and an output
 //      schema. A MIGRATED module (kernel-gate acceptance) keeps artifact
-//      acceptance out of the author's hands; a LEGACY module (worker
-//      acceptance, or the field omitted) is reported as legacy — NOT a failure.
 //   3. REVIEW — every MIGRATED profile binds an INDEPENDENT reviewSkill
-//      (different from executionSkill) plus the shared protocolSkill. Legacy
-//      profiles (no reviewSkill) are reported as legacy — the dispatcher's
 //      generic-reviewer fallback still covers them.
 //   4. KERNEL — every 'kernel' node carries a handler and NEVER carries an
 //      executionProfile (kernels do not author). Every LM node carries an
@@ -83,7 +79,6 @@
 //     - 'failed'  — the module violates this check (a real regression).
 //     - 'skipped' — the check does not apply to this module yet (e.g. the
 //                   sibling package surface is absent in an isolated worktree,
-//                   or the module is legacy and the check is migration-gated).
 //   A ConformanceReport is 'passing' iff it has zero failures. Skips are
 //   first-class and carry a `reason` so the integrator can see exactly which
 //   dimensions still need the sibling package or the migration cutover.
@@ -253,13 +248,6 @@ function skip(dimension: ConformanceDimension, check: string, reason: string): C
   return { dimension, check, status: 'skipped', message: reason };
 }
 
-/** True when the module has migrated to kernel-gate artifact acceptance. */
-function isMigratedModule(definition: ProcessModuleDefinition): boolean {
-  return definition.executionProfiles.some(
-    (p) => p.artifactAcceptanceAuthority === 'kernel-gate',
-  );
-}
-
 // ---------------------------------------------------------------------------
 // DIMENSION 1 — INSTALLATION.
 // ---------------------------------------------------------------------------
@@ -339,22 +327,16 @@ function checkExecution(definition: ProcessModuleDefinition): readonly Conforman
       [missing]));
   }
 
-  // (c) artifact acceptance authority — migration-gated.
-  if (isMigratedModule(definition)) {
-    const nonGate = definition.executionProfiles
-      .filter((p) => p.artifactAcceptanceAuthority !== 'kernel-gate')
-      .map((p) => p.id);
-    if (nonGate.length === 0) {
-      out.push(pass('execution', 'artifact_acceptance_kernel_gate',
-        `migrated module accepts artifacts via kernel-gate across all ${definition.executionProfiles.length} profile(s).`));
-    } else {
-      out.push(fail('execution', 'artifact_acceptance_kernel_gate',
-        `migrated module has profile(s) not using kernel-gate acceptance.`,
-        [nonGate]));
-    }
+  // (c) artifact acceptance authority is always owned by the kernel gate.
+  const nonGate = definition.executionProfiles
+    .filter((p) => p.artifactAcceptanceAuthority !== 'kernel-gate')
+    .map((p) => p.id);
+  if (nonGate.length === 0) {
+    out.push(pass('execution', 'artifact_acceptance_kernel_gate',
+      `kernel-gate accepts artifacts across all ${definition.executionProfiles.length} profile(s).`));
   } else {
-    out.push(skip('execution', 'artifact_acceptance_kernel_gate',
-      `${moduleKey(definition.identity)} is legacy (worker/self acceptance); kernel-gate is a migration target (Wave 9+).`));
+    out.push(fail('execution', 'artifact_acceptance_kernel_gate',
+      `profile(s) do not use kernel-gate acceptance.`, [nonGate]));
   }
 
   return out;
@@ -374,38 +356,23 @@ function checkReview(definition: ProcessModuleDefinition): readonly ConformanceR
     return out;
   }
 
-  const migrated = isMigratedModule(definition);
-
-  // Independent reviewSkill — required for migrated modules, optional (legacy
-  // generic-reviewer fallback) for legacy modules.
-  if (migrated) {
-    const selfReview: string[] = [];
-    const missingReview: string[] = [];
-    for (const p of definition.executionProfiles) {
-      if (!isNonEmptyString(p.reviewSkill)) {
-        missingReview.push(p.id);
-      } else if (p.reviewSkill === p.executionSkill) {
-        selfReview.push(p.id);
-      }
+  const selfReview: string[] = [];
+  const missingReview: string[] = [];
+  for (const p of definition.executionProfiles) {
+    if (!isNonEmptyString(p.reviewSkill)) {
+      if (p.artifactAcceptanceAuthority !== 'kernel-gate') missingReview.push(p.id);
+    } else if (p.reviewSkill === p.executionSkill) {
+      selfReview.push(p.id);
     }
-    if (selfReview.length === 0 && missingReview.length === 0) {
-      out.push(pass('review', 'independent_review_skill',
-        `all ${definition.executionProfiles.length} migrated profile(s) bind an independent reviewSkill.`));
-    } else {
-      const detail = [...missingReview.map((id) => `${id}(missing)`), ...selfReview.map((id) => `${id}(self-review)`)];
-      out.push(fail('review', 'independent_review_skill',
-        `migrated module must not self-review; ${detail.length} profile(s) missing or self-review.`,
-        [detail]));
-    }
+  }
+  if (selfReview.length === 0 && missingReview.length === 0) {
+    out.push(pass('review', 'independent_review_skill',
+      `all ${definition.executionProfiles.length} profile(s) bind independent review or kernel-gate acceptance.`));
   } else {
-    const withReview = definition.executionProfiles.filter((p) => isNonEmptyString(p.reviewSkill));
-    if (withReview.length === definition.executionProfiles.length) {
-      out.push(pass('review', 'independent_review_skill',
-        `legacy module nonetheless binds a reviewSkill on all ${withReview.length} profile(s).`));
-    } else {
-      out.push(skip('review', 'independent_review_skill',
-        `${withReview.length}/${definition.executionProfiles.length} legacy profile(s) bind reviewSkill; the rest use the dispatcher generic-reviewer fallback.`));
-    }
+    const detail = [...missingReview.map((id) => `${id}(missing)`), ...selfReview.map((id) => `${id}(self-review)`)];
+    out.push(fail('review', 'independent_review_skill',
+      `module must not self-review; ${detail.length} profile(s) missing or self-review.`,
+      [detail]));
   }
 
   // Shared protocolSkill — every profile that declares one shares a single
@@ -420,8 +387,8 @@ function checkReview(definition: ProcessModuleDefinition): readonly ConformanceR
     out.push(pass('review', 'shared_protocol_skill',
       `all ${definition.executionProfiles.length} profile(s) share one protocolSkill.`));
   } else if (missingProtocol.length === definition.executionProfiles.length) {
-    out.push(skip('review', 'shared_protocol_skill',
-      `${moduleKey(definition.identity)} declares no protocolSkill on any profile (pre-protocol module).`));
+    out.push(fail('review', 'shared_protocol_skill',
+      `${moduleKey(definition.identity)} declares no protocolSkill.`, [missingProtocol.map(p => p.id)]));
   } else {
     const detail: string[] = [];
     if (missingProtocol.length > 0) detail.push(`${missingProtocol.length} missing`);

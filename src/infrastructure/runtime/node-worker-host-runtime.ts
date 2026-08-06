@@ -13,13 +13,13 @@ import type {
   EngineLockAcquisition,
   WorkerHostContext,
   WorkerHostRuntime,
-  Saga2WorkerRuntimePaths,
+  WorkerRuntimePaths,
 } from '../../application/ports/worker-host-runtime.js';
 
 export interface NodeWorkerHostRuntimeOptions {
   processId?: number;
   homeDirectory?: string;
-  workerPaths?: Partial<Saga2WorkerRuntimePaths>;
+  workerPaths?: Partial<WorkerRuntimePaths>;
   now?: () => number;
   sleep?: (ms: number) => Promise<void>;
   isProcessAlive?: (pid: number) => boolean;
@@ -39,10 +39,10 @@ function parsePid(value: string): number | null {
   return Number.isInteger(pid) && pid > 0 ? pid : null;
 }
 
-/** Node/filesystem implementation of the Saga 2 host boundary. */
+/** Node/filesystem implementation of the worker host boundary. */
 export class NodeWorkerHostRuntime implements WorkerHostRuntime {
   readonly processId: number;
-  readonly workerPaths: Saga2WorkerRuntimePaths;
+  readonly workerPaths: WorkerRuntimePaths;
 
   private readonly homeDirectory: string;
   private readonly nowFn: () => number;

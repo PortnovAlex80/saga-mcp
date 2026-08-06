@@ -70,7 +70,6 @@ export interface ProjectedAuthority {
  * then hands it to `projectPreToolUse`. The projection never opens the DB.
  *
  *   `executionId`  — the managed execution this projection is bound to.
- *   `authority`    — the projected authority, or `null` for a legacy Saga 2
  *                    snapshot (no WorkIntent) which the server compatibility-
  *                    allows; the projection therefore passes it through.
  *   `toolName`     — the MCP tool the agent is about to call.
@@ -95,7 +94,6 @@ export interface PreToolUseProjectionInput {
  *   `allowedTools`   — snapshot of the allow-list, so the agent can pick a
  *                      permitted alternative without another query.
  *   `executionId`    — execution the denial is bound to.
- *   `workIntentId`   — WorkIntent the denial cites (may be null for legacy).
  *   `authoritative`  — ALWAYS `false`. The server guard is authoritative
  *                      (§11.7); this hint is an optimization.
  *
@@ -122,7 +120,6 @@ export type PreToolUseDenyCode =
  * No early denial. This is NOT an allow: it means the projection has no basis
  * to deny early and the call MUST still be evaluated by the authoritative
  * server guard. The `reason` records why the projection passed (e.g. advisory
- * enforcement, legacy snapshot, or tool present in the allow-list) so the
  * agent's reasoning trace stays honest, but the `authoritative: false` field
  * reminds every consumer that the server is the source of truth.
  */
@@ -147,7 +144,6 @@ export type PreToolUseProjectionResult = PreToolUseDeny | PreToolUsePass;
  *
  *   | authority | enforcement | toolName | tool in list | result  |
  *   |-----------|-------------|----------|--------------|---------|
- *   | null      | (n/a)       | any      | (n/a)        | pass    |  legacy Saga 2
  *   | any       | any         | empty    | (n/a)        | deny    |  EMPTY_TOOL_NAME
  *   | set       | advisory    | any      | yes/no       | pass    |  advisory = hint only
  *   | set       | runtime     | any      | yes          | pass    |  would be allowed

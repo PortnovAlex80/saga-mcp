@@ -485,7 +485,6 @@ export function parseStructuredError(
         return parsed as SerializedActionableToolError;
       }
     } catch {
-      // Not JSON — a legacy flattened "Error: ..." string. This is exactly
       // what §11.10 forbids the gateway from producing; on the receive side
       // we treat it as "no structured error recoverable" rather than guessing.
       continue;

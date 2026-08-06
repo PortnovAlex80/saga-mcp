@@ -206,7 +206,6 @@ export interface ResolvedWorkspaceResource {
  * skill selected when the projected task enters review (plan §13.18 — resolved
  * SEPARATELY from the execution skill, not as an alias). Either may be
  * `undefined` when the node's execution profile does not declare one; the
- * caller (W5-A6 runner) then applies its documented legacy fallback.
  *
  * Each skill is resolved by matching the profile's `executionSkill` /
  * `reviewerSkill` string against a `kind:'skill'` / `kind:'reviewer-skill'`

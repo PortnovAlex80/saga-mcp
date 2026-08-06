@@ -186,7 +186,6 @@ export interface StuckPolicyInput {
   /** Precomputed legitimacy #2: phase='integrating', task='done', integration='pending', fence ours. */
   readonly legitimateIntegration: boolean;
   /**
-   * Precomputed legitimacy #3 for the legacy fenced path. The policy also
    * derives the post-worker_done fence-free finishing grace from phase and
    * progress timestamps, because the task fence may already be released while
    * the OS process is still closing.

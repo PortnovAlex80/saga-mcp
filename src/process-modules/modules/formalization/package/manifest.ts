@@ -75,9 +75,7 @@ import {
 /**
  * Format version of THIS manifest envelope. `'1'` signals the envelope wraps a
  * migrated ProcessModuleDefinition that populates `resourceIndex` /
- * `handlerRefs` (as opposed to `'legacy-0'`, which wraps a bare definition
  * with empty arrays). Formalization uses the current manifest format.
- * from legacy-0 to '1'.
  */
 export const FORMALIZATION_MANIFEST_FORMAT_VERSION = '1';
 
@@ -103,7 +101,6 @@ export const FORMALIZATION_RUNTIME_COMPATIBILITY_RANGE = '^3.0.0';
 
 /**
  * Repository-root-relative POSIX paths to the resources formalization pins.
- * W13-A2 moved every module-owned resource out of the legacy global root
  * (`tool-templates/formalization/`, `skills/saga-product|analyst|reconciler|
  * architect|requirements-reviewer|architecture-reviewer`) into the formalization
  * package resources directory. The resources physically live under

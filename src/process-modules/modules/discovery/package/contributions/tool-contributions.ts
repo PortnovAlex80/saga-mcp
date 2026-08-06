@@ -2,7 +2,6 @@
  * W9-A2 — Discovery package-local tool contributions.
  *
  * Spec: docs/refactor-management/09-contracts/WAVE9-PRODUCTION-MIGRATION-SPEC.md.
- * Plan: §0.12.4 (W9-A2 owns Discovery tool contributions + legacy engine
  *       adapter subtrees), §11.4 (ModuleToolContribution), §8.2 (NodeProtocol
  *       allowedTools).
  *
@@ -311,7 +310,6 @@ export const DISCOVERY_DIAGNOSIS_SUBMIT_CONTRIBUTION: ModuleToolContribution = {
 /**
  * The `artifact_create` MCP tool, as contributed for the discovery `brief`
  * product. When the proposal resolver accepts a proposal, it ensures a `brief`
- * artifact exists for the epic (the legacy saga-kickstart created one
  * explicitly; the generic-flow worker does not, so the kernel auto-provisions
  * a synthetic accepted brief from the accepted proposal so downstream
  * Formalization has its PRD → brief `derived_from` lineage). Side effect

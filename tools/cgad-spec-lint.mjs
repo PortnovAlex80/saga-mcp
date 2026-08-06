@@ -65,7 +65,7 @@ function usage() {
     "           Incident (CGAD P8).",
     "  CGAD-R2  P15 risk floor (REQ-009 strengthened):",
     "           R2a — tasks tagged critical/security with priority in {low,",
-    "           medium} (legacy column betrays the tag).",
+    "           medium} (stored risk conflicts with the tag).",
     "           R2b — tasks where final_risk is NULL while declared/derived/",
     "           policy are set, OR final_risk < max(declared, derived, policy).",
     "           CGAD P15: agent cannot self-lower final_risk below the derived",
@@ -238,8 +238,6 @@ function ruleR1(db, projectId) {
 
 // R2 — P15 risk floor (REQ-009 strengthened).
 // Two checks:
-//   R2a (legacy, still applies): tasks tagged critical/security with priority
-//        in {low, medium} — the legacy column betrays the tag.
 //   R2b (REQ-009 new): tasks where final_risk IS NOT NULL but
 //        final_risk < max(declared_risk, derived_risk, policy_minimum) by
 //        severity order. CGAD P15: the agent cannot self-lower final_risk
@@ -251,7 +249,6 @@ function ruleR2(db, projectId) {
   const pj = projectFilter(projectId, "tasks");
   const findings = [];
 
-  // R2a: legacy — tag/priority mismatch.
   const critical = db.prepare(`
     SELECT id, title, priority, tags
     FROM tasks
@@ -433,7 +430,6 @@ function ruleR4(db, projectId) {
     )];
     let isGreenfield = true;
     if (repoIds.length === 0) {
-      // No repository binding — legacy episode. We cannot prove it is
       // established, and CGAD §34 / Sign 002 say: when in doubt, require
       // scaffold (false-positive cheaper than false-negative for a
       // prevention gate). So treat as greenfield.

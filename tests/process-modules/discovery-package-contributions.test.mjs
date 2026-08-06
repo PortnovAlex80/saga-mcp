@@ -4,13 +4,11 @@
 //
 // Validates that the five contribution categories declared under
 // `src/process-modules/modules/discovery/package/contributions/` plus the
-// legacy engine adapter are well-formed, internally consistent, and conform
 // to the Wave 1 SPI shapes:
 //   - tool contributions: every ModuleToolContribution validates.
 //   - acceptance capabilities: capability requirements + guard bindings.
 //   - output contracts: input/output contract refs + declared outcomes.
 //   - reviewer skills: pinned skill resource index entries.
-//   - legacy engine adapter: port-injected brief-provisioning wrapper.
 //
 // These tests run against the compiled dist/ output (the contributions are
 // pure data, so this is a structural + cross-reference conformance check).
@@ -275,15 +273,14 @@ test('W9-A2 reviewer skills: resource index entries strip package-local metadata
 });
 
 // ---------------------------------------------------------------------------
-// Legacy engine adapter.
 // ---------------------------------------------------------------------------
 
-test('W9-A2 legacy adapter: exposes the discovery handler ids', () => {
+test('W9-A2 unsupported adapter: exposes the discovery handler ids', () => {
   assert.equal(DISCOVERY_PACKAGE_HANDLER_IDS.resolveProposalSubmission, 'discovery-resolve-proposal-submission');
   assert.equal(DISCOVERY_PACKAGE_HANDLER_IDS.settle, 'discovery-settlement-policy');
 });
 
-test('W9-A2 legacy adapter: fake brief-provisioning port records calls', () => {
+test('W9-A2 unsupported adapter: fake brief-provisioning port records calls', () => {
   const fake = createFakeDiscoveryBriefProvisioningPort([
     { status: 'brief-created', briefArtifactId: 42 },
   ]);
@@ -299,7 +296,7 @@ test('W9-A2 legacy adapter: fake brief-provisioning port records calls', () => {
   assert.equal(fake.calls[0].ctx.epicId, 2);
 });
 
-test('W9-A2 legacy adapter: portInjectedEnsureDiscoveryBrief fails without an epic', () => {
+test('W9-A2 unsupported adapter: portInjectedEnsureDiscoveryBrief fails without an epic', () => {
   const fake = createFakeDiscoveryBriefProvisioningPort();
   const outcome = portInjectedEnsureDiscoveryBrief(fake, {
     projectId: 1,
@@ -312,7 +309,7 @@ test('W9-A2 legacy adapter: portInjectedEnsureDiscoveryBrief fails without an ep
   assert.equal(fake.calls.length, 0);
 });
 
-test('W9-A2 legacy adapter: portInjectedEnsureDiscoveryBrief delegates to the port with an epic', () => {
+test('W9-A2 unsupported adapter: portInjectedEnsureDiscoveryBrief delegates to the port with an epic', () => {
   const fake = createFakeDiscoveryBriefProvisioningPort([
     { status: 'already-provisioned', briefArtifactId: 7 },
   ]);
@@ -328,12 +325,11 @@ test('W9-A2 legacy adapter: portInjectedEnsureDiscoveryBrief delegates to the po
   assert.equal(fake.calls[0].ctx.processRunId, 9);
 });
 
-test('W9-A2 legacy adapter: createDiscoveryPackageHandlerAdapter wraps the proposal resolver', () => {
+test('W9-A2 unsupported adapter: createDiscoveryPackageHandlerAdapter wraps the proposal resolver', () => {
   // The adapter is constructed from a runtime-persistence fake. We only need
   // to confirm the adapter produces a handler map keyed by the discovery
   // handler ids and that the target handler is wrapped (a function).
   const fakeRuntime = {
-    // Minimal stub: the legacy factory does not invoke the handlers at
     // construction time, only the adapter wraps them. We need the methods the
     // factory closes over to exist as no-ops so the map builds.
     readRawSubmissionForExecution: () => null,
@@ -359,7 +355,7 @@ test('W9-A2 legacy adapter: createDiscoveryPackageHandlerAdapter wraps the propo
     // Wave 8 MEDIUM 7: settlementService is now a required injected port.
     // This test only checks handler-map construction (no settlement is
     // invoked), so a stub settle() suffices.
-    legacyDeps: { runtimePersistence: fakeRuntime, settlementService: { settle: async () => { throw new Error('not used'); } } },
+    kernelDeps: { runtimePersistence: fakeRuntime, settlementService: { settle: async () => { throw new Error('not used'); } } },
     ports: { briefProvisioning: fakePort },
   });
   // Every discovery handler id is present.
@@ -370,13 +366,13 @@ test('W9-A2 legacy adapter: createDiscoveryPackageHandlerAdapter wraps the propo
   assert.ok(typeof handlers[DISCOVERY_PACKAGE_HANDLER_IDS.resolveProposalSubmission] === 'function');
 });
 
-test('W9-A2 legacy adapter: throws on unknown handler id', () => {
+test('W9-A2 unsupported adapter: throws on unknown handler id', () => {
   const fakeRuntime = {};
   const fakePort = createFakeDiscoveryBriefProvisioningPort();
   assert.throws(
     () =>
       createDiscoveryPackageHandlerAdapter({
-        legacyDeps: { runtimePersistence: fakeRuntime, settlementService: { settle: async () => { throw new Error('not used'); } } },
+        kernelDeps: { runtimePersistence: fakeRuntime, settlementService: { settle: async () => { throw new Error('not used'); } } },
         ports: { briefProvisioning: fakePort },
         briefProvisioningHandlerId: 'discovery-nonexistent',
       }),
@@ -400,7 +396,6 @@ test('W9-A2 barrel: re-exports all five contribution categories + the adapter', 
   assert.ok(typeof barrel.DISCOVERY_DECLARED_OUTCOMES === 'object');
   // Reviewer skills.
   assert.ok(typeof barrel.DISCOVERY_SKILL_RESOURCE_INDEX_ENTRIES === 'object');
-  // Legacy engine adapter.
   assert.equal(typeof barrel.createDiscoveryPackageHandlerAdapter, 'function');
   assert.equal(typeof barrel.createFakeDiscoveryBriefProvisioningPort, 'function');
   assert.equal(typeof barrel.portInjectedEnsureDiscoveryBrief, 'function');

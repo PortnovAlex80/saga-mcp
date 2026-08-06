@@ -226,10 +226,8 @@ const KNOWN_VIOLATIONS = [
 //   - discovery-installation.ts: record types + the runtime-persistence port
 //     moved into discovery-domain-contracts.ts; the FactoryDiscoverySettlementService
 //     is now an injected DiscoverySettlementPort with a lazy dynamic-import
-//     legacy bridge (no static saga3 edge).
 //   - discovery-outcome-certificate-projection.ts: OutcomeCertificateRecord moved
 //     into discovery-domain-contracts.ts; readOutcomeCertificate SQL inlined.
-//   - formalization (legacy-formalization-process-adapter.ts,
 //     sqlite-formalization-kernel.ts): canonicalJson now imported from
 //     ../../shared/canonical-json.js instead of saga3/shared.
 // The discoveryLeaks array is empty; the ratchet records zero Rule-2 entries.
@@ -284,7 +282,6 @@ function rule2Violations(graph) {
       if (t.startsWith('src/runtime/')) continue;
       // Cross-tree leak: target outside both module trees.
       // saga4: src/modules/ is the new canonical module tree alongside
-      // the legacy src/process-modules/modules/ declaration tree.
       const sameModuleTree = t.startsWith('src/process-modules/') || t.startsWith('src/modules/');
       if (isPersistenceAdapter(t) || !sameModuleTree) {
         out.push({ source: src, target: t, rule: 2 });

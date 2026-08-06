@@ -11,7 +11,6 @@
  *
  * Delivery REQUIRES that every guard, decision, publication, observation and
  * settlement capability be INJECTED — no fallback may perform release effects
- * (invariant `delivery.no-default-provider`). The legacy delivery lane wires
  * these ports through `DeliveryModuleInstallationDependencies`
  * (`delivery-kernel-ports.ts`); this file is the package-local CONTRIBUTION
  * surface that declares those ports as stable, content-addressed references
@@ -29,7 +28,6 @@
  *
  * This file does NOT declare the port INTERFACES — those live in
  * `delivery-kernel-ports.ts` / `delivery-provider-ports.ts` (owned by the
- * legacy delivery lane). It declares the package-local CONTRIBUTION metadata
  * (the port identity + capability binding) the manifest carries, so the
  * composition root (Wave 11) can inject the concrete SQLite-backed adapters
  * by name without the runtime hardcoding the delivery port catalog.

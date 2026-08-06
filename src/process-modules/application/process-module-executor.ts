@@ -2,7 +2,6 @@
  * ProcessModuleExecutor — the SPI contract every Process Module executor
  * implements.
  *
- * This is the UNIVERSAL interface. Whether a module runs through a legacy
  * engine adapter (Discovery today), a generic LM/kernel flow executor (P6c),
  * an external system, or a human gate, the Runtime calls the same
  * `execute()` method. No `run_discovery` / `run_formalization` specializations
@@ -106,7 +105,6 @@ export interface ProcessModuleExecutor {
  * This separation lets a module be catalogued (inspected, validated, designed
  * against) before its executor exists — essential for the module-authoring kit
  * (P7-P9) where a designer skill produces a Definition that only later gets an
- * executor (generic-flow in P6c, or a legacy adapter).
  *
  * P-PM-1 adds an OPTIONAL `package` field. When present, the installation is
  * hash-pinned: every shipped resource (skill, template, checklist) and every
@@ -114,7 +112,6 @@ export interface ProcessModuleExecutor {
  * started against this installation pin that digest via the
  * `factory_process_module_installations` row. This closes the "skill edited,
  * version unchanged" replay attack. During migration, installations without a
- * package continue to work (legacy path); once a module is fully migrated
  * (P-PM-6+), `package` becomes required.
  */
 export interface ProcessModuleInstallation {

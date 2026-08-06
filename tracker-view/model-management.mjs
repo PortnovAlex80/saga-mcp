@@ -349,7 +349,6 @@ export function createModelManagementApi({
       //    active workers keep running on the old model, but no NEW workers spawn
       //    until the active count drops below the new limit.
       //    model_provider tells claude-runner whether to add LM Studio env to
-      //    the spawn ('lmstudio') or keep the z.ai legacy path ('zai').
       //    model_effort is the model-config reasoning effort (e.g. 'high'
       //    for z.ai cloud). LM Studio models have no effort field → null is
       //    written, which the runner reads as "omit --effort entirely" so the

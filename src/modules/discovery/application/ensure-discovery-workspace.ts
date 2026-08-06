@@ -83,7 +83,6 @@ export function ensureDiscoveryWorkspace(
     templatesDirMissing: false,
   };
 
-  // W13-A2: discovery templates moved from the legacy global root
   // (`tool-templates/discovery/`) into the discovery package resources
   // directory. Resolve under workspaceRoot (repo root in production).
   const tmplDir = path.join(

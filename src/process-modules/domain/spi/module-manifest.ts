@@ -87,7 +87,6 @@ export interface HandlerRef {
  *                                     (independent of the module's own version).
  *                                     Non-empty. Wave 1 uses `'0.1.0'`.
  * @property definition                The wrapped {@link ProcessModuleDefinition}
- *                                     (legacy pure domain object — reused, not
  *                                     redefined).
  * @property resourceIndex             Module-relative resources (skills,
  *                                     templates, schemas, ...). Entries have

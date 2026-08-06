@@ -4,12 +4,10 @@ import { logActivity } from '../helpers/activity-logger.js';
 import { assertExecutionFence } from '../worker-executions.js';
 import type { ToolHandler } from '../types.js';
 
-// saga4 cutover: the legacy episode stage-machine MCP tools (episode_status,
 // episode_transition) and all their supporting helpers (STAGES, NEXT,
 // NEXT_FAST_TRACK, nextStageForTrack, ensureEpic, getOrCreate, acceptedBaseline,
 // assertTasksReady, assertTraceability, assertVerificationPassed) were REMOVED.
 //
-// They were the legacy execution mechanism by which external agents or operators
 // could move episode_workflows.stage in parallel with the Lifecycle Orchestrator
 // — violating rule 1 (one lifecycle authority) and rule 2 ("episode_transition
 // as an execution mechanism" must be deleted). Stage advancement is now
@@ -60,21 +58,6 @@ function handleVerificationRecord(args: Record<string, unknown>) {
     throw new Error(`Artifact ${artifactId} is not an AC in task ${taskId}'s episode`);
   }
   let targetArtifactId = task.verification_target_artifact_id;
-  if (targetArtifactId === null) {
-    const legacyTargets = db.prepare(
-      `SELECT tr.source_id
-       FROM artifact_traces tr JOIN artifacts a ON a.id=tr.source_id
-       WHERE tr.target_type='task' AND tr.target_id=? AND tr.link_type='depends_on'
-         AND a.type='AC'`,
-    ).all(taskId) as Array<{ source_id: number }>;
-    if (legacyTargets.length === 1) {
-      targetArtifactId = legacyTargets[0]!.source_id;
-      db.prepare(
-        `UPDATE tasks SET verification_target_artifact_id=?, updated_at=datetime('now')
-         WHERE id=? AND verification_target_artifact_id IS NULL`,
-      ).run(targetArtifactId, taskId);
-    }
-  }
   if (targetArtifactId === null) {
     throw new Error(
       `Verification task ${taskId} has no canonical AC target; recreate it with exactly one source_artifact_id`,

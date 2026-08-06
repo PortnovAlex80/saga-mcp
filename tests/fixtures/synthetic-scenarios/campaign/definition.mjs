@@ -210,7 +210,6 @@ const campaignStages = [
  * does not exist yet (Wave 1, W1-A3). It is a `LifecycleDefinition`-SHAPED
  * object — `LifecycleDefinition` already exists in the domain contract, so
  * Wave 7's scenario runtime and Wave 1's manifest validator can consume this
- * shape directly or adapt it through an explicit legacy adapter (plan §3.13).
  *
  * There is NO `routeResolver` field anywhere on this object — that omission
  * is the proof of plan §6.4.

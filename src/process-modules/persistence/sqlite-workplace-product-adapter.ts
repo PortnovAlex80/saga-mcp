@@ -3,7 +3,6 @@
  *
  * This is a THIN WRAPPER over the EXISTING universal product store. It does
  * NOT create new tables, does NOT change schemas, and does NOT touch the four
- * legacy submit tools. It delegates every write/read to
  * `SqliteProcessProductRepositoryV2` (which reuses the v1
  * `factory_process_products` table plus its v2 `node_id` column and exact-lookup
  * index).

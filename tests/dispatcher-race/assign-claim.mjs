@@ -3,7 +3,6 @@
 // a single JSON line with the outcome, exits.
 //
 // This is the WorkAssignmentPort analogue of claim.mjs (which exercises the
-// legacy worker_next path). Both must satisfy the same no-double-claim
 // invariant under concurrency; this script proves the NEW port is race-safe
 // across real OS processes, not just on a single connection.
 //

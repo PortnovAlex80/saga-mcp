@@ -42,7 +42,6 @@ export interface ExecutionReconcileProjection {
 /**
  * Persistence boundary for episode workflow state and metadata.
  *
- * saga4 cutover (EXECUTION-PLAN §B.1): the legacy `episode_workflows` writers
  * (`ensureWorkflow`, `pause`, `clearNeedsHuman`, `isNeedsHuman`, `patchMetadata`,
  * `readLatestBriefDecision`, `readHealMetadata`) were removed. Lifecycle pause
  * owns needs-human (LifecycleRun.status='paused'), brief decisions live on the

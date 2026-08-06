@@ -10,7 +10,7 @@ import { DISCOVERY_PROPOSAL_SCHEMA } from '../modules/discovery/domain/discovery
 import { normalizeDiscoveryProposalInput } from '../modules/discovery/domain/discovery-normalization.js';
 import type { ProposalProvenance, SubmitProposal } from '../modules/discovery/domain/proposal.js';
 import { readExecutionContextStrict } from '../shared/authority/authorize-tool-call.js';
-import { writeProduct } from './universal-desk-helper.js';
+import { recordExecutionProduct, writeProduct } from './universal-desk-helper.js';
 import { PROPOSAL_REF_SCHEMA } from '../modules/discovery/domain/proposal-ref-bridge.js';
 import {
   canonicalJson,
@@ -171,6 +171,12 @@ export function createDiscoveryProposalHandlers(
         schemaRef: PROPOSAL_REF_SCHEMA,
         content: { proposalId: proposal.id, contentHash },
         executionRef: submission.execution_id,
+      });
+      recordExecutionProduct(db, {
+        schema: submission.schema_version,
+        content: deterministic.normalized_payload,
+        executionRef: submission.execution_id,
+        taskId: submission.task_id,
       });
       return {
         raw_submission_id: raw.record.id,

@@ -29,7 +29,6 @@
  * Discovery is single-author advisory: it has no paired author/review-gate
  * cycle like Formalization. The readiness and diagnosis advisors ARE the
  * review surface (they assess the proposal / explain the certificate). The
- * legacy saga-kickstart and saga-readiness-checker skills are declared as
  * optional reviewer-skill resources for the future human-in-the-loop review
  * hook; they are pinned here so the runtime can surface them without a global
  * lookup if a review step is ever added.
@@ -157,11 +156,9 @@ export const DISCOVERY_PROTOCOL_SKILL: DiscoverySkillResource = skillResource({
 });
 
 // ---------------------------------------------------------------------------
-// Optional legacy review skills — pinned for the future human-in-the-loop hook.
 // ---------------------------------------------------------------------------
 
 /**
- * Legacy saga-kickstart skill (the original discovery brief author). Pinned as
  * an optional reviewer-skill resource so a future human review / hand-off step
  * can surface it without a global lookup. Not bound to any execution profile;
  * its `pinnedByProfile` is 'package-optional'.

@@ -139,7 +139,6 @@ export interface WorkerExecutorStart {
    *
    * REQUIRED as of Slice 1 Zones 1-4 of the conveyor refactor (the
    * node-breaker): every caller must pre-assign via the WorkAssignmentPort
-   * before launching a worker. The legacy `claimScope` self-claim path is
    * removed.
    */
   assignment: AssignedWork;

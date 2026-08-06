@@ -146,7 +146,6 @@ test('every package declares the platform envelope fields', () => {
 });
 
 // ---------------------------------------------------------------------------
-// §2 Each package surfaces the expected legacy tool families.
 // ---------------------------------------------------------------------------
 
 test('platform.tasks surfaces task_create/list/get/update', () => {

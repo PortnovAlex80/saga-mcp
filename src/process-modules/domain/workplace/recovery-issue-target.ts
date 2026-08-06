@@ -21,9 +21,7 @@
  *     repairTargetRole (REG-19-AC-03: findings do NOT give the right to change
  *     the role, scope or capabilities).
  *
- * This file defines the target shape WITHOUT touching the legacy
  * `RecoveryIssue` (which stays in use until step 3.A.3 generalises the gate).
- * Step 3 reconciles the two: the legacy opaque fields become the `findings`
  * carrier, and the four exact-reference fields become required. Until then
  * both coexist — this target type is what the new gate/coordinator produces.
  *
@@ -48,7 +46,6 @@ import type { RepairTargetRole } from './gate.js';
 /**
  * The target RecoveryIssue — an immutable, exactly-referenced defect sheet.
  *
- * REG-19. Combines the legacy opaque-finding carrier with the four
  * exact-reference fields the v4 contract requires. The repair worker reads
  * this alongside the rejected CandidateSet and understands WHAT to fix and
  * WHY, with byte-exact provenance back to the decision and its evidence.
@@ -81,7 +78,6 @@ export interface TargetRecoveryIssue {
 }
 
 /**
- * One actionable verifier finding (mirrors the legacy `RecoveryFinding` shape
  * so step 3 can lift it without churn). Opaque to the runtime — the runtime
  * persists and forwards it verbatim.
  */

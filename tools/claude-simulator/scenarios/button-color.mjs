@@ -412,7 +412,6 @@ export function selectButtonColorScenario(ctx, env = process.env) {
       break;
   }
 
-  // Reviewer path — only reached when no process_node_id matched (legacy
   // tasks, or review nodes without a node-specific scenario).
   if (ctx.role === 'reviewer') {
     const verdict = fault === 'review-changes-requested' ? 'changes_requested' : 'approved';

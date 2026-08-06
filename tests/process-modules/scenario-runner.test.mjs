@@ -95,7 +95,6 @@ function selectorFromModuleRef(moduleRef) {
  * enforces (paths must be `$` or start with `$.`). The root input frame is
  * `{ ...rootInput, lifecycleInput, stages: {...} }`, so root-input fields
  * live under `$.initiative.*` and prior-stage outputs under
- * `$.stages.<stageId>.output.<field>` (the legacy orchestrator's frame shape).
  */
 function buildManifest({ reentryBudget = 0 } = {}) {
   const stageBindings = [
@@ -348,7 +347,6 @@ test('ScenarioInstaller: lockStore write failure surfaces SCENARIO_INSTALL_LOCK_
 //
 // The runner reuses LifecycleRunRepository + ProcessRunRepository (existing
 // ports); we build in-memory fakes that mimic a two-stage walk exactly like
-// the legacy lifecycle-orchestrator.test.mjs harness but adapted for the
 // scenario's two-stage manifest.
 // ---------------------------------------------------------------------------
 

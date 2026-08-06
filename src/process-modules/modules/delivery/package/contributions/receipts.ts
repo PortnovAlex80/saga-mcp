@@ -38,7 +38,6 @@
  * release only when every required observation is `matched`.
  *
  * PURE DATA: readonly constants. No behavior — the actual receipt/observation
- * types live in `delivery-schemas.ts` (owned by the legacy delivery lane);
  * this file declares the package-local CONTRIBUTION metadata the manifest
  * carries.
  *

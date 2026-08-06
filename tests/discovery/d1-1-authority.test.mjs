@@ -10,7 +10,6 @@
  *   5. WorkIntent mutated after claim does not change permissions (snapshot immutable)
  *   6. Saga 3 execution row WITHOUT an execution_context snapshot → fail-closed deny
  *      (malformed managed execution)
- *   7. legacy Saga 2 execution row (no execution_context) → compatibility allow
  *   8. (covered in d1-1-execution-context.test.mjs)
  *   9. one execution cannot use another execution's authority snapshot
  *
@@ -228,32 +227,6 @@ test('fail-closed: a runtime execution with an EMPTY allowlist denies every tool
     assert.equal(d.allow, false);
     assert.equal(d.code, 'AUTHORITY_DENIED');
     assert.deepEqual(d.details.allowed_tools, []);
-  } finally { cleanup(temp); }
-});
-
-// --- (7) legacy Saga 2 execution row → compatibility allow ----------------------
-
-test('compat: legacy Saga 2 execution (authority=null) is compatibility-allowed', () => {
-  const { temp, db } = makeFixture();
-  try {
-    const execution_context = {
-      policy_version: 'factory.execution.v1',
-      work_intent_id: null,
-      authority: null,
-      model_route: { provider: 'zai', model: null, effort: 'high' },
-      captured_at: '2026-07-23T20:00:00.000Z',
-    };
-    const snapshot = JSON.stringify({
-      execution_context,
-      execution_context_hash: executionContextHash(execution_context),
-    });
-    seedExecution(db, 'exec-saga2', snapshot);
-    // Any Saga tool is allowed under compatibility — Saga 2 stays unenforced.
-    for (const tool of ['task_get', 'task_create', 'episode_transition', 'project_delete']) {
-      const d = authorizeSagaToolCall({ toolName: tool, db, executionId: 'exec-saga2' });
-      assert.equal(d.allow, true, `Saga 2 compat must allow '${tool}'`);
-      assert.equal(d.advisory, undefined, 'Saga 2 compat is not advisory — it is unconditional allow');
-    }
   } finally { cleanup(temp); }
 });
 

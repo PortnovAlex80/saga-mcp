@@ -32,9 +32,6 @@ import {
   DEV_ROOT, PROJECT_REPO_MAP,
   resolveArtifactFile,
 } from './shared.mjs';
-import {
-  createBoardRunnerAdapter,
-} from './board-runner-adapter.mjs';
 import { createModelManagementApi } from './model-management.mjs';
 import { createAdminEndpointsApi } from './admin-endpoints.mjs';
 import { createLifecycleEndpointsApi } from './lifecycle-endpoints.mjs';
@@ -149,17 +146,6 @@ const lifecyclePipelineApi = createLifecyclePipelineApi({
 
 // esc / DEV_ROOT / PROJECT_REPO_MAP / projectFolderTag / resolveProjectWorkspace
 // live in ./shared.mjs now (imported above).
-// getRunnerTaskState / recoverRunnerAssignment / createBoardRunnerAdapter
-// live in ./board-runner-adapter.mjs (imported above).
-
-const boardRunner = createBoardRunnerAdapter({
-  runtimeConfig,
-  sagaEntry: path.join(__dirname, '..', 'dist', 'index.js'),
-  sagaSkillRoot: path.join(__dirname, '..', 'skills'),
-  dbPath: DB_PATH,
-  lmstudioBaseUrl: runtimeConfig.lmStudioUrl,
-});
-
 // resolveArtifactFile also lives in ./shared.mjs now (imported above).
 
 // Загрузка всех артефактов проекта + их исходящих трасс (для вкладки Артефакты).
@@ -278,16 +264,9 @@ const adminApi = createAdminEndpointsApi({
   sagaApplication,
 });
 
-// Lifecycle endpoints API (T10 step 5): operational engine control (stop/
-// status/concurrency), board-run lifecycle (start/stop/status), saga
-// repository operations, worker observation (tail + active), and episode
-// stage summaries. Injected with the sagaApplication + boardRunner +
-// repositoryHandlers singletons (still owned by this module) plus the
-// canonical WORKER_LOG_ROOTS array and the isProcessAlive predicate.
-// Route strings stay here as test anchors; the handlers live in the factory.
+// Operational control and observability endpoints.
 const lifecycleApi = createLifecycleEndpointsApi({
   sagaApplication,
-  boardRunner,
   repositoryHandlers,
   workerLogRoots: WORKER_LOG_ROOTS,
   isProcessAlive,
@@ -534,6 +513,6 @@ const SPAWNED = runtimeConfig.trackerSpawned;
   });
 })();
 
-process.on('exit',  () => { boardRunner.dispose(); sagaApplication.close(); try { unlinkSync(PID_FILE); } catch {} });
-process.on('SIGINT', () => { boardRunner.dispose(); sagaApplication.close(); try { unlinkSync(PID_FILE); } catch {} process.exit(0); });
-process.on('SIGTERM',() => { boardRunner.dispose(); sagaApplication.close(); try { unlinkSync(PID_FILE); } catch {} process.exit(0); });
+process.on('exit',  () => { sagaApplication.close(); try { unlinkSync(PID_FILE); } catch {} });
+process.on('SIGINT', () => { sagaApplication.close(); try { unlinkSync(PID_FILE); } catch {} process.exit(0); });
+process.on('SIGTERM',() => { sagaApplication.close(); try { unlinkSync(PID_FILE); } catch {} process.exit(0); });

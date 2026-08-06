@@ -108,7 +108,7 @@ CREATE TABLE IF NOT EXISTS tasks (
                     CHECK (priority IN ('low', 'medium', 'high', 'critical')),
   sort_order      INTEGER NOT NULL DEFAULT 0,
   assigned_to     TEXT,
-  -- Fencing token for managed CLI executions. NULL means legacy/manual claim.
+
   -- Every worker-side mutation of a managed task must present this exact id.
   current_execution_id TEXT,
   -- Conveyor v4 binding: the authoritative Workplace aggregate that owns this
@@ -134,7 +134,7 @@ CREATE TABLE IF NOT EXISTS tasks (
                     CHECK (execution_mode IN ('git_change','tracker_only','read_only_evidence','interactive','artifact_change')),
   project_repository_id INTEGER REFERENCES project_repositories(id) ON DELETE SET NULL,
   -- REQ-009 / CGAD 11 RiskClass. final_risk = max(declared_risk, derived_risk,
-  -- policy_minimum). The legacy priority column is kept as the declared risk
+
   -- label for backward compatibility; new callers should write declared_risk.
   -- derived_risk is computed from the touched surface (security boundary
   -- implies high; data ownership implies critical). policy_minimum is set by
@@ -1038,7 +1038,7 @@ CREATE INDEX IF NOT EXISTS idx_supervision_locks_expires ON supervision_locks(ex
 -- REG-09 (ExecutionReservation), REG-12 (CandidateSet), REG-15 (GateRun),
 -- REG-17 (CheckReceipt), REG-18 (GateDecision).
 --
--- Purely ADDITIVE (CREATE TABLE IF NOT EXISTS). The legacy tasks/worker_executions
+
 -- tables remain the runtime authority until step 5 of the migration; these
 -- tables are written in parallel (step 1.3 projection) and read by NOTHING
 -- on the runtime path yet. The SCHEMA_VERSION is NOT bumped — pre-release
@@ -1479,7 +1479,6 @@ export const ArtifactTypeSchema = z.enum([
  * Fresh databases get the column from `SCHEMA_SQL`'s CREATE TABLE. Existing
  * databases created before this migration land here with no `storage_kind`
  * column; this function adds it with the safe default `'file_backed'` (every
- * legacy artifact is file-backed — the synthetic brief case is repaired
  * separately by the provisioning layer and the checkpoint migration).
  *
  * SQLite ALTER TABLE ADD COLUMN supports a CHECK constraint, but the

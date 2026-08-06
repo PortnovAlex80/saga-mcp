@@ -25,7 +25,6 @@
  *
  * Anti-scope: this lane does NOT edit the central package manifest (W8-A1 owns
  * that), does NOT define the kernel resolver handler (W8-A6 owns ports), and
- * does NOT remove the legacy formalization path (Wave 13). It is additive.
  */
 
 import type {

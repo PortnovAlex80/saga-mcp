@@ -417,6 +417,12 @@ test('runner invokes post-worker capture even when the worker exits before worke
   // does not depend on the execution fence.
   const root = mkdtempSync(path.join(os.tmpdir(), 'saga-warm-runner-'));
   mkdirSync(path.join(root, 'logs'), { recursive: true });
+  const protocolSkill = path.join(root, 'package', 'protocol', 'SKILL.md');
+  const semanticSkill = path.join(root, 'package', 'semantic', 'SKILL.md');
+  mkdirSync(path.dirname(protocolSkill), { recursive: true });
+  mkdirSync(path.dirname(semanticSkill), { recursive: true });
+  writeFileSync(protocolSkill, 'protocol', 'utf8');
+  writeFileSync(semanticSkill, 'semantic', 'utf8');
   const captures = [];
   const runner = new ClaudeBoardRunner({
     dbPath: path.join(root, 'saga.db'),
@@ -430,6 +436,8 @@ test('runner invokes post-worker capture even when the worker exits before worke
     getTask: () => ({
       id: 1, title: 'Interrupted draft', status: 'in_progress',
       assigned_to: 'worker', tags: '[]',
+      task_kind: 'formalization.use-cases', workflow_stage: 'formalization',
+      execution_mode: 'tracker_only',
     }),
     getTaskState: () => ({
       id: 1,
@@ -437,6 +445,19 @@ test('runner invokes post-worker capture even when the worker exits before worke
       assigned_to: 'worker',
     }),
     recoverAssignment: () => true,
+    resolveProfile: () => ({ profile: {
+      protocolSkill: 'protocol', semanticSkill: 'semantic', reviewSkill: null,
+    } }),
+    resolveLaunchSpec: () => ({
+      installationId: 1,
+      role: { protocolSkill: 'protocol', semanticSkill: 'semantic', reviewSkill: null },
+      allowedToolIds: ['Read', 'Edit'], strictResources: true,
+      resolveSkill: name => name === 'protocol' ? protocolSkill : name === 'semantic' ? semanticSkill : null,
+    }),
+    executionStore: {
+      markExited: () => {}, markProgress: () => {}, markRunning: () => {},
+      markSpawnFailed: () => {}, readBirthToken: () => 'test-birth',
+    },
     prepareWorkspace: () => ({
       ...workspace(root),
       testWarmStart: {
@@ -466,13 +487,18 @@ test('runner invokes post-worker capture even when the worker exits before worke
       projectId: 1,
       status: 'in_progress',
       skill: 'saga-worker',
-      workerExecutionId: '',
-      fenceToken: '',
+      workerExecutionId: 'warm-execution',
+      fenceToken: 'warm-fence',
       runId: 'warm-run',
       workerId: 'worker',
       machineId: 'test-host',
-      repository: null,
-      executionContext: null,
+      repository: { name: 'product', local_path: root },
+      executionContext: {
+        policy_version: 'factory.execution.v1',
+        authority: { enforcement: 'strict', allowed_saga_tools: ['task_get', 'worker_done'] },
+        model_route: { provider: 'zai', model: null, effort: 'high' },
+        captured_at: new Date().toISOString(),
+      },
     };
     runner.start({ projectId: 1, epicId: 1, concurrency: 1, assignment });
     await waitFor(() => captures.length === 1);

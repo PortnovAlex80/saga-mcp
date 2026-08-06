@@ -303,7 +303,6 @@ function handleWorkerNext(args: Record<string, unknown>): {
   // Claim scope (Saga 3 engine): optional explicit task-id allowlist forwarded
   // from the board runner's run.claimTaskIds. When present, only these task ids
   // are eligible, regardless of priority — the engine dispatches exactly its
-  // projected discovery task and never a co-existing legacy task.
   const rawTaskIds = args.task_ids;
   const taskIds = Array.isArray(rawTaskIds)
     ? rawTaskIds.filter((id): id is number => Number.isInteger(id))
@@ -479,7 +478,6 @@ function handleWorkerDone(args: Record<string, unknown>): {
     // the assignment — the owner-check would otherwise reject the retry as
     // "not assigned to you", masking the replay.
     //
-    // The command_id is derived from execution_id + verdict (or, for legacy
     // unfenced tasks, from task+worker+verdict+result-identity). We use the
     // CALLER-SUPPLIED execution_id, not task.current_execution_id (which may
     // already be null after the first call cleared the fence).
@@ -629,7 +627,7 @@ function handleWorkerDone(args: Record<string, unknown>): {
       } else {
         // Ревью пройдено (APPROVED) — done. Kernel gate внутри lifecycle
         // (runEpisode → resolve-node) примет артефакты. Не нужен промежуточный
-        // removed-legacy-status — конвейерная модель: author → review → done.
+        // awaiting_verification — конвейерная модель: author → review → done.
         // Kernel gate работает внутри lifecycle, не блокирует tasks.status.
         newStatus = 'done';
         newAssignedTo = null;
@@ -726,7 +724,7 @@ function handleWorkerDone(args: Record<string, unknown>): {
       taskId,
       workerId,
       args.execution_id,
-      // removed-legacy-status ждёт проверки ядром — ещё не 'integrating'
+      // awaiting_verification ждёт проверки ядром — ещё не 'integrating'
       newStatus === 'done' && task.task_kind && task.execution_mode === 'git_change'
         ? 'integrating'
         : 'finishing',
@@ -766,7 +764,6 @@ function handleWorkerDone(args: Record<string, unknown>): {
           merge_conflict: false,
         });
       } else {
-        // Legacy and non-git tasks keep the historical done-is-ready behavior.
         db.prepare(
           `UPDATE tasks SET integration_state='not_required', updated_at=datetime('now') WHERE id=?`,
         ).run(taskId);
@@ -836,7 +833,6 @@ function handleWorkerDone(args: Record<string, unknown>): {
   // поэтому оборачиваем явно).
   const completed = withImmediateTransaction(db, completeTask);
   // saga4 cutover (Phase 4): worker_done no longer auto-generates downstream
-  // tasks. The task-kind ladder (generateNextForCompletedTask) was a legacy
   // escape hatch where generic task status produced new work. After the
   // cutover only a module-owned node/settlement may generate work; a completed
   // task is evidence consumed by its owning Process Module node.
@@ -995,7 +991,6 @@ function handleWorkerAskNeed(args: Record<string, unknown>): {
       });
       releasedExecution = outcome.taskReleased;
     } else {
-      // Legacy unfenced task — just clear assigned_to.
       db.prepare(
         `UPDATE tasks SET assigned_to=NULL, updated_at=datetime('now') WHERE id=?`,
       ).run(taskId);
@@ -1517,7 +1512,7 @@ export const definitions: Tool[] = [
   {
     name: 'worker_done',
     description:
-      'Complete the held task and free its assignment. Marks the task done by this worker (in_progress->review buffer, or review_in_progress->done on APPROVED), records the result as a comment, and clears assigned_to. Does NOT claim or return the next task — the response carries stop:true. For typed git_change tasks, approval records integration_state=pending: dependencies and downstream generation remain gated until worker_merge_release(result="merged"). Legacy and non-git tasks retain done-is-ready behavior. For a task in review_in_progress, verdict="changes_requested" returns it to the unassigned todo queue for a fresh developer execution. Call shape: worker_done({ task_id: <integer>, worker_id: "<string>", result: "<string>", verdict: "approved|changes_requested", execution_id: "<string>" }). Required: task_id, worker_id, result.',
+      'Complete the held task and free its assignment. Author completion enters review; approved repository work remains gated until worker_merge_release(result="merged"). A changes_requested verdict returns the card to the author queue with review feedback. The response carries stop:true and never assigns another card.',
     annotations: {
       title: 'Worker: Complete',
       readOnlyHint: false,
@@ -1601,7 +1596,7 @@ export const definitions: Tool[] = [
   {
     name: 'worker_merge_acquire',
     description:
-      'Acquire the merge-lock before integrating task/<id>. Typed repository tasks lock only their project_repository and use its integration_branch, so different repositories may merge concurrently. Legacy tasks retain the project-level dev lock. The lock auto-expires after 10 minutes. Call shape: worker_merge_acquire({ task_id: <integer (a done task you hold)>, worker_id: "<string>", execution_id: "<string>" }). Required: task_id, worker_id.',
+      'Acquire the repository-scoped merge lock before integration. Different repositories may merge concurrently. The lock auto-expires after 10 minutes and requires the exact execution fence.',
     annotations: {
       title: 'Worker: Merge Lock (acquire)',
       readOnlyHint: false,
@@ -1670,16 +1665,12 @@ export const definitions: Tool[] = [
  * Binding resolution (T1.5): task.metadata is a consistency read, NOT the
  * authority. Two fail-closed rules:
  *   - If the registries are not initialized → infra failure (throw), not a
- *     silent legacy bypass. The composition root MUST wire the registries in
  *     production. Tests that don't exercise validation initialize the DB
  *     without calling initSubmissionRegistries, but those tests also don't
  *     call handleWorkerDone for factory-managed tasks.
  *   - If task.metadata declares a process_module_ref but the binding fields
  *     are malformed/missing → FACTORY_BINDING_MISSING (throw), not a silent
- *     legacy bypass. A task that is supposed to be factory-managed but has a
- *     broken binding is a real error, not "legacy mode".
  *   - If task.metadata has NO process_module_ref key at all → the task is
- *     genuinely non-factory (e.g. a manually created task). Legacy mode is
  *     correct here — return without validation.
  *
  * Contract ref (T1.6): if the resolved policy carries a contractRef, it is
@@ -1716,7 +1707,6 @@ function validateSubmissionIfRequired(
 
   const hasProcessModuleRef = Object.prototype.hasOwnProperty.call(metadata, 'process_module_ref');
 
-  // Non-factory task: no process binding at all. Legacy mode is correct.
   if (!hasProcessModuleRef) return;
 
   // Factory-managed task: registries MUST be wired (fail-closed, T1.5).
@@ -1737,7 +1727,6 @@ function validateSubmissionIfRequired(
     || typeof nodeId !== 'string'
   ) {
     // Factory-managed task (has process_module_ref key) but binding fields
-    // are missing or wrong type → real error, not legacy bypass.
     throw new Error(
       `FACTORY_BINDING_INCOMPLETE: task ${task.id} has process_module_ref `
       + `but binding is incomplete (process_run_id=${JSON.stringify(processRunId)}, `
@@ -1756,15 +1745,6 @@ function validateSubmissionIfRequired(
   }
 
   if (policy.mode === 'none') return; // explicitly no validation — allowed
-  if (policy.mode === 'legacy-unvalidated') {
-    // Allowed with telemetry warning. Migration tracked by ticket.
-    console.warn(
-      `[submission] legacy-unvalidated: ${moduleRef}/${nodeId} `
-      + `(${policy.migrationTicket})`,
-    );
-    return;
-  }
-
   // mode === 'required'
   const validator = validatorRegistry.resolve(policy.validatorId);
   if (!validator) {

@@ -122,7 +122,6 @@ function handleExport(args: Record<string, unknown>) {
       // saga4 cutover (EXECUTION-PLAN §B.1 #8): the `episode_workflows` row
       // snapshot used to be serialized here. Lifecycle runs are now the source
       // of truth, so the writer is gone and this reader is dropped to match.
-      // Imports relying on the legacy `workflow` field ignore it.
       tasks: taskData,
     };
   });
@@ -407,7 +406,6 @@ function handleImport(args: Record<string, unknown>) {
       }
       // saga4 cutover (EXECUTION-PLAN §B.1 #8a): the `episode_workflows` INSERT
       // that mirrored the exported `workflow` row is gone — lifecycle runs own
-      // the stage now and are serialized outside this legacy field. The
       // `workflow` field on imported epics (if present) is simply ignored.
     }
 
@@ -493,7 +491,6 @@ function handleImport(args: Record<string, unknown>) {
     }
     // saga4 cutover (EXECUTION-PLAN §B.1 #8b): the `episode_workflows`
     // `baseline_artifact_id` backfill UPDATE is gone — that column lived on the
-    // legacy row that the export no longer snapshots. Baseline hashes now ride
     // on accepted AC artifacts themselves (accepted_hash), which are remapped
     // above through `artifactIdMap`.
 

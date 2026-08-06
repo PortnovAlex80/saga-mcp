@@ -428,7 +428,6 @@ CREATE TRIGGER IF NOT EXISTS trg_saga3_delivery_outputs_no_delete
 
 function recreateAbortTriggers(db, triggerDefs) {
   // First re-emit any triggers that existed before (their own sql, IF NOT EXISTS
-  // would already guard, but some legacy DDL lacks it — best-effort, skip dups).
   for (const t of triggerDefs) {
     if (!t.sql) continue;
     try { db.exec(t.sql); } catch (e) {

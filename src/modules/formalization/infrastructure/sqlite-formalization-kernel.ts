@@ -3,7 +3,6 @@
  *
  * This wires the formalization settlement policy to the EXISTING saga artifact
  * store (artifacts, artifact_traces, tasks tables). It reuses the same SQL
- * shape as the saga2 lifecycle tools (acceptedBaseline, assertTraceability,
  * assertTasksReady) — same semantics, exposed through the formalization port.
  *
  * The policy itself is in a separate class so it can be unit-tested with a
@@ -179,7 +178,6 @@ export class SqliteFormalizationArtifactGraph implements
     // hasEdge checks for an outgoing edge of given link_type to ANY artifact
     // of the target type. The epicId constrains the SOURCE artifact's epic;
     // the TARGET may live in a different epic (e.g. a PRD in formalization
-    // tracing back to a brief in the discovery epic). The original saga2
     // lifecycle gate had the same cross-epic semantics for brief.
     const hasEdgeToType = (
       srcId: number,
@@ -261,29 +259,21 @@ export class SqliteFormalizationArtifactGraph implements
   areTasksReady(epicId: number) {
     // Factory workplace state is the unconditional orchestration authority.
     // task's done-ness is the AUTHORITATIVE factory_workplaces loop_state (terminal
-    // = done). The legacy `tasks.status` is a reverse projection that may lag.
     // integration_state / execution_mode / task_kind stay on tasks (DATA
     // columns — they describe the task, not its orchestration loop state).
-    const cutover = true;
     interface TaskRow {
       id: number; execution_mode: string; status: string;
       loop_state: string | null;
       integration_state: string; task_kind: string | null;
     }
-    const rows: TaskRow[] = cutover
-      ? this.db.prepare(
+    const rows: TaskRow[] = this.db.prepare(
           `SELECT t.id, t.execution_mode,
-                  COALESCE(w.kanban_phase, t.status) AS status,
+                  w.kanban_phase AS status,
                   w.loop_state AS loop_state,
                   t.integration_state, t.task_kind
              FROM tasks t
-             LEFT JOIN factory_workplaces w ON w.workplace_ref = t.workplace_ref
+             JOIN factory_workplaces w ON w.workplace_ref = t.workplace_ref
             WHERE t.epic_id=? AND t.workflow_stage='formalization'`,
-        ).all(epicId) as TaskRow[]
-      : this.db.prepare(
-          `SELECT id, execution_mode, status, NULL AS loop_state,
-                  integration_state, task_kind
-            FROM tasks WHERE epic_id=? AND workflow_stage='formalization'`,
         ).all(epicId) as TaskRow[];
     // Exclude bookkeeping tasks (summary/recovery) — same exclusion as lifecycle.ts.
     const gateable = rows.filter(t =>
@@ -295,11 +285,8 @@ export class SqliteFormalizationArtifactGraph implements
       .filter(t => {
         // A task blocks the gate unless it is fully done. In cutover mode the
         // authoritative signal is the workplace loop_state='terminal'; in
-        // legacy mode it is tasks.status='done'. integration_state (git merge)
         // is data either way.
-        const isDone = cutover
-          ? (t.loop_state === 'terminal' || (t.loop_state === null && t.status === 'done'))
-          : t.status === 'done';
+        const isDone = t.loop_state === 'terminal';
         return !isDone
           || (t.execution_mode === 'git_change' && t.integration_state !== 'merged');
       })

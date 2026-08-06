@@ -245,7 +245,6 @@ export interface NodeProductionEnvelope {
   /**
    * Logical instance key within this product kind (e.g. `artifact:42` for the
    * artifact-ref bridge). When omitted, the persistence layer falls back to
-   * `schemaId` so legacy v1-style singletons (one product per kind per run)
    * keep working under the `UNIQUE(process_run_id, product_kind, product_key)`
    * constraint. Multiple products of the same kind in one run MUST each supply
    * a distinct `productKey`.

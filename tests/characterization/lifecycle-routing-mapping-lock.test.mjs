@@ -725,8 +725,6 @@ test('product-delivery-lifecycle: the plain-data definition hashes deterministic
 test('product-delivery-lifecycle: routing is purely declarative — every Discovery outcome forwards (permissive)', () => {
   // W13-A3 CHANGED THIS — the per-run discoveryGate resolver is gone. The
   // runtime lifecycle is purely permissive: every Discovery outcome forwards to
-  // Formalization. The legacy strict go/no-go gate survives ONLY as the
-  // separate declarative manifest LEGACY_PRODUCT_DELIVERY_SCENARIO_STRICT.
   const discovery = productDeliveryLifecycle.stages.find(
     s => s.id === 'initial-discovery',
   );

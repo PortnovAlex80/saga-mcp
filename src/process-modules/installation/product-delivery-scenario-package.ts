@@ -19,9 +19,6 @@
  * This package is the CANONICAL home of the Product Delivery scenario
  * `LifecycleScenarioManifest`. It builds the manifest directly from the frozen
  * `productDeliveryLifecycle` definition (pure data construction — no
- * functions, no `routeResolver`). The legacy compatibility bridge
- * (`application/legacy-scenario-adapter.ts`) RE-EXPORTS these manifests under
- * the legacy names so existing consumers are not broken; it does NOT
  * duplicate the construction.
  *
  * This ownership direction is mandated by the cutover ratchet (see
@@ -30,12 +27,10 @@
  * through INSTALLED scenarios, so the installed package must own the manifest
  * identity. A new-core file reaching back into the compatibility bridge for
  * the manifest would be a hidden fallback — the cutover silently routing new
- * runs through the legacy surface instead of the installed scenario. Building
  * the manifest here, from the pure lifecycle definition, keeps the new
  * execution lane self-contained.
  *
  * The package composes two existing scenario lanes — NO new runtime, NO new
- * persistence, NO legacy code deletion:
  *
  *   - `application/scenario-runner.ts` — the `ScenarioInstaller`
  *     (compile → resolve lock → bind installations → persist lock → return
@@ -50,7 +45,6 @@
  * "Installs the 4 production modules + scenario lock" is exactly what
  * `ScenarioInstaller.install` does: it resolves the manifest's
  * `requiredModuleSelectors` (the four `~<version>` selectors derived from the
- * legacy stage `moduleRef`s) to four exact installed module identities,
  * persists the resulting `ScenarioModuleLock` (one pin per stage), and binds
  * each stage to its `ProcessModuleInstallation`. The four production module
  * selectors are exposed here as `PRODUCT_DELIVERY_REQUIRED_MODULE_SELECTORS`
@@ -127,19 +121,18 @@ import type {
 export const PRODUCT_DELIVERY_SCENARIO_MANIFEST_FORMAT_VERSION = '1';
 
 /**
- * Distinct identity for the permissive scenario (legacy default). The `version`
  * carries the lifecycle version so a future lifecycle bump produces a different
  * manifest identity.
  */
 const PERMISSIVE_IDENTITY = {
   name: 'product-delivery',
   version: `${productDeliveryLifecycle.identity.version}+permissive`,
-  displayName: 'Legacy Product Delivery (permissive Discovery gate)',
+  displayName: 'Product Delivery (permissive Discovery gate)',
   description:
-    'Compatibility scenario wrapping the legacy productDeliveryLifecycle ' +
+    'Product Delivery scenario where every Discovery outcome forwards to Formalization; ' +
     'definition. Every Discovery outcome forwards to Formalization; the ' +
     'strength of the idea is carried by the discovery certificate, not by a ' +
-    'routing gate. Equivalent to the legacy lifecycle with discoveryGate ' +
+    'routing policy is permissive when discoveryGate is ' +
     "omitted or set to 'permissive'.",
 } as const;
 
@@ -151,27 +144,24 @@ const PERMISSIVE_IDENTITY = {
 const STRICT_IDENTITY = {
   name: 'product-delivery',
   version: `${productDeliveryLifecycle.identity.version}+strict`,
-  displayName: 'Legacy Product Delivery (strict Discovery gate)',
+  displayName: 'Product Delivery (strict Discovery gate)',
   description:
-    'Compatibility scenario wrapping the legacy productDeliveryLifecycle ' +
+    'Product Delivery scenario with the strict Discovery gate: ' +
     'definition with the strict Discovery gate: non-go Discovery outcomes ' +
-    'terminate the lifecycle. Equivalent to the legacy lifecycle with ' +
+    'non-go outcomes terminate the lifecycle with ' +
     "discoveryGate: 'strict'. Use this for regulated / contractual " +
     'environments where Discovery is a real go/no-go gate.',
 } as const;
 
 // ---------------------------------------------------------------------------
-// Discovery gate routing (legacy `resolveProductDeliveryRoute` translated to
 // static outcomeRoutes tables).
 //
-// The legacy resolver only overrides non-go Discovery outcomes when the
 // operator set discoveryGate: 'strict'. Permissive mode falls through to the
 // static outcomeRoutes (every outcome forwards to Formalization). Strict mode
 // terminates non-go outcomes. We encode both statically here.
 // ---------------------------------------------------------------------------
 
 /**
- * Discovery outcomes the legacy lifecycle knows how to forward (the union of
  * `outcomeRoutes` keys on the Discovery stage).
  */
 const DISCOVERY_OUTCOMES = [
@@ -206,7 +196,6 @@ const FORMALIZATION_STAGE_ID = 'solution-formalization';
 
 /**
  * Build the Discovery stage's permissive outcomeRoutes: every outcome forwards
- * to Formalization. Identical to the legacy static table.
  */
 function permissiveDiscoveryRoutes(): Record<string, TransitionTarget> {
   const routes: Record<string, TransitionTarget> = {};
@@ -219,7 +208,6 @@ function permissiveDiscoveryRoutes(): Record<string, TransitionTarget> {
 /**
  * Build the Discovery stage's strict outcomeRoutes: `go` forwards to
  * Formalization; every non-go outcome terminates with the gate's terminal
- * status. Equivalent to the legacy resolver's strict-mode branch.
  */
 function strictDiscoveryRoutes(): Record<string, TransitionTarget> {
   const routes: Record<string, TransitionTarget> = {};
@@ -230,7 +218,6 @@ function strictDiscoveryRoutes(): Record<string, TransitionTarget> {
     if (terminal) {
       routes[outcome] = { type: 'terminal', status: terminal };
     } else {
-      // Unknown outcome: legacy resolver falls through to the static table,
       // which forwards to Formalization. Preserve that behavior.
       routes[outcome] = { type: 'stage', stageId: FORMALIZATION_STAGE_ID };
     }
@@ -330,7 +317,6 @@ const OUTPUT_CONTRACT_REF: ContractRef = {
 //
 // The lifecycle has no explicit transition/reentry budgets (the orchestrator
 // imposes its own loop guard). The manifest surface requires them, so we
-// declare conservative defaults that match the legacy behavior.
 // ---------------------------------------------------------------------------
 
 const TRANSITION_BUDGETS = {
@@ -474,7 +460,6 @@ function buildManifest(mode: 'permissive' | 'strict'): LifecycleScenarioManifest
 
 /**
  * The installed Product Delivery scenario manifest — the PERMISSIVE Discovery
- * gate (legacy default). This is the manifest new Product Delivery runs use
  * after the cutover.
  *
  * Pure data: derived from the frozen `productDeliveryLifecycle`. No functions,
@@ -535,14 +520,11 @@ export const PRODUCT_DELIVERY_SCENARIO_MANIFESTS: Readonly<
 // ---------------------------------------------------------------------------
 // Discovery gate selection.
 //
-// The manifest surface is structurally incapable of carrying the legacy per-run
 // `routeResolver`, so the two gate modes are two distinct manifests.
 // The operator/installer picks one at scenario-install time. The package's
-// default is PERMISSIVE — the legacy default.
 // ---------------------------------------------------------------------------
 
 /**
- * The two values the legacy `discoveryGate` flag can take. Used to select which
  * manifest this package installs.
  */
 export type ProductDeliveryDiscoveryGate = 'permissive' | 'strict';
@@ -552,11 +534,8 @@ export type ProductDeliveryDiscoveryGate = 'permissive' | 'strict';
  *
  * @property discoveryGate Which manifest to install. `'permissive'` (default)
  *                         installs the manifest where every Discovery outcome
- *                         forwards to Formalization (the legacy default).
  *                         `'strict'` installs the manifest where non-go
  *                         Discovery outcomes terminate (the regulated-
- *                         environment legacy variant). This is the explicit,
- *                         declarative equivalent of the legacy per-run
  *                         `discoveryGate` flag.
  */
 export interface InstallProductDeliveryScenarioOptions {
@@ -622,7 +601,6 @@ export type ProductDeliveryScenarioInstallerDeps = ScenarioInstallerDeps;
  * {@link InstalledScenario} via the `ScenarioInstaller`.
  *
  * Selects the manifest for `options.discoveryGate` (default `'permissive'` =
- * legacy default) and delegates to `ScenarioInstaller.install`. The installer
  * compiles the manifest, resolves the four production module selectors to exact
  * installed identities, writes the scenario module lock (one pin per stage),
  * binds each stage to its `ProcessModuleInstallation`, and returns the
@@ -648,7 +626,6 @@ export async function installProductDeliveryScenario(
 }
 
 /**
- * Stateless convenience: install the PERMISSIVE (legacy-default) Product
  * Delivery scenario.
  */
 export async function installProductDeliveryScenarioPermissive(

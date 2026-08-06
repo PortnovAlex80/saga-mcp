@@ -26,7 +26,6 @@ export interface BuildExecutionContextInput {
   /** Model route read ONCE by the caller (dispatcher) inside its claim transaction. */
   modelRoute: ExecutionModelRoute;
   /**
-   * The WorkIntent bound to the task, or null for a legacy Saga 2 task with no
    * `work_intent_id`. Null authority → gateway compatibility-allow.
    */
   workIntent: WorkIntent | null;
@@ -37,7 +36,6 @@ export interface BuildExecutionContextInput {
 /**
  * Build the immutable snapshot. For a Saga 3 task (workIntent != null) the
  * authority is frozen with an `authority_hash` over the granted tool surface.
- * For a legacy Saga 2 task (workIntent == null) authority is null and the
  * gateway treats the execution as compatibility-allow.
  */
 export function buildExecutionContext(input: BuildExecutionContextInput): ExecutionContextSnapshot {

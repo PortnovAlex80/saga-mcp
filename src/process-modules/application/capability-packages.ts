@@ -3,7 +3,6 @@
  *
  * This module defines the versioned platform Capability Packages: the shared
  * MCP tool bundles the Runtime contributes on its own behalf (NOT module-
- * owned). They declare, as `ModuleToolContribution`s, the legacy shared tools
  * the platform has always surfaced — `task_*`, `artifact_*`, `trace_*`,
  * `repository_*`, `worker_*` — plus the protocol checkpoint tool. Packaging
  * them as Capability Packages lets the `tool-contribution-installer` install
@@ -29,7 +28,6 @@
  *
  * # Why these five packages
  *
- * The five shared-tool surfaces map onto the legacy tool families in
  * `src/tools/*.ts` plus the protocol tool:
  *   - `platform.tasks`               → task_create/list/get/update
  *   - `platform.artifact-graph`      → artifact_create/get/list/update,

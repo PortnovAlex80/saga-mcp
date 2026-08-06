@@ -89,8 +89,7 @@ test('deliveryPackageManifest wraps the existing deliveryProcessModule definitio
   );
 });
 
-test('manifestFormatVersion is the migrated "1" (not legacy-0)', () => {
-  // Wave 9 bumps delivery from legacy-0 to '1' (populated resource/handler arrays).
+test('manifestFormatVersion is the migrated "1" (not unsupported-0)', () => {
   assert.equal(deliveryPackageManifest.manifestFormatVersion, '1');
   assert.equal(DELIVERY_MANIFEST_FORMAT_VERSION, '1');
 });

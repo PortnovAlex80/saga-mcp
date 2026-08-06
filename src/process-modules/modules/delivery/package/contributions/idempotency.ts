@@ -45,7 +45,6 @@
  *
  * PURE DATA: readonly constants. No behavior — the `deliveryActionKey`
  * function itself lives in `delivery-settlement-policy.ts` (owned by the
- * legacy delivery lane); this file declares the package-local CONTRIBUTION
  * metadata the manifest carries.
  *
  * ── Dependency-direction ──────────────────────────────────────────────────

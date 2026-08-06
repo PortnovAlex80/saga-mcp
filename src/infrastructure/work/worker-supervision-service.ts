@@ -223,7 +223,7 @@ function releaseSupervisionLease(
 
 /**
  * Start the watchman. Runs one reconciliation immediately (startup sweep —
- * catches executions orphaned by a previous runtime crash), then repeats every
+ * catches executions orphaned by a earlier process crash), then repeats every
  * intervalMs until stop() is called. Each reconcile is independent: a reaped
  * execution is terminal and a subsequent sweep is a no-op for it.
  */

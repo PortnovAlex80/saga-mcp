@@ -18,7 +18,6 @@
  *     production the module emits.
  *   - The module's declared `ModuleCompletion` outcome set, mapping each
  *     terminal delivery outcome to its `terminal` flag. This is the explicit
- *     completion envelope (plan §7.5.6) that replaces the legacy magic
  *     certificate bindings: the settlement handler emits one of these
  *     outcomes, and the runtime knows from `terminal: true` that the run is
  *     done.

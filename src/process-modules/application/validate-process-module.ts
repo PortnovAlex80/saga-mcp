@@ -203,7 +203,6 @@ export function validateProcessModuleDefinition(
   }
   for (const node of module.flow.nodes) validateNode(node, profileIdSet, errors);
 
-  // C2: an LM node is executed by an infrastructure LmNodeExecutor that looks
   // up its executionProfile in the module's own profile table. A module that
   // declares LM nodes but ships an empty executionProfiles array therefore
   // cannot run any of its LM nodes — a high-risk structural hole that would

@@ -16,7 +16,6 @@
  * SQL OWNERSHIP: per spec §7/§9, W3-A6 is the single SQL writer for
  * `factory_node_runs`; W3-A4 owns `factory_process_products`. Both changes here are
  * additive and idempotent; v1 read/write paths are untouched. No NOT NULL
- * enforcement (Wave 11 hardens); legacy v1 rows leave `node_id` NULL.
  *
  * Two-hash design (inherited from v1, unchanged):
  *   - `product_hash` = the domain identity exposed by the module contract
@@ -148,7 +147,6 @@ export class SqliteProcessProductRepositoryV2 implements ProcessProductRepositor
     // reference but keeps the NOT NULL column populated.
     const productKind = envelope.schemaId;
     // product_key: the logical instance within this kind. Defaults to the
-    // schemaId when the envelope does not carry one (keeps legacy v1-style
     // singletons working under the triple UNIQUE constraint). The
     // artifact-ref bridge sets productKey='artifact:<id>' so multiple FR/NFR/
     // RULE products of the same kind coexist in one process run.
@@ -277,7 +275,6 @@ interface ProcessProductV2Row {
  * PROCESS_PRODUCT_PAYLOAD_* on mismatch (mirrors v1 error codes).
  *
  * The `envelope` field is reconstructed ONLY when the row was written via the
- * v2 path (node_id is non-NULL). For legacy v1 rows (node_id NULL) we leave
  * envelope NULL — the v1 caller did not persist the wrapper fields, so
  * reconstructing a NodeProductionEnvelope would require fabricating schemaId/
  * productRef/lineage, which is exactly the kind of silent fill-in §9.11
@@ -303,7 +300,6 @@ function rowToV2Record(row: ProcessProductV2Row): ProcessProductRecordV2 {
     );
   }
 
-  // Reconstruct the envelope only for v2 rows. Legacy rows (node_id NULL) get
   // envelope=NULL; callers that need the envelope must go through recordProduct.
   let envelope: NodeProductionEnvelope | null = null;
   if (row.node_id !== null) {

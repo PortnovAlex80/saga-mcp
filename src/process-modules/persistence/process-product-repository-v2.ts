@@ -31,7 +31,6 @@
  * `(schema_id, artifact_ref, product_hash)`) and one nullable `node_id` column
  * — both idempotent, both owned by W3-A4 (W3-A6 is the SQL owner for
  * `factory_node_runs`; per spec §7/§9, W3-A4 owns `factory_process_products`).
- * No legacy column is removed; v1 read/write paths keep working unchanged.
  */
 
 // Type-only import from the pure SPI layer. ProductRef and NodeProductionEnvelope
@@ -75,7 +74,6 @@ export interface ProcessProductRecordV2<T = unknown> {
    */
   readonly productKind: string;
   /**
-   * Logical instance key within this product kind. For legacy v1 rows this
    * mirrors `productKind` (one product per kind per run); for v2 rows written
    * via `recordProduct` it is derived from the envelope's `productKey`
    * (defaulting to `schemaId`) so multiple products of the same kind can
@@ -91,7 +89,6 @@ export interface ProcessProductRecordV2<T = unknown> {
   /** ISO timestamp the row was created. */
   readonly createdAt: string;
   /**
-   * Flow node that emitted this product. NULL for legacy v1 rows (written
    * before Wave 3 added the column); non-NULL for rows written via
    * `recordProduct`.
    */
@@ -144,7 +141,6 @@ export interface ProcessProductRepository {
    * Lookup by raw artifact reference (the `ref` component of a ProductRef, or
    * any opaque artifact_ref the caller holds). Returns `null` when absent.
    *
-   * Used by callers that hold only the artifact_ref string (e.g. legacy
    * certificate/artifact refs surfaced on a ProcessRunRecord) and need to
    * fetch the full product body. Less precise than `getByProductRef` (no
    * digest check) — prefer `getByProductRef` whenever you have the full ref.

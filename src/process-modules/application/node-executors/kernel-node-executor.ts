@@ -84,7 +84,6 @@ export class KernelNodeExecutor implements NodeExecutor {
         // linchpin that lets a terminal settlement kernel emit `completion` and
         // have it reach persistence + settlement without touching magic bindings.
         // Additive: handlers that do not set `completion` forward `undefined`,
-        // leaving the legacy magic-bindings settlement path byte-identical.
         completion: result.completion,
       };
     } catch (err) {

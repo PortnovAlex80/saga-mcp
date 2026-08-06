@@ -178,49 +178,6 @@ export class ConveyorRuntime {
     });
   }
 
-  /**
-   * Final-accept shortcut: the dispatcher treats a final-author worker_done
-   * as the de-facto gate accept (the separate GateRun is not yet wired into
-   * the claim path). This moves the workplace to terminal(accepted) directly,
-   * after the fence check. Used when newStatus='done'.
-   */
-  rejectWorkerSelfAcceptance(input: {
-    workplaceRef: WorkplaceRef;
-    reservationRef: string;
-    taskId: number;
-  }): UseCaseResult {
-    throw new Error('GATE_RUN_REQUIRED: worker completion cannot accept a candidate');
-    /* c8 ignore start -- retained source is unreachable until the method is removed */
-    return this.atomically(input.workplaceRef, input.taskId, (current, ref) => {
-      // Fence check: the caller's reservation must match.
-      const actors = this.repo.readActiveActors(ref);
-      if (actors && actors.activeReservationRef !== input.reservationRef) {
-        throw new Error(
-          `FENCE_MISMATCH: workplace's active reservation `
-            + `'${actors.activeReservationRef ?? 'null'}' does not match `
-            + `'${input.reservationRef}' (REG-09-AC-04)`,
-        );
-      }
-      // The dispatcher treats worker_done(approved) as the de-facto final
-      // gate accept. The workplace may be in ANY active loop state (leased,
-      // running, verifying) depending on how far the worker progressed. We
-      // compute the terminal(accepted) state directly — the reducer's strict
-      // source-state asserts don't fit the dispatcher's one-shot done path.
-      const directState: WorkplaceState = {
-        kanbanPhase: 'done',
-        loopState: 'terminal',
-        nextRole: current.nextRole,
-        revision: current.revision + 1,
-        terminalReason: 'accepted',
-      };
-      return {
-        event: null,
-        directState,
-        activeReservationRef: null,
-      };
-    });
-    /* c8 ignore stop */
-  }
 
   /**
    * PROC-08 — Re-queue for repair after a gate rejection or crash. A new

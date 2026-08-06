@@ -9,7 +9,6 @@
  * # Why this exists
  *
  * Today two launch paths can run in parallel:
- *   1. `LmNodeExecutor` directly launches one preassigned card via
  *      `WorkAssignmentPort.assignTask` → `WorkerExecutor.start`.
  *   2. `dispatch-loop.ts` drains queued tasks through
  *      `WorkerExecutorFactory` → `ClaudeBoardWorkerExecutor`.

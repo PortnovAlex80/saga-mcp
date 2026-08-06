@@ -19,6 +19,5 @@ export async function createProductLifecycleComposition(ctx) {
       settlementState: mockDeliveryPort,
     },
     // CLI checks productLifecycle.delivery for its own gate
-    // This is what the final saga2 application sees
   };
 }

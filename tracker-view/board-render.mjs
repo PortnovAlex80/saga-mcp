@@ -343,7 +343,7 @@ export function createBoardRenderApi({
       .sort().map(kind => `<option value="${esc(kind)}">${esc(kind)}</option>`).join('');
     const episodeProgress = Object.values(epicById).map(e => `
       <div class="episode-progress"><b>${esc(e.name)}</b>
-        <span class="task-badge stage">${esc(e.episode_stage || 'legacy')}</span>
+        <span class="task-badge stage">${esc(e.episode_stage || 'unassigned')}</span>
         ${e.drift_count ? `<span class="task-badge" style="color:#f85149">drift ${e.drift_count}</span>` : ''}
         ${e.evidence_count ? `<span class="task-badge" style="color:#3fb950">evidence ${e.evidence_count}</span>` : ''}
         ${e.gate_error ? `<span class="task-badge" style="color:#f85149" title="${esc(e.gate_error)}">gate blocked</span>` : ''}
@@ -504,7 +504,6 @@ export function createBoardRenderApi({
         else if (run.status === 'completed') runnerStatus.textContent = 'готово · ✓' + run.completed;
         else if (run.status === 'failed') runnerStatus.textContent = 'ошибка движка: ' + (run.last_error || '?');
         if (run?.last_error) runnerStatus.title = run.last_error;
-        // In-process runner workers (legacy path when tracker-view started the
         // run itself). Cross-process workers come via refreshDbWorkers() below.
         if (run && run.active && run.active.length > 0) renderWorkersList(run.active);
       }
@@ -833,14 +832,12 @@ export function createBoardRenderApi({
         return h + 'h' + (m % 60) + 'm';
       }
       // Pipeline polling: the lifecycle controller is the SOLE poller for the
-      // shared #pipeline-stages container (saga4 cutover: legacy fallback removed).
       // It renders the lifecycle bar for epics with a LifecycleRun and an explicit
       // empty state otherwise. Dynamic import() works from a classic script.
       import('/lifecycle-pipeline/mount.js').then(mod => {
         window.__lifecyclePipeline = mod; // expose for the epic-switch handler
         mod.mountLifecyclePipeline(window.__sagaEpicId, ${RELOAD_SEC * 1000});
       }).catch(() => {
-        // mount.js load failed — log; no legacy pipeline to fall back to.
         console.error('lifecycle-pipeline/mount.js failed to load');
       });
 
@@ -876,7 +873,6 @@ export function createBoardRenderApi({
           fetchEngineStatus();
           // Remount the lifecycle controller for the newly-selected epic. If the
           // module is still loading or absent, this is a safe no-op (mount is a
-          // no-op without an epicId; legacy poller covers the gap).
           if (window.__lifecyclePipeline) {
             window.__lifecyclePipeline.mountLifecyclePipeline(window.__sagaEpicId, ${RELOAD_SEC * 1000});
           }

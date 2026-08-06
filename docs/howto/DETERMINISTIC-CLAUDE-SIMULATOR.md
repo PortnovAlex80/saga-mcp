@@ -42,7 +42,7 @@ The scripted workers currently cover:
 - Acceptance verification evidence.
 - Approved git review integration through the real merge lock handlers.
 
-Unknown production work fails closed. The legacy `tests/mock-claude.mjs`
+Unknown production work fails closed. The isolated `tests/mock-claude.mjs`
 entrypoint enables generic approval explicitly only to keep historical tests
 running while they migrate to named scenarios.
 

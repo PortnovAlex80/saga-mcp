@@ -73,8 +73,7 @@ test('formalizationPackageManifest wraps the existing formalizationProcessModule
   );
 });
 
-test('manifestFormatVersion is the migrated "1" (not legacy-0)', () => {
-  // Wave 8 bumps formalization from legacy-0 to '1' (populated resource/handler arrays).
+test('manifestFormatVersion is the migrated "1" (not unsupported-0)', () => {
   assert.equal(formalizationPackageManifest.manifestFormatVersion, '1');
   assert.equal(FORMALIZATION_MANIFEST_FORMAT_VERSION, '1');
 });
@@ -260,7 +259,6 @@ test('formalizationPackageManifest round-trips through canonical JSON (pure data
 
 /**
  * Map a bare skill name (e.g. 'saga-product') to the on-disk SKILL.md path the
- * resourceIndex declares. W13-A2 moved module-owned skills out of the legacy
  * global root (`skills/<name>/`) into the formalization package resources dir
  * (`src/process-modules/modules/formalization/package/resources/skills/<name>/`).
  * The shared `saga-process-module-worker-protocol` skill stays a PLATFORM

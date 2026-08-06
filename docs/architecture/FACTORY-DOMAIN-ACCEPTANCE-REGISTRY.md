@@ -358,7 +358,7 @@ CheckProvider не может получить право двигать Flow т
 Критерии приёмки:
 
 - `REG-10-AC-01`: queue состоит из Workplace с `loopState=queued`, а не из
-  произвольных legacy task rows.
+  произвольных task rows.
 - `REG-10-AC-02`: reviewer role имеет приоритет перед author при равной/более
   высокой policy priority.
 - `REG-10-AC-03`: unmet Flow/input dependencies исключают Workplace из queue.
@@ -863,7 +863,7 @@ scenarios с real LM и real sandboxed checks. Fault branches инжектиру
    отсутствующим.
 9. Board projection, logs и provider observations не становятся domain truth из
    удобства чтения.
-10. Архитектурные тесты запрещают legacy task-board reads/writes/foreign keys в
+10. Архитектурные тесты запрещают task-board reads/writes/foreign keys в
     core после cutover и module-name/task-kind switches в runtime.
 
 ## 7. Definition of Accepted

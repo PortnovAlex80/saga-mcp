@@ -120,10 +120,7 @@ export {
 } from './domain/installer.js';
 
 // ---------------------------------------------------------------------------
-// W2-A4 — ProcessRun installation pinning (pure value builder) + the legacy
-// nullable adapter that reads the new installation_id/package_digest columns
-// on factory_process_runs via raw SQL (does NOT edit sqlite-process-run-repository).
-// (installation/domain/process-run-pinning.ts + installation/persistence/process-run-installation-adapter.ts)
+// ProcessRun installation pinning.
 // ---------------------------------------------------------------------------
 export {
   type PinnedInstallation,
@@ -131,7 +128,6 @@ export {
 } from './domain/process-run-pinning.js';
 
 export {
-  // Legacy nullable adapter (§14.3.7): resolves NULL → fallback registry
   ProcessRunInstallationAdapter,
 } from './persistence/process-run-installation-adapter.js';
 

@@ -15,7 +15,6 @@
  * merges into the manifest's `resourceIndex`.
  *
  * Resource paths are package-relative (plan §5.5.1). W13-A2 moved the
- * formalization resources out of the legacy global root
  * (`tool-templates/formalization/`, `skills/`) into the formalization package
  * resources directory (`src/process-modules/modules/formalization/package/
  * resources/`). These repo-root-relative POSIX paths are the immutable,

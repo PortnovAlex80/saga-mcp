@@ -64,16 +64,13 @@ export interface NodeExecutionContext {
    * OPTIONAL driver-neutral execution envelope. Present only when the
    * GenericFlowExecutor's v2 wiring is active (the run was started with v2
    * NodeRun columns and an ExecutionContextAssembler is configured). v2-aware
-   * NodeExecutors read `ctx.envelope` directly; legacy executors ignore it and
    * read `ctx.frame` (which is populated via buildExecutionFrame when
-   * the envelope is present). Absent ⇒ legacy run, `frame` is the sole
    * execution-context surface.
    */
   readonly envelope?: ExecutionContextEnvelope;
   /**
    * OPTIONAL upstream product bodies loaded by exact `ProductRef`. Present
    * alongside `envelope` when the v2 path is active; forwarded to the node's
-   * input contract decoder. Legacy path leaves this undefined.
    */
   readonly upstreamProductBodies?: readonly unknown[];
   /**
@@ -83,7 +80,6 @@ export interface NodeExecutionContext {
    * regardless of which worker (task) produced them. Kernel handlers read this
    * instead of querying the ledger themselves, so every module inherits P18
    * automatically and no future module can reintroduce a task-scoped read.
-   * Optional (absent ⇒ legacy run without the centralized seam).
    */
   readonly nodeProducts?: NodeProducts;
 }
@@ -173,20 +169,16 @@ export interface NodeExecutionResult {
    * `completion`, settlement reads `completion.outputEnvelope` /
    * `completion.outputEnvelope.certificateRef` directly instead of extracting
    * certificate fields from opaque `production.bindings.certificatePayload`.
-   * Legacy producers that omit this field settle through the existing path.
    */
   completion?: ModuleCompletion;
   /**
    * OPTIONAL driver-neutral production envelope. When present, the
    * GenericFlowExecutor dual-writes it to the NodeRun v2
-   * `production_envelope` column (via `completeV2`) alongside the legacy flat
-   * `output_*` fields derived from `production`. Legacy producers that emit
    * only `production` behave identically.
    */
   productionEnvelope?: NodeProductionEnvelope;
   /**
    * OPTIONAL driver-neutral execution receipt. When present, dual-written to
-   * NodeRun v2. Legacy producers that emit only `receipt` behave identically.
    */
   driverReceipt?: DriverNeutralExecutionReceipt;
 }
@@ -269,18 +261,14 @@ export interface NodeExecutor {
 }
 
 // v2 driver-neutral executor SPI. The v2 types ADD the pure-SPI
-// envelope/receipt shapes alongside the legacy `NodeExecutionContext` /
 // `NodeExecutionResult`. They are ADDITIVE: nothing is removed from the
-// legacy types, and the GenericFlowExecutor only hands the v2 context to a
 // NodeExecutor when v2 wiring is present (an `envelope` field is set on the
-// context). Existing node executors that read only the legacy `frame` keep
 // working because buildExecutionFrame computes the protocol
 // `NodeExecutionFrame` from the envelope's `upstreamProducts`.
 
 /**
  * v2 node-execution context.
  *
- * Replaces the mutable `frame: NodeExecutionFrame` field on the legacy
  * {@link NodeExecutionContext} with an immutable, driver-neutral
  * {@link ExecutionContextEnvelope} assembled from durable state by
  * `assembleExecutionContext`. The envelope carries the exact declared
@@ -288,16 +276,11 @@ export interface NodeExecutor {
  * reconstruction), the frozen authority snapshot, and the pinned package/node
  * identity.
  *
- * The legacy board-vocab identities (`projectId` / `epicId` / `processRunId` /
  * `initiatedBy`) are carried over unchanged for backward compatibility. They
  * stay as base fields here so existing node executors compile and behave
  * identically whether the v2 path is active or not.
  *
- * The legacy `frame` field is NOT on this type; a v2-aware NodeExecutor that
  * needs the frame view can use `buildExecutionFrame` on
- * `ctx.envelope` (the v2 GenericFlowExecutor also continues to pass the legacy
- * `frame` on the legacy {@link NodeExecutionContext} when the v2 wiring is
- * absent, so legacy-only executors see no change).
  */
 export interface NodeExecutionContextV2 {
   /** Driver-neutral execution envelope. */
@@ -305,7 +288,6 @@ export interface NodeExecutionContextV2 {
   /** Upstream product bodies loaded by exact ProductRef. Forwarded to the
    *  node's input contract decoder; the envelope carries only the refs. */
   readonly upstreamProductBodies: readonly unknown[];
-  // Legacy identities, retained for backward compat.
   readonly projectId: number;
   readonly epicId: number | null;
   readonly processRunId: number;

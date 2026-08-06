@@ -1,6 +1,5 @@
 // Stamp process_run_id=1 onto every task in the race DB. The saga4 authority
 // gate (findNextClaimable) requires tasks.metadata.process_run_id IS NOT NULL,
-// otherwise a card is not claimable. The legacy setup.mjs predates saga4 and
 // does not stamp it; this helper brings those fixtures up to the saga4 contract.
 //
 // Usage:  node tests/dispatcher-race/stamp-process-run.mjs <dbPath>

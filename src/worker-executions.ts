@@ -196,7 +196,6 @@ export function markExecutionSpawnFailed(
  * (tests/architecture/tasks-writer-invariant.test.mjs). Wave 2 (FU-D) was
  * supposed to consolidate it; this finally does: the function now DELEGATES to
  * {@link releaseExecutionAtomically}, the same primitive the reaper and the
- * legacy-recovery path use. That collapses the close-callback path and the
  * reaper path onto ONE atomic mechanism (blueprint §22:1199).
  *
  * Behavioral equivalence notes:
@@ -362,7 +361,6 @@ export function reconcileWorkerExecutions(
   // LOCAL SupervisionClock (default real wall-clock; tests inject a fixed one).
   // nowMs defaults to clock.now().getTime() so the grace-window arithmetic is
   // deterministic under test injection. Callers passing nowMs positionally
-  // (legacy contract) override the clock.
   const probe = options?.processProbe ?? REAL_PROCESS_PROBE;
   const hostname = options?.hostname ?? os.hostname();
   const clock = options?.clock ?? REAL_SUPERVISION_CLOCK;
@@ -587,6 +585,5 @@ function stampStuckIfNotAlready(
  * A live PID is observed only; a dead/missing PID is returned to its queue.
  *
  * Sibling to {@link reconcileWorkerExecutions}, intentionally NOT part of the
- * pure stuck policy: this is legacy-transitional mechanism that touches the
  * tasks table directly (documented exception in the single-writer invariant).
  */

@@ -19,8 +19,6 @@
 // runtime):
 //   { ok:true, source:'lifecycle', view: <PipelineView> }  // render the bar
 //   { ok:true, source:'lifecycle', view: null }            // empty state (no run)
-// An epic with no LifecycleRun renders an explicit empty state, never a legacy
-// bar. The former `source:'legacy'` coexistence signal was removed.
 
 import { readFile, realpath } from 'node:fs/promises';
 import path from 'node:path';
@@ -62,7 +60,6 @@ export function createLifecyclePipelineApi({ repo, resolveProjectId, publicDir }
         return respondJson(res, 200, { ok: true, source: 'lifecycle', view: null });
       }
       const view = buildPipelineView(projectId, epicId, repo);
-      // No LifecycleRun for this epic → empty lifecycle state (not a legacy bar).
       return respondJson(res, 200, { ok: true, source: 'lifecycle', view });
     } catch (e) {
       // Honest failure: a genuine read error must not be silently masked.

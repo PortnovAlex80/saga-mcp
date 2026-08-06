@@ -46,7 +46,6 @@ export function reviewerCompletionEvent(taskStatus: string): ProductionCellEvent
 /**
  * Bind a task to its workplace and reserve it for the given execution.
  *
- * Called by the dispatcher's `worker_next` after a legacy claim succeeds.
  * Returns the workplace ref (for context) or null when the task is not a
  * Process Module task (no process_run_id in metadata).
  */

@@ -289,7 +289,7 @@ test('§11.9 errorReceipt carries correlation + structured error', () => {
 });
 
 test('§11.9 a receipt allows a null correlation (non-consequential compatibility call)', () => {
-  const r = okReceipt('legacy_tool', { ok: true }, null);
+  const r = okReceipt('unstructured_tool', { ok: true }, null);
   assert.equal(r.correlation, null);
   assert.equal(r.ok, true);
 });
@@ -380,15 +380,15 @@ test('§11.10 parseStructuredError returns null for a success result', () => {
   assert.equal(parseStructuredError(wire), null);
 });
 
-test('§11.10 parseStructuredError returns null for a legacy flattened Error string', () => {
+test('§11.10 parseStructuredError returns null for a unsupported flattened Error string', () => {
   // A gateway that violated §11.10 and produced "Error: boom" cannot trick the
   // receiver into treating it as structured. The receiver treats it as
   // unrecoverable rather than guessing a repair contract.
-  const legacy = {
+  const unsupported = {
     content: [{ type: 'text', text: 'Error: boom' }],
     isError: true,
   };
-  assert.equal(parseStructuredError(legacy), null);
+  assert.equal(parseStructuredError(unsupported), null);
 });
 
 test('§11.10 parseStructuredError ignores a success body that happens to contain an error field', () => {

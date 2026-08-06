@@ -142,7 +142,6 @@ export interface ExecutionContextAssemblerDeps {
 //
 // The run may or may not carry an installation pin (`installationId`/
 // `packageDigest`); the assembler reads them defensively (present → pin,
-// absent → legacy placeholder) so it builds green against both shapes.
 // ---------------------------------------------------------------------------
 
 /**
@@ -150,7 +149,6 @@ export interface ExecutionContextAssemblerDeps {
  * package name/version come from the module manifest (passed by the caller
  * via `packageIdentity`). The digest pins the exact immutable content.
  *
- * Legacy runs (no installation pin yet) get a placeholder digest of
  * Execution is rejected when the immutable package pin is absent; the
  * catalog fallback path treats that sentinel as "use catalog".
  */
@@ -177,7 +175,6 @@ export function resolvePackageRef(
  * manifest (passed by the caller) so a node id is never ambiguous across
  * module versions.
  *
- * Legacy callers without a Flow manifest may pass null; the assembler falls
  * back to the module name as the flow id and the module version as the flow
  * version.
  */
@@ -269,12 +266,10 @@ export interface AssembleExecutionContextOptions {
    */
   packageIdentity?: { name: string; version: string } | null;
   /**
-   * The Flow identity owning `nodeId`. May be null for legacy callers; the
    * assembler falls back to the module name/version as the flow id/version.
    */
   flowIdentity?: { flowId: string; flowVersion: string } | null;
   /**
-   * The installed-package content digest. Null for legacy catalog-resolved
    * runs; the assembler requires the immutable package identity and digest (the
    * executor's catalog fallback treats that as "resolve via catalog").
    */

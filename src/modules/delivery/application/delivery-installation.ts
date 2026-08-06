@@ -502,7 +502,6 @@ function issueDeliveryCertificate(
 
 /**
  * Wave 4 (Uncle Bob) — build the explicit ModuleCompletion envelope that
- * replaces the legacy magic certificate bindings (plan §7.5.6). The
  * outputEnvelope.certificateRef is the content-addressed pointer settlement
  * reads to bypass the magic-bindings fallback entirely (Wave 5 deletes that
  * branch). `terminal` mirrors the Delivery outcome definitions: all four
@@ -606,7 +605,6 @@ function deliverySettlementProduction(
   // Wave 4 (Uncle Bob): issue the ProcessOutcomeCertificate IN THE KERNEL so
   // the explicit ModuleCompletion can carry a content-addressed certificateRef.
   // Mirrors what generic-flow-executor.ts:363-390 does for the generic-envelope
-  // magic-bindings path. The legacy magic bindings below are KEPT (additive)
   // until Wave 5 deletes that branch.
   const issuedCertificate = issueDeliveryCertificate(
     deps,

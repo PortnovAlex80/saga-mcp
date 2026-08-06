@@ -1,6 +1,5 @@
 // tests/process-modules/process-execution-workspace.test.mjs
 //
-// saga4 cutover (LEGO-CONTRACTS.md §"Слой 1: СТОЛ"): the legacy
 // `prepareProcessExecutionWorkspace` function and the loose
 // `ProcessExecutionWorkspace` interface were REMOVED in D2. The pinned
 // materializer (`materializePinnedWorkspace`) is now the SOLE desk creator
@@ -264,7 +263,6 @@ test('materializePinnedWorkspace: binds exact task + node, returns a WorkplaceDe
     assert.equal(desk.nodeId, 'produce-example');
     assert.equal(desk.profileId, 'example-worker');
     assert.equal(desk.moduleRef, 'example-module@1.0.0');
-    // workspaceFiles is the legacy flat list: workspace TEMPLATES (not call
     // templates) + feedback paths. This fixture has no workspace templates and
     // no feedback, so it is empty.
     assert.deepEqual(desk.workspaceFiles, []);

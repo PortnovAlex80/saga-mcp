@@ -11,7 +11,6 @@
 // Unicode glyphs to match the existing `.pipeline-*` visual language.
 //
 // Export: renderPipeline(container, view) — one-shot render. Polling belongs to
-// mount.js so the shared legacy/lifecycle container has one controller.
 
 // ---- status → icon + class mapping (lifecycle-agnostic, keyed by field) ----
 // Mirrors the monolith's .pipeline-* colors but under the `.lp-` prefix so the
@@ -38,7 +37,6 @@ let liveStages = new Map();
  * @param {HTMLElement} container  DOM element to fill (cleared first).
  * @param {object|null} view       A PipelineView object, or null. When null the
  *                                 container is cleared and nothing is drawn
- *                                 (integration layer should fall back to legacy).
  */
 export function renderPipeline(container, view) {
   // Always tear down any prior live timer / handle table before drawing, even
@@ -50,7 +48,6 @@ export function renderPipeline(container, view) {
   // dangling; the bar is rebuilt from scratch each call).
   container.textContent = '';
 
-  // Graceful null case: integration layer falls back to the legacy pipeline.
   if (!view) return;
 
   const bar = document.createElement('div');

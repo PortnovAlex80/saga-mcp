@@ -9,7 +9,6 @@
  *
  * ── Why this file exists ───────────────────────────────────────────────────
  *
- * The legacy formalization handlers (in `../../formalization-installation.ts`)
  * reach for the GLOBAL database handle via `getDb()` from `src/db.ts`. That is
  * a Rule 2 dependency-direction violation (plan §3.7: a module never imports
  * db.ts / Runtime persistence adapters / infrastructure). It is currently
@@ -23,13 +22,9 @@
  * direct infrastructure dependency." A handler that calls `getDb()` is a direct
  * infrastructure dependency — this file is what removes it.
  *
- * Wave 8 only DEFINES the ports + handler adapter; the legacy path is NOT
- * migrated here (plan §3 anti-scope: "Additive: legacy formalization path
- * preserved alongside"). The legacy `formalization-installation.ts` keeps its
  * `getDb()` call and its allowlist entry. A new, port-injected handler surface
  * (`FormalizationPackageHandlerAdapter`, see `./handler-adapter.ts`) wraps the
  * existing handlers behind these ports. Wave 11 cutover will switch the
- * composition root to the port-injected path and the legacy allowlist entry is
  * removed then.
  *
  * ── Purity / layering ─────────────────────────────────────────────────────
@@ -64,7 +59,6 @@ import type { FormalizationCanonicalGraphPort } from '../../../../../modules/for
  * `derived_from` targets of the PRD, their canonical rows, and whether one of
  * them is an accepted non-product-type ancestor (brief/decision/discovery-doc).
  *
- * This is the READ the legacy handler does BEFORE deciding to auto-provision.
  */
 export interface FormalizationPrdRootRead {
   /** Ids of artifacts the PRD already traces to via `derived_from` (any type). */
@@ -113,7 +107,6 @@ export type FormalizationBriefProvisioningOutcome =
 /**
  * PORT — replaces the `getDb()` call in `ensureBriefRootTrace`.
  *
- * The legacy handler reads the live DB to (a) check whether the PRD already has
  * a root ancestor trace, and (b) if not, create a synthetic brief artifact +
  * link it. That is two concerns — a READ and a WRITE — both currently done
  * through the global handle. This port lifts both behind a module-local
@@ -122,7 +115,6 @@ export type FormalizationBriefProvisioningOutcome =
  * The READ path is split out (`readPrdRoot`) so a handler can decide whether to
  * provision without trusting the port to do the right thing implicitly. The
  * WRITE path (`provisionBriefRoot`) is idempotent: provisioning the same context
- * twice must attach at most one root trace (mirrors the legacy `INSERT OR
  * IGNORE` on the trace and the `SELECT … WHERE type='brief'` pre-check).
  */
 export interface FormalizationBriefProvisioningPort {
@@ -284,7 +276,6 @@ export interface FormalizationPackagePorts {
 /**
  * Re-export the canonical snapshot types so a handler that imports only this
  * package-ports file has everything it needs. These are type-only re-exports —
- * no runtime coupling to the legacy module's implementation, only to its
  * (already dependency-clean) port interfaces.
  */
 export type {

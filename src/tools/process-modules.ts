@@ -149,7 +149,6 @@ function handleProcessLifecycleGet() {
 // These tools are intentionally NARROW in P0: they persist a ProcessRun record
 // and transition its status, but do NOT invoke any executor yet. Real executor
 // wiring lands in P1 (ProcessModuleExecutor interface) + P5
-// (LegacyFormalizationProcessAdapter). The orchestrate-cli engine remains the
 // entry point that actually runs the module's workers; these MCP tools expose
 // the generic ProcessRun envelope for operators and tests.
 //
@@ -208,7 +207,6 @@ function handleProcessRunStart(args: Record<string, unknown>) {
     projectedStage = projectedStageRaw;
   }
   // Wave 2 installation pin (W3-A3, spec §6). Both optional: omitted → null
-  // (legacy run). When both are supplied the run is pinned to the immutable
   // module installation; the executor resolves package resources via the
   // Wave 2 PackageRegistry instead of the built-in catalog.
   const installationIdRaw = args.installation_id;
@@ -499,7 +497,7 @@ export const definitions: Tool[] = [
         },
         projected_stage: {
           type: 'string',
-          description: 'Optional. Legacy episode_workflows.stage to project when this run completes (e.g. "discovery", "formalization"). Null = no projection.',
+          description: 'Optional stage label projected when this run completes. Null means no projection.',
         },
       },
       required: [

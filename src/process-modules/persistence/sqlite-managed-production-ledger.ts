@@ -186,7 +186,6 @@ function requiredString(
 
 /**
  * Resolve server-authored process provenance for the current managed child.
- * Legacy tasks have none of the process_* keys and deliberately return null.
  * A partial or inconsistent binding fails closed.
  */
 export function resolveManagedExecutionProvenance(

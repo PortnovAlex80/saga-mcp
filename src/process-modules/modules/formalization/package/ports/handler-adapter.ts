@@ -7,7 +7,6 @@
  *
  * ── What this file owns ───────────────────────────────────────────────────
  *
- * The legacy formalization handlers (`../../formalization-installation.ts`)
  * are constructed by `createFormalizationKernelHandlers(deps)` where `deps`
  * carries the graph, the ledger, the repositories, etc. — but the
  * `ensureBriefRootTrace` helper STILL calls `getDb()` directly for the one
@@ -22,13 +21,9 @@
  *      runs through the injected port instead of `getDb()`.
  *
  *   2. `portInjectedEnsureBriefRoot(ports)` — a drop-in replacement for the
- *      legacy `ensureBriefRootTrace`'s DB-touching body, driven entirely by the
  *      `FormalizationBriefProvisioningPort`. This is the function Wave 11 will
- *      splice into the legacy handler when the composition root cuts over.
  *
- * ── Additive / legacy-preserved ────────────────────────────────────────────
  *
- * Per spec §3 anti-scope: "Additive: legacy formalization path preserved
  * alongside." This file does NOT edit `formalization-installation.ts`, does
  * NOT remove the `getDb()` call, and does NOT touch the dependency-direction
  * allowlist. It provides the NEW port-injected path; the composition root
@@ -61,7 +56,6 @@ import type {
 } from './formalization-package-ports.js';
 
 /**
- * The set of handler ids the package adapter exposes. Mirrors the legacy
  * `FORMALIZATION_HANDLER_IDS` so a consumer can address handlers by the same
  * stable logical ids regardless of which path is wired.
  */
@@ -70,8 +64,6 @@ export const FORMALIZATION_PACKAGE_HANDLER_IDS = FORMALIZATION_HANDLER_IDS;
 /**
  * Drive the PRD-root provisioning through the injected port.
  *
- * This is the port-injected equivalent of the legacy
- * `ensureBriefRootTrace(deps, ctx, prdArtifactId)` body. The legacy version:
  *   1. reads the graph for existing accepted non-product ancestors
  *   2. calls `getDb()` to check for a pre-existing root trace
  *   3. calls `getDb()` to find/create a brief in the epic
@@ -81,10 +73,8 @@ export const FORMALIZATION_PACKAGE_HANDLER_IDS = FORMALIZATION_HANDLER_IDS;
  * `FormalizationBriefProvisioningPort.provisionBriefRoot` call. Step 1 (the
  * graph read) is still done first so the port's `readPrdRoot` and the graph's
  * `readOutgoingArtifactTraces` agree before any write — same double-check the
- * legacy code performed.
  *
  * Returns the provisioning outcome so the caller can record it in bindings /
- * decide whether to rebuild its contract snapshot (the legacy handler rebuilds
  * the snapshot after a successful attach so `findContractGap` sees the root).
  */
 export function portInjectedEnsureBriefRoot(
@@ -92,14 +82,12 @@ export function portInjectedEnsureBriefRoot(
   ctx: KernelHandlerContext,
   prdArtifactId: number,
 ): FormalizationBriefProvisioningOutcome {
-  // No epic/project means no provisioning is possible (matches the legacy
   // guard: `if (ctx.epicId === null || ctx.projectId === undefined) return;`).
   if (ctx.epicId === null || ctx.projectId === undefined) {
     return { status: 'root-creation-failed', reason: 'brief provisioning requires an epic and project' };
   }
 
   // Step 1 (read): does the PRD already have an accepted non-product ancestor
-  // via the graph? The legacy code checks this through `deps.graph` first; we
   // keep that check so the graph and the provisioning port agree.
   const existingTargets = ports.graph.readOutgoingArtifactTraces([prdArtifactId])
     .filter(trace =>
@@ -122,7 +110,6 @@ export function portInjectedEnsureBriefRoot(
     // The graph already sees a valid root; no provisioning needed. The port
     // would return 'already-rooted' too, but we short-circuit to avoid a
     // redundant round-trip and to keep the graph as the source of truth
-    // (mirrors the legacy early-return).
     const rootId = ports.graph.readArtifactsByIds(existingTargets).find(artifact =>
       artifact.type !== 'PRD'
       && artifact.type !== 'FR'
@@ -148,11 +135,8 @@ export function portInjectedEnsureBriefRoot(
 }
 
 /**
- * Adapter options. `legacyDeps` is the existing `FormalizationInstallationDeps`
- * bundle the legacy handler factory consumes (graph, ledger, repositories,
  * policy, candidate acceptance). `ports` is the NEW injection bundle.
  *
- * The adapter overlays `ports` on top of `legacyDeps`: handlers read managed
  * productions through `ports.managedProduction` (when provided) and provision
  * the PRD root through `ports.briefProvisioning`. Handlers that do not need
  * either capability pass through unchanged.
@@ -162,8 +146,7 @@ export function portInjectedEnsureBriefRoot(
  * that currently auto-provisions a brief.
  */
 export interface FormalizationPackageHandlerAdapterOptions {
-  /** The legacy dependency bundle (graph, ledger, repositories, policy). */
-  readonly legacyDeps: FormalizationInstallationDeps;
+  readonly kernelDeps: FormalizationInstallationDeps;
   /** The NEW port-injection bundle. */
   readonly ports: FormalizationPackagePorts;
   /**
@@ -176,25 +159,23 @@ export interface FormalizationPackageHandlerAdapterOptions {
 /**
  * Build a port-injected handler map for the formalization package.
  *
- * This wraps `createFormalizationKernelHandlers` (the legacy factory) so every
  * handler keeps its exact behavior, EXCEPT the configured handler's
  * brief-provisioning side-effect runs through the injected port. The wrapper
  * records the provisioning outcome in the handler result bindings under
  * `briefProvisioning` so a downstream observer can see which path ran.
  *
  * The returned map has the same keys as `FORMALIZATION_HANDLER_IDS` — a
- * consumer cannot tell from the keys alone whether the legacy or the
  * port-injected path is wired. That symmetry is what lets Wave 11 flip the
  * composition root with no handler-address changes.
  */
 export function createFormalizationPackageHandlerAdapter(
   options: FormalizationPackageHandlerAdapterOptions,
 ): Record<string, KernelHandler> {
-  const { legacyDeps, ports } = options;
+  const { kernelDeps, ports } = options;
   const targetHandlerId =
     options.briefProvisioningHandlerId ?? FORMALIZATION_HANDLER_IDS.resolveProduct;
 
-  const handlers = createFormalizationKernelHandlers(legacyDeps);
+  const handlers = createFormalizationKernelHandlers(kernelDeps);
   const target = handlers[targetHandlerId];
   if (!target) {
     throw new Error(
@@ -206,12 +187,10 @@ export function createFormalizationPackageHandlerAdapter(
   // (for the product resolver) drives the port-injected brief provisioning and
   // stamps the outcome onto the result. We do NOT mutate the original
   // handler's behavior — we observe its result and add a side-effect through
-  // the port. This keeps the legacy handler byte-for-byte intact while moving
   // the global-DB reach behind the port.
   const wrapped: KernelHandler = async (ctx) => {
     const result = await target(ctx);
     // Only provision when the resolver produced a PRD-bearing contract. We
-    // detect the PRD id from the graph the same way the legacy handler does.
     if (ctx.epicId === null || result.event === 'failed') {
       return result;
     }

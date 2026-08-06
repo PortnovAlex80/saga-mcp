@@ -118,7 +118,6 @@ export interface Terminal {
 
 /**
  * The complete pipeline view served to the frontend. `terminal` is `null` for
- * a still-running lifecycle; the frontend falls back to the legacy pipeline
  * view when the whole projection is `null` (no run exists for the epic).
  */
 export interface PipelineView {

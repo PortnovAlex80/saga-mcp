@@ -36,7 +36,6 @@ export interface Task {
   // always computed server-side. Any of these may be NULL in the DB row (e.g. a
   // plain task with no security/contract surface auto-derives derived_risk and
   // policy_minimum to null, and final_risk is then driven by declared_risk /
-  // legacy priority). The runtime (src/tools/tasks.ts) may persist null when
   // auto-derivation yields no level — keep these nullable here to match the
   // schema, even though the user-facing input schemas use a non-null enum.
   declared_risk: 'low' | 'medium' | 'high' | 'critical' | null;

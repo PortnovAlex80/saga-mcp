@@ -36,7 +36,6 @@ import { fileURLToPath } from 'node:url';
 
 import { canonicalJson, sha256Hex } from '../../dist/shared/canonical-json.js';
 
-// Wave 1 SPI — legacy adapter (wraps a definition into a manifest envelope).
 const { createProcessModuleManifest } = await import(
   '../../dist/process-modules/domain/spi/index.js'
 );
@@ -70,7 +69,6 @@ const lmMarketing = (
  */
 function buildManifest(overrides = {}) {
   const base = createProcessModuleManifest(lmMarketing);
-  // The legacy adapter zeroes resourceIndex/handlerRefs; supply real-shaped
   // values so the resources/handlers views are exercised.
   const resourceIndex = [
     {

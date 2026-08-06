@@ -12,7 +12,6 @@
  *
  *   - `SqliteFormalizationBriefProvisioning` implements
  *     `FormalizationBriefProvisioningPort` — the exact brief-read/insert/trace
- *     logic the legacy `ensureBriefRootTrace` did via `getDb()`, but behind
  *     the port and constructed with an explicit `Database` handle (no global
  *     lookup).
  *
@@ -64,7 +63,6 @@ import type {
  * Product types that are NOT valid root ancestors for a PRD. A PRD's root must
  * be a discovery-side artifact (brief/decision/discovery-doc/…) — anything in
  * this set is a peer formalization artifact and does not count as a root.
- * Mirrors the legacy `ensureBriefRootTrace` `NOT IN (...)` filter and the
  * `findContractGap` `OWN_PRODUCT_TYPES` set.
  */
 const PRD_ROOT_EXCLUDED_TYPES = new Set([
@@ -72,7 +70,6 @@ const PRD_ROOT_EXCLUDED_TYPES = new Set([
 ]);
 
 /**
- * SQLite-backed brief provisioning. Implements the exact logic the legacy
  * `ensureBriefRootTrace` performed via `getDb()`:
  *
  *   read  — `SELECT target_id, type FROM artifact_traces JOIN artifacts …`
@@ -133,7 +130,6 @@ implements FormalizationBriefProvisioningPort {
     }
 
     // 2. Also bail if the PRD already has ANY root trace to a non-product type
-    //    (even an unaccepted one) — matches the legacy guard that returned early
     //    when `existing` was found.
     const existingTargets = this.db.prepare(
       `SELECT t.target_id, a.type
@@ -158,7 +154,6 @@ implements FormalizationBriefProvisioningPort {
     let briefId = existing?.id;
     let newlyCreated = false;
 
-    // 4. Otherwise create a synthetic brief (same hash recipe as the legacy
     //    code) so the PRD has a valid root ancestor.
     if (!briefId) {
       const content = {

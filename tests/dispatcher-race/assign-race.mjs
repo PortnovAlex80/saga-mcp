@@ -4,7 +4,6 @@
 // same task (each task assigned at most once).
 //
 // This is the multi-process proof that the NEW WorkAssignmentPort (not just the
-// legacy worker_next path) is race-safe. Review #9: the in-process contract
 // test calls one adapter sequentially on one connection; this script exercises
 // real OS-process contention through separate DB connections.
 //
@@ -19,7 +18,6 @@ const dbPath = join(thisDir, 'assign-race.db');
 const numTasks = Number(process.argv[2] ?? 1);
 const numWorkers = Number(process.argv[3] ?? 5);
 
-// Reuse the same setup as the legacy race — it creates N tasks + a project
 // sidecar (project.txt). The tasks lack process_run_id, so we stamp it on all
 // of them afterwards to satisfy the saga4 authority gate.
 console.log(`\n=== SETUP (assignTask race): ${numTasks} task(s), ${numWorkers} workers ===`);

@@ -11,7 +11,6 @@
  *   1. Tool catalog `ALL_TOOLS` — flat descriptor array, sorted name set
  *      (Wave 6 compatibility surface), no duplicate names.
  *   2. Authority `authorizeSagaToolCall` — managed deny-not-in-allow /
- *      allow-in-set, legacy non-managed allow, deny decision shapes.
  *   3. Identity guard `assertManagedExecutionIdentity` — marker/exec-id
  *      pairing rules and the AUTHORITY_CONTEXT_INVALID error code.
  *   4. Structured errors `actionableError` + `FACTORY_TOOL_CALL_SHAPES` +
@@ -28,7 +27,6 @@
  * is therefore re-assembled from the SAME 27 descriptor sources in the SAME
  * order as `src/index.ts:81` so the characterization is faithful to the real
  * gateway. `friendlyError` and `assertManagedExecutionIdentity` are pinned via
- * source-text anchors (the pattern used by `saga2-runtime-contracts.test.mjs`)
  * because they are local/unexported; the anchors lock the exact output strings
  * so any change is a visible diff.
  */
@@ -148,7 +146,6 @@ async function loadModules() {
  * Sourced by re-assembling ALL_TOOLS identically to src/index.ts:81 (verified
  * at frozen commit fd26fd1). Count: 87 tools, 0 duplicates.
  *
- * saga4 cutover (commit face6ad): three legacy execution-surface tools were
  * DELETED and are intentionally absent from this set —
  *   episode_status, episode_transition (src/tools/lifecycle.ts stage-machine)
  *   workflow_generate_next  (src/tools/workflow.ts task-kind ladder)
@@ -410,7 +407,6 @@ test('authority: managed execution denies a tool NOT in the frozen allowed_saga_
 test('authority: non-managed execution (no marker, no execution id) is compatibility-allowed', async () => {
   const { authority } = await loadModules();
   const db = await buildManagedAuthorityDb({ allowedTools: ['task_get'] });
-  // No managedExecution / executionId passed → legacy interactive call.
   const decision = authority.authorizeSagaToolCall({ toolName: 'project_delete', db });
   assert.deepEqual(decision, { allow: true });
 });
@@ -457,7 +453,6 @@ test('authority: marker=0 with an execution id is AUTHORITY_CONTEXT_INVALID (non
 /**
  * assertManagedExecutionIdentity is exported from src/index.ts but importing
  * that module runs the MCP server (main()), so the guard is characterized via
- * source-text anchors — the same pattern saga2-runtime-contracts.test.mjs uses.
  * The anchors pin the exact error code and messages so any drift is a visible
  * diff.
  */
@@ -493,7 +488,6 @@ test('structured errors: actionableError produces the documented field shape', a
     { field: 'intent_id', source: 'task_get metadata', expected: 'shape X', got: null },
   );
   assert.ok(err instanceof Error, 'actionableError must return an Error');
-  // Message keeps the short diagnostic phrase as a substring (legacy compat).
   assert.ok(err.message.includes("'intent_id' must be an integer"), err.message);
   // And appends expected shape / source / got value.
   assert.ok(err.message.includes('Expected shape: shape X'), err.message);
@@ -526,7 +520,6 @@ test('structured errors: FACTORY_TOOL_CALL_SHAPES covers all 7 saga3 tools', asy
 test('structured errors: parameterized Discovery workflow hint is appended by enrichPayloadErrors (W13-A5)', async () => {
   const { args } = await loadModules();
   // The hint must route the worker back to the exact paths already returned
-  // by task_get. It must never guess a legacy project path.
   const WORKFLOW_HINT =
     '[Workflow: Read your stage tracker the exact tracker_path returned by task_get._workflow_hint, verify checklist the exact checklist path returned by task_get._workflow_hint, resume at the rejected operation after repairing and re-reading the materialized call file, retry.]';
   const enriched = args.enrichPayloadErrors('proposal_submit', ["field 'rationale' must be a non-empty string"]);

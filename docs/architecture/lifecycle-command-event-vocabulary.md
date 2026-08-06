@@ -54,7 +54,7 @@ composite rows; surfaced by the invariant scanner as `named_violation`.
 | Code                                            | Trigger                                                                |
 |-------------------------------------------------|------------------------------------------------------------------------|
 | `ACTIVE_WITHOUT_OWNER`                          | `status` active but `assigned_to` is null.                             |
-| `ACTIVE_WITHOUT_EXECUTION`                      | `status` active but `current_execution_id` is null (legacy signature). |
+| `ACTIVE_WITHOUT_EXECUTION`                      | active status without an execution fence; fail closed. |
 | `BUFFER_WITH_OWNER`                             | Buffer status (`todo`/`review`/`done`/`blocked`) with `assigned_to`.   |
 | `TASK_FENCE_WITHOUT_ACTIVE_EXECUTION`           | `current_execution_id` set but no matching active execution row.       |
 | `EXECUTION_DOES_NOT_OWN_TASK`                   | Execution row's id ≠ task's `current_execution_id`.                    |

@@ -65,8 +65,8 @@ async function main() {
     setExecutionEnv(ctx);
     heartbeat(ctx, 'SIM_CLAIMED', `scenario=${process.env.SAGA_SIM_SCENARIO || 'button-color'}`);
     stream.text(
-      `simulator: task=${ctx.task_id} module=${ctx.process_module_ref ?? 'legacy'} `
-      + `node=${ctx.process_node_id ?? 'legacy'} role=${ctx.role} attempt=${ctx.attempt}`,
+      `simulator: task=${ctx.task_id} module=${ctx.process_module_ref ?? 'unbound'} `
+      + `node=${ctx.process_node_id ?? 'unbound'} role=${ctx.role} attempt=${ctx.attempt}`,
     );
 
     const scenarioName = process.env.SAGA_SIM_SCENARIO || 'button-color';

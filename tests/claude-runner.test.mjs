@@ -1,36 +1,7 @@
-// Slice 1 (saga4, commit 49ac316) — mandatory AssignedWork node-breaker.
-//
-// HISTORICAL NOTE: this file used to drive ClaudeBoardRunner through the
-// internal pump-loop contract: caller passed { projectId, concurrency } and
-// the runner claimed cards itself via the `claimTask` callback inside a
-// `while (run.active.size < concurrency)` loop. Slice 1 removed that branch
-// entirely — the runner is now a strictly one-card process host. The global
-// concurrency budget + card selection now live in src/app/dispatch-loop.ts
-// (distributeQueuedTasks loops `while (active.size < concurrency)` calling
-// assignTask then start with concurrency:1 + the resulting AssignedWork).
-//
-// Consequences for these tests:
-//   - `start()` now REQUIRES `assignment: AssignedWork` (the dispatcher
-//     pre-assigns the card before launch).
-//   - `claimTask` is no longer called by the runner — it is dead in this
-//     harness. `getTask` is now REQUIRED (the runner fetches the fresh task
-//     row via assignmentFromAssignedWork).
-//   - One run = one card. Multi-card rotation tests are gone (see
-//     tests/dispatcher-race/parallel-concurrency.mjs for the skip rationale;
-//     the equivalent invariant for the new dispatcher is Wave 4 REAL-GAP #4).
-//
-// What survives (and is still asserted below):
-//   - the spawn argv shape (claude -p, --no-session-persistence, the
-//     worker_next disallow, bypassPermissions, --dangerously-skip-permissions,
-//     cwd = workspace),
-//   - the empty-queue no-spawn completion,
-//   - the recover-on-pre-term-exit path (close handler calls recoverAssignment),
-//   - per-repository cwd routing (assignment.repository.local_path wins).
-// What was removed (pump-loop contract) is skipped with a pointer to Slice 1.
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { PassThrough } from 'node:stream';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -53,236 +24,95 @@ function fakeChild(pid) {
   child.pid = pid;
   child.stdout = new PassThrough();
   child.stderr = new PassThrough();
-  child.kill = () => {
-    queueMicrotask(() => child.emit('close', 143));
-    return true;
-  };
+  child.stdin = new PassThrough();
+  child.prompt = '';
+  child.stdin.on('data', chunk => { child.prompt += chunk.toString('utf8'); });
+  child.kill = () => true;
   return child;
 }
 
-// Minimal AssignedWork builder for the one-card runner contract (mirrors the
-// shape built by WorkAssignmentPort.assignTask — see
-// tests/discovery/_conveyor-fakes.mjs fakeWorkAssignment). The dispatcher hands the
-// runner exactly one pre-assigned card; the runner never claims.
-//
-// workerExecutionId is intentionally EMPTY: when present, launch() calls
-// markExecutionRunning/markExecutionExited against this.dbPath, which needs a
-// real OS process birth token + a real saga.db. Fake EventEmitter children
-// have neither. The behaviors under test here (spawn argv, cwd routing,
-// recover-on-pre-term-exit) do not depend on the execution fence — same
-// discipline as tests/w5-a6-claude-runner-launch-spec.test.mjs (see its
-// claimTask note on omitting execution_id).
-function fakeAssignment({ taskId, workerId, repository = null, status = 'in_progress' }) {
-  return {
-    taskId,
-    epicId: 0,
-    projectId: 7,
-    status,
-    skill: 'saga-developer',
-    workerExecutionId: '',
-    fenceToken: '',
-    runId: 'test-run',
-    workerId,
-    machineId: 'test-host',
-    repository,
-    executionContext: null,
-  };
-}
-
-test('board runner launches one fresh Claude process for the assigned card (argv contract)', async () => {
-  const temp = mkdtempSync(path.join(os.tmpdir(), 'saga-runner-test-'));
+function makeHarness() {
+  const root = mkdtempSync(path.join(os.tmpdir(), 'factory-runner-'));
+  const skills = path.join(root, 'package', 'skills');
+  const protocolPath = path.join(skills, 'protocol', 'SKILL.md');
+  const authorPath = path.join(skills, 'author', 'SKILL.md');
+  const reviewerPath = path.join(skills, 'reviewer', 'SKILL.md');
+  for (const file of [protocolPath, authorPath, reviewerPath]) {
+    mkdirSync(path.dirname(file), { recursive: true });
+    writeFileSync(file, `instructions:${path.basename(path.dirname(file))}`, 'utf8');
+  }
   const spawns = [];
-  let pid = 1000;
-  const taskId = 101;
-
+  const executionEvents = [];
+  const task = {
+    id: 101, title: 'Build target', status: 'in_progress', tags: '[]', description: 'test',
+    task_kind: 'factory.author', workflow_stage: 'development', execution_mode: 'git_change',
+  };
+  const profile = {
+    protocolSkill: 'protocol', semanticSkill: 'author', reviewSkill: 'reviewer',
+  };
   const runner = new ClaudeBoardRunner({
-    dbPath: path.join(temp, 'saga.db'),
-    sagaEntry: path.join(temp, 'dist', 'index.js'),
-    sagaSkillRoot: path.join(temp, 'skills'),
-    logRoot: path.join(temp, 'logs'),
-    getProject: id => ({ id, name:'test-project', tags:'[]' }),
-    resolveWorkspace: () => temp,
-    // claimTask is no longer called by the runner (Slice 1); kept only so the
-    // constructor shape stays compatible with older harnesses.
-    claimTask: () => ({ task:null, skill:null }),
-    getTask: id => ({
-      id, title:`Task ${id}`, status:'in_progress', tags:'[]', description:'test',
-      task_kind: null, workflow_stage: null, execution_mode: 'git_change',
+    dbPath: path.join(root, 'saga.db'), sagaEntry: path.join(root, 'index.js'),
+    sagaSkillRoot: path.join(root, 'unused'), logRoot: path.join(root, 'logs'),
+    getProject: id => ({ id, name: 'target-project', tags: '[]' }),
+    resolveWorkspace: () => root, getTask: () => task,
+    getTaskState: () => ({ id: task.id, status: 'review', assigned_to: null }),
+    recoverAssignment: event => executionEvents.push(['recover', event]),
+    resolveProfile: () => ({ profile }),
+    resolveLaunchSpec: () => ({
+      installationId: 77, role: profile, allowedToolIds: ['Read', 'Edit'],
+      strictResources: true,
+      resolveSkill: name => ({ protocol: protocolPath, author: authorPath, reviewer: reviewerPath })[name] ?? null,
     }),
-    getTaskState: id => ({ id, status:'review', assigned_to:null }),
-    recoverAssignment: () => {
-      throw new Error('recovery should not run');
+    executionStore: {
+      markExited: (...args) => executionEvents.push(['exited', args]),
+      markProgress: () => {}, markRunning: (...args) => executionEvents.push(['running', args]),
+      markSpawnFailed: (...args) => executionEvents.push(['spawn-failed', args]),
+      readBirthToken: () => 'birth-token',
     },
     spawn: (command, args, options) => {
-      const child = fakeChild(++pid);
+      const child = fakeChild(1001);
       spawns.push({ command, args, options, child });
-      setTimeout(() => {
-        child.emit('close', 0);
-      }, 20);
+      setTimeout(() => child.emit('close', 0), 20);
       return child;
     },
   });
+  const assignment = {
+    taskId: task.id, epicId: 1, projectId: 7, status: 'in_progress', skill: 'author',
+    workerExecutionId: 'exec-101', fenceToken: 'fence-101', runId: 'run-101',
+    workerId: 'worker-101', machineId: 'test-host',
+    repository: { name: 'product', local_path: root },
+    executionContext: {
+      policy_version: 'factory.execution.v1', authority: { enforcement: 'strict', allowed_saga_tools: ['task_get', 'worker_done'] },
+      model_route: { provider: 'zai', model: null, effort: 'high' }, captured_at: new Date().toISOString(),
+    },
+  };
+  return { root, runner, assignment, spawns, executionEvents };
+}
 
+test('runner rejects any launch that is not preassigned and fenced', () => {
+  const h = makeHarness();
   try {
-    const assignment = fakeAssignment({ taskId, workerId: 'w-101' });
-    const initial = runner.start({ projectId:7, concurrency:1, assignment });
-    assert.equal(initial.concurrency, 1);
-    await waitFor(() => runner.status(7)?.status === 'completed');
-
-    const result = runner.status(7);
-    assert.equal(result.claimed, 1);
-    assert.equal(result.completed, 1);
-    assert.equal(result.failed, 0);
-    assert.equal(spawns.length, 1);
-    assert.equal(new Set(spawns.map(call => call.options.env.SAGA_WORKER_ID)).size, 1);
-    assert.deepEqual(
-      spawns.map(call => Number(call.options.env.SAGA_TASK_ID)).sort(),
-      [101],
-    );
-    for (const call of spawns) {
-      assert.equal(call.command, 'claude');
-      assert.ok(call.args.includes('--no-session-persistence'));
-      assert.ok(call.args.includes('bypassPermissions'));
-      assert.ok(call.args.includes('--dangerously-skip-permissions'));
-      assert.equal(call.options.cwd, temp);
-    }
-  } finally {
-    runner.dispose();
-    rmSync(temp, { recursive:true, force:true });
-  }
+    assert.throws(() => h.runner.start({ projectId: 7, concurrency: 1 }), /PREASSIGNED_WORK_REQUIRED/);
+  } finally { h.runner.dispose(); rmSync(h.root, { recursive: true, force: true }); }
 });
 
-test('board runner completes without spawning when no card is assigned', async () => {
-  const temp = mkdtempSync(path.join(os.tmpdir(), 'saga-runner-empty-'));
-  let spawnCount = 0;
-  const runner = new ClaudeBoardRunner({
-    dbPath: path.join(temp, 'saga.db'),
-    sagaEntry: path.join(temp, 'dist', 'index.js'),
-    sagaSkillRoot: path.join(temp, 'skills'),
-    logRoot: path.join(temp, 'logs'),
-    getProject: id => ({ id, name:'empty', tags:'[]' }),
-    resolveWorkspace: () => temp,
-    claimTask: () => ({ task:null, skill:null }),
-    getTask: () => null,
-    getTaskState: () => null,
-    recoverAssignment: () => false,
-    spawn: () => {
-      spawnCount += 1;
-      return fakeChild(1);
-    },
-  });
-
+test('runner launches one frozen card with pinned skills, tools, repository and execution identity', async () => {
+  const h = makeHarness();
   try {
-    // No assignment: the defensive null-guard in pump() finishes the run as
-    // completed with zero spawns. This mirrors the empty-queue path the
-    // dispatcher hits when distributeQueuedTasks finds nothing claimable.
-    runner.start({ projectId:8, concurrency:1 });
-    await waitFor(() => runner.status(8)?.status === 'completed');
-    assert.equal(spawnCount, 0);
-    assert.equal(runner.status(8).claimed, 0);
-  } finally {
-    runner.dispose();
-    rmSync(temp, { recursive:true, force:true });
-  }
+    h.runner.start({ projectId: 7, epicId: 1, concurrency: 1, assignment: h.assignment });
+    await waitFor(() => h.runner.status(7)?.status === 'completed');
+    assert.equal(h.spawns.length, 1);
+    const call = h.spawns[0];
+    assert.equal(call.options.cwd, h.root);
+    assert.equal(call.options.env.SAGA_EXECUTION_ID, 'exec-101');
+    const prompt = call.child.prompt;
+    assert.match(prompt, /instructions:protocol/);
+    assert.match(prompt, /instructions:author/);
+    assert.match(prompt, /launch_spec_installation=77/);
+    const allowed = call.args[call.args.indexOf('--allowedTools') + 1];
+    assert.match(allowed, /Read/);
+    assert.match(allowed, /mcp__saga__task_get/);
+    assert.ok(h.executionEvents.some(([event]) => event === 'running'));
+    assert.ok(h.executionEvents.some(([event]) => event === 'exited'));
+  } finally { h.runner.dispose(); rmSync(h.root, { recursive: true, force: true }); }
 });
-
-test('board runner recovers a claim when Claude exits before worker_done', async () => {
-  const temp = mkdtempSync(path.join(os.tmpdir(), 'saga-runner-fail-'));
-  const recoveries = [];
-  const taskId = 201;
-  const runner = new ClaudeBoardRunner({
-    dbPath: path.join(temp, 'saga.db'),
-    sagaEntry: path.join(temp, 'dist', 'index.js'),
-    sagaSkillRoot: path.join(temp, 'skills'),
-    logRoot: path.join(temp, 'logs'),
-    getProject: id => ({ id, name:'failure', tags:'[]' }),
-    resolveWorkspace: () => temp,
-    claimTask: () => ({ task:null, skill:null }),
-    getTask: id => ({ id, title:'Failing task', status:'in_progress', tags:'[]' }),
-    // The task is still in_progress + owned when the worker dies pre-done →
-    // the close handler counts it as failed and calls recoverAssignment.
-    getTaskState: () => ({ id:201, status:'in_progress', assigned_to:'still-owned' }),
-    recoverAssignment: input => {
-      recoveries.push(input);
-      return true;
-    },
-    spawn: () => {
-      const child = fakeChild(2001);
-      setTimeout(() => child.emit('close', 1), 10);
-      return child;
-    },
-  });
-
-  try {
-    const assignment = fakeAssignment({ taskId, workerId: 'w-201' });
-    runner.start({ projectId:9, concurrency:1, assignment });
-    await waitFor(() => runner.status(9)?.status === 'failed');
-    assert.equal(runner.status(9).failed, 1);
-    assert.equal(recoveries.length, 1);
-    assert.equal(recoveries[0].taskId, 201);
-  } finally {
-    runner.dispose();
-    rmSync(temp, { recursive:true, force:true });
-  }
-});
-
-test('board runner launches the assigned typed task in its repository checkout', async () => {
-  // Slice 1 note: the runner is one-card, so the former two-repo rotation
-  // (cards 301→repoA, 302→repoB claimed in a pump loop) no longer applies.
-  // The per-task cwd routing contract STILL HOLDS: when the AssignedWork
-  // carries a repository, launch() uses repository.local_path as cwd. This
-  // single-card test preserves that assertion.
-  const temp = mkdtempSync(path.join(os.tmpdir(), 'saga-runner-multirepo-'));
-  const legacyRoot = path.join(temp, 'legacy');
-  const repoA = path.join(temp, 'repo-a');
-  const { mkdirSync } = await import('node:fs');
-  mkdirSync(legacyRoot); mkdirSync(repoA);
-  const taskId = 301;
-  const cwdByTask = new Map();
-  const runner = new ClaudeBoardRunner({
-    dbPath: path.join(temp, 'saga.db'),
-    sagaEntry: path.join(temp, 'dist', 'index.js'),
-    sagaSkillRoot: path.join(temp, 'skills'),
-    logRoot: path.join(temp, 'logs'),
-    getProject: id => ({ id, name:'multi-repo', tags:'[]' }),
-    resolveWorkspace: () => legacyRoot,
-    claimTask: () => ({ task:null, skill:null }),
-    getTask: id => ({
-      id, title:`Task ${id}`, status:'in_progress', tags:'[]',
-      task_kind:'development.code', workflow_stage:'development', execution_mode:'git_change',
-    }),
-    getTaskState: id => ({ id, status:'review', assigned_to:null }),
-    recoverAssignment: () => { throw new Error('recovery should not run'); },
-    spawn: (_command, _args, options) => {
-      const child = fakeChild(3000 + cwdByTask.size);
-      const tid = Number(options.env.SAGA_TASK_ID);
-      cwdByTask.set(tid, options.cwd);
-      setTimeout(() => child.emit('close', 0), 10);
-      return child;
-    },
-  });
-  try {
-    const assignment = fakeAssignment({
-      taskId,
-      workerId: 'w-301',
-      repository: { id:1, repository_id:1, name:'repo-a', local_path:repoA, role:'component', integration_branch:'dev', default_branch:'main' },
-    });
-    runner.start({ projectId:10, concurrency:1, assignment });
-    await waitFor(() => runner.status(10)?.status === 'completed');
-    assert.equal(cwdByTask.get(301), repoA);
-  } finally {
-    runner.dispose();
-    rmSync(temp, { recursive:true, force:true });
-  }
-});
-
-// REMOVED CONTRACT (Slice 1, saga4, commit 49ac316): the former
-// "launches one fresh Claude process per claimed task" test drove a 3-card
-// queue through the pump-loop concurrency rotation (claimTask +
-// `while (active.size < concurrency)`). That branch was deleted — the runner
-// is one-card, and the dispatcher (src/app/dispatch-loop.ts) owns the
-// concurrency budget + card selection. The multi-card spawn-count,
-// maxLive=concurrency, and worker-id uniqueness assertions are therefore
-// obsolete. The argv-shape portion of that test survives in the single-card
-// test above. The dispatch-loop overlap invariant is tracked as Wave 4
-// REAL-GAP #4 (see tests/dispatcher-race/parallel-concurrency.mjs).

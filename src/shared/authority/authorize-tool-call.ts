@@ -4,7 +4,6 @@
  * Managed executions are fail-closed. A tool call is authorized only after the
  * execution row, immutable execution_context, policy version, authority hash,
  * context hash, task binding, and optional task/worker identity all validate.
- * Non-managed interactive calls remain compatibility-allowed. A valid Saga 2
  * execution_context with authority=null also remains compatibility-allowed.
  */
 import type { Database } from 'better-sqlite3';
@@ -50,7 +49,6 @@ export interface AuthorizeSagaToolCallInput {
 /**
  * Resolve the Saga MCP catalog visible to the current process.
  *
- * `null` means compatibility/full catalog (interactive calls and valid Saga 2
  * snapshots). A Set means a managed Saga 3 execution and contains the exact
  * frozen allow-list. An empty Set is fail-closed for malformed or stale
  * managed identity.
@@ -268,7 +266,7 @@ export function authorizeSagaToolCall(input: AuthorizeSagaToolCallInput): Author
   }
 
   const authority = strict.snapshot.authority;
-  if (!authority) return { allow: true, executionId }; // valid Saga 2 compatibility snapshot
+  if (!authority) return invalid(input.toolName, executionId, 'execution snapshot is missing authority');
   if (authority.enforcement === 'advisory') {
     const allowed = authority.allowed_saga_tools.includes(input.toolName);
     return {

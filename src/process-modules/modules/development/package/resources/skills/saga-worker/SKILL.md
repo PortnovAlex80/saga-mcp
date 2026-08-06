@@ -36,7 +36,7 @@ echo "$(date -u +%FT%TZ) pid=$$ worker=$SAGA_WORKER_ID project=$SAGA_PROJECT_ID 
 Это **не запрос задачи** (задача уже назначена диспатчером). Это маркер «я жив и
 работаю» — оператор смотрит через `tail -f ~/.zcode/cli/worker-heartbeat.log`.
 Переменные `SAGA_*` выставляет saga-runner в окружении процесса. Если их нет
-(запуск не через board-runner), подставь `worker_id`/`task.id`/`project_id`
+(при прямом запуске), подставь `worker_id`/`task.id`/`project_id`
 вручную из своего назначения (карточка уже предопределена диспатчером).
 
 Дополнительно, на ключевых шагах (опционально, не чаще раза в минуту):
@@ -428,8 +428,7 @@ contention, git error), call `worker_merge_release(result:"conflict")` so the
 task is flagged needs-human; never silently leave `integration_state="pending"`.
 
 For typed tasks the lock is per **product repository**, serialized in the shared
-DB, so different repositories may merge concurrently. Legacy tasks retain the
-project-level `dev` lock. If you crash mid-merge, the lock auto-expires after
+DB, so different repositories may merge concurrently. If you crash mid-merge, the lock auto-expires after
 10 minutes and a sibling can reclaim it.
 
 ### Zombie / orphan recovery (`worker_health`)
@@ -578,8 +577,7 @@ Verify it — you did NOT write this code. Diff the branch (see WORKTREE LIFECYC
 | `error` | Provider упал (TypeError в тесте, runner не запустился, fixture не подгрузилась). Блокирует transition **И** создаёт Incident — человек должен разобраться. | `provider` обязателен — что именно упало. |
 
 `provider` поле опциональное в schema, но **обязательно по CGAD §6** для
-новых evidence. CGAD-R1 в lint flag'ает missing provider.legacy data без
-provider будет Backfill'иться постепенно.
+новых evidence. CGAD-R1 в lint flag'ает missing provider.
 
 **Критично: не подменяй `unknown` на `failed`.** Unknown = "я не смог
 проверить" (deny), failed = "я проверил, не сошлось" (deny + конкретная

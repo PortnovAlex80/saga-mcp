@@ -35,7 +35,6 @@ export interface LifecyclePipelineReader {
  * Build the `PipelineView` for the most recent LifecycleRun of one epic.
  *
  * Returns `null` when no run exists for the epic — that null is the frontend's
- * fallback signal to render the legacy pipeline.
  *
  * The repository's `list(projectId, epicId)` is `ORDER BY id DESC`, so the
  * first element is the most recent run. We then read the full run record (for

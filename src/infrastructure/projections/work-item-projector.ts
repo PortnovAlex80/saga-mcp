@@ -18,7 +18,6 @@
  *
  * At step 1.3 this projector EXISTS and is tested, but nothing on the runtime
  * path reads from it yet. Step 5 makes it the single authority; until then
- * the legacy `tasks` table remains the runtime's source of truth and this
  * projection is a shadow that proves the rebuild path works end-to-end. The
  * projector does NOT write to `tasks` and does NOT launch workers (REG-06-AC-02:
  * "a human command addresses a Workplace use case and a domain event, never a

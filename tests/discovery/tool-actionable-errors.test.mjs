@@ -11,7 +11,6 @@
  *
  * These tests do NOT require a database: they call the arg validators directly
  * (imported from dist) and assert the error message shape. They also verify the
- * BACKWARD-COMPATIBILITY invariant: the legacy short phrases ("must be an
  * integer", "must be a non-empty string") remain substrings of the new messages,
  * so existing regex-based handler tests keep matching.
  */
@@ -29,13 +28,12 @@ import {
 
 // ---- argInt: actionable + backward-compatible -------------------------------
 
-test('argInt: error contains expected shape + source + got + legacy phrase', () => {
+test('argInt: error contains expected shape + source + got + unsupported phrase', () => {
   assert.throws(
     () => argInt('proposal_submit', { intent_id: 'not-an-int' }, 'intent_id',
       { source: FACTORY_ARG_SOURCES.intent_id, expected: FACTORY_TOOL_CALL_SHAPES.proposal_submit }),
     (err) => {
       const msg = err.message;
-      // Legacy phrase preserved (backward-compat with regex tests).
       assert.match(msg, /must be an integer/);
       // Actionable: expected shape.
       assert.match(msg, /Expected shape: proposal_submit\(/);
@@ -65,7 +63,7 @@ test('argInt: undefined value is reported in the diagnostic phrase', () => {
 
 // ---- argStr: actionable + backward-compatible -------------------------------
 
-test('argStr: error contains expected shape + source + got + legacy phrase', () => {
+test('argStr: error contains expected shape + source + got + unsupported phrase', () => {
   assert.throws(
     () => argStr('proposal_submit', { execution_id: 123 }, 'execution_id',
       { source: FACTORY_ARG_SOURCES.execution_id, expected: FACTORY_TOOL_CALL_SHAPES.proposal_submit }),

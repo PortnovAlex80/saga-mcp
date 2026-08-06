@@ -16,7 +16,7 @@
 | 2. Workdesk | исполнитель получил правильный стол | pinned package/skill, инструкции, allowed tools, node input, feedback |
 | 3. Production | продукт действительно зарегистрирован | managed ledger/submission, producer execution, node lineage |
 | 4. Integrity | байты не подменены | schema/ref/digest, disk SHA-256, repository containment |
-| 5. Candidate | партия заморожена для проверки | immutable CandidateSet или legacy exact candidate |
+| 5. Candidate | партия заморожена для проверки | immutable CandidateSet |
 | 6. Deterministic checks | выполнены формальные инварианты | schema, completeness, trace graph, policy checks |
 | 7. Review | есть независимая оценка, если она нужна | reviewer execution, findings, repair feedback |
 | 8. Gate | принято решение ядра | check plan, receipts, policy digest, accepted bindings |

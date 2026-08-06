@@ -94,8 +94,6 @@ export interface LifecycleOrchestratorOptions {
    * Resolves the immutable module installation a ProcessRun should be pinned
    * to, by module reference. When provided, every started ProcessRun carries
    * the resolved installationId + packageDigest (W13-AUDIT §18.5). When
-   * omitted (legacy / test paths), runs start unpinned (null/null) and the
-   * legacy workspace-root resource lookup remains in effect. Mirrors the
    * scenario-runner's per-stage lockEntry resolution.
    */
   resolveModuleInstallation?: (moduleRef: ProcessModuleReference) => {
@@ -298,7 +296,6 @@ export class LifecycleOrchestrator {
           executorKind: installation.executor.kind,
           projectedStage: installation.definition.identity.kind,
           // W13-AUDIT §18.5: pin the ProcessRun to the immutable module
-          // installation when a resolver is wired (production). Legacy / test
           // paths without a resolver start unpinned (null/null) and retain the
           // pre-Wave-2 behavior. Mirrors scenario-runner's lockEntry pinning.
           ...(this.resolveModuleInstallation

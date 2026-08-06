@@ -304,7 +304,6 @@ function appendReleaseEvent(
       }),
     );
   } catch {
-    // Legacy databases may not yet have lifecycle event tables. The execution
     // and fence transition remains authoritative.
   }
 }

@@ -3,7 +3,6 @@
  *
  * ProcessRun is module-agnostic: it captures the lifecycle of ONE invocation
  * of ONE registered module (e.g. product-discovery@3.0.0,
- * solution-formalization@1.0.0) regardless of the executor kind (legacy
  * adapter, generic flow, external, human). Module-specific execution state
  * lives separately (WorkIntent/Proposal/Certificate for discovery,
  * PRD/UC/AC/SRS for formalization); ProcessRun is the common shell.
@@ -88,15 +87,11 @@ export interface StartProcessModuleCommand {
   moduleRef: ProcessModuleReference;
   input: ProcessModuleInput;
   executorKind: ExecutorKind;
-  /** Where to project legacy episode_workflows.stage (null = no projection). */
   projectedStage: string | null;
   /**
    * Wave 2 installation pin (W3-A3, spec §6). When BOTH are set the run is
    * pinned to an immutable module installation (`factory_module_installations`).
-   * When BOTH are null the run is a legacy pre-Wave-2 run that routes through
-   * the legacy nullable adapter (plan §14.3.7). No NOT NULL enforcement until
    * Wave 11. The caller (composition root / Wave 11 cutover) sets these when
-   * starting a run via the installation path; legacy call sites omit them and
    * both default to null.
    */
   installationId: number | null;
@@ -141,7 +136,6 @@ export interface ProcessRunRecord {
    * Wave 2 installation pin (W3-A3, spec §6). Mirrors the two nullable
    * `installation_id` / `package_digest` columns on `factory_process_runs`.
    * BOTH set → the run is pinned to an immutable module installation; BOTH
-   * null → legacy pre-Wave-2 run (routes through the legacy nullable adapter,
    * plan §14.3.7). The Wave 3 `AgentLaunchSpec` resolver reads
    * `installationId` to decide pinned-package resolution vs catalog fallback.
    */

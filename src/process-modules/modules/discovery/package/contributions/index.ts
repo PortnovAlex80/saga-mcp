@@ -2,13 +2,11 @@
  * W9-A2 — Discovery package-local contributions barrel.
  *
  * Spec: docs/refactor-management/09-contracts/WAVE9-PRODUCTION-MIGRATION-SPEC.md.
- * Plan: §0.12.4 (W9-A2 owns the Discovery contributions + legacy engine
  *       adapter subtree).
  *
  * This is the single import surface for the Discovery package's contributions
  * subdirectory. Every contribution category the package declares — tool
  * contributions, acceptance capabilities, output contracts, reviewer skills,
- * recovery policies, and the legacy engine adapter — is re-exported here so
  * the manifest builder (W9-A1) and downstream consumers can import the full
  * set from one path:
  *
@@ -28,7 +26,6 @@
  * (`domain/spi/*`). No behavior, no factories, no persistence. The dependency-
  * direction ratchet permits module files to import the pure domain SPI; this
  * barrel introduces no new architectural edges beyond each sibling file's own
- * domain-SPI imports. The legacy engine adapter is the only file that imports
  * a sibling module (`../../discovery-installation.js`) — that import is
  * intra-module (discovery → discovery), permitted by Rule 1.
  *
@@ -109,7 +106,6 @@ export {
 // `flow.recovery[]` executed by `generic-flow-executor.reconcileRecoveryCheckpoint`
 // through the `RecoveryCaseRepository` port.
 
-// Legacy engine adapter — port-injected handler wrapper + brief-provisioning
 // port (mirrors W8-A6's formalization handler adapter).
 export {
   DISCOVERY_PACKAGE_HANDLER_IDS,

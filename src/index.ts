@@ -194,7 +194,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     // captured at claim against this Saga tool call. The gateway is the ONLY
     // runtime enforcement point for Saga 3 authority — the skill prompt and
     // --disallowedTools are not the authority source. Saga 3 runtime executions
-    // are fail-closed (default-deny: an unlisted tool is denied); legacy Saga 2
     // and non-managed calls are compatibility-allowed.
     const decision = authorizeSagaToolCall({ toolName: name, db: getDb() });
     if (!decision.allow) {

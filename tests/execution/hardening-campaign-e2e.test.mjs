@@ -51,7 +51,6 @@
 // The real `scenarios-ext/campaign/definition.mjs` manifest (W10-A4) declares
 // its `inputMapping` paths WITHOUT the `$.` prefix (e.g. `initiative.brief`).
 // The ScenarioRunner's `mapLifecycleValues` (the local re-declaration of the
-// legacy lifecycle-mapper in scenario-runner.ts) REQUIRES every string path to
 // be `$` or start with `$.` — otherwise it throws
 // `LIFECYCLE_MAPPING_INVALID_PATH`. This divergence is a genuine, documented
 // finding (recorded below in the KNOWN FINDINGS section and surfaced by a
@@ -119,7 +118,6 @@ const {
   validateLifecycleScenarioManifest,
   assertCanonicalSerializable,
 } = await import('../../dist/process-modules/domain/spi/index.js');
-// The REAL legacy Product Delivery lifecycle — the coexisting peer whose
 // terminals/stages must remain disjoint from the Campaign's.
 const { productDeliveryLifecycle } = await import(
   '../../dist/process-modules/lifecycles/product-delivery-lifecycle.js'
@@ -1257,7 +1255,7 @@ test('W12-A8 isolation: a rejected Campaign does NOT poison a concurrent success
   assert.equal(campaignHarness.state.lifecycle.status, 'completed', 'rejected Campaign is a completed terminal, not a failed run');
 });
 
-test('W12-A8 isolation: Campaign and Product Delivery remain disjoint from the REAL legacy Product Delivery lifecycle', () => {
+test('W12-A8 isolation: Campaign and Product Delivery remain disjoint from the REAL unsupported Product Delivery lifecycle', () => {
   // The isolation proof is grounded against the REAL productDeliveryLifecycle
   // (the production coexisting peer). The Campaign harness terminals must be
   // disjoint from the real Product Delivery terminals, and the Product-Delivery

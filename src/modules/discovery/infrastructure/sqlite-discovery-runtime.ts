@@ -94,20 +94,11 @@ function readTaskOrchestrationState(taskId: number): TaskOrchestrationState {
   // assigned_to ← worker_executions row for the active reservation (the worker
   //   that won the lease). Falls back to tasks.assigned_to when no workplace
   //   is bound.
-  const task = db.prepare(
-    'SELECT workplace_ref, assigned_to FROM tasks WHERE id=?',
-  ).get(taskId) as { workplace_ref: string | null; assigned_to: string | null } | undefined;
+  const task = db.prepare('SELECT workplace_ref FROM tasks WHERE id=?')
+    .get(taskId) as { workplace_ref: string | null } | undefined;
   if (!task) return { status: null, assigned_to: null, current_execution_id: null };
   if (!task.workplace_ref) {
-    // Legacy task not bound to a workplace — fall back to the tasks columns.
-    const row = db.prepare(
-      'SELECT status, assigned_to, current_execution_id FROM tasks WHERE id=?',
-    ).get(taskId) as TaskOrchestrationState | undefined;
-    return {
-      status: row?.status ?? null,
-      assigned_to: row?.assigned_to ?? null,
-      current_execution_id: row?.current_execution_id ?? null,
-    };
+    throw new Error(`WORKPLACE_BINDING_REQUIRED: task ${taskId} has no workplace_ref`);
   }
   const wp = db.prepare(
     'SELECT kanban_phase, loop_state, active_reservation_ref FROM factory_workplaces WHERE workplace_ref=?',
@@ -115,18 +106,10 @@ function readTaskOrchestrationState(taskId: number): TaskOrchestrationState {
     | { kanban_phase: string; loop_state: string; active_reservation_ref: string | null }
     | undefined;
   if (!wp) {
-    // Workplace row missing (should not happen after bind) — fall back.
-    const row = db.prepare(
-      'SELECT status, assigned_to, current_execution_id FROM tasks WHERE id=?',
-    ).get(taskId) as TaskOrchestrationState | undefined;
-    return {
-      status: row?.status ?? null,
-      assigned_to: row?.assigned_to ?? null,
-      current_execution_id: row?.current_execution_id ?? null,
-    };
+    throw new Error(`WORKPLACE_NOT_FOUND: ${task.workplace_ref}`);
   }
   const status = mapV4KanbanToTaskStatus(wp.kanban_phase as never);
-  let assignedTo = task.assigned_to;
+  let assignedTo: string | null = null;
   if (wp.active_reservation_ref) {
     const exec = db.prepare(
       'SELECT worker_id FROM worker_executions WHERE execution_id=?',
@@ -359,7 +342,6 @@ export class SqliteFactoryDiscoveryRuntime implements FactoryDiscoveryRuntimePer
       // column below, where the managed-production ledger reads it. Mixing them
       // produced a description like {"objective":...,"process_run_id":6,
       // "process_node_input":{"objective":...}} where objective was duplicated
-      // and the worker waded through opaque JSON. Keep the legacy shape:
       // { objective, work_intent_id } only.
       JSON.stringify({ objective: input.objective, work_intent_id: input.intentId }),
       priority,
@@ -541,7 +523,6 @@ export class SqliteFactoryDiscoveryRuntime implements FactoryDiscoveryRuntimePer
       ) as { execution_id: string } | undefined;
       if (completedProducer) return completedProducer.execution_id;
 
-      // Active/legacy fallback: rank executions by their own reservation
       // chronology, then by their latest product timestamp. Never compare a
       // ledger id from the artifact table with one from the trace table.
       const row = db.prepare(
@@ -573,7 +554,6 @@ export class SqliteFactoryDiscoveryRuntime implements FactoryDiscoveryRuntimePer
       ) as { execution_id: string } | undefined;
       return row?.execution_id ?? null;
     } catch (error) {
-      // Managed-production tables are additive and may be absent in a legacy
       // discovery-only database. The caller retains its physical fallback.
       if (error instanceof Error && error.message.includes('no such table')) return null;
       throw error;
@@ -600,7 +580,6 @@ export class SqliteFactoryDiscoveryRuntime implements FactoryDiscoveryRuntimePer
       }
       // Conveyor v4 step 3.B.3: orchestration state (status / assigned_to /
       // current_execution_id) read from the authoritative workplace in cutover
-      // mode. Falls back to tasks columns in legacy mode.
       const taskState = readTaskOrchestrationState(taskId);
       if (taskState.status === null) throw new Error(`saga3: projected task ${taskId} not found during resume`);
       const task = {
@@ -608,15 +587,14 @@ export class SqliteFactoryDiscoveryRuntime implements FactoryDiscoveryRuntimePer
         assigned_to: taskState.assigned_to,
         current_execution_id: taskState.current_execution_id,
       };
-      // done AND removed-legacy-status both mean "workplace completed" —
-      // the LM-node should not spawn a worker. removed-legacy-status waits for
-      // the kernel verifier to either promote to done or return as removed-legacy-status.
+      // done AND awaiting_verification both mean "workplace completed" —
+      // the LM-node should not spawn a worker. awaiting_verification waits for
+      // the kernel verifier to either promote to done or return as awaiting_verification.
       if (task.status === 'done') {
         db.exec('COMMIT');
         return { state: 'done', intentStatus: intent.status, taskStatus: task.status };
       }
-      // removed-legacy-status = kernel verifier found a defect. The workplace needs a
-      // fresh worker to fix the issue. Treat as 'ready' so LmNodeExecutor
+      // awaiting_verification = kernel verifier found a defect. The workplace needs a
       // spawns a new worker run.
       if (task.status === 'todo') {
         if (intent.status === 'concluded') {
@@ -696,7 +674,7 @@ export class SqliteFactoryDiscoveryRuntime implements FactoryDiscoveryRuntimePer
         return false;
       }
       // intent projected to this task: concluded → open so prepareIntentForExecution
-      // routes through the ready path (removed-legacy-status → ready) for the repair worker.
+      // routes through the ready path (awaiting_verification → ready) for the repair worker.
       db.prepare(
         `UPDATE factory_work_intents SET status='open', updated_at=datetime('now')
           WHERE projected_task_id=? AND status='concluded'`,

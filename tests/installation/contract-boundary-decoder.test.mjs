@@ -282,18 +282,19 @@ test('validateWorkerExecutionPlan: accepts a well-formed driver-neutral plan', (
   assert.deepEqual(res.errors, []);
 });
 
-test('validateWorkerExecutionPlan: accepts a plan with null outputContract (legacy/transition)', () => {
+test('validateWorkerExecutionPlan: rejects a plan without outputContract', () => {
   const plan = {
     intent: { adapterData: {}, outputContract: null },
     projection: { adapterData: {} },
   };
   const res = validateWorkerExecutionPlan(plan);
-  assert.equal(res.ok, true);
+  assert.equal(res.ok, false);
+  assert.equal(res.errors[0].code, 'OUTPUT_CONTRACT_REQUIRED');
 });
 
 test('validateWorkerExecutionPlan: rejects non-plain adapterData', () => {
   const plan = {
-    intent: { adapterData: 'not-an-object', outputContract: null },
+    intent: { adapterData: 'not-an-object', outputContract: { schemaId: 'factory.foo.v1', version: '1', digest: 'abc' } },
     projection: { adapterData: {} },
   };
   const res = validateWorkerExecutionPlan(plan);
@@ -330,7 +331,7 @@ test('validateWorkerExecutionPlan: rejects a non-object plan', () => {
 });
 
 test('validateWorkerExecutionPlan: rejects when projection is missing', () => {
-  const plan = { intent: { adapterData: {}, outputContract: null } };
+  const plan = { intent: { adapterData: {}, outputContract: { schemaId: 'factory.foo.v1', version: '1', digest: 'abc' } } };
   const res = validateWorkerExecutionPlan(plan);
   assert.equal(res.ok, false);
   assert.equal(res.errors[0].code, 'BAD_PROJECTION');

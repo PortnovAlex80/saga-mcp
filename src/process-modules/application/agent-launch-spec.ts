@@ -18,10 +18,8 @@
  *     the Wave 2 `PackageRegistry` (InstallationBasedPackageRegistry) — NOT the
  *     built-in catalog. The pinned `packageDigest` is verified against the
  *     resolved installation's digest; a mismatch is a corrupt-pin error.
- *   - If `processRun.installationId` is NULL → legacy pre-Wave-2 run (plan
  *     §14.3.7). Fall back to resolving the installation by the run's
  *     `moduleRef` (name + exact version) through the SAME `PackageRegistry`
- *     port. This is the driver-neutral legacy path; Wave 13 removes it once
  *     every run is pinned at start time.
  *
  * Why a single `PackageRegistry` port for both paths (not a catalog import):
@@ -30,7 +28,6 @@
  *   existing `execution-profile-resolver.ts` catalog import is an ALLOWLISTED
  *   known violation pending the Phase 3 PackageRegistry cutover. Adding a
  *   SECOND catalog import here would be a NEW ratchet violation. Routing the
- *   legacy fallback through `PackageRegistry` (which the composition root
  *   wires over the `ModuleInstallationRepository`) keeps this file
  *   ratchet-clean: it depends only on the Wave 1 pure-SPI types + the Wave 2
  *   `PackageRegistry` port + the Wave 3 `ProcessRunRecord`. No `modules/`,
@@ -98,7 +95,6 @@ export interface EffectiveCapabilitySet {
  * Which worker role the launching node plays. Read straight from the resolved
  * execution profile: `executionSkill` for the producing worker,
  * `reviewSkill` (when present) for the independent reviewer the dispatcher
- * assigns on the review transition. Null preserves the legacy
  * generic-reviewer fallback.
  */
 export interface AuthorOrReviewerRole {
@@ -106,7 +102,6 @@ export interface AuthorOrReviewerRole {
   readonly executionSkill: string;
   /**
    * Independent reviewer skill, or null when the module does not declare one
-   * (legacy generic-reviewer fallback). Mirrors
    * ExecutionProfileDefinition.reviewSkill.
    */
   readonly reviewSkill: string | null;
@@ -134,16 +129,12 @@ export interface AgentDriverConfig {
 /**
  * The fully-resolved, package-pinned launch descriptor for ONE node of ONE
  * ProcessRun. Every field is derived deterministically from the pinned module
- * installation (or, for legacy null-pinned runs, the fallback-resolved
  * installation). Two resolutions of the same `(processRun, node)` MUST yield
  * structurally-equal specs — the test asserts this determinism.
  *
  * @property installationId          The ProcessRun's installation pin (nullable
- *                                   for legacy runs). Forwarded verbatim from
  *                                   the record so the executor can tell pinned
- *                                   from legacy without re-reading the row.
  * @property packageDigest           The pinned package digest (nullable for
- *                                   legacy runs). Verified against the resolved
  *                                   installation's digest on the pinned path.
  * @property nodeId                  The flow node id being launched.
  * @property executionProfileId      The profile id this node executes under
@@ -207,9 +198,7 @@ export const PROCESS_RUN_PIN_DIGEST_MISMATCH = 'PROCESS_RUN_PIN_DIGEST_MISMATCH'
  *      VERIFY the resolved record's `id` matches the pinned `installationId`
  *      AND its `packageDigest` matches the pinned digest. A mismatch throws
  *      {@link PROCESS_RUN_PIN_DIGEST_MISMATCH}.
- *   3. If NULL (legacy run, §14.3.7): resolve the installation by
  *      `moduleRef` (name + exact version) through the SAME registry. This is
- *      the driver-neutral legacy fallback; Wave 13 removes it.
  *   4. Project the resolved installation's manifest + resourceIndex +
  *      capabilityRequirements into the {@link AgentLaunchSpec}.
  *
@@ -222,7 +211,6 @@ export const PROCESS_RUN_PIN_DIGEST_MISMATCH = 'PROCESS_RUN_PIN_DIGEST_MISMATCH'
  *                   the profile for lm nodes; non-lm nodes yield a null
  *                   `executionProfileId`).
  * @param registry   Wave 2 PackageRegistry — the single resolution surface for
- *                   BOTH pinned and legacy paths (NOT the built-in catalog).
  * @returns the fully-resolved, package-pinned launch spec.
  */
 export function resolveAgentLaunchSpec(
@@ -316,7 +304,6 @@ export function resolveAgentLaunchSpec(
  *   match the pin. A digest mismatch is a corrupt pin — the run row's
  *   denormalized digest drifted from the installation's real digest.
  *
- * LEGACY path (installationId === null, plan §14.3.7):
  *   Select by `moduleRef` (name + exact version) through the same registry.
  *   The resolved installation's digest becomes the de-facto pin for this
  *   resolution; the launch spec surfaces the run's null pin unchanged.
@@ -331,7 +318,6 @@ function resolveInstallation(
     );
   }
   const name = processRun.moduleRef.name;
-  // Exact version — legacy runs and pinned runs both carry an exact
   // module_version (ranges are resolved at install time, not at run time).
   const versionRange = processRun.moduleRef.version;
 

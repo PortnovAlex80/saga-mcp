@@ -2,7 +2,6 @@ export interface RunEpisodeCommand {
   projectId: number;
   epicId: number;
   concurrency?: number;
-  /** Optional explicit Lifecycle input; legacy engines ignore it. */
   lifecycleInput?: unknown;
   lifecycleInputSchema?: string;
   idempotencyKey?: string;
@@ -13,7 +12,6 @@ export interface RunEpisodeCommand {
 /**
  * Reason the engine run terminated.
  *
- * The four original Saga 2 reasons ('completed' | 'failed' | 'paused_timeout'
  * | 'stopped') describe a full-pipeline run. Saga 3 discovery-only runs add
  * 'discovery_not_implemented' (D0) so that a partial-pipeline engine cannot
  * masquerade as a completed product. New reasons are appended as Discovery
@@ -61,7 +59,6 @@ export interface OrchestrationRunResult {
   };
 
   /**
-   * Process Module projection. Optional for Saga 2 compatibility. A module
    * returns only its local outcome; the parent Lifecycle owns routing to the
    * next Stage Binding.
    */
@@ -69,7 +66,6 @@ export interface OrchestrationRunResult {
   processOutcome?: ProcessOutcomeMetadata;
 
   /**
-   * Saga 3 partial-pipeline fields (optional for Saga 2 backward compatibility).
    *
    * pipelineScope names which slice of the product pipeline the engine ran
    * ('discovery_only' for the Discovery Edition). scopeCompleted=true means
@@ -89,7 +85,6 @@ export interface OrchestrationRunResult {
   scopeCompleted?: boolean;
   outcome?: string;
   /**
-   * Legacy top-level projection retained for callers that predate
    * processOutcome. It is intentionally open-ended: a generic Process Module
    * runtime must not enumerate Discovery-specific authorities.
    */
@@ -138,7 +133,6 @@ export interface OrchestrationRunResult {
    * certificate could be issued — this is the authoritative boundary, so the
    * run reason is 'failed' and scopeCompleted is false (unlike D3 shadow, a
    * settlement failure means Discovery Edition did NOT complete
-   * authoritatively). status='not_run' means settlement was not wired (legacy
    * / test) and the top-level outcome stays provisional.
    */
   settlement?: {

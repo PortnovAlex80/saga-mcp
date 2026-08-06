@@ -1,10 +1,7 @@
 // Controller for the Saga 3 lifecycle pipeline bar. Owns polling orchestration;
 // pipeline.js owns DOM rendering and the single live-duration timer.
 //
-// saga4 cutover (Phase 7): the legacy episode-pipeline coexistence / fallback
-// was removed. mount.js is now the SOLE pipeline renderer — there is no legacy
 // refresh to yield to. An epic with no LifecycleRun renders an explicit empty
-// state (handled in pipeline.js), never a legacy bar.
 
 import { renderPipeline } from './pipeline.js';
 
@@ -51,7 +48,6 @@ async function poll(token, epicId, intervalMs) {
 
     // The lifecycle projection is authoritative. Render it whenever present
     // (including a null/empty view for epics with no LifecycleRun). There is no
-    // legacy fallback anymore.
     owned = true;
     const container = document.getElementById('pipeline-stages');
     if (container) renderPipeline(container, response?.view ?? null);

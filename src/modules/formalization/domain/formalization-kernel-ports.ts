@@ -3,7 +3,6 @@
  * 'kernel' Flow nodes in the formalization module.
  *
  * These are PORTS (interfaces), not implementations. The formalization
- * settlement policy never imports saga2 lifecycle tools directly — it talks
  * to these ports. Production wires SQLite-backed implementations (P5); tests
  * inject fakes. This keeps the module portable: a formalization run in a
  * different persistence substrate (e.g. a future factory-native artifact store)
@@ -65,7 +64,6 @@ export type {
 export type FormalizationArtifactStatus = 'draft' | 'in_review' | 'accepted' | 'superseded';
 
 /**
- * Canonical tracker row used by the generic-flow resolvers. Unlike the legacy
  * aggregate graph port below, these reads are exact-id reads: a resolver first
  * obtains ids from the machine-owned managed-production ledger, then re-reads
  * only those rows and validates every fence/hash/type itself.
@@ -113,7 +111,6 @@ export type FormalizationManagedProductionLedger = ManagedProductionLedger;
  * Read-only view of the formalization artifact graph for one episode.
  *
  * The policy uses this to verify the WHAT/HOW contract is complete and
- * traceable before issuing a certificate. It mirrors the saga2 checks
  * (acceptedBaseline + assertTraceability + assertTasksReady) but exposes them
  * through a port so the policy is not coupled to SQLite internals.
  */

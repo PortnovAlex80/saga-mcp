@@ -1,7 +1,6 @@
 /**
  * Machine-provisioned workspace helpers for Process Module LM executions.
  *
- * saga4 cutover (LEGO-CONTRACTS.md §"Слой 1: СТОЛ"): the legacy
  * `prepareProcessExecutionWorkspace` function and the loose
  * `ProcessExecutionWorkspace` interface have been REMOVED. After the saga4
  * cutover, `materializePinnedWorkspace` (in

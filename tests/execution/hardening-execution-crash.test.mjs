@@ -21,7 +21,6 @@
 //                            (schemaId, artifactRef, productHash). Replay of an
 //                            identical envelope is benign; mutation is rejected.)
 //     3. NODERUN COMPLETE — factory_node_runs
-//                           (status='completed' + the dual-written legacy
 //                            output_* columns AND the v2 production_envelope +
 //                            transition_cursor. The exact-cursor resume index
 //                            (process_run_id, node_id, attempt) makes resume an
@@ -578,7 +577,6 @@ test('boundary 2 (production write): replay of a DIFFERENT envelope under the sa
 // Boundary 3 — NODERUN COMPLETE (factory_node_runs)
 // ===========================================================================
 //
-// completeV2 dual-writes: legacy output_* columns AND the v2 production_envelope
 // + transition_cursor. The exact-cursor resume index on
 // (process_run_id, node_id, attempt) makes readByExactCursor an equality probe.
 // A crash after completeV2 leaves the row 'completed' with the full envelope;

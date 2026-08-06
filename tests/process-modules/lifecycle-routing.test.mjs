@@ -91,9 +91,7 @@ test('Discovery forwards every outcome to Formalization (permissive gate; risks 
 
 // W13-A3: routing is now purely declarative. The runtime product-delivery
 // lifecycle has NO per-run routeResolver and NO discoveryGate override — every
-// Discovery outcome forwards to Formalization (permissive). The legacy strict
 // go/no-go gate survives as a separate declarative Lifecycle Scenario Package
-// (`LEGACY_PRODUCT_DELIVERY_SCENARIO_STRICT`), not as a runtime resolver hook.
 test('product-delivery lifecycle exposes NO routeResolver (declarative routing only)', () => {
   const def = discoveryToFormalizationLifecycle;
   assert.equal(

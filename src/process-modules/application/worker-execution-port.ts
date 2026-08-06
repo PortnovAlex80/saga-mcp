@@ -1,14 +1,11 @@
 /**
  * W3-A7 — WorkerExecutionPort: driver-neutral generalization of
- * `LmNodeExecutionPersistence`.
  *
  * Spec: `docs/refactor-management/09-contracts/WAVE3-DURABLE-EXECUTION-SPEC.md` §10.
  * Frozen input: `a415939` (Wave 2 checkpoint).
  *
  * ── Why this port exists ───────────────────────────────────────────────────
  *
- * The existing `LmNodeExecutionPersistence` port (in
- * `application/node-executors/lm-node-executor.ts`) is BOARD-COUPLED: its
  * `ensureExecutionPlan` / `createIntent` / `ensureProjectedTask` signatures
  * bake board/task/WorkIntent vocabulary (`epicId`, `projectId`, `taskKind`,
  * `workflowStage`, `generationKey`, `authorityScope.snapshot_ref`, …) into
@@ -22,7 +19,6 @@
  * exactly the same pattern `DriverNeutralExecutionReceipt.adapterData` uses
  * (plan §10.14, §13.16, C061).
  *
- * Wave 3 only DEFINES the port; `LmNodeExecutionPersistence` is NOT removed or
  * migrated here (Wave 5 does that, plan §16.9: each phase leaves the previous
  * path runnable). W3-A2 produces driver-neutral receipts against the A1 v2
  * context; this file is the type those two lanes consume.
@@ -52,7 +48,6 @@
  * 1 SPI barrel (`domain/spi/index.js`) and shared primitives. It defines NO
  * runtime behavior beyond a pure plan validator — concrete adapters are wired
  * by Wave 5. It deliberately does NOT import `persistence/` adapters, modules,
- * or the board-specific `LmNodeExecutionPersistence` (it MIRRORS the shape, it
  * does not extend it, to keep the dependency direction clean).
  */
 
@@ -99,10 +94,9 @@ export interface WorkerIntentPlan {
   readonly adapterData: Readonly<Record<string, unknown>>;
   /**
    * Contract the worker's PRODUCT must conform to (e.g. the proposal/output
-   * schema). Validated at the boundary via `ContractBoundaryDecoder`. Null when
-   * the driver has not yet pinned a product contract (legacy/transition path).
+   * schema). Validated at the boundary via `ContractBoundaryDecoder`.
    */
-  readonly outputContract: ContractRef | null;
+  readonly outputContract: ContractRef;
 }
 
 /**
@@ -156,7 +150,6 @@ export interface PreparedExecution {
 
 /**
  * Preparation status the port returns from `readExecutionState`. Mirrors the
- * legacy `prepareIntentForExecution` status set but driver-neutral: the runtime
  * branches on `status`, the driver fills `adapterData` with whatever else it
  * needs (current execution fence, latest managed-production execution, …).
  */
@@ -226,14 +219,12 @@ export interface WorkerExecutionOutcome {
 // ---------------------------------------------------------------------------
 
 /**
- * PORT — driver-neutral generalization of `LmNodeExecutionPersistence`.
  *
  * Wave 3 DEFINES this port; Wave 5 adopts it fully (the board driver implements
  * it, the LM executor consumes it). The concrete board implementation produced
  * by Wave 5 will adapt the existing `SqliteFactory*Runtime` projection surface —
  * same SQL, same CAS semantics — behind this driver-neutral vocabulary.
  *
- * Method mapping (legacy → driver-neutral):
  *   ensureExecutionPlan(...)        → prepareExecution(plan)
  *   createIntent(...)               → (folded into prepareExecution's intent path)
  *   ensureProjectedTask(...)        → (folded into prepareExecution's projection path)
@@ -374,7 +365,13 @@ export function validateWorkerExecutionPlan(
         message: 'intent.adapterData must be a plain object',
       });
     }
-    if (i.outputContract !== null && i.outputContract !== undefined) {
+    if (i.outputContract === null || i.outputContract === undefined) {
+      errors.push({
+        code: 'OUTPUT_CONTRACT_REQUIRED',
+        path: 'intent.outputContract',
+        message: 'intent.outputContract is required',
+      });
+    } else {
       const refRes = validateContractRefShape(i.outputContract);
       if (!refRes.ok) {
         for (const e of refRes.errors) {

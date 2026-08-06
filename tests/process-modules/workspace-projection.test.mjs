@@ -44,7 +44,6 @@ import test from 'node:test';
 
 import { sha256Hex } from '../../dist/shared/canonical-json.js';
 
-// Wave 1 SPI — legacy adapter (wraps a definition into a manifest envelope).
 const { createProcessModuleManifest } = await import(
   '../../dist/process-modules/domain/spi/index.js'
 );
@@ -324,7 +323,6 @@ test('workspace projection does not expose adapter-private package paths', () =>
 
 test('a skill named in the profile but NOT shipped in-package surfaces its name only', () => {
   // Built-in/global skills are not in the package resourceIndex. The name is
-  // still surfaced (runner applies legacy fallback); the resource is absent.
   const record = buildRecord({
     resourceIndex: RESOURCE_INDEX.filter(
       (r) => r.logicalId !== EXECUTION_SKILL_NAME,

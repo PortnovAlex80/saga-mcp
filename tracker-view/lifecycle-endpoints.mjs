@@ -1,18 +1,4 @@
-// Lifecycle endpoints extracted from tracker-view.mjs (T10 step 5).
-//
-// This module owns engine control (start/stop/restart/status/concurrency),
-// board-run lifecycle (start/stop/status), saga repository operations,
-// worker observation (tail + active), and episode stage summaries. Each
-// handler is a thin HTTP adapter over the sagaApplication / boardRunner /
-// repositoryHandlers singletons injected from the composition root.
-//
-// It depends only on ./shared.mjs helpers (withDb / withDbWrite / respondJson
-// / readRequestFields / readJsonRequest / canonicalAllowedWorkerLogPath) plus
-// the runtime singletons (sagaApplication, boardRunner, repositoryHandlers),
-// WORKER_LOG_ROOTS, and the isProcessAlive predicate from the dist layer.
-//
-// No HTTP server, no rendering — the route strings stay in tracker-view.mjs
-// as test anchors.
+// Operational control and observability endpoints.
 import {
   existsSync, readFileSync, readdirSync, statSync, openSync, readSync, closeSync,
 } from 'node:fs';
@@ -35,7 +21,6 @@ const require = createRequire(import.meta.url);
 
 export function createLifecycleEndpointsApi({
   sagaApplication,
-  boardRunner,
   repositoryHandlers,
   workerLogRoots,
   isProcessAlive,
@@ -45,46 +30,6 @@ export function createLifecycleEndpointsApi({
   // default). We re-bind it here so handleWorkersActive's loop sees the same
   // array the canonicalAllowedWorkerLogPath helper honours.
   const WORKER_LOG_ROOTS = Array.isArray(workerLogRoots) ? workerLogRoots : [];
-
-  // --- Board run lifecycle ---------------------------------------------------
-
-  function handleBoardRunStart(req, res) {
-    readRequestFields(req, (parseError, fields) => {
-      if (parseError) return respondJson(res, 400, { ok:false, error:'invalid request body' });
-      const projectId = Number(fields.project_id);
-      const concurrency = Number(fields.concurrency);
-      if (!Number.isInteger(projectId) || projectId < 1) {
-        return respondJson(res, 400, { ok:false, error:'project_id must be a positive integer' });
-      }
-      if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 10) {
-        return respondJson(res, 400, { ok:false, error:'concurrency must be an integer from 1 to 10' });
-      }
-      try {
-        const run = boardRunner.start({ projectId, concurrency });
-        respondJson(res, 200, { ok:true, run });
-      } catch (error) {
-        respondJson(res, 409, { ok:false, error:error instanceof Error ? error.message : String(error) });
-      }
-    });
-  }
-
-  function handleBoardRunStop(req, res) {
-    readRequestFields(req, (parseError, fields) => {
-      if (parseError) return respondJson(res, 400, { ok:false, error:'invalid request body' });
-      const projectId = Number(fields.project_id);
-      const run = boardRunner.stop(projectId);
-      if (!run) return respondJson(res, 404, { ok:false, error:`No board run for project ${projectId}` });
-      respondJson(res, 200, { ok:true, run });
-    });
-  }
-
-  // Inline GET /api/board-run/status — pulled out of the router so the whole
-  // board-run surface lives in one place. The previous router inline-callback
-  // is replaced by lifecycleApi.handleBoardRunStatus in tracker-view.mjs.
-  function handleBoardRunStatus(req, res, url) {
-    const projectId = Number(url.searchParams.get('project_id'));
-    return respondJson(res, 200, { ok:true, run: boardRunner.status(projectId) });
-  }
 
   function handleSagaOperation(req, res, operation) {
     readRequestFields(req, (parseError, fields) => {
@@ -471,29 +416,8 @@ export function createLifecycleEndpointsApi({
          LEFT JOIN tasks t ON t.id=we.task_id
          LEFT JOIN epics e ON e.id=we.epic_id
          WHERE we.project_id=? AND we.state IN ('running','cancel_requested')
-         UNION ALL
-         SELECT 'legacy-task-' || t.id AS execution_id, t.id,
-                COALESCE(t.assigned_to,'legacy-orphan-' || t.id) AS assigned_to,
-                json_extract(t.metadata,'$.worker_pid') AS pid,
-                ? AS machine_id, 'legacy' AS phase,
-                json_extract(t.metadata,'$.worker_started_at') AS worker_started_at,
-                NULL AS log_path, t.title, t.status, t.task_kind, t.updated_at,
-                e.name AS epic_name
-           FROM tasks t
-           JOIN epics e ON e.id=t.epic_id
-          WHERE e.project_id=?
-            AND (
-              t.status IN ('in_progress','review_in_progress')
-              OR (t.status='review' AND t.assigned_to IS NOT NULL AND t.assigned_to!='')
-            )
-            AND t.current_execution_id IS NULL
-            AND NOT EXISTS (
-              SELECT 1 FROM worker_executions active
-               WHERE active.task_id=t.id
-                 AND active.state IN ('reserved','running','cancel_requested')
-            )
          ORDER BY worker_started_at`,
-      ).all(projectId, os.hostname(), projectId))
+      ).all(projectId))
         .filter(r => r.machine_id === os.hostname() && isProcessAlive(r.pid));
       // Resolve JSONL log path by scanning board-runs for a matching filename.
       // The newest matching file wins (workers reuse IDs across runs).
@@ -697,9 +621,6 @@ export function createLifecycleEndpointsApi({
     handleEngineStop,
     handleEngineConcurrency,
     handleEngineStatus,
-    handleBoardRunStart,
-    handleBoardRunStop,
-    handleBoardRunStatus,
     handleSagaOperation,
     handleWorkerTail,
     handleWorkersActive,

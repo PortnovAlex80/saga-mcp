@@ -4,7 +4,6 @@
 //
 // PURPOSE
 //   The Wave 6 audit demands that the live executor data flow NO LONGER
-//   depend on the legacy `restoreFrame` mutable-bag reconstruction, and that a
 //   boundary compatibility adapter read durable NodeRun rows DIRECTLY into the
 //   NodeExecutionFrame shape (audit: "re-plumb declareUpstreamRefs to read the
 //   SAME data restoreFrame provided, but DIRECTLY from the durable
@@ -40,7 +39,6 @@ const {
 
 /**
  * Build a durable NodeRun row. Only the columns the adapter inspects are
- * populated; the rest default to legacy nulls.
  */
 function nodeRun(overrides = {}) {
   return {
@@ -154,7 +152,6 @@ test('assembleFrameFromDurableNodeRuns: a row with BOTH output and receipt contr
 
 // ===========================================================================
 // Retention policy: which rows are EXCLUDED (the spec §9.11 filter restoreFrame
-// applied, preserved byte-for-byte so legacy + v2 paths agree).
 // ===========================================================================
 
 test('assembleFrameFromDurableNodeRuns: a non-completed row is excluded (no half-written state leaks into the frame)', () => {
@@ -306,7 +303,6 @@ test('assembleFrameFromDurableNodeRuns: is deterministic — same inputs produce
 // ===========================================================================
 
 test('restoreFrame is a pure delegating wrapper: its output is byte-identical to assembleFrameFromDurableNodeRuns', () => {
-  // restoreFrame is not exported (it is the legacy symbol kept only for the
   // characterization pin). We assert delegation faithfulness by re-running the
   // adapter's own contract against the same data — if restoreFrame ever
   // diverges, the characterization pin at 2026-07-28-failures.test.mjs:242

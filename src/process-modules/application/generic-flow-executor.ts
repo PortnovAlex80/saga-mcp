@@ -113,7 +113,6 @@ export interface GenericFlowExecutorOptions {
    * path unconditionally: it calls `assembleExecutionContext` (driver-neutral
    * envelope), reads an explicit `ModuleCompletion` at settlement, and
    * dual-writes `NodeProductionEnvelope` via `nodeRunRepo.completeV2`. The
-   * legacy `restoreFrame()` + legacy `complete` path has been deleted — the v2
    * path is the ONLY frame/completion path now.
    *
    * `nodeRunRepo` here MUST also implement {@link NodeRunRepositoryV2} (the
@@ -138,9 +137,9 @@ export interface GenericFlowExecutorOptions {
   /**
    * Kernel-gate callback: called when a recovery case is resolved (the
    * kernel verifier accepted the work). This is the single point where a
-   * task in 'removed-legacy-status' is promoted to 'done' — NOT the review
-   * approval (which sets removed-legacy-status). Absent ⇒ no auto-promotion
-   * (the task stays in removed-legacy-status; only for modules without
+   * task in 'awaiting_verification' is promoted to 'done' — NOT the review
+   * approval (which sets awaiting_verification). Absent ⇒ no auto-promotion
+   * (the task stays in awaiting_verification; only for modules without
    * recovery policies or where the module handles promotion itself).
    */
   onWorkplaceVerified?: (
@@ -433,11 +432,9 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
   ): Promise<{ outcome: string; nodeId: string; result: NodeExecutionResult }> {
     const flow = module.flow;
     const allRuns = nodeRunRepo.list(context.processRunId);
-    // The v2 channel is mandatory (the legacy path is deleted). resolveV2Channel
     // throws V2_WIRING_REQUIRED / NODE_RUN_REPO_V2_REQUIRED on misconfiguration
     // instead of silently degrading to the v1 path.
     const v2 = this.resolveV2Channel(nodeRunRepo);
-    // The frame every node executor reads (legacy `ctx.frame`) is built
     // DIRECTLY by the boundary adapter `assembleFrameFromDurableNodeRuns`,
     // which reads the durable NodeRun columns (outputRef/outputSchema/
     // outputHash/outputBindings/executionReceipt).
@@ -453,7 +450,6 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
     // transition out of it. Otherwise start at entry. The v2-shaped read
     // surfaces the persisted `completion` column (explicit ModuleCompletion)
     // so restoreNodeResult sees it — without it, crash-resume after a
-    // terminal node would lose the certificate. The legacy fallback
     // (readLastCompleted) covers a row written before the v2 cutover; a v2
     // row is a superset of NodeRunRecord.
     const lastCompleted: NodeRunRecord | NodeRunRecordV2 | null =
@@ -659,7 +655,6 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
         );
       }
 
-      // Start the NodeRun via `startV2` (which writes the legacy columns AND
       // the v2 envelope-marker columns). The v2 path also assembles the
       // ExecutionContextEnvelope and dual-populates the context (`envelope` for
       // executors receive `frame` computed by buildExecutionFrame
@@ -703,7 +698,6 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
         throw err;
       }
 
-      // Build the context. The legacy `frame` is ALWAYS populated (legacy
       // executors read it) and refreshed from the assembled envelope via
       // buildExecutionFrame keeps the frame and envelope views consistent. `envelope` +
       // `upstreamProductBodies` are always present so v2-aware executors can
@@ -767,11 +761,8 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
       const outputSchema = result.production?.schema ?? null;
       const outputHash = result.production?.contentHash ?? null;
       const outputBindings = result.production?.bindings ?? null;
-      // Dual-write. `completeV2` writes BOTH the legacy output_* columns AND
       // the v2 production_envelope + transition_cursor. The production
       // envelope is sourced from the result's explicit `productionEnvelope`
-      // (v2 producers) or derived from the legacy flat `production` when only
-      // the legacy field is present (all current producers — they emit v1).
       const transitionEvent = nodeEventForTransition(result);
       const productionEnvelope: NodeProductionEnvelope | null =
         result.productionEnvelope ?? deriveEnvelope(result.production) ?? null;
@@ -906,7 +897,6 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
    * Throws (clear failure, NOT silent v1 fallback) when:
    *   - `this.opts.v2` is absent → `V2_WIRING_REQUIRED` (the executor was
    *     constructed without v2 wiring; the v1 path is deleted so this is a
-   *     wiring bug, not a recoverable legacy state).
    *   - `nodeRunRepo` lacks the v2 methods → `NODE_RUN_REPO_V2_REQUIRED`
    *     (e.g. an in-memory fake that did not implement NodeRunRepositoryV2).
    *
@@ -990,7 +980,7 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
       this.resolveSuccessfulRecovery(module, context, nodeRun, event);
       // Kernel-gate first-pass: the verifier accepted the work on the first
       // try (no recovery case was opened). Promote the repair node's task
-      // from removed-legacy-status → done. resolveSuccessfulRecovery only
+      // from awaiting_verification → done. resolveSuccessfulRecovery only
       // promotes when a case was actually resolved; this covers the case
       // where no case existed at all (first success).
       if (this.opts.onWorkplaceVerified) {
@@ -1145,7 +1135,6 @@ function restoreNodeResult(run: NodeRunRecord | NodeRunRecordV2): NodeExecutionR
   // Restore the explicit ModuleCompletion from the persisted v2 `completion`
   // column when present. This is the crash-resume linchpin: a crash AFTER a
   // terminal node wrote its completion MUST be resumable with the completion
-  // intact, otherwise settlement loses the certificate. Legacy rows
   // (NodeRunRecord without the v2 field, or v2 row with completion=null)
   // surface completion as undefined.
   const v2Run = run as NodeRunRecordV2;
@@ -1310,15 +1299,12 @@ function restoreProduction(run: {
 
 // PRIMARY frame construction path: reads durable NodeRun rows DIRECTLY into a
 // NodeExecutionFrame. `assembleFrameFromDurableNodeRuns` is the LIVE data
-// source for every node executor's `ctx.frame` (legacy view) AND for
 // `declareUpstreamRefs` (ProductRef derivation) and `buildExecutionFrame`
-// (legacy+v2 frame merge).
 
 /**
  * PRIMARY frame construction path.
  *
  * Reads durable NodeRun rows DIRECTLY into a {@link NodeExecutionFrame} — the
- * same shape the former `restoreFrame` produced — without the legacy
  * mutable-bag reconstruction. It reads the durable NodeRun columns
  * (`outputRef`/`outputSchema`/`outputHash`/`outputBindings`/
  * `executionReceipt`). The forward path is `assembleExecutionContext` + exact
@@ -1362,7 +1348,6 @@ export function assembleFrameFromDurableNodeRuns(
 
 // v2 path helpers. The v2 channel is always active (the v1 path is deleted,
 // so resolveV2Channel always returns a channel or throws). These helpers are
-// defensive: a legacy-shaped NodeRun (no v2 marker columns surfaced) makes
 // them return safe empty values, so a row written before the v2 cutover does
 // not break the walk.
 
@@ -1374,12 +1359,9 @@ export function assembleFrameFromDurableNodeRuns(
  * The executor itself does NOT know which products a node declares as its
  * inputs (that is module contract vocabulary the node's inputSchema carries).
  * The ContractBoundaryDecoder reads that declaration; until it is wired in,
- * the v2 path derives the upstream refs from the legacy `frame.productions`
  * map (every completed production in the run is a candidate predecessor)
  * PLUS the current chainInput when it is itself a production-shaped value.
- * This is the SAME data the legacy frame path would have surfaced, just
  * re-expressed as content-addressed refs — so the v2 path's upstream set is
- * a superset of what the legacy path forwarded, never a divergence.
  *
  * Returns an empty array when no productions are available (the entry node of
  * a fresh run); the assembler accepts that and returns an envelope with an
@@ -1446,12 +1428,9 @@ function predecessorIdsFor(
 }
 
 /**
- * Merge the legacy `frame` view with the v2 envelope's upstream products.
  *
- * The v2 path keeps the legacy `frame.productions` map (populated by the
  * frame adapter from prior NodeRun rows) AND adds the envelope's exact
  * upstream ProductRefs as additional synthetic entries (keyed by their ref
- * string). This dual view lets legacy executors that read `frame.productions`
  * by node id keep working, while v2-aware executors read the envelope's
  * `upstreamProducts` directly. The two views agree on content (the envelope's
  * refs are a content-addressed re-expression of the same productions).
@@ -1466,8 +1445,6 @@ function buildExecutionFrame(
     receipts: { ...current.receipts },
   };
   for (const ref of envelope.upstreamProducts) {
-    // Only add entries the legacy frame does not already carry under this key,
-    // so we never overwrite a richer legacy production (with bindings) with a
     // minimal synthetic shell.
     if (!Object.prototype.hasOwnProperty.call(merged.productions, ref.ref)) {
       merged.productions[ref.ref] = {
@@ -1488,11 +1465,6 @@ function assertNodeExecutionResult(
   if (result.receipt && result.production) {
     throw new Error(
       `GenericFlowExecutor: node '${node.id}' returned both a physical receipt and a domain production`,
-    );
-  }
-  if (node.kind === 'lm' && !result.receipt) {
-    throw new Error(
-      `GenericFlowExecutor: LM node '${node.id}' must return an execution receipt, not a domain production`,
     );
   }
   if (!result.receipt) return;
@@ -1516,7 +1488,6 @@ function isTerminal(status: string): boolean {
 }
 
 /**
- * Derive a `NodeProductionEnvelope` from a legacy `NodeProduction` when a node
  * result carries only the v1 flat `production` field (all current producers).
  * The envelope wraps the v1 fields verbatim and adds an empty lineage array
  * and a derived `productRef`. Returns null when `production` is absent.

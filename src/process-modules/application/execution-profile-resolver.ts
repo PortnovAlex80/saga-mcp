@@ -12,7 +12,6 @@
  * profile 'formalization-product'). The previous kind-prefix fallback (which
  * silently routed an unknown `discovery.<anything>` to the first discovery
  * profile, masking typos) is GONE: an unknown task_kind resolves to null and
- * the prompt builder falls back to the legacy single-skill path.
  *
  * This resolver is the bridge between the dispatcher (which knows task_kind)
  * and the worker prompt builder (which needs the profile's protocolSkill +
@@ -85,7 +84,6 @@ export function resolveProtocolSkill(taskKind: string | null | undefined): strin
 
 /**
  * Convenience: resolve just the semantic skill name for a task_kind. Returns
- * null if no profile matches. When non-null, this OVERRIDES the legacy
  * assignment.skill (which is the same string today, but the override makes
  * the profile the single source of truth).
  */

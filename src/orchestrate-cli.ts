@@ -7,7 +7,7 @@
  *
  * The CLI now depends on the engine-neutral SagaApplication boundary. After the
  * saga4 cutover the composition root always returns the Product Lifecycle
- * runtime; the legacy Saga2Engine is no longer reachable from here.
+ * runtime.
  *
  * Env:
  *   DB_PATH             — saga SQLite database (required; same as saga server)
@@ -79,7 +79,6 @@ function parseArgs(argv: string[]): { launchRef: string } {
  */
 /**
  * CONVEYOR v4 — the SINGLE workerExecutorFactory for the entire conveyor.
- * Both the LmNodeExecutor (inside runEpisode → GenericFlowExecutor) and the
  * dispatch-loop (distributeQueuedTasks) consume this exact factory instance.
  *
  * Previously two factories existed (createPinnedWorkerFactory in
@@ -553,7 +552,6 @@ async function loadCompositionOverrides(
       onLifecycleStarted: writeLifecycleStartReceipt,
     },
     // CONVEYOR v4 — ONE workerExecutorFactory for BOTH launch paths
-    // (LmNodeExecutor inside runEpisode AND dispatch-loop). Previously these
     // used two different factories: createPinnedWorkerFactory (full: has
     // modelRouteReader + workspaceTemplatePreparers) vs
     // createPinnedWorkerFactoryForDispatch (subset: missing both). The subset

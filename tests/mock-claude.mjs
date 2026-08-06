@@ -9,7 +9,6 @@ if (process.env.SAGA_MOCK_DECISION && !process.env.SAGA_SIM_DECISION) {
   process.env.SAGA_SIM_DECISION = process.env.SAGA_MOCK_DECISION;
 }
 
-// Historical tests relied on unknown legacy tasks being approved. The new
 // simulator fails closed by default; only this compatibility wrapper enables
 // the old fallback explicitly.
 process.env.SAGA_SIM_ALLOW_GENERIC_APPROVE ??= '1';

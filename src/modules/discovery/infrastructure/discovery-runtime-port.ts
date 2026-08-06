@@ -20,7 +20,6 @@ import type {
  * Runtime-persistence boundary for the Saga 3 Discovery Edition engine.
  *
  * The engine must NOT call `getDb()` or `.prepare(...)` directly — Phase B
- * isolated Saga 2's pump the same way, and the D1 correction restores that
  * boundary for Saga 3. Every read/write the engine needs (epic objective,
  * WorkIntent lifecycle, projected board task, task status, latest proposal)
  * is expressed here as a narrow method. The SQLite adapter
@@ -139,7 +138,7 @@ export interface FactoryDiscoveryRuntimePersistence {
 
   /**
   /**
-   * Transition a task from removed-legacy-status (or done) to removed-legacy-status so a
+   * Transition a task from awaiting_verification (or done) to awaiting_verification so a
    * repair-attempt spawns a fresh worker run. Resets tasks.status, assigned_to/
    * current_execution_id→NULL, and the projected intent concluded→open.
    * task_id is preserved (same lineage).
@@ -148,7 +147,6 @@ export interface FactoryDiscoveryRuntimePersistence {
 
   /**
    * Read the WorkIntent bound to a board task via `tasks.metadata.work_intent_id`,
-   * or null if the task has no work_intent_id (legacy Saga 2 task) or the
    * referenced intent no longer exists. Used at claim time to freeze the
    * immutable execution authority snapshot (D1.1).
    */

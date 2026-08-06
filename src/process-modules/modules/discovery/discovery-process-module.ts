@@ -20,7 +20,6 @@ import {
 import { DISCOVERY_PROCESS_MODULE_REF } from '../../lifecycles/product-delivery-module-contracts.js';
 export { DISCOVERY_PROCESS_MODULE_REF };
 
-// W13-A2: resources were moved out of the legacy global root
 // (`tool-templates/discovery/`) into the discovery package resources directory
 // (`src/process-modules/modules/discovery/package/resources/`). These are
 // repo-root-relative POSIX paths — the workspace materializer resolves them
@@ -241,6 +240,7 @@ export const discoveryProcessModule: ProcessModuleDefinition = {
       executionSkill: 'saga-discovery-worker',
       protocolSkill: PROCESS_PROTOCOL_SKILL,
       semanticSkill: 'saga-discovery-worker',
+      artifactAcceptanceAuthority: 'kernel-gate',
       executionMode: 'tracker_only',
       allowedTools: [
         'task_get', 'repository_checkout_list', 'artifact_list', 'note_list',
@@ -265,6 +265,7 @@ export const discoveryProcessModule: ProcessModuleDefinition = {
       executionSkill: 'saga-discovery-normalizer',
       protocolSkill: PROCESS_PROTOCOL_SKILL,
       semanticSkill: 'saga-discovery-normalizer',
+      artifactAcceptanceAuthority: 'kernel-gate',
       executionMode: 'tracker_only',
       allowedTools: ['task_get', 'normalization_get', 'normalization_submit', 'worker_done', 'Read', 'Edit'],
       trackerTemplate: DISCOVERY_NORMALIZATION_TRACKER,
@@ -283,6 +284,7 @@ export const discoveryProcessModule: ProcessModuleDefinition = {
       executionSkill: 'saga-discovery-readiness-advisor',
       protocolSkill: PROCESS_PROTOCOL_SKILL,
       semanticSkill: 'saga-discovery-readiness-advisor',
+      artifactAcceptanceAuthority: 'kernel-gate',
       executionMode: 'tracker_only',
       allowedTools: ['task_get', 'readiness_get', 'readiness_submit', 'worker_done', 'Read', 'Edit'],
       trackerTemplate: DISCOVERY_READINESS_TRACKER,
@@ -301,6 +303,7 @@ export const discoveryProcessModule: ProcessModuleDefinition = {
       executionSkill: 'saga-discovery-diagnosis-advisor',
       protocolSkill: PROCESS_PROTOCOL_SKILL,
       semanticSkill: 'saga-discovery-diagnosis-advisor',
+      artifactAcceptanceAuthority: 'kernel-gate',
       executionMode: 'tracker_only',
       allowedTools: ['task_get', 'diagnosis_get', 'diagnosis_submit', 'worker_done', 'Read', 'Edit'],
       trackerTemplate: DISCOVERY_DIAGNOSIS_TRACKER,

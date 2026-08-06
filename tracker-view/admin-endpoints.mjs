@@ -104,13 +104,6 @@ function parseRequest(req, callback) {
   });
 }
 
-function legacyWorkAttemptsExist(db) {
-  return Boolean(db.prepare(
-    `SELECT 1 FROM sqlite_master
-      WHERE type='table' AND name='work_attempts'`,
-  ).get());
-}
-
 export function createAdminEndpointsApi({
   runtimeConfig,
   dbPath,
@@ -337,14 +330,6 @@ export function createAdminEndpointsApi({
                  ON pr.id=rc.project_repository_id
               WHERE pr.project_id=?`,
           ).all(projectId);
-          if (legacyWorkAttemptsExist(db)) {
-            db.prepare(
-              `DELETE FROM work_attempts
-                WHERE execution_id IN (
-                  SELECT execution_id FROM worker_executions WHERE project_id=?
-                )`,
-            ).run(projectId);
-          }
           db.prepare('DELETE FROM worker_executions WHERE project_id=?')
             .run(projectId);
           db.prepare('DELETE FROM projects WHERE id=?').run(projectId);
@@ -391,7 +376,6 @@ export function createAdminEndpointsApi({
           ).all();
           const checkouts = [];
           const deleted = [];
-          const hasLegacyAttempts = legacyWorkAttemptsExist(db);
           for (const project of projects) {
             checkouts.push(...db.prepare(
               `SELECT rc.machine_id,rc.local_path
@@ -400,14 +384,6 @@ export function createAdminEndpointsApi({
                    ON pr.id=rc.project_repository_id
                 WHERE pr.project_id=?`,
             ).all(project.id));
-            if (hasLegacyAttempts) {
-              db.prepare(
-                `DELETE FROM work_attempts
-                  WHERE execution_id IN (
-                    SELECT execution_id FROM worker_executions WHERE project_id=?
-                  )`,
-              ).run(project.id);
-            }
             db.prepare('DELETE FROM worker_executions WHERE project_id=?')
               .run(project.id);
             db.prepare('DELETE FROM projects WHERE id=?').run(project.id);

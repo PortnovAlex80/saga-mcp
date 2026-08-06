@@ -23,15 +23,13 @@
  * который сам runtime регистрирует (он не знает про go/clarify/...).
  *
  * LM-узлы (produce-proposal, normalize-semantic, assess-readiness) тоже не
- * здесь — они исполняются LmNodeExecutor'ом по executionProfile из descriptor'а.
  * Discovery Pack только объявляет профили (content).
  */
 
 import type { KernelHandler } from '../../../process-modules/application/kernel-handler-registry.js';
-import type { LmNodeExecutionPersistence } from '../../../process-modules/application/node-executors/lm-node-executor.js';
 import type { NodeExecutionReceipt } from '../../../process-modules/application/node-executor.js';
+import type { WorkplaceExecutionPersistence } from '../../../process-modules/application/workplace-execution-persistence.js';
 // Uncle Bob Wave 4 / FU-A: explicit ModuleCompletion envelope emitted alongside
-// the legacy magic certificate bindings (additive; Wave 5 deletes the magic).
 // `import type` keeps this a domain→domain edge (Rule 5 permits it); the SPI
 // types are pure data, erased at compile time.
 import type { ModuleCompletion } from '../../../process-modules/domain/spi/module-completion.js';
@@ -237,7 +235,6 @@ function createResolveProposalSubmissionHandler(
     }
     // When the proposal is accepted, ensure a `brief` artifact exists for this
     // epic. The generic-flow Discovery worker does not create one (unlike the
-    // legacy saga-kickstart), but Formalization requires PRD → brief lineage.
     // Wave 7 — Isolate modules behind ports: the substrate touch is delegated
     // to the injected DiscoveryBriefProvisioningPort.
     if (result.event === 'accepted' && ctx.epicId !== null) {
@@ -259,7 +256,6 @@ function createResolveProposalSubmissionHandler(
 /**
  * CONVEYOR Wave 7 — Isolate modules behind ports.
  *
- * The legacy `ensureDiscoveryBriefArtifact` helper used to call `getDb()`
  * directly inside the module. Wave 7 replaced it with the
  * `DiscoveryBriefProvisioningPort` injected by the composition root (see
  * `src/infrastructure/process-modules/brief-provisioning-ports.ts`). The module
@@ -567,7 +563,6 @@ function proposalProduction(
  * WorkIntent + projected advisor task для EXACT immutable Proposal версии.
  * Возвращает machine-filled bindings (controlIntentId, authorityIntentId,
  * taskId, proposalId, proposalHash), которые:
- *   - LM-узел assess-readiness использует как pre-projected task (LmNodeExecutor
  *     переиспользует готовый taskId из bindings.preProjectedTaskId вместо
  *     создания нового);
  *   - воркер читает через task_get → metadata.control_intent_id → readiness_get.
@@ -631,7 +626,6 @@ function createPrepareReadinessHandler(
           epicId: ctx.epicId,
           controlIntentId: execution.controlIntentId,
           authorityIntentId: execution.authorityIntentId,
-          // КЛЮЧЕВОЕ: готовый task для LM-узла assess-readiness. LmNodeExecutor
           // переиспользует его вместо создания нового, см. preProjectedTaskId.
           preProjectedTaskId: execution.taskId,
           preProjectedIntentId: execution.authorityIntentId,
@@ -862,7 +856,6 @@ function createDiscoverySettlementHandler(
     // settlement service does it), then emits an explicit ModuleCompletion
     // whose `outputEnvelope.certificateRef` points at the issued row by
     // content-address. Settlement (generic-flow-executor.ts) reads the
-    // certificate reference DIRECTLY from the completion envelope; the legacy
     // magic-bindings keys (certificateRef / certificateArtifactPayload /
     // certificateHash / certificateSchema / certificateDecision) are removed.
     // The completion is the sole certificate channel.
@@ -924,21 +917,18 @@ function createDiscoverySettlementHandler(
  * Returns the 'missing' slice when no assessment exists.
  */
 // ---------------------------------------------------------------------------
-// LmNodeExecutionPersistence adapter over the saga3 runtime
 // ---------------------------------------------------------------------------
 
 /**
- * Adapter: проецирует generic `LmNodeExecutionPersistence` (camelCase, module-
  * agnostic) поверх saga3 `DiscoveryRuntimePersistencePort` (snake_case, уже
  * generic по форме после параметризации в шаге 2). Composition-root передаёт
- * результат в LmNodeExecutor.
  *
  * Это Module content: знает физическое расположение saga3 persistence. Runtime
  * core видит только generic интерфейс.
  */
-export function createDiscoveryLmNodePersistence(
+export function createDiscoveryWorkplacePersistence(
   runtime: DiscoveryRuntimePersistencePort,
-): LmNodeExecutionPersistence {
+): WorkplaceExecutionPersistence {
   return {
     ensureExecutionPlan(input) {
       return runtime.ensureNodeExecutionPlan({

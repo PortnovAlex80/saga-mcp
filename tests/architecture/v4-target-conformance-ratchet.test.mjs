@@ -136,7 +136,7 @@ test('REG-11-AC-05: TextSetManifest for Development exists', () => {
 });
 
 test('factory-only decision document exists', () => {
-  assert.ok(existsSync(path.join(REPO_ROOT, 'docs/architecture/decisions/027-factory-only-runtime.md')));
+  assert.ok(existsSync(path.join(REPO_ROOT, 'docs/architecture/decisions/031-target-only-factory-runtime.md')));
 });
 
 // ---------------------------------------------------------------------------

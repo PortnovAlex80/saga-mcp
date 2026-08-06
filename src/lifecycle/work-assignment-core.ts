@@ -56,7 +56,6 @@ export function skillForTask(task: Task, sourceStatus: string): WorkerSkill {
       tags = parsed.filter((value): value is string => typeof value === 'string');
     }
   } catch {
-    // Malformed legacy tags: use status fallback.
   }
   const explicit = tags.find(tag =>
     tag.startsWith(review ? 'review-skill:' : 'skill:'));

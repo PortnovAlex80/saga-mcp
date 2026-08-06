@@ -117,7 +117,6 @@ export const DEVELOPMENT_CAP_OUTPUT_REPOSITORY: CapabilityRequirement = {
 /**
  * Optional: the LM-node execution persistence capability. The development
  * planning + verification adapters project the generic
- * `LmNodeExecutionPersistence` interface over the saga3 runtime; when present,
  * the generic LM executor reuses it instead of constructing its own. Marked
  * optional so a minimal runtime that supplies its own LM persistence adapter
  * can still run the module.

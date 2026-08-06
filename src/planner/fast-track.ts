@@ -207,7 +207,6 @@ export function routeFastTrack(
   // removed — the formalization module now owns XS routing decisions and the
   // latest LifecycleRun is the single source of truth for the stage. The dev
   // task created above carries `generation_key` + tags, so the fast-track intent
-  // is still observable without the legacy `episode_workflows` row.
 
   // Trace edge: brief ← derived_from ← dev-task. In artifact_traces the source
   // is the artifact (brief) and the target is the task, mirroring how an AC

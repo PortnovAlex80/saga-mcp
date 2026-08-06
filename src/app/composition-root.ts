@@ -93,7 +93,6 @@ export function createSagaControlApplication(
 }
 
 /**
- * The only place that selects concrete Saga 2 runtime implementations.
  *
  * CLI and HTTP hosts consume SagaApplication and do not import the pump,
  * ClaudeBoardRunner, SQLite projection SQL, process control or environment.
@@ -111,7 +110,6 @@ export function createFactoryApplication(
   };
   const packageInstallation = overrides.modulePackages
     ?? overrides.productLifecycle?.packageInstallation;
-  // saga4 cutover (LEGO-CONTRACTS.md §"Слой 1: СТОЛ"): the legacy unpinned
   // Claude worker factory is GONE — the only legal desk creator is
   // `materializePinnedWorkspace`, which resolves from an immutable package
   // snapshot. A missing packageInstallation is now a configuration error
@@ -124,9 +122,8 @@ export function createFactoryApplication(
         throw new Error(
           'PACKAGE_INSTALLATION_REQUIRED: createFactoryApplication did not receive '
           + 'overrides.modulePackages or overrides.productLifecycle.packageInstallation. '
-          + 'After the saga4 cutover every Process Module execution resolves its '
-          + 'WorkplaceDesk from an immutable pinned package snapshot; the legacy '
-          + 'unpinned worker factory has been removed.',
+          + 'Every Process Module execution resolves its WorkplaceDesk from an '
+          + 'immutable pinned package snapshot.',
         );
       })());
   const host = overrides.host ?? new NodeWorkerHostRuntime({
@@ -161,7 +158,6 @@ export function createFactoryApplication(
  * Selects the concrete orchestration engine behind the OrchestrationEngine port.
  *
  * saga4 cutover: the Product Lifecycle runtime is the SOLE engine. The
- * discovery / discovery-generic / formalization / saga2 branches were removed —
  * those engines are reachable only by direct construction in tests now.
  * `SAGA_PRODUCT_LIFECYCLE_COMPOSITION` must be set so `overrides.productLifecycle`
  * carries the explicit Delivery preflight/publication/observation providers.
@@ -197,7 +193,6 @@ function selectEngine(
 
 /**
  * Build the WorkerExecutorFactoryContext for one LM-node spawn. Mirrors the
- * legacy factory-discovery engine's workspace resolution; the values come from
  * config + the episode's project repository (generic — no discovery literal).
  */
 function buildDiscoveryWorkerContext(
@@ -321,7 +316,6 @@ function processRunIdFromAssignment(
 
 /**
  * Best-effort JSON parse for task.metadata. Returns null on failure (mirrors
- * the defensive parse in legacy-claude-worker-executor-factory's prepareWorkspace).
  */
 function safeParseJson(raw: string): Record<string, unknown> | null {
   try {

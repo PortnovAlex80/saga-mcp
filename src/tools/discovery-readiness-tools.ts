@@ -33,6 +33,7 @@ import {
   markReadinessRejected,
 } from '../modules/discovery/infrastructure/discovery-readiness-repository.js';
 import { canonicalJson, collectDiscoverySourceRefs } from '../shared/canonical-json.js';
+import { recordExecutionProduct } from './universal-desk-helper.js';
 import { createHash } from 'node:crypto';
 
 export interface DiscoveryReadinessHandlersOptions {
@@ -323,6 +324,13 @@ export function createDiscoveryReadinessHandlers(
             SET overall_readiness=?, recommended_next_action=?
           WHERE id=? AND status='accepted_by_kernel'`,
       ).run(typed.overall_readiness, typed.recommended_next_action, inserted.record.id);
+
+      recordExecutionProduct(db, {
+        schema: DISCOVERY_READINESS_ASSESSMENT_SCHEMA,
+        content: typed,
+        executionRef: executionId,
+        taskId: binding.control.projected_task_id!,
+      });
 
       db.prepare(
         `INSERT INTO comments (task_id, author, content) VALUES (?, 'factory-kernel', ?)`,

@@ -27,7 +27,6 @@
  *
  * # What this port does NOT do
  *
- * It does NOT replace the four legacy submit tools or their tables. Those keep
  * working unchanged. It also does NOT replace module-internal provenance reads
  * (the `managed-production-ledger` is the source of truth for "what did this
  * node produce, and what traces did it leave?"). This port is purely the

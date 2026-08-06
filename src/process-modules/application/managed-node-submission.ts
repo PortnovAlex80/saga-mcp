@@ -44,7 +44,6 @@ export interface ManagedNodeSubmissionReader {
    * receives the exact producer execution in the returned record.
    *
    * CGAD P18 — Node-Durable Identity: the card belongs to the workplace (node),
-   * and a repair round reuses the producer's card (lm-node-executor no longer
    * mints a per-attempt task). So `readLatestForTask` for the receipt's task
    * naturally returns the workplace's prior submission. The narrower-than-node
    * scope is still correct: there is exactly one card per workplace now, so

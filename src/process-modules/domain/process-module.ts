@@ -82,7 +82,6 @@ export interface ExecutionProfileDefinition {
   executionSkill: string;
   /**
    * Independent reviewer selected when the projected task enters review.
-   * Omitted/null preserves the dispatcher's legacy generic-reviewer fallback.
    */
   reviewSkill?: string | null;
   /** Reusable physical execution protocol: tracker, hooks, MCP and recovery. */
@@ -91,7 +90,6 @@ export interface ExecutionProfileDefinition {
   semanticSkill: string;
   /**
    * Who may transition artifacts produced by this profile to accepted.
-   * Omitted/worker preserves legacy modules; kernel-gate keeps candidates in
    * draft/in_review until an ExactCandidateAcceptance decision commits them.
    */
   artifactAcceptanceAuthority?: 'worker' | 'kernel-gate';
@@ -121,7 +119,6 @@ export interface ExecutionProfileDefinition {
  * self-hire workers / call external systems through an opaque adapter,
  * bypassing the kernel-authorizes and worker_next-hires discipline. Closed
  * 2026-07-31. Modules now use only:
- *   - 'lm'        — an LM worker hired by the infrastructure LmNodeExecutor
  *                   through the shared worker_next queue;
  *   - 'kernel'    — a deterministic kernel handler (may call injected ports:
  *                   DB reads/writes, deterministic external providers via

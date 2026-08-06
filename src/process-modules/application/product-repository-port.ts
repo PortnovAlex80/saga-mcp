@@ -68,7 +68,6 @@ export interface SubmitProductInput {
   readonly content: unknown;
   /**
    * Logical instance key within this product kind (e.g. `artifact:42`).
-   * When omitted, the persistence layer falls back to `schemaRef` so legacy
    * singletons keep working under the triple UNIQUE constraint.
    */
   readonly productKey?: string;

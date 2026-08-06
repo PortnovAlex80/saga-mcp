@@ -6,7 +6,6 @@
  * It deliberately REUSES the existing pure lifecycle types via import — it
  * does NOT redefine `LifecycleIdentity`, `StageBinding`, `TransitionTarget`,
  * or `LifecycleMappingExpression` (those live in `domain/lifecycle.ts` and are
- * shared with the legacy LifecycleDefinition surface). The genuinely new
  * contribution is the *scenario envelope*: a frozen, route-resolver-free,
  * budgeted, terminal-aware manifest that the scenario runtime consumes.
  *

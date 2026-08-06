@@ -295,18 +295,16 @@ test('renderActionableToolError: call line includes tool and exec segments', () 
 // §13.13 — parameterized workflow hint replaces the hard-coded Discovery string.
 // ---------------------------------------------------------------------------
 
-test('renderWorkflowHint: echoes the legacy [Workflow: ...] shape with caller refs', () => {
+test('renderWorkflowHint: echoes the unsupported [Workflow: ...] shape with caller refs', () => {
   const hint = renderWorkflowHint({
     trackerRef: 'docs/formalization/project-9-formalization-stage.md',
     checklistRef: 'docs/process-modules/formalization/submit-checklist.md',
     resumeStep: '2b',
   });
-  // Same [Workflow: ...] envelope as the legacy literal, so existing regexes match.
   assert.match(hint, /^\[Workflow: .*\]$/);
   assert.match(hint, /Read your stage tracker docs\/formalization\/project-9-formalization-stage\.md/);
   assert.match(hint, /verify checklist docs\/process-modules\/formalization\/submit-checklist\.md/);
   assert.match(hint, /resume at 2b/);
-  // The legacy literal ended with "retry.]" — the parameterized form keeps that.
   assert.match(hint, /retry\.\]$/);
 });
 
@@ -315,8 +313,7 @@ test('renderWorkflowHint: returns empty when no refs supplied', () => {
   assert.equal(renderWorkflowHint({ trackerRef: '', checklistRef: '' }), '');
 });
 
-test('renderWorkflowHint: discovery tracker ref reproduces the legacy literal tokens', () => {
-  // The W0-A3 characterization test pinned the exact legacy sentence. The
+test('renderWorkflowHint: discovery tracker ref reproduces the unsupported literal tokens', () => {
   // parameterized version with the OLD discovery refs must still reference the
   // discovery path so a migration can swap the call site without changing the
   // observed text shape.

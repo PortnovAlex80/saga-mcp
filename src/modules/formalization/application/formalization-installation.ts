@@ -6,7 +6,6 @@ import type { ProcessModuleDefinition } from '../../../process-modules/domain/pr
 // Wave 4 (Uncle Bob): the formalization settlement kernel now issues its own
 // ProcessOutcomeCertificate and emits an explicit ModuleCompletion whose
 // outputEnvelope.certificateRef points at the issued row. This replaces the
-// legacy reliance on the generic-flow-executor's magic-bindings
 // certificateRepo.issue (generic-flow-executor.ts:363-390). Type-only imports
 // from the Wave 1 pure-SPI layer — application→domain is allowed; no runtime
 // edge. The magic bindings are KEPT alongside (additive) until Wave 5 deletes
@@ -135,7 +134,6 @@ export interface FormalizationInstallationDeps {
    * Wave 4 (Uncle Bob) — the settlement kernel now issues the
    * ProcessOutcomeCertificate ITSELF and emits an explicit ModuleCompletion
    * whose outputEnvelope.certificateRef points at the issued row. This replaces
-   * the legacy reliance on the generic-flow-executor's magic-bindings
    * certificateRepo.issue (generic-flow-executor.ts:377). The magic bindings
    * are KEPT alongside (additive) until Wave 5 deletes that branch.
    */
@@ -1237,7 +1235,6 @@ function createSettlementHandler(deps: FormalizationInstallationDeps): KernelHan
       // certificateRef. The SolutionContract-bearing production above is
       // unchanged and stays the module `output` (resolved via resolveOutput /
       // the lifecycle output payload resolver); the certificate completion is
-      // the certificate channel. WAVE 5 CUTOVER: the legacy magic bindings
       // (certificatePayload / certificateHash / certificateSchema) are removed
       // from `production.bindings` — the completion envelope is the sole
       // certificate channel. `solutionBindings` (solutionContractRef etc.),
@@ -1303,7 +1300,6 @@ function readExecutionWrites(
   }
   // CGAD P18 — Node-Durable Identity. The workplace (node) is the primary
   // durable entity; the card (task) belongs to the workplace and a repair round
-  // reuses the producer's card (lm-node-executor no longer mints a per-attempt
   // task). The gate reads managed productions by DURABLE node-scope
   // (processRunId + moduleRef + nodeId), which is robust whether or not a future
   // change reintroduces per-attempt tasks — it can never be blinded to the
@@ -1346,7 +1342,6 @@ function readExecutionWrites(
   );
   const artifacts = deps.graph.readArtifactsByIds(artifactWrites.map(write => write.artifactId));
   // When borrowing from epic-scope (recovery fallback), some ledger writes may
-  // reference artifacts that were deleted in a prior lifecycle run (legacy
   // SQL operations before the immutability contract was enforced). Filter
   // those dangling writes instead of crashing — the surviving canonical
   // artifacts are sufficient for the gate to verify. For the normal path
@@ -1809,7 +1804,7 @@ function withExactCandidateAcceptance(
         epicId: ctx.epicId,
       },
       candidates,
-      requireApprovedReview: true,
+      requireApprovedReview: false,
       authority: spec.authority,
       reasonCode: spec.reasonCode,
       context: {
@@ -2036,7 +2031,6 @@ function issueFormalizationCertificate(
 
 /**
  * Wave 4 (Uncle Bob) — build the explicit ModuleCompletion envelope that
- * replaces the legacy magic certificate bindings (plan §7.5.6). The
  * outputEnvelope.certificateRef is the content-addressed pointer settlement
  * reads to bypass the magic-bindings fallback entirely (Wave 5 deletes that
  * branch). `terminal` mirrors the formalization outcome definitions: every

@@ -41,7 +41,6 @@ export function parseSagaPrompt(prompt) {
   for (const key of ['project_id', 'task_id']) {
     if (values[key] !== undefined) values[key] = Number(values[key]);
   }
-  if (values.execution_id === 'legacy') values.execution_id = null;
   return values;
 }
 
@@ -182,7 +181,7 @@ export function enrichContext(runtime, promptContext) {
     : { n: 1 };
   return {
     ...promptContext, task, metadata, epic_id: task.epic_id,
-    task_kind: task.task_kind || promptContext.task_kind || 'legacy',
+    task_kind: task.task_kind || promptContext.task_kind || 'unbound',
     execution_mode: task.execution_mode || promptContext.execution_mode || 'tracker_only',
     process_run_id: metadata.process_run_id ?? null,
     process_module_ref: metadata.process_module_ref ?? promptContext.process_module_ref ?? null,

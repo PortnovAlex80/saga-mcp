@@ -16,7 +16,6 @@
  * Before W6-A3, server-side enforcement of a saga tool call lived in two
  * specialised, non-composable places:
  *   1. `src/shared/authority/authorize-tool-call.ts` — the strict
- *      execution-context + authority gateway bound to the legacy Saga 2/3
  *      MCP handler dispatch in `src/index.ts`. It validates the frozen
  *      execution_context and the authority allowed_tools list, but it is
  *      hard-wired to the `worker_executions` table and cannot validate tool
@@ -40,7 +39,6 @@
  *     authority + fence state are passed in by the caller as plain data.
  *   - It does NOT know about specific tool names. The pipeline reasons over
  *     an opaque `toolName` string and a caller-supplied effective authority
- *     surface (already intersected by the protocol runtime or the legacy
  *     gateway).
  *   - It does NOT depend on W6-A5's ActionableToolError shape. W6-A3 lands in
  *     a parallel worktree; importing a sibling-lane file that is not present
@@ -61,8 +59,6 @@
  *      this pipeline takes the already-intersected `effectiveAuthority` as an
  *      input and only enforces the per-call question: "is THIS tool in the
  *      effective surface for THIS call?". This keeps the pipeline free of the
- *      host/policy/step machinery and lets it run identically for a legacy
- *      Saga 2 call and a process-module contributed tool.
  *
  *   2. EXECUTION FENCE (§11.1, §0.7.11 item 5). For a managed execution the
  *      call MUST carry the execution-id fence token that the runtime issued

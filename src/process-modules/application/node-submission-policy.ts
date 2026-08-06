@@ -8,7 +8,7 @@
  * and UC) existed only in the post-hoc resolver, never at the worker_done
  * boundary where the LM could be told it was incomplete before leaving.
  *
- * The policy model has three modes:
+ * The policy model has two modes:
  *
  *   required            — a validator is registered and MUST accept before
  *                         worker_done transitions the task. Rejection leaves
@@ -20,11 +20,6 @@
  *                         contract (e.g. a pure control node). The rationale
  *                         is declared and logged; worker_done proceeds.
  *
- *   legacy-unvalidated  — the node has a real result contract that has not
- *                         been migrated to a `required` validator yet.
- *                         Allowed (with a telemetry warning) so existing
- *                         modules keep working, but forbidden for new modules
- *                         (enforced by an architecture test).
  */
 
 // ---------------------------------------------------------------------------
@@ -41,8 +36,7 @@
  */
 export type NodeSubmissionPolicy =
   | { readonly mode: 'required'; readonly validatorId: string; readonly contractRef?: ContractRef }
-  | { readonly mode: 'none'; readonly rationale: string }
-  | { readonly mode: 'legacy-unvalidated'; readonly migrationTicket: string };
+  | { readonly mode: 'none'; readonly rationale: string };
 
 // ---------------------------------------------------------------------------
 // Structured rejection.

@@ -1,7 +1,6 @@
 /**
  * Pinned-package workspace materializer (SPI cutover Seam C).
  *
- * Replaces the legacy `safeAssetPath(workspaceRoot, asset)` resource lookup in
  * `prepareProcessExecutionWorkspace` with a pinned-package source: reads bytes
  * from a verified `ModulePackageStore.read(packageDigest)` result instead of
  * reconstructing filesystem paths or reading the project tree. This closes
@@ -9,15 +8,12 @@
  * saga-mcp repo root) and W13-AUDIT §18.9 (resources ship with the owning
  * package, resolved from pinned bytes).
  *
- * The materializer preserves the legacy execution-directory physics + retry
  * idempotency byte-for-byte: it reuses the exported helpers from
  * `process-execution-workspace.ts` (buildMachineBindings, fillKnownPlaceholders,
  * refreshMarkdown/JsonMachineBindings, materializedName, relativeWorkspacePath,
  * recoveryFeedbackFromMetadata) so the 15-key markdown allowlist and 13-key
  * JSON allowlist that define "what gets refreshed on retry" stay single-source.
  *
- * Source resolution difference vs legacy:
- *   legacy:  safeAssetPath(workspaceRoot, asset)  → reads from project tree
  *   pinned:  resolveResource(projection, storedPackage, assetPath) reads the
  *            exact logicalId blob already verified by the package-store port.
  */
@@ -50,9 +46,7 @@ import {
  * saga4 LEGO contract — Layer 1 (Workplace Desk).
  *
  * Replaces the loose {@link ProcessExecutionWorkspace} struct that pinned and
- * legacy creators previously shared. After the saga4 cutover the pinned
  * materializer is the SOLE desk creator, so the contract is owned here and the
- * legacy interface can be deleted from `process-execution-workspace.ts`.
  *
  * INVARIANTS (enforced by {@link assertDeskInvariants} before every return):
  *   I1. trackerAbsolutePath endsWith `node-${nodeId}.md` (node-stable tracker).
@@ -63,7 +57,6 @@ import {
  *
  * Backward-compatibility slots ({@link workspaceFiles},
  * {@link agentAssistanceAbsolutePath}, {@link testWarmStart}) are kept so the
- * existing consumers (`legacy-claude-worker-executor-factory.ts`,
  * `tracker-view/claude-runner.mjs`, `test-warm-start.ts`) need no edits. They
  * will be removed once those consumers migrate to the strict fields.
  */
@@ -186,7 +179,6 @@ import type {
 } from './process-workspace-preparation.js';
 
 /**
- * Input to the pinned-package materializer. Mirrors the legacy request shape,
  * but the resource source is the pre-resolved WorkspaceProjection (bytes live
  * under projection.storeLocation) rather than workspaceRoot-relative assets.
  */
@@ -319,8 +311,6 @@ function resolveOwningNodeId(
  * Materialize the pinned-package workspace into the project tree.
  *
  * Produces the same directory layout, tracker filename, and metadata shape as
- * the legacy creator so downstream consumers
- * (`legacy-claude-worker-executor-factory.ts`, `tasks.ts:734`,
  * `claude-runner.mjs`) need NO changes. The only difference is the SOURCE of
  * the template/checklist/tracker bytes: pinned storeLocation instead of the
  * workspace tree.
@@ -388,7 +378,6 @@ export function materializePinnedWorkspace(
     writeFileSync(reviewFeedbackPath, `${JSON.stringify(reviewFeedback, null, 2)}\n`);
   }
 
-  // 3. Asset lists from the profile (same fields the legacy path reads).
   const workspaceTemplates = profile.workspaceTemplates ?? [];
   const callTemplates = profile.callTemplates ?? [];
   const checklists = profile.checklists ?? [];
@@ -438,7 +427,6 @@ export function materializePinnedWorkspace(
   }
 
   // 5. Materialize workspace + call templates into executionDirectory/ with
-  //    retry-idempotency (reuse the legacy helpers verbatim).
   const materializedBySource = new Map<string, string>();
   for (const asset of [...new Set([...workspaceTemplates, ...callTemplates])]) {
     const target = path.join(executionDirectory, materializedName(asset));
@@ -476,7 +464,6 @@ export function materializePinnedWorkspace(
     materializedBySource.set(asset, relativeWorkspacePath(workspaceRoot, target));
   }
 
-  // 6. Tracker — materialize into projectDirectory with the exact legacy
   //    filename pattern (consumers depend on it). Retry reads existing file
   //    so worker checkpoint edits survive.
   if (!profile.trackerTemplate) {
@@ -602,7 +589,6 @@ export function materializePinnedWorkspace(
         ? relativeWorkspacePath(workspaceRoot, agentAssistanceAbsolutePath)
         : null,
     },
-    // Backward-compatibility slots. `workspaceFiles` matches the legacy flat
     // list shape exactly (workspace templates + feedback paths).
     workspaceFiles: [
       ...workspaceTemplates.map(a => materializedBySource.get(a)).filter((v): v is string => !!v),

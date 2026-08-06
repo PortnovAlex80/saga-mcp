@@ -27,7 +27,6 @@ import {
 export { DEVELOPMENT_PROCESS_MODULE_REF };
 
 const PROCESS_PROTOCOL_SKILL = 'saga-process-module-worker-protocol';
-// W13-A2: resources were moved out of the legacy global root
 // (`tool-templates/development/`) into the development package resources
 // directory. These are repo-root-relative POSIX paths — the workspace
 // materializer resolves them under `workspaceRoot` (process.cwd()), matching
@@ -522,6 +521,7 @@ export const developmentProcessModule: ProcessModuleDefinition = {
       reviewSkill: 'saga-planning-reviewer',
       protocolSkill: PROCESS_PROTOCOL_SKILL,
       semanticSkill: 'saga-planner',
+      artifactAcceptanceAuthority: 'kernel-gate',
       executionMode: 'tracker_only',
       allowedTools: [
         ...COMMON_READ_TOOLS,
@@ -570,6 +570,7 @@ export const developmentProcessModule: ProcessModuleDefinition = {
       reviewSkill: null,
       protocolSkill: PROCESS_PROTOCOL_SKILL,
       semanticSkill: 'saga-worker',
+      artifactAcceptanceAuthority: 'kernel-gate',
       executionMode: 'git_change',
       allowedTools: COMMON_WRITE_TOOLS,
       trackerTemplate: IMPLEMENTATION_TRACKER,
@@ -598,6 +599,7 @@ export const developmentProcessModule: ProcessModuleDefinition = {
       reviewSkill: null,
       protocolSkill: PROCESS_PROTOCOL_SKILL,
       semanticSkill: 'saga-worker',
+      artifactAcceptanceAuthority: 'kernel-gate',
       executionMode: 'tracker_only',
       allowedTools: COMMON_WRITE_TOOLS,
       trackerTemplate: IMPLEMENTATION_TRACKER,
@@ -622,6 +624,7 @@ export const developmentProcessModule: ProcessModuleDefinition = {
       reviewSkill: null,
       protocolSkill: PROCESS_PROTOCOL_SKILL,
       semanticSkill: 'saga-worker',
+      artifactAcceptanceAuthority: 'kernel-gate',
       executionMode: 'tracker_only',
       allowedTools: COMMON_WRITE_TOOLS,
       trackerTemplate: IMPLEMENTATION_TRACKER,

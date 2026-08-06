@@ -4,7 +4,6 @@ import { ensureFactoryModuleInstallationSchema } from './process-modules/install
 import { ensureFactoryScenarioInstallationSchema } from './process-modules/installation/persistence/sqlite-scenario-installation-repository.js';
 import { ensureFactoryProtocolRunSchema } from './process-modules/persistence/sqlite-protocol-run-repository.js';
 import { ensureFactoryCallInstanceSchema } from './process-modules/persistence/sqlite-call-instance-repository.js';
-import { ensureAuthorityBindingInvariant } from './infrastructure/projections/workplace-projector.js';
 import { initSubmissionRegistries } from './process-modules/application/submission-registries.js';
 
 let db: Database.Database | null = null;
@@ -15,7 +14,6 @@ let db: Database.Database | null = null;
  * The schema is defined entirely in {@link SCHEMA_SQL} (schema.ts) and the
  * lazy `ensureFactory*Schema` calls below. This function is clean-foundation:
  * all migration sediment (ALTER TABLE try/catch blocks, table-rebuild
- * functions, backfill migrations) was removed because there are no legacy
  * databases to migrate — the product has not shipped to clients.
  *
  * **DB compatibility policy:** disposable pre-release. `user_version` is
@@ -30,7 +28,6 @@ let db: Database.Database | null = null;
  *   2 = Conveyor v4 additive layer (CONVEYOR-V4-MIGRATION-PLAN step 6):
  *       the 7 `factory_*` authoritative Workplace/CandidateSet/Gate tables plus
  *       4 immutability triggers are now a required part of the schema, and
- *       `tracker_export` format_version moves to 1.5. Additive-only: legacy
  *       tables are retained as projections through the cutover window.
  *
  * Pragmas: WAL (concurrent reader + writer), foreign_keys ON, busy_timeout
@@ -88,22 +85,6 @@ export function getDb(): Database.Database {
     console.warn(
       `[factory] migrated ${briefMigration.migrated} synthetic brief(s) to db_native `
         + `(inspected ${briefMigration.inspected}, skipped ${briefMigration.skipped})`,
-    );
-  }
-
-  // WorkIntent conclusion, Workplace terminal state and tasks.status projection
-  // are one authority-binding transaction. The installer creates the durable
-  // trigger and reconciles split-brain rows left by the pre-invariant runtime
-  // before any dispatcher or lifecycle resume can inspect the queue.
-  const authorityBinding = ensureAuthorityBindingInvariant(db);
-  if (
-    authorityBinding.workplacesAdvanced > 0
-    || authorityBinding.taskProjectionsRebuilt > 0
-  ) {
-    console.warn(
-      '[factory] reconciled concluded authority bindings: '
-        + `${authorityBinding.workplacesAdvanced} workplace(s), `
-        + `${authorityBinding.taskProjectionsRebuilt} task projection(s)`,
     );
   }
 

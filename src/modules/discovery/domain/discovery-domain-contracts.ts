@@ -5,7 +5,6 @@
  * CONVEYOR Wave 7 (saga3 cross-tree leak elimination). Previously the discovery
  * module imported these definitions from `src/saga3/domain/**` and
  * `src/saga3/persistence/factory-discovery-runtime-port.ts`. That crossed the
- * Pack/Core boundary the wrong way: `src/saga3/**` is the LEGACY inbound adapter
  * layer, and a Process Module package must not reach outside
  * `src/process-modules/`. The definitions are mirrored here BYTE-IDENTICAL
  * (same schema-id string values, same field shapes) so discovery certificates,
@@ -580,7 +579,6 @@ export interface ReadinessControlIntentRecord {
 
 // ---------------------------------------------------------------------------
 // DiscoveryRuntimePersistencePort — the runtime-persistence boundary the
-// Discovery Process Module speaks. Structurally compatible with the legacy
 // `FactoryDiscoveryRuntimePersistence` (src/saga3/persistence/
 // factory-discovery-runtime-port.ts): the concrete saga3 SQLite adapter satisfies
 // this interface, so the composition root can pass it in unchanged.
@@ -588,7 +586,6 @@ export interface ReadinessControlIntentRecord {
 // This port is the module's INWARD-FACING contract (hexagonal). The module
 // owns it; the adapter implements it. Previously the module imported the
 // interface from saga3 — a cross-tree leak. Now the module owns the port and
-// the saga3 layer is allowed to depend inward (it is a legacy inbound adapter).
 // ---------------------------------------------------------------------------
 
 export interface DiscoveryRuntimePersistencePort {
@@ -631,11 +628,11 @@ export interface DiscoveryRuntimePersistencePort {
   readTaskProjectRepositoryId(taskId: number): number | null;
   prepareIntentForExecution(intentId: number, taskId: number): PrepareIntentForExecutionResult;
   /**
-   * Transition a task from removed-legacy-status (or done) to removed-legacy-status so a
+   * Transition a task from awaiting_verification (or done) to awaiting_verification so a
    * repair-attempt can spawn a FRESH worker run. This is the "dismantle order" —
    * the kernel verifier found a defect after review approved.
    *
-   * Resets: tasks.status removed-legacy-status→removed-legacy-status, assigned_to→NULL,
+   * Resets: tasks.status awaiting_verification→awaiting_verification, assigned_to→NULL,
    * current_execution_id→NULL; factory_work_intents.status concluded→open.
    * The task_id is preserved (same generationKey → same lineage), so
    * exact-acceptance gate finds the prior ledger entries and requires a new
@@ -702,7 +699,6 @@ export interface DiscoveryRuntimePersistencePort {
 //
 // The discovery module's settlement handler needs to run the deterministic D4
 // settlement policy + issue the authoritative certificate. That logic lives in
-// the legacy saga3 application layer (`FactoryDiscoverySettlementService`). The
 // module declares THIS port; the composition root constructs the concrete
 // service and injects it through `DiscoveryInstallationDeps.settlementService`
 // (required since Wave 8 MEDIUM 7). The module never imports

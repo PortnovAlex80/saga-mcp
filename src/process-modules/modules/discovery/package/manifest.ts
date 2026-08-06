@@ -12,7 +12,6 @@
  * (WAVE9-PRODUCTION-MIGRATION-SPEC §2 exit gate).
  *
  * A1 OWNS this file exclusively. The other W9 Discovery lanes (A2 submits
- * tool contributions + legacy engine adapter subtrees) submit individual
  * entries to A1, which reconciles them into this single manifest. Do not
  * edit this file from another lane.
  *
@@ -125,8 +124,6 @@ export const DISCOVERY_OUTCOME_CERTIFICATE_SCHEMA = 'factory.discovery-outcome-c
 /**
  * Format version of THIS manifest envelope. `'1'` signals the envelope wraps a
  * migrated ProcessModuleDefinition that populates `resourceIndex` /
- * `handlerRefs` (as opposed to `'legacy-0'`, which wraps a bare definition
- * with empty arrays). Wave 9 bumps discovery from legacy-0 to '1', mirroring
  * the Wave 8 formalization bump.
  */
 export const DISCOVERY_MANIFEST_FORMAT_VERSION = '1';
@@ -155,7 +152,6 @@ export const DISCOVERY_RUNTIME_COMPATIBILITY_RANGE = '^3.0.0';
 
 /**
  * Repository-root-relative POSIX paths to the resources discovery pins. W13-A2
- * moved every module-owned resource out of the legacy global root
  * (`tool-templates/discovery/`, `skills/saga-discovery-*`) into the discovery
  * package resources directory. The resources physically live under
  * `src/process-modules/modules/discovery/package/resources/`; the manifest pins

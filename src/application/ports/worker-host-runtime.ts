@@ -3,7 +3,7 @@ export interface WorkerHostContext {
   epicId: number;
 }
 
-export interface Saga2WorkerRuntimePaths {
+export interface WorkerRuntimePaths {
   sagaEntry: string;
   sagaSkillRoot: string;
   logRoot?: string;
@@ -16,7 +16,7 @@ export type EngineLockAcquisition =
   | { status: 'unavailable'; ownerPid: null; error: string };
 
 /**
- * Host boundary for the stable Saga 2 pump.
+ * Host boundary for the factory worker pump.
  *
  * Filesystem layout, PID ownership, wall clock, sleeping, heartbeat output and
  * JSONL telemetry are infrastructure concerns. The orchestration engine only
@@ -24,7 +24,7 @@ export type EngineLockAcquisition =
  */
 export interface WorkerHostRuntime {
   readonly processId: number;
-  readonly workerPaths: Saga2WorkerRuntimePaths;
+  readonly workerPaths: WorkerRuntimePaths;
 
   now(): number;
   sleep(ms: number): Promise<void>;

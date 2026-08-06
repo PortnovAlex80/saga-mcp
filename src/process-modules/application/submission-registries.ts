@@ -6,7 +6,6 @@
  * read them via {@link getSubmissionPolicyRegistry} /
  * {@link getSubmissionValidatorRegistry}. Before initialization, both return
  * null — worker_done treats null as "no validation infrastructure wired"
- * and proceeds in legacy mode (the registries are optional for tests that
  * don't exercise submission validation).
  */
 

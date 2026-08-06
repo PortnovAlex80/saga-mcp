@@ -41,14 +41,10 @@ function roleFromTask(task, fallbackSkill) {
 // agent-launch-spec.ts) carrying the package-pinned resources + the
 // author/reviewer/semantic/protocol skills resolved from the pinned module
 // installation (NOT the global skill root). When the callback is absent OR
-// returns null, the runner falls back to the legacy single-skill path
-// byte-for-byte (plan §14.3.7 legacy fallback). This keeps the .mjs runner
-// TypeScript-free and preserves every legacy path.
 //
 // The resolved descriptor exposes:
 //   role           { executionSkill, reviewSkill, semanticSkill, protocolSkill }
 //                  — the pinned skills from the installation's execution
-//                    profile. reviewSkill may be null (legacy generic-reviewer
 //                    fallback).
 //   resolveSkill   (skillName) => absolute path | null  — maps a skill name to
 //                  its package-pinned SKILL.md path under the installation's
@@ -61,7 +57,6 @@ function roleFromTask(task, fallbackSkill) {
 //
 // §13.18 fix: for a review-status task, the reviewer skill
 // (role.reviewSkill) is selected INSTEAD of the author semantic skill when the
-// launch spec resolves one. The legacy path still selects profile.semanticSkill
 // for review tasks (the bug §13.18 calls out).
 
 /**
@@ -91,6 +86,9 @@ function buildPrompt({
   processWorkspace,
   launchSpec,
 }) {
+  if (!launchSpec?.role || typeof launchSpec.resolveSkill !== 'function') {
+    throw new Error('AGENT_LAUNCH_SPEC_REQUIRED: worker resources must come from the pinned installation');
+  }
   const task = assignment.task;
   const role = roleFromTask(task, assignment.skill);
   const isReview = task.status === 'review' || task.status === 'review_in_progress';
@@ -107,8 +105,6 @@ function buildPrompt({
   //                    produces; the protocol defines HOW it produces it
   //                    reliably.
   //
-  // When no profile matches (legacy tasks, ad-hoc kinds), we fall back to the
-  // legacy single-skill path (assignment.skill). This keeps older tasks
   // working unchanged while Process Module tasks get the composed prompt.
   let protocolSkillName = null;
   let semanticSkillName = null;
@@ -135,13 +131,12 @@ function buildPrompt({
   // REVIEWER skill instead of the author semantic skill. Without this the
   // profile.semanticSkill (author skill, e.g. saga-product) overwrites the
   // reviewer assignment for formalization/review tasks. pickLaunchSpecSkillName
-  // returns null when no launch spec resolved → the legacy precedence below is
   // preserved byte-for-byte (profile > assignment.skill > saga-<role>).
   const launchPickedSkill = pickLaunchSpecSkillName(launchSpec, isReview);
-  const effectiveSemanticSkill = launchPickedSkill
-    ?? semanticSkillName
-    ?? assignment.skill
-    ?? `saga-${role}`;
+  const effectiveSemanticSkill = launchPickedSkill ?? semanticSkillName;
+  if (!protocolSkillName || !effectiveSemanticSkill) {
+    throw new Error('AGENT_LAUNCH_SKILLS_REQUIRED: protocol and semantic skills must be pinned');
+  }
   const effectiveReviewerSkill = (isReview && reviewerSkillName)
     ? reviewerSkillName
     : null;
@@ -149,29 +144,21 @@ function buildPrompt({
   // W5-A6: resolve the skill file path from the PINNED installation when the
   // launch spec supplies a resolveSkill resolver (plan §0.2.7 / §10.12:
   // resources come from the installation, NOT the global skill root). Fall back
-  // to the global skill root for legacy tasks (no launch spec) and when the
   // pinned resolver returns no path (resource not declared in the index).
   const resolvePinnedSkillPath = (skillName) => {
-    if (skillName && typeof launchSpec?.resolveSkill === 'function') {
-      try {
-        const pinned = launchSpec.resolveSkill(skillName);
-        if (typeof pinned === 'string' && pinned.length > 0) return pinned;
-      } catch (error) {
-        if (launchSpec.strictResources === true) throw error;
-        // Legacy resolver failure → fall through to global skill root.
-      }
-      if (launchSpec.strictResources === true) {
-        throw new Error(
-          `PINNED_SKILL_NOT_RESOLVED: ${skillName} for installation `
-          + `${launchSpec.installationId ?? 'unknown'}`,
-        );
-      }
+    if (skillName) {
+      const pinned = launchSpec.resolveSkill(skillName);
+      if (typeof pinned === 'string' && pinned.length > 0) return pinned;
     }
-    return path.join(sagaSkillRoot, skillName, 'SKILL.md');
+    throw new Error(
+      `PINNED_SKILL_NOT_RESOLVED: ${skillName} for installation ${launchSpec.installationId ?? 'unknown'}`,
+    );
   };
   const semanticSkillPath = resolvePinnedSkillPath(effectiveSemanticSkill);
-  const workerSkillPath = path.join(sagaSkillRoot, 'saga-worker', 'SKILL.md');
-  const skillPath = existsSync(semanticSkillPath) ? semanticSkillPath : workerSkillPath;
+  if (!existsSync(semanticSkillPath)) {
+    throw new Error(`PINNED_SKILL_FILE_MISSING: ${semanticSkillPath}`);
+  }
+  const skillPath = semanticSkillPath;
 
   // Inline the skill file(s) directly into the prompt. When a protocol skill
   // is resolved, BOTH are inlined as separate sections so the worker sees the
@@ -214,13 +201,6 @@ function buildPrompt({
       semanticInline,
       semanticSectionEnd,
     ].join('\n');
-  } else {
-    // Legacy single-skill path (no Process Module profile resolved).
-    try {
-      skillInline = `--- SKILL BEGIN ---\n${readFileSync(skillPath, 'utf8')}\n--- SKILL END ---`;
-    } catch {
-      skillInline = `(Could not read skill file at ${skillPath}. Follow rules 1-8 below.)`;
-    }
   }
 
   return [
@@ -230,20 +210,20 @@ function buildPrompt({
     `project_name=${project.name}`,
     `task_id=${task.id}`,
     `worker_id=${workerId}`,
-    `execution_id=${assignment.execution_id || 'legacy'}`,
+    `execution_id=${assignment.execution_id}`,
     `role=${role}`,
     `dispatcher_skill=${assignment.skill}`,
     protocolSkillName ? `protocol_skill=${protocolSkillName}` : null,
     semanticSkillName ? `semantic_skill=${semanticSkillName}` : null,
     reviewerSkillName ? `reviewer_skill=${reviewerSkillName}` : null,
-    launchSpec ? `launch_spec_installation=${launchSpec.installationId ?? 'legacy'}` : null,
+    `launch_spec_installation=${launchSpec.installationId}`,
     effectiveReviewerSkill ? `effective_skill=${effectiveReviewerSkill}` : null,
     processWorkspace ? `process_module_ref=${processWorkspace.moduleRef}` : null,
     processWorkspace ? `execution_profile=${processWorkspace.profileId}` : null,
-    `task_kind=${task.task_kind || 'legacy'}`,
-    `workflow_stage=${task.workflow_stage || 'legacy'}`,
+    `task_kind=${task.task_kind}`,
+    `workflow_stage=${task.workflow_stage}`,
     `execution_mode=${task.execution_mode || 'git_change'}`,
-    `repository=${assignment.repository?.name || 'legacy-project-workspace'}`,
+    `repository=${assignment.repository.name}`,
     `workspace_root=${workspaceRoot}`,
     '',
     'Hard rules:',
@@ -275,7 +255,7 @@ function buildPrompt({
           'c. Use the listed materialized files; do not invent a call shape from memory.',
           'd. Before every consequential MCP write, read the listed checklist and the call file back.',
           'e. Update the exact tracker after every completed step and before worker_done.',
-          'Paths in this section override generic or legacy example paths in semantic skills.',
+          'Paths in this section are authoritative for this execution.',
           '--- END MACHINE-PROVISIONED PROCESS WORKSPACE ---',
           '',
         ].join('\n')
@@ -310,9 +290,7 @@ function buildPrompt({
       ? '7. If APPROVED reaches done, stop:true means do not claim another task: first acquire the repository merge lock, merge into the assigned integration branch, call worker_merge_release, then summarize and exit.'
       : '7. After worker_done returns stop:true, do not claim another task; finish any required terminal protocol, then return a concise summary and exit.',
     '8. Do not start, select, or accept another task. Do not spawn nested agents.',
-    assignment.execution_id
-      ? `8a. Include execution_id="${assignment.execution_id}" in worker_done, verification_record, worker_ask_need, worker_ask_done, worker_merge_acquire, and worker_merge_release.`
-      : '8a. This is a legacy unfenced assignment.',
+    `8a. Include execution_id="${assignment.execution_id}" in worker_done, verification_record, worker_ask_need, worker_ask_done, worker_merge_acquire, and worker_merge_release.`,
     task.task_kind === 'verification.ac'
       ? `9. Before worker_done, call verification_record only for the task's canonical AC with recorded_by="${workerId}"${assignment.execution_id ? `, execution_id="${assignment.execution_id}"` : ''}, and truthful pass/fail evidence.`
       : '9. Preserve the task provenance and do not create unrelated downstream work.',
@@ -331,6 +309,13 @@ export class ClaudeBoardRunner {
     this.recoverAssignment = options.recoverAssignment;
     this.resolveWorkspace = options.resolveWorkspace;
     this.spawn = options.spawn ?? nodeSpawn;
+    this.executionStore = options.executionStore ?? {
+      markExited: markExecutionExited,
+      markProgress: markExecutionProgress,
+      markRunning: markExecutionRunning,
+      markSpawnFailed: markExecutionSpawnFailed,
+      readBirthToken: readProcessBirthToken,
+    };
     this.claudePath = options.claudePath ?? process.env.SAGA_CLAUDE_PATH ?? 'claude';
     this.dbPath = options.dbPath;
     this.sagaEntry = options.sagaEntry;
@@ -338,7 +323,6 @@ export class ClaudeBoardRunner {
     // LM Studio provider: reads { model, provider, effort } from episode_workflows.metadata
     // (active_model / active_provider / active_model_effort). Returns
     // {provider:'zai', model:null, effort:null} when unset → spawn uses the
-    // legacy `--model opus` + ~/.claude/settings.json path.
     // LM Studio routing lives primarily in ~/.claude/settings.json (patched by
     // POST /api/model/set). The spawn-env override below is a defensive belt-
     // and-suspenders for claude CLI versions where env DOES take priority over
@@ -351,7 +335,6 @@ export class ClaudeBoardRunner {
     // P5b: optional resolver that maps a task_kind to its Process Module
     // execution profile ({ protocolSkill, semanticSkill }). When present, the
     // prompt builder inlines BOTH skills (protocol = execution physics,
-    // semantic = domain role). When absent or null, the legacy single-skill
     // path is used. The resolver is injected by the worker-executor factory.
     this.resolveProfile = options.resolveProfile ?? null;
     // W5-A6 (plan §10.12–§10.16, §13.17–§13.18): optional resolver that turns
@@ -366,7 +349,6 @@ export class ClaudeBoardRunner {
     //   - grants only the profile's allowedTools as Claude builtins, falling
     //     back to the hard-coded builtin set only when the launch spec carries
     //     no allowedToolIds (§13.17 fix — respect profile allowedTools).
-    // When absent or null, the runner uses the legacy single-skill path and the
     // hard-coded builtin set byte-for-byte. Injected by the worker-executor
     // factory; the .mjs runner never imports the TypeScript AgentLaunchSpec.
     this.resolveLaunchSpec = options.resolveLaunchSpec ?? null;
@@ -502,6 +484,9 @@ export class ClaudeBoardRunner {
     if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 10) {
       throw new Error('concurrency must be an integer from 1 to 10');
     }
+    if (!assignment) {
+      throw new Error('PREASSIGNED_WORK_REQUIRED: the dispatcher must fence one card before worker launch');
+    }
 
     const project = this.getProject(projectId);
     if (!project) throw new Error(`Project ${projectId} not found`);
@@ -516,9 +501,8 @@ export class ClaudeBoardRunner {
       // dispatcher ALWAYS pre-assigns a card (assignTask already flipped status
       // + set the fence) before start(). The runner stores it here and pump()
       // launches the worker directly WITHOUT calling claimTask — the assignment
-      // is done. One pre-assigned card = one worker. The legacy claimScope /
       // in-process worker_next self-claim path is removed.
-      preassignedWork: assignment ?? null,
+      preassignedWork: assignment,
       projectName: project.name,
       workspaceRoot,
       concurrency,
@@ -617,7 +601,6 @@ export class ClaudeBoardRunner {
     // worker directly — NO claimTask call, NO worker_next. One pre-assigned
     // card = one worker; after launching, the run waits for that worker to
     // finish (the close handler re-pumps, sees preassignedWork consumed, and
-    // completes the run). The legacy in-process self-claim while-loop is
     // removed.
     //
     // Defensive null-guard: assignment is now mandatory on start(), so
@@ -638,7 +621,6 @@ export class ClaudeBoardRunner {
         run.lastError = error instanceof Error ? error.message : String(error);
         // The dispatcher's assignTask created the fence; a spawn failure must
         // release it so the card returns to the queue. recoverAssignment +
-        // markExecutionSpawnFailed mirror the legacy claim path.
         this.recoverAssignment({
           taskId: work.taskId,
           workerId,
@@ -646,7 +628,7 @@ export class ClaudeBoardRunner {
           executionId: work.workerExecutionId,
           reason: `Claude spawn failed (pre-assigned): ${run.lastError}`,
         });
-        markExecutionSpawnFailed(this.dbPath, work.workerExecutionId, run.lastError);
+        this.executionStore.markSpawnFailed(this.dbPath, work.workerExecutionId, run.lastError);
         this.finish(run, 'failed');
       }
       return;
@@ -668,7 +650,6 @@ export class ClaudeBoardRunner {
    * before spawn) into the launch()-shaped assignment object. launch() expects
    * { task, repository, execution_context, execution_id } — the same shape the
    * worker_next claim path produces. We rebuild it from the typed AssignedWork
-   * so the launch path is shared byte-for-byte between pre-assigned and legacy
    * claim runs.
    *
    * `task` is fetched fresh from the DB so launch() sees the post-claim status
@@ -694,18 +675,19 @@ export class ClaudeBoardRunner {
   launch(run, assignment, workerId) {
     const task = assignment.task;
     const workspaceRoot = assignment.repository?.local_path || run.workspaceRoot;
+    if (!assignment.repository) {
+      throw new Error('PINNED_REPOSITORY_REQUIRED: assignment has no repository binding');
+    }
+    if (!assignment.execution_id || !assignment.execution_context) {
+      throw new Error('FENCED_EXECUTION_CONTEXT_REQUIRED: assignment is not frozen');
+    }
     if (!workspaceRoot || !existsSync(workspaceRoot)) {
-      throw new Error(
-        assignment.repository
-          ? `Local checkout for repository '${assignment.repository.name}' was not found`
-          : `Legacy workspace for project '${run.projectName}' was not found`,
-      );
+      throw new Error(`Local checkout for repository '${assignment.repository.name}' was not found`);
     }
     // Provider routing: read the active model/provider for this episode from
     // saga.db metadata (written by POST /api/model/set). provider==='lmstudio'
     // → point THIS worker's claude at the local LM Studio endpoint via env
     // (env overrides ~/.claude/settings.json, so the global z.ai config is
-    // untouched). provider==='zai' (default) → legacy path: `--model opus` +
     // whatever ~/.claude/settings.json says.
     // `am.effort` carries the model-config reasoning effort (e.g. 'high' for
     // z.ai cloud). LM Studio models omit it → we pass NO --effort so the local
@@ -715,12 +697,10 @@ export class ClaudeBoardRunner {
     // D1.1: prefer the FROZEN model route from the execution_context snapshot
     // captured at claim (single source of truth — same value the gateway and
     // proposal provenance will see). Fall back to getActiveModel only when no
-    // snapshot is present (legacy Saga 2 dispatch / null task), preserving the
     // pre-D1.1 path byte-for-byte for those cases.
     const snapshotRoute = assignment.execution_context?.model_route;
-    const am = snapshotRoute
-      || (this.getActiveModel ? this.getActiveModel(run.epicId) : null)
-      || { provider: 'zai', model: null };
+    if (!snapshotRoute) throw new Error('FROZEN_MODEL_ROUTE_REQUIRED');
+    const am = snapshotRoute;
     const isLmstudio = am.provider === 'lmstudio' && am.model;
     // For LM Studio we must pass the concrete model id (--model <lmstudio-id>);
     // for z.ai we keep the 'opus' alias (resolved via ANTHROPIC_DEFAULT_OPUS_MODEL).
@@ -734,32 +714,18 @@ export class ClaudeBoardRunner {
     // D1.1: per-execution MCP config carrying SAGA_EXECUTION_ID/TASK_ID/WORKER_ID
     // into the spawned saga MCP child. Falls back to the shared PID config when
     // no execution identity is present (defensive — every claim today supplies one).
-    const executionMcpConfigPath = assignment.execution_id
-      ? this.writeExecutionMcpConfig(assignment.execution_id, task.id, workerId)
-      : this.mcpConfigPath;
+    const executionMcpConfigPath = this.writeExecutionMcpConfig(assignment.execution_id, task.id, workerId);
 
-    let resolvedProfile = null;
-    if (typeof this.resolveProfile === 'function') {
-      try {
-        resolvedProfile = this.resolveProfile(task.task_kind);
-      } catch {
-        // Resolver failures retain the legacy single-skill path.
-      }
-    }
+    if (typeof this.resolveProfile !== 'function') throw new Error('EXECUTION_PROFILE_RESOLVER_REQUIRED');
+    const resolvedProfile = this.resolveProfile(task.task_kind);
+    if (!resolvedProfile) throw new Error(`EXECUTION_PROFILE_NOT_FOUND: ${task.task_kind}`);
     // W5-A6: resolve the package-pinned AgentLaunchSpec projection for this
     // assignment (plan §10.12–§10.16). Feature-detected: when no resolver is
-    // wired OR it returns null, launchSpec stays null and every legacy path
     // (global skill root, hard-coded builtins, author semantic skill for
     // reviews) is preserved byte-for-byte.
-    let launchSpec = null;
-    if (typeof this.resolveLaunchSpec === 'function') {
-      try {
-        launchSpec = this.resolveLaunchSpec({ assignment, resolvedProfile }) ?? null;
-      } catch {
-        // Resolver failures retain the legacy single-skill path.
-        launchSpec = null;
-      }
-    }
+    if (typeof this.resolveLaunchSpec !== 'function') throw new Error('AGENT_LAUNCH_SPEC_RESOLVER_REQUIRED');
+    const launchSpec = this.resolveLaunchSpec({ assignment, resolvedProfile });
+    if (!launchSpec) throw new Error('AGENT_LAUNCH_SPEC_REQUIRED');
     const processWorkspace = typeof this.prepareWorkspace === 'function'
       ? this.prepareWorkspace({
           assignment,
@@ -794,7 +760,6 @@ export class ClaudeBoardRunner {
     // agent-assistance.json projection (C031) — never scans docs/ and never
     // resolves paths by convention (§13.5). The pinned projection path is
     // passed through SAGA_AGENT_ASSISTANCE_PATH in the child env below.
-    // Success and failure events use the same generic command hook. Legacy
     // tasks without a projection fail closed to '{}'.
     const hookPath = path.resolve(
       path.dirname(new URL(import.meta.url).pathname.replace(/^\//, '')),
@@ -834,7 +799,6 @@ export class ClaudeBoardRunner {
     // about tools like tracker_dashboard/epic_create/note_search that will only
     // produce AUTHORITY_DENIED. Non-saga tools (Bash, Read, Write, Glob, Grep,
     // etc.) are always allowed — the saga authority covers only mcp__saga__*.
-    // Legacy path (no execution_context / Saga 2) keeps the old single-blacklist.
     const frozenAuthority = assignment.execution_context?.authority;
     const frozenTools = frozenAuthority?.allowed_saga_tools;
     if (frozenAuthority && Array.isArray(frozenTools)) {
@@ -853,7 +817,6 @@ export class ClaudeBoardRunner {
       // frozen builtin names) instead of the hard-coded DEFAULT_BUILTIN set.
       // This lets a narrow profile (e.g. only Read+Edit) actually restrict the
       // agent's builtin tools. When the launch spec carries no allowedToolIds
-      // (legacy task, or a profile that does not constrain builtins), the
       // DEFAULT_BUILTIN set is granted — the pre-W5-A6 behavior, byte-for-byte.
       let builtin;
       const profileAllowed = Array.isArray(launchSpec?.allowedToolIds)
@@ -981,7 +944,7 @@ export class ClaudeBoardRunner {
         const now = Date.now();
         if (now - lastProgressAt < PROGRESS_THROTTLE_MS) return;
         lastProgressAt = now;
-        try { markExecutionProgress(progressDbPath, progressExecId); } catch { /* best-effort */ }
+        try { this.executionStore.markProgress(progressDbPath, progressExecId); } catch { /* best-effort */ }
       };
       child.stdout?.on('data', onProgressData);
       child.stderr?.on('data', onProgressData);
@@ -1092,7 +1055,7 @@ export class ClaudeBoardRunner {
       }
       if (execution.executionId) {
         try {
-          markExecutionExited(
+          this.executionStore.markExited(
             this.dbPath,
             execution.executionId,
             code ?? null,
@@ -1117,11 +1080,11 @@ export class ClaudeBoardRunner {
     try {
       const pid = child.pid;
       if (execution.executionId) {
-        markExecutionRunning(
+        this.executionStore.markRunning(
           this.dbPath,
           execution.executionId,
           pid ?? null,
-          readProcessBirthToken(pid ?? null),
+          this.executionStore.readBirthToken(pid ?? null),
           logPath,
           execution.startedAt,
         );

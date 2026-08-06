@@ -6,6 +6,7 @@
  */
 
 import type Database from 'better-sqlite3';
+import { sha256Hex } from '../shared/canonical-json.js';
 import type {
   WorkAssignmentPort,
   WorkerExecutorFactory,
@@ -28,8 +29,6 @@ import type {
 } from '../process-modules/application/node-executor.js';
 import { HumanNodeExecutor } from '../process-modules/application/node-executors/human-node-executor.js';
 import { KernelNodeExecutor } from '../process-modules/application/node-executors/kernel-node-executor.js';
-import { LmNodeExecutor } from '../process-modules/application/node-executors/lm-node-executor.js';
-import { receiptAwareLmPersistence } from '../process-modules/application/node-executors/receipt-aware-lm-persistence.js';
 import {
   PRODUCT_DELIVERY_LIFECYCLE_INPUT_SCHEMA,
   assertProductDeliveryLifecycleInput,
@@ -72,8 +71,7 @@ import { serializeWorkplaceRef } from '../process-modules/domain/workplace/workp
 import { SqliteProcessOutcomeCertificateRepository } from '../process-modules/persistence/sqlite-process-outcome-certificate-repository.js';
 import { SqliteProcessRunRepository } from '../process-modules/persistence/sqlite-process-run-repository.js';
 import { SqliteRecoveryCaseRepository } from '../process-modules/persistence/sqlite-recovery-case-repository.js';
-import { SqliteWorkAssignmentAdapter } from '../infrastructure/work/sqlite-work-assignment-adapter.js';
-import { createDiscoveryLmNodePersistence } from '../modules/discovery/application/discovery-installation.js';
+import { createDiscoveryWorkplacePersistence } from '../modules/discovery/application/discovery-installation.js';
 import { createFormalizationLifecycleOutputPayloadResolver } from '../modules/formalization/application/formalization-installation.js';
 import { SOLUTION_CONTRACT_CERTIFICATE_SCHEMA } from '../modules/formalization/domain/formalization-schemas.js';
 import { createDevelopmentOutputPayloadResolver } from '../modules/development/application/development-installation.js';
@@ -247,10 +245,7 @@ export function createProductLifecycleRuntime(
 
   const runtimePersistence = options.discoveryRuntimePersistence
     ?? new SqliteFactoryDiscoveryRuntime();
-  const lmPersistence = receiptAwareLmPersistence(
-    createDiscoveryLmNodePersistence(runtimePersistence),
-    db,
-  );
+  const workplacePersistence = createDiscoveryWorkplacePersistence(runtimePersistence);
   const managedNodeSubmissions =
     new SqliteManagedNodeSubmissionRepository(db);
   const exactCandidateAcceptance = new SqliteExactCandidateAcceptance(db);
@@ -338,13 +333,6 @@ export function createProductLifecycleRuntime(
       kernelHandlers,
       exactCandidateAcceptance,
     )],
-    ['lm', new LmNodeExecutor({
-      persistence: lmPersistence,
-      workerExecutorFactory: options.workerExecutorFactory,
-      resolveWorkerContext: options.resolveWorkerContext,
-      workAssignment:
-        options.workAssignment ?? new SqliteWorkAssignmentAdapter(db),
-    })],
     ['human', new HumanNodeExecutor(humanInteractions)],
     // ADR-030: the Production Cell executor only reconciles durable state. It
     // never assigns, launches or polls workers; the application dispatcher is
@@ -355,7 +343,7 @@ export function createProductLifecycleRuntime(
       gateRepo,
       checkProviders: createStandardCheckProviderRegistry(),
       persistence: {
-        ...lmPersistence,
+        ...workplacePersistence,
         activateRoleTask: ({ taskId, intentId, workplaceRef, role, executionProfileId }) => {
           const workplace = serializeWorkplaceRef(workplaceRef);
           activateProductionCellRoleTask(db, {
@@ -370,6 +358,16 @@ export function createProductLifecycleRuntime(
                 SELECT task_id FROM worker_executions WHERE execution_id=?
               ) AND status IN ('open','executing','paused')`,
           ).run(executionRef);
+        },
+        readExecutionReceipt: (executionRef) => {
+          const row = db.prepare(
+            `SELECT we.task_id AS taskId, wi.id AS intentId
+               FROM worker_executions we
+               JOIN factory_work_intents wi ON wi.projected_task_id=we.task_id
+              WHERE we.execution_id=?`,
+          ).get(executionRef) as { taskId: number; intentId: number } | undefined;
+          if (!row) throw new Error(`EXECUTION_RECEIPT_NOT_FOUND: ${executionRef}`);
+          return row;
         },
         readProcessInputHash: (processRunId) => {
           const row = db.prepare(
@@ -391,7 +389,7 @@ export function createProductLifecycleRuntime(
         },
       } as ProductionCellProjectionPersistence,
       productReader: {
-        readExecutionProducts: ({ processRunId, moduleRef, nodeId, executionRef }) => {
+        readExecutionProducts: ({ processRunId, moduleRef, nodeId, executionRef, expectedSchemaRefs }) => {
           const submission = db.prepare(
             `SELECT id,schema_version,content_hash
                FROM factory_managed_node_submissions
@@ -410,10 +408,36 @@ export function createProductLifecycleRuntime(
           const artifacts = centralLedger.listArtifactsForNodeInProcessRun(
             processRunId, moduleRef, nodeId,
           ).filter(a => a.executionId === executionRef && a.contentHash);
-          return artifacts.map(a => ({
-            schemaId: a.artifactType ?? 'factory.product-envelope.v1',
-            ref: `artifact:${a.artifactId}`,
-            digest: a.contentHash ?? '',
+          const traces = centralLedger.listTracesForNodeInProcessRun(
+            processRunId, moduleRef, nodeId,
+          ).filter(trace => trace.executionId === executionRef);
+          if (artifacts.length === 0 && traces.length === 0) {
+            const completion = db.prepare(
+              `SELECT command_id,payload_hash
+                 FROM command_receipts
+                WHERE execution_id=? AND command_kind='worker_done' AND accepted=1
+                ORDER BY accepted_at DESC LIMIT 1`,
+            ).get(executionRef) as { command_id: string; payload_hash: string } | undefined;
+            if (!completion) return [];
+            return expectedSchemaRefs.filter(Boolean).map(schemaId => ({
+              schemaId,
+              ref: `worker-completion:${completion.command_id}`,
+              digest: completion.payload_hash,
+            }));
+          }
+          const artifactRefs = artifacts.map(a => ({
+            artifactId: a.artifactId,
+            artifactType: a.artifactType,
+            digest: a.contentHash,
+          }));
+          const traceRefs = traces.map(trace => ({
+            traceId: trace.traceId,
+            digest: trace.traceHash,
+          }));
+          return expectedSchemaRefs.filter(Boolean).map(schemaId => ({
+            schemaId,
+            ref: `execution-product-set:${executionRef}:${schemaId}`,
+            digest: sha256Hex({ artifactRefs, traceRefs }),
           }));
         },
       } as ProductionCellProductReader,
@@ -421,6 +445,7 @@ export function createProductLifecycleRuntime(
         packageInstallation?.records.get(moduleName)?.packageDigest ?? 'factory-runtime',
     })],
   ]);
+  nodeExecutors.set('lm', nodeExecutors.get('production-cell')!);
 
   const sharedDeps: ModuleSharedDeps = {
     db,

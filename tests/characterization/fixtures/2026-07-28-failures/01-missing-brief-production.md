@@ -17,7 +17,7 @@ evidence: |
     "kernel-side projection" wrapped in try/catch that swallows failures
     (lines 167-173: "Non-fatal: the brief is a convenience projection"). The
     worker never emits the brief as a declared product; it is silently
-    projected by the kernel as a legacy side effect.
+    projected by the kernel as a unsupported side effect.
   - Plan ref: the brief is NOT a declared module product (plan §14.11.3,
     Phase 10 / Wave 9 fixes this).
 reproduction: |

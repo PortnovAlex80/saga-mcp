@@ -7,7 +7,6 @@
 // pure helpers (parseTs, ageClass, esc, ...) work without any initialization.
 //
 // DB_PATH deliberately stays declared in tracker-view.mjs — it is a test anchor
-// (tests/characterization/saga2-runtime-contracts.test.mjs asserts its presence
 // there). This module holds only a private mirror used by withDb/withDbWrite.
 import {
   existsSync, readdirSync, readFileSync, realpathSync,

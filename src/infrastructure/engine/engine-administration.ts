@@ -307,7 +307,6 @@ export class EngineProcessAdministration implements EngineAdministration {
 
   /**
    * Targeted upsert into lifecycle_execution_controls (the saga4 home for engine
-   * + model state). Replaces the old generic JSON-metadata patch on the legacy
    * workflows table.
    * Each caller writes only the concrete columns it owns; engine_state must be a
    * valid CHECK constraint value ('running' | 'stopped' | 'unknown') — never 0/1.

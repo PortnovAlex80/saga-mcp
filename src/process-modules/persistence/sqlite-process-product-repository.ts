@@ -183,7 +183,6 @@ export class SqliteProcessProductRepository {
     if (!Number.isSafeInteger(input.processRunId) || input.processRunId < 1) {
       throw new Error('PROCESS_PRODUCT_INVALID_PROCESS_RUN_ID');
     }
-    // product_key defaults to product_kind so legacy v1 callers (Delivery,
     // Development) that do not supply a key keep their one-kind-per-run
     // semantics under the new triple UNIQUE constraint.
     const productKey = (input.productKey ?? '').trim().length > 0
@@ -247,7 +246,6 @@ export class SqliteProcessProductRepository {
     productKind: string,
     productKey?: string,
   ): ProcessProductRow | null {
-    // When productKey is omitted, default to productKind so legacy v1 callers
     // preserve their one-kind-per-run read semantics.
     const key = (productKey ?? '').trim().length > 0 ? productKey! : productKind;
     const row = this.db.prepare(

@@ -45,7 +45,7 @@ Purpose: verify that a process-module worker receives a bounded, deterministic e
 - [ ] The node-specific semantic skill is delivered second.
 - [ ] Both skills come from the exact pinned package installation.
 - [ ] The prompt contains the exact tracker, workspace file, call file, checklist, and recovery-feedback paths.
-- [ ] Exact machine-provided paths explicitly override examples, and package skills contain no conflicting legacy examples.
+- [ ] Exact machine-provided paths are authoritative, and package skills contain no conflicting examples.
 - [ ] The prompt states the single task, node, completion criteria, execution fence, and stop condition.
 
 ## 6. Tool control
@@ -63,7 +63,7 @@ Purpose: verify that a process-module worker receives a bounded, deterministic e
 
 - [ ] Tool descriptions contain the exact call shape.
 - [ ] Validation errors identify the invalid field, expected shape, authoritative source, and received value.
-- [ ] Error workflow guidance points to paths returned by `task_get`, never a reconstructed legacy path.
+- [ ] Error workflow guidance points only to paths returned by `task_get`.
 - [ ] Rejected calls preserve the materialized call file for progressive repair.
 - [ ] Retry limits and escalation behavior are explicit.
 
@@ -90,7 +90,7 @@ Purpose: verify that a process-module worker receives a bounded, deterministic e
 
 - [ ] The UI displays the orchestration mode that will actually be launched.
 - [ ] Start refuses an incompatible or ambiguous mode.
-- [ ] New modular lifecycle runs use the package runtime, not the legacy Saga 2 engine.
+- [ ] Every lifecycle run uses the installed package runtime.
 - [ ] Discovery-only smoke runs use `saga3-discovery-generic`.
 - [ ] Full product lifecycle runs use `saga3-lifecycle` with an explicit composition.
 - [ ] Model, effort, concurrency, project, epic, and claim scope shown in the UI match the spawned process.

@@ -6,7 +6,6 @@
  *
  * # What this does
  *
- * Wraps the existing `LegacyClaudeBoardRunner` (the tracker-view runner that
  * `ClaudeBoardWorkerExecutor` already delegates to) behind the narrow
  * `WorkerLauncherPort`. The runner keeps doing the actual process spawn,
  * desk materialization, MCP config and close-callback wiring; this adapter

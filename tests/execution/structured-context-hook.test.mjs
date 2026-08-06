@@ -14,7 +14,6 @@
 //   - cross-execution event rejection
 //
 // The hook is invoked as a subprocess (it is a script, not an importable
-// module), exactly like the legacy tracker-reminder tests. We read stdout JSON.
 
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -101,7 +100,6 @@ test('structured-context-hook: emits bounded context from valid snapshot', () =>
 });
 
 // ---------------------------------------------------------------------------
-// Fail-closed surface — mirrors legacy tracker-reminder invariants.
 // ---------------------------------------------------------------------------
 
 test('structured-context-hook: emits {} for missing SAGA_AGENT_ASSISTANCE_PATH', () => {

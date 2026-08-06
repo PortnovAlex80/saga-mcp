@@ -36,7 +36,6 @@ const PRD_ROOT_EXCLUDED_TYPES = new Set([
 /**
  * SQLite-backed adapter for the Formalization module's `BriefProvisioningPort`.
  *
- * Implements the exact brief-provisioning logic the legacy
  * `ensureBriefRootTrace` performed via `getDb()`: check whether the PRD already
  * has a non-product `derived_from` target; if not, find-or-create a synthetic
  * accepted brief in the epic and attach the idempotent `derived_from` trace.
@@ -50,7 +49,6 @@ implements BriefProvisioningPort {
 
   ensureBriefRoot(ctx: BriefProvisioningContext): void {
     // 1. Bail if the PRD already has ANY root trace to a non-product type
-    //    (matches the legacy guard that returned early when `existing` was
     //    found). The graph-port pre-check in the module already short-circuits
     //    the accepted-brief case; this covers unaccepted ancestors too.
     const existing = this.db.prepare(
@@ -69,7 +67,6 @@ implements BriefProvisioningPort {
         ORDER BY id LIMIT 1`,
     ).get(ctx.epicId) as { id: number } | undefined)?.id;
 
-    // 3. Otherwise create a synthetic brief (same hash recipe as the legacy
     //    code) so the PRD has a valid root ancestor.
     if (!briefId) {
       const briefHash = sha256Hex({
@@ -137,7 +134,6 @@ export function readPrdAcceptedRoot(
  * SQLite-backed adapter for the Discovery module's
  * `DiscoveryBriefProvisioningPort`.
  *
- * Implements the exact brief-provisioning logic the legacy
  * `ensureDiscoveryBriefArtifact` performed via `getDb()`: idempotently
  * find-or-create a synthetic accepted brief derived from the accepted proposal.
  *

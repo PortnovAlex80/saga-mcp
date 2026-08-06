@@ -9,7 +9,6 @@
  *
  * ── What this file replaces ───────────────────────────────────────────────
  *
- * The legacy lifecycle orchestrator (`lifecycle-orchestrator.ts`)
  * reconstructs and persists a CUMULATIVE frame at every stage transition:
  * each `withStageOutput(...)` call spreads the entire prior frame and ALL prior
  * stage outputs back into the new handoff frame (§13.21). That grows O(n²) in
@@ -326,7 +325,6 @@ export function buildStageVariables(params: {
   /**
    * Per-port schema id. Each port name maps to the schema id of the value it
    * carries. Falls back to a generic placeholder when a port has no declared
-   * schema (legacy stages). Optional: callers without per-port schemas get the
    * generic placeholder for every port.
    */
   portSchemaIds?: Readonly<Record<string, string>>;
@@ -362,7 +360,6 @@ export function buildStageVariables(params: {
 /**
  * Schema id placeholder for a lifecycle variable whose port carries no
  * declared schema. Real scenarios declare a schema per port (plan §6.9.6);
- * this keeps legacy single-schema stages working.
  */
 export const LIFECYCLE_VARIABLE_GENERIC_SCHEMA =
   'factory.lifecycle-variable.generic.v1';
@@ -417,7 +414,6 @@ export function moduleOutputEnvelopeDigest(envelope: ProcessModuleOutputEnvelope
 // ---------------------------------------------------------------------------
 // Exact handoff frame (plan §6.11, §13.21 replacement).
 //
-// The legacy orchestrator builds a cumulative frame: `{ ...rootInput,
 // lifecycleInput, stages: { ...allPriorStages } }` and spreads it at every
 // transition. That is what §13.21 calls out.
 //
@@ -448,7 +444,6 @@ export interface ScenarioHandoffRuntime extends LifecycleMappingRuntime {
  * Build the minimal, non-cumulative mapping frame for a target stage. This is
  * the EXACT surface a downstream stage's `inputMapping` reads from.
  *
- * Unlike the legacy cumulative frame, this frame:
  *   - exposes each completed stage ONLY through its declared output ports
  *     (resolved from the store by digest), never through raw module payloads;
  *   - references the root input ONCE (`lifecycleInput`), it is not spread
@@ -545,7 +540,6 @@ export function buildScenarioHandoff(params: {
  * This proves the handoff is built only from declared public outputs: every
  * `stages.<id>.ports.<port>` read maps to exactly one recorded
  * LifecycleVariable, and any path that does NOT land on a declared variable
- * (e.g. an attempt to read `stages.<id>.processOutcome` — a legacy cumulative
  * field that does not exist in the minimal frame) is rejected by the mapper
  * before reaching here.
  */

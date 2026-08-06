@@ -2,16 +2,12 @@
  * Orchestration mode ownership — the single source of truth for the
  * SAGA_ORCHESTRATION_MODE value.
  *
- * saga4 cutover: the Product Lifecycle runtime is the SOLE engine. There is
+ * The Product Lifecycle runtime is the sole engine. There is
  * exactly ONE mode: 'factory-lifecycle' — the complete durable Discovery →
  * Formalization → Development → Delivery lifecycle through registered
  * GenericFlow module installations.
  *
- * The legacy 'v2'/'v3'/'saga2' modes (which selected Saga2Engine) and the
- * earlier 'factory-discovery' / 'factory-discovery-generic' / 'factory-formalization'
- * modes have all been removed. The composition root ALWAYS returns the lifecycle
- * runtime regardless of mode; those three were dead configuration that misled
- * operators into thinking a different engine would run.
+ * The composition root always returns this lifecycle runtime.
  */
 
 /**
@@ -26,8 +22,7 @@ export type OrchestrationMode = 'factory-lifecycle';
 export const ORCHESTRATION_MODES: readonly OrchestrationMode[] = ['factory-lifecycle'];
 
 /**
- * The unconditional default. After the saga4 cutover the Product Lifecycle
- * runtime is the only engine; factory-lifecycle is the complete durable lifecycle.
+ * The unconditional default for the complete durable lifecycle.
  */
 export const DEFAULT_ORCHESTRATION_MODE: OrchestrationMode = 'factory-lifecycle';
 

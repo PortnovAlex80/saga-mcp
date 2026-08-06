@@ -120,7 +120,7 @@ proof that the Runtime is module-kind-agnostic (plan §3.6, §7.2).
   (Wave 1's serial work, W1-A3). The fixture is a documented plain object
   mirroring `LifecycleDefinition` from the existing domain contract; Wave 1
   will codify the final type and Wave 7 will consume it through the new
-  ScenarioRuntime (with an explicit legacy adapter per plan §3.13 if needed).
+  ScenarioRuntime (with an explicit unsupported adapter per plan §3.13 if needed).
 - **Exit gate depending on it:** Wave 7 Lifecycle Scenario Runtime (install +
   execute with NO Runtime changes), Wave 10 Campaign Lifecycle production
   scenario, Wave 12 fault-injection hardening.

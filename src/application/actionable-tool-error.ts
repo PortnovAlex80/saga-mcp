@@ -459,7 +459,6 @@ export function escapeErrorValue(value: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Stable text renderer (for legacy/observability surfaces).
 // ---------------------------------------------------------------------------
 
 /**
@@ -470,7 +469,6 @@ export function escapeErrorValue(value: string): string {
  *
  * This renderer does NOT replace the structured envelope (§11.10): the gateway
  * MUST carry the structured object across MCP transport and may use this text
- * only for logs, audit trails, or legacy text-only consumers.
  */
 export function renderActionableToolError(error: ActionableToolError): string {
   assertActionableToolError(error);
@@ -515,7 +513,6 @@ export function renderActionableToolError(error: ActionableToolError): string {
  * name is baked into the platform. Returns the empty string when no references
  * are supplied (the caller had nothing actionable to point at).
  *
- * The output deliberately echoes the shape of the legacy
  * `'[Workflow: ... tracker ..., checklist ..., retry.]'` sentence so existing
  * regex-based tests and skills keep matching, while the path tokens come from
  * the caller's contract instead of a hard-coded `docs/discovery/...` literal.
