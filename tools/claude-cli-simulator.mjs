@@ -10,6 +10,7 @@ import {
   parseSagaPrompt,
   resolveDbPath,
 } from './claude-simulator/runtime.mjs';
+import { maybeIntegrateApprovedReview } from './claude-simulator/post-scenario.mjs';
 import { selectButtonColorScenario } from './claude-simulator/scenarios/button-color.mjs';
 
 async function main() {
@@ -53,6 +54,7 @@ async function main() {
     const scenario = selectButtonColorScenario(ctx, process.env);
     stream.text(`simulator: selected ${scenario.id}`);
     await executeSteps(runtime, ctx, scenario, stream);
+    maybeIntegrateApprovedReview(runtime, ctx, scenario, stream);
 
     const durationMs = Date.now() - startedAt;
     heartbeat(ctx, 'SIM_DONE', `scenario=${scenario.id} duration=${durationMs}ms`);
