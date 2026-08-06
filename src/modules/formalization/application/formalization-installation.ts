@@ -61,7 +61,9 @@ import type {
 } from '../domain/formalization-kernel-ports.js';
 import { buildFormalizationCertificatePayload } from '../domain/formalization-kernel-ports.js';
 import type { WorkplaceRef } from '../../../process-modules/domain/workplace/workplace-ref.js';
-import type { CheckReceipt, GateDecision } from '../../../process-modules/domain/workplace/gate.js';
+import type { CheckProvider, CheckReceipt, GateDecision } from '../../../process-modules/domain/workplace/gate.js';
+import { driveGateRun } from '../../../process-modules/application/gate-run-driver.js';
+import { buildArchitectureCheckPlan } from './architecture-check-plan.js';
 import type {
   AcceptanceBaselineSnapshotRecord,
   FormalizationBaselineRepository,
@@ -156,6 +158,26 @@ export interface FormalizationInstallationDeps {
    * ExactCandidateAcceptance only.
    */
   gateRepo: GateRunPort | null;
+  /**
+   * Production Cell: CheckProvider registry. Resolves providerId → CheckProvider
+   * instance. When non-null, the architecture handler uses the GateRun driver
+   * to run structural checks. When null, falls back to ExactCandidateAcceptance.
+   */
+  checkProviderRegistry: CheckProviderResolverPort | null;
+  /**
+   * Production Cell: SRS content reader. Reads the SRS document content from
+   * disk for the structural CheckProvider. Injected (driver-neutral) so the
+   * module doesn't touch the filesystem directly.
+   */
+  srsContentReader: { readSrsContent(artifactRef: string): string | null } | null;
+}
+
+/**
+ * Minimal port for resolving a CheckProvider by providerId. Satisfied by a
+ * simple Map-based registry wired at the composition root.
+ */
+export interface CheckProviderResolverPort {
+  resolve(providerId: string): CheckProvider | null;
 }
 
 /**
@@ -878,19 +900,66 @@ function createResolveArchitectureHandler(deps: FormalizationInstallationDeps): 
     );
     return event === 'completed'
       ? (() => {
-          // Production Cell bridge: seal a CandidateSet from the worker's
-          // produced SRS artifact. This runs ALONGSIDE the existing
-          // ExactCandidateAcceptance (bridge mode) — the CandidateSet is
-          // recorded but does not yet drive the acceptance decision. Stage 3
-          // will replace ExactCandidateAcceptance with the GateDecision that
-          // the GateRun produces from this CandidateSet.
-          sealArchitectureCandidateSet(deps, ctx, writes);
+          // Production Cell: seal a CandidateSet from the worker's produced
+          // SRS artifact, then drive a GateRun with the structural check
+          // provider. When the gate infrastructure is wired (deps present),
+          // the GateDecision is authoritative. When not wired (tests, early
+          // boot), falls back to ExactCandidateAcceptance.
+          const candidateSetRef = sealArchitectureCandidateSet(deps, ctx, writes);
+          const gateDecision = candidateSetRef
+            ? runArchitectureGate(deps, ctx, writes, candidateSetRef)
+            : null;
+          if (gateDecision) {
+            // GateDecision is authoritative. Map it to the handler result.
+            if (gateDecision.verdict === 'accepted') {
+              // Gate accepted — proceed with ExactCandidateAcceptance to
+              // perform the artifact CAS (bridge: both run; Stage 5 will
+              // remove ExactCandidateAcceptance and let the GateDecision
+              // drive the artifact CAS directly).
+              return withExactCandidateAcceptance(
+                resolved, ctx, writes, writes.artifacts, {
+                  sourceNodeId: SOURCE_NODES.architecture,
+                  policyId: 'repair-architecture-contract',
+                  authority: 'formalization-architecture-gate@1',
+                  reasonCode: 'FORMALIZATION_ARCHITECTURE_VALIDATED',
+                  summary: 'The exact architecture contract could not be committed',
+                  acceptanceCriteria: [
+                    'Exactly one SRS traces to the exact PRD.',
+                    'The frozen acceptance baseline has not drifted.',
+                    'The exact reviewed SRS version is accepted+clean.',
+                  ],
+                  allowedChanges: ['SRS candidate and its derived_from traces'],
+                  context: {
+                    baselineSnapshotRef: baseline.artifactRef,
+                    baselineSnapshotHash: baseline.snapshotHash,
+                    acceptanceBaselineHash: baseline.baselineHash,
+                    gateDecisionKey: gateDecision.decisionKey,
+                  },
+                },
+              );
+            } else {
+              // Gate rejected — return a repair event with the gate's
+              // recovery issue.
+              return manifestResult(
+                ctx, writes,
+                snapshotForOwnedArtifacts(snapshot, writes.artifacts),
+                FORMALIZATION_ARCHITECTURE_BUNDLE_SCHEMA,
+                SOURCE_NODES.architecture,
+                'inconsistent',
+                {
+                  ...categoryBindings(categorize(writes.artifacts)),
+                  baselineSnapshotRef: baseline.artifactRef,
+                  gateVerdict: gateDecision.verdict,
+                  gateDecisionKey: gateDecision.decisionKey,
+                  gateReceipts: gateDecision.checkReceiptRefs,
+                  gap: `Gate verdict: ${gateDecision.verdict}`,
+                },
+              );
+            }
+          }
+          // Gate infrastructure not wired — fallback to ExactCandidateAcceptance.
           return withExactCandidateAcceptance(
-            resolved,
-            ctx,
-            writes,
-            writes.artifacts,
-            {
+            resolved, ctx, writes, writes.artifacts, {
               sourceNodeId: SOURCE_NODES.architecture,
               policyId: 'repair-architecture-contract',
               authority: 'formalization-architecture-gate@1',
@@ -973,6 +1042,68 @@ function sealArchitectureCandidateSet(
     sealedAt: new Date().toISOString(),
   });
   return result.set.candidateSetRef;
+}
+
+/**
+ * Production Cell Stage 3: drive a GateRun for the architecture CandidateSet.
+ *
+ * After sealing the CandidateSet, this function drives the full gate lifecycle:
+ * createGateRun → run SRS structural check → recordCheckReceipt →
+ * recordDecision. The GateDecision is returned to the handler, which uses it
+ * as the authoritative acceptance verdict.
+ *
+ * Feature-detect: if gateRepo or checkProviderRegistry is null, returns null
+ * (handler falls back to ExactCandidateAcceptance).
+ */
+function runArchitectureGate(
+  deps: FormalizationInstallationDeps,
+  ctx: KernelHandlerContext,
+  writes: ExecutionWrites,
+  candidateSetRef: string,
+): { verdict: string; decisionKey: string; checkReceiptRefs: readonly string[] } | null {
+  if (!deps.gateRepo || !deps.checkProviderRegistry || !deps.srsContentReader) {
+    return null;
+  }
+  // Build the CheckPlan (immutable, content-addressed).
+  const checkPlan = buildArchitectureCheckPlan();
+  // The SRS artifact ref is passed as a check parameter.
+  const srsArtifact = writes.artifacts.find(a => a.type === 'SRS');
+  if (!srsArtifact) return null;
+  const srsArtifactRef = `artifact:${srsArtifact.id}`;
+  // Build the WorkplaceRef for the gate.
+  const workplaceRef: WorkplaceRef = {
+    processRunId: ctx.processRunId,
+    moduleRef: FORMALIZATION_MODULE_KEY,
+    productionCellId: SOURCE_NODES.architecture,
+    workKey: 'default',
+  };
+  // Read the current workplace revision for the expected revision check.
+  // The workplace should be in 'verifying' state at this point.
+  // For the bridge, we use revision 1 (the materialized initial revision);
+  // a future ConveyorRuntime.applyGateDecision will CAS on the actual revision.
+  const expectedWorkplaceRevision = 1;
+  const gateLeaseRef = `gate-lease:${writes.receipt.executionId}`;
+  const installationDigest = sha256Hex(FORMALIZATION_MODULE_KEY);
+  const result = driveGateRun(
+    deps.gateRepo,
+    deps.checkProviderRegistry,
+    {
+      workplaceRef,
+      subjectCandidateSetRef: candidateSetRef,
+      checkPlan,
+      gatePhase: 'author',
+      expectedWorkplaceRevision,
+      gateLeaseRef,
+      installationDigest,
+      checkParameters: { srsArtifactRef },
+      environmentRef: null,
+    },
+  );
+  return {
+    verdict: result.decision.verdict,
+    decisionKey: result.decision.decisionKey,
+    checkReceiptRefs: result.decision.checkReceiptRefs,
+  };
 }
 
 function createSettlementHandler(deps: FormalizationInstallationDeps): KernelHandler {

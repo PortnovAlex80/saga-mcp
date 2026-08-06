@@ -18,6 +18,8 @@
  * substrate gates that cover `src/process-modules/modules/` do not apply here.
  */
 
+import { readFileSync, existsSync } from 'node:fs';
+import { join } from 'node:path';
 import { GenericFlowExecutor } from '../../process-modules/application/generic-flow-executor.js';
 import {
   SqliteFormalizationBaselineRepository,
@@ -28,6 +30,8 @@ import {
   SqliteFormalizationArtifactGraph,
 } from './infrastructure/sqlite-formalization-kernel.js';
 import { SqliteManagedProductionLedger } from '../../process-modules/persistence/sqlite-managed-production-ledger.js';
+import { createSrsStructuralCheckProvider } from './application/srs-structural-check-provider.js';
+import type { CheckProvider } from '../../process-modules/domain/workplace/gate.js';
 import { SqliteFormalizationBriefProvisioning } from '../../infrastructure/process-modules/brief-provisioning-ports.js';
 import {
   createFormalizationKernelHandlers,
@@ -72,6 +76,16 @@ export function registerFormalization(
   const ledger = new SqliteManagedProductionLedger(db);
   const briefProvisioning = new SqliteFormalizationBriefProvisioning(db);
 
+  // Production Cell: SRS content reader + CheckProvider registry.
+  // The content reader reads the SRS file from disk (same approach as the
+  // SRS validator). The registry holds the SRS structural check provider.
+  const srsContentReader = candidateSetRepo
+    ? createDbSrsContentReader(db)
+    : null;
+  const checkProviderRegistry = srsContentReader
+    ? createSrsCheckProviderRegistry(srsContentReader)
+    : null;
+
   // Register kernel handlers.
   registries.kernelHandlers.registerAll(
     createFormalizationKernelHandlers({
@@ -92,6 +106,8 @@ export function registerFormalization(
       // wired (tests, unmigrated modules).
       candidateSetRepo: candidateSetRepo ?? null,
       gateRepo: gateRepo ?? null,
+      checkProviderRegistry,
+      srsContentReader,
     }),
   );
 
@@ -118,4 +134,59 @@ export function registerFormalization(
   } as Parameters<typeof registries.installationRegistry.register>[0]);
 
   return { executor, baselineRepository, solutionContractRepository };
+}
+
+// ---------------------------------------------------------------------------
+// Production Cell: SRS content reader + CheckProvider registry helpers.
+// ---------------------------------------------------------------------------
+
+/**
+ * Create a DB-backed SRS content reader. Reads the SRS artifact's file from
+ * disk via project_repository.local_path + artifact.path, same approach as the
+ * SRS submission validator. Returns null if the file cannot be read.
+ */
+function createDbSrsContentReader(db: import('better-sqlite3').Database): {
+  readSrsContent(artifactRef: string): string | null;
+} {
+  return {
+    readSrsContent(artifactRef: string): string | null {
+      // Parse 'artifact:<id>' to get the artifact id.
+      const match = artifactRef.match(/^artifact:(\d+)$/);
+      if (!match) return null;
+      const artifactId = Number(match[1]);
+      const artifact = db.prepare(
+        'SELECT path, project_repository_id FROM artifacts WHERE id=?',
+      ).get(artifactId) as { path: string; project_repository_id: number } | undefined;
+      if (!artifact) return null;
+      const repo = db.prepare(
+        'SELECT local_path FROM project_repositories WHERE id=?',
+      ).get(artifact.project_repository_id) as { local_path: string } | undefined;
+      if (!repo?.local_path) return null;
+      try {
+        const filePath = join(repo.local_path, artifact.path.split('#')[0]);
+        if (!existsSync(filePath)) return null;
+        return readFileSync(filePath, 'utf8');
+      } catch {
+        return null;
+      }
+    },
+  };
+}
+
+/**
+ * Create a CheckProvider registry with the SRS structural check provider
+ * pre-registered. The registry is a simple Map keyed by providerId.
+ */
+function createSrsCheckProviderRegistry(contentReader: {
+  readSrsContent(artifactRef: string): string | null;
+}): { resolve(providerId: string): CheckProvider | null } {
+  const provider = createSrsStructuralCheckProvider(contentReader);
+  const registry = new Map<string, CheckProvider>([
+    [provider.providerId, provider],
+  ]);
+  return {
+    resolve(providerId: string) {
+      return registry.get(providerId) ?? null;
+    },
+  };
 }
