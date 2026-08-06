@@ -151,24 +151,10 @@ export function selectButtonColorScenario(ctx, env = process.env) {
     ] };
   }
 
-  if (ctx.role === 'reviewer') {
-    const verdict = fault === 'review-changes-requested' ? 'changes_requested' : 'approved';
-    return {
-      id: `button-color/reviewer/${verdict}`,
-      steps: [{
-        type: 'worker_done',
-        args: {
-          task_id: '{{ctx.task_id}}', worker_id: '{{ctx.worker_id}}',
-          execution_id: '{{ctx.execution_id}}',
-          result: verdict === 'approved'
-            ? 'Deterministic reviewer: candidate matches the pinned contract.'
-            : 'Deterministic reviewer: injected correction request.',
-          verdict,
-        },
-      }],
-    };
-  }
-
+  // Check process_node_id FIRST — the author/reviewer distinction is
+  // node-specific. A reviewer for define-architecture-contract should NOT
+  // match the generic reviewer path before checking if there's a
+  // node-specific scenario.
   switch (ctx.process_node_id) {
     case 'produce-proposal':
       return {
@@ -243,7 +229,19 @@ export function selectButtonColorScenario(ctx, env = process.env) {
         ],
       };
 
-    case 'define-product-contract':
+    case 'define-product-contract': {
+      // Idempotent: on recovery retry, if artifacts already exist, skip
+      // creation and just worker_done. Re-creating would pollute the
+      // managed-production ledger with a new producer execution.
+      if (ctx.isRetry) {
+        return {
+          id: 'button-color/formalization/product-contract/idempotent',
+          steps: [
+            { type: 'emit', text: 'simulator: recovery retry — artifacts already created, worker_done only' },
+            done(ctx, 'Idempotent retry: artifacts exist from previous run.'),
+          ],
+        };
+      }
       return {
         id: 'button-color/formalization/product-contract',
         steps: [
@@ -278,8 +276,10 @@ export function selectButtonColorScenario(ctx, env = process.env) {
           done(ctx, 'Created PRD, FR and RULE for the color-button product.'),
         ],
       };
+    }
 
-    case 'model-use-cases':
+    case 'model-use-cases': {
+      if (ctx.isRetry) return { id: 'button-color/formalization/use-case/idempotent', steps: [done(ctx, 'Idempotent retry.')] };
       return {
         id: 'button-color/formalization/use-case',
         steps: [
@@ -295,8 +295,10 @@ export function selectButtonColorScenario(ctx, env = process.env) {
           done(ctx, 'Created UC-1 covering FR-1.'),
         ],
       };
+    }
 
     case 'define-acceptance-contract': {
+      if (ctx.isRetry) return { id: 'button-color/formalization/acceptance/idempotent', steps: [done(ctx, 'Idempotent retry.')] };
       const omitFr = fault === 'missing-ac-fr-trace';
       const steps = [
         { type: 'artifact_find', artifactType: 'UC', code: 'UC-1', as: 'uc' },
@@ -322,10 +324,31 @@ export function selectButtonColorScenario(ctx, env = process.env) {
       return { id: `button-color/formalization/acceptance/${fault}`, steps };
     }
 
-    case 'reconcile-what':
+    case 'reconcile-what': {
+      if (ctx.isRetry) return { id: 'button-color/formalization/reconcile/idempotent', steps: [done(ctx, 'Idempotent retry.')] };
       return { id: 'button-color/formalization/reconcile', steps: [done(ctx, 'WHAT graph inspected; no repair required.')] };
+    }
 
     case 'define-architecture-contract': {
+      if (ctx.isRetry) return { id: 'button-color/formalization/architecture/idempotent', steps: [done(ctx, 'Idempotent retry.')] };
+      // Reviewer for this node: emit verdict only, do NOT author products.
+      if (ctx.role === 'reviewer') {
+        const verdict = fault === 'review-changes-requested' ? 'changes_requested' : 'approved';
+        return {
+          id: `button-color/reviewer/architecture/${verdict}`,
+          steps: [{
+            type: 'worker_done',
+            args: {
+              task_id: '{{ctx.task_id}}', worker_id: '{{ctx.worker_id}}',
+              execution_id: '{{ctx.execution_id}}',
+              result: verdict === 'approved'
+                ? 'Reviewer: SRS matches the pinned contract.'
+                : 'Reviewer: injected correction request.',
+              verdict,
+            },
+          }],
+        };
+      }
       const content = fault === 'missing-srs-decision-log'
         ? SRS.replace(/## §12 Decision Log[\s\S]*$/, '')
         : SRS;
@@ -346,6 +369,26 @@ export function selectButtonColorScenario(ctx, env = process.env) {
 
     default:
       break;
+  }
+
+  // Reviewer path — only reached when no process_node_id matched (legacy
+  // tasks, or review nodes without a node-specific scenario).
+  if (ctx.role === 'reviewer') {
+    const verdict = fault === 'review-changes-requested' ? 'changes_requested' : 'approved';
+    return {
+      id: `button-color/reviewer/${verdict}`,
+      steps: [{
+        type: 'worker_done',
+        args: {
+          task_id: '{{ctx.task_id}}', worker_id: '{{ctx.worker_id}}',
+          execution_id: '{{ctx.execution_id}}',
+          result: verdict === 'approved'
+            ? 'Deterministic reviewer: candidate matches the pinned contract.'
+            : 'Deterministic reviewer: injected correction request.',
+          verdict,
+        },
+      }],
+    };
   }
 
   if (ctx.task_kind === 'discovery.kickstart') {

@@ -189,6 +189,7 @@ export function enrichContext(runtime, promptContext) {
     attempt: Math.max(1, Number(attemptRow?.n ?? 1)),
     role: task.status === 'review' || task.status === 'review_in_progress'
       ? 'reviewer' : (promptContext.role || 'author'),
+    isRetry: !!(metadata.recovery_feedback || metadata.process_node_input?.schema === 'factory.recovery-feedback.v1'),
   };
 }
 
@@ -299,6 +300,27 @@ export async function executeSteps(runtime, ctx, scenario, stream) {
         const row = findArtifact(db, ctx.epic_id, step.artifactType, step.code ?? null);
         if (!row) throw new Error(`SIMULATOR_ARTIFACT_NOT_FOUND: ${step.artifactType}/${step.code ?? '*'}`);
         vars.aliases[step.as] = row.id;
+        break;
+      }
+      case 'artifact_find_optional': {
+        // Find artifact but don't throw if missing. Sets alias to the row id
+        // or null. Used for idempotent retries: if the artifact already exists
+        // (from a previous author run), skip re-creating it.
+        const row = findArtifact(db, ctx.epic_id, step.artifactType, step.code ?? null);
+        vars.aliases[step.as] = row?.id ?? null;
+        if (row) stream.text(`simulator: found existing ${step.artifactType} #${row.id}`);
+        break;
+      }
+      case 'skip_if': {
+        // Conditional skip: if the alias referenced by 'check' is non-null
+        // (artifact already exists), skip the next N steps.
+        const value = vars.aliases[step.check];
+        if (value !== null && value !== undefined) {
+          // Skip the next step.skipCount steps by advancing the loop index.
+          // We can't modify the for-of index directly, so use a sentinel.
+          vars.aliases.__skip_count = step.skipCount || 1;
+          stream.text(`simulator: skip ${step.skipCount || 1} step(s) — ${step.check} exists`);
+        }
         break;
       }
       case 'trace_add':
