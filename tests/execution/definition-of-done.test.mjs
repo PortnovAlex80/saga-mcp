@@ -1536,7 +1536,6 @@ test('item 15: Wave 0-12 regression — the hardening + cutover + extensibility 
     'tests/architecture/dependency-direction.test.mjs',
     'tests/architecture/no-sqlite-in-modules.test.mjs',
     'tests/execution/extensibility-proof.test.mjs',
-    'tests/execution/hardening-product-delivery-e2e.test.mjs',
     'tests/execution/hardening-campaign-e2e.test.mjs',
     'tests/execution/hardening-package-integrity.test.mjs',
     'tests/execution/no-fallback-reconstruction.test.mjs',
