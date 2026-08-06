@@ -39,6 +39,8 @@ import type { SqliteRecoveryCaseRepository } from '../process-modules/persistenc
 import type { SqliteManagedNodeSubmissionRepository } from '../process-modules/persistence/sqlite-managed-node-submission-repository.js';
 import type { SqliteProcessProductRepository } from '../process-modules/persistence/sqlite-process-product-repository.js';
 import type { SqliteExactCandidateAcceptance } from '../process-modules/persistence/sqlite-exact-candidate-acceptance.js';
+import type { SqliteCandidateSetRepository } from '../infrastructure/workplace/sqlite-candidate-set-repository.js';
+import type { SqliteGateRepository } from '../infrastructure/workplace/sqlite-gate-repository.js';
 import type { FactoryDiscoveryRuntimePersistence } from './discovery/infrastructure/discovery-runtime-port.js';
 import type { ProductRef } from '../process-modules/domain/spi/index.js';
 import type { WorkplaceProductPort } from '../process-modules/application/workplace-product-port.js';
@@ -106,6 +108,19 @@ export interface ModuleSharedDeps {
   readonly runtimePersistence: FactoryDiscoveryRuntimePersistence;
   /** Exact-candidate acceptance — needed by the shared kernel executor. */
   readonly exactCandidateAcceptance: SqliteExactCandidateAcceptance;
+  /**
+   * Production Cell: CandidateSet repository — needed by module kernel
+   * handlers that seal a CandidateSet on execution completion. Optional so
+   * modules that haven't migrated to the Production Cell gate path keep
+   * working; modules feature-detect before use.
+   */
+  readonly candidateSetRepo?: SqliteCandidateSetRepository;
+  /**
+   * Production Cell: Gate repository — needed by module kernel handlers that
+   * drive a GateRun (createGateRun → recordCheckReceipt → recordDecision).
+   * Optional; same feature-detect pattern.
+   */
+  readonly gateRepo?: SqliteGateRepository;
 
   /**
    * T8 — Universal cross-module product handoff port ("one desk for all

@@ -55,42 +55,23 @@ import type {
   SubmissionValidationReceipt,
 } from '../../../process-modules/application/node-submission-policy.js';
 import {
-  SRS_CONTRACT,
   SRS_CONTRACT_REF,
 } from '../domain/srs-contract.js';
+import {
+  extractD2Stanzas,
+  validateD2Structure,
+  checkDecisionLogSection,
+} from './srs-d2-parser.js';
 
 export const SRS_CONTRACT_VALIDATOR_ID = 'formalization.srs-contract.v1';
 
 /**
- * The set of valid criticality values — read from the canonical contract,
- * never duplicated. If the contract enum changes, this set changes with it.
- */
-const VALID_CRITICALITY = new Set<string>(SRS_CONTRACT.d2EnumFields.criticality);
-const VALID_AC_KIND = new Set<string>(SRS_CONTRACT.d2EnumFields.ac_kind);
-const VALID_PATTERN = new Set<string>(SRS_CONTRACT.d2EnumFields.pattern);
-
-/**
- * Required fields in every §D2 stanza, per the canonical contract.
- */
-const D2_REQUIRED_FIELDS: readonly string[] = SRS_CONTRACT.d2RequiredFields;
-
-/**
- * Decision Log: the canonical column set. Every §12 table row must have at
- * least this many columns (table header row defines the shape).
- */
-const DECISION_LOG_COLUMNS: readonly string[] = SRS_CONTRACT.decisionLogColumns;
-
-/**
- * A parsed §D2 stanza: the YAML key/value pairs for one AC row.
- */
-interface D2Stanza {
-  readonly ac: string;
-  readonly fields: ReadonlyMap<string, string>;
-}
-
-/**
  * Create the SRS contract validator. Reads the SRS document from disk (via
  * project_repository.local_path + artifact.path) to perform structural checks.
+ *
+ * Structural validation logic (§D2 parsing, §12 check, enum validation) lives
+ * in srs-d2-parser.ts and is shared with the Production Cell CheckProvider —
+ * no duplication between the worker_done preflight and the gate.
  */
 export function createSrsContractValidator(
   db: DbHandle,
@@ -248,226 +229,56 @@ export function createSrsContractValidator(
       }
 
       // --- 6. §12 Decision Log section + columns (T1.3) ---
-      const section12Gap = checkDecisionLog(fileContent, srs.id);
-      if (section12Gap) gaps.push(section12Gap);
-
-      // --- 7. §D2 stanzas: required fields + enum validity (T1.3, T1.4) ---
-      const d2Gaps = checkD2Stanzas(fileContent, srs.id);
-      gaps.push(...d2Gaps);
-
-      return rejectOrAccept(input, srs, fileHash, gaps);
-    },
-  };
-}
-
-// ---------------------------------------------------------------------------
-// §12 Decision Log check.
-// ---------------------------------------------------------------------------
-
-/**
- * Check the §12 Decision Log section exists and its table header has at least
- * the canonical column count. The columns themselves are matched loosely by
- * header text (the canonical names are stable, but reviewers may write
- * human-readable variants).
- */
-function checkDecisionLog(content: string, srsId: number): SubmissionGap | null {
-  const sectionMatch = content.match(/§\s*12[^\n]*\n([\s\S]*?)(?=\n##\s|\n###\s[^#]|$)/i)
-    ?? content.match(/##\s*.*Decision Log[^\n]*\n([\s\S]*?)(?=\n##\s|$)/i);
-  if (!sectionMatch) {
-    return {
-      artifactId: srsId,
-      artifactCode: null,
-      artifactType: 'SRS',
-      existingTargets: [],
-      missing: {
-        relation: 'section',
-        requiredTargetTypes: ['§12 Decision Log'],
-        minimum: 1,
-      },
-    };
-  }
-  const sectionBody = sectionMatch[1] ?? '';
-  // Find the first markdown table header row in the section.
-  const tableHeaderMatch = sectionBody.match(/\|([^\n]*\|)+/);
-  if (!tableHeaderMatch) {
-    return {
-      artifactId: srsId,
-      artifactCode: null,
-      artifactType: 'SRS',
-      existingTargets: [],
-      missing: {
-        relation: 'decision-log-table',
-        requiredTargetTypes: [`markdown table with ≥${DECISION_LOG_COLUMNS.length} columns`],
-        minimum: 1,
-      },
-    };
-  }
-  const headerCells = (tableHeaderMatch[0] ?? '')
-    .split('|')
-    .map(cell => cell.trim())
-    .filter(cell => cell.length > 0 && !/^[-:]+$/.test(cell));
-  if (headerCells.length < DECISION_LOG_COLUMNS.length) {
-    return {
-      artifactId: srsId,
-      artifactCode: null,
-      artifactType: 'SRS',
-      existingTargets: headerCells.map((_c, i) => ({ type: 'column', id: i })),
-      missing: {
-        relation: 'decision-log-columns',
-        requiredTargetTypes: [...DECISION_LOG_COLUMNS],
-        minimum: DECISION_LOG_COLUMNS.length,
-      },
-    };
-  }
-  return null;
-}
-
-// ---------------------------------------------------------------------------
-// §D2 stanza parser + checker.
-// ---------------------------------------------------------------------------
-
-/**
- * Extract the §D2 YAML code block from the SRS markdown, parse it into
- * stanzas (one per AC), and validate each stanza against the canonical
- * contract's required fields and enum constraints.
- *
- * Parsing strategy: the §D2 block is a markdown fenced code block (```yaml).
- * Each stanza is a top-level list item starting with `- ac:`. We split on
- * that marker and parse `key: value` lines within each stanza. This is a
- * deliberately lightweight parser — it does not depend on a YAML library and
- * only needs to find field names and their (scalar) values to check presence
- * and enum membership.
- */
-function checkD2Stanzas(content: string, srsId: number): SubmissionGap[] {
-  const gaps: SubmissionGap[] = [];
-  const stanzas = extractD2Stanzas(content);
-  if (stanzas.length === 0) {
-    gaps.push({
-      artifactId: srsId,
-      artifactCode: null,
-      artifactType: 'SRS',
-      existingTargets: [],
-      missing: {
-        relation: 'd2-stanzas',
-        requiredTargetTypes: ['≥1 §D2 stanza with `ac:` field'],
-        minimum: 1,
-      },
-    });
-    return gaps;
-  }
-  for (const stanza of stanzas) {
-    // Required fields presence.
-    for (const field of D2_REQUIRED_FIELDS) {
-      if (!stanza.fields.has(field)) {
+      const decisionLogGap = checkDecisionLogSection(fileContent);
+      if (decisionLogGap) {
         gaps.push({
-          artifactId: srsId,
-          artifactCode: stanza.ac,
+          artifactId: srs.id,
+          artifactCode: null,
           artifactType: 'SRS',
-          existingTargets: [...stanza.fields.keys()].map((k, i) => ({ type: k, id: i })),
+          existingTargets: [],
           missing: {
-            relation: 'd2-field',
-            requiredTargetTypes: [field],
+            relation: decisionLogGap.includes('columns') ? 'decision-log-columns' : 'section',
+            requiredTargetTypes: ['§12 Decision Log'],
             minimum: 1,
           },
         });
       }
-    }
-    // Enum field validity.
-    const acKind = stanza.fields.get('ac_kind');
-    if (acKind && !VALID_AC_KIND.has(acKind)) {
-      gaps.push(enumGap(srsId, stanza.ac, 'ac_kind', acKind, SRS_CONTRACT.d2EnumFields.ac_kind));
-    }
-    const pattern = stanza.fields.get('pattern');
-    if (pattern && !VALID_PATTERN.has(pattern)) {
-      gaps.push(enumGap(srsId, stanza.ac, 'pattern', pattern, SRS_CONTRACT.d2EnumFields.pattern));
-    }
-    const criticality = stanza.fields.get('criticality');
-    if (criticality && !VALID_CRITICALITY.has(criticality)) {
-      gaps.push(enumGap(srsId, stanza.ac, 'criticality', criticality, SRS_CONTRACT.d2EnumFields.criticality));
-    }
-  }
-  return gaps;
-}
 
-function enumGap(
-  srsId: number,
-  acCode: string,
-  field: string,
-  _value: string,
-  allowed: readonly string[],
-): SubmissionGap {
-  return {
-    artifactId: srsId,
-    artifactCode: acCode,
-    artifactType: 'SRS',
-    existingTargets: [{ type: field, id: -1 }],
-    missing: {
-      relation: 'valid-enum-value',
-      requiredTargetTypes: [...allowed],
-      minimum: 1,
-    },
-  };
-}
-
-/**
- * Extract §D2 stanzas from the SRS markdown content. Returns one D2Stanza per
- * `- ac:` list item found inside the §D2 fenced code block.
- */
-function extractD2Stanzas(content: string): D2Stanza[] {
-  // Locate the §D2 section. It starts at a header line containing "§D2" or
-  // "D2" and ends at the next section header of the same or higher level.
-  const sectionStart = content.search(/#{2,4}\s*§?\s*D2\b/);
-  if (sectionStart === -1) return [];
-  const afterStart = content.slice(sectionStart);
-  // The section ends at the next `##` or `###` header that is NOT the §D2
-  // header itself. Find the next header after the first line.
-  const nextHeaderMatch = afterStart.slice(afterStart.indexOf('\n')).match(/\n#{2,4}\s/);
-  const sectionText = nextHeaderMatch
-    ? afterStart.slice(0, afterStart.indexOf('\n') + (nextHeaderMatch.index ?? 0))
-    : afterStart;
-  // Extract the fenced code block (```yaml ... ```).
-  const codeBlockMatch = sectionText.match(/```[a-z]*\n([\s\S]*?)```/i);
-  if (!codeBlockMatch) return [];
-  const yaml = codeBlockMatch[1] ?? '';
-  // Split into stanzas on top-level `- ac:` markers. Each stanza starts at a
-  // line beginning with `- ac:` (possibly preceded by whitespace, but we
-  // treat only 0-indent as top-level to avoid nested list items).
-  const lines = yaml.split('\n');
-  const stanzas: D2Stanza[] = [];
-  let currentAc: string | null = null;
-  let currentFields: Map<string, string> = new Map();
-  for (const line of lines) {
-    const stanzaStart = line.match(/^-\s+ac:\s*(\S+)/);
-    if (stanzaStart) {
-      if (currentAc) {
-        stanzas.push({ ac: currentAc, fields: currentFields });
-      }
-      currentAc = stanzaStart[1]!.replace(/["']/g, '');
-      currentFields = new Map();
-      // The `ac` field itself is on the stanza-start line; record it so the
-      // required-field check sees it as present.
-      currentFields.set('ac', currentAc);
-      continue;
-    }
-    if (currentAc) {
-      // Parse `key: value` lines (scalar values only). The YAML block uses
-      // 2-space indentation for top-level stanza fields, so allow optional
-      // leading whitespace. Nested list items (e.g. conflict_keys entries)
-      // start with `-` and are ignored — we only need scalar field presence.
-      const fieldMatch = line.match(/^\s+(\w[\w_]*)\s*:\s*(.*)$/);
-      if (fieldMatch) {
-        const [, key, rawValue] = fieldMatch;
-        const value = (rawValue ?? '').trim().replace(/["']/g, '').replace(/#.*$/, '').trim();
-        if (!currentFields.has(key!)) {
-          currentFields.set(key!, value);
+      // --- 7. §D2 stanzas: required fields + enum validity (T1.3, T1.4) ---
+      const stanzas = extractD2Stanzas(fileContent);
+      if (stanzas.length === 0) {
+        gaps.push({
+          artifactId: srs.id,
+          artifactCode: null,
+          artifactType: 'SRS',
+          existingTargets: [],
+          missing: {
+            relation: 'd2-stanzas',
+            requiredTargetTypes: ['≥1 §D2 stanza with `ac:` field'],
+            minimum: 1,
+          },
+        });
+      } else {
+        // Reuse the shared structural validator from srs-d2-parser.
+        const d2Gaps = validateD2Structure(fileContent);
+        for (const gap of d2Gaps) {
+          gaps.push({
+            artifactId: srs.id,
+            artifactCode: gap.ac,
+            artifactType: 'SRS',
+            existingTargets: [{ type: gap.field, id: -1 }],
+            missing: {
+              relation: gap.kind === 'invalid-enum-value' ? 'valid-enum-value' : 'd2-field',
+              requiredTargetTypes: gap.allowedValues ?? [gap.field],
+              minimum: 1,
+            },
+          });
         }
       }
-    }
-  }
-  if (currentAc) {
-    stanzas.push({ ac: currentAc, fields: currentFields });
-  }
-  return stanzas;
+
+      return rejectOrAccept(input, srs, fileHash, gaps);
+    },
+  };
 }
 
 // ---------------------------------------------------------------------------

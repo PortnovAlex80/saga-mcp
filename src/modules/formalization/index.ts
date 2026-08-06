@@ -63,7 +63,7 @@ export function registerFormalization(
   sharedDeps: ModuleSharedDeps,
   _options?: RegisterFormalizationOptions,
 ): FormalizationRegistration {
-  const { db, certificateRepo, exactCandidateAcceptance } = sharedDeps;
+  const { db, certificateRepo, exactCandidateAcceptance, candidateSetRepo, gateRepo } = sharedDeps;
 
   // Module-specific concrete adapters (composition owns construction).
   const baselineRepository = new SqliteFormalizationBaselineRepository(db);
@@ -85,6 +85,13 @@ export function registerFormalization(
       // The formalization settlement kernel issues its own
       // ProcessOutcomeCertificate and emits an explicit ModuleCompletion.
       certificateRepo,
+      // Production Cell: CandidateSet + Gate repositories. Passed through
+      // so the architecture handler can seal a CandidateSet and drive a
+      // GateRun. Optional (feature-detect) — the handler checks availability
+      // before using them, falling back to ExactCandidateAcceptance when not
+      // wired (tests, unmigrated modules).
+      candidateSetRepo: candidateSetRepo ?? null,
+      gateRepo: gateRepo ?? null,
     }),
   );
 

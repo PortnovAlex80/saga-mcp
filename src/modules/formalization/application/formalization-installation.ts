@@ -60,6 +60,8 @@ import type {
   ManagedTraceWriteRecord,
 } from '../domain/formalization-kernel-ports.js';
 import { buildFormalizationCertificatePayload } from '../domain/formalization-kernel-ports.js';
+import type { WorkplaceRef } from '../../../process-modules/domain/workplace/workplace-ref.js';
+import type { CheckReceipt, GateDecision } from '../../../process-modules/domain/workplace/gate.js';
 import type {
   AcceptanceBaselineSnapshotRecord,
   FormalizationBaselineRepository,
@@ -136,6 +138,69 @@ export interface FormalizationInstallationDeps {
    * are KEPT alongside (additive) until Wave 5 deletes that branch.
    */
   certificateRepo: ProcessOutcomeCertificateRepository;
+  /**
+   * Production Cell: CandidateSet repository port. When non-null, the
+   * architecture handler seals a CandidateSet from the worker's produced SRS
+   * before driving a GateRun. When null (tests, unmigrated path), the handler
+   * falls back to ExactCandidateAcceptance only.
+   *
+   * Defined as a structural port (not the concrete SqliteCandidateSetRepository
+   * type) to keep the module driver-neutral — the composition root injects the
+   * concrete SQLite adapter.
+   */
+  candidateSetRepo: CandidateSetSealPort | null;
+  /**
+   * Production Cell: Gate repository port. When non-null, the architecture
+   * handler drives a GateRun (createGateRun → recordCheckReceipt →
+   * recordDecision). When null, the handler falls back to
+   * ExactCandidateAcceptance only.
+   */
+  gateRepo: GateRunPort | null;
+}
+
+/**
+ * Minimal port for sealing a CandidateSet. The concrete
+ * SqliteCandidateSetRepository satisfies this; the module never imports the
+ * concrete type.
+ */
+export interface CandidateSetSealPort {
+  seal(input: {
+    readonly workplaceRef: WorkplaceRef;
+    readonly producerExecutionRef: string;
+    readonly role: 'author' | 'reviewer';
+    readonly subjectCandidateSetRef: string | null;
+    readonly members: ReadonlyArray<{
+      readonly productRef: { readonly schemaId: string; readonly ref: string; readonly digest: string };
+      readonly origin: 'produced' | 'carried-forward';
+      readonly sourceCandidateSetRef: string | null;
+    }>;
+    readonly candidateSetDigest: string;
+    readonly sealReceiptRef: string;
+    readonly sealedAt: string;
+  }): { readonly set: { readonly candidateSetRef: string }; readonly replayed: boolean };
+}
+
+/**
+ * Minimal port for driving a GateRun. The concrete SqliteGateRepository
+ * satisfies this; the module never imports the concrete type. Uses the real
+ * domain types (GateRun, CheckReceipt, GateDecision) from the workplace
+ * domain to avoid structural drift.
+ */
+export interface GateRunPort {
+  createGateRun(input: {
+    readonly gateRunRef: string;
+    readonly workplaceRef: WorkplaceRef;
+    readonly gatePhase: 'author' | 'final';
+    readonly subjectCandidateSetRef: string;
+    readonly assessmentCandidateSetRefs: readonly string[];
+    readonly checkPlanRef: string;
+    readonly checkPlanDigest: string;
+    readonly expectedWorkplaceRevision: number;
+    readonly gateLeaseRef: string;
+  }): unknown;
+  setGateRunState(gateRunRef: string, state: 'claimed' | 'checking' | 'decided' | 'terminal'): void;
+  recordCheckReceipt(input: Omit<CheckReceipt, 'checkReceiptRef'> & { readonly checkReceiptRef: string }): CheckReceipt;
+  recordDecision(decision: GateDecision): { readonly decision: GateDecision; readonly replayed: boolean };
 }
 
 interface ExecutionWrites {
@@ -812,32 +877,102 @@ function createResolveArchitectureHandler(deps: FormalizationInstallationDeps): 
       },
     );
     return event === 'completed'
-      ? withExactCandidateAcceptance(
-          resolved,
-          ctx,
-          writes,
-          writes.artifacts,
-          {
-            sourceNodeId: SOURCE_NODES.architecture,
-            policyId: 'repair-architecture-contract',
-            authority: 'formalization-architecture-gate@1',
-            reasonCode: 'FORMALIZATION_ARCHITECTURE_VALIDATED',
-            summary: 'The exact architecture contract could not be committed',
-            acceptanceCriteria: [
-              'Exactly one SRS traces to the exact PRD.',
-              'The frozen acceptance baseline has not drifted.',
-              'The exact reviewed SRS version is accepted+clean.',
-            ],
-            allowedChanges: ['SRS candidate and its derived_from traces'],
-            context: {
-              baselineSnapshotRef: baseline.artifactRef,
-              baselineSnapshotHash: baseline.snapshotHash,
-              acceptanceBaselineHash: baseline.baselineHash,
+      ? (() => {
+          // Production Cell bridge: seal a CandidateSet from the worker's
+          // produced SRS artifact. This runs ALONGSIDE the existing
+          // ExactCandidateAcceptance (bridge mode) — the CandidateSet is
+          // recorded but does not yet drive the acceptance decision. Stage 3
+          // will replace ExactCandidateAcceptance with the GateDecision that
+          // the GateRun produces from this CandidateSet.
+          sealArchitectureCandidateSet(deps, ctx, writes);
+          return withExactCandidateAcceptance(
+            resolved,
+            ctx,
+            writes,
+            writes.artifacts,
+            {
+              sourceNodeId: SOURCE_NODES.architecture,
+              policyId: 'repair-architecture-contract',
+              authority: 'formalization-architecture-gate@1',
+              reasonCode: 'FORMALIZATION_ARCHITECTURE_VALIDATED',
+              summary: 'The exact architecture contract could not be committed',
+              acceptanceCriteria: [
+                'Exactly one SRS traces to the exact PRD.',
+                'The frozen acceptance baseline has not drifted.',
+                'The exact reviewed SRS version is accepted+clean.',
+              ],
+              allowedChanges: ['SRS candidate and its derived_from traces'],
+              context: {
+                baselineSnapshotRef: baseline.artifactRef,
+                baselineSnapshotHash: baseline.snapshotHash,
+                acceptanceBaselineHash: baseline.baselineHash,
+              },
             },
-          },
-        )
+          );
+        })()
       : resolved;
   });
+}
+
+/**
+ * Production Cell bridge (Stage 1): seal a CandidateSet from the architecture
+ * worker's produced SRS artifact.
+ *
+ * The CandidateSet captures the EXACT immutable product the worker produced
+ * (the SRS artifact id + content hash). It is sealed via the CandidateSet
+ * repository and persisted. In bridge mode, this does NOT replace
+ * ExactCandidateAcceptance — both run in parallel. Stage 3 will switch the
+ * acceptance decision from ExactCandidateAcceptance to the GateDecision that
+ * the GateRun produces from this CandidateSet.
+ *
+ * Feature-detect: if candidateSetRepo is null (tests, unmigrated module),
+ * this is a no-op — the handler falls back to ExactCandidateAcceptance only.
+ */
+function sealArchitectureCandidateSet(
+  deps: FormalizationInstallationDeps,
+  ctx: KernelHandlerContext,
+  writes: ExecutionWrites,
+): string | null {
+  if (!deps.candidateSetRepo) return null;
+  if (!writes.receipt.executionId) return null;
+  // Build the CandidateSet members from the worker's produced SRS artifacts.
+  // Each artifact is a 'produced' member (originated from this execution).
+  const members = writes.artifacts
+    .filter((artifact): artifact is typeof artifact & { contentHash: string } =>
+      isSha256(artifact.contentHash))
+    .map(artifact => ({
+      productRef: {
+        schemaId: artifact.type,
+        ref: `artifact:${artifact.id}`,
+        digest: artifact.contentHash,
+      },
+      origin: 'produced' as const,
+      sourceCandidateSetRef: null,
+    }));
+  if (members.length === 0) return null;
+  // Compute a deterministic digest over the member set.
+  const candidateSetDigest = sha256Hex(members);
+  // Build the WorkplaceRef. The architecture cell's workplace is identified
+  // by (processRunId, moduleRef, productionCellId, workKey). The
+  // productionCellId for the architecture node is its node id.
+  const workplaceRef: WorkplaceRef = {
+    processRunId: ctx.processRunId,
+    moduleRef: FORMALIZATION_MODULE_KEY,
+    productionCellId: SOURCE_NODES.architecture,
+    workKey: 'default',
+  };
+  const sealReceiptRef = `execution-complete:${writes.receipt.executionId}`;
+  const result = deps.candidateSetRepo.seal({
+    workplaceRef,
+    producerExecutionRef: writes.receipt.executionId,
+    role: 'author',
+    subjectCandidateSetRef: null,
+    members,
+    candidateSetDigest,
+    sealReceiptRef,
+    sealedAt: new Date().toISOString(),
+  });
+  return result.set.candidateSetRef;
 }
 
 function createSettlementHandler(deps: FormalizationInstallationDeps): KernelHandler {

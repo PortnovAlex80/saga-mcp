@@ -54,6 +54,8 @@ import { SqliteProcessProductRepositoryV2 } from '../process-modules/persistence
 import { SqliteWorkplaceProductAdapter } from '../process-modules/persistence/sqlite-workplace-product-adapter.js';
 import { SqliteNodeRunRepository } from '../process-modules/persistence/sqlite-node-run-repository.js';
 import { SqliteExactCandidateAcceptance } from '../process-modules/persistence/sqlite-exact-candidate-acceptance.js';
+import { SqliteCandidateSetRepository } from '../infrastructure/workplace/sqlite-candidate-set-repository.js';
+import { SqliteGateRepository } from '../infrastructure/workplace/sqlite-gate-repository.js';
 import { SqliteProcessOutcomeCertificateRepository } from '../process-modules/persistence/sqlite-process-outcome-certificate-repository.js';
 import { SqliteProcessRunRepository } from '../process-modules/persistence/sqlite-process-run-repository.js';
 import { SqliteRecoveryCaseRepository } from '../process-modules/persistence/sqlite-recovery-case-repository.js';
@@ -240,6 +242,13 @@ export function createProductLifecycleRuntime(
     new SqliteManagedNodeSubmissionRepository(db);
   const exactCandidateAcceptance = new SqliteExactCandidateAcceptance(db);
   const centralLedger = new SqliteManagedProductionLedger(db);
+  // Production Cell: CandidateSet + Gate repositories. Constructed here
+  // alongside exactCandidateAcceptance; injected into ModuleSharedDeps so
+  // module kernel handlers that have migrated to the Production Cell gate
+  // path can seal CandidateSets and drive GateRuns. Optional in sharedDeps
+  // so modules that haven't migrated feature-detect and skip.
+  const candidateSetRepo = new SqliteCandidateSetRepository(db);
+  const gateRepo = new SqliteGateRepository(db);
 
   const resolveNodeProducts = (
     processRunId: number,
@@ -329,6 +338,8 @@ export function createProductLifecycleRuntime(
     executorV2Options,
     runtimePersistence,
     exactCandidateAcceptance,
+    candidateSetRepo,
+    gateRepo,
     workplaceProductPort,
     adoptedNodeResults: new SqliteResumeDirectiveRepository(db),
 
