@@ -29,7 +29,7 @@ import type {
 import { HumanNodeExecutor } from '../process-modules/application/node-executors/human-node-executor.js';
 import { KernelNodeExecutor } from '../process-modules/application/node-executors/kernel-node-executor.js';
 import { LmNodeExecutor } from '../process-modules/application/node-executors/lm-node-executor.js';
-import { ReceiptAwareLmNodeExecutor } from '../process-modules/application/node-executors/receipt-aware-lm-node-executor.js';
+import { receiptAwareLmPersistence } from '../process-modules/application/node-executors/receipt-aware-lm-persistence.js';
 import {
   PRODUCT_DELIVERY_LIFECYCLE_INPUT_SCHEMA,
   assertProductDeliveryLifecycleInput,
@@ -232,7 +232,10 @@ export function createProductLifecycleRuntime(
 
   const runtimePersistence = options.discoveryRuntimePersistence
     ?? new SqliteFactoryDiscoveryRuntime();
-  const lmPersistence = createDiscoveryLmNodePersistence(runtimePersistence);
+  const lmPersistence = receiptAwareLmPersistence(
+    createDiscoveryLmNodePersistence(runtimePersistence),
+    db,
+  );
   const managedNodeSubmissions =
     new SqliteManagedNodeSubmissionRepository(db);
   const exactCandidateAcceptance = new SqliteExactCandidateAcceptance(db);
@@ -298,23 +301,18 @@ export function createProductLifecycleRuntime(
     humanInteractionRegistry: humanInteractions,
   });
 
-  const innerLmExecutor = new LmNodeExecutor({
-    persistence: lmPersistence,
-    workerExecutorFactory: options.workerExecutorFactory,
-    resolveWorkerContext: options.resolveWorkerContext,
-    workAssignment:
-      options.workAssignment ?? new SqliteWorkAssignmentAdapter(db),
-  });
   const nodeExecutors = new Map<string, NodeExecutor>([
     ['kernel', new KernelNodeExecutor(
       kernelHandlers,
       exactCandidateAcceptance,
     )],
-    ['lm', new ReceiptAwareLmNodeExecutor(
-      innerLmExecutor,
-      lmPersistence,
-      db,
-    )],
+    ['lm', new LmNodeExecutor({
+      persistence: lmPersistence,
+      workerExecutorFactory: options.workerExecutorFactory,
+      resolveWorkerContext: options.resolveWorkerContext,
+      workAssignment:
+        options.workAssignment ?? new SqliteWorkAssignmentAdapter(db),
+    })],
     ['human', new HumanNodeExecutor(humanInteractions)],
   ]);
 
