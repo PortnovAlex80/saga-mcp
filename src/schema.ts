@@ -1498,6 +1498,23 @@ export function migrateSyntheticBriefsToDbNative(db: {
     run(...params: unknown[]): { changes: number };
   };
 }): { inspected: number; migrated: number; skipped: number } {
+  // Guard: the migration reads factory_proposals, which is a module-owned
+  // table created lazily by the discovery module's schema ensure. On a fresh
+  // DB (or one where discovery has not run yet) the table or its
+  // payload_snapshot column may not exist yet. Skip the migration entirely
+  // in that case — there are no synthetic briefs to repair on a fresh DB, and
+  // on an existing DB the table will exist once discovery has produced a
+  // proposal. Re-running getDb later (e.g. after factory start) will find the
+  // table and perform the migration then.
+  const proposalTable = db.prepare(
+    "SELECT name FROM sqlite_master WHERE type='table' AND name='factory_proposals'",
+  ).get();
+  if (!proposalTable) return { inspected: 0, migrated: 0, skipped: 0 };
+  const proposalCols = db.prepare('PRAGMA table_info(factory_proposals)').all() as Array<{ name: string }>;
+  if (!proposalCols.some((c) => c.name === 'payload')) {
+    return { inspected: 0, migrated: 0, skipped: 0 };
+  }
+
   // SHA-256 over canonical JSON. Uses the crypto module directly to keep
   // schema.ts dependency-free (the shared helper would create a cycle).
   const sha256Hex = (value: unknown): string => {
@@ -1530,32 +1547,68 @@ export function migrateSyntheticBriefsToDbNative(db: {
   let skipped = 0;
   for (const row of synthetic) {
     if (!row.content_hash) { skipped += 1; continue; }
-    // Reconstruct the discovery-brief payload from the accepted proposal.
+    // The synthetic brief was created by the discovery resolver, which calls
+    // ensureDiscoveryBrief with proposalPayload that may be null (the call
+    // site at discovery-installation.ts passes null when it cannot read the
+    // proposal payload). The formalization fallback uses a different recipe
+    // (with process_run_id). We try BOTH recipes against the stored hash;
+    // whichever matches is the canonical content we persist. If neither
+    // matches, the row is left file_backed (checkpoint fails loudly).
+    const candidates: Array<Record<string, unknown>> = [
+      // Recipe A: discovery resolver with null proposalPayload (the common
+      // case — the call site passes null).
+      {
+        schema: 'factory.discovery-brief.v1',
+        epic_id: row.epic_id,
+        problem_statement: null,
+        candidate_scope: null,
+        recommended_outcome: null,
+        note: 'Auto-provisioned by discovery proposal resolver',
+      },
+    ];
+    // Recipe B: discovery resolver with real proposal payload (if available).
     const proposal = db.prepare(
-      `SELECT p.payload_snapshot FROM factory_proposals p
-        WHERE p.epic_id=? AND p.status='submitted'
+      `SELECT p.payload FROM factory_proposals p
+        JOIN factory_work_intents wi ON wi.id = p.intent_id
+        WHERE wi.epic_id=? AND p.status='submitted'
         ORDER BY p.id DESC LIMIT 1`,
-    ).get(row.epic_id) as { payload_snapshot: string } | undefined;
-    let payload: Record<string, unknown> | null = null;
+    ).get(row.epic_id) as { payload: string } | undefined;
     if (proposal) {
       try {
-        const parsed = JSON.parse(proposal.payload_snapshot) as Record<string, unknown>;
-        payload = {
+        const parsed = JSON.parse(proposal.payload) as Record<string, unknown>;
+        candidates.push({
           schema: 'factory.discovery-brief.v1',
           epic_id: row.epic_id,
           problem_statement: parsed.problem_statement ?? null,
           candidate_scope: parsed.candidate_scope ?? null,
           recommended_outcome: parsed.recommended_outcome ?? null,
           note: 'Auto-provisioned by discovery proposal resolver',
-        };
-      } catch { /* payload unreadable — fall through to skip */ }
+        });
+      } catch { /* payload unreadable — skip recipe B */ }
     }
-    if (!payload) { skipped += 1; continue; }
-    const recomputed = sha256Hex(payload);
-    if (recomputed !== row.content_hash) {
-      // Hash mismatch — the stored content_hash was computed from a payload
-      // shape this migration cannot reconstruct (or the brief was tampered
-      // with). Leave the row as file_backed so checkpoint fails loudly.
+    // Recipe C: formalization fallback (uses process_run_id, no proposal).
+    const formalizationRun = db.prepare(
+      'SELECT id FROM factory_process_runs WHERE project_id=(SELECT project_id FROM epics WHERE id=?) ORDER BY id DESC LIMIT 1',
+    ).get(row.epic_id) as { id: number } | undefined;
+    if (formalizationRun) {
+      candidates.push({
+        schema: 'factory.discovery-brief.v1',
+        epic_id: row.epic_id,
+        process_run_id: formalizationRun.id,
+        note: 'Auto-provisioned by formalization resolver',
+      });
+    }
+    let payload: Record<string, unknown> | null = null;
+    for (const candidate of candidates) {
+      if (sha256Hex(candidate) === row.content_hash) {
+        payload = candidate;
+        break;
+      }
+    }
+    if (!payload) {
+      // No recipe matched — the stored content_hash was computed from a shape
+      // this migration cannot reconstruct. Leave file_backed; checkpoint will
+      // fail loudly rather than mask the gap.
       skipped += 1;
       continue;
     }
