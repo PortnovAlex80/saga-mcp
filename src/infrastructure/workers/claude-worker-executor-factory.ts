@@ -74,11 +74,18 @@ type RunnerOptions = ClaudeBoardRunnerOptions & {
   }) => void;
 };
 
-const WORKER_DONE_STATUSES = new Set(['review', 'done', 'todo', 'blocked']);
-
 interface AcceptedWorkerDone {
   readonly commandId: string;
   readonly completedNewStatus: 'review' | 'done' | 'todo' | 'blocked';
+}
+
+function isWorkerDoneStatus(
+  value: unknown,
+): value is AcceptedWorkerDone['completedNewStatus'] {
+  return value === 'review'
+    || value === 'done'
+    || value === 'todo'
+    || value === 'blocked';
 }
 
 /**
@@ -117,10 +124,10 @@ function readAcceptedWorkerDone(
   try {
     const reply = JSON.parse(row.reply_json) as { completed_new_status?: unknown };
     const status = reply.completed_new_status;
-    if (!WORKER_DONE_STATUSES.has(status)) return null;
+    if (!isWorkerDoneStatus(status)) return null;
     return {
       commandId: row.command_id,
-      completedNewStatus: status as AcceptedWorkerDone['completedNewStatus'],
+      completedNewStatus: status,
     };
   } catch {
     return null;
