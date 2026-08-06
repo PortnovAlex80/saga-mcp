@@ -167,14 +167,20 @@ implements FormalizationBriefProvisioningPort {
         process_run_id: ctx.processRunId,
         note: 'Auto-provisioned by formalization resolver',
       });
+      // Bind to the project's first repository so checkpoint capture can
+      // resolve the brief file path (CHECKPOINT_ARTIFACT_REPOSITORY_UNBOUND).
+      const repo = this.db.prepare(
+        'SELECT id FROM project_repositories WHERE project_id=? ORDER BY id LIMIT 1',
+      ).get(ctx.projectId) as { id: number } | undefined;
+      const projectRepositoryId = repo?.id ?? null;
       const result = this.db.prepare(
         `INSERT INTO artifacts
            (project_id, epic_id, type, code, title, path, status,
-            content_hash, accepted_hash, drift_state, tags, metadata)
+            content_hash, accepted_hash, drift_state, project_repository_id, tags, metadata)
          VALUES (?, ?, 'brief', 'BRIEF-1', 'Discovery Brief (auto-provisioned)',
                  'docs/discovery/brief-auto-provisioned.md', 'accepted',
-                 ?, ?, 'clean', '[]', '{}') RETURNING id`,
-      ).get(ctx.projectId, ctx.epicId, briefHash, briefHash) as { id: number };
+                 ?, ?, 'clean', ?, '[]', '{}') RETURNING id`,
+      ).get(ctx.projectId, ctx.epicId, briefHash, briefHash, projectRepositoryId) as { id: number };
       briefId = result.id;
       newlyCreated = true;
     }

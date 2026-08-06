@@ -155,6 +155,16 @@ implements DiscoveryBriefProvisioningPort {
     ).get(ctx.epicId) as { id: number } | undefined;
     if (existing) return;
 
+    // Bind the brief to the project's first repository so checkpoint capture
+    // (which requires project_repository_id + local_path on every artifact)
+    // can resolve its file path. Without this binding the online checkpoint
+    // fails with CHECKPOINT_ARTIFACT_REPOSITORY_UNBOUND on artifact 1 (the
+    // brief), blocking every checkpoint after discovery.
+    const repo = this.db.prepare(
+      'SELECT id FROM project_repositories WHERE project_id=? ORDER BY id LIMIT 1',
+    ).get(ctx.projectId) as { id: number } | undefined;
+    const projectRepositoryId = repo?.id ?? null;
+
     const briefHash = sha256Hex({
       schema: 'factory.discovery-brief.v1',
       epic_id: ctx.epicId,
@@ -164,8 +174,8 @@ implements DiscoveryBriefProvisioningPort {
       note: 'Auto-provisioned by discovery proposal resolver',
     });
     this.db.prepare(
-      `INSERT INTO artifacts (project_id, epic_id, type, code, title, path, status, content_hash, accepted_hash, drift_state, tags, metadata)
-       VALUES (?, ?, 'brief', 'BRIEF-1', 'Discovery Brief', 'docs/discovery/brief-auto-provisioned.md', 'accepted', ?, ?, 'clean', '[]', '{}')`,
-    ).run(ctx.projectId, ctx.epicId, briefHash, briefHash);
+      `INSERT INTO artifacts (project_id, epic_id, type, code, title, path, status, content_hash, accepted_hash, drift_state, project_repository_id, tags, metadata)
+       VALUES (?, ?, 'brief', 'BRIEF-1', 'Discovery Brief', 'docs/discovery/brief-auto-provisioned.md', 'accepted', ?, ?, 'clean', ?, '[]', '{}')`,
+    ).run(ctx.projectId, ctx.epicId, briefHash, briefHash, projectRepositoryId);
   }
 }
