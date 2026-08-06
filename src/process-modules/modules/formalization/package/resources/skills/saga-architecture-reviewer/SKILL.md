@@ -34,7 +34,7 @@ follow the Complexity Gate inputs from the brief, and must declare a complete
 | SRS declares architectural style per Complexity Gate table | Read brief metadata + SRS §2.1; cross-check against Step 3 table |
 | SRS §D2 exists with one row per accepted AC | Read SRS §D, compare AC codes to `artifact_list({type:'AC', status:'accepted'})` |
 | Every §D2 row has valid `ac_kind` | Each row's `ac_kind` ∈ {`implementation`,`verification`,`spike`,`merge_with`} |
-| Every §D2 row has valid `criticality` (v2.2) | Each row's `criticality` ∈ {`blocker`,`degradable`,`nice-to-have`} |
+| §D2 `criticality` valid IF present (reserved, non-authoritative) | If field present: value ∈ {`blocker`,`degradable`,`nice-to-have`}. Absence is allowed. |
 | SRS §D1 File Tree non-empty and consistent with §2.2 Module Manifest | Read §D1, compare file paths to §2.2 module surfaces |
 | SRS §D4 contains pattern selection per module cluster | Read §D4, verify each cluster has Pattern A or B + reason |
 | SRS §2.3 Invariant Registry present (if algorithmic logic) | Read the .md file, grep for "Invariant Registry" or equivalent |
@@ -42,7 +42,7 @@ follow the Complexity Gate inputs from the brief, and must declare a complete
 | SRS §9 stack entries are runnable commands (v2.2 E4) | Each `test_framework` / `linter` / `formatter` / `type_checker` / `build_tool` is a shell-invocable CLI, not a bare tool name |
 | SRS §10 Supporting Systems present for L/XL | For L/XL: all 8 ГОСТ видов present (described or `n/a`+reason). For S/M: optional |
 | SRS §11 External Landscape present or `n/a` | Section present; if episode has external I/O, every endpoint has a row |
-| SRS §12 Decision Log present (ALL sizes, min 3) | ≥3 entries, all 5 columns (#, Decision, Alternatives, Rationale, Date) non-empty |
+| SRS §12 Decision Log present (semantic coverage) | Section present; every activated decision category covered; 6 columns non-empty (#, Decision, Source/profile, Alternatives, Rationale, Date). No numeric minimum. |
 | SRS declares security controls per OWASP:2025 / ASVS / agentic-AI axes | Run the "Security review" phase (step 12); per-axis verdicts `pass`/`fail`/`N/A` from `security-axes.md` |
 
 ## Review procedure
@@ -137,13 +137,15 @@ follow the Complexity Gate inputs from the brief, and must declare a complete
    - Cross-check: every `invariants:` entry in §D2 rows exists in §2.3.
      Missing invariants → `changes_requested`.
 
-7. **Verify every §D2 row carries `criticality` (v2.2 T-010 принцип 6):**
-   - For each row in §D2 AC → Implementation Map, the `criticality` field
-     MUST be present and ∈ {`blocker`, `degradable`, `nice-to-have`}.
-   - Missing or invalid value → `changes_requested` listing the AC code and
-     the bad/missing value. This field drives the integration readiness
-     gate (blocker ACs must pass; degradable may be unknown; nice-to-have
-     may be skipped). Default when architect is unsure is `blocker`.
+7. **Verify `criticality` field validity (non-authoritative until Integration Readiness policy v1):**
+   - `criticality` is a RESERVED field: `blocker` | `degradable` | `nice-to-have`.
+     It is NOT authoritative yet — no runtime consumer (planner, integration
+     gate) reads it. Absence is ALLOWED (not a blocking gap).
+   - IF the architect voluntarily included the field, the value MUST be valid:
+     ∈ {`blocker`, `degradable`, `nice-to-have`}. An invalid value (typo,
+     unknown enum) → `changes_requested`.
+   - Do NOT reject an SRS for missing `criticality`. When Integration Readiness
+     policy v1 is installed, this field will become required end-to-end.
 
 8. **Verify SRS §9 stack entries are runnable commands (v2.2 Поток E4):**
    - For each of `test_framework`, `property_test_framework`, `linter`,
@@ -185,16 +187,27 @@ follow the Complexity Gate inputs from the brief, and must declare a complete
     - For episodes with no external I/O: §11 marked `n/a` with reason is
       acceptable; complete absence is `changes_requested`.
 
-11. **Verify SRS §12 Decision Log (v2.2 ГОСТ G3; ALL sizes, min 3):**
-    - §12 MUST be present for EVERY episode (XS through XL).
-    - MUST have ≥3 entries.
-    - Each entry MUST have all 5 columns non-empty: `#`, `Decision`,
-      `Alternatives considered`, `Rationale`, `Date`.
-    - Cross-check: every non-trivial §9 stack choice (language, framework,
-      build tool, deployment target, major dependency) SHOULD have a
-      corresponding §12 entry. Stack choices without a Decision Log entry
-      → `changes_requested` with reason "§9 choice <X> has no Decision
-      Log entry — add §12 row with alternatives + rationale".
+11. **Verify SRS §12 Decision Log (semantic coverage, not numeric minimum):**
+    - §12 MUST be present for EVERY episode (XS through XL). Complete absence
+      → `changes_requested`.
+    - There is NO hard numeric minimum (not "min 3"). The Decision Log must
+      cover every non-default or locally selected architectural decision.
+    - Each entry MUST have all 6 columns non-empty: `#`, `Decision`,
+      `Source/profile`, `Alternatives considered`, `Rationale`, `Date`.
+      The `Source/profile` column distinguishes a locally selected decision
+      from an inherited one (e.g. `inherited from web-static-xs@1`).
+    - **Activated decision categories** — if any of these is locally chosen
+      in the SRS, §12 MUST have a corresponding entry:
+      - Architecture style declared in §2.1 (e.g. KISS, layered, event-driven)
+      - Decomposition pattern in §D4
+      - Technology stack entries in §9 (each non-default choice)
+      - External integration boundary (if §11 has active endpoints)
+      - Persistence model (if applicable)
+      - Security boundary (if security-sensitive surface is active)
+    - Inherited decisions are valid entries: `Source/profile` =
+      `inherited from <profile>`, `Alternatives` = "not reconsidered in
+      this episode", `Rationale` = "no episode-specific constraint requires
+      deviation". This is NOT a fictitious record — it documents provenance.
     - Date format MUST be ISO (`YYYY-MM-DD`).
 
 12. **Security review phase (OWASP:2025 + ASVS 5.0 + agentic-AI):**
@@ -255,7 +268,7 @@ follow the Complexity Gate inputs from the brief, and must declare a complete
 
 14. **Complete the task** via `worker_done`:
     - `verdict:'approved'` — SRS traceable, Complexity-Gate-compliant, §D
-      complete with `criticality` per row, §9 runnable, §10/§11/§12
+      complete with valid `ac_kind` per row, §9 runnable, §10/§11/§12
       complete per size rules, AND the Security review phase passed (every
       axis `pass` or `N/A` with justification). The `result` body MUST include
       the per-axis security verdict table from step 12.
@@ -277,10 +290,9 @@ follow the Complexity Gate inputs from the brief, and must declare a complete
 - ❌ **Do not skip the §D check.** Without §D2, the planner cannot generate
   tasks (it is a dumb copier). Without §D1, the scaffold cannot create the
   file tree.
-- ❌ **Do not skip the §D2 `criticality` check** (v2.2). Every row must have
-  a valid `criticality` value — it is the input the integration readiness
-  gate reads to decide whether the episode can complete with degradable
-  `unknown` ACs.
+- ❌ **Do validate `criticality` IF present.** The field is reserved
+  (non-authoritative until Integration Readiness policy v1). If the architect
+  included it, the value MUST be valid. Do NOT reject for missing criticality.
 - ❌ **Do not accept bare tool names in §9** (v2.2 E4). `jest` is not a
   command the build-gate can run; `npm test` is. Approving a bare name
   guarantees the build-gate fails on every downstream task.
@@ -288,8 +300,9 @@ follow the Complexity Gate inputs from the brief, and must declare a complete
   обеспечения surface infrastructure (CI/CD, observability, runbooks,
   licensing, accessibility) that classical SRSs forget; skipping them
   ships episodes with infra gaps the verifier cannot close.
-- ❌ **Do not skip §12 Decision Log for ANY episode size.** ≥3 entries are
-  the audit trail that makes future architecture review possible.
+- ❌ **Do not skip §12 Decision Log for ANY episode size.** The Decision Log
+  is the audit trail that makes future architecture review possible. It must
+  cover every activated decision category (no numeric minimum).
 - ❌ **Do not check FR/NFR/RULE.** Those moved to the PRD. Their traceability
   is verified by saga-requirements-reviewer against the PRD. Checking them
   here would either miss them (correctly — they're not in the SRS) or invent
@@ -322,8 +335,9 @@ follow the Complexity Gate inputs from the brief, and must declare a complete
   `changes_requested` with reason "§2.3 Invariant Registry missing —
   saga-architect must declare invariants for algorithmic FRs".
 - If §D2 is missing OR has fewer rows than accepted ACs → `changes_requested`.
-- If any §D2 row lacks `criticality` or has an invalid value (v2.2 T-010
-  принцип 6) → `changes_requested`.
+- If any §D2 row has a `criticality` field with an INVALID value (not in
+  {blocker, degradable, nice-to-have}) → `changes_requested`. Missing
+  criticality is NOT a gap (field is reserved, non-authoritative).
 - If §D1 is empty OR contradicts §2.2 Module Manifest → `changes_requested`.
 - If §9 has any bare tool name (no flag, no space, no script alias) (v2.2
   E4) → `changes_requested`.
@@ -331,8 +345,8 @@ follow the Complexity Gate inputs from the brief, and must declare a complete
   `changes_requested`.
 - If §11 is missing or incomplete for episodes with external contracts
   (v2.2 ГОСТ G2) → `changes_requested`.
-- If §12 has fewer than 3 entries OR any entry has an empty column (v2.2
-  ГОСТ G3) → `changes_requested`.
+- If §12 is absent OR has an entry with an empty column OR misses an
+  activated decision category → `changes_requested`.
 - If the architect chose Hexagonal for S/M-size sequential work →
   `changes_requested` (anti-overengineering rule violation).
 - If the Security review phase (step 12) emits any `fail` on a blocker axis

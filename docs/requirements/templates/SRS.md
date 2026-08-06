@@ -365,3 +365,25 @@ justification: |
   Alternative considered: <X> — rejected because <reason>
 adr: <ADR-NNN artifact reference>
 ```
+
+## §12 Decision Log
+
+<!--
+  §12 records every non-default or locally selected architectural decision.
+  There is NO numeric minimum — record what was actually decided.
+
+  Activated categories (record each that applies):
+  - Architecture style (§2.1)
+  - Decomposition pattern (§D4)
+  - Technology stack (§9, each non-default choice)
+  - External integration boundary (if §11 has active endpoints)
+  - Persistence model (if applicable)
+  - Security boundary (if security-sensitive surface active)
+
+  Inherited decisions are valid: set Source/profile to "inherited from <profile>".
+-->
+
+| # | Decision | Source/profile | Alternatives considered | Rationale | Date |
+|---|----------|---------------|------------------------|-----------|------|
+| 1 | <architectural style chosen> | local \| inherited from \<profile\> | <alternative 1>, <alternative 2> | <why this was chosen> | YYYY-MM-DD |
+| 2 | <technology stack decision> | local \| inherited from \<profile\> | <alternative 1> | <rationale> | YYYY-MM-DD |

@@ -31,8 +31,13 @@ live inside the PRD. You produce the **SRS only** (architectural contract +
 - **Postcondition (постусловие):** SRS artifact drafted (status='in_review'),
   containing §2.1 (style chosen by Complexity Gate), §2.2 (module manifest),
   §2b (ports if any), §2.3 (invariants), §2.5 (test strategy), §7 (glossary),
-  §9 (tech stack), and **§D Decomposition** (§D1 file tree, §D2 AC→impl map,
-  §D3 priority rationale, §D4 pattern selection). One `derived_from` edge → PRD.
+  §9 (tech stack), **§D Decomposition** (§D1 file tree, §D2 AC→impl map,
+  §D3 priority rationale, §D4 pattern selection), and **§12 Decision Log**.
+  One `derived_from` edge → PRD.
+  §12 Decision Log covers every non-default or locally selected architectural
+  decision (no numeric minimum). Columns: #, Decision, Source/profile,
+  Alternatives considered, Rationale, Date. Inherited decisions are logged
+  with Source/profile = "inherited from <profile>".
 - **Called by (вызывается):** the Lifecycle Orchestrator via the Formalization module flow (Part 2 — SRS, after baseline)
 - **Parallel with (параллельно с):** nothing. SRS is now sequential after the
   AC baseline; saga-analyst's UC/AC work is already done.
@@ -691,8 +696,31 @@ trace_add({
 
 The SRS path points to the .md file containing: §2.1 (style), §2.2 (modules),
 §2b (ports if any), §2.3 (invariants), §2.5 (test strategy), §7 (glossary),
-§8 (out-of-scope), §9 (tech stack), and **§D (decomposition — §D1/§D2/§D3/§D4)**.
+§8 (out-of-scope), §9 (tech stack), **§D (decomposition — §D1/§D2/§D3/§D4)**,
+and **§12 Decision Log**.
 NO FR/NFR/RULE in the SRS — those are in the PRD now.
+
+### §12 Decision Log
+
+§12 records every non-default or locally selected architectural decision.
+There is NO numeric minimum — record what was actually decided. If a decision
+was inherited from a platform profile, log it with `Source/profile = inherited`.
+
+Activated categories (record each that applies):
+- Architecture style declared in §2.1
+- Decomposition pattern in §D4
+- Technology stack entries in §9 (each non-default choice)
+- External integration boundary (if §11 has active endpoints)
+- Persistence model (if applicable)
+- Security boundary (if security-sensitive surface is active)
+
+Example format:
+
+| # | Decision | Source/profile | Alternatives considered | Rationale | Date |
+|---|----------|---------------|------------------------|-----------|------|
+| 1 | Single-file KISS architecture | local | Multi-file modules, framework SPA | XS + sequence + no shared mutation | 2026-08-06 |
+| 2 | No build step | local | npm/Vite pipeline | Static HTML does not require compilation | 2026-08-06 |
+| 3 | Vanilla JS (no framework) | inherited from web-static-xs@1 | React, Vue | Not reconsidered — no episode constraint requires deviation | 2026-08-06 |
 
 The Technology Stack ADR (optional, see §9 above) is a separate `decision`
 artifact traced from the SRS via `derived_from`. It is the only other artifact

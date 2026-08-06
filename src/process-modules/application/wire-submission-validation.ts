@@ -20,6 +20,7 @@ import type {
   NodeSubmissionValidatorRegistry,
 } from './node-submission-policy.js';
 import { createAcceptanceContractValidator } from '../../modules/formalization/application/acceptance-contract-validator.js';
+import { createSrsContractValidator } from '../../modules/formalization/application/srs-contract-validator.js';
 
 const FORMALIZATION_MODULE_REF = 'solution-formalization@1.0.0';
 const DISCOVERY_MODULE_REF = 'product-discovery@3.0.2';
@@ -31,20 +32,25 @@ export function wireSubmissionValidation(
 ): void {
   // --- Validators ---
   validatorRegistry.register(createAcceptanceContractValidator(db));
+  validatorRegistry.register(createSrsContractValidator(db));
 
   // --- Formalization policies ---
-  // define-acceptance-contract: the priority node — full validator.
+  // define-acceptance-contract + define-architecture-contract: full validators.
   policyRegistry.register(
     FORMALIZATION_MODULE_REF,
     'define-acceptance-contract',
     { mode: 'required', validatorId: 'formalization.acceptance-contract.v1' },
   );
-  // The other four formalization LM-nodes: legacy-unvalidated pending migration.
+  policyRegistry.register(
+    FORMALIZATION_MODULE_REF,
+    'define-architecture-contract',
+    { mode: 'required', validatorId: 'formalization.srs-contract.v1' },
+  );
+  // The other three formalization LM-nodes: legacy-unvalidated pending migration.
   for (const nodeId of [
     'define-product-contract',
     'model-use-cases',
     'reconcile-what',
-    'define-architecture-contract',
   ]) {
     policyRegistry.register(
       FORMALIZATION_MODULE_REF,
