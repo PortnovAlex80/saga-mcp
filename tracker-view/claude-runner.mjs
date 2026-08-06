@@ -388,6 +388,20 @@ export class ClaudeBoardRunner {
     this.writeMcpConfig();
   }
 
+  /**
+   * Spawn the claude executable (or a simulator). Supports compound paths
+   * like "node tools/claude-cli-simulator.mjs" by splitting on spaces and
+   * using the first token as the command, the rest as extra args.
+   */
+  spawnClaude(claudePath, args, options) {
+    const parts = claudePath.trim().split(/\s+/);
+    if (parts.length > 1) {
+      const [cmd, ...prefixArgs] = parts;
+      return this.spawn(cmd, [...prefixArgs, ...args], options);
+    }
+    return this.spawn(claudePath, args, options);
+  }
+
   // Записать строку в heartbeat-лог. Формат:
   //   <iso> pid=<pid> worker=<id> project=<id> [<name>] task=<id> <EVENT> <message>
   // Используется runner'ом при старте (STARTED) и завершении (CLOSED/FAILED).
@@ -905,7 +919,7 @@ export class ClaudeBoardRunner {
       // и anthropics/claude-code#46416.
       CLAUDE_CODE_MAX_CONTEXT_TOKENS: '262144',
     } : {};
-    const child = this.spawn(this.claudePath, args, {
+    const child = this.spawnClaude(this.claudePath, args, {
       cwd: workspaceRoot,
       env: {
         ...process.env,

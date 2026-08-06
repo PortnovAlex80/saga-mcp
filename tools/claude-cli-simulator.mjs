@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { readFileSync } from 'node:fs';
 import {
   createStreamEmitter,
   enrichContext,
@@ -16,7 +17,20 @@ import { selectButtonColorScenario } from './claude-simulator/scenarios/button-c
 async function main() {
   const startedAt = Date.now();
   const stream = createStreamEmitter(process.stdout);
-  const { mcpConfigPath, prompt } = parseClaudeArgv(process.argv);
+  const { mcpConfigPath, prompt: argvPrompt } = parseClaudeArgv(process.argv);
+
+  // The claude-runner passes the prompt via stdin (child.stdin.write(prompt))
+  // when no positional prompt is present in argv. Read stdin synchronously
+  // when argv yielded no prompt.
+  let prompt = argvPrompt;
+  if (!prompt) {
+    try {
+      prompt = readFileSync(0, 'utf8');
+    } catch {
+      prompt = '';
+    }
+  }
+
   const promptContext = parseSagaPrompt(prompt);
   stream.init();
 
