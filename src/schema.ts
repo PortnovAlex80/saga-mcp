@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 export const SCHEMA_SQL = `
 -- Core hierarchy: projects > epics > tasks > subtasks
 
@@ -310,6 +312,17 @@ CREATE TABLE IF NOT EXISTS artifacts (
   drift_state         TEXT NOT NULL DEFAULT 'unknown'
                         CHECK (drift_state IN ('unknown','clean','drifted')),
   evidence_status     TEXT CHECK (evidence_status IN ('confirmed','proposed','assumed','open','rejected','superseded') OR evidence_status IS NULL),
+  -- Storage policy: where the artifact's authority lives.
+  --   file_backed  — a real file at 'path' under project_repository.local_path;
+  --                   content_hash is SHA-256 of the file bytes.
+  --   db_native    — no physical file; canonical content lives in metadata.content;
+  --                   content_hash is SHA-256 of canonicalJson(metadata.content).
+  --                   A materialized projection file MAY exist but is not authority.
+  --   external_ref — content referenced by an external durable ref (future).
+  -- Checkpoint capture is fail-closed on this column: an artifact without a
+  -- known storage_kind cannot be captured (CHECKPOINT_ARTIFACT_STORAGE_KIND_MISSING).
+  storage_kind        TEXT NOT NULL DEFAULT 'file_backed'
+                        CHECK (storage_kind IN ('file_backed','db_native','external_ref')),
   tags                TEXT NOT NULL DEFAULT '[]',
   metadata            TEXT NOT NULL DEFAULT '{}',
   created_at          TEXT NOT NULL DEFAULT (datetime('now')),
@@ -1426,4 +1439,137 @@ export const ArtifactTypeSchema = z.enum([
   'business_metric', // NEW — metric definition referenced by a hypothesis
   'SPEC',    // NEW — technical specification / design contract referenced by FRs
 ]);
+
+/**
+ * Additive migration: add the `storage_kind` column to a pre-existing
+ * `artifacts` table that was created before the column existed.
+ *
+ * Fresh databases get the column from `SCHEMA_SQL`'s CREATE TABLE. Existing
+ * databases created before this migration land here with no `storage_kind`
+ * column; this function adds it with the safe default `'file_backed'` (every
+ * legacy artifact is file-backed — the synthetic brief case is repaired
+ * separately by the provisioning layer and the checkpoint migration).
+ *
+ * SQLite ALTER TABLE ADD COLUMN supports a CHECK constraint, but the
+ * expression must not reference other columns. NOT NULL requires a DEFAULT,
+ * which we provide ('file_backed'). Idempotent via a PRAGMA table_info probe.
+ */
+export function ensureArtifactStorageKindColumn(db: {
+  exec(sql: string): void;
+  prepare(sql: string): { all(...params: unknown[]): Array<{ name: string }> };
+}): void {
+  const columns = db.prepare('PRAGMA table_info(artifacts)').all();
+  if (columns.some((c) => c.name === 'storage_kind')) return;
+  db.exec(
+    `ALTER TABLE artifacts ADD COLUMN storage_kind TEXT NOT NULL DEFAULT 'file_backed'
+       CHECK (storage_kind IN ('file_backed','db_native','external_ref'))`,
+  );
+}
+
+/**
+ * One-shot repair: migrate synthetic auto-provisioned brief artifacts to
+ * `storage_kind='db_native'` with their canonical content stamped into
+ * `metadata.content`.
+ *
+ * Pre-storage_kind databases (and databases where the brief was created by
+ * the pre-db_native provisioning code) hold the synthetic brief as a
+ * `file_backed` row with `path='docs/discovery/brief-auto-provisioned.md'`
+ * and an empty `metadata='{}'`. The brief has NO physical file — it was a
+ * pure DB row whose `content_hash` was computed from a canonical JSON payload
+ * that was never persisted. Checkpoint capture cannot verify such a row.
+ *
+ * This migration reconstructs the payload from the authoritative discovery
+ * records (`factory_proposals`), recomputes the SHA-256, and — only if the
+ * recomputed hash matches the stored `content_hash` — promotes the row to
+ * `db_native` with the canonical content persisted in `metadata.content`.
+ *
+ * If the hash does NOT match (payload reconstruction failed or the brief was
+ * authored by a recipe the migration does not know), the row is left as
+ * `file_backed` — checkpoint capture will then fail loudly on that artifact
+ * rather than silently masking an integrity gap. The migration never guesses.
+ *
+ * Idempotent: rows already at `db_native` are skipped.
+ */
+export function migrateSyntheticBriefsToDbNative(db: {
+  exec(sql: string): void;
+  prepare(sql: string): {
+    all(...params: unknown[]): Array<Record<string, unknown>>;
+    get(...params: unknown[]): Record<string, unknown> | undefined;
+    run(...params: unknown[]): { changes: number };
+  };
+}): { inspected: number; migrated: number; skipped: number } {
+  // SHA-256 over canonical JSON. Uses the crypto module directly to keep
+  // schema.ts dependency-free (the shared helper would create a cycle).
+  const sha256Hex = (value: unknown): string => {
+    const canonical = JSON.stringify(sortKeys(value));
+    return createHash('sha256').update(canonical, 'utf8').digest('hex');
+  };
+  // Recursive key-sorting so the digest is byte-stable regardless of key order.
+  const sortKeys = (value: unknown): unknown => {
+    if (Array.isArray(value)) return value.map(sortKeys);
+    if (value && typeof value === 'object') {
+      const obj = value as Record<string, unknown>;
+      return Object.keys(obj).sort().reduce<Record<string, unknown>>((acc, k) => {
+        acc[k] = sortKeys(obj[k]);
+        return acc;
+      }, {});
+    }
+    return value;
+  };
+
+  // Find synthetic briefs still marked file_backed with the auto-provisioned
+  // path and empty metadata (the shape emitted by pre-db_native provisioning).
+  const synthetic = db.prepare(
+    `SELECT id, epic_id, content_hash FROM artifacts
+      WHERE type='brief' AND storage_kind='file_backed'
+        AND path='docs/discovery/brief-auto-provisioned.md'
+        AND (metadata IS NULL OR metadata='{}')`,
+  ).all() as Array<{ id: number; epic_id: number; content_hash: string | null }>;
+
+  let migrated = 0;
+  let skipped = 0;
+  for (const row of synthetic) {
+    if (!row.content_hash) { skipped += 1; continue; }
+    // Reconstruct the discovery-brief payload from the accepted proposal.
+    const proposal = db.prepare(
+      `SELECT p.payload_snapshot FROM factory_proposals p
+        WHERE p.epic_id=? AND p.status='submitted'
+        ORDER BY p.id DESC LIMIT 1`,
+    ).get(row.epic_id) as { payload_snapshot: string } | undefined;
+    let payload: Record<string, unknown> | null = null;
+    if (proposal) {
+      try {
+        const parsed = JSON.parse(proposal.payload_snapshot) as Record<string, unknown>;
+        payload = {
+          schema: 'factory.discovery-brief.v1',
+          epic_id: row.epic_id,
+          problem_statement: parsed.problem_statement ?? null,
+          candidate_scope: parsed.candidate_scope ?? null,
+          recommended_outcome: parsed.recommended_outcome ?? null,
+          note: 'Auto-provisioned by discovery proposal resolver',
+        };
+      } catch { /* payload unreadable — fall through to skip */ }
+    }
+    if (!payload) { skipped += 1; continue; }
+    const recomputed = sha256Hex(payload);
+    if (recomputed !== row.content_hash) {
+      // Hash mismatch — the stored content_hash was computed from a payload
+      // shape this migration cannot reconstruct (or the brief was tampered
+      // with). Leave the row as file_backed so checkpoint fails loudly.
+      skipped += 1;
+      continue;
+    }
+    const metadata = JSON.stringify({
+      storage_kind: 'db_native',
+      content_schema: 'factory.discovery-brief.v1',
+      content: payload,
+    });
+    const info = db.prepare(
+      `UPDATE artifacts SET storage_kind='db_native', metadata=?, updated_at=datetime('now')
+        WHERE id=? AND storage_kind='file_backed'`,
+    ).run(metadata, row.id);
+    if (info.changes === 1) migrated += 1; else skipped += 1;
+  }
+  return { inspected: synthetic.length, migrated, skipped };
+}
 

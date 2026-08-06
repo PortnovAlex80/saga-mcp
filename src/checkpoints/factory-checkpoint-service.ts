@@ -18,6 +18,8 @@ import Database from 'better-sqlite3';
 import { SCHEMA_SQL } from '../schema.js';
 import type { NodeExecutionResult } from '../process-modules/application/node-executor.js';
 import { canonicalJson, digestJson, sha256 } from './canonical-json.js';
+import { sha256Hex } from '../shared/canonical-json.js';
+import { readArtifactStorageKind } from '../modules/shared/artifact-storage-kind.js';
 import { SqliteResumeDirectiveRepository } from './sqlite-resume-directive-repository.js';
 
 export interface CheckpointObject {
@@ -142,64 +144,94 @@ export class FactoryCheckpointService {
         kind: 'database', bindingId: null, relativePath: null,
         sourceRef: 'online-sqlite-backup', partial: false,
       }));
-      rmSync(tempDb, { force: true });
 
-      const repositories = this.readRepositoryStates(db, options.projectId);
-      for (const artifact of this.readArtifactFiles(
-        db, options.projectId, options.epicId ?? null,
-      )) {
-        const captured = this.putObject(storageRoot, artifact.absolutePath, {
-          kind: 'artifact',
-          bindingId: artifact.bindingId,
-          relativePath: artifact.relativePath,
-          sourceRef: `artifact:${artifact.artifactId}`,
-          partial: false,
-        });
-        if (artifact.expectedHash && captured.digest !== artifact.expectedHash) {
-          throw new Error(`CHECKPOINT_ARTIFACT_DB_HASH_MISMATCH: artifact ${artifact.artifactId}`);
+      // Open the backup readonly and read ALL manifest metadata from it —
+      // NOT from the live db. The backup froze a consistent snapshot at the
+      // moment of `db.backup(tempDb)`; reading from the live db afterwards
+      // would let a concurrent writer create artifacts / advance the
+      // lifecycle cursor / record productions that are NOT in the backup,
+      // producing an internally contradictory checkpoint (database.db = T1,
+      // manifest = T2). Every read below uses `snapshotDb`.
+      const snapshotDb = new Database(tempDb, { readonly: true });
+      try {
+        const repositories = this.readRepositoryStates(snapshotDb, options.projectId);
+        for (const artifact of this.readArtifactFiles(
+          snapshotDb, options.projectId, options.epicId ?? null,
+        )) {
+          if (artifact.kind === 'db_native') {
+            // db-native artifact: content is in the SQLite snapshot (artifacts
+            // row), no file object is captured. Integrity is proven against the
+            // canonical JSON of metadata.content, not file bytes.
+            const canonical = canonicalJson(artifact.canonicalContent);
+            const digest = sha256Hex(artifact.canonicalContent);
+            if (artifact.expectedHash && digest !== artifact.expectedHash) {
+              throw new Error(`CHECKPOINT_ARTIFACT_DB_CONTENT_HASH_MISMATCH: artifact ${artifact.artifactId}`);
+            }
+            objects.push({
+              kind: 'artifact',
+              digest,
+              size: canonical.length,
+              objectPath: `${storageRoot}/db-native-artifact-${artifact.artifactId}`,
+              bindingId: null,
+              relativePath: null,
+              sourceRef: `artifact:${artifact.artifactId}`,
+              partial: false,
+            });
+            continue;
+          }
+          // file_backed artifact: capture physical bytes, verify against DB hash.
+          const captured = this.putObject(storageRoot, artifact.absolutePath, {
+            kind: 'artifact',
+            bindingId: artifact.bindingId,
+            relativePath: artifact.relativePath,
+            sourceRef: `artifact:${artifact.artifactId}`,
+            partial: false,
+          });
+          if (artifact.expectedHash && captured.digest !== artifact.expectedHash) {
+            throw new Error(`CHECKPOINT_ARTIFACT_DB_HASH_MISMATCH: artifact ${artifact.artifactId}`);
+          }
+          if (sha256(readFileSync(artifact.absolutePath)) !== captured.digest) {
+            throw new Error(`CHECKPOINT_ARTIFACT_DRIFT_DURING_CAPTURE: artifact ${artifact.artifactId}`);
+          }
+          objects.push(captured);
         }
-        if (sha256(readFileSync(artifact.absolutePath)) !== captured.digest) {
-          throw new Error(`CHECKPOINT_ARTIFACT_DRIFT_DURING_CAPTURE: artifact ${artifact.artifactId}`);
+        if (options.includeLogs) {
+          for (const log of this.readLogFiles(snapshotDb, options.projectId, options.epicId ?? null)) {
+            objects.push(this.putObject(storageRoot, log.path, {
+              kind: 'worker_log', bindingId: null, relativePath: null,
+              sourceRef: `execution:${log.executionId}`, partial: true,
+            }));
+          }
         }
-        objects.push(captured);
-      }
-      if (options.includeLogs) {
-        for (const log of this.readLogFiles(db, options.projectId, options.epicId ?? null)) {
-          objects.push(this.putObject(storageRoot, log.path, {
-            kind: 'worker_log', bindingId: null, relativePath: null,
-            sourceRef: `execution:${log.executionId}`, partial: true,
-          }));
-        }
-      }
 
-      // Rehash every stored object before publication. This is the cross-store
-      // capture fence: a changing source never becomes a COMPLETE checkpoint.
-      for (const object of objects) this.verifyObject(storageRoot, object);
-      const lifecycle = this.readLifecycleCursor(db, options.projectId, options.epicId ?? null);
-      const payload: FactoryCheckpointPayload = {
-        format: 'saga.factory-checkpoint/v1',
-        checkpointRef,
-        sequence,
-        parentCheckpointRef: parent,
-        sourceDbNamespace,
-        createdAt: new Date().toISOString(),
-        createdBy: options.createdBy,
-        scope: {
-          projectId: options.projectId,
-          epicId: options.epicId ?? null,
-          lifecycleRunId: lifecycle?.lifecycleRunId ?? null,
-          lifecycleInputHash: lifecycle?.inputHash ?? null,
-        },
-        cursor: lifecycle?.cursor ?? null,
-        repositories,
-        objects,
-        reusableNodeResults: this.readReusableNodeResults(
-          db, options.projectId, options.epicId ?? null,
-        ),
-        warmStartNodes: this.readWarmStartNodes(
-          db, options.projectId, options.epicId ?? null, objects,
-        ),
-        security: {
+        // Rehash every stored object before publication. This is the cross-store
+        // capture fence: a changing source never becomes a COMPLETE checkpoint.
+        for (const object of objects) this.verifyObject(storageRoot, object);
+        const lifecycle = this.readLifecycleCursor(snapshotDb, options.projectId, options.epicId ?? null);
+        const payload: FactoryCheckpointPayload = {
+          format: 'saga.factory-checkpoint/v1',
+          checkpointRef,
+          sequence,
+          parentCheckpointRef: parent,
+          sourceDbNamespace,
+          createdAt: new Date().toISOString(),
+          createdBy: options.createdBy,
+          scope: {
+            projectId: options.projectId,
+            epicId: options.epicId ?? null,
+            lifecycleRunId: lifecycle?.lifecycleRunId ?? null,
+            lifecycleInputHash: lifecycle?.inputHash ?? null,
+          },
+          cursor: lifecycle?.cursor ?? null,
+          repositories,
+          objects,
+          reusableNodeResults: this.readReusableNodeResults(
+            snapshotDb, options.projectId, options.epicId ?? null,
+          ),
+          warmStartNodes: this.readWarmStartNodes(
+            snapshotDb, options.projectId, options.epicId ?? null, objects,
+          ),
+          security: {
           logsIncluded: options.includeLogs === true,
           credentialsIncluded: false,
           signatureKeyId: options.hmacKey ? (options.signatureKeyId ?? 'local') : null,
@@ -230,6 +262,13 @@ export class FactoryCheckpointService {
         `${checkpointRef}\n`,
       );
       return manifest;
+      } finally {
+        // Close the snapshot readonly handle and remove the backup file only
+        // after the manifest is fully assembled from it. Until this point the
+        // backup is the source of truth for every manifest field.
+        snapshotDb.close();
+        rmSync(tempDb, { force: true });
+      }
     } finally {
       db.close();
     }
@@ -471,25 +510,60 @@ export class FactoryCheckpointService {
     }
   }
 
-  private readArtifactFiles(db: Database.Database, projectId: number, epicId: number | null): Array<{
-    artifactId: number; bindingId: number; relativePath: string; absolutePath: string;
-    expectedHash: string | null;
-  }> {
+  private readArtifactFiles(db: Database.Database, projectId: number, epicId: number | null): Array<
+    | { kind: 'file_backed'; artifactId: number; bindingId: number; relativePath: string; absolutePath: string; expectedHash: string | null }
+    | { kind: 'db_native'; artifactId: number; canonicalContent: unknown; expectedHash: string | null }
+  > {
     const rows = db.prepare(
-      `SELECT a.id, a.path, a.content_hash, a.project_repository_id, pr.local_path
+      `SELECT a.id, a.path, a.content_hash, a.storage_kind, a.metadata,
+              a.project_repository_id, pr.local_path
          FROM artifacts a
          LEFT JOIN project_repositories pr ON pr.id=a.project_repository_id
         WHERE a.project_id=? AND (? IS NULL OR a.epic_id=?)`,
     ).all(projectId, epicId, epicId) as Array<{
       id: number; path: string; content_hash: string | null;
+      storage_kind: string | null; metadata: string;
       project_repository_id: number | null; local_path: string | null;
     }>;
-    const result: Array<{
-      artifactId: number; bindingId: number; relativePath: string;
-      absolutePath: string; expectedHash: string | null;
-    }> = [];
+    const result: Array<
+      | { kind: 'file_backed'; artifactId: number; bindingId: number; relativePath: string; absolutePath: string; expectedHash: string | null }
+      | { kind: 'db_native'; artifactId: number; canonicalContent: unknown; expectedHash: string | null }
+    > = [];
     const seen = new Set<string>();
     for (const row of rows) {
+      const storageKind = readArtifactStorageKind(row.storage_kind);
+      if (storageKind === null) {
+        throw new Error(`CHECKPOINT_ARTIFACT_STORAGE_KIND_MISSING: artifact ${row.id}`);
+      }
+      if (storageKind === 'external_ref') {
+        // Reserved for future use; no current producer emits external_ref.
+        throw new Error(`CHECKPOINT_ARTIFACT_EXTERNAL_REF_UNSUPPORTED: artifact ${row.id}`);
+      }
+      if (storageKind === 'db_native') {
+        // db-native artifact: no physical file is authority. The canonical
+        // content lives in metadata.content; integrity is proven by
+        // sha256(canonicalJson(content)) === content_hash. A projection file
+        // MAY exist but is not captured or verified here.
+        let parsed: Record<string, unknown>;
+        try {
+          parsed = JSON.parse(row.metadata) as Record<string, unknown>;
+        } catch {
+          throw new Error(`CHECKPOINT_ARTIFACT_DB_CONTENT_MISSING: artifact ${row.id} (metadata not JSON)`);
+        }
+        if (!parsed || typeof parsed.content !== 'object' || parsed.content === null) {
+          throw new Error(`CHECKPOINT_ARTIFACT_DB_CONTENT_MISSING: artifact ${row.id}`);
+        }
+        result.push({
+          kind: 'db_native',
+          artifactId: row.id,
+          canonicalContent: parsed.content,
+          expectedHash: row.content_hash && /^[a-f0-9]{64}$/i.test(row.content_hash)
+            ? row.content_hash.toLowerCase()
+            : null,
+        });
+        continue;
+      }
+      // file_backed: repo binding + physical file are mandatory.
       if (row.project_repository_id === null || !row.local_path) {
         throw new Error(`CHECKPOINT_ARTIFACT_REPOSITORY_UNBOUND: artifact ${row.id}`);
       }
@@ -503,6 +577,7 @@ export class FactoryCheckpointService {
       if (seen.has(key)) continue;
       seen.add(key);
       result.push({
+        kind: 'file_backed',
         artifactId: row.id,
         bindingId: row.project_repository_id,
         relativePath: relative,

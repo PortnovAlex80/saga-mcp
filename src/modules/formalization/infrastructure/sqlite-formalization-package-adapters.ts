@@ -161,26 +161,29 @@ implements FormalizationBriefProvisioningPort {
     // 4. Otherwise create a synthetic brief (same hash recipe as the legacy
     //    code) so the PRD has a valid root ancestor.
     if (!briefId) {
-      const briefHash = sha256Hex({
+      const content = {
         schema: 'factory.discovery-brief.v1',
         epic_id: ctx.epicId,
         process_run_id: ctx.processRunId,
         note: 'Auto-provisioned by formalization resolver',
+      };
+      const briefHash = sha256Hex(content);
+      // db_native: no physical file. Canonical content persisted in
+      // metadata.content so checkpoint capture can verify integrity without
+      // a file. No repository binding (db_native does not require one).
+      const metadata = JSON.stringify({
+        storage_kind: 'db_native',
+        content_schema: 'factory.discovery-brief.v1',
+        content,
       });
-      // Bind to the project's first repository so checkpoint capture can
-      // resolve the brief file path (CHECKPOINT_ARTIFACT_REPOSITORY_UNBOUND).
-      const repo = this.db.prepare(
-        'SELECT id FROM project_repositories WHERE project_id=? ORDER BY id LIMIT 1',
-      ).get(ctx.projectId) as { id: number } | undefined;
-      const projectRepositoryId = repo?.id ?? null;
       const result = this.db.prepare(
         `INSERT INTO artifacts
            (project_id, epic_id, type, code, title, path, status,
-            content_hash, accepted_hash, drift_state, project_repository_id, tags, metadata)
+            content_hash, accepted_hash, drift_state, storage_kind, tags, metadata)
          VALUES (?, ?, 'brief', 'BRIEF-1', 'Discovery Brief (auto-provisioned)',
                  'docs/discovery/brief-auto-provisioned.md', 'accepted',
-                 ?, ?, 'clean', ?, '[]', '{}') RETURNING id`,
-      ).get(ctx.projectId, ctx.epicId, briefHash, briefHash, projectRepositoryId) as { id: number };
+                 ?, ?, 'clean', 'db_native', '[]', ?) RETURNING id`,
+      ).get(ctx.projectId, ctx.epicId, briefHash, briefHash, metadata) as { id: number };
       briefId = result.id;
       newlyCreated = true;
     }

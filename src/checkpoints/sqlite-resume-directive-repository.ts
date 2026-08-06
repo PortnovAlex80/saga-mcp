@@ -16,6 +16,26 @@ export interface AdoptedNodeResultPort {
     packageDigest: string | null;
   }): AdoptedNodeResult | null;
   markConsumed(directiveRef: string, nodeRunId: number): void;
+  /**
+   * Atomically complete the adopted NodeRun AND consume the resume directive
+   * in a single database transaction.
+   *
+   * `completeFn` is invoked inside the transaction (it performs the
+   * completeV2 UPDATE on factory_node_runs). If it throws, the directive is
+   * NOT consumed and the whole transaction rolls back. If `completeFn`
+   * succeeds, markConsumed runs in the same transaction — a crash between
+   * the two writes is structurally impossible.
+   *
+   * This closes the window the previous two-statement path
+   * (completeV2(); markConsumed()) left open: a crash between them left the
+   * NodeRun committed but the directive still `ready`, which could let a
+   * later re-entry into the same node re-adopt the stale directive.
+   */
+  completeAdoptedNodeRun(input: {
+    directiveRef: string;
+    nodeRunId: number;
+    completeFn: () => void;
+  }): void;
 }
 
 interface DirectiveRow {
@@ -83,6 +103,29 @@ export class SqliteResumeDirectiveRepository implements AdoptedNodeResultPort {
     if (result.changes !== 1) {
       throw new Error(`CHECKPOINT_DIRECTIVE_ALREADY_CONSUMED: ${directiveRef}`);
     }
+  }
+
+  completeAdoptedNodeRun(input: {
+    directiveRef: string;
+    nodeRunId: number;
+    completeFn: () => void;
+  }): void {
+    // Single transaction: completeFn (completeV2 UPDATE) + markConsumed.
+    // better-sqlite3 transaction() uses SAVEPOINTs that nest correctly even
+    // when completeFn opens its own nested statements. A throw from either
+    // side rolls back both.
+    const txn = this.db.transaction(() => {
+      input.completeFn();
+      const result = this.db.prepare(
+        `UPDATE factory_resume_directives
+            SET state='consumed', consumed_node_run_id=?, consumed_at=datetime('now')
+          WHERE directive_ref=? AND state='ready'`,
+      ).run(input.nodeRunId, input.directiveRef);
+      if (result.changes !== 1) {
+        throw new Error(`CHECKPOINT_DIRECTIVE_ALREADY_CONSUMED: ${input.directiveRef}`);
+      }
+    });
+    txn();
   }
 
   static serializeResult(result: NodeExecutionResult): {

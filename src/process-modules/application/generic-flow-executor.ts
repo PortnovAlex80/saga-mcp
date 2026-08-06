@@ -775,32 +775,60 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
       const transitionEvent = nodeEventForTransition(result);
       const productionEnvelope: NodeProductionEnvelope | null =
         result.productionEnvelope ?? deriveEnvelope(result.production) ?? null;
-      const completedNodeRun: NodeRunRecordV2 | NodeRunRecord = v2.repo.completeV2({
-        id: nodeRunId,
-        event: transitionEvent,
-        outputRef,
-        outputSchema,
-        outputHash,
-        outputBindings,
-        executionReceipt: result.receipt as unknown as Record<string, unknown> | undefined,
-        acceptanceReceipt: result.acceptanceReceipt as unknown as
-          | Record<string, unknown>
-          | undefined,
-        recoveryIssue: result.recoveryIssue,
-        productionEnvelope,
-        transitionCursor: assembled.envelope.nodeRef.nodeId,
-        // Persist the explicit ModuleCompletion so crash-resume can rebuild
-        // NodeExecutionResult.completion and settlement reads the explicit
-        // certificate ref. Undefined when the node did not emit a completion
-        // — persisted as NULL.
-        completion: result.completion,
-      });
-
-      if (adopted) {
-        // Consume only after the NodeRun commit. Before this point a crash can
-        // safely retry; afterwards normal NodeRun replay prevents another LM.
-        this.opts.adoptedNodeResults?.markConsumed(adopted.directiveRef, nodeRunId);
-      }
+      const completedNodeRun: NodeRunRecordV2 | NodeRunRecord = (() => {
+        // When the result was adopted from a checkpoint directive, the
+        // NodeRun completion and the directive consumption MUST commit in one
+        // transaction. A crash between them would leave the NodeRun committed
+        // but the directive still `ready`, allowing a later re-entry to
+        // re-adopt it. completeAdoptedNodeRun wraps both writes in a single
+        // SAVEPOINT; completeFn performs the completeV2 UPDATE.
+        if (adopted && this.opts.adoptedNodeResults) {
+          let record: NodeRunRecordV2 | NodeRunRecord | undefined;
+          this.opts.adoptedNodeResults.completeAdoptedNodeRun({
+            directiveRef: adopted.directiveRef,
+            nodeRunId,
+            completeFn: () => {
+              record = v2.repo.completeV2({
+                id: nodeRunId,
+                event: transitionEvent,
+                outputRef,
+                outputSchema,
+                outputHash,
+                outputBindings,
+                executionReceipt: result.receipt as unknown as Record<string, unknown> | undefined,
+                acceptanceReceipt: result.acceptanceReceipt as unknown as
+                  | Record<string, unknown>
+                  | undefined,
+                recoveryIssue: result.recoveryIssue,
+                productionEnvelope,
+                transitionCursor: assembled.envelope.nodeRef.nodeId,
+                completion: result.completion,
+              });
+            },
+          });
+          return record!;
+        }
+        return v2.repo.completeV2({
+          id: nodeRunId,
+          event: transitionEvent,
+          outputRef,
+          outputSchema,
+          outputHash,
+          outputBindings,
+          executionReceipt: result.receipt as unknown as Record<string, unknown> | undefined,
+          acceptanceReceipt: result.acceptanceReceipt as unknown as
+            | Record<string, unknown>
+            | undefined,
+          recoveryIssue: result.recoveryIssue,
+          productionEnvelope,
+          transitionCursor: assembled.envelope.nodeRef.nodeId,
+          // Persist the explicit ModuleCompletion so crash-resume can rebuild
+          // NodeExecutionResult.completion and settlement reads the explicit
+          // certificate ref. Undefined when the node did not emit a completion
+          // — persisted as NULL.
+          completion: result.completion,
+        });
+      })();
 
       if (result.runtimeEvent === 'paused') {
         throw new ProcessRunPausedError(context.processRunId, node.id);

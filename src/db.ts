@@ -1,5 +1,5 @@
 import Database from 'better-sqlite3';
-import { SCHEMA_SQL } from './schema.js';
+import { SCHEMA_SQL, ensureArtifactStorageKindColumn, migrateSyntheticBriefsToDbNative } from './schema.js';
 import { ensureFactoryModuleInstallationSchema } from './process-modules/installation/persistence/installation-repository.js';
 import { ensureFactoryScenarioInstallationSchema } from './process-modules/installation/persistence/sqlite-scenario-installation-repository.js';
 import { ensureFactoryProtocolRunSchema } from './process-modules/persistence/sqlite-protocol-run-repository.js';
@@ -74,6 +74,21 @@ export function getDb(): Database.Database {
 
   // Core schema — all tables, columns, indexes, CHECK constraints.
   db.exec(SCHEMA_SQL);
+  // Additive migration: artifacts.storage_kind (file_backed | db_native |
+  // external_ref). Fresh DBs get the column from CREATE TABLE; pre-existing
+  // DBs created before this column get it added here with the safe default
+  // 'file_backed'. The synthetic brief is repaired to db_native separately.
+  ensureArtifactStorageKindColumn(db);
+  // One-shot repair: promote synthetic auto-provisioned briefs (no physical
+  // file, hash from canonical JSON) to db_native with content persisted in
+  // metadata. Verified against the stored content_hash — never guesses.
+  const briefMigration = migrateSyntheticBriefsToDbNative(db);
+  if (briefMigration.migrated > 0) {
+    console.warn(
+      `[factory] migrated ${briefMigration.migrated} synthetic brief(s) to db_native `
+        + `(inspected ${briefMigration.inspected}, skipped ${briefMigration.skipped})`,
+    );
+  }
 
   // WorkIntent conclusion, Workplace terminal state and tasks.status projection
   // are one authority-binding transaction. The installer creates the durable
