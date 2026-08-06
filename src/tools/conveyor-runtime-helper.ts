@@ -10,7 +10,11 @@
 
 import type Database from 'better-sqlite3';
 import { ConveyorRuntime } from '../application/conveyor-runtime.js';
-import type { WorkplaceRef } from '../process-modules/domain/workplace/index.js';
+import {
+  reduceWorkplaceEvent,
+  type ProductionCellEvent,
+  type WorkplaceRef,
+} from '../process-modules/domain/workplace/index.js';
 import { deriveWorkplaceRefFromTaskMetadata } from '../infrastructure/projections/workplace-projector.js';
 import { SqliteWorkplaceRepository } from '../infrastructure/workplace/sqlite-workplace-repository.js';
 
@@ -23,6 +27,20 @@ function runtime(db: Database.Database): ConveyorRuntime {
     cachedDb = db;
   }
   return cachedRuntime!;
+}
+
+/** Map the status selected by reviewer worker_done to the domain event. */
+export function reviewerCompletionEvent(taskStatus: string): ProductionCellEvent {
+  if (taskStatus === 'done') {
+    return { kind: 'reviewer-verdict', verdict: 'accepted' };
+  }
+  if (taskStatus === 'todo') {
+    return { kind: 'reviewer-verdict', verdict: 'defect-proven' };
+  }
+  if (taskStatus === 'blocked') {
+    return { kind: 'human-required' };
+  }
+  return { kind: 'reviewer-verdict', verdict: 'invalid-output' };
 }
 
 /**
@@ -63,12 +81,10 @@ export function reserveTaskExecution(db: Database.Database, input: {
  * Release the execution. Called by the dispatcher's `worker_done` /
  * `worker_ask_need` / crash-recovery. The outcome maps to the loop transition:
  *
- *   done (final accepted) → releaseExecution(completed) → loop advances toward
- *     terminal. NOTE: without a separate gate run, the dispatcher treats
- *     worker_done on a final-author cell as the de-facto gate accept, so we
- *     apply gate-author-accepted-final (loop → terminal(accepted)) directly.
- *   review/parked → releaseExecution(completed) (loop → verifying, gate later).
- *   crashed/expired → releaseExecution(crashed) (loop → repair_wait).
+ *   author completed → candidate-sealed (running → verifying), or review/queued
+ *     when a reviewer is declared;
+ *   reviewer approved/changes_requested → reviewer-verdict from verifying;
+ *   crashed/expired → worker-crashed (running → repair_wait).
  */
 export function releaseTaskExecution(db: Database.Database, input: {
   taskId: number;
@@ -78,7 +94,7 @@ export function releaseTaskExecution(db: Database.Database, input: {
   metadata: string;
   executionId: string;
   outcome: 'completed' | 'crashed' | 'expired' | 'cancelled';
-  /** The current tasks.status (read before release) — used to bind the ref. */
+  /** The tasks.status selected by worker_done before this workplace transition. */
   taskStatus: string;
   /** The task's execution_mode — only git_change tasks require merge before
    *  terminal(accepted). tracker_only/not_required can go terminal on done. */
@@ -87,37 +103,69 @@ export function releaseTaskExecution(db: Database.Database, input: {
   integrationState?: string;
 }): void {
   const rt = runtime(db);
-  // Re-derive the ref from metadata (the task is already bound).
   const ref = deriveWorkplaceRefFromTaskMetadata({
     taskId: input.taskId,
     metadata: input.metadata,
     taskKind: input.taskKind,
   });
   if (!ref) return;
-  // If no executionId was passed, read the active reservation from the
-  // workplace (the fence that the claim set). This handles the engine path
-  // where worker_done may not carry the execution_id.
+
   let execId = input.executionId;
   if (!execId || execId === 'undefined') {
     const repo = new SqliteWorkplaceRepository(db);
     const actors = repo.readActiveActors(ref);
     execId = actors?.activeReservationRef ?? input.executionId ?? '';
   }
+
   try {
-    // Decide workplace transition from the dispatcher's new task status:
-    //
-    //   review              → workplace 'review/queued' (reviewer must be hired next)
-    //   done (final)        → workplace 'done/terminal(accepted)'
-    //   done (git_change, not merged) → workplace 'verifying' (awaiting merge)
-    //   anything else       → releaseExecution(completed) → verifying
+    const repo = new SqliteWorkplaceRepository(db);
+    const current = repo.read(ref);
+
+    // Reviewer completion is a different domain transition from author
+    // completion. The reviewer already works in verifying; sending it through
+    // releaseExecution(completed) would emit candidate-sealed and incorrectly
+    // require loopState=running.
+    if (
+      current?.kanbanPhase === 'review_in_progress'
+      && current.loopState === 'verifying'
+    ) {
+      const actors = repo.readActiveActors(ref);
+      if (actors?.activeReservationRef !== execId) {
+        throw new Error(
+          `FENCE_MISMATCH: workplace's active reservation `
+            + `'${actors?.activeReservationRef ?? 'null'}' does not match `
+            + `'${execId}' (REG-09-AC-04)`,
+        );
+      }
+
+      const target = reduceWorkplaceEvent(
+        current,
+        reviewerCompletionEvent(input.taskStatus),
+      );
+      const applied = repo.applyTransitionInTx({
+        workplaceRef: ref,
+        expectedRevision: current.revision,
+        kanbanPhase: target.kanbanPhase,
+        loopState: target.loopState,
+        nextRole: target.nextRole,
+        terminalReason: target.terminalReason,
+        activeReservationRef: null,
+      });
+      if (!applied.applied) {
+        throw new Error(
+          `WORKPLACE_CAS_MISS: reviewer completion lost revision ${current.revision}`,
+        );
+      }
+      return;
+    }
+
     if (input.taskStatus === 'review') {
       // Author completed → hand to reviewer. Set workplace directly to
       // review/queued so the next claim resolves review_skill.
-      const cur = rt['repo'].read(ref);
-      if (cur) {
-        rt['repo'].applyTransitionInTx({
+      if (current) {
+        repo.applyTransitionInTx({
           workplaceRef: ref,
-          expectedRevision: cur.revision,
+          expectedRevision: current.revision,
           kanbanPhase: 'review',
           loopState: 'queued',
           nextRole: 'reviewer',
@@ -132,7 +180,7 @@ export function releaseTaskExecution(db: Database.Database, input: {
         taskId: input.taskId,
         outcome: input.outcome,
       });
-    } // end else (not review)
+    }
   } catch (e) {
     throw new Error(
       `FACTORY_RELEASE_FAILED: task=${input.taskId} execution=${execId}: ${e instanceof Error ? e.message : String(e)}`,
