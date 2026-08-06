@@ -3,7 +3,7 @@ import test from 'node:test';
 import Database from 'better-sqlite3';
 
 import { releaseExecutionAtomically } from '../../dist/lifecycle/atomic-release.js';
-import { ReceiptAwareLmNodeExecutor } from '../../dist/process-modules/application/node-executors/receipt-aware-lm-node-executor.js';
+import { receiptAwareLmPersistence } from '../../dist/process-modules/application/node-executors/receipt-aware-lm-persistence.js';
 import { SCHEMA_SQL } from '../../dist/schema.js';
 
 function executionFixture({ withAcceptedReceipt }) {
@@ -103,13 +103,14 @@ test('an execution without worker_done evidence retains crash recovery mapping',
   db.close();
 });
 
-test('LM false failure is corrected from the exact accepted worker_done receipt', async () => {
+test('LM poll-loop sees exact worker_done completion instead of the later verifying projection', () => {
   const db = new Database(':memory:');
   db.exec(`
     CREATE TABLE command_receipts (
       command_id TEXT PRIMARY KEY,
       command_kind TEXT NOT NULL,
       execution_id TEXT,
+      task_id INTEGER,
       accepted INTEGER NOT NULL,
       reply_json TEXT NOT NULL,
       accepted_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -117,56 +118,31 @@ test('LM false failure is corrected from the exact accepted worker_done receipt'
   `);
   db.prepare(
     `INSERT INTO command_receipts
-       (command_id, command_kind, execution_id, accepted, reply_json)
-     VALUES ('exec-9:worker-done:approved', 'worker_done', 'exec-9', 1, ?)`,
+       (command_id, command_kind, execution_id, task_id, accepted, reply_json)
+     VALUES ('exec-9:worker-done:approved', 'worker_done', 'exec-9', 17, 1, ?)`,
   ).run(JSON.stringify({ completed_new_status: 'done' }));
 
-  const transitions = [];
-  const persistence = {
-    setIntentStatus(intentId, expected, next) {
-      transitions.push({ intentId, expected, next });
-      return true;
+  const base = {
+    readCurrentExecutionId(taskId) {
+      assert.equal(taskId, 17);
+      return 'exec-9';
     },
-  };
-  const inner = {
-    kind: 'lm',
-    async execute() {
-      return {
-        runtimeEvent: 'failed',
-        receipt: {
-          kind: 'task-execution',
-          executorKind: 'lm',
-          intentId: 41,
-          taskId: 17,
-          executionId: 'exec-9',
-          runtimeStatus: 'failed',
-          replayed: false,
-        },
-        driverReceipt: {
-          schemaVersion: 'factory.driver-neutral-receipt.v1',
-          nodeRunId: 1,
-          attempt: 1,
-          runtimeEvent: 'failed',
-          driverKind: 'lm',
-          adapterData: {},
-        },
-      };
+    readLatestExecutionId() {
+      return 'exec-9';
+    },
+    readTaskState() {
+      return 'in_progress';
+    },
+    readExecutionLiveness() {
+      return { pid: 12516, state: 'running' };
     },
   };
 
-  const executor = new ReceiptAwareLmNodeExecutor(inner, persistence, db);
-  const result = await executor.execute({});
-
-  assert.equal(result.runtimeEvent, 'completed');
-  assert.equal(result.receipt.runtimeStatus, 'completed');
-  assert.equal(result.driverReceipt.runtimeEvent, 'completed');
+  const persistence = receiptAwareLmPersistence(base, db);
+  assert.equal(persistence.readTaskState(17), 'done');
   assert.deepEqual(
-    transitions,
-    ['executing', 'paused', 'open'].map(expected => ({
-      intentId: 41,
-      expected,
-      next: 'concluded',
-    })),
+    persistence.readExecutionLiveness('exec-9'),
+    { pid: null, state: 'exited' },
   );
   db.close();
 });
