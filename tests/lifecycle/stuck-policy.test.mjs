@@ -18,7 +18,7 @@
  *   STUCK_CANCEL_GRACE_MS   =  5 min  (suspected_stuck → cancel_requested)
  *   CANCEL_GRACE_MS         = 60 s    (cancel_requested → terminate)
  *   RESERVED_BOOT_TIMEOUT_MS= 60 s    (reserved → spawn_failed)
- *   FINISH_GRACE_MS         = 30 s    (finishing phase kept window)
+ *   FINISH_GRACE_MS         = 30 s    (finishing activity kept window)
  *   PID_REUSE_GRACE_MS      = 10 min  (Wave 8 HIGH 5B: PID-reuse escalation)
  */
 import assert from 'node:assert/strict';
@@ -308,15 +308,42 @@ test('stuck-policy: reserved + lease expired (boot not timed out) → RELEASE(sp
 });
 
 test('stuck-policy: finishing phase past FINISH_GRACE → TERMINATE (no longer legit)', () => {
-  // A finishing execution whose phase age exceeded FINISH_GRACE_MS is no longer
-  // legitimate → falls through to the alive-illegit TERMINATE path.
+  // A finishing execution whose phase and progress ages exceeded
+  // FINISH_GRACE_MS is no longer legitimate → alive-illegit TERMINATE.
+  const stale = NOW - (FINISH_GRACE_MS + 5_000);
   const action = decideStuckAction(input({
     phase: 'finishing',
-    phaseUpdatedAtMs: NOW - (FINISH_GRACE_MS + 5_000), // 35s — past grace
+    phaseUpdatedAtMs: stale,
+    progressAtMs: stale,
     legitimateFinishing: false,
     ownsActiveTask: false,
   }));
   assert.equal(action.kind, 'TERMINATE');
+});
+
+test('incident: fence-free finishing worker with 34s-old phase and 3s-old progress → KEEP', () => {
+  const action = decideStuckAction(input({
+    phase: 'finishing',
+    phaseUpdatedAtMs: NOW - 34_000,
+    progressAtMs: NOW - 3_000,
+    legitimateFinishing: false,
+    ownsActiveTask: false,
+  }));
+  assert.equal(action.kind, 'KEEP');
+  assert.match(action.reason, /worker_done finishing activity grace/);
+});
+
+test('incident: completed finishing grace survives an expired task lease while progress is fresh', () => {
+  const action = decideStuckAction(input({
+    phase: 'finishing',
+    phaseUpdatedAtMs: NOW - 34_000,
+    progressAtMs: NOW - 3_000,
+    legitimateFinishing: false,
+    ownsActiveTask: false,
+    leaseExpiresAtMs: NOW - 1_000,
+  }));
+  assert.equal(action.kind, 'KEEP');
+  assert.match(action.reason, /worker_done finishing activity grace/);
 });
 
 test('stuck-policy: legitimate integrating phase → KEEP', () => {

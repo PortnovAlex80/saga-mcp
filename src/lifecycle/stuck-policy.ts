@@ -57,7 +57,7 @@ export const REAL_SUPERVISION_CLOCK: SupervisionClock = {
 
 /** Reserved execution boot timeout: 60s to acquire a PID before spawn_failed. */
 export const RESERVED_BOOT_TIMEOUT_MS = 60_000;
-/** Finishing-phase grace: a `finishing` execution is kept for 30s past phase stamp. */
+/** Finishing grace: keep while phase/progress activity is less than 30s old. */
 export const FINISH_GRACE_MS = 30_000;
 /** 10 min with no progress_at advance → suspected_stuck. */
 export const STUCK_SILENCE_MS = 10 * 60 * 1000;
@@ -185,7 +185,12 @@ export interface StuckPolicyInput {
   readonly ownsActiveTask: boolean;
   /** Precomputed legitimacy #2: phase='integrating', task='done', integration='pending', fence ours. */
   readonly legitimateIntegration: boolean;
-  /** Precomputed legitimacy #3: phase='finishing' and phase age < FINISH_GRACE_MS, fence ours. */
+  /**
+   * Precomputed legitimacy #3 for the legacy fenced path. The policy also
+   * derives the post-worker_done fence-free finishing grace from phase and
+   * progress timestamps, because the task fence may already be released while
+   * the OS process is still closing.
+   */
   readonly legitimateFinishing: boolean;
 }
 
@@ -204,6 +209,8 @@ export interface StuckPolicyInput {
  *      (Wave 8 HIGH 5A: an ALIVE local row with an expired lease is NOT
  *      released here — it falls through to step 6's TERMINATE so the still-
  *      running process is killed before its card is released.)
+ *   2a. Fresh finishing activity after durable worker_done → KEEP even after
+ *       the task fence has been released.
  *   3. Stuck stage 1+2      → MARK_SUSPECTED, or REQUEST_CANCEL (which
  *                             short-circuits). MARK_SUSPECTED falls through.
  *   4. Stuck stage 3        → cancel grace met: TERMINATE_BUT_PID_REUSE (no
@@ -274,6 +281,33 @@ export function decideStuckAction(input: StuckPolicyInput): StuckAction {
           ? 'OS process is not alive'
           : 'lease expired (foreman/supervisor gone) while local process could not be confirmed alive';
     return { kind: 'RELEASE', terminal, reason };
+  }
+
+  // -------------------------------------------------------------------------
+  // (2a) Durable worker_done finishing grace.
+  //
+  // worker_done writes phase='finishing' and its accepted receipt in the same
+  // IMMEDIATE transaction. The task/Workplace may then release assigned_to and
+  // current_execution_id before Node delivers the OS close callback. Therefore
+  // task-fence ownership is no longer required for this bounded cleanup phase.
+  // Fresh stream/log progress extends the grace; once both phase and progress
+  // are older than FINISH_GRACE_MS, the ordinary termination path applies.
+  // -------------------------------------------------------------------------
+  const finishingActivityAtMs = Math.max(
+    input.phaseUpdatedAtMs,
+    input.progressAtMs,
+  );
+  const freshDurableFinishing = input.phase === 'finishing'
+    && finishingActivityAtMs !== 0
+    && input.nowMs - finishingActivityAtMs < FINISH_GRACE_MS;
+  if (
+    input.isAlive
+    && (input.legitimateFinishing || freshDurableFinishing)
+  ) {
+    return {
+      kind: 'KEEP',
+      reason: 'execution still owns an allowed lifecycle phase (worker_done finishing activity grace)',
+    };
   }
 
   // Track whether the supervisor authority is gone for the alive paths below.
