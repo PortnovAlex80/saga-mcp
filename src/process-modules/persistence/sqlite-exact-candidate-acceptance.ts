@@ -56,12 +56,20 @@ interface ArtifactRow {
 
 interface ManagedArtifactProductionRow {
   id: number;
+  process_run_id: number;
+  module_ref: string;
+  node_id: string;
+  intent_id: number;
+  task_id: number;
+  execution_id: string;
   artifact_type: string;
   artifact_status: string;
   content_hash: string | null;
+  recorded_at: string;
 }
 
 interface ApprovedReviewReceiptRow {
+  row_id: number;
   command_id: string;
   execution_id: string | null;
   result_json: string | null;
@@ -126,29 +134,29 @@ export function ensureExactCandidateAcceptanceSchema(
 ): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS factory_exact_candidate_acceptance_decisions (
-      id                         INTEGER PRIMARY KEY AUTOINCREMENT,
-      schema_version             TEXT NOT NULL,
-      idempotency_key            TEXT NOT NULL UNIQUE,
-      request_hash               TEXT NOT NULL,
-      request_snapshot           TEXT NOT NULL,
-      candidate_set_hash         TEXT NOT NULL,
-      process_run_id             INTEGER NOT NULL,
-      module_ref                 TEXT NOT NULL,
-      node_id                    TEXT NOT NULL,
-      intent_id                  INTEGER NOT NULL,
-      task_id                    INTEGER NOT NULL,
-      execution_id               TEXT NOT NULL,
-      project_id                 INTEGER NOT NULL,
-      epic_id                    INTEGER NOT NULL,
-      review_required            INTEGER NOT NULL CHECK (review_required IN (0,1)),
+      id                          INTEGER PRIMARY KEY AUTOINCREMENT,
+      schema_version              TEXT NOT NULL,
+      idempotency_key             TEXT NOT NULL UNIQUE,
+      request_hash                TEXT NOT NULL,
+      request_snapshot            TEXT NOT NULL,
+      candidate_set_hash          TEXT NOT NULL,
+      process_run_id              INTEGER NOT NULL,
+      module_ref                  TEXT NOT NULL,
+      node_id                     TEXT NOT NULL,
+      intent_id                   INTEGER NOT NULL,
+      task_id                     INTEGER NOT NULL,
+      execution_id                TEXT NOT NULL,
+      project_id                  INTEGER NOT NULL,
+      epic_id                     INTEGER NOT NULL,
+      review_required             INTEGER NOT NULL CHECK (review_required IN (0,1)),
       producer_receipt_command_id TEXT,
       producer_receipt_hash       TEXT,
-      review_receipt_command_id  TEXT,
-      review_receipt_hash        TEXT,
-      authority                  TEXT NOT NULL,
-      reason_code                TEXT NOT NULL,
-      decision_hash              TEXT NOT NULL,
-      decided_at                 TEXT NOT NULL DEFAULT (datetime('now'))
+      review_receipt_command_id   TEXT,
+      review_receipt_hash         TEXT,
+      authority                   TEXT NOT NULL,
+      reason_code                 TEXT NOT NULL,
+      decision_hash               TEXT NOT NULL,
+      decided_at                  TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
     CREATE UNIQUE INDEX IF NOT EXISTS idx_factory_exact_acceptance_decision_hash
@@ -160,21 +168,21 @@ export function ensureExactCandidateAcceptanceSchema(
       );
 
     CREATE TABLE IF NOT EXISTS factory_exact_candidate_acceptance_items (
-      id                     INTEGER PRIMARY KEY AUTOINCREMENT,
-      decision_id            INTEGER NOT NULL,
-      ordinal                INTEGER NOT NULL,
-      artifact_id            INTEGER NOT NULL,
-      artifact_type          TEXT NOT NULL,
-      expected_content_hash  TEXT NOT NULL,
-      ledger_id              INTEGER NOT NULL,
-      disposition            TEXT NOT NULL
-                               CHECK (disposition IN ('accepted','reaccepted','already-accepted')),
-      prior_status           TEXT NOT NULL,
-      prior_accepted_hash    TEXT,
-      prior_drift_state      TEXT NOT NULL,
-      final_status           TEXT NOT NULL CHECK (final_status='accepted'),
-      final_accepted_hash    TEXT NOT NULL,
-      final_drift_state      TEXT NOT NULL CHECK (final_drift_state='clean'),
+      id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+      decision_id           INTEGER NOT NULL,
+      ordinal               INTEGER NOT NULL,
+      artifact_id           INTEGER NOT NULL,
+      artifact_type         TEXT NOT NULL,
+      expected_content_hash TEXT NOT NULL,
+      ledger_id             INTEGER NOT NULL,
+      disposition           TEXT NOT NULL
+                              CHECK (disposition IN ('accepted','reaccepted','already-accepted')),
+      prior_status          TEXT NOT NULL,
+      prior_accepted_hash   TEXT,
+      prior_drift_state     TEXT NOT NULL,
+      final_status          TEXT NOT NULL CHECK (final_status='accepted'),
+      final_accepted_hash   TEXT NOT NULL,
+      final_drift_state     TEXT NOT NULL CHECK (final_drift_state='clean'),
       UNIQUE (decision_id, ordinal),
       UNIQUE (decision_id, artifact_id)
     );
@@ -182,7 +190,6 @@ export function ensureExactCandidateAcceptanceSchema(
     CREATE INDEX IF NOT EXISTS idx_factory_exact_acceptance_item_artifact
       ON factory_exact_candidate_acceptance_items(artifact_id, decision_id);
 
-    -- Acceptance records are decision receipts, not mutable projections.
     CREATE TRIGGER IF NOT EXISTS trg_factory_exact_acceptance_decision_no_update
       BEFORE UPDATE ON factory_exact_candidate_acceptance_decisions
       BEGIN
@@ -207,22 +214,23 @@ export function ensureExactCandidateAcceptanceSchema(
         SELECT RAISE(ABORT, 'saga3 exact acceptance items are immutable');
       END;
   `);
-  const decisionColumns = db.prepare(
+
+  const columns = db.prepare(
     'PRAGMA table_info(factory_exact_candidate_acceptance_decisions)',
   ).all() as { name: string }[];
-  if (!decisionColumns.some(column => column.name === 'review_receipt_hash')) {
+  if (!columns.some(column => column.name === 'review_receipt_hash')) {
     db.exec(
       'ALTER TABLE factory_exact_candidate_acceptance_decisions '
       + 'ADD COLUMN review_receipt_hash TEXT',
     );
   }
-  if (!decisionColumns.some(column => column.name === 'producer_receipt_command_id')) {
+  if (!columns.some(column => column.name === 'producer_receipt_command_id')) {
     db.exec(
       'ALTER TABLE factory_exact_candidate_acceptance_decisions '
       + 'ADD COLUMN producer_receipt_command_id TEXT',
     );
   }
-  if (!decisionColumns.some(column => column.name === 'producer_receipt_hash')) {
+  if (!columns.some(column => column.name === 'producer_receipt_hash')) {
     db.exec(
       'ALTER TABLE factory_exact_candidate_acceptance_decisions '
       + 'ADD COLUMN producer_receipt_hash TEXT',
@@ -239,39 +247,61 @@ implements ExactCandidateAcceptance {
   accept(
     command: AcceptExactCandidatesCommand,
   ): ExactCandidateAcceptanceDecision {
-    const request = normalizeRequest(command);
-    const requestSnapshot = canonicalJson(request);
-    const requestHash = sha256Hex(request);
+    const submitted = normalizeRequest(command);
 
     return this.withImmediateTransaction(() => {
-      const prior = this.readDecisionRow(request.idempotencyKey);
+      const prior = this.readDecisionRow(submitted.idempotencyKey);
       if (prior) {
-        const matchesCurrent = prior.request_hash === requestHash
-          && prior.request_snapshot === requestSnapshot;
-        if (!matchesCurrent) {
+        const replay = this.hydrateDecision(prior, true);
+        this.assertLineage(submitted.lineage);
+
+        // A recovery execution may retry the same mechanical gate after the
+        // reviewed candidate epoch has already been identified. Idempotency is
+        // therefore compared against the durable producer execution stored in
+        // the decision, not against the transient recovery execution.
+        const replayRequest = withProducerExecution(
+          submitted,
+          replay.lineage.executionId,
+        );
+        const replaySnapshot = canonicalJson(replayRequest);
+        const replayHash = sha256Hex(replayRequest);
+        if (
+          prior.request_hash !== replayHash
+          || prior.request_snapshot !== replaySnapshot
+        ) {
           reject(
             'EXACT_ACCEPTANCE_IDEMPOTENCY_KEY_REUSED',
-            `idempotency key '${request.idempotencyKey}' was used for another request`,
+            `idempotency key '${submitted.idempotencyKey}' was used for another request`,
             {
-              idempotencyKey: request.idempotencyKey,
+              idempotencyKey: submitted.idempotencyKey,
               storedRequestHash: prior.request_hash,
-              submittedRequestHash: requestHash,
+              submittedRequestHash: replayHash,
             },
           );
         }
-        const replay = this.hydrateDecision(prior, true);
         this.assertLineage(replay.lineage);
         this.assertReviewReceiptStillExact(replay);
         this.assertAcceptedDecisionStillExact(replay);
         return replay;
       }
 
-      this.assertLineage(request.lineage);
-      const prepared = request.candidates.map(candidate =>
-        this.prepareCandidate(request.lineage, candidate));
-      const reviewEvidence = request.requireApprovedReview
-        ? this.requireApprovedReview(request.lineage)
+      this.assertLineage(submitted.lineage);
+      const prepared = submitted.candidates.map(candidate =>
+        this.prepareCandidate(submitted.lineage, candidate));
+      const reviewEvidence = submitted.requireApprovedReview
+        ? this.requireApprovedReview(submitted.lineage, prepared)
         : null;
+
+      const producerExecutionId = reviewEvidence?.producer.execution_id;
+      const request = producerExecutionId
+        ? withProducerExecution(submitted, producerExecutionId)
+        : submitted;
+      if (request.lineage.executionId !== submitted.lineage.executionId) {
+        this.assertLineage(request.lineage);
+      }
+
+      const requestSnapshot = canonicalJson(request);
+      const requestHash = sha256Hex(request);
       const producerReceiptHash = reviewEvidence
         ? hashReviewReceipt(reviewEvidence.producer)
         : null;
@@ -280,12 +310,10 @@ implements ExactCandidateAcceptance {
         : null;
 
       for (const item of prepared) {
-        if (item.disposition === 'already-accepted') continue;
         this.compareAndSetAccepted(item);
       }
 
-      const items = prepared.map((item, ordinal) =>
-        toDecisionItem(item, ordinal));
+      const items = prepared.map(toDecisionItem);
       const candidateSetHash = sha256Hex(request.candidates);
       const decisionHash = computeDecisionHash({
         idempotencyKey: request.idempotencyKey,
@@ -402,6 +430,11 @@ implements ExactCandidateAcceptance {
       submittedCandidate?.contentHash,
       'candidate.contentHash',
     );
+
+    // Acceptance belongs to the exact candidate set of the task/workplace, not
+    // to whichever recovery execution happens to be asking for replay. The
+    // immutable decision still retains the real producer execution and review
+    // receipts; the lookup scope intentionally excludes submitted executionId.
     const row = this.db.prepare(
       `SELECT d.idempotency_key
          FROM factory_exact_candidate_acceptance_decisions d
@@ -414,21 +447,18 @@ implements ExactCandidateAcceptance {
           AND pr.module_ref_key=d.module_ref
          JOIN factory_managed_artifact_productions mp
            ON mp.id=i.ledger_id
-          AND mp.process_run_id=d.process_run_id
           AND mp.module_ref=d.module_ref
           AND mp.node_id=d.node_id
           AND mp.task_id=d.task_id
           AND mp.artifact_id=i.artifact_id
           AND mp.artifact_type=i.artifact_type
           AND mp.content_hash=i.expected_content_hash
-         JOIN artifacts a
-           ON a.id=i.artifact_id
+         JOIN artifacts a ON a.id=i.artifact_id
         WHERE d.process_run_id=?
           AND d.module_ref=?
           AND d.node_id=?
           AND d.intent_id=?
           AND d.task_id=?
-          AND d.execution_id=?
           AND d.project_id=?
           AND d.epic_id=?
           AND i.artifact_id=?
@@ -445,7 +475,6 @@ implements ExactCandidateAcceptance {
       lineage.nodeId,
       lineage.intentId,
       lineage.taskId,
-      lineage.executionId,
       lineage.projectId,
       lineage.epicId,
       artifactId,
@@ -456,9 +485,6 @@ implements ExactCandidateAcceptance {
     ) as { idempotency_key: string } | undefined;
     if (!row) return false;
 
-    // A status/hash match alone is not proof. Re-hydrate the immutable
-    // decision, verify its exact review evidence and check the whole accepted
-    // set so legacy or partially-corrupted receipts cannot authorize replay.
     const decisionRow = this.readDecisionRow(row.idempotency_key);
     if (!decisionRow) return false;
     const decision = this.hydrateDecision(decisionRow, true);
@@ -481,9 +507,11 @@ implements ExactCandidateAcceptance {
         { processRunId: lineage.processRunId },
       );
     }
-    if (run.project_id !== lineage.projectId
+    if (
+      run.project_id !== lineage.projectId
       || run.epic_id !== lineage.epicId
-      || run.module_ref_key !== lineage.moduleRef) {
+      || run.module_ref_key !== lineage.moduleRef
+    ) {
       reject(
         'EXACT_ACCEPTANCE_LINEAGE_MISMATCH',
         'ProcessRun scope/module does not match submitted lineage',
@@ -519,10 +547,12 @@ implements ExactCandidateAcceptance {
          FROM worker_executions
         WHERE execution_id=?`,
     ).get(lineage.executionId) as WorkerExecutionIdentityRow | undefined;
-    if (!execution
+    if (
+      !execution
       || execution.project_id !== lineage.projectId
       || execution.epic_id !== lineage.epicId
-      || execution.task_id !== lineage.taskId) {
+      || execution.task_id !== lineage.taskId
+    ) {
       reject(
         'EXACT_ACCEPTANCE_LINEAGE_MISMATCH',
         `execution '${lineage.executionId}' does not match process scope/task`,
@@ -556,8 +586,10 @@ implements ExactCandidateAcceptance {
         { artifactId: candidate.artifactId },
       );
     }
-    if (artifact.project_id !== lineage.projectId
-      || artifact.epic_id !== lineage.epicId) {
+    if (
+      artifact.project_id !== lineage.projectId
+      || artifact.epic_id !== lineage.epicId
+    ) {
       reject(
         'EXACT_ACCEPTANCE_ARTIFACT_SCOPE_DRIFT',
         `artifact ${candidate.artifactId} is outside the ProcessRun scope`,
@@ -593,14 +625,16 @@ implements ExactCandidateAcceptance {
       );
     }
 
-    // The reviewed task is the product aggregate. An earlier execution of the
-    // same task may have written the exact version, but another recovery task
-    // must never be adopted implicitly.
+    // Select the exact product version, never merely the latest mutation of
+    // this artifact id. Recovery may add later ledger rows; they must not hide
+    // the reviewed exact hash or let another hash inherit its approval.
     let ledger = this.db.prepare(
-      `SELECT id, artifact_type, artifact_status, content_hash
+      `SELECT id, process_run_id, module_ref, node_id, intent_id, task_id,
+              execution_id, artifact_type, artifact_status, content_hash,
+              recorded_at
          FROM factory_managed_artifact_productions
         WHERE process_run_id=? AND module_ref=? AND node_id=?
-          AND task_id=? AND artifact_id=?
+          AND task_id=? AND artifact_id=? AND artifact_type=? AND content_hash=?
         ORDER BY id DESC
         LIMIT 1`,
     ).get(
@@ -609,29 +643,22 @@ implements ExactCandidateAcceptance {
       lineage.nodeId,
       lineage.taskId,
       candidate.artifactId,
+      candidate.artifactType,
+      candidate.contentHash,
     ) as ManagedArtifactProductionRow | undefined;
-    // Recovery fallback: if no ledger record exists for the current execution
-    // (repair worker reused accepted artifacts from a prior run without calling
-    // artifact_create again), check epic-wide for the same artifact+hash. If
-    // found, the artifact IS canonical — just produced by a different execution
-    // of the same epic. This unblocks the deadlock where the worker correctly
-    // skips duplicating accepted work but the gate demanded a per-execution
-    // receipt.
-    //
-    // Boundary (REG-12-AC-02/03, exact-candidate-acceptance test "acceptance
-    // never adopts a candidate written by another recovery task"): the fallback
-    // may ONLY adopt an artifact produced by the SAME task lineage (same task_id)
-    // under a different process run. A different recovery task (task_id mismatch)
-    // must NEVER be adopted implicitly — that would let one task claim another
-    // task's work. The task_id filter below enforces this.
+
     if (!ledger) {
       ledger = this.db.prepare(
-        `SELECT map.id, map.artifact_type, map.artifact_status, map.content_hash
+        `SELECT map.id, map.process_run_id, map.module_ref, map.node_id,
+                map.intent_id, map.task_id, map.execution_id,
+                map.artifact_type, map.artifact_status, map.content_hash,
+                map.recorded_at
            FROM factory_managed_artifact_productions map
-           JOIN factory_process_runs pr ON pr.id = map.process_run_id
-          WHERE pr.project_id=? AND pr.epic_id=? AND map.module_ref=? AND map.node_id=?
-            AND map.task_id=? AND map.artifact_id=?
-          ORDER BY map.recorded_at DESC
+           JOIN factory_process_runs pr ON pr.id=map.process_run_id
+          WHERE pr.project_id=? AND pr.epic_id=?
+            AND map.module_ref=? AND map.node_id=? AND map.task_id=?
+            AND map.artifact_id=? AND map.artifact_type=? AND map.content_hash=?
+          ORDER BY map.recorded_at DESC, map.id DESC
           LIMIT 1`,
       ).get(
         lineage.projectId,
@@ -640,21 +667,19 @@ implements ExactCandidateAcceptance {
         lineage.nodeId,
         lineage.taskId,
         candidate.artifactId,
+        candidate.artifactType,
+        candidate.contentHash,
       ) as ManagedArtifactProductionRow | undefined;
     }
-    if (!ledger
-      || ledger.artifact_type !== candidate.artifactType
-      || ledger.content_hash !== candidate.contentHash) {
+
+    if (!ledger) {
       reject(
         'EXACT_ACCEPTANCE_CANDIDATE_NOT_PRODUCED',
-        `artifact ${candidate.artifactId} exact version was not the final product of the submitted execution`,
+        `artifact ${candidate.artifactId} exact version was not produced by the reviewed task`,
         {
           artifactId: candidate.artifactId,
           expectedType: candidate.artifactType,
           expectedContentHash: candidate.contentHash,
-          ledgerId: ledger?.id ?? null,
-          ledgerType: ledger?.artifact_type ?? null,
-          ledgerContentHash: ledger?.content_hash ?? null,
         },
       );
     }
@@ -664,8 +689,10 @@ implements ExactCandidateAcceptance {
       : artifact.accepted_hash === artifact.content_hash
         ? 'clean'
         : 'drifted';
-    if (!['draft', 'in_review', 'accepted'].includes(artifact.status)
-      || artifact.drift_state !== expectedDriftState) {
+    if (
+      !['draft', 'in_review', 'accepted'].includes(artifact.status)
+      || artifact.drift_state !== expectedDriftState
+    ) {
       reject(
         'EXACT_ACCEPTANCE_ARTIFACT_STATE_INVALID',
         `artifact ${candidate.artifactId} has an inconsistent/non-accepting state`,
@@ -693,117 +720,136 @@ implements ExactCandidateAcceptance {
         },
       );
     }
-    const disposition: ExactCandidateAcceptanceItemDisposition = alreadyAccepted
-      ? 'already-accepted'
-      : artifact.accepted_hash === null
-        ? 'accepted'
-        : 'reaccepted';
+
+    const disposition: ExactCandidateAcceptanceItemDisposition =
+      artifact.accepted_hash === null ? 'accepted' : 'reaccepted';
     return { candidate, artifact, ledger, disposition };
   }
 
   private requireApprovedReview(
     lineage: ExactCandidateProductionLineage,
+    prepared: readonly PreparedCandidate[],
   ): ExactReviewEvidence {
     const taskId = lineage.taskId;
     const task = this.db.prepare(
       'SELECT id, epic_id, status FROM tasks WHERE id=?',
     ).get(taskId) as TaskIdentityRow | undefined;
-    if (!task || (task.status !== 'done')) {
+    if (!task || task.status !== 'done') {
       reject(
         'EXACT_ACCEPTANCE_APPROVED_REVIEW_REQUIRED',
-        `task ${taskId} is not in a verified terminal state (expected done or removed-legacy-status)`,
+        `task ${taskId} is not in verified terminal state 'done'`,
         { taskId, taskStatus: task?.status ?? null },
       );
     }
 
     const receipts = this.db.prepare(
-      `SELECT command_id, execution_id, result_json, accepted_at
+      `SELECT rowid AS row_id, command_id, execution_id, result_json, accepted_at
          FROM command_receipts
         WHERE task_id=? AND command_kind='worker_done' AND accepted=1
-        ORDER BY accepted_at DESC, rowid DESC`,
+        ORDER BY rowid ASC`,
     ).all(taskId) as ApprovedReviewReceiptRow[];
-    // Only the latest accepted terminal command is authoritative. Falling
-    // back to an older approval after a newer changes_requested verdict would
-    // silently accept a superseded review decision.
-    const finalReceipt = receipts[0];
-    // A reviewer's worker_done(approved) sends the task to 'removed-legacy-status'
-    // (not 'done'). 'done' is only set by promoteTaskToDone AFTER the kernel gate
-    // accepts — a chicken-and-egg. Accept 'removed-legacy-status' as a valid
-    // terminal review receipt (consistent with line 721 which already accepts
-    // removed-legacy-status as a verified terminal state).
-    if (
-      !finalReceipt
-      || !(isWorkerDoneReceipt(finalReceipt, taskId, 'done')
-           )
-      || finalReceipt.execution_id === null
-      || finalReceipt.execution_id === lineage.executionId
-    ) {
-      reject(
-        'EXACT_ACCEPTANCE_APPROVED_REVIEW_REQUIRED',
-        `task ${taskId} has no final approval from a separate reviewer execution`,
-        {
-          taskId,
-          producerExecutionId: lineage.executionId,
-          latestReceiptCommandId: finalReceipt?.command_id ?? null,
-          latestReceiptExecutionId: finalReceipt?.execution_id ?? null,
-        },
-      );
-    }
-    const reviewerExecution = this.db.prepare(
-      `SELECT execution_id, project_id, epic_id, task_id
-         FROM worker_executions
-        WHERE execution_id=?`,
-    ).get(finalReceipt.execution_id) as WorkerExecutionIdentityRow | undefined;
-    if (
-      !reviewerExecution
-      || reviewerExecution.task_id !== taskId
-      || reviewerExecution.project_id !== lineage.projectId
-      || reviewerExecution.epic_id !== lineage.epicId
-    ) {
-      reject(
-        'EXACT_ACCEPTANCE_APPROVED_REVIEW_REQUIRED',
-        `task ${taskId} final review receipt has no matching reviewer execution`,
-        {
-          taskId,
-          reviewerExecutionId: finalReceipt.execution_id,
-        },
-      );
+
+    const producers = receipts.filter(receipt =>
+      receipt.execution_id !== null
+      && isWorkerDoneReceipt(receipt, taskId, 'review'));
+    const preferred = producers
+      .filter(receipt => receipt.execution_id === lineage.executionId)
+      .reverse();
+    const priorEpochs = producers
+      .filter(receipt => receipt.execution_id !== lineage.executionId)
+      .reverse();
+
+    // Prefer the submitted execution when it really sealed a review candidate.
+    // A recovery execution which only retries the mechanical gate has no
+    // `review` receipt; in that case we recover the newest still-valid reviewed
+    // epoch for the exact hashes. This is task/workplace replay, not self-review.
+    for (const producer of [...preferred, ...priorEpochs]) {
+      const nextProducer = producers.find(candidate =>
+        candidate.row_id > producer.row_id);
+      const epochEnd = nextProducer?.row_id ?? Number.POSITIVE_INFINITY;
+      const epochReceipts = receipts.filter(receipt =>
+        receipt.row_id > producer.row_id && receipt.row_id < epochEnd);
+      const reviewer = epochReceipts.find(receipt =>
+        receipt.execution_id !== null
+        && receipt.execution_id !== producer.execution_id
+        && isWorkerDoneReceipt(receipt, taskId, 'done'));
+      if (!reviewer) continue;
+
+      // A later explicit changes_requested within the same candidate epoch
+      // supersedes an earlier approval. Later duplicate/recovery `approved`
+      // completions do not become reviewer authority.
+      const superseded = epochReceipts.some(receipt =>
+        receipt.row_id > reviewer.row_id
+        && isChangesRequestedReceipt(receipt, taskId));
+      if (superseded) continue;
+
+      if (!this.candidateSetExistedAtReview(lineage, prepared, reviewer)) {
+        continue;
+      }
+
+      const reviewerExecution = this.db.prepare(
+        `SELECT execution_id, project_id, epic_id, task_id
+           FROM worker_executions
+          WHERE execution_id=?`,
+      ).get(reviewer.execution_id) as WorkerExecutionIdentityRow | undefined;
+      if (
+        !reviewerExecution
+        || reviewerExecution.task_id !== taskId
+        || reviewerExecution.project_id !== lineage.projectId
+        || reviewerExecution.epic_id !== lineage.epicId
+      ) {
+        continue;
+      }
+
+      return { producer, reviewer };
     }
 
-    const producerReceipt = receipts.find(receipt =>
-      receipt.execution_id === lineage.executionId
-      && isWorkerDoneReceipt(receipt, taskId, 'review'));
-    if (!producerReceipt) {
-      reject(
-        'EXACT_ACCEPTANCE_APPROVED_REVIEW_REQUIRED',
-        `task ${taskId} has no producer completion receipt for execution '${lineage.executionId}'`,
-        {
-          taskId,
-          producerExecutionId: lineage.executionId,
-        },
-      );
-    }
-    return {
-      producer: producerReceipt,
-      reviewer: finalReceipt,
-    };
+    reject(
+      'EXACT_ACCEPTANCE_APPROVED_REVIEW_REQUIRED',
+      `task ${taskId} has no approved review epoch for the exact candidate set`,
+      {
+        taskId,
+        submittedExecutionId: lineage.executionId,
+        candidateArtifactIds: prepared.map(item => item.candidate.artifactId),
+        candidateContentHashes: prepared.map(item => item.candidate.contentHash),
+      },
+    );
+  }
+
+  private candidateSetExistedAtReview(
+    lineage: ExactCandidateProductionLineage,
+    prepared: readonly PreparedCandidate[],
+    reviewer: ApprovedReviewReceiptRow,
+  ): boolean {
+    return prepared.every(item => Boolean(this.db.prepare(
+      `SELECT 1
+         FROM factory_managed_artifact_productions map
+         JOIN factory_process_runs pr ON pr.id=map.process_run_id
+        WHERE pr.project_id=? AND pr.epic_id=?
+          AND map.module_ref=? AND map.node_id=? AND map.task_id=?
+          AND map.artifact_id=? AND map.artifact_type=? AND map.content_hash=?
+          AND map.recorded_at<=?
+        LIMIT 1`,
+    ).get(
+      lineage.projectId,
+      lineage.epicId,
+      lineage.moduleRef,
+      lineage.nodeId,
+      lineage.taskId,
+      item.candidate.artifactId,
+      item.candidate.artifactType,
+      item.candidate.contentHash,
+      reviewer.accepted_at,
+    )));
   }
 
   private compareAndSetAccepted(item: PreparedCandidate): void {
     const changed = this.db.prepare(
       `UPDATE artifacts
-          SET status='accepted',
-              accepted_hash=?,
-              drift_state='clean',
+          SET status='accepted', accepted_hash=?, drift_state='clean',
               updated_at=datetime('now')
-        WHERE id=?
-          AND project_id=?
-          AND epic_id=?
-          AND type=?
-          AND status=?
-          AND content_hash=?
-          AND accepted_hash IS ?
-          AND drift_state=?`,
+        WHERE id=? AND project_id=? AND epic_id=? AND type=? AND status=?
+          AND content_hash=? AND accepted_hash IS ? AND drift_state=?`,
     ).run(
       item.candidate.contentHash,
       item.artifact.id,
@@ -834,8 +880,7 @@ implements ExactCandidateAcceptance {
       const artifact = this.db.prepare(
         `SELECT id, project_id, epic_id, type, status, content_hash,
                 accepted_hash, drift_state
-           FROM artifacts
-          WHERE id=?`,
+           FROM artifacts WHERE id=?`,
       ).get(item.artifactId) as ArtifactRow | undefined;
       if (!artifact) {
         reject(
@@ -844,8 +889,10 @@ implements ExactCandidateAcceptance {
           { decisionId: decision.decisionId, artifactId: item.artifactId },
         );
       }
-      if (artifact.project_id !== decision.lineage.projectId
-        || artifact.epic_id !== decision.lineage.epicId) {
+      if (
+        artifact.project_id !== decision.lineage.projectId
+        || artifact.epic_id !== decision.lineage.epicId
+      ) {
         reject(
           'EXACT_ACCEPTANCE_ARTIFACT_SCOPE_DRIFT',
           `accepted artifact ${item.artifactId} scope changed after decision`,
@@ -864,10 +911,12 @@ implements ExactCandidateAcceptance {
           },
         );
       }
-      if (artifact.content_hash !== item.contentHash
+      if (
+        artifact.content_hash !== item.contentHash
         || artifact.accepted_hash !== item.contentHash
         || artifact.status !== 'accepted'
-        || artifact.drift_state !== 'clean') {
+        || artifact.drift_state !== 'clean'
+      ) {
         reject(
           'EXACT_ACCEPTANCE_ARTIFACT_HASH_DRIFT',
           `accepted artifact ${item.artifactId} drifted after decision`,
@@ -889,27 +938,36 @@ implements ExactCandidateAcceptance {
     decision: ExactCandidateAcceptanceDecision,
   ): void {
     if (!decision.requireApprovedReview) return;
-    if (!decision.approvedReviewReceiptCommandId) {
+    if (
+      !decision.approvedReviewReceiptCommandId
+      || !decision.approvedReviewReceiptHash
+      || !decision.producerCompletionReceiptCommandId
+      || !decision.producerCompletionReceiptHash
+    ) {
       reject(
         'EXACT_ACCEPTANCE_STORED_DECISION_CORRUPT',
-        `decision ${decision.decisionId} has no exact review receipt evidence`,
+        `decision ${decision.decisionId} lacks exact review evidence`,
         { decisionId: decision.decisionId },
       );
     }
-    const reviewReceipt = this.db.prepare(
-      `SELECT command_id, execution_id, result_json, accepted_at
-         FROM command_receipts
-        WHERE command_id=? AND accepted=1`,
-    ).get(
+
+    const reviewReceipt = this.readReceipt(
       decision.approvedReviewReceiptCommandId,
-    ) as ApprovedReviewReceiptRow | undefined;
-    const reviewHashMatches = reviewReceipt
-      && decision.approvedReviewReceiptHash !== null
-      && hashReviewReceipt(reviewReceipt) === decision.approvedReviewReceiptHash;
+    );
+    const producerReceipt = this.readReceipt(
+      decision.producerCompletionReceiptCommandId,
+    );
     if (
       !reviewReceipt
-      || !reviewHashMatches
-      || !isWorkerDoneReceipt(reviewReceipt, decision.lineage.taskId, 'done')
+      || hashReviewReceipt(reviewReceipt)
+        !== decision.approvedReviewReceiptHash
+      || !isWorkerDoneReceipt(
+        reviewReceipt,
+        decision.lineage.taskId,
+        'done',
+      )
+      || reviewReceipt.execution_id === null
+      || reviewReceipt.execution_id === decision.lineage.executionId
     ) {
       reject(
         'EXACT_ACCEPTANCE_STORED_DECISION_CORRUPT',
@@ -920,46 +978,6 @@ implements ExactCandidateAcceptance {
         },
       );
     }
-    if (
-      !decision.producerCompletionReceiptCommandId
-      || !decision.producerCompletionReceiptHash
-      || reviewReceipt.execution_id === null
-      || reviewReceipt.execution_id === decision.lineage.executionId
-    ) {
-      reject(
-        'EXACT_ACCEPTANCE_STORED_DECISION_CORRUPT',
-        `decision ${decision.decisionId} has no separate exact producer/reviewer chain`,
-        { decisionId: decision.decisionId },
-      );
-    }
-    const reviewerExecution = this.db.prepare(
-      `SELECT execution_id, project_id, epic_id, task_id
-         FROM worker_executions
-        WHERE execution_id=?`,
-    ).get(reviewReceipt.execution_id) as
-      WorkerExecutionIdentityRow | undefined;
-    if (
-      !reviewerExecution
-      || reviewerExecution.task_id !== decision.lineage.taskId
-      || reviewerExecution.project_id !== decision.lineage.projectId
-      || reviewerExecution.epic_id !== decision.lineage.epicId
-    ) {
-      reject(
-        'EXACT_ACCEPTANCE_STORED_DECISION_CORRUPT',
-        `decision ${decision.decisionId} reviewer execution lineage changed`,
-        {
-          decisionId: decision.decisionId,
-          reviewerExecutionId: reviewReceipt.execution_id,
-        },
-      );
-    }
-    const producerReceipt = this.db.prepare(
-      `SELECT command_id, execution_id, result_json, accepted_at
-         FROM command_receipts
-        WHERE command_id=? AND accepted=1`,
-    ).get(
-      decision.producerCompletionReceiptCommandId,
-    ) as ApprovedReviewReceiptRow | undefined;
     if (
       !producerReceipt
       || producerReceipt.execution_id !== decision.lineage.executionId
@@ -981,14 +999,41 @@ implements ExactCandidateAcceptance {
         },
       );
     }
+
+    const reviewerExecution = this.db.prepare(
+      `SELECT execution_id, project_id, epic_id, task_id
+         FROM worker_executions WHERE execution_id=?`,
+    ).get(reviewReceipt.execution_id) as WorkerExecutionIdentityRow | undefined;
+    if (
+      !reviewerExecution
+      || reviewerExecution.task_id !== decision.lineage.taskId
+      || reviewerExecution.project_id !== decision.lineage.projectId
+      || reviewerExecution.epic_id !== decision.lineage.epicId
+    ) {
+      reject(
+        'EXACT_ACCEPTANCE_STORED_DECISION_CORRUPT',
+        `decision ${decision.decisionId} reviewer execution lineage changed`,
+        {
+          decisionId: decision.decisionId,
+          reviewerExecutionId: reviewReceipt.execution_id,
+        },
+      );
+    }
+  }
+
+  private readReceipt(commandId: string): ApprovedReviewReceiptRow | undefined {
+    return this.db.prepare(
+      `SELECT rowid AS row_id, command_id, execution_id, result_json, accepted_at
+         FROM command_receipts
+        WHERE command_id=? AND accepted=1`,
+    ).get(commandId) as ApprovedReviewReceiptRow | undefined;
   }
 
   private readDecisionRow(
     idempotencyKey: string,
   ): AcceptanceDecisionRow | undefined {
     return this.db.prepare(
-      `SELECT *
-         FROM factory_exact_candidate_acceptance_decisions
+      `SELECT * FROM factory_exact_candidate_acceptance_decisions
         WHERE idempotency_key=?`,
     ).get(idempotencyKey) as AcceptanceDecisionRow | undefined;
   }
@@ -997,15 +1042,14 @@ implements ExactCandidateAcceptance {
     row: AcceptanceDecisionRow,
     replayed: boolean,
   ): ExactCandidateAcceptanceDecision {
-    if (
-      row.schema_version !== EXACT_CANDIDATE_ACCEPTANCE_SCHEMA
-    ) {
+    if (row.schema_version !== EXACT_CANDIDATE_ACCEPTANCE_SCHEMA) {
       reject(
         'EXACT_ACCEPTANCE_STORED_DECISION_CORRUPT',
         `decision ${row.id} has unsupported schema '${row.schema_version}'`,
         { decisionId: row.id, schemaVersion: row.schema_version },
       );
     }
+
     let requestSnapshot: unknown;
     try {
       requestSnapshot = JSON.parse(row.request_snapshot);
@@ -1026,14 +1070,14 @@ implements ExactCandidateAcceptance {
         { decisionId: row.id, storedRequestHash: row.request_hash },
       );
     }
+
     const itemRows = this.db.prepare(
       `SELECT ordinal, artifact_id, artifact_type, expected_content_hash,
               ledger_id, disposition, prior_status, prior_accepted_hash,
               prior_drift_state, final_status, final_accepted_hash,
               final_drift_state
          FROM factory_exact_candidate_acceptance_items
-        WHERE decision_id=?
-        ORDER BY ordinal`,
+        WHERE decision_id=? ORDER BY ordinal`,
     ).all(row.id) as AcceptanceItemRow[];
     const items: ExactCandidateAcceptanceItem[] = itemRows.map(item => ({
       artifactId: item.artifact_id,
@@ -1055,6 +1099,7 @@ implements ExactCandidateAcceptance {
         { decisionId: row.id },
       );
     }
+
     const expectedCandidateSetHash = sha256Hex(items.map(item => ({
       artifactId: item.artifactId,
       artifactType: item.artifactType,
@@ -1071,7 +1116,8 @@ implements ExactCandidateAcceptance {
         },
       );
     }
-    const expectedDecisionHashes = [computeDecisionHash({
+
+    const expectedDecisionHash = computeDecisionHash({
       idempotencyKey: row.idempotency_key,
       requestHash: row.request_hash,
       candidateSetHash: row.candidate_set_hash,
@@ -1080,20 +1126,21 @@ implements ExactCandidateAcceptance {
       reviewReceiptCommandId: row.review_receipt_command_id,
       reviewReceiptHash: row.review_receipt_hash,
       items,
-    })];
-    if (!expectedDecisionHashes.includes(row.decision_hash)) {
+    });
+    if (row.decision_hash !== expectedDecisionHash) {
       reject(
         'EXACT_ACCEPTANCE_STORED_DECISION_CORRUPT',
         `decision ${row.id} hash does not match its immutable items`,
         {
           decisionId: row.id,
           storedDecisionHash: row.decision_hash,
-          computedDecisionHashes: expectedDecisionHashes,
+          computedDecisionHash: expectedDecisionHash,
         },
       );
     }
+
     return {
-      schemaVersion: row.schema_version,
+      schemaVersion: EXACT_CANDIDATE_ACCEPTANCE_SCHEMA,
       decisionId: row.id,
       idempotencyKey: row.idempotency_key,
       requestHash: row.request_hash,
@@ -1129,9 +1176,6 @@ implements ExactCandidateAcceptance {
     if (ownsTransaction) {
       this.db.exec('BEGIN IMMEDIATE');
     } else {
-      // A caller may coordinate the gate and its other effects in a wider
-      // transaction. A savepoint preserves this port's all-or-none candidate
-      // set guarantee even when it does not own that outer transaction.
       this.db.exec(`SAVEPOINT ${savepoint}`);
     }
     try {
@@ -1158,10 +1202,7 @@ function normalizeRequest(
   command: AcceptExactCandidatesCommand,
 ): NormalizedAcceptanceRequest {
   if (!command || typeof command !== 'object') {
-    reject(
-      'EXACT_ACCEPTANCE_INVALID_COMMAND',
-      'command must be an object',
-    );
+    reject('EXACT_ACCEPTANCE_INVALID_COMMAND', 'command must be an object');
   }
   const idempotencyKey = requireNonEmpty(
     command.idempotencyKey,
@@ -1182,6 +1223,7 @@ function normalizeRequest(
       'candidates must be a non-empty array',
     );
   }
+
   const seen = new Set<number>();
   const candidates = command.candidates.map((candidate, index) => {
     if (!candidate || typeof candidate !== 'object') {
@@ -1214,6 +1256,7 @@ function normalizeRequest(
       ),
     };
   }).sort((left, right) => left.artifactId - right.artifactId);
+
   const context = command.context ?? {};
   if (!isRecord(context)) {
     reject(
@@ -1221,8 +1264,6 @@ function normalizeRequest(
       'context must be an object when supplied',
     );
   }
-  // Fail here, before acquiring a write lock, if context is not canonically
-  // representable (undefined, bigint, cycles, etc.).
   try {
     canonicalJson(context);
   } catch (error) {
@@ -1231,6 +1272,7 @@ function normalizeRequest(
       `context is not canonical JSON: ${errorMessage(error)}`,
     );
   }
+
   return {
     schemaVersion: EXACT_CANDIDATE_ACCEPTANCE_SCHEMA,
     idempotencyKey,
@@ -1240,6 +1282,19 @@ function normalizeRequest(
     authority,
     reasonCode,
     context,
+  };
+}
+
+function withProducerExecution(
+  request: NormalizedAcceptanceRequest,
+  executionId: string,
+): NormalizedAcceptanceRequest {
+  return {
+    ...request,
+    lineage: {
+      ...request.lineage,
+      executionId: requireNonEmpty(executionId, 'producerExecutionId'),
+    },
   };
 }
 
@@ -1267,10 +1322,7 @@ function normalizeLineage(
   };
 }
 
-function toDecisionItem(
-  item: PreparedCandidate,
-  _ordinal: number,
-): ExactCandidateAcceptanceItem {
+function toDecisionItem(item: PreparedCandidate): ExactCandidateAcceptanceItem {
   return {
     artifactId: item.candidate.artifactId,
     artifactType: item.candidate.artifactType,
@@ -1330,26 +1382,39 @@ function hashReviewReceipt(receipt: ApprovedReviewReceiptRow): string {
   });
 }
 
+function workerDoneResult(
+  receipt: ApprovedReviewReceiptRow,
+): Record<string, unknown> | null {
+  if (receipt.result_json === null) return null;
+  try {
+    const parsed: unknown = JSON.parse(receipt.result_json);
+    return isRecord(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
 function isWorkerDoneReceipt(
   receipt: ApprovedReviewReceiptRow,
   taskId: number,
   expectedStatus: 'review' | 'done',
 ): boolean {
-  if (
-    !receipt.command_id.endsWith(':worker-done:approved')
-    || receipt.result_json === null
-  ) {
-    return false;
-  }
-  let result: unknown;
-  try {
-    result = JSON.parse(receipt.result_json);
-  } catch {
-    return false;
-  }
-  return isRecord(result)
+  if (!receipt.command_id.endsWith(':worker-done:approved')) return false;
+  const result = workerDoneResult(receipt);
+  return result !== null
     && result.completed === taskId
     && result.completed_new_status === expectedStatus;
+}
+
+function isChangesRequestedReceipt(
+  receipt: ApprovedReviewReceiptRow,
+  taskId: number,
+): boolean {
+  if (!receipt.command_id.endsWith(':worker-done:changes_requested')) {
+    return false;
+  }
+  const result = workerDoneResult(receipt);
+  return result !== null && result.completed === taskId;
 }
 
 function requirePositiveInteger(value: unknown, name: string): number {
