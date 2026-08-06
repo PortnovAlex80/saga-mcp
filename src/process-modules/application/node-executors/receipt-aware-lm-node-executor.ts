@@ -9,7 +9,6 @@ import type { LmNodeExecutionPersistence } from './lm-node-executor.js';
 export type AcceptedWorkerDoneStatus = 'review' | 'done' | 'todo' | 'blocked';
 
 interface AcceptedWorkerDoneReceipt {
-  readonly commandId: string;
   readonly completedNewStatus: AcceptedWorkerDoneStatus;
 }
 
@@ -57,36 +56,39 @@ export class ReceiptAwareLmNodeExecutor implements NodeExecutor {
       }
     }
 
-    return {
+    const corrected: NodeExecutionResult = {
       ...result,
       runtimeEvent,
-      receipt: result.receipt
-        ? { ...result.receipt, runtimeStatus: runtimeEvent }
-        : undefined,
-      driverReceipt: result.driverReceipt
-        ? { ...result.driverReceipt, runtimeEvent }
-        : undefined,
     };
+    if (result.receipt) {
+      corrected.receipt = {
+        ...result.receipt,
+        runtimeStatus: runtimeEvent,
+      };
+    }
+    if (result.driverReceipt) {
+      corrected.driverReceipt = {
+        ...result.driverReceipt,
+        runtimeEvent,
+      };
+    }
+    return corrected;
   }
 
   private readAcceptedWorkerDone(
     executionId: string,
   ): AcceptedWorkerDoneReceipt | null {
-    let row:
-      | { command_id: string; reply_json: string }
-      | undefined;
+    let row: { reply_json: string } | undefined;
     try {
       row = this.db.prepare(
-        `SELECT command_id, reply_json
+        `SELECT reply_json
            FROM command_receipts
           WHERE execution_id=?
             AND command_kind='worker_done'
             AND accepted=1
           ORDER BY accepted_at DESC, rowid DESC
           LIMIT 1`,
-      ).get(executionId) as
-        | { command_id: string; reply_json: string }
-        | undefined;
+      ).get(executionId) as { reply_json: string } | undefined;
     } catch (error) {
       if (error instanceof Error && error.message.includes('no such table')) {
         return null;
@@ -108,10 +110,7 @@ export class ReceiptAwareLmNodeExecutor implements NodeExecutor {
       ) {
         return null;
       }
-      return {
-        commandId: row.command_id,
-        completedNewStatus: status,
-      };
+      return { completedNewStatus: status };
     } catch {
       return null;
     }
