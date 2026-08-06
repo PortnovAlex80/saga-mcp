@@ -52,12 +52,6 @@ interface RunnerLaunchSpec {
   readonly resolveSkill: (skillName: string) => string | null;
 }
 
-/**
- * ClaudeBoardRunnerOptions is exported from the .mjs runner without a formal
- * type; we re-declare the shape here (as a superset) so the factory can add
- * the P5b resolveProfile callback without the .mjs file needing TypeScript
- * annotations.
- */
 type RunnerOptions = ClaudeBoardRunnerOptions & {
   resolveProfile?: (
     taskKind: string | null | undefined,
@@ -80,47 +74,85 @@ type RunnerOptions = ClaudeBoardRunnerOptions & {
   }) => void;
 };
 
-export interface PinnedClaudeWorkerExecutorFactoryOptions {
-  spawn?: typeof nodeSpawn;
-  modelRouteReader: WorkerModelRouteReader;
-  /**
-   * Pinned-package workspace resolution (W13-AUDIT §18.9 / bug #4). When BOTH
-   * this registry and {@link resolveInstallationId} are provided and a task
-   * resolves to a non-null installation pin, the workspace is materialized
-   * from the pinned package store (immutable bytes) instead of the legacy
-   * workspaceRoot tree lookup. Absent or null pin → legacy fallback.
-   */
-  packageRegistry: WorkspacePackageRegistry;
-  /** Verified immutable package snapshots keyed by package digest. */
-  packageSnapshots: ReadonlyMap<string, StoredModulePackage>;
-  /**
-   * Resolves the pinned module installation id for a claimed assignment.
-   * Typically reads task.metadata.process_run_id → factory_process_runs.installation_id.
-   * Returns null when the run is unpinned (legacy path).
-   */
-  resolveInstallationId: (assignment: RunnerAssignment) => ModuleInstallationId | null;
-  /** Reads the denormalized package digest frozen on the same ProcessRun. */
-  resolvePackageDigest: (assignment: RunnerAssignment) => string | null;
-  /**
-   * Resolves the flow node id for a claimed assignment (needed by
-   * buildWorkspaceProjection to locate the LM node's execution profile).
-   * Typically reads task.metadata.process_node_id.
-   */
-  resolveNodeId: (assignment: RunnerAssignment) => string | null;
-  /**
-   * Module-owned semantic template preparers, selected by immutable module
-   * reference. The host owns IO and persistence; preparers only transform
-   * declared template contents from the frozen node input.
-   */
-  workspaceTemplatePreparers?: ProcessWorkspaceTemplatePreparerRegistry;
-  /**
-   * CONVEYOR Wave 9 — the atomic card-assignment port is now REQUIRED. The
-   * card is assigned + fenced in one transaction by the infrastructure before
-   * the worker is launched; the legacy worker_next fallback (worker-driven
-   * claim) has been removed. Every caller (dispatch-loop + LM-node lifecycle)
-   * wires this port via the composition root.
-   */
-  workAssignment: WorkAssignmentPort;
+const WORKER_DONE_STATUSES = new Set(['review', 'done', 'todo', 'blocked']);
+
+interface AcceptedWorkerDone {
+  readonly commandId: string;
+  readonly completedNewStatus: 'review' | 'done' | 'todo' | 'blocked';
+}
+
+/**
+ * Exact durable completion evidence for one managed execution.
+ *
+ * The card projection is deliberately not used as the completion oracle: a
+ * successful worker_done can move the authoritative Workplace to verifying,
+ * which reverse-projects the task back to in_progress while the OS process is
+ * still closing.
+ */
+function readAcceptedWorkerDone(
+  executionId: string | null | undefined,
+): AcceptedWorkerDone | null {
+  if (!executionId) return null;
+  const db = getDb();
+  let row:
+    | { command_id: string; reply_json: string }
+    | undefined;
+  try {
+    row = db.prepare(
+      `SELECT command_id, reply_json
+         FROM command_receipts
+        WHERE execution_id=?
+          AND command_kind='worker_done'
+          AND accepted=1
+        ORDER BY accepted_at DESC, rowid DESC
+        LIMIT 1`,
+    ).get(executionId) as
+      | { command_id: string; reply_json: string }
+      | undefined;
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('no such table')) return null;
+    throw error;
+  }
+  if (!row) return null;
+  try {
+    const reply = JSON.parse(row.reply_json) as { completed_new_status?: unknown };
+    const status = reply.completed_new_status;
+    if (!WORKER_DONE_STATUSES.has(status)) return null;
+    return {
+      commandId: row.command_id,
+      completedNewStatus: status as AcceptedWorkerDone['completedNewStatus'],
+    };
+  } catch {
+    return null;
+  }
+}
+
+function readRunnerTaskState(taskId: number): unknown {
+  const task = getDb().prepare(
+    `SELECT id, status, assigned_to, tags, integration_state,
+            current_execution_id
+       FROM tasks WHERE id=?`,
+  ).get(taskId) as
+    | {
+        id: number;
+        status: string;
+        assigned_to: string | null;
+        tags: string;
+        integration_state: string | null;
+        current_execution_id: string | null;
+      }
+    | undefined;
+  if (!task) return task;
+
+  const completion = readAcceptedWorkerDone(task.current_execution_id);
+  if (!completion) return task;
+
+  return {
+    ...task,
+    status: completion.completedNewStatus,
+    assigned_to: null,
+    worker_done_command_id: completion.commandId,
+  };
 }
 
 function sha256(bytes: Uint8Array): string {
@@ -139,11 +171,6 @@ function pinnedSkillResource(
   return slots.find(([name]) => name === skillName)?.[1];
 }
 
-/**
- * Materialize one already-verified package skill into a digest-scoped runtime
- * cache. The runner needs a filesystem path because it inlines SKILL.md into
- * the Claude prompt; it never reads mutable repository skill paths here.
- */
 function materializePinnedSkill(
   projection: WorkspaceProjection,
   storedPackage: StoredModulePackage,
@@ -175,12 +202,18 @@ function materializePinnedSkill(
   return target;
 }
 
-/**
- * Concrete Saga 2 worker-runtime factory.
- *
- * ClaudeBoardRunner callbacks, MCP paths and provider selection live here.
- * Lifecycle mutations are delegated to the lifecycle boundary.
- */
+export interface PinnedClaudeWorkerExecutorFactoryOptions {
+  spawn?: typeof nodeSpawn;
+  modelRouteReader: WorkerModelRouteReader;
+  packageRegistry: WorkspacePackageRegistry;
+  packageSnapshots: ReadonlyMap<string, StoredModulePackage>;
+  resolveInstallationId: (assignment: RunnerAssignment) => ModuleInstallationId | null;
+  resolvePackageDigest: (assignment: RunnerAssignment) => string | null;
+  resolveNodeId: (assignment: RunnerAssignment) => string | null;
+  workspaceTemplatePreparers?: ProcessWorkspaceTemplatePreparerRegistry;
+  workAssignment: WorkAssignmentPort;
+}
+
 export function createPinnedClaudeWorkerExecutorFactory(
   options: PinnedClaudeWorkerExecutorFactoryOptions,
 ): WorkerExecutorFactory {
@@ -191,12 +224,7 @@ export function createPinnedClaudeWorkerExecutorFactory(
   const resolvePackageDigestFn = options.resolvePackageDigest;
   const resolveNodeIdFn = options.resolveNodeId;
   const workspaceTemplatePreparers = options.workspaceTemplatePreparers;
-  // Slice 1 Zones 1-4: the WorkAssignmentPort (options.workAssignment) stays
-  // required on the factory options, but the factory no longer consumes it
-  // directly. Callers pre-assign via their own WorkAssignmentPort before
-  // calling start() and pass the resulting AssignedWork as `assignment`; the
-  // runner launches directly on it. The port on the options interface is the
-  // contract that every caller MUST wire an assignment-capable infrastructure.
+
   return context => {
     const resolvePinnedPackage = (
       assignment: RunnerAssignment,
@@ -250,24 +278,9 @@ export function createPinnedClaudeWorkerExecutorFactory(
     };
 
     const runnerOptions: RunnerOptions = {
-      // Slice 1 Zones 1-4 (conveyor refactor — node-breaker): the claimTask
-      // callback is GONE. The runner is strictly one-card: it launches the
-      // worker directly on the pre-assigned AssignedWork handed to start() and
-      // never calls back into the factory for a claim. Card assignment +
-      // fencing happens atomically BEFORE start() via the WorkAssignmentPort
-      // (wired by every caller — see `workAssignment` field above, which STAYS
-      // required). The runner's assignmentFromAssignedWork() rebuilds the
-      // launch()-shaped assignment from the typed AssignedWork using the
-      // getTask callback below.
       getProject: (id: number) =>
         getDb().prepare('SELECT * FROM projects WHERE id=?').get(id),
-      getTaskState: (taskId: number) =>
-        getDb().prepare(
-          'SELECT id, status, assigned_to, tags, integration_state FROM tasks WHERE id=?',
-        ).get(taskId),
-      // Pre-assigned-card path (WORK-ASSIGNMENT-REFACTOR-SPEC §4 Wave B):
-      // full task row for rebuilding the launch()-shaped assignment from an
-      // AssignedWork without an in-process claim.
+      getTaskState: (taskId: number) => readRunnerTaskState(taskId),
       getTask: (taskId: number) =>
         getDb().prepare('SELECT * FROM tasks WHERE id=?').get(taskId),
       recoverAssignment: (command: {
@@ -280,6 +293,11 @@ export function createPinnedClaudeWorkerExecutorFactory(
         if (!command.executionId) {
           throw new Error('EXECUTION_FENCE_REQUIRED: cannot recover an unfenced assignment');
         }
+        // Defense in depth. getTaskState normally routes this close through the
+        // runner's completed/changes_requested branch. If a stale in-memory
+        // snapshot still reaches recovery, the durable receipt wins and the
+        // accepted execution is never marked lost.
+        if (readAcceptedWorkerDone(command.executionId)) return false;
         return releaseExecutionAtomically(getDb(), {
           executionId: command.executionId,
           terminalState: 'lost',
@@ -296,12 +314,6 @@ export function createPinnedClaudeWorkerExecutorFactory(
       heartbeatLog: context.heartbeatLog,
       lmstudioBaseUrl: context.lmStudioUrl,
       getActiveModel: modelRouteReader,
-      // P5b: resolve the Process Module execution profile for each task's
-      // task_kind. The prompt builder uses this to inline BOTH the protocol
-      // skill (saga-process-module-worker-protocol) and the semantic role
-      // skill. When the task_kind does not match any module profile, the
-      // resolver returns null and the prompt builder falls back to the legacy
-      // single-skill path.
       resolveProfile: (taskKind: string | null | undefined) =>
         resolveExecutionProfile(taskKind),
       resolveLaunchSpec: input => {
@@ -330,8 +342,6 @@ export function createPinnedClaudeWorkerExecutorFactory(
           ),
         };
       },
-      // Materialize the descriptor-owned tracker/templates only after the
-      // exact task has been claimed, when execution_id and worker_id are known.
       prepareWorkspace: input => {
         const task = input.assignment.task;
         const epicId = Number(task.epic_id ?? context.epicId ?? 0);
@@ -341,12 +351,6 @@ export function createPinnedClaudeWorkerExecutorFactory(
           );
         }
 
-        // saga4 cutover (LEGO-CONTRACTS.md §"Слой 1: СТОЛ"): a non-null
-        // installation pin is a STRICT integrity boundary. The legacy fallback
-        // path (materialize from the workspace tree) is GONE — every Process
-        // Module execution MUST resolve from an immutable pinned package
-        // snapshot, enforced by the WorkplaceDesk contract. A task with no
-        // pinned package is a configuration error, not a silent fallback.
         const pinned = resolvePinnedPackage(input.assignment);
         if (!pinned) {
           throw new Error(
@@ -386,7 +390,6 @@ export function createPinnedClaudeWorkerExecutorFactory(
           };
         }
 
-        let resolvedWorkspace: WorkplaceDesk;
         const pinnedModule = module;
         const pinnedProfile = pinnedModule.executionProfiles.find(
           profile => profile.id === pinned.projection.executionProfileId,
@@ -396,7 +399,7 @@ export function createPinnedClaudeWorkerExecutorFactory(
             `PINNED_EXECUTION_PROFILE_MISSING: ${pinned.projection.executionProfileId}`,
           );
         }
-        resolvedWorkspace = materializePinnedWorkspace({
+        let resolvedWorkspace = materializePinnedWorkspace({
           projection: pinned.projection,
           storedPackage: pinned.storedPackage,
           workspaceRoot: input.workspaceRoot,
@@ -422,7 +425,7 @@ export function createPinnedClaudeWorkerExecutorFactory(
             epicId,
             moduleRef: resolvedWorkspace.moduleRef,
             nodeId: processNodeId,
-            packageDigest: pinned?.projection.packageDigest ?? null,
+            packageDigest: pinned.projection.packageDigest,
             inputHash: typeof metadata.process_node_input_hash === 'string'
               ? metadata.process_node_input_hash
               : typeof metadata.process_input_hash === 'string'
