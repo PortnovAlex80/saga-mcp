@@ -5,6 +5,7 @@ import { ensureFactoryScenarioInstallationSchema } from './process-modules/insta
 import { ensureFactoryProtocolRunSchema } from './process-modules/persistence/sqlite-protocol-run-repository.js';
 import { ensureFactoryCallInstanceSchema } from './process-modules/persistence/sqlite-call-instance-repository.js';
 import { ensureAuthorityBindingInvariant } from './infrastructure/projections/workplace-projector.js';
+import { initSubmissionRegistries } from './process-modules/application/submission-registries.js';
 
 let db: Database.Database | null = null;
 
@@ -105,6 +106,11 @@ export function getDb(): Database.Database {
         + `${authorityBinding.taskProjectionsRebuilt} task projection(s)`,
     );
   }
+
+  // Mandatory node submission validation: register policy declarations +
+  // validators for every LM-node. worker_done reads these to enforce the
+  // domain contract at the submission boundary (shift-left), not post-hoc.
+  initSubmissionRegistries(db);
 
   // Lazy schema for factory_* process-module tables. These are created here
   // (eagerly at DB-open time) AND in their respective repository constructors

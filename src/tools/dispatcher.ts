@@ -7,6 +7,8 @@ import { reevaluateDownstream } from './tasks.js';
 import type { Task, ToolHandler } from '../types.js';
 import { releaseExecutionAtomically } from '../lifecycle/atomic-release.js';
 import { reserveTaskExecution, releaseTaskExecution } from './conveyor-runtime-helper.js';
+import { getSubmissionPolicyRegistry, getSubmissionValidatorRegistry } from '../process-modules/application/submission-registries.js';
+import { SubmissionValidationError } from '../process-modules/application/node-submission-policy.js';
 // CONVEYOR #7: the atomic assignment core lives in lifecycle/work-assignment-core.ts.
 // This module imports it for internal use AND re-exports it (below) so existing
 // consumers (tasks.ts, factory-* tools) keep their './dispatcher.js' imports.
@@ -512,6 +514,17 @@ function handleWorkerDone(args: Record<string, unknown>): {
       task as Task & { current_execution_id?: string | null },
       args.execution_id,
     );
+
+    // Submission validation gate (shift-left). For author completion only
+    // (in_progress → review/done), NOT for reviewer verdicts. Resolves the
+    // authoritative execution binding, looks up the node's declared submission
+    // policy, and — if `required` — runs the module-owned validator BEFORE the
+    // task transitions. Rejection leaves the worker as execution owner and
+    // throws SubmissionValidationError with structured gaps so the LM sees
+    // exactly what to fix without burning a recovery epoch.
+    if (task.status === 'in_progress') {
+      validateSubmissionIfRequired(db, task, args.execution_id as string | undefined);
+    }
 
     // 2. Следующий статус по ТЕКУЩЕМУ статусу (он сам = флаг цикла) + verdict.
     //    T-013: для verification.ac — review-loop escape. Если verifier уже
@@ -1636,6 +1649,106 @@ export const definitions: Tool[] = [
     },
   },
 ];
+
+/**
+ * Resolve the authoritative execution binding and run the node's submission
+ * validator if one is declared. The binding comes from the execution chain
+ * (execution_id → worker_executions → task), NOT from task.metadata as
+ * authority — metadata is a consistency read. If the registries are not wired
+ * (tests that don't exercise validation), this is a no-op.
+ */
+function validateSubmissionIfRequired(
+  db: Database.Database,
+  task: Task,
+  executionId: string | undefined,
+): void {
+  const policyRegistry = getSubmissionPolicyRegistry();
+  const validatorRegistry = getSubmissionValidatorRegistry();
+  if (!policyRegistry || !validatorRegistry) return; // not wired — legacy mode
+
+  // Resolve binding from task.metadata (consistency read; the authority is
+  // the execution fence that was already checked by assertExecutionFence).
+  let metadata: Record<string, unknown> = {};
+  try {
+    metadata = typeof task.metadata === 'string'
+      ? JSON.parse(task.metadata)
+      : (task.metadata as Record<string, unknown>) ?? {};
+  } catch { /* malformed — treat as no binding */ }
+
+  const processRunId = metadata['process_run_id'];
+  const moduleRef = metadata['process_module_ref'];
+  const nodeId = metadata['process_node_id'];
+  if (
+    typeof processRunId !== 'number'
+    || typeof moduleRef !== 'string'
+    || typeof nodeId !== 'string'
+  ) {
+    return; // not a factory-managed task (no process binding) — legacy mode
+  }
+
+  const policy = policyRegistry.resolve(moduleRef, nodeId);
+  if (!policy) {
+    // Every LM-node MUST declare a policy. The absence of a declaration is a
+    // configuration error, not a silent bypass.
+    throw new Error(
+      `SUBMISSION_VALIDATION_POLICY_MISSING: ${moduleRef}/${nodeId}`,
+    );
+  }
+
+  if (policy.mode === 'none') return; // explicitly no validation — allowed
+  if (policy.mode === 'legacy-unvalidated') {
+    // Allowed with telemetry warning. Migration tracked by ticket.
+    console.warn(
+      `[submission] legacy-unvalidated: ${moduleRef}/${nodeId} `
+        + `(${policy.migrationTicket})`,
+    );
+    return;
+  }
+
+  // mode === 'required'
+  const validator = validatorRegistry.resolve(policy.validatorId);
+  if (!validator) {
+    throw new Error(`SUBMISSION_VALIDATOR_MISSING: ${policy.validatorId}`);
+  }
+
+  const result = validator.validate({
+    processRunId,
+    moduleRef,
+    nodeId,
+    executionId: executionId ?? task.current_execution_id ?? '',
+    taskId: task.id,
+    epicId: task.epic_id,
+    projectId: (db.prepare('SELECT e.project_id AS project_id FROM epics e WHERE e.id=?').get(task.epic_id) as { project_id?: number } | undefined)?.project_id ?? 0,
+  });
+
+  if (!result.accepted) {
+    throw new SubmissionValidationError(result.code, result.gaps);
+  }
+
+  // Persist the receipt — durable proof validation passed. The receipt and
+  // the task transition run in the same transaction (the caller wraps
+  // handleWorkerDone in withImmediateTransaction).
+  const receipt = result.receipt;
+  db.prepare(
+    `INSERT INTO factory_submission_validation_receipts
+       (validator_id, validator_version, process_run_id, module_ref, node_id,
+        execution_id, task_id, input_snapshot_hash, artifact_ids, trace_ids,
+        validated_set_digest)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(
+    receipt.validatorId,
+    receipt.validatorVersion,
+    receipt.processRunId,
+    receipt.moduleRef,
+    receipt.nodeId,
+    receipt.executionId,
+    receipt.taskId,
+    receipt.inputSnapshotHash,
+    JSON.stringify(receipt.artifactIds),
+    JSON.stringify(receipt.traceIds),
+    receipt.validatedSetDigest,
+  );
+}
 
 export const handlers: Record<string, ToolHandler> = {
   worker_next: handleWorkerNext,

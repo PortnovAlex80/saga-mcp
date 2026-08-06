@@ -146,7 +146,7 @@ interface ExecutionWrites {
   traces: readonly FormalizationTraceSnapshot[];
 }
 
-interface ContractSnapshot {
+export interface ContractSnapshot {
   artifacts: readonly FormalizationArtifactSnapshot[];
   traces: readonly FormalizationTraceSnapshot[];
   targetArtifacts: readonly FormalizationArtifactSnapshot[];
@@ -1245,7 +1245,7 @@ function matchesNodeFence(
   );
 }
 
-function buildContractSnapshot(
+export function buildContractSnapshot(
   graph: FormalizationCanonicalGraphPort,
   artifacts: readonly FormalizationArtifactSnapshot[],
 ): ContractSnapshot {
@@ -1340,7 +1340,7 @@ function snapshotForOwnedArtifacts(
  * must stay aggregated-string over the exact snapshot (its callers bind the
  * aggregated `gap` string into manifest results).
  */
-function findContractGap(
+export function findContractGap(
   snapshot: ContractSnapshot,
   required: {
     product?: boolean;

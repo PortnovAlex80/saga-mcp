@@ -1414,6 +1414,30 @@ CREATE TRIGGER IF NOT EXISTS trg_factory_compat_no_delete
   BEFORE DELETE ON factory_definition_compatibility_receipts BEGIN
     SELECT RAISE(ABORT, 'factory compatibility receipts are immutable');
   END;
+
+-- Node submission validation receipts.
+-- Persisted when a 'required' submission validator accepts a worker's
+-- submission, in the same transaction as the task transition. Proves that
+-- the validator ran and what exact artifact+trace set it examined.
+CREATE TABLE IF NOT EXISTS factory_submission_validation_receipts (
+  id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+  validator_id        TEXT NOT NULL,
+  validator_version   TEXT NOT NULL,
+  process_run_id      INTEGER NOT NULL,
+  module_ref          TEXT NOT NULL,
+  node_id             TEXT NOT NULL,
+  execution_id        TEXT NOT NULL,
+  task_id             INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  input_snapshot_hash TEXT NOT NULL,
+  artifact_ids        TEXT NOT NULL,
+  trace_ids           TEXT NOT NULL,
+  validated_set_digest TEXT NOT NULL,
+  validated_at        TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_submission_receipts_task
+  ON factory_submission_validation_receipts(task_id);
+CREATE INDEX IF NOT EXISTS idx_submission_receipts_run_node
+  ON factory_submission_validation_receipts(process_run_id, node_id);
 `;
 
 // ----------------------------------------------------------------------------
