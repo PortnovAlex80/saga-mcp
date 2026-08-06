@@ -4,6 +4,7 @@ import { ensureFactoryModuleInstallationSchema } from './process-modules/install
 import { ensureFactoryScenarioInstallationSchema } from './process-modules/installation/persistence/sqlite-scenario-installation-repository.js';
 import { ensureFactoryProtocolRunSchema } from './process-modules/persistence/sqlite-protocol-run-repository.js';
 import { ensureFactoryCallInstanceSchema } from './process-modules/persistence/sqlite-call-instance-repository.js';
+import { ensureAuthorityBindingInvariant } from './infrastructure/projections/workplace-projector.js';
 
 let db: Database.Database | null = null;
 
@@ -73,6 +74,22 @@ export function getDb(): Database.Database {
 
   // Core schema — all tables, columns, indexes, CHECK constraints.
   db.exec(SCHEMA_SQL);
+
+  // WorkIntent conclusion, Workplace terminal state and tasks.status projection
+  // are one authority-binding transaction. The installer creates the durable
+  // trigger and reconciles split-brain rows left by the pre-invariant runtime
+  // before any dispatcher or lifecycle resume can inspect the queue.
+  const authorityBinding = ensureAuthorityBindingInvariant(db);
+  if (
+    authorityBinding.workplacesAdvanced > 0
+    || authorityBinding.taskProjectionsRebuilt > 0
+  ) {
+    console.warn(
+      '[factory] reconciled concluded authority bindings: '
+        + `${authorityBinding.workplacesAdvanced} workplace(s), `
+        + `${authorityBinding.taskProjectionsRebuilt} task projection(s)`,
+    );
+  }
 
   // Lazy schema for factory_* process-module tables. These are created here
   // (eagerly at DB-open time) AND in their respective repository constructors
