@@ -29,6 +29,20 @@ function runtime(db: Database.Database): ConveyorRuntime {
   return cachedRuntime!;
 }
 
+/** Map the status selected by reviewer worker_done to the domain event. */
+export function reviewerCompletionEvent(taskStatus: string): ProductionCellEvent {
+  if (taskStatus === 'done') {
+    return { kind: 'reviewer-verdict', verdict: 'accepted' };
+  }
+  if (taskStatus === 'todo') {
+    return { kind: 'reviewer-verdict', verdict: 'defect-proven' };
+  }
+  if (taskStatus === 'blocked') {
+    return { kind: 'human-required' };
+  }
+  return { kind: 'reviewer-verdict', verdict: 'invalid-output' };
+}
+
 /**
  * Bind a task to its workplace and reserve it for the given execution.
  *
@@ -124,18 +138,10 @@ export function releaseTaskExecution(db: Database.Database, input: {
         );
       }
 
-      let event: ProductionCellEvent;
-      if (input.taskStatus === 'done') {
-        event = { kind: 'reviewer-verdict', verdict: 'accepted' };
-      } else if (input.taskStatus === 'todo') {
-        event = { kind: 'reviewer-verdict', verdict: 'defect-proven' };
-      } else if (input.taskStatus === 'blocked') {
-        event = { kind: 'human-required' };
-      } else {
-        event = { kind: 'reviewer-verdict', verdict: 'invalid-output' };
-      }
-
-      const target = reduceWorkplaceEvent(current, event);
+      const target = reduceWorkplaceEvent(
+        current,
+        reviewerCompletionEvent(input.taskStatus),
+      );
       const applied = repo.applyTransitionInTx({
         workplaceRef: ref,
         expectedRevision: current.revision,
