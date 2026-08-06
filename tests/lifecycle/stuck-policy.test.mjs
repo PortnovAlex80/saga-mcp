@@ -174,15 +174,24 @@ const CASES = [
     expected: { kind: 'RELEASE', terminal: 'lost', reasonMatches: /remote lease expired/ },
   },
   {
+    // Wave 8 HIGH 5A — alive + lease expired → TERMINATE (verified kill),
+    // NOT RELEASE. Releasing without killing would let a second worker claim
+    // the same card while the first process is still spinning. The mechanism
+    // handles TERMINATE by calling probe.killVerified BEFORE
+    // releaseExecutionAtomically. This dominates legitimacy (ownsActiveTask)
+    // and progress-silence: the supervisor authority is gone.
     name: 'alive + lease expired → TERMINATE (verified kill, not release)',
     input: input({
-      leaseExpiresAtMs: NOW - 1000,
+      leaseExpiresAtMs: NOW - 1000, // lease expired
       isAlive: true,
-      ownsActiveTask: true,
+      ownsActiveTask: true, // legitimacy does NOT save it — lease expiry wins
     }),
     expected: { kind: 'TERMINATE', reasonMatches: /lease expired.*verified PID identity/ },
   },
   {
+    // Wave 8 HIGH 5A corner: alive + lease expired + NOT owning the task still
+    // terminates (not the generic illegitimate TERMINATE — the lease-expiry
+    // reason is carried so the audit trail is precise).
     name: 'alive + lease expired + illegitimate → TERMINATE (lease-expiry reason)',
     input: input({
       leaseExpiresAtMs: NOW - 1000,
@@ -195,11 +204,11 @@ const CASES = [
     name: 'legitimate finishing phase → KEEP',
     input: input({
       phase: 'finishing',
-      phaseUpdatedAtMs: NOW - 5_000,
+      phaseUpdatedAtMs: NOW - 5_000, // 5s into finishing — under FINISH_GRACE_MS
       legitimateFinishing: true,
       ownsActiveTask: false,
     }),
-    expected: { kind: 'KEEP', reasonMatches: /finishing process/ },
+    expected: { kind: 'KEEP', reasonMatches: /allowed lifecycle phase/ },
   },
 ];
 
@@ -224,9 +233,13 @@ for (const c of CASES) {
 // ---------------------------------------------------------------------------
 
 test('stuck-policy: cancel 30s in kill grace + NOT legit → TERMINATE (alive-illegit final path)', () => {
+  // Inside the kill grace, stage 3 does not fire (cancel age < CANCEL_GRACE_MS).
+  // But the row is alive and NOT legitimate, so the final-alive-illegit path
+  // emits TERMINATE. (The mechanism then attempts killVerified; on failure KEEP.)
+  // This is the subtle fall-through preserved for byte-identity.
   const action = decideStuckAction(input({
     stuckState: 'cancel_requested',
-    cancelRequestedAtMs: NOW - 30_000,
+    cancelRequestedAtMs: NOW - 30_000, // 30s — kill grace NOT met
     ownsActiveTask: false,
     legitimateFinishing: false,
     legitimateIntegration: false,
@@ -236,9 +249,16 @@ test('stuck-policy: cancel 30s in kill grace + NOT legit → TERMINATE (alive-il
 });
 
 test('stuck-policy: freshly suspected + NOT legit + alive → TERMINATE (fall-through, not MARK)', () => {
+  // Progress silent 11 min on a FRESH row (stuckState null). The procedural
+  // code freshly stamps suspected_stuck_at=now IN MEMORY, which makes the
+  // stage-2 `since = nowMs`, so the cancel grace is NOT met on this sweep (age
+  // 0). It then FALLS THROUGH to the legitimacy check. Because the row does not
+  // own an allowed phase, the final-alive kill path emits TERMINATE. The policy
+  // mirrors that (does NOT short-circuit MARK_SUSPECTED here — MARK is only for
+  // the legitimate case).
   const action = decideStuckAction(input({
-    progressAtMs: NOW - (STUCK_SILENCE_MS + 60_000),
-    suspectedStuckAtMs: 0,
+    progressAtMs: NOW - (STUCK_SILENCE_MS + 60_000), // 11 min silent
+    suspectedStuckAtMs: 0, // fresh row — not yet suspected
     stuckState: null,
     ownsActiveTask: false,
     legitimateFinishing: false,
@@ -249,9 +269,11 @@ test('stuck-policy: freshly suspected + NOT legit + alive → TERMINATE (fall-th
 });
 
 test('stuck-policy: suspected just under cancel grace + owns task → MARK_SUSPECTED', () => {
+  // Progress silent 11 min, suspected stamped 4 min ago (under 5 min cancel
+  // grace). Owns the task → MARK_SUSPECTED (legitimate → KEEP path).
   const action = decideStuckAction(input({
-    progressAtMs: NOW - (STUCK_SILENCE_MS + 60_000),
-    suspectedStuckAtMs: NOW - (4 * 60 * 1000),
+    progressAtMs: NOW - (STUCK_SILENCE_MS + 60_000), // 11 min silent
+    suspectedStuckAtMs: NOW - (4 * 60 * 1000), // suspected 4 min ago
     stuckState: 'suspected_stuck',
     ownsActiveTask: true,
   }));
@@ -261,7 +283,7 @@ test('stuck-policy: suspected just under cancel grace + owns task → MARK_SUSPE
 test('stuck-policy: dead local process (non-reserved) → RELEASE(lost) reason cites OS process', () => {
   const action = decideStuckAction(input({
     state: 'running',
-    isAlive: false,
+    isAlive: false, // dead process
     ownsActiveTask: false,
   }));
   assert.equal(action.kind, 'RELEASE');
@@ -270,10 +292,13 @@ test('stuck-policy: dead local process (non-reserved) → RELEASE(lost) reason c
 });
 
 test('stuck-policy: reserved + lease expired (boot not timed out) → RELEASE(spawn_failed) lease reason', () => {
+  // Reserved row whose lease expired before the 60s boot timeout: the lease
+  // gate fires first and the terminal is still spawn_failed (reserved state),
+  // but the reason cites the lease, not the boot timeout.
   const action = decideStuckAction(input({
     state: 'reserved',
-    reservedAtMs: NOW - 5_000,
-    leaseExpiresAtMs: NOW - 1_000,
+    reservedAtMs: NOW - 5_000, // 5s — boot NOT timed out
+    leaseExpiresAtMs: NOW - 1_000, // but lease expired
     isAlive: false,
     ownsActiveTask: false,
   }));
@@ -282,7 +307,9 @@ test('stuck-policy: reserved + lease expired (boot not timed out) → RELEASE(sp
   assert.match(action.reason, /lease expired.*during spawn reservation/);
 });
 
-test('stuck-policy: finishing phase past FINISH_GRACE with no recent progress → TERMINATE', () => {
+test('stuck-policy: finishing phase past FINISH_GRACE → TERMINATE (no longer legit)', () => {
+  // A finishing execution whose phase and progress ages exceeded
+  // FINISH_GRACE_MS is no longer legitimate → alive-illegit TERMINATE.
   const stale = NOW - (FINISH_GRACE_MS + 5_000);
   const action = decideStuckAction(input({
     phase: 'finishing',
@@ -294,20 +321,19 @@ test('stuck-policy: finishing phase past FINISH_GRACE with no recent progress �
   assert.equal(action.kind, 'TERMINATE');
 });
 
-test('incident: fence-free finishing worker with 34s-old phase and 3s-old progress is kept', () => {
+test('incident: fence-free finishing worker with 34s-old phase and 3s-old progress → KEEP', () => {
   const action = decideStuckAction(input({
     phase: 'finishing',
     phaseUpdatedAtMs: NOW - 34_000,
     progressAtMs: NOW - 3_000,
     legitimateFinishing: false,
     ownsActiveTask: false,
-    leaseExpiresAtMs: NOW + 60_000,
   }));
   assert.equal(action.kind, 'KEEP');
-  assert.match(action.reason, /finishing process.*activity grace/);
+  assert.match(action.reason, /worker_done finishing activity grace/);
 });
 
-test('completed finishing grace may outlive the released task lease while progress remains fresh', () => {
+test('incident: completed finishing grace survives an expired task lease while progress is fresh', () => {
   const action = decideStuckAction(input({
     phase: 'finishing',
     phaseUpdatedAtMs: NOW - 34_000,
@@ -317,7 +343,7 @@ test('completed finishing grace may outlive the released task lease while progre
     leaseExpiresAtMs: NOW - 1_000,
   }));
   assert.equal(action.kind, 'KEEP');
-  assert.match(action.reason, /finishing process.*activity grace/);
+  assert.match(action.reason, /worker_done finishing activity grace/);
 });
 
 test('stuck-policy: legitimate integrating phase → KEEP', () => {
@@ -339,13 +365,24 @@ test('stuck-policy is pure: same input ⇒ same action (determinism)', () => {
 
 // ---------------------------------------------------------------------------
 // Wave 8 HIGH 5B — PID-reuse escalation (scenario 16 grace bound).
+//
+// When the kill grace has elapsed in cancel_requested BUT the PID birth token
+// no longer matches (the OS recycled the PID), the policy refuses to kill an
+// unrelated process. The card is left fenced for a human on THIS sweep
+// (TERMINATE_BUT_PID_REUSE). But after PID_REUSE_GRACE_MS elapses since
+// cancel_requested_at, the policy ESCALATES to RELEASE: the process is either
+// dead or stolen, but the card MUST return to the queue eventually — a
+// reused-PID card cannot lock the queue forever.
 // ---------------------------------------------------------------------------
 
 test('HIGH 5B: PID reuse + grace NOT exhausted → KEEP (TERMINATE_BUT_PID_REUSE)', () => {
+  // cancel_requested 90s ago (past the 60s kill grace, but only 90s into the
+  // 10-min PID-reuse grace). PID is alive but token differs. The row is left
+  // for a human — the reuse grace has not elapsed.
   const action = decideStuckAction(input({
     stuckState: 'cancel_requested',
-    cancelRequestedAtMs: NOW - (CANCEL_GRACE_MS + 30_000),
-    birthTokenMatches: false,
+    cancelRequestedAtMs: NOW - (CANCEL_GRACE_MS + 30_000), // 90s — kill grace met
+    birthTokenMatches: false, // PID reused (scenario 16)
     ownsActiveTask: false,
   }));
   assert.equal(action.kind, 'TERMINATE_BUT_PID_REUSE');
@@ -353,10 +390,14 @@ test('HIGH 5B: PID reuse + grace NOT exhausted → KEEP (TERMINATE_BUT_PID_REUSE
 });
 
 test('HIGH 5B: PID reuse + grace exhausted → RELEASE(lost) (card returns to queue)', () => {
+  // cancel_requested 11 min ago — past BOTH the 60s kill grace AND the 10-min
+  // PID_REUSE_GRACE_MS. The PID birth token still mismatches, but the card can
+  // no longer stay locked. The policy escalates to RELEASE so the card returns
+  // to the queue; this is a human-notification event, not a permanent block.
   const action = decideStuckAction(input({
     stuckState: 'cancel_requested',
-    cancelRequestedAtMs: NOW - (PID_REUSE_GRACE_MS + 60_000),
-    birthTokenMatches: false,
+    cancelRequestedAtMs: NOW - (PID_REUSE_GRACE_MS + 60_000), // 11 min
+    birthTokenMatches: false, // still reused
     ownsActiveTask: false,
   }));
   assert.equal(action.kind, 'RELEASE');
@@ -366,9 +407,13 @@ test('HIGH 5B: PID reuse + grace exhausted → RELEASE(lost) (card returns to qu
 });
 
 test('HIGH 5B: PID reuse escalation boundary — exactly at grace → RELEASE (>= fires)', () => {
+  // Exactly PID_REUSE_GRACE_MS since cancel_requested_at. The escalation uses
+  // >= so the boundary itself already releases: the grace has fully elapsed at
+  // that instant, and the card must not stay locked past it. One millisecond
+  // BEFORE the grace, the row is still KEEP (covered by the next test).
   const action = decideStuckAction(input({
     stuckState: 'cancel_requested',
-    cancelRequestedAtMs: NOW - PID_REUSE_GRACE_MS,
+    cancelRequestedAtMs: NOW - PID_REUSE_GRACE_MS, // exactly at grace
     birthTokenMatches: false,
     ownsActiveTask: false,
   }));
@@ -378,9 +423,12 @@ test('HIGH 5B: PID reuse escalation boundary — exactly at grace → RELEASE (>
 });
 
 test('HIGH 5B: PID reuse escalation boundary — 1ms before grace → KEEP', () => {
+  // One millisecond before PID_REUSE_GRACE_MS elapses. The reuse grace has not
+  // yet fully elapsed, so the row is still left for a human. This pins the
+  // off-by-one boundary: the escalation is >=, not >.
   const action = decideStuckAction(input({
     stuckState: 'cancel_requested',
-    cancelRequestedAtMs: NOW - (PID_REUSE_GRACE_MS - 1),
+    cancelRequestedAtMs: NOW - (PID_REUSE_GRACE_MS - 1), // 1ms short
     birthTokenMatches: false,
     ownsActiveTask: false,
   }));
@@ -389,10 +437,13 @@ test('HIGH 5B: PID reuse escalation boundary — 1ms before grace → KEEP', () 
 });
 
 test('HIGH 5B: PID reuse escalation does NOT fire when birth token matches', () => {
+  // Same age (past PID_REUSE_GRACE_MS) but the birth token MATCHES — this is
+  // the normal verified-kill path, not the reuse path. Escalation is specific
+  // to the mismatched-token branch.
   const action = decideStuckAction(input({
     stuckState: 'cancel_requested',
     cancelRequestedAtMs: NOW - (PID_REUSE_GRACE_MS + 60_000),
-    birthTokenMatches: true,
+    birthTokenMatches: true, // token matches → normal verified kill
     ownsActiveTask: false,
   }));
   assert.equal(action.kind, 'TERMINATE');
