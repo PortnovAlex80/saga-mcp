@@ -6,8 +6,8 @@ import type { LmNodeExecutionPersistence } from './lm-node-executor.js';
  * Decorate the board persistence projection with exact execution completion.
  *
  * The LM poll-loop remains unchanged. For a task whose exact execution has an
- * accepted worker_done receipt, this adapter exposes the receipt's terminal
- * task status instead of a later Workplace reverse projection such as
+ * accepted worker_done receipt, this adapter exposes a poll-terminal status
+ * instead of a later Workplace reverse projection such as
  * in_progress/verifying. It also suppresses the PID-dead guard for that exact
  * completed execution while the runner close callback catches up.
  */
@@ -22,7 +22,16 @@ export function receiptAwareLmPersistence(
       const executionId = base.readCurrentExecutionId(taskId)
         ?? base.readLatestExecutionId(taskId);
       const completion = readAcceptedWorkerDoneReceipt(db, executionId);
-      return completion?.completedNewStatus ?? base.readTaskState(taskId);
+      if (!completion) return base.readTaskState(taskId);
+
+      // The poll-loop understands done, review and blocked as terminal signals.
+      // An accepted changes_requested reply stores task.status=todo; expose it
+      // as review only to the poll-loop so the node returns runtime.paused
+      // rather than the false task_unclaimed/runtime.failed branch. The durable
+      // task row remains todo.
+      return completion.completedNewStatus === 'todo'
+        ? 'review'
+        : completion.completedNewStatus;
     },
 
     readExecutionLiveness(executionId) {
