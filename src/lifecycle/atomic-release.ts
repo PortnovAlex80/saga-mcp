@@ -34,13 +34,9 @@ export interface ReleaseInput {
   /**
    * Preserve the task's current status while clearing ownership and the fence.
    *
-   * This is required after an accepted worker_done receipt. At that point the
-   * worker completed its protocol, while the authoritative Workplace may have
-   * already reverse-projected the card to in_progress/verifying. Treating the
-   * later OS close as crash recovery would incorrectly map in_progress -> todo.
-   *
-   * Crash/reaper callers leave this false and retain the historical recovery
-   * mapping.
+   * When omitted, the release primitive derives this automatically from an
+   * accepted worker_done receipt for the exact execution. Explicit true/false
+   * remains available for callers that already know the semantic outcome.
    */
   readonly preserveTaskStatus?: boolean;
 }
@@ -126,7 +122,9 @@ export function releaseExecutionAtomically(
     };
   }
 
-  const restoredStatus = input.preserveTaskStatus
+  const preserveTaskStatus = input.preserveTaskStatus
+    ?? hasAcceptedWorkerDoneReceipt(db, input.executionId);
+  const restoredStatus = preserveTaskStatus
     ? task.status
     : computeRestoredStatus(task.status, task.integration_state);
 
@@ -155,7 +153,7 @@ export function releaseExecutionAtomically(
         input.executionId,
         restoredStatus,
         input.reason,
-        input.preserveTaskStatus === true,
+        preserveTaskStatus,
       );
     }
   })();
@@ -185,6 +183,27 @@ function hasNeedsHumanTag(raw: string | null): boolean {
     return Array.isArray(parsed) && parsed.map(String).includes(NEEDS_HUMAN_TAG);
   } catch {
     return false;
+  }
+}
+
+/**
+ * An accepted worker_done command is the durable completion authority for one
+ * execution. The OS close that follows must release the fence without applying
+ * crash recovery to the task projection.
+ */
+function hasAcceptedWorkerDoneReceipt(db: Database, executionId: string): boolean {
+  try {
+    return Boolean(db.prepare(
+      `SELECT 1
+         FROM command_receipts
+        WHERE execution_id=?
+          AND command_kind='worker_done'
+          AND accepted=1
+        LIMIT 1`,
+    ).get(executionId));
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('no such table')) return false;
+    throw error;
   }
 }
 
