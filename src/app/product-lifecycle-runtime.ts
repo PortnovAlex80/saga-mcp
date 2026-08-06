@@ -211,7 +211,27 @@ export function createProductLifecycleRuntime(
       };
     },
   };
-  const executorV2Options = { productRepo: assemblerProductRepo };
+  // Each module executor needs its packageIdentity + installedDigest to pin
+  // every execution context (PACKAGE_PIN_REQUIRED). The packageInstallation
+  // holds the records keyed by module name; the executor resolves its own
+  // identity from its moduleRef at registration time. We build a helper that
+  // modules call to fetch their pin.
+  const resolvePackagePin = (moduleName: string): {
+    packageIdentity: { name: string; version: string };
+    installedDigest: string;
+    flowIdentity: { flowId: string; flowVersion: string };
+  } | null => {
+    if (!packageInstallation) return null;
+    const record = packageInstallation.records.get(moduleName);
+    if (!record) return null;
+    return {
+      packageIdentity: { name: moduleName, version: record.version },
+      installedDigest: record.packageDigest,
+      // Flow identity = module identity (the module IS the flow in saga4).
+      flowIdentity: { flowId: moduleName, flowVersion: record.version },
+    };
+  };
+  const executorV2Options = { productRepo: assemblerProductRepo, resolvePackagePin };
 
   const runtimePersistence = options.discoveryRuntimePersistence
     ?? new SqliteFactoryDiscoveryRuntime();
@@ -399,14 +419,27 @@ export function createProductLifecycleRuntime(
           version: string;
         }) => {
           const record = packageInstallation.records.get(moduleRef.name);
-          if (!record) return null;
+          if (!record) {
+            process.stderr.write(
+              `[factory] resolveModuleInstallation: no record for '${moduleRef.name}'. '
+              + 'Available: ${[...packageInstallation.records.keys()].join(', ')}\n`,
+            );
+            return null;
+          }
           return {
             installationId: record.id,
             packageDigest: record.packageDigest,
           };
         },
       }
-      : {}),
+      : {
+        resolveModuleInstallation: () => {
+          process.stderr.write(
+            '[factory] resolveModuleInstallation: packageInstallation is undefined/null\n',
+          );
+          return null;
+        },
+      }),
   });
 
   const engine = new LifecycleOrchestrationEngineAdapter({

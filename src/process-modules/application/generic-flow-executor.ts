@@ -170,6 +170,17 @@ export interface GenericFlowExecutorV2Options {
   packageIdentity?: AssembleExecutionContextOptions['packageIdentity'];
   flowIdentity?: AssembleExecutionContextOptions['flowIdentity'];
   installedDigest?: AssembleExecutionContextOptions['installedDigest'];
+  /**
+   * Dynamic package-pin resolver keyed by module name. When the static
+   * packageIdentity/installedDigest are absent, the executor calls this to
+   * resolve the pin from the installed package store. Each module executor
+   * passes its own moduleRef.name, so this returns the correct per-module pin.
+   */
+  resolvePackagePin?: (moduleName: string) => {
+    packageIdentity: { name: string; version: string };
+    installedDigest: string;
+    flowIdentity: { flowId: string; flowVersion: string };
+  } | null;
 }
 
 /**
@@ -898,12 +909,29 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
           + 'silent fallback.',
       );
     }
+    // Resolve package pin: prefer static overrides, fall back to the dynamic
+    // resolver keyed by this executor's module name. Without a pin, every
+    // assembleExecutionContext throws PACKAGE_PIN_REQUIRED.
+    let packageIdentity = v2Opts.packageIdentity;
+    let installedDigest = v2Opts.installedDigest;
+    let flowIdentity = v2Opts.flowIdentity;
+    if ((!packageIdentity || !installedDigest || !flowIdentity) && v2Opts.resolvePackagePin) {
+      const moduleName = this.opts.moduleRef?.name;
+      if (moduleName) {
+        const pin = v2Opts.resolvePackagePin(moduleName);
+        if (pin) {
+          packageIdentity ??= pin.packageIdentity;
+          installedDigest ??= pin.installedDigest;
+          flowIdentity ??= pin.flowIdentity;
+        }
+      }
+    }
     return {
       repo: repoV2 as NodeRunRepositoryV2,
       productRepo: v2Opts.productRepo,
-      packageIdentity: v2Opts.packageIdentity,
-      flowIdentity: v2Opts.flowIdentity,
-      installedDigest: v2Opts.installedDigest,
+      packageIdentity,
+      flowIdentity,
+      installedDigest,
     };
   }
 

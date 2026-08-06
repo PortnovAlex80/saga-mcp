@@ -190,7 +190,8 @@ function selectEngine(
     resolveWorkerContext: context =>
       buildDiscoveryWorkerContext(config, persistence, host, context),
     concurrency: positiveConcurrency(process.env.SAGA_CONCURRENCY),
-    packageInstallation: modulePackages,
+    packageInstallation: modulePackages
+      ?? productLifecycle.packageInstallation,
   }).engine;
 }
 
