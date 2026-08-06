@@ -15,30 +15,18 @@ import path from 'node:path';
 import os from 'node:os';
 
 import { SCHEMA_SQL } from '../../dist/schema.js';
+import { ensureFactoryProcessRunSchema } from '../../dist/process-modules/persistence/sqlite-process-run-repository.js';
+import { ensureManagedProductionLedgerSchema } from '../../dist/process-modules/persistence/sqlite-managed-production-ledger.js';
 import { initSubmissionRegistries, getSubmissionPolicyRegistry } from '../../dist/process-modules/application/submission-registries.js';
 import { createSrsContractValidator } from '../../dist/modules/formalization/application/srs-contract-validator.js';
+
+const hash = (s) => createHash('sha256').update(s).digest('hex');
 
 function freshDb() {
   const db = new Database(':memory:');
   db.exec(SCHEMA_SQL);
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS factory_process_runs (
-      id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL,
-      module_name TEXT NOT NULL, module_version TEXT NOT NULL,
-      module_ref_key TEXT NOT NULL, idempotency_key TEXT NOT NULL,
-      executor_kind TEXT NOT NULL, input_schema TEXT NOT NULL,
-      input_snapshot TEXT NOT NULL, input_hash TEXT NOT NULL, status TEXT NOT NULL
-    );
-    CREATE TABLE IF NOT EXISTS factory_managed_artifact_productions (
-      id INTEGER PRIMARY KEY AUTOINCREMENT, process_run_id INTEGER NOT NULL,
-      module_ref TEXT NOT NULL, node_id TEXT NOT NULL, intent_id INTEGER NOT NULL,
-      task_id INTEGER NOT NULL, execution_id TEXT NOT NULL,
-      artifact_id INTEGER NOT NULL, artifact_type TEXT NOT NULL,
-      artifact_status TEXT NOT NULL, content_hash TEXT, operation TEXT NOT NULL,
-      recorded_at TEXT NOT NULL DEFAULT (datetime('now')),
-      product_key TEXT NOT NULL DEFAULT ''
-    );
-  `);
+  ensureFactoryProcessRunSchema(db);
+  ensureManagedProductionLedgerSchema(db);
   db.prepare('INSERT INTO projects (id, name) VALUES (1, ?)').run('p');
   db.prepare('INSERT INTO epics (id, project_id, name) VALUES (1, 1, ?)').run('e');
   db.prepare(
@@ -51,27 +39,39 @@ function freshDb() {
   return db;
 }
 
-const hash = (s) => createHash('sha256').update(s).digest('hex');
-
-function seedSrsArtifact(db, srsPath, repoId) {
-  const h = hash('SRS');
+function seedRepo(db) {
+  const tmpDir = path.join(os.tmpdir(), `srs-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  mkdirSync(tmpDir, { recursive: true });
+  db.prepare('INSERT INTO repositories (id, name) VALUES (1, ?)').run('repo');
   db.prepare(
-    `INSERT INTO artifacts (id, project_id, epic_id, type, code, title, path, status, content_hash, accepted_hash, drift_state, project_repository_id, storage_kind, tags, metadata)
-     VALUES (42, 1, 1, 'SRS', null, 'SRS', ?, 'draft', ?, ?, 'clean', ?, 'file_backed', '[]', '{}')`,
-  ).run(srsPath, h, h, repoId);
-  db.prepare(
-    `INSERT INTO factory_managed_artifact_productions
-       (process_run_id, module_ref, node_id, intent_id, task_id, execution_id,
-        artifact_id, artifact_type, artifact_status, content_hash, operation)
-     VALUES (2, 'sf@1', 'define-architecture-contract', 7, 7, 'exec', 42, 'SRS', 'draft', ?, 'create')`,
-  ).run(h);
+    'INSERT INTO project_repositories (id, project_id, repository_id, role, local_path, integration_branch, status) VALUES (1, 1, 1, ?, ?, ?, ?)',
+  ).run('component', tmpDir, 'dev', 'active');
+  return tmpDir;
 }
 
 function seedPrd(db) {
   db.prepare(
-    `INSERT INTO artifacts (id, project_id, epic_id, type, code, title, path, status, content_hash, accepted_hash, drift_state, storage_kind, tags, metadata)
+    `INSERT INTO artifacts (id, project_id, epic_id, type, code, title, path, status, content_hash, accepted_hash, drift_state, project_repository_id, storage_kind, tags, metadata)
      VALUES (2, 1, 1, 'PRD', null, 'PRD', 'prd.md', 'accepted', ?, ?, 'clean', 1, 'file_backed', '[]', '{}')`,
   ).run(hash('PRD'), hash('PRD'));
+}
+
+function seedSrs(db, tmpDir, srsContent) {
+  const h = hash('SRS');
+  db.prepare(
+    `INSERT INTO artifacts (id, project_id, epic_id, type, code, title, path, status, content_hash, accepted_hash, drift_state, project_repository_id, storage_kind, tags, metadata)
+     VALUES (42, 1, 1, 'SRS', null, 'SRS', '01-SRS.md', 'draft', ?, ?, 'clean', 1, 'file_backed', '[]', '{}')`,
+  ).run(h, h);
+  db.prepare(
+    `INSERT INTO factory_managed_artifact_productions (process_run_id, module_ref, node_id, intent_id, task_id, execution_id, artifact_id, artifact_type, artifact_status, content_hash, operation)
+     VALUES (2, 'sf@1', 'define-architecture-contract', 7, 7, 'exec', 42, 'SRS', 'draft', ?, 'create')`,
+  ).run(h);
+  // SRS → PRD trace
+  db.prepare(
+    `INSERT INTO artifact_traces (source_id, target_type, target_id, link_type) VALUES (42, 'artifact', 2, 'derived_from')`,
+  ).run();
+  // Write SRS file
+  writeFileSync(path.join(tmpDir, '01-SRS.md'), srsContent);
 }
 
 test('SRS validator policy: define-architecture-contract is required', () => {
@@ -87,22 +87,11 @@ test('SRS validator policy: define-architecture-contract is required', () => {
 
 test('SRS validator rejects when §12 Decision Log is missing', () => {
   const db = freshDb();
-  // Create a temp dir as repo local_path
-  const tmpDir = path.join(os.tmpdir(), `srs-test-${Date.now()}`);
-  mkdirSync(tmpDir, { recursive: true });
-  // repositories master + project_repositories binding (FK chain)
-  db.prepare('INSERT INTO repositories (id, name) VALUES (1, ?)').run('repo');
-  db.prepare('INSERT INTO project_repositories (id, project_id, repository_id, role, local_path, integration_branch, status) VALUES (1, 1, 1, ?, ?, ?, ?)').run('component', tmpDir, 'dev', 'active');
+  const tmpDir = seedRepo(db);
   seedPrd(db);
-  const srsPath = '01-SRS.md';
-  seedSrsArtifact(db, srsPath, 1);
-  // SRS → PRD trace
-  db.prepare('INSERT INTO artifact_traces (source_id, target_type, target_id, link_type) VALUES (42, ?, ?, ?)').run('artifact', 2, 'derived_from');
-  // Write SRS WITHOUT §12
-  writeFileSync(path.join(tmpDir, srsPath), '# SRS\n\nSome content without Decision Log.\n');
-
-  const validator = createSrsContractValidator(db);
-  const result = validator.validate({
+  seedSrs(db, tmpDir, '# SRS\n\nSome content without Decision Log.\n');
+  const v = createSrsContractValidator(db);
+  const result = v.validate({
     processRunId: 2, moduleRef: 'sf@1', nodeId: 'define-architecture-contract',
     executionId: 'exec', taskId: 7, epicId: 1, projectId: 1,
   });
@@ -113,21 +102,12 @@ test('SRS validator rejects when §12 Decision Log is missing', () => {
 
 test('SRS validator accepts when §12 Decision Log is present', () => {
   const db = freshDb();
-  const tmpDir = path.join(os.tmpdir(), `srs-test-${Date.now()}`);
-  mkdirSync(tmpDir, { recursive: true });
-  // repositories master + project_repositories binding (FK chain)
-  db.prepare('INSERT INTO repositories (id, name) VALUES (1, ?)').run('repo');
-  db.prepare('INSERT INTO project_repositories (id, project_id, repository_id, role, local_path, integration_branch, status) VALUES (1, 1, 1, ?, ?, ?, ?)').run('component', tmpDir, 'dev', 'active');
+  const tmpDir = seedRepo(db);
   seedPrd(db);
-  const srsPath = '01-SRS.md';
-  seedSrsArtifact(db, srsPath, 1);
-  db.prepare('INSERT INTO artifact_traces (source_id, target_type, target_id, link_type) VALUES (42, ?, ?, ?)').run('artifact', 2, 'derived_from');
-  // Write SRS WITH §12
-  writeFileSync(path.join(tmpDir, srsPath),
+  seedSrs(db, tmpDir,
     '# SRS\n\n## §12 Decision Log\n\n| # | Decision |\n|---|----------|\n| 1 | KISS |\n');
-
-  const validator = createSrsContractValidator(db);
-  const result = validator.validate({
+  const v = createSrsContractValidator(db);
+  const result = v.validate({
     processRunId: 2, moduleRef: 'sf@1', nodeId: 'define-architecture-contract',
     executionId: 'exec', taskId: 7, epicId: 1, projectId: 1,
   });

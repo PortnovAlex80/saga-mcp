@@ -21,6 +21,7 @@ import type {
 } from './node-submission-policy.js';
 import { createAcceptanceContractValidator } from '../../modules/formalization/application/acceptance-contract-validator.js';
 import { createSrsContractValidator } from '../../modules/formalization/application/srs-contract-validator.js';
+import { createFormalizationContractValidator } from '../../modules/formalization/application/formalization-contract-validator.js';
 
 const FORMALIZATION_MODULE_REF = 'solution-formalization@1.0.0';
 const DISCOVERY_MODULE_REF = 'product-discovery@3.0.2';
@@ -31,35 +32,38 @@ export function wireSubmissionValidation(
   db: Database.Database,
 ): void {
   // --- Validators ---
+  // AC: dedicated validator (structured gaps for AC-specific edges).
   validatorRegistry.register(createAcceptanceContractValidator(db));
+  // SRS: dedicated validator (checks §12 section + criticality validity).
   validatorRegistry.register(createSrsContractValidator(db));
+  // Product, UC, Reconciliation: generic formalization contract validator.
+  validatorRegistry.register(createFormalizationContractValidator(
+    db, 'formalization.product-contract.v1', 'define-product-contract',
+    { product: true },
+  ));
+  validatorRegistry.register(createFormalizationContractValidator(
+    db, 'formalization.use-cases.v1', 'model-use-cases',
+    { product: true, useCases: true },
+  ));
+  validatorRegistry.register(createFormalizationContractValidator(
+    db, 'formalization.reconciliation.v1', 'reconcile-what',
+    { product: true, useCases: true, acceptance: true },
+  ));
 
   // --- Formalization policies ---
-  // define-acceptance-contract + define-architecture-contract: full validators.
-  policyRegistry.register(
-    FORMALIZATION_MODULE_REF,
-    'define-acceptance-contract',
-    { mode: 'required', validatorId: 'formalization.acceptance-contract.v1' },
-  );
-  policyRegistry.register(
-    FORMALIZATION_MODULE_REF,
-    'define-architecture-contract',
-    { mode: 'required', validatorId: 'formalization.srs-contract.v1' },
-  );
-  // The other three formalization LM-nodes: legacy-unvalidated pending migration.
-  for (const nodeId of [
-    'define-product-contract',
-    'model-use-cases',
-    'reconcile-what',
-  ]) {
-    policyRegistry.register(
-      FORMALIZATION_MODULE_REF,
-      nodeId,
-      {
-        mode: 'legacy-unvalidated',
-        migrationTicket: `FORMALIZATION-${nodeId.toUpperCase()}-SUBMISSION-VALIDATION`,
-      },
-    );
+  // ALL five formalization LM-nodes now have required validators.
+  const formalizationPolicies: Array<[string, string]> = [
+    ['define-product-contract', 'formalization.product-contract.v1'],
+    ['model-use-cases', 'formalization.use-cases.v1'],
+    ['define-acceptance-contract', 'formalization.acceptance-contract.v1'],
+    ['reconcile-what', 'formalization.reconciliation.v1'],
+    ['define-architecture-contract', 'formalization.srs-contract.v1'],
+  ];
+  for (const [nodeId, validatorId] of formalizationPolicies) {
+    policyRegistry.register(FORMALIZATION_MODULE_REF, nodeId, {
+      mode: 'required',
+      validatorId,
+    });
   }
 
   // --- Discovery policies ---

@@ -185,7 +185,7 @@ test('policy registry: define-acceptance-contract is required, others legacy', (
 
   const productPolicy = registry.resolve('solution-formalization@1.0.0', 'define-product-contract');
   assert.ok(productPolicy);
-  assert.equal(productPolicy.mode, 'legacy-unvalidated');
+  assert.equal(productPolicy.mode, 'required');
 
   const discoveryPolicy = registry.resolve('product-discovery@3.0.2', 'produce-proposal');
   assert.ok(discoveryPolicy);
