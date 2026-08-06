@@ -1032,29 +1032,24 @@ export class SqliteDevelopmentModuleStore implements
     const workflowStage = input.item.kind === 'verification'
       ? 'verification'
       : 'development';
-    // Stamp each projected task with the ProcessRun input hash + the planner's
-    // WorkIntent so managed-production provenance is complete for the workers
-    // that later claim these tasks through worker_next.
+    // Stamp each projected task with the ProcessRun input hash for
+    // managed-production provenance. We intentionally do NOT stamp the
+    // planner's work_intent_id: fan-out impl/verify tasks are not bound to
+    // the planner's WorkIntent (which has projected_task_id = planner task).
+    // readWorkIntentForTaskClaim enforces projected_task_id == task.id, so
+    // stamping the planner intent here would make every fan-out task
+    // unclaimable with AUTHORITY_BINDING_INVALID. Impl/verify tasks are
+    // git_change / read_only_evidence and do not use process_node_submit, so
+    // they do not need a managed-node work intent binding. Their provenance
+    // is carried by process_run_id + task_graph_hash + work_item_key.
     const processRun = this.db.prepare(
       'SELECT input_hash FROM factory_process_runs WHERE id=?',
     ).get(input.processRunId) as { input_hash: string } | undefined;
-    const plannerIntent = this.db.prepare(
-      `SELECT wi.id AS work_intent_id
-         FROM factory_work_intents wi
-         JOIN tasks t ON t.id = wi.projected_task_id
-        WHERE t.metadata LIKE ?
-          AND t.epic_id = ?
-        ORDER BY wi.id DESC LIMIT 1`,
-    ).get(
-      `%"process_run_id":${input.processRunId}%`,
-      input.developmentCase.epicId,
-    ) as { work_intent_id: number } | undefined;
     const metadata = {
       process_run_id: input.processRunId,
       process_node_id: RESOLVE_NODE_ID,
       process_module_ref: MODULE_REF,
       process_input_hash: processRun?.input_hash ?? null,
-      work_intent_id: plannerIntent?.work_intent_id ?? null,
       task_graph_hash: input.graph.graphHash,
       work_item_key: input.item.key,
       work_item_kind: input.item.kind,

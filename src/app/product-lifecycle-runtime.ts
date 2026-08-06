@@ -56,6 +56,15 @@ import { SqliteNodeRunRepository } from '../process-modules/persistence/sqlite-n
 import { SqliteExactCandidateAcceptance } from '../process-modules/persistence/sqlite-exact-candidate-acceptance.js';
 import { SqliteCandidateSetRepository } from '../infrastructure/workplace/sqlite-candidate-set-repository.js';
 import { SqliteGateRepository } from '../infrastructure/workplace/sqlite-gate-repository.js';
+import { SqliteWorkplaceRepository } from '../infrastructure/workplace/sqlite-workplace-repository.js';
+import { ProductionCellCoordinator } from '../process-modules/application/production-cell-coordinator.js';
+import {
+  ProductionCellNodeExecutor,
+  type ProductionCellNodeExecutorOptions,
+  type ProductionCellProductReader,
+  type ProductionCellTaskPersistence,
+} from '../process-modules/application/node-executors/production-cell-node-executor.js';
+import type { CheckProviderRegistry } from '../process-modules/application/gate-run-driver.js';
 import { SqliteProcessOutcomeCertificateRepository } from '../process-modules/persistence/sqlite-process-outcome-certificate-repository.js';
 import { SqliteProcessRunRepository } from '../process-modules/persistence/sqlite-process-run-repository.js';
 import { SqliteRecoveryCaseRepository } from '../process-modules/persistence/sqlite-recovery-case-repository.js';
@@ -249,6 +258,21 @@ export function createProductLifecycleRuntime(
   // so modules that haven't migrated feature-detect and skip.
   const candidateSetRepo = new SqliteCandidateSetRepository(db);
   const gateRepo = new SqliteGateRepository(db);
+  // ADR-029 Slice 1: Production Cell universal executor. The coordinator drives
+  // the Workplace state machine; the executor composes it with the proven
+  // WorkAssignmentPort + WorkerExecutorFactory launch path (the same surface
+  // LmNodeExecutor uses) plus the gate-run-driver. checkProviders is optional
+  // (feature-detect): until a module ships a cell definition, no production-cell
+  // node is walked, so a missing registry is inert.
+  const workplaceRepo = new SqliteWorkplaceRepository(db);
+  const productionCellCoordinator = new ProductionCellCoordinator({
+    db,
+    workplaceRepo,
+    // Slice 1 uses WorkAssignmentPort + WorkerExecutorFactory for launch, not
+    // the canonical WorkerLauncherPort. launcher/productRepo are optional in
+    // the coordinator deps for exactly this reason.
+    now: () => new Date(),
+  });
 
   const resolveNodeProducts = (
     processRunId: number,
@@ -323,6 +347,37 @@ export function createProductLifecycleRuntime(
         options.workAssignment ?? new SqliteWorkAssignmentAdapter(db),
     })],
     ['human', new HumanNodeExecutor(humanInteractions)],
+    // ADR-029 Slice 1: universal production-cell executor. checkProviders is an
+    // empty registry for now; the executor feature-detects providers per cell.
+    // Until a module ships a production-cell Flow node, this entry is inert.
+    ...(options.workerExecutorFactory ? [(['production-cell', new ProductionCellNodeExecutor({
+      coordinator: productionCellCoordinator,
+      candidateSetRepo,
+      gateRepo,
+      checkProviders: { resolve: () => null } as CheckProviderRegistry,
+      taskPersistence: lmPersistence as unknown as ProductionCellTaskPersistence,
+      productReader: {
+        readExecutionProducts: ({ processRunId, moduleRef, nodeId, executionRef }) => {
+          const artifacts = centralLedger.listArtifactsForNodeInProcessRun(
+            processRunId, moduleRef, nodeId,
+          ).filter(a => a.executionId === executionRef && a.contentHash);
+          return artifacts.map(a => ({
+            schemaId: a.artifactType ?? 'factory.product-envelope.v1',
+            ref: `artifact:${a.artifactId}`,
+            digest: a.contentHash ?? '',
+          }));
+        },
+      } as ProductionCellProductReader,
+      workerExecutorFactory: options.workerExecutorFactory,
+      resolveWorkerContext: (ctx =>
+        options.resolveWorkerContext({
+          projectId: ctx.projectId,
+          epicId: ctx.epicId,
+        })) as ProductionCellNodeExecutorOptions['resolveWorkerContext'],
+      workAssignment: options.workAssignment ?? new SqliteWorkAssignmentAdapter(db),
+      installationDigest: packageInstallation?.records.values().next().value?.packageDigest ?? 'ad-slice1',
+      pollMs: 2000,
+    })] as [string, NodeExecutor])] : []),
   ]);
 
   const sharedDeps: ModuleSharedDeps = {

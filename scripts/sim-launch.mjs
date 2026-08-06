@@ -24,7 +24,7 @@ const lifecycleInput = {
     repositories: [{
       repositoryRef: { repositoryName: 'button-color-repo', role: 'component' },
       integrationBranch: 'dev',
-      expectedBaseCommit: '8c68dfe507936e3b632922411419128e8761c3f3',
+      expectedBaseCommit: 'f692189f33e2e85ab0bdd19ccaa0a2f268c800c7',
     }],
     policy: { id: 'reference-development-policy', version: '1.0.0', contentHash: policyHash },
   },

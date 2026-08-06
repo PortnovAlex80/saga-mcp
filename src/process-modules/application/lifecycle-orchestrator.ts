@@ -395,7 +395,7 @@ export class LifecycleOrchestrator {
           processStart.record.id,
         );
         const nextStageCommand = route.target.type === 'stage'
-          ? this.buildNextStageCommand(
+          ? await this.buildNextStageCommand(
               definition,
               route.target,
               handoffFrame,
@@ -534,7 +534,7 @@ export class LifecycleOrchestrator {
     return { kind: 'completed', result: processRecordToResult(process) };
   }
 
-  private buildNextStageCommand(
+  private async buildNextStageCommand(
     definition: LifecycleDefinition,
     target: Extract<TransitionTarget, { type: 'stage' }>,
     handoffFrame: Record<string, unknown>,
@@ -542,7 +542,23 @@ export class LifecycleOrchestrator {
   ) {
     const next = this.requireStage(definition, target.stageId);
     const runtime = this.mappingRuntime(lifecycleRun, next.id);
-    const inputPayload = mapLifecycleValues(next.inputMapping, handoffFrame, runtime);
+    const mapped = mapLifecycleValues(next.inputMapping, handoffFrame, runtime);
+    // CRITICAL: resolveStageInput MUST be applied here, in the same way as the
+    // run-loop (line 270-276), so that both freeze paths produce an IDENTICAL
+    // resolved input hash. Without this, the next StageRun is frozen with the
+    // PORTABLE repository ref ({repositoryRef:{name,role}}), while the next
+    // loop iteration resolves it ({projectRepositoryId:N}) and computes a
+    // different input_hash → LIFECYCLE_STAGE_REPLAY_BINDING_MISMATCH on the
+    // very first resume. resolveProductDeliveryRepositories is idempotent
+    // (it returns resolved bindings as-is on re-application), so applying it
+    // twice (here + in the loop) is safe.
+    const inputPayload = !this.resolveStageInput
+      ? mapped
+      : await this.resolveStageInput({
+        lifecycleRun,
+        stage: next,
+        input: mapped,
+      });
     const bindingSnapshot = canonicalJson(next);
     return {
       stageId: next.id,

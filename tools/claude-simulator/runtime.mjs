@@ -154,17 +154,18 @@ export async function loadSagaRuntime(dbPath) {
   if (typeof dbModule.closeDb === 'function') {
     try { dbModule.closeDb(); } catch { /* no cached connection */ }
   }
-  const [dispatcher, lifecycle, artifacts, proposalMod, readinessMod] = await Promise.all([
+  const [dispatcher, lifecycle, artifacts, proposalMod, readinessMod, nodeSubmitMod] = await Promise.all([
     import('../../dist/tools/dispatcher.js'),
     import('../../dist/tools/lifecycle.js'),
     import('../../dist/tools/artifacts.js'),
     import('../../dist/tools/discovery-proposal-tools.js'),
     import('../../dist/tools/discovery-readiness-tools.js'),
+    import('../../dist/tools/process-node-submissions.js'),
   ]);
   // Create handler instances (factory pattern — modules export create*Handlers())
   const proposals = proposalMod.createDiscoveryProposalHandlers();
   const readiness = readinessMod.createDiscoveryReadinessHandlers();
-  return { dbModule, dispatcher, lifecycle, artifacts, proposals, readiness };
+  return { dbModule, dispatcher, lifecycle, artifacts, proposals, readiness, nodeSubmitMod };
 }
 
 export function enrichContext(runtime, promptContext) {
@@ -331,6 +332,16 @@ export async function executeSteps(runtime, ctx, scenario, stream) {
         requireHandler(runtime.lifecycle, 'verification_record')(step.args);
         stream.text('simulator: verification evidence recorded');
         break;
+      case 'process_node_submit': {
+        // Submit a typed node product (e.g. development task-graph proposal)
+        // for the current managed execution. The handler derives ProcessRun /
+        // module / node / intent / task / execution lineage from the live
+        // fence, so we only pass { schema, payload }.
+        const submit = requireHandler(runtime.nodeSubmitMod, 'process_node_submit');
+        const result = submit(step.args);
+        stream.text(`simulator: process_node_submit schema=${step.args.schema} ref=${result.submission_ref}`);
+        break;
+      }
       case 'proposal_submit': {
         const result = requireHandler(runtime.proposals, 'proposal_submit')(step.args);
         const proposalId = result?.proposal_id;

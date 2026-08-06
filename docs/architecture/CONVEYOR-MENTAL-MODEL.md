@@ -6,8 +6,8 @@ the conveyor can be checked against it. It is NOT a spec — the formal invarian
 is **CGAD P18** (`cgad-v2-spec.md`); this file is the plain-language model
 behind it.
 
-**Version 4** supersedes Version 3. It retains the core analogy — **one
-machine, one material, one desk** — and defines the reusable unit that makes
+The model is governed by the core analogy — **one machine, one material, one
+desk** — and defines the reusable unit that makes
 the analogy executable: the **Production Cell**. A workshop is now understood
 as a declarative arrangement of Production Cells, not as a collection of
 module-specific engines, tables and submit tools. The human Kanban state tells
@@ -19,6 +19,13 @@ kernel rework do not roll a Kanban card back to `todo`.
 
 The Saga conveyor has **one machine**: a language model. It has **one
 material**: text. It produces **one kind of product**: text artifacts.
+
+**The language model can only generate text.** It cannot authorize or perform
+state transitions, acceptance, compilation, tests, Git operations, publishing,
+deployment or any other external effect. It may produce a textual request or
+desired-state product; the deterministic kernel, a declared CheckProvider,
+HumanInteractionRun or EffectProvider decides and performs the corresponding
+operation under an exact fence and records a textual receipt.
 
 This sounds trivial until you realise what it means for the architecture:
 
@@ -122,6 +129,63 @@ declaration). It does NOT mean:
 
 If any of those steps is required, the LEGO contract is broken.
 
+### Any LM worker is a declarative specialization
+
+There is no architectural distinction between a requirements author, analyst,
+developer, reviewer, researcher or operator-facing assistant. They are the same
+kind of LM worker running inside the same Production Cell. A worker's apparent
+profession is created entirely by the exact specialization installed on its
+Workplace:
+
+```
+WorkerSpecialization {
+  skillRefs[]             // domain knowledge and working methods
+  instructionRefs[]       // exact task protocol and stop conditions
+  inputSelectors[]        // accepted ProductRefs placed on the desk
+  workspaceTemplates[]    // files, call templates and checklists
+  capabilityPreset        // bounded built-in/MCP/provider tool surface
+  productContracts[]      // text products the worker may submit
+  checkPlanRef            // deterministic and semantic checks
+  reviewerSpecialization? // independent review configuration
+  decisionPolicyRef
+  recoveryPolicy
+}
+```
+
+The factory may install any available skills and agent tools that an LM driver
+supports: text/file read and edit, search, browser or retrieval tools, structured
+MCP/API calls, sandboxed shell commands and other declared capabilities. This
+does not create a new workshop mechanism. Every tool is exposed through a
+closed capability preset, narrowed to the exact Workplace and execution fence.
+A tool call is a structured request from the model; the gateway authorizes it,
+the adapter or provider performs it, and the result returns as text plus a
+durable receipt. The model cannot expand its own tool set or use a tool to
+bypass product, quality, transition or effect authority.
+
+Changing the skills, instructions, tools, input schemas, output schemas or
+checks changes **what the worker knows and can request**, not **how the factory
+works**. The same Production Cell coordinator always owns dispatch, desk
+identity, product persistence, review, acceptance, recovery and transition.
+
+Development is an ordinary example of this composition:
+
+```
+skillRefs             = [software-engineering, repository-conventions]
+instructionRefs       = [implement-work-item, worker-protocol]
+inputSelectors        = [accepted SRS, accepted ACs, exact repository ref]
+capabilityPreset      = sandbox-code-author
+productContracts      = [TextSet/patch, implementation notes]
+checkPlanRef          = schema + lint + build + test
+reviewerSpecialization = code-reviewer
+postAcceptanceEffect  = Git integration provider
+```
+
+Source code, tests and review comments are text products. File editing and
+search are worker tools. Lint, build and test are declared checks. Commit,
+merge and push are authorized effects. Fan-out from an accepted work-item list
+is the universal `materialization` rule that can be used by any workshop; it is
+not Development-specific runtime behavior.
+
 ### One desk, one submit, one read
 
 ```
@@ -146,57 +210,6 @@ The runtime does not switch on schema to decide where to store or read — it
 stores and reads uniformly. The kernel engineer validates the schema
 declaratively (via the module's declared `outputSchema`), not by branching on
 module name.
-
-### Historical record: four parallel desks (the design mistake)
-
-The original implementation was built workshop-by-workshop. Each workshop
-received its **own submit tool, its own table and its own resolver** — because
-the designers thought the workshops produced *different kinds of entities*:
-
-| Workshop | What designers thought it produced | Actual physical product | Dedicated desk |
-|---|---|---|---|
-| Discovery | "A proposal" | Text (JSON) | `saga3_proposals` |
-| Formalization | "Artifacts (PRD, UC, AC, SRS)" | Text (JSON/Markdown) | `saga3_managed_artifact_productions` |
-| Development | "A submission" | Text (JSON task graph) | `saga3_managed_node_submissions` |
-| Delivery | "Release records" | Text (JSON) | `saga3_delivery_*` |
-
-The mistake was **domain-driven table design**: each workshop's domain
-vocabulary ("proposal", "artifact", "submission") became a separate table,
-when the physical reality is that **every product is text with a schema**.
-The designers conflated *what the text means* (domain semantics) with *what
-the text is* (a workplace product that the conveyor moves between nodes).
-
-Evidence for a common nucleus already exists: the modules share the
-`ProcessModule`/Flow model, `GenericFlowExecutor`, node dispatch, kernel handler
-registry, ProcessRun lease, attempt journal, contracts and recovery primitives.
-But the refactoring has **not** yet made the four workshops behaviorally
-equivalent. Product persistence, LM launch, exact acceptance, review and
-recovery still take different paths, and parts of Development still depend on
-the legacy task-board lifecycle. Desk unification alone is therefore
-necessary but insufficient; the Production Cell coordinator, CandidateSet and
-GateDecision must also become authoritative.
-
-This historical record is preserved so future architects understand **why**
-there are four tables and **why** they should become one — not because the
-domains differ, but because the domains were mistaken for different materials
-when they are all text.
-
-> **Current status:** Four module-specific stores remain authoritative:
-> Discovery (`proposal_submit` → `saga3_proposals`), Formalization
-> (`artifact_create` bridge → `saga3_managed_artifact_productions`), Development
-> (`process_node_submit` → `saga3_managed_node_submissions`) and Delivery's
-> release/effect stores. A fifth shared `saga3_process_products` store and
-> `WorkplaceProductPort` prototype exist, but there are no production submit
-> callers; they are an additive read/bridge path, not the authoritative desk.
-> Historical manual GLM runs demonstrated parts of Discovery → Formalization →
-> review → recovery → resume, but there is no automated real-model conformance
-> proof covering the full production path.
->
-> There is also no authoritative materialized Workplace, Workplace loop-state
-> store, CandidateSet or generic GateDecision. Workplace identity is inferred
-> from ProcessRun/node/task metadata, and human/machine progress is still
-> collapsed into legacy task status. All Production Cell contracts below are
-> target contracts unless explicitly marked as current primitives.
 
 ## The conveyor
 
@@ -241,16 +254,6 @@ cursor remains on the cell across repair and review and may leave it only after
 a final typed outcome. This keeps cursor, restart and identity exact without a
 hidden generated subgraph.
 
-This resolves a contradiction in the earlier model. The current flows often
-contain:
-
-```
-producer LM node → kernel resolver node → repair producer LM node
-```
-
-Those legacy nodes are one Workplace and one desk, not two Workplaces. In the
-target model:
-
 - The producer anchors the Production Cell and its durable Workplace.
 - Author and reviewer executions are one-shot visitors to that Workplace.
 - A candidate-checking operation is an internal `GateRun` with an explicit
@@ -274,9 +277,7 @@ WorkplaceRef {
 
 Singleton cells use `workKey=default`; fan-out derives a deterministic workKey
 from an accepted upstream binding and stable item id, never from array order,
-worker or attempt identity. During migration, an adapter may collapse a legacy
-producer/resolver node pair into one cell whose `productionCellId` equals the
-producer node id. Every GateRun carries the exact `subjectWorkplaceRef`; it must
+worker or attempt identity. Every GateRun carries the exact `subjectWorkplaceRef`; it must
 never infer the subject from adjacency, module name, task kind or a "latest
 product" lookup.
 
@@ -548,95 +549,30 @@ sandboxed repository capability selected by a closed capability preset.
 Delivery desired state, authorization, effect request, receipt and observation
 are products; the external effect itself is never disguised as text generation.
 
-### Repackaging the implementation that already exists
-
-The universal core is assembled from existing primitives rather than started
-from zero, while distinguishing live mechanisms from currently unused seams:
-
-- Keep `GenericFlowExecutor` graph walking, ProcessRun lease, recovery
-  accounting, transition budgets and NodeRun persistence; extract its Workplace
-  loop coordinator. Replace latest-completed/frame-derived resume and implicit
-  predecessor discovery with an exact persisted cursor and declared input
-  selectors; make envelope hashing and boundary decoding part of the live path.
-- Keep `ProcessRun`, attempt audit, `ProductRef`, canonical serialization and
-  `RecoveryIssue`/`RecoveryCase` concepts.
-- Reuse the proven atomic fence, PID-birth, liveness/progress and reconciliation
-  algorithms, not their task foreign keys or requeue policy. Task release must
-  become a fenced Workplace loop transition that leaves Kanban unchanged.
-- Retain the ContractRef/registry/decoder and capability-intersection designs;
-  harden schema registration against digest mismatch and wire both into the
-  actual launch/product/gate path before calling them enforced.
-- Replace/graduate the prototype `WorkplaceProductPort` into the authoritative
-  fenced `ProductRepositoryPort`, rather than preserving an additive wrapper
-  around legacy desks.
-- Harden the adapter: the current prototype trusts a caller-supplied digest and
-  does not enforce `executionRef`; the authoritative adapter must canonicalize
-  and hash internally, verify lineage/schema/fence, and reject stale writes.
-- Retire or rename the existing unused WorkIntent/projection-oriented
-  `WorkerExecutionPort`, retaining only its driver-neutral receipt ideas.
-  Introduce authoritative ExecutionReservation/WorkerExecution repositories
-  over real attempts; the current interface cannot become those ports by field
-  removal alone.
-- Replace the board-coupled `LmNodeExecutor` with a driver-neutral
-  `ProductionCellWorkerExecutor` using Workplace/Execution ports.
-- Generalize artifact/task-specific exact acceptance into CandidateSet,
-  CheckReceipt and GateDecision contracts.
-- Replace task/intent-based execution receipts and `NodeProducts` unions with
-  execution refs and exact `ProductRef[]`.
-- Remove kernel-node-id/"latest node products" resolution; a GateRun receives
-  its exact subject Workplace and CandidateSet from the cell coordinator.
-- Keep module semantic checks behind the kernel registry, but invoke them
-  through the common CheckPlan/Decision protocol.
+### Workshop instances of the universal core
 
 The core must not import or branch on Discovery, Formalization, Development or
-Delivery. A fifth ordinary text workshop is accepted only when it can install
-and run without modifying this list of core components.
+Delivery. Every workshop uses the same protocol; only its declarations and
+product meaning differ:
 
-### How the four workshops converge on the core
+| Workshop | Production Cell declaration |
+|---|---|
+| Discovery | Proposals, assessments and certificates are typed text products; readiness and settlement are declared checks and decisions. |
+| Formalization | Requirements and architecture documents are typed text products sealed into CandidateSets and accepted by GateDecisions. |
+| Development | An accepted task graph fans out one cell instance and deterministic `workKey` per item; patches and TextSets are products; test/build are checks and integration is an effect. |
+| Delivery | A cell authors desired state when LM work is required; approval, publish/deploy, observation and certification are control/effect nodes with text receipts. |
 
-The four workshops are not equally unified today. Their target is one protocol,
-not identical business meaning:
-
-| Workshop | What can already be reused | Current fracture | Production Cell target |
-|---|---|---|---|
-| Discovery | Flow execution, kernel handlers, contracts and ProcessRun audit | proposal-specific tools/tables and bespoke LM persistence; recovery is not uniformly expressed | proposals, assessments and certificates become typed products; readiness/settlement become declared checks and decisions |
-| Formalization | strongest use of generic Flow, kernel nodes and exact-candidate acceptance | artifact/task-specific ledger; epic-scoped fallback reads can cross the intended ProcessRun/task boundary; authoring still crosses board-coupled execution | replace the managed artifact ledger with ProductEnvelope/CandidateSet and generalize truly exact acceptance to GateDecision |
-| Development | common Flow for task-graph planning/resolution and settlement plus existing lease/fence algorithms | implementation, review, verification and integration remain outside the common Flow and depend on legacy tasks | accepted graph fans out a cell instance/workKey per item; patch/TextSet are products; test/build are checks and integration is an effect |
-| Delivery | ProcessRun, kernel/human control and durable release evidence | mostly kernel/human/provider work, so forcing it through an LM executor would be artificial | use a cell only where an LM authors desired state; approval, publish/deploy, observation and certification remain standard control/effect nodes with product receipts |
-
-Thus Delivery proves the boundary: the **production kernel** is universal for
-LM work, while the **conveyor runtime** also supports non-LM control and effect
-nodes. “Everything is text” describes what crosses boundaries and sits on the
-desk; it does not require every Flow node to hire a language model.
+The **production kernel** is universal for LM work, while the **conveyor
+runtime** also supports non-LM control and effect nodes. “Everything is text”
+describes what crosses boundaries and sits on the desk; it does not require
+every Flow node to hire a language model.
 
 ### One engine, two channels — not two engines in symbiosis
 
-Human Kanban plus machine loop does not preserve the old task-board engine as
-a second source of truth. There is one Production Cell coordinator. `WorkItem`
-is its human projection and Workplace loop state is its machine state. During
-migration an adapter may temporarily project to the legacy `tasks` table, but
-the adapter must be one-way, rebuildable and forbidden from launching workers
-or deciding transitions. Its removal condition is explicit: no core read,
-write, foreign key, tool or test depends on `tasks`, `worker_next` or
-`orchestrate`.
-
-The migration order is:
-
-1. Introduce authoritative Workplace, ProductEnvelope, CandidateSet,
-   CheckReceipt and GateDecision stores plus projection rebuilding.
-2. Extract the Production Cell coordinator and switch worker launch to the
-   universal execution context/tools.
-3. Move Formalization, Discovery, Development and then LM-producing Delivery
-   cells to the protocol, preserving exact historical product refs.
-4. Route repository and delivery effects through versioned providers.
-5. Prove restart, recovery, review and real-model conformance. For each cutover,
-   first prohibit core reads from legacy state, then switch authoritative writes
-   to the new stores while retaining only a one-way rebuildable board projection.
-6. Remove legacy projection writes, foreign keys, tools and launchers; then drop
-   their bridges, tables and schemas once absence of readers is proven.
-
-The compatibility period is a migration phase, not part of the target
-architecture.
+Human Kanban and the machine loop have one source of truth: the Production Cell
+coordinator. `WorkItem` is its human projection and Workplace loop state is its
+machine state. Projections are one-way, rebuildable and forbidden from launching
+workers or deciding transitions.
 
 ### Universal real-model conformance harness
 
@@ -661,7 +597,7 @@ Repair, reviewer, crash, stale-fence and check-error branches use deterministic
 fault injection in the driver/gate/lease boundary; the suite never waits for a
 model to fail by chance. Every run records model/provider/version, prompt,
 skill, package and CheckPlan digests plus scenario seed. All product reads are
-journaled, legacy board/module-submit tools are denied, and external effects use
+journaled, non-universal board/module-submit tools are denied, and external effects use
 fake or isolated providers.
 
 Every workshop adds semantic fixtures for its schemas and CheckPlan, but it
@@ -704,11 +640,6 @@ loops and direct `executor.start` calls belong to infrastructure, never to a
 module.
 
 ### One queue, one concurrency knob, infrastructure leases Workplaces
-
-**Target state.** Today `LmNodeExecutor` directly launches one preassigned task
-while the board dispatcher drains other author/reviewer work. These remain two
-launch paths and do not share one authoritative Workplace queue or concurrency
-budget.
 
 There is exactly **one** queue and **one** concurrency control:
 `--concurrency=N`. The **infrastructure** picks eligible Workplaces whose
@@ -1012,17 +943,6 @@ exactly referenced product, not hidden in mutable task metadata and not only
 through prompt regeneration. The new worker reads the issue alongside the
 prior CandidateSet and understands what to fix.
 
-## What this rules out (the bug this model replaced)
-
-- ~~Recovery mints a **new card** per attempt~~ → the verifier looks at the new
-  empty card, finds "no work", and the loop never converges.
-- ~~Recovery gives the worker a **clean desk**~~ → the worker starts from
-  scratch every round and cannot converge on a complex artifact.
-- ~~A gate reads the card by **worker identity**~~ → it is blinded to the
-  workplace's prior work on every repair round.
-- ~~Runtime core **switches on module names**~~ → adding a workshop requires
-  editing dispatcher/lifecycle code instead of just writing a package.
-
 ## Resume must not be coupled to package digest
 
 A run's **work** (WorkItems, products, CandidateSets, decisions, traces and
@@ -1043,10 +963,9 @@ So every Discovery outcome forwards to Formalization. The strict-gate variant
 (non-go Discovery terminates) survives as a separate declarative scenario
 package for regulated/contractual environments.
 
-## Target enforcement required by CGAD P18 and Version 4
+## Enforcement required by CGAD P18 and Version 4
 
-These are acceptance requirements, not a description of the current production
-path.
+These are mandatory acceptance requirements.
 
 - **Stable cell identity:** recovery never changes
   the full `WorkplaceRef`, including `workKey`.
@@ -1161,7 +1080,7 @@ observable acceptance facts are.
 
 ## Condensed technical conformance checklist
 
-These criteria define the target architecture. A criterion is not considered
+These criteria define the architecture. A criterion is not considered
 implemented merely because a comment, skill or type uses the right words. It
 must be enforced by a contract and covered by an executable test. This section
 is a quick technical view; the linked registry is the canonical detailed
@@ -1195,10 +1114,6 @@ acceptance contract.
   validate identity while registered checks validate semantics.
 - Code is a TextSet/patch/tree reference; test, Git and deployment effects are
   authorized checks/providers whose requests and receipts are products.
-
-> **Status:** This is the target. The current implementation has four separate
-> desks plus board-coupled execution and uneven gate/recovery paths (see the
-> current-status and workshop matrix above). They must converge together.
 
 ### Production Cell and quality gate
 
@@ -1677,7 +1592,7 @@ contain SQL or domain transition logic.
 | Launch / stop a model worker | `WorkerLauncherPort` |
 | Supervise lease, progress, exit and reconciliation | `WorkerSupervisionPort` |
 | Materialize and contain the cell desk | `WorkplaceWorkspacePort` |
-| Append/read immutable product envelopes | authoritative `ProductRepositoryPort` (replacement for prototype `WorkplaceProductPort`) |
+| Append/read immutable product envelopes | authoritative `ProductRepositoryPort` |
 | Append/read CandidateSets, receipts, decisions and output bindings | `QualityEvidenceRepositoryPort` |
 | Run installed deterministic/policy/sandbox/observation checks | `CheckRunnerPort` |
 | Request/resume durable human interaction | `HumanInteractionPort` |
@@ -1688,9 +1603,7 @@ contain SQL or domain transition logic.
 | Generate ids and provide deterministic local time | `IdGeneratorPort` / context-local `SupervisionClock` |
 
 Provider registries are composition-root details behind the runner/executor
-ports, not service locators used by domain code. These names describe target
-responsibilities. Existing board/Claude/SQLite
-adapters may implement them during migration, but their vocabulary and schema
+ports, not service locators used by domain code. Adapter vocabulary and schema
 must not leak back into the core contracts.
 
 ### Adapter rules
@@ -1744,8 +1657,8 @@ component is named "service" or "executor".
   is the operator/developer checklist for factory, workshop, node, Workplace,
   worker, quality gate and inter-workshop transitions.
 
-The current four workshops are configuration instances of this protocol. They
-are not four lifecycle engines. Adding a fifth or a thousandth workshop may add
+Workshops are configuration instances of this protocol, not separate lifecycle
+engines. Adding a fifth or a thousandth workshop may add
 module declarations, products and checks, but must not add another dispatcher,
 desk lifecycle, acceptance state machine or diagnostic algorithm.
 Domain decisions may emit diagnostic envelopes, but those envelopes are never

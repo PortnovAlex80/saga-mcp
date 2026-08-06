@@ -1,3 +1,6 @@
+import { buildDevelopmentTaskGraphSubmitCallFromCase }
+  from '../../../dist/modules/development/application/development-workspace-preparation.js';
+
 const BUTTON_HTML = `<!doctype html>
 <html lang="en">
 <head>
@@ -367,6 +370,38 @@ export function selectButtonColorScenario(ctx, env = process.env) {
       };
     }
 
+    case 'plan-task-graph': {
+      // Development planner node. The lifecycle has frozen a DevelopmentCase
+      // in task.metadata.process_node_input (with resolved projectRepositoryId).
+      // Build the deterministic task-graph proposal and submit it through the
+      // universal process_node_submit tool. Idempotent: on recovery retry the
+      // same payload reproduces the same submission_ref.
+      const nodeInput = ctx.metadata?.process_node_input
+        ?? JSON.parse(ctx.task?.metadata || '{}').process_node_input;
+      if (!nodeInput || nodeInput.schemaVersion !== 'factory.development-case.v1') {
+        return {
+          id: 'button-color/development/plan-task-graph/error',
+          steps: [{
+            type: 'exit_error',
+            message: `SIMULATOR_DEVELOPMENT_CASE_MISSING: nodeInput=${JSON.stringify(nodeInput)?.slice(0, 120)}`,
+          }],
+        };
+      }
+      const call = buildDevelopmentTaskGraphSubmitCallFromCase(nodeInput);
+      return {
+        id: `button-color/development/plan-task-graph${ctx.isRetry ? '/retry' : ''}`,
+        steps: [
+          {
+            type: 'process_node_submit',
+            args: {
+              schema: call.arguments.schema,
+              payload: call.arguments.payload,
+            },
+          },
+          done(ctx, `Submitted development task-graph proposal: ${call.arguments.payload.implementationItems.length} impl + ${call.arguments.payload.verificationItems.length} verify items.`),
+        ],
+      };
+    }
     default:
       break;
   }

@@ -55,12 +55,20 @@ import type { ProductRepositoryPort } from '../application/product-repository-po
 
 /**
  * Dependencies the coordinator needs.
+ *
+ * `launcher` and `productRepo` are OPTIONAL: they are only used by
+ * {@link ProductionCellCoordinator.launchWorker}. The ADR-029 Slice 1 runtime
+ * path (ProductionCellNodeExecutor) does NOT use launchWorker — it launches
+ * workers through the proven WorkAssignmentPort + WorkerExecutorFactory path
+ * and drives Workplace state via materialize/admit/seal/applyGateDecision. A
+ * future slice may migrate launchWorker to the canonical WorkerLauncherPort,
+ * at which point these become required again.
  */
 export interface ProductionCellCoordinatorDeps {
   readonly db: Database.Database;
   readonly workplaceRepo: SqliteWorkplaceRepository;
-  readonly launcher: WorkerLauncherPort;
-  readonly productRepo: ProductRepositoryPort;
+  readonly launcher?: WorkerLauncherPort | null;
+  readonly productRepo?: ProductRepositoryPort | null;
   /** Clock for timestamps (injectable for tests). */
   readonly now: () => Date;
 }
@@ -125,6 +133,15 @@ export class ProductionCellCoordinator {
     ref: WorkplaceRef,
     request: Omit<LaunchRequest, 'workplaceRef' | 'reservationRef'>,
   ): { pid: number | null; state: WorkplaceState } {
+    if (!this.deps.launcher) {
+      throw new Error(
+        'ProductionCellCoordinator.launchWorker: no WorkerLauncherPort wired. '
+          + 'The ADR-029 Slice 1 runtime path launches workers via '
+          + 'WorkAssignmentPort + WorkerExecutorFactory (see '
+          + 'ProductionCellNodeExecutor), not through this method. The '
+          + 'canonical WorkerLauncherPort is wired in a later slice.',
+      );
+    }
     // Apply worker-leased transition (queued → leased).
     const leased = this.applyEvent(ref, { kind: 'worker-leased', reservationRef: request.fenceToken });
     if (!leased.applied) {
