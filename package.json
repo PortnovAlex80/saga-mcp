@@ -7,7 +7,8 @@
   "main": "dist/index.js",
   "bin": {
     "saga-mcp": "dist/index.js",
-    "saga-checkpoint": "dist/checkpoint-cli.js"
+    "saga-checkpoint": "dist/checkpoint-cli.js",
+    "saga-claude-sim": "tools/claude-cli-simulator.mjs"
   },
   "files": [
     "dist",
@@ -41,7 +42,8 @@
     "test:architecture": "tsc && node --test \"tests/architecture/*.test.mjs\" && node tests/dispatcher-race/run.mjs && node tests/dispatcher-race/assign-race.mjs && node tests/dispatcher-race/isolation.mjs && node tests/dispatcher-race/review-verdict-race.mjs && node tests/dispatcher-race/worktree-isolation.mjs && node --test tests/dispatcher-race/parallel-concurrency.mjs && node --test tests/dispatcher-race/dispatch-loop-overlap.test.mjs && node --test tests/dispatcher-race/orchestrate-global-budget.test.mjs && node --test tests/process-modules/node-durable-identity.test.mjs",
     "test:e2e": "tsc && node --test tests/e2e-pipeline.test.mjs",
     "test:dispatcher-race": "tsc && node tests/dispatcher-race/run.mjs && node tests/dispatcher-race/assign-race.mjs && node tests/dispatcher-race/isolation.mjs && node tests/dispatcher-race/review-verdict-race.mjs && node tests/dispatcher-race/worktree-isolation.mjs && node --test tests/dispatcher-race/parallel-concurrency.mjs && node --test tests/dispatcher-race/dispatch-loop-overlap.test.mjs && node --test tests/dispatcher-race/orchestrate-global-budget.test.mjs",
-    "mock:run": "SAGA_CLAUDE_PATH=\"node tests/mock-claude.mjs\" node dist/orchestrate-cli.js"
+    "mock:run": "SAGA_CLAUDE_PATH=\"node tests/mock-claude.mjs\" node dist/orchestrate-cli.js",
+    "simulator:button": "SAGA_SIM_SCENARIO=button-color SAGA_CLAUDE_PATH=\"node tools/claude-cli-simulator.mjs\" node dist/orchestrate-cli.js"
   },
   "keywords": [
     "mcp",
