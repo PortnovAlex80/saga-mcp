@@ -168,6 +168,46 @@ export class ProductionCellCoordinator {
     return { pid: launchResult.pid, state: started.state };
   }
 
+  /**
+   * Record the Workplace state-machine side of a worker launch on the ADR-029
+   * hybrid launch path (WorkAssignmentPort + WorkerExecutorFactory).
+   *
+   * The {@link ProductionCellNodeExecutor} launches workers through the same
+   * proven `WorkAssignmentPort` + `WorkerExecutorFactory` surface the
+   * `LmNodeExecutor` and the dispatch-loop use — NOT through the canonical
+   * `WorkerLauncherPort`. That path performs the claim/fence/spawn, but it
+   * does NOT touch Workplace state. The Workplace state machine still needs
+   * the two loop transitions (`queued → leased → running`) so that a later
+   * `candidate-sealed` event is valid. This method applies both transitions
+   * around an externally-performed launch, decoupling the SPAWN
+   * (infrastructure) from the WORKPLACE STATE (domain).
+   *
+   * Returns the post-`running` state. Throws on a CAS miss or a NO_TRANSITION
+   * (the workplace was not in `queued`/`leased` as expected).
+   */
+  markWorkerLaunched(
+    ref: WorkplaceRef,
+    fenceToken: string,
+  ): WorkplaceState {
+    // queued → leased. When the Kanban phase is `review` (reviewer buffer),
+    // leasing ALSO advances Kanban to `review_in_progress` (v4 §Allowed
+    // channel combinations) — same rule as launchWorker.
+    const leased = this.applyEvent(ref, { kind: 'worker-leased', reservationRef: fenceToken });
+    if (!leased.applied) {
+      throw new Error(
+        `markWorkerLaunched: CAS miss on worker-leased for ${serializeWorkplaceRef(ref)}`,
+      );
+    }
+    // leased → running.
+    const started = this.applyEvent(ref, { kind: 'worker-started' });
+    if (!started.applied) {
+      throw new Error(
+        `markWorkerLaunched: CAS miss on worker-started for ${serializeWorkplaceRef(ref)}`,
+      );
+    }
+    return started.state;
+  }
+
   // -----------------------------------------------------------------------
   // Step 4: Seal CandidateSet.
   // -----------------------------------------------------------------------
@@ -227,6 +267,60 @@ export class ProductionCellCoordinator {
         break;
     }
     return this.applyEvent(ref, event!);
+  }
+
+  /**
+   * Apply the FINAL gate's decision after the reviewer phase.
+   *
+   * This is the review-phase counterpart of {@link applyGateDecision}: when a
+   * cell declares a reviewer, the final gate runs over the author set WITH
+   * reviewer evidence while the Workplace is in `review_in_progress/verifying`.
+   * The reducer distinguishes the two acceptance paths:
+   *   - `gate-author-accepted-final` requires `in_progress/verifying` (no
+   *     reviewer was declared).
+   *   - `reviewer-verdict(accepted)` requires `review_in_progress/verifying`
+   *     (the reviewer just finished).
+   *
+   * Mapping the final-gate verdict to the correct event is the coordinator's
+   * job (it owns the reducer vocabulary); the executor only knows the gate
+   * verdict, not the loop-state vocabulary.
+   *
+   * Verdict mapping:
+   *   - accepted → reviewer-verdict(accepted) → terminal/accepted.
+   *   - repair_required → reviewer-verdict(defect-proven) → repair_wait,
+   *     SEMANTIC backward transition to author (REG-28-AC-04). The caller
+   *     requeues within its recovery budget.
+   *   - human_required → human-required → blocked/paused.
+   *   - failed → reviewer-verdict(invalid-output) → repair_wait, reviewer
+   *     (the reviewer's output itself was invalid, not a proven author defect).
+   */
+  applyReviewerVerdict(
+    ref: WorkplaceRef,
+    decision: {
+      verdict: 'accepted' | 'repair_required' | 'human_required' | 'failed';
+      repairTargetRole?: NextRole;
+    },
+  ): StepResult {
+    let event: ProductionCellEvent;
+    switch (decision.verdict) {
+      case 'accepted':
+        event = { kind: 'reviewer-verdict', verdict: 'accepted' };
+        break;
+      case 'repair_required':
+        // Proven author defect → return the card to author work.
+        event = { kind: 'reviewer-verdict', verdict: 'defect-proven' };
+        break;
+      case 'failed':
+        // Reviewer produced invalid output → retry the reviewer.
+        event = { kind: 'reviewer-verdict', verdict: 'invalid-output' };
+        break;
+      case 'human_required':
+        event = { kind: 'human-required' };
+        break;
+    }
+    const result = this.applyEvent(ref, event!);
+    void decision;
+    return result;
   }
 
   // -----------------------------------------------------------------------

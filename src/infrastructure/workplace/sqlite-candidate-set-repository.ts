@@ -173,6 +173,27 @@ export class SqliteCandidateSetRepository {
       sealedAt: row.sealed_at,
     };
   }
+
+  /**
+   * List the sealed CandidateSets for one workplace, newest first (by sealed_at
+   * descending, ties broken by candidate_set_ref for determinism). The executor
+   * uses this on crash-resume to reconstruct an accepted cell's products from
+   * the durable sealed sets instead of relaunching a worker.
+   */
+  listForWorkplace(workplaceRef: WorkplaceRef): readonly CandidateSet[] {
+    const serialized = serializeWorkplaceRef(workplaceRef);
+    const rows = this.db.prepare(
+      `SELECT candidate_set_ref FROM factory_candidate_sets
+        WHERE workplace_ref=?
+        ORDER BY sealed_at DESC, candidate_set_ref DESC`,
+    ).all(serialized) as Array<{ candidate_set_ref: string }>;
+    const sets: CandidateSet[] = [];
+    for (const row of rows) {
+      const set = this.read(row.candidate_set_ref);
+      if (set) sets.push(set);
+    }
+    return sets;
+  }
 }
 
 // ---------------------------------------------------------------------------

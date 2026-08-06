@@ -72,6 +72,7 @@ import {
   type NodeExecutionContext,
   type NodeExecutionResult,
   type NodeExecutor,
+  type NodeProduction,
 } from '../node-executor.js';
 import { asExecutionId } from '../../../lifecycle/domain/ids.js';
 
@@ -261,89 +262,34 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
     // Sequential launch (one worker at a time) mirrors the LmNodeExecutor
     // pattern and keeps concurrency bounded; parallel launch is a future
     // optimization that must respect the global --concurrency=N budget.
-    const outcomes: Array<{ workKey: string; ref: WorkplaceRef; accepted: boolean; production?: NodeExecutionResult['production'] }> = [];
+    const outcomes: FanOutItemOutcome[] = [];
     for (const wp of workplaces) {
       const state = this.opts.coordinator.readState(wp.ref);
       if (state?.loopState === 'terminal') {
-        // Already complete from a prior run (resume) — skip.
-        outcomes.push({ workKey: wp.workKey, ref: wp.ref, accepted: state.terminalReason === 'accepted', production: undefined });
+        // Already complete from a prior run (resume) — skip. We still record
+        // the outcome so the completion join counts it.
+        outcomes.push({
+          item: wp.item,
+          workKey: wp.workKey,
+          ref: wp.ref,
+          accepted: state.terminalReason === 'accepted',
+          product: undefined,
+          candidateSetRef: undefined,
+        });
         continue;
       }
-      try {
-        const authorExec = await this.launchAndWaitRole(
-          ctx, node, cell, wp.ref, 'author', wp.workKey,
-        );
-        if (!authorExec.executionId) {
-          throw new NodeExecutionError(
-            'production-cell', node.id,
-            `fan-out cell '${cell.id}' workKey '${wp.workKey}' author has no executionId`,
-          );
-        }
-        const authorSetRef = this.sealCandidateSet(
-          wp.ref, authorExec.executionId, 'author', null, authorExec.products,
-        );
-        this.opts.coordinator.sealCandidateSet(wp.ref);
-        const decision = this.runGate(ctx, wp.ref, cell.authorGate, authorSetRef, 'author');
-        if (decision.verdict === 'accepted') {
-          if (cell.review) {
-            // Slice 3: route through the reviewer phase for this item. On
-            // final-accepted, the item is accepted; on repair_required the
-            // single-pass fan-out aborts (bounded per-item repair is a
-            // refinement gated by a test).
-            const reviewResult = await this.driveReviewerPhase(
-              ctx, node, cell, wp.ref, authorSetRef, authorExec,
-            );
-            const accepted = reviewResult.runtimeEvent === 'completed';
-            this.opts.coordinator.readState(wp.ref);
-            if (!accepted) {
-              this.opts.coordinator.applyGateDecision(wp.ref, {
-                verdict: 'failed', isFinal: true,
-              });
-              outcomes.push({ workKey: wp.workKey, ref: wp.ref, accepted: false, production: undefined });
-              continue;
-            }
-            const production = authorExec.products[0]
-              ? {
-                  schema: authorExec.products[0].schemaId,
-                  artifactRef: authorExec.products[0].ref,
-                  contentHash: authorExec.products[0].digest,
-                  bindings: { candidateSetRef: authorSetRef, cellId: cell.id, workKey: wp.workKey },
-                }
-              : undefined;
-            outcomes.push({ workKey: wp.workKey, ref: wp.ref, accepted: true, production });
-          } else {
-            this.opts.coordinator.applyGateDecision(wp.ref, {
-              verdict: 'accepted', isFinal: true,
-            });
-            const production = authorExec.products[0]
-              ? {
-                  schema: authorExec.products[0].schemaId,
-                  artifactRef: authorExec.products[0].ref,
-                  contentHash: authorExec.products[0].digest,
-                  bindings: { candidateSetRef: authorSetRef, cellId: cell.id, workKey: wp.workKey },
-                }
-              : undefined;
-            outcomes.push({ workKey: wp.workKey, ref: wp.ref, accepted: true, production });
-          }
-        } else {
-          // For Slice 2: any non-accepted verdict on a fan-out item fails the
-          // whole node (repair loop per-item is a refinement; the completion
-          // policy decides). A bounded per-item repair loop is added once a
-          // test proves the need.
-          this.opts.coordinator.applyGateDecision(wp.ref, {
-            verdict: 'failed', isFinal: true,
-          });
-          outcomes.push({ workKey: wp.workKey, ref: wp.ref, accepted: false, production: undefined });
-        }
-      } catch (error) {
-        // A single item failure aborts the fan-out for Slice 2. The completion
-        // policy below would surface a partial result for 'any'/'quorum'.
-        throw error;
-      }
+      const outcome = await this.driveFanOutItem(ctx, node, cell, wp);
+      outcomes.push(outcome);
+      // Continue to the next item even when this one failed: the completion
+      // policy decides whether partial success is enough. Only 'all' demands
+      // every item accepted, and we surface that at the join below. This lets
+      // 'any'/'quorum' policies succeed with some failed items instead of
+      // aborting the whole node on the first non-accepted verdict.
     }
 
     // Phase 3: completion join.
-    const acceptedCount = outcomes.filter(o => o.accepted).length;
+    const acceptedOutcomes = outcomes.filter(o => o.accepted);
+    const acceptedCount = acceptedOutcomes.length;
     const policy = cell.materialization.completionPolicy;
     const satisfied =
       policy === 'all' ? acceptedCount === outcomes.length
@@ -358,14 +304,190 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
       );
     }
 
-    // Surface the accepted outputs as the node production. For Slice 2 we
-    // expose the first accepted product as the primary production (downstream
-    // settlement reads the full set from the workplace records).
-    const firstAccepted = outcomes.find(o => o.accepted && o.production);
+    // Surface ALL accepted outputs as the node production. The primary
+    // `production` carries the first accepted product (for Flow nodes that
+    // read a single binding); the full manifest is exposed under
+    // `production.bindings.items` so downstream settlement / readers can
+    // reconstruct the complete set without re-querying the workplace records.
+    // This corrects the earlier Slice 2 behaviour that only surfaced the first
+    // product and forced downstream code to re-read state the executor already
+    // held.
+    return this.fanOutAcceptedResult(ctx, node, cell, acceptedOutcomes);
+  }
+
+  /**
+   * Drive ONE fan-out item through its bounded author (+ optional reviewer)
+   * loop. Mirrors the singleton driver's per-workplace logic but scoped to a
+   * single workKey. Honours `cell.recovery.maxAttempts` for per-item repair.
+   * On exhaustion the item is recorded as not-accepted (terminal failed); the
+   * completion policy decides whether that fails the whole node.
+   */
+  private async driveFanOutItem(
+    ctx: NodeExecutionContext,
+    node: ProductionCellFlowNodeDefinition,
+    cell: ProductionCellDefinition,
+    wp: { item: { readonly id: string }; workKey: string; ref: WorkplaceRef },
+  ): Promise<FanOutItemOutcome> {
+    const maxAttempts = cell.recovery.maxAttempts;
+    let attempts = 0;
+    for (;;) {
+      attempts += 1;
+      const authorExec = await this.launchAndWaitRole(
+        ctx, node, cell, wp.ref, 'author', wp.workKey,
+      );
+      if (!authorExec.executionId) {
+        throw new NodeExecutionError(
+          'production-cell', node.id,
+          `fan-out cell '${cell.id}' workKey '${wp.workKey}' author has no executionId`,
+        );
+      }
+      const authorSetRef = this.sealCandidateSet(
+        wp.ref, authorExec.executionId, 'author', null, authorExec.products,
+      );
+      this.opts.coordinator.sealCandidateSet(wp.ref);
+      const decision = this.runGate(ctx, wp.ref, cell.authorGate, authorSetRef, 'author');
+      if (decision.verdict === 'accepted') {
+        if (cell.review) {
+          const reviewResult = await this.driveReviewerPhase(
+            ctx, node, cell, wp.ref, authorSetRef, authorExec,
+          );
+          if (reviewResult.runtimeEvent === 'completed') {
+            // Final-accepted through review. Use the author product as the
+            // item's accepted product (the reviewer verdict is evidence, not a
+            // replacement — v4 §CandidateSet).
+            return this.acceptedFanOutItem(wp, authorExec, authorSetRef);
+          }
+          // Reviewer-proven defect → repair author within the budget.
+          if (attempts >= maxAttempts) {
+            return this.exhaustedFanOutItem(ctx, node, cell, wp.ref, wp.item, wp.workKey);
+          }
+          continue;
+        }
+        this.opts.coordinator.applyGateDecision(wp.ref, {
+          verdict: 'accepted', isFinal: true,
+        });
+        return this.acceptedFanOutItem(wp, authorExec, authorSetRef);
+      }
+      if (decision.verdict === 'repair_required') {
+        this.opts.coordinator.applyGateDecision(wp.ref, {
+          verdict: 'repair_required',
+          isFinal: false,
+          repairTargetRole: decision.repairTargetRole ?? 'author',
+        });
+        if (attempts >= maxAttempts) {
+          return this.exhaustedFanOutItem(ctx, node, cell, wp.ref, wp.item, wp.workKey);
+        }
+        this.opts.coordinator.requeue(wp.ref, decision.repairTargetRole ?? 'author');
+        continue;
+      }
+      if (decision.verdict === 'human_required') {
+        this.opts.coordinator.applyGateDecision(wp.ref, {
+          verdict: 'human_required', isFinal: true,
+        });
+        // human_required is terminal for this item (blocked). Not accepted.
+        return {
+          item: wp.item, workKey: wp.workKey, ref: wp.ref,
+          accepted: false, product: undefined, candidateSetRef: undefined,
+        };
+      }
+      // failed
+      this.opts.coordinator.applyGateDecision(wp.ref, {
+        verdict: 'failed', isFinal: true,
+      });
+      return {
+        item: wp.item, workKey: wp.workKey, ref: wp.ref,
+        accepted: false, product: undefined, candidateSetRef: undefined,
+      };
+    }
+  }
+
+  /**
+   * Build an accepted outcome for one fan-out item from the author products.
+   * Captures the full product (not just products[0]) so the manifest carries
+   * every produced ProductRef.
+   */
+  private acceptedFanOutItem(
+    wp: { item: { readonly id: string }; workKey: string; ref: WorkplaceRef },
+    authorExec: RoleExecSummary,
+    authorSetRef: string,
+  ): FanOutItemOutcome {
     return {
-      runtimeEvent: 'completed',
-      production: firstAccepted?.production,
+      item: wp.item,
+      workKey: wp.workKey,
+      ref: wp.ref,
+      accepted: true,
+      product: authorExec.products[0] ?? null,
+      products: authorExec.products,
+      candidateSetRef: authorSetRef,
     };
+  }
+
+  private exhaustedFanOutItem(
+    _ctx: NodeExecutionContext,
+    _node: ProductionCellFlowNodeDefinition,
+    cell: ProductionCellDefinition,
+    ref: WorkplaceRef,
+    item: { readonly id: string },
+    workKey: string,
+  ): FanOutItemOutcome {
+    if (cell.recovery.onExhausted === 'fail') {
+      this.opts.coordinator.applyGateDecision(ref, {
+        verdict: 'failed', isFinal: true,
+      });
+    } else {
+      this.opts.coordinator.applyGateDecision(ref, {
+        verdict: 'human_required', isFinal: true,
+      });
+    }
+    return {
+      item, workKey, ref,
+      accepted: false, product: undefined, candidateSetRef: undefined,
+    };
+  }
+
+  /**
+   * Assemble the node production for a completed fan-out cell. The primary
+   * production is the first accepted product (single-binding downstream nodes);
+   * the FULL manifest of accepted items is exposed under
+   * `production.bindings.items` so settlement / cell-output readers can
+   * reconstruct the complete set without re-querying workplace rows.
+   */
+  private fanOutAcceptedResult(
+    ctx: NodeExecutionContext,
+    _node: ProductionCellFlowNodeDefinition,
+    cell: ProductionCellDefinition,
+    acceptedOutcomes: readonly FanOutItemOutcome[],
+  ): NodeExecutionResult {
+    const primary = acceptedOutcomes[0]?.product;
+    const moduleRef = `${ctx.module.identity.name}@${ctx.module.identity.version}`;
+    const items = acceptedOutcomes.map(o => ({
+      itemId: o.item.id,
+      workKey: o.workKey,
+      schema: o.product?.schemaId ?? null,
+      artifactRef: o.product?.ref ?? null,
+      contentHash: o.product?.digest ?? null,
+      candidateSetRef: o.candidateSetRef ?? null,
+      workplaceRef: serializeWorkplaceRef(o.ref),
+    }));
+    const production: NodeProduction | undefined = primary
+      ? {
+          schema: primary.schemaId,
+          artifactRef: primary.ref,
+          contentHash: primary.digest,
+          bindings: {
+            cellId: cell.id,
+            moduleRef,
+            items,
+            acceptedCount: acceptedOutcomes.length,
+          },
+        }
+      : {
+          schema: cell.productContracts[0]?.schemaRef ?? 'factory.fanout-manifest.v1',
+          artifactRef: `fanout-manifest:${ctx.processRunId}:${cell.id}`,
+          contentHash: createHash('sha256').update(JSON.stringify(items)).digest('hex'),
+          bindings: { cellId: cell.id, moduleRef, items, acceptedCount: acceptedOutcomes.length },
+        };
+    return { runtimeEvent: 'completed', production };
   }
 
   /**
@@ -455,6 +577,16 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
     });
     this.maybeAdmit(ref);
 
+    // Resume fast-path: if a prior run already drove this workplace to a
+    // terminal-accepted state, re-execute must NOT relaunch. Reconstruct the
+    // accepted production from the persisted CandidateSet instead. This is
+    // the crash-resume guarantee: accepted products are never regenerated.
+    const existingState = this.opts.coordinator.readState(ref);
+    if (existingState?.loopState === 'terminal'
+      && existingState.terminalReason === 'accepted') {
+      return this.resumeAcceptedSingleton(ctx, node, cell, ref);
+    }
+
     // 2. Author loop with bounded repair.
     let attempts = 0;
     const maxAttempts = cell.recovery.maxAttempts;
@@ -488,8 +620,12 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
           if (reviewResult.runtimeEvent === 'completed') {
             return reviewResult;
           }
-          // Reviewer-proven defect → repair author. Fall through to the
-          // repair_required branch below (the coordinator already requeued).
+          // Reviewer-proven defect (or final-gate repair). The coordinator's
+          // reviewer-verdict(defect-proven) moved the workplace to
+          // in_progress/repair_wait with nextRole=author. Requeue it back to
+          // queued so the next author attempt can launch through
+          // markWorkerLaunched (which requires loopState='queued').
+          this.opts.coordinator.requeue(ref, 'author');
           if (attempts >= maxAttempts) {
             if (cell.recovery.onExhausted === 'fail') {
               this.opts.coordinator.applyGateDecision(ref, {
@@ -603,33 +739,35 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
     );
 
     if (finalDecision.verdict === 'accepted') {
-      this.opts.coordinator.applyGateDecision(ref, {
-        verdict: 'accepted', isFinal: true,
+      this.opts.coordinator.applyReviewerVerdict(ref, {
+        verdict: 'accepted',
       });
       return this.acceptedResult(ctx, node, cell, reviewerExec, authorSetRef);
     }
     if (finalDecision.verdict === 'repair_required') {
-      this.opts.coordinator.applyGateDecision(ref, {
+      // Reviewer-proven author defect. The reducer moves review_in_progress →
+      // in_progress/repair_wait (semantic backward transition, REG-28-AC-04).
+      // The caller requeues within its recovery budget.
+      this.opts.coordinator.applyReviewerVerdict(ref, {
         verdict: 'repair_required',
-        isFinal: false,
         repairTargetRole: finalDecision.repairTargetRole ?? 'author',
       });
-      // Requeue the declared repair target role. A bounded repair loop at the
-      // cell level is handled by the caller (singleton driver tracks attempts).
-      this.opts.coordinator.requeue(ref, finalDecision.repairTargetRole ?? 'author');
-      // Signal the singleton driver that repair is needed by returning a paused
-      // result; the caller re-enters the author loop.
+      // The reducer already set nextRole=author via defect-proven, so requeue
+      // is only needed if the kanban phase requires it. The caller's repair
+      // loop re-enters the author loop on the next attempt.
       return { runtimeEvent: 'paused', production: undefined };
     }
     if (finalDecision.verdict === 'human_required') {
-      this.opts.coordinator.applyGateDecision(ref, {
-        verdict: 'human_required', isFinal: true,
+      this.opts.coordinator.applyReviewerVerdict(ref, {
+        verdict: 'human_required',
       });
       return { runtimeEvent: 'paused', production: undefined };
     }
-    // failed
-    this.opts.coordinator.applyGateDecision(ref, {
-      verdict: 'failed', isFinal: true,
+    // failed: reviewer produced invalid output. The reducer sets repair_wait
+    // with nextRole=reviewer. Surface as a hard error to the caller — the
+    // singleton driver's recovery budget applies.
+    this.opts.coordinator.applyReviewerVerdict(ref, {
+      verdict: 'failed',
     });
     throw new NodeExecutionError(
       'production-cell', node.id,
@@ -662,7 +800,18 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
       );
     }
     const objective = this.buildObjective(ctx, node, cell, role);
-    const generationKey = `process-run:${ctx.processRunId}:cell:${cell.id}:${workKey}:${role}`;
+    // The generationKey must be STABLE across a crash-resume of the SAME
+    // attempt (so a concluded attempt is replayed, not re-launched) but
+    // DISTINCT across repair rounds (so a fresh repair attempt gets a fresh
+    // task/intent). The workplace revision is monotonic and increments on
+    // every transition — including the requeue that starts a repair round —
+    // so pinning it into the key gives exactly this behaviour. We read the
+    // current revision BEFORE launching; the coordinator's markWorkerLaunched
+    // will bump it further, but the pre-launch value is the stable identity
+    // for this attempt.
+    const preLaunchState = this.opts.coordinator.readState(ref);
+    const attemptRevision = preLaunchState?.revision ?? 0;
+    const generationKey = `process-run:${ctx.processRunId}:cell:${cell.id}:${workKey}:${role}:rev${attemptRevision}`;
     const snapshotRef = serializeWorkplaceRef(ref);
 
     const plan = this.opts.taskPersistence.ensureExecutionPlan({
@@ -732,6 +881,22 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
       const products = executionId
         ? this.readProducts(ctx, node, executionId)
         : [];
+      // The worker already finished in a prior run, but the Workplace state
+      // machine may not have advanced through leased → running (e.g. the crash
+      // happened after the worker reported done but before the seal). Drive
+      // the loop transitions idempotently so the subsequent seal is valid:
+      // markWorkerLaunched applies queued→leased→running, and is a no-op-safe
+      // sequence (the reducer CAS-guards each step; if already running the
+      // caller's sealCandidateSet proceeds). We use the existing executionId
+      // as the fence token — it is the canonical identity of that attempt.
+      if (executionId) {
+        try {
+          this.opts.coordinator.markWorkerLaunched(ref, executionId);
+        } catch {
+          // Already past 'queued' (e.g. a prior run advanced it) — safe to
+          // ignore; the seal step below will assert the correct state.
+        }
+      }
       return { executionId, taskId, products, replayed: true };
     }
     if (preparation.status === 'active' || preparation.status === 'blocked') {
@@ -783,6 +948,13 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
         concurrency: 1,
         assignment: preassignedWork,
       });
+      // Drive the Workplace state-machine side of the launch: queued → leased
+      // → running. The spawn path (WorkAssignmentPort + WorkerExecutorFactory)
+      // performs claim/fence/spawn but does NOT touch Workplace state; without
+      // these two transitions the subsequent `candidate-sealed` event would be
+      // a NO_TRANSITION (reducer requires loopState='running'). Decouples
+      // SPAWN (infrastructure) from WORKPLACE STATE (domain).
+      this.opts.coordinator.markWorkerLaunched(ref, workerExecutionId);
     } catch (error) {
       this.opts.taskPersistence.setIntentStatus(intentId, 'executing', 'paused');
       try { workerExecutor.dispose(); } catch { /* best effort */ }
@@ -940,6 +1112,53 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
     }
   }
 
+  /**
+   * Reconstruct the accepted node production for a terminal-accepted singleton
+   * workplace on crash-resume. Reads the durable sealed author CandidateSet
+   * (and, for a reviewed cell, the reviewer set) and rebuilds the
+   * {@link NodeExecutionResult} from it — WITHOUT relaunching a worker.
+   *
+   * This is the resume guarantee: accepted products are content-addressed and
+   * immutable; a resumed run re-emits the same digest, never a regenerated one.
+   */
+  private resumeAcceptedSingleton(
+    ctx: NodeExecutionContext,
+    _node: ProductionCellFlowNodeDefinition,
+    cell: ProductionCellDefinition,
+    ref: WorkplaceRef,
+  ): NodeExecutionResult {
+    const sets = this.opts.candidateSetRepo.listForWorkplace(ref);
+    // The author set is the one with role='author' and no subject (it is the
+    // subject of the reviewer set, not itself an assessment).
+    const authorSet = sets.find(s => s.role === 'author') ?? null;
+    const products: ProductRef[] = authorSet
+      ? authorSet.members.map(m => m.productRef)
+      : [];
+    const authorSetRef = authorSet?.candidateSetRef ?? '';
+    const bindings: Record<string, unknown> = {};
+    if (products.length > 0 && cell.productContracts.length > 0) {
+      bindings[cell.productContracts[0]!.binding] = products;
+    }
+    const production = products[0]
+      ? {
+          schema: products[0].schemaId,
+          artifactRef: products[0].ref,
+          contentHash: products[0].digest,
+          bindings: {
+            ...bindings,
+            candidateSetRef: authorSetRef,
+            cellId: cell.id,
+            resumed: true,
+          },
+        }
+      : undefined;
+    void ctx;
+    return {
+      runtimeEvent: 'completed',
+      production,
+    };
+  }
+
   private acceptedResult(
     _ctx: NodeExecutionContext,
     _node: ProductionCellFlowNodeDefinition,
@@ -989,6 +1208,22 @@ interface RoleExecSummary {
   taskId: number;
   products: readonly ProductRef[];
   replayed: boolean;
+}
+
+/**
+ * Outcome of driving one fan-out item through its author (+ optional reviewer)
+ * loop. `accepted` records whether the item reached terminal-accepted; when it
+ * did, `product` / `products` / `candidateSetRef` capture the accepted output
+ * so the completion join can assemble the full manifest.
+ */
+interface FanOutItemOutcome {
+  item: { readonly id: string };
+  workKey: string;
+  ref: WorkplaceRef;
+  accepted: boolean;
+  product: ProductRef | null | undefined;
+  products?: readonly ProductRef[];
+  candidateSetRef: string | undefined;
 }
 
 function resolveCellDefinition(
