@@ -14,10 +14,59 @@ import { handlers as dispatcherHandlers } from '../dist/tools/dispatcher.js';
 import { releaseExecutionAtomically } from '../dist/lifecycle/atomic-release.js';
 import { withDb, withDbWrite, resolveProjectWorkspace } from './shared.mjs';
 
+const WORKER_DONE_STATUSES = new Set(['review', 'done', 'todo', 'blocked']);
+
+function readAcceptedWorkerDone(db, executionId) {
+  if (!executionId) return null;
+  let row;
+  try {
+    row = db.prepare(
+      `SELECT command_id, reply_json
+         FROM command_receipts
+        WHERE execution_id=?
+          AND command_kind='worker_done'
+          AND accepted=1
+        ORDER BY accepted_at DESC, rowid DESC
+        LIMIT 1`,
+    ).get(executionId);
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('no such table')) return null;
+    throw error;
+  }
+  if (!row) return null;
+  try {
+    const reply = JSON.parse(row.reply_json);
+    const status = reply?.completed_new_status;
+    if (!WORKER_DONE_STATUSES.has(status)) return null;
+    return { commandId: row.command_id, completedNewStatus: status };
+  } catch {
+    return null;
+  }
+}
+
 export function getRunnerTaskState(taskId) {
-  return withDb(db =>
-    db.prepare('SELECT id, status, assigned_to, tags, integration_state FROM tasks WHERE id=?').get(taskId),
-  );
+  return withDb(db => {
+    const task = db.prepare(
+      `SELECT id, status, assigned_to, tags, integration_state,
+              current_execution_id
+         FROM tasks WHERE id=?`,
+    ).get(taskId);
+    if (!task) return task;
+
+    // Physical completion is proven by the exact accepted worker_done receipt,
+    // not by the mutable card projection. A successful worker may already have
+    // moved its authoritative Workplace to verifying, which reverse-projects
+    // the task back to in_progress while the process is still closing.
+    const completion = readAcceptedWorkerDone(db, task.current_execution_id);
+    if (!completion) return task;
+
+    return {
+      ...task,
+      status: completion.completedNewStatus,
+      assigned_to: null,
+      worker_done_command_id: completion.commandId,
+    };
+  });
 }
 
 export function recoverRunnerAssignment({ taskId, workerId, originalStatus, executionId, reason }) {
@@ -33,6 +82,11 @@ export function recoverRunnerAssignment({ taskId, workerId, originalStatus, exec
   // because there is no execution row to terminalize — only a stale
   // assigned_to to clear.
   return withDbWrite(db => {
+    // An accepted worker_done receipt is durable proof that this execution
+    // completed its protocol. Never route such a close through crash recovery,
+    // even if the in-memory runner snapshot or task projection is delayed.
+    if (executionId && readAcceptedWorkerDone(db, executionId)) return false;
+
     const task = db.prepare(
       'SELECT id, title, status, assigned_to, tags, current_execution_id FROM tasks WHERE id=?',
     ).get(taskId);
