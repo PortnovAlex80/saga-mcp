@@ -932,12 +932,7 @@ export class ClaudeBoardRunner {
           processWorkspace && existsSync(hookPath)
             ? readFileSync(hookPath).toString('base64')
             : '',
-        // W13-A2: SAGA_PROCESS_TRACKER_PATH / SAGA_PROCESS_CHECKLIST_PATHS
-        // were consumed only by the deleted legacy tracker-reminder.mjs. The
-        // W5-A5 structured-context-hook reads the exact execution-scoped
-        // projection written by the pinned workspace materializer.
         SAGA_AGENT_ASSISTANCE_PATH: processWorkspace?.agentAssistanceAbsolutePath || '',
-        // Для heartbeat-лога из скилла воркера (см. saga-worker/SKILL.md):
         SAGA_PROJECT_ID: String(run.projectId),
         SAGA_PROJECT_NAME: run.projectName,
         SAGA_TASK_TITLE: task.title,
@@ -945,6 +940,16 @@ export class ClaudeBoardRunner {
       windowsHide: true,
       stdio: ['pipe', 'pipe', 'pipe'],
     });
+    // Diagnostic: log the resolved spawn command + PID + cwd to the JSONL log.
+    // This makes spawn failures immediately diagnosable (path issues, compound
+    // claudePath splitting, missing modules, etc.) without guessing.
+    const _diagLogPath = path.join(this.logRoot, safeName(run.id), `task-${task.id}-${safeName(workerId)}.jsonl`);
+    try {
+      const _diag = createWriteStream(_diagLogPath, { flags: 'a' });
+      _diag.write(`[runner] spawn: claudePath=${JSON.stringify(this.claudePath)} pid=${child.pid} cwd=${JSON.stringify(workspaceRoot)} task=${task.id} exec=${assignment.execution_id || 'none'}\n`);
+      _diag.write(`[runner] spawnClaude split: cmd=${JSON.stringify(this.claudePath.trim().split(/\s+/)[0])} prefixArgs=${JSON.stringify(this.claudePath.trim().split(/\s+/).slice(1))}\n`);
+      _diag.end();
+    } catch { /* diagnostic is best-effort */ }
     // Pipe the prompt through stdin instead of passing it as a command-line
     // argument. This avoids the Windows CreateProcess 32767-char limit that
     // silently kills spawns for large skills (saga-architect: 38KB skill +

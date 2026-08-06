@@ -170,6 +170,79 @@ export function selectButtonColorScenario(ctx, env = process.env) {
   }
 
   switch (ctx.process_node_id) {
+    case 'produce-proposal':
+      return {
+        id: 'button-color/discovery/proposal',
+        steps: [
+          {
+            type: 'proposal_submit',
+            as: 'proposal',
+            args: {
+              intent_id: '{{ctx.metadata.work_intent_id}}',
+              task_id: '{{ctx.task_id}}',
+              execution_id: '{{ctx.execution_id}}',
+              kind: 'discovery',
+              schema_version: 'factory.discovery-proposal.v1',
+              payload: {
+                problem_statement: 'A static one-page website needs a button that toggles between blue and red on each click.',
+                observed_context: 'No existing product; greenfield static page with a single interactive element.',
+                stakeholders_or_actors: ['end-user'],
+                assumptions: ['Modern browser with JavaScript enabled', 'No backend or persistence required'],
+                unknowns: [],
+                risks: [],
+                candidate_scope: 'Single index.html file with inline CSS and JavaScript. One button element. Click handler alternates background color.',
+                evidence_refs: ['initiative.subject'],
+                recommended_outcome: 'go',
+                rationale: 'Minimal XS scope. One file, one interaction, no dependencies. Deterministic implementation.',
+              },
+            },
+          },
+          done(ctx, 'Submitted discovery proposal with recommended_outcome=go.'),
+        ],
+      };
+
+    case 'assess-readiness':
+      return {
+        id: 'button-color/discovery/readiness',
+        steps: [
+          {
+            type: 'readiness_get',
+            args: {
+              control_intent_id: '{{ctx.metadata.control_intent_id}}',
+              execution_id: '{{ctx.execution_id}}',
+            },
+          },
+          {
+            type: 'readiness_submit',
+            args: {
+              control_intent_id: '{{ctx.metadata.control_intent_id}}',
+              execution_id: '{{ctx.execution_id}}',
+              schema_version: 'factory.discovery-readiness-assessment.v1',
+              payload: {
+                proposal_id: '{{aliases.readiness_proposal_id}}',
+                proposal_content_hash: '{{aliases.readiness_proposal_hash}}',
+                overall_readiness: 'ready',
+                dimension_assessments: {
+                  problem_clarity: { status: 'sufficient', rationale: 'Single button toggle is unambiguous.', source_refs: ['$.problem_statement'] },
+                  scope_boundedness: { status: 'sufficient', rationale: 'One file, one interaction, XS.', source_refs: ['$.candidate_scope'] },
+                  stakeholder_coverage: { status: 'sufficient', rationale: 'End user is the only stakeholder.', source_refs: ['$.stakeholders_or_actors'] },
+                  assumption_visibility: { status: 'sufficient', rationale: 'Modern browser with JS is standard.', source_refs: ['$.assumptions'] },
+                  unknowns_manageability: { status: 'sufficient', rationale: 'No unknowns.', source_refs: ['$.unknowns'] },
+                  risk_visibility: { status: 'sufficient', rationale: 'No risks for a static page.', source_refs: ['$.risks'] },
+                  evidence_grounding: { status: 'sufficient', rationale: 'Initiative subject provides clear grounding.', source_refs: ['$.evidence_refs'] },
+                },
+                blocking_gaps: [],
+                non_blocking_gaps: [],
+                recommended_next_action: 'proceed_to_settlement',
+                confidence: 0.95,
+                rationale: 'XS static page with deterministic implementation path. All dimensions sufficient.',
+              },
+            },
+          },
+          done(ctx, 'Submitted readiness assessment: ready, proceed to settlement.'),
+        ],
+      };
+
     case 'define-product-contract':
       return {
         id: 'button-color/formalization/product-contract',

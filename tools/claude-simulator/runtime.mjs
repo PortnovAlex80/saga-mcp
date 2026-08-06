@@ -9,6 +9,7 @@ export function parseClaudeArgv(argv) {
     '--mcp-config', '--model', '--output-format', '--permission-mode',
     '--append-system-prompt', '--allowedTools', '--disallowedTools',
     '--max-turns', '--max-budget-usd', '--fallback-model',
+    '--settings', '--effort',
   ]);
   let mcpConfigPath = null;
   const positionals = [];
@@ -141,16 +142,29 @@ export function heartbeat(ctx, event, message = '') {
 
 export async function loadSagaRuntime(dbPath) {
   process.env.DB_PATH = dbPath;
+  // The runner sets SAGA_MANAGED_EXECUTION=1 + SAGA_EXECUTION_ID in the MCP
+  // server's env (mcpServers.saga.env). When the real Claude CLI spawns the
+  // saga MCP server, those env vars are present. The simulator calls handlers
+  // in-process (no MCP subprocess), so it must set them itself — otherwise
+  // resolveManagedExecutionProvenance returns null and artifact_create
+  // falls back to executionRef='system' → STALE_EXECUTION_CANNOT_SUBMIT.
+  // enrichContext (called later) sets the per-task SAGA_EXECUTION_ID.
+  process.env.SAGA_MANAGED_EXECUTION = '1';
   const dbModule = await import('../../dist/db.js');
   if (typeof dbModule.closeDb === 'function') {
     try { dbModule.closeDb(); } catch { /* no cached connection */ }
   }
-  const [dispatcher, lifecycle, artifacts] = await Promise.all([
+  const [dispatcher, lifecycle, artifacts, proposalMod, readinessMod] = await Promise.all([
     import('../../dist/tools/dispatcher.js'),
     import('../../dist/tools/lifecycle.js'),
     import('../../dist/tools/artifacts.js'),
+    import('../../dist/tools/discovery-proposal-tools.js'),
+    import('../../dist/tools/discovery-readiness-tools.js'),
   ]);
-  return { dbModule, dispatcher, lifecycle, artifacts };
+  // Create handler instances (factory pattern — modules export create*Handlers())
+  const proposals = proposalMod.createDiscoveryProposalHandlers();
+  const readiness = readinessMod.createDiscoveryReadinessHandlers();
+  return { dbModule, dispatcher, lifecycle, artifacts, proposals, readiness };
 }
 
 export function enrichContext(runtime, promptContext) {
@@ -176,6 +190,20 @@ export function enrichContext(runtime, promptContext) {
     role: task.status === 'review' || task.status === 'review_in_progress'
       ? 'reviewer' : (promptContext.role || 'author'),
   };
+}
+
+/**
+ * Set the per-task execution env vars that handlers (artifact_create,
+ * trace_add, worker_done, proposal_submit, etc.) read via
+ * resolveManagedExecutionProvenance. The runner would set these in the
+ * MCP server subprocess env; the simulator calls handlers in-process so
+ * it must set them itself.
+ */
+export function setExecutionEnv(ctx) {
+  process.env.SAGA_MANAGED_EXECUTION = '1';
+  process.env.SAGA_EXECUTION_ID = ctx.execution_id || ctx.task?.current_execution_id || '';
+  process.env.SAGA_TASK_ID = String(ctx.task_id ?? ctx.task?.id ?? '');
+  process.env.SAGA_WORKER_ID = ctx.worker_id || '';
 }
 
 function findArtifact(db, epicId, type, code = null) {
@@ -281,6 +309,34 @@ export async function executeSteps(runtime, ctx, scenario, stream) {
         requireHandler(runtime.lifecycle, 'verification_record')(step.args);
         stream.text('simulator: verification evidence recorded');
         break;
+      case 'proposal_submit': {
+        const result = requireHandler(runtime.proposals, 'proposal_submit')(step.args);
+        const proposalId = result?.proposal_id;
+        if (typeof proposalId === 'number' && proposalId > 0) {
+          vars.aliases[step.as || 'proposal'] = proposalId;
+          vars.aliases.proposal_content_hash = result?.content_hash ?? null;
+          stream.text(`simulator: proposal #${proposalId} submitted (${result?.status})`);
+        } else {
+          stream.text(`simulator: proposal ${result?.status} (no canonical row)`);
+        }
+        break;
+      }
+      case 'readiness_get': {
+        const result = requireHandler(runtime.readiness, 'readiness_get')(step.args);
+        const proposalId = result?.proposal_id;
+        const proposalHash = result?.proposal_content_hash;
+        const allowed = result?.allowed_source_refs ?? [];
+        if (typeof proposalId === 'number') vars.aliases.readiness_proposal_id = proposalId;
+        if (typeof proposalHash === 'string') vars.aliases.readiness_proposal_hash = proposalHash;
+        vars.aliases.allowed_source_refs = allowed;
+        stream.text(`simulator: readiness_get proposal=${proposalId} allowed=${allowed.length} refs`);
+        break;
+      }
+      case 'readiness_submit': {
+        const result = requireHandler(runtime.readiness, 'readiness_submit')(step.args);
+        stream.text(`simulator: readiness ${result?.status} (#${result?.assessment_id})`);
+        break;
+      }
       case 'worker_done':
         requireHandler(runtime.dispatcher, 'worker_done')(step.args);
         stream.text(`simulator: worker_done task #${step.args.task_id}`);
