@@ -19,10 +19,11 @@
  * mechanism.
  *
  * BYTE-IDENTITY CONTRACT: this function MUST produce the same decision the
- * procedural code in worker-executions.ts produced for every input combination.
- * The DB-backed tests in tests/architecture/worker-supervision-reaper.test.mjs
- * are the golden characterization: if any of them breaks, this policy diverged
- * and must be fixed. The pure table-driven tests in
+ * procedural code in worker-executions.ts produced for every input combination,
+ * except for explicitly documented incident repairs such as the durable
+ * worker_done finishing exception below. The DB-backed tests in
+ * tests/architecture/worker-supervision-reaper.test.mjs are the golden
+ * characterization. The pure table-driven tests in
  * tests/lifecycle/stuck-policy.test.mjs cover the corners the DB harness cannot
  * reach cheaply.
  *
@@ -57,7 +58,7 @@ export const REAL_SUPERVISION_CLOCK: SupervisionClock = {
 
 /** Reserved execution boot timeout: 60s to acquire a PID before spawn_failed. */
 export const RESERVED_BOOT_TIMEOUT_MS = 60_000;
-/** Finishing-phase grace: a `finishing` execution is kept for 30s past phase stamp. */
+/** Finishing grace: keep while phase/progress activity is less than 30s old. */
 export const FINISH_GRACE_MS = 30_000;
 /** 10 min with no progress_at advance → suspected_stuck. */
 export const STUCK_SILENCE_MS = 10 * 60 * 1000;
@@ -185,7 +186,11 @@ export interface StuckPolicyInput {
   readonly ownsActiveTask: boolean;
   /** Precomputed legitimacy #2: phase='integrating', task='done', integration='pending', fence ours. */
   readonly legitimateIntegration: boolean;
-  /** Precomputed legitimacy #3: phase='finishing' and phase age < FINISH_GRACE_MS, fence ours. */
+  /**
+   * Legacy precomputed legitimacy #3: fenced phase='finishing' inside the
+   * original phase-age grace. The policy also derives the post-worker_done
+   * fence-free finishing case directly from phase/progress timestamps.
+   */
   readonly legitimateFinishing: boolean;
 }
 
@@ -194,33 +199,24 @@ export interface StuckPolicyInput {
  * every time. No IO, no DB, no probe, no clock read (nowMs is an input).
  *
  * The decision tree mirrors worker-executions.ts::reconcileWorkerExecutions
- * lines 361-576 BYTE-FOR-BYTE, including the subtle fall-through after a
- * MARK_SUSPECTED (when the cancel grace is not yet met, the row falls through
- * to the legitimacy / final-kill path) and the lease-first remote branch.
+ * except for incident fixes explicitly documented in this policy.
  *
  * Order of decisions (load-bearing — do not reorder):
  *   1. Remote row           → leaseExpired ? RELEASE(lost) : KEEP.
  *   2. Dead/reserved-expired/reserved-lease-expired local → RELEASE.
- *      (Wave 8 HIGH 5A: an ALIVE local row with an expired lease is NOT
- *      released here — it falls through to step 6's TERMINATE so the still-
- *      running process is killed before its card is released.)
- *   3. Stuck stage 1+2      → MARK_SUSPECTED, or REQUEST_CANCEL (which
- *                             short-circuits). MARK_SUSPECTED falls through.
- *   4. Stuck stage 3        → cancel grace met: TERMINATE_BUT_PID_REUSE (no
- *                             birth-token match) which escalates to
- *                             RELEASE(lost) once PID_REUSE_GRACE_MS elapses
- *                             (Wave 8 HIGH 5B), or TERMINATE (match).
- *   5. Legitimate phase     → KEEP (only when the lease is still alive; an
- *                             expired lease skips this gate — HIGH 5A).
- *   6. Alive but illegit    → TERMINATE (kill+release); the mechanism handles
- *                             killVerified failure by pushing KEEP. Also
- *                             reached by alive + lease-expired rows (HIGH 5A).
+ *   2a. Fresh durable finishing process → KEEP, even after its task fence was
+ *       released; worker_done already revoked mutation authority.
+ *   3. Alive local lease expired → TERMINATE, unless step 2a matched.
+ *   4. Stuck stage 1+2      → MARK_SUSPECTED, or REQUEST_CANCEL.
+ *   5. Stuck stage 3        → verified termination / PID-reuse handling.
+ *   6. Legitimate phase     → KEEP.
+ *   7. Alive but illegit    → TERMINATE.
  */
 export function decideStuckAction(input: StuckPolicyInput): StuckAction {
   // -------------------------------------------------------------------------
   // (1) REMOTE execution: decide from the durable lease, NEVER from a PID guess.
   // A remote PID belongs to another host — we cannot verify or kill it. We DO
-  // release once the lease has expired (the durable signal the remote foreman
+  // release once its LEASE has expired (the durable signal the remote foreman
   // is gone). A live lease is left untouched.
   // -------------------------------------------------------------------------
   if (!input.isLocal) {
@@ -240,28 +236,11 @@ export function decideStuckAction(input: StuckPolicyInput): StuckAction {
 
   // -------------------------------------------------------------------------
   // (2) LOCAL execution release gate — DEAD / reserved-expired rows only.
-  //   - reserved rows have no PID; they are released ONLY by
-  //     RESERVED_BOOT_TIMEOUT_MS expiry (or lease expiry), NEVER by !alive.
-  //   - non-reserved rows are released when the OS process is DEAD (the lease
-  //     may or may not have expired; a dead process is always safe to release).
-  // Terminal state: reserved → 'spawn_failed'; otherwise 'lost'.
-  //
-  // Wave 8 HIGH 5A: an ALIVE local process with an EXPIRED lease is NOT
-  // released here. Releasing without killing would let a second worker claim
-  // the same card while the first is still spinning (two workers at one desk).
-  // The supervisor authority is gone (lease expired), so the still-running
-  // process must be KILLED after birth-token verification — that path is
-  // TERMINATE, handled in step (6) below. We compute `leaseExpired` here only
-  // to exclude it from this release gate for alive rows; the downstream
-  // TERMINATE branch carries its own reason.
   // -------------------------------------------------------------------------
   const notAlive = input.state !== 'reserved' && !input.isAlive;
   const reservedExpired = input.state === 'reserved'
     && input.nowMs - input.reservedAtMs >= RESERVED_BOOT_TIMEOUT_MS;
   const leaseExpired = input.leaseExpiresAtMs !== 0 && input.nowMs >= input.leaseExpiresAtMs;
-  // Reserved rows are always treated as not-alive for release purposes (no
-  // PID to probe). A reserved row whose lease expired before the 60s boot
-  // timeout is released here as spawn_failed.
   const reservedLeaseExpired = input.state === 'reserved' && leaseExpired;
 
   if (notAlive || reservedExpired || reservedLeaseExpired) {
@@ -276,16 +255,42 @@ export function decideStuckAction(input: StuckPolicyInput): StuckAction {
     return { kind: 'RELEASE', terminal, reason };
   }
 
-  // Track whether the supervisor authority is gone for the alive paths below.
-  // Wave 8 HIGH 5A: an alive local row with an expired lease MUST be
-  // terminated (verified kill), NOT released and NOT kept. The lease is the
-  // durable signal that the supervisor/foreman renewed it within the last
-  // window; once it is gone, the still-spinning process is an orphan holding
-  // a card. Releasing without killing let a second worker claim the same
-  // card; keeping it trusts a process whose authority is dead. So lease
-  // expiry dominates legitimacy and progress-silence: we fall straight to
-  // step (6)'s TERMINATE. (Birth-token verification still happens in the
-  // mechanism before the actual kill.)
+  // -------------------------------------------------------------------------
+  // (2a) Durable worker_done finishing grace.
+  //
+  // `phase='finishing'` is written by worker_done inside the same IMMEDIATE
+  // transaction that stores the accepted command receipt. Once committed, the
+  // task/Workplace may legitimately clear assigned_to and current_execution_id
+  // before Node delivers the OS close callback. Therefore task fence ownership
+  // is no longer required for this bounded process-cleanup phase.
+  //
+  // Use the latest of phase_updated_at and progress_at. A model stream/log
+  // event after worker_done proves the process is still making shutdown
+  // progress and refreshes the 30-second grace. Once output goes silent beyond
+  // FINISH_GRACE_MS, ordinary termination policy applies.
+  // -------------------------------------------------------------------------
+  const finishingActivityAtMs = Math.max(
+    input.phaseUpdatedAtMs,
+    input.progressAtMs,
+  );
+  const freshDurableFinishing = input.phase === 'finishing'
+    && finishingActivityAtMs !== 0
+    && input.nowMs - finishingActivityAtMs < FINISH_GRACE_MS;
+  if (
+    input.isAlive
+    && (input.legitimateFinishing || freshDurableFinishing)
+  ) {
+    return {
+      kind: 'KEEP',
+      reason: 'accepted worker_done; finishing process still within activity grace',
+    };
+  }
+
+  // -------------------------------------------------------------------------
+  // (3) Alive local lease expired. A still-authoritative worker must be killed
+  // before its card can be reassigned. The completed finishing exception above
+  // is safe because worker_done already revoked mutation authority.
+  // -------------------------------------------------------------------------
   const aliveLeaseExpired = input.isAlive && leaseExpired;
   if (aliveLeaseExpired) {
     return {
@@ -295,35 +300,18 @@ export function decideStuckAction(input: StuckPolicyInput): StuckAction {
   }
 
   // -------------------------------------------------------------------------
-  // (3) Stuck policy — stages 1 & 2.
-  //   active → (progress silent > STUCK_SILENCE_MS) → suspected_stuck
-  //   suspected_stuck → (suspected_stuck_at age > STUCK_CANCEL_GRACE_MS) →
-  //   cancel_requested
-  // Only consulted when alive AND not already cancel_requested. The progress
-  // clock is measured against progress_at (BUG 2: NOT heartbeat_at).
+  // (4) Stuck policy — stages 1 & 2.
   // -------------------------------------------------------------------------
   if (input.isAlive && input.stuckState !== 'cancel_requested') {
     const progressSilent = input.progressAtMs !== 0
       && input.nowMs - input.progressAtMs >= STUCK_SILENCE_MS;
     if (progressSilent) {
-      // BYTE-IDENTITY: the procedural code mutates row.suspected_stuck_at =
-      // nowIso IN MEMORY when it freshly stamps suspected_stuck, THEN computes
-      // stage 2's `since = parseDbTime(row.suspected_stuck_at)`. So on the
-      // sweep that FIRST enters suspected_stuck, `since` is `nowMs` (the
-      // just-stamped value) and the cancel grace is NOT met (age 0). Only on
-      // LATER sweeps, when stuck_state is already 'suspected_stuck', does
-      // `since` use the persisted suspected_stuck_at. We model that here:
       const freshlyEnteringSuspected = input.stuckState !== 'suspected_stuck';
       const since = freshlyEnteringSuspected
         ? input.nowMs
         : (input.suspectedStuckAtMs || input.progressAtMs || 0);
       const cancelGraceMet = input.nowMs - since >= STUCK_CANCEL_GRACE_MS;
 
-      // Already suspected AND the cancel grace has elapsed → enter
-      // cancel_requested. (A fresh row can NEVER jump straight to
-      // cancel_requested on its first sweep, because the in-memory stamp makes
-      // `since = nowMs` and the grace is 0 — see the byte-identity note above.
-      // This matches BUG 4's observed two-sweep transition.)
       if (!freshlyEnteringSuspected && cancelGraceMet) {
         return {
           kind: 'REQUEST_CANCEL',
@@ -331,36 +319,15 @@ export function decideStuckAction(input: StuckPolicyInput): StuckAction {
         };
       }
 
-      // Stage 1: progress silent, cancel grace not yet met (either a fresh
-      // entry, or already-suspected but the grace has not elapsed). The
-      // procedural code stamps suspected_stuck_at and then FALLS THROUGH (no
-      // `continue`): it proceeds to the legitimacy check and, if not legit,
-      // the final-alive kill path. To preserve byte-identity we mirror that
-      // fall-through here:
-      //   - if the row is legitimate (owns an allowed phase) → the downstream
-      //     is KEEP, so emitting MARK_SUSPECTED (stamp + push kept) is identical;
-      //   - if NOT legitimate → the downstream is the final-alive kill, so we
-      //     do NOT short-circuit and instead fall through to step (6), which
-      //     emits TERMINATE. (The suspected stamp that the procedural code
-      //     would have written first is moot: the row is about to terminate,
-      //     and a terminal execution's stuck_state is never observed again.)
       if (input.ownsActiveTask || input.legitimateIntegration || input.legitimateFinishing) {
         return { kind: 'MARK_SUSPECTED', reason: 'progress silent past grace — suspected stuck' };
       }
-      // Fall through to step (6): alive + not legitimate → TERMINATE.
+      // Fall through to final alive-illegitimate termination.
     }
   }
 
   // -------------------------------------------------------------------------
-  // (4) Stuck stage 3 — cancel_requested past the kill grace → verified kill.
-  // Birth-token verification is the LAST gate before termination (scenario 16):
-  // a reused PID with a different token is NEVER killed. Wave 8 HIGH 5B adds
-  // the escalation: such a row is normally TERMINATE_BUT_PID_REUSE (left for a
-  // human on this sweep), but once PID_REUSE_GRACE_MS has elapsed since
-  // cancel_requested_at the policy escalates to RELEASE — the process is
-  // either dead or stolen, but the card MUST return to the queue eventually.
-  // This bounds the worst-case stall at PID_REUSE_GRACE_MS and is a
-  // human-notification event, not a permanent block.
+  // (5) Stuck stage 3 — cancel_requested past the kill grace.
   // -------------------------------------------------------------------------
   if (input.isAlive && input.stuckState === 'cancel_requested') {
     const since = input.cancelRequestedAtMs || input.nowMs;
@@ -387,13 +354,9 @@ export function decideStuckAction(input: StuckPolicyInput): StuckAction {
   }
 
   // -------------------------------------------------------------------------
-  // (5) Legitimate phase — alive execution that still owns an allowed task
-  // phase is left alone. (Computed by the mechanism; the policy just gates.)
-  //
-  // Note: an alive row with an expired lease was already returned as TERMINATE
-  // above (Wave 8 HIGH 5A) and never reaches this gate. So this KEEP only
-  // applies to alive rows whose lease is still alive — the supervisor is
-  // healthy and vouches for the phase ownership.
+  // (6) Legitimate phase — alive execution that still owns an allowed task
+  // phase is left alone. Fresh finishing was handled earlier because it no
+  // longer requires ownership of the released task fence.
   // -------------------------------------------------------------------------
   if (input.isAlive && (input.ownsActiveTask || input.legitimateIntegration || input.legitimateFinishing)) {
     return {
@@ -403,12 +366,7 @@ export function decideStuckAction(input: StuckPolicyInput): StuckAction {
   }
 
   // -------------------------------------------------------------------------
-  // (6) Alive but illegitimate — terminate (kill + release). The mechanism
-  // calls probe.killVerified(pid, token); on failure it pushes KEEP with
-  // reason 'unsafe to terminate without matching process birth identity'. We
-  // emit TERMINATE and let the mechanism own the kill-attempt outcome.
-  // (The procedural code reaches this branch both for freshly-suspected rows
-  // that fell through stage 1 and for plain alive-illegitimate rows.)
+  // (7) Alive but illegitimate — terminate (kill + release).
   // -------------------------------------------------------------------------
   if (input.isAlive) {
     return {
@@ -417,7 +375,5 @@ export function decideStuckAction(input: StuckPolicyInput): StuckAction {
     };
   }
 
-  // Unreachable in practice: a local row that is not alive was handled by the
-  // release gate at step (2). Defensive KEEP so the policy is total.
   return { kind: 'KEEP', reason: 'no action — local row not alive and not released' };
 }
