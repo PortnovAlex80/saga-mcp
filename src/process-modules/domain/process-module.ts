@@ -104,6 +104,14 @@ export interface ExecutionProfileDefinition {
   outputSchema: SchemaReference;
   retryPolicy: RetryPolicyDefinition;
   recoveryPolicy: RecoveryPolicyDefinition;
+  /**
+   * Optional contract version pin. When set, the runtime stamps this ref on
+   * the WorkIntent authority_scope for both author and reviewer execution.
+   * A reviewer checking an artifact produced under a different contract
+   * version throws SRS_CONTRACT_VERSION_MISMATCH (not changes_requested).
+   * Currently used by the formalization-architect profile.
+   */
+  contractRef?: { version: string; digest: string };
 }
 
 /**

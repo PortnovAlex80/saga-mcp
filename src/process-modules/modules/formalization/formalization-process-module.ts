@@ -1,4 +1,5 @@
 import type { ProcessModuleDefinition } from '../../domain/process-module.js';
+import { SRS_CONTRACT_REF } from '../../../modules/formalization/domain/srs-contract.js';
 // CONVEYOR Wave 7: the module identity ref is a CANONICAL contract owned by the
 // lifecycle (Rule 3). This module imports it back — inward direction, allowed.
 // (Resolves the prior duplicate definition that also lived in
@@ -411,6 +412,7 @@ export const formalizationProcessModule: ProcessModuleDefinition = {
       outputSchema: { id: 'factory.formalization-architecture-bundle.v1' },
       retryPolicy: { maxAttempts: 2, retryOn: ['schema-rejected', 'trace-gap', 'invariant-gap'], backoff: 'none' },
       recoveryPolicy: { resumeFromCheckpoint: true, reuseWorkIntent: true, reuseAcceptedOutput: true, onExhausted: 'escalate' },
+      contractRef: SRS_CONTRACT_REF,
     },
   ],
 };
