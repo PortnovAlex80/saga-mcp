@@ -4,7 +4,7 @@ import { ensureFactoryModuleInstallationSchema } from './process-modules/install
 import { ensureFactoryScenarioInstallationSchema } from './process-modules/installation/persistence/sqlite-scenario-installation-repository.js';
 import { ensureFactoryProtocolRunSchema } from './process-modules/persistence/sqlite-protocol-run-repository.js';
 import { ensureFactoryCallInstanceSchema } from './process-modules/persistence/sqlite-call-instance-repository.js';
-import { ensureAuthorityBindingInvariant } from './infrastructure/workplace/authority-binding-invariant.js';
+import { ensureAuthorityBindingInvariant } from './infrastructure/projections/workplace-projector.js';
 
 let db: Database.Database | null = null;
 
