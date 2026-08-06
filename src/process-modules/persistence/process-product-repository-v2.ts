@@ -74,6 +74,14 @@ export interface ProcessProductRecordV2<T = unknown> {
    * the reference, but is preserved for compatibility with v1 keyed reads.
    */
   readonly productKind: string;
+  /**
+   * Logical instance key within this product kind. For legacy v1 rows this
+   * mirrors `productKind` (one product per kind per run); for v2 rows written
+   * via `recordProduct` it is derived from the envelope's `productKey`
+   * (defaulting to `schemaId`) so multiple products of the same kind can
+   * coexist in one run (e.g. `artifact:42`, `artifact:43`).
+   */
+  readonly productKey: string;
   /** The (schema, ref, hash) content-addressed reference. */
   readonly reference: ProcessProductReferenceV2;
   /** The canonical product payload (parsed JSON). */

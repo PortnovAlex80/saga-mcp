@@ -12,6 +12,7 @@ export interface ProcessProductReference {
 export interface ProcessProductRecord<T = unknown> {
   processRunId: number;
   productKind: string;
+  productKey: string;
   reference: ProcessProductReference;
   payload: T;
   payloadHash: string;
@@ -27,28 +28,91 @@ export interface ProcessProductRecord<T = unknown> {
  * - `payload_hash` covers the complete canonical payload, including the
  *   embedded domain hash.
  *
- * Reusing a (ProcessRun, product kind) with any different byte-level payload
- * is rejected. This is the durable equivalent of an immutable frame binding.
+ * Identity is scoped to three layers:
+ * - `product_kind` — the class of product (e.g. `factory.artifact-ref.v1`,
+ *   `delivery.preflight`). One kind can appear many times in a run.
+ * - `product_key` — the logical instance within that kind (e.g.
+ *   `artifact:42` for the artifact-ref bridge, or the kind itself for v1
+ *   singletons like Delivery/Development).
+ * - `artifact_ref` — the content-addressed immutable version.
+ *
+ * Reusing a (ProcessRun, product kind, product key) with any different
+ * byte-level payload is rejected. This is the durable equivalent of an
+ * immutable frame binding that also permits many products of the same kind.
  */
 export function ensureFactoryProcessProductSchema(
   db: Database.Database,
 ): void {
   ensureFactoryProcessRunSchema(db);
+  // Migrate any pre-product_key table shape in place before the CREATE TABLE
+  // IF NOT EXISTS no-ops on an already-present (old-shape) table.
+  migrateFactoryProcessProductProductKey(db);
   db.exec(`
     CREATE TABLE IF NOT EXISTS factory_process_products (
       id                 INTEGER PRIMARY KEY AUTOINCREMENT,
       process_run_id     INTEGER NOT NULL
                                REFERENCES factory_process_runs(id) ON DELETE RESTRICT,
       product_kind       TEXT NOT NULL,
+      product_key        TEXT NOT NULL DEFAULT '',
       schema_id          TEXT NOT NULL,
       artifact_ref       TEXT NOT NULL UNIQUE,
       product_hash       TEXT NOT NULL,
       payload_snapshot   TEXT NOT NULL,
       payload_hash       TEXT NOT NULL,
       created_at         TEXT NOT NULL DEFAULT (datetime('now')),
-      UNIQUE(process_run_id, product_kind)
+      UNIQUE(process_run_id, product_kind, product_key)
     );
 
+    CREATE INDEX IF NOT EXISTS idx_factory_process_products_run
+      ON factory_process_products(process_run_id, id);
+    CREATE INDEX IF NOT EXISTS idx_factory_process_products_hash
+      ON factory_process_products(schema_id, product_hash);
+  `);
+}
+
+/**
+ * Migrate a pre-product_key `factory_process_products` table to the new shape.
+ *
+ * SQLite cannot DROP a UNIQUE constraint in place, so the table is rebuilt:
+ * a `_new` table with the new schema is created, existing rows are copied
+ * (with `product_key = product_kind` so v1 singletons preserve their identity),
+ * and the old table is dropped and replaced. The whole rebuild runs in one
+ * transaction. Idempotent: if the column already exists or the table is
+ * absent, this is a no-op.
+ */
+function migrateFactoryProcessProductProductKey(
+  db: Database.Database,
+): void {
+  const tableRow = db
+    .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='factory_process_products'")
+    .get() as { name: string } | undefined;
+  if (!tableRow) return;
+  const columns = db.prepare('PRAGMA table_info(factory_process_products)').all() as Array<{ name: string }>;
+  if (columns.some((c) => c.name === 'product_key')) return;
+  // Old shape present without product_key — rebuild.
+  db.exec(`
+    CREATE TABLE factory_process_products_new (
+      id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+      process_run_id     INTEGER NOT NULL
+                               REFERENCES factory_process_runs(id) ON DELETE RESTRICT,
+      product_kind       TEXT NOT NULL,
+      product_key        TEXT NOT NULL DEFAULT '',
+      schema_id          TEXT NOT NULL,
+      artifact_ref       TEXT NOT NULL UNIQUE,
+      product_hash       TEXT NOT NULL,
+      payload_snapshot   TEXT NOT NULL,
+      payload_hash       TEXT NOT NULL,
+      created_at         TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(process_run_id, product_kind, product_key)
+    );
+    INSERT INTO factory_process_products_new
+      (id, process_run_id, product_kind, product_key, schema_id, artifact_ref,
+       product_hash, payload_snapshot, payload_hash, created_at)
+    SELECT id, process_run_id, product_kind, product_kind, schema_id, artifact_ref,
+           product_hash, payload_snapshot, payload_hash, created_at
+      FROM factory_process_products;
+    DROP TABLE factory_process_products;
+    ALTER TABLE factory_process_products_new RENAME TO factory_process_products;
     CREATE INDEX IF NOT EXISTS idx_factory_process_products_run
       ON factory_process_products(process_run_id, id);
     CREATE INDEX IF NOT EXISTS idx_factory_process_products_hash
@@ -71,6 +135,7 @@ export class SqliteProcessProductRepository {
     productHash: string;
     payload: T;
     artifactRefPrefix: string;
+    productKey?: string;
   }): { record: ProcessProductRecord<T>; replayed: boolean } {
     requireNonEmpty(input.productKind, 'product kind');
     requireNonEmpty(input.schema, 'schema');
@@ -79,13 +144,19 @@ export class SqliteProcessProductRepository {
     if (!Number.isSafeInteger(input.processRunId) || input.processRunId < 1) {
       throw new Error('PROCESS_PRODUCT_INVALID_PROCESS_RUN_ID');
     }
+    // product_key defaults to product_kind so legacy v1 callers (Delivery,
+    // Development) that do not supply a key keep their one-kind-per-run
+    // semantics under the new triple UNIQUE constraint.
+    const productKey = (input.productKey ?? '').trim().length > 0
+      ? input.productKey!
+      : input.productKind;
 
     const payloadSnapshot = canonicalJson(input.payload);
     const payloadHash = sha256Hex(input.payload);
     const artifactRef =
       `${input.artifactRefPrefix}:${input.processRunId}:${input.productHash}`;
 
-    const existing = this.readRow(input.processRunId, input.productKind);
+    const existing = this.readRow(input.processRunId, input.productKind, productKey);
     if (existing) {
       assertReplay(existing, {
         schema: input.schema,
@@ -102,19 +173,20 @@ export class SqliteProcessProductRepository {
 
     this.db.prepare(
       `INSERT INTO factory_process_products
-        (process_run_id,product_kind,schema_id,artifact_ref,product_hash,
+        (process_run_id,product_kind,product_key,schema_id,artifact_ref,product_hash,
          payload_snapshot,payload_hash)
-       VALUES (?,?,?,?,?,?,?)`,
+       VALUES (?,?,?,?,?,?,?,?)`,
     ).run(
       input.processRunId,
       input.productKind,
+      productKey,
       input.schema,
       artifactRef,
       input.productHash,
       payloadSnapshot,
       payloadHash,
     );
-    const inserted = this.readRow(input.processRunId, input.productKind);
+    const inserted = this.readRow(input.processRunId, input.productKind, productKey);
     if (!inserted) throw new Error('PROCESS_PRODUCT_INSERT_LOST');
     return {
       record: rowToRecord<T>(inserted),
@@ -125,21 +197,26 @@ export class SqliteProcessProductRepository {
   read<T>(
     processRunId: number,
     productKind: string,
+    productKey?: string,
   ): ProcessProductRecord<T> | null {
-    const row = this.readRow(processRunId, productKind);
+    const row = this.readRow(processRunId, productKind, productKey);
     return row ? rowToRecord<T>(row) : null;
   }
 
   private readRow(
     processRunId: number,
     productKind: string,
+    productKey?: string,
   ): ProcessProductRow | null {
+    // When productKey is omitted, default to productKind so legacy v1 callers
+    // preserve their one-kind-per-run read semantics.
+    const key = (productKey ?? '').trim().length > 0 ? productKey! : productKind;
     const row = this.db.prepare(
-      `SELECT process_run_id,product_kind,schema_id,artifact_ref,product_hash,
+      `SELECT process_run_id,product_kind,product_key,schema_id,artifact_ref,product_hash,
               payload_snapshot,payload_hash,created_at
          FROM factory_process_products
-        WHERE process_run_id=? AND product_kind=?`,
-    ).get(processRunId, productKind) as ProcessProductRow | undefined;
+        WHERE process_run_id=? AND product_kind=? AND product_key=?`,
+    ).get(processRunId, productKind, key) as ProcessProductRow | undefined;
     return row ?? null;
   }
 }
@@ -147,6 +224,7 @@ export class SqliteProcessProductRepository {
 interface ProcessProductRow {
   process_run_id: number;
   product_kind: string;
+  product_key: string;
   schema_id: string;
   artifact_ref: string;
   product_hash: string;
@@ -161,22 +239,23 @@ function rowToRecord<T>(row: ProcessProductRow): ProcessProductRecord<T> {
     payload = JSON.parse(row.payload_snapshot);
   } catch {
     throw new Error(
-      `PROCESS_PRODUCT_PAYLOAD_CORRUPT: ${row.process_run_id}/${row.product_kind}`,
+      `PROCESS_PRODUCT_PAYLOAD_CORRUPT: ${row.process_run_id}/${row.product_kind}/${row.product_key}`,
     );
   }
   if (canonicalJson(payload) !== row.payload_snapshot) {
     throw new Error(
-      `PROCESS_PRODUCT_PAYLOAD_NOT_CANONICAL: ${row.process_run_id}/${row.product_kind}`,
+      `PROCESS_PRODUCT_PAYLOAD_NOT_CANONICAL: ${row.process_run_id}/${row.product_kind}/${row.product_key}`,
     );
   }
   if (sha256Hex(payload) !== row.payload_hash) {
     throw new Error(
-      `PROCESS_PRODUCT_PAYLOAD_HASH_MISMATCH: ${row.process_run_id}/${row.product_kind}`,
+      `PROCESS_PRODUCT_PAYLOAD_HASH_MISMATCH: ${row.process_run_id}/${row.product_kind}/${row.product_key}`,
     );
   }
   return {
     processRunId: row.process_run_id,
     productKind: row.product_kind,
+    productKey: row.product_key,
     reference: {
       schema: row.schema_id,
       ref: row.artifact_ref,
@@ -206,7 +285,7 @@ function assertReplay(
     || row.payload_hash !== expected.payloadHash
   ) {
     throw new Error(
-      `PROCESS_PRODUCT_REPLAY_MISMATCH: ${row.process_run_id}/${row.product_kind}`,
+      `PROCESS_PRODUCT_REPLAY_MISMATCH: ${row.process_run_id}/${row.product_kind}/${row.product_key}`,
     );
   }
 }

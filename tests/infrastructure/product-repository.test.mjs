@@ -192,13 +192,17 @@ test('valid lineage ref (prior submitted product) accepted', () => {
   seedFixtures(db);
   seedActiveExecution(db);
   const repo = new SqliteProductRepository(db);
-  // First product — no lineage. Use a distinct schemaRef so the v1 table's
-  // UNIQUE(process_run_id, product_kind) does not reject the second product.
+  // First product — no lineage. The schemaRef maps to product_kind, but since
+  // the constraint is now UNIQUE(process_run_id, product_kind, product_key)
+  // and distinct productKey values are supplied, two products of the SAME kind
+  // can coexist (the former workaround of distinct schemaRefs is no longer
+  // required).
   const r1 = repo.submitProduct({
     workplaceRef: null,
     executionRef: 'exec-1',
     schemaRef: 'factory.first.v1',
     content: { first: true },
+    productKey: 'artifact:1',
   });
   // Second product cites the first as lineage — must pass.
   assert.doesNotThrow(() => repo.submitProduct({
@@ -207,6 +211,51 @@ test('valid lineage ref (prior submitted product) accepted', () => {
     schemaRef: 'factory.second.v1',
     content: { second: true },
     lineageRefs: [r1.productRef],
+    productKey: 'artifact:2',
   }));
+  db.close();
+});
+
+test('REGRESSION: multiple products of the SAME kind coexist in one run with distinct productKey (formalization FR/NFR/RULE incident)', () => {
+  const db = freshDb();
+  seedFixtures(db);
+  seedActiveExecution(db);
+  const repo = new SqliteProductRepository(db);
+  // This is the exact shape of the formalization bug: the artifact-ref bridge
+  // writes PRD, FR-1, FR-2, NFR-1 ... all under product_kind=
+  // 'factory.artifact-ref.v1'. Before the product_key migration the second
+  // artifact_create threw "A record with that process_run_id already exists"
+  // (UNIQUE(process_run_id, product_kind) conflict), so FR/NFR/RULE were never
+  // registered and reviewers rejected the episode in a repair loop.
+  const schema = 'factory.artifact-ref.v1';
+  const r1 = repo.submitProduct({
+    workplaceRef: null,
+    executionRef: 'exec-1',
+    schemaRef: schema,
+    content: { artifactId: 2, type: 'PRD' },
+    productKey: 'artifact:2',
+  });
+  assert.doesNotThrow(() => repo.submitProduct({
+    workplaceRef: null,
+    executionRef: 'exec-1',
+    schemaRef: schema,
+    content: { artifactId: 3, type: 'FR', code: 'FR-1' },
+    productKey: 'artifact:3',
+  }));
+  assert.doesNotThrow(() => repo.submitProduct({
+    workplaceRef: null,
+    executionRef: 'exec-1',
+    schemaRef: schema,
+    content: { artifactId: 4, type: 'NFR', code: 'NFR-1' },
+    productKey: 'artifact:4',
+  }));
+  // All three resolve by their content-addressed ProductRef — the triple
+  // UNIQUE no longer blocks multiple same-kind products.
+  assert.ok(repo.readProduct(r1.productRef), 'PRD product resolves');
+  const count = db.prepare(
+    `SELECT COUNT(*) AS n FROM factory_process_products
+      WHERE process_run_id=1 AND product_kind=?`,
+  ).get(schema);
+  assert.equal(count.n, 3, 'three same-kind products coexist in one run');
   db.close();
 });

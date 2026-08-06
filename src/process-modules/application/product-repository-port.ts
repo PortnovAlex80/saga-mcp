@@ -67,6 +67,12 @@ export interface SubmitProductInput {
   /** Raw product content — the repository canonicalizes + hashes this. */
   readonly content: unknown;
   /**
+   * Logical instance key within this product kind (e.g. `artifact:42`).
+   * When omitted, the persistence layer falls back to `schemaRef` so legacy
+   * singletons keep working under the triple UNIQUE constraint.
+   */
+  readonly productKey?: string;
+  /**
    * Lineage refs this product cites. Each MUST be in the execution's pinned
    * read set; an upstream input cannot be presented as new output merely
    * because it appears in lineage (REG-12-AC-03).

@@ -25,6 +25,11 @@ export function writeProduct(
     content: unknown;
     /** The execution fence that produced this product (for fence enforcement). */
     executionRef: string;
+    /**
+     * Logical instance key within this product kind (e.g. `artifact:42`).
+     * When omitted, the persistence layer falls back to `schemaRef`.
+     */
+    productKey?: string;
   },
 ): ProductRef {
   if (cachedDb !== db) {
@@ -36,6 +41,7 @@ export function writeProduct(
     executionRef: input.executionRef,
     schemaRef: input.schemaRef,
     content: input.content,
+    productKey: input.productKey,
   });
   return result.productRef;
 }

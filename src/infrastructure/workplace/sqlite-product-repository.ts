@@ -122,6 +122,7 @@ export class SqliteProductRepository implements ProductRepositoryPort {
       contentHash,
       bindings: wrapAsBindings(input.content),
       schemaId: input.schemaRef,
+      productKey: input.productKey,
       productRef,
       lineage: (input.lineageRefs ?? []).map(r => ({ kind: 'production' as const, ref: r.ref })),
     };

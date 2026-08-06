@@ -297,11 +297,16 @@ function handleArtifactCreate(args: Record<string, unknown>): Artifact {
     updatedExisting ? 'upsert' : 'create',
   );
   // Conveyor v4 step 3.A.2: dual-write artifact-ref onto the universal desk.
+  // productKey='artifact:<id>' gives each logical artifact instance its own
+  // identity under the triple UNIQUE(process_run_id, product_kind, product_key)
+  // constraint — without it, every artifact-ref product of one process run
+  // would collide on (process_run_id, product_kind='factory.artifact-ref.v1').
   if (artifact.content_hash) {
     writeProduct(db, {
       schemaRef: ARTIFACT_REF_SCHEMA,
       content: { artifactId: artifact.id, type: artifact.type, contentHash: artifact.content_hash },
       executionRef: managedExecution?.executionId ?? 'system',
+      productKey: `artifact:${artifact.id}`,
     });
   }
   logActivity(db, 'artifact', artifact.id, updatedExisting ? 'updated' : 'created', null, null, type,

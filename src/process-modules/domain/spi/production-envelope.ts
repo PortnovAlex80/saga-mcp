@@ -242,6 +242,15 @@ export interface NodeProductionEnvelope {
   // ── New envelope fields (plan §7.6) ─────────────────────────────────────
   /** Schema id of THIS envelope (the wrapper), not of the wrapped production. */
   readonly schemaId: string;
+  /**
+   * Logical instance key within this product kind (e.g. `artifact:42` for the
+   * artifact-ref bridge). When omitted, the persistence layer falls back to
+   * `schemaId` so legacy v1-style singletons (one product per kind per run)
+   * keep working under the `UNIQUE(process_run_id, product_kind, product_key)`
+   * constraint. Multiple products of the same kind in one run MUST each supply
+   * a distinct `productKey`.
+   */
+  readonly productKey?: string;
   /** Content-addressed reference to the production this envelope wraps. */
   readonly productRef: ProductRef;
   /** Durable lineage back to ancestor node-runs / productions / receipts. */

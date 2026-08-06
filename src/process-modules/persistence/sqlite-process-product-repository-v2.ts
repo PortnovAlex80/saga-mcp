@@ -97,7 +97,7 @@ export class SqliteProcessProductRepositoryV2 implements ProcessProductRepositor
     // idx_factory_process_products_schema_ref_hash serves this probe directly.
     // No LIKE, no epic-scope fallback, no "latest" heuristic (§9.11).
     const row = this.db.prepare(
-      `SELECT process_run_id, product_kind, schema_id, artifact_ref, product_hash,
+      `SELECT process_run_id, product_kind, product_key, schema_id, artifact_ref, product_hash,
               payload_snapshot, payload_hash, created_at, node_id
          FROM factory_process_products
         WHERE schema_id=? AND artifact_ref=? AND product_hash=?`,
@@ -110,7 +110,7 @@ export class SqliteProcessProductRepositoryV2 implements ProcessProductRepositor
     // artifact_ref has a UNIQUE constraint in the base schema, so this is at
     // most one row.
     const row = this.db.prepare(
-      `SELECT process_run_id, product_kind, schema_id, artifact_ref, product_hash,
+      `SELECT process_run_id, product_kind, product_key, schema_id, artifact_ref, product_hash,
               payload_snapshot, payload_hash, created_at, node_id
          FROM factory_process_products
         WHERE artifact_ref=?`,
@@ -147,6 +147,14 @@ export class SqliteProcessProductRepositoryV2 implements ProcessProductRepositor
     // compatibility with v1 keyed reads; carries no information beyond the
     // reference but keeps the NOT NULL column populated.
     const productKind = envelope.schemaId;
+    // product_key: the logical instance within this kind. Defaults to the
+    // schemaId when the envelope does not carry one (keeps legacy v1-style
+    // singletons working under the triple UNIQUE constraint). The
+    // artifact-ref bridge sets productKey='artifact:<id>' so multiple FR/NFR/
+    // RULE products of the same kind coexist in one process run.
+    const productKey = (envelope.productKey ?? '').trim().length > 0
+      ? envelope.productKey!
+      : productKind;
 
     // Replay detection: a row with the same (schema_id, artifact_ref) already
     // present is the same content-addressed identity. If its product_hash /
@@ -171,12 +179,13 @@ export class SqliteProcessProductRepositoryV2 implements ProcessProductRepositor
 
     this.db.prepare(
       `INSERT INTO factory_process_products
-        (process_run_id, product_kind, schema_id, artifact_ref, product_hash,
+        (process_run_id, product_kind, product_key, schema_id, artifact_ref, product_hash,
          payload_snapshot, payload_hash, node_id)
-       VALUES (?,?,?,?,?,?,?,?)`,
+       VALUES (?,?,?,?,?,?,?,?,?)`,
     ).run(
       processRunId,
       productKind,
+      productKey,
       envelope.schema,
       envelope.artifactRef,
       productHash,
@@ -201,7 +210,7 @@ export class SqliteProcessProductRepositoryV2 implements ProcessProductRepositor
     artifactRef: string,
   ): ProcessProductV2Row | null {
     const row = this.db.prepare(
-      `SELECT process_run_id, product_kind, schema_id, artifact_ref, product_hash,
+      `SELECT process_run_id, product_kind, product_key, schema_id, artifact_ref, product_hash,
               payload_snapshot, payload_hash, created_at, node_id
          FROM factory_process_products
         WHERE schema_id=? AND artifact_ref=?`,
@@ -217,6 +226,7 @@ export class SqliteProcessProductRepositoryV2 implements ProcessProductRepositor
 interface ProcessProductV2Row {
   process_run_id: number;
   product_kind: string;
+  product_key: string;
   schema_id: string;
   artifact_ref: string;
   product_hash: string;
@@ -274,6 +284,7 @@ function rowToV2Record(row: ProcessProductV2Row): ProcessProductRecordV2 {
       contentHash: row.product_hash,
       bindings: payload as Record<string, unknown>,
       schemaId: row.product_kind,
+      productKey: row.product_key,
       productRef,
       // Lineage is not persisted in the products table (it lives on the NodeRun
       // row, owned by W3-A6). We surface an empty lineage here; callers that
@@ -285,6 +296,7 @@ function rowToV2Record(row: ProcessProductV2Row): ProcessProductRecordV2 {
   return {
     processRunId: row.process_run_id,
     productKind: row.product_kind,
+    productKey: row.product_key,
     reference: {
       schema: row.schema_id,
       ref: row.artifact_ref,
