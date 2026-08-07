@@ -15,12 +15,20 @@ export interface SingletonProductionCellOptions {
   readonly maxAttempts: number;
   readonly onExhausted: 'fail' | 'pause';
   readonly checkPlan?: CheckPlan;
+  readonly postAcceptanceEffect?: string;
+  readonly review?: {
+    readonly executionProfileId: string;
+    readonly verdictSchemaRef: string;
+    readonly finalCheckPlan: CheckPlan;
+    readonly capabilityPreset?: string;
+  };
 }
 
-/** Canonical declaration for a singleton authoring Production Cell. */
+/** Canonical declaration for a singleton Production Cell. */
 export function singletonProductionCell(
   options: SingletonProductionCellOptions,
 ): ProductionCellDefinition {
+  const authorGatePhase = options.review ? 'author' : 'final';
   return {
     id: options.id,
     inputSelectors: ['input'],
@@ -37,15 +45,34 @@ export function singletonProductionCell(
       ...(options.productSource ? { productSource: options.productSource } : {}),
     }],
     authorGate: {
-      gateId: `${options.id}.final`,
-      gatePhase: 'final',
+      gateId: `${options.id}.${authorGatePhase}`,
+      gatePhase: authorGatePhase,
       checkPlan:
-        options.checkPlan ?? buildProductContractCheckPlan(`${options.id}.final`),
+        options.checkPlan
+        ?? buildProductContractCheckPlan(`${options.id}.${authorGatePhase}`),
     },
+    ...(options.review ? {
+      review: {
+        reviewer: {
+          skillRef: options.review.executionProfileId,
+          capabilityPreset:
+            options.review.capabilityPreset ?? 'module-reviewer',
+        },
+        verdictSchemaRef: options.review.verdictSchemaRef,
+        finalGate: {
+          gateId: `${options.id}.final`,
+          gatePhase: 'final' as const,
+          checkPlan: options.review.finalCheckPlan,
+        },
+      },
+    } : {}),
     recovery: {
       maxAttempts: options.maxAttempts,
       onExhausted: options.onExhausted,
     },
+    ...(options.postAcceptanceEffect
+      ? { postAcceptanceEffect: options.postAcceptanceEffect }
+      : {}),
     transitions: {
       accepted: options.acceptedTransition,
       humanRequired: options.humanRequiredTransition ?? options.failedTransition,
