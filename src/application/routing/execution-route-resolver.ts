@@ -1,11 +1,10 @@
 /**
- * ExecutionRouteResolver — decides WHICH backend (executor + provider + model)
- * runs ONE worker spawn, by matching the (module, cell, role, executionProfile)
- * key against a routing policy.
+ * ExecutionRouteResolver — decides WHICH backend runs one worker execution.
  *
- * The policy is loaded once when the factory composition is created. The
- * resolved route is then frozen into the execution context inside the claim
- * transaction; spawn never re-reads this policy.
+ * The policy is loaded once when factory composition is created. It selects an
+ * executor and may optionally override provider/model/effort. Missing inference
+ * fields are intentionally left null here and inherit the already-read
+ * lifecycle execution controls inside the atomic claim transaction.
  */
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -26,6 +25,7 @@ export interface RouteRule {
   };
   route: {
     executor: { kind: ExecutorKind };
+    /** Optional inference overrides for a real executor. */
     provider?: string;
     model?: string;
     effort?: string | null;
@@ -82,7 +82,7 @@ export function createExecutionRouteResolver(
     }
     return {
       executor: { kind: 'claude-cli' },
-      provider: { id: ruleRoute.provider! },
+      provider: ruleRoute.provider ? { id: ruleRoute.provider } : null,
       model: ruleRoute.model ? { id: ruleRoute.model } : null,
       inference: { effort: ruleRoute.effort ?? null },
       policyRef,
@@ -243,10 +243,9 @@ function validateRoute(route: RouteRule['route'], location: string): RouteRule['
     return { executor: { kind } };
   }
 
-  if (typeof route.provider !== 'string' || route.provider.trim() === '') {
-    throw new Error(
-      `EXECUTION_ROUTES_INVALID: ${location}.provider is required for claude-cli`,
-    );
+  if (route.provider !== undefined
+      && (typeof route.provider !== 'string' || route.provider.trim() === '')) {
+    throw new Error(`EXECUTION_ROUTES_INVALID: ${location}.provider must be a non-empty string`);
   }
   if (route.model !== undefined && (typeof route.model !== 'string' || route.model.trim() === '')) {
     throw new Error(`EXECUTION_ROUTES_INVALID: ${location}.model must be a non-empty string`);
@@ -257,7 +256,7 @@ function validateRoute(route: RouteRule['route'], location: string): RouteRule['
   }
   return {
     executor: { kind },
-    provider: route.provider.trim(),
+    ...(route.provider ? { provider: route.provider.trim() } : {}),
     ...(route.model ? { model: route.model.trim() } : {}),
     ...(route.effort !== undefined
       ? { effort: typeof route.effort === 'string' ? route.effort.trim() : null }
@@ -266,8 +265,6 @@ function validateRoute(route: RouteRule['route'], location: string): RouteRule['
 }
 
 function digestPolicy(policy: ExecutionRoutesFile): string {
-  // This digest is durable provenance, not a display id. Keep the full SHA-256;
-  // truncating it to 16 hex chars weakens the identity to only 64 bits.
   return createHash('sha256')
     .update(canonicalJson(policy))
     .digest('hex');
