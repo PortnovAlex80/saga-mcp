@@ -40,6 +40,7 @@ schema. A prose completion message is not a product.
   are `workItemKey`, `terminalStatus`, `source`, `snapshot`, `repository`,
   `buildProducts`, and `reasonCodes`. `source.branch` must be the task branch
   from the REPOSITORY DESK; `source.commitSha` is your commit on that branch;
+  `source.workItemKey` must equal the top-level `workItemKey`;
   `snapshot` binds that same `commitSha`, its `treeSha`, and the changed-file
   records; `repository` binds `projectRepositoryId`, `name`,
   `integrationBranch`, and `baseCommit`. `terminalStatus=complete` is valid

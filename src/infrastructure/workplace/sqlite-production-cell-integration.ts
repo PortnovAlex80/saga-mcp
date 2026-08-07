@@ -57,12 +57,19 @@ export class SqliteProductionCellIntegration {
     };
     const sourceCommit = payload.source?.commitSha;
     const sourceBranch = payload.source?.branch;
+    // source.workItemKey is redundant with the top-level workItemKey (they
+    // identify the same work item). Accept both the strict match (worker
+    // included source.workItemKey) and the omitted case (worker skill documents
+    // only the top-level field) — as long as the top-level workItemKey is valid
+    // and any present source.workItemKey does not contradict it.
+    const sourceWorkItemOk = payload.source?.workItemKey === undefined
+      || payload.source?.workItemKey === payload.workItemKey;
     if (
       payload.terminalStatus !== 'complete'
       || typeof payload.workItemKey !== 'string'
       || typeof sourceCommit !== 'string' || !sourceCommit
       || typeof sourceBranch !== 'string' || !sourceBranch
-      || payload.source?.workItemKey !== payload.workItemKey
+      || !sourceWorkItemOk
       || payload.snapshot?.commitSha !== sourceCommit
       || typeof payload.snapshot?.treeSha !== 'string'
       || payload.repository?.projectRepositoryId !== task.project_repository_id
