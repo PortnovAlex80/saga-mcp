@@ -3,6 +3,8 @@ import type { WorkplaceRef } from '../domain/workplace/workplace-ref.js';
 export interface PostAcceptanceEffectInput {
   readonly workplaceRef: WorkplaceRef;
   readonly processRunId: number;
+  readonly candidateSetRef: string;
+  readonly producerExecutionRef: string;
   readonly expectedProductSchema: string;
 }
 
