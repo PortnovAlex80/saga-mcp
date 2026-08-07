@@ -154,6 +154,25 @@ export function selectButtonColorScenario(ctx, env = process.env) {
     ] };
   }
 
+  // Formalization reviewer: all formalization review desks submit a typed
+  // review-verdict product, then worker_done. Node-specific cases below handle
+  // the AUTHOR role only; architecture-contract has its own reviewer branch
+  // inside the switch. Guard here so a reviewer never falls into an author case.
+  if (ctx.role === 'reviewer'
+    && ctx.process_module_ref?.startsWith('solution-formalization@')
+    && ctx.process_node_id !== 'define-architecture-contract') {
+    const verdict = fault === 'review-changes-requested' ? 'changes_requested' : 'approved';
+    return {
+      id: `button-color/formalization-review/${ctx.process_node_id}/${verdict}`,
+      steps: [
+        { type: 'formalization_review_submit', verdict },
+        done(ctx, verdict === 'approved'
+          ? `Reviewer: ${ctx.process_node_id} matches the pinned contract.`
+          : 'Reviewer: injected deterministic correction request.'),
+      ],
+    };
+  }
+
   // Check process_node_id FIRST — the author/reviewer distinction is
   // node-specific. A reviewer for define-architecture-contract should NOT
   // match the generic reviewer path before checking if there's a
@@ -191,25 +210,22 @@ export function selectButtonColorScenario(ctx, env = process.env) {
       };
 
     case 'assess-readiness':
+      // The readiness Cell receives the accepted proposal as an exact
+      // ProductRef in task.metadata.cell_input_item.bindings.items[0].products[0]
+      // (the universal desk dropped the legacy ControlIntent/readiness_get
+      // machinery). The proposal's managed-node-submission id and content digest
+      // are echoed into the assessment payload so the schema's
+      // proposal_id / proposal_content_hash fields stay self-consistent.
       return {
         id: 'button-color/discovery/readiness',
         steps: [
           {
-            type: 'readiness_get',
-            args: {
-              control_intent_id: '{{ctx.metadata.control_intent_id}}',
-              execution_id: '{{ctx.execution_id}}',
-            },
-          },
-          {
             type: 'readiness_submit',
             args: {
-              control_intent_id: '{{ctx.metadata.control_intent_id}}',
-              execution_id: '{{ctx.execution_id}}',
               schema_version: 'factory.discovery-readiness-assessment.v1',
               payload: {
-                proposal_id: '{{aliases.readiness_proposal_id}}',
-                proposal_content_hash: '{{aliases.readiness_proposal_hash}}',
+                proposal_id: '{{ctx.metadata.cell_input_item.bindings.items.0.products.0.ref}}',
+                proposal_content_hash: '{{ctx.metadata.cell_input_item.bindings.items.0.products.0.digest}}',
                 overall_readiness: 'ready',
                 dimension_assessments: {
                   problem_clarity: { status: 'sufficient', rationale: 'Single button toggle is unambiguous.', source_refs: ['$.problem_statement'] },
@@ -248,7 +264,33 @@ export function selectButtonColorScenario(ctx, env = process.env) {
       return {
         id: 'button-color/formalization/product-contract',
         steps: [
-          { type: 'artifact_find', artifactType: 'brief', as: 'brief' },
+          // The brief root is NOT produced by the discovery cell in this flow
+          // (discovery settles on a proposal/certificate, not a brief), so the
+          // formalization product cell authors the brief here and roots the PRD
+          // lineage on it. The formalization contract gate requires the PRD to
+          // carry exactly one derived_from → brief trace.
+          {
+            type: 'artifact_create', as: 'brief',
+            args: {
+              ...artifactBase(ctx, 'brief', 'BRIEF-1', 'Color Button Brief', 'docs/00-BRIEF.md'),
+              status: 'accepted',
+              metadata: {
+                brief_payload: {
+                  classification: 'product-feature',
+                  complexity: { tshirt: 'XS', risk_triggers: [] },
+                  decision: 'go',
+                  reasoning: 'A deterministic minimal product for conveyor conformance.',
+                  affected_projects: ['{{ctx.project_id}}'],
+                  topology_hint: 'sequence',
+                  scaffold_artifacts: [],
+                  shared_mutation_risk: false,
+                  completeness: 'high',
+                  degraded: false,
+                },
+              },
+            },
+            content: '# Brief\n\nCreate a page with one button. Each click alternates its color between blue and red.\n',
+          },
           {
             type: 'artifact_create', as: 'prd',
             args: artifactBase(ctx, 'PRD', 'PRD-1', 'Color Button PRD', 'docs/01-PRD.md'),
@@ -276,7 +318,7 @@ export function selectButtonColorScenario(ctx, env = process.env) {
             type: 'trace_add',
             args: { source_id: '{{aliases.rule}}', target_type: 'artifact', target_id: '{{aliases.prd}}', link_type: 'derived_from' },
           },
-          done(ctx, 'Created PRD, FR and RULE for the color-button product.'),
+          done(ctx, 'Created brief, PRD, FR and RULE for the color-button product.'),
         ],
       };
     }
@@ -329,7 +371,24 @@ export function selectButtonColorScenario(ctx, env = process.env) {
 
     case 'reconcile-what': {
       if (ctx.isRetry) return { id: 'button-color/formalization/reconcile/idempotent', steps: [done(ctx, 'Idempotent retry.')] };
-      return { id: 'button-color/formalization/reconcile', steps: [done(ctx, 'WHAT graph inspected; no repair required.')] };
+      return {
+        id: 'button-color/formalization/reconcile',
+        steps: [
+          {
+            type: 'product_submit',
+            args: {
+              schema: 'factory.formalization-reconciliation-report.v1',
+              content: {
+                status: 'reconciled',
+                repairs: [],
+                remaining_gaps: [],
+                rationale: 'WHAT graph is complete; no repair required.',
+              },
+            },
+          },
+          done(ctx, 'WHAT graph inspected; reconciliation report submitted.'),
+        ],
+      };
     }
 
     case 'define-architecture-contract': {
@@ -339,17 +398,20 @@ export function selectButtonColorScenario(ctx, env = process.env) {
         const verdict = fault === 'review-changes-requested' ? 'changes_requested' : 'approved';
         return {
           id: `button-color/reviewer/architecture/${verdict}`,
-          steps: [{
-            type: 'worker_done',
-            args: {
-              task_id: '{{ctx.task_id}}', worker_id: '{{ctx.worker_id}}',
-              execution_id: '{{ctx.execution_id}}',
-              result: verdict === 'approved'
-                ? 'Reviewer: SRS matches the pinned contract.'
-                : 'Reviewer: injected correction request.',
-              verdict,
+          steps: [
+            { type: 'formalization_review_submit', verdict },
+            {
+              type: 'worker_done',
+              args: {
+                task_id: '{{ctx.task_id}}', worker_id: '{{ctx.worker_id}}',
+                execution_id: '{{ctx.execution_id}}',
+                result: verdict === 'approved'
+                  ? 'Reviewer: SRS matches the pinned contract.'
+                  : 'Reviewer: injected correction request.',
+                verdict,
+              },
             },
-          }],
+          ],
         };
       }
       const content = fault === 'missing-srs-decision-log'
@@ -398,7 +460,7 @@ export function selectButtonColorScenario(ctx, env = process.env) {
         .filter(criterion => criterion.implementationRequired);
       const repository = nodeInput.repositories[0];
       const implementationKey = 'implement-coherent-product';
-      call.arguments.payload.implementationItems = [{
+      call.content.implementationItems = [{
         key: implementationKey,
         kind: 'implementation',
         taskKind: 'development.code',
@@ -411,7 +473,7 @@ export function selectButtonColorScenario(ctx, env = process.env) {
         required: true,
         criticality: 'blocker',
       }];
-      call.arguments.payload.verificationItems = call.arguments.payload.verificationItems
+      call.content.verificationItems = call.content.verificationItems
         .map(item => ({
           ...item,
           projectRepositoryId: repository.projectRepositoryId,
@@ -420,7 +482,7 @@ export function selectButtonColorScenario(ctx, env = process.env) {
             ? [implementationKey]
             : [],
         }));
-      call.arguments.payload.integrationTargets = call.arguments.payload.integrationTargets
+      call.content.integrationTargets = call.content.integrationTargets
         .map(target => ({
           ...target,
           sourceWorkItemKeys: target.projectRepositoryId === repository.projectRepositoryId
@@ -431,13 +493,13 @@ export function selectButtonColorScenario(ctx, env = process.env) {
         id: `button-color/development/plan-task-graph${ctx.isRetry ? '/retry' : ''}`,
         steps: [
           {
-            type: 'process_node_submit',
+            type: 'product_submit',
             args: {
-              schema: call.arguments.schema,
-              payload: call.arguments.payload,
+              schema: call.schema,
+              content: call.content,
             },
           },
-          done(ctx, `Submitted development task-graph proposal: ${call.arguments.payload.implementationItems.length} impl + ${call.arguments.payload.verificationItems.length} verify items.`),
+          done(ctx, `Submitted development task-graph proposal: ${call.content.implementationItems.length} impl + ${call.content.verificationItems.length} verify items.`),
         ],
       };
     }
@@ -448,11 +510,18 @@ export function selectButtonColorScenario(ctx, env = process.env) {
   // tasks, or review nodes without a node-specific scenario).
   if (ctx.role === 'reviewer') {
     const verdict = fault === 'review-changes-requested' ? 'changes_requested' : 'approved';
+    const isDevelopmentReview = ctx.process_node_id === 'implement-work-items';
+    const isFormalizationReview = ctx.process_module_ref?.startsWith('solution-formalization@')
+      && !isDevelopmentReview;
     return {
       id: `button-color/reviewer/${verdict}`,
       steps: [
-        ...(ctx.process_node_id === 'implement-work-items' ? [{
+        ...(isDevelopmentReview ? [{
           type: 'development_review_submit',
+          verdict,
+        }] : []),
+        ...(isFormalizationReview ? [{
+          type: 'formalization_review_submit',
           verdict,
         }] : []),
         {

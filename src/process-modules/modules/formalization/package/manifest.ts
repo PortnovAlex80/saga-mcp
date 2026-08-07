@@ -131,6 +131,7 @@ const RESOURCE_PATHS = {
   artifactCreateCallTemplate: `${FORMALIZATION_PACKAGE_RESOURCE_ROOT}/artifact-create-call-template.json`,
   traceAddCallTemplate: `${FORMALIZATION_PACKAGE_RESOURCE_ROOT}/trace-add-call-template.json`,
   workerDoneCallTemplate: `${FORMALIZATION_PACKAGE_RESOURCE_ROOT}/worker-done-call-template.json`,
+  reconciliationProductCallTemplate: `${FORMALIZATION_PACKAGE_RESOURCE_ROOT}/reconciliation-product-call-template.json`,
   // Per-node checklist + stage tracker pinned by every execution profile.
   nodeChecklist: `${FORMALIZATION_PACKAGE_RESOURCE_ROOT}/formalization-node-checklist.md`,
   stageTracker: `${FORMALIZATION_PACKAGE_RESOURCE_ROOT}/process-module-stage-tracker.md`,
@@ -207,6 +208,12 @@ export const FORMALIZATION_RESOURCE_INDEX: readonly ResourceIndexEntry[] = [
   {
     logicalId: 'formalization.template.worker-done-call',
     path: RESOURCE_PATHS.workerDoneCallTemplate,
+    kind: 'mcp-call-template',
+    digest: PENDING_DIGEST,
+  },
+  {
+    logicalId: 'formalization.template.reconciliation-product-call',
+    path: RESOURCE_PATHS.reconciliationProductCallTemplate,
     kind: 'mcp-call-template',
     digest: PENDING_DIGEST,
   },

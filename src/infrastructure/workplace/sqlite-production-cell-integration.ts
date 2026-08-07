@@ -1,7 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import type Database from 'better-sqlite3';
 
-import type { ProductionCellIntegrationPort } from '../../process-modules/application/node-executors/production-cell-node-executor.js';
 import { serializeWorkplaceRef } from '../../process-modules/domain/workplace/workplace-ref.js';
 
 /**
@@ -9,10 +8,16 @@ import { serializeWorkplaceRef } from '../../process-modules/domain/workplace/wo
  * The LM produces and reviews a source commit; this adapter alone mutates the
  * integration branch and records the observed result.
  */
-export class SqliteProductionCellIntegration implements ProductionCellIntegrationPort {
+export interface SqliteProductionCellIntegrationInput {
+  readonly workplaceRef: import('../../process-modules/domain/workplace/workplace-ref.js').WorkplaceRef;
+  readonly processRunId: number;
+  readonly expectedProductSchema: string;
+}
+
+export class SqliteProductionCellIntegration {
   constructor(private readonly db: Database.Database) {}
 
-  integrateAcceptedWorkplace(input: Parameters<ProductionCellIntegrationPort['integrateAcceptedWorkplace']>[0]): void {
+  integrateAcceptedWorkplace(input: SqliteProductionCellIntegrationInput): void {
     const workplace = serializeWorkplaceRef(input.workplaceRef);
     const task = this.db.prepare(
       `SELECT t.id,t.integration_state,t.project_repository_id,t.metadata,

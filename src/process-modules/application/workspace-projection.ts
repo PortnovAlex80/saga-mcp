@@ -324,20 +324,32 @@ function findNamedResource(
   // bare name (e.g. logicalId 'saga-product') or under a namespaced id; we
   // prefer the exact logicalId, then fall back to a basename match on the
   // resource path (skill files are commonly named `<skill>.md`).
-  const exact = resources.find(
-    (r) => r.kind === kind && r.logicalId === name,
-  );
-  if (exact) return exact;
-  const baseName = name.endsWith('.md') ? name : `${name}.md`;
-  const byBaseName = resources.find(
-    (r) => r.kind === kind && path.posix.basename(r.relativePath) === baseName,
-  );
-  if (byBaseName) return byBaseName;
-  const skillPathSuffix = `/skills/${name}/SKILL.md`;
-  return resources.find(r =>
-    r.kind === kind
-    && `/${r.relativePath.replace(/\\/g, '/')}`.endsWith(skillPathSuffix),
-  );
+  const matchByKind = (k: ResourceKind) => {
+    const exact = resources.find(
+      (r) => r.kind === k && r.logicalId === name,
+    );
+    if (exact) return exact;
+    const baseName = name.endsWith('.md') ? name : `${name}.md`;
+    const byBaseName = resources.find(
+      (r) => r.kind === k && path.posix.basename(r.relativePath) === baseName,
+    );
+    if (byBaseName) return byBaseName;
+    const skillPathSuffix = `/skills/${name}/SKILL.md`;
+    return resources.find(r =>
+      r.kind === k
+      && `/${r.relativePath.replace(/\\/g, '/')}`.endsWith(skillPathSuffix),
+    );
+  };
+  const primary = matchByKind(kind);
+  if (primary) return primary;
+  // Reviewer skills are packaged with kind 'reviewer-skill' but are functionally
+  // skills: a reviewer profile reuses the executionSkill slot to name its
+  // reviewer skill. When a 'skill' lookup misses, fall back to 'reviewer-skill'
+  // so reviewer profiles resolve their pinned skill resource.
+  if (kind === 'skill') {
+    return matchByKind('reviewer-skill');
+  }
+  return undefined;
 }
 
 /**

@@ -223,7 +223,26 @@ function createTaskGraphResolver(
 ): KernelHandler {
   return ctx => {
     const developmentCase = requireDevelopmentCase(ctx);
-    const receipt = requireTaskReceipt(ctx.input, ctx.node.id);
+    // The planner is now a Production Cell. Its execution receipt arrives via
+    // ctx.input on the normal path, but on cell-resume it may be restored in
+    // ctx.frame.receipts or ctx.frame.productions (mirrors the Formalization
+    // fallback pattern). Try ctx.input first, then frame fallbacks.
+    let receipt: NodeExecutionReceipt;
+    try {
+      receipt = requireTaskReceipt(ctx.input, ctx.node.id);
+    } catch {
+      const plannerNodeId = 'plan-task-graph';
+      const fromFrameReceipts = tryLmReceipt(ctx.frame?.receipts?.[plannerNodeId]);
+      const fromFrameProductions = tryLmReceipt(ctx.frame?.productions?.[plannerNodeId]);
+      const recovered = fromFrameReceipts ?? fromFrameProductions;
+      if (!recovered) {
+        throw new Error(
+          `${ctx.node.id}: expected an exact completed/failed LM execution receipt `
+          + `(checked ctx.input and frame.productions.${plannerNodeId})`,
+        );
+      }
+      receipt = recovered;
+    }
     try {
       if (receipt.executionId === null) {
         return taskGraphResolutionManifest(
@@ -727,7 +746,7 @@ function requireTaskReceipt(
   if (
     !isRecord(value)
     || value.kind !== 'task-execution'
-    || value.executorKind !== 'lm'
+    || (value.executorKind !== 'lm' && value.executorKind !== 'production-cell')
     || !Number.isInteger(value.intentId)
     || !Number.isInteger(value.taskId)
     || typeof value.runtimeStatus !== 'string'
@@ -735,6 +754,29 @@ function requireTaskReceipt(
     throw new Error(`${nodeId}: exact planner execution receipt is required`);
   }
   return value as unknown as NodeExecutionReceipt;
+}
+
+/**
+ * Soft receipt probe for cell-resume fallback. Returns null when the value is
+ * not a valid LM execution receipt (instead of throwing). Mirrors the
+ * Formalization tryLmReceipt pattern.
+ */
+function tryLmReceipt(input: unknown): NodeExecutionReceipt | null {
+  const receipt = input as Partial<NodeExecutionReceipt> | null;
+  if (
+    !receipt
+    || receipt.kind !== 'task-execution'
+    || (receipt.executorKind !== 'lm' && receipt.executorKind !== 'production-cell')
+    || !Number.isInteger(receipt.intentId)
+    || Number(receipt.intentId) <= 0
+    || !Number.isInteger(receipt.taskId)
+    || Number(receipt.taskId) <= 0
+    || (receipt.executionId !== null && typeof receipt.executionId !== 'string')
+    || !['completed', 'failed'].includes(String(receipt.runtimeStatus))
+  ) {
+    return null;
+  }
+  return receipt as NodeExecutionReceipt;
 }
 
 function emptySettlementInput(

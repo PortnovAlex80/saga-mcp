@@ -153,18 +153,18 @@ export async function loadSagaRuntime(dbPath) {
   if (typeof dbModule.closeDb === 'function') {
     try { dbModule.closeDb(); } catch { /* no cached connection */ }
   }
-  const [dispatcher, lifecycle, artifacts, proposalMod, readinessMod, nodeSubmitMod] = await Promise.all([
+  const [dispatcher, lifecycle, artifacts, products] = await Promise.all([
     import('../../dist/tools/dispatcher.js'),
     import('../../dist/tools/lifecycle.js'),
     import('../../dist/tools/artifacts.js'),
-    import('../../dist/tools/discovery-proposal-tools.js'),
-    import('../../dist/tools/discovery-readiness-tools.js'),
-    import('../../dist/tools/process-node-submissions.js'),
+    import('../../dist/tools/products.js'),
   ]);
-  // Create handler instances (factory pattern — modules export create*Handlers())
-  const proposals = proposalMod.createDiscoveryProposalHandlers();
-  const readiness = readinessMod.createDiscoveryReadinessHandlers();
-  return { dbModule, dispatcher, lifecycle, artifacts, proposals, readiness, nodeSubmitMod };
+  // The factory runtime was refactored to a universal product desk:
+  // module-specific submit tools (proposal_submit, readiness_submit,
+  // process_node_submit, etc.) were replaced by the single `product_submit`
+  // MCP tool. Discovery, Formalization and Development cells all publish
+  // through it. The old module handler imports are intentionally removed.
+  return { dbModule, dispatcher, lifecycle, artifacts, products };
 }
 
 export function enrichContext(runtime, promptContext) {
@@ -195,7 +195,7 @@ export function enrichContext(runtime, promptContext) {
 
 /**
  * Set the per-task execution env vars that handlers (artifact_create,
- * trace_add, worker_done, proposal_submit, etc.) read via
+ * trace_add, worker_done, product_submit, etc.) read via
  * resolveManagedExecutionProvenance. The runner would set these in the
  * MCP server subprocess env; the simulator calls handlers in-process so
  * it must set them itself.
@@ -331,14 +331,24 @@ export async function executeSteps(runtime, ctx, scenario, stream) {
         requireHandler(runtime.lifecycle, 'verification_record')(step.args);
         stream.text('simulator: verification evidence recorded');
         break;
-      case 'process_node_submit': {
-        // Submit a typed node product (e.g. development task-graph proposal)
-        // for the current managed execution. The handler derives ProcessRun /
-        // module / node / intent / task / execution lineage from the live
-        // fence, so we only pass { schema, payload }.
-        const submit = requireHandler(runtime.nodeSubmitMod, 'process_node_submit');
+      case 'product_submit': {
+        // Universal product desk. The handler derives ProcessRun / module /
+        // node / intent / task / execution lineage from the live fence, so we
+        // only pass { schema, content }. The same desk replaces the former
+        // module-specific proposal_submit / readiness_submit / process_node_submit
+        // tools (the old handlers were removed in the product-desk refactor).
+        const submit = requireHandler(runtime.products, 'product_submit');
         const result = submit(step.args);
-        stream.text(`simulator: process_node_submit schema=${step.args.schema} ref=${result.submission_ref}`);
+        stream.text(`simulator: product_submit schema=${step.args.schema} ref=${result.product_ref?.ref ?? result.submission_id}`);
+        break;
+      }
+      case 'process_node_submit': {
+        // Legacy alias kept for scenario readability — route through the
+        // universal product desk. { schema, payload } is mapped to
+        // { schema, content }.
+        const submit = requireHandler(runtime.products, 'product_submit');
+        const result = submit({ schema: step.args.schema, content: step.args.payload });
+        stream.text(`simulator: product_submit schema=${step.args.schema} ref=${result.product_ref?.ref ?? result.submission_id}`);
         break;
       }
       case 'development_implementation_submit': {
@@ -386,11 +396,11 @@ export async function executeSteps(runtime, ctx, scenario, stream) {
           buildProducts: [{ kind: 'text-file', path: 'index.html', digest: htmlDigest }],
           reasonCodes: [],
         };
-        const result = requireHandler(runtime.nodeSubmitMod, 'process_node_submit')({
+        const result = requireHandler(runtime.products, 'product_submit')({
           schema: 'factory.development-implementation-result.v1',
-          payload,
+          content: payload,
         });
-        stream.text(`simulator: implementation product ref=${result.submission_ref}`);
+        stream.text(`simulator: implementation product ref=${result.product_ref?.ref ?? result.submission_id}`);
         break;
       }
       case 'development_review_submit': {
@@ -416,10 +426,57 @@ export async function executeSteps(runtime, ctx, scenario, stream) {
             ? 'Deterministic review accepted the pinned author product.'
             : 'Injected deterministic correction request.',
         };
-        const result = requireHandler(runtime.nodeSubmitMod, 'process_node_submit')({
-          schema: 'factory.development-review-verdict.v1', payload,
+        const result = requireHandler(runtime.products, 'product_submit')({
+          schema: 'factory.development-review-verdict.v1', content: payload,
         });
-        stream.text(`simulator: development review ref=${result.submission_ref}`);
+        stream.text(`simulator: development review ref=${result.product_ref?.ref ?? result.submission_id}`);
+        break;
+      }
+      case 'formalization_review_submit': {
+        // Formalization reviewer: submit factory.review-verdict.v1 through the
+        // universal product desk. The subject is the author CandidateSet ref
+        // carried in the task's cell_input_item (upstream bindings).
+        const item = ctx.metadata?.cell_input_item;
+        stream.text(`simulator: formalization_review cell_input_item keys=${JSON.stringify(Object.keys(item ?? {}))}`);
+        // Try multiple shapes: bindings.items[].products[], bindings.candidateSetRef, direct
+        let subjectCandidateSetRef = null;
+        if (item) {
+          if (typeof item.candidateSetRef === 'string') subjectCandidateSetRef = item.candidateSetRef;
+          else if (typeof item.candidate_set_ref === 'string') subjectCandidateSetRef = item.candidate_set_ref;
+          else if (Array.isArray(item.bindings?.items)) {
+            const products = item.bindings.items.flatMap(it => it.products ?? []);
+            subjectCandidateSetRef = products[0]?.candidateSetRef ?? products[0]?.candidate_set_ref ?? null;
+          }
+          if (!subjectCandidateSetRef && typeof item.bindings === 'object') {
+            stream.text(`simulator: formalization_review bindings keys=${JSON.stringify(Object.keys(item.bindings))}`);
+          }
+        }
+        if (!subjectCandidateSetRef) {
+          // Last resort: query the latest sealed author CandidateSet for this workplace.
+          const task = db.prepare('SELECT workplace_ref FROM tasks WHERE id=?').get(ctx.task_id);
+          if (task?.workplace_ref) {
+            const cs = db.prepare(
+              `SELECT candidate_set_ref FROM factory_candidate_sets
+                WHERE workplace_ref=? AND role='author'
+                ORDER BY sealed_at DESC LIMIT 1`,
+            ).get(task.workplace_ref);
+            subjectCandidateSetRef = cs?.candidate_set_ref ?? null;
+          }
+        }
+        stream.text(`simulator: formalization_review subject=${subjectCandidateSetRef ?? 'MISSING'}`);
+        if (!subjectCandidateSetRef) throw new Error('SIMULATOR_FORMALIZATION_REVIEW_SUBJECT_MISSING');
+        const verdict = step.verdict === 'changes_requested' ? 'changes_requested' : 'approved';
+        const payload = {
+          subject_candidate_set_ref: subjectCandidateSetRef,
+          verdict,
+          findings: verdict === 'approved'
+            ? []
+            : [{ artifact: 'pinned-author-product', defect: 'injected deterministic correction request' }],
+        };
+        const result = requireHandler(runtime.products, 'product_submit')({
+          schema: 'factory.review-verdict.v1', content: payload,
+        });
+        stream.text(`simulator: formalization review verdict=${verdict} ref=${result.product_ref?.ref ?? result.submission_id}`);
         break;
       }
       case 'development_verification_submit': {
@@ -469,39 +526,76 @@ export async function executeSteps(runtime, ctx, scenario, stream) {
             trusted: true,
           },
         };
-        const result = requireHandler(runtime.nodeSubmitMod, 'process_node_submit')({
+        const result = requireHandler(runtime.products, 'product_submit')({
           schema: payload.schemaVersion,
-          payload,
+          content: payload,
         });
-        stream.text(`simulator: verification product ref=${result.submission_ref}`);
+        stream.text(`simulator: verification product ref=${result.product_ref?.ref ?? result.submission_id}`);
         break;
       }
       case 'proposal_submit': {
-        const result = requireHandler(runtime.proposals, 'proposal_submit')(step.args);
-        const proposalId = result?.proposal_id;
-        if (typeof proposalId === 'number' && proposalId > 0) {
-          vars.aliases[step.as || 'proposal'] = proposalId;
-          vars.aliases.proposal_content_hash = result?.content_hash ?? null;
-          stream.text(`simulator: proposal #${proposalId} submitted (${result?.status})`);
-        } else {
-          stream.text(`simulator: proposal ${result?.status} (no canonical row)`);
+        // Universal product desk. The old discovery-proposal handler validated
+        // against the legacy factory_work_intents binding and threw
+        // `intent output_schema mismatch` on the new runtime. The product desk
+        // derives lineage from the live managed-execution fence instead.
+        // Scenario args carry schema_version + payload (legacy shape); map them
+        // to the { schema, content } the desk expects.
+        const schema = step.args.schema_version;
+        const content = step.args.payload;
+        const result = requireHandler(runtime.products, 'product_submit')({ schema, content });
+        const digest = result?.product_ref?.digest ?? result?.content_hash;
+        // Downstream readiness previously echoed proposal_id/proposal_hash from
+        // the canonical factory_proposals row. Under the product desk the
+        // immutable managed-node submission IS the proposal; the content digest
+        // is its identity. Use the submission id as the proposal id surrogate so
+        // the readiness payload's proposal_id / proposal_content_hash fields
+        // stay stable and self-consistent.
+        const proposalSurrogateId = result?.submission_id ?? null;
+        if (typeof proposalSurrogateId === 'number') {
+          vars.aliases[step.as || 'proposal'] = proposalSurrogateId;
+          vars.aliases.proposal_content_hash = digest;
+          vars.aliases.readiness_proposal_id = proposalSurrogateId;
+          vars.aliases.readiness_proposal_hash = digest;
         }
+        stream.text(`simulator: proposal product ref=${result?.product_ref?.ref ?? 'n/a'} replayed=${result?.replayed}`);
         break;
       }
       case 'readiness_get': {
-        const result = requireHandler(runtime.readiness, 'readiness_get')(step.args);
-        const proposalId = result?.proposal_id;
-        const proposalHash = result?.proposal_content_hash;
-        const allowed = result?.allowed_source_refs ?? [];
+        // The legacy readiness_get tool returned the immutable proposal plus
+        // allowed source refs. Under the product desk the proposal content is
+        // already known to the deterministic scenario, and source refs are
+        // advisory only — the desk validates lineage, not citation. Seed the
+        // aliases the subsequent readiness_submit renders against.
+        const proposalId = vars.aliases.readiness_proposal_id;
+        const proposalHash = vars.aliases.readiness_proposal_hash;
         if (typeof proposalId === 'number') vars.aliases.readiness_proposal_id = proposalId;
         if (typeof proposalHash === 'string') vars.aliases.readiness_proposal_hash = proposalHash;
-        vars.aliases.allowed_source_refs = allowed;
-        stream.text(`simulator: readiness_get proposal=${proposalId} allowed=${allowed.length} refs`);
+        vars.aliases.allowed_source_refs = [];
+        stream.text(`simulator: readiness_get proposal=${proposalId} hash=${proposalHash?.slice(0, 12) ?? 'n/a'}`);
         break;
       }
       case 'readiness_submit': {
-        const result = requireHandler(runtime.readiness, 'readiness_submit')(step.args);
-        stream.text(`simulator: readiness ${result?.status} (#${result?.assessment_id})`);
+        // Universal product desk. The readiness assessment is submitted as a
+        // typed product; the desk validates schema + lineage. The readiness
+        // CheckProvider re-validates the assessment against the EXACT accepted
+        // proposal (integer submission id + content hash + allowed source refs),
+        // so normalize those fields from the proposal ProductRef carried in the
+        // readiness task's cell_input_item before submitting. The scenario
+        // template renders the proposal ref/digest strings; here we coerce the
+        // proposal_id to the integer the gate expects
+        // (managed-node-submission:<id> -> <id>).
+        const schema = step.args.schema_version;
+        const content = { ...step.args.payload };
+        const proposalProductRef = ctx.metadata?.cell_input_item?.bindings?.items?.[0]?.products?.[0];
+        if (proposalProductRef && proposalProductRef.schemaId === 'factory.discovery-proposal.v1') {
+          const refMatch = /^managed-node-submission:(\d+)$/.exec(proposalProductRef.ref);
+          if (refMatch) content.proposal_id = Number(refMatch[1]);
+          if (typeof proposalProductRef.digest === 'string') {
+            content.proposal_content_hash = proposalProductRef.digest;
+          }
+        }
+        const result = requireHandler(runtime.products, 'product_submit')({ schema, content });
+        stream.text(`simulator: readiness product ref=${result?.product_ref?.ref ?? 'n/a'} replayed=${result?.replayed}`);
         break;
       }
       case 'worker_done':
