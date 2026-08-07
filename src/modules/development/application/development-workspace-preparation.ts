@@ -11,16 +11,13 @@ interface WorkspacePreparationInput {
   readonly currentContent: string;
 }
 
-interface TaskGraphSubmitCall {
-  readonly tool: 'process_node_submit';
-  readonly arguments: {
-    readonly schema: typeof DEVELOPMENT_TASK_GRAPH_PROPOSAL_SCHEMA;
-    readonly payload: {
-      readonly schemaVersion: typeof DEVELOPMENT_TASK_GRAPH_PROPOSAL_SCHEMA;
-      readonly implementationItems: readonly Record<string, unknown>[];
-      readonly verificationItems: readonly Record<string, unknown>[];
-      readonly integrationTargets: readonly Record<string, unknown>[];
-    };
+interface TaskGraphProductCall {
+  readonly schema: typeof DEVELOPMENT_TASK_GRAPH_PROPOSAL_SCHEMA;
+  readonly content: {
+    readonly schemaVersion: typeof DEVELOPMENT_TASK_GRAPH_PROPOSAL_SCHEMA;
+    readonly implementationItems: readonly Record<string, unknown>[];
+    readonly verificationItems: readonly Record<string, unknown>[];
+    readonly integrationTargets: readonly Record<string, unknown>[];
   };
 }
 
@@ -51,9 +48,7 @@ function developmentCaseFromTask(
     || candidate.acceptanceCriteria.length === 0
     || !Array.isArray(candidate.repositories)
     || candidate.repositories.length === 0
-  ) {
-    return null;
-  }
+  ) return null;
   if (
     candidate.acceptanceCriteria.some(criterion =>
       !Number.isInteger(criterion?.artifactId)
@@ -63,9 +58,7 @@ function developmentCaseFromTask(
       !Number.isInteger(repository?.projectRepositoryId)
       || typeof repository?.integrationBranch !== 'string'
       || typeof repository?.expectedBaseCommit !== 'string')
-  ) {
-    return null;
-  }
+  ) return null;
   return candidate as DevelopmentCase;
 }
 
@@ -77,48 +70,35 @@ function keySuffix(code: string | null, artifactId: number): string {
 }
 
 /**
- * Build a complete, policy-submittable seed from the frozen DevelopmentCase.
- *
- * IDs, implementationRequired flags, repository bindings and expected base
- * commits come from the node input pinned by the lifecycle handoff. Mutable
- * tracker tables and the current checkout are intentionally not consulted.
+ * Machine-fill only immutable lineage scaffolding from the frozen
+ * DevelopmentCase. Implementation decomposition remains planner-owned; AC
+ * cardinality never silently becomes implementation task cardinality.
  */
 export function buildDevelopmentTaskGraphSubmitCallFromCase(
   developmentCase: DevelopmentCase,
-): TaskGraphSubmitCall {
+): TaskGraphProductCall {
   const repositories = [...developmentCase.repositories]
     .sort((left, right) =>
       left.projectRepositoryId - right.projectRepositoryId);
   const criteria = [...developmentCase.acceptanceCriteria]
     .sort((left, right) => left.artifactId - right.artifactId);
 
-  // Deliberately not policy-submittable: repository ids and verification
-  // lineage are machine-filled, while semantic implementation decomposition
-  // remains planner-owned. AC cardinality must never silently become task
-  // cardinality.
   const implementationItems: Record<string, unknown>[] = [];
-
-  const verificationItems = criteria.map(criterion => {
-    return {
-      key: `verify-${keySuffix(criterion.code, criterion.artifactId)}`,
-      kind: 'verification',
-      taskKind: 'verification.ac',
-      executionSkill: 'saga-verifier',
-      executionMode: 'read_only_evidence',
-      // A single-repository case can be bound completely by the kernel. For
-      // multi-repository work the planner must replace this sentinel with the
-      // exact repository whose frozen candidate is to be inspected.
-      projectRepositoryId: repositories.length === 1
-        ? repositories[0]!.projectRepositoryId
-        : 0,
-      acceptanceCriterionIds: [criterion.artifactId],
-      dependsOnKeys: [],
-      changeScopes: [],
-      required: true,
-      criticality: criterion.criticality,
-    };
-  });
-
+  const verificationItems = criteria.map(criterion => ({
+    key: `verify-${keySuffix(criterion.code, criterion.artifactId)}`,
+    kind: 'verification',
+    taskKind: 'verification.ac',
+    executionSkill: 'saga-verifier',
+    executionMode: 'read_only_evidence',
+    projectRepositoryId: repositories.length === 1
+      ? repositories[0]!.projectRepositoryId
+      : 0,
+    acceptanceCriterionIds: [criterion.artifactId],
+    dependsOnKeys: [],
+    changeScopes: [],
+    required: true,
+    criticality: criterion.criticality,
+  }));
   const integrationTargets = repositories.map(repository => ({
     projectRepositoryId: repository.projectRepositoryId,
     sourceWorkItemKeys: [],
@@ -127,15 +107,12 @@ export function buildDevelopmentTaskGraphSubmitCallFromCase(
   }));
 
   return {
-    tool: 'process_node_submit',
-    arguments: {
-      schema: DEVELOPMENT_TASK_GRAPH_PROPOSAL_SCHEMA,
-      payload: {
-        schemaVersion: DEVELOPMENT_TASK_GRAPH_PROPOSAL_SCHEMA,
-        implementationItems,
-        verificationItems,
-        integrationTargets,
-      },
+    schema: DEVELOPMENT_TASK_GRAPH_PROPOSAL_SCHEMA,
+    content: {
+      schemaVersion: DEVELOPMENT_TASK_GRAPH_PROPOSAL_SCHEMA,
+      implementationItems,
+      verificationItems,
+      integrationTargets,
     },
   };
 }
@@ -149,10 +126,6 @@ function sameSet<T>(left: Set<T>, right: Set<T>): boolean {
   return left.size === right.size && [...left].every(value => right.has(value));
 }
 
-/**
- * A prior execution draft is reusable only when its frozen IDs still match the
- * current DevelopmentCase. Semantic keys/dependencies remain model-owned.
- */
 export function isReusableDevelopmentTaskGraphCall(
   content: string,
   developmentCase: DevelopmentCase,
@@ -163,22 +136,16 @@ export function isReusableDevelopmentTaskGraphCall(
   } catch {
     return false;
   }
-  const args = call.arguments;
-  if (!args || typeof args !== 'object' || Array.isArray(args)) return false;
-  const payload = (args as Record<string, unknown>).payload;
-  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return false;
-  const body = payload as Record<string, unknown>;
+  const body = call.content;
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return false;
+  const product = body as Record<string, unknown>;
   if (
-    call.tool !== 'process_node_submit'
-    || (args as Record<string, unknown>).schema
-      !== DEVELOPMENT_TASK_GRAPH_PROPOSAL_SCHEMA
-    || body.schemaVersion !== DEVELOPMENT_TASK_GRAPH_PROPOSAL_SCHEMA
-    || !Array.isArray(body.implementationItems)
-    || !Array.isArray(body.verificationItems)
-    || !Array.isArray(body.integrationTargets)
-  ) {
-    return false;
-  }
+    call.schema !== DEVELOPMENT_TASK_GRAPH_PROPOSAL_SCHEMA
+    || product.schemaVersion !== DEVELOPMENT_TASK_GRAPH_PROPOSAL_SCHEMA
+    || !Array.isArray(product.implementationItems)
+    || !Array.isArray(product.verificationItems)
+    || !Array.isArray(product.integrationTargets)
+  ) return false;
 
   const acceptedIds = new Set(
     developmentCase.acceptanceCriteria.map(item => item.artifactId),
@@ -189,19 +156,19 @@ export function isReusableDevelopmentTaskGraphCall(
       .map(item => item.artifactId),
   );
   const implementationIds = numberSet(
-    body.implementationItems.flatMap(item =>
+    product.implementationItems.flatMap(item =>
       item && typeof item === 'object' && !Array.isArray(item)
         ? (item as Record<string, unknown>).acceptanceCriterionIds as unknown[] ?? []
         : []),
   );
   const verificationIds = numberSet(
-    body.verificationItems.flatMap(item =>
+    product.verificationItems.flatMap(item =>
       item && typeof item === 'object' && !Array.isArray(item)
         ? (item as Record<string, unknown>).acceptanceCriterionIds as unknown[] ?? []
         : []),
   );
   const repositoryIds = numberSet(
-    body.integrationTargets.map(item =>
+    product.integrationTargets.map(item =>
       item && typeof item === 'object' && !Array.isArray(item)
         ? (item as Record<string, unknown>).projectRepositoryId
         : null),
@@ -218,24 +185,16 @@ export function isReusableDevelopmentTaskGraphCall(
     && sameSet(repositoryIds, expectedRepositoryIds);
 }
 
-/** Package-owned callback registered at the application composition root. */
 export function prepareDevelopmentWorkspaceTemplate(
   context: WorkspacePreparationInput,
 ): string | null {
   if (
     context.profile.id !== 'development-task-graph-planner'
     || context.materializedName !== 'task-graph-submit-call.json'
-  ) {
-    return null;
-  }
+  ) return null;
   const developmentCase = developmentCaseFromTask(context.task);
   if (!developmentCase) return null;
-  if (
-    isReusableDevelopmentTaskGraphCall(
-      context.currentContent,
-      developmentCase,
-    )
-  ) {
+  if (isReusableDevelopmentTaskGraphCall(context.currentContent, developmentCase)) {
     return null;
   }
   return `${JSON.stringify(
