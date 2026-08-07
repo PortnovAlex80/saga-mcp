@@ -2,7 +2,8 @@
  * Product Delivery lifecycle composition root.
  *
  * Cross-module runtime mechanics are constructed once here. Each workshop
- * contributes its declaration, handlers and adapters through register<Name>().
+ * contributes its declaration, handlers, checks and effects through platform
+ * extension points; the universal runtime never branches on workshop names.
  */
 
 import type Database from 'better-sqlite3';
@@ -56,6 +57,9 @@ import { SqliteExactCandidateAcceptance } from '../process-modules/persistence/s
 import { SqliteCandidateSetRepository } from '../infrastructure/workplace/sqlite-candidate-set-repository.js';
 import { SqliteGateRepository } from '../infrastructure/workplace/sqlite-gate-repository.js';
 import { SqliteProductionCellIntegration } from '../infrastructure/workplace/sqlite-production-cell-integration.js';
+import {
+  createGitIntegrationEffect,
+} from '../infrastructure/workplace/git-integration-effect.js';
 import { SqliteWorkplaceRepository } from '../infrastructure/workplace/sqlite-workplace-repository.js';
 import { ProductionCellCoordinator } from '../process-modules/application/production-cell-coordinator.js';
 import {
@@ -68,6 +72,10 @@ import {
   completeProductionCellTaskProjections,
 } from '../lifecycle/work-assignment-core.js';
 import { createStandardCheckProviderRegistry } from '../process-modules/application/standard-check-providers.js';
+import {
+  createPostAcceptanceEffectRegistry,
+  registerFactoryPostAcceptanceEffect,
+} from '../process-modules/application/post-acceptance-effects.js';
 import { serializeWorkplaceRef } from '../process-modules/domain/workplace/workplace-ref.js';
 import { SqliteProcessOutcomeCertificateRepository } from '../process-modules/persistence/sqlite-process-outcome-certificate-repository.js';
 import { SqliteProcessRunRepository } from '../process-modules/persistence/sqlite-process-run-repository.js';
@@ -203,7 +211,8 @@ export function createProductLifecycleRuntime(
               };
             }
           } catch {
-            // The recovery table may not exist for a fresh database.
+            // Legacy FlowRecovery compatibility is removed once no installed
+            // module declares FlowDefinition.recovery.
           }
         }
         return null;
@@ -252,23 +261,20 @@ export function createProductLifecycleRuntime(
     new SqliteManagedNodeSubmissionRepository(db);
   const exactCandidateAcceptance = new SqliteExactCandidateAcceptance(db);
   const centralLedger = new SqliteManagedProductionLedger(db);
-  // Production Cell: CandidateSet + Gate repositories. Constructed here
-  // alongside exactCandidateAcceptance; injected into ModuleSharedDeps so
-  // module kernel handlers that have migrated to the Production Cell gate
-  // path can seal CandidateSets and drive GateRuns. Optional in sharedDeps
-  // so modules that haven't migrated feature-detect and skip.
   const candidateSetRepo = new SqliteCandidateSetRepository(db);
   const gateRepo = new SqliteGateRepository(db);
-  // Universal Production Cell execution. The coordinator drives only the
-  // Workplace state machine; the application-wide dispatcher is the sole
-  // assignment and launch authority. The node executor reconciles durable
-  // products, CandidateSets and gate decisions.
   const workplaceRepo = new SqliteWorkplaceRepository(db);
   const productionCellCoordinator = new ProductionCellCoordinator({
     db,
     workplaceRepo,
     now: () => new Date(),
   });
+
+  // Package-extensible post-acceptance capabilities. Git integration is a
+  // platform capability, not a Development branch inside ProductionCell.
+  registerFactoryPostAcceptanceEffect(
+    createGitIntegrationEffect(new SqliteProductionCellIntegration(db)),
+  );
 
   const resolveNodeProducts = (
     processRunId: number,
@@ -336,14 +342,12 @@ export function createProductLifecycleRuntime(
       exactCandidateAcceptance,
     )],
     ['human', new HumanNodeExecutor(humanInteractions)],
-    // ADR-030: the Production Cell executor only reconciles durable state. It
-    // never assigns, launches or polls workers; the application dispatcher is
-    // the sole process-launch path.
     ['production-cell', new ProductionCellNodeExecutor({
       coordinator: productionCellCoordinator,
       candidateSetRepo,
       gateRepo,
       checkProviders: createStandardCheckProviderRegistry(),
+      postAcceptanceEffects: createPostAcceptanceEffectRegistry(),
       persistence: {
         ...workplacePersistence,
         activateRoleTask: ({ taskId, intentId, workplaceRef, role, executionProfileId }) => {
@@ -433,18 +437,7 @@ export function createProductLifecycleRuntime(
             processRunId, moduleRef, nodeId,
           ).filter(trace => trace.executionId === executionRef);
           if (artifacts.length === 0 && traces.length === 0) {
-            const completion = db.prepare(
-              `SELECT command_id,payload_hash
-                 FROM command_receipts
-                WHERE execution_id=? AND command_kind='worker_done' AND accepted=1
-                ORDER BY accepted_at DESC LIMIT 1`,
-            ).get(executionRef) as { command_id: string; payload_hash: string } | undefined;
-            if (!completion) return [];
-            return expectedSchemaRefs.filter(Boolean).map(schemaId => ({
-              schemaId,
-              ref: `worker-completion:${completion.command_id}`,
-              digest: completion.payload_hash,
-            }));
+            return [];
           }
           const artifactRefs = artifacts.map(a => ({
             artifactId: a.artifactId,
@@ -462,11 +455,13 @@ export function createProductLifecycleRuntime(
           }));
         },
       } as ProductionCellProductReader,
-      integrationPort: new SqliteProductionCellIntegration(db),
       resolveInstallationDigest: moduleName =>
         packageInstallation?.records.get(moduleName)?.packageDigest ?? 'factory-runtime',
     })],
   ]);
+  // Temporary only until the last installed package definition is migrated.
+  // The ProductionCell executor no longer contains a hidden lm compatibility
+  // branch, so an lm node without a cellDefinition fails closed.
   nodeExecutors.set('lm', nodeExecutors.get('production-cell')!);
 
   const sharedDeps: ModuleSharedDeps = {
