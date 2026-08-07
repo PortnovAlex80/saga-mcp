@@ -3,22 +3,9 @@
  * runs ONE worker spawn, by matching the (module, cell, role, executionProfile)
  * key against a routing policy.
  *
- * Resolution is ONCE-AT-CLAIM: the resolver runs inside the claim transaction
- * (findNextClaimable → readRouteForClaim → ExecutionRouteResolver.resolve),
- * and the resulting `WorkerExecutionRoute` is frozen into the
- * `ExecutionContextSnapshot` (v2) so spawn, gateway and provenance all read the
- * same immutable value. Config is NEVER re-read at spawn time — that was the
- * defect that made the journal unable to explain why a WorkIntent ran on a
- * given backend after a config edit.
- *
- * Matching precedence (most specific first):
- *   1. executionProfile        (e.g. `define-architecture-contract.author`)
- *   2. module + cell + role    (e.g. formalization / SRS / reviewer)
- *   3. module + role
- *   4. module
- *   5. factory default
- *
- * If no rule matches, {@link DEFAULT_ROUTE} is returned (real claude-cli, z.ai).
+ * The policy is loaded once when the factory composition is created. The
+ * resolved route is then frozen into the execution context inside the claim
+ * transaction; spawn never re-reads this policy.
  */
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -30,12 +17,6 @@ import {
   type WorkerExecutionRoute,
 } from './worker-execution-route.js';
 
-/**
- * One routing rule. `match` is a partial {@link RouteMatchKey}: a rule matches
- * a key when every present match field equals the key's field (null/absent
- * match fields are wildcards). `route` is the resolved backend; it may omit
- * provider/model when the executor is not model-backed (the simulator).
- */
 export interface RouteRule {
   match: {
     module?: string;
@@ -51,31 +32,18 @@ export interface RouteRule {
   };
 }
 
-/** The on-disk policy file shape (factory-execution-routes.json). */
 export interface ExecutionRoutesFile {
-  /** Optional digest anchor; the resolver recomputes the digest anyway. */
   version?: string;
-  /** Default route applied when no rule matches. */
   default?: RouteRule['route'];
-  /** Ordered rules; first match wins. */
   routes: RouteRule[];
 }
 
 export interface ExecutionRouteResolverOptions {
-  /** Parsed policy; when omitted, the resolver loads from `policyPath`. */
   policy?: ExecutionRoutesFile;
-  /** Absolute path to factory-execution-routes.json. */
   policyPath?: string;
-  /** Env override (SAGA_EXECUTION_ROUTES_JSON) — parsed inline policy. */
   envPolicyJson?: string;
 }
 
-/**
- * Build the resolver. Reads the policy ONCE at construction; subsequent
- * `resolve()` calls never touch the filesystem. This is the contract that makes
- * "config edited at 10:03 does not affect a 10:00 reservation" hold: the
- * resolver used for a given factory run is immutable.
- */
 export function createExecutionRouteResolver(
   options: ExecutionRouteResolverOptions = {},
 ): {
@@ -83,7 +51,14 @@ export function createExecutionRouteResolver(
   policyRef: string;
   policyDigest: string;
 } {
-  const { policy, policyRef, policyDigest } = loadPolicy(options);
+  const loaded = loadPolicy(options);
+  const policy = validateAndNormalizePolicy(loaded.policy);
+  const policyDigest = digestPolicy(policy);
+  const policyRef = loaded.policyRef;
+
+  const ranked = policy.routes
+    .map((rule, index) => ({ rule, index, score: specificity(rule) }))
+    .sort((a, b) => b.score - a.score || a.index - b.index);
 
   function matchRule(rule: RouteRule, key: RouteMatchKey): boolean {
     const m = rule.match;
@@ -95,35 +70,34 @@ export function createExecutionRouteResolver(
   }
 
   function toRoute(ruleRoute: RouteRule['route']): WorkerExecutionRoute {
-    const isSimulator = ruleRoute.executor.kind === 'claude-cli-simulator';
+    if (ruleRoute.executor.kind === 'claude-cli-simulator') {
+      return {
+        executor: { kind: 'claude-cli-simulator' },
+        provider: null,
+        model: null,
+        inference: { effort: null },
+        policyRef,
+        policyDigest,
+      };
+    }
     return {
-      executor: { kind: ruleRoute.executor.kind },
-      provider: isSimulator || !ruleRoute.provider
-        ? null
-        : { id: ruleRoute.provider },
-      model: isSimulator || !ruleRoute.model ? null : { id: ruleRoute.model },
+      executor: { kind: 'claude-cli' },
+      provider: { id: ruleRoute.provider! },
+      model: ruleRoute.model ? { id: ruleRoute.model } : null,
       inference: { effort: ruleRoute.effort ?? null },
-      policyRef: policyRef ?? null,
+      policyRef,
       policyDigest,
     };
   }
 
   function resolve(key: RouteMatchKey): WorkerExecutionRoute {
-    // Most-specific-first. We sort rules by descending specificity (count of
-    // non-wildcard match fields) so the policy author does not need to worry
-    // about ordering for correctness, only for tie-breaking among equally
-    // specific rules (first wins).
-    const ranked = [...policy.routes]
-      .map(rule => ({ rule, score: specificity(rule) }))
-      .sort((a, b) => b.score - a.score);
     for (const { rule } of ranked) {
       if (matchRule(rule, key)) return toRoute(rule.route);
     }
     if (policy.default) return toRoute(policy.default);
-    // Return the immutable default with the same policy citation.
     return {
       ...DEFAULT_ROUTE,
-      policyRef: policyRef ?? null,
+      policyRef,
       policyDigest,
     };
   }
@@ -144,24 +118,20 @@ function specificity(rule: RouteRule): number {
 function loadPolicy(options: ExecutionRouteResolverOptions): {
   policy: ExecutionRoutesFile;
   policyRef: string;
-  policyDigest: string;
 } {
   if (options.policy) {
-    const ref = options.policyPath ?? '<inline>';
     return {
       policy: options.policy,
-      policyRef: ref,
-      policyDigest: digestPolicy(options.policy),
+      policyRef: options.policyPath ?? '<inline>',
     };
   }
+
   const envJson = options.envPolicyJson ?? process.env.SAGA_EXECUTION_ROUTES_JSON;
   if (envJson && envJson.trim()) {
     try {
-      const parsed = JSON.parse(envJson) as ExecutionRoutesFile;
       return {
-        policy: normalizePolicy(parsed),
+        policy: JSON.parse(envJson) as ExecutionRoutesFile,
         policyRef: '<env:SAGA_EXECUTION_ROUTES_JSON>',
-        policyDigest: digestPolicy(parsed),
       };
     } catch (error) {
       throw new Error(
@@ -171,6 +141,7 @@ function loadPolicy(options: ExecutionRouteResolverOptions): {
       );
     }
   }
+
   const policyPath = options.policyPath
     ?? process.env.SAGA_EXECUTION_ROUTES_PATH
     ?? path.join(
@@ -178,17 +149,16 @@ function loadPolicy(options: ExecutionRouteResolverOptions): {
       'factory-execution-routes.json',
     );
   if (!existsSync(policyPath)) {
-    // No policy file and no env: every route resolves to the default. This is
-    // the safe behavior for production runs that target a single backend.
     return {
       policy: { routes: [] },
       policyRef: policyPath,
-      policyDigest: digestPolicy({ routes: [] }),
     };
   }
-  let parsed: ExecutionRoutesFile;
   try {
-    parsed = JSON.parse(readFileSync(policyPath, 'utf8')) as ExecutionRoutesFile;
+    return {
+      policy: JSON.parse(readFileSync(policyPath, 'utf8')) as ExecutionRoutesFile,
+      policyRef: policyPath,
+    };
   } catch (error) {
     throw new Error(
       `EXECUTION_ROUTES_FILE_PARSE_FAILED ${policyPath}: ${
@@ -196,27 +166,111 @@ function loadPolicy(options: ExecutionRouteResolverOptions): {
       }`,
     );
   }
+}
+
+function validateAndNormalizePolicy(raw: ExecutionRoutesFile): ExecutionRoutesFile {
+  if (!raw || typeof raw !== 'object' || !Array.isArray(raw.routes)) {
+    throw new Error('EXECUTION_ROUTES_INVALID: expected an object with a `routes` array');
+  }
+
+  const normalized: ExecutionRoutesFile = {
+    ...(typeof raw.version === 'string' && raw.version.trim()
+      ? { version: raw.version.trim() }
+      : {}),
+    ...(raw.default ? { default: validateRoute(raw.default, 'default') } : {}),
+    routes: raw.routes.map((rule, index) => validateRule(rule, index)),
+  };
+
+  const seen = new Set<string>();
+  normalized.routes.forEach((rule, index) => {
+    const key = canonicalJson(rule.match);
+    if (seen.has(key)) {
+      throw new Error(
+        `EXECUTION_ROUTES_AMBIGUOUS: duplicate match at routes[${index}] ${key}`,
+      );
+    }
+    seen.add(key);
+  });
+  return normalized;
+}
+
+function validateRule(rule: RouteRule, index: number): RouteRule {
+  if (!rule || typeof rule !== 'object' || !rule.match || typeof rule.match !== 'object') {
+    throw new Error(`EXECUTION_ROUTES_INVALID: routes[${index}].match is required`);
+  }
+  const match: RouteRule['match'] = {};
+  for (const field of ['module', 'cell', 'executionProfile'] as const) {
+    const value = rule.match[field];
+    if (value !== undefined) {
+      if (typeof value !== 'string' || value.trim() === '') {
+        throw new Error(`EXECUTION_ROUTES_INVALID: routes[${index}].match.${field} must be a non-empty string`);
+      }
+      match[field] = value.trim();
+    }
+  }
+  if (rule.match.role !== undefined) {
+    if (rule.match.role !== 'author' && rule.match.role !== 'reviewer') {
+      throw new Error(`EXECUTION_ROUTES_INVALID: routes[${index}].match.role must be author|reviewer`);
+    }
+    match.role = rule.match.role;
+  }
+  if (Object.keys(match).length === 0) {
+    throw new Error(
+      `EXECUTION_ROUTES_INVALID: routes[${index}] has an empty match; use top-level default instead`,
+    );
+  }
   return {
-    policy: normalizePolicy(parsed),
-    policyRef: policyPath,
-    policyDigest: digestPolicy(parsed),
+    match,
+    route: validateRoute(rule.route, `routes[${index}].route`),
   };
 }
 
-function normalizePolicy(parsed: ExecutionRoutesFile): ExecutionRoutesFile {
-  if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.routes)) {
-    throw new Error('EXECUTION_ROUTES_INVALID: expected an object with a `routes` array');
+function validateRoute(route: RouteRule['route'], location: string): RouteRule['route'] {
+  if (!route || typeof route !== 'object' || !route.executor || typeof route.executor !== 'object') {
+    throw new Error(`EXECUTION_ROUTES_INVALID: ${location}.executor is required`);
   }
-  return { ...parsed, routes: parsed.routes };
+  const kind = route.executor.kind;
+  if (kind !== 'claude-cli' && kind !== 'claude-cli-simulator') {
+    throw new Error(`EXECUTION_ROUTES_INVALID: ${location}.executor.kind is unsupported`);
+  }
+
+  if (kind === 'claude-cli-simulator') {
+    if (route.provider !== undefined || route.model !== undefined || route.effort != null) {
+      throw new Error(
+        `EXECUTION_ROUTES_INVALID: ${location} simulator route must not declare provider/model/effort`,
+      );
+    }
+    return { executor: { kind } };
+  }
+
+  if (typeof route.provider !== 'string' || route.provider.trim() === '') {
+    throw new Error(
+      `EXECUTION_ROUTES_INVALID: ${location}.provider is required for claude-cli`,
+    );
+  }
+  if (route.model !== undefined && (typeof route.model !== 'string' || route.model.trim() === '')) {
+    throw new Error(`EXECUTION_ROUTES_INVALID: ${location}.model must be a non-empty string`);
+  }
+  if (route.effort !== undefined && route.effort !== null
+      && (typeof route.effort !== 'string' || route.effort.trim() === '')) {
+    throw new Error(`EXECUTION_ROUTES_INVALID: ${location}.effort must be null or a non-empty string`);
+  }
+  return {
+    executor: { kind },
+    provider: route.provider.trim(),
+    ...(route.model ? { model: route.model.trim() } : {}),
+    ...(route.effort !== undefined
+      ? { effort: typeof route.effort === 'string' ? route.effort.trim() : null }
+      : {}),
+  };
 }
 
 function digestPolicy(policy: ExecutionRoutesFile): string {
-  // Canonical JSON over the policy so the digest is stable regardless of key
-  // ordering or whitespace. Sorted keys, recursively.
+  // This digest is durable provenance, not a display id. Keep the full SHA-256;
+  // truncating it to 16 hex chars weakens the identity to only 64 bits.
   return createHash('sha256')
     .update(canonicalJson(policy))
-    .digest('hex')
-    .slice(0, 16);
+    .digest('hex');
 }
 
 function canonicalJson(value: unknown): string {
