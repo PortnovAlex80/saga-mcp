@@ -92,7 +92,7 @@ try {
   const run = spawnSync(process.execPath, [join(root, 'dist', 'orchestrate-cli.js'), `--launch-ref=${launchRef}`], {
     cwd: root,
     encoding: 'utf8',
-    timeout: 180_000,
+    timeout: 1800_000,
     env: {
       ...process.env,
       DB_PATH: dbPath,
@@ -104,6 +104,28 @@ try {
   });
   if (run.status !== 0) {
     throw new Error(`orchestrator failed (${run.status}):\n${run.stdout}\n${run.stderr}`);
+  }
+
+  // Optional early-stop: if SAGA_STOP_AT_STAGE is set and the lifecycle reached
+  // that stage (with formalization completed), exit successfully without
+  // requiring full terminal. Used to prepare a sandbox for real-model Development.
+  const stopAtStage = process.env.SAGA_STOP_AT_STAGE;
+  if (stopAtStage) {
+    const checkDb = new Database(dbPath, { readonly: true });
+    const stageRow = checkDb.prepare(
+      'SELECT current_stage_id FROM factory_lifecycle_runs ORDER BY id DESC LIMIT 1',
+    ).get();
+    const formalizationRow = checkDb.prepare(
+      "SELECT status FROM factory_process_runs WHERE module_name='solution-formalization' ORDER BY id DESC LIMIT 1",
+    ).get();
+    checkDb.close();
+    if (stageRow?.current_stage_id === stopAtStage
+      && formalizationRow?.status === 'completed') {
+      process.stdout.write(`STOPPED_AT_STAGE: ${stopAtStage} (formalization completed, ready for real-model resume)\n`);
+      process.stdout.write(`SANDBOX: ${sandbox}\n`);
+      process.stdout.write(`DB: ${dbPath}\n`);
+      process.exit(0);
+    }
   }
 
   const audit = new Database(dbPath, { readonly: true });

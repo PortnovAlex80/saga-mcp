@@ -144,19 +144,16 @@ function createUnifiedWorkerFactory(
   return createPinnedClaudeWorkerExecutorFactory({
     // Per-module model routing: read the current stage from currentStageRef,
     // map it to a module name, look up the model in factory-models.json.
-    // "mock" → simulator path + saga-deterministic-simulator model.
-    // Any other value → real claude CLI with that model name.
+    // The model name is passed as --model to the proxy-claude, which routes
+    // "mock" to the simulator and everything else to the real CLI.
     modelRouteReader: (epicId: number | null) => {
       // Check per-module config first
       const moduleName = currentStageRef.stage
         ? STAGE_TO_MODULE[currentStageRef.stage] ?? null
         : null;
       const configuredModel = moduleName ? factoryModelConfig[moduleName] : undefined;
-      if (configuredModel === 'mock') {
-        return { provider: 'mock', model: 'saga-deterministic-simulator', effort: null };
-      }
-      if (configuredModel && configuredModel !== 'mock') {
-        return { provider: 'zai', model: configuredModel, effort: null };
+      if (configuredModel) {
+        return { provider: configuredModel === 'mock' ? 'mock' : 'zai', model: configuredModel, effort: null };
       }
       // Fallback: legacy DB route or default
       if (epicId !== null) {
@@ -440,21 +437,7 @@ async function main() {
           dbPath: process.env.DB_PATH!,
           sagaEntry,
           sagaSkillRoot: process.cwd(),
-          claudePath: (() => {
-            // Per-module model routing: if the current stage's module is
-            // configured as "mock" in factory-models.json, use the simulator
-            // binary. Otherwise use the real claude binary. The route reader
-            // (modelRouteReader) handles --model separately.
-            const mockConfig = loadFactoryModelConfig();
-            const mockReal = process.env.SAGA_REAL_CLAUDE_PATH ?? 'claude';
-            const mockSim = process.env.SAGA_CLAUDE_PATH ?? 'claude';
-            const modName = currentStageRef.stage
-              ? STAGE_TO_MODULE[currentStageRef.stage] ?? null
-              : null;
-            const model = modName ? mockConfig[modName] : undefined;
-            if (model === 'mock') return mockSim;
-            return mockReal;
-          })(),
+          claudePath: process.env.SAGA_CLAUDE_PATH,
           logRoot: dispatchConfig.orchestrationLogRoot,
           heartbeatLog: dispatchConfig.orchestrationLogRoot
             ? path.join(dispatchConfig.orchestrationLogRoot, 'worker-heartbeat.log')
