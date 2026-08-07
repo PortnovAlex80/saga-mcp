@@ -54,3 +54,4 @@ index.html
 # Saga project binding — per-machine pointer to a tracker DB project row.
 # Created by `saga start` for local development; not portable across machines.
 .saga/project.json
+.button-color-replay-e2e/

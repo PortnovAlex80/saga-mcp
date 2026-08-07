@@ -47,6 +47,13 @@ export function ensureFactoryProcessProductSchema(
   // Migrate any pre-product_key table shape in place before the CREATE TABLE
   // IF NOT EXISTS no-ops on an already-present (old-shape) table.
   migrateFactoryProcessProductProductKey(db);
+  // Replay-first cardinality (CONVEYOR v4.3 §7): drop the global UNIQUE on
+  // artifact_ref so a second Factory Run may store its own copy of a
+  // content-addressed product (same artifact_ref, different process_run_id).
+  // Product identity is scoped per-run by UNIQUE(process_run_id, product_kind,
+  // product_key); artifact_ref is content-addressed and legitimately identical
+  // across runs under replay.
+  migrateFactoryProcessProductDropArtifactRefUnique(db);
   db.exec(`
     CREATE TABLE IF NOT EXISTS factory_process_products (
       id                 INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -55,7 +62,7 @@ export function ensureFactoryProcessProductSchema(
       product_kind       TEXT NOT NULL,
       product_key        TEXT NOT NULL DEFAULT '',
       schema_id          TEXT NOT NULL,
-      artifact_ref       TEXT NOT NULL UNIQUE,
+      artifact_ref       TEXT NOT NULL,
       product_hash       TEXT NOT NULL,
       payload_snapshot   TEXT NOT NULL,
       payload_hash       TEXT NOT NULL,
@@ -67,6 +74,8 @@ export function ensureFactoryProcessProductSchema(
       ON factory_process_products(process_run_id, id);
     CREATE INDEX IF NOT EXISTS idx_factory_process_products_hash
       ON factory_process_products(schema_id, product_hash);
+    CREATE INDEX IF NOT EXISTS idx_factory_process_products_artifact
+      ON factory_process_products(artifact_ref);
   `);
 }
 
@@ -156,6 +165,79 @@ function migrateFactoryProcessProductProductKey(
       CREATE INDEX IF NOT EXISTS idx_factory_process_products_hash
         ON factory_process_products(schema_id, product_hash);
     `);
+  }
+}
+
+/**
+ * Drop the legacy global UNIQUE on factory_process_products.artifact_ref
+ * (CONVEYOR v4.3 §7 replay-first cardinality).
+ *
+ * artifact_ref is content-addressed (e.g. `proposal:<sha256>`), so two Factory
+ * Runs that produce the same product legitimately share the same artifact_ref.
+ * The global UNIQUE forbade Run B from storing its own copy of a replayed
+ * product, breaking cross-run replay at the product-persistence layer. Product
+ * identity is already scoped per-run by UNIQUE(process_run_id, product_kind,
+ * product_key); artifact_ref needs only a non-unique index for lookups.
+ *
+ * SQLite cannot DROP an inline UNIQUE in place, so the table is rebuilt. The
+ * rebuild preserves all columns (including the v2-added nullable node_id) and
+ * all rows. Idempotent: a no-op once the table no longer declares the UNIQUE.
+ */
+function migrateFactoryProcessProductDropArtifactRefUnique(
+  db: Database.Database,
+): void {
+  const tableRow = db
+    .prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='factory_process_products'")
+    .get() as { sql: string } | undefined;
+  if (!tableRow) return;
+  // Detect the old shape: artifact_ref declared with inline UNIQUE.
+  if (!/artifact_ref\s+TEXT\s+NOT\s+NULL\s+UNIQUE/i.test(tableRow.sql)) return;
+  const columns = db.prepare('PRAGMA table_info(factory_process_products)').all() as Array<{ name: string }>;
+  const hasNodeId = columns.some((c) => c.name === 'node_id');
+  const nodeIdCol = hasNodeId ? 'node_id TEXT,' : '';
+  const nodeIdSelect = hasNodeId ? ', node_id' : '';
+  db.exec('PRAGMA foreign_keys=OFF');
+  try {
+    db.exec('BEGIN');
+    db.exec(`
+      CREATE TABLE factory_process_products__new (
+        id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+        process_run_id     INTEGER NOT NULL
+                                 REFERENCES factory_process_runs(id) ON DELETE RESTRICT,
+        product_kind       TEXT NOT NULL,
+        product_key        TEXT NOT NULL DEFAULT '',
+        schema_id          TEXT NOT NULL,
+        artifact_ref       TEXT NOT NULL,
+        product_hash       TEXT NOT NULL,
+        payload_snapshot   TEXT NOT NULL,
+        payload_hash       TEXT NOT NULL,
+        created_at         TEXT NOT NULL DEFAULT (datetime('now')),
+        ${nodeIdCol}
+        UNIQUE(process_run_id, product_kind, product_key)
+      );
+      INSERT INTO factory_process_products__new
+        (id, process_run_id, product_kind, product_key, schema_id, artifact_ref,
+         product_hash, payload_snapshot, payload_hash, created_at${nodeIdSelect})
+      SELECT id, process_run_id, product_kind, product_key, schema_id, artifact_ref,
+             product_hash, payload_snapshot, payload_hash, created_at${nodeIdSelect}
+        FROM factory_process_products;
+      DROP TABLE factory_process_products;
+      ALTER TABLE factory_process_products__new RENAME TO factory_process_products;
+      CREATE INDEX IF NOT EXISTS idx_factory_process_products_run
+        ON factory_process_products(process_run_id, id);
+      CREATE INDEX IF NOT EXISTS idx_factory_process_products_hash
+        ON factory_process_products(schema_id, product_hash);
+      CREATE INDEX IF NOT EXISTS idx_factory_process_products_schema_ref_hash
+        ON factory_process_products(schema_id, artifact_ref, product_hash);
+      CREATE INDEX IF NOT EXISTS idx_factory_process_products_artifact
+        ON factory_process_products(artifact_ref);
+    `);
+    db.exec('COMMIT');
+  } catch (error) {
+    try { db.exec('ROLLBACK'); } catch { /* best-effort */ }
+    throw error;
+  } finally {
+    db.exec('PRAGMA foreign_keys=ON');
   }
 }
 

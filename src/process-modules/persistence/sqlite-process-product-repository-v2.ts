@@ -154,16 +154,18 @@ export class SqliteProcessProductRepositoryV2 implements ProcessProductRepositor
       ? envelope.productKey!
       : productKind;
 
-    // Replay detection: a row with the same (schema_id, artifact_ref) already
-    // present is the same content-addressed identity. A true replay requires
-    // the FULL binding to match: same process run, same product kind, same
-    // logical product key, and same content. A row that shares the
-    // content-addressed artifact_ref but has a DIFFERENT binding (e.g. the same
-    // product resubmitted under another productKey, or by another process run)
-    // is a binding mismatch, not a benign replay.
+    // Replay detection WITHIN ONE PROCESS RUN: a row with the same
+    // (process_run_id, schema_id, artifact_ref) is an idempotent resubmit of the
+    // same content-addressed identity by the same run. A true same-run replay
+    // requires the FULL binding to match. Cross-run same-content (a second
+    // Factory Run replaying a capsule that produces the same product) is LEGAL
+    // under CONVEYOR v4.3 §7 and must insert its own row — product identity is
+    // scoped per-run by UNIQUE(process_run_id, product_kind, product_key), not
+    // globally by artifact_ref.
     const existing = this.readRowBySchemaRef(
       envelope.schema,
       envelope.artifactRef,
+      processRunId,
     );
     if (existing) {
       assertReplay(existing, {
@@ -204,7 +206,7 @@ export class SqliteProcessProductRepositoryV2 implements ProcessProductRepositor
       // only a byte-identical binding; assertReplay still fails closed for a
       // genuine logical-key or lineage collision.
       if (!isSqliteConstraint(error)) throw error;
-      const raced = this.readRowBySchemaRef(envelope.schema, envelope.artifactRef);
+      const raced = this.readRowBySchemaRef(envelope.schema, envelope.artifactRef, processRunId);
       if (!raced) throw error;
       assertReplay(raced, {
         processRunId,
@@ -221,6 +223,7 @@ export class SqliteProcessProductRepositoryV2 implements ProcessProductRepositor
     const inserted = this.readRowBySchemaRef(
       envelope.schema,
       envelope.artifactRef,
+      processRunId,
     );
     if (!inserted) throw new Error('PROCESS_PRODUCT_INSERT_LOST');
     return {
@@ -232,13 +235,24 @@ export class SqliteProcessProductRepositoryV2 implements ProcessProductRepositor
   private readRowBySchemaRef(
     schemaId: string,
     artifactRef: string,
+    processRunId?: number,
   ): ProcessProductV2Row | null {
-    const row = this.db.prepare(
-      `SELECT process_run_id, product_kind, product_key, schema_id, artifact_ref, product_hash,
-              payload_snapshot, payload_hash, created_at, node_id
-         FROM factory_process_products
-        WHERE schema_id=? AND artifact_ref=?`,
-    ).get(schemaId, artifactRef) as ProcessProductV2Row | undefined;
+    // Scope by process_run_id when provided: cross-run same-content is legal
+    // under replay (§7) and must not collide. Without a run filter the query
+    // would find another run's product and falsely trigger replay detection.
+    const row = processRunId !== undefined
+      ? this.db.prepare(
+        `SELECT process_run_id, product_kind, product_key, schema_id, artifact_ref, product_hash,
+                payload_snapshot, payload_hash, created_at, node_id
+           FROM factory_process_products
+          WHERE schema_id=? AND artifact_ref=? AND process_run_id=?`,
+      ).get(schemaId, artifactRef, processRunId) as ProcessProductV2Row | undefined
+      : this.db.prepare(
+        `SELECT process_run_id, product_kind, product_key, schema_id, artifact_ref, product_hash,
+                payload_snapshot, payload_hash, created_at, node_id
+           FROM factory_process_products
+          WHERE schema_id=? AND artifact_ref=?`,
+      ).get(schemaId, artifactRef) as ProcessProductV2Row | undefined;
     return row ?? null;
   }
 }

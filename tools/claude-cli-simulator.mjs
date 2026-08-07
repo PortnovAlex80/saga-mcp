@@ -84,6 +84,20 @@ async function main() {
     if (capsuleRef) {
       stream.text(`simulator: capsule replay mode — capsule=${capsuleRef}`);
       await executeCapsuleReplay(runtime, ctx, stream);
+      // A capsule replay publishes the accepted worker production (typed
+      // products, artifacts, traces, git recipe) but MUST still complete the
+      // WorkerExecution via the normal worker_done protocol — exactly as a
+      // scenario/LLM worker does. Without this the task never reaches terminal
+      // from the dispatcher's view and the lifecycle stalls.
+      const doneHandler = runtime.dispatcher?.handlers?.worker_done;
+      if (typeof doneHandler === 'function') {
+        doneHandler({
+          task_id: ctx.task_id || ctx.task?.id,
+          worker_id: ctx.worker_id,
+          execution_id: ctx.execution_id || ctx.task?.current_execution_id,
+          result: `capsule replay '${capsuleRef}' completed`,
+        });
+      }
       const durationMs = Date.now() - startedAt;
       heartbeat(ctx, 'SIM_DONE', `capsule-replay duration=${durationMs}ms`);
       stream.result({ durationMs, success: true, summary: `capsule replay '${capsuleRef}' completed` });

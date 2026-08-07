@@ -807,41 +807,75 @@ function canonicalProductMultiset(
  * Compute the cross-run-stable semantic input digest for a Production Cell
  * (CONVEYOR v4.3 §8).
  *
- * - Entry cell (no sourceBinding): ctx.input is the canonical lifecycle/module
- *   business input, stable across runs. Its canonical hash IS the semantic
- *   identity. (We deliberately hash ctx.input directly here because the entry
- *   input is pure business content with no runtime envelope.)
- * - Fan-out cell: the semantic identity is the upstream production's
- *   semanticDigest + the stable item id + the item's semantic content. The
- *   upstream is resolved via the same path as materialize (frame production or
- *   ctx.input). We fall back to contentHash if the upstream producer did not
- *   author a semanticDigest (non-cell upstreams); fail closed only if neither
- *   is present.
+ * Three cases:
+ *  1. Entry cell whose ctx.input is the canonical lifecycle/module business
+ *     input (no upstream production envelope): hash ctx.input directly — it is
+ *     pure business content with no runtime envelope, stable across runs.
+ *  2. Singleton downstream cell (no sourceBinding, but ctx.input IS an upstream
+ *     NodeProduction manifest): use the upstream's semanticDigest. Hashing the
+ *     raw manifest would include provenance (workplaceRef, candidateSetRef,
+ *     execution ids) and break cross-run stability.
+ *  3. Fan-out cell: the semantic identity is the upstream production's
+ *     semanticDigest + the stable item id + the item's semantic content.
+ *
+ * Cases 2 and 3 both detect "ctx.input is an upstream production" by checking
+ * for the NodeProduction shape (contentHash + bindings). We fall back to
+ * contentHash if the upstream producer did not author a semanticDigest; fail
+ * closed only if neither is present.
  */
 function computeSemanticInputDigest(
   ctx: NodeExecutionContext,
   cell: ProductionCellDefinition,
   workplace: MaterializedWorkplace,
 ): string {
-  if (!cell.materialization.sourceBinding) {
-    // Entry cell: canonical business input.
-    return sha256Hex(ctx.input);
+  // Detect whether ctx.input is an upstream NodeProduction manifest (carries
+  // contentHash + bindings) vs the raw lifecycle business input.
+  const inputProduction = readInputAsProduction(ctx.input);
+  if (cell.materialization.sourceBinding) {
+    // Fan-out: resolve the source production explicitly (frame or ctx.input).
+    const upstream = resolveSourceProduction(ctx, cell.materialization.sourceBinding);
+    const upstreamSemanticDigest = upstream?.semanticDigest ?? upstream?.contentHash ?? null;
+    if (!upstreamSemanticDigest) {
+      throw new NodeExecutionError(
+        'production-cell',
+        cell.id,
+        `REPLAY_SEMANTIC_IDENTITY_UNPROVEN: fan-out cell '${cell.id}' upstream has no semanticDigest; `
+        + `cross-run replay identity cannot be derived. The upstream producer must author a semanticDigest.`,
+      );
+    }
+    return sha256Hex({
+      upstreamSemanticDigest,
+      itemId: workplace.itemId,
+      itemDigest: sha256Hex(workplace.item),
+    });
   }
-  const upstream = resolveSourceProduction(ctx, cell.materialization.sourceBinding);
-  const upstreamSemanticDigest = upstream?.semanticDigest ?? upstream?.contentHash ?? null;
-  if (!upstreamSemanticDigest) {
-    throw new NodeExecutionError(
-      'production-cell',
-      cell.id,
-      `REPLAY_SEMANTIC_IDENTITY_UNPROVEN: fan-out cell '${cell.id}' upstream has no semanticDigest; `
-      + `cross-run replay identity cannot be derived. The upstream producer must author a semanticDigest.`,
-    );
+  if (inputProduction) {
+    // Singleton downstream cell: ctx.input is an upstream production manifest.
+    // Use its semanticDigest (fallback contentHash) — NOT the raw manifest,
+    // which carries run-specific provenance.
+    return inputProduction.semanticDigest ?? inputProduction.contentHash;
   }
-  return sha256Hex({
-    upstreamSemanticDigest,
-    itemId: workplace.itemId,
-    itemDigest: sha256Hex(workplace.item),
-  });
+  // Entry cell: canonical business input, stable across runs.
+  return sha256Hex(ctx.input);
+}
+
+/**
+ * Detect whether ctx.input is an upstream NodeProduction manifest (vs the raw
+ * lifecycle business input). A NodeProduction carries contentHash + bindings;
+ * the lifecycle business input does not.
+ */
+function readInputAsProduction(input: unknown): {
+  contentHash: string;
+  semanticDigest?: string;
+} | null {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return null;
+  const obj = input as Record<string, unknown>;
+  if (typeof obj.contentHash !== 'string') return null;
+  if (!obj.bindings || typeof obj.bindings !== 'object') return null;
+  return {
+    contentHash: obj.contentHash,
+    semanticDigest: typeof obj.semanticDigest === 'string' ? obj.semanticDigest : undefined,
+  };
 }
 
 function integerSelector(value: unknown, selector: string): number[] {
