@@ -14,8 +14,10 @@ import {
   type ExecutionContextSnapshot,
   type ExecutionContextExecutorKind,
   type ExecutionModelRoute,
+  type ExecutionReplayBinding,
   type ExecutionRoutePolicyRef,
 } from './execution-context.js';
+import { computeReplayKey, type ReplayKeyMaterial } from '../../replay/replay-capsule.js';
 
 const ACCEPTED_POLICY_VERSIONS = new Set<string>([
   EXECUTION_CONTEXT_POLICY_VERSION,
@@ -58,32 +60,18 @@ export function visibleSagaToolNames(
 ): ReadonlySet<string> | null {
   const marker = env.SAGA_MANAGED_EXECUTION;
   const executionId = env.SAGA_EXECUTION_ID;
-
-  if (marker === undefined) {
-    return executionId ? new Set<string>() : null;
-  }
-  if (marker === '0') {
-    return executionId ? new Set<string>() : null;
-  }
-  if (marker !== '1' || !executionId) {
-    return new Set<string>();
-  }
+  if (marker === undefined) return executionId ? new Set<string>() : null;
+  if (marker === '0') return executionId ? new Set<string>() : null;
+  if (marker !== '1' || !executionId) return new Set<string>();
 
   const strict = readExecutionContextStrict(db, executionId);
   if (!strict.ok) return new Set<string>();
   if (env.SAGA_TASK_ID !== undefined
-      && String(strict.row.task_id) !== String(env.SAGA_TASK_ID)) {
-    return new Set<string>();
-  }
+      && String(strict.row.task_id) !== String(env.SAGA_TASK_ID)) return new Set<string>();
   if (env.SAGA_WORKER_ID !== undefined
-      && strict.row.worker_id !== env.SAGA_WORKER_ID) {
-    return new Set<string>();
-  }
-
+      && strict.row.worker_id !== env.SAGA_WORKER_ID) return new Set<string>();
   const authority = strict.snapshot.authority;
-  return authority === null
-    ? null
-    : new Set(authority.allowed_saga_tools);
+  return authority === null ? null : new Set(authority.allowed_saga_tools);
 }
 
 interface ExecutionRow {
@@ -107,26 +95,17 @@ function isHex64(value: unknown): value is string {
   return typeof value === 'string' && /^[0-9a-f]{64}$/.test(value);
 }
 
-function parseExecutorKind(
-  raw: unknown,
-  policyVersion: string,
-): ExecutionContextExecutorKind | null {
+function parseExecutorKind(raw: unknown, policyVersion: string): ExecutionContextExecutorKind | null {
   if (policyVersion === 'factory.execution.v1') {
     return raw === undefined || raw === 'claude-cli' ? 'claude-cli' : null;
   }
-  return raw === 'claude-cli' || raw === 'claude-cli-simulator'
+  return raw === 'claude-cli'
+    || raw === 'claude-cli-simulator'
+    || raw === 'factory-replay'
     ? raw
     : null;
 }
 
-/**
- * Parse the inference route in the context of the selected executor.
- *
- * A simulator performs no inference, therefore provider/model/effort MUST all
- * be null. A real claude-cli execution requires a non-empty provider; model and
- * effort remain optional. This prevents a deterministic run from being
- * journaled as a fake z.ai call and prevents malformed executor/model mixtures.
- */
 function parseModelRoute(
   raw: unknown,
   executorKind: ExecutionContextExecutorKind,
@@ -136,19 +115,14 @@ function parseModelRoute(
   if (!(raw.model === null || typeof raw.model === 'string')) return null;
   if (!(raw.effort === null || typeof raw.effort === 'string')) return null;
 
-  if (executorKind === 'claude-cli-simulator') {
+  if (executorKind === 'claude-cli-simulator' || executorKind === 'factory-replay') {
     if (raw.provider !== null || raw.model !== null || raw.effort !== null) return null;
     return { provider: null, model: null, effort: null };
   }
-
   if (typeof raw.provider !== 'string' || raw.provider.trim() === '') return null;
   if (typeof raw.model === 'string' && raw.model.trim() === '') return null;
   if (typeof raw.effort === 'string' && raw.effort.trim() === '') return null;
-  return {
-    provider: raw.provider,
-    model: raw.model,
-    effort: raw.effort,
-  };
+  return { provider: raw.provider, model: raw.model, effort: raw.effort };
 }
 
 function parseRoutePolicy(raw: unknown): ExecutionRoutePolicyRef | null {
@@ -157,6 +131,48 @@ function parseRoutePolicy(raw: unknown): ExecutionRoutePolicyRef | null {
   if (typeof raw.ref !== 'string' || raw.ref.trim() === '') return null;
   if (typeof raw.digest !== 'string' || raw.digest.trim() === '') return null;
   return { ref: raw.ref, digest: raw.digest };
+}
+
+function parseReplayKeyMaterial(raw: unknown): ReplayKeyMaterial | null {
+  if (!isRecord(raw)) return null;
+  const projectId = Number(raw.projectId);
+  const role = raw.role;
+  if (!Number.isSafeInteger(projectId) || projectId <= 0) return null;
+  if (role !== 'author' && role !== 'reviewer') return null;
+  for (const key of ['moduleRef','nodeId','productionCellId','workKey','packageDigest','nodeInputHash'] as const) {
+    if (typeof raw[key] !== 'string' || (raw[key] as string).trim() === '') return null;
+  }
+  if (!(raw.subjectCandidateDigest === null || (typeof raw.subjectCandidateDigest === 'string' && raw.subjectCandidateDigest.length > 0))) {
+    return null;
+  }
+  return {
+    projectId,
+    moduleRef: raw.moduleRef as string,
+    nodeId: raw.nodeId as string,
+    productionCellId: raw.productionCellId as string,
+    workKey: raw.workKey as string,
+    role,
+    packageDigest: raw.packageDigest as string,
+    nodeInputHash: raw.nodeInputHash as string,
+    subjectCandidateDigest: raw.subjectCandidateDigest as string | null,
+  };
+}
+
+function parseReplay(raw: unknown): ExecutionReplayBinding | null | undefined {
+  if (raw === undefined || raw === null) return null;
+  if (!isRecord(raw)) return undefined;
+  if (typeof raw.key !== 'string' || !isHex64(raw.key)) return undefined;
+  const keyMaterial = parseReplayKeyMaterial(raw.key_material);
+  if (!keyMaterial || computeReplayKey(keyMaterial) !== raw.key) return undefined;
+  if (!(raw.capsule_ref === null || (typeof raw.capsule_ref === 'string' && raw.capsule_ref.length > 0))) return undefined;
+  if (!(raw.capsule_payload_hash === null || isHex64(raw.capsule_payload_hash))) return undefined;
+  if ((raw.capsule_ref === null) !== (raw.capsule_payload_hash === null)) return undefined;
+  return {
+    key: raw.key,
+    key_material: keyMaterial,
+    capsule_ref: raw.capsule_ref as string | null,
+    capsule_payload_hash: raw.capsule_payload_hash as string | null,
+  };
 }
 
 function parseAuthority(raw: unknown, topLevelIntentId: number | null): ExecutionAuthority | null | undefined {
@@ -190,10 +206,7 @@ function parseAuthority(raw: unknown, topLevelIntentId: number | null): Executio
   return expected === authority.authority_hash ? authority : undefined;
 }
 
-export function readExecutionContextStrict(
-  db: Database,
-  executionId: string,
-): StrictExecutionContextRead {
+export function readExecutionContextStrict(db: Database, executionId: string): StrictExecutionContextRead {
   const row = db.prepare(
     `SELECT we.metadata, we.task_id, we.worker_id, we.epic_id,
             t.task_kind,
@@ -209,12 +222,8 @@ export function readExecutionContextStrict(
   try { envelope = JSON.parse(row.metadata); }
   catch { return { ok: false, reason: 'worker_executions.metadata is not valid JSON' }; }
   if (!isRecord(envelope)) return { ok: false, reason: 'execution metadata must be an object' };
-  if (!isHex64(envelope.execution_context_hash)) {
-    return { ok: false, reason: 'execution_context_hash missing or malformed' };
-  }
-  if (!isRecord(envelope.execution_context)) {
-    return { ok: false, reason: 'execution_context missing or malformed' };
-  }
+  if (!isHex64(envelope.execution_context_hash)) return { ok: false, reason: 'execution_context_hash missing or malformed' };
+  if (!isRecord(envelope.execution_context)) return { ok: false, reason: 'execution_context missing or malformed' };
 
   const raw = envelope.execution_context;
   if (typeof raw.policy_version !== 'string' || !ACCEPTED_POLICY_VERSIONS.has(raw.policy_version)) {
@@ -228,16 +237,21 @@ export function readExecutionContextStrict(
   if (typeof raw.captured_at !== 'string' || raw.captured_at.trim() === '') {
     return { ok: false, reason: 'captured_at missing or malformed' };
   }
-
   const executorKind = parseExecutorKind(raw.executor_kind, policyVersion);
-  if (!executorKind) {
-    return { ok: false, reason: 'executor_kind missing, malformed, or incompatible with policy_version' };
-  }
+  if (!executorKind) return { ok: false, reason: 'executor_kind missing, malformed, or incompatible with policy_version' };
   const modelRoute = parseModelRoute(raw.model_route, executorKind);
   if (!modelRoute) return { ok: false, reason: 'model_route missing, malformed, or incompatible with executor_kind' };
   const authority = parseAuthority(raw.authority, workIntentId);
   if (authority === undefined) return { ok: false, reason: 'authority missing, malformed, or hash-mismatched' };
   const routePolicy = parseRoutePolicy(raw.route_policy);
+  const replay = parseReplay(raw.replay);
+  if (replay === undefined) return { ok: false, reason: 'replay binding is malformed or key-mismatched' };
+  if (executorKind === 'factory-replay' && replay?.capsule_ref == null) {
+    return { ok: false, reason: 'factory-replay executor requires an exact capsule binding' };
+  }
+  if (executorKind !== 'factory-replay' && replay?.capsule_ref != null) {
+    return { ok: false, reason: 'capsule-bound execution must use factory-replay executor' };
+  }
 
   const snapshot: ExecutionContextSnapshot = {
     policy_version: raw.policy_version as typeof EXECUTION_CONTEXT_POLICY_VERSION,
@@ -246,6 +260,7 @@ export function readExecutionContextStrict(
     model_route: modelRoute,
     executor_kind: executorKind,
     route_policy: routePolicy,
+    replay,
     captured_at: raw.captured_at,
   };
 
@@ -258,6 +273,7 @@ export function readExecutionContextStrict(
   };
   if (raw.executor_kind !== undefined) hashInput.executor_kind = snapshot.executor_kind;
   if (raw.route_policy !== undefined) hashInput.route_policy = snapshot.route_policy;
+  if (raw.replay !== undefined) hashInput.replay = snapshot.replay;
   const expectedContextHash = executionContextHash(hashInput);
   if (expectedContextHash !== envelope.execution_context_hash) {
     return { ok: false, reason: 'execution_context_hash mismatch' };
@@ -270,7 +286,6 @@ export function readExecutionContextStrict(
   } else if (!authority || workIntentId !== row.task_work_intent_id) {
     return { ok: false, reason: 'task WorkIntent binding does not match execution snapshot' };
   }
-
   return { ok: true, snapshot, row };
 }
 
@@ -308,9 +323,7 @@ export function authorizeSagaToolCall(input: AuthorizeSagaToolCallInput): Author
       ? invalid(input.toolName, executionId, 'non-managed process must not carry SAGA_EXECUTION_ID')
       : { allow: true };
   }
-  if (!executionId) {
-    return invalid(input.toolName, null, 'managed execution is missing SAGA_EXECUTION_ID');
-  }
+  if (!executionId) return invalid(input.toolName, null, 'managed execution is missing SAGA_EXECUTION_ID');
 
   const strict = readExecutionContextStrict(input.db, executionId);
   if (!strict.ok) return invalid(input.toolName, executionId, strict.reason);
@@ -334,9 +347,7 @@ export function authorizeSagaToolCall(input: AuthorizeSagaToolCallInput): Author
         : `advisory authority: '${input.toolName}' is NOT in allowed_tools but enforcement=advisory`,
     };
   }
-  if (authority.allowed_saga_tools.includes(input.toolName)) {
-    return { allow: true, executionId };
-  }
+  if (authority.allowed_saga_tools.includes(input.toolName)) return { allow: true, executionId };
   return {
     allow: false,
     code: 'AUTHORITY_DENIED',
