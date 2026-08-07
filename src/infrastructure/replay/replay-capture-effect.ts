@@ -1,18 +1,22 @@
 /**
- * Replay capture post-acceptance effect — the UNIVERSAL hook that archives
- * every accepted Production Cell worker execution into a reusable capsule.
+ * Replay capture effect.
  *
- * Unlike cell-specific effects (git-integration, formalization-accept-products),
- * this effect is ALWAYS invoked for every accepted candidate, regardless of
- * module. It captures the accepted author execution (and, for cells with
- * review, the reviewer execution) so future identical worker invocations can
- * replay the accepted production deterministically instead of calling the LLM.
+ * IMPORTANT: a GateRun returning `accepted` is not by itself enough to certify
+ * replay data. A decision may still lose the Workplace revision CAS or remain
+ * audit-only. A reusable capsule may be created only from a durable
+ * `terminal(accepted)` Workplace.
  *
- * Capture is BEST-EFFORT: a replay-archive failure must NEVER revoke an
- * already-authoritative GateDecision. All errors are caught and logged.
+ * ProductionCellNodeExecutor still invokes this extension point before applying
+ * the transition for historical post-acceptance-effect ordering. Therefore this
+ * effect is deliberately guarded and normally becomes a no-op at that call
+ * site. The replay claim boundary performs a lazy certification sweep before
+ * every subsequent lookup, after prior accepted transitions are durable. This
+ * keeps replay best-effort without inventing another state machine or pending
+ * capture entity.
  */
 import type Database from 'better-sqlite3';
 import type { PostAcceptanceEffect } from '../../process-modules/application/post-acceptance-effects.js';
+import { serializeWorkplaceRef } from '../../process-modules/domain/workplace/workplace-ref.js';
 import { SqliteReplayCapsuleRepository } from './sqlite-replay-capsule-repository.js';
 
 export const REPLAY_CAPTURE_EFFECT_ID = 'replay-capture' as const;
@@ -22,17 +26,35 @@ export function createReplayCaptureEffect(db: Database.Database): PostAcceptance
   return {
     effectId: REPLAY_CAPTURE_EFFECT_ID,
     run(input) {
-      // Best-effort: never let replay capture failure revoke a GateDecision.
+      const workplaceRef = serializeWorkplaceRef(input.workplaceRef);
+      const state = db.prepare(
+        `SELECT loop_state,terminal_reason
+           FROM factory_workplaces
+          WHERE workplace_ref=?`,
+      ).get(workplaceRef) as {
+        loop_state: string;
+        terminal_reason: string | null;
+      } | undefined;
+
+      // Certification boundary: never archive a merely proposed/checked
+      // acceptance. Only the durable terminal accepted state is replayable.
+      if (!state
+          || state.loop_state !== 'terminal'
+          || state.terminal_reason !== 'accepted') {
+        return;
+      }
+
       try {
         repo.captureAcceptedExecution({
           executionRef: input.producerExecutionRef,
           candidateSetRef: input.candidateSetRef,
         });
       } catch (error) {
-        // Log but do not throw — the GateDecision is already authoritative.
+        // Replay archive is an optimization. Failure must not rewrite an
+        // already-authoritative accepted transition.
         const msg = error instanceof Error ? error.message : String(error);
         process.stderr.write(
-          `[replay-capture] best-effort capture failed for execution=${input.producerExecutionRef}: ${msg}\n`,
+          `[replay-capture] certification failed for execution=${input.producerExecutionRef}: ${msg}\n`,
         );
       }
     },
