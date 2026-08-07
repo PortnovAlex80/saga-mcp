@@ -17,7 +17,7 @@
  *                         (required; the lifecycle runtime is the only engine)
  */
 
-import { mkdirSync, renameSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, renameSync, writeFileSync, existsSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import os from 'node:os';
@@ -72,6 +72,43 @@ function parseArgs(argv: string[]): { launchRef: string } {
 
 
 /**
+ * Per-module model routing. Reads factory-models.json (or
+ * SAGA_FACTORY_MODELS env) to decide which model each module uses.
+ * "mock" routes to the simulator (SAGA_CLAUDE_PATH); any other value
+ * routes to the real claude CLI with that --model. This lets the operator
+ * run cheap stages on the simulator and expensive stages on a real LM,
+ * all in one continuous factory run.
+ */
+interface FactoryModelConfig { [moduleName: string]: string }
+
+function loadFactoryModelConfig(): FactoryModelConfig {
+  const envConfig = process.env.SAGA_FACTORY_MODELS;
+  if (envConfig) {
+    try { return JSON.parse(envConfig) as FactoryModelConfig; } catch { /* fall through */ }
+  }
+  const configPath = process.env.SAGA_FACTORY_MODELS_PATH
+    ?? path.join(process.env.SAGA_REPO_ROOT ?? process.cwd(), 'factory-models.json');
+  if (existsSync(configPath)) {
+    try { return JSON.parse(readFileSync(configPath, 'utf8')) as FactoryModelConfig; } catch { /* empty */ }
+  }
+  return {};
+}
+
+/** Map lifecycle stage id → module name for model lookup. */
+const STAGE_TO_MODULE: Record<string, string> = {
+  'initial-discovery': 'product-discovery',
+  'solution-formalization': 'solution-formalization',
+  'solution-development': 'solution-development',
+  'delivery-release': 'delivery-release',
+};
+
+/**
+ * Mutable stage tracker — updated by the main loop after each runEpisode.
+ * The modelRouteReader closure reads this to return the per-stage model.
+ */
+const currentStageRef: { stage: string | null } = { stage: 'initial-discovery' };
+
+/**
  * Create a pinned WorkerExecutorFactory for the dispatch loop — identical to
  * what composition-root creates for LM-node workers. This ensures impl-task
  * workers get the SAME desk (materializer, hooks, fence, authority) as
@@ -103,9 +140,25 @@ function createUnifiedWorkerFactory(
       + 'to create pinned worker desks.',
     );
   }
+  const factoryModelConfig = loadFactoryModelConfig();
   return createPinnedClaudeWorkerExecutorFactory({
-    // Episode-pinned model route (was missing in the dispatch-only factory).
+    // Per-module model routing: read the current stage from currentStageRef,
+    // map it to a module name, look up the model in factory-models.json.
+    // "mock" → simulator path + saga-deterministic-simulator model.
+    // Any other value → real claude CLI with that model name.
     modelRouteReader: (epicId: number | null) => {
+      // Check per-module config first
+      const moduleName = currentStageRef.stage
+        ? STAGE_TO_MODULE[currentStageRef.stage] ?? null
+        : null;
+      const configuredModel = moduleName ? factoryModelConfig[moduleName] : undefined;
+      if (configuredModel === 'mock') {
+        return { provider: 'mock', model: 'saga-deterministic-simulator', effort: null };
+      }
+      if (configuredModel && configuredModel !== 'mock') {
+        return { provider: 'zai', model: configuredModel, effort: null };
+      }
+      // Fallback: legacy DB route or default
       if (epicId !== null) {
         const row = getDb().prepare(
           'SELECT worker_model_route FROM episode_workflows WHERE epic_id=?',
@@ -162,6 +215,9 @@ function createUnifiedWorkerFactory(
     // composition-root; the dispatch loop and LM-node workers share one
     // assignment path.
     workAssignment: new SqliteWorkAssignmentAdapter(getDb()),
+    // Per-module spawn override: when the current stage maps to a module
+    // configured as "mock" in factory-models.json, route the spawn to the
+    // simulator binary instead of the real claude CLI. For all other models
   });
 }
 
@@ -301,6 +357,8 @@ async function main() {
       }
       lastResult = result;
       isFirstCycle = false;
+      // Track current stage for per-module model routing (factory-models.json).
+      if (result.finalStage) currentStageRef.stage = result.finalStage;
       process.stdout.write(`[orchestrate-cli] cycle: ${JSON.stringify({ reason: result.reason, stage: result.finalStage })}\n`);
       // Optional online factory checkpoint. It snapshots SQLite through the
       // backup API and content-addresses referenced artifact bytes. A failed
@@ -382,7 +440,21 @@ async function main() {
           dbPath: process.env.DB_PATH!,
           sagaEntry,
           sagaSkillRoot: process.cwd(),
-          claudePath: process.env.SAGA_CLAUDE_PATH,
+          claudePath: (() => {
+            // Per-module model routing: if the current stage's module is
+            // configured as "mock" in factory-models.json, use the simulator
+            // binary. Otherwise use the real claude binary. The route reader
+            // (modelRouteReader) handles --model separately.
+            const mockConfig = loadFactoryModelConfig();
+            const mockReal = process.env.SAGA_REAL_CLAUDE_PATH ?? 'claude';
+            const mockSim = process.env.SAGA_CLAUDE_PATH ?? 'claude';
+            const modName = currentStageRef.stage
+              ? STAGE_TO_MODULE[currentStageRef.stage] ?? null
+              : null;
+            const model = modName ? mockConfig[modName] : undefined;
+            if (model === 'mock') return mockSim;
+            return mockReal;
+          })(),
           logRoot: dispatchConfig.orchestrationLogRoot,
           heartbeatLog: dispatchConfig.orchestrationLogRoot
             ? path.join(dispatchConfig.orchestrationLogRoot, 'worker-heartbeat.log')
