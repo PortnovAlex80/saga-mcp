@@ -27,10 +27,6 @@ function requiredString(value: unknown): string | null {
   return typeof value === 'string' && value.trim() !== '' ? value : null;
 }
 
-/**
- * Compute the replay identity entirely from server-authored durable bindings.
- * No model output, live prompt text or moving task status participates.
- */
 export function resolveReplayKeyMaterial(
   db: Database.Database,
   task: Task,
@@ -83,8 +79,9 @@ export function resolveReplayKeyMaterial(
  *
  * Miss: freeze the replay key and leave the front-selected LLM route untouched.
  * Hit: freeze the exact capsule and switch only THIS WorkerExecution to the
- * deterministic replay executor. The project's selected model remains stored
- * in lifecycle controls for future misses; replay is not a model selection.
+ * existing deterministic CLI-compatible executor. The project's selected model
+ * remains stored in lifecycle controls for future misses; replay is not a model
+ * selection and does not alter workshop model inheritance.
  */
 export function bindReplayToClaim(
   db: Database.Database,
@@ -125,7 +122,7 @@ export function bindReplayToClaim(
     capsule_payload_hash: capsule?.payload_hash ?? null,
   };
   if (capsule) {
-    context.executor_kind = 'factory-replay';
+    context.executor_kind = 'claude-cli-simulator';
     context.model_route = { provider: null, model: null, effort: null };
     context.route_policy = {
       ref: REPLAY_POLICY_REF,
