@@ -1,10 +1,9 @@
 /**
- * Strict Saga MCP authority gateway (D1.1 correction).
+ * Strict Saga MCP authority gateway.
  *
  * Managed executions are fail-closed. A tool call is authorized only after the
  * execution row, immutable execution_context, policy version, authority hash,
  * context hash, task binding, and optional task/worker identity all validate.
- * execution_context with authority=null also remains compatibility-allowed.
  */
 import type { Database } from 'better-sqlite3';
 import {
@@ -18,17 +17,9 @@ import {
   type ExecutionRoutePolicyRef,
 } from './execution-context.js';
 
-/**
- * Policy versions the gateway accepts. v1 snapshots (no executor_kind /
- * route_policy) are still honored for in-flight executions started before the
- * routing cutover; every NEW claim produces v2. Adding a version here is the
- * ONLY change needed to accept a new shape — the structural hash check still
- * guards integrity because {@link executionContextHash} hashes whatever shape
- * was stored.
- */
 const ACCEPTED_POLICY_VERSIONS = new Set<string>([
-  EXECUTION_CONTEXT_POLICY_VERSION, // v2
-  'factory.execution.v1',           // legacy
+  EXECUTION_CONTEXT_POLICY_VERSION,
+  'factory.execution.v1',
 ]);
 
 export type AuthorizationDecision =
@@ -61,17 +52,6 @@ export interface AuthorizeSagaToolCallInput {
   workerId?: string;
 }
 
-/**
- * Resolve the Saga MCP catalog visible to the current process.
- *
- * snapshots). A Set means a managed Saga 3 execution and contains the exact
- * frozen allow-list. An empty Set is fail-closed for malformed or stale
- * managed identity.
- *
- * This is deliberately separate from call authorization: catalog filtering
- * reduces weak-model cognitive load, while {@link authorizeSagaToolCall}
- * remains the mandatory security boundary on every call.
- */
 export function visibleSagaToolNames(
   db: Database,
   env: NodeJS.ProcessEnv = process.env,
@@ -127,20 +107,50 @@ function isHex64(value: unknown): value is string {
   return typeof value === 'string' && /^[0-9a-f]{64}$/.test(value);
 }
 
-function parseModelRoute(raw: unknown): ExecutionModelRoute | null {
-  if (!isRecord(raw)) return null;
-  if (typeof raw.provider !== 'string' || raw.provider.trim() === '') return null;
-  if (!(raw.model === null || typeof raw.model === 'string')) return null;
-  if (!(raw.effort === null || typeof raw.effort === 'string')) return null;
-  return { provider: raw.provider, model: raw.model, effort: raw.effort };
+function parseExecutorKind(
+  raw: unknown,
+  policyVersion: string,
+): ExecutionContextExecutorKind | null {
+  if (policyVersion === 'factory.execution.v1') {
+    return raw === undefined || raw === 'claude-cli' ? 'claude-cli' : null;
+  }
+  return raw === 'claude-cli' || raw === 'claude-cli-simulator'
+    ? raw
+    : null;
 }
 
 /**
- * Parse the v2 `route_policy` citation. Returns null for absent/malformed
- * values (v1 snapshots omit it entirely). A present-but-malformed value fails
- * closed by returning null only when the shape is wrong, which the validator
- * then excludes from the structural hash.
+ * Parse the inference route in the context of the selected executor.
+ *
+ * A simulator performs no inference, therefore provider/model/effort MUST all
+ * be null. A real claude-cli execution requires a non-empty provider; model and
+ * effort remain optional. This prevents a deterministic run from being
+ * journaled as a fake z.ai call and prevents malformed executor/model mixtures.
  */
+function parseModelRoute(
+  raw: unknown,
+  executorKind: ExecutionContextExecutorKind,
+): ExecutionModelRoute | null {
+  if (!isRecord(raw)) return null;
+  if (!(raw.provider === null || typeof raw.provider === 'string')) return null;
+  if (!(raw.model === null || typeof raw.model === 'string')) return null;
+  if (!(raw.effort === null || typeof raw.effort === 'string')) return null;
+
+  if (executorKind === 'claude-cli-simulator') {
+    if (raw.provider !== null || raw.model !== null || raw.effort !== null) return null;
+    return { provider: null, model: null, effort: null };
+  }
+
+  if (typeof raw.provider !== 'string' || raw.provider.trim() === '') return null;
+  if (typeof raw.model === 'string' && raw.model.trim() === '') return null;
+  if (typeof raw.effort === 'string' && raw.effort.trim() === '') return null;
+  return {
+    provider: raw.provider,
+    model: raw.model,
+    effort: raw.effort,
+  };
+}
+
 function parseRoutePolicy(raw: unknown): ExecutionRoutePolicyRef | null {
   if (raw === null || raw === undefined) return null;
   if (!isRecord(raw)) return null;
@@ -210,6 +220,7 @@ export function readExecutionContextStrict(
   if (typeof raw.policy_version !== 'string' || !ACCEPTED_POLICY_VERSIONS.has(raw.policy_version)) {
     return { ok: false, reason: `unsupported policy_version '${String(raw.policy_version)}'` };
   }
+  const policyVersion = raw.policy_version;
   const workIntentId = raw.work_intent_id === null
     ? null
     : Number.isInteger(raw.work_intent_id) ? raw.work_intent_id as number : undefined;
@@ -217,18 +228,15 @@ export function readExecutionContextStrict(
   if (typeof raw.captured_at !== 'string' || raw.captured_at.trim() === '') {
     return { ok: false, reason: 'captured_at missing or malformed' };
   }
-  const modelRoute = parseModelRoute(raw.model_route);
-  if (!modelRoute) return { ok: false, reason: 'model_route missing or malformed' };
+
+  const executorKind = parseExecutorKind(raw.executor_kind, policyVersion);
+  if (!executorKind) {
+    return { ok: false, reason: 'executor_kind missing, malformed, or incompatible with policy_version' };
+  }
+  const modelRoute = parseModelRoute(raw.model_route, executorKind);
+  if (!modelRoute) return { ok: false, reason: 'model_route missing, malformed, or incompatible with executor_kind' };
   const authority = parseAuthority(raw.authority, workIntentId);
   if (authority === undefined) return { ok: false, reason: 'authority missing, malformed, or hash-mismatched' };
-
-  // executor_kind / route_policy are v2-only. On a v1 snapshot they are absent;
-  // we treat them as the v1 default (claude-cli, no policy citation). The
-  // structural hash below is computed over the EXACT stored shape (whatever
-  // fields are present), so v1 snapshots still validate.
-  const executorKind = typeof raw.executor_kind === 'string'
-    ? (raw.executor_kind as ExecutionContextExecutorKind)
-    : 'claude-cli';
   const routePolicy = parseRoutePolicy(raw.route_policy);
 
   const snapshot: ExecutionContextSnapshot = {
@@ -240,8 +248,7 @@ export function readExecutionContextStrict(
     route_policy: routePolicy,
     captured_at: raw.captured_at,
   };
-  // Reconstruct the stored shape for hash verification. For v1 snapshots, omit
-  // executor_kind/route_policy so the hash matches what was persisted.
+
   const hashInput: Record<string, unknown> = {
     policy_version: snapshot.policy_version,
     work_intent_id: snapshot.work_intent_id,
@@ -258,12 +265,10 @@ export function readExecutionContextStrict(
 
   if (row.task_work_intent_id == null) {
     if (authority !== null || workIntentId !== null) {
-      return { ok: false, reason: 'task has no WorkIntent binding but snapshot grants Saga 3 authority' };
+      return { ok: false, reason: 'task has no WorkIntent binding but snapshot grants managed authority' };
     }
-  } else {
-    if (!authority || workIntentId !== row.task_work_intent_id) {
-      return { ok: false, reason: 'task WorkIntent binding does not match execution snapshot' };
-    }
+  } else if (!authority || workIntentId !== row.task_work_intent_id) {
+    return { ok: false, reason: 'task WorkIntent binding does not match execution snapshot' };
   }
 
   return { ok: true, snapshot, row };
