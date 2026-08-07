@@ -8,7 +8,10 @@ import {
   type ReplayClaimSelection,
   type ReplayKeyMaterial,
 } from '../../replay/replay-capsule.js';
-import { ensureReplayCapsuleSchema } from './sqlite-replay-capsule-repository.js';
+import {
+  ensureReplayCapsuleSchema,
+  SqliteReplayCapsuleRepository,
+} from './sqlite-replay-capsule-repository.js';
 
 function metadataObject(raw: unknown): Record<string, unknown> {
   if (raw && typeof raw === 'object' && !Array.isArray(raw)) return raw as Record<string, unknown>;
@@ -75,7 +78,71 @@ export function resolveReplayKeyMaterial(
 }
 
 /**
+ * Materialize missing replay capsules only from already-authoritative factory
+ * state. This function is intentionally invoked at the pre-spawn assignment
+ * boundary, after the claim transaction has committed and before the next
+ * capsule lookup.
+ *
+ * A CandidateSet is certifiable only when its Workplace is durably
+ * `terminal(accepted)`. For a reviewed cell that means BOTH the author set and
+ * the reviewer assessment set become eligible together, after the final gate
+ * transition. Rejected, repair, paused, stale-decision and merely author-gate-
+ * accepted candidates never enter the replay corpus.
+ *
+ * The sweep is idempotent because capsule identity is content addressed and the
+ * repository has uniqueness guards. Capture failure is best-effort: replay is
+ * an optimization and cannot revoke an already accepted factory transition.
+ */
+export function certifyAcceptedReplayCapsules(
+  db: Database.Database,
+  projectId: number,
+): void {
+  ensureReplayCapsuleSchema(db);
+  const repo = new SqliteReplayCapsuleRepository(db);
+  const candidates = db.prepare(
+    `SELECT cs.candidate_set_ref,cs.producer_execution_ref,cs.role
+       FROM factory_candidate_sets cs
+       JOIN factory_workplaces w
+         ON w.workplace_ref=cs.workplace_ref
+       JOIN factory_process_runs pr
+         ON pr.id=w.process_run_id
+       LEFT JOIN factory_replay_capsules rc
+         ON rc.source_execution_ref=cs.producer_execution_ref
+        AND rc.source_candidate_set_ref=cs.candidate_set_ref
+      WHERE pr.project_id=?
+        AND w.loop_state='terminal'
+        AND w.terminal_reason='accepted'
+        AND rc.id IS NULL
+      ORDER BY cs.sealed_at,cs.candidate_set_ref`,
+  ).all(projectId) as Array<{
+    candidate_set_ref: string;
+    producer_execution_ref: string;
+    role: 'author' | 'reviewer';
+  }>;
+
+  for (const candidate of candidates) {
+    try {
+      repo.captureAcceptedExecution({
+        executionRef: candidate.producer_execution_ref,
+        candidateSetRef: candidate.candidate_set_ref,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      process.stderr.write(
+        `[replay-certification] skipped candidate=${candidate.candidate_set_ref} `
+        + `execution=${candidate.producer_execution_ref} role=${candidate.role}: ${message}\n`,
+      );
+    }
+  }
+}
+
+/**
  * Final pre-spawn step for a fenced assignment.
+ *
+ * Before lookup, archive any accepted production from earlier cells/runs that
+ * has not yet been materialized into capsules. This gives replay a crash-safe
+ * certification boundary without a second orchestration mode or a pending
+ * capture aggregate.
  *
  * Miss: freeze the replay key and leave the front-selected LLM route untouched.
  * Hit: freeze the exact capsule and switch only THIS WorkerExecution to the
@@ -94,6 +161,11 @@ export function bindReplayToClaim(
   ensureReplayCapsuleSchema(db);
   const keyMaterial = resolveReplayKeyMaterial(db, input.task, input.role);
   if (!keyMaterial) return null;
+
+  // The work assignment adapter calls this after its IMMEDIATE claim
+  // transaction commits, so filesystem/Git capture cannot hold the claim lock.
+  certifyAcceptedReplayCapsules(db, keyMaterial.projectId);
+
   const replayKey = computeReplayKey(keyMaterial);
   const capsule = db.prepare(
     `SELECT capsule_ref,payload_hash
