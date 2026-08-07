@@ -37,6 +37,15 @@ export const BUTTON_COLOR_WORKER_CONTRACTS = Object.freeze({
   },
 });
 
+const STEP_OUTPUT_SCHEMAS = Object.freeze({
+  proposal_submit: 'factory.discovery-proposal.v1',
+  readiness_submit: 'factory.discovery-readiness-assessment.v1',
+  formalization_review_submit: 'factory.review-verdict.v1',
+  development_implementation_submit: 'factory.development-implementation-result.v1',
+  development_review_submit: 'factory.development-review-verdict.v1',
+  development_verification_submit: 'factory.candidate-verification-evidence-product.v1',
+});
+
 function moduleKind(moduleRef) {
   if (typeof moduleRef !== 'string') return 'unbound';
   return moduleRef.split('@')[0];
@@ -56,6 +65,11 @@ export function workerContractFor(ctx) {
   return BUTTON_COLOR_WORKER_CONTRACTS[contractKey(ctx)] ?? null;
 }
 
+function producedSchema(step) {
+  if (step?.type === 'product_submit') return step.args?.schema ?? null;
+  return STEP_OUTPUT_SCHEMAS[step?.type] ?? null;
+}
+
 export function assertScenarioMatchesContract(ctx, scenario) {
   const contract = workerContractFor(ctx);
   if (!contract) {
@@ -63,10 +77,10 @@ export function assertScenarioMatchesContract(ctx, scenario) {
   }
   const steps = scenario?.steps ?? [];
   if (contract.source === 'typed-submission') {
-    const typed = steps.filter(step => step.type === 'product_submit');
-    if (typed.length !== 1 || typed[0]?.args?.schema !== contract.output) {
+    const produced = steps.map(producedSchema).filter(Boolean);
+    if (produced.length !== 1 || produced[0] !== contract.output) {
       throw new Error(
-        `SIMULATOR_OUTPUT_CONTRACT_MISMATCH: ${contractKey(ctx)} expected exactly one product_submit(${contract.output})`,
+        `SIMULATOR_OUTPUT_CONTRACT_MISMATCH: ${contractKey(ctx)} expected exactly one ${contract.output}, got ${JSON.stringify(produced)}`,
       );
     }
   } else if (contract.source === 'managed-production') {
